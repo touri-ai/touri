@@ -340,6 +340,7 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
   const threads = seed.threads.map(createThread)
   const messages = seed.messages.map((message) => createMessage(message))
   const machines = new Map<string, import("@touri/contracts").MachineState>()
+  const networkPolicies = new Map<string, Record<string, unknown>>()
   const runs = new Map<string, Run>()
   if (scenario === "resumed-turn") {
     const fixture = resumedTurnFixture()
@@ -480,6 +481,26 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
         defaultModel: "openrouter/deepseek/deepseek-v3.2",
         available: true,
       } as ApiRoutes[typeof route]["res"]
+    if ((key as string) === "GET /bots/:id/network-policy" || (key as string) === "PUT /bots/:id/network-policy") {
+      const botId = pathValues.id ?? ""
+      const current = networkPolicies.get(botId) ?? {
+        allowLan: false,
+        resolvers: ["1.1.1.1", "8.8.8.8"],
+        privateDomains: [],
+        restrictPublic: false,
+        publicHosts: [],
+      }
+      const requested = (key as string).startsWith("PUT") ? { ...current, ...(input as object) } : current
+      networkPolicies.set(botId, requested)
+      return {
+        requested,
+        active: requested,
+        providerHosts:
+          bots.find((bot) => bot.id === botId)?.provider === "claude"
+            ? ["anthropic.com", "claude.ai", "claude.com"]
+            : ["openai.com", "chatgpt.com"],
+      } as unknown as ApiRoutes[typeof route]["res"]
+    }
     if (key === "GET /bots/:id/provider-login")
       return {
         provider: "claude",

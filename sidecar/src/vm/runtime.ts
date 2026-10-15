@@ -35,7 +35,13 @@ import {
 import clipboard from "./clipboard.py" with { type: "text" }
 import { configureBridge } from "./configure-bridge"
 import { machineCapability } from "./doctor"
-import { installEgressPolicy, readEgressPolicy, saveEgressPolicy, tightenEgressPolicy } from "./egress-policy"
+import {
+  installEgressPolicy,
+  providerHosts,
+  readEgressPolicy,
+  saveEgressPolicy,
+  tightenEgressPolicy,
+} from "./egress-policy"
 import { GUEST_WRITE_COMMAND } from "./guest-write"
 import { BOT_DNS, BOT_IMAGE } from "./image"
 import { ProviderLoginError, providerLoginSource, readProviderLogin } from "./provider-login"
@@ -567,7 +573,7 @@ export const createVmRuntime = ({
         status === "running"
           ? tightenEgressPolicy(readEgressPolicy(kernel, botId, true), requestedPolicy)
           : requestedPolicy
-      await installEgressPolicy(provider, meta.vm_id, activePolicy, signal)
+      await installEgressPolicy(provider, meta.vm_id, activePolicy, signal, providerHosts(botFor(botId)))
       saveEgressPolicy(kernel, botId, activePolicy, true)
       if (!liveStaging.has(botId)) await clearStagedCredentials(botId)
       signal?.throwIfAborted()
@@ -1475,7 +1481,7 @@ export const createVmRuntime = ({
       if (!meta || stateFor(botId).status !== "running") return
       const policy = tightenEgressPolicy(readEgressPolicy(kernel, botId, true), readEgressPolicy(kernel, botId))
       try {
-        await installEgressPolicy(provider, meta.vm_id, policy)
+        await installEgressPolicy(provider, meta.vm_id, policy, undefined, providerHosts(botFor(botId)))
         saveEgressPolicy(kernel, botId, policy, true)
       } catch (error) {
         await stopResources(botId)

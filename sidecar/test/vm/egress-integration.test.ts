@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test"
 import { createAppleContainerProvider } from "../../src/vm/apple-container"
-import { defaultEgressPolicy, installEgressPolicy } from "../../src/vm/egress-policy"
-import { BOT_IMAGE } from "../../src/vm/image"
+import { defaultEgressPolicy, installEgressPolicy, providerHosts } from "../../src/vm/egress-policy"
+import { BOT_DNS, BOT_IMAGE } from "../../src/vm/image"
 import { appleContainerAvailable } from "./integration-available"
 
 test.skipIf(!appleContainerAvailable)(
@@ -56,4 +56,57 @@ test.skipIf(!appleContainerAvailable)(
     }
   },
   90000,
+)
+
+test.skipIf(!appleContainerAvailable)(
+  "#4 real public allow-list: only listed and provider hosts are reachable, and turning it off restores access",
+  async () => {
+    const id = `touri-allowlist-probe-${process.pid}-${Date.now()}`
+    const provider = createAppleContainerProvider()
+    const reach = async (url: string) =>
+      (
+        await provider.exec({
+          id,
+          user: "1000",
+          command: "curl",
+          args: ["-sS", "-o", "/dev/null", "--max-time", "8", url],
+        })
+      ).success
+    try {
+      expect(
+        (
+          await provider.create({
+            name: id,
+            image: BOT_IMAGE,
+            cpus: 1,
+            memoryMb: 512,
+            dns: [...BOT_DNS],
+            entrypoint: "/usr/local/lib/touri/init.sh",
+          })
+        ).success,
+      ).toBe(true)
+      expect((await provider.start({ id })).success).toBe(true)
+      for (let attempt = 0; attempt < 100; attempt++) {
+        if ((await provider.exec({ id, command: "test", args: ["-f", "/tmp/touri-ready"] })).success) break
+        await Bun.sleep(100)
+      }
+      const restricted = { ...defaultEgressPolicy(), restrictPublic: true, publicHosts: ["example.com"] }
+      await installEgressPolicy(provider, id, restricted, undefined, providerHosts({ provider: "codex" }))
+      expect(await reach("https://example.com/")).toBe(true)
+      expect(await reach("https://www.example.com/")).toBe(true)
+      expect(await reach("https://api.openai.com/")).toBe(true)
+      expect(await reach("https://github.com/")).toBe(false)
+      expect(await reach("https://1.1.1.1/")).toBe(false)
+      const lookup = await provider.exec({ id, user: "1000", command: "getent", args: ["hosts", "github.com"] })
+      expect(lookup.success).toBe(false)
+      // Re-applying the same list keeps resolved addresses, so a running turn keeps its connection.
+      await installEgressPolicy(provider, id, restricted, undefined, providerHosts({ provider: "codex" }))
+      expect(await reach("https://example.com/")).toBe(true)
+      await installEgressPolicy(provider, id, defaultEgressPolicy())
+      expect(await reach("https://github.com/")).toBe(true)
+    } finally {
+      await provider.destroy({ id })
+    }
+  },
+  120_000,
 )

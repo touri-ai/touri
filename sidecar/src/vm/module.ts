@@ -6,7 +6,7 @@ import { routeVmRuntime } from "../cloud/runtime"
 import { createAppleContainerProvider } from "./apple-container"
 import { deleteBotRoute } from "./delete-bot"
 import { createDesktopGateway } from "./desktop"
-import { readEgressPolicy, saveEgressPolicy, validateEgressPolicy } from "./egress-policy"
+import { providerHosts, readEgressPolicy, saveEgressPolicy, validateEgressPolicy } from "./egress-policy"
 import { machineActionRoutes } from "./machine-actions"
 import {
   ProviderLoginError,
@@ -50,7 +50,11 @@ export const init = async (kernel: Kernel): Promise<void> => {
           if (bot?.machine !== "vm") return { status: 404, json: { error: "Bot com VM não encontrado" } }
           return {
             status: 200,
-            json: { requested: readEgressPolicy(kernel, bot.id), active: readEgressPolicy(kernel, bot.id, true) },
+            json: {
+              requested: readEgressPolicy(kernel, bot.id),
+              active: readEgressPolicy(kernel, bot.id, true),
+              providerHosts: providerHosts(bot),
+            },
           }
         },
       },
@@ -72,7 +76,14 @@ export const init = async (kernel: Kernel): Promise<void> => {
           } catch {
             return { status: 503, json: { error: "A proteção de rede falhou; a máquina foi parada." } }
           }
-          return { status: 200, json: { requested: policy, active: readEgressPolicy(kernel, bot.id, true) } }
+          return {
+            status: 200,
+            json: {
+              requested: policy,
+              active: readEgressPolicy(kernel, bot.id, true),
+              providerHosts: providerHosts(bot),
+            },
+          }
         },
       },
       {
