@@ -5,6 +5,7 @@ import { join } from "node:path"
 import type { DoctorCheck, Kernel } from "@touri/contracts"
 import { publicError } from "@touri/contracts"
 import { SCHEMA_VERSION } from "../kernel/db"
+import { touriVersion } from "../version"
 import { BOT_IMAGE, imageContext } from "../vm/image"
 import { containerMemoryChecks } from "../vm/memory-doctor"
 import { check, shellQuote } from "./check"
@@ -42,7 +43,7 @@ export const localProbes: LocalProbes = {
 }
 
 export const sidecarChecks = (kernel: Kernel): Array<DoctorCheck> => {
-  const version = process.env.TOURI_VERSION ?? "0.1.0"
+  const version = touriVersion
   let schema: string | null = null
   try {
     schema =

@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto"
 import { join } from "node:path"
 import type { HostNotification, Kernel, RouteModule, SidecarHandshake, UiEvent } from "@touri/contracts"
 import type { ServerWebSocket } from "bun"
+import { touriVersion } from "../version"
 import { createStorageMaintenance } from "./data-maintenance"
 import { openDatabase, SCHEMA_VERSION } from "./db"
 import { bindDeviceSession, type DeviceSession, deviceSession, socketDeviceContext } from "./device-session"
@@ -52,7 +53,7 @@ type KernelSocketData = (
 
 export { buildChildEnv }
 
-const version = process.env.TOURI_VERSION ?? "0.1.0"
+const version = touriVersion
 export const allowedOrigins = new Set(["tauri://localhost", "http://tauri.localhost", "http://localhost:1420"])
 
 export const isAllowedOrigin = (origin: string | null): origin is string =>

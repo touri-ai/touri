@@ -5,6 +5,7 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import type { Bot, Kernel, McpServer, McpTool } from "@touri/contracts"
 import { createStandingGrantStore, registerStandingGrantRoutes } from "../approvals/grants"
 import { buildChildEnv } from "../kernel/shell-env"
+import { touriVersion } from "../version"
 
 const connectionKey = (server: McpServer): string =>
   JSON.stringify(
@@ -54,7 +55,7 @@ export const withAttachedClient = async <T>(
   timeoutMs = 5000,
   signal?: AbortSignal,
 ): Promise<T> => {
-  const client = new Client({ name: "touri-config", version: "0.1.0" })
+  const client = new Client({ name: "touri-config", version: touriVersion })
   const transport =
     server.transport === "http"
       ? new StreamableHTTPClientTransport(new URL(server.url))

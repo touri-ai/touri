@@ -11,6 +11,7 @@ import type {
 } from "@touri/contracts"
 import { buildChildEnv } from "../../kernel"
 import { redactStructured } from "../../kernel/redact"
+import { touriVersion } from "../../version"
 import { loadTurnImages } from "../loadTurnImages"
 import { mcpStartupError, touriMcpStartupFailed } from "../mcp-startup"
 import { applyProviderPrivacy, cliTelemetryOff, providerPrivacyConfig } from "../privacy"
@@ -462,7 +463,7 @@ export const createCodexAdapter = ({
     }).catch(() => "")
     void (async () => {
       try {
-        await sendRequest("initialize", { clientInfo: { name: "touri", version: "0.1.0" } })
+        await sendRequest("initialize", { clientInfo: { name: "touri", version: touriVersion } })
         const access = accessParams(args)
         // Native resumes can carry a previous run's MCP arguments. Always override
         // the persisted configuration with this turn's credential before turn/start.

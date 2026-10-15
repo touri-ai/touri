@@ -1,4 +1,5 @@
 import { type Kernel, type ToolRegistration, toolCatalog } from "@touri/contracts"
+import { touriVersion } from "../version"
 import { registerAttachedMcpRoutes } from "./attached"
 import { createToolRouter } from "./router"
 import { createMcpSocket } from "./socket"
@@ -43,7 +44,7 @@ export const init = async (kernel: Kernel): Promise<void> => {
         handler: async () => ({
           status: 200,
           json: {
-            server: { name: "touri", version: "0.1.0" },
+            server: { name: "touri", version: touriVersion },
             tools: [...registrations.entries()].flatMap(([name, tool]) => {
               const definition = toolCatalog.tools.find((candidate) => candidate.name === name)
               return definition ? [{ name, description: definition.description, group: tool.group }] : []

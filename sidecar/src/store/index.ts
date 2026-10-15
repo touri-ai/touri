@@ -39,6 +39,7 @@ import {
 import { historyThreadPending, hydrateHistoryEvent } from "../kernel/history-backfill"
 import { externalizeMessageParts, OUTPUT_BLOB_ORIGIN } from "../kernel/output-blobs"
 import { materializeTranscript } from "../kernel/transcript-storage"
+import { touriVersion } from "../version"
 import { DEFAULT_BOT_VM_MEMORY_MB, DEFAULT_MACHINE_IDLE_MINUTES, validBotVmMemory } from "../vm/resources"
 import { redeemFileGrant } from "./redeemFileGrant"
 import { createSendJournal } from "./send-journal"
@@ -1183,7 +1184,7 @@ export const init = async (kernel: Kernel): Promise<void> => {
       {
         method: "GET",
         path: "/health",
-        handler: async () => jsonResponse(200, { ok: true, version: "0.1.0", schemaVersion: SCHEMA_VERSION }),
+        handler: async () => jsonResponse(200, { ok: true, version: touriVersion, schemaVersion: SCHEMA_VERSION }),
       },
       {
         method: "GET",

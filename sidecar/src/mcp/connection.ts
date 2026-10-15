@@ -1,5 +1,6 @@
 import type { Socket } from "node:net"
 import type { Kernel, ToolRegistration, ToolResult } from "@touri/contracts"
+import { touriVersion } from "../version"
 import { authenticateMcp, type McpCallerContext } from "./auth"
 import { isJsonRpcRequest, type JsonRpcRequest, type JsonRpcResponse, parseJsonRpcRequest } from "./protocol"
 import { redactMcpValue } from "./redact"
@@ -68,7 +69,7 @@ const initializeResult = (request: JsonRpcRequest): Record<string, unknown> => {
   return {
     protocolVersion: typeof requested === "string" ? requested : "2024-11-05",
     capabilities: { tools: { listChanged: false } },
-    serverInfo: { name: "touri", version: "0.1.0" },
+    serverInfo: { name: "touri", version: touriVersion },
   }
 }
 
