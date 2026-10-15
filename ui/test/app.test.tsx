@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import type { Id, Message, PreviewTarget, Project, Run } from "@touri/contracts"
 import * as axe from "axe-core"
 import { afterEach, describe, expect, it, vi } from "vitest"
@@ -423,6 +423,24 @@ describe("WP9 frontend acceptance", () => {
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Diagnóstico" })).toBeNull())
     fireEvent.click(screen.getByRole("button", { name: "Importar do app anterior" }))
     expect(await screen.findByRole("dialog")).toBeVisible()
+  })
+
+  it("opens the bot creation dialog from the empty-state landing by button and by Cmd+N", async () => {
+    const mock = createMockApi()
+    const api = {
+      ...mock,
+      request: (async (route, input, pathValues) =>
+        route === "GET /bots" ? { bots: [] } : mock.request(route, input, pathValues)) as typeof mock.request,
+    }
+    render(<App kernel={{ services: { api } }} />)
+    fireEvent.click(await screen.findByRole("button", { name: /Criar primeiro bot/ }))
+    expect(await screen.findByRole("dialog", { name: "Criar um bot" })).toBeVisible()
+    cleanup()
+    render(<App kernel={{ services: { api } }} />)
+    await screen.findByRole("button", { name: /Criar primeiro bot/ })
+    expect(screen.queryByRole("dialog", { name: "Criar um bot" })).toBeNull()
+    fireEvent.keyDown(window, { key: "n", metaKey: true })
+    expect(await screen.findByRole("dialog", { name: "Criar um bot" })).toBeVisible()
   })
 
   it("has no serious or critical axe violations on the main screen", async () => {

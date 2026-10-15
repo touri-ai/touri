@@ -48,7 +48,7 @@ import {
   SETTINGS,
   settingsIndex,
 } from "./features/commandPalette/settingsRegistry"
-import { isPaletteShortcut } from "./features/commandPalette/shortcut"
+import { isNewBotShortcut, isPaletteShortcut } from "./features/commandPalette/shortcut"
 import { HistoryMigrationStatus } from "./features/history/HistoryMigrationStatus"
 import { ReportErrorButton } from "./features/reports/ReportErrorButton"
 import { ReportMenuLauncher } from "./features/reports/ReportMenuLauncher"
@@ -289,6 +289,17 @@ const AppContent = ({ kernel }: AppProps) => {
     return () => window.removeEventListener("keydown", handler)
   }, [])
 
+  useEffect(() => {
+    const handler = (event: KeyboardEvent): void => {
+      if (!isNewBotShortcut(event) || event.repeat) return
+      event.preventDefault()
+      if (document.querySelector(".modal-card, [role='alertdialog']")) return
+      setModal("bot")
+    }
+    window.addEventListener("keydown", handler)
+    return () => window.removeEventListener("keydown", handler)
+  }, [])
+
   const [pendingLink, setPendingLink] = useState<DeepLink | null>(() => parseDeepLink(window.location.search))
   useEffect(() => {
     if (!isTauriRuntime()) return
@@ -511,17 +522,33 @@ const AppContent = ({ kernel }: AppProps) => {
     ) : modal === "import" ? (
       <ImportWizard bots={data.bots} api={api} onClose={closeModal} onNotice={showNotice} />
     ) : null
+  const botModal =
+    modal === "bot" ? (
+      <BotCreateModal
+        api={api}
+        cloudEnabled={data.settings?.cloud === true}
+        capability={data.machineCapability}
+        projects={data.projects}
+        onClose={closeModal}
+        onCreate={async (input) => {
+          await actions.createBot(input)
+          setRoute({ section: "bots", screen: "chat" })
+        }}
+      />
+    ) : null
   if (data.bots.length === 0)
     return (
       <AvatarRuntimeProvider value={data}>
         <OnboardingLanding
           doctor={data.doctor}
+          onCreateBot={() => openModal("bot")}
           onDoctor={() => openModal("doctor")}
           onImport={() => openModal("import")}
         />
-        <MotionPresence show={setupModal !== null} kind="modal">
+        <MotionPresence show={setupModal !== null || botModal !== null} kind="modal">
           <ErrorBoundary key={modal} area="o diálogo" dialog api={api} onClose={closeModal}>
             {setupModal}
+            {botModal}
           </ErrorBoundary>
         </MotionPresence>
       </AvatarRuntimeProvider>
@@ -799,19 +826,7 @@ const AppContent = ({ kernel }: AppProps) => {
               />
             )}
             {setupModal}
-            {modal === "bot" && (
-              <BotCreateModal
-                api={api}
-                cloudEnabled={data.settings?.cloud === true}
-                capability={data.machineCapability}
-                projects={data.projects}
-                onClose={closeModal}
-                onCreate={async (input) => {
-                  await actions.createBot(input)
-                  setRoute({ section: "bots", screen: "chat" })
-                }}
-              />
-            )}
+            {botModal}
             {modal === "project" && (
               <ProjectModal
                 project={null}
@@ -909,10 +924,12 @@ const SidecarErrorScreen = ({
 
 const OnboardingLanding = ({
   doctor,
+  onCreateBot,
   onDoctor,
   onImport,
 }: {
   doctor: import("@touri/contracts").DoctorReport | null
+  onCreateBot: () => void
   onDoctor: () => void
   onImport: () => void
 }) => (
@@ -930,9 +947,12 @@ const OnboardingLanding = ({
         )}
       </p>
       <div className="onboarding-actions">
-        <button type="button" className="button button-brand" onClick={onDoctor}>
-          {t("Check this Mac")}
+        <button type="button" className="button button-brand" onClick={onCreateBot}>
+          {t("Create first bot")}
           <span>→</span>
+        </button>
+        <button type="button" className="button button-outline" onClick={onDoctor}>
+          {t("Check this Mac")}
         </button>
         <button type="button" className="button button-outline" onClick={onImport}>
           {t("Import from legacy app")}

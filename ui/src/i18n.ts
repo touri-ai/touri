@@ -353,6 +353,7 @@ export const ptBR = {
   "Run persistent Codex, Claude Code or OpenCode teammates in real project folders, keep every conversation branch, and see the apps they start.":
     "Use bots Codex, Claude Code ou OpenCode nas pastas dos seus projetos, acompanhe as conversas e visualize os aplicativos que eles iniciarem.",
   "Check this Mac": "Verificar este Mac",
+  "Create first bot": "Criar primeiro bot",
   "Import from legacy app": "Importar do app anterior",
   "Apache-2.0 · no telemetry": "Apache-2.0 · sem telemetria",
   "doctor runs locally": "diagnóstico local",

@@ -9,4 +9,10 @@ export const isPaletteShortcut = (event: ShortcutEvent): boolean => {
   return isMacPlatform() ? event.metaKey && !event.ctrlKey : event.ctrlKey || event.metaKey
 }
 
+/** ⌘N on macOS, Ctrl+N elsewhere: opens the new bot dialog. */
+export const isNewBotShortcut = (event: ShortcutEvent): boolean => {
+  if (event.key.toLowerCase() !== "n" || event.altKey || event.shiftKey) return false
+  return isMacPlatform() ? event.metaKey && !event.ctrlKey : event.ctrlKey || event.metaKey
+}
+
 export const paletteShortcutLabel = (): string => (isMacPlatform() ? "⌘K" : "Ctrl K")
