@@ -1,6 +1,7 @@
 import type { Bot, Id, Kernel, ToolHandler, ToolRegistration, ToolResult } from "@touri/contracts"
 import { toolCatalog, validateToolArgs } from "@touri/contracts"
 import { approvalDestination } from "../approvals/grants"
+import { hiddenInGroupSession } from "../groups/privacy"
 import { delegatedBot, getDelegation } from "../groups/security"
 import { redactStructured } from "../kernel/redact"
 import { createProjectStore } from "../projects/repository"
@@ -75,6 +76,7 @@ const visibleTo = ({
     !kernel.services.use("groups.runtime")?.canCoordinate(caller.threadId)
   )
     return false
+  if (hiddenInGroupSession(kernel, caller.threadId, tool.name)) return false
   const meta = toolMetadata(tool)
   if (!experimental && !meta.mvp) return false
   if (meta.internal && caller.provider !== "claude") return false

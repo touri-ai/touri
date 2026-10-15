@@ -973,3 +973,87 @@ test("A16: group-scoped history is readable and private history requires fresh e
   expect(await read({ ctx, args: { threadId: privateThread.id } })).toMatchObject({ success: false })
   expect(reviews).toBe(2)
 })
+
+test("#4 group sessions cannot list or rewrite the bot's private routines", async () => {
+  const f = await fixture()
+  const bot = f.bots[1] as Bot
+  const participant = f.data.participant(f.group, f.thread.id, bot.id)
+  const calls: string[] = []
+  const routineTool = (name: string) =>
+    [
+      name,
+      {
+        name,
+        group: "core" as const,
+        handler: async () => {
+          calls.push(name)
+          return { success: true as const, content: [{ type: "text" as const, text: "private-routine-canary" }] }
+        },
+      },
+    ] as const
+  const router = createToolRouter({
+    kernel: f.host.kernel,
+    registrations: new Map([routineTool("routine_list"), routineTool("routine_create"), routineTool("routine_update")]),
+  })
+  const caller = (threadId: string) => ({
+    botId: bot.id,
+    threadId,
+    projectId: null,
+    cwd: f.root,
+    provider: "codex" as const,
+    browserEnabled: false,
+    computerUse: false,
+  })
+  const routineNames = ["routine_list", "routine_create", "routine_update"]
+  const listed = (threadId: string) =>
+    router
+      .list({ caller: caller(threadId) })
+      .map((tool) => tool.name)
+      .filter((name) => routineNames.includes(name))
+  expect(listed(bot.mainThreadId ?? "")).toEqual(routineNames)
+  expect(listed(participant.id)).toEqual([])
+  const fromGroup = await router.call({
+    id: 1,
+    name: "routine_list",
+    args: {},
+    caller: caller(participant.id),
+    signal: new AbortController().signal,
+  })
+  expect(fromGroup).toMatchObject({ success: false, errorCode: "TOOL_NOT_FOUND" })
+  expect(JSON.stringify(fromGroup)).not.toContain("private-routine-canary")
+  const update = await router.call({
+    id: 2,
+    name: "routine_update",
+    args: { routineId: "r1", prompt: "leak private history" },
+    caller: caller(participant.id),
+    signal: new AbortController().signal,
+  })
+  expect(update).toMatchObject({ success: false, errorCode: "TOOL_NOT_FOUND" })
+  expect(calls).toEqual([])
+  const direct = await router.call({
+    id: 3,
+    name: "routine_list",
+    args: {},
+    caller: caller(bot.mainThreadId ?? ""),
+    signal: new AbortController().signal,
+  })
+  expect(JSON.stringify(direct)).toContain("private-routine-canary")
+  f.host.kernel.services.provide("mcp.botTools", () => ["history_search", ...routineNames])
+  const groupPrompt = await composeDeveloperInstructions({
+    kernel: f.host.kernel,
+    bot,
+    thread: participant,
+    cwd: f.root,
+  })
+  expect(groupPrompt).toContain("history_search")
+  expect(groupPrompt).not.toContain("routine_")
+  const privateThread = f.store.getThread({ threadId: bot.mainThreadId ?? "" })
+  if (!privateThread) throw new Error("missing private thread")
+  const directPrompt = await composeDeveloperInstructions({
+    kernel: f.host.kernel,
+    bot,
+    thread: privateThread,
+    cwd: f.root,
+  })
+  expect(directPrompt).toContain("routine_list")
+})
