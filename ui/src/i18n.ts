@@ -350,8 +350,8 @@ export const ptBR = {
   "The app will not replace your workspace with demo data.": "Seu espaço de trabalho será retomado após a conexão.",
   "local-first desktop": "aplicativo local",
   "A calm home for your teammates.": "Um espaço para seus bots.",
-  "Run persistent Codex and Claude teammates in real project folders, keep every conversation branch, and see the apps they start.":
-    "Use bots Codex e Claude nas pastas dos seus projetos, acompanhe as conversas e visualize os aplicativos que eles iniciarem.",
+  "Run persistent Codex, Claude Code or OpenCode teammates in real project folders, keep every conversation branch, and see the apps they start.":
+    "Use bots Codex, Claude Code ou OpenCode nas pastas dos seus projetos, acompanhe as conversas e visualize os aplicativos que eles iniciarem.",
   "Check this Mac": "Verificar este Mac",
   "Import from legacy app": "Importar do app anterior",
   "Apache-2.0 · no telemetry": "Apache-2.0 · sem telemetria",
