@@ -246,6 +246,7 @@ running ─► turn_completed(succeeded) ─► succeeded
         ─► turn_completed(failed) | process exit | timeout ─► failed(error_class)
         ─► user Stop ─► interrupt ─► canceled
 app restart while starting/running ─► interrupted(app_restart)  (on boot)
+interrupted | failed(cli_crash, oom) ─► automatic continuation run (see below)
 ```
 
 - **The user message is persisted before anything is spawned.** A run is never deleted. The assistant reply message is created on the first delta with status `streaming`.
@@ -253,6 +254,11 @@ app restart while starting/running ─► interrupted(app_restart)  (on boot)
 - **Carryover.** When a run ends in anything other than `succeeded`, `threads.carryover_note` is set. The next turn prepends it to the user input and then clears it.
   - If the CLI never reached `turn_started`, the note is: `[touri: your previous turn did not run (<class>: <msg>). The user's message was: "<text>"]`.
   - Otherwise: `[touri: your previous turn ended with <class>. Partial output: "<last 1500 chars>"]`.
+- **Automatic continuation** (setting `resumeInterruptedTurns`, default on). A turn cut off by an app restart (crash or quit), by the provider process exiting without a result (`cli_crash`, `oom`) or by the bot computer stopping mid-turn is continued without the user pressing Retry:
+  - The runtime inserts a system notice (`NoticePart{code:"run_resumed"}`, "Retomado após reinício do touri" or "Retomado após falha do provedor") after the partial reply and queues a run whose request is that notice. The provider receives an instruction to check the current state before repeating anything, plus the carryover, in the same native session (`run_resume_points` keeps the session id as soon as the provider reports it).
+  - After a restart this happens on boot for turns active in the last 6 hours; after a provider or VM death it happens once, after a short backoff, unless the user wrote meanwhile.
+  - Never more than 2 continuations per original turn (`run_continuations` links each continuation to the turn it continues). Not for canceled turns, group turns, paused bots, or turns with unacknowledged `uncertain` work effects (the work notice waits for the user).
+  - A routine run is continued within its original timeout instead of being marked canceled.
 
   This fixes the touri web bug where "sim, nesse ambiente" was lost.
 - **Error classification** (`RunErrorClass`), in priority order:
@@ -945,7 +951,7 @@ Rules for every WP:
   - routes `/runs/:id/cancel|retry`, `/approvals/:id`, `/routines*`
   - the routine scheduler (3.8)
   - MCP tools `routine_list|routine_create|routine_update|approval_prompt`, via `registerTools`
-  - on boot: mark `starting`/`running` runs `interrupted(app_restart)` and set carryover
+  - on boot: mark `starting`/`running` runs `interrupted(app_restart)`, set carryover and queue their automatic continuation
 - **Consumes:**
   - `store.api` (WP2): message writes
   - `projects.info` (WP5): instructions project block, optional (missing → omitted)

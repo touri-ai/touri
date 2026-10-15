@@ -279,6 +279,12 @@ export const VirtualMessageList = ({
             {visible.map((entry, index) => {
               if (!entry.message) return <Fragment key={entry.id}>{entry.content}</Fragment>
               const saved = entry.message
+              if (isResumeMarker(saved))
+                return (
+                  <p key={saved.id} className="run-resumed-marker" role="note" data-message-id={saved.id}>
+                    <span>{saved.text}</span>
+                  </p>
+                )
               const run = runs.find((run) => run.id === saved.runId)
               const finished = run && ["succeeded", "failed", "canceled", "interrupted"].includes(run.status)
               const message: Message =
@@ -386,6 +392,10 @@ export const VirtualMessageList = ({
     </div>
   )
 }
+
+/** The marker the runtime inserts before a turn it continued automatically. */
+const isResumeMarker = (message: Message): boolean =>
+  message.role === "system" && message.parts.some((part) => part.type === "notice" && part.code === "run_resumed")
 
 const sameCalendarDay = (left: number, right: number): boolean => {
   const first = new Date(left)

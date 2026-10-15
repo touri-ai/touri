@@ -177,7 +177,8 @@ const AppContent = ({ kernel }: AppProps) => {
         if (!isTauriRuntime() && mockEnabled) {
           const { createMockApi } = await import("./api/mock")
           if (!active || attempt !== generation) return
-          setApi(createMockApi())
+          const scenario = new URLSearchParams(window.location.search).get("mockScenario")
+          setApi(createMockApi({ scenario: scenario === "resumed-turn" ? scenario : null }))
           setConnectionState("ready")
           return
         }

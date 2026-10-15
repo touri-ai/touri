@@ -35,8 +35,10 @@ const fixture = async (ignoreTerm = false, interruptGraceMs = 30) => {
   const runtime = createKernel({ appData: root })
   await initStore(runtime.kernel)
   const db = runtime.kernel.db as Database
+  // These cases cover the manual recovery path; automatic continuation is covered in resume-interrupted.test.ts.
   db.exec(`INSERT INTO bots(id,name,provider,home_dir,created_at,updated_at) VALUES ('b','Teste','codex','/tmp',1,1);
-    INSERT INTO threads(id,bot_id,title,created_at,updated_at) VALUES ('t','b','Conversa',1,1);`)
+    INSERT INTO threads(id,bot_id,title,created_at,updated_at) VALUES ('t','b','Conversa',1,1);
+    INSERT INTO settings(key,value_json,updated_at) VALUES ('resumeInterruptedTurns','false',1);`)
   const store = runtime.kernel.services.use("store.api")
   if (!store) throw new Error("Store missing")
   let pid = 0

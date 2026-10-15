@@ -219,6 +219,16 @@ export const SETTINGS = {
     keywords: ["ram", "vm", "memória", "máquina virtual"],
     controlId: "settings-vm-memory",
   }),
+  resumeInterruptedTurns: setting({
+    id: "resumeInterruptedTurns",
+    scope: "app",
+    section: "general",
+    label: "Retomar turnos interrompidos",
+    description:
+      "Se o touri reiniciar, o provedor falhar ou o computador do bot parar no meio de uma resposta, o bot continua de onde parou (até 2 vezes por turno).",
+    keywords: ["retomar", "continuar", "reinício", "falha", "interrompido"],
+    controlId: "settings-resume-turns",
+  }),
   tray: setting({
     id: "tray",
     scope: "app",

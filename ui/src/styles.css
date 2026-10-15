@@ -1012,6 +1012,21 @@ a {
   display: inline-block;
   padding: 0 var(--space-2);
 }
+.run-resumed-marker {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  width: min(680px, 100%);
+  margin: var(--space-4) auto var(--space-12);
+  color: var(--text-secondary);
+  font-size: var(--type-12);
+}
+.run-resumed-marker::before,
+.run-resumed-marker::after {
+  flex: 1;
+  border-top: 1px solid var(--border-subtle);
+  content: "";
+}
 .run-card-stack {
   display: grid;
   gap: var(--space-10);

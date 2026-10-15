@@ -879,6 +879,92 @@ const enqueueVmTurn = (f: Awaited<ReturnType<typeof fixture>>, bot: Bot) => {
   return { engine, run: result.run, store }
 }
 
+test("VM engine resumes the turn once when the bot computer stops mid-turn", async () => {
+  const f = await fixture()
+  const bot = await f.bot()
+  const threadId = bot.mainThreadId ?? ""
+  const store = f.runtime.kernel.services.use("store.api")
+  if (!store) throw new Error("Missing store")
+  const scenario = join(f.root, "scenario.json")
+  const requests = join(f.root, "requests.jsonl")
+  writeFileSync(
+    scenario,
+    JSON.stringify({
+      requestLogPath: requests,
+      events: [{ type: "delta", delta: "parcial" }, { type: "sleep" }],
+      slowMs: 1000,
+    }),
+  )
+  const spawn = f.fake.provider.spawn
+  const guests: Array<{ kill: (signal: "SIGKILL") => void; exited: Promise<unknown> }> = []
+  f.fake.provider.spawn = (input) => {
+    if (input.command !== "codex") return spawn(input)
+    const child = f.runtime.kernel.spawnTree({
+      cmd: process.execPath,
+      args: ["run", join(import.meta.dir, "../fakes/fake-codex.ts"), ...(input.args ?? [])],
+      cwd: f.root,
+      env: { ...process.env, TOURI_FAKE_SCENARIO: scenario },
+    })
+    if (child.success) guests.push(child)
+    return child
+  }
+  const engine = createRuntimeEngine({ kernel: f.runtime.kernel, resumeBackoffMs: 20 })
+  try {
+    const request = store.insertMessage({
+      message: {
+        id: f.runtime.kernel.newId(),
+        threadId,
+        parentId: store.getThread({ threadId })?.activeLeafId ?? null,
+        role: "user",
+        kind: "text",
+        status: "complete",
+        runId: null,
+        text: "Gere o relatório",
+        parts: [],
+        sender: null,
+        source: "local",
+      },
+    })
+    if (!request.success) throw new Error(request.error)
+    const started = engine.enqueue({ threadId, requestMessageId: request.message.id, trigger: "user" })
+    if (!started.success) throw new Error(started.error)
+    for (let i = 0; i < 400 && !store.activePath({ threadId }).some((message) => message.text === "parcial"); i++)
+      await Bun.sleep(5)
+    writeFileSync(scenario, JSON.stringify({ requestLogPath: requests, deltas: ["retomado"] }))
+    // The container stops outside touri (host sleep, crash, OOM): its processes die without a result.
+    const startsBefore = f.fake.calls.filter((call) => call.action === "start").length
+    for (const id of f.fake.machines.keys()) f.fake.machines.set(id, "stopped")
+    for (const guest of guests) guest.kill("SIGKILL")
+    await waitForTerminal(started.run)
+    expect(started.run.status).toBe("failed")
+    let runs = engine.listRuns(threadId)
+    for (let i = 0; i < 400 && !(runs.length === 2 && runs[0]?.status === "succeeded"); i++) {
+      await Bun.sleep(10)
+      runs = engine.listRuns(threadId)
+    }
+    expect(runs.map((run) => run.status)).toEqual(["succeeded", "failed"])
+    expect(f.fake.calls.filter((call) => call.action === "start").length).toBeGreaterThan(startsBefore)
+    expect(
+      (f.runtime.kernel.db as Database).query("SELECT previous_run_id, reason FROM run_continuations").all(),
+    ).toEqual([{ previous_run_id: started.run.id, reason: "provider_crash" }])
+    expect(store.activePath({ threadId }).map((message) => message.text)).toEqual([
+      "Gere o relatório",
+      "parcial",
+      "Retomado após falha do provedor",
+      "retomado",
+    ])
+    const sessions = readFileSync(requests, "utf8")
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line).method)
+      .filter((method) => method === "thread/start" || method === "thread/resume")
+    expect(sessions).toEqual(["thread/start", "thread/resume"])
+  } finally {
+    await engine.shutdown()
+    await Promise.all(guests.map((guest) => guest.exited))
+  }
+})
+
 const waitForTerminal = async (run: { status: string }) => {
   for (let attempt = 0; attempt < 200 && !["failed", "canceled", "succeeded"].includes(run.status); attempt++)
     await Bun.sleep(5)

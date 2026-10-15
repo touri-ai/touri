@@ -38,6 +38,18 @@ import { MachineServiceError } from "../vm/service-error"
 import { VmStageError, vmStage } from "../vm/stage"
 import { createClaudeAdapter } from "./claude/adapter"
 import { createCodexAdapter } from "./codex/adapter"
+import {
+  CONTINUATION_WINDOW_MS,
+  type ContinuationReason,
+  CRASH_ERROR_CLASSES,
+  CRASH_RESUME_BACKOFF_MS,
+  continuationMarkers,
+  continuationPrompt,
+  continuationReasonOf,
+  createRunContinuations,
+  MAX_AUTO_CONTINUATIONS,
+  MAX_CRASH_CONTINUATIONS,
+} from "./continuations"
 import { buildHandoffPacket } from "./handoff"
 import { composeDeveloperInstructions } from "./instructions"
 import { isMcpStartupError } from "./mcp-startup"
@@ -67,7 +79,10 @@ type RunState = {
   completionError: { errorClass: RunErrorClass; errorMessage: string | null } | null
   cancelRequested: boolean
   generation: number | null
+  fingerprint: string | null
 }
+
+type ContinuationPlan = { reason: ContinuationReason; originalRunId: Id }
 
 type PendingApproval = { runId: Id; provider: ProviderAdapter; providerApprovalId: Id }
 
@@ -187,6 +202,7 @@ export const createRuntimeEngine = ({
   maxConcurrentRuns: configuredMaxConcurrentRuns,
   interruptGraceMs,
   routineTimeoutMs,
+  resumeBackoffMs = CRASH_RESUME_BACKOFF_MS,
 }: {
   kernel: Kernel
   codexCommand?: string
@@ -196,6 +212,7 @@ export const createRuntimeEngine = ({
   maxConcurrentRuns?: number
   interruptGraceMs?: number
   routineTimeoutMs?: (routine: Routine) => number
+  resumeBackoffMs?: number
 }): RuntimeEngine => {
   const persistence: RuntimePersistence = createRuntimePersistence({ database: kernel.db })
   const ownerPath = `${kernel.paths.runDir}/runtime-owner`
@@ -245,6 +262,8 @@ export const createRuntimeEngine = ({
 
   const notices = createRuntimeNotices({ kernel })
   const work: WorkState = createWorkState({ database: kernel.db as Database })
+  const continuations = createRunContinuations({ database: kernel.db })
+  const pendingContinuations = new Map<Id, { timer: ReturnType<typeof setTimeout>; run: Run }>()
 
   const publishRun = (run: Run): void => kernel.publish({ type: "run.updated", run: cloneRun(run) })
 
@@ -292,6 +311,7 @@ export const createRuntimeEngine = ({
       completionError: null,
       cancelRequested: false,
       generation: null,
+      fingerprint: null,
     }
     states.set(runId, created)
     return created
@@ -422,6 +442,15 @@ export const createRuntimeEngine = ({
     if (event.type === "session") {
       state.externalSessionId = event.externalSessionId
       state.rolloutPath = event.rolloutPath
+      if (state.fingerprint)
+        continuations.saveResumePoint({
+          runId: run.id,
+          point: {
+            externalSessionId: event.externalSessionId,
+            rolloutPath: event.rolloutPath,
+            fingerprint: state.fingerprint,
+          },
+        })
       return
     }
     if (event.type === "turn_started") {
@@ -642,7 +671,8 @@ export const createRuntimeEngine = ({
     }
     const state = getState(run.id)
     const request = activePathMessage({ store, run })
-    const requestText = request?.text ?? ""
+    const resumedFrom = request?.role === "system" ? continuationReasonOf(request.text) : null
+    const requestText = resumedFrom ? continuationPrompt(resumedFrom) : (request?.text ?? "")
     const carryover = thread.carryoverNote
     if (carryover) store.updateThread({ threadId: thread.id, patch: { carryoverNote: null } })
     const toolSummary = tools.summary(store, thread.id, request?.id)
@@ -733,6 +763,7 @@ export const createRuntimeEngine = ({
     }
     updateRun(run, { status: "starting", startedAt: Date.now() })
     state.generation = store.getThread({ threadId: thread.id })?.generation ?? null
+    state.fingerprint = mcpFingerprint.hash
     const controller = new AbortController()
     controllers.set(run.id, controller)
     const provider = adapters[bot.provider]
@@ -751,7 +782,7 @@ export const createRuntimeEngine = ({
             }
             controller.abort()
           },
-          Math.max(1, routineTimeout(routine)),
+          Math.max(1, routineBudget({ run, routine, routineRun })),
         )
       : null
     const result = await (async (): Promise<Awaited<ReturnType<ProviderAdapter["startTurn"]>>> => {
@@ -938,7 +969,7 @@ export const createRuntimeEngine = ({
           notices.done({ botId: run.botId, threadId: run.threadId, summary: state.text })
         })
       } else {
-        await finalizeFailure({
+        failTurn({
           run,
           state,
           store,
@@ -951,7 +982,7 @@ export const createRuntimeEngine = ({
         })
       }
     } else {
-      await finalizeFailure({
+      failTurn({
         run,
         state,
         store,
@@ -973,6 +1004,7 @@ export const createRuntimeEngine = ({
     thread,
     errorClass: reportedErrorClass,
     errorMessage,
+    continuing = false,
   }: {
     run: Run
     state: RunState
@@ -980,6 +1012,7 @@ export const createRuntimeEngine = ({
     thread: Thread
     errorClass: RunErrorClass
     errorMessage: string
+    continuing?: boolean
   }): void => {
     const errorClass = refineErrorClass(reportedErrorClass, errorMessage)
     finishLiveRun(run, () => {
@@ -1032,6 +1065,7 @@ export const createRuntimeEngine = ({
         usage: state.usage,
         finishedAt: Date.now(),
       })
+      if (continuing) return
       finishRoutineRun({
         run,
         state,
@@ -1046,6 +1080,203 @@ export const createRuntimeEngine = ({
         reason: friendlyMessage,
       })
     })
+  }
+
+  const resumeEnabled = (): boolean => {
+    if (!(kernel.db instanceof Database)) return true
+    try {
+      const row = kernel.db.query("SELECT value_json FROM settings WHERE key = 'resumeInterruptedTurns'").get() as {
+        value_json: string
+      } | null
+      return row === null || row.value_json !== "false"
+    } catch {
+      return true
+    }
+  }
+
+  const routineTimeLeft = ({ routine, routineRun }: { routine: Routine; routineRun: RoutineRun }): number =>
+    routineTimeout(routine) - (Date.now() - (routineRun.startedAt ?? Date.now()))
+
+  // A continuation shares the routine's original deadline instead of starting a new one.
+  const routineBudget = ({
+    run,
+    routine,
+    routineRun,
+  }: {
+    run: Run
+    routine: Routine
+    routineRun: RoutineRun | null
+  }): number =>
+    routineRun && continuations.link(run.id) ? routineTimeLeft({ routine, routineRun }) : routineTimeout(routine)
+
+  // A routine canceled by a graceful quit is reopened by its continuation.
+  const routineAllowsContinuation = (run: Run): boolean => {
+    if (!run.routineRunId) return true
+    const routineRun = persistence.getRoutineRun(run.routineRunId)
+    const routine = routineRun ? persistence.getRoutine(routineRun.routineId) : null
+    const open =
+      routineRun?.status === "running" || (routineRun?.status === "canceled" && run.errorClass === "app_restart")
+    return (
+      !!routine && !!routineRun && open && routineRun.runId === run.id && routineTimeLeft({ routine, routineRun }) > 0
+    )
+  }
+
+  const hasUncertainWork = (runId: Id): boolean =>
+    work.rebuild({ turnId: runId }).some((effect) => effect.state === "uncertain" && !effect.acknowledged)
+
+  const planContinuation = ({
+    run,
+    reason,
+    lastActivityAt,
+  }: {
+    run: Run
+    reason: ContinuationReason
+    lastActivityAt: number
+  }): ContinuationPlan | null => {
+    if (shuttingDown || !resumeEnabled() || Date.now() - lastActivityAt > CONTINUATION_WINDOW_MS) return null
+    if (!run.requestMessageId || continuations.isGroupRun(run.id)) return null
+    const originalRunId = continuations.link(run.id)?.originalRunId ?? run.id
+    if (continuations.count({ originalRunId }) >= MAX_AUTO_CONTINUATIONS) return null
+    if (reason === "provider_crash" && continuations.count({ originalRunId, reason }) >= MAX_CRASH_CONTINUATIONS)
+      return null
+    // Effects whose outcome is unknown wait for the user; the work notice already explains them.
+    if (hasUncertainWork(run.id)) return null
+    const session =
+      continuations.resumePoint(run.id) ??
+      persistence.getActiveSession({ threadId: run.threadId, provider: run.provider })
+    const bot = kernel.services.use("store.api")?.getBot({ botId: run.botId })
+    if (!session || !bot || bot.paused || bot.machine === "cloud") return null
+    return routineAllowsContinuation(run) ? { reason, originalRunId } : null
+  }
+
+  // Resume the exact provider session the interrupted turn was using.
+  const adoptResumeSession = (run: Run): void => {
+    const point = continuations.resumePoint(run.id)
+    if (!point) return
+    const current = persistence.getActiveSession({ threadId: run.threadId, provider: run.provider })
+    if (current?.externalSessionId === point.externalSessionId) return
+    if (current) persistence.markSession({ id: current.id, state: "replaced" })
+    const now = Date.now()
+    persistence.saveSession({
+      id: kernel.newId(),
+      threadId: run.threadId,
+      provider: run.provider,
+      externalSessionId: point.externalSessionId,
+      rolloutPath: point.rolloutPath,
+      fingerprint: point.fingerprint,
+      state: "active",
+      model: kernel.services.use("store.api")?.getBot({ botId: run.botId })?.model ?? null,
+      createdAt: now,
+      lastUsedAt: now,
+    })
+  }
+
+  const startContinuation = ({ run, plan }: { run: Run; plan: ContinuationPlan }): boolean => {
+    const store = kernel.services.use("store.api")
+    const thread = store?.getThread({ threadId: run.threadId })
+    if (!store || !thread) return false
+    adoptResumeSession(run)
+    const part = {
+      type: "notice" as const,
+      level: "info" as const,
+      code: "run_resumed" as const,
+      text: continuationMarkers[plan.reason],
+    }
+    const marker = store.insertMessage({
+      message: {
+        id: kernel.newId(),
+        threadId: thread.id,
+        parentId: run.replyMessageId ?? thread.activeLeafId,
+        role: "system",
+        kind: "notice",
+        status: "complete",
+        runId: null,
+        text: part.text,
+        parts: [part],
+        sender: null,
+        source: "local",
+      },
+    })
+    if (!marker.success) return false
+    kernel.publish({ type: "message.created", message: marker.message })
+    const next = enqueue({
+      threadId: thread.id,
+      requestMessageId: marker.message.id,
+      trigger: run.routineRunId ? "routine" : "retry",
+      ...(run.routineRunId ? { routineRunId: run.routineRunId } : {}),
+    })
+    if (!next.success) return false
+    continuations.record({
+      runId: next.run.id,
+      originalRunId: plan.originalRunId,
+      previousRunId: run.id,
+      reason: plan.reason,
+      createdAt: Date.now(),
+    })
+    const routineRun = run.routineRunId ? persistence.getRoutineRun(run.routineRunId) : null
+    const routine = routineRun ? persistence.getRoutine(routineRun.routineId) : null
+    if (routineRun && routine) {
+      const moved: RoutineRun = {
+        ...routineRun,
+        status: "running",
+        runId: next.run.id,
+        summary: null,
+        finishedAt: null,
+      }
+      persistence.updateRoutineRun(moved)
+      kernel.publish({ type: "routine.updated", routine, lastRun: moved })
+    }
+    kernel.log({
+      level: "info",
+      module: run.provider,
+      msg: "Turno retomado automaticamente",
+      data: {
+        botId: run.botId,
+        threadId: run.threadId,
+        runId: next.run.id,
+        previousRunId: run.id,
+        reason: plan.reason,
+      },
+    })
+    return true
+  }
+
+  // A routine run kept open for a continuation that did not start still needs its final state.
+  const abandonContinuation = ({ run, status }: { run: Run; status: RoutineRun["status"] }): void =>
+    finishRoutineRun({ run, state: getState(run.id), status, summary: getState(run.id).text || "Turno interrompido" })
+
+  const scheduleContinuation = ({ run, plan }: { run: Run; plan: ContinuationPlan }): void => {
+    const timer = setTimeout(() => {
+      pendingContinuations.delete(run.id)
+      // A newer turn on the thread (the user wrote meanwhile) supersedes the continuation.
+      const superseded = persistence.listRuns(run.threadId)[0]?.id !== run.id
+      const ready = !shuttingDown && ownsRuntime() && resumeEnabled() && !superseded
+      if (!ready || !startContinuation({ run, plan })) abandonContinuation({ run, status: "failed" })
+    }, resumeBackoffMs)
+    pendingContinuations.set(run.id, { timer, run })
+  }
+
+  const failTurn = ({
+    run,
+    state,
+    store,
+    thread,
+    errorClass: reportedErrorClass,
+    errorMessage,
+  }: {
+    run: Run
+    state: RunState
+    store: StoreApi
+    thread: Thread
+    errorClass: RunErrorClass
+    errorMessage: string
+  }): void => {
+    const errorClass = refineErrorClass(reportedErrorClass, errorMessage)
+    const crashed =
+      CRASH_ERROR_CLASSES.includes(errorClass) && state.turnStarted && !state.cancelRequested && isLive(run)
+    const plan = crashed ? planContinuation({ run, reason: "provider_crash", lastActivityAt: Date.now() }) : null
+    finalizeFailure({ run, state, store, thread, errorClass, errorMessage, continuing: plan !== null })
+    if (plan) scheduleContinuation({ run, plan })
   }
 
   const drain = async (): Promise<void> => {
@@ -1540,6 +1771,11 @@ export const createRuntimeEngine = ({
   const shutdown = (): Promise<void> => {
     if (shutdownPromise) return shutdownPromise
     shuttingDown = true
+    for (const [id, pending] of pendingContinuations) {
+      clearTimeout(pending.timer)
+      pendingContinuations.delete(id)
+      abandonContinuation({ run: pending.run, status: "failed" })
+    }
     for (const [id, controller] of controllers) {
       const state = getState(id)
       state.completionError ??= { errorClass: "app_restart", errorMessage: "touri restarted" }
@@ -1555,7 +1791,9 @@ export const createRuntimeEngine = ({
 
   reapProviderProcesses(kernel)
   reapOrphanShims(kernel.paths.runDir)
+  const recovered = new Set<Id>()
   for (const run of persistence.listActiveRuns()) {
+    recovered.add(run.id)
     const store = kernel.services.use("store.api")
     const thread = store?.getThread({ threadId: run.threadId })
     if (store && thread) {
@@ -1571,7 +1809,21 @@ export const createRuntimeEngine = ({
         state.parts = structuredClone(reply.parts)
       }
       state.turnStarted = run.externalTurnId !== null
-      void finalizeFailure({ run, state, store, thread, errorClass: "app_restart", errorMessage: "touri restarted" })
+      const plan = planContinuation({
+        run,
+        reason: "app_restart",
+        lastActivityAt: Math.max(run.startedAt ?? run.queuedAt, reply?.updatedAt ?? 0),
+      })
+      finalizeFailure({
+        run,
+        state,
+        store,
+        thread,
+        errorClass: "app_restart",
+        errorMessage: "touri restarted",
+        continuing: plan !== null,
+      })
+      if (plan && !startContinuation({ run, plan })) abandonContinuation({ run, status: "canceled" })
       continue
     }
     const finishedAt = Date.now()
@@ -1591,6 +1843,13 @@ export const createRuntimeEngine = ({
           finishedAt,
         })
     }
+  }
+
+  for (const runId of continuations.recentlyInterrupted(Date.now() - CONTINUATION_WINDOW_MS)) {
+    const run = persistence.getRun(runId)
+    if (!run || recovered.has(run.id) || persistence.listRuns(run.threadId)[0]?.id !== run.id) continue
+    const plan = planContinuation({ run, reason: "app_restart", lastActivityAt: run.finishedAt ?? run.queuedAt })
+    if (plan) startContinuation({ run, plan })
   }
 
   const recoveryStore = kernel.services.use("store.api")

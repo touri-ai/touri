@@ -66,6 +66,9 @@ const snapshot = (db: Database, tables: Array<string>): Snapshot => ({
   fks: new Map(tables.map((table) => [table, db.query(`PRAGMA foreign_key_list(${table})`).all()])),
 })
 
+// Schema objects that migrations after 0014 add on the same open.
+const LATER_MIGRATION_OBJECTS = ["run_continuations_original"]
+
 const withoutSource = (row: unknown): unknown => {
   const { source: _source, ...rest } = row as Record<string, unknown>
 
@@ -109,7 +112,8 @@ test("0014 upgrades a copy of a populated schema 13 database with old-label rows
           .query(
             "SELECT name FROM sqlite_schema WHERE type IN ('index','trigger','view') AND name NOT LIKE 'sqlite_%' ORDER BY name",
           )
-          .all(),
+          .all()
+          .filter((row) => !LATER_MIGRATION_OBJECTS.includes((row as { name: string }).name)),
       ).toEqual(objectsBefore)
       expect(db.query("PRAGMA foreign_key_check").all()).toEqual([])
       expect(db.query("PRAGMA integrity_check").get()).toEqual({ integrity_check: "ok" })

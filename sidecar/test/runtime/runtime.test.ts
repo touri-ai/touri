@@ -1448,6 +1448,10 @@ test.serial("a failed turn notifies turn-failed, a canceled turn notifies nothin
   const value = await fixture({ scenario: { crashAt: 2, deltas: ["partial ", "lost"] } })
   try {
     await initNotify(value.runtime.kernel)
+    // With automatic resume on, a crash is continued instead of reported (resume-interrupted.test.ts).
+    ;(value.runtime.kernel.db as Database).exec(
+      "INSERT INTO settings (key, value_json, updated_at) VALUES ('resumeInterruptedTurns', 'false', 1)",
+    )
     const request = addUser(value.store, value.thread, "fail please")
     const run = value.engine.enqueue({ threadId: value.thread.id, requestMessageId: request.id, trigger: "user" })
     if (!run.success) throw new Error(run.error)

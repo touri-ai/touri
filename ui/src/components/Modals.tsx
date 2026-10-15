@@ -1910,6 +1910,7 @@ export const SettingsModal = ({
   const [tray, setTray] = useState(settings?.keepRunningInTray ?? true)
   const [native, setNative] = useState(settings?.nativeNotifications ?? true)
   const [floatUpdates, setFloatUpdates] = useState(settings?.sidebarFloatUpdates ?? true)
+  const [resumeTurns, setResumeTurns] = useState(settings?.resumeInterruptedTurns ?? true)
   const [vmMemory, setVmMemory] = useState(settings?.botVmMemoryMb ?? 1536)
   const [retentionDays, setRetentionDays] = useState(settings?.dataRetentionDays ?? 30)
   const [saving, setSaving] = useState(false)
@@ -1935,6 +1936,7 @@ export const SettingsModal = ({
         keepRunningInTray: tray,
         nativeNotifications: native,
         sidebarFloatUpdates: floatUpdates,
+        resumeInterruptedTurns: resumeTurns,
         botVmMemoryMb: vmMemory,
         dataRetentionDays: retentionDays,
       })
@@ -2131,6 +2133,21 @@ export const SettingsModal = ({
                 onChange={(event) => setVmMemory(Number(event.target.value))}
               />
             </SettingsRow>
+            <label
+              className="toggle-row"
+              htmlFor={SETTINGS.resumeInterruptedTurns.controlId}
+              data-setting-id={SETTINGS.resumeInterruptedTurns.id}
+            >
+              <span>
+                <strong>{SETTINGS.resumeInterruptedTurns.label}</strong>
+                <small>{SETTINGS.resumeInterruptedTurns.description}</small>
+              </span>
+              <SettingsSwitch
+                id={SETTINGS.resumeInterruptedTurns.controlId}
+                checked={resumeTurns}
+                onChange={(event) => setResumeTurns(event.target.checked)}
+              />
+            </label>
             <label className="toggle-row" htmlFor={SETTINGS.tray.controlId} data-setting-id={SETTINGS.tray.id}>
               <span>
                 <strong>{SETTINGS.tray.label}</strong>

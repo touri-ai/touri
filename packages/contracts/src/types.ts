@@ -304,6 +304,7 @@ export type NoticePart = {
     | 'routine_run'
     | 'imported'
     | 'app_restart'
+    | 'run_resumed'
   text: string
 }
 export type ApprovalPart = {
@@ -787,6 +788,8 @@ export type AppSettings = {
   nativeNotifications: boolean
   /** Float bots that need the user, are working or have unread results to the top of the sidebar. Default: true. */
   sidebarFloatUpdates?: boolean
+  /** Continue a turn cut off by a restart, a provider crash or a stopped bot computer. Default: true. */
+  resumeInterruptedTurns?: boolean
 }
 
 export type DoctorStatus = 'pass' | 'warn' | 'fail'

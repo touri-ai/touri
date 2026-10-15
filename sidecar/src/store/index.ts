@@ -326,6 +326,7 @@ const settingsDefaults = (): AppSettings => ({
   browserExecutable: "system-chrome",
   nativeNotifications: true,
   sidebarFloatUpdates: true,
+  resumeInterruptedTurns: true,
 })
 
 const settingsKeys: Array<keyof AppSettings> = [
@@ -345,6 +346,7 @@ const settingsKeys: Array<keyof AppSettings> = [
   "browserExecutable",
   "nativeNotifications",
   "sidebarFloatUpdates",
+  "resumeInterruptedTurns",
 ]
 
 const validSettingsPatch = (patch: Record<string, unknown>): string | null => {
@@ -384,6 +386,7 @@ const validSettingsPatch = (patch: Record<string, unknown>): string | null => {
     "launchAtLogin",
     "nativeNotifications",
     "sidebarFloatUpdates",
+    "resumeInterruptedTurns",
   ] as const) {
     if (patch[key] !== undefined && typeof patch[key] !== "boolean") return `${key} must be a boolean`
   }
@@ -417,7 +420,8 @@ const readSettings = ({ database }: { database: Database }): AppSettings => {
         key === "keepRunningInTray" ||
         key === "launchAtLogin" ||
         key === "nativeNotifications" ||
-        key === "sidebarFloatUpdates") &&
+        key === "sidebarFloatUpdates" ||
+        key === "resumeInterruptedTurns") &&
       typeof value === "boolean"
     )
       settings[key] = value

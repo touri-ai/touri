@@ -254,6 +254,70 @@ const defaultDoctor: DoctorReport = {
   ],
 }
 
+/** Optional demo states for screenshots and manual review, selected with `?mockScenario=` in the mock UI. */
+export type MockScenario = "resumed-turn"
+
+const resumedTurnFixture = (): { messages: Array<Message>; runs: Array<Run> } => {
+  const request = createMessage({
+    id: "m-resume-request",
+    threadId: "thread-mark",
+    role: "user",
+    text: "Atualize o relatório da campanha com os números de ontem e publique o rascunho.",
+    parentId: "m2",
+  })
+  const partialText = "Baixei os números de ontem e comecei a atualizar a tabela de conversões."
+  const partial: Message = {
+    ...createMessage({
+      id: "m-resume-partial",
+      threadId: "thread-mark",
+      role: "assistant",
+      text: partialText,
+      status: "failed",
+      runId: "run-interrupted",
+      parentId: request.id,
+    }),
+    parts: [
+      { type: "text", text: partialText },
+      { type: "notice", level: "error", code: "app_restart", text: "app_restart: touri restarted [TOURI-E1009]" },
+    ],
+  }
+  const marker: Message = {
+    ...createMessage({
+      id: "m-resume-marker",
+      threadId: "thread-mark",
+      role: "system",
+      text: "Retomado após reinício do touri",
+      parentId: partial.id,
+    }),
+    kind: "notice",
+    parts: [{ type: "notice", level: "info", code: "run_resumed", text: "Retomado após reinício do touri" }],
+  }
+  const resumed = createMessage({
+    id: "m-resume-reply",
+    threadId: "thread-mark",
+    role: "assistant",
+    text: "Conferi o que já estava feito: a tabela de conversões está atualizada. Terminei o resumo e publiquei o rascunho.",
+    runId: "run-resumed",
+    parentId: marker.id,
+  })
+  const interrupted: Run = {
+    ...createRun({ id: "run-interrupted", threadId: "thread-mark", botId: "bot-mark", status: "interrupted" }),
+    errorClass: "app_restart",
+    errorMessage: "touri restarted",
+    requestMessageId: request.id,
+    replyMessageId: partial.id,
+    startedAt: now() - 15 * 60_000,
+    finishedAt: now() - 2 * 60_000,
+  }
+  const continued: Run = {
+    ...createRun({ id: "run-resumed", threadId: "thread-mark", botId: "bot-mark" }),
+    trigger: "retry",
+    requestMessageId: marker.id,
+    replyMessageId: resumed.id,
+  }
+  return { messages: [request, partial, marker, resumed], runs: [interrupted, continued] }
+}
+
 const importReport: ImportReport = {
   importId: "import-demo",
   origin: "/Users/demo/.legacy-app",
@@ -269,7 +333,7 @@ const importReport: ImportReport = {
   droppedMessageKinds: { options: 2 },
 }
 
-export const createMockApi = (): MockApi => {
+export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } = {}): MockApi => {
   const project = createProject()
   const projects: Array<Project> = [project]
   const bots = seed.bots.map((bot, index) => createBot(bot, index, project.id))
@@ -277,6 +341,13 @@ export const createMockApi = (): MockApi => {
   const messages = seed.messages.map((message) => createMessage(message))
   const machines = new Map<string, import("@touri/contracts").MachineState>()
   const runs = new Map<string, Run>()
+  if (scenario === "resumed-turn") {
+    const fixture = resumedTurnFixture()
+    messages.push(...fixture.messages)
+    for (const run of fixture.runs) runs.set(run.id, run)
+    const thread = threads.find((candidate) => candidate.id === "thread-mark")
+    if (thread) thread.activeLeafId = fixture.messages.at(-1)?.id ?? null
+  }
   for (const thread of seed.threads.filter((candidate) => candidate.running)) {
     const run = createRun({ id: `run-${thread.id}`, threadId: thread.id, botId: thread.botId, status: "running" })
     runs.set(run.id, run)
@@ -313,6 +384,7 @@ export const createMockApi = (): MockApi => {
     computerUseHotkey: "⌃⌥⌘.",
     browserExecutable: "system-chrome",
     nativeNotifications: true,
+    resumeInterruptedTurns: true,
   }
 
   const notifications: Array<NotificationRecord> = []
