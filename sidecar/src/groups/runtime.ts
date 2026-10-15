@@ -304,7 +304,7 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
           save(turn, {
             status: canceled ? "canceled" : "failed",
             errorClass: canceled ? "canceled" : "unknown",
-            errorMessage: String(error),
+            errorMessage: kernel.redact(String(error)),
             finishedAt: Date.now(),
           })
         }
@@ -479,7 +479,7 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
       )
       return { success: true, content: [{ type: "text", text: answer }], structured: { bot: target, answer } }
     } catch (error) {
-      return fail(frame.turn.controller.signal.aborted ? "CANCELED" : "DELEGATION_FAILED", String(error))
+      return fail(frame.turn.controller.signal.aborted ? "CANCELED" : "DELEGATION_FAILED", kernel.redact(String(error)))
     } finally {
       ctx.signal.removeEventListener("abort", abort)
     }

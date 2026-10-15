@@ -303,7 +303,7 @@ export const createCodexAdapter = ({
       responseWaiters.clear()
       stopReader()
       spawned.kill("SIGTERM")
-      finish(result)
+      finish(result.success ? result : { ...result, error: kernel.redact(result.error) })
     }
     const onLine = (line: string): void => {
       let parsed: unknown
@@ -423,11 +423,12 @@ export const createCodexAdapter = ({
             : statusText === "failed" || params.error || turn.error
               ? "failed"
               : "succeeded"
-        const errorMessage = codexErrorText(params) ?? codexErrorText(turn)
+        const providerError = codexErrorText(params) ?? codexErrorText(turn)
+        const errorMessage = providerError === null ? null : kernel.redact(providerError)
         args.onEvent({
           type: "turn_completed",
           status,
-          errorClass: status === "succeeded" ? null : classifyProviderError(errorMessage ?? statusText),
+          errorClass: status === "succeeded" ? null : classifyProviderError(providerError ?? statusText),
           errorMessage: errorMessage ?? (status === "failed" ? "Codex reported an error" : null),
         })
         complete({ success: true, externalSessionId, rolloutPath, status })

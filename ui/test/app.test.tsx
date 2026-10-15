@@ -412,6 +412,11 @@ describe("WP9 frontend acceptance", () => {
         route === "GET /bots" ? { bots: [] } : mock.request(route, input, pathValues)) as typeof mock.request,
     }
     render(<App kernel={{ services: { api } }} />)
+    expect(
+      await screen.findByText(
+        "Use bots Codex, Claude Code ou OpenCode nas pastas dos seus projetos, acompanhe as conversas e visualize os aplicativos que eles iniciarem.",
+      ),
+    ).toBeVisible()
     fireEvent.click(await screen.findByRole("button", { name: /Verificar este Mac/ }))
     expect(await screen.findByRole("dialog", { name: "Diagnóstico" })).toBeVisible()
     fireEvent.keyDown(document, { key: "Escape" })

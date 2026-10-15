@@ -926,7 +926,7 @@ const OnboardingLanding = ({
       <h1>{t("A calm home for your teammates.")}</h1>
       <p>
         {t(
-          "Run persistent Codex and Claude teammates in real project folders, keep every conversation branch, and see the apps they start.",
+          "Run persistent Codex, Claude Code or OpenCode teammates in real project folders, keep every conversation branch, and see the apps they start.",
         )}
       </p>
       <div className="onboarding-actions">
