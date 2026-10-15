@@ -973,3 +973,49 @@ test("A16: group-scoped history is readable and private history requires fresh e
   expect(await read({ ctx, args: { threadId: privateThread.id } })).toMatchObject({ success: false })
   expect(reviews).toBe(2)
 })
+
+const LEAKED_TOKEN = "ghp_0123456789abcdefABCDEF"
+const REGISTERED_SECRET = "registered-provider-secret-value"
+const failWithProviderText = (f: Awaited<ReturnType<typeof fixture>>, runId: string | null) => {
+  const run = runId ? f.persistence.getRun(runId) : null
+  if (!run) throw new Error("Missing delegated run")
+  const failed: Run = {
+    ...run,
+    status: "failed",
+    errorClass: "cli_crash",
+    errorMessage: `Codex exited (1): token=${LEAKED_TOKEN} ${REGISTERED_SECRET}`,
+    finishedAt: Date.now(),
+  }
+  f.persistence.saveRun(failed)
+  f.host.kernel.publish({ type: "run.updated", run: failed })
+}
+
+test("#4 a failed member run's provider error text is redacted before the group run persists it", async () => {
+  let f: Awaited<ReturnType<typeof fixture>>
+  f = await fixture(async (ctx) => failWithProviderText(f, ctx.runId))
+  f.host.kernel.addRedactionValue(REGISTERED_SECRET)
+  const run = f.send("@dev execute")
+  await until(() => f.persistence.getRun(run.id)?.status === "failed")
+  const persisted = JSON.stringify(f.persistence.getRun(run.id))
+  expect(persisted).toContain("[REDACTED]")
+  expect(persisted).not.toContain(LEAKED_TOKEN)
+  expect(persisted).not.toContain(REGISTERED_SECRET)
+})
+
+test("#4 ask_bot returns a delegated failure to the caller only after redaction", async () => {
+  let f: Awaited<ReturnType<typeof fixture>>
+  let answer: unknown
+  f = await fixture(async (ctx, complete) => {
+    if (ctx.botId !== f.bots[0]?.id) return failWithProviderText(f, ctx.runId)
+    answer = await f.runtime.askBot(ctx, { bot: "dev", message: "task" })
+    complete("feito")
+  })
+  f.host.kernel.addRedactionValue(REGISTERED_SECRET)
+  f.group = f.data.save({ ...f.input, coordinatorBotId: f.bots[0]?.id ?? null }, f.group)
+  const run = f.send("delegue")
+  await until(() => f.persistence.getRun(run.id)?.status === "succeeded")
+  expect(answer).toMatchObject({ success: false, errorCode: "DELEGATION_FAILED" })
+  expect(JSON.stringify(answer)).toContain("[REDACTED]")
+  expect(JSON.stringify(answer)).not.toContain(LEAKED_TOKEN)
+  expect(JSON.stringify(answer)).not.toContain(REGISTERED_SECRET)
+})

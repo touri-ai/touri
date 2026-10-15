@@ -213,7 +213,7 @@ export const createClaudeAdapter = ({
       completed = true
       stopReader()
       spawned.kill("SIGTERM")
-      finish(result)
+      finish(result.success ? result : { ...result, error: kernel.redact(result.error) })
     }
     const input = args.handoffPacket ? `${args.handoffPacket}\n\n${inputText(args.input)}` : inputText(args.input)
     const onLine = (line: string): void => {
@@ -328,12 +328,12 @@ export const createClaudeAdapter = ({
           if (typeof frame.total_cost_usd === "number") usageDelta.costUsd = frame.total_cost_usd
           args.onEvent({ type: "usage", usage: usageDelta, contextTokens: null, contextWindow: null })
         }
-        const errorMessage = isError ? text || "Claude reported an error" : null
+        const providerError = isError ? text || "Claude reported an error" : null
         args.onEvent({
           type: "turn_completed",
           status: isError ? "failed" : stopped ? "interrupted" : "succeeded",
-          errorClass: isError && errorMessage ? classifyProviderError(errorMessage) : null,
-          errorMessage,
+          errorClass: providerError ? classifyProviderError(providerError) : null,
+          errorMessage: providerError ? kernel.redact(providerError) : null,
         })
         complete({
           success: true,
@@ -389,7 +389,7 @@ export const createClaudeAdapter = ({
     const stderr = await stderrPromise
     if (mcpError) return { success: false, errorCode: "cli_protocol", error: mcpError }
     if (!completed && classifyProviderError(stderr) === "cli_auth")
-      return { success: false, errorCode: "cli_auth", error: stderr.trim() }
+      return { success: false, errorCode: "cli_auth", error: kernel.redact(stderr.trim()) }
     if (!completed) spawned.kill("SIGTERM")
     return output
   }
