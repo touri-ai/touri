@@ -404,6 +404,22 @@ describe("WP9 frontend acceptance", () => {
     await waitFor(() => expect(invokeCommand).toHaveBeenCalledWith("preview_hide", { label: "preview-label" }))
   })
 
+  it("opens the doctor and import dialogs from onboarding before any bot exists", async () => {
+    const mock = createMockApi()
+    const api = {
+      ...mock,
+      request: (async (route, input, pathValues) =>
+        route === "GET /bots" ? { bots: [] } : mock.request(route, input, pathValues)) as typeof mock.request,
+    }
+    render(<App kernel={{ services: { api } }} />)
+    fireEvent.click(await screen.findByRole("button", { name: /Verificar este Mac/ }))
+    expect(await screen.findByRole("dialog", { name: "Diagnóstico" })).toBeVisible()
+    fireEvent.keyDown(document, { key: "Escape" })
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Diagnóstico" })).toBeNull())
+    fireEvent.click(screen.getByRole("button", { name: "Importar do app anterior" }))
+    expect(await screen.findByRole("dialog")).toBeVisible()
+  })
+
   it("has no serious or critical axe violations on the main screen", async () => {
     const api = createMockApi()
     render(<App kernel={{ services: { api } }} />)

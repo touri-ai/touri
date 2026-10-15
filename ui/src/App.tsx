@@ -493,13 +493,37 @@ const AppContent = ({ kernel }: AppProps) => {
   if (data.loading && data.bots.length === 0) return <LoadingScreen />
   if (!api.isMock && data.bots.length === 0 && data.notice)
     return <SidecarErrorScreen reason={data.notice} onRetry={retryConnection} />
+  // Doctor and import are reachable from onboarding, before any bot exists, so they render outside the main layout too.
+  const setupModal =
+    modal === "doctor" ? (
+      <DoctorModal
+        api={api}
+        doctor={data.doctor}
+        doctorError={data.doctorError}
+        onRefresh={actions.refreshDoctor}
+        onClose={closeModal}
+        onImport={() => setModal("import")}
+        focusSetting={settingFocus}
+        launchAtLogin={data.settings?.launchAtLogin ?? false}
+        onLaunchAtLogin={(value) => actions.updateSettings({ launchAtLogin: value })}
+      />
+    ) : modal === "import" ? (
+      <ImportWizard bots={data.bots} api={api} onClose={closeModal} onNotice={showNotice} />
+    ) : null
   if (data.bots.length === 0)
     return (
-      <OnboardingLanding
-        doctor={data.doctor}
-        onDoctor={() => openModal("doctor")}
-        onImport={() => openModal("import")}
-      />
+      <AvatarRuntimeProvider value={data}>
+        <OnboardingLanding
+          doctor={data.doctor}
+          onDoctor={() => openModal("doctor")}
+          onImport={() => openModal("import")}
+        />
+        <MotionPresence show={setupModal !== null} kind="modal">
+          <ErrorBoundary key={modal} area="o diálogo" dialog api={api} onClose={closeModal}>
+            {setupModal}
+          </ErrorBoundary>
+        </MotionPresence>
+      </AvatarRuntimeProvider>
     )
 
   if (requestedComputer)
@@ -773,22 +797,7 @@ const AppContent = ({ kernel }: AppProps) => {
                 }}
               />
             )}
-            {modal === "doctor" && (
-              <DoctorModal
-                api={api}
-                doctor={data.doctor}
-                doctorError={data.doctorError}
-                onRefresh={actions.refreshDoctor}
-                onClose={closeModal}
-                onImport={() => setModal("import")}
-                focusSetting={settingFocus}
-                launchAtLogin={data.settings?.launchAtLogin ?? false}
-                onLaunchAtLogin={(value) => actions.updateSettings({ launchAtLogin: value })}
-              />
-            )}
-            {modal === "import" && (
-              <ImportWizard bots={data.bots} api={api} onClose={closeModal} onNotice={showNotice} />
-            )}
+            {setupModal}
             {modal === "bot" && (
               <BotCreateModal
                 api={api}
