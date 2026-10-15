@@ -32,24 +32,17 @@ export const importIdentity = (kernel: Kernel, origin: string, importId: string,
       .query("SELECT local_id FROM import_records WHERE source='legacy-identity-v1' AND source_id=?")
       .get(key) as { local_id: string } | null
     const legacy = existing ? null : legacyLocalId({ database, origin: legacyOrigin, kind, sourceId })
-    let localId: string
-    if (existing) {
-      localId = existing.local_id
-      const competing = database
-        .query("SELECT source_id FROM import_records WHERE source='legacy-identity-v1' AND local_id=? AND source_id!=?")
-        .get(localId, key)
-      if (competing || allocated.has(localId)) throw new Error("Import identity collision")
-    } else if (legacy) {
-      localId = legacy
-      if (allocated.has(localId)) throw new Error("Import identity collision")
-    } else {
-      localId = kernel.newId()
-      if (
-        allocated.has(localId) ||
-        objectTables.some((table) => database.query(`SELECT id FROM ${table} WHERE id=? LIMIT 1`).get(localId))
-      )
-        throw new Error("Import identity collides with an existing local object")
-    }
+    const localId = existing?.local_id ?? legacy ?? kernel.newId()
+    if (
+      !existing &&
+      !legacy &&
+      objectTables.some((table) => database.query(`SELECT id FROM ${table} WHERE id=? LIMIT 1`).get(localId))
+    )
+      throw new Error("Import identity collides with an existing local object")
+    const claimed = database
+      .query("SELECT source_id FROM import_records WHERE source='legacy-identity-v1' AND local_id=? AND source_id!=?")
+      .get(localId, key)
+    if (claimed || allocated.has(localId)) throw new Error("Import identity collision")
     if (!/^[A-Za-z0-9_-]+$/.test(localId)) throw new Error("Invalid local import identity")
     allocated.add(localId)
     pending.set(key, { kind, sourceId: key, localId })
