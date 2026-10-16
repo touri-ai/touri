@@ -45,10 +45,12 @@ const isContained = ({ root, candidate }: { root: string; candidate: string }): 
 
 export const initModules = async (runtime: KernelRuntime): Promise<void> => {
   for (const module of moduleLoaders) {
+    const started = performance.now()
     const imported = await module.load().then(
       (value: unknown) => ({ ok: true as const, value }),
       (error: unknown) => ({ ok: false as const, error }),
     )
+    const loadedAt = performance.now()
     if (!imported.ok) {
       runtime.kernel.log({
         level: "info",
@@ -65,13 +67,22 @@ export const initModules = async (runtime: KernelRuntime): Promise<void> => {
     }
     try {
       await loaded.init(runtime.kernel)
-      runtime.kernel.log({ level: "info", module: "main", msg: `initialized module ${module.path}` })
+      runtime.kernel.log({
+        level: "info",
+        module: "main",
+        msg: `initialized module ${module.path}`,
+        data: { loadMs: Math.round(loadedAt - started), initMs: Math.round(performance.now() - loadedAt) },
+      })
     } catch (error) {
       runtime.kernel.log({
         level: "error",
         module: "main",
         msg: `module init failed ${module.path}`,
-        data: { error: error instanceof Error ? error.message : String(error) },
+        data: {
+          error: error instanceof Error ? error.message : String(error),
+          loadMs: Math.round(loadedAt - started),
+          initMs: Math.round(performance.now() - loadedAt),
+        },
       })
     }
   }
