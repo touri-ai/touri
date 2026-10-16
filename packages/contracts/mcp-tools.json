@@ -92,7 +92,7 @@
     },
     {
       "name": "project_discover",
-      "description": "List registered projects and Git repositories discovered on this Mac. Read-only; no approval required. Use this before asking the user for a project path.",
+      "description": "List projects and Git repositories only in this bot's already granted folders and connected project. Never searches the home directory on its own. Read-only; no approval required. Ask the user for a path when nothing is available.",
       "inputSchema": { "type": "object", "additionalProperties": false, "properties": {} },
       "x-touri": { "group": "project", "mvp": true, "mutates": false }
     },

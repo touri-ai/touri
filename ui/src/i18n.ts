@@ -2,6 +2,11 @@ import { userFacingError } from "./errors"
 /** All UI copy lives here. pt-BR is the default; English is available for a future locale picker. */
 export type Locale = "pt-BR" | "en"
 export const ptBR = {
+  "Somente o próprio bot, sem delegação, pode consultar suas pastas.":
+    "Somente o próprio bot, sem delegação, pode consultar suas pastas.",
+  "A configuração mudou durante a busca. Tente novamente.": "A configuração mudou durante a busca. Tente novamente.",
+  "Projetos e repositórios nas pastas já permitidas a este bot.":
+    "Projetos e repositórios nas pastas já permitidas a este bot.",
   "Vincular projeto": "Vincular projeto",
   "Vincular {name} ({path}) a este bot": "Vincular {name} ({path}) a este bot",
   "Substitui o projeto {name} ({path}).": "Substitui o projeto {name} ({path}).",
@@ -160,8 +165,8 @@ export const ptBR = {
     "Criar uma rotina pausada para este bot. Somente o usuário pode habilitá-la no aplicativo.",
   "Update a routine of this bot. Cannot enable a disabled routine; only the user can.":
     "Atualizar uma rotina deste bot. Somente o usuário pode habilitar uma rotina pausada.",
-  "List registered projects and Git repositories discovered on this Mac. Read-only; no approval required. Use this before asking the user for a project path.":
-    "Listar projetos registrados e repositórios Git encontrados neste Mac. Somente leitura, sem aprovação. Use antes de pedir o caminho de um projeto.",
+  "List projects and Git repositories only in this bot's already granted folders and connected project. Never searches the home directory on its own. Read-only; no approval required. Ask the user for a path when nothing is available.":
+    "Listar projetos e repositórios Git somente nas pastas já permitidas a este bot e no projeto vinculado. Não busca na pasta pessoal por conta própria. Somente leitura, sem aprovação. Peça um caminho ao usuário se nada estiver disponível.",
   "Register a Mac folder as a project if needed and link it to this calling bot only. Supply exactly one of path or projectId. Always requires explicit user approval in chat, even with approvals disabled. VM changes apply next turn.":
     "Registrar uma pasta do Mac como projeto e vinculá-la somente a este bot, pelo caminho ou identificador. Sempre exige aprovação explícita no chat. Na VM, a mudança vale no próximo turno.",
   "Request access to a specific Mac folder for this calling bot only, with mode read or read-write. Always requires explicit user approval. Cannot enable any-folder access. VM changes apply next turn.":
@@ -762,6 +767,13 @@ export const ptBR = {
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  "Somente o próprio bot, sem delegação, pode consultar suas pastas.":
+    "Only this bot, without delegation, can list its folders.",
+  "A configuração mudou durante a busca. Tente novamente.": "The configuration changed during the search. Try again.",
+  "Projetos e repositórios nas pastas já permitidas a este bot.":
+    "Projects and repositories in folders already granted to this bot.",
+  "List projects and Git repositories only in this bot's already granted folders and connected project. Never searches the home directory on its own. Read-only; no approval required. Ask the user for a path when nothing is available.":
+    "List projects and Git repositories only in this bot's already granted folders and connected project. Never searches the home directory on its own. Read-only; no approval required. Ask the user for a path when nothing is available.",
   "Vincular projeto": "Link project",
   "Vincular {name} ({path}) a este bot": "Link {name} ({path}) to this bot",
   "Substitui o projeto {name} ({path}).": "Replaces project {name} ({path}).",
