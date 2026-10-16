@@ -2,6 +2,7 @@ import { mkdirSync } from "node:fs"
 import { resolve } from "node:path"
 import AxeBuilder from "@axe-core/playwright"
 import { expect, test } from "@playwright/test"
+import { showBotPanel } from "./home-navigation"
 
 const evidence = resolve(import.meta.dirname, "../../../docs/qa/groups")
 mkdirSync(evidence, { recursive: true })
@@ -12,6 +13,7 @@ for (const theme of ["light", "dark"] as const)
     await page.addInitScript((theme) => localStorage.setItem("touri.appearance.v1", theme), theme)
     await page.goto("/test/e2e/groups-harness.html")
     await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
+    await showBotPanel(page)
     await page.getByRole("button", { name: "Criar grupo", exact: true }).click()
     const dialog = page.getByRole("dialog", { name: "Criar grupo" })
     await dialog.getByLabel("Nome do grupo").fill("Produto")
@@ -67,7 +69,9 @@ for (const theme of ["light", "dark"] as const)
         api.emit({ type: "message.created", message })
       }
     })
-    await expect(page.getByText("Revisei o fluxo. Podemos seguir com o lançamento.")).toBeVisible()
+    await expect(
+      page.locator('[data-message-id="group-answer-2"]').getByText("Revisei o fluxo. Podemos seguir com o lançamento."),
+    ).toBeVisible()
     await expect(page.locator('[data-message-id="group-answer-1"] .message-role')).toHaveText("onb")
     await expect(
       page

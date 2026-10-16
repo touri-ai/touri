@@ -37,7 +37,7 @@ const setup = async (patch: Partial<Bot> = {}) => {
         invokeCommand={invoke}
         actions={actions}
         onClose={vi.fn()}
-        initialSection="computer"
+        initialSection="access"
       />,
     )
   })
@@ -51,8 +51,7 @@ it.each(["codex", "claude", "opencode"] as const)(
   (provider) => {
     render(<BotCreateModal onClose={vi.fn()} onCreate={vi.fn()} />)
     fireEvent.change(screen.getByLabelText("Nome"), { target: { value: "Pesquisa" } })
-    fireEvent.click(screen.getByRole("button", { name: "Continuar" }))
-    fireEvent.click(screen.getByRole("button", { name: "Continuar" }))
+    fireEvent.click(screen.getByRole("button", { name: "Avançado" }))
     fireEvent.change(screen.getByLabelText("Provedor"), { target: { value: provider } })
     fireEvent.change(screen.getByLabelText("Acesso"), { target: { value: "full" } })
     expect(screen.getByText(/O acesso total dispensa aprovações/)).toHaveTextContent(
@@ -64,14 +63,10 @@ it.each(["codex", "claude", "opencode"] as const)(
     expect(screen.queryByText(/escreva em qualquer pasta/)).not.toBeInTheDocument()
     if (provider === "codex")
       expect(screen.getByText(/sem o sandbox do provedor/)).toHaveTextContent("As restrições de pastas do touri")
-    fireEvent.click(screen.getByRole("button", { name: "Continuar" }))
     expect(anyToggle()).not.toBeChecked()
-    expect(screen.getByText(/Pode ler arquivos do Mac; escrita na pasta do bot/)).toBeVisible()
-    expect(screen.getByText(/o sandbox do macOS bloqueia/)).toBeVisible()
     fireEvent.click(anyToggle())
     fireEvent.click(screen.getByRole("button", { name: "Permitir acesso" }))
-    expect(screen.getByText("Pode acessar todo o Mac")).toBeVisible()
-    fireEvent.click(screen.getByRole("button", { name: "Voltar" }))
+    expect(anyToggle()).toBeChecked()
     expect(screen.getByText(/O acesso total dispensa aprovações/)).toHaveTextContent(
       "A escrita segue as permissões de pastas configuradas para o bot.",
     )
@@ -80,7 +75,6 @@ it.each(["codex", "claude", "opencode"] as const)(
 
 it("uses the same full-access explanation in bot settings", async () => {
   await setup({ provider: "codex", access: "full", approvals: "never" })
-  fireEvent.click(screen.getByRole("tab", { name: "Permissões" }))
   expect(screen.getByText(/O acesso total dispensa aprovações/)).toHaveTextContent(
     "A opção “Acesso a qualquer pasta deste Mac” é independente",
   )
@@ -150,6 +144,7 @@ it("explains VM paths, masking and next-turn recreation while preserving files",
 
 it("creates and links a project from the settings selector and keeps that link when saving other settings", async () => {
   const f = await setup()
+  fireEvent.click(screen.getByRole("tab", { name: "Projeto" }))
   fireEvent.change(screen.getByRole("combobox", { name: "Projeto" }), { target: { value: "__add_project__" } })
   const dialog = await screen.findByRole("dialog", { name: "Conectar projeto" })
   expect(within(dialog).getByRole("checkbox", { name: /mark/ })).toBeChecked()

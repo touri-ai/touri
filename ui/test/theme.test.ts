@@ -67,6 +67,11 @@ test("the migration keeps dark touri surfaces and fonts, and components only con
   for (const match of css.matchAll(/var\((--[\w-]+)\)/g)) {
     // Avatar geometry is supplied dynamically by the existing avatar component.
     if (match[1]?.startsWith("--avatar-")) continue
+    // The registered activity ink aliases a text role locally; its role references are checked below.
+    if (match[1] === "--activity-ink") {
+      expect(declarations(css)[match[1]]).toMatch(/^var\(--text-[\w-]+\)$/)
+      continue
+    }
     expect(() => color(match[1] ?? "")).not.toThrow()
   }
 })

@@ -111,6 +111,8 @@ it("renders structured Markdown in the Preview mini-chat with the main chat rend
   if (thread) thread.activeLeafId = saved.id
   render(<App kernel={{ services: { api } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
+  if (!screen.queryByRole("button", { name: "Preview do projeto" }))
+    fireEvent.click(screen.getByRole("button", { name: "Painel do bot" }))
   fireEvent.click(screen.getByRole("button", { name: "Preview do projeto" }))
   const feed = document.querySelector(".preview-chat-feed") as HTMLElement
   expect(await within(feed).findByRole("heading", { name: "Resultado" })).toBeVisible()
@@ -128,10 +130,11 @@ it("uses a pt-BR preferences title and separate labels for the shortcut and brow
   fireEvent.click(screen.getByRole("button", { name: /Você Local/ }))
   const settings = screen.getByRole("dialog", { name: "Configurações" })
   expect(within(settings).getByText("preferências locais")).toBeVisible()
-  fireEvent.click(within(settings).getByRole("tab", { name: "Atalhos" }))
+  fireEvent.click(within(settings).getByText("Chat, barra lateral e atalhos"))
   const shortcut = within(settings).getByText("Atalho para controle do computador:")
   expect(shortcut).toBeVisible()
   fireEvent.click(within(settings).getByRole("tab", { name: "Privacidade" }))
+  fireEvent.click(within(settings).getByText("Dados, permissões e conexões"))
   const browser = within(settings).getByText("Navegador:")
   expect(browser).toBeVisible()
   expect(shortcut.nextElementSibling?.tagName).toBe("CODE")

@@ -39,6 +39,7 @@ for (const width of [1440, 1100]) {
           })
         }
         if (view === "history") {
+          if (phase === "after") await expect(page.getByRole("button", { name: "Voltar ao fim" })).toBeVisible()
           await page.evaluate(() => (window as unknown as { r8Chat: { append: () => void } }).r8Chat.append())
           await expect(page.locator(".message-assistant").last().locator("strong")).toHaveText("Resposta final:")
           if (phase === "after") await expect(page.getByRole("button", { name: "1 nova mensagem" })).toBeVisible()

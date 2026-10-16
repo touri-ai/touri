@@ -1,7 +1,13 @@
 import type { Message, MessagePart, NotificationRecord, Run } from "@touri/contracts"
 import { describe, expect, it } from "vitest"
 import { mascotPoseAt } from "../src/components/mascotMotion"
-import { MASCOT_DONE_MS, MascotMachine, type MascotState, mascotSignalFor } from "../src/components/mascotState"
+import {
+  MASCOT_DONE_MS,
+  MascotMachine,
+  type MascotState,
+  mascotMoodFor,
+  mascotSignalFor,
+} from "../src/components/mascotState"
 import { MascotHarness } from "./fixtures/mascotHarness"
 
 const run = (status: Run["status"], patch: Partial<Run> = {}): Run => ({
@@ -116,6 +122,40 @@ describe("runtime projection", () => {
 })
 
 describe("state machine and deterministic harness", () => {
+  it("transitions through seven product phases while preserving composer and tool detail", () => {
+    const machine = new MascotMachine()
+    const phases = [machine.snapshot.phase]
+    for (const state of ["thinking", "working-tool", "waiting-approval", "error", "sleeping"] as const) {
+      phases.push(machine.send({ type: "runtime", signal: { state, completion: null } }, phases.length).phase)
+    }
+    phases.push(machine.send({ type: "runtime", signal: { state: "idle", completion: "new:1" } }, 10).phase)
+    expect(phases).toEqual(["idle", "thinking", "working", "waiting", "failed", "asleep", "done"])
+    expect(machine.send({ type: "tick" }, 10 + MASCOT_DONE_MS).phase).toBe("idle")
+    expect(machine.send({ type: "composer", focused: true, typing: false }, 3000)).toMatchObject({
+      state: "listening",
+      phase: "idle",
+    })
+    expect(machine.send({ type: "composer", focused: true, typing: true }, 3010)).toMatchObject({
+      state: "typing",
+      phase: "working",
+    })
+    expect(mascotMoodFor("working-tool")).toBe("working")
+    expect(mascotMoodFor("error")).toBe("failed")
+    expect(mascotMoodFor("parked")).toBe("asleep")
+  })
+
+  it("keeps an approval in charge across composer input, parking and completion", () => {
+    const machine = new MascotMachine({ state: "waiting-approval", completion: null })
+    machine.send({ type: "composer", focused: true, typing: true }, 10)
+    machine.send({ type: "park", parked: true }, 20)
+    const snapshot = machine.send({ type: "runtime", signal: { state: "waiting-approval", completion: "old:1" } }, 30)
+    expect(snapshot).toMatchObject({ state: "waiting-approval", phase: "waiting", revision: 0 })
+    expect(machine.send({ type: "tick" }, 10000)).toBe(snapshot)
+    expect(machine.deadline).toBeNull()
+    expect(machine.send({ type: "runtime", signal: { state: "working-tool", completion: "old:1" } }, 10010).phase).toBe(
+      "working",
+    )
+  })
   it("replays all states, leaves snapshots stable on repeated input and freezes historical completions", () => {
     const harness = new MascotHarness()
     const visited = [harness.machine.snapshot.state]

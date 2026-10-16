@@ -62,7 +62,7 @@ const fixture = (errorClass: string, status: MachineState["status"] = "error") =
   return { api, bot, props }
 }
 
-it("offers service recovery in the chat, header and composer with progress and a safe retryable failure", async () => {
+it("offers service recovery in the chat and composer with progress and a safe retryable failure", async () => {
   const { api, bot, props } = fixture("machine_service_unavailable")
   const originalRequest = api.request.bind(api)
   let reject: (reason: unknown) => void = () => {}
@@ -75,7 +75,7 @@ it("offers service recovery in the chat, header and composer with progress and a
   ) as typeof api.request
   render(<ChatPanel {...props} />)
   const buttons = screen.getAllByRole("button", { name: "Iniciar serviço" })
-  expect(buttons).toHaveLength(3)
+  expect(buttons).toHaveLength(2)
   const button = within(screen.getByRole("complementary", { name: "Aviso do computador" })).getByRole("button", {
     name: "Iniciar serviço",
   })
@@ -85,7 +85,7 @@ it("offers service recovery in the chat, header and composer with progress and a
   await act(async () => reject(new ApiError(503, "private XPC", "MACHINE_SERVICE_START_FAILED", "TOURI-E8002")))
   expect(screen.getByText(/Não foi possível iniciar o serviço de máquinas do macOS/)).toBeVisible()
   expect(screen.queryByText(/private XPC/)).not.toBeInTheDocument()
-  expect(screen.getAllByRole("button", { name: "Iniciar serviço" })).toHaveLength(3)
+  expect(screen.getAllByRole("button", { name: "Iniciar serviço" })).toHaveLength(2)
 })
 
 it.each(["machine_service_unavailable", "machine_service_start_failed"])(
@@ -95,14 +95,14 @@ it.each(["machine_service_unavailable", "machine_service_start_failed"])(
     const { rerender } = render(<ChatPanel {...props} />)
     expect(screen.getByRole("alert")).toBeVisible()
     rerender(<ChatPanel {...props} machine={{ ...props.machine, status: "starting" }} />)
-    expect(screen.getByText("Preparando o computador…")).toBeVisible()
+    expect(screen.getByText("Ainda preparando o computador dele…")).toBeVisible()
     expect(screen.queryByRole("alert")).not.toBeInTheDocument()
     expect(screen.queryByText("O computador precisa de atenção")).not.toBeInTheDocument()
     expect(screen.queryByText(/não está ativo/)).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Iniciar serviço" })).not.toBeInTheDocument()
     rerender(<ChatPanel {...props} machine={{ ...props.machine, status: "running" }} />)
-    expect(screen.getByText("Máquina · rodando")).toBeVisible()
-    expect(screen.queryByText("Preparando o computador…")).not.toBeInTheDocument()
+    expect(document.querySelector(".machine-turn-status")).toBeNull()
+    expect(screen.queryByText("Ainda preparando o computador dele…")).not.toBeInTheDocument()
     expect(screen.queryByRole("alert")).not.toBeInTheDocument()
     expect(screen.queryByText("O computador precisa de atenção")).not.toBeInTheDocument()
     expect(screen.queryByText(/não está ativo/)).not.toBeInTheDocument()
@@ -157,7 +157,7 @@ it("explains independent preparation after a failed VM turn and offers a machine
     { type: "notice", level: "error", code: "run_failed", text: "timeout: A operação demorou demais. [TOURI-E1008]" },
   ]
   render(<ChatPanel {...props} />)
-  expect(screen.getByText("A máquina continua sendo preparada para o visualizador ou o próximo turno.")).toBeVisible()
+  expect(screen.getByText("Ainda preparando o computador dele…")).toBeVisible()
   expect(screen.getByText("Confira o estado da máquina e tente de novo.")).toBeVisible()
   fireEvent.click(screen.getByRole("button", { name: "Parar máquina" }))
   await waitFor(() => expect(api.calls.some((call) => call.route === "POST /bots/:id/machine/stop")).toBe(true))
@@ -199,15 +199,85 @@ it("Doctor runs the explicit service action, shows progress and refreshes after 
   expect(api.calls.find((call) => call.route === "POST /machines/service/start")).toMatchObject({ input: {} })
 })
 
-it("chat header explains an inactivity pause and starts the machine with Ligar", async () => {
+it("keeps an inactive computer out of the chat header", () => {
   const f = fixture("unknown", "stopped")
   render(<ChatPanel {...f.props} machine={{ ...f.props.machine, pauseReason: "inactivity" }} />)
-  expect(screen.getByText("Máquina pausada por inatividade")).toBeVisible()
-  expect(screen.getByText(/Em repouso/)).toBeVisible()
-  await act(async () => fireEvent.click(screen.getByRole("button", { name: "Ligar" })))
-  expect(f.api.calls).toContainEqual({
-    route: "POST /bots/:id/machine/intent",
-    input: { intent: "computer-open" },
-    pathValues: { id: f.props.machine.botId },
-  })
+  expect(document.querySelector(".machine-turn-status")).toBeNull()
+  expect(screen.queryByRole("button", { name: "Ligar" })).toBeNull()
+})
+
+it("shows computer activity only during work and keeps machine diagnostics off the surface", () => {
+  const { props } = fixture("unknown", "running")
+  const run: Run = {
+    id: "active-computer-run",
+    threadId: props.thread.id,
+    botId: props.bot.id,
+    provider: props.bot.provider,
+    trigger: "user",
+    requestMessageId: null,
+    replyMessageId: null,
+    externalTurnId: null,
+    status: "running",
+    errorClass: null,
+    errorMessage: null,
+    usage: null,
+    routineRunId: null,
+    queuedAt: 1,
+    startedAt: 1,
+    finishedAt: null,
+  }
+  const idle = { ...props, messages: [], runs: [] }
+  const view = render(<ChatPanel {...idle} />)
+  expect(document.querySelector(".machine-turn-status")).toBeNull()
+  view.rerender(<ChatPanel {...idle} runs={[run]} />)
+  expect(screen.getByText("Trabalhando na máquina dele…")).toBeVisible()
+  expect(document.querySelector(".machine-turn-status")).not.toHaveTextContent(/VM|MiB|2048/)
+  view.rerender(<ChatPanel {...idle} runs={[{ ...run, status: "succeeded" }]} />)
+  expect(document.querySelector(".machine-turn-status")).toBeNull()
+})
+
+it("shows a computer permission request only for its active conversation and preserves explicit approval", async () => {
+  const { api, props } = fixture("unknown", "running")
+  const request = api.request
+  const grantRequest = vi.fn(async (_input: unknown) => ({ grantId: "grant", expiresAt: Date.now() + 60_000 }))
+  api.request = (async (route, ...args) =>
+    route === "POST /computer/grants" ? grantRequest(args[0]) : request(route, ...args)) as typeof api.request
+  const run: Run = {
+    id: "computer-permission-run",
+    threadId: props.thread.id,
+    botId: props.bot.id,
+    provider: props.bot.provider,
+    trigger: "user",
+    requestMessageId: null,
+    replyMessageId: null,
+    externalTurnId: null,
+    status: "running",
+    errorClass: null,
+    errorMessage: null,
+    usage: null,
+    routineRunId: null,
+    queuedAt: 1,
+    startedAt: 1,
+    finishedAt: null,
+  }
+  const grant = { botId: props.bot.id, threadId: props.thread.id, botName: props.bot.name }
+  const pending = { ...props, messages: [], computerGrant: grant }
+  const view = render(<ChatPanel {...pending} />)
+  expect(screen.queryByRole("button", { name: "Permitir controle do computador" })).toBeNull()
+  view.rerender(<ChatPanel {...pending} runs={[{ ...run, threadId: "another-thread" }]} />)
+  expect(screen.queryByRole("button", { name: "Permitir controle do computador" })).toBeNull()
+  view.rerender(<ChatPanel {...pending} runs={[run]} />)
+  expect(screen.getByText("mark está aguardando permissão para controlar seu Mac.")).toBeVisible()
+  expect(grantRequest).not.toHaveBeenCalled()
+  fireEvent.click(screen.getByRole("button", { name: "Permitir controle do computador" }))
+  await waitFor(() =>
+    expect(grantRequest).toHaveBeenCalledWith({
+      botId: props.bot.id,
+      threadId: props.thread.id,
+      minutes: 30,
+    }),
+  )
+  expect(props.onComputerGrant).toHaveBeenCalledOnce()
+  view.rerender(<ChatPanel {...pending} runs={[{ ...run, status: "canceled" }]} />)
+  expect(screen.queryByRole("button", { name: "Permitir controle do computador" })).toBeNull()
 })

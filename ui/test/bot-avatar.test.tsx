@@ -17,6 +17,7 @@ import { type AvatarRuntime, AvatarRuntimeProvider } from "../src/components/Ava
 import { BotAvatar } from "../src/components/BotAvatar"
 import { BotCreateModal, BotSettingsModal } from "../src/components/Modals"
 import type { WorkspaceActions } from "../src/useWorkspace"
+import { openRoutines } from "./workspaceNavigation"
 
 const bot = { id: "avatar-test", color: null, name: "Test", avatarShape: "triangle" as const }
 const run = (status: Run["status"], at = 9000): Run => ({
@@ -186,8 +187,7 @@ describe("procedural avatars", () => {
       expect(avatar).toHaveAttribute("data-avatar-mood", "waiting")
       expect(avatar.querySelector("[data-avatar-body]")).toHaveAttribute("fill", "#2468ac")
     }
-    fireEvent.click(screen.getByRole("button", { name: "touri" }))
-    fireEvent.click(screen.getByRole("button", { name: /Cron/ }))
+    openRoutines()
     const cronAvatar = container.querySelector('.routine-item .tb-avatar[data-bot-id="bot-mark"]')
     expect(cronAvatar).toHaveAttribute("data-avatar-shape", "hexagone")
     expect(cronAvatar).toHaveAttribute("data-avatar-mood", "waiting")
@@ -209,15 +209,12 @@ describe("procedural avatars", () => {
     fireEvent.change(screen.getByLabelText("Nome"), { target: { value: "Avatar bot" } })
     fireEvent.click(screen.getByRole("button", { name: "Forma Nuvem" }))
     fireEvent.click(screen.getByRole("button", { name: "Cor Azul" }))
-    fireEvent.click(screen.getByRole("button", { name: "Continuar" }))
+    fireEvent.click(screen.getByRole("button", { name: "Avançado" }))
     fireEvent.change(screen.getByLabelText("Função"), { target: { value: "SEO do site" } })
     fireEvent.change(screen.getByLabelText("Título (opcional)"), { target: { value: "Analista" } })
-    fireEvent.click(screen.getByRole("button", { name: "Continuar" }))
-    fireEvent.click(screen.getByRole("button", { name: "Continuar" }))
     fireEvent.change(screen.getByLabelText("Máquina"), { target: { value: "vm" } })
     fireEvent.change(screen.getByLabelText("Parar após minutos sem atividade"), { target: { value: "30" } })
     fireEvent.click(screen.getByRole("switch", { name: /Usar meu login do Codex/ }))
-    fireEvent.click(screen.getByRole("button", { name: "Continuar" }))
     fireEvent.click(screen.getByRole("button", { name: "Criar bot" }))
     await waitFor(() =>
       expect(created).toMatchObject({
@@ -251,9 +248,10 @@ describe("procedural avatars", () => {
     )
     expect(screen.getByRole("button", { name: "Forma Nuvem" })).toHaveAttribute("aria-pressed", "true")
     expect(screen.getByRole("button", { name: "Cor Azul" })).toHaveAttribute("aria-pressed", "true")
-    expect(screen.getByLabelText("Função")).toHaveValue("SEO do site")
+    expect(screen.getByLabelText("O que ele faz")).toHaveValue("SEO do site")
     expect(screen.getByLabelText("Título (opcional)")).toHaveValue("Analista")
     fireEvent.click(screen.getByRole("button", { name: "Forma Hexágono" }))
+    fireEvent.click(screen.getByRole("button", { name: "Avançado" }))
     fireEvent.click(screen.getByRole("tab", { name: "Computador" }))
     expect(screen.getByLabelText("Máquina")).toHaveValue("vm")
     expect(screen.getByLabelText("Parar após minutos sem atividade")).toHaveValue(30)

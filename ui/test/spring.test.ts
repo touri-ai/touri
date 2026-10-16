@@ -63,3 +63,23 @@ test("older webviews receive a supported easing for CSS and native animation", (
     vi.unstubAllGlobals()
   }
 })
+
+test("reduced motion has a straight easing even when CSS springs are supported", () => {
+  vi.stubGlobal("CSS", { supports: () => true })
+  try {
+    for (const spring of Object.values(motionTiers)) expect(springEasing(spring, true)).toBe("linear")
+  } finally {
+    vi.unstubAllGlobals()
+  }
+})
+
+test.each([true, false])("detects registered properties for ink and reveal fallback (%s)", (supported) => {
+  vi.stubGlobal("CSS", { supports: () => true, ...(supported ? { registerProperty: () => undefined } : {}) })
+  try {
+    const element = document.createElement("div")
+    installMotionTokens(element)
+    expect(element.dataset.motionProperties).toBe(supported ? "registered" : "fallback")
+  } finally {
+    vi.unstubAllGlobals()
+  }
+})

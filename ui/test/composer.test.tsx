@@ -35,8 +35,6 @@ const setup = ({
   bot.access = access
   bot.model = "gpt-6.1-sol"
   const cancel = vi.fn().mockResolvedValue(undefined)
-  const model = vi.fn()
-  const permissions = vi.fn()
   const Harness = () => {
     const [text, setText] = useState(draft)
     const input = useRef<HTMLTextAreaElement>(null)
@@ -53,33 +51,30 @@ const setup = ({
         queuedCount={queuedCount}
         onSend={send}
         onCancel={cancel}
-        onOpenModel={model}
-        onOpenPermissions={permissions}
       />
     )
   }
   render(<Harness />)
-  return { api, send, cancel, model, permissions, box: screen.getByRole("textbox", { name: "Mensagem para mark" }) }
+  return { api, send, cancel, box: screen.getByRole("textbox", { name: "Mensagem para mark" }) }
 }
 const run = { id: "active", status: "running" } as Run
 
 describe("composer island", () => {
-  it("disables empty input and opens the existing model and permission choices", () => {
-    const { model, permissions } = setup({ access: "read-only" })
+  it("shows only attachment and send controls, without model or permissions", async () => {
+    setup({ access: "read-only" })
+    await waitFor(() => expect(screen.queryByText("Colar token manualmente")).toBeNull())
     expect(screen.getByRole("button", { name: "Enviar" })).toBeDisabled()
-    fireEvent.click(screen.getByRole("button", { name: "Escolher modelo: Codex · gpt-6.1-sol" }))
-    fireEvent.click(screen.getByRole("button", { name: "Permissões do bot: Somente leitura" }))
-    expect(model).toHaveBeenCalledOnce()
-    expect(permissions).toHaveBeenCalledOnce()
-    expect(screen.getByRole("tooltip")).toHaveTextContent("Somente leitura")
+    expect(screen.getAllByRole("button").map((button) => button.getAttribute("aria-label"))).toEqual([
+      "Anexar arquivo",
+      "Enviar",
+    ])
+    expect(screen.queryByRole("button", { name: /Escolher modelo|Permissões do bot|Projeto do bot/ })).toBeNull()
+    expect(screen.queryByText("gpt-6.1-sol")).toBeNull()
   })
 
-  it("shows the actual access level and queued plurals", () => {
+  it("keeps queued plurals", () => {
     setup({ access: "full", queuedCount: 2 })
-    expect(screen.getByRole("button", { name: "Permissões do bot: Acesso completo" })).toHaveAttribute(
-      "data-access",
-      "full",
-    )
+    expect(screen.queryByRole("button", { name: /Permissões do bot/ })).toBeNull()
     expect(screen.getByRole("status")).toHaveTextContent("2 mensagens na fila")
   })
 
@@ -125,11 +120,16 @@ describe("composer island", () => {
   })
 
   it("preserves the draft on failure and allows retry", async () => {
-    const send = vi.fn().mockRejectedValueOnce(new Error("Sem conexão")).mockResolvedValueOnce(undefined)
+    const send = vi.fn().mockRejectedValueOnce(new Error("Sem conexão [TOURI-E1008]")).mockResolvedValueOnce(undefined)
     const { box } = setup({ draft: "Não perder este texto", send })
     await waitFor(() => expect(screen.getByRole("button", { name: "Enviar" })).toBeEnabled())
     fireEvent.click(screen.getByRole("button", { name: "Enviar" }))
-    await screen.findByRole("alert")
+    const alert = await screen.findByRole("alert")
+    expect(alert).toHaveTextContent("Não foi possível enviar. Sem conexão")
+    const details = screen.getByText("TOURI-E1008").closest("details")
+    expect(details).not.toHaveAttribute("open")
+    fireEvent.click(screen.getByText("Detalhes do erro"))
+    expect(details).toHaveAttribute("open")
     expect(box).toHaveValue("Não perder este texto")
     fireEvent.click(screen.getByRole("button", { name: "Enviar" }))
     await waitFor(() => expect(box).toHaveValue(""))

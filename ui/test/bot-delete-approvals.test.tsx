@@ -13,6 +13,7 @@ import { mascotSignalFor } from "../src/components/mascotState"
 import { NotificationBell } from "../src/components/NotificationCenter"
 import { pendingNotifications } from "../src/sidebarAttention"
 import { updateMessage } from "../src/useWorkspace"
+import { showBotSettings } from "./workspaceNavigation"
 
 afterEach(() => {
   cleanup()
@@ -93,7 +94,8 @@ for (const entry of ["settings", "context"] as const)
     render(<App kernel={{ services: { api } }} />)
     await screen.findByRole("textbox", { name: "Mensagem para mark" })
     if (entry === "settings") {
-      fireEvent.click(screen.getByRole("button", { name: "Configurações de mark" }))
+      showBotSettings()
+      fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Avançado" }))
       fireEvent.click(screen.getByRole("button", { name: "Excluir bot" }))
     } else {
       const sidebar = screen.getByRole("navigation", { name: "Barra lateral" })
@@ -195,7 +197,7 @@ for (const decision of ["approved", "denied", "expired"] as const)
     expect(screen.getByTestId("notification-row").querySelectorAll("time")).toHaveLength(1)
   })
 
-it("a stale failure from another conversation cannot replace a newer completed preview", async () => {
+it("a pending failure in another conversation shows the same request in the bot row and bell", async () => {
   const api = createMockApi()
   const newer = api.getState().messages.find((row) => row.role === "assistant" && row.threadId === "thread-mark")
   if (!newer) throw new Error("Mensagem ausente")
@@ -217,7 +219,8 @@ it("a stale failure from another conversation cannot replace a newer completed p
   })
   await waitFor(() =>
     expect(document.querySelector('[data-bot-entry="bot-mark"] .bot-preview')).toHaveTextContent(
-      "Trabalho concluído agora",
+      "Aguardando você: revise a tarefa interrompida",
     ),
   )
+  expect(screen.getByRole("button", { name: "Notificações, 1 precisa de atenção" })).toBeVisible()
 })

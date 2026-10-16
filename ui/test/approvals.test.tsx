@@ -160,8 +160,10 @@ it("MCP policy changes refresh standing grants in the permissions modal", async 
       onClose={vi.fn()}
     />,
   )
+  fireEvent.click(screen.getByRole("button", { name: "Avançado" }))
+  fireEvent.click(screen.getByRole("tab", { name: "Permissões" }))
   await screen.findByText("docs · save")
-  fireEvent.click(screen.getByRole("tab", { name: "MCP" }))
+  fireEvent.click(screen.getByRole("tab", { name: "Ferramentas" }))
   fireEvent.change(await screen.findByRole("combobox", { name: "Política · save" }), { target: { value: "blocked" } })
   fireEvent.click(screen.getByRole("tab", { name: "Permissões" }))
   await screen.findByText("Nenhuma permissão permanente concedida.")
@@ -171,8 +173,7 @@ it("MCP policy changes refresh standing grants in the permissions modal", async 
 it("Codex creation hides full access with approval and explains sandbox behavior", () => {
   render(<BotCreateModal onClose={vi.fn()} onCreate={vi.fn()} />)
   fireEvent.change(screen.getByLabelText("Nome"), { target: { value: "Teste" } })
-  fireEvent.click(screen.getByRole("button", { name: "Continuar" }))
-  fireEvent.click(screen.getByRole("button", { name: "Continuar" }))
+  fireEvent.click(screen.getByRole("button", { name: "Avançado" }))
   expect(screen.queryByRole("option", { name: "Acesso total com aprovação" })).toBeNull()
   expect(screen.getByText(/No acesso total, o Codex executa sem pedir aprovação/)).toHaveTextContent(
     "As restrições de pastas do touri",
@@ -195,12 +196,13 @@ it("switching a Claude bot with full approved access to Codex saves full access 
       onClose={vi.fn()}
     />,
   )
-  fireEvent.click(screen.getByRole("tab", { name: "Permissões" }))
+  fireEvent.click(screen.getByRole("button", { name: "Avançado" }))
+  fireEvent.click(screen.getByRole("tab", { name: "Acesso" }))
   expect(screen.getByRole("option", { name: "Acesso total com aprovação" })).toBeVisible()
-  fireEvent.click(screen.getByRole("tab", { name: "Geral" }))
+  fireEvent.click(screen.getByRole("tab", { name: "Modelo" }))
   fireEvent.change(screen.getByRole("combobox", { name: "Provedor" }), { target: { value: "codex" } })
   expect(screen.queryByRole("option", { name: "Acesso total com aprovação" })).toBeNull()
-  fireEvent.click(screen.getByRole("tab", { name: "Permissões" }))
+  fireEvent.click(screen.getByRole("tab", { name: "Acesso" }))
   expect(screen.getByRole("combobox", { name: "Acesso" })).toHaveValue("full")
   fireEvent.click(screen.getByRole("button", { name: "Salvar configurações" }))
   await waitFor(() =>

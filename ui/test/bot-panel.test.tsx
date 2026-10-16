@@ -4,6 +4,7 @@ import { afterEach, expect, test, vi } from "vitest"
 import App from "../src/App"
 import { createMockApi } from "../src/api/mock"
 import { BotComputer } from "../src/components/BotComputer"
+import { BotDetails } from "../src/components/BotDetails"
 import { BotPanel } from "../src/components/BotPanel"
 import { computerKillSwitchEvent } from "../src/computerKillSwitch"
 import { readWorkspaceState } from "../src/workspaceState"
@@ -42,6 +43,27 @@ const fixture = async () => {
   return { api, bot }
 }
 
+test.each([
+  ["read-only", "never", "Somente leitura"],
+  ["full", "never", "Acesso total"],
+  ["workspace-write", "on-request", "Pede permissão antes de mudar arquivos"],
+] as const)("details explain %s access with %s approvals", async (access, approvals, sentence) => {
+  const { bot } = await fixture()
+  const onSettings = vi.fn()
+  const onPermissions = vi.fn()
+  render(
+    <BotDetails bot={{ ...bot, access, approvals }} onSettings={onSettings} onPermissions={onPermissions}>
+      {null}
+    </BotDetails>,
+  )
+  expect(screen.getByText(`${sentence}; só no computador isolado.`)).toBeVisible()
+  expect(screen.getByText("Trabalha no próprio computador.")).toBeVisible()
+  fireEvent.click(screen.getByRole("button", { name: /^Modelo: Codex/ }))
+  expect(onSettings).toHaveBeenCalledOnce()
+  fireEvent.click(screen.getByRole("button", { name: "Ajustar permissões" }))
+  expect(onPermissions).toHaveBeenCalledOnce()
+})
+
 test("panel tabs are accessible from arrows and save the label", async () => {
   const { api, bot } = await fixture()
   const role = vi.fn(async () => {})
@@ -60,8 +82,8 @@ test("panel tabs are accessible from arrows and save the label", async () => {
       onRole={role}
     />,
   )
-  const input = screen.getByRole("textbox", { name: "Rótulo do bot" })
-  expect(input).toHaveAttribute("placeholder", "Adicionar um rótulo")
+  const input = screen.getByRole("textbox", { name: "O que ele faz" })
+  expect(input).toHaveAttribute("placeholder", "Adicionar uma função")
   fireEvent.change(input, { target: { value: "Pesquisa de produto" } })
   fireEvent.blur(input)
   await waitFor(() => expect(role).toHaveBeenCalledWith("Pesquisa de produto"))
@@ -79,6 +101,10 @@ test("panel visibility persists independently per bot and survives remount", asy
   const api = createMockApi()
   const view = render(<App kernel={{ services: { api } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
+  expect(screen.queryByRole("complementary", { name: "Painel de mark" })).toBeNull()
+  expect(screen.getByRole("button", { name: "Painel do bot" })).toHaveAttribute("aria-expanded", "false")
+  fireEvent.click(screen.getByRole("button", { name: "Painel do bot" }))
+  expect(screen.getByRole("complementary", { name: "Painel de mark" })).toBeVisible()
   fireEvent.click(screen.getByRole("button", { name: "Fechar painel do bot" }))
   expect(readWorkspaceState().panelsByBot?.["bot-mark"]).toBe(false)
   fireEvent.click(
@@ -86,10 +112,14 @@ test("panel visibility persists independently per bot and survives remount", asy
       (screen.getAllByRole("button", { name: /onb/ })[0] as HTMLElement),
   )
   await screen.findByRole("textbox", { name: "Mensagem para onb" })
+  expect(screen.queryByRole("complementary", { name: "Painel de onb" })).toBeNull()
+  fireEvent.click(screen.getByRole("button", { name: "Painel do bot" }))
   expect(screen.getByRole("complementary", { name: "Painel de onb" })).toBeVisible()
+  expect(readWorkspaceState().panelsByBot?.["bot-onb"]).toBe(true)
   view.unmount()
   render(<App kernel={{ services: { api } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para onb" })
+  expect(screen.getByRole("complementary", { name: "Painel de onb" })).toBeVisible()
   fireEvent.click(screen.getAllByRole("button", { name: /mark/ })[0] as HTMLElement)
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
   expect(screen.queryByRole("complementary", { name: "Painel de mark" })).toBeNull()
