@@ -2,6 +2,7 @@ import { userFacingError } from "./errors"
 /** All UI copy lives here. pt-BR is the default; English is available for a future locale picker. */
 export type Locale = "pt-BR" | "en"
 export const ptBR = {
+  "Baixar imagem": "Baixar imagem",
   "Só a máquina na nuvem": "Só a máquina na nuvem",
   "Só a VM isolada e as pastas compartilhadas": "Só a VM isolada e as pastas compartilhadas",
   "Só a VM isolada": "Só a VM isolada",
@@ -741,6 +742,7 @@ export const ptBR = {
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  "Baixar imagem": "Download image",
   "Só a máquina na nuvem": "Only the cloud machine",
   "Só a VM isolada e as pastas compartilhadas": "Only the isolated VM and shared folders",
   "Só a VM isolada": "Only the isolated VM",
