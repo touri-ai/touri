@@ -26,7 +26,7 @@ const fixture = (
   provider: Bot["provider"] = "codex",
   mode = "success",
   timeoutMs = 3000,
-  options: { bridge?: boolean; url?: string } = {},
+  options: { bridge?: boolean; url?: string; platform?: NodeJS.Platform; headless?: boolean } = {},
 ) => {
   const root = mkdtempSync(join(tmpdir(), "touri-flow-test-"))
   const db = new Database(":memory:")
@@ -145,6 +145,8 @@ printf '%s\\n' '${token}'
     kernel,
     hostHome: root,
     timeoutMs,
+    ...(options.platform === undefined ? {} : { platform: options.platform }),
+    ...(options.headless === undefined ? {} : { headless: options.headless }),
     ...(options.bridge
       ? {}
       : {
@@ -242,16 +244,52 @@ for (const mode of ["invalid", "fail"])
     expect(f.vault.size).toBe(0)
   })
 
-test("valid host file is offered before spawning; one click persists host-file", async () => {
-  const f = fixture()
-  mkdirSync(join(f.root, ".codex"))
-  writeFileSync(join(f.root, ".codex/auth.json"), codex)
-  expect((await f.flow.status(f.bot)).state).toBe("host-available")
-  expect(f.invocations).toHaveLength(0)
-  expect((await f.flow.action(f.bot, { action: "use-host" })).state).toBe("ready")
-  expect(storedProviderLoginSource(f.kernel, f.bot)).toBe("host-file")
-  expect(f.vault.size).toBe(0)
-})
+for (const [platform, headless, host] of [
+  ["darwin", false, "mac"],
+  ["darwin", true, "server"],
+  ["linux", true, "server"],
+  ["linux", false, "server"],
+] as const)
+  for (const provider of ["claude", "codex"] as const) {
+    const directory = provider === "claude" ? ".claude" : ".codex"
+    const filename = provider === "claude" ? ".credentials.json" : "auth.json"
+    test(`${provider} on ${platform} (headless=${headless}): offers only a valid host file with its host context`, async () => {
+      const f = fixture(provider, "success", 3000, { platform, headless })
+      expect((await f.flow.status(f.bot)).state).toBe("idle")
+      await expect(f.flow.action(f.bot, { action: "use-host" })).rejects.toThrow()
+      mkdirSync(join(f.root, directory))
+      const path = join(f.root, directory, filename)
+      writeFileSync(path, "{}")
+      expect((await f.flow.status(f.bot)).state).toBe("idle")
+      await expect(f.flow.action(f.bot, { action: "use-host" })).rejects.toThrow()
+      if (provider === "claude") {
+        writeFileSync(path, JSON.stringify({ claudeAiOauth: { accessToken: token, expiresAt: 1 } }))
+        expect((await f.flow.status(f.bot)).state).toBe("idle")
+        await expect(f.flow.action(f.bot, { action: "use-host" })).rejects.toThrow()
+      }
+      const value =
+        provider === "claude"
+          ? JSON.stringify({ claudeAiOauth: { accessToken: token, expiresAt: Date.now() + 60_000 } })
+          : codex
+      writeFileSync(path, value)
+      const route = f.flow.routes[0]
+      if (!route) throw new Error("Missing route")
+      const response = await route.handler({
+        params: { id: f.bot.id },
+        query: { provider },
+        body: {},
+        signal: new AbortController().signal,
+      })
+      expect(response).toEqual({ status: 200, json: { provider, state: "host-available", host } })
+      expect(f.invocations).toHaveLength(0)
+      expect((await f.flow.action(f.bot, { action: "use-host" })).state).toBe("ready")
+      expect(storedProviderLoginSource(f.kernel, f.bot)).toBe("host-file")
+      expect(f.vault.size).toBe(0)
+      rmSync(path)
+      expect((await f.flow.status(f.bot)).state).toBe("idle")
+      await expect(f.flow.action(f.bot, { action: "use-host" })).rejects.toThrow()
+    })
+  }
 
 test("empty or expired host credentials are not offered", () => {
   expect(validLogin("codex", "{}", true)).toBe(false)

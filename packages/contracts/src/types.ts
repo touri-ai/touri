@@ -655,6 +655,8 @@ export type ProviderProfile = { name: string; provider: Provider; loggedIn: bool
 export type ProviderLoginFlow = {
   provider: Provider
   state: 'idle' | 'host-available' | 'waiting' | 'ready' | 'cancelled' | 'error'
+  /** Sidecar host, independent of the browser. Sent only when a valid host login can be imported. */
+  host?: 'mac' | 'server'
   deviceCode?: string
   verificationUrl?: string
   needsCode?: boolean

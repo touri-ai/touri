@@ -4,6 +4,7 @@ import type { useProviderLogin } from "../useProviderLogin"
 
 export const ProviderLoginFlow = ({ login }: { login: ReturnType<typeof useProviderLogin> }) => {
   const { flow, error, busy, act } = login
+  const hostIsMac = flow?.host === "mac"
   const [code, setCode] = useState("")
   const codeId = useId()
   useEffect(() => {
@@ -24,7 +25,7 @@ export const ProviderLoginFlow = ({ login }: { login: ReturnType<typeof useProvi
             : flow.state === "ready"
               ? t("Login disponível para este bot.")
               : flow.state === "host-available"
-                ? t("Há um login disponível neste Mac.")
+                ? t(hostIsMac ? "Há um login disponível neste Mac." : "Há um login disponível neste servidor.")
                 : flow.state === "cancelled"
                   ? t("Login cancelado.")
                   : flow.state === "error"
@@ -126,7 +127,7 @@ export const ProviderLoginFlow = ({ login }: { login: ReturnType<typeof useProvi
       )}
       {flow?.state === "host-available" && (
         <button type="button" className="button button-brand" disabled={busy} onClick={() => void act("use-host")}>
-          {t("Usar login deste Mac")}
+          {t(hostIsMac ? "Usar login deste Mac" : "Usar login deste servidor")}
         </button>
       )}
       {flow && flow.state !== "waiting" && flow.state !== "ready" && (

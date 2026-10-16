@@ -7,6 +7,7 @@ import { createMockApi } from "../src/api/mock"
 import { Composer } from "../src/components/Composer"
 import { BotCreateModal } from "../src/components/Modals"
 import { ProviderLogin } from "../src/components/ProviderLogin"
+import { t } from "../src/i18n"
 import { useWorkspace } from "../src/useWorkspace"
 
 afterEach(() => vi.useRealTimers())
@@ -65,20 +66,54 @@ it("starts OAuth automatically, polls the device code and cancels without restar
   expect(f.request.mock.calls.filter(([, input]) => input.action === "start")).toHaveLength(starts.length)
 })
 
-it("offers host login first and connects with one click", async () => {
+it.each(["mac", "server"] as const)("offers the %s host login first and connects with one click", async (host) => {
   const f = fixture("host-available")
+  f.setFlow({ provider: "codex", state: "host-available", host })
+  const location = host === "mac" ? "Mac" : "servidor"
   const configured = vi.fn()
   render(<ProviderLogin api={f.api} botId="bot" provider="codex" onConfigured={configured} />)
-  await screen.findByRole("button", { name: "Usar login deste Mac" })
+  await screen.findByRole("button", { name: `Usar login deste ${location}` })
+  expect(screen.getByText(`Há um login disponível neste ${location}.`)).toBeVisible()
   expect(f.request.mock.calls.some(([, input]) => input.action === "start")).toBe(false)
   expect(f.request.mock.calls.some(([route]) => route === "GET /bots/:id/provider-login")).toBe(false)
-  fireEvent.click(screen.getByRole("button", { name: "Usar login deste Mac" }))
+  fireEvent.click(screen.getByRole("button", { name: `Usar login deste ${location}` }))
   await waitFor(() => expect(configured).toHaveBeenCalledOnce())
   expect(f.request).toHaveBeenCalledWith(
     "POST /bots/:id/provider-login/flow",
     { provider: "codex", action: "use-host" },
     { id: "bot" },
   )
+})
+
+it("uses server copy when an older sidecar omits the host context", async () => {
+  const f = fixture("host-available")
+  render(<ProviderLogin api={f.api} botId="bot" provider="codex" onConfigured={vi.fn()} />)
+  await screen.findByRole("button", { name: "Usar login deste servidor" })
+})
+
+it.each(["idle", "waiting", "cancelled", "error", "ready"] as const)(
+  "does not offer host import when the sidecar reports %s",
+  async (state) => {
+    const f = fixture(state)
+    render(<ProviderLogin api={f.api} botId="bot" provider="codex" onConfigured={vi.fn()} />)
+    await waitFor(() => expect(f.request).toHaveBeenCalled())
+    expect(screen.queryByRole("button", { name: /^Usar login deste/ })).toBeNull()
+    expect(f.request.mock.calls.some(([, input]) => input.action === "use-host")).toBe(false)
+  },
+)
+
+it.each([
+  ["Há um login disponível neste Mac.", "Há um login disponível neste Mac.", "A login is available on this Mac."],
+  ["Usar login deste Mac", "Usar login deste Mac", "Use this Mac’s login"],
+  [
+    "Há um login disponível neste servidor.",
+    "Há um login disponível neste servidor.",
+    "A login is available on this server.",
+  ],
+  ["Usar login deste servidor", "Usar login deste servidor", "Use this server’s login"],
+] as const)("translates host login copy: %s", (key, portuguese, english) => {
+  expect(t(key, {}, "pt-BR")).toBe(portuguese)
+  expect(t(key, {}, "en")).toBe(english)
 })
 
 it("keeps paste hidden and does not clear a rejected draft credential", async () => {
@@ -159,6 +194,46 @@ it("composer blocks submission until login succeeds and shows the device challen
   })
   expect(button).toBeEnabled()
   fireEvent.click(button)
+  expect(send).toHaveBeenCalledOnce()
+})
+
+it.each(["mac", "server"] as const)("composer identifies the %s host and waits for explicit import", async (host) => {
+  const f = fixture("host-available")
+  const bot = f.api.getState().bots[0]
+  if (!bot) throw new Error("Missing fixture")
+  f.setFlow({ provider: bot.provider, state: "host-available", host })
+  const location = host === "mac" ? "Mac" : "servidor"
+  const send = vi.fn().mockResolvedValue(undefined)
+  render(
+    <Composer
+      api={f.api}
+      bot={bot}
+      threadId="thread"
+      parentId={null}
+      draft="Primeira mensagem"
+      onDraft={vi.fn()}
+      inputRef={createRef()}
+      activeRun={null}
+      queuedCount={0}
+      onSend={send}
+      onCancel={vi.fn()}
+    />,
+  )
+  await screen.findByText(`Há um login disponível neste ${location}.`)
+  const submit = screen.getByRole("button", { name: "Enviar" })
+  expect(submit).toBeDisabled()
+  expect(f.request.mock.calls.some(([, input]) => input.action === "start" || input.action === "use-host")).toBe(false)
+  fireEvent.click(screen.getByRole("button", { name: `Usar login deste ${location}` }))
+  await waitFor(() => expect(submit).toBeEnabled())
+  expect(send).not.toHaveBeenCalled()
+  expect(f.request).toHaveBeenCalledWith(
+    "POST /bots/:id/provider-login/flow",
+    { provider: bot.provider, action: "use-host" },
+    { id: bot.id },
+  )
+  await act(async () => {
+    fireEvent.click(submit)
+  })
   expect(send).toHaveBeenCalledOnce()
 })
 
