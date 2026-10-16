@@ -1037,6 +1037,29 @@ export const init = async (kernel: Kernel): Promise<void> => {
     return updated
   }
 
+  // MCP setup changes share PATCH's validation, storage and bot.updated event.
+  // They must not stop a VM while its current turn is waiting for the tool.
+  kernel.services.provide("bots.configureAccess", ({ botId, patch }) => {
+    const bot = getBot({ botId })
+    if (!bot) return { success: false, errorCode: "NOT_FOUND", error: "Bot não encontrado." }
+    const parsed = botFromBody({ body: { ...patch, name: bot.name, provider: bot.provider }, existing: bot })
+    if (!parsed.input || parsed.error)
+      return { success: false, errorCode: "INVALID_ARGS", error: parsed.error ?? "Configuração inválida." }
+    const machine = database.query("SELECT project_id FROM bot_machines WHERE bot_id = ?").get(botId) as {
+      project_id: string | null
+    } | null
+    if (patch.projectId && machine?.project_id && patch.projectId !== machine.project_id)
+      return {
+        success: false,
+        errorCode: "MACHINE_PROJECT_CHANGE",
+        error: "Recrie a máquina do zero antes de trocar o projeto; o volume atual foi preservado",
+      }
+    const updated = patchBot({ bot, input: parsed.input, paused: undefined })
+    return updated
+      ? { success: true, bot: updated }
+      : { success: false, errorCode: "NOT_FOUND", error: "Bot não encontrado." }
+  })
+
   const insertAttachment = ({
     path,
     originPath,

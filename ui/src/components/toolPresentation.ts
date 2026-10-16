@@ -1,6 +1,6 @@
 import type { ApprovalPart, MessagePart } from "@touri/contracts"
 import { redactToolText } from "@touri/contracts/redaction"
-import { localizeToolText } from "../i18n"
+import { localizeToolText, t } from "../i18n"
 
 export type ToolPart = Extract<MessagePart, { type: "tool_call" | "command" | "file_change" }>
 export type ToolKind = "terminal" | "browser" | "computer" | "files" | "tool"
@@ -81,6 +81,40 @@ const approvalDetail = (approval: ApprovalPart): string => {
   return approval.detail.startsWith(prefix) ? approval.detail.slice(prefix.length).trimStart() : approval.detail
 }
 
+const setupPresentation = (name: string, input: Record<string, unknown> | null) => {
+  if (name.includes("__") && !name.startsWith("mcp__touri__")) return null
+  const leaf = toolLeaf(name)
+  const path = typeof input?.path === "string" ? input.path : ""
+  let title: string
+  let summary: string
+  if (leaf === "project_link") {
+    title = t("Vincular projeto")
+    summary = t("Vincular {name} ({path}) a este bot", {
+      name: String(input?.name ?? path.split("/").filter(Boolean).at(-1) ?? input?.projectId ?? t("Projeto")),
+      path,
+    })
+    const previous = asToolRecord(input?.previousProject)
+    if (previous)
+      summary += ` ${t("Substitui o projeto {name} ({path}).", { name: String(previous.name), path: String(previous.path) })}`
+  } else if (leaf === "folder_access_request") {
+    title = t("Conceder acesso à pasta")
+    summary = t("Permitir {mode} em {path} para este bot", {
+      mode: t(input?.mode === "read" ? "Somente leitura" : "Leitura e escrita"),
+      path,
+    })
+    if (input?.previousMode)
+      summary += ` ${t("Acesso anterior: {mode}.", { mode: t(input.previousMode === "read-only" ? "Somente leitura" : "Leitura e escrita") })}`
+  } else if (leaf === "project_unlink") {
+    title = t("Desvincular projeto")
+    summary = t("Desvincular o projeto deste bot.")
+  } else if (leaf === "folder_access_remove") {
+    title = t("Remover acesso à pasta")
+    summary = t("Remover o acesso deste bot a {path}.", { path })
+  } else return null
+  if (input?.nextTurn) summary += ` ${t("A mudança entra em vigor no próximo turno da VM.")}`
+  return { name: title, summary }
+}
+
 export const toolPresentation = (part?: ToolPart, approval?: ApprovalPart) => {
   const name = part
     ? part.type === "tool_call"
@@ -102,6 +136,12 @@ export const toolPresentation = (part?: ToolPart, approval?: ApprovalPart) => {
       : ""
   const value = safeValue(raw)
   const args = asToolRecord(value)
+  // An approval contains the reviewed, canonical target. Provider tool input may
+  // contain only an ID or an alias and must not override that reviewed summary.
+  const setup =
+    !approval || approval.scope?.server === "touri"
+      ? setupPresentation(name, approval ? asToolRecord(safeValue(approvalDetail(approval))) : args)
+      : null
   const identity = toolIdentity(name, approval?.scope?.server)
   const description = typeof args?.description === "string" ? args.description : ""
   const summary = part?.type === "tool_call" && !/^Claude tool |^[{[]/.test(part.summary) ? part.summary : ""
@@ -130,32 +170,37 @@ export const toolPresentation = (part?: ToolPart, approval?: ApprovalPart) => {
     : null
   return {
     ...identity,
+    ...(setup ? { name: setup.name } : {}),
     filePaths,
-    summary: localizeToolText(
-      description ||
-        summary ||
-        (typeof value === "string" && !/^[{[]/.test(value.trim()) && identity.kind !== "terminal"
-          ? value
-          : defaults[identity.kind]),
-    ),
+    summary:
+      setup?.summary ??
+      localizeToolText(
+        description ||
+          summary ||
+          (typeof value === "string" && !/^[{[]/.test(value.trim()) && identity.kind !== "terminal"
+            ? value
+            : defaults[identity.kind]),
+      ),
     code:
-      identity.kind === "terminal"
-        ? typeof command === "string"
-          ? command
-          : Array.isArray(command)
-            ? command.join(" ")
-            : typeof value === "string" && !/^[{[]/.test(value.trim())
-              ? value
-              : "Comando indisponível. Abra os detalhes técnicos."
-        : filePaths.length && parameters && Object.keys(parameters).length === 0
-          ? ""
-          : prettyToolValue(
-              parameters
-                ? parameters
-                : typeof value === "string" && /^[{[]/.test(value.trim())
-                  ? "Parâmetros incompletos. Abra os detalhes técnicos."
-                  : value,
-            ),
+      setup && approval
+        ? ""
+        : identity.kind === "terminal"
+          ? typeof command === "string"
+            ? command
+            : Array.isArray(command)
+              ? command.join(" ")
+              : typeof value === "string" && !/^[{[]/.test(value.trim())
+                ? value
+                : "Comando indisponível. Abra os detalhes técnicos."
+          : filePaths.length && parameters && Object.keys(parameters).length === 0
+            ? ""
+            : prettyToolValue(
+                parameters
+                  ? parameters
+                  : typeof value === "string" && /^[{[]/.test(value.trim())
+                    ? "Parâmetros incompletos. Abra os detalhes técnicos."
+                    : value,
+              ),
     technical: redactToolText(typeof value === "string" ? raw : JSON.stringify(value, null, 2)),
   }
 }
@@ -199,5 +244,17 @@ export const approvalMatchesTool = (approval: ApprovalPart, part: ToolPart): boo
   if (toolLeaf(name) !== toolLeaf(part.tool)) return false
   const mcpServer = /^mcp__(.+?)__/.exec(part.tool)?.[1]
   if (approval.scope?.server && mcpServer && approval.scope.server !== mcpServer) return false
+  // Setup cards retain the original spelling for matching and the canonical
+  // path for presentation. Enrichment must not split one operation into two cards.
+  if (approval.scope?.source === "mcp" && approval.scope.server === "touri" && mcpServer === "touri") {
+    const original = asToolRecord(parseToolValue(part.inputJson))
+    const target = args?.requestedPath ?? args?.path
+    if (toolLeaf(name) === "project_link") {
+      if (typeof original?.projectId === "string") return original.projectId === args?.projectId
+      if (typeof original?.path === "string") return original.path === target
+    }
+    if (toolLeaf(name) === "folder_access_request")
+      return typeof original?.path === "string" && original.path === target && original.mode === args?.mode
+  }
   return canonicalValue(input) === canonicalValue(parseToolValue(part.inputJson))
 }

@@ -32,11 +32,15 @@ const CODE_ROOTS = [
 /** Best-effort, bounded discovery. Never follow directory symlinks or execute Git. */
 export const discoverProjects = async ({
   home = homedir(),
+  roots: grantedRoots,
+  isAllowed,
   registeredPaths = [],
   signal,
   timeoutMs = 2_000,
 }: {
   home?: string
+  roots?: string[]
+  isAllowed?: (path: string) => boolean
   registeredPaths?: string[]
   signal?: AbortSignal
   timeoutMs?: number
@@ -45,19 +49,22 @@ export const discoverProjects = async ({
   const deadline = AbortSignal.any([...(signal ? [signal] : []), AbortSignal.timeout(timeoutMs)])
   const scan = async () => {
     const excluded = new Set(await Promise.all(registeredPaths.map((path) => realpath(path).catch(() => path))))
-    const root = await realpath(home)
-    // Common code roots first, so a large home does not spend the budget elsewhere.
-    const roots = await Promise.all(
-      CODE_ROOTS.map((name) =>
-        realpath(join(root, name))
-          .then((path) => ({ path, depth: 1 }))
-          .catch(() => null),
-      ),
-    )
-    const pending = [
-      ...roots.filter((item): item is { path: string; depth: number } => item !== null),
-      { path: root, depth: 0 },
-    ]
+    const pending = (grantedRoots ?? []).map((path) => ({ path, depth: 0 }))
+    if (!grantedRoots) {
+      const root = await realpath(home)
+      // Common code roots first for the user-driven UI search only.
+      const roots = await Promise.all(
+        CODE_ROOTS.map((name) =>
+          realpath(join(root, name))
+            .then((path) => ({ path, depth: 1 }))
+            .catch(() => null),
+        ),
+      )
+      pending.push(...roots.filter((item): item is { path: string; depth: number } => item !== null), {
+        path: root,
+        depth: 0,
+      })
+    }
     const visited = new Set<string>()
     let entries = 0
     while (pending.length && !deadline.aborted && entries < 20_000) {
@@ -65,6 +72,10 @@ export const discoverProjects = async ({
       if (!directory || visited.has(directory.path)) continue
       visited.add(directory.path)
       try {
+        if (isAllowed && !isAllowed(directory.path)) continue
+        // Explicit grants are stored as canonical paths. A replaced ancestor
+        // or code-root symlink must not expand discovery beyond that grant.
+        if (grantedRoots && (await realpath(directory.path)) !== directory.path) continue
         const children: string[] = []
         let repository = false
         const handle = await opendir(directory.path)
