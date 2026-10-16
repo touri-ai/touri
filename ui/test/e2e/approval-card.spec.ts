@@ -114,10 +114,9 @@ for (const theme of ["light", "dark"]) {
     await page.screenshot({ path: `../docs/qa/approval-card/after-states-${theme}.png`, fullPage: true })
     const screenshotCard = page.getByRole("article", { name: "Ferramenta · Computador" })
     await screenshotCard.screenshot({ path: `../docs/qa/approval-card/after-screenshot-${theme}.png` })
-    await expect(screenshotCard.getByRole("link", { name: "Baixar imagem" })).toHaveAttribute(
-      "download",
-      "approved-1.png",
-    )
+    const download = page.waitForEvent("download")
+    await screenshotCard.getByRole("button", { name: "Baixar imagem" }).click()
+    expect((await download).suggestedFilename()).toBe("approved-1.png")
     await screenshotCard.getByRole("button", { name: "Abrir captura 1 em tamanho original" }).click()
     const dialog = page.getByRole("dialog", { name: "Captura de tela da ferramenta" })
     await expect(dialog).toBeVisible()

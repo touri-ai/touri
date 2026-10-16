@@ -1,13 +1,13 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod download_guard;
 pub mod file_grants;
+mod file_save;
 pub mod host_bridge;
 mod i18n;
 pub mod keychain;
 pub mod power;
 pub mod preview;
-mod download_guard;
-mod file_save;
 mod reports;
 pub mod secret_card;
 pub mod sidecar;

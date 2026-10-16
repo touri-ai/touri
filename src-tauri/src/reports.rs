@@ -80,9 +80,13 @@ pub async fn report_save_zip(
         .duration_since(UNIX_EPOCH)
         .map_err(|error| error.to_string())?
         .as_secs();
-    let outcome =
-        crate::file_save::save_with_panel(app, format!("touri-relatorio-{stamp}.zip"), bytes, 0o600)
-            .await?;
+    let outcome = crate::file_save::save_with_panel(
+        app,
+        format!("touri-relatorio-{stamp}.zip"),
+        bytes,
+        0o600,
+    )
+    .await?;
     Ok(json!({ "path": outcome.path }))
 }
 

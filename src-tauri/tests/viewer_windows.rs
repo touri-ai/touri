@@ -48,5 +48,7 @@ fn computer_popout_windows_have_core_events_and_main_can_focus_them() {
     let main_permissions = strings(&main["permissions"]);
     assert!(main_permissions.contains(&"core:webview:allow-create-webview-window"));
     assert!(main_permissions.contains(&"core:window:allow-set-focus"));
-    assert!(!strings(&main["windows"]).iter().any(|window| window.starts_with("computer")));
+    assert!(!strings(&main["windows"])
+        .iter()
+        .any(|window| window.starts_with("computer")));
 }
