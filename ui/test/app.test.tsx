@@ -1,5 +1,5 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
-import type { Id, Message, PreviewTarget, Project, Run } from "@touri/contracts"
+import type { DoctorCheck, Id, Message, PreviewTarget, Project, Run } from "@touri/contracts"
 import * as axe from "axe-core"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import App, { canUseMockAdapter } from "../src/App"
@@ -423,6 +423,40 @@ describe("WP9 frontend acceptance", () => {
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Diagnóstico" })).toBeNull())
     fireEvent.click(screen.getByRole("button", { name: "Importar do app anterior" }))
     expect(await screen.findByRole("dialog")).toBeVisible()
+  })
+
+  it.each([
+    { warnings: 1, failures: 1, color: "red" },
+    { warnings: 1, failures: 0, color: "amber" },
+    { warnings: 0, failures: 0, color: "green" },
+  ])("preserves Doctor counts on onboarding after closing it ($color)", async ({ warnings, failures, color }) => {
+    const mock = createMockApi()
+    const checks: DoctorCheck[] = Array.from({ length: 35 }, (_, index) => ({
+      id: `ready-${index}`,
+      status: "pass",
+      ok: true,
+      detail: "Pronto",
+      fix: null,
+    }))
+    if (warnings) checks.push({ id: "memory", status: "warn", ok: false, detail: "0.3 GiB", fix: null })
+    // Old reports without a status must still count failed checks.
+    if (failures) checks.push({ id: "disk", ok: false, detail: "4.3 GiB", fix: null })
+    const api = {
+      ...mock,
+      request: (async (route, input, pathValues) => {
+        if (route === "GET /bots") return { bots: [] }
+        if (route === "GET /doctor") return { checks, running: false, checkedAt: 1234 }
+        return mock.request(route, input, pathValues)
+      }) as typeof mock.request,
+    }
+    const view = render(<App kernel={{ services: { api } }} />)
+    fireEvent.click(await screen.findByRole("button", { name: "Verificar este Mac" }))
+    await screen.findByRole("dialog", { name: "Diagnóstico" })
+    fireEvent.keyDown(document, { key: "Escape" })
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Diagnóstico" })).toBeNull())
+    const summary = view.container.querySelector('.onboarding-foot [role="status"]')
+    expect(summary).toHaveTextContent(`Prontas: 35 · Avisos: ${warnings} · Falhas: ${failures}`)
+    expect(summary?.querySelector(".status-dot")).toHaveClass(`status-${color}`)
   })
 
   it("opens the bot creation dialog from the empty-state landing by button and by Cmd+N", async () => {

@@ -46,6 +46,7 @@ import { MachineFields } from "./MachineFields"
 import { ProviderLogin } from "./ProviderLogin"
 import { ProviderMark, providerName } from "./ProviderMark"
 import { ProviderModelField } from "./ProviderModelField"
+import { ProviderProfileFields } from "./ProviderProfileFields"
 import { SecretsPanel } from "./RightPanels"
 import { SettingsGroup, SettingsLayout, SettingsPane, SettingsRow, SettingsSwitch } from "./SettingsLayout"
 import "./settings.css"
@@ -413,6 +414,68 @@ const ImportReportView = ({ report }: { report: ApiRoutes["GET /imports/:id"]["r
     </div>
   ) : null
 
+export const BotModelModal = ({
+  api,
+  bot,
+  onSave,
+  onClose,
+}: {
+  api: UiApi
+  bot: Bot
+  onSave: (model: string | null) => Promise<void>
+  onClose: () => void
+}) => {
+  const [model, setModel] = useState(bot.model ?? "")
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const close = () => {
+    if (!saving) onClose()
+  }
+  return (
+    <Modal onClose={close} title={t("Choose model")} eyebrow={providerName(bot.provider)}>
+      <form
+        className="modal-form"
+        onSubmit={async (event) => {
+          event.preventDefault()
+          if (saving) return
+          setSaving(true)
+          setError(null)
+          try {
+            await onSave(model.trim() || null)
+            onClose()
+          } catch (error) {
+            setError(userFacingError(error))
+          } finally {
+            setSaving(false)
+          }
+        }}
+      >
+        <p>{t("Choose the model for this bot’s next turns.")}</p>
+        <label htmlFor="composer-model">{t("Model")}</label>
+        <ProviderModelField
+          id="composer-model"
+          api={api}
+          botId={bot.id}
+          provider={bot.provider}
+          value={model}
+          onChange={setModel}
+          picker
+          disabled={saving}
+        />
+        {error && <p role="alert">{error}</p>}
+        <div className="modal-actions">
+          <button type="button" className="button-quiet" onClick={close} disabled={saving}>
+            {t("Cancel")}
+          </button>
+          <button type="submit" className="button button-brand" disabled={saving} aria-busy={saving}>
+            {t("Save model")}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  )
+}
+
 type BotCreateModalProps = {
   api?: UiApi
   invokeCommand?: TauriInvoke
@@ -635,17 +698,37 @@ export const BotCreateModal = ({
           {step === 1 && (
             <div className="bot-create-fields">
               <label htmlFor="bot-role">{t("Função")}</label>
-              <input id="bot-role" value={roleLine} onChange={(event) => setRoleLine(event.target.value)} />
+              <input
+                id="bot-role"
+                value={roleLine}
+                onChange={(event) => setRoleLine(event.target.value)}
+                aria-describedby="bot-role-help"
+              />
+              <small id="bot-role-help" className="field-help">
+                {t("A summary of the bot’s work, e.g. research and compare sources.")}
+              </small>
               <label htmlFor="bot-title">{t("Título (opcional)")}</label>
-              <input id="bot-title" value={title} onChange={(event) => setTitle(event.target.value)} />
-              <label htmlFor="create-soul">SOUL.md</label>
+              <input
+                id="bot-title"
+                value={title}
+                onChange={(event) => setTitle(event.target.value)}
+                aria-describedby="bot-title-help"
+              />
+              <small id="bot-title-help" className="field-help">
+                {t("A short label for the bot, e.g. Researcher. Detailed tasks go in the instructions.")}
+              </small>
+              <label htmlFor="create-soul">{t("Bot instructions")}</label>
               <textarea
                 id="create-soul"
                 rows={5}
                 value={instructions}
                 onChange={(event) => setInstructions(event.target.value)}
-                placeholder="Descreva o papel, as tarefas e o estilo deste bot."
+                placeholder={t("Describe this bot’s role, tasks and style.")}
+                aria-describedby="create-soul-help"
               />
+              <small id="create-soul-help" className="field-help">
+                {t("Detailed guidance for the bot. Saved as SOUL.md in the bot’s folder.")}
+              </small>
             </div>
           )}
           {step === 2 && (
@@ -703,13 +786,14 @@ export const BotCreateModal = ({
               </select>
               {provider === "codex" && (
                 <p>
-                  Com acesso total, o Codex executa sem pedir aprovação e sem sandbox. O modo somente leitura mantém o
-                  sandbox. As políticas MCP e de controle do computador continuam valendo.
+                  {t(
+                    "Codex full access disables provider approvals and sandboxing; touri folder restrictions still apply.",
+                  )}
                 </p>
               )}
               {access === "full" && (
                 <div className="warning-callout">
-                  {t("Full access lets the CLI write anywhere. Use it only for a teammate you trust.")}
+                  {t("Full access skips provider approvals. Folder access is configured separately.")}
                 </div>
               )}
             </div>
@@ -916,7 +1000,7 @@ export const BotCreateModal = ({
                 )}
               </dl>
               <div className="settings-inline-note">
-                <strong>Instruções · SOUL.md</strong>
+                <strong>{t("Bot instructions")}</strong>
                 <p className="bot-create-soul-preview">
                   {instructions.trim() || "Você pode adicionar instruções nas configurações quando quiser."}
                 </p>
@@ -1025,6 +1109,10 @@ export const BotSettingsModal = ({
   const [addingProject, setAddingProject] = useState(false)
   const [folders, setFolders] = useState(bot.folders ?? [])
   const [anyFolderAccess, setAnyFolderAccess] = useState(bot.anyFolderAccess ?? false)
+  const [profile, setProfile] = useState({
+    providerProfile: bot.providerProfile ?? null,
+    claudeAiConnectors: bot.claudeAiConnectors ?? false,
+  })
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [updating, setUpdating] = useState(false)
@@ -1085,6 +1173,12 @@ export const BotSettingsModal = ({
         projectId: projectId || null,
         folders,
         anyFolderAccess,
+        ...(machine.machine === "local" && provider !== "opencode"
+          ? {
+              providerProfile: profile.providerProfile,
+              claudeAiConnectors: provider === "claude" && profile.claudeAiConnectors,
+            }
+          : { providerProfile: null, claudeAiConnectors: false }),
       })
       onClose()
     } catch (error) {
@@ -1165,6 +1259,14 @@ export const BotSettingsModal = ({
                 onConfigured={() => setMachine((current) => ({ ...current, vmProviderLogin: true }))}
               />
             )}
+            {api && machine.machine === "local" && (
+              <ProviderProfileFields
+                api={api}
+                provider={provider}
+                values={profile}
+                onChange={(patch) => setProfile((current) => ({ ...current, ...patch }))}
+              />
+            )}
             <SettingsRow
               title={t("Model")}
               description="Deixe em branco para usar o padrão do provedor."
@@ -1200,15 +1302,17 @@ export const BotSettingsModal = ({
           </SettingsGroup>
           <SettingsGroup title="Instruções">
             <section>
-              <label htmlFor="soul">SOUL.md</label>
+              <label htmlFor="soul">{t("Bot instructions")}</label>
               <textarea
                 id="soul"
                 className="soul-editor"
                 value={instructions}
                 onChange={(event) => setInstructions(event.target.value)}
+                aria-describedby="soul-help"
               />
-              <small className="field-help">
-                {t("Applied on the next turn. The file is mirrored in this bot’s home.")}
+              <small id="soul-help" className="field-help">
+                {t("Detailed guidance for the bot. Saved as SOUL.md in the bot’s folder.")}{" "}
+                {t("Applied on the next turn.")}
               </small>
               {instructions.includes("coordinate_bots") && (
                 <p className="warning-callout">
@@ -1363,12 +1467,15 @@ export const BotSettingsModal = ({
               </label>
               {provider === "codex" && (
                 <p>
-                  Com acesso total, o Codex executa sem pedir aprovação e sem sandbox. O modo somente leitura mantém o
-                  sandbox. As políticas MCP e de controle do computador continuam valendo.
+                  {t(
+                    "Codex full access disables provider approvals and sandboxing; touri folder restrictions still apply.",
+                  )}
                 </p>
               )}
               {access === "full" && (
-                <div className="warning-callout">{t("Full access bypasses the normal workspace boundary.")}</div>
+                <div className="warning-callout">
+                  {t("Full access skips provider approvals. Folder access is configured separately.")}
+                </div>
               )}
               {api && <BotStandingGrants key={grantsRevision} api={api} botId={bot.id} />}
             </div>

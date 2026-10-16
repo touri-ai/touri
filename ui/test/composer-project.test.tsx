@@ -207,6 +207,7 @@ describe("composer project chip", () => {
       pathValues: { id: bot.id },
     })
     fireEvent.click(within(dialog).getByRole("button", { name: "Fechar diálogo" }))
+    await waitFor(() => expect(dialog).not.toBeInTheDocument(), { timeout: 5000 })
     await waitFor(() => expect(chip()).toHaveFocus())
   })
 
