@@ -211,6 +211,23 @@ describe("r8 screens", () => {
     )
   })
 
+  it("offers a reply box only for a real question, not for a finished reply that ends in a question mark", () => {
+    const api = createMockApi()
+    const greeting = api.notify({ kind: "done", title: "Done", body: "Oi! Como posso ajudar?", createdAt: 2 })
+    const question = api.notify({ kind: "question", title: "Question", body: "Subo o servidor?", createdAt: 1 })
+    render(
+      <NotificationBell
+        notifications={[greeting, question]}
+        now={3}
+        actions={{ open: vi.fn(), dismiss: vi.fn(), dismissAll: vi.fn(), respond: vi.fn(), reply: vi.fn() }}
+      />,
+    )
+    fireEvent.click(screen.getByRole("button", { name: /Notificações/ }))
+    const [done, asked] = screen.getAllByTestId("notification-row")
+    expect(done?.querySelector(".notification-reply")).toBeNull()
+    expect(asked?.querySelector(".notification-reply")).not.toBeNull()
+  })
+
   it("groups notifications by local day and recency, marks them read, and clears history", async () => {
     const api = createMockApi()
     const now = new Date(2026, 9, 13, 12).getTime()

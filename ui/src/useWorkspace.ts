@@ -452,7 +452,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
 
   useEffect(() => {
     if (!enabled) return
-    void load()
+    let active = true
     let resyncing: Promise<void> | null = null
     let replayDeltas: Array<Extract<UiEvent, { type: "message.delta" }>> = []
     const resync = (): void => {
@@ -475,9 +475,8 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
           resyncing = null
         })
     }
-    const unsubscribeConnection = api.subscribeConnection?.((connected) => {
-      if (connected) resync()
-    })
+    // A reconnect needs no reload: the sidecar replays the gap, or sends a resync frame when the gap is
+    // too large or expired. Reloading every conversation on each reconnect kept a slow client behind.
     const unsubscribe = api.subscribe((envelope: UiEventEnvelope) => {
       const event = envelope.event
       if (event.type === "thread.updated" && event.thread.groupThreadId) {
@@ -589,10 +588,14 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
         return current
       })
     })
+    // Subscribe first, then load: the snapshot starts where live delivery does.
+    void (api.cursorReady?.() ?? Promise.resolve()).then(() => {
+      if (active) void load()
+    })
     return () => {
+      active = false
       generation.current += 1
       unsubscribe()
-      unsubscribeConnection?.()
     }
   }, [api, enabled, load])
 

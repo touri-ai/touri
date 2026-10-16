@@ -865,7 +865,7 @@ export const ChatPanel = ({
                     content: (
                       <article className="message-bubble message-assistant" data-pending-run={activeRun.id}>
                         <div className="message-meta">
-                          <span className="message-role">touri</span>
+                          <span className="message-role">{bot?.name ?? "touri"}</span>
                         </div>
                         <ActivityMark state={activityState} bot={bot ?? undefined} threadId={thread.id} />
                       </article>

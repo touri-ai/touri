@@ -70,8 +70,9 @@ test("A03: CLI revocation closes event sockets and notification SSE", async () =
     headers: { cookie: `touri_device=${claimed.token}` },
   })
   let receivedAfterRevocation = false
-  socket.onmessage = () => {
-    receivedAfterRevocation = true
+  socket.onmessage = (message) => {
+    // A cold connection first gets its cursor frame; only later events count.
+    if (JSON.parse(String(message.data)).type !== "resync") receivedAfterRevocation = true
   }
   const presence = new NativeSocket(
     `ws://127.0.0.1:${runtime.handshake.port}/api/v1/bots/bot/machine/presence/socket`,
