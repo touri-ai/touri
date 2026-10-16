@@ -1060,6 +1060,7 @@ export type StoreApi = {
 
 /** Cross-module services. Providers call `provide` in their init; consumers must tolerate `null` from `use`. */
 export type ServiceMap = {
+  'bots.configureAccess': (input: { botId: Id; patch: Partial<Pick<Bot, 'projectId' | 'folders'>> }) => Result<{ bot: Bot }, 'NOT_FOUND' | 'INVALID_ARGS' | 'MACHINE_PROJECT_CHANGE'>
   'diagnostics.errors': () => Array<{ code: string; at: number }>
   'groups.runtime': {
     enqueue: ServiceMap['runtime.enqueue']

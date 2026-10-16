@@ -7,6 +7,7 @@ import { runCommand } from "./git"
 import { processOwner, saveProcessOwner } from "./ownership"
 import { ensureProjectPath } from "./paths"
 import { resolveEnvSecret } from "./secrets"
+import { createSetupTools } from "./setup-tools"
 import type { ProjectStore, Supervisor } from "./types"
 
 type RecordValue = Record<string, unknown>
@@ -447,6 +448,7 @@ export const createProjectTools = ({
 
   return [
     { name: "project_info", group: "project", handler: project_info },
+    ...createSetupTools({ kernel, store }),
     { name: "process_define", group: "process", handler: process_define },
     { name: "process_start", group: "process", handler: process_start },
     { name: "process_stop", group: "process", handler: process_stop },
