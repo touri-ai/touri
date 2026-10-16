@@ -87,9 +87,23 @@ for (const provider of ["codex", "claude", "opencode"] as const) {
     expect(instructions).toContain("full access without approvals")
     expect(instructions).toContain("search the disk first with rg, fd or find")
     for (const path of ["~/javascript", "~/code", "~/Projects", "~/src", "~/dev"]) expect(instructions).toContain(path)
-    expect(instructions).toContain("Linking one is recommended for process, secret and preview tools")
+    expect(instructions).toContain("A linked project is required for supervised processes, secrets and Preview")
+    expect(instructions).toContain("offer to link the app folder with project_link({path})")
+    expect(instructions).toContain("After approval, use process_define/process_start, then preview_open")
+    expect(instructions).toContain("A server started with a shell tool is not registered in Preview")
     expect(instructions).not.toContain("Ask the user to connect a project when needed")
     expect(instructions).not.toContain("Only the bot folder and connected project")
+  })
+
+  test(`${provider}: only a successful Preview tool result confirms availability`, async () => {
+    const f = await fixture({ provider })
+    for (const projectId of [null, "linked-project"]) {
+      const instructions = await f.compose({ projectId })
+      expect(instructions).toContain("after preview_open succeeds and returns its Preview target")
+      expect(instructions).toContain("browser_open alone does not create a touri Preview")
+      expect(instructions).toContain("If preview_open fails, report the blocker and the required next step")
+      expect(instructions).toContain("the user opens the Preview pane to view it")
+    }
   })
 }
 

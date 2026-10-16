@@ -46,6 +46,17 @@ const previewFixture = async () => {
 }
 
 describe("r8 screens", () => {
+  it("explains the approved project setup required for Preview when no project is linked", async () => {
+    const props = await previewFixture()
+    render(<PreviewScreen {...props} project={null} processes={[]} />)
+    expect(screen.getByText(/Para usar o Preview, conecte a pasta do aplicativo/)).toHaveTextContent(
+      "Você pode pedir ao bot para preparar isso; a conexão exige sua aprovação.",
+    )
+    fireEvent.click(screen.getAllByRole("button", { name: "Conectar projeto" })[0] as HTMLElement)
+    expect(props.onConnectProject).toHaveBeenCalledOnce()
+    expect(props.invokeCommand).not.toHaveBeenCalledWith("preview_show", expect.anything())
+  })
+
   it("provides distinct Cron loading, empty and recoverable error states", () => {
     const refresh = vi.fn(async () => {})
     const props = {

@@ -170,6 +170,7 @@ export type Supervisor = {
   logs: (args: { processId: string; tail: number; grep?: string }) => ProjectResult<{ lines: Array<string> }>
   previews: (args?: { projectId?: string }) => Array<PreviewTarget>
   openPreview: (args: {
+    botId?: string
     project: Project
     port?: number
     processName?: string
