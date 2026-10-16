@@ -47,7 +47,7 @@ it("normalizes accents and case and fuzzy-matches labels", () => {
     matchScore(queryTokens("memria"), { label: normalizeSearch("Memória por computador"), extra: "" }),
   ).toBeGreaterThan(0)
   expect(matchScore(queryTokens("xyz"), { label: normalizeSearch("Memória"), extra: "" })).toBe(0)
-  const settings = settingsIndex({ cloudEnabled: false, hasBot: true })
+  const settings = settingsIndex({ hasBot: true })
   const index = buildPaletteIndex({ bots: [], threads: [], settings, hasBot: true })
   const groups = searchPalette({ index, query: "notificacoes", messages: [], recentIds: [] })
   expect(groups[0]?.items[0]?.label).toBe("Notificações")
@@ -246,7 +246,7 @@ it("R13-05 ranks an exact action or setting above older message matches, message
   const bot = state.bots[0]
   const thread = state.threads[0]
   if (!bot || !thread) throw new Error("fixture")
-  const settings = settingsIndex({ cloudEnabled: false, hasBot: true })
+  const settings = settingsIndex({ hasBot: true })
   const index = buildPaletteIndex({ bots: [bot], threads: [thread], settings, hasBot: true })
   const message = (text: string, id: string) => ({
     message: { id, threadId: thread.id, text, createdAt: 1 } as never,

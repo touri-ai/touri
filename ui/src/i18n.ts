@@ -411,15 +411,6 @@ export const ptBR = {
   "Mascot listening": "Ouvindo você",
   "Mascot failed": "Precisa de atenção",
   "Avatar unread": "Não lidas",
-  "Só a máquina na nuvem": "Só a máquina na nuvem",
-  "Só a VM isolada e as pastas compartilhadas": "Só a VM isolada e as pastas compartilhadas",
-  "Só a VM isolada": "Só a VM isolada",
-  "Pode ler arquivos do Mac; sem permissão de escrita": "Pode ler arquivos do Mac; sem permissão de escrita",
-  "Pode acessar pastas do Mac com aprovação; escrita nas pastas permitidas":
-    "Pode acessar pastas do Mac com aprovação; escrita nas pastas permitidas",
-  "Pode acessar todo o Mac": "Pode acessar todo o Mac",
-  "Pode ler arquivos do Mac; escrita na pasta do bot, no projeto e nas pastas permitidas":
-    "Pode ler arquivos do Mac; escrita na pasta do bot, no projeto e nas pastas permitidas",
   "Não foi possível buscar repositórios. Escolha outra pasta.":
     "Não foi possível buscar repositórios. Escolha outra pasta.",
   "Repositórios encontrados": "Repositórios encontrados",
@@ -629,7 +620,6 @@ export const ptBR = {
 
   Machine: "Máquina",
   "Bot machine": "Máquina do bot",
-  "Machine status": "Máquina · {status}",
   "Machine running": "rodando",
   "Machine resting": "Em repouso",
   "No virtualization on this host": "sem virtualização neste host",
@@ -852,15 +842,7 @@ export const ptBR = {
   "Touri is unavailable until the local service reconnects.":
     "O serviço local parou ou não conseguiu iniciar. Reconecte para continuar usando o touri.",
   "The app will not replace your workspace with demo data.": "Seu espaço de trabalho será retomado após a conexão.",
-  "local-first desktop": "aplicativo local",
-  "A calm home for your teammates.": "Um espaço para seus bots.",
-  "Run persistent Codex, Claude Code or OpenCode teammates in real project folders, keep every conversation branch, and see the apps they start.":
-    "Use bots Codex, Claude Code ou OpenCode nas pastas dos seus projetos, acompanhe as conversas e visualize os aplicativos que eles iniciarem.",
   "Check this Mac": "Verificar este Mac",
-  "Create first bot": "Criar primeiro bot",
-  "Import from legacy app": "Importar do app anterior",
-  "Apache-2.0 · no telemetry": "Apache-2.0 · sem telemetria",
-  "doctor runs locally": "diagnóstico local",
   "Process ready · preview opened": "Processo pronto · preview aberto",
   "Unknown connection error": "Erro de conexão desconhecido",
   "The sidecar connection is not available.": "A conexão com o serviço local está indisponível.",
@@ -1522,16 +1504,9 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Mascot listening": "Listening to you",
   "Mascot failed": "Needs attention",
   "Avatar unread": "Unread",
+  "Padrão do provedor": "Provider default",
+  "Entrar no provedor nesta máquina": "Sign in to {provider} on this machine",
   "Machine resting": "Resting",
-  "Só a máquina na nuvem": "Only the cloud machine",
-  "Só a VM isolada e as pastas compartilhadas": "Only the isolated VM and shared folders",
-  "Só a VM isolada": "Only the isolated VM",
-  "Pode ler arquivos do Mac; sem permissão de escrita": "Can read files on the Mac; no write access",
-  "Pode acessar pastas do Mac com aprovação; escrita nas pastas permitidas":
-    "Can access Mac folders with approval; writes in permitted folders",
-  "Pode acessar todo o Mac": "Can access the whole Mac",
-  "Pode ler arquivos do Mac; escrita na pasta do bot, no projeto e nas pastas permitidas":
-    "Can read files on the Mac; writes in the bot folder, project and permitted folders",
   "Não foi possível buscar repositórios. Escolha outra pasta.":
     "Could not discover repositories. Choose another folder.",
   "Repositórios encontrados": "Discovered repositories",

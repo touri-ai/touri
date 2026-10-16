@@ -302,13 +302,7 @@ const breadcrumb = (definition: SettingDefinition): string => {
 }
 
 /** Every searchable settings destination, derived from the registry above. */
-export const settingsIndex = ({
-  cloudEnabled: _cloudEnabled,
-  hasBot,
-}: {
-  cloudEnabled: boolean
-  hasBot: boolean
-}): Array<SettingsIndexEntry> => [
+export const settingsIndex = ({ hasBot }: { hasBot: boolean }): Array<SettingsIndexEntry> => [
   ...APP_SETTINGS_SECTIONS.map((section) => ({
     id: `app-section:${section.id}`,
     label: section.label,

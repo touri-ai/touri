@@ -471,10 +471,7 @@ const AppContent = ({ kernel }: AppProps) => {
     if (action.kind === "doctor") openDestination({ kind: "doctor" })
     if (action.kind === "setting") openDestination(destinationForSetting(action.settingId))
   }
-  const paletteSettings = useMemo(
-    () => settingsIndex({ cloudEnabled: data.settings?.cloud === true, hasBot: data.bots.length > 0 }),
-    [data.settings?.cloud, data.bots.length],
-  )
+  const paletteSettings = useMemo(() => settingsIndex({ hasBot: data.bots.length > 0 }), [data.bots.length])
   const startProcess = async (processId: Id): Promise<void> => {
     await actions.startProcess(processId)
     setScreen("preview")
