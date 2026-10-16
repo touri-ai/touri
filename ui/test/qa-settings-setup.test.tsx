@@ -71,7 +71,7 @@ it("F005: validates edited JSON too and does not require a folder for Gmail or H
   expect(connect).toBeEnabled()
 })
 
-it("F007: keeps footer actions in a named accessible group across MCP, Permissions and Computer", async () => {
+it("F007: keeps footer actions in a named accessible group across Tools, Permissions and Computer", async () => {
   const user = userEvent.setup()
   const api = createMockApi()
   const bot = api.getState().bots[0]
@@ -88,7 +88,9 @@ it("F007: keeps footer actions in a named accessible group across MCP, Permissio
     />,
   )
   const footer = screen.getByRole("group", { name: "Ações das configurações do bot" })
-  for (const name of ["MCP", "Permissões", "Computador"]) {
+  await user.click(screen.getByRole("button", { name: "Avançado" }))
+  expect(screen.getByRole("group", { name: "Ações das configurações do bot" })).toBe(footer)
+  for (const name of ["Ferramentas", "Permissões", "Computador"]) {
     await user.click(screen.getByRole("tab", { name }))
     expect(screen.getByRole("group", { name: "Ações das configurações do bot" })).toBe(footer)
     expect(within(footer).getByRole("button", { name: "Salvar configurações" })).toBeVisible()
