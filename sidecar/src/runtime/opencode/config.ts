@@ -4,6 +4,7 @@ import { homedir } from "node:os"
 import { join } from "node:path"
 import type { Bot, Kernel, StartTurnArgs } from "@touri/contracts"
 import { withDeadline } from "../../kernel/policy"
+import { turnFolders } from "../folder-access"
 import { asRecord, resolveExecutable } from "../utils"
 
 export const openCodeBinary = (env: Record<string, string>, command?: string) => {
@@ -46,7 +47,33 @@ export const openCodePermissions = (bot: Pick<Bot, "access" | "approvals">): Rec
 })
 
 export const openCodeConfig = (args: StartTurnArgs) => {
-  const permission = openCodePermissions(args.bot)
+  const folders = turnFolders(args)
+  const permission: Record<string, string | Record<string, string>> = {
+    ...openCodePermissions(args.bot),
+    ...(folders.length
+      ? {
+          external_directory: {
+            "*": "deny",
+            [`${args.bot.homeDir}/**`]: "allow",
+            ...Object.fromEntries(
+              folders.map((folder) => [folder.path === "/" ? "/**" : `${folder.path}/**`, "allow"]),
+            ),
+          },
+          ...(args.bot.access !== "read-only"
+            ? {
+                edit: {
+                  "*": fullAccess(args.bot) ? "allow" : "ask",
+                  ...Object.fromEntries(
+                    folders
+                      .filter((folder) => folder.access === "read-only")
+                      .map((folder) => [`${folder.path}/**`, "deny"]),
+                  ),
+                },
+              }
+            : {}),
+        }
+      : {}),
+  }
   return {
     $schema: "https://opencode.ai/config.json",
     autoupdate: false,

@@ -37,7 +37,11 @@ const fixture = (vm = false, provider: "claude" | "codex" = "claude") => {
     return runtime.kernel.spawnTree({
       ...input,
       cmd: process.execPath,
-      args: ["run", join(import.meta.dir, `../fakes/fake-${provider}.ts`), ...input.args],
+      args: [
+        "run",
+        join(import.meta.dir, `../fakes/fake-${provider}.ts`),
+        ...(input.cmd === "/usr/bin/sandbox-exec" ? input.args.slice(3) : input.args),
+      ],
     })
   }
   const createAdapter = provider === "claude" ? createClaudeAdapter : createCodexAdapter
@@ -255,7 +259,7 @@ for (const vm of [false, true]) {
           expect(f.calls[0]?.args).toContain('approvals_reviewer="user"')
           if (access === "full") {
             expect(f.calls[0]?.args).toContain('sandbox_mode="danger-full-access"')
-            expect(f.calls[0]?.args).toContain('approval_policy="never"')
+            expect(f.calls[0]?.args).toContain(`approval_policy=${JSON.stringify(approvals)}`)
           } else if (access === "read-only") expect(f.calls[0]?.args).toContain('sandbox_mode="read-only"')
           const requests = readFileSync(requestLogPath, "utf8")
             .trim()
@@ -265,7 +269,7 @@ for (const vm of [false, true]) {
           expect(session?.params).toMatchObject({
             cwd: f.workspace,
             sandbox: access === "full" ? "danger-full-access" : access,
-            approvalPolicy: access === "read-only" || access === "full" ? "never" : approvals,
+            approvalPolicy: access === "read-only" ? "never" : approvals,
             approvalsReviewer: "user",
           })
         })
@@ -310,5 +314,42 @@ for (const vm of [false, true]) {
     })
     expect(frames.find((frame) => frame.id === 7 && !frame.method)).toMatchObject({ result: { action: "decline" } })
     expect(frames.find((frame) => frame.id === 8 && !frame.method)).toMatchObject({ error: { code: -32601 } })
+  })
+}
+
+for (const provider of ["claude", "codex"] as const) {
+  test(`${provider} receives folder grants through CLI policy and the inherited host sandbox`, async () => {
+    const f = fixture(false, provider)
+    const ro = join(f.root, "reference")
+    const rw = join(f.root, "writable")
+    mkdirSync(ro)
+    mkdirSync(rw)
+    // macOS temp roots may be spelled /var rather than /private/var.
+    const { realpathSync } = await import("node:fs")
+    f.args.bot.access = "workspace-write"
+    f.args.bot.folders = [
+      { path: realpathSync(ro), access: "read-only" },
+      { path: realpathSync(rw), access: "read-write" },
+    ]
+    const requestLogPath = join(f.root, "folder-requests.jsonl")
+    writeFileSync(f.scenario, JSON.stringify({ events: [{ type: "complete" }], requestLogPath }))
+    expect((await f.adapter.startTurn(f.args)).success).toBe(true)
+    expect(f.calls[0]?.cmd).toBe("/usr/bin/sandbox-exec")
+    if (provider === "claude") {
+      const cli = f.calls[0]?.args ?? []
+      expect(cli).toContain(realpathSync(ro))
+      expect(cli).toContain(realpathSync(rw))
+      const added = cli.flatMap((arg, i) => (arg === "--add-dir" ? [cli[i + 1]] : []))
+      expect(added).toContain(realpathSync(ro))
+      expect(added).toContain(realpathSync(rw))
+    } else {
+      const requests = readFileSync(requestLogPath, "utf8")
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line))
+      const request = requests.find((request) => request.method === "thread/start")
+      expect(request.params.config.sandbox_workspace_write.writable_roots).toContain(realpathSync(rw))
+      expect(request.params.config.sandbox_workspace_write.writable_roots).not.toContain(realpathSync(ro))
+    }
   })
 }

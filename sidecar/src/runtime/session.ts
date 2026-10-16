@@ -1,5 +1,6 @@
 import { mkdirSync, statSync } from "node:fs"
 import type { Bot, Kernel, SessionFingerprint, Thread } from "@touri/contracts"
+import { botFolderFingerprint } from "../kernel/bot-folders"
 import { canonicalJson, sha256 } from "./utils"
 
 export const sessionFingerprint = ({
@@ -25,7 +26,7 @@ export const sessionFingerprint = ({
         args: server.transport === "stdio" ? server.args : [],
       })),
     ],
-    toolsetVersion: `touri-tools-2:browser=${bot.browserEnabled}:computer=${bot.computerUse}:approvals=${bot.provider === "codex" && bot.access === "full" ? "never" : bot.approvals}`,
+    toolsetVersion: `touri-tools-2:folders=${botFolderFingerprint(bot)}:browser=${bot.browserEnabled}:computer=${bot.computerUse}:approvals=${bot.approvals}`,
   }
   return { fingerprint, hash: sha256(canonicalJson(fingerprint)) }
 }

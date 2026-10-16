@@ -1,6 +1,7 @@
 import { Database } from "bun:sqlite"
 import { afterEach, expect, test } from "bun:test"
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { Bot, GroupInput, Run, ToolContext } from "@touri/contracts"
 import { init as initGroups } from "../../src/groups"
@@ -463,8 +464,10 @@ test("0008 upgrades a populated version 7 DB atomically and can reopen safely", 
 test("real provider runtime delegates with concurrency cap 1, isolated sessions and target approvals", async () => {
   const f = await fixture()
   f.runtime.shutdown()
-  const scenario = join(f.root, "scenario.json")
-  const command = join(f.root, "fake-codex")
+  const providerRoot = mkdtempSync(join(tmpdir(), "touri-group-provider-"))
+  cleanups.push(() => rmSync(providerRoot, { recursive: true, force: true }))
+  const scenario = join(providerRoot, "scenario.json")
+  const command = join(providerRoot, "fake-codex")
   const fake = join(import.meta.dir, "../fakes/fake-codex.ts")
   writeFileSync(command, `#!/bin/sh\nexec '${process.execPath}' '${fake}' "$@"\n`, { mode: 0o700 })
   writeFileSync(
@@ -806,9 +809,11 @@ test("B05: ceiling never lets a guest caller reach host execution without approv
 test("B05: the real engine starts a delegated provider turn under the ceiling, and unchanged for equal peers", async () => {
   const f = await fixture()
   f.runtime.shutdown()
-  const scenario = join(f.root, "scenario.json")
-  const argvLog = join(f.root, "argv.log")
-  const command = join(f.root, "fake-codex")
+  const providerRoot = mkdtempSync(join(tmpdir(), "touri-group-provider-"))
+  cleanups.push(() => rmSync(providerRoot, { recursive: true, force: true }))
+  const scenario = join(providerRoot, "scenario.json")
+  const argvLog = join(providerRoot, "argv.log")
+  const command = join(providerRoot, "fake-codex")
   const fake = join(import.meta.dir, "../fakes/fake-codex.ts")
   writeFileSync(command, `#!/bin/sh\necho "$@" >> '${argvLog}'\nexec '${process.execPath}' '${fake}' "$@"\n`, {
     mode: 0o700,

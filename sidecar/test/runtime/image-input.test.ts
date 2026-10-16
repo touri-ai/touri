@@ -35,7 +35,11 @@ const fixture = (input: StartTurnArgs["input"], attachment = true) => {
     runtime.kernel.spawnTree({
       ...spawnInput,
       cmd: process.execPath,
-      args: ["run", join(import.meta.dir, "../fakes/fake-codex.ts"), ...spawnInput.args],
+      args: [
+        "run",
+        join(import.meta.dir, "../fakes/fake-codex.ts"),
+        ...(spawnInput.cmd === "/usr/bin/sandbox-exec" ? spawnInput.args.slice(3) : spawnInput.args),
+      ],
     })
   const adapter = createCodexAdapter({ kernel: { ...runtime.kernel, spawnTree: spawn }, command: process.execPath })
   const args: StartTurnArgs = {

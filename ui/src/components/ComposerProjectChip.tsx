@@ -167,7 +167,7 @@ export const ComposerProjectChip = ({
               aria-disabled={saving}
               onClick={() => void select(null)}
             >
-              <span>{t("Somente pasta do bot")}</span>
+              <span>{t("Nenhum projeto (começa na pasta do bot)")}</span>
               <span aria-hidden="true">{bot.projectId === null ? "✓" : ""}</span>
             </button>
             <button

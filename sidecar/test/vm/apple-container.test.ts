@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test"
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { createAppleContainerProvider } from "../../src/vm"
@@ -408,3 +408,73 @@ test.each(["create", "start", "cp", "chown", "success", "abort"])(
     }
   },
 )
+
+test("host folders use realpath bind mounts and Apple's readonly option (no real VM)", async () => {
+  const root = mkdtempSync(join(tmpdir(), "touri-mount-args-"))
+  const calls: string[][] = []
+  const provider = createAppleContainerProvider({
+    binary: "/fake/container",
+    runCommand: async (args) => {
+      calls.push(args)
+      return { code: 0, stdout: "", stderr: "" }
+    },
+  })
+  try {
+    const result = await provider.create({
+      name: "folder-args-test",
+      image: "fake",
+      volumes: [
+        { type: "bind", source: root, target: "/host/reference", readOnly: true },
+        { type: "volume", source: "workspace", target: "/workspace" },
+      ],
+    })
+    expect(result.success).toBe(true)
+    const create = calls.find((args) => args[0] === "create") ?? []
+    expect(create).toContain(`type=bind,source=${realpathSync(root)},target=/host/reference,readonly`)
+    expect(create).toContain("type=volume,source=workspace,target=/workspace")
+    expect(
+      await provider.create({
+        name: "bad",
+        image: "fake",
+        volumes: [{ source: `${root},readonly`, target: "/host/bad" }],
+      }),
+    ).toMatchObject({ success: false, errorCode: "INVALID_CONFIG" })
+  } finally {
+    await provider.destroy({ id: "folder-args-test" })
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test("managed host mounts reject symlinks and retargeted ancestors before calling container", async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "touri-mount-retarget-")))
+  const source = join(root, "selected")
+  const outside = join(root, "outside")
+  mkdirSync(source)
+  mkdirSync(outside)
+  const calls: string[][] = []
+  const provider = createAppleContainerProvider({
+    binary: "/fake/container",
+    runCommand: async (args) => {
+      calls.push(args)
+      return { code: 0, stdout: "", stderr: "" }
+    },
+  })
+  try {
+    rmSync(source, { recursive: true })
+    symlinkSync(outside, source)
+    expect(
+      await provider.create({ name: "retarget", image: "fake", volumes: [{ source, target: "/host/selected" }] }),
+    ).toMatchObject({ success: false, errorCode: "INVALID_CONFIG" })
+    mkdirSync(join(outside, "nested"))
+    expect(
+      await provider.create({
+        name: "ancestor",
+        image: "fake",
+        volumes: [{ source: join(source, "nested"), target: "/host/nested" }],
+      }),
+    ).toMatchObject({ success: false, errorCode: "INVALID_CONFIG" })
+    expect(calls).toHaveLength(0)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})

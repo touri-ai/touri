@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto"
 import type { Kernel, ProviderAdapter, StartTurnArgs, StartTurnResult } from "@touri/contracts"
 import { getDelegation } from "../../groups/security"
 import { buildChildEnv } from "../../kernel"
+import { spawnFolderProvider } from "../folder-access"
 import { loadTurnImages } from "../loadTurnImages"
 import { mcpStartupError } from "../mcp-startup"
 import { applyProviderPrivacy, cliTelemetryOff } from "../privacy"
@@ -118,7 +119,7 @@ export const createOpenCodeAdapter = ({
       const env = applyProviderPrivacy(isolatedOpenCodeEnv(base, root, dataDir, configPath), cliTelemetryOff(kernel))
       env.OPENCODE_SERVER_PASSWORD = randomUUID()
       kernel.addRedactionValue(env.OPENCODE_SERVER_PASSWORD)
-      const spawned = (args.execution?.spawn ?? kernel.spawnTree)({
+      const spawned = spawnFolderProvider(kernel, args, {
         cmd: binary.path,
         args: ["serve", "--hostname", "127.0.0.1", "--port", "0", "--pure"],
         cwd: args.fingerprint.cwd,

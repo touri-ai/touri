@@ -96,6 +96,7 @@ export const apiRouteKeys = [
   "GET /routine-runs",
   "GET /mcp/tools",
   "GET /projects",
+  "GET /projects/discover",
   "POST /projects",
   "GET /projects/:id/git",
   "GET /projects/:id/secrets",

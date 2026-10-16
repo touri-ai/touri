@@ -719,6 +719,7 @@ export const ChatPanel = ({
           <div className="chat-bot-chip">
             {bot && <BotAvatar bot={bot} size={18} />}
             <h1 className="chat-page-heading">{bot?.name ?? "touri"}</h1>
+            {bot?.anyFolderAccess && <span className="any-folder-badge">{t("Qualquer pasta do Mac")}</span>}
           </div>
           <div className="chat-toolbar">
             {onTogglePanel && (
@@ -798,6 +799,7 @@ export const ChatPanel = ({
               <img src="/touri-bull.png" alt="" />
             )}
             <h1 className="chat-page-heading">{bot?.name ?? "touri"}</h1>
+            {bot?.anyFolderAccess && <span className="any-folder-badge">{t("Qualquer pasta do Mac")}</span>}
           </div>
           <div className="chat-toolbar">
             {onTogglePanel && (

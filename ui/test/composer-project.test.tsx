@@ -63,10 +63,9 @@ describe("composer project chip", () => {
     expect(within(picker()).getByRole("menuitemradio", { name: current.name })).toHaveAttribute("aria-checked", "true")
     expect(within(picker()).getByRole("menuitemradio", { name: other.name })).toHaveAttribute("aria-checked", "false")
     expect(screen.queryByRole("menuitemradio", { name: "Projeto arquivado" })).not.toBeInTheDocument()
-    expect(within(picker()).getByRole("menuitemradio", { name: "Somente pasta do bot" })).toHaveAttribute(
-      "aria-checked",
-      "false",
-    )
+    expect(
+      within(picker()).getByRole("menuitemradio", { name: "Nenhum projeto (começa na pasta do bot)" }),
+    ).toHaveAttribute("aria-checked", "false")
     expect(within(picker()).getByRole("menuitem", { name: "Adicionar projeto…" })).toBeVisible()
   })
 
@@ -74,10 +73,9 @@ describe("composer project chip", () => {
     await setup({ linked: false })
     expect(chip()).toHaveTextContent("Sem projeto")
     fireEvent.click(chip())
-    expect(within(picker()).getByRole("menuitemradio", { name: "Somente pasta do bot" })).toHaveAttribute(
-      "aria-checked",
-      "true",
-    )
+    expect(
+      within(picker()).getByRole("menuitemradio", { name: "Nenhum projeto (começa na pasta do bot)" }),
+    ).toHaveAttribute("aria-checked", "true")
   })
 
   it("PATCHes the chosen project immediately and updates the chip", async () => {
@@ -97,7 +95,7 @@ describe("composer project chip", () => {
   it("PATCHes null to unlink and updates the chip", async () => {
     const { api, bot } = await setup()
     fireEvent.click(chip())
-    fireEvent.click(within(picker()).getByRole("menuitemradio", { name: "Somente pasta do bot" }))
+    fireEvent.click(within(picker()).getByRole("menuitemradio", { name: "Nenhum projeto (começa na pasta do bot)" }))
     await waitFor(() => expect(chip()).toHaveTextContent("Sem projeto"))
     expect(api.calls.find((call) => call.route === "PATCH /bots/:id")).toEqual({
       route: "PATCH /bots/:id",
@@ -188,6 +186,7 @@ describe("composer project chip", () => {
     fireEvent.click(within(picker()).getByRole("menuitem", { name: "Adicionar projeto…" }))
     const dialog = await screen.findByRole("dialog", { name: "Conectar projeto" })
     expect(within(dialog).getByRole("checkbox", { name: /mark/ })).toBeChecked()
+    expect(within(dialog).getByRole("checkbox", { name: /mark/ })).toBeDisabled()
     fireEvent.click(within(dialog).getByRole("button", { name: "Escolher pasta" }))
     await waitFor(() => expect(within(dialog).getByLabelText("Pasta do projeto")).toHaveValue("/tmp/new-repo"))
     expect(invoke).toHaveBeenCalledWith("pick_folder", { title: "Conectar uma pasta de projeto" })
@@ -230,6 +229,35 @@ describe("composer project chip", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument()
   })
 
+  it("adds a discovered repository and links it from the composer in one click", async () => {
+    const invoke = vi.fn() as ReturnType<typeof vi.fn> & TauriInvoke
+    const { api, bot } = await setup({ invoke })
+    const request = api.request
+    api.request = (async (route, ...args) =>
+      route === "GET /projects/discover"
+        ? { repositories: [{ path: "/Users/demo/javascript/Hodler", name: "Hodler", lastModified: 1_000 }] }
+        : request(route, ...args)) as typeof request
+    fireEvent.click(chip())
+    fireEvent.click(within(picker()).getByRole("menuitem", { name: "Adicionar projeto…" }))
+    const dialog = await screen.findByRole("dialog", { name: "Conectar projeto" })
+    fireEvent.click(await within(dialog).findByRole("button", { name: /Hodler/ }))
+    await waitFor(() => expect(chip()).toHaveTextContent("Hodler"))
+    expect(invoke).not.toHaveBeenCalled()
+    expect(
+      api.calls.find(
+        (call) =>
+          call.route === "POST /projects" &&
+          "path" in call.input &&
+          call.input.path === "/Users/demo/javascript/Hodler",
+      )?.input,
+    ).toEqual({ path: "/Users/demo/javascript/Hodler", name: "Hodler" })
+    expect(api.calls.filter((call) => call.route === "PATCH /bots/:id")).toContainEqual({
+      route: "PATCH /bots/:id",
+      input: { projectId: bot.projectId },
+      pathValues: { id: bot.id },
+    })
+  })
+
   it("blocks duplicate changes while saving", async () => {
     const { api, other } = await setup()
     const request = api.request
@@ -245,7 +273,7 @@ describe("composer project chip", () => {
     const option = within(picker()).getByRole("menuitemradio", { name: other.name })
     fireEvent.click(option)
     fireEvent.click(option)
-    fireEvent.click(within(picker()).getByRole("menuitemradio", { name: "Somente pasta do bot" }))
+    fireEvent.click(within(picker()).getByRole("menuitemradio", { name: "Nenhum projeto (começa na pasta do bot)" }))
     expect(chip()).toBeDisabled()
     expect(picker()).toHaveAttribute("aria-busy", "true")
     await act(async () => finish?.())

@@ -30,11 +30,13 @@ const PAUSED = { pauseAfterFirstDelta: "release", ignoreInterrupt: true, deltas:
  */
 const fixture = async () => {
   const root = mkdtempSync(join(tmpdir(), "touri-resume-"))
-  const scenario = join(root, "scenario.json")
-  const crashScenario = join(root, "crash.json")
-  const crashOnce = join(root, "crash-once")
-  const requests = join(root, "requests.jsonl")
-  const command = join(root, "codex")
+  // Recovery fixtures must not depend on a provider reading touri's private data.
+  const assets = mkdtempSync(join(tmpdir(), "touri-resume-provider-"))
+  const scenario = join(assets, "scenario.json")
+  const crashScenario = join(assets, "crash.json")
+  const crashOnce = join(assets, "crash-once")
+  const requests = join(assets, "requests.jsonl")
+  const command = join(assets, "codex")
   const fake = join(import.meta.dir, "../fakes/fake-codex.ts")
   writeFileSync(
     command,
@@ -50,7 +52,7 @@ exec '${process.execPath}' '${fake}' "$@"
       JSON.stringify({
         ...value,
         requestLogPath: requests,
-        ...(value.pauseAfterFirstDelta ? { pauseAfterFirstDelta: join(root, "release") } : {}),
+        ...(value.pauseAfterFirstDelta ? { pauseAfterFirstDelta: join(assets, "release") } : {}),
       }),
     )
   writeScenario(PAUSED)
@@ -137,6 +139,7 @@ exec '${process.execPath}' '${fake}' "$@"
   const streamed = (text: string) => () => first.store.activePath({ threadId: "t" }).some((m) => m.text === text)
   return {
     root,
+    assets,
     first,
     open,
     send,
@@ -148,11 +151,12 @@ exec '${process.execPath}' '${fake}' "$@"
     streamed,
     writeScenario,
     crashOnce: () => writeFileSync(crashOnce, ""),
-    release: () => writeFileSync(join(root, "release"), ""),
+    release: () => writeFileSync(join(assets, "release"), ""),
     close: async () => {
       for (const engine of engines.reverse()) await engine.shutdown()
       for (const runtime of kernels.reverse()) runtime.stop()
       rmSync(root, { recursive: true, force: true })
+      rmSync(assets, { recursive: true, force: true })
     },
   }
 }
@@ -289,7 +293,7 @@ test("at most two continuations follow one original turn", async () => {
     const original = f.send(f.first.engine)
     await waitFor(f.streamed("INÍCIO"))
     for (const attempt of [1, 2]) {
-      rmSync(join(f.root, "release"), { force: true })
+      rmSync(join(f.assets, "release"), { force: true })
       await f.open()
       await waitFor(() => f.runs().length === attempt + 1 && f.runs().at(-1)?.status === "running")
     }
@@ -317,7 +321,7 @@ test("turning the setting off keeps the interrupted turn waiting for the user", 
     await waitFor(() => f.runs()[0]?.status === "failed")
     await Bun.sleep(300)
     f.writeScenario(PAUSED)
-    rmSync(join(f.root, "release"), { force: true })
+    rmSync(join(f.assets, "release"), { force: true })
     const paused = f.send(f.first.engine, "Outra tarefa")
     await waitFor(f.streamed("INÍCIO"))
     await f.open()

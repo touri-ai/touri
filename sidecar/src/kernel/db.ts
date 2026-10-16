@@ -18,9 +18,10 @@ import opencodeSql from "./migrations/0012.sql" with { type: "text" }
 import workRecoverySql from "./migrations/0013.sql" with { type: "text" }
 import legacySourceSql from "./migrations/0014.sql" with { type: "text" }
 import continuationsSql from "./migrations/0015.sql" with { type: "text" }
+import botFoldersSql from "./migrations/0016.sql" with { type: "text" }
 import { applyUpgradeBaselines } from "./upgradeBaselines"
 
-export const SCHEMA_VERSION = 15
+export const SCHEMA_VERSION = 16
 
 const FREE_PAGE_RATIO_LIMIT = 0.2
 
@@ -136,6 +137,11 @@ export const openDatabase = ({ filename }: { filename: string }): Database => {
   })()
   if (rebuilt.length) reclaimRebuiltPages(database)
   database.transaction(() => database.exec(continuationsSql))()
+  database.transaction(() => {
+    const columns = database.query("PRAGMA table_info(bots)").all() as Array<{ name: string }>
+    if (!columns.some((column) => column.name === "folders_json")) database.exec(botFoldersSql)
+    database.exec("UPDATE schema_meta SET value = '16' WHERE key = 'schema_version'")
+  })()
   applyUpgradeBaselines({ database })
   return database
 }

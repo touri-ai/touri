@@ -892,7 +892,7 @@ test("VM engine resumes the turn once when the bot computer stops mid-turn", asy
     scenario,
     JSON.stringify({
       requestLogPath: requests,
-      events: [{ type: "delta", delta: "parcial" }, { type: "sleep" }],
+      events: [{ type: "delta", delta: "parcial." }, { type: "sleep" }],
       slowMs: 1000,
     }),
   )
@@ -929,9 +929,9 @@ test("VM engine resumes the turn once when the bot computer stops mid-turn", asy
     if (!request.success) throw new Error(request.error)
     const started = engine.enqueue({ threadId, requestMessageId: request.message.id, trigger: "user" })
     if (!started.success) throw new Error(started.error)
-    for (let i = 0; i < 400 && !store.activePath({ threadId }).some((message) => message.text === "parcial"); i++)
+    for (let i = 0; i < 400 && !store.activePath({ threadId }).some((message) => message.text === "parcial."); i++)
       await Bun.sleep(5)
-    writeFileSync(scenario, JSON.stringify({ requestLogPath: requests, deltas: ["retomado"] }))
+    writeFileSync(scenario, JSON.stringify({ requestLogPath: requests, deltas: ["retomado."] }))
     // The container stops outside touri (host sleep, crash, OOM): its processes die without a result.
     const startsBefore = f.fake.calls.filter((call) => call.action === "start").length
     for (const id of f.fake.machines.keys()) f.fake.machines.set(id, "stopped")
@@ -950,9 +950,9 @@ test("VM engine resumes the turn once when the bot computer stops mid-turn", asy
     ).toEqual([{ previous_run_id: started.run.id, reason: "provider_crash" }])
     expect(store.activePath({ threadId }).map((message) => message.text)).toEqual([
       "Gere o relatório",
-      "parcial",
+      "parcial.",
       "Retomado após falha do provedor",
-      "retomado",
+      "retomado.",
     ])
     const sessions = readFileSync(requests, "utf8")
       .trim()
@@ -1020,7 +1020,7 @@ test.each(["status", "image", "start", "ready"])(
       publish(event)
     }
     const scenario = join(f.root, "scenario.json")
-    writeFileSync(scenario, JSON.stringify({ deltas: ["Pronto"] }))
+    writeFileSync(scenario, JSON.stringify({ deltas: ["Pronto."] }))
     const spawn = f.fake.provider.spawn
     const guests: Array<Promise<unknown>> = []
     let providerStarts = 0
@@ -1052,7 +1052,7 @@ test.each(["status", "image", "start", "ready"])(
       expect(engine.listRuns(run.threadId)).toHaveLength(1)
       expect(f.vm.service.states()[0]).toMatchObject({ status: "running", error: null, errorCode: null })
       expect(states).not.toContain("error")
-      expect(store.activePath({ threadId: run.threadId }).at(-1)?.text).toBe("Pronto")
+      expect(store.activePath({ threadId: run.threadId }).at(-1)?.text).toBe("Pronto.")
     } finally {
       await engine.shutdown()
       await Promise.all(guests)
@@ -2437,3 +2437,44 @@ for (const provider of ["claude", "codex"] as const) {
     expect(turn.env).toMatchObject({ DISABLE_TELEMETRY: "1" })
   })
 }
+
+test("folder changes keep an active VM intact and recreate it with the same workspace on the next turn", async () => {
+  const f = await fixture()
+  const bot = await f.bot()
+  const folder = join(f.root, "grant")
+  mkdirSync(folder)
+  const release = await f.vm.service.acquire({ botId: bot.id })
+  const initial = [...f.fake.configs.values()][0]
+  const workspace = initial?.volumes?.find((mount) => mount.target === "/workspace")
+  const response = await f.request(
+    `/bots/${bot.id}`,
+    { folders: [{ path: folder, access: "read-only" }], anyFolderAccess: true },
+    "PATCH",
+  )
+  expect(response.status).toBe(200)
+  expect(f.fake.calls.filter((call) => call.action === "destroy")).toHaveLength(0)
+  await release()
+  await f.vm.service.intent({ botId: bot.id, intent: "computer-open" })
+  expect(f.fake.calls.filter((call) => call.action === "destroy")).toHaveLength(0)
+  const next = await f.vm.service.prepareTurn({
+    botId: bot.id,
+    threadId: bot.mainThreadId ?? "thread",
+    token: "test-folders",
+  })
+  const updated = [...f.fake.configs.values()][0]
+  expect(f.fake.calls.filter((call) => call.action === "destroy")).toHaveLength(1)
+  expect(updated?.volumes).toContainEqual(workspace)
+  expect(updated?.volumes?.some((mount) => mount.target.startsWith("/host/grant-") && mount.readOnly)).toBe(true)
+  expect(updated?.volumes?.some((mount) => mount.target === "/host/home" && !mount.readOnly)).toBe(true)
+  await next.release()
+  const removed = await f.request(`/bots/${bot.id}`, { folders: [], anyFolderAccess: false }, "PATCH")
+  expect(removed.status).toBe(200)
+  const third = await f.vm.service.prepareTurn({
+    botId: bot.id,
+    threadId: bot.mainThreadId ?? "thread",
+    token: "test-removed",
+  })
+  expect([...f.fake.configs.values()][0]?.volumes?.some((mount) => mount.target.startsWith("/host/"))).toBe(false)
+  expect([...f.fake.configs.values()][0]?.volumes).toContainEqual(workspace)
+  await third.release()
+})

@@ -13,6 +13,7 @@ import type {
   ToolResult,
   VmRuntime,
 } from "@touri/contracts"
+import { botFolderFingerprint } from "../kernel/bot-folders"
 import { atomicWriteFile, ensurePrivateDirectory, removePrivateFile } from "../kernel/files"
 import { isIdle } from "../kernel/policy"
 import { safeThreadId } from "../mcp/auth"
@@ -42,6 +43,7 @@ import {
   saveEgressPolicy,
   tightenEgressPolicy,
 } from "./egress-policy"
+import { botFolderMounts, withoutHostFolderMounts } from "./folder-mounts"
 import { GUEST_WRITE_COMMAND } from "./guest-write"
 import { BOT_DNS, BOT_IMAGE } from "./image"
 import { ProviderLoginError, providerLoginSource, readProviderLogin } from "./provider-login"
@@ -59,6 +61,7 @@ type Metadata = {
   vm_id: string
   volume: string
   project_id: string | null
+  folder_fingerprint: string
   created_ms: number | null
   start_ms: number | null
 }
@@ -438,7 +441,7 @@ export const createVmRuntime = ({
         }
       },
     })
-  const boot = async (botId: string, signal?: AbortSignal) => {
+  const boot = async (botId: string, signal?: AbortSignal, applyFolders = false) => {
     const bot = botFor(botId)
     if (!capability.available) throw new Error(capability.reason ?? "sem virtualização neste host")
     let meta = metadata(botId)
@@ -474,6 +477,7 @@ export const createVmRuntime = ({
           vm_id: id,
           volume: `${id}-workspace`,
           project_id: null,
+          folder_fingerprint: "",
           created_ms: null,
           start_ms: null,
         }
@@ -481,16 +485,27 @@ export const createVmRuntime = ({
         touch(botId)
       }
       let status = unwrap(await provider.status({ id: meta.vm_id, ...(signal ? { signal } : {}) })).status
+      const folderFingerprint = botFolderFingerprint(bot)
+      const foldersChanged =
+        meta.folder_fingerprint !== folderFingerprint &&
+        (!!meta.folder_fingerprint || !!bot.anyFolderAccess || !!bot.folders?.length)
+      // Resolve and validate before touching the existing machine. A failed grant
+      // never destroys a working VM. Viewer warmup does not apply pending changes.
+      const validatedMounts = status === "missing" || applyFolders ? botFolderMounts(kernel, bot, hostHome) : null
+      const hostMounts = status === "missing" || (applyFolders && foldersChanged) ? validatedMounts : null
       let memoryMb = memoryPreference()
       signal?.throwIfAborted()
       if (status !== "missing") {
         const inspected = unwrap(await provider.inspect({ id: meta.vm_id, ...(signal ? { signal } : {}) }))
         if (inspected.memoryMb !== undefined) memoryMb = inspected.memoryMb
         signal?.throwIfAborted()
-        if (!imageMatches(inspected.image) || !dnsMatches(inspected.dns)) {
+        if (!imageMatches(inspected.image) || !dnsMatches(inspected.dns) || (applyFolders && foldersChanged)) {
           try {
             if (users.get(botId)) throw new Error("Máquina ocupada; aguarde os turnos antes de atualizar")
-            const progress = "Atualizando a máquina para a versão nova…"
+            const progress =
+              applyFolders && foldersChanged
+                ? "Aplicando as pastas do bot…"
+                : "Atualizando a máquina para a versão nova…"
             update(botId, { status: "starting", progress })
             kernel.log({
               level: "info",
@@ -518,7 +533,7 @@ export const createVmRuntime = ({
               mounts = [...mounts, migrated]
             }
             signal?.throwIfAborted()
-            meta.volume = JSON.stringify(mounts)
+            meta.volume = JSON.stringify(hostMounts ? [...withoutHostFolderMounts(mounts), ...hostMounts] : mounts)
             db.query("UPDATE bot_machines SET volume = ? WHERE bot_id = ?").run(meta.volume, botId)
             unwrap(await provider.destroy({ id: meta.vm_id }))
             signal?.throwIfAborted()
@@ -530,12 +545,14 @@ export const createVmRuntime = ({
       }
       if (status === "missing") {
         await ensureImage()
-        const mounts = persistentMounts(meta)
+        const mounts = hostMounts
+          ? [...withoutHostFolderMounts(persistentMounts(meta)), ...hostMounts]
+          : persistentMounts(meta)
         if (!mounts.some((mount) => mount.target === "/var/lib/touri-browser")) {
           mounts.push({ type: "volume", source: `${meta.vm_id}-browser`, target: "/var/lib/touri-browser" })
-          meta.volume = JSON.stringify(mounts)
-          db.query("UPDATE bot_machines SET volume = ? WHERE bot_id = ?").run(meta.volume, botId)
         }
+        meta.volume = JSON.stringify(mounts)
+        db.query("UPDATE bot_machines SET volume = ? WHERE bot_id = ?").run(meta.volume, botId)
         for (const mount of mounts)
           if (mount.type === "volume")
             unwrap(await provider.createVolume({ name: mount.source, ...(signal ? { signal } : {}) }))
@@ -555,6 +572,10 @@ export const createVmRuntime = ({
             args: [],
             volumes: mounts,
           }),
+        )
+        db.query("UPDATE bot_machines SET folder_fingerprint = ? WHERE bot_id = ?").run(
+          hostMounts ? folderFingerprint : meta.folder_fingerprint,
+          botId,
         )
         memoryMb = memoryPreference()
       }
@@ -663,10 +684,10 @@ export const createVmRuntime = ({
       throw error
     }
   }
-  const ensure = async (botId: string, signal?: AbortSignal) => {
+  const ensure = async (botId: string, signal?: AbortSignal, applyFolders = false) => {
     try {
       return await withMachineServiceRecovery({
-        action: () => boot(botId, signal),
+        action: () => boot(botId, signal, applyFolders),
         probe: async (signal) => {
           const meta = metadata(botId)
           // A machine not created yet is probed by retrying its boot under the same deadline.
@@ -693,7 +714,10 @@ export const createVmRuntime = ({
       throw error
     }
   }
-  const acquire: VmRuntime["acquire"] = async ({ botId, signal, runningOnly = false }) => {
+  const acquire = async (
+    { botId, signal, runningOnly = false }: Parameters<VmRuntime["acquire"]>[0],
+    applyFolders = false,
+  ): Promise<() => Promise<void>> => {
     acquiring.set(botId, (acquiring.get(botId) ?? 0) + 1)
     const prewarming = !runningOnly ? warming.get(botId)?.promise : undefined
     await vmStage({
@@ -718,7 +742,15 @@ export const createVmRuntime = ({
                 throw new Error("A máquina não está em execução")
               if (unwrap(await provider.status({ id: meta.vm_id, signal })).status !== "running")
                 throw new Error("A máquina não está em execução")
-            } else if (!users.get(botId) || stateFor(botId).status !== "running") await ensure(botId, signal)
+            } else if (
+              applyFolders &&
+              users.get(botId) &&
+              metadata(botId)?.folder_fingerprint !== botFolderFingerprint(botFor(botId)) &&
+              (botFor(botId).anyFolderAccess || botFor(botId).folders?.length || metadata(botId)?.folder_fingerprint)
+            ) {
+              throw new Error("Aguarde os turnos terminarem para aplicar as pastas da máquina.")
+            } else if (!users.get(botId) || stateFor(botId).status !== "running")
+              await ensure(botId, signal, applyFolders)
             else await waitReady(botId, signal)
             signal.throwIfAborted()
             users.set(botId, (users.get(botId) ?? 0) + 1)
@@ -819,7 +851,7 @@ export const createVmRuntime = ({
   const prepareTurn: VmRuntime["prepareTurn"] = async ({ botId, threadId, token, signal }) => {
     if (!safeThreadId(threadId)) throw new Error("Thread inválida")
     kernel.addRedactionValue(token)
-    const release = await acquire({ botId, ...(signal ? { signal } : {}) })
+    const release = await acquire({ botId, ...(signal ? { signal } : {}) }, true)
     let credential: ReturnType<typeof createRunMcpToken> | undefined
     let tokenPath: string | undefined
     let released = false
@@ -849,6 +881,9 @@ export const createVmRuntime = ({
     }
     try {
       const bot = botFor(botId)
+      const mounted = metadata(botId)?.folder_fingerprint
+      if ((mounted || bot.anyFolderAccess || bot.folders?.length) && mounted !== botFolderFingerprint(bot))
+        throw new Error("As pastas mudaram durante a preparação. Inicie outro turno para aplicá-las.")
       const {
         secrets,
         env: loginEnv,

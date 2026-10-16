@@ -23,6 +23,7 @@ import opencodeSql from "../../src/kernel/migrations/0012.sql" with { type: "tex
 import workRecoverySql from "../../src/kernel/migrations/0013.sql" with { type: "text" }
 import legacySourceSql from "../../src/kernel/migrations/0014.sql" with { type: "text" }
 import continuationsSql from "../../src/kernel/migrations/0015.sql" with { type: "text" }
+import botFoldersSql from "../../src/kernel/migrations/0016.sql" with { type: "text" }
 import { TRANSCRIPT_RETENTION } from "../../src/kernel/transcript-storage"
 import { init as initStore } from "../../src/store"
 
@@ -128,7 +129,7 @@ test("schema 11 answers health in under a second while a 2–5 MB history is bac
     const health = await (await fetch(`${url}/health`, { headers })).json()
     const healthMs = performance.now() - started
     expect(healthMs).toBeLessThan(1000)
-    expect(health).toMatchObject({ ok: true, schemaVersion: 15, historyMigration: { running: true, total: 600 } })
+    expect(health).toMatchObject({ ok: true, schemaVersion: 16, historyMigration: { running: true, total: 600 } })
     const snapshot = await (await fetch(`${url}/threads/t3/messages`, { headers })).json()
     expect(snapshot.messages).toHaveLength(150)
     expect(snapshot.messages[0].text).toContain("3/0: Histórico preservado.")
@@ -190,6 +191,7 @@ test("interrupted batches resume idempotently and match the shipped synchronous 
     })()
     synchronous.exec("PRAGMA foreign_keys = ON")
     synchronous.exec(continuationsSql)
+    synchronous.exec(botFoldersSql)
     database = openDatabase({ filename })
     expect(database.query("SELECT type, name, sql FROM sqlite_master ORDER BY name").all()).toEqual(
       synchronous.query("SELECT type, name, sql FROM sqlite_master ORDER BY name").all(),
