@@ -1,6 +1,15 @@
 import type { Database } from "bun:sqlite"
 import { afterEach, expect, test } from "bun:test"
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync } from "node:fs"
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { ApprovalPart, Bot, ToolRegistration, UiEvent } from "@touri/contracts"
@@ -11,6 +20,7 @@ import { createKernel } from "../../src/kernel"
 import type { McpCallerContext } from "../../src/mcp/auth"
 import { createToolRouter } from "../../src/mcp/router"
 import { init as initNotify } from "../../src/notify"
+import { inspectGit } from "../../src/projects/git"
 import { createProjectStore } from "../../src/projects/repository"
 import { createSetupTools } from "../../src/projects/setup-tools"
 import { init as initStore } from "../../src/store"
@@ -71,7 +81,7 @@ const fixture = async (patch: Partial<Bot> = {}) => {
   runtime.kernel.services.provide("runtime.answerApproval", bridge.approve)
   const store = createProjectStore({ kernel: runtime.kernel })
   const registrations = new Map<string, ToolRegistration>(
-    createSetupTools({ kernel: runtime.kernel, store, discoveryHome: home }).map((tool) => [tool.name, tool]),
+    createSetupTools({ kernel: runtime.kernel, store }).map((tool) => [tool.name, tool]),
   )
   const router = createToolRouter({ kernel: runtime.kernel, registrations })
   const caller: McpCallerContext = {
@@ -123,7 +133,7 @@ const fixture = async (patch: Partial<Bot> = {}) => {
   }
 }
 
-test("discovery lists registered projects and unregistered Git repositories without approval", async () => {
+test("discovery lists only projects and repositories in this bot's granted folders without approval", async () => {
   const f = await fixture()
   expect(f.router.list({ caller: f.caller }).map((tool) => tool.name)).toEqual([
     "project_discover",
@@ -132,6 +142,13 @@ test("discovery lists registered projects and unregistered Git repositories with
     "project_unlink",
     "folder_access_remove",
   ])
+  expect(await f.call("project_discover")).toMatchObject({
+    success: true,
+    structured: { projects: [], repositories: [] },
+  })
+  expect(
+    (await f.request("PATCH", `/bots/${f.bot.id}`, { folders: [{ path: f.home, access: "read-only" }] })).status,
+  ).toBe(200)
   expect(await f.call("project_discover")).toMatchObject({
     success: true,
     structured: { projects: [], repositories: [{ path: f.path, name: "Hodler" }] },
@@ -146,11 +163,246 @@ test("discovery lists registered projects and unregistered Git repositories with
     now: 1,
   })
   expect(project.success).toBe(true)
+  const outside = join(f.root, "outside")
+  mkdirSync(join(outside, ".git"), { recursive: true })
+  expect(
+    f.store.createProject({
+      id: "ungranted",
+      name: "ungranted",
+      path: outside,
+      gitRemote: null,
+      defaultBranch: null,
+      dataDir: join(f.root, "outside-data"),
+      now: 1,
+    }).success,
+  ).toBe(true)
   expect(await f.call("project_discover")).toMatchObject({
     success: true,
     structured: { projects: [{ id: "project" }], repositories: [] },
   })
   expect(f.cards).toEqual([])
+  expect((await f.request("PATCH", `/bots/${f.bot.id}`, { folders: [], projectId: "project" })).status).toBe(200)
+  expect(await f.call("project_discover")).toMatchObject({
+    success: true,
+    structured: { projects: [{ id: "project" }], repositories: [] },
+  })
+  expect((await f.request("PATCH", `/bots/${f.bot.id}`, { projectId: null, anyFolderAccess: true })).status).toBe(200)
+  expect(await f.call("project_discover")).toMatchObject({
+    success: true,
+    structured: { projects: [], repositories: [] },
+  })
+})
+
+const executableRepository = async (f: Awaited<ReturnType<typeof fixture>>) => {
+  mkdirSync(join(f.path, ".git/objects"), { recursive: true })
+  mkdirSync(join(f.path, ".git/refs/heads"), { recursive: true })
+  mkdirSync(join(f.path, ".git/refs/remotes/origin"), { recursive: true })
+  writeFileSync(join(f.path, ".git/HEAD"), "ref: refs/heads/main\n")
+  writeFileSync(join(f.path, ".git/refs/remotes/origin/HEAD"), "ref: refs/remotes/origin/trunk\n")
+  const marker = join(f.root, "fsmonitor-executed")
+  const helper = join(f.root, "fsmonitor")
+  writeFileSync(helper, `#!/bin/sh\nprintf called > '${marker}'\nprintf 'test-token\\0'\n`)
+  chmodSync(helper, 0o700)
+  writeFileSync(
+    join(f.path, ".git/config"),
+    `[core]\nrepositoryformatversion = 0\nbare = false\nfsmonitor = ${helper}\n[remote "origin"]\nurl = https://example.test/repository.git\n`,
+  )
+  writeFileSync(join(f.path, "example.txt"), "fixture\n")
+  // Positive control: the same repository executes the helper during a status scan.
+  await inspectGit({ kernel: f.runtime.kernel, projectPath: f.path })
+  expect(existsSync(marker)).toBe(true)
+  rmSync(marker)
+  return marker
+}
+
+test("discovery preserves sensitive subtree exclusions until that folder is explicitly granted", async () => {
+  const f = await fixture()
+  const protectedPath = join(f.runtime.kernel.paths.appData, "protected-repository")
+  mkdirSync(join(protectedPath, ".git"), { recursive: true })
+  const registeredPath = join(f.runtime.kernel.paths.appData, "registered-repository")
+  mkdirSync(registeredPath)
+  expect(
+    f.store.createProject({
+      id: "protected",
+      name: "protected",
+      path: registeredPath,
+      gitRemote: null,
+      defaultBranch: null,
+      dataDir: join(f.root, "protected-data"),
+      now: 1,
+    }).success,
+  ).toBe(true)
+  expect(
+    (await f.request("PATCH", `/bots/${f.bot.id}`, { folders: [{ path: f.root, access: "read-only" }] })).status,
+  ).toBe(200)
+  expect(await f.call("project_discover")).toMatchObject({
+    success: true,
+    structured: { projects: [], repositories: [{ path: f.path }] },
+  })
+  expect(
+    (
+      await f.request("PATCH", `/bots/${f.bot.id}`, {
+        folders: [
+          { path: f.root, access: "read-only" },
+          { path: protectedPath, access: "read-only" },
+          { path: registeredPath, access: "read-only" },
+        ],
+      })
+    ).status,
+  ).toBe(200)
+  expect(await f.call("project_discover")).toMatchObject({
+    success: true,
+    structured: {
+      projects: [{ id: "protected" }],
+      repositories: expect.arrayContaining([
+        expect.objectContaining({ path: f.path }),
+        expect.objectContaining({ path: protectedPath }),
+      ]),
+    },
+  })
+})
+
+for (const behavior of ["deny", "allow"] as const) {
+  test(`project link ${behavior} never runs repository helpers or starts a process before consent`, async () => {
+    const f = await fixture({ access: "read-only" })
+    const marker = await executableRepository(f)
+    let environmentLoads = 0
+    let processes = 0
+    const shellEnv = f.runtime.kernel.shellEnv
+    const spawnTree = f.runtime.kernel.spawnTree
+    f.runtime.kernel.shellEnv = async () => {
+      environmentLoads++
+      return shellEnv()
+    }
+    f.runtime.kernel.spawnTree = (args) => {
+      processes++
+      return spawnTree(args)
+    }
+    const call = f.call("project_link", { path: f.path })
+    await f.pending()
+    const beforeConsent = { environmentLoads, processes, marker: existsSync(marker) }
+    expect((await f.answer(behavior)).status).toBe(200)
+    const result = await call
+    expect(beforeConsent).toEqual({ environmentLoads: 0, processes: 0, marker: false })
+    expect(existsSync(marker)).toBe(false)
+    expect(result.success).toBe(behavior === "allow")
+    if (behavior === "allow") {
+      expect(processes).toBeGreaterThan(0)
+      expect(f.store.listProjects()).toMatchObject([
+        {
+          path: f.path,
+          gitRemote: "https://example.test/repository.git",
+          defaultBranch: "trunk",
+        },
+      ])
+      expect(f.currentBot()?.projectId).toBe(f.store.listProjects()[0]?.id)
+    } else {
+      expect(environmentLoads).toBe(0)
+      expect(processes).toBe(0)
+      expect(f.store.listProjects()).toEqual([])
+    }
+  })
+}
+
+test("canceling a pending project link starts no process and executes no repository helper", async () => {
+  const f = await fixture({ access: "read-only" })
+  const marker = await executableRepository(f)
+  const shellEnv = f.runtime.kernel.shellEnv
+  const spawnTree = f.runtime.kernel.spawnTree
+  let environmentLoads = 0
+  let processes = 0
+  f.runtime.kernel.shellEnv = async () => {
+    environmentLoads++
+    return shellEnv()
+  }
+  f.runtime.kernel.spawnTree = (args) => {
+    processes++
+    return spawnTree(args)
+  }
+  const controller = new AbortController()
+  const call = f.call("project_link", { path: f.path }, f.caller, controller.signal)
+  await f.pending()
+  controller.abort()
+  expect(await call).toMatchObject({ success: false, errorCode: "CLIENT_DISCONNECTED" })
+  expect(environmentLoads).toBe(0)
+  expect(processes).toBe(0)
+  expect(existsSync(marker)).toBe(false)
+  expect(f.store.listProjects()).toEqual([])
+  expect(f.currentBot()?.projectId).toBeNull()
+})
+
+test("project link revalidates bot settings after post-consent inspection", async () => {
+  const f = await fixture()
+  const shellEnv = f.runtime.kernel.shellEnv
+  f.runtime.kernel.shellEnv = async () => {
+    f.db.query("UPDATE bots SET approvals = 'on-request' WHERE id = ?").run(f.bot.id)
+    return shellEnv()
+  }
+  const call = f.call("project_link", { path: f.path })
+  expect((await f.answer("allow")).status).toBe(200)
+  expect(await call).toMatchObject({ success: false, errorCode: "DENIED" })
+  expect(f.store.listProjects()).toEqual([])
+  expect(f.currentBot()?.projectId).toBeNull()
+})
+
+for (const behavior of ["deny", "allow"] as const) {
+  test(`folder ${behavior} defers walking both new and existing grants until consent`, async () => {
+    const f = await fixture()
+    const existing = join(f.home, "existing")
+    mkdirSync(existing)
+    expect(
+      (await f.request("PATCH", `/bots/${f.bot.id}`, { folders: [{ path: existing, access: "read-only" }] })).status,
+    ).toBe(200)
+    // Either scan would reject these outward links. Neither may run to present
+    // the card or check that a pending approval still targets the same folder.
+    symlinkSync(f.root, join(existing, "outside"))
+    symlinkSync(f.root, join(f.path, "outside"))
+    const call = f.call("folder_access_request", { path: f.path, mode: "read-write" })
+    const card = await f.pending()
+    expect(card.decision).toBe("pending")
+    expect((await f.answer(behavior)).status).toBe(200)
+    expect(await call).toMatchObject({
+      success: false,
+      errorCode: behavior === "deny" ? "DENIED" : "INVALID_ARGS",
+    })
+    expect(f.currentBot()?.folders).toEqual([{ path: existing, access: "read-only" }])
+  })
+}
+
+for (const tool of ["project_link", "folder_access_request"]) {
+  test(`${tool} preserves the original path for card matching and reviews the canonical target`, async () => {
+    const f = await fixture()
+    const alias = join(f.home, "alias")
+    symlinkSync(f.path, alias)
+    const call = f.call(tool, { path: alias, ...(tool === "folder_access_request" ? { mode: "read" } : {}) })
+    expect((await f.pending()).detail).toContain(`"requestedPath":"${alias}"`)
+    expect((await f.pending()).detail).toContain(`"path":"${f.path}"`)
+    expect((await f.answer("allow")).status).toBe(200)
+    expect((await call).success).toBe(true)
+  })
+}
+
+test("project link revalidates the reviewed realpath after post-consent inspection", async () => {
+  const f = await fixture()
+  const alias = join(f.home, "reviewed")
+  symlinkSync(f.path, alias)
+  const shellEnv = f.runtime.kernel.shellEnv
+  let inspectionStarted = false
+  f.runtime.kernel.shellEnv = async () => {
+    inspectionStarted = true
+    rmSync(alias)
+    symlinkSync(f.home, alias)
+    return shellEnv()
+  }
+  const call = f.call("project_link", { path: alias })
+  await f.pending()
+  const inspectedBeforeConsent = inspectionStarted
+  expect((await f.answer("allow")).status).toBe(200)
+  expect(await call).toMatchObject({ success: false, errorCode: "DENIED" })
+  expect(inspectedBeforeConsent).toBe(false)
+  expect(inspectionStarted).toBe(true)
+  expect(f.store.listProjects()).toEqual([])
+  expect(f.currentBot()?.projectId).toBeNull()
 })
 
 for (const access of ["read-only", "workspace-write", "full"] as const) {
@@ -300,6 +552,7 @@ test("a foreign thread and delegated peer cannot change this bot", async () => {
     secrets: false,
   })
   for (const [name, args] of [
+    ["project_discover", {}],
     ["project_link", { path: f.path }],
     ["project_unlink", {}],
     ["folder_access_request", { path: f.path, mode: "read" }],

@@ -3,9 +3,9 @@ import { homedir } from "node:os"
 import { basename, isAbsolute, join, parse } from "node:path"
 import type { Bot, Kernel, ToolContext, ToolRegistration, ToolResult } from "@touri/contracts"
 import { getDelegation } from "../groups/security"
-import { parseBotFolders, resolveBotFolder } from "../kernel/bot-folders"
+import { excludedBotFolders, parseBotFolders, withinFolder } from "../kernel/bot-folders"
 import { discoverProjects } from "./discovery"
-import { inspectGit } from "./git"
+import { inspectGitMetadata } from "./git"
 import type { ProjectStore } from "./types"
 
 const denied = (error: string): ToolResult => ({ success: false, errorCode: "DENIED", error })
@@ -38,11 +38,9 @@ const hostPath = (value: string): string => {
 export const createSetupTools = ({
   kernel,
   store,
-  discoveryHome,
 }: {
   kernel: Kernel
   store: ProjectStore
-  discoveryHome?: string
 }): Array<ToolRegistration & { group: "project" }> => {
   const api = () => kernel.services.use("store.api")
   const self = (ctx: ToolContext): Bot | null => {
@@ -115,18 +113,49 @@ export const createSetupTools = ({
     {
       name: "project_discover",
       group: "project",
-      handler: async ({ ctx }) =>
-        ok(
+      handler: async ({ ctx }) => {
+        const bot = self(ctx)
+        if (!bot) return denied("Somente o próprio bot, sem delegação, pode consultar suas pastas.")
+        const reviewed = snapshot(bot)
+        const connected = bot.projectId ? store.getProject(bot.projectId) : null
+        const explicit = bot.folders ?? []
+        const exclusions = excludedBotFolders(kernel.paths.appData)
+        const isAllowed = (path: string) =>
+          !exclusions.some(
+            (excluded) =>
+              withinFolder(excluded, path) &&
+              !explicit.some((folder) => withinFolder(excluded, folder.path) && withinFolder(folder.path, path)),
+          )
+        const roots = [
+          ...(bot.folders ?? []).map((folder) => folder.path),
+          ...(connected ? [connected.path] : []),
+        ].filter((path) => {
+          try {
+            return isAllowed(path) && hostPath(path) === path
+          } catch {
+            return false
+          }
+        })
+        const projects = store
+          .listProjects()
+          .filter((project) => isAllowed(project.path) && roots.some((root) => withinFolder(root, project.path)))
+        const repositories = await discoverProjects({
+          roots,
+          isAllowed,
+          registeredPaths: projects.map((project) => project.path),
+          signal: ctx.signal,
+        })
+        const latest = self(ctx)
+        if (!latest || snapshot(latest) !== reviewed)
+          return denied("A configuração mudou durante a busca. Tente novamente.")
+        return ok(
           {
-            projects: store.listProjects(),
-            repositories: await discoverProjects({
-              ...(discoveryHome ? { home: discoveryHome } : {}),
-              registeredPaths: store.listProjects().map((project) => project.path),
-              signal: ctx.signal,
-            }),
+            projects,
+            repositories,
           },
-          "Projetos registrados e repositórios encontrados neste Mac.",
-        ),
+          "Projetos e repositórios nas pastas já permitidas a este bot.",
+        )
+      },
     },
     {
       name: "project_link",
@@ -143,7 +172,6 @@ export const createSetupTools = ({
           const path = hostPath(source)
           const project = registered ?? store.getProjectByPath(path)
           const name = project?.name ?? basename(path)
-          const git = project ? null : await inspectGit({ kernel, projectPath: path, signal: ctx.signal })
           const previous = bot.projectId ? store.getProject(bot.projectId) : null
           const targetCurrent = () => {
             try {
@@ -159,6 +187,7 @@ export const createSetupTools = ({
             "project_link",
             {
               path,
+              requestedPath: input.path ?? null,
               name,
               projectId: project?.id ?? null,
               previousProject: previous ? { name: previous.name, path: previous.path } : null,
@@ -167,6 +196,8 @@ export const createSetupTools = ({
             targetCurrent,
           )
           if (!authorized?.()) return denied("O vínculo não foi aprovado ou a configuração mudou.")
+          const git = project ? null : await inspectGitMetadata({ kernel, projectPath: path, signal: ctx.signal })
+          if (!authorized()) return denied("O vínculo não foi aprovado ou a configuração mudou.")
           // Registration happens only after consent, using the same repository
           // path as POST /projects. No await may separate the guard and writes.
           let linked = project
@@ -203,15 +234,11 @@ export const createSetupTools = ({
         if (bot.machine === "cloud") return denied("Pastas deste Mac não estão disponíveis na nuvem.")
         const input = args as { path: string; mode: "read" | "read-write" }
         try {
-          const path = resolveBotFolder(hostPath(input.path))
+          const path = hostPath(input.path)
           const access = input.mode === "read" ? "read-only" : "read-write"
-          const folders = parseBotFolders([
-            ...(bot.folders ?? []).filter((folder) => folder.path !== path),
-            { path, access },
-          ])
           const targetCurrent = () => {
             try {
-              return resolveBotFolder(hostPath(input.path)) === path
+              return hostPath(input.path) === path
             } catch {
               return false
             }
@@ -222,6 +249,7 @@ export const createSetupTools = ({
             "folder_access_request",
             {
               path,
+              requestedPath: input.path,
               mode: input.mode,
               previousMode: bot.folders?.find((folder) => folder.path === path)?.access ?? null,
               nextTurn: bot.machine === "vm",
@@ -229,6 +257,13 @@ export const createSetupTools = ({
             targetCurrent,
           )
           if (!authorized?.()) return denied("O acesso não foi aprovado ou a configuração mudou.")
+          // Walking the requested tree and revalidating existing grants require
+          // consent too. Keep the final guard adjacent to the configuration write.
+          const folders = parseBotFolders([
+            ...(bot.folders ?? []).filter((folder) => folder.path !== path),
+            { path, access },
+          ])
+          if (!authorized()) return denied("O acesso não foi aprovado ou a configuração mudou.")
           return changed(
             bot,
             { folders },

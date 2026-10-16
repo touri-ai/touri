@@ -50,6 +50,21 @@ test("caps results at 50 while retaining newer repositories encountered later", 
   expect(await discoverProjects({ home: f.home })).toEqual(repositories.reverse().slice(0, 50))
 })
 
+test("explicit grants never scan home, common-root symlinks or retargeted grants", async () => {
+  const f = fixture()
+  const allowed = f.repo("granted/repository")
+  const outside = f.repo("outside/repository")
+  const granted = join(f.home, "granted")
+  symlinkSync(join(f.home, "outside"), join(granted, "code"))
+  expect(await discoverProjects({ home: f.home, roots: [] })).toEqual([])
+  expect(await discoverProjects({ home: f.home, roots: [granted] })).toEqual([allowed])
+  expect(await discoverProjects({ roots: [granted], registeredPaths: [allowed.path] })).toEqual([])
+  rmSync(granted, { recursive: true })
+  symlinkSync(join(f.home, "outside"), granted)
+  expect(await discoverProjects({ home: f.home, roots: [granted] })).toEqual([])
+  expect(await discoverProjects({ home: f.home })).toEqual([outside])
+})
+
 test("discovery tolerates missing homes and honors cancellation and a short deadline", async () => {
   const f = fixture()
   expect(await discoverProjects({ home: join(f.home, "missing") })).toEqual([])

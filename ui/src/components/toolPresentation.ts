@@ -244,12 +244,17 @@ export const approvalMatchesTool = (approval: ApprovalPart, part: ToolPart): boo
   if (toolLeaf(name) !== toolLeaf(part.tool)) return false
   const mcpServer = /^mcp__(.+?)__/.exec(part.tool)?.[1]
   if (approval.scope?.server && mcpServer && approval.scope.server !== mcpServer) return false
-  // Setup approvals enrich the original target with the reviewed project name,
-  // canonical path and timing. Compare its target rather than that extra metadata.
-  if (approval.scope?.server === "touri" && mcpServer === "touri" && toolLeaf(name) === "project_link") {
+  // Setup cards retain the original spelling for matching and the canonical
+  // path for presentation. Enrichment must not split one operation into two cards.
+  if (approval.scope?.source === "mcp" && approval.scope.server === "touri" && mcpServer === "touri") {
     const original = asToolRecord(parseToolValue(part.inputJson))
-    if (typeof original?.projectId === "string") return original.projectId === args?.projectId
-    if (typeof original?.path === "string") return original.path === args?.path
+    const target = args?.requestedPath ?? args?.path
+    if (toolLeaf(name) === "project_link") {
+      if (typeof original?.projectId === "string") return original.projectId === args?.projectId
+      if (typeof original?.path === "string") return original.path === target
+    }
+    if (toolLeaf(name) === "folder_access_request")
+      return typeof original?.path === "string" && original.path === target && original.mode === args?.mode
   }
   return canonicalValue(input) === canonicalValue(parseToolValue(part.inputJson))
 }

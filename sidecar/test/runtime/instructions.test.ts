@@ -62,6 +62,8 @@ for (const provider of ["codex", "claude", "opencode"] as const) {
     ])
       expect(instructions).toContain(tool)
     expect(instructions).toContain("instead of describing UI steps")
+    expect(instructions).toContain("only within this bot's already granted folders and connected project")
+    expect(instructions).toContain("if none are available, ask the user for a path")
     expect(instructions).toContain("explicit approval card")
     expect(instructions).toContain("Any-folder access is a user-only settings toggle")
     expect(instructions).toContain("Project and folder changes are saved on this Mac immediately")
