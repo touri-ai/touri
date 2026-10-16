@@ -38,7 +38,7 @@ export const openDatabase = ({ filename }: { filename: string }): Database => {
     databasePath,
     sqliteFlags.SQLITE_OPEN_READWRITE | sqliteFlags.SQLITE_OPEN_CREATE | sqliteFlags.SQLITE_OPEN_NOFOLLOW,
   )
-  database.exec("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;")
+  database.exec("PRAGMA busy_timeout = 5000; PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;")
   database.exec(migrationSql)
   database.exec(notificationsSql)
   database.transaction(() => {

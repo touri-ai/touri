@@ -1,4 +1,4 @@
-import { Database, constants as sqliteFlags } from "bun:sqlite"
+import { Database, SQLiteError, constants as sqliteFlags } from "bun:sqlite"
 import { createHash, randomBytes } from "node:crypto"
 import { dirname } from "node:path"
 import { prepareDatabaseFile } from "../../kernel/files"
@@ -11,6 +11,7 @@ export const deviceTokenTtlMs = 30 * 24 * 60 * 60_000
 const codeAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 const codeGroups = 3
 const codeGroupLength = 4
+const busyTimeoutMs = 5000
 
 export type Device = {
   id: string
@@ -88,15 +89,39 @@ CREATE TABLE IF NOT EXISTS devices (
 );
 `
 
+export const isDatabaseBusy = (error: unknown): boolean =>
+  error instanceof SQLiteError && (error.code === "SQLITE_BUSY" || error.code?.startsWith("SQLITE_BUSY_") === true)
+
+const openAuthDatabase = (filename: string): Database => {
+  const deadline = performance.now() + busyTimeoutMs
+  while (true) {
+    let database: Database | undefined
+    try {
+      database = new Database(
+        filename,
+        sqliteFlags.SQLITE_OPEN_READWRITE | sqliteFlags.SQLITE_OPEN_CREATE | sqliteFlags.SQLITE_OPEN_NOFOLLOW,
+      )
+      for (const statement of ["PRAGMA journal_mode = WAL", schema]) {
+        const remainingMs = Math.max(1, Math.ceil(deadline - performance.now()))
+        database.exec(`PRAGMA busy_timeout = ${remainingMs}`)
+        database.exec(statement)
+      }
+      database.exec(`PRAGMA busy_timeout = ${busyTimeoutMs}`)
+      return database
+    } catch (error) {
+      database?.close()
+      const remainingMs = deadline - performance.now()
+      if (!isDatabaseBusy(error) || remainingMs <= 0) throw error
+      // Recovery and lock upgrades can bypass SQLite's busy handler.
+      Bun.sleepSync(Math.min(50, remainingMs))
+    }
+  }
+}
+
 /** Opens (and creates) the auth database shared by the server and the CLI. */
 export const openAuthStore = ({ filename, now = Date.now }: { filename: string; now?: () => number }): AuthStore => {
   const databasePath = prepareDatabaseFile({ root: dirname(filename), path: filename })
-  const database = new Database(
-    databasePath,
-    sqliteFlags.SQLITE_OPEN_READWRITE | sqliteFlags.SQLITE_OPEN_CREATE | sqliteFlags.SQLITE_OPEN_NOFOLLOW,
-  )
-  database.exec("PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;")
-  database.exec(schema)
+  const database = openAuthDatabase(databasePath)
 
   const createPairingCode = (): CreatePairingCodeResult => {
     const at = now()
