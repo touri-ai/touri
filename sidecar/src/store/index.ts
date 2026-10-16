@@ -12,7 +12,6 @@ import type {
   Kernel,
   Message,
   MessagePart,
-  MessageStatus,
   Provider,
   ReasoningEffort,
   RouteModule,
@@ -46,6 +45,7 @@ import { DEFAULT_BOT_VM_MEMORY_MB, DEFAULT_MACHINE_IDLE_MINUTES, validBotVmMemor
 import { redeemFileGrant } from "./redeemFileGrant"
 import { createSendJournal } from "./send-journal"
 import { appendRejection, recordTranscriptRejection } from "./transcript-rejections"
+import { type RawMessage, readWorkspaceActivity } from "./workspace-activity"
 
 export const name = "store"
 
@@ -111,28 +111,6 @@ type RawThread = {
   created_at: number
   updated_at: number
   archived_at: number | null
-}
-
-type RawMessage = {
-  seq: number
-  generation: number
-  updated_seq: number
-  client_nonce: string | null
-  delivery_status: NonNullable<Message["delivery"]>["status"] | null
-  delivery_deadline: number | null
-  id: string
-  thread_id: string
-  parent_id: string | null
-  role: Message["role"]
-  kind: Message["kind"]
-  status: MessageStatus
-  run_id: string | null
-  text: string
-  parts_json: string
-  sender_json: string | null
-  source: string
-  created_at: number
-  updated_at: number
 }
 
 type RawAttachment = {
@@ -1237,6 +1215,15 @@ export const init = async (kernel: Kernel): Promise<void> => {
   const routes: RouteModule = {
     name: "store",
     routes: [
+      {
+        method: "GET",
+        path: "/workspace/activity",
+        handler: async () => {
+          flushDeltas()
+          const { messages, runs } = readWorkspaceActivity(database)
+          return jsonResponse(200, { messages: messages.map(asMessage), runs })
+        },
+      },
       {
         method: "GET",
         path: "/health",

@@ -26,6 +26,7 @@ export const webEndpoint = (location: Pick<Location, "protocol" | "host">): Endp
 const authHeaders = (token: string): Record<string, string> => (token ? { Authorization: `Bearer ${token}` } : {})
 
 export const apiRouteKeys = [
+  "GET /workspace/activity",
   "GET /groups",
   "POST /groups",
   "PATCH /groups/:id",
