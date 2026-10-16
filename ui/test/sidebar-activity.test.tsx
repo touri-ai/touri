@@ -281,6 +281,63 @@ it("keeps the waiting line and bell in sync for questions, failures and resolved
   expect(entry("bot-delta")).not.toHaveAttribute("data-activity", "needs-you")
 })
 
+it.each(["failed", "succeeded"] as const)("clears failure attention during a retry that later %s", (outcome) => {
+  const { bots, threads, messageBase } = fixture()
+  const api = createMockApi()
+  const failure = {
+    ...api.notify({
+      kind: "turn-failed",
+      botId: "bot-beta",
+      threadId: "thread-beta",
+      title: "Tarefa interrompida",
+      body: "Tente novamente.",
+    }),
+    createdAt: T0 + 100,
+  }
+  const failedRun = {
+    ...run("failed-run", "bot-beta", "thread-beta", "failed"),
+    finishedAt: failure.createdAt,
+  }
+  const reply = makeMessage(messageBase, "failed-reply", "thread-beta", {
+    status: "failed",
+    runId: failedRun.id,
+    updatedAt: failure.createdAt,
+  })
+  const view = renderSidebar({ bots, threads, messages: [reply], runs: [failedRun], notifications: [failure] })
+  expect(entry("bot-beta")).toHaveAttribute("data-activity", "needs-you")
+  expect(within(entry("bot-beta")).getByText("Aguardando você: revise a tarefa interrompida")).toBeVisible()
+  expect(screen.getByRole("button", { name: "Notificações, 1 precisa de atenção" })).toBeVisible()
+
+  const retry = {
+    ...run("retry-run", "bot-beta", "thread-beta", "queued"),
+    trigger: "retry" as const,
+    queuedAt: T0 + 200,
+    startedAt: null,
+  }
+  for (const status of ["queued", "starting", "running"] as const) {
+    view.update({ runs: [failedRun, { ...retry, status }] })
+    expect(entry("bot-beta")).toHaveAttribute("data-activity", "working")
+    expect(entry("bot-beta").querySelector(".bot-row")).toHaveAttribute("data-attention", "running")
+    expect(within(entry("bot-beta")).queryByText(/Aguardando você:|Resposta interrompida/)).toBeNull()
+    expect(screen.getByRole("button", { name: "Notificações", exact: true })).toBeVisible()
+  }
+
+  const finishedAt = T0 + 300
+  view.update({
+    runs: [failedRun, { ...retry, status: outcome, finishedAt }],
+    notifications:
+      outcome === "failed" ? [failure, { ...failure, id: failure.id + 1, createdAt: finishedAt }] : [failure],
+  })
+  if (outcome === "failed") {
+    expect(entry("bot-beta")).toHaveAttribute("data-activity", "needs-you")
+    expect(screen.getByRole("button", { name: "Notificações, 1 precisa de atenção" })).toBeVisible()
+  } else {
+    expect(entry("bot-beta")).not.toHaveAttribute("data-activity", "needs-you")
+    expect(within(entry("bot-beta")).queryByText(/Aguardando você:|Resposta interrompida/)).toBeNull()
+    expect(screen.getByRole("button", { name: "Notificações", exact: true })).toBeVisible()
+  }
+})
+
 it("lets the bell open an approval that arrived before its notification", () => {
   const { bots, threads, messageBase } = fixture()
   const onReviewApproval = vi.fn()

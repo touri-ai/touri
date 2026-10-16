@@ -29,6 +29,7 @@ import { userFacingError } from "./errors"
 import { useDoctorReport } from "./features/doctor/useDoctorReport"
 import { localizeNotice, t } from "./i18n"
 import { useMachineParking } from "./machineIntents"
+import { reconcileFailureNotifications } from "./sidebarAttention"
 import { readWorkspaceState, saveWorkspaceState } from "./workspaceState"
 
 type ProcessEntry = { spec: ProcessSpec; run: ProcessRunState | null }
@@ -1014,16 +1015,16 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
     () => reconcileApprovalMessages(data.messages, data.notifications),
     [data.messages, data.notifications],
   )
-  const approvalNotifications = useMemo(
-    () => reconcileApprovalNotifications(data.notifications, data.messages),
-    [data.messages, data.notifications],
+  const notifications = useMemo(
+    () => reconcileFailureNotifications(reconcileApprovalNotifications(data.notifications, data.messages), data.runs),
+    [data.messages, data.notifications, data.runs],
   )
 
   return {
     data: {
       ...data,
       messages: approvalMessages,
-      notifications: approvalNotifications,
+      notifications,
       doctor: diagnosis.report,
       doctorError: diagnosis.error,
       selectedBotId: selectedBot?.id ?? data.selectedBotId,

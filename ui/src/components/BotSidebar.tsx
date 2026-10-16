@@ -7,7 +7,12 @@ import { latestPreview } from "../botPreview"
 import { paletteShortcutLabel } from "../features/commandPalette/shortcut"
 import { t, threadTitle } from "../i18n"
 import { markdownSummary } from "../markdownSummary"
-import { isFailureNotice, pendingNotifications, relativeThreadDate } from "../sidebarAttention"
+import {
+  isFailureNotice,
+  pendingNotifications,
+  reconcileFailureNotifications,
+  relativeThreadDate,
+} from "../sidebarAttention"
 import { useMascotSnapshot } from "./AvatarRuntime"
 import { BotActionsMenu } from "./BotActionsMenu"
 import { BotAvatar } from "./BotAvatar"
@@ -87,8 +92,12 @@ export const Sidebar = (props: SidebarProps) => {
     () => reconcileApprovalMessages(props.messages, props.notifications),
     [props.messages, props.notifications],
   )
-  const attention = useMemo(() => pendingNotifications(props.notifications, messages), [props.notifications, messages])
-  const ordered = useSidebarOrder({ ...props, messages, attention })
+  const notifications = useMemo(
+    () => reconcileFailureNotifications(props.notifications, props.runs ?? []),
+    [props.notifications, props.runs],
+  )
+  const attention = useMemo(() => pendingNotifications(notifications, messages), [notifications, messages])
+  const ordered = useSidebarOrder({ ...props, messages, notifications, attention })
   return (
     <nav className="bot-sidebar r8-sidebar" aria-label={t("Workspace sidebar")}>
       <div className="traffic-light-row" data-tauri-drag-region>
@@ -163,7 +172,7 @@ export const Sidebar = (props: SidebarProps) => {
                   threads={props.threads.filter((thread) => thread.botId === bot.id)}
                   messages={messages}
                   attention={attention.filter((item) => item.botId === bot.id)}
-                  notifications={props.notifications}
+                  notifications={notifications}
                   selected={
                     props.section === "bots" &&
                     bot.id === props.selectedBotId &&
@@ -218,7 +227,7 @@ export const Sidebar = (props: SidebarProps) => {
             </span>
           </button>
           <NotificationBell
-            notifications={props.notifications}
+            notifications={notifications}
             messages={messages}
             actions={props.notificationActions}
             onOpenChange={props.onNotificationsOpen}
@@ -348,7 +357,9 @@ const BotEntry = ({
       ? "waiting"
       : failed
         ? "failed"
-        : mascotIsBusy(snapshot.state) || botMessages.some((message) => message.status === "streaming")
+        : activity?.kind === "working" ||
+            mascotIsBusy(snapshot.state) ||
+            botMessages.some((message) => message.status === "streaming")
           ? "running"
           : null
   // A dismissed or superseded failure must not keep the sidebar mascot in an error pose.
