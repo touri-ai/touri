@@ -539,7 +539,20 @@ const MessageBubble = ({
       data-motion-insert={inserted}
     >
       <div className="message-meta">
-        {message.role === "assistant" && message.sender && bot && <BotAvatar bot={bot} size={22} state={mascotState} />}
+        {message.role === "assistant" &&
+          message.sender &&
+          (senderBot ? (
+            <BotAvatar bot={senderBot} size={22} state={mascotState} />
+          ) : (
+            <span role="img" aria-label={t("Membro excluído: {name}", { name: message.sender.name })}>
+              <BotAvatar
+                bot={{ id: message.sender.id, color: "#6b7280", avatarShape: "cercle" }}
+                size={22}
+                state="idle"
+                still
+              />
+            </span>
+          ))}
         <span className="message-role">
           {message.role === "user"
             ? t("Você")

@@ -859,6 +859,7 @@ export type UiEvent =
   | { type: 'machine.updated'; machine: MachineState }
   | { type: 'bot.updated'; bot: Bot }
   | { type: 'bot.deleted'; botId: Id }
+  | { type: 'project.created'; project: Project }
   | { type: 'thread.updated'; thread: Thread }
   | { type: 'message.created'; message: Message }
   | { type: 'message.delta'; threadId: Id; messageId: Id; partIndex: number; delta: string; offset?: number; updatedSeq?: number; generation?: number; partType?: 'text' | 'reasoning'; updatedAt?: EpochMs }

@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event"
 import type { ApprovalPart, ToolCallPart } from "@touri/contracts"
 import { afterEach, expect, it, vi } from "vitest"
 import type { ApiRequest } from "../src/api/client"
+import { createApiClient } from "../src/api/client"
 import { createMockApi } from "../src/api/mock"
 import { BotMcpSettings } from "../src/components/BotMcpSettings"
 import { BotSettingsModal } from "../src/components/Modals"
@@ -12,6 +13,58 @@ import { approvalMatchesTool } from "../src/components/toolPresentation"
 import type { WorkspaceActions } from "../src/useWorkspace"
 
 afterEach(cleanup)
+
+it.each(["não é json", "[", "{}", "[42]"])("F024: explains invalid MCP JSON %s without sending it", async (value) => {
+  const user = userEvent.setup()
+  const api = createMockApi()
+  render(<BotMcpSettings api={api} botId="json-bot" />)
+  await screen.findByText(/Nenhum servidor externo conectado/)
+  fireEvent.change(screen.getByLabelText("Nome do servidor MCP"), { target: { value: "test" } })
+  fireEvent.change(screen.getByLabelText("Comando MCP"), { target: { value: "node" } })
+  const args = screen.getByLabelText("Argumentos MCP (lista JSON)")
+  fireEvent.change(args, { target: { value } })
+  expect(args).toHaveAttribute("aria-invalid", "true")
+  expect(args).toHaveAccessibleDescription('Informe uma lista JSON de textos. Exemplo: ["--porta", "3000"] ou [].')
+  args.focus()
+  await user.keyboard("{Tab}{Enter}{Enter}")
+  expect(api.calls.some((call) => call.route === "PUT /bots/:id/mcp/:name")).toBe(false)
+  expect(screen.queryByText(/JSON Parse error|Unexpected/)).toBeNull()
+  fireEvent.change(args, { target: { value: ' ["--porta", "3000"] ' } })
+  expect(args).toHaveAttribute("aria-invalid", "false")
+  expect(screen.getByRole("button", { name: "Conectar servidor MCP" })).toBeEnabled()
+})
+
+it("F025: shows the missing MCP command through the real API error boundary and allows retry", async () => {
+  const user = userEvent.setup()
+  const fetchImpl = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) =>
+    init?.method === "PUT"
+      ? Response.json({ errorCode: "MCP_EXECUTABLE_NOT_FOUND", code: "TOURI-E1012" }, { status: 400 })
+      : Response.json({ servers: [] }),
+  )
+  const api = createApiClient({ endpoint: { baseUrl: "", wsUrl: "", token: "" }, fetchImpl })
+  render(<BotMcpSettings api={api} botId="missing-command" />)
+  fireEvent.change(screen.getByLabelText("Nome do servidor MCP"), { target: { value: "qa-command" } })
+  fireEvent.change(screen.getByLabelText("Comando MCP"), { target: { value: "touri-qa-command-does-not-exist" } })
+  for (let i = 0; i < 2; i++) {
+    await user.click(screen.getByRole("button", { name: "Conectar servidor MCP" }))
+    expect(await screen.findByRole("alert")).toHaveTextContent(/touri-qa-command-does-not-exist.*não foi encontrado/)
+    expect(screen.getByRole("alert")).toHaveTextContent(/máquina deste bot/)
+    expect(screen.getByLabelText("Comando MCP")).toHaveAttribute("aria-invalid", "true")
+  }
+  expect(fetchImpl.mock.calls.filter(([, init]) => init?.method === "PUT")).toHaveLength(2)
+})
+
+it("F025: identifies an invalid server name before attempting a connection", async () => {
+  const api = createMockApi()
+  render(<BotMcpSettings api={api} botId="bad-name" />)
+  await screen.findByText(/Nenhum servidor externo conectado/)
+  fireEvent.change(screen.getByLabelText("Nome do servidor MCP"), { target: { value: "QA comando inexistente" } })
+  fireEvent.change(screen.getByLabelText("Comando MCP"), { target: { value: "touri-qa-command-does-not-exist" } })
+  expect(screen.getByLabelText("Nome do servidor MCP")).toHaveAttribute("aria-invalid", "true")
+  expect(screen.getByLabelText("Nome do servidor MCP")).toHaveAccessibleDescription(/começando por uma letra/)
+  expect(screen.getByRole("button", { name: "Conectar servidor MCP" })).toBeDisabled()
+  expect(api.calls.some((call) => call.route === "PUT /bots/:id/mcp/:name")).toBe(false)
+})
 
 it("F005: requires an absolute folder before connecting the local-files preset", async () => {
   const api = createMockApi()

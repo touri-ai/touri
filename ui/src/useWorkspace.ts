@@ -557,6 +557,8 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
         if (event.type === "thread.updated" && event.thread.groupThreadId) return current
         if (event.type === "bot.updated") return { ...current, bots: uniqueById([...current.bots, event.bot]) }
         if (event.type === "bot.deleted") return withoutBot(current, event.botId)
+        if (event.type === "project.created")
+          return { ...current, projects: uniqueById([...current.projects, event.project]) }
         if (event.type === "browser.tab")
           return {
             ...current,
@@ -665,6 +667,25 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
   useEffect(() => {
     if (enabled && !data.loading && data.selectedThreadId) void loadThread(data.selectedThreadId)
   }, [enabled, data.loading, data.selectedThreadId, projectRevision, loadThread])
+
+  // A bot update may precede its project event (or come from an older sidecar).
+  const missingProjectIds = [...new Set(data.bots.map((bot) => bot.projectId))]
+    .filter((id) => id && !data.projects.some((project) => project.id === id))
+    .sort()
+    .join(",")
+  useEffect(() => {
+    if (!enabled || !missingProjectIds) return
+    let active = true
+    void api.request("GET /projects", {}).then(
+      ({ projects }) => {
+        if (active) setData((current) => ({ ...current, projects: uniqueById([...projects, ...current.projects]) }))
+      },
+      () => undefined,
+    )
+    return () => {
+      active = false
+    }
+  }, [api, enabled, missingProjectIds])
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: each REST reload must refresh processes, even when project ID is unchanged
   useEffect(() => {

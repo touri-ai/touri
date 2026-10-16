@@ -27,6 +27,28 @@ export const ptBR = {
   "de leitura e escrita": "de leitura e escrita",
   "Acesso à pasta {path} removido deste bot.": "Acesso à pasta {path} removido deste bot.",
   atual: "atual",
+  "Membro excluído: {name}": "Membro excluído: {name}",
+  'Informe uma lista JSON de textos. Exemplo: ["--porta", "3000"] ou [].':
+    'Informe uma lista JSON de textos. Exemplo: ["--porta", "3000"] ou [].',
+  "O comando MCP “{command}” não foi encontrado. Confira a instalação e o PATH na máquina deste bot.":
+    "O comando MCP “{command}” não foi encontrado. Confira a instalação e o PATH na máquina deste bot.",
+  "Use de 1 a 64 letras sem acentos, números, _ ou -, começando por uma letra. O nome touri é reservado.":
+    "Use de 1 a 64 letras sem acentos, números, _ ou -, começando por uma letra. O nome touri é reservado.",
+  "do projeto": "do projeto",
+  "Listar processos": "Listar processos",
+  "Consultar os processos do projeto e seus estados": "Consultar os processos do projeto e seus estados",
+  "Definir processo": "Definir processo",
+  "Definir o processo {name}{command}": "Definir o processo {name}{command}",
+  "Iniciar processo": "Iniciar processo",
+  "Iniciar o processo {name}": "Iniciar o processo {name}",
+  "Parar processo": "Parar processo",
+  "Parar o processo {name}": "Parar o processo {name}",
+  "Reiniciar processo": "Reiniciar processo",
+  "Reiniciar o processo {name}": "Reiniciar o processo {name}",
+  "Ler logs": "Ler logs",
+  "Consultar os logs do processo {name}": "Consultar os logs do processo {name}",
+  "Abrir prévia": "Abrir prévia",
+  "Abrir a prévia do projeto em {path}": "Abrir a prévia do projeto em {path}",
   "Pasta permitida (caminho absoluto)": "Pasta permitida (caminho absoluto)",
   "Informe pelo menos uma pasta com caminho absoluto antes de conectar.":
     "Informe pelo menos uma pasta com caminho absoluto antes de conectar.",
@@ -1267,6 +1289,28 @@ export const ptBR = {
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  "Membro excluído: {name}": "Deleted member: {name}",
+  'Informe uma lista JSON de textos. Exemplo: ["--porta", "3000"] ou [].':
+    'Enter a JSON array of strings. Example: ["--port", "3000"] or [].',
+  "O comando MCP “{command}” não foi encontrado. Confira a instalação e o PATH na máquina deste bot.":
+    "The MCP command “{command}” was not found. Check the installation and PATH on this bot's machine.",
+  "Use de 1 a 64 letras sem acentos, números, _ ou -, começando por uma letra. O nome touri é reservado.":
+    "Use 1 to 64 unaccented letters, numbers, _ or -, starting with a letter. The name touri is reserved.",
+  "do projeto": "for the project",
+  "Listar processos": "List processes",
+  "Consultar os processos do projeto e seus estados": "View the project's processes and their status",
+  "Definir processo": "Define process",
+  "Definir o processo {name}{command}": "Define process {name}{command}",
+  "Iniciar processo": "Start process",
+  "Iniciar o processo {name}": "Start process {name}",
+  "Parar processo": "Stop process",
+  "Parar o processo {name}": "Stop process {name}",
+  "Reiniciar processo": "Restart process",
+  "Reiniciar o processo {name}": "Restart process {name}",
+  "Ler logs": "Read logs",
+  "Consultar os logs do processo {name}": "View logs for process {name}",
+  "Abrir prévia": "Open preview",
+  "Abrir a prévia do projeto em {path}": "Open the project preview at {path}",
   "Há um login disponível neste Mac.": "A login is available on this Mac.",
   "Há um login disponível neste servidor.": "A login is available on this server.",
   "Usar login deste Mac": "Use this Mac’s login",
