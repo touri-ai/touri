@@ -81,6 +81,40 @@
       "x-touri": { "group": "core", "mvp": true, "mutates": true }
     },
     {
+      "name": "project_discover",
+      "description": "List projects and Git repositories only in this bot's already granted folders and connected project. Never searches the home directory on its own. Read-only; no approval required. Ask the user for a path when nothing is available.",
+      "inputSchema": { "type": "object", "additionalProperties": false, "properties": {} },
+      "x-touri": { "group": "project", "mvp": true, "mutates": false }
+    },
+    {
+      "name": "project_link",
+      "description": "Register a Mac folder as a project if needed and link it to this calling bot only. Supply exactly one of path or projectId. Always requires explicit user approval in chat, even with approvals disabled. VM changes apply next turn.",
+      "inputSchema": { "type": "object", "additionalProperties": false,
+        "properties": { "path": { "type": "string", "minLength": 1 }, "projectId": { "type": "string", "minLength": 1 } },
+        "minProperties": 1, "maxProperties": 1 },
+      "x-touri": { "group": "project", "mvp": true, "mutates": true, "deadlineMs": 1800000 }
+    },
+    {
+      "name": "folder_access_request",
+      "description": "Request access to a specific Mac folder for this calling bot only, with mode read or read-write. Always requires explicit user approval. Cannot enable any-folder access. VM changes apply next turn.",
+      "inputSchema": { "type": "object", "required": ["path", "mode"], "additionalProperties": false,
+        "properties": { "path": { "type": "string", "minLength": 1 }, "mode": { "enum": ["read", "read-write"] } } },
+      "x-touri": { "group": "project", "mvp": true, "mutates": true, "deadlineMs": 1800000 }
+    },
+    {
+      "name": "project_unlink",
+      "description": "Unlink the project from this calling bot only. Narrows access without approval and posts a notice in chat. VM changes apply next turn.",
+      "inputSchema": { "type": "object", "additionalProperties": false, "properties": {} },
+      "x-touri": { "group": "project", "mvp": true, "mutates": true }
+    },
+    {
+      "name": "folder_access_remove",
+      "description": "Remove a specific folder grant from this calling bot only. Narrows access without approval and posts a notice in chat. Cannot change the user-only any-folder toggle. VM changes apply next turn.",
+      "inputSchema": { "type": "object", "required": ["path"], "additionalProperties": false,
+        "properties": { "path": { "type": "string", "minLength": 1 } } },
+      "x-touri": { "group": "project", "mvp": true, "mutates": true }
+    },
+    {
       "name": "project_info",
       "description": "Describe this bot's project: path, git branch/dirty state, defined processes with status and ports, available previews, and the NAMES (never values) of configured secrets.",
       "inputSchema": { "type": "object", "additionalProperties": false, "properties": {} },
