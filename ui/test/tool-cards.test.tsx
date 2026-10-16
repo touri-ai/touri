@@ -10,6 +10,7 @@ import { MarkdownContent } from "../src/components/MarkdownContent"
 import { ToolCallCard } from "../src/components/ToolCallCard"
 import { ToolCallList } from "../src/components/ToolCallList"
 import { approvalMatchesTool, type ToolPart } from "../src/components/toolPresentation"
+import { t } from "../src/i18n"
 
 const timestamp = new Date("2026-10-13T20:21:00Z").getTime()
 const tool: ToolCallPart = {
@@ -491,15 +492,37 @@ it("never approves on Enter on the card or either approval button", async () => 
   expect(request.mock.calls[0]?.[1]).toMatchObject({ decision: "approved" })
 })
 
-it("saves a screenshot through the native save_file command with its decoded bytes", async () => {
-  const invoke = vi.fn(async (_command: string, _args: unknown) => ({ path: "/tmp/bash-1-1.png" }))
-  Object.defineProperty(window, "__TAURI_INTERNALS__", { configurable: true, value: { invoke } })
-  const envelope = { success: true, content: [{ type: "image", data: "aGVsbG8=", mimeType: "image/png" }] }
-  render(
-    <ToolCallCard part={{ ...tool, tool: "computer_screenshot", ok: true, outputJson: JSON.stringify(envelope) }} />,
-  )
-  fireEvent.click(screen.getByRole("button", { name: "Baixar imagem" }))
-  expect(await screen.findByText("Salvo em /tmp/bash-1-1.png")).toBeVisible()
-  expect(invoke).toHaveBeenCalledWith("save_file", { name: "bash-1-1.png", dataBase64: "aGVsbG8=" }, undefined)
-  delete (window as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__
+it.each([
+  ["pt-BR", "Baixar imagem"],
+  ["en", "Download image"],
+] as const)("translates the screenshot save action in %s", (locale, label) => {
+  expect(t("Baixar imagem", {}, locale)).toBe(label)
+})
+
+it("saves the original screenshot as approved-1.png only after the computer card's save button is clicked", async () => {
+  const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg=="
+  const invoke = vi.fn(async (_command: string, _args: unknown) => ({ path: "/tmp/approved-1.png" }))
+  vi.stubGlobal("__TAURI_INTERNALS__", { invoke })
+  try {
+    render(
+      <ToolCallCard
+        part={{
+          ...tool,
+          callId: "approved",
+          tool: "computer_screenshot",
+          ok: true,
+          outputJson: JSON.stringify([{ type: "image", data: png, mimeType: "image/png" }]),
+        }}
+      />,
+    )
+    const card = within(screen.getByRole("article", { name: "Ferramenta · Computador" }))
+    expect(card.getByRole("button", { name: "Abrir captura 1 em tamanho original" })).toBeVisible()
+    expect(card.queryByRole("link", { name: "Baixar imagem" })).toBeNull()
+    expect(invoke).not.toHaveBeenCalled()
+    fireEvent.click(card.getByRole("button", { name: "Baixar imagem" }))
+    expect(await card.findByText("Salvo em /tmp/approved-1.png")).toBeVisible()
+    expect(invoke).toHaveBeenCalledExactlyOnceWith("save_file", { name: "approved-1.png", dataBase64: png }, undefined)
+  } finally {
+    vi.unstubAllGlobals()
+  }
 })
