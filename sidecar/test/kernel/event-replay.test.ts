@@ -136,6 +136,55 @@ test("cold clients and oversized gaps get one resync frame instead of the whole 
   }
 })
 
+test("a gap with more events than the cap resyncs without reading the stored bodies back", async () => {
+  const f = await fixture()
+  try {
+    insertReply(f)
+    streamCommands(f, 3, 10)
+    const bus = createEventBus(f.db)
+    const since = (bus.replay(0).at(-1) as UiEventEnvelope).seq
+    for (let index = 0; index <= REPLAY_LIMITS.events; index++)
+      f.runtime.kernel.publish({ type: "import.progress", importId: "x", phase: "done", done: index, total: 1 })
+    const reads: string[] = []
+    const query = f.db.query.bind(f.db)
+    f.db.query = ((sql: string) => {
+      reads.push(sql)
+      return query(sql)
+    }) as typeof f.db.query
+    expect(bus.catchUp(since)).toMatchObject([{ event: { type: "transcript.resync" } }])
+    expect(reads.some((sql) => sql.includes("event_json"))).toBe(false)
+    f.db.query = query
+    bus.stop()
+  } finally {
+    f.close()
+  }
+})
+
+test("a reference whose sequence now holds another entry falls back to the current message", async () => {
+  const f = await fixture()
+  try {
+    insertReply(f)
+    streamCommands(f, 2, 10)
+    const ref = f.db
+      .query("SELECT seq FROM ui_event_log WHERE json_extract(event_json, '$.ref') = 1 LIMIT 1")
+      .get() as {
+      seq: number
+    }
+    const bus = createEventBus(f.db)
+    const original = f.db.query.bind(f.db)
+    f.db.query = ((sql: string) =>
+      sql.startsWith("SELECT event_json FROM transcript_entries")
+        ? { get: () => ({ event_json: JSON.stringify({ legacy: true, threadId: "t", messageId: "other" }) }) }
+        : original(sql)) as typeof f.db.query
+    const event = bus.replay(ref.seq - 1)[0]?.event
+    f.db.query = original
+    expect(event).toMatchObject({ type: "message.created", message: { id: "reply", parts: [{}, {}] } })
+    bus.stop()
+  } finally {
+    f.close()
+  }
+})
+
 test("a socket reconnecting behind a large backlog stays open and receives live events promptly", async () => {
   const f = await fixture()
   const NativeSocket = WebSocket as unknown as { new (url: string, options: WebSocketOptions): WebSocket }

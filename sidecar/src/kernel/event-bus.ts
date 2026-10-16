@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite"
-import type { Message, UiEvent, UiEventEnvelope } from "@touri/contracts"
+import type { UiEvent, UiEventEnvelope } from "@touri/contracts"
 import type { ServerWebSocket } from "bun"
 import { compactTranscript, materializeTranscript } from "./transcript-storage"
 
@@ -104,13 +104,17 @@ export const createEventBus = (database?: Database) => {
     })()
   }
 
-  const hydrate = (raw: string): UiEvent => {
-    const event = JSON.parse(raw) as UiEvent | MessageRef
-    if (!isMessageRef(event) || !database) return event as UiEvent
+  const hydrateRef = (event: MessageRef): UiEvent => {
+    if (!database) return { type: "transcript.superseded" }
     const entry = database
       .query("SELECT event_json FROM transcript_entries WHERE thread_id = ? AND seq = ?")
       .get(event.threadId, event.seq) as { event_json: string } | null
-    if (entry) return JSON.parse(entry.event_json) as UiEvent
+    const revision = entry ? (JSON.parse(entry.event_json) as UiEvent) : null
+    if (
+      (revision?.type === "message.created" || revision?.type === "message.updated") &&
+      revision.message.id === event.messageId
+    )
+      return revision
     // Retention removed that revision: the current projection is newer and supersedes it.
     const current = database
       .query("SELECT payload FROM transcript_message_events WHERE thread_id = ? AND id = ?")
@@ -119,26 +123,33 @@ export const createEventBus = (database?: Database) => {
       ? ({ type: event.type, ...JSON.parse(current.payload) } as UiEvent)
       : { type: "transcript.superseded" }
   }
+  const hydrate = (raw: string): UiEvent => {
+    const event = JSON.parse(raw) as UiEvent | MessageRef
+    return isMessageRef(event) ? hydrateRef(event) : event
+  }
 
   const head = (): number =>
     (database?.query("SELECT seq FROM sqlite_sequence WHERE name = 'ui_event_log'").get() as { seq: number } | null)
       ?.seq ?? 0
 
-  const replay = (since: number): Array<UiEventEnvelope> => {
+  type Row = { seq: number; at: number; event_json: string }
+  /** The stored rows after `since`, or null when that cursor is outside the retained log. */
+  const rowsAfter = (since: number): Array<Row> | null => {
     if (!database) return []
     const floor = Number(
       (database.query("SELECT value FROM schema_meta WHERE key = 'ui_event_floor_seq'").get() as { value: string })
         .value,
     )
-    const last = head()
-    if (since < floor || since > last) return [{ seq: last, at: Date.now(), event: { type: "transcript.resync" } }]
-    return (
-      database.query("SELECT seq, at, event_json FROM ui_event_log WHERE seq > ? ORDER BY seq").all(since) as Array<{
-        seq: number
-        at: number
-        event_json: string
-      }>
-    ).map((row) => ({ seq: row.seq, at: row.at, event: hydrate(row.event_json) }))
+    if (since < floor || since > head()) return null
+    return database
+      .query("SELECT seq, at, event_json FROM ui_event_log WHERE seq > ? ORDER BY seq")
+      .all(since) as Array<Row>
+  }
+
+  const replay = (since: number): Array<UiEventEnvelope> => {
+    const rows = rowsAfter(since)
+    if (!rows) return [{ seq: head(), at: Date.now(), event: { type: "transcript.resync" } }]
+    return rows.map((row) => ({ seq: row.seq, at: row.at, event: hydrate(row.event_json) }))
   }
 
   /**
@@ -146,33 +157,50 @@ export const createEventBus = (database?: Database) => {
    * gap larger than REPLAY_LIMITS get one resync frame and reload over REST: streaming a long
    * history through the socket overran its send buffer and kept the UI minutes behind live
    * events. Within a gap, each message is sent once, at its first position, in its latest
-   * revision; later revisions become no-ops so `seq` stays contiguous.
+   * revision; later revisions become no-ops so `seq` stays contiguous. Only that latest
+   * revision is read back from the transcript, and an oversized gap is refused before its
+   * bodies are read.
    */
   const catchUp = (since: number): Array<UiEventEnvelope> => {
     const resync = (): Array<UiEventEnvelope> => [{ seq: head(), at: Date.now(), event: { type: "transcript.resync" } }]
     if (!database || since === 0) return resync()
-    const envelopes = replay(since)
-    if (envelopes.length > REPLAY_LIMITS.events) return resync()
-    const latest = new Map<string, Message>()
-    for (const { event } of envelopes) {
-      const key = messageKey(event)
-      if (key && (event.type === "message.created" || event.type === "message.updated")) latest.set(key, event.message)
-    }
-    const sent = new Set<string>()
-    let bytes = 0
-    const coalesced = envelopes.map((envelope): UiEventEnvelope => {
-      let event = envelope.event
-      const key = messageKey(event)
-      if (key && (event.type === "message.created" || event.type === "message.updated")) {
-        event = sent.has(key)
-          ? { type: "transcript.superseded" }
-          : { type: event.type, message: latest.get(key) ?? event.message }
-        sent.add(key)
-      }
-      bytes += payloadFor({ ...envelope, event }).length
-      return { ...envelope, event }
+    const pending = (database.query("SELECT COUNT(*) AS n FROM ui_event_log WHERE seq > ?").get(since) as { n: number })
+      .n
+    if (pending > REPLAY_LIMITS.events) return resync()
+    const rows = rowsAfter(since)
+    if (!rows) return resync()
+    const stored = rows.map((row) => JSON.parse(row.event_json) as UiEvent | MessageRef)
+    const keyOf = (event: UiEvent | MessageRef): string | null =>
+      isMessageRef(event) ? JSON.stringify([event.threadId, event.messageId]) : messageKey(event)
+    const latest = new Map<string, number>()
+    stored.forEach((event, index) => {
+      const key = keyOf(event)
+      if (key) latest.set(key, index)
     })
-    return bytes > REPLAY_LIMITS.bytes ? resync() : coalesced
+    const sent = new Set<string>()
+    const coalesced: Array<UiEventEnvelope> = []
+    let bytes = 0
+    for (const [index, row] of rows.entries()) {
+      const value = stored[index] as UiEvent | MessageRef
+      const key = keyOf(value)
+      let event: UiEvent
+      if (!key) event = value as UiEvent
+      else if (sent.has(key)) event = { type: "transcript.superseded" }
+      else {
+        sent.add(key)
+        const newest = stored[latest.get(key) ?? index] as UiEvent | MessageRef
+        const revision = isMessageRef(newest) ? hydrateRef(newest) : newest
+        event =
+          revision.type === "message.created" || revision.type === "message.updated"
+            ? { type: value.type as "message.created" | "message.updated", message: revision.message }
+            : { type: "transcript.superseded" }
+      }
+      const envelope = { seq: row.seq, at: row.at, event }
+      bytes += payloadFor(envelope).length
+      if (bytes > REPLAY_LIMITS.bytes) return resync()
+      coalesced.push(envelope)
+    }
+    return coalesced
   }
   const flush = (): void => {
     scheduled = false
