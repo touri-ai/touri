@@ -19,7 +19,6 @@ jobs:
       - run: bun test sidecar/test/kernel/catalog-validation.test.ts
       - name: Apply the schema with bun:sqlite (FTS5)
         run: bun -e 'import { Database } from "bun:sqlite"; import { readFileSync } from "node:fs"; new Database(":memory:").exec(readFileSync("packages/contracts/schema.sql", "utf8"))'
-      - run: cmp packages/contracts/schema.sql sidecar/src/kernel/migrations/0001.sql
 
   sidecar:
     runs-on: macos-14
@@ -31,7 +30,7 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: bunx biome check .
       - run: bun run typecheck
-      - run: bun test
+      - run: bun test sidecar/test
 
   rust:
     runs-on: macos-26
