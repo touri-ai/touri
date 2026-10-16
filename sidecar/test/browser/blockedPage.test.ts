@@ -6,32 +6,45 @@ const page = (input: Partial<BlockedPageInput>): BlockedPageInput => ({
   title: "Product 123",
   text: "A long product description with price, sizes and reviews. ".repeat(20),
   frames: [],
+  challengeElements: [],
   status: 200,
   headers: {},
   ...input,
 })
 
 describe("classifyBlockedPage", () => {
-  test("Google unusual-traffic interstitial, by path or by text", () => {
+  test("Google unusual-traffic interstitial needs its URL or form plus a status or its message", () => {
     expect(
       classifyBlockedPage(page({ url: "https://www.google.com/sorry/index?continue=x", title: "", status: 429 })),
     ).toEqual({ vendor: "Google", reason: "tráfego incomum" })
     expect(
       classifyBlockedPage(
         page({
-          url: "https://www.google.com.br/search?q=test",
+          url: "https://www.google.com.br/sorry/index?continue=x",
           text: "Nossos sistemas detectaram tráfego incomum na sua rede de computadores.",
+          challengeElements: ["captcha-form"],
+          status: null,
         }),
       ),
     ).toMatchObject({ vendor: "Google" })
   })
 
-  test("an article quoting Google's message on another site is not blocked", () => {
+  test("a Google results page or article that quotes the interstitial message is not blocked", () => {
+    const quote = 'Why does Google say "Our systems have detected unusual traffic from your computer network"?'
     expect(
       classifyBlockedPage(
-        page({ text: 'Users see "unusual traffic from your computer network" when they search too fast.' }),
+        page({
+          url: "https://www.google.com/search?q=unusual+traffic",
+          title: "unusual traffic - Google",
+          text: quote,
+        }),
       ),
     ).toBeNull()
+    expect(
+      classifyBlockedPage(page({ url: "https://support.google.com/websearch/answer/86640", text: quote })),
+    ).toBeNull()
+    expect(classifyBlockedPage(page({ text: quote }))).toBeNull()
+    expect(classifyBlockedPage(page({ url: "https://www.google.com/sorry/index", status: 200 }))).toBeNull()
   })
 
   test("Akamai Access Denied with a reference number", () => {
@@ -101,10 +114,35 @@ describe("classifyBlockedPage", () => {
     ).toBeNull()
   })
 
-  test("HUMAN (PerimeterX) press-and-hold challenge", () => {
+  test("an article that quotes the Cloudflare block page is not blocked", () => {
     expect(
-      classifyBlockedPage(page({ text: "Press & Hold to confirm you are a human (and not a bot).", status: 403 })),
+      classifyBlockedPage(
+        page({
+          title: "How to fix Sorry, you have been blocked",
+          text: 'The page says "Sorry, you have been blocked" and shows a Cloudflare Ray ID at the bottom.',
+        }),
+      ),
+    ).toBeNull()
+  })
+
+  test("HUMAN (PerimeterX) press-and-hold challenge needs a 403 or its widget", () => {
+    const challenge = "Press & Hold to confirm you are a human (and not a bot)."
+    expect(classifyBlockedPage(page({ text: challenge, status: 403 }))).toMatchObject({ vendor: "HUMAN (PerimeterX)" })
+    expect(
+      classifyBlockedPage(page({ text: challenge, challengeElements: ["px-captcha"], status: null })),
     ).toMatchObject({ vendor: "HUMAN (PerimeterX)" })
+  })
+
+  test("a troubleshooting article that quotes the press-and-hold message is not blocked", () => {
+    expect(
+      classifyBlockedPage(
+        page({
+          url: "https://help.example.test/articles/press-and-hold",
+          title: "What does Press & Hold mean?",
+          text: 'Some shops show "Press & Hold to confirm you are a human (and not a bot)." Here is why.',
+        }),
+      ),
+    ).toBeNull()
   })
 
   test("captcha frames count only on a challenge status or an almost empty page", () => {

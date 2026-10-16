@@ -4,6 +4,8 @@ export type BlockedPageInput = {
   title: string
   text: string
   frames: Array<string>
+  /** Ids from CHALLENGE_ELEMENT_IDS that exist on the page. */
+  challengeElements: Array<string>
   /** HTTP status of the main document, or null when it was served from cache or not seen. */
   status: number | null
   /** Main document response headers, names in lower case. */
@@ -11,6 +13,9 @@ export type BlockedPageInput = {
 }
 
 export type BlockedPage = { vendor: string; reason: string }
+
+/** Element ids that only challenge pages render: Google's interstitial form and the HUMAN widget. */
+export const CHALLENGE_ELEMENT_IDS = ["captcha-form", "px-captcha"] as const
 
 const CHALLENGE_STATUS = new Set([403, 429, 503])
 const SHORT_PAGE_TEXT = 400
@@ -53,7 +58,9 @@ const isGoogleHost = (host: string): boolean => /(^|\.)google\.[a-z.]+$/.test(ho
 
 /**
  * Recognizes a challenge or block page served instead of the content the bot asked for.
- * Only well-known signatures count, so an ordinary page that embeds a captcha is not blocked.
+ * Page text alone never counts: an article or a search result can quote a challenge message, and a bot
+ * wrongly stopped is as broken as a blocked one. Each text signature needs a corroborating signal
+ * (the challenge URL, element, title, status or header).
  */
 export const classifyBlockedPage = (page: BlockedPageInput): BlockedPage | null => {
   const host = hostOf(page.url)
@@ -61,10 +68,13 @@ export const classifyBlockedPage = (page: BlockedPageInput): BlockedPage | null 
   const text = page.text
   const server = (page.headers.server ?? "").toLowerCase()
   const challengeStatus = page.status !== null && CHALLENGE_STATUS.has(page.status)
+  const element = (id: (typeof CHALLENGE_ELEMENT_IDS)[number]): boolean => page.challengeElements.includes(id)
 
-  if (isGoogleHost(host) && pathOf(page.url).startsWith("/sorry/"))
-    return { vendor: "Google", reason: "tráfego incomum" }
-  if (isGoogleHost(host) && /unusual traffic from your computer network|detectaram tráfego incomum/i.test(text))
+  if (
+    isGoogleHost(host) &&
+    (pathOf(page.url).startsWith("/sorry/") || element("captcha-form")) &&
+    (challengeStatus || /unusual traffic from your computer network|detectaram tráfego incomum/i.test(text))
+  )
     return { vendor: "Google", reason: "tráfego incomum" }
 
   if (/^access denied$/i.test(title) && /reference\s*#\s*\d+\.[0-9a-f.]+/i.test(text))
@@ -76,14 +86,21 @@ export const classifyBlockedPage = (page: BlockedPageInput): BlockedPage | null 
   const cloudflare = server === "cloudflare" || /cloudflare|ray id/i.test(text)
   if ((page.headers["cf-mitigated"] ?? "").toLowerCase() === "challenge")
     return { vendor: "Cloudflare", reason: "verificação de navegador" }
-  if (/^(just a moment|um momento)/i.test(title) && cloudflare)
+  if (/^(just a moment|um momento)(\.\.\.|…)?$/i.test(title) && cloudflare)
     return { vendor: "Cloudflare", reason: "verificação de navegador" }
-  if (/cloudflare ray id/i.test(text) && /you have been blocked|you are unable to access/i.test(text))
+  if (
+    (challengeStatus || /^attention required!? \| cloudflare$/i.test(title)) &&
+    /cloudflare ray id/i.test(text) &&
+    /you have been blocked|you are unable to access/i.test(text)
+  )
     return { vendor: "Cloudflare", reason: "acesso negado" }
   if (server === "cloudflare" && challengeStatus && /verify you are human|verifique se você é humano/i.test(text))
     return { vendor: "Cloudflare", reason: "verificação de navegador" }
 
-  if (/press\s*(&|and)\s*hold to confirm you are\s*a human/i.test(text))
+  if (
+    (page.status === 403 || element("px-captcha")) &&
+    /press\s*(&|and)\s*hold to confirm you are\s*a human/i.test(text)
+  )
     return { vendor: "HUMAN (PerimeterX)", reason: "verificação de navegador" }
 
   const frameVendor = page.frames.map(captchaFrame).find((vendor) => vendor !== null)

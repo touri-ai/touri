@@ -13,7 +13,7 @@ import type {
   ToolResult,
 } from "@touri/contracts"
 import { approveSecretRelease } from "../approvals/secrets"
-import { classifyBlockedPage, describeBlockedPage } from "./blockedPage"
+import { CHALLENGE_ELEMENT_IDS, classifyBlockedPage, describeBlockedPage } from "./blockedPage"
 import { type ChromeLauncher, createChromeLauncher, deriveChromeWindowConfig } from "./launcher"
 import { assignLegacyCookies } from "./legacyCookieMigration"
 import { describeNavigationFailure, isChromeErrorPage, isLoadableUrl, networkErrorCode, stripHash } from "./navigation"
@@ -1855,9 +1855,15 @@ export const createBrowserEngine = ({
   /** SITE_BLOCKED when the loaded page is a known anti-bot challenge instead of the requested content. */
   const blockedPageFailure = async (tab: TabState): Promise<OperationFailure | null> => {
     if (!client || !tab.sessionId) return null
-    const page = await runtimeValue<{ href: string; title: string; text: string; frames: Array<string> }>(
+    const page = await runtimeValue<{
+      href: string
+      title: string
+      text: string
+      frames: Array<string>
+      challengeElements: Array<string>
+    }>(
       client,
-      "({ href: location.href, title: document.title, text: (document.body && document.body.innerText || '').slice(0, 2000), frames: Array.from(document.querySelectorAll('iframe')).slice(0, 20).map((frame) => frame.src || '') })",
+      `({ href: location.href, title: document.title, text: (document.body && document.body.innerText || '').slice(0, 2000), frames: Array.from(document.querySelectorAll('iframe')).slice(0, 20).map((frame) => frame.src || ''), challengeElements: ${JSON.stringify(CHALLENGE_ELEMENT_IDS)}.filter((id) => document.getElementById(id)) })`,
       tab.sessionId,
     ).catch(() => null)
     if (!page) return null
@@ -1868,6 +1874,7 @@ export const createBrowserEngine = ({
       title: page.title,
       text: page.text,
       frames: page.frames,
+      challengeElements: page.challengeElements,
       status: response?.status ?? null,
       headers: response?.headers ?? {},
     })
