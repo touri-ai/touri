@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test"
 import type { createMockApi } from "../../src/api/mock"
+import { showBotPanel } from "./home-navigation"
 
 const evidence = "../docs/qa/r4-shots"
 type VisualWindow = Window & { r4Api: ReturnType<typeof createMockApi> }
@@ -73,11 +74,12 @@ test("r4 short numbers stay on one line and multiline composer grows", async ({ 
 })
 
 test("r4 permissions focus, integration guidance and complete creation are available", async ({ page }) => {
-  await page.getByRole("button", { name: "Permissões do bot" }).click()
+  await showBotPanel(page)
+  await page.getByRole("button", { name: "Ajustar permissões" }).click()
   const dialog = page.getByRole("dialog", { name: "Permissões do bot" })
   await expect(dialog.getByRole("combobox", { name: "Acesso", exact: true })).toBeFocused()
   await expect(dialog.getByRole("combobox", { name: "Acesso", exact: true })).toBeInViewport()
-  await dialog.getByRole("tab", { name: "MCP", exact: true }).click()
+  await dialog.getByRole("tab", { name: "Ferramentas", exact: true }).click()
   await dialog.getByRole("button", { name: "Abrir Integrações" }).click()
   await expect(page.getByRole("heading", { name: "Integrações", exact: true })).toBeVisible()
   await page.getByText("Como conectar").first().click()
@@ -90,6 +92,8 @@ test("r4 permissions focus, integration guidance and complete creation are avail
 })
 
 test("r4 Preview empty state has readable contrast and restores on reload", async ({ page }) => {
+  if (!(await page.getByRole("button", { name: "Preview do projeto" }).isVisible()))
+    await page.getByRole("button", { name: "Painel do bot", exact: true }).click()
   await page.getByRole("button", { name: "Preview do projeto" }).click()
   const heading = page.locator(".screen-empty strong").first()
   await expect(heading).toBeVisible()

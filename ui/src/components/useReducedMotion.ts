@@ -1,13 +1,13 @@
 import { useEffect, useState } from "react"
+import { isMotionReduced, observeMotionPreference } from "../design/motionPreference"
 
 export const useReducedMotion = (): boolean => {
-  const [reduced, setReduced] = useState(() => window.matchMedia("(prefers-reduced-motion: reduce)").matches)
+  const [reduced, setReduced] = useState(isMotionReduced)
   useEffect(() => {
-    const media = window.matchMedia("(prefers-reduced-motion: reduce)")
-    const change = (): void => setReduced(media.matches)
-    media.addEventListener("change", change)
+    const change = (): void => setReduced(isMotionReduced())
+    const stop = observeMotionPreference(change)
     change()
-    return () => media.removeEventListener("change", change)
+    return stop
   }, [])
   return reduced
 }

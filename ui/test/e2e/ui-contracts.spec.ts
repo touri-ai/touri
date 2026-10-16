@@ -27,14 +27,14 @@ for (const theme of ["light", "dark"]) {
 }
 
 for (const coarse of [false, true]) {
-  test(`S08: ${coarse ? "coarse" : "fine"} pointer target sizes`, async ({ browser }, info) => {
+  test(`S08: ${coarse ? "coarse" : "fine"} pointer target sizes`, async ({ browser, baseURL }, info) => {
     const context = await browser.newContext({
       hasTouch: coarse,
       viewport: { width: 1440, height: 1100 },
       reducedMotion: "reduce",
     })
     const page = await context.newPage()
-    await page.goto(`http://127.0.0.1:1420${url}`)
+    await page.goto(`${baseURL}${url}`)
     expect(await page.evaluate(() => matchMedia("(pointer: coarse)").matches)).toBe(coarse)
     const icon = page.locator(".sidebar-icon-button")
     await expect(icon).toHaveCSS("height", coarse ? "44px" : "32px")
@@ -79,7 +79,9 @@ test("A13b: state ink interpolates and reduced motion retains its static destina
   const initial = await mark.evaluate((node) => getComputedStyle(node).color)
   await page.getByRole("button", { name: "Usar ferramenta", exact: true }).click()
   const mid = await mark.evaluate((node) => {
-    const animation = node.getAnimations().find((item) => (item as CSSTransition).transitionProperty === "color")
+    const animation = node
+      .getAnimations()
+      .find((item) => (item as CSSTransition).transitionProperty === "--activity-ink")
     if (!animation) throw new Error("Activity ink did not transition")
     animation.pause()
     animation.currentTime = 120
@@ -89,7 +91,7 @@ test("A13b: state ink interpolates and reduced motion retains its static destina
   await page.emulateMedia({ reducedMotion: "reduce" })
   await expect.poll(() => mark.evaluate((node) => node.getAnimations({ subtree: true }).length)).toBe(0)
   await page.getByRole("button", { name: "Aguardar aprovação", exact: true }).click()
-  await expect(mark).toContainText("Aguardando sua aprovação")
+  await expect(mark).toContainText("Aguardando você")
   await expect(mark).toHaveCSS("transition-duration", "0s")
 })
 

@@ -8,6 +8,11 @@
   inherits: false;
   initial-value: 0;
 }
+@property --activity-ink {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #dc2626;
+}
 
 :root {
   --inline-sign: 1;
@@ -45,14 +50,52 @@
 .composer {
   --reveal: 0;
   opacity: calc(clamp(0, var(--reveal), 1));
-  transform: translateY(calc((1 - var(--reveal)) * 8px)) scale(calc(0.98 + var(--reveal) * 0.02));
-  transition: --reveal var(--duration-bounce) var(--ease-bounce);
+  transform: translateY(calc((1 - clamp(0, var(--reveal), 1)) * 8px))
+    scale(calc(0.98 + clamp(0, var(--reveal), 1) * 0.02));
+  transition:
+    opacity var(--duration-standard) var(--ease-standard),
+    transform var(--duration-standard) var(--ease-standard);
 }
 .tool-surface-reveal {
   --reveal: 0;
   opacity: clamp(0, var(--reveal), 1);
-  transform: translateY(calc((1 - var(--reveal)) * 4px));
+  transform: translateY(calc((1 - clamp(0, var(--reveal), 1)) * 4px))
+    scale(calc(0.995 + clamp(0, var(--reveal), 1) * 0.005));
+  transform-origin: top center;
+  transition:
+    opacity var(--duration-surface) var(--ease-surface),
+    transform var(--duration-surface) var(--ease-surface);
+}
+/* Unregistered properties still reveal through ordinary opacity/transform transitions. */
+:root[data-motion-properties="registered"] .composer {
+  transition: --reveal var(--duration-standard) var(--ease-standard);
+}
+:root[data-motion-properties="registered"] .tool-surface-reveal {
   transition: --reveal var(--duration-surface) var(--ease-surface);
+}
+:root[data-motion-properties="registered"] .activity-mark:not([data-reduced-motion="true"]) {
+  transition: --activity-ink var(--duration-surface) var(--ease-surface);
+}
+@keyframes reveal-surface-in {
+  from {
+    opacity: 0;
+    translate: 0 4px;
+    scale: 0.985;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+    scale: 1;
+  }
+}
+.bot-context-menu,
+.project-menu {
+  transform-origin: top center;
+  animation: reveal-surface-in var(--duration-surface) var(--ease-surface);
+}
+.attachment-chip,
+.composer-project-chip {
+  animation: reveal-surface-in var(--duration-bounce) var(--ease-bounce);
 }
 .disclosure-summary {
   display: flex;

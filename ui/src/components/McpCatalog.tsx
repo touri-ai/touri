@@ -1,4 +1,5 @@
 import type { McpServer } from "@touri/contracts"
+import { t } from "../i18n"
 
 export const mcpPresets: Array<{ server: McpServer; title: string; guidance: string; setup?: string; docs: string }> = [
   {
@@ -18,8 +19,9 @@ export const mcpPresets: Array<{ server: McpServer; title: string; guidance: str
       args: ["-y", "@modelcontextprotocol/server-filesystem"],
       tools: [],
     },
-    guidance:
-      "Requer Node.js e pelo menos uma pasta permitida nos argumentos JSON. Acrescente o caminho absoluto da pasta. Não requer login ou token.",
+    guidance: t(
+      "Requer Node.js. Ao usar esta configuração, informe o caminho absoluto de uma pasta permitida no campo abaixo. Não requer login ou token.",
+    ),
     docs: "https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem",
   },
 ]

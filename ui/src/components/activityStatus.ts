@@ -1,6 +1,7 @@
 import type { MessagePart } from "@touri/contracts"
-import { type MascotState, mascotLabel } from "./mascotState"
-import { approvalMatchesTool, toolLeaf, toolPresentation, toolStatus } from "./toolPresentation"
+import { type Locale, type TranslationKey, t } from "../i18n"
+import { type MascotState, mascotIsBusy, mascotLabelFor } from "./mascotState"
+import { approvalMatchesTool, toolLeaf, toolStatus } from "./toolPresentation"
 
 /** Keep the visible request and activity current while the server acknowledges a local answer. */
 export const withApprovalAnswers = (
@@ -24,10 +25,21 @@ export const withApprovalAnswers = (
   )
 }
 
-export const activityLabelFor = (state: MascotState, parts: readonly MessagePart[]): string => {
-  if (state === "waiting-approval") return mascotLabel[state]
-  if (state === "typing") return "Escrevendo…"
-  if (state !== "working-tool") return state === "thinking" ? "Pensando…" : mascotLabel[state]
+export type ActivityKind = "thinking" | "working" | "reading" | "searching" | "sending" | "waiting"
+const activityKeys: Record<ActivityKind, TranslationKey> = {
+  thinking: "Activity thinking",
+  working: "Activity working",
+  reading: "Activity reading",
+  searching: "Activity searching",
+  sending: "Activity sending",
+  waiting: "Activity waiting",
+}
+
+/** Describe the action, never a provider's internal tool name or arguments. */
+export const activityKindFor = (state: MascotState, parts: readonly MessagePart[]): ActivityKind => {
+  if (state === "waiting-approval") return "waiting"
+  if (state === "thinking") return "thinking"
+  if (state !== "working-tool") return "working"
   const tool = [...parts]
     .reverse()
     .find(
@@ -41,16 +53,21 @@ export const activityLabelFor = (state: MascotState, parts: readonly MessagePart
             approvalMatchesTool(approval, part),
         ),
     )
-  if (!tool || (tool.type !== "tool_call" && tool.type !== "command" && tool.type !== "file_change")) return "Pensando…"
-  const presentation = toolPresentation(tool)
-  if (presentation.kind === "terminal") return "Executando no terminal"
-  if (presentation.kind === "browser") return "Usando o navegador"
-  if (presentation.kind === "computer") return "Usando o computador"
-  if (presentation.kind === "files") {
-    const path = presentation.filePaths[0]
-    const name = path?.split("/").filter(Boolean).at(-1)
-    const read = tool.type === "tool_call" && toolLeaf(tool.tool).toLowerCase() === "read"
-    return name ? `${read ? "Lendo" : "Alterando"} ${name}` : read ? "Lendo arquivo" : "Alterando arquivos"
-  }
-  return `Usando ${presentation.name}`
+  if (tool?.type !== "tool_call") return "working"
+  const name = toolLeaf(tool.tool)
+    .replace(/([a-z])([A-Z])/g, "$1_$2")
+    .toLowerCase()
+  if (/(?:^|_)(?:send|post|publish|upload)(?:_|$)/.test(name)) return "sending"
+  if (/(?:^|_)(?:search|grep|glob|find)(?:_|$)/.test(name)) return "searching"
+  if (/(?:^|_)(?:read|list|open|fetch|view|inspect)(?:_|$)/.test(name)) return "reading"
+  return "working"
 }
+
+export const activityLabelFor = (
+  state: MascotState,
+  parts: readonly MessagePart[],
+  locale: Locale = "pt-BR",
+): string =>
+  mascotIsBusy(state) || state === "waiting-approval"
+    ? t(activityKeys[activityKindFor(state, parts)], {}, locale)
+    : mascotLabelFor(state, locale)

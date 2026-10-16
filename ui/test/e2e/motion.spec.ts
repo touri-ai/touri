@@ -1,4 +1,5 @@
 import { expect, type Locator, test } from "@playwright/test"
+import { showBotRoutines } from "./home-navigation"
 
 const capture = process.env.MOTION_CAPTURE
 test.use({ channel: "chromium", viewport: { width: 1440, height: 900 } })
@@ -65,8 +66,8 @@ if (capture) {
         await expect(page.getByRole("region", { name: "Central de notificações" })).toBeVisible()
         await screenshot("notifications")
         await page.keyboard.press("Escape")
-        await page.getByRole("tab", { name: "touri", exact: true }).click()
-        await expect(page.getByRole("heading", { name: "Cron", exact: true })).toBeVisible()
+        await showBotRoutines(page)
+        await expect(page.getByRole("heading", { name: "Rotinas", exact: true })).toBeVisible()
         await screenshot("page")
       })
     }
@@ -113,6 +114,7 @@ test.describe("motion behavior", () => {
   })
 
   test("right panel slides in and collapses its track on close without overflow", async ({ page }) => {
+    await page.getByRole("button", { name: "Painel do bot", exact: true }).click()
     await page.getByRole("button", { name: "Fechar painel do bot" }).click()
     await expect(page.locator(".bot-panel")).toHaveCount(0)
     expect(
@@ -139,6 +141,7 @@ test.describe("motion behavior", () => {
   })
 
   test("segmented indicator follows selected tabs and keyboard navigation", async ({ page }) => {
+    await page.getByRole("button", { name: "Painel do bot", exact: true }).click()
     await page.getByRole("tab", { name: "Biblioteca", exact: true }).click()
     const indicator = await page.locator(".bot-panel-tabs").evaluate((element) => {
       const tabs = element as HTMLElement

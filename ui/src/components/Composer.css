@@ -48,36 +48,17 @@
 .composer-island .composer-icon:focus-visible,
 .composer-island .composer-send:focus-visible,
 .composer-island .composer-stop:focus-visible,
-.composer-island .composer-model:focus-visible,
 .composer-island .attachment-chip button:focus-visible,
 .composer-notice button:focus-visible {
   outline: 2px solid var(--accent-info);
   outline-offset: 2px;
-}
-.composer-island .composer-model {
-  display: flex;
-  align-items: center;
-  gap: var(--space-6);
-  min-width: 0;
-  max-width: 280px;
-  height: 32px;
-  padding: 0 var(--space-10);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-pill);
-  background: transparent;
-  color: var(--text-secondary);
-  font-size: var(--type-12);
-}
-.composer-island .composer-model:hover:not(:disabled) {
-  background: var(--surface-control);
-  color: var(--text-primary);
 }
 .composer-project {
   position: relative;
   min-width: 0;
   max-width: 200px;
 }
-.composer-island .composer-project-chip {
+.bot-panel .composer-project-chip {
   max-width: 100%;
 }
 .composer-project-chip > svg {
@@ -121,57 +102,10 @@
   font-size: var(--type-11);
   line-height: var(--leading-body);
 }
-.composer-provider {
-  flex-shrink: 0;
-  font-weight: var(--weight-medium);
-}
 .composer-model-name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-.composer-permissions {
-  position: relative;
-  flex-shrink: 0;
-}
-.composer-island .composer-shield[data-access="full"] {
-  color: var(--accent-warning);
-}
-.composer-tooltip {
-  position: absolute;
-  z-index: 20;
-  bottom: calc(100% + 8px);
-  right: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-  width: 240px;
-  padding: var(--space-10) var(--space-12);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-10);
-  background: var(--surface-panel);
-  box-shadow: var(--elevation-popover);
-  color: var(--text-secondary);
-  font-size: var(--type-12);
-  line-height: var(--leading-body);
-  opacity: 0;
-  visibility: hidden;
-  pointer-events: none;
-}
-.composer-tooltip strong {
-  color: var(--text-primary);
-}
-.composer-permissions:hover .composer-tooltip,
-.composer-permissions:focus-within .composer-tooltip {
-  opacity: 1;
-  visibility: visible;
-}
-.composer-island .composer-hint {
-  flex: 0 0 auto;
-  color: var(--text-tertiary);
-}
-.composer-hint kbd {
-  font: inherit;
 }
 .composer-island .composer-actions {
   flex-shrink: 0;

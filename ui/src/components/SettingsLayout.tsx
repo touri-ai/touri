@@ -1,4 +1,12 @@
-import { type ComponentPropsWithoutRef, createContext, type ReactNode, useContext, useId } from "react"
+import {
+  type ComponentPropsWithoutRef,
+  createContext,
+  type ReactNode,
+  useContext,
+  useEffect,
+  useId,
+  useState,
+} from "react"
 import { useReveal } from "./Reveal"
 
 const SettingsIdContext = createContext("")
@@ -187,3 +195,40 @@ export const SettingsRow = ({
     <div className="settings-row-control">{children}</div>
   </div>
 )
+
+export const SettingsDisclosure = ({
+  title,
+  description,
+  defaultOpen = false,
+  onOpenChange,
+  children,
+}: {
+  title: string
+  description: string
+  defaultOpen?: boolean
+  onOpenChange?: (open: boolean) => void
+  children: ReactNode | ((open: boolean) => ReactNode)
+}) => {
+  const [open, setOpen] = useState(defaultOpen)
+  useEffect(() => {
+    if (defaultOpen) setOpen(true)
+  }, [defaultOpen])
+  return (
+    <details
+      className="settings-disclosure"
+      open={open}
+      onToggle={(event) => {
+        setOpen(event.currentTarget.open)
+        onOpenChange?.(event.currentTarget.open)
+      }}
+    >
+      <summary>
+        <span>
+          <strong>{title}</strong>
+          <small>{description}</small>
+        </span>
+      </summary>
+      <div className="settings-disclosure-content">{typeof children === "function" ? children(open) : children}</div>
+    </details>
+  )
+}

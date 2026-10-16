@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test"
+import { openGlobalPage } from "./home-navigation"
 
 test.use({ channel: "chromium", viewport: { width: 1440, height: 900 } })
 test.beforeEach(async ({ page }) => {
@@ -15,6 +16,8 @@ test("GFM task lists show checkboxes without bullet markers in the chat and comp
   const linkColor = await chat
     .getByRole("link", { name: "Documentação" })
     .evaluate((element) => getComputedStyle(element).color)
+  if (!(await page.getByRole("button", { name: "Preview do projeto" }).isVisible()))
+    await page.getByRole("button", { name: "Painel do bot", exact: true }).click()
   await page.getByRole("button", { name: "Preview do projeto" }).click()
   const preview = page.locator(".preview-chat-feed")
   await expect(preview.getByRole("heading", { name: "Resultado" })).toBeVisible()
@@ -29,8 +32,7 @@ test("GFM task lists show checkboxes without bullet markers in the chat and comp
 })
 
 test("bot MCP settings keep the name and close button visible after scrolling", async ({ page }) => {
-  await page.getByRole("button", { name: "touri", exact: true }).click()
-  await page.getByRole("button", { name: /Integrações/ }).click()
+  await openGlobalPage(page, "Integrações")
   await page.getByRole("button", { name: "Configurar MCP de mark" }).click()
   const dialog = page.getByRole("dialog", { name: "Configurações de mark" })
   await expect(dialog.getByRole("region", { name: "Servidores MCP deste bot" })).toBeFocused()
@@ -54,8 +56,12 @@ test("preferences visually separate shortcut and browser labels from their value
   await page.getByRole("button", { name: /Você Local/ }).click()
   const settings = page.getByRole("dialog", { name: "Configurações" })
   await expect(settings.getByText("preferências locais", { exact: true })).toBeVisible()
-  for (const section of ["Atalhos", "Privacidade"]) {
+  for (const [section, disclosure] of [
+    ["Aparência", "Chat, barra lateral e atalhos"],
+    ["Privacidade", "Dados, permissões e conexões"],
+  ] as const) {
     await settings.getByRole("tab", { name: section }).click()
+    await settings.getByText(disclosure, { exact: true }).click()
     const row = settings.locator(".settings-pane:not([hidden]) .settings-note > div")
     await expect(row).toBeVisible()
     const gap = await row.evaluate((element) => {

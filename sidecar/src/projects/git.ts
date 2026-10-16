@@ -82,15 +82,67 @@ const gitValue = async ({
   projectPath,
   args,
   signal,
+  env,
 }: {
   kernel: Kernel
   projectPath: string
   args: Array<string>
   signal?: AbortSignal
+  env?: Record<string, string>
 }): Promise<string | null> => {
-  const result = await runCommand({ kernel, cmd: "git", args, cwd: projectPath, ...(signal ? { signal } : {}) })
+  const result = await runCommand({
+    kernel,
+    cmd: "git",
+    args,
+    cwd: projectPath,
+    ...(signal ? { signal } : {}),
+    ...(env ? { env } : {}),
+  })
   if (!result.success || result.output.code !== 0) return null
   return result.output.stdout.trim() || null
+}
+
+/** Registration needs refs/config only, never a worktree scan or repository helpers. Call after consent. */
+export const inspectGitMetadata = async ({
+  kernel,
+  projectPath,
+  signal,
+}: {
+  kernel: Kernel
+  projectPath: string
+  signal?: AbortSignal
+}): Promise<{ remote: string | null; defaultBranch: string | null } | null> => {
+  const value = (args: string[]) =>
+    gitValue({
+      kernel,
+      projectPath,
+      args: [
+        "--no-pager",
+        "-c",
+        "core.fsmonitor=false",
+        "-c",
+        "core.hooksPath=/dev/null",
+        "-c",
+        "core.untrackedCache=false",
+        "-c",
+        "core.askPass=",
+        "-c",
+        "credential.helper=",
+        ...args,
+      ],
+      env: { GIT_CONFIG_NOSYSTEM: "1" },
+      ...(signal ? { signal } : {}),
+    })
+  if ((await value(["rev-parse", "--show-toplevel"])) === null) return null
+  const [remote, upstream, branch] = await Promise.all([
+    value(["remote", "get-url", "origin"]),
+    value(["symbolic-ref", "--short", "refs/remotes/origin/HEAD"]),
+    value(["symbolic-ref", "--short", "HEAD"]),
+  ])
+  return {
+    remote: remote === null ? null : cleanRemote(remote),
+    defaultBranch: upstream?.replace(/^origin\//, "") ?? branch,
+  }
 }
 
 export const inspectGit = async ({

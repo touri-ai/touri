@@ -15,6 +15,7 @@ import type { AppRoute } from "../src/workspaceState"
 
 const tokens = readFileSync("src/design/tokens.css", "utf8")
 const styles = readFileSync("src/styles.css", "utf8")
+const motion = readFileSync("src/design/motion.css", "utf8")
 const seed = createMockApi().getState()
 const bot = seed.bots[0]
 if (!bot) throw new Error("Missing bot fixture")
@@ -98,6 +99,8 @@ test("A13a: parking preserves approval precedence and manual stops are not idle 
 })
 
 test("A13b: activity ink follows state with a static reduced-motion equivalent", () => {
+  expect(motion).toMatch(/@property --activity-ink\s*\{[^}]*syntax: "<color>"/)
+  expect(motion).toContain("transition: --activity-ink")
   expect(styles).toMatch(/\.activity-mark\s*\{[^}]*transition: color/)
   for (const state of ["thinking", "working-tool", "typing", "waiting-approval"] as const) {
     expect(styles).toContain(`.activity-mark[data-mascot-state="${state}"]`)
@@ -110,7 +113,7 @@ test("A13b: activity ink follows state with a static reduced-motion equivalent",
   const view = render(<ActivityMark state="working-tool" parts={[tool]} />)
   expect(view.container.querySelector(".activity-mark")).toHaveAttribute("data-reduced-motion", "true")
   view.rerender(<ActivityMark state="waiting-approval" />)
-  expect(screen.getByRole("status")).toHaveTextContent("Aguardando sua aprovação")
+  expect(screen.getByRole("status")).toHaveTextContent("Aguardando você")
 })
 
 test("A14: tool insertion and native disclosure share reveal without restarting on deltas", async () => {
@@ -183,7 +186,7 @@ test("A15: an explicit approval destination keeps focus during page navigation",
     )
   }
   const view = render(
-    <PageTransition route={{ section: "touri", page: "cron" }}>
+    <PageTransition route={{ section: "advanced", page: "cron" }}>
       <h1>Cron</h1>
     </PageTransition>,
   )

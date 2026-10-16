@@ -101,8 +101,11 @@ it("opens a notification's bot and thread from the touri tab", async () => {
   const { thread } = await api.request("POST /threads", { botId: "bot-onb", title: "Notification target" })
   render(<App kernel={{ services: { api } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
+  if (!screen.queryByRole("button", { name: "Preview do projeto" }))
+    fireEvent.click(screen.getByRole("button", { name: "Painel do bot" }))
   fireEvent.click(screen.getByRole("button", { name: "Preview do projeto" }))
-  fireEvent.click(screen.getByRole("button", { name: "touri" }))
+  fireEvent.click(screen.getByRole("button", { name: "Avançado", exact: true }))
+  fireEvent.click(screen.getByRole("button", { name: "Integrações", exact: true }))
   act(() => {
     api.notify({
       kind: "question",
@@ -126,7 +129,8 @@ it("opens a native touri:// deep link from the touri tab", async () => {
   render(<App kernel={{ services: { api } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
   await waitFor(() => expect(nativeLinks.handler).not.toBeNull())
-  fireEvent.click(screen.getByRole("button", { name: "touri" }))
+  fireEvent.click(screen.getByRole("button", { name: "Avançado", exact: true }))
+  fireEvent.click(screen.getByRole("button", { name: "Integrações", exact: true }))
   act(() => {
     nativeLinks.handler?.({ payload: parseDeepLink(`touri://open?bot=bot-onb&thread=${thread.id}`) as DeepLink })
   })

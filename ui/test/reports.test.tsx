@@ -151,11 +151,12 @@ it("keeps diagnostic checkboxes compact in a modal, with separate accessible des
   document.head.append(style)
   try {
     render(<SettingsModal api={api} invokeCommand={invoke} settings={null} onClose={vi.fn()} onSave={vi.fn()} />)
-    fireEvent.click(screen.getByRole("tab", { name: "Reportar problema" }))
+    fireEvent.click(screen.getByRole("tab", { name: "Diagnóstico" }))
+    fireEvent.click(screen.getByText("Reportar problema"))
     await act(async () => {
       await Promise.resolve()
     })
-    const checks = within(screen.getByRole("group", { name: "Diagnóstico incluído" })).getAllByRole("checkbox")
+    const checks = within(await screen.findByRole("group", { name: "Diagnóstico incluído" })).getAllByRole("checkbox")
     expect(checks).toHaveLength(9)
     for (const checkbox of checks) {
       expect(getComputedStyle(checkbox).width).toBe("16px")
@@ -299,10 +300,11 @@ it("exposes the Settings tab and preserves preferences while reporting", async (
   const { api, invoke } = fixture()
   const save = vi.fn()
   render(<SettingsModal api={api} invokeCommand={invoke} settings={null} onClose={vi.fn()} onSave={save} />)
-  fireEvent.click(screen.getByRole("tab", { name: "Reportar problema" }))
-  expect(screen.getByRole("tab", { name: "Reportar problema" })).toHaveAttribute("aria-selected", "true")
-  expect(screen.getByLabelText("Título")).toBeVisible()
-  expect(screen.queryByRole("button", { name: "Salvar preferências" })).toBeNull()
+  fireEvent.click(screen.getByRole("tab", { name: "Diagnóstico" }))
+  fireEvent.click(screen.getByText("Reportar problema"))
+  expect(screen.getByRole("tab", { name: "Diagnóstico" })).toHaveAttribute("aria-selected", "true")
+  expect(await screen.findByLabelText("Título")).toBeVisible()
+  await waitFor(() => expect(screen.queryByRole("button", { name: "Salvar preferências" })).toBeNull())
   expect(save).not.toHaveBeenCalled()
   await act(async () => {
     await Promise.resolve()

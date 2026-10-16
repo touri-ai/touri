@@ -44,7 +44,6 @@ const setup = () => {
         queuedCount={0}
         onSend={vi.fn().mockResolvedValue(undefined)}
         onCancel={vi.fn()}
-        onOpenModel={vi.fn()}
         onOpenPermissions={vi.fn()}
       />
     )
@@ -108,7 +107,6 @@ it("browser clients keep uploading bytes from HTML5 drops without native grants"
       queuedCount={0}
       onSend={vi.fn().mockResolvedValue(undefined)}
       onCancel={vi.fn()}
-      onOpenModel={vi.fn()}
       onOpenPermissions={vi.fn()}
     />,
   )

@@ -15,7 +15,10 @@ for (const theme of ["light", "dark"] as const) {
       await page.goto(`/test/e2e/r8-composer-harness.html?view=${view}`)
       const input = page.getByRole("textbox", { name: "Mensagem para mark" })
       await expect(input).toBeVisible()
-      if (view === "narrow") await page.getByRole("button", { name: "Fechar painel do bot" }).click()
+      await expect(page.getByRole("button", { name: "Painel do bot", exact: true })).toHaveAttribute(
+        "aria-expanded",
+        "false",
+      )
       await page.evaluate((theme) => {
         document.documentElement.dataset.theme = theme
       }, theme)
@@ -56,7 +59,7 @@ for (const theme of ["light", "dark"] as const) {
 }
 
 if (phase === "after") {
-  test("keyboard, height limit, attachments, existing settings and access tooltip", async ({ page }) => {
+  test("keyboard, height limit, attachments and advanced settings", async ({ page }) => {
     await page.emulateMedia({ reducedMotion: "reduce" })
     await page.goto("/test/e2e/r8-composer-harness.html")
     const input = page.getByRole("textbox", { name: "Mensagem para mark" })
@@ -87,15 +90,13 @@ if (phase === "after") {
     )
     expect(sent?.input.text).toBe("Confira o plano")
     expect(sent?.input.attachmentIds).toEqual(["attachment:/mock/plano.md"])
-    await page.getByRole("button", { name: /Escolher modelo: Codex/ }).click()
+    await expect(page.locator(".composer-model, .composer-shield, .composer-project")).toHaveCount(0)
+    await page.getByRole("button", { name: "Painel do bot", exact: true }).click()
+    await page.getByRole("button", { name: /^Modelo: Codex/ }).click()
     await expect(page.getByRole("dialog", { name: "Escolher modelo" })).toBeVisible()
     await expect(page.getByText(/O Codex não disponibiliza uma lista de modelos no touri/)).toBeVisible()
     await page.getByRole("button", { name: "Fechar diálogo" }).click()
-    const shield = page.getByRole("button", { name: "Permissões do bot: Escrita no projeto" })
-    await shield.focus()
-    await expect(page.getByRole("tooltip")).toBeVisible()
-    await expect(page.getByRole("tooltip")).toContainText("Escrita no projeto")
-    await shield.click()
+    await page.getByRole("button", { name: "Ajustar permissões" }).click()
     await expect(page.getByRole("dialog", { name: "Permissões do bot" })).toBeVisible()
   })
 

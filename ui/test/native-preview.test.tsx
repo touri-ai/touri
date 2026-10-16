@@ -99,6 +99,8 @@ describe("P1-1 native preview ownership", () => {
     const invoke = nativeInvoke()
     render(<App kernel={{ services: { api, invoke } }} />)
     await screen.findByRole("textbox", { name: "Mensagem para mark" })
+    if (!screen.queryByRole("button", { name: "Preview do projeto" }))
+      fireEvent.click(screen.getByRole("button", { name: "Painel do bot" }))
     fireEvent.click(screen.getByRole("button", { name: "Preview do projeto" }))
     act(() => api.emit({ type: "preview.available", preview }))
     await waitFor(() => expect(vi.mocked(invoke).mock.calls.some(([command]) => command === "preview_show")).toBe(true))
@@ -128,7 +130,8 @@ describe("P1-1 native preview ownership", () => {
     await waitFor(() =>
       expect(vi.mocked(invoke).mock.calls.filter(([command]) => command === "preview_show")).toHaveLength(5),
     )
-    fireEvent.click(screen.getByRole("button", { name: "touri" }))
+    fireEvent.click(screen.getByRole("button", { name: "Avançado", exact: true }))
+    fireEvent.click(screen.getByRole("button", { name: "Integrações", exact: true }))
     await waitFor(() =>
       expect(vi.mocked(invoke).mock.calls.filter(([command]) => command === "preview_hide")).toHaveLength(5),
     )

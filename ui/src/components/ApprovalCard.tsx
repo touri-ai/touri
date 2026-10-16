@@ -92,7 +92,7 @@ export const ApprovalCard = ({
         // activate an approval button (including the standing grant).
         if (
           status === "pending" &&
-          event.key === "Enter" &&
+          (event.key === "Enter" || event.key === " ") &&
           (event.target === event.currentTarget ||
             (event.target instanceof Element && event.target.closest(".tool-action-primary, .tool-standing-action")))
         ) {

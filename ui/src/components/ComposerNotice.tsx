@@ -2,6 +2,7 @@ import type { Bot, MachineState, Message } from "@touri/contracts"
 import type { UiApi } from "../api/client"
 import { localizeNotice, t } from "../i18n"
 import { runErrorFor } from "../runError"
+import { ErrorText } from "./ErrorDetails"
 import { MachineServiceButton } from "./MachineServiceButton"
 
 export const ComposerNotice = ({
@@ -25,15 +26,6 @@ export const ComposerNotice = ({
   onOpenProviderLogin?: (() => void) | undefined
   onRetry: (runId: string) => Promise<void>
 }) => {
-  if (bot?.machine === "vm" && machine?.status === "starting")
-    return (
-      <aside className="composer-notice" role="status" aria-live="polite">
-        <span className="run-spinner" aria-hidden="true">
-          ◌
-        </span>
-        <span>{t("Preparing the computer…")}</span>
-      </aside>
-    )
   if (active) return null
   const notice =
     latestReply?.status === "failed"
@@ -42,6 +34,7 @@ export const ComposerNotice = ({
   const authNeeded = !loginFlowShown && notice?.type === "notice" && notice.text.startsWith("cli_auth:")
   const serviceDown =
     machine?.status !== "running" &&
+    machine?.status !== "starting" &&
     notice?.type === "notice" &&
     /^machine_service_(?:unavailable|start_failed):/.test(notice.text)
   const machineFailed = bot?.machine === "vm" && machine?.status === "error"
@@ -49,35 +42,42 @@ export const ComposerNotice = ({
   const provider = bot?.provider === "opencode" ? "OpenCode" : bot?.provider === "claude" ? "Claude Code" : "Codex"
   const error = latestReply ? runErrorFor(latestReply) : null
   return (
-    <aside className="composer-notice" aria-label={authNeeded ? "Autenticação necessária" : "Aviso do computador"}>
+    <aside className="composer-notice" aria-label={authNeeded ? t("Authentication required") : t("Computer notice")}>
       <div className="composer-notice-copy">
-        <strong>{authNeeded ? `Entre no ${provider} para continuar` : "O computador precisa de atenção"}</strong>
-        <p>
-          {authNeeded
-            ? "Conecte sua conta nas permissões deste bot para voltar a enviar mensagens."
-            : error?.detail ||
-              (machine?.error && localizeNotice(machine.error)) ||
-              "Verifique o serviço de máquinas e tente novamente. Seus arquivos continuam salvos."}
-        </p>
+        <strong>{authNeeded ? t("Sign in to continue", { provider }) : t("The computer needs attention")}</strong>
+        <div>
+          {authNeeded ? (
+            t("Connect your account to send messages again.")
+          ) : (
+            <ErrorText
+              code={error?.code ?? machine?.errorCode}
+              text={
+                error?.detail ||
+                (machine?.error && localizeNotice(machine.error)) ||
+                t("Check the computer and try again. Your files are safe.")
+              }
+            />
+          )}
+        </div>
       </div>
       {authNeeded ? (
         <button
           type="button"
           className="button button-brand"
-          aria-label={`Entrar no ${provider} nesta máquina`}
+          aria-label={t("Entrar no provedor nesta máquina", { provider })}
           onClick={onOpenProviderLogin ?? onOpenPermissions}
         >
-          Entrar no provedor
+          {t("Sign in to provider")}
         </button>
       ) : serviceDown || /TOURI-E800[12]/.test(machine?.errorCode ?? "") ? (
         <MachineServiceButton api={api} {...(bot ? { botId: bot.id } : {})} />
       ) : latestReply?.runId ? (
         <button type="button" className="button button-quiet" onClick={() => void onRetry(latestReply.runId ?? "")}>
-          Tentar novamente
+          {t("Tentar novamente")}
         </button>
       ) : (
         <button type="button" className="button button-quiet" onClick={onOpenPermissions}>
-          Ver configurações
+          {t("View bot settings")}
         </button>
       )}
     </aside>

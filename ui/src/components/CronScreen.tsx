@@ -10,6 +10,7 @@ import { ScreenHeader, ScreenState } from "./ScreenPrimitives"
 import "./screens.css"
 
 type CronScreenProps = {
+  initialBotFilter?: Id | undefined
   loading?: boolean
   loadError?: string | null
   selectedBotId: Id | null
@@ -40,6 +41,7 @@ export const calendarBotColors = (bots: Array<Bot>): Map<Id, string> => {
 
 const CronScreen = ({
   bots,
+  initialBotFilter,
   loading = false,
   loadError = null,
   selectedBotId,
@@ -65,7 +67,9 @@ const CronScreen = ({
       setStarting(new Set(startingRef.current))
     }
   }
-  const [botFilter, setBotFilter] = useState<Id | "all">("all")
+  const [botFilter, setBotFilter] = useState<Id | "all">(() =>
+    bots.some((bot) => bot.id === initialBotFilter) ? (initialBotFilter ?? "all") : "all",
+  )
   const [stateFilter, setStateFilter] = useState<"all" | "active" | "paused">("all")
   const [month, setMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1))
   const [editor, setEditor] = useState<RoutineEditorState>(null)
@@ -147,7 +151,7 @@ const CronScreen = ({
     <section className="workspace-screen r8-screen cron-screen" aria-labelledby="cron-title">
       <ScreenHeader
         id="cron-title"
-        title="Cron"
+        title={t("Routines")}
         description={`${routines.length} ${routines.length === 1 ? "rotina" : "rotinas"} · executadas enquanto o touri está aberto`}
         actions={
           <>

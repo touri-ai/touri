@@ -50,6 +50,29 @@ const fixture = async ({
 }
 
 for (const provider of ["codex", "claude", "opencode"] as const) {
+  test(`${provider}: bot setup instructions use approval tools instead of UI steps`, async () => {
+    const f = await fixture({ provider })
+    const instructions = await f.compose()
+    for (const tool of [
+      "project_discover",
+      "project_link",
+      "project_unlink",
+      "folder_access_request",
+      "folder_access_remove",
+    ])
+      expect(instructions).toContain(tool)
+    expect(instructions).toContain("instead of describing UI steps")
+    expect(instructions).toContain("only within this bot's already granted folders and connected project")
+    expect(instructions).toContain("if none are available, ask the user for a path")
+    expect(instructions).toContain("explicit approval card")
+    expect(instructions).toContain("Any-folder access is a user-only settings toggle")
+    expect(instructions).toContain("Project and folder changes are saved on this Mac immediately")
+    expect(instructions).toContain("next local turn")
+    expect(instructions).not.toContain("VM changes take effect")
+    expect(instructions).not.toContain("recreate the machine before switching projects")
+    expect(instructions).not.toContain("tools and instructions cannot change grants")
+  })
+
   test(`${provider}: full local access discovers files without requiring a project`, async () => {
     const f = await fixture({ provider })
     const instructions = await f.compose({
@@ -92,6 +115,9 @@ test("VM isolation is described even without a runtime service; only granted hos
   expect(isolated).toContain("isolated Linux VM")
   expect(isolated).toContain("Host paths are not mounted")
   expect(isolated).toContain("Your bot home is /workspace/.home")
+  expect(isolated).toContain("VM changes take effect on the next turn")
+  expect(isolated).toContain("recreate the machine before switching projects")
+  expect(isolated).not.toContain("next local turn")
   expect(isolated).not.toContain("search the disk first")
   const mounted = await f.compose({
     machine: "vm",
@@ -115,6 +141,8 @@ test("cloud instructions never promise local disk access", async () => {
     folders: [{ path: "/Users/demo/reference", access: "read-write" }],
   })
   expect(instructions).toContain("isolated cloud machine")
+  expect(instructions).not.toContain("VM changes take effect")
+  expect(instructions).not.toContain("next local turn")
   expect(instructions).not.toContain("search the disk first")
   expect(instructions).not.toContain("full access without approvals")
   expect(instructions).not.toContain("This Mac: /")

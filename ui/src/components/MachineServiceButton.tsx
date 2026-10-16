@@ -1,6 +1,8 @@
 import { useState } from "react"
 import type { UiApi } from "../api/client"
 import { userFacingError } from "../errors"
+import { t } from "../i18n"
+import { ErrorText } from "./ErrorDetails"
 
 export const MachineServiceButton = ({
   api,
@@ -27,11 +29,15 @@ export const MachineServiceButton = ({
     }
   }
   return (
-    <span className="machine-service-action">
+    <div className="machine-service-action">
       <button type="button" className="button button-quiet" disabled={starting} onClick={() => void start()}>
-        {starting ? "Iniciando serviço…" : "Iniciar serviço"}
+        {starting ? t("Starting computer service…") : t("Start computer service")}
       </button>
-      {error && <span role="alert">{error}</span>}
-    </span>
+      {error && (
+        <div role="alert">
+          <ErrorText text={error} />
+        </div>
+      )}
+    </div>
   )
 }
