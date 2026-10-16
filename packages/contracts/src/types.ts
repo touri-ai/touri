@@ -859,6 +859,8 @@ export type UiEvent =
   | { type: 'message.created'; message: Message }
   | { type: 'message.delta'; threadId: Id; messageId: Id; partIndex: number; delta: string; offset?: number; updatedSeq?: number; generation?: number; partType?: 'text' | 'reasoning'; updatedAt?: EpochMs }
   | { type: 'transcript.resync' }
+  /** Replay placeholder for a message revision already sent in its latest form earlier in the same replay. */
+  | { type: 'transcript.superseded' }
   | { type: 'transcript.rejected'; rejection: TranscriptRejection }
   | { type: 'message.updated'; message: Message }
   | { type: 'run.updated'; run: Run }

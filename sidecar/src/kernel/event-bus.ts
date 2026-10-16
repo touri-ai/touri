@@ -1,9 +1,26 @@
 import type { Database } from "bun:sqlite"
-import type { UiEvent, UiEventEnvelope } from "@touri/contracts"
+import type { Message, UiEvent, UiEventEnvelope } from "@touri/contracts"
 import type { ServerWebSocket } from "bun"
 import { compactTranscript, materializeTranscript } from "./transcript-storage"
 
 export type EventSocketData = { channel: "events"; since?: number }
+
+/** A reconnect replays at most this much; a larger gap is cheaper to reload over REST. */
+export const REPLAY_LIMITS = { events: 2_000, bytes: 2 * 1024 * 1024 }
+
+type MessageRef = {
+  type: "message.created" | "message.updated"
+  ref: true
+  threadId: string
+  messageId: string
+  seq: number
+}
+const isMessageRef = (value: unknown): value is MessageRef =>
+  typeof value === "object" && value !== null && (value as { ref?: unknown }).ref === true
+const messageKey = (event: UiEvent): string | null =>
+  event.type === "message.created" || event.type === "message.updated"
+    ? JSON.stringify([event.message.threadId, event.message.id])
+    : null
 
 type EventSocket = Pick<ServerWebSocket<unknown>, "readyState" | "sendText"> &
   Partial<Pick<ServerWebSocket<unknown>, "close">>
@@ -61,9 +78,24 @@ export const createEventBus = (database?: Database) => {
       const rows = database
         .query("SELECT id, at, event_json FROM transcript_entries WHERE id > ? ORDER BY id")
         .all(checkpoint) as Array<{ id: number; at: number; event_json: string }>
-      for (const row of rows)
-        if (!JSON.parse(row.event_json).legacy)
-          database.query("INSERT INTO ui_event_log(at, event_json) VALUES (?, ?)").run(row.at, row.event_json)
+      for (const row of rows) {
+        const event = JSON.parse(row.event_json) as UiEvent & { legacy?: boolean }
+        if (event.legacy) continue
+        // The full message body already lives in transcript_entries; the replay log keeps a pointer.
+        // A streaming reply is rewritten on every tool event, so copying it here grew quadratically.
+        const stored =
+          (event.type === "message.created" || event.type === "message.updated") &&
+          event.message.updatedSeq !== undefined
+            ? JSON.stringify({
+                type: event.type,
+                ref: true,
+                threadId: event.message.threadId,
+                messageId: event.message.id,
+                seq: event.message.updatedSeq,
+              } satisfies MessageRef)
+            : row.event_json
+        database.query("INSERT INTO ui_event_log(at, event_json) VALUES (?, ?)").run(row.at, stored)
+      }
       const last = rows.at(-1)
       if (last)
         database
@@ -72,23 +104,75 @@ export const createEventBus = (database?: Database) => {
     })()
   }
 
+  const hydrate = (raw: string): UiEvent => {
+    const event = JSON.parse(raw) as UiEvent | MessageRef
+    if (!isMessageRef(event) || !database) return event as UiEvent
+    const entry = database
+      .query("SELECT event_json FROM transcript_entries WHERE thread_id = ? AND seq = ?")
+      .get(event.threadId, event.seq) as { event_json: string } | null
+    if (entry) return JSON.parse(entry.event_json) as UiEvent
+    // Retention removed that revision: the current projection is newer and supersedes it.
+    const current = database
+      .query("SELECT payload FROM transcript_message_events WHERE thread_id = ? AND id = ?")
+      .get(event.threadId, event.messageId) as { payload: string } | null
+    return current
+      ? ({ type: event.type, ...JSON.parse(current.payload) } as UiEvent)
+      : { type: "transcript.superseded" }
+  }
+
+  const head = (): number =>
+    (database?.query("SELECT seq FROM sqlite_sequence WHERE name = 'ui_event_log'").get() as { seq: number } | null)
+      ?.seq ?? 0
+
   const replay = (since: number): Array<UiEventEnvelope> => {
     if (!database) return []
     const floor = Number(
       (database.query("SELECT value FROM schema_meta WHERE key = 'ui_event_floor_seq'").get() as { value: string })
         .value,
     )
-    const head =
-      (database.query("SELECT seq FROM sqlite_sequence WHERE name = 'ui_event_log'").get() as { seq: number } | null)
-        ?.seq ?? 0
-    if (since < floor || since > head) return [{ seq: head, at: Date.now(), event: { type: "transcript.resync" } }]
+    const last = head()
+    if (since < floor || since > last) return [{ seq: last, at: Date.now(), event: { type: "transcript.resync" } }]
     return (
       database.query("SELECT seq, at, event_json FROM ui_event_log WHERE seq > ? ORDER BY seq").all(since) as Array<{
         seq: number
         at: number
         event_json: string
       }>
-    ).map((row) => ({ seq: row.seq, at: row.at, event: JSON.parse(row.event_json) as UiEvent }))
+    ).map((row) => ({ seq: row.seq, at: row.at, event: hydrate(row.event_json) }))
+  }
+
+  /**
+   * What a (re)connecting socket receives before live delivery. A cold client (since 0) and a
+   * gap larger than REPLAY_LIMITS get one resync frame and reload over REST: streaming a long
+   * history through the socket overran its send buffer and kept the UI minutes behind live
+   * events. Within a gap, each message is sent once, at its first position, in its latest
+   * revision; later revisions become no-ops so `seq` stays contiguous.
+   */
+  const catchUp = (since: number): Array<UiEventEnvelope> => {
+    const resync = (): Array<UiEventEnvelope> => [{ seq: head(), at: Date.now(), event: { type: "transcript.resync" } }]
+    if (!database || since === 0) return resync()
+    const envelopes = replay(since)
+    if (envelopes.length > REPLAY_LIMITS.events) return resync()
+    const latest = new Map<string, Message>()
+    for (const { event } of envelopes) {
+      const key = messageKey(event)
+      if (key && (event.type === "message.created" || event.type === "message.updated")) latest.set(key, event.message)
+    }
+    const sent = new Set<string>()
+    let bytes = 0
+    const coalesced = envelopes.map((envelope): UiEventEnvelope => {
+      let event = envelope.event
+      const key = messageKey(event)
+      if (key && (event.type === "message.created" || event.type === "message.updated")) {
+        event = sent.has(key)
+          ? { type: "transcript.superseded" }
+          : { type: event.type, message: latest.get(key) ?? event.message }
+        sent.add(key)
+      }
+      bytes += payloadFor({ ...envelope, event }).length
+      return { ...envelope, event }
+    })
+    return bytes > REPLAY_LIMITS.bytes ? resync() : coalesced
   }
   const flush = (): void => {
     scheduled = false
@@ -150,7 +234,7 @@ export const createEventBus = (database?: Database) => {
       flush()
       if (database) {
         compactTranscript({ database })
-        for (const envelope of replay(since)) {
+        for (const envelope of catchUp(since)) {
           if (socket.sendText(payloadFor(envelope)) === 0) {
             socket.close?.(1013, "Tente reconectar")
             return
@@ -163,6 +247,7 @@ export const createEventBus = (database?: Database) => {
       sockets.delete(socket)
     },
     replay,
+    catchUp,
     stop: (): void => {
       stopped = true
     },

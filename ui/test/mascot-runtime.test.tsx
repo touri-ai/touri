@@ -222,6 +222,8 @@ describe("mascot runtime integration", () => {
       "data-mascot-state",
       "thinking",
     )
+    // The pending reply is signed by the bot that will answer, not the app.
+    expect(view.container.querySelector("[data-pending-run] .message-role")).toHaveTextContent("mark")
     act(() => {
       api.emit({ type: "message.created", message: reply([tool]) })
       api.emit({ type: "thread.updated", thread: { ...thread, activeLeafId: "mascot-reply" } })

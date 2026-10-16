@@ -141,6 +141,11 @@ export type UiApi = {
   pendingMessages?: () => Message[]
   subscribe: (listener: (envelope: UiEventEnvelope) => void) => () => void
   subscribeConnection?: (listener: (connected: boolean) => void) => () => void
+  /**
+   * Resolves once the event stream knows where live delivery starts. A snapshot loaded after this
+   * misses nothing, so the cold-start resync is not loaded a second time.
+   */
+  cursorReady?: () => Promise<void>
   isMock: boolean
   uploadAttachment?: (file: File) => Promise<Attachment>
   websocketUrl?: (path: string) => string | Promise<string>
@@ -175,6 +180,9 @@ const replacePath = (path: string, pathValues: Record<string, string>): string =
 
 const isBlobRoute = (route: string): boolean => route.includes("/attachments/") || route === "GET /bots/:id/images"
 
+/** Never hold the first load back for long when the event socket cannot open. */
+const CURSOR_WAIT_MS = 3_000
+
 const parseEvent = (value: unknown): UiEventEnvelope | null => {
   if (typeof value !== "object" || value === null) return null
   const record = value as Record<string, unknown>
@@ -203,6 +211,15 @@ export const createApiClient = ({
   let connecting = false
   let socketGeneration = 0
   let lastSeq = 0
+  let cursorKnown = false
+  let cursorWaiters: Array<() => void> = []
+  const settleCursor = (): boolean => {
+    cursorKnown = true
+    const waiters = cursorWaiters
+    cursorWaiters = []
+    for (const resolve of waiters) resolve()
+    return waiters.length > 0
+  }
   let recovering: Promise<void> | null = null
   const refreshEndpoint = async (): Promise<void> => {
     if (!resolveEndpoint) return
@@ -265,7 +282,10 @@ export const createApiClient = ({
             Number.isSafeInteger(frame.lastSeq) &&
             Number(frame.lastSeq) >= 0
           ) {
+            const cold = !cursorKnown
             lastSeq = Number(frame.lastSeq)
+            // A cold start begins at the head; the snapshot waiting on cursorReady covers history.
+            if (settleCursor() && cold) return
             listeners.forEach((listener) => {
               listener({ seq: 0, at: Date.now(), event: { type: "transcript.resync" } })
             })
@@ -276,6 +296,7 @@ export const createApiClient = ({
             disconnected()
             return
           }
+          settleCursor()
           if (envelope.seq <= lastSeq) return
           if (envelope.seq !== lastSeq + 1) {
             disconnected()
@@ -432,6 +453,19 @@ export const createApiClient = ({
     sendMessage: journal.enqueue,
     pendingMessages: journal.messages,
     subscribe,
+    cursorReady: () =>
+      cursorKnown
+        ? Promise.resolve()
+        : new Promise<void>((resolve) => {
+            let fallback: ReturnType<typeof setTimeout> | undefined
+            const done = (): void => {
+              clearTimeout(fallback)
+              cursorWaiters = cursorWaiters.filter((waiter) => waiter !== done)
+              resolve()
+            }
+            fallback = setTimeout(done, CURSOR_WAIT_MS)
+            cursorWaiters.push(done)
+          }),
     isMock: false,
     websocketUrl,
     subscribeConnection: (listener) => {
