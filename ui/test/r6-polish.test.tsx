@@ -11,6 +11,7 @@ import { ApiError } from "../src/errors"
 import { machineStateForDisplay } from "../src/machineState"
 import { useWorkspace } from "../src/useWorkspace"
 import { readWorkspaceState } from "../src/workspaceState"
+import { showBotSettings } from "./workspaceNavigation"
 
 const originalReveal = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollIntoView")
 afterEach(() => {
@@ -191,7 +192,7 @@ describe("R6: novo turno visível", () => {
       fireEvent.click(next)
       await waitFor(() => expect(api.calls.some((call) => call.route === "PATCH /threads/:id")).toBe(true))
     } else {
-      fireEvent.click(screen.getByRole("button", { name: "Configurações de mark" }))
+      showBotSettings()
       fireEvent.click(screen.getByRole("button", { name: "Salvar configurações" }))
       await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
     }
@@ -337,7 +338,7 @@ describe("R6: cancelamento e confirmação", () => {
     expect(latestPreview({ threadIds: [canceled.threadId], messages: [canceled] })).toBe("Cancelado por você")
   })
 
-  it("shows the stopped machine with an explanation in the VM header and settings after a legacy turn cancellation", async () => {
+  it("hides the idle machine header and explains a legacy turn cancellation in settings", async () => {
     const api = createMockApi()
     await api.request("PATCH /bots/:id", { machine: "vm" }, { id: "bot-mark" })
     render(<App kernel={{ services: { api } }} />)
@@ -357,10 +358,9 @@ describe("R6: cancelamento e confirmação", () => {
       }),
     )
     const header = document.querySelector(".machine-turn-status")
-    expect(header).toHaveTextContent("O computador está parado")
-    expect(header).not.toHaveTextContent("Cancelado")
-    expect(header).not.toHaveTextContent(/erro|Error:|Turno cancelado/)
-    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Configurações de mark" })))
+    expect(header).toBeNull()
+    showBotSettings()
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Avançado" }))
     fireEvent.click(within(screen.getByRole("dialog")).getByRole("tab", { name: "Computador" }))
     const settings = screen.getByRole("region", { name: "Computador" })
     expect(settings).toHaveTextContent("O computador está parado")
@@ -427,7 +427,7 @@ describe("R6: integrações e Preview/Logs", () => {
     localStorage.setItem("touri.workspace.v1", JSON.stringify({ botId }))
     render(<App kernel={{ services: { api } }} />)
     await screen.findByRole("textbox", { name: `Mensagem para ${name}` })
-    fireEvent.click(screen.getByRole("button", { name: "touri" }))
+    fireEvent.click(screen.getByRole("button", { name: "Avançado", exact: true }))
     fireEvent.click(screen.getByRole("button", { name: /Integrações/ }))
     await act(async () => fireEvent.click(screen.getByRole("button", { name: `Configurar MCP de ${name}` })))
     const mcp = screen.getByRole("region", { name: "Servidores MCP deste bot" })
@@ -440,6 +440,8 @@ describe("R6: integrações e Preview/Logs", () => {
     const api = createMockApi()
     render(<App kernel={{ services: { api } }} />)
     await screen.findByRole("textbox", { name: "Mensagem para mark" })
+    if (!screen.queryByRole("button", { name: "Preview do projeto" }))
+      fireEvent.click(screen.getByRole("button", { name: "Painel do bot" }))
     fireEvent.click(screen.getByRole("button", { name: "Preview do projeto" }))
     const preview = document.querySelector(".preview-main-pane")
     expect(preview).not.toBeNull()

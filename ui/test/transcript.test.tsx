@@ -1,4 +1,4 @@
-import { act, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react"
+import { act, fireEvent, render, renderHook, screen, waitFor, within } from "@testing-library/react"
 import type { Message, Run, UiEvent, UiEventEnvelope } from "@touri/contracts"
 import { afterEach, expect, test, vi } from "vitest"
 import App from "../src/App"
@@ -652,7 +652,7 @@ test("a restored live run exposes Parar and continues streaming until completion
       updatedSeq: 11,
     }),
   )
-  expect(await screen.findByText("INÍCIO FIM")).toBeVisible()
+  expect(await within(screen.getByTestId("virtual-message-list")).findByText("INÍCIO FIM")).toBeVisible()
   act(() => {
     api.emit({
       type: "message.updated",

@@ -1,6 +1,8 @@
 import type { ApiRoutes } from "@touri/contracts"
-import { useState } from "react"
+import { useId, useState } from "react"
 import type { UiApi } from "../../api/client"
+import { ErrorText } from "../../components/ErrorDetails"
+import { userFacingError } from "../../errors"
 import { t } from "../../i18n"
 
 type GrantResponse = ApiRoutes["POST /computer/grants"]["res"]
@@ -22,6 +24,7 @@ export const ComputerGrantCard = ({
   defaultMinutes = 30,
   onGranted,
 }: ComputerGrantCardProps) => {
+  const minutesId = useId()
   const [minutes, setMinutes] = useState(defaultMinutes)
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
@@ -34,7 +37,7 @@ export const ComputerGrantCard = ({
       onGranted?.(result)
       setMessage(t("Granted until", { time: new Date(result.expiresAt).toLocaleTimeString("pt-BR") }))
     } catch (caught) {
-      setMessage(caught instanceof Error ? caught.message : t("Could not grant computer use"))
+      setMessage(caught instanceof Error ? userFacingError(caught) : t("Could not grant computer use"))
     } finally {
       setBusy(false)
     }
@@ -47,12 +50,12 @@ export const ComputerGrantCard = ({
         {t("Computer permission waiting", { name: botName })}
       </p>
       <div className="mt-4 flex flex-wrap items-center gap-3">
-        <label className="font-mono text-xs text-stone-600 dark:text-stone-300" htmlFor="computer-grant-minutes">
+        <label className="font-mono text-xs text-stone-600 dark:text-stone-300" htmlFor={minutesId}>
           {t("For")}
         </label>
         <select
           className="rounded-lg border border-stone-300 bg-white px-2 py-2 text-sm dark:border-stone-700 dark:bg-stone-900"
-          id="computer-grant-minutes"
+          id={minutesId}
           onChange={(event) => setMinutes(Number(event.target.value))}
           value={minutes}
         >
@@ -71,7 +74,11 @@ export const ComputerGrantCard = ({
           {busy ? t("Granting…") : t("Allow computer use")}
         </button>
       </div>
-      {message ? <p className="mt-3 font-mono text-xs text-stone-600 dark:text-stone-300">{message}</p> : null}
+      {message ? (
+        <div className="mt-3 font-mono text-xs text-stone-600 dark:text-stone-300">
+          <ErrorText text={message} />
+        </div>
+      ) : null}
     </aside>
   )
 }

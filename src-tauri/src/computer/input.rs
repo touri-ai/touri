@@ -81,8 +81,17 @@ fn contains_point(bounds: (f64, f64, f64, f64), point: (f64, f64)) -> bool {
 fn terminal_application(bundle: &str, name: &str) -> bool {
     let identity = format!("{bundle} {name}").to_ascii_lowercase();
     [
-        "terminal", "iterm", "warp", "alacritty", "kitty", "wezterm", "ghostty", "hyper",
-        "tabby", "termius", "termora",
+        "terminal",
+        "iterm",
+        "warp",
+        "alacritty",
+        "kitty",
+        "wezterm",
+        "ghostty",
+        "hyper",
+        "tabby",
+        "termius",
+        "termora",
     ]
     .iter()
     .any(|term| identity.contains(term))
@@ -115,7 +124,8 @@ mod macos {
     static CONSENT_GUARD_READY: AtomicBool = AtomicBool::new(false);
 
     extern "C" {
-        fn CGRectMakeWithDictionaryRepresentation(dict: CFDictionaryRef, rect: *mut CGRect) -> bool;
+        fn CGRectMakeWithDictionaryRepresentation(dict: CFDictionaryRef, rect: *mut CGRect)
+            -> bool;
         fn CGEventGetIntegerValueField(event: *const c_void, field: u32) -> i64;
     }
 
@@ -173,26 +183,44 @@ mod macos {
 
     // Check immediately before every event, including each chunk and mouse-up. Failure to
     // inspect the current desktop fails closed. Never trust model-supplied window metadata.
-    fn guard_target(point: Option<CGPoint>, params: Option<(&Value, &str)>) -> Result<(), HostError> {
-        let blocked = || HostError::Native(
-            "O controle automático não pode operar o touri nem controles de consentimento".to_string(),
-        );
+    fn guard_target(
+        point: Option<CGPoint>,
+        params: Option<(&Value, &str)>,
+    ) -> Result<(), HostError> {
+        let blocked = || {
+            HostError::Native(
+                "O controle automático não pode operar o touri nem controles de consentimento"
+                    .to_string(),
+            )
+        };
         let app = NSWorkspace::sharedWorkspace()
             .frontmostApplication()
             .ok_or_else(blocked)?;
-        let bundle = app.bundleIdentifier().map(|s| s.to_string()).unwrap_or_default();
-        let name = app.localizedName().map(|s| s.to_string()).unwrap_or_default();
-        if point.is_none() && super::protected_application(app.processIdentifier(), &bundle, &name) {
+        let bundle = app
+            .bundleIdentifier()
+            .map(|s| s.to_string())
+            .unwrap_or_default();
+        let name = app
+            .localizedName()
+            .map(|s| s.to_string())
+            .unwrap_or_default();
+        if point.is_none() && super::protected_application(app.processIdentifier(), &bundle, &name)
+        {
             return Err(blocked());
         }
         if let Some((params, tool)) = params {
             if super::terminal_application(&bundle, &name) {
                 let approval = &params["terminalApproval"];
-                let field = if tool == "computer_type" { "text" } else { "combo" };
+                let field = if tool == "computer_type" {
+                    "text"
+                } else {
+                    "combo"
+                };
                 if approval["tool"].as_str() != Some(tool)
                     || approval["target"]["bundleId"].as_str() != Some(bundle.as_str())
                     || approval["target"]["app"].as_str() != Some(name.as_str())
-                    || approval["target"]["processId"].as_i64() != Some(i64::from(app.processIdentifier()))
+                    || approval["target"]["processId"].as_i64()
+                        != Some(i64::from(app.processIdentifier()))
                     || approval["input"][field] != params[field]
                     || !params[field].is_string()
                 {
@@ -216,12 +244,12 @@ mod macos {
     }
 
     pub(super) fn protected_regions() -> Result<Vec<(f64, f64, f64, f64)>, HostError> {
-        let unavailable = || HostError::Native(
-            "Não foi possível verificar as janelas protegidas".to_string(),
-        );
+        let unavailable =
+            || HostError::Native("Não foi possível verificar as janelas protegidas".to_string());
         // Quartz coordinates match CGEvent global points on all displays, including Retina.
         unsafe {
-            let windows = CGWindowListCopyWindowInfo(kCGWindowListOptionOnScreenOnly, kCGNullWindowID);
+            let windows =
+                CGWindowListCopyWindowInfo(kCGWindowListOptionOnScreenOnly, kCGNullWindowID);
             if windows.is_null() {
                 return Err(unavailable());
             }
@@ -243,18 +271,35 @@ mod macos {
                     {
                         return Err(unavailable());
                     }
-                    let owner = NSRunningApplication::runningApplicationWithProcessIdentifier(pid as i32);
-                    let bundle = owner.as_ref().and_then(|a| a.bundleIdentifier()).map(|s| s.to_string()).unwrap_or_default();
-                    let name = owner.as_ref().and_then(|a| a.localizedName()).map(|s| s.to_string()).unwrap_or_default();
+                    let owner =
+                        NSRunningApplication::runningApplicationWithProcessIdentifier(pid as i32);
+                    let bundle = owner
+                        .as_ref()
+                        .and_then(|a| a.bundleIdentifier())
+                        .map(|s| s.to_string())
+                        .unwrap_or_default();
+                    let name = owner
+                        .as_ref()
+                        .and_then(|a| a.localizedName())
+                        .map(|s| s.to_string())
+                        .unwrap_or_default();
                     if !super::protected_application(pid as i32, &bundle, &name) {
                         continue;
                     }
-                    let value = CFDictionaryGetValue(row, CFString::new("kCGWindowBounds").as_CFTypeRef());
+                    let value =
+                        CFDictionaryGetValue(row, CFString::new("kCGWindowBounds").as_CFTypeRef());
                     let mut rect = CGRect::new(&CGPoint::new(0.0, 0.0), &CGSize::new(0.0, 0.0));
-                    if value.is_null() || !CGRectMakeWithDictionaryRepresentation(value.cast(), &mut rect) {
+                    if value.is_null()
+                        || !CGRectMakeWithDictionaryRepresentation(value.cast(), &mut rect)
+                    {
                         return Err(unavailable());
                     }
-                    regions.push((rect.origin.x, rect.origin.y, rect.size.width, rect.size.height));
+                    regions.push((
+                        rect.origin.x,
+                        rect.origin.y,
+                        rect.size.width,
+                        rect.size.height,
+                    ));
                 }
                 Ok(regions)
             })();
@@ -572,9 +617,12 @@ mod macos {
 
 #[cfg(target_os = "macos")]
 pub(super) fn protected_regions() -> Result<Value, HostError> {
-    Ok(serde_json::json!(macos::protected_regions()?.into_iter().map(|(x, y, width, height)| {
-        serde_json::json!({ "x": x, "y": y, "width": width, "height": height })
-    }).collect::<Vec<_>>()))
+    Ok(serde_json::json!(macos::protected_regions()?
+        .into_iter()
+        .map(|(x, y, width, height)| {
+            serde_json::json!({ "x": x, "y": y, "width": width, "height": height })
+        })
+        .collect::<Vec<_>>()))
 }
 
 pub fn click(params: &Value) -> Result<Value, HostError> {
@@ -608,14 +656,42 @@ mod tests {
     fn blocks_consent_apps_and_background_window_regions() {
         assert!(super::is_synthetic_input(super::SYNTHETIC_INPUT_MARKER));
         assert!(!super::is_synthetic_input(0));
-        assert!(super::protected_application(42, "ai.touri.desktop", "touri"));
-        assert!(super::protected_application(std::process::id() as i32, "dev.bundle", "dev"));
-        assert!(super::protected_application(42, "com.apple.systempreferences", "Settings"));
-        assert!(!super::protected_application(42, "com.apple.Safari", "Safari"));
-        assert!(super::contains_point((-100.0, 40.0, 400.0, 200.0), (-50.0, 100.0)));
-        assert!(!super::contains_point((-100.0, 40.0, 400.0, 200.0), (350.0, 100.0)));
-        assert!(super::terminal_application("com.apple.Terminal", "Terminal"));
-        assert!(super::terminal_application("com.mitchellh.ghostty", "Ghostty"));
+        assert!(super::protected_application(
+            42,
+            "ai.touri.desktop",
+            "touri"
+        ));
+        assert!(super::protected_application(
+            std::process::id() as i32,
+            "dev.bundle",
+            "dev"
+        ));
+        assert!(super::protected_application(
+            42,
+            "com.apple.systempreferences",
+            "Settings"
+        ));
+        assert!(!super::protected_application(
+            42,
+            "com.apple.Safari",
+            "Safari"
+        ));
+        assert!(super::contains_point(
+            (-100.0, 40.0, 400.0, 200.0),
+            (-50.0, 100.0)
+        ));
+        assert!(!super::contains_point(
+            (-100.0, 40.0, 400.0, 200.0),
+            (350.0, 100.0)
+        ));
+        assert!(super::terminal_application(
+            "com.apple.Terminal",
+            "Terminal"
+        ));
+        assert!(super::terminal_application(
+            "com.mitchellh.ghostty",
+            "Ghostty"
+        ));
     }
 
     #[test]

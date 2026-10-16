@@ -1,5 +1,5 @@
 import { listen } from "@tauri-apps/api/event"
-import type { BotGroup, DoctorReport, Id, NotificationRecord } from "@touri/contracts"
+import type { BotGroup, Id, NotificationRecord } from "@touri/contracts"
 import type { FailureAction } from "@touri/contracts/run-failure"
 import { type SetStateAction, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
@@ -151,7 +151,7 @@ const AppContent = ({ kernel }: AppProps) => {
   const workspace = useWorkspace(activeApi, api !== null)
   const { data, actions } = workspace
   const section = route.section
-  const touriPage = route.section === "touri" ? route.page : "cron"
+  const advancedPage = route.section === "advanced" ? route.page : null
   const screen = route.section === "bots" ? route.screen : "chat"
   const setScreen = (next: "chat" | "preview"): void => {
     setRoute((current) => (current.section === "bots" ? { ...current, screen: next } : current))
@@ -371,7 +371,7 @@ const AppContent = ({ kernel }: AppProps) => {
     ) ?? null
   const botRoutines = data.routines.filter((routine) => routine.botId === selectedBot?.id)
 
-  const panelOpen = selectedBot ? (panelsByBot[selectedBot.id] ?? true) : false
+  const panelOpen = selectedBot ? (panelsByBot[selectedBot.id] ?? false) : false
   const setPanelOpen = useCallback(
     (open: boolean) => {
       if (!selectedBot) return
@@ -451,7 +451,7 @@ const AppContent = ({ kernel }: AppProps) => {
   }
   const openDestination = (destination: PaletteDestination): void => {
     if (destination.kind === "page") {
-      setRoute({ section: "touri", page: destination.page })
+      setRoute({ section: "advanced", page: destination.page })
       return
     }
     setSettingFocus(destination.settingId ?? null)
@@ -471,10 +471,7 @@ const AppContent = ({ kernel }: AppProps) => {
     if (action.kind === "doctor") openDestination({ kind: "doctor" })
     if (action.kind === "setting") openDestination(destinationForSetting(action.settingId))
   }
-  const paletteSettings = useMemo(
-    () => settingsIndex({ cloudEnabled: data.settings?.cloud === true, hasBot: data.bots.length > 0 }),
-    [data.settings?.cloud, data.bots.length],
-  )
+  const paletteSettings = useMemo(() => settingsIndex({ hasBot: data.bots.length > 0 }), [data.bots.length])
   const startProcess = async (processId: Id): Promise<void> => {
     await actions.startProcess(processId)
     setScreen("preview")
@@ -546,7 +543,6 @@ const AppContent = ({ kernel }: AppProps) => {
     return (
       <AvatarRuntimeProvider value={data}>
         <OnboardingLanding
-          doctor={data.doctor}
           onCreateBot={() => openModal("bot")}
           onDoctor={() => openModal("doctor")}
           onImport={() => openModal("import")}
@@ -623,7 +619,6 @@ const AppContent = ({ kernel }: AppProps) => {
             showFakeTrafficLights={api.isMock}
             bots={data.bots}
             onDeleteBot={actions.deleteBot}
-            routineCount={data.routines.length}
             threads={data.threads}
             messages={data.messages}
             runs={data.runs}
@@ -631,13 +626,15 @@ const AppContent = ({ kernel }: AppProps) => {
             selectedBotId={selectedBot?.id ?? null}
             selectedThreadId={selectedThread?.id ?? null}
             section={section}
-            touriPage={touriPage}
-            onSection={(next) => {
-              setRoute(next === "bots" ? { section: "bots", screen: "chat" } : { section: "touri", page: "cron" })
+            advancedPage={advancedPage}
+            onChat={() => setRoute({ section: "bots", screen: "chat" })}
+            onAdvancedPage={(page) => setRoute({ section: "advanced", page })}
+            onRoutines={(botId) => {
+              if (botId !== data.selectedBotId) actions.selectBot(botId)
+              setRoute({ section: "advanced", page: "cron", botId })
             }}
-            onTouriPage={(page) => {
-              setRoute({ section: "touri", page })
-            }}
+            onProject={() => openModal("project")}
+            onImport={() => openModal("import")}
             onSelect={actions.selectBot}
             onSelectThread={actions.selectThread}
             onReviewApproval={reviewApproval}
@@ -676,8 +673,10 @@ const AppContent = ({ kernel }: AppProps) => {
                 onConnectProject={() => openModal("project")}
                 onNotice={showNotice}
               />
-            ) : section === "touri" && touriPage === "cron" ? (
+            ) : section === "advanced" && advancedPage === "cron" ? (
               <CronScreen
+                key={route.section === "advanced" ? (route.botId ?? "all") : "all"}
+                initialBotFilter={route.section === "advanced" ? route.botId : undefined}
                 loading={data.loading}
                 loadError={data.bots.length === 0 ? data.notice : null}
                 bots={data.bots}
@@ -689,7 +688,7 @@ const AppContent = ({ kernel }: AppProps) => {
                 onReviewApprovals={reviewApproval}
                 onNotice={showNotice}
               />
-            ) : section === "touri" && touriPage === "integracoes" ? (
+            ) : section === "advanced" && advancedPage === "integracoes" ? (
               <IntegrationsScreen
                 api={api}
                 botId={selectedBot?.id ?? null}
@@ -697,7 +696,7 @@ const AppContent = ({ kernel }: AppProps) => {
                 modalOpen={modal !== null}
                 onConfigure={() => openModal("bot-mcp")}
               />
-            ) : section === "touri" && touriPage === "mcp" ? (
+            ) : section === "advanced" && advancedPage === "mcp" ? (
               <McpScreen
                 api={api}
                 botId={selectedBot?.id ?? null}
@@ -758,15 +757,6 @@ const AppContent = ({ kernel }: AppProps) => {
                           setBotSettingsSection(SETTINGS.providerLogin.section)
                           setModal("bot-settings")
                         }}
-                        onOpenModel={() => openModal("bot-model")}
-                        projects={data.projects}
-                        onSelectProject={async (projectId) => {
-                          if (selectedBot) await actions.updateBot(selectedBot.id, { projectId })
-                        }}
-                        onAddProject={() => {
-                          openModal("project")
-                          setProjectLinkBotId(selectedBot?.id ?? null)
-                        }}
                       />
                     </ErrorBoundary>
                     {/* r8 motion: preserve the panel during its inert exit */}
@@ -801,7 +791,21 @@ const AppContent = ({ kernel }: AppProps) => {
                               )
                             }}
                             onSettings={() => openModal("bot-settings")}
+                            onModel={() => openModal("bot-model")}
                             onPermissions={() => openModal("bot-permissions")}
+                            onPreview={() => setScreen("preview")}
+                            active={data.runs.some(
+                              (run) =>
+                                run.botId === selectedBot.id && ["queued", "starting", "running"].includes(run.status),
+                            )}
+                            projects={data.projects}
+                            onSelectProject={async (projectId) => {
+                              if (selectedBot) await actions.updateBot(selectedBot.id, { projectId })
+                            }}
+                            onAddProject={() => {
+                              openModal("project")
+                              setProjectLinkBotId(selectedBot?.id ?? null)
+                            }}
                             onRole={(roleLine) => actions.updateBot(selectedBot.id, { roleLine })}
                           />
                         </ErrorBoundary>
@@ -853,7 +857,7 @@ const AppContent = ({ kernel }: AppProps) => {
                 onClose={closeModal}
                 onOpenPreview={() => {
                   closeModal()
-                  setScreen("preview")
+                  setRoute({ section: "bots", screen: "preview" })
                 }}
                 onNotice={showNotice}
               />
@@ -862,6 +866,10 @@ const AppContent = ({ kernel }: AppProps) => {
               <SettingsModal
                 api={api}
                 invokeCommand={invokeCommand}
+                doctor={data.doctor}
+                doctorError={data.doctorError}
+                onRefreshDoctor={actions.refreshDoctor}
+                onImport={() => setModal("import")}
                 initialSection={settingsInitialSection}
                 focusSetting={settingFocus}
                 settings={data.settings}
@@ -889,14 +897,19 @@ const AppContent = ({ kernel }: AppProps) => {
                 activeTurns={data.runs.some(
                   (run) => run.botId === selectedBot.id && ["queued", "starting", "running"].includes(run.status),
                 )}
+                onOpenRoutines={() => {
+                  closeModal()
+                  setRoute({ section: "advanced", page: "cron", botId: selectedBot.id })
+                }}
                 onOpenIntegrations={() => {
                   closeModal()
-                  setRoute({ section: "touri", page: "integracoes" })
+                  setRoute({ section: "advanced", page: "integracoes" })
                 }}
                 api={api}
                 capability={data.machineCapability}
                 machineState={data.machines.find((state) => state.botId === selectedBot.id)}
                 bot={selectedBot}
+                settings={data.settings}
                 projects={data.projects}
                 routines={botRoutines}
                 actions={actions}
@@ -948,62 +961,38 @@ const SidecarErrorScreen = ({
   </main>
 )
 
-const OnboardingDoctorSummary = ({ doctor }: { doctor: DoctorReport | null }) => {
-  const counts = { pass: 0, warn: 0, fail: 0 }
-  for (const check of doctor?.checks ?? []) counts[check.status ?? (check.ok ? "pass" : "fail")] += 1
-  const color =
-    !doctor || doctor.running || !doctor.checks.length ? "muted" : counts.fail ? "red" : counts.warn ? "amber" : "green"
-  return (
-    <span role="status">
-      <span className={`status-dot status-${color}`} aria-hidden="true" />{" "}
-      {doctor
-        ? doctor.running
-          ? t("Checking this Mac…")
-          : t("Mac check summary", { ready: counts.pass, warnings: counts.warn, failures: counts.fail })
-        : t("doctor runs locally")}
-    </span>
-  )
-}
-
 const OnboardingLanding = ({
-  doctor,
   onCreateBot,
   onDoctor,
   onImport,
 }: {
-  doctor: import("@touri/contracts").DoctorReport | null
   onCreateBot: () => void
   onDoctor: () => void
   onImport: () => void
 }) => (
   <main className="onboarding-screen">
     <div className="onboarding-card">
-      <div className="brand-lockup">
+      <h1 className="brand-lockup">
         <img className="brand-bull" src="/touri-bull.png" alt="" />
         <span className="brand-name">touri</span>
-      </div>
-      <p className="eyebrow">{t("local-first desktop")}</p>
-      <h1>{t("A calm home for your teammates.")}</h1>
-      <p>
-        {t(
-          "Run persistent Codex, Claude Code or OpenCode teammates in real project folders, keep every conversation branch, and see the apps they start.",
-        )}
-      </p>
+      </h1>
+      <p>{t("Your bots work on your Mac, with your accounts. Nothing leaves here.")}</p>
       <div className="onboarding-actions">
         <button type="button" className="button button-brand" onClick={onCreateBot}>
-          {t("Create first bot")}
-          <span>→</span>
-        </button>
-        <button type="button" className="button button-outline" onClick={onDoctor}>
-          {t("Check this Mac")}
-        </button>
-        <button type="button" className="button button-outline" onClick={onImport}>
-          {t("Import from legacy app")}
+          {t("Create my first bot")}
+          <span aria-hidden="true">→</span>
         </button>
       </div>
-      <div className="onboarding-foot">
-        <OnboardingDoctorSummary doctor={doctor} />
-        <span>{t("Apache-2.0 · no telemetry")}</span>
+      <div className="onboarding-secondary">
+        <span>
+          {t("Already use another tool?")}{" "}
+          <button type="button" className="text-button" onClick={onImport}>
+            {t("Import")}
+          </button>
+        </span>
+        <button type="button" className="text-button" onClick={onDoctor}>
+          {t("Check this Mac")}
+        </button>
       </div>
     </div>
   </main>

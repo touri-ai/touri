@@ -195,9 +195,12 @@ describe("window chrome", () => {
     expect(mock.container.querySelector(".traffic-light")).not.toBeNull()
   })
 
-  it("shows provider and model on the pill", async () => {
+  it("keeps model information in bot details, reached from the chat", async () => {
     render(<App kernel={{ services: { api: createMockApi() } }} />)
     await screen.findByRole("textbox", { name: "Mensagem para mark" })
-    expect(document.querySelector(".model-pill")?.textContent).toMatch(/(codex|claude).*·/)
+    expect(document.querySelector(".model-pill")).toBeNull()
+    expect(screen.queryByRole("button", { name: /^Modelo:/ })).toBeNull()
+    fireEvent.click(screen.getByRole("button", { name: "Painel do bot" }))
+    expect(screen.getByRole("button", { name: /^Modelo: Codex ·/ })).toBeVisible()
   })
 })

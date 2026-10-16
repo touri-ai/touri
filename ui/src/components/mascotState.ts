@@ -1,6 +1,7 @@
 import type { MachineState, Message, NotificationRecord, Run } from "@touri/contracts"
 import type { AvatarMood } from "@touri/contracts/avatar"
 import { isResolvedNotification } from "../approvalState"
+import { type Locale, type TranslationKey, t } from "../i18n"
 
 export type MascotState =
   | "idle"
@@ -14,7 +15,29 @@ export type MascotState =
   | "sleeping"
   | "parked"
 
-export type MascotSnapshot = { state: MascotState; since: number; revision: number }
+/** Seven product states; composer and tool details retain their existing choreography. */
+export type MascotPhase = "idle" | "thinking" | "working" | "waiting" | "done" | "failed" | "asleep"
+export const mascotPhaseFor = (state: MascotState): MascotPhase => {
+  switch (state) {
+    case "thinking":
+    case "done":
+      return state
+    case "typing":
+    case "working-tool":
+      return "working"
+    case "waiting-approval":
+      return "waiting"
+    case "error":
+      return "failed"
+    case "sleeping":
+    case "parked":
+      return "asleep"
+    default:
+      return "idle"
+  }
+}
+
+export type MascotSnapshot = { state: MascotState; phase: MascotPhase; since: number; revision: number }
 export type MascotSignal = { state: MascotState; completion: string | null; holdDone?: boolean }
 export type MascotEvent =
   | { type: "runtime"; signal: MascotSignal }
@@ -127,6 +150,7 @@ export class MascotMachine {
     this.now = now
     this.snapshot = {
       state: signal.holdDone && signal.state === "idle" ? "done" : signal.state,
+      phase: signal.holdDone && signal.state === "idle" ? "done" : mascotPhaseFor(signal.state),
       since: now,
       revision: 0,
     }
@@ -157,7 +181,8 @@ export class MascotMachine {
                 ? "typing"
                 : "listening"
               : "idle"
-    if (state !== this.snapshot.state) this.snapshot = { state, since: this.now, revision: this.snapshot.revision + 1 }
+    if (state !== this.snapshot.state)
+      this.snapshot = { state, phase: mascotPhaseFor(state), since: this.now, revision: this.snapshot.revision + 1 }
     return this.snapshot
   }
 
@@ -167,35 +192,38 @@ export class MascotMachine {
 }
 
 export const mascotMoodFor = (state: MascotState): AvatarMood => {
-  switch (state) {
+  if (state === "listening") return "waiting"
+  switch (mascotPhaseFor(state)) {
     case "thinking":
-    case "working-tool":
-    case "typing":
+    case "working":
       return "working"
-    case "waiting-approval":
-    case "listening":
+    case "waiting":
       return "waiting"
-    case "error":
+    case "failed":
       return "failed"
     case "done":
       return "responded"
-    case "sleeping":
-    case "parked":
+    case "asleep":
       return "asleep"
     default:
       return "idle"
   }
 }
 
-export const mascotLabel: Record<MascotState, string> = {
-  idle: "Pronto",
-  listening: "Ouvindo você",
-  typing: "Escrevendo",
-  thinking: "Pensando",
-  "working-tool": "Usando ferramentas",
-  "waiting-approval": "Aguardando sua aprovação",
-  error: "Precisa de atenção",
+const mascotLabelKeys: Record<MascotState, TranslationKey> = {
+  idle: "Mascot ready",
+  listening: "Mascot listening",
+  typing: "Activity working",
+  thinking: "Activity thinking",
+  "working-tool": "Activity working",
+  "waiting-approval": "Activity waiting",
+  error: "Mascot failed",
   done: "Concluído",
   sleeping: "Pausado",
-  parked: "Em repouso",
+  parked: "Machine resting",
 }
+export const mascotLabelFor = (state: MascotState, locale: Locale = "pt-BR"): string =>
+  t(mascotLabelKeys[state], {}, locale)
+export const mascotLabel = Object.fromEntries(
+  Object.keys(mascotLabelKeys).map((state) => [state, mascotLabelFor(state as MascotState)]),
+) as Record<MascotState, string>

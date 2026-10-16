@@ -119,6 +119,8 @@ export type TabState = {
   } | null
   handbackNote: string | null
   lastSnapshot: BrowserSnapshot | null
+  /** Last main-frame document response, kept for blocked-page detection. */
+  mainDocument: { url: string; status: number; headers: Record<string, string> } | null
 }
 
 export type BrowserEngine = {

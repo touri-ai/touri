@@ -181,9 +181,17 @@ mod tests {
 
     #[test]
     fn jpg_name_and_binary_payload_round_trip() {
-        let jpeg: Vec<u8> = vec![0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, b'J', b'F', b'I', b'F', 0x00, 0xFF, 0xD9];
-        assert_eq!(sanitize_file_name("01-initial-empty.jpg"), "01-initial-empty.jpg");
-        assert_eq!(sanitize_file_name("12-Replacement-Result-image.JPG"), "12-Replacement-Result-image.JPG");
+        let jpeg: Vec<u8> = vec![
+            0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, b'J', b'F', b'I', b'F', 0x00, 0xFF, 0xD9,
+        ];
+        assert_eq!(
+            sanitize_file_name("01-initial-empty.jpg"),
+            "01-initial-empty.jpg"
+        );
+        assert_eq!(
+            sanitize_file_name("12-Replacement-Result-image.JPG"),
+            "12-Replacement-Result-image.JPG"
+        );
         let decoded = decode_payload(&STANDARD.encode(&jpeg)).unwrap();
         assert_eq!(decoded, jpeg);
         let path = temp_dir("jpg").join("01-initial-empty.jpg");

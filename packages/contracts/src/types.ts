@@ -539,6 +539,7 @@ export type BrowserErrorCode =
   | 'ENGINE_UNAVAILABLE'
   | 'NAVIGATION_FAILED'
   | 'URL_NOT_ALLOWED'
+  | 'SITE_BLOCKED'
   | 'INVALID_ARGS'
 
 /** The latest failed browser tool call of a bot, shown where the screen would otherwise stay empty. */

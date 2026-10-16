@@ -4,6 +4,7 @@ import { afterEach, expect, it, vi } from "vitest"
 import App from "../src/App"
 import { createMockApi } from "../src/api/mock"
 import { VirtualMessageList } from "../src/components/ChatPanel"
+import { openRoutines } from "./workspaceNavigation"
 
 const originalReveal = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollIntoView")
 afterEach(() => {
@@ -82,7 +83,7 @@ it.each(["Cron", "notification", "sidebar"])(
     Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: () => {} })
     const { api, reveal } = await fixture()
     if (source === "Cron") {
-      fireEvent.click(screen.getByRole("button", { name: "touri" }))
+      openRoutines("onb")
       fireEvent.click(await screen.findByRole("button", { name: /1 aprovação pendente/ }))
     } else if (source === "sidebar") {
       fireEvent.click(screen.getByRole("button", { name: "Revisar aprovação de onb" }))

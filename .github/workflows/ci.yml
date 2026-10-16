@@ -15,9 +15,10 @@ jobs:
           bun-version: 1.2.21
       - run: bun install --frozen-lockfile
       - run: bun run typecheck
-      - run: bunx ajv-cli validate -s packages/contracts/mcp-tools.json -d packages/contracts/mcp-tools.json --spec=draft2020
-      - run: sqlite3 :memory: < packages/contracts/schema.sql
-      - run: cmp packages/contracts/schema.sql sidecar/src/kernel/migrations/0001.sql
+      - run: bun packages/contracts/src/validate-catalog.ts
+      - run: bun test sidecar/test/kernel/catalog-validation.test.ts
+      - name: Apply the schema with bun:sqlite (FTS5)
+        run: bun -e 'import { Database } from "bun:sqlite"; import { readFileSync } from "node:fs"; new Database(":memory:").exec(readFileSync("packages/contracts/schema.sql", "utf8"))'
 
   sidecar:
     runs-on: macos-14
@@ -29,10 +30,10 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: bunx biome check .
       - run: bun run typecheck
-      - run: bun test
+      - run: bun test sidecar/test
 
   rust:
-    runs-on: macos-14
+    runs-on: macos-26
     defaults:
       run:
         working-directory: src-tauri

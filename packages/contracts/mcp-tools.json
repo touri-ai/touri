@@ -101,7 +101,7 @@
       "description": "Register a Mac folder as a project if needed and link it to this calling bot only. Supply exactly one of path or projectId. Always requires explicit user approval in chat, even with approvals disabled. VM changes apply next turn.",
       "inputSchema": { "type": "object", "additionalProperties": false,
         "properties": { "path": { "type": "string", "minLength": 1 }, "projectId": { "type": "string", "minLength": 1 } },
-        "oneOf": [{ "required": ["path"] }, { "required": ["projectId"] }] },
+        "minProperties": 1, "maxProperties": 1 },
       "x-touri": { "group": "project", "mvp": true, "mutates": true, "deadlineMs": 1800000 }
     },
     {

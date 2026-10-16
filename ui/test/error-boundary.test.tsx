@@ -3,6 +3,8 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest"
 import App from "../src/App"
 import { createMockApi } from "../src/api/mock"
 import { ErrorBoundary } from "../src/components/ErrorBoundary"
+import { saveWorkspaceState } from "../src/workspaceState"
+import { showBotSettings } from "./workspaceNavigation"
 
 const crash = vi.hoisted(() => ({ chat: false, panel: false, modal: false, app: false }))
 vi.mock("../src/components/ChatPanel", async (importOriginal) => {
@@ -98,12 +100,17 @@ test("fallback stays usable when reporting to the sidecar fails", async () => {
 for (const area of ["chat", "panel", "modal", "app"] as const) {
   test(`App isolates a render crash in ${area}`, async () => {
     const api = createMockApi()
+    if (area === "chat") saveWorkspaceState({ panelsByBot: { "bot-mark": true } })
     if (area !== "modal") crash[area] = true
     render(<App kernel={{ services: { api } }} />)
+    if (area === "panel") {
+      await screen.findByRole("textbox", { name: "Mensagem para mark" })
+      fireEvent.click(screen.getByRole("button", { name: "Painel do bot" }))
+    }
     if (area === "modal") {
       await screen.findByRole("textbox", { name: "Mensagem para mark" })
       crash.modal = true
-      fireEvent.click(screen.getByRole("button", { name: "Configurações" }))
+      showBotSettings()
     }
     const label = area === "app" ? "Recarregar app" : "Recarregar esta área"
     expect(await screen.findByRole("button", { name: label })).toBeVisible()

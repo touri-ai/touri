@@ -13,6 +13,7 @@ import type {
   ToolResult,
 } from "@touri/contracts"
 import { approveSecretRelease } from "../approvals/secrets"
+import { CHALLENGE_ELEMENT_IDS, classifyBlockedPage, describeBlockedPage } from "./blockedPage"
 import { type ChromeLauncher, createChromeLauncher, deriveChromeWindowConfig } from "./launcher"
 import { assignLegacyCookies } from "./legacyCookieMigration"
 import { describeNavigationFailure, isChromeErrorPage, isLoadableUrl, networkErrorCode, stripHash } from "./navigation"
@@ -110,6 +111,19 @@ const toToolError = (item: BrowserFailure): ToolResult => ({
     ? {}
     : { content: [{ type: "text", text: `Covering element: ${item.covering.role} "${item.covering.name}"` }] }),
 })
+
+const BLOCKED_PAGE_HEADERS = new Set(["server", "cf-mitigated"])
+
+/** Keeps only the response headers the blocked-page classifier reads, names in lower case. */
+const blockedPageHeaders = (value: unknown): Record<string, string> => {
+  const headers: Record<string, string> = {}
+  for (const [name, header] of Object.entries(asRecord(value) ?? {})) {
+    const key = name.toLowerCase()
+    const text = asString(header)
+    if (BLOCKED_PAGE_HEADERS.has(key) && text !== null) headers[key] = text.slice(0, 200)
+  }
+  return headers
+}
 
 const toToolSuccess = ({ content, structured }: { content: Array<ToolContent>; structured?: unknown }): ToolResult => ({
   success: true,
@@ -1455,6 +1469,13 @@ export const createBrowserEngine = ({
       const response = asRecord(event.params.response)
       const status = asNumber(response?.status)
       const url = asString(response?.url) ?? ""
+      if (
+        status !== null &&
+        event.sessionId === tab.sessionId &&
+        asString(event.params.type) === "Document" &&
+        asString(event.params.frameId) === tab.targetId
+      )
+        tab.mainDocument = { url, status, headers: blockedPageHeaders(response?.headers) }
       if (status !== null && status >= 400)
         recordDiagnostic(tab, {
           at: Date.now(),
@@ -1829,6 +1850,36 @@ export const createBrowserEngine = ({
       `(() => { const items = ${JSON.stringify(items)}; for (const [k, v] of Object.entries(items)) { try { if (localStorage.getItem(k) === null) localStorage.setItem(k, v) } catch {} } return true })()`,
       tab.sessionId,
     ).catch(() => null)
+  }
+
+  /** SITE_BLOCKED when the loaded page is a known anti-bot challenge instead of the requested content. */
+  const blockedPageFailure = async (tab: TabState): Promise<OperationFailure | null> => {
+    if (!client || !tab.sessionId) return null
+    const page = await runtimeValue<{
+      href: string
+      title: string
+      text: string
+      frames: Array<string>
+      challengeElements: Array<string>
+    }>(
+      client,
+      `({ href: location.href, title: document.title, text: (document.body && document.body.innerText || '').slice(0, 2000), frames: Array.from(document.querySelectorAll('iframe')).slice(0, 20).map((frame) => frame.src || ''), challengeElements: ${JSON.stringify(CHALLENGE_ELEMENT_IDS)}.filter((id) => document.getElementById(id)) })`,
+      tab.sessionId,
+    ).catch(() => null)
+    if (!page) return null
+    const response =
+      tab.mainDocument && stripHash(tab.mainDocument.url) === stripHash(page.href) ? tab.mainDocument : null
+    const blocked = classifyBlockedPage({
+      url: page.href,
+      title: page.title,
+      text: page.text,
+      frames: page.frames,
+      challengeElements: page.challengeElements,
+      status: response?.status ?? null,
+      headers: response?.headers ?? {},
+    })
+    if (!blocked) return null
+    return failure("SITE_BLOCKED", describeBlockedPage({ blocked, url: page.href }))
   }
 
   type EnsureOptions = { signal?: AbortSignal; budgetMs?: number }
@@ -2530,14 +2581,20 @@ export const createBrowserEngine = ({
             error: `${live.failure.error} A aba ${tab.info.tabId} continua aberta: use browser_navigate com esse tabId para tentar de novo ou browser_close_tab para descartá-la.`,
           })
         await settle(client as CdpClient, tab, operationSignal)
+        const blocked = await blockedPageFailure(tab)
         recordAction(tab, {
           at: Date.now(),
           tool: "browser_open",
           target: url.slice(0, 500),
-          ok: true,
-          errorCode: null,
-          note: "ok",
+          ok: blocked === null,
+          errorCode: blocked?.failure.errorCode ?? null,
+          note: blocked?.failure.error ?? "ok",
         })
+        if (blocked)
+          return toToolError({
+            ...blocked.failure,
+            error: `${blocked.failure.error} A aba ${tab.info.tabId} continua aberta nessa página.`,
+          })
         const fresh = await makeSnapshot(tab, "auto", operationSignal)
         if (!fresh.success) return toToolError(fresh.failure)
         const content: Array<ToolContent> = [{ type: "text", text: fresh.value.text }]
@@ -2821,7 +2878,9 @@ export const createBrowserEngine = ({
         "NAVIGATION_FAILED",
         describeNavigationFailure({ code: networkErrorCode(started.value), url: kernel.redact(url ?? tab.info.url) }),
       )
-    return awaitPageReady({ tab, url, action, before, endsAt, signal })
+    const ready = await awaitPageReady({ tab, url, action, before, endsAt, signal })
+    if (!ready.success) return ready
+    return (await blockedPageFailure(tab)) ?? ready
   }
 
   const navigate = async ({

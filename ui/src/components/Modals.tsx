@@ -13,25 +13,18 @@ import type {
   SecretMeta,
 } from "@touri/contracts"
 import { avatarProfileFor } from "@touri/contracts/avatar"
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import type { TauriInvoke, UiApi } from "../api/client"
-import { readTheme, setTheme, type ThemePreference } from "../design/theme"
 import { userFacingError } from "../errors"
-import { CloudPreferences } from "../features/cloud/CloudPreferences"
+import { CREATE_PROVIDERS, useCreateProvider } from "../features/bots/useCreateProvider"
 import { useCloudAccount } from "../features/cloud/useCloudAccount"
-import {
-  APP_SETTINGS_SECTIONS,
-  type AppSettingsSectionId,
-  BOT_SETTINGS_SECTIONS,
-  type BotSettingsSectionId,
-  SETTINGS,
-} from "../features/commandPalette/settingsRegistry"
-import { paletteShortcutLabel } from "../features/commandPalette/shortcut"
+import { BOT_SETTINGS_SECTIONS, type BotSettingsSectionId, SETTINGS } from "../features/commandPalette/settingsRegistry"
 import { useSettingFocus } from "../features/commandPalette/useSettingFocus"
-import { ComputerUseSettings } from "../features/computer"
+import { ComputerGrantCard } from "../features/computer"
 import { DoctorChecks } from "../features/doctor/DoctorChecks"
-import { ReportProblem } from "../features/reports/ReportProblem"
-import { plural, statusLabel, t } from "../i18n"
+import { NOT_SURE_JOB_ID } from "../features/jobs/catalog"
+import { JobPicker } from "../features/jobs/JobPicker"
+import { accessLabel, plural, statusLabel, t } from "../i18n"
 import type { WorkspaceActions } from "../useWorkspace"
 import { type AvatarChoice, AvatarPicker } from "./AvatarPicker"
 import { BotAccessSummary } from "./BotAccessSummary"
@@ -43,6 +36,7 @@ import { BotStandingGrants } from "./BotStandingGrants"
 import { DeleteBotDialog } from "./DeleteBotDialog"
 import { DiscoveredProjects } from "./DiscoveredProjects"
 import { MachineFields } from "./MachineFields"
+import { Modal } from "./Modal"
 import { ProviderLogin } from "./ProviderLogin"
 import { ProviderMark, providerName } from "./ProviderMark"
 import { ProviderModelField } from "./ProviderModelField"
@@ -50,82 +44,9 @@ import { ProviderProfileFields } from "./ProviderProfileFields"
 import { SecretsPanel } from "./RightPanels"
 import { SettingsGroup, SettingsLayout, SettingsPane, SettingsRow, SettingsSwitch } from "./SettingsLayout"
 import "./settings.css"
-import { readInlinePreviewPreference, setInlinePreviewPreference } from "../features/desktop/inlinePreviewPreference"
 
-type ModalProps = {
-  onClose: () => void
-  children: React.ReactNode
-  title: string
-  eyebrow?: string
-  className?: string
-}
-
-export const Modal = ({ onClose, children, title, eyebrow = "touri", className = "" }: ModalProps) => {
-  const cardRef = useRef<HTMLElement>(null)
-  const returnFocusRef = useRef(document.activeElement)
-  const closeRef = useRef(onClose)
-  closeRef.current = onClose
-  useEffect(() => {
-    const card = cardRef.current
-    if (!card) return
-    const previous = returnFocusRef.current instanceof HTMLElement ? returnFocusRef.current : null
-    if (!card.contains(document.activeElement))
-      (
-        card.querySelector<HTMLElement>("[data-initial-focus]") ?? card.querySelector<HTMLElement>(".modal-close")
-      )?.focus()
-    const handleKey = (event: KeyboardEvent) => {
-      if (document.querySelectorAll(".modal-card").item(document.querySelectorAll(".modal-card").length - 1) !== card)
-        return
-      const confirmation = Array.from(card.querySelectorAll<HTMLElement>('[role="alertdialog"]')).find(
-        (element) => !element.closest("[hidden]"),
-      )
-      if (event.key === "Escape") {
-        event.preventDefault()
-        event.stopPropagation()
-        if (confirmation) confirmation.querySelector<HTMLButtonElement>(".button-quiet")?.click()
-        else closeRef.current()
-      }
-      if (event.key !== "Tab") return
-      const scope = confirmation ?? card
-      const controls = Array.from(
-        scope.querySelectorAll<HTMLElement>(
-          'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), a[href], [tabindex="0"]',
-        ),
-      ).filter((element) => !element.closest("[hidden]") && element.tabIndex >= 0)
-      const first = controls[0]
-      const last = controls.at(-1)
-      if (!first || !last) return
-      if (event.shiftKey && (document.activeElement === first || !scope.contains(document.activeElement))) {
-        event.preventDefault()
-        last.focus()
-      } else if (!event.shiftKey && (document.activeElement === last || !scope.contains(document.activeElement))) {
-        event.preventDefault()
-        first.focus()
-      }
-    }
-    document.addEventListener("keydown", handleKey, true)
-    return () => {
-      document.removeEventListener("keydown", handleKey, true)
-      if (previous?.isConnected) previous.focus({ preventScroll: true })
-    }
-  }, [])
-  return (
-    <div className="modal-backdrop" role="presentation">
-      <section ref={cardRef} className={`modal-card ${className}`} role="dialog" aria-modal="true" aria-label={title}>
-        <header className="modal-header">
-          <div>
-            <p className="eyebrow">{eyebrow}</p>
-            <h2>{title}</h2>
-          </div>
-          <button type="button" className="icon-button modal-close" onClick={onClose} aria-label={t("Close dialog")}>
-            ×
-          </button>
-        </header>
-        {children}
-      </section>
-    </div>
-  )
-}
+export { Modal } from "./Modal"
+export { SettingsModal } from "./SettingsModal"
 
 type DoctorModalProps = {
   api: UiApi
@@ -502,23 +423,16 @@ export const BotCreateModal = ({
   const [avatarSeed] = useState(() => crypto.randomUUID())
   const [avatar, setAvatar] = useState<AvatarChoice>(() => {
     const profile = avatarProfileFor({ id: avatarSeed, color: null })
-    return { avatarShape: profile.shape, color: null }
+    return { avatarShape: profile.shape, color: profile.color }
   })
   const [name, setName] = useState("")
   const [roleLine, setRoleLine] = useState("")
   const [title, setTitle] = useState("")
-  const [provider, setProvider] = useState<Bot["provider"]>("codex")
   const [loginDraftId] = useState(() => `draft-${crypto.randomUUID()}`)
-  const [providerLoginReady, setProviderLoginReady] = useState(false)
-  useEffect(
-    () => () => {
-      if (api)
-        void api
-          .request("POST /bots/:id/provider-login/flow", { provider, action: "cancel" }, { id: loginDraftId })
-          .catch(() => {})
-    },
-    [api, loginDraftId, provider],
-  )
+  const login = useCreateProvider(api, loginDraftId)
+  const { provider } = login
+  const [jobId, setJobId] = useState(NOT_SURE_JOB_ID)
+  const [advanced, setAdvanced] = useState(false)
   const [instructions, setInstructions] = useState("")
   const [model, setModel] = useState("")
   const [effort, setEffort] = useState<Bot["reasoningEffort"]>(null)
@@ -539,24 +453,30 @@ export const BotCreateModal = ({
     Pick<Bot, "machine" | "machineIdleMinutes" | "vmProviderLogin" | "hostComputerUse">
   >({ machine: "local", machineIdleMinutes: 10, vmProviderLogin: false, hostComputerUse: false })
   const [saving, setSaving] = useState(false)
-  const [step, setStep] = useState(0)
-  const [furthestStep, setFurthestStep] = useState(0)
-  const createContent = useRef<HTMLDivElement>(null)
-  useLayoutEffect(() => {
-    const pane = createContent.current
-    if (!pane) return
-    pane.scrollTop = 0
-    pane.querySelector<HTMLElement>(step === 0 ? "[data-initial-focus]" : "h3")?.focus({ preventScroll: true })
-  }, [step])
+  const signInRef = useRef<HTMLElement>(null)
+  const chooseProvider = (next: Bot["provider"]): void => {
+    setError(null)
+    setModel("")
+    setEffort(null)
+    setMachine((current) => ({ ...current, vmProviderLogin: false }))
+    void login.selectProvider(next)
+  }
   const submit = async (event: React.FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault()
     if (!name.trim() || saving || projectBusy) return
-    if (api && machine.machine !== "cloud" && !providerLoginReady) {
-      goToStep(2)
+    if (api && machine.machine !== "cloud" && (!login.ready || login.checking)) {
+      setError(t("Sign in above before creating your bot."))
+      signInRef.current?.focus()
       return
     }
     if (invalidMachine) {
-      goToStep(3)
+      setAdvanced(true)
+      setError(t("Choose 1 to 1,440 idle minutes."))
+      return
+    }
+    if (machine.machine === "cloud" && !cloudApiKey.trim()) {
+      setAdvanced(true)
+      setError(t("Enter the API key above before creating your bot."))
       return
     }
     setSaving(true)
@@ -607,20 +527,6 @@ export const BotCreateModal = ({
       setProjectBusy(false)
     }
   }
-  const stepTitles = [
-    "Nome e mascote",
-    "Função e instruções",
-    "Provedor e acesso",
-    "Computador e integrações",
-    "Revisar e criar",
-  ]
-  const goToStep = (next: number): void => {
-    if (projectBusy) return
-    if (next > 3 && invalidMachine) return
-    setStep(next)
-    setFurthestStep((current) => Math.max(current, next))
-    setError(null)
-  }
   const invalidMachine =
     machine.machine === "vm" &&
     (!Number.isInteger(machine.machineIdleMinutes) ||
@@ -629,399 +535,292 @@ export const BotCreateModal = ({
   return (
     <Modal
       onClose={() => {
-        if (!saving) onClose()
+        if (!saving && !projectBusy) onClose()
       }}
       title={t("Create a teammate")}
-      eyebrow="novo bot"
+      eyebrow={t("New bot")}
       className="settings-modal bot-create-modal"
     >
-      <form
-        className="bot-create-form"
-        onSubmit={(event) => {
-          if (step < 4) {
-            event.preventDefault()
-            if (name.trim() && (step !== 3 || !invalidMachine)) goToStep(step + 1)
-          } else void submit(event)
-        }}
-      >
-        <nav className="bot-create-steps" aria-label="Etapas de criação">
-          {stepTitles.map((label, index) => (
-            <button
-              key={label}
-              type="button"
-              aria-current={index === step ? "step" : undefined}
-              disabled={
-                index > furthestStep ||
-                saving ||
-                projectBusy ||
-                (index > 0 && !name.trim()) ||
-                (index > 3 && invalidMachine)
-              }
-              onClick={() => goToStep(index)}
-            >
-              <span aria-hidden="true">{index < step ? "✓" : index + 1}</span>
-              {label}
-            </button>
-          ))}
-        </nav>
-        <div ref={createContent} className="bot-create-content">
-          <div className="settings-pane-heading">
-            <h3 tabIndex={-1}>{stepTitles[step]}</h3>
-            <p>
-              {
-                [
-                  "Dê um nome ao seu bot e escolha como ele aparece na equipe.",
-                  "Defina o trabalho, o contexto e o jeito de responder.",
-                  "Escolha quem executa as tarefas e o nível de acesso.",
-                  "Defina onde o bot trabalha e quais recursos ele pode usar.",
-                  "Confira as escolhas. Você pode voltar para editar antes de criar.",
-                ][step]
-              }
-            </p>
-          </div>
-          {step === 0 && (
-            <div className="bot-create-fields">
-              <label htmlFor="bot-name">{t("Name")}</label>
-              <input
-                id="bot-name"
-                data-initial-focus
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                placeholder={t("e.g. dev")}
-              />
+      <form className="bot-create-form" onSubmit={(event) => void submit(event)}>
+        <div className="bot-create-content">
+          <fieldset className="bot-create-draft" disabled={saving}>
+            <div className="bot-create-main">
+              <div className="bot-create-fields">
+                <label htmlFor="bot-name">{t("Name")}</label>
+                <input
+                  id="bot-name"
+                  required
+                  data-initial-focus
+                  value={name}
+                  onChange={(event) => setName(event.target.value)}
+                  placeholder={t("e.g. dev")}
+                />
+                <JobPicker
+                  value={jobId}
+                  onChange={(job) => {
+                    setJobId(job?.id ?? NOT_SURE_JOB_ID)
+                    setRoleLine(job?.roleLine ?? "")
+                    setInstructions(job?.instructions ?? "")
+                  }}
+                />
+              </div>
               <AvatarPicker
+                label={t("Mascot")}
                 bot={{ id: avatarSeed, avatarSeed, ...avatar }}
                 onChange={(choice) => setAvatar((current) => ({ ...current, ...choice }))}
               />
             </div>
-          )}
-          {step === 1 && (
-            <div className="bot-create-fields">
-              <label htmlFor="bot-role">{t("Função")}</label>
-              <input
-                id="bot-role"
-                value={roleLine}
-                onChange={(event) => setRoleLine(event.target.value)}
-                aria-describedby="bot-role-help"
-              />
-              <small id="bot-role-help" className="field-help">
-                {t("A summary of the bot’s work, e.g. research and compare sources.")}
-              </small>
-              <label htmlFor="bot-title">{t("Título (opcional)")}</label>
-              <input
-                id="bot-title"
-                value={title}
-                onChange={(event) => setTitle(event.target.value)}
-                aria-describedby="bot-title-help"
-              />
-              <small id="bot-title-help" className="field-help">
-                {t("A short label for the bot, e.g. Researcher. Detailed tasks go in the instructions.")}
-              </small>
-              <label htmlFor="create-soul">{t("Bot instructions")}</label>
-              <textarea
-                id="create-soul"
-                rows={5}
-                value={instructions}
-                onChange={(event) => setInstructions(event.target.value)}
-                placeholder={t("Describe this bot’s role, tasks and style.")}
-                aria-describedby="create-soul-help"
-              />
-              <small id="create-soul-help" className="field-help">
-                {t("Detailed guidance for the bot. Saved as SOUL.md in the bot’s folder.")}
-              </small>
+            <div className="bot-create-defaults" aria-live="polite">
+              {machine.machine !== "cloud" &&
+                (login.checking ? (
+                  <p>{t("Checking accounts on this Mac…")}</p>
+                ) : (
+                  login.ready && (
+                    <p>{t("Uses {name}, already signed in on this Mac.", { name: providerName(provider) })}</p>
+                  )
+                ))}
+              {access === "workspace-write" && <p>{t("Asks permission before changing files.")}</p>}
             </div>
-          )}
-          {step === 2 && (
-            <div className="bot-create-fields">
-              <label htmlFor="bot-provider">{t("Provider")}</label>
-              <select
-                id="bot-provider"
-                value={provider}
-                onChange={(event) => {
-                  setProvider(event.target.value as Bot["provider"])
-                  setProviderLoginReady(false)
-                  setModel("")
-                  setEffort(null)
-                  setMachine((current) => ({ ...current, vmProviderLogin: false }))
-                }}
-              >
-                <option value="codex">Codex</option>
-                <option value="claude">Claude Code</option>
-                <option value="opencode">OpenCode</option>
-              </select>
-              {api && machine.machine !== "cloud" && (
+            {api && machine.machine !== "cloud" && !login.checking && !login.ready && (
+              <section ref={signInRef} tabIndex={-1} className="bot-create-login" aria-label={t("Choose an account")}>
+                <p>{t("Sign in to an account to create your bot.")}</p>
+                <div className="bot-create-accounts">
+                  {CREATE_PROVIDERS.map((candidate) => (
+                    <button
+                      type="button"
+                      key={candidate}
+                      className="button button-quiet"
+                      aria-pressed={provider === candidate}
+                      onClick={() => chooseProvider(candidate)}
+                    >
+                      {providerName(candidate)}
+                    </button>
+                  ))}
+                </div>
                 <ProviderLogin
+                  key={provider}
                   api={api}
                   botId={loginDraftId}
                   provider={provider}
                   onConfigured={() => {}}
-                  onReadyChange={setProviderLoginReady}
+                  onReadyChange={(ready) => {
+                    login.setReady(ready)
+                    if (ready) setError(null)
+                  }}
                 />
-              )}
-              <label htmlFor="create-model">{t("Model")}</label>
-              <ProviderMark provider={provider} />
-              <ProviderModelField id="create-model" api={api} provider={provider} value={model} onChange={setModel} />
-              <label htmlFor="create-effort">{t("Reasoning")}</label>
-              <select
-                id="create-effort"
-                value={effort ?? ""}
-                onChange={(event) => setEffort((event.target.value || null) as Bot["reasoningEffort"])}
-              >
-                <option value="">{t("Padrão do provedor")}</option>
-                <option value="low">{t("Low")}</option>
-                <option value="medium">{t("Medium")}</option>
-                <option value="high">{t("High")}</option>
-                <option value="xhigh">{t("Extra high")}</option>
-              </select>
-              <label htmlFor="bot-access">{t("Access")}</label>
-              <select
-                id="bot-access"
-                value={provider === "codex" && access === "full-approved" ? "full" : access}
-                onChange={(event) => setAccess(event.target.value as Bot["access"])}
-              >
-                <option value="read-only">{t("Read-only")}</option>
-                <option value="workspace-write">{t("Workspace write · approvals")}</option>
-                <option value="full">{t("Full access")}</option>
-                {provider !== "codex" && <option value="full-approved">{t("Acesso total com aprovação")}</option>}
-              </select>
-              {provider === "codex" && (
-                <p>
-                  {t(
-                    "Codex full access disables provider approvals and sandboxing; touri folder restrictions still apply.",
-                  )}
-                </p>
-              )}
-              {access === "full" && (
-                <div className="warning-callout">
-                  {t("Full access skips provider approvals. Folder access is configured separately.")}
-                </div>
-              )}
-            </div>
-          )}
-          {step === 3 && (
-            <div className="bot-create-fields">
-              <label htmlFor="create-project">{t("Projeto")}</label>
-              <select
-                id="create-project"
-                disabled={projectBusy || machine.machine === "cloud"}
-                value={projectId}
-                onChange={(event) => {
-                  if (event.target.value === "__add_project__") setAddingProject(true)
-                  else {
-                    setProjectId(event.target.value)
-                    setAddingProject(false)
-                  }
-                }}
-              >
-                <option value="">{t("Nenhum projeto (começa na pasta do bot)")}</option>
-                {availableProjects.map((project) => (
-                  <option key={project.id} value={project.id}>
-                    {project.name}
-                  </option>
-                ))}
-                <option value="__add_project__" disabled={!api}>
-                  {t("Adicionar projeto…")}
-                </option>
-              </select>
-              {addingProject && api && machine.machine !== "cloud" && (
-                <DiscoveredProjects
-                  api={api}
-                  disabled={saving}
-                  onSelect={(repository) => addProject({ path: repository.path, name: repository.name })}
-                  onChooseFolder={
-                    invokeCommand
-                      ? async () => {
-                          const selected = await invokeCommand("pick_folder", { title: t("Connect a project folder") })
-                          if (selected?.path) await addProject({ path: selected.path })
-                        }
-                      : undefined
-                  }
+              </section>
+            )}
+            {login.error && machine.machine !== "cloud" && !login.ready && (
+              <p role="alert" className="warning-callout">
+                {login.error}
+              </p>
+            )}
+            <button
+              type="button"
+              className="text-button bot-create-advanced-toggle"
+              aria-expanded={advanced}
+              aria-controls="bot-create-advanced"
+              onClick={() => setAdvanced((open) => !open)}
+            >
+              {t("Advanced")} <span aria-hidden="true">{advanced ? "−" : "+"}</span>
+            </button>
+            {advanced && (
+              <div id="bot-create-advanced" className="bot-create-fields bot-create-advanced">
+                <label htmlFor="bot-role">{t("Função")}</label>
+                <input
+                  id="bot-role"
+                  value={roleLine}
+                  onChange={(event) => setRoleLine(event.target.value)}
+                  aria-describedby="bot-role-help"
                 />
-              )}
-              <BotAccessSummary
-                machine={machine.machine}
-                access={access === "full-approved" ? "full" : (access as Bot["access"])}
-                approvals={access === "full" ? "never" : "on-request"}
-                folders={folders}
-                anyFolderAccess={anyFolderAccess}
-              />
-              {machine.machine !== "cloud" && (
-                <BotFolderSettings
-                  folders={folders}
-                  anyFolderAccess={anyFolderAccess}
-                  machine={machine.machine}
-                  disabled={saving}
-                  invokeCommand={invokeCommand}
-                  onFolders={setFolders}
-                  onAnyFolderAccess={setAnyFolderAccess}
+                <small id="bot-role-help" className="field-help">
+                  {t("A summary of the bot’s work, e.g. research and compare sources.")}
+                </small>
+                <label htmlFor="bot-title">{t("Título (opcional)")}</label>
+                <input
+                  id="bot-title"
+                  value={title}
+                  onChange={(event) => setTitle(event.target.value)}
+                  aria-describedby="bot-title-help"
                 />
-              )}
-              <label className="toggle-row" htmlFor="create-browser">
-                <span>{t("Browser enabled")}</span>
-                <SettingsSwitch
-                  id="create-browser"
-                  checked={browserEnabled}
-                  onChange={(event) => setBrowserEnabled(event.target.checked)}
+                <small id="bot-title-help" className="field-help">
+                  {t("A short label for the bot, e.g. Researcher. Detailed tasks go in the instructions.")}
+                </small>
+                <label htmlFor="create-instructions">{t("Bot instructions")}</label>
+                <textarea
+                  id="create-instructions"
+                  rows={5}
+                  value={instructions}
+                  onChange={(event) => setInstructions(event.target.value)}
+                  placeholder={t("Describe this bot’s role, tasks and style.")}
+                  aria-describedby="create-instructions-help"
                 />
-              </label>
-              <MachineFields
-                values={machine}
-                cloudConnected={cloudAccount?.connected === true}
-                provider={provider}
-                {...(capability ? { capability } : {})}
-                onChange={(patch) => {
-                  setMachine((current) => ({ ...current, ...patch }))
-                  if (patch.machine === "cloud") setProjectId("")
-                }}
-              />
-              {machine.machine === "cloud" && (
-                <>
-                  <label htmlFor="cloud-api-key">
-                    Chave API do{" "}
-                    {provider === "opencode" ? "OpenRouter" : provider === "codex" ? "OpenAI" : "Anthropic"}
-                  </label>
-                  <input
-                    id="cloud-api-key"
-                    type="password"
-                    autoComplete="off"
-                    value={cloudApiKey}
-                    onChange={(event) => setCloudApiKey(event.target.value)}
-                  />
-                  <p className="field-help">
-                    O runtime inteiro roda na nuvem, com o Mac desligado. Sua chave é enviada somente ao serviço
-                    conectado. O modelo é cobrado pelo provedor. Sandbox sem cobrança real.
+                <small id="create-instructions-help" className="field-help">
+                  {t("Detailed guidance for the bot. Saved as SOUL.md in the bot’s folder.")}
+                </small>
+                <label htmlFor="bot-provider">{t("Provider")}</label>
+                <select
+                  id="bot-provider"
+                  value={provider}
+                  onChange={(event) => chooseProvider(event.target.value as Bot["provider"])}
+                >
+                  <option value="codex">Codex</option>
+                  <option value="claude">Claude Code</option>
+                  <option value="opencode">OpenCode</option>
+                </select>
+                <label htmlFor="create-model">{t("Model")}</label>
+                <ProviderMark provider={provider} />
+                <ProviderModelField id="create-model" api={api} provider={provider} value={model} onChange={setModel} />
+                <label htmlFor="create-effort">{t("Reasoning")}</label>
+                <select
+                  id="create-effort"
+                  value={effort ?? ""}
+                  onChange={(event) => setEffort((event.target.value || null) as Bot["reasoningEffort"])}
+                >
+                  <option value="">{t("Padrão do provedor")}</option>
+                  <option value="low">{t("Low")}</option>
+                  <option value="medium">{t("Medium")}</option>
+                  <option value="high">{t("High")}</option>
+                  <option value="xhigh">{t("Extra high")}</option>
+                </select>
+                <label htmlFor="bot-access">{t("Access")}</label>
+                <select
+                  id="bot-access"
+                  value={provider === "codex" && access === "full-approved" ? "full" : access}
+                  onChange={(event) => setAccess(event.target.value as Bot["access"])}
+                >
+                  <option value="read-only">{t("Read-only")}</option>
+                  <option value="workspace-write">{t("Workspace write · approvals")}</option>
+                  <option value="full">{t("Full access")}</option>
+                  {provider !== "codex" && <option value="full-approved">{t("Acesso total com aprovação")}</option>}
+                </select>
+                {provider === "codex" && (
+                  <p>
+                    {t(
+                      "Codex full access disables provider approvals and sandboxing; touri folder restrictions still apply.",
+                    )}
                   </p>
-                </>
-              )}
-              {invalidMachine && (
-                <p role="alert" className="warning-callout">
-                  Escolha de 1 a 1.440 minutos sem atividade.
-                </p>
-              )}
-              <div className="settings-inline-note">
-                <strong>Integrações MCP</strong>
-                <p>
-                  Depois de criar, conecte os servidores na seção MCP das configurações deste bot. Cada conexão fica
-                  vinculada ao bot.
-                </p>
-              </div>
-            </div>
-          )}
-          {step === 4 && (
-            <div className="bot-create-review">
-              <div className="bot-create-identity">
-                <BotAvatar bot={{ id: avatarSeed, avatarSeed, ...avatar }} size={64} mood="idle" />
-                <div>
-                  <strong>{name.trim()}</strong>
-                  <p>{roleLine.trim() || "Função ainda não definida"}</p>
-                </div>
-              </div>
-              <dl>
-                <div>
-                  <dt>Provedor e modelo</dt>
-                  <dd>
-                    {providerName(provider)} · {model.trim() || "Padrão do provedor"}
-                  </dd>
-                </div>
-                <div>
-                  <dt>Acesso</dt>
-                  <dd>
-                    {access === "read-only"
-                      ? "Somente leitura"
-                      : access === "workspace-write"
-                        ? t("Workspace write · approvals")
-                        : access === "full-approved" && provider !== "codex"
-                          ? "Acesso total com aprovação"
-                          : "Acesso completo"}
-                  </dd>
-                </div>
-                <div>
-                  <dt>Computador</dt>
-                  <dd>
-                    {machine.machine === "cloud"
-                      ? "Na nuvem · chave API própria"
-                      : machine.machine === "vm"
-                        ? `Linux isolado · pausa após ${machine.machineIdleMinutes} ${plural(machine.machineIdleMinutes, "minuto", "minutos")}`
-                        : "Este computador"}
-                  </dd>
-                </div>
-                <div>
-                  <dt>Raciocínio</dt>
-                  <dd>
-                    {effort === "low"
-                      ? t("Low")
-                      : effort === "medium"
-                        ? t("Medium")
-                        : effort === "high"
-                          ? t("High")
-                          : effort === "xhigh"
-                            ? t("Extra high")
-                            : t("Padrão do provedor")}
-                  </dd>
-                </div>
-                <div>
-                  <dt>Projeto</dt>
-                  <dd>
-                    {availableProjects.find((project) => project.id === projectId)?.name ??
-                      t("Nenhum projeto (começa na pasta do bot)")}
-                  </dd>
-                </div>
-                <div>
-                  <dt>Navegador</dt>
-                  <dd>{browserEnabled ? "Ativado" : "Desativado"}</dd>
-                </div>
-                {machine.machine !== "cloud" && (
-                  <div>
-                    <dt>{t("Pastas que este bot pode acessar")}</dt>
-                    <dd>
-                      {anyFolderAccess && <p>{t("Acesso a qualquer pasta deste Mac")}</p>}
-                      {folders.length
-                        ? folders.map((folder) => (
-                            <p key={folder.path}>
-                              {folder.path} ·{" "}
-                              {folder.access === "read-only" ? t("Somente leitura") : t("Leitura e escrita")}
-                            </p>
-                          ))
-                        : !anyFolderAccess && t("Nenhuma pasta adicional.")}
-                    </dd>
+                )}
+                {access === "full" && (
+                  <div className="warning-callout">
+                    {t("Full access skips provider approvals. Folder access is configured separately.")}
                   </div>
                 )}
-                {machine.machine === "vm" && (
+                <label htmlFor="create-project">{t("Projeto")}</label>
+                <select
+                  id="create-project"
+                  disabled={projectBusy || machine.machine === "cloud"}
+                  value={projectId}
+                  onChange={(event) => {
+                    if (event.target.value === "__add_project__") setAddingProject(true)
+                    else {
+                      setProjectId(event.target.value)
+                      setAddingProject(false)
+                    }
+                  }}
+                >
+                  <option value="">{t("Nenhum projeto (começa na pasta do bot)")}</option>
+                  {availableProjects.map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.name}
+                    </option>
+                  ))}
+                  <option value="__add_project__" disabled={!api}>
+                    {t("Adicionar projeto…")}
+                  </option>
+                </select>
+                {addingProject && api && machine.machine !== "cloud" && (
+                  <DiscoveredProjects
+                    api={api}
+                    disabled={saving}
+                    onSelect={(repository) => addProject({ path: repository.path, name: repository.name })}
+                    onChooseFolder={
+                      invokeCommand
+                        ? async () => {
+                            const selected = await invokeCommand("pick_folder", {
+                              title: t("Connect a project folder"),
+                            })
+                            if (selected?.path) await addProject({ path: selected.path })
+                          }
+                        : undefined
+                    }
+                  />
+                )}
+                <BotAccessSummary
+                  machine={machine.machine}
+                  access={access === "full-approved" ? "full" : (access as Bot["access"])}
+                  approvals={access === "full" ? "never" : "on-request"}
+                  folders={folders}
+                  anyFolderAccess={anyFolderAccess}
+                />
+                {machine.machine !== "cloud" && (
+                  <BotFolderSettings
+                    folders={folders}
+                    anyFolderAccess={anyFolderAccess}
+                    machine={machine.machine}
+                    disabled={saving}
+                    invokeCommand={invokeCommand}
+                    onFolders={setFolders}
+                    onAnyFolderAccess={setAnyFolderAccess}
+                  />
+                )}
+                <label className="toggle-row" htmlFor="create-browser">
+                  <span>{t("Browser enabled")}</span>
+                  <SettingsSwitch
+                    id="create-browser"
+                    checked={browserEnabled}
+                    onChange={(event) => setBrowserEnabled(event.target.checked)}
+                  />
+                </label>
+                <MachineFields
+                  values={machine}
+                  cloudConnected={cloudAccount?.connected === true}
+                  provider={provider}
+                  {...(capability ? { capability } : {})}
+                  onChange={(patch) => {
+                    setMachine((current) => ({ ...current, ...patch }))
+                    if (patch.machine === "cloud") setProjectId("")
+                  }}
+                />
+                {machine.machine === "cloud" && (
                   <>
-                    <div>
-                      <dt>Login na VM</dt>
-                      <dd>{machine.vmProviderLogin ? "Usar login do provedor" : "Não compartilhar login"}</dd>
-                    </div>
-                    <div>
-                      <dt>Controle do Mac</dt>
-                      <dd>{machine.hostComputerUse ? "Permitido com autorização temporária" : "Desativado"}</dd>
-                    </div>
+                    <label htmlFor="cloud-api-key">
+                      {t("API key for {name}", {
+                        name: provider === "opencode" ? "OpenRouter" : provider === "codex" ? "OpenAI" : "Anthropic",
+                      })}
+                    </label>
+                    <input
+                      id="cloud-api-key"
+                      type="password"
+                      autoComplete="off"
+                      value={cloudApiKey}
+                      onChange={(event) => setCloudApiKey(event.target.value)}
+                    />
+                    <p className="field-help">
+                      {t(
+                        "The bot runs in the connected cloud service with your own API key. Usage is billed by that service.",
+                      )}
+                    </p>
                   </>
                 )}
-              </dl>
-              <div className="settings-inline-note">
-                <strong>{t("Bot instructions")}</strong>
-                <p className="bot-create-soul-preview">
-                  {instructions.trim() || "Você pode adicionar instruções nas configurações quando quiser."}
-                </p>
+                {invalidMachine && (
+                  <p role="alert" className="warning-callout">
+                    {t("Choose 1 to 1,440 idle minutes.")}
+                  </p>
+                )}
+                <p>{t("Connect tools after creating this bot, in its advanced settings.")}</p>
               </div>
-            </div>
-          )}
-          {error && (
-            <p className="warning-callout" role="alert">
-              {error}
-            </p>
-          )}
+            )}
+          </fieldset>
         </div>
+        {error && (
+          <p className="warning-callout bot-create-error" role="alert">
+            {error}
+          </p>
+        )}
         <div className="modal-actions">
-          <span className="bot-create-progress">Etapa {step + 1} de 5</span>
-          <button
-            type="button"
-            className="button button-quiet"
-            disabled={saving || projectBusy}
-            onClick={() => (step === 0 ? onClose() : goToStep(step - 1))}
-          >
-            {step === 0 ? t("Cancel") : t("Back")}
+          <button type="button" className="button button-quiet" disabled={saving || projectBusy} onClick={onClose}>
+            {t("Cancel")}
           </button>
           <button
             type="submit"
@@ -1030,10 +829,12 @@ export const BotCreateModal = ({
               !name.trim() ||
               saving ||
               projectBusy ||
-              (step >= 3 && (invalidMachine || (machine.machine === "cloud" && !cloudApiKey.trim())))
+              invalidMachine ||
+              (machine.machine === "cloud" && !cloudApiKey.trim()) ||
+              (machine.machine !== "cloud" && login.checking)
             }
           >
-            {step < 4 ? t("Continue") : saving ? t("Creating…") : t("Create teammate")}
+            {saving ? t("Creating…") : t("Create teammate")}
           </button>
         </div>
       </form>
@@ -1042,6 +843,7 @@ export const BotCreateModal = ({
 }
 
 type BotSettingsModalProps = {
+  settings?: ApiRoutes["GET /settings"]["res"]["settings"] | null
   invokeCommand?: TauriInvoke
   bots?: Bot[]
 
@@ -1057,6 +859,7 @@ type BotSettingsModalProps = {
   machineState?: MachineState | undefined
   activeTurns?: boolean
   onOpenIntegrations?: () => void
+  onOpenRoutines?: () => void
   bot: Bot
   projects: Array<Project>
   routines: Array<Routine>
@@ -1065,6 +868,7 @@ type BotSettingsModalProps = {
 }
 
 export const BotSettingsModal = ({
+  settings,
   invokeCommand,
   bots,
   focusMcp = false,
@@ -1079,9 +883,12 @@ export const BotSettingsModal = ({
   machineState,
   activeTurns = false,
   onOpenIntegrations,
+  onOpenRoutines,
   initialSection,
   focusSetting,
 }: BotSettingsModalProps) => {
+  const [vmMemory, setVmMemory] = useState(settings?.botVmMemoryMb ?? 1536)
+  const [name, setName] = useState(bot.name)
   const [avatar, setAvatar] = useState<AvatarChoice>(() => {
     const profile = avatarProfileFor(bot)
     return { avatarShape: profile.shape, color: bot.color }
@@ -1131,8 +938,9 @@ export const BotSettingsModal = ({
   const permissionsRef = useRef<HTMLSelectElement>(null)
   const [grantsRevision, setGrantsRevision] = useState(0)
   const [section, setSection] = useState<string>(
-    initialSection ?? (focusMcp ? "mcp" : permissionsOnly ? "permissions" : "general"),
+    initialSection ?? (focusMcp ? "tools" : permissionsOnly ? "access" : "model"),
   )
+  const [advanced, setAdvanced] = useState(Boolean(initialSection || focusMcp || permissionsOnly || focusSetting))
   useSettingFocus(focusSetting)
   useEffect(() => {
     if (!permissionsOnly) return
@@ -1148,13 +956,28 @@ export const BotSettingsModal = ({
         machine.machineIdleMinutes > 1440)
     ) {
       setSection("computer")
-      setSaveError("Escolha de 1 a 1.440 minutos sem atividade.")
+      setAdvanced(true)
+      setSaveError(t("Escolha de 1 a 1.440 minutos sem atividade."))
+      return
+    }
+    if (!name.trim()) {
+      setAdvanced(false)
+      setSaveError(t("Dê um nome ao bot."))
+      return
+    }
+    if (settings && (!Number.isInteger(vmMemory) || vmMemory < 512 || vmMemory > 16384)) {
+      setAdvanced(true)
+      setSection("computer")
+      setSaveError(t("Escolha de 512 a 16.384 MiB por computador do bot."))
       return
     }
     setSaving(true)
     setSaveError(null)
     try {
+      if (settings && vmMemory !== (settings.botVmMemoryMb ?? 1536))
+        await actions.updateSettings({ botVmMemoryMb: vmMemory })
       await actions.updateBot(bot.id, {
+        name: name.trim(),
         ...avatar,
         ...machine,
         roleLine: roleLine.trim() || null,
@@ -1193,63 +1016,366 @@ export const BotSettingsModal = ({
     const entry = BOT_SETTINGS_SECTIONS.find((candidate) => candidate.id === id)
     return { active: section, id, title: entry?.label ?? id, description: entry?.description ?? "" }
   }
+  const draftAccess = {
+    access: access === "full-approved" ? ("full" as const) : (access as Bot["access"]),
+    approvals:
+      provider === bot.provider && access === initialAccess.current
+        ? bot.approvals
+        : access === "full" || (provider === "codex" && access === "full-approved")
+          ? ("never" as const)
+          : ("on-request" as const),
+  }
+  const [secretNotice, setSecretNotice] = useState("")
   return (
     <Modal
       onClose={onClose}
       title={permissionsOnly ? t("Permissões do bot") : t("Bot settings", { name: bot.name })}
-      eyebrow="configuração do bot"
+      eyebrow={t("configuração do bot")}
       className="settings-modal"
     >
-      <SettingsLayout
-        sections={sections}
-        active={section}
-        onChange={setSection}
-        label="Seções das configurações do bot"
-      >
-        <SettingsPane {...botPane("general")}>
-          <SettingsGroup title="Identidade">
-            <SettingsRow title="Função" description="Um resumo do trabalho do bot na equipe." htmlFor="settings-role">
-              <input id="settings-role" value={roleLine} onChange={(event) => setRoleLine(event.target.value)} />
-            </SettingsRow>
-            <SettingsRow
-              title="Título (opcional)"
-              description="Uma identificação curta para este bot."
-              htmlFor="settings-title"
-            >
-              <input id="settings-title" value={title} onChange={(event) => setTitle(event.target.value)} />
-            </SettingsRow>
-            <div className="settings-avatar-field">
-              <AvatarPicker
-                bot={{ ...bot, ...avatar }}
-                onChange={(choice) => setAvatar((current) => ({ ...current, ...choice }))}
-              />
-            </div>
-          </SettingsGroup>
-          <SettingsGroup title="Provedor e modelo">
-            <SettingsRow
-              title={t("Provider")}
-              description="O programa que executa as tarefas deste bot."
-              htmlFor="settings-provider"
-            >
-              <select
-                id="settings-provider"
-                value={provider}
-                onChange={(event) => {
-                  if (api)
-                    void api
-                      .request("POST /bots/:id/provider-login/flow", { provider, action: "cancel" }, { id: bot.id })
-                      .catch(() => {})
-                  setProvider(event.target.value as Bot["provider"])
-                  setModel("")
-                  setEffort(null)
-                  setMachine((current) => ({ ...current, vmProviderLogin: false }))
-                }}
+      <div className="bot-settings-overview" hidden={advanced}>
+        <SettingsGroup>
+          <SettingsRow title={t("Name")} description={t("Como você chama este bot.")} htmlFor="settings-name">
+            <input
+              id="settings-name"
+              data-initial-focus
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+            />
+          </SettingsRow>
+          <SettingsRow
+            title={t("O que ele faz")}
+            description={t("Um resumo do trabalho do bot na equipe.")}
+            htmlFor="settings-role"
+          >
+            <input id="settings-role" value={roleLine} onChange={(event) => setRoleLine(event.target.value)} />
+          </SettingsRow>
+        </SettingsGroup>
+        <div className="settings-avatar-field">
+          <AvatarPicker
+            label={t("Mascote")}
+            bot={{ ...bot, ...avatar }}
+            onChange={(choice) => setAvatar((current) => ({ ...current, ...choice }))}
+          />
+        </div>
+        <BotAccessSummary
+          {...draftAccess}
+          machine={machine.machine}
+          folders={folders}
+          anyFolderAccess={anyFolderAccess}
+        />
+      </div>
+      <div className="settings-advanced-bar">
+        <button
+          type="button"
+          className="button button-quiet"
+          aria-expanded={advanced}
+          aria-controls="bot-advanced-settings"
+          onClick={() => setAdvanced((current) => !current)}
+        >
+          {t("Avançado")}
+        </button>
+        {advanced && <span>{t("Ajustes deste bot")}</span>}
+      </div>
+      <div id="bot-advanced-settings" className="settings-advanced-content" hidden={!advanced}>
+        <SettingsLayout
+          sections={sections}
+          active={section}
+          onChange={setSection}
+          label={t("Seções das configurações do bot")}
+        >
+          <SettingsPane {...botPane("model")}>
+            <SettingsGroup title={t("Provedor e modelo")}>
+              <SettingsRow
+                title={t("Provider")}
+                description={t("O programa que executa as tarefas deste bot.")}
+                htmlFor="settings-provider"
               >
-                <option value="codex">Codex</option>
-                <option value="claude">Claude Code</option>
-                <option value="opencode">OpenCode</option>
-              </select>
-            </SettingsRow>
+                <select
+                  id="settings-provider"
+                  value={provider}
+                  onChange={(event) => {
+                    if (api)
+                      void api
+                        .request("POST /bots/:id/provider-login/flow", { provider, action: "cancel" }, { id: bot.id })
+                        .catch(() => {})
+                    setProvider(event.target.value as Bot["provider"])
+                    setModel("")
+                    setEffort(null)
+                    setMachine((current) => ({ ...current, vmProviderLogin: false }))
+                  }}
+                >
+                  <option value="codex">Codex</option>
+                  <option value="claude">Claude Code</option>
+                  <option value="opencode">OpenCode</option>
+                </select>
+              </SettingsRow>
+              <SettingsRow
+                title={t("Model")}
+                description={t("Deixe em branco para usar o padrão do provedor.")}
+                htmlFor="settings-model"
+              >
+                <div className="settings-model-control">
+                  <ProviderModelField
+                    id="settings-model"
+                    api={api}
+                    botId={bot.id}
+                    provider={provider}
+                    value={model}
+                    onChange={setModel}
+                  />
+                </div>
+              </SettingsRow>
+              <SettingsRow
+                title={t("Reasoning")}
+                description={t("A profundidade de raciocínio nas próximas tarefas.")}
+                htmlFor="settings-effort"
+              >
+                <select
+                  id="settings-effort"
+                  value={effort ?? ""}
+                  onChange={(event) => setEffort((event.target.value || null) as Bot["reasoningEffort"])}
+                >
+                  <option value="">{t("Padrão do provedor")}</option>
+                  <option value="low">{t("Low")}</option>
+                  <option value="medium">{t("Medium")}</option>
+                  <option value="high">{t("High")}</option>
+                  <option value="xhigh">{t("Extra high")}</option>
+                </select>
+              </SettingsRow>
+            </SettingsGroup>
+            <SettingsGroup title={t("Instruções")}>
+              <section>
+                <SettingsRow
+                  title={t("Título (opcional)")}
+                  description={t("Uma identificação curta para este bot.")}
+                  htmlFor="settings-title"
+                >
+                  <input id="settings-title" value={title} onChange={(event) => setTitle(event.target.value)} />
+                </SettingsRow>
+
+                <label htmlFor="soul">{t("Bot instructions")}</label>
+                <textarea
+                  id="soul"
+                  className="soul-editor"
+                  value={instructions}
+                  onChange={(event) => setInstructions(event.target.value)}
+                  aria-describedby="soul-help"
+                />
+                <small id="soul-help" className="field-help">
+                  {t("Detailed guidance for the bot. Saved as SOUL.md in the bot’s folder.")}{" "}
+                  {t("Applied on the next turn.")}
+                </small>
+                {instructions.includes("coordinate_bots") && (
+                  <p className="warning-callout">
+                    {t(
+                      "Estas instruções mencionam uma ferramenta de coordenação indisponível. Envie a tarefa a cada bot ou conecte uma ferramenta própria.",
+                    )}
+                  </p>
+                )}
+              </section>
+            </SettingsGroup>
+            <SettingsGroup title={t("Excluir bot")}>
+              <p>{t("Remove este bot, suas conversas, rotinas e seu computador.")}</p>
+              <button
+                type="button"
+                className="tool-action tool-action-deny"
+                disabled={saving || updating}
+                onClick={() => setDeleting(true)}
+              >
+                {t("Excluir bot")}
+              </button>
+              {deleting && (
+                <DeleteBotDialog
+                  bot={bot}
+                  onDelete={async (...args) => {
+                    await actions.deleteBot(...args)
+                    onClose()
+                  }}
+                  onClose={() => setDeleting(false)}
+                />
+              )}
+            </SettingsGroup>
+          </SettingsPane>
+          <SettingsPane {...botPane("computer")}>
+            <SettingsGroup>
+              <MachineFields
+                activeTurns={activeTurns}
+                values={machine}
+                provider={provider}
+                {...(capability ? { capability } : {})}
+                {...(machineState ? { state: machineState } : {})}
+                onChange={(patch) => setMachine((current) => ({ ...current, ...patch }))}
+                {...(bot.machine === "vm"
+                  ? {
+                      onAction: (reset: boolean, stopTurns?: boolean) =>
+                        actions.machineAction(
+                          bot.id,
+                          reset,
+                          reset && (projectId || null) !== bot.projectId ? projectId || null : undefined,
+                          stopTurns,
+                        ),
+                    }
+                  : {})}
+              />
+              {settings && (
+                <SettingsRow
+                  title={SETTINGS.vmMemory.label}
+                  description={t(
+                    "Este limite vale para todos os computadores isolados; é aplicado ao criar ou atualizar cada um.",
+                  )}
+                  htmlFor="bot-vm-memory"
+                >
+                  <input
+                    id="bot-vm-memory"
+                    type="number"
+                    min={512}
+                    max={16384}
+                    value={vmMemory}
+                    onChange={(event) => setVmMemory(Number(event.target.value))}
+                  />
+                </SettingsRow>
+              )}
+              {api && bot.machine === "vm" && <BotNetworkSettings api={api} botId={bot.id} />}
+            </SettingsGroup>
+            <SettingsGroup title={t("Controle do computador")}>
+              <label className="toggle-row" htmlFor="settings-computer-use">
+                <span>
+                  <strong>{t("Computer use")}</strong>
+                  <small>
+                    {machine.machine === "vm" && !machine.hostComputerUse
+                      ? t("Controls only Xvfb in the VM; cannot access the host screen.")
+                      : t("Off by default; each turn still needs a time-boxed grant.")}
+                  </small>
+                </span>
+                <SettingsSwitch
+                  id="settings-computer-use"
+                  checked={bot.computerUse}
+                  disabled={updating || saving}
+                  onChange={(event) => {
+                    const computerUse = event.target.checked
+                    void immediateAction(() => actions.updateBot(bot.id, { computerUse }))
+                  }}
+                />
+              </label>
+            </SettingsGroup>
+            <SettingsGroup>
+              <label className="toggle-row" htmlFor="settings-browser">
+                <span>
+                  <strong>{t("Browser enabled")}</strong>
+                  <small>{t("Allow this teammate to use its touri-owned Chrome tabs.")}</small>
+                </span>
+                <SettingsSwitch
+                  id="settings-browser"
+                  checked={bot.browserEnabled}
+                  disabled={updating || saving}
+                  onChange={(event) => {
+                    const browserEnabled = event.target.checked
+                    void immediateAction(() => actions.updateBot(bot.id, { browserEnabled }))
+                  }}
+                />
+              </label>
+            </SettingsGroup>
+          </SettingsPane>
+          <SettingsPane {...botPane("project")}>
+            <SettingsGroup title={t("Projeto")}>
+              <div className="settings-fields">
+                <label>
+                  {t("Projeto")}
+                  <select
+                    value={projectId}
+                    disabled={activeTurns || saving || updating || machine.machine === "cloud"}
+                    onChange={(event) =>
+                      event.target.value === "__add_project__"
+                        ? setAddingProject(true)
+                        : setProjectId(event.target.value)
+                    }
+                  >
+                    <option value="">{t("Nenhum projeto (começa na pasta do bot)")}</option>
+                    {projects
+                      .filter((project) => !project.archivedAt)
+                      .map((project) => (
+                        <option value={project.id} key={project.id}>
+                          {project.name}
+                        </option>
+                      ))}
+                    <option value="__add_project__" disabled={!api || !invokeCommand}>
+                      {t("Adicionar projeto…")}
+                    </option>
+                  </select>
+                </label>
+                {addingProject && api && invokeCommand && (
+                  <ProjectModal
+                    project={null}
+                    selectedBotId={bot.id}
+                    linkBotId={bot.id}
+                    bots={bots ?? [bot]}
+                    api={api}
+                    invokeCommand={invokeCommand}
+                    actions={actions}
+                    onLinked={(project) => setProjectId(project.id)}
+                    onClose={() => setAddingProject(false)}
+                    onOpenPreview={() => setAddingProject(false)}
+                    onNotice={() => {}}
+                  />
+                )}
+              </div>
+            </SettingsGroup>
+            <SettingsGroup>
+              <SettingsRow
+                title={t("Pasta de trabalho")}
+                description={t("A pasta usada para começar as tarefas deste bot.")}
+              >
+                <code>{bot.cwd || projects.find((candidate) => candidate.id === projectId)?.path || bot.homeDir}</code>
+              </SettingsRow>
+            </SettingsGroup>
+          </SettingsPane>
+          <SettingsPane {...botPane("access")}>
+            <SettingsGroup title={t("Nível de acesso")}>
+              <div className="settings-fields">
+                <label>
+                  {t("Access")}
+                  <select
+                    ref={permissionsRef}
+                    value={provider === "codex" && access === "full-approved" ? "full" : access}
+                    onChange={(event) => setAccess(event.target.value as Bot["access"])}
+                  >
+                    <option value="read-only">{accessLabel({ access: "read-only", approvals: "on-request" })}</option>
+                    <option value="workspace-write">
+                      {accessLabel({
+                        access: "workspace-write",
+                        approvals:
+                          provider === bot.provider && initialAccess.current === "workspace-write"
+                            ? bot.approvals
+                            : "on-request",
+                      })}
+                    </option>
+                    <option value="full">{accessLabel({ access: "full", approvals: "never" })}</option>
+                    {provider !== "codex" && (
+                      <option value="full-approved">{accessLabel({ access: "full", approvals: "on-request" })}</option>
+                    )}
+                  </select>
+                </label>
+                <BotAccessSummary
+                  {...draftAccess}
+                  machine={machine.machine}
+                  folders={folders}
+                  anyFolderAccess={anyFolderAccess}
+                />
+                {provider === "codex" && (
+                  <p>
+                    {t(
+                      "Codex full access disables provider approvals and sandboxing; touri folder restrictions still apply.",
+                    )}
+                  </p>
+                )}
+                {access === "full" && (
+                  <div className="warning-callout">
+                    {t("Full access skips provider approvals. Folder access is configured separately.")}
+                  </div>
+                )}
+              </div>
+            </SettingsGroup>
             {api && machine.machine !== "cloud" && (
               <ProviderLogin
                 key={provider}
@@ -1267,288 +1393,94 @@ export const BotSettingsModal = ({
                 onChange={(patch) => setProfile((current) => ({ ...current, ...patch }))}
               />
             )}
-            <SettingsRow
-              title={t("Model")}
-              description="Deixe em branco para usar o padrão do provedor."
-              htmlFor="settings-model"
-            >
-              <ProviderMark provider={provider} />
-              <ProviderModelField
-                id="settings-model"
-                api={api}
-                botId={bot.id}
-                provider={provider}
-                value={model}
-                onChange={setModel}
-              />
-            </SettingsRow>
-            <SettingsRow
-              title={t("Reasoning")}
-              description="A profundidade de raciocínio nas próximas tarefas."
-              htmlFor="settings-effort"
-            >
-              <select
-                id="settings-effort"
-                value={effort ?? ""}
-                onChange={(event) => setEffort((event.target.value || null) as Bot["reasoningEffort"])}
-              >
-                <option value="">{t("Padrão do provedor")}</option>
-                <option value="low">{t("Low")}</option>
-                <option value="medium">{t("Medium")}</option>
-                <option value="high">{t("High")}</option>
-                <option value="xhigh">{t("Extra high")}</option>
-              </select>
-            </SettingsRow>
-          </SettingsGroup>
-          <SettingsGroup title="Instruções">
-            <section>
-              <label htmlFor="soul">{t("Bot instructions")}</label>
-              <textarea
-                id="soul"
-                className="soul-editor"
-                value={instructions}
-                onChange={(event) => setInstructions(event.target.value)}
-                aria-describedby="soul-help"
-              />
-              <small id="soul-help" className="field-help">
-                {t("Detailed guidance for the bot. Saved as SOUL.md in the bot’s folder.")}{" "}
-                {t("Applied on the next turn.")}
-              </small>
-              {instructions.includes("coordinate_bots") && (
-                <p className="warning-callout">
-                  A SOUL menciona coordinate_bots, mas essa ferramenta não está disponível no touri. Para coordenar o
-                  trabalho, abra cada bot em Bots e envie a tarefa; conecte um servidor MCP próprio se precisar de
-                  coordenação automática.
-                </p>
-              )}
-            </section>
-          </SettingsGroup>
-          <SettingsGroup title="Excluir bot">
-            <p>Remove este bot, suas conversas, rotinas e seu computador.</p>
-            <button
-              type="button"
-              className="tool-action tool-action-deny"
-              disabled={saving || updating}
-              onClick={() => setDeleting(true)}
-            >
-              Excluir bot
-            </button>
-            {deleting && (
-              <DeleteBotDialog
-                bot={bot}
-                onDelete={async (...args) => {
-                  await actions.deleteBot(...args)
-                  onClose()
-                }}
-                onClose={() => setDeleting(false)}
-              />
-            )}
-          </SettingsGroup>
-        </SettingsPane>
-        <SettingsPane {...botPane("computer")}>
-          <SettingsGroup>
-            <MachineFields
-              activeTurns={activeTurns}
-              values={machine}
-              provider={provider}
-              {...(capability ? { capability } : {})}
-              {...(machineState ? { state: machineState } : {})}
-              onChange={(patch) => setMachine((current) => ({ ...current, ...patch }))}
-              {...(bot.machine === "vm"
-                ? {
-                    onAction: (reset: boolean, stopTurns?: boolean) =>
-                      actions.machineAction(
-                        bot.id,
-                        reset,
-                        reset && (projectId || null) !== bot.projectId ? projectId || null : undefined,
-                        stopTurns,
-                      ),
-                  }
-                : {})}
-            />
-            {api && bot.machine === "vm" && <BotNetworkSettings api={api} botId={bot.id} />}
-          </SettingsGroup>
-          <SettingsGroup title="Arquivos e navegador">
-            <div className="settings-fields">
-              <label>
-                {t("Projeto")}
-                <select
-                  value={projectId}
-                  disabled={activeTurns || saving || updating || machine.machine === "cloud"}
-                  onChange={(event) =>
-                    event.target.value === "__add_project__" ? setAddingProject(true) : setProjectId(event.target.value)
-                  }
-                >
-                  <option value="">{t("Nenhum projeto (começa na pasta do bot)")}</option>
-                  {projects
-                    .filter((project) => !project.archivedAt)
-                    .map((project) => (
-                      <option value={project.id} key={project.id}>
-                        {project.name}
-                      </option>
-                    ))}
-                  <option value="__add_project__" disabled={!api || !invokeCommand}>
-                    {t("Adicionar projeto…")}
-                  </option>
-                </select>
-              </label>
-              <BotAccessSummary
-                machine={machine.machine}
-                access={access === "full-approved" ? "full" : (access as Bot["access"])}
-                approvals={
-                  provider === bot.provider && access === initialAccess.current
-                    ? bot.approvals
-                    : access === "full" || (provider === "codex" && access === "full-approved")
-                      ? "never"
-                      : "on-request"
-                }
+            {machine.machine !== "cloud" && (
+              <BotFolderSettings
                 folders={folders}
                 anyFolderAccess={anyFolderAccess}
+                machine={machine.machine}
+                disabled={saving || updating}
+                invokeCommand={invokeCommand}
+                onFolders={setFolders}
+                onAnyFolderAccess={setAnyFolderAccess}
               />
-              {machine.machine !== "cloud" && (
-                <BotFolderSettings
-                  folders={folders}
-                  anyFolderAccess={anyFolderAccess}
-                  machine={machine.machine}
-                  disabled={saving || updating}
-                  invokeCommand={invokeCommand}
-                  onFolders={setFolders}
-                  onAnyFolderAccess={setAnyFolderAccess}
-                />
-              )}
-              {addingProject && api && invokeCommand && (
-                <ProjectModal
-                  project={null}
-                  selectedBotId={bot.id}
-                  linkBotId={bot.id}
-                  bots={bots ?? [bot]}
-                  api={api}
-                  invokeCommand={invokeCommand}
-                  actions={actions}
-                  onLinked={(project) => setProjectId(project.id)}
-                  onClose={() => setAddingProject(false)}
-                  onOpenPreview={() => setAddingProject(false)}
-                  onNotice={() => {}}
-                />
-              )}
-              <label className="toggle-row" htmlFor="settings-browser">
-                <span>
-                  <strong>{t("Browser enabled")}</strong>
-                  <small>{t("Allow this teammate to use its touri-owned Chrome tabs.")}</small>
-                </span>
-                <SettingsSwitch
-                  id="settings-browser"
-                  checked={bot.browserEnabled}
-                  disabled={updating || saving}
-                  onChange={(event) => {
-                    const browserEnabled = event.target.checked
-                    void immediateAction(() => actions.updateBot(bot.id, { browserEnabled }))
-                  }}
-                />
-              </label>
-            </div>
-          </SettingsGroup>
-        </SettingsPane>
-        <SettingsPane {...botPane("permissions")}>
-          <SettingsGroup title="Nível de acesso">
-            <div className="settings-fields">
-              <label>
-                {t("Access")}
-                <select
-                  ref={permissionsRef}
-                  value={provider === "codex" && access === "full-approved" ? "full" : access}
-                  onChange={(event) => setAccess(event.target.value as Bot["access"])}
-                >
-                  <option value="read-only">{t("Read-only")}</option>
-                  <option value="workspace-write">{t("Workspace write")}</option>
-                  <option value="full">{t("Full access")}</option>
-                  {provider !== "codex" && <option value="full-approved">{t("Acesso total com aprovação")}</option>}
-                </select>
-              </label>
-              {provider === "codex" && (
-                <p>
-                  {t(
-                    "Codex full access disables provider approvals and sandboxing; touri folder restrictions still apply.",
-                  )}
-                </p>
-              )}
-              {access === "full" && (
-                <div className="warning-callout">
-                  {t("Full access skips provider approvals. Folder access is configured separately.")}
-                </div>
-              )}
-              {api && <BotStandingGrants key={grantsRevision} api={api} botId={bot.id} />}
-            </div>
-          </SettingsGroup>
-          <SettingsGroup title="Controle do computador">
-            <label className="toggle-row" htmlFor="settings-computer-use">
-              <span>
-                <strong>{t("Computer use")}</strong>
-                <small>
-                  {machine.machine === "vm" && !machine.hostComputerUse
-                    ? t("Controls only Xvfb in the VM; cannot access the host screen.")
-                    : t("Off by default; each turn still needs a time-boxed grant.")}
-                </small>
-              </span>
-              <SettingsSwitch
-                id="settings-computer-use"
-                checked={bot.computerUse}
-                disabled={updating || saving}
-                onChange={(event) => {
-                  const computerUse = event.target.checked
-                  void immediateAction(() => actions.updateBot(bot.id, { computerUse }))
-                }}
+            )}
+            {api && (
+              <SecretsPanel
+                project={projects.find((candidate) => candidate.id === projectId) ?? null}
+                api={api}
+                invokeSecret={async (account, value) =>
+                  invokeCommand ? (await invokeCommand("secret_save", { account, value })) !== null : false
+                }
+                onNotice={setSecretNotice}
               />
-            </label>
-          </SettingsGroup>
-        </SettingsPane>
-        <SettingsPane {...botPane("mcp")}>
-          {api && (
-            <BotMcpSettings
-              api={api}
-              botId={bot.id}
-              onPermissionsChange={() => setGrantsRevision((revision) => revision + 1)}
-              focusOnOpen={focusMcp}
-              {...(onOpenIntegrations ? { onOpenIntegrations } : {})}
-            />
-          )}
-        </SettingsPane>
-        <SettingsPane {...botPane("routines")}>
-          <SettingsGroup title={`${botRoutines.length} ${plural(botRoutines.length, "rotina", "rotinas")}`}>
-            <section>
-              {botRoutines.map((routine) => (
-                <div className="routine-row" key={routine.id}>
-                  <span>
-                    <strong>{routine.name}</strong>
-                    <small>
-                      {routine.cron} · {routine.timezone}
-                    </small>
-                  </span>
-                  <button
-                    type="button"
-                    className="text-button"
-                    disabled={updating || saving}
-                    onClick={() => void immediateAction(() => actions.runRoutine(routine.id))}
-                  >
-                    {t("Run now")}
-                  </button>
-                  <SettingsSwitch
-                    checked={routine.enabled}
-                    disabled={updating || saving}
-                    onChange={() => void immediateAction(() => actions.toggleRoutine(routine))}
-                    aria-label={t("Enable routine", { name: routine.name })}
-                  />
-                </div>
-              ))}
-              {botRoutines.length === 0 && (
-                <p className="muted-copy">
-                  {t("No routines. Agents can propose disabled routines for you to review.")}
-                </p>
-              )}
-            </section>
-          </SettingsGroup>
-        </SettingsPane>
-      </SettingsLayout>
+            )}
+            {secretNotice && <p role="status">{secretNotice}</p>}
+          </SettingsPane>
+          <SettingsPane {...botPane("permissions")}>
+            {api && <BotStandingGrants key={grantsRevision} api={api} botId={bot.id} />}
+            <p className="field-help">
+              {t("O controle do computador precisa de uma permissão por tempo limitado em cada conversa.")}
+            </p>
+            {api && bot.computerUse && bot.mainThreadId && (
+              <>
+                <p>{t("Esta permissão vale para a conversa principal deste bot.")}</p>
+                <ComputerGrantCard api={api} botId={bot.id} threadId={bot.mainThreadId} botName={bot.name} />
+              </>
+            )}
+          </SettingsPane>
+          <SettingsPane {...botPane("tools")}>
+            {api && (
+              <BotMcpSettings
+                api={api}
+                botId={bot.id}
+                onPermissionsChange={() => setGrantsRevision((revision) => revision + 1)}
+                focusOnOpen={focusMcp}
+                {...(onOpenIntegrations ? { onOpenIntegrations } : {})}
+              />
+            )}
+          </SettingsPane>
+          <SettingsPane {...botPane("routines")}>
+            {onOpenRoutines && (
+              <button type="button" className="text-button" onClick={onOpenRoutines}>
+                {t("Manage routines")}
+              </button>
+            )}
+            <SettingsGroup title={`${botRoutines.length} ${plural(botRoutines.length, "rotina", "rotinas")}`}>
+              <section>
+                {botRoutines.map((routine) => (
+                  <div className="routine-row" key={routine.id}>
+                    <span>
+                      <strong>{routine.name}</strong>
+                      <small>
+                        {routine.cron} · {routine.timezone}
+                      </small>
+                    </span>
+                    <button
+                      type="button"
+                      className="text-button"
+                      disabled={updating || saving}
+                      onClick={() => void immediateAction(() => actions.runRoutine(routine.id))}
+                    >
+                      {t("Run now")}
+                    </button>
+                    <SettingsSwitch
+                      checked={routine.enabled}
+                      disabled={updating || saving}
+                      onChange={() => void immediateAction(() => actions.toggleRoutine(routine))}
+                      aria-label={t("Enable routine", { name: routine.name })}
+                    />
+                  </div>
+                ))}
+                {botRoutines.length === 0 && (
+                  <p className="muted-copy">
+                    {t("No routines. Agents can propose disabled routines for you to review.")}
+                  </p>
+                )}
+              </section>
+            </SettingsGroup>
+          </SettingsPane>
+        </SettingsLayout>
+      </div>
       {saveError && (
         <p className="settings-save-error warning-callout" role="alert">
           {saveError}
@@ -2217,308 +2149,6 @@ export const ProjectModal = ({
           </div>
         </div>
       ) : null}
-    </Modal>
-  )
-}
-
-type SettingsModalProps = {
-  initialSection?: string
-  /** Registry setting id to focus and highlight once the dialog opens (command palette). */
-  focusSetting?: string | null
-  reportErrorCode?: string | undefined
-  invokeCommand?: TauriInvoke
-  api?: UiApi
-  settings: ApiRoutes["GET /settings"]["res"]["settings"] | null
-  onClose: () => void
-  onSave: (patch: Partial<ApiRoutes["PATCH /settings"]["req"]>) => Promise<void>
-}
-
-export const SettingsModal = ({
-  settings,
-  onClose,
-  onSave,
-  api,
-  invokeCommand,
-  initialSection,
-  reportErrorCode,
-  focusSetting,
-}: SettingsModalProps) => {
-  const [section, setSection] = useState(initialSection ?? "appearance")
-  useSettingFocus(focusSetting)
-  const [theme, setThemePreference] = useState<ThemePreference>(readTheme)
-  const [inlinePreview, setInlinePreview] = useState(readInlinePreviewPreference)
-  const [telemetry, setTelemetry] = useState(settings?.cliTelemetry ?? "off")
-  const [updates, setUpdates] = useState(settings?.checkForUpdates ?? false)
-  const [tray, setTray] = useState(settings?.keepRunningInTray ?? true)
-  const [native, setNative] = useState(settings?.nativeNotifications ?? true)
-  const [floatUpdates, setFloatUpdates] = useState(settings?.sidebarFloatUpdates ?? true)
-  const [resumeTurns, setResumeTurns] = useState(settings?.resumeInterruptedTurns ?? true)
-  const [vmMemory, setVmMemory] = useState(settings?.botVmMemoryMb ?? 1536)
-  const [retentionDays, setRetentionDays] = useState(settings?.dataRetentionDays ?? 30)
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const save = async (): Promise<void> => {
-    if (saving) return
-    if (!Number.isInteger(retentionDays) || retentionDays < 0 || retentionDays > 3650) {
-      setError("Escolha de 0 a 3.650 dias para guardar os detalhes.")
-      setSection("privacy")
-      return
-    }
-    if (!Number.isInteger(vmMemory) || vmMemory < 512 || vmMemory > 16384) {
-      setError("Escolha de 512 a 16.384 MiB por computador do bot.")
-      setSection("general")
-      return
-    }
-    setSaving(true)
-    setError(null)
-    try {
-      await onSave({
-        cliTelemetry: telemetry,
-        checkForUpdates: updates,
-        keepRunningInTray: tray,
-        nativeNotifications: native,
-        sidebarFloatUpdates: floatUpdates,
-        resumeInterruptedTurns: resumeTurns,
-        botVmMemoryMb: vmMemory,
-        dataRetentionDays: retentionDays,
-      })
-      setTheme(theme)
-      setInlinePreviewPreference(inlinePreview)
-      onClose()
-    } catch (caught) {
-      setError(userFacingError(caught))
-    } finally {
-      setSaving(false)
-    }
-  }
-  const sections = APP_SETTINGS_SECTIONS.filter((entry) => entry.id !== "cloud" || (settings?.cloud && api))
-  const pane = (id: AppSettingsSectionId) => {
-    const entry = APP_SETTINGS_SECTIONS.find((candidate) => candidate.id === id)
-    return { active: section, id, title: entry?.label ?? id, description: entry?.description ?? "" }
-  }
-  return (
-    <Modal onClose={onClose} title={t("Settings")} eyebrow={t("Local preferences")} className="settings-modal">
-      <SettingsLayout sections={sections} active={section} onChange={setSection} label="Seções das preferências">
-        <SettingsPane {...pane("report")}>
-          {section === "report" && (
-            <ReportProblem api={api} invokeCommand={invokeCommand} errorCode={reportErrorCode} />
-          )}
-        </SettingsPane>
-        {settings?.cloud && api && (
-          <SettingsPane {...pane("cloud")}>
-            <CloudPreferences api={api} settings={settings} onSave={onSave} />
-          </SettingsPane>
-        )}
-        <SettingsPane {...pane("appearance")}>
-          <SettingsGroup>
-            <SettingsRow
-              title={SETTINGS.theme.label}
-              description={SETTINGS.theme.description}
-              htmlFor={SETTINGS.theme.controlId}
-              settingId={SETTINGS.theme.id}
-            >
-              <select
-                id={SETTINGS.theme.controlId}
-                value={theme}
-                onChange={(event) => setThemePreference(event.target.value as ThemePreference)}
-              >
-                <option value="dark">Escuro</option>
-                <option value="light">Claro</option>
-                <option value="system">Sistema</option>
-              </select>
-            </SettingsRow>
-            <SettingsRow
-              title={SETTINGS.inlinePreview.label}
-              description={SETTINGS.inlinePreview.description}
-              htmlFor={SETTINGS.inlinePreview.controlId}
-              settingId={SETTINGS.inlinePreview.id}
-            >
-              <SettingsSwitch
-                id={SETTINGS.inlinePreview.controlId}
-                checked={inlinePreview}
-                onChange={(event) => setInlinePreview(event.target.checked)}
-              />
-            </SettingsRow>
-            <SettingsRow
-              title={SETTINGS.sidebarFloatUpdates.label}
-              description={SETTINGS.sidebarFloatUpdates.description}
-              htmlFor={SETTINGS.sidebarFloatUpdates.controlId}
-              settingId={SETTINGS.sidebarFloatUpdates.id}
-            >
-              <SettingsSwitch
-                id={SETTINGS.sidebarFloatUpdates.controlId}
-                checked={floatUpdates}
-                onChange={(event) => setFloatUpdates(event.target.checked)}
-              />
-            </SettingsRow>
-          </SettingsGroup>
-        </SettingsPane>
-        <SettingsPane {...pane("shortcuts")}>
-          <SettingsGroup>
-            <SettingsRow
-              title={SETTINGS.shortcutPalette.label}
-              description={SETTINGS.shortcutPalette.description}
-              settingId={SETTINGS.shortcutPalette.id}
-            >
-              <kbd>{paletteShortcutLabel()}</kbd>
-            </SettingsRow>
-            <SettingsRow
-              title={SETTINGS.shortcutSend.label}
-              description={SETTINGS.shortcutSend.description}
-              settingId={SETTINGS.shortcutSend.id}
-            >
-              <kbd>Enter</kbd>
-            </SettingsRow>
-          </SettingsGroup>
-          <div className="settings-note">
-            <div>
-              <span>{t("Computer-use hotkey:")}</span>
-              <code>{settings?.computerUseHotkey ?? "⌃⌥⌘."}</code>
-            </div>
-          </div>
-        </SettingsPane>
-        <SettingsPane {...pane("privacy")}>
-          <SettingsGroup>
-            <SettingsRow
-              title={SETTINGS.telemetry.label}
-              description={SETTINGS.telemetry.description}
-              htmlFor={SETTINGS.telemetry.controlId}
-              settingId={SETTINGS.telemetry.id}
-            >
-              <select
-                id={SETTINGS.telemetry.controlId}
-                value={telemetry}
-                onChange={(event) => setTelemetry(event.target.value as "off" | "cli-default")}
-              >
-                <option value="off">{t("Off (recommended)")}</option>
-                <option value="cli-default">{t("CLI default")}</option>
-              </select>
-            </SettingsRow>
-            <SettingsRow
-              title={SETTINGS.retention.label}
-              description={SETTINGS.retention.description}
-              htmlFor={SETTINGS.retention.controlId}
-              settingId={SETTINGS.retention.id}
-            >
-              <input
-                id={SETTINGS.retention.controlId}
-                type="number"
-                min={0}
-                max={3650}
-                step={1}
-                value={retentionDays}
-                onChange={(event) => setRetentionDays(Number(event.target.value))}
-              />
-              <span>dias</span>
-            </SettingsRow>
-          </SettingsGroup>
-          <div className="settings-note">
-            <div>
-              <span>{t("Browser:")}</span>
-              <code>
-                {!settings?.browserExecutable || settings.browserExecutable === "system-chrome"
-                  ? "Chrome do sistema"
-                  : settings.browserExecutable}
-              </code>
-            </div>
-          </div>
-          <ComputerUseSettings className="settings-computer-permissions" />
-        </SettingsPane>
-        <SettingsPane {...pane("notifications")}>
-          <SettingsGroup>
-            <label
-              className="toggle-row"
-              htmlFor={SETTINGS.nativeNotifications.controlId}
-              data-setting-id={SETTINGS.nativeNotifications.id}
-            >
-              <span>
-                <strong>{SETTINGS.nativeNotifications.label}</strong>
-                <small>{SETTINGS.nativeNotifications.description}</small>
-              </span>
-              <SettingsSwitch
-                id={SETTINGS.nativeNotifications.controlId}
-                checked={native}
-                onChange={(event) => setNative(event.target.checked)}
-              />
-            </label>
-          </SettingsGroup>
-        </SettingsPane>
-        <SettingsPane {...pane("general")}>
-          <SettingsGroup>
-            <label
-              className="toggle-row"
-              htmlFor={SETTINGS.checkForUpdates.controlId}
-              data-setting-id={SETTINGS.checkForUpdates.id}
-            >
-              <span>
-                <strong>{SETTINGS.checkForUpdates.label}</strong>
-                <small>{SETTINGS.checkForUpdates.description}</small>
-              </span>
-              <SettingsSwitch
-                id={SETTINGS.checkForUpdates.controlId}
-                checked={updates}
-                onChange={(event) => setUpdates(event.target.checked)}
-              />
-            </label>
-            <SettingsRow
-              title={SETTINGS.vmMemory.label}
-              description={SETTINGS.vmMemory.description}
-              htmlFor={SETTINGS.vmMemory.controlId}
-              settingId={SETTINGS.vmMemory.id}
-            >
-              <input
-                id={SETTINGS.vmMemory.controlId}
-                type="number"
-                min={512}
-                max={16384}
-                value={vmMemory}
-                onChange={(event) => setVmMemory(Number(event.target.value))}
-              />
-            </SettingsRow>
-            <label
-              className="toggle-row"
-              htmlFor={SETTINGS.resumeInterruptedTurns.controlId}
-              data-setting-id={SETTINGS.resumeInterruptedTurns.id}
-            >
-              <span>
-                <strong>{SETTINGS.resumeInterruptedTurns.label}</strong>
-                <small>{SETTINGS.resumeInterruptedTurns.description}</small>
-              </span>
-              <SettingsSwitch
-                id={SETTINGS.resumeInterruptedTurns.controlId}
-                checked={resumeTurns}
-                onChange={(event) => setResumeTurns(event.target.checked)}
-              />
-            </label>
-            <label className="toggle-row" htmlFor={SETTINGS.tray.controlId} data-setting-id={SETTINGS.tray.id}>
-              <span>
-                <strong>{SETTINGS.tray.label}</strong>
-                <small>{SETTINGS.tray.description}</small>
-              </span>
-              <SettingsSwitch
-                id={SETTINGS.tray.controlId}
-                checked={tray}
-                onChange={(event) => setTray(event.target.checked)}
-              />
-            </label>
-          </SettingsGroup>
-        </SettingsPane>
-      </SettingsLayout>
-      {error && (
-        <p className="settings-save-error warning-callout" role="alert">
-          {error}
-        </p>
-      )}
-      {section !== "report" && (
-        <div className="modal-actions">
-          <button type="button" className="button button-quiet" onClick={onClose}>
-            {t("Cancel")}
-          </button>
-          <button type="button" className="button button-brand" disabled={saving} onClick={() => void save()}>
-            {saving ? t("Saving…") : t("Save preferences")}
-          </button>
-        </div>
-      )}
     </Modal>
   )
 }

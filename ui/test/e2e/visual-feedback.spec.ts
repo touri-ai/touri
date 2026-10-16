@@ -1,6 +1,7 @@
 import { mkdirSync } from "node:fs"
 import { resolve } from "node:path"
 import { expect, test } from "@playwright/test"
+import { showBotPanel } from "./home-navigation"
 
 test.use({ channel: "chrome" })
 const phase = process.env.VISUAL_CAPTURE_PHASE === "before" ? "before" : "after"
@@ -28,6 +29,8 @@ for (const theme of ["light", "dark"]) {
         }
       } else if (view !== "shapes") {
         await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
+        await expect(page.locator(".bot-panel")).toHaveCount(0)
+        await showBotPanel(page)
         await expect(page.locator(".bot-panel-identity .tb-avatar")).toBeVisible()
         if (phase === "after" && view === "working") {
           for (const selector of [".bot-row.selected", ".chat-bot-chip", ".bot-panel-identity", ".activity-mascot"]) {
@@ -67,6 +70,8 @@ if (phase === "after") {
     await page.setViewportSize({ width: 1440, height: 960 })
     await page.goto("/test/e2e/fixtures/visual-feedback.html?view=working&theme=dark")
     await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
+    await expect(page.locator(".bot-panel")).toHaveCount(0)
+    await showBotPanel(page)
     for (const selector of [".bot-row.selected", ".chat-bot-chip", ".bot-panel-identity", ".activity-mascot"]) {
       const avatar = page.locator(`${selector} .tb-avatar`).first()
       const contour = avatar.locator(".tb-avatar-contour")

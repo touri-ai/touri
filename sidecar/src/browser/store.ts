@@ -89,6 +89,7 @@ export const createBrowserStore = ({
         handbackNote: null,
         takeover: null,
         lastSnapshot: null,
+        mainDocument: null,
       }
       tabs.set(tab.info.tabId, tab)
       return tab
@@ -140,6 +141,7 @@ export const createBrowserStore = ({
       handbackNote: null,
       takeover: null,
       lastSnapshot: null,
+      mainDocument: null,
     }
     database
       .query(

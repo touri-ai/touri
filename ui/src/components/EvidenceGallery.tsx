@@ -2,6 +2,7 @@ import type { Bot } from "@touri/contracts"
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react"
 import type { UiApi } from "../api/client"
 import { ApiError } from "../errors"
+import { t } from "../i18n"
 import { useSaveNotice } from "../useSaveNotice"
 import type { EvidenceImage } from "./evidenceMarkdown"
 import { loadImage, thumbnailBlob } from "./imageLoads"
@@ -139,7 +140,7 @@ const Thumbnail = ({
           className="text-button"
           onClick={() => void saveImage(() => readImage(image, context), image.filename)}
         >
-          Baixar imagem
+          {t("Baixar imagem")}
         </button>
       )}
       {notice && <p role="status">{notice}</p>}

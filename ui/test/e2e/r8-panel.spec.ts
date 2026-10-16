@@ -2,6 +2,7 @@ import { mkdirSync, readFileSync } from "node:fs"
 import { resolve } from "node:path"
 import AxeBuilder from "@axe-core/playwright"
 import { expect, type Page, test } from "@playwright/test"
+import { showBotPanel } from "./home-navigation"
 
 test.use({ channel: "chromium" })
 test.setTimeout(60_000)
@@ -29,6 +30,7 @@ for (const theme of ["light", "dark"] as const) {
       if (phase === "after") await mockDesktop(page)
       await page.addInitScript((value) => localStorage.setItem("touri.appearance.v1", value), theme)
       await page.goto(`/test/e2e/fixtures/${phase === "before" ? "bot-panel" : "r8-panel"}.html`)
+      await showBotPanel(page)
       const panel = page.getByRole("complementary", { name: "Painel de mark" })
       await expect(panel).toBeVisible()
       const shot = async (view: string) => {
@@ -107,6 +109,7 @@ if (phase === "after") {
           page.screenshot({ path: `${evidence}/after-${view}${width === 1100 ? "-narrow" : ""}-${theme}.png` })
         const fixture = "/test/e2e/fixtures/r8-panel.html"
         await page.goto(fixture)
+        await showBotPanel(page)
         const panel = page.getByRole("complementary", { name: "Painel de mark" })
         await page.getByRole("tab", { name: "Biblioteca" }).click()
         await panel.getByRole("button", { name: /restrita.*Pasta/ }).click()
@@ -141,6 +144,7 @@ if (phase === "after") {
         await panel.getByRole("button", { name: "Baixar arquivo", exact: true }).click()
         expect((await download).suggestedFilename()).toBe("notas.md")
         await page.goto(`${fixture}?local=true`)
+        await showBotPanel(page)
         await page.getByRole("tab", { name: "Biblioteca" }).click()
         await expect(panel.getByRole("heading", { name: "Pasta do bot" })).toBeVisible()
         await expect(panel.getByText("/Users/demo/Library/Application Support/touri/bots/bot-mark")).toBeVisible()
@@ -149,13 +153,16 @@ if (phase === "after") {
         await expect(panel.getByText("Este computador", { exact: true })).toBeVisible()
         await shot("computer-local")
         await page.goto(`${fixture}?local=true&project=true`)
+        await showBotPanel(page)
         await page.getByRole("tab", { name: "Biblioteca" }).click()
         await expect(panel.getByText("/Users/demo/javascript/touri-demo")).toBeVisible()
         await shot("library-project")
         await page.goto(`${fixture}?empty-routines=true`)
+        await showBotPanel(page)
         await expect(panel.getByText("Nenhuma rotina agendada", { exact: true })).toBeVisible()
         await shot("details-empty-routines")
         await page.goto(`${fixture}?connecting=true`)
+        await showBotPanel(page)
         await page.getByRole("tab", { name: "Computador", exact: true }).click()
         await panel.getByRole("button", { name: "Ligar computador" }).click()
         await expect(panel.getByText("Conectando…", { exact: true })).toBeVisible()

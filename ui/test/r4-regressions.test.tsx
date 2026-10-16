@@ -250,14 +250,11 @@ describe("r4 workflow polish", () => {
       />,
     )
     fireEvent.change(screen.getByLabelText("Nome"), { target: { value: "qa" } })
-    fireEvent.click(screen.getByRole("button", { name: "Continuar" }))
+    fireEvent.click(screen.getByRole("button", { name: "Avançado" }))
     fireEvent.change(screen.getByLabelText("Instruções do bot"), { target: { value: "Leia o projeto." } })
-    fireEvent.click(screen.getByRole("button", { name: "Continuar" }))
-    fireEvent.change(screen.getByLabelText("Modelo"), { target: { value: "gpt-6.1-sol" } })
+    fireEvent.change(screen.getByLabelText("Modelo", { selector: "input" }), { target: { value: "gpt-6.1-sol" } })
     fireEvent.change(screen.getByLabelText("Raciocínio"), { target: { value: "high" } })
-    fireEvent.click(screen.getByRole("button", { name: "Continuar" }))
-    fireEvent.change(screen.getByLabelText("Projeto"), { target: { value: "project" } })
-    fireEvent.click(screen.getByRole("button", { name: "Continuar" }))
+    fireEvent.change(screen.getByLabelText("Projeto", { selector: "select" }), { target: { value: "project" } })
     fireEvent.click(screen.getByRole("button", { name: "Criar bot" }))
     await waitFor(() =>
       expect(create).toHaveBeenCalledWith(
@@ -300,9 +297,12 @@ describe("r4 workflow polish", () => {
         onClose={vi.fn()}
       />,
     )
+    fireEvent.click(screen.getByRole("button", { name: "Avançado" }))
+    fireEvent.click(screen.getByRole("tab", { name: "Acesso" }))
     await screen.findByText("Aguardando login no navegador…")
+    fireEvent.click(screen.getByRole("tab", { name: "Modelo" }))
     fireEvent.change(screen.getByLabelText("Provedor"), { target: { value: "codex" } })
-    expect(screen.getByLabelText("Modelo")).toHaveValue("")
+    expect(screen.getByLabelText("Modelo", { selector: "input" })).toHaveValue("")
     expect(screen.getByLabelText("Raciocínio")).toHaveValue("")
     await waitFor(() =>
       expect(request).toHaveBeenCalledWith(
@@ -311,6 +311,7 @@ describe("r4 workflow polish", () => {
         { id: bot.id },
       ),
     )
+    fireEvent.click(screen.getByRole("tab", { name: "Acesso" }))
     expect(screen.getByRole("button", { name: "Cancelar login" })).toBeEnabled()
   })
 
@@ -330,6 +331,8 @@ describe("r4 workflow polish", () => {
     }
     render(<App kernel={{ services: { api: client } }} />)
     await screen.findByRole("textbox", { name: "Mensagem para mark" })
+    if (!screen.queryByRole("button", { name: "Preview do projeto" }))
+      fireEvent.click(screen.getByRole("button", { name: "Painel do bot" }))
     fireEvent.click(screen.getByRole("button", { name: "Preview do projeto" }))
     await screen.findByText("web", { selector: "strong" })
     fireEvent.click(screen.getByRole("tab", { name: "Logs" }))
@@ -348,6 +351,8 @@ describe("r4 workflow polish", () => {
     hook.unmount()
     const first = render(<App kernel={{ services: { api } }} />)
     await screen.findByRole("textbox", { name: "Mensagem para onb" })
+    if (!screen.queryByRole("button", { name: "Preview do projeto" }))
+      fireEvent.click(screen.getByRole("button", { name: "Painel do bot" }))
     fireEvent.click(screen.getByRole("button", { name: "Preview do projeto" }))
     first.unmount()
     render(<App kernel={{ services: { api } }} />)
