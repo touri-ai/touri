@@ -1486,14 +1486,14 @@ export const BotSettingsModal = ({
           {saveError}
         </p>
       )}
-      <div className="modal-actions">
+      <fieldset className="modal-actions" aria-label={t("Ações das configurações do bot")}>
         <button type="button" className="button button-quiet" onClick={onClose}>
           {t("Cancel")}
         </button>
         <button type="button" className="button button-brand" onClick={() => void save()} disabled={saving || updating}>
           {saving ? t("Saving…") : t("Save settings")}
         </button>
-      </div>
+      </fieldset>
     </Modal>
   )
 }

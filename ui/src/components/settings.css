@@ -33,6 +33,9 @@
 .settings-modal > .modal-actions,
 .bot-create-form > .modal-actions {
   flex: none;
+  min-width: 0;
+  margin: 0;
+  border: 0;
   align-items: center;
   min-height: 76px;
   padding: var(--space-16) var(--space-28);
