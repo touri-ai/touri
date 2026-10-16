@@ -3,6 +3,16 @@ import { userFacingError } from "./errors"
 export type Locale = "pt-BR" | "en"
 export const ptBR = {
   "Baixar imagem": "Baixar imagem",
+  "Activity thinking": "Pensando",
+  "Activity working": "Trabalhando",
+  "Activity reading": "Lendo",
+  "Activity searching": "Pesquisando",
+  "Activity sending": "Enviando",
+  "Activity waiting": "Aguardando você",
+  "Mascot ready": "Pronto",
+  "Mascot listening": "Ouvindo você",
+  "Mascot failed": "Precisa de atenção",
+  "Avatar unread": "Não lidas",
   "Só a máquina na nuvem": "Só a máquina na nuvem",
   "Só a VM isolada e as pastas compartilhadas": "Só a VM isolada e as pastas compartilhadas",
   "Só a VM isolada": "Só a VM isolada",
@@ -743,6 +753,16 @@ export const ptBR = {
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Baixar imagem": "Download image",
+  "Activity thinking": "Thinking",
+  "Activity working": "Working",
+  "Activity reading": "Reading",
+  "Activity searching": "Searching",
+  "Activity sending": "Sending",
+  "Activity waiting": "Waiting for you",
+  "Mascot ready": "Ready",
+  "Mascot listening": "Listening to you",
+  "Mascot failed": "Needs attention",
+  "Avatar unread": "Unread",
   "Só a máquina na nuvem": "Only the cloud machine",
   "Só a VM isolada e as pastas compartilhadas": "Only the isolated VM and shared folders",
   "Só a VM isolada": "Only the isolated VM",

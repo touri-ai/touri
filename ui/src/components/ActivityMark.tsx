@@ -1,8 +1,8 @@
 import type { MessagePart } from "@touri/contracts"
 import type { AvatarIdentity } from "@touri/contracts/avatar"
-import { activityLabelFor } from "./activityStatus"
+import { activityKindFor, activityLabelFor } from "./activityStatus"
 import { BotAvatar } from "./BotAvatar"
-import { type MascotState, mascotIsBusy } from "./mascotState"
+import { type MascotState, mascotIsBusy, mascotPhaseFor } from "./mascotState"
 import { useReducedMotion } from "./useReducedMotion"
 
 const defaultBot = { id: "touri", name: "touri", color: null, avatarSeed: "touri-mascot" }
@@ -27,7 +27,13 @@ export const ActivityMark = ({
   const approvalId = pending?.type === "approval" ? pending.approvalId : undefined
   const label = activityLabelFor(state, parts)
   return (
-    <div className="activity-mark" data-mascot-state={state} data-reduced-motion={reduced}>
+    <div
+      className="activity-mark"
+      data-mascot-state={state}
+      data-mascot-phase={mascotPhaseFor(state)}
+      data-activity={activityKindFor(state, parts)}
+      data-reduced-motion={reduced}
+    >
       <span className="activity-mascot" aria-hidden="true">
         <BotAvatar bot={bot} still size={24} state={state} {...(threadId ? { threadId } : {})} />
       </span>
