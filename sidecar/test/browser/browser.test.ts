@@ -661,6 +661,30 @@ realSuite("WP6 real Chrome browser acceptance", () => {
     ).toMatchObject({ success: false, errorCode: "REPEATED_FAILURE" })
   })
 
+  test("SITE_BLOCKED names anti-bot challenge pages and leaves ordinary 403 pages alone", async () => {
+    const snapshot = await open("/basic")
+    const navigate = (path: string) =>
+      engine.navigate({
+        tabId: snapshot.tabId,
+        botId: botA,
+        url: `${base}${path}`,
+        action: "goto",
+        timeoutMs: 10000,
+        signal: ctx().signal,
+      })
+    expect(await navigate("/challenge-header")).toMatchObject({
+      success: false,
+      errorCode: "SITE_BLOCKED",
+      error: expect.stringContaining("browser_request_takeover"),
+    })
+    expect(await navigate("/forbidden")).toMatchObject({ success: true })
+    expect(await engine.open({ url: `${base}/challenge-reference`, ctx: ctx(), timeoutMs: 20000 })).toMatchObject({
+      success: false,
+      errorCode: "SITE_BLOCKED",
+      error: expect.stringContaining("Akamai"),
+    })
+  })
+
   test("persistence restores unloaded tabs, popups are owned, dialogs are visible, and ownership is enforced", async () => {
     const cookie = await open("/cookie")
     const cookieValue = await engine.evaluate({
