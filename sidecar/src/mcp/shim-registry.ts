@@ -9,14 +9,24 @@ const KILL_GRACE_MS = 2_000
 
 const shimDir = (runDir: string): string => join(runDir, "mcp-shims")
 
+const runPs = (pid: number) => {
+  try {
+    return Bun.spawnSync({
+      cmd: ["/bin/ps", "-o", "stat=,ppid=,lstart=,command=", "-p", String(pid)],
+      env: { PATH: "/usr/bin:/bin", LC_ALL: "C" },
+      stdout: "pipe",
+      stderr: "ignore",
+      timeout: 5_000,
+    })
+  } catch {
+    // A sandboxed shim (macOS Seatbelt) may not exec the setuid ps; registration is best-effort.
+    return null
+  }
+}
+
 const probe = (pid: number): { birth: string; ppid: number; command: string } | null => {
-  const result = Bun.spawnSync({
-    cmd: ["/bin/ps", "-o", "stat=,ppid=,lstart=,command=", "-p", String(pid)],
-    env: { PATH: "/usr/bin:/bin", LC_ALL: "C" },
-    stdout: "pipe",
-    stderr: "ignore",
-    timeout: 5_000,
-  })
+  const result = runPs(pid)
+  if (!result) return null
   const match = result.stdout
     .toString()
     .trim()
