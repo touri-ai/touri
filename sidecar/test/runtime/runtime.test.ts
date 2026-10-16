@@ -1977,3 +1977,36 @@ test.serial("transcript: cancellation during environment loading never launches 
     await closeFixture(value)
   }
 })
+
+test.serial("a local bot with a provider profile runs the CLI with that profile as its home", async () => {
+  const value = await fixture({ provider: "claude" })
+  try {
+    const envLog = join(value.assets, "claude-home.log")
+    const fakeSource = readFileSync(value.fakePath, "utf8")
+    writeFileSync(
+      value.fakePath,
+      fakeSource.replace(
+        "exec ",
+        `printf '%s\\n' "\${CLAUDE_CONFIG_DIR:-default}" >> ${JSON.stringify(envLog)}\nexec `,
+      ),
+      { mode: 0o700 },
+    )
+    const run = async (text: string) => {
+      const request = addUser(value.store, value.thread, text)
+      const queued = value.engine.enqueue({ threadId: value.thread.id, requestMessageId: request.id, trigger: "user" })
+      if (!queued.success) throw new Error(queued.error)
+      await waitFor(() => terminal(queued.run.status))
+      expect(queued.run.status).toBe("succeeded")
+    }
+    await run("default home")
+    const bot = value.store.bots.get(value.bot.id)
+    if (!bot) throw new Error("Fixture bot missing")
+    bot.providerProfile = "clav"
+    await run("profile home")
+    const homes = readFileSync(envLog, "utf8").trim().split("\n")
+    expect(homes[0]).not.toContain("provider-profiles")
+    expect(homes.at(-1)).toBe(join(value.runtime.kernel.paths.appData, "provider-profiles", "clav", "claude"))
+  } finally {
+    await closeFixture(value)
+  }
+})

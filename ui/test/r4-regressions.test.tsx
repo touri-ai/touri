@@ -251,7 +251,7 @@ describe("r4 workflow polish", () => {
     )
     fireEvent.change(screen.getByLabelText("Nome"), { target: { value: "qa" } })
     fireEvent.click(screen.getByRole("button", { name: "Continuar" }))
-    fireEvent.change(screen.getByLabelText("SOUL.md"), { target: { value: "Leia o projeto." } })
+    fireEvent.change(screen.getByLabelText("Instruções do bot"), { target: { value: "Leia o projeto." } })
     fireEvent.click(screen.getByRole("button", { name: "Continuar" }))
     fireEvent.change(screen.getByLabelText("Modelo"), { target: { value: "gpt-6.1-sol" } })
     fireEvent.change(screen.getByLabelText("Raciocínio"), { target: { value: "high" } })

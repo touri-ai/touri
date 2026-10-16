@@ -72,6 +72,8 @@ const createBot = (input: Seed["bots"][number], index: number, projectId: Id | n
   machine: "local",
   machineIdleMinutes: 10,
   vmProviderLogin: false,
+  providerProfile: null,
+  claudeAiConnectors: false,
   hostComputerUse: false,
   notifications: "failures",
   section: index === 2 ? "Later" : "Team",
@@ -477,6 +479,7 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
     }
     if (key === "GET /bots/:id/grants") return { grants: [] } as ApiRoutes[typeof route]["res"]
     if (key === "GET /bots/:id/mcp") return { servers: [] } as ApiRoutes[typeof route]["res"]
+    if (key === "GET /provider-profiles") return { profiles: [] } as ApiRoutes[typeof route]["res"]
     if (key === "GET /providers/opencode/models")
       return {
         models: ["openrouter/deepseek/deepseek-v3.2"],

@@ -1,6 +1,7 @@
 import { homedir } from "node:os"
 import { join } from "node:path"
 import { DEPRECATED_IMPORT_ALIAS } from "../importer/deprecatedAliases"
+import { validProviderProfileName } from "../kernel/provider-profiles"
 
 export const defaultPort = 8795
 export const defaultHost = "127.0.0.1"
@@ -32,6 +33,8 @@ export type CliCommand =
   | { name: "devices"; dataDir: string; revokeId: string | null }
   | { name: "import-legacy"; dataDir: string; path: string; dryRun: boolean; importCodexSessions: boolean }
   | { name: "mcp-stdio"; threadId: string; dataDir: string }
+  | { name: "profile-list"; dataDir: string }
+  | { name: "profile-login"; dataDir: string; profile: string; provider: "claude" | "codex" }
   | { name: "version" }
   | { name: "help" }
 
@@ -50,6 +53,7 @@ const flagKinds: Record<string, FlagKind> = {
   "--code": "value",
   "--path": "value",
   "--thread": "value",
+  "--provider": "value",
   "--tailscale": "boolean",
   "--trust-proxy": "boolean",
   "--no-pair": "boolean",
@@ -178,6 +182,20 @@ const buildDevices = (flags: Flags): ParseCliResult => {
   return { success: true, command: { name: "devices", dataDir: dataDirOf(flags), revokeId: id ?? null } }
 }
 
+const buildProfile = (flags: Flags): ParseCliResult => {
+  const [, action, profile] = flags.positionals
+  if (action === "list" || action === undefined)
+    return { success: true, command: { name: "profile-list", dataDir: dataDirOf(flags) } }
+  if (action !== "login")
+    return { success: false, error: "Usage: touri profile list | login <name> [--provider claude]" }
+  if (!validProviderProfileName(profile))
+    return { success: false, error: "touri profile login needs a name: letters, digits, dot, dash or underscore" }
+  const provider = flags.values["--provider"] ?? "claude"
+  if (provider !== "claude" && provider !== "codex")
+    return { success: false, error: "--provider must be claude or codex" }
+  return { success: true, command: { name: "profile-login", dataDir: dataDirOf(flags), profile, provider } }
+}
+
 const buildWithPort = (flags: Flags, name: "status" | "doctor"): ParseCliResult => {
   const port = parsePort(flags.values["--port"])
   if (!port.success) return port
@@ -200,6 +218,7 @@ export const parseCli = (argv: Array<string>): ParseCliResult => {
   if (command === "doctor") return buildWithPort(flags, "doctor")
   if (command === "devices") return buildDevices(flags)
   if (command === "import") return buildImport(flags)
+  if (command === "profile") return buildProfile(flags)
   if (command === "version") return { success: true, command: { name: "version" } }
   if (command === "mcp-stdio") {
     const threadId = flags.values["--thread"]
@@ -220,5 +239,8 @@ Usage:
   touri status [--data-dir <dir>]
   touri doctor [--data-dir <dir>]
   touri import legacy --path <dir> [--dry-run] [--import-codex-sessions]
+  touri profile list                                 list provider login profiles and their accounts
+  touri profile login <name> [--provider claude|codex]
+                                                  sign a profile in with the official CLI login; pick it per bot
   touri version
 `

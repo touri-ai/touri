@@ -87,6 +87,9 @@ export type Bot = {
   folders?: Array<BotFolder>
   anyFolderAccess?: boolean
   mcpServers?: Array<McpServer>
+  /** Defaults for bots created before schema 17: null and false. */
+  providerProfile?: string | null
+  claudeAiConnectors?: boolean
 
   id: Id
   name: string
@@ -643,7 +646,10 @@ export type ProviderAdapter = {
 /* ------------------------------------------------------------------------------------------ */
 
 export type CreateBotInput = { cloudApiKey?: string } & Pick<Bot, 'name' | 'provider'> &
-  Partial<Pick<Bot, 'title' | 'roleLine' | 'description' | 'color' | 'avatarShape' | 'avatarSeed' | 'instructions' | 'model' | 'reasoningEffort' | 'access' | 'approvals' | 'projectId' | 'cwd' | 'browserEnabled' | 'computerUse' | 'machine' | 'machineIdleMinutes' | 'vmProviderLogin' | 'hostComputerUse' | 'folders' | 'anyFolderAccess'>>
+  Partial<Pick<Bot, 'title' | 'roleLine' | 'description' | 'color' | 'avatarShape' | 'avatarSeed' | 'instructions' | 'model' | 'reasoningEffort' | 'access' | 'approvals' | 'projectId' | 'cwd' | 'browserEnabled' | 'computerUse' | 'machine' | 'machineIdleMinutes' | 'vmProviderLogin' | 'hostComputerUse' | 'folders' | 'anyFolderAccess' | 'providerProfile' | 'claudeAiConnectors'>>
+
+/** A named login under `<appData>/provider-profiles/<name>`, created with `touri profile login`. */
+export type ProviderProfile = { name: string; provider: Provider; loggedIn: boolean; account: string | null }
 
 export type ProviderLoginFlow = {
   provider: Provider
@@ -700,6 +706,7 @@ export type ApiRoutes = {
   'GET /bots/:id/grants': { req: {}; res: { grants: Array<StandingGrant> } }
   'DELETE /bots/:id/grants/:grant': { req: {}; res: {} }
   'GET /providers/opencode/models': { req: { botId?: Id }; res: { models: Array<string>; defaultModel: string | null; available: boolean } }
+  'GET /provider-profiles': { req: {}; res: { profiles: Array<ProviderProfile> } }
   'GET /bots/:id/provider-login': { req: {}; res: {
       provider: Provider
       ready: boolean

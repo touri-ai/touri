@@ -29,6 +29,7 @@ import { createApprovalBridge } from "../approvals/bridge"
 import { approvalOutcome } from "../approvals/outcome"
 import { delegatedBot } from "../groups/security"
 import { buildChildEnv } from "../kernel"
+import { providerProfileEnv } from "../kernel/provider-profiles"
 import { redactStructured } from "../kernel/redact"
 import { attachedServers, resolveAttachedMcp } from "../mcp/attached"
 import { reapOrphanShims } from "../mcp/shim-registry"
@@ -752,6 +753,7 @@ export const createRuntimeEngine = ({
       base: baseEnvironment,
       overrides: {
         ...environment,
+        ...providerProfileEnv({ appData: kernel.paths.appData, bot }),
         TOURI_RUN_DIR: kernel.paths.runDir,
         TOURI_APP_DATA: kernel.paths.appData,
         ...(projectDataDir ? { TOURI_PROJECT_DATA_DIR: projectDataDir } : {}),

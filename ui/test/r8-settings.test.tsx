@@ -53,12 +53,22 @@ it("collects all five steps without creating a bot early and preserves choices w
   fireEvent.change(screen.getByLabelText("Nome"), { target: { value: " Clara " } })
   fireEvent.click(screen.getByRole("button", { name: "Forma Nuvem" }))
   next()
+  expect(screen.getByLabelText("Função")).toHaveAccessibleDescription(
+    "Resumo do trabalho do bot na equipe, por exemplo: pesquisar e comparar fontes.",
+  )
+  expect(screen.getByLabelText("Título (opcional)")).toHaveAccessibleDescription(
+    "Uma identificação curta, por exemplo: Pesquisador. As tarefas detalhadas vão nas instruções.",
+  )
+  expect(screen.getByLabelText("Instruções do bot")).toHaveAccessibleDescription(
+    "Orientações detalhadas para o bot. Salvas no arquivo SOUL.md na pasta do bot.",
+  )
   fireEvent.change(screen.getByLabelText("Função"), { target: { value: "Pesquisa" } })
-  fireEvent.change(screen.getByLabelText("SOUL.md"), { target: { value: "Responda em português." } })
+  fireEvent.change(screen.getByLabelText("Título (opcional)"), { target: { value: "Pesquisador" } })
+  fireEvent.change(screen.getByLabelText("Instruções do bot"), { target: { value: "Responda em português." } })
   next()
   fireEvent.change(screen.getByLabelText("Modelo"), { target: { value: "gpt-6.1-sol" } })
   fireEvent.click(screen.getByRole("button", { name: "Voltar" }))
-  expect(screen.getByLabelText("SOUL.md")).toHaveValue("Responda em português.")
+  expect(screen.getByLabelText("Instruções do bot")).toHaveValue("Responda em português.")
   next()
   expect(screen.getByLabelText("Modelo")).toHaveValue("gpt-6.1-sol")
   next()
@@ -76,6 +86,7 @@ it("collects all five steps without creating a bot early and preserves choices w
       expect.objectContaining({
         name: "Clara",
         roleLine: "Pesquisa",
+        title: "Pesquisador",
         instructions: "Responda em português.",
         model: "gpt-6.1-sol",
         avatarShape: "nuage",
