@@ -1,5 +1,6 @@
 import type { Bot, Id, Message, NotificationRecord, Run, Thread } from "@touri/contracts"
 import { pendingApprovalTargets } from "./approvalNavigation"
+import { t } from "./i18n"
 import { isFailureNotice } from "./sidebarAttention"
 
 /** Sidebar priority: 1) needs you, 2) working now, 3) unread results, then the user's own order. */
@@ -14,13 +15,12 @@ export type BotActivity = {
 }
 
 export const BOT_ACTIVITY_LABELS: Record<BotActivityKind, string> = {
-  "needs-you": "Precisa de você",
-  working: "Trabalhando",
-  new: "Novidades",
+  "needs-you": t("Needs you"),
+  working: t("Working"),
+  new: t("News"),
 }
 
 const RANK: Record<BotActivityKind, number> = { "needs-you": 0, working: 1, new: 2 }
-const WAITING_KINDS: ReadonlyArray<NotificationRecord["kind"]> = ["approval", "question", "takeover", "incident"]
 const ACTIVE_RUNS: ReadonlyArray<Run["status"]> = ["queued", "starting", "running"]
 
 type ActivityInput = {
@@ -74,8 +74,7 @@ export const computeBotActivity = (input: ActivityInput): Map<Id, BotActivity> =
         ...attention.map((item) => item.createdAt),
         ...runs.map((run) => run.startedAt ?? run.queuedAt),
       ])
-      const needsYou =
-        pendingApprovalTargets(messages).length > 0 || attention.some((item) => WAITING_KINDS.includes(item.kind))
+      const needsYou = pendingApprovalTargets(messages).length > 0 || attention.length > 0
       const working =
         runs.some((run) => ACTIVE_RUNS.includes(run.status)) ||
         messages.some((message) => message.status === "streaming")

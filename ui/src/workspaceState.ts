@@ -1,6 +1,6 @@
 export type AppRoute =
   | { section: "bots"; screen: "chat" | "preview" }
-  | { section: "touri"; page: "cron" | "integracoes" | "mcp" }
+  | { section: "advanced"; page: "cron" | "integracoes" | "mcp"; botId?: string }
 type SavedWorkspace = {
   botId?: string | null
   threadId?: string | null
@@ -12,12 +12,30 @@ type SavedWorkspace = {
 }
 const KEY = "touri.workspace.v1"
 
+/** Preserve saved destinations when global pages move behind Advanced. */
+const migrateRoute = (raw: unknown): AppRoute | undefined => {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined
+  const route = raw as Record<string, unknown>
+  if (route.section === "bots" && (route.screen === "chat" || route.screen === "preview"))
+    return { section: "bots", screen: route.screen }
+  if (
+    (route.section === "touri" || route.section === "advanced") &&
+    (route.page === "cron" || route.page === "integracoes" || route.page === "mcp")
+  )
+    return {
+      section: "advanced",
+      page: route.page,
+      ...(typeof route.botId === "string" ? { botId: route.botId } : {}),
+    }
+  return undefined
+}
+
 export const readWorkspaceState = (): SavedWorkspace => {
   try {
     const raw: unknown = JSON.parse(localStorage.getItem(KEY) ?? "{}")
     if (!raw || typeof raw !== "object") return {}
     const value = raw as Record<string, unknown>
-    const route = value.route as Record<string, unknown> | undefined
+    const route = migrateRoute(value.route)
     return {
       ...(value.panelsByBot && typeof value.panelsByBot === "object" && !Array.isArray(value.panelsByBot)
         ? {
@@ -42,11 +60,7 @@ export const readWorkspaceState = (): SavedWorkspace => {
             ),
           }
         : {}),
-      ...(route &&
-      ((route.section === "bots" && ["chat", "preview"].includes(String(route.screen))) ||
-        (route.section === "touri" && ["cron", "integracoes", "mcp"].includes(String(route.page))))
-        ? { route: route as AppRoute }
-        : {}),
+      ...(route ? { route } : {}),
     }
   } catch {
     return {}

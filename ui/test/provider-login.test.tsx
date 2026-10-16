@@ -235,9 +235,7 @@ it("creation starts the selected provider before creating a bot and cancels on c
   const create = vi.fn()
   const view = render(<BotCreateModal api={f.api} onCreate={create} onClose={vi.fn()} />)
   fireEvent.change(screen.getByLabelText("Nome"), { target: { value: "Pesquisa" } })
-  fireEvent.click(screen.getByRole("button", { name: "Continuar" }))
-  fireEvent.click(screen.getByRole("button", { name: "Continuar" }))
-  fireEvent.change(screen.getByLabelText("Provedor"), { target: { value: "claude" } })
+  fireEvent.click(await screen.findByRole("button", { name: "Claude Code", exact: true }))
   await screen.findByText("Aguardando login no navegador…")
   await waitFor(() =>
     expect(f.request).toHaveBeenCalledWith(

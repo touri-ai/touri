@@ -30,13 +30,14 @@ const openPicker = async (
     route === "GET /providers/opencode/models" ? ((await list(input)) as never) : mock.request(route, input, path)
   const api = { ...mock, request }
   render(<App kernel={{ services: { api } }} />)
-  fireEvent.click(await screen.findByRole("button", { name: /^Escolher modelo:/ }))
+  fireEvent.click(await screen.findByRole("button", { name: "Painel do bot", exact: true }))
+  fireEvent.click(await screen.findByRole("button", { name: /^Modelo:/ }))
   const dialog = await screen.findByRole("dialog", { name: "Escolher modelo" })
   expect(within(dialog).queryByRole("tab", { name: "Geral" })).not.toBeInTheDocument()
   return { api, bot, dialog, list }
 }
 
-it("opens the provider model list from the composer, saves a choice and can restore the default", async () => {
+it("opens the provider model list from the bot panel, saves a choice and can restore the default", async () => {
   const { api, bot, dialog, list } = await openPicker("opencode")
   await within(dialog).findByRole("option", { name: "openrouter/deepseek/deepseek-r1" })
   const models = within(dialog).getByRole("combobox", { name: "Modelo" })
@@ -51,7 +52,7 @@ it("opens the provider model list from the composer, saves a choice and can rest
     input: { model: "openrouter/deepseek/deepseek-r1" },
     pathValues: { id: bot.id },
   })
-  const chip = screen.getByRole("button", { name: "Escolher modelo: OpenCode · openrouter/deepseek/deepseek-r1" })
+  const chip = screen.getByRole("button", { name: "Modelo: OpenCode · openrouter/deepseek/deepseek-r1" })
   fireEvent.click(chip)
   const reopened = await screen.findByRole("dialog", { name: "Escolher modelo" })
   await within(reopened).findByRole("option", { name: "openrouter/deepseek/deepseek-r1" })
@@ -61,7 +62,7 @@ it("opens the provider model list from the composer, saves a choice and can rest
   fireEvent.click(within(reopened).getByRole("button", { name: "Salvar modelo" }))
   await waitFor(() => expect(screen.queryByRole("dialog", { name: "Escolher modelo" })).toBeNull())
   expect(bot.model).toBeNull()
-  expect(screen.getByRole("button", { name: "Escolher modelo: OpenCode · Padrão do provedor" })).toBeVisible()
+  expect(screen.getByRole("button", { name: "Modelo: OpenCode · Padrão do provedor" })).toBeVisible()
 })
 
 it.each([
@@ -76,7 +77,7 @@ it.each([
   fireEvent.change(field, { target: { value: " custom-model " } })
   fireEvent.click(within(dialog).getByRole("button", { name: "Salvar modelo" }))
   await waitFor(() => expect(bot.model).toBe("custom-model"))
-  expect(await screen.findByRole("button", { name: `Escolher modelo: ${name} · custom-model` })).toBeVisible()
+  expect(await screen.findByRole("button", { name: `Modelo: ${name} · custom-model` })).toBeVisible()
 })
 
 it.each([

@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test"
+import { showBotPanel, showBotRoutines } from "./home-navigation"
 
 test("r3 ⌘K accepts typing and input clicks, finds bot names and navigates", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" })
@@ -20,13 +21,14 @@ test("r3 permissions panel exposes full approval access, provider defaults and b
 }) => {
   await page.emulateMedia({ reducedMotion: "reduce" })
   await page.goto("/")
-  await page.getByRole("button", { name: "Permissões do bot" }).click()
+  await showBotPanel(page)
+  await page.getByRole("button", { name: "Ajustar permissões" }).click()
   const panel = page.getByRole("dialog", { name: "Permissões do bot" })
   await expect(panel).toBeVisible()
   await panel.getByRole("combobox", { name: "Acesso", exact: true }).selectOption("full")
-  await panel.getByRole("tab", { name: "Geral", exact: true }).click()
+  await panel.getByRole("tab", { name: "Modelo", exact: true }).click()
   await panel.getByRole("combobox", { name: "Raciocínio", exact: true }).selectOption("")
-  await panel.getByRole("tab", { name: "MCP", exact: true }).click()
+  await panel.getByRole("tab", { name: "Ferramentas", exact: true }).click()
   await expect(panel.getByRole("region", { name: "Servidores MCP deste bot" })).toBeVisible()
   await panel.getByRole("button", { name: "Salvar configurações" }).click()
   await expect(panel).toHaveCount(0)
@@ -35,7 +37,7 @@ test("r3 permissions panel exposes full approval access, provider defaults and b
 test("r3 run-now shows an immediate busy state and rejects the second keyboard activation", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" })
   await page.goto("/")
-  await page.getByRole("button", { name: "touri", exact: true }).click()
+  await showBotRoutines(page)
   const button = page.getByRole("button", { name: /Rodar agora/ }).first()
   await button.focus()
   await page.keyboard.press("Enter")

@@ -2412,9 +2412,6 @@ a {
 .status-red {
   background: var(--accent-brand);
 }
-.status-amber {
-  background: var(--accent-warning);
-}
 .status-muted {
   background: var(--text-secondary);
 }
@@ -3877,26 +3874,27 @@ a {
 
 /* State is readable text beside the bot; dots indicate activity, never progress. */
 .activity-mark {
+  --activity-ink: var(--text-secondary);
   transition: color var(--duration-surface) var(--ease-surface);
   display: flex;
   align-items: center;
   gap: var(--space-8);
   min-height: var(--space-32);
   margin-top: var(--space-12);
-  color: var(--text-secondary);
+  color: var(--activity-ink);
   font-size: var(--type-12);
 }
 .activity-mark[data-mascot-state="thinking"] {
-  color: var(--text-secondary);
+  --activity-ink: var(--text-secondary);
 }
 .activity-mark[data-mascot-state="working-tool"] {
-  color: var(--text-link);
+  --activity-ink: var(--text-link);
 }
 .activity-mark[data-mascot-state="typing"] {
-  color: var(--text-success);
+  --activity-ink: var(--text-success);
 }
 .activity-mark[data-mascot-state="waiting-approval"] {
-  color: var(--text-warning);
+  --activity-ink: var(--text-warning);
 }
 .activity-mark[data-reduced-motion="true"] {
   transition: none;
@@ -4384,4 +4382,17 @@ a {
 .provider-login-flow > div {
   flex-basis: 100%;
   margin: 0;
+}
+
+.onboarding-secondary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-16);
+  color: var(--text-secondary);
+  font-size: var(--type-12);
+}
+.onboarding-secondary .text-button {
+  padding: 0;
+  font-size: inherit;
 }

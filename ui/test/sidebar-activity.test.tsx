@@ -101,15 +101,17 @@ type SidebarOverrides = Partial<Parameters<typeof Sidebar>[0]>
 const renderSidebar = (overrides: SidebarOverrides & { bots: Array<Bot>; threads: Array<Thread> }) => {
   const props: Parameters<typeof Sidebar>[0] = {
     showFakeTrafficLights: false,
-    routineCount: 0,
     messages: [],
     runs: [],
     selectedBotId: null,
     selectedThreadId: null,
     section: "bots",
-    touriPage: "cron",
-    onSection: () => undefined,
-    onTouriPage: () => undefined,
+    advancedPage: null,
+    onRoutines: () => undefined,
+    onProject: () => undefined,
+    onImport: () => undefined,
+    onChat: () => undefined,
+    onAdvancedPage: () => undefined,
     onSelect: () => undefined,
     onSelectThread: () => undefined,
     onReviewApproval: () => undefined,
@@ -214,9 +216,16 @@ it("floats bots with updates to the top by default and labels each indicator", (
   expect(screen.getByRole("img", { name: "gama: trabalhando" })).toBeVisible()
   expect(screen.getByRole("img", { name: "beta: novidades" })).toBeVisible()
   expect(within(entry("bot-alfa")).queryByRole("img", { name: /alfa:/ })).toBeNull()
+  expect(screen.getAllByRole("heading", { level: 2 }).map((heading) => heading.textContent)).toEqual([
+    "Precisa de você",
+    "Trabalhando",
+    "Ociosos",
+  ])
+  expect(within(entry("bot-delta")).getByText("Aguardando você: sua aprovação")).toBeVisible()
+  expect(screen.getByRole("button", { name: "Notificações, 1 precisa de atenção" })).toBeVisible()
 })
 
-it("with the setting off, keeps the manual order but still shows the indicators", () => {
+it("with the setting off, keeps manual order inside the required status groups", () => {
   const { bots, threads, messageBase } = fixture()
   renderSidebar({
     bots,
@@ -225,17 +234,68 @@ it("with the setting off, keeps the manual order but still shows the indicators"
     messages: [pendingApproval(messageBase, "thread-delta", T0 + 10)],
     runs: [run("run-gama", "bot-gama", "thread-gama")],
   })
-  expect(order()).toEqual(["bot-alfa", "bot-beta", "bot-gama", "bot-delta"])
+  expect(order()).toEqual(["bot-delta", "bot-gama", "bot-alfa", "bot-beta"])
   expect(screen.getByRole("img", { name: "delta: precisa de você" })).toBeVisible()
   expect(screen.getByRole("img", { name: "gama: trabalhando" })).toBeVisible()
 })
 
-it("does not move a hovered or keyboard-focused bot until the pointer or focus leaves", () => {
+it("keeps the waiting line and bell in sync for questions, failures and resolved approvals", () => {
+  const { bots, threads, messageBase } = fixture()
+  const api = createMockApi()
+  const approval = pendingApproval(messageBase, "thread-delta", T0)
+  const question = api.notify({
+    kind: "question",
+    botId: "bot-alfa",
+    threadId: "thread-alfa",
+    title: "Uma pergunta",
+    body: "Qual pasta?",
+  })
+  const failure = api.notify({
+    kind: "turn-failed",
+    botId: "bot-beta",
+    threadId: "thread-beta",
+    title: "Tarefa interrompida",
+    body: "Tente novamente.",
+  })
+  const approvalNotice = api.notify({
+    kind: "approval",
+    botId: "bot-delta",
+    threadId: "thread-delta",
+    requestId: "approval-thread-delta",
+    title: "Permissão",
+    body: "Executar comando",
+  })
+  const view = renderSidebar({
+    bots,
+    threads,
+    messages: [approval],
+    notifications: [question, failure, approvalNotice],
+  })
+  expect(screen.getByRole("button", { name: "Notificações, 3 precisam de atenção" })).toBeVisible()
+  expect(within(entry("bot-alfa")).getByText("Aguardando você: sua resposta")).toBeVisible()
+  expect(within(entry("bot-beta")).getByText("Aguardando você: revise a tarefa interrompida")).toBeVisible()
+  expect(within(entry("bot-delta")).getByText("Aguardando você: sua aprovação")).toBeVisible()
+  view.update({ notifications: [question, failure, { ...approvalNotice, resolvedAt: T0 + 100, resolution: "allow" }] })
+  expect(screen.getByRole("button", { name: "Notificações, 2 precisam de atenção" })).toBeVisible()
+  expect(within(entry("bot-delta")).queryByText(/Aguardando você:/)).toBeNull()
+  expect(entry("bot-delta")).not.toHaveAttribute("data-activity", "needs-you")
+})
+
+it("lets the bell open an approval that arrived before its notification", () => {
+  const { bots, threads, messageBase } = fixture()
+  const onReviewApproval = vi.fn()
+  renderSidebar({ bots, threads, messages: [pendingApproval(messageBase, "thread-delta", T0)], onReviewApproval })
+  fireEvent.click(screen.getByRole("button", { name: "Notificações, 1 precisa de atenção" }))
+  fireEvent.click(screen.getByRole("button", { name: "Revisar aprovação pendente" }))
+  expect(onReviewApproval).toHaveBeenCalledWith({ threadId: "thread-delta", approvalId: "approval-thread-delta" })
+})
+
+it("does not reorder a hovered or keyboard-focused bot within its status group", () => {
   const { bots, threads } = fixture()
   const view = renderSidebar({ bots, threads })
   expect(order()).toEqual(["bot-alfa", "bot-beta", "bot-gama", "bot-delta"])
   fireEvent.mouseEnter(entry("bot-alfa"))
-  view.update({ runs: [run("run-gama", "bot-gama", "thread-gama")] })
+  view.update({ threads: threads.map((thread) => (thread.botId === "bot-gama" ? { ...thread, unread: 1 } : thread)) })
   expect(order()).toEqual(["bot-alfa", "bot-gama", "bot-beta", "bot-delta"])
   fireEvent.mouseLeave(entry("bot-alfa"))
   expect(order()).toEqual(["bot-gama", "bot-alfa", "bot-beta", "bot-delta"])
@@ -243,7 +303,11 @@ it("does not move a hovered or keyboard-focused bot until the pointer or focus l
   const button = within(entry("bot-alfa")).getAllByRole("button")[0]
   if (!button) throw new Error("Botão ausente")
   act(() => button.focus())
-  view.update({ runs: [run("run-gama", "bot-gama", "thread-gama"), run("run-beta", "bot-beta", "thread-beta")] })
+  view.update({
+    threads: threads.map((thread) =>
+      ["bot-gama", "bot-beta"].includes(thread.botId) ? { ...thread, unread: 1 } : thread,
+    ),
+  })
   expect(order().indexOf("bot-alfa")).toBe(1)
   act(() => button.blur())
   expect(order()).toEqual(["bot-beta", "bot-gama", "bot-alfa", "bot-delta"])
@@ -259,7 +323,9 @@ it("keeps the selected bot in place while the user types in its composer", () =>
   try {
     const view = renderSidebar({ bots, threads, selectedBotId: "bot-alfa", selectedThreadId: "thread-alfa" })
     act(() => textarea.focus())
-    view.update({ runs: [run("run-delta", "bot-delta", "thread-delta")] })
+    view.update({
+      threads: threads.map((thread) => (thread.botId === "bot-delta" ? { ...thread, unread: 1 } : thread)),
+    })
     expect(order()).toEqual(["bot-alfa", "bot-delta", "bot-beta", "bot-gama"])
     act(() => textarea.blur())
     expect(order()).toEqual(["bot-delta", "bot-alfa", "bot-beta", "bot-gama"])
@@ -284,7 +350,9 @@ it("marks a bot read once viewed and persists the last-viewed time", () => {
 
 const positionByIndex = () =>
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
-    const index = this.parentElement ? Array.from(this.parentElement.children).indexOf(this) : 0
+    const index = this.parentElement
+      ? Array.from(this.parentElement.querySelectorAll("[data-bot-entry]")).indexOf(this)
+      : 0
     return {
       top: index * 50,
       bottom: index * 50 + 50,
@@ -319,6 +387,7 @@ it("animates reordering with FLIP, and skips the animation when motion is reduce
 it("the setting is on by default and saving it off persists through the settings API", async () => {
   const onSave = vi.fn(async () => undefined)
   render(<SettingsModal settings={null} onClose={() => undefined} onSave={onSave} />)
+  fireEvent.click(screen.getByText("Chat, barra lateral e atalhos"))
   const toggle = screen.getByRole("switch", { name: "Mover bots com novidades para o topo" })
   expect(toggle).toBeChecked()
   fireEvent.click(toggle)

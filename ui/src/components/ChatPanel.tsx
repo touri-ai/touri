@@ -1,15 +1,4 @@
-import type {
-  Bot,
-  BotGroup,
-  Id,
-  MachineState,
-  Message,
-  Project,
-  Routine,
-  RoutineRun,
-  Run,
-  Thread,
-} from "@touri/contracts"
+import type { Bot, BotGroup, Id, MachineState, Message, Routine, RoutineRun, Run, Thread } from "@touri/contracts"
 import { Fragment, type ReactNode, useContext, useLayoutEffect, useMemo, useRef, useState } from "react"
 import type { UiApi } from "../api/client"
 import type { ApprovalFocus } from "../approvalNavigation"
@@ -27,6 +16,7 @@ import { BotAvatar } from "./BotAvatar"
 import { ChatDisclosure } from "./ChatDisclosure"
 import { Composer } from "./Composer"
 import { ConversationStart } from "./ConversationStart"
+import { ErrorDetails, ErrorText } from "./ErrorDetails"
 import { EvidenceContext } from "./EvidenceGallery"
 import { FailureActionContext } from "./FailureActionContext"
 import { GroupHeader } from "./Groups"
@@ -50,10 +40,6 @@ type ChatPanelProps = {
   routineRuns?: Array<RoutineRun>
   onOpenPermissions?: () => void
   onOpenProviderLogin?: () => void
-  onOpenModel?: () => void
-  projects?: Project[]
-  onSelectProject?: (projectId: Id | null) => Promise<void>
-  onAddProject?: () => void
   onOpenComputer?: () => void
   thread: Thread | null
   bot: Bot | null
@@ -512,7 +498,7 @@ const MessageBubble = ({
       <time className="message-error-meta" dateTime={new Date(failedAt).toISOString()}>
         {failureTime}
       </time>
-      <small className="message-error-code">{runError.code}</small>
+      <ErrorDetails code={runError.code} />
       {(vmBotId || runError.specificHint) && <p>{runError.hint}</p>}
       {failureAction && failureAction.kind !== "machine_service" && (
         <button type="button" className="text-button" onClick={() => onFailureAction(failureAction)}>
@@ -607,7 +593,11 @@ const MessageBubble = ({
           }}
         />
       )}
-      {parts.some(screenTool) && <InlineLivePreview parts={parts} finished={message.status !== "streaming"} />}
+      {parts.some(screenTool) && (
+        <ChatDisclosure label={t("Advanced computer view")}>
+          <InlineLivePreview parts={parts} finished={message.status !== "streaming"} />
+        </ChatDisclosure>
+      )}
       {siblings.length > 1 && (
         <fieldset className="branch-switcher">
           <legend className="visually-hidden">{t("Message branches")}</legend>
@@ -640,8 +630,8 @@ const MessageBubble = ({
             aria-expanded={failureExpanded}
             onClick={() => setFailureExpanded((expanded) => !expanded)}
           >
-            {runError.title} · {failureTime} · <small>{runError.code}</small> · houve uma resposta depois ·{" "}
-            {failureExpanded ? "Ocultar" : "Ver detalhes"}
+            {runError.title} · {failureTime} · {t("A reply followed this error")} ·{" "}
+            {failureExpanded ? t("Hide error") : t("View error")}
           </button>
           {failureExpanded && failureContent}
         </div>
@@ -674,10 +664,6 @@ export const ChatPanel = ({
   onOpenTools,
   onOpenPermissions,
   onOpenProviderLogin,
-  onOpenModel,
-  projects,
-  onSelectProject,
-  onAddProject,
   onOpenComputer,
   routines = [],
   routineRuns = [],
@@ -726,7 +712,8 @@ export const ChatPanel = ({
               <button
                 type="button"
                 className="toolbar-icon bot-panel-toggle"
-                aria-label="Painel do bot"
+                aria-label={t("Bot panel")}
+                title={t("Bot advanced")}
                 aria-expanded={panelOpen}
                 aria-controls="bot-panel"
                 onClick={onTogglePanel}
@@ -806,7 +793,8 @@ export const ChatPanel = ({
               <button
                 type="button"
                 className="toolbar-icon bot-panel-toggle"
-                aria-label="Painel do bot"
+                aria-label={t("Bot panel")}
+                title={t("Bot advanced")}
                 aria-expanded={panelOpen}
                 aria-controls="bot-panel"
                 onClick={onTogglePanel}
@@ -814,37 +802,10 @@ export const ChatPanel = ({
                 ◧
               </button>
             )}
-            <button type="button" className="model-pill" onClick={() => onOpenTools("preview")}>
-              <span>{bot?.provider ?? "codex"}</span>
-              <span className="model-sep" aria-hidden="true">
-                ·
-              </span>
-              <span className="model-name">{bot?.model ?? "padrão"}</span>
-              <span className="toolbar-chevron">⌄</span>
-            </button>
-            <button
-              type="button"
-              className="toolbar-icon"
-              onClick={() => onOpenTools("preview")}
-              aria-label="Preview do projeto"
-            >
-              <svg
-                width="18"
-                height="18"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                aria-hidden="true"
-              >
-                <rect x="3" y="4" width="18" height="13" rx="2" />
-                <path d="M8 21h8M12 17v4" />
-              </svg>
-            </button>
           </div>
         </header>
       )}
-      {!group && bot?.machine === "vm" && machine && (
+      {!group && bot?.machine === "vm" && machine && (activeRun || machine.status === "starting") && (
         <MachineStatus
           key={bot.id}
           machine={machine}
@@ -852,7 +813,7 @@ export const ChatPanel = ({
           turnFailed={!activeRun && latestReply?.status === "failed"}
         />
       )}
-      {computerGrant && computerGrant.threadId === thread.id && (
+      {computerGrant && computerGrant.threadId === thread.id && activeRun?.botId === computerGrant.botId && (
         <ComputerGrantCard
           api={api}
           botId={computerGrant.botId}
@@ -961,10 +922,6 @@ export const ChatPanel = ({
         queuedCount={visibleMessages.filter((message) => message.delivery?.status === "queued").length}
         onSend={onSend}
         onCancel={onCancel}
-        onOpenModel={group ? undefined : onOpenModel}
-        projects={projects}
-        onSelectProject={onSelectProject}
-        onAddProject={onAddProject}
         onOpenPermissions={group ? undefined : onOpenPermissions}
         onOpenProviderLogin={group ? undefined : onOpenProviderLogin}
       />
@@ -1042,7 +999,9 @@ const RunCard = ({
           minute: "2-digit",
         })}
       </time>
-      <p>{summary}</p>
+      <div className="run-card-summary">
+        <ErrorText text={summary} />
+      </div>
     </article>
   )
 }

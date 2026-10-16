@@ -1,5 +1,5 @@
 import { makeBlock, POSES, STATES } from "@norbert_bodziony/bloub"
-import { act, cleanup, fireEvent, render } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, waitFor } from "@testing-library/react"
 import {
   AVATAR_COLOR_CHOICES,
   AVATAR_COLORS,
@@ -21,6 +21,8 @@ const bot = { id: "mark", color: null }
 afterEach(() => {
   cleanup()
   vi.restoreAllMocks()
+  vi.unstubAllGlobals()
+  delete document.documentElement.dataset.motion
 })
 
 describe("avatar identity specification", () => {
@@ -237,5 +239,22 @@ describe("avatar motion specification", () => {
     expect(container.querySelector("[data-avatar-body]")).toHaveAttribute("fill", "#f08a24")
     rerender(<BotAvatar bot={bot} url="/photo-b.png" mood="working" />)
     expect(container.querySelector("img")).toHaveAttribute("src", "/photo-b.png")
+  })
+  it("stops a running avatar when the host reduces motion and resumes when restored", async () => {
+    const request = vi.fn(() => 1)
+    const cancel = vi.fn()
+    vi.stubGlobal("requestAnimationFrame", request)
+    vi.stubGlobal("cancelAnimationFrame", cancel)
+    vi.spyOn(document, "hidden", "get").mockReturnValue(false)
+    const view = render(<BotAvatar bot={bot} state="thinking" motion="always" followPointer />)
+    const avatar = view.container.querySelector(".tb-avatar")
+    expect(avatar).toHaveAttribute("data-avatar-animated", "true")
+    expect(request).toHaveBeenCalled()
+    document.documentElement.dataset.motion = "reduce"
+    await waitFor(() => expect(avatar).toHaveAttribute("data-avatar-animated", "false"))
+    await waitFor(() => expect(cancel).toHaveBeenCalledWith(1))
+    expect(avatar).toHaveAttribute("data-mascot-phase", "thinking")
+    delete document.documentElement.dataset.motion
+    await waitFor(() => expect(avatar).toHaveAttribute("data-avatar-animated", "true"))
   })
 })

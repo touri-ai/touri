@@ -37,14 +37,22 @@ export const motionTiers = {
   bounce: { frequency: 4, damping: 0.55, duration: 650 },
 } satisfies Record<string, Spring>
 
-export const springEasing = (spring: Spring): string => {
-  const easing = springToLinear(spring)
+// Compile shared curves once, before any surface opens; animation stays entirely in CSS.
+const compiledSprings = new Map<Spring, string>(
+  Object.values(motionTiers).map((spring) => [spring, springToLinear(spring)]),
+)
+
+export const springEasing = (spring: Spring, reduced = false): string => {
+  if (reduced) return "linear"
+  const easing = compiledSprings.get(spring) ?? springToLinear(spring)
   return typeof CSS !== "undefined" && CSS.supports && !CSS.supports("animation-timing-function", easing)
     ? "ease-out"
     : easing
 }
 
 export const installMotionTokens = (element: HTMLElement): void => {
+  element.dataset.motionProperties =
+    typeof CSS !== "undefined" && typeof CSS.registerProperty === "function" ? "registered" : "fallback"
   for (const [name, spring] of Object.entries(motionTiers)) {
     element.style.setProperty(`--ease-${name}`, springEasing(spring))
     element.style.setProperty(`--duration-${name}`, `${spring.duration}ms`)
