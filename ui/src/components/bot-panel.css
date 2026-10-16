@@ -765,3 +765,44 @@
   display: none;
 }
 /* End r8 panel expanded navigation. */
+
+.bot-details-advanced {
+  display: grid;
+  gap: var(--space-12);
+}
+.bot-panel .bot-model-line {
+  text-align: left;
+  color: var(--text-secondary);
+  font-size: var(--type-12);
+  line-height: 1.6;
+}
+.bot-panel .composer-project-chip {
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+  width: 100%;
+  min-height: 32px;
+  padding: var(--space-6) var(--space-10);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-8);
+  color: var(--text-secondary);
+  background: transparent;
+  font-size: var(--type-12);
+}
+.bot-panel .composer-project-chip:focus-visible {
+  outline: 2px solid var(--accent-info);
+  outline-offset: 2px;
+}
+.error-details {
+  margin-top: var(--space-8);
+  color: var(--text-secondary);
+  font-size: var(--type-12);
+}
+.error-details summary {
+  cursor: pointer;
+}
+.error-details code {
+  display: block;
+  padding: var(--space-8) 0;
+  user-select: text;
+}

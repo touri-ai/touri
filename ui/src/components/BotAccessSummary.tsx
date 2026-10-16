@@ -1,5 +1,5 @@
 import type { Bot } from "@touri/contracts"
-import { t } from "../i18n"
+import { accessLabel, t } from "../i18n"
 
 export const BotAccessSummary = ({
   machine,
@@ -8,24 +8,19 @@ export const BotAccessSummary = ({
   anyFolderAccess,
   folders = [],
 }: Pick<Bot, "machine" | "access" | "approvals" | "anyFolderAccess" | "folders">) => {
-  const summary =
+  const boundary =
     machine === "cloud"
-      ? t("Só a máquina na nuvem")
+      ? t("só na máquina na nuvem.")
       : machine === "vm"
         ? anyFolderAccess || folders.length
-          ? t("Só a VM isolada e as pastas compartilhadas")
-          : t("Só a VM isolada")
+          ? t("só no computador isolado e nas pastas compartilhadas.")
+          : t("só no computador isolado.")
         : access === "read-only"
-          ? t("Pode ler arquivos do Mac; sem permissão de escrita")
-          : approvals === "on-request"
-            ? t("Pode acessar pastas do Mac com aprovação; escrita nas pastas permitidas")
-            : anyFolderAccess
-              ? t("Pode acessar todo o Mac")
-              : t("Pode ler arquivos do Mac; escrita na pasta do bot, no projeto e nas pastas permitidas")
+          ? t("pode ler arquivos no Mac, sem alterá-los.")
+          : anyFolderAccess
+            ? t("pode acessar arquivos em todo o Mac; as exclusões de pastas sensíveis continuam valendo.")
+            : t("alterações ficam na pasta do bot, no projeto e nas pastas liberadas.")
   return (
-    <p className="field-help">
-      {summary}
-      {machine !== "local" && access === "read-only" ? ` · ${t("Somente leitura")}` : ""}
-    </p>
+    <p className="field-help">{t("{access}; {boundary}", { access: accessLabel({ access, approvals }), boundary })}</p>
   )
 }

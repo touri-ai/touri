@@ -16,7 +16,7 @@ type SidebarOrderInput = {
   attention: Array<NotificationRecord>
   selectedBotId: Id | null
   selectedThreadId: Id | null
-  section: "touri" | "bots"
+  section: "advanced" | "bots"
   floatUpdates?: boolean | undefined
 }
 
@@ -111,7 +111,17 @@ export const useSidebarOrder = (input: SidebarOrderInput): SidebarOrder => {
   const held = new Set([hovered, focused, typing ? selectedBotId : null].filter((id): id is Id => Boolean(id)))
   const desired = floatUpdates ? orderBotsByActivity({ botIds: baseIds, activity }) : baseIds
   const previous = useRef<Array<Id>>(baseIds)
-  const ids = holdBotPositions({ desired, previous: previous.current, held })
+  const group = (id: Id): string => {
+    const kind = activity.get(id)?.kind
+    return kind === "needs-you" || kind === "working" ? kind : "idle"
+  }
+  const ids = ["needs-you", "working", "idle"].flatMap((kind) =>
+    holdBotPositions({
+      desired: desired.filter((id) => group(id) === kind),
+      previous: previous.current.filter((id) => group(id) === kind),
+      held,
+    }),
+  )
   const listRef = useRef<HTMLDivElement>(null)
   const firstRects = useRef<Map<string, number> | null>(null)
   if (ids.join("\n") !== previous.current.join("\n") && !firstRects.current && listRef.current)
