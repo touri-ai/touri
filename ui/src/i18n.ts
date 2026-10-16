@@ -3,6 +3,52 @@ import { userFacingError } from "./errors"
 /** All UI copy lives here. pt-BR is the default; English is available for a future locale picker. */
 export type Locale = "pt-BR" | "en"
 export const ptBR = {
+  "List registered projects and Git repositories discovered on this Mac. Read-only; no approval required. Use this before asking the user for a project path.":
+    "Listar projetos registrados e repositórios Git encontrados neste Mac. Somente leitura, sem aprovação. Use antes de pedir o caminho de um projeto.",
+  "Informe o caminho absoluto de uma pasta deste Mac.": "Informe o caminho absoluto de uma pasta deste Mac.",
+  "O caminho precisa ser uma pasta.": "O caminho precisa ser uma pasta.",
+  "O acesso a qualquer pasta deste Mac é exclusivo dos ajustes.":
+    "O acesso a qualquer pasta deste Mac é exclusivo dos ajustes.",
+  "A configuração do bot está indisponível.": "A configuração do bot está indisponível.",
+  "Somente o próprio bot, sem delegação, pode alterar sua configuração.":
+    "Somente o próprio bot, sem delegação, pode alterar sua configuração.",
+  "Somente o próprio bot pode alterar sua configuração.": "Somente o próprio bot pode alterar sua configuração.",
+  "Projeto não encontrado.": "Projeto não encontrado.",
+  "O vínculo não foi aprovado ou a configuração mudou.": "O vínculo não foi aprovado ou a configuração mudou.",
+  "Pastas deste Mac não estão disponíveis na nuvem.": "Pastas deste Mac não estão disponíveis na nuvem.",
+  "O acesso não foi aprovado ou a configuração mudou.": "O acesso não foi aprovado ou a configuração mudou.",
+  "Pasta não encontrada nas permissões deste bot.": "Pasta não encontrada nas permissões deste bot.",
+  "A configuração foi salva neste Mac e será aplicada no próximo turno local.":
+    "A configuração foi salva neste Mac e será aplicada no próximo turno local.",
+  "Projeto {name} ({path}) vinculado a este bot.": "Projeto {name} ({path}) vinculado a este bot.",
+  "Projeto {name} desvinculado deste bot.": "Projeto {name} desvinculado deste bot.",
+  "Acesso {mode} à pasta {path} concedido a este bot.": "Acesso {mode} à pasta {path} concedido a este bot.",
+  "de leitura": "de leitura",
+  "de leitura e escrita": "de leitura e escrita",
+  "Acesso à pasta {path} removido deste bot.": "Acesso à pasta {path} removido deste bot.",
+  atual: "atual",
+  "Pasta permitida (caminho absoluto)": "Pasta permitida (caminho absoluto)",
+  "Informe pelo menos uma pasta com caminho absoluto antes de conectar.":
+    "Informe pelo menos uma pasta com caminho absoluto antes de conectar.",
+  "Ações das configurações do bot": "Ações das configurações do bot",
+  "Requer Node.js. Ao usar esta configuração, informe o caminho absoluto de uma pasta permitida no campo abaixo. Não requer login ou token.":
+    "Requer Node.js. Ao usar esta configuração, informe o caminho absoluto de uma pasta permitida no campo abaixo. Não requer login ou token.",
+  "Somente o próprio bot, sem delegação, pode consultar suas pastas.":
+    "Somente o próprio bot, sem delegação, pode consultar suas pastas.",
+  "A configuração mudou durante a busca. Tente novamente.": "A configuração mudou durante a busca. Tente novamente.",
+  "Projetos e repositórios nas pastas já permitidas a este bot.":
+    "Projetos e repositórios nas pastas já permitidas a este bot.",
+  "Vincular projeto": "Vincular projeto",
+  "Vincular {name} ({path}) a este bot": "Vincular {name} ({path}) a este bot",
+  "Substitui o projeto {name} ({path}).": "Substitui o projeto {name} ({path}).",
+  "Conceder acesso à pasta": "Conceder acesso à pasta",
+  "Permitir {mode} em {path} para este bot": "Permitir {mode} em {path} para este bot",
+  "Acesso anterior: {mode}.": "Acesso anterior: {mode}.",
+  "Desvincular projeto": "Desvincular projeto",
+  "Desvincular o projeto deste bot.": "Desvincular o projeto deste bot.",
+  "Remover acesso à pasta": "Remover acesso à pasta",
+  "Remover o acesso deste bot a {path}.": "Remover o acesso deste bot a {path}.",
+  "A mudança entra em vigor no próximo turno da VM.": "A mudança entra em vigor no próximo turno da VM.",
   "Baixar imagem": "Baixar imagem",
   "Delete bot": "Excluir bot",
   "Start a conversation": "Comece uma conversa",
@@ -549,6 +595,16 @@ export const ptBR = {
     "Criar uma rotina pausada para este bot. Somente o usuário pode habilitá-la no aplicativo.",
   "Update a routine of this bot. Cannot enable a disabled routine; only the user can.":
     "Atualizar uma rotina deste bot. Somente o usuário pode habilitar uma rotina pausada.",
+  "List projects and Git repositories only in this bot's already granted folders and connected project. Never searches the home directory on its own. Read-only; no approval required. Ask the user for a path when nothing is available.":
+    "Listar projetos e repositórios Git somente nas pastas já permitidas a este bot e no projeto vinculado. Não busca na pasta pessoal por conta própria. Somente leitura, sem aprovação. Peça um caminho ao usuário se nada estiver disponível.",
+  "Register a Mac folder as a project if needed and link it to this calling bot only. Supply exactly one of path or projectId. Always requires explicit user approval in chat, even with approvals disabled. VM changes apply next turn.":
+    "Registrar uma pasta do Mac como projeto e vinculá-la somente a este bot, pelo caminho ou identificador. Sempre exige aprovação explícita no chat. Na VM, a mudança vale no próximo turno.",
+  "Request access to a specific Mac folder for this calling bot only, with mode read or read-write. Always requires explicit user approval. Cannot enable any-folder access. VM changes apply next turn.":
+    "Pedir acesso de leitura ou leitura e escrita a uma pasta do Mac para este bot. Sempre exige aprovação explícita. Não permite acesso a qualquer pasta. Na VM, vale no próximo turno.",
+  "Unlink the project from this calling bot only. Narrows access without approval and posts a notice in chat. VM changes apply next turn.":
+    "Desvincular o projeto somente deste bot, sem aprovação, e mostrar um aviso no chat. Na VM, a mudança vale no próximo turno.",
+  "Remove a specific folder grant from this calling bot only. Narrows access without approval and posts a notice in chat. Cannot change the user-only any-folder toggle. VM changes apply next turn.":
+    "Remover o acesso deste bot a uma pasta, sem aprovação, e mostrar um aviso no chat. O acesso a qualquer pasta continua exclusivo das configurações do usuário. Na VM, vale no próximo turno.",
   "Describe this bot's project: path, git branch/dirty state, defined processes with status and ports, available previews, and the NAMES (never values) of configured secrets.":
     "Consultar pasta, estado Git, processos, portas, visualizações e nomes dos segredos do projeto deste bot.",
   'Create or replace a long-running process the app supervises (dev server, mongod, redis-server...). It survives your turn and app restarts (when autostart). Never start long-running servers with your shell tool; define them here. cwd must be inside the project or its data dir (<dataDir> is substituted). env values may reference secrets as {"secret":"NAME"}.':
@@ -1130,6 +1186,54 @@ export const ptBR = {
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  "List registered projects and Git repositories discovered on this Mac. Read-only; no approval required. Use this before asking the user for a project path.":
+    "List registered projects and Git repositories discovered on this Mac. Read-only; no approval required. Use this before asking the user for a project path.",
+  "Informe o caminho absoluto de uma pasta deste Mac.": "Enter the absolute path of a folder on this Mac.",
+  "O caminho precisa ser uma pasta.": "The path must be a folder.",
+  "O acesso a qualquer pasta deste Mac é exclusivo dos ajustes.":
+    "Access to any folder on this Mac can only be enabled in settings.",
+  "A configuração do bot está indisponível.": "Bot configuration is unavailable.",
+  "Somente o próprio bot, sem delegação, pode alterar sua configuração.":
+    "Only this bot, without delegation, can change its configuration.",
+  "Somente o próprio bot pode alterar sua configuração.": "Only this bot can change its configuration.",
+  "Projeto não encontrado.": "Project not found.",
+  "O vínculo não foi aprovado ou a configuração mudou.": "The link was not approved or the configuration changed.",
+  "Pastas deste Mac não estão disponíveis na nuvem.": "Folders on this Mac are unavailable in the cloud.",
+  "O acesso não foi aprovado ou a configuração mudou.": "Access was not approved or the configuration changed.",
+  "Pasta não encontrada nas permissões deste bot.": "Folder not found in this bot’s permissions.",
+  "A configuração foi salva neste Mac e será aplicada no próximo turno local.":
+    "The configuration was saved on this Mac and will apply on the next local turn.",
+  "Projeto {name} ({path}) vinculado a este bot.": "Project {name} ({path}) linked to this bot.",
+  "Projeto {name} desvinculado deste bot.": "Project {name} unlinked from this bot.",
+  "Acesso {mode} à pasta {path} concedido a este bot.": "This bot was granted {mode} access to folder {path}.",
+  "de leitura": "read",
+  "de leitura e escrita": "read and write",
+  "Acesso à pasta {path} removido deste bot.": "This bot’s access to folder {path} was removed.",
+  atual: "current",
+  "Pasta permitida (caminho absoluto)": "Allowed folder (absolute path)",
+  "Informe pelo menos uma pasta com caminho absoluto antes de conectar.":
+    "Enter at least one folder with an absolute path before connecting.",
+  "Ações das configurações do bot": "Bot settings actions",
+  "Requer Node.js. Ao usar esta configuração, informe o caminho absoluto de uma pasta permitida no campo abaixo. Não requer login ou token.":
+    "Requires Node.js. When using this preset, enter the absolute path of an allowed folder in the field below. No login or token required.",
+  "Somente o próprio bot, sem delegação, pode consultar suas pastas.":
+    "Only this bot, without delegation, can list its folders.",
+  "A configuração mudou durante a busca. Tente novamente.": "The configuration changed during the search. Try again.",
+  "Projetos e repositórios nas pastas já permitidas a este bot.":
+    "Projects and repositories in folders already granted to this bot.",
+  "List projects and Git repositories only in this bot's already granted folders and connected project. Never searches the home directory on its own. Read-only; no approval required. Ask the user for a path when nothing is available.":
+    "List projects and Git repositories only in this bot's already granted folders and connected project. Never searches the home directory on its own. Read-only; no approval required. Ask the user for a path when nothing is available.",
+  "Vincular projeto": "Link project",
+  "Vincular {name} ({path}) a este bot": "Link {name} ({path}) to this bot",
+  "Substitui o projeto {name} ({path}).": "Replaces project {name} ({path}).",
+  "Conceder acesso à pasta": "Grant folder access",
+  "Permitir {mode} em {path} para este bot": "Allow {mode} in {path} for this bot",
+  "Acesso anterior: {mode}.": "Previous access: {mode}.",
+  "Desvincular projeto": "Unlink project",
+  "Desvincular o projeto deste bot.": "Unlink this bot's project.",
+  "Remover acesso à pasta": "Remove folder access",
+  "Remover o acesso deste bot a {path}.": "Remove this bot's access to {path}.",
+  "A mudança entra em vigor no próximo turno da VM.": "The change takes effect on the VM's next turn.",
   "Baixar imagem": "Download image",
   "Unread messages": "{count} unread messages",
   "Cloud execution coming soon": "Cloud execution coming soon",
