@@ -131,7 +131,7 @@ for (const width of [1440, 1100]) {
       await shot("new-bot-name")
       await dialog.getByRole("button", { name: "Continuar", exact: true }).click()
       await page.getByLabel("Função", { exact: true }).fill("Pesquisa e planejamento")
-      await page.getByLabel("SOUL.md").fill("Pesquise com cuidado e apresente fontes em português.")
+      await page.getByLabel("Instruções do bot").fill("Pesquise com cuidado e apresente fontes em português.")
       await shot("new-bot-role")
       await dialog.getByRole("button", { name: "Continuar", exact: true }).click()
       await shot("new-bot-provider")

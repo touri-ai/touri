@@ -1,5 +1,5 @@
 import { listen } from "@tauri-apps/api/event"
-import type { BotGroup, Id, NotificationRecord } from "@touri/contracts"
+import type { BotGroup, DoctorReport, Id, NotificationRecord } from "@touri/contracts"
 import type { FailureAction } from "@touri/contracts/run-failure"
 import { type SetStateAction, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
@@ -25,6 +25,7 @@ import { FailureActionContext } from "./components/FailureActionContext"
 import { GroupModal } from "./components/Groups"
 import {
   BotCreateModal,
+  BotModelModal,
   BotSettingsModal,
   DoctorModal,
   ImportWizard,
@@ -68,6 +69,7 @@ type ModalKind =
   | "project"
   | "settings"
   | "bot-settings"
+  | "bot-model"
   | "bot-permissions"
   | "bot-mcp"
   | null
@@ -756,7 +758,7 @@ const AppContent = ({ kernel }: AppProps) => {
                           setBotSettingsSection(SETTINGS.providerLogin.section)
                           setModal("bot-settings")
                         }}
-                        onOpenModel={() => openModal("bot-settings")}
+                        onOpenModel={() => openModal("bot-model")}
                         projects={data.projects}
                         onSelectProject={async (projectId) => {
                           if (selectedBot) await actions.updateBot(selectedBot.id, { projectId })
@@ -867,6 +869,15 @@ const AppContent = ({ kernel }: AppProps) => {
                 onSave={actions.updateSettings}
               />
             )}
+            {modal === "bot-model" && selectedBot && (
+              <BotModelModal
+                key={`${selectedBot.id}:${selectedBot.provider}`}
+                api={api}
+                bot={selectedBot}
+                onSave={(model) => actions.updateBot(selectedBot.id, { model })}
+                onClose={closeModal}
+              />
+            )}
             {(modal === "bot-settings" || modal === "bot-permissions" || modal === "bot-mcp") && selectedBot && (
               <BotSettingsModal
                 invokeCommand={invokeCommand}
@@ -937,6 +948,23 @@ const SidecarErrorScreen = ({
   </main>
 )
 
+const OnboardingDoctorSummary = ({ doctor }: { doctor: DoctorReport | null }) => {
+  const counts = { pass: 0, warn: 0, fail: 0 }
+  for (const check of doctor?.checks ?? []) counts[check.status ?? (check.ok ? "pass" : "fail")] += 1
+  const color =
+    !doctor || doctor.running || !doctor.checks.length ? "muted" : counts.fail ? "red" : counts.warn ? "amber" : "green"
+  return (
+    <span role="status">
+      <span className={`status-dot status-${color}`} aria-hidden="true" />{" "}
+      {doctor
+        ? doctor.running
+          ? t("Checking this Mac…")
+          : t("Mac check summary", { ready: counts.pass, warnings: counts.warn, failures: counts.fail })
+        : t("doctor runs locally")}
+    </span>
+  )
+}
+
 const OnboardingLanding = ({
   doctor,
   onCreateBot,
@@ -974,12 +1002,7 @@ const OnboardingLanding = ({
         </button>
       </div>
       <div className="onboarding-foot">
-        <span>
-          <span className="status-dot status-green" />{" "}
-          {doctor
-            ? t("Checks ready", { count: doctor.checks.filter((check) => check.ok).length })
-            : t("doctor runs locally")}
-        </span>
+        <OnboardingDoctorSummary doctor={doctor} />
         <span>{t("Apache-2.0 · no telemetry")}</span>
       </div>
     </div>

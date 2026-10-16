@@ -174,7 +174,9 @@ it("Codex creation hides full access with approval and explains sandbox behavior
   fireEvent.click(screen.getByRole("button", { name: "Continuar" }))
   fireEvent.click(screen.getByRole("button", { name: "Continuar" }))
   expect(screen.queryByRole("option", { name: "Acesso total com aprovação" })).toBeNull()
-  expect(screen.getByText(/Com acesso total, o Codex executa sem pedir aprovação/)).toBeVisible()
+  expect(screen.getByText(/No acesso total, o Codex executa sem pedir aprovação/)).toHaveTextContent(
+    "As restrições de pastas do touri",
+  )
   expect(screen.getByRole("option", { name: "Somente leitura" })).toBeVisible()
 })
 

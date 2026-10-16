@@ -1,8 +1,10 @@
 import type { Database } from "bun:sqlite"
 import type { Id, Kernel, RouteModule, Routine, ToolHandler, ToolResult } from "@touri/contracts"
 import { createGroupRuntime } from "../groups/runtime"
+import { buildChildEnv } from "../kernel/shell-env"
 import { createRuntimeEngine } from "./engine"
 import { listOpenCodeModels } from "./opencode/models"
+import { listProviderProfiles } from "./provider-profiles"
 import { createRoutineScheduler } from "./routines/scheduler"
 import { asRecord } from "./utils"
 
@@ -94,6 +96,19 @@ export const init = async (kernel: Kernel): Promise<void> => {
           if (query.botId && !bot) return routeError("NOT_FOUND", "Bot não encontrado")
           return { status: 200, json: await listOpenCodeModels(kernel, bot ?? undefined) }
         },
+      },
+      {
+        method: "GET",
+        path: "/provider-profiles",
+        handler: async () => ({
+          status: 200,
+          json: {
+            profiles: await listProviderProfiles({
+              appData: kernel.paths.appData,
+              env: buildChildEnv({ base: await kernel.shellEnv() }),
+            }),
+          },
+        }),
       },
       {
         method: "GET",

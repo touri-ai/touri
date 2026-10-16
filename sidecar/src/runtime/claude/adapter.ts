@@ -149,7 +149,9 @@ export const createClaudeAdapter = ({
       sessionId,
       "--mcp-config",
       configPath,
-      "--strict-mcp-config",
+      // claude.ai connectors only load without strict mode. They are an explicit per-bot opt-in for
+      // local bots; their tool calls still go through the approval prompt, not the touri gateway.
+      ...(args.bot.claudeAiConnectors && !args.execution ? [] : ["--strict-mcp-config"]),
       // Do not merge user/project/local permission rules or auto mode into a bot's policy.
       // Authentication still uses the CLI's normal credential store.
       "--setting-sources=",

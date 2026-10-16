@@ -297,21 +297,46 @@ export const ptBR = {
   "Workspace write · approvals": "Escrita no projeto · com aprovações",
   "Workspace write": "Escrita no projeto",
   "Full access": "Acesso total",
-  "Full access lets the CLI write anywhere. Use it only for a teammate you trust.":
-    "O acesso total permite que o provedor escreva em qualquer pasta. Use apenas com bots em que você confia.",
+  "Full access skips provider approvals. Folder access is configured separately.":
+    "O acesso total dispensa aprovações do provedor. A escrita segue as permissões de pastas configuradas para o bot. A opção “Acesso a qualquer pasta deste Mac” é independente; as exclusões de pastas sensíveis continuam valendo. Use apenas com bots em que você confia.",
+  "Codex full access disables provider approvals and sandboxing; touri folder restrictions still apply.":
+    "No acesso total, o Codex executa sem pedir aprovação e sem o sandbox do provedor. As restrições de pastas do touri, as políticas MCP e as permissões de controle do computador continuam valendo.",
   Cancel: "Cancelar",
   "Creating…": "Criando…",
   "teammate configuration": "configuração do bot",
-  "Applied on the next turn. The file is mirrored in this bot’s home.":
-    "Aplicado no próximo turno. O arquivo é salvo na pasta deste bot.",
+  "Bot instructions": "Instruções do bot",
+  "A summary of the bot’s work, e.g. research and compare sources.":
+    "Resumo do trabalho do bot na equipe, por exemplo: pesquisar e comparar fontes.",
+  "A short label for the bot, e.g. Researcher. Detailed tasks go in the instructions.":
+    "Uma identificação curta, por exemplo: Pesquisador. As tarefas detalhadas vão nas instruções.",
+  "Describe this bot’s role, tasks and style.": "Descreva o papel, as tarefas e o estilo deste bot.",
+  "Detailed guidance for the bot. Saved as SOUL.md in the bot’s folder.":
+    "Orientações detalhadas para o bot. Salvas no arquivo SOUL.md na pasta do bot.",
+  "Applied on the next turn.": "Aplicado no próximo turno.",
   Model: "Modelo",
   "CLI default": "Padrão do provedor",
+  "Choose model": "Escolher modelo",
+  "Save model": "Salvar modelo",
+  "Choose the model for this bot’s next turns.": "Escolha o modelo para os próximos turnos deste bot.",
+  "{provider} does not expose a model list in touri. Use the provider default or enter a model ID supported by your CLI.":
+    "O {provider} não disponibiliza uma lista de modelos no touri. Use o padrão do provedor ou informe um identificador de modelo compatível com sua CLI.",
+  "Loading OpenCode models…": "Carregando modelos do OpenCode…",
+  "Default model: {model}. You can also enter another model.":
+    "Padrão: {model}. Você também pode informar outro modelo.",
+  "Select a model or use the OpenCode default.": "Selecione um modelo ou use o padrão do OpenCode.",
+  "OpenCode returned no models. Use the default or enter a provider/model ID.":
+    "O OpenCode não retornou modelos. Use o padrão ou informe um identificador provedor/modelo.",
+  "OpenCode is unavailable. Install the CLI and check Doctor; you can enter a model manually.":
+    "OpenCode indisponível. Instale a CLI e confira o Doctor; você pode informar o modelo manualmente.",
+  "Could not list models. Use the default or enter a provider/model ID manually.":
+    "Não foi possível listar os modelos. Use o padrão ou informe o identificador provedor/modelo manualmente.",
+  "Enter a provider/model ID, e.g. openrouter/deepseek/deepseek-v3.2.":
+    "Informe o modelo no formato provedor/modelo, por exemplo openrouter/deepseek/deepseek-v3.2.",
   Reasoning: "Raciocínio",
   Low: "Baixo",
   Medium: "Médio",
   High: "Alto",
   "Extra high": "Muito alto",
-  "Full access bypasses the normal workspace boundary.": "O acesso total permite atuar fora da pasta do projeto.",
   "Browser enabled": "Navegador habilitado",
   "Allow this teammate to use its touri-owned Chrome tabs.": "Permite que este bot use suas abas do navegador touri.",
   "Computer use": "Controle do computador",
@@ -562,6 +587,8 @@ export const ptBR = {
   "Import step": "importação / etapa {step} de 5",
   "Import counts": "{messages} mensagens e {threads} conversas importadas. As rotinas estão pausadas.",
   "Checks ready": "{count} verificações prontas",
+  "Mac check summary": "Prontas: {ready} · Avisos: {warnings} · Falhas: {failures}",
+  "Checking this Mac…": "Verificando este Mac…",
   "Enable routine": "Habilitar {name}",
   "Avatar shape": "Forma {shape}",
   "Avatar color": "Cor {color}",
@@ -775,6 +802,7 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Import step": "import / step {step} of 5",
   "Import counts": "{messages} messages and {threads} conversations imported. Routines are paused.",
   "Checks ready": "{count} checks ready",
+  "Mac check summary": "Ready: {ready} · Warnings: {warnings} · Failures: {failures}",
   "Enable routine": "Enable {name}",
   "Avatar shape": "Shape {shape}",
   "Avatar color": "Color {color}",

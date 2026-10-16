@@ -2412,6 +2412,9 @@ a {
 .status-red {
   background: var(--accent-brand);
 }
+.status-amber {
+  background: var(--accent-warning);
+}
 .status-muted {
   background: var(--text-secondary);
 }

@@ -39,6 +39,7 @@ import {
 } from "../kernel/files"
 import { historyThreadPending, hydrateHistoryEvent } from "../kernel/history-backfill"
 import { externalizeMessageParts, OUTPUT_BLOB_ORIGIN } from "../kernel/output-blobs"
+import { isProfileProvider, validProviderProfileName } from "../kernel/provider-profiles"
 import { materializeTranscript } from "../kernel/transcript-storage"
 import { touriVersion } from "../version"
 import { DEFAULT_BOT_VM_MEMORY_MB, DEFAULT_MACHINE_IDLE_MINUTES, validBotVmMemory } from "../vm/resources"
@@ -78,6 +79,8 @@ type RawBot = {
   machine_idle_minutes: number
   vm_provider_login: number
   host_computer_use: number
+  provider_profile?: string | null
+  claude_ai_connectors?: number
   notifications: string
   section: string | null
   sort_order: number
@@ -241,6 +244,8 @@ const asBot = (row: RawBot): Bot => ({
   machineIdleMinutes: row.machine_idle_minutes,
   vmProviderLogin: row.vm_provider_login === 1,
   hostComputerUse: row.host_computer_use === 1,
+  providerProfile: row.provider_profile ?? null,
+  claudeAiConnectors: row.claude_ai_connectors === 1,
   notifications: row.notifications === "all" || row.notifications === "none" ? row.notifications : "failures",
   section: row.section,
   sortOrder: row.sort_order,
@@ -856,6 +861,30 @@ export const init = async (kernel: Kernel): Promise<void> => {
       return { input: null, error: "Pastas deste Mac não estão disponíveis na nuvem." }
     if (input.cwd !== undefined && input.cwd !== null && !isAbsolute(input.cwd))
       return { input: null, error: "cwd must be absolute" }
+    if (
+      body.providerProfile !== undefined &&
+      body.providerProfile !== null &&
+      !validProviderProfileName(body.providerProfile)
+    )
+      return { input: null, error: "providerProfile must be a profile name (letters, digits, dot, dash, underscore)" }
+    input.providerProfile = Object.hasOwn(body, "providerProfile")
+      ? ((body.providerProfile as string | null) ?? null)
+      : (existing?.providerProfile ?? null)
+    if (input.providerProfile !== null) {
+      if (input.machine !== "local")
+        return {
+          input: null,
+          error: "Perfis de login valem só para bots locais. A máquina do bot usa o próprio login.",
+        }
+      if (!isProfileProvider(provider))
+        return { input: null, error: "Perfis de login estão disponíveis para Claude e Codex." }
+    }
+    if (body.claudeAiConnectors !== undefined && typeof body.claudeAiConnectors !== "boolean")
+      return { input: null, error: "claudeAiConnectors must be a boolean" }
+    input.claudeAiConnectors =
+      provider === "claude" &&
+      input.machine === "local" &&
+      ((body.claudeAiConnectors as boolean | undefined) ?? existing?.claudeAiConnectors ?? false)
     return { input, error: null }
   }
 
@@ -910,6 +939,9 @@ export const init = async (kernel: Kernel): Promise<void> => {
     database
       .query("UPDATE bots SET folders_json = ?, any_folder_access = ? WHERE id = ?")
       .run(JSON.stringify(input.folders ?? []), input.anyFolderAccess ? 1 : 0, id)
+    database
+      .query("UPDATE bots SET provider_profile = ?, claude_ai_connectors = ? WHERE id = ?")
+      .run(input.providerProfile ?? null, input.claudeAiConnectors ? 1 : 0, id)
     database
       .query(
         "INSERT INTO threads (id, bot_id, parent_thread_id, kind, title, active_leaf_id, routine_run_id, cwd_override, unread, carryover_note, usage_json, source, created_at, updated_at, archived_at) VALUES (?, ?, NULL, 'main', ?, NULL, NULL, NULL, 0, NULL, ?, 'local', ?, ?, NULL)",
@@ -996,6 +1028,9 @@ export const init = async (kernel: Kernel): Promise<void> => {
     database
       .query("UPDATE bots SET folders_json = ?, any_folder_access = ? WHERE id = ?")
       .run(JSON.stringify(input.folders ?? []), input.anyFolderAccess ? 1 : 0, bot.id)
+    database
+      .query("UPDATE bots SET provider_profile = ?, claude_ai_connectors = ? WHERE id = ?")
+      .run(input.providerProfile ?? null, input.claudeAiConnectors ? 1 : 0, bot.id)
     ensureBotHome({ botId: bot.id, instructions })
     const updated = getBot({ botId: bot.id })
     if (updated) kernel.publish({ type: "bot.updated", bot: updated })
