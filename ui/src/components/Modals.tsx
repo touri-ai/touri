@@ -1,6 +1,8 @@
 import type {
   ApiRoutes,
   Bot,
+  BotFolder,
+  DiscoveredProject,
   DoctorReport,
   EnvValue,
   MachineCapability,
@@ -32,11 +34,14 @@ import { ReportProblem } from "../features/reports/ReportProblem"
 import { plural, statusLabel, t } from "../i18n"
 import type { WorkspaceActions } from "../useWorkspace"
 import { type AvatarChoice, AvatarPicker } from "./AvatarPicker"
+import { BotAccessSummary } from "./BotAccessSummary"
 import { BotAvatar } from "./BotAvatar"
+import { BotFolderSettings } from "./BotFolderSettings"
 import { BotMcpSettings } from "./BotMcpSettings"
 import { BotNetworkSettings } from "./BotNetworkSettings"
 import { BotStandingGrants } from "./BotStandingGrants"
 import { DeleteBotDialog } from "./DeleteBotDialog"
+import { DiscoveredProjects } from "./DiscoveredProjects"
 import { MachineFields } from "./MachineFields"
 import { ProviderLogin } from "./ProviderLogin"
 import { ProviderMark, providerName } from "./ProviderMark"
@@ -410,9 +415,11 @@ const ImportReportView = ({ report }: { report: ApiRoutes["GET /imports/:id"]["r
 
 type BotCreateModalProps = {
   api?: UiApi
+  invokeCommand?: TauriInvoke
   cloudEnabled?: boolean
   capability?: MachineCapability
   projects?: Array<Project>
+  onCreateProject?: WorkspaceActions["createProject"]
   onClose: () => void
   onCreate: (input: ApiRoutes["POST /bots"]["req"], loginDraftId?: string) => Promise<void>
 }
@@ -422,7 +429,9 @@ export const BotCreateModal = ({
   projects = [],
   onClose,
   onCreate,
+  onCreateProject,
   api,
+  invokeCommand,
   cloudEnabled = false,
 }: BotCreateModalProps) => {
   const { account: cloudAccount } = useCloudAccount(api, cloudEnabled)
@@ -451,6 +460,15 @@ export const BotCreateModal = ({
   const [model, setModel] = useState("")
   const [effort, setEffort] = useState<Bot["reasoningEffort"]>(null)
   const [projectId, setProjectId] = useState("")
+  const [addingProject, setAddingProject] = useState(false)
+  const [projectBusy, setProjectBusy] = useState(false)
+  const [addedProjects, setAddedProjects] = useState<Project[]>([])
+  const availableProjects = [
+    ...projects,
+    ...addedProjects.filter((item) => !projects.some((project) => project.id === item.id)),
+  ].filter((project) => !project.archivedAt)
+  const [folders, setFolders] = useState<BotFolder[]>([])
+  const [anyFolderAccess, setAnyFolderAccess] = useState(false)
   const [browserEnabled, setBrowserEnabled] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [access, setAccess] = useState("workspace-write")
@@ -469,7 +487,7 @@ export const BotCreateModal = ({
   }, [step])
   const submit = async (event: React.FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault()
-    if (!name.trim() || saving) return
+    if (!name.trim() || saving || projectBusy) return
     if (api && machine.machine !== "cloud" && !providerLoginReady) {
       goToStep(2)
       return
@@ -489,7 +507,9 @@ export const BotCreateModal = ({
         instructions,
         model: model.trim() || null,
         reasoningEffort: effort,
-        projectId: projectId || null,
+        projectId: machine.machine === "cloud" ? null : projectId || null,
+        folders: machine.machine === "cloud" ? [] : folders,
+        anyFolderAccess: machine.machine !== "cloud" && anyFolderAccess,
         browserEnabled,
         access: access === "full-approved" ? ("full" as const) : (access as Bot["access"]),
         approvals:
@@ -510,6 +530,20 @@ export const BotCreateModal = ({
       setSaving(false)
     }
   }
+  const addProject = async (input: ApiRoutes["POST /projects"]["req"]) => {
+    if (!api) return
+    setProjectBusy(true)
+    try {
+      const project = onCreateProject
+        ? await onCreateProject(input)
+        : (await api.request("POST /projects", input)).project
+      setAddedProjects((current) => [...current.filter((item) => item.id !== project.id), project])
+      setProjectId(project.id)
+      setAddingProject(false)
+    } finally {
+      setProjectBusy(false)
+    }
+  }
   const stepTitles = [
     "Nome e mascote",
     "Função e instruções",
@@ -518,6 +552,7 @@ export const BotCreateModal = ({
     "Revisar e criar",
   ]
   const goToStep = (next: number): void => {
+    if (projectBusy) return
     if (next > 3 && invalidMachine) return
     setStep(next)
     setFurthestStep((current) => Math.max(current, next))
@@ -552,7 +587,13 @@ export const BotCreateModal = ({
               key={label}
               type="button"
               aria-current={index === step ? "step" : undefined}
-              disabled={index > furthestStep || saving || (index > 0 && !name.trim()) || (index > 3 && invalidMachine)}
+              disabled={
+                index > furthestStep ||
+                saving ||
+                projectBusy ||
+                (index > 0 && !name.trim()) ||
+                (index > 3 && invalidMachine)
+              }
               onClick={() => goToStep(index)}
             >
               <span aria-hidden="true">{index < step ? "✓" : index + 1}</span>
@@ -678,17 +719,59 @@ export const BotCreateModal = ({
               <label htmlFor="create-project">{t("Projeto")}</label>
               <select
                 id="create-project"
-                disabled={machine.machine === "cloud"}
+                disabled={projectBusy || machine.machine === "cloud"}
                 value={projectId}
-                onChange={(event) => setProjectId(event.target.value)}
+                onChange={(event) => {
+                  if (event.target.value === "__add_project__") setAddingProject(true)
+                  else {
+                    setProjectId(event.target.value)
+                    setAddingProject(false)
+                  }
+                }}
               >
-                <option value="">{t("Somente pasta do bot")}</option>
-                {projects.map((project) => (
+                <option value="">{t("Nenhum projeto (começa na pasta do bot)")}</option>
+                {availableProjects.map((project) => (
                   <option key={project.id} value={project.id}>
                     {project.name}
                   </option>
                 ))}
+                <option value="__add_project__" disabled={!api}>
+                  {t("Adicionar projeto…")}
+                </option>
               </select>
+              {addingProject && api && machine.machine !== "cloud" && (
+                <DiscoveredProjects
+                  api={api}
+                  disabled={saving}
+                  onSelect={(repository) => addProject({ path: repository.path, name: repository.name })}
+                  onChooseFolder={
+                    invokeCommand
+                      ? async () => {
+                          const selected = await invokeCommand("pick_folder", { title: t("Connect a project folder") })
+                          if (selected?.path) await addProject({ path: selected.path })
+                        }
+                      : undefined
+                  }
+                />
+              )}
+              <BotAccessSummary
+                machine={machine.machine}
+                access={access === "full-approved" ? "full" : (access as Bot["access"])}
+                approvals={access === "full" ? "never" : "on-request"}
+                folders={folders}
+                anyFolderAccess={anyFolderAccess}
+              />
+              {machine.machine !== "cloud" && (
+                <BotFolderSettings
+                  folders={folders}
+                  anyFolderAccess={anyFolderAccess}
+                  machine={machine.machine}
+                  disabled={saving}
+                  invokeCommand={invokeCommand}
+                  onFolders={setFolders}
+                  onAnyFolderAccess={setAnyFolderAccess}
+                />
+              )}
               <label className="toggle-row" htmlFor="create-browser">
                 <span>{t("Browser enabled")}</span>
                 <SettingsSwitch
@@ -794,12 +877,31 @@ export const BotCreateModal = ({
                 </div>
                 <div>
                   <dt>Projeto</dt>
-                  <dd>{projects.find((project) => project.id === projectId)?.name ?? "Somente pasta do bot"}</dd>
+                  <dd>
+                    {availableProjects.find((project) => project.id === projectId)?.name ??
+                      t("Nenhum projeto (começa na pasta do bot)")}
+                  </dd>
                 </div>
                 <div>
                   <dt>Navegador</dt>
                   <dd>{browserEnabled ? "Ativado" : "Desativado"}</dd>
                 </div>
+                {machine.machine !== "cloud" && (
+                  <div>
+                    <dt>{t("Pastas que este bot pode acessar")}</dt>
+                    <dd>
+                      {anyFolderAccess && <p>{t("Acesso a qualquer pasta deste Mac")}</p>}
+                      {folders.length
+                        ? folders.map((folder) => (
+                            <p key={folder.path}>
+                              {folder.path} ·{" "}
+                              {folder.access === "read-only" ? t("Somente leitura") : t("Leitura e escrita")}
+                            </p>
+                          ))
+                        : !anyFolderAccess && t("Nenhuma pasta adicional.")}
+                    </dd>
+                  </div>
+                )}
                 {machine.machine === "vm" && (
                   <>
                     <div>
@@ -832,7 +934,7 @@ export const BotCreateModal = ({
           <button
             type="button"
             className="button button-quiet"
-            disabled={saving}
+            disabled={saving || projectBusy}
             onClick={() => (step === 0 ? onClose() : goToStep(step - 1))}
           >
             {step === 0 ? t("Cancel") : t("Back")}
@@ -843,6 +945,7 @@ export const BotCreateModal = ({
             disabled={
               !name.trim() ||
               saving ||
+              projectBusy ||
               (step >= 3 && (invalidMachine || (machine.machine === "cloud" && !cloudApiKey.trim())))
             }
           >
@@ -855,6 +958,9 @@ export const BotCreateModal = ({
 }
 
 type BotSettingsModalProps = {
+  invokeCommand?: TauriInvoke
+  bots?: Bot[]
+
   initialSection?: BotSettingsSectionId | undefined
   /** Registry setting id to focus and highlight once the dialog opens (command palette). */
   focusSetting?: string | null
@@ -875,6 +981,8 @@ type BotSettingsModalProps = {
 }
 
 export const BotSettingsModal = ({
+  invokeCommand,
+  bots,
   focusMcp = false,
   permissionsOnly = false,
   api,
@@ -911,8 +1019,12 @@ export const BotSettingsModal = ({
   const [access, setAccess] = useState<string>(
     bot.provider !== "codex" && bot.access === "full" && bot.approvals === "on-request" ? "full-approved" : bot.access,
   )
+  const initialAccess = useRef(access)
   const [effort, setEffort] = useState<Bot["reasoningEffort"]>(bot.reasoningEffort)
   const [projectId, setProjectId] = useState(bot.projectId ?? "")
+  const [addingProject, setAddingProject] = useState(false)
+  const [folders, setFolders] = useState(bot.folders ?? [])
+  const [anyFolderAccess, setAnyFolderAccess] = useState(bot.anyFolderAccess ?? false)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [updating, setUpdating] = useState(false)
@@ -963,9 +1075,16 @@ export const BotSettingsModal = ({
         provider,
         model: model || null,
         access: access === "full-approved" ? "full" : (access as Bot["access"]),
-        approvals: access === "full" || (provider === "codex" && access === "full-approved") ? "never" : "on-request",
+        approvals:
+          provider === bot.provider && access === initialAccess.current
+            ? bot.approvals
+            : access === "full" || (provider === "codex" && access === "full-approved")
+              ? "never"
+              : "on-request",
         reasoningEffort: effort,
         projectId: projectId || null,
+        folders,
+        anyFolderAccess,
       })
       onClose()
     } catch (error) {
@@ -1149,15 +1268,65 @@ export const BotSettingsModal = ({
             <div className="settings-fields">
               <label>
                 {t("Projeto")}
-                <select value={projectId} onChange={(event) => setProjectId(event.target.value)}>
-                  <option value="">{t("Somente pasta do bot")}</option>
-                  {projects.map((project) => (
-                    <option value={project.id} key={project.id}>
-                      {project.name}
-                    </option>
-                  ))}
+                <select
+                  value={projectId}
+                  disabled={activeTurns || saving || updating || machine.machine === "cloud"}
+                  onChange={(event) =>
+                    event.target.value === "__add_project__" ? setAddingProject(true) : setProjectId(event.target.value)
+                  }
+                >
+                  <option value="">{t("Nenhum projeto (começa na pasta do bot)")}</option>
+                  {projects
+                    .filter((project) => !project.archivedAt)
+                    .map((project) => (
+                      <option value={project.id} key={project.id}>
+                        {project.name}
+                      </option>
+                    ))}
+                  <option value="__add_project__" disabled={!api || !invokeCommand}>
+                    {t("Adicionar projeto…")}
+                  </option>
                 </select>
               </label>
+              <BotAccessSummary
+                machine={machine.machine}
+                access={access === "full-approved" ? "full" : (access as Bot["access"])}
+                approvals={
+                  provider === bot.provider && access === initialAccess.current
+                    ? bot.approvals
+                    : access === "full" || (provider === "codex" && access === "full-approved")
+                      ? "never"
+                      : "on-request"
+                }
+                folders={folders}
+                anyFolderAccess={anyFolderAccess}
+              />
+              {machine.machine !== "cloud" && (
+                <BotFolderSettings
+                  folders={folders}
+                  anyFolderAccess={anyFolderAccess}
+                  machine={machine.machine}
+                  disabled={saving || updating}
+                  invokeCommand={invokeCommand}
+                  onFolders={setFolders}
+                  onAnyFolderAccess={setAnyFolderAccess}
+                />
+              )}
+              {addingProject && api && invokeCommand && (
+                <ProjectModal
+                  project={null}
+                  selectedBotId={bot.id}
+                  linkBotId={bot.id}
+                  bots={bots ?? [bot]}
+                  api={api}
+                  invokeCommand={invokeCommand}
+                  actions={actions}
+                  onLinked={(project) => setProjectId(project.id)}
+                  onClose={() => setAddingProject(false)}
+                  onOpenPreview={() => setAddingProject(false)}
+                  onNotice={() => {}}
+                />
+              )}
               <label className="toggle-row" htmlFor="settings-browser">
                 <span>
                   <strong>{t("Browser enabled")}</strong>
@@ -1291,6 +1460,9 @@ export const BotSettingsModal = ({
 }
 
 type ProjectModalProps = {
+  linkBotId?: string | null
+  onLinked?: (project: Project) => void
+
   project: Project | null
   selectedBotId: string | null
   bots: Array<Bot>
@@ -1313,6 +1485,8 @@ const folderKey = (value: string): string =>
     .join("/")}`
 
 export const ProjectModal = ({
+  linkBotId,
+  onLinked,
   project,
   selectedBotId,
   bots,
@@ -1447,14 +1621,16 @@ export const ProjectModal = ({
     })
   }, [api, connectedProject, onOpenPreview, vmBotId])
 
-  const connect = async (useExisting?: Project): Promise<void> => {
+  const connect = async (useExisting?: Project, discovered?: DiscoveredProject): Promise<void> => {
     if (savingProject) return
-    if (source === "folder" && !path.trim()) return
-    if (source === "clone" && (!gitUrl.trim() || !parentDir.trim())) return
+    const requestedPath = discovered?.path ?? path.trim()
+    const requestedName = discovered?.name ?? name.trim()
+    if (!useExisting && !discovered && source === "folder" && !requestedPath) return
+    if (!useExisting && !discovered && source === "clone" && (!gitUrl.trim() || !parentDir.trim())) return
     setSavingProject(true)
     setProjectError(null)
     try {
-      if (source === "folder" && !connectedProject && !useExisting) {
+      if (!discovered && source === "folder" && !connectedProject && !useExisting) {
         const result = await api.request("GET /projects", {})
         setKnownProjects(result.projects)
         const existing = result.projects.find((item) => folderKey(item.path) === folderKey(path))
@@ -1464,22 +1640,40 @@ export const ProjectModal = ({
         }
       }
       const input: ApiRoutes["POST /projects"]["req"] =
-        source === "folder"
-          ? { path: path.trim(), ...(name.trim() ? { name: name.trim() } : {}) }
+        discovered || source === "folder"
+          ? { path: requestedPath, ...(requestedName ? { name: requestedName } : {}) }
           : {
               gitUrl: gitUrl.trim(),
               parentDir: parentDir.trim(),
               ...(name.trim() ? { name: name.trim() } : {}),
             }
-      const nextProject = connectedProject ?? useExisting ?? (await actions.createProject(input))
+      const nextProject = discovered
+        ? await actions.createProject(input)
+        : (connectedProject ?? useExisting ?? (await actions.createProject(input)))
       // The sidecar canonicalizes paths (including symlinks) and may return an existing project.
       // Keep the form and requested name until the user explicitly accepts that project.
-      if (!connectedProject && !useExisting && source === "folder" && name.trim() && nextProject.name !== name.trim()) {
+      if (
+        !discovered &&
+        !connectedProject &&
+        !useExisting &&
+        source === "folder" &&
+        name.trim() &&
+        nextProject.name !== name.trim()
+      ) {
         setReturnedExisting(nextProject)
         return
       }
       setConnectedProject(nextProject)
-      await Promise.all(selectedBotIds.map((botId) => actions.updateBot(botId, { projectId: nextProject.id })))
+      if (linkBotId) {
+        await actions.updateBot(linkBotId, { projectId: nextProject.id })
+        onLinked?.(nextProject)
+      }
+      await Promise.all(
+        selectedBotIds
+          .filter((botId) => botId !== linkBotId)
+          .map((botId) => actions.updateBot(botId, { projectId: nextProject.id })),
+      )
+      if (!linkBotId) onLinked?.(nextProject)
       setStep("process")
       setProcessFormOpen(true)
       onNotice("Projeto conectado. Escolha os bots e adicione um processo supervisionado.")
@@ -1602,6 +1796,12 @@ export const ProjectModal = ({
           </div>
           {source === "folder" ? (
             <>
+              <DiscoveredProjects
+                api={api}
+                disabled={savingProject}
+                onSelect={(repository) => connect(undefined, repository)}
+                onChooseFolder={chooseFolder}
+              />
               <label htmlFor="project-path">{t("Pasta do projeto")}</label>
               <div className="input-with-button">
                 <input
@@ -1672,8 +1872,8 @@ export const ProjectModal = ({
                 </span>
                 <input
                   type="checkbox"
-                  disabled={savingProject}
-                  checked={selectedBotIds.includes(bot.id)}
+                  disabled={savingProject || bot.id === linkBotId}
+                  checked={selectedBotIds.includes(bot.id) || bot.id === linkBotId}
                   onChange={(event) =>
                     setSelectedBotIds((current) =>
                       event.target.checked ? [...current, bot.id] : current.filter((id) => id !== bot.id),
@@ -1726,7 +1926,8 @@ export const ProjectModal = ({
                 </span>
                 <input
                   type="checkbox"
-                  checked={selectedBotIds.includes(bot.id)}
+                  disabled={bot.id === linkBotId}
+                  checked={selectedBotIds.includes(bot.id) || bot.id === linkBotId}
                   onChange={(event) =>
                     setSelectedBotIds((current) =>
                       event.target.checked ? [...current, bot.id] : current.filter((id) => id !== bot.id),

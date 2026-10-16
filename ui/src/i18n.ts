@@ -2,6 +2,49 @@ import { userFacingError } from "./errors"
 /** All UI copy lives here. pt-BR is the default; English is available for a future locale picker. */
 export type Locale = "pt-BR" | "en"
 export const ptBR = {
+  "Só a máquina na nuvem": "Só a máquina na nuvem",
+  "Só a VM isolada e as pastas compartilhadas": "Só a VM isolada e as pastas compartilhadas",
+  "Só a VM isolada": "Só a VM isolada",
+  "Pode ler arquivos do Mac; sem permissão de escrita": "Pode ler arquivos do Mac; sem permissão de escrita",
+  "Pode acessar pastas do Mac com aprovação; escrita nas pastas permitidas":
+    "Pode acessar pastas do Mac com aprovação; escrita nas pastas permitidas",
+  "Pode acessar todo o Mac": "Pode acessar todo o Mac",
+  "Pode ler arquivos do Mac; escrita na pasta do bot, no projeto e nas pastas permitidas":
+    "Pode ler arquivos do Mac; escrita na pasta do bot, no projeto e nas pastas permitidas",
+  "Não foi possível buscar repositórios. Escolha outra pasta.":
+    "Não foi possível buscar repositórios. Escolha outra pasta.",
+  "Repositórios encontrados": "Repositórios encontrados",
+  "Buscando repositórios…": "Buscando repositórios…",
+  "Nenhum repositório encontrado.": "Nenhum repositório encontrado.",
+  "Escolher outra pasta…": "Escolher outra pasta…",
+
+  "Somente leitura": "Somente leitura",
+  Remover: "Remover",
+  "Pastas que este bot pode acessar": "Pastas que este bot pode acessar",
+  "Nenhuma pasta adicional.": "Nenhuma pasta adicional.",
+  "Adicionar pasta…": "Adicionar pasta…",
+  "Adicionar pasta acessível ao bot": "Adicionar pasta acessível ao bot",
+  "Acesso à pasta {path}": "Acesso à pasta {path}",
+  "Remover pasta {path}": "Remover pasta {path}",
+  "Leitura e escrita": "Leitura e escrita",
+  "Acesso a qualquer pasta deste Mac": "Acesso a qualquer pasta deste Mac",
+  "O nível de acesso e as aprovações continuam valendo.": "O nível de acesso e as aprovações continuam valendo.",
+  "Keychains, ~/.ssh, perfis de navegadores e dados do touri ficam bloqueados, salvo pastas adicionadas explicitamente. Os arquivos necessários ao funcionamento deste bot continuam disponíveis.":
+    "Keychains, ~/.ssh, perfis de navegadores e dados do touri ficam bloqueados, salvo pastas adicionadas explicitamente. Os arquivos necessários ao funcionamento deste bot continuam disponíveis.",
+  "Na VM, sua pasta pessoal aparece em /host/home; as demais, em /host/<nome>. As exclusões são ocultadas por montagens somente leitura.":
+    "Na VM, sua pasta pessoal aparece em /host/home; as demais, em /host/<nome>. As exclusões são ocultadas por montagens somente leitura.",
+  "No Mac, o sandbox do macOS bloqueia as exclusões e a escrita nas pastas somente leitura, inclusive em comandos de terminal. As alterações valem no próximo turno.":
+    "No Mac, o sandbox do macOS bloqueia as exclusões e a escrita nas pastas somente leitura, inclusive em comandos de terminal. As alterações valem no próximo turno.",
+  "Ao salvar, as pastas serão aplicadas com a recriação da máquina no próximo turno. Os arquivos da máquina serão preservados.":
+    "Ao salvar, as pastas serão aplicadas com a recriação da máquina no próximo turno. Os arquivos da máquina serão preservados.",
+  "Permitir acesso a qualquer pasta?": "Permitir acesso a qualquer pasta?",
+  "Este bot poderá ler arquivos pessoais de todo o Mac e, conforme o nível de acesso, alterá-los ou apagá-los. Na VM, sua pasta pessoal será montada em /host/home. Conceda este acesso apenas a bots em que confia.":
+    "Este bot poderá ler arquivos pessoais de todo o Mac e, conforme o nível de acesso, alterá-los ou apagá-los. Na VM, sua pasta pessoal será montada em /host/home. Conceda este acesso apenas a bots em que confia.",
+  "As exclusões de pastas sensíveis, o nível de acesso e as aprovações continuam valendo.":
+    "As exclusões de pastas sensíveis, o nível de acesso e as aprovações continuam valendo.",
+  "Permitir acesso": "Permitir acesso",
+  "Qualquer pasta do Mac": "Qualquer pasta do Mac",
+
   "Waiting for approval": "Aguardando aprovação",
   "Review the approval card to continue the routine.": "Revise o cartão de aprovação para continuar a rotina.",
   "Internal: returns the recorded approval outcome as Claude post-tool hook context. Does not request or grant permission.":
@@ -597,7 +640,13 @@ export const ptBR = {
   Parar: "Parar",
   Reiniciar: "Reiniciar",
   Processos: "Processos",
-  "Somente pasta do bot": "Somente pasta do bot",
+  "Nenhum projeto (começa na pasta do bot)": "Nenhum projeto (começa na pasta do bot)",
+  "Projeto do bot": "Projeto do bot",
+  "Sem projeto": "Sem projeto",
+  "Adicionar projeto…": "Adicionar projeto…",
+  "Aguarde o turno terminar para alterar o projeto.": "Aguarde o turno terminar para alterar o projeto.",
+  "Commit Git copiado para /workspace no próximo turno.": "Commit Git copiado para /workspace no próximo turno.",
+  "Não foi possível alterar o projeto.": "Não foi possível alterar o projeto.",
   "Cron atualizado": "Cron atualizado",
   "Nova rotina": "Nova rotina",
   "Cron criado e pausado para revisão": "Cron criado e pausado para revisão",
@@ -665,6 +714,22 @@ export const ptBR = {
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  "Só a máquina na nuvem": "Only the cloud machine",
+  "Só a VM isolada e as pastas compartilhadas": "Only the isolated VM and shared folders",
+  "Só a VM isolada": "Only the isolated VM",
+  "Pode ler arquivos do Mac; sem permissão de escrita": "Can read files on the Mac; no write access",
+  "Pode acessar pastas do Mac com aprovação; escrita nas pastas permitidas":
+    "Can access Mac folders with approval; writes in permitted folders",
+  "Pode acessar todo o Mac": "Can access the whole Mac",
+  "Pode ler arquivos do Mac; escrita na pasta do bot, no projeto e nas pastas permitidas":
+    "Can read files on the Mac; writes in the bot folder, project and permitted folders",
+  "Não foi possível buscar repositórios. Escolha outra pasta.":
+    "Could not discover repositories. Choose another folder.",
+  "Repositórios encontrados": "Discovered repositories",
+  "Buscando repositórios…": "Finding repositories…",
+  "Nenhum repositório encontrado.": "No repositories found.",
+  "Escolher outra pasta…": "Choose another folder…",
+
   "Código exibido no navegador": "Code shown in the browser",
   "Enviar código": "Send code",
   "Código inválido. Copie o código completo exibido no navegador e tente novamente.":
@@ -777,7 +842,14 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   Parar: "Stop",
   Reiniciar: "Restart",
   Processos: "Processes",
-  "Somente pasta do bot": "Bot folder only",
+  "Nenhum projeto (começa na pasta do bot)": "No project (starts in the bot folder)",
+  "Projeto do bot": "Bot project",
+  "Sem projeto": "No project",
+  "Adicionar projeto…": "Add project…",
+  "Aguarde o turno terminar para alterar o projeto.": "Wait for the turn to finish before changing the project.",
+  "Commit Git copiado para /workspace no próximo turno.":
+    "The project's Git commit will be copied to /workspace on the next turn.",
+  "Não foi possível alterar o projeto.": "Could not change the project.",
   "Cron atualizado": "Cron updated",
   "Nova rotina": "New routine",
   "Cron criado e pausado para revisão": "Cron created and paused for review",

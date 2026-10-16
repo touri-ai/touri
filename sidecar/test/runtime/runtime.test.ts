@@ -25,6 +25,7 @@ const fakeClaude = join(repoRoot, "sidecar", "test", "fakes", "fake-claude.ts")
 
 type Fixture = {
   root: string
+  assets: string
   runtime: ReturnType<typeof createKernel>
   engine: ReturnType<typeof createRuntimeEngine>
   store: TestStore
@@ -83,9 +84,11 @@ const fixture = async ({
   routineTimeoutMs?: number
 } = {}): Promise<Fixture> => {
   const root = mkdtempSync(join(tmpdir(), "touri-wp3-"))
-  const fakePath = join(root, "fake-codex")
-  const scenario = join(root, "scenario.json")
-  const logPath = join(root, "provider.log")
+  // Provider fixtures live outside app data, just like installed user CLIs.
+  const assets = mkdtempSync(join(tmpdir(), "touri-provider-fixture-"))
+  const fakePath = join(assets, "fake-codex")
+  const scenario = join(assets, "scenario.json")
+  const logPath = join(assets, "provider.log")
   const fakeSource = provider === "claude" ? fakeClaude : fakeCodex
   const wrapper = `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} run ${JSON.stringify(fakeSource)} "$@"\n`
   writeFileSync(fakePath, wrapper, { mode: 0o700 })
@@ -181,13 +184,14 @@ const fixture = async ({
     ...(interruptGraceMs === undefined ? {} : { interruptGraceMs }),
     ...(routineTimeoutMs === undefined ? {} : { routineTimeoutMs: () => routineTimeoutMs }),
   })
-  return { root, runtime, engine, store, bot, thread, scenario, logPath, fakePath }
+  return { root, assets, runtime, engine, store, bot, thread, scenario, logPath, fakePath }
 }
 
 const closeFixture = async (value: Fixture): Promise<void> => {
   await value.engine.shutdown()
   value.runtime.stop()
   rmSync(value.root, { recursive: true, force: true })
+  rmSync(value.assets, { recursive: true, force: true })
 }
 
 test("pausing a cached routine prevents cron attempts and survives runtime replacement", async () => {
@@ -857,8 +861,8 @@ test.serial("Claude stream-json adapter completes a fake turn", async () => {
 
 test.serial("Claude permission frames share approval cards and standing grants across turns", async () => {
   const value = await fixture({ provider: "claude" })
-  const marker = join(value.root, "permission-executed")
-  const outcome = join(value.root, "permission-outcome")
+  const marker = join(value.assets, "permission-executed")
+  const outcome = join(value.assets, "permission-outcome")
   writeFileSync(
     value.scenario,
     JSON.stringify({ permissionCommand: "save fixture", executionMarker: marker, permissionOutcome: outcome }),
@@ -1848,7 +1852,11 @@ test.serial(
       const result = value.engine.enqueue({ threadId: value.thread.id, requestMessageId: request.id, trigger: "user" })
       if (!result.success) throw new Error(result.error)
       await waitFor(() => terminal(result.run.status))
-      const args = calls.find((call) => call.cmd === value.fakePath)?.args ?? []
+      const args =
+        calls.find(
+          (call) =>
+            call.cmd === value.fakePath || (call.cmd === "/usr/bin/sandbox-exec" && call.args[2] === value.fakePath),
+        )?.args ?? []
       expect(args).toContain("--permission-prompt-tool")
       expect(args).toContain("mcp__touri__approval_prompt")
       expect(args).not.toContain("bypassPermissions")

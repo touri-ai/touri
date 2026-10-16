@@ -46,6 +46,8 @@ export type Result<T, C extends string = string> = Ok<T> | Err<C>
 /* Domain rows (camelCase mirror of schema.sql)                                                */
 /* ------------------------------------------------------------------------------------------ */
 
+export type DiscoveredProject = { path: AbsolutePath; name: string; lastModified: number }
+
 export type Project = {
   id: Id
   name: string
@@ -78,7 +80,12 @@ export type StandingGrant = { id: Id; botId: Id; scope: ApprovalScope; grantedAt
 export type ApprovalInput = { ctx: Pick<ToolContext, 'botId' | 'threadId' | 'runId' | 'signal'>; scope: ApprovalScope; toolName: string; input: unknown; toolUseId?: string; allowStanding?: boolean; isCurrent?: () => boolean }
 export type ApprovalResult = Result<{ behavior: 'allow' | 'deny'; updatedInput?: unknown; message?: string }, 'NOT_FOUND' | 'TIMEOUT' | 'DENIED'>
 
+export type BotFolder = { path: AbsolutePath; access: 'read-only' | 'read-write' }
+
 export type Bot = {
+  /** Defaults for bots created before schema 16: [] and false. */
+  folders?: Array<BotFolder>
+  anyFolderAccess?: boolean
   mcpServers?: Array<McpServer>
 
   id: Id
@@ -636,7 +643,7 @@ export type ProviderAdapter = {
 /* ------------------------------------------------------------------------------------------ */
 
 export type CreateBotInput = { cloudApiKey?: string } & Pick<Bot, 'name' | 'provider'> &
-  Partial<Pick<Bot, 'title' | 'roleLine' | 'description' | 'color' | 'avatarShape' | 'avatarSeed' | 'instructions' | 'model' | 'reasoningEffort' | 'access' | 'approvals' | 'projectId' | 'cwd' | 'browserEnabled' | 'computerUse' | 'machine' | 'machineIdleMinutes' | 'vmProviderLogin' | 'hostComputerUse'>>
+  Partial<Pick<Bot, 'title' | 'roleLine' | 'description' | 'color' | 'avatarShape' | 'avatarSeed' | 'instructions' | 'model' | 'reasoningEffort' | 'access' | 'approvals' | 'projectId' | 'cwd' | 'browserEnabled' | 'computerUse' | 'machine' | 'machineIdleMinutes' | 'vmProviderLogin' | 'hostComputerUse' | 'folders' | 'anyFolderAccess'>>
 
 export type ProviderLoginFlow = {
   provider: Provider
@@ -745,6 +752,7 @@ export type ApiRoutes = {
     res: { server: { name: string; version: string }; tools: Array<{ name: string; description: string; group: string }> }
   }
   'GET /projects': { req: {}; res: { projects: Array<Project> } }
+  'GET /projects/discover': { req: {}; res: { repositories: Array<DiscoveredProject> } }
   'POST /projects': {
     req: { path: AbsolutePath; name?: string } | { gitUrl: string; parentDir: AbsolutePath; name?: string }
     res: { project: Project }

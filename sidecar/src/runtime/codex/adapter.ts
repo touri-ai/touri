@@ -12,6 +12,7 @@ import type {
 import { buildChildEnv } from "../../kernel"
 import { redactStructured } from "../../kernel/redact"
 import { touriVersion } from "../../version"
+import { spawnFolderProvider, writableTurnFolders } from "../folder-access"
 import { loadTurnImages } from "../loadTurnImages"
 import { mcpStartupError, touriMcpStartupFailed } from "../mcp-startup"
 import { applyProviderPrivacy, cliTelemetryOff, providerPrivacyConfig } from "../privacy"
@@ -158,7 +159,12 @@ const codexArgs = ({ args, mcp }: { args: StartTurnArgs; mcp: StartTurnArgs["mcp
     `mcp_servers={touri={command=${JSON.stringify(mcp.command)},args=${JSON.stringify(mcp.args)},default_tools_approval_mode="${TOURI_TOOLS_APPROVAL_MODE}"}}`,
   )
   if (args.bot.access === "full")
-    result.push("-c", 'sandbox_mode="danger-full-access"', "-c", 'approval_policy="never"')
+    result.push(
+      "-c",
+      'sandbox_mode="danger-full-access"',
+      "-c",
+      `approval_policy=${JSON.stringify(args.bot.approvals)}`,
+    )
   else if (args.bot.access === "read-only")
     result.push("-c", 'sandbox_mode="read-only"', "-c", 'approval_policy="never"')
   if (args.bot.model) result.push("-c", `model=${args.bot.model}`)
@@ -168,12 +174,18 @@ const codexArgs = ({ args, mcp }: { args: StartTurnArgs; mcp: StartTurnArgs["mcp
 const accessParams = (args: StartTurnArgs): Record<string, unknown> => {
   const reviewer = { approvalsReviewer: "user" }
   if (args.bot.access === "read-only") return { ...reviewer, sandbox: "read-only", approvalPolicy: "never" }
-  if (args.bot.access === "full") return { ...reviewer, sandbox: "danger-full-access", approvalPolicy: "never" }
+  if (args.bot.access === "full")
+    return { ...reviewer, sandbox: "danger-full-access", approvalPolicy: args.bot.approvals }
   return {
     ...reviewer,
     sandbox: "workspace-write",
     approvalPolicy: args.bot.approvals,
-    config: { sandbox_workspace_write: { writable_roots: [args.bot.homeDir], network_access: true } },
+    config: {
+      sandbox_workspace_write: {
+        writable_roots: [args.bot.homeDir, ...writableTurnFolders(args)],
+        network_access: true,
+      },
+    },
   }
 }
 
@@ -228,7 +240,7 @@ export const createCodexAdapter = ({
       ? { success: true as const, path: "codex", env }
       : await resolveProviderExecutable({ kernel, command: commandName, env })
     if (!resolved.success) return resolved
-    const spawned = (args.execution?.spawn ?? kernel.spawnTree)({
+    const spawned = spawnFolderProvider(kernel, args, {
       cmd: resolved.path,
       args: [...codexArgs({ args, mcp: args.mcp }), ...providerPrivacyConfig(cliTelemetryOff(kernel))],
       cwd: args.fingerprint.cwd,

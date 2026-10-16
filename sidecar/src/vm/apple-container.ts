@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto"
-import { cpSync, existsSync, lstatSync, mkdirSync, statfsSync } from "node:fs"
+import { cpSync, existsSync, lstatSync, mkdirSync, realpathSync, statfsSync } from "node:fs"
 import { createServer, type Socket } from "node:net"
 import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { isAbsolute, join, resolve } from "node:path"
 import { spawnTree } from "../kernel/spawn"
 import { commandError, createVmCommandRunner, type VmCommandRunner } from "./command"
 import { machineConnection } from "./connection"
@@ -397,6 +397,37 @@ export const createAppleContainerProvider = ({
     async create(options): Promise<VmResult<VmConnectionRef>> {
       const validationError = validateCreateOptions({ options })
       if (validationError) return { success: false, errorCode: "INVALID_CONFIG", error: validationError }
+      let volumes: VmVolumeSpec[]
+      try {
+        volumes = (options.volumes ?? []).map((mount) => {
+          if (
+            !mount.target.startsWith("/") ||
+            mount.target.split("/").includes("..") ||
+            /[\0\n\r,]/.test(mount.target) ||
+            /[\0\n\r,]/.test(mount.source)
+          )
+            throw new Error("Invalid volume path")
+          if (mount.type === "volume") return mount
+          if (!isAbsolute(mount.source)) throw new Error("Bind source must be absolute")
+          const source = realpathSync(mount.source)
+          // Managed host grants arrive canonical. Refuse a retargeted ancestor
+          // or symlink between validation and container creation; OS aliases
+          // such as /var -> /private/var are the only spelling exception.
+          const expected =
+            process.platform === "darwin"
+              ? resolve(mount.source).replace(/^\/(var|tmp|etc)(?=\/|$)/, "/private/$1")
+              : resolve(mount.source)
+          if ((mount.target === "/host" || mount.target.startsWith("/host/")) && source !== expected)
+            throw new Error("Host folder changed after validation")
+          return { ...mount, source }
+        })
+      } catch {
+        return {
+          success: false,
+          errorCode: "INVALID_CONFIG",
+          error: "Pasta de origem ou destino da montagem inválido.",
+        }
+      }
       const botInit = options.entrypoint === "/usr/local/lib/touri/init.sh"
       const args = [
         "create",
@@ -415,7 +446,7 @@ export const createAppleContainerProvider = ({
         ...(options.cwd === undefined ? [] : ["--cwd", options.cwd]),
         ...envArgs(options.env),
         ...portArgs(options.ports),
-        ...volumeArgs(options.volumes),
+        ...volumeArgs(volumes),
         ...(options.dns ?? []).flatMap((server) => ["--dns", server]),
         options.image,
         ...(botInit ? ["-c", BOT_BOOT_COMMAND] : (options.args ?? ["-c", "while :; do sleep 3600; done"])),

@@ -28,7 +28,11 @@ const fixture = (scenario: Record<string, unknown> = {}, vm = false) => {
     return runtime.kernel.spawnTree({
       ...input,
       cmd: process.execPath,
-      args: ["run", join(import.meta.dir, "../fakes/fake-opencode.ts"), ...input.args],
+      args: [
+        "run",
+        join(import.meta.dir, "../fakes/fake-opencode.ts"),
+        ...(input.cmd === "/usr/bin/sandbox-exec" ? input.args.slice(3) : input.args),
+      ],
     })
   }
   const kernel = { ...runtime.kernel, spawnTree: spawn }
@@ -331,4 +335,19 @@ test("OpenCode recognizes v2 permission requests used by 1.18.13", () => {
       properties: { sessionID: "s", id: "per", action: "shell.exec", resources: ["printf teste"] },
     }).permission,
   ).toMatchObject({ api: "v2", id: "per", permission: "shell.exec", patterns: ["printf teste"] })
+})
+
+test("OpenCode receives explicit folder permissions and an outer sandbox for terminal commands", async () => {
+  const f = fixture()
+  const { realpathSync } = await import("node:fs")
+  const ro = join(f.root, "reference")
+  mkdirSync(ro)
+  const path = realpathSync(ro)
+  f.args.bot.folders = [{ path, access: "read-only" }]
+  f.args.bot.anyFolderAccess = true
+  expect((await f.adapter.startTurn(f.args)).success).toBe(true)
+  const config = f.records().find((record) => record.type === "spawn").config
+  expect(config.permission.external_directory).toMatchObject({ [`${path}/**`]: "allow", "/**": "allow" })
+  expect(config.permission.edit).toMatchObject({ [`${path}/**`]: "deny" })
+  expect(f.calls.some((call) => call.cmd === "/usr/bin/sandbox-exec")).toBe(true)
 })

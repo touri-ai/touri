@@ -22,9 +22,11 @@ const waitFor = async (predicate: () => boolean): Promise<void> => {
 
 const fixture = async (ignoreTerm = false, interruptGraceMs = 30) => {
   const root = mkdtempSync(join(tmpdir(), "touri-recovery-"))
-  const scenario = join(root, "scenario.json")
-  const command = join(root, "codex")
-  const release = join(root, "continue")
+  // Keep mock provider files outside the protected application data tree.
+  const assets = mkdtempSync(join(tmpdir(), "touri-recovery-provider-"))
+  const scenario = join(assets, "scenario.json")
+  const command = join(assets, "codex")
+  const release = join(assets, "continue")
   const fake = join(import.meta.dir, "../fakes/fake-codex.ts")
   writeFileSync(command, `#!/bin/sh\nexec '${process.execPath}' '${fake}' "$@"\n`)
   chmodSync(command, 0o700)
@@ -45,7 +47,7 @@ const fixture = async (ignoreTerm = false, interruptGraceMs = 30) => {
   const spawn = runtime.kernel.spawnTree
   runtime.kernel.spawnTree = (args) => {
     const child = spawn(args)
-    if (child.success && args.cmd === command) {
+    if (child.success && (args.cmd === command || (args.cmd === "/usr/bin/sandbox-exec" && args.args[2] === command))) {
       pid = child.pid
       if (ignoreTerm) {
         const kill = child.kill
@@ -85,6 +87,7 @@ const fixture = async (ignoreTerm = false, interruptGraceMs = 30) => {
   }
   return {
     root,
+    assets,
     runtime,
     db,
     store,
@@ -98,6 +101,7 @@ const fixture = async (ignoreTerm = false, interruptGraceMs = 30) => {
       await engine.shutdown()
       runtime.stop()
       rmSync(root, { recursive: true, force: true })
+      rmSync(assets, { recursive: true, force: true })
     },
   }
 }
@@ -108,7 +112,7 @@ test("a completed tool frame racing with cancellation keeps its result as comple
     writeFileSync(
       f.scenario,
       JSON.stringify({
-        pauseAfterFirstDelta: join(f.root, "continue"),
+        pauseAfterFirstDelta: join(f.assets, "continue"),
         ignoreInterrupt: true,
         events: [
           {
@@ -161,11 +165,11 @@ test.each(["cancel", "restart"])(
     let restored: ReturnType<typeof createKernel> | undefined
     let recoveredEngine: ReturnType<typeof createRuntimeEngine> | undefined
     try {
-      const requestLogPath = join(f.root, "requests.jsonl")
+      const requestLogPath = join(f.assets, "requests.jsonl")
       writeFileSync(
         f.scenario,
         JSON.stringify({
-          pauseAfterFirstDelta: join(f.root, "continue"),
+          pauseAfterFirstDelta: join(f.assets, "continue"),
           ignoreInterrupt: true,
           requestLogPath,
           events: [
@@ -354,7 +358,7 @@ for (const nativeSession of [false, true]) {
       })
       restored = createKernel({ appData: f.root })
       await initStore(restored.kernel)
-      const requests = join(f.root, "retry-requests.jsonl")
+      const requests = join(f.assets, "retry-requests.jsonl")
       writeFileSync(f.scenario, JSON.stringify({ badResume: true, deltas: ["Continuação"], requestLogPath: requests }))
       engine = createRuntimeEngine({
         kernel: restored.kernel,
@@ -472,6 +476,12 @@ test.each(["SIGTERM", "shell crash", "orphan takeover"] as const)(
       expect(() => process.kill(providerPid as number, 0)).toThrow()
       await Bun.sleep(600)
       expect(f.store.activePath({ threadId: "t" }).find((message) => message.id === reply?.id)).toEqual(reply)
+    } catch (error) {
+      child.kill("SIGKILL")
+      await child.exited
+      throw new Error(
+        `${error instanceof Error ? error.stack : String(error)}\n${await stderr}\n${readFileSync(join(f.root, "logs/sidecar.log"), "utf8")}`,
+      )
     } finally {
       child.kill("SIGKILL")
       await child.exited

@@ -1,7 +1,7 @@
 import type { Database } from "bun:sqlite"
 import { afterEach, expect, test } from "bun:test"
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
-import { tmpdir } from "node:os"
+import { homedir, tmpdir } from "node:os"
 import { join } from "node:path"
 import type { Bot } from "@touri/contracts"
 import { createKernel } from "../../src/kernel"
@@ -39,15 +39,87 @@ const fixture = async ({
   const thread = store?.getThread({ threadId: bot.mainThreadId ?? "" })
   if (!store || !thread) throw new Error("Missing bot thread")
   const db = runtime.kernel.db as Database
-  const compose = () =>
+  const compose = (patch: Partial<Bot> = {}) =>
     composeDeveloperInstructions({
       kernel: runtime.kernel,
-      bot: store.getBot({ botId: bot.id }) ?? bot,
+      bot: { ...(store.getBot({ botId: bot.id }) ?? bot), ...patch },
       thread,
       cwd: bot.homeDir,
     })
   return { runtime, bot, store, thread, db, compose }
 }
+
+for (const provider of ["codex", "claude", "opencode"] as const) {
+  test(`${provider}: full local access discovers files without requiring a project`, async () => {
+    const f = await fixture({ provider })
+    const instructions = await f.compose({
+      machine: "local",
+      access: "full",
+      approvals: "never",
+      projectId: null,
+      anyFolderAccess: true,
+    })
+    expect(instructions).toContain(JSON.stringify(homedir()))
+    expect(instructions).toContain("can read and write anywhere the user can")
+    expect(instructions).toContain("full access without approvals")
+    expect(instructions).toContain("search the disk first with rg, fd or find")
+    for (const path of ["~/javascript", "~/code", "~/Projects", "~/src", "~/dev"]) expect(instructions).toContain(path)
+    expect(instructions).toContain("Linking one is recommended for process, secret and preview tools")
+    expect(instructions).not.toContain("Ask the user to connect a project when needed")
+    expect(instructions).not.toContain("Only the bot folder and connected project")
+  })
+}
+
+test("local approvals, read-only mode and folder grants describe their actual limits", async () => {
+  const f = await fixture()
+  const approved = await f.compose({ machine: "local", access: "full", approvals: "on-request" })
+  expect(approved).toContain("You can reach other folders on this Mac")
+  expect(approved).toContain("request approval for each such action")
+  expect(approved).not.toContain("full access without approvals")
+  const workspace = await f.compose({ access: "workspace-write", approvals: "on-request", anyFolderAccess: false })
+  expect(workspace).toContain(
+    "limits writes to the bot home, connected project and explicitly granted read-write folders",
+  )
+  const readonly = await f.compose({ access: "read-only", anyFolderAccess: true })
+  expect(readonly).toContain("Filesystem access is read-only")
+  expect(readonly).not.toContain("MEMORY.md is yours to update")
+  expect(readonly).not.toContain("Writing is allowed")
+})
+
+test("VM isolation is described even without a runtime service; only granted host mounts are accessible", async () => {
+  const f = await fixture()
+  const isolated = await f.compose({ machine: "vm", folders: [], anyFolderAccess: false })
+  expect(isolated).toContain("isolated Linux VM")
+  expect(isolated).toContain("Host paths are not mounted")
+  expect(isolated).toContain("Your bot home is /workspace/.home")
+  expect(isolated).not.toContain("search the disk first")
+  const mounted = await f.compose({
+    machine: "vm",
+    access: "read-only",
+    anyFolderAccess: true,
+    folders: [{ path: "/Users/demo/reference", access: "read-write" }],
+  })
+  expect(mounted).toContain("Only the explicitly mounted host folders")
+  expect(mounted).toContain("Host home → /host/home")
+  expect(mounted).toContain("read-only")
+  expect(mounted).not.toContain("This Mac: /")
+})
+
+test("cloud instructions never promise local disk access", async () => {
+  const f = await fixture()
+  const instructions = await f.compose({
+    machine: "cloud",
+    access: "full",
+    approvals: "never",
+    anyFolderAccess: true,
+    folders: [{ path: "/Users/demo/reference", access: "read-write" }],
+  })
+  expect(instructions).toContain("isolated cloud machine")
+  expect(instructions).not.toContain("search the disk first")
+  expect(instructions).not.toContain("full access without approvals")
+  expect(instructions).not.toContain("This Mac: /")
+  expect(instructions).not.toContain("/Users/demo/reference")
+})
 
 test("R7: current identity, roster and UI override obsolete SOUL and memory without changing user data", async () => {
   const f = await fixture()

@@ -1,6 +1,7 @@
 import { existsSync, realpathSync, statSync } from "node:fs"
 import { basename, isAbsolute, join } from "node:path"
 import type { Kernel, ProjectInfo, RouteModule } from "@touri/contracts"
+import { discoverProjects } from "./discovery"
 import { cloneName, cloneProject, cloneSource, gitStatus, inspectGit, projectHints } from "./git"
 import { processCwd } from "./paths"
 import type { ProjectStore, Supervisor } from "./types"
@@ -110,12 +111,28 @@ export const createProjectRoutes = ({
   kernel,
   store,
   supervisor,
+  discoveryHome,
 }: {
   kernel: Kernel
   store: ProjectStore
   supervisor: Supervisor
+  discoveryHome?: string
 }): RouteModule => {
   const routes: RouteModule["routes"] = [
+    {
+      method: "GET",
+      path: "/projects/discover",
+      handler: async ({ signal }) => ({
+        status: 200,
+        json: {
+          repositories: await discoverProjects({
+            ...(discoveryHome ? { home: discoveryHome } : {}),
+            registeredPaths: store.listProjects().map((project) => project.path),
+            signal,
+          }),
+        },
+      }),
+    },
     {
       method: "GET",
       path: "/projects",

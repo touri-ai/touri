@@ -1,4 +1,15 @@
-import type { Bot, BotGroup, Id, MachineState, Message, Routine, RoutineRun, Run, Thread } from "@touri/contracts"
+import type {
+  Bot,
+  BotGroup,
+  Id,
+  MachineState,
+  Message,
+  Project,
+  Routine,
+  RoutineRun,
+  Run,
+  Thread,
+} from "@touri/contracts"
 import { Fragment, type ReactNode, useContext, useLayoutEffect, useMemo, useRef, useState } from "react"
 import type { UiApi } from "../api/client"
 import type { ApprovalFocus } from "../approvalNavigation"
@@ -40,6 +51,9 @@ type ChatPanelProps = {
   onOpenPermissions?: () => void
   onOpenProviderLogin?: () => void
   onOpenModel?: () => void
+  projects?: Project[]
+  onSelectProject?: (projectId: Id | null) => Promise<void>
+  onAddProject?: () => void
   onOpenComputer?: () => void
   thread: Thread | null
   bot: Bot | null
@@ -661,6 +675,9 @@ export const ChatPanel = ({
   onOpenPermissions,
   onOpenProviderLogin,
   onOpenModel,
+  projects,
+  onSelectProject,
+  onAddProject,
   onOpenComputer,
   routines = [],
   routineRuns = [],
@@ -702,6 +719,7 @@ export const ChatPanel = ({
           <div className="chat-bot-chip">
             {bot && <BotAvatar bot={bot} size={18} />}
             <h1 className="chat-page-heading">{bot?.name ?? "touri"}</h1>
+            {bot?.anyFolderAccess && <span className="any-folder-badge">{t("Qualquer pasta do Mac")}</span>}
           </div>
           <div className="chat-toolbar">
             {onTogglePanel && (
@@ -781,6 +799,7 @@ export const ChatPanel = ({
               <img src="/touri-bull.png" alt="" />
             )}
             <h1 className="chat-page-heading">{bot?.name ?? "touri"}</h1>
+            {bot?.anyFolderAccess && <span className="any-folder-badge">{t("Qualquer pasta do Mac")}</span>}
           </div>
           <div className="chat-toolbar">
             {onTogglePanel && (
@@ -943,6 +962,9 @@ export const ChatPanel = ({
         onSend={onSend}
         onCancel={onCancel}
         onOpenModel={group ? undefined : onOpenModel}
+        projects={projects}
+        onSelectProject={onSelectProject}
+        onAddProject={onAddProject}
         onOpenPermissions={group ? undefined : onOpenPermissions}
         onOpenProviderLogin={group ? undefined : onOpenProviderLogin}
       />

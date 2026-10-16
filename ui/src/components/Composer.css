@@ -68,9 +68,58 @@
   color: var(--text-secondary);
   font-size: var(--type-12);
 }
-.composer-island .composer-model:hover {
+.composer-island .composer-model:hover:not(:disabled) {
   background: var(--surface-control);
   color: var(--text-primary);
+}
+.composer-project {
+  position: relative;
+  min-width: 0;
+  max-width: 200px;
+}
+.composer-island .composer-project-chip {
+  max-width: 100%;
+}
+.composer-project-chip > svg {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+}
+.composer-project-picker.project-menu {
+  z-index: 20;
+  top: auto;
+  bottom: calc(100% + 8px);
+  right: auto;
+  left: 0;
+  width: min(320px, calc(100vw - 48px));
+  max-height: 320px;
+  overflow-y: auto;
+}
+.composer-project-picker button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-8);
+}
+.composer-project-picker button:focus-visible {
+  outline: 2px solid var(--accent-info);
+  outline-offset: -2px;
+  background: var(--surface-control);
+}
+.composer-project-picker button[aria-checked="true"] {
+  background: var(--surface-active);
+}
+.composer-project-picker button[aria-disabled="true"] {
+  opacity: 0.5;
+  cursor: default;
+}
+.composer-project-note {
+  margin: var(--space-4) 0 0;
+  padding: var(--space-8) var(--space-10);
+  border-top: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  font-size: var(--type-11);
+  line-height: var(--leading-body);
 }
 .composer-provider {
   flex-shrink: 0;

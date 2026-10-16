@@ -30,7 +30,7 @@ pub struct SidecarHandshake {
     pub schema_version: u32,
 }
 
-pub const SIDECAR_SCHEMA_VERSION: u32 = 15;
+pub const SIDECAR_SCHEMA_VERSION: u32 = 16;
 const MAX_IDENTICAL_HANDSHAKE_FAILURES: usize = 3;
 
 pub fn parse_handshake(line: &str) -> Result<SidecarHandshake, String> {

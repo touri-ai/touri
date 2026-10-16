@@ -1,0 +1,262 @@
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
+import type { Bot, DiscoveredProject } from "@touri/contracts"
+import { afterEach, expect, it, vi } from "vitest"
+import type { TauriInvoke } from "../src/api/client"
+import { createMockApi } from "../src/api/mock"
+import { BotAccessSummary } from "../src/components/BotAccessSummary"
+import { DiscoveredProjects } from "../src/components/DiscoveredProjects"
+import { BotCreateModal, BotSettingsModal } from "../src/components/Modals"
+import { t } from "../src/i18n"
+import type { WorkspaceActions } from "../src/useWorkspace"
+
+afterEach(() => {
+  cleanup()
+  vi.restoreAllMocks()
+})
+
+const repositories: DiscoveredProject[] = [
+  { path: "/Users/demo/javascript/Hodler", name: "Hodler", lastModified: 2_000 },
+  { path: "/Users/demo/code/older", name: "older", lastModified: 1_000 },
+]
+const discoveryApi = () => {
+  const api = createMockApi()
+  const request = api.request
+  api.request = (async (route, ...args) =>
+    route === "GET /projects/discover" ? { repositories } : request(route, ...args)) as typeof request
+  return api
+}
+const next = () => fireEvent.click(screen.getByRole("button", { name: "Continuar" }))
+const wizard = async () => {
+  const api = discoveryApi()
+  const create = vi.fn(async () => undefined)
+  const createProject = vi.fn(
+    async (input: Parameters<WorkspaceActions["createProject"]>[0]) =>
+      (await api.request("POST /projects", input)).project,
+  )
+  const invoke = vi.fn(async () => ({ path: "/Users/demo/reference" })) as ReturnType<typeof vi.fn> & TauriInvoke
+  render(
+    <BotCreateModal
+      api={api}
+      invokeCommand={invoke}
+      onClose={vi.fn()}
+      onCreate={create}
+      onCreateProject={createProject}
+      capability={{ available: true, provider: "apple-container", reason: null }}
+    />,
+  )
+  fireEvent.change(screen.getByLabelText("Nome"), { target: { value: "Pesquisa" } })
+  next()
+  next()
+  await screen.findByText("Login disponível para este bot.")
+  next()
+  return { api, create, createProject, invoke }
+}
+
+it("wizard persists folder permissions, broad access and a discovered project on create", async () => {
+  const f = await wizard()
+  expect(screen.getByRole("option", { name: "Nenhum projeto (começa na pasta do bot)" })).toBeInTheDocument()
+  fireEvent.click(screen.getByRole("button", { name: "Adicionar pasta…" }))
+  const folder = await screen.findByRole("combobox", { name: "Acesso à pasta /Users/demo/reference" })
+  expect(folder).toHaveValue("read-only")
+  fireEvent.change(folder, { target: { value: "read-write" } })
+  fireEvent.click(screen.getByRole("switch", { name: /Acesso a qualquer pasta deste Mac/ }))
+  fireEvent.click(
+    within(screen.getByRole("dialog", { name: "Permitir acesso a qualquer pasta?" })).getByRole("button", {
+      name: "Permitir acesso",
+    }),
+  )
+  fireEvent.change(screen.getByLabelText("Projeto"), { target: { value: "__add_project__" } })
+  const options = await screen.findAllByRole("button", { name: /Hodler|older/ })
+  expect(options.map((button) => button.textContent)).toEqual([
+    "Hodler/Users/demo/javascript/Hodler",
+    "older/Users/demo/code/older",
+  ])
+  fireEvent.click(options[0] as HTMLElement)
+  await waitFor(() => expect(screen.getByLabelText("Projeto")).not.toHaveValue(""))
+  expect(f.invoke).toHaveBeenCalledTimes(1)
+  expect(f.createProject).toHaveBeenCalledWith({ path: "/Users/demo/javascript/Hodler", name: "Hodler" })
+  expect(f.create).not.toHaveBeenCalled()
+  const project = (await f.api.request("GET /projects", {})).projects.find(
+    (item) => item.path === repositories[0]?.path,
+  )
+  expect(project).toBeDefined()
+  next()
+  expect(screen.getByText("Hodler")).toBeVisible()
+  expect(screen.getByText(/\/Users\/demo\/reference · Leitura e escrita/)).toBeVisible()
+  fireEvent.click(screen.getByRole("button", { name: "Voltar" }))
+  expect(screen.getByRole("switch", { name: /Acesso a qualquer pasta deste Mac/ })).toBeChecked()
+  expect(screen.getByLabelText("Acesso à pasta /Users/demo/reference")).toHaveValue("read-write")
+  next()
+  fireEvent.click(screen.getByRole("button", { name: "Criar bot" }))
+  await waitFor(() =>
+    expect(f.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectId: project?.id,
+        folders: [{ path: "/Users/demo/reference", access: "read-write" }],
+        anyFolderAccess: true,
+      }),
+      expect.stringMatching(/^draft-/),
+    ),
+  )
+})
+
+it("wizard offers the folder picker fallback and removes draft folders before creation", async () => {
+  const f = await wizard()
+  fireEvent.change(screen.getByLabelText("Projeto"), { target: { value: "__add_project__" } })
+  fireEvent.click(await screen.findByRole("button", { name: "Escolher outra pasta…" }))
+  await waitFor(() => expect(screen.getByLabelText("Projeto")).not.toHaveValue(""))
+  expect(f.invoke).toHaveBeenCalledWith("pick_folder", { title: "Conectar uma pasta de projeto" })
+  fireEvent.click(screen.getByRole("button", { name: "Adicionar pasta…" }))
+  fireEvent.click(await screen.findByRole("button", { name: "Remover pasta /Users/demo/reference" }))
+  next()
+  fireEvent.click(screen.getByRole("button", { name: "Criar bot" }))
+  await waitFor(() =>
+    expect(f.create).toHaveBeenCalledWith(
+      expect.objectContaining({ folders: [], anyFolderAccess: false }),
+      expect.any(String),
+    ),
+  )
+})
+
+it("wizard access summary follows VM mounts and read-only access", async () => {
+  const f = await wizard()
+  fireEvent.change(screen.getByLabelText("Máquina"), { target: { value: "vm" } })
+  expect(screen.getByText("Só a VM isolada")).toBeVisible()
+  fireEvent.click(screen.getByRole("button", { name: "Adicionar pasta…" }))
+  await screen.findByLabelText("Acesso à pasta /Users/demo/reference")
+  expect(screen.getByText("Só a VM isolada e as pastas compartilhadas")).toBeVisible()
+  fireEvent.click(screen.getByRole("button", { name: "Voltar" }))
+  fireEvent.change(screen.getByLabelText("Acesso"), { target: { value: "read-only" } })
+  await screen.findByText("Login disponível para este bot.")
+  next()
+  expect(screen.getByText("Só a VM isolada e as pastas compartilhadas · Somente leitura")).toBeVisible()
+  next()
+  fireEvent.click(screen.getByRole("button", { name: "Criar bot" }))
+  await waitFor(() =>
+    expect(f.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        machine: "vm",
+        access: "read-only",
+        folders: [{ path: "/Users/demo/reference", access: "read-only" }],
+      }),
+      expect.any(String),
+    ),
+  )
+})
+
+it("settings adds and links a discovered repository in one click without the folder picker", async () => {
+  const api = discoveryApi()
+  const bot = api.getState().bots[0]
+  if (!bot) throw new Error("Missing bot")
+  const updateBot = vi.fn(async (id, input) => {
+    await api.request("PATCH /bots/:id", input, { id })
+  })
+  const invoke = vi.fn() as ReturnType<typeof vi.fn> & TauriInvoke
+  const actions = {
+    updateBot,
+    createProject: async (input) => (await api.request("POST /projects", input)).project,
+  } as WorkspaceActions
+  render(
+    <BotSettingsModal
+      bot={bot}
+      projects={[]}
+      routines={[]}
+      api={api}
+      invokeCommand={invoke}
+      actions={actions}
+      onClose={vi.fn()}
+      initialSection="computer"
+    />,
+  )
+  fireEvent.change(screen.getByLabelText("Projeto"), { target: { value: "__add_project__" } })
+  const dialog = screen.getByRole("dialog", { name: "Conectar projeto" })
+  fireEvent.click(await within(dialog).findByRole("button", { name: /Hodler/ }))
+  await waitFor(() => expect(updateBot).toHaveBeenCalledWith(bot.id, { projectId: expect.any(String) }))
+  expect(invoke).not.toHaveBeenCalled()
+})
+
+it("failed discovery keeps the manual folder fallback available", async () => {
+  const api = discoveryApi()
+  api.request = vi.fn().mockRejectedValue(new Error("Offline"))
+  const choose = vi.fn(async () => undefined)
+  render(<DiscoveredProjects api={api} onSelect={vi.fn()} onChooseFolder={choose} />)
+  expect(await screen.findByRole("alert")).toHaveTextContent("Não foi possível buscar repositórios")
+  fireEvent.click(screen.getByRole("button", { name: "Escolher outra pasta…" }))
+  await waitFor(() => expect(choose).toHaveBeenCalledOnce())
+})
+
+it("a failed project link can be retried with a different discovered repository", async () => {
+  const api = discoveryApi()
+  const bot = api.getState().bots[0]
+  if (!bot) throw new Error("Missing bot")
+  const updateBot = vi
+    .fn()
+    .mockRejectedValueOnce(new Error("Máquina ocupada"))
+    .mockImplementation(async (id, input) => {
+      await api.request("PATCH /bots/:id", input, { id })
+    })
+  const actions = {
+    updateBot,
+    createProject: async (input) => (await api.request("POST /projects", input)).project,
+  } as WorkspaceActions
+  render(
+    <BotSettingsModal
+      bot={bot}
+      projects={[]}
+      routines={[]}
+      api={api}
+      invokeCommand={vi.fn()}
+      actions={actions}
+      onClose={vi.fn()}
+      initialSection="computer"
+    />,
+  )
+  fireEvent.change(screen.getByLabelText("Projeto"), { target: { value: "__add_project__" } })
+  const dialog = screen.getByRole("dialog", { name: "Conectar projeto" })
+  fireEvent.click(await within(dialog).findByRole("button", { name: /Hodler/ }))
+  expect(await within(dialog).findByRole("alert")).toHaveTextContent("Máquina ocupada")
+  fireEvent.click(within(dialog).getByRole("button", { name: /older/ }))
+  await waitFor(() => expect(updateBot).toHaveBeenCalledTimes(2))
+  const project = (await api.request("GET /projects", {})).projects.find((item) => item.name === "older")
+  expect(project).toBeDefined()
+  expect(updateBot).toHaveBeenLastCalledWith(bot.id, { projectId: project?.id })
+})
+
+it("a failed add can be retried and duplicate clicks cannot add the repository twice", async () => {
+  let finish: (() => void) | undefined
+  const pending = new Promise<void>((resolve) => {
+    finish = resolve
+  })
+  const select = vi
+    .fn()
+    .mockRejectedValueOnce(new Error("Não foi possível conectar"))
+    .mockImplementationOnce(() => pending)
+  render(<DiscoveredProjects api={discoveryApi()} onSelect={select} />)
+  const button = await screen.findByRole("button", { name: /Hodler/ })
+  fireEvent.click(button)
+  expect(await screen.findByRole("alert")).toHaveTextContent("Não foi possível conectar")
+  fireEvent.click(button)
+  fireEvent.click(button)
+  expect(button).toBeDisabled()
+  expect(select).toHaveBeenCalledTimes(2)
+  await act(async () => finish?.())
+  expect(button).toBeEnabled()
+})
+
+it.each([
+  [{ machine: "local", access: "full", approvals: "never", anyFolderAccess: true }, "Pode acessar todo o Mac"],
+  [
+    { machine: "local", access: "full", approvals: "on-request" },
+    "Pode acessar pastas do Mac com aprovação; escrita nas pastas permitidas",
+  ],
+  [{ machine: "local", access: "read-only", approvals: "never" }, "Pode ler arquivos do Mac; sem permissão de escrita"],
+  [{ machine: "cloud", access: "full", approvals: "never" }, "Só a máquina na nuvem"],
+] as const)("access summary reflects %o", (input, expected) => {
+  render(<BotAccessSummary {...(input as Pick<Bot, "machine" | "access" | "approvals" | "anyFolderAccess">)} />)
+  expect(screen.getByText(expected)).toBeVisible()
+})
+
+it("localizes the no-project label in both languages", () => {
+  expect(t("Nenhum projeto (começa na pasta do bot)")).toBe("Nenhum projeto (começa na pasta do bot)")
+  expect(t("Nenhum projeto (começa na pasta do bot)", {}, "en")).toBe("No project (starts in the bot folder)")
+})

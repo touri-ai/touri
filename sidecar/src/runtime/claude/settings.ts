@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs"
 import { homedir } from "node:os"
 import { join } from "node:path"
 import type { StartTurnArgs } from "@touri/contracts"
+import { turnFolders } from "../folder-access"
 import { asRecord } from "../utils"
 
 // Only authentication configuration may cross the user-settings boundary.
@@ -77,7 +78,14 @@ export const claudeSettings = async (args: StartTurnArgs, env: Record<string, st
       ...auth,
       permissions: {
         allow: args.bot.access === "read-only" ? readOnlyAllow : [],
-        deny: args.bot.access === "read-only" ? readOnlyDeny : [],
+        deny: [
+          ...(args.bot.access === "read-only" ? readOnlyDeny : []),
+          ...turnFolders(args)
+            .filter((folder) => folder.access === "read-only")
+            .flatMap((folder) =>
+              ["Write", "Edit", "MultiEdit", "NotebookEdit"].map((tool) => `${tool}(/${folder.path}/**)`),
+            ),
+        ],
         // default mode also auto-allows read-only Bash. An explicit ask rule gates every command.
         ask: args.bot.approvals === "on-request" && args.bot.access !== "read-only" ? ["Bash"] : [],
       },

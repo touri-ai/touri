@@ -1,4 +1,4 @@
-import type { Bot, Id, Run } from "@touri/contracts"
+import type { Bot, Id, Project, Run } from "@touri/contracts"
 import { type ComponentProps, type RefObject, useEffect, useId, useLayoutEffect, useRef, useState } from "react"
 import type { UiApi } from "../api/client"
 import { composerKeyAction } from "../composerKeys"
@@ -11,6 +11,7 @@ import { useProviderLogin } from "../useProviderLogin"
 import { useMascotComposer } from "./AvatarRuntime"
 import { BotAvatar } from "./BotAvatar"
 import { ComposerNotice } from "./ComposerNotice"
+import { ComposerProjectChip } from "./ComposerProjectChip"
 import { ProviderLoginFlow } from "./ProviderLoginFlow"
 import { useReveal } from "./Reveal"
 import "./Composer.css"
@@ -31,6 +32,9 @@ type ComposerProps = {
   onSend: (text: string, parentId?: Id | null, attachmentIds?: Array<Id>) => Promise<void>
   onCancel: (runId: Id) => Promise<void>
   onOpenModel?: (() => void) | undefined
+  projects?: Project[] | undefined
+  onSelectProject?: ((projectId: Id | null) => Promise<void>) | undefined
+  onAddProject?: (() => void) | undefined
   onOpenPermissions?: (() => void) | undefined
   onOpenProviderLogin?: (() => void) | undefined
   notice?: Omit<ComponentProps<typeof ComposerNotice>, "api" | "active" | "loginFlowShown">
@@ -87,6 +91,9 @@ export const Composer = ({
   onSend,
   onCancel,
   onOpenModel,
+  projects = [],
+  onSelectProject,
+  onAddProject,
   onOpenPermissions,
   onOpenProviderLogin,
   notice,
@@ -486,6 +493,16 @@ export const Composer = ({
             <span className="composer-model-name">{model}</span>
             <span aria-hidden="true">⌄</span>
           </button>
+          {bot && bot.machine !== "cloud" && !groupName && (
+            <ComposerProjectChip
+              key={bot.id}
+              bot={bot}
+              projects={projects}
+              active={Boolean(activeRun)}
+              onSelect={onSelectProject}
+              onAdd={onAddProject}
+            />
+          )}
           <span className="composer-permissions">
             <button
               type="button"

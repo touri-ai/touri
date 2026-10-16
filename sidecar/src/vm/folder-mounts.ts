@@ -1,0 +1,68 @@
+import { chmodSync } from "node:fs"
+import { homedir } from "node:os"
+import { join, relative } from "node:path"
+import type { Bot, Kernel } from "@touri/contracts"
+import {
+  canonicalPath,
+  excludedBotFolders,
+  folderGuestPath,
+  resolveBotFolder,
+  withinFolder,
+} from "../kernel/bot-folders"
+import { ensurePrivateDirectory } from "../kernel/files"
+import type { VmVolumeSpec } from "./types"
+
+/** Mask denied subtrees in every alias, including the broad /host/home mount. */
+export const botFolderMounts = (kernel: Kernel, bot: Bot, hostHome = homedir()): VmVolumeSpec[] => {
+  const explicit = (bot.folders ?? []).map((folder) => {
+    const path = resolveBotFolder(folder.path)
+    if (path !== folder.path) throw new Error("A pasta mudou de destino. Adicione-a novamente nas configurações.")
+    return { ...folder, path }
+  })
+  const roots = [
+    ...(bot.anyFolderAccess
+      ? [{ path: canonicalPath(hostHome), access: "read-write" as const, target: "/host/home" }]
+      : []),
+    ...explicit.map((folder) => ({ ...folder, target: folderGuestPath(folder.path) })),
+  ]
+  if (!roots.length) return []
+  const emptyPath = join(kernel.paths.appData, "vm-folder-masks", "empty")
+  ensurePrivateDirectory({ root: kernel.paths.appData, path: emptyPath })
+  const empty = canonicalPath(emptyPath)
+  chmodSync(empty, 0o555)
+  const mounts: VmVolumeSpec[] = []
+  const exclusions = excludedBotFolders(kernel.paths.appData, hostHome)
+  for (const root of roots) {
+    mounts.push({
+      type: "bind",
+      source: root.path,
+      target: root.target,
+      readOnly: bot.access === "read-only" || root.access === "read-only",
+    })
+    const masks = exclusions
+      .filter(
+        (path) =>
+          withinFolder(root.path, path) &&
+          !explicit.some((folder) => withinFolder(folder.path, path) && withinFolder(path, folder.path)),
+      )
+      .filter((path, _, all) => !all.some((other) => other !== path && withinFolder(other, path)))
+    for (const path of masks)
+      mounts.push({ type: "bind", source: empty, target: join(root.target, relative(root.path, path)), readOnly: true })
+    // A read-only grant cannot be bypassed through a broader writable mount.
+    for (const folder of explicit.filter(
+      (folder) => folder.access === "read-only" && folder.path !== root.path && withinFolder(root.path, folder.path),
+    )) {
+      if (masks.some((mask) => withinFolder(mask, folder.path))) continue
+      mounts.push({
+        type: "bind",
+        source: folder.path,
+        target: join(root.target, relative(root.path, folder.path)),
+        readOnly: true,
+      })
+    }
+  }
+  return mounts
+}
+
+export const withoutHostFolderMounts = (mounts: VmVolumeSpec[]) =>
+  mounts.filter((mount) => mount.target !== "/host" && !mount.target.startsWith("/host/"))

@@ -28,7 +28,7 @@ test("serve mode prints a handshake and skips missing work-package modules", asy
   try {
     const line = await readFirstLine(child.stdout)
     const handshake = JSON.parse(line) as { type: string; port: number; version: string; schemaVersion: number }
-    expect(handshake).toMatchObject({ type: "touri-sidecar-ready", version: "0.1.0", schemaVersion: 15 })
+    expect(handshake).toMatchObject({ type: "touri-sidecar-ready", version: "0.1.0", schemaVersion: 16 })
     expect(handshake.port).toBeGreaterThan(0)
     child.kill()
     await child.exited

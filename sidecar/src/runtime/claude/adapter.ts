@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto"
 import type { Kernel, MessagePart, ProviderAdapter, Result, RunErrorClass, StartTurnArgs } from "@touri/contracts"
 import { approvalOutcome } from "../../approvals/outcome"
 import { buildChildEnv } from "../../kernel"
+import { spawnFolderProvider, turnFolders } from "../folder-access"
 import { loadTurnImages } from "../loadTurnImages"
 import { mcpStartupError, touriMcpStartupFailed } from "../mcp-startup"
 import { applyProviderPrivacy, cliTelemetryOff } from "../privacy"
@@ -168,7 +169,8 @@ export const createClaudeAdapter = ({
       commandArgs.push("--effort", args.bot.reasoningEffort === "xhigh" ? "max" : args.bot.reasoningEffort)
     const projectDataDir = env.TOURI_PROJECT_DATA_DIR
     if (projectDataDir) commandArgs.push("--add-dir", projectDataDir)
-    const spawned = (args.execution?.spawn ?? kernel.spawnTree)({
+    for (const folder of turnFolders(args)) commandArgs.push("--add-dir", folder.path)
+    const spawned = spawnFolderProvider(kernel, args, {
       cmd: resolved.path,
       args: commandArgs,
       cwd: args.fingerprint.cwd,

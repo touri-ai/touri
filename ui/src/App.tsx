@@ -106,6 +106,7 @@ const AppContent = ({ kernel }: AppProps) => {
   const [settingsInitialSection, setSettingsInitialSection] = useState("appearance")
   const [settingFocus, setSettingFocus] = useState<string | null>(null)
   const [botSettingsSection, setBotSettingsSection] = useState<BotSettingsSectionId | undefined>(undefined)
+  const [projectLinkBotId, setProjectLinkBotId] = useState<string | null>(null)
   const [modal, setModal] = useState<ModalKind>(null)
   useEffect(() => {
     const openReport = () => {
@@ -410,6 +411,7 @@ const AppContent = ({ kernel }: AppProps) => {
   const openModal = (kind: ModalKind): void => {
     if (kind !== "settings" && kind !== "doctor" && kind !== "bot-settings") setSettingFocus(null)
     if (kind === "bot-settings") setBotSettingsSection(undefined)
+    if (kind === "project") setProjectLinkBotId(null)
     setModal(kind)
   }
   const closeModal = (): void => {
@@ -526,9 +528,11 @@ const AppContent = ({ kernel }: AppProps) => {
     modal === "bot" ? (
       <BotCreateModal
         api={api}
+        invokeCommand={invokeCommand}
         cloudEnabled={data.settings?.cloud === true}
         capability={data.machineCapability}
         projects={data.projects}
+        onCreateProject={actions.createProject}
         onClose={closeModal}
         onCreate={async (input, loginDraftId) => {
           await actions.createBot(input, loginDraftId)
@@ -753,6 +757,14 @@ const AppContent = ({ kernel }: AppProps) => {
                           setModal("bot-settings")
                         }}
                         onOpenModel={() => openModal("bot-settings")}
+                        projects={data.projects}
+                        onSelectProject={async (projectId) => {
+                          if (selectedBot) await actions.updateBot(selectedBot.id, { projectId })
+                        }}
+                        onAddProject={() => {
+                          openModal("project")
+                          setProjectLinkBotId(selectedBot?.id ?? null)
+                        }}
                       />
                     </ErrorBoundary>
                     {/* r8 motion: preserve the panel during its inert exit */}
@@ -830,7 +842,8 @@ const AppContent = ({ kernel }: AppProps) => {
             {modal === "project" && (
               <ProjectModal
                 project={null}
-                selectedBotId={data.selectedBotId}
+                selectedBotId={projectLinkBotId ?? data.selectedBotId}
+                linkBotId={projectLinkBotId}
                 bots={data.bots}
                 api={api}
                 invokeCommand={invokeCommand}
@@ -856,6 +869,8 @@ const AppContent = ({ kernel }: AppProps) => {
             )}
             {(modal === "bot-settings" || modal === "bot-permissions" || modal === "bot-mcp") && selectedBot && (
               <BotSettingsModal
+                invokeCommand={invokeCommand}
+                bots={data.bots}
                 permissionsOnly={modal === "bot-permissions"}
                 focusMcp={modal === "bot-mcp"}
                 initialSection={modal === "bot-settings" ? botSettingsSection : undefined}

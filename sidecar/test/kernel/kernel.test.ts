@@ -54,11 +54,11 @@ test("migration applies with foreign keys clean and exposes the handshake", () =
   const runtime = createKernel({ appData: root })
   try {
     const database = runtime.kernel.db as Database
-    expect(database.query("SELECT value FROM schema_meta WHERE key = 'schema_version'").get()).toEqual({ value: "15" })
+    expect(database.query("SELECT value FROM schema_meta WHERE key = 'schema_version'").get()).toEqual({ value: "16" })
     expect(database.query("PRAGMA foreign_key_check").all()).toEqual([])
     expect(runtime.handshake.type).toBe("touri-sidecar-ready")
     expect(runtime.handshake.port).toBeGreaterThan(0)
-    expect(runtime.handshake.schemaVersion).toBe(15)
+    expect(runtime.handshake.schemaVersion).toBe(16)
   } finally {
     runtime.stop()
     rmSync(root, { recursive: true, force: true })
@@ -74,7 +74,7 @@ test("opening an existing database applies migrations idempotently", () => {
     expect(
       (second.kernel.db as Database).query("SELECT value FROM schema_meta WHERE key = 'schema_version'").get(),
     ).toEqual({
-      value: "15",
+      value: "16",
     })
   } finally {
     second.stop()
@@ -112,7 +112,7 @@ test.each(["avatars", "vm", "r2-role"])(
       database.close()
       database = openDatabase({ filename })
       expect(database.query("SELECT value FROM schema_meta WHERE key = 'schema_version'").get()).toEqual({
-        value: "15",
+        value: "16",
       })
       expect(database.query("SELECT value FROM schema_meta WHERE key = 'avatar_identity_version'").get()).toEqual({
         value: "1",
@@ -197,7 +197,7 @@ test("HTTP auth rejects bad token, Origin, and Host with 401, 403, and 421", asy
     const healthy = await fetch(url, { headers })
     expect(healthy.status).toBe(200)
     expect(healthy.headers.get("Access-Control-Allow-Origin")).toBe("tauri://localhost")
-    expect(await healthy.json()).toMatchObject({ ok: true, schemaVersion: 15 })
+    expect(await healthy.json()).toMatchObject({ ok: true, schemaVersion: 16 })
   } finally {
     runtime.stop()
     if (previousToken === undefined) delete process.env.TOURI_UI_TOKEN
