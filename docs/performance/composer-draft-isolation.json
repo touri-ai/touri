@@ -1,0 +1,167 @@
+{
+  "phase": "draft-isolation-only",
+  "cpuRate": 4,
+  "messages": 500,
+  "toolCalls": 3000,
+  "initialLoadMs": 20426.900000000373,
+  "keypresses": 20,
+  "p95HandlerMs": 29.59999999962747,
+  "p95NextFrameMs": 39.100000001490116,
+  "p95AfterFrameMs": 56.5,
+  "reactCommits": 42,
+  "p95ReactRenderMs": 1.599999999627471,
+  "renders": {
+    "Composer": 22
+  },
+  "mainThreadMs": {
+    "LayoutDuration": 101.12200000000016,
+    "RecalcStyleDuration": 52.29099999999987,
+    "ScriptDuration": 317.58400000000006,
+    "TaskDuration": 1706.2620000000024
+  },
+  "mainThreadMsPerKey": 85.31310000000012,
+  "p95MainThreadMs": 111.79399999999973,
+  "samples": [
+    {
+      "start": 24421.199999999255,
+      "handlerMs": 29.59999999962747,
+      "frameMs": 38.59999999962747,
+      "afterFrameMs": 56.5,
+      "mainThreadMs": 108.06700000000191
+    },
+    {
+      "start": 24549.299999998882,
+      "handlerMs": 27.40000000037253,
+      "frameMs": 39.100000001490116,
+      "afterFrameMs": 59,
+      "mainThreadMs": 114.63900000000038
+    },
+    {
+      "start": 24680.400000000373,
+      "handlerMs": 22.399999998509884,
+      "frameMs": 31.199999999254942,
+      "afterFrameMs": 45.19999999925494,
+      "mainThreadMs": 95.1449999999987
+    },
+    {
+      "start": 24781.599999999627,
+      "handlerMs": 21.800000000745058,
+      "frameMs": 31.800000000745058,
+      "afterFrameMs": 47.80000000074506,
+      "mainThreadMs": 88.72700000000222
+    },
+    {
+      "start": 24902.199999999255,
+      "handlerMs": 33.09999999962747,
+      "frameMs": 42.09999999962747,
+      "afterFrameMs": 56.30000000074506,
+      "mainThreadMs": 111.79399999999973
+    },
+    {
+      "start": 25009,
+      "handlerMs": 19.90000000037253,
+      "frameMs": 28.09999999962747,
+      "afterFrameMs": 42.09999999962747,
+      "mainThreadMs": 77.02299999999696
+    },
+    {
+      "start": 25106.400000000373,
+      "handlerMs": 19.299999998882413,
+      "frameMs": 25.899999998509884,
+      "afterFrameMs": 42.19999999925494,
+      "mainThreadMs": 90.02800000000022
+    },
+    {
+      "start": 25208.699999999255,
+      "handlerMs": 19.200000001117587,
+      "frameMs": 26,
+      "afterFrameMs": 40,
+      "mainThreadMs": 75.96000000000203
+    },
+    {
+      "start": 25297.599999999627,
+      "handlerMs": 16.800000000745058,
+      "frameMs": 22.800000000745058,
+      "afterFrameMs": 36,
+      "mainThreadMs": 70.0889999999994
+    },
+    {
+      "start": 25383.599999999627,
+      "handlerMs": 20.09999999962747,
+      "frameMs": 26.59999999962747,
+      "afterFrameMs": 39.80000000074506,
+      "mainThreadMs": 72.45800000000102
+    },
+    {
+      "start": 25476.099999999627,
+      "handlerMs": 20.09999999962747,
+      "frameMs": 26.699999999254942,
+      "afterFrameMs": 42.59999999962747,
+      "mainThreadMs": 78.64199999999855
+    },
+    {
+      "start": 25569.199999999255,
+      "handlerMs": 19.09999999962747,
+      "frameMs": 26.59999999962747,
+      "afterFrameMs": 40.20000000111759,
+      "mainThreadMs": 74.51900000000222
+    },
+    {
+      "start": 25662.599999999627,
+      "handlerMs": 16.59999999962747,
+      "frameMs": 25.699999999254942,
+      "afterFrameMs": 41.69999999925494,
+      "mainThreadMs": 75.67599999999786
+    },
+    {
+      "start": 25756.599999999627,
+      "handlerMs": 17.199999999254942,
+      "frameMs": 23.699999999254942,
+      "afterFrameMs": 40.30000000074506,
+      "mainThreadMs": 77.59100000000174
+    },
+    {
+      "start": 25845.099999999627,
+      "handlerMs": 19,
+      "frameMs": 27,
+      "afterFrameMs": 42.19999999925494,
+      "mainThreadMs": 75.55899999999838
+    },
+    {
+      "start": 25947.400000000373,
+      "handlerMs": 16.299999998882413,
+      "frameMs": 22.5,
+      "afterFrameMs": 35.399999998509884,
+      "mainThreadMs": 79.56700000000083
+    },
+    {
+      "start": 26032.799999998882,
+      "handlerMs": 20.100000001490116,
+      "frameMs": 26.800000000745058,
+      "afterFrameMs": 39.80000000074506,
+      "mainThreadMs": 73.5539999999979
+    },
+    {
+      "start": 26122.599999999627,
+      "handlerMs": 17.199999999254942,
+      "frameMs": 23.300000000745058,
+      "afterFrameMs": 37.90000000037253,
+      "mainThreadMs": 78.97100000000279
+    },
+    {
+      "start": 26220.5,
+      "handlerMs": 16.90000000037253,
+      "frameMs": 23.299999998882413,
+      "afterFrameMs": 36.59999999962747,
+      "mainThreadMs": 79.10099999999787
+    },
+    {
+      "start": 26308.299999998882,
+      "handlerMs": 17.100000001490116,
+      "frameMs": 23.300000000745058,
+      "afterFrameMs": 36.40000000037253,
+      "mainThreadMs": 72.9059999999997
+    }
+  ],
+  "scope": "Measured before native textarea sizing and deferred tool-card mounting; final revision requires CI measurement."
+}

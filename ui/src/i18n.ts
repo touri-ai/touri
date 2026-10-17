@@ -1377,6 +1377,7 @@ export const ptBR = {
   "Pending approval count": "{count} aprovações pendentes",
   "Visible count": "{count} visíveis",
   "Tool count": "{count} chamadas de ferramenta",
+  "Tool group count": "{count} ferramentas",
   "Search shortcut": "⌘K buscar",
   "Message bot": "Mensagem para {name}",
   "Routine skipped named": "Rotina adiada: {name}",
@@ -3009,6 +3010,7 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Pending approval count": "{count} pending approvals",
   "Visible count": "{count} visible",
   "Tool count": "{count} tool calls",
+  "Tool group count": "{count} tools",
   "Search shortcut": "⌘K search",
   "Message bot": "Message {name}",
   "Routine skipped named": "Routine skipped: {name}",
@@ -3190,6 +3192,7 @@ const singular: Partial<Record<TranslationKey, [string, string]>> = {
     "{count} message queued · waiting for connection",
   ],
   "Tool count": ["{count} chamada de ferramenta", "{count} tool call"],
+  "Tool group count": ["{count} ferramenta", "{count} tool"],
   "Notifications need attention": [
     "Notificações, {count} precisa de atenção",
     "Notifications, {count} needs attention",
