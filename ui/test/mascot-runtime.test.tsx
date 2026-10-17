@@ -67,7 +67,7 @@ const value = (messages: Message[], runs = [run]): AvatarRuntime => ({
   bots: [bot],
   threads: [thread],
   messages,
-  runs,
+  runs: runs.map((row) => ({ ...row, providerStartedAt: Date.now() })),
   notifications: [],
   loading: false,
 })
@@ -121,7 +121,8 @@ describe("mascot runtime integration", () => {
       view.rerender(scene(value([reply([...parts])])))
       expect(avatar()).toHaveAttribute("data-mascot-state", state)
       expect(mark()).toHaveAttribute("data-mascot-state", state)
-      if (state === "waiting-approval") expect(screen.getByRole("link", { name: "Aguardando você" })).toBeVisible()
+      if (state === "waiting-approval")
+        expect(screen.getByRole("link", { name: "Preciso da sua autorização." })).toBeVisible()
       expect(avatar()).toHaveAttribute("data-avatar-shape", shape)
     }
     view.rerender(scene(value([reply([tool, approval])], [{ ...run, status: "succeeded", finishedAt: 140 }])))
@@ -192,7 +193,7 @@ describe("mascot runtime integration", () => {
     }
     const view = render(scene(runtime))
     expect(view.container.querySelector(".tb-avatar")).toHaveAttribute("data-mascot-state", "waiting-approval")
-    expect(view.container.querySelector(".activity-mark")).toHaveTextContent("Aguardando você")
+    expect(view.container.querySelector(".activity-mark")).toHaveTextContent("Preciso da sua autorização.")
     view.rerender(scene({ ...runtime, bots: [{ ...bot, paused: true }] }))
     expect(view.container.querySelector(".tb-avatar")).toHaveAttribute("data-mascot-state", "sleeping")
     expect(view.container.querySelector(".activity-mark")).toBeNull()
@@ -266,14 +267,14 @@ describe("mascot runtime integration", () => {
     expect(view.container.querySelector(".tb-avatar")).toHaveAttribute("data-avatar-animated", "false")
     expect(view.container.querySelector(".activity-mark")).toHaveTextContent("Lendo")
     view.rerender(scene(value([reply([tool, approval])])))
-    expect(screen.getByRole("link", { name: "Aguardando você" })).toBeVisible()
+    expect(screen.getByRole("link", { name: "Preciso da sua autorização." })).toBeVisible()
     expect(view.container.querySelector(".activity-mark")).toHaveAttribute("data-reduced-motion", "true")
     expect(raf).not.toHaveBeenCalled()
   })
   it("shows a small bot and readable state without a progress bar", () => {
     const raf = vi.spyOn(window, "requestAnimationFrame")
     const view = render(<ActivityMark state="thinking" bot={bot} />)
-    expect(screen.getByRole("status")).toHaveTextContent("Pensando")
+    expect(screen.getByRole("status")).toHaveTextContent("Preparando a resposta…")
     expect(view.container.querySelector(".activity-mascot [data-bot-id]")).toHaveAttribute("data-bot-id", bot.id)
     expect(view.container.querySelector(".activity-mascot")).toHaveAttribute("aria-hidden", "true")
     expect(view.container.querySelectorAll(".activity-dots i")).toHaveLength(3)
@@ -300,7 +301,7 @@ describe("mascot runtime integration", () => {
         />
       </AvatarRuntimeProvider>,
     )
-    fireEvent.click(screen.getByRole("link", { name: "Aguardando você" }))
+    fireEvent.click(screen.getByRole("link", { name: "Preciso da sua autorização." }))
     const card = screen.getByRole("article", { name: "Aprovação de ferramenta" })
     expect(card).toHaveFocus()
     expect(reveal.mock.contexts).toContain(card)

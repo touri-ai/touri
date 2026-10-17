@@ -1,6 +1,7 @@
 import { useEffect, useId, useState } from "react"
 import { localizeNotice, t } from "../i18n"
 import type { useProviderLogin } from "../useProviderLogin"
+import { ProviderInstallation } from "./ProviderInstallation"
 import { VaultAccessButton } from "./VaultAccessButton"
 import "./provider-login-flow.css"
 
@@ -40,6 +41,15 @@ export const ProviderLoginFlow = ({
     const result = await act("code", code)
     if (result) setCode("")
   }
+  if (flow?.executable === "missing")
+    return (
+      <ProviderInstallation
+        provider={flow.provider}
+        host={flow.host ?? "server"}
+        busy={busy}
+        onRecheck={() => void login.recheck()}
+      />
+    )
   return (
     <div className="provider-login-flow">
       <p aria-live="polite" role={error && flow?.state !== "waiting" ? "alert" : undefined}>

@@ -270,6 +270,8 @@ export type Run = {
   routineRunId: Id | null
   queuedAt: EpochMs
   startedAt: EpochMs | null
+  /** Provider invocation, after environment preparation. Absent on older runs. */
+  providerStartedAt?: EpochMs | null
   finishedAt: EpochMs | null
 }
 
@@ -682,8 +684,10 @@ export type ProviderProfile = { name: string; provider: Provider; loggedIn: bool
 export type ProviderLoginFlow = {
   provider: Provider
   state: 'idle' | 'host-available' | 'waiting' | 'ready' | 'cancelled' | 'error' | 'vault-locked'
-  /** Sidecar host, independent of the browser; also identifies remote login attempts. */
+  /** Sidecar host, independent of the browser and login state. */
   host?: 'mac' | 'server'
+  /** File/executable check only; never starts a model request. Independent of login state. */
+  executable?: 'available' | 'missing'
   /** An expired or failed CLI attempt can be started again; vault errors require repair. */
   retryable?: boolean
   deviceCode?: string
@@ -717,7 +721,7 @@ export type ApiRoutes = {
   'POST /cloud/bots/:id/wake': { req: {}; res: { machine: MachineState } }
   'PUT /cloud/bots/:id/key': { req: { apiKey: string }; res: {} }
 
-  'GET /health': { req: {}; res: { ok: true; version: string; schemaVersion: number; historyMigration?: { running: boolean; done: number; total: number } } }
+  'GET /health': { req: {}; res: { ok: true; version: string; schemaVersion: number; host?: 'mac' | 'server'; historyMigration?: { running: boolean; done: number; total: number } } }
   'POST /ui/errors': { req: { area: string; message: string; stack: string; componentStack: string }; res: { ok: true } }
   'POST /reports/:id/saved': { req: { destination: 'zip' | 'github' }; res: {} }
   'POST /reports/history': { req: { history: import('./reports').ReportHistory[] }; res: {} }

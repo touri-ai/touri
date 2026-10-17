@@ -85,7 +85,7 @@ test("webviews without registered properties keep color and surface fallbacks", 
   await expect(page.locator(".composer")).toHaveCSS("transition-property", "opacity, transform")
   await expect(page.locator(".tool-surface-reveal").first()).toHaveCSS("transition-property", "opacity, transform")
   await page.getByRole("button", { name: "Aguardar aprovação", exact: true }).click()
-  await expect(page.locator(".activity-mark")).toContainText("Aguardando você")
+  await expect(page.locator(".activity-mark")).toContainText("Preciso da sua autorização.")
   await expect(page.locator(".composer")).toHaveCSS("opacity", "1")
 })
 
@@ -115,7 +115,7 @@ for (const preference of ["system", "app"]) {
       })
     await page.getByRole("button", { name: "Aguardar aprovação", exact: true }).click()
     await expect(page.locator(".activity-mark")).toHaveAttribute("data-reduced-motion", "true")
-    await expect(page.locator(".activity-mark")).toContainText("Aguardando você")
+    await expect(page.locator(".activity-mark")).toContainText("Preciso da sua autorização.")
     for (const selector of [".activity-mark", ".composer", ".tool-surface-reveal", ".bot-context-menu"]) {
       const surface = page.locator(selector).first()
       await expect(surface).toHaveCSS("transition-duration", "0s")

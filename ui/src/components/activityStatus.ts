@@ -36,37 +36,7 @@ const activityKeys: Record<ActivityKind, TranslationKey> = {
   waiting: "Activity waiting",
 }
 
-const languageWords = {
-  "pt-BR": new Set(
-    "o os de do da dos das e em na nos nas um uma para por com que se eu voce vamos vou ja foi esta estou ao aos pelo pela isso esse essa este nao precisa preciso conferindo verificando analisando".split(
-      " ",
-    ),
-  ),
-  en: new Set(
-    "the and of to in is it this that for with on from i we you your user are be let how can should need will have has was were what which then see".split(
-      " ",
-    ),
-  ),
-}
-
-/** Ambiguous fragments keep the localized generic activity. */
-export const reasoningMatchesLocale = (text: string, locale: Locale): boolean => {
-  const words =
-    text
-      .toLowerCase()
-      .normalize("NFD")
-      .replace(/\p{M}/gu, "")
-      .match(/\p{L}+/gu) ?? []
-  let portuguese = 0
-  let english = 0
-  for (const word of words) {
-    if (languageWords["pt-BR"].has(word)) portuguese++
-    if (languageWords.en.has(word)) english++
-  }
-  return locale === "pt-BR" ? portuguese > english : english > portuguese
-}
-
-const activeToolFor = (parts: readonly MessagePart[]) =>
+export const activeToolFor = (parts: readonly MessagePart[]) =>
   [...parts]
     .reverse()
     .find(
@@ -103,32 +73,17 @@ export const activityLabelFor = (
   locale: Locale = "pt-BR",
 ): string => {
   if (!mascotIsBusy(state) && state !== "waiting-approval") return mascotLabelFor(state, locale)
+  if (state === "waiting-approval") return t("Preciso da sua autorização.", {}, locale)
+  if (state === "thinking") return t("Preparando a resposta…", {}, locale)
   const label = t(activityKeys[activityKindFor(state, parts)], {}, locale)
-  if (state === "waiting-approval" || state === "typing") return label
   const tool = state === "working-tool" ? activeToolFor(parts) : undefined
-  // A tool starting after reasoning makes that preview stale; a new reasoning part replaces it.
-  const latest = [...parts]
-    .reverse()
-    .find((part) => ["reasoning", "text", "tool_call", "command", "file_change"].includes(part.type))
-  if (latest?.type === "reasoning") {
-    const sentence = redactToolText(latest.text)
-      .replace(/\s+/g, " ")
-      .trim()
-      .split(/(?<=[.!?…])\s+/)
-      .at(-1)
-    if (sentence && reasoningMatchesLocale(sentence, locale))
-      return shortLabel(`${t(activityKeys.thinking, {}, locale)}: ${sentence}`)
-    if (!sentence && latest.estimatedTokens !== undefined) {
-      const thinking = `${t(activityKeys.thinking, {}, locale)}…`
-      return latest.estimatedTokens > 0 ? `${thinking} (~${latest.estimatedTokens} tokens)` : thinking
-    }
-  }
   if (tool && (tool.type === "tool_call" || tool.type === "command" || tool.type === "file_change")) {
     const path = toolPresentation(tool).filePaths[0]
     const file = path?.split(/[\\/]/).at(-1)
-    if (file) return shortLabel(`${label} ${redactToolText(file)}`)
+    if (file && activityKindFor(state, parts) === "reading")
+      return t("Lendo {arquivo}…", { arquivo: shortLabel(redactToolText(file)) }, locale)
   }
-  return label
+  return `${label}…`
 }
 
 const shortLabel = (label: string): string => {

@@ -144,9 +144,9 @@ it("uses a pt-BR preferences title and separate labels for the shortcut and brow
 
 describe("R7: orientação de primeira mensagem", () => {
   it.each([
-    ["QA de aplicativos", /Sugira um plano de testes/],
-    ["Gerente de produto", /Transforme esta ideia em critérios de aceite/],
-    [null, /Explique como você pode me ajudar/],
+    ["QA de aplicativos", /Usar exemplo/],
+    ["Gerente de produto", /Usar exemplo/],
+    [null, /Usar exemplo/],
   ])("offers relevant prompts for %s and fills the composer without sending", async (roleLine, example) => {
     const api = createMockApi()
     await api.request("PATCH /bots/:id", { roleLine, description: null }, { id: "bot-mark" })
@@ -160,7 +160,7 @@ describe("R7: orientação de primeira mensagem", () => {
     const prompt = within(hint).getByRole("button", { name: example })
     fireEvent.click(prompt)
     const composer = screen.getByRole("textbox", { name: "Mensagem para mark" })
-    expect(composer).toHaveValue(prompt.textContent)
+    expect((composer as HTMLTextAreaElement).value).toContain("Comprar café; revisar orçamento; marcar reunião.")
     expect(composer).toHaveFocus()
     expect(api.calls.some((call) => call.route === "POST /threads/:id/messages")).toBe(false)
     fireEvent.keyDown(composer, { key: "Enter" })

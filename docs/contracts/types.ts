@@ -190,6 +190,8 @@ export type Run = {
   routineRunId: Id | null
   queuedAt: EpochMs
   startedAt: EpochMs | null
+  /** Provider invocation, after environment preparation. Absent on older runs. */
+  providerStartedAt?: EpochMs | null
   finishedAt: EpochMs | null
 }
 
