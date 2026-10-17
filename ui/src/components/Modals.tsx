@@ -1617,7 +1617,7 @@ export const BotSettingsModal = ({
           {saveError}
         </p>
       )}
-      {/* A plain group: WebKit drops flex <fieldset> children from the macOS accessibility tree. */}
+      {/* biome-ignore lint/a11y/useSemanticElements: WebKit drops flex fieldset children from the macOS accessibility tree. */}
       <div className="modal-actions" role="group" aria-label={t("Ações das configurações do bot")}>
         <button type="button" className="button button-quiet" onClick={onClose}>
           {t("Cancel")}
