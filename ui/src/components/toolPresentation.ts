@@ -97,9 +97,14 @@ const setupPresentation = (name: string, input: Record<string, unknown> | null) 
   const leaf = toolLeaf(name)
   const path = typeof input?.path === "string" ? input.path : ""
   if (
-    ["routine_create", "project_link", "folder_access_request", "project_unlink", "folder_access_remove"].includes(
-      leaf,
-    ) &&
+    [
+      "routine_create",
+      "project_link",
+      "folder_access_request",
+      "capability_request",
+      "project_unlink",
+      "folder_access_remove",
+    ].includes(leaf) &&
     (!input ||
       (leaf === "routine_create" &&
         ![input.name, input.cron, input.timezone].every((value) => typeof value === "string" && value.trim())))
@@ -132,13 +137,18 @@ const setupPresentation = (name: string, input: Record<string, unknown> | null) 
     const previous = asToolRecord(input?.previousProject)
     if (previous)
       summary += ` ${t("Substitui o projeto {name} ({path}).", { name: String(previous.name), path: String(previous.path) })}`
-  } else if (leaf === "folder_access_request") {
+  } else if (leaf === "folder_access_request" || leaf === "capability_request") {
     const folder = approvalSummary({
       request: "permission",
       scope: { source: "mcp", server: "touri", tool: leaf },
       detail: JSON.stringify(input),
     })
-    return { name: folder.title, summary: folder.body, canApprove: folder.title !== t("Detalhes indisponíveis") }
+    return {
+      name: folder.title,
+      summary: folder.body,
+      canApprove: folder.title !== t("Detalhes indisponíveis"),
+      approvalLabel: leaf === "capability_request" ? t("Ativar") : undefined,
+    }
   } else if (leaf === "project_unlink") {
     title = t("Desvincular projeto")
     summary = t("Desvincular o projeto deste bot.")
@@ -335,6 +345,11 @@ export const approvalMatchesTool = (approval: ApprovalPart, part: ToolPart): boo
       if (typeof original?.projectId === "string") return original.projectId === args?.projectId
       if (typeof original?.path === "string") return original.path === target
     }
+    if (toolLeaf(name) === "capability_request")
+      return (
+        original?.capability === args?.capability &&
+        (typeof original?.reason === "string" ? original.reason.trim() : null) === args?.reason
+      )
     if (toolLeaf(name) === "folder_access_request")
       return typeof original?.path === "string" && original.path === target && original.mode === args?.mode
   }

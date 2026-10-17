@@ -5,6 +5,7 @@ import type { Bot, Kernel, ToolContext, ToolRegistration, ToolResult } from "@to
 import { getDelegation } from "../groups/security"
 import { excludedBotFolders, parseBotFolders, withinFolder } from "../kernel/bot-folders"
 import { createWorkspaceDirectory } from "../kernel/files"
+import { createCapabilityTools } from "./capability-tools"
 import { discoverProjects } from "./discovery"
 import { inspectGitMetadata } from "./git"
 import type { ProjectStore } from "./types"
@@ -155,6 +156,7 @@ export const createSetupTools = ({
   }
 
   return [
+    ...createCapabilityTools(kernel),
     {
       name: "bot_rename",
       group: "project",

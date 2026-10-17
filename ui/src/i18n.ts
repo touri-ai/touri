@@ -3,6 +3,45 @@ import { userFacingError } from "./errors"
 /** All UI copy lives here. pt-BR is the default; English is available for a future locale picker. */
 export type Locale = "pt-BR" | "en"
 export const ptBR = {
+  Ativar: "Ativar",
+  "Agora não": "Agora não",
+  "Este recurso não está disponível para bots na nuvem.": "Este recurso não está disponível para bots na nuvem.",
+  "O computador isolado não está disponível neste servidor.":
+    "O computador isolado não está disponível neste servidor.",
+  "O controle da tela deste computador não é suportado nesta plataforma.":
+    "O controle da tela deste computador não é suportado nesta plataforma.",
+  "O navegador não está instalado neste servidor. Peça à pessoa responsável para instalá-lo.":
+    "O navegador não está instalado neste servidor. Peça à pessoa responsável para instalá-lo.",
+  "O navegador precisa de uma sessão gráfica ou do modo sem janela neste servidor.":
+    "O navegador precisa de uma sessão gráfica ou do modo sem janela neste servidor.",
+  "Este acesso só pode ser solicitado pelo próprio bot em uma conversa com a pessoa, fora de rotinas e delegações.":
+    "Este acesso só pode ser solicitado pelo próprio bot em uma conversa com a pessoa, fora de rotinas e delegações.",
+  "Informe o recurso e um motivo curto, sem quebras de linha.":
+    "Informe o recurso e um motivo curto, sem quebras de linha.",
+  "Este recurso já está ativado neste bot.": "Este recurso já está ativado neste bot.",
+  "O acesso não foi ativado. Se quiser ativar depois, abra as configurações deste bot e ative o navegador ou o controle do computador. Respeite a decisão e não solicite novamente.":
+    "O acesso não foi ativado. Se quiser ativar depois, abra as configurações deste bot e ative o navegador ou o controle do computador. Respeite a decisão e não solicite novamente.",
+  "Acesso ativado neste bot. Encerre este turno; o touri retomará a tarefa automaticamente com a configuração aprovada.":
+    "Acesso ativado neste bot. Encerre este turno; o touri retomará a tarefa automaticamente com a configuração aprovada.",
+  "Acesso ativado neste bot. A configuração será aplicada no próximo turno.":
+    "Acesso ativado neste bot. A configuração será aplicada no próximo turno.",
+  "Ativar navegador": "Ativar navegador",
+  "Ativar controle do computador": "Ativar controle do computador",
+  "{bot} quer ativar o navegador dele para {reason}.": "{bot} quer ativar o navegador dele para {reason}.",
+  "{bot} quer ativar o controle do computador para {reason}.":
+    "{bot} quer ativar o controle do computador para {reason}.",
+  "Abre páginas no navegador isolado deste bot.": "Abre páginas no navegador isolado deste bot.",
+  "Pode ver a tela e clicar ou digitar, somente onde o touri permite.":
+    "Pode ver a tela e clicar ou digitar, somente onde o touri permite.",
+  "Controla somente a tela do computador isolado do bot.": "Controla somente a tela do computador isolado do bot.",
+  "Controla a tela deste computador, com as permissões do touri.":
+    "Controla a tela deste computador, com as permissões do touri.",
+  "A configuração fica salva neste bot. Você pode desativar nos ajustes.":
+    "A configuração fica salva neste bot. Você pode desativar nos ajustes.",
+  "Após ativar, o touri retoma a tarefa automaticamente.": "Após ativar, o touri retoma a tarefa automaticamente.",
+  "Ask the person to enable this bot's isolated browser or supported computer control with an explicit approval card. Use a short reason tied to their task. Never enables silently, never available to unattended or delegated runs. On automaticContinuation, finish this turn; touri resumes the original task with updated tools. On denial, do not ask again; explain how to enable it later in bot settings.":
+    "Pedir à pessoa para ativar o navegador isolado ou o controle do computador deste bot por um cartão de aprovação explícita. Informe um motivo curto ligado à tarefa. Indisponível para rotinas e delegações. Após ativar, encerre o turno para o touri retomar a tarefa. Se negado, respeite a decisão e explique como ativar depois nas configurações do bot.",
+
   "{bot} pede sua aprovação: {summary}": "{bot} pede sua aprovação: {summary}",
   "O aplicativo não conseguiu acessar o cofre nativo. Desbloqueie o cofre do sistema e tente novamente.":
     "O aplicativo não conseguiu acessar o cofre nativo. Desbloqueie o cofre do sistema e tente novamente.",
@@ -1772,6 +1811,43 @@ export const ptBR = {
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  Ativar: "Enable",
+  "Agora não": "Not now",
+  "Este recurso não está disponível para bots na nuvem.": "This capability is unavailable for cloud bots.",
+  "O computador isolado não está disponível neste servidor.": "The isolated computer is unavailable on this server.",
+  "O controle da tela deste computador não é suportado nesta plataforma.":
+    "Screen control of this computer is unsupported on this platform.",
+  "O navegador não está instalado neste servidor. Peça à pessoa responsável para instalá-lo.":
+    "The browser is not installed on this server. Ask its administrator to install it.",
+  "O navegador precisa de uma sessão gráfica ou do modo sem janela neste servidor.":
+    "The browser needs a graphical session or headless mode on this server.",
+  "Este acesso só pode ser solicitado pelo próprio bot em uma conversa com a pessoa, fora de rotinas e delegações.":
+    "Only the bot itself can request this access in a conversation with the person, outside routines and delegations.",
+  "Informe o recurso e um motivo curto, sem quebras de linha.":
+    "Provide the capability and a short reason without line breaks.",
+  "Este recurso já está ativado neste bot.": "This capability is already enabled for this bot.",
+  "O acesso não foi ativado. Se quiser ativar depois, abra as configurações deste bot e ative o navegador ou o controle do computador. Respeite a decisão e não solicite novamente.":
+    "Access was not enabled. To enable it later, open this bot’s settings and enable browser or computer control. Respect the decision and do not request again.",
+  "Acesso ativado neste bot. Encerre este turno; o touri retomará a tarefa automaticamente com a configuração aprovada.":
+    "Access enabled for this bot. Finish this turn; touri will resume the task automatically with the approved configuration.",
+  "Acesso ativado neste bot. A configuração será aplicada no próximo turno.":
+    "Access enabled for this bot. The setting will apply on the next turn.",
+  "Ativar navegador": "Enable browser",
+  "Ativar controle do computador": "Enable computer control",
+  "{bot} quer ativar o navegador dele para {reason}.": "{bot} wants to enable its browser to {reason}.",
+  "{bot} quer ativar o controle do computador para {reason}.": "{bot} wants to enable computer control to {reason}.",
+  "Abre páginas no navegador isolado deste bot.": "Opens pages in this bot's isolated browser.",
+  "Pode ver a tela e clicar ou digitar, somente onde o touri permite.":
+    "Can see the screen and click or type, only where touri allows.",
+  "Controla somente a tela do computador isolado do bot.": "Controls only the bot's isolated computer screen.",
+  "Controla a tela deste computador, com as permissões do touri.":
+    "Controls this computer's screen, subject to touri permissions.",
+  "A configuração fica salva neste bot. Você pode desativar nos ajustes.":
+    "The setting is saved for this bot. You can turn it off in settings.",
+  "Após ativar, o touri retoma a tarefa automaticamente.": "After enabling, touri resumes the task automatically.",
+  "Ask the person to enable this bot's isolated browser or supported computer control with an explicit approval card. Use a short reason tied to their task. Never enables silently, never available to unattended or delegated runs. On automaticContinuation, finish this turn; touri resumes the original task with updated tools. On denial, do not ask again; explain how to enable it later in bot settings.":
+    "Ask the person to enable this bot's isolated browser or supported computer control with an explicit approval card. Use a short reason tied to their task. Never enables silently, never available to unattended or delegated runs. On automaticContinuation, finish this turn; touri resumes the original task with updated tools. On denial, do not ask again; explain how to enable it later in bot settings.",
+
   "No Mac, o sandbox do macOS bloqueia as exclusões e a escrita nas pastas somente leitura, inclusive em comandos de terminal. As alterações valem a partir da próxima mensagem.":
     "On this Mac, the macOS sandbox blocks excluded folders and writing in read-only folders, including terminal commands. Changes take effect from the next message.",
   "Ao salvar, as pastas valerão a partir da próxima mensagem, quando a máquina será recriada. Os arquivos da máquina serão preservados.":
