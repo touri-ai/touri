@@ -137,3 +137,34 @@ test("sending after navigation clears the old draft and keeps an identical new d
   mount(api)
   expect(await composer()).toHaveValue("")
 })
+
+test("an earlier send preserves edits made after reopening the same conversation", async () => {
+  const api = fixture()
+  const thread = api.getState().threads.find((item) => item.id === "thread-mark")
+  if (!thread) throw new Error("Missing thread")
+  thread.title = "Conversa original"
+  const request = api.request
+  let finish: (() => void) | undefined
+  api.request = (async (route, input, path) => {
+    if (route === "POST /threads/:id/messages")
+      await new Promise<void>((resolve) => {
+        finish = resolve
+      })
+    return request(route, input, path)
+  }) as ApiRequest
+  const view = mount(api)
+  fireEvent.change(await composer(), { target: { value: "Mensagem enviada" } })
+  fireEvent.keyDown(await composer(), { key: "Enter" })
+  await waitFor(() => expect(finish).toBeDefined())
+  fireEvent.click(screen.getByRole("button", { name: /Nova conversa/ }))
+  await waitFor(() => expect(screen.getByRole("textbox", { name: "Mensagem para mark" })).toHaveValue(""))
+  fireEvent.click(screen.getByRole("button", { name: /Conversa original/ }))
+  await waitFor(() =>
+    expect(screen.getByRole("textbox", { name: "Mensagem para mark" })).toHaveValue("Mensagem enviada"),
+  )
+  fireEvent.change(await composer(), { target: { value: "Novo rascunho" } })
+  await act(async () => finish?.())
+  view.unmount()
+  mount(api)
+  expect(await composer()).toHaveValue("Novo rascunho")
+})

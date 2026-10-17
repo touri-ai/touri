@@ -13,16 +13,21 @@ const read = (threadId: string | undefined) => {
 export const useComposerDraft = (threadId: string | undefined) => {
   const [state, setState] = useState(() => read(threadId))
   const current = useRef(state)
+  const mounted = useRef(false)
   const selected = useRef(threadId)
   selected.current = threadId
   useLayoutEffect(() => {
+    mounted.current = true
     const next = read(threadId)
     current.current = next
     setState(next)
+    return () => {
+      mounted.current = false
+    }
   }, [threadId])
   const setDraft = useCallback(
     (update: SetStateAction<string>) => {
-      const previous = current.current.threadId === threadId ? current.current : read(threadId)
+      const previous = mounted.current && current.current.threadId === threadId ? current.current : read(threadId)
       const text = typeof update === "function" ? update(previous.text) : update
       let failed = false
       try {
@@ -34,7 +39,7 @@ export const useComposerDraft = (threadId: string | undefined) => {
         failed = true
       }
       // A late send in an old conversation may clear its own draft, never the selected one.
-      if (selected.current !== threadId) return
+      if (!mounted.current || selected.current !== threadId) return
       const next = { threadId, text, failed }
       current.current = next
       setState(next)

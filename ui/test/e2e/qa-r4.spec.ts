@@ -3,7 +3,7 @@ import { resolve } from "node:path"
 import { expect, type Page, test } from "@playwright/test"
 import { showBotPanel } from "./home-navigation"
 
-test.use({ channel: "chromium" })
+test.use({ channel: "chrome" })
 const frame = readFileSync(resolve(import.meta.dirname, "fixtures/qa-r4-desktop.js"), "utf8")
 const evidence = resolve(import.meta.dirname, "../../../docs/evidence/qa-r4")
 const mockFrames = async (page: Page) => {
@@ -130,4 +130,6 @@ test("the separate computer window opens browser settings without enabling them"
   await page.getByRole("button", { name: "Ativar navegador", exact: true }).click()
   await expect(page.locator("#settings-browser")).toBeFocused()
   await expect(page.locator("#settings-browser")).not.toBeChecked()
+  await page.getByRole("tab", { name: "Rotinas", exact: true }).click()
+  await expect(page.getByRole("tabpanel", { name: "Rotinas", exact: true })).toBeVisible()
 })

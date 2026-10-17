@@ -615,20 +615,22 @@ const AppContent = ({ kernel }: AppProps) => {
         bots={data.bots}
         permissionsOnly={modal === "bot-permissions"}
         focusMcp={modal === "bot-mcp"}
-        onAttachFile={() => {
-          attachmentButtonRef.current?.click()
-          closeModal()
-        }}
+        {...(!requestedComputer && {
+          onAttachFile: () => {
+            attachmentButtonRef.current?.click()
+            closeModal()
+          },
+          onOpenRoutines: () => openBotRoutines(selectedBot.id),
+          onOpenIntegrations: () => {
+            closeModal()
+            setRoute({ section: "advanced", page: "integracoes" })
+          },
+        })}
         initialSection={modal === "bot-settings" ? botSettingsSection : undefined}
         focusSetting={modal === "bot-settings" ? settingFocus : null}
         activeTurns={data.runs.some(
           (run) => run.botId === selectedBot.id && ["queued", "starting", "running"].includes(run.status),
         )}
-        onOpenRoutines={() => openBotRoutines(selectedBot.id)}
-        onOpenIntegrations={() => {
-          closeModal()
-          setRoute({ section: "advanced", page: "integracoes" })
-        }}
         api={api}
         capability={data.machineCapability}
         machineState={data.machines.find((state) => state.botId === selectedBot.id)}
