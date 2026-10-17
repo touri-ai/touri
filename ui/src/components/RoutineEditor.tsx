@@ -5,6 +5,7 @@ import { t } from "../i18n"
 import type { RoutineDraft } from "../routineDraft"
 import { routineSchedule, simpleCron, simpleSchedule } from "../routineSchedule"
 import type { WorkspaceActions } from "../useWorkspace"
+import { DeleteRoutineDialog } from "./DeleteRoutineDialog"
 import { Modal } from "./Modal"
 import "./routine-editor.css"
 
@@ -49,11 +50,13 @@ export const RoutineEditor = ({
   routineId?: string | undefined
   bots: Bot[]
   host: "mac" | "server"
-  actions: Pick<WorkspaceActions, "createRoutine" | "updateRoutine" | "runRoutine">
+  actions: Pick<WorkspaceActions, "createRoutine" | "updateRoutine" | "runRoutine" | "deleteRoutine">
   onClose: () => void
 }) => {
   const [draft, setDraft] = useState(initial)
   const [savedId, setSavedId] = useState(routineId)
+  const [savedName, setSavedName] = useState(initial.name)
+  const [deleting, setDeleting] = useState(false)
   const [simple, setSimple] = useState(() => simpleSchedule(initial.cron))
   const [reviewed, setReview] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -105,6 +108,7 @@ export const RoutineEditor = ({
         ? await actions.updateRoutine(savedId, { ...patch, enabled: activate })
         : await actions.createRoutine({ ...draft, enabled: activate })
       setSavedId(saved.id)
+      setSavedName(saved.name)
       if (activate) onClose()
       else {
         await actions.runRoutine(saved.id)
@@ -427,8 +431,21 @@ export const RoutineEditor = ({
               </button>
             )}
           </div>
+          {savedId && (
+            <button type="button" className="routine-delete-button" onClick={() => setDeleting(true)}>
+              {t("Excluir rotina")}
+            </button>
+          )}
         </fieldset>
       </form>
+      {deleting && savedId && (
+        <DeleteRoutineDialog
+          routine={{ id: savedId, name: savedName }}
+          onDelete={actions.deleteRoutine}
+          onClose={() => setDeleting(false)}
+          onDeleted={onClose}
+        />
+      )}
     </Modal>
   )
 }

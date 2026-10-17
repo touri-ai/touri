@@ -243,6 +243,14 @@ export const init = async (kernel: Kernel): Promise<void> => {
         },
       },
       {
+        method: "DELETE",
+        path: "/routines/:id",
+        handler: async ({ params }) => {
+          const result = engine.deleteRoutine(params.id ?? "")
+          return result.success ? { status: 200, json: {} } : routeError(result.errorCode, result.error)
+        },
+      },
+      {
         method: "POST",
         path: "/routines/:id/run",
         handler: async ({ params }) => {

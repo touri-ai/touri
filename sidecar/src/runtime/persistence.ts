@@ -159,6 +159,7 @@ export type RuntimePersistence = {
   getRoutine: (id: Id) => Routine | null
   saveRoutine: (routine: Routine) => void
   updateRoutine: (routine: Routine) => void
+  deleteRoutine: (id: Id) => void
   insertRoutineRun: (routineRun: RoutineRun) => Result<{ routineRun: RoutineRun }, "DUPLICATE_SLOT">
   getRoutineRun: (id: Id) => RoutineRun | null
   updateRoutineRun: (routineRun: RoutineRun) => void
@@ -416,6 +417,16 @@ export const createRuntimePersistence = ({ database }: { database: unknown }): R
 
   const updateRoutine = (routine: Routine): void => saveRoutine(routine)
 
+  const deleteRoutine = (id: Id): void => {
+    // The database cascades scheduling records only. Conversations, messages and
+    // provider runs remain available, including any turn already in progress.
+    if (db) db.query("DELETE FROM routines WHERE id = ?").run(id)
+    routines.delete(id)
+    for (const [runId, run] of routineRuns) {
+      if (run.routineId === id) routineRuns.delete(runId)
+    }
+  }
+
   const insertRoutineRun = (routineRun: RoutineRun): Result<{ routineRun: RoutineRun }, "DUPLICATE_SLOT"> => {
     if (
       [...routineRuns.values()].some(
@@ -516,6 +527,7 @@ export const createRuntimePersistence = ({ database }: { database: unknown }): R
     getRoutine,
     saveRoutine,
     updateRoutine,
+    deleteRoutine,
     insertRoutineRun,
     getRoutineRun,
     updateRoutineRun,

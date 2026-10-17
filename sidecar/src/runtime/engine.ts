@@ -156,6 +156,7 @@ type RuntimeEngine = {
     fromTool: boolean
     botId?: Id
   }) => Result<{ routine: Routine }, "NOT_FOUND" | "NOT_OWNED" | "INVALID_ARGS">
+  deleteRoutine: (routineId: Id) => Result<object, "NOT_FOUND">
   runRoutine: (args: {
     routineId: Id
     triggerSource: RoutineRun["triggerSource"]
@@ -1730,6 +1731,20 @@ export const createRuntimeEngine = ({
     return { success: true, routine: next }
   }
 
+  const deleteRoutine = (routineId: Id): Result<object, "NOT_FOUND"> => {
+    if (!persistence.getRoutine(routineId))
+      return { success: false, errorCode: "NOT_FOUND", error: "Routine not found" }
+    const pending = new Set(persistence.listRoutineRuns(routineId).map((run) => run.id))
+    // Queued work has not started yet and must not fire after deletion. Starting
+    // and running turns keep their existing controller and timeout and finish.
+    for (const run of persistence.listQueuedRuns()) {
+      if (run.routineRunId && pending.has(run.routineRunId)) cancel(run.id)
+    }
+    persistence.deleteRoutine(routineId)
+    kernel.publish({ type: "routine.deleted", routineId })
+    return { success: true }
+  }
+
   const recordSkipped = ({
     routine,
     scheduledFor,
@@ -2020,6 +2035,7 @@ export const createRuntimeEngine = ({
     listRoutineRuns,
     createRoutine,
     updateRoutine,
+    deleteRoutine,
     runRoutine,
     tick,
     shutdown,

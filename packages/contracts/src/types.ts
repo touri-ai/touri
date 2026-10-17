@@ -781,6 +781,7 @@ export type ApiRoutes = {
   'GET /routines': { req: { botId?: Id }; res: { routines: Array<Routine>; host?: 'mac' | 'server' } }
   'POST /routines': { req: Omit<Routine, 'id' | 'nextRunAt' | 'source' | 'createdAt' | 'updatedAt'>; res: { routine: Routine } }
   'PATCH /routines/:id': { req: Partial<Omit<Routine, 'id' | 'source'>>; res: { routine: Routine } }
+  'DELETE /routines/:id': { req: {}; res: {} }
   'POST /routines/:id/run': { req: {}; res: { routineRun: RoutineRun } }
   'GET /routine-runs': {
     req: { botId?: Id; from?: number; to?: number }
@@ -898,6 +899,7 @@ export type UiEvent =
   | { type: 'transcript.rejected'; rejection: TranscriptRejection }
   | { type: 'message.updated'; message: Message }
   | { type: 'run.updated'; run: Run }
+  | { type: 'routine.deleted'; routineId: Id }
   | { type: 'routine.updated'; routine: Routine; lastRun: RoutineRun | null }
   | { type: 'process.updated'; spec: ProcessSpec; run: ProcessRunState | null }
   | { type: 'process.log'; processId: Id; lines: Array<string> }
