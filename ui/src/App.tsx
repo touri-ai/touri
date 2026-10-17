@@ -696,6 +696,14 @@ const AppContent = ({ kernel }: AppProps) => {
             </div>
           )}
         </MotionPresence>
+        {data.pendingRequestsOnReturn !== null && data.pendingRequestsOnReturn > 0 && (
+          <div className="notice-bar approval-notice" role="status">
+            {t("Você tem {n} solicitações pendentes.", { n: data.pendingRequestsOnReturn })}
+            <button type="button" onClick={actions.dismissNotice} aria-label={t("Dismiss notice")}>
+              ×
+            </button>
+          </div>
+        )}
         <ApprovalNotice notifications={data.notifications} messages={data.activityMessages} onReview={reviewApproval} />
         <div className="app-grid">
           <SidebarDrawer

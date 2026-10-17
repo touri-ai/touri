@@ -8,6 +8,7 @@ import {
   reconcileApprovalMessages,
   reconcileApprovalNotifications,
   resolvedApprovalLabel,
+  uniqueApprovalNotifications,
 } from "../approvalState"
 import type { RecoveryAction } from "../errorRecovery"
 import { dictionaries, localizeNotice, type TranslationKey, t } from "../i18n"
@@ -92,7 +93,11 @@ const NotificationRow = ({
       ? item.resolution === "dismissed"
         ? "Solicitação dispensada"
         : resolvedApprovalLabel(
-            item.resolution === "allow" ? "approved" : item.resolution === "expired" ? "expired" : "denied",
+            item.resolution === "allow"
+              ? "approved"
+              : item.resolution === "expired" || item.resolution === "canceled"
+                ? "expired"
+                : "denied",
           )
       : (approval?.title ?? markdownSummary(localizeNotice(item.title)))
   const body = approval?.body ?? markdownSummary(localizeNotice(item.body))
@@ -293,7 +298,7 @@ export const NotificationBell = ({
   const container = useRef<HTMLDivElement | null>(null)
   const popover = useRef<HTMLElement | null>(null)
   const [position, setPosition] = useState({ left: 12, bottom: 52 })
-  const visible = reconcileApprovalNotifications(notifications, messages).filter(
+  const visible = uniqueApprovalNotifications(reconcileApprovalNotifications(notifications, messages)).filter(
     (item) => !clearedIds.has(notificationKey(item)),
   )
   const pending = pendingNotifications(visible, messages)

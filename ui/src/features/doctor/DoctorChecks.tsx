@@ -2,7 +2,7 @@ import type { DoctorCheck, DoctorReport, DoctorStatus } from "@touri/contracts"
 import { useEffect, useRef, useState } from "react"
 import type { UiApi } from "../../api/client"
 import { MachineServiceButton } from "../../components/MachineServiceButton"
-import { plural } from "../../i18n"
+import { localizeNotice, plural } from "../../i18n"
 import { DoctorStorage } from "./DoctorStorage"
 
 const labels: Record<DoctorStatus, string> = { pass: "Pronto", warn: "Atenção", fail: "Falha" }
@@ -51,7 +51,7 @@ const DoctorRow = ({
       </span>
       <div className="doctor-check-content">
         <strong>{label}</strong>
-        <span>{check.detail}</span>
+        <span>{localizeNotice(check.detail)}</span>
         {status !== "pass" && check.fix && (
           <div className="doctor-fix">
             <code>{check.fix}</code>

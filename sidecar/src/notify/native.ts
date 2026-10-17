@@ -20,3 +20,10 @@ export const buildDeepLink = ({ botId, threadId }: { botId: string | null; threa
   if (threadId) params.set("thread", threadId)
   return `touri://open?${params.toString()}`
 }
+
+export const nativeNotificationTitle = (notification: NotificationRecord): string => {
+  if (notification.kind !== "approval")
+    return notification.botName ? `${notification.botName}: ${notification.title}` : notification.title
+  const action = (notification.body.trim() || notification.title).replace(/\.$/, "")
+  return `${notification.botName ?? "touri"} precisa de você: autorizar ${action.charAt(0).toLocaleLowerCase()}${action.slice(1)}.`
+}

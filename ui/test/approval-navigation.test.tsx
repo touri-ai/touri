@@ -100,7 +100,7 @@ it.each(["Cron", "notification", "sidebar", "banner"])(
       )
       if (source === "banner") {
         const notice = document.querySelector(".approval-notice") as HTMLElement
-        expect(notice).toHaveTextContent("Executar comando no terminal")
+        expect(notice).toHaveTextContent("precisa de você: autorizar executar comando no terminal.")
         expect(notice).not.toHaveTextContent("Bash:")
         fireEvent.click(within(notice).getByRole("button", { name: "Revisar" }))
       } else {

@@ -141,11 +141,17 @@ it("finishes creation after a non-retryable login failure with a friendly messag
   await expectCreatedConversation(api)
   expect(attempts).toBe(1)
   expect(screen.getByRole("status")).toHaveTextContent("Bot criado. Não foi possível conectar sua conta.")
-  expect(await screen.findByRole("button", { name: "Tentar novamente", exact: true })).toBeEnabled()
+  expect(await screen.findByRole("button", { name: "Entrar no Codex", exact: true })).toBeEnabled()
   expect(document.body.textContent).not.toMatch(/TOURI-E1010|synthetic internal detail/)
+  expect(
+    api.calls.some(
+      (call) =>
+        call.route === "POST /bots/:id/provider-login/flow" && (call.input as { action?: string }).action === "start",
+    ),
+  ).toBe(false)
   denied = false
-  fireEvent.click(screen.getByRole("button", { name: "Tentar novamente", exact: true }))
-  await waitFor(() => expect(screen.queryByRole("button", { name: "Tentar novamente", exact: true })).toBeNull())
+  fireEvent.click(screen.getByRole("button", { name: "Entrar no Codex", exact: true }))
+  await waitFor(() => expect(screen.queryByRole("button", { name: "Entrar no Codex", exact: true })).toBeNull())
   expect(api.calls.filter((call) => call.route === "POST /bots")).toHaveLength(1)
 })
 

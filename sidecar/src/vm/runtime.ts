@@ -47,7 +47,7 @@ import {
 import { botFolderMounts, withoutHostFolderMounts } from "./folder-mounts"
 import { GUEST_WRITE_COMMAND } from "./guest-write"
 import { BOT_DNS, BOT_IMAGE } from "./image"
-import { ProviderLoginError, providerLoginSource, readProviderLogin } from "./provider-login"
+import { ProviderLoginError, providerLoginSource, readProviderLogin, VAULT_READ_DEADLINE_MS } from "./provider-login"
 import { redactVmEvents } from "./redact-events"
 import { DEFAULT_BOT_VM_MEMORY_MB, validBotVmMemory } from "./resources"
 import { type ConnectionKeys, connectionKeyId, memoryConnectionKeys, sealConnection } from "./sealed-connection"
@@ -830,7 +830,10 @@ export const createVmRuntime = ({
   ): Promise<{ secrets: string[]; env: Record<string, string>; file?: string; selection?: string }> => {
     if (!liveStaging.has(bot.id)) await clearStagedCredentials(bot.id)
     if (!bot.vmProviderLogin) return { secrets: [] as string[], env: {} as Record<string, string> }
-    const login = await readProviderLogin(kernel, bot, hostHome, { signal, timeoutMs: Math.min(3000, limits.auth / 2) })
+    const login = await readProviderLogin(kernel, bot, hostHome, {
+      signal,
+      timeoutMs: Math.min(VAULT_READ_DEADLINE_MS, limits.auth / 2),
+    })
     signal.throwIfAborted()
     const secrets: string[] = []
     kernel.addRedactionValue(login.value)
