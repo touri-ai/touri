@@ -4,6 +4,7 @@ import { getDelegation } from "../../groups/security"
 import { buildChildEnv } from "../../kernel"
 import { spawnFolderProvider } from "../folder-access"
 import { loadTurnImages } from "../loadTurnImages"
+import { withLocalTurnTemp } from "../local-turn-temp"
 import { mcpStartupError } from "../mcp-startup"
 import { applyProviderPrivacy, cliTelemetryOff } from "../privacy"
 import { type ChildProcess, readProviderStderr, startLineReader } from "../provider-io"
@@ -391,7 +392,7 @@ export const createOpenCodeAdapter = ({
   }
   return {
     provider: "opencode",
-    startTurn,
+    startTurn: (args) => withLocalTurnTemp(kernel, args, startTurn),
     detect: async () => {
       const env = buildChildEnv({ base: await kernel.shellEnv() })
       const binary = openCodeBinary(env, command)

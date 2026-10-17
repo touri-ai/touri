@@ -476,8 +476,9 @@ test("real provider runtime delegates with concurrency cap 1, isolated sessions 
     JSON.stringify({
       waitForApproval: true,
       events: [
-        { type: "delta", delta: "Plano" },
         { type: "approval", approvalId: "pm-permission", command: "echo pm" },
+        { type: "command", command: "echo pm", exitCode: 0, output: "pm" },
+        { type: "delta", delta: "Plano" },
       ],
     }),
   )
@@ -519,8 +520,9 @@ test("real provider runtime delegates with concurrency cap 1, isolated sessions 
     JSON.stringify({
       waitForApproval: true,
       events: [
-        { type: "delta", delta: "Código entregue" },
         { type: "approval", approvalId: "dev-permission", command: "echo dev" },
+        { type: "command", command: "echo dev", exitCode: 0, output: "dev" },
+        { type: "delta", delta: "Código entregue" },
       ],
     }),
   )

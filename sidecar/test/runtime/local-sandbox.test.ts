@@ -166,7 +166,7 @@ for (const provider of ["codex", "claude"] as const) {
         expect(session).toMatchObject({
           params: {
             config: {
-              ...(process.platform === "darwin"
+              ...(outerFolderSandbox(f.args)
                 ? {}
                 : { sandbox_workspace_write: { writable_roots: expect.arrayContaining([temporary]) } }),
               shell_environment_policy: { set: { TMPDIR: temporary, TMP: temporary, TEMP: temporary } },
