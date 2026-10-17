@@ -1,4 +1,5 @@
 import type { ApprovalPart, Id, Kernel, NotifyResolution } from "@touri/contracts"
+import { approvalSummary } from "@touri/contracts/approval-summary"
 
 const DETAIL_MAX = 600
 const QUESTION_TOOL = "AskUserQuestion"
@@ -26,25 +27,21 @@ export const createRuntimeNotices = ({ kernel }: { kernel: Kernel }) => {
     requestId,
     request,
     detail,
+    scope,
   }: {
     botId: Id
     threadId: Id
     requestId: Id
     request: ApprovalPart["request"]
     detail: string
+    scope?: ApprovalPart["scope"]
   }): void => {
     emit("notify.emit")?.({
       kind: "approval",
       botId,
       threadId,
       requestId,
-      title:
-        request === "command"
-          ? "Approve command"
-          : request === "file_change"
-            ? "Approve file change"
-            : "Approve action",
-      body: clip({ value: detail, max: DETAIL_MAX }),
+      ...approvalSummary({ request, detail, ...(scope ? { scope } : {}) }),
     })
   }
 
@@ -55,6 +52,7 @@ export const createRuntimeNotices = ({ kernel }: { kernel: Kernel }) => {
     toolName,
     input,
     detail,
+    scope,
   }: {
     botId: Id
     threadId: Id
@@ -62,9 +60,10 @@ export const createRuntimeNotices = ({ kernel }: { kernel: Kernel }) => {
     toolName: string
     input: unknown
     detail: string
+    scope?: ApprovalPart["scope"]
   }): void => {
     if (toolName !== QUESTION_TOOL) {
-      approval({ botId, threadId, requestId, request: "permission", detail })
+      approval({ botId, threadId, requestId, request: "permission", detail, scope })
       return
     }
     emit("notify.emit")?.({

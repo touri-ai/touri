@@ -26,6 +26,7 @@ import { type HoldReason, useSidebarOrder } from "./useSidebarOrder"
 import "./bot-sidebar.css"
 
 type SidebarProps = {
+  onNavigate?: () => void
   groups?: BotGroup[]
   onNewGroup?: () => void
   onEditGroup?: (group: BotGroup) => void
@@ -78,12 +79,18 @@ const SidebarIcon = ({ children }: { children: ReactNode }) => (
 )
 
 export const Sidebar = (props: SidebarProps) => {
+  const navigate = (action: () => void): void => {
+    props.onNavigate?.()
+    action()
+  }
   // Switching bots inside Preview keeps that view; global pages return to the bot conversation.
   const select = (id: Id): void => {
+    props.onNavigate?.()
     props.onSelect(id)
     if (props.section !== "bots") props.onChat()
   }
   const selectThread = (id: Id): void => {
+    props.onNavigate?.()
     props.onSelectThread(id)
     if (props.section !== "bots") props.onChat()
   }
@@ -114,7 +121,7 @@ export const Sidebar = (props: SidebarProps) => {
           <button
             type="button"
             className="sidebar-icon-button"
-            onClick={props.onSearch}
+            onClick={() => navigate(props.onSearch)}
             aria-label={t("Search conversations")}
             aria-keyshortcuts="Meta+K Control+K"
             title={`${t("Search bots, conversations and settings")} (${paletteShortcutLabel()})`}
@@ -127,7 +134,7 @@ export const Sidebar = (props: SidebarProps) => {
           <button
             type="button"
             className="sidebar-icon-button"
-            onClick={props.onNewBot}
+            onClick={() => navigate(props.onNewBot)}
             aria-label={t("Create teammate")}
             title={t("Create teammate")}
             aria-keyshortcuts="Meta+N Control+N"
@@ -136,6 +143,16 @@ export const Sidebar = (props: SidebarProps) => {
               <path d="M12 5v14M5 12h14" />
             </SidebarIcon>
           </button>
+          {props.onNavigate && (
+            <button
+              type="button"
+              className="sidebar-icon-button sidebar-close"
+              onClick={props.onNavigate}
+              aria-label={t("Close menu")}
+            >
+              ×
+            </button>
+          )}
         </div>
       </div>
       <div className="sidebar-list-heading">
@@ -143,7 +160,7 @@ export const Sidebar = (props: SidebarProps) => {
           type="button"
           className="sidebar-bots-link"
           aria-current={props.section === "bots" ? "page" : undefined}
-          onClick={props.onChat}
+          onClick={() => navigate(props.onChat)}
         >
           {t("Bots")} <span>{props.bots.length}</span>
         </button>
@@ -187,6 +204,7 @@ export const Sidebar = (props: SidebarProps) => {
                   onSelect={() => select(bot.id)}
                   onSelectThread={selectThread}
                   onNewThread={() => {
+                    props.onNavigate?.()
                     if (props.section !== "bots") props.onChat()
                     props.onNewThread()
                   }}
@@ -194,9 +212,9 @@ export const Sidebar = (props: SidebarProps) => {
                     select(bot.id)
                     props.onBotSettings()
                   }}
-                  onRoutines={() => props.onRoutines(bot.id)}
-                  onReviewApproval={props.onReviewApproval}
-                  onNotification={props.notificationActions.open}
+                  onRoutines={() => navigate(() => props.onRoutines(bot.id))}
+                  onReviewApproval={(target) => navigate(() => props.onReviewApproval(target))}
+                  onNotification={(item) => navigate(() => props.notificationActions.open(item))}
                   onDelete={props.onDeleteBot}
                 />
               </Fragment>
@@ -211,14 +229,14 @@ export const Sidebar = (props: SidebarProps) => {
           threads={props.threads}
           selectedThreadId={props.selectedThreadId}
           onSelect={selectThread}
-          onCreate={props.onNewGroup}
-          onEdit={(g) => props.onEditGroup?.(g)}
-          onNewThread={(g) => props.onNewGroupThread?.(g)}
+          onCreate={() => navigate(() => props.onNewGroup?.())}
+          onEdit={(g) => navigate(() => props.onEditGroup?.(g))}
+          onNewThread={(g) => navigate(() => props.onNewGroupThread?.(g))}
         />
       )}
       <div className="sidebar-footer">
         <div className="sidebar-user-row">
-          <button type="button" className="user-chip" onClick={props.onSettings}>
+          <button type="button" className="user-chip" onClick={() => navigate(props.onSettings)}>
             <span className="user-avatar" aria-hidden="true">
               T
             </span>
@@ -230,17 +248,20 @@ export const Sidebar = (props: SidebarProps) => {
           <NotificationBell
             notifications={notifications}
             messages={messages}
-            actions={props.notificationActions}
+            actions={{
+              ...props.notificationActions,
+              open: (item) => navigate(() => props.notificationActions.open(item)),
+            }}
             onOpenChange={props.onNotificationsOpen}
-            onReviewApproval={props.onReviewApproval}
+            onReviewApproval={(target) => navigate(() => props.onReviewApproval(target))}
           />
         </div>
         <GlobalAdvancedMenu
           page={props.section === "advanced" ? props.advancedPage : null}
-          onPage={props.onAdvancedPage}
-          onProject={props.onProject}
-          onDoctor={props.onDoctor}
-          onImport={props.onImport}
+          onPage={(page) => navigate(() => props.onAdvancedPage(page))}
+          onProject={() => navigate(props.onProject)}
+          onDoctor={() => navigate(props.onDoctor)}
+          onImport={() => navigate(props.onImport)}
         />
       </div>
     </nav>

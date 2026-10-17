@@ -18,6 +18,7 @@ import type {
   RunStatus,
   RunTrigger,
   RunUsage,
+  ServiceMap,
   StoreApi,
   TextPart,
   Thread,
@@ -29,6 +30,7 @@ import { createApprovalBridge } from "../approvals/bridge"
 import { approvalOutcome } from "../approvals/outcome"
 import { delegatedBot } from "../groups/security"
 import { buildChildEnv } from "../kernel"
+import { resolveMcpSocketPath } from "../kernel/paths"
 import { providerProfileEnv } from "../kernel/provider-profiles"
 import { redactStructured } from "../kernel/redact"
 import { attachedServers, resolveAttachedMcp } from "../mcp/attached"
@@ -82,6 +84,7 @@ type RunState = {
   cancelRequested: boolean
   generation: number | null
   fingerprint: string | null
+  continueAfterApproval: boolean
 }
 
 type ContinuationPlan = { reason: ContinuationReason; originalRunId: Id }
@@ -119,6 +122,7 @@ type RuntimeEngine = {
   }) => Result<{ run: Run }, "THREAD_NOT_FOUND" | "BOT_PAUSED">
   listRuns: (threadId: Id, options?: { all?: boolean }) => Array<Run>
   activeRun: (args: { threadId: Id }) => Run | null
+  continueAfterApproval: ServiceMap["runtime.continueAfterApproval"]
   cancel: (id: Id) => Result<{ run: Run }, "NOT_FOUND">
   cancelBotTurns: (args: { botId: Id }) => Promise<void>
   retry: (id: Id) => Result<{ run: Run }, "NOT_FOUND" | "THREAD_NOT_FOUND" | "BOT_PAUSED">
@@ -205,6 +209,7 @@ export const createRuntimeEngine = ({
   interruptGraceMs,
   routineTimeoutMs,
   resumeBackoffMs = CRASH_RESUME_BACKOFF_MS,
+  providerAdapters,
 }: {
   kernel: Kernel
   codexCommand?: string
@@ -215,6 +220,7 @@ export const createRuntimeEngine = ({
   interruptGraceMs?: number
   routineTimeoutMs?: (routine: Routine) => number
   resumeBackoffMs?: number
+  providerAdapters?: Partial<Record<Bot["provider"], ProviderAdapter>>
 }): RuntimeEngine => {
   const persistence: RuntimePersistence = createRuntimePersistence({ database: kernel.db })
   const ownerPath = `${kernel.paths.runDir}/runtime-owner`
@@ -255,6 +261,7 @@ export const createRuntimeEngine = ({
       ...(opencodeCommand ? { command: opencodeCommand } : {}),
       ...(interruptGraceMs === undefined ? {} : { interruptGraceMs }),
     }),
+    ...providerAdapters,
   }
   const maxConcurrentRuns = Math.max(
     1,
@@ -314,6 +321,7 @@ export const createRuntimeEngine = ({
       cancelRequested: false,
       generation: null,
       fingerprint: null,
+      continueAfterApproval: false,
     }
     states.set(runId, created)
     return created
@@ -410,7 +418,11 @@ export const createRuntimeEngine = ({
     return {
       command: kernel.paths.sidecarBinary,
       args: ["mcp-stdio", "--thread", threadId],
-      env: { TOURI_APP_DATA: kernel.paths.appData, TOURI_RUN_DIR: kernel.paths.runDir },
+      env: {
+        TOURI_APP_DATA: kernel.paths.appData,
+        TOURI_RUN_DIR: kernel.paths.runDir,
+        TOURI_MCP_SOCK: resolveMcpSocketPath(kernel.paths),
+      },
     }
   }
 
@@ -590,6 +602,7 @@ export const createRuntimeEngine = ({
         requestId: approvalId,
         request: event.part.request,
         detail: event.part.detail,
+        scope: event.part.scope,
       })
       const thread = store.getThread({ threadId: run.threadId })
       const request =
@@ -674,7 +687,15 @@ export const createRuntimeEngine = ({
     const state = getState(run.id)
     const request = activePathMessage({ store, run })
     const resumedFrom = request?.role === "system" ? continuationReasonOf(request.text) : null
-    const requestText = resumedFrom ? continuationPrompt(resumedFrom) : (request?.text ?? "")
+    const link = continuations.link(run.id)
+    const originalRun = link ? persistence.getRun(link.originalRunId) : null
+    const originalRequest =
+      resumedFrom === "permission_granted" && originalRun ? activePathMessage({ store, run: originalRun }) : null
+    const requestText = resumedFrom
+      ? [continuationPrompt(resumedFrom), originalRequest ? `Original request:\n${originalRequest.text}` : null]
+          .filter(Boolean)
+          .join("\n\n")
+      : (request?.text ?? "")
     const carryover = thread.carryoverNote
     if (carryover) store.updateThread({ threadId: thread.id, patch: { carryoverNote: null } })
     const toolSummary = tools.summary(store, thread.id, request?.id)
@@ -682,7 +703,9 @@ export const createRuntimeEngine = ({
     const input: Array<TextPart | Extract<MessagePart, { type: "image" }>> = request
       ? [
           { type: "text", text: inputText },
-          ...request.parts.filter((part): part is Extract<MessagePart, { type: "image" }> => part.type === "image"),
+          ...(originalRequest ?? request).parts.filter(
+            (part): part is Extract<MessagePart, { type: "image" }> => part.type === "image",
+          ),
         ]
       : [{ type: "text", text: inputText }]
     const { cwd, projectDataDir } =
@@ -756,6 +779,7 @@ export const createRuntimeEngine = ({
         ...providerProfileEnv({ appData: kernel.paths.appData, bot }),
         TOURI_RUN_DIR: kernel.paths.runDir,
         TOURI_APP_DATA: kernel.paths.appData,
+        ...(bot.machine === "vm" ? {} : { TOURI_MCP_SOCK: resolveMcpSocketPath(kernel.paths) }),
         ...(projectDataDir ? { TOURI_PROJECT_DATA_DIR: projectDataDir } : {}),
       },
     })
@@ -794,7 +818,7 @@ export const createRuntimeEngine = ({
       let releaseLogin: (() => void) | undefined
       try {
         if (bot.machine !== "vm" && bot.machine !== "cloud") {
-          const login = await prepareLocalProviderLogin(kernel, bot, controller.signal)
+          const login = await prepareLocalProviderLogin(kernel, bot, controller.signal, env.HOME)
           Object.assign(env, login.env)
           releaseLogin = login.release
         }
@@ -964,6 +988,10 @@ export const createRuntimeEngine = ({
       const workRoot = providerErrorClass ? null : work.publishRoot({ turnId: run.id })
       const errorClass = workRoot && !workRoot.success ? "tool_error" : providerErrorClass
       if (!errorClass) {
+        const plan = state.continueAfterApproval
+          ? planContinuation({ run, reason: "permission_granted", lastActivityAt: Date.now() })
+          : null
+        state.continueAfterApproval = false
         finishLiveRun(run, () => {
           ensureReply({ run, state, store, parentId: run.requestMessageId ?? thread.activeLeafId ?? run.id })
           state.parts = tools.finish(run, state.parts, "unknown")
@@ -975,8 +1003,11 @@ export const createRuntimeEngine = ({
             usage: state.usage,
             finishedAt: Date.now(),
           })
-          finishRoutineRun({ run, state, status: "succeeded" })
-          notices.done({ botId: run.botId, threadId: run.threadId, summary: state.text })
+          if (plan) scheduleContinuation({ run, plan })
+          else {
+            finishRoutineRun({ run, state, status: "succeeded" })
+            notices.done({ botId: run.botId, threadId: run.threadId, summary: state.text })
+          }
         })
       } else {
         failTurn({
@@ -1143,10 +1174,14 @@ export const createRuntimeEngine = ({
     reason: ContinuationReason
     lastActivityAt: number
   }): ContinuationPlan | null => {
-    if (shuttingDown || !resumeEnabled() || Date.now() - lastActivityAt > CONTINUATION_WINDOW_MS) return null
+    if (shuttingDown || Date.now() - lastActivityAt > CONTINUATION_WINDOW_MS) return null
+    if (reason !== "permission_granted" && !resumeEnabled()) return null
     if (!run.requestMessageId || continuations.isGroupRun(run.id)) return null
     const originalRunId = continuations.link(run.id)?.originalRunId ?? run.id
-    if (continuations.count({ originalRunId }) >= MAX_AUTO_CONTINUATIONS) return null
+    const interruptedContinuations =
+      continuations.count({ originalRunId, reason: "app_restart" }) +
+      continuations.count({ originalRunId, reason: "provider_crash" })
+    if (reason !== "permission_granted" && interruptedContinuations >= MAX_AUTO_CONTINUATIONS) return null
     if (reason === "provider_crash" && continuations.count({ originalRunId, reason }) >= MAX_CRASH_CONTINUATIONS)
       return null
     // Effects whose outcome is unknown wait for the user; the work notice already explains them.
@@ -1155,7 +1190,7 @@ export const createRuntimeEngine = ({
       continuations.resumePoint(run.id) ??
       persistence.getActiveSession({ threadId: run.threadId, provider: run.provider })
     const bot = kernel.services.use("store.api")?.getBot({ botId: run.botId })
-    if (!session || !bot || bot.paused || bot.machine === "cloud") return null
+    if ((!session && reason !== "permission_granted") || !bot || bot.paused || bot.machine === "cloud") return null
     return routineAllowsContinuation(run) ? { reason, originalRunId } : null
   }
 
@@ -1256,13 +1291,17 @@ export const createRuntimeEngine = ({
     finishRoutineRun({ run, state: getState(run.id), status, summary: getState(run.id).text || "Turno interrompido" })
 
   const scheduleContinuation = ({ run, plan }: { run: Run; plan: ContinuationPlan }): void => {
-    const timer = setTimeout(() => {
-      pendingContinuations.delete(run.id)
-      // A newer turn on the thread (the user wrote meanwhile) supersedes the continuation.
-      const superseded = persistence.listRuns(run.threadId)[0]?.id !== run.id
-      const ready = !shuttingDown && ownsRuntime() && resumeEnabled() && !superseded
-      if (!ready || !startContinuation({ run, plan })) abandonContinuation({ run, status: "failed" })
-    }, resumeBackoffMs)
+    const timer = setTimeout(
+      () => {
+        pendingContinuations.delete(run.id)
+        // A newer turn on the thread (the user wrote meanwhile) supersedes the continuation.
+        const superseded = persistence.listRuns(run.threadId)[0]?.id !== run.id
+        const ready =
+          !shuttingDown && ownsRuntime() && (plan.reason === "permission_granted" || resumeEnabled()) && !superseded
+        if (!ready || !startContinuation({ run, plan })) abandonContinuation({ run, status: "failed" })
+      },
+      plan.reason === "permission_granted" ? 0 : resumeBackoffMs,
+    )
     pendingContinuations.set(run.id, { timer, run })
   }
 
@@ -1371,6 +1410,21 @@ export const createRuntimeEngine = ({
   }
 
   const activeRun = ({ threadId }: { threadId: Id }): Run | null => active.get(threadId) ?? null
+
+  const continueAfterApproval: RuntimeEngine["continueAfterApproval"] = (ctx) => {
+    const run = ctx.runId ? active.get(ctx.threadId) : null
+    if (
+      !run ||
+      run.id !== ctx.runId ||
+      run.botId !== ctx.botId ||
+      ctx.signal.aborted ||
+      getState(run.id).cancelRequested ||
+      !isLive(run)
+    )
+      return false
+    getState(run.id).continueAfterApproval = true
+    return true
+  }
 
   const cancel = (id: Id): Result<{ run: Run }, "NOT_FOUND"> => {
     const run = persistence.getRun(id)
@@ -1869,6 +1923,7 @@ export const createRuntimeEngine = ({
   return {
     enqueue,
     activeRun,
+    continueAfterApproval,
     listRuns: persistence.listRuns,
     cancel,
     cancelBotTurns,

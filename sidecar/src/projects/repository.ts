@@ -170,6 +170,7 @@ export const createProjectStore = ({ kernel }: { kernel: Kernel }): ProjectStore
         )
         .run(id, name, path, gitRemote, defaultBranch, dataDir, now, now)
       const project = getProject(id)
+      if (project) kernel.publish({ type: "project.created", project })
       return project === null
         ? resultError("NOT_FOUND", "Project was inserted but could not be read")
         : { success: true, project }

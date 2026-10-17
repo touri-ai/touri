@@ -1,6 +1,7 @@
 import type { Bot, ProviderLoginFlow } from "@touri/contracts"
 import { useCallback, useEffect, useRef, useState } from "react"
 import type { UiApi } from "./api/client"
+import { retryProviderLogin } from "./features/bots/providerLogin"
 import { openCloudLink } from "./features/cloud/CloudLink"
 import { t } from "./i18n"
 
@@ -29,23 +30,27 @@ export const useProviderLogin = (api: UiApi, botId: string, provider: Bot["provi
       input?: "up" | "down" | "enter",
     ) => {
       const current = generation.current
-      revision.current++
+      const requestedRevision = ++revision.current
+      const active = () => current === generation.current && requestedRevision === revision.current
       if (action === "start") openedPages.get(api)?.delete(`${botId}:${provider}`)
       setBusy(true)
       setError(null)
       try {
-        const result = await api.request(
-          "POST /bots/:id/provider-login/flow",
-          { provider, action, ...(value === undefined ? {} : { value }), ...(input ? { input } : {}) },
-          { id: botId },
-        )
-        if (current === generation.current) setFlow(result)
+        const request = () =>
+          api.request(
+            "POST /bots/:id/provider-login/flow",
+            { provider, action, ...(value === undefined ? {} : { value }), ...(input ? { input } : {}) },
+            { id: botId },
+          )
+        const result =
+          action === "start" || action === "use-host" ? await retryProviderLogin(request, active) : await request()
+        if (active()) setFlow(result)
         return result
       } catch {
-        if (current === generation.current) setError(t("Não foi possível configurar o login. Tente novamente."))
+        if (active()) setError(t("Não foi possível configurar o login. Tente novamente."))
         return null
       } finally {
-        if (current === generation.current) setBusy(false)
+        if (active()) setBusy(false)
       }
     },
     [api, botId, provider],
@@ -66,6 +71,7 @@ export const useProviderLogin = (api: UiApi, botId: string, provider: Bot["provi
         if (current !== generation.current) return
         if (requestedRevision === revision.current) {
           setFlow(result)
+          if (result.state === "ready") setError(null)
           if (!initialized && result.state === "idle") {
             initialized = true
             await act("start")

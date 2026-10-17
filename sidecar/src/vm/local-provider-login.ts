@@ -2,12 +2,23 @@ import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:f
 import { homedir } from "node:os"
 import { join } from "node:path"
 import type { Bot, Kernel } from "@touri/contracts"
+import { prepareHostCodexHome } from "../runtime/codex/home"
 import { loginTarget, readProviderLogin, redactProviderLogin, storedProviderLoginSource } from "./provider-login"
 
-/** Materialize a bot's selected vault login only for the lifetime of its local CLI turn. */
-export const prepareLocalProviderLogin = async (kernel: Kernel, bot: Bot, signal: AbortSignal) => {
-  if (storedProviderLoginSource(kernel, bot) !== "vault") return { env: {}, release: () => {} }
-  const login = await readProviderLogin(kernel, bot, homedir(), { signal })
+/** Prepare a persistent host-login home or temporary vault credentials for a local CLI turn. */
+export const prepareLocalProviderLogin = async (
+  kernel: Kernel,
+  bot: Bot,
+  signal: AbortSignal,
+  hostHome = homedir(),
+) => {
+  signal.throwIfAborted()
+  if (storedProviderLoginSource(kernel, bot) !== "vault") {
+    if (bot.provider === "codex" && bot.machine === "local" && !bot.providerProfile)
+      return { env: { CODEX_HOME: prepareHostCodexHome(kernel.paths.appData, bot.id, hostHome) }, release: () => {} }
+    return { env: {}, release: () => {} }
+  }
+  const login = await readProviderLogin(kernel, bot, hostHome, { signal })
   redactProviderLogin(kernel, login.value)
   if (bot.provider === "claude") return { env: { CLAUDE_CODE_OAUTH_TOKEN: login.value }, release: () => {} }
   const directory = mkdtempSync(join(kernel.paths.runDir, "provider-turn-"))
