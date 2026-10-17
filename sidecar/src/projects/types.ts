@@ -13,6 +13,7 @@ import type {
 } from "@touri/contracts"
 
 export type ProjectErrorCode =
+  | import("@touri/contracts").VaultErrorCode
   | "INVALID_ARGS"
   | "NOT_FOUND"
   | "PROJECT_EXISTS"
