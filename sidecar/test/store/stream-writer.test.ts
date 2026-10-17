@@ -94,6 +94,19 @@ test("8 KiB flushes immediately, splits large UTF-8 frames, and terminal writes 
   }
 })
 
+test("starting another message does not checkpoint an unrelated streaming reply", async () => {
+  const f = await fixture()
+  try {
+    f.store.appendDelta({ threadId: "t", messageId: "b", partIndex: 0, delta: "Parcial" })
+    f.store.flushWrites?.()
+    f.store.appendDelta({ threadId: "t", messageId: "a", partIndex: 0, delta: "Outra" })
+    expect(f.database.query("SELECT text FROM messages WHERE id='b'").get()).toEqual({ text: "" })
+    expect(f.database.query("SELECT text FROM messages_fts WHERE message_id='b'").get()).toEqual({ text: "" })
+  } finally {
+    f.close()
+  }
+})
+
 test("a periodic checkpoint inside a large frame preserves subsequent chunk and frame offsets", async () => {
   const f = await fixture()
   const now = Date.now()

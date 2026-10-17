@@ -193,9 +193,25 @@ export const createStreamWriter = ({
     }
     // An outer transaction may have rolled back a snapshot after draining the
     // writer. Recover its already committed tail before choosing new offsets.
-    if (!cached) materializeTranscript(database)
-    const message = getMessage({ threadId, messageId })
+    let message = getMessage({ threadId, messageId })
     if (!message) return null
+    if (
+      !cached &&
+      database
+        .query(`
+      SELECT 1 FROM transcript_entries INDEXED BY transcript_delta_message
+        WHERE thread_id = ? AND json_extract(event_json, '$.messageId') = ? AND seq > ?
+          AND json_extract(event_json, '$.type') = 'message.delta'
+      UNION ALL
+      SELECT 1 FROM transcript_part_entries p JOIN transcript_entries e ON e.id = p.entry_id
+        WHERE p.thread_id = ? AND p.message_id = ? AND e.seq > ? LIMIT 1
+    `)
+        .get(threadId, messageId, message.updatedSeq ?? 0, threadId, messageId, message.updatedSeq ?? 0)
+    ) {
+      materializeTranscript(database)
+      message = getMessage({ threadId, messageId })
+      if (!message) return null
+    }
     const next = { message, baseSeq: message.updatedSeq ?? 0, lastEvent: null }
     projections.set(key, next)
     return next
