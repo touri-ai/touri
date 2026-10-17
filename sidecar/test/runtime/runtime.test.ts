@@ -9,6 +9,7 @@ import { createStandingGrantStore } from "../../src/approvals/grants"
 import { mcpStartupChecks } from "../../src/doctor/mcp"
 import { createKernel } from "../../src/kernel"
 import { openDatabase } from "../../src/kernel/db"
+import { hostFolderAccessAvailable } from "../../src/kernel/folder-capability"
 import { init as initNotify } from "../../src/notify"
 import { createCodexAdapter } from "../../src/runtime/codex/adapter"
 import { createRuntimeEngine } from "../../src/runtime/engine"
@@ -2339,7 +2340,7 @@ test.serial("transcript: cancellation during environment loading never launches 
   }
 })
 
-test.serial("a local bot with a provider profile runs the CLI with that profile as its home", async () => {
+test.serial("a local bot uses its selected provider profile for authentication and isolated bookkeeping", async () => {
   const value = await fixture({ provider: "claude" })
   try {
     const envLog = join(value.assets, "claude-home.log")
@@ -2362,11 +2363,21 @@ test.serial("a local bot with a provider profile runs the CLI with that profile 
     await run("default home")
     const bot = value.store.bots.get(value.bot.id)
     if (!bot) throw new Error("Fixture bot missing")
+    const profile = join(value.runtime.kernel.paths.appData, "provider-profiles", "clav", "claude")
+    mkdirSync(profile, { recursive: true })
+    writeFileSync(join(profile, "settings.json"), JSON.stringify({ forceLoginOrgUUID: "selected-profile" }))
     bot.providerProfile = "clav"
     await run("profile home")
     const homes = readFileSync(envLog, "utf8").trim().split("\n")
     expect(homes[0]).not.toContain("provider-profiles")
-    expect(homes.at(-1)).toBe(join(value.runtime.kernel.paths.appData, "provider-profiles", "clav", "claude"))
+    expect(homes.at(-1)).toBe(
+      process.platform === "linux" && hostFolderAccessAvailable() ? join(bot.homeDir, ".touri-claude") : profile,
+    )
+    expect(
+      JSON.parse(
+        readFileSync(join(value.runtime.kernel.paths.runDir, "claude", `${value.thread.id}.settings.json`), "utf8"),
+      ),
+    ).toMatchObject({ forceLoginOrgUUID: "selected-profile" })
   } finally {
     await closeFixture(value)
   }
