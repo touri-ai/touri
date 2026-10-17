@@ -292,10 +292,20 @@ test("a compact tool patch alone keeps its output body until the journal is reta
     f.database
       .query("INSERT INTO transcript_entries(thread_id,seq,generation,event_json,at) VALUES ('t',1,1,?,?)")
       .run(
-        JSON.stringify({ type: "message.parts", threadId: "t", messageId: "reply", parts: [{ partIndex: 0, part }] }),
+        JSON.stringify({
+          type: "message.parts",
+          threadId: "t",
+          messageId: "reply",
+          updatedSeq: 1,
+          generation: 1,
+          parts: [{ partIndex: 0, part }],
+        }),
         Date.now(),
       )
     expect(await collectUnusedOutputBlobs(f.database, f.root)).toBe(0)
+    compactTranscript({ database: f.database, events: 0, entriesPerThread: 0, maxAgeMs: 0, now: Date.now() + 1 })
+    expect(await collectUnusedOutputBlobs(f.database, f.root)).toBe(0) // unpublished recovery tail stays protected
+    f.runtime.kernel.publish({ type: "transcript.resync" })
     compactTranscript({ database: f.database, events: 0, entriesPerThread: 0, maxAgeMs: 0, now: Date.now() + 1 })
     expect(await collectUnusedOutputBlobs(f.database, f.root)).toBe(1)
   } finally {
@@ -320,6 +330,9 @@ test("retention releases completed recovery outputs after retained journal refer
     expect(JSON.parse(record.part_json)).not.toHaveProperty("outputAttachmentId")
     expect(JSON.parse(record.part_json)).not.toHaveProperty("outputPreview")
     expect(await collectUnusedOutputBlobs(f.database, f.root)).toBe(0)
+    compactTranscript({ database: f.database, events: 0, entriesPerThread: 0, maxAgeMs: 0, now: Date.now() + 1 })
+    expect(await collectUnusedOutputBlobs(f.database, f.root)).toBe(0) // the direct fixture update is not published yet
+    f.runtime.kernel.publish({ type: "transcript.resync" })
     compactTranscript({ database: f.database, events: 0, entriesPerThread: 0, maxAgeMs: 0, now: Date.now() + 1 })
     expect(await collectUnusedOutputBlobs(f.database, f.root)).toBe(1)
   } finally {

@@ -40,6 +40,64 @@ it("loads file-backed tool results only on demand through authenticated attachme
   expect(output).toHaveBeenCalledOnce()
 })
 
+it.each([undefined, ""])(
+  "opens a large stored image in bounded pages without rendering partial base64 (preview %s)",
+  async (outputPreview) => {
+    const base = createMockApi()
+    const text = JSON.stringify({ dataBase64: "a".repeat(90_000), mime: "image/png" })
+    const pageSize = 64 * 1024
+    const tail = { text: text.slice(pageSize), offset: pageSize, nextOffset: null, bytes: text.length }
+    let release = () => {}
+    const pending = new Promise<typeof tail>((resolve) => {
+      release = () => resolve(tail)
+    })
+    const pages = vi
+      .fn()
+      .mockResolvedValueOnce({ text: text.slice(0, pageSize), offset: 0, nextOffset: pageSize, bytes: text.length })
+      .mockReturnValueOnce(pending)
+    const request: ApiRequest = async (route, input, path) =>
+      route === "GET /attachments/:id/content" ? pages(input, path) : base.request(route, input, path)
+    const view = render(
+      <ToolCallCard
+        part={{ ...part, ...(outputPreview === undefined ? {} : { outputPreview }) }}
+        api={{ ...base, request }}
+      />,
+    )
+    expect(pages).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole("button", { name: "Abrir resultado completo" }))
+    await waitFor(() => expect(pages).toHaveBeenCalledTimes(2))
+    expect(screen.getByRole("button", { name: "Carregando resultado…" })).toBeDisabled()
+    expect(view.container.querySelector(".tool-output")).toBeNull()
+    expect(screen.queryByText(/dataBase64/)).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Carregar mais saída" })).not.toBeInTheDocument()
+    release()
+    expect(await screen.findByRole("button", { name: "Baixar imagem" })).toBeVisible()
+    expect(pages.mock.calls).toEqual([
+      [{ offset: 0, limit: pageSize }, { id: "blob" }],
+      [{ offset: pageSize, limit: pageSize }, { id: "blob" }],
+    ])
+    expect(screen.queryByText(/dataBase64/)).not.toBeInTheDocument()
+  },
+)
+
+it("stops large image opens at the bounded envelope limit", async () => {
+  const base = createMockApi()
+  const pages = vi.fn(async () => ({
+    text: '{"dataBase64":"aaaa',
+    offset: 0,
+    nextOffset: 65536,
+    bytes: 20 * 1024 * 1024 + 1,
+  }))
+  const request: ApiRequest = async (route, input, path) =>
+    route === "GET /attachments/:id/content" ? (pages() as never) : base.request(route, input, path)
+  const view = render(<ToolCallCard part={{ ...part, outputPreview: "" }} api={{ ...base, request }} />)
+  fireEvent.click(screen.getByRole("button", { name: "Abrir resultado completo" }))
+  expect(await screen.findByText("Esta imagem é grande demais para abrir aqui.")).toBeVisible()
+  expect(pages).toHaveBeenCalledOnce()
+  expect(view.container.querySelector(".tool-output")).toBeNull()
+  expect(screen.queryByText(/dataBase64/)).not.toBeInTheDocument()
+})
+
 it("retries attachment errors and clears old output when a newer reference arrives", async () => {
   const base = createMockApi()
   const output = vi

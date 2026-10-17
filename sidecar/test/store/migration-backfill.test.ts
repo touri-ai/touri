@@ -28,6 +28,7 @@ import providerProfilesSql from "../../src/kernel/migrations/0017.sql" with { ty
 import permissionContinuationsSql from "../../src/kernel/migrations/0018.sql" with { type: "text" }
 import botBrowserSql from "../../src/kernel/migrations/0019.sql" with { type: "text" }
 import responseActivitySql from "../../src/kernel/migrations/0020.sql" with { type: "text" }
+import streamWriterSql from "../../src/kernel/migrations/0021.sql" with { type: "text" }
 import { TRANSCRIPT_RETENTION } from "../../src/kernel/transcript-storage"
 import { init as initStore } from "../../src/store"
 
@@ -204,6 +205,7 @@ test("interrupted batches resume idempotently and match the shipped synchronous 
     synchronous.exec(permissionContinuationsSql)
     synchronous.exec(botBrowserSql)
     synchronous.exec(responseActivitySql)
+    synchronous.exec(streamWriterSql)
     database = openDatabase({ filename })
     expect(database.query("SELECT type, name, sql FROM sqlite_master ORDER BY name").all()).toEqual(
       synchronous.query("SELECT type, name, sql FROM sqlite_master ORDER BY name").all(),

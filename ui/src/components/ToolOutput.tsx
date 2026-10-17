@@ -13,6 +13,9 @@ import type { ToolLanguage } from "./toolHighlight"
 import { asToolRecord, parseToolValue } from "./toolPresentation"
 
 type OutputImage = { src: string; mime: string }
+const MAX_IMAGE_OUTPUT_BYTES = 20 * 1024 * 1024
+const imageEnvelope = (text: string): boolean =>
+  /"type"\s*:\s*"image"|data:image\/[^;]+;base64,|"(?:dataBase64|imageBase64)"\s*:/.test(text)
 
 const localizedPrettyValue = (value: unknown): string =>
   JSON.stringify(parseToolValue(localizeToolText(redactToolText(JSON.stringify(value)))), null, 2)
@@ -221,7 +224,7 @@ export const StoredToolOutput = ({
   const [raw, setRaw] = useState<string | null>(null)
   const [nextOffset, setNextOffset] = useState<number | null>(0)
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState(false)
+  const [error, setError] = useState<"load" | "image_size" | null>(null)
   const generation = useRef(0)
   useEffect(() => {
     generation.current += 1
@@ -233,19 +236,41 @@ export const StoredToolOutput = ({
     if (!api || loading) return
     const attempt = generation.current
     setLoading(true)
-    setError(false)
+    setError(null)
     try {
-      const page = await api.request(
+      let page = await api.request(
         "GET /attachments/:id/content",
         { offset: nextOffset ?? 0, limit: 64 * 1024 },
         { id: attachmentId },
       )
+      const chunks = [page.text]
+      // Images need a complete envelope to render. Keep bounded pages private
+      // until the explicit open finishes, so partial base64 never reaches chat.
+      const image = !diff && (preview === "" || imageEnvelope((raw ?? "") + page.text))
+      if (image) {
+        let bytes = new TextEncoder().encode((raw ?? "") + page.text).byteLength
+        while (true) {
+          if (generation.current !== attempt) return
+          if (page.bytes > MAX_IMAGE_OUTPUT_BYTES || bytes > MAX_IMAGE_OUTPUT_BYTES) {
+            setError("image_size")
+            return
+          }
+          if (page.nextOffset === null) break
+          page = await api.request(
+            "GET /attachments/:id/content",
+            { offset: page.nextOffset, limit: 64 * 1024 },
+            { id: attachmentId },
+          )
+          chunks.push(page.text)
+          bytes += new TextEncoder().encode(page.text).byteLength
+        }
+      }
       if (generation.current === attempt) {
-        setRaw((previous) => (previous ?? "") + page.text)
+        setRaw((previous) => (previous ?? "") + chunks.join(""))
         setNextOffset(page.nextOffset)
       }
     } catch {
-      if (generation.current === attempt) setError(true)
+      if (generation.current === attempt) setError("load")
     } finally {
       if (generation.current === attempt) setLoading(false)
     }
@@ -275,7 +300,13 @@ export const StoredToolOutput = ({
               : t("Carregar mais saída")}
         </button>
       )}
-      {error && <p role="status">{t("Não foi possível abrir o resultado. Tente novamente.")}</p>}
+      {error && (
+        <p role="status">
+          {error === "image_size"
+            ? t("Esta imagem é grande demais para abrir aqui.")
+            : t("Não foi possível abrir o resultado. Tente novamente.")}
+        </p>
+      )}
     </>
   )
 }

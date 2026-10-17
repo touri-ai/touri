@@ -76,7 +76,7 @@ const snapshot = (db: Database, tables: Array<string>, columns?: Map<string, Arr
 })
 
 // Schema objects that migrations after 0014 add on the same open.
-const LATER_MIGRATION_OBJECTS = ["run_continuations_original"]
+const LATER_MIGRATION_OBJECTS = ["run_continuations_original", "transcript_part_message"]
 
 const withoutSource = (row: unknown): unknown => {
   const { source: _source, ...rest } = row as Record<string, unknown>

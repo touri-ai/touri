@@ -459,7 +459,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
           loadedThreads.current.set(threadId, attempt)
           setData((current) => ({
             ...current,
-            messages: deltas.reduce(applyStreamEvent, messages.messages.reduce(updateMessage, current.messages)),
+            messages: deltas.reduce(applyStreamEvent, messages.messages).reduce(updateMessage, current.messages),
             runs: mergeRunRows(current.runs, runs.runs),
           }))
         })

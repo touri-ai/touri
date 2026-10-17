@@ -411,6 +411,8 @@ export const createRuntimeEngine = ({
       })
       // The store can replace completed output with a durable attachment reference.
       for (const patch of parts) state.parts[patch.partIndex] = patch.part
+      // Consent must be durable and visible before the approved action can proceed.
+      if (parts.some(({ part }) => part.type === "approval")) store.flushWrites?.()
       state.dirtyParts.clear()
       return
     }
