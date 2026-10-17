@@ -37,3 +37,32 @@ Native unit tests cover the deadline, bounded concurrency after timeout, typed d
 - Regression proof against main: the three new sidecar authorization checks and the UI preserved-draft authorization check fail without the implementation.
 - Signing script syntax and the missing-identity failure path pass; the script stops before building when no matching identity exists.
 - Both dedicated Keychain items were removed and verified absent. Disposable test apps and identified abandoned VM resources were cleaned up. No stable identity or user vault item was deleted or changed.
+
+## Review follow-up (2026-10-17)
+
+The review found that a denied browser-session key read could become an empty session and a later unencrypted save. Session reads now raise a typed error within four seconds. Saving requires a confirmed encryption key and verifies any existing ciphertext before replacing it; an absent, denied, invalid or replaced key leaves that file and its key untouched. New files never use `enc:none`. Legacy files remain readable and are upgraded to encryption only after successful vault access. The browser waits for the saved session to be readable before creating its context, so recovering access cannot later overwrite the saved cookies with an empty context.
+
+Doctor now checks each saved browser session and offers foreground authorization for its own key on desktop macOS. Provider-login checks receive the actual platform/headless probes. Linux and headless hosts show server data-folder/restart guidance in Doctor and chat, without a native authorization action or a suggested replacement login. Chat keeps the draft while the server vault is unavailable. All new notices have Portuguese and English translations.
+
+![Browser session key recovery on desktop macOS](browser-recovery.png)
+
+![Server guidance without a macOS authorization action](server-recovery.png)
+
+These screenshots use synthetic browser fixtures. Native authorization and existing user vault items were not exercised again in this follow-up; the protected system-dialog acceptance above remains manual.
+
+Final checks after syncing with current `origin/main`:
+
+| Check | PR | Main comparison |
+| --- | --- | --- |
+| Biome / typecheck | Pass; one existing unused-parameter warning | Same warning outside this change |
+| UI unit tests | 1,212 pass / 105 files | No new failures |
+| Browser UI acceptance | 3 pass: desktop draft recovery, server guidance, browser-session recovery | Synthetic fixtures |
+| Sidecar Doctor | 39 pass / 0 fail | 35 pass / 0 fail |
+| Sidecar browser | 129 pass / 1 fail | 119 pass / the same 1 fail |
+| Sidecar VM | 366 pass / 18 skip / 0 fail | 360 pass / 18 skip / 0 fail |
+| Sidecar projects | 75 pass / 0 fail | 75 pass / 0 fail |
+| UI production build / compiled sidecar | Pass | No installed app replaced |
+
+The one shared browser failure is `preview-e2e-local.test.ts`: its real local provider invocation fails before the MCP connection initializes (`closed_before_initialize`). All ten browser vault regressions pass. VM checks use `TOURI_VM_INTEGRATION=0`; browser checks use `TOURI_BROWSER_HEADLESS=1`. These are the relevant folders, not a claim that the entire sidecar suite passed.
+
+Regression proof against the prior PR: the initial nine preservation checks failed before the session-vault fix; three server Doctor cases and three server chat cases failed before platform scoping. Restoring only the prior browser engine while retaining the new vault implementation also fails the new no-empty-context regression. After the fixes, the original encrypted cookies/storage are readable again following simulated authorization, and the preserved chat draft is sent exactly once. The existing deletion test now uses a working synthetic vault and asserts AES-256-GCM rather than depending on the removed unencrypted fallback.
