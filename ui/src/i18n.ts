@@ -28,6 +28,26 @@ export const ptBR = {
   "Usar uma pasta": "Usar uma pasta",
   "Escolha uma pasta navegando pelas pastas deste computador.":
     "Escolha uma pasta navegando pelas pastas deste computador.",
+  "Bot browser": "Navegador do bot",
+  "My Chrome is available only for bots on this Mac. A remote machine cannot reach your Mac's Chrome. Choose Machine Chrome for a bot on the Linux machine.":
+    "Meu Chrome só funciona em bots neste Mac. A máquina remota não pode acessar o Chrome do Mac. Escolha Chrome da máquina para um bot na máquina Linux.",
+  "touri Chrome": "Chrome do touri",
+  "My Chrome": "Meu Chrome",
+  "Machine Chrome": "Chrome da máquina",
+  "Machine Chrome requires a bot on the Linux machine.": "Chrome da máquina requer um bot na máquina Linux.",
+  "My Chrome is available only for bots on this Mac. A remote machine cannot reach your Mac's Chrome.":
+    "Meu Chrome só funciona em bots neste Mac. A máquina remota não pode acessar o Chrome do Mac.",
+  "The bot will act inside your signed-in sessions in a separate Chrome window. You can close that window or press Stop at any time.":
+    "O bot vai agir nas suas sessões já conectadas, em uma janela separada do Chrome. Você pode fechar essa janela ou apertar Parar a qualquer momento.",
+  "Got it": "Entendi",
+  "In Google Chrome, open": "No Google Chrome, abra",
+  "Allow remote debugging.": "Permita a depuração remota.",
+  "Accept Chrome's permission prompt when the bot connects.":
+    "Aceite o pedido de permissão do Chrome quando o bot conectar.",
+  "My Chrome is unavailable. In Google Chrome, open chrome://inspect/#remote-debugging, allow remote debugging and accept Chrome's permission prompt when the bot connects.":
+    "Meu Chrome indisponível. No Google Chrome, abra chrome://inspect/#remote-debugging, permita a depuração remota e aceite o pedido de permissão do Chrome quando o bot conectar.",
+  "Allow this teammate to use its own browser tabs.":
+    "Permitir que este colega use as próprias abas no navegador escolhido.",
   "Arquivos locais": "Arquivos locais",
   "Catálogo de integrações MCP": "Catálogo de integrações MCP",
   "Escolher pasta…": "Escolher pasta…",

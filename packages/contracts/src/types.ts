@@ -97,6 +97,7 @@ export type ApprovalInput = { ctx: Pick<ToolContext, 'botId' | 'threadId' | 'run
 export type ApprovalResult = Result<{ behavior: 'allow' | 'deny'; updatedInput?: unknown; message?: string }, 'NOT_FOUND' | 'TIMEOUT' | 'DENIED'>
 
 export type BotFolder = { path: AbsolutePath; access: 'read-only' | 'read-write' }
+export type BotBrowser = 'touri' | 'local' | 'machine'
 
 export type Bot = {
   /** Defaults for bots created before schema 16: [] and false. */
@@ -128,6 +129,7 @@ export type Bot = {
   homeDir: AbsolutePath
   mainThreadId: Id | null
   browserEnabled: boolean
+  browser: BotBrowser
   computerUse: boolean
   machine: BotMachine
   machineIdleMinutes: number
@@ -558,6 +560,7 @@ export type BrowserErrorCode =
   | 'REPEATED_FAILURE'
   | 'SECRET_ENTRY_ACTIVE'
   | 'ENGINE_UNAVAILABLE'
+  | 'LOCAL_BROWSER_UNAVAILABLE'
   | 'NAVIGATION_FAILED'
   | 'URL_NOT_ALLOWED'
   | 'SITE_BLOCKED'
@@ -669,7 +672,7 @@ export type ProviderAdapter = {
 /* ------------------------------------------------------------------------------------------ */
 
 export type CreateBotInput = { cloudApiKey?: string } & Pick<Bot, 'name' | 'provider'> &
-  Partial<Pick<Bot, 'title' | 'roleLine' | 'description' | 'color' | 'avatarShape' | 'avatarSeed' | 'instructions' | 'model' | 'reasoningEffort' | 'access' | 'approvals' | 'projectId' | 'cwd' | 'browserEnabled' | 'computerUse' | 'machine' | 'machineIdleMinutes' | 'vmProviderLogin' | 'hostComputerUse' | 'folders' | 'anyFolderAccess' | 'providerProfile' | 'claudeAiConnectors'>>
+  Partial<Pick<Bot, 'title' | 'roleLine' | 'description' | 'color' | 'avatarShape' | 'avatarSeed' | 'instructions' | 'model' | 'reasoningEffort' | 'access' | 'approvals' | 'projectId' | 'cwd' | 'browserEnabled' | 'browser' | 'computerUse' | 'machine' | 'machineIdleMinutes' | 'vmProviderLogin' | 'hostComputerUse' | 'folders' | 'anyFolderAccess' | 'providerProfile' | 'claudeAiConnectors'>>
 
 /** A named login under `<appData>/provider-profiles/<name>`, created with `touri profile login`. */
 export type ProviderProfile = { name: string; provider: Provider; loggedIn: boolean; account: string | null }

@@ -69,6 +69,7 @@ const createBot = (input: Seed["bots"][number], index: number, projectId: Id | n
   homeDir: `/Users/demo/Library/Application Support/touri/bots/${input.id}`,
   mainThreadId: null,
   browserEnabled: true,
+  browser: "touri",
   computerUse: false,
   machine: "local",
   machineIdleMinutes: 10,
