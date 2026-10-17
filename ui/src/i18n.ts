@@ -837,6 +837,17 @@ export const ptBR = {
   "Login do provedor nesta máquina": "Login do provedor nesta máquina",
   "Verificando login…": "Verificando login…",
   "Outras opções": "Outras opções",
+  "O cofre de segredos não respondeu. Tente novamente.": "O cofre de segredos não respondeu. Tente novamente.",
+  "O cofre local do servidor está indisponível. Verifique as permissões da pasta de dados do servidor e reinicie o serviço do touri. O login salvo será mantido.":
+    "O cofre local do servidor está indisponível. Verifique as permissões da pasta de dados do servidor e reinicie o serviço do touri. O login salvo será mantido.",
+  "Não foi possível ler a sessão salva do navegador. Abra o Diagnóstico para verificar o cofre.":
+    "Não foi possível ler a sessão salva do navegador. Abra o Diagnóstico para verificar o cofre.",
+  "Permita o acesso ao cofre para restaurar a sessão salva do navegador.":
+    "Permita o acesso ao cofre para restaurar a sessão salva do navegador.",
+  "Não foi possível ler a sessão salva do navegador. Os dados salvos foram mantidos. Verifique o cofre e tente novamente.":
+    "Não foi possível ler a sessão salva do navegador. Os dados salvos foram mantidos. Verifique o cofre e tente novamente.",
+  "Sessão salva do navegador disponível.": "Sessão salva do navegador disponível.",
+  "Navegador · {name} · sessão salva": "Navegador · {name} · sessão salva",
   "O cofre de segredos não respondeu. Permita o acesso ao cofre para continuar.":
     "O cofre de segredos não respondeu. Permita o acesso ao cofre para continuar.",
   "Na janela do macOS, escolha Permitir sempre. Sua mensagem continuará automaticamente.":
@@ -1708,6 +1719,17 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Abrir a prévia do projeto em {path}": "Open the project preview at {path}",
   "Verificando login…": "Checking sign-in…",
   "Outras opções": "Other options",
+  "O cofre de segredos não respondeu. Tente novamente.": "The vault did not respond. Try again.",
+  "O cofre local do servidor está indisponível. Verifique as permissões da pasta de dados do servidor e reinicie o serviço do touri. O login salvo será mantido.":
+    "The server’s local vault is unavailable. Check the permissions of the server’s data folder and restart the touri service. The saved sign-in will be kept.",
+  "Não foi possível ler a sessão salva do navegador. Abra o Diagnóstico para verificar o cofre.":
+    "Could not read the saved browser session. Open Diagnostics to check the vault.",
+  "Permita o acesso ao cofre para restaurar a sessão salva do navegador.":
+    "Allow vault access to restore the saved browser session.",
+  "Não foi possível ler a sessão salva do navegador. Os dados salvos foram mantidos. Verifique o cofre e tente novamente.":
+    "Could not read the saved browser session. The saved data has been kept. Check the vault and try again.",
+  "Sessão salva do navegador disponível.": "Saved browser session is available.",
+  "Navegador · {name} · sessão salva": "Browser · {name} · saved session",
   "O cofre de segredos não respondeu. Permita o acesso ao cofre para continuar.":
     "The vault did not respond. Allow vault access to continue.",
   "Na janela do macOS, escolha Permitir sempre. Sua mensagem continuará automaticamente.":
@@ -2605,6 +2627,8 @@ export const statusLabel = (status: string): string => {
 
 /** Translate only application-authored notices, leaving bot/user content intact. */
 export const localizeNotice = (value: string): string => {
+  const browserSession = /^Navegador · (.+) · sessão salva$/.exec(value)
+  if (browserSession) return t("Navegador · {name} · sessão salva", { name: browserSession[1] ?? "" })
   const invalidLogin = /^(.+): login do (Claude|Codex|OpenCode) inválido\. Conecte novamente\.$/.exec(value)
   if (invalidLogin)
     return t("{name}: login do {provider} inválido. Conecte novamente.", {

@@ -12,12 +12,17 @@ const bot = api.getState().bots[0]
 if (!bot) throw new Error("fixture missing")
 const request = api.request
 let authorized = false
+const scenario = new URLSearchParams(window.location.search).get("scenario")
+const serverGuidance =
+  "O cofre local do servidor está indisponível. Verifique as permissões da pasta de dados do servidor e reinicie o serviço do touri. O login salvo será mantido."
 window.addEventListener("vault-probe-allowed", () => {
   authorized = true
 })
 api.request = (async (route, input, path) =>
   route === "GET /bots/:id/provider-login/flow"
-    ? { provider: bot.provider, state: authorized ? "ready" : "vault-locked" }
+    ? scenario === "server"
+      ? { provider: bot.provider, state: "error", host: "server", message: serverGuidance }
+      : { provider: bot.provider, state: authorized || scenario === "browser" ? "ready" : "vault-locked" }
     : request(route, input, path)) as ApiRequest
 const doctor: DoctorReport = {
   running: false,
@@ -33,6 +38,31 @@ const doctor: DoctorReport = {
       fix: "claude setup-token",
     },
   ],
+}
+if (scenario === "server") {
+  doctor.checks = [
+    {
+      id: "provider-login:test",
+      label: "Login · Bot de teste · cofre",
+      ok: false,
+      status: "fail",
+      detail: serverGuidance,
+      fix: null,
+    },
+  ]
+} else if (scenario === "browser") {
+  doctor.checks = [
+    {
+      id: "browser-session:test",
+      label: "Navegador · Bot de teste · sessão salva",
+      ok: false,
+      status: "fail",
+      detail: "Permita o acesso ao cofre para restaurar a sessão salva do navegador.",
+      action: "authorize-vault",
+      vaultAccount: "browser-session-key:test",
+      fix: null,
+    },
+  ]
 }
 const Harness = () => {
   const [draft, setDraft] = useState("Oi! Em uma linha, o que você faz?")

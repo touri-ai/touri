@@ -51,10 +51,14 @@ const DoctorRow = ({
         {status === "pass" ? "✓" : "!"}
       </span>
       <div className="doctor-check-content">
-        <strong>{label}</strong>
+        <strong>{localizeNotice(label)}</strong>
         <span>
           {check.action === "authorize-vault"
-            ? t("Permita o acesso ao cofre para usar o login salvo.")
+            ? t(
+                check.id.startsWith("browser-session:")
+                  ? "Permita o acesso ao cofre para restaurar a sessão salva do navegador."
+                  : "Permita o acesso ao cofre para usar o login salvo.",
+              )
             : localizeNotice(check.detail)}
         </span>
         {status !== "pass" && check.action === "authorize-vault" && check.vaultAccount && (

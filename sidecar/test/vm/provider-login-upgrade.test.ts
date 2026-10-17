@@ -213,17 +213,26 @@ for (const errorCode of ["VAULT_ACCESS_REQUIRED", "VAULT_TIMEOUT", "VAULT_CANCEL
     }
   })
 
-test("server vault failures never offer macOS authorization", async () => {
-  const { createProviderLoginFlow } = await import("../../src/vm/provider-login-flow")
-  const f = fixture(async () => ({ success: false, errorCode: "HOST_ERROR", error: "offline" }), false)
-  f.kernel.subscribe = () => () => {}
-  f.kernel.services = { use: () => undefined, provide: () => {} } as Kernel["services"]
-  const flow = createProviderLoginFlow({ kernel: f.kernel, hostHome: f.root, platform: "linux", headless: true })
-  try {
-    await expect(flow.status(f.bot)).rejects.toThrow("cofre")
-  } finally {
-    flow.dispose()
-    f.stop()
-    f.db.close()
-  }
-})
+for (const host of [
+  { platform: "linux", headless: true },
+  { platform: "linux", headless: false },
+  { platform: "darwin", headless: true },
+] as const)
+  test(`${host.platform} headless=${host.headless}: chat gives server vault guidance without macOS authorization`, async () => {
+    const { createProviderLoginFlow } = await import("../../src/vm/provider-login-flow")
+    const f = fixture(async () => ({ success: false, errorCode: "HOST_ERROR", error: "offline" }), false)
+    f.kernel.subscribe = () => () => {}
+    f.kernel.services = { use: () => undefined, provide: () => {} } as Kernel["services"]
+    const flow = createProviderLoginFlow({ kernel: f.kernel, hostHome: f.root, ...host })
+    try {
+      expect(await flow.status(f.bot)).toMatchObject({
+        state: "error",
+        host: "server",
+        message: expect.stringContaining("cofre local do servidor"),
+      })
+    } finally {
+      flow.dispose()
+      f.stop()
+      f.db.close()
+    }
+  })

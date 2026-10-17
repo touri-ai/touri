@@ -41,7 +41,9 @@ export const ProviderLoginFlow = ({
                     : flow.state === "cancelled"
                       ? t("Login cancelado.")
                       : flow.state === "error"
-                        ? t("Não foi possível concluir o login. Verifique de novo ou use outra conta.")
+                        ? flow.host === "server" && flow.message
+                          ? localizeNotice(flow.message)
+                          : t("Não foi possível concluir o login. Verifique de novo ou use outra conta.")
                         : t("Entre no provedor para enviar mensagens.")}
       </p>
       {flow?.state === "vault-locked" && (
@@ -149,11 +151,15 @@ export const ProviderLoginFlow = ({
           {t(hostIsMac ? "Usar login deste Mac" : "Usar login deste servidor")}
         </button>
       )}
-      {flow && flow.state !== "waiting" && flow.state !== "ready" && flow.state !== "vault-locked" && (
-        <button type="button" className="button button-quiet" disabled={busy} onClick={() => void act("start")}>
-          {flow.state === "idle" ? t("Entrar no {provider}", { provider }) : t("Usar outra conta")}
-        </button>
-      )}
+      {flow &&
+        flow.state !== "waiting" &&
+        flow.state !== "ready" &&
+        flow.state !== "vault-locked" &&
+        !(flow.state === "error" && flow.host === "server") && (
+          <button type="button" className="button button-quiet" disabled={busy} onClick={() => void act("start")}>
+            {flow.state === "idle" ? t("Entrar no {provider}", { provider }) : t("Usar outra conta")}
+          </button>
+        )}
       {flow?.state !== "waiting" &&
         flow?.state !== "ready" &&
         flow?.state !== "host-available" &&

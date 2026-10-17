@@ -15,6 +15,7 @@ import {
   readHostLoginFile,
   readVault,
   redactProviderLogin,
+  SERVER_VAULT_GUIDANCE,
   storedProviderLoginSource,
   validLogin,
 } from "./provider-login"
@@ -231,6 +232,8 @@ export const createProviderLoginFlow = ({
       try {
         value = await readVault(kernel, target, loginTarget(target.provider), {})
       } catch (error) {
+        if (host === "server" && error instanceof ProviderLoginError)
+          return { provider: target.provider, state: "error", host, message: SERVER_VAULT_GUIDANCE }
         if (
           host === "mac" &&
           error instanceof ProviderLoginError &&

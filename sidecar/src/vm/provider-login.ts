@@ -120,8 +120,10 @@ export const hostLoginFileExists = (hostHome: string, provider: Bot["provider"])
 const notConnectedMessage = (target: LoginTarget): string =>
   `${target.label} ainda não está conectado neste bot. Abra Permissões do bot > Computador > Login do provedor e escolha o arquivo de login do host ou salve um login no cofre (${target.command}).`
 
-const vaultTransportMessage = (): string =>
-  "O cofre de segredos não respondeu. Permita o acesso ao cofre para continuar."
+const vaultTransportMessage = (): string => "O cofre de segredos não respondeu. Tente novamente."
+
+export const SERVER_VAULT_GUIDANCE =
+  "O cofre local do servidor está indisponível. Verifique as permissões da pasta de dados do servidor e reinicie o serviço do touri. O login salvo será mantido."
 
 export const readVault = async (
   kernel: Kernel,
