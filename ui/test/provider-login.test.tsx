@@ -1,6 +1,6 @@
 import { act, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react"
 import type { ApiRoutes, Message, ProviderLoginFlow } from "@touri/contracts"
-import { createRef } from "react"
+import { createRef, useState } from "react"
 import { afterEach, expect, it, vi } from "vitest"
 import type { ApiRequest } from "../src/api/client"
 import { createMockApi } from "../src/api/mock"
@@ -9,6 +9,7 @@ import { BotCreateModal } from "../src/components/Modals"
 import { ProviderLogin } from "../src/components/ProviderLogin"
 import { ApiError } from "../src/errors"
 import { t } from "../src/i18n"
+import { useProviderLogin } from "../src/useProviderLogin"
 import { useWorkspace } from "../src/useWorkspace"
 
 afterEach(() => vi.useRealTimers())
@@ -168,7 +169,7 @@ it("keeps paste hidden and does not clear a rejected draft credential", async ()
   expect(document.body.textContent).not.toContain("synthetic-secret")
 })
 
-it("composer blocks submission until login succeeds and shows the device challenge", async () => {
+it("composer keeps an attempted message as a draft and sends it once login succeeds", async () => {
   vi.useFakeTimers()
   const f = fixture("waiting")
   f.setFlow({ provider: "codex", state: "waiting", deviceCode: "ABCD-EFGH" })
@@ -207,9 +208,8 @@ it("composer blocks submission until login succeeds and shows the device challen
   expect(screen.queryByText(/Entre no .+ para continuar/)).toBeNull()
   expect(screen.queryByRole("button", { name: "Entrar no provedor" })).toBeNull()
   const button = screen.getByRole("button", { name: "Enviar" })
-  expect(button).toBeDisabled()
-  fireEvent.click(screen.getByRole("button", { name: "Colar token manualmente" }))
-  expect(openLogin).toHaveBeenCalledOnce()
+  expect(button).toBeEnabled()
+  expect(screen.queryByRole("button", { name: "Colar token manualmente" })).toBeNull()
   fireEvent.submit(screen.getByRole("form", { name: "Compor mensagem" }))
   expect(send).not.toHaveBeenCalled()
   f.setFlow({ provider: "codex", state: "ready" })
@@ -217,7 +217,10 @@ it("composer blocks submission until login succeeds and shows the device challen
     await vi.advanceTimersByTimeAsync(1000)
   })
   expect(button).toBeEnabled()
-  fireEvent.click(button)
+  expect(send).toHaveBeenCalledOnce()
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(2000)
+  })
   expect(send).toHaveBeenCalledOnce()
 })
 
@@ -245,7 +248,7 @@ it.each(["mac", "server"] as const)("composer identifies the %s host and waits f
   )
   await screen.findByText(`Há um login disponível neste ${location}.`)
   const submit = screen.getByRole("button", { name: "Enviar" })
-  expect(submit).toBeDisabled()
+  expect(submit).toBeEnabled()
   expect(f.request.mock.calls.some(([, input]) => input.action === "start" || input.action === "use-host")).toBe(false)
   fireEvent.click(screen.getByRole("button", { name: `Usar login deste ${location}` }))
   await waitFor(() => expect(submit).toBeEnabled())
@@ -397,4 +400,160 @@ it("opens the created bot when adoption succeeded but its response was lost", as
     { id: result.current.data.selectedBotId },
   )
   expect(result.current.data.selectedThreadId).toBe(result.current.data.bots.at(-1)?.mainThreadId)
+})
+
+const recoveringComposer = (f: ReturnType<typeof fixture>, onSend = vi.fn().mockResolvedValue(undefined)) => {
+  const bot = f.api.getState().bots[0]
+  if (!bot) throw new Error("Missing fixture")
+  const Harness = ({ threadId = "first-thread" }: { threadId?: string }) => {
+    const [draft, setDraft] = useState("Oi! Em uma linha, o que você faz?")
+    return (
+      <Composer
+        api={f.api}
+        bot={{ ...bot, machine: "vm" }}
+        threadId={threadId}
+        parentId={null}
+        draft={draft}
+        onDraft={setDraft}
+        inputRef={createRef()}
+        activeRun={null}
+        queuedCount={0}
+        onSend={onSend}
+        onCancel={vi.fn()}
+      />
+    )
+  }
+  return { bot, Harness, send: onSend }
+}
+
+it.each(["idle", "waiting", "cancelled", "error"] as const)(
+  "%s: a VM draft remains editable and an attempted send resumes exactly once when login recovers",
+  async (state) => {
+    vi.useFakeTimers()
+    const f = fixture(state)
+    const { bot, Harness, send } = recoveringComposer(f)
+    render(<Harness />)
+    await act(async () => {})
+    expect(screen.getAllByRole("complementary", { name: "Autenticação necessária" })).toHaveLength(1)
+    const input = screen.getByRole("textbox")
+    expect(input).toBeEnabled()
+    expect(screen.getByRole("button", { name: "Enviar" })).toBeEnabled()
+    fireEvent.keyDown(input, { key: "Enter" })
+    await act(async () => {})
+    expect(send).not.toHaveBeenCalled()
+    expect(input).toHaveValue("Oi! Em uma linha, o que você faz?")
+    expect(f.request.mock.calls.some(([, input]) => input.action === "start")).toBe(false)
+    f.setFlow({ provider: bot.provider, state: "ready" })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000)
+    })
+    expect(send).toHaveBeenCalledExactlyOnceWith("Oi! Em uma linha, o que você faz?", null, [])
+    expect(input).toHaveValue("")
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000)
+    })
+    expect(send).toHaveBeenCalledOnce()
+  },
+)
+
+it("a failed check offers checking the saved login again without launching browser login", async () => {
+  const f = fixture("ready")
+  const request = f.api.request
+  let available = false
+  f.api.request = (async (route, input, path) => {
+    if (!available && route === "GET /bots/:id/provider-login/flow") throw new Error("vault timeout")
+    return request(route, input, path)
+  }) as ApiRequest
+  const { Harness, send } = recoveringComposer(f)
+  render(<Harness />)
+  await screen.findByText("Não foi possível verificar o login salvo. Verifique de novo.")
+  fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter" })
+  await waitFor(() => expect(screen.getByRole("button", { name: "Verificar de novo" })).toBeEnabled())
+  expect(send).not.toHaveBeenCalled()
+  available = true
+  fireEvent.click(screen.getByRole("button", { name: "Verificar de novo" }))
+  await waitFor(() => expect(send).toHaveBeenCalledOnce())
+  expect(f.request.mock.calls.some(([route]) => route === "POST /bots/:id/provider-login/flow")).toBe(false)
+})
+
+it.each(["edit", "conversation"] as const)(
+  "does not send an old draft after a %s change while login recovers",
+  async (change) => {
+    vi.useFakeTimers()
+    const f = fixture("cancelled")
+    const { bot, Harness, send } = recoveringComposer(f)
+    const view = render(<Harness />)
+    await act(async () => {})
+    fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter" })
+    await act(async () => {})
+    if (change === "edit") fireEvent.change(screen.getByRole("textbox"), { target: { value: "Outro rascunho" } })
+    else view.rerender(<Harness threadId="second-thread" />)
+    f.setFlow({ provider: bot.provider, state: "ready" })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000)
+    })
+    expect(send).not.toHaveBeenCalled()
+    expect(screen.getByRole("textbox")).not.toHaveValue("")
+    expect(screen.getByRole("button", { name: "Enviar" })).toBeEnabled()
+  },
+)
+
+it("offers provider sign-in explicitly and cancellation leaves the draft usable", async () => {
+  const f = fixture("idle")
+  const { bot, Harness, send } = recoveringComposer(f)
+  render(<Harness />)
+  const provider = bot.provider === "claude" ? "Claude" : "Codex"
+  fireEvent.click(await screen.findByRole("button", { name: `Entrar no ${provider}` }))
+  fireEvent.click(await screen.findByRole("button", { name: "Cancelar login" }))
+  await screen.findByText("Login cancelado.")
+  expect(screen.getByRole("button", { name: "Usar outra conta" })).toBeEnabled()
+  expect(screen.getByRole("button", { name: "Verificar de novo" })).toBeEnabled()
+  expect(screen.getByRole("button", { name: "Enviar" })).toBeEnabled()
+  expect(screen.getByRole("textbox")).toHaveValue("Oi! Em uma linha, o que você faz?")
+  expect(send).not.toHaveBeenCalled()
+})
+
+it.each(["failure", "cancelled"] as const)("ignores a stale poll's %s after a successful recheck", async (outcome) => {
+  const f = fixture("ready")
+  const request = f.api.request
+  let reject: ((error: Error) => void) | undefined
+  let resolve: ((flow: ProviderLoginFlow) => void) | undefined
+  let first = true
+  f.api.request = (async (route, input, path) => {
+    if (first && route === "GET /bots/:id/provider-login/flow") {
+      first = false
+      return new Promise<ProviderLoginFlow>((yes, no) => {
+        resolve = yes
+        reject = no
+      })
+    }
+    return request(route, input, path)
+  }) as ApiRequest
+  const { result } = renderHook(() => useProviderLogin(f.api, "bot", "codex", true, false))
+  await act(async () => {
+    await result.current.recheck()
+  })
+  expect(result.current.flow?.state).toBe("ready")
+  await act(async () => {
+    if (outcome === "failure") reject?.(new Error("old vault error"))
+    else resolve?.({ provider: "codex", state: "cancelled" })
+  })
+  expect(result.current.flow?.state).toBe("ready")
+  expect(result.current.error).toBeNull()
+})
+
+it.each([
+  ["Login cancelado.", "Sign-in cancelled."],
+  ["Não foi possível verificar o login salvo. Verifique de novo.", "Could not check the saved login. Check again."],
+  ["Verificar de novo", "Check again"],
+  ["Usar outra conta", "Use another account"],
+  [
+    "Sua mensagem fica como rascunho até o login estar pronto.",
+    "Your message stays as a draft until sign-in is ready.",
+  ],
+] as const)("translates login recovery copy: %s", (key, english) => {
+  expect(t(key, {}, "pt-BR")).toBe(key)
+  expect(t(key, {}, "en")).toBe(english)
+  expect(t("Entrar no {provider}", { provider: "Claude" }, "pt-BR")).toBe("Entrar no Claude")
+  expect(t("Entrar no {provider}", { provider: "Claude" }, "en")).toBe("Sign in to Claude")
 })

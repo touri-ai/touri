@@ -83,11 +83,9 @@ export const Composer = ({
   queuedCount,
   onSend,
   onCancel,
-  onOpenPermissions,
-  onOpenProviderLogin,
   notice,
 }: ComposerProps) => {
-  const login = useProviderLogin(api, bot?.id ?? "", bot?.provider ?? "codex", !!bot && bot.machine !== "cloud")
+  const login = useProviderLogin(api, bot?.id ?? "", bot?.provider ?? "codex", !!bot && bot.machine !== "cloud", false)
   const { account: cloudAccount } = useCloudAccount(api, bot?.machine === "cloud")
   const cloudUnavailable = bot?.machine === "cloud" && cloudAccount?.runtimeAvailable !== true
   const [focused, setFocused] = useState(false)
@@ -120,6 +118,15 @@ export const Composer = ({
   const [picking, setPicking] = useState(false)
   const [dragging, setDragging] = useState(false)
   const sendingRef = useRef(false)
+  const pendingSend = useRef<{
+    api: UiApi
+    botId: string | undefined
+    provider: Bot["provider"] | undefined
+    threadId: Id
+    parentId: Id | null
+    text: string
+    files: Array<AttachedFile>
+  } | null>(null)
   const stoppingRef = useRef<string | null>(null)
   const stopping = Boolean(activeRun && activeRun.id === stoppingRunId)
   const alive = useRef(true)
@@ -227,7 +234,6 @@ export const Composer = ({
   const chooseFiles = () => fileInput.current?.click()
   const uploading = files.some((file) => file.status === "loading")
   const blocked =
-    login.blocked ||
     cloudUnavailable ||
     sending ||
     uploading ||
@@ -235,6 +241,12 @@ export const Composer = ({
     (!draft.trim() && files.length === 0)
   const submit = async () => {
     if (blocked || sendingRef.current) return
+    if (login.blocked) {
+      pendingSend.current = { api, botId: bot?.id, provider: bot?.provider, threadId, parentId, text: draft, files }
+      if (login.flow?.state !== "waiting" && !login.busy) void login.recheck()
+      return
+    }
+    pendingSend.current = null
     sendingRef.current = true
     setSending(true)
     setError(null)
@@ -257,6 +269,29 @@ export const Composer = ({
       if (alive.current) setSending(false)
     }
   }
+  // Resume only the exact draft the user tried to send, in the same conversation.
+  const submitRef = useRef(submit)
+  submitRef.current = submit
+  useEffect(() => {
+    const pending = pendingSend.current
+    if (!pending) return
+    if (
+      pending.api !== api ||
+      pending.botId !== bot?.id ||
+      pending.provider !== bot?.provider ||
+      pending.threadId !== threadId ||
+      pending.parentId !== parentId ||
+      pending.text !== draft ||
+      pending.files !== files
+    ) {
+      pendingSend.current = null
+      return
+    }
+    if (!login.blocked) {
+      pendingSend.current = null
+      void submitRef.current()
+    }
+  }, [api, bot?.id, bot?.provider, threadId, parentId, draft, files, login.blocked])
   const stop = async () => {
     if (!activeRun || stoppingRef.current === activeRun.id) return
     const runId = activeRun.id
@@ -330,12 +365,10 @@ export const Composer = ({
       )}
       {cloudUnavailable && <p role="status">{t("Cloud execution coming soon")}</p>}
       {login.blocked && (
-        <>
+        <aside className="composer-login-card" aria-label={t("Authentication required")}>
+          <p>{t("Sua mensagem fica como rascunho até o login estar pronto.")}</p>
           <ProviderLoginFlow login={login} />
-          <button type="button" className="text-button" onClick={onOpenProviderLogin ?? onOpenPermissions}>
-            {t("Colar token manualmente")}
-          </button>
-        </>
+        </aside>
       )}
       <textarea
         disabled={cloudUnavailable}

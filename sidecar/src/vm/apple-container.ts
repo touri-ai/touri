@@ -3,6 +3,7 @@ import { cpSync, existsSync, lstatSync, mkdirSync, realpathSync, statfsSync } fr
 import { createServer, type Socket } from "node:net"
 import { tmpdir } from "node:os"
 import { isAbsolute, join, resolve } from "node:path"
+import { withToolPath } from "../kernel/shell-env"
 import { spawnTree } from "../kernel/spawn"
 import { commandError, createVmCommandRunner, type VmCommandRunner } from "./command"
 import { machineConnection } from "./connection"
@@ -36,7 +37,7 @@ type AppleContainerProviderOptions = {
   availableDiskBytes?: (path: string) => number
 }
 
-const defaultBinary = (): string => Bun.which("container") ?? "container"
+const defaultBinary = (): string => Bun.which("container", { PATH: withToolPath().PATH }) ?? "container"
 
 // Run before the image's init on EVERY start, even with an older bot image.
 // Python expands paths in the guest; no shell interpolation or unresolved globs.
@@ -258,7 +259,7 @@ export const createAppleContainerProvider = ({
       const child = spawnTree({
         cmd: binary,
         cwd: tmpdir(),
-        env: { PATH: "/opt/homebrew/bin:/usr/bin:/bin" },
+        env: withToolPath(),
         args: [
           "exec",
           "--interactive",
@@ -341,7 +342,7 @@ export const createAppleContainerProvider = ({
               imageContext(tmpdir()),
             ],
             cwd: tmpdir(),
-            env: { PATH: "/opt/homebrew/bin:/usr/bin:/bin" },
+            env: withToolPath(),
           })
           if (!child.success) throw new Error(child.error)
           const cancel = () => child.kill("SIGKILL")
