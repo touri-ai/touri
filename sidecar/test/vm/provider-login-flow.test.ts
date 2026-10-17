@@ -197,14 +197,15 @@ const waitView = async (f: ReturnType<typeof fixture>, predicate: (view: Provide
 const waitState = (f: ReturnType<typeof fixture>, state: string) => waitView(f, (view) => view.state === state)
 
 for (const provider of ["claude", "codex", "opencode"] as const)
-  test(`${provider}: official login invocation captures credentials privately into this bot's vault`, async () => {
-    const f = fixture(provider)
+  test(`${provider}: headless official login captures credentials privately into this bot's vault`, async () => {
+    const f = fixture(provider, "success", 3000, { platform: "linux", headless: true })
     expect((await f.flow.status(f.bot)).state).toBe("idle")
     expect((await f.flow.action(f.bot, { action: "start" })).state).toBe("waiting")
     await f.flow.action(f.bot, { action: "start" })
     expect(await waitState(f, "ready")).toEqual({ provider, state: "ready" })
     expect(f.invocations).toHaveLength(1)
     const invocation = f.invocations[0]
+    expect(invocation?.env.BROWSER).toBe("echo")
     expect(invocation?.args).toEqual(
       provider === "claude"
         ? ["setup-token"]
