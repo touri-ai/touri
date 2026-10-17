@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { mkdtempSync, readFileSync, statSync } from "node:fs"
+import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { UiEvent } from "@touri/contracts"
@@ -60,4 +60,32 @@ test("notifications become UI events", async () => {
   const { callHost, events } = setup()
   await callHost("notify", { title: "Done", body: "Run finished", threadId: null })
   expect(events).toEqual([{ type: "notify", level: "info", title: "Done", body: "Run finished", threadId: null }])
+})
+
+test("approval echoes preserve the request identity regardless of the displayed title", async () => {
+  const { dir, callHost, events } = setup()
+  try {
+    await callHost("notify", {
+      title: "Café Ideias: Revisar",
+      body: "Autorizar ação",
+      threadId: "thread-a",
+      requestId: "request-a",
+      notificationId: 7,
+      kind: "approval",
+    })
+    expect(events).toEqual([
+      {
+        type: "notify",
+        level: "info",
+        title: "Café Ideias: Revisar",
+        body: "Autorizar ação",
+        threadId: "thread-a",
+        requestId: "request-a",
+        notificationId: 7,
+        kind: "approval",
+      },
+    ])
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
 })

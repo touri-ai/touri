@@ -291,3 +291,17 @@
   font-weight: 600;
   pointer-events: none;
 }
+
+.composer-login-card {
+  display: grid;
+  gap: var(--space-8);
+  padding: var(--space-12);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-12);
+  background: var(--surface-panel);
+  font-size: var(--type-13);
+}
+.composer-login-card > p {
+  margin: 0;
+  color: var(--text-secondary);
+}

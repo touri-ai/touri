@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite"
 import type { Kernel, NotificationRecord, NotifyInput, NotifyResolution } from "@touri/contracts"
-import { buildDeepLink, shouldNotifyNative } from "./native"
+import { buildDeepLink, nativeNotificationTitle, shouldNotifyNative } from "./native"
 import type { SseHub } from "./sse"
 import type { NotificationStore } from "./store"
 
@@ -27,20 +27,26 @@ export const createNotifier = ({ kernel, store, hub }: { kernel: Kernel; store: 
       : null
     if (!shouldNotifyNative({ notification, preference: bot?.notifications ?? null })) return
     void kernel.callHost("notify", {
-      title: notification.botName ? `${notification.botName}: ${notification.title}` : notification.title,
+      title: clip({ value: nativeNotificationTitle(notification), max: MAX_TITLE }),
       body: notification.body,
       threadId: notification.threadId,
+      requestId: notification.requestId,
+      notificationId: notification.id,
+      kind: notification.kind,
       onlyWhenUnfocused: true,
       deepLink: buildDeepLink({ botId: notification.botId, threadId: notification.threadId }),
     })
   }
 
   const emit = (input: NotifyInput): NotificationRecord => {
+    const threadId = input.threadId
+      ? (kernel.services.use("store.api")?.getThread({ threadId: input.threadId })?.groupThreadId ?? input.threadId)
+      : null
+    const existing = input.requestId ? store.byRequestId(input.requestId) : null
+    if (existing && existing.kind === input.kind && existing.threadId === threadId) return existing
     const { notification, seq } = store.insert({
       ...input,
-      threadId: input.threadId
-        ? (kernel.services.use("store.api")?.getThread({ threadId: input.threadId })?.groupThreadId ?? input.threadId)
-        : null,
+      threadId,
       title: clip({ value: kernel.redact(input.title), max: MAX_TITLE }),
       body: clip({ value: kernel.redact(input.body), max: MAX_BODY }),
     })
@@ -66,7 +72,12 @@ export const createNotifier = ({ kernel, store, hub }: { kernel: Kernel; store: 
     resolution: NotifyResolution
   }): NotificationRecord | null => {
     const found = store.byRequestId(requestId)
-    return found ? finish({ id: found.id, resolution }) : null
+    if (!found) return null
+    const matches = found.threadId
+      ? store.unresolvedForThread({ threadId: found.threadId, kinds: [found.kind] })
+      : [found]
+    for (const item of matches) if (item.requestId === requestId) finish({ id: item.id, resolution })
+    return store.byRequestId(requestId)
   }
 
   return { emit, finish, resolveRequest }

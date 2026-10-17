@@ -3,7 +3,8 @@ import { localizeNotice, t } from "../i18n"
 import type { useProviderLogin } from "../useProviderLogin"
 
 export const ProviderLoginFlow = ({ login }: { login: ReturnType<typeof useProviderLogin> }) => {
-  const { flow, error, busy, act } = login
+  const { flow, error, busy, act, recheck } = login
+  const provider = login.provider === "claude" ? "Claude" : login.provider === "codex" ? "Codex" : "OpenCode"
   const hostIsMac = flow?.host === "mac"
   const [code, setCode] = useState("")
   const codeId = useId()
@@ -15,36 +16,24 @@ export const ProviderLoginFlow = ({ login }: { login: ReturnType<typeof useProvi
     const result = await act("code", code)
     if (result) setCode("")
   }
-  if (error && flow?.state !== "waiting" && flow?.state !== "ready")
-    return (
-      <div className="provider-login-flow">
-        <p role="alert">{error}</p>
-        <button
-          type="button"
-          className="button button-brand"
-          disabled={busy}
-          onClick={() => void act(flow?.state === "host-available" ? "use-host" : "start")}
-        >
-          {t("Tentar novamente")}
-        </button>
-      </div>
-    )
   return (
     <div className="provider-login-flow">
-      <p aria-live="polite">
-        {!flow
-          ? t("Verificando login…")
-          : flow.state === "waiting"
-            ? t("Aguardando login no navegador…")
-            : flow.state === "ready"
-              ? t("Login disponível para este bot.")
-              : flow.state === "host-available"
-                ? t(hostIsMac ? "Há um login disponível neste Mac." : "Há um login disponível neste servidor.")
-                : flow.state === "cancelled"
-                  ? t("Login cancelado.")
-                  : flow.state === "error"
-                    ? t("Não foi possível concluir o login. Tente novamente ou cole o token manualmente.")
-                    : t("Entre no provedor para enviar mensagens.")}
+      <p aria-live="polite" role={error && flow?.state !== "waiting" ? "alert" : undefined}>
+        {error && flow?.state !== "waiting"
+          ? error
+          : !flow
+            ? t("Verificando login…")
+            : flow.state === "waiting"
+              ? t("Aguardando login no navegador…")
+              : flow.state === "ready"
+                ? t("Login disponível para este bot.")
+                : flow.state === "host-available"
+                  ? t(hostIsMac ? "Há um login disponível neste Mac." : "Há um login disponível neste servidor.")
+                  : flow.state === "cancelled"
+                    ? t("Login cancelado.")
+                    : flow.state === "error"
+                      ? t("Não foi possível concluir o login. Verifique de novo ou use outra conta.")
+                      : t("Entre no provedor para enviar mensagens.")}
       </p>
       {flow?.state === "waiting" && (
         <>
@@ -146,10 +135,15 @@ export const ProviderLoginFlow = ({ login }: { login: ReturnType<typeof useProvi
       )}
       {flow && flow.state !== "waiting" && flow.state !== "ready" && (
         <button type="button" className="button button-quiet" disabled={busy} onClick={() => void act("start")}>
-          {t("Entrar no navegador")}
+          {flow.state === "idle" ? t("Entrar no {provider}", { provider }) : t("Usar outra conta")}
         </button>
       )}
-      {error && <p role="alert">{error}</p>}
+      {flow?.state !== "waiting" && flow?.state !== "ready" && flow?.state !== "host-available" && (
+        <button type="button" className="button button-brand" disabled={busy} onClick={() => void recheck()}>
+          {t("Verificar de novo")}
+        </button>
+      )}
+      {error && flow?.state === "waiting" && <p role="alert">{error}</p>}
     </div>
   )
 }
