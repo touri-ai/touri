@@ -794,7 +794,7 @@ export const createRuntimeEngine = ({
       let releaseLogin: (() => void) | undefined
       try {
         if (bot.machine !== "vm" && bot.machine !== "cloud") {
-          const login = await prepareLocalProviderLogin(kernel, bot, controller.signal)
+          const login = await prepareLocalProviderLogin(kernel, bot, controller.signal, env.HOME)
           Object.assign(env, login.env)
           releaseLogin = login.release
         }

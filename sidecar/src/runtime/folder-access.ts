@@ -51,6 +51,12 @@ export const localFolderProfile = (
     ),
     ...(env.OPENCODE_CONFIG ? [dirname(env.OPENCODE_CONFIG)] : []),
     ...[env.CODEX_HOME, env.CLAUDE_CONFIG_DIR, env.XDG_DATA_HOME].filter((path): path is string => !!path),
+    // The managed Codex home's auth link must remain writable for shared token refreshes.
+    ...(args.bot.provider === "codex" &&
+    env.CODEX_HOME &&
+    canonicalPath(join(env.CODEX_HOME, "auth.json")) === canonicalPath(join(home, ".codex/auth.json"))
+      ? [canonicalPath(join(env.CODEX_HOME, "auth.json"))]
+      : []),
   ]
   const state = [
     ...runtimePaths,
