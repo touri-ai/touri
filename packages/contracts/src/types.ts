@@ -49,6 +49,8 @@ export type Result<T, C extends string = string> = Ok<T> | Err<C>
 export type DiscoveredProject = { path: AbsolutePath; name: string; lastModified: number }
 
 export type FolderListing = {
+  /** Whether this host can enforce provider folder grants. Browsing alone grants nothing. */
+  canGrant: boolean
   home: AbsolutePath
   path: AbsolutePath
   parent: AbsolutePath | null
