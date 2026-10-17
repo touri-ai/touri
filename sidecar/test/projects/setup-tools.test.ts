@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite"
-import { afterEach, expect, test } from "bun:test"
+import { afterEach, expect, spyOn, test } from "bun:test"
 import {
   chmodSync,
   existsSync,
@@ -17,6 +17,7 @@ import { createApprovalBridge } from "../../src/approvals/bridge"
 import { createStandingGrantStore } from "../../src/approvals/grants"
 import { setDelegation } from "../../src/groups/security"
 import { createKernel } from "../../src/kernel"
+import * as folderCapability from "../../src/kernel/folder-capability"
 import type { McpCallerContext } from "../../src/mcp/auth"
 import { createToolRouter } from "../../src/mcp/router"
 import { init as initNotify } from "../../src/notify"
@@ -654,6 +655,27 @@ test("schema forbids other bot IDs, any-folder access, invalid modes and ambiguo
   expect(f.cards).toEqual([])
   expect(f.currentBot()?.anyFolderAccess).toBe(false)
 })
+
+for (const pending of [false, true])
+  test(`unavailable confinement ${pending ? "during approval" : "before approval"} never persists a folder grant`, async () => {
+    const f = await fixture()
+    const probe = spyOn(folderCapability, "refreshHostFolderAccess").mockResolvedValue(pending)
+    try {
+      const call = f.call("folder_access_request", { path: f.path, mode: "read" })
+      if (pending) {
+        await f.pending()
+        probe.mockResolvedValue(false)
+        await f.answer("allow")
+      }
+      expect(await call).toMatchObject({ success: false, error: folderCapability.folderAccessUnavailable })
+      expect(f.currentBot()?.folders).toEqual([])
+      expect(f.currentBot()?.anyFolderAccess).toBe(false)
+      expect(existsSync(f.path)).toBe(true)
+      if (!pending) expect(f.cards).toEqual([])
+    } finally {
+      probe.mockRestore()
+    }
+  })
 
 test("a foreign thread and delegated peer cannot change this bot", async () => {
   const f = await fixture()

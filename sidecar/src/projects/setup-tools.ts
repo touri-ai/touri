@@ -366,6 +366,7 @@ export const createSetupTools = ({
             return denied(
               "O acesso não foi aprovado ou a configuração mudou. Nenhuma pasta foi criada e as permissões foram mantidas.",
             )
+          if (bot.machine === "local" && !(await refreshHostFolderAccess())) return denied(folderAccessUnavailable)
           // Walking the requested tree and revalidating existing grants require
           // consent too. Keep the final guard adjacent to the configuration write.
           const folders = parseBotFolders([
