@@ -28,10 +28,16 @@ test("typing in a long conversation does not render transcript Markdown", async 
   if (!bot || !thread) throw new Error("Missing fixture conversation")
   bot.machine = "vm"
   const messages = createComposerPerformanceMessages(thread.id)
+  // Completed provider replies are immutable. Use a live reply in the DOM-only
+  // renderer's first virtual window to exercise an actual incoming update.
+  const reply = messages[1]
+  if (!reply) throw new Error("Missing synthetic reply")
+  reply.status = "streaming"
   state.messages.splice(0, state.messages.length, ...messages)
   thread.activeLeafId = messages.at(-1)?.id ?? null
   render(<App kernel={{ services: { api } }} />)
   const input = await screen.findByRole("textbox", { name: "Mensagem para mark" })
+  await screen.findByRole("heading", { name: "Synthetic review 1" })
   // Settle focus/VM wake before measuring edits, as in the browser benchmark.
   await act(async () => fireEvent.focus(input))
   await waitFor(() => expect(MarkdownContent).toHaveBeenCalled())
@@ -43,9 +49,6 @@ test("typing in a long conversation does not render transcript Markdown", async 
   expect(vi.mocked(MarkdownContent).mock.calls.length).toBe(0)
   expect(localStorage.getItem(`touri.composer-draft.v1:${thread.id}`)).toBe("abc")
 
-  // The DOM-only renderer has no scroll layout, so update a reply in its first virtual window.
-  const reply = messages[1]
-  if (!reply) throw new Error("Missing synthetic reply")
   act(() =>
     api.emit({
       type: "message.updated",
