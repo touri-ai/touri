@@ -6,6 +6,7 @@ import { randomUUID } from "node:crypto"
 import { cpSync, existsSync, lstatSync, mkdirSync, statfsSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { withToolPath } from "../../kernel/shell-env"
 import { spawnTree } from "../../kernel/spawn"
 import { commandError, createVmCommandRunner, type VmCommandRunner } from "../../vm/command"
 import { machineConnection } from "../../vm/connection"
@@ -40,7 +41,7 @@ type AppleContainerProviderOptions = {
   availableDiskBytes?: (path: string) => number
 }
 
-const defaultBinary = (): string => Bun.which("container") ?? "container"
+const defaultBinary = (): string => Bun.which("container", { PATH: withToolPath().PATH }) ?? "container"
 
 const record = (value: unknown): JsonRecord | null =>
   typeof value === "object" && value !== null ? (value as JsonRecord) : null
@@ -188,7 +189,7 @@ export const createAppleContainerProvider = ({
       const child = spawnTree({
         cmd: binary,
         cwd: tmpdir(),
-        env: { PATH: "/opt/homebrew/bin:/usr/bin:/bin" },
+        env: withToolPath(),
         args: [
           "exec",
           "--interactive",
@@ -271,7 +272,7 @@ export const createAppleContainerProvider = ({
               imageContext(tmpdir()),
             ],
             cwd: tmpdir(),
-            env: { PATH: "/opt/homebrew/bin:/usr/bin:/bin" },
+            env: withToolPath(),
           })
           if (!child.success) throw new Error(child.error)
           const cancel = () => child.kill("SIGKILL")

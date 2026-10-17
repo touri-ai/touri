@@ -3,6 +3,28 @@ import { userFacingError } from "./errors"
 /** All UI copy lives here. pt-BR is the default; English is available for a future locale picker. */
 export type Locale = "pt-BR" | "en"
 export const ptBR = {
+  "{bot} precisa de você: autorizar {action}.": "{bot} precisa de você: autorizar {action}.",
+  "Autorizado. Retomando a tarefa.": "Autorizado. Retomando a tarefa.",
+  "Os avisos do sistema estão desativados.": "Os avisos do sistema estão desativados.",
+  "Abrir ajustes": "Abrir ajustes",
+  "Testar aviso": "Testar aviso",
+  "Com esta página fechada, os avisos ficam guardados no servidor.":
+    "Com esta página fechada, os avisos ficam guardados no servidor.",
+  "Você tem {n} solicitações pendentes.": "Você tem {n} solicitações pendentes.",
+  "O sistema permite avisos. Teste a entrega.": "O sistema permite avisos. Teste a entrega.",
+  "Os avisos estão desativados no touri.": "Os avisos estão desativados no touri.",
+  "O sistema ainda não autorizou os avisos.": "O sistema ainda não autorizou os avisos.",
+  "Não foi possível verificar a autorização do sistema. Teste a entrega.":
+    "Não foi possível verificar a autorização do sistema. Teste a entrega.",
+  "Aviso de teste do touri": "Aviso de teste do touri",
+  "Se este aviso apareceu, a entrega está funcionando.": "Se este aviso apareceu, a entrega está funcionando.",
+  "Teste enviado. Confira se o aviso apareceu no sistema.": "Teste enviado. Confira se o aviso apareceu no sistema.",
+  "Não foi possível testar os avisos. Abra os ajustes e tente novamente.":
+    "Não foi possível testar os avisos. Abra os ajustes e tente novamente.",
+  "Aprovado por você": "Aprovado por você",
+  "Aprovação expirada": "Aprovação expirada",
+  "Negado por você": "Negado por você",
+
   "As pastas estão no computador onde o touri está rodando.":
     "As pastas estão no computador onde o touri está rodando.",
   "Caminho da pasta": "Caminho da pasta",
@@ -737,6 +759,17 @@ export const ptBR = {
   "Resultado histórico indisponível.": "Resultado histórico indisponível.",
   "Iniciando…": "Iniciando…",
   "Não foi possível iniciar a rotina.": "Não foi possível iniciar a rotina.",
+  "Não foi possível verificar o login salvo. Verifique de novo.":
+    "Não foi possível verificar o login salvo. Verifique de novo.",
+  "Não foi possível concluir o login. Verifique de novo ou use outra conta.":
+    "Não foi possível concluir o login. Verifique de novo ou use outra conta.",
+  "Entrar no {provider}": "Entrar no {provider}",
+  "Usar outra conta": "Usar outra conta",
+  "{name}: login do {provider} inválido. Conecte novamente.":
+    "{name}: login do {provider} inválido. Conecte novamente.",
+  "Verificar de novo": "Verificar de novo",
+  "Sua mensagem fica como rascunho até o login estar pronto.":
+    "Sua mensagem fica como rascunho até o login estar pronto.",
   "Não foi possível verificar o login.": "Não foi possível verificar o login.",
   "Tentar de novo": "Tentar de novo",
   "Não foi possível salvar o login no cofre de segredos.": "Não foi possível salvar o login no cofre de segredos.",
@@ -1447,6 +1480,29 @@ export const ptBR = {
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  "{bot} precisa de você: autorizar {action}.": "{bot} needs you: authorize {action}.",
+  "Autorizado. Retomando a tarefa.": "Authorized. Resuming the task.",
+  "Os avisos do sistema estão desativados.": "System notifications are disabled.",
+  "Abrir ajustes": "Open settings",
+  "Testar aviso": "Test notification",
+  "Com esta página fechada, os avisos ficam guardados no servidor.":
+    "When this page is closed, notifications are kept on the server.",
+  "Você tem {n} solicitações pendentes.": "You have {n} pending requests.",
+  "O sistema permite avisos. Teste a entrega.": "The system allows notifications. Test delivery.",
+  "Os avisos estão desativados no touri.": "Notifications are disabled in touri.",
+  "O sistema ainda não autorizou os avisos.": "The system has not authorized notifications yet.",
+  "Não foi possível verificar a autorização do sistema. Teste a entrega.":
+    "Could not verify system authorization. Test delivery.",
+  "Aviso de teste do touri": "touri test notification",
+  "Se este aviso apareceu, a entrega está funcionando.": "If you see this notification, delivery is working.",
+  "Teste enviado. Confira se o aviso apareceu no sistema.":
+    "Test sent. Check whether the notification appeared in the system.",
+  "Não foi possível testar os avisos. Abra os ajustes e tente novamente.":
+    "Could not test notifications. Open settings and try again.",
+  "Aprovado por você": "Approved by you",
+  "Aprovação expirada": "Approval expired",
+  "Negado por você": "Denied by you",
+
   "As pastas estão no computador onde o touri está rodando.": "Folders are on the computer running touri.",
   "Caminho da pasta": "Folder path",
   "Pasta pessoal": "Home folder",
@@ -1491,6 +1547,14 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Faça a preparação na máquina em que o bot trabalha. Na VM, o login do Mac não é copiado.":
     "Prepare the connection on the machine where the bot works. Your Mac login is not copied into a VM.",
   "Verificando a preparação…": "Checking preparation…",
+  "Não foi possível verificar o login salvo. Verifique de novo.": "Could not check the saved login. Check again.",
+  "Não foi possível concluir o login. Verifique de novo ou use outra conta.":
+    "Could not complete sign-in. Check again or use another account.",
+  "Entrar no {provider}": "Sign in to {provider}",
+  "Usar outra conta": "Use another account",
+  "{name}: login do {provider} inválido. Conecte novamente.": "{name}: invalid {provider} login. Sign in again.",
+  "Verificar de novo": "Check again",
+  "Sua mensagem fica como rascunho até o login estar pronto.": "Your message stays as a draft until sign-in is ready.",
   "Não foi possível verificar a preparação. Tente novamente.": "Could not check preparation. Try again.",
   "Na nuvem, use uma conexão HTTP na configuração técnica.":
     "In the cloud, use an HTTP connection in technical configuration.",
@@ -1571,6 +1635,21 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Consultar os logs do processo {name}": "View logs for process {name}",
   "Abrir prévia": "Open preview",
   "Abrir a prévia do projeto em {path}": "Open the project preview at {path}",
+  "Verificando login…": "Checking sign-in…",
+  "Aguardando login no navegador…": "Waiting for sign-in in the browser…",
+  "Login disponível para este bot.": "Sign-in is ready for this bot.",
+  "Login cancelado.": "Sign-in cancelled.",
+  "Entre no provedor para enviar mensagens.": "Sign in to send messages.",
+  "Código de login": "Sign-in code",
+  "Abrir página de login": "Open sign-in page",
+  "Não foi possível abrir o navegador. Use o link de login.": "Could not open the browser. Use the sign-in link.",
+  "Cancelar login": "Cancel sign-in",
+  "Escolha a conta no OpenCode": "Choose the account in OpenCode",
+  "Escolha o método de login": "Choose a sign-in method",
+  "Opção anterior": "Previous option",
+  "Próxima opção": "Next option",
+  "Confirmar opção": "Confirm option",
+  "Não foi possível configurar o login. Tente novamente.": "Could not set up sign-in. Try again.",
   "Há um login disponível neste Mac.": "A login is available on this Mac.",
   "Há um login disponível neste servidor.": "A login is available on this server.",
   "Usar login deste Mac": "Use this Mac’s login",
@@ -2384,6 +2463,12 @@ export const statusLabel = (status: string): string => {
 
 /** Translate only application-authored notices, leaving bot/user content intact. */
 export const localizeNotice = (value: string): string => {
+  const invalidLogin = /^(.+): login do (Claude|Codex|OpenCode) inválido\. Conecte novamente\.$/.exec(value)
+  if (invalidLogin)
+    return t("{name}: login do {provider} inválido. Conecte novamente.", {
+      name: invalidLogin[1] ?? "",
+      provider: invalidLogin[2] ?? "",
+    })
   const renamed = /^Bot renomeado de ("(?:[^"\\]|\\.)*") para ("(?:[^"\\]|\\.)*")\.$/.exec(value)
   if (renamed)
     return t("Bot renomeado de {previous} para {name}.", { previous: renamed[1] ?? "", name: renamed[2] ?? "" })

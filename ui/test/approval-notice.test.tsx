@@ -89,15 +89,18 @@ it("uses the card's canonical summary for legacy and current folder notification
   const props = { notifications: [notification], messages: [message(folder)], onReview: vi.fn() }
   const view = render(<ApprovalNotice {...props} />)
   const notice = screen.getByRole("status")
-  expect(notice).toHaveTextContent("Café Ideias")
-  expect(notice).toHaveTextContent(summary)
+  expect(notice.querySelector(".notice-content")).toHaveTextContent(
+    "Café Ideias precisa de você: autorizar permitir Leitura e escrita em …/phase-a para este bot.",
+  )
+  expect(notice).not.toHaveTextContent("..")
+  expect(notice).toHaveTextContent(summary.charAt(0).toLocaleLowerCase() + summary.slice(1))
   expect(notice).not.toHaveTextContent(/folder_access_request|requestedPath|previousMode|nextTurn|[{}]/)
   fireEvent.click(within(notice).getByRole("button", { name: "Revisar" }))
   expect(props.onReview).toHaveBeenCalledWith({ threadId: "thread-a", approvalId: folder.approvalId })
   view.rerender(
     <ApprovalNotice {...props} notifications={[{ ...notification, ...approvalSummary(folder) }]} messages={[]} />,
   )
-  expect(screen.getByRole("status")).toHaveTextContent(summary)
+  expect(screen.getByRole("status")).toHaveTextContent(summary.charAt(0).toLocaleLowerCase() + summary.slice(1))
 })
 
 it("dismisses only the reminder, keeps approval pending, and shows the next request", () => {
@@ -106,7 +109,9 @@ it("dismisses only the reminder, keeps approval pending, and shows the next requ
   fireEvent.click(screen.getByRole("button", { name: "Dispensar aviso" }))
   expect(screen.queryByRole("status")).toBeNull()
   expect(notification.resolution).toBeNull()
-  view.rerender(<ApprovalNotice {...props} notifications={[notification, { ...notification, id: 2 }]} />)
+  view.rerender(
+    <ApprovalNotice {...props} notifications={[notification, { ...notification, id: 2, requestId: "next-request" }]} />,
+  )
   expect(screen.getByRole("status")).toBeInTheDocument()
 })
 
@@ -197,10 +202,14 @@ it.each(["allow", "deny", "expired"] as const)(
     })
     expect(document.querySelector(".notice-bar:not(.approval-notice)")).toBeNull()
     const notice = document.querySelector(".approval-notice")
-    expect(notice).toHaveTextContent("Permitir escrita em …/phase a?")
+    expect(notice).toHaveTextContent(
+      "precisa de você: autorizar permitir Leitura e escrita em …/phase a para este bot.",
+    )
     expect(notice).not.toHaveTextContent("/workspace")
     expect(notice).not.toHaveTextContent("será criada automaticamente")
     act(() => api.emit({ type: "notification.resolved", notification: { ...item, resolution, resolvedAt: 2 } }))
-    expect(document.querySelector(".notice-bar")).toBeNull()
+    if (resolution === "allow")
+      expect(document.querySelector(".approval-notice")).toHaveTextContent("Autorizado. Retomando a tarefa.")
+    else expect(document.querySelector(".notice-bar")).toBeNull()
   },
 )

@@ -2,15 +2,16 @@ import type { Database } from "bun:sqlite"
 import type { Bot, DoctorCheck, Kernel } from "@touri/contracts"
 import { hostPlatform } from "../platform"
 import {
-  hostLoginFileExists,
   loginTarget,
   ProviderLoginError,
+  readHostLoginFile,
   readVault,
   storedProviderLoginSource,
+  VAULT_READ_DEADLINE_MS,
+  validLogin,
 } from "../vm/provider-login"
 import { check } from "./check"
 
-const DOCTOR_VAULT_DEADLINE_MS = 4000
 const SETTINGS_PATH = "Permissões do bot > Computador > Login do provedor"
 
 type VmBotRow = { id: string; name: string; provider: Bot["provider"] }
@@ -33,8 +34,17 @@ const vaultCheck = async (kernel: Kernel, bot: VmBotRow, signal: AbortSignal, la
   const id = `provider-login:${bot.id}`
   const target = loginTarget(bot.provider)
   try {
-    const entry = await readVault(kernel, bot, target, { signal, timeoutMs: DOCTOR_VAULT_DEADLINE_MS })
-    if (entry) return check(id, label, "pass", `${bot.name}: login do ${target.label} salvo no cofre.`)
+    const entry = await readVault(kernel, bot, target, { signal, timeoutMs: VAULT_READ_DEADLINE_MS })
+    if (entry && validLogin(bot.provider, entry))
+      return check(id, label, "pass", `${bot.name}: login do ${target.label} salvo no cofre.`)
+    if (entry)
+      return check(
+        id,
+        label,
+        "fail",
+        `${bot.name}: login do ${target.label} inválido. Conecte novamente.`,
+        target.command,
+      )
     return check(
       id,
       label,
@@ -54,7 +64,10 @@ const botCheck = async (kernel: Kernel, bot: VmBotRow, hostHome: string, signal:
   const target = loginTarget(bot.provider)
   const source = storedProviderLoginSource(kernel, bot)
   if (source === "host-file") {
-    const present = hostLoginFileExists(hostHome, bot.provider)
+    let present = false
+    try {
+      present = validLogin(bot.provider, readHostLoginFile(hostHome, target), true)
+    } catch {}
     const label = `Login · ${bot.name} · arquivo do host`
     return present
       ? check(id, label, "pass", `${bot.name}: usa o arquivo de login do ${target.label} neste computador.`)

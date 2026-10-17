@@ -34,6 +34,7 @@ core-foundation = "0.10"
 core-graphics = { version = "0.25", features = ["highsierra"] }
 security-framework = "3.7"
 security-framework-sys = "2.17"
+objc2-user-notifications = { version = "0.3.2", default-features = false, features = ["std", "block2", "UNUserNotificationCenter", "UNNotificationSettings"] }
 block2 = { version = "0.6.2", default-features = false, features = ["alloc"] }
 objc2 = { version = "0.6.5", default-features = false, features = ["std"] }
 objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "NSApplication", "NSWindow", "NSWorkspace", "NSRunningApplication", "block2", "libc"] }

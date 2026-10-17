@@ -3,6 +3,7 @@ import { closeSync, createWriteStream, existsSync, read as readFd, write as writ
 import type { Kernel } from "@touri/contracts"
 import { libcLibrary } from "../platform/posix"
 import { desktopHelper } from "../platform/windows-native"
+import { withToolPath } from "./shell-env"
 
 type SpawnResult = ReturnType<Kernel["spawnTree"]>
 
@@ -150,7 +151,7 @@ export const spawnTree = ({
       return Bun.spawn({
         cmd: process.platform === "win32" ? [desktopHelper(), "--spawn-tree", "--", cmd, ...args] : [cmd, ...args],
         cwd,
-        env,
+        env: { ...env, PATH: withToolPath(env).PATH },
         detached: process.platform !== "win32",
         stdio,
       })

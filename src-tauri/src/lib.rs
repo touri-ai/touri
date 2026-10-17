@@ -6,6 +6,8 @@ mod file_save;
 pub mod host_bridge;
 mod i18n;
 pub mod keychain;
+mod notification_permission;
+mod notifications;
 pub mod platform;
 pub mod power;
 pub mod preview;
@@ -18,12 +20,12 @@ pub mod window_config;
 
 pub mod computer;
 pub mod deep_link;
+mod deep_link_target;
 mod tray;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
-use deep_link::PendingDeepLink;
 use file_grants::FileGrants;
 use host_bridge::{HostBridge, HostBridgeCallbacks, NotifyOptions};
 use keychain::{KeychainStore, PRODUCTION_SERVICE};
@@ -334,7 +336,6 @@ pub fn run() {
     tauri::Builder::default()
         .manage(AppState::default())
         .manage(SecretCardManager::new())
-        .manage(PendingDeepLink::new())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
@@ -397,14 +398,15 @@ pub fn run() {
             let file_grants = Arc::clone(&app.state::<AppState>().file_grants);
             let card_manager = app.state::<SecretCardManager>().inner().clone();
             let prompt_app = app.handle().clone();
+            notifications::register_clicks(app.handle());
             let notification_app = app.handle().clone();
-            let pending_app = app.handle().clone();
+            let focus_app = app.handle().clone();
             let callbacks = HostBridgeCallbacks {
                 file_grants,
                 secret_prompt: Arc::new(move |request| card_manager.prompt(&prompt_app, request)),
                 notify: Arc::new(move |title, body, _thread_id, options: NotifyOptions| {
                     use tauri_plugin_notification::NotificationExt;
-                    let focused = pending_app
+                    let focused = focus_app
                         .get_webview_window("main")
                         .map(|window| {
                             window.is_focused().unwrap_or(false)
@@ -414,14 +416,12 @@ pub fn run() {
                     if options.only_when_unfocused && focused {
                         return Ok(());
                     }
-                    if let Some(link) = options.deep_link.as_deref().and_then(deep_link::parse) {
-                        pending_app.state::<PendingDeepLink>().set(link);
-                    }
                     notification_app
                         .notification()
                         .builder()
                         .title(title)
                         .body(body)
+                        .extra("deepLink", options.deep_link)
                         .show()
                         .map_err(|error| format!("notification failed: {error}"))
                 }),
@@ -489,6 +489,9 @@ pub fn run() {
             preview_reload,
             preview_hide,
             permissions_status,
+            notifications::notification_permission,
+            notifications::notification_test,
+            notifications::notification_open_settings,
             computer_kill_switch,
             permissions_open_settings,
             permissions_request,
@@ -525,11 +528,6 @@ pub fn run() {
                 }
                 if let tauri::WindowEvent::DragDrop(drag) = event {
                     handle_drag_drop(window, drag);
-                }
-                if let tauri::WindowEvent::Focused(true) = event {
-                    if let Some(link) = window.state::<PendingDeepLink>().take_fresh() {
-                        deep_link::dispatch(window.app_handle(), &link);
-                    }
                 }
                 if matches!(
                     event,

@@ -44,5 +44,23 @@ api.notify({
   title: "Approve action",
   body: approval.detail,
 })
+Object.assign(window, {
+  approvalNoticeFixture: {
+    resolve: () =>
+      api.request(
+        "POST /threads/:id/respond",
+        { requestId: approval.approvalId, behavior: "allow" },
+        { id: thread.id },
+      ),
+    echo: () =>
+      api.emit({
+        type: "notify",
+        level: "warning",
+        title: "Café Ideias: Approve action",
+        body: approval.detail,
+        threadId: thread.id,
+      }),
+  },
+})
 const root = document.getElementById("root")
 if (root) createRoot(root).render(<App kernel={{ services: { api } }} />)

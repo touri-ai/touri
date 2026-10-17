@@ -129,6 +129,7 @@ test("doctor reports the per-bot login source and health without persisting a de
       providerLoginSourceKey(f.bot),
       '"host-file"',
     ])
+    writeFileSync(join(f.root, ".codex/auth.json"), JSON.stringify({ OPENAI_API_KEY: "synthetic-test-key" }))
     const ok = await providerLoginChecks(f.kernel, f.root, new AbortController().signal)
     expect(ok[0]?.status).toBe("pass")
     expect(ok[0]?.label).toContain("arquivo do host")
@@ -136,3 +137,49 @@ test("doctor reports the per-bot login source and health without persisting a de
     f.stop()
   }
 })
+
+for (const provider of ["claude", "codex"] as const)
+  test(`${provider}: Doctor and chat agree after vault failure, invalid login, replacement and removal`, async () => {
+    const { providerLoginChecks } = await import("../../src/doctor/providerLogin")
+    const { createProviderLoginFlow } = await import("../../src/vm/provider-login-flow")
+    let value: string | null = "{}"
+    let available = true
+    const f = fixture(
+      async () =>
+        available
+          ? { success: true, value: { value } }
+          : { success: false, errorCode: "HOST_ERROR", error: "unavailable" },
+      false,
+    )
+    f.bot.provider = provider
+    f.kernel.addRedactionValue = () => {}
+    f.kernel.subscribe = () => () => {}
+    f.kernel.services = { use: () => undefined, provide: () => {} } as Kernel["services"]
+    f.db.run(
+      "CREATE TABLE bots (id TEXT, name TEXT, provider TEXT, machine TEXT, vm_provider_login INTEGER, archived_at INTEGER)",
+    )
+    f.db.run("INSERT INTO bots VALUES ('upgraded','Bot de teste',?,'vm',1,NULL)", [provider])
+    f.db.run("INSERT INTO settings VALUES (?, '\"vault\"', 1)", [providerLoginSourceKey(f.bot)])
+    const flow = createProviderLoginFlow({ kernel: f.kernel, hostHome: f.root })
+    try {
+      const doctor = async () => (await providerLoginChecks(f.kernel, f.root, new AbortController().signal))[0]
+      expect((await doctor())?.status).toBe("fail")
+      expect((await flow.status(f.bot)).state).toBe("idle")
+      available = false
+      expect((await doctor())?.status).toBe("fail")
+      await expect(flow.status(f.bot)).rejects.toThrow("cofre")
+      available = true
+      value =
+        provider === "claude"
+          ? "sk-ant-oat01-synthetic-test-token"
+          : JSON.stringify({ OPENAI_API_KEY: "synthetic-test-key" })
+      expect((await doctor())?.status).toBe("pass")
+      expect((await flow.status(f.bot)).state).toBe("ready")
+      value = null
+      expect((await doctor())?.status).toBe("warn")
+      expect((await flow.status(f.bot)).state).toBe("idle")
+    } finally {
+      flow.dispose()
+      f.stop()
+    }
+  })

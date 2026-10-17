@@ -69,6 +69,7 @@ const toolDirectories = ({
   return [
     `${home}/.local/bin`,
     `${home}/.bun/bin`,
+    `${home}/.opencode/bin`,
     `${home}/.volta/bin`,
     `${home}/.local/share/mise/shims`,
     `${home}/.asdf/shims`,
@@ -107,11 +108,14 @@ export const mergePath = ({
     .join(delimiter)
 }
 
-const withToolPath = (environment: NodeJS.ProcessEnv | Record<string, string>): Record<string, string> => {
+// Use the same tool directories for discovery and execution, including Finder launches.
+export const withToolPath = (
+  environment: NodeJS.ProcessEnv | Record<string, string> = process.env,
+): Record<string, string> & { PATH: string } => {
   const result = buildChildEnv({ base: environment })
   const pathKey =
     process.platform === "win32" ? (Object.keys(result).find((key) => key.toUpperCase() === "PATH") ?? "PATH") : "PATH"
-  const path = result[pathKey]
+  const path = result[pathKey] ?? process.env.PATH
   if (pathKey !== "PATH") delete result[pathKey]
   return { ...result, PATH: mergePath({ path, home: result.HOME ?? result.USERPROFILE ?? homedir() }) }
 }

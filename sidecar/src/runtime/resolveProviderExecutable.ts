@@ -1,5 +1,6 @@
 import { delimiter } from "node:path"
 import type { AbsolutePath, Kernel, Result } from "@touri/contracts"
+import { withToolPath } from "../kernel/shell-env"
 import { resolveExecutable } from "./utils"
 
 export type ResolveProviderExecutableArgs = {
@@ -25,6 +26,7 @@ export const resolveProviderExecutable = async ({
   command,
   env,
 }: ResolveProviderExecutableArgs): Promise<ResolveProviderExecutableResult> => {
+  env = { ...env, PATH: withToolPath(env).PATH }
   const direct: Result<{ path: AbsolutePath }, "cli_missing"> = resolveExecutable({ command, env })
   if (direct.success) return { success: true, path: direct.path, env }
   const path = await shellPath(kernel)
