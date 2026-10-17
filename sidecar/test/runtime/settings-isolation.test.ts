@@ -106,7 +106,9 @@ for (const vm of [false, true])
       const env = f.calls[0]?.env
       expect(env?.DISABLE_TELEMETRY).toBe("1")
       expect(env?.DISABLE_ERROR_REPORTING).toBe("1")
-      expect(env?.CLAUDE_CODE_ENABLE_TELEMETRY).toBe("0")
+      expect(env?.CLAUDE_CODE_ENABLE_TELEMETRY).toBe(
+        provider === "codex" && /\/bwrap$/.test(f.calls[0]?.cmd ?? "") ? undefined : "0",
+      )
       for (const key of ["OTEL_TRACES_EXPORTER", "OTEL_METRICS_EXPORTER", "OTEL_LOGS_EXPORTER"])
         expect(env?.[key]).toBe("none")
     })
@@ -187,7 +189,7 @@ for (const vm of [false, true]) {
         expect(call.args.includes("--permission-prompt-tool")).toBe(
           approvals === "on-request" && access !== "read-only",
         )
-        expect(call.env.HOME).toBe(f.home)
+        expect(call.env.HOME).toBe(/\/bwrap$/.test(call.cmd) ? "/touri/home" : f.home)
         expect(call.cwd).toBe(f.workspace)
         expect(call.args).toContain(resumed ? "--resume" : "--session-id")
         expect(readFileSync(join(f.home, ".claude/settings.json"), "utf8")).toContain("auto")
@@ -264,7 +266,9 @@ for (const vm of [false, true]) {
       for (const resumed of [false, true]) {
         test(`Codex explicitly sets ${vm ? "VM" : "host"} ${access}/${approvals} ${resumed ? "resume" : "new"} policy`, async () => {
           const f = fixture(vm, "codex")
-          const outer = !vm && process.platform === "darwin"
+          const outer =
+            !vm &&
+            (process.platform === "darwin" || (process.platform === "linux" && (await refreshHostFolderAccess())))
           f.args.bot.access = access
           f.args.bot.approvals = approvals
           if (resumed) f.args.session = { externalSessionId: "old-session", rolloutPath: null } as ProviderSession
@@ -284,7 +288,7 @@ for (const vm of [false, true]) {
           const session = requests.find((request) => request.method === (resumed ? "thread/resume" : "thread/start"))
           expect(session?.params).toMatchObject({
             cwd: f.workspace,
-            // On macOS host turns touri's Seatbelt profile is the boundary; Codex cannot nest its own.
+            // An inherited host boundary replaces the provider's inner sandbox.
             sandbox: access === "full" || outer ? "danger-full-access" : access,
             approvalPolicy: access === "read-only" ? "never" : approvals,
             approvalsReviewer: "user",

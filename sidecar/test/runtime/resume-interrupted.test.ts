@@ -22,6 +22,7 @@ import { createRuntimeEngine } from "../../src/runtime/engine"
 import * as folderAccess from "../../src/runtime/folder-access"
 import { createWorkState } from "../../src/runtime/work-state"
 import { init as initStore } from "../../src/store"
+import { fakeProviderSpawn } from "../fakes/provider-spawn"
 
 type Engine = ReturnType<typeof createRuntimeEngine>
 type Runtime = ReturnType<typeof createKernel>
@@ -76,6 +77,7 @@ exec '${process.execPath}' '${fake}' "$@"
   const engines: Array<Engine> = []
   const open = async (options: { resumeBackoffMs?: number; routineTimeoutMs?: number } = {}) => {
     const runtime = createKernel({ appData: root })
+    runtime.kernel.spawnTree = fakeProviderSpawn(runtime.kernel.spawnTree, command, scenario)
     await initStore(runtime.kernel)
     await initNotify(runtime.kernel)
     kernels.push(runtime)

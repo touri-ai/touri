@@ -126,7 +126,12 @@ export const spawnFolderProvider = (
   input: Parameters<Kernel["spawnTree"]>[0],
 ): ReturnType<Kernel["spawnTree"]> => {
   if (args.execution) return args.execution.spawn(input)
-  if (process.platform !== "darwin" && !args.bot.anyFolderAccess && !args.bot.folders?.length)
+  if (
+    process.platform !== "darwin" &&
+    !hostFolderAccessAvailable() &&
+    !args.bot.anyFolderAccess &&
+    !args.bot.folders?.length
+  )
     return kernel.spawnTree(input)
   // Never silently drop a folder grant's platform boundary.
   if (!hostFolderAccessAvailable()) {
@@ -140,7 +145,12 @@ export const spawnFolderProvider = (
         ...input,
         cmd: binary,
         env: linuxFolderEnvironment(args, input.env),
-        args: [...linuxFolderSandbox(kernel, args, input.env, homedir(), input.cmd), "--", input.cmd, ...input.args],
+        args: [
+          ...linuxFolderSandbox(kernel, args, input.env, input.env.HOME ?? homedir(), input.cmd),
+          "--",
+          input.cmd,
+          ...input.args,
+        ],
       })
     } catch (error) {
       return {

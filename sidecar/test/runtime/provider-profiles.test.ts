@@ -158,7 +158,11 @@ const claudeFixture = (connectors: boolean, vm = false) => {
       args: [
         "run",
         join(import.meta.dir, "../fakes/fake-claude.ts"),
-        ...(input.cmd === "/usr/bin/sandbox-exec" ? input.args.slice(3) : input.args),
+        ...(input.cmd === "/usr/bin/sandbox-exec"
+          ? input.args.slice(3)
+          : /\/bwrap$/.test(input.cmd)
+            ? input.args.slice(input.args.indexOf("--") + 2)
+            : input.args),
       ],
     })
   }
@@ -166,6 +170,7 @@ const claudeFixture = (connectors: boolean, vm = false) => {
   const home = join(root, "home")
   const args: StartTurnArgs = {
     bot: {
+      provider: "claude",
       access: "full",
       approvals: "on-request",
       homeDir: home,

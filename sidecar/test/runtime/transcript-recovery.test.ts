@@ -10,6 +10,7 @@ import { createRuntimeEngine } from "../../src/runtime/engine"
 import { createRuntimePersistence } from "../../src/runtime/persistence"
 import { reapProviderProcesses, stopProviderChildren, trackProviderProcess } from "../../src/runtime/provider-processes"
 import { init as initStore } from "../../src/store"
+import { fakeProviderSpawn } from "../fakes/provider-spawn"
 import { socketTicket } from "../fakes/ws-ticket"
 
 const waitFor = async (predicate: () => boolean | Promise<boolean>): Promise<void> => {
@@ -45,19 +46,26 @@ const fixture = async (ignoreTerm = false, interruptGraceMs = 30) => {
   if (!store) throw new Error("Store missing")
   let pid = 0
   const spawn = runtime.kernel.spawnTree
-  runtime.kernel.spawnTree = (args) => {
-    const child = spawn(args)
-    if (child.success && (args.cmd === command || (args.cmd === "/usr/bin/sandbox-exec" && args.args[2] === command))) {
-      pid = child.pid
-      if (ignoreTerm) {
-        const kill = child.kill
-        child.kill = (signal) => {
-          if (signal !== "SIGTERM") kill(signal)
+  runtime.kernel.spawnTree = fakeProviderSpawn(
+    (args) => {
+      const child = spawn(args)
+      if (
+        child.success &&
+        (args.cmd === command || (args.cmd === "/usr/bin/sandbox-exec" && args.args[2] === command))
+      ) {
+        pid = child.pid
+        if (ignoreTerm) {
+          const kill = child.kill
+          child.kill = (signal) => {
+            if (signal !== "SIGTERM") kill(signal)
+          }
         }
       }
-    }
-    return child
-  }
+      return child
+    },
+    command,
+    scenario,
+  )
   const engine = createRuntimeEngine({
     kernel: runtime.kernel,
     codexCommand: command,
@@ -193,6 +201,7 @@ test.each(["cancel", "restart"])(
         await waitFor(() => engine.listRuns("t").some((item) => item.id === run.id && item.status === "canceled"))
       } else {
         restored = createKernel({ appData: f.root })
+        restored.kernel.spawnTree = fakeProviderSpawn(restored.kernel.spawnTree, f.command, f.scenario)
         await initStore(restored.kernel)
         const restoredStore = restored.kernel.services.use("store.api")
         if (!restoredStore) throw new Error("Store missing")
@@ -257,6 +266,7 @@ test("restart fences a still-streaming writer and kills its surviving local prov
     expect(providerPid).toBeGreaterThan(0)
     process.kill(providerPid, 0)
     restored = createKernel({ appData: f.root })
+    restored.kernel.spawnTree = fakeProviderSpawn(restored.kernel.spawnTree, f.command, f.scenario)
     await initStore(restored.kernel)
     const store = restored.kernel.services.use("store.api")
     if (!store) throw new Error("Store missing")
@@ -357,6 +367,7 @@ for (const nativeSession of [false, true]) {
         },
       })
       restored = createKernel({ appData: f.root })
+      restored.kernel.spawnTree = fakeProviderSpawn(restored.kernel.spawnTree, f.command, f.scenario)
       await initStore(restored.kernel)
       const requests = join(f.assets, "retry-requests.jsonl")
       writeFileSync(f.scenario, JSON.stringify({ badResume: true, deltas: ["Continuação"], requestLogPath: requests }))

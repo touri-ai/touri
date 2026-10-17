@@ -4,9 +4,7 @@ import { hostFolderAccessAvailable } from "../../kernel/folder-capability"
 import { writableTurnFolders } from "../folder-access"
 
 export const outerFolderSandbox = (args: StartTurnArgs, platform = process.platform): boolean =>
-  !args.execution &&
-  (platform === "darwin" ||
-    (platform === "linux" && !!(args.bot.anyFolderAccess || args.bot.folders?.length) && hostFolderAccessAvailable()))
+  !args.execution && (platform === "darwin" || (platform === "linux" && hostFolderAccessAvailable()))
 
 export const codexAccessParams = (args: StartTurnArgs, platform = process.platform): Record<string, unknown> => {
   const reviewer = { approvalsReviewer: "user" }

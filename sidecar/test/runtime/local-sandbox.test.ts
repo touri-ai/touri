@@ -123,7 +123,7 @@ const fixture = (provider: "codex" | "claude" = "codex", scenarios: Array<Record
     command: process.execPath,
   })
   const args: StartTurnArgs = {
-    bot: { access: "workspace-write", approvals: "on-request", homeDir: workspace } as Bot,
+    bot: { provider, access: "workspace-write", approvals: "on-request", homeDir: workspace } as Bot,
     thread: { id: "thread-sandbox" } as Thread,
     session: null,
     fingerprint: { cwd: workspace } as StartTurnArgs["fingerprint"],

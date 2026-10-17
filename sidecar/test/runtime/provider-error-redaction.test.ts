@@ -23,16 +23,28 @@ const fixture = (scenarioValue: Record<string, unknown>) => {
     runtime.kernel.spawnTree({
       ...spawnInput,
       cmd: process.execPath,
+      env: { ...spawnInput.env, TOURI_FAKE_SCENARIO: scenario },
       args: [
         "run",
         join(import.meta.dir, "../fakes/fake-codex.ts"),
-        ...(spawnInput.cmd === "/usr/bin/sandbox-exec" ? spawnInput.args.slice(3) : spawnInput.args),
+        ...(spawnInput.cmd === "/usr/bin/sandbox-exec"
+          ? spawnInput.args.slice(3)
+          : /\/bwrap$/.test(spawnInput.cmd)
+            ? spawnInput.args.slice(spawnInput.args.indexOf("--") + 2)
+            : spawnInput.args),
       ],
     })
   const adapter = createCodexAdapter({ kernel: { ...runtime.kernel, spawnTree: spawn }, command: process.execPath })
   const events: ProviderEvent[] = []
   const args: StartTurnArgs = {
-    bot: { access: "full", approvals: "on-request", homeDir: root, model: null, reasoningEffort: null } as Bot,
+    bot: {
+      provider: "codex",
+      access: "full",
+      approvals: "on-request",
+      homeDir: root,
+      model: null,
+      reasoningEffort: null,
+    } as Bot,
     thread: { id: "thread-redaction" } as Thread,
     session: null,
     fingerprint: { cwd: root } as StartTurnArgs["fingerprint"],

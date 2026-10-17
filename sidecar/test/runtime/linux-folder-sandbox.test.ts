@@ -201,6 +201,24 @@ test.skipIf(!available)("noncanonical saved grants and a root workspace cannot w
   expect(() => linuxFolderSandbox(f.kernel, f.args, f.args.env, f.home)).toThrow()
 })
 
+test.skipIf(!available)("a provider with no extra grants cannot read ungranted host files", async () => {
+  const f = fixture()
+  f.args.bot.folders = []
+  rmSync(join(f.args.env.CODEX_HOME ?? "", "auth.json"))
+  f.kernel.spawnTree = spawnTree
+  const child = spawnFolderProvider(f.kernel, f.args, {
+    cmd: "/bin/sh",
+    args: ["-c", 'cat "$1"', "test", join(f.home, "ungranted/marker")],
+    cwd: f.workspace,
+    env: f.args.env,
+  })
+  expect(child.success).toBe(true)
+  if (!child.success) return
+  const [output, result] = await Promise.all([new Response(child.stdout).text(), child.exited])
+  expect(result.code).not.toBe(0)
+  expect(output).toBe("")
+})
+
 test.skipIf(!available)("the actual provider spawn drops unrelated credentials before entering bwrap", async () => {
   const f = fixture()
   // This synthetic HOME is not the host login selected by the real spawn path.
