@@ -84,7 +84,7 @@ const botSettings = async (patch: Partial<Bot> = {}, initialSection?: BotSetting
       />
     </MotionPresence>,
   )
-  await waitFor(() => expect(screen.getByText("review · stdio")).toBeInTheDocument())
+  await waitFor(() => expect(screen.getByText("Conexão disponível: review")).toBeInTheDocument())
   return { bot, routine: botRoutine, actions, onClose, onOpenRoutines }
 }
 
