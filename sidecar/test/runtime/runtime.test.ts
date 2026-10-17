@@ -129,6 +129,7 @@ const fixture = async ({
     homeDir: join(root, "bots", "bot-runtime"),
     mainThreadId: "thread-runtime",
     browserEnabled: true,
+    browser: "touri",
     computerUse: false,
     machine: "local",
     machineIdleMinutes: 15,
