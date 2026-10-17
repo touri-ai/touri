@@ -8,6 +8,7 @@ import { linuxProtectedFolders, linuxSandboxBase, specificFoldersRequired } from
 import { resolveMcpSocketPath } from "../kernel/paths"
 import { linuxRuntimeEnvironment } from "../platform/linux-environment"
 import { linuxProgramFiles, linuxProgramLinks } from "../platform/linux-programs"
+import { claudeFileEnvironment, claudeLinuxAuthentication } from "./claude/linux-auth"
 import { codexAuthenticationKeys } from "./codex/home"
 import { turnFolders } from "./folder-access"
 
@@ -65,13 +66,16 @@ export const linuxFolderEnvironment = (args: StartTurnArgs, env: Record<string, 
             "AWS_ACCESS_KEY_ID",
             "AWS_SECRET_ACCESS_KEY",
             "AWS_SESSION_TOKEN",
+            "AWS_PROFILE",
             "AWS_REGION",
             "AWS_DEFAULT_REGION",
             "AWS_BEARER_TOKEN_BEDROCK",
             "ANTHROPIC_BEDROCK_BASE_URL",
           ]
         : []),
-      ...(env.CLAUDE_CODE_USE_VERTEX === "1" ? ["ANTHROPIC_VERTEX_PROJECT_ID", "CLOUD_ML_REGION"] : []),
+      ...(env.CLAUDE_CODE_USE_VERTEX === "1"
+        ? ["ANTHROPIC_VERTEX_PROJECT_ID", "CLOUD_ML_REGION", "GOOGLE_APPLICATION_CREDENTIALS"]
+        : []),
       ...(env.CLAUDE_CODE_USE_FOUNDRY === "1"
         ? ["ANTHROPIC_FOUNDRY_API_KEY", "ANTHROPIC_FOUNDRY_RESOURCE", "ANTHROPIC_FOUNDRY_BASE_URL"]
         : []),
@@ -112,6 +116,7 @@ export const linuxFolderEnvironment = (args: StartTurnArgs, env: Record<string, 
         .map((key) => [key, env[key]]),
     ),
     ...(args.bot.provider === "claude" ? { CLAUDE_CONFIG_DIR: join(args.bot.homeDir, ".touri-claude") } : {}),
+    ...(args.bot.provider === "claude" ? claudeFileEnvironment(env) : {}),
     TOURI_PID_NAMESPACE: "1",
   }
 }
@@ -149,14 +154,27 @@ export const linuxFolderSandbox = (
     args.bot.provider === "claude" &&
     !env.CLAUDE_CODE_OAUTH_TOKEN &&
     !env.ANTHROPIC_API_KEY &&
-    !env.ANTHROPIC_AUTH_TOKEN
+    !env.ANTHROPIC_AUTH_TOKEN &&
+    ![env.CLAUDE_CODE_USE_BEDROCK, env.CLAUDE_CODE_USE_VERTEX, env.CLAUDE_CODE_USE_FOUNDRY].includes("1")
       ? credential(
           join(claudeSource, ".credentials.json"),
           canonicalPath(claudeSource) === resolve(claudeSource) ? [canonicalPath(claudeSource)] : [],
         )
       : undefined
   const runDir = env.TOURI_RUN_DIR ?? kernel.paths.runDir
+  const authentication =
+    args.bot.provider === "claude"
+      ? claudeLinuxAuthentication({
+          env,
+          appData: kernel.paths.appData,
+          home,
+          source: claudeSource,
+          settings: join(runDir, "claude", `${args.thread.id}.settings.json`),
+          cwd: args.fingerprint.cwd,
+        })
+      : { files: [], executables: [] }
   const readonly = [
+    ...authentication.files,
     env.TOURI_MCP_SOCK ?? resolveMcpSocketPath({ ...kernel.paths, runDir }),
     join(runDir, "mcp-tokens", args.thread.id),
     ...["mcp.json", "system.md", "settings.json"].map((suffix) =>
@@ -177,6 +195,7 @@ export const linuxFolderSandbox = (
     .filter((path): path is string => !!path && existsSync(path))
     .map(canonicalPath)
   const executables = [
+    ...authentication.executables,
     command,
     kernel.paths.sidecarBinary,
     args.mcp?.command,
@@ -211,8 +230,8 @@ export const linuxFolderSandbox = (
       bind(entry, state.includes(entry) || (workspace.includes(entry) && writableWorkspace(entry)))
     mounts.push("--remount-ro", path)
   }
-  for (const path of readonly.filter(existsSync)) bind(path, false)
   for (const path of state) bind(path, true)
+  for (const path of readonly.filter(existsSync)) bind(path, false)
   // This file selects which host authentication variables may cross next turn.
   // Provider bookkeeping remains writable, but tools cannot change that selection.
   if (args.bot.provider === "codex" && env.CODEX_HOME && existsSync(join(env.CODEX_HOME, "config.toml")))

@@ -255,6 +255,40 @@ test.skipIf(!available)("Claude keeps selected cloud authentication without unre
   expect(f.shell("env").stdout.toString()).not.toContain("cloud-secret")
 })
 
+test.skipIf(!available)("Claude binds only selected cloud credential files and the named auth helper", () => {
+  const f = fixture()
+  f.args.bot.provider = "claude"
+  const login = join(f.home, "cloud-login.json")
+  const helper = join(f.home, "auth-helper")
+  writeFileSync(login, "selected-cloud-proof")
+  writeFileSync(helper, "#!/bin/sh\nprintf helper-proof", { mode: 0o700 })
+  const settings = join(f.kernel.paths.runDir, "claude/current-thread.settings.json")
+  mkdirSync(join(f.kernel.paths.runDir, "claude"))
+  writeFileSync(settings, JSON.stringify({ apiKeyHelper: `'${helper}'` }))
+  Object.assign(f.args.env, { CLAUDE_CODE_USE_VERTEX: "1", GOOGLE_APPLICATION_CREDENTIALS: login })
+  expect(f.shell('cat "$GOOGLE_APPLICATION_CREDENTIALS"').stdout.toString()).toBe("selected-cloud-proof")
+  expect(f.shell('"$1"', helper).stdout.toString()).toBe("helper-proof")
+  expect(f.shell('printf bad > "$GOOGLE_APPLICATION_CREDENTIALS"').exitCode).not.toBe(0)
+  expect(f.shell('cat "$1"', join(f.home, ".env")).exitCode).not.toBe(0)
+  rmSync(login)
+  symlinkSync(join(f.appData, "touri.db"), login)
+  expect(() => f.shell("true")).toThrow("login do bot com segurança")
+})
+
+test.skipIf(!available)("Claude cloud profiles retain only their configured credential leaves", () => {
+  const f = fixture()
+  f.args.bot.provider = "claude"
+  mkdirSync(join(f.home, ".aws"))
+  writeFileSync(join(f.home, ".aws/config"), "selected-config")
+  writeFileSync(join(f.home, ".aws/credentials"), "selected-login")
+  writeFileSync(join(f.home, ".aws/other-account"), "unrelated-login")
+  Object.assign(f.args.env, { CLAUDE_CODE_USE_BEDROCK: "1", AWS_PROFILE: "selected" })
+  expect(f.shell('printf "%s" "$AWS_PROFILE"').stdout.toString()).toBe("selected")
+  expect(f.shell('cat "$AWS_SHARED_CREDENTIALS_FILE"').stdout.toString()).toBe("selected-login")
+  expect(f.shell('cat "$AWS_CONFIG_FILE"').stdout.toString()).toBe("selected-config")
+  expect(f.shell('cat "$1"', join(f.home, ".aws/other-account")).exitCode).not.toBe(0)
+})
+
 test.skipIf(!available)("noncanonical saved grants and a root workspace cannot widen the boundary", () => {
   const f = fixture()
   const alias = join(f.root, "alias")

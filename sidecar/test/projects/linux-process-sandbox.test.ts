@@ -93,3 +93,64 @@ for (const access of ["workspace-write", "full"])
     },
     30_000,
   )
+
+for (const mode of ["remove", "read-only"] as const)
+  test.skipIf(!available)(
+    `a running process loses its old mounts when a grant is ${mode}`,
+    async () => {
+      const h = await createHarness()
+      const root = mkdtempSync(join(homedir(), "touri-process-revoke-"))
+      try {
+        writeFileSync(join(root, "reference"), "revocation-proof")
+        const response = await h.request("/projects", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ path: h.projectPath }),
+        })
+        const { project } = (await response.json()) as { project: { id: string } }
+        const patch = (folders: unknown[]) =>
+          h.request("/bots/bot-test", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ folders }),
+          })
+        expect((await patch([{ path: root, access: "read-write" }])).status).toBe(200)
+        const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`
+        const trigger = join(h.projectPath, "continue")
+        const output = join(root, "after-revocation")
+        const command = `echo READY; while [ ! -f ${quote(trigger)} ]; do sleep 0.05; done; cat ${quote(join(root, "reference"))}; printf stale > ${quote(output)}; sleep 60`
+        expect(
+          (
+            await h.tool(
+              "process_define",
+              { name: "waiting", command, ready: { logRegex: "READY" }, restart: "always" },
+              project.id,
+            )
+          ).success,
+        ).toBe(true)
+        expect((await h.tool("process_start", { name: "waiting", waitMs: 5000 }, project.id)).success).toBe(true)
+        const db = h.runtime.kernel.db as Database
+        const run = db.query("SELECT id FROM process_runs ORDER BY started_at DESC LIMIT 1").get() as { id: string }
+        expect((await patch(mode === "remove" ? [] : [{ path: root, access: "read-only" }])).status).toBe(200)
+        const deadline = Date.now() + 5000
+        while (
+          (db.query("SELECT status FROM process_runs WHERE id = ?").get(run.id) as { status: string }).status !==
+            "stopped" &&
+          Date.now() < deadline
+        )
+          await Bun.sleep(10)
+        expect(db.query("SELECT status FROM process_runs WHERE id = ?").get(run.id)).toEqual({ status: "stopped" })
+        writeFileSync(trigger, "continue")
+        expect((await h.tool("process_start", { name: "waiting", waitMs: 5000 }, project.id)).success).toBe(true)
+        await Bun.sleep(100)
+        expect(existsSync(output)).toBe(false)
+        const logs = await h.tool("process_logs", { name: "waiting" }, project.id)
+        if (mode === "remove") expect(JSON.stringify(logs)).not.toContain("revocation-proof")
+        await h.tool("process_stop", { name: "waiting" }, project.id)
+      } finally {
+        await h.close()
+        rmSync(root, { recursive: true, force: true })
+      }
+    },
+    30_000,
+  )

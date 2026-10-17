@@ -31,6 +31,15 @@ import type { ManagedProcess, ProjectErrorCode, ProjectResult, ProjectStore, Sup
 const now = (): number => Date.now()
 
 const ACCESS_RANK: Record<Bot["access"], number> = { "read-only": 0, "workspace-write": 1, full: 2 }
+const processPolicy = (value: Bot | null) =>
+  JSON.stringify([
+    value?.access,
+    value?.approvals,
+    value?.machine,
+    value?.projectId,
+    value?.folders,
+    value?.anyFolderAccess,
+  ])
 
 const PROCESS_BOOT_AT: number = Date.now()
 
@@ -173,6 +182,7 @@ export const createSupervisor = ({
 }): Supervisor => {
   const work: WorkState = workState ?? createWorkState({ database: kernel.db as Database })
   const managed = new Map<string, ManagedProcess>()
+  const processPolicies = new Map<string, { botId: string; policy: string }>()
   const stopRequested = new Set<string>()
   const failureHistory = new Map<string, Array<number>>()
   const restartTimers = new Map<string, ReturnType<typeof setTimeout>>()
@@ -416,6 +426,7 @@ export const createSupervisor = ({
     void process.child.exited.then(async (exit) => {
       if (managed.get(process.spec.id)?.run.id !== process.run.id) return
       managed.delete(process.spec.id)
+      processPolicies.delete(process.spec.id)
       clearProcessTimers(process.spec.id)
       const ended = now()
       const machineStopped =
@@ -712,23 +723,14 @@ export const createSupervisor = ({
     )
       return errorResult("DENIED", "A política do bot não permite iniciar este processo.")
     if (ctx && botId !== ctx.botId) return errorResult("DENIED", "Este processo pertence a outro responsável.")
-    const policyOf = (value: Bot | null) =>
-      JSON.stringify([
-        value?.access,
-        value?.approvals,
-        value?.machine,
-        value?.projectId,
-        value?.folders,
-        value?.anyFolderAccess,
-      ])
-    const policy = policyOf(bot)
+    const policy = processPolicy(bot)
     const destination = botId ? approvalDestination(kernel, botId) : null
     const authorizationCurrent = () => {
       const latest = effective()
       return (
         !signal?.aborted &&
         !ctx?.signal.aborted &&
-        policyOf(latest) === policy &&
+        processPolicy(latest) === policy &&
         (!botId || approvalDestination(kernel, botId) === destination) &&
         JSON.stringify(store.getProcessSpec({ processId: spec.id })) === JSON.stringify(spec)
       )
@@ -870,7 +872,19 @@ export const createSupervisor = ({
       }
     }
     managed.set(spec.id, process)
+    if (botId)
+      processPolicies.set(spec.id, {
+        botId,
+        policy: processPolicy(kernel.services.use("store.api")?.getBot({ botId }) ?? null),
+      })
     monitor({ project, process })
+    if (!authorizationCurrent()) {
+      stopRequested.add(spec.id)
+      process.stopped = true
+      child.kill("SIGKILL")
+      await child.exited
+      return errorResult("DENIED", "A autorização mudou antes da execução.")
+    }
     portTimers.set(
       spec.id,
       setInterval(() => {
@@ -1158,5 +1172,23 @@ export const createSupervisor = ({
     for (const processId of processes) await stop({ processId })
   }
 
+  kernel.subscribe(({ event }) => {
+    if (event.type !== "bot.updated" && event.type !== "bot.deleted") return
+    const botId = event.type === "bot.updated" ? event.bot.id : event.botId
+    for (const [id, authorization] of processPolicies) {
+      if (
+        authorization.botId !== botId ||
+        (event.type === "bot.updated" && authorization.policy === processPolicy(event.bot))
+      )
+        continue
+      const process = managed.get(id)
+      if (!process) continue
+      // A namespace cannot narrow existing mounts. Stop the complete tree before
+      // a later turn can keep using a removed or downgraded grant.
+      stopRequested.add(id)
+      process.stopped = true
+      process.child.kill("SIGKILL")
+    }
+  })
   return { define, start, stop, restart, list, logs, previews, openPreview, stopAll, cleanupOrphans, autostart }
 }
