@@ -13,6 +13,7 @@ import { DoctorChecks } from "../features/doctor/DoctorChecks"
 import { ReportProblem } from "../features/reports/ReportProblem"
 import { t } from "../i18n"
 import { Modal } from "./Modal"
+import { NotificationDeliverySettings } from "./NotificationDeliverySettings"
 import {
   SettingsDisclosure,
   SettingsGroup,
@@ -287,6 +288,7 @@ export const SettingsModal = ({
                 onChange={(event) => setNative(event.target.checked)}
               />
             </label>
+            <NotificationDeliverySettings enabled={native} />
           </SettingsGroup>
         </SettingsPane>
         <SettingsPane {...pane("diagnostics")}>

@@ -15,6 +15,7 @@ import {
   readVault,
   redactProviderLogin,
   storedProviderLoginSource,
+  validLogin,
 } from "./provider-login"
 
 type Target = Pick<Bot, "id" | "provider">
@@ -77,9 +78,6 @@ export type LoginInvocation = {
 }
 const isDraft = (id: string) => /^draft-[0-9a-f-]{36}$/.test(id)
 const key = (target: Target) => `${target.id}:${target.provider}`
-const record = (value: unknown): Record<string, unknown> | null =>
-  value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null
-const nonempty = (value: unknown) => typeof value === "string" && value.trim().length > 0
 const claudeVerificationUrl = (output: string) => {
   let latest: string | undefined
   // biome-ignore lint/suspicious/noControlCharactersInRegex: OSC 8 uses ESC and BEL delimiters.
@@ -110,34 +108,8 @@ const claudeToken = (output: string) => {
   return ""
 }
 
-/** Structural/expiry validation only; provider CLI refreshes and validates with its own service. */
-export const validLogin = (provider: Bot["provider"], value: string, host = false): boolean => {
-  if (provider === "claude" && !host) return /^sk-ant-oat01-[\w-]+$/.test(value.trim())
-  try {
-    const auth = record(JSON.parse(value))
-    if (!auth) return false
-    if (provider === "codex") {
-      const tokens = record(auth.tokens)
-      return nonempty(auth.OPENAI_API_KEY) || (nonempty(tokens?.access_token) && nonempty(tokens?.refresh_token))
-    }
-    if (provider === "claude") {
-      const oauth = record(auth.claudeAiOauth)
-      return nonempty(oauth?.accessToken) && typeof oauth?.expiresAt === "number" && oauth.expiresAt > Date.now()
-    }
-    return Object.values(auth).some((value) => {
-      const entry = record(value)
-      return (
-        (entry?.type === "api" && nonempty(entry.key)) ||
-        (entry?.type === "oauth" &&
-          nonempty(entry.access) &&
-          nonempty(entry.refresh) &&
-          (typeof entry.expires !== "number" || entry.expires > Date.now()))
-      )
-    })
-  } catch {
-    return false
-  }
-}
+// Kept here for callers that used the login flow validator.
+export { validLogin } from "./provider-login"
 
 export const createProviderLoginFlow = ({
   kernel,
@@ -249,7 +221,8 @@ export const createProviderLoginFlow = ({
   }
   const status = async (target: Target): Promise<ProviderLoginFlow> => {
     const current = sessions.get(key(target))
-    if (current && (current.view.state !== "ready" || isDraft(target.id))) return { ...current.view }
+    // A cancelled browser attempt must not mask an existing or repaired saved login.
+    if (current && (current.view.state === "waiting" || isDraft(target.id))) return { ...current.view }
     const source = isDraft(target.id) ? null : storedProviderLoginSource(kernel, target)
     if (!source && hostAvailable(target.provider)) return { provider: target.provider, state: "host-available", host }
     if (source !== "host-file" && !isDraft(target.id)) {
@@ -266,7 +239,9 @@ export const createProviderLoginFlow = ({
       return source === "host-file"
         ? { provider: target.provider, state: "ready" }
         : { provider: target.provider, state: "host-available", host }
-    return { provider: target.provider, state: "idle" }
+    return current?.view.state === "cancelled" || current?.view.state === "error"
+      ? { ...current.view }
+      : { provider: target.provider, state: "idle" }
   }
   const start = async (target: Target): Promise<ProviderLoginFlow> => {
     const existing = sessions.get(key(target))
