@@ -945,7 +945,7 @@ mod tests {
             "type": "touri-sidecar-ready",
             "port": 43123,
             "pid": 99,
-            "version": "0.1.0",
+            "version": "0.2.0",
             "schemaVersion": schema,
         });
         let parsed = parse_handshake(&handshake.to_string())
@@ -956,17 +956,17 @@ mod tests {
     #[test]
     fn handshake_parser_accepts_only_the_contract() {
         let parsed = parse_handshake(&format!(
-            r#"{{"type":"touri-sidecar-ready","port":43123,"pid":99,"version":"0.1.0","schemaVersion":{SIDECAR_SCHEMA_VERSION}}}"#
+            r#"{{"type":"touri-sidecar-ready","port":43123,"pid":99,"version":"0.2.0","schemaVersion":{SIDECAR_SCHEMA_VERSION}}}"#
         ))
         .expect("valid handshake");
         assert_eq!(parsed.port, 43123);
         assert_eq!(parsed.schema_version, SIDECAR_SCHEMA_VERSION);
         assert!(parse_handshake(&format!(
-            r#"{{"type":"wrong","port":43123,"pid":99,"version":"0.1.0","schemaVersion":{SIDECAR_SCHEMA_VERSION}}}"#
+            r#"{{"type":"wrong","port":43123,"pid":99,"version":"0.2.0","schemaVersion":{SIDECAR_SCHEMA_VERSION}}}"#
         ))
         .is_err());
         assert!(parse_handshake(
-            r#"{"type":"touri-sidecar-ready","port":43123,"pid":99,"version":"0.1.0","schemaVersion":3}"#,
+            r#"{"type":"touri-sidecar-ready","port":43123,"pid":99,"version":"0.2.0","schemaVersion":3}"#,
         )
         .is_err());
     }
@@ -975,7 +975,7 @@ mod tests {
     fn handshake_errors_explain_the_invalid_field() {
         let valid = serde_json::json!({
             "type": "touri-sidecar-ready", "port": 43123, "pid": 99,
-            "version": "0.1.0", "schemaVersion": SIDECAR_SCHEMA_VERSION
+            "version": "0.2.0", "schemaVersion": SIDECAR_SCHEMA_VERSION
         });
         let schema_mismatch_reason =
             format!("schema mismatch: shell expects {SIDECAR_SCHEMA_VERSION}, sidecar reported 5");
@@ -1089,7 +1089,7 @@ mod tests {
         let script = fixture.root.join("fake-sidecar.sh");
         let handshake = |schema| {
             format!(
-            "#!/bin/sh\nprintf '%s\\n' '{{\"type\":\"touri-sidecar-ready\",\"port\":43123,\"pid\":99,\"version\":\"0.1.0\",\"schemaVersion\":{schema}}}'\n"
+            "#!/bin/sh\nprintf '%s\\n' '{{\"type\":\"touri-sidecar-ready\",\"port\":43123,\"pid\":99,\"version\":\"0.2.0\",\"schemaVersion\":{schema}}}'\n"
         )
         };
         std::fs::write(&script, handshake(5)).unwrap();
