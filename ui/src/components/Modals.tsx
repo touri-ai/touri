@@ -1614,14 +1614,15 @@ export const BotSettingsModal = ({
           {saveError}
         </p>
       )}
-      <fieldset className="modal-actions" aria-label={t("Ações das configurações do bot")}>
+      {/* A plain group: WebKit drops flex <fieldset> children from the macOS accessibility tree. */}
+      <div className="modal-actions" role="group" aria-label={t("Ações das configurações do bot")}>
         <button type="button" className="button button-quiet" onClick={onClose}>
           {t("Cancel")}
         </button>
         <button type="button" className="button button-brand" onClick={() => void save()} disabled={saving || updating}>
           {saving ? t("Saving…") : t("Save settings")}
         </button>
-      </fieldset>
+      </div>
     </Modal>
   )
 }
