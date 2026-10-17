@@ -13,7 +13,7 @@ for (const width of [1440, 390]) {
     await expect(page.locator(".notice-bar").first()).toBeVisible()
     if (!baseline) {
       await expect(card).toContainText("Não consegui conectar à sua IA. Sua mensagem está salva.")
-      await expect(card.getByRole("button", { name: "Tentar novamente" })).toBeVisible()
+      await expect(card.getByRole("button", { name: "Tentar de novo" })).toBeVisible()
       await expect(card.locator("code")).not.toBeVisible()
       await expect(page.locator(".notice-bar code")).not.toBeVisible()
       await expect(page.locator("body")).not.toContainText("{horario}")

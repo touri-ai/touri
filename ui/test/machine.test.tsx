@@ -14,7 +14,7 @@ describe("Máquina settings", () => {
       />,
     )
     expect(screen.getByLabelText("Máquina")).toHaveValue("local")
-    expect(screen.getByRole("option", { name: /sem virtualização neste host/ })).toBeDisabled()
+    expect(screen.getByRole("option", { name: /indisponível neste computador/ })).toBeDisabled()
   })
   it("shows image progress, credential risk, status and requires reset confirmation", async () => {
     const action = vi.fn(async () => {})
