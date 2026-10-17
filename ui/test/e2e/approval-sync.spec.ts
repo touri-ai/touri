@@ -5,7 +5,7 @@ for (const width of [1440, 390]) {
   test(`an approval resolved elsewhere clears the banner and chat at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: width === 390 ? 844 : 900 })
     await page.goto("/test/e2e/approval-notice-harness.html")
-    await expect(page.locator(".approval-notice")).toContainText("precisa de você: autorizar")
+    await expect(page.locator(".approval-notice")).toContainText("pede sua aprovação:")
     await page.evaluate(() => {
       const fixture = (
         window as unknown as { approvalNoticeFixture: { echo: () => void; resolve: () => Promise<unknown> } }

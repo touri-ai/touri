@@ -55,9 +55,9 @@ export const ApprovalNotice = ({
   return (
     <div className="notice-bar approval-notice" role="status">
       <span className="notice-content">
-        {t("{bot} precisa de você: autorizar {action}.", {
+        {t("{bot} pede sua aprovação: {summary}", {
           bot: item.botName ?? "touri",
-          action: summary.body.charAt(0).toLocaleLowerCase() + summary.body.slice(1).replace(/\.$/, ""),
+          summary: summary.body,
         })}
       </span>
       <button

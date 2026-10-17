@@ -59,7 +59,9 @@ export const ToolCallList = ({
     const card = Array.from(root.current?.querySelectorAll<HTMLElement>("[data-approval-id]") ?? []).find(
       (node) => node.dataset.approvalId === focusId,
     )
-    card?.focus({ preventScroll: true })
+    const group = card?.closest<HTMLDetailsElement>(".tool-group")
+    const target = group && !group.open ? group.querySelector("summary") : card
+    target?.focus({ preventScroll: true })
   }, [focusId])
   const card = (entry: ToolEntry) =>
     entry.approval ? (
@@ -90,14 +92,7 @@ export const ToolCallList = ({
         return (
           <div className="tool-turn" key={entries[0]?.id}>
             {grouped.length > 0 && (
-              <details
-                className="tool-group"
-                open={
-                  grouped.some((entry) => entry.approval && decisions[entry.approval.approvalId] !== undefined)
-                    ? true
-                    : undefined
-                }
-              >
+              <details className="tool-group">
                 <summary>
                   {grouped.length} {grouped.length === 1 ? "ferramenta" : "ferramentas"}
                 </summary>

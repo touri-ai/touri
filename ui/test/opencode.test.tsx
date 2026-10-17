@@ -64,7 +64,7 @@ it("bot settings preserve OpenCode and save a different model", async () => {
   )
 })
 
-it("model picker lists models and explains unavailable CLI without preventing manual input", async () => {
+it("model picker lists models and explains unavailable OpenCode without preventing manual input", async () => {
   const mock = createMockApi()
   const change = vi.fn()
   const view = render(<ProviderModelField id="model" api={mock} provider="opencode" value="" onChange={change} />)
@@ -81,7 +81,7 @@ it("model picker lists models and explains unavailable CLI without preventing ma
     request: vi.fn(async () => ({ models: [], defaultModel: null, available: false })),
   } as unknown as typeof mock
   render(<ProviderModelField id="manual" api={api} provider="opencode" value="" onChange={change} />)
-  await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Instale a CLI"))
+  await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Instale o OpenCode"))
   fireEvent.change(screen.getByRole("combobox"), { target: { value: "deepseek/deepseek-chat" } })
   expect(change).toHaveBeenCalledWith("deepseek/deepseek-chat")
 })
