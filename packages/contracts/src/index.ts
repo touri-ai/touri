@@ -6,6 +6,7 @@ export * from "./avatar"
 export * from "./cloud"
 export * from "./errors"
 export * from "./reports"
+export * from "./routine-schedule"
 export * from "./types"
 export { catalog as toolCatalog }
 

@@ -97,8 +97,8 @@ describe("WP9 frontend acceptance", () => {
 
     render(<App kernel={{ services: { api } }} />)
     await screen.findByRole("heading", { name: "Rotinas" })
-    fireEvent.click(screen.getByRole("button", { name: /Criar cron/ }))
-    expect(await screen.findByRole("heading", { name: "Criar cron" })).toBeVisible()
+    fireEvent.click(screen.getByRole("button", { name: /Criar rotina/ }))
+    expect(await screen.findByRole("heading", { name: "Criar rotina" })).toBeVisible()
     expect(screen.queryByRole("heading", { name: "Integrações" })).not.toBeInTheDocument()
   })
 

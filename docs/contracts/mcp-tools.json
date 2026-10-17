@@ -60,7 +60,7 @@
     },
     {
       "name": "routine_create",
-      "description": "Create a routine for this bot. It is created DISABLED; the user enables it in the app.",
+      "description": "Create a routine for this bot and request explicit user approval in chat to activate it. Remains disabled if not approved. Always requires approval, even with approvals disabled.",
       "inputSchema": { "type": "object", "required": ["name", "prompt", "cron", "timezone"], "additionalProperties": false,
         "properties": {
           "name": { "type": "string", "maxLength": 80 },
@@ -69,7 +69,7 @@
           "timezone": { "type": "string", "description": "IANA zone, e.g. America/Sao_Paulo" },
           "continuity": { "enum": ["new-thread", "results-thread", "main-thread"], "default": "new-thread" },
           "timeoutMinutes": { "type": "integer", "minimum": 1, "maximum": 240, "default": 30 } } },
-      "x-touri": { "group": "core", "mvp": true, "mutates": true }
+      "x-touri": { "group": "core", "mvp": true, "mutates": true, "deadlineMs": 1800000 }
     },
     {
       "name": "routine_update",

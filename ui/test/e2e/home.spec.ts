@@ -48,7 +48,9 @@ test("bot actions support keyboard access and routines keep their bot filter aft
   await expect(trigger).toBeFocused()
   await showBotRoutines(page)
   await expect(page.getByRole("heading", { name: "Rotinas", exact: true })).toBeVisible()
-  const filter = page.getByRole("group", { name: "Filtros de cron" }).getByRole("button", { name: "mark", exact: true })
+  const filter = page
+    .getByRole("group", { name: "Filtros de rotinas" })
+    .getByRole("button", { name: "mark", exact: true })
   await expect(filter).toHaveAttribute("aria-pressed", "true")
   await page.reload()
   await expect(filter).toHaveAttribute("aria-pressed", "true")

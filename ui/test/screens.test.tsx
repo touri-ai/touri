@@ -78,7 +78,7 @@ describe("r8 screens", () => {
     expect(refresh).toHaveBeenCalledOnce()
     view.rerender(<CronScreen {...props} />)
     expect(screen.getByText("Sua primeira rotina começa aqui")).toBeVisible()
-    expect(screen.getByRole("button", { name: "Criar cron" })).toBeDisabled()
+    expect(screen.getByRole("button", { name: "Criar rotina" })).toBeDisabled()
   })
 
   it("retries an unavailable native Preview using a new session", async () => {

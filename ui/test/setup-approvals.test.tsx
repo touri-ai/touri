@@ -262,3 +262,85 @@ it("keeps setup notices, errors and both merged UI features in Portuguese and En
     expect(t(key, {}, "en")).toBe(english)
   }
 })
+
+it("a maximum-length routine prompt shows the reviewed schedule, bounded preview and named activation", async () => {
+  const api = createMockApi()
+  const prompt = "a".repeat(8000)
+  render(
+    <ApprovalCard
+      api={api}
+      tool={{
+        type: "tool_call",
+        callId: "routine-call",
+        tool: "mcp__touri__routine_create",
+        inputJson: JSON.stringify({ name: "Provider alias", prompt }),
+        summary: "routine_create",
+        outputJson: null,
+        ok: null,
+      }}
+      part={approval("routine_create", {
+        routineId: "routine-daily",
+        name: "Resumo diário QA",
+        cron: "0 9 * * *",
+        schedule: "Todo dia às 09:00 · horário de São Paulo",
+        timezone: "America/Sao_Paulo",
+        promptPreview: `${prompt.slice(0, 512)}…`,
+        promptLength: prompt.length,
+      })}
+    />,
+  )
+  expect(screen.getByText("Ativar rotina")).toBeVisible()
+  expect(screen.getByText("Resumo diário QA · Todo dia às 09:00 · horário de São Paulo")).toBeVisible()
+  const preview = screen.getByRole("figure", { name: "Parâmetros" })
+  expect(preview).toHaveTextContent(`${prompt.slice(0, 512)}…`)
+  expect(preview).toHaveTextContent("Tamanho completo: 8000 caracteres")
+  expect(preview).not.toHaveTextContent(prompt)
+  fireEvent.click(screen.getByRole("button", { name: "Ativar rotina “Resumo diário QA”" }))
+  await screen.findByText("Aprovado por você")
+  expect(api.calls).toContainEqual({
+    route: "POST /approvals/:id",
+    input: { decision: "approved", standing: false },
+    pathValues: { id: "setup-approval" },
+  })
+})
+
+it.each([
+  'routine_create: {"routineId":"daily","prompt":"cut',
+  "routine_create: null",
+  "routine_create: []",
+  'routine_create: {"routineId":"daily","name":"Resumo"}',
+])("unreadable routine review cannot be approved: %s", async (detail) => {
+  const api = createMockApi()
+  render(
+    <ApprovalCard
+      api={api}
+      tool={{
+        type: "tool_call",
+        callId: "routine-call",
+        tool: "mcp__touri__routine_create",
+        inputJson: '{"name":"Provider fallback","cron":"0 9 * * *","timezone":"UTC"}',
+        summary: "routine_create",
+        outputJson: null,
+        ok: null,
+      }}
+      part={{ ...approval("routine_create", {}), detail, allowStanding: true }}
+    />,
+  )
+  expect(screen.getByText("Detalhes indisponíveis")).toBeVisible()
+  expect(
+    screen.getByText("Não foi possível mostrar os detalhes desta ação. Negue e peça ao bot para solicitar novamente."),
+  ).toBeVisible()
+  for (const name of ["Aprovar", "Sempre neste bot"]) {
+    const button = screen.getByRole("button", { name, exact: true })
+    expect(button).toBeDisabled()
+    fireEvent.click(button)
+  }
+  expect(api.calls).toEqual([])
+  fireEvent.click(screen.getByRole("button", { name: "Negar", exact: true }))
+  await screen.findByText("Negado por você")
+  expect(api.calls).toContainEqual({
+    route: "POST /approvals/:id",
+    input: { decision: "denied", standing: false },
+    pathValues: { id: "setup-approval" },
+  })
+})

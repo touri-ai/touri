@@ -95,6 +95,24 @@ export const createApprovalBridge = ({
       remember(input, approvalOutcome.automatic)
       return { success: true, behavior: "allow", updatedInput: input.input, message: approvalOutcome.automatic }
     }
+    const routineReview = input.scope.server === "touri" && input.toolName === "routine_create"
+    const fields = input.input as Record<string, unknown> | null
+    // The gateway's creation approval also carries the original prompt. Keep the
+    // full input for execution; only the review sent to the UI needs a preview.
+    const { prompt, ...metadata } = routineReview && fields && typeof fields === "object" ? fields : {}
+    const reviewInput =
+      routineReview && typeof prompt === "string"
+        ? {
+            ...metadata,
+            promptPreview: prompt.length > 512 ? `${prompt.slice(0, 512)}…` : prompt,
+            promptLength: prompt.length,
+          }
+        : input.input
+    const detail = `${input.toolName}: ${JSON.stringify(redactStructured(reviewInput, kernel.redact))}`
+    // Never offer routine activation with a truncated review, even for unusually
+    // large schedule metadata. The routine stays paused when delivery is refused.
+    if (routineReview && detail.length > 8000)
+      return { success: false, errorCode: "DENIED", error: "Os detalhes da rotina excedem o limite de revisão." }
     const approvalId = kernel.newId()
     const part: ApprovalPart = {
       type: "approval",
@@ -104,7 +122,7 @@ export const createApprovalBridge = ({
       request: "permission",
       scope: input.scope,
       allowStanding,
-      detail: `${input.toolName}: ${JSON.stringify(redactStructured(input.input, kernel.redact))}`.slice(0, 8000),
+      detail: detail.slice(0, 8000),
       decision: "pending",
     }
     return new Promise((resolve) => {

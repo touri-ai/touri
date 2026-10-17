@@ -32,7 +32,8 @@ export const ApprovalCard = ({
   const [error, setError] = useState<string | null>(null)
   const status = part.decision === "pending" ? (decision ?? part.decision) : part.decision
   const permanent = status === "approved" && (part.standing || standingGranted)
-  const toolName = toolPresentation(tool, part).name
+  const presentation = toolPresentation(tool, part)
+  const toolName = presentation.name
   const scopeHelp = `Toda a ferramenta ${toolName} poderá agir neste bot sem pedir novamente. Permite novas chamadas de ${toolName} neste bot sem pedir aprovação, inclusive com outros parâmetros. Você pode revogar essa permissão.`
   const revoke = async () => {
     if (!api || busy || !part.scope || !part.botId) return
@@ -55,7 +56,7 @@ export const ApprovalCard = ({
     }
   }
   const answer = async (approved: boolean, standing = false) => {
-    if (answering.current || !api || status !== "pending") return
+    if (answering.current || !api || status !== "pending" || (approved && !presentation.canApprove)) return
     answering.current = true
     setBusy(true)
     setError(null)
@@ -124,10 +125,10 @@ export const ApprovalCard = ({
               <button
                 className="tool-action tool-action-primary"
                 type="button"
-                disabled={busy || !api}
+                disabled={busy || !api || !presentation.canApprove}
                 onClick={() => void answer(true)}
               >
-                {busy ? "Enviando…" : "Aprovar"}
+                {busy ? "Enviando…" : (presentation.approvalLabel ?? "Aprovar")}
               </button>
               {part.allowStanding && (
                 <span className="tool-standing-action">
@@ -135,7 +136,7 @@ export const ApprovalCard = ({
                     className="tool-action tool-action-secondary"
                     type="button"
                     aria-describedby={tooltipId}
-                    disabled={busy || !api}
+                    disabled={busy || !api || !presentation.canApprove}
                     onClick={() => void answer(true, true)}
                   >
                     Sempre neste bot

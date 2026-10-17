@@ -97,7 +97,10 @@ it("opens the full routines screen from the bot's Advanced settings", async () =
   expect(await screen.findByRole("heading", { name: "Rotinas" })).toBeVisible()
   expect(screen.queryByRole("dialog")).toBeNull()
   expect(
-    within(screen.getByRole("group", { name: "Filtros de cron" })).getByRole("button", { name: "mark", exact: true }),
+    within(screen.getByRole("group", { name: "Filtros de rotinas" })).getByRole("button", {
+      name: "mark",
+      exact: true,
+    }),
   ).toHaveAttribute("aria-pressed", "true")
 })
 

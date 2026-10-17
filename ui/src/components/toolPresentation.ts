@@ -1,6 +1,7 @@
 import type { ApprovalPart, MessagePart } from "@touri/contracts"
 import { redactToolText } from "@touri/contracts/redaction"
 import { localizeToolText, t } from "../i18n"
+import { routineSchedule } from "../routineSchedule"
 
 export type ToolPart = Extract<MessagePart, { type: "tool_call" | "command" | "file_change" }>
 export type ToolKind = "terminal" | "browser" | "computer" | "files" | "tool"
@@ -85,9 +86,34 @@ const setupPresentation = (name: string, input: Record<string, unknown> | null) 
   if (name.includes("__") && !name.startsWith("mcp__touri__")) return null
   const leaf = toolLeaf(name)
   const path = typeof input?.path === "string" ? input.path : ""
+  if (
+    ["routine_create", "project_link", "folder_access_request", "project_unlink", "folder_access_remove"].includes(
+      leaf,
+    ) &&
+    (!input ||
+      (leaf === "routine_create" &&
+        ![input.name, input.cron, input.timezone].every((value) => typeof value === "string" && value.trim())))
+  )
+    return {
+      name: t("Detalhes indisponíveis"),
+      summary: t("Não foi possível mostrar os detalhes desta ação. Negue e peça ao bot para solicitar novamente."),
+      canApprove: false,
+    }
   let title: string
   let summary: string
-  if (leaf === "project_link") {
+  let preview = ""
+  let approvalLabel: string | undefined
+  if (leaf === "routine_create") {
+    title = input?.routineId ? t("Ativar rotina") : t("Criar cron")
+    summary = `${String(input?.name ?? "")} · ${routineSchedule(String(input?.cron ?? ""), String(input?.timezone ?? ""))}`
+    if (input?.routineId) approvalLabel = t("Ativar rotina “{name}”", { name: String(input.name) })
+    const prompt = typeof input?.promptPreview === "string" ? input.promptPreview : input?.prompt
+    if (typeof prompt === "string") {
+      preview = `${t("Prévia da instrução")}\n${prompt}`
+      const length = typeof input?.promptLength === "number" ? input.promptLength : prompt.length
+      preview += `\n${t("Tamanho completo: {count} caracteres", { count: length })}`
+    }
+  } else if (leaf === "project_link") {
     title = t("Vincular projeto")
     summary = t("Vincular {name} ({path}) a este bot", {
       name: String(input?.name ?? path.split("/").filter(Boolean).at(-1) ?? input?.projectId ?? t("Projeto")),
@@ -112,7 +138,7 @@ const setupPresentation = (name: string, input: Record<string, unknown> | null) 
     summary = t("Remover o acesso deste bot a {path}.", { path })
   } else return null
   if (input?.nextTurn) summary += ` ${t("A mudança entra em vigor no próximo turno da VM.")}`
-  return { name: title, summary }
+  return { name: title, summary, preview, approvalLabel, canApprove: true }
 }
 
 export const toolPresentation = (part?: ToolPart, approval?: ApprovalPart) => {
@@ -140,7 +166,10 @@ export const toolPresentation = (part?: ToolPart, approval?: ApprovalPart) => {
   // contain only an ID or an alias and must not override that reviewed summary.
   const setup =
     !approval || approval.scope?.server === "touri"
-      ? setupPresentation(name, approval ? asToolRecord(safeValue(approvalDetail(approval))) : args)
+      ? setupPresentation(
+          approval ? approvalToolName(approval) : name,
+          approval ? asToolRecord(safeValue(approvalDetail(approval))) : args,
+        )
       : null
   const identity = toolIdentity(name, approval?.scope?.server)
   const description = typeof args?.description === "string" ? args.description : ""
@@ -171,6 +200,8 @@ export const toolPresentation = (part?: ToolPart, approval?: ApprovalPart) => {
   return {
     ...identity,
     ...(setup ? { name: setup.name } : {}),
+    canApprove: setup?.canApprove ?? true,
+    approvalLabel: setup?.approvalLabel,
     filePaths,
     summary:
       setup?.summary ??
@@ -183,7 +214,7 @@ export const toolPresentation = (part?: ToolPart, approval?: ApprovalPart) => {
       ),
     code:
       setup && approval
-        ? ""
+        ? (setup.preview ?? "")
         : identity.kind === "terminal"
           ? typeof command === "string"
             ? command
