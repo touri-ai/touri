@@ -33,6 +33,21 @@ export const ptBR = {
   "Ações registradas": "Ações registradas",
   "Nenhuma ação confirmada no histórico. Confira o estado atual antes de continuar.":
     "Nenhuma ação confirmada no histórico. Confira o estado atual antes de continuar.",
+  "Enviar arquivo deste dispositivo": "Enviar arquivo deste dispositivo",
+  "Escolher pasta do servidor": "Escolher pasta do servidor",
+  "Pastas no servidor": "Pastas no servidor",
+  "Esta pasta fica no servidor. Para enviar um arquivo do celular ou computador, use Enviar arquivo deste dispositivo.":
+    "Esta pasta fica no servidor. Para enviar um arquivo do celular ou computador, use Enviar arquivo deste dispositivo.",
+  "Não foi possível liberar a pasta com segurança. Seu bot continua disponível.":
+    "Não foi possível liberar a pasta com segurança. Seu bot continua disponível.",
+  "A conexão direta com esta fonte ainda não está disponível. Exporte um CSV para começar.":
+    "A conexão direta com esta fonte ainda não está disponível. Exporte um CSV para começar.",
+  "Anexar CSV": "Anexar CSV",
+  "Dados disponíveis para {bot}.": "Dados disponíveis para {bot}.",
+  "Continuar tarefa": "Continuar tarefa",
+  "Conexão disponível: {name}": "Conexão disponível: {name}",
+  "Esta pasta fica fora das pastas autorizáveis do servidor.":
+    "Esta pasta fica fora das pastas autorizáveis do servidor.",
   // Routine editor and repeat-task flow.
   Bot: "Bot",
   "Repetir esta tarefa": "Repetir esta tarefa",
@@ -1675,6 +1690,22 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Ações registradas": "Recorded actions",
   "Nenhuma ação confirmada no histórico. Confira o estado atual antes de continuar.":
     "No confirmed action in history. Check the current state before continuing.",
+  "Enviar arquivo deste dispositivo": "Send a file from this device",
+  "Escolher pasta do servidor": "Choose a server folder",
+  "Pastas no servidor": "Server folders",
+  "Somente leitura": "Read only",
+  "Esta pasta fica no servidor. Para enviar um arquivo do celular ou computador, use Enviar arquivo deste dispositivo.":
+    "This folder is on the server. To send a file from your phone or computer, use Send a file from this device.",
+  "Não foi possível liberar a pasta com segurança. Seu bot continua disponível.":
+    "Folder access could not be granted safely. Your bot is still available.",
+  "A conexão direta com esta fonte ainda não está disponível. Exporte um CSV para começar.":
+    "A direct connection to this source is not available yet. Export a CSV to get started.",
+  "Anexar CSV": "Attach CSV",
+  "Dados disponíveis para {bot}.": "Data available for {bot}.",
+  "Continuar tarefa": "Continue task",
+  "Conexão disponível: {name}": "Connection available: {name}",
+  "Esta pasta fica fora das pastas autorizáveis do servidor.":
+    "This folder is outside the server’s available folder roots.",
   // Routine editor and repeat-task flow.
   Bot: "Bot",
   "Repetir esta tarefa": "Repeat this task",

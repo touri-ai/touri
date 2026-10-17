@@ -53,3 +53,32 @@
 .folder-picker .folder-picker-access input {
   width: auto;
 }
+
+@media (max-width: 600px) {
+  .folder-picker {
+    width: 100%;
+    max-height: calc(100dvh - 40px);
+  }
+
+  .folder-picker-body {
+    padding-inline: 16px;
+    min-width: 0;
+  }
+
+  .folder-picker button,
+  .folder-picker summary,
+  .folder-picker-access label {
+    min-height: 44px;
+  }
+
+  .folder-picker button {
+    min-width: 44px;
+  }
+
+  .folder-picker .modal-actions {
+    position: sticky;
+    bottom: 0;
+    background: var(--surface-panel);
+    flex-wrap: wrap;
+  }
+}

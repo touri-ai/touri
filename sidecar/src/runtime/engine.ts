@@ -55,6 +55,7 @@ import {
   MAX_AUTO_CONTINUATIONS,
   MAX_CRASH_CONTINUATIONS,
 } from "./continuations"
+import { csvInput } from "./csv-input"
 import { buildHandoffPacket } from "./handoff"
 import { composeDeveloperInstructions } from "./instructions"
 import { isMcpStartupError } from "./mcp-startup"
@@ -752,6 +753,7 @@ export const createRuntimeEngine = ({
     const input: Array<TextPart | Extract<MessagePart, { type: "image" }>> = request
       ? [
           { type: "text", text: inputText },
+          ...csvInput({ kernel, parts: (originalRequest ?? request).parts }),
           ...(originalRequest ?? request).parts.filter(
             (part): part is Extract<MessagePart, { type: "image" }> => part.type === "image",
           ),

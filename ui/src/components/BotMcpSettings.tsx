@@ -23,8 +23,16 @@ export const BotMcpSettings = ({
   focusOnOpen = false,
   machine = "local",
   invokeCommand,
+  botName,
+  onContinue,
+  onAttach,
+  onFolder,
 }: {
   api: UiApi
+  botName?: string | undefined
+  onContinue?: (() => void) | undefined
+  onAttach?: (() => void) | undefined
+  onFolder?: (() => void) | undefined
   botId: string
   onOpenIntegrations?: () => void
   onPermissionsChange?: () => void
@@ -46,6 +54,7 @@ export const BotMcpSettings = ({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [missingCommand, setMissingCommand] = useState(false)
+  const [connected, setConnected] = useState(false)
   const [advanced, setAdvanced] = useState(false)
   const [preset, setPreset] = useState<McpPreset | null>(null)
   const [setupReady, setSetupReady] = useState(false)
@@ -127,7 +136,7 @@ export const BotMcpSettings = ({
     )
   }
   const testConnection = async () => {
-    if (operationRef.current || busy || !canAttach || (!advanced && !setupReady)) return
+    if (operationRef.current || busy || !canAttach || (!!preset && !setupReady)) return
     operationRef.current = true
     setBusy(true)
     setTesting(true)
@@ -146,7 +155,7 @@ export const BotMcpSettings = ({
     }
   }
   const attach = async () => {
-    if (operationRef.current || busy || !canAttach || !tested?.tools.length || (!advanced && !setupReady)) return
+    if (operationRef.current || busy || !canAttach || !tested?.tools.length || (!!preset && !setupReady)) return
     operationRef.current = true
     setBusy(true)
     setError(null)
@@ -154,6 +163,7 @@ export const BotMcpSettings = ({
     try {
       const server = serverConfig()
       const result = await api.request("PUT /bots/:id/mcp/:name", server, { id: botId, name: server.name })
+      setConnected(true)
       setServers((current) => [...current.filter((item) => item.name !== result.server.name), result.server])
       onPermissionsChange?.()
       setName("")
@@ -205,10 +215,14 @@ export const BotMcpSettings = ({
       )}
       <McpCatalog
         disabled={busy}
+        technical={advanced}
+        onAttach={onAttach}
+        onFolder={machine === "cloud" ? undefined : onFolder}
         onSelect={(server) => {
           const selected = mcpPresets.find((item) => item.server.name === server.name)
           resetTest()
-          setAdvanced(false)
+          setAdvanced(true)
+          setConnected(false)
           setPreset(selected ? { ...selected } : null)
           setSetupReady(false)
           setError(null)
@@ -233,7 +247,7 @@ export const BotMcpSettings = ({
       >
         {t("Configuração técnica (MCP)")}
       </button>
-      {preset && !advanced && (
+      {preset && advanced && (
         <McpSetupChecklist
           key={preset.server.name}
           api={api}
@@ -243,62 +257,75 @@ export const BotMcpSettings = ({
           disabled={busy}
         />
       )}
-      {servers.length === 0 && (
+      {connected && (
+        <div role="status">
+          <p>{t("Dados disponíveis para {bot}.", { bot: botName ?? botId })}</p>
+          {onContinue && (
+            <button type="button" className="button button-brand" onClick={onContinue}>
+              {t("Continuar tarefa")}
+            </button>
+          )}
+        </div>
+      )}
+      {advanced && servers.length === 0 && (
         <p>{t("Nenhum servidor externo conectado. Gmail e outras integrações precisam de uma conexão MCP.")}</p>
       )}
-      {servers.map((server) => (
-        <article key={server.name}>
-          <strong>
-            {server.name} · {server.transport}
-          </strong>
-          {server.tools.length === 0 && <p>{t("Nenhuma ferramenta anunciada.")}</p>}
-          {server.tools.map((tool) => (
-            <fieldset key={tool.name} disabled={busy}>
-              <legend>{tool.name}</legend>
-              {tool.description && <p>{tool.description}</p>}
-              <label>
-                Classificação · {tool.name}
-                <select
-                  value={tool.classification ?? "writes"}
-                  onChange={(event) =>
-                    void updateTool(server, tool, { classification: event.target.value as "reads" | "writes" })
-                  }
-                >
-                  <option value="reads">Leitura</option>
-                  <option value="writes">Escrita</option>
-                </select>
-              </label>
-              <label>
-                Política · {tool.name}
-                <select
-                  value={tool.policy ?? "needs_approval"}
-                  onChange={(event) => void updateTool(server, tool, { policy: event.target.value as McpToolPolicy })}
-                >
-                  <option value="always_allow">Sempre permitir</option>
-                  <option value="needs_approval">Pedir aprovação</option>
-                  <option value="blocked">Bloquear</option>
-                </select>
-              </label>
-            </fieldset>
-          ))}
-          <button
-            type="button"
-            className="text-button"
-            disabled={busy}
-            onClick={() =>
-              void api
-                .request("DELETE /bots/:id/mcp/:name", {}, { id: botId, name: server.name })
-                .then(() => {
-                  setServers((current) => current.filter((item) => item.name !== server.name))
-                  onPermissionsChange?.()
-                })
-                .catch(() => setError(t("Não foi possível desconectar o servidor MCP.")))
-            }
-          >
-            {t("Desconectar")}
-          </button>
-        </article>
-      ))}
+      {!advanced &&
+        servers.map((server) => <p key={server.name}>{t("Conexão disponível: {name}", { name: server.name })}</p>)}
+      {advanced &&
+        servers.map((server) => (
+          <article key={server.name}>
+            <strong>
+              {server.name} · {server.transport}
+            </strong>
+            {server.tools.length === 0 && <p>{t("Nenhuma ferramenta anunciada.")}</p>}
+            {server.tools.map((tool) => (
+              <fieldset key={tool.name} disabled={busy}>
+                <legend>{tool.name}</legend>
+                {tool.description && <p>{tool.description}</p>}
+                <label>
+                  Classificação · {tool.name}
+                  <select
+                    value={tool.classification ?? "writes"}
+                    onChange={(event) =>
+                      void updateTool(server, tool, { classification: event.target.value as "reads" | "writes" })
+                    }
+                  >
+                    <option value="reads">Leitura</option>
+                    <option value="writes">Escrita</option>
+                  </select>
+                </label>
+                <label>
+                  Política · {tool.name}
+                  <select
+                    value={tool.policy ?? "needs_approval"}
+                    onChange={(event) => void updateTool(server, tool, { policy: event.target.value as McpToolPolicy })}
+                  >
+                    <option value="always_allow">Sempre permitir</option>
+                    <option value="needs_approval">Pedir aprovação</option>
+                    <option value="blocked">Bloquear</option>
+                  </select>
+                </label>
+              </fieldset>
+            ))}
+            <button
+              type="button"
+              className="text-button"
+              disabled={busy}
+              onClick={() =>
+                void api
+                  .request("DELETE /bots/:id/mcp/:name", {}, { id: botId, name: server.name })
+                  .then(() => {
+                    setServers((current) => current.filter((item) => item.name !== server.name))
+                    onPermissionsChange?.()
+                  })
+                  .catch(() => setError(t("Não foi possível desconectar o servidor MCP.")))
+              }
+            >
+              {t("Desconectar")}
+            </button>
+          </article>
+        ))}
       {advanced && (
         <fieldset className="mcp-connection" disabled={busy}>
           <legend>{t("Configuração técnica (MCP)")}</legend>
@@ -402,7 +429,7 @@ export const BotMcpSettings = ({
           <button
             type="button"
             className="button button-quiet"
-            disabled={busy || !canAttach || (!advanced && !setupReady)}
+            disabled={busy || !canAttach || (!!preset && !setupReady)}
             onClick={() => void testConnection()}
           >
             {testing ? t("Testando conexão…") : t("Testar conexão")}
@@ -420,7 +447,7 @@ export const BotMcpSettings = ({
           <button
             type="button"
             className="button button-quiet"
-            disabled={busy || !canAttach || !tested?.tools.length || (!advanced && !setupReady)}
+            disabled={busy || !canAttach || !tested?.tools.length || (!!preset && !setupReady)}
             onClick={() => void attach()}
           >
             {busy && !testing && !picking
