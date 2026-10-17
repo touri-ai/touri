@@ -25,7 +25,7 @@ import type {
 } from "@touri/contracts"
 import { publicError } from "@touri/contracts"
 import { redactToolText } from "@touri/contracts/redaction"
-import { refineErrorClass, safeRunFailure } from "@touri/contracts/run-failure"
+import { hasRecordedActions, refineErrorClass, safeRunFailure } from "@touri/contracts/run-failure"
 import { createApprovalBridge } from "../approvals/bridge"
 import { approvalOutcome } from "../approvals/outcome"
 import { delegatedBot } from "../groups/security"
@@ -129,7 +129,7 @@ type RuntimeEngine = {
   continueAfterApproval: ServiceMap["runtime.continueAfterApproval"]
   cancel: (id: Id) => Result<{ run: Run }, "NOT_FOUND">
   cancelBotTurns: (args: { botId: Id }) => Promise<void>
-  retry: (id: Id) => Result<{ run: Run }, "NOT_FOUND" | "THREAD_NOT_FOUND" | "BOT_PAUSED">
+  retry: (id: Id) => Result<{ run: Run }, "NOT_FOUND" | "THREAD_NOT_FOUND" | "BOT_PAUSED" | "CONFLICT">
   answerApproval: (args: {
     approvalId: Id
     decision: "approved" | "denied"
@@ -1237,6 +1237,15 @@ export const createRuntimeEngine = ({
       return null
     // Effects whose outcome is unknown wait for the user; the work notice already explains them.
     if (hasUncertainWork(run.id)) return null
+    if (reason !== "permission_granted") {
+      const parts =
+        kernel.services
+          .use("store.api")
+          ?.activePath({ threadId: run.threadId })
+          .filter((message) => message.runId === run.id)
+          .flatMap((message) => message.parts) ?? []
+      if (hasRecordedActions(parts)) return null
+    }
     const session =
       continuations.resumePoint(run.id) ??
       persistence.getActiveSession({ threadId: run.threadId, provider: run.provider })
@@ -1522,9 +1531,33 @@ export const createRuntimeEngine = ({
     await Promise.all(runs.map((run) => executions.get(run.id)))
   }
 
-  const retry = (id: Id): Result<{ run: Run }, "NOT_FOUND" | "THREAD_NOT_FOUND" | "BOT_PAUSED"> => {
+  const retry = (id: Id): Result<{ run: Run }, "NOT_FOUND" | "THREAD_NOT_FOUND" | "BOT_PAUSED" | "CONFLICT"> => {
     const previous = persistence.getRun(id)
     if (!previous?.requestMessageId) return { success: false, errorCode: "NOT_FOUND", error: "Run not found" }
+    if (["queued", "starting", "running", "succeeded"].includes(previous.status))
+      return { success: true, run: previous }
+    // A retry is identified by the failed run, including after a lost HTTP acknowledgement.
+    const attempts = persistence.listRuns(previous.threadId, { all: true })
+    const previousIndex = attempts.findIndex((run) => run.id === previous.id)
+    const existing = attempts
+      .slice(0, previousIndex)
+      .find((run) => run.requestMessageId === previous.requestMessageId && run.trigger === "retry")
+    if (existing) return { success: true, run: existing }
+    const parts =
+      kernel.services
+        .use("store.api")
+        ?.activePath({
+          threadId: previous.threadId,
+          ...(previous.replyMessageId ? { leafId: previous.replyMessageId } : {}),
+        })
+        .filter((message) => message.runId === previous.id)
+        .flatMap((message) => message.parts) ?? []
+    if (hasRecordedActions(parts))
+      return {
+        success: false,
+        errorCode: "CONFLICT",
+        error: "A resposta foi interrompida. Algumas ações podem ter sido concluídas.",
+      }
     return previous.routineRunId
       ? enqueue({
           threadId: previous.threadId,

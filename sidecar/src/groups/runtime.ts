@@ -1,5 +1,6 @@
 import type { Database } from "bun:sqlite"
 import type { Bot, BotGroup, Kernel, Run, ToolContext, ToolResult } from "@touri/contracts"
+import { hasRecordedActions } from "@touri/contracts/run-failure"
 import { attachedServers } from "../mcp/attached"
 import type { createRuntimeEngine } from "../runtime/engine"
 import { createRuntimePersistence, toRun } from "../runtime/persistence"
@@ -484,12 +485,34 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
       ctx.signal.removeEventListener("abort", abort)
     }
   }
-  const retry = (id: string): ReturnType<typeof enqueue> | null => {
+  const retry: import("@touri/contracts").ServiceMap["groups.runtime"]["retry"] = (id) => {
     const link = db.query("SELECT turn_id FROM group_run_links WHERE run_id=?").get(id) as { turn_id: string } | null
     if (link) return retry(link.turn_id)
     const row = db.query("SELECT run_id FROM group_turns WHERE run_id=?").get(id)
     if (!row) return null
     const run = readRun(id)
+    if (run && ["queued", "starting", "running", "succeeded"].includes(run.status)) return { success: true, run }
+    if (run) {
+      const attempts = persistence.listRuns(run.threadId, { all: true })
+      const existing = attempts
+        .slice(
+          0,
+          attempts.findIndex((item) => item.id === id),
+        )
+        .find((item) => item.requestMessageId === run.requestMessageId && item.trigger === "retry")
+      if (existing) return { success: true, run: existing }
+      const parts = store
+        .activePath({ threadId: run.threadId })
+        .filter((message) => message.runId === id)
+        .flatMap((message) => message.parts)
+      const child = db.query("SELECT 1 FROM group_run_links WHERE turn_id=? LIMIT 1").get(id)
+      if (child || hasRecordedActions(parts))
+        return {
+          success: false,
+          errorCode: "CONFLICT",
+          error: "A resposta foi interrompida. Algumas ações podem ter sido concluídas.",
+        }
+    }
     return run?.requestMessageId
       ? enqueue({ threadId: run.threadId, requestMessageId: run.requestMessageId, trigger: "retry" })
       : null

@@ -53,8 +53,8 @@ export const ComposerNotice = ({
             <ErrorText
               code={error?.code ?? machine?.errorCode}
               text={
-                error?.detail ||
                 (machine?.error && localizeNotice(machine.error)) ||
+                error?.detail ||
                 t("Check the computer and try again. Your files are safe.")
               }
             />

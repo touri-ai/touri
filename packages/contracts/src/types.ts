@@ -1110,7 +1110,7 @@ export type ServiceMap = {
   'groups.runtime': {
     enqueue: ServiceMap['runtime.enqueue']
     cancel: (id: Id) => boolean
-    retry: (id: Id) => ReturnType<ServiceMap['runtime.enqueue']> | null
+    retry: (id: Id) => Result<{ run: Run }, 'THREAD_NOT_FOUND' | 'BOT_PAUSED' | 'CONFLICT'> | null
     listRuns: (threadId: Id) => Array<Run>
     shutdown: () => void
     canCoordinate: (threadId: Id) => boolean

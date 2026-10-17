@@ -179,7 +179,7 @@ describe("composer island", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "Enviar" })).toBeEnabled())
     fireEvent.click(screen.getByRole("button", { name: "Enviar" }))
     const alert = await screen.findByRole("alert")
-    expect(alert).toHaveTextContent("Não foi possível enviar. Sem conexão")
+    expect(alert).toHaveTextContent("Não consegui conectar à sua IA. Verifique a conexão e tente novamente.")
     const details = screen.getByText("TOURI-E1008").closest("details")
     expect(details).not.toHaveAttribute("open")
     fireEvent.click(screen.getByText("Detalhes do erro"))
