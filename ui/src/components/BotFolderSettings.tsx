@@ -127,6 +127,7 @@ export const BotFolderSettings = ({
           onUpload={onUpload}
           onClose={() => setPicking(false)}
           onSelect={(folder) => {
+            setAvailable(true)
             if (!folders.some((item) => item.path === folder.path)) onFolders([...folders, folder])
             setPicking(false)
           }}

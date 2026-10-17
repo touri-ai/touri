@@ -1839,6 +1839,7 @@ export const ptBR = {
   system: "Sistema",
   tool: "Ferramenta",
   // Local folder confinement and recovery.
+  "Esta pasta fica no servidor.": "Esta pasta fica no servidor.",
   "Esta pasta é protegida. Escolha outra pasta.": "Esta pasta é protegida. Escolha outra pasta.",
   "Não foi possível acessar o login do bot com segurança. Entre novamente na conta nas configurações.":
     "Não foi possível acessar o login do bot com segurança. Entre novamente na conta nas configurações.",
@@ -3114,6 +3115,7 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   system: "System",
   tool: "Tool",
   // Local folder confinement and recovery.
+  "Esta pasta fica no servidor.": "This folder is on the server.",
   "Esta pasta é protegida. Escolha outra pasta.": "This folder is protected. Choose another folder.",
   "Não foi possível acessar o login do bot com segurança. Entre novamente na conta nas configurações.":
     "The bot's sign-in could not be accessed safely. Sign in again in settings.",

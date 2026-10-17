@@ -40,6 +40,7 @@ it("keeps unsupported grants disabled and offers device upload without selecting
   render(<FolderPicker api={f.api} requireAccess onUpload={upload} onSelect={f.select} onClose={f.close} />)
   await screen.findByText("Não foi possível liberar a pasta com segurança. Seu bot continua disponível.")
   expect(screen.getByRole("dialog", { name: "Pastas no servidor" })).toBeVisible()
+  expect(screen.getByText("Esta pasta fica no servidor.")).toBeVisible()
   expect(useFolder()).toBeDisabled()
   expect(screen.getByText(/Nenhuma permissão foi adicionada/)).toBeVisible()
   expect(screen.getByRole("button", { name: "Nova pasta" })).toBeDisabled()

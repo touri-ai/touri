@@ -100,11 +100,7 @@ export const FolderPicker = ({
     >
       <div className="folder-picker-body">
         <p className="field-help">
-          {desktop
-            ? t("As pastas estão no computador onde o touri está rodando.")
-            : t(
-                "Esta pasta fica no servidor. Para enviar um arquivo do celular ou computador, use Enviar arquivo deste dispositivo.",
-              )}
+          {desktop ? t("As pastas estão no computador onde o touri está rodando.") : t("Esta pasta fica no servidor.")}
         </p>
         {unavailable && (
           <div role="status">
