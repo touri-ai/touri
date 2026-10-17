@@ -3,6 +3,7 @@ import type { Kernel, MachineState, ToolResult } from "@touri/contracts"
 import { abortVmWait } from "../vm/stage"
 import { connectCdpWebSocket } from "./cdp"
 import { createBrowserEngine } from "./engine"
+import { attachLocalChrome, type ChromeLauncher } from "./launcher"
 import type { BrowserEngine, CdpClient } from "./types"
 import { raceBudget } from "./utils"
 
@@ -13,9 +14,20 @@ const PROBE_BUDGET_MS = 1500
 export const createRoutedBrowserEngine = (
   kernel: Kernel,
   mode: "system-chrome" | "chrome-for-testing",
-  { guestTimeoutMs = 30_000, connect = connectCdpWebSocket } = {},
+  {
+    guestTimeoutMs = 30_000,
+    connect = connectCdpWebSocket,
+    localLauncher = attachLocalChrome(),
+  }: {
+    guestTimeoutMs?: number
+    connect?: typeof connectCdpWebSocket
+    localLauncher?: ChromeLauncher
+  } = {},
 ): BrowserEngine => {
   const local = createBrowserEngine({ kernel, mode })
+  const attached = createBrowserEngine({ kernel, profile: "local", localBrowser: true, launcher: localLauncher })
+  const hostForBot = (botId: string | null) =>
+    botId && kernel.services.use("store.api")?.getBot({ botId })?.browser === "local" ? attached : local
   type Guest = {
     engine: BrowserEngine
     lifetime: AbortController
@@ -43,7 +55,7 @@ export const createRoutedBrowserEngine = (
       } | null
     )?.owner_bot_id ?? null
   const isGuest = (botId: string | null): botId is string =>
-    !!botId && kernel.services.use("store.api")?.getBot({ botId })?.machine === "vm"
+    !!botId && kernel.services.use("store.api")?.getBot({ botId })?.browser === "machine"
   const forBot = (botId: string): Guest => {
     const existing = guests.get(botId)
     if (existing) return existing
@@ -116,6 +128,11 @@ export const createRoutedBrowserEngine = (
     return guest
   }
   const unsubscribe = kernel.subscribe(({ event }) => {
+    if (event.type === "bot.deleted" || event.type === "bot.updated") {
+      const botId = event.type === "bot.deleted" ? event.botId : event.bot.id
+      if (!isGuest(botId)) retire(botId, guests.get(botId), new Error("O navegador deste bot mudou."))
+      return
+    }
     if (event.type !== "machine.updated") return
     const machine = event.machine
     const previous = machines.get(machine.botId)
@@ -140,17 +157,26 @@ export const createRoutedBrowserEngine = (
         return async () => {
           unsubscribe()
           for (const [botId, guest] of guests) retire(botId, guest, new Error("Navegador encerrado."))
-          await local.shutdown()
+          await Promise.all([local.shutdown(), attached.shutdown()])
         }
       if (key === "tabsForBot")
         return (botId: string | null) => {
-          if (botId) return (isGuest(botId) ? forBot(botId).engine : local).tabsForBot(botId)
+          if (botId) return (isGuest(botId) ? forBot(botId).engine : hostForBot(botId)).tabsForBot(botId)
           // Restore guest tab metadata for the workspace snapshot without booting a VM.
           const owners = (kernel.db as Database)
             .query("SELECT DISTINCT owner_bot_id FROM browser_tabs WHERE profile LIKE 'vm:%' AND state != 'closed'")
             .all() as Array<{ owner_bot_id: string }>
           for (const owner of owners) if (isGuest(owner.owner_bot_id)) forBot(owner.owner_bot_id)
-          return [...local.tabsForBot(null), ...[...guests.values()].flatMap(({ engine }) => engine.tabsForBot(null))]
+          return [local, attached, ...[...guests.values()].map(({ engine }) => engine)].flatMap((engine) =>
+            engine
+              .tabsForBot(null)
+              .filter(
+                (tab) =>
+                  tab.ownerBotId &&
+                  (isGuest(tab.ownerBotId) ? guests.get(tab.ownerBotId)?.engine : hostForBot(tab.ownerBotId)) ===
+                    engine,
+              ),
+          )
         }
       return (input: unknown) => {
         const args =
@@ -254,7 +280,7 @@ export const createRoutedBrowserEngine = (
               signal?.removeEventListener("abort", cancel)
             }
           })()
-        return (local[key] as (value: unknown) => unknown)(input)
+        return (hostForBot(botId)[key] as (value: unknown) => unknown)(input)
       }
     },
   })
