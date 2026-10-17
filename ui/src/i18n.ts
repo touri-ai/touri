@@ -285,6 +285,23 @@ export const ptBR = {
     "O servidor respondeu, mas não ofereceu ferramentas. Confira a configuração e teste novamente.",
   "Salvando conexão…": "Salvando conexão…",
   "Salvar conexão": "Salvar conexão",
+  // Response feedback: keep this block together for parallel UI changes.
+  "Preparando a resposta…": "Preparando a resposta…",
+  "Preparando o ambiente…": "Preparando o ambiente…",
+  "Lendo {arquivo}…": "Lendo {arquivo}…",
+  "Preciso da sua autorização.": "Preciso da sua autorização.",
+  "Ainda aguardando a IA responder.": "Ainda aguardando a IA responder.",
+  "A tarefa continua em execução.": "A tarefa continua em execução.",
+  "A resposta está demorando. Você pode continuar esperando ou verificar a conexão.":
+    "A resposta está demorando. Você pode continuar esperando ou verificar a conexão.",
+  "Verificar conexão": "Verificar conexão",
+  "Verificando conexão…": "Verificando conexão…",
+  "A conexão com o touri está disponível. A IA pode continuar demorando.":
+    "A conexão com o touri está disponível. A IA pode continuar demorando.",
+  "Não foi possível conectar ao touri. Verifique sua conexão.":
+    "Não foi possível conectar ao touri. Verifique sua conexão.",
+  "Não foi possível parar. Tente novamente.": "Não foi possível parar. Tente novamente.",
+
   // First conversation and host transparency.
   "onboarding.server": "servidor",
   "onboarding.privacy":
@@ -2009,6 +2026,22 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
     "The server responded but offered no tools. Check the configuration and test again.",
   "Salvando conexão…": "Saving connection…",
   "Salvar conexão": "Save connection",
+  // Response feedback: keep this block together for parallel UI changes.
+  "Preparando a resposta…": "Preparing a reply…",
+  "Preparando o ambiente…": "Preparing the environment…",
+  "Lendo {arquivo}…": "Reading {arquivo}…",
+  "Preciso da sua autorização.": "I need your permission.",
+  "Ainda aguardando a IA responder.": "Still waiting for the AI to respond.",
+  "A tarefa continua em execução.": "The task is still running.",
+  "A resposta está demorando. Você pode continuar esperando ou verificar a conexão.":
+    "The reply is taking longer. You can keep waiting or check the connection.",
+  "Verificar conexão": "Check connection",
+  "Verificando conexão…": "Checking connection…",
+  "A conexão com o touri está disponível. A IA pode continuar demorando.":
+    "The connection to touri is available. The AI may still take longer.",
+  "Não foi possível conectar ao touri. Verifique sua conexão.": "Could not connect to touri. Check your connection.",
+  "Não foi possível parar. Tente novamente.": "Could not stop. Try again.",
+
   // First conversation and host transparency.
   "onboarding.server": "server",
   "onboarding.privacy":

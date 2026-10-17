@@ -35,6 +35,7 @@ import { userFacingError } from "./errors"
 import { adoptProviderLogin } from "./features/bots/providerLogin"
 import { useDoctorReport } from "./features/doctor/useDoctorReport"
 import { localizeNotice, t } from "./i18n"
+import { localResponseTimings } from "./localResponseTimings"
 import { useMachineParking } from "./machineIntents"
 import { reconcileFailureNotifications } from "./sidebarAttention"
 import { readWorkspaceState, saveWorkspaceState } from "./workspaceState"
@@ -156,13 +157,22 @@ const uniqueById = <T extends { id: Id }>(rows: Array<T>): Array<T> => {
   return [...result.values()]
 }
 
-const mergeRunRows = <T extends { id: Id; status: string; finishedAt: number | null }>(
+const mergeRunRows = <
+  T extends { id: Id; status: string; finishedAt: number | null; providerStartedAt?: number | null },
+>(
   current: T[],
   incoming: T[],
 ): T[] => {
   const rows = new Map(current.map((row) => [row.id, row]))
   for (const row of incoming) {
     const previous = rows.get(row.id)
+    // A late acceptance can predate provider invocation.
+    if (
+      previous?.providerStartedAt != null &&
+      row.providerStartedAt == null &&
+      ["queued", "starting"].includes(row.status)
+    )
+      continue
     // A REST response may arrive after the terminal WebSocket event.
     if (
       previous?.finishedAt !== null &&
@@ -540,6 +550,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
     // too large or expired. Reloading every conversation on each reconnect kept a slow client behind.
     const unsubscribe = api.subscribe((envelope: UiEventEnvelope) => {
       const event = envelope.event
+      localResponseTimings().observe(event)
       if (event.type === "thread.updated" && event.thread.groupThreadId) {
         privateThreads.current.add(event.thread.id)
         return
@@ -856,7 +867,10 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
   const sendMessage = useCallback(
     async (text: string, parentId?: Id | null, attachmentIds: Array<Id> = []): Promise<void> => {
       if (!selectedThread || !text.trim()) return
+      const clientNonce = crypto.randomUUID()
+      localResponseTimings().begin(selectedThread.id, clientNonce)
       const input = {
+        clientNonce,
         threadId: selectedThread.id,
         parentId: parentId === undefined ? selectedThread.activeLeafId : parentId,
         text: text.trim(),
@@ -865,6 +879,8 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
       const response = api.sendMessage
         ? await api.sendMessage(input)
         : await api.request("POST /threads/:id/messages", input, { id: selectedThread.id })
+      localResponseTimings().observe({ type: "message.updated", message: response.message })
+      if (response.run) localResponseTimings().observe({ type: "run.updated", run: response.run })
       setData((current) => ({
         ...current,
         messages: updateMessage(current.messages, response.message),
