@@ -27,6 +27,7 @@ it("saves the VM memory preference from Diagnostics and refuses invalid caps", a
   expect(save).not.toHaveBeenCalled()
   expect(screen.getByRole("alert")).toHaveTextContent("512")
   fireEvent.change(memory, { target: { value: "1024" } })
+  expect(memory).toBeVisible()
   fireEvent.click(screen.getByRole("button", { name: "Salvar preferências" }))
   await waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({ botVmMemoryMb: 1024 })))
 })

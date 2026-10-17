@@ -317,10 +317,14 @@ export const SettingsModal = ({
                 <SettingsGroup>
                   <details
                     className="settings-technical-details"
-                    open={
-                      focusSetting === "vmMemory" ||
-                      Boolean(error && (!Number.isInteger(vmMemory) || vmMemory < 512 || vmMemory > 16384))
-                    }
+                    ref={(details) => {
+                      if (
+                        details &&
+                        (focusSetting === "vmMemory" ||
+                          Boolean(error && (!Number.isInteger(vmMemory) || vmMemory < 512 || vmMemory > 16384)))
+                      )
+                        details.open = true
+                    }}
                   >
                     <summary>{t("Detalhes técnicos")}</summary>
                     <SettingsRow

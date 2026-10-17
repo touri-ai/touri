@@ -86,6 +86,11 @@ it("keeps creation choices and bot computer settings free of jargon until techni
   fireEvent.click(screen.getByRole("button", { name: "Salvar configurações" }))
   expect(screen.getByRole("alert")).toHaveTextContent("512")
   expect(memory).toBeVisible()
+  fireEvent.change(memory, { target: { value: "512" } })
+  expect(memory).toBeVisible()
+  fireEvent.change(memory, { target: { value: "5120" } })
+  expect(memory).toHaveValue(5120)
+  expect(memory).toBeVisible()
 })
 
 it.each([false, true])(

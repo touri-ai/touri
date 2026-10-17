@@ -99,6 +99,18 @@ test("computer settings explain the choice before showing implementation details
   await dialog
     .locator(".settings-row:has(#bot-vm-memory)")
     .screenshot({ path: testInfo.outputPath("computer-technical-details.png") })
+  await memory.fill("256")
+  await dialog.locator(".machine-settings > details > summary").click()
+  await dialog.getByRole("button", { name: "Salvar configurações" }).click()
+  await expect(memory).toBeVisible()
+  await memory.press("ControlOrMeta+A")
+  await memory.pressSequentially("5120")
+  await expect(memory).toHaveValue("5120")
+  await expect(memory).toBeVisible()
+  await expect(memory).toBeFocused()
+  await dialog
+    .locator(".settings-row:has(#bot-vm-memory)")
+    .screenshot({ path: testInfo.outputPath("computer-memory-correction.png") })
 })
 
 test("failed task offers scheduling and retry as distinct actions", async ({ page }, testInfo) => {
