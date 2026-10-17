@@ -1,5 +1,5 @@
 import type { Bot, Id, Project } from "@touri/contracts"
-import { useEffect, useId, useRef, useState } from "react"
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react"
 import { userFacingError } from "../errors"
 import { t } from "../i18n"
 import { PanelIcon } from "./PanelIcon"
@@ -22,6 +22,7 @@ export const ComposerProjectChip = ({
   const [error, setError] = useState<string | null>(null)
   const root = useRef<HTMLDivElement>(null)
   const trigger = useRef<HTMLButtonElement>(null)
+  const picker = useRef<HTMLDivElement>(null)
   const menu = useRef<HTMLDivElement>(null)
   const restoreFocus = useRef(false)
   const savingRef = useRef(false)
@@ -41,6 +42,24 @@ export const ComposerProjectChip = ({
   useEffect(() => {
     if (active) setOpen(false)
   }, [active])
+
+  useLayoutEffect(() => {
+    if (!open || active) return
+    const position = () => {
+      const anchor = root.current?.getBoundingClientRect()
+      const popup = picker.current
+      if (!anchor || !popup) return
+      const viewport = document.documentElement.clientWidth || window.innerWidth
+      const offset = Math.max(
+        12 - anchor.left,
+        Math.min(0, viewport - anchor.left - popup.getBoundingClientRect().width - 12),
+      )
+      popup.style.left = `${offset}px`
+    }
+    position()
+    window.addEventListener("resize", position)
+    return () => window.removeEventListener("resize", position)
+  }, [open, active])
 
   useEffect(() => {
     if (!open) {
@@ -116,7 +135,7 @@ export const ComposerProjectChip = ({
         </span>
       )}
       {open && !active && (
-        <div className="project-menu composer-project-picker">
+        <div ref={picker} className="project-menu composer-project-picker">
           <div
             ref={menu}
             id={menuId}
@@ -167,7 +186,7 @@ export const ComposerProjectChip = ({
               aria-disabled={saving}
               onClick={() => void select(null)}
             >
-              <span>{t("Nenhum projeto (começa na pasta do bot)")}</span>
+              <span>{t("Somente pasta do bot")}</span>
               <span aria-hidden="true">{bot.projectId === null ? "✓" : ""}</span>
             </button>
             <button
@@ -186,7 +205,7 @@ export const ComposerProjectChip = ({
           </div>
           {bot.machine === "vm" && (
             <p id={noteId} className="composer-project-note">
-              {t("Commit Git copiado para /workspace a partir da próxima mensagem.")}
+              {t("O commit Git do projeto será copiado para /workspace no próximo turno.")}
             </p>
           )}
           {error && (

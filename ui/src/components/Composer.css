@@ -48,6 +48,7 @@
 .composer-island .composer-icon:focus-visible,
 .composer-island .composer-send:focus-visible,
 .composer-island .composer-stop:focus-visible,
+.composer-island .composer-model:focus-visible,
 .composer-island .attachment-chip button:focus-visible,
 .composer-notice button:focus-visible {
   outline: 2px solid var(--accent-info);
@@ -58,7 +59,28 @@
   min-width: 0;
   max-width: 200px;
 }
-.bot-panel .composer-project-chip {
+.composer-island .composer-model {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-6);
+  min-width: 0;
+  max-width: 200px;
+  height: 32px;
+  padding: var(--space-6) var(--space-10);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-pill);
+  color: var(--text-secondary);
+  background: transparent;
+  font-size: var(--type-12);
+}
+.composer-island .composer-model:hover:not(:disabled) {
+  background: var(--surface-control);
+}
+.composer-island .composer-model:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.composer-island .composer-project-chip {
   max-width: 100%;
 }
 .composer-project-chip > svg {
@@ -70,8 +92,8 @@
   z-index: 20;
   top: auto;
   bottom: calc(100% + 8px);
-  right: auto;
-  left: 0;
+  right: 0;
+  left: auto;
   width: min(320px, calc(100vw - 48px));
   max-height: 320px;
   overflow-y: auto;

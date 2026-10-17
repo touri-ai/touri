@@ -1761,11 +1761,12 @@ export const ptBR = {
   Processos: "Processos",
   "Nenhum projeto (começa na pasta do bot)": "Nenhum projeto (começa na pasta do bot)",
   "Projeto do bot": "Projeto do bot",
+  "Somente pasta do bot": "Somente pasta do bot",
   "Sem projeto": "Sem projeto",
   "Adicionar projeto…": "Adicionar projeto…",
   "Aguarde o turno terminar para alterar o projeto.": "Aguarde o turno terminar para alterar o projeto.",
-  "Commit Git copiado para /workspace a partir da próxima mensagem.":
-    "Commit Git copiado para /workspace a partir da próxima mensagem.",
+  "O commit Git do projeto será copiado para /workspace no próximo turno.":
+    "O commit Git do projeto será copiado para /workspace no próximo turno.",
   "Não foi possível alterar o projeto.": "Não foi possível alterar o projeto.",
   "Cron atualizado": "Rotina atualizada",
   "Nova rotina": "Nova rotina",
@@ -3026,11 +3027,12 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   Processos: "Processes",
   "Nenhum projeto (começa na pasta do bot)": "No project (starts in the bot folder)",
   "Projeto do bot": "Bot project",
+  "Somente pasta do bot": "Bot folder only",
   "Sem projeto": "No project",
   "Adicionar projeto…": "Add project…",
   "Aguarde o turno terminar para alterar o projeto.": "Wait for the turn to finish before changing the project.",
-  "Commit Git copiado para /workspace a partir da próxima mensagem.":
-    "The project's Git commit will be copied to /workspace from the next message.",
+  "O commit Git do projeto será copiado para /workspace no próximo turno.":
+    "The project's Git commit will be copied to /workspace next turn.",
   "Não foi possível alterar o projeto.": "Could not change the project.",
   "Cron atualizado": "Routine updated",
   "Nova rotina": "New routine",

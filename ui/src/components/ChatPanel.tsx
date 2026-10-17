@@ -1,4 +1,15 @@
-import type { Bot, BotGroup, Id, MachineState, Message, Routine, RoutineRun, Run, Thread } from "@touri/contracts"
+import type {
+  Bot,
+  BotGroup,
+  Id,
+  MachineState,
+  Message,
+  Project,
+  Routine,
+  RoutineRun,
+  Run,
+  Thread,
+} from "@touri/contracts"
 import { failureRetryHint, sanitizeDiagnostic } from "@touri/contracts/run-failure"
 import {
   Fragment,
@@ -68,6 +79,10 @@ type ChatPanelProps = {
   onOpenToolCatalog?: () => void
   onOpenProviderLogin?: () => void
   onOpenComputer?: () => void
+  projects?: Project[]
+  onOpenModel?: () => void
+  onSelectProject?: (projectId: Id | null) => Promise<void>
+  onAddProject?: () => void
   thread: Thread | null
   bot: Bot | null
   machine?: MachineState | undefined
@@ -836,6 +851,10 @@ export const ChatPanel = ({
   onOpenToolCatalog,
   onOpenProviderLogin,
   onOpenComputer,
+  projects,
+  onOpenModel,
+  onSelectProject,
+  onAddProject,
   routines = [],
   routineRuns = [],
 }: ChatPanelProps) => {
@@ -1182,6 +1201,11 @@ export const ChatPanel = ({
         inputRef={composerRef}
         attachmentButtonRef={attachmentButtonRef}
         activeRun={activeRun}
+        botActive={runs.some((run) => run.botId === bot?.id && ["queued", "starting", "running"].includes(run.status))}
+        projects={projects}
+        onOpenModel={onOpenModel}
+        onSelectProject={onSelectProject}
+        onAddProject={onAddProject}
         queuedCount={visibleMessages.filter((message) => message.delivery?.status === "queued").length}
         onSend={async (...args) => {
           await onSend(...args)
