@@ -3,6 +3,36 @@ import { userFacingError } from "./errors"
 /** All UI copy lives here. pt-BR is the default; English is available for a future locale picker. */
 export type Locale = "pt-BR" | "en"
 export const ptBR = {
+  "seu provedor": "seu provedor",
+  "o arquivo": "o arquivo",
+  "Não consegui conectar à sua IA. Sua mensagem está salva.":
+    "Não consegui conectar à sua IA. Sua mensagem está salva.",
+  "Não consegui conectar à sua IA. Verifique a conexão e tente novamente.":
+    "Não consegui conectar à sua IA. Verifique a conexão e tente novamente.",
+  "Entre novamente no {provedor} para continuar.": "Entre novamente no {provedor} para continuar.",
+  "Entrar na conta": "Entrar na conta",
+  "O {provedor} atingiu o limite de uso. Tente após {horario}.":
+    "O {provedor} atingiu o limite de uso. Tente após {horario}.",
+  "O {provedor} atingiu o limite de uso. Tente mais tarde.": "O {provedor} atingiu o limite de uso. Tente mais tarde.",
+  "Não há espaço para salvar {arquivo}.": "Não há espaço para salvar {arquivo}.",
+  "Verificar armazenamento": "Verificar armazenamento",
+  "A resposta foi interrompida. Algumas ações podem ter sido concluídas.":
+    "A resposta foi interrompida. Algumas ações podem ter sido concluídas.",
+  "Ver ações realizadas": "Ver ações realizadas",
+  "Retomar tarefa": "Retomar tarefa",
+  "Ver tarefa": "Ver tarefa",
+  "Verificar ambiente": "Verificar ambiente",
+  "Não foi possível concluir esta ação. Confira os detalhes do erro.":
+    "Não foi possível concluir esta ação. Confira os detalhes do erro.",
+  "Revise as ações registradas antes de continuar. Nenhuma ação será repetida automaticamente.":
+    "Revise as ações registradas antes de continuar. Nenhuma ação será repetida automaticamente.",
+  "Conferi as ações registradas. Quero continuar a tarefa a partir do estado atual, sem repetir ações já concluídas.":
+    "Conferi as ações registradas. Quero continuar a tarefa a partir do estado atual, sem repetir ações já concluídas.",
+  "O rascunho atual foi preservado. Revise as ações registradas antes de enviar.":
+    "O rascunho atual foi preservado. Revise as ações registradas antes de enviar.",
+  "Ações registradas": "Ações registradas",
+  "Nenhuma ação confirmada no histórico. Confira o estado atual antes de continuar.":
+    "Nenhuma ação confirmada no histórico. Confira o estado atual antes de continuar.",
   "Conectar dados": "Conectar dados",
   "Escolha como disponibilizar os dados para este bot.": "Escolha como disponibilizar os dados para este bot.",
   "Anexar arquivo/CSV": "Anexar arquivo/CSV",
@@ -1332,6 +1362,35 @@ export const ptBR = {
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  "seu provedor": "your provider",
+  "o arquivo": "the file",
+  "Não consegui conectar à sua IA. Sua mensagem está salva.": "I could not connect to your AI. Your message is saved.",
+  "Não consegui conectar à sua IA. Verifique a conexão e tente novamente.":
+    "I could not connect to your AI. Check your connection and try again.",
+  "Entre novamente no {provedor} para continuar.": "Sign in to {provedor} again to continue.",
+  "Entrar na conta": "Sign in",
+  "O {provedor} atingiu o limite de uso. Tente após {horario}.":
+    "{provedor} has reached its usage limit. Try after {horario}.",
+  "O {provedor} atingiu o limite de uso. Tente mais tarde.": "{provedor} has reached its usage limit. Try again later.",
+  "Não há espaço para salvar {arquivo}.": "There is not enough space to save {arquivo}.",
+  "Verificar armazenamento": "Check storage",
+  "A resposta foi interrompida. Algumas ações podem ter sido concluídas.":
+    "The response was interrupted. Some actions may have completed.",
+  "Ver ações realizadas": "View recorded actions",
+  "Retomar tarefa": "Resume task",
+  "Ver tarefa": "View task",
+  "Verificar ambiente": "Check environment",
+  "Não foi possível concluir esta ação. Confira os detalhes do erro.":
+    "Could not complete this action. Check the error details.",
+  "Revise as ações registradas antes de continuar. Nenhuma ação será repetida automaticamente.":
+    "Review the recorded actions before continuing. No action will be repeated automatically.",
+  "Conferi as ações registradas. Quero continuar a tarefa a partir do estado atual, sem repetir ações já concluídas.":
+    "I reviewed the recorded actions. Continue the task from the current state without repeating completed actions.",
+  "O rascunho atual foi preservado. Revise as ações registradas antes de enviar.":
+    "Your current draft was preserved. Review the recorded actions before sending.",
+  "Ações registradas": "Recorded actions",
+  "Nenhuma ação confirmada no histórico. Confira o estado atual antes de continuar.":
+    "No confirmed action in history. Check the current state before continuing.",
   "Conectar dados": "Connect data",
   "Escolha como disponibilizar os dados para este bot.": "Choose how to make the data available to this bot.",
   "Anexar arquivo/CSV": "Attach a file/CSV",

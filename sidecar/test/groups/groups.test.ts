@@ -1108,3 +1108,19 @@ test("#4 group sessions cannot list or rewrite the bot's private routines", asyn
   })
   expect(directPrompt).toContain("routine_list")
 })
+
+test("group recovery does not replay delegated work after a lost acknowledgement", async () => {
+  let first = true
+  const f = await fixture(async (_context, complete) => {
+    if (first) {
+      first = false
+      complete("Etapa concluída")
+    }
+  }, 100)
+  const run = f.send("Planeje a tarefa")
+  expect(f.runtime.retry(run.id)).toMatchObject({ success: true, run: { id: run.id } })
+  await until(() => f.persistence.getRun(run.id)?.status === "failed")
+  const before = f.order.length
+  expect(f.runtime.retry(run.id)).toMatchObject({ success: false, errorCode: "CONFLICT" })
+  expect(f.order).toHaveLength(before)
+})

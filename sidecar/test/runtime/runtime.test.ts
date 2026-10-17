@@ -2329,3 +2329,53 @@ test.serial("a local bot with a provider profile runs the CLI with that profile 
     await closeFixture(value)
   }
 })
+
+test("retry acknowledgements identify one persisted attempt, including after the attempt finishes", async () => {
+  const f = await fixture({ scenario: { crashAt: 1, events: [{ type: "delta", delta: "unused" }] } })
+  try {
+    const request = addUser(f.store, f.thread, "Mensagem salva")
+    const initial = f.engine.enqueue({ threadId: f.thread.id, requestMessageId: request.id, trigger: "user" })
+    if (!initial.success) throw new Error(initial.error)
+    await waitFor(() => terminal(initial.run.status))
+    const retry = f.engine.retry(initial.run.id)
+    if (!retry.success) throw new Error(retry.error)
+    expect(f.engine.retry(initial.run.id)).toMatchObject({ success: true, run: { id: retry.run.id } })
+    await waitFor(() => terminal(retry.run.status))
+    expect(f.engine.retry(initial.run.id)).toMatchObject({ success: true, run: { id: retry.run.id } })
+    expect(f.engine.listRuns(f.thread.id)).toHaveLength(2)
+    expect([...f.store.messages.values()].filter((message) => message.role === "user")).toHaveLength(1)
+  } finally {
+    await closeFixture(f)
+  }
+})
+
+test("a crash after a recorded write waits for review and never repeats the write", async () => {
+  const f = await fixture({
+    scenario: {
+      crashAt: 2,
+      events: [{ type: "command", command: "save notes.md", output: "saved" }, { type: "complete" }],
+    },
+  })
+  const destination = join(f.assets, "notes.md")
+  // The simulated provider commits a real write before emitting its tool acknowledgement.
+  const wrapper = readFileSync(f.fakePath, "utf8")
+  writeFileSync(
+    f.fakePath,
+    wrapper.replace("exec ", `if [ "$1" != "--version" ]; then printf 'saved\\n' >> '${destination}'; fi\nexec `),
+  )
+  try {
+    const request = addUser(f.store, f.thread, "Salve minhas notas")
+    const result = f.engine.enqueue({ threadId: f.thread.id, requestMessageId: request.id, trigger: "user" })
+    if (!result.success) throw new Error(result.error)
+    await waitFor(() => terminal(result.run.status))
+    await Bun.sleep(250)
+    expect(f.engine.retry(result.run.id)).toMatchObject({ success: false, errorCode: "CONFLICT" })
+    expect(f.engine.listRuns(f.thread.id)).toHaveLength(1)
+    expect(readFileSync(destination, "utf8")).toBe("saved\n")
+    expect(f.store.activePath({ threadId: f.thread.id }).flatMap((message) => message.parts)).toContainEqual(
+      expect.objectContaining({ type: "command", exitCode: 0 }),
+    )
+  } finally {
+    await closeFixture(f)
+  }
+})
