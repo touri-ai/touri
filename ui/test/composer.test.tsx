@@ -35,9 +35,7 @@ const setup = ({
   bot.access = access
   bot.model = "gpt-6.1-sol"
   const cancel = vi.fn().mockResolvedValue(undefined)
-  const model = vi.fn()
-  const permissions = vi.fn()
-  const Harness = () => {
+  const Harness = ({ currentRun }: { currentRun: Run | null }) => {
     const [text, setText] = useState(draft)
     const input = useRef<HTMLTextAreaElement>(null)
     return (
@@ -49,37 +47,67 @@ const setup = ({
         draft={text}
         onDraft={setText}
         inputRef={input}
-        activeRun={activeRun}
+        activeRun={currentRun}
         queuedCount={queuedCount}
         onSend={send}
         onCancel={cancel}
-        onOpenModel={model}
-        onOpenPermissions={permissions}
       />
     )
   }
-  render(<Harness />)
-  return { api, send, cancel, model, permissions, box: screen.getByRole("textbox", { name: "Mensagem para mark" }) }
+  const view = render(<Harness currentRun={activeRun} />)
+  return {
+    api,
+    send,
+    cancel,
+    box: screen.getByRole("textbox", { name: "Mensagem para mark" }),
+    updateRun: (currentRun: Run | null) => view.rerender(<Harness currentRun={currentRun} />),
+  }
 }
 const run = { id: "active", status: "running" } as Run
 
 describe("composer island", () => {
-  it("disables empty input and opens the existing model and permission choices", () => {
-    const { model, permissions } = setup({ access: "read-only" })
-    expect(screen.getByRole("button", { name: "Enviar" })).toBeDisabled()
-    fireEvent.click(screen.getByRole("button", { name: "Escolher modelo: Codex · gpt-6.1-sol" }))
-    fireEvent.click(screen.getByRole("button", { name: "Permissões do bot: Somente leitura" }))
-    expect(model).toHaveBeenCalledOnce()
-    expect(permissions).toHaveBeenCalledOnce()
-    expect(screen.getByRole("tooltip")).toHaveTextContent("Somente leitura")
+  it("explicitly accepts common documents and images in the desktop picker and registers each one", async () => {
+    Object.assign(window, { __TAURI_INTERNALS__: {} })
+    const { api } = setup()
+    const input = screen.getByLabelText("Anexar arquivos")
+    for (const token of [".txt", ".md", ".json", ".csv", ".pdf", "image/*"]) {
+      expect(input.getAttribute("accept")?.split(",")).toContain(token)
+    }
+    const names = ["notas.txt", "plano.md", "dados.json", "tabela.csv", "livro.pdf", "foto.png"]
+    fireEvent.change(input, { target: { files: names.map((name) => new File(["arquivo"], name)) } })
+    await waitFor(() =>
+      expect(api.calls.filter((call) => call.route === "POST /attachments")).toHaveLength(names.length),
+    )
+    for (const name of names) expect(screen.getByRole("button", { name: `Remover ${name}` })).toBeVisible()
   })
 
-  it("shows the actual access level and queued plurals", () => {
-    setup({ access: "full", queuedCount: 2 })
-    expect(screen.getByRole("button", { name: "Permissões do bot: Acesso completo" })).toHaveAttribute(
-      "data-access",
-      "full",
+  it("reports the size limit and blocks sending without uploading an oversized file", async () => {
+    const { api } = setup({ draft: "Mensagem com anexo" })
+    const file = new File(["arquivo"], "grande.pdf")
+    Object.defineProperty(file, "size", { value: 15 * 1024 * 1024 + 1 })
+    fireEvent.change(screen.getByLabelText("Anexar arquivos"), { target: { files: [file] } })
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Não foi possível anexar grande.pdf. Escolha um arquivo de até 15 MB",
     )
+    expect(api.calls.filter((call) => call.route === "POST /attachments")).toHaveLength(0)
+    expect(screen.getByRole("button", { name: "Enviar" })).toBeDisabled()
+  })
+
+  it("shows only attachment and send controls, without model or permissions", async () => {
+    setup({ access: "read-only" })
+    await waitFor(() => expect(screen.queryByText("Colar token manualmente")).toBeNull())
+    expect(screen.getByRole("button", { name: "Enviar" })).toBeDisabled()
+    expect(screen.getAllByRole("button").map((button) => button.getAttribute("aria-label"))).toEqual([
+      "Anexar arquivo",
+      "Enviar",
+    ])
+    expect(screen.queryByRole("button", { name: /Escolher modelo|Permissões do bot|Projeto do bot/ })).toBeNull()
+    expect(screen.queryByText("gpt-6.1-sol")).toBeNull()
+  })
+
+  it("keeps queued plurals", () => {
+    setup({ access: "full", queuedCount: 2 })
+    expect(screen.queryByRole("button", { name: /Permissões do bot/ })).toBeNull()
     expect(screen.getByRole("status")).toHaveTextContent("2 mensagens na fila")
   })
 
@@ -106,6 +134,27 @@ describe("composer island", () => {
     await waitFor(() => expect(send).toHaveBeenCalledWith("Próxima tarefa", "parent", []))
   })
 
+  it("keeps Parando after the cancel acknowledgement, allows typing and queueing, then returns to Enviar", async () => {
+    const { box, cancel, send, updateRun } = setup({ activeRun: run })
+    fireEvent.click(screen.getByRole("button", { name: "Parar" }))
+    expect(screen.getByRole("button", { name: "Parando…" })).toBeDisabled()
+    await act(async () => {})
+    expect(cancel).toHaveBeenCalledOnce()
+    expect(screen.getByRole("button", { name: "Parando…" })).toBeDisabled()
+    expect(box).toBeEnabled()
+    fireEvent.change(box, { target: { value: "Próxima tarefa" } })
+    expect(screen.getByRole("button", { name: "Parando…" })).toBeDisabled()
+    fireEvent.click(screen.getByRole("button", { name: "Adicionar à fila" }))
+    await waitFor(() => expect(send).toHaveBeenCalledWith("Próxima tarefa", "parent", []))
+    expect(screen.getByRole("button", { name: "Parando…" })).toBeDisabled()
+    updateRun(null)
+    expect(screen.getByRole("button", { name: "Enviar" })).toBeDisabled()
+    fireEvent.change(box, { target: { value: "Outro rascunho" } })
+    expect(screen.getByRole("button", { name: "Enviar" })).toBeEnabled()
+    updateRun({ ...run, id: "next-run" })
+    expect(screen.getByRole("button", { name: "Parar" })).toBeEnabled()
+  })
+
   it("preserves a newer draft and prevents duplicate sends while sending", async () => {
     let resolve: (() => void) | undefined
     const send = vi.fn(
@@ -125,11 +174,16 @@ describe("composer island", () => {
   })
 
   it("preserves the draft on failure and allows retry", async () => {
-    const send = vi.fn().mockRejectedValueOnce(new Error("Sem conexão")).mockResolvedValueOnce(undefined)
+    const send = vi.fn().mockRejectedValueOnce(new Error("Sem conexão [TOURI-E1008]")).mockResolvedValueOnce(undefined)
     const { box } = setup({ draft: "Não perder este texto", send })
     await waitFor(() => expect(screen.getByRole("button", { name: "Enviar" })).toBeEnabled())
     fireEvent.click(screen.getByRole("button", { name: "Enviar" }))
-    await screen.findByRole("alert")
+    const alert = await screen.findByRole("alert")
+    expect(alert).toHaveTextContent("Não foi possível enviar. Sem conexão")
+    const details = screen.getByText("TOURI-E1008").closest("details")
+    expect(details).not.toHaveAttribute("open")
+    fireEvent.click(screen.getByText("Detalhes do erro"))
+    expect(details).toHaveAttribute("open")
     expect(box).toHaveValue("Não perder este texto")
     fireEvent.click(screen.getByRole("button", { name: "Enviar" }))
     await waitFor(() => expect(box).toHaveValue(""))

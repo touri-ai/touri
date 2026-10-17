@@ -70,7 +70,7 @@
     },
     {
       "name": "routine_create",
-      "description": "Create a routine for this bot. It is created DISABLED; the user enables it in the app.",
+      "description": "Create a routine for this bot and request explicit user approval in chat to activate it. Remains disabled if not approved. Always requires approval, even with approvals disabled.",
       "inputSchema": { "type": "object", "required": ["name", "prompt", "cron", "timezone"], "additionalProperties": false,
         "properties": {
           "name": { "type": "string", "maxLength": 80 },
@@ -79,7 +79,7 @@
           "timezone": { "type": "string", "description": "IANA zone, e.g. America/Sao_Paulo" },
           "continuity": { "enum": ["new-thread", "results-thread", "main-thread"], "default": "new-thread" },
           "timeoutMinutes": { "type": "integer", "minimum": 1, "maximum": 240, "default": 30 } } },
-      "x-touri": { "group": "core", "mvp": true, "mutates": true }
+      "x-touri": { "group": "core", "mvp": true, "mutates": true, "deadlineMs": 1800000 }
     },
     {
       "name": "routine_update",
@@ -89,6 +89,47 @@
           "routineId": { "type": "string" }, "name": { "type": "string" }, "prompt": { "type": "string" },
           "cron": { "type": "string" }, "timezone": { "type": "string" }, "enabled": { "const": false } } },
       "x-touri": { "group": "core", "mvp": true, "mutates": true }
+    },
+    {
+      "name": "bot_rename",
+      "description": "Rename this calling bot only when the user asks. Low-risk identity change; posts a visible notice in chat without an approval card. Never available for delegated requests. Use 1 to 80 characters without line breaks or control characters.",
+      "inputSchema": { "type": "object", "required": ["name"], "additionalProperties": false,
+        "properties": { "name": { "type": "string", "minLength": 1 } } },
+      "x-touri": { "group": "project", "mvp": true, "mutates": true }
+    },
+    {
+      "name": "project_discover",
+      "description": "List projects and Git repositories only in this bot's already granted folders and connected project. Never searches the home directory on its own. Read-only; no approval required. Ask the user for a path when nothing is available.",
+      "inputSchema": { "type": "object", "additionalProperties": false, "properties": {} },
+      "x-touri": { "group": "project", "mvp": true, "mutates": false }
+    },
+    {
+      "name": "project_link",
+      "description": "Register a Mac folder as a project if needed and link it to this calling bot only. Supply exactly one of path or projectId. Always requires explicit user approval in chat, even with approvals disabled. VM changes apply next turn.",
+      "inputSchema": { "type": "object", "additionalProperties": false,
+        "properties": { "path": { "type": "string", "minLength": 1 }, "projectId": { "type": "string", "minLength": 1 } },
+        "minProperties": 1, "maxProperties": 1 },
+      "x-touri": { "group": "project", "mvp": true, "mutates": true, "deadlineMs": 1800000 }
+    },
+    {
+      "name": "folder_access_request",
+      "description": "Request access to a specific Mac folder for this calling bot only, with mode read or read-write. Always requires explicit user approval. Cannot enable any-folder access. VM changes apply next turn.",
+      "inputSchema": { "type": "object", "required": ["path", "mode"], "additionalProperties": false,
+        "properties": { "path": { "type": "string", "minLength": 1 }, "mode": { "enum": ["read", "read-write"] } } },
+      "x-touri": { "group": "project", "mvp": true, "mutates": true, "deadlineMs": 1800000 }
+    },
+    {
+      "name": "project_unlink",
+      "description": "Unlink the project from this calling bot only. Narrows access without approval and posts a notice in chat. VM changes apply next turn.",
+      "inputSchema": { "type": "object", "additionalProperties": false, "properties": {} },
+      "x-touri": { "group": "project", "mvp": true, "mutates": true }
+    },
+    {
+      "name": "folder_access_remove",
+      "description": "Remove a specific folder grant from this calling bot only. Narrows access without approval and posts a notice in chat. Cannot change the user-only any-folder toggle. VM changes apply next turn.",
+      "inputSchema": { "type": "object", "required": ["path"], "additionalProperties": false,
+        "properties": { "path": { "type": "string", "minLength": 1 } } },
+      "x-touri": { "group": "project", "mvp": true, "mutates": true }
     },
     {
       "name": "project_info",
@@ -174,7 +215,7 @@
     },
     {
       "name": "preview_open",
-      "description": "Show a local web app in the user's Preview pane (http://localhost only). Use after the dev server is ready so the user sees it.",
+      "description": "Register a local HTTP app in touri Preview, only from this bot's supervised processes. Requires a linked project: if missing, offer project_link({path}) with explicit user approval, then process_define/process_start. Shell servers and browser_open do not create a Preview. Only report Preview as available after this tool succeeds and returns a target; the user opens the Preview pane to view it.",
       "inputSchema": { "type": "object", "additionalProperties": false,
         "properties": { "port": { "type": "integer", "minimum": 1, "maximum": 65535 }, "process": { "$ref": "#/definitions/processName" }, "path": { "type": "string", "default": "/" } } },
       "x-touri": { "group": "preview", "mvp": true, "mutates": true }

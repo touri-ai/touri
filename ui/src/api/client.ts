@@ -10,6 +10,7 @@ import {
   type TauriCommands,
   type UiEventEnvelope,
 } from "@touri/contracts"
+import { maxAttachmentBytes } from "../attachmentFiles"
 import { ApiError } from "../errors"
 import { t } from "../i18n"
 import { createSendJournal } from "./sendJournal"
@@ -26,6 +27,7 @@ export const webEndpoint = (location: Pick<Location, "protocol" | "host">): Endp
 const authHeaders = (token: string): Record<string, string> => (token ? { Authorization: `Bearer ${token}` } : {})
 
 export const apiRouteKeys = [
+  "GET /workspace/activity",
   "GET /groups",
   "POST /groups",
   "PATCH /groups/:id",
@@ -59,6 +61,7 @@ export const apiRouteKeys = [
   "GET /bots/:id/grants",
   "DELETE /bots/:id/grants/:grant",
   "GET /providers/opencode/models",
+  "GET /provider-profiles",
   "GET /bots/:id/provider-login",
   "PUT /bots/:id/provider-login",
   "DELETE /bots/:id/provider-login",
@@ -140,6 +143,11 @@ export type UiApi = {
   pendingMessages?: () => Message[]
   subscribe: (listener: (envelope: UiEventEnvelope) => void) => () => void
   subscribeConnection?: (listener: (connected: boolean) => void) => () => void
+  /**
+   * Resolves once the event stream knows where live delivery starts. A snapshot loaded after this
+   * misses nothing, so the cold-start resync is not loaded a second time.
+   */
+  cursorReady?: () => Promise<void>
   isMock: boolean
   uploadAttachment?: (file: File) => Promise<Attachment>
   websocketUrl?: (path: string) => string | Promise<string>
@@ -174,6 +182,9 @@ const replacePath = (path: string, pathValues: Record<string, string>): string =
 
 const isBlobRoute = (route: string): boolean => route.includes("/attachments/") || route === "GET /bots/:id/images"
 
+/** Never hold the first load back for long when the event socket cannot open. */
+const CURSOR_WAIT_MS = 3_000
+
 const parseEvent = (value: unknown): UiEventEnvelope | null => {
   if (typeof value !== "object" || value === null) return null
   const record = value as Record<string, unknown>
@@ -202,6 +213,15 @@ export const createApiClient = ({
   let connecting = false
   let socketGeneration = 0
   let lastSeq = 0
+  let cursorKnown = false
+  let cursorWaiters: Array<() => void> = []
+  const settleCursor = (): boolean => {
+    cursorKnown = true
+    const waiters = cursorWaiters
+    cursorWaiters = []
+    for (const resolve of waiters) resolve()
+    return waiters.length > 0
+  }
   let recovering: Promise<void> | null = null
   const refreshEndpoint = async (): Promise<void> => {
     if (!resolveEndpoint) return
@@ -264,7 +284,10 @@ export const createApiClient = ({
             Number.isSafeInteger(frame.lastSeq) &&
             Number(frame.lastSeq) >= 0
           ) {
+            const cold = !cursorKnown
             lastSeq = Number(frame.lastSeq)
+            // A cold start begins at the head; the snapshot waiting on cursorReady covers history.
+            if (settleCursor() && cold) return
             listeners.forEach((listener) => {
               listener({ seq: 0, at: Date.now(), event: { type: "transcript.resync" } })
             })
@@ -275,6 +298,7 @@ export const createApiClient = ({
             disconnected()
             return
           }
+          settleCursor()
           if (envelope.seq <= lastSeq) return
           if (envelope.seq !== lastSeq + 1) {
             disconnected()
@@ -408,7 +432,7 @@ export const createApiClient = ({
   return {
     request,
     uploadAttachment: async (file) => {
-      if (file.size > 15 * 1024 * 1024) throw new Error("Escolha um arquivo de até 15 MB")
+      if (file.size > maxAttachmentBytes) throw new Error(t("Escolha um arquivo de até 15 MB"))
       const dataBase64 = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader()
         reader.onload = () => resolve(String(reader.result).split(",")[1] ?? "")
@@ -422,7 +446,14 @@ export const createApiClient = ({
         signal: AbortSignal.timeout(30_000),
         body: JSON.stringify({ name: file.name, dataBase64 }),
       })
-      if (!response.ok) throw new ApiError(response.status, "Não foi possível anexar o arquivo")
+      if (!response.ok) {
+        const detail = (await response.json().catch(() => null)) as { error?: unknown; errorCode?: string } | null
+        throw new ApiError(
+          response.status,
+          typeof detail?.error === "string" ? detail.error : t("Não foi possível anexar o arquivo"),
+          detail?.errorCode,
+        )
+      }
       return ((await response.json()) as { attachment: Attachment }).attachment
     },
     updateEndpoint: (next) => {
@@ -431,6 +462,19 @@ export const createApiClient = ({
     sendMessage: journal.enqueue,
     pendingMessages: journal.messages,
     subscribe,
+    cursorReady: () =>
+      cursorKnown
+        ? Promise.resolve()
+        : new Promise<void>((resolve) => {
+            let fallback: ReturnType<typeof setTimeout> | undefined
+            const done = (): void => {
+              clearTimeout(fallback)
+              cursorWaiters = cursorWaiters.filter((waiter) => waiter !== done)
+              resolve()
+            }
+            fallback = setTimeout(done, CURSOR_WAIT_MS)
+            cursorWaiters.push(done)
+          }),
     isMock: false,
     websocketUrl,
     subscribeConnection: (listener) => {

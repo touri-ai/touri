@@ -8,7 +8,7 @@ import { createAppPaths } from "./kernel/paths"
 import { safeThreadId } from "./mcp/auth"
 import { registerShim } from "./mcp/shim-registry"
 import { type McpShimStage, mcpStartupFailureLine } from "./mcp/startup-stage"
-import { connectionOptions, mcpEndpoint } from "./platform/transport"
+import { connectionOptions, resolveMcpEndpoint } from "./platform/transport"
 
 const STDIN_EOF_GRACE_MS = 1_000
 
@@ -46,10 +46,12 @@ const isContained = ({ root, candidate }: { root: string; candidate: string }): 
 
 export const initModules = async (runtime: KernelRuntime): Promise<void> => {
   for (const module of moduleLoaders) {
+    const started = performance.now()
     const imported = await module.load().then(
       (value: unknown) => ({ ok: true as const, value }),
       (error: unknown) => ({ ok: false as const, error }),
     )
+    const loadedAt = performance.now()
     if (!imported.ok) {
       runtime.kernel.log({
         level: "info",
@@ -66,13 +68,22 @@ export const initModules = async (runtime: KernelRuntime): Promise<void> => {
     }
     try {
       await loaded.init(runtime.kernel)
-      runtime.kernel.log({ level: "info", module: "main", msg: `initialized module ${module.path}` })
+      runtime.kernel.log({
+        level: "info",
+        module: "main",
+        msg: `initialized module ${module.path}`,
+        data: { loadMs: Math.round(loadedAt - started), initMs: Math.round(performance.now() - loadedAt) },
+      })
     } catch (error) {
       runtime.kernel.log({
         level: "error",
         module: "main",
         msg: `module init failed ${module.path}`,
-        data: { error: error instanceof Error ? error.message : String(error) },
+        data: {
+          error: error instanceof Error ? error.message : String(error),
+          loadMs: Math.round(loadedAt - started),
+          initMs: Math.round(performance.now() - loadedAt),
+        },
       })
     }
   }
@@ -138,7 +149,7 @@ export const runMcpStdio = ({ threadId, appData }: { threadId: string; appData?:
     process.exitCode = 1
     return Promise.resolve()
   }
-  const socketPath = process.env.TOURI_MCP_SOCK ?? mcpEndpoint(paths.runDir)
+  const socketPath = process.env.TOURI_MCP_SOCK ?? resolveMcpEndpoint(paths)
   const unregister = registerShim({ runDir: paths.runDir, thread: threadId })
   return new Promise((resolve) => {
     const socket = createConnection(connectionOptions(socketPath))

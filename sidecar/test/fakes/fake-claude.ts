@@ -10,6 +10,7 @@ type Scenario = {
   authError?: boolean
   slowMs?: number
   ignoreInterrupt?: boolean
+  signalLogPath?: string
   permissionCommand?: string
   executionMarker?: string
   permissionOutcome?: string
@@ -81,6 +82,13 @@ if (process.argv.includes("--version")) {
 }
 
 const scenario = loadScenario()
+if (scenario.ignoreInterrupt || scenario.signalLogPath) {
+  for (const signal of ["SIGINT", "SIGTERM"] as const)
+    process.on(signal, () => {
+      if (scenario.signalLogPath) writeFileSync(scenario.signalLogPath, signal)
+      if (!scenario.ignoreInterrupt) process.exit(0)
+    })
+}
 if (scenario.startupStderr) {
   process.stderr.write(scenario.startupStderr.slice(0, 24))
   setTimeout(() => process.stderr.write(scenario.startupStderr?.slice(24) ?? ""), 10)

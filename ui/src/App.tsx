@@ -11,20 +11,20 @@ import {
   webEndpoint,
 } from "./api/client"
 import type { ApprovalTarget } from "./approvalNavigation"
+import { ApprovalNotice } from "./components/ApprovalNotice"
 import { AvatarRuntimeProvider } from "./components/AvatarRuntime"
 import { BotAvatar } from "./components/BotAvatar"
 import { BotComputer } from "./components/BotComputer"
 import { BotPanel } from "./components/BotPanel"
-// r8-sidebar: bot list and navigation live in an isolated component.
-import { Sidebar } from "./components/BotSidebar"
 import { ChatPanel } from "./components/ChatPanel"
 import CronScreen from "./components/CronScreen"
 import { ErrorBoundary } from "./components/ErrorBoundary"
 import { EvidenceContext } from "./components/EvidenceGallery"
 import { FailureActionContext } from "./components/FailureActionContext"
-import { GroupModal } from "./components/Groups"
+import { GroupModal, GroupPanel } from "./components/Groups"
 import {
   BotCreateModal,
+  BotModelModal,
   BotSettingsModal,
   DoctorModal,
   ImportWizard,
@@ -33,6 +33,7 @@ import {
 } from "./components/Modals"
 import { MotionPresence, MotionSkeleton } from "./components/Motion"
 import { PageTransition } from "./components/PageTransition"
+import { SidebarDrawer } from "./components/SidebarDrawer"
 import { IntegrationsScreen, McpScreen, PreviewScreen } from "./components/WorkspaceScreens"
 import { installComputerKillSwitch } from "./computerKillSwitch"
 import { openComputerWindow } from "./computerWindow"
@@ -68,6 +69,7 @@ type ModalKind =
   | "project"
   | "settings"
   | "bot-settings"
+  | "bot-model"
   | "bot-permissions"
   | "bot-mcp"
   | null
@@ -156,7 +158,7 @@ const AppContent = ({ kernel }: AppProps) => {
   const workspace = useWorkspace(activeApi, api !== null)
   const { data, actions } = workspace
   const section = route.section
-  const touriPage = route.section === "touri" ? route.page : "cron"
+  const advancedPage = route.section === "advanced" ? route.page : null
   const screen = route.section === "bots" ? route.screen : "chat"
   const setScreen = (next: "chat" | "preview"): void => {
     setRoute((current) => (current.section === "bots" ? { ...current, screen: next } : current))
@@ -376,7 +378,7 @@ const AppContent = ({ kernel }: AppProps) => {
     ) ?? null
   const botRoutines = data.routines.filter((routine) => routine.botId === selectedBot?.id)
 
-  const panelOpen = selectedBot ? (panelsByBot[selectedBot.id] ?? true) : false
+  const panelOpen = selectedBot ? (panelsByBot[selectedBot.id] ?? false) : false
   const setPanelOpen = useCallback(
     (open: boolean) => {
       if (!selectedBot) return
@@ -460,7 +462,7 @@ const AppContent = ({ kernel }: AppProps) => {
   }
   const openDestination = (destination: PaletteDestination): void => {
     if (destination.kind === "page") {
-      setRoute({ section: "touri", page: destination.page })
+      setRoute({ section: "advanced", page: destination.page })
       return
     }
     setSettingFocus(destination.settingId ?? null)
@@ -480,10 +482,7 @@ const AppContent = ({ kernel }: AppProps) => {
     if (action.kind === "doctor") openDestination({ kind: "doctor" })
     if (action.kind === "setting") openDestination(destinationForSetting(action.settingId))
   }
-  const paletteSettings = useMemo(
-    () => settingsIndex({ cloudEnabled: data.settings?.cloud === true, hasBot: data.bots.length > 0 }),
-    [data.settings?.cloud, data.bots.length],
-  )
+  const paletteSettings = useMemo(() => settingsIndex({ hasBot: data.bots.length > 0 }), [data.bots.length])
   const startProcess = async (processId: Id): Promise<void> => {
     await actions.startProcess(processId)
     setScreen("preview")
@@ -535,35 +534,45 @@ const AppContent = ({ kernel }: AppProps) => {
     ) : modal === "import" ? (
       <ImportWizard bots={data.bots} api={api} onClose={closeModal} onNotice={showNotice} />
     ) : null
-  const botModal =
-    modal === "bot" ? (
-      <BotCreateModal
-        api={api}
-        invokeCommand={invokeCommand}
-        cloudEnabled={data.settings?.cloud === true}
-        capability={data.machineCapability}
-        projects={data.projects}
-        onCreateProject={actions.createProject}
-        onClose={closeModal}
-        onCreate={async (input, loginDraftId) => {
-          await actions.createBot(input, loginDraftId)
-          setRoute({ section: "bots", screen: "chat" })
-        }}
-      />
-    ) : null
+  // Keep creation mounted when the first bot's live event replaces onboarding with the workspace.
+  const botModal = (
+    <MotionPresence show={modal === "bot"} kind="modal">
+      <ErrorBoundary area="o diálogo" dialog api={api} onClose={closeModal}>
+        {modal === "bot" && (
+          <BotCreateModal
+            api={api}
+            invokeCommand={invokeCommand}
+            cloudEnabled={data.settings?.cloud === true}
+            capability={data.machineCapability}
+            projects={data.projects}
+            onCreateProject={actions.createProject}
+            onClose={closeModal}
+            onCreate={async (input, loginDraftId) => {
+              const { loginReady } = await actions.createBot(input, loginDraftId)
+              setRoute({ section: "bots", screen: "chat" })
+              showNotice(
+                loginReady
+                  ? t("{name} created.", { name: input.name })
+                  : t("Bot created. Could not connect your account. Sign in below to chat."),
+              )
+            }}
+          />
+        )}
+      </ErrorBoundary>
+    </MotionPresence>
+  )
   if (data.bots.length === 0)
     return (
-      <AvatarRuntimeProvider value={data}>
+      <AvatarRuntimeProvider value={{ ...data, messages: data.activityMessages }}>
+        {botModal}
         <OnboardingLanding
-          doctor={data.doctor}
           onCreateBot={() => openModal("bot")}
           onDoctor={() => openModal("doctor")}
           onImport={() => openModal("import")}
         />
-        <MotionPresence show={setupModal !== null || botModal !== null} kind="modal">
+        <MotionPresence show={setupModal !== null} kind="modal">
           <ErrorBoundary key={modal} area="o diálogo" dialog api={api} onClose={closeModal}>
             {setupModal}
-            {botModal}
           </ErrorBoundary>
         </MotionPresence>
       </AvatarRuntimeProvider>
@@ -571,7 +580,7 @@ const AppContent = ({ kernel }: AppProps) => {
 
   if (requestedComputer)
     return (
-      <AvatarRuntimeProvider value={data}>
+      <AvatarRuntimeProvider value={{ ...data, messages: data.activityMessages }}>
         <main className="computer-window">
           <header>
             <h1>Computador de {selectedBot?.name ?? "bot"}</h1>
@@ -584,6 +593,9 @@ const AppContent = ({ kernel }: AppProps) => {
                 api={api}
                 bot={selectedBot}
                 machine={data.machines.find((state) => state.botId === selectedBot.id)}
+                activeTurns={data.runs.some(
+                  (run) => run.botId === selectedBot.id && ["queued", "starting", "running"].includes(run.status),
+                )}
               />
             </ErrorBoundary>
           ) : (
@@ -594,7 +606,8 @@ const AppContent = ({ kernel }: AppProps) => {
     )
 
   return (
-    <AvatarRuntimeProvider value={data}>
+    <AvatarRuntimeProvider value={{ ...data, messages: data.activityMessages }}>
+      {botModal}
       <main className="app-shell">
         <HistoryMigrationStatus api={api} />
         {connectionState === "error" && (
@@ -614,8 +627,9 @@ const AppContent = ({ kernel }: AppProps) => {
             </div>
           )}
         </MotionPresence>
+        <ApprovalNotice notifications={data.notifications} messages={data.activityMessages} onReview={reviewApproval} />
         <div className="app-grid">
-          <Sidebar
+          <SidebarDrawer
             groups={data.groups}
             onNewGroup={() => {
               setEditingGroup(null)
@@ -632,21 +646,22 @@ const AppContent = ({ kernel }: AppProps) => {
             showFakeTrafficLights={api.isMock}
             bots={data.bots}
             onDeleteBot={actions.deleteBot}
-            routineCount={data.routines.length}
             threads={data.threads}
-            messages={data.messages}
+            messages={data.activityMessages}
             runs={data.runs}
             floatUpdates={data.settings?.sidebarFloatUpdates ?? true}
             selectedBotId={selectedBot?.id ?? null}
             selectedThreadId={selectedThread?.id ?? null}
             section={section}
-            touriPage={touriPage}
-            onSection={(next) => {
-              setRoute(next === "bots" ? { section: "bots", screen: "chat" } : { section: "touri", page: "cron" })
+            advancedPage={advancedPage}
+            onChat={() => setRoute({ section: "bots", screen: "chat" })}
+            onAdvancedPage={(page) => setRoute({ section: "advanced", page })}
+            onRoutines={(botId) => {
+              if (botId !== data.selectedBotId) actions.selectBot(botId)
+              setRoute({ section: "advanced", page: "cron", botId })
             }}
-            onTouriPage={(page) => {
-              setRoute({ section: "touri", page })
-            }}
+            onProject={() => openModal("project")}
+            onImport={() => openModal("import")}
             onSelect={actions.selectBot}
             onSelectThread={actions.selectThread}
             onReviewApproval={reviewApproval}
@@ -685,20 +700,22 @@ const AppContent = ({ kernel }: AppProps) => {
                 onConnectProject={() => openModal("project")}
                 onNotice={showNotice}
               />
-            ) : section === "touri" && touriPage === "cron" ? (
+            ) : section === "advanced" && advancedPage === "cron" ? (
               <CronScreen
+                key={route.section === "advanced" ? (route.botId ?? "all") : "all"}
+                initialBotFilter={route.section === "advanced" ? route.botId : undefined}
                 loading={data.loading}
                 loadError={data.bots.length === 0 ? data.notice : null}
                 bots={data.bots}
                 selectedBotId={data.selectedBotId}
                 routines={data.routines}
                 routineRuns={data.routineRuns}
-                messages={data.messages}
+                messages={data.activityMessages}
                 actions={actions}
                 onReviewApprovals={reviewApproval}
                 onNotice={showNotice}
               />
-            ) : section === "touri" && touriPage === "integracoes" ? (
+            ) : section === "advanced" && advancedPage === "integracoes" ? (
               <IntegrationsScreen
                 api={api}
                 botId={selectedBot?.id ?? null}
@@ -706,7 +723,7 @@ const AppContent = ({ kernel }: AppProps) => {
                 modalOpen={modal !== null}
                 onConfigure={() => openModal("bot-mcp")}
               />
-            ) : section === "touri" && touriPage === "mcp" ? (
+            ) : section === "advanced" && advancedPage === "mcp" ? (
               <McpScreen
                 api={api}
                 botId={selectedBot?.id ?? null}
@@ -718,7 +735,7 @@ const AppContent = ({ kernel }: AppProps) => {
               <FailureActionContext.Provider value={runFailureAction}>
                 <EvidenceContext.Provider value={evidenceContext}>
                   <div
-                    className={`bot-workspace motion-workspace ${panelOpen ? "has-bot-panel" : ""} ${expandedBot === selectedBot?.id ? "computer-expanded" : ""}`}
+                    className={`bot-workspace motion-workspace ${panelOpen ? "has-bot-panel" : ""} ${!selectedGroup && expandedBot === selectedBot?.id ? "computer-expanded" : ""}`}
                     data-motion-panel-open={panelOpen}
                   >
                     <ErrorBoundary key={selectedThread?.id ?? selectedBot?.id ?? "chat"} area="a conversa" api={api}>
@@ -762,58 +779,88 @@ const AppContent = ({ kernel }: AppProps) => {
                             }))
                         }}
                         onOpenPermissions={() => openModal("bot-permissions")}
+                        onOpenToolCatalog={() => openModal("bot-mcp")}
                         onOpenProviderLogin={() => {
                           setSettingFocus(SETTINGS.providerLogin.id)
                           setBotSettingsSection(SETTINGS.providerLogin.section)
                           setModal("bot-settings")
                         }}
-                        onOpenModel={() => openModal("bot-settings")}
-                        projects={data.projects}
-                        onSelectProject={async (projectId) => {
-                          if (selectedBot) await actions.updateBot(selectedBot.id, { projectId })
-                        }}
-                        onAddProject={() => {
-                          openModal("project")
-                          setProjectLinkBotId(selectedBot?.id ?? null)
-                        }}
                       />
                     </ErrorBoundary>
                     {/* r8 motion: preserve the panel during its inert exit */}
-                    <MotionPresence show={panelOpen && Boolean(selectedBot)} kind="panel">
-                      {selectedBot && (
-                        <ErrorBoundary key={selectedBot.id} area="o painel do bot" api={api}>
-                          <BotPanel
-                            libraryRequest={
-                              libraryRequest?.botId === selectedBot.id ? (libraryRequest ?? undefined) : undefined
-                            }
-                            computerTabRequest={
-                              computerTabRequest?.botId === selectedBot.id ? computerTabRequest.request : 0
-                            }
-                            key={selectedBot.id}
-                            api={api}
-                            groups={data.groups.filter((g) => g.memberIds.includes(selectedBot.id))}
-                            onGroup={(g) => {
-                              const thread = data.threads.find((t) => t.groupId === g.id && !t.groupThreadId)
-                              if (thread) actions.selectThread(thread.id)
-                            }}
-                            bot={selectedBot}
-                            machine={data.machines.find((state) => state.botId === selectedBot.id)}
-                            routines={botRoutines}
-                            paused={modal !== null || searchOpen || notificationsOpen}
-                            expanded={expandedBot === selectedBot.id}
-                            onExpand={() => setExpandedBot((id) => (id === selectedBot.id ? null : selectedBot.id))}
-                            onWindow={() => openComputerWindow(selectedBot.id)}
-                            onClose={() => {
-                              setPanelOpen(false)
-                              window.requestAnimationFrame(() =>
-                                document.querySelector<HTMLButtonElement>(".bot-panel-toggle")?.focus(),
-                              )
-                            }}
-                            onSettings={() => openModal("bot-settings")}
-                            onPermissions={() => openModal("bot-permissions")}
-                            onRole={(roleLine) => actions.updateBot(selectedBot.id, { roleLine })}
-                          />
-                        </ErrorBoundary>
+                    <MotionPresence show={panelOpen && Boolean(selectedGroup || selectedBot)} kind="panel">
+                      {selectedGroup ? (
+                        <GroupPanel
+                          key={selectedGroup.id}
+                          group={selectedGroup}
+                          bots={groupMembers}
+                          onEdit={() => {
+                            setEditingGroup(selectedGroup)
+                            openModal("group")
+                          }}
+                          onClose={() => {
+                            setPanelOpen(false)
+                            window.requestAnimationFrame(() =>
+                              document.querySelector<HTMLButtonElement>(".bot-panel-toggle")?.focus(),
+                            )
+                          }}
+                        />
+                      ) : (
+                        selectedBot && (
+                          <ErrorBoundary key={selectedBot.id} area="o painel do bot" api={api}>
+                            <BotPanel
+                              libraryRequest={
+                                libraryRequest?.botId === selectedBot.id ? (libraryRequest ?? undefined) : undefined
+                              }
+                              computerTabRequest={
+                                computerTabRequest?.botId === selectedBot.id ? computerTabRequest.request : 0
+                              }
+                              key={selectedBot.id}
+                              api={api}
+                              groups={data.groups.filter((g) => g.memberIds.includes(selectedBot.id))}
+                              onGroup={(g) => {
+                                const thread = data.threads.find((t) => t.groupId === g.id && !t.groupThreadId)
+                                if (thread) actions.selectThread(thread.id)
+                              }}
+                              bot={selectedBot}
+                              machine={data.machines.find((state) => state.botId === selectedBot.id)}
+                              routines={botRoutines}
+                              activeTurns={data.runs.some(
+                                (run) =>
+                                  run.botId === selectedBot.id &&
+                                  ["queued", "starting", "running"].includes(run.status),
+                              )}
+                              paused={modal !== null || searchOpen || notificationsOpen}
+                              expanded={expandedBot === selectedBot.id}
+                              onExpand={() => setExpandedBot((id) => (id === selectedBot.id ? null : selectedBot.id))}
+                              onWindow={() => openComputerWindow(selectedBot.id)}
+                              onClose={() => {
+                                setPanelOpen(false)
+                                window.requestAnimationFrame(() =>
+                                  document.querySelector<HTMLButtonElement>(".bot-panel-toggle")?.focus(),
+                                )
+                              }}
+                              onSettings={() => openModal("bot-settings")}
+                              onModel={() => openModal("bot-model")}
+                              onPermissions={() => openModal("bot-permissions")}
+                              onPreview={() => setScreen("preview")}
+                              active={data.runs.some(
+                                (run) =>
+                                  run.botId === selectedBot.id &&
+                                  ["queued", "starting", "running"].includes(run.status),
+                              )}
+                              projects={data.projects}
+                              onSelectProject={async (projectId) => {
+                                if (selectedBot) await actions.updateBot(selectedBot.id, { projectId })
+                              }}
+                              onAddProject={() => {
+                                openModal("project")
+                                setProjectLinkBotId(selectedBot?.id ?? null)
+                              }}
+                              onRole={(roleLine) => actions.updateBot(selectedBot.id, { roleLine })}
+                            />
+                          </ErrorBoundary>
+                        )
                       )}
                     </MotionPresence>
                   </div>
@@ -825,6 +872,7 @@ const AppContent = ({ kernel }: AppProps) => {
         {/* r8 motion: central overlay presence (settings content stays owned by its package) */}
         <ErrorBoundary area="a busca" dialog api={api} onClose={() => setSearchOpen(false)}>
           <CommandPalette
+            api={api}
             open={searchOpen}
             bots={data.bots}
             threads={data.threads}
@@ -835,7 +883,7 @@ const AppContent = ({ kernel }: AppProps) => {
             onRun={runPaletteCommand}
           />
         </ErrorBoundary>
-        <MotionPresence show={modal !== null} kind="modal">
+        <MotionPresence show={modal !== null && modal !== "bot"} kind="modal">
           <ErrorBoundary key={modal} area="o diálogo" dialog api={api} onClose={closeModal}>
             {modal === "group" && (
               <GroupModal
@@ -849,7 +897,6 @@ const AppContent = ({ kernel }: AppProps) => {
               />
             )}
             {setupModal}
-            {botModal}
             {modal === "project" && (
               <ProjectModal
                 project={null}
@@ -862,7 +909,7 @@ const AppContent = ({ kernel }: AppProps) => {
                 onClose={closeModal}
                 onOpenPreview={() => {
                   closeModal()
-                  setScreen("preview")
+                  setRoute({ section: "bots", screen: "preview" })
                 }}
                 onNotice={showNotice}
               />
@@ -871,11 +918,24 @@ const AppContent = ({ kernel }: AppProps) => {
               <SettingsModal
                 api={api}
                 invokeCommand={invokeCommand}
+                doctor={data.doctor}
+                doctorError={data.doctorError}
+                onRefreshDoctor={actions.refreshDoctor}
+                onImport={() => setModal("import")}
                 initialSection={settingsInitialSection}
                 focusSetting={settingFocus}
                 settings={data.settings}
                 onClose={closeModal}
                 onSave={actions.updateSettings}
+              />
+            )}
+            {modal === "bot-model" && selectedBot && (
+              <BotModelModal
+                key={`${selectedBot.id}:${selectedBot.provider}`}
+                api={api}
+                bot={selectedBot}
+                onSave={(model) => actions.updateBot(selectedBot.id, { model })}
+                onClose={closeModal}
               />
             )}
             {(modal === "bot-settings" || modal === "bot-permissions" || modal === "bot-mcp") && selectedBot && (
@@ -889,14 +949,19 @@ const AppContent = ({ kernel }: AppProps) => {
                 activeTurns={data.runs.some(
                   (run) => run.botId === selectedBot.id && ["queued", "starting", "running"].includes(run.status),
                 )}
+                onOpenRoutines={() => {
+                  closeModal()
+                  setRoute({ section: "advanced", page: "cron", botId: selectedBot.id })
+                }}
                 onOpenIntegrations={() => {
                   closeModal()
-                  setRoute({ section: "touri", page: "integracoes" })
+                  setRoute({ section: "advanced", page: "integracoes" })
                 }}
                 api={api}
                 capability={data.machineCapability}
                 machineState={data.machines.find((state) => state.botId === selectedBot.id)}
                 bot={selectedBot}
+                settings={data.settings}
                 projects={data.projects}
                 routines={botRoutines}
                 actions={actions}
@@ -949,49 +1014,37 @@ const SidecarErrorScreen = ({
 )
 
 const OnboardingLanding = ({
-  doctor,
   onCreateBot,
   onDoctor,
   onImport,
 }: {
-  doctor: import("@touri/contracts").DoctorReport | null
   onCreateBot: () => void
   onDoctor: () => void
   onImport: () => void
 }) => (
   <main className="onboarding-screen">
     <div className="onboarding-card">
-      <div className="brand-lockup">
+      <h1 className="brand-lockup">
         <img className="brand-bull" src="/touri-bull.png" alt="" />
         <span className="brand-name">touri</span>
-      </div>
-      <p className="eyebrow">{t("local-first desktop")}</p>
-      <h1>{t("A calm home for your teammates.")}</h1>
-      <p>
-        {t(
-          "Run persistent Codex, Claude Code or OpenCode teammates in real project folders, keep every conversation branch, and see the apps they start.",
-        )}
-      </p>
+      </h1>
+      <p>{t("Your bots work on your Mac, with your accounts. Nothing leaves here.")}</p>
       <div className="onboarding-actions">
         <button type="button" className="button button-brand" onClick={onCreateBot}>
-          {t("Create first bot")}
-          <span>→</span>
-        </button>
-        <button type="button" className="button button-outline" onClick={onDoctor}>
-          {t("Check this Mac")}
-        </button>
-        <button type="button" className="button button-outline" onClick={onImport}>
-          {t("Import from legacy app")}
+          {t("Create my first bot")}
+          <span aria-hidden="true">→</span>
         </button>
       </div>
-      <div className="onboarding-foot">
+      <div className="onboarding-secondary">
         <span>
-          <span className="status-dot status-green" />{" "}
-          {doctor
-            ? t("Checks ready", { count: doctor.checks.filter((check) => check.ok).length })
-            : t("doctor runs locally")}
+          {t("Already use another tool?")}{" "}
+          <button type="button" className="text-button" onClick={onImport}>
+            {t("Import")}
+          </button>
         </span>
-        <span>{t("Apache-2.0 · no telemetry")}</span>
+        <button type="button" className="text-button" onClick={onDoctor}>
+          {t("Check this Mac")}
+        </button>
       </div>
     </div>
   </main>

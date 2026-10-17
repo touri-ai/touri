@@ -92,7 +92,8 @@ it("flag OFF hides Nuvem and makes no cloud requests in settings or wizard", asy
 it("Nuvem shows server-supplied plan/usage and unpairs without changing subscription", async () => {
   const { api, settings, calls } = await setup()
   render(<SettingsModal api={api} settings={{ ...settings, cloud: true }} onClose={vi.fn()} onSave={vi.fn()} />)
-  fireEvent.click(screen.getByRole("tab", { name: "Nuvem" }))
+  fireEvent.click(screen.getByRole("tab", { name: "Privacidade" }))
+  fireEvent.click(screen.getByText("Dados, permissões e conexões"))
   await screen.findByText("Cloud Solo · sandbox")
   expect(screen.getByText("R$ 79,99/mês · Ativo")).toBeVisible()
   expect(screen.getByText("2 h de 20 h")).toBeVisible()
@@ -118,7 +119,8 @@ it("pairing presents only the short code and a web confirmation link", async () 
       onSave={save}
     />,
   )
-  fireEvent.click(screen.getByRole("tab", { name: "Nuvem" }))
+  fireEvent.click(screen.getByRole("tab", { name: "Privacidade" }))
+  fireEvent.click(screen.getByText("Dados, permissões e conexões"))
   fireEvent.click(await screen.findByRole("button", { name: "Entrar em uma conta" }))
   expect(await screen.findByText("ABCD-EFGH")).toBeVisible()
   expect(screen.getByRole("link", { name: "Confirmar no navegador" })).toHaveAttribute(
@@ -134,15 +136,14 @@ it("wizard offers cloud only when connected and collects API-only BYOK", async (
   const create = vi.fn(async () => undefined)
   render(<BotCreateModal api={api} cloudEnabled onClose={vi.fn()} onCreate={create} />)
   fireEvent.change(screen.getByLabelText("Nome"), { target: { value: "Clara" } })
-  for (let i = 0; i < 3; i++) fireEvent.click(screen.getByRole("button", { name: "Continuar" }))
+  fireEvent.click(screen.getByRole("button", { name: "Avançado" }))
   const option = await screen.findByRole("option", { name: "Na nuvem" })
   expect(option).toBeInTheDocument()
   fireEvent.change(screen.getByLabelText("Máquina", { exact: true }), { target: { value: "cloud" } })
-  expect(screen.getByRole("button", { name: "Continuar" })).toBeDisabled()
+  expect(screen.getByRole("button", { name: "Criar bot" })).toBeDisabled()
   const key = screen.getByLabelText("Chave API do OpenAI")
   expect(key).toHaveAttribute("type", "password")
   fireEvent.change(key, { target: { value: "test-api-key" } })
-  fireEvent.click(screen.getByRole("button", { name: "Continuar" }))
   fireEvent.click(screen.getByRole("button", { name: "Criar bot" }))
   await waitFor(() =>
     expect(create).toHaveBeenCalledWith(
@@ -161,7 +162,7 @@ it("disconnected wizard never offers Na nuvem even with cloud flag enabled", asy
   const { api, calls } = await setup(false)
   render(<BotCreateModal api={api} cloudEnabled onClose={vi.fn()} onCreate={vi.fn()} />)
   fireEvent.change(screen.getByLabelText("Nome"), { target: { value: "Clara" } })
-  for (let i = 0; i < 3; i++) fireEvent.click(screen.getByRole("button", { name: "Continuar" }))
+  fireEvent.click(screen.getByRole("button", { name: "Avançado" }))
   await waitFor(() => expect(calls).toContain("GET /cloud/account"))
   expect(screen.queryByRole("option", { name: "Na nuvem" })).not.toBeInTheDocument()
 })
@@ -205,7 +206,8 @@ for (const [status, label] of [
           }
         : request(route, body, params)) as ApiRequest
     render(<SettingsModal api={api} settings={{ ...settings, cloud: true }} onClose={vi.fn()} onSave={vi.fn()} />)
-    fireEvent.click(screen.getByRole("tab", { name: "Nuvem" }))
+    fireEvent.click(screen.getByRole("tab", { name: "Privacidade" }))
+    fireEvent.click(screen.getByText("Dados, permissões e conexões"))
     expect(await screen.findByText(`R$ 79,99/mês · ${label}`)).toBeVisible()
     expect(screen.getByText("conta@example.invalid")).toBeVisible()
   })

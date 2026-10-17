@@ -18,7 +18,9 @@ export const materializeTranscript = (database: Database): void => {
   database.transaction(() => {
     const rows = database
       .query(
-        `SELECT e.seq AS delta_seq, e.at, e.event_json, m.id, m.thread_id FROM transcript_entries e
+        // ORDER BY e.id otherwise makes SQLite scan and parse every historical message body.
+        `SELECT e.seq AS delta_seq, e.at, e.event_json, m.id, m.thread_id
+         FROM transcript_entries e INDEXED BY transcript_delta_message
          JOIN messages m ON m.thread_id = e.thread_id AND m.id = json_extract(e.event_json, '$.messageId')
          WHERE json_extract(e.event_json, '$.type') = 'message.delta' AND e.seq > m.updated_seq
          ORDER BY e.id`,

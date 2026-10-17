@@ -6,6 +6,7 @@ import type { RateLimiter } from "../auth/rateLimit"
 import type { AuthStore, Device } from "../auth/store"
 import type { SecretStore } from "../host/secretStore"
 import { BodyError, readJsonBody } from "./body"
+import { compressBufferedResponse } from "./compression"
 import { isDirectLoopback } from "./loopback"
 import { pairingPageHtml } from "./pairingPage"
 import type { UiAssets } from "./uiAssets"
@@ -173,7 +174,15 @@ const handleDevices = ({
   return json(405, { errorCode: "METHOD_NOT_ALLOWED", error: "Unsupported devices request" })
 }
 
-const serveStatic = ({ pathname, request, ui }: { pathname: string; request: Request; ui: UiAssets }): Response => {
+const serveStatic = async ({
+  pathname,
+  request,
+  ui,
+}: {
+  pathname: string
+  request: Request
+  ui: UiAssets
+}): Promise<Response> => {
   if (!["GET", "HEAD"].includes(request.method)) return json(405, { errorCode: "METHOD_NOT_ALLOWED", error: "Use GET" })
   const requested = pathname === "/" ? "index.html" : pathname.slice(1)
   const exact = ui.get(requested)
@@ -187,10 +196,19 @@ const serveStatic = ({ pathname, request, ui }: { pathname: string; request: Req
         })
       : json(404, { errorCode: "NOT_FOUND", error: "Not found" })
   const cache = asset.immutable ? "public, max-age=31536000, immutable" : "no-store"
-  return new Response(request.method === "HEAD" ? null : asset.file, {
-    status: 200,
-    headers: { ...baseHeaders, "Cache-Control": cache, "Content-Type": asset.type },
-  })
+  return compressBufferedResponse(
+    request,
+    new Response(asset.file, {
+      status: 200,
+      headers: {
+        ...baseHeaders,
+        "Cache-Control": cache,
+        "Content-Type": asset.type,
+        "Content-Length": String(asset.file.size),
+      },
+    }),
+    asset.compressed,
+  )
 }
 
 const apiGate = async ({
@@ -235,7 +253,7 @@ const apiGate = async ({
 export const createWebGate = (options: GateOptions): ((args: WebInterceptArgs) => Promise<Response | null>) => {
   let inFlight = 0
   const bySource = new Map<string, number>()
-  return async (args) => {
+  const intercept = async (args: WebInterceptArgs): Promise<Response | null> => {
     const { url, request } = args
     if (!isSecureRequest(args, options) && !isDirectLoopback({ clientIp: args.clientIp, headers: request.headers }))
       return json(426, {
@@ -274,5 +292,9 @@ export const createWebGate = (options: GateOptions): ((args: WebInterceptArgs) =
         : json(401, { errorCode: "UNAUTHORIZED", error: "Pareie este dispositivo primeiro" })
     }
     return serveStatic({ pathname: url.pathname, request, ui: options.ui })
+  }
+  return async (args) => {
+    const response = await intercept(args)
+    return response ? compressBufferedResponse(args.request, response) : null
   }
 }

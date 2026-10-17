@@ -10,6 +10,39 @@ export const desktopHelper = (): string => {
   return helper
 }
 
+const nativeProcessOperation = (args: string[]): unknown => {
+  const child = Bun.spawnSync({
+    cmd: [desktopHelper(), ...args],
+    stdout: "pipe",
+    stderr: "pipe",
+    env: buildChildEnv(),
+    timeout: 5_000,
+  })
+  try {
+    const response = JSON.parse(child.stdout.toString()) as { ok?: boolean; value?: unknown }
+    if (child.exitCode !== 0 || response.ok !== true) throw new Error("Native process operation failed")
+    return response.value
+  } catch {
+    throw new TouriError("TOURI-E2001")
+  }
+}
+
+export const windowsProviderIdentity = (pid: number): { birth: string; alive: boolean } | null => {
+  if (!Number.isSafeInteger(pid) || pid <= 1) throw new TouriError("TOURI-E2000")
+  const value = nativeProcessOperation(["--process-identity", String(pid)])
+  if (value === null) return null
+  const result = value as { birth?: unknown; alive?: unknown }
+  if (typeof result?.birth !== "string" || !result.birth.startsWith(`${pid} `) || typeof result.alive !== "boolean")
+    throw new TouriError("TOURI-E2001")
+  return { birth: result.birth, alive: result.alive }
+}
+
+export const terminateWindowsProvider = (pid: number, birth: string): void => {
+  if (!Number.isSafeInteger(pid) || pid <= 1 || !birth.startsWith(`${pid} `)) throw new TouriError("TOURI-E2000")
+  if (typeof nativeProcessOperation(["--terminate-process", String(pid), birth]) !== "boolean")
+    throw new TouriError("TOURI-E2001")
+}
+
 export const nativeFileOperation = <T>(
   op: string,
   input: { root: string; path: string; content?: string; to?: string; max_bytes?: number },

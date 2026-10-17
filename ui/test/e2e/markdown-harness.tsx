@@ -1,6 +1,9 @@
 import type { Message } from "@touri/contracts"
 import { createRoot } from "react-dom/client"
+import { createApiClient, webEndpoint } from "../../src/api/client"
+import { createMockApi } from "../../src/api/mock"
 import { VirtualMessageList } from "../../src/components/ChatPanel"
+import { MarkdownContent } from "../../src/components/MarkdownContent"
 import { ToolCallCard } from "../../src/components/ToolCallCard"
 import { screenshotJoined, screenshotSegments } from "../fixtures/markdown-bug"
 import "../../src/styles.css"
@@ -26,7 +29,21 @@ const message: Message = {
   updatedAt: 1_792_009_800_000,
 }
 const root = document.getElementById("root")
-if (root)
+if (root && params.get("view") === "files") {
+  const bot = createMockApi().getState().bots[0]
+  if (!bot) throw new Error("Missing bot")
+  const evidence = { api: createApiClient({ endpoint: webEndpoint(location) }), bot }
+  createRoot(root).render(
+    <main style={{ maxWidth: 900, margin: "24px auto", padding: 24 }}>
+      <MarkdownContent
+        evidence={evidence}
+        content={
+          "Salvo em [notas.md](/workspace/notas.md).\n\n[Arquivo removido](/workspace/missing.md) · [Sem acesso](/outside/private.txt)\n\n[Baixar PNG](/output/post.png) · Vou criar `planned.png`."
+        }
+      />
+    </main>,
+  )
+} else if (root)
   createRoot(root).render(
     <main style={{ maxWidth: 900, margin: "24px auto", padding: 24 }}>
       <VirtualMessageList messages={[message]} onSwitchBranch={() => {}} onRetry={async () => {}} />

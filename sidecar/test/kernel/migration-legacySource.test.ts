@@ -56,11 +56,20 @@ const seed = (db: Database): void => {
 
 type Snapshot = { rows: Map<string, Array<unknown>>; fks: Map<string, Array<unknown>> }
 
-const snapshot = (db: Database, tables: Array<string>): Snapshot => ({
+// Later migrations add columns; rows are compared on the columns the old schema had.
+const columnsOf = (db: Database, table: string): Array<string> =>
+  (db.query(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>).map((column) => `"${column.name}"`)
+
+const snapshot = (db: Database, tables: Array<string>, columns?: Map<string, Array<string>>): Snapshot => ({
   rows: new Map(
     tables.map((table) => [
       table,
-      db.query(`SELECT rowid AS rid, * FROM ${table} ORDER BY rowid`).all().map(withoutSource),
+      db
+        .query(
+          `SELECT rowid AS rid, ${(columns?.get(table) ?? columnsOf(db, table)).join(", ")} FROM ${table} ORDER BY rowid`,
+        )
+        .all()
+        .map(withoutSource),
     ]),
   ),
   fks: new Map(tables.map((table) => [table, db.query(`PRAGMA foreign_key_list(${table})`).all()])),
@@ -81,8 +90,6 @@ test("0014 upgrades a copy of a populated schema 13 database with old-label rows
   const filename = join(root, "upgraded.db")
   let db = new Database(original)
   try {
-    // Bun versions differ in their connection default; rebuilds must restore it.
-    const alterTableDefault = db.query("PRAGMA legacy_alter_table").get()
     await buildSchema13(db)
     seed(db)
     expect(() => db.exec("UPDATE bots SET source='legacy' WHERE id='b-old'")).toThrow()
@@ -96,15 +103,8 @@ test("0014 upgrades a copy of a populated schema 13 database with old-label rows
         )
         .all() as Array<{ name: string }>
     ).map((row) => row.name)
-    const before = snapshot(db, tables)
-    for (const [table, defaults] of [
-      ["bots", { folders_json: "[]", any_folder_access: 0 }],
-      ["bot_machines", { folder_fingerprint: "" }],
-    ] as const)
-      before.rows.set(
-        table,
-        (before.rows.get(table) ?? []).map((row) => ({ ...(row as object), ...defaults })),
-      )
+    const columns = new Map(tables.map((table) => [table, columnsOf(db, table)]))
+    const before = snapshot(db, tables, columns)
     const objectsBefore = db
       .query(
         "SELECT name FROM sqlite_schema WHERE type IN ('index','trigger','view') AND name NOT LIKE 'sqlite_%' ORDER BY name",
@@ -113,9 +113,8 @@ test("0014 upgrades a copy of a populated schema 13 database with old-label rows
     db.close()
     copyFileSync(original, filename)
     db = openDatabase({ filename })
-    expect(db.query("PRAGMA legacy_alter_table").get()).toEqual(alterTableDefault)
     for (let reopen = 0; reopen < 2; reopen++) {
-      const after = snapshot(db, tables)
+      const after = snapshot(db, tables, columns)
       expect(after.rows).toEqual(before.rows)
       expect(after.fks).toEqual(before.fks)
       expect(

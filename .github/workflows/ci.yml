@@ -15,10 +15,11 @@ jobs:
           bun-version: 1.2.21
       - run: bun install --frozen-lockfile
       - run: bun run typecheck
-      - run: bunx ajv-cli validate -s packages/contracts/mcp-tools.json -d packages/contracts/mcp-tools.json --spec=draft2020 --strict=false
+      - run: bun packages/contracts/src/validate-catalog.ts
+      - run: bun test sidecar/test/kernel/catalog-validation.test.ts
+      - run: bun test sidecar/test/kernel/schema-contract.test.ts
       - name: Apply the schema with bun:sqlite (FTS5)
         run: bun -e 'import { Database } from "bun:sqlite"; import { readFileSync } from "node:fs"; new Database(":memory:").exec(readFileSync("packages/contracts/schema.sql", "utf8"))'
-      - run: bun test sidecar/test/kernel/schema-contract.test.ts
 
   sidecar:
     runs-on: macos-14
@@ -35,7 +36,7 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: bunx biome check .
       - run: bun run typecheck
-      - run: bun test --timeout 30000 sidecar/test
+      - run: bun test sidecar/test
 
   rust:
     runs-on: macos-26
@@ -92,7 +93,7 @@ jobs:
           bun-version: 1.4.3
       - uses: dtolnay/rust-toolchain@stable
         with:
-          components: rustfmt
+          components: rustfmt, clippy
       - name: Install Linux build dependencies
         run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf libdbus-1-dev xdg-utils unzip gnome-keyring dbus
       - run: bun install --frozen-lockfile
@@ -101,6 +102,8 @@ jobs:
       - run: bun test --timeout 30000 sidecar/test
       - run: bun --cwd ui test --maxWorkers=2 --minWorkers=1 --testTimeout=30000
       - run: bun run build:sidecar:linux
+      - run: cargo fmt --manifest-path src-tauri/Cargo.toml --check
+      - run: cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
       - run: dbus-run-session -- bash scripts/test-native-linux.sh
       - run: bun run test:sidecar:smoke
       - run: bunx tauri build --bundles appimage,deb

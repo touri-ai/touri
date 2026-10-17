@@ -1,8 +1,18 @@
 import type { McpServer, McpTool, McpToolPolicy } from "@touri/contracts"
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useId, useRef, useState } from "react"
 import type { UiApi } from "../api/client"
+import { ApiError } from "../errors"
 import { t } from "../i18n"
 import { McpCatalog } from "./McpCatalog"
+
+const parseArgs = (value: string): string[] | null => {
+  try {
+    const args: unknown = JSON.parse(value)
+    return Array.isArray(args) && args.every((arg) => typeof arg === "string") ? args : null
+  } catch {
+    return null
+  }
+}
 
 export const BotMcpSettings = ({
   api,
@@ -30,6 +40,19 @@ export const BotMcpSettings = ({
   const [args, setArgs] = useState("[]")
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [missingCommand, setMissingCommand] = useState(false)
+  const folderHelpId = useId()
+  const argsHelpId = useId()
+  const commandErrorId = useId()
+  const nameHelpId = useId()
+  const validName = /^[a-zA-Z][a-zA-Z0-9_-]{0,63}$/.test(name.trim()) && name.trim() !== "touri"
+  const parsedArgs = parseArgs(args)
+  const filesystemIndex = parsedArgs?.indexOf("@modelcontextprotocol/server-filesystem") ?? -1
+  const folders = parsedArgs?.slice(filesystemIndex + 1) ?? []
+  const validFolders =
+    filesystemIndex < 0 ||
+    (folders.length > 0 && folders.every((path) => path.startsWith("/") && !/[\0\n\r]/.test(path)))
+  const canAttach = validName && !!endpoint.trim() && (transport === "http" || (!!parsedArgs && validFolders))
   useEffect(() => {
     let active = true
     void api
@@ -45,14 +68,15 @@ export const BotMcpSettings = ({
     }
   }, [api, botId])
   const attach = async () => {
-    if (busy) return
+    if (busy || !canAttach) return
     setBusy(true)
     setError(null)
+    setMissingCommand(false)
     try {
       const server: McpServer =
         transport === "http"
           ? { name: name.trim(), transport, url: endpoint.trim(), tools: [] }
-          : { name: name.trim(), transport, command: endpoint.trim(), args: JSON.parse(args), tools: [] }
+          : { name: name.trim(), transport, command: endpoint.trim(), args: parsedArgs ?? [], tools: [] }
       const result = await api.request("PUT /bots/:id/mcp/:name", server, { id: botId, name: server.name })
       setServers((current) => [...current.filter((item) => item.name !== result.server.name), result.server])
       onPermissionsChange?.()
@@ -60,7 +84,17 @@ export const BotMcpSettings = ({
       setEndpoint("")
       setArgs("[]")
     } catch (error) {
-      setError(error instanceof Error ? error.message : t("Servidor MCP indisponível."))
+      const missing = error instanceof ApiError && error.code === "TOURI-E1012"
+      setMissingCommand(missing)
+      setError(
+        missing
+          ? t("O comando MCP “{command}” não foi encontrado. Confira a instalação e o PATH na máquina deste bot.", {
+              command: endpoint.trim(),
+            })
+          : error instanceof Error
+            ? error.message
+            : t("Servidor MCP indisponível."),
+      )
     } finally {
       setBusy(false)
     }
@@ -100,6 +134,8 @@ export const BotMcpSettings = ({
       )}
       <McpCatalog
         onSelect={(server) => {
+          setError(null)
+          setMissingCommand(false)
           setName(server.name)
           setTransport(server.transport)
           setEndpoint(server.transport === "stdio" ? server.command : server.url)
@@ -164,34 +200,96 @@ export const BotMcpSettings = ({
       ))}
       <label>
         {t("Nome do servidor MCP")}
-        <input value={name} onChange={(event) => setName(event.target.value)} />
+        <input
+          value={name}
+          aria-invalid={!!name && !validName}
+          aria-describedby={name && !validName ? nameHelpId : undefined}
+          onChange={(event) => setName(event.target.value)}
+        />
       </label>
+      {name && !validName && (
+        <p id={nameHelpId} role="alert">
+          {t("Use de 1 a 64 letras sem acentos, números, _ ou -, começando por uma letra. O nome touri é reservado.")}
+        </p>
+      )}
       <label>
         {t("Transporte MCP")}
-        <select value={transport} onChange={(event) => setTransport(event.target.value as "stdio" | "http")}>
+        <select
+          value={transport}
+          onChange={(event) => {
+            setTransport(event.target.value as "stdio" | "http")
+            setMissingCommand(false)
+            setError(null)
+          }}
+        >
           <option value="stdio">stdio</option>
           <option value="http">HTTP</option>
         </select>
       </label>
       <label>
         {transport === "stdio" ? t("Comando MCP") : t("URL MCP")}
-        <input value={endpoint} onChange={(event) => setEndpoint(event.target.value)} />
+        <input
+          value={endpoint}
+          aria-invalid={missingCommand}
+          aria-describedby={missingCommand ? commandErrorId : undefined}
+          onChange={(event) => {
+            setEndpoint(event.target.value)
+            setMissingCommand(false)
+            setError(null)
+          }}
+        />
       </label>
       {transport === "stdio" && (
-        <label>
-          {t("Argumentos MCP (lista JSON)")}
-          <input value={args} onChange={(event) => setArgs(event.target.value)} />
-        </label>
+        <>
+          {filesystemIndex >= 0 && parsedArgs && (
+            <>
+              <label>
+                {t("Pasta permitida (caminho absoluto)")}
+                <input
+                  required
+                  value={folders[0] ?? ""}
+                  aria-describedby={folderHelpId}
+                  aria-invalid={!validFolders}
+                  onChange={(event) =>
+                    setArgs(
+                      JSON.stringify([
+                        ...parsedArgs.slice(0, filesystemIndex + 1),
+                        event.target.value,
+                        ...folders.slice(1),
+                      ]),
+                    )
+                  }
+                />
+              </label>
+              <small id={folderHelpId}>
+                {t("Informe pelo menos uma pasta com caminho absoluto antes de conectar.")}
+              </small>
+            </>
+          )}
+          <label>
+            {t("Argumentos MCP (lista JSON)")}
+            <input
+              value={args}
+              aria-invalid={!parsedArgs}
+              aria-describedby={!parsedArgs ? argsHelpId : undefined}
+              onChange={(event) => setArgs(event.target.value)}
+            />
+          </label>
+          {!parsedArgs && (
+            <p id={argsHelpId} role="alert">
+              {t('Informe uma lista JSON de textos. Exemplo: ["--porta", "3000"] ou [].')}
+            </p>
+          )}
+        </>
       )}
-      <button
-        type="button"
-        className="button button-quiet"
-        disabled={busy || !name.trim() || !endpoint.trim()}
-        onClick={() => void attach()}
-      >
+      <button type="button" className="button button-quiet" disabled={busy || !canAttach} onClick={() => void attach()}>
         {busy ? t("Verificando ferramentas…") : t("Conectar servidor MCP")}
       </button>
-      {error && <p role="alert">{error}</p>}
+      {error && (
+        <p id={commandErrorId} role="alert">
+          {error}
+        </p>
+      )}
     </section>
   )
 }

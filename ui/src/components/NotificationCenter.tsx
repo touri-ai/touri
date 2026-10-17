@@ -1,7 +1,14 @@
 import type { Message, NotificationRecord, RespondBehavior } from "@touri/contracts"
 import { useEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
-import { isResolvedNotification, reconcileApprovalNotifications, resolvedApprovalLabel } from "../approvalState"
+import { type ApprovalTarget, pendingApprovalTargets } from "../approvalNavigation"
+import { approvalNotificationSummary } from "../approvalNotice"
+import {
+  isResolvedNotification,
+  reconcileApprovalMessages,
+  reconcileApprovalNotifications,
+  resolvedApprovalLabel,
+} from "../approvalState"
 import { userFacingError } from "../errors"
 import { dictionaries, localizeNotice, type TranslationKey, t } from "../i18n"
 import { markdownSummary } from "../markdownSummary"
@@ -38,8 +45,8 @@ const KIND_KEY: Record<NotificationRecord["kind"], TranslationKey> = {
   "delegation-settled": "Delegation",
 }
 
-const hasReplyBox = (item: NotificationRecord): boolean =>
-  item.kind === "question" || (item.kind === "done" && item.body.trim().endsWith("?"))
+// Only a real question from the bot gets a reply box; a finished turn that ends in "?" is a reply.
+const hasReplyBox = (item: NotificationRecord): boolean => item.kind === "question"
 
 const age = (createdAt: number, now: number): string => {
   const minutes = Math.max(0, Math.round((now - createdAt) / 60_000))
@@ -62,17 +69,20 @@ const NotificationRow = ({
   now,
   actions,
   inserted,
+  messages,
 }: {
   item: NotificationRecord
   now: number
   actions: NotificationActions
   inserted: boolean
+  messages: Message[]
 }) => {
   const bot = useAvatarBot(item.botId)
   const [text, setText] = useState("")
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const resolved = isResolvedNotification(item)
+  const approval = item.kind === "approval" ? approvalNotificationSummary(item, messages) : null
   const title =
     resolved && item.kind === "approval"
       ? item.resolution === "dismissed"
@@ -80,9 +90,8 @@ const NotificationRow = ({
         : resolvedApprovalLabel(
             item.resolution === "allow" ? "approved" : item.resolution === "expired" ? "expired" : "denied",
           )
-      : markdownSummary(localizeNotice(item.title))
-  // Approval bodies carry command arguments whose literal characters must stay visible.
-  const body = item.kind === "approval" ? localizeNotice(item.body) : markdownSummary(localizeNotice(item.body))
+      : (approval?.title ?? markdownSummary(localizeNotice(item.title)))
+  const body = approval?.body ?? markdownSummary(localizeNotice(item.body))
   const run = async (task: () => Promise<void>): Promise<void> => {
     setBusy(true)
     setError(null)
@@ -138,6 +147,13 @@ const NotificationRow = ({
           </time>
         )}
         {body.toLowerCase() !== t(KIND_KEY[item.kind]).toLowerCase() && <p className="notification-body">{body}</p>}
+        {approval?.command && <pre className="notification-command">{approval.command}</pre>}
+        {approval?.technical && (
+          <details className="notification-technical">
+            <summary>{t("Detalhes técnicos")}</summary>
+            <pre>{approval.technical}</pre>
+          </details>
+        )}
         {!resolved && item.kind === "approval" && item.requestId && (
           <div className="notification-buttons">
             <button
@@ -188,7 +204,7 @@ const NotificationRow = ({
         <div className="notification-links">
           {item.threadId && (
             <button type="button" onClick={() => actions.open(item)}>
-              {t("Open")}
+              {t(item.kind === "approval" ? "Revisar" : "Open")}
             </button>
           )}
           {!resolved && (
@@ -209,12 +225,14 @@ export const NotificationBell = ({
   actions,
   now = Date.now(),
   onOpenChange,
+  onReviewApproval,
 }: {
   notifications: Array<NotificationRecord>
   messages?: Array<Message>
   actions: NotificationActions
   now?: number
   onOpenChange?: (open: boolean) => void
+  onReviewApproval?: ((target: ApprovalTarget) => void) | undefined
 }) => {
   const [open, setOpen] = useState(false)
   const inserted = useInsertedIds(notifications.map((item) => String(item.id)))
@@ -239,6 +257,13 @@ export const NotificationBell = ({
     (item) => !clearedIds.has(notificationKey(item)),
   )
   const pending = pendingNotifications(visible, messages)
+  const missingApprovals = pendingApprovalTargets(reconcileApprovalMessages(messages, notifications)).filter(
+    (target) =>
+      !pending.some(
+        (item) => item.kind === "approval" && item.threadId === target.threadId && item.requestId === target.approvalId,
+      ),
+  )
+  const attentionCount = pending.length + missingApprovals.length
   const recent = visible
     .filter((item) => !pending.includes(item))
     .sort((a, b) => b.createdAt - a.createdAt || b.id - a.id)
@@ -305,7 +330,7 @@ export const NotificationBell = ({
       <button
         type="button"
         className="settings-button notification-bell"
-        aria-label={pending.length ? t("Notifications need attention", { count: pending.length }) : t("Notifications")}
+        aria-label={attentionCount ? t("Notifications need attention", { count: attentionCount }) : t("Notifications")}
         aria-expanded={open}
         onClick={() => setOpen((current) => !current)}
       >
@@ -323,7 +348,7 @@ export const NotificationBell = ({
           <path d="M6 9a6 6 0 1 1 12 0c0 6 2 7 2 7H4s2-1 2-7" />
           <path d="M10 20a2 2 0 0 0 4 0" />
         </svg>
-        {pending.length > 0 && <span className="notification-badge">{pending.length > 9 ? "9+" : pending.length}</span>}
+        {attentionCount > 0 && <span className="notification-badge">{attentionCount > 9 ? "9+" : attentionCount}</span>}
       </button>
       {/* r8 motion: retain only the inert popover during its exit. */}
       {createPortal(
@@ -352,7 +377,22 @@ export const NotificationBell = ({
                 Não foi possível limpar as notificações. Tente novamente.
               </p>
             )}
-            {ordered.length === 0 && <p className="notification-empty">{t("Nothing needs you right now.")}</p>}
+            {ordered.length === 0 && missingApprovals.length === 0 && (
+              <p className="notification-empty">{t("Nothing needs you right now.")}</p>
+            )}
+            {missingApprovals.map((target) => (
+              <button
+                key={target.approvalId}
+                type="button"
+                className="text-button"
+                onClick={() => {
+                  setOpen(false)
+                  onReviewApproval?.(target)
+                }}
+              >
+                {t("Review pending approval")}
+              </button>
+            ))}
             {groups
               .filter((group) => group.items.length > 0)
               .map((group) => (
@@ -366,6 +406,7 @@ export const NotificationBell = ({
                         now={now}
                         actions={navigationActions}
                         inserted={inserted.has(String(item.id))}
+                        messages={messages}
                       />
                     ))}
                   </ul>
@@ -373,7 +414,7 @@ export const NotificationBell = ({
               ))}
           </section>
         </MotionPresence>,
-        document.body,
+        container.current?.closest("dialog") ?? document.body,
       )}
     </div>
   )

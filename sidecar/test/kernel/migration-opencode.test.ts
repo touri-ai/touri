@@ -38,15 +38,18 @@ test("0012 upgrades a copy of a populated schema 11 database, preserving rows, i
         )
         .all() as Array<{ name: string }>
     ).map((row) => row.name)
-    const before = new Map(tables.map((table) => [table, db.query(`SELECT * FROM ${table} ORDER BY 1`).all()]))
-    for (const [table, defaults] of [
-      ["bots", { folders_json: "[]", any_folder_access: 0 }],
-      ["bot_machines", { folder_fingerprint: "" }],
-    ] as const)
-      before.set(
+    // Later migrations add columns; rows are compared on the columns the old schema had.
+    const columns = new Map(
+      tables.map((table) => [
         table,
-        (before.get(table) ?? []).map((row) => ({ ...(row as object), ...defaults })),
-      )
+        (db.query(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>)
+          .map((column) => `"${column.name}"`)
+          .join(", "),
+      ]),
+    )
+    const before = new Map(
+      tables.map((table) => [table, db.query(`SELECT ${columns.get(table)} FROM ${table} ORDER BY 1`).all()]),
+    )
     const fks = new Map(tables.map((table) => [table, db.query(`PRAGMA foreign_key_list(${table})`).all()]))
     db.close()
     copyFileSync(original, filename)
@@ -56,7 +59,7 @@ test("0012 upgrades a copy of a populated schema 11 database, preserving rows, i
         expect(
           db
             .query(
-              `SELECT * FROM ${table} ${table === "settings" ? "WHERE key NOT LIKE 'memory-trust:%'" : ""} ORDER BY 1`,
+              `SELECT ${columns.get(table)} FROM ${table} ${table === "settings" ? "WHERE key NOT LIKE 'memory-trust:%'" : ""} ORDER BY 1`,
             )
             .all(),
         ).toEqual(before.get(table) ?? [])

@@ -108,14 +108,20 @@ export const validLogin = (provider: Bot["provider"], value: string, host = fals
 export const createProviderLoginFlow = ({
   kernel,
   hostHome = homedir(),
+  platform = process.platform,
+  headless = process.env.TOURI_HEADLESS === "1",
   timeoutMs = 10 * 60_000,
   invoke,
 }: {
   kernel: Kernel
   hostHome?: string
+  platform?: NodeJS.Platform
+  headless?: boolean
   timeoutMs?: number
   invoke?: (input: LoginInvocation) => ReturnType<Kernel["spawnTree"]>
 }) => {
+  const host = platform === "darwin" && !headless ? "mac" : "server"
+  const hostUnavailable = host === "mac" ? "Login deste Mac indisponível." : "Login deste servidor indisponível."
   const sessions = new Map<string, Session>()
   const starts = new Map<string, Promise<ProviderLoginFlow>>()
   const writes = new Map<string, Promise<void>>()
@@ -211,7 +217,7 @@ export const createProviderLoginFlow = ({
     const current = sessions.get(key(target))
     if (current && (current.view.state !== "ready" || isDraft(target.id))) return { ...current.view }
     const source = isDraft(target.id) ? null : storedProviderLoginSource(kernel, target)
-    if (!source && hostAvailable(target.provider)) return { provider: target.provider, state: "host-available" }
+    if (!source && hostAvailable(target.provider)) return { provider: target.provider, state: "host-available", host }
     if (source !== "host-file" && !isDraft(target.id)) {
       const value = await readVault(kernel, target, loginTarget(target.provider), {})
       if (value) {
@@ -223,7 +229,9 @@ export const createProviderLoginFlow = ({
       }
     }
     if (hostAvailable(target.provider))
-      return { provider: target.provider, state: source === "host-file" ? "ready" : "host-available" }
+      return source === "host-file"
+        ? { provider: target.provider, state: "ready" }
+        : { provider: target.provider, state: "host-available", host }
     return { provider: target.provider, state: "idle" }
   }
   const start = async (target: Target): Promise<ProviderLoginFlow> => {
@@ -461,7 +469,7 @@ export const createProviderLoginFlow = ({
       return operation
     }
     if (input.action === "use-host") {
-      if (!hostAvailable(target.provider)) throw new Error("Login deste Mac indisponível.")
+      if (!hostAvailable(target.provider)) throw new Error(hostUnavailable)
       cancel(target)
       if (!isDraft(target.id)) selectSource(target, "host-file")
       if (!isDraft(target.id)) enableLogin(target)
@@ -487,9 +495,10 @@ export const createProviderLoginFlow = ({
     }
     if (input.action === "adopt" && !isDraft(target.id) && input.draftId && isDraft(input.draftId)) {
       const draft = sessions.get(key({ id: input.draftId, provider: target.provider }))
+      if (!draft && (await status(target)).state === "ready") return { provider: target.provider, state: "ready" }
       if (draft?.view.state !== "ready") throw new Error("Conclua o login antes de criar o bot.")
       if (draft.host) {
-        if (!hostAvailable(target.provider)) throw new Error("Login deste Mac indisponível.")
+        if (!hostAvailable(target.provider)) throw new Error(hostUnavailable)
         selectSource(target, "host-file")
         enableLogin(target)
       } else if (draft.secret) await save({ ...draft, target }, draft.secret)

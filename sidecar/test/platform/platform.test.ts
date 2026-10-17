@@ -1,9 +1,10 @@
 import { expect, test } from "bun:test"
-import { posix } from "node:path"
+import { join, posix } from "node:path"
+import { createAppPaths, resolveMcpSocketPath } from "../../src/kernel/paths"
 import { ociEngine } from "../../src/platform"
 import * as linux from "../../src/platform/linux"
 import * as macos from "../../src/platform/macos"
-import { connectionOptions, mcpEndpoint } from "../../src/platform/transport"
+import { connectionOptions, mcpEndpoint, resolveMcpEndpoint } from "../../src/platform/transport"
 import * as windows from "../../src/platform/windows"
 
 test("data paths follow each platform and XDG/AppData overrides", () => {
@@ -46,4 +47,14 @@ test("Linux process identity handles parenthesized names and refuses malformed/r
   expect(linux.parseProcessIdentity(43, stat)).toBeNull()
   expect(linux.parseProcessIdentity(42, "42 (broken) S 7")).toBeNull()
   expect(linux.parseProcessIdentity(42, stat.replace(") S", ") Z"))?.alive).toBe(false)
+})
+
+test("Unix MCP discovery preserves the short socket fallback for long data paths", () => {
+  const paths = createAppPaths({ appData: join("/tmp", "data-".repeat(30)) })
+  for (const platform of ["darwin", "linux"] as const) {
+    const endpoint = mcpEndpoint(paths.runDir, platform)
+    expect(endpoint).toBe(resolveMcpSocketPath(paths, { platform }))
+    expect(Buffer.byteLength(endpoint)).toBeLessThan(platform === "darwin" ? 104 : 108)
+  }
+  if (process.platform !== "win32") expect(resolveMcpEndpoint(paths)).toBe(resolveMcpSocketPath(paths))
 })

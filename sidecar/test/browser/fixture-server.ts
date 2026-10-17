@@ -125,6 +125,21 @@ export const startBrowserFixtureServer = (): Server<undefined> =>
       if (pathname === "/popup-link")
         return page('<a id="blank" target="_blank" href="/popup-child">Open in new tab</a>')
       if (pathname === "/wait") return page('<p id="status">waiting</p>')
+      if (pathname === "/challenge-reference")
+        return new Response(
+          "<!doctype html><html><head><title>Access Denied</title></head><body><h1>Access Denied</h1><p>You don't have permission to access this page on this server.</p><p>Reference #18.1a2b3c4d.1700000000.5e6f7a8b</p></body></html>",
+          { status: 403, headers: { "content-type": "text/html; charset=utf-8" } },
+        )
+      if (pathname === "/challenge-header")
+        return new Response(
+          "<!doctype html><html><head><title>Just a moment...</title></head><body><p>Checking your browser.</p></body></html>",
+          { status: 403, headers: { "content-type": "text/html; charset=utf-8", "cf-mitigated": "challenge" } },
+        )
+      if (pathname === "/forbidden")
+        return new Response(page("<h1>Access denied</h1><p>Ask your admin for access to this project.</p>").body, {
+          status: 403,
+          headers: { "content-type": "text/html; charset=utf-8" },
+        })
       return new Response(page("<p>fixture</p>").body, {
         status: 404,
         headers: { "content-type": "text/html; charset=utf-8" },

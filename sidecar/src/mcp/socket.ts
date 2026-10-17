@@ -1,8 +1,9 @@
 import { chmodSync, unlinkSync } from "node:fs"
 import { createServer, type Server, type Socket } from "node:net"
+import { dirname } from "node:path"
 import type { Kernel, ToolRegistration } from "@touri/contracts"
 import { atomicWriteFile, ensurePrivateDirectory, removePrivateFile } from "../kernel/files"
-import { mcpEndpoint, mcpEndpointFile } from "../platform/transport"
+import { mcpEndpoint, mcpEndpointFile, resolveMcpEndpoint } from "../platform/transport"
 import { MCP_LIMITS, serveMcpConnection } from "./connection"
 
 const unlinkIfPresent = (path: string): void => {
@@ -22,14 +23,17 @@ export const createMcpSocket = ({
   registrations: Map<string, ToolRegistration>
   transport?: "tcp" | "local"
 }) => {
-  let socketPath = transport === "local" ? mcpEndpoint(kernel.paths.runDir) : ""
+  let socketPath = transport === "local" ? resolveMcpEndpoint(kernel.paths) : ""
   const tokenDir = `${kernel.paths.runDir}/mcp-tokens`
   const connections = new Set<Socket>()
   let server: Server | null = null
 
   const listen = async (): Promise<void> => {
     ensurePrivateDirectory({ root: kernel.paths.appData, path: tokenDir })
-    if (transport === "local") unlinkIfPresent(socketPath)
+    if (transport === "local") {
+      ensurePrivateDirectory({ root: dirname(socketPath) })
+      unlinkIfPresent(socketPath)
+    }
     const candidate = createServer((socket) => {
       if (connections.size >= MCP_LIMITS.connections) {
         socket.destroy()

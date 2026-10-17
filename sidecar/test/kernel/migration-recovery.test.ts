@@ -141,9 +141,9 @@ for (const version of [9, 10]) {
       const resolutions = database.query("SELECT * FROM tool_resolutions").all()
       database.close()
       database = openDatabase({ filename })
-      expect(SCHEMA_VERSION).toBe(16)
+      expect(SCHEMA_VERSION).toBe(18)
       expect(database.query("SELECT value FROM schema_meta WHERE key = 'schema_version'").get()).toEqual({
-        value: "16",
+        value: String(SCHEMA_VERSION),
       })
       expect(database.query("SELECT value FROM schema_meta WHERE key = 'transcript_recovery_version'").get()).toEqual({
         value: "1",
@@ -158,7 +158,7 @@ for (const version of [9, 10]) {
       database.close()
       database = openDatabase({ filename })
       expect(database.query("SELECT value FROM schema_meta WHERE key = 'schema_version'").get()).toEqual({
-        value: "16",
+        value: String(SCHEMA_VERSION),
       })
       expect(database.query("SELECT * FROM rejections").all()).toEqual(rejections)
       expect(database.query("SELECT * FROM problem_reports").all()).toEqual(reports)

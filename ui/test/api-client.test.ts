@@ -3,6 +3,7 @@ import { expect, test, vi } from "vitest"
 import { apiRouteKeys, createApiClient, resolveSidecarEndpoint, type TauriInvoke } from "../src/api/client"
 
 const contractRouteKeys: Array<keyof ApiRoutes> = [
+  "GET /workspace/activity",
   "GET /groups",
   "POST /groups",
   "PATCH /groups/:id",
@@ -36,6 +37,7 @@ const contractRouteKeys: Array<keyof ApiRoutes> = [
   "GET /bots/:id/grants",
   "DELETE /bots/:id/grants/:grant",
   "GET /providers/opencode/models",
+  "GET /provider-profiles",
   "GET /bots/:id/provider-login",
   "PUT /bots/:id/provider-login",
   "DELETE /bots/:id/provider-login",
@@ -271,4 +273,22 @@ test("A07: file chooser uploads send bounded bytes without host paths or an acti
   await api.uploadAttachment?.(new File(["<svg/>"], "test.svg", { type: "image/svg+xml" }))
   const body = JSON.parse(String(fetchImpl.mock.calls[0]?.[1]?.body))
   expect(body).toEqual({ name: "test.svg", dataBase64: btoa("<svg/>") })
+})
+
+test("attachment uploads preserve the server's rejection reason", async () => {
+  const fetchImpl = vi.fn(
+    async () =>
+      new Response(JSON.stringify({ error: "Arquivo acima de 15 MB", errorCode: "ATTACHMENT_TOO_LARGE" }), {
+        status: 413,
+      }),
+  )
+  const api = createApiClient({
+    endpoint: { baseUrl: "http://localhost:1", wsUrl: "ws://localhost:1", token: "test" },
+    fetchImpl,
+  })
+  await expect(api.uploadAttachment?.(new File(["small"], "a.txt"))).rejects.toMatchObject({
+    message: "Arquivo acima de 15 MB",
+    errorCode: "ATTACHMENT_TOO_LARGE",
+    status: 413,
+  })
 })

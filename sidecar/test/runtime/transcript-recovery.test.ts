@@ -609,6 +609,7 @@ test("UI reconnect mid-stream replays from seq while the surviving sidecar keeps
   let second: WebSocket | undefined
   try {
     const events: UiEventEnvelope[] = []
+    const cursors: number[] = []
     // Use the token written for this isolated kernel, just as the desktop endpoint does.
     const handshake = await Bun.file(join(f.runtime.kernel.paths.runDir, "handshake.json")).json()
     const connect = async (since: number) => {
@@ -618,7 +619,12 @@ test("UI reconnect mid-stream replays from seq while the surviving sidecar keeps
         `ws://127.0.0.1:${f.runtime.handshake.port}/api/v1/events?ticket=${ticket}&since=${since}`,
         { headers: { Origin: "http://localhost:1420" } },
       )
-      socket.onmessage = (frame) => events.push(JSON.parse(String(frame.data)))
+      socket.onmessage = (frame) => {
+        const data = JSON.parse(String(frame.data))
+        // A cold connection starts at the head with a resync frame instead of replaying history.
+        if (data.type === "resync") cursors.push(data.lastSeq)
+        else events.push(data)
+      }
       await new Promise<void>((resolve, reject) => {
         socket.onopen = () => resolve()
         socket.onerror = reject
@@ -626,6 +632,7 @@ test("UI reconnect mid-stream replays from seq while the surviving sidecar keeps
       return socket
     }
     first = await connect(0)
+    await waitFor(() => cursors.length === 1)
     const run = f.start()
     await waitFor(() => events.some(({ event }) => event.type === "message.delta"))
     const seq = events.at(-1)?.seq ?? 0
@@ -639,6 +646,7 @@ test("UI reconnect mid-stream replays from seq while the surviving sidecar keeps
     expect(replay.every((event) => event.seq > seq)).toBe(true)
     expect(new Set(replay.map((event) => event.seq)).size).toBe(replay.length)
     expect(replay.some(({ event }) => event.type === "run.updated" && event.run.status === "canceled")).toBe(false)
+    expect(cursors).toHaveLength(1)
     expect(f.store.activePath({ threadId: "t" }).find((message) => message.runId === run.id)).toMatchObject({
       status: "complete",
       text: "INÍCIO meio FIM",

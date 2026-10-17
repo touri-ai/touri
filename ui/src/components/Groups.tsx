@@ -1,6 +1,7 @@
 import type { Bot, BotGroup, GroupInput, Thread } from "@touri/contracts"
 import { useEffect, useRef, useState } from "react"
 import { userFacingError } from "../errors"
+import { t } from "../i18n"
 import { AvatarPicker } from "./AvatarPicker"
 import { BotAvatar } from "./BotAvatar"
 import "./groups.css"
@@ -92,7 +93,101 @@ export const GroupSidebar = ({
   </section>
 )
 
-export const GroupHeader = ({ group, bots, onEdit }: { group: BotGroup; bots: Bot[]; onEdit: () => void }) => (
+export const GroupRoutingNote = ({ group, bots }: { group: BotGroup; bots: Bot[] }) => {
+  const coordinator = bots.find((bot) => bot.id === group.coordinatorBotId)
+  return (
+    <p className="group-routing-note">
+      {coordinator
+        ? t("{name} coordena as respostas e pode delegar aos membros. Use @nome para falar com um membro.", {
+            name: coordinator.name,
+          })
+        : t("Sem menções, todos os membros respondem na ordem da lista. Use @nome para escolher quem responde.")}
+    </p>
+  )
+}
+
+const GroupMembers = ({ group, bots }: { group: BotGroup; bots: Bot[] }) => (
+  <ol className="group-context-members" aria-label={t("Membros do grupo")}>
+    {bots.map((bot) => (
+      <li key={bot.id}>
+        <BotAvatar bot={bot} size={28} />
+        <div>
+          <strong>{bot.name}</strong>
+          {bot.id === group.coordinatorBotId && <small>{t("Coordenador")}</small>}
+          {bot.roleLine && <small>{bot.roleLine}</small>}
+        </div>
+      </li>
+    ))}
+  </ol>
+)
+
+export const GroupConversationStart = ({ group, bots }: { group: BotGroup; bots: Bot[] }) => (
+  <section className="conversation-start" aria-label={t("Comece uma conversa com {name}", { name: group.name })}>
+    <BotAvatar
+      bot={{ id: group.id, color: group.color, avatarShape: group.avatarShape, avatarSeed: group.avatarSeed }}
+      size={36}
+    />
+    <h2>{t("Comece uma conversa com {name}", { name: group.name })}</h2>
+    <p>{t("Conte o que o grupo deve fazer para começar.")}</p>
+    <GroupMembers group={group} bots={bots} />
+    <GroupRoutingNote group={group} bots={bots} />
+  </section>
+)
+
+export const GroupPanel = ({
+  group,
+  bots,
+  onClose,
+  onEdit,
+}: {
+  group: BotGroup
+  bots: Bot[]
+  onClose: () => void
+  onEdit: () => void
+}) => (
+  <aside
+    className="bot-panel group-panel"
+    id="bot-panel"
+    aria-label={t("Painel do grupo {name}", { name: group.name })}
+  >
+    <div className="bot-panel-top">
+      <span>{t("Seu grupo")}</span>
+      <button type="button" className="toolbar-icon" aria-label={t("Fechar painel do grupo")} onClick={onClose}>
+        ×
+      </button>
+    </div>
+    <header className="bot-panel-identity">
+      <BotAvatar
+        bot={{ id: group.id, color: group.color, avatarShape: group.avatarShape, avatarSeed: group.avatarSeed }}
+        size={72}
+      />
+      <h2>{group.name}</h2>
+    </header>
+    <div className="bot-panel-body">
+      <h3>{t("Membros do grupo")}</h3>
+      <GroupMembers group={group} bots={bots} />
+      <GroupRoutingNote group={group} bots={bots} />
+      <p className="muted-copy">{t("Cada bot mantém seu computador e suas permissões.")}</p>
+      <button type="button" className="button button-quiet" onClick={onEdit}>
+        {t("Editar membros")}
+      </button>
+    </div>
+  </aside>
+)
+
+export const GroupHeader = ({
+  group,
+  bots,
+  onEdit,
+  panelOpen,
+  onTogglePanel,
+}: {
+  group: BotGroup
+  bots: Bot[]
+  onEdit: () => void
+  panelOpen?: boolean
+  onTogglePanel?: (() => void) | undefined
+}) => (
   <header className="chat-header group-header">
     <div>
       <span className="chat-header-crumb">Grupos / {group.name}</span>
@@ -108,6 +203,18 @@ export const GroupHeader = ({ group, bots, onEdit }: { group: BotGroup; bots: Bo
       <MemberMascots bots={bots} />
       <span>{bots.map((b) => `${b.name}${b.id === group.coordinatorBotId ? " · coordenador" : ""}`).join(", ")}</span>
     </div>
+    {onTogglePanel && (
+      <button
+        type="button"
+        className="toolbar-icon bot-panel-toggle"
+        aria-label={t("Painel do grupo")}
+        aria-expanded={panelOpen}
+        aria-controls="bot-panel"
+        onClick={onTogglePanel}
+      >
+        ◧
+      </button>
+    )}
     <button type="button" className="button button-quiet" onClick={onEdit}>
       Editar grupo
     </button>

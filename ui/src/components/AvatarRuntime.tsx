@@ -183,8 +183,8 @@ export const useMascotSnapshot = (
   const runtime = useContext(RuntimeContext)
   const snapshot = runtime?.snapshots.get(scopeKey(identity.id, threadId))
   return identity.paused
-    ? { state: "sleeping", since: 0, revision: 0 }
-    : (snapshot ?? { state: "idle", since: 0, revision: 0 })
+    ? { state: "sleeping", phase: "asleep", since: 0, revision: 0 }
+    : (snapshot ?? { state: "idle", phase: "idle", since: 0, revision: 0 })
 }
 
 export const useAvatarMood = (identity: AvatarIdentity & { paused?: boolean }, override?: AvatarMood): AvatarMood => {

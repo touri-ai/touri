@@ -77,12 +77,64 @@ test("origin labels and root paths match bot, project and VM file roots", async 
   const view = render(<BotLibrary api={api} bot={bot} />)
   expect(screen.getByRole("heading", { name: "Pasta do bot" })).toBeVisible()
   expect(screen.getByText(bot.homeDir)).toBeVisible()
-  view.rerender(<BotLibrary api={api} bot={{ ...bot, projectId: "project-demo", cwd: "/wrong-fallback" }} />)
+  view.rerender(<BotLibrary api={api} bot={{ ...bot, projectId: "project-demo" }} />)
   expect(await screen.findByText("/Users/demo/javascript/touri-demo")).toBeVisible()
   expect(screen.getByRole("heading", { name: "Workspace do projeto" })).toBeVisible()
   await act(async () => view.rerender(<BotLibrary api={api} bot={{ ...bot, machine: "vm" }} />))
   expect(screen.getByRole("heading", { name: "Workspace da VM" })).toBeVisible()
   expect(screen.getByText("/workspace")).toBeVisible()
+})
+
+test("authorized folders can be browsed, previewed and downloaded without duplicating absolute paths", async () => {
+  const { api, bot } = fixture()
+  const grant = "/output/marketing"
+  const request = vi.fn(async (route: string, input: { path?: string }) => {
+    if (route === "GET /bots/:id/files")
+      return {
+        files:
+          input.path === grant
+            ? [{ name: "post-01.png", path: `${grant}/post-01.png`, directory: false, bytes: 12 }]
+            : [],
+      }
+    if (route === "GET /bots/:id/files/content")
+      return { name: "post-01.png", mime: "image/png", base64: btoa("PNG bytes") }
+    return new Blob(["PNG bytes"], { type: "image/png" })
+  })
+  const invoke = vi.fn(async () => ({ path: "/tmp/post-01.png" }))
+  Object.defineProperty(window, "__TAURI_INTERNALS__", { configurable: true, value: { invoke } })
+  const view = render(
+    <BotLibrary
+      api={{ ...api, request: request as never }}
+      bot={{ ...bot, folders: [{ path: grant, access: "read-only" }] }}
+    />,
+  )
+  fireEvent.click(screen.getByRole("button", { name: grant }))
+  fireEvent.click(await screen.findByRole("button", { name: /post-01.png.*KiB/ }))
+  await waitFor(() =>
+    expect(request).toHaveBeenCalledWith(
+      "GET /bots/:id/images",
+      { path: `${grant}/post-01.png`, base: grant },
+      { id: bot.id },
+    ),
+  )
+  expect(screen.getByText(`${grant}/post-01.png`)).toBeVisible()
+  fireEvent.click(screen.getByRole("button", { name: "Baixar arquivo" }))
+  await waitFor(() =>
+    expect(invoke).toHaveBeenCalledWith("save_file", { name: "post-01.png", dataBase64: btoa("PNG bytes") }, undefined),
+  )
+  expect(request).toHaveBeenCalledWith("GET /bots/:id/files/content", { path: `${grant}/post-01.png` }, { id: bot.id })
+  fireEvent.click(screen.getByRole("button", { name: "Voltar aos arquivos" }))
+  fireEvent.click(screen.getByRole("button", { name: "Raiz" }))
+  await waitFor(() => expect(request).toHaveBeenLastCalledWith("GET /bots/:id/files", { path: "" }, { id: bot.id }))
+  view.rerender(
+    <BotLibrary
+      api={{ ...api, request: request as never }}
+      bot={{ ...bot, folders: [{ path: grant, access: "read-only" }] }}
+      request={{ path: `${grant}/post-01.png`, request: 1 }}
+    />,
+  )
+  expect(await screen.findByRole("heading", { name: "post-01.png" })).toBeVisible()
+  delete (window as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__
 })
 
 test("changing the workspace discards an earlier pending file read", async () => {

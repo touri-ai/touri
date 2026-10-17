@@ -1,5 +1,5 @@
 import type { BrowserTabInfo, Id, ProcessRunState, ProcessSpec, Project } from "@touri/contracts"
-import { useEffect, useState } from "react"
+import { useEffect, useId, useState } from "react"
 import type { UiApi } from "../api/client"
 import { ApiError, userFacingError } from "../errors"
 import { statusLabel, t } from "../i18n"
@@ -178,6 +178,8 @@ type SecretsPanelProps = {
 }
 
 export const SecretsPanel = ({ project, api, invokeSecret, onNotice, onSaved }: SecretsPanelProps) => {
+  const nameId = useId()
+  const valueId = useId()
   const [name, setName] = useState("")
   const [value, setValue] = useState("")
   const [saving, setSaving] = useState(false)
@@ -227,17 +229,17 @@ export const SecretsPanel = ({ project, api, invokeSecret, onNotice, onSaved }: 
         ))}
       </div>
       <div className="secret-form">
-        <label htmlFor="secret-name">{t("Name")}</label>
+        <label htmlFor={nameId}>{t("Name")}</label>
         <input
-          id="secret-name"
+          id={nameId}
           value={name}
           onChange={(event) => setName(event.target.value)}
           placeholder="MONGO_URI"
           autoCapitalize="characters"
         />
-        <label htmlFor="secret-value">{t("Value")}</label>
+        <label htmlFor={valueId}>{t("Value")}</label>
         <input
-          id="secret-value"
+          id={valueId}
           type="password"
           value={value}
           onChange={(event) => setValue(event.target.value)}

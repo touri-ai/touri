@@ -204,7 +204,7 @@ test("auth maps the session to a context and filters tools by bot capabilities",
   runtime.kernel.services.provide("store.api", createFixtureStore({ root }))
   try {
     await init(runtime.kernel)
-    registerNoop(runtime.kernel, ["browser_open", "process_start", "computer_screenshot"])
+    registerNoop(runtime.kernel, ["browser_open", "process_start", "computer_screenshot", "preview_open"])
     const client = await connectClient({ root, threadId: "thread-mark", token })
     try {
       await initialize(client.request)
@@ -213,6 +213,11 @@ test("auth maps the session to a context and filters tools by bot capabilities",
       expect(tools).toContain("history_search")
       expect(tools).toContain("history_read")
       expect(tools).toContain("notify_user")
+      // Unlinked callers can obtain an actionable Preview setup error.
+      expect(tools).toContain("preview_open")
+      const preview = await client.request("tools/call", { name: "preview_open", arguments: {} })
+      expect(preview.error).toBeUndefined()
+      expect(JSON.stringify(preview.result)).toContain("ok")
       expect(tools.some((name) => name.startsWith("browser_"))).toBe(false)
       expect(tools.some((name) => name.startsWith("process_"))).toBe(false)
       expect(tools.some((name) => name.startsWith("computer_"))).toBe(false)

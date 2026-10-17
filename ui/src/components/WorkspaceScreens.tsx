@@ -597,7 +597,9 @@ export const PreviewScreen = ({
                 description={
                   project
                     ? "Inicie um processo com porta HTTP para visualizar o projeto."
-                    : "Conecte um projeto para este bot."
+                    : t(
+                        "Para usar o Preview, conecte a pasta do aplicativo como projeto e inicie um processo HTTP deste bot. Você pode pedir ao bot para preparar isso; a conexão exige sua aprovação.",
+                      )
                 }
               >
                 {!project && (

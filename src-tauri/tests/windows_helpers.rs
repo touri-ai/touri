@@ -106,7 +106,25 @@ fn killing_the_stdio_helper_terminates_its_process_tree() {
     let handle = unsafe { OpenProcess(PROCESS_SYNCHRONIZE, 0, pid) };
     assert!(!handle.is_null());
     let child = unsafe { OwnedHandle::from_raw_handle(handle) };
-    helper.kill().unwrap();
+    let identity = Command::new(env!("CARGO_BIN_EXE_touri"))
+        .args(["--process-identity", &helper.id().to_string()])
+        .output()
+        .unwrap();
+    assert!(identity.status.success());
+    let identity: serde_json::Value = serde_json::from_slice(&identity.stdout).unwrap();
+    assert_eq!(identity["value"]["alive"], true);
+    let birth = identity["value"]["birth"].as_str().unwrap();
+    let terminate = |expected: &str| {
+        let result = Command::new(env!("CARGO_BIN_EXE_touri"))
+            .args(["--terminate-process", &helper.id().to_string(), expected])
+            .output()
+            .unwrap();
+        assert!(result.status.success());
+        serde_json::from_slice::<serde_json::Value>(&result.stdout).unwrap()["value"].clone()
+    };
+    assert_eq!(terminate("different birth"), false);
+    assert!(helper.try_wait().unwrap().is_none());
+    assert_eq!(terminate(birth), true);
     helper.wait().unwrap();
     assert_eq!(
         unsafe { WaitForSingleObject(child.as_raw_handle(), 10_000) },

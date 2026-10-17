@@ -75,7 +75,11 @@ it("shows a new notice's stage and safe cause with a secondary code and relative
   )
   const card = screen.getByRole("alert")
   expect(card).toHaveTextContent("Conexão selada · A conexão selada da máquina não ficou pronta a tempo.")
-  expect(within(card).getByText("TOURI-E1008").tagName).toBe("SMALL")
+  const code = within(card).getByText("TOURI-E1008")
+  expect(code.tagName).toBe("CODE")
+  expect(code.closest("details")).not.toHaveAttribute("open")
+  fireEvent.click(within(card).getByText("Detalhes do erro"))
+  expect(code.closest("details")).toHaveAttribute("open")
   expect(within(card).getByText("falhou ontem às 20:58")).toHaveAttribute("datetime", new Date(failedAt).toISOString())
 })
 
@@ -125,6 +129,59 @@ it("resolves a legacy generic notice from the existing runs API and retries when
   await waitFor(() => expect(api.request).toHaveBeenCalledWith("POST /runs/:id/retry", {}, { id: run.id }))
 })
 
+it("clears sidebar and bell attention when the failure card retries before a notification resolution arrives", async () => {
+  const api = createMockApi()
+  const bot = api.getState().bots[0]
+  const thread = api.getState().threads.find((item) => item.botId === bot?.id)
+  if (!bot || !thread) throw new Error("Missing fixture")
+  bot.machine = "local"
+  const message = { ...failed, threadId: thread.id }
+  const historicalRun = { ...run, threadId: thread.id, botId: bot.id }
+  const retry: Run = {
+    ...historicalRun,
+    id: "retry-run",
+    trigger: "retry",
+    status: "queued",
+    replyMessageId: null,
+    queuedAt: failedAt + 100,
+    startedAt: null,
+    finishedAt: null,
+    errorClass: null,
+    errorMessage: null,
+  }
+  thread.activeLeafId = message.id
+  const notification = api.notify({
+    kind: "turn-failed",
+    botId: bot.id,
+    threadId: thread.id,
+    title: "Turn failed",
+    body: "Tente novamente.",
+    createdAt: failedAt,
+  })
+  const originalRequest = api.request.bind(api)
+  api.request = vi.fn((route, input, path) => {
+    if (path?.id === thread.id && route === "GET /threads/:id/messages")
+      return Promise.resolve({ messages: [message], activeLeafId: message.id })
+    if (path?.id === thread.id && route === "GET /threads/:id/runs") return Promise.resolve({ runs: [historicalRun] })
+    if (route === "GET /workspace/activity") return Promise.resolve({ messages: [message], runs: [historicalRun] })
+    if (route === "POST /runs/:id/retry") return Promise.resolve({ run: retry })
+    return originalRequest(route, input, path)
+  }) as typeof api.request
+  render(<App kernel={{ services: { api } }} />)
+  const card = await screen.findByRole("alert")
+  expect(screen.getByRole("button", { name: "Notificações, 1 precisa de atenção" })).toBeVisible()
+  fireEvent.click(within(card).getByRole("button", { name: "Tentar novamente" }))
+  await waitFor(() => {
+    expect(api.request).toHaveBeenCalledWith("POST /runs/:id/retry", {}, { id: run.id })
+    expect(document.querySelector(`[data-bot-entry="${bot.id}"]`)).toHaveAttribute("data-activity", "working")
+    expect(screen.getByRole("button", { name: "Notificações", exact: true })).toBeVisible()
+  })
+  act(() => api.emit({ type: "run.updated", run: { ...retry, status: "running", startedAt: failedAt + 200 } }))
+  expect(document.querySelector(`[data-bot-entry="${bot.id}"]`)).toHaveAttribute("data-activity", "working")
+  expect(screen.queryByText("Aguardando você: revise a tarefa interrompida")).not.toBeInTheDocument()
+  expect(notification.resolvedAt).toBeNull()
+})
+
 it("collapses an old failure after a later success in the same thread, and expands its detail", () => {
   const props = { messages: [failed], runs: [run], onRetry: vi.fn(), onSwitchBranch: vi.fn() }
   const view = render(<VirtualMessageList {...props} />)
@@ -136,7 +193,7 @@ it("collapses an old failure after a later success in the same thread, and expan
   expect(screen.queryByRole("alert")).not.toBeInTheDocument()
   const summary = screen.getByRole("button", { name: /houve uma resposta depois/ })
   expect(summary).toHaveAttribute("aria-expanded", "false")
-  expect(within(summary).getByText("TOURI-E1008").tagName).toBe("SMALL")
+  expect(within(summary).queryByText("TOURI-E1008")).toBeNull()
   fireEvent.click(summary)
   expect(summary).toHaveAttribute("aria-expanded", "true")
   expect(screen.getByRole("alert")).toHaveTextContent("A máquina não ficou pronta em 90 s")

@@ -12,7 +12,7 @@ use std::os::windows::{
 };
 use std::path::{Component, Path, PathBuf};
 use windows_sys::Win32::{
-    Foundation::{LocalFree, WAIT_OBJECT_0},
+    Foundation::{LocalFree, FILETIME, WAIT_OBJECT_0, WAIT_TIMEOUT},
     Security::{Authorization::*, *},
     Storage::FileSystem::*,
     System::{Threading::*, IO::OVERLAPPED},
@@ -428,13 +428,106 @@ fn remove_tree(path: &Path) -> io::Result<()> {
     fs::remove_dir(path)
 }
 
+fn provider_process(pid: u32, expected_birth: Option<&str>) -> io::Result<Value> {
+    // Keep this handle open across identity validation and termination: a reused
+    // PID must never redirect cleanup to a different process.
+    let access = PROCESS_QUERY_LIMITED_INFORMATION
+        | PROCESS_SYNCHRONIZE
+        | if expected_birth.is_some() {
+            PROCESS_TERMINATE
+        } else {
+            0
+        };
+    let handle = unsafe { OpenProcess(access, 0, pid) };
+    if handle.is_null() {
+        let error = io::Error::last_os_error();
+        return if error.raw_os_error() == Some(87) {
+            Ok(if expected_birth.is_some() {
+                json!(false)
+            } else {
+                Value::Null
+            })
+        } else {
+            Err(error)
+        };
+    }
+    let handle = unsafe { OwnedHandle::from_raw_handle(handle) };
+    let mut created: FILETIME = unsafe { std::mem::zeroed() };
+    let mut exited = created;
+    let mut kernel = created;
+    let mut user = created;
+    if unsafe {
+        GetProcessTimes(
+            handle.as_raw_handle(),
+            &mut created,
+            &mut exited,
+            &mut kernel,
+            &mut user,
+        )
+    } == 0
+    {
+        return Err(io::Error::last_os_error());
+    }
+    let birth = format!(
+        "{pid} {}",
+        (u64::from(created.dwHighDateTime) << 32) | u64::from(created.dwLowDateTime)
+    );
+    let alive = match unsafe { WaitForSingleObject(handle.as_raw_handle(), 0) } {
+        WAIT_OBJECT_0 => false,
+        WAIT_TIMEOUT => true,
+        _ => return Err(io::Error::last_os_error()),
+    };
+    if let Some(expected) = expected_birth {
+        if !alive || birth != expected {
+            return Ok(json!(false));
+        }
+        // This PID is the stdio helper. Its kill-on-close job owns the provider
+        // and all descendants, so terminating the helper retires the whole tree.
+        if unsafe { TerminateProcess(handle.as_raw_handle(), 1) } == 0 {
+            return Err(io::Error::last_os_error());
+        }
+        return Ok(json!(true));
+    }
+    Ok(json!({ "birth": birth, "alive": alive }))
+}
+
 /// Stdout contains only a result frame; request content is never included in errors.
 pub fn entry(args: &[std::ffi::OsString]) -> Option<i32> {
     let mode = args.first()?.to_str()?;
-    if !["--native-fs", "--native-lock", "--watch-parent"].contains(&mode) {
+    if ![
+        "--native-fs",
+        "--native-lock",
+        "--watch-parent",
+        "--process-identity",
+        "--terminate-process",
+    ]
+    .contains(&mode)
+    {
         return None;
     }
     let result = (|| -> io::Result<()> {
+        if mode == "--process-identity" || mode == "--terminate-process" {
+            let terminate = mode == "--terminate-process";
+            if args.len() != if terminate { 3 } else { 2 } {
+                return Err(denied());
+            }
+            let pid = args
+                .get(1)
+                .and_then(|s| s.to_str())
+                .and_then(|s| s.parse::<u32>().ok())
+                .filter(|pid| *pid > 1)
+                .ok_or_else(denied)?;
+            let expected = if terminate {
+                Some(args[2].to_str().ok_or_else(denied)?)
+            } else {
+                None
+            };
+            println!(
+                "{}",
+                json!({ "ok": true, "value": provider_process(pid, expected)? })
+            );
+            return Ok(());
+        }
         if mode == "--watch-parent" {
             // EOF also retires this monitor if its sidecar exits while the shell survives.
             std::thread::spawn(|| {

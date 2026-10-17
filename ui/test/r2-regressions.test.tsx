@@ -8,6 +8,7 @@ import { ChatPanel, VirtualMessageList } from "../src/components/ChatPanel"
 import { BotCreateModal, BotSettingsModal, ProjectModal } from "../src/components/Modals"
 import { dictionaries, t } from "../src/i18n"
 import { useWorkspace } from "../src/useWorkspace"
+import { openRoutines } from "./workspaceNavigation"
 
 // REST serialization matters: callers must not mutate the server's arrays by reference.
 const fixtureApi = (deferEvents = false) => {
@@ -125,14 +126,14 @@ describe("r2 regressions", () => {
     await screen.findByRole("textbox", { name: "Mensagem para mark" })
     fireEvent.click(screen.getByRole("button", { name: /onb.*Operations/ }))
     await screen.findByRole("textbox", { name: "Mensagem para onb" })
-    fireEvent.click(screen.getByRole("button", { name: "touri" }))
+    openRoutines("onb")
     fireEvent.click(screen.getByRole("button", { name: "Pausadas" }))
     const count = mock.calls.filter((call) => call.route === "GET /routines").length
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Atualizar" })))
     await waitFor(() => expect(mock.calls.filter((call) => call.route === "GET /routines").length).toBe(count + 1))
-    expect(screen.getByRole("heading", { name: "Cron" })).toBeVisible()
+    expect(screen.getByRole("heading", { name: "Rotinas" })).toBeVisible()
     expect(screen.getByRole("button", { name: "Pausadas" })).toHaveClass("active")
-    fireEvent.click(screen.getByRole("button", { name: /Criar cron/ }))
+    fireEvent.click(screen.getByRole("button", { name: /Criar rotina/ }))
     expect(screen.getByLabelText("Bot")).toHaveValue("bot-onb")
     fireEvent.click(screen.getByRole("button", { name: "Fechar" }))
     fireEvent.click(screen.getByRole("button", { name: /^Bots/ }))
@@ -264,6 +265,8 @@ describe("r2 regressions", () => {
     await api.request("PATCH /bots/:id", { projectId: null }, { id: "bot-mark" })
     render(<App kernel={{ services: { api } }} />)
     await screen.findByRole("textbox", { name: "Mensagem para mark" })
+    if (!screen.queryByRole("button", { name: "Preview do projeto" }))
+      fireEvent.click(screen.getByRole("button", { name: "Painel do bot" }))
     fireEvent.click(screen.getByRole("button", { name: "Preview do projeto" }))
     expect(screen.getAllByText("Nenhum projeto para mark").length).toBeGreaterThan(0)
     expect(document.body.textContent).not.toMatch(
@@ -329,10 +332,9 @@ describe("r2 regressions", () => {
     const onCreate = vi.fn(async (_input: ApiRoutes["POST /bots"]["req"]) => undefined)
     const modal = render(<BotCreateModal onCreate={onCreate} onClose={() => undefined} />)
     fireEvent.change(screen.getByLabelText("Nome"), { target: { value: "seo" } })
-    fireEvent.click(screen.getByRole("button", { name: "Continuar" }))
+    fireEvent.click(screen.getByRole("button", { name: "Avançado" }))
     fireEvent.change(screen.getByLabelText("Função"), { target: { value: "SEO do site" } })
     fireEvent.change(screen.getByLabelText("Título (opcional)"), { target: { value: "Analista" } })
-    for (let step = 1; step < 4; step++) fireEvent.click(screen.getByRole("button", { name: "Continuar" }))
     fireEvent.click(screen.getByRole("button", { name: "Criar bot" }))
     await waitFor(() =>
       expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({ roleLine: "SEO do site", title: "Analista" })),
@@ -350,8 +352,8 @@ describe("r2 regressions", () => {
         onClose={() => undefined}
       />,
     )
-    expect(screen.getByLabelText("Função")).toHaveValue("SEO do site")
-    fireEvent.change(screen.getByLabelText("Função"), { target: { value: "Touri · Coder" } })
+    expect(screen.getByLabelText("O que ele faz")).toHaveValue("SEO do site")
+    fireEvent.change(screen.getByLabelText("O que ele faz"), { target: { value: "Touri · Coder" } })
     fireEvent.click(screen.getByRole("button", { name: "Salvar configurações" }))
     await waitFor(() =>
       expect(update).toHaveBeenCalledWith(
@@ -379,7 +381,7 @@ describe("r2 regressions", () => {
         onOpenTools={() => undefined}
       />,
     )
-    expect(screen.getByText("Escrevendo…")).toBeVisible()
+    expect(screen.getByText("Trabalhando")).toBeVisible()
     expect(document.querySelector(".run-card")).toBeNull()
     view.rerender(
       <ChatPanel

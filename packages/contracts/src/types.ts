@@ -87,6 +87,9 @@ export type Bot = {
   folders?: Array<BotFolder>
   anyFolderAccess?: boolean
   mcpServers?: Array<McpServer>
+  /** Defaults for bots created before schema 17: null and false. */
+  providerProfile?: string | null
+  claudeAiConnectors?: boolean
 
   id: Id
   name: string
@@ -255,8 +258,8 @@ export type MessageKind = 'text' | 'tool' | 'notice' | 'approval'
 export type MessageStatus = 'streaming' | 'complete' | 'failed' | 'canceled'
 
 export type TextPart = { type: 'text'; text: string }
-export type ReasoningPart = { type: 'reasoning'; text: string }
-export type ImagePart = { type: 'image'; attachmentId: Id; mime: string }
+export type ReasoningPart = { type: 'reasoning'; text: string; estimatedTokens?: number }
+export type ImagePart = { type: 'image'; attachmentId: Id; mime: string; name?: string }
 export type FilePart = { type: 'file'; attachmentId: Id; name: string; mime: string }
 export type ToolResolution = 'running' | 'succeeded' | 'failed' | 'canceled' | 'interrupted' | 'unknown' | 'cancelled_by_user' | 'interrupted_by_restart' | 'completed_unobserved'
 export type TranscriptAppend = { threadId: Id; messageId: Id; partIndex: number; delta: string; generation?: number; expectedSeq?: number }
@@ -536,6 +539,7 @@ export type BrowserErrorCode =
   | 'ENGINE_UNAVAILABLE'
   | 'NAVIGATION_FAILED'
   | 'URL_NOT_ALLOWED'
+  | 'SITE_BLOCKED'
   | 'INVALID_ARGS'
 
 /** The latest failed browser tool call of a bot, shown where the screen would otherwise stay empty. */
@@ -602,6 +606,7 @@ export type ProviderEvent =
   | { type: 'turn_started'; externalTurnId: string }
   | { type: 'text_delta'; itemId: string; delta: string }
   | { type: 'reasoning_delta'; itemId: string; delta: string }
+  | { type: 'reasoning_progress'; estimatedTokens: number }
   | { type: 'item'; part: MessagePart }
   | { type: 'approval_request'; approvalId: Id; part: ApprovalPart }
   | { type: 'usage'; usage: Partial<RunUsage>; contextTokens: number | null; contextWindow: number | null }
@@ -643,11 +648,16 @@ export type ProviderAdapter = {
 /* ------------------------------------------------------------------------------------------ */
 
 export type CreateBotInput = { cloudApiKey?: string } & Pick<Bot, 'name' | 'provider'> &
-  Partial<Pick<Bot, 'title' | 'roleLine' | 'description' | 'color' | 'avatarShape' | 'avatarSeed' | 'instructions' | 'model' | 'reasoningEffort' | 'access' | 'approvals' | 'projectId' | 'cwd' | 'browserEnabled' | 'computerUse' | 'machine' | 'machineIdleMinutes' | 'vmProviderLogin' | 'hostComputerUse' | 'folders' | 'anyFolderAccess'>>
+  Partial<Pick<Bot, 'title' | 'roleLine' | 'description' | 'color' | 'avatarShape' | 'avatarSeed' | 'instructions' | 'model' | 'reasoningEffort' | 'access' | 'approvals' | 'projectId' | 'cwd' | 'browserEnabled' | 'computerUse' | 'machine' | 'machineIdleMinutes' | 'vmProviderLogin' | 'hostComputerUse' | 'folders' | 'anyFolderAccess' | 'providerProfile' | 'claudeAiConnectors'>>
+
+/** A named login under `<appData>/provider-profiles/<name>`, created with `touri profile login`. */
+export type ProviderProfile = { name: string; provider: Provider; loggedIn: boolean; account: string | null }
 
 export type ProviderLoginFlow = {
   provider: Provider
   state: 'idle' | 'host-available' | 'waiting' | 'ready' | 'cancelled' | 'error'
+  /** Sidecar host, independent of the browser. Sent only when a valid host login can be imported. */
+  host?: 'mac' | 'server'
   deviceCode?: string
   verificationUrl?: string
   needsCode?: boolean
@@ -700,6 +710,7 @@ export type ApiRoutes = {
   'GET /bots/:id/grants': { req: {}; res: { grants: Array<StandingGrant> } }
   'DELETE /bots/:id/grants/:grant': { req: {}; res: {} }
   'GET /providers/opencode/models': { req: { botId?: Id }; res: { models: Array<string>; defaultModel: string | null; available: boolean } }
+  'GET /provider-profiles': { req: {}; res: { profiles: Array<ProviderProfile> } }
   'GET /bots/:id/provider-login': { req: {}; res: {
       provider: Provider
       ready: boolean
@@ -733,6 +744,8 @@ export type ApiRoutes = {
   'GET /threads/:id/messages': { req: { all?: boolean }; res: { messages: Array<Message>; activeLeafId: Id | null } }
   'POST /threads/:id/messages': { req: SendMessageInput; res: { message: Message; run: Run } }
   'GET /threads/:id/runs': { req: { all?: boolean }; res: { runs: Array<Run> } }
+  /** Compact sidebar messages and latest/active runs; never a transcript snapshot. */
+  'GET /workspace/activity': { req: Record<string, never>; res: { messages: Array<Message>; runs: Array<Run> } }
   'POST /runs/:id/cancel': { req: {}; res: { run: Run } }
   'POST /runs/:id/retry': { req: {}; res: { run: Run } }
   'POST /approvals/:id': { req: { decision: 'approved' | 'denied'; standing?: boolean }; res: {} }
@@ -847,10 +860,13 @@ export type UiEvent =
   | { type: 'machine.updated'; machine: MachineState }
   | { type: 'bot.updated'; bot: Bot }
   | { type: 'bot.deleted'; botId: Id }
+  | { type: 'project.created'; project: Project }
   | { type: 'thread.updated'; thread: Thread }
   | { type: 'message.created'; message: Message }
   | { type: 'message.delta'; threadId: Id; messageId: Id; partIndex: number; delta: string; offset?: number; updatedSeq?: number; generation?: number; partType?: 'text' | 'reasoning'; updatedAt?: EpochMs }
   | { type: 'transcript.resync' }
+  /** Replay placeholder for a message revision already sent in its latest form earlier in the same replay. */
+  | { type: 'transcript.superseded' }
   | { type: 'transcript.rejected'; rejection: TranscriptRejection }
   | { type: 'message.updated'; message: Message }
   | { type: 'run.updated'; run: Run }
@@ -1052,6 +1068,8 @@ export type StoreApi = {
 
 /** Cross-module services. Providers call `provide` in their init; consumers must tolerate `null` from `use`. */
 export type ServiceMap = {
+  'bots.rename': (input: { botId: Id; name: string }) => Result<{ bot: Bot }, 'NOT_FOUND' | 'INVALID_ARGS'>
+  'bots.configureAccess': (input: { botId: Id; patch: Partial<Pick<Bot, 'projectId' | 'folders'>> }) => Result<{ bot: Bot }, 'NOT_FOUND' | 'INVALID_ARGS' | 'MACHINE_PROJECT_CHANGE'>
   'diagnostics.errors': () => Array<{ code: string; at: number }>
   'groups.runtime': {
     enqueue: ServiceMap['runtime.enqueue']
@@ -1078,6 +1096,7 @@ export type ServiceMap = {
   'store.api': StoreApi
   'runtime.enqueue': (args: { threadId: Id; requestMessageId: Id; trigger: RunTrigger }) => Result<{ run: Run }, 'THREAD_NOT_FOUND' | 'BOT_PAUSED'>
   'runtime.activeRun': (args: { threadId: Id }) => Run | null
+  'runtime.continueAfterApproval': (ctx: Pick<ToolContext, 'botId' | 'threadId' | 'runId' | 'signal'>) => boolean
   'runtime.cancelBotTurns': (args: { botId: Id }) => Promise<void>
   'runtime.shutdown': () => Promise<void>
   'projects.info': (args: { projectId: Id; botId?: Id }) => Promise<ProjectInfo | null>

@@ -1,9 +1,10 @@
 import { Database } from "bun:sqlite"
 import { afterEach, expect, test } from "bun:test"
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { Bot, Kernel, VmRuntime } from "@touri/contracts"
+import { folderGuestPath } from "../../src/kernel/bot-folders"
 import {
   evidenceImageRoute,
   guestImage,
@@ -18,7 +19,7 @@ afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true })
 })
 const root = () => {
-  const path = mkdtempSync(join(tmpdir(), "touri-evidence-"))
+  const path = realpathSync(mkdtempSync(join(tmpdir(), "touri-evidence-")))
   roots.push(path)
   return path
 }
@@ -70,7 +71,7 @@ const fixture = (running = false) => {
   const calls: unknown[] = []
   const kernel = {
     db,
-    paths: { attachmentsDir: attachments },
+    paths: { attachmentsDir: attachments, appData: join(path, "state") },
     services: { use: () => ({ getBot: () => bot }) },
   } as unknown as Kernel
   const vm = {
@@ -93,12 +94,43 @@ const fixture = (running = false) => {
     vm,
     path,
     attachments,
+    bot,
     calls,
     counts: () => ({ acquired, released }),
     request: (query: Record<string, string>) =>
       route.handler({ params: { id: "bot" }, query, body: {}, signal: new AbortController().signal }),
   }
 }
+test("local images resolve against cwd and read-only grants with distinct missing and denied responses", async () => {
+  const f = fixture()
+  const cwd = root()
+  const granted = root()
+  const outside = root()
+  Object.assign(f.bot, { machine: "local", cwd, folders: [{ path: granted, access: "read-only" }] })
+  mkdirSync(join(granted, "reports"))
+  writeFileSync(join(cwd, "post-01.png"), png)
+  writeFileSync(join(granted, "reports/post-02.png"), png)
+  symlinkSync(outside, join(granted, "escape"))
+  try {
+    for (const query of [
+      { path: "post-01.png" },
+      { path: join(granted, "reports/post-02.png") },
+      { path: "post-02.png", base: join(granted, "reports") },
+    ]) {
+      const result = await f.request(query)
+      expect(result.status).toBe(200)
+      expect("stream" in result && Buffer.from(await new Response(result.stream).arrayBuffer())).toEqual(png)
+    }
+    for (const path of ["missing.png", join(granted, "missing/image.png")])
+      expect((await f.request({ path })).status).toBe(404)
+    for (const path of [join(outside, "missing.png"), `${granted}-other/post.png`, join(granted, "escape/a.png")])
+      expect((await f.request({ path })).status).toBe(403)
+    expect((await f.request({ path: "../post-01.png" })).status).toBe(400)
+    expect((await f.request({ path: "%2e%2e/post-01.png" })).status).toBe(400)
+  } finally {
+    f.db.close()
+  }
+})
 test("stopped VM returns a typed unavailable state without any acquire/exec", async () => {
   const f = fixture()
   try {
@@ -106,6 +138,77 @@ test("stopped VM returns a typed unavailable state without any acquire/exec", as
     expect(result.status).toBe(409)
     expect("json" in result && result.json).toMatchObject({ errorCode: "IMAGE_MACHINE_STOPPED" })
     expect(f.calls).toHaveLength(0)
+  } finally {
+    f.db.close()
+  }
+})
+test("project fallback, cwd precedence, internal files and revoked grants share the image authorization boundary", async () => {
+  const f = fixture()
+  const project = root()
+  const cwd = root()
+  const granted = root()
+  f.db.query("INSERT INTO projects VALUES (?,?,NULL)").run("project", project)
+  Object.assign(f.bot, { machine: "local", projectId: "project", folders: [{ path: granted, access: "read-write" }] })
+  for (const path of [f.path, project, cwd, granted]) writeFileSync(join(path, "post.png"), png)
+  try {
+    for (const path of ["post.png", join(f.path, "post.png"), join(granted, "post.png")]) {
+      const result = await f.request({ path })
+      expect(result.status).toBe(200)
+      if ("stream" in result) await result.stream.cancel()
+    }
+    f.bot.cwd = cwd
+    rmSync(join(project, "post.png"))
+    const result = await f.request({ path: "post.png" })
+    expect(result.status).toBe(200)
+    if ("stream" in result) await result.stream.cancel()
+    f.bot.folders = []
+    expect((await f.request({ path: join(granted, "post.png") })).status).toBe(403)
+    writeFileSync(join(cwd, "fake.png"), "<html>invalid</html>")
+    expect((await f.request({ path: "fake.png" })).status).toBe(422)
+  } finally {
+    f.db.close()
+  }
+})
+test("any-folder access preserves the application-data exclusion unless explicitly granted", async () => {
+  const f = fixture()
+  const granted = root()
+  Object.assign(f.bot, { machine: "local", anyFolderAccess: true })
+  mkdirSync(join(f.path, "state"))
+  writeFileSync(join(f.path, "state/private.png"), png)
+  writeFileSync(join(granted, "post.png"), png)
+  try {
+    const result = await f.request({ path: join(granted, "post.png") })
+    expect(result.status).toBe(200)
+    if ("stream" in result) await result.stream.cancel()
+    expect((await f.request({ path: join(f.path, "state/private.png") })).status).toBe(403)
+    symlinkSync(f.path, join(granted, "alias"))
+    f.bot.cwd = join(granted, "alias/state")
+    expect((await f.request({ path: "private.png" })).status).toBe(403)
+    f.bot.cwd = null
+    f.bot.folders = [{ path: join(f.path, "state"), access: "read-only" }]
+    const allowed = await f.request({ path: join(f.path, "state/private.png") })
+    expect(allowed.status).toBe(200)
+    if ("stream" in allowed) await allowed.stream.cancel()
+  } finally {
+    f.db.close()
+  }
+})
+test("VM image paths use granted mounts and preserve missing versus denied guest errors", async () => {
+  const f = fixture(true)
+  f.bot.folders = [{ path: "/output/marketing", access: "read-only" }]
+  const mount = folderGuestPath("/output/marketing")
+  try {
+    for (const path of ["/output/marketing/post.png", `${mount}/post.png`]) {
+      const result = await f.request({ path })
+      expect(result.status).toBe(200)
+      if ("stream" in result) await result.stream.cancel()
+      expect(f.calls.at(-1)).toMatchObject({ args: ["-c", guestImage, "post.png", "0", mount] })
+    }
+    for (const status of [404, 403]) {
+      f.vm.exec = async () => ({ success: true, stdout: JSON.stringify({ errorStatus: status }), stderr: "", code: 1 })
+      expect((await f.request({ path: "post.png" })).status).toBe(status)
+    }
+    expect(f.counts().acquired).toBe(f.counts().released)
   } finally {
     f.db.close()
   }

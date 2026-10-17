@@ -20,7 +20,7 @@ test("schema 15 upgrades grants off by default and preserves them across reopens
       INSERT INTO bot_machines(bot_id,vm_id,volume) VALUES ('bot','machine','workspace');`)
     database.close()
     database = openDatabase({ filename })
-    expect(SCHEMA_VERSION).toBe(16)
+    expect(SCHEMA_VERSION).toBe(18)
     expect(database.query("SELECT name,folders_json,any_folder_access FROM bots").get()).toEqual({
       name: "Keep",
       folders_json: "[]",
@@ -38,7 +38,9 @@ test("schema 15 upgrades grants off by default and preserves them across reopens
       folders_json: folders,
       any_folder_access: 1,
     })
-    expect(database.query("SELECT value FROM schema_meta WHERE key='schema_version'").get()).toEqual({ value: "16" })
+    expect(database.query("SELECT value FROM schema_meta WHERE key='schema_version'").get()).toEqual({
+      value: String(SCHEMA_VERSION),
+    })
     expect(database.query("PRAGMA foreign_key_check").all()).toEqual([])
   } finally {
     database.close()

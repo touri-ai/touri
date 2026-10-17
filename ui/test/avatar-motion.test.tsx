@@ -1,5 +1,5 @@
 import { makeBlock, POSES, STATES } from "@norbert_bodziony/bloub"
-import { act, cleanup, fireEvent, render } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, waitFor } from "@testing-library/react"
 import {
   AVATAR_COLOR_CHOICES,
   AVATAR_COLORS,
@@ -7,6 +7,7 @@ import {
   AVATAR_SHAPES,
   AVATAR_STATES,
   avatarCycle,
+  avatarFrameMarkup,
   avatarHueColor,
   avatarPresentation,
   avatarProfileFor,
@@ -21,6 +22,8 @@ const bot = { id: "mark", color: null }
 afterEach(() => {
   cleanup()
   vi.restoreAllMocks()
+  vi.unstubAllGlobals()
+  delete document.documentElement.dataset.motion
 })
 
 describe("avatar identity specification", () => {
@@ -75,6 +78,34 @@ describe("avatar identity specification", () => {
 })
 
 describe("avatar motion specification", () => {
+  it("keeps the initial gaze finite at animation time zero for every shape", () => {
+    for (const { id: shape } of AVATAR_SHAPES) {
+      const profile = avatarProfileFor({ ...bot, avatarShape: shape })
+      const frame = createAvatarEngine(profile, "idle").sample(0)
+      expect(frame.eyes).toHaveLength(2)
+      expect(avatarFrameMarkup(frame, profile.color)).not.toMatch(/NaN|Infinity/)
+    }
+  })
+  it("keeps SVG transforms finite when switching bots and stops detached callbacks", () => {
+    let callback: FrameRequestCallback | undefined
+    const request = vi.fn((next: FrameRequestCallback) => {
+      callback = next
+      return 1
+    })
+    vi.stubGlobal("requestAnimationFrame", request)
+    vi.stubGlobal("cancelAnimationFrame", vi.fn())
+    const view = render(<BotAvatar bot={bot} state="thinking" animationOffset={0} />)
+    for (const id of ["mark", "qa-bot", "review"]) {
+      view.rerender(<BotAvatar bot={{ ...bot, id }} state="thinking" animationOffset={0} />)
+      expect(view.container.querySelector("svg")?.innerHTML).not.toMatch(/NaN|Infinity/)
+      act(() => callback?.(0))
+      expect(view.container.querySelector("svg")?.innerHTML).not.toMatch(/NaN|Infinity/)
+    }
+    view.unmount()
+    request.mockClear()
+    act(() => callback?.(40))
+    expect(request).not.toHaveBeenCalled()
+  })
   it("r3: a responded bot starts a deterministic wink/wide cycle on every hover", () => {
     let callback: FrameRequestCallback | undefined
     vi.stubGlobal("requestAnimationFrame", (next: FrameRequestCallback) => {
@@ -193,6 +224,47 @@ describe("avatar motion specification", () => {
     b.release()
     expect(remove.mock.calls.filter(([type]) => type === "pointermove")).toHaveLength(1)
   })
+  it("releases pointer gaze for zero-size, invalid or detached bounds and recovers", () => {
+    const element = document.createElement("span")
+    document.body.append(element)
+    const box = { left: 0, top: 0, width: 32, height: 32 }
+    const bounds = vi.spyOn(element, "getBoundingClientRect").mockReturnValue(box as DOMRect)
+    const tracker = attachAvatarGaze(element, new AvatarGaze())
+    const move = (x: number): void => {
+      const event = new Event("pointermove")
+      Object.assign(event, { pointerType: "mouse", clientX: x, clientY: 100 })
+      window.dispatchEvent(event)
+    }
+    try {
+      move(100)
+      let time = 0.1
+      let look = tracker.sample(time)
+      expect(look.mix).toBeGreaterThan(0)
+      for (const invalid of [{ width: 0 }, { height: 0 }, { left: NaN }, { top: Infinity }, { height: NaN }]) {
+        bounds.mockReturnValue({ ...box, ...invalid } as DOMRect)
+        time += 0.1
+        const next = tracker.sample(time)
+        expect(Object.values(next).every(Number.isFinite)).toBe(true)
+        expect(next.mix).toBeLessThan(look.mix)
+        look = next
+      }
+      bounds.mockReturnValue(box as DOMRect)
+      move(NaN)
+      time += 0.1
+      const invalidPointer = tracker.sample(time)
+      expect(Object.values(invalidPointer).every(Number.isFinite)).toBe(true)
+      expect(invalidPointer.mix).toBeLessThan(look.mix)
+      move(100)
+      time += 0.1
+      const recovered = tracker.sample(time)
+      expect(recovered.mix).toBeGreaterThan(invalidPointer.mix)
+      element.remove()
+      expect(tracker.sample(time + 0.1).mix).toBeLessThan(recovered.mix)
+    } finally {
+      tracker.release()
+      element.remove()
+    }
+  })
   it("rests until its control is hovered/focused and freezes when reduced motion changes", () => {
     let change: () => void = () => undefined
     const media = {
@@ -237,5 +309,22 @@ describe("avatar motion specification", () => {
     expect(container.querySelector("[data-avatar-body]")).toHaveAttribute("fill", "#f08a24")
     rerender(<BotAvatar bot={bot} url="/photo-b.png" mood="working" />)
     expect(container.querySelector("img")).toHaveAttribute("src", "/photo-b.png")
+  })
+  it("stops a running avatar when the host reduces motion and resumes when restored", async () => {
+    const request = vi.fn(() => 1)
+    const cancel = vi.fn()
+    vi.stubGlobal("requestAnimationFrame", request)
+    vi.stubGlobal("cancelAnimationFrame", cancel)
+    vi.spyOn(document, "hidden", "get").mockReturnValue(false)
+    const view = render(<BotAvatar bot={bot} state="thinking" motion="always" followPointer />)
+    const avatar = view.container.querySelector(".tb-avatar")
+    expect(avatar).toHaveAttribute("data-avatar-animated", "true")
+    expect(request).toHaveBeenCalled()
+    document.documentElement.dataset.motion = "reduce"
+    await waitFor(() => expect(avatar).toHaveAttribute("data-avatar-animated", "false"))
+    await waitFor(() => expect(cancel).toHaveBeenCalledWith(1))
+    expect(avatar).toHaveAttribute("data-mascot-phase", "thinking")
+    delete document.documentElement.dataset.motion
+    await waitFor(() => expect(avatar).toHaveAttribute("data-avatar-animated", "true"))
   })
 })

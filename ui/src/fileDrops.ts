@@ -1,4 +1,5 @@
 import { listen } from "@tauri-apps/api/event"
+import { type TranslationKey, t } from "./i18n"
 
 export const fileDragEvent = "touri://file-drag"
 export const fileDropEvent = "touri://file-drop"
@@ -42,7 +43,7 @@ export const parseFileDrop = (payload: unknown): FileDrop => {
   return { granted: asGranted(data?.granted), rejected: asRejected(data?.rejected) }
 }
 
-const rejectionText: Record<DropRejectReason, string> = {
+const rejectionText: Record<DropRejectReason, TranslationKey> = {
   directory: "é uma pasta. Solte arquivos, não pastas.",
   symlink: "é um atalho (link simbólico). Solte o arquivo original.",
   too_large: "tem mais de 15 MB.",
@@ -52,7 +53,7 @@ const rejectionText: Record<DropRejectReason, string> = {
 }
 
 export const dropRejectionMessage = ({ name, reason }: RejectedDrop): string =>
-  `Não foi possível anexar ${name}: ${rejectionText[reason]}`
+  t("Não foi possível anexar {name}: {reason}", { name, reason: t(rejectionText[reason]) })
 
 export type FileDropHandlers = { onActive: (active: boolean) => void; onDrop: (drop: FileDrop) => void }
 

@@ -14,10 +14,11 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-it("saves the VM memory preference from General and refuses invalid caps", async () => {
+it("saves the VM memory preference from Diagnostics and refuses invalid caps", async () => {
   const save = vi.fn(async () => undefined)
   render(<SettingsModal settings={null} onClose={vi.fn()} onSave={save} />)
-  fireEvent.click(screen.getByRole("tab", { name: "Geral" }))
+  fireEvent.click(screen.getByRole("tab", { name: "Diagnóstico" }))
+  fireEvent.click(screen.getByText("Verificar e cuidar deste computador"))
   const memory = screen.getByLabelText("Memória por computador do bot (MiB)")
   expect(memory).toHaveValue(1536)
   fireEvent.change(memory, { target: { value: "256" } })
@@ -28,12 +29,12 @@ it("saves the VM memory preference from General and refuses invalid caps", async
   fireEvent.click(screen.getByRole("button", { name: "Salvar preferências" }))
   await waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({ botVmMemoryMb: 1024 })))
 })
-const next = () => fireEvent.click(screen.getByRole("button", { name: "Continuar" }))
 
 it("defaults detail retention to 30 days, validates the range and saves keep-forever in Privacy", async () => {
   const save = vi.fn(async () => undefined)
   render(<SettingsModal settings={null} onClose={vi.fn()} onSave={save} />)
   fireEvent.click(screen.getByRole("tab", { name: "Privacidade" }))
+  fireEvent.click(screen.getByText("Dados, permissões e conexões"))
   const retention = screen.getByLabelText("Retenção dos detalhes")
   expect(retention).toHaveValue(30)
   fireEvent.change(retention, { target: { value: "-1" } })
@@ -45,31 +46,37 @@ it("defaults detail retention to 30 days, validates the range and saves keep-for
   await waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({ dataRetentionDays: 0 })))
 })
 
-it("collects all five steps without creating a bot early and preserves choices when going back", async () => {
+it("preserves advanced drafts while keeping creation on one screen", async () => {
   const user = userEvent.setup()
   const create = vi.fn(async () => undefined)
   render(<BotCreateModal onClose={vi.fn()} onCreate={create} />)
-  expect(screen.getByRole("button", { name: "Continuar" })).toBeDisabled()
+  expect(screen.getByRole("button", { name: "Criar bot" })).toBeDisabled()
+  expect(screen.getByLabelText("Nome")).toHaveFocus()
   fireEvent.change(screen.getByLabelText("Nome"), { target: { value: " Clara " } })
   fireEvent.click(screen.getByRole("button", { name: "Forma Nuvem" }))
-  next()
+  fireEvent.click(screen.getByRole("button", { name: "Avançado" }))
+  expect(screen.getByLabelText("Função")).toHaveAccessibleDescription(
+    "Resumo do trabalho do bot na equipe, por exemplo: pesquisar e comparar fontes.",
+  )
+  expect(screen.getByLabelText("Título (opcional)")).toHaveAccessibleDescription(
+    "Uma identificação curta, por exemplo: Pesquisador. As tarefas detalhadas vão nas instruções.",
+  )
+  expect(screen.getByLabelText("Instruções do bot")).toHaveAccessibleDescription(
+    "Orientações detalhadas para o bot. Salvas no arquivo SOUL.md na pasta do bot.",
+  )
   fireEvent.change(screen.getByLabelText("Função"), { target: { value: "Pesquisa" } })
-  fireEvent.change(screen.getByLabelText("SOUL.md"), { target: { value: "Responda em português." } })
-  next()
+  fireEvent.change(screen.getByLabelText("Instruções do bot"), { target: { value: "Responda em português." } })
   fireEvent.change(screen.getByLabelText("Modelo"), { target: { value: "gpt-6.1-sol" } })
-  fireEvent.click(screen.getByRole("button", { name: "Voltar" }))
-  expect(screen.getByLabelText("SOUL.md")).toHaveValue("Responda em português.")
-  next()
+  fireEvent.click(screen.getByRole("button", { name: "Avançado" }))
+  expect(screen.queryByLabelText("Instruções do bot")).toBeNull()
+  fireEvent.click(screen.getByRole("button", { name: "Avançado" }))
+  expect(screen.getByLabelText("Instruções do bot")).toHaveValue("Responda em português.")
   expect(screen.getByLabelText("Modelo")).toHaveValue("gpt-6.1-sol")
-  next()
   const browser = screen.getByRole("switch", { name: "Navegador habilitado" })
   browser.focus()
   await user.keyboard(" ")
   expect(browser).not.toBeChecked()
-  next()
   expect(create).not.toHaveBeenCalled()
-  expect(screen.getByRole("heading", { name: "Revisar e criar" })).toBeVisible()
-  expect(screen.getByText("Responda em português.")).toBeVisible()
   fireEvent.click(screen.getByRole("button", { name: "Criar bot" }))
   await waitFor(() =>
     expect(create).toHaveBeenCalledExactlyOnceWith(
@@ -128,13 +135,13 @@ it("keeps machine switch drafts until saving and sends the existing computer-use
       onClose={vi.fn()}
     />,
   )
+  await user.click(screen.getByRole("button", { name: "Avançado" }))
   await user.click(screen.getByRole("tab", { name: "Computador" }))
   const login = screen.getByRole("switch", { name: /Usar meu login/ })
   login.focus()
   await user.keyboard(" ")
   await user.click(screen.getByRole("switch", { name: /Permitir controle do computador na tela/ }))
   expect(updateBot).not.toHaveBeenCalled()
-  await user.click(screen.getByRole("tab", { name: "Permissões" }))
   const computer = screen.getByRole("switch", { name: /Controle do computador/ })
   computer.focus()
   await user.keyboard(" ")
@@ -149,7 +156,7 @@ it("keeps machine switch drafts until saving and sends the existing computer-use
   )
 })
 
-it("validates idle time before review and keeps the review available after a failed creation", async () => {
+it("validates idle time and keeps the draft available after a failed creation", async () => {
   const create = vi.fn().mockRejectedValueOnce(new Error("Indisponível")).mockResolvedValueOnce(undefined)
   const close = vi.fn()
   render(
@@ -160,20 +167,16 @@ it("validates idle time before review and keeps the review available after a fai
     />,
   )
   fireEvent.change(screen.getByLabelText("Nome"), { target: { value: "Clara" } })
-  next()
-  next()
-  next()
+  fireEvent.click(screen.getByRole("button", { name: "Avançado" }))
   fireEvent.change(screen.getByLabelText("Máquina"), { target: { value: "vm" } })
   fireEvent.change(screen.getByLabelText("Parar após minutos sem atividade"), { target: { value: "0" } })
-  expect(screen.getByRole("button", { name: "Continuar" })).toBeDisabled()
+  expect(screen.getByRole("button", { name: "Criar bot" })).toBeDisabled()
   expect(screen.getByRole("alert")).toHaveTextContent("1.440")
   fireEvent.change(screen.getByLabelText("Parar após minutos sem atividade"), { target: { value: "1" } })
-  next()
-  expect(screen.getByText("Linux isolado · pausa após 1 minuto")).toBeVisible()
   fireEvent.click(screen.getByRole("button", { name: "Criar bot" }))
   await screen.findByRole("alert")
   expect(close).not.toHaveBeenCalled()
-  expect(screen.getByRole("heading", { name: "Revisar e criar" })).toBeVisible()
+  expect(screen.getByLabelText("Nome")).toHaveValue("Clara")
   fireEvent.click(screen.getByRole("button", { name: "Criar bot" }))
   await waitFor(() => expect(close).toHaveBeenCalledOnce())
   expect(create).toHaveBeenCalledTimes(2)
@@ -192,15 +195,16 @@ it("keeps drafts across settings panes and links each navigation tab to its pane
       onClose={vi.fn()}
     />,
   )
-  fireEvent.change(screen.getByLabelText("Função"), { target: { value: "Pesquisa" } })
+  fireEvent.change(screen.getByLabelText("O que ele faz"), { target: { value: "Pesquisa" } })
+  fireEvent.click(screen.getByRole("button", { name: "Avançado" }))
   fireEvent.click(screen.getByRole("tab", { name: "Computador" }))
-  expect(screen.queryByRole("textbox", { name: "Função" })).toBeNull()
+  expect(screen.queryByRole("textbox", { name: "O que ele faz" })).toBeNull()
   const tab = screen.getByRole("tab", { name: "Computador" })
   expect(document.getElementById(tab.getAttribute("aria-controls") ?? "")).toBe(
     screen.getByRole("tabpanel", { name: "Computador" }),
   )
-  fireEvent.click(screen.getByRole("tab", { name: "Geral" }))
-  expect(screen.getByLabelText("Função")).toHaveValue("Pesquisa")
+  fireEvent.click(screen.getByRole("button", { name: "Avançado" }))
+  expect(screen.getByLabelText("O que ele faz")).toHaveValue("Pesquisa")
   fireEvent.click(screen.getByRole("button", { name: "Salvar configurações" }))
   await waitFor(() =>
     expect(updateBot).toHaveBeenCalledWith(
@@ -259,6 +263,7 @@ it("Escape cancels a machine reset before closing settings and returns focus to 
       onClose={close}
     />,
   )
+  fireEvent.click(screen.getByRole("button", { name: "Avançado" }))
   fireEvent.click(screen.getByRole("tab", { name: "Computador" }))
   fireEvent.click(screen.getByRole("button", { name: "Redefinir" }))
   const confirmation = screen.getByRole("alertdialog")
@@ -293,14 +298,14 @@ it("supports arrow navigation between preference sections and preserves modified
   const appearance = screen.getByRole("tab", { name: "Aparência" })
   appearance.focus()
   fireEvent.keyDown(appearance, { key: "ArrowDown" })
-  expect(screen.getByRole("tab", { name: "Atalhos" })).toHaveFocus()
-  expect(screen.getByRole("tabpanel", { name: "Atalhos" })).toBeVisible()
-  fireEvent.click(screen.getByRole("tab", { name: "Geral" }))
+  expect(screen.getByRole("tab", { name: "Privacidade" })).toHaveFocus()
+  expect(screen.getByRole("tabpanel", { name: "Privacidade" })).toBeVisible()
+  fireEvent.click(screen.getByRole("tab", { name: "Atualizações" }))
   const updates = screen.getByRole("switch", { name: /Verificar atualizações/ })
   updates.focus()
   await user.keyboard(" ")
   fireEvent.click(screen.getByRole("tab", { name: "Aparência" }))
-  fireEvent.click(screen.getByRole("tab", { name: "Geral" }))
+  fireEvent.click(screen.getByRole("tab", { name: "Atualizações" }))
   expect(screen.getByRole("switch", { name: /Verificar atualizações/ })).toBeChecked()
   await user.click(screen.getByRole("tab", { name: "Notificações" }))
   const notifications = screen.getByRole("switch", { name: /Notificações do sistema/ })
@@ -342,7 +347,7 @@ it("groups Doctor checks by environment and uses zero plurals in the summary", (
   expect(within(screen.getByRole("region", { name: "Conexões com provedores" })).getByText("OpenAI")).toBeVisible()
 })
 
-it("revalidates the machine after revisiting a completed creation step and on form submit", () => {
+it("revalidates a hidden advanced machine setting on form submit", () => {
   const create = vi.fn(async () => undefined)
   render(
     <BotCreateModal
@@ -352,19 +357,17 @@ it("revalidates the machine after revisiting a completed creation step and on fo
     />,
   )
   fireEvent.change(screen.getByLabelText("Nome"), { target: { value: "Clara" } })
-  next()
-  next()
-  next()
+  fireEvent.click(screen.getByRole("button", { name: "Avançado" }))
   fireEvent.change(screen.getByLabelText("Máquina"), { target: { value: "vm" } })
-  next()
-  fireEvent.click(screen.getByRole("button", { name: "Voltar" }))
   fireEvent.change(screen.getByLabelText("Parar após minutos sem atividade"), { target: { value: "0" } })
-  expect(screen.getByRole("button", { name: /Revisar e criar/ })).toBeDisabled()
+  expect(screen.getByRole("button", { name: "Criar bot" })).toBeDisabled()
+  fireEvent.click(screen.getByRole("button", { name: "Avançado" }))
   const form = document.querySelector(".bot-create-form")
   if (!form) throw new Error("Missing creation form")
   fireEvent.submit(form)
   expect(create).not.toHaveBeenCalled()
-  expect(screen.getByRole("heading", { name: "Computador e integrações" })).toBeVisible()
+  expect(screen.getByLabelText("Parar após minutos sem atividade")).toHaveValue(0)
+  expect(screen.getByRole("button", { name: "Avançado" })).toHaveAttribute("aria-expanded", "true")
 })
 
 it("reports immediate permission failures and lets the user retry without losing drafts", async () => {
@@ -380,8 +383,9 @@ it("reports immediate permission failures and lets the user retry without losing
       onClose={vi.fn()}
     />,
   )
-  fireEvent.change(screen.getByLabelText("Função"), { target: { value: "Pesquisa" } })
-  fireEvent.click(screen.getByRole("tab", { name: "Permissões" }))
+  fireEvent.change(screen.getByLabelText("O que ele faz"), { target: { value: "Pesquisa" } })
+  fireEvent.click(screen.getByRole("button", { name: "Avançado" }))
+  fireEvent.click(screen.getByRole("tab", { name: "Computador" }))
   const control = screen.getByRole("switch", { name: /Controle do computador/ })
   fireEvent.click(control)
   await screen.findByRole("alert")
@@ -390,6 +394,6 @@ it("reports immediate permission failures and lets the user retry without losing
   fireEvent.click(control)
   await waitFor(() => expect(updateBot).toHaveBeenCalledTimes(2))
   await waitFor(() => expect(screen.queryByRole("alert")).toBeNull())
-  fireEvent.click(screen.getByRole("tab", { name: "Geral" }))
-  expect(screen.getByLabelText("Função")).toHaveValue("Pesquisa")
+  fireEvent.click(screen.getByRole("button", { name: "Avançado" }))
+  expect(screen.getByLabelText("O que ele faz")).toHaveValue("Pesquisa")
 })

@@ -10,6 +10,7 @@ import { PreviewPane } from "../src/components/PreviewPane"
 import { ScreenServerPolicies } from "../src/components/ScreenConnections"
 import { McpScreen, PreviewScreen } from "../src/components/WorkspaceScreens"
 import type { WorkspaceActions } from "../src/useWorkspace"
+import { openRoutines } from "./workspaceNavigation"
 
 const server: McpServer = {
   name: "arquivos",
@@ -45,6 +46,17 @@ const previewFixture = async () => {
 }
 
 describe("r8 screens", () => {
+  it("explains the approved project setup required for Preview when no project is linked", async () => {
+    const props = await previewFixture()
+    render(<PreviewScreen {...props} project={null} processes={[]} />)
+    expect(screen.getByText(/Para usar o Preview, conecte a pasta do aplicativo/)).toHaveTextContent(
+      "Você pode pedir ao bot para preparar isso; a conexão exige sua aprovação.",
+    )
+    fireEvent.click(screen.getAllByRole("button", { name: "Conectar projeto" })[0] as HTMLElement)
+    expect(props.onConnectProject).toHaveBeenCalledOnce()
+    expect(props.invokeCommand).not.toHaveBeenCalledWith("preview_show", expect.anything())
+  })
+
   it("provides distinct Cron loading, empty and recoverable error states", () => {
     const refresh = vi.fn(async () => {})
     const props = {
@@ -66,7 +78,7 @@ describe("r8 screens", () => {
     expect(refresh).toHaveBeenCalledOnce()
     view.rerender(<CronScreen {...props} />)
     expect(screen.getByText("Sua primeira rotina começa aqui")).toBeVisible()
-    expect(screen.getByRole("button", { name: "Criar cron" })).toBeDisabled()
+    expect(screen.getByRole("button", { name: "Criar rotina" })).toBeDisabled()
   })
 
   it("retries an unavailable native Preview using a new session", async () => {
@@ -154,7 +166,7 @@ describe("r8 screens", () => {
     const api = createMockApi()
     render(<App kernel={{ services: { api } }} />)
     await screen.findByRole("textbox", { name: "Mensagem para mark" })
-    fireEvent.click(screen.getByRole("button", { name: "touri" }))
+    openRoutines("mark")
     const run = await screen.findByRole("button", { name: "Rodar agora Daily brief" })
     expect(run).toHaveTextContent("Rodar agora")
     expect(screen.getByRole("button", { name: "Retomar Daily brief" })).toHaveTextContent("Retomar")
@@ -196,6 +208,8 @@ describe("r8 screens", () => {
     thread.activeLeafId = reply.id
     render(<App kernel={{ services: { api } }} />)
     await screen.findByRole("textbox", { name: "Mensagem para mark" })
+    if (!screen.queryByRole("button", { name: "Preview do projeto" }))
+      fireEvent.click(screen.getByRole("button", { name: "Painel do bot" }))
     fireEvent.click(screen.getByRole("button", { name: "Preview do projeto" }))
     const preview = document.querySelector(".preview-chat-sidebar") as HTMLElement
     await within(preview).findByText("Confira", { selector: "strong" })
@@ -206,6 +220,23 @@ describe("r8 screens", () => {
       "data-approval-id",
       "preview-request",
     )
+  })
+
+  it("offers a reply box only for a real question, not for a finished reply that ends in a question mark", () => {
+    const api = createMockApi()
+    const greeting = api.notify({ kind: "done", title: "Done", body: "Oi! Como posso ajudar?", createdAt: 2 })
+    const question = api.notify({ kind: "question", title: "Question", body: "Subo o servidor?", createdAt: 1 })
+    render(
+      <NotificationBell
+        notifications={[greeting, question]}
+        now={3}
+        actions={{ open: vi.fn(), dismiss: vi.fn(), dismissAll: vi.fn(), respond: vi.fn(), reply: vi.fn() }}
+      />,
+    )
+    fireEvent.click(screen.getByRole("button", { name: /Notificações/ }))
+    const [done, asked] = screen.getAllByTestId("notification-row")
+    expect(done?.querySelector(".notification-reply")).toBeNull()
+    expect(asked?.querySelector(".notification-reply")).not.toBeNull()
   })
 
   it("groups notifications by local day and recency, marks them read, and clears history", async () => {
@@ -288,7 +319,7 @@ describe("r8 screens", () => {
     const api = createMockApi()
     const request = vi.fn(async (route: string, input: unknown) => {
       if (route === "GET /bots/:id/mcp") return { servers: [server] }
-      if (route === "GET /mcp/tools") return { server: { name: "touri", version: "1" }, tools: [] }
+      if (route === "GET /mcp/tools") return { server: { name: "Avançado", exact: true, version: "1" }, tools: [] }
       if (route === "PATCH /bots/:id/mcp/:name/tools/:tool")
         return { server: { ...server, tools: [{ ...server.tools[0], ...(input as object) }] } }
       throw new Error("Unexpected request")

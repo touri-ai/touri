@@ -405,7 +405,7 @@ test("an AskUserQuestion prompt becomes a question notification and other tools 
       .all()
     expect(rows).toEqual([
       { kind: "question", body: "Which env?", request_id: "r1" },
-      { kind: "approval", body: "Bash: ls", request_id: "r2" },
+      { kind: "approval", body: "Executar comando no terminal", request_id: "r2" },
     ])
   } finally {
     h.close()

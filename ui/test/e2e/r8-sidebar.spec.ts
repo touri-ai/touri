@@ -1,5 +1,6 @@
 import { mkdir } from "node:fs/promises"
 import { expect, test } from "@playwright/test"
+import { openGlobalPage } from "./home-navigation"
 
 test.use({ channel: "chromium" })
 const phase = process.env.R8_SIDEBAR_PHASE ?? "after"
@@ -18,9 +19,17 @@ for (const width of [1440, 1100]) {
       if (phase === "after") {
         const sidebar = page.locator(".bot-sidebar")
         expect(await sidebar.evaluate((element) => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(0)
-        const lastRow = await sidebar.locator(".bot-row").last().boundingBox()
+        await expect(sidebar.locator(".bot-status-heading")).toHaveText(["Precisa de você", "Ociosos"])
+        const lastBot = sidebar.locator(".bot-row-main").last()
+        await lastBot.scrollIntoViewIfNeeded()
+        await expect(lastBot).toBeInViewport()
+        const lastRow = await lastBot.boundingBox()
         const footer = await sidebar.locator(".sidebar-footer").boundingBox()
         expect(lastRow && footer && lastRow.y + lastRow.height <= footer.y).toBeTruthy()
+        expect(footer && footer.y + footer.height <= 900).toBeTruthy()
+        await sidebar.locator(".bot-groups").evaluate((element) => {
+          element.scrollTop = 0
+        })
         await expect(sidebar.locator(".thread-row.selected small")).toHaveText("hoje")
         await expect(sidebar.locator(".thread-row small").nth(1)).toHaveText("ontem")
         await expect(sidebar.locator(".bot-entry").filter({ hasText: "touri-pm" }).locator(".bot-preview")).toHaveText(
@@ -37,14 +46,17 @@ for (const width of [1440, 1100]) {
       if (phase === "after") {
         const center = page.getByRole("region", { name: "Central de notificações" })
         await expect(center.locator(".notification-row").first()).toContainText("Checklist de publicação revisado")
-        await expect(page.getByRole("button", { name: "Notificações, 1 precisa de atenção" })).toBeVisible()
+        await expect(page.getByRole("button", { name: "Notificações, 2 precisam de atenção" })).toBeVisible()
         await center
           .locator(".notification-row")
           .filter({ hasText: "mobile-qa" })
           .getByRole("button", { name: "Abrir", exact: true })
           .click()
         await expect(page.getByRole("textbox", { name: "Mensagem para mobile-qa" })).toBeVisible()
-        await expect(page.getByRole("button", { name: "Notificações", exact: true })).toBeVisible()
+        await expect(page.getByRole("button", { name: "Notificações, 1 precisa de atenção" })).toBeVisible()
+        await expect(page.locator('[data-bot-entry="sidebar-bot-1"] .bot-preview')).toHaveText(
+          "Aguardando você: sua aprovação",
+        )
         await expect(page.getByRole("button", { name: "Abrir falha de mobile-qa" })).toHaveCount(0)
         await page.getByRole("button", { name: "Buscar conversas", exact: true }).click()
         const search = page.getByRole("dialog", { name: "Paleta de comandos" })
@@ -52,7 +64,7 @@ for (const width of [1440, 1100]) {
         await expect(search.getByText("Há 21 arquivos page.tsx para revisar.")).toBeVisible()
         await page.screenshot({ path: `${output}/after-search-${width}-${theme}.png` })
         await page.keyboard.press("Escape")
-        await page.getByRole("button", { name: "Conectar aplicativos" }).click()
+        await openGlobalPage(page, "Integrações")
         await expect(page.getByRole("heading", { name: "Integrações", exact: true })).toBeVisible()
         await page.locator(".bot-entry").filter({ hasText: "touri-qa" }).locator(".bot-row-main").click()
         await expect(page.getByRole("textbox", { name: "Mensagem para touri-qa" })).toBeVisible()
@@ -60,7 +72,10 @@ for (const width of [1440, 1100]) {
         await expect(page.getByRole("dialog", { name: "Criar um bot" })).toBeVisible()
         await page.getByRole("dialog", { name: "Criar um bot" }).getByRole("button", { name: "Fechar diálogo" }).click()
         // The base panel overlays the chat toolbar at narrow widths; close it through its existing affordance.
-        if (width === 1100) await page.getByRole("button", { name: "Fechar painel do bot" }).click()
+        if (await page.getByRole("button", { name: "Fechar painel do bot" }).isVisible())
+          await page.getByRole("button", { name: "Fechar painel do bot" }).click()
+        if (!(await page.getByRole("button", { name: "Preview do projeto" }).isVisible()))
+          await page.getByRole("button", { name: "Painel do bot", exact: true }).click()
         await page.getByRole("button", { name: "Preview do projeto" }).click()
         await expect(page.getByRole("button", { name: "Voltar ao chat" })).toBeVisible()
         await page.locator(".bot-entry").filter({ hasText: "touri-coder" }).locator(".bot-row-main").click()

@@ -2,6 +2,7 @@ import { mkdirSync } from "node:fs"
 import { resolve } from "node:path"
 import AxeBuilder from "@axe-core/playwright"
 import { expect, test } from "@playwright/test"
+import { showBotPanel } from "./home-navigation"
 
 const evidence = resolve(import.meta.dirname, "../../../docs/qa/groups")
 mkdirSync(evidence, { recursive: true })
@@ -12,6 +13,7 @@ for (const theme of ["light", "dark"] as const)
     await page.addInitScript((theme) => localStorage.setItem("touri.appearance.v1", theme), theme)
     await page.goto("/test/e2e/groups-harness.html")
     await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
+    await showBotPanel(page)
     await page.getByRole("button", { name: "Criar grupo", exact: true }).click()
     const dialog = page.getByRole("dialog", { name: "Criar grupo" })
     await dialog.getByLabel("Nome do grupo").fill("Produto")
@@ -67,14 +69,28 @@ for (const theme of ["light", "dark"] as const)
         api.emit({ type: "message.created", message })
       }
     })
-    await expect(page.getByText("Revisei o fluxo. Podemos seguir com o lançamento.")).toBeVisible()
-    await expect(page.locator('[data-message-id="group-answer-1"] .message-role')).toHaveText("onb")
     await expect(
-      page
-        .getByRole("complementary", { name: "Painel de mark" })
-        .getByRole("button", { name: "Produto · coordenador" }),
+      page.locator('[data-message-id="group-answer-2"]').getByText("Revisei o fluxo. Podemos seguir com o lançamento."),
     ).toBeVisible()
+    await expect(page.locator('[data-message-id="group-answer-1"] .message-role')).toHaveText("onb")
+    const groupPanel = page.getByRole("complementary", { name: "Painel do grupo Produto", exact: true })
+    await expect(groupPanel).toBeVisible()
+    const members = groupPanel.getByRole("list", { name: "Membros do grupo" })
+    for (const name of ["mark", "onb", "Panko"]) await expect(members.getByText(name, { exact: true })).toBeVisible()
+    await expect(members.getByText("Coordenador", { exact: true })).toBeVisible()
+    await expect(groupPanel.getByText(/mark coordena as respostas/)).toBeVisible()
+    await expect(groupPanel.getByRole("button", { name: "Preview do projeto", exact: true })).toHaveCount(0)
+    await expect(page.getByRole("complementary", { name: "Painel de mark" })).toHaveCount(0)
     await page.screenshot({ path: `${evidence}/thread-${theme}.png` })
+
+    await page.locator('[data-bot-entry="bot-mark"] .bot-row-main').click()
+    await expect(page.getByRole("textbox", { name: "Mensagem para mark", exact: true })).toBeVisible()
+    const botPanel = page.getByRole("complementary", { name: "Painel de mark", exact: true })
+    await expect(botPanel).toBeVisible()
+    await expect(botPanel.getByRole("button", { name: "Preview do projeto", exact: true })).toBeVisible()
+    await botPanel.getByRole("button", { name: "Produto · coordenador", exact: true }).click()
+    await expect(composer).toBeVisible()
+    await expect(groupPanel).toBeVisible()
     await page.getByRole("button", { name: "Editar grupo", exact: true }).click()
     const edit = page.getByRole("dialog", { name: "Editar grupo" })
     await edit.getByLabel("Nome do grupo").fill("Produto e Operação")

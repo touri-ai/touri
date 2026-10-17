@@ -133,6 +133,8 @@ a {
 }
 
 .app-shell {
+  display: flex;
+  flex-direction: column;
   width: 100%;
   height: 100%;
   min-height: 0;
@@ -141,19 +143,17 @@ a {
   color: var(--text-primary);
 }
 .app-grid {
+  flex: 1;
   position: relative;
   display: grid;
   grid-template-columns: 320px minmax(0, 1fr);
   width: 100%;
-  height: 100%;
   min-height: 0;
 }
 .notice-bar {
-  position: absolute;
-  z-index: 20;
-  top: 12px;
-  left: 340px;
-  right: 18px;
+  position: relative;
+  flex-shrink: 0;
+  margin: var(--space-8) var(--space-12);
   min-height: 34px;
   display: flex;
   align-items: center;
@@ -171,6 +171,29 @@ a {
   background: transparent;
   color: inherit;
   font-size: var(--type-18);
+}
+.approval-notice {
+  border-color: var(--border-subtle);
+  background: var(--surface-panel);
+  color: var(--text-primary);
+}
+.notice-content {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.notice-bar .notice-review {
+  flex-shrink: 0;
+  font-size: var(--type-12);
+}
+.notification-command,
+.notification-technical pre {
+  max-height: 180px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .bot-sidebar {
@@ -3100,6 +3123,46 @@ a {
   }
 }
 @media (max-width: 620px) {
+  .mobile-menu-button {
+    position: absolute;
+    z-index: 60;
+    top: 6px;
+    left: 12px;
+    width: 40px;
+    height: 40px;
+  }
+  .sidebar-drawer {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    max-width: none;
+    height: 100%;
+    max-height: none;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+  }
+  .sidebar-drawer[open] {
+    display: flex;
+  }
+  .sidebar-drawer::backdrop {
+    background: var(--surface-backdrop);
+  }
+  .sidebar-drawer .bot-sidebar {
+    display: flex;
+    width: min(320px, calc(100% - 48px));
+    height: 100%;
+  }
+  .sidebar-drawer .traffic-light-spacer,
+  .sidebar-drawer .sidebar-traffic-lights {
+    display: none;
+  }
+  .app-grid .chat-panel > .chat-header,
+  .app-grid .workspace-page .screen-header {
+    padding-left: 64px;
+  }
   .app-grid {
     grid-template-columns: 1fr;
   }
@@ -3874,26 +3937,27 @@ a {
 
 /* State is readable text beside the bot; dots indicate activity, never progress. */
 .activity-mark {
+  --activity-ink: var(--text-secondary);
   transition: color var(--duration-surface) var(--ease-surface);
   display: flex;
   align-items: center;
   gap: var(--space-8);
   min-height: var(--space-32);
   margin-top: var(--space-12);
-  color: var(--text-secondary);
+  color: var(--activity-ink);
   font-size: var(--type-12);
 }
 .activity-mark[data-mascot-state="thinking"] {
-  color: var(--text-secondary);
+  --activity-ink: var(--text-secondary);
 }
 .activity-mark[data-mascot-state="working-tool"] {
-  color: var(--text-link);
+  --activity-ink: var(--text-link);
 }
 .activity-mark[data-mascot-state="typing"] {
-  color: var(--text-success);
+  --activity-ink: var(--text-success);
 }
 .activity-mark[data-mascot-state="waiting-approval"] {
-  color: var(--text-warning);
+  --activity-ink: var(--text-warning);
 }
 .activity-mark[data-reduced-motion="true"] {
   transition: none;
@@ -3907,7 +3971,31 @@ a {
 }
 .activity-label {
   min-width: 0;
-  overflow-wrap: anywhere;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.activity-reasoning-button {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  text-align: left;
+  cursor: pointer;
+}
+.activity-reasoning-button:hover {
+  color: var(--text-primary);
+}
+.activity-reasoning-button:focus-visible {
+  outline: 2px solid var(--accent-info);
+  outline-offset: -2px;
+  border-radius: var(--radius-4);
 }
 .activity-approval-link {
   color: inherit;
@@ -4381,4 +4469,17 @@ a {
 .provider-login-flow > div {
   flex-basis: 100%;
   margin: 0;
+}
+
+.onboarding-secondary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-16);
+  color: var(--text-secondary);
+  font-size: var(--type-12);
+}
+.onboarding-secondary .text-button {
+  padding: 0;
+  font-size: inherit;
 }

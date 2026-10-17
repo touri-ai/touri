@@ -1,9 +1,10 @@
 import { expect, test } from "@playwright/test"
+import { openGlobalPage, showBotAdvanced } from "./home-navigation"
 
 const phase = process.env.R8_PHASE ?? "after"
 const evidence = "../docs/qa/r8/settings"
 test.use({ channel: "chromium" })
-test.setTimeout(90_000)
+test.setTimeout(180_000)
 
 for (const width of [1440, 1100]) {
   for (const theme of ["light", "dark"] as const) {
@@ -27,18 +28,19 @@ for (const width of [1440, 1100]) {
           await expect(page.getByRole("button", { name: "Fechar diálogo" })).toBeInViewport()
         }
       }
-      await page.getByRole("button", { name: "Configurações de mark", exact: true }).first().click()
+      await showBotAdvanced(page)
       await shot("bot-general")
-      if (phase === "after")
+      if (phase === "after") {
+        await page.getByRole("dialog").getByRole("button", { name: "Avançado", exact: true }).click()
         await page.getByRole("dialog").getByRole("tab", { name: "Computador", exact: true }).click()
-      else await page.getByLabel("Máquina", { exact: true }).scrollIntoViewIfNeeded()
+      } else await page.getByLabel("Máquina", { exact: true }).scrollIntoViewIfNeeded()
       await shot("bot-computer")
       if (phase === "after") {
         await page.getByRole("dialog").getByRole("button", { name: "Redefinir", exact: true }).scrollIntoViewIfNeeded()
         await shot("bot-computer-maintenance")
         for (const [tab, view] of [
           ["Permissões", "bot-permissions"],
-          ["MCP", "bot-mcp"],
+          ["Ferramentas", "bot-mcp"],
           ["Rotinas", "bot-routines"],
         ] as const) {
           await page.getByRole("dialog").getByRole("tab", { name: tab, exact: true }).click()
@@ -50,14 +52,13 @@ for (const width of [1440, 1100]) {
       await shot("preferences")
       if (phase === "after") {
         await expect(page.getByRole("dialog")).not.toContainText("LOCAL PREFERENCES")
-        await page.getByRole("tab", { name: "Atalhos" }).click()
+        await page.getByText("Chat, barra lateral e atalhos").click()
         await shot("preferences-shortcuts")
         await page.getByRole("tab", { name: "Privacidade" }).click()
         await shot("preferences-privacy")
       }
       await page.getByRole("button", { name: "Fechar diálogo" }).click()
-      await page.getByRole("button", { name: "touri", exact: true }).click()
-      await page.getByRole("button", { name: "Diagnóstico", exact: true }).first().click()
+      await openGlobalPage(page, "Verificar este Mac")
       await expect(page.getByText(/3 prontos · 1 aviso · 1 falha/)).toBeVisible()
       await shot("doctor")
       await page.getByRole("button", { name: "Fechar diálogo" }).click()
@@ -65,16 +66,10 @@ for (const width of [1440, 1100]) {
       await shot("new-bot")
       if (phase === "after") {
         await page.getByLabel("Nome", { exact: true }).fill("Clara")
-        await page.getByRole("button", { name: "Continuar", exact: true }).click()
+        await page.getByRole("dialog").getByRole("button", { name: "Avançado", exact: true }).click()
         await page.getByLabel("Função", { exact: true }).fill("Pesquisa e planejamento")
-        await page.getByLabel("SOUL.md").fill("Pesquise com cuidado e apresente fontes em português.")
+        await page.getByLabel("Instruções do bot").fill("Pesquise com cuidado e apresente fontes em português.")
         await shot("new-bot-role")
-        await page.getByRole("button", { name: "Continuar", exact: true }).click()
-        await shot("new-bot-provider")
-        await page.getByRole("button", { name: "Continuar", exact: true }).click()
-        await shot("new-bot-computer")
-        await page.getByRole("button", { name: "Continuar", exact: true }).click()
-        await shot("new-bot-review")
         await page.getByRole("dialog").getByRole("button", { name: "Criar bot", exact: true }).click()
         await expect(page.getByRole("dialog")).toHaveCount(0)
         await expect(page.getByRole("textbox", { name: "Mensagem para Clara" })).toBeVisible()

@@ -4,7 +4,7 @@ import { afterEach, expect, it, vi } from "vitest"
 import App from "../src/App"
 import type { TauriInvoke } from "../src/api/client"
 import { createMockApi } from "../src/api/mock"
-import { BotSettingsModal } from "../src/components/Modals"
+import { BotCreateModal, BotSettingsModal } from "../src/components/Modals"
 import type { WorkspaceActions } from "../src/useWorkspace"
 
 afterEach(() => {
@@ -37,7 +37,7 @@ const setup = async (patch: Partial<Bot> = {}) => {
         invokeCommand={invoke}
         actions={actions}
         onClose={vi.fn()}
-        initialSection="computer"
+        initialSection="access"
       />,
     )
   })
@@ -45,6 +45,41 @@ const setup = async (patch: Partial<Bot> = {}) => {
 }
 const anyToggle = () => screen.getByRole("switch", { name: /Acesso a qualquer pasta deste Mac/ })
 const save = () => fireEvent.click(screen.getByRole("button", { name: "Salvar configurações" }))
+
+it.each(["codex", "claude", "opencode"] as const)(
+  "explains that %s full access preserves the separate folder limits during creation",
+  (provider) => {
+    render(<BotCreateModal onClose={vi.fn()} onCreate={vi.fn()} />)
+    fireEvent.change(screen.getByLabelText("Nome"), { target: { value: "Pesquisa" } })
+    fireEvent.click(screen.getByRole("button", { name: "Avançado" }))
+    fireEvent.change(screen.getByLabelText("Provedor"), { target: { value: provider } })
+    fireEvent.change(screen.getByLabelText("Acesso"), { target: { value: "full" } })
+    expect(screen.getByText(/O acesso total dispensa aprovações/)).toHaveTextContent(
+      "A escrita segue as permissões de pastas configuradas para o bot.",
+    )
+    expect(screen.getByText(/O acesso total dispensa aprovações/)).toHaveTextContent(
+      "A opção “Acesso a qualquer pasta deste Mac” é independente",
+    )
+    expect(screen.queryByText(/escreva em qualquer pasta/)).not.toBeInTheDocument()
+    if (provider === "codex")
+      expect(screen.getByText(/sem o sandbox do provedor/)).toHaveTextContent("As restrições de pastas do touri")
+    expect(anyToggle()).not.toBeChecked()
+    fireEvent.click(anyToggle())
+    fireEvent.click(screen.getByRole("button", { name: "Permitir acesso" }))
+    expect(anyToggle()).toBeChecked()
+    expect(screen.getByText(/O acesso total dispensa aprovações/)).toHaveTextContent(
+      "A escrita segue as permissões de pastas configuradas para o bot.",
+    )
+  },
+)
+
+it("uses the same full-access explanation in bot settings", async () => {
+  await setup({ provider: "codex", access: "full", approvals: "never" })
+  expect(screen.getByText(/O acesso total dispensa aprovações/)).toHaveTextContent(
+    "A opção “Acesso a qualquer pasta deste Mac” é independente",
+  )
+  expect(screen.getByText(/sem o sandbox do provedor/)).toHaveTextContent("As restrições de pastas do touri")
+})
 
 it("adds a folder through the native picker, defaults read-only and saves a per-folder write choice", async () => {
   const f = await setup()
@@ -109,6 +144,7 @@ it("explains VM paths, masking and next-turn recreation while preserving files",
 
 it("creates and links a project from the settings selector and keeps that link when saving other settings", async () => {
   const f = await setup()
+  fireEvent.click(screen.getByRole("tab", { name: "Projeto" }))
   fireEvent.change(screen.getByRole("combobox", { name: "Projeto" }), { target: { value: "__add_project__" } })
   const dialog = await screen.findByRole("dialog", { name: "Conectar projeto" })
   expect(within(dialog).getByRole("checkbox", { name: /mark/ })).toBeChecked()

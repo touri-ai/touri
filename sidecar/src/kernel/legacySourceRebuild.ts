@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite"
+import { withSuspendedSchemaObjects } from "./schema-rebuild"
 
 const SOURCE_TABLES = ["bots", "threads", "messages", "routines"] as const
 const SOURCE_CHECK = /CHECK\s*\(\s*source\s+IN\s*\(\s*'local'\s*,\s*'[^']*'\s*\)\s*\)/
@@ -28,17 +29,10 @@ const needsRebuild = (database: Database, table: string): boolean => {
 const rowCount = (database: Database, table: string): number =>
   (database.query(`SELECT COUNT(*) AS n FROM "${table}"`).get() as { n: number }).n
 
-const dependentObjects = (database: Database, table: string): Array<SchemaObject> =>
+const dependentIndexes = (database: Database, table: string): Array<SchemaObject> =>
   database
-    .query("SELECT name, sql FROM sqlite_schema WHERE tbl_name = ? AND type IN ('index','trigger') AND sql IS NOT NULL")
+    .query("SELECT name, sql FROM sqlite_schema WHERE tbl_name = ? AND type = 'index' AND sql IS NOT NULL")
     .all(table) as Array<SchemaObject>
-
-const dependentViews = (database: Database, table: string): Array<SchemaObject> =>
-  (
-    database
-      .query("SELECT name, sql FROM sqlite_schema WHERE type = 'view' AND sql IS NOT NULL")
-      .all() as Array<SchemaObject>
-  ).filter((view) => new RegExp(`\\b${table}\\b`).test(view.sql))
 
 const rebuiltDefinition = (sql: string, table: string): string =>
   sql
@@ -47,8 +41,7 @@ const rebuiltDefinition = (sql: string, table: string): string =>
 
 const rebuildTable = (database: Database, table: string): void => {
   const sql = tableSql(database, table) ?? ""
-  const objects = dependentObjects(database, table)
-  const views = dependentViews(database, table)
+  const indexes = dependentIndexes(database, table)
   const columns = (database.query(`PRAGMA table_info("${table}")`).all() as Array<ColumnInfo>).map(
     (column) => `"${column.name}"`,
   )
@@ -56,15 +49,13 @@ const rebuildTable = (database: Database, table: string): void => {
     column === '"source"' ? `CASE WHEN "source" = 'local' THEN 'local' ELSE 'legacy' END` : column,
   )
   const before = rowCount(database, table)
-  for (const view of views) database.exec(`DROP VIEW "${view.name}"`)
   database.exec(rebuiltDefinition(sql, table))
   database.exec(
     `INSERT INTO "${table}${REBUILD_SUFFIX}" (rowid, ${columns.join(", ")}) SELECT rowid, ${selected.join(", ")} FROM "${table}"`,
   )
   database.exec(`DROP TABLE "${table}"`)
   database.exec(`ALTER TABLE "${table}${REBUILD_SUFFIX}" RENAME TO "${table}"`)
-  for (const object of objects) database.exec(object.sql)
-  for (const view of views) database.exec(view.sql)
+  for (const index of indexes) database.exec(index.sql)
   if (rowCount(database, table) !== before) throw new Error(`legacy source rebuild: row count changed for ${table}`)
 }
 
@@ -77,18 +68,11 @@ const rebuildTable = (database: Database, table: string): void => {
 export const legacySourceRebuild = ({ database }: LegacySourceRebuildArgs): LegacySourceRebuildResult => {
   try {
     const pending = SOURCE_TABLES.filter((table) => needsRebuild(database, table))
-    if (pending.length) {
-      const previous = (database.query("PRAGMA legacy_alter_table").get() as { legacy_alter_table: number })
-        .legacy_alter_table
-      // External triggers briefly refer to the dropped table between DROP and RENAME.
-      // Keep their original references, then restore the caller's ALTER behavior.
-      database.exec("PRAGMA legacy_alter_table=ON")
-      try {
-        for (const table of pending) rebuildTable(database, table)
-      } finally {
-        database.exec(`PRAGMA legacy_alter_table=${previous ? "ON" : "OFF"}`)
-      }
-    }
+    if (!pending.length) return { success: true, rebuilt: [] }
+
+    withSuspendedSchemaObjects(database, () => {
+      for (const table of pending) rebuildTable(database, table)
+    })
 
     return { success: true, rebuilt: [...pending] }
   } catch (error) {

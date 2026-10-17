@@ -12,7 +12,6 @@ import type {
   Kernel,
   Message,
   MessagePart,
-  MessageStatus,
   Provider,
   ReasoningEffort,
   RouteModule,
@@ -24,6 +23,7 @@ import type {
   ThreadUsage,
   UiEvent,
 } from "@touri/contracts"
+import { normalizeBotName } from "@touri/contracts"
 import { validAvatarColor, validAvatarShape } from "@touri/contracts/avatar"
 import { installDoctor } from "../doctor"
 import { parseBotFolders } from "../kernel/bot-folders"
@@ -39,6 +39,7 @@ import {
 } from "../kernel/files"
 import { historyThreadPending, hydrateHistoryEvent } from "../kernel/history-backfill"
 import { externalizeMessageParts, OUTPUT_BLOB_ORIGIN } from "../kernel/output-blobs"
+import { isProfileProvider, validProviderProfileName } from "../kernel/provider-profiles"
 import { materializeTranscript } from "../kernel/transcript-storage"
 import { hostComputerSupported } from "../platform"
 import { touriVersion } from "../version"
@@ -46,6 +47,7 @@ import { DEFAULT_BOT_VM_MEMORY_MB, DEFAULT_MACHINE_IDLE_MINUTES, validBotVmMemor
 import { redeemFileGrant } from "./redeemFileGrant"
 import { createSendJournal } from "./send-journal"
 import { appendRejection, recordTranscriptRejection } from "./transcript-rejections"
+import { type RawMessage, readWorkspaceActivity } from "./workspace-activity"
 
 export const name = "store"
 
@@ -79,6 +81,8 @@ type RawBot = {
   machine_idle_minutes: number
   vm_provider_login: number
   host_computer_use: number
+  provider_profile?: string | null
+  claude_ai_connectors?: number
   notifications: string
   section: string | null
   sort_order: number
@@ -109,28 +113,6 @@ type RawThread = {
   created_at: number
   updated_at: number
   archived_at: number | null
-}
-
-type RawMessage = {
-  seq: number
-  generation: number
-  updated_seq: number
-  client_nonce: string | null
-  delivery_status: NonNullable<Message["delivery"]>["status"] | null
-  delivery_deadline: number | null
-  id: string
-  thread_id: string
-  parent_id: string | null
-  role: Message["role"]
-  kind: Message["kind"]
-  status: MessageStatus
-  run_id: string | null
-  text: string
-  parts_json: string
-  sender_json: string | null
-  source: string
-  created_at: number
-  updated_at: number
 }
 
 type RawAttachment = {
@@ -242,6 +224,8 @@ const asBot = (row: RawBot): Bot => ({
   machineIdleMinutes: row.machine_idle_minutes,
   vmProviderLogin: row.vm_provider_login === 1,
   hostComputerUse: row.host_computer_use === 1,
+  providerProfile: row.provider_profile ?? null,
+  claudeAiConnectors: row.claude_ai_connectors === 1,
   notifications: row.notifications === "all" || row.notifications === "none" ? row.notifications : "failures",
   section: row.section,
   sortOrder: row.sort_order,
@@ -736,12 +720,13 @@ export const init = async (kernel: Kernel): Promise<void> => {
     body: Record<string, unknown>
     existing?: Bot
   }): { input: CreateBotInput | null; error: string | null; errorCode?: string } => {
-    const name = body.name ?? existing?.name
+    const name = normalizeBotName(body.name === undefined ? existing?.name : body.name)
     const provider = body.provider ?? existing?.provider
-    if (!isString(name) || name.trim().length === 0) return { input: null, error: "name is required" }
+    if (!name)
+      return { input: null, error: "Use de 1 a 80 caracteres, sem quebras de linha ou caracteres de controle." }
     if (provider !== "codex" && provider !== "claude" && provider !== "opencode")
       return { input: null, error: "provider deve ser Codex, Claude ou OpenCode" }
-    const input: CreateBotInput = { name: name.trim(), provider }
+    const input: CreateBotInput = { name, provider }
     if (body.machine !== undefined && body.machine !== "local" && body.machine !== "vm" && body.machine !== "cloud")
       return { input: null, error: "machine must be local, vm or cloud" }
     input.machine = (body.machine as Bot["machine"] | undefined) ?? existing?.machine ?? "local"
@@ -858,6 +843,30 @@ export const init = async (kernel: Kernel): Promise<void> => {
       return { input: null, error: "Pastas deste Mac não estão disponíveis na nuvem." }
     if (input.cwd !== undefined && input.cwd !== null && !isAbsolute(input.cwd))
       return { input: null, error: "cwd must be absolute" }
+    if (
+      body.providerProfile !== undefined &&
+      body.providerProfile !== null &&
+      !validProviderProfileName(body.providerProfile)
+    )
+      return { input: null, error: "providerProfile must be a profile name (letters, digits, dot, dash, underscore)" }
+    input.providerProfile = Object.hasOwn(body, "providerProfile")
+      ? ((body.providerProfile as string | null) ?? null)
+      : (existing?.providerProfile ?? null)
+    if (input.providerProfile !== null) {
+      if (input.machine !== "local")
+        return {
+          input: null,
+          error: "Perfis de login valem só para bots locais. A máquina do bot usa o próprio login.",
+        }
+      if (!isProfileProvider(provider))
+        return { input: null, error: "Perfis de login estão disponíveis para Claude e Codex." }
+    }
+    if (body.claudeAiConnectors !== undefined && typeof body.claudeAiConnectors !== "boolean")
+      return { input: null, error: "claudeAiConnectors must be a boolean" }
+    input.claudeAiConnectors =
+      provider === "claude" &&
+      input.machine === "local" &&
+      ((body.claudeAiConnectors as boolean | undefined) ?? existing?.claudeAiConnectors ?? false)
     return { input, error: null }
   }
 
@@ -912,6 +921,9 @@ export const init = async (kernel: Kernel): Promise<void> => {
     database
       .query("UPDATE bots SET folders_json = ?, any_folder_access = ? WHERE id = ?")
       .run(JSON.stringify(input.folders ?? []), input.anyFolderAccess ? 1 : 0, id)
+    database
+      .query("UPDATE bots SET provider_profile = ?, claude_ai_connectors = ? WHERE id = ?")
+      .run(input.providerProfile ?? null, input.claudeAiConnectors ? 1 : 0, id)
     database
       .query(
         "INSERT INTO threads (id, bot_id, parent_thread_id, kind, title, active_leaf_id, routine_run_id, cwd_override, unread, carryover_note, usage_json, source, created_at, updated_at, archived_at) VALUES (?, ?, NULL, 'main', ?, NULL, NULL, NULL, 0, NULL, ?, 'local', ?, ?, NULL)",
@@ -998,11 +1010,55 @@ export const init = async (kernel: Kernel): Promise<void> => {
     database
       .query("UPDATE bots SET folders_json = ?, any_folder_access = ? WHERE id = ?")
       .run(JSON.stringify(input.folders ?? []), input.anyFolderAccess ? 1 : 0, bot.id)
+    database
+      .query("UPDATE bots SET provider_profile = ?, claude_ai_connectors = ? WHERE id = ?")
+      .run(input.providerProfile ?? null, input.claudeAiConnectors ? 1 : 0, bot.id)
     ensureBotHome({ botId: bot.id, instructions })
     const updated = getBot({ botId: bot.id })
     if (updated) kernel.publish({ type: "bot.updated", bot: updated })
     return updated
   }
+
+  kernel.services.provide("bots.rename", ({ botId, name: value }) => {
+    const bot = getBot({ botId })
+    if (!bot) return { success: false, errorCode: "NOT_FOUND", error: "Bot não encontrado." }
+    const name = normalizeBotName(value)
+    if (!name)
+      return {
+        success: false,
+        errorCode: "INVALID_ARGS",
+        error: "Use de 1 a 80 caracteres, sem quebras de linha ou caracteres de controle.",
+      }
+    // Identity changes must not reconfigure or stop a machine during its own turn.
+    database.query("UPDATE bots SET name = ?, updated_at = ? WHERE id = ?").run(name, now(), botId)
+    const updated = getBot({ botId })
+    if (!updated) return { success: false, errorCode: "NOT_FOUND", error: "Bot não encontrado." }
+    kernel.publish({ type: "bot.updated", bot: updated })
+    return { success: true, bot: updated }
+  })
+
+  // MCP setup changes share PATCH's validation, storage and bot.updated event.
+  // They must not stop a VM while its current turn is waiting for the tool.
+  kernel.services.provide("bots.configureAccess", ({ botId, patch }) => {
+    const bot = getBot({ botId })
+    if (!bot) return { success: false, errorCode: "NOT_FOUND", error: "Bot não encontrado." }
+    const parsed = botFromBody({ body: { ...patch, name: bot.name, provider: bot.provider }, existing: bot })
+    if (!parsed.input || parsed.error)
+      return { success: false, errorCode: "INVALID_ARGS", error: parsed.error ?? "Configuração inválida." }
+    const machine = database.query("SELECT project_id FROM bot_machines WHERE bot_id = ?").get(botId) as {
+      project_id: string | null
+    } | null
+    if (patch.projectId && machine?.project_id && patch.projectId !== machine.project_id)
+      return {
+        success: false,
+        errorCode: "MACHINE_PROJECT_CHANGE",
+        error: "Recrie a máquina do zero antes de trocar o projeto; o volume atual foi preservado",
+      }
+    const updated = patchBot({ bot, input: parsed.input, paused: undefined })
+    return updated
+      ? { success: true, bot: updated }
+      : { success: false, errorCode: "NOT_FOUND", error: "Bot não encontrado." }
+  })
 
   const insertAttachment = ({
     path,
@@ -1206,6 +1262,15 @@ export const init = async (kernel: Kernel): Promise<void> => {
     routes: [
       {
         method: "GET",
+        path: "/workspace/activity",
+        handler: async () => {
+          flushDeltas()
+          const { messages, runs } = readWorkspaceActivity(database)
+          return jsonResponse(200, { messages: messages.map(asMessage), runs })
+        },
+      },
+      {
+        method: "GET",
         path: "/health",
         handler: async () => jsonResponse(200, { ok: true, version: touriVersion, schemaVersion: SCHEMA_VERSION }),
       },
@@ -1229,7 +1294,7 @@ export const init = async (kernel: Kernel): Promise<void> => {
           const record = requestRecord(body)
           if (!record) return errorResponse(400, "INVALID_ARGS", "Request body must be an object")
           const parsed = botFromBody({
-            body: { ...record, name: record.name ?? bot.name, provider: record.provider ?? bot.provider },
+            body: { ...record, provider: record.provider ?? bot.provider },
             existing: bot,
           })
           if (!parsed.input || parsed.error)
@@ -1470,11 +1535,16 @@ export const init = async (kernel: Kernel): Promise<void> => {
               : errorResponse(404, "NOT_FOUND", "Attachment source file not found")
           }
           if (
+            record &&
+            isString(record.dataBase64) &&
+            record.dataBase64.length > Math.ceil(MAX_ATTACHMENT_BYTES / 3) * 4
+          )
+            return errorResponse(413, "ATTACHMENT_TOO_LARGE", "Arquivo acima de 15 MB")
+          if (
             !record ||
             !isString(record.dataBase64) ||
             !isString(record.name) ||
             record.name.length > 255 ||
-            record.dataBase64.length > Math.ceil(MAX_ATTACHMENT_BYTES / 3) * 4 ||
             !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(record.dataBase64)
           )
             return errorResponse(400, "INVALID_ARGS", "Envie um arquivo de até 15 MB")

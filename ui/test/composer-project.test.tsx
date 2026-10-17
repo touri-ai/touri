@@ -18,6 +18,12 @@ const setup = async ({
   invoke?: TauriInvoke
 } = {}) => {
   const api = createMockApi()
+  const request = api.request
+  // REST responses are snapshots, not aliases of the mock server's live state.
+  api.request = (async (route, ...args) => {
+    const response = await request(route, ...args)
+    return route === "GET /projects" ? structuredClone(response) : response
+  }) as typeof api.request
   const bot = api.getState().bots[0]
   if (!bot) throw new Error("Missing bot fixture")
   bot.machine = machine
@@ -29,6 +35,7 @@ const setup = async ({
   archived.archivedAt = Date.now()
   render(<App kernel={{ services: { api, ...(invoke ? { invoke } : {}) } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
+  fireEvent.click(screen.getByRole("button", { name: "Painel do bot" }))
   return { api, bot, current, other }
 }
 
@@ -55,7 +62,39 @@ const activeRun = (bot: Bot): Run => ({
   finishedAt: null,
 })
 
-describe("composer project chip", () => {
+describe("advanced project picker", () => {
+  it.each(["bot-only", "project-first", "bot-first"])(
+    "F011: reflects an approved project link across navigation (%s)",
+    async (order) => {
+      const { api, bot } = await setup({ linked: false })
+      const { project } = await api.request("POST /projects", { path: "/tmp/Hodler", name: "Hodler" })
+      expect(chip()).toHaveTextContent("Sem projeto")
+      const reloads = api.calls.filter((call) => call.route === "GET /projects").length
+      if (order === "project-first") act(() => api.emit({ type: "project.created", project }))
+      await act(async () => api.emit({ type: "bot.updated", bot: { ...bot, projectId: project.id } }))
+      // Observe the fallback independently, before a later project event can mask it.
+      if (order !== "project-first") {
+        await waitFor(() => expect(chip()).toHaveTextContent("Hodler"))
+        expect(api.calls.filter((call) => call.route === "GET /projects").length).toBeGreaterThan(reloads)
+      } else {
+        expect(api.calls.filter((call) => call.route === "GET /projects")).toHaveLength(reloads)
+      }
+      if (order === "bot-first") act(() => api.emit({ type: "project.created", project }))
+      await waitFor(() => expect(chip()).toHaveTextContent("Hodler"))
+      fireEvent.click(screen.getByRole("button", { name: /^onb Operations/ }))
+      await screen.findByRole("textbox", { name: "Mensagem para onb" })
+      fireEvent.click(screen.getByRole("button", { name: /^mark Campaign/ }))
+      await screen.findByRole("textbox", { name: "Mensagem para mark" })
+      expect(chip()).toHaveTextContent("Hodler")
+      fireEvent.click(chip())
+      expect(within(picker()).getByRole("menuitemradio", { name: "Hodler" })).toHaveAttribute("aria-checked", "true")
+      expect(within(picker()).getByRole("menuitemradio", { name: /Nenhum projeto/ })).toHaveAttribute(
+        "aria-checked",
+        "false",
+      )
+    },
+  )
+
   it("shows the current project and lists only active projects with the current one checked", async () => {
     const { current, other } = await setup()
     expect(chip()).toHaveTextContent(current.name)
@@ -125,12 +164,7 @@ describe("composer project chip", () => {
   it("supports Tab, Enter, arrow navigation, selection, Escape and focus restoration", async () => {
     const user = userEvent.setup()
     const { current, other } = await setup()
-    await user.click(screen.getByRole("textbox", { name: "Mensagem para mark" }))
-    await user.tab()
-    expect(screen.getByRole("button", { name: "Anexar arquivo" })).toHaveFocus()
-    await user.tab()
-    expect(screen.getByRole("button", { name: /Escolher modelo:/ })).toHaveFocus()
-    await user.tab()
+    chip().focus()
     expect(chip()).toHaveFocus()
     await user.keyboard("{Enter}")
     expect(within(picker()).getByRole("menuitemradio", { name: current.name })).toHaveFocus()
@@ -163,7 +197,7 @@ describe("composer project chip", () => {
     await user.keyboard("{End}")
     await user.tab()
     expect(screen.queryByRole("menu")).not.toBeInTheDocument()
-    expect(screen.getByRole("button", { name: /Permissões do bot:/ })).toHaveFocus()
+    expect(screen.getByRole("button", { name: "Preview do projeto" })).toHaveFocus()
   })
 
   it.each(["local", "vm"] as const)("shows the snapshot note only for VM bots (%s)", async (machine) => {
@@ -207,6 +241,7 @@ describe("composer project chip", () => {
       pathValues: { id: bot.id },
     })
     fireEvent.click(within(dialog).getByRole("button", { name: "Fechar diálogo" }))
+    await waitFor(() => expect(dialog).not.toBeInTheDocument(), { timeout: 5000 })
     await waitFor(() => expect(chip()).toHaveFocus())
   })
 

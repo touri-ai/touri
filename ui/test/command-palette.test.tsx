@@ -47,7 +47,7 @@ it("normalizes accents and case and fuzzy-matches labels", () => {
     matchScore(queryTokens("memria"), { label: normalizeSearch("Memória por computador"), extra: "" }),
   ).toBeGreaterThan(0)
   expect(matchScore(queryTokens("xyz"), { label: normalizeSearch("Memória"), extra: "" })).toBe(0)
-  const settings = settingsIndex({ cloudEnabled: false, hasBot: true })
+  const settings = settingsIndex({ hasBot: true })
   const index = buildPaletteIndex({ bots: [], threads: [], settings, hasBot: true })
   const groups = searchPalette({ index, query: "notificacoes", messages: [], recentIds: [] })
   expect(groups[0]?.items[0]?.label).toBe("Notificações")
@@ -144,7 +144,7 @@ it("opens a specific setting, focusing and highlighting it on the right tab", as
   expect(activeOption(input)).toHaveTextContent(SETTINGS.vmMemory.label)
   fireEvent.keyDown(input, { key: "Enter" })
   const dialog = await screen.findByRole("dialog", { name: "Configurações" })
-  expect(within(dialog).getByRole("tab", { name: "Geral" })).toHaveAttribute("aria-selected", "true")
+  expect(within(dialog).getByRole("tab", { name: "Diagnóstico" })).toHaveAttribute("aria-selected", "true")
   const field = within(dialog).getByLabelText(SETTINGS.vmMemory.label)
   await waitFor(() => expect(field).toHaveFocus())
   expect(field.closest("[data-setting-id]")).toHaveAttribute("data-setting-highlight", "true")
@@ -209,13 +209,13 @@ it("does not open over another dialog", async () => {
   expect(screen.queryByRole("dialog", { name: DIALOG })).toBeNull()
 })
 
-it("opens provider login beside the provider choice on the bot's General tab", async () => {
+it("opens provider login in the bot’s Access section", async () => {
   await start()
   const input = search("login do provedor")
   expect(activeOption(input)).toHaveTextContent(SETTINGS.providerLogin.label)
   fireEvent.keyDown(input, { key: "Enter" })
   const dialog = await screen.findByRole("dialog", { name: "Configurações de mark" })
-  expect(within(dialog).getByRole("tab", { name: "Geral" })).toHaveAttribute("aria-selected", "true")
+  expect(within(dialog).getByRole("tab", { name: "Acesso" })).toHaveAttribute("aria-selected", "true")
 })
 
 it("keeps results bounded with hundreds of bots and threads", () => {
@@ -246,7 +246,7 @@ it("R13-05 ranks an exact action or setting above older message matches, message
   const bot = state.bots[0]
   const thread = state.threads[0]
   if (!bot || !thread) throw new Error("fixture")
-  const settings = settingsIndex({ cloudEnabled: false, hasBot: true })
+  const settings = settingsIndex({ hasBot: true })
   const index = buildPaletteIndex({ bots: [bot], threads: [thread], settings, hasBot: true })
   const message = (text: string, id: string) => ({
     message: { id, threadId: thread.id, text, createdAt: 1 } as never,

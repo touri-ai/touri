@@ -1,0 +1,32 @@
+.tool-approval-context {
+  display: grid;
+  gap: var(--space-8);
+  margin: var(--space-12) 0;
+  font-size: var(--type-12);
+  overflow-wrap: anywhere;
+}
+.tool-approval-context dt {
+  color: var(--text-secondary);
+}
+.tool-approval-context dd {
+  margin: 0;
+}
+.approval-card .tool-file-path {
+  white-space: normal;
+  overflow: visible;
+  overflow-wrap: anywhere;
+}
+.tool-approval-diff {
+  margin: var(--space-8) 0;
+  border: 1px solid var(--border-code);
+  border-radius: var(--radius-8);
+  overflow: hidden;
+}
+.tool-call-card.approval-card .tool-code-region pre,
+.tool-call-card .tool-approval-diff pre {
+  width: auto;
+  min-width: 0;
+  max-width: 100%;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

@@ -14,17 +14,21 @@ export const evidencePath = (path: string, imageSyntax = false): boolean =>
   !path.split("/").includes("..") &&
   (imageSyntax || /\.(png|jpe?g|gif|webp)$/i.test(path) || /^\/(?:api\/v1\/)?attachments\/[a-f0-9]{64}$/i.test(path))
 
+export const decodedEvidencePath = (path: string, imageSyntax = false): string | null => {
+  try {
+    const decoded = decodeURIComponent(path)
+    return evidencePath(decoded, imageSyntax) ? decoded : null
+  } catch {
+    return null
+  }
+}
+
 /** Operate on parsed nodes: fenced code, raw HTML and remote URLs never become evidence. */
 export const evidenceImages = (tree: EvidenceNode): EvidenceImage[] => {
   const images: EvidenceImage[] = []
   const add = (path: string, caption?: string, imageSyntax = false) => {
-    let decoded: string
-    try {
-      decoded = decodeURIComponent(path)
-    } catch {
-      return
-    }
-    if (!evidencePath(decoded, imageSyntax) || images.some((image) => image.path === decoded)) return
+    const decoded = decodedEvidencePath(path, imageSyntax)
+    if (!decoded || images.some((image) => image.path === decoded)) return
     const filename = decoded.split("/").at(-1) ?? "Imagem"
     images.push({ path: decoded, caption: caption || filename, filename })
   }

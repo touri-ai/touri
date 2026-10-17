@@ -1,5 +1,5 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
-import type { Id, Message, PreviewTarget, Project, Run } from "@touri/contracts"
+import type { DoctorCheck, Id, Message, PreviewTarget, Project, Run } from "@touri/contracts"
 import * as axe from "axe-core"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import App, { canUseMockAdapter } from "../src/App"
@@ -8,6 +8,7 @@ import { createMockApi } from "../src/api/mock"
 import { VirtualMessageList } from "../src/components/ChatPanel"
 import { PreviewPane } from "../src/components/PreviewPane"
 import { SecretsPanel } from "../src/components/RightPanels"
+import { openRoutines } from "./workspaceNavigation"
 
 const project: Project = {
   id: "project-test",
@@ -67,16 +68,17 @@ describe("WP9 frontend acceptance", () => {
     expect(canUseMockAdapter({ dev: true, flag: "true" })).toBe(true)
   })
 
-  it("switches between the approved touri and Bots navigation", async () => {
+  it("keeps global pages behind Advanced and bots reachable", async () => {
     const api = createMockApi()
     render(<App kernel={{ services: { api } }} />)
     await screen.findByRole("textbox", { name: "Mensagem para mark" })
     expect(screen.getByRole("button", { name: /^Bots/ })).toHaveAttribute("aria-current", "page")
-    fireEvent.click(screen.getByRole("button", { name: "touri" }))
-    expect(screen.getByRole("button", { name: /Cron/ })).toBeVisible()
+    fireEvent.click(screen.getByRole("button", { name: "Avançado", exact: true }))
+    expect(screen.getByRole("navigation", { name: "Opções avançadas" })).toBeVisible()
+    fireEvent.keyDown(window, { key: "Escape" })
     fireEvent.click(screen.getByRole("button", { name: /^Bots/ }))
     expect(document.querySelectorAll(".bot-entry")).toHaveLength(api.getState().bots.length)
-    fireEvent.click(screen.getByRole("button", { name: "touri" }))
+    fireEvent.click(screen.getByRole("button", { name: "Avançado", exact: true }))
     fireEvent.click(screen.getByRole("button", { name: /MCP/ }))
     expect(await screen.findByRole("heading", { name: "MCP" })).toBeVisible()
   })
@@ -85,19 +87,18 @@ describe("WP9 frontend acceptance", () => {
     const api = createMockApi()
     const first = render(<App kernel={{ services: { api } }} />)
     await screen.findByRole("textbox", { name: "Mensagem para mark" })
-    fireEvent.click(screen.getByRole("button", { name: "touri" }))
+    fireEvent.click(screen.getByRole("button", { name: "Avançado", exact: true }))
     fireEvent.click(screen.getByRole("button", { name: /Integrações/ }))
     expect(screen.getByRole("heading", { name: "Integrações" })).toBeVisible()
     fireEvent.click(screen.getByRole("button", { name: /^Bots/ }))
-    fireEvent.click(screen.getByRole("button", { name: "touri" }))
-    expect(screen.getByRole("heading", { name: "Cron" })).toBeVisible()
+    openRoutines()
+    expect(screen.getByRole("heading", { name: "Rotinas" })).toBeVisible()
     first.unmount()
 
     render(<App kernel={{ services: { api } }} />)
-    await screen.findByRole("heading", { name: "Cron" })
-    fireEvent.click(screen.getByRole("button", { name: /Cron/ }))
-    fireEvent.click(screen.getByRole("button", { name: /Criar cron/ }))
-    expect(await screen.findByRole("heading", { name: "Criar cron" })).toBeVisible()
+    await screen.findByRole("heading", { name: "Rotinas" })
+    fireEvent.click(screen.getByRole("button", { name: /Criar rotina/ }))
+    expect(await screen.findByRole("heading", { name: "Criar rotina" })).toBeVisible()
     expect(screen.queryByRole("heading", { name: "Integrações" })).not.toBeInTheDocument()
   })
 
@@ -119,6 +120,8 @@ describe("WP9 frontend acceptance", () => {
         : request(route, ...args)) as typeof api.request
     const view = render(<App kernel={{ services: { api } }} />)
     await screen.findByRole("textbox", { name: "Mensagem para mark" })
+    if (!screen.queryByRole("button", { name: "Preview do projeto" }))
+      fireEvent.click(screen.getByRole("button", { name: "Painel do bot" }))
     fireEvent.click(screen.getByRole("button", { name: "Preview do projeto" }))
     fireEvent.click(screen.getByRole("button", { name: "Menu do projeto" }))
     fireEvent.click(screen.getByRole("menuitem", { name: "Conectar projeto" }))
@@ -166,6 +169,8 @@ describe("WP9 frontend acceptance", () => {
       }) as typeof api.request
       render(<App kernel={{ services: { api } }} />)
       await screen.findByRole("textbox", { name: "Mensagem para mark" })
+      if (!screen.queryByRole("button", { name: "Preview do projeto" }))
+        fireEvent.click(screen.getByRole("button", { name: "Painel do bot" }))
       fireEvent.click(screen.getByRole("button", { name: "Preview do projeto" }))
       fireEvent.click(screen.getByRole("button", { name: "Menu do projeto" }))
       fireEvent.click(screen.getByRole("menuitem", { name: "Conectar projeto" }))
@@ -188,6 +193,8 @@ describe("WP9 frontend acceptance", () => {
     existing.name = "r3-MyApp"
     render(<App kernel={{ services: { api } }} />)
     await screen.findByRole("textbox", { name: "Mensagem para mark" })
+    if (!screen.queryByRole("button", { name: "Preview do projeto" }))
+      fireEvent.click(screen.getByRole("button", { name: "Painel do bot" }))
     fireEvent.click(screen.getByRole("button", { name: "Preview do projeto" }))
     fireEvent.click(screen.getByRole("button", { name: "Menu do projeto" }))
     fireEvent.click(screen.getByRole("menuitem", { name: "Conectar projeto" }))
@@ -209,6 +216,8 @@ describe("WP9 frontend acceptance", () => {
     const existing = (await api.request("GET /projects", {})).projects[0] as Project
     render(<App kernel={{ services: { api } }} />)
     await screen.findByRole("textbox", { name: "Mensagem para mark" })
+    if (!screen.queryByRole("button", { name: "Preview do projeto" }))
+      fireEvent.click(screen.getByRole("button", { name: "Painel do bot" }))
     fireEvent.click(screen.getByRole("button", { name: "Preview do projeto" }))
     fireEvent.click(screen.getByRole("button", { name: "Menu do projeto" }))
     fireEvent.click(screen.getByRole("menuitem", { name: "Conectar projeto" }))
@@ -245,6 +254,8 @@ describe("WP9 frontend acceptance", () => {
       }) as typeof api.request
       render(<App kernel={{ services: { api } }} />)
       await screen.findByRole("textbox", { name: "Mensagem para mark" })
+      if (!screen.queryByRole("button", { name: "Preview do projeto" }))
+        fireEvent.click(screen.getByRole("button", { name: "Painel do bot" }))
       fireEvent.click(screen.getByRole("button", { name: "Preview do projeto" }))
       fireEvent.click(screen.getByRole("button", { name: "Menu do projeto" }))
       fireEvent.click(screen.getByRole("menuitem", { name: "Conectar projeto" }))
@@ -420,17 +431,43 @@ describe("WP9 frontend acceptance", () => {
         route === "GET /bots" ? { bots: [] } : mock.request(route, input, pathValues)) as typeof mock.request,
     }
     render(<App kernel={{ services: { api } }} />)
-    expect(
-      await screen.findByText(
-        "Use bots Codex, Claude Code ou OpenCode nas pastas dos seus projetos, acompanhe as conversas e visualize os aplicativos que eles iniciarem.",
-      ),
-    ).toBeVisible()
+    expect(await screen.findByText("Seus bots trabalham no seu Mac, com as suas contas. Nada sai daqui.")).toBeVisible()
     fireEvent.click(await screen.findByRole("button", { name: /Verificar este Mac/ }))
     expect(await screen.findByRole("dialog", { name: "Diagnóstico" })).toBeVisible()
     fireEvent.keyDown(document, { key: "Escape" })
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Diagnóstico" })).toBeNull())
-    fireEvent.click(screen.getByRole("button", { name: "Importar do app anterior" }))
+    fireEvent.click(screen.getByRole("button", { name: "Importar", exact: true }))
     expect(await screen.findByRole("dialog")).toBeVisible()
+  })
+
+  it("keeps Doctor results off the onboarding landing after closing the diagnostic", async () => {
+    const mock = createMockApi()
+    const checks: DoctorCheck[] = Array.from({ length: 35 }, (_, index) => ({
+      id: `ready-${index}`,
+      status: "pass",
+      ok: true,
+      detail: "Pronto",
+      fix: null,
+    }))
+    checks.push({ id: "memory", status: "warn", ok: false, detail: "0.3 GiB", fix: null })
+    // Old reports without a status still count as failed checks inside the diagnostic.
+    checks.push({ id: "disk", ok: false, detail: "4.3 GiB", fix: null })
+    const api = {
+      ...mock,
+      request: (async (route, input, pathValues) => {
+        if (route === "GET /bots") return { bots: [] }
+        if (route === "GET /doctor") return { checks, running: false, checkedAt: 1234 }
+        return mock.request(route, input, pathValues)
+      }) as typeof mock.request,
+    }
+    const view = render(<App kernel={{ services: { api } }} />)
+    fireEvent.click(await screen.findByRole("button", { name: "Verificar este Mac" }))
+    await screen.findByRole("dialog", { name: "Diagnóstico" })
+    fireEvent.keyDown(document, { key: "Escape" })
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Diagnóstico" })).toBeNull())
+    expect(view.container.querySelector(".onboarding-screen")).not.toHaveTextContent(/Falhas|Avisos|verificações/)
+    expect(view.container.querySelector(".onboarding-screen .status-dot")).toBeNull()
+    expect(screen.getByRole("button", { name: "Verificar este Mac" })).toBeVisible()
   })
 
   it("opens the bot creation dialog from the empty-state landing by button and by Cmd+N", async () => {
@@ -441,11 +478,11 @@ describe("WP9 frontend acceptance", () => {
         route === "GET /bots" ? { bots: [] } : mock.request(route, input, pathValues)) as typeof mock.request,
     }
     render(<App kernel={{ services: { api } }} />)
-    fireEvent.click(await screen.findByRole("button", { name: /Criar primeiro bot/ }))
+    fireEvent.click(await screen.findByRole("button", { name: /Criar meu primeiro bot/ }))
     expect(await screen.findByRole("dialog", { name: "Criar um bot" })).toBeVisible()
     cleanup()
     render(<App kernel={{ services: { api } }} />)
-    await screen.findByRole("button", { name: /Criar primeiro bot/ })
+    await screen.findByRole("button", { name: /Criar meu primeiro bot/ })
     expect(screen.queryByRole("dialog", { name: "Criar um bot" })).toBeNull()
     fireEvent.keyDown(window, { key: "n", metaKey: true })
     expect(await screen.findByRole("dialog", { name: "Criar um bot" })).toBeVisible()
@@ -503,15 +540,15 @@ it("opens the new bot conversation after completing creation from a global scree
   const api = createMockApi()
   render(<App kernel={{ services: { api } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
-  fireEvent.click(screen.getByRole("button", { name: "touri" }))
+  fireEvent.click(screen.getByRole("button", { name: "Avançado", exact: true }))
+  fireEvent.click(screen.getByRole("button", { name: "Integrações", exact: true }))
   fireEvent.click(screen.getByRole("button", { name: "Criar bot" }))
   fireEvent.change(screen.getByLabelText("Nome"), { target: { value: "Clara" } })
-  for (let step = 0; step < 4; step++) {
-    if (step === 2) await screen.findByText("Login disponível para este bot.")
-    fireEvent.click(screen.getByRole("button", { name: "Continuar" }))
-  }
+  await screen.findByText(/Usa o Codex/)
   fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Criar bot" }))
   expect(await screen.findByRole("textbox", { name: "Mensagem para Clara" })).toBeVisible()
+  expect(screen.getByRole("button", { name: "Painel do bot" })).toHaveAttribute("aria-expanded", "false")
+  expect(screen.queryByRole("complementary", { name: "Painel de Clara" })).toBeNull()
   expect(screen.getByRole("button", { name: /^Bots/ })).toHaveAttribute("aria-current", "page")
   expect(api.calls.filter((call) => call.route === "POST /bots")).toHaveLength(1)
 })

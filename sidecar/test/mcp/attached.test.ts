@@ -119,3 +119,44 @@ test("MCP config rejects reserved names, embedded credentials and invalid transp
   ).toThrow()
   expect(() => validateMcpServer({ name: "mail", transport: "stdio", command: "node", args: "--bad" })).toThrow()
 })
+
+test("F025: missing local executables have a stable actionable error after HTTP normalization, including retries", async () => {
+  const f = await fixture()
+  for (let i = 0; i < 2; i++) {
+    const response = await fetch(
+      `http://127.0.0.1:${f.runtime.handshake.port}/api/v1/bots/${f.bot.id}/mcp/qa-command`,
+      {
+        method: "PUT",
+        headers: { Authorization: "Bearer dev-ui-token", "x-touri-client": "r3", "Content-Type": "application/json" },
+        body: JSON.stringify({ transport: "stdio", command: "touri-qa-command-does-not-exist", args: [] }),
+      },
+    )
+    expect(response.status).toBe(400)
+    expect(await response.json()).toMatchObject({
+      code: "TOURI-E1012",
+      errorCode: "MCP_EXECUTABLE_NOT_FOUND",
+      error: expect.stringContaining("executável"),
+    })
+    expect(attachedServers(f.runtime.kernel, f.bot.id)).toEqual([])
+  }
+})
+
+test("F025: unreachable HTTP MCP connections explain what to check", async () => {
+  const f = await fixture()
+  const server = Bun.serve({ port: 0, fetch: () => new Response(null, { status: 503 }) })
+  cleanup.push(async () => {
+    server.stop(true)
+  })
+  const response = await fetch(`http://127.0.0.1:${f.runtime.handshake.port}/api/v1/bots/${f.bot.id}/mcp/unavailable`, {
+    method: "PUT",
+    headers: { Authorization: "Bearer dev-ui-token", "x-touri-client": "r3", "Content-Type": "application/json" },
+    body: JSON.stringify({ transport: "http", url: `http://127.0.0.1:${server.port}/mcp` }),
+  })
+  expect(response.status).toBe(400)
+  expect(await response.json()).toMatchObject({
+    code: "TOURI-E1013",
+    errorCode: "MCP_CONNECTION_FAILED",
+    error: expect.stringContaining("comando, os argumentos ou a URL"),
+  })
+  expect(attachedServers(f.runtime.kernel, f.bot.id)).toEqual([])
+})

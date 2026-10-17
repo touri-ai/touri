@@ -32,15 +32,15 @@ test("state poses preserve bloub identity and readable activity responds to the 
   await page.getByLabel("Estado").selectOption("working-tool")
   await page.clock.runFor(100)
   const mark = page.locator("#probe .activity-mark")
-  await expect(mark.getByRole("status")).toHaveText("Executando no terminal")
+  await expect(mark.getByRole("status")).toHaveText("Trabalhando")
   await expect(mark.locator(".activity-dots i")).toHaveCount(3)
   await expect(mark.locator(".activity-dots i").first()).toHaveCSS("animation-name", "activity-dot")
   await expect(mark.locator("linearGradient")).toHaveCount(0)
   await page.getByLabel("Estado").selectOption("waiting-approval")
-  await expect(mark.getByRole("status")).toHaveText("Aguardando sua aprovação")
+  await expect(mark.getByRole("status")).toHaveText("Aguardando você")
   await expect(mark.locator(".activity-dots")).toHaveCount(0)
   await page.getByLabel("Estado").selectOption("thinking")
-  await expect(mark.getByRole("status")).toHaveText("Pensando…")
+  await expect(mark.getByRole("status")).toHaveText("Pensando")
   await page.screenshot({ path: info.outputPath("mascot-states.png") })
   const audit = await new AxeBuilder({ page }).analyze()
   expect(audit.violations.filter((item) => ["serious", "critical"].includes(item.impact ?? ""))).toEqual([])
@@ -62,7 +62,33 @@ test("reduced motion freezes eyes, body, breathing and dots but retains status t
   expect(await page.evaluate(() => document.getAnimations().length)).toBe(0)
   expect(await avatar.evaluate((node) => getComputedStyle(node).animationName)).toBe("none")
   await page.getByLabel("Estado").selectOption("waiting-approval")
-  await expect(page.locator("#probe .activity-mark")).toHaveText("Aguardando sua aprovação")
+  await expect(page.locator("#probe .activity-mark")).toHaveText("Aguardando você")
   await expect(avatar).toHaveAttribute("data-avatar-expression", "curieux")
   await page.screenshot({ path: info.outputPath("mascot-reduced-motion.png") })
 })
+
+for (const preference of ["system", "host"]) {
+  test(`${preference}: reducing motion live freezes the avatar and preserves its state`, async ({ page }) => {
+    await page.clock.install()
+    await page.goto(fixture)
+    const avatar = page.locator("#probe > div:first-child .tb-avatar")
+    await expect(avatar).toHaveAttribute("data-avatar-animated", "true")
+    if (preference === "system") await page.emulateMedia({ reducedMotion: "reduce" })
+    else
+      await page.evaluate(() => {
+        document.documentElement.dataset.motion = "reduce"
+      })
+    await expect(avatar).toHaveAttribute("data-avatar-animated", "false")
+    const still = await avatar.innerHTML()
+    await page.clock.runFor(2000)
+    expect(await avatar.innerHTML()).toBe(still)
+    await expect(avatar).toHaveAttribute("data-mascot-phase", "thinking")
+    await expect(page.locator("#probe .activity-mark")).toHaveText("Pensando")
+    if (preference === "system") await page.emulateMedia({ reducedMotion: "no-preference" })
+    else
+      await page.evaluate(() => {
+        delete document.documentElement.dataset.motion
+      })
+    await expect(avatar).toHaveAttribute("data-avatar-animated", "true")
+  })
+}

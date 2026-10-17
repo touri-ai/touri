@@ -1,16 +1,5 @@
-import type {
-  Bot,
-  BotGroup,
-  Id,
-  MachineState,
-  Message,
-  Project,
-  Routine,
-  RoutineRun,
-  Run,
-  Thread,
-} from "@touri/contracts"
-import { Fragment, type ReactNode, useContext, useLayoutEffect, useMemo, useRef, useState } from "react"
+import type { Bot, BotGroup, Id, MachineState, Message, Routine, RoutineRun, Run, Thread } from "@touri/contracts"
+import { Fragment, type ReactNode, useContext, useId, useLayoutEffect, useMemo, useRef, useState } from "react"
 import type { UiApi } from "../api/client"
 import type { ApprovalFocus } from "../approvalNavigation"
 import { userFacingRunError } from "../errors"
@@ -26,18 +15,22 @@ import { withApprovalAnswers } from "./activityStatus"
 import { BotAvatar } from "./BotAvatar"
 import { ChatDisclosure } from "./ChatDisclosure"
 import { Composer } from "./Composer"
+import { ConnectDataCard, connectDataMarker } from "./ConnectDataCard"
 import { ConversationStart } from "./ConversationStart"
+import { ErrorDetails, ErrorText } from "./ErrorDetails"
 import { EvidenceContext } from "./EvidenceGallery"
 import { FailureActionContext } from "./FailureActionContext"
-import { GroupHeader } from "./Groups"
+import { GroupConversationStart, GroupHeader } from "./Groups"
 import { MachineServiceButton } from "./MachineServiceButton"
 import { MachineStatus } from "./MachineStatus"
 import { MarkdownContent } from "./MarkdownContent"
+import { MessageAttachments } from "./MessageAttachments"
 import { useInsertedIds } from "./Motion"
 import { mascotSignalFor } from "./mascotState"
 import { ToolCallList } from "./ToolCallList"
 import { ToolText } from "./ToolOutput"
 import { toolStatus } from "./toolPresentation"
+import { type EditMessage, UserMessageEdit } from "./UserMessageEdit"
 
 type ChatPanelProps = {
   group?: BotGroup | null
@@ -49,11 +42,8 @@ type ChatPanelProps = {
   routines?: Array<Routine>
   routineRuns?: Array<RoutineRun>
   onOpenPermissions?: () => void
+  onOpenToolCatalog?: () => void
   onOpenProviderLogin?: () => void
-  onOpenModel?: () => void
-  projects?: Project[]
-  onSelectProject?: (projectId: Id | null) => Promise<void>
-  onAddProject?: () => void
   onOpenComputer?: () => void
   thread: Thread | null
   bot: Bot | null
@@ -79,6 +69,8 @@ type VirtualMessageListProps = {
   runs?: Array<Run>
   onSwitchBranch: (message: Message, siblings: Array<Message>, index: number) => void
   onRetry: (runId: Id) => Promise<void>
+  onEdit?: EditMessage | undefined
+  editDisabled?: boolean
   header?: ReactNode
   allMessages?: Array<Message>
   timelineCards?: Array<{ id: string; createdAt: number; content: ReactNode }>
@@ -124,6 +116,8 @@ export const VirtualMessageList = ({
   allMessages = messages,
   onSwitchBranch,
   onRetry,
+  onEdit,
+  editDisabled = false,
   header,
   timelineCards = [],
 }: VirtualMessageListProps) => {
@@ -295,7 +289,11 @@ export const VirtualMessageList = ({
               if (isResumeMarker(saved))
                 return (
                   <p key={saved.id} className="run-resumed-marker" role="note" data-message-id={saved.id}>
-                    <span>{saved.text}</span>
+                    <span>
+                      {saved.text === "Retomado após aprovação de acesso"
+                        ? t("Retomado após aprovação de acesso")
+                        : saved.text}
+                    </span>
                   </p>
                 )
               const run = runs.find((run) => run.id === saved.runId)
@@ -323,6 +321,7 @@ export const VirtualMessageList = ({
                   : saved
               const siblings = allMessages.filter(
                 (candidate) =>
+                  candidate.threadId === message.threadId &&
                   candidate.parentId === message.parentId &&
                   candidate.role === message.role &&
                   candidate.kind !== "notice",
@@ -362,6 +361,8 @@ export const VirtualMessageList = ({
                     branchIndex={branchIndex}
                     onSwitchBranch={onSwitchBranch}
                     onRetry={onRetry}
+                    onEdit={onEdit}
+                    editDisabled={editDisabled}
                   />
                 </Fragment>
               )
@@ -446,6 +447,8 @@ const MessageBubble = ({
   branchIndex,
   onSwitchBranch,
   onRetry,
+  onEdit,
+  editDisabled,
 }: {
   inserted: boolean
   vmBotId?: string | undefined
@@ -458,6 +461,8 @@ const MessageBubble = ({
   branchIndex: number
   onSwitchBranch: (message: Message, siblings: Array<Message>, index: number) => void
   onRetry: (runId: Id) => Promise<void>
+  onEdit?: EditMessage | undefined
+  editDisabled: boolean
 }) => {
   const runtimeState = useMessageMascotState(message, run)
   const threadBot = useThreadBot(message.threadId)
@@ -485,8 +490,11 @@ const MessageBubble = ({
     !parts.some((part) => part.type === "approval" && part.decision === "pending")
       ? mascotSignalFor({ botId: run?.botId ?? "", runs: run ? [run] : [], messages: [{ ...message, parts }] }).state
       : runtimeState
-  const reasoning = message.parts.filter((part) => part.type === "reasoning")
-  const text = messageMarkdown(message)
+  const reasoning = message.parts.filter((part) => part.type === "reasoning" && part.text.trim())
+  const reasoningId = useId()
+  const [reasoningExpanded, setReasoningExpanded] = useState(false)
+  const markdown = messageMarkdown(message)
+  const text = message.role === "assistant" ? markdown.replace(connectDataMarker, "") : markdown
   const longContent =
     message.role === "assistant" &&
     message.status !== "streaming" &&
@@ -512,7 +520,7 @@ const MessageBubble = ({
       <time className="message-error-meta" dateTime={new Date(failedAt).toISOString()}>
         {failureTime}
       </time>
-      <small className="message-error-code">{runError.code}</small>
+      <ErrorDetails code={runError.code} />
       {(vmBotId || runError.specificHint) && <p>{runError.hint}</p>}
       {failureAction && failureAction.kind !== "machine_service" && (
         <button type="button" className="text-button" onClick={() => onFailureAction(failureAction)}>
@@ -540,7 +548,20 @@ const MessageBubble = ({
       data-motion-insert={inserted}
     >
       <div className="message-meta">
-        {message.role === "assistant" && message.sender && bot && <BotAvatar bot={bot} size={22} state={mascotState} />}
+        {message.role === "assistant" &&
+          message.sender &&
+          (senderBot ? (
+            <BotAvatar bot={senderBot} size={22} state={mascotState} />
+          ) : (
+            <span role="img" aria-label={t("Membro excluído: {name}", { name: message.sender.name })}>
+              <BotAvatar
+                bot={{ id: message.sender.id, color: "#6b7280", avatarShape: "cercle" }}
+                size={22}
+                state="idle"
+                still
+              />
+            </span>
+          ))}
         <span className="message-role">
           {message.role === "user"
             ? t("Você")
@@ -563,8 +584,17 @@ const MessageBubble = ({
         )}
       </div>
       {reasoning.length > 0 && (
-        <ChatDisclosure className="chat-reasoning" label="Raciocínio">
-          <MarkdownContent content={reasoning.map((part) => (part.type === "reasoning" ? part.text : "")).join("")} />
+        <ChatDisclosure
+          key={message.status === "streaming" ? "live" : "saved"}
+          id={reasoningId}
+          className="chat-reasoning"
+          label="Raciocínio"
+          expanded={message.status === "streaming" ? reasoningExpanded : undefined}
+          onExpandedChange={setReasoningExpanded}
+        >
+          <MarkdownContent
+            content={reasoning.map((part) => (part.type === "reasoning" ? part.text : "")).join("\n\n")}
+          />
         </ChatDisclosure>
       )}
       {text &&
@@ -585,6 +615,14 @@ const MessageBubble = ({
             evidence={message.role === "assistant" ? evidence : undefined}
           />
         ))}
+      <MessageAttachments parts={parts.filter((part) => part.type === "image" || part.type === "file")} api={api} />
+      {message.role === "user" && onEdit && (
+        <UserMessageEdit
+          message={message}
+          onEdit={onEdit}
+          disabled={editDisabled || message.delivery?.status === "queued" || message.delivery?.status === "sent"}
+        />
+      )}
       <ToolCallList
         parts={parts}
         api={api}
@@ -598,6 +636,9 @@ const MessageBubble = ({
           bot={bot}
           threadId={message.threadId}
           parts={parts}
+          reasoningId={reasoningId}
+          reasoningExpanded={reasoningExpanded}
+          onExpandReasoning={() => setReasoningExpanded(true)}
           onFocusApproval={(approvalId) => {
             const card = Array.from(root.current?.querySelectorAll<HTMLElement>("[data-approval-id]") ?? []).find(
               (element) => element.dataset.approvalId === approvalId,
@@ -607,7 +648,11 @@ const MessageBubble = ({
           }}
         />
       )}
-      {parts.some(screenTool) && <InlineLivePreview parts={parts} finished={message.status !== "streaming"} />}
+      {parts.some(screenTool) && (
+        <ChatDisclosure label={t("Advanced computer view")}>
+          <InlineLivePreview parts={parts} finished={message.status !== "streaming"} />
+        </ChatDisclosure>
+      )}
       {siblings.length > 1 && (
         <fieldset className="branch-switcher">
           <legend className="visually-hidden">{t("Message branches")}</legend>
@@ -640,8 +685,8 @@ const MessageBubble = ({
             aria-expanded={failureExpanded}
             onClick={() => setFailureExpanded((expanded) => !expanded)}
           >
-            {runError.title} · {failureTime} · <small>{runError.code}</small> · houve uma resposta depois ·{" "}
-            {failureExpanded ? "Ocultar" : "Ver detalhes"}
+            {runError.title} · {failureTime} · {t("A reply followed this error")} ·{" "}
+            {failureExpanded ? t("Hide error") : t("View error")}
           </button>
           {failureExpanded && failureContent}
         </div>
@@ -673,11 +718,8 @@ export const ChatPanel = ({
   onComputerGrant,
   onOpenTools,
   onOpenPermissions,
+  onOpenToolCatalog,
   onOpenProviderLogin,
-  onOpenModel,
-  projects,
-  onSelectProject,
-  onAddProject,
   onOpenComputer,
   routines = [],
   routineRuns = [],
@@ -686,6 +728,7 @@ export const ChatPanel = ({
   const [draft, setDraft] = useState("")
   const mascotSnapshot = useMascotSnapshot({ id: bot?.id ?? "", color: bot?.color ?? null }, thread?.id)
   const composerRef = useRef<HTMLTextAreaElement>(null)
+  const attachmentButtonRef = useRef<HTMLButtonElement>(null)
   const activeRun = useMemo(
     () =>
       runs.find(
@@ -726,7 +769,8 @@ export const ChatPanel = ({
               <button
                 type="button"
                 className="toolbar-icon bot-panel-toggle"
-                aria-label="Painel do bot"
+                aria-label={t("Bot panel")}
+                title={t("Bot advanced")}
                 aria-expanded={panelOpen}
                 aria-controls="bot-panel"
                 onClick={onTogglePanel}
@@ -745,7 +789,7 @@ export const ChatPanel = ({
     )
 
   const visibleMessages = group
-    ? messages.filter((m) => m.threadId === thread.id)
+    ? messages.filter((message) => message.threadId === thread.id)
     : activeMessagePath(
         messages.filter((message) => message.threadId === thread.id),
         thread.activeLeafId,
@@ -760,6 +804,16 @@ export const ChatPanel = ({
       visibleMessages.push(message)
   }
   const latestReply = [...visibleMessages].reverse().find((message) => message.role === "assistant")
+  const connectDataReply =
+    !group &&
+    bot &&
+    !activeRun &&
+    latestReply?.status === "complete" &&
+    [...visibleMessages].reverse().find((message) => message.role === "user" || message.role === "assistant") ===
+      latestReply &&
+    connectDataMarker.test(messageMarkdown(latestReply))
+      ? latestReply
+      : null
   const activityState =
     mascotSnapshot.state === "idle"
       ? mascotSignalFor({
@@ -788,7 +842,13 @@ export const ChatPanel = ({
   return (
     <section className="chat-panel">
       {group ? (
-        <GroupHeader group={group} bots={groupMembers} onEdit={onEditGroup} />
+        <GroupHeader
+          group={group}
+          bots={groupMembers}
+          onEdit={onEditGroup}
+          panelOpen={panelOpen}
+          onTogglePanel={onTogglePanel}
+        />
       ) : (
         <header className="chat-header" data-tauri-drag-region>
           <span className="chat-header-crumb">Bots / {bot?.name ?? "touri"}</span>
@@ -806,7 +866,8 @@ export const ChatPanel = ({
               <button
                 type="button"
                 className="toolbar-icon bot-panel-toggle"
-                aria-label="Painel do bot"
+                aria-label={t("Bot panel")}
+                title={t("Bot advanced")}
                 aria-expanded={panelOpen}
                 aria-controls="bot-panel"
                 onClick={onTogglePanel}
@@ -814,45 +875,21 @@ export const ChatPanel = ({
                 ◧
               </button>
             )}
-            <button type="button" className="model-pill" onClick={() => onOpenTools("preview")}>
-              <span>{bot?.provider ?? "codex"}</span>
-              <span className="model-sep" aria-hidden="true">
-                ·
-              </span>
-              <span className="model-name">{bot?.model ?? "padrão"}</span>
-              <span className="toolbar-chevron">⌄</span>
-            </button>
-            <button
-              type="button"
-              className="toolbar-icon"
-              onClick={() => onOpenTools("preview")}
-              aria-label="Preview do projeto"
-            >
-              <svg
-                width="18"
-                height="18"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                aria-hidden="true"
-              >
-                <rect x="3" y="4" width="18" height="13" rx="2" />
-                <path d="M8 21h8M12 17v4" />
-              </svg>
-            </button>
           </div>
         </header>
       )}
-      {!group && bot?.machine === "vm" && machine && (
+      {!group && bot?.machine === "vm" && machine && (activeRun || machine.status === "starting") && (
         <MachineStatus
           key={bot.id}
           machine={machine}
           api={api}
           turnFailed={!activeRun && latestReply?.status === "failed"}
+          activeTurns={runs.some(
+            (run) => run.botId === bot.id && ["queued", "starting", "running"].includes(run.status),
+          )}
         />
       )}
-      {computerGrant && computerGrant.threadId === thread.id && (
+      {computerGrant && computerGrant.threadId === thread.id && activeRun?.botId === computerGrant.botId && (
         <ComputerGrantCard
           api={api}
           botId={computerGrant.botId}
@@ -884,18 +921,40 @@ export const ChatPanel = ({
             if (next) void onSwitchBranch(thread.id, next.id)
           }}
           onRetry={onRetry}
+          // Group replies use a flat history, so sibling edits cannot be selected there.
+          onEdit={group ? undefined : onSend}
+          editDisabled={Boolean(activeRun)}
           header={
             visibleMessages.length === 0 && !activeRun && visibleRuns.length === 0 ? (
-              <ConversationStart
-                bot={bot}
-                onChoose={(prompt) => {
-                  setDraft(prompt)
-                  composerRef.current?.focus()
-                }}
-              />
+              group ? (
+                <GroupConversationStart group={group} bots={groupMembers} />
+              ) : (
+                <ConversationStart
+                  bot={bot}
+                  onChoose={(prompt) => {
+                    setDraft(prompt)
+                    composerRef.current?.focus()
+                  }}
+                />
+              )
             ) : null
           }
           timelineCards={[
+            ...(connectDataReply && onOpenToolCatalog
+              ? [
+                  {
+                    id: `connect-data-${connectDataReply.id}`,
+                    createdAt: connectDataReply.createdAt + 1,
+                    content: (
+                      <ConnectDataCard
+                        onAttach={() => attachmentButtonRef.current?.click()}
+                        onFolder={bot?.machine === "cloud" ? undefined : onOpenPermissions}
+                        onCatalog={onOpenToolCatalog}
+                      />
+                    ),
+                  },
+                ]
+              : []),
             ...(awaitingReply
               ? [
                   {
@@ -904,7 +963,7 @@ export const ChatPanel = ({
                     content: (
                       <article className="message-bubble message-assistant" data-pending-run={activeRun.id}>
                         <div className="message-meta">
-                          <span className="message-role">touri</span>
+                          <span className="message-role">{bot?.name ?? "touri"}</span>
                         </div>
                         <ActivityMark state={activityState} bot={bot ?? undefined} threadId={thread.id} />
                       </article>
@@ -957,14 +1016,11 @@ export const ChatPanel = ({
         draft={draft}
         onDraft={setDraft}
         inputRef={composerRef}
+        attachmentButtonRef={attachmentButtonRef}
         activeRun={activeRun}
         queuedCount={visibleMessages.filter((message) => message.delivery?.status === "queued").length}
         onSend={onSend}
         onCancel={onCancel}
-        onOpenModel={group ? undefined : onOpenModel}
-        projects={projects}
-        onSelectProject={onSelectProject}
-        onAddProject={onAddProject}
         onOpenPermissions={group ? undefined : onOpenPermissions}
         onOpenProviderLogin={group ? undefined : onOpenProviderLogin}
       />
@@ -1042,7 +1098,9 @@ const RunCard = ({
           minute: "2-digit",
         })}
       </time>
-      <p>{summary}</p>
+      <div className="run-card-summary">
+        <ErrorText text={summary} />
+      </div>
     </article>
   )
 }

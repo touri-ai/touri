@@ -2,27 +2,33 @@ import { randomBytes } from "node:crypto"
 import { closeSync, fstatSync, readSync } from "node:fs"
 import { readdir, realpath } from "node:fs/promises"
 import { basename, resolve } from "node:path"
-import type { Bot, Kernel, RouteModule, VmRuntime, WorkspaceFile } from "@touri/contracts"
+import type { Kernel, RouteModule, VmRuntime, WorkspaceFile } from "@touri/contracts"
 
 import { openWorkspaceDirectory, openWorkspaceEntry } from "../kernel/files"
 import { evidenceImageRoute } from "./evidence-images"
 import { cancelGuestShell, guestShell } from "./guest-shell"
+import {
+  checkGuestFileError,
+  guestFileErrors,
+  WorkspacePathError,
+  workspaceError,
+  workspacePath,
+} from "./workspace-path"
 
 const MAX_BYTES = 524_288
 const validPath = (path: string) =>
   path.length < 4096 &&
-  !path.startsWith("/") &&
   !path.includes("\\") &&
   !path.includes("\0") &&
   path.split("/").every((part) => part === "" || (!part.startsWith(".") && part !== ".."))
 const mimeFor = (name: string) => Bun.file(name).type || "application/octet-stream"
 
 // The guest reads as its regular user. Paths are arguments, never shell interpolation.
-const guestFiles = `import os,sys,json,base64,mimetypes,stat
+const guestFiles = guestFileErrors(`import os,sys,json,base64,mimetypes,stat
 path=sys.argv[2]
 parts=[p for p in path.split('/') if p]
 if any(p.startswith('.') for p in parts): raise Exception('Caminho inválido')
-fd=os.open('/workspace',os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+fd=os.open(sys.argv[3],os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
 try:
  for part in (parts if sys.argv[1]=='list' else parts[:-1]):
   child=os.open(part,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=fd)
@@ -43,16 +49,16 @@ try:
    data=f.read(524289)
   if len(data)>524288: raise Exception('Arquivo acima de 512 KiB')
   print(json.dumps(dict(name=parts[-1],mime=mimetypes.guess_type(parts[-1])[0] or 'application/octet-stream',base64=base64.b64encode(data).decode())))
-finally: os.close(fd)`
+finally: os.close(fd)`)
 
-const localFiles = async (bot: Bot, path: string, content: boolean, rootPath: string) => {
+const localFiles = async (path: string, content: boolean, rootPath: string) => {
   const parts = path.split("/").filter(Boolean)
   const name = content ? parts.pop() : undefined
-  const directory = openWorkspaceDirectory({ root: rootPath || bot.homeDir, path: parts.join("/") })
+  const directory = openWorkspaceDirectory({ root: "/", path: [rootPath.slice(1), ...parts].filter(Boolean).join("/") })
   // Listing names may race with a rename; only entries opened under the pinned fd are returned.
   try {
     if (!content) {
-      const entries = await readdir(resolve(await realpath(rootPath || bot.homeDir), path), { withFileTypes: true })
+      const entries = await readdir(resolve(await realpath(rootPath), path), { withFileTypes: true })
       const files: WorkspaceFile[] = []
       for (const entry of entries.sort(
         (a, b) => Number(b.isDirectory()) - Number(a.isDirectory()) || a.name.localeCompare(b.name),
@@ -130,16 +136,16 @@ export const botWorkspaceRoutes = (kernel: Kernel, vm: VmRuntime): RouteModule["
       handler: async ({ params, query }) => {
         const bot = kernel.services.use("store.api")?.getBot({ botId: params.id ?? "" })
         if (!bot || bot.archivedAt) return { status: 404, json: { error: "Bot não encontrado" } }
-        const path = query.path ?? ""
-        if (!validPath(path) || (content && !path)) return { status: 400, json: { error: "Caminho inválido" } }
         try {
-          if (bot.machine !== "vm") {
-            const project = bot.projectId
-              ? ((kernel.db as import("bun:sqlite").Database)
-                  .query("SELECT path FROM projects WHERE id = ? AND archived_at IS NULL")
-                  .get(bot.projectId) as { path: string } | null)
-              : null
-            return { status: 200, json: await localFiles(bot, path, content, project?.path ?? bot.cwd ?? bot.homeDir) }
+          const input = query.path ?? ""
+          if (input.split("/").includes(".") || (content && !input)) throw new WorkspacePathError(400)
+          const { root, path } = workspacePath(kernel, bot, input)
+          if (!validPath(path) || (content && !path)) throw new WorkspacePathError(400)
+          if (bot.machine !== "vm" && bot.machine !== "cloud") {
+            const result = await localFiles(path, content, root)
+            if (input.startsWith("/") && "files" in result)
+              result.files = result.files.map((entry) => ({ ...entry, path: resolve(root, entry.path) }))
+            return { status: 200, json: result }
           }
           if (!vm.states().some((state) => state.botId === bot.id && state.status === "running"))
             return {
@@ -155,19 +161,20 @@ export const botWorkspaceRoutes = (kernel: Kernel, vm: VmRuntime): RouteModule["
             const result = await vm.exec({
               botId: bot.id,
               command: "python3",
-              args: ["-c", guestFiles, content ? "read" : "list", path],
+              args: ["-c", guestFiles, content ? "read" : "list", path, root],
               signal,
             })
             if (!result.success) throw new Error(result.error)
-            return { status: 200, json: JSON.parse(result.stdout) as unknown }
+            checkGuestFileError(result.stdout)
+            const response = JSON.parse(result.stdout) as { files?: WorkspaceFile[] }
+            if (input.startsWith("/") && response.files)
+              response.files = response.files.map((entry) => ({ ...entry, path: resolve(root, entry.path) }))
+            return { status: 200, json: response }
           } finally {
             await release()
           }
         } catch (error) {
-          return {
-            status: 422,
-            json: { error: kernel.redact(error instanceof Error ? error.message : "Arquivos indisponíveis") },
-          }
+          return workspaceError(error)
         }
       },
     })),

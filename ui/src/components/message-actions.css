@@ -1,0 +1,49 @@
+.message-attachments ul {
+  display: grid;
+  gap: 8px;
+  padding: 0;
+  list-style: none;
+}
+.message-attachments li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 8px 12px;
+}
+.message-attachments li > span {
+  overflow-wrap: anywhere;
+}
+.message-attachments button {
+  flex-shrink: 0;
+}
+.user-message-actions {
+  margin-top: 8px;
+}
+.user-message-editor {
+  display: grid;
+  gap: 10px;
+  min-width: min(300px, 100%);
+}
+.user-message-editor p {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.user-message-editor textarea {
+  width: 100%;
+  resize: vertical;
+  padding: 10px;
+  color: var(--text-primary);
+  background: var(--surface-panel);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  font: inherit;
+}
+.user-message-editor > div {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}

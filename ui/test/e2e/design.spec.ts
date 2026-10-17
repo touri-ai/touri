@@ -1,5 +1,6 @@
 import AxeBuilder from "@axe-core/playwright"
 import { expect, test } from "@playwright/test"
+import { showBotRoutines } from "./home-navigation"
 
 const capture = process.env.DESIGN_CAPTURE
 test.use({ viewport: { width: 1440, height: 1000 }, reducedMotion: "reduce" })
@@ -16,10 +17,12 @@ test("design: stable workspace captures", async ({ page }) => {
     await page.getByRole("button", { name: /^Bots/ }).click()
     await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
     if (capture) await page.screenshot({ path: `../docs/qa/design/${capture}-chat-${theme}.png` })
-    await page.getByRole("button", { name: "touri", exact: true }).click()
-    await expect(page.getByRole("heading", { name: "Cron", exact: true })).toBeVisible()
+    await showBotRoutines(page)
+    await expect(page.getByRole("heading", { name: "Rotinas", exact: true })).toBeVisible()
     if (capture) await page.screenshot({ path: `../docs/qa/design/${capture}-cron-${theme}.png` })
     await page.getByRole("button", { name: /^Bots/ }).click()
+    if (!(await page.getByRole("button", { name: "Preview do projeto" }).isVisible()))
+      await page.getByRole("button", { name: "Painel do bot", exact: true }).click()
     await page.getByRole("button", { name: "Preview do projeto" }).click()
     await expect(page.getByRole("button", { name: "Voltar ao chat" })).toBeVisible()
     if (capture) await page.screenshot({ path: `../docs/qa/design/${capture}-preview-${theme}.png` })
@@ -37,9 +40,11 @@ for (const theme of ["dark", "light"]) {
       document.documentElement.dataset.theme = value
     }, theme)
     for (const screen of ["chat", "cron", "preview"]) {
-      if (screen === "cron") await page.getByRole("button", { name: "touri", exact: true }).click()
+      if (screen === "cron") await showBotRoutines(page)
       if (screen === "preview") {
         await page.getByRole("button", { name: /^Bots/ }).click()
+        if (!(await page.getByRole("button", { name: "Preview do projeto" }).isVisible()))
+          await page.getByRole("button", { name: "Painel do bot", exact: true }).click()
         await page.getByRole("button", { name: "Preview do projeto" }).click()
       }
       const results = await new AxeBuilder({ page }).analyze()

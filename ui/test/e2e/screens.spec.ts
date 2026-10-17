@@ -1,6 +1,7 @@
 import { mkdir } from "node:fs/promises"
 import { resolve } from "node:path"
 import { expect, test } from "@playwright/test"
+import { openGlobalPage, showBotPanel, showBotRoutines } from "./home-navigation"
 
 const phase = process.env.R8_PHASE ?? "after"
 const qa = resolve(import.meta.dirname, "../../../docs/qa/r8/screens")
@@ -33,8 +34,8 @@ for (const theme of ["light", "dark"] as const) {
           animations: "disabled",
         })
       }
-      await page.getByRole("button", { name: "touri", exact: true }).click()
-      await expect(page.getByRole("heading", { name: "Cron", exact: true })).toBeVisible()
+      await showBotRoutines(page)
+      await expect(page.getByRole("heading", { name: "Rotinas", exact: true })).toBeVisible()
       await shot("cron")
       if (phase === "after") {
         await expect(page.getByRole("button", { name: "Rodar agora Resumo da manhã" })).toHaveText("Rodar agora")
@@ -48,10 +49,10 @@ for (const theme of ["light", "dark"] as const) {
           })
         }
       }
-      await page.getByRole("button", { name: /Integrações/ }).click()
+      await openGlobalPage(page, "Integrações")
       await expect(page.getByRole("heading", { name: "Integrações", exact: true })).toBeVisible()
       await shot("integrations")
-      await page.getByRole("navigation", { name: "touri", exact: true }).getByRole("button", { name: /MCP/ }).click()
+      await openGlobalPage(page, "MCP")
       await expect(page.getByText("gateway local", { exact: false }).first()).toBeVisible()
       await shot("mcp")
       if (phase === "after") {
@@ -60,7 +61,9 @@ for (const theme of ["light", "dark"] as const) {
         await expect(page.getByRole("combobox", { name: "Política · write_file" })).toHaveValue("blocked")
       }
       await page.getByRole("button", { name: /^Bots/ }).click()
-      if (width === 1100) await page.getByRole("button", { name: "Fechar painel do bot" }).click()
+      if (await page.getByRole("button", { name: "Fechar painel do bot" }).isVisible())
+        await page.getByRole("button", { name: "Fechar painel do bot" }).click()
+      await showBotPanel(page)
       await page.getByRole("button", { name: "Preview do projeto" }).click()
       await shot("preview")
       await page.getByRole("button", { name: "Subir tudo", exact: true }).click()
@@ -108,17 +111,13 @@ for (const theme of ["light", "dark"] as const) {
       await page.goto(`/test/e2e/screens-harness.html?scenario=${scenario}`, { waitUntil: "domcontentloaded" })
       await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
       if (view === "logs") {
+        await showBotPanel(page)
         await page.getByRole("button", { name: "Preview do projeto" }).click()
         await page.getByRole("tab", { name: "Logs", exact: true }).click()
         await page.locator(".preview-process-row").first().click()
       } else {
-        await page.getByRole("button", { name: "touri", exact: true }).click()
-        if (view === "mcp")
-          await page
-            .getByRole("navigation", { name: "touri", exact: true })
-            .getByRole("button", { name: /MCP/ })
-            .click()
-        else await page.getByRole("button", { name: /Integrações/ }).click()
+        if (view === "mcp") await openGlobalPage(page, "MCP")
+        else await openGlobalPage(page, "Integrações")
       }
       await page.evaluate(() => document.fonts.ready)
     }

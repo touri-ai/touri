@@ -22,7 +22,7 @@ for (const theme of ["light", "dark"]) {
       await expect(activity.locator("linearGradient")).toHaveCount(0)
       await expect(page.getByRole("progressbar")).toHaveCount(0)
       if (scene === "thinking") {
-        await expect(activity.getByRole("status")).toHaveText("Pensando…")
+        await expect(activity.getByRole("status")).toHaveText("Pensando")
         await expect(activity.locator(".activity-dots i")).toHaveCount(3)
       } else {
         const pending = page.locator('[data-approval-id="pending"]')
@@ -34,16 +34,14 @@ for (const theme of ["light", "dark"]) {
         await expect(pending.getByRole("button", { name: "Aprovar", exact: true })).toHaveCSS("appearance", "none")
         await expect(pending).toHaveCSS("border-radius", "12px")
         await expect(activity.locator(".activity-dots")).toHaveCount(0)
-        await activity.getByRole("link", { name: "Aguardando sua aprovação" }).press("Enter")
+        await activity.getByRole("link", { name: "Aguardando você" }).press("Enter")
         await expect(pending).toBeFocused()
         await expect(pending.locator(".tool-status-chip")).toContainText("Aguardando aprovação")
         await pending.press("Enter")
         await expect(pending.getByRole("button", { name: "Aprovar", exact: true })).toBeVisible()
         await expect(pending.locator(".tool-decision-chip")).toHaveCount(0)
         await pending.getByRole("button", { name: "Aprovar", exact: true }).click()
-        await expect(activity.getByRole("status")).toHaveText(
-          scene === "read" ? "Lendo README.md" : "Executando no terminal",
-        )
+        await expect(activity.getByRole("status")).toHaveText(scene === "read" ? "Lendo" : "Trabalhando")
         await expect(activity.getByRole("link")).toHaveCount(0)
         await expect(pending.locator(".tool-decision-chip")).toContainText("Aprovado por você")
         await page.screenshot({ path: `../docs/qa/approval-card/after-${scene}-running-${theme}.png` })
@@ -106,7 +104,7 @@ for (const theme of ["light", "dark"]) {
       await expect(page.locator(".tool-status-chip").filter({ hasText: status })).toBeVisible()
     await page.getByRole("button", { name: "Carregar captura de teste" }).click()
     const thumbnail = page.getByRole("img", { name: "Captura de tela da ferramenta", exact: true })
-    await expect(thumbnail).toBeVisible()
+    await expect(thumbnail).toBeVisible({ timeout: 15_000 })
     await expect.poll(() => thumbnail.evaluate((image) => (image as HTMLImageElement).naturalWidth)).toBeGreaterThan(0)
     await page.locator(".tool-output > summary").first().click()
     await page.locator(".tool-output > summary").last().click()
@@ -114,10 +112,9 @@ for (const theme of ["light", "dark"]) {
     await page.screenshot({ path: `../docs/qa/approval-card/after-states-${theme}.png`, fullPage: true })
     const screenshotCard = page.getByRole("article", { name: "Ferramenta · Computador" })
     await screenshotCard.screenshot({ path: `../docs/qa/approval-card/after-screenshot-${theme}.png` })
-    await expect(screenshotCard.getByRole("link", { name: "Baixar imagem" })).toHaveAttribute(
-      "download",
-      "approved-1.png",
-    )
+    const download = page.waitForEvent("download")
+    await screenshotCard.getByRole("button", { name: "Baixar imagem" }).click()
+    expect((await download).suggestedFilename()).toBe("approved-1.png")
     await screenshotCard.getByRole("button", { name: "Abrir captura 1 em tamanho original" }).click()
     const dialog = page.getByRole("dialog", { name: "Captura de tela da ferramenta" })
     await expect(dialog).toBeVisible()

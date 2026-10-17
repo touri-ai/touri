@@ -8,6 +8,7 @@ export const markdownSummary = (source: string): string => {
   const references = new Set<string>()
   let text = source
     .replace(/\r\n?/g, "\n")
+    .replace(/(?:^|\n)<!-- touri:connect-data -->\s*$/, "")
     .replace(/^ {0,3}(`{3,})[^\n]*\n([\s\S]*?)(?:^ {0,3}\1`*[ \t]*$|(?![\s\S]))/gm, (_match, _fence, code: string) =>
       protect(code),
     )

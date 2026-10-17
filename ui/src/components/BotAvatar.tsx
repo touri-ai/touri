@@ -14,10 +14,11 @@ import {
   createAvatarEngine,
 } from "@touri/contracts/avatar"
 import { type CSSProperties, useEffect, useId, useRef, useState } from "react"
+import { t } from "../i18n"
 import { useAvatarMood, useMascotSnapshot } from "./AvatarRuntime"
 import { AvatarGaze, AvatarPlayback, attachAvatarGaze } from "./avatarMotion"
 import { MascotChoreography } from "./mascotMotion"
-import { type MascotState, mascotLabel, mascotMoodFor } from "./mascotState"
+import { type MascotState, mascotLabelFor, mascotMoodFor, mascotPhaseFor } from "./mascotState"
 import { useReducedMotion } from "./useReducedMotion"
 
 export type { AvatarShape } from "@touri/contracts"
@@ -163,6 +164,7 @@ export const BotAvatar = ({
     let frameId = 0
     let visible = true
     const tick = (now: number): void => {
+      if (!element.isConnected) return
       frameId = requestAnimationFrame(tick)
       if (player && animated && player.advance(now, tracker?.sample, gesture)) paintBody()
     }
@@ -228,7 +230,8 @@ export const BotAvatar = ({
       data-avatar-shape={profile.shape}
       data-avatar-mood={mood}
       data-mascot-state={state}
-      title={mascotLabel[state]}
+      data-mascot-phase={mascotPhaseFor(state)}
+      title={mascotLabelFor(state)}
       data-avatar-animated={animated}
       data-avatar-expression={expression}
       data-bot-id={bot.id}
@@ -257,7 +260,7 @@ export const BotAvatar = ({
         </svg>
       )}
       {Boolean(unread) && (
-        <span className="tb-bang" title="Não lidas" aria-hidden="true">
+        <span className="tb-bang" title={t("Avatar unread")} aria-hidden="true">
           {typeof unread === "number" ? unread : 1}
         </span>
       )}

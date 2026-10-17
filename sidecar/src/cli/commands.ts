@@ -3,10 +3,14 @@ import { join } from "node:path"
 import { runLegacyImportInto } from "../importer/legacy/cli"
 import { atomicWriteFile, ensurePrivateDirectory } from "../kernel/files"
 import { createAppPaths } from "../kernel/paths"
+import { providerProfileDir, providerProfileVariables } from "../kernel/provider-profiles"
+import { buildChildEnv } from "../kernel/shell-env"
 import { runMcpStdio } from "../main"
+import { listProviderProfiles } from "../runtime/provider-profiles"
+import { resolveExecutable } from "../runtime/utils"
 import type { CliCommand } from "./args"
 import { usageText } from "./args"
-import { type AuthStore, openAuthStore } from "./auth/store"
+import { type AuthStore, isDatabaseBusy, openAuthStore } from "./auth/store"
 import { runDoctor } from "./doctor"
 import { authDbName, runServeCommand } from "./serve"
 import { isProcessAlive, readServeInfo } from "./serveInfo"
@@ -144,6 +148,46 @@ const runImport = async (command: Extract<CliCommand, { name: "import-legacy" }>
   return 0
 }
 
+const runProfileList = async (command: Extract<CliCommand, { name: "profile-list" }>): Promise<number> => {
+  const profiles = await listProviderProfiles({ appData: command.dataDir, env: buildChildEnv() })
+  if (profiles.length === 0) out("No provider profiles. Create one with `touri profile login <name>`.")
+  for (const profile of profiles)
+    out(
+      `${profile.name}  ${profile.provider}  ${profile.loggedIn ? (profile.account ?? "signed in") : "not signed in"}`,
+    )
+  return 0
+}
+
+/** Runs the provider's own interactive login with the profile as its CLI home. touri never sees the credential. */
+const runProfileLogin = async (command: Extract<CliCommand, { name: "profile-login" }>): Promise<number> => {
+  const variables = providerProfileVariables({
+    appData: command.dataDir,
+    profile: command.profile,
+    provider: command.provider,
+  })
+  const dir = providerProfileDir({ appData: command.dataDir, profile: command.profile, provider: command.provider })
+  ensurePrivateDirectory({ root: command.dataDir, path: dir })
+  const env = buildChildEnv({ overrides: variables })
+  const binary =
+    command.provider === "claude"
+      ? (process.env.TOURI_CLAUDE_BIN ?? "claude")
+      : (process.env.TOURI_CODEX_BIN ?? "codex")
+  const resolved = resolveExecutable({ command: binary, env })
+  if (!resolved.success) return fail(`${binary} not found on PATH`)
+  const args = command.provider === "claude" ? ["auth", "login"] : ["login", "--device-auth"]
+  const child = Bun.spawn({
+    cmd: [resolved.path, ...args],
+    env,
+    stdin: "inherit",
+    stdout: "inherit",
+    stderr: "inherit",
+  })
+  const code = await child.exited
+  if (code !== 0) return fail(`Login exited with ${code}`)
+  out(`Profile ${command.profile} is ready. Choose it in the bot settings under Conta do provedor.`)
+  return 0
+}
+
 const runMcp = async (command: Extract<CliCommand, { name: "mcp-stdio" }>): Promise<number> => {
   await runMcpStdio({ threadId: command.threadId, appData: command.dataDir })
   return Number(process.exitCode ?? 0)
@@ -163,11 +207,20 @@ export const runCommandLine = async (command: CliCommand): Promise<number> => {
     await runServeCommand(command.options)
     return -1
   }
-  if (command.name === "pair") return runPair(command)
-  if (command.name === "devices") return runDevices(command)
-  if (command.name === "status") return runStatus(command)
+  if (command.name === "pair" || command.name === "devices" || command.name === "status") {
+    try {
+      if (command.name === "pair") return await runPair(command)
+      if (command.name === "devices") return await runDevices(command)
+      return await runStatus(command)
+    } catch (error) {
+      if (!isDatabaseBusy(error)) throw error
+      return fail("Server may still be starting: database is busy. Try again in a few seconds.")
+    }
+  }
   if (command.name === "doctor") return runDoctor(command)
   if (command.name === "import-legacy") return runImport(command)
+  if (command.name === "profile-list") return runProfileList(command)
+  if (command.name === "profile-login") return runProfileLogin(command)
   return runMcp(command)
 }
 

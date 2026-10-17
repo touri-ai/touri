@@ -1,9 +1,25 @@
-import { join } from "node:path"
+import { createHash } from "node:crypto"
+import { tmpdir } from "node:os"
+import { join, resolve } from "node:path"
 import type { AppPaths } from "@touri/contracts"
 
 import { hostPlatform } from "../platform"
 
 const defaultRoot = hostPlatform.defaultDataRoot
+
+export const resolveMcpSocketPath = (
+  paths: Pick<AppPaths, "appData" | "runDir">,
+  { platform = process.platform, tempDir = tmpdir() }: { platform?: NodeJS.Platform; tempDir?: string } = {},
+): string => {
+  // sun_path must also fit the terminating NUL, and paths are measured in UTF-8 bytes.
+  const limit = platform === "darwin" ? 104 : 108
+  const socketPath = join(paths.runDir, "mcp.sock")
+  if (Buffer.byteLength(socketPath) < limit) return socketPath
+  const hash = createHash("sha256").update(resolve(paths.appData)).digest("hex").slice(0, 16)
+  const directory = `touri-${hash}`
+  const temporaryPath = resolve(tempDir, directory, "mcp.sock")
+  return Buffer.byteLength(temporaryPath) < limit ? temporaryPath : join("/tmp", directory, "mcp.sock")
+}
 
 export const createAppPaths = ({ appData }: { appData?: string } = {}): AppPaths => {
   const root = appData ?? process.env.TOURI_APP_DATA ?? defaultRoot()

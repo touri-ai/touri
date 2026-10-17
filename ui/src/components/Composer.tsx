@@ -1,6 +1,7 @@
-import type { Bot, Id, Project, Run } from "@touri/contracts"
+import type { Bot, Id, Run } from "@touri/contracts"
 import { type ComponentProps, type RefObject, useEffect, useId, useLayoutEffect, useRef, useState } from "react"
 import type { UiApi } from "../api/client"
+import { attachmentAccept, maxAttachmentBytes } from "../attachmentFiles"
 import { composerKeyAction } from "../composerKeys"
 import { userFacingError } from "../errors"
 import { useCloudAccount } from "../features/cloud/useCloudAccount"
@@ -11,7 +12,7 @@ import { useProviderLogin } from "../useProviderLogin"
 import { useMascotComposer } from "./AvatarRuntime"
 import { BotAvatar } from "./BotAvatar"
 import { ComposerNotice } from "./ComposerNotice"
-import { ComposerProjectChip } from "./ComposerProjectChip"
+import { ErrorText } from "./ErrorDetails"
 import { ProviderLoginFlow } from "./ProviderLoginFlow"
 import { useReveal } from "./Reveal"
 import "./Composer.css"
@@ -27,14 +28,11 @@ type ComposerProps = {
   draft: string
   onDraft: (draft: string) => void
   inputRef: RefObject<HTMLTextAreaElement | null>
+  attachmentButtonRef?: RefObject<HTMLButtonElement | null> | undefined
   activeRun: Run | null
   queuedCount: number
   onSend: (text: string, parentId?: Id | null, attachmentIds?: Array<Id>) => Promise<void>
   onCancel: (runId: Id) => Promise<void>
-  onOpenModel?: (() => void) | undefined
-  projects?: Project[] | undefined
-  onSelectProject?: ((projectId: Id | null) => Promise<void>) | undefined
-  onAddProject?: (() => void) | undefined
   onOpenPermissions?: (() => void) | undefined
   onOpenProviderLogin?: (() => void) | undefined
   notice?: Omit<ComponentProps<typeof ComposerNotice>, "api" | "active" | "loginFlowShown">
@@ -50,7 +48,7 @@ const useComposerAttention = (botId: Id | undefined, threadId: Id, focused: bool
   }, [botId, threadId, focused, composer])
 }
 
-const Icon = ({ kind }: { kind: "attach" | "shield" | "send" | "stop" | "queue" | "file" }) => (
+const Icon = ({ kind }: { kind: "attach" | "send" | "stop" | "queue" | "file" }) => (
   <svg
     width="18"
     height="18"
@@ -63,12 +61,6 @@ const Icon = ({ kind }: { kind: "attach" | "shield" | "send" | "stop" | "queue" 
     aria-hidden="true"
   >
     {kind === "attach" && <path d="m21 11-8.5 8.5a5 5 0 0 1-7-7L14 4a3.5 3.5 0 0 1 5 5l-8.5 8.5a2 2 0 0 1-3-3L15 7" />}
-    {kind === "shield" && (
-      <>
-        <path d="M12 3 5 6v6c0 4 3 7 7 9 4-2 7-5 7-9V6z" />
-        <path d="m9 12 2 2 4-4" />
-      </>
-    )}
     {kind === "send" && <path d="M12 19V5M5 12l7-7 7 7" />}
     {kind === "stop" && <rect x="7" y="7" width="10" height="10" rx="1.5" fill="currentColor" stroke="none" />}
     {kind === "queue" && <path d="M4 6h12M4 12h8M4 18h8M18 12v8M14 16h8" />}
@@ -86,14 +78,11 @@ export const Composer = ({
   draft,
   onDraft,
   inputRef,
+  attachmentButtonRef,
   activeRun,
   queuedCount,
   onSend,
   onCancel,
-  onOpenModel,
-  projects = [],
-  onSelectProject,
-  onAddProject,
   onOpenPermissions,
   onOpenProviderLogin,
   notice,
@@ -105,6 +94,7 @@ export const Composer = ({
   const [caret, setCaret] = useState(draft.length)
   const [mentionIndex, setMentionIndex] = useState(0)
   const [mentionClosed, setMentionClosed] = useState(false)
+  const mentionListId = useId()
   const mention = draft.slice(0, caret).match(/(?:^|\s)@([^@\n]*)$/u)
   const suggestions =
     !mentionClosed && focused && mention
@@ -112,6 +102,7 @@ export const Composer = ({
           .filter((b) => b.name.toLocaleLowerCase().startsWith((mention[1] ?? "").toLocaleLowerCase()))
           .slice(0, 8)
       : []
+  const activeMention = suggestions[mentionIndex] ?? suggestions[0]
   const insertMention = (bot: Bot) => {
     const start = caret - (mention?.[1]?.length ?? 0) - 1
     const token = `@${/\s/.test(bot.name) ? JSON.stringify(bot.name) : bot.name} `
@@ -125,18 +116,18 @@ export const Composer = ({
   const [files, setFiles] = useState<Array<AttachedFile>>([])
   const [error, setError] = useState<string | null>(null)
   const [sending, setSending] = useState(false)
-  const [stopping, setStopping] = useState(false)
+  const [stoppingRunId, setStoppingRunId] = useState<string | null>(null)
   const [picking, setPicking] = useState(false)
   const [dragging, setDragging] = useState(false)
   const sendingRef = useRef(false)
-  const stoppingRef = useRef(false)
+  const stoppingRef = useRef<string | null>(null)
+  const stopping = Boolean(activeRun && activeRun.id === stoppingRunId)
   const alive = useRef(true)
   const draftRef = useRef(draft)
   draftRef.current = draft
   const fileInput = useRef<HTMLInputElement>(null)
   const island = useReveal<HTMLFormElement>()
   const helpId = useId()
-  const accessId = useId()
   const machineIntent = useComposerMachineIntent(api, bot)
   useComposerAttention(bot?.id, threadId, focused)
   useEffect(() => {
@@ -176,34 +167,9 @@ export const Composer = ({
     return () => observer?.disconnect()
   }, [draft, inputRef])
 
-  const registerPaths = async (paths: Array<string>) => {
-    setError(null)
-    const pending = paths.map((path) => ({
-      path,
-      key: crypto.randomUUID(),
-      name: path.split(/[\\/]/).at(-1) || "Arquivo",
-    }))
-    setFiles((current) => [
-      ...current,
-      ...pending.map(({ key, name }) => ({ key, name, id: null, status: "loading" as const })),
-    ])
-    for (const file of pending) {
-      try {
-        const { attachment } = await api.request("POST /attachments", { path: file.path })
-        if (!alive.current) return
-        setFiles((current) =>
-          current.map((item) => (item.key === file.key ? { ...item, id: attachment.id, status: "ready" } : item)),
-        )
-      } catch (failure) {
-        if (!alive.current) return
-        setFiles((current) => current.map((item) => (item.key === file.key ? { ...item, status: "failed" } : item)))
-        setError(`Não foi possível anexar ${file.name}. ${userFacingError(failure)}`)
-      }
-    }
-  }
   const attachGranted = async ({ granted, rejected }: FileDrop) => {
     setDragging(false)
-    setError(rejected[0] ? dropRejectionMessage(rejected[0]) : null)
+    setError(rejected.length ? rejected.map(dropRejectionMessage).join(" ") : null)
     const pending = granted.map((grant) => ({ ...grant, key: crypto.randomUUID() }))
     setFiles((current) => [
       ...current,
@@ -219,7 +185,7 @@ export const Composer = ({
       } catch (failure) {
         if (!alive.current) return
         setFiles((current) => current.map((item) => (item.key === file.key ? { ...item, status: "failed" } : item)))
-        setError(`Não foi possível anexar ${file.name}. ${userFacingError(failure)}`)
+        setError(t("Could not attach file", { name: file.name, reason: userFacingError(failure) }))
       }
     }
   }
@@ -234,23 +200,26 @@ export const Composer = ({
   }, [])
   const addBrowserFiles = async (selected: FileList | null) => {
     if (!selected?.length) return
-    if (api.isMock) return registerPaths(Array.from(selected, (file) => `/mock/${file.name}`))
-    if (!api.uploadAttachment) return
+    const upload = api.uploadAttachment
+    if (!api.isMock && !upload) return
     setError(null)
     setPicking(true)
     for (const file of Array.from(selected)) {
       const key = crypto.randomUUID()
       setFiles((current) => [...current, { key, name: file.name, id: null, status: "loading" }])
       try {
-        const attachment = await api.uploadAttachment(file)
-        if (!alive.current) return
+        if (file.size > maxAttachmentBytes) throw new Error(t("Escolha um arquivo de até 15 MB"))
+        const attachment = api.isMock
+          ? (await api.request("POST /attachments", { path: `/mock/${file.name}` })).attachment
+          : await upload?.(file)
+        if (!alive.current || !attachment) return
         setFiles((current) =>
           current.map((item) => (item.key === key ? { ...item, id: attachment.id, status: "ready" } : item)),
         )
       } catch (failure) {
         if (!alive.current) return
         setFiles((current) => current.map((item) => (item.key === key ? { ...item, status: "failed" } : item)))
-        setError(`Não foi possível anexar ${file.name}. ${userFacingError(failure)}`)
+        setError(t("Could not attach file", { name: file.name, reason: userFacingError(failure) }))
       }
     }
     if (alive.current) setPicking(false)
@@ -273,7 +242,7 @@ export const Composer = ({
     const sentFiles = files
     try {
       await onSend(
-        text.trim() ? text : "Confira os arquivos anexados.",
+        text.trim() ? text : t("Review attached files"),
         parentId,
         sentFiles.flatMap((file) => (file.id ? [file.id] : [])),
       )
@@ -282,43 +251,36 @@ export const Composer = ({
       setFiles((current) => current.filter((file) => !sentFiles.some((sent) => sent.key === file.key)))
       inputRef.current?.focus()
     } catch (failure) {
-      if (alive.current) setError(`Não foi possível enviar. ${userFacingError(failure)}`)
+      if (alive.current) setError(t("Could not send message", { reason: userFacingError(failure) }))
     } finally {
       sendingRef.current = false
       if (alive.current) setSending(false)
     }
   }
   const stop = async () => {
-    if (!activeRun || stoppingRef.current) return
-    stoppingRef.current = true
-    setStopping(true)
+    if (!activeRun || stoppingRef.current === activeRun.id) return
+    const runId = activeRun.id
+    stoppingRef.current = runId
+    setStoppingRunId(runId)
     setError(null)
     try {
-      await onCancel(activeRun.id)
+      await onCancel(runId)
     } catch (failure) {
-      if (alive.current) setError(`Não foi possível parar. ${userFacingError(failure)}`)
-    } finally {
-      stoppingRef.current = false
-      if (alive.current) setStopping(false)
+      if (stoppingRef.current !== runId) return
+      stoppingRef.current = null
+      if (alive.current) {
+        setStoppingRunId(null)
+        setError(t("Could not stop reply", { reason: userFacingError(failure) }))
+      }
     }
   }
-  const access =
-    bot?.access === "read-only" ? "Somente leitura" : bot?.access === "full" ? "Acesso completo" : "Escrita no projeto"
-  const provider = groupName
-    ? "Grupo"
-    : bot?.provider === "opencode"
-      ? "OpenCode"
-      : bot?.provider === "claude"
-        ? "Claude Code"
-        : "Codex"
-  const model = groupName ? `${mentionBots.length} membros` : bot?.model || "Padrão do provedor"
   const hasContent = Boolean(draft.trim() || files.length)
   const showStop = Boolean(activeRun && !hasContent && !sending)
   const composer = (
     <form
       ref={island}
       className="composer composer-island"
-      aria-label="Compor mensagem"
+      aria-label={t("Compose message")}
       aria-busy={sending || uploading}
       onSubmit={(event) => {
         event.preventDefault()
@@ -341,11 +303,11 @@ export const Composer = ({
     >
       {dragging && (
         <div className="composer-drop-hint" role="status">
-          Solte para anexar
+          {t("Drop to attach")}
         </div>
       )}
       {files.length > 0 && (
-        <ul className="attachment-strip" aria-label="Arquivos anexados">
+        <ul className="attachment-strip" aria-label={t("Attached files")}>
           {files.map((file) => (
             <li className="attachment-chip" data-status={file.status} key={file.key}>
               <Icon kind="file" />
@@ -353,11 +315,11 @@ export const Composer = ({
                 {file.name}
               </span>
               <span className="attachment-state">
-                {file.status === "loading" ? "Anexando…" : file.status === "failed" ? "Falhou" : ""}
+                {file.status === "loading" ? t("Attaching…") : file.status === "failed" ? t("Falhou") : ""}
               </span>
               <button
                 type="button"
-                aria-label={`Remover ${file.name}`}
+                aria-label={t("Remove attached file", { name: file.name })}
                 onClick={() => setFiles((current) => current.filter((item) => item.key !== file.key))}
               >
                 ×
@@ -366,7 +328,7 @@ export const Composer = ({
           ))}
         </ul>
       )}
-      {cloudUnavailable && <p role="status">Execução na nuvem chega em breve</p>}
+      {cloudUnavailable && <p role="status">{t("Cloud execution coming soon")}</p>}
       {login.blocked && (
         <>
           <ProviderLoginFlow login={login} />
@@ -380,9 +342,9 @@ export const Composer = ({
         ref={inputRef}
         value={draft}
         rows={1}
-        aria-label={`Mensagem para ${groupName ?? bot?.name ?? "touri"}`}
+        aria-label={t("Message to bot", { name: groupName ?? bot?.name ?? "touri" })}
         placeholder={
-          groupName ? `Mensagem para ${groupName} · @nome escolhe um membro` : `Mensagem para ${bot?.name ?? "touri"}`
+          groupName ? t("Message to group", { name: groupName }) : t("Message to bot", { name: bot?.name ?? "touri" })
         }
         aria-describedby={helpId}
         onFocus={() => {
@@ -391,7 +353,9 @@ export const Composer = ({
         }}
         onBlur={() => setFocused(false)}
         onSelect={(e) => setCaret(e.currentTarget.selectionStart)}
-        aria-controls={suggestions.length ? "group-mention-list" : undefined}
+        aria-controls={suggestions.length ? mentionListId : undefined}
+        aria-autocomplete={groupName ? "list" : undefined}
+        aria-activedescendant={activeMention ? `${mentionListId}-${activeMention.id}` : undefined}
         onChange={(event) => {
           setCaret(event.target.selectionStart)
           setMentionIndex(0)
@@ -416,8 +380,7 @@ export const Composer = ({
             else if (event.key === "ArrowDown") setMentionIndex((i) => (i + 1) % suggestions.length)
             else if (event.key === "ArrowUp") setMentionIndex((i) => (i + suggestions.length - 1) % suggestions.length)
             else {
-              const bot = suggestions[mentionIndex] ?? suggestions[0]
-              if (bot) insertMention(bot)
+              if (activeMention) insertMention(activeMention)
             }
             return
           }
@@ -438,12 +401,15 @@ export const Composer = ({
         }}
       />
       {suggestions.length > 0 && (
-        <div className="group-mentions" id="group-mention-list" role="listbox" aria-label="Mencionar membro">
-          {suggestions.map((bot, index) => (
+        <div className="group-mentions" id={mentionListId} role="listbox" aria-label={t("Mention member")}>
+          {suggestions.map((bot) => (
             <button
               type="button"
               role="option"
-              aria-selected={index === mentionIndex}
+              id={`${mentionListId}-${bot.id}`}
+              aria-label={`@${bot.name}`}
+              tabIndex={-1}
+              aria-selected={bot.id === activeMention?.id}
               key={bot.id}
               onMouseDown={(event) => event.preventDefault()}
               onClick={() => insertMention(bot)}
@@ -454,17 +420,18 @@ export const Composer = ({
         </div>
       )}
       <span id={helpId} className="visually-hidden">
-        Enter envia. Shift+Enter insere uma nova linha. Durante uma resposta, a mensagem entra na fila.
+        {t("Composer keyboard help")}
       </span>
       <div className="composer-footer">
         <div className="composer-tools-left">
           <input
             ref={fileInput}
             type="file"
+            accept={attachmentAccept}
             multiple
             tabIndex={-1}
             className="visually-hidden"
-            aria-label="Anexar arquivos"
+            aria-label={t("Anexar arquivos")}
             onChange={(event) => {
               addBrowserFiles(event.target.files)
               event.target.value = ""
@@ -472,86 +439,41 @@ export const Composer = ({
           />
           <button
             type="button"
+            ref={attachmentButtonRef}
             className="composer-icon"
-            aria-label="Anexar arquivo"
-            title="Anexar arquivo"
+            aria-label={t("Anexar arquivo")}
+            title={t("Texto, Markdown, JSON, CSV, PDF e imagens · até 15 MB por arquivo.")}
             disabled={picking || cloudUnavailable}
             onClick={() => void chooseFiles()}
           >
             <Icon kind="attach" />
           </button>
-          <button
-            type="button"
-            className="composer-model"
-            aria-label={`Escolher modelo: ${provider} · ${model}`}
-            title={`${provider} · ${model}`}
-            onClick={onOpenModel}
-            disabled={!onOpenModel}
-          >
-            <span className="composer-provider">{provider}</span>
-            <span aria-hidden="true">·</span>
-            <span className="composer-model-name">{model}</span>
-            <span aria-hidden="true">⌄</span>
-          </button>
-          {bot && bot.machine !== "cloud" && !groupName && (
-            <ComposerProjectChip
-              key={bot.id}
-              bot={bot}
-              projects={projects}
-              active={Boolean(activeRun)}
-              onSelect={onSelectProject}
-              onAdd={onAddProject}
-            />
-          )}
-          <span className="composer-permissions">
-            <button
-              type="button"
-              className="composer-icon composer-shield"
-              data-access={bot?.access}
-              aria-label={`Permissões do bot: ${access}`}
-              aria-describedby={accessId}
-              onClick={onOpenPermissions}
-              disabled={!onOpenPermissions}
-            >
-              <Icon kind="shield" />
-            </button>
-            <span id={accessId} role="tooltip" className="composer-tooltip">
-              <strong>{access}</strong>
-              <span>
-                {bot?.approvals === "never"
-                  ? "Sem solicitações de aprovação."
-                  : "Ações sensíveis podem pedir sua aprovação."}
-              </span>
-            </span>
-          </span>
         </div>
-        <span className="composer-hint" title="Buscar conversas e mensagens">
-          <kbd>⌘K</kbd>
-        </span>
         <div className="composer-actions">
           {activeRun && !showStop && (
             <button
               type="button"
-              className="composer-icon"
-              aria-label="Parar"
-              title="Parar resposta"
+              className={stopping ? "composer-stop" : "composer-icon"}
+              aria-label={stopping ? t("Stopping reply…") : t("Stop reply button")}
+              title={t("Stop reply")}
               disabled={stopping}
               onClick={() => void stop()}
             >
               <Icon kind="stop" />
+              {stopping && t("Stopping reply…")}
             </button>
           )}
           {showStop ? (
             <button type="button" className="composer-stop" onClick={() => void stop()} disabled={stopping}>
               <Icon kind="stop" />
-              {stopping ? "Parando…" : "Parar"}
+              {stopping ? t("Stopping reply…") : t("Stop reply button")}
             </button>
           ) : (
             <button
               type="submit"
               className="composer-send"
-              aria-label={sending ? "Enviando…" : activeRun ? "Adicionar à fila" : "Enviar"}
-              title={activeRun ? "Adicionar à fila" : "Enviar mensagem"}
+              aria-label={sending ? t("Sending message…") : activeRun ? t("Queue message") : t("Enviar")}
+              title={activeRun ? t("Queue message") : t("Send message button")}
               disabled={blocked}
             >
               <Icon kind={activeRun ? "queue" : "send"} />
@@ -565,19 +487,19 @@ export const Composer = ({
         hidden={!uploading && !sending && queuedCount === 0 && activeRun?.status !== "queued"}
       >
         {uploading
-          ? "Anexando arquivos…"
+          ? t("Attaching files…")
           : sending
-            ? "Enviando…"
+            ? t("Sending message…")
             : queuedCount > 0
-              ? `${queuedCount} ${queuedCount === 1 ? "mensagem na fila" : "mensagens na fila"} · aguardando conexão`
+              ? t("Queued messages waiting", { count: queuedCount })
               : activeRun?.status === "queued"
-                ? "Na fila · aguardando sua vez"
+                ? t("Queued waiting for turn")
                 : ""}
       </span>
       {error && (
         <div className="composer-error" role="alert">
-          {error}
-          <button type="button" aria-label="Fechar aviso" onClick={() => setError(null)}>
+          <ErrorText text={error} />
+          <button type="button" aria-label={t("Close composer notice")} onClick={() => setError(null)}>
             ×
           </button>
         </div>

@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs"
 import { mkdir } from "node:fs/promises"
 import { resolve } from "node:path"
 import { expect, type Page, test } from "@playwright/test"
+import { openGlobalPage, showBotAdvanced, showBotPanel, showBotRoutines } from "./home-navigation"
 
 const evidence = resolve(import.meta.dirname, "../../../docs/qa/r8/integrated")
 const framebuffer = readFileSync(resolve(import.meta.dirname, "fixtures/r8-desktop.js"), "utf8")
@@ -48,6 +49,7 @@ for (const width of [1440, 1100]) {
         }
         await page.screenshot({ path: `${evidence}/${view}-${width}-${theme}.png`, animations: "disabled" })
       }
+      await showBotPanel(page)
       const panel = page.getByRole("complementary", { name: "Painel de mark" })
       await expect(panel).toBeVisible()
       const chatBounds = await page.locator(".chat-panel").boundingBox()
@@ -73,16 +75,18 @@ for (const width of [1440, 1100]) {
       expect(display?.height).toBeGreaterThan(450)
       await shot("desktop-expanded")
       await panel.getByRole("button", { name: "Recolher", exact: true }).click()
-      await page.getByRole("button", { name: "touri", exact: true }).click()
-      await expect(page.getByRole("heading", { name: "Cron", exact: true })).toBeVisible()
+      await showBotRoutines(page)
+      await expect(page.getByRole("heading", { name: "Rotinas", exact: true })).toBeVisible()
       await shot("cron")
-      await page.getByRole("button", { name: /Integrações/ }).click()
+      await openGlobalPage(page, "Integrações")
       await expect(page.getByRole("button", { name: "Gerenciar Arquivos locais" })).toBeVisible()
       await shot("integrations")
-      await page.getByRole("navigation", { name: "touri", exact: true }).getByRole("button", { name: /^MCP/ }).click()
+      await openGlobalPage(page, "MCP")
       await expect(page.getByRole("table", { name: "Políticas de ferramentas de arquivos" })).toBeVisible()
       await shot("mcp")
       await page.getByRole("button", { name: /^Bots/ }).click()
+      if (!(await page.getByRole("button", { name: "Preview do projeto" }).isVisible()))
+        await page.getByRole("button", { name: "Painel do bot", exact: true }).click()
       await page.getByRole("button", { name: "Preview do projeto" }).click()
       await expect(page.getByRole("heading", { name: "Preview", exact: true })).toHaveCount(1)
       await shot("preview")
@@ -97,18 +101,22 @@ for (const width of [1440, 1100]) {
       await shot("notifications")
       await center.getByRole("button", { name: "Fechar notificações" }).click()
       await page.getByRole("button", { name: "Voltar ao chat" }).click()
-      await page.getByRole("button", { name: "Configurações de mark", exact: true }).first().click()
+      await showBotAdvanced(page)
       const dialog = page.getByRole("dialog")
+      await shot("bot-settings")
+      await dialog.getByRole("button", { name: "Avançado", exact: true }).click()
       for (const [tab, view] of [
-        ["Geral", "bot-settings"],
+        ["Modelo", "bot-settings-model"],
+        ["Acesso", "bot-settings-access"],
         ["Computador", "bot-settings-computer"],
+        ["Projeto", "bot-settings-project"],
         ["Permissões", "bot-settings-permissions"],
-        ["MCP", "bot-settings-mcp"],
+        ["Ferramentas", "bot-settings-mcp"],
         ["Rotinas", "bot-settings-routines"],
       ] as const) {
         await dialog.getByRole("tab", { name: tab, exact: true }).click()
         await shot(view ?? "settings")
-        if (tab === "MCP") {
+        if (tab === "Ferramentas") {
           await dialog.getByRole("combobox", { name: "Classificação · read_file" }).scrollIntoViewIfNeeded()
           await shot("bot-settings-mcp-policies")
         }
@@ -120,8 +128,7 @@ for (const width of [1440, 1100]) {
       await dialog.getByRole("tab", { name: "Privacidade", exact: true }).click()
       await shot("preferences-privacy")
       await dialog.getByRole("button", { name: "Fechar diálogo" }).click()
-      await page.getByRole("button", { name: "touri", exact: true }).click()
-      await page.getByRole("button", { name: "Diagnóstico", exact: true }).click()
+      await openGlobalPage(page, "Verificar este Mac")
       await expect(dialog.getByText(/prontos.*avisos.*falhas/)).toBeVisible()
       await shot("doctor")
       await dialog.getByRole("button", { name: "Fechar diálogo" }).click()
@@ -129,16 +136,10 @@ for (const width of [1440, 1100]) {
       await page.getByRole("button", { name: "Criar bot", exact: true }).click()
       await page.getByLabel("Nome", { exact: true }).fill("Clara")
       await shot("new-bot-name")
-      await dialog.getByRole("button", { name: "Continuar", exact: true }).click()
+      await dialog.getByRole("button", { name: "Avançado", exact: true }).click()
       await page.getByLabel("Função", { exact: true }).fill("Pesquisa e planejamento")
-      await page.getByLabel("SOUL.md").fill("Pesquise com cuidado e apresente fontes em português.")
+      await page.getByLabel("Instruções do bot").fill("Pesquise com cuidado e apresente fontes em português.")
       await shot("new-bot-role")
-      await dialog.getByRole("button", { name: "Continuar", exact: true }).click()
-      await shot("new-bot-provider")
-      await dialog.getByRole("button", { name: "Continuar", exact: true }).click()
-      await shot("new-bot-computer")
-      await dialog.getByRole("button", { name: "Continuar", exact: true }).click()
-      await shot("new-bot-review")
       await dialog.getByRole("button", { name: "Criar bot", exact: true }).click()
       await expect(dialog).toHaveCount(0)
       await expect(page.getByRole("textbox", { name: "Mensagem para Clara" })).toBeVisible()

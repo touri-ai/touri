@@ -1,7 +1,9 @@
 import { afterEach, expect, test } from "bun:test"
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
+import { mkdirSync, mkdtempSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { Bot, Kernel, MachineState, UiEventEnvelope, VmRuntime } from "@touri/contracts"
+import { folderGuestPath } from "../../src/kernel/bot-folders"
 import { machineActionRoutes } from "../../src/vm/machine-actions"
 import { botWorkspaceRoutes } from "../../src/vm/workspace-routes"
 
@@ -26,6 +28,7 @@ const fixture = () => {
   const services = new Map<string, unknown>([["store.api", { getBot: () => bot }]])
   let listener: ((event: UiEventEnvelope) => void) | undefined
   const kernel = {
+    paths: { appData: join(root, "app-data") },
     services: {
       use: (name: string) => services.get(name),
       provide: (name: string, value: unknown) => services.set(name, value),
@@ -107,11 +110,99 @@ test("library browses regular files, rejects traversal, hidden files, links and 
     name: "notes.md",
     base64: Buffer.from("# Notes").toString("base64"),
   })
-  for (const path of ["../notes.md", "/etc/passwd", ".secret", "docs/../notes.md", "bad\0path"])
+  for (const path of ["../notes.md", ".secret", "docs/../notes.md", "bad\0path"])
     expect((await f.request("/bots/:id/files/content", { path })).status).toBe(400)
-  expect((await f.request("/bots/:id/files/content", { path: "link" })).status).toBe(422)
+  expect((await f.request("/bots/:id/files/content", { path: "/ungranted/notes.md" })).status).toBe(403)
+  expect((await f.request("/bots/:id/files/content", { path: "link" })).status).toBe(403)
   writeFileSync(join(f.root, "large.bin"), Buffer.alloc(524_289))
   expect((await f.request("/bots/:id/files/content", { path: "large.bin" })).status).toBe(422)
+})
+
+test("chat file paths are confined to this bot's workspace, home and granted folders", async () => {
+  const f = fixture()
+  const other = fixture()
+  const granted = join(other.root, "shared")
+  mkdirSync(granted)
+  writeFileSync(join(f.root, "notes.md"), "# Notes")
+  writeFileSync(join(granted, "report.txt"), "Shared")
+  writeFileSync(join(other.root, "private.txt"), "Private")
+  f.setBot({ folders: [{ path: granted, access: "read-only" }] })
+  for (const path of [join(f.root, "notes.md"), join(granted, "report.txt")])
+    expect((await f.request("/bots/:id/files/content", { path })).status).toBe(200)
+  for (const path of [join(other.root, "private.txt"), `${granted}-other/report.txt`, "/etc/passwd"])
+    expect((await f.request("/bots/:id/files/content", { path })).status).toBe(403)
+  expect((await f.request("/bots/:id/files/content", { path: `${granted}/../private.txt` })).status).toBe(400)
+  symlinkSync(other.root, join(f.root, "escape"))
+  expect((await f.request("/bots/:id/files/content", { path: join(f.root, "escape/private.txt") })).status).toBe(403)
+  const missing = await f.request("/bots/:id/files/content", { path: join(f.root, "missing.md") })
+  expect(missing.status).toBe(404)
+  expect("json" in missing && missing.json).toMatchObject({ error: expect.stringContaining("não encontrado") })
+  f.setBot({ folders: [] })
+  expect((await f.request("/bots/:id/files/content", { path: join(granted, "report.txt") })).status).toBe(403)
+})
+
+test("absolute guest paths stay on the bot's machine and never read the host", async () => {
+  const f = fixture()
+  writeFileSync(join(f.root, "host.md"), "Host only")
+  for (const machine of ["vm", "cloud"] as const) {
+    f.setBot({ machine })
+    expect((await f.request("/bots/:id/files/content", { path: "/workspace/notes.md" })).status).toBe(200)
+    expect(f.calls.at(-1)?.args?.slice(-3)).toEqual(["read", "notes.md", "/workspace"])
+    expect((await f.request("/bots/:id/files/content", { path: join(f.root, "host.md") })).status).toBe(403)
+  }
+})
+
+test("broad folder access still excludes application data unless explicitly granted", async () => {
+  const f = fixture()
+  const shared = realpathSync(mkdtempSync(join(tmpdir(), "touri-shared-")))
+  roots.push(shared)
+  const appData = join(f.root, "app-data")
+  mkdirSync(appData)
+  writeFileSync(join(appData, "private.txt"), "Private")
+  writeFileSync(join(shared, "report.txt"), "Report")
+  f.setBot({ anyFolderAccess: true })
+  expect((await f.request("/bots/:id/files/content", { path: join(shared, "report.txt") })).status).toBe(200)
+  expect((await f.request("/bots/:id/files/content", { path: join(appData, "private.txt") })).status).toBe(403)
+  f.setBot({ folders: [{ path: appData, access: "read-only" }] })
+  expect((await f.request("/bots/:id/files/content", { path: join(appData, "private.txt") })).status).toBe(200)
+})
+
+test("home files remain readable when a bot has a separate workspace", async () => {
+  const f = fixture()
+  const project = fixture()
+  writeFileSync(join(f.root, "home.md"), "Home")
+  writeFileSync(join(project.root, "notes.md"), "Project")
+  f.setBot({ cwd: project.root })
+  for (const path of ["notes.md", join(project.root, "notes.md"), join(f.root, "home.md")])
+    expect((await f.request("/bots/:id/files/content", { path })).status).toBe(200)
+})
+
+test("workspace paths accept both the configured spelling and its canonical ancestor spelling", async () => {
+  const f = fixture()
+  const other = fixture()
+  const project = join(other.root, "project")
+  mkdirSync(project)
+  writeFileSync(join(project, "notes.md"), "# Notes")
+  const alias = join(f.root, "alias")
+  symlinkSync(other.root, alias)
+  f.setBot({ cwd: join(alias, "project") })
+  for (const path of [join(alias, "project/notes.md"), join(project, "notes.md")])
+    expect((await f.request("/bots/:id/files/content", { path })).status).toBe(200)
+})
+
+test("a granted folder whose ancestor was replaced with a symlink is refused", async () => {
+  const f = fixture()
+  const other = fixture()
+  const parent = join(other.root, "parent")
+  const granted = join(parent, "shared")
+  const replacement = join(other.root, "replacement")
+  mkdirSync(granted, { recursive: true })
+  mkdirSync(join(replacement, "shared"), { recursive: true })
+  writeFileSync(join(replacement, "shared/private.txt"), "Private")
+  f.setBot({ folders: [{ path: granted, access: "read-only" }] })
+  renameSync(parent, `${parent}-old`)
+  symlinkSync(replacement, parent)
+  expect((await f.request("/bots/:id/files/content", { path: join(granted, "private.txt") })).status).toBe(403)
 })
 
 test("VM library uses a lease, guest path arguments and releases on exec failure", async () => {
@@ -119,13 +210,37 @@ test("VM library uses a lease, guest path arguments and releases on exec failure
   f.setBot({ machine: "vm" })
   expect((await f.request("/bots/:id/files", { path: "docs" })).status).toBe(200)
   expect(f.calls[0]?.command).toBe("python3")
-  expect(f.calls[0]?.args?.slice(-2)).toEqual(["list", "docs"])
+  expect(f.calls[0]?.args?.slice(-3)).toEqual(["list", "docs", "/workspace"])
   expect(f.counts()).toEqual({ acquired: 1, released: 1 })
   f.setExecutor(async () => {
     throw new Error("Guest indisponível")
   })
   expect((await f.request("/bots/:id/files")).status).toBe(422)
   expect(f.counts()).toEqual({ acquired: 2, released: 2 })
+})
+
+test("the guest file reader lists directories and reads bytes with the shared resolver's arguments", async () => {
+  const f = fixture()
+  f.setBot({ machine: "vm" })
+  mkdirSync(join(f.root, "docs"))
+  writeFileSync(join(f.root, "docs/notes.md"), "# Notes")
+  f.setExecutor(async (input) => {
+    const args = [...(input.args ?? [])]
+    args[args.length - 1] = f.root
+    const result = Bun.spawnSync(["python3", ...args])
+    return { success: true, stdout: result.stdout.toString(), stderr: result.stderr.toString(), code: result.exitCode }
+  })
+  const list = await f.request("/bots/:id/files", { path: "docs" })
+  expect(list.status).toBe(200)
+  expect("json" in list && list.json).toMatchObject({ files: [{ name: "notes.md", path: "docs/notes.md" }] })
+  const read = await f.request("/bots/:id/files/content", { path: "docs/notes.md" })
+  expect(read.status).toBe(200)
+  expect("json" in read && read.json).toMatchObject({
+    name: "notes.md",
+    base64: Buffer.from("# Notes").toString("base64"),
+  })
+  expect((await f.request("/bots/:id/files/content", { path: "docs/missing.md" })).status).toBe(404)
+  expect(f.counts()).toEqual({ acquired: 3, released: 3 })
 })
 
 test("shell fails closed for host/read-only/paused bots or absent computer permission", async () => {
@@ -202,4 +317,49 @@ test("files/content returns binary files byte for byte, with no UTF-8 decoding o
   expect(body?.mime).toBe("image/jpeg")
   expect(body?.base64.startsWith("data:")).toBe(false)
   expect(Buffer.from(body?.base64 ?? "", "base64").equals(jpeg)).toBe(true)
+})
+
+test("library lists and downloads granted folders without granting sibling or symlink access", async () => {
+  const f = fixture()
+  const cwd = join(f.root, "project")
+  const granted = join(f.root, "output")
+  mkdirSync(cwd)
+  mkdirSync(granted)
+  writeFileSync(join(cwd, "notes.md"), "Project notes")
+  writeFileSync(join(granted, "post.png"), "Generated bytes")
+  f.setBot({ homeDir: join(f.root, "internal"), cwd, folders: [{ path: granted, access: "read-only" }] })
+  const list = await f.request("/bots/:id/files", { path: granted })
+  expect(list.status).toBe(200)
+  expect("json" in list && list.json).toMatchObject({ files: [{ name: "post.png", path: join(granted, "post.png") }] })
+  for (const path of ["notes.md", join(granted, "post.png")])
+    expect((await f.request("/bots/:id/files/content", { path })).status).toBe(200)
+  expect((await f.request("/bots/:id/files/content", { path: join(granted, "missing.png") })).status).toBe(404)
+  expect((await f.request("/bots/:id/files/content", { path: `${granted}-other/missing.png` })).status).toBe(403)
+  symlinkSync(cwd, join(granted, "escape"))
+  expect((await f.request("/bots/:id/files/content", { path: join(granted, "escape/notes.md") })).status).toBe(403)
+})
+
+test("VM library resolves granted mounts and returns missing versus denied errors without leaking a lease", async () => {
+  const f = fixture()
+  const grant = "/output/marketing"
+  f.setBot({ machine: "vm", folders: [{ path: grant, access: "read-only" }] })
+  const mount = folderGuestPath(grant)
+  f.setExecutor(async (input) => {
+    f.calls.push(input)
+    return {
+      success: true,
+      stdout: '{"files":[{"name":"post.png","path":"post.png","directory":false,"bytes":12}]}',
+      stderr: "",
+      code: 0,
+    }
+  })
+  const list = await f.request("/bots/:id/files", { path: grant })
+  expect(list.status).toBe(200)
+  expect("json" in list && list.json).toMatchObject({ files: [{ path: `${mount}/post.png` }] })
+  expect(f.calls[0]?.args?.slice(-3)).toEqual(["list", "", mount])
+  for (const status of [404, 403]) {
+    f.setExecutor(async () => ({ success: true, stdout: JSON.stringify({ errorStatus: status }), stderr: "", code: 1 }))
+    expect((await f.request("/bots/:id/files/content", { path: `${grant}/post.png` })).status).toBe(status)
+  }
+  expect(f.counts()).toEqual({ acquired: 3, released: 3 })
 })

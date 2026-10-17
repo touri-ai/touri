@@ -58,6 +58,20 @@ export const errorRegistry = {
   "TOURI-E1000": entry("kernel", "sidecar", false, "Não foi possível concluir a solicitação.", 500),
   "TOURI-E1001": entry("kernel", "validation", false, "Confira os dados informados e tente novamente.", 400),
   "TOURI-E1002": entry("kernel", "routing", false, "O item solicitado não foi encontrado.", 404),
+  "TOURI-E1012": entry(
+    "kernel",
+    "mcp",
+    false,
+    "O executável do servidor MCP não foi encontrado. Confira a instalação e o PATH na máquina deste bot.",
+    400,
+  ),
+  "TOURI-E1013": entry(
+    "kernel",
+    "mcp",
+    true,
+    "Não foi possível conectar ao servidor MCP. Confira o comando, os argumentos ou a URL e se o servidor está disponível na máquina deste bot.",
+    400,
+  ),
   "TOURI-E1003": entry("kernel", "authentication", false, "Conecte este dispositivo ao touri novamente.", 401),
   "TOURI-E1004": entry("kernel", "authorization", false, "Esta ação não está autorizada.", 403),
   "TOURI-E1005": entry(
@@ -88,6 +102,7 @@ export const errorRegistry = {
   "TOURI-E2000": entry("storage", "filesystem", false, "Não foi possível gravar neste caminho com segurança.", 403),
   "TOURI-E2001": entry("storage", "filesystem", true, "Não foi possível salvar o arquivo. Tente novamente.", 500),
   "TOURI-E2002": entry("storage", "filesystem", false, "Libere espaço no disco para salvar o arquivo.", 507),
+  "TOURI-E2003": entry("storage", "attachment", false, "Escolha um arquivo de até 15 MB.", 413),
   "TOURI-E3000": entry(
     "provider",
     "cli",
@@ -104,6 +119,13 @@ export const errorRegistry = {
   "TOURI-E4002": entry("browser", "target", false, "Confira o elemento selecionado na página.", 422),
   "TOURI-E4003": entry("browser", "takeover", false, "Devolva o controle do navegador ao bot para continuar.", 409),
   "TOURI-E4004": entry("browser", "secret-entry", false, "Conclua a entrada do segredo para continuar.", 409),
+  "TOURI-E4005": entry(
+    "browser",
+    "site-blocked",
+    false,
+    "O site bloqueou o acesso automatizado. Resolva o desafio no navegador para o bot continuar.",
+    403,
+  ),
   "TOURI-E5000": entry("computer", "permission", false, "Autorize o acesso ao computador para continuar.", 403),
   "TOURI-E5001": entry("computer", "grant", false, "O acesso ao computador foi interrompido. Autorize novamente.", 403),
   "TOURI-E5002": entry("computer", "control", true, "O computador está ocupado. Aguarde e tente novamente.", 409),
@@ -174,6 +196,9 @@ export const errorRegistry = {
 export type RegisteredErrorCode = keyof typeof errorRegistry
 
 const aliases: Record<string, RegisteredErrorCode> = {
+  ATTACHMENT_TOO_LARGE: "TOURI-E2003",
+  MCP_EXECUTABLE_NOT_FOUND: "TOURI-E1012",
+  MCP_CONNECTION_FAILED: "TOURI-E1013",
   INVALID_ARGS: "TOURI-E1001",
   INVALID_JSON: "TOURI-E1001",
   INVALID_CODE: "TOURI-E1011",
@@ -219,6 +244,7 @@ const aliases: Record<string, RegisteredErrorCode> = {
   ENGINE_UNAVAILABLE: "TOURI-E4000",
   NAVIGATION_FAILED: "TOURI-E4000",
   URL_NOT_ALLOWED: "TOURI-E4000",
+  SITE_BLOCKED: "TOURI-E4005",
   TAB_HELD_BY_USER: "TOURI-E4003",
   SECRET_ENTRY_ACTIVE: "TOURI-E4004",
   TAB_NOT_FOUND: "TOURI-E1002",

@@ -6,10 +6,12 @@ import { userFacingError } from "../errors"
 import { t } from "../i18n"
 import type { WorkspaceActions } from "../useWorkspace"
 import { BotAvatar } from "./BotAvatar"
+import { RoutineSchedule } from "./RoutineSchedule"
 import { ScreenHeader, ScreenState } from "./ScreenPrimitives"
 import "./screens.css"
 
 type CronScreenProps = {
+  initialBotFilter?: Id | undefined
   loading?: boolean
   loadError?: string | null
   selectedBotId: Id | null
@@ -40,6 +42,7 @@ export const calendarBotColors = (bots: Array<Bot>): Map<Id, string> => {
 
 const CronScreen = ({
   bots,
+  initialBotFilter,
   loading = false,
   loadError = null,
   selectedBotId,
@@ -65,7 +68,9 @@ const CronScreen = ({
       setStarting(new Set(startingRef.current))
     }
   }
-  const [botFilter, setBotFilter] = useState<Id | "all">("all")
+  const [botFilter, setBotFilter] = useState<Id | "all">(() =>
+    bots.some((bot) => bot.id === initialBotFilter) ? (initialBotFilter ?? "all") : "all",
+  )
   const [stateFilter, setStateFilter] = useState<"all" | "active" | "paused">("all")
   const [month, setMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1))
   const [editor, setEditor] = useState<RoutineEditorState>(null)
@@ -147,7 +152,7 @@ const CronScreen = ({
     <section className="workspace-screen r8-screen cron-screen" aria-labelledby="cron-title">
       <ScreenHeader
         id="cron-title"
-        title="Cron"
+        title={t("Routines")}
         description={`${routines.length} ${routines.length === 1 ? "rotina" : "rotinas"} · executadas enquanto o touri está aberto`}
         actions={
           <>
@@ -166,7 +171,8 @@ const CronScreen = ({
                 })
               }
             >
-              <span aria-hidden="true">＋</span>Criar cron
+              <span aria-hidden="true">＋</span>
+              {t("Criar cron")}
             </button>
           </>
         }
@@ -251,9 +257,8 @@ const CronScreen = ({
                       <BotAvatar bot={bot ?? { id: routine.botId, color: null }} size={32} />
                       <span className="routine-copy">
                         <strong>{routine.name}</strong>
-                        <small>
-                          {routine.cron} · {bot?.name ?? "bot"}
-                        </small>
+                        <small>{bot?.name ?? "bot"}</small>
+                        <RoutineSchedule routine={routine} />
                       </span>
                       <span className="routine-status">
                         <span className={`screen-status ${routine.enabled ? "is-success" : ""}`}>
@@ -482,7 +487,7 @@ const RoutineEditor = ({
         className="routine-modal"
         role="dialog"
         aria-modal="true"
-        aria-label={editor.isNew ? "Criar cron" : "Editar cron"}
+        aria-label={editor.isNew ? t("Criar cron") : t("Editar cron")}
         onSubmit={(event) => {
           event.preventDefault()
           onSave()
@@ -490,7 +495,7 @@ const RoutineEditor = ({
       >
         <div className="routine-modal-header">
           <div>
-            <span className="screen-crumb">touri / Cron</span>
+            <span className="screen-crumb">touri / {t("Routines")}</span>
             <h2>{editor.isNew ? t("Criar cron") : t("Editar cron")}</h2>
           </div>
           <button type="button" onClick={onClose} aria-label={t("Fechar")}>
