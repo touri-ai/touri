@@ -48,7 +48,7 @@ describe("repeating work", () => {
     const f = fixture()
     render(<App kernel={{ services: { api: f.api } }} />)
     await screen.findByRole("textbox", { name: "Mensagem para mark" }, { timeout: 15000 })
-    fireEvent.click(await screen.findByRole("button", { name: "Repetir esta tarefa" }, { timeout: 15000 }))
+    fireEvent.click(await screen.findByRole("button", { name: "Agendar esta tarefa" }, { timeout: 15000 }))
     const dialog = screen.getByRole("dialog", { name: "Quando?" })
     expect(within(dialog).getByRole("textbox", { name: "Tarefa" })).toHaveValue("Review the campaign")
     expect(within(dialog).getByRole("combobox", { name: "Bot" })).toHaveValue("bot-mark")
@@ -204,7 +204,7 @@ it("does not propose a routine without a completed useful result", () => {
       f.state.messages.map((message) => ({ ...message, status: "failed" })),
     ),
   ).toBeNull()
-  expect(t("Repetir esta tarefa", {}, "en")).toBe("Repeat this task")
+  expect(t("Agendar esta tarefa", {}, "en")).toBe("Schedule this task")
   expect(t("Quando?", {}, "en")).toBe("When?")
   expect(t("succeeded")).toBe("concluído")
   expect(t("succeeded", {}, "en")).toBe("Completed")
@@ -263,7 +263,7 @@ it("offers a recurring job's draft in the empty conversation without persisting 
   f.state.messages.splice(0)
   for (const thread of f.state.threads) thread.activeLeafId = null
   render(<App kernel={{ services: { api: f.api } }} />)
-  fireEvent.click(await screen.findByRole("button", { name: "Repetir esta tarefa" }, { timeout: 15000 }))
+  fireEvent.click(await screen.findByRole("button", { name: "Agendar esta tarefa" }, { timeout: 15000 }))
   expect(screen.getByRole("textbox", { name: "Tarefa" })).toHaveValue(template.instructions)
   expect(screen.getByLabelText("Às")).toHaveValue("09:00")
   expect(f.api.calls.filter((call) => ["POST /routines", "PATCH /routines/:id"].includes(call.route))).toEqual([])

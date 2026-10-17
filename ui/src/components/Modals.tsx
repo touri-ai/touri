@@ -1305,6 +1305,29 @@ export const BotSettingsModal = ({
                             : current,
                       )
                   }}
+                  technicalDetailsOpen={Boolean(
+                    saveError && settings && (!Number.isInteger(vmMemory) || vmMemory < 512 || vmMemory > 16384),
+                  )}
+                  technicalDetails={
+                    settings && (
+                      <SettingsRow
+                        title={SETTINGS.vmMemory.label}
+                        description={t(
+                          "Este limite vale para todos os computadores isolados; é aplicado ao criar ou atualizar cada um.",
+                        )}
+                        htmlFor="bot-vm-memory"
+                      >
+                        <input
+                          id="bot-vm-memory"
+                          type="number"
+                          min={512}
+                          max={16384}
+                          value={vmMemory}
+                          onChange={(event) => setVmMemory(Number(event.target.value))}
+                        />
+                      </SettingsRow>
+                    )
+                  }
                   {...(bot.machine === "vm"
                     ? {
                         onAction: (reset: boolean, stopTurns?: boolean) =>
@@ -1317,24 +1340,7 @@ export const BotSettingsModal = ({
                       }
                     : {})}
                 />
-                {settings && (
-                  <SettingsRow
-                    title={SETTINGS.vmMemory.label}
-                    description={t(
-                      "Este limite vale para todos os computadores isolados; é aplicado ao criar ou atualizar cada um.",
-                    )}
-                    htmlFor="bot-vm-memory"
-                  >
-                    <input
-                      id="bot-vm-memory"
-                      type="number"
-                      min={512}
-                      max={16384}
-                      value={vmMemory}
-                      onChange={(event) => setVmMemory(Number(event.target.value))}
-                    />
-                  </SettingsRow>
-                )}
+
                 {api && bot.machine === "vm" && <BotNetworkSettings api={api} botId={bot.id} />}
               </SettingsGroup>
               {(hostComputerSupported || machine.machine === "vm") && (

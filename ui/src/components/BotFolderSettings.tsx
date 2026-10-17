@@ -9,7 +9,6 @@ import { SettingsSwitch } from "./SettingsLayout"
 export const BotFolderSettings = ({
   api,
   simple = false,
-  readOnly = false,
   fullAccess = false,
   folders,
   anyFolderAccess,

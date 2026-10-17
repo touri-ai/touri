@@ -553,6 +553,17 @@ const MessageBubble = ({
   const failureTime = failureTimeLabel(failedAt)
   const onFailureAction = useContext(FailureActionContext)
   const failureAction = runError?.action
+  const failureRecovery = runError && {
+    ...runError.recovery,
+    actions: [
+      ...runError.recovery.actions,
+      ...(message.runId &&
+      message.status === "failed" &&
+      !runError.recovery.actions.some((action) => ["retry", "review", "resume", "storage"].includes(action.kind))
+        ? [{ kind: "retry" as const, label: t("Tentar de novo") }]
+        : []),
+    ].map((action) => (action.kind === "retry" ? { ...action, label: t("Tentar de novo") } : action)),
+  }
   const failureContent = runError && (
     <div className="message-error" role="alert">
       {runError.recovery.classified ||
@@ -560,7 +571,7 @@ const MessageBubble = ({
       runError.stage === "provider_protocol" ? (
         <>
           <ErrorNotice
-            recovery={runError.recovery}
+            recovery={failureRecovery ?? runError.recovery}
             onAction={async (action) => {
               if (action === "retry") await onRetry(message.runId ?? "")
               else if (action === "review") setReviewingActions(true)
@@ -637,7 +648,7 @@ const MessageBubble = ({
               className="text-button retry-button"
               onClick={() => void onRetry(message.runId ?? "")}
             >
-              {vmBotId ? "Tentar de novo" : t("Tentar novamente")}
+              {t("Tentar de novo")}
             </button>
           )}
         </>
@@ -1086,7 +1097,7 @@ export const ChatPanel = ({
                         className="outline-button repeat-task-button"
                         onClick={() => onRepeatTask(repeatDraft)}
                       >
-                        {t("Repetir esta tarefa")}
+                        {t("Agendar esta tarefa")}
                       </button>
                     ),
                   },
@@ -1254,7 +1265,7 @@ const RunCard = ({
         </div>
         {failed && (
           <button type="button" className="open-run-link" onClick={() => void onRetry(run.id)}>
-            {t("Tentar novamente")}
+            {t("Tentar de novo")}
           </button>
         )}
       </div>
