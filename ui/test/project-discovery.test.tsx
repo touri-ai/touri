@@ -281,11 +281,19 @@ it("a failed add can be retried and duplicate clicks cannot add the repository t
 it.each([
   [
     { machine: "local", access: "full", approvals: "never", anyFolderAccess: true },
-    "Acesso total; pode acessar arquivos em todo o Mac; as exclusões de pastas sensíveis continuam valendo.",
+    "Acesso total; pode ler e alterar arquivos em qualquer pasta que a conta do sistema permita.",
   ],
   [
     { machine: "local", access: "full", approvals: "on-request" },
-    "Acesso total com aprovação; alterações ficam na pasta do bot, no projeto e nas pastas liberadas.",
+    "Acesso total com aprovação; pode ler e alterar arquivos em qualquer pasta que a conta do sistema permita.",
+  ],
+  [
+    { machine: "local", access: "workspace-write", approvals: "never", anyFolderAccess: true },
+    "Pode mudar arquivos nas pastas permitidas; pode acessar arquivos em todo o Mac; as exclusões de pastas sensíveis continuam valendo.",
+  ],
+  [
+    { machine: "local", access: "workspace-write", approvals: "never" },
+    "Pode mudar arquivos nas pastas permitidas; alterações ficam na pasta do bot, no projeto e nas pastas liberadas.",
   ],
   [
     { machine: "local", access: "read-only", approvals: "never" },

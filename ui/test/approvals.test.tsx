@@ -177,9 +177,10 @@ it("Codex creation hides full access with approval and explains sandbox behavior
   fireEvent.change(screen.getByLabelText("Nome"), { target: { value: "Teste" } })
   fireEvent.click(screen.getByRole("button", { name: "Avançado" }))
   expect(screen.queryByRole("option", { name: "Acesso total com aprovação" })).toBeNull()
-  expect(screen.getByText(/No acesso total, o Codex executa sem pedir aprovação/)).toHaveTextContent(
-    "As restrições de pastas do touri",
-  )
+  fireEvent.change(screen.getByLabelText("Acesso", { selector: "select" }), { target: { value: "full" } })
+  const warning = screen.getByText(/O acesso total permite ler, criar, alterar e apagar arquivos/)
+  expect(warning).toHaveTextContent("As pastas e exclusões salvas não limitam este acesso.")
+  expect(warning).toHaveTextContent("Não pede aprovações do provedor.")
   expect(screen.getByRole("option", { name: "Somente leitura" })).toBeVisible()
 })
 
