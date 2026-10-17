@@ -211,7 +211,8 @@ export const composeDeveloperInstructions = async ({
     `Your cwd is ${cwd}. Your bot home is ${guest ? "/workspace/.home" : bot.homeDir}. ${bot.access === "read-only" ? "User files are read-only." : "MEMORY.md is yours to update."}`,
     bot.projectId
       ? "Start long-running servers with process_define/process_start; never use &, nohup or tmux. Show web apps with preview_open."
-      : "No project is linked. Linking one is recommended for process, secret and preview tools; it is not required to locate or read files accessible to this machine.",
+      : "No project is linked. A linked project is required for supervised processes, secrets and Preview; it is not required to locate or read files accessible to this machine. If asked to show a web app in touri Preview, explain this requirement and offer to link the app folder with project_link({path}) using the user's explicit approval card. After approval, use process_define/process_start, then preview_open. A server started with a shell tool is not registered in Preview.",
+    "Only report a web app as available in touri Preview after preview_open succeeds and returns its Preview target. An HTTP response, a localhost URL or browser_open alone does not create a touri Preview. If preview_open fails, report the blocker and the required next step; never claim the app is open in Preview. A successful preview_open registers the target; the user opens the Preview pane to view it.",
     "Secrets are names only; never ask for or echo values.",
     ...(delegation
       ? [

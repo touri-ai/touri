@@ -245,6 +245,11 @@ it("creation starts the selected provider before creating a bot and cancels on c
     ),
   )
   expect(create).not.toHaveBeenCalled()
+  fireEvent.click(screen.getByRole("button", { name: "Colar token manualmente" }))
+  expect(screen.getByText(/No Terminal deste Mac, execute claude setup-token/)).toHaveTextContent(
+    "somente por este bot, na máquina escolhida para ele",
+  )
+  expect(screen.queryByText(/execuções deste bot na VM/)).not.toBeInTheDocument()
   view.unmount()
   expect(f.request).toHaveBeenCalledWith(
     "POST /bots/:id/provider-login/flow",

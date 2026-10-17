@@ -198,7 +198,7 @@
     },
     {
       "name": "preview_open",
-      "description": "Show a local web app in the user's Preview pane (http://localhost only). Use after the dev server is ready so the user sees it.",
+      "description": "Register a local HTTP app in touri Preview, only from this bot's supervised processes. Requires a linked project: if missing, offer project_link({path}) with explicit user approval, then process_define/process_start. Shell servers and browser_open do not create a Preview. Only report Preview as available after this tool succeeds and returns a target; the user opens the Preview pane to view it.",
       "inputSchema": { "type": "object", "additionalProperties": false,
         "properties": { "port": { "type": "integer", "minimum": 1, "maximum": 65535 }, "process": { "$ref": "#/definitions/processName" }, "path": { "type": "string", "default": "/" } } },
       "x-touri": { "group": "preview", "mvp": true, "mutates": true }
