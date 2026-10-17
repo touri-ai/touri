@@ -271,6 +271,13 @@ for (const type of ["command", "tool_call"] as const) {
     const unsubscribe = kernel.subscribe(({ event }) => {
       if ((event.type === "message.created" || event.type === "message.updated") && event.message.role === "assistant")
         snapshots.push(structuredClone(event.message))
+      if (event.type === "message.parts") {
+        const previous = snapshots.at(-1)
+        if (!previous || previous.id !== event.messageId || previous.threadId !== event.threadId) return
+        const message = structuredClone(previous)
+        for (const patch of event.parts) message.parts[patch.partIndex] = structuredClone(patch.part)
+        snapshots.push(message)
+      }
     })
     const waitFor = async (predicate: () => boolean) => {
       const deadline = Date.now() + 2_000

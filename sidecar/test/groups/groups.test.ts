@@ -433,6 +433,61 @@ test("target approval stays pending until user decision; timeout cancels a stall
   expect(f.store.activePath({ threadId: f.thread.id }).some((m) => m.text === "late answer")).toBe(false)
 })
 
+test("shared replies mirror compact tool parts and subsequent delta offsets", async () => {
+  let f: Awaited<ReturnType<typeof fixture>>
+  f = await fixture(async (ctx, complete) => {
+    const inserted = f.store.insertMessage({
+      message: {
+        id: f.host.kernel.newId(),
+        threadId: ctx.threadId,
+        parentId: f.store.getThread({ threadId: ctx.threadId })?.activeLeafId ?? null,
+        role: "assistant",
+        kind: "text",
+        status: "streaming",
+        runId: ctx.runId,
+        text: "Lendo.",
+        parts: [{ type: "text", text: "Lendo." }],
+        sender: null,
+        source: "local",
+      },
+    })
+    if (!inserted.success || !f.store.appendParts) throw new Error("Compact store missing")
+    f.store.appendParts({
+      threadId: ctx.threadId,
+      messageId: inserted.message.id,
+      parts: [
+        {
+          partIndex: 1,
+          part: {
+            type: "command",
+            callId: "shared-command",
+            command: "cat result.txt",
+            cwd: "/project",
+            exitCode: null,
+            outputTail: "etapa 1",
+            resolution: "running",
+          },
+        },
+      ],
+    })
+    f.store.flushWrites?.()
+    f.store.appendDelta({ threadId: ctx.threadId, messageId: inserted.message.id, partIndex: 2, delta: "\n\nPronto." })
+    f.store.flushWrites?.()
+    const shared = f.store.activePath({ threadId: f.thread.id }).find((message) => message.runId === ctx.runId)
+    expect(shared?.parts.map((part) => part.type)).toEqual(["text", "command", "text"])
+    expect(shared?.parts[1]).toMatchObject({ callId: "shared-command", outputTail: "etapa 1" })
+    expect(shared?.text).toBe("Lendo.\n\nPronto.")
+    expect(
+      f.db
+        .query("SELECT thread_id FROM tool_resolutions WHERE run_id = ? AND call_id = ?")
+        .get(ctx.runId, "shared-command"),
+    ).toEqual({ thread_id: ctx.threadId })
+    complete("Pronto.")
+  })
+  const run = f.send("@dev confira")
+  await until(() => f.persistence.getRun(run.id)?.status === "succeeded")
+})
+
 test("0008 upgrades a populated version 7 DB atomically and can reopen safely", async () => {
   const f = await fixture()
   const name = f.bots[0]?.name

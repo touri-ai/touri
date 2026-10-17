@@ -231,21 +231,45 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
       }
       return
     }
-    if (event.type !== "message.created" && event.type !== "message.updated" && event.type !== "message.delta") return
-    const sourceThread = event.type === "message.delta" ? event.threadId : event.message.threadId
+    if (
+      event.type !== "message.created" &&
+      event.type !== "message.updated" &&
+      event.type !== "message.delta" &&
+      event.type !== "message.parts"
+    )
+      return
+    const sourceThread =
+      event.type === "message.delta" || event.type === "message.parts" ? event.threadId : event.message.threadId
     const frame = frames.get(sourceThread)
     if (!frame) return
-    if (event.type === "message.delta") {
+    if (event.type === "message.delta" || event.type === "message.parts") {
       const link = db
         .query("SELECT visible_message_id FROM group_message_links WHERE source_thread_id=? AND message_id=?")
         .get(sourceThread, event.messageId) as { visible_message_id: string } | null
-      if (link)
+      if (!link) return
+      if (event.type === "message.delta")
         store.appendDelta({
           threadId: frame.turn.run.threadId,
           messageId: link.visible_message_id,
           partIndex: event.partIndex,
           delta: event.delta,
         })
+      else if (store.appendParts)
+        store.appendParts({
+          threadId: frame.turn.run.threadId,
+          messageId: link.visible_message_id,
+          parts: event.parts,
+        })
+      else {
+        const message = store
+          .activePath({ threadId: frame.turn.run.threadId })
+          .find((row) => row.id === link.visible_message_id)
+        if (message) {
+          const parts = [...message.parts]
+          for (const patch of event.parts) parts[patch.partIndex] = patch.part
+          store.updateMessage({ threadId: message.threadId, messageId: message.id, patch: { parts } })
+        }
+      }
       return
     }
     const message = event.message
@@ -254,12 +278,11 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
       .query("SELECT visible_message_id FROM group_message_links WHERE source_thread_id=? AND message_id=?")
       .get(sourceThread, message.id) as { visible_message_id: string } | null
     if (link) {
-      const updated = store.updateMessage({
+      store.updateMessage({
         threadId: frame.turn.run.threadId,
         messageId: link.visible_message_id,
         patch: { parts: message.parts, text: message.text, status: message.status, runId: message.runId },
       })
-      if (updated.success) kernel.publish({ type: "message.updated", message: updated.message })
     } else {
       const botId = frame.stack.at(-1) ?? ""
       const bot = store.getBot({ botId })
@@ -275,7 +298,6 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
       if (shared.success) {
         db.query("INSERT INTO group_message_links VALUES(?,?,?)").run(message.id, sourceThread, shared.message.id)
         frame.turn.tail = shared.message.id
-        kernel.publish({ type: "message.created", message: shared.message })
       }
     }
   })

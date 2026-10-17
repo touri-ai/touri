@@ -147,7 +147,7 @@ const fixture = (resumeError?: string) => {
       return codexProcess(requests, resumeError)
     },
   } as unknown as Kernel
-  const store = createTestStore({ bot, thread })
+  const store = createTestStore({ bot, thread, publish: kernel.publish })
   kernel.services.provide("store.api", store)
   const engine = createRuntimeEngine({ kernel, codexCommand: process.execPath, environment })
   cleanups.push(async () => {

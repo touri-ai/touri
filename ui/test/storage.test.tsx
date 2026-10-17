@@ -26,10 +26,13 @@ const part: ToolCallPart = {
 it("loads file-backed tool results only on demand through authenticated attachment requests", async () => {
   const base = createMockApi()
   const output = vi.fn(async () => ({
-    text: async () => JSON.stringify({ dataBase64: "aW1hZ2U=", mime: "image/png" }),
+    text: JSON.stringify({ dataBase64: "aW1hZ2U=", mime: "image/png" }),
+    offset: 0,
+    nextOffset: null,
+    bytes: 48,
   }))
   const request: ApiRequest = async (route, input, path) =>
-    route === "GET /attachments/:id" ? (output() as never) : base.request(route, input, path)
+    route === "GET /attachments/:id/content" ? (output() as never) : base.request(route, input, path)
   render(<ToolCallCard part={part} api={{ ...base, request }} />)
   expect(output).not.toHaveBeenCalled()
   fireEvent.click(screen.getByRole("button", { name: "Abrir resultado completo" }))
@@ -42,9 +45,9 @@ it("retries attachment errors and clears old output when a newer reference arriv
   const output = vi
     .fn()
     .mockRejectedValueOnce(new Error("offline"))
-    .mockResolvedValue({ text: async () => "Resposta completa" })
+    .mockResolvedValue({ text: "Resposta completa", offset: 0, nextOffset: null, bytes: 17 })
   const request: ApiRequest = async (route, input, path) =>
-    route === "GET /attachments/:id" ? output() : base.request(route, input, path)
+    route === "GET /attachments/:id/content" ? output() : base.request(route, input, path)
   const api = { ...base, request }
   const view = render(<ToolCallCard part={part} api={api} />)
   fireEvent.click(screen.getByRole("button", { name: "Abrir resultado completo" }))
@@ -113,7 +116,9 @@ it("renders a file-backed diff literally after loading its attachment", async ()
   const base = createMockApi()
   const diff = "diff --git a/README.md b/README.md\n@@ -1 +1 @@\n+```js\n+<b>literal</b>\n+``````"
   const request: ApiRequest = async (route, input, path) =>
-    route === "GET /attachments/:id" ? ({ text: async () => diff } as never) : base.request(route, input, path)
+    route === "GET /attachments/:id/content"
+      ? ({ text: diff, offset: 0, nextOffset: null, bytes: diff.length } as never)
+      : base.request(route, input, path)
   const view = render(
     <ToolCallCard
       api={{ ...base, request }}
@@ -135,17 +140,19 @@ it("renders a file-backed diff literally after loading its attachment", async ()
 it("keeps browser page context and host screenshot thumbnails when output is stored as an attachment", async () => {
   const base = createMockApi()
   const request: ApiRequest = async (route, input, path) =>
-    route === "GET /attachments/:id"
+    route === "GET /attachments/:id/content"
       ? ({
-          text: async () =>
-            JSON.stringify({
-              structured: {
-                title: "Página preservada",
-                url: "https://example.org/pagina",
-                dataUrl: "data:image/png;base64,aW1hZ2U=",
-              },
-              content: [],
-            }),
+          text: JSON.stringify({
+            structured: {
+              title: "Página preservada",
+              url: "https://example.org/pagina",
+              dataUrl: "data:image/png;base64,aW1hZ2U=",
+            },
+            content: [],
+          }),
+          offset: 0,
+          nextOffset: null,
+          bytes: 200,
         } as never)
       : base.request(route, input, path)
   render(<ToolCallCard part={{ ...part, tool: "mcp__touri__browser_screenshot" }} api={{ ...base, request }} />)
@@ -156,4 +163,25 @@ it("keeps browser page context and host screenshot thumbnails when output is sto
   expect(screen.getByText("https://example.org/pagina")).toBeVisible()
   expect(screen.getByRole("button", { name: "Baixar imagem" })).toBeVisible()
   expect(screen.queryByText("Resultado")).toBeNull()
+})
+
+it("shows the inline preview and reads large output only in explicit bounded pages", async () => {
+  const base = createMockApi()
+  const pages = vi
+    .fn()
+    .mockResolvedValueOnce({ text: "Primeira página.\n", offset: 0, nextOffset: 19, bytes: 40 })
+    .mockResolvedValueOnce({ text: "Última página.", offset: 19, nextOffset: null, bytes: 40 })
+  const request: ApiRequest = async (route, input, path) =>
+    route === "GET /attachments/:id/content" ? pages(input, path) : base.request(route, input, path)
+  render(<ToolCallCard part={{ ...part, outputPreview: "Prévia preservada" }} api={{ ...base, request }} />)
+  expect(screen.getByText("Prévia preservada")).toBeInTheDocument()
+  expect(pages).not.toHaveBeenCalled()
+  fireEvent.click(screen.getByRole("button", { name: "Abrir resultado completo" }))
+  expect(await screen.findByText("Primeira página.")).toBeInTheDocument()
+  expect(pages).toHaveBeenLastCalledWith({ offset: 0, limit: 65536 }, { id: "blob" })
+  expect(pages).toHaveBeenCalledOnce()
+  fireEvent.click(screen.getByRole("button", { name: "Carregar mais saída" }))
+  await waitFor(() => expect(screen.getByText(/Última página/)).toBeInTheDocument())
+  expect(pages).toHaveBeenLastCalledWith({ offset: 19, limit: 65536 }, { id: "blob" })
+  expect(screen.queryByRole("button", { name: "Carregar mais saída" })).not.toBeInTheDocument()
 })

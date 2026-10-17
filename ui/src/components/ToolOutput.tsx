@@ -1,7 +1,7 @@
 import { redactToolText } from "@touri/contracts/redaction"
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import type { UiApi } from "../api/client"
-import { localizeToolText } from "../i18n"
+import { localizeToolText, t } from "../i18n"
 import { contrastAnsiColor } from "./ansiContrast"
 import { parseAnsiOutput } from "./ansiOutput"
 import { browserToolResult } from "./browserToolPresentation"
@@ -206,17 +206,20 @@ export const ToolOutput = ({
 export const StoredToolOutput = ({
   api,
   attachmentId,
+  preview,
   callId,
   diff = false,
   browser = false,
 }: {
   api?: UiApi | undefined
   attachmentId: string
+  preview?: string | undefined
   callId: string
   diff?: boolean
   browser?: boolean
 }) => {
   const [raw, setRaw] = useState<string | null>(null)
+  const [nextOffset, setNextOffset] = useState<number | null>(0)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(false)
   const generation = useRef(0)
@@ -232,9 +235,15 @@ export const StoredToolOutput = ({
     setLoading(true)
     setError(false)
     try {
-      const file = await api.request("GET /attachments/:id", {}, { id: attachmentId })
-      const text = await file.text()
-      if (generation.current === attempt) setRaw(text)
+      const page = await api.request(
+        "GET /attachments/:id/content",
+        { offset: nextOffset ?? 0, limit: 64 * 1024 },
+        { id: attachmentId },
+      )
+      if (generation.current === attempt) {
+        setRaw((previous) => (previous ?? "") + page.text)
+        setNextOffset(page.nextOffset)
+      }
     } catch {
       if (generation.current === attempt) setError(true)
     } finally {
@@ -242,24 +251,31 @@ export const StoredToolOutput = ({
     }
   }
   const result = browser && raw !== null ? browserToolResult(raw) : null
-  return raw === null ? (
-    <div>
-      <button type="button" className="button button-quiet" disabled={!api || loading} onClick={() => void load()}>
-        {loading ? "Carregando resultado…" : "Abrir resultado completo"}
-      </button>
-      {error && <p role="status">Não foi possível abrir o resultado. Tente novamente.</p>}
-    </div>
-  ) : diff ? (
-    <RevealDetails className="tool-details tool-output" summary="Resultado">
-      <DiffOutput source={raw} />
-    </RevealDetails>
-  ) : (
+  return (
     <>
+      {raw === null && preview && <ToolText text={preview} />}
       {result?.title && <p className="tool-summary">{result.title}</p>}
       {result?.url && <p className="tool-summary">{result.url}</p>}
-      {(result ? result.output : raw) != null && (
-        <ToolOutput raw={(result ? result.output : raw) ?? ""} callId={callId} />
+      {raw !== null &&
+        (diff ? (
+          <RevealDetails className="tool-details tool-output" summary="Resultado">
+            <DiffOutput source={raw} />
+          </RevealDetails>
+        ) : (
+          (result ? result.output : raw) != null && (
+            <ToolOutput raw={(result ? result.output : raw) ?? ""} callId={callId} />
+          )
+        ))}
+      {nextOffset !== null && (
+        <button type="button" className="button button-quiet" disabled={!api || loading} onClick={() => void load()}>
+          {loading
+            ? t("Carregando resultado…")
+            : raw === null
+              ? t("Abrir resultado completo")
+              : t("Carregar mais saída")}
+        </button>
       )}
+      {error && <p role="status">{t("Não foi possível abrir o resultado. Tente novamente.")}</p>}
     </>
   )
 }

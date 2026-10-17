@@ -2,6 +2,7 @@ import type { Database } from "bun:sqlite"
 import type { MessagePart, UiEvent } from "@touri/contracts"
 
 type Delta = Extract<UiEvent, { type: "message.delta" }>
+type StreamEvent = Delta | Extract<UiEvent, { type: "message.parts" }>
 type Projection = {
   id: string
   thread_id: string
@@ -20,9 +21,9 @@ export const materializeTranscript = (database: Database): void => {
       .query(
         // ORDER BY e.id otherwise makes SQLite scan and parse every historical message body.
         `SELECT e.seq AS delta_seq, e.at, e.event_json, m.id, m.thread_id
-         FROM transcript_entries e INDEXED BY transcript_delta_message
+         FROM transcript_entries e INDEXED BY transcript_stream_message
          JOIN messages m ON m.thread_id = e.thread_id AND m.id = json_extract(e.event_json, '$.messageId')
-         WHERE json_extract(e.event_json, '$.type') = 'message.delta' AND e.seq > m.updated_seq
+         WHERE json_extract(e.event_json, '$.type') IN ('message.delta', 'message.parts') AND e.seq > m.updated_seq
          ORDER BY e.id`,
       )
       .all() as Array<{ id: string; thread_id: string; delta_seq: number; at: number; event_json: string }>
@@ -36,14 +37,26 @@ export const materializeTranscript = (database: Database): void => {
           .get(row.thread_id, row.id) as Projection
         projection = { ...snapshot, parts: JSON.parse(snapshot.parts_json) as MessagePart[] }
       }
-      const event = JSON.parse(row.event_json) as Delta
-      const part = projection.parts[event.partIndex]
-      const text = part?.type === "text" || part?.type === "reasoning" ? part.text : ""
-      if (event.offset === undefined || event.offset > text.length) throw new Error("Transcript delta has a gap")
-      const suffix = event.delta.slice(Math.max(0, text.length - event.offset))
-      const partType = event.partType ?? (part?.type === "reasoning" ? "reasoning" : "text")
-      projection.parts[event.partIndex] = { type: partType, text: text + suffix }
-      if (partType === "text") projection.text += suffix
+      const event = JSON.parse(row.event_json) as StreamEvent
+      if (event.type === "message.parts") {
+        for (const patch of event.parts) {
+          if (patch.partIndex > projection.parts.length) throw new Error("Transcript part has a gap")
+          projection.parts[patch.partIndex] = patch.part
+        }
+        projection.text = projection.parts.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("")
+      } else {
+        const part = projection.parts[event.partIndex]
+        const text = part?.type === "text" || part?.type === "reasoning" ? part.text : ""
+        if (event.offset === undefined || event.offset > text.length) throw new Error("Transcript delta has a gap")
+        const suffix = event.delta.slice(Math.max(0, text.length - event.offset))
+        const partType = event.partType ?? (part?.type === "reasoning" ? "reasoning" : "text")
+        projection.parts[event.partIndex] = {
+          ...(part?.type === partType ? part : {}),
+          type: partType,
+          text: text + suffix,
+        }
+        if (partType === "text") projection.text += suffix
+      }
       projection.updated_seq = row.delta_seq
       projection.generation = event.generation ?? projection.generation
       projection.updated_at = row.at

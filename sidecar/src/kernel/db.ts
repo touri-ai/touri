@@ -23,10 +23,11 @@ import providerProfilesSql from "./migrations/0017.sql" with { type: "text" }
 import permissionContinuationsSql from "./migrations/0018.sql" with { type: "text" }
 import botBrowserSql from "./migrations/0019.sql" with { type: "text" }
 import responseActivitySql from "./migrations/0020.sql" with { type: "text" }
+import streamWriterSql from "./migrations/0021.sql" with { type: "text" }
 import { withSuspendedSchemaObjects } from "./schema-rebuild"
 import { applyUpgradeBaselines } from "./upgradeBaselines"
 
-export const SCHEMA_VERSION = 20
+export const SCHEMA_VERSION = 21
 
 const FREE_PAGE_RATIO_LIMIT = 0.2
 
@@ -42,7 +43,9 @@ export const openDatabase = ({ filename }: { filename: string }): Database => {
     databasePath,
     sqliteFlags.SQLITE_OPEN_READWRITE | sqliteFlags.SQLITE_OPEN_CREATE | sqliteFlags.SQLITE_OPEN_NOFOLLOW,
   )
-  database.exec("PRAGMA busy_timeout = 5000; PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;")
+  database.exec(
+    "PRAGMA busy_timeout = 5000; PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA synchronous = FULL;",
+  )
   database.exec(migrationSql)
   database.exec(notificationsSql)
   database.transaction(() => {
@@ -160,5 +163,6 @@ export const openDatabase = ({ filename }: { filename: string }): Database => {
     database.exec("UPDATE schema_meta SET value = '20' WHERE key = 'schema_version'")
   })()
   applyUpgradeBaselines({ database })
+  database.transaction(() => database.exec(streamWriterSql))()
   return database
 }

@@ -1,10 +1,18 @@
-import type { Bot, Id, Message, StoreApi, Thread } from "@touri/contracts"
+import type { Bot, Id, Kernel, Message, StoreApi, Thread } from "@touri/contracts"
 
 export type TestStore = StoreApi & { bots: Map<Id, Bot>; threads: Map<Id, Thread>; messages: Map<Id, Message> }
 
 const now = (): number => Date.now()
 
-export const createTestStore = ({ bot, thread }: { bot: Bot; thread: Thread }): TestStore => {
+export const createTestStore = ({
+  bot,
+  thread,
+  publish,
+}: {
+  bot: Bot
+  thread: Thread
+  publish?: Kernel["publish"]
+}): TestStore => {
   const bots = new Map<Id, Bot>([[bot.id, bot]])
   const threads = new Map<Id, Thread>([[thread.id, thread]])
   const messages = new Map<Id, Message>()
@@ -18,6 +26,7 @@ export const createTestStore = ({ bot, thread }: { bot: Bot; thread: Thread }): 
     messages.set(created.id, created)
     targetThread.activeLeafId = created.id
     targetThread.updatedAt = created.updatedAt
+    publish?.({ type: "message.created", message: structuredClone(created) })
     return { success: true, message: created }
   }
 
@@ -35,6 +44,7 @@ export const createTestStore = ({ bot, thread }: { bot: Bot; thread: Thread }): 
     const message = messages.get(messageId)
     if (!message) return { success: false, errorCode: "NOT_FOUND", error: "Message not found" }
     Object.assign(message, patch, { updatedAt: now() })
+    publish?.({ type: "message.updated", message: structuredClone(message) })
     return { success: true, message }
   }
 

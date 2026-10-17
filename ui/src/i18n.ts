@@ -3,6 +3,12 @@ import { userFacingError } from "./errors"
 /** All UI copy lives here. pt-BR is the default; English is available for a future locale picker. */
 export type Locale = "pt-BR" | "en"
 export const ptBR = {
+  "Abrir resultado completo": "Abrir resultado completo",
+  "Carregando resultado…": "Carregando resultado…",
+  "Carregar mais saída": "Carregar mais saída",
+  "Não foi possível abrir o resultado. Tente novamente.": "Não foi possível abrir o resultado. Tente novamente.",
+  "Intervalo de saída inválido": "Intervalo de saída inválido",
+  "Resultado não encontrado": "Resultado não encontrado",
   "Agendar esta tarefa": "Agendar esta tarefa",
   "VM machine help":
     "Mais seguro: trabalha num computador separado só para este bot, dentro deste computador. A tela e o navegador ficam separados dos seus. Você escolhe quais pastas compartilhar. Projetos usam uma cópia da última versão registrada.",
@@ -1858,6 +1864,12 @@ export const ptBR = {
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  "Abrir resultado completo": "Open full result",
+  "Carregando resultado…": "Loading result…",
+  "Carregar mais saída": "Load more output",
+  "Não foi possível abrir o resultado. Tente novamente.": "Could not open the result. Try again.",
+  "Intervalo de saída inválido": "Invalid output range",
+  "Resultado não encontrado": "Result not found",
   "Tentar de novo": "Try again",
   "Agendar esta tarefa": "Schedule this task",
   "Local machine": "On this computer",

@@ -95,6 +95,7 @@ export const apiRouteKeys = [
   "GET /search",
   "POST /attachments",
   "GET /attachments/:id",
+  "GET /attachments/:id/content",
   "GET /routines",
   "POST /routines",
   "PATCH /routines/:id",
@@ -186,7 +187,7 @@ type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Respo
 const replacePath = (path: string, pathValues: Record<string, string>): string =>
   path.replace(/:([a-zA-Z0-9_]+)/g, (_, name: string) => encodeURIComponent(pathValues[name] ?? `:${name}`))
 
-const isBlobRoute = (route: string): boolean => route.includes("/attachments/") || route === "GET /bots/:id/images"
+const isBlobRoute = (route: string): boolean => route === "GET /attachments/:id" || route === "GET /bots/:id/images"
 
 /** Never hold the first load back for long when the event socket cannot open. */
 const CURSOR_WAIT_MS = 3_000
