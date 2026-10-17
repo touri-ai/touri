@@ -43,8 +43,6 @@ test("host client authenticates over NDJSON and reconnects after a socket closes
 
 for (const errorCode of ["VAULT_ACCESS_REQUIRED", "VAULT_TIMEOUT", "VAULT_CANCELLED", "VAULT_UNAVAILABLE"] as const)
   test(`host client preserves native ${errorCode} as a typed failure`, async () => {
-    const root = mkdtempSync(join(tmpdir(), "touri-host-vault-"))
-    const socketPath = join(root, "host.sock")
     const server = createServer((socket) => {
       let buffer = ""
       socket.on("data", (chunk) => {
@@ -65,7 +63,8 @@ for (const errorCode of ["VAULT_ACCESS_REQUIRED", "VAULT_TIMEOUT", "VAULT_CANCEL
         }
       })
     })
-    await new Promise<void>((resolve) => server.listen(socketPath, resolve))
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve))
+    const socketPath = `tcp://127.0.0.1:${(server.address() as { port: number }).port}`
     const client = createHostClient({ socketPath, token: "test-token", onNotification: () => {} })
     try {
       expect(await client.callHost("keychain.get", { account: "bot/test/login" })).toEqual({
@@ -76,6 +75,5 @@ for (const errorCode of ["VAULT_ACCESS_REQUIRED", "VAULT_TIMEOUT", "VAULT_CANCEL
     } finally {
       client.close()
       server.close()
-      rmSync(root, { recursive: true, force: true })
     }
   })
