@@ -31,12 +31,14 @@ import type { WorkspaceActions } from "../useWorkspace"
 import { type AvatarChoice, AvatarPicker } from "./AvatarPicker"
 import { BotAccessSummary } from "./BotAccessSummary"
 import { BotAvatar } from "./BotAvatar"
+import { BotBrowserPicker } from "./BotBrowserPicker"
 import { BotFolderSettings } from "./BotFolderSettings"
 import { BotMcpSettings } from "./BotMcpSettings"
 import { BotNetworkSettings } from "./BotNetworkSettings"
 import { BotStandingGrants } from "./BotStandingGrants"
 import { DeleteBotDialog } from "./DeleteBotDialog"
 import { DiscoveredProjects } from "./DiscoveredProjects"
+import { FolderPicker } from "./FolderPicker"
 import { MachineFields } from "./MachineFields"
 import { Modal } from "./Modal"
 import { ProviderInstallation } from "./ProviderInstallation"
@@ -401,6 +403,12 @@ export const BotModelModal = ({
   )
 }
 
+// Projects already allow writes. Keep an explicit grant only to restrict them or replace an existing grant.
+const projectFolderPatch = (folders: BotFolder[], folder: BotFolder): { folders?: BotFolder[] } =>
+  folder.access === "read-write" && !folders.some((item) => item.path === folder.path)
+    ? {}
+    : { folders: [...folders.filter((item) => item.path !== folder.path), folder] }
+
 type BotCreateModalProps = {
   api?: UiApi
   invokeCommand?: TauriInvoke
@@ -444,6 +452,7 @@ export const BotCreateModal = ({
   const [effort, setEffort] = useState<Bot["reasoningEffort"]>(null)
   const [projectId, setProjectId] = useState("")
   const [addingProject, setAddingProject] = useState(false)
+  const [pickingProject, setPickingProject] = useState(false)
   const [projectBusy, setProjectBusy] = useState(false)
   const [addedProjects, setAddedProjects] = useState<Project[]>([])
   const availableProjects = [
@@ -453,6 +462,7 @@ export const BotCreateModal = ({
   const [folders, setFolders] = useState<BotFolder[]>([])
   const [anyFolderAccess, setAnyFolderAccess] = useState(false)
   const [browserEnabled, setBrowserEnabled] = useState(true)
+  const [browser, setBrowser] = useState<Bot["browser"]>("touri")
   const [error, setError] = useState<string | null>(null)
   const [access, setAccess] = useState("workspace-write")
   const [machine, setMachine] = useState<
@@ -507,6 +517,7 @@ export const BotCreateModal = ({
         folders: machine.machine === "cloud" ? [] : folders,
         anyFolderAccess: machine.machine !== "cloud" && anyFolderAccess,
         browserEnabled,
+        browser,
         access: access === "full-approved" ? ("full" as const) : (access as Bot["access"]),
         approvals:
           access === "full" || (provider === "codex" && access === "full-approved")
@@ -526,7 +537,7 @@ export const BotCreateModal = ({
       setSaving(false)
     }
   }
-  const addProject = async (input: ApiRoutes["POST /projects"]["req"]) => {
+  const addProject = async (input: ApiRoutes["POST /projects"]["req"], folder?: BotFolder) => {
     if (!api) return
     setProjectBusy(true)
     try {
@@ -535,6 +546,8 @@ export const BotCreateModal = ({
         : (await api.request("POST /projects", input)).project
       setAddedProjects((current) => [...current.filter((item) => item.id !== project.id), project])
       setProjectId(project.id)
+      if (folder)
+        setFolders((current) => projectFolderPatch(current, { ...folder, path: project.path }).folders ?? current)
       setAddingProject(false)
     } finally {
       setProjectBusy(false)
@@ -651,6 +664,66 @@ export const BotCreateModal = ({
                 {login.error}
               </p>
             )}
+            {machine.machine !== "cloud" && (
+              <div className="bot-create-fields">
+                <label htmlFor="create-project">{t("Projeto")}</label>
+                <select
+                  id="create-project"
+                  disabled={projectBusy}
+                  value={projectId}
+                  onChange={(event) => {
+                    if (event.target.value === "__add_project__") setAddingProject(true)
+                    else {
+                      setProjectId(event.target.value)
+                      setAddingProject(false)
+                    }
+                  }}
+                >
+                  <option value="">{t("Nenhum projeto (começa na pasta do bot)")}</option>
+                  {availableProjects.map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.name}
+                    </option>
+                  ))}
+                  <option value="__add_project__" disabled={!api}>
+                    {t("Adicionar projeto…")}
+                  </option>
+                </select>
+                {addingProject && api && (
+                  <DiscoveredProjects
+                    api={api}
+                    disabled={saving}
+                    onSelect={(repository) => addProject({ path: repository.path, name: repository.name })}
+                    onChooseFolder={async () => setPickingProject(true)}
+                  />
+                )}
+              </div>
+            )}
+            {machine.machine !== "cloud" && (
+              <BotFolderSettings
+                api={api}
+                simple={!advanced}
+                readOnly={access === "read-only"}
+                folders={folders}
+                anyFolderAccess={anyFolderAccess}
+                machine={machine.machine}
+                disabled={saving}
+                invokeCommand={invokeCommand}
+                onFolders={setFolders}
+                onAnyFolderAccess={setAnyFolderAccess}
+              />
+            )}
+            {pickingProject && api && (
+              <FolderPicker
+                api={api}
+                invokeCommand={invokeCommand}
+                onClose={() => setPickingProject(false)}
+                onSelect={async (folder) => {
+                  await addProject({ path: folder.path }, folder)
+                  setPickingProject(false)
+                }}
+              />
+            )}
             <button
               type="button"
               className="text-button bot-create-advanced-toggle"
@@ -742,46 +815,6 @@ export const BotCreateModal = ({
                     {t("Full access skips provider approvals. Folder access is configured separately.")}
                   </div>
                 )}
-                <label htmlFor="create-project">{t("Projeto")}</label>
-                <select
-                  id="create-project"
-                  disabled={projectBusy || machine.machine === "cloud"}
-                  value={projectId}
-                  onChange={(event) => {
-                    if (event.target.value === "__add_project__") setAddingProject(true)
-                    else {
-                      setProjectId(event.target.value)
-                      setAddingProject(false)
-                    }
-                  }}
-                >
-                  <option value="">{t("Nenhum projeto (começa na pasta do bot)")}</option>
-                  {availableProjects.map((project) => (
-                    <option key={project.id} value={project.id}>
-                      {project.name}
-                    </option>
-                  ))}
-                  <option value="__add_project__" disabled={!api}>
-                    {t("Adicionar projeto…")}
-                  </option>
-                </select>
-                {addingProject && api && machine.machine !== "cloud" && (
-                  <DiscoveredProjects
-                    api={api}
-                    disabled={saving}
-                    onSelect={(repository) => addProject({ path: repository.path, name: repository.name })}
-                    onChooseFolder={
-                      invokeCommand
-                        ? async () => {
-                            const selected = await invokeCommand("pick_folder", {
-                              title: t("Connect a project folder"),
-                            })
-                            if (selected?.path) await addProject({ path: selected.path })
-                          }
-                        : undefined
-                    }
-                  />
-                )}
                 <BotAccessSummary
                   machine={machine.machine}
                   access={access === "full-approved" ? "full" : (access as Bot["access"])}
@@ -789,17 +822,6 @@ export const BotCreateModal = ({
                   folders={folders}
                   anyFolderAccess={anyFolderAccess}
                 />
-                {machine.machine !== "cloud" && (
-                  <BotFolderSettings
-                    folders={folders}
-                    anyFolderAccess={anyFolderAccess}
-                    machine={machine.machine}
-                    disabled={saving}
-                    invokeCommand={invokeCommand}
-                    onFolders={setFolders}
-                    onAnyFolderAccess={setAnyFolderAccess}
-                  />
-                )}
                 <label className="toggle-row" htmlFor="create-browser">
                   <span>{t("Browser enabled")}</span>
                   <SettingsSwitch
@@ -808,6 +830,7 @@ export const BotCreateModal = ({
                     onChange={(event) => setBrowserEnabled(event.target.checked)}
                   />
                 </label>
+                <BotBrowserPicker value={browser} machine={machine.machine} disabled={saving} onChange={setBrowser} />
                 <MachineFields
                   values={machine}
                   cloudConnected={cloudAccount?.connected === true}
@@ -816,6 +839,14 @@ export const BotCreateModal = ({
                   onChange={(patch) => {
                     setMachine((current) => ({ ...current, ...patch }))
                     if (patch.machine === "cloud") setProjectId("")
+                    if (patch.machine)
+                      setBrowser((current) =>
+                        patch.machine === "vm"
+                          ? "machine"
+                          : current === "machine" || patch.machine === "cloud"
+                            ? "touri"
+                            : current,
+                      )
                   }}
                 />
                 {machine.machine === "cloud" && (
@@ -900,6 +931,7 @@ type BotSettingsModalProps = {
   projects: Array<Project>
   routines: Array<Routine>
   actions: WorkspaceActions
+  onAttachFile?: (() => void) | undefined
   onClose: () => void
 }
 
@@ -915,6 +947,7 @@ export const BotSettingsModal = ({
   routines,
   actions,
   onClose,
+  onAttachFile,
   capability,
   machineState,
   activeTurns = false,
@@ -941,6 +974,7 @@ export const BotSettingsModal = ({
     vmProviderLogin: bot.vmProviderLogin,
     hostComputerUse: bot.hostComputerUse,
   })
+  const [browser, setBrowser] = useState(bot.browser ?? "touri")
   const [provider, setProvider] = useState(bot.provider)
   const [model, setModel] = useState(bot.model ?? "")
   const [access, setAccess] = useState<string>(
@@ -1022,6 +1056,7 @@ export const BotSettingsModal = ({
         name: validName,
         ...avatar,
         ...machine,
+        browser,
         roleLine: roleLine.trim() || null,
         title: title.trim() || null,
         instructions,
@@ -1247,7 +1282,17 @@ export const BotSettingsModal = ({
                 provider={provider}
                 {...(capability ? { capability } : {})}
                 {...(machineState ? { state: machineState } : {})}
-                onChange={(patch) => setMachine((current) => ({ ...current, ...patch }))}
+                onChange={(patch) => {
+                  setMachine((current) => ({ ...current, ...patch }))
+                  if (patch.machine)
+                    setBrowser((current) =>
+                      patch.machine === "vm"
+                        ? "machine"
+                        : current === "machine" || patch.machine === "cloud"
+                          ? "touri"
+                          : current,
+                    )
+                }}
                 {...(bot.machine === "vm"
                   ? {
                       onAction: (reset: boolean, stopTurns?: boolean) =>
@@ -1305,7 +1350,7 @@ export const BotSettingsModal = ({
               <label className="toggle-row" htmlFor="settings-browser">
                 <span>
                   <strong>{t("Browser enabled")}</strong>
-                  <small>{t("Allow this teammate to use its touri-owned Chrome tabs.")}</small>
+                  <small>{t("Allow this teammate to use its own browser tabs.")}</small>
                 </span>
                 <SettingsSwitch
                   id="settings-browser"
@@ -1317,6 +1362,12 @@ export const BotSettingsModal = ({
                   }}
                 />
               </label>
+              <BotBrowserPicker
+                value={browser}
+                machine={machine.machine}
+                disabled={saving || updating}
+                onChange={setBrowser}
+              />
             </SettingsGroup>
           </SettingsPane>
           <SettingsPane {...botPane("project")}>
@@ -1355,7 +1406,10 @@ export const BotSettingsModal = ({
                     api={api}
                     invokeCommand={invokeCommand}
                     actions={actions}
-                    onLinked={(project) => setProjectId(project.id)}
+                    onLinked={(project, folder) => {
+                      setProjectId(project.id)
+                      if (folder) setFolders((current) => projectFolderPatch(current, folder).folders ?? current)
+                    }}
                     onClose={() => setAddingProject(false)}
                     onOpenPreview={() => setAddingProject(false)}
                     onNotice={() => {}}
@@ -1437,6 +1491,9 @@ export const BotSettingsModal = ({
             )}
             {machine.machine !== "cloud" && (
               <BotFolderSettings
+                api={api}
+                onUpload={onAttachFile}
+                readOnly={access === "read-only"}
                 folders={folders}
                 anyFolderAccess={anyFolderAccess}
                 machine={machine.machine}
@@ -1475,6 +1532,10 @@ export const BotSettingsModal = ({
               <BotMcpSettings
                 api={api}
                 botId={bot.id}
+                botName={bot.name}
+                onContinue={onClose}
+                onAttach={onAttachFile}
+                onFolder={() => setSection("access")}
                 machine={bot.machine}
                 invokeCommand={invokeCommand}
                 onPermissionsChange={() => setGrantsRevision((revision) => revision + 1)}
@@ -1542,7 +1603,7 @@ export const BotSettingsModal = ({
 
 type ProjectModalProps = {
   linkBotId?: string | null
-  onLinked?: (project: Project) => void
+  onLinked?: (project: Project, folder?: BotFolder) => void
 
   project: Project | null
   selectedBotId: string | null
@@ -1580,6 +1641,8 @@ export const ProjectModal = ({
 }: ProjectModalProps) => {
   const selectedBot = bots.find((bot) => bot.id === selectedBotId)
   const vmBotId = selectedBot?.machine === "vm" ? selectedBot.id : null
+  const [pickingFolder, setPickingFolder] = useState(false)
+  const [projectFolder, setProjectFolder] = useState<BotFolder | null>(null)
   const [source, setSource] = useState<"folder" | "clone">("folder")
   const [path, setPath] = useState(project?.path ?? "")
   const [gitUrl, setGitUrl] = useState("")
@@ -1639,19 +1702,16 @@ export const ProjectModal = ({
     }
   }, [api])
 
-  const changeSource = (change: () => void) => {
+  const changeSource = (change: () => void, resetFolder = true) => {
     change()
     setConnectedProject(null)
     setProjectGit(null)
     setProjectError(null)
     setReturnedExisting(null)
+    if (resetFolder) setProjectFolder(null)
   }
 
-  const chooseFolder = async (): Promise<void> => {
-    const selected = await invokeCommand("pick_folder", { title: t("Connect a project folder") })
-    const selectedPath = selected?.path
-    if (selectedPath) changeSource(() => setPath(selectedPath))
-  }
+  const chooseFolder = async (): Promise<void> => setPickingFolder(true)
 
   const refreshProjectDetails = useCallback(
     async (nextProject: Project): Promise<void> => {
@@ -1745,16 +1805,20 @@ export const ProjectModal = ({
         return
       }
       setConnectedProject(nextProject)
+      const grant = !discovered && projectFolder ? { ...projectFolder, path: nextProject.path } : undefined
+      setProjectFolder(grant ?? null)
+      const folderPatch = (botId: string) =>
+        grant ? projectFolderPatch(bots.find((bot) => bot.id === botId)?.folders ?? [], grant) : {}
       if (linkBotId) {
-        await actions.updateBot(linkBotId, { projectId: nextProject.id })
-        onLinked?.(nextProject)
+        await actions.updateBot(linkBotId, { projectId: nextProject.id, ...folderPatch(linkBotId) })
+        onLinked?.(nextProject, grant)
       }
       await Promise.all(
         selectedBotIds
           .filter((botId) => botId !== linkBotId)
-          .map((botId) => actions.updateBot(botId, { projectId: nextProject.id })),
+          .map((botId) => actions.updateBot(botId, { projectId: nextProject.id, ...folderPatch(botId) })),
       )
-      if (!linkBotId) onLinked?.(nextProject)
+      if (!linkBotId) onLinked?.(nextProject, grant)
       setStep("process")
       setProcessFormOpen(true)
       onNotice("Projeto conectado. Escolha os bots e adicione um processo supervisionado.")
@@ -1775,7 +1839,12 @@ export const ProjectModal = ({
       const affected = [...bots.filter((bot) => selectedBotIds.includes(bot.id)), ...current]
       await Promise.all(
         [...new Map(affected.map((bot) => [bot.id, bot])).values()].map((bot) =>
-          actions.updateBot(bot.id, { projectId: selectedBotIds.includes(bot.id) ? connectedProject.id : null }),
+          actions.updateBot(bot.id, {
+            projectId: selectedBotIds.includes(bot.id) ? connectedProject.id : null,
+            ...(selectedBotIds.includes(bot.id) && projectFolder
+              ? projectFolderPatch(bot.folders ?? [], { ...projectFolder, path: connectedProject.path })
+              : {}),
+          }),
         ),
       )
       onNotice("Atribuição de projeto atualizada.")
@@ -1902,9 +1971,7 @@ export const ProjectModal = ({
                   ⌁
                 </button>
               </div>
-              <small className="field-help">
-                {t("No navegador, digite o caminho. No app Tauri, use o seletor nativo.")}
-              </small>
+              <small className="field-help">{t("Escolha uma pasta navegando pelas pastas deste computador.")}</small>
             </>
           ) : (
             <>
@@ -1930,7 +1997,7 @@ export const ProjectModal = ({
             id="project-name"
             disabled={savingProject}
             value={name}
-            onChange={(event) => changeSource(() => setName(event.target.value))}
+            onChange={(event) => changeSource(() => setName(event.target.value), false)}
             placeholder={t("Meu projeto")}
           />
           {existingProject && (
@@ -2191,6 +2258,18 @@ export const ProjectModal = ({
           </div>
         </div>
       ) : null}
+      {pickingFolder && (
+        <FolderPicker
+          api={api}
+          invokeCommand={invokeCommand}
+          onClose={() => setPickingFolder(false)}
+          onSelect={(folder) => {
+            changeSource(() => setPath(folder.path))
+            setProjectFolder(folder)
+            setPickingFolder(false)
+          }}
+        />
+      )}
     </Modal>
   )
 }

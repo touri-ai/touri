@@ -25,7 +25,7 @@ import { stopProviderChildren, trackProviderProcess } from "../provider-processe
 import { resolveProviderExecutable } from "../resolveProviderExecutable"
 import { asRecord, classifyProviderError, resolveExecutable, stringValue } from "../utils"
 import { codexInputItems } from "./codexInputItems"
-import { codexAccessParams } from "./config"
+import { codexAccessParams, outerSeatbelt } from "./config"
 
 type RpcResponse = { id: number; result?: unknown; error?: { message?: string } }
 
@@ -185,7 +185,13 @@ const codexArgs = ({ args, mcp }: { args: StartTurnArgs; mcp: StartTurnArgs["mcp
       `approval_policy=${JSON.stringify(args.bot.approvals)}`,
     )
   else if (args.bot.access === "read-only")
-    result.push("-c", 'sandbox_mode="read-only"', "-c", 'approval_policy="never"')
+    // On macOS touri's Seatbelt profile is the boundary (see codexAccessParams).
+    result.push(
+      "-c",
+      outerSeatbelt(args) ? 'sandbox_mode="danger-full-access"' : 'sandbox_mode="read-only"',
+      "-c",
+      'approval_policy="never"',
+    )
   if (args.bot.model) result.push("-c", `model=${args.bot.model}`)
   return result
 }

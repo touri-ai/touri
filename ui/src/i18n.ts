@@ -3,6 +3,172 @@ import { userFacingError } from "./errors"
 /** All UI copy lives here. pt-BR is the default; English is available for a future locale picker. */
 export type Locale = "pt-BR" | "en"
 export const ptBR = {
+  "seu provedor": "seu provedor",
+  "o arquivo": "o arquivo",
+  "Não consegui conectar à sua IA. Sua mensagem está salva.":
+    "Não consegui conectar à sua IA. Sua mensagem está salva.",
+  "Não consegui conectar à sua IA. Verifique a conexão e tente novamente.":
+    "Não consegui conectar à sua IA. Verifique a conexão e tente novamente.",
+  "Entre novamente no {provedor} para continuar.": "Entre novamente no {provedor} para continuar.",
+  "Entrar na conta": "Entrar na conta",
+  "O {provedor} atingiu o limite de uso. Tente após {horario}.":
+    "O {provedor} atingiu o limite de uso. Tente após {horario}.",
+  "O {provedor} atingiu o limite de uso. Tente mais tarde.": "O {provedor} atingiu o limite de uso. Tente mais tarde.",
+  "Não há espaço para salvar {arquivo}.": "Não há espaço para salvar {arquivo}.",
+  "Verificar armazenamento": "Verificar armazenamento",
+  "A resposta foi interrompida. Algumas ações podem ter sido concluídas.":
+    "A resposta foi interrompida. Algumas ações podem ter sido concluídas.",
+  "Ver ações realizadas": "Ver ações realizadas",
+  "Retomar tarefa": "Retomar tarefa",
+  "Ver tarefa": "Ver tarefa",
+  "Verificar ambiente": "Verificar ambiente",
+  "Não foi possível concluir esta ação. Confira os detalhes do erro.":
+    "Não foi possível concluir esta ação. Confira os detalhes do erro.",
+  "Revise as ações registradas antes de continuar. Nenhuma ação será repetida automaticamente.":
+    "Revise as ações registradas antes de continuar. Nenhuma ação será repetida automaticamente.",
+  "Conferi as ações registradas. Quero continuar a tarefa a partir do estado atual, sem repetir ações já concluídas.":
+    "Conferi as ações registradas. Quero continuar a tarefa a partir do estado atual, sem repetir ações já concluídas.",
+  "O rascunho atual foi preservado. Revise as ações registradas antes de enviar.":
+    "O rascunho atual foi preservado. Revise as ações registradas antes de enviar.",
+  "Ações registradas": "Ações registradas",
+  "Nenhuma ação confirmada no histórico. Confira o estado atual antes de continuar.":
+    "Nenhuma ação confirmada no histórico. Confira o estado atual antes de continuar.",
+  "Enviar arquivo deste dispositivo": "Enviar arquivo deste dispositivo",
+  "Escolher pasta do servidor": "Escolher pasta do servidor",
+  "Pastas no servidor": "Pastas no servidor",
+  "Esta pasta fica no servidor. Para enviar um arquivo do celular ou computador, use Enviar arquivo deste dispositivo.":
+    "Esta pasta fica no servidor. Para enviar um arquivo do celular ou computador, use Enviar arquivo deste dispositivo.",
+  "Não foi possível liberar a pasta com segurança. Seu bot continua disponível.":
+    "Não foi possível liberar a pasta com segurança. Seu bot continua disponível.",
+  "A conexão direta com esta fonte ainda não está disponível. Exporte um CSV para começar.":
+    "A conexão direta com esta fonte ainda não está disponível. Exporte um CSV para começar.",
+  "Anexar CSV": "Anexar CSV",
+  "Dados disponíveis para {bot}.": "Dados disponíveis para {bot}.",
+  "Continuar tarefa": "Continuar tarefa",
+  "Conexão disponível: {name}": "Conexão disponível: {name}",
+  "Esta pasta fica fora das pastas autorizáveis do servidor.":
+    "Esta pasta fica fora das pastas autorizáveis do servidor.",
+  // Routine editor and repeat-task flow.
+  Bot: "Bot",
+  "Repetir esta tarefa": "Repetir esta tarefa",
+  "Quando?": "Quando?",
+  Tarefa: "Tarefa",
+  Frequência: "Frequência",
+  "Dias úteis": "Dias úteis",
+  "Todos os dias": "Todos os dias",
+  "Escolher dias": "Escolher dias",
+  Às: "Às",
+  "Dias da semana": "Dias da semana",
+  "Fuso horário": "Fuso horário",
+  "Horário de Brasília": "Horário de Brasília",
+  "Destino dos resultados": "Destino dos resultados",
+  "Nesta conversa": "Nesta conversa",
+  "Conversa principal": "Conversa principal",
+  "Nova conversa por execução": "Nova conversa por execução",
+  "Conversa de resultados": "Conversa de resultados",
+  "Expressão cron": "Expressão cron",
+  "Fuso IANA": "Fuso IANA",
+  "Limite de execução (minutos)": "Limite de execução (minutos)",
+  "Recuperar disparos atrasados por (minutos)": "Recuperar disparos atrasados por (minutos)",
+  "Revisar rotina": "Revisar rotina",
+  "{bot} fará {task}, {schedule}.": "{bot} fará {task}, {schedule}.",
+  "Contexto autorizado": "Contexto autorizado",
+  "Histórico desta conversa e permissões atuais do bot.": "Histórico desta conversa e permissões atuais do bot.",
+  "Permissões atuais do bot.": "Permissões atuais do bot.",
+  "Todas as pastas já autorizadas ao bot": "Todas as pastas já autorizadas ao bot",
+  "Sem pasta externa autorizada.": "Sem pasta externa autorizada.",
+  Fontes: "Fontes",
+  "Esta rotina não concede novos acessos. Mudanças de permissões do bot também afetam a rotina.":
+    "Esta rotina não concede novos acessos. Mudanças de permissões do bot também afetam a rotina.",
+  "Próximas três execuções": "Próximas três execuções",
+  "Escolha dias, hora e fuso válidos para ver as próximas execuções.":
+    "Escolha dias, hora e fuso válidos para ver as próximas execuções.",
+  "Funciona enquanto o touri estiver em execução neste Mac.":
+    "Funciona enquanto o touri estiver em execução neste Mac.",
+  "Funciona enquanto o touri estiver em execução no servidor. Você pode fechar esta página.":
+    "Funciona enquanto o touri estiver em execução no servidor. Você pode fechar esta página.",
+  "Não foi possível salvar ou iniciar a rotina. Seu rascunho continua aqui. Tente novamente.":
+    "Não foi possível salvar ou iniciar a rotina. Seu rascunho continua aqui. Tente novamente.",
+  "Teste iniciado. O resultado aparecerá no destino escolhido. A rotina continua pausada.":
+    "Teste iniciado. O resultado aparecerá no destino escolhido. A rotina continua pausada.",
+  "Testar agora": "Testar agora",
+  "Histórico de execuções": "Histórico de execuções",
+  "Disparo não executado: touri indisponível ou execução anterior em andamento.":
+    "Disparo não executado: touri indisponível ou execução anterior em andamento.",
+  "Recuperação após indisponibilidade": "Recuperação após indisponibilidade",
+  scheduled: "agendado",
+  succeeded: "concluído",
+  failed: "falhou",
+  skipped: "não executado",
+  canceled: "cancelado",
+
+  "{bot} precisa de você: autorizar {action}.": "{bot} precisa de você: autorizar {action}.",
+  "Autorizado. Retomando a tarefa.": "Autorizado. Retomando a tarefa.",
+  "Os avisos do sistema estão desativados.": "Os avisos do sistema estão desativados.",
+  "Abrir ajustes": "Abrir ajustes",
+  "Testar aviso": "Testar aviso",
+  "Com esta página fechada, os avisos ficam guardados no servidor.":
+    "Com esta página fechada, os avisos ficam guardados no servidor.",
+  "Você tem {n} solicitações pendentes.": "Você tem {n} solicitações pendentes.",
+  "O sistema permite avisos. Teste a entrega.": "O sistema permite avisos. Teste a entrega.",
+  "Os avisos estão desativados no touri.": "Os avisos estão desativados no touri.",
+  "O sistema ainda não autorizou os avisos.": "O sistema ainda não autorizou os avisos.",
+  "Não foi possível verificar a autorização do sistema. Teste a entrega.":
+    "Não foi possível verificar a autorização do sistema. Teste a entrega.",
+  "Aviso de teste do touri": "Aviso de teste do touri",
+  "Se este aviso apareceu, a entrega está funcionando.": "Se este aviso apareceu, a entrega está funcionando.",
+  "Teste enviado. Confira se o aviso apareceu no sistema.": "Teste enviado. Confira se o aviso apareceu no sistema.",
+  "Não foi possível testar os avisos. Abra os ajustes e tente novamente.":
+    "Não foi possível testar os avisos. Abra os ajustes e tente novamente.",
+  "Aprovado por você": "Aprovado por você",
+  "Aprovação expirada": "Aprovação expirada",
+  "Negado por você": "Negado por você",
+
+  "As pastas estão no computador onde o touri está rodando.":
+    "As pastas estão no computador onde o touri está rodando.",
+  "Caminho da pasta": "Caminho da pasta",
+  "Pasta pessoal": "Pasta pessoal",
+  "Carregando pastas…": "Carregando pastas…",
+  "Voltar uma pasta": "Voltar uma pasta",
+  "Nenhuma subpasta aqui.": "Nenhuma subpasta aqui.",
+  Pastas: "Pastas",
+  "Há mais pastas. Use Digitar caminho para abrir uma que não aparece.":
+    "Há mais pastas. Use Digitar caminho para abrir uma que não aparece.",
+  "Digitar caminho": "Digitar caminho",
+  "Abrir pasta": "Abrir pasta",
+  "Escolher no Mac…": "Escolher no Mac…",
+  "Nova pasta": "Nova pasta",
+  "Nome da nova pasta": "Nome da nova pasta",
+  "Criar pasta?": "Criar pasta?",
+  "Criar a pasta {name} dentro de {path}?": "Criar a pasta {name} dentro de {path}?",
+  "Criar pasta": "Criar pasta",
+  "Acesso à pasta": "Acesso à pasta",
+  "O bot pode ler": "O bot pode ler",
+  "O bot pode ler e salvar arquivos aqui": "O bot pode ler e salvar arquivos aqui",
+  "Usar esta pasta": "Usar esta pasta",
+  "Usar uma pasta": "Usar uma pasta",
+  "Escolha uma pasta navegando pelas pastas deste computador.":
+    "Escolha uma pasta navegando pelas pastas deste computador.",
+  "Bot browser": "Navegador do bot",
+  "My Chrome is available only for bots on this Mac. A remote machine cannot reach your Mac's Chrome. Choose Machine Chrome for a bot on the Linux machine.":
+    "Meu Chrome só funciona em bots neste Mac. A máquina remota não pode acessar o Chrome do Mac. Escolha Chrome da máquina para um bot na máquina Linux.",
+  "touri Chrome": "Chrome do touri",
+  "My Chrome": "Meu Chrome",
+  "Machine Chrome": "Chrome da máquina",
+  "Machine Chrome requires a bot on the Linux machine.": "Chrome da máquina requer um bot na máquina Linux.",
+  "My Chrome is available only for bots on this Mac. A remote machine cannot reach your Mac's Chrome.":
+    "Meu Chrome só funciona em bots neste Mac. A máquina remota não pode acessar o Chrome do Mac.",
+  "The bot will act inside your signed-in sessions in a separate Chrome window. You can close that window or press Stop at any time.":
+    "O bot vai agir nas suas sessões já conectadas, em uma janela separada do Chrome. Você pode fechar essa janela ou apertar Parar a qualquer momento.",
+  "Got it": "Entendi",
+  "In Google Chrome, open": "No Google Chrome, abra",
+  "Allow remote debugging.": "Permita a depuração remota.",
+  "Accept Chrome's permission prompt when the bot connects.":
+    "Aceite o pedido de permissão do Chrome quando o bot conectar.",
+  "My Chrome is unavailable. In Google Chrome, open chrome://inspect/#remote-debugging, allow remote debugging and accept Chrome's permission prompt when the bot connects.":
+    "Meu Chrome indisponível. No Google Chrome, abra chrome://inspect/#remote-debugging, permita a depuração remota e aceite o pedido de permissão do Chrome quando o bot conectar.",
+  "Allow this teammate to use its own browser tabs.":
+    "Permitir que este colega use as próprias abas no navegador escolhido.",
   "Arquivos locais": "Arquivos locais",
   "Catálogo de integrações MCP": "Catálogo de integrações MCP",
   "Escolher pasta…": "Escolher pasta…",
@@ -210,6 +376,10 @@ export const ptBR = {
     "Texto, Markdown, JSON, CSV, PDF e imagens · até 15 MB por arquivo.",
   "Comece uma conversa com {name}": "Comece uma conversa com {name}",
   "Membros do grupo": "Membros do grupo",
+  "Group member count": "{count} membros",
+  "Group members label": "{count} membros: {names}",
+  "Grupos / {name}": "Grupos / {name}",
+  "Editar grupo": "Editar grupo",
   "Sem menções, todos os membros respondem na ordem da lista. Use @nome para escolher quem responde.":
     "Sem menções, todos os membros respondem na ordem da lista. Use @nome para escolher quem responde.",
   "{name} coordena as respostas e pode delegar aos membros. Use @nome para falar com um membro.":
@@ -323,6 +493,8 @@ export const ptBR = {
   "This bot has no groups yet.": "Este bot ainda não pertence a um grupo.",
   "Bot routines": "Rotinas deste bot",
   "Bot routine count": "{count} rotinas",
+  "Routine execution count": "{count} rotinas · executadas enquanto o touri está aberto",
+  "Storage records processed": "{processed} de {total} registros processados",
   "Next routine time": "Próxima: {time} · {timezone}",
   "Waiting for the next schedule": "Aguardando próximo agendamento",
   "Routine paused": "Pausada",
@@ -508,122 +680,182 @@ export const ptBR = {
   "jobs.notes-in-order.description": "Transforma anotações soltas em um resumo que você consegue reencontrar.",
   "jobs.notes-in-order.roleLine": "Organiza minhas anotações e preserva o contexto.",
   "jobs.notes-in-order.task": "Separe as notas por assunto e destaque dúvidas.",
+  "jobs.notes-in-order.prompts":
+    "Organize estas anotações por assunto.\nTransforme estas notas em um resumo fácil de reencontrar.\nDestaque as dúvidas e pendências destas notas.",
   "jobs.focused-week.name": "Semana com foco",
   "jobs.focused-week.description": "Ajuda a escolher o que cabe na semana e o que pode esperar.",
   "jobs.focused-week.roleLine": "Ajuda a planejar minha semana com prioridades realistas.",
   "jobs.focused-week.task": "Compare prazos e esforço; sugira até três prioridades.",
+  "jobs.focused-week.prompts":
+    "Ajude a escolher três prioridades para esta semana.\nOrganize estas tarefas pelos prazos e pelo esforço.\nO que pode esperar até a próxima semana?",
   "jobs.packing-checklist.name": "Mala sem esquecimentos",
   "jobs.packing-checklist.description": "Monta uma lista de viagem a partir do destino e dos seus planos.",
   "jobs.packing-checklist.roleLine": "Prepara listas práticas para minhas viagens.",
   "jobs.packing-checklist.task": "Pergunte destino, duração e atividades antes de montar a lista.",
+  "jobs.packing-checklist.prompts":
+    "Ajude a montar a mala para minha próxima viagem.\nConfira o que está faltando nesta lista de viagem.\nO que você precisa saber sobre a viagem para preparar a lista?",
   "jobs.study-blocks.name": "Estudo em blocos",
   "jobs.study-blocks.description": "Divide um assunto em sessões curtas com exercícios para praticar.",
   "jobs.study-blocks.roleLine": "Ajuda a aprender um assunto no meu ritmo.",
   "jobs.study-blocks.task": "Descubra meu nível e proponha uma sessão com um exercício.",
+  "jobs.study-blocks.prompts":
+    "Divida este assunto em sessões curtas de estudo.\nPrepare um exercício para praticar o que aprendi.\nAjude a descobrir por onde começar a estudar este assunto.",
   "jobs.weekly-menu.name": "Cardápio da semana",
   "jobs.weekly-menu.description": "Sugere refeições e uma lista de compras com o que já existe em casa.",
   "jobs.weekly-menu.roleLine": "Planeja refeições simples a partir das minhas preferências.",
   "jobs.weekly-menu.task": "Pergunte sobre restrições, tempo disponível e ingredientes em casa.",
+  "jobs.weekly-menu.prompts":
+    "Planeje refeições simples para esta semana.\nMonte uma lista de compras com base neste cardápio.\nSugira refeições com estes ingredientes que tenho em casa.",
   "jobs.clearer-writing.name": "Texto mais claro",
   "jobs.clearer-writing.description": "Encurta e organiza um texto sem perder o que você quis dizer.",
   "jobs.clearer-writing.roleLine": "Revisa meus textos para facilitar a leitura.",
   "jobs.clearer-writing.task": "Preserve o sentido e explique as mudanças de tom sugeridas.",
+  "jobs.clearer-writing.prompts":
+    "Deixe este texto mais claro sem mudar o sentido.\nEncurte este texto preservando os pontos principais.\nSugira um tom mais adequado para este público.",
   "jobs.team-update.name": "Recado para a equipe",
   "jobs.team-update.description": "Transforma novidades dispersas em um comunicado objetivo.",
   "jobs.team-update.roleLine": "Prepara comunicados claros para minha equipe.",
   "jobs.team-update.task": "Separe o que mudou, quem precisa agir e qual é o prazo.",
+  "jobs.team-update.prompts":
+    "Transforme estas novidades em um comunicado para a equipe.\nDestaque quem precisa agir e os prazos deste recado.\nPrepare uma atualização curta com estes pontos.",
   "jobs.thoughtful-reply.name": "Resposta com cuidado",
   "jobs.thoughtful-reply.description": "Ajuda a responder uma conversa difícil com clareza e respeito.",
   "jobs.thoughtful-reply.roleLine": "Prepara respostas cuidadosas para conversas delicadas.",
   "jobs.thoughtful-reply.task": "Pergunte qual resultado eu espero; ofereça duas opções de tom.",
+  "jobs.thoughtful-reply.prompts":
+    "Ajude a responder esta conversa com cuidado.\nSugira duas opções de tom para esta resposta.\nRevise esta mensagem para ficar clara e respeitosa.",
   "jobs.talk-outline.name": "Roteiro para apresentar",
   "jobs.talk-outline.description": "Organiza suas ideias em uma fala com começo, meio e fim.",
   "jobs.talk-outline.roleLine": "Estrutura apresentações a partir das minhas ideias.",
   "jobs.talk-outline.task": "Confirme público e duração; proponha uma sequência de pontos.",
+  "jobs.talk-outline.prompts":
+    "Monte um roteiro de apresentação com estas ideias.\nAjude a adaptar esta fala ao tempo disponível.\nSugira uma abertura e um encerramento para minha apresentação.",
   "jobs.meeting-record.name": "Notas que viram ata",
   "jobs.meeting-record.description": "Extrai decisões e responsáveis das anotações de uma conversa.",
   "jobs.meeting-record.roleLine": "Transforma notas de reunião em decisões e próximos passos.",
   "jobs.meeting-record.task": "Distinga decisões confirmadas de sugestões e marque responsáveis ausentes.",
+  "jobs.meeting-record.prompts":
+    "Transforme estas notas de reunião em uma ata.\nListe as decisões e os responsáveis desta conversa.\nDestaque os próximos passos e as dúvidas destas notas.",
   "jobs.repository-map.name": "Mapa do repositório",
   "jobs.repository-map.description": "Explica por onde começar a ler um projeto e como suas partes se ligam.",
   "jobs.repository-map.roleLine": "Explica a estrutura e os pontos de entrada de um repositório.",
   "jobs.repository-map.task": "Leia as orientações do projeto e trace um caminho de leitura com arquivos.",
+  "jobs.repository-map.prompts":
+    "Explique a estrutura deste repositório.\nMostre os principais pontos de entrada deste projeto.\nSugira uma ordem de leitura dos arquivos para entender o código.",
   "jobs.critical-tests.name": "Testes do caminho crítico",
   "jobs.critical-tests.description": "Encontra os fluxos mais importantes que precisam de verificação.",
   "jobs.critical-tests.roleLine": "Ajuda a verificar os comportamentos essenciais do projeto.",
   "jobs.critical-tests.task": "Identifique riscos observáveis e proponha testes antes de implementá-los.",
+  "jobs.critical-tests.prompts":
+    "Identifique os fluxos que mais precisam de testes.\nSugira testes para os riscos desta alteração.\nAjude a verificar os casos de erro deste fluxo.",
   "jobs.change-explainer.name": "Mudança bem explicada",
   "jobs.change-explainer.description": "Resume uma alteração em termos do efeito para quem usa o produto.",
   "jobs.change-explainer.roleLine": "Explica alterações de código e seus efeitos no produto.",
   "jobs.change-explainer.task": "Leia a diferença entre versões e relacione cada mudança ao comportamento.",
+  "jobs.change-explainer.prompts":
+    "Explique o efeito destas alterações para quem usa o produto.\nResuma as diferenças entre estas versões.\nRelacione cada mudança de código ao comportamento esperado.",
   "jobs.dependency-plan.name": "Dependências em dia",
   "jobs.dependency-plan.description": "Prepara um plano de atualização com possíveis impactos e verificações.",
   "jobs.dependency-plan.roleLine": "Planeja atualizações de dependências com cuidado.",
   "jobs.dependency-plan.task": "Confira versões nas fontes oficiais e liste incompatibilidades conhecidas.",
+  "jobs.dependency-plan.prompts":
+    "Prepare um plano para atualizar estas dependências.\nConfira os possíveis impactos desta atualização.\nSugira verificações antes de mudar estas versões.",
   "jobs.sample-data.name": "Dados para experimentar",
   "jobs.sample-data.description": "Cria exemplos fictícios para testar telas e situações difíceis.",
   "jobs.sample-data.roleLine": "Prepara dados fictícios úteis para testar o projeto.",
   "jobs.sample-data.task": "Respeite os formatos existentes e inclua casos vazios e limites.",
+  "jobs.sample-data.prompts":
+    "Crie dados fictícios para testar esta tela.\nPrepare exemplos com casos vazios e valores nos limites.\nConfira se estes exemplos respeitam o formato do projeto.",
   "jobs.sources-together.name": "Fontes lado a lado",
   "jobs.sources-together.description": "Compara o que diferentes fontes dizem sobre uma pergunta.",
   "jobs.sources-together.roleLine": "Compara fontes e distingue evidência de opinião.",
   "jobs.sources-together.task": "Registre autoria e data; destaque concordâncias e contradições.",
+  "jobs.sources-together.prompts":
+    "Compare o que estas fontes dizem sobre esta pergunta.\nDestaque concordâncias e contradições entre estas fontes.\nSepare evidências de opiniões neste material.",
   "jobs.reading-questions.name": "Leitura com perguntas",
   "jobs.reading-questions.description": "Ajuda a entender um documento e encontrar o que ele deixa em aberto.",
   "jobs.reading-questions.roleLine": "Lê documentos comigo e identifica perguntas em aberto.",
   "jobs.reading-questions.task": "Resuma o argumento e cite trechos curtos que sustentem as conclusões.",
+  "jobs.reading-questions.prompts":
+    "Ajude a entender o argumento deste documento.\nListe as perguntas que esta leitura deixa em aberto.\nResuma este texto com os trechos que sustentam as conclusões.",
   "jobs.topic-glossary.name": "Palavras do assunto",
   "jobs.topic-glossary.description": "Explica termos desconhecidos com exemplos próximos do seu contexto.",
   "jobs.topic-glossary.roleLine": "Traduz termos de um assunto para uma linguagem acessível.",
   "jobs.topic-glossary.task": "Peça o contexto e explique cada termo com um exemplo concreto.",
+  "jobs.topic-glossary.prompts":
+    "Explique estes termos com exemplos simples.\nMonte um glossário para entender este assunto.\nAjude a entender esta expressão no contexto do texto.",
   "jobs.choice-criteria.name": "Opções com critério",
   "jobs.choice-criteria.description": "Compara alternativas a partir do que realmente importa para você.",
   "jobs.choice-criteria.roleLine": "Organiza comparações com critérios escolhidos por mim.",
   "jobs.choice-criteria.task": "Confirme critérios e limites; marque informações que ainda faltam.",
+  "jobs.choice-criteria.prompts":
+    "Ajude a escolher critérios para comparar estas opções.\nCompare estas alternativas usando minhas prioridades.\nListe as informações que faltam para decidir.",
   "jobs.numbers-context.name": "Números com contexto",
   "jobs.numbers-context.description": "Lê uma tabela e explica tendências, limites e dúvidas nos dados.",
   "jobs.numbers-context.roleLine": "Analisa tabelas e explica o que os números sustentam.",
   "jobs.numbers-context.task": "Confira unidades e períodos; não trate correlação como causa.",
+  "jobs.numbers-context.prompts":
+    "Explique as principais tendências desta tabela.\nConfira as unidades e os períodos destes dados.\nMostre o que estes números sustentam e o que ainda é incerto.",
   "jobs.tailored-proposal.name": "Proposta sob medida",
   "jobs.tailored-proposal.description": "Monta um rascunho de proposta a partir das necessidades do cliente.",
   "jobs.tailored-proposal.roleLine": "Prepara propostas ligadas às necessidades de cada cliente.",
   "jobs.tailored-proposal.task": "Use apenas preços confirmados e separe escopo de itens opcionais.",
+  "jobs.tailored-proposal.prompts":
+    "Prepare um rascunho de proposta com estas necessidades.\nSepare o escopo principal dos itens opcionais desta proposta.\nConfira o que falta confirmar antes de enviar esta proposta.",
   "jobs.customer-followup.name": "Retorno ao cliente",
   "jobs.customer-followup.description": "Prepara um retorno que retoma a conversa e deixa o próximo passo claro.",
   "jobs.customer-followup.roleLine": "Rascunha retornos úteis para meus clientes.",
   "jobs.customer-followup.task": "Leia o contexto disponível e não prometa prazos sem confirmação.",
+  "jobs.customer-followup.prompts":
+    "Rascunhe um retorno ao cliente com este contexto.\nAjude a deixar claro o próximo passo desta conversa.\nRevise este retorno para evitar promessas não confirmadas.",
   "jobs.sales-questions.name": "Perguntas antes da venda",
   "jobs.sales-questions.description": "Ajuda a entender a necessidade antes de oferecer uma solução.",
   "jobs.sales-questions.roleLine": "Prepara perguntas para entender a necessidade do cliente.",
   "jobs.sales-questions.task": "Proponha perguntas abertas e evite presumir orçamento ou urgência.",
+  "jobs.sales-questions.prompts":
+    "Prepare perguntas para entender a necessidade deste cliente.\nSugira perguntas abertas para esta conversa comercial.\nAjude a descobrir o que falta saber antes de oferecer uma solução.",
   "jobs.order-history.name": "Histórico do pedido",
   "jobs.order-history.description": "Reúne os fatos de um pedido para facilitar um atendimento.",
   "jobs.order-history.roleLine": "Organiza o histórico de pedidos para apoiar o atendimento.",
   "jobs.order-history.task": "Ordene os fatos por data e destaque pendências sem expor dados desnecessários.",
+  "jobs.order-history.prompts":
+    "Organize o histórico deste pedido por data.\nDestaque as pendências deste atendimento.\nPrepare um resumo dos fatos para retomar este pedido.",
   "jobs.demo-guide.name": "Guia de demonstração",
   "jobs.demo-guide.description": "Prepara uma demonstração ligada ao problema que o cliente quer resolver.",
   "jobs.demo-guide.roleLine": "Planeja demonstrações úteis para cada conversa comercial.",
   "jobs.demo-guide.task": "Relacione cada exemplo a uma necessidade e sinalize limitações do produto.",
+  "jobs.demo-guide.prompts":
+    "Prepare um roteiro de demonstração para este cliente.\nRelacione estes exemplos às necessidades da conversa.\nConfira quais limitações preciso explicar na demonstração.",
   "jobs.shift-handover.name": "Passagem de turno",
   "jobs.shift-handover.description": "Organiza o que aconteceu e o que a próxima pessoa precisa acompanhar.",
   "jobs.shift-handover.roleLine": "Prepara passagens de trabalho com contexto e pendências.",
   "jobs.shift-handover.task": "Liste estado atual, bloqueios e responsáveis; diferencie fato de hipótese.",
+  "jobs.shift-handover.prompts":
+    "Prepare uma passagem de turno com estas anotações.\nListe o estado atual, os bloqueios e os responsáveis.\nDestaque o que a próxima pessoa precisa acompanhar.",
   "jobs.quality-checklist.name": "Lista de conferência",
   "jobs.quality-checklist.description": "Transforma um procedimento em uma lista curta de verificações.",
   "jobs.quality-checklist.roleLine": "Cria listas de conferência para procedimentos repetidos.",
   "jobs.quality-checklist.task": "Confirme o resultado esperado e inclua como reconhecer cada verificação concluída.",
+  "jobs.quality-checklist.prompts":
+    "Transforme este procedimento em uma lista de conferência.\nDefina como reconhecer cada verificação concluída.\nRevise esta lista para encontrar etapas que faltam.",
   "jobs.folder-plan.name": "Pastas com critério",
   "jobs.folder-plan.description": "Propõe uma organização de arquivos antes de mover qualquer coisa.",
   "jobs.folder-plan.roleLine": "Planeja a organização de arquivos sem perder referências.",
   "jobs.folder-plan.task": "Inspecione apenas pastas liberadas e mostre um mapa antes de mover arquivos.",
+  "jobs.folder-plan.prompts":
+    "Proponha uma organização para estes arquivos.\nMostre um mapa de pastas antes de mover qualquer coisa.\nAjude a definir critérios para nomear e agrupar estes arquivos.",
   "jobs.delivery-plan.name": "Plano de entrega",
   "jobs.delivery-plan.description": "Divide uma entrega em partes com dependências e responsáveis claros.",
   "jobs.delivery-plan.roleLine": "Ajuda a planejar entregas com etapas verificáveis.",
   "jobs.delivery-plan.task": "Confirme prazo e resultado; destaque dependências e decisões pendentes.",
+  "jobs.delivery-plan.prompts":
+    "Divida esta entrega em etapas verificáveis.\nListe as dependências e decisões pendentes deste plano.\nAjude a definir responsáveis e prazos para estas etapas.",
   "jobs.decision-log.name": "Registro de decisões",
   "jobs.decision-log.description": "Guarda a escolha, o motivo e o que faria a equipe reconsiderar.",
   "jobs.decision-log.roleLine": "Organiza decisões para preservar o contexto da equipe.",
   "jobs.decision-log.task": "Registre alternativas, motivo e data; não invente consenso nem responsáveis.",
+  "jobs.decision-log.prompts":
+    "Registre esta decisão com seu motivo e suas alternativas.\nOrganize as decisões destas anotações.\nListe o que faria a equipe reconsiderar esta escolha.",
   "What does it do?": "O que ele faz?",
   "Search jobs": "Buscar trabalhos",
   "Not sure yet": "Ainda não sei",
@@ -649,7 +881,7 @@ export const ptBR = {
   "Connect tools after creating this bot, in its advanced settings.":
     "Conecte ferramentas depois de criar este bot, nas configurações avançadas dele.",
   "job.starter":
-    "## Como ajudar\n- {task}\n- Na primeira conversa, apresente brevemente como pode ajudar neste trabalho.\n- Confirme o objetivo e peça o contexto que faltar.\n- Trabalhe no computador onde o touri está rodando com a CLI do usuário e somente os acessos liberados.\n- Use o navegador quando precisar conferir informações e indique as fontes.\n- Peça permissão antes de mudar arquivos ou enviar algo; apresente um rascunho primeiro.\n- Ao terminar, conte o que encontrou e o que depende da pessoa.",
+    "## {name}\n- {role} {task}\n- Na primeira conversa, apresente brevemente como pode ajudar neste trabalho.\n- Confirme o objetivo e peça o contexto que faltar.\n- Trabalhe no computador onde o touri está rodando com a CLI do usuário e somente os acessos liberados.\n- Use o navegador quando precisar conferir informações e indique as fontes.\n- Peça permissão antes de mudar arquivos ou enviar algo; apresente um rascunho primeiro.\n- Ao terminar, conte o que encontrou e o que depende da pessoa.",
 
   "Activity thinking": "Pensando",
   "Activity working": "Trabalhando",
@@ -710,12 +942,45 @@ export const ptBR = {
   "Resultado histórico indisponível.": "Resultado histórico indisponível.",
   "Iniciando…": "Iniciando…",
   "Não foi possível iniciar a rotina.": "Não foi possível iniciar a rotina.",
+  "Não foi possível verificar o login salvo. Verifique de novo.":
+    "Não foi possível verificar o login salvo. Verifique de novo.",
+  "Não foi possível concluir o login. Verifique de novo ou use outra conta.":
+    "Não foi possível concluir o login. Verifique de novo ou use outra conta.",
+  "Entrar no {provider}": "Entrar no {provider}",
+  "Usar outra conta": "Usar outra conta",
+  "{name}: login do {provider} inválido. Conecte novamente.":
+    "{name}: login do {provider} inválido. Conecte novamente.",
+  "Verificar de novo": "Verificar de novo",
+  "Sua mensagem fica como rascunho até o login estar pronto.":
+    "Sua mensagem fica como rascunho até o login estar pronto.",
   "Não foi possível verificar o login.": "Não foi possível verificar o login.",
   "Tentar de novo": "Tentar de novo",
   "Não foi possível salvar o login no cofre de segredos.": "Não foi possível salvar o login no cofre de segredos.",
   "Não foi possível remover o login.": "Não foi possível remover o login.",
   "Login do provedor nesta máquina": "Login do provedor nesta máquina",
   "Verificando login…": "Verificando login…",
+  "Outras opções": "Outras opções",
+  "O cofre de segredos não respondeu. Tente novamente.": "O cofre de segredos não respondeu. Tente novamente.",
+  "O cofre local do servidor está indisponível. Verifique as permissões da pasta de dados do servidor e reinicie o serviço do touri. O login salvo será mantido.":
+    "O cofre local do servidor está indisponível. Verifique as permissões da pasta de dados do servidor e reinicie o serviço do touri. O login salvo será mantido.",
+  "Não foi possível ler a sessão salva do navegador. Abra o Diagnóstico para verificar o cofre.":
+    "Não foi possível ler a sessão salva do navegador. Abra o Diagnóstico para verificar o cofre.",
+  "Permita o acesso ao cofre para restaurar a sessão salva do navegador.":
+    "Permita o acesso ao cofre para restaurar a sessão salva do navegador.",
+  "Não foi possível ler a sessão salva do navegador. Os dados salvos foram mantidos. Verifique o cofre e tente novamente.":
+    "Não foi possível ler a sessão salva do navegador. Os dados salvos foram mantidos. Verifique o cofre e tente novamente.",
+  "Sessão salva do navegador disponível.": "Sessão salva do navegador disponível.",
+  "Navegador · {name} · sessão salva": "Navegador · {name} · sessão salva",
+  "O cofre de segredos não respondeu. Permita o acesso ao cofre para continuar.":
+    "O cofre de segredos não respondeu. Permita o acesso ao cofre para continuar.",
+  "Na janela do macOS, escolha Permitir sempre. Sua mensagem continuará automaticamente.":
+    "Na janela do macOS, escolha Permitir sempre. Sua mensagem continuará automaticamente.",
+  "O acesso não foi autorizado. Tente novamente e escolha Permitir sempre na janela do macOS.":
+    "O acesso não foi autorizado. Tente novamente e escolha Permitir sempre na janela do macOS.",
+  "Aguardando permissão do macOS…": "Aguardando permissão do macOS…",
+  "Permitir acesso ao cofre": "Permitir acesso ao cofre",
+  "Na janela do macOS, escolha Permitir sempre.": "Na janela do macOS, escolha Permitir sempre.",
+  "Permita o acesso ao cofre para usar o login salvo.": "Permita o acesso ao cofre para usar o login salvo.",
   "Aguardando login no navegador…": "Aguardando login no navegador…",
   "Login disponível para este bot.": "Login disponível para este bot.",
   "Há um login disponível neste Mac.": "Há um login disponível neste Mac.",
@@ -1264,7 +1529,9 @@ export const ptBR = {
   "app preferences": "preferências do aplicativo",
   "Bot settings": "Configurações de {name}",
   "Import step": "importação / etapa {step} de 5",
-  "Import counts": "{messages} mensagens e {threads} conversas importadas. As rotinas estão pausadas.",
+  "Import message count": "{count} mensagens",
+  "Imported conversation count": "{count} conversas importadas",
+  "Import counts": "{messages} e {threads}. As rotinas estão pausadas.",
   "Checks ready": "{count} verificações prontas",
   "Enable routine": "Habilitar {name}",
   "Avatar shape": "Forma {shape}",
@@ -1418,6 +1685,152 @@ export const ptBR = {
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  "seu provedor": "your provider",
+  "o arquivo": "the file",
+  "Não consegui conectar à sua IA. Sua mensagem está salva.": "I could not connect to your AI. Your message is saved.",
+  "Não consegui conectar à sua IA. Verifique a conexão e tente novamente.":
+    "I could not connect to your AI. Check your connection and try again.",
+  "Entre novamente no {provedor} para continuar.": "Sign in to {provedor} again to continue.",
+  "Entrar na conta": "Sign in",
+  "O {provedor} atingiu o limite de uso. Tente após {horario}.":
+    "{provedor} has reached its usage limit. Try after {horario}.",
+  "O {provedor} atingiu o limite de uso. Tente mais tarde.": "{provedor} has reached its usage limit. Try again later.",
+  "Não há espaço para salvar {arquivo}.": "There is not enough space to save {arquivo}.",
+  "Verificar armazenamento": "Check storage",
+  "A resposta foi interrompida. Algumas ações podem ter sido concluídas.":
+    "The response was interrupted. Some actions may have completed.",
+  "Ver ações realizadas": "View recorded actions",
+  "Retomar tarefa": "Resume task",
+  "Ver tarefa": "View task",
+  "Verificar ambiente": "Check environment",
+  "Não foi possível concluir esta ação. Confira os detalhes do erro.":
+    "Could not complete this action. Check the error details.",
+  "Revise as ações registradas antes de continuar. Nenhuma ação será repetida automaticamente.":
+    "Review the recorded actions before continuing. No action will be repeated automatically.",
+  "Conferi as ações registradas. Quero continuar a tarefa a partir do estado atual, sem repetir ações já concluídas.":
+    "I reviewed the recorded actions. Continue the task from the current state without repeating completed actions.",
+  "O rascunho atual foi preservado. Revise as ações registradas antes de enviar.":
+    "Your current draft was preserved. Review the recorded actions before sending.",
+  "Ações registradas": "Recorded actions",
+  "Nenhuma ação confirmada no histórico. Confira o estado atual antes de continuar.":
+    "No confirmed action in history. Check the current state before continuing.",
+  "Enviar arquivo deste dispositivo": "Send a file from this device",
+  "Escolher pasta do servidor": "Choose a server folder",
+  "Pastas no servidor": "Server folders",
+  "Somente leitura": "Read only",
+  "Esta pasta fica no servidor. Para enviar um arquivo do celular ou computador, use Enviar arquivo deste dispositivo.":
+    "This folder is on the server. To send a file from your phone or computer, use Send a file from this device.",
+  "Não foi possível liberar a pasta com segurança. Seu bot continua disponível.":
+    "Folder access could not be granted safely. Your bot is still available.",
+  "A conexão direta com esta fonte ainda não está disponível. Exporte um CSV para começar.":
+    "A direct connection to this source is not available yet. Export a CSV to get started.",
+  "Anexar CSV": "Attach CSV",
+  "Dados disponíveis para {bot}.": "Data available for {bot}.",
+  "Continuar tarefa": "Continue task",
+  "Conexão disponível: {name}": "Connection available: {name}",
+  "Esta pasta fica fora das pastas autorizáveis do servidor.":
+    "This folder is outside the server’s available folder roots.",
+  // Routine editor and repeat-task flow.
+  Bot: "Bot",
+  "Repetir esta tarefa": "Repeat this task",
+  "Quando?": "When?",
+  Tarefa: "Task",
+  Frequência: "Frequency",
+  "Dias úteis": "Weekdays",
+  "Todos os dias": "Every day",
+  "Escolher dias": "Choose days",
+  Às: "At",
+  "Dias da semana": "Days of the week",
+  "Fuso horário": "Time zone",
+  "Horário de Brasília": "Brasília time",
+  "Destino dos resultados": "Results destination",
+  "Nesta conversa": "This conversation",
+  "Conversa principal": "Main conversation",
+  "Nova conversa por execução": "New conversation for each run",
+  "Conversa de resultados": "Results conversation",
+  "Expressão cron": "Cron expression",
+  "Fuso IANA": "IANA time zone",
+  "Limite de execução (minutos)": "Run time limit (minutes)",
+  "Recuperar disparos atrasados por (minutos)": "Catch up missed runs within (minutes)",
+  "Revisar rotina": "Review routine",
+  "{bot} fará {task}, {schedule}.": "{bot} will do {task}, {schedule}.",
+  "Contexto autorizado": "Authorized context",
+  "Histórico desta conversa e permissões atuais do bot.":
+    "This conversation’s history and the bot’s current permissions.",
+  "Permissões atuais do bot.": "The bot’s current permissions.",
+  "Todas as pastas já autorizadas ao bot": "All folders already authorized for this bot",
+  "Sem pasta externa autorizada.": "No external folder authorized.",
+  Fontes: "Sources",
+  "Esta rotina não concede novos acessos. Mudanças de permissões do bot também afetam a rotina.":
+    "This routine grants no new access. Changes to the bot’s permissions also affect the routine.",
+  "Próximas três execuções": "Next three runs",
+  "Escolha dias, hora e fuso válidos para ver as próximas execuções.":
+    "Choose valid days, time and time zone to see the next runs.",
+  "Funciona enquanto o touri estiver em execução neste Mac.": "Runs while touri is running on this Mac.",
+  "Funciona enquanto o touri estiver em execução no servidor. Você pode fechar esta página.":
+    "Runs while touri is running on the server. You can close this page.",
+  "Não foi possível salvar ou iniciar a rotina. Seu rascunho continua aqui. Tente novamente.":
+    "Could not save or start the routine. Your draft is still here. Try again.",
+  "Teste iniciado. O resultado aparecerá no destino escolhido. A rotina continua pausada.":
+    "Test started. The result will appear at the selected destination. The routine remains paused.",
+  "Testar agora": "Test now",
+  "Histórico de execuções": "Run history",
+  "Disparo não executado: touri indisponível ou execução anterior em andamento.":
+    "Run skipped: touri was unavailable or a previous run was still in progress.",
+  "Recuperação após indisponibilidade": "Recovery after downtime",
+  failed: "Failed",
+  skipped: "Skipped",
+  scheduled: "Scheduled",
+  running: "Running",
+  succeeded: "Completed",
+  canceled: "Canceled",
+
+  "{bot} precisa de você: autorizar {action}.": "{bot} needs you: authorize {action}.",
+  "Autorizado. Retomando a tarefa.": "Authorized. Resuming the task.",
+  "Os avisos do sistema estão desativados.": "System notifications are disabled.",
+  "Abrir ajustes": "Open settings",
+  "Testar aviso": "Test notification",
+  "Com esta página fechada, os avisos ficam guardados no servidor.":
+    "When this page is closed, notifications are kept on the server.",
+  "Você tem {n} solicitações pendentes.": "You have {n} pending requests.",
+  "O sistema permite avisos. Teste a entrega.": "The system allows notifications. Test delivery.",
+  "Os avisos estão desativados no touri.": "Notifications are disabled in touri.",
+  "O sistema ainda não autorizou os avisos.": "The system has not authorized notifications yet.",
+  "Não foi possível verificar a autorização do sistema. Teste a entrega.":
+    "Could not verify system authorization. Test delivery.",
+  "Aviso de teste do touri": "touri test notification",
+  "Se este aviso apareceu, a entrega está funcionando.": "If you see this notification, delivery is working.",
+  "Teste enviado. Confira se o aviso apareceu no sistema.":
+    "Test sent. Check whether the notification appeared in the system.",
+  "Não foi possível testar os avisos. Abra os ajustes e tente novamente.":
+    "Could not test notifications. Open settings and try again.",
+  "Aprovado por você": "Approved by you",
+  "Aprovação expirada": "Approval expired",
+  "Negado por você": "Denied by you",
+
+  "As pastas estão no computador onde o touri está rodando.": "Folders are on the computer running touri.",
+  "Caminho da pasta": "Folder path",
+  "Pasta pessoal": "Home folder",
+  "Carregando pastas…": "Loading folders…",
+  "Voltar uma pasta": "Go up one folder",
+  "Nenhuma subpasta aqui.": "No subfolders here.",
+  Pastas: "Folders",
+  "Há mais pastas. Use Digitar caminho para abrir uma que não aparece.":
+    "There are more folders. Use Type a path to open one that is not shown.",
+  "Digitar caminho": "Type a path",
+  "Abrir pasta": "Open folder",
+  "Escolher no Mac…": "Choose on Mac…",
+  "Nova pasta": "New folder",
+  "Nome da nova pasta": "New folder name",
+  "Criar pasta?": "Create folder?",
+  "Criar a pasta {name} dentro de {path}?": "Create folder {name} inside {path}?",
+  "Criar pasta": "Create folder",
+  "Acesso à pasta": "Folder access",
+  "O bot pode ler": "The bot can read",
+  "O bot pode ler e salvar arquivos aqui": "The bot can read and save files here",
+  "Usar esta pasta": "Use this folder",
+  "Usar uma pasta": "Use a folder",
+  "Escolha uma pasta navegando pelas pastas deste computador.": "Browse this computer to choose a folder.",
   "Arquivos locais": "Local files",
   "Catálogo de integrações MCP": "MCP integration catalog",
   "Escolher pasta…": "Choose folder…",
@@ -1439,6 +1852,14 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Faça a preparação na máquina em que o bot trabalha. Na VM, o login do Mac não é copiado.":
     "Prepare the connection on the machine where the bot works. Your Mac login is not copied into a VM.",
   "Verificando a preparação…": "Checking preparation…",
+  "Não foi possível verificar o login salvo. Verifique de novo.": "Could not check the saved login. Check again.",
+  "Não foi possível concluir o login. Verifique de novo ou use outra conta.":
+    "Could not complete sign-in. Check again or use another account.",
+  "Entrar no {provider}": "Sign in to {provider}",
+  "Usar outra conta": "Use another account",
+  "{name}: login do {provider} inválido. Conecte novamente.": "{name}: invalid {provider} login. Sign in again.",
+  "Verificar de novo": "Check again",
+  "Sua mensagem fica como rascunho até o login estar pronto.": "Your message stays as a draft until sign-in is ready.",
   "Não foi possível verificar a preparação. Tente novamente.": "Could not check preparation. Try again.",
   "Na nuvem, use uma conexão HTTP na configuração técnica.":
     "In the cloud, use an HTTP connection in technical configuration.",
@@ -1547,6 +1968,43 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Consultar os logs do processo {name}": "View logs for process {name}",
   "Abrir prévia": "Open preview",
   "Abrir a prévia do projeto em {path}": "Open the project preview at {path}",
+  "Verificando login…": "Checking sign-in…",
+  "Outras opções": "Other options",
+  "O cofre de segredos não respondeu. Tente novamente.": "The vault did not respond. Try again.",
+  "O cofre local do servidor está indisponível. Verifique as permissões da pasta de dados do servidor e reinicie o serviço do touri. O login salvo será mantido.":
+    "The server’s local vault is unavailable. Check the permissions of the server’s data folder and restart the touri service. The saved sign-in will be kept.",
+  "Não foi possível ler a sessão salva do navegador. Abra o Diagnóstico para verificar o cofre.":
+    "Could not read the saved browser session. Open Diagnostics to check the vault.",
+  "Permita o acesso ao cofre para restaurar a sessão salva do navegador.":
+    "Allow vault access to restore the saved browser session.",
+  "Não foi possível ler a sessão salva do navegador. Os dados salvos foram mantidos. Verifique o cofre e tente novamente.":
+    "Could not read the saved browser session. The saved data has been kept. Check the vault and try again.",
+  "Sessão salva do navegador disponível.": "Saved browser session is available.",
+  "Navegador · {name} · sessão salva": "Browser · {name} · saved session",
+  "O cofre de segredos não respondeu. Permita o acesso ao cofre para continuar.":
+    "The vault did not respond. Allow vault access to continue.",
+  "Na janela do macOS, escolha Permitir sempre. Sua mensagem continuará automaticamente.":
+    "In the macOS window, choose Always Allow. Your message will continue automatically.",
+  "O acesso não foi autorizado. Tente novamente e escolha Permitir sempre na janela do macOS.":
+    "Access was not authorized. Try again and choose Always Allow in the macOS window.",
+  "Aguardando permissão do macOS…": "Waiting for macOS permission…",
+  "Permitir acesso ao cofre": "Allow vault access",
+  "Na janela do macOS, escolha Permitir sempre.": "In the macOS window, choose Always Allow.",
+  "Permita o acesso ao cofre para usar o login salvo.": "Allow vault access to use the saved sign-in.",
+  "Aguardando login no navegador…": "Waiting for sign-in in the browser…",
+  "Login disponível para este bot.": "Sign-in is ready for this bot.",
+  "Login cancelado.": "Sign-in cancelled.",
+  "Entre no provedor para enviar mensagens.": "Sign in to send messages.",
+  "Código de login": "Sign-in code",
+  "Abrir página de login": "Open sign-in page",
+  "Não foi possível abrir o navegador. Use o link de login.": "Could not open the browser. Use the sign-in link.",
+  "Cancelar login": "Cancel sign-in",
+  "Escolha a conta no OpenCode": "Choose the account in OpenCode",
+  "Escolha o método de login": "Choose a sign-in method",
+  "Opção anterior": "Previous option",
+  "Próxima opção": "Next option",
+  "Confirmar opção": "Confirm option",
+  "Não foi possível configurar o login. Tente novamente.": "Could not set up sign-in. Try again.",
   "Há um login disponível neste Mac.": "A login is available on this Mac.",
   "Há um login disponível neste servidor.": "A login is available on this server.",
   "Usar login deste Mac": "Use this Mac’s login",
@@ -1653,6 +2111,10 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
     "Text, Markdown, JSON, CSV, PDF and images · up to 15 MB per file.",
   "Comece uma conversa com {name}": "Start a conversation with {name}",
   "Membros do grupo": "Group members",
+  "Group member count": "{count} members",
+  "Group members label": "{count} members: {names}",
+  "Grupos / {name}": "Groups / {name}",
+  "Editar grupo": "Edit group",
   "Sem menções, todos os membros respondem na ordem da lista. Use @nome para escolher quem responde.":
     "Without mentions, all members reply in list order. Use @name to choose who replies.",
   "{name} coordena as respostas e pode delegar aos membros. Use @nome para falar com um membro.":
@@ -1731,6 +2193,8 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "This bot has no groups yet.": "This bot has no groups yet.",
   "Bot routines": "This bot’s routines",
   "Bot routine count": "{count} routines",
+  "Routine execution count": "{count} routines · run while touri is open",
+  "Storage records processed": "{processed} of {total} records processed",
   "Next routine time": "Next: {time} · {timezone}",
   "Waiting for the next schedule": "Waiting for the next schedule",
   "Routine paused": "Paused",
@@ -1917,123 +2381,183 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "jobs.notes-in-order.description": "Turns scattered notes into a summary you can find again.",
   "jobs.notes-in-order.roleLine": "Organize my notes while preserving their context.",
   "jobs.notes-in-order.task": "Group notes by topic and highlight open questions.",
+  "jobs.notes-in-order.prompts":
+    "Organize these notes by topic.\nTurn these notes into a summary I can find again.\nHighlight open questions and pending items in these notes.",
   "jobs.focused-week.name": "A focused week",
   "jobs.focused-week.description": "Helps choose what fits this week and what can wait.",
   "jobs.focused-week.roleLine": "Help plan my week with realistic priorities.",
   "jobs.focused-week.task": "Compare deadlines and effort; suggest up to three priorities.",
+  "jobs.focused-week.prompts":
+    "Help me choose three priorities for this week.\nOrganize these tasks by deadline and effort.\nWhat can wait until next week?",
   "jobs.packing-checklist.name": "Ready to pack",
   "jobs.packing-checklist.description": "Builds a packing list around your destination and plans.",
   "jobs.packing-checklist.roleLine": "Prepare practical packing lists for my trips.",
   "jobs.packing-checklist.task": "Ask about destination, duration and activities before making the list.",
+  "jobs.packing-checklist.prompts":
+    "Help me pack for my next trip.\nCheck what is missing from this packing list.\nWhat do you need to know about my trip to prepare a list?",
   "jobs.study-blocks.name": "Study in small blocks",
   "jobs.study-blocks.description": "Breaks a subject into short sessions with practice exercises.",
   "jobs.study-blocks.roleLine": "Help me learn a subject at my own pace.",
   "jobs.study-blocks.task": "Find out my level and propose one session with an exercise.",
+  "jobs.study-blocks.prompts":
+    "Break this subject into short study sessions.\nPrepare an exercise to practice what I learned.\nHelp me figure out where to start studying this subject.",
   "jobs.weekly-menu.name": "This week’s menu",
   "jobs.weekly-menu.description": "Suggests meals and a shopping list using what is already at home.",
   "jobs.weekly-menu.roleLine": "Plan simple meals around my preferences.",
   "jobs.weekly-menu.task": "Ask about dietary needs, available time and ingredients at home.",
+  "jobs.weekly-menu.prompts":
+    "Plan simple meals for this week.\nMake a shopping list based on this menu.\nSuggest meals using these ingredients I have at home.",
   "jobs.clearer-writing.name": "Clearer writing",
   "jobs.clearer-writing.description": "Shortens and organizes a text while keeping your meaning.",
   "jobs.clearer-writing.roleLine": "Review my writing to make it easier to read.",
   "jobs.clearer-writing.task": "Preserve the meaning and explain any suggested changes in tone.",
+  "jobs.clearer-writing.prompts":
+    "Make this text clearer without changing its meaning.\nShorten this text while keeping the main points.\nSuggest a tone that suits this audience.",
   "jobs.team-update.name": "An update for the team",
   "jobs.team-update.description": "Turns scattered updates into a clear team announcement.",
   "jobs.team-update.roleLine": "Prepare clear announcements for my team.",
   "jobs.team-update.task": "Separate what changed, who needs to act and the deadline.",
+  "jobs.team-update.prompts":
+    "Turn these updates into a team announcement.\nHighlight who needs to act and the deadlines in this message.\nPrepare a short update with these points.",
   "jobs.thoughtful-reply.name": "A thoughtful reply",
   "jobs.thoughtful-reply.description": "Helps answer a difficult conversation clearly and respectfully.",
   "jobs.thoughtful-reply.roleLine": "Prepare thoughtful replies for sensitive conversations.",
   "jobs.thoughtful-reply.task": "Ask what outcome I want; offer two tone options.",
+  "jobs.thoughtful-reply.prompts":
+    "Help me respond to this conversation thoughtfully.\nSuggest two tone options for this reply.\nReview this message for clarity and respect.",
   "jobs.talk-outline.name": "A talk outline",
   "jobs.talk-outline.description": "Shapes your ideas into a talk with a clear beginning and ending.",
   "jobs.talk-outline.roleLine": "Structure presentations from my ideas.",
   "jobs.talk-outline.task": "Confirm audience and duration; propose a sequence of talking points.",
+  "jobs.talk-outline.prompts":
+    "Build a presentation outline from these ideas.\nHelp me fit this talk into the available time.\nSuggest an opening and a closing for my presentation.",
   "jobs.meeting-record.name": "Notes into a record",
   "jobs.meeting-record.description": "Extracts decisions and owners from conversation notes.",
   "jobs.meeting-record.roleLine": "Turn meeting notes into decisions and next steps.",
   "jobs.meeting-record.task": "Separate confirmed decisions from suggestions and flag missing owners.",
+  "jobs.meeting-record.prompts":
+    "Turn these meeting notes into a record.\nList the decisions and owners from this conversation.\nHighlight next steps and open questions in these notes.",
   "jobs.repository-map.name": "A repository map",
   "jobs.repository-map.description": "Explains where to start reading a project and how its parts connect.",
   "jobs.repository-map.roleLine": "Explain a repository’s structure and entry points.",
   "jobs.repository-map.task": "Read project guidance and outline a reading path with file references.",
+  "jobs.repository-map.prompts":
+    "Explain the structure of this repository.\nShow the main entry points of this project.\nSuggest an order for reading the files to understand the code.",
   "jobs.critical-tests.name": "Tests that matter",
   "jobs.critical-tests.description": "Finds the most important flows that need verification.",
   "jobs.critical-tests.roleLine": "Help verify the project’s essential behavior.",
   "jobs.critical-tests.task": "Identify observable risks and propose tests before implementing them.",
+  "jobs.critical-tests.prompts":
+    "Identify the flows that most need tests.\nSuggest tests for the risks in this change.\nHelp me verify the error cases in this flow.",
   "jobs.change-explainer.name": "Explain the change",
   "jobs.change-explainer.description": "Summarizes a change through its effect on people using the product.",
   "jobs.change-explainer.roleLine": "Explain code changes and their effect on the product.",
   "jobs.change-explainer.task": "Read the version diff and relate each change to behavior.",
+  "jobs.change-explainer.prompts":
+    "Explain how these changes affect people using the product.\nSummarize the differences between these versions.\nRelate each code change to its expected behavior.",
   "jobs.dependency-plan.name": "A dependency plan",
   "jobs.dependency-plan.description": "Prepares an update plan with likely impacts and checks.",
   "jobs.dependency-plan.roleLine": "Plan dependency updates carefully.",
   "jobs.dependency-plan.task": "Check versions in official sources and list known incompatibilities.",
+  "jobs.dependency-plan.prompts":
+    "Prepare a plan to update these dependencies.\nCheck the possible impacts of this update.\nSuggest checks before changing these versions.",
   "jobs.sample-data.name": "Data to try things out",
   "jobs.sample-data.description": "Creates fictional examples to test screens and tricky situations.",
   "jobs.sample-data.roleLine": "Prepare useful fictional data for testing the project.",
   "jobs.sample-data.task": "Follow existing formats and include empty and boundary cases.",
+  "jobs.sample-data.prompts":
+    "Create fictional data to test this screen.\nPrepare examples with empty and boundary cases.\nCheck whether these examples follow the project format.",
   "jobs.sources-together.name": "Sources side by side",
   "jobs.sources-together.description": "Compares what different sources say about one question.",
   "jobs.sources-together.roleLine": "Compare sources and distinguish evidence from opinion.",
   "jobs.sources-together.task": "Record authorship and date; highlight agreements and contradictions.",
+  "jobs.sources-together.prompts":
+    "Compare what these sources say about this question.\nHighlight agreements and contradictions between these sources.\nSeparate evidence from opinions in this material.",
   "jobs.reading-questions.name": "Reading with questions",
   "jobs.reading-questions.description": "Helps understand a document and find what it leaves unanswered.",
   "jobs.reading-questions.roleLine": "Read documents with me and identify open questions.",
   "jobs.reading-questions.task": "Summarize the argument and cite short passages supporting conclusions.",
+  "jobs.reading-questions.prompts":
+    "Help me understand this document’s argument.\nList the questions this reading leaves open.\nSummarize this text with passages supporting the conclusions.",
   "jobs.topic-glossary.name": "Words of the subject",
   "jobs.topic-glossary.description": "Explains unfamiliar terms with examples close to your context.",
   "jobs.topic-glossary.roleLine": "Explain subject-specific terms in accessible language.",
   "jobs.topic-glossary.task": "Ask for context and explain each term with a concrete example.",
+  "jobs.topic-glossary.prompts":
+    "Explain these terms with simple examples.\nBuild a glossary to help me understand this subject.\nHelp me understand this expression in the text’s context.",
   "jobs.choice-criteria.name": "Choices with criteria",
   "jobs.choice-criteria.description": "Compares alternatives using what actually matters to you.",
   "jobs.choice-criteria.roleLine": "Organize comparisons using criteria I choose.",
   "jobs.choice-criteria.task": "Confirm criteria and constraints; mark information that is still missing.",
+  "jobs.choice-criteria.prompts":
+    "Help me choose criteria to compare these options.\nCompare these alternatives using my priorities.\nList the information still needed to decide.",
   "jobs.numbers-context.name": "Numbers in context",
   "jobs.numbers-context.description": "Reads a table and explains trends, limits and questions in the data.",
   "jobs.numbers-context.roleLine": "Analyze tables and explain what the numbers support.",
   "jobs.numbers-context.task": "Check units and periods; do not treat correlation as causation.",
+  "jobs.numbers-context.prompts":
+    "Explain the main trends in this table.\nCheck the units and periods in these data.\nShow what these numbers support and what remains uncertain.",
   "jobs.tailored-proposal.name": "A tailored proposal",
   "jobs.tailored-proposal.description": "Drafts a proposal around the customer’s needs.",
   "jobs.tailored-proposal.roleLine": "Prepare proposals tied to each customer’s needs.",
   "jobs.tailored-proposal.task": "Use confirmed prices only and separate scope from optional items.",
+  "jobs.tailored-proposal.prompts":
+    "Draft a proposal around these needs.\nSeparate the main scope from optional items in this proposal.\nCheck what needs confirmation before sending this proposal.",
   "jobs.customer-followup.name": "A customer follow-up",
   "jobs.customer-followup.description":
     "Drafts a follow-up that picks up the conversation and clarifies the next step.",
   "jobs.customer-followup.roleLine": "Draft useful follow-ups for my customers.",
   "jobs.customer-followup.task": "Read available context and do not promise unconfirmed deadlines.",
+  "jobs.customer-followup.prompts":
+    "Draft a customer follow-up using this context.\nHelp me clarify the next step in this conversation.\nReview this follow-up for unconfirmed promises.",
   "jobs.sales-questions.name": "Questions before a sale",
   "jobs.sales-questions.description": "Helps understand the need before offering a solution.",
   "jobs.sales-questions.roleLine": "Prepare questions to understand a customer’s needs.",
   "jobs.sales-questions.task": "Propose open questions and avoid assuming budget or urgency.",
+  "jobs.sales-questions.prompts":
+    "Prepare questions to understand this customer’s needs.\nSuggest open questions for this sales conversation.\nHelp me find out what is missing before offering a solution.",
   "jobs.order-history.name": "An order’s history",
   "jobs.order-history.description": "Collects order facts to make a customer conversation easier.",
   "jobs.order-history.roleLine": "Organize order histories to support customer service.",
   "jobs.order-history.task": "Order facts by date and highlight pending items without unnecessary personal data.",
+  "jobs.order-history.prompts":
+    "Organize this order’s history by date.\nHighlight pending items in this customer conversation.\nPrepare a summary of the facts to follow up on this order.",
   "jobs.demo-guide.name": "A demonstration guide",
   "jobs.demo-guide.description": "Prepares a demonstration tied to the problem the customer wants to solve.",
   "jobs.demo-guide.roleLine": "Plan useful demonstrations for each sales conversation.",
   "jobs.demo-guide.task": "Tie each example to a need and point out product limitations.",
+  "jobs.demo-guide.prompts":
+    "Prepare a demonstration outline for this customer.\nRelate these examples to the needs in the conversation.\nCheck which limitations I should explain in the demonstration.",
   "jobs.shift-handover.name": "A shift handover",
   "jobs.shift-handover.description": "Organizes what happened and what the next person needs to follow.",
   "jobs.shift-handover.roleLine": "Prepare work handovers with context and pending items.",
   "jobs.shift-handover.task": "List current state, blockers and owners; distinguish facts from hypotheses.",
+  "jobs.shift-handover.prompts":
+    "Prepare a shift handover using these notes.\nList the current state, blockers and owners.\nHighlight what the next person needs to follow up on.",
   "jobs.quality-checklist.name": "A checking list",
   "jobs.quality-checklist.description": "Turns a procedure into a short list of checks.",
   "jobs.quality-checklist.roleLine": "Create checking lists for repeated procedures.",
   "jobs.quality-checklist.task": "Confirm the expected outcome and define how to recognize each completed check.",
+  "jobs.quality-checklist.prompts":
+    "Turn this procedure into a checking list.\nDefine how to recognize each completed check.\nReview this list for missing steps.",
   "jobs.folder-plan.name": "Folders with a plan",
   "jobs.folder-plan.description": "Proposes a file arrangement before moving anything.",
   "jobs.folder-plan.roleLine": "Plan file organization without losing references.",
   "jobs.folder-plan.task": "Inspect only allowed folders and show a map before moving files.",
+  "jobs.folder-plan.prompts":
+    "Propose an arrangement for these files.\nShow a folder map before moving anything.\nHelp me define rules for naming and grouping these files.",
   "jobs.delivery-plan.name": "A delivery plan",
   "jobs.delivery-plan.description": "Breaks a delivery into parts with clear dependencies and owners.",
   "jobs.delivery-plan.roleLine": "Help plan deliveries with verifiable stages.",
   "jobs.delivery-plan.task": "Confirm deadline and outcome; highlight dependencies and pending decisions.",
+  "jobs.delivery-plan.prompts":
+    "Break this delivery into verifiable stages.\nList the dependencies and pending decisions in this plan.\nHelp me define owners and deadlines for these stages.",
   "jobs.decision-log.name": "A decision record",
   "jobs.decision-log.description": "Records the choice, its reason and what would make the team reconsider.",
   "jobs.decision-log.roleLine": "Organize decisions to preserve team context.",
   "jobs.decision-log.task": "Record alternatives, rationale and date; do not invent consensus or owners.",
+  "jobs.decision-log.prompts":
+    "Record this decision with its rationale and alternatives.\nOrganize the decisions in these notes.\nList what would make the team reconsider this choice.",
   "What does it do?": "What does it do?",
   "Search jobs": "Search jobs",
   "Not sure yet": "Not sure yet",
@@ -2057,7 +2581,7 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Connect tools after creating this bot, in its advanced settings.":
     "Connect tools after creating this bot, in its advanced settings.",
   "job.starter":
-    "## How to help\n- {task}\n- In the first conversation, briefly explain how you can help with this job.\n- Confirm the goal and ask for missing context.\n- Work on the computer running touri with the user’s own CLI and only allowed access.\n- Use the browser when you need to check information and include sources.\n- Ask permission before changing files or sending anything; show a draft first.\n- When finished, explain what you found and what needs the person’s attention.",
+    "## {name}\n- {role} {task}\n- In the first conversation, briefly explain how you can help with this job.\n- Confirm the goal and ask for missing context.\n- Work on the computer running touri with the user’s own CLI and only allowed access.\n- Use the browser when you need to check information and include sources.\n- Ask permission before changing files or sending anything; show a draft first.\n- When finished, explain what you found and what needs the person’s attention.",
 
   "Activity thinking": "Thinking",
   "Activity working": "Working",
@@ -2122,7 +2646,9 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Caminho absoluto da pasta": "Absolute folder path",
   "Bot settings": "{name} settings",
   "Import step": "import / step {step} of 5",
-  "Import counts": "{messages} messages and {threads} conversations imported. Routines are paused.",
+  "Import message count": "{count} messages",
+  "Imported conversation count": "{count} imported conversations",
+  "Import counts": "{messages} and {threads}. Routines are paused.",
   "Checks ready": "{count} checks ready",
   "Enable routine": "Enable {name}",
   "Avatar shape": "Shape {shape}",
@@ -2267,11 +2793,27 @@ export const plural = (count: number, one: string, other: string, locale: Locale
   (locale === "pt-BR" ? count === 1 : pluralRules[locale].select(count) === "one") ? one : other
 
 const singular: Partial<Record<TranslationKey, [string, string]>> = {
+  "Group member count": ["{count} membro", "{count} member"],
+  "Group members label": ["{count} membro: {names}", "{count} member: {names}"],
   "Conexão pronta: {count} ferramentas disponíveis. Salve para usá-las neste bot.": [
     "Conexão pronta: {count} ferramenta disponível. Salve para usá-la neste bot.",
     "Connection ready: {count} tool available. Save to use it with this bot.",
   ],
   "Bot routine count": ["{count} rotina", "{count} routine"],
+  "Routine execution count": [
+    "{count} rotina · executada enquanto o touri está aberto",
+    "{count} routine · runs while touri is open",
+  ],
+  "Storage records processed": [
+    "{processed} de {total} registro processado",
+    "{processed} of {total} record processed",
+  ],
+  "Import message count": ["{count} mensagem", "{count} message"],
+  "Imported conversation count": ["{count} conversa importada", "{count} imported conversation"],
+  "A cada hora, aos {minute} minutos": ["A cada hora, ao {minute} minuto", "Every hour at {minute} minute past"],
+  "A cada {count} minutos": ["A cada {count} minuto", "Every {count} minute"],
+  "A cada {count} horas": ["A cada {count} hora", "Every {count} hour"],
+  "Tamanho completo: {count} caracteres": ["Tamanho completo: {count} caractere", "Full length: {count} character"],
   "Queued messages waiting": [
     "{count} mensagem na fila · aguardando conexão",
     "{count} message queued · waiting for connection",
@@ -2298,10 +2840,17 @@ export const t = (
 ): string => {
   let template = dictionaries[locale][key]
   const one = singular[key]?.[locale === "pt-BR" ? 0 : 1]
-  if (one && typeof params.count === "number") template = plural(params.count, one, template, locale)
-  if (key === "Import counts" && locale === "pt-BR")
-    template = `{messages} ${plural(Number(params.messages), "mensagem", "mensagens")} e {threads} ${plural(Number(params.threads), "conversa importada", "conversas importadas")}. As rotinas estão pausadas.`
-  return template.replace(/\{(\w+)\}/g, (_, name: string) => String(params[name] ?? `{${name}}`))
+  const count = key === "A cada hora, aos {minute} minutos" ? params.minute : params.count
+  if (one && typeof count === "number") template = plural(count, one, template, locale)
+  const values =
+    key === "Import counts"
+      ? {
+          ...params,
+          messages: t("Import message count", { count: Number(params.messages) }, locale),
+          threads: t("Imported conversation count", { count: Number(params.threads) }, locale),
+        }
+      : params
+  return template.replace(/\{(\w+)\}/g, (_, name: string) => String(values[name] ?? `{${name}}`))
 }
 
 /** Localize auto-generated imported date titles; preserve arbitrary user titles. */
@@ -2327,6 +2876,14 @@ export const statusLabel = (status: string): string => {
 
 /** Translate only application-authored notices, leaving bot/user content intact. */
 export const localizeNotice = (value: string): string => {
+  const browserSession = /^Navegador · (.+) · sessão salva$/.exec(value)
+  if (browserSession) return t("Navegador · {name} · sessão salva", { name: browserSession[1] ?? "" })
+  const invalidLogin = /^(.+): login do (Claude|Codex|OpenCode) inválido\. Conecte novamente\.$/.exec(value)
+  if (invalidLogin)
+    return t("{name}: login do {provider} inválido. Conecte novamente.", {
+      name: invalidLogin[1] ?? "",
+      provider: invalidLogin[2] ?? "",
+    })
   const renamed = /^Bot renomeado de ("(?:[^"\\]|\\.)*") para ("(?:[^"\\]|\\.)*")\.$/.exec(value)
   if (renamed)
     return t("Bot renomeado de {previous} para {name}.", { previous: renamed[1] ?? "", name: renamed[2] ?? "" })

@@ -484,6 +484,35 @@ member header and memberships in each bot's Detalhes panel.
 ## 5. Browser (WP6)
 
 ### 5.1 Engine choice: direct CDP to a headed Chrome
+
+`Bot.browser` selects the launcher per bot: `touri` (**Chrome do touri**, default), `local`
+(**Meu Chrome**, opt-in), or `machine` (**Chrome da máquina**, Linux VM). Migration 0019 keeps
+existing host bots on `touri` and maps existing Linux VM bots to `machine`, preserving routing.
+Changing a bot's execution destination without an explicit browser selects the matching owned browser;
+a bot already using `local` must explicitly choose a compatible browser before moving to a VM.
+The store rejects `local` for remote bots and `machine` for host bots. The settings picker disables
+incompatible choices and explains the boundary in Portuguese and English.
+
+**Meu Chrome attach flow.** Open Google Chrome, visit `chrome://inspect/#remote-debugging`, allow
+remote debugging, then accept Chrome's permission prompt when the bot connects. touri reads the first
+two lines of `DevToolsActivePort` from `~/Library/Application Support/Google/Chrome` on macOS
+(`~/.config/google-chrome` on Linux): port and browser WebSocket path. It connects directly to
+`ws://127.0.0.1:<port><path>`; it does not fetch a discovery URL, spawn, relaunch, pass flags or kill
+Chrome. A missing, invalid or stale file, refused permission or failed connection returns
+`LOCAL_BROWSER_UNAVAILABLE` (`TOURI-E4006`) with these steps, with no profile fallback.
+
+The bot opens its own window with `Target.createTarget {newWindow:true}` in the default context,
+sharing the user's signed-in sessions. Only recorded bot-owned targets and their popups are attached,
+listed, read, acted on or closed. touri never adopts personal tabs by URL. No personal cookies are
+copied into touri's session vault. Idle unload, shutdown and app quit close only owned targets;
+the launcher disconnects CDP and never sends `Browser.close`. Settings explain the shared sessions
+once and keep the debugging steps available; the user can close the bot window or press Stop.
+
+Chrome 136 stopped honoring debugging switches on its default data directory, so touri never
+relaunches the personal profile with `--remote-debugging-port`. Chrome documents the consent flow
+from M144; **the minimum supported version still needs verification on a Mac** (see DECISIONS).
+The owned-profile launch described below applies to `touri`; `machine` retains the existing guest
+launcher. All reliability rules in 5.3, including `SITE_BLOCKED`, apply unchanged to every mode.
 Options considered:
 - (a) Playwright-managed Chromium (`launchPersistentContext`)
 - (b) direct CDP to Chrome with a dedicated profile
@@ -510,7 +539,7 @@ Launch:
 
 - **Transport.** `--remote-debugging-pipe` (fds 3/4) means no TCP port is open. Fallback: `--remote-debugging-port=0`, read `DevToolsActivePort`, and connect to 127.0.0.1 only.
 - **Window.** Headed, so the user can watch. "Show agent browser" brings it to the front.
-- **Profile.** One shared persistent profile, so sign-ins are shared across bots and survive restarts, as in the legacy app. Per-bot profiles come later.
+- **Profile.** `touri` owns the persistent Chrome data directory and isolates bots in browser contexts, saving each bot's cookies and origin storage in its own session vault. `local` uses the user's default context and existing sign-ins; it never imports or exports that session.
 - **Client.** A minimal in-house CDP client, about 300 lines: message ids, sessions, events, timeouts. Types come from the `devtools-protocol` package (BSD-3).
 
 ### 5.2 Tabs: agent-owned and persistent
@@ -813,7 +842,7 @@ Each imported text gets an FTS row.
 - **Apache-2.0** for the repo, own copyright. All code is original: no code is copied from other agent projects. The importer only reads the legacy app data format. A `NOTICE` file carries the copyright line only.
 - `TRADEMARKS.md`: the "touri" name and logo are not licensed under Apache-2.0.
 - **No third-party chat UI code is copied.** The chat UI is original.
-- **Dependency policy.** Only MIT/Apache/BSD/ISC/OFL dependencies. CI runs a license check (`license-checker` on bun deps, `cargo deny` on Rust).
+- **Dependency policy.** MIT/Apache/BSD/ISC/OFL dependencies, plus the Rust licenses and per-crate exceptions documented in [Rust dependency licenses](licenses/rust-dependencies.md). CI runs a license check (`license-checker` on bun deps, `cargo deny` on Rust). `src-tauri/deny.toml` enforces the Rust allow-list and narrowly scoped MPL-2.0 exceptions.
 
 ### 9.3 Repo structure
 

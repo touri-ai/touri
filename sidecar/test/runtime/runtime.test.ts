@@ -14,6 +14,7 @@ import { createCodexAdapter } from "../../src/runtime/codex/adapter"
 import { createRuntimeEngine } from "../../src/runtime/engine"
 import { MCP_STARTUP_MESSAGE } from "../../src/runtime/mcp-startup"
 import { createRuntimePersistence } from "../../src/runtime/persistence"
+import { createRoutineScheduler } from "../../src/runtime/routines/scheduler"
 import { init as initStore } from "../../src/store"
 import { createTestStore, type TestStore } from "./fake-store"
 
@@ -129,6 +130,7 @@ const fixture = async ({
     homeDir: join(root, "bots", "bot-runtime"),
     mainThreadId: "thread-runtime",
     browserEnabled: true,
+    browser: "touri",
     computerUse: false,
     machine: "local",
     machineIdleMinutes: 15,
@@ -267,6 +269,37 @@ const addUser = (store: StoreApi, thread: Thread, text: string): Message => {
 }
 
 const terminal = (status: string): boolean => ["succeeded", "failed", "canceled", "interrupted"].includes(status)
+
+test("an attached CSV reaches the provider as real rows rather than a filename placeholder", async () => {
+  const f = await fixture()
+  try {
+    const requestLogPath = join(f.assets, "csv-requests.jsonl")
+    writeFileSync(f.scenario, JSON.stringify({ requestLogPath, events: [{ type: "complete" }] }))
+    const path = join(f.runtime.kernel.paths.attachmentsDir, "cadastros.csv")
+    mkdirSync(f.runtime.kernel.paths.attachmentsDir, { recursive: true })
+    const csv = "cadastro,valor\nregistro-a,12\nregistro-b,30\n"
+    writeFileSync(path, csv)
+    ;(f.runtime.kernel.db as Database)
+      .query("INSERT INTO attachments(id,path,mime,bytes,created_at) VALUES (?,?,?,?,1)")
+      .run("table", path, "text/csv", Buffer.byteLength(csv))
+    const request = addUser(f.store, f.thread, "Some os valores dos cadastros anexados.")
+    request.parts.push({ type: "file", attachmentId: "table", mime: "text/csv", name: "cadastros.csv" })
+    const result = f.engine.enqueue({ threadId: f.thread.id, requestMessageId: request.id, trigger: "user" })
+    if (!result.success) throw new Error(result.error)
+    await waitFor(() => terminal(result.run.status))
+    expect(result.run.status).toBe("succeeded")
+    const frames = readFileSync(requestLogPath, "utf8")
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line))
+    const text = frames.find((frame) => frame.method === "turn/start").params.input[0].text
+    expect(text).toContain(JSON.stringify({ name: "cadastros.csv", content: csv }))
+    expect(text).toContain("do not invent records")
+    expect(text).not.toContain(path)
+  } finally {
+    await closeFixture(f)
+  }
+})
 
 test.each([
   ["codex", "stderr"],
@@ -1398,6 +1431,7 @@ test.serial(
       })
       if (!enabled.success) throw new Error(enabled.error)
       const at = Date.UTC(2026, 9, 12, 14, 0)
+      value.engine.updateRoutine({ routineId: enabled.routine.id, patch: { nextRunAt: at }, fromTool: false })
       await Promise.all([value.engine.tick(at), secondEngine.tick(at)])
       const db = value.runtime.kernel.db as Database
       await waitFor(
@@ -2328,6 +2362,188 @@ test.serial("a local bot with a provider profile runs the CLI with that profile 
     expect(homes.at(-1)).toBe(join(value.runtime.kernel.paths.appData, "provider-profiles", "clav", "claude"))
   } finally {
     await closeFixture(value)
+  }
+})
+
+test("retry acknowledgements identify one persisted attempt, including after the attempt finishes", async () => {
+  const f = await fixture({ scenario: { crashAt: 1, events: [{ type: "delta", delta: "unused" }] } })
+  try {
+    const request = addUser(f.store, f.thread, "Mensagem salva")
+    const initial = f.engine.enqueue({ threadId: f.thread.id, requestMessageId: request.id, trigger: "user" })
+    if (!initial.success) throw new Error(initial.error)
+    await waitFor(() => terminal(initial.run.status))
+    const retry = f.engine.retry(initial.run.id)
+    if (!retry.success) throw new Error(retry.error)
+    expect(f.engine.retry(initial.run.id)).toMatchObject({ success: true, run: { id: retry.run.id } })
+    await waitFor(() => terminal(retry.run.status))
+    expect(f.engine.retry(initial.run.id)).toMatchObject({ success: true, run: { id: retry.run.id } })
+    expect(f.engine.listRuns(f.thread.id)).toHaveLength(2)
+    expect([...f.store.messages.values()].filter((message) => message.role === "user")).toHaveLength(1)
+  } finally {
+    await closeFixture(f)
+  }
+})
+
+test("a crash after a recorded write waits for review and never repeats the write", async () => {
+  const f = await fixture({
+    scenario: {
+      crashAt: 2,
+      events: [{ type: "command", command: "save notes.md", output: "saved" }, { type: "complete" }],
+    },
+  })
+  const destination = join(f.assets, "notes.md")
+  // The simulated provider commits a real write before emitting its tool acknowledgement.
+  const wrapper = readFileSync(f.fakePath, "utf8")
+  writeFileSync(
+    f.fakePath,
+    wrapper.replace("exec ", `if [ "$1" != "--version" ]; then printf 'saved\\n' >> '${destination}'; fi\nexec `),
+  )
+  try {
+    const request = addUser(f.store, f.thread, "Salve minhas notas")
+    const result = f.engine.enqueue({ threadId: f.thread.id, requestMessageId: request.id, trigger: "user" })
+    if (!result.success) throw new Error(result.error)
+    await waitFor(() => terminal(result.run.status))
+    await Bun.sleep(250)
+    expect(f.engine.retry(result.run.id)).toMatchObject({ success: false, errorCode: "CONFLICT" })
+    expect(f.engine.listRuns(f.thread.id)).toHaveLength(1)
+    expect(readFileSync(destination, "utf8")).toBe("saved\n")
+    expect(f.store.activePath({ threadId: f.thread.id }).flatMap((message) => message.parts)).toContainEqual(
+      expect.objectContaining({ type: "command", exitCode: 0 }),
+    )
+  } finally {
+    await closeFixture(f)
+  }
+})
+
+test.serial("server routines run without browser clients and persist downtime and catch-up history", async () => {
+  const value = await fixture({
+    scenario: { events: [{ type: "delta", delta: "Notas organizadas" }, { type: "complete" }] },
+  })
+  try {
+    const created = value.engine.createRoutine({
+      input: {
+        botId: value.bot.id,
+        name: "Organizar notas",
+        prompt: "Organize minhas notas",
+        cron: "0 9 * * 1-5",
+        timezone: "America/Sao_Paulo",
+        enabled: true,
+        continuity: "results-thread",
+        resultsThreadId: value.thread.id,
+        timeoutMinutes: 30,
+        overlap: "skip",
+        catchUpMinutes: 30,
+      },
+      forceDisabled: false,
+    })
+    if (!created.success) throw new Error(created.error)
+    const due = Date.parse("2026-10-19T12:00:00Z")
+    value.engine.updateRoutine({ routineId: created.routine.id, patch: { nextRunAt: due }, fromTool: false })
+    // No browser or UI is connected to this host. Its scheduler still executes.
+    const scheduler = createRoutineScheduler({ kernel: value.runtime.kernel, engine: value.engine, intervalMs: 10 })
+    const liveDue = Math.floor(Date.now() / 60_000) * 60_000
+    value.engine.updateRoutine({ routineId: created.routine.id, patch: { nextRunAt: liveDue }, fromTool: false })
+    try {
+      await waitFor(() => value.engine.listRoutineRuns(created.routine.id)[0]?.status === "succeeded")
+    } finally {
+      scheduler.stop()
+    }
+    value.engine.updateRoutine({ routineId: created.routine.id, patch: { nextRunAt: due }, fromTool: false })
+    await value.engine.tick(due + 5 * 60_000)
+    await waitFor(() => value.engine.listRoutineRuns(created.routine.id)[0]?.status === "succeeded")
+    expect(value.engine.listRoutineRuns(created.routine.id)[0]).toMatchObject({
+      triggerSource: "catch-up",
+      threadId: value.thread.id,
+      scheduledFor: due,
+    })
+    const missed = due + 24 * 60 * 60_000
+    value.engine.updateRoutine({ routineId: created.routine.id, patch: { nextRunAt: missed }, fromTool: false })
+    await value.engine.tick(missed + 60 * 60_000)
+    expect(value.engine.listRoutineRuns(created.routine.id)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          status: "skipped",
+          triggerSource: "catch-up",
+          scheduledFor: missed,
+          summary: expect.stringContaining("touri estava fechado"),
+        }),
+      ]),
+    )
+    await value.engine.tick(missed + 60 * 60_000)
+    expect(value.engine.listRoutineRuns(created.routine.id).filter((run) => run.scheduledFor === missed)).toHaveLength(
+      1,
+    )
+  } finally {
+    await closeFixture(value)
+  }
+})
+
+test.serial("editing a routine task or destination pauses it until a new explicit activation", async () => {
+  const value = await fixture()
+  try {
+    const created = value.engine.createRoutine({
+      input: {
+        botId: value.bot.id,
+        name: "Organizar notas",
+        prompt: "Organize minhas notas",
+        cron: "0 9 * * 1-5",
+        timezone: "America/Sao_Paulo",
+        enabled: true,
+        continuity: "main-thread",
+        resultsThreadId: null,
+        timeoutMinutes: 30,
+        overlap: "skip",
+        catchUpMinutes: 30,
+      },
+      forceDisabled: false,
+    })
+    if (!created.success) throw new Error(created.error)
+    for (const patch of [{ prompt: "Organize outras notas" }, { continuity: "new-thread" as const }]) {
+      const edited = value.engine.updateRoutine({
+        routineId: created.routine.id,
+        patch,
+        fromTool: true,
+        botId: value.bot.id,
+      })
+      expect(edited).toMatchObject({ success: true, routine: { enabled: false, nextRunAt: null } })
+      const activated = value.engine.updateRoutine({
+        routineId: created.routine.id,
+        patch: { enabled: true },
+        fromTool: false,
+      })
+      expect(activated).toMatchObject({ success: true, routine: { enabled: true } })
+    }
+  } finally {
+    await closeFixture(value)
+  }
+})
+
+test.serial("newly activated routines wait for a future slot instead of replaying unreviewed past work", async () => {
+  const f = await fixture()
+  try {
+    const before = Date.now()
+    const created = f.engine.createRoutine({
+      forceDisabled: false,
+      input: {
+        botId: f.bot.id,
+        name: "Organizar notas",
+        prompt: "Organize minhas notas",
+        cron: "0 9 * * 1-5",
+        timezone: "America/Sao_Paulo",
+        enabled: true,
+        continuity: "main-thread",
+        resultsThreadId: null,
+        timeoutMinutes: 30,
+        overlap: "skip",
+        catchUpMinutes: 30,
+      },
+    })
+    if (!created.success) throw new Error(created.error)
+    expect(created.routine.nextRunAt).toBeGreaterThan(before)
+    await f.engine.tick(before)
+    expect(f.engine.listRoutineRuns(created.routine.id)).toEqual([])
+  } finally {
+    await closeFixture(f)
   }
 })
 

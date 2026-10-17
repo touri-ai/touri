@@ -1,13 +1,14 @@
 import type { Bot, MachineState } from "@touri/contracts"
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useContext, useEffect, useRef, useState } from "react"
 import type { UiApi } from "../api/client"
 import { computerKillSwitchEvent } from "../computerKillSwitch"
-import { userFacingError } from "../errors"
 import { CloudComputer } from "../features/cloud/CloudComputer"
 import { DesktopPanel } from "../features/desktop/DesktopPanel"
 import { localizeNotice, machineStatusLabel } from "../i18n"
 import { useComputerPresence } from "../machineIntents"
 import { machineStateForDisplay } from "../machineState"
+import { ErrorNotice } from "./ErrorNotice"
+import { FailureActionContext } from "./FailureActionContext"
 import { MachineStopButton } from "./MachineStopButton"
 import { PanelIcon } from "./PanelIcon"
 
@@ -35,6 +36,7 @@ const LocalBotComputer = ({
   onPermissions?: () => void
 }) => {
   useComputerPresence(api, bot)
+  const failureAction = useContext(FailureActionContext)
   const [viewerControl, setViewerControl] = useState(false)
   const machine = machineStateForDisplay(rawMachine)
   const [hostActive, setHostActive] = useState<boolean | null>(null)
@@ -47,7 +49,7 @@ const LocalBotComputer = ({
   )
   const [entered, setEntered] = useState(false)
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<unknown>(null)
   const [view, setView] = useState<"desktop" | "terminal">("desktop")
   const [command, setCommand] = useState("")
   const [output, setOutput] = useState("")
@@ -109,8 +111,7 @@ const LocalBotComputer = ({
           setError(responseMachine.error ?? "O computador ainda não está pronto. Tente novamente após a inicialização.")
       }
     } catch (reason) {
-      if (mounted.current && generation === openGeneration.current && awaitingComputer.current)
-        setError(userFacingError(reason))
+      if (mounted.current && generation === openGeneration.current && awaitingComputer.current) setError(reason)
     } finally {
       if (mounted.current && generation === openGeneration.current) setBusy(false)
     }
@@ -133,7 +134,7 @@ const LocalBotComputer = ({
     try {
       await api.request("POST /computer/kill", {})
     } catch (reason) {
-      if (mounted.current) setError(userFacingError(reason))
+      if (mounted.current) setError(reason)
     }
   }
   const execute = async () => {
@@ -148,7 +149,7 @@ const LocalBotComputer = ({
         setCommand("")
       }
     } catch (reason) {
-      if (mounted.current) setError(userFacingError(reason))
+      if (mounted.current) setError(reason)
     } finally {
       if (mounted.current) setExecuting(false)
     }
@@ -190,7 +191,23 @@ const LocalBotComputer = ({
               )
             : "Este bot trabalha no computador local. O controle depende das permissões do macOS e de uma autorização temporária."}
         </p>
-        {status === "error" && machine?.error && <p role="alert">{userFacingError(machine.error)}</p>}
+        {status === "error" && machine?.error && (
+          <div role="alert">
+            <ErrorNotice
+              error={machine.error}
+              context={{ provider: bot.provider }}
+              onAction={(action) =>
+                action === "retry"
+                  ? open()
+                  : failureAction(
+                      action === "login"
+                        ? { kind: "setting", settingId: "providerLogin", label: "" }
+                        : { kind: "doctor", label: "" },
+                    )
+              }
+            />
+          </div>
+        )}
         {bot.machine === "vm" ? (
           <div className="computer-actions">
             {status === "running" && (
@@ -233,11 +250,7 @@ const LocalBotComputer = ({
               </button>
             )}
             {onWindow && (
-              <button
-                className="button button-quiet"
-                type="button"
-                onClick={() => void onWindow().catch((reason) => setError(userFacingError(reason)))}
-              >
+              <button className="button button-quiet" type="button" onClick={() => void onWindow().catch(setError)}>
                 Abrir em janela
               </button>
             )}
@@ -297,10 +310,10 @@ const LocalBotComputer = ({
           </button>
         )}
       </div>
-      {error && (
-        <p className="warning-callout" role="alert">
-          {error}
-        </p>
+      {error !== null && (
+        <div className="warning-callout" role="alert">
+          <ErrorNotice error={error} context={{ provider: bot.provider }} />
+        </div>
       )}
       {bot.machine === "vm" && entered && status === "running" && (
         <>

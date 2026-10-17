@@ -69,6 +69,7 @@ const createBot = (input: Seed["bots"][number], index: number, projectId: Id | n
   homeDir: `/Users/demo/Library/Application Support/touri/bots/${input.id}`,
   mainThreadId: null,
   browserEnabled: true,
+  browser: "touri",
   computerUse: false,
   machine: "local",
   machineIdleMinutes: 10,
@@ -929,6 +930,7 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
     }
     if (key === "GET /routines")
       return {
+        host: "mac",
         routines: routines.filter(
           (routine) =>
             !input || !(input as { botId?: string }).botId || routine.botId === (input as { botId?: string }).botId,
@@ -994,6 +996,21 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
           group: tool["x-touri"].group,
         })),
       } as ApiRoutes[typeof route]["res"]
+    if (key === "GET /folders") {
+      const path = (input as ApiRoutes["GET /folders"]["req"]).path ?? "/workspace"
+      return {
+        canGrant: true,
+        home: "/workspace",
+        path,
+        parent: path === "/" ? null : path.slice(0, path.lastIndexOf("/")) || "/",
+        folders: [],
+        truncated: false,
+      } as ApiRoutes[typeof route]["res"]
+    }
+    if (key === "POST /folders") {
+      const folder = input as ApiRoutes["POST /folders"]["req"]
+      return { path: `${folder.path}/${folder.name}` } as ApiRoutes[typeof route]["res"]
+    }
     if (key === "GET /projects") return { projects } as ApiRoutes[typeof route]["res"]
     if (key === "GET /projects/discover") return { repositories: [] } as ApiRoutes[typeof route]["res"]
     if (key === "POST /projects") {

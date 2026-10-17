@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite"
 import { expect, test } from "bun:test"
-import { chmodSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { chmodSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { Run, UiEventEnvelope } from "@touri/contracts"
@@ -316,7 +316,7 @@ test("restart fences a still-streaming writer and kills its surviving local prov
 }, 30_000)
 
 for (const nativeSession of [false, true]) {
-  test(`retry after app_restart starts with the partial transcript (native session: ${nativeSession})`, async () => {
+  test(`retry after app_restart requires review of recorded actions (native session: ${nativeSession})`, async () => {
     const f = await fixture()
     let restored: ReturnType<typeof createKernel> | undefined
     let engine: ReturnType<typeof createRuntimeEngine> | undefined
@@ -367,22 +367,16 @@ for (const nativeSession of [false, true]) {
       })
       expect(engine.listRuns("t")[0]).toMatchObject({ status: "interrupted", errorClass: "app_restart" })
       const retried = engine.retry(run.id)
-      if (!retried.success) throw new Error(retried.error)
-      await waitFor(() => engine?.listRuns("t").find((row) => row.id === retried.run.id)?.finishedAt != null)
-      expect(engine.listRuns("t").find((row) => row.id === retried.run.id)).toMatchObject({
-        status: "succeeded",
-        errorClass: null,
-      })
-      const log = readFileSync(requests, "utf8")
-      expect(log).toContain('"method":"thread/start"')
-      expect(log).not.toContain('"method":"thread/resume"')
-      expect(log).toContain("Resposta longa")
-      expect(log).toContain("INÍCIO")
-      expect(log).toContain("command: echo etapa concluída (succeeded)")
-      expect(log).toContain("Continue from the partial transcript")
-      expect(restored.kernel.services.use("store.api")?.activePath({ threadId: "t" })).toContainEqual(
-        expect.objectContaining({ runId: retried.run.id, text: "Continuação", status: "complete" }),
-      )
+      expect(retried).toMatchObject({ success: false, errorCode: "CONFLICT" })
+      await Bun.sleep(100)
+      expect(engine.listRuns("t")).toHaveLength(1)
+      expect(existsSync(requests)).toBe(false)
+      expect(
+        restored.kernel.services
+          .use("store.api")
+          ?.activePath({ threadId: "t" })
+          .flatMap((message) => message.parts),
+      ).toContainEqual(expect.objectContaining({ callId: "completed-step", exitCode: 0 }))
     } finally {
       await engine?.shutdown()
       restored?.stop()

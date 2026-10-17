@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Folder picker API",
+  "$defs": {
+    "listRequest": {
+      "type": "object",
+      "properties": { "path": { "type": "string", "pattern": "^/" } },
+      "additionalProperties": false
+    },
+    "createRequest": {
+      "type": "object",
+      "required": ["path", "name"],
+      "properties": {
+        "path": { "type": "string", "pattern": "^/" },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "pattern": "^[^.\\/\\\\\\u0000\\n\\r,][^/\\\\\\u0000\\n\\r,]*$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "listing": {
+      "type": "object",
+      "required": ["home", "path", "parent", "folders", "truncated", "canGrant"],
+      "properties": {
+        "canGrant": { "type": "boolean" },
+        "home": { "type": "string" },
+        "path": { "type": "string" },
+        "parent": { "type": ["string", "null"] },
+        "folders": {
+          "type": "array",
+          "maxItems": 100,
+          "items": {
+            "type": "object",
+            "required": ["name", "path"],
+            "properties": { "name": { "type": "string" }, "path": { "type": "string" } },
+            "additionalProperties": false
+          }
+        },
+        "truncated": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "created": {
+      "type": "object",
+      "required": ["path"],
+      "properties": { "path": { "type": "string" } },
+      "additionalProperties": false
+    }
+  }
+}

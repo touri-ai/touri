@@ -74,6 +74,7 @@ type RawBot = {
   home_dir: string
   main_thread_id: string | null
   browser_enabled: number
+  browser: Bot["browser"]
   computer_use: number
   machine: Bot["machine"]
   cloud_target?: number
@@ -218,6 +219,7 @@ const asBot = (row: RawBot): Bot => ({
   homeDir: row.home_dir,
   mainThreadId: row.main_thread_id,
   browserEnabled: row.browser_enabled === 1,
+  browser: row.browser,
   computerUse: row.computer_use === 1,
   machine: row.cloud_target === 1 ? "cloud" : row.machine,
   machineIdleMinutes: row.machine_idle_minutes,
@@ -729,6 +731,24 @@ export const init = async (kernel: Kernel): Promise<void> => {
     if (body.machine !== undefined && body.machine !== "local" && body.machine !== "vm" && body.machine !== "cloud")
       return { input: null, error: "machine must be local, vm or cloud" }
     input.machine = (body.machine as Bot["machine"] | undefined) ?? existing?.machine ?? "local"
+    if (body.browser !== undefined && !["touri", "local", "machine"].includes(body.browser as string))
+      return { input: null, error: "Escolha Chrome do touri, Meu Chrome ou Chrome da máquina." }
+    input.browser = (body.browser as Bot["browser"] | undefined) ?? existing?.browser ?? "touri"
+    if (input.browser === "local" && input.machine !== "local")
+      return {
+        input: null,
+        errorCode: "LOCAL_BROWSER_REQUIRES_HOST",
+        error: "Meu Chrome só funciona em bots neste Mac. A máquina remota não pode acessar o Chrome do Mac.",
+      }
+    // Changing the execution destination keeps the old routing unless a browser was explicitly chosen.
+    if (body.browser === undefined) {
+      if (input.machine === "vm") input.browser = "machine"
+      else if (input.browser === "machine") input.browser = "touri"
+    }
+    if (input.browser === "machine" && input.machine !== "vm")
+      return { input: null, error: "Chrome da máquina requer um bot na máquina Linux." }
+    if (input.machine === "vm" && input.browser !== "machine")
+      return { input: null, error: "Para um bot na máquina Linux, escolha Chrome da máquina." }
     if (input.machine === "cloud") {
       if (provider === "opencode")
         return {
@@ -906,7 +926,7 @@ export const init = async (kernel: Kernel): Promise<void> => {
       )
     database
       .query(
-        "UPDATE bots SET machine = ?, machine_idle_minutes = ?, vm_provider_login = ?, host_computer_use = ?, cloud_target = ? WHERE id = ?",
+        "UPDATE bots SET machine = ?, machine_idle_minutes = ?, vm_provider_login = ?, host_computer_use = ?, cloud_target = ?, browser = ? WHERE id = ?",
       )
       .run(
         input.machine === "cloud" ? "local" : (input.machine ?? "local"),
@@ -914,6 +934,7 @@ export const init = async (kernel: Kernel): Promise<void> => {
         input.vmProviderLogin ? 1 : 0,
         input.hostComputerUse ? 1 : 0,
         input.machine === "cloud" ? 1 : 0,
+        input.browser ?? "touri",
         id,
       )
     database
@@ -995,7 +1016,7 @@ export const init = async (kernel: Kernel): Promise<void> => {
     database.query(`UPDATE bots SET ${fields.join(", ")} WHERE id = ?`).run(...values, bot.id)
     database
       .query(
-        "UPDATE bots SET machine = ?, machine_idle_minutes = ?, vm_provider_login = ?, host_computer_use = ?, cloud_target = ? WHERE id = ?",
+        "UPDATE bots SET machine = ?, machine_idle_minutes = ?, vm_provider_login = ?, host_computer_use = ?, cloud_target = ?, browser = ? WHERE id = ?",
       )
       .run(
         input.machine === "cloud" ? "local" : (input.machine ?? bot.machine),
@@ -1003,6 +1024,7 @@ export const init = async (kernel: Kernel): Promise<void> => {
         input.vmProviderLogin ? 1 : 0,
         input.hostComputerUse ? 1 : 0,
         input.machine === "cloud" ? 1 : 0,
+        input.browser ?? bot.browser,
         bot.id,
       )
     database

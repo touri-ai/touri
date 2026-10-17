@@ -16,6 +16,7 @@ export const userFacingRunError = (run: Pick<Run, "errorClass">): string => {
 }
 
 export class ApiError extends Error {
+  readonly diagnostic: string
   readonly code: RegisteredErrorCode | undefined
   readonly retryable: boolean
   readonly domain: string | undefined
@@ -25,11 +26,13 @@ export class ApiError extends Error {
     message: string,
     readonly errorCode?: string,
     code?: RegisteredErrorCode,
+    readonly retryAt?: number,
   ) {
     const publicCode = code ?? (isErrorCode(errorCode) ? errorCode : undefined)
     const definition = publicCode ? errorRegistry[publicCode] : undefined
     super(definition ? `${definition.message} [${publicCode}]` : userFacingError(message))
     this.name = "ApiError"
+    this.diagnostic = message || this.message
     this.code = publicCode
     this.retryable = definition?.retryable ?? false
     this.domain = definition?.domain

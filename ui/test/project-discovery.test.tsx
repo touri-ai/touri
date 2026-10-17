@@ -8,6 +8,7 @@ import { DiscoveredProjects } from "../src/components/DiscoveredProjects"
 import { BotCreateModal, BotSettingsModal } from "../src/components/Modals"
 import { t } from "../src/i18n"
 import type { WorkspaceActions } from "../src/useWorkspace"
+import { selectFolder } from "./folder-picker-helpers"
 
 afterEach(() => {
   cleanup()
@@ -32,7 +33,7 @@ const creation = async () => {
     async (input: Parameters<WorkspaceActions["createProject"]>[0]) =>
       (await api.request("POST /projects", input)).project,
   )
-  const invoke = vi.fn(async () => ({ path: "/Users/demo/reference" })) as ReturnType<typeof vi.fn> & TauriInvoke
+  const invoke = vi.fn(async () => ({ path: "/workspace/reference" })) as ReturnType<typeof vi.fn> & TauriInvoke
   render(
     <BotCreateModal
       api={api}
@@ -53,7 +54,8 @@ it("creation persists folder permissions, broad access and a discovered project 
   const f = await creation()
   expect(screen.getByRole("option", { name: "Nenhum projeto (começa na pasta do bot)" })).toBeInTheDocument()
   fireEvent.click(screen.getByRole("button", { name: "Adicionar pasta…" }))
-  const folder = await screen.findByRole("combobox", { name: "Acesso à pasta /Users/demo/reference" })
+  await selectFolder("/workspace/reference", "read-only")
+  const folder = await screen.findByRole("combobox", { name: "Acesso à pasta /workspace/reference" })
   expect(folder).toHaveValue("read-only")
   fireEvent.change(folder, { target: { value: "read-write" } })
   fireEvent.click(screen.getByRole("switch", { name: /Acesso a qualquer pasta deste Mac/ }))
@@ -70,7 +72,7 @@ it("creation persists folder permissions, broad access and a discovered project 
   ])
   fireEvent.click(options[0] as HTMLElement)
   await waitFor(() => expect(screen.getByLabelText("Projeto", { selector: "select" })).not.toHaveValue(""))
-  expect(f.invoke).toHaveBeenCalledTimes(1)
+  expect(f.invoke).not.toHaveBeenCalled()
   expect(f.createProject).toHaveBeenCalledWith({ path: "/Users/demo/javascript/Hodler", name: "Hodler" })
   expect(f.create).not.toHaveBeenCalled()
   const project = (await f.api.request("GET /projects", {})).projects.find(
@@ -81,13 +83,13 @@ it("creation persists folder permissions, broad access and a discovered project 
   fireEvent.click(screen.getByRole("button", { name: "Avançado" }))
   fireEvent.click(screen.getByRole("button", { name: "Avançado" }))
   expect(screen.getByRole("switch", { name: /Acesso a qualquer pasta deste Mac/ })).toBeChecked()
-  expect(screen.getByLabelText("Acesso à pasta /Users/demo/reference")).toHaveValue("read-write")
+  expect(screen.getByLabelText("Acesso à pasta /workspace/reference")).toHaveValue("read-write")
   fireEvent.click(screen.getByRole("button", { name: "Criar bot" }))
   await waitFor(() =>
     expect(f.create).toHaveBeenCalledWith(
       expect.objectContaining({
         projectId: project?.id,
-        folders: [{ path: "/Users/demo/reference", access: "read-write" }],
+        folders: [{ path: "/workspace/reference", access: "read-write" }],
         anyFolderAccess: true,
       }),
       expect.stringMatching(/^draft-/),
@@ -99,10 +101,12 @@ it("creation offers the folder picker fallback and removes draft folders before 
   const f = await creation()
   fireEvent.change(screen.getByLabelText("Projeto", { selector: "select" }), { target: { value: "__add_project__" } })
   fireEvent.click(await screen.findByRole("button", { name: "Escolher outra pasta…" }))
+  await selectFolder("/workspace/project", "read-write")
   await waitFor(() => expect(screen.getByLabelText("Projeto", { selector: "select" })).not.toHaveValue(""))
-  expect(f.invoke).toHaveBeenCalledWith("pick_folder", { title: "Conectar uma pasta de projeto" })
+  expect(f.invoke).not.toHaveBeenCalled()
   fireEvent.click(screen.getByRole("button", { name: "Adicionar pasta…" }))
-  fireEvent.click(await screen.findByRole("button", { name: "Remover pasta /Users/demo/reference" }))
+  await selectFolder("/workspace/reference", "read-only")
+  fireEvent.click(await screen.findByRole("button", { name: "Remover pasta /workspace/reference" }))
   fireEvent.click(screen.getByRole("button", { name: "Criar bot" }))
   await waitFor(() =>
     expect(f.create).toHaveBeenCalledWith(
@@ -117,7 +121,8 @@ it("creation access summary follows VM mounts and read-only access", async () =>
   fireEvent.change(screen.getByLabelText("Máquina"), { target: { value: "vm" } })
   expect(screen.getByText("Pede permissão antes de mudar arquivos; só no computador isolado.")).toBeVisible()
   fireEvent.click(screen.getByRole("button", { name: "Adicionar pasta…" }))
-  await screen.findByLabelText("Acesso à pasta /Users/demo/reference")
+  await selectFolder("/workspace/reference", "read-only")
+  await screen.findByLabelText("Acesso à pasta /workspace/reference")
   expect(
     screen.getByText("Pede permissão antes de mudar arquivos; só no computador isolado e nas pastas compartilhadas."),
   ).toBeVisible()
@@ -131,7 +136,7 @@ it("creation access summary follows VM mounts and read-only access", async () =>
       expect.objectContaining({
         machine: "vm",
         access: "read-only",
-        folders: [{ path: "/Users/demo/reference", access: "read-only" }],
+        folders: [{ path: "/workspace/reference", access: "read-only" }],
       }),
       expect.any(String),
     ),

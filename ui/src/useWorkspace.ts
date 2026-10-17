@@ -25,7 +25,12 @@ import type {
 import { isApprovalNoticeTitle } from "@touri/contracts/approval-summary"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { UiApi } from "./api/client"
-import { reconcileApprovalMessages, reconcileApprovalNotifications } from "./approvalState"
+import {
+  countPendingRequests,
+  reconcileApprovalMessages,
+  reconcileApprovalNotifications,
+  uniqueApprovalNotifications,
+} from "./approvalState"
 import { userFacingError } from "./errors"
 import { adoptProviderLogin } from "./features/bots/providerLogin"
 import { useDoctorReport } from "./features/doctor/useDoctorReport"
@@ -49,6 +54,7 @@ export type WorkspaceData = {
   processes: Array<ProcessEntry>
   previews: Array<PreviewTarget>
   browserTabs: Array<BrowserTabInfo & { ownerBotId: Id | null }>
+  routineHost: "mac" | "server"
   routines: Array<Routine>
   routineRuns: Array<RoutineRun>
   doctor: DoctorReport | null
@@ -61,6 +67,7 @@ export type WorkspaceData = {
   notice: string | null
   importProgress: { phase: string; done: number; total: number } | null
   computerGrantRequest: { threadId: Id } | null
+  pendingRequestsOnReturn: number | null
   notifications: Array<NotificationRecord>
 }
 
@@ -82,8 +89,8 @@ export type WorkspaceActions = {
   createBot: (input: ApiRoutes["POST /bots"]["req"], loginDraftId?: string) => Promise<{ loginReady: boolean }>
   toggleRoutine: (routine: Routine) => Promise<void>
   runRoutine: (routineId: Id) => Promise<void>
-  createRoutine: (input: ApiRoutes["POST /routines"]["req"]) => Promise<void>
-  updateRoutine: (routineId: Id, patch: ApiRoutes["PATCH /routines/:id"]["req"]) => Promise<void>
+  createRoutine: (input: ApiRoutes["POST /routines"]["req"]) => Promise<Routine>
+  updateRoutine: (routineId: Id, patch: ApiRoutes["PATCH /routines/:id"]["req"]) => Promise<Routine>
   createProject: (input: ApiRoutes["POST /projects"]["req"]) => Promise<Project>
   createProcess: (
     projectId: Id,
@@ -123,6 +130,7 @@ const emptyState = (): WorkspaceData => ({
   processes: [],
   previews: [],
   browserTabs: [],
+  routineHost: "server",
   routines: [],
   routineRuns: [],
   doctor: null,
@@ -136,6 +144,7 @@ const emptyState = (): WorkspaceData => ({
   importProgress: null,
   computerGrantRequest: null,
   notifications: [],
+  pendingRequestsOnReturn: null,
 })
 
 const uniqueById = <T extends { id: Id }>(rows: Array<T>): Array<T> => {
@@ -287,7 +296,8 @@ const upsertNotification = (list: Array<NotificationRecord>, next: NotificationR
         item.id === next.id ? (item.resolvedAt !== null && next.resolvedAt === null ? item : next) : item,
       )
     : [next, ...list]
-  return merged.slice(0, MAX_NOTIFICATIONS)
+  // Snapshot merge order is not age: retain the newest server IDs at the history limit.
+  return merged.sort((a, b) => b.id - a.id).slice(0, MAX_NOTIFICATIONS)
 }
 
 const errorMessage = userFacingError
@@ -481,10 +491,11 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
           projects: projectResponse.projects,
           previews: previewResponse.previews,
           browserTabs: browserResponse.tabs,
+          routineHost: routinesResponse.host ?? "server",
           routines: uniqueById(routinesResponse.routines),
           routineRuns: uniqueById(routineRunsResponse.routineRuns),
           settings: settingsResponse.settings,
-          notifications: notificationsResponse.notifications,
+          notifications: current.notifications.reduce(upsertNotification, notificationsResponse.notifications),
           selectedBotId: selectedBot?.id ?? null,
           selectedThreadId: selectedThread?.id ?? null,
           activeProjectId: selectedBot?.projectId ?? null,
@@ -632,9 +643,30 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
           return { ...current, importProgress: { phase: event.phase, done: event.done, total: event.total } }
         if (event.type === "notification.created" || event.type === "notification.resolved")
           return { ...current, notifications: upsertNotification(current.notifications, event.notification) }
+        // Older computer grants open their existing card; their native echo is not an error.
+        if (
+          event.type === "notify" &&
+          (event.title === "Computer use approval" || event.title.endsWith(": Computer use approval")) &&
+          event.threadId
+        )
+          return { ...current, computerGrantRequest: { threadId: event.threadId } }
         // Approval notifications already have a review action; the headless host
         // also echoes native notifications as legacy notices.
-        if (event.type === "notify" && isApprovalNoticeTitle(event.title)) return current
+        if (
+          event.type === "notify" &&
+          (event.kind === "approval" ||
+            event.requestId ||
+            event.notificationId !== undefined ||
+            isApprovalNoticeTitle(event.title) ||
+            current.notifications.some(
+              (item) =>
+                item.kind === "approval" &&
+                item.threadId === event.threadId &&
+                (item.title === event.title || event.title.endsWith(`: ${item.title}`)) &&
+                item.body === event.body,
+            ))
+        )
+          return current
         if (event.type === "notify")
           return {
             ...current,
@@ -647,6 +679,48 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
         return current
       })
     })
+    // Browsers can suspend a socket without closing it. Refresh attention on return even when
+    // there was no reconnect frame; never re-send a request or a decision during recovery.
+    let refreshing: Promise<void> | null = null
+    const refreshAttention = (): void => {
+      if (refreshing || currentData.current.loading) return
+      refreshing = Promise.all([api.request("GET /notifications", {}), api.request("GET /workspace/activity", {})])
+        .then(async ([snapshot, activity]) => {
+          if (!active) return
+          setData((current) => {
+            const notifications = current.notifications.reduce(upsertNotification, snapshot.notifications)
+            const messages = reconcileApprovalMessages([...activity.messages, ...current.messages], notifications)
+            return {
+              ...current,
+              notifications,
+              messages: reconcileApprovalMessages(current.messages, notifications, activity.messages),
+              activityMessages: activity.messages,
+              pendingRequestsOnReturn: countPendingRequests(notifications, messages),
+            }
+          })
+          const threadId = currentData.current.selectedThreadId
+          if (threadId) await loadThread(threadId, true)
+        })
+        .catch(() => {
+          /* Keep the last known requests visible until recovery succeeds. */
+        })
+        .finally(() => {
+          refreshing = null
+        })
+    }
+    let wasHidden = document.visibilityState === "hidden"
+    const visibility = (): void => {
+      if (document.visibilityState === "hidden") wasHidden = true
+      else if (wasHidden) {
+        wasHidden = false
+        refreshAttention()
+      }
+    }
+    document.addEventListener("visibilitychange", visibility)
+    window.addEventListener("online", refreshAttention)
+    const unsubscribeConnection = api.subscribeConnection?.((connected) => {
+      if (connected) refreshAttention()
+    })
     // Subscribe first, then load: the snapshot starts where live delivery does.
     void (api.cursorReady?.() ?? Promise.resolve()).then(() => {
       if (active) void load()
@@ -655,6 +729,9 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
       active = false
       generation.current += 1
       unsubscribe()
+      unsubscribeConnection?.()
+      document.removeEventListener("visibilitychange", visibility)
+      window.removeEventListener("online", refreshAttention)
     }
   }, [api, enabled, load, loadThread])
 
@@ -895,20 +972,22 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
   )
 
   const createRoutine = useCallback(
-    async (input: ApiRoutes["POST /routines"]["req"]): Promise<void> => {
+    async (input: ApiRoutes["POST /routines"]["req"]): Promise<Routine> => {
       const response = await api.request("POST /routines", input)
       setData((current) => ({ ...current, routines: uniqueById([...current.routines, response.routine]) }))
+      return response.routine
     },
     [api],
   )
 
   const updateRoutine = useCallback(
-    async (routineId: Id, patch: ApiRoutes["PATCH /routines/:id"]["req"]): Promise<void> => {
+    async (routineId: Id, patch: ApiRoutes["PATCH /routines/:id"]["req"]): Promise<Routine> => {
       const response = await api.request("PATCH /routines/:id", patch, { id: routineId })
       setData((current) => ({
         ...current,
         routines: current.routines.map((routine) => (routine.id === routineId ? response.routine : routine)),
       }))
+      return response.routine
     },
     [api],
   )
@@ -1113,7 +1192,10 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
   )
   const notifications = useMemo(
     () =>
-      reconcileFailureNotifications(reconcileApprovalNotifications(data.notifications, activityMessages), data.runs),
+      reconcileFailureNotifications(
+        uniqueApprovalNotifications(reconcileApprovalNotifications(data.notifications, activityMessages)),
+        data.runs,
+      ),
     [activityMessages, data.notifications, data.runs],
   )
 
@@ -1123,6 +1205,8 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
       messages: approvalMessages,
       activityMessages,
       notifications,
+      pendingRequestsOnReturn:
+        data.pendingRequestsOnReturn === null ? null : countPendingRequests(notifications, activityMessages),
       doctor: diagnosis.report,
       doctorError: diagnosis.error,
       selectedBotId: selectedBot?.id ?? data.selectedBotId,
@@ -1164,7 +1248,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
       respondNotification,
       replyToNotification,
       dismissComputerGrant: () => setData((current) => ({ ...current, computerGrantRequest: null })),
-      dismissNotice: () => setData((current) => ({ ...current, notice: null })),
+      dismissNotice: () => setData((current) => ({ ...current, notice: null, pendingRequestsOnReturn: null })),
     },
   }
 }

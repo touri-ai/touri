@@ -129,6 +129,7 @@ test("doctor reports the per-bot login source and health without persisting a de
       providerLoginSourceKey(f.bot),
       '"host-file"',
     ])
+    writeFileSync(join(f.root, ".codex/auth.json"), JSON.stringify({ OPENAI_API_KEY: "synthetic-test-key" }))
     const ok = await providerLoginChecks(f.kernel, f.root, new AbortController().signal)
     expect(ok[0]?.status).toBe("pass")
     expect(ok[0]?.label).toContain("arquivo do host")
@@ -136,3 +137,107 @@ test("doctor reports the per-bot login source and health without persisting a de
     f.stop()
   }
 })
+
+for (const provider of ["claude", "codex"] as const)
+  test(`${provider}: Doctor and chat agree after vault failure, invalid login, replacement and removal`, async () => {
+    const { providerLoginChecks } = await import("../../src/doctor/providerLogin")
+    const { createProviderLoginFlow } = await import("../../src/vm/provider-login-flow")
+    let value: string | null = "{}"
+    let available = true
+    const f = fixture(
+      async () =>
+        available
+          ? { success: true, value: { value } }
+          : { success: false, errorCode: "HOST_ERROR", error: "unavailable" },
+      false,
+    )
+    f.bot.provider = provider
+    f.kernel.addRedactionValue = () => {}
+    f.kernel.subscribe = () => () => {}
+    f.kernel.services = { use: () => undefined, provide: () => {} } as Kernel["services"]
+    f.db.run(
+      "CREATE TABLE bots (id TEXT, name TEXT, provider TEXT, machine TEXT, vm_provider_login INTEGER, archived_at INTEGER)",
+    )
+    f.db.run("INSERT INTO bots VALUES ('upgraded','Bot de teste',?,'vm',1,NULL)", [provider])
+    f.db.run("INSERT INTO settings VALUES (?, '\"vault\"', 1)", [providerLoginSourceKey(f.bot)])
+    const flow = createProviderLoginFlow({ kernel: f.kernel, hostHome: f.root, platform: "darwin", headless: false })
+    try {
+      const doctor = async () => (await providerLoginChecks(f.kernel, f.root, new AbortController().signal))[0]
+      expect((await doctor())?.status).toBe("fail")
+      expect((await flow.status(f.bot)).state).toBe("idle")
+      available = false
+      expect((await doctor())?.status).toBe("fail")
+      expect((await flow.status(f.bot)).state).toBe("vault-locked")
+      available = true
+      value =
+        provider === "claude"
+          ? "sk-ant-oat01-synthetic-test-token"
+          : JSON.stringify({ OPENAI_API_KEY: "synthetic-test-key" })
+      expect((await doctor())?.status).toBe("pass")
+      expect((await flow.status(f.bot)).state).toBe("ready")
+      value = null
+      expect((await doctor())?.status).toBe("warn")
+      expect((await flow.status(f.bot)).state).toBe("idle")
+    } finally {
+      flow.dispose()
+      f.stop()
+    }
+  })
+
+for (const errorCode of ["VAULT_ACCESS_REQUIRED", "VAULT_TIMEOUT", "VAULT_CANCELLED"] as const)
+  test(`${errorCode}: chat and Doctor offer native authorization, never a replacement login`, async () => {
+    const { providerLoginChecks } = await import("../../src/doctor/providerLogin")
+    const { createProviderLoginFlow } = await import("../../src/vm/provider-login-flow")
+    const f = fixture(async () => ({ success: false, errorCode, error: errorCode }), false)
+    f.kernel.addRedactionValue = () => {}
+    f.kernel.subscribe = () => () => {}
+    f.kernel.services = { use: () => undefined, provide: () => {} } as Kernel["services"]
+    f.db.run(
+      "CREATE TABLE bots (id TEXT, name TEXT, provider TEXT, machine TEXT, vm_provider_login INTEGER, archived_at INTEGER)",
+    )
+    f.db.run("INSERT INTO bots VALUES ('upgraded','Bot de teste','codex','vm',1,NULL)")
+    f.db.run("INSERT INTO settings VALUES (?, '\"vault\"', 1)", [providerLoginSourceKey(f.bot)])
+    const flow = createProviderLoginFlow({ kernel: f.kernel, hostHome: f.root, platform: "darwin", headless: false })
+    try {
+      const error = await readProviderLogin(f.kernel, f.bot, f.root).catch((error: unknown) => error)
+      expect((error as ProviderLoginError).reason).toBe("vault-locked")
+      expect((error as ProviderLoginError).message).not.toContain("setup-token")
+      expect(await flow.status(f.bot)).toMatchObject({ state: "vault-locked" })
+      const doctor = (
+        await providerLoginChecks(f.kernel, f.root, new AbortController().signal, {
+          platform: "darwin",
+          headless: false,
+        })
+      )[0]
+      expect(doctor).toMatchObject({ action: "authorize-vault", vaultAccount: "bot/upgraded/codex-vm-login" })
+      expect(storedProviderLoginSource(f.kernel, f.bot)).toBe("vault")
+    } finally {
+      flow.dispose()
+      f.stop()
+      f.db.close()
+    }
+  })
+
+for (const host of [
+  { platform: "linux", headless: true },
+  { platform: "linux", headless: false },
+  { platform: "darwin", headless: true },
+] as const)
+  test(`${host.platform} headless=${host.headless}: chat gives server vault guidance without macOS authorization`, async () => {
+    const { createProviderLoginFlow } = await import("../../src/vm/provider-login-flow")
+    const f = fixture(async () => ({ success: false, errorCode: "HOST_ERROR", error: "offline" }), false)
+    f.kernel.subscribe = () => () => {}
+    f.kernel.services = { use: () => undefined, provide: () => {} } as Kernel["services"]
+    const flow = createProviderLoginFlow({ kernel: f.kernel, hostHome: f.root, ...host })
+    try {
+      expect(await flow.status(f.bot)).toMatchObject({
+        state: "error",
+        host: "server",
+        message: expect.stringContaining("cofre local do servidor"),
+      })
+    } finally {
+      flow.dispose()
+      f.stop()
+      f.db.close()
+    }
+  })

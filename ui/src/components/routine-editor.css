@@ -1,0 +1,107 @@
+.modal-card.routine-editor {
+  width: min(600px, 100%);
+  max-height: calc(100dvh - 40px);
+  overflow-y: auto;
+}
+.routine-editor form {
+  padding: 20px 24px 0;
+}
+.routine-editor form > fieldset {
+  margin: 0;
+  display: grid;
+  gap: 16px;
+  border: 0;
+  padding: 0;
+  min-width: 0;
+}
+.routine-editor label {
+  display: grid;
+  gap: 6px;
+  font-size: var(--type-13);
+}
+.routine-editor h3 {
+  font-size: var(--type-13);
+  margin: 0 0 6px;
+}
+.routine-editor p {
+  margin: 0;
+  font-size: var(--type-13);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.routine-editor ul {
+  margin: 6px 0;
+  padding-left: 18px;
+  font-size: var(--type-12);
+  overflow-wrap: anywhere;
+}
+.routine-editor summary {
+  cursor: pointer;
+  font-size: var(--type-13);
+  margin-bottom: 8px;
+}
+.routine-editor .routine-days {
+  border: 1px solid var(--surface-control-raised);
+  border-radius: var(--radius-8);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+}
+.routine-editor .routine-days label {
+  display: flex;
+  align-items: center;
+}
+.routine-editor .routine-days input {
+  width: auto;
+}
+.routine-context {
+  background: var(--surface-code);
+  border: 1px solid var(--surface-control-raised);
+  border-radius: var(--radius-8);
+  padding: 12px;
+}
+.routine-editor .routine-summary {
+  font-size: var(--type-16);
+  margin-bottom: 16px;
+}
+.routine-instruction {
+  white-space: pre-wrap;
+  margin-bottom: 12px !important;
+}
+.routine-dates {
+  padding-left: 20px;
+  margin: 8px 0;
+  font-size: var(--type-13);
+  line-height: 1.8;
+}
+.routine-editor .routine-modal-actions {
+  flex-wrap: wrap;
+  position: sticky;
+  bottom: 0;
+  background: var(--surface-panel);
+  padding-block: 10px;
+}
+.routine-editor :is(input, select, textarea, button):focus-visible {
+  outline: 2px solid var(--text-primary);
+  outline-offset: 2px;
+}
+.routine-run-history {
+  padding: 12px;
+  border-top: 1px solid var(--surface-control-raised);
+  font-size: var(--type-12);
+}
+.routine-run-history li {
+  margin: 8px 0;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 600px) {
+  .routine-editor form {
+    padding-inline: 16px;
+  }
+  .routine-editor .routine-form-grid {
+    grid-template-columns: 1fr;
+  }
+  .routine-editor .routine-modal-actions button {
+    flex: 1 0 auto;
+  }
+}

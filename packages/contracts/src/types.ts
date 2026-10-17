@@ -48,6 +48,16 @@ export type Result<T, C extends string = string> = Ok<T> | Err<C>
 
 export type DiscoveredProject = { path: AbsolutePath; name: string; lastModified: number }
 
+export type FolderListing = {
+  /** Whether this host can enforce provider folder grants. Browsing alone grants nothing. */
+  canGrant: boolean
+  home: AbsolutePath
+  path: AbsolutePath
+  parent: AbsolutePath | null
+  folders: Array<{ name: string; path: AbsolutePath }>
+  truncated: boolean
+}
+
 export type Project = {
   id: Id
   name: string
@@ -89,6 +99,7 @@ export type ApprovalInput = { ctx: Pick<ToolContext, 'botId' | 'threadId' | 'run
 export type ApprovalResult = Result<{ behavior: 'allow' | 'deny'; updatedInput?: unknown; message?: string }, 'NOT_FOUND' | 'TIMEOUT' | 'DENIED'>
 
 export type BotFolder = { path: AbsolutePath; access: 'read-only' | 'read-write' }
+export type BotBrowser = 'touri' | 'local' | 'machine'
 
 export type Bot = {
   /** Defaults for bots created before schema 16: [] and false. */
@@ -120,6 +131,7 @@ export type Bot = {
   homeDir: AbsolutePath
   mainThreadId: Id | null
   browserEnabled: boolean
+  browser: BotBrowser
   computerUse: boolean
   machine: BotMachine
   machineIdleMinutes: number
@@ -550,6 +562,7 @@ export type BrowserErrorCode =
   | 'REPEATED_FAILURE'
   | 'SECRET_ENTRY_ACTIVE'
   | 'ENGINE_UNAVAILABLE'
+  | 'LOCAL_BROWSER_UNAVAILABLE'
   | 'NAVIGATION_FAILED'
   | 'URL_NOT_ALLOWED'
   | 'SITE_BLOCKED'
@@ -661,14 +674,14 @@ export type ProviderAdapter = {
 /* ------------------------------------------------------------------------------------------ */
 
 export type CreateBotInput = { cloudApiKey?: string } & Pick<Bot, 'name' | 'provider'> &
-  Partial<Pick<Bot, 'title' | 'roleLine' | 'description' | 'color' | 'avatarShape' | 'avatarSeed' | 'instructions' | 'model' | 'reasoningEffort' | 'access' | 'approvals' | 'projectId' | 'cwd' | 'browserEnabled' | 'computerUse' | 'machine' | 'machineIdleMinutes' | 'vmProviderLogin' | 'hostComputerUse' | 'folders' | 'anyFolderAccess' | 'providerProfile' | 'claudeAiConnectors'>>
+  Partial<Pick<Bot, 'title' | 'roleLine' | 'description' | 'color' | 'avatarShape' | 'avatarSeed' | 'instructions' | 'model' | 'reasoningEffort' | 'access' | 'approvals' | 'projectId' | 'cwd' | 'browserEnabled' | 'browser' | 'computerUse' | 'machine' | 'machineIdleMinutes' | 'vmProviderLogin' | 'hostComputerUse' | 'folders' | 'anyFolderAccess' | 'providerProfile' | 'claudeAiConnectors'>>
 
 /** A named login under `<appData>/provider-profiles/<name>`, created with `touri profile login`. */
 export type ProviderProfile = { name: string; provider: Provider; loggedIn: boolean; account: string | null }
 
 export type ProviderLoginFlow = {
   provider: Provider
-  state: 'idle' | 'host-available' | 'waiting' | 'ready' | 'cancelled' | 'error'
+  state: 'idle' | 'host-available' | 'waiting' | 'ready' | 'cancelled' | 'error' | 'vault-locked'
   /** Sidecar host, independent of the browser and login state. */
   host?: 'mac' | 'server'
   /** File/executable check only; never starts a model request. Independent of login state. */
@@ -733,7 +746,7 @@ export type ApiRoutes = {
       ready: boolean
       source: 'token' | 'file' | 'guest' | 'missing'
       configuredSource?: 'vault' | 'host-file'
-      health?: 'ready' | 'not-found' | 'transport' | 'invalid'
+      health?: 'ready' | 'not-found' | 'transport' | 'invalid' | 'vault-locked'
       message: string
     }
   }
@@ -769,7 +782,7 @@ export type ApiRoutes = {
   'GET /search': { req: { q: string; botId?: Id }; res: { hits: Array<{ threadId: Id; messageId: Id; snippet: string }> } }
   'POST /attachments': { req: { grantId: string } | { path: AbsolutePath }; res: { attachment: Attachment } }
   'GET /attachments/:id': { req: {}; res: Blob }
-  'GET /routines': { req: { botId?: Id }; res: { routines: Array<Routine> } }
+  'GET /routines': { req: { botId?: Id }; res: { routines: Array<Routine>; host?: 'mac' | 'server' } }
   'POST /routines': { req: Omit<Routine, 'id' | 'nextRunAt' | 'source' | 'createdAt' | 'updatedAt'>; res: { routine: Routine } }
   'PATCH /routines/:id': { req: Partial<Omit<Routine, 'id' | 'source'>>; res: { routine: Routine } }
   'POST /routines/:id/run': { req: {}; res: { routineRun: RoutineRun } }
@@ -783,6 +796,8 @@ export type ApiRoutes = {
   }
   'GET /projects': { req: {}; res: { projects: Array<Project> } }
   'GET /projects/discover': { req: {}; res: { repositories: Array<DiscoveredProject> } }
+  'GET /folders': { req: { path?: AbsolutePath }; res: FolderListing }
+  'POST /folders': { req: { path: AbsolutePath; name: string }; res: { path: AbsolutePath } }
   'POST /projects': {
     req: { path: AbsolutePath; name?: string } | { gitUrl: string; parentDir: AbsolutePath; name?: string }
     res: { project: Project }
@@ -854,7 +869,9 @@ export type DoctorCheck = {
   fix: string | null
   durationMs?: number
   errorCode?: string
-  action?: 'start-machine-service'
+  action?: 'start-machine-service' | 'authorize-vault'
+  /** Account to authorize in the native app; never contains the secret. */
+  vaultAccount?: string
 }
 export type DoctorReport = { checks: Array<DoctorCheck>; running?: boolean; checkedAt?: EpochMs | null }
 
@@ -897,7 +914,7 @@ export type UiEvent =
   | { type: 'import.progress'; importId: Id; phase: string; done: number; total: number }
   | { type: 'notification.created'; notification: NotificationRecord }
   | { type: 'notification.resolved'; notification: NotificationRecord }
-  | { type: 'notify'; level: 'info' | 'warning' | 'error'; title: string; body: string; threadId: Id | null }
+  | { type: 'notify'; level: 'info' | 'warning' | 'error'; title: string; body: string; threadId: Id | null; requestId?: Id | null; notificationId?: number; kind?: NotifyKind }
 
 /** Attention kinds need the user; message kinds (`done`, `delegation-settled`) are informational and expire. */
 export type NotifyKind =
@@ -966,6 +983,8 @@ export type ScreenshotResult = {
   displayId: number
 }
 
+export type VaultErrorCode = 'VAULT_ACCESS_REQUIRED' | 'VAULT_TIMEOUT' | 'VAULT_CANCELLED' | 'VAULT_UNAVAILABLE'
+
 export type HostMethods = {
   auth: { params: { token: string }; result: { ok: true } }
   'keychain.get': { params: { account: string }; result: { value: string | null } }
@@ -973,7 +992,7 @@ export type HostMethods = {
   'keychain.delete': { params: { account: string }; result: {} }
   'secret.prompt': { params: { requestId: Id; title: string; origin: string; fieldKinds: Array<'username' | 'password' | 'otp'> }; result: { values: Record<string, string> | null } }
   'file.grant.redeem': { params: { grantId: string }; result: { path: AbsolutePath; dev: string; ino: string; size: number } }
-  'notify': { params: { title: string; body: string; threadId: Id | null; onlyWhenUnfocused?: boolean; deepLink?: string }; result: {} }
+  'notify': { params: { title: string; body: string; threadId: Id | null; onlyWhenUnfocused?: boolean; deepLink?: string; requestId?: Id | null; notificationId?: number; kind?: NotifyKind }; result: {} }
   'permissions.status': { params: {}; result: Record<HostPermission, PermissionStatus> }
   'permissions.request': { params: { permission: HostPermission }; result: { status: PermissionStatus; needsRelaunch: boolean } }
   'computer.screenshot': { params: { displayId?: number; maxWidth?: number; region?: { x: number; y: number; width: number; height: number } }; result: ScreenshotResult }
@@ -1091,7 +1110,7 @@ export type ServiceMap = {
   'groups.runtime': {
     enqueue: ServiceMap['runtime.enqueue']
     cancel: (id: Id) => boolean
-    retry: (id: Id) => ReturnType<ServiceMap['runtime.enqueue']> | null
+    retry: (id: Id) => Result<{ run: Run }, 'THREAD_NOT_FOUND' | 'BOT_PAUSED' | 'CONFLICT'> | null
     listRuns: (threadId: Id) => Array<Run>
     shutdown: () => void
     canCoordinate: (threadId: Id) => boolean
@@ -1188,7 +1207,7 @@ export type Kernel = {
   subscribe: (listener: (envelope: UiEventEnvelope) => void) => () => void
   registerRoutes: (module: RouteModule) => void
   registerTools: RegisterTools
-  callHost: <M extends keyof HostMethods>(method: M, params: HostMethods[M]['params']) => Promise<Result<{ value: HostMethods[M]['result'] }, 'HOST_UNAVAILABLE' | 'HOST_ERROR'>>
+  callHost: <M extends keyof HostMethods>(method: M, params: HostMethods[M]['params']) => Promise<Result<{ value: HostMethods[M]['result'] }, 'HOST_UNAVAILABLE' | 'HOST_ERROR' | VaultErrorCode>>
   onHostNotification: (listener: (notification: HostNotification) => void) => () => void
   redact: (text: string) => string
   addRedactionValue: (value: string) => void

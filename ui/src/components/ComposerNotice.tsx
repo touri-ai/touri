@@ -31,6 +31,7 @@ export const ComposerNotice = ({
     latestReply?.status === "failed"
       ? latestReply.parts.find((part) => part.type === "notice" && part.level === "error")
       : undefined
+  if (loginFlowShown && notice?.type === "notice" && notice.text.startsWith("cli_auth:")) return null
   const authNeeded = !loginFlowShown && notice?.type === "notice" && notice.text.startsWith("cli_auth:")
   const serviceDown =
     machine?.status !== "running" &&
@@ -52,8 +53,8 @@ export const ComposerNotice = ({
             <ErrorText
               code={error?.code ?? machine?.errorCode}
               text={
-                error?.detail ||
                 (machine?.error && localizeNotice(machine.error)) ||
+                error?.detail ||
                 t("Check the computer and try again. Your files are safe.")
               }
             />

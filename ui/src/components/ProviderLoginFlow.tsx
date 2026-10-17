@@ -2,9 +2,17 @@ import { useEffect, useId, useState } from "react"
 import { localizeNotice, t } from "../i18n"
 import type { useProviderLogin } from "../useProviderLogin"
 import { ProviderInstallation } from "./ProviderInstallation"
+import { VaultAccessButton } from "./VaultAccessButton"
 
-export const ProviderLoginFlow = ({ login }: { login: ReturnType<typeof useProviderLogin> }) => {
-  const { flow, error, busy, act } = login
+export const ProviderLoginFlow = ({
+  login,
+  resumeMessage = false,
+}: {
+  login: ReturnType<typeof useProviderLogin>
+  resumeMessage?: boolean
+}) => {
+  const { flow, error, busy, act, recheck } = login
+  const provider = login.provider === "claude" ? "Claude" : login.provider === "codex" ? "Codex" : "OpenCode"
   const hostIsMac = flow?.host === "mac"
   const [code, setCode] = useState("")
   const codeId = useId()
@@ -25,37 +33,36 @@ export const ProviderLoginFlow = ({ login }: { login: ReturnType<typeof useProvi
         onRecheck={() => void login.recheck()}
       />
     )
-  if (error && flow?.state !== "waiting" && flow?.state !== "ready")
-    return (
-      <div className="provider-login-flow">
-        <p role="alert">{error}</p>
-        <button
-          type="button"
-          className="button button-brand"
-          disabled={busy}
-          onClick={() => void act(flow?.state === "host-available" ? "use-host" : "start")}
-        >
-          {t("Tentar novamente")}
-        </button>
-      </div>
-    )
   return (
     <div className="provider-login-flow">
-      <p aria-live="polite">
-        {!flow
-          ? t("Verificando login…")
-          : flow.state === "waiting"
-            ? t("Aguardando login no navegador…")
-            : flow.state === "ready"
-              ? t("Login disponível para este bot.")
-              : flow.state === "host-available"
-                ? t(hostIsMac ? "Há um login disponível neste Mac." : "Há um login disponível neste servidor.")
-                : flow.state === "cancelled"
-                  ? t("Login cancelado.")
-                  : flow.state === "error"
-                    ? t("Não foi possível concluir o login. Tente novamente ou cole o token manualmente.")
-                    : t("Entre no provedor para enviar mensagens.")}
+      <p aria-live="polite" role={error && flow?.state !== "waiting" ? "alert" : undefined}>
+        {error && flow?.state !== "waiting"
+          ? error
+          : !flow
+            ? t("Verificando login…")
+            : flow.state === "waiting"
+              ? t("Aguardando login no navegador…")
+              : flow.state === "ready"
+                ? t("Login disponível para este bot.")
+                : flow.state === "host-available"
+                  ? t(hostIsMac ? "Há um login disponível neste Mac." : "Há um login disponível neste servidor.")
+                  : flow.state === "vault-locked"
+                    ? t("Permita o acesso ao cofre para usar o login salvo.")
+                    : flow.state === "cancelled"
+                      ? t("Login cancelado.")
+                      : flow.state === "error"
+                        ? flow.host === "server" && flow.message
+                          ? localizeNotice(flow.message)
+                          : t("Não foi possível concluir o login. Verifique de novo ou use outra conta.")
+                        : t("Entre no provedor para enviar mensagens.")}
       </p>
+      {flow?.state === "vault-locked" && (
+        <VaultAccessButton
+          resumeMessage={resumeMessage}
+          account={`bot/${login.botId}/${login.provider}-vm-login`}
+          onAuthorized={recheck}
+        />
+      )}
       {flow?.state === "waiting" && (
         <>
           {flow.prompt && (
@@ -154,12 +161,24 @@ export const ProviderLoginFlow = ({ login }: { login: ReturnType<typeof useProvi
           {t(hostIsMac ? "Usar login deste Mac" : "Usar login deste servidor")}
         </button>
       )}
-      {flow && flow.state !== "waiting" && flow.state !== "ready" && (
-        <button type="button" className="button button-quiet" disabled={busy} onClick={() => void act("start")}>
-          {t("Entrar no navegador")}
-        </button>
-      )}
-      {error && <p role="alert">{error}</p>}
+      {flow &&
+        flow.state !== "waiting" &&
+        flow.state !== "ready" &&
+        flow.state !== "vault-locked" &&
+        !(flow.state === "error" && flow.host === "server") && (
+          <button type="button" className="button button-quiet" disabled={busy} onClick={() => void act("start")}>
+            {flow.state === "idle" ? t("Entrar no {provider}", { provider }) : t("Usar outra conta")}
+          </button>
+        )}
+      {flow?.state !== "waiting" &&
+        flow?.state !== "ready" &&
+        flow?.state !== "host-available" &&
+        flow?.state !== "vault-locked" && (
+          <button type="button" className="button button-brand" disabled={busy} onClick={() => void recheck()}>
+            {t("Verificar de novo")}
+          </button>
+        )}
+      {error && flow?.state === "waiting" && <p role="alert">{error}</p>}
     </div>
   )
 }

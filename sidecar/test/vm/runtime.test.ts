@@ -1527,7 +1527,7 @@ test("Claude unanswered credential handoff returns an actionable login error and
   f.runtime.kernel.callHost = (() => new Promise(() => {})) as Kernel["callHost"]
   await expect(
     f.vm.service.prepareTurn({ botId: bot.id, threadId: bot.mainThreadId ?? "thread", token: "mcp" }),
-  ).rejects.toThrow("claude setup-token")
+  ).rejects.toThrow("O cofre de segredos não respondeu. Tente novamente.")
   expect(f.vm.service.states()[0]?.errorCode).toBe("TOURI-E3001")
   f.runtime.kernel.callHost = (async () => ({
     success: true,
@@ -2478,3 +2478,22 @@ test("folder changes keep an active VM intact and recreate it with the same work
   expect([...f.fake.configs.values()][0]?.volumes).toContainEqual(workspace)
   await third.release()
 })
+
+test("a delayed vault read uses the same five-second allowance as chat and reaches the VM turn", async () => {
+  const f = await fixture()
+  const bot = await f.bot({ provider: "claude", vmProviderLogin: true })
+  ;(f.runtime.kernel.db as Database)
+    .query("INSERT INTO settings VALUES (?, ?, 1)")
+    .run(`vm-login-source:${bot.id}:claude`, '"vault"')
+  f.runtime.kernel.callHost = (async () => {
+    await Bun.sleep(3100)
+    return { success: true, value: { value: "sk-ant-oat01-synthetic-delayed-token" } }
+  }) as Kernel["callHost"]
+  const prepared = await f.vm.service.prepareTurn({
+    botId: bot.id,
+    threadId: bot.mainThreadId ?? "thread",
+    token: "mcp",
+  })
+  expect(prepared.env.CLAUDE_CODE_OAUTH_TOKEN).toBe("sk-ant-oat01-synthetic-delayed-token")
+  await prepared.release()
+}, 10000)

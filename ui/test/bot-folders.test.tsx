@@ -6,6 +6,7 @@ import type { TauriInvoke } from "../src/api/client"
 import { createMockApi } from "../src/api/mock"
 import { BotCreateModal, BotSettingsModal } from "../src/components/Modals"
 import type { WorkspaceActions } from "../src/useWorkspace"
+import { selectFolder } from "./folder-picker-helpers"
 
 afterEach(() => {
   cleanup()
@@ -81,26 +82,31 @@ it("uses the same full-access explanation in bot settings", async () => {
   expect(screen.getByText(/sem o sandbox do provedor/)).toHaveTextContent("As restrições de pastas do touri")
 })
 
-it("adds a folder through the native picker, defaults read-only and saves a per-folder write choice", async () => {
-  const f = await setup()
-  expect(anyToggle()).not.toBeChecked()
-  fireEvent.click(screen.getByRole("button", { name: "Adicionar pasta…" }))
-  const select = await screen.findByRole("combobox", { name: "Acesso à pasta /Users/demo/Documents/reference" })
-  expect(f.invoke).toHaveBeenCalledWith("pick_folder", { title: "Adicionar pasta acessível ao bot" })
-  expect(select).toHaveValue("read-only")
-  fireEvent.change(select, { target: { value: "read-write" } })
-  expect(f.updateBot).not.toHaveBeenCalled()
-  save()
-  await waitFor(() =>
-    expect(f.updateBot).toHaveBeenCalledWith(
-      f.bot.id,
-      expect.objectContaining({
-        folders: [{ path: "/Users/demo/Documents/reference", access: "read-write" }],
-        anyFolderAccess: false,
-      }),
-    ),
-  )
-})
+it.each(["read-only", "read-write"] as const)(
+  "adds a folder through the shared picker with %s access and saves it",
+  async (access) => {
+    const f = await setup()
+    expect(anyToggle()).not.toBeChecked()
+    fireEvent.click(screen.getByRole("button", { name: "Adicionar pasta…" }))
+    const picker = screen.getByRole("dialog", { name: "Pastas no servidor" })
+    expect(within(picker).getByRole("radio", { name: "Somente leitura", exact: true })).toBeChecked()
+    await selectFolder("/workspace/reference", access === "read-write" ? access : undefined)
+    const select = await screen.findByRole("combobox", { name: "Acesso à pasta /workspace/reference" })
+    expect(f.invoke).not.toHaveBeenCalled()
+    expect(select).toHaveValue(access)
+    expect(f.updateBot).not.toHaveBeenCalled()
+    save()
+    await waitFor(() =>
+      expect(f.updateBot).toHaveBeenCalledWith(
+        f.bot.id,
+        expect.objectContaining({
+          folders: [{ path: "/workspace/reference", access }],
+          anyFolderAccess: false,
+        }),
+      ),
+    )
+  },
+)
 
 it("removes a folder and saves an empty list", async () => {
   const f = await setup({ folders: [{ path: "/reference", access: "read-write" }] })
@@ -142,29 +148,37 @@ it("explains VM paths, masking and next-turn recreation while preserving files",
   expect(screen.getByText(/sua pasta pessoal aparece em/)).toHaveTextContent("/host/home")
 })
 
-it("creates and links a project from the settings selector and keeps that link when saving other settings", async () => {
-  const f = await setup()
-  fireEvent.click(screen.getByRole("tab", { name: "Projeto" }))
-  fireEvent.change(screen.getByRole("combobox", { name: "Projeto" }), { target: { value: "__add_project__" } })
-  const dialog = await screen.findByRole("dialog", { name: "Conectar projeto" })
-  expect(within(dialog).getByRole("checkbox", { name: /mark/ })).toBeChecked()
-  expect(within(dialog).getByRole("checkbox", { name: /mark/ })).toBeDisabled()
-  fireEvent.click(within(dialog).getByRole("button", { name: "Escolher pasta" }))
-  await waitFor(() =>
-    expect(within(dialog).getByLabelText("Pasta do projeto")).toHaveValue("/Users/demo/Documents/reference"),
-  )
-  fireEvent.change(within(dialog).getByLabelText("Nome do projeto"), { target: { value: "Referência" } })
-  fireEvent.click(within(dialog).getByRole("button", { name: "Conectar projeto" }))
-  await waitFor(() => expect(f.updateBot).toHaveBeenCalledTimes(1))
-  const linkedId = f.updateBot.mock.calls[0]?.[1].projectId
-  expect(linkedId).toBeTruthy()
-  expect(f.bot.projectId).toBe(linkedId)
-  fireEvent.click(within(dialog).getByRole("button", { name: "Fechar diálogo" }))
-  save()
-  await waitFor(() =>
-    expect(f.updateBot).toHaveBeenLastCalledWith(f.bot.id, expect.objectContaining({ projectId: linkedId })),
-  )
-})
+it.each(["read-only", "read-write"] as const)(
+  "creates and links a project with %s access and preserves it when saving settings",
+  async (access) => {
+    const f = await setup()
+    fireEvent.click(screen.getByRole("tab", { name: "Projeto" }))
+    fireEvent.change(screen.getByRole("combobox", { name: "Projeto" }), { target: { value: "__add_project__" } })
+    const dialog = await screen.findByRole("dialog", { name: "Conectar projeto" })
+    expect(within(dialog).getByRole("checkbox", { name: /mark/ })).toBeChecked()
+    expect(within(dialog).getByRole("checkbox", { name: /mark/ })).toBeDisabled()
+    fireEvent.click(within(dialog).getByRole("button", { name: "Escolher pasta" }))
+    await selectFolder("/workspace/reference", access)
+    await waitFor(() => expect(within(dialog).getByLabelText("Pasta do projeto")).toHaveValue("/workspace/reference"))
+    fireEvent.change(within(dialog).getByLabelText("Nome do projeto"), { target: { value: "Referência" } })
+    fireEvent.click(within(dialog).getByRole("button", { name: "Conectar projeto" }))
+    await waitFor(() => expect(f.updateBot).toHaveBeenCalledTimes(1))
+    const linkedId = f.updateBot.mock.calls[0]?.[1].projectId
+    expect(linkedId).toBeTruthy()
+    expect(f.bot.projectId).toBe(linkedId)
+    fireEvent.click(within(dialog).getByRole("button", { name: "Fechar diálogo" }))
+    save()
+    await waitFor(() =>
+      expect(f.updateBot).toHaveBeenLastCalledWith(
+        f.bot.id,
+        expect.objectContaining({
+          projectId: linkedId,
+          folders: access === "read-only" ? [{ path: "/workspace/reference", access: "read-only" }] : [],
+        }),
+      ),
+    )
+  },
+)
 
 it("shows the broad-access badge in the bot header and removes it when access is disabled", async () => {
   const api = createMockApi()

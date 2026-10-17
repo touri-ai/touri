@@ -102,6 +102,8 @@ export const apiRouteKeys = [
   "GET /mcp/tools",
   "GET /projects",
   "GET /projects/discover",
+  "GET /folders",
+  "POST /folders",
   "POST /projects",
   "GET /projects/:id/git",
   "GET /projects/:id/secrets",
@@ -395,7 +397,13 @@ export const createApiClient = ({
       } catch {
         // Keep the plain response body when it is not JSON.
       }
-      throw new ApiError(response.status, message, errorCode, code)
+      const retryAfter = response.headers.get("Retry-After")
+      const retryAt = retryAfter
+        ? /^\d+$/.test(retryAfter)
+          ? Date.now() + Number(retryAfter) * 1000
+          : Date.parse(retryAfter)
+        : undefined
+      throw new ApiError(response.status, message, errorCode, code, retryAt)
     }
     if (isBlobRoute(String(route))) return (await response.blob()) as ApiRoutes[typeof route]["res"]
     return (await response.json()) as ApiRoutes[typeof route]["res"]
@@ -504,10 +512,6 @@ type WebHandlers = {
 
 const webHandlers: WebHandlers = {
   secret_save: async ({ account, value }) => ((await postJson("/api/v1/host/secret", { account, value })) ? {} : null),
-  pick_folder: async () => {
-    const path = window.prompt(t("Folder path on the server"))
-    return path ? { path } : null
-  },
   open_external: async ({ url }) => {
     window.open(url, "_blank", "noopener")
     return {}
