@@ -42,7 +42,8 @@ it("offers 30 original jobs with stable unique ids and complete copy in both lan
       expect(job.instructions).toContain(
         locale === "en" ? "computer running touri" : "computador onde o touri está rodando",
       )
-      expect(job.instructions).toContain("CLI")
+      expect(job.instructions).toContain(locale === "en" ? "user’s own login" : "login do usuário")
+      expect(job.instructions).not.toContain("CLI")
       expect(job.instructions).toContain(locale === "en" ? "browser" : "navegador")
       expect(job.instructions).toContain(
         locale === "en" ? "permission before changing files" : "permissão antes de mudar arquivos",

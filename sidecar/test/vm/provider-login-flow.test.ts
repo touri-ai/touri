@@ -757,3 +757,55 @@ test("headless OpenCode rejects the server-browser method and lets the user choo
   await f.flow.action(f.bot, { action: "input", input: "enter" })
   await waitState(f, "ready")
 })
+
+test("a bot with a provider profile reports that profile's login and never starts a vault login", async () => {
+  const f = fixture("claude", "success", 3000, { platform: "linux", headless: true })
+  Object.assign(f.bot, { providerProfile: "work" })
+  Object.assign(f.kernel.paths, { appData: f.root })
+  const checked: Array<{ profile: string; provider: string; appData: string }> = []
+  let loggedIn = true
+  const flow = createProviderLoginFlow({
+    kernel: f.kernel,
+    hostHome: f.root,
+    platform: "linux",
+    headless: true,
+    invoke: (input) => {
+      f.invocations.push(input)
+      return { success: false, errorCode: "ENOENT", error: "unexpected login" }
+    },
+    profileStatus: async ({ profile, provider, appData }) => {
+      checked.push({ profile, provider, appData })
+      return { loggedIn, account: loggedIn ? "me@example.com" : null }
+    },
+  })
+  cleanups.push(() => flow.dispose())
+  expect(await flow.status(f.bot)).toEqual({ provider: "claude", state: "ready", host: "server" })
+  expect(await flow.action(f.bot, { action: "start" })).toEqual({ provider: "claude", state: "ready", host: "server" })
+  loggedIn = false
+  const signedOut = await flow.status(f.bot)
+  expect(signedOut.state).toBe("error")
+  expect(signedOut.message).toContain("touri profile login work")
+  expect((await flow.action(f.bot, { action: "start" })).state).toBe("error")
+  expect(f.invocations).toHaveLength(0)
+  expect(checked[0]).toEqual({ profile: "work", provider: "claude", appData: f.root })
+})
+
+test("a profile only overrides the login of a local bot", async () => {
+  const f = fixture("claude", "success", 3000, { platform: "linux", headless: true })
+  Object.assign(f.bot, { providerProfile: "work", machine: "vm" })
+  Object.assign(f.kernel.paths, { appData: f.root })
+  let checks = 0
+  const flow = createProviderLoginFlow({
+    kernel: f.kernel,
+    hostHome: f.root,
+    platform: "linux",
+    headless: true,
+    profileStatus: async () => {
+      checks++
+      return { loggedIn: true, account: null }
+    },
+  })
+  cleanups.push(() => flow.dispose())
+  expect((await flow.status(f.bot)).state).toBe("idle")
+  expect(checks).toBe(0)
+})

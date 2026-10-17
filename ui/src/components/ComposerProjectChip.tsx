@@ -1,8 +1,10 @@
 import type { Bot, Id, Project } from "@touri/contracts"
 import { useEffect, useId, useRef, useState } from "react"
+import { createPortal } from "react-dom"
 import { userFacingError } from "../errors"
 import { t } from "../i18n"
 import { PanelIcon } from "./PanelIcon"
+import { useAnchoredPopover } from "./useAnchoredPopover"
 
 export const ComposerProjectChip = ({
   bot,
@@ -23,6 +25,11 @@ export const ComposerProjectChip = ({
   const root = useRef<HTMLDivElement>(null)
   const trigger = useRef<HTMLButtonElement>(null)
   const menu = useRef<HTMLDivElement>(null)
+  const { surface, style, portalRoot } = useAnchoredPopover(open && !active, trigger, {
+    side: "top",
+    align: "start",
+    gap: 8,
+  })
   const restoreFocus = useRef(false)
   const savingRef = useRef(false)
   const menuId = useId()
@@ -54,7 +61,8 @@ export const ComposerProjectChip = ({
     const initialFocus = selected ?? menu.current?.querySelector<HTMLButtonElement>("button")
     initialFocus?.focus()
     const dismiss = (event: Event) => {
-      if (!root.current?.contains(event.target as Node)) setOpen(false)
+      if (!root.current?.contains(event.target as Node) && !surface.current?.contains(event.target as Node))
+        setOpen(false)
     }
     document.addEventListener("pointerdown", dismiss)
     document.addEventListener("focusin", dismiss)
@@ -62,7 +70,7 @@ export const ComposerProjectChip = ({
       document.removeEventListener("pointerdown", dismiss)
       document.removeEventListener("focusin", dismiss)
     }
-  }, [open])
+  }, [open, surface])
 
   const select = async (projectId: Id | null) => {
     if (disabled || savingRef.current || !onSelect) return
@@ -94,8 +102,12 @@ export const ComposerProjectChip = ({
         aria-describedby={active ? lockedId : undefined}
         title={active ? lockedHint : label}
         disabled={disabled}
+        onMouseDown={(event) => {
+          if (open) event.preventDefault()
+        }}
         onClick={() => {
           setError(null)
+          if (open) trigger.current?.focus()
           setOpen((value) => !value)
         }}
         onKeyDown={(event) => {
@@ -115,87 +127,94 @@ export const ComposerProjectChip = ({
           {lockedHint}
         </span>
       )}
-      {open && !active && (
-        <div className="project-menu composer-project-picker">
-          <div
-            ref={menu}
-            id={menuId}
-            role="menu"
-            aria-label={t("Projeto do bot")}
-            aria-describedby={bot.machine === "vm" ? noteId : undefined}
-            aria-busy={saving}
-            onKeyDown={(event) => {
-              if (event.key === "Escape") {
-                event.preventDefault()
-                event.stopPropagation()
-                close(true)
-              } else if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
-                event.preventDefault()
-                const items = Array.from(menu.current?.querySelectorAll<HTMLButtonElement>("button") ?? [])
-                const index = items.indexOf(document.activeElement as HTMLButtonElement)
-                const next =
-                  event.key === "Home"
-                    ? 0
-                    : event.key === "End"
-                      ? items.length - 1
-                      : (index + (event.key === "ArrowDown" ? 1 : -1) + items.length) % items.length
-                items[next]?.focus()
-              }
-            }}
-          >
-            {projects
-              .filter((item) => item.archivedAt === null)
-              .map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  role="menuitemradio"
-                  aria-checked={item.id === bot.projectId}
-                  aria-disabled={saving}
-                  onClick={() => void select(item.id)}
-                >
-                  <span className="composer-model-name" title={item.name}>
-                    {item.name}
-                  </span>
-                  <span aria-hidden="true">{item.id === bot.projectId ? "✓" : ""}</span>
-                </button>
-              ))}
-            <button
-              type="button"
-              role="menuitemradio"
-              aria-checked={bot.projectId === null}
-              aria-disabled={saving}
-              onClick={() => void select(null)}
-            >
-              <span>{t("Nenhum projeto (começa na pasta do bot)")}</span>
-              <span aria-hidden="true">{bot.projectId === null ? "✓" : ""}</span>
-            </button>
-            <button
-              type="button"
-              role="menuitem"
-              aria-disabled={saving || !onAdd}
-              onClick={() => {
-                if (savingRef.current || !onAdd) return
-                close()
-                trigger.current?.focus()
-                onAdd()
+      {open &&
+        !active &&
+        createPortal(
+          <div ref={surface} style={style} className="project-menu composer-project-picker">
+            <div
+              ref={menu}
+              id={menuId}
+              role="menu"
+              aria-label={t("Projeto do bot")}
+              aria-describedby={bot.machine === "vm" ? noteId : undefined}
+              aria-busy={saving}
+              onMouseDown={(event) => event.preventDefault()}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") {
+                  event.preventDefault()
+                  event.stopPropagation()
+                  close(true)
+                } else if (event.key === "Tab") {
+                  trigger.current?.focus()
+                  close()
+                } else if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
+                  event.preventDefault()
+                  const items = Array.from(menu.current?.querySelectorAll<HTMLButtonElement>("button") ?? [])
+                  const index = items.indexOf(document.activeElement as HTMLButtonElement)
+                  const next =
+                    event.key === "Home"
+                      ? 0
+                      : event.key === "End"
+                        ? items.length - 1
+                        : (index + (event.key === "ArrowDown" ? 1 : -1) + items.length) % items.length
+                  items[next]?.focus()
+                }
               }}
             >
-              {t("Adicionar projeto…")}
-            </button>
-          </div>
-          {bot.machine === "vm" && (
-            <p id={noteId} className="composer-project-note">
-              {t("Commit Git copiado para /workspace a partir da próxima mensagem.")}
-            </p>
-          )}
-          {error && (
-            <p className="composer-error" role="alert">
-              {error}
-            </p>
-          )}
-        </div>
-      )}
+              {projects
+                .filter((item) => item.archivedAt === null)
+                .map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    role="menuitemradio"
+                    aria-checked={item.id === bot.projectId}
+                    aria-disabled={saving}
+                    onClick={() => void select(item.id)}
+                  >
+                    <span className="composer-model-name" title={item.name}>
+                      {item.name}
+                    </span>
+                    <span aria-hidden="true">{item.id === bot.projectId ? "✓" : ""}</span>
+                  </button>
+                ))}
+              <button
+                type="button"
+                role="menuitemradio"
+                aria-checked={bot.projectId === null}
+                aria-disabled={saving}
+                onClick={() => void select(null)}
+              >
+                <span>{t("Nenhum projeto (começa na pasta do bot)")}</span>
+                <span aria-hidden="true">{bot.projectId === null ? "✓" : ""}</span>
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                aria-disabled={saving || !onAdd}
+                onClick={() => {
+                  if (savingRef.current || !onAdd) return
+                  close()
+                  trigger.current?.focus()
+                  onAdd()
+                }}
+              >
+                {t("Adicionar projeto…")}
+              </button>
+            </div>
+            {bot.machine === "vm" && (
+              <p id={noteId} className="composer-project-note">
+                {t("Commit Git copiado para /workspace a partir da próxima mensagem.")}
+              </p>
+            )}
+            {error && (
+              <p className="composer-error" role="alert">
+                {error}
+              </p>
+            )}
+          </div>,
+          portalRoot,
+        )}
     </div>
   )
 }

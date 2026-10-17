@@ -161,7 +161,8 @@ export const SettingsPane = ({
         <h3>{title}</h3>
         <p>{description}</p>
       </div>
-      {children}
+      {/* Inactive panes stay empty: a <select> inside a display:none subtree drops every later sibling from the macOS accessibility tree. */}
+      {active === id && children}
     </section>
   )
 }

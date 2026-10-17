@@ -28,10 +28,10 @@ export const ptBR = {
   "Este recurso já está ativado neste bot.": "Este recurso já está ativado neste bot.",
   "O acesso não foi ativado. Se quiser ativar depois, abra as configurações deste bot e ative o navegador ou o controle do computador. Respeite a decisão e não solicite novamente.":
     "O acesso não foi ativado. Se quiser ativar depois, abra as configurações deste bot e ative o navegador ou o controle do computador. Respeite a decisão e não solicite novamente.",
-  "Acesso ativado neste bot. Encerre este turno; o touri retomará a tarefa automaticamente com a configuração aprovada.":
-    "Acesso ativado neste bot. Encerre este turno; o touri retomará a tarefa automaticamente com a configuração aprovada.",
-  "Acesso ativado neste bot. A configuração será aplicada no próximo turno.":
-    "Acesso ativado neste bot. A configuração será aplicada no próximo turno.",
+  "Acesso ativado neste bot. Encerre sua resposta agora, sem falar em turnos nem em retomada: o touri retoma a tarefa sozinho com a configuração aprovada e avisa o usuário.":
+    "Acesso ativado neste bot. Encerre sua resposta agora, sem falar em turnos nem em retomada: o touri retoma a tarefa sozinho com a configuração aprovada e avisa o usuário.",
+  "Acesso ativado neste bot. Vale a partir da próxima mensagem.":
+    "Acesso ativado neste bot. Vale a partir da próxima mensagem.",
   "Ativar navegador": "Ativar navegador",
   "Ativar controle do computador": "Ativar controle do computador",
   "{bot} quer ativar o navegador dele para {reason}.": "{bot} quer ativar o navegador dele para {reason}.",
@@ -1036,7 +1036,7 @@ export const ptBR = {
   "Connect tools after creating this bot, in its advanced settings.":
     "Conecte ferramentas depois de criar este bot, nas configurações avançadas dele.",
   "job.starter":
-    "## {name}\n- {role} {task}\n- Na primeira conversa, apresente brevemente como pode ajudar neste trabalho.\n- Confirme o objetivo e peça o contexto que faltar.\n- Trabalhe no computador onde o touri está rodando com a CLI do usuário e somente os acessos liberados.\n- Use o navegador quando precisar conferir informações e indique as fontes.\n- Peça permissão antes de mudar arquivos ou enviar algo; apresente um rascunho primeiro.\n- Ao terminar, conte o que encontrou e o que depende da pessoa.",
+    "## {name}\n- {role} {task}\n- Na primeira conversa, apresente brevemente como pode ajudar neste trabalho.\n- Confirme o objetivo e peça o contexto que faltar.\n- Trabalhe no computador onde o touri está rodando com o login do usuário e somente os acessos liberados.\n- Use o navegador quando precisar conferir informações e indique as fontes.\n- Peça permissão antes de mudar arquivos ou enviar algo; apresente um rascunho primeiro.\n- Ao terminar, conte o que encontrou e o que depende da pessoa.",
 
   "Activity thinking": "Pensando",
   "Activity working": "Trabalhando",
@@ -1876,10 +1876,10 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Este recurso já está ativado neste bot.": "This capability is already enabled for this bot.",
   "O acesso não foi ativado. Se quiser ativar depois, abra as configurações deste bot e ative o navegador ou o controle do computador. Respeite a decisão e não solicite novamente.":
     "Access was not enabled. To enable it later, open this bot’s settings and enable browser or computer control. Respect the decision and do not request again.",
-  "Acesso ativado neste bot. Encerre este turno; o touri retomará a tarefa automaticamente com a configuração aprovada.":
-    "Access enabled for this bot. Finish this turn; touri will resume the task automatically with the approved configuration.",
-  "Acesso ativado neste bot. A configuração será aplicada no próximo turno.":
-    "Access enabled for this bot. The setting will apply on the next turn.",
+  "Acesso ativado neste bot. Encerre sua resposta agora, sem falar em turnos nem em retomada: o touri retoma a tarefa sozinho com a configuração aprovada e avisa o usuário.":
+    "Access enabled for this bot. End your reply now without mentioning turns or resuming: touri resumes the task on its own with the approved configuration and tells the user.",
+  "Acesso ativado neste bot. Vale a partir da próxima mensagem.":
+    "Access enabled for this bot. It applies from the next message.",
   "Ativar navegador": "Enable browser",
   "Ativar controle do computador": "Enable computer control",
   "{bot} quer ativar o navegador dele para {reason}.": "{bot} wants to enable its browser to {reason}.",
@@ -2913,7 +2913,7 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Connect tools after creating this bot, in its advanced settings.":
     "Connect tools after creating this bot, in its advanced settings.",
   "job.starter":
-    "## {name}\n- {role} {task}\n- In the first conversation, briefly explain how you can help with this job.\n- Confirm the goal and ask for missing context.\n- Work on the computer running touri with the user’s own CLI and only allowed access.\n- Use the browser when you need to check information and include sources.\n- Ask permission before changing files or sending anything; show a draft first.\n- When finished, explain what you found and what needs the person’s attention.",
+    "## {name}\n- {role} {task}\n- In the first conversation, briefly explain how you can help with this job.\n- Confirm the goal and ask for missing context.\n- Work on the computer running touri with the user’s own login and only allowed access.\n- Use the browser when you need to check information and include sources.\n- Ask permission before changing files or sending anything; show a draft first.\n- When finished, explain what you found and what needs the person’s attention.",
 
   "Activity thinking": "Thinking",
   "Activity working": "Working",
