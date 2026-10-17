@@ -2,7 +2,7 @@ import { Database } from "bun:sqlite"
 import { expect, test } from "bun:test"
 import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync } from "node:fs"
 import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { basename, dirname, join } from "node:path"
 import { collectUnusedOutputBlobs } from "../../src/kernel/data-maintenance"
 import { openDatabase } from "../../src/kernel/db"
 import { createEventBus } from "../../src/kernel/event-bus"
@@ -109,11 +109,15 @@ test("existing history is backed up before resumable pruning; unpublished output
 })
 
 test.skipIf(process.platform === "win32")(
-  "online backup includes committed WAL pages while preserving the source",
+  "online backup canonicalizes external directory aliases and preserves committed WAL data",
   async () => {
     const f = legacy()
-    const database = openDatabase({ filename: f.filename })
-    const upgrade = createStorageUpgrade({ database, appData: f.root, backupMethod: "online" })
+    const aliasRoot = mkdtempSync(join(tmpdir(), "touri-backup-alias-"))
+    const alias = join(aliasRoot, "parent")
+    symlinkSync(dirname(f.root), alias, "dir")
+    const appData = join(alias, basename(f.root))
+    const database = openDatabase({ filename: join(appData, "touri.db") })
+    const upgrade = createStorageUpgrade({ database, appData, backupMethod: "online" })
     try {
       database.exec("PRAGMA wal_autocheckpoint = 0")
       database.exec("UPDATE messages SET text = 'Texto confirmado no WAL' WHERE id = 'm'")
@@ -144,6 +148,7 @@ test.skipIf(process.platform === "win32")(
     } finally {
       upgrade.dispose()
       database.close()
+      rmSync(aliasRoot, { recursive: true, force: true })
       rmSync(f.root, { recursive: true, force: true })
     }
   },

@@ -2,7 +2,7 @@ import type { Database } from "bun:sqlite"
 import { randomBytes } from "node:crypto"
 import { existsSync } from "node:fs"
 import { join } from "node:path"
-import { atomicWriteFile, movePrivateFile, removePrivateFile } from "./files"
+import { atomicWriteFile, movePrivateFile, prepareDatabaseFile, removePrivateFile } from "./files"
 import { materializeTranscript } from "./transcript-storage"
 
 const progressKey = "storage.upgrade.22"
@@ -166,6 +166,7 @@ export const createStorageUpgrade = ({
       : original
     removePrivateFile({ root: appData, path: temporary })
     atomicWriteFile({ root: appData, path: temporary, content: "" })
+    const workerDestination = prepareDatabaseFile({ root: appData, path: temporary })
     const url = URL.createObjectURL(new Blob([backupSource], { type: "application/javascript" }))
     try {
       await new Promise<void>((resolve, reject) => {
@@ -179,7 +180,11 @@ export const createStorageUpgrade = ({
           reject(new Error(`Storage backup failed (${stage}: ${code})`))
         }
         worker.onerror = () => reject(new Error("Storage backup failed"))
-        worker.postMessage({ filename: database.filename, destination: temporary, online: backupMethod === "online" })
+        worker.postMessage({
+          filename: database.filename,
+          destination: workerDestination,
+          online: backupMethod === "online",
+        })
       })
       if (stopped) return
       movePrivateFile({ root: appData, from: temporary, to: destination })
