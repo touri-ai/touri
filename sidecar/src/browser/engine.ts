@@ -14,7 +14,12 @@ import type {
 } from "@touri/contracts"
 import { approveSecretRelease } from "../approvals/secrets"
 import { CHALLENGE_ELEMENT_IDS, classifyBlockedPage, describeBlockedPage } from "./blockedPage"
-import { type ChromeLauncher, createChromeLauncher, deriveChromeWindowConfig } from "./launcher"
+import {
+  type ChromeLauncher,
+  createChromeLauncher,
+  deriveChromeWindowConfig,
+  LocalBrowserUnavailableError,
+} from "./launcher"
 import { assignLegacyCookies } from "./legacyCookieMigration"
 import { describeNavigationFailure, isChromeErrorPage, isLoadableUrl, networkErrorCode, stripHash } from "./navigation"
 import { withOneTransientRetry } from "./retry"
@@ -499,6 +504,7 @@ const causeHint = (message: string): string => {
 }
 
 const browserError = (error: unknown): BrowserFailure => {
+  if (error instanceof LocalBrowserUnavailableError) return { errorCode: error.errorCode, error: error.message }
   const message = errorMessage(error)
   if (isDeadlineError(message)) {
     return {
@@ -1215,12 +1221,14 @@ export const createBrowserEngine = ({
   launcher: suppliedLauncher,
   profile,
   discoverBotId,
+  localBrowser = false,
 }: {
   kernel: Kernel
   mode?: "system-chrome" | "chrome-for-testing"
   launcher?: ChromeLauncher
   profile?: string
   discoverBotId?: string
+  localBrowser?: boolean
 }): BrowserEngine => {
   const refHistory = new WeakMap<TabState, Map<string, { node: NodeRef; url: string }>>()
   const rememberRefs = (tab: TabState) => {
@@ -1229,7 +1237,7 @@ export const createBrowserEngine = ({
     while (history.size > 1000) history.delete(history.keys().next().value as string)
     refHistory.set(tab, history)
   }
-  const store = createBrowserStore({ kernel, ...(profile ? { profile } : {}) })
+  const store = createBrowserStore({ kernel, retainTargets: localBrowser, ...(profile ? { profile } : {}) })
   const launcher: ChromeLauncher =
     suppliedLauncher ?? createChromeLauncher({ kernel, ...(mode === undefined ? {} : { mode }) })
   const tabs = store.load()
@@ -1304,7 +1312,7 @@ export const createBrowserEngine = ({
     for (const tab of tabs) {
       if (tab.info.state !== "live") continue
       tab.info.state = "unloaded"
-      tab.targetId = null
+      if (!localBrowser) tab.targetId = null
       tab.sessionId = null
       tab.frameSessions.clear()
       store.save(tab)
@@ -1363,6 +1371,8 @@ export const createBrowserEngine = ({
     if (event.method === "Target.attachedToTarget") {
       const info = targetInfo(event.params.targetInfo)
       const sessionId = asString(event.params.sessionId)
+      // Browser-wide events can describe the user's tabs. Never attach to or act on them.
+      if (localBrowser && !tab && !(info?.openerId && targetToTab.has(info.openerId))) return
       if (info && sessionId && info.openerId && !targetToTab.has(info.targetId) && closeBlockedTarget(info)) return
       if (info && sessionId) {
         targetSessions.set(info.targetId, sessionId)
@@ -1432,6 +1442,16 @@ export const createBrowserEngine = ({
       return
     }
     if (!tab) return
+    if (event.method === "Target.targetInfoChanged" && localBrowser) {
+      const info = targetInfo(event.params.targetInfo)
+      if (info) {
+        tab.info.url = info.url
+        tab.info.title = info.title
+        enforceTabUrl(tab)
+        publishTab(tab)
+      }
+      return
+    }
     if (event.method === "Page.frameNavigated") {
       if (event.sessionId !== tab.sessionId) return
       syncPageNavigation(tab, event.params)
@@ -1633,7 +1653,9 @@ export const createBrowserEngine = ({
     unsubscribe = client.subscribe(onEvent)
     try {
       await client.call("Target.setDiscoverTargets", { discover: true })
-      await client.call("Target.setAutoAttach", { autoAttach: true, waitForDebuggerOnStart: false, flatten: true })
+      if (!localBrowser)
+        await client.call("Target.setAutoAttach", { autoAttach: true, waitForDebuggerOnStart: false, flatten: true })
+      else client.onDisconnect?.(() => markEngineUnavailable())
       void started.process?.exited.then(() => markEngineUnavailable())
       return !retired
     } catch (error) {
@@ -1647,12 +1669,13 @@ export const createBrowserEngine = ({
         await launcher.stop()
         markEngineUnavailable()
       }
+      if (localBrowser) throw new LocalBrowserUnavailableError()
       return false
     }
   }
 
   const focusManagedChrome = async (): Promise<void> => {
-    if (windowConfig.headless || discoverBotId) return
+    if (windowConfig.headless || discoverBotId || localBrowser) return
     const env = { ...(await kernel.shellEnv()), ...process.env }
     const cleanEnv: Record<string, string> = {}
     for (const [key, value] of Object.entries(env)) if (value !== undefined) cleanEnv[key] = value
@@ -1752,7 +1775,7 @@ export const createBrowserEngine = ({
   }
 
   const startSessionTimer = (): void => {
-    if (sessionTimer || discoverBotId) return
+    if (sessionTimer || discoverBotId || localBrowser) return
     sessionTimer = setInterval(() => void saveSessions().catch(() => undefined), SESSION_SAVE_INTERVAL_MS)
     sessionTimer.unref?.()
   }
@@ -1773,7 +1796,7 @@ export const createBrowserEngine = ({
   }
 
   const browserContextFor = (botId: Id | null): Promise<string | null> => {
-    if (discoverBotId) return Promise.resolve("")
+    if (discoverBotId || localBrowser) return Promise.resolve("")
     if (!client) return Promise.resolve(null)
     const key = botId ?? ""
     const existing = browserContexts.get(key)
@@ -1832,6 +1855,17 @@ export const createBrowserEngine = ({
     pendingStorage.delete(botId)
     if (client && contextId)
       await client.call("Target.disposeBrowserContext", { browserContextId: contextId }).catch(() => undefined)
+    if (localBrowser) {
+      for (const tab of tabs.filter((tab) => tab.info.ownerBotId === botId && tab.info.state !== "closed")) {
+        if (client && tab.targetId)
+          await client.call("Target.closeTarget", { targetId: tab.targetId }).catch(() => undefined)
+        if (tab.targetId) targetToTab.delete(tab.targetId)
+        tab.targetId = null
+        tab.sessionId = null
+        tab.info.state = "closed"
+        publishTab(tab)
+      }
+    }
   }
 
   const restoreStorage = async (tab: TabState): Promise<void> => {
@@ -1934,9 +1968,21 @@ export const createBrowserEngine = ({
     if (tab.info.state === "closed") return failure("TAB_NOT_FOUND", "A aba está fechada. Abra outra com browser_open.")
     if (!(await ensureClient()) || !client)
       return failure("ENGINE_UNAVAILABLE", "O navegador não está disponível. Tente novamente em instantes.")
+    if (localBrowser) options.signal?.throwIfAborted()
     if (tab.sessionId && tab.targetId) {
       if (!isReadableTabUrl(tab.info.url)) return failure("URL_NOT_ALLOWED", BROWSER_URL_NOT_ALLOWED_MESSAGE)
       return success(undefined)
+    }
+    if (localBrowser && tab.targetId) {
+      // Reconnect only by the recorded target ID; a matching URL never proves ownership.
+      const knownTarget = tab.targetId
+      const alive = await client
+        .call("Target.getTargetInfo", { targetId: knownTarget })
+        .then(() => true)
+        .catch(() => false)
+      if (alive && (await attach(tab, knownTarget))) return success(undefined)
+      targetToTab.delete(knownTarget)
+      tab.targetId = null
     }
     const wanted = normalizeBrowserUrl(tab.info.url || "about:blank") ?? "about:blank"
     const contextId = await browserContextFor(tab.info.ownerBotId)
@@ -1946,10 +1992,16 @@ export const createBrowserEngine = ({
       await client.call<unknown>("Target.createTarget", {
         url: wanted,
         background: false,
+        ...(localBrowser ? { newWindow: true } : {}),
         ...(contextId === "" ? {} : { browserContextId: contextId }),
       }),
     )
     const targetId = asString(result.targetId)
+    if (localBrowser && targetId) {
+      tab.targetId = targetId
+      targetToTab.set(targetId, tab)
+      store.save(tab)
+    }
     if (!targetId || !(await attach(tab, targetId)))
       return failure("ENGINE_UNAVAILABLE", "O Chrome não conseguiu criar a aba. Tente novamente.")
     return waitForInitialNavigation({ tab, url: wanted, ...options })
@@ -1961,8 +2013,14 @@ export const createBrowserEngine = ({
     tab.sessionId = null
     tab.frameSessions.clear()
     if (client && staleTarget) {
-      const listing = cdpResult(await client.call<unknown>("Target.getTargets", {}))
-      const alive = asArray(listing.targetInfos).some((item) => targetInfo(item)?.targetId === staleTarget)
+      const alive = localBrowser
+        ? await client
+            .call("Target.getTargetInfo", { targetId: staleTarget })
+            .then(() => true)
+            .catch(() => false)
+        : asArray(cdpResult(await client.call<unknown>("Target.getTargets", {})).targetInfos).some(
+            (item) => targetInfo(item)?.targetId === staleTarget,
+          )
       if (alive && (await attach(tab, staleTarget))) {
         tab.generation += 1
         tab.refs.clear()
@@ -4098,12 +4156,31 @@ export const createBrowserEngine = ({
     sessionTimer = null
     if (contextOwners.size > 0)
       await raceBudget({ work: saveSessions(), ms: SESSION_SHUTDOWN_BUDGET_MS }).catch(() => undefined)
+    if (localBrowser && client) {
+      const current = client
+      await raceBudget({
+        work: Promise.all(
+          tabs
+            .filter((tab) => tab.info.ownerBotId && tab.targetId)
+            .map(async (tab) => {
+              await current.call("Target.closeTarget", { targetId: tab.targetId }).catch(() => undefined)
+              tab.targetId = null
+              tab.sessionId = null
+              tab.info.state = "unloaded"
+              store.save(tab)
+            }),
+        ),
+        ms: SIDE_EFFECT_BUDGET_MS,
+      }).catch(() => undefined)
+    }
     markEngineUnavailable()
     await launcher.stop()
   }
 
   const unsubscribeBotDeleted = kernel.subscribe(({ event }) => {
     if (event.type === "bot.deleted") void disposeBotContext(event.botId)
+    if (event.type === "bot.updated" && (localBrowser ? event.bot.browser !== "local" : event.bot.browser !== "touri"))
+      void disposeBotContext(event.bot.id)
   })
 
   const unhost = kernel.onHostNotification((notification) => {
