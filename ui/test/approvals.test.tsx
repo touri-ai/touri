@@ -69,6 +69,7 @@ it("MCP classification and policy edits save the selected tool for this bot", as
   })
   api.request = request as ApiRequest
   render(<BotMcpSettings api={api} botId="bot-a" />)
+  fireEvent.click(screen.getByRole("button", { name: "Configuração técnica (MCP)" }))
   const policy = await screen.findByRole("combobox", { name: "Política · save" })
   fireEvent.change(policy, { target: { value: "blocked" } })
   await waitFor(() =>
@@ -164,6 +165,7 @@ it("MCP policy changes refresh standing grants in the permissions modal", async 
   fireEvent.click(screen.getByRole("tab", { name: "Permissões" }))
   await screen.findByText("docs · save")
   fireEvent.click(screen.getByRole("tab", { name: "Ferramentas" }))
+  fireEvent.click(screen.getByRole("button", { name: "Configuração técnica (MCP)" }))
   fireEvent.change(await screen.findByRole("combobox", { name: "Política · save" }), { target: { value: "blocked" } })
   fireEvent.click(screen.getByRole("tab", { name: "Permissões" }))
   await screen.findByText("Nenhuma permissão permanente concedida.")
