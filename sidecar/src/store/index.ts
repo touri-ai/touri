@@ -26,7 +26,7 @@ import type {
 import { normalizeBotName } from "@touri/contracts"
 import { validAvatarColor, validAvatarShape } from "@touri/contracts/avatar"
 import { installDoctor } from "../doctor"
-import { parseBotFolders } from "../kernel/bot-folders"
+import { parseBotFolders, protectedFolder } from "../kernel/bot-folders"
 import { DEFAULT_DATA_RETENTION_DAYS, validDataRetentionDays } from "../kernel/data-maintenance"
 import { SCHEMA_VERSION } from "../kernel/db"
 import {
@@ -864,6 +864,7 @@ export const init = async (kernel: Kernel): Promise<void> => {
         input: null,
         error: message,
         ...(message === specificFoldersRequired ? { errorCode: "FOLDER_SELECTION_REQUIRED" } : {}),
+        ...(message === protectedFolder ? { errorCode: "FOLDER_PROTECTED" } : {}),
       }
     }
     if (input.machine === "cloud" && (input.anyFolderAccess || input.folders.length))

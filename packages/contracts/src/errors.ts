@@ -117,6 +117,7 @@ export const errorRegistry = {
     "Neste computador, adicione as pastas uma por uma. O acesso a todas as pastas não está disponível. Remova essa permissão nas configurações do bot para continuar com tarefas.",
     400,
   ),
+  "TOURI-E2012": entry("storage", "folder-protected", false, "Esta pasta é protegida. Escolha outra pasta.", 400),
   "TOURI-E3000": entry(
     "provider",
     "cli",
@@ -306,6 +307,7 @@ const aliases: Record<string, RegisteredErrorCode> = {
   MACHINE_PROJECT_CHANGE: "TOURI-E6009",
   FOLDER_ACCESS_UNAVAILABLE: "TOURI-E2010",
   FOLDER_SELECTION_REQUIRED: "TOURI-E2011",
+  FOLDER_PROTECTED: "TOURI-E2012",
   PROCESS_EXISTS: "TOURI-E1005",
   PROCESS_CYCLE: "TOURI-E1005",
   IMPORT_FAILED: "TOURI-E7000",

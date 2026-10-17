@@ -6,6 +6,7 @@ import type { Bot, BotFolder } from "@touri/contracts"
 import { errorRegistry } from "@touri/contracts"
 
 export const specificFoldersRequired = errorRegistry["TOURI-E2011"].message
+export const protectedFolder = errorRegistry["TOURI-E2012"].message
 
 export const withinFolder = (root: string, path: string): boolean => {
   const part = relative(root, path)
@@ -29,7 +30,7 @@ export const resolveBotFolder = (path: string, inspectContents = true): string =
   if (!statSync(canonical).isDirectory()) throw new Error("O caminho precisa ser uma pasta.")
   if (process.platform === "linux" && canonical === "/") throw new Error(specificFoldersRequired)
   if (process.platform === "linux" && ["/proc", "/sys", "/dev"].some((root) => withinFolder(root, canonical)))
-    throw new Error("Esta pasta é protegida. Escolha outra pasta.")
+    throw new Error(protectedFolder)
   if (lstatSync(path).isSymbolicLink()) throw new Error("Escolha a pasta original, não um link simbólico.")
   if (!inspectContents) return canonical
   const pending = [canonical]
