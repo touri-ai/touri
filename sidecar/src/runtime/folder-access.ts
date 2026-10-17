@@ -10,7 +10,7 @@ import {
 } from "../kernel/bot-folders"
 import { folderAccessUnavailable, hostFolderAccessAvailable, linuxSandboxBinary } from "../kernel/folder-capability"
 import { resolveMcpSocketPath } from "../kernel/paths"
-import { linuxFolderSandbox } from "./linux-folder-sandbox"
+import { linuxFolderEnvironment, linuxFolderSandbox } from "./linux-folder-sandbox"
 
 // Keep the picker preflight aligned with the host provider's actual boundary.
 export { hostFolderAccessAvailable } from "../kernel/folder-capability"
@@ -139,8 +139,8 @@ export const spawnFolderProvider = (
       return kernel.spawnTree({
         ...input,
         cmd: binary,
-        env: { ...input.env, TOURI_PID_NAMESPACE: "1" },
-        args: [...linuxFolderSandbox(kernel, args, input.env), "--", input.cmd, ...input.args],
+        env: linuxFolderEnvironment(args, input.env),
+        args: [...linuxFolderSandbox(kernel, args, input.env, homedir(), input.cmd), "--", input.cmd, ...input.args],
       })
     } catch (error) {
       return {

@@ -1,3 +1,4 @@
+import { Database } from "bun:sqlite"
 import { expect, test } from "bun:test"
 import { randomUUID } from "node:crypto"
 import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, rmSync, writeFileSync } from "node:fs"
@@ -165,8 +166,28 @@ test.skipIf(process.platform !== "linux" || process.env.TOURI_LIVE_FOLDER_QA !==
       await start()
       const greeting = await send("oi. Responda apenas: Oi! Não use ferramentas.")
       expect(greeting.some((message) => message.role === "assistant" && message.text.includes("Oi!"))).toBe(true)
+      // New broad grants fail before persistence. Old ones recover as conversation
+      // only until the user removes them; never reconstruct the host filesystem.
+      await expect(request(`/bots/${bot.id}`, { anyFolderAccess: true }, "PATCH")).rejects.toThrow("400")
+      const db = new Database(join(data, "touri.db"))
+      try {
+        expect(db.query("SELECT any_folder_access AS enabled FROM bots WHERE id = ?").get(bot.id)).toEqual({
+          enabled: 0,
+        })
+        db.query("UPDATE bots SET any_folder_access = 1 WHERE id = ?").run(bot.id)
+      } finally {
+        db.close()
+      }
+      const recovered = await send("oi. Responda apenas: Oi! Não use ferramentas.")
+      expect(recovered.some((message) => message.role === "assistant" && message.text.includes("Oi!"))).toBe(true)
+      expect(
+        recovered.some((message) =>
+          message.parts.some((part) => part.type === "notice" && part.code === "folder_access_unavailable"),
+        ),
+      ).toBe(true)
+      await request(`/bots/${bot.id}`, { anyFolderAccess: false }, "PATCH")
       console.log(
-        "Live Linux: picker/create, RO approval/read, blocked RO write, RW approval/write, restart/greeting: passed",
+        "Live Linux: picker/create, RO approval/read, blocked RO write, RW approval/write, restart/greeting, broad-grant refusal/recovery/removal: passed",
       )
     } finally {
       await stop()

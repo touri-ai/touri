@@ -77,9 +77,16 @@ test("folder grants default off, persist per bot, reject malformed input and onl
     { path: f.ro, access: "read-only" },
     { path: f.rw, access: "read-write" },
   ]
-  const response = await f.request(`/bots/${f.bot.id}`, { folders, anyFolderAccess: true })
+  const anyFolderAccess = process.platform !== "linux"
+  const response = await f.request(`/bots/${f.bot.id}`, { folders, anyFolderAccess })
   expect(response.status).toBe(200)
-  expect(((await response.json()) as { bot: Bot }).bot).toMatchObject({ folders, anyFolderAccess: true })
+  expect(((await response.json()) as { bot: Bot }).bot).toMatchObject({ folders, anyFolderAccess })
+  if (process.platform === "linux") {
+    const broad = await f.request(`/bots/${f.bot.id}`, { anyFolderAccess: true })
+    expect(broad.status).toBe(400)
+    expect(await broad.json()).toMatchObject({ errorCode: "FOLDER_ACCESS_UNAVAILABLE" })
+    expect(f.runtime.kernel.services.use("store.api")?.getBot({ botId: f.bot.id })?.anyFolderAccess).toBe(false)
+  }
   expect((await f.request(`/bots/${f.bot.id}`, { folders: [{ path: f.ro, access: "full" }] })).status).toBe(400)
   expect((await f.request(`/bots/${f.bot.id}`, { anyFolderAccess: "yes" })).status).toBe(400)
   const other = await f.request("/bots", { name: "Other", provider: "codex" }, "POST")
@@ -257,7 +264,7 @@ test("local profile denies sensitive trees including touri's API credential, eve
   }
   spawnFolderProvider(kernel, f.args, { cmd: "fake-provider", args: ["fake"], env: {}, cwd: f.ro })
   if (process.platform === "darwin") expect(calls[0]?.cmd).toBe("/usr/bin/sandbox-exec")
-  else if (folderCapability.hostFolderAccessAvailable()) expect(calls[0]?.cmd).toMatch(/\/bwrap$/)
+  else if (process.platform === "linux") expect(calls).toHaveLength(0)
   else expect(calls).toHaveLength(0)
 })
 

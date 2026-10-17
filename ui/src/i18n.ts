@@ -4,6 +4,8 @@ import { userFacingError } from "./errors"
 export type Locale = "pt-BR" | "en"
 export const ptBR = {
   // Local folder confinement and recovery.
+  "Neste computador, adicione as pastas uma por uma. O acesso a todas as pastas não está disponível. Remova essa permissão nas configurações do bot para continuar com tarefas.":
+    "Neste computador, adicione as pastas uma por uma. O acesso a todas as pastas não está disponível. Remova essa permissão nas configurações do bot para continuar com tarefas.",
   "Este computador não consegue proteger o acesso a pastas. Nenhuma permissão foi adicionada. Você pode continuar conversando ou enviar um arquivo.":
     "Este computador não consegue proteger o acesso a pastas. Nenhuma permissão foi adicionada. Você pode continuar conversando ou enviar um arquivo.",
   "As permissões de pastas salvas não funcionam neste computador. Você pode conversar sem ferramentas. Remova essas permissões nas configurações do bot para continuar com tarefas.":
@@ -1716,6 +1718,8 @@ export const ptBR = {
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
   // Local folder confinement and recovery.
+  "Neste computador, adicione as pastas uma por uma. O acesso a todas as pastas não está disponível. Remova essa permissão nas configurações do bot para continuar com tarefas.":
+    "On this computer, add folders individually. Access to all folders is unavailable. Remove that permission in the bot settings to continue with tasks.",
   "Este computador não consegue proteger o acesso a pastas. Nenhuma permissão foi adicionada. Você pode continuar conversando ou enviar um arquivo.":
     "This computer cannot protect folder access. No permission was added. You can keep chatting or send a file.",
   "As permissões de pastas salvas não funcionam neste computador. Você pode conversar sem ferramentas. Remova essas permissões nas configurações do bot para continuar com tarefas.":

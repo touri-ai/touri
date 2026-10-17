@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs"
+import { existsSync, lstatSync, readlinkSync } from "node:fs"
 import { homedir } from "node:os"
 import { join } from "node:path"
 import type { Bot } from "@touri/contracts"
@@ -6,6 +6,9 @@ import { canonicalPath, excludedBotFolders } from "./bot-folders"
 
 export const folderAccessUnavailable =
   "Este computador não consegue proteger o acesso a pastas. Nenhuma permissão foi adicionada. Você pode continuar conversando ou enviar um arquivo."
+
+export const specificFoldersRequired =
+  "Neste computador, adicione as pastas uma por uma. O acesso a todas as pastas não está disponível. Remova essa permissão nas configurações do bot para continuar com tarefas."
 
 export const linuxProtectedFolders = (appData: string, home = homedir()): string[] => [
   ...new Set(
@@ -21,6 +24,8 @@ export const linuxProtectedFolders = (appData: string, home = homedir()): string
 export const folderGrantProblem = (bot: Pick<Bot, "machine" | "folders" | "anyFolderAccess">): string | null => {
   if (bot.machine !== "local" || (!bot.anyFolderAccess && !bot.folders?.length)) return null
   if (!hostFolderAccessAvailable()) return folderAccessUnavailable
+  if (process.platform === "linux" && (bot.anyFolderAccess || bot.folders?.some((folder) => folder.path === "/")))
+    return specificFoldersRequired
   return null
 }
 
@@ -35,9 +40,29 @@ export const linuxSandboxBase = [
   "--unshare-uts",
   "--cap-drop",
   "ALL",
-  "--ro-bind",
-  "/",
-  "/",
+  // bwrap starts with an empty root. Never expose the host root, even read-only.
+  ...["/usr/bin", "/usr/sbin", "/usr/lib", "/usr/lib64", "/usr/share/zoneinfo", "/usr/share/locale"]
+    .filter(existsSync)
+    .flatMap((path) => ["--ro-bind", path, path]),
+  ...["/bin", "/sbin", "/lib", "/lib64"]
+    .filter(existsSync)
+    .flatMap((path) =>
+      lstatSync(path).isSymbolicLink() ? ["--symlink", readlinkSync(path), path] : ["--ro-bind", path, path],
+    ),
+  ...[
+    "/etc/ld.so.cache",
+    "/etc/alternatives",
+    "/etc/resolv.conf",
+    "/etc/hosts",
+    "/etc/nsswitch.conf",
+    "/etc/gai.conf",
+    "/etc/localtime",
+    "/etc/ssl/certs",
+    "/etc/pki/tls/certs",
+    "/usr/share/ca-certificates",
+  ]
+    .filter(existsSync)
+    .flatMap((path) => ["--ro-bind", path, path]),
   "--proc",
   "/proc",
   "--dev",
@@ -49,6 +74,9 @@ export const linuxSandboxBase = [
   "/tmp",
   "--tmpfs",
   "/var/tmp",
+  "--tmpfs",
+  "/touri",
+  ...["home", "config", "cache", "state"].flatMap((directory) => ["--dir", `/touri/${directory}`]),
 ]
 
 export const linuxSandboxBinary = (): string | null =>

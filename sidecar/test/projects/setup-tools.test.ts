@@ -56,10 +56,16 @@ const fixture = async (patch: Partial<Bot> = {}) => {
     access: "full",
     approvals: "never",
     ...patch,
+    // Seed broad grants below as legacy data; Linux no longer accepts new ones.
+    anyFolderAccess: false,
     machine: "local",
   })
   expect(response.status).toBe(201)
   const { bot } = (await response.json()) as { bot: Bot }
+  if (patch.anyFolderAccess) {
+    db.query("UPDATE bots SET any_folder_access = 1 WHERE id = ?").run(bot.id)
+    bot.anyFolderAccess = true
+  }
   if (patch.machine === "vm") {
     db.query("UPDATE bots SET machine = 'vm' WHERE id = ?").run(bot.id)
     bot.machine = "vm"
@@ -187,7 +193,8 @@ test("discovery lists only projects and repositories in this bot's granted folde
     success: true,
     structured: { projects: [{ id: "project" }], repositories: [] },
   })
-  expect((await f.request("PATCH", `/bots/${f.bot.id}`, { projectId: null, anyFolderAccess: true })).status).toBe(200)
+  expect((await f.request("PATCH", `/bots/${f.bot.id}`, { projectId: null })).status).toBe(200)
+  f.db.query("UPDATE bots SET any_folder_access = 1 WHERE id = ?").run(f.bot.id)
   expect(await f.call("project_discover")).toMatchObject({
     success: true,
     structured: { projects: [], repositories: [] },
@@ -754,7 +761,7 @@ test("simultaneous approvals cannot overwrite a configuration changed by another
 })
 
 test("removing a grant keeps the user-only any-folder toggle and unrelated grants intact", async () => {
-  const f = await fixture({ anyFolderAccess: true })
+  const f = await fixture()
   const extra = join(f.home, "extra")
   mkdirSync(extra)
   expect(
@@ -767,6 +774,7 @@ test("removing a grant keeps the user-only any-folder toggle and unrelated grant
       })
     ).status,
   ).toBe(200)
+  f.db.query("UPDATE bots SET any_folder_access = 1 WHERE id = ?").run(f.bot.id)
   expect((await f.call("folder_access_remove", { path: f.path })).success).toBe(true)
   expect(f.currentBot()?.folders).toEqual([{ path: extra, access: "read-only" }])
   expect(f.currentBot()?.anyFolderAccess).toBe(true)

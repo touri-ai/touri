@@ -3,87 +3,187 @@ import { homedir } from "node:os"
 import { dirname, join } from "node:path"
 import type { Kernel, StartTurnArgs } from "@touri/contracts"
 import { canonicalPath, withinFolder } from "../kernel/bot-folders"
-import { linuxProtectedFolders, linuxSandboxBase } from "../kernel/folder-capability"
+import { ensurePrivateDirectory } from "../kernel/files"
+import { linuxProtectedFolders, linuxSandboxBase, specificFoldersRequired } from "../kernel/folder-capability"
 import { resolveMcpSocketPath } from "../kernel/paths"
-import { turnFolders, writableTurnFolders } from "./folder-access"
+import { turnFolders } from "./folder-access"
 
-/** Inherited mount namespace: even an approved shell cannot widen these mounts. */
+const privateTemp = (env: Record<string, string>, runDir: string): string =>
+  env.TMPDIR && withinFolder(join(runDir, "provider-tmp"), canonicalPath(env.TMPDIR)) ? env.TMPDIR : "/tmp"
+
+/** Keep unrelated host credentials and loader/shell injection out of the CLI and its tools. */
+export const linuxFolderEnvironment = (args: StartTurnArgs, env: Record<string, string>): Record<string, string> => {
+  const common = [
+    "PATH",
+    "LANG",
+    "LC_ALL",
+    "LC_CTYPE",
+    "TZ",
+    "TERM",
+    "COLORTERM",
+    "TOURI_APP_DATA",
+    "TOURI_RUN_DIR",
+    "TOURI_MCP_SOCK",
+    "TOURI_PROJECT_DATA_DIR",
+    "DISABLE_TELEMETRY",
+    "DISABLE_ERROR_REPORTING",
+    "DO_NOT_TRACK",
+    "OTEL_SDK_DISABLED",
+    "OTEL_TRACES_EXPORTER",
+    "OTEL_METRICS_EXPORTER",
+    "OTEL_LOGS_EXPORTER",
+  ]
+  const provider = {
+    codex: ["CODEX_HOME", "OPENAI_API_KEY", "OPENAI_BASE_URL"],
+    claude: [
+      "CLAUDE_CONFIG_DIR",
+      "ANTHROPIC_API_KEY",
+      "ANTHROPIC_BASE_URL",
+      "ANTHROPIC_AUTH_TOKEN",
+      "CLAUDE_CODE_OAUTH_TOKEN",
+      "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC",
+      "CLAUDE_CODE_ENABLE_TELEMETRY",
+    ],
+    opencode: [
+      "XDG_DATA_HOME",
+      "XDG_CONFIG_HOME",
+      "XDG_STATE_HOME",
+      "XDG_CACHE_HOME",
+      "OPENCODE_CONFIG",
+      "OPENCODE_CONFIG_DIR",
+      "OPENCODE_TEST_HOME",
+      "OPENCODE_TEST_MANAGED_CONFIG_DIR",
+      "OPENCODE_DISABLE_PROJECT_CONFIG",
+      "OPENCODE_DISABLE_AUTOUPDATE",
+      "OPENCODE_PURE",
+      "OPENCODE_DISABLE_MODELS_FETCH",
+      "OPENCODE_EXPERIMENTAL_DISABLE_FILEWATCHER",
+      "OPENCODE_SERVER_PASSWORD",
+      "OPENAI_API_KEY",
+      "ANTHROPIC_API_KEY",
+      "OPENROUTER_API_KEY",
+      "DEEPSEEK_API_KEY",
+      "GOOGLE_API_KEY",
+      "MISTRAL_API_KEY",
+      "GROQ_API_KEY",
+      "XAI_API_KEY",
+    ],
+  }[args.bot.provider]
+  return {
+    HOME: "/touri/home",
+    XDG_CONFIG_HOME: "/touri/config",
+    XDG_CACHE_HOME: "/touri/cache",
+    XDG_STATE_HOME: "/touri/state",
+    SHELL: "/bin/sh",
+    TMPDIR: privateTemp(env, env.TOURI_RUN_DIR ?? "/touri/run"),
+    TMP: privateTemp(env, env.TOURI_RUN_DIR ?? "/touri/run"),
+    TEMP: privateTemp(env, env.TOURI_RUN_DIR ?? "/touri/run"),
+    ...Object.fromEntries(
+      [...common, ...provider].filter((key) => env[key] !== undefined).map((key) => [key, env[key]]),
+    ),
+    ...(args.bot.provider === "claude" ? { CLAUDE_CONFIG_DIR: join(args.bot.homeDir, ".touri-claude") } : {}),
+    TOURI_PID_NAMESPACE: "1",
+  }
+}
+
+// Expose a CLI package, never the surrounding installation or home. Native
+// executables need only their file; JS launchers also need their package assets.
+const executableFiles = (path: string): string[] => {
+  const real = canonicalPath(path)
+  if (!/\.[cm]?js$/.test(real)) return [real]
+  let directory = dirname(real)
+  while (directory !== "/") {
+    if (existsSync(join(directory, "package.json"))) return [directory]
+    directory = dirname(directory)
+  }
+  return [real]
+}
+
+/** Inherited allowlist: tools can only reach these mounts, regardless of CLI approvals. */
 export const linuxFolderSandbox = (
   kernel: Kernel,
   args: StartTurnArgs,
   env: Record<string, string>,
   home = homedir(),
+  command?: string,
 ): string[] => {
-  const runDir = env.TOURI_RUN_DIR ?? kernel.paths.runDir
+  if (args.bot.anyFolderAccess || args.bot.folders?.some((folder) => folder.path === "/"))
+    throw new Error(specificFoldersRequired)
+  // Re-resolve grants immediately before binding; a changed realpath fails closed.
   const folders = turnFolders(args)
-  const runtime = [
+  const claudeHome = join(args.bot.homeDir, ".touri-claude")
+  if (args.bot.provider === "claude") ensurePrivateDirectory({ root: args.bot.homeDir, path: claudeHome })
+  const runDir = env.TOURI_RUN_DIR ?? kernel.paths.runDir
+  const readonly = [
     env.TOURI_MCP_SOCK ?? resolveMcpSocketPath({ ...kernel.paths, runDir }),
     join(runDir, "mcp-tokens", args.thread.id),
-    join(runDir, "mcp-shims"),
     ...["mcp.json", "system.md", "settings.json"].map((suffix) =>
       join(runDir, "claude", `${args.thread.id}.${suffix}`),
     ),
-    ...[
-      env.TMPDIR,
-      env.TMP,
-      env.TEMP,
-      ...(args.bot.provider === "codex" ? [env.CODEX_HOME] : []),
-      ...(args.bot.provider === "claude" ? [env.CLAUDE_CONFIG_DIR] : []),
-      ...(args.bot.provider === "opencode" ? [env.XDG_DATA_HOME, env.XDG_CONFIG_HOME] : []),
-    ].filter((path): path is string => !!path),
-    ...(args.bot.provider === "opencode" && env.OPENCODE_CONFIG ? [dirname(env.OPENCODE_CONFIG)] : []),
-    ...(args.bot.provider === "codex" && env.CODEX_HOME ? [canonicalPath(join(env.CODEX_HOME, "auth.json"))] : []),
-    ...(args.bot.provider === "claude"
-      ? [env.CLAUDE_CONFIG_DIR ?? join(home, ".claude"), join(home, ".claude.json")]
-      : []),
   ]
-    .filter(existsSync)
-    .map(canonicalPath)
+  const state = [
+    ...(privateTemp(env, runDir) === "/tmp" ? [] : [privateTemp(env, runDir)]),
+    ...(args.bot.provider === "codex" ? [env.CODEX_HOME] : []),
+    ...(args.bot.provider === "claude" ? [claudeHome] : []),
+    ...(args.bot.provider === "opencode" ? [env.XDG_DATA_HOME, env.XDG_CONFIG_HOME] : []),
+    ...(args.bot.provider === "opencode" && env.OPENCODE_CONFIG ? [dirname(env.OPENCODE_CONFIG)] : []),
+    // The managed auth symlink shares token refreshes, but no host sessions/config.
+    ...(args.bot.provider === "codex" && env.CODEX_HOME ? [canonicalPath(join(env.CODEX_HOME, "auth.json"))] : []),
+  ].filter((path): path is string => !!path && existsSync(path))
   const workspace = [args.bot.homeDir, args.fingerprint.cwd, env.TOURI_PROJECT_DATA_DIR]
-    .filter((path): path is string => !!path)
-    .map(canonicalPath)
-  const writable = args.bot.access === "read-only" ? runtime : [...runtime, ...workspace, ...writableTurnFolders(args)]
-  const explicit = args.bot.folders ?? []
-  const executables = [kernel.paths.sidecarBinary, args.mcp?.command]
     .filter((path): path is string => !!path && existsSync(path))
     .map(canonicalPath)
-  const internal = [...runtime, ...workspace, ...executables]
+  const executables = [
+    command,
+    kernel.paths.sidecarBinary,
+    args.mcp?.command,
+    ...["node", "bun"].map((name) => Bun.which(name, { PATH: env.PATH ?? "/usr/local/bin:/usr/bin:/bin" })),
+  ].filter((path): path is string => !!path && existsSync(path))
+  const programs = [...new Set(executables.flatMap(executableFiles))]
+  const internal = [...readonly, ...state, ...workspace, ...programs].filter(existsSync)
   const mounts = [...linuxSandboxBase]
-  // Replace the initial root bind before adding the private process/control trees.
-  if (
-    args.bot.anyFolderAccess &&
-    args.bot.access !== "read-only" &&
-    !folders.some((folder) => folder.path === "/" && folder.access === "read-only")
-  )
-    mounts[mounts.indexOf("--ro-bind")] = "--bind"
   const bind = (path: string, write: boolean) => {
-    mounts.push(write ? "--bind" : "--ro-bind", path, path)
+    const source = canonicalPath(path)
+    if (source === "/" || withinFolder("/proc", source) || source === "/dev" || withinFolder("/sys", source))
+      throw new Error(specificFoldersRequired)
+    mounts.push(write ? "--bind" : "--ro-bind", source, path)
   }
-  for (const path of [...new Set([...internal, ...folders.map((folder) => folder.path)])].sort(
-    (a, b) => a.length - b.length,
-  )) {
-    if (path !== "/" && existsSync(path)) bind(path, writable.includes(path))
-  }
-  // Explicit RO trees take precedence over broader writable roots.
-  for (const folder of folders.filter((folder) => folder.access === "read-only" && folder.path !== "/"))
-    bind(folder.path, false)
-  // Mask first, then reconstruct only this bot's runtime and explicit exceptions.
-  // Sources of subsequent binds are resolved in the host namespace by bwrap.
-  const hidden = linuxProtectedFolders(kernel.paths.appData, home).filter(existsSync)
-  for (const path of hidden) {
+  const writableWorkspace = (path: string) =>
+    args.bot.access !== "read-only" &&
+    !folders.some((folder) => folder.access === "read-only" && withinFolder(folder.path, path))
+  for (const folder of [...folders].sort((a, b) => a.path.length - b.path.length))
+    bind(folder.path, args.bot.access !== "read-only" && folder.access === "read-write")
+  for (const path of [...new Set(workspace)]) bind(path, writableWorkspace(path))
+  // Explicit RO trees win over a broader writable workspace.
+  for (const folder of folders.filter((folder) => folder.access === "read-only")) bind(folder.path, false)
+  // Broad, explicitly selected homes must still hide protected application data.
+  for (const path of linuxProtectedFolders(kernel.paths.appData, home).filter(existsSync)) {
     if (!statSync(path).isDirectory()) continue
     mounts.push("--tmpfs", path)
-    const exceptions = [...internal, ...explicit.map((folder) => folder.path)].filter(
-      (entry) => withinFolder(path, entry) && existsSync(entry),
-    )
-    for (const entry of [...new Set(exceptions)].sort((a, b) => a.length - b.length)) {
-      const readonly = folders.some((folder) => folder.access === "read-only" && withinFolder(folder.path, entry))
-      bind(entry, !readonly && writable.includes(entry))
-    }
+    for (const entry of folders.filter((folder) => withinFolder(path, folder.path)))
+      bind(entry.path, args.bot.access !== "read-only" && entry.access === "read-write")
+    for (const entry of [...new Set(internal.filter((entry) => withinFolder(path, entry)))].sort(
+      (a, b) => a.length - b.length,
+    ))
+      bind(entry, state.includes(entry) || (workspace.includes(entry) && writableWorkspace(entry)))
     mounts.push("--remount-ro", path)
   }
-  // A RO home/project grant must not freeze this bot's managed bookkeeping.
-  // Only runtime leaves are exempt, never the surrounding application data.
-  for (const path of [...new Set(runtime)]) bind(path, true)
+  for (const path of readonly.filter(existsSync)) bind(path, false)
+  for (const path of state) bind(path, true)
+  for (const path of programs) bind(path, false)
+  if (args.bot.provider === "claude") {
+    const credentials = join(env.CLAUDE_CONFIG_DIR ?? join(home, ".claude"), ".credentials.json")
+    if (existsSync(credentials))
+      mounts.push("--bind", canonicalPath(credentials), join(claudeHome, ".credentials.json"))
+  }
+  // Reconstruct executable links without binding their parent directories.
+  for (const path of executables) {
+    const real = canonicalPath(path)
+    if (real !== path && !linuxSandboxBase.includes(dirname(path)))
+      mounts.push("--dir", dirname(path), "--symlink", real, path)
+  }
+  // Existing runtime symlinks (e.g. Codex auth) must resolve to just their leaf.
+  // No host /proc or /dev survives: both are freshly mounted by the base policy.
+  mounts.push("--remount-ro", "/")
   return mounts
 }

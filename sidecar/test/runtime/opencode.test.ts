@@ -344,10 +344,13 @@ test("OpenCode receives explicit folder permissions and an outer sandbox for ter
   mkdirSync(ro)
   const path = realpathSync(ro)
   f.args.bot.folders = [{ path, access: "read-only" }]
-  f.args.bot.anyFolderAccess = true
+  f.args.bot.anyFolderAccess = process.platform !== "linux"
   expect((await f.adapter.startTurn(f.args)).success).toBe(true)
   const config = f.records().find((record) => record.type === "spawn").config
-  expect(config.permission.external_directory).toMatchObject({ [`${path}/**`]: "allow", "/**": "allow" })
+  expect(config.permission.external_directory).toMatchObject({
+    [`${path}/**`]: "allow",
+    ...(process.platform === "linux" ? {} : { "/**": "allow" }),
+  })
   expect(config.permission.edit).toMatchObject({ [`${path}/**`]: "deny" })
   expect(f.calls.some((call) => call.cmd === "/usr/bin/sandbox-exec" || /\/bwrap$/.test(call.cmd))).toBe(true)
 })
