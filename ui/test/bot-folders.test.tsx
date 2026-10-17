@@ -2,7 +2,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import type { Bot } from "@touri/contracts"
 import { afterEach, expect, it, vi } from "vitest"
 import App from "../src/App"
-import type { TauriInvoke } from "../src/api/client"
+import { createWebInvoke, type TauriInvoke } from "../src/api/client"
 import { createMockApi } from "../src/api/mock"
 import { BotCreateModal, BotSettingsModal } from "../src/components/Modals"
 import type { WorkspaceActions } from "../src/useWorkspace"
@@ -174,6 +174,87 @@ it.each(["read-only", "read-write"] as const)(
         expect.objectContaining({
           projectId: linkedId,
           folders: access === "read-only" ? [{ path: "/workspace/reference", access: "read-only" }] : [],
+        }),
+      ),
+    )
+  },
+)
+
+it.each(["read-only", "read-write"] as const)(
+  "keeps the selected %s host folder grant when creating a VM bot with a project",
+  async (access) => {
+    const api = createMockApi()
+    const create = vi.fn(async () => {})
+    render(
+      <BotCreateModal
+        api={api}
+        invokeCommand={createWebInvoke()}
+        capability={{ available: true, provider: "apple-container", reason: null }}
+        onCreate={create}
+        onClose={vi.fn()}
+      />,
+    )
+    fireEvent.change(screen.getByLabelText("Nome"), { target: { value: "Pesquisa" } })
+    fireEvent.click(screen.getByRole("button", { name: "Avançado" }))
+    fireEvent.change(screen.getByLabelText("Máquina"), { target: { value: "vm" } })
+    fireEvent.change(screen.getByLabelText("Projeto", { selector: "select" }), {
+      target: { value: "__add_project__" },
+    })
+    fireEvent.click(await screen.findByRole("button", { name: "Escolher outra pasta…" }))
+    await selectFolder("/workspace/project", access)
+    await waitFor(() => expect(screen.getByLabelText("Projeto", { selector: "select" })).not.toHaveValue(""))
+    await screen.findByText(/Usa o Codex/)
+    fireEvent.click(screen.getByRole("button", { name: "Criar bot" }))
+    await waitFor(() =>
+      expect(create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          machine: "vm",
+          projectId: expect.any(String),
+          folders: [{ path: "/workspace/project", access }],
+          anyFolderAccess: false,
+          approvals: "on-request",
+        }),
+        expect.any(String),
+      ),
+    )
+  },
+)
+
+it.each(["read-only", "read-write"] as const)(
+  "keeps the selected %s VM project folder grant alongside existing folders when linking and saving",
+  async (access) => {
+    const existing = { path: "/workspace/reference", access: "read-only" as const }
+    const f = await setup({ machine: "vm", folders: [existing] })
+    fireEvent.click(screen.getByRole("tab", { name: "Projeto" }))
+    fireEvent.change(screen.getByRole("combobox", { name: "Projeto" }), { target: { value: "__add_project__" } })
+    const dialog = await screen.findByRole("dialog", { name: "Conectar projeto" })
+    fireEvent.click(within(dialog).getByRole("button", { name: "Escolher pasta" }))
+    await selectFolder("/workspace/project", access)
+    fireEvent.click(within(dialog).getByRole("button", { name: "Conectar projeto" }))
+    await waitFor(() =>
+      expect(f.updateBot).toHaveBeenCalledWith(f.bot.id, {
+        projectId: expect.any(String),
+        folders: [existing, { path: "/workspace/project", access }],
+      }),
+    )
+    fireEvent.click(within(dialog).getByRole("button", { name: "Salvar bots" }))
+    await waitFor(() => expect(f.updateBot).toHaveBeenCalledTimes(2))
+    expect(f.updateBot).toHaveBeenLastCalledWith(f.bot.id, {
+      projectId: f.bot.projectId,
+      folders: [existing, { path: "/workspace/project", access }],
+    })
+    fireEvent.click(within(dialog).getByRole("button", { name: "Fechar diálogo" }))
+    fireEvent.click(screen.getByRole("tab", { name: "Acesso" }))
+    expect(screen.getByLabelText("Acesso à pasta /workspace/project")).toHaveValue(access)
+    save()
+    await waitFor(() =>
+      expect(f.updateBot).toHaveBeenLastCalledWith(
+        f.bot.id,
+        expect.objectContaining({
+          projectId: f.bot.projectId,
+          folders: [existing, { path: "/workspace/project", access }],
+          anyFolderAccess: false,
+          approvals: f.bot.approvals,
         }),
       ),
     )

@@ -405,9 +405,13 @@ export const BotModelModal = ({
   )
 }
 
-// Projects already allow writes. Keep an explicit grant only to restrict them or replace an existing grant.
-const projectFolderPatch = (folders: BotFolder[], folder: BotFolder): { folders?: BotFolder[] } =>
-  folder.access === "read-write" && !folders.some((item) => item.path === folder.path)
+// VM projects copy a Git commit; a selected host folder still needs its own grant.
+const projectFolderPatch = (
+  folders: BotFolder[],
+  folder: BotFolder,
+  machine: Bot["machine"],
+): { folders?: BotFolder[] } =>
+  machine !== "vm" && folder.access === "read-write" && !folders.some((item) => item.path === folder.path)
     ? {}
     : { folders: [...folders.filter((item) => item.path !== folder.path), folder] }
 
@@ -549,7 +553,10 @@ export const BotCreateModal = ({
       setAddedProjects((current) => [...current.filter((item) => item.id !== project.id), project])
       setProjectId(project.id)
       if (folder)
-        setFolders((current) => projectFolderPatch(current, { ...folder, path: project.path }).folders ?? current)
+        setFolders(
+          (current) =>
+            projectFolderPatch(current, { ...folder, path: project.path }, machine.machine).folders ?? current,
+        )
       setAddingProject(false)
     } finally {
       setProjectBusy(false)
@@ -1414,7 +1421,8 @@ export const BotSettingsModal = ({
                     actions={actions}
                     onLinked={(project, folder) => {
                       setProjectId(project.id)
-                      if (folder) setFolders((current) => projectFolderPatch(current, folder).folders ?? current)
+                      if (folder)
+                        setFolders((current) => projectFolderPatch(current, folder, machine.machine).folders ?? current)
                     }}
                     onClose={() => setAddingProject(false)}
                     onOpenPreview={() => setAddingProject(false)}
@@ -1836,8 +1844,10 @@ export const ProjectModal = ({
       setConnectedProject(nextProject)
       const grant = !discovered && projectFolder ? { ...projectFolder, path: nextProject.path } : undefined
       setProjectFolder(grant ?? null)
-      const folderPatch = (botId: string) =>
-        grant ? projectFolderPatch(bots.find((bot) => bot.id === botId)?.folders ?? [], grant) : {}
+      const folderPatch = (botId: string) => {
+        const bot = bots.find((bot) => bot.id === botId)
+        return grant && bot ? projectFolderPatch(bot.folders ?? [], grant, bot.machine) : {}
+      }
       if (linkBotId) {
         await actions.updateBot(linkBotId, { projectId: nextProject.id, ...folderPatch(linkBotId) })
         onLinked?.(nextProject, grant)
@@ -1871,7 +1881,7 @@ export const ProjectModal = ({
           actions.updateBot(bot.id, {
             projectId: selectedBotIds.includes(bot.id) ? connectedProject.id : null,
             ...(selectedBotIds.includes(bot.id) && projectFolder
-              ? projectFolderPatch(bot.folders ?? [], { ...projectFolder, path: connectedProject.path })
+              ? projectFolderPatch(bot.folders ?? [], { ...projectFolder, path: connectedProject.path }, bot.machine)
               : {}),
           }),
         ),
