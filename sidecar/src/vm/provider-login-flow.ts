@@ -536,6 +536,7 @@ export const createProviderLoginFlow = ({
     }
     if (input.action === "adopt" && !isDraft(target.id) && input.draftId && isDraft(input.draftId)) {
       const draft = sessions.get(key({ id: input.draftId, provider: target.provider }))
+      if (!draft && (await status(target)).state === "ready") return { provider: target.provider, state: "ready" }
       if (draft?.view.state !== "ready") throw new Error("Conclua o login antes de criar o bot.")
       if (draft.host) {
         if (!hostAvailable(target.provider)) throw new Error(hostUnavailable)

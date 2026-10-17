@@ -1,4 +1,4 @@
-import { appendFileSync, existsSync, readFileSync } from "node:fs"
+import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs"
 
 type RecordValue = Record<string, unknown>
 type Scenario = {
@@ -12,6 +12,8 @@ type Scenario = {
   authError?: boolean
   slowMs?: number
   ignoreInterrupt?: boolean
+  exitOnInterrupt?: boolean
+  toolPidPath?: string
   badResume?: boolean
   waitForApproval?: boolean
   logPath?: string
@@ -119,6 +121,20 @@ const emitTurn = async (): Promise<void> => {
     return
   }
   output({ method: "turn/started", params: { turnId } })
+  if (scenario.toolPidPath) {
+    const tool = Bun.spawn({
+      cmd: [
+        process.execPath,
+        "-e",
+        'process.on("SIGTERM", () => {}); process.stdout.write("ready"); setInterval(() => {}, 1000)',
+      ],
+      stdin: "ignore",
+      stdout: "pipe",
+      stderr: "inherit",
+    })
+    await tool.stdout.getReader().read()
+    writeFileSync(scenario.toolPidPath, String(tool.pid))
+  }
   const events = scenario.events ?? [
     ...(scenario.deltas ?? ["one ", "two ", "three"]).map((delta) => ({ type: "delta", delta })),
     { type: "complete" },
@@ -205,6 +221,7 @@ process.stdin.on("data", (chunk: string) => {
       if (id !== null) output({ jsonrpc: "2.0", id, result: { turn: { id: `fake-turn-${turnCount + 1}` } } })
       void emitTurn()
     } else if (method === "turn/interrupt") {
+      if (scenario.exitOnInterrupt) process.exit(0)
       if (!scenario.ignoreInterrupt) interrupted = true
     } else if (waitingForApproval && id === 99) {
       waitingForApproval = false

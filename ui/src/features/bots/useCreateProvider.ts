@@ -2,6 +2,7 @@ import type { Bot, ProviderLoginFlow } from "@touri/contracts"
 import { useCallback, useEffect, useRef, useState } from "react"
 import type { UiApi } from "../../api/client"
 import { t } from "../../i18n"
+import { retryProviderLogin } from "./providerLogin"
 
 export const CREATE_PROVIDERS = ["codex", "claude", "opencode"] as const
 
@@ -17,10 +18,14 @@ export const useCreateProvider = (api: UiApi | undefined, draftId: string) => {
       if (!api || generation.current !== current) return
       const result =
         flow.state === "host-available"
-          ? await api.request(
-              "POST /bots/:id/provider-login/flow",
-              { provider: next, action: "use-host" },
-              { id: draftId },
+          ? await retryProviderLogin(
+              () =>
+                api.request(
+                  "POST /bots/:id/provider-login/flow",
+                  { provider: next, action: "use-host" },
+                  { id: draftId },
+                ),
+              () => generation.current === current,
             )
           : flow
       if (generation.current === current) setReady(result.state === "ready")

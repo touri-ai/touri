@@ -4,6 +4,7 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
 import type { Bot, Kernel, McpServer, McpTool } from "@touri/contracts"
 import { createStandingGrantStore, registerStandingGrantRoutes } from "../approvals/grants"
+import { TouriError } from "../kernel/errors"
 import { buildChildEnv } from "../kernel/shell-env"
 import { touriVersion } from "../version"
 
@@ -56,13 +57,17 @@ export const withAttachedClient = async <T>(
   signal?: AbortSignal,
 ): Promise<T> => {
   const client = new Client({ name: "touri-config", version: touriVersion })
+  const env: Record<string, string> =
+    server.transport === "stdio" ? buildChildEnv({ base: await kernel.shellEnv() }) : {}
+  if (server.transport === "stdio" && bot.machine === "local" && !Bun.which(server.command, { PATH: env.PATH ?? "" }))
+    throw new TouriError("TOURI-E1012")
   const transport =
     server.transport === "http"
       ? new StreamableHTTPClientTransport(new URL(server.url))
       : new StdioClientTransport({
           command: server.command,
           args: server.args,
-          env: buildChildEnv({ base: await kernel.shellEnv() }),
+          env,
           stderr: "pipe",
         })
   // Probe in the same machine where this bot's CLI runs.
@@ -233,10 +238,25 @@ export const registerAttachedMcpRoutes = (kernel: Kernel): void => {
             const config = validateMcpServer({ ...(body as object), name: params.name })
             const previous = attachedServers(kernel, bot.id).find((server) => server.name === config.name)
             const sameConnection = previous && connectionKey(previous) === connectionKey(config)
-            const server = await discoverMcpTools(kernel, bot, {
-              ...config,
-              tools: sameConnection ? previous.tools : [],
-            })
+            let server: McpServer
+            try {
+              server = await discoverMcpTools(kernel, bot, {
+                ...config,
+                tools: sameConnection ? previous.tools : [],
+              })
+            } catch (error) {
+              const missing = error instanceof TouriError && error.code === "TOURI-E1012"
+              kernel.log({
+                level: "warn",
+                module: "mcp",
+                msg: `MCP ${config.name} connection failed for ${bot.id}`,
+                data: { error: error instanceof Error ? error.message : String(error) },
+              })
+              return {
+                status: 400,
+                json: { errorCode: missing ? "MCP_EXECUTABLE_NOT_FOUND" : "MCP_CONNECTION_FAILED" },
+              }
+            }
             const latest = attachedServers(kernel, bot.id).find((value) => value.name === config.name)
             if (JSON.stringify(latest) !== JSON.stringify(previous))
               return { status: 409, json: { error: "A configuração MCP mudou durante a conexão. Tente novamente." } }

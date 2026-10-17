@@ -76,7 +76,7 @@ const fixture = async () => {
   return { api, thread, reply, run, reveal }
 }
 
-it.each(["Cron", "notification", "sidebar"])(
+it.each(["Cron", "notification", "sidebar", "banner"])(
   "%s opens the approval's bot and routine thread and focuses its card",
   async (source) => {
     // jsdom does not implement scrolling; record the element the UI reveals.
@@ -98,9 +98,16 @@ it.each(["Cron", "notification", "sidebar"])(
           requestId: approval.approvalId,
         }),
       )
-      fireEvent.click(screen.getByRole("button", { name: /Notificações/ }))
-      const row = await screen.findByTestId("notification-row")
-      fireEvent.click(within(row).getByRole("button", { name: "Abrir" }))
+      if (source === "banner") {
+        const notice = document.querySelector(".approval-notice") as HTMLElement
+        expect(notice).toHaveTextContent("Executar comando no terminal")
+        expect(notice).not.toHaveTextContent("Bash:")
+        fireEvent.click(within(notice).getByRole("button", { name: "Revisar" }))
+      } else {
+        fireEvent.click(screen.getByRole("button", { name: /Notificações/ }))
+        const row = await screen.findByTestId("notification-row")
+        fireEvent.click(within(row).getByRole("button", { name: "Revisar" }))
+      }
     }
     await screen.findByRole("textbox", { name: "Mensagem para onb" })
     const card = await screen.findByRole("article", { name: "Aprovação de ferramenta" })

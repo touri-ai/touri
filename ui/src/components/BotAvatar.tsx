@@ -164,6 +164,7 @@ export const BotAvatar = ({
     let frameId = 0
     let visible = true
     const tick = (now: number): void => {
+      if (!element.isConnected) return
       frameId = requestAnimationFrame(tick)
       if (player && animated && player.advance(now, tracker?.sample, gesture)) paintBody()
     }

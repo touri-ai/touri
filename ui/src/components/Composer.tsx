@@ -92,6 +92,7 @@ export const Composer = ({
   const [caret, setCaret] = useState(draft.length)
   const [mentionIndex, setMentionIndex] = useState(0)
   const [mentionClosed, setMentionClosed] = useState(false)
+  const mentionListId = useId()
   const mention = draft.slice(0, caret).match(/(?:^|\s)@([^@\n]*)$/u)
   const suggestions =
     !mentionClosed && focused && mention
@@ -99,6 +100,7 @@ export const Composer = ({
           .filter((b) => b.name.toLocaleLowerCase().startsWith((mention[1] ?? "").toLocaleLowerCase()))
           .slice(0, 8)
       : []
+  const activeMention = suggestions[mentionIndex] ?? suggestions[0]
   const insertMention = (bot: Bot) => {
     const start = caret - (mention?.[1]?.length ?? 0) - 1
     const token = `@${/\s/.test(bot.name) ? JSON.stringify(bot.name) : bot.name} `
@@ -112,11 +114,12 @@ export const Composer = ({
   const [files, setFiles] = useState<Array<AttachedFile>>([])
   const [error, setError] = useState<string | null>(null)
   const [sending, setSending] = useState(false)
-  const [stopping, setStopping] = useState(false)
+  const [stoppingRunId, setStoppingRunId] = useState<string | null>(null)
   const [picking, setPicking] = useState(false)
   const [dragging, setDragging] = useState(false)
   const sendingRef = useRef(false)
-  const stoppingRef = useRef(false)
+  const stoppingRef = useRef<string | null>(null)
+  const stopping = Boolean(activeRun && activeRun.id === stoppingRunId)
   const alive = useRef(true)
   const draftRef = useRef(draft)
   draftRef.current = draft
@@ -253,17 +256,20 @@ export const Composer = ({
     }
   }
   const stop = async () => {
-    if (!activeRun || stoppingRef.current) return
-    stoppingRef.current = true
-    setStopping(true)
+    if (!activeRun || stoppingRef.current === activeRun.id) return
+    const runId = activeRun.id
+    stoppingRef.current = runId
+    setStoppingRunId(runId)
     setError(null)
     try {
-      await onCancel(activeRun.id)
+      await onCancel(runId)
     } catch (failure) {
-      if (alive.current) setError(t("Could not stop reply", { reason: userFacingError(failure) }))
-    } finally {
-      stoppingRef.current = false
-      if (alive.current) setStopping(false)
+      if (stoppingRef.current !== runId) return
+      stoppingRef.current = null
+      if (alive.current) {
+        setStoppingRunId(null)
+        setError(t("Could not stop reply", { reason: userFacingError(failure) }))
+      }
     }
   }
   const hasContent = Boolean(draft.trim() || files.length)
@@ -345,7 +351,9 @@ export const Composer = ({
         }}
         onBlur={() => setFocused(false)}
         onSelect={(e) => setCaret(e.currentTarget.selectionStart)}
-        aria-controls={suggestions.length ? "group-mention-list" : undefined}
+        aria-controls={suggestions.length ? mentionListId : undefined}
+        aria-autocomplete={groupName ? "list" : undefined}
+        aria-activedescendant={activeMention ? `${mentionListId}-${activeMention.id}` : undefined}
         onChange={(event) => {
           setCaret(event.target.selectionStart)
           setMentionIndex(0)
@@ -370,8 +378,7 @@ export const Composer = ({
             else if (event.key === "ArrowDown") setMentionIndex((i) => (i + 1) % suggestions.length)
             else if (event.key === "ArrowUp") setMentionIndex((i) => (i + suggestions.length - 1) % suggestions.length)
             else {
-              const bot = suggestions[mentionIndex] ?? suggestions[0]
-              if (bot) insertMention(bot)
+              if (activeMention) insertMention(activeMention)
             }
             return
           }
@@ -392,12 +399,15 @@ export const Composer = ({
         }}
       />
       {suggestions.length > 0 && (
-        <div className="group-mentions" id="group-mention-list" role="listbox" aria-label={t("Mention member")}>
-          {suggestions.map((bot, index) => (
+        <div className="group-mentions" id={mentionListId} role="listbox" aria-label={t("Mention member")}>
+          {suggestions.map((bot) => (
             <button
               type="button"
               role="option"
-              aria-selected={index === mentionIndex}
+              id={`${mentionListId}-${bot.id}`}
+              aria-label={`@${bot.name}`}
+              tabIndex={-1}
+              aria-selected={bot.id === activeMention?.id}
               key={bot.id}
               onMouseDown={(event) => event.preventDefault()}
               onClick={() => insertMention(bot)}
@@ -440,13 +450,14 @@ export const Composer = ({
           {activeRun && !showStop && (
             <button
               type="button"
-              className="composer-icon"
-              aria-label={t("Stop reply button")}
+              className={stopping ? "composer-stop" : "composer-icon"}
+              aria-label={stopping ? t("Stopping reply…") : t("Stop reply button")}
               title={t("Stop reply")}
               disabled={stopping}
               onClick={() => void stop()}
             >
               <Icon kind="stop" />
+              {stopping && t("Stopping reply…")}
             </button>
           )}
           {showStop ? (

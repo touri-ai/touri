@@ -258,7 +258,7 @@ export type MessageKind = 'text' | 'tool' | 'notice' | 'approval'
 export type MessageStatus = 'streaming' | 'complete' | 'failed' | 'canceled'
 
 export type TextPart = { type: 'text'; text: string }
-export type ReasoningPart = { type: 'reasoning'; text: string }
+export type ReasoningPart = { type: 'reasoning'; text: string; estimatedTokens?: number }
 export type ImagePart = { type: 'image'; attachmentId: Id; mime: string; name?: string }
 export type FilePart = { type: 'file'; attachmentId: Id; name: string; mime: string }
 export type ToolResolution = 'running' | 'succeeded' | 'failed' | 'canceled' | 'interrupted' | 'unknown' | 'cancelled_by_user' | 'interrupted_by_restart' | 'completed_unobserved'
@@ -606,6 +606,7 @@ export type ProviderEvent =
   | { type: 'turn_started'; externalTurnId: string }
   | { type: 'text_delta'; itemId: string; delta: string }
   | { type: 'reasoning_delta'; itemId: string; delta: string }
+  | { type: 'reasoning_progress'; estimatedTokens: number }
   | { type: 'item'; part: MessagePart }
   | { type: 'approval_request'; approvalId: Id; part: ApprovalPart }
   | { type: 'usage'; usage: Partial<RunUsage>; contextTokens: number | null; contextWindow: number | null }
@@ -859,6 +860,7 @@ export type UiEvent =
   | { type: 'machine.updated'; machine: MachineState }
   | { type: 'bot.updated'; bot: Bot }
   | { type: 'bot.deleted'; botId: Id }
+  | { type: 'project.created'; project: Project }
   | { type: 'thread.updated'; thread: Thread }
   | { type: 'message.created'; message: Message }
   | { type: 'message.delta'; threadId: Id; messageId: Id; partIndex: number; delta: string; offset?: number; updatedSeq?: number; generation?: number; partType?: 'text' | 'reasoning'; updatedAt?: EpochMs }
@@ -1094,6 +1096,7 @@ export type ServiceMap = {
   'store.api': StoreApi
   'runtime.enqueue': (args: { threadId: Id; requestMessageId: Id; trigger: RunTrigger }) => Result<{ run: Run }, 'THREAD_NOT_FOUND' | 'BOT_PAUSED'>
   'runtime.activeRun': (args: { threadId: Id }) => Run | null
+  'runtime.continueAfterApproval': (ctx: Pick<ToolContext, 'botId' | 'threadId' | 'runId' | 'signal'>) => boolean
   'runtime.cancelBotTurns': (args: { botId: Id }) => Promise<void>
   'runtime.shutdown': () => Promise<void>
   'projects.info': (args: { projectId: Id; botId?: Id }) => Promise<ProjectInfo | null>

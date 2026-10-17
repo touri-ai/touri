@@ -1,0 +1,51 @@
+.local-file-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-link);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.local-file-error {
+  color: var(--text-secondary);
+}
+
+.local-file-preview {
+  width: min(800px, 90vw);
+  max-height: 85vh;
+  padding: 24px;
+  border: 1px solid var(--border-default);
+  border-radius: 12px;
+  background: var(--surface-panel);
+  color: var(--text-primary);
+  overflow: auto;
+}
+
+.local-file-preview::backdrop {
+  background: rgb(0 0 0 / 40%);
+}
+
+.local-file-preview > header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.local-file-preview > header > strong {
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+
+.local-file-preview > img {
+  max-width: 100%;
+}
+
+.local-file-preview > pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

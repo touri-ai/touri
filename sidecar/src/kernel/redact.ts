@@ -95,8 +95,13 @@ export const createStreamingRedactor = (redact: (text: string) => string, extra:
     tail = text.slice(cut)
     return redact(maskKnownValues(text.slice(0, cut), forms))
   }
+  // At the end of the stream the retained tail is only a possible prefix, never a whole value.
+  // Short prefixes ("s" of an `sk-` token) are ordinary text; longer ones stay masked.
   const flush = (): string => {
-    const result = tail ? "[REDACTED]" : ""
+    const forms = [...redactionValues(redact), ...extra].flatMap(representations).filter(Boolean)
+    const harmless =
+      tail.length < 8 && forms.every((secret) => !secret.startsWith(tail) || tail.length * 2 <= secret.length)
+    const result = !tail ? "" : harmless ? redact(tail) : "[REDACTED]"
     tail = ""
     return result
   }

@@ -20,6 +20,25 @@ const approval = (tool: string, input: unknown): ApprovalPart => ({
   decision: "pending",
 })
 
+it("local folder approval reports the next local turn", () => {
+  render(
+    <ApprovalCard
+      api={createMockApi()}
+      part={approval("folder_access_request", {
+        path: "/tmp/notes",
+        mode: "read-write",
+        nextTurn: true,
+        machine: "local",
+      })}
+    />,
+  )
+  expect(
+    screen.getByText(
+      "Permitir Leitura e escrita em /tmp/notes para este bot A mudança entra em vigor no próximo turno local.",
+    ),
+  ).toBeInTheDocument()
+})
+
 it("project approval shows the reviewed project and replaced project, even when the provider passed only an ID", async () => {
   const api = createMockApi()
   const tool: ToolCallPart = {

@@ -1,7 +1,8 @@
 import type { MessagePart } from "@touri/contracts"
+import { redactToolText } from "@touri/contracts/redaction"
 import { type Locale, type TranslationKey, t } from "../i18n"
 import { type MascotState, mascotIsBusy, mascotLabelFor } from "./mascotState"
-import { approvalMatchesTool, toolLeaf, toolStatus } from "./toolPresentation"
+import { approvalMatchesTool, toolLeaf, toolPresentation, toolStatus } from "./toolPresentation"
 
 /** Keep the visible request and activity current while the server acknowledges a local answer. */
 export const withApprovalAnswers = (
@@ -35,12 +36,8 @@ const activityKeys: Record<ActivityKind, TranslationKey> = {
   waiting: "Activity waiting",
 }
 
-/** Describe the action, never a provider's internal tool name or arguments. */
-export const activityKindFor = (state: MascotState, parts: readonly MessagePart[]): ActivityKind => {
-  if (state === "waiting-approval") return "waiting"
-  if (state === "thinking") return "thinking"
-  if (state !== "working-tool") return "working"
-  const tool = [...parts]
+const activeToolFor = (parts: readonly MessagePart[]) =>
+  [...parts]
     .reverse()
     .find(
       (part) =>
@@ -53,6 +50,13 @@ export const activityKindFor = (state: MascotState, parts: readonly MessagePart[
             approvalMatchesTool(approval, part),
         ),
     )
+
+/** Describe the action, never a provider's internal tool name or arguments. */
+export const activityKindFor = (state: MascotState, parts: readonly MessagePart[]): ActivityKind => {
+  if (state === "waiting-approval") return "waiting"
+  if (state === "thinking") return "thinking"
+  if (state !== "working-tool") return "working"
+  const tool = activeToolFor(parts)
   if (tool?.type !== "tool_call") return "working"
   const name = toolLeaf(tool.tool)
     .replace(/([a-z])([A-Z])/g, "$1_$2")
@@ -67,7 +71,36 @@ export const activityLabelFor = (
   state: MascotState,
   parts: readonly MessagePart[],
   locale: Locale = "pt-BR",
-): string =>
-  mascotIsBusy(state) || state === "waiting-approval"
-    ? t(activityKeys[activityKindFor(state, parts)], {}, locale)
-    : mascotLabelFor(state, locale)
+): string => {
+  if (!mascotIsBusy(state) && state !== "waiting-approval") return mascotLabelFor(state, locale)
+  const label = t(activityKeys[activityKindFor(state, parts)], {}, locale)
+  if (state === "waiting-approval" || state === "typing") return label
+  const tool = state === "working-tool" ? activeToolFor(parts) : undefined
+  // A tool starting after reasoning makes that preview stale; a new reasoning part replaces it.
+  const latest = [...parts]
+    .reverse()
+    .find((part) => ["reasoning", "text", "tool_call", "command", "file_change"].includes(part.type))
+  if (latest?.type === "reasoning") {
+    const sentence = redactToolText(latest.text)
+      .replace(/\s+/g, " ")
+      .trim()
+      .split(/(?<=[.!?…])\s+/)
+      .at(-1)
+    if (sentence) return shortLabel(`${t(activityKeys.thinking, {}, locale)}: ${sentence}`)
+    if (latest.estimatedTokens !== undefined) {
+      const thinking = `${t(activityKeys.thinking, {}, locale)}…`
+      return latest.estimatedTokens > 0 ? `${thinking} (~${latest.estimatedTokens} tokens)` : thinking
+    }
+  }
+  if (tool && (tool.type === "tool_call" || tool.type === "command" || tool.type === "file_change")) {
+    const path = toolPresentation(tool).filePaths[0]
+    const file = path?.split(/[\\/]/).at(-1)
+    if (file) return shortLabel(`${label} ${redactToolText(file)}`)
+  }
+  return label
+}
+
+const shortLabel = (label: string): string => {
+  const line = label.replace(/\s+/g, " ").trim()
+  return line.length > 160 ? `${line.slice(0, 159)}…` : line
+}

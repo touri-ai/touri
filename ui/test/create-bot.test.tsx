@@ -1,10 +1,11 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import type { ProviderLoginFlow } from "@touri/contracts"
 import { afterEach, expect, it, vi } from "vitest"
 import App from "../src/App"
 import type { ApiRequest } from "../src/api/client"
 import { createMockApi } from "../src/api/mock"
 import { BotCreateModal } from "../src/components/Modals"
+import { ApiError } from "../src/errors"
 import { getJobTemplates } from "../src/features/jobs/catalog"
 
 afterEach(() => {
@@ -24,6 +25,129 @@ const accounts = (states: Partial<Record<ProviderLoginFlow["provider"], Provider
   }) as ApiRequest
   return api
 }
+
+const openCreation = async (api: ReturnType<typeof createMockApi>, first: boolean) => {
+  if (first) {
+    api.getState().bots.splice(0)
+    api.getState().threads.splice(0)
+  }
+  render(<App kernel={{ services: { api } }} />)
+  fireEvent.click(await screen.findByRole("button", { name: first ? "Criar meu primeiro bot" : "Criar bot" }))
+  fireEvent.change(screen.getByLabelText("Nome"), { target: { value: "Café Ideias" } })
+  await screen.findByText(/Usa o Codex/)
+  fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Criar bot", exact: true }))
+}
+
+const expectCreatedConversation = async (api: ReturnType<typeof createMockApi>) => {
+  expect(await screen.findByRole("textbox", { name: "Mensagem para Café Ideias" }, { timeout: 3000 })).toBeVisible()
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
+  const bot = api.getState().bots.find((bot) => bot.name === "Café Ideias")
+  expect(bot?.mainThreadId).toBeTruthy()
+  await waitFor(() =>
+    expect(JSON.parse(localStorage.getItem("touri.workspace.v1") ?? "{}")).toMatchObject({
+      botId: bot?.id,
+      threadId: bot?.mainThreadId,
+    }),
+  )
+  expect(api.calls.filter((call) => call.route === "POST /bots")).toHaveLength(1)
+}
+
+it.each([true, false])(
+  "keeps creation mounted through live events and opens its conversation (first=%s)",
+  async (first) => {
+    const api = accounts({ codex: "ready" })
+    const original = api.request
+    let finish: () => void = () => undefined
+    const pending = new Promise<void>((resolve) => {
+      finish = resolve
+    })
+    const request = vi.fn(async (route, input, path) => {
+      if (route === "POST /bots/:id/provider-login/flow" && input.action === "adopt") await pending
+      return original(route, input, path)
+    })
+    api.request = request as ApiRequest
+    await openCreation(api, first)
+    await waitFor(() => expect(api.getState().bots.some((bot) => bot.name === "Café Ideias")).toBe(true))
+    expect(screen.getByLabelText("Nome")).toHaveValue("Café Ideias")
+    expect(within(screen.getByRole("dialog")).getByRole("button", { name: "Criando…", exact: true })).toBeDisabled()
+    expect(
+      request.mock.calls.some(
+        ([route, input]) => route === "POST /bots/:id/provider-login/flow" && input.action === "cancel",
+      ),
+    ).toBe(false)
+    await act(async () => finish())
+    await expectCreatedConversation(api)
+    expect(screen.getByRole("status")).toHaveTextContent("Café Ideias criado.")
+  },
+)
+
+it("retries a retryable 503 during creation and recovers without another click", async () => {
+  const api = accounts({ codex: "ready" })
+  const original = api.request
+  let attempts = 0
+  api.request = (async (route, input, path) => {
+    if (route === "POST /bots/:id/provider-login/flow" && (input as { action: string }).action === "adopt") {
+      if (++attempts === 1) throw new ApiError(503, "unavailable", "TOURI-E1009")
+    }
+    return original(route, input, path)
+  }) as ApiRequest
+  await openCreation(api, true)
+  await expectCreatedConversation(api)
+  expect(attempts).toBe(2)
+})
+
+it("bounds retries and automatically uses an available host login after adoption fails", async () => {
+  const api = accounts({ codex: "ready" })
+  const original = api.request
+  let attempts = 0
+  let hostUses = 0
+  api.request = (async (route, input, path) => {
+    if (route === "POST /bots/:id/provider-login/flow") {
+      const action = (input as { action: string }).action
+      if (action === "adopt") {
+        attempts++
+        throw new ApiError(503, "unavailable", "TOURI-E1009")
+      }
+      if (action === "use-host") hostUses++
+    }
+    if (route === "GET /bots/:id/provider-login/flow" && !path?.id?.startsWith("draft-"))
+      return { provider: "codex", state: hostUses ? "ready" : "host-available", host: "server" }
+    return original(route, input, path)
+  }) as ApiRequest
+  await openCreation(api, true)
+  await expectCreatedConversation(api)
+  expect(attempts).toBe(3)
+  expect(hostUses).toBe(1)
+  expect(screen.queryByRole("button", { name: "Usar login deste servidor" })).toBeNull()
+})
+
+it("finishes creation after a non-retryable login failure with a friendly message and a recovery action", async () => {
+  const api = accounts({ codex: "ready" })
+  const original = api.request
+  let attempts = 0
+  let denied = true
+  api.request = (async (route, input, path) => {
+    if (route === "POST /bots/:id/provider-login/flow") {
+      const action = (input as { action: string }).action
+      if (action === "adopt") attempts++
+      if (denied && (action === "adopt" || action === "start"))
+        throw new ApiError(403, "synthetic internal detail", "TOURI-E1010")
+    }
+    if (route === "GET /bots/:id/provider-login/flow" && !path?.id?.startsWith("draft-"))
+      return { provider: "codex", state: "idle" }
+    return original(route, input, path)
+  }) as ApiRequest
+  await openCreation(api, true)
+  await expectCreatedConversation(api)
+  expect(attempts).toBe(1)
+  expect(screen.getByRole("status")).toHaveTextContent("Bot criado. Não foi possível conectar sua conta.")
+  expect(await screen.findByRole("button", { name: "Tentar novamente", exact: true })).toBeEnabled()
+  expect(document.body.textContent).not.toMatch(/TOURI-E1010|synthetic internal detail/)
+  denied = false
+  fireEvent.click(screen.getByRole("button", { name: "Tentar novamente", exact: true }))
+  await waitFor(() => expect(screen.queryByRole("button", { name: "Tentar novamente", exact: true })).toBeNull())
+  expect(api.calls.filter((call) => call.route === "POST /bots")).toHaveLength(1)
+})
 
 it("creates from the landing with only a name in two clicks and no technical fields", async () => {
   const api = createMockApi()

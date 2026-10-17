@@ -154,6 +154,7 @@ export const createApprovalBridge = ({
         toolName: input.toolName,
         input: input.input,
         detail: part.detail,
+        scope: part.scope,
       })
     })
   }

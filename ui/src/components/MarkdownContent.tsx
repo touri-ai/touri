@@ -1,10 +1,12 @@
 import { invoke } from "@tauri-apps/api/core"
 import { isValidElement, lazy, type ReactNode, Suspense, useContext, useEffect, useMemo, useRef, useState } from "react"
 import type { Components } from "react-markdown"
+import { localFileLinks, localFilePath } from "../messageMarkdown"
 import { protectDiffFences } from "./codeFence"
 import { DiffOutput } from "./DiffOutput"
 import { EvidenceContext, type EvidenceContextValue, EvidenceGallery } from "./EvidenceGallery"
 import { type EvidenceNode, evidenceImages } from "./evidenceMarkdown"
+import { LocalFileLink } from "./LocalFileLink"
 import { syntaxTheme } from "./syntaxTheme"
 
 type MarkdownRendererProps = {
@@ -41,25 +43,33 @@ const chatPreview = () => (tree: PreviewNode) => {
 }
 
 const LazyMarkdown = lazy(async () => {
-  const [{ default: ReactMarkdown }, { default: remarkGfm }, { unified }, { default: remarkParse }] = await Promise.all(
-    [import("react-markdown"), import("remark-gfm"), import("unified"), import("remark-parse")],
-  )
+  const [
+    { default: ReactMarkdown, defaultUrlTransform },
+    { default: remarkGfm },
+    { unified },
+    { default: remarkParse },
+  ] = await Promise.all([import("react-markdown"), import("remark-gfm"), import("unified"), import("remark-parse")])
   const buildComponents = (preview: boolean): Components => ({
     img: ({ alt }) => <span>{alt}</span>,
-    a: ({ href, children }) => (
-      <a
-        href={href}
-        target="_blank"
-        rel="noopener noreferrer"
-        onClick={(event) => {
-          if (!href || !/^https?:\/\//i.test(href) || !("__TAURI_INTERNALS__" in window)) return
-          event.preventDefault()
-          void invoke("open_external", { url: href }).catch(() => window.open(href, "_blank", "noopener,noreferrer"))
-        }}
-      >
-        {children}
-      </a>
-    ),
+    a: ({ href, children }) => {
+      const path = localFilePath(href ?? "")
+      return path ? (
+        <LocalFileLink path={path}>{children}</LocalFileLink>
+      ) : (
+        <a
+          href={href}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={(event) => {
+            if (!href || !/^https?:\/\//i.test(href) || !("__TAURI_INTERNALS__" in window)) return
+            event.preventDefault()
+            void invoke("open_external", { url: href }).catch(() => window.open(href, "_blank", "noopener,noreferrer"))
+          }}
+        >
+          {children}
+        </a>
+      )
+    },
     pre: ({ children }) => {
       if (!isValidElement<{ className?: string; children?: ReactNode }>(children)) return <pre>{children}</pre>
       const language = children.props.className?.replace(/^language-/, "") ?? "text"
@@ -81,8 +91,8 @@ const LazyMarkdown = lazy(async () => {
   })
   const fullComponents = buildComponents(false)
   const previewComponents = buildComponents(true)
-  const fullPlugins = [remarkGfm]
-  const previewPlugins = [remarkGfm, chatPreview]
+  const fullPlugins = [remarkGfm, localFileLinks]
+  const previewPlugins = [remarkGfm, chatPreview, localFileLinks]
   const Markdown = ({ content, preview }: MarkdownRendererProps) => {
     const evidence = useContext(EvidenceContext)
     const images = useMemo(() => {
@@ -95,6 +105,7 @@ const LazyMarkdown = lazy(async () => {
       <>
         <ReactMarkdown
           skipHtml
+          urlTransform={(url, key) => (key === "href" && localFilePath(url) ? url : defaultUrlTransform(url))}
           remarkPlugins={preview ? previewPlugins : fullPlugins}
           components={preview ? previewComponents : fullComponents}
         >

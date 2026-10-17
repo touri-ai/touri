@@ -35,7 +35,7 @@ const setup = ({
   bot.access = access
   bot.model = "gpt-6.1-sol"
   const cancel = vi.fn().mockResolvedValue(undefined)
-  const Harness = () => {
+  const Harness = ({ currentRun }: { currentRun: Run | null }) => {
     const [text, setText] = useState(draft)
     const input = useRef<HTMLTextAreaElement>(null)
     return (
@@ -47,15 +47,21 @@ const setup = ({
         draft={text}
         onDraft={setText}
         inputRef={input}
-        activeRun={activeRun}
+        activeRun={currentRun}
         queuedCount={queuedCount}
         onSend={send}
         onCancel={cancel}
       />
     )
   }
-  render(<Harness />)
-  return { api, send, cancel, box: screen.getByRole("textbox", { name: "Mensagem para mark" }) }
+  const view = render(<Harness currentRun={activeRun} />)
+  return {
+    api,
+    send,
+    cancel,
+    box: screen.getByRole("textbox", { name: "Mensagem para mark" }),
+    updateRun: (currentRun: Run | null) => view.rerender(<Harness currentRun={currentRun} />),
+  }
 }
 const run = { id: "active", status: "running" } as Run
 
@@ -126,6 +132,27 @@ describe("composer island", () => {
     fireEvent.change(box, { target: { value: "Próxima tarefa" } })
     fireEvent.click(screen.getByRole("button", { name: "Adicionar à fila" }))
     await waitFor(() => expect(send).toHaveBeenCalledWith("Próxima tarefa", "parent", []))
+  })
+
+  it("keeps Parando after the cancel acknowledgement, allows typing and queueing, then returns to Enviar", async () => {
+    const { box, cancel, send, updateRun } = setup({ activeRun: run })
+    fireEvent.click(screen.getByRole("button", { name: "Parar" }))
+    expect(screen.getByRole("button", { name: "Parando…" })).toBeDisabled()
+    await act(async () => {})
+    expect(cancel).toHaveBeenCalledOnce()
+    expect(screen.getByRole("button", { name: "Parando…" })).toBeDisabled()
+    expect(box).toBeEnabled()
+    fireEvent.change(box, { target: { value: "Próxima tarefa" } })
+    expect(screen.getByRole("button", { name: "Parando…" })).toBeDisabled()
+    fireEvent.click(screen.getByRole("button", { name: "Adicionar à fila" }))
+    await waitFor(() => expect(send).toHaveBeenCalledWith("Próxima tarefa", "parent", []))
+    expect(screen.getByRole("button", { name: "Parando…" })).toBeDisabled()
+    updateRun(null)
+    expect(screen.getByRole("button", { name: "Enviar" })).toBeDisabled()
+    fireEvent.change(box, { target: { value: "Outro rascunho" } })
+    expect(screen.getByRole("button", { name: "Enviar" })).toBeEnabled()
+    updateRun({ ...run, id: "next-run" })
+    expect(screen.getByRole("button", { name: "Parar" })).toBeEnabled()
   })
 
   it("preserves a newer draft and prevents duplicate sends while sending", async () => {
