@@ -185,7 +185,12 @@ const routineError = (input: RoutineCreate): string | null => {
   if (
     !input.name.trim() ||
     input.name.length > 80 ||
+    !input.prompt.trim() ||
     input.prompt.length > 8_000 ||
+    !Number.isInteger(input.catchUpMinutes) ||
+    input.catchUpMinutes < 0 ||
+    input.catchUpMinutes > 1440 ||
+    !Number.isInteger(input.timeoutMinutes) ||
     input.timeoutMinutes < 1 ||
     input.timeoutMinutes > 240
   )
@@ -1640,6 +1645,8 @@ export const createRuntimeEngine = ({
       return { success: false, errorCode: "BOT_NOT_FOUND", error: "Bot not found" }
     const validation = routineError(input)
     if (validation) return { success: false, errorCode: "INVALID_ARGS", error: validation }
+    if (input.resultsThreadId && store.getThread({ threadId: input.resultsThreadId })?.botId !== input.botId)
+      return { success: false, errorCode: "INVALID_ARGS", error: "Results conversation must belong to this bot" }
     const now = Date.now()
     const routine: Routine = {
       id: kernel.newId(),
@@ -1659,6 +1666,11 @@ export const createRuntimeEngine = ({
       createdAt: now,
       updatedAt: now,
     }
+    if (routine.enabled) {
+      const parsed = parseCron(routine.cron)
+      if (parsed.success)
+        routine.nextRunAt = nextCronSlot({ cron: parsed.cron, timezone: routine.timezone, at: now + 1 })
+    }
     persistence.saveRoutine(routine)
     kernel.publish({ type: "routine.updated", routine, lastRun: null })
     return { success: true, routine }
@@ -1677,6 +1689,19 @@ export const createRuntimeEngine = ({
     if (fromTool && patch.enabled === true)
       return { success: false, errorCode: "INVALID_ARGS", error: "Agents cannot enable routines" }
     const next = { ...routine, ...patch, id: routine.id, botId: routine.botId, updatedAt: Date.now() }
+    // A changed task or destination needs a new explicit human activation.
+    const reviewedFields = [
+      "prompt",
+      "cron",
+      "timezone",
+      "continuity",
+      "resultsThreadId",
+      "timeoutMinutes",
+      "catchUpMinutes",
+      "overlap",
+    ] as const
+    if (patch.enabled !== true && reviewedFields.some((field) => next[field] !== routine[field])) next.enabled = false
+
     const validation = routineError({
       botId: next.botId,
       name: next.name,
@@ -1691,11 +1716,16 @@ export const createRuntimeEngine = ({
       catchUpMinutes: next.catchUpMinutes,
     })
     if (validation) return { success: false, errorCode: "INVALID_ARGS", error: validation }
+    if (
+      next.resultsThreadId &&
+      kernel.services.use("store.api")?.getThread({ threadId: next.resultsThreadId })?.botId !== next.botId
+    )
+      return { success: false, errorCode: "INVALID_ARGS", error: "Results conversation must belong to this bot" }
     if (!next.enabled) next.nextRunAt = null
     else if (!routine.enabled || next.cron !== routine.cron || next.timezone !== routine.timezone) {
       const parsed = parseCron(next.cron)
       if (parsed.success)
-        next.nextRunAt = nextCronSlot({ cron: parsed.cron, timezone: next.timezone, at: Date.now() + 60_000 })
+        next.nextRunAt = nextCronSlot({ cron: parsed.cron, timezone: next.timezone, at: Date.now() + 1 })
     }
     persistence.updateRoutine(next)
     kernel.publish({ type: "routine.updated", routine: next, lastRun: persistence.listRoutineRuns(next.id)[0] ?? null })
@@ -1711,7 +1741,7 @@ export const createRuntimeEngine = ({
     scheduledFor: number
     triggerSource: RoutineRun["triggerSource"]
   }): void => {
-    persistence.insertRoutineRun({
+    const inserted = persistence.insertRoutineRun({
       id: kernel.newId(),
       routineId: routine.id,
       scheduledFor,
@@ -1723,6 +1753,8 @@ export const createRuntimeEngine = ({
       startedAt: null,
       finishedAt: Date.now(),
     })
+    if (!inserted.success) return
+    kernel.publish({ type: "routine.updated", routine, lastRun: inserted.routineRun })
     notices.deferred({
       botId: routine.botId,
       threadId: null,
@@ -1871,7 +1903,12 @@ export const createRuntimeEngine = ({
       if (due <= now) {
         if (now - due > routine.catchUpMinutes * 60_000)
           recordSkipped({ routine, scheduledFor: due, triggerSource: "catch-up" })
-        else void runRoutine({ routineId: routine.id, triggerSource: "cron", scheduledFor: due })
+        else
+          void runRoutine({
+            routineId: routine.id,
+            triggerSource: now - due >= 60_000 ? "catch-up" : "cron",
+            scheduledFor: due,
+          })
         const next = nextCronSlot({ cron: parsed.cron, timezone: routine.timezone, at: due + 60_000 })
         updateNextRun({ routineId: routine.id, nextRunAt: next })
       }
