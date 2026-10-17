@@ -114,9 +114,10 @@ fn killing_the_stdio_helper_terminates_its_process_tree() {
     let identity: serde_json::Value = serde_json::from_slice(&identity.stdout).unwrap();
     assert_eq!(identity["value"]["alive"], true);
     let birth = identity["value"]["birth"].as_str().unwrap();
+    let helper_id = helper.id().to_string();
     let terminate = |expected: &str| {
         let result = Command::new(env!("CARGO_BIN_EXE_touri"))
-            .args(["--terminate-process", &helper.id().to_string(), expected])
+            .args(["--terminate-process", &helper_id, expected])
             .output()
             .unwrap();
         assert!(result.status.success());
