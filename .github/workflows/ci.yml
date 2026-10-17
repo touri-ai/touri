@@ -66,8 +66,21 @@ jobs:
           bun-version: 1.2.21
       - run: bun install --frozen-lockfile
       - run: bunx tsc --noEmit -p tsconfig.base.json
-      - run: bun --cwd ui test --maxWorkers=2 --minWorkers=1 --testTimeout=30000
       - run: bun --cwd ui build
+
+  # The UI suite runs once, here. Pull requests run only the tests that reach a changed file;
+  # pushes to main run the whole suite to catch anything the selection missed.
+  vitest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.3
+      - run: bun install --frozen-lockfile
+      - run: bash scripts/test-ui-affected.sh ${{ github.event.pull_request.base.sha }}
 
   license-check:
     runs-on: macos-14
@@ -105,7 +118,6 @@ jobs:
       - run: bun run typecheck
       - run: bun run lint
       - run: bun test --timeout 30000 sidecar/test
-      - run: bun --cwd ui test --maxWorkers=2 --minWorkers=1 --testTimeout=30000
       - run: bun run build:sidecar:linux
       - run: cargo fmt --manifest-path src-tauri/Cargo.toml --check
       - run: cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
@@ -146,7 +158,6 @@ jobs:
       - run: cargo fmt --manifest-path src-tauri/Cargo.toml --check
       - run: cargo test --manifest-path src-tauri/Cargo.toml
       - run: bun run test:sidecar:portable
-      - run: bun --cwd ui test --maxWorkers=2 --minWorkers=1 --testTimeout=30000
       - run: bun run test:sidecar:smoke
       - run: bun run tauri build --bundles "msi,nsis"
       - uses: actions/upload-artifact@v4
