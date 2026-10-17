@@ -50,7 +50,6 @@ for (const access of ["workspace-write", "full"])
           `if printf bad > ${quote(join(ro, "reference.txt"))}; then echo ESCAPED; exit 9; fi`,
           `cat ${quote(join(ro, "reference.txt"))}`,
           `printf saved > ${quote(join(rw, "saved.txt"))}`,
-          // biome-ignore lint/suspicious/noTemplateCurlyInString: expanded by the confined shell
           `printf '%s' "$APPROVED_TOKEN" > ${quote(join(rw, "env-proof"))}`,
           // biome-ignore lint/suspicious/noTemplateCurlyInString: expanded by the confined shell
           "printf '%s\\n' \"${UNRELATED_SECRET:-absent}\"",
