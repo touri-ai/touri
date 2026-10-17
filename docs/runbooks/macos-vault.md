@@ -2,6 +2,10 @@
 
 If a saved login stops working after installing an update, open that bot and click **Permitir acesso ao cofre** (English: **Allow vault access**). In the macOS dialog, choose **Permitir sempre** (**Always Allow**). macOS may ask for the login keychain password. The app checks again and resumes the message you already tried to send, once. Cancelling leaves the draft editable. Doctor offers the same action for each affected login; terminal alternatives are inside **Outras opções**.
 
+Saved browser sessions have their own per-bot key. If that key needs approval, open **Diagnóstico**, find **Navegador · [bot name] · sessão salva**, click **Permitir acesso ao cofre**, then choose **Permitir sempre**. Doctor checks again automatically; retry opening the bot's browser to restore its saved cookies and storage. A denied, cancelled or timed-out read leaves the existing encrypted file and its key untouched. The browser does not create an empty context for an unreadable saved session. New saves require encryption; legacy unencrypted session files remain readable and are encrypted on the next successful save.
+
+Native recovery is offered only by desktop macOS. Linux and headless hosts show guidance to check the server data folder's permissions and restart the touri service, along with **Verificar de novo** in chat. They never invoke the macOS authorization command or suggest replacing a saved login while the vault is unavailable.
+
 Normal vault operations disallow system interaction and have a two-second native deadline. Authorization is a separate foreground app command, with a 90-second deadline. The secret never returns to the webview. The Security.framework call cannot be forcibly cancelled; a timed-out call retains the single operation slot until it finishes, so retries cannot accumulate native calls. Close a pending system dialog before trying again.
 
 ## Stable signing for local builds
