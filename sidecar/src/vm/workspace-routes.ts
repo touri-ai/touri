@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto"
 import { closeSync, fstatSync, readSync } from "node:fs"
 import { readdir, realpath } from "node:fs/promises"
-import { basename, relative, resolve } from "node:path"
+import { basename, dirname, relative, resolve } from "node:path"
 import type { Bot, Kernel, RouteModule, VmRuntime, WorkspaceFile } from "@touri/contracts"
 
 import { canonicalPath, excludedBotFolders, folderGuestPath, withinFolder } from "../kernel/bot-folders"
@@ -49,6 +49,12 @@ const fileTarget = (kernel: Kernel, bot: Bot, path: string, workspace: string) =
       )
     )
       return null
+    // With access to any folder, system links such as /var -> /private/var are not escapes:
+    // walk from the canonical parent. Granted folders keep refusing links below their root.
+    if (match.root === "/") {
+      const parent = canonicalPath(dirname(target))
+      return { root: parent, path: basename(target) }
+    }
   }
   return { root: match.root, path: relative(match.spelling, target) }
 }

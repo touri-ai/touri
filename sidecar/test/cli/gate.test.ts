@@ -206,6 +206,8 @@ test("chat file reads require authentication and reach API routing rather than s
   expect((await call({ path }))?.status).toBe(401)
   const { cookie } = await pair()
   expect(await call({ path, headers: { cookie } })).toBeNull()
+})
+
 test("serves the linked app favicon from directory and embedded UI assets", async () => {
   const { store, secrets, limiter, pair } = makeGate()
   const { cookie } = await pair()
