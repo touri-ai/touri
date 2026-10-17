@@ -108,7 +108,7 @@ export const Sidebar = (props: SidebarProps) => {
   const ordered = useSidebarOrder({ ...props, messages, notifications, attention })
   return (
     <nav className="bot-sidebar r8-sidebar" aria-label={t("Workspace sidebar")}>
-      <div className="traffic-light-row" data-tauri-drag-region>
+      <div className="traffic-light-row" data-tauri-drag-region="deep">
         {props.showFakeTrafficLights ? (
           <div className="sidebar-traffic-lights" aria-hidden="true">
             <span className="traffic-light red" />

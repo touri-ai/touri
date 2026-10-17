@@ -201,7 +201,7 @@ export const GroupHeader = ({
   onTogglePanel?: (() => void) | undefined
   locale?: Locale
 }) => (
-  <header className="chat-header group-header">
+  <header className="chat-header group-header" data-tauri-drag-region="deep">
     <div>
       <span className="chat-header-crumb">{t("Grupos / {name}", { name: group.name }, locale)}</span>
       <div className="group-heading-name">

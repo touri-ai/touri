@@ -895,7 +895,7 @@ export const ChatPanel = ({
   if (!thread)
     return (
       <section className="chat-panel">
-        <header className="chat-header" data-tauri-drag-region>
+        <header className="chat-header" data-tauri-drag-region="deep">
           <span className="chat-header-crumb">Bots / {bot?.name ?? "touri"}</span>
           <div className="chat-bot-chip">
             {bot && <BotAvatar bot={bot} size={18} />}
@@ -993,7 +993,7 @@ export const ChatPanel = ({
           onTogglePanel={onTogglePanel}
         />
       ) : (
-        <header className="chat-header" data-tauri-drag-region>
+        <header className="chat-header" data-tauri-drag-region="deep">
           <span className="chat-header-crumb">Bots / {bot?.name ?? "touri"}</span>
           <div className="chat-bot-chip">
             {bot ? (
