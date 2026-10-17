@@ -126,11 +126,13 @@ export const linuxFolderSandbox = (
   const claudeHome = join(args.bot.homeDir, ".touri-claude")
   if (args.bot.provider === "claude") ensurePrivateDirectory({ root: args.bot.homeDir, path: claudeHome })
   const hostCodex = join(canonicalPath(home), ".codex")
+  const hostCodexAuth = canonicalPath(join(hostCodex, "auth.json"))
   const codexAuth = args.bot.provider === "codex" && env.CODEX_HOME ? join(env.CODEX_HOME, "auth.json") : undefined
   const codexCredential = codexAuth
     ? credential(codexAuth, [
         canonicalPath(env.CODEX_HOME ?? ""),
-        ...(canonicalPath(hostCodex) === hostCodex ? [hostCodex] : []),
+        // The shared login is one file, never the host's history/config directory.
+        ...(canonicalPath(hostCodex) === hostCodex && withinFolder(hostCodex, hostCodexAuth) ? [hostCodexAuth] : []),
       ])
     : undefined
   const codexAlias =

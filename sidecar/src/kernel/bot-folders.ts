@@ -28,6 +28,8 @@ export const resolveBotFolder = (path: string, inspectContents = true): string =
   const canonical = realpathSync(path)
   if (!statSync(canonical).isDirectory()) throw new Error("O caminho precisa ser uma pasta.")
   if (process.platform === "linux" && canonical === "/") throw new Error(specificFoldersRequired)
+  if (process.platform === "linux" && ["/proc", "/sys", "/dev"].some((root) => withinFolder(root, canonical)))
+    throw new Error("Esta pasta é protegida. Escolha outra pasta.")
   if (lstatSync(path).isSymbolicLink()) throw new Error("Escolha a pasta original, não um link simbólico.")
   if (!inspectContents) return canonical
   const pending = [canonical]

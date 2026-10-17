@@ -268,6 +268,20 @@ test.skipIf(!available)("credential symlinks cannot smuggle protected or ungrant
   }
 })
 
+test.skipIf(!available)("a managed login link cannot expose unrelated host provider history", () => {
+  const f = fixture()
+  const auth = join(f.args.env.CODEX_HOME ?? "", "auth.json")
+  rmSync(auth)
+  symlinkSync(join(f.home, ".codex/sessions/private"), auth)
+  expect(() => f.shell('cat "$CODEX_HOME/auth.json"')).toThrow("login do bot com segurança")
+})
+
+test.skipIf(!available)("saved system filesystem grants are incompatible before provider startup", () => {
+  const f = fixture()
+  for (const path of ["/proc", "/proc/sys", "/sys", "/dev", "/dev/shm"])
+    expect(folderGrantProblem({ ...f.args.bot, folders: [{ path, access: "read-only" }] })).not.toBeNull()
+})
+
 test.skipIf(!available)("Linux read-only bot keeps user files immutable and runtime writable", () => {
   const f = fixture()
   f.args.bot.access = "read-only"

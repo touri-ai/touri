@@ -235,6 +235,24 @@ test("saved incompatible grants allow later greetings in conversation-only mode 
   }
 })
 
+test("saved system filesystem grants recover as conversation-only without changing stored permissions", async () => {
+  if (process.platform !== "linux") return
+  const f = await fixture()
+  try {
+    await f.finish(0)
+    const folders = [{ path: "/proc", access: "read-only" as const }]
+    f.db.query("UPDATE bots SET folders_json = ? WHERE id = 'b'").run(JSON.stringify(folders))
+    f.send("oi")
+    await waitFor(() => f.turns.length === 2)
+    expect(f.turns[1]).toMatchObject({ conversationOnly: true, bot: { folders: [] } })
+    expect(f.turns[1]?.input).toContainEqual({ type: "text", text: expect.stringContaining("oi") })
+    expect(f.store.getBot({ botId: "b" })?.folders).toEqual(folders)
+    await f.finish(1)
+  } finally {
+    await f.close()
+  }
+})
+
 test("a reopened bot with saved grants can start its first conversation on an incompatible host", async () => {
   const unavailable = spyOn(folderCapability, "hostFolderAccessAvailable").mockReturnValue(false)
   const f = await fixture()

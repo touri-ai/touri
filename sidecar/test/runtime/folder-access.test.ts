@@ -93,6 +93,12 @@ test("folder grants default off, persist per bot, reject malformed input and onl
     expect(root.status).toBe(400)
     expect(await root.json()).toMatchObject({ error: folderCapability.specificFoldersRequired })
     expect(f.runtime.kernel.services.use("store.api")?.getBot({ botId: f.bot.id })?.folders).toEqual(folders)
+    for (const path of ["/proc", "/sys", "/dev", "/dev/shm"]) {
+      const protectedFolder = await f.request(`/bots/${f.bot.id}`, { folders: [{ path, access: "read-only" }] })
+      expect(protectedFolder.status).toBe(400)
+      expect(await protectedFolder.json()).toMatchObject({ error: "Esta pasta é protegida. Escolha outra pasta." })
+      expect(f.runtime.kernel.services.use("store.api")?.getBot({ botId: f.bot.id })?.folders).toEqual(folders)
+    }
   }
   expect((await f.request(`/bots/${f.bot.id}`, { folders: [{ path: f.ro, access: "full" }] })).status).toBe(400)
   expect((await f.request(`/bots/${f.bot.id}`, { anyFolderAccess: "yes" })).status).toBe(400)
