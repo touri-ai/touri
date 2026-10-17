@@ -120,30 +120,29 @@ export const localFolderProfile = (
   return rules.join("\n")
 }
 
+/**
+ * Off macOS, only a bot with explicit folder grants is confined. Full access
+ * means no folder restriction, so its saved grants never wrap or break a turn;
+ * grant-free and tool-free turns keep the provider's own boundary.
+ */
+export const folderConfinementRequired = (args: StartTurnArgs): boolean =>
+  !args.execution &&
+  !args.conversationOnly &&
+  args.bot.access !== "full" &&
+  (!!args.bot.anyFolderAccess || !!args.bot.folders?.length)
+
 export const spawnFolderProvider = (
   kernel: Kernel,
   args: StartTurnArgs,
   input: Parameters<Kernel["spawnTree"]>[0],
 ): ReturnType<Kernel["spawnTree"]> => {
   if (args.execution) return args.execution.spawn(input)
-  if (process.platform === "linux" && !hostFolderAccessAvailable())
-    return args.conversationOnly
-      ? kernel.spawnTree(input)
-      : { success: false, errorCode: "SPAWN_FAILED", error: folderAccessUnavailable }
-  if (
-    process.platform !== "darwin" &&
-    !hostFolderAccessAvailable() &&
-    !args.bot.anyFolderAccess &&
-    !args.bot.folders?.length
-  )
-    return kernel.spawnTree(input)
-  // Never silently drop a folder grant's platform boundary.
-  if (!hostFolderAccessAvailable()) {
-    if (!args.bot.anyFolderAccess && !args.bot.folders?.length) return kernel.spawnTree(input)
-    return { success: false, errorCode: "SPAWN_FAILED", error: folderAccessUnavailable }
-  }
-  const binary = linuxSandboxBinary()
-  if (binary) {
+  if (process.platform !== "darwin") {
+    if (!folderConfinementRequired(args)) return kernel.spawnTree(input)
+    // Never silently drop a folder grant's platform boundary.
+    const binary = linuxSandboxBinary()
+    if (!binary || !hostFolderAccessAvailable())
+      return { success: false, errorCode: "SPAWN_FAILED", error: folderAccessUnavailable }
     try {
       return kernel.spawnTree({
         ...input,
@@ -164,6 +163,7 @@ export const spawnFolderProvider = (
       }
     }
   }
+  if (!hostFolderAccessAvailable()) return { success: false, errorCode: "SPAWN_FAILED", error: folderAccessUnavailable }
   return kernel.spawnTree({
     ...input,
     cmd: "/usr/bin/sandbox-exec",

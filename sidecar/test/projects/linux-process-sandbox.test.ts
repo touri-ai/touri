@@ -8,7 +8,8 @@ import { createHarness } from "./harness"
 
 const available = process.platform === "linux" && (await refreshHostFolderAccess())
 
-for (const access of ["workspace-write", "full"])
+// Full access has no folder restriction, so only bounded bots are confined.
+for (const access of ["workspace-write"])
   test.skipIf(!available)(
     `approved ${access} project processes inherit folder isolation`,
     async () => {

@@ -165,6 +165,37 @@ test("Linux provider spawning enforces RO and RW grants instead of failing the c
   expect(readFileSync(join(f.rw, "saved.txt"), "utf8")).toBe("saved")
 })
 
+test("off macOS, full access and grant-free turns spawn the provider directly, with or without confinement", async () => {
+  if (process.platform === "darwin") return
+  const f = await fixture()
+  const spawned: string[] = []
+  const kernel = {
+    ...f.runtime.kernel,
+    spawnTree: (input: Parameters<Kernel["spawnTree"]>[0]) => {
+      spawned.push(input.cmd)
+      return { success: false, errorCode: "SPAWN_FAILED", error: "captured" } as const
+    },
+  } as Kernel
+  const input = { cmd: "/bin/true", args: [], cwd: f.bot.homeDir, env: f.args.env }
+  const unavailable = spyOn(folderCapability, "hostFolderAccessAvailable").mockReturnValue(false)
+  try {
+    // Full access means no folder restriction: saved grants never wrap or refuse it.
+    f.args.bot = { ...f.bot, access: "full", folders: [{ path: f.ro, access: "read-only" }], anyFolderAccess: true }
+    expect(spawnFolderProvider(kernel, f.args, input)).toMatchObject({ error: "captured" })
+    f.args.bot = { ...f.bot, access: "workspace-write", folders: [], anyFolderAccess: false }
+    expect(spawnFolderProvider(kernel, f.args, input)).toMatchObject({ error: "captured" })
+    expect(spawned).toEqual(["/bin/true", "/bin/true"])
+    // A real grant without a working boundary is refused rather than silently dropped.
+    f.args.bot = { ...f.bot, access: "workspace-write", folders: [{ path: f.ro, access: "read-only" }] }
+    expect(spawnFolderProvider(kernel, f.args, input)).toMatchObject({
+      error: folderCapability.folderAccessUnavailable,
+    })
+    expect(spawned).toHaveLength(2)
+  } finally {
+    unavailable.mockRestore()
+  }
+})
+
 test("realpath grants reject escape symlinks, duplicates, conflicting overlaps and retargeted directories", async () => {
   const f = await fixture()
   expect(parseBotFolders([{ path: `${f.ro}/.`, access: "read-only" }])).toEqual([{ path: f.ro, access: "read-only" }])

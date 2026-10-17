@@ -767,7 +767,10 @@ export const createSupervisor = ({
       cwd: spec.cwd,
       env: environment.env,
     }
-    if (!vm && bot && (bot.access === "workspace-write" || platform === "linux")) {
+    // Full access has no folder restriction; other Linux bots with grants keep their boundary.
+    const linuxGrants =
+      platform === "linux" && bot?.access !== "full" && !!(bot?.folders?.length || bot?.anyFolderAccess)
+    if (!vm && bot && (bot.access === "workspace-write" || linuxGrants)) {
       const temporary = join(project.dataDir, "tmp", spec.id)
       ensurePrivateDirectory({ root: kernel.paths.appData, path: temporary })
       // The launcher runs before confinement. Loader hooks and project PATH

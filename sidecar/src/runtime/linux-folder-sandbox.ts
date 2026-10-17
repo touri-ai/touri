@@ -219,8 +219,10 @@ export const linuxFolderSandbox = (
   // Explicit RO trees win over a broader writable workspace.
   for (const folder of folders.filter((folder) => folder.access === "read-only")) bind(folder.path, false)
   // Broad, explicitly selected homes must still hide protected application data.
+  const exposed = [...folders.map((folder) => folder.path), ...workspace, ...internal]
   for (const path of linuxProtectedFolders(kernel.paths.appData, home).filter(existsSync)) {
-    if (!statSync(path).isDirectory()) continue
+    // Mask only when a broader mount would show it; otherwise it simply does not exist.
+    if (!statSync(path).isDirectory() || !exposed.some((entry) => withinFolder(canonicalPath(entry), path))) continue
     mounts.push("--tmpfs", path)
     for (const entry of folders.filter((folder) => withinFolder(path, folder.path)))
       bind(entry.path, args.bot.access !== "read-only" && entry.access === "read-write")

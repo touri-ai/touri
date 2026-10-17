@@ -235,38 +235,47 @@ test("saved incompatible grants allow later greetings in conversation-only mode 
   }
 })
 
-test.skipIf(process.platform !== "linux")(
-  "a grant-free bot without confinement can greet but cannot receive tools",
-  async () => {
-    const f = await fixture()
-    f.db.query("UPDATE bots SET folders_json = '[]' WHERE id = 'b'").run()
-    const unavailable = spyOn(folderCapability, "hostFolderAccessAvailable").mockReturnValue(false)
-    try {
-      await f.finish(0)
-      f.send("oi")
-      await waitFor(() => f.turns.length === 2)
-      expect(f.turns[1]).toMatchObject({
-        conversationOnly: true,
-        bot: { folders: [], anyFolderAccess: false, access: "read-only", projectId: null, mcpServers: [] },
-      })
-      expect(f.turns[1]?.input).toContainEqual({ type: "text", text: expect.stringContaining("oi") })
-      await f.finish(1)
-      expect(f.store.getBot({ botId: "b" })?.folders).toEqual([])
-      expect(
-        f.store
-          .activePath({ threadId: "t" })
-          .some((message) =>
-            message.parts.some(
-              (part) => part.type === "notice" && part.text === folderCapability.folderAccessUnavailable,
-            ),
-          ),
-      ).toBe(true)
-    } finally {
-      unavailable.mockRestore()
-      await f.close()
-    }
-  },
-)
+test("a grant-free bot without confinement keeps its tools and gets no folder warning", async () => {
+  const f = await fixture()
+  f.db.query("UPDATE bots SET folders_json = '[]' WHERE id = 'b'").run()
+  const unavailable = spyOn(folderCapability, "hostFolderAccessAvailable").mockReturnValue(false)
+  try {
+    await f.finish(0)
+    f.send("oi")
+    await waitFor(() => f.turns.length === 2)
+    expect(f.turns[1]?.conversationOnly).toBeUndefined()
+    expect(f.turns[1]?.bot.folders).toEqual([])
+    await f.finish(1)
+    expect(
+      f.store
+        .activePath({ threadId: "t" })
+        .some((message) =>
+          message.parts.some((part) => part.type === "notice" && part.code === "folder_access_unavailable"),
+        ),
+    ).toBe(false)
+  } finally {
+    unavailable.mockRestore()
+    await f.close()
+  }
+})
+
+test("a full-access bot with saved grants is never degraded by an incompatible host", async () => {
+  const f = await fixture()
+  f.db.query("UPDATE bots SET access = 'full', any_folder_access = 1 WHERE id = 'b'").run()
+  const unavailable = spyOn(folderCapability, "hostFolderAccessAvailable").mockReturnValue(false)
+  try {
+    await f.finish(0)
+    f.send("oi")
+    await waitFor(() => f.turns.length === 2)
+    expect(f.turns[1]?.conversationOnly).toBeUndefined()
+    expect(f.turns[1]?.bot).toMatchObject({ access: "full", folders: [{ path: f.reference, access: "read-only" }] })
+    await f.finish(1)
+    expect(f.store.getBot({ botId: "b" })?.folders).toEqual([{ path: f.reference, access: "read-only" }])
+  } finally {
+    unavailable.mockRestore()
+    await f.close()
+  }
+})
 
 test("saved system filesystem grants recover as conversation-only without changing stored permissions", async () => {
   if (process.platform !== "linux") return

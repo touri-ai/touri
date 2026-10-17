@@ -1,10 +1,12 @@
 import type { StartTurnArgs } from "@touri/contracts"
 import { canonicalPath } from "../../kernel/bot-folders"
 import { hostFolderAccessAvailable } from "../../kernel/folder-capability"
-import { writableTurnFolders } from "../folder-access"
+import { folderConfinementRequired, writableTurnFolders } from "../folder-access"
 
+// Only a turn that actually runs inside touri's outer boundary may skip Codex's own sandbox.
 export const outerFolderSandbox = (args: StartTurnArgs, platform = process.platform): boolean =>
-  !args.execution && (platform === "darwin" || (platform === "linux" && hostFolderAccessAvailable()))
+  !args.execution &&
+  (platform === "darwin" || (platform === "linux" && folderConfinementRequired(args) && hostFolderAccessAvailable()))
 
 export const codexAccessParams = (args: StartTurnArgs, platform = process.platform): Record<string, unknown> => {
   const reviewer = { approvalsReviewer: "user" }

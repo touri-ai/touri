@@ -49,8 +49,10 @@ export const projectSandboxCommand = ({
     for (const path of writable) bind(path, canWrite(path))
     for (const grant of grants.filter((folder) => folder.access === "read-only")) bind(grant.path, false)
     // A broad project or granted home cannot expose the database, other bots or logins.
+    const exposed = [...grants.map((grant) => grant.path), ...writable]
     for (const path of linuxProtectedFolders(appData ?? "/touri", homedir()).filter(existsSync)) {
-      if (!statSync(path).isDirectory()) continue
+      // Mask only when a broader mount would show it; otherwise it simply does not exist.
+      if (!statSync(path).isDirectory() || !exposed.some((entry) => withinFolder(entry, path))) continue
       mounts.push("--tmpfs", path)
       for (const grant of grants.filter((folder) => withinFolder(path, folder.path)))
         bind(grant.path, grant.access === "read-write")

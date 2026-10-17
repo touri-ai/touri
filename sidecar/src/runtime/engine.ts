@@ -30,12 +30,7 @@ import { createApprovalBridge } from "../approvals/bridge"
 import { approvalOutcome } from "../approvals/outcome"
 import { delegatedBot } from "../groups/security"
 import { buildChildEnv } from "../kernel"
-import {
-  folderAccessUnavailable,
-  folderGrantProblem,
-  hostFolderAccessAvailable,
-  refreshHostFolderAccess,
-} from "../kernel/folder-capability"
+import { folderAccessUnavailable, folderGrantProblem, refreshHostFolderAccess } from "../kernel/folder-capability"
 import { providerProfileEnv } from "../kernel/provider-profiles"
 import { redactStructured } from "../kernel/redact"
 import { attachedServers, resolveAttachedMcp } from "../mcp/attached"
@@ -746,14 +741,13 @@ export const createRuntimeEngine = ({
       return
     }
     const state = getState(run.id)
-    if (
+    // Full access has no folder restriction: a saved grant must never degrade it.
+    const grantsApply =
       candidateBot.machine === "local" &&
-      (process.platform === "linux" || candidateBot.anyFolderAccess || candidateBot.folders?.length)
-    )
-      await refreshHostFolderAccess()
-    const conversationOnly =
-      !!folderGrantProblem(candidateBot) ||
-      (candidateBot.machine === "local" && process.platform === "linux" && !hostFolderAccessAvailable())
+      candidateBot.access !== "full" &&
+      (!!candidateBot.anyFolderAccess || !!candidateBot.folders?.length)
+    if (grantsApply) await refreshHostFolderAccess()
+    const conversationOnly = grantsApply && !!folderGrantProblem(candidateBot)
     const bot: Bot = conversationOnly
       ? {
           ...candidateBot,
