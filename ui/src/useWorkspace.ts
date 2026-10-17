@@ -26,6 +26,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { UiApi } from "./api/client"
 import { reconcileApprovalMessages, reconcileApprovalNotifications } from "./approvalState"
 import { userFacingError } from "./errors"
+import { adoptProviderLogin } from "./features/bots/providerLogin"
 import { useDoctorReport } from "./features/doctor/useDoctorReport"
 import { localizeNotice, t } from "./i18n"
 import { useMachineParking } from "./machineIntents"
@@ -77,7 +78,7 @@ export type WorkspaceActions = {
   updateBot: (botId: Id, patch: Partial<ApiRoutes["PATCH /bots/:id"]["req"]>) => Promise<void>
   deleteBot: (botId: Id, name: string, deleteVolumes: boolean) => Promise<void>
   machineAction: (botId: Id, reset: boolean, projectId?: Id | null, stopTurns?: boolean) => Promise<void>
-  createBot: (input: ApiRoutes["POST /bots"]["req"], loginDraftId?: string) => Promise<void>
+  createBot: (input: ApiRoutes["POST /bots"]["req"], loginDraftId?: string) => Promise<{ loginReady: boolean }>
   toggleRoutine: (routine: Routine) => Promise<void>
   runRoutine: (routineId: Id) => Promise<void>
   createRoutine: (input: ApiRoutes["POST /routines"]["req"]) => Promise<void>
@@ -306,7 +307,6 @@ const lastActiveThread = (threads: Thread[], runs: Run[], botId: Id, rememberedI
 }
 
 export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
-  const createdLoginDrafts = useRef(new Map<string, Bot>())
   const diagnosis = useDoctorReport(api, enabled)
   const [data, setData] = useState<WorkspaceData>(emptyState)
   const currentData = useRef(data)
@@ -822,34 +822,27 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
   )
 
   const createBot = useCallback(
-    async (input: ApiRoutes["POST /bots"]["req"], loginDraftId?: string): Promise<void> => {
-      const created = loginDraftId ? createdLoginDrafts.current.get(loginDraftId) : undefined
-      const response = created ? { bot: created } : await api.request("POST /bots", input)
-      if (loginDraftId) createdLoginDrafts.current.set(loginDraftId, response.bot)
-      if (loginDraftId)
-        await api.request(
-          "POST /bots/:id/provider-login/flow",
-          { provider: input.provider, action: "adopt", draftId: loginDraftId },
-          { id: response.bot.id },
-        )
-      if (loginDraftId) createdLoginDrafts.current.delete(loginDraftId)
+    async (input: ApiRoutes["POST /bots"]["req"], loginDraftId?: string) => {
+      const response = await api.request("POST /bots", input)
+      const [loginReady, threadsResponse] = await Promise.all([
+        loginDraftId
+          ? adoptProviderLogin(api, response.bot, loginDraftId).then(
+              () => true,
+              () => false,
+            )
+          : Promise.resolve(true),
+        api.request("GET /bots/:id/threads", {}, { id: response.bot.id }).catch(() => ({ threads: [] })),
+      ])
       setData((current) => ({
         ...current,
         bots: uniqueById([...current.bots, response.bot]),
         selectedBotId: response.bot.id,
-        selectedThreadId: response.bot.mainThreadId,
+        threads: mergeThreads(current.threads, threadsResponse.threads),
+        selectedThreadId: response.bot.mainThreadId ?? threadsResponse.threads[0]?.id ?? null,
         activeProjectId: response.bot.projectId,
         processes: [],
       }))
-      const threadsResponse = await api.request("GET /bots/:id/threads", {}, { id: response.bot.id })
-      setData((current) => ({
-        ...current,
-        threads: uniqueById([...current.threads, ...threadsResponse.threads]),
-        selectedThreadId:
-          current.selectedBotId === response.bot.id
-            ? (threadsResponse.threads[0]?.id ?? null)
-            : current.selectedThreadId,
-      }))
+      return { loginReady }
     },
     [api],
   )

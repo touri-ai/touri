@@ -483,6 +483,9 @@ export const ptBR = {
   "No jobs found. Try another search.": "Nenhum trabalho encontrado. Tente outra busca.",
   Mascot: "Mascote",
   "New bot": "Novo bot",
+  "{name} created.": "{name} criado.",
+  "Bot created. Could not connect your account. Sign in below to chat.":
+    "Bot criado. Não foi possível conectar sua conta. Entre na conta abaixo para conversar.",
   Instructions: "Instruções",
   "Uses {name}, already signed in on this Mac.": "Usa o {name}, que já está conectado neste Mac.",
   "Asks permission before changing files.": "Pede permissão antes de mudar arquivos.",
