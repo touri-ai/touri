@@ -4,6 +4,19 @@ import type { HostMethods, HostNotification, Kernel } from "@touri/contracts"
 type RpcResponse = { id?: number; result?: unknown; error?: { message?: string } }
 type Pending = { resolve: (response: RpcResponse) => void; reject: (error: Error) => void }
 
+type HostErrorCode = "HOST_ERROR" | "VAULT_ACCESS_REQUIRED" | "VAULT_TIMEOUT" | "VAULT_CANCELLED" | "VAULT_UNAVAILABLE"
+const hostErrorCode = (message?: string): HostErrorCode => {
+  switch (message) {
+    case "VAULT_ACCESS_REQUIRED":
+    case "VAULT_TIMEOUT":
+    case "VAULT_CANCELLED":
+    case "VAULT_UNAVAILABLE":
+      return message
+    default:
+      return "HOST_ERROR"
+  }
+}
+
 const record = (value: unknown): Record<string, unknown> | null => {
   if (typeof value !== "object" || value === null) return null
   return value as Record<string, unknown>
@@ -112,7 +125,11 @@ export const createHostClient = ({
       await connect()
       const response = await request(method, params)
       if (response.error)
-        return { success: false, errorCode: "HOST_ERROR", error: response.error.message ?? "Host error" }
+        return {
+          success: false,
+          errorCode: hostErrorCode(response.error.message),
+          error: response.error.message ?? "Host error",
+        }
       return { success: true, value: response.result as HostMethods[typeof method]["result"] }
     } catch (error) {
       return {

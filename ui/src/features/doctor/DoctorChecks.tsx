@@ -2,7 +2,8 @@ import type { DoctorCheck, DoctorReport, DoctorStatus } from "@touri/contracts"
 import { useEffect, useRef, useState } from "react"
 import type { UiApi } from "../../api/client"
 import { MachineServiceButton } from "../../components/MachineServiceButton"
-import { localizeNotice, plural } from "../../i18n"
+import { VaultAccessButton } from "../../components/VaultAccessButton"
+import { localizeNotice, plural, t } from "../../i18n"
 import { DoctorStorage } from "./DoctorStorage"
 
 const labels: Record<DoctorStatus, string> = { pass: "Pronto", warn: "Atenção", fail: "Falha" }
@@ -50,29 +51,47 @@ const DoctorRow = ({
         {status === "pass" ? "✓" : "!"}
       </span>
       <div className="doctor-check-content">
-        <strong>{label}</strong>
-        <span>{localizeNotice(check.detail)}</span>
-        {status !== "pass" && check.fix && (
-          <div className="doctor-fix">
-            <code>{check.fix}</code>
-            <div className="doctor-fix-actions">
-              {check.action === "start-machine-service" && api && (
-                <MachineServiceButton api={api} onStarted={onRefresh} />
-              )}
-              <button
-                type="button"
-                className="button button-quiet"
-                aria-label={`Copiar comando para ${label}`}
-                onClick={() => void copy()}
-              >
-                <span aria-live="polite" aria-atomic="true">
-                  {copied ? "Copiado" : "Copiar comando"}
-                </span>
-              </button>
-            </div>
-            {copyError && <small role="status">Selecione o comando acima e copie manualmente.</small>}
-          </div>
+        <strong>{localizeNotice(label)}</strong>
+        <span>
+          {check.action === "authorize-vault"
+            ? t(
+                check.id.startsWith("browser-session:")
+                  ? "Permita o acesso ao cofre para restaurar a sessão salva do navegador."
+                  : "Permita o acesso ao cofre para usar o login salvo.",
+              )
+            : localizeNotice(check.detail)}
+        </span>
+        {status !== "pass" && check.action === "authorize-vault" && check.vaultAccount && (
+          <VaultAccessButton account={check.vaultAccount} onAuthorized={onRefresh} />
         )}
+        {status !== "pass" &&
+          check.fix &&
+          (check.action === "authorize-vault" ? (
+            <details>
+              <summary>{t("Outras opções")}</summary>
+              <code>{check.fix}</code>
+            </details>
+          ) : (
+            <div className="doctor-fix">
+              <code>{check.fix}</code>
+              <div className="doctor-fix-actions">
+                {check.action === "start-machine-service" && api && (
+                  <MachineServiceButton api={api} onStarted={onRefresh} />
+                )}
+                <button
+                  type="button"
+                  className="button button-quiet"
+                  aria-label={`Copiar comando para ${label}`}
+                  onClick={() => void copy()}
+                >
+                  <span aria-live="polite" aria-atomic="true">
+                    {copied ? "Copiado" : "Copiar comando"}
+                  </span>
+                </button>
+              </div>
+              {copyError && <small role="status">Selecione o comando acima e copie manualmente.</small>}
+            </div>
+          ))}
       </div>
       <span className="doctor-state">{labels[status]}</span>
     </li>

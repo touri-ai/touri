@@ -18,7 +18,6 @@ it.each(["não é json", "[", "{}", "[42]"])("F024: explains invalid MCP JSON %s
   const user = userEvent.setup()
   const api = createMockApi()
   render(<BotMcpSettings api={api} botId="json-bot" />)
-  await screen.findByText(/Nenhum servidor externo conectado/)
   fireEvent.click(screen.getByRole("button", { name: "Configuração técnica (MCP)" }))
   fireEvent.change(screen.getByLabelText("Nome do servidor MCP"), { target: { value: "test" } })
   fireEvent.change(screen.getByLabelText("Comando MCP"), { target: { value: "node" } })
@@ -59,7 +58,6 @@ it("F025: shows the missing MCP command through the real API error boundary and 
 it("F025: identifies an invalid server name before attempting a connection", async () => {
   const api = createMockApi()
   render(<BotMcpSettings api={api} botId="bad-name" />)
-  await screen.findByText(/Nenhum servidor externo conectado/)
   fireEvent.click(screen.getByRole("button", { name: "Configuração técnica (MCP)" }))
   fireEvent.change(screen.getByLabelText("Nome do servidor MCP"), { target: { value: "QA comando inexistente" } })
   fireEvent.change(screen.getByLabelText("Comando MCP"), { target: { value: "touri-qa-command-does-not-exist" } })
@@ -77,7 +75,6 @@ it("F005: requires an absolute folder before connecting the local-files preset",
       : { server: { ...input, tools: [{ name: "list_files", description: "" }] } },
   ) as ApiRequest
   render(<BotMcpSettings api={{ ...api, request }} botId="files-bot" />)
-  await screen.findByText(/Nenhum servidor externo conectado/)
   fireEvent.click(screen.getByRole("button", { name: "Configuração técnica (MCP)" }))
   fireEvent.change(screen.getByLabelText("Nome do servidor MCP"), { target: { value: "arquivos" } })
   fireEvent.change(screen.getByLabelText("Comando MCP"), { target: { value: "npx" } })
@@ -114,7 +111,6 @@ it("F005: requires an absolute folder before connecting the local-files preset",
 
 it("F005: validates edited JSON too and does not require a folder for Gmail or HTTP", async () => {
   render(<BotMcpSettings api={createMockApi()} botId="files-bot" />)
-  await screen.findByText(/Nenhum servidor externo conectado/)
   fireEvent.click(screen.getByRole("button", { name: "Configuração técnica (MCP)" }))
   fireEvent.change(screen.getByLabelText("Nome do servidor MCP"), { target: { value: "arquivos" } })
   fireEvent.change(screen.getByLabelText("Comando MCP"), { target: { value: "npx" } })

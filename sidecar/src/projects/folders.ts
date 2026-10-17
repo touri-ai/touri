@@ -5,16 +5,27 @@ import { dirname, isAbsolute, join, parse, sep } from "node:path"
 import type { FolderListing, RouteModule } from "@touri/contracts"
 import { excludedBotFolders, withinFolder } from "../kernel/bot-folders"
 import { createWorkspaceChildDirectory, openWorkspaceDirectory, openWorkspaceEntry } from "../kernel/files"
+import { hostFolderAccessAvailable } from "../runtime/folder-access"
 
 const MAX_FOLDERS = 100
 const MAX_ENTRIES = 2_000
 const invalidPath = /[\0\n\r,]/
 
-export const createFolderRoutes = ({ appData, home = homedir() }: { appData: string; home?: string }): RouteModule => {
+export const createFolderRoutes = ({
+  appData,
+  home = homedir(),
+  canGrant = hostFolderAccessAvailable,
+}: {
+  appData: string
+  home?: string
+  canGrant?: () => boolean
+}): RouteModule => {
   const denied = (path: string, excluded: string[]) => excluded.some((root) => withinFolder(root, path))
   const directory = async (value: unknown, excluded: string[]) => {
     if (typeof value !== "string" || !isAbsolute(value) || value.length > 4096 || invalidPath.test(value))
       throw new Error("Escolha uma pasta com caminho absoluto válido.")
+    const root = await realpath(home)
+    if (!withinFolder(root, value)) throw new Error("Esta pasta fica fora das pastas autorizáveis do servidor.")
     const parts = value.split(sep).filter(Boolean)
     if (parts.some((part) => part.startsWith(".")) || denied(value, excluded))
       throw new Error("Esta pasta é protegida. Escolha outra pasta.")
@@ -25,7 +36,8 @@ export const createFolderRoutes = ({ appData, home = homedir() }: { appData: str
       if ((await lstat(current)).isSymbolicLink()) throw new Error("Escolha a pasta original, não um link simbólico.")
     }
     const path = await realpath(value)
-    if (denied(path, excluded)) throw new Error("Esta pasta é protegida. Escolha outra pasta.")
+    if (!withinFolder(root, path) || denied(path, excluded))
+      throw new Error("Esta pasta é protegida. Escolha outra pasta.")
     const identity = await lstat(path)
     if (!identity.isDirectory()) throw new Error("O caminho precisa ser uma pasta.")
     const fd = openWorkspaceDirectory({ root: "/", path: path.slice(1) })
@@ -106,9 +118,10 @@ export const createFolderRoutes = ({ appData, home = homedir() }: { appData: str
             return {
               status: 200,
               json: {
+                canGrant: canGrant(),
                 home: start,
                 path,
-                parent: parent === path ? null : parent,
+                parent: path === start ? null : parent,
                 folders,
                 truncated,
               } satisfies FolderListing,

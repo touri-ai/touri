@@ -33,7 +33,7 @@ const fixture = () => {
   mkdirSync(home)
   mkdirSync(appData)
   const registry = createRouteRegistry()
-  registry.registerRoutes(createFolderRoutes({ appData, home }))
+  registry.registerRoutes(createFolderRoutes({ appData, home, canGrant: () => true }))
   cleanups.push(() => rmSync(root, { recursive: true, force: true }))
   const request = async (method: string, path?: string, body?: unknown) => {
     const response = await registry.handle({
@@ -61,9 +61,10 @@ test("folder endpoint lists only visible subfolders starting at home", async () 
   const response = await f.list()
   expect(response.status).toBe(200)
   expect(await response.json()).toEqual({
+    canGrant: true,
     home: f.home,
     path: f.home,
-    parent: dirname(f.home),
+    parent: null,
     truncated: false,
     folders: ["Alpha", "Zulu"].map((name) => ({ name, path: join(f.home, name) })),
   })
@@ -207,6 +208,32 @@ test("folder responses match the shared API schema", async () => {
   const created = ajv.compile<{ path: string }>({ ...folderSchema, $ref: "#/$defs/created" })
   expect(listing(await (await f.list()).json())).toBe(true)
   expect(created(await (await f.create(f.home, "Report")).json())).toBe(true)
+})
+
+test("neither browsing nor creating can escape the server root or follow an external link", async () => {
+  const f = fixture()
+  const outside = join(f.root, "workspace-backup")
+  mkdirSync(outside)
+  symlinkSync(outside, join(f.home, "escape"))
+  for (const path of [f.root, "/", outside, join(f.home, "escape")]) {
+    expect((await f.list(path)).status).toBe(400)
+    expect((await f.create(path, "new-folder")).status).toBe(400)
+  }
+  const listing = await (await f.list()).json()
+  expect(listing.parent).toBeNull()
+  expect(listing.folders).toEqual([])
+  expect(existsSync(join(outside, "new-folder"))).toBe(false)
+})
+
+test("folder preflight reports the actual host boundary without granting access", async () => {
+  const f = fixture()
+  for (const available of [false, true]) {
+    const route = createFolderRoutes({ appData: f.appData, home: f.home, canGrant: () => available }).routes[0]
+    if (!route) throw new Error("Missing listing route")
+    const response = await route.handler({ params: {}, query: {}, body: null, signal: AbortSignal.timeout(1000) })
+    expect(response.status).toBe(200)
+    expect("json" in response && response.json).toMatchObject({ canGrant: available, home: f.home, parent: null })
+  }
 })
 
 test("a directory swapped for a symlink during listing cannot expose protected names", async () => {

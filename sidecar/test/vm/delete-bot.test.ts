@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite"
 import { afterEach, expect, test } from "bun:test"
-import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { Bot } from "@touri/contracts"
@@ -22,7 +22,14 @@ const fixture = async () => {
   writeFileSync(join(root, ".codex/auth.json"), JSON.stringify({ access_token: "fake-test-only" }))
   const runtime = createKernel({ appData: join(root, "data") })
   await initStore(runtime.kernel)
-  runtime.kernel.callHost = (async () => ({ success: true, value: {} })) as typeof runtime.kernel.callHost
+  const vault = new Map<string, string>()
+  runtime.kernel.callHost = (async (method, params) => {
+    const { account, value } = params as { account: string; value?: string }
+    if (method === "keychain.get") return { success: true, value: { value: vault.get(account) ?? null } }
+    if (method === "keychain.set" && value) vault.set(account, value)
+    if (method === "keychain.delete") vault.delete(account)
+    return { success: true, value: {} }
+  }) as typeof runtime.kernel.callHost
   const fake = fakeVmProvider()
   const vm = createVmRuntime({
     kernel: runtime.kernel,
@@ -314,6 +321,7 @@ test("R13-B03 deleting a bot removes its private browser session file", async ()
   })
   const file = botSessionPath(f.runtime.kernel, bot.id)
   expect(existsSync(file)).toBe(true)
+  expect(JSON.parse(readFileSync(file, "utf8")).enc).toBe("aes-256-gcm")
   expect((await f.request(`/bots/${bot.id}`, { name: bot.name }, "DELETE")).status).toBe(200)
   expect(existsSync(file)).toBe(false)
 })
