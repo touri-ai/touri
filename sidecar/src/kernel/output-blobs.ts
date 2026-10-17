@@ -2,11 +2,28 @@ import type { Database } from "bun:sqlite"
 import { createHash } from "node:crypto"
 import { existsSync } from "node:fs"
 import { join } from "node:path"
-import type { MessagePart } from "@touri/contracts"
+import type { MessagePart, ToolCallPart, UiEvent } from "@touri/contracts"
 import { atomicWriteFile } from "./files"
 
 export const OUTPUT_BLOB_THRESHOLD = 64 * 1024
 export const OUTPUT_BLOB_ORIGIN = "touri:tool-output"
+
+// The supervisor already keeps the complete redacted process log in its file.
+// The replay journal only needs a bounded window, including for a single long line.
+export const boundedProcessLog = (event: Extract<UiEvent, { type: "process.log" }>): typeof event => {
+  let remaining = OUTPUT_BLOB_THRESHOLD
+  const lines: string[] = []
+  for (let index = event.lines.length - 1; index >= 0 && remaining > 0; index--) {
+    const line = event.lines[index] ?? ""
+    const bytes = Buffer.from(line)
+    let start = Math.max(0, bytes.length - remaining)
+    while (start < bytes.length && ((bytes[start] ?? 0) & 0xc0) === 0x80) start++
+    const tail = bytes.subarray(start).toString("utf8")
+    lines.unshift(tail)
+    remaining -= Buffer.byteLength(tail) + 1
+  }
+  return { ...event, lines }
+}
 
 export const attachmentReferences = (value: unknown, ids = new Set<string>()): Set<string> => {
   if (!value || typeof value !== "object") return ids
@@ -22,6 +39,22 @@ export const attachmentReferences = (value: unknown, ids = new Set<string>()): S
 const containsImage = (output: string): boolean =>
   /"type"\s*:\s*"image"|data:image\/[^;]+;base64,|"(?:dataBase64|imageBase64)"\s*:/.test(output)
 
+const withoutProgressTail = ({ outputTail: _tail, ...part }: ToolCallPart): ToolCallPart => part
+
+const partOutput = (part: MessagePart): string | null | undefined =>
+  part.type === "tool_call"
+    ? (part.outputJson ?? part.outputTail)
+    : part.type === "command"
+      ? part.outputTail
+      : part.type === "file_change"
+        ? part.diff
+        : null
+
+const runningOutput = (part: MessagePart): boolean => {
+  if ("resolution" in part && part.resolution && part.resolution !== "running") return false
+  return (part.type === "command" && part.exitCode === null) || (part.type === "tool_call" && part.ok === null)
+}
+
 export const externalizeMessageParts = ({
   database,
   appData,
@@ -30,15 +63,34 @@ export const externalizeMessageParts = ({
   database: Database
   appData: string
   parts: MessagePart[]
-}): MessagePart[] =>
-  parts.map((part) => {
+}): MessagePart[] => {
+  // Keep live progress visible. Otherwise completed outputs fill the budget and
+  // each changing progress frame creates another file instead of an inline tail.
+  const reservedLiveBytes = Math.min(
+    OUTPUT_BLOB_THRESHOLD,
+    parts.reduce((total, part) => {
+      const output = runningOutput(part) ? partOutput(part) : null
+      if (!output) return total
+      const bytes = Buffer.byteLength(output)
+      return bytes <= OUTPUT_BLOB_THRESHOLD && !containsImage(output) ? total + bytes : total
+    }, 0),
+  )
+  let inlineBytes = 0
+  let liveInlineBytes = 0
+  return parts.map((part) => {
     if (part.type !== "tool_call" && part.type !== "command" && part.type !== "file_change") return part
-    const output = part.type === "tool_call" ? part.outputJson : part.type === "command" ? part.outputTail : part.diff
-    if (!output) return part
+    const output = partOutput(part)
+    if (!output) return part.type === "tool_call" && part.outputJson !== null ? withoutProgressTail(part) : part
     const bytes = Buffer.byteLength(output)
-    if (bytes <= OUTPUT_BLOB_THRESHOLD && !containsImage(output)) {
+    const live = runningOutput(part)
+    const withinBudget = live
+      ? liveInlineBytes + bytes <= reservedLiveBytes
+      : inlineBytes + bytes <= OUTPUT_BLOB_THRESHOLD - reservedLiveBytes
+    if (withinBudget && !containsImage(output)) {
+      if (live) liveInlineBytes += bytes
+      else inlineBytes += bytes
       const { outputAttachmentId: _id, outputBytes: _bytes, ...inline } = part
-      return inline
+      return inline.type === "tool_call" && inline.outputJson !== null ? withoutProgressTail(inline) : inline
     }
     const id = createHash("sha256").update(output).digest("hex")
     const existing = database.query("SELECT path FROM attachments WHERE id = ?").get(id) as { path: string } | null
@@ -52,7 +104,8 @@ export const externalizeMessageParts = ({
       )
       .run(id, path, bytes, OUTPUT_BLOB_ORIGIN, Date.now())
     const reference = { outputAttachmentId: id, outputBytes: bytes }
-    if (part.type === "tool_call") return { ...part, ...reference, outputJson: null }
+    if (part.type === "tool_call") return { ...withoutProgressTail(part), ...reference, outputJson: null }
     if (part.type === "command") return { ...part, ...reference, outputTail: "" }
     return { ...part, ...reference, diff: null }
   })
+}

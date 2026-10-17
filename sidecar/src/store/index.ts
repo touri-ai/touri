@@ -50,6 +50,7 @@ import { appendRejection, recordTranscriptRejection } from "./transcript-rejecti
 import { type RawMessage, readWorkspaceActivity } from "./workspace-activity"
 
 export const name = "store"
+export const BOTS_SQL = "SELECT * FROM bots WHERE archived_at IS NULL ORDER BY sort_order ASC, created_at ASC"
 
 type RawBot = {
   id: string
@@ -575,12 +576,20 @@ export const init = async (kernel: Kernel): Promise<void> => {
       updatedAt: now(),
     }
     next.parts = externalizeMessageParts({ database, appData: kernel.paths.appData, parts: next.parts })
+    const partsJson = JSON.stringify(next.parts)
+    if (
+      next.status === current.status &&
+      next.text === current.text &&
+      next.runId === current.runId &&
+      partsJson === JSON.stringify(current.parts)
+    )
+      return { success: true, message: current }
     database
       .query(
         "UPDATE messages SET status = ?, parts_json = ?, text = ?, run_id = ?, updated_at = ? WHERE thread_id = ? AND id = ?",
       )
-      .run(next.status, JSON.stringify(next.parts), next.text, next.runId, next.updatedAt, threadId, messageId)
-    refreshFts({ message: next })
+      .run(next.status, partsJson, next.text, next.runId, next.updatedAt, threadId, messageId)
+    if (next.text !== current.text) refreshFts({ message: next })
     const stored = getMessage({ threadId, messageId }) ?? next
     kernel.publish({ type: "message.updated", message: stored })
     return { success: true, message: stored }
@@ -1306,9 +1315,7 @@ export const init = async (kernel: Kernel): Promise<void> => {
         method: "GET",
         path: "/bots",
         handler: async () => {
-          const rows = database
-            .query("SELECT * FROM bots WHERE archived_at IS NULL ORDER BY sort_order ASC, created_at ASC")
-            .all() as Array<RawBot>
+          const rows = database.query(BOTS_SQL).all() as Array<RawBot>
           return jsonResponse(200, { bots: rows.map(asBot) })
         },
       },

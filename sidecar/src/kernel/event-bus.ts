@@ -1,6 +1,7 @@
 import type { Database } from "bun:sqlite"
 import type { UiEvent, UiEventEnvelope } from "@touri/contracts"
 import type { ServerWebSocket } from "bun"
+import { boundedProcessLog } from "./output-blobs"
 import { compactTranscript, materializeTranscript } from "./transcript-storage"
 
 export type EventSocketData = { channel: "events"; since?: number }
@@ -75,32 +76,35 @@ export const createEventBus = (database?: Database) => {
           } | null
         )?.value ?? 0,
       )
-      const rows = database
-        .query("SELECT id, at, event_json FROM transcript_entries WHERE id > ? ORDER BY id")
-        .all(checkpoint) as Array<{ id: number; at: number; event_json: string }>
-      for (const row of rows) {
-        const event = JSON.parse(row.event_json) as UiEvent & { legacy?: boolean }
-        if (event.legacy) continue
-        // The full message body already lives in transcript_entries; the replay log keeps a pointer.
-        // A streaming reply is rewritten on every tool event, so copying it here grew quadratically.
-        const stored =
-          (event.type === "message.created" || event.type === "message.updated") &&
-          event.message.updatedSeq !== undefined
-            ? JSON.stringify({
-                type: event.type,
-                ref: true,
-                threadId: event.message.threadId,
-                messageId: event.message.id,
-                seq: event.message.updatedSeq,
-              } satisfies MessageRef)
-            : row.event_json
-        database.query("INSERT INTO ui_event_log(at, event_json) VALUES (?, ?)").run(row.at, stored)
+      const statement = database.prepare("SELECT id, at, event_json FROM transcript_entries WHERE id > ? ORDER BY id")
+      let last = checkpoint
+      try {
+        const rows = statement.iterate(checkpoint) as Iterable<{ id: number; at: number; event_json: string }>
+        for (const row of rows) {
+          last = row.id
+          const event = JSON.parse(row.event_json) as (UiEvent & { legacy?: boolean }) | MessageRef
+          if ("legacy" in event && event.legacy) continue
+          // Both journals store a pointer; only messages owns the current snapshot.
+          const stored =
+            !isMessageRef(event) &&
+            (event.type === "message.created" || event.type === "message.updated") &&
+            event.message.updatedSeq !== undefined
+              ? JSON.stringify({
+                  type: event.type,
+                  ref: true,
+                  threadId: event.message.threadId,
+                  messageId: event.message.id,
+                  seq: event.message.updatedSeq,
+                } satisfies MessageRef)
+              : row.event_json
+          database.query("INSERT INTO ui_event_log(at, event_json) VALUES (?, ?)").run(row.at, stored)
+        }
+      } finally {
+        // Releasing the reader also permits checkpoints after startup recovery.
+        statement.finalize()
       }
-      const last = rows.at(-1)
-      if (last)
-        database
-          .query("UPDATE schema_meta SET value = ? WHERE key = 'transcript_event_checkpoint'")
-          .run(String(last.id))
+      if (last > checkpoint)
+        database.query("UPDATE schema_meta SET value = ? WHERE key = 'transcript_event_checkpoint'").run(String(last))
     })()
   }
 
@@ -109,8 +113,9 @@ export const createEventBus = (database?: Database) => {
     const entry = database
       .query("SELECT event_json FROM transcript_entries WHERE thread_id = ? AND seq = ?")
       .get(event.threadId, event.seq) as { event_json: string } | null
-    const revision = entry ? (JSON.parse(entry.event_json) as UiEvent) : null
+    const revision = entry ? (JSON.parse(entry.event_json) as UiEvent | MessageRef) : null
     if (
+      !isMessageRef(revision) &&
       (revision?.type === "message.created" || revision?.type === "message.updated") &&
       revision.message.id === event.messageId
     )
@@ -238,7 +243,9 @@ export const createEventBus = (database?: Database) => {
       !(event.type === "message.delta" && event.updatedSeq !== undefined) &&
       event.type !== "transcript.rejected"
     )
-      database.query("INSERT INTO ui_event_log(at, event_json) VALUES (?, ?)").run(Date.now(), JSON.stringify(event))
+      database
+        .query("INSERT INTO ui_event_log(at, event_json) VALUES (?, ?)")
+        .run(Date.now(), JSON.stringify(event.type === "process.log" ? boundedProcessLog(event) : event))
     if (database.inTransaction) {
       if (!scheduled) {
         scheduled = true
