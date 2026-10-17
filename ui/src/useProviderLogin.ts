@@ -95,7 +95,7 @@ export const useProviderLogin = (
         if (requestedRevision === revision.current) {
           setFlow(result)
           setError(null)
-          if (autoStart && !initialized && result.state === "idle") {
+          if (autoStart && !initialized && result.state === "idle" && result.executable !== "missing") {
             initialized = true
             await act("start")
           }
@@ -131,6 +131,6 @@ export const useProviderLogin = (
     openPage,
     provider,
     botId,
-    blocked: enabled && (!matches || flow?.state !== "ready"),
+    blocked: enabled && (!matches || flow?.state !== "ready" || flow.executable === "missing"),
   }
 }

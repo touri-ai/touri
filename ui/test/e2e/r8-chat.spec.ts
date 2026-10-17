@@ -129,10 +129,12 @@ if (phase === "after") {
     await page.evaluate(() => (window as unknown as { r8Chat: { append: () => void } }).r8Chat.append())
     await expect(page.locator(".message-assistant").last()).toBeInViewport()
     await page.goto("/test/e2e/r8-chat-harness.html?view=empty&theme=light")
-    const prompt = page.getByRole("button", { name: "Sugira um plano de testes para este fluxo." })
+    const prompt = page.getByRole("button", { name: "Usar exemplo", exact: true })
     await prompt.click()
     const composer = page.getByRole("textbox", { name: "Mensagem para mark" })
-    await expect(composer).toHaveValue("Sugira um plano de testes para este fluxo.")
+    await expect(composer).toHaveValue(
+      /lista em português do Brasil[\s\S]*Comprar café; revisar orçamento; marcar reunião\./,
+    )
     await expect(composer).toBeFocused()
     await expect(page.locator(".message-bubble")).toHaveCount(0)
   })

@@ -27,6 +27,7 @@ import { NOT_SURE_JOB_ID } from "../features/jobs/catalog"
 import { JobPicker } from "../features/jobs/JobPicker"
 import { accessLabel, plural, statusLabel, t } from "../i18n"
 import { hostComputerSupported } from "../platform"
+import { useHost } from "../useHost"
 import type { WorkspaceActions } from "../useWorkspace"
 import { type AvatarChoice, AvatarPicker } from "./AvatarPicker"
 import { BotAccessSummary } from "./BotAccessSummary"
@@ -42,6 +43,7 @@ import { DiscoveredProjects } from "./DiscoveredProjects"
 import { FolderPicker } from "./FolderPicker"
 import { MachineFields } from "./MachineFields"
 import { Modal } from "./Modal"
+import { ProviderInstallation } from "./ProviderInstallation"
 import { ProviderLogin } from "./ProviderLogin"
 import { ProviderMark, providerName } from "./ProviderMark"
 import { ProviderModelField } from "./ProviderModelField"
@@ -441,7 +443,9 @@ export const BotCreateModal = ({
   const [roleLine, setRoleLine] = useState("")
   const [title, setTitle] = useState("")
   const [loginDraftId] = useState(() => `draft-${crypto.randomUUID()}`)
+  const fallbackHost = useHost(api)
   const login = useCreateProvider(api, loginDraftId)
+  const host = login.flow?.host ?? fallbackHost
   const { provider } = login
   const [jobId, setJobId] = useState(NOT_SURE_JOB_ID)
   const [advanced, setAdvanced] = useState(false)
@@ -484,7 +488,9 @@ export const BotCreateModal = ({
       return
     }
     if (api && machine.machine !== "cloud" && (!login.ready || login.checking)) {
-      setError(t("Sign in above before creating your bot."))
+      setError(
+        t(login.flow?.executable === "missing" ? "onboarding.installFirst" : "Sign in above before creating your bot."),
+      )
       signInRef.current?.focus()
       return
     }
@@ -595,17 +601,28 @@ export const BotCreateModal = ({
             <div className="bot-create-defaults" aria-live="polite">
               {machine.machine !== "cloud" &&
                 (login.checking ? (
-                  <p>{t("Checking accounts on this Mac…")}</p>
+                  <p>{t("onboarding.checking", { host: host === "mac" ? "Mac" : t("onboarding.server") })}</p>
                 ) : (
                   login.ready && (
-                    <p>{t("Uses {name}, already signed in on this Mac.", { name: providerName(provider) })}</p>
+                    <p>
+                      {t("onboarding.uses", {
+                        provider: providerName(provider),
+                        host: host === "mac" ? "Mac" : t("onboarding.server"),
+                      })}
+                    </p>
                   )
                 ))}
               {access === "workspace-write" && <p>{t("Asks permission before changing files.")}</p>}
             </div>
             {api && machine.machine !== "cloud" && !login.checking && !login.ready && (
               <section ref={signInRef} tabIndex={-1} className="bot-create-login" aria-label={t("Choose an account")}>
-                <p>{t("Sign in to an account to create your bot.")}</p>
+                <p>
+                  {t(
+                    login.flow?.executable === "missing"
+                      ? "onboarding.installFirst"
+                      : "Sign in to an account to create your bot.",
+                  )}
+                </p>
                 <div className="bot-create-accounts">
                   {CREATE_PROVIDERS.map((candidate) => (
                     <button
@@ -619,17 +636,29 @@ export const BotCreateModal = ({
                     </button>
                   ))}
                 </div>
-                <ProviderLogin
-                  key={provider}
-                  api={api}
-                  botId={loginDraftId}
-                  provider={provider}
-                  onConfigured={() => {}}
-                  onReadyChange={(ready) => {
-                    login.setReady(ready)
-                    if (ready) setError(null)
-                  }}
-                />
+                {login.flow?.executable === "missing" ? (
+                  <ProviderInstallation
+                    provider={provider}
+                    host={host}
+                    busy={login.checking}
+                    onRecheck={() => {
+                      setError(null)
+                      void login.selectProvider(provider).then(() => document.getElementById("bot-name")?.focus())
+                    }}
+                  />
+                ) : (
+                  <ProviderLogin
+                    key={provider}
+                    api={api}
+                    botId={loginDraftId}
+                    provider={provider}
+                    onConfigured={() => {}}
+                    onReadyChange={(ready) => {
+                      login.setReady(ready)
+                      if (ready) setError(null)
+                    }}
+                  />
+                )}
               </section>
             )}
             {login.error && machine.machine !== "cloud" && !login.ready && (

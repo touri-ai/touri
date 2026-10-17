@@ -285,6 +285,35 @@ export const ptBR = {
     "O servidor respondeu, mas não ofereceu ferramentas. Confira a configuração e teste novamente.",
   "Salvando conexão…": "Salvando conexão…",
   "Salvar conexão": "Salvar conexão",
+  // First conversation and host transparency.
+  "onboarding.server": "servidor",
+  "onboarding.privacy":
+    "O histórico fica neste {host}. Sua IA recebe o conteúdo necessário para responder. O touri não coleta telemetria.",
+  "onboarding.uses": "Usa o {provider}, conectado neste {host}.",
+  "onboarding.checking": "Verificando instalação e login neste {host}…",
+  "onboarding.missing": "O {provider} ainda não está instalado neste {host}.",
+  "onboarding.install": "Ver como instalar",
+  "onboarding.installLinkError": "Não foi possível abrir o navegador. Copie o endereço do link para ver como instalar.",
+  "onboarding.recheck": "Verificar novamente",
+  "onboarding.installFirst": "Instale a IA neste computador e verifique novamente antes de criar seu bot.",
+  "onboarding.checkServer": "Verificar servidor",
+  "onboarding.conversation": "Comece uma conversa com {name}",
+  "onboarding.notes": "Cole suas notas para eu organizar em uma lista.",
+  "onboarding.example": "Usar exemplo",
+  "onboarding.exampleNotes": "Comprar café; revisar orçamento; marcar reunião.",
+  "onboarding.examplePrompt":
+    "Organize estas notas em uma lista em português do Brasil. Use somente o texto abaixo, sem acessar arquivos, projetos ou integrações. Responda com a lista, sem apresentação.\n\nComprar café; revisar orçamento; marcar reunião.",
+  "onboarding.repositoryNeeded":
+    "Escolha a pasta do repositório para começar, ou use um exemplo de notas sem conectar nada.",
+  "onboarding.repositoryUpload":
+    "Anexe os arquivos do repositório para começar, ou use um exemplo de notas sem conectar nada.",
+  "onboarding.repositoryFolder": "Escolher pasta do repositório",
+  "onboarding.repositoryRequest":
+    "Quero trabalhar com um repositório. Peça a pasta ou um anexo antes de analisar; ainda não conectei o código.",
+  "onboarding.repositoryAction": "Explique o repositório conectado.",
+  "onboarding.repositoryPrompt":
+    "Explique a estrutura do repositório conectado usando somente as pastas autorizadas. Se o código não estiver disponível, peça a pasta ou um anexo antes de analisar.",
+
   "Conectar dados": "Conectar dados",
   "Escolha como disponibilizar os dados para este bot.": "Escolha como disponibilizar os dados para este bot.",
   "Anexar arquivo/CSV": "Anexar arquivo/CSV",
@@ -469,8 +498,6 @@ export const ptBR = {
   Integrations: "Integrações",
   "Report a problem": "Reportar problema",
 
-  "Your bots work on your Mac, with your accounts. Nothing leaves here.":
-    "Seus bots trabalham no seu Mac, com as suas contas. Nada sai daqui.",
   "Create my first bot": "Criar meu primeiro bot",
   "Already use another tool?": "Já usa outra ferramenta?",
   Advanced: "Avançado",
@@ -895,9 +922,7 @@ export const ptBR = {
   "Bot created. Could not connect your account. Sign in below to chat.":
     "Bot criado. Não foi possível conectar sua conta. Entre na conta abaixo para conversar.",
   Instructions: "Instruções",
-  "Uses {name}, already signed in on this Mac.": "Usa o {name}, que já está conectado neste Mac.",
   "Asks permission before changing files.": "Pede permissão antes de mudar arquivos.",
-  "Checking accounts on this Mac…": "Verificando contas neste Mac…",
   "Sign in to an account to create your bot.": "Entre em uma conta para criar seu bot.",
   "Choose an account": "Escolha uma conta",
   "Sign in above before creating your bot.": "Entre em uma conta acima antes de criar seu bot.",
@@ -911,7 +936,7 @@ export const ptBR = {
   "Connect tools after creating this bot, in its advanced settings.":
     "Conecte ferramentas depois de criar este bot, nas configurações avançadas dele.",
   "job.starter":
-    "## {name}\n- {role} {task}\n- Na primeira conversa, apresente brevemente como pode ajudar neste trabalho.\n- Confirme o objetivo e peça o contexto que faltar.\n- Trabalhe no Mac do usuário com a CLI dele e somente os acessos liberados.\n- Use o navegador quando precisar conferir informações e indique as fontes.\n- Peça permissão antes de mudar arquivos ou enviar algo; apresente um rascunho primeiro.\n- Ao terminar, conte o que encontrou e o que depende da pessoa.",
+    "## {name}\n- {role} {task}\n- Na primeira conversa, apresente brevemente como pode ajudar neste trabalho.\n- Confirme o objetivo e peça o contexto que faltar.\n- Trabalhe no computador onde o touri está rodando com a CLI do usuário e somente os acessos liberados.\n- Use o navegador quando precisar conferir informações e indique as fontes.\n- Peça permissão antes de mudar arquivos ou enviar algo; apresente um rascunho primeiro.\n- Ao terminar, conte o que encontrou e o que depende da pessoa.",
 
   "Activity thinking": "Pensando",
   "Activity working": "Trabalhando",
@@ -1984,6 +2009,35 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
     "The server responded but offered no tools. Check the configuration and test again.",
   "Salvando conexão…": "Saving connection…",
   "Salvar conexão": "Save connection",
+  // First conversation and host transparency.
+  "onboarding.server": "server",
+  "onboarding.privacy":
+    "History stays on this {host}. Your AI receives the content needed to respond. touri collects no telemetry.",
+  "onboarding.uses": "Uses {provider}, signed in on this {host}.",
+  "onboarding.checking": "Checking installation and login on this {host}…",
+  "onboarding.missing": "{provider} is not installed on this {host} yet.",
+  "onboarding.install": "See how to install",
+  "onboarding.installLinkError": "Could not open the browser. Copy the link address to see how to install.",
+  "onboarding.recheck": "Check again",
+  "onboarding.installFirst": "Install the AI on this computer and check again before creating your bot.",
+  "onboarding.checkServer": "Check server",
+  "onboarding.conversation": "Start a conversation with {name}",
+  "onboarding.notes": "Paste your notes and I will organize them into a list.",
+  "onboarding.example": "Use example",
+  "onboarding.exampleNotes": "Buy coffee; review the budget; schedule a meeting.",
+  "onboarding.examplePrompt":
+    "Organize these notes into a list in English. Use only the text below, without accessing files, projects or integrations. Reply with the list, without an introduction.\n\nBuy coffee; review the budget; schedule a meeting.",
+  "onboarding.repositoryNeeded":
+    "Choose the repository folder to start, or use a notes example without connecting anything.",
+  "onboarding.repositoryUpload":
+    "Attach repository files to start, or use a notes example without connecting anything.",
+  "onboarding.repositoryFolder": "Choose repository folder",
+  "onboarding.repositoryRequest":
+    "I want to work with a repository. Ask for the folder or an attachment before analyzing; I have not connected the code yet.",
+  "onboarding.repositoryAction": "Explain the connected repository.",
+  "onboarding.repositoryPrompt":
+    "Explain the connected repository structure using only authorized folders. If the code is unavailable, ask for the folder or an attachment before analyzing.",
+
   "Conectar dados": "Connect data",
   "Escolha como disponibilizar os dados para este bot.": "Choose how to make the data available to this bot.",
   "Anexar arquivo/CSV": "Attach a file/CSV",
@@ -2623,9 +2677,7 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "New bot": "New bot",
   Advanced: "Advanced",
   Instructions: "Instructions",
-  "Uses {name}, already signed in on this Mac.": "Uses {name}, already signed in on this Mac.",
   "Asks permission before changing files.": "Asks permission before changing files.",
-  "Checking accounts on this Mac…": "Checking accounts on this Mac…",
   "Sign in to an account to create your bot.": "Sign in to an account to create your bot.",
   "Choose an account": "Choose an account",
   "Sign in above before creating your bot.": "Sign in above before creating your bot.",
@@ -2639,7 +2691,7 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Connect tools after creating this bot, in its advanced settings.":
     "Connect tools after creating this bot, in its advanced settings.",
   "job.starter":
-    "## {name}\n- {role} {task}\n- In the first conversation, briefly explain how you can help with this job.\n- Confirm the goal and ask for missing context.\n- Work on the user’s Mac with their own CLI and only allowed access.\n- Use the browser when you need to check information and include sources.\n- Ask permission before changing files or sending anything; show a draft first.\n- When finished, explain what you found and what needs the person’s attention.",
+    "## {name}\n- {role} {task}\n- In the first conversation, briefly explain how you can help with this job.\n- Confirm the goal and ask for missing context.\n- Work on the computer running touri with the user’s own CLI and only allowed access.\n- Use the browser when you need to check information and include sources.\n- Ask permission before changing files or sending anything; show a draft first.\n- When finished, explain what you found and what needs the person’s attention.",
 
   "Activity thinking": "Thinking",
   "Activity working": "Working",

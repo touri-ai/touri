@@ -102,8 +102,9 @@ const fixture = (
   `,
   )
   const bin = join(root, "fake bin")
+  mkdirSync(bin)
+  writeFileSync(join(bin, provider), "#!/bin/sh\nexit 93\n", { mode: 0o700 })
   if (options.bridge) {
-    mkdirSync(bin)
     writeFileSync(
       join(bin, "claude"),
       `#!/bin/sh
@@ -125,7 +126,7 @@ printf '%s\\n' '${token}'
       return trackedSpawn(input)
     },
     services: { use: () => ({ getBot: ({ botId }: { botId: string }) => (botId === bot.id ? bot : null) }) },
-    shellEnv: async () => ({ PATH: options.bridge ? bin : (process.env.PATH ?? "") }),
+    shellEnv: async () => ({ HOME: root, PATH: bin }),
     redact: redactor.redact,
     addRedactionValue: (value: string) => {
       redactions.push(value)
@@ -286,7 +287,10 @@ for (const [platform, headless, host] of [
         body: {},
         signal: new AbortController().signal,
       })
-      expect(response).toEqual({ status: 200, json: { provider, state: "host-available", host } })
+      expect(response).toEqual({
+        status: 200,
+        json: { provider, state: "host-available", host, executable: "available" },
+      })
       expect(f.invocations).toHaveLength(0)
       expect((await f.flow.action(f.bot, { action: "use-host" })).state).toBe("ready")
       expect(storedProviderLoginSource(f.kernel, f.bot)).toBe("host-file")
@@ -579,6 +583,61 @@ for (const provider of ["claude", "codex", "opencode"] as const)
       prepared.release()
       expect(existsSync(path)).toBe(false)
     }
+  })
+
+for (const provider of ["codex", "claude", "opencode"] as const)
+  test(`${provider}: readiness separates installation from saved login and never starts a provider`, async () => {
+    const f = fixture(provider, "success", 3000, { platform: "linux", headless: true })
+    const draftId = "draft-00000000-0000-4000-8000-000000000000"
+    const directory = provider === "claude" ? ".claude" : provider === "codex" ? ".codex" : ".local/share/opencode"
+    const filename = provider === "claude" ? ".credentials.json" : "auth.json"
+    mkdirSync(join(f.root, directory), { recursive: true })
+    writeFileSync(
+      join(f.root, directory, filename),
+      provider === "claude"
+        ? JSON.stringify({ claudeAiOauth: { accessToken: token, expiresAt: Date.now() + 60_000 } })
+        : provider === "codex"
+          ? codex
+          : openCode,
+    )
+    // A unique configured basename keeps host-installed CLIs out of this fixture.
+    const binary = join(f.root, "fake bin", `readiness-fixture-${provider}`)
+    const variable = `TOURI_${provider.toUpperCase()}_BIN`
+    const previous = process.env[variable]
+    process.env[variable] = binary
+    cleanups.push(() => {
+      if (previous === undefined) delete process.env[variable]
+      else process.env[variable] = previous
+    })
+    const request = {
+      params: { id: draftId },
+      query: { provider },
+      body: { provider, action: "use-host" },
+      signal: new AbortController().signal,
+    }
+    const get = f.flow.routes.find((route) => route.method === "GET")
+    const post = f.flow.routes.find((route) => route.method === "POST")
+    if (!get || !post) throw new Error("Missing login routes")
+    expect(await get.handler(request)).toMatchObject({
+      status: 200,
+      json: {
+        state: "host-available",
+        executable: "missing",
+        host: "server",
+      },
+    })
+    expect(await post.handler(request)).toMatchObject({ json: { executable: "missing" } })
+    expect((await f.flow.status({ ...f.bot, id: draftId })).state).toBe("host-available")
+    expect(f.invocations).toHaveLength(0)
+    // A present but non-executable file is also missing.
+    writeFileSync(binary, "#!/bin/sh\nexit 93\n", { mode: 0o600 })
+    expect(await get.handler(request)).toMatchObject({ json: { executable: "missing" } })
+    rmSync(binary)
+    // Recheck notices installation without running even --version or an inference request.
+    writeFileSync(binary, "#!/bin/sh\nexit 93\n", { mode: 0o700 })
+    expect(await get.handler(request)).toMatchObject({ json: { executable: "available", state: "host-available" } })
+    expect(await post.handler(request)).toMatchObject({ json: { executable: "available", state: "ready" } })
+    expect(f.invocations).toHaveLength(0)
   })
 
 for (const provider of ["claude", "codex"] as const)
