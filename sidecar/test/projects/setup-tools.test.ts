@@ -1,5 +1,6 @@
 import type { Database } from "bun:sqlite"
 import { afterEach, expect, spyOn, test } from "bun:test"
+import * as fs from "node:fs"
 import {
   chmodSync,
   existsSync,
@@ -10,9 +11,8 @@ import {
   symlinkSync,
   writeFileSync,
 } from "node:fs"
-import * as fs from "node:fs"
-import { tmpdir } from "node:os"
 import * as os from "node:os"
+import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { ApprovalPart, Bot, ToolRegistration, UiEvent } from "@touri/contracts"
 import { createApprovalBridge } from "../../src/approvals/bridge"
