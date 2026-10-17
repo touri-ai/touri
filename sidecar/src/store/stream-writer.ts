@@ -231,7 +231,7 @@ export const createStreamWriter = ({
       Buffer.byteLength(last.delta) + bytes <= STREAM_WRITE_LIMITS.bytes
     ) {
       last.delta += event.delta
-      last.updatedAt = event.updatedAt
+      last.updatedAt = event.updatedAt ?? Date.now()
     } else {
       pending.push(event)
       lastByMessage.set(eventKey, event)
@@ -285,7 +285,7 @@ export const createStreamWriter = ({
           delta,
           offset,
           partType: type,
-          generation: thread.generation,
+          generation: thread.generation ?? 1,
           updatedAt: Date.now(),
         },
         Buffer.byteLength(delta),
@@ -326,7 +326,7 @@ export const createStreamWriter = ({
         threadId: input.threadId,
         messageId: input.messageId,
         parts,
-        generation: thread.generation,
+        generation: thread.generation ?? 1,
         updatedAt: Date.now(),
       },
       Buffer.byteLength(JSON.stringify(parts)),
