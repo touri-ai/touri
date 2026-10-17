@@ -236,6 +236,24 @@ test("folder preflight reports the actual host boundary without granting access"
   }
 })
 
+test("an unavailable host rejects folder creation before touching the filesystem", async () => {
+  const f = fixture()
+  const route = createFolderRoutes({ appData: f.appData, home: f.home, canGrant: async () => false }).routes[1]
+  if (!route) throw new Error("Missing creation route")
+  const response = await route.handler({
+    params: {},
+    query: {},
+    body: { path: f.home, name: "Not created" },
+    signal: AbortSignal.timeout(1000),
+  })
+  expect(response.status).toBe(400)
+  expect("json" in response && response.json).toMatchObject({
+    errorCode: "FOLDER_ACCESS_UNAVAILABLE",
+    error: expect.stringContaining("Nenhuma permissão foi adicionada"),
+  })
+  expect(existsSync(join(f.home, "Not created"))).toBe(false)
+})
+
 test("a directory swapped for a symlink during listing cannot expose protected names", async () => {
   const f = fixture()
   const path = join(f.home, "public")

@@ -109,6 +109,11 @@ export const FolderPicker = ({
         {unavailable && (
           <div role="status">
             <p>{t("Não foi possível liberar a pasta com segurança. Seu bot continua disponível.")}</p>
+            <p>
+              {t(
+                "Este computador não consegue proteger o acesso a pastas. Nenhuma permissão foi adicionada. Você pode continuar conversando ou enviar um arquivo.",
+              )}
+            </p>
             {onUpload && (
               <button type="button" className="button button-quiet" onClick={onUpload}>
                 {t("Enviar arquivo deste dispositivo")}

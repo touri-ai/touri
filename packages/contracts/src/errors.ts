@@ -103,6 +103,13 @@ export const errorRegistry = {
   "TOURI-E2001": entry("storage", "filesystem", true, "Não foi possível salvar o arquivo. Tente novamente.", 500),
   "TOURI-E2002": entry("storage", "filesystem", false, "Libere espaço no disco para salvar o arquivo.", 507),
   "TOURI-E2003": entry("storage", "attachment", false, "Escolha um arquivo de até 15 MB.", 413),
+  "TOURI-E2010": entry(
+    "storage",
+    "folder-confinement",
+    false,
+    "Este computador não consegue proteger o acesso a pastas. Nenhuma permissão foi adicionada. Você pode continuar conversando ou enviar um arquivo.",
+    400,
+  ),
   "TOURI-E3000": entry(
     "provider",
     "cli",
@@ -290,6 +297,7 @@ const aliases: Record<string, RegisteredErrorCode> = {
   GIT_TIMEOUT: "TOURI-E6007",
   PROJECT_CONNECT_FAILED: "TOURI-E6008",
   MACHINE_PROJECT_CHANGE: "TOURI-E6009",
+  FOLDER_ACCESS_UNAVAILABLE: "TOURI-E2010",
   PROCESS_EXISTS: "TOURI-E1005",
   PROCESS_CYCLE: "TOURI-E1005",
   IMPORT_FAILED: "TOURI-E7000",

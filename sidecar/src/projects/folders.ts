@@ -5,7 +5,7 @@ import { dirname, isAbsolute, join, parse, sep } from "node:path"
 import type { FolderListing, RouteModule } from "@touri/contracts"
 import { excludedBotFolders, withinFolder } from "../kernel/bot-folders"
 import { createWorkspaceChildDirectory, openWorkspaceDirectory, openWorkspaceEntry } from "../kernel/files"
-import { hostFolderAccessAvailable } from "../runtime/folder-access"
+import { folderAccessUnavailable, refreshHostFolderAccess } from "../kernel/folder-capability"
 
 const MAX_FOLDERS = 100
 const MAX_ENTRIES = 2_000
@@ -14,11 +14,11 @@ const invalidPath = /[\0\n\r,]/
 export const createFolderRoutes = ({
   appData,
   home = homedir(),
-  canGrant = hostFolderAccessAvailable,
+  canGrant = refreshHostFolderAccess,
 }: {
   appData: string
   home?: string
-  canGrant?: () => boolean
+  canGrant?: () => boolean | Promise<boolean>
 }): RouteModule => {
   const denied = (path: string, excluded: string[]) => excluded.some((root) => withinFolder(root, path))
   const directory = async (value: unknown, excluded: string[]) => {
@@ -67,7 +67,13 @@ export const createFolderRoutes = ({
         : code
           ? "Não foi possível abrir ou criar a pasta. Confira se ela existe e se você tem permissão."
           : (error as Error).message
-    return { status: 400, json: { errorCode: "INVALID_ARGS", error: message } }
+    return {
+      status: 400,
+      json: {
+        errorCode: message === folderAccessUnavailable ? "FOLDER_ACCESS_UNAVAILABLE" : "INVALID_ARGS",
+        error: message,
+      },
+    }
   }
   return {
     name: "folders",
@@ -118,7 +124,7 @@ export const createFolderRoutes = ({
             return {
               status: 200,
               json: {
-                canGrant: canGrant(),
+                canGrant: await canGrant(),
                 home: start,
                 path,
                 parent: path === start ? null : parent,
@@ -139,6 +145,7 @@ export const createFolderRoutes = ({
         handler: async ({ body }) => {
           let directoryFd: number | undefined
           try {
+            if (!(await canGrant())) throw new Error(folderAccessUnavailable)
             const input = body as { path?: unknown; name?: unknown } | null
             const name = typeof input?.name === "string" ? input.name.trim() : ""
             if (!name || name.length > 255 || name.startsWith(".") || /[\\/\0\n\r,]/.test(name))
