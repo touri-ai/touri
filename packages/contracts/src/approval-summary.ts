@@ -21,6 +21,7 @@ const copy = {
   "Permitir {mode} em {path} para este bot": "Allow {mode} in {path} for this bot",
   "Acesso anterior: {mode}.": "Previous access: {mode}.",
   "A mudança entra em vigor no próximo turno da VM.": "The change takes effect on the next VM turn.",
+  "A mudança entra em vigor no próximo turno local.": "The change takes effect on the next local turn.",
   "Detalhes indisponíveis": "Details unavailable",
   "Não foi possível mostrar os detalhes desta ação. Negue e peça ao bot para solicitar novamente.":
     "The details of this action could not be shown. Deny it and ask the bot to request it again.",
@@ -74,7 +75,13 @@ export const approvalSummary = (approval: Approval, locale: Locale = "pt-BR"): {
       body += ` ${text("Acesso anterior: {mode}.", locale, {
         mode: text(input.previousMode === "read-only" ? "Somente leitura" : "Leitura e escrita", locale),
       })}`
-    if (input.nextTurn) body += ` ${text("A mudança entra em vigor no próximo turno da VM.", locale)}`
+    if (input.nextTurn)
+      body += ` ${text(
+        input.machine === "local"
+          ? "A mudança entra em vigor no próximo turno local."
+          : "A mudança entra em vigor no próximo turno da VM.",
+        locale,
+      )}`
     return { title: text("Conceder acesso à pasta", locale), body }
   }
   const [title, body]: [keyof typeof copy, keyof typeof copy] =
