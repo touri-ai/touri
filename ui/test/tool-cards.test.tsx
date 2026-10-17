@@ -36,6 +36,26 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
+it.each([
+  ["process_list", {}, "Listar processos", "Consultar os processos do projeto e seus estados"],
+  ["process_define", { name: "web", command: "bun dev" }, "Definir processo", "Definir o processo web: bun dev"],
+  ["process_start", { name: "web" }, "Iniciar processo", "Iniciar o processo web"],
+  ["process_stop", { name: "web" }, "Parar processo", "Parar o processo web"],
+  ["process_restart", { name: "web" }, "Reiniciar processo", "Reiniciar o processo web"],
+  ["process_logs", { name: "web" }, "Ler logs", "Consultar os logs do processo web"],
+  ["preview_open", { path: "/health" }, "Abrir prévia", "Abrir a prévia do projeto em /health"],
+] as const)("F017: localizes %s with a task description", (name, args, title, summary) => {
+  for (const toolName of [name, `mcp__touri__${name}`]) {
+    const view = render(
+      <ToolCallCard part={{ ...tool, tool: toolName, inputJson: JSON.stringify(args), summary: "MCP tool call" }} />,
+    )
+    expect(screen.getByText(title)).toBeVisible()
+    expect(view.container.querySelector(".tool-summary")).toHaveTextContent(summary)
+    expect(view.container.querySelector(".tool-summary")).not.toHaveTextContent("MCP tool call")
+    view.unmount()
+  }
+})
+
 for (const field of ["file_path", "path", "filePath"]) {
   it(`presents Read ${field} as a file chip with no JSON or field names`, () => {
     const path = "/Users/user/javascript/my-app/README.md"

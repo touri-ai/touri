@@ -51,6 +51,7 @@ describe("r4 P0/P1 recovery", () => {
     }
     act(() => api.emit({ type: "run.updated", run: running }))
     fireEvent.click(screen.getByRole("button", { name: "Parar" }))
+    expect(screen.getByRole("button", { name: "Parando…" })).toBeDisabled()
     const reply: Message = {
       id: "canceled-reply",
       threadId: running.threadId,
@@ -78,6 +79,7 @@ describe("r4 P0/P1 recovery", () => {
     expect(document.querySelector(".run-status")).toHaveTextContent("Cancelado")
     expect(document.querySelector('[data-bot-entry="bot-mark"] .bot-preview')).toHaveTextContent("Cancelado")
     expect(screen.queryByRole("button", { name: "Parar" })).toBeNull()
+    expect(screen.getByRole("button", { name: "Enviar" })).toBeDisabled()
   })
   it("offers cancellation and restart during VM bootstrap, and only sends it after confirmation", async () => {
     const action = vi.fn(async () => {})

@@ -24,38 +24,41 @@ const message = (overrides: Partial<Message>): Message => ({
   ...overrides,
 })
 
-it("shows a resumed turn as a marker in the thread, not as a message", () => {
-  render(
-    <VirtualMessageList
-      messages={[
-        message({ id: "partial", text: "Comecei a tabela.", parts: [{ type: "text", text: "Comecei a tabela." }] }),
-        message({
-          id: "marker",
-          parentId: "partial",
-          role: "system",
-          kind: "notice",
-          text: "Retomado após reinício do touri",
-          parts: [{ type: "notice", level: "info", code: "run_resumed", text: "Retomado após reinício do touri" }],
-          createdAt: 2,
-        }),
-        message({
-          id: "reply",
-          parentId: "marker",
-          text: "Terminei.",
-          parts: [{ type: "text", text: "Terminei." }],
-          createdAt: 3,
-        }),
-      ]}
-      onSwitchBranch={async () => {}}
-      onRetry={async () => {}}
-    />,
-  )
-  const marker = screen.getByRole("note")
-  expect(marker).toHaveTextContent("Retomado após reinício do touri")
-  expect(marker).toHaveClass("run-resumed-marker")
-  expect(marker.closest(".message-bubble")).toBeNull()
-  expect(screen.getByText("Terminei.")).toBeInTheDocument()
-})
+it.each(["Retomado após reinício do touri", "Retomado após aprovação de acesso"])(
+  "shows %s as a marker in the thread, not as a message",
+  (text) => {
+    render(
+      <VirtualMessageList
+        messages={[
+          message({ id: "partial", text: "Comecei a tabela.", parts: [{ type: "text", text: "Comecei a tabela." }] }),
+          message({
+            id: "marker",
+            parentId: "partial",
+            role: "system",
+            kind: "notice",
+            text,
+            parts: [{ type: "notice", level: "info", code: "run_resumed", text }],
+            createdAt: 2,
+          }),
+          message({
+            id: "reply",
+            parentId: "marker",
+            text: "Terminei.",
+            parts: [{ type: "text", text: "Terminei." }],
+            createdAt: 3,
+          }),
+        ]}
+        onSwitchBranch={async () => {}}
+        onRetry={async () => {}}
+      />,
+    )
+    const marker = screen.getByRole("note")
+    expect(marker).toHaveTextContent(text)
+    expect(marker).toHaveClass("run-resumed-marker")
+    expect(marker.closest(".message-bubble")).toBeNull()
+    expect(screen.getByText("Terminei.")).toBeInTheDocument()
+  },
+)
 
 it("the resume setting is on by default and saving it off persists through the settings API", async () => {
   const onSave = vi.fn(async () => undefined)

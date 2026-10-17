@@ -58,6 +58,20 @@ export const errorRegistry = {
   "TOURI-E1000": entry("kernel", "sidecar", false, "Não foi possível concluir a solicitação.", 500),
   "TOURI-E1001": entry("kernel", "validation", false, "Confira os dados informados e tente novamente.", 400),
   "TOURI-E1002": entry("kernel", "routing", false, "O item solicitado não foi encontrado.", 404),
+  "TOURI-E1012": entry(
+    "kernel",
+    "mcp",
+    false,
+    "O executável do servidor MCP não foi encontrado. Confira a instalação e o PATH na máquina deste bot.",
+    400,
+  ),
+  "TOURI-E1013": entry(
+    "kernel",
+    "mcp",
+    true,
+    "Não foi possível conectar ao servidor MCP. Confira o comando, os argumentos ou a URL e se o servidor está disponível na máquina deste bot.",
+    400,
+  ),
   "TOURI-E1003": entry("kernel", "authentication", false, "Conecte este dispositivo ao touri novamente.", 401),
   "TOURI-E1004": entry("kernel", "authorization", false, "Esta ação não está autorizada.", 403),
   "TOURI-E1005": entry(
@@ -183,6 +197,8 @@ export type RegisteredErrorCode = keyof typeof errorRegistry
 
 const aliases: Record<string, RegisteredErrorCode> = {
   ATTACHMENT_TOO_LARGE: "TOURI-E2003",
+  MCP_EXECUTABLE_NOT_FOUND: "TOURI-E1012",
+  MCP_CONNECTION_FAILED: "TOURI-E1013",
   INVALID_ARGS: "TOURI-E1001",
   INVALID_JSON: "TOURI-E1001",
   INVALID_CODE: "TOURI-E1011",

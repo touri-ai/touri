@@ -5,7 +5,8 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { Bot, Kernel, StartTurnArgs } from "@touri/contracts"
 import { createKernel } from "../../src/kernel"
-import { excludedBotFolders, folderGuestPath, parseBotFolders } from "../../src/kernel/bot-folders"
+import { canonicalPath, excludedBotFolders, folderGuestPath, parseBotFolders } from "../../src/kernel/bot-folders"
+import { createAppPaths, resolveMcpSocketPath } from "../../src/kernel/paths"
 import { claudeSettings } from "../../src/runtime/claude/settings"
 import {
   localFolderProfile,
@@ -18,6 +19,7 @@ import { openCodeConfig } from "../../src/runtime/opencode/config"
 import { sessionFingerprint } from "../../src/runtime/session"
 import { init as initStore } from "../../src/store"
 import { botFolderMounts } from "../../src/vm/folder-mounts"
+import { createFixtureStore } from "../mcp/store-fixture"
 
 const cleanups: (() => void)[] = []
 afterEach(() => {
@@ -275,6 +277,35 @@ test("local profiles canonicalize a live MCP Unix socket without granting the re
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()))
   }
+})
+
+test.each([false, true])("local profiles allow the resolved MCP socket (explicit path: %s)", (explicit) => {
+  const paths = createAppPaths({ appData: `/tmp/${"data-".repeat(30)}` })
+  const store = createFixtureStore({ root: paths.appData })
+  const bot = store.getBot({ botId: "bot-mark" })
+  const thread = store.getThread({ threadId: "thread-mark" })
+  if (!bot || !thread) throw new Error("Missing fixture bot or thread")
+  const args: StartTurnArgs = {
+    bot,
+    thread,
+    fingerprint: sessionFingerprint({ bot, cwd: "/workspace", mcpCommand: "fixture", mcpArgs: [] }).fingerprint,
+    session: null,
+    input: [],
+    developerInstructions: "",
+    handoffPacket: null,
+    mcp: { command: "fixture", args: [], env: {} },
+    env: {},
+    onEvent: () => {},
+    signal: new AbortController().signal,
+  }
+  const socketPath = explicit ? "/tmp/touri-socket-fixture/mcp.sock" : resolveMcpSocketPath(paths)
+  const env = explicit ? { TOURI_MCP_SOCK: socketPath } : {}
+  const profile = localFolderProfile({ paths } as Kernel, args, env, "/fixture-home")
+  expect(profile).toContain(`(subpath ${JSON.stringify(canonicalPath(socketPath))})`)
+  expect(profile).toContain(
+    `(require-not (subpath ${JSON.stringify(canonicalPath(join(paths.runDir, "mcp-tokens", args.thread.id)))}))`,
+  )
+  expect(profile).not.toContain(`(require-not (subpath ${JSON.stringify(canonicalPath(paths.runDir))}))`)
 })
 
 test("canonical application-data aliases retain only this bot's runtime exceptions", async () => {
