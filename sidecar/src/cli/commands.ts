@@ -4,7 +4,7 @@ import { runLegacyImportInto } from "../importer/legacy/cli"
 import { atomicWriteFile, ensurePrivateDirectory } from "../kernel/files"
 import { createAppPaths } from "../kernel/paths"
 import { providerProfileDir, providerProfileVariables } from "../kernel/provider-profiles"
-import { buildChildEnv } from "../kernel/shell-env"
+import { buildChildEnv, withToolPath } from "../kernel/shell-env"
 import { runMcpStdio } from "../main"
 import { listProviderProfiles } from "../runtime/provider-profiles"
 import { resolveExecutable } from "../runtime/utils"
@@ -167,7 +167,7 @@ const runProfileLogin = async (command: Extract<CliCommand, { name: "profile-log
   })
   const dir = providerProfileDir({ appData: command.dataDir, profile: command.profile, provider: command.provider })
   ensurePrivateDirectory({ root: command.dataDir, path: dir })
-  const env = buildChildEnv({ overrides: variables })
+  const env = withToolPath(buildChildEnv({ overrides: variables }))
   const binary =
     command.provider === "claude"
       ? (process.env.TOURI_CLAUDE_BIN ?? "claude")

@@ -5,6 +5,7 @@ import type { AbsolutePath, Result, RunErrorClass } from "@touri/contracts"
 import { refineErrorClass } from "@touri/contracts/run-failure"
 import { atomicWriteFile } from "../kernel/files"
 import { sleep } from "../kernel/policy"
+import { withToolPath } from "../kernel/shell-env"
 
 export const asRecord = (value: unknown): Record<string, unknown> | null => {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return null
@@ -37,7 +38,7 @@ export const writePrivateFile = ({ root, path, content }: { root: string; path: 
   atomicWriteFile({ root, path, content })
 
 const findOnPath = ({ command, env }: { command: string; env: Record<string, string> }): string | null => {
-  const pathValue = env.PATH ?? process.env.PATH ?? ""
+  const pathValue = withToolPath(env).PATH ?? ""
   for (const directory of pathValue.split(":")) {
     if (!directory) continue
     const candidate = join(directory, command)

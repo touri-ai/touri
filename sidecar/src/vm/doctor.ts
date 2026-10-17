@@ -3,6 +3,7 @@ import { freemem, homedir, release, totalmem } from "node:os"
 import { join } from "node:path"
 import type { DoctorCheck, MachineCapability } from "@touri/contracts"
 import { publicError } from "@touri/contracts"
+import { withToolPath } from "../kernel/shell-env"
 import type { VmCommandRunner } from "./command"
 import { BOT_IMAGE } from "./image"
 import { containerMemoryChecks } from "./memory-doctor"
@@ -15,7 +16,8 @@ export const machineCapability = (): MachineCapability => {
     return { available: false, reason: "Apple container requer Apple Silicon", provider: null }
   if (Number(release().split(".")[0]) < 25)
     return { available: false, reason: "Apple container requer macOS 26", provider: null }
-  if (!Bun.which("container")) return { available: false, reason: "container não está instalado", provider: null }
+  if (!Bun.which("container", { PATH: withToolPath().PATH }))
+    return { available: false, reason: "container não está instalado", provider: null }
   return { available: true, reason: null, provider: "apple-container" }
 }
 

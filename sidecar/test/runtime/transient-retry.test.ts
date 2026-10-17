@@ -72,7 +72,9 @@ test("a stale absolute CLI path falls back to the same binary on PATH", () => {
       success: true,
       path: join(root, "bin/codex"),
     })
-    expect(resolveExecutable({ command: "/opt/gone/bin/codex", env: { PATH: "/nonexistent" } })).toMatchObject({
+    expect(
+      resolveExecutable({ command: "/opt/gone/bin/touri-missing-cli", env: { PATH: "/nonexistent" } }),
+    ).toMatchObject({
       success: false,
       errorCode: "cli_missing",
     })

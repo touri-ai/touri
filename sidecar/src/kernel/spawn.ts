@@ -1,6 +1,7 @@
 import { dlopen } from "bun:ffi"
 import { closeSync, createWriteStream, existsSync, read as readFd, write as writeFd } from "node:fs"
 import type { Kernel } from "@touri/contracts"
+import { withToolPath } from "./shell-env"
 
 type SpawnResult = ReturnType<Kernel["spawnTree"]>
 
@@ -139,7 +140,13 @@ export const spawnTree = ({
         "pipe",
         ...Array.from({ length: extraFds }, () => extraPipeMode),
       ]
-      return Bun.spawn({ cmd: [cmd, ...args], cwd, env, detached: true, stdio })
+      return Bun.spawn({
+        cmd: [cmd, ...args],
+        cwd,
+        env: { ...env, PATH: withToolPath(env).PATH },
+        detached: true,
+        stdio,
+      })
     }
     const child = (() => {
       try {
