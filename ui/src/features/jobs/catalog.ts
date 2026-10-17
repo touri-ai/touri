@@ -9,6 +9,7 @@ export type JobTemplate = {
   description: string
   roleLine: string
   instructions: string
+  starterPrompts: string[]
 }
 export const NOT_SURE_JOB_ID = "not-sure-yet"
 
@@ -55,5 +56,14 @@ export const getJobTemplates = (locale: Locale = "pt-BR"): JobTemplate[] =>
     name: t(`jobs.${id}.name`, {}, locale),
     description: t(`jobs.${id}.description`, {}, locale),
     roleLine: t(`jobs.${id}.roleLine`, {}, locale),
-    instructions: t("job.starter", { task: t(`jobs.${id}.task`, {}, locale) }, locale),
+    instructions: t(
+      "job.starter",
+      {
+        name: t(`jobs.${id}.name`, {}, locale),
+        role: t(`jobs.${id}.roleLine`, {}, locale),
+        task: t(`jobs.${id}.task`, {}, locale),
+      },
+      locale,
+    ),
+    starterPrompts: t(`jobs.${id}.prompts`, {}, locale).split("\n"),
   }))

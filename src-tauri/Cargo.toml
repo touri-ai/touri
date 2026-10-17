@@ -2,6 +2,7 @@
 name = "touri"
 version = "0.1.0"
 description = "touri desktop"
+license = "Apache-2.0"
 authors = ["touri contributors"]
 edition = "2021"
 
