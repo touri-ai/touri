@@ -227,7 +227,9 @@ it.each(["approved", "denied"] as const)(
     expect(view.container.querySelector(".tool-group")).not.toHaveAttribute("open")
     expect(screen.queryByText("printf QA_R7_APROVADO")).toBeNull()
     await user.click(screen.getByText("2 ferramentas"))
-    const command = await screen.findByText("printf QA_R7_APROVADO")
+    const card = await screen.findByRole("article", { name: "Aprovação de ferramenta" })
+    const command = within(card).getByRole("figure", { name: "Comando" })
+    expect(command).toHaveTextContent("printf QA_R7_APROVADO")
     expect(command).toBeVisible()
     view.rerender(
       <ToolCallList
@@ -241,7 +243,7 @@ it.each(["approved", "denied"] as const)(
     expect(command).not.toBeVisible()
     await user.click(screen.getByText("2 ferramentas"))
     expect(command).toBeVisible()
-    expect(screen.getByText("printf QA_R7_APROVADO")).toBe(command)
+    expect(within(card).getByRole("figure", { name: "Comando" })).toBe(command)
   },
 )
 
