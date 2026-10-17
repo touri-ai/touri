@@ -65,6 +65,7 @@ export type WorkspaceData = {
   selectedThreadId: Id | null
   activeProjectId: Id | null
   loading: boolean
+  botsLoaded: boolean
   /** A successful snapshot is required before a web deep link can be resolved. */
   loaded: boolean
   notice: string | null
@@ -144,6 +145,7 @@ const emptyState = (): WorkspaceData => ({
   selectedThreadId: readWorkspaceState().threadId ?? null,
   activeProjectId: null,
   loading: true,
+  botsLoaded: false,
   loaded: false,
   notice: null,
   importProgress: null,
@@ -496,7 +498,23 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
         activityResponse,
       ] = await Promise.all([
         api.request("GET /groups", {}).catch(() => ({ groups: [] })),
-        api.request("GET /bots", {}),
+        api.request("GET /bots", {}).then((response) => {
+          if (attempt === generation.current) {
+            // The sidebar can render independently of machine, routine and history initialization.
+            // Keep loaded false until the complete index can resolve saved selections and deep links.
+            setData((current) => {
+              const selectedBot = response.bots.find((bot) => bot.id === current.selectedBotId) ?? response.bots[0]
+              return {
+                ...current,
+                bots: uniqueById(response.bots),
+                botsLoaded: true,
+                selectedBotId: selectedBot?.id ?? null,
+                activeProjectId: selectedBot?.projectId ?? null,
+              }
+            })
+          }
+          return response
+        }),
         api.request("GET /projects", {}),
         api.request("GET /settings", {}),
         api.request("GET /previews", {}),
@@ -532,11 +550,12 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
           ),
           activityResponse.runs,
         )
-        const selectedBot = botResponse.bots.find((bot) => bot.id === current.selectedBotId) ?? botResponse.bots[0]
+        const selectedBot = current.bots.find((bot) => bot.id === current.selectedBotId) ?? current.bots[0]
+        const threads = mergeThreads(current.threads, allThreads)
         const selectedThread =
-          allThreads.find((thread) => thread.id === current.selectedThreadId && thread.botId === selectedBot?.id) ??
+          threads.find((thread) => thread.id === current.selectedThreadId && thread.botId === selectedBot?.id) ??
           lastActiveThread(
-            allThreads,
+            threads,
             runs,
             selectedBot?.id ?? "",
             current.selectedThreadId ?? threadsByBot.current[selectedBot?.id ?? ""],
@@ -544,10 +563,9 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
         return {
           ...current,
           groups: groupResponse?.groups ?? [],
-          bots: uniqueById(botResponse.bots),
           machineCapability: machineResponse.capability,
           machines: machineResponse.machines,
-          threads: mergeThreads(current.threads, allThreads),
+          threads,
           messages: (api.pendingMessages?.() ?? []).reduce(updateMessage, current.messages),
           activityMessages: activityResponse.messages,
           runs,
