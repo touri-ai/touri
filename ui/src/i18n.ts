@@ -3,6 +3,40 @@ import { userFacingError } from "./errors"
 /** All UI copy lives here. pt-BR is the default; English is available for a future locale picker. */
 export type Locale = "pt-BR" | "en"
 export const ptBR = {
+  "A tela pode ter mudado durante seu controle. Observe novamente antes de continuar.":
+    "A tela pode ter mudado durante seu controle. Observe novamente antes de continuar.",
+  "Assumir controle não autoriza ações automáticas do bot. Revise essas ações no chat.":
+    "Assumir controle não autoriza ações automáticas do bot. Revise essas ações no chat.",
+  "O controle foi interrompido. Assuma e devolva ao bot para permitir novas entradas.":
+    "O controle foi interrompido. Assuma e devolva ao bot para permitir novas entradas.",
+  "Controle indisponível": "Controle indisponível",
+  "O controle mudou. Tente novamente.": "O controle mudou. Tente novamente.",
+  "Controle interrompido": "Controle interrompido",
+  "Controle manual indisponível": "Controle manual indisponível",
+  "Abrir arquivos": "Abrir arquivos",
+  Conversar: "Conversar",
+  "A tela da VM conectou, mas não enviou nenhuma imagem. Tente reconectar a tela.":
+    "A tela da VM conectou, mas não enviou nenhuma imagem. Tente reconectar a tela.",
+  "A tela da VM não respondeu em 15 s. Verifique se a máquina está ligada; tente reconectar a tela.":
+    "A tela da VM não respondeu em 15 s. Verifique se a máquina está ligada; tente reconectar a tela.",
+  "Não foi possível parar a tarefa. Tente novamente.": "Não foi possível parar a tarefa. Tente novamente.",
+  "Não foi possível devolver o controle. Reconecte a tela e tente novamente.":
+    "Não foi possível devolver o controle. Reconecte a tela e tente novamente.",
+  "Assuma o controle para digitar": "Assuma o controle para digitar",
+  "Ao assumir, só você usa o teclado e o mouse. A automação do bot continua com a permissão atual.":
+    "Ao assumir, só você usa o teclado e o mouse. A automação do bot continua com a permissão atual.",
+  "Este servidor não tem uma área de trabalho para controlar. Você pode conversar e trabalhar com arquivos.":
+    "Este servidor não tem uma área de trabalho para controlar. Você pode conversar e trabalhar com arquivos.",
+  "Parar tarefa": "Parar tarefa",
+  "Reconectar tela": "Reconectar tela",
+  "A conexão com a tela caiu. A tarefa pode continuar em execução.":
+    "A conexão com a tela caiu. A tarefa pode continuar em execução.",
+  "Devolver ao bot": "Devolver ao bot",
+  "Você está no controle. O bot aguarda você terminar.": "Você está no controle. O bot aguarda você terminar.",
+  "Você está no controle": "Você está no controle",
+  "Assumir controle": "Assumir controle",
+  "Acompanhar a tela": "Acompanhar a tela",
+
   // Routine editor and repeat-task flow.
   Bot: "Bot",
   "Repetir esta tarefa": "Repetir esta tarefa",
@@ -1594,6 +1628,40 @@ export const ptBR = {
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  "A tela pode ter mudado durante seu controle. Observe novamente antes de continuar.":
+    "The screen may have changed while you were in control. Observe it again before continuing.",
+  "Assumir controle não autoriza ações automáticas do bot. Revise essas ações no chat.":
+    "Taking control does not authorize the bot to act automatically. Review those actions in chat.",
+  "O controle foi interrompido. Assuma e devolva ao bot para permitir novas entradas.":
+    "Control was stopped. Take over and return to the bot to allow new input.",
+  "Controle indisponível": "Control is unavailable",
+  "O controle mudou. Tente novamente.": "Control changed. Try again.",
+  "Controle interrompido": "Control stopped",
+  "Controle manual indisponível": "Manual control is unavailable",
+  "Abrir arquivos": "Open files",
+  Conversar: "Chat",
+  "A tela da VM conectou, mas não enviou nenhuma imagem. Tente reconectar a tela.":
+    "The VM screen connected without sending an image. Try reconnecting the screen.",
+  "A tela da VM não respondeu em 15 s. Verifique se a máquina está ligada; tente reconectar a tela.":
+    "The VM screen did not respond within 15 s. Check that the machine is running and reconnect the screen.",
+  "Não foi possível parar a tarefa. Tente novamente.": "Could not stop the task. Try again.",
+  "Não foi possível devolver o controle. Reconecte a tela e tente novamente.":
+    "Could not return control. Reconnect the screen and try again.",
+  "Assuma o controle para digitar": "Take control to type",
+  "Ao assumir, só você usa o teclado e o mouse. A automação do bot continua com a permissão atual.":
+    "When you take over, only you use the keyboard and mouse. The bot keeps its current automation permission.",
+  "Este servidor não tem uma área de trabalho para controlar. Você pode conversar e trabalhar com arquivos.":
+    "This server has no desktop to control. You can chat and work with files.",
+  "Parar tarefa": "Stop task",
+  "Reconectar tela": "Reconnect screen",
+  "A conexão com a tela caiu. A tarefa pode continuar em execução.":
+    "The screen connection dropped. The task may still be running.",
+  "Devolver ao bot": "Return to bot",
+  "Você está no controle. O bot aguarda você terminar.": "You are in control. The bot is waiting for you to finish.",
+  "Você está no controle": "You are in control",
+  "Assumir controle": "Take control",
+  "Acompanhar a tela": "Watch the screen",
+
   // Routine editor and repeat-task flow.
   Bot: "Bot",
   "Repetir esta tarefa": "Repeat this task",

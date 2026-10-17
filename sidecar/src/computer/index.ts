@@ -1,11 +1,13 @@
 import type { Kernel } from "@touri/contracts"
 import { createComputerController } from "./controller"
+import { createComputerInput } from "./input-control"
 import { createComputerRoutes } from "./routes"
 import { createComputerTools } from "./tools"
 
 export const name = "computer"
 
 export const init = async (kernel: Kernel): Promise<void> => {
+  kernel.services.provide("computer.input", createComputerInput(kernel))
   const controller = createComputerController(kernel)
   const registration = kernel.registerTools({
     tools: createComputerTools({ controller }).map((tool) => ({

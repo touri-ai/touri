@@ -1486,9 +1486,11 @@ export const BotSettingsModal = ({
           <SettingsPane {...botPane("permissions")}>
             {api && <BotStandingGrants key={grantsRevision} api={api} botId={bot.id} />}
             <p className="field-help">
-              {t("O controle do computador precisa de uma permissão por tempo limitado em cada conversa.")}
+              {bot.machine === "vm"
+                ? t("Assumir controle não autoriza ações automáticas do bot. Revise essas ações no chat.")
+                : t("O controle do computador precisa de uma permissão por tempo limitado em cada conversa.")}
             </p>
-            {api && bot.computerUse && bot.mainThreadId && (
+            {api && bot.computerUse && bot.mainThreadId && "__TAURI_INTERNALS__" in window && (
               <>
                 <p>{t("Esta permissão vale para a conversa principal deste bot.")}</p>
                 <ComputerGrantCard api={api} botId={bot.id} threadId={bot.mainThreadId} botName={bot.name} />

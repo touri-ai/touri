@@ -2497,3 +2497,44 @@ test("a delayed vault read uses the same five-second allowance as chat and reach
   expect(prepared.env.CLAUDE_CODE_OAUTH_TOKEN).toBe("sk-ant-oat01-synthetic-delayed-token")
   await prepared.release()
 }, 10000)
+
+test("VM automatic input waits for explicit handback and kill prevents any further guest injection", async () => {
+  const f = await fixture()
+  const bot = await f.bot({ computerUse: true })
+  await initComputer(f.runtime.kernel)
+  const gate = f.runtime.kernel.services.use("computer.input")
+  if (!gate) throw new Error("Missing input owner")
+  const ctx = {
+    botId: bot.id,
+    threadId: bot.mainThreadId ?? "",
+    runId: null,
+    projectId: null,
+    cwd: "/workspace",
+    signal: new AbortController().signal,
+  }
+  const spawn = f.fake.provider.spawn
+  f.fake.provider.spawn = (input) => {
+    const child = spawn(input)
+    return child.success
+      ? {
+          ...child,
+          stdout: new Response(JSON.stringify({ data: "cG5n", scale: 1 })).body as ReadableStream<Uint8Array>,
+        }
+      : child
+  }
+  await gate.take(bot.id, ctx.signal)
+  const pending = f.vm.service.computer({ ctx, name: "computer_type", args: { text: "next" } })
+  await Bun.sleep(10)
+  expect(f.fake.calls.filter((call) => call.action === "spawn")).toHaveLength(0)
+  gate.handBack(bot.id)
+  expect(await pending).toMatchObject({ success: false, errorCode: "COMPUTER_NO_SCREENSHOT" })
+  const injections = () =>
+    f.fake.calls.filter((call) => call.action === "spawn" && JSON.stringify(call.input).includes("computer.py"))
+  expect(injections()).toHaveLength(0)
+  expect((await f.vm.service.computer({ ctx, name: "computer_screenshot", args: {} })).success).toBe(true)
+  expect((await f.vm.service.computer({ ctx, name: "computer_type", args: { text: "next" } })).success).toBe(true)
+  expect(injections()).toHaveLength(2)
+  gate.kill()
+  expect((await f.vm.service.computer({ ctx, name: "computer_type", args: { text: "again" } })).success).toBe(false)
+  expect(injections()).toHaveLength(2)
+})

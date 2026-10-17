@@ -116,7 +116,10 @@ it("keeps every former bot setting within the Advanced button and one section cl
     },
     Permissões: () => {
       expect(screen.getByRole("heading", { name: "Permissões permanentes" })).toBeVisible()
-      expect(screen.getByRole("button", { name: "Permitir controle do computador" })).toBeVisible()
+      expect(screen.queryByRole("button", { name: "Permitir controle do computador" })).toBeNull()
+      expect(
+        screen.getByText("Assumir controle não autoriza ações automáticas do bot. Revise essas ações no chat."),
+      ).toBeVisible()
     },
     Rotinas: () => {
       expect(screen.getByRole("tabpanel", { name: "Rotinas" })).toBeVisible()
@@ -186,7 +189,12 @@ it("keeps app sections short, with every registry setting and diagnostics at mos
       expect(document.querySelector(`[data-setting-id="${setting.id}"]`)).toBeVisible()
     }
     if (section.id === "privacy")
-      expect(screen.getByRole("heading", { name: "Permitir que um bot controle o Mac" })).toBeVisible()
+      expect(
+        screen.getByText(
+          "Este servidor não tem uma área de trabalho para controlar. Você pode conversar e trabalhar com arquivos.",
+        ),
+      ).toBeVisible()
+    expect(screen.queryByRole("heading", { name: "Permitir que um bot controle o Mac" })).toBeNull()
     if (section.id === "diagnostics") {
       expect(screen.getByRole("button", { name: "Verificar novamente" })).toBeVisible()
       expect(screen.getByRole("region", { name: "Armazenamento" })).toBeVisible()

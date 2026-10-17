@@ -25,6 +25,7 @@ type Session = {
   guest?: Socket
   auth?: VncAuthenticator
   inputAbort?: AbortController
+  inputSettled?: Promise<void>
   viewer?: DesktopSocket
 }
 
@@ -35,6 +36,12 @@ export const createDesktopGateway = (
 ) => {
   const sessions = new Map<string, Session>()
   const pending = new Map<AbortController, { control: boolean; botId: string; settled: Promise<void> }>()
+  const targetEpochs = new Map<string, number>()
+  const changeTarget = (botId: string) => {
+    const next = (targetEpochs.get(botId) ?? 0) + 1
+    targetEpochs.set(botId, next)
+    return next
+  }
   let epoch = 0
   let disposed = false
   const revocationTimer = setInterval(() => {
@@ -49,6 +56,7 @@ export const createDesktopGateway = (
     const session = sessions.get(id)
     if (!session) return Promise.resolve()
     log("Desktop session closed", { botId: session.botId, control: session.control, reason, closeCode, epoch })
+    session.control = false
     sessions.delete(id)
     clearTimeout(session.timer)
     session.inputAbort?.abort()
@@ -59,7 +67,7 @@ export const createDesktopGateway = (
       const guest = session.guest
       setTimeout(() => guest.destroy(), 200).unref()
     }
-    return session.release().catch(() => undefined)
+    return Promise.all([session.release().catch(() => undefined), session.inputSettled]).then(() => undefined)
   }
   const revokeControl = (): void => {
     epoch += 1
@@ -72,7 +80,7 @@ export const createDesktopGateway = (
     return (
       (!session.device || session.device.active()) &&
       (bot?.machine === "vm" || bot?.machine === "cloud") &&
-      (!session.control || bot.computerUse)
+      (!session.control || bot?.machine === "vm" || bot.computerUse)
     )
   }
   const unsubscribe = kernel.subscribe(({ event }) => {
@@ -232,19 +240,22 @@ export const createDesktopGateway = (
             return { status: 409, json: { error: "A máquina está parada" } }
           log("Desktop control requested", { botId, control, computerUse: bot.computerUse, epoch })
           if (typeof control !== "boolean") return { status: 400, json: { error: "Modo de controle inválido" } }
-          if (control && !bot.computerUse)
+          if (control && bot.machine === "cloud" && !bot.computerUse)
             return {
               status: 403,
               json: { error: "Ative a permissão de controle do computador nas configurações do bot" },
             }
           if (disposed || sessions.size + pending.size >= 16)
             return { status: 503, json: { error: "Conexões da tela indisponíveis" } }
+          const targetEpoch = control ? changeTarget(botId) : targetEpochs.get(botId)
           const startEpoch = epoch
           const controller = new AbortController()
           let settle = () => {}
           const settled = new Promise<void>((resolve) => {
             settle = resolve
           })
+          if (control)
+            for (const [previous, request] of pending) if (request.botId === botId && request.control) previous.abort()
           pending.set(controller, { control, botId, settled })
           const abort = () => controller.abort()
           signal.addEventListener("abort", abort, { once: true })
@@ -266,9 +277,18 @@ export const createDesktopGateway = (
             if (
               disposed ||
               (currentBot?.machine !== "vm" && currentBot?.machine !== "cloud") ||
-              (control && (startEpoch !== epoch || !currentBot.computerUse))
+              (control && (startEpoch !== epoch || (currentBot.machine === "cloud" && !currentBot.computerUse)))
             )
               throw new Error("Controle interrompido; conecte novamente em modo de observação")
+            if (control && bot.machine === "vm") {
+              const input = kernel.services.use("computer.input")
+              if (!input) throw new Error("Controle manual indisponível")
+              for (const [id, session] of [...sessions])
+                if (session.botId === botId && session.control) await close(id, "human takeover")
+              await input.take(botId, controller.signal)
+              if (startEpoch !== epoch || targetEpoch !== targetEpochs.get(botId))
+                throw new Error("Controle interrompido")
+            }
             const id = randomBytes(24).toString("hex")
             log("Desktop control granted", { botId, control, epoch, startEpoch })
             sessions.set(id, {
@@ -286,7 +306,15 @@ export const createDesktopGateway = (
               gate: new DesktopInputGate(),
             })
             release = undefined
-            return { status: 200, json: { sessionId: id, path: `/api/v1/desktop/${id}/socket`, control } }
+            return {
+              status: 200,
+              json: {
+                sessionId: id,
+                path: `/api/v1/desktop/${id}/socket`,
+                control,
+                humanControl: kernel.services.use("computer.input")?.human(botId) ?? false,
+              },
+            }
           } catch (error) {
             return {
               status: 409,
@@ -306,6 +334,24 @@ export const createDesktopGateway = (
       },
       {
         method: "POST",
+        path: "/bots/:id/desktop/return",
+        handler: async ({ params }) => {
+          const botId = params.id ?? ""
+          if (botFor(botId)?.machine !== "vm") return { status: 409, json: { error: "Controle manual indisponível" } }
+          const stopEpoch = epoch
+          const targetEpoch = changeTarget(botId)
+          for (const [controller, request] of pending)
+            if (request.botId === botId && request.control) controller.abort()
+          for (const [id, session] of [...sessions])
+            if (session.botId === botId && session.control) await close(id, "explicit handback")
+          if (stopEpoch !== epoch || targetEpoch !== targetEpochs.get(botId))
+            return { status: 409, json: { error: "O controle mudou. Tente novamente." } }
+          kernel.services.use("computer.input")?.handBack(botId)
+          return { status: 200, json: {} }
+        },
+      },
+      {
+        method: "POST",
         path: "/desktop/:id/text",
         handler: async ({ params, body, signal }) => {
           const session = sessions.get(params.id ?? "")
@@ -319,6 +365,10 @@ export const createDesktopGateway = (
           if (session.inputAbort) return { status: 409, json: { error: "Aguarde a colagem anterior" } }
           const controller = new AbortController()
           session.inputAbort = controller
+          let settle = () => {}
+          session.inputSettled = new Promise<void>((resolve) => {
+            settle = resolve
+          })
           const abort = () => controller.abort()
           signal.addEventListener("abort", abort, { once: true })
           if (signal.aborted) abort()
@@ -340,6 +390,8 @@ export const createDesktopGateway = (
           } finally {
             signal.removeEventListener("abort", abort)
             delete session.inputAbort
+            delete session.inputSettled
+            settle()
           }
         },
       },

@@ -355,8 +355,8 @@ test("desktop upgrades require UI authentication and an allowed Origin before cl
   expect(await upgradeStatus(port, session.path, "dev-ui-token", "tauri://localhost")).toContain("410")
 })
 
-test("A03: desktop claims are device-bound and revocation closes the viewer and releases its lease", async () => {
-  const f = await fixture(true)
+test("A03: paired human can control without automation; device revocation closes the viewer and lease", async () => {
+  const f = await fixture(false)
   let releases = 0
   let closed = false
   let active = true
@@ -409,7 +409,7 @@ test("failed desktop upgrades close the claimed session and release its lease", 
   expect(releases).toBe(1)
 })
 
-test("permission revocation during startup releases the acquired lease and refuses control", async () => {
+test("disabling automation during startup still permits independent human control", async () => {
   const f = await fixture(true)
   let finish: (() => void) | undefined
   let releases = 0
@@ -425,7 +425,10 @@ test("permission revocation during startup releases the acquired lease and refus
   await until(() => finish !== undefined)
   await f.request(`/bots/${f.bot.id}`, { computerUse: false }, "PATCH")
   finish?.()
-  expect((await pending).status).toBe(409)
+  const response = await pending
+  expect(response.status).toBe(200)
+  const { sessionId } = await response.json()
+  await f.request(`/desktop/${sessionId}`, {}, "DELETE")
   expect(releases).toBe(1)
 })
 
@@ -456,10 +459,12 @@ test("text frames and failed viewer sends close the session and release its leas
 
 test("authenticated one-use WS bridges the existing port-forward and blocks input in observation", async () => {
   const f = await fixture()
-  expect((await f.request(`/bots/${f.bot.id}/desktop`, { control: true })).status).toBe(403)
+  const human = await f.request(`/bots/${f.bot.id}/desktop`, { control: true })
+  expect(human.status).toBe(200)
+  await f.request(`/desktop/${(await human.json()).sessionId}`, {}, "DELETE")
   const session = await f.session()
   expect(session.control).toBe(false)
-  expect(f.forwarded).toEqual([5900])
+  expect(f.forwarded).toEqual([5900, 5900])
   // Bun supports headers; lib.dom's constructor omits that overload.
   const NativeSocket = WebSocket as unknown as { new (url: string, options: WebSocketOptions): WebSocket }
   const ticket = await socketTicket(f.runtime.handshake.port, session.path)
@@ -486,49 +491,46 @@ test("authenticated one-use WS bridges the existing port-forward and blocks inpu
   expect(f.desktop.service.claim(session.sessionId)).toBe(false)
 })
 
-test.each(["api", "hotkey", "permission"])(
-  "%s stop immediately closes control while observation stays open",
-  async (source) => {
-    const f = await fixture(true)
-    const control = await f.session(true)
-    const observe = await f.session()
-    const controlled = {
-      send: () => 1,
-      close: () => {
-        stopped = true
-      },
-    }
-    let stopped = false
-    let ready = false
-    let observingClosed = false
-    expect(f.desktop.service.claim(control.sessionId)).toBe(true)
-    f.desktop.service.open(control.sessionId, {
-      ...controlled,
-      send: () => {
-        ready = true
-        return 1
-      },
-    })
-    expect(f.desktop.service.claim(observe.sessionId)).toBe(true)
-    f.desktop.service.open(observe.sessionId, {
-      send: () => 1,
-      close: () => {
-        observingClosed = true
-      },
-    })
-    await until(() => ready)
-    f.desktop.service.message(control.sessionId, Buffer.concat([handshake, key(), pointer]))
-    await until(() => Buffer.concat(f.received).length >= 1 + key().length + pointer.length)
-    if (source === "api") expect((await f.request("/computer/kill")).status).toBe(200)
-    else if (source === "hotkey")
-      f.runtime.emitHostNotification({ method: "computer.killSwitch", params: { at: Date.now() } })
-    else expect((await f.request(`/bots/${f.bot.id}`, { computerUse: false }, "PATCH")).status).toBe(200)
-    expect(stopped).toBe(true)
-    expect(observingClosed).toBe(false)
-    expect(f.desktop.service.claim(control.sessionId)).toBe(false)
-    await until(() => Buffer.concat(f.received).includes(key(false)))
-  },
-)
+test.each(["api", "hotkey"])("%s stop immediately closes control while observation stays open", async (source) => {
+  const f = await fixture(true)
+  const control = await f.session(true)
+  const observe = await f.session()
+  const controlled = {
+    send: () => 1,
+    close: () => {
+      stopped = true
+    },
+  }
+  let stopped = false
+  let ready = false
+  let observingClosed = false
+  expect(f.desktop.service.claim(control.sessionId)).toBe(true)
+  f.desktop.service.open(control.sessionId, {
+    ...controlled,
+    send: () => {
+      ready = true
+      return 1
+    },
+  })
+  expect(f.desktop.service.claim(observe.sessionId)).toBe(true)
+  f.desktop.service.open(observe.sessionId, {
+    send: () => 1,
+    close: () => {
+      observingClosed = true
+    },
+  })
+  await until(() => ready)
+  f.desktop.service.message(control.sessionId, Buffer.concat([handshake, key(), pointer]))
+  await until(() => Buffer.concat(f.received).length >= 1 + key().length + pointer.length)
+  if (source === "api") expect((await f.request("/computer/kill")).status).toBe(200)
+  else if (source === "hotkey")
+    f.runtime.emitHostNotification({ method: "computer.killSwitch", params: { at: Date.now() } })
+  else expect((await f.request(`/bots/${f.bot.id}`, { computerUse: false }, "PATCH")).status).toBe(200)
+  expect(stopped).toBe(true)
+  expect(observingClosed).toBe(false)
+  expect(f.desktop.service.claim(control.sessionId)).toBe(false)
+  await until(() => Buffer.concat(f.received).includes(key(false)))
+})
 
 test("a kill switch during boot cannot yield a new control session", async () => {
   const f = await fixture(true)
@@ -612,4 +614,90 @@ test("desktop reconnect acquires only a running VM without machine preparation",
   const response = await f.request(`/bots/${f.bot.id}/desktop`, { resume: true })
   expect(response.status).toBe(200)
   expect(calls).toEqual([true])
+})
+
+test("human input is independent of automation and disconnect holds the bot until explicit handback", async () => {
+  const f = await fixture(false)
+  const human = await f.session(true)
+  const input = f.runtime.kernel.services.use("computer.input")
+  expect(input?.human(f.bot.id)).toBe(true)
+  expect(f.runtime.kernel.services.use("store.api")?.getBot({ botId: f.bot.id })?.computerUse).toBe(false)
+  await f.request(`/desktop/${human.sessionId}`, {}, "DELETE")
+  const observe = await f.request(`/bots/${f.bot.id}/desktop`, { control: false, resume: true })
+  expect(await observe.json()).toMatchObject({ control: false, humanControl: true })
+  let injections = 0
+  const pending = input?.run(
+    { botId: f.bot.id, signal: new AbortController().signal } as import("@touri/contracts").ToolContext,
+    async () => {
+      injections++
+      return { success: true, content: [] }
+    },
+  )
+  await Bun.sleep(10)
+  expect(injections).toBe(0)
+  expect((await f.request(`/bots/${f.bot.id}/desktop/return`)).status).toBe(200)
+  await pending
+  expect(injections).toBe(1)
+  expect(input?.human(f.bot.id)).toBe(false)
+})
+
+test("explicit return closes the human socket before resuming automation and invalidates pending takeover", async () => {
+  const f = await fixture()
+  const human = await f.session(true)
+  let closed = false
+  f.desktop.service.claim(human.sessionId)
+  f.desktop.service.open(human.sessionId, {
+    send: () => 1,
+    close: () => {
+      closed = true
+    },
+  })
+  expect((await f.request(`/bots/${f.bot.id}/desktop/return`)).status).toBe(200)
+  expect(closed).toBe(true)
+  expect(f.desktop.service.claim(human.sessionId)).toBe(false)
+  expect(f.runtime.kernel.services.use("computer.input")?.human(f.bot.id)).toBe(false)
+})
+
+test("return while takeover waits for an active input invalidates that takeover without restoring the hold", async () => {
+  const f = await fixture()
+  const gate = f.runtime.kernel.services.use("computer.input")
+  if (!gate) throw new Error("Missing input owner")
+  let finish = () => {}
+  const active = gate.run(
+    { botId: f.bot.id, signal: new AbortController().signal } as import("@touri/contracts").ToolContext,
+    async () => {
+      await new Promise<void>((resolve) => {
+        finish = resolve
+      })
+      return { success: true, content: [] }
+    },
+  )
+  const takeover = f.request(`/bots/${f.bot.id}/desktop`, { control: true })
+  await until(() => gate.human(f.bot.id))
+  expect((await f.request(`/bots/${f.bot.id}/desktop/return`)).status).toBe(200)
+  finish()
+  await active
+  expect((await takeover).status).toBe(409)
+  expect(gate.human(f.bot.id)).toBe(false)
+})
+
+test("a delayed handback cannot release a newer human takeover", async () => {
+  const f = await fixture()
+  let release = () => {}
+  let closing = false
+  const acquire = f.desktopVm.acquire
+  f.desktopVm.acquire = async () => async () =>
+    new Promise<void>((resolve) => {
+      closing = true
+      release = resolve
+    })
+  await f.session(true)
+  f.desktopVm.acquire = acquire
+  const handback = f.request(`/bots/${f.bot.id}/desktop/return`)
+  await until(() => closing)
+  const newer = await f.session(true)
+  release()
+  expect((await handback).status).toBe(409)
+  expect(f.desktop.service.claim(newer.sessionId)).toBe(true)
+  expect(f.runtime.kernel.services.use("computer.input")?.human(f.bot.id)).toBe(true)
 })
