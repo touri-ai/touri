@@ -879,7 +879,7 @@ test("B05: the real engine starts a delegated provider turn under the ceiling, a
       await Bun.sleep(20)
     setDelegation(f.host.kernel, participant.id, null)
     await engine.shutdown()
-    return { argv: readFileSync(argvLog, "utf8"), launch, home: target.homeDir }
+    return { argv: readFileSync(argvLog, "utf8"), launch }
   }
   const equal = await runDelegated(f.store.getBot({ botId: pm.id }) as Bot)
   expect(equal.argv).toContain("danger-full-access")
@@ -888,7 +888,7 @@ test("B05: the real engine starts a delegated provider turn under the ceiling, a
     expect(
       reduced.launch?.args.some(
         (arg, index, args) =>
-          arg === "--ro-bind" && args[index + 1] === reduced.home && args[index + 2] === reduced.home,
+          arg === "--ro-bind" && args[index + 1] === reduced.launch?.cwd && args[index + 2] === reduced.launch?.cwd,
       ),
     ).toBe(true)
     expect(reduced.argv).toContain('approval_policy="never"')
