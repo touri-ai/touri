@@ -885,6 +885,15 @@ const AppContent = ({ kernel }: AppProps) => {
                         bot={selectedBot}
                         messages={selectedMessages}
                         runs={data.runs}
+                        projects={data.projects}
+                        onOpenModel={() => openModal("bot-model")}
+                        onSelectProject={async (projectId) => {
+                          if (selectedBot) await actions.updateBot(selectedBot.id, { projectId })
+                        }}
+                        onAddProject={() => {
+                          openModal("project")
+                          setProjectLinkBotId(selectedBot?.id ?? null)
+                        }}
                         routines={data.routines}
                         routineRuns={data.routineRuns}
                         onSend={actions.sendMessage}
@@ -975,19 +984,6 @@ const AppContent = ({ kernel }: AppProps) => {
                               onModel={() => openModal("bot-model")}
                               onPermissions={() => openModal("bot-permissions")}
                               onPreview={() => setScreen("preview")}
-                              active={data.runs.some(
-                                (run) =>
-                                  run.botId === selectedBot.id &&
-                                  ["queued", "starting", "running"].includes(run.status),
-                              )}
-                              projects={data.projects}
-                              onSelectProject={async (projectId) => {
-                                if (selectedBot) await actions.updateBot(selectedBot.id, { projectId })
-                              }}
-                              onAddProject={() => {
-                                openModal("project")
-                                setProjectLinkBotId(selectedBot?.id ?? null)
-                              }}
                               onRole={(roleLine) => actions.updateBot(selectedBot.id, { roleLine })}
                             />
                           </ErrorBoundary>
