@@ -4,6 +4,19 @@ type Locale = "pt-BR" | "en"
 type Approval = Pick<ApprovalPart, "request" | "detail" | "scope">
 
 const copy = {
+  "Ativar navegador": "Enable browser",
+  "Ativar controle do computador": "Enable computer control",
+  "{bot} quer ativar o navegador dele para {reason}.": "{bot} wants to enable its browser to {reason}.",
+  "{bot} quer ativar o controle do computador para {reason}.": "{bot} wants to enable computer control to {reason}.",
+  "Abre páginas no navegador isolado deste bot.": "Opens pages in this bot's isolated browser.",
+  "Pode ver a tela e clicar ou digitar, somente onde o touri permite.":
+    "Can see the screen and click or type, only where touri allows.",
+  "Controla somente a tela do computador isolado do bot.": "Controls only the bot's isolated computer screen.",
+  "Controla a tela deste computador, com as permissões do touri.":
+    "Controls this computer's screen, subject to touri permissions.",
+  "A configuração fica salva neste bot. Você pode desativar nos ajustes.":
+    "The setting is saved for this bot. You can turn it off in settings.",
+  "Após ativar, o touri retoma a tarefa automaticamente.": "After enabling, touri resumes the task automatically.",
   Terminal: "Terminal",
   Arquivos: "Files",
   Ferramenta: "Tool",
@@ -55,6 +68,53 @@ export const approvalSummary = (approval: Approval, locale: Locale = "pt-BR"): {
   const ownTool = approval.scope
     ? approval.scope.server === "touri"
     : !name.includes("__") || name.startsWith("mcp__touri__")
+  if (ownTool && leaf === "capability_request") {
+    const input = inputValue(approval.detail)
+    if (
+      !["browser", "computer_use"].includes(String(input?.capability)) ||
+      ![input?.botName, input?.reason].every(
+        (value) => typeof value === "string" && value.trim() && !/[\p{Cc}\p{Zl}\p{Zp}]/u.test(value),
+      ) ||
+      !["local", "vm"].includes(String(input?.machine)) ||
+      typeof input?.hostComputerUse !== "boolean"
+    )
+      return {
+        title: text("Detalhes indisponíveis", locale),
+        body: text(
+          "Não foi possível mostrar os detalhes desta ação. Negue e peça ao bot para solicitar novamente.",
+          locale,
+        ),
+      }
+    const browser = input?.capability === "browser"
+    const body = [
+      text(
+        browser
+          ? "{bot} quer ativar o navegador dele para {reason}."
+          : "{bot} quer ativar o controle do computador para {reason}.",
+        locale,
+        { bot: String(input?.botName), reason: String(input?.reason) },
+      ),
+      text(
+        browser
+          ? "Abre páginas no navegador isolado deste bot."
+          : "Pode ver a tela e clicar ou digitar, somente onde o touri permite.",
+        locale,
+      ),
+      ...(!browser
+        ? [
+            text(
+              input?.machine === "vm" && !input.hostComputerUse
+                ? "Controla somente a tela do computador isolado do bot."
+                : "Controla a tela deste computador, com as permissões do touri.",
+              locale,
+            ),
+          ]
+        : []),
+      text("A configuração fica salva neste bot. Você pode desativar nos ajustes.", locale),
+      text("Após ativar, o touri retoma a tarefa automaticamente.", locale),
+    ].join(" ")
+    return { title: text(browser ? "Ativar navegador" : "Ativar controle do computador", locale), body }
+  }
   if (ownTool && leaf === "folder_access_request") {
     const input = inputValue(approval.detail)
     if (
@@ -114,6 +174,8 @@ export const isApprovalNoticeTitle = (title: string): boolean =>
   /(?:^|: )(?:Permitir escrita em|Allow writing in) \/[^\r\n]*\?$/.test(title) ||
   (
     [
+      "Ativar navegador",
+      "Ativar controle do computador",
       "Terminal",
       "Arquivos",
       "Ferramenta",
