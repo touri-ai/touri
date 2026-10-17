@@ -158,7 +158,8 @@ test.describe("mermaid production and desktop CSP", () => {
 
   test("renders flowchart and sequence SVG in the desktop WebKit engine without eval", async () => {
     test.skip(!existsSync(webkit.executablePath()), "WebKit runtime is not installed on this test host")
-    const browser = await webkit.launch({ headless: true })
+    // Clear this file's inherited channel so the desktop engine uses its own executable.
+    const browser = await webkit.launch({ channel: "", headless: true })
     try {
       const page = await browser.newPage({ viewport: { width: 1100, height: 1000 } })
       const errors: string[] = []
