@@ -20,11 +20,17 @@ export const materializeTranscript = (database: Database): void => {
     const rows = database
       .query(
         // ORDER BY e.id otherwise makes SQLite scan and parse every historical message body.
-        `SELECT e.seq AS delta_seq, e.at, e.event_json, m.id, m.thread_id
-         FROM transcript_entries e INDEXED BY transcript_stream_message
+        `SELECT e.id AS entry_id, e.seq AS delta_seq, e.at, e.event_json, m.id, m.thread_id
+         FROM transcript_entries e INDEXED BY transcript_delta_message
          JOIN messages m ON m.thread_id = e.thread_id AND m.id = json_extract(e.event_json, '$.messageId')
-         WHERE json_extract(e.event_json, '$.type') IN ('message.delta', 'message.parts') AND e.seq > m.updated_seq
-         ORDER BY e.id`,
+         WHERE json_extract(e.event_json, '$.type') = 'message.delta' AND e.seq > m.updated_seq
+         UNION ALL
+         SELECT e.id AS entry_id, e.seq AS delta_seq, e.at, e.event_json, m.id, m.thread_id
+         FROM transcript_part_entries p
+         JOIN transcript_entries e ON e.id = p.entry_id
+         JOIN messages m ON m.thread_id = p.thread_id AND m.id = p.message_id
+         WHERE e.seq > m.updated_seq
+         ORDER BY entry_id`,
       )
       .all() as Array<{ id: string; thread_id: string; delta_seq: number; at: number; event_json: string }>
     const projections = new Map<string, Projection & { parts: MessagePart[] }>()

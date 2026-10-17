@@ -99,9 +99,13 @@ export const createStreamWriter = ({
           event.updatedSeq = seq
           database.query("UPDATE threads SET updated_seq = ? WHERE id = ?").run(seq, event.threadId)
           const raw = JSON.stringify(event)
-          database
+          const entry = database
             .query("INSERT INTO transcript_entries(thread_id, seq, generation, event_json, at) VALUES (?, ?, ?, ?, ?)")
             .run(event.threadId, seq, event.generation ?? 1, raw, event.updatedAt ?? Date.now())
+          if (event.type === "message.parts")
+            database
+              .query("INSERT INTO transcript_part_entries(entry_id, thread_id, message_id) VALUES (?, ?, ?)")
+              .run(entry.lastInsertRowid, event.threadId, event.messageId)
           if (event.type === "message.parts" && head.run_id && run?.thread_id === event.threadId) {
             for (const { part } of event.parts) {
               if (!("callId" in part)) continue
