@@ -1,12 +1,13 @@
 import type { Database } from "bun:sqlite"
 import { expect, test } from "bun:test"
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { existsSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs"
 import { createConnection } from "node:net"
 import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { dirname, join } from "node:path"
 import { createKernel } from "../../src/kernel"
+import { createAppPaths } from "../../src/kernel/paths"
 import { createMcpSocket } from "../../src/mcp/socket"
-import { connectionOptions, mcpEndpoint, mcpEndpointFile } from "../../src/platform/transport"
+import { connectionOptions, mcpEndpoint, mcpEndpointFile, resolveMcpEndpoint } from "../../src/platform/transport"
 import { init as initStore } from "../../src/store"
 
 test("Windows MCP loopback discovery keeps per-thread auth and typed response IDs", async () => {
@@ -67,3 +68,34 @@ test("Windows MCP loopback discovery keeps per-thread auth and typed response ID
     rmSync(root, { recursive: true, force: true })
   }
 })
+
+test.skipIf(process.platform === "win32")(
+  "Unix discovery connects to the private socket with a long data path",
+  async () => {
+    const root = mkdtempSync(join(tmpdir(), "touri-mcp-long-"))
+    const paths = createAppPaths({ appData: join(root, "data-".repeat(30)) })
+    const runtime = createKernel({ appData: paths.appData })
+    const transport = createMcpSocket({ kernel: runtime.kernel, registrations: new Map() })
+    let client: ReturnType<typeof createConnection> | undefined
+    try {
+      await transport.listen()
+      const endpoint = resolveMcpEndpoint(paths)
+      expect(endpoint).toBe(transport.socketPath)
+      expect(mcpEndpoint(paths.runDir)).toBe(endpoint)
+      expect(endpoint).not.toBe(join(paths.runDir, "mcp.sock"))
+      expect(statSync(endpoint).mode & 0o777).toBe(0o600)
+      client = createConnection(connectionOptions(endpoint))
+      await new Promise<void>((resolve, reject) => {
+        client?.once("connect", resolve)
+        client?.once("error", reject)
+      })
+      expect(client.readyState).toBe("open")
+    } finally {
+      client?.destroy()
+      await transport.close()
+      runtime.stop()
+      rmSync(root, { recursive: true, force: true })
+      rmSync(dirname(transport.socketPath), { recursive: true, force: true })
+    }
+  },
+)
