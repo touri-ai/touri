@@ -130,6 +130,7 @@ export const useProviderLogin = (
     recheck,
     openPage,
     provider,
+    botId,
     blocked: enabled && (!matches || flow?.state !== "ready"),
   }
 }

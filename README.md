@@ -62,6 +62,7 @@ bun run tauri build --bundles app
 open src-tauri/target/release/bundle/macos/touri.app
 ```
 
+For local rebuilds that retain saved logins, use [stable macOS signing](docs/runbooks/macos-vault.md) and `scripts/build-macos-signed.sh`.
 Signing, notarization and the updater are wired but disabled (`docs/DECISIONS.md`).
 For development: `bun run build:sidecar && TOURI_SIDECAR_BIN="$PWD/src-tauri/binaries/touri-sidecar-aarch64-apple-darwin" bun run tauri dev`.
 

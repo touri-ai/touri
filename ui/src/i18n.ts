@@ -920,6 +920,28 @@ export const ptBR = {
   "Não foi possível remover o login.": "Não foi possível remover o login.",
   "Login do provedor nesta máquina": "Login do provedor nesta máquina",
   "Verificando login…": "Verificando login…",
+  "Outras opções": "Outras opções",
+  "O cofre de segredos não respondeu. Tente novamente.": "O cofre de segredos não respondeu. Tente novamente.",
+  "O cofre local do servidor está indisponível. Verifique as permissões da pasta de dados do servidor e reinicie o serviço do touri. O login salvo será mantido.":
+    "O cofre local do servidor está indisponível. Verifique as permissões da pasta de dados do servidor e reinicie o serviço do touri. O login salvo será mantido.",
+  "Não foi possível ler a sessão salva do navegador. Abra o Diagnóstico para verificar o cofre.":
+    "Não foi possível ler a sessão salva do navegador. Abra o Diagnóstico para verificar o cofre.",
+  "Permita o acesso ao cofre para restaurar a sessão salva do navegador.":
+    "Permita o acesso ao cofre para restaurar a sessão salva do navegador.",
+  "Não foi possível ler a sessão salva do navegador. Os dados salvos foram mantidos. Verifique o cofre e tente novamente.":
+    "Não foi possível ler a sessão salva do navegador. Os dados salvos foram mantidos. Verifique o cofre e tente novamente.",
+  "Sessão salva do navegador disponível.": "Sessão salva do navegador disponível.",
+  "Navegador · {name} · sessão salva": "Navegador · {name} · sessão salva",
+  "O cofre de segredos não respondeu. Permita o acesso ao cofre para continuar.":
+    "O cofre de segredos não respondeu. Permita o acesso ao cofre para continuar.",
+  "Na janela do macOS, escolha Permitir sempre. Sua mensagem continuará automaticamente.":
+    "Na janela do macOS, escolha Permitir sempre. Sua mensagem continuará automaticamente.",
+  "O acesso não foi autorizado. Tente novamente e escolha Permitir sempre na janela do macOS.":
+    "O acesso não foi autorizado. Tente novamente e escolha Permitir sempre na janela do macOS.",
+  "Aguardando permissão do macOS…": "Aguardando permissão do macOS…",
+  "Permitir acesso ao cofre": "Permitir acesso ao cofre",
+  "Na janela do macOS, escolha Permitir sempre.": "Na janela do macOS, escolha Permitir sempre.",
+  "Permita o acesso ao cofre para usar o login salvo.": "Permita o acesso ao cofre para usar o login salvo.",
   "Aguardando login no navegador…": "Aguardando login no navegador…",
   "Login disponível para este bot.": "Login disponível para este bot.",
   "Há um login disponível neste Mac.": "Há um login disponível neste Mac.",
@@ -1864,6 +1886,28 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Abrir prévia": "Open preview",
   "Abrir a prévia do projeto em {path}": "Open the project preview at {path}",
   "Verificando login…": "Checking sign-in…",
+  "Outras opções": "Other options",
+  "O cofre de segredos não respondeu. Tente novamente.": "The vault did not respond. Try again.",
+  "O cofre local do servidor está indisponível. Verifique as permissões da pasta de dados do servidor e reinicie o serviço do touri. O login salvo será mantido.":
+    "The server’s local vault is unavailable. Check the permissions of the server’s data folder and restart the touri service. The saved sign-in will be kept.",
+  "Não foi possível ler a sessão salva do navegador. Abra o Diagnóstico para verificar o cofre.":
+    "Could not read the saved browser session. Open Diagnostics to check the vault.",
+  "Permita o acesso ao cofre para restaurar a sessão salva do navegador.":
+    "Allow vault access to restore the saved browser session.",
+  "Não foi possível ler a sessão salva do navegador. Os dados salvos foram mantidos. Verifique o cofre e tente novamente.":
+    "Could not read the saved browser session. The saved data has been kept. Check the vault and try again.",
+  "Sessão salva do navegador disponível.": "Saved browser session is available.",
+  "Navegador · {name} · sessão salva": "Browser · {name} · saved session",
+  "O cofre de segredos não respondeu. Permita o acesso ao cofre para continuar.":
+    "The vault did not respond. Allow vault access to continue.",
+  "Na janela do macOS, escolha Permitir sempre. Sua mensagem continuará automaticamente.":
+    "In the macOS window, choose Always Allow. Your message will continue automatically.",
+  "O acesso não foi autorizado. Tente novamente e escolha Permitir sempre na janela do macOS.":
+    "Access was not authorized. Try again and choose Always Allow in the macOS window.",
+  "Aguardando permissão do macOS…": "Waiting for macOS permission…",
+  "Permitir acesso ao cofre": "Allow vault access",
+  "Na janela do macOS, escolha Permitir sempre.": "In the macOS window, choose Always Allow.",
+  "Permita o acesso ao cofre para usar o login salvo.": "Allow vault access to use the saved sign-in.",
   "Aguardando login no navegador…": "Waiting for sign-in in the browser…",
   "Login disponível para este bot.": "Sign-in is ready for this bot.",
   "Login cancelado.": "Sign-in cancelled.",
@@ -2751,6 +2795,8 @@ export const statusLabel = (status: string): string => {
 
 /** Translate only application-authored notices, leaving bot/user content intact. */
 export const localizeNotice = (value: string): string => {
+  const browserSession = /^Navegador · (.+) · sessão salva$/.exec(value)
+  if (browserSession) return t("Navegador · {name} · sessão salva", { name: browserSession[1] ?? "" })
   const invalidLogin = /^(.+): login do (Claude|Codex|OpenCode) inválido\. Conecte novamente\.$/.exec(value)
   if (invalidLogin)
     return t("{name}: login do {provider} inválido. Conecte novamente.", {
