@@ -13,6 +13,9 @@ for (const width of [390, 1440]) {
     await expect(picker.getByRole("button", { name: "Usar esta pasta" })).toBeVisible()
     const create = picker.getByRole("button", { name: "Nova pasta" })
     if (before) {
+      await expect(
+        picker.getByText("Não foi possível liberar a pasta com segurança. Seu bot continua disponível."),
+      ).toBeVisible()
       await expect(create).toBeDisabled()
       await page.screenshot({ path: `../docs/assets/folder-access/before-${width}.png`, fullPage: true })
       return
