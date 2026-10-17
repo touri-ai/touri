@@ -22,6 +22,7 @@ import { createRuntimeEngine } from "../../src/runtime/engine"
 import * as folderAccess from "../../src/runtime/folder-access"
 import { createWorkState } from "../../src/runtime/work-state"
 import { init as initStore } from "../../src/store"
+import { fakeProviderSpawn } from "../fakes/provider-spawn"
 
 type Engine = ReturnType<typeof createRuntimeEngine>
 type Runtime = ReturnType<typeof createKernel>
@@ -76,6 +77,7 @@ exec '${process.execPath}' '${fake}' "$@"
   const engines: Array<Engine> = []
   const open = async (options: { resumeBackoffMs?: number; routineTimeoutMs?: number } = {}) => {
     const runtime = createKernel({ appData: root })
+    runtime.kernel.spawnTree = fakeProviderSpawn(runtime.kernel.spawnTree, command, scenario)
     await initStore(runtime.kernel)
     await initNotify(runtime.kernel)
     kernels.push(runtime)
@@ -245,7 +247,7 @@ test("an approved folder write grant automatically continues with updated Codex 
     expect(sessions).toHaveLength(2)
     // On macOS the grant lives in touri's Seatbelt profile (asserted in the spawn mock above), not in
     // Codex's writable roots, because Codex cannot nest its own sandbox there.
-    if (process.platform !== "darwin") {
+    if (process.platform !== "darwin" && !folderAccess.hostFolderAccessAvailable()) {
       expect(JSON.stringify(sessions[0]?.params.config)).not.toContain(folder)
       expect(JSON.stringify(sessions[1]?.params.config)).toContain(folder)
     }

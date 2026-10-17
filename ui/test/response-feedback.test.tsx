@@ -36,6 +36,9 @@ it("keeps a silent 35-second provider visible and checks connection without rese
   expect(
     screen.getByText("A resposta está demorando. Você pode continuar esperando ou verificar a conexão."),
   ).toBeVisible()
+  expect(screen.queryByText("Ainda aguardando a IA responder.")).toBeNull()
+  expect(screen.getAllByRole("status")).toHaveLength(1)
+  expect(view.container.querySelectorAll(".activity-mascot")).toHaveLength(1)
   await act(async () => fireEvent.click(screen.getByRole("button", { name: "Verificar conexão" })))
   expect(screen.getByText("A conexão com o touri está disponível. A IA pode continuar demorando.")).toBeVisible()
   expect(api.request).toHaveBeenCalledExactlyOnceWith("GET /health", {})
@@ -127,6 +130,8 @@ it("localizes long waits and their actions in English", () => {
   expect(screen.getByRole("status")).toHaveTextContent("Still waiting for the AI to respond.")
   advance(20_000)
   expect(screen.getByText("The reply is taking longer. You can keep waiting or check the connection.")).toBeVisible()
+  expect(screen.queryByText("Still waiting for the AI to respond.")).toBeNull()
+  expect(screen.getAllByRole("status")).toHaveLength(1)
   expect(screen.getByRole("button", { name: "Check connection" })).toBeVisible()
   expect(screen.getByRole("button", { name: "Stop", exact: true })).toBeVisible()
 })

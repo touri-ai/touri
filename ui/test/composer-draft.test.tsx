@@ -35,6 +35,11 @@ const invoke = (async (command: string) => {
 }) as TauriInvoke
 const mount = (api: ReturnType<typeof createMockApi>) => render(<App kernel={{ services: { api, invoke } }} />)
 const composer = () => screen.findByRole("textbox", { name: "Mensagem para mark" })
+const restoreWorkspace = (threadId: string) => {
+  // A fresh entry without a deep link falls back to the saved workspace.
+  window.history.replaceState(null, "", "/")
+  localStorage.setItem("touri.workspace.v1", JSON.stringify({ botId: "bot-mark", threadId }))
+}
 
 test.each(["web", "desktop"])("%s restores a login-blocked draft after the app remounts", async (surface) => {
   if (surface === "desktop") Object.assign(window, { __TAURI_INTERNALS__: {} })
@@ -60,7 +65,7 @@ test("drafts stay with each conversation and successful sending clears only the 
   if (!first) throw new Error("Missing first thread")
   // Select through the workspace API by restoring the navigation saved by the first mount.
   view.unmount()
-  localStorage.setItem("touri.workspace.v1", JSON.stringify({ botId: "bot-mark", threadId: first.id }))
+  restoreWorkspace(first.id)
   view = mount(api)
   expect(await composer()).toHaveValue("Primeiro rascunho")
   const form = screen.getByRole("textbox", { name: "Mensagem para mark" }).closest("form")
@@ -73,7 +78,7 @@ test("drafts stay with each conversation and successful sending clears only the 
   view.unmount()
   const second = threads.find((thread) => thread.id !== first.id)
   if (!second) throw new Error("Missing second thread")
-  localStorage.setItem("touri.workspace.v1", JSON.stringify({ botId: "bot-mark", threadId: second.id }))
+  restoreWorkspace(second.id)
   mount(api)
   expect(await composer()).toHaveValue("Segundo rascunho")
 })
@@ -138,7 +143,7 @@ test("sending after navigation clears the old draft and keeps an identical new d
   const reopened = mount(api)
   expect(await composer()).toHaveValue("Texto igual")
   reopened.unmount()
-  localStorage.setItem("touri.workspace.v1", JSON.stringify({ botId: "bot-mark", threadId: "thread-mark" }))
+  restoreWorkspace("thread-mark")
   mount(api)
   expect(await composer()).toHaveValue("")
 })

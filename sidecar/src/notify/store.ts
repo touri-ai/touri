@@ -33,6 +33,11 @@ export type LogEntry = { seq: number; type: "notify" | "resolved"; notification:
 const SELECT = `SELECT n.*, b.name AS bot_name, b.color AS bot_color, b.avatar_shape AS bot_avatar_shape, b.avatar_seed AS bot_avatar_seed
   FROM notifications n LEFT JOIN bots b ON b.id = n.bot_id`
 
+export const PENDING_NOTIFICATIONS_SQL = `${SELECT}
+  WHERE n.resolved_at IS NULL AND n.created_at >= ?
+    AND n.kind IN (${[...ATTENTION_KINDS].map((kind) => `'${kind}'`).join(", ")})
+  ORDER BY n.id ASC`
+
 const levelFor = (kind: NotifyKind): NotificationRecord["level"] => {
   if (kind === "turn-failed" || kind === "routine-failed" || kind === "incident") return "error"
   if (MESSAGE_KINDS.has(kind)) return "info"
@@ -132,11 +137,7 @@ export const createNotificationStore = ({ db, now = Date.now }: { db: Database; 
 
   const pending = (): Array<NotificationRecord> => {
     const since = now() - BACKLOG_WINDOW_MS
-    return (
-      db.query(`${SELECT} WHERE n.resolved_at IS NULL AND n.created_at >= ? ORDER BY n.id ASC`).all(since) as Array<Row>
-    )
-      .map(asRecord)
-      .filter((record) => ATTENTION_KINDS.has(record.kind))
+    return (db.query(PENDING_NOTIFICATIONS_SQL).all(since) as Array<Row>).map(asRecord)
   }
 
   const recent = (limit: number): Array<NotificationRecord> =>

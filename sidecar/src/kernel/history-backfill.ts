@@ -45,15 +45,22 @@ export const historyThreadPending = (database: Database, threadId: string): bool
   return progress.done < progress.total
 }
 
-// A reference is only a historical snapshot locator, never an event to broadcast.
-// Legacy bodies remain in messages, so backfill does not duplicate text/parts.
+// References locate the latest durable projection. Overlapping deltas remain
+// safe because every message carries its updated sequence and text offsets.
 export const hydrateHistoryEvent = (database: Database, eventJson: string): UiEvent => {
-  const event = JSON.parse(eventJson) as UiEvent & { legacy?: boolean; threadId?: string; messageId?: string }
-  if (!event.legacy) return event
+  const event = JSON.parse(eventJson) as UiEvent & {
+    legacy?: boolean
+    ref?: boolean
+    threadId?: string
+    messageId?: string
+  }
+  if (!event.legacy && !event.ref) return event
   const row = database
     .query("SELECT payload FROM transcript_message_events WHERE thread_id = ? AND id = ?")
     .get(event.threadId ?? "", event.messageId ?? "") as { payload: string } | null
-  return row ? { type: "message.created", ...JSON.parse(row.payload) } : { type: "transcript.resync" }
+  return row
+    ? { type: event.type === "message.updated" ? "message.updated" : "message.created", ...JSON.parse(row.payload) }
+    : { type: "transcript.resync" }
 }
 
 // The progress update and the rows it describes commit together. A quit/rollback

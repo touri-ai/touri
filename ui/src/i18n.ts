@@ -85,6 +85,27 @@ export const ptBR = {
     "Esta opção está disponível apenas no aplicativo para computador.",
   "trabalha no servidor escolhido; não pode acessar os arquivos deste Mac.":
     "trabalha no servidor escolhido; não pode acessar os arquivos deste Mac.",
+  Atividade: "Atividade",
+  "Mostrar mais": "Mostrar mais",
+  "Mostrar menos": "Mostrar menos",
+  "Ver atividade": "Ver atividade",
+  "Arquivos lidos": "Arquivos lidos",
+  Comandos: "Comandos",
+  Buscas: "Buscas",
+  Edições: "Edições",
+  "Outras ações": "Outras ações",
+  "Trabalhou por {duration}": "Trabalhou por {duration}",
+  "{count} ação": "{count} ação",
+  "{count} ações": "{count} ações",
+  "{count} s": "{count} s",
+  "{count} min": "{count} min",
+  "{count} h": "{count} h",
+  "Diagrama Mermaid": "Diagrama Mermaid",
+  "Preparando diagrama…": "Preparando diagrama…",
+  "Ver código": "Ver código",
+  "Ver diagrama": "Ver diagrama",
+  "Não foi possível renderizar o diagrama. O código está abaixo.":
+    "Não foi possível renderizar o diagrama. O código está abaixo.",
   "As ferramentas do touri não carregaram nesta máquina. Tente novamente; se persistir, confira a instalação do touri e as permissões deste servidor.":
     "As ferramentas do touri não carregaram nesta máquina. Tente novamente; se persistir, confira a instalação do touri e as permissões deste servidor.",
   "Ferramentas do touri · {name}": "Ferramentas do touri · {name}",
@@ -1444,6 +1465,7 @@ export const ptBR = {
   "Pending approval count": "{count} aprovações pendentes",
   "Visible count": "{count} visíveis",
   "Tool count": "{count} chamadas de ferramenta",
+  "Tool group count": "{count} ferramentas",
   "Search shortcut": "⌘K buscar",
   "Message bot": "Mensagem para {name}",
   "Routine skipped named": "Rotina adiada: {name}",
@@ -1922,6 +1944,18 @@ export const ptBR = {
   assistant: "Assistente",
   system: "Sistema",
   tool: "Ferramenta",
+  // Local folder confinement and recovery.
+  "Esta pasta fica no servidor.": "Esta pasta fica no servidor.",
+  "Esta pasta é protegida. Escolha outra pasta.": "Esta pasta é protegida. Escolha outra pasta.",
+  "Não foi possível acessar o login do bot com segurança. Entre novamente na conta nas configurações.":
+    "Não foi possível acessar o login do bot com segurança. Entre novamente na conta nas configurações.",
+  "Neste computador, adicione as pastas uma por uma. O acesso a todas as pastas não está disponível. Remova essa permissão nas configurações do bot para continuar com tarefas.":
+    "Neste computador, adicione as pastas uma por uma. O acesso a todas as pastas não está disponível. Remova essa permissão nas configurações do bot para continuar com tarefas.",
+  "Este computador não consegue proteger o acesso a pastas. Nenhuma permissão foi adicionada. Você pode continuar conversando ou enviar um arquivo.":
+    "Este computador não consegue proteger o acesso a pastas. Nenhuma permissão foi adicionada. Você pode continuar conversando ou enviar um arquivo.",
+  "As permissões de pastas salvas não funcionam neste computador. Você pode conversar sem ferramentas. Remova essas permissões nas configurações do bot para continuar com tarefas.":
+    "As permissões de pastas salvas não funcionam neste computador. Você pode conversar sem ferramentas. Remova essas permissões nas configurações do bot para continuar com tarefas.",
+  "Remover permissões antigas": "Remover permissões antigas",
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
@@ -2025,6 +2059,27 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
     "This option is available only in the desktop app.",
   "trabalha no servidor escolhido; não pode acessar os arquivos deste Mac.":
     "works on the selected server; cannot access this Mac’s files.",
+  Atividade: "Activity",
+  "Mostrar mais": "Show more",
+  "Mostrar menos": "Show less",
+  "Ver atividade": "View activity",
+  "Arquivos lidos": "Files read",
+  Comandos: "Commands",
+  Buscas: "Searches",
+  Edições: "Edits",
+  "Outras ações": "Other actions",
+  "Trabalhou por {duration}": "Worked for {duration}",
+  "{count} ação": "{count} action",
+  "{count} ações": "{count} actions",
+  "{count} s": "{count} s",
+  "{count} min": "{count} min",
+  "{count} h": "{count} h",
+  "Diagrama Mermaid": "Mermaid diagram",
+  "Preparando diagrama…": "Preparing diagram…",
+  "Ver código": "View code",
+  "Ver diagrama": "View diagram",
+  "Não foi possível renderizar o diagrama. O código está abaixo.":
+    "Could not render the diagram. The code is shown below.",
   "As ferramentas do touri não carregaram nesta máquina. Tente novamente; se persistir, confira a instalação do touri e as permissões deste servidor.":
     "The touri tools did not start on this machine. Try again; if this continues, check the touri installation and this server’s permissions.",
   "Ferramentas do touri · {name}": "touri tools · {name}",
@@ -3143,6 +3198,7 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Pending approval count": "{count} pending approvals",
   "Visible count": "{count} visible",
   "Tool count": "{count} tool calls",
+  "Tool group count": "{count} tools",
   "Search shortcut": "⌘K search",
   "Message bot": "Message {name}",
   "Routine skipped named": "Routine skipped: {name}",
@@ -3286,6 +3342,18 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   assistant: "Assistant",
   system: "System",
   tool: "Tool",
+  // Local folder confinement and recovery.
+  "Esta pasta fica no servidor.": "This folder is on the server.",
+  "Esta pasta é protegida. Escolha outra pasta.": "This folder is protected. Choose another folder.",
+  "Não foi possível acessar o login do bot com segurança. Entre novamente na conta nas configurações.":
+    "The bot's sign-in could not be accessed safely. Sign in again in settings.",
+  "Neste computador, adicione as pastas uma por uma. O acesso a todas as pastas não está disponível. Remova essa permissão nas configurações do bot para continuar com tarefas.":
+    "On this computer, add folders individually. Access to all folders is unavailable. Remove that permission in the bot settings to continue with tasks.",
+  "Este computador não consegue proteger o acesso a pastas. Nenhuma permissão foi adicionada. Você pode continuar conversando ou enviar um arquivo.":
+    "This computer cannot protect folder access. No permission was added. You can keep chatting or send a file.",
+  "As permissões de pastas salvas não funcionam neste computador. Você pode conversar sem ferramentas. Remova essas permissões nas configurações do bot para continuar com tarefas.":
+    "Saved folder permissions do not work on this computer. You can chat without tools. Remove these permissions in the bot settings to continue with tasks.",
+  "Remover permissões antigas": "Remove old permissions",
 }
 export const dictionaries = {
   "pt-BR": ptBR,
@@ -3324,6 +3392,7 @@ const singular: Partial<Record<TranslationKey, [string, string]>> = {
     "{count} message queued · waiting for connection",
   ],
   "Tool count": ["{count} chamada de ferramenta", "{count} tool call"],
+  "Tool group count": ["{count} ferramenta", "{count} tool"],
   "Notifications need attention": [
     "Notificações, {count} precisa de atenção",
     "Notifications, {count} needs attention",

@@ -39,7 +39,7 @@ import { SidebarDrawer } from "./components/SidebarDrawer"
 import { IntegrationsScreen, McpScreen, PreviewScreen } from "./components/WorkspaceScreens"
 import { installComputerKillSwitch } from "./computerKillSwitch"
 import { openComputerWindow } from "./computerWindow"
-import { parseDeepLink } from "./deepLink"
+import { type DeepLink, parseDeepLink } from "./deepLink"
 import { navigatePage } from "./design/navigation"
 import { errorRecovery, type RecoveryAction } from "./errorRecovery"
 import { ApiError, userFacingError } from "./errors"
@@ -70,6 +70,7 @@ import { requestTaskResume, requestTaskReview } from "./recoveryEvents"
 import type { RoutineDraft } from "./routineDraft"
 import { isFailureNotice } from "./sidebarAttention"
 import { useHost } from "./useHost"
+import { useWebNavigation } from "./useWebNavigation"
 import { useWorkspace } from "./useWorkspace"
 import { type AppRoute, readWorkspaceState, saveWorkspaceState } from "./workspaceState"
 
@@ -336,7 +337,9 @@ const AppContent = ({ kernel }: AppProps) => {
     return () => window.removeEventListener("keydown", handler)
   }, [])
 
-  const [pendingLink, setPendingLink] = useState<DeepLinkRequest | null>(() => parseDeepLink(window.location.search))
+  const [pendingLink, setPendingLink] = useState<DeepLinkRequest | null>(() =>
+    isTauriRuntime() ? parseDeepLink(window.location.search) : null,
+  )
   useEffect(() => {
     if (!isTauriRuntime() || requestedComputer) return
     return installNativeDeepLinks({
@@ -352,8 +355,31 @@ const AppContent = ({ kernel }: AppProps) => {
     setPendingLink(null)
     if (pendingLink.requestId !== undefined)
       void invokeCommand("deep_link_ack", { requestId: pendingLink.requestId }).catch(() => undefined)
-    if (!isTauriRuntime()) window.history.replaceState(null, "", window.location.pathname)
   }, [pendingLink, data.bots.length, actions, setRoute, invokeCommand])
+
+  const restoreWebLocation = useCallback(
+    (location: DeepLink, restoredRoute?: AppRoute): void => {
+      actions.selectLocation(location)
+      // Browser traversal supersedes any pending page snapshot before restoring synchronously.
+      navigatePage(route, restoredRoute ?? { section: "bots", screen: "chat" }, updateRoute, { immediate: true })
+    },
+    [actions.selectLocation, route],
+  )
+  const webLocationExists = useCallback(
+    ({ bot, thread }: DeepLink): boolean =>
+      (bot === null || data.bots.some((item) => item.id === bot)) &&
+      (thread === null || data.threads.some((item) => item.id === thread && item.botId === bot)),
+    [data.bots, data.threads],
+  )
+  useWebNavigation({
+    enabled: !isTauriRuntime() && !requestedComputer,
+    ready: api !== null && data.loaded,
+    bot: data.selectedBotId,
+    thread: data.selectedThreadId,
+    route,
+    restore: restoreWebLocation,
+    exists: webLocationExists,
+  })
 
   const [approvalFocus, setApprovalFocus] = useState<(ApprovalTarget & { request: number }) | null>(null)
   const reviewApproval = (target: ApprovalTarget): void => {

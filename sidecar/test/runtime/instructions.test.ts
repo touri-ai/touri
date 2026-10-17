@@ -65,7 +65,7 @@ for (const provider of ["codex", "claude", "opencode"] as const) {
       expect(instructions).toContain(tool)
     expect(instructions).toContain("instead of describing UI steps")
     expect(instructions).toContain("only within this bot's already granted folders and connected project")
-    expect(instructions).toContain("if none are available, ask the user for a path")
+    expect(instructions).toContain("follow the filesystem guidance for this machine before asking the user for a path")
     expect(instructions).toContain("without an approval card")
     expect(instructions).toContain("After success, use the returned name as your current identity")
     expect(instructions).toContain("explicit approval card")
@@ -108,6 +108,29 @@ for (const provider of ["codex", "claude", "opencode"] as const) {
     expect(instructions).not.toContain("Only the bot folder and connected project")
   })
 
+  test(`${provider}: local discovery is bounded and continues after an empty granted-folder search`, async () => {
+    const f = await fixture({ provider })
+    for (const policy of [
+      { access: "full", approvals: "never" },
+      { access: "full", approvals: "on-request" },
+      { access: "workspace-write", approvals: "on-request" },
+      { access: "read-only", approvals: "on-request" },
+    ] as const) {
+      const instructions = await f.compose({ ...policy, machine: "local", projectId: null, folders: [] })
+      expect(instructions).toContain("read-only discovery within the current access and approval policy")
+      expect(instructions).toContain("at most 4 directory levels, 20,000 entries and 50 results")
+      expect(instructions).toContain("Stop after 2 seconds and report an incomplete search")
+      expect(instructions).toContain("Skip hidden and heavy directories")
+      for (const directory of ["node_modules", "vendor", "dist", "build", "target", "Library"])
+        expect(instructions).toContain(directory)
+      expect(instructions).toContain("do not follow directory symlinks")
+      expect(instructions).toContain("Search names and Git markers before reading file contents")
+      expect(instructions).toContain("An empty project_discover result only covers already granted folders")
+      expect(instructions).toContain("continue this bounded read-only disk search before asking for a path")
+      expect(instructions).not.toContain("if none are available, ask the user for a path")
+    }
+  })
+
   test(`${provider}: only a successful Preview tool result confirms availability`, async () => {
     const f = await fixture({ provider })
     for (const projectId of [null, "linked-project"]) {
@@ -146,6 +169,7 @@ test("VM isolation is described even without a runtime service; only granted hos
   expect(isolated).toContain("recreate the machine before switching projects")
   expect(isolated).not.toContain("next local turn")
   expect(isolated).not.toContain("search the disk first")
+  expect(isolated).not.toContain("continue this bounded read-only disk search")
   const mounted = await f.compose({
     machine: "vm",
     access: "read-only",
@@ -171,6 +195,7 @@ test("cloud instructions never promise local disk access", async () => {
   expect(instructions).not.toContain("VM changes take effect")
   expect(instructions).not.toContain("next local turn")
   expect(instructions).not.toContain("search the disk first")
+  expect(instructions).not.toContain("continue this bounded read-only disk search")
   expect(instructions).not.toContain("full access without approvals")
   expect(instructions).not.toContain("This Mac: /")
   expect(instructions).not.toContain("/Users/demo/reference")

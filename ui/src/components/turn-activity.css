@@ -1,0 +1,60 @@
+.turn-activity {
+  min-width: 0;
+  margin: var(--space-8) 0 var(--space-16);
+  color: var(--text-secondary);
+  font-size: var(--type-12);
+}
+.turn-activity > .activity-mark {
+  margin-top: 0;
+  align-items: flex-start;
+}
+.turn-activity-toggle {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-8);
+  max-width: 100%;
+  padding: var(--space-6) 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+.turn-activity-toggle:hover {
+  color: var(--text-primary);
+}
+.turn-activity-toggle:focus-visible {
+  outline: 2px solid var(--accent-brand);
+  outline-offset: 2px;
+  border-radius: var(--radius-4);
+}
+.turn-activity-chevron {
+  display: inline-block;
+  flex: none;
+  transform: rotate(0deg);
+}
+[aria-expanded="true"] > .turn-activity-chevron {
+  transform: rotate(90deg);
+}
+.turn-activity-details {
+  padding-inline-start: var(--space-16);
+  border-inline-start: 1px solid var(--border-subtle);
+  margin-top: var(--space-8);
+}
+.turn-activity-group {
+  display: grid;
+  gap: var(--space-8);
+  margin-bottom: var(--space-16);
+}
+.turn-activity-group h4 {
+  margin: var(--space-8) 0;
+  font-size: var(--type-12);
+  font-weight: var(--weight-medium);
+}
+.turn-activity .activity-reasoning-button {
+  display: flex;
+  gap: var(--space-8);
+  padding: 0;
+}

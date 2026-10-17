@@ -89,7 +89,14 @@ const run = async (provider: "codex" | "claude", frames: unknown[]) => {
   })
   const events: ProviderEvent[] = []
   const result = await adapter.startTurn({
-    bot: { access: "full", approvals: "on-request", homeDir: root, model: null, reasoningEffort: null } as Bot,
+    bot: {
+      provider,
+      access: "full",
+      approvals: "on-request",
+      homeDir: root,
+      model: null,
+      reasoningEffort: null,
+    } as Bot,
     thread: { id: "thread-review" } as Thread,
     session: null,
     fingerprint: { cwd: root } as StartTurnArgs["fingerprint"],

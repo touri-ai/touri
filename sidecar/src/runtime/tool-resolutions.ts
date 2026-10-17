@@ -63,7 +63,10 @@ export const createToolResolutions = (kernel: Kernel) => {
     database
       ?.query(`INSERT INTO tool_resolutions(run_id, call_id, thread_id, part_json, resolution, resolved_at)
       VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(run_id, call_id) DO UPDATE SET
-      part_json = excluded.part_json, resolution = excluded.resolution, resolved_at = excluded.resolved_at`)
+      part_json = excluded.part_json, resolution = excluded.resolution, resolved_at = excluded.resolved_at
+      WHERE tool_resolutions.part_json IS NOT excluded.part_json
+        OR tool_resolutions.resolution IS NOT excluded.resolution
+        OR tool_resolutions.resolved_at IS NOT excluded.resolved_at`)
       .run(run.id, part.callId, run.threadId, JSON.stringify(next), resolution, next.resolvedAt ?? null)
     return next
   }

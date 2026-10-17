@@ -345,6 +345,7 @@ export type NoticePart = {
     | 'imported'
     | 'app_restart'
     | 'run_resumed'
+    | 'folder_access_unavailable'
   text: string
 }
 export type ApprovalPart = {
@@ -644,6 +645,8 @@ export type ProviderEvent =
   | { type: 'turn_completed'; status: 'succeeded' | 'failed' | 'interrupted'; errorClass: RunErrorClass | null; errorMessage: string | null }
 
 export type StartTurnArgs = {
+  /** Recovery for saved folder grants this host cannot enforce. No provider tools are exposed. */
+  conversationOnly?: boolean
   execution?: { connect?: (port: number) => Promise<string>; spawn: Kernel['spawnTree']; writeFile: (input: { path: string; content: string }) => Promise<void>; wrapEvents?: (emit: (event: ProviderEvent) => void) => (event: ProviderEvent) => void }
   thread: Thread
   bot: Bot

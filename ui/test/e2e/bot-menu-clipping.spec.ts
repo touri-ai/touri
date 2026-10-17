@@ -1,5 +1,6 @@
 import { expect, type Locator, type Page, test } from "@playwright/test"
 
+test.use({ channel: "chromium" })
 const phase = process.env.MENU_EVIDENCE_PHASE ?? "after"
 
 const exposed = async (page: Page, surface: Locator) => {
@@ -20,6 +21,111 @@ const openWorkspace = async (page: Page) => {
   await page.goto("/test/e2e/r8-sidebar-harness.html?menus")
   await expect(page.getByRole("textbox", { name: "Mensagem para touri-qa" })).toBeVisible()
   await page.evaluate(() => document.fonts.ready)
+}
+
+const themeColor = (surface: Locator, token: string) =>
+  surface.evaluate((element, property) => {
+    const probe = document.createElement("span")
+    probe.style.color = `var(${property})`
+    element.append(probe)
+    const color = getComputedStyle(probe).color
+    probe.remove()
+    return color
+  }, token)
+
+const borderlessRows = async (surface: Locator) => {
+  for (const row of await surface.locator("button").all()) {
+    expect(
+      await row.evaluate((element) => {
+        const style = getComputedStyle(element)
+        return [style.borderTopWidth, style.borderRightWidth, style.borderBottomWidth, style.borderLeftWidth]
+      }),
+    ).toEqual(["0px", "0px", "0px", "0px"])
+    await expect(row).toHaveCSS("font-size", "12px")
+  }
+}
+
+for (const theme of ["light", "dark"]) {
+  test.describe(`portaled menu styles in ${theme}`, () => {
+    test.use({ viewport: { width: 1280, height: 800 }, reducedMotion: "reduce" })
+
+    test("bot and project menus retain plain rows, theme colors and interaction states", async ({ page }, info) => {
+      await page.addInitScript((value) => localStorage.setItem("touri.appearance.v1", value), theme)
+      await openWorkspace(page)
+      await expect(page.locator("html")).toHaveAttribute("data-theme", theme)
+      const trigger = page.getByRole("button", { name: "Ações de release", exact: true })
+      await trigger.scrollIntoViewIfNeeded()
+      await trigger.click()
+      const menu = page.getByRole("menu", { name: "Ações de release", exact: true })
+      await exposed(page, menu)
+      await page.mouse.move(1100, 20)
+      const botScreenshot = info.outputPath(`${phase}-bot-menu-${theme}.png`)
+      await page.screenshot({ path: botScreenshot, animations: "disabled" })
+      await info.attach(`bot menu ${theme}`, { path: botScreenshot, contentType: "image/png" })
+      expect(await menu.evaluate((element) => element.parentElement === document.body)).toBe(true)
+      await borderlessRows(menu)
+      await expect.soft(menu).toHaveScreenshot(`bot-menu-${theme}.png`, { animations: "disabled" })
+      const advanced = menu.getByRole("menuitem", { name: "Avançado", exact: true })
+      const routines = menu.getByRole("menuitem", { name: "Rotinas", exact: true })
+      const remove = menu.getByRole("menuitem", { name: "Excluir bot", exact: true })
+      const primary = await themeColor(menu, "--text-primary")
+      const danger = await themeColor(menu, "--text-danger")
+      const control = await themeColor(menu, "--surface-control")
+      await expect(advanced).toHaveCSS("color", primary)
+      await expect(routines).toHaveCSS("color", primary)
+      await expect(remove).toHaveCSS("color", danger)
+      for (const row of [advanced, routines, remove])
+        await expect(row).toHaveCSS("background-color", "rgba(0, 0, 0, 0)")
+      await routines.hover()
+      await expect(routines).toHaveCSS("background-color", control)
+      await page.mouse.move(1100, 20)
+      await page.keyboard.press("Home")
+      await expect(advanced).toBeFocused()
+      await expect(advanced).toHaveCSS("outline-style", "solid")
+      await expect(advanced).toHaveCSS("outline-width", "2px")
+      await expect(advanced).toHaveCSS("outline-offset", "-2px")
+      await expect(advanced).toHaveCSS("background-color", control)
+      await page.keyboard.press("End")
+      await expect(remove).toBeFocused()
+      await expect(remove).toHaveCSS("color", danger)
+      await expect(remove).toHaveCSS("background-color", await themeColor(menu, "--surface-notice"))
+      await page.keyboard.press("Escape")
+
+      await page.getByRole("button", { name: "Painel do bot", exact: true }).click()
+      await page.getByRole("button", { name: "Projeto do bot" }).click()
+      const projects = page.getByRole("menu", { name: "Projeto do bot" })
+      await exposed(page, projects)
+      await page.mouse.move(1100, 20)
+      const projectScreenshot = info.outputPath(`${phase}-project-menu-${theme}.png`)
+      await page.screenshot({ path: projectScreenshot, animations: "disabled" })
+      await info.attach(`project menu ${theme}`, { path: projectScreenshot, contentType: "image/png" })
+      expect(
+        await projects.evaluate(
+          (element) => element.closest(".composer-project-picker")?.parentElement === document.body,
+        ),
+      ).toBe(true)
+      await borderlessRows(projects)
+      await expect.soft(projects).toHaveScreenshot(`project-menu-${theme}.png`, { animations: "disabled" })
+      for (const row of await projects.locator("button").all()) {
+        await expect(row).toHaveCSS("color", primary)
+        await expect(row).toHaveCSS(
+          "background-color",
+          (await row.getAttribute("aria-checked")) === "true"
+            ? await themeColor(projects, "--surface-active")
+            : "rgba(0, 0, 0, 0)",
+        )
+      }
+      const add = projects.getByRole("menuitem", { name: "Adicionar projeto…" })
+      await add.hover()
+      await expect(add).toHaveCSS("background-color", control)
+      await page.mouse.move(1100, 20)
+      await page.keyboard.press("End")
+      await expect(add).toBeFocused()
+      await expect(add).toHaveCSS("outline-width", "2px")
+      await expect(add).toHaveCSS("outline-offset", "-2px")
+      await expect(add).toHaveCSS("background-color", control)
+    })
+  })
 }
 
 for (const size of [

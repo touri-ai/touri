@@ -31,3 +31,13 @@ export const buildDeepLink = ({ bot, thread }: DeepLink): string => {
   if (thread) params.set("thread", thread)
   return `touri://open?${params.toString()}`
 }
+
+/** Keep the web entry point, unrelated query parameters and fragment when changing selection. */
+export const buildWebDeepLink = ({ bot, thread }: DeepLink, current: string): string => {
+  const url = new URL(current)
+  if (bot) url.searchParams.set("bot", bot)
+  else url.searchParams.delete("bot")
+  if (thread) url.searchParams.set("thread", thread)
+  else url.searchParams.delete("thread")
+  return `${url.pathname}${url.search}${url.hash}`
+}

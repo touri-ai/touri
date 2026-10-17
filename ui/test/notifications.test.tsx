@@ -83,7 +83,7 @@ it("selects the bot and thread named by the page query on load", async () => {
   await screen.findByRole("textbox", { name: "Mensagem para onb" })
   expect(screen.getByRole("button", { name: /^Bots/ })).toHaveAttribute("aria-current", "page")
   expect(screen.getByRole("button", { name: /Welcome/ })).toHaveClass("selected")
-  expect(window.location.search).toBe("")
+  expect(parseDeepLink(window.location.href)).toEqual({ bot: "bot-onb", thread: "thread-onb" })
 })
 
 it("selects the requested thread even when it is not the bot's default thread", async () => {
@@ -94,7 +94,7 @@ it("selects the requested thread even when it is not the bot's default thread", 
   await screen.findByRole("textbox", { name: "Mensagem para onb" }, { timeout: 5000 })
   expect(screen.getByRole("button", { name: /^Bots/ })).toHaveAttribute("aria-current", "page")
   expect(screen.getByRole("button", { name: /Web link target/ })).toHaveClass("selected")
-  expect(window.location.search).toBe("")
+  expect(parseDeepLink(window.location.href)).toEqual({ bot: "bot-onb", thread: thread.id })
 })
 
 it("opens a notification's bot and thread from the touri tab", async () => {

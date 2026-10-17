@@ -68,7 +68,7 @@ const streamCommands = (f: Awaited<ReturnType<typeof fixture>>, count: number, o
 const eventBytes = (db: Database): number =>
   (db.query("SELECT SUM(length(event_json)) AS n FROM ui_event_log").get() as { n: number }).n
 
-test("streaming rewrites keep the replay log linear and still replay the exact revisions", async () => {
+test("streaming rewrites keep both journals bounded and hydrate the complete current projection", async () => {
   const f = await fixture()
   try {
     insertReply(f)
@@ -76,15 +76,26 @@ test("streaming rewrites keep the replay log linear and still replay the exact r
     const transcriptBytes = (
       f.db.query("SELECT SUM(length(event_json)) AS n FROM transcript_entries").get() as { n: number }
     ).n
-    // Every revision copied into the replay log would be ~60 * 30 * 4 KB; references stay tiny.
-    expect(eventBytes(f.db)).toBeLessThan(transcriptBytes / 50)
+    // Copying each revision used ~60 * 30 * 4 KB in the transcript alone.
+    // Both journals now retain only durable locators, independent of body size.
+    expect(transcriptBytes).toBeLessThan(61 * 256)
+    expect(eventBytes(f.db)).toBeLessThan(61 * 256)
     const bus = createEventBus(f.db)
     const replayed = bus.replay(0).filter(({ event }) => event.type === "message.updated")
     expect(replayed).toHaveLength(60)
-    replayed.forEach(({ event }, index) => {
+    replayed.forEach(({ event }) => {
       if (event.type !== "message.updated") throw new Error("unexpected event")
-      expect(event.message.parts).toHaveLength(index + 1)
+      expect(event.message.parts).toHaveLength(60)
     })
+    const headers = { Authorization: "Bearer dev-ui-token", Origin: "tauri://localhost" }
+    const base = `http://127.0.0.1:${f.runtime.handshake.port}/api/v1/threads/t/transcript`
+    expect(await (await fetch(`${base}?since=0`, { headers })).json()).toMatchObject({ resync: true, entries: [] })
+    const latest = await (await fetch(`${base}?since=60`, { headers })).json()
+    expect(latest).toMatchObject({
+      resync: false,
+      entries: [{ seq: 61, event: { type: "message.updated", message: { id: "reply", updatedSeq: 61 } } }],
+    })
+    expect(latest.entries[0].event.message.parts).toHaveLength(60)
     bus.stop()
   } finally {
     f.close()
@@ -107,7 +118,8 @@ test("a reconnect gets each message once, in its latest revision, with contiguou
     expect(messages).toHaveLength(1)
     const first = messages[0]?.event
     if (first?.type !== "message.created") throw new Error("expected the first position to keep its type")
-    expect(first.message.parts).toHaveLength(20)
+    expect(first.message.parts).toHaveLength(21)
+    expect(first.message.text).toBe("Pronto")
     expect(caughtUp.filter(({ event }) => event.type === "transcript.superseded")).toHaveLength(20)
     expect(caughtUp.at(-1)?.event).toMatchObject({ type: "message.delta", delta: "Pronto" })
     bus.stop()
@@ -179,6 +191,23 @@ test("a reference whose sequence now holds another entry falls back to the curre
     const event = bus.replay(ref.seq - 1)[0]?.event
     f.db.query = original
     expect(event).toMatchObject({ type: "message.created", message: { id: "reply", parts: [{}, {}] } })
+    bus.stop()
+  } finally {
+    f.close()
+  }
+})
+
+test("capturing an unpublished transcript releases its reader before checkpointing", async () => {
+  const f = await fixture()
+  try {
+    insertReply(f)
+    f.db.exec("UPDATE messages SET text = 'Recuperado' WHERE id = 'reply'")
+    const bus = createEventBus(f.db)
+    expect(bus.replay(0).at(-1)?.event).toMatchObject({
+      type: "message.updated",
+      message: { text: "Recuperado" },
+    })
+    expect(f.db.query("PRAGMA wal_checkpoint(TRUNCATE)").get()).toMatchObject({ busy: 0 })
     bus.stop()
   } finally {
     f.close()

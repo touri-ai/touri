@@ -70,7 +70,7 @@ test("unsupported server grants offer a device CSV and preserve the task draft",
   await expect(picker.getByRole("status")).toContainText("Seu bot continua disponível.")
   await expect(picker.getByRole("button", { name: "Usar esta pasta" })).toBeDisabled()
   const chooser = page.waitForEvent("filechooser")
-  await picker.getByRole("button", { name: "Enviar arquivo deste dispositivo" }).tap()
+  await picker.getByRole("button", { name: "Anexar arquivo", exact: true }).tap()
   await (await chooser).setFiles({
     name: "tabela.csv",
     mimeType: "text/csv",

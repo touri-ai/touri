@@ -328,6 +328,9 @@ test("a crash before a projection checkpoint recovers text and reasoning without
     f.store.appendDelta({ threadId: "t", messageId: "reply", partIndex: 0, delta: "Pensando 🚀" })
     f.store.appendDelta({ threadId: "t", messageId: "reply", partIndex: 1, delta: "Resposta" })
     expect(f.db.query("SELECT text FROM messages WHERE id = 'reply'").get()).toEqual({ text: "" })
+    expect(f.db.query("SELECT * FROM transcript_pending_deltas").all()).toEqual([
+      { thread_id: "t", message_id: "reply" },
+    ])
     const db = openDatabase({ filename: f.runtime.kernel.paths.db })
     try {
       const bus = createEventBus(db)
@@ -344,10 +347,42 @@ test("a crash before a projection checkpoint recovers text and reasoning without
       materializeTranscript(db)
       expect(bus.replay(0).filter((row) => row.event.type === "message.delta")).toHaveLength(2)
       expect(db.query("SELECT COUNT(*) AS n FROM transcript_entries").get()).toEqual({ n: 3 })
+      expect(db.query("SELECT * FROM transcript_pending_deltas").all()).toEqual([])
       bus.stop()
     } finally {
       db.close()
     }
+  } finally {
+    f.close()
+  }
+})
+
+test("checkpointed transcript reads never revisit historical delta bodies", async () => {
+  const f = await fixture()
+  try {
+    insertReply(f)
+    for (let index = 0; index < 1000; index++)
+      f.store.appendDelta({ threadId: "t", messageId: "reply", partIndex: 0, delta: "Texto 🚀 " })
+    materializeTranscript(f.db)
+    const reads: string[] = []
+    const query = f.db.query.bind(f.db)
+    f.db.query = ((sql: string) => {
+      reads.push(sql)
+      return query(sql)
+    }) as typeof f.db.query
+    try {
+      for (let index = 0; index < 100; index++) materializeTranscript(f.db)
+    } finally {
+      f.db.query = query
+    }
+    expect(reads).toHaveLength(100)
+    expect(reads.every((sql) => sql === "SELECT 1 FROM transcript_pending_deltas LIMIT 1")).toBe(true)
+    f.store.appendDelta({ threadId: "t", messageId: "reply", partIndex: 0, delta: "Fim" })
+    materializeTranscript(f.db)
+    expect(f.db.query("SELECT text FROM messages WHERE id = 'reply'").get()).toEqual({
+      text: `${"Texto 🚀 ".repeat(1000)}Fim`,
+    })
+    expect(f.db.query("SELECT * FROM transcript_pending_deltas").all()).toEqual([])
   } finally {
     f.close()
   }
@@ -597,7 +632,7 @@ test("transcript has contiguous per-thread revisions; restart replays an unpubli
       `http://127.0.0.1:${f.runtime.handshake.port}/api/v1/threads/t/transcript?since=2&limit=2`,
       { headers: { Authorization: "Bearer dev-ui-token", Origin: "tauri://localhost" } },
     )
-    expect(await response.json()).toMatchObject({ entries: [{ seq: 3 }, { seq: 4 }], hasMore: true })
+    expect(await response.json()).toMatchObject({ entries: [], hasMore: false, resync: true })
   } finally {
     f.close()
   }
