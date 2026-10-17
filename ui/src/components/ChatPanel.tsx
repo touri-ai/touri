@@ -13,6 +13,7 @@ import {
 } from "react"
 import type { UiApi } from "../api/client"
 import type { ApprovalFocus } from "../approvalNavigation"
+import { useComposerDraft } from "../composerDraft"
 import { userFacingRunError } from "../errors"
 import { ComputerGrantCard } from "../features/computer"
 import { InlineLivePreview, InlinePreviewContext, screenTool } from "../features/desktop/InlineLivePreview"
@@ -839,7 +840,7 @@ export const ChatPanel = ({
   routineRuns = [],
 }: ChatPanelProps) => {
   const machine = machineStateForDisplay(rawMachine)
-  const [draft, setDraft] = useState("")
+  const { draft, setDraft, draftSaveFailed } = useComposerDraft(thread?.id)
   const mascotSnapshot = useMascotSnapshot({ id: bot?.id ?? "", color: bot?.color ?? null }, thread?.id)
   const composerRef = useRef<HTMLTextAreaElement>(null)
   const recoveryThreadId = thread?.id
@@ -858,7 +859,7 @@ export const ChatPanel = ({
     resume()
     window.addEventListener(resumeTaskEvent, resume)
     return () => window.removeEventListener(resumeTaskEvent, resume)
-  }, [recoveryThreadId])
+  }, [recoveryThreadId, setDraft])
   const localAttachmentButtonRef = useRef<HTMLButtonElement>(null)
   const attachmentButtonRef = sharedAttachmentButtonRef ?? localAttachmentButtonRef
   const activeRun = useMemo(
@@ -879,12 +880,6 @@ export const ChatPanel = ({
       ),
     [runs, thread?.id, serviceRecovered],
   )
-
-  // A draft belongs to one conversation, including when navigating while an upload is pending.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: reset only when the conversation changes
-  useLayoutEffect(() => {
-    setDraft("")
-  }, [thread?.id])
 
   if (!thread)
     return (
@@ -1163,6 +1158,9 @@ export const ChatPanel = ({
         />
       </InlinePreviewContext.Provider>
       {/* r8 composer: notices and the input island stay isolated from transcript activity. */}
+      {draftSaveFailed && (
+        <p role="alert">{t("Não foi possível salvar o rascunho. Copie sua mensagem antes de fechar o touri.")}</p>
+      )}
       <Composer
         key={`composer-${thread.id}`}
         notice={{
@@ -1185,7 +1183,11 @@ export const ChatPanel = ({
         attachmentButtonRef={attachmentButtonRef}
         activeRun={activeRun}
         queuedCount={visibleMessages.filter((message) => message.delivery?.status === "queued").length}
-        onSend={onSend}
+        onSend={async (...args) => {
+          await onSend(...args)
+          // Sending may finish after navigation has unmounted this conversation's composer.
+          setDraft((current) => (current === draft ? "" : current))
+        }}
         onCancel={onCancel}
         onOpenPermissions={group ? undefined : onOpenPermissions}
         onOpenProviderLogin={group ? undefined : onOpenProviderLogin}

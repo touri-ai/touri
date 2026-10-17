@@ -14,7 +14,7 @@ import type { RecoveryAction } from "../errorRecovery"
 import { dictionaries, localizeNotice, type TranslationKey, t } from "../i18n"
 import { markdownSummary } from "../markdownSummary"
 // r8-sidebar: shared attention projection; resolved and superseded failures stay in history.
-import { pendingNotifications } from "../sidebarAttention"
+import { isFailureNotice, pendingNotifications } from "../sidebarAttention"
 import { useAvatarBot } from "./AvatarRuntime"
 import { BotAvatar } from "./BotAvatar"
 import { ErrorNotice } from "./ErrorNotice"
@@ -150,6 +150,7 @@ const NotificationRow = ({
         <div className="notification-head">
           <strong>{item.botName ?? "touri"}</strong>
           <span className={`notification-kind kind-${item.level}`}>{t(KIND_KEY[item.kind])}</span>
+          {resolved && isFailureNotice(item) && <span>{t("Resolvido")}</span>}
           <time
             dateTime={new Date(item.createdAt).toISOString()}
             title={new Date(item.createdAt).toLocaleString("pt-BR")}

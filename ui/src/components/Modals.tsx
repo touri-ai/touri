@@ -1331,7 +1331,7 @@ export const BotSettingsModal = ({
             </SettingsGroup>
             {(hostComputerSupported || machine.machine === "vm") && (
               <SettingsGroup title={t("Controle do computador")}>
-                <label className="toggle-row" htmlFor="settings-computer-use">
+                <label className="toggle-row" htmlFor="settings-computer-use" data-setting-id="computerUse">
                   <span>
                     <strong>{t("Computer use")}</strong>
                     <small>
@@ -1353,7 +1353,7 @@ export const BotSettingsModal = ({
               </SettingsGroup>
             )}
             <SettingsGroup>
-              <label className="toggle-row" htmlFor="settings-browser">
+              <label className="toggle-row" htmlFor="settings-browser" data-setting-id="browserEnabled">
                 <span>
                   <strong>{t("Browser enabled")}</strong>
                   <small>{t("Allow this teammate to use its own browser tabs.")}</small>

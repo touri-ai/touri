@@ -61,6 +61,29 @@ export const ptBR = {
   "Código copiado.": "Código copiado.",
   "Não foi possível copiar. Selecione e copie o código acima.":
     "Não foi possível copiar. Selecione e copie o código acima.",
+  Resolvido: "Resolvido",
+  "Configurar controle": "Configurar controle",
+  "Não foi possível salvar o rascunho. Copie sua mensagem antes de fechar o touri.":
+    "Não foi possível salvar o rascunho. Copie sua mensagem antes de fechar o touri.",
+  "O navegador deste bot está desativado.": "O navegador deste bot está desativado.",
+  "O controle automático do computador está desativado. Você ainda pode assumir o controle manualmente.":
+    "O controle automático do computador está desativado. Você ainda pode assumir o controle manualmente.",
+  "O bot está aguardando. O controle ficará disponível quando a imagem chegar.":
+    "O bot está aguardando. O controle ficará disponível quando a imagem chegar.",
+  "O bot está aguardando. Assuma o controle para usar o teclado e o mouse.":
+    "O bot está aguardando. Assuma o controle para usar o teclado e o mouse.",
+  "Reconectando tela…": "Reconectando tela…",
+  "O navegador não abriu a página": "O navegador não abriu a página",
+  "Navegador ainda não aberto": "Navegador ainda não aberto",
+  "Navegador desativado": "Navegador desativado",
+  "Peça ao bot para abrir uma página. Ela aparecerá aqui na tela da VM.":
+    "Peça ao bot para abrir uma página. Ela aparecerá aqui na tela da VM.",
+  "Não foi possível receber a imagem": "Não foi possível receber a imagem",
+  "Tela pausada": "Tela pausada",
+  "A tela voltará quando a conexão for retomada.": "A tela voltará quando a conexão for retomada.",
+  "Pedindo a sessão da tela à VM…": "Pedindo a sessão da tela à VM…",
+  "Abrindo o canal da tela…": "Abrindo o canal da tela…",
+  "Sem imagem ainda. Aguardando a primeira imagem da VM.": "Sem imagem ainda. Aguardando a primeira imagem da VM.",
 
   // Routine deletion.
   "Excluir rotina": "Excluir rotina",
@@ -1880,6 +1903,29 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Copiar código": "Copy code",
   "Código copiado.": "Code copied.",
   "Não foi possível copiar. Selecione e copie o código acima.": "Could not copy. Select and copy the code above.",
+  Resolvido: "Resolved",
+  "Configurar controle": "Configure control",
+  "Não foi possível salvar o rascunho. Copie sua mensagem antes de fechar o touri.":
+    "Could not save the draft. Copy your message before closing touri.",
+  "O navegador deste bot está desativado.": "This bot's browser is disabled.",
+  "O controle automático do computador está desativado. Você ainda pode assumir o controle manualmente.":
+    "Automated computer control is disabled. You can still take manual control.",
+  "O bot está aguardando. O controle ficará disponível quando a imagem chegar.":
+    "The bot is waiting. Control will be available when the image arrives.",
+  "O bot está aguardando. Assuma o controle para usar o teclado e o mouse.":
+    "The bot is waiting. Take control to use the keyboard and mouse.",
+  "Reconectando tela…": "Reconnecting screen…",
+  "O navegador não abriu a página": "The browser did not open the page",
+  "Navegador ainda não aberto": "Browser not opened yet",
+  "Navegador desativado": "Browser disabled",
+  "Peça ao bot para abrir uma página. Ela aparecerá aqui na tela da VM.":
+    "Ask the bot to open a page. It will appear here on the VM screen.",
+  "Não foi possível receber a imagem": "Could not receive the image",
+  "Tela pausada": "Screen paused",
+  "A tela voltará quando a conexão for retomada.": "The screen will return when the connection resumes.",
+  "Pedindo a sessão da tela à VM…": "Requesting a screen session from the VM…",
+  "Abrindo o canal da tela…": "Opening the screen connection…",
+  "Sem imagem ainda. Aguardando a primeira imagem da VM.": "No image yet. Waiting for the first VM image.",
 
   // Routine deletion.
   "Excluir rotina": "Delete routine",
