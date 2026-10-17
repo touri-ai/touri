@@ -3,7 +3,7 @@ import { afterEach, expect, test } from "bun:test"
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import type { Bot, GroupInput, Run, ToolContext } from "@touri/contracts"
+import type { Bot, GroupInput, Kernel, Run, ToolContext } from "@touri/contracts"
 import { init as initGroups } from "../../src/groups"
 import { createGroupRuntime } from "../../src/groups/runtime"
 import { delegatedBot, delegationCeiling, delegationSecrets, setDelegation } from "../../src/groups/security"
@@ -823,7 +823,7 @@ test("B05: the real engine starts a delegated provider turn under the ceiling, a
   const pm = f.bots[0] as Bot
   const dev = f.bots[1] as Bot
   f.db.query("UPDATE bots SET access='full', approvals='never', machine='local' WHERE id IN (?,?)").run(pm.id, dev.id)
-  const runDelegated = async (caller: Bot): Promise<string> => {
+  const runDelegated = async (caller: Bot) => {
     const target = f.store.getBot({ botId: dev.id }) as Bot
     const participant = f.data.participant(f.group, f.thread.id, dev.id)
     setDelegation(f.host.kernel, participant.id, {
@@ -849,8 +849,16 @@ test("B05: the real engine starts a delegated provider turn under the ceiling, a
     })
     if (!message.success) throw new Error(message.error)
     writeFileSync(argvLog, "")
+    let launch: Parameters<Kernel["spawnTree"]>[0] | undefined
+    const fakeSpawn = fakeProviderSpawn(f.host.kernel.spawnTree, command, scenario)
     const engine = createRuntimeEngine({
-      kernel: { ...f.host.kernel, spawnTree: fakeProviderSpawn(f.host.kernel.spawnTree, command, scenario) },
+      kernel: {
+        ...f.host.kernel,
+        spawnTree: (input) => {
+          launch = input
+          return fakeSpawn(input)
+        },
+      },
       codexCommand: command,
       environment: { PATH: process.env.PATH ?? "", TOURI_FAKE_SCENARIO: scenario },
       interruptGraceMs: 100,
@@ -871,15 +879,25 @@ test("B05: the real engine starts a delegated provider turn under the ceiling, a
       await Bun.sleep(20)
     setDelegation(f.host.kernel, participant.id, null)
     await engine.shutdown()
-    return readFileSync(argvLog, "utf8")
+    return { argv: readFileSync(argvLog, "utf8"), launch, home: target.homeDir }
   }
   const equal = await runDelegated(f.store.getBot({ botId: pm.id }) as Bot)
-  expect(equal).toContain("danger-full-access")
+  expect(equal.argv).toContain("danger-full-access")
   const reduced = await runDelegated({ ...(f.store.getBot({ botId: pm.id }) as Bot), access: "read-only" })
-  expect(reduced).not.toContain("danger-full-access")
-  expect(reduced).toContain("read-only")
+  if (/\/bwrap$/.test(reduced.launch?.cmd ?? "")) {
+    expect(
+      reduced.launch?.args.some(
+        (arg, index, args) =>
+          arg === "--ro-bind" && args[index + 1] === reduced.home && args[index + 2] === reduced.home,
+      ),
+    ).toBe(true)
+    expect(reduced.argv).toContain('approval_policy="never"')
+  } else {
+    expect(reduced.argv).not.toContain("danger-full-access")
+    expect(reduced.argv).toContain("read-only")
+  }
   const guest = await runDelegated({ ...(f.store.getBot({ botId: pm.id }) as Bot), machine: "vm" })
-  expect(guest).not.toContain("danger-full-access")
+  expect(guest.argv).not.toContain("danger-full-access")
 }, 20000)
 
 test("B05: approval cannot survive target configuration changes while waiting", async () => {
