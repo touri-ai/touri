@@ -22,6 +22,7 @@ import type {
   UiEvent,
   UiEventEnvelope,
 } from "@touri/contracts"
+import { isApprovalNoticeTitle } from "@touri/contracts/approval-summary"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { UiApi } from "./api/client"
 import { reconcileApprovalMessages, reconcileApprovalNotifications } from "./approvalState"
@@ -629,6 +630,9 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
           return { ...current, importProgress: { phase: event.phase, done: event.done, total: event.total } }
         if (event.type === "notification.created" || event.type === "notification.resolved")
           return { ...current, notifications: upsertNotification(current.notifications, event.notification) }
+        // Approval notifications already have a review action; the headless host
+        // also echoes native notifications as legacy notices.
+        if (event.type === "notify" && isApprovalNoticeTitle(event.title)) return current
         if (event.type === "notify")
           return {
             ...current,

@@ -590,6 +590,7 @@ export const createRuntimeEngine = ({
         requestId: approvalId,
         request: event.part.request,
         detail: event.part.detail,
+        scope: event.part.scope,
       })
       const thread = store.getThread({ threadId: run.threadId })
       const request =

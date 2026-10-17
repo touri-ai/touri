@@ -2,6 +2,7 @@ import type { Message, NotificationRecord, RespondBehavior } from "@touri/contra
 import { useEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import { type ApprovalTarget, pendingApprovalTargets } from "../approvalNavigation"
+import { approvalNotificationSummary } from "../approvalNotice"
 import {
   isResolvedNotification,
   reconcileApprovalMessages,
@@ -68,17 +69,20 @@ const NotificationRow = ({
   now,
   actions,
   inserted,
+  messages,
 }: {
   item: NotificationRecord
   now: number
   actions: NotificationActions
   inserted: boolean
+  messages: Message[]
 }) => {
   const bot = useAvatarBot(item.botId)
   const [text, setText] = useState("")
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const resolved = isResolvedNotification(item)
+  const approval = item.kind === "approval" ? approvalNotificationSummary(item, messages) : null
   const title =
     resolved && item.kind === "approval"
       ? item.resolution === "dismissed"
@@ -86,9 +90,8 @@ const NotificationRow = ({
         : resolvedApprovalLabel(
             item.resolution === "allow" ? "approved" : item.resolution === "expired" ? "expired" : "denied",
           )
-      : markdownSummary(localizeNotice(item.title))
-  // Approval bodies carry command arguments whose literal characters must stay visible.
-  const body = item.kind === "approval" ? localizeNotice(item.body) : markdownSummary(localizeNotice(item.body))
+      : (approval?.title ?? markdownSummary(localizeNotice(item.title)))
+  const body = approval?.body ?? markdownSummary(localizeNotice(item.body))
   const run = async (task: () => Promise<void>): Promise<void> => {
     setBusy(true)
     setError(null)
@@ -144,6 +147,12 @@ const NotificationRow = ({
           </time>
         )}
         {body.toLowerCase() !== t(KIND_KEY[item.kind]).toLowerCase() && <p className="notification-body">{body}</p>}
+        {approval?.technical && (
+          <details className="notification-technical">
+            <summary>{t("Detalhes técnicos")}</summary>
+            <pre>{approval.technical}</pre>
+          </details>
+        )}
         {!resolved && item.kind === "approval" && item.requestId && (
           <div className="notification-buttons">
             <button
@@ -194,7 +203,7 @@ const NotificationRow = ({
         <div className="notification-links">
           {item.threadId && (
             <button type="button" onClick={() => actions.open(item)}>
-              {t("Open")}
+              {t(item.kind === "approval" ? "Revisar" : "Open")}
             </button>
           )}
           {!resolved && (
@@ -396,6 +405,7 @@ export const NotificationBell = ({
                         now={now}
                         actions={navigationActions}
                         inserted={inserted.has(String(item.id))}
+                        messages={messages}
                       />
                     ))}
                   </ul>

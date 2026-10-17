@@ -3,6 +3,8 @@ import { userFacingError } from "./errors"
 /** All UI copy lives here. pt-BR is the default; English is available for a future locale picker. */
 export type Locale = "pt-BR" | "en"
 export const ptBR = {
+  Revisar: "Revisar",
+  "Detalhes técnicos": "Detalhes técnicos",
   "List registered projects and Git repositories discovered on this Mac. Read-only; no approval required. Use this before asking the user for a project path.":
     "Listar projetos registrados e repositórios Git encontrados neste Mac. Somente leitura, sem aprovação. Use antes de pedir o caminho de um projeto.",
   "Informe o caminho absoluto de uma pasta deste Mac.": "Informe o caminho absoluto de uma pasta deste Mac.",
@@ -1267,6 +1269,8 @@ export const ptBR = {
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  Revisar: "Review",
+  "Detalhes técnicos": "Technical details",
   "Há um login disponível neste Mac.": "A login is available on this Mac.",
   "Há um login disponível neste servidor.": "A login is available on this server.",
   "Usar login deste Mac": "Use this Mac’s login",

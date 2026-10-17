@@ -1,4 +1,5 @@
 import type { ApprovalPart, MessagePart } from "@touri/contracts"
+import { approvalSummary } from "@touri/contracts/approval-summary"
 import { redactToolText } from "@touri/contracts/redaction"
 import { localizeToolText, t } from "../i18n"
 import { routineSchedule } from "../routineSchedule"
@@ -123,13 +124,12 @@ const setupPresentation = (name: string, input: Record<string, unknown> | null) 
     if (previous)
       summary += ` ${t("Substitui o projeto {name} ({path}).", { name: String(previous.name), path: String(previous.path) })}`
   } else if (leaf === "folder_access_request") {
-    title = t("Conceder acesso à pasta")
-    summary = t("Permitir {mode} em {path} para este bot", {
-      mode: t(input?.mode === "read" ? "Somente leitura" : "Leitura e escrita"),
-      path,
+    const folder = approvalSummary({
+      request: "permission",
+      scope: { source: "mcp", server: "touri", tool: leaf },
+      detail: JSON.stringify(input),
     })
-    if (input?.previousMode)
-      summary += ` ${t("Acesso anterior: {mode}.", { mode: t(input.previousMode === "read-only" ? "Somente leitura" : "Leitura e escrita") })}`
+    return { name: folder.title, summary: folder.body, canApprove: folder.title !== t("Detalhes indisponíveis") }
   } else if (leaf === "project_unlink") {
     title = t("Desvincular projeto")
     summary = t("Desvincular o projeto deste bot.")
@@ -174,13 +174,7 @@ export const toolPresentation = (part?: ToolPart, approval?: ApprovalPart) => {
   const identity = toolIdentity(name, approval?.scope?.server)
   const description = typeof args?.description === "string" ? args.description : ""
   const summary = part?.type === "tool_call" && !/^Claude tool |^[{[]/.test(part.summary) ? part.summary : ""
-  const defaults = {
-    terminal: "Executar comando no terminal",
-    browser: "Interagir com o navegador",
-    computer: "Interagir com o computador",
-    files: toolLeaf(name).toLowerCase() === "read" ? "Consultar o conteúdo do arquivo" : "Alterar arquivos do projeto",
-    tool: "Executar ferramenta",
-  }
+  const fallback = approvalSummary({ request: "permission", detail: "", scope: { source: "mcp", tool: name } }).body
   const command = args?.command ?? args?.cmd
   const pathValue = args?.file_path ?? args?.filePath ?? args?.path ?? args?.paths
   const filePaths =
@@ -208,9 +202,7 @@ export const toolPresentation = (part?: ToolPart, approval?: ApprovalPart) => {
       localizeToolText(
         description ||
           summary ||
-          (typeof value === "string" && !/^[{[]/.test(value.trim()) && identity.kind !== "terminal"
-            ? value
-            : defaults[identity.kind]),
+          (typeof value === "string" && !/^[{[]/.test(value.trim()) && identity.kind !== "terminal" ? value : fallback),
       ),
     code:
       setup && approval

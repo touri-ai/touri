@@ -11,6 +11,7 @@ import {
   webEndpoint,
 } from "./api/client"
 import type { ApprovalTarget } from "./approvalNavigation"
+import { ApprovalNotice } from "./components/ApprovalNotice"
 import { AvatarRuntimeProvider } from "./components/AvatarRuntime"
 import { BotAvatar } from "./components/BotAvatar"
 import { BotComputer } from "./components/BotComputer"
@@ -604,6 +605,7 @@ const AppContent = ({ kernel }: AppProps) => {
             </div>
           )}
         </MotionPresence>
+        <ApprovalNotice notifications={data.notifications} messages={data.activityMessages} onReview={reviewApproval} />
         <div className="app-grid">
           <Sidebar
             groups={data.groups}
