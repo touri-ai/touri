@@ -3,6 +3,7 @@ import type { Bot, DoctorCheck, Kernel } from "@touri/contracts"
 import {
   loginTarget,
   ProviderLoginError,
+  providerLoginAccount,
   readHostLoginFile,
   readVault,
   storedProviderLoginSource,
@@ -54,7 +55,11 @@ const vaultCheck = async (kernel: Kernel, bot: VmBotRow, signal: AbortSignal, la
   } catch (error) {
     signal.throwIfAborted()
     const detail = error instanceof ProviderLoginError ? error.message : "O cofre de segredos não respondeu."
-    return check(id, label, "fail", `${bot.name}: ${detail}`, "open -a 'Keychain Access'")
+    return {
+      ...check(id, label, "fail", `${bot.name}: ${detail}`, target.command),
+      action: "authorize-vault",
+      vaultAccount: providerLoginAccount(bot.id, bot.provider),
+    }
   }
 }
 

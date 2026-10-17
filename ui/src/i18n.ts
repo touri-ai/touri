@@ -836,6 +836,17 @@ export const ptBR = {
   "Não foi possível remover o login.": "Não foi possível remover o login.",
   "Login do provedor nesta máquina": "Login do provedor nesta máquina",
   "Verificando login…": "Verificando login…",
+  "Outras opções": "Outras opções",
+  "O cofre de segredos não respondeu. Permita o acesso ao cofre para continuar.":
+    "O cofre de segredos não respondeu. Permita o acesso ao cofre para continuar.",
+  "Na janela do macOS, escolha Permitir sempre. Sua mensagem continuará automaticamente.":
+    "Na janela do macOS, escolha Permitir sempre. Sua mensagem continuará automaticamente.",
+  "O acesso não foi autorizado. Tente novamente e escolha Permitir sempre na janela do macOS.":
+    "O acesso não foi autorizado. Tente novamente e escolha Permitir sempre na janela do macOS.",
+  "Aguardando permissão do macOS…": "Aguardando permissão do macOS…",
+  "Permitir acesso ao cofre": "Permitir acesso ao cofre",
+  "Na janela do macOS, escolha Permitir sempre.": "Na janela do macOS, escolha Permitir sempre.",
+  "Permita o acesso ao cofre para usar o login salvo.": "Permita o acesso ao cofre para usar o login salvo.",
   "Aguardando login no navegador…": "Aguardando login no navegador…",
   "Login disponível para este bot.": "Login disponível para este bot.",
   "Há um login disponível neste Mac.": "Há um login disponível neste Mac.",
@@ -1696,6 +1707,17 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Abrir prévia": "Open preview",
   "Abrir a prévia do projeto em {path}": "Open the project preview at {path}",
   "Verificando login…": "Checking sign-in…",
+  "Outras opções": "Other options",
+  "O cofre de segredos não respondeu. Permita o acesso ao cofre para continuar.":
+    "The vault did not respond. Allow vault access to continue.",
+  "Na janela do macOS, escolha Permitir sempre. Sua mensagem continuará automaticamente.":
+    "In the macOS window, choose Always Allow. Your message will continue automatically.",
+  "O acesso não foi autorizado. Tente novamente e escolha Permitir sempre na janela do macOS.":
+    "Access was not authorized. Try again and choose Always Allow in the macOS window.",
+  "Aguardando permissão do macOS…": "Waiting for macOS permission…",
+  "Permitir acesso ao cofre": "Allow vault access",
+  "Na janela do macOS, escolha Permitir sempre.": "In the macOS window, choose Always Allow.",
+  "Permita o acesso ao cofre para usar o login salvo.": "Allow vault access to use the saved sign-in.",
   "Aguardando login no navegador…": "Waiting for sign-in in the browser…",
   "Login disponível para este bot.": "Sign-in is ready for this bot.",
   "Login cancelado.": "Sign-in cancelled.",

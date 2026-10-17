@@ -9,6 +9,7 @@ import { buildChildEnv } from "../kernel/shell-env"
 import { resolveProviderExecutable } from "../runtime/resolveProviderExecutable"
 import {
   loginTarget,
+  ProviderLoginError,
   providerLoginAccount,
   providerLoginSourceKey,
   readHostLoginFile,
@@ -226,7 +227,18 @@ export const createProviderLoginFlow = ({
     const source = isDraft(target.id) ? null : storedProviderLoginSource(kernel, target)
     if (!source && hostAvailable(target.provider)) return { provider: target.provider, state: "host-available", host }
     if (source !== "host-file" && !isDraft(target.id)) {
-      const value = await readVault(kernel, target, loginTarget(target.provider), {})
+      let value: string | null
+      try {
+        value = await readVault(kernel, target, loginTarget(target.provider), {})
+      } catch (error) {
+        if (
+          host === "mac" &&
+          error instanceof ProviderLoginError &&
+          (error.reason === "vault-locked" || error.reason === "transport")
+        )
+          return { provider: target.provider, state: "vault-locked" }
+        throw error
+      }
       if (value) {
         redact(value)
         if (validLogin(target.provider, value)) {

@@ -343,12 +343,20 @@ fn dispatch_authenticated_request(
             .get("account")
             .and_then(Value::as_str)
             .ok_or_else(|| "account is required".to_string())
-            .and_then(|account| keychain.get(account).map(|value| json!({ "value": value }))),
+            .and_then(|account| {
+                keychain
+                    .get(account)
+                    .map(|value| json!({ "value": value }))
+                    .map_err(|error| error.to_string())
+            }),
         "keychain.set" => {
             let account = request.params.get("account").and_then(Value::as_str);
             let value = request.params.get("value").and_then(Value::as_str);
             match (account, value) {
-                (Some(account), Some(value)) => keychain.set(account, value).map(|_| json!({})),
+                (Some(account), Some(value)) => keychain
+                    .set(account, value)
+                    .map(|_| json!({}))
+                    .map_err(|error| error.to_string()),
                 _ => Err("account and value are required".to_string()),
             }
         }
@@ -357,7 +365,12 @@ fn dispatch_authenticated_request(
             .get("account")
             .and_then(Value::as_str)
             .ok_or_else(|| "account is required".to_string())
-            .and_then(|account| keychain.delete(account).map(|_| json!({}))),
+            .and_then(|account| {
+                keychain
+                    .delete(account)
+                    .map(|_| json!({}))
+                    .map_err(|error| error.to_string())
+            }),
         "secret.prompt" => prompt_secret(&request.params, callbacks.secret_prompt.as_ref()),
         "notify" => notify_user(&request.params, callbacks.notify.as_ref()),
         "file.grant.redeem" => redeem_file_grant(&request.params, &callbacks.file_grants),

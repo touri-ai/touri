@@ -1,8 +1,15 @@
 import { useEffect, useId, useState } from "react"
 import { localizeNotice, t } from "../i18n"
 import type { useProviderLogin } from "../useProviderLogin"
+import { VaultAccessButton } from "./VaultAccessButton"
 
-export const ProviderLoginFlow = ({ login }: { login: ReturnType<typeof useProviderLogin> }) => {
+export const ProviderLoginFlow = ({
+  login,
+  resumeMessage = false,
+}: {
+  login: ReturnType<typeof useProviderLogin>
+  resumeMessage?: boolean
+}) => {
   const { flow, error, busy, act, recheck } = login
   const provider = login.provider === "claude" ? "Claude" : login.provider === "codex" ? "Codex" : "OpenCode"
   const hostIsMac = flow?.host === "mac"
@@ -29,12 +36,21 @@ export const ProviderLoginFlow = ({ login }: { login: ReturnType<typeof useProvi
                 ? t("Login disponível para este bot.")
                 : flow.state === "host-available"
                   ? t(hostIsMac ? "Há um login disponível neste Mac." : "Há um login disponível neste servidor.")
-                  : flow.state === "cancelled"
-                    ? t("Login cancelado.")
-                    : flow.state === "error"
-                      ? t("Não foi possível concluir o login. Verifique de novo ou use outra conta.")
-                      : t("Entre no provedor para enviar mensagens.")}
+                  : flow.state === "vault-locked"
+                    ? t("Permita o acesso ao cofre para usar o login salvo.")
+                    : flow.state === "cancelled"
+                      ? t("Login cancelado.")
+                      : flow.state === "error"
+                        ? t("Não foi possível concluir o login. Verifique de novo ou use outra conta.")
+                        : t("Entre no provedor para enviar mensagens.")}
       </p>
+      {flow?.state === "vault-locked" && (
+        <VaultAccessButton
+          resumeMessage={resumeMessage}
+          account={`bot/${login.botId}/${login.provider}-vm-login`}
+          onAuthorized={recheck}
+        />
+      )}
       {flow?.state === "waiting" && (
         <>
           {flow.prompt && (
@@ -133,16 +149,19 @@ export const ProviderLoginFlow = ({ login }: { login: ReturnType<typeof useProvi
           {t(hostIsMac ? "Usar login deste Mac" : "Usar login deste servidor")}
         </button>
       )}
-      {flow && flow.state !== "waiting" && flow.state !== "ready" && (
+      {flow && flow.state !== "waiting" && flow.state !== "ready" && flow.state !== "vault-locked" && (
         <button type="button" className="button button-quiet" disabled={busy} onClick={() => void act("start")}>
           {flow.state === "idle" ? t("Entrar no {provider}", { provider }) : t("Usar outra conta")}
         </button>
       )}
-      {flow?.state !== "waiting" && flow?.state !== "ready" && flow?.state !== "host-available" && (
-        <button type="button" className="button button-brand" disabled={busy} onClick={() => void recheck()}>
-          {t("Verificar de novo")}
-        </button>
-      )}
+      {flow?.state !== "waiting" &&
+        flow?.state !== "ready" &&
+        flow?.state !== "host-available" &&
+        flow?.state !== "vault-locked" && (
+          <button type="button" className="button button-brand" disabled={busy} onClick={() => void recheck()}>
+            {t("Verificar de novo")}
+          </button>
+        )}
       {error && flow?.state === "waiting" && <p role="alert">{error}</p>}
     </div>
   )
