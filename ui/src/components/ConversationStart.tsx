@@ -1,8 +1,13 @@
 import type { Bot } from "@touri/contracts"
+import { getJobTemplates } from "../features/jobs/catalog"
 import { markdownSummary } from "../markdownSummary"
 import { BotAvatar } from "./BotAvatar"
 
+const catalogJobs = [...getJobTemplates(), ...getJobTemplates("en")]
+
 const examplesFor = (bot: Bot | null): string[] => {
+  const job = catalogJobs.find((job) => job.roleLine === bot?.roleLine?.trim())
+  if (job) return job.starterPrompts
   const role = markdownSummary(bot?.roleLine?.trim() || bot?.description?.trim() || "")
   const normalized = role.toLocaleLowerCase("pt-BR").normalize("NFD").replace(/\p{M}/gu, "")
   if (/\b(seo|marketing)\b/.test(normalized))

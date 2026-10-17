@@ -1,3 +1,4 @@
+import { withToolPath } from "../kernel/shell-env"
 import type { VmProviderErrorCode } from "./types"
 
 export type VmCommandOutput = {
@@ -37,7 +38,7 @@ export const createVmCommandRunner =
   async (args, { signal, timeoutMs: commandTimeoutMs = timeoutMs } = {}) => {
     try {
       signal?.throwIfAborted()
-      const child = Bun.spawn({ cmd: [binary, ...args], stdout: "pipe", stderr: "pipe" })
+      const child = Bun.spawn({ cmd: [binary, ...args], env: withToolPath(), stdout: "pipe", stderr: "pipe" })
       const cancel = () => child.kill("SIGKILL")
       signal?.addEventListener("abort", cancel, { once: true })
       let timedOut = false

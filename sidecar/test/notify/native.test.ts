@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test"
 import type { NotificationRecord } from "@touri/contracts"
-import { buildDeepLink, shouldNotifyNative } from "../../src/notify/native"
+import { buildDeepLink, nativeNotificationTitle, shouldNotifyNative } from "../../src/notify/native"
 
 const record = (kind: NotificationRecord["kind"]): NotificationRecord => ({
   id: 1,
@@ -31,4 +31,11 @@ test("native notifications follow the bot preference", () => {
 test("deep links carry the bot and thread", () => {
   expect(buildDeepLink({ botId: "bot-1", threadId: "th 2" })).toBe("touri://open?bot=bot-1&thread=th+2")
   expect(buildDeepLink({ botId: null, threadId: null })).toBe("touri://open?")
+})
+
+test("approval titles name the bot and action, without changing informational titles", () => {
+  expect(
+    nativeNotificationTitle({ ...record("approval"), botName: "Café Ideias", body: "Executar comando no terminal." }),
+  ).toBe("Café Ideias precisa de você: autorizar executar comando no terminal.")
+  expect(nativeNotificationTitle({ ...record("done"), title: "Concluído" })).toBe("Bot: Concluído")
 })

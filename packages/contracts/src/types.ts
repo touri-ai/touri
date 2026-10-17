@@ -910,7 +910,7 @@ export type UiEvent =
   | { type: 'import.progress'; importId: Id; phase: string; done: number; total: number }
   | { type: 'notification.created'; notification: NotificationRecord }
   | { type: 'notification.resolved'; notification: NotificationRecord }
-  | { type: 'notify'; level: 'info' | 'warning' | 'error'; title: string; body: string; threadId: Id | null }
+  | { type: 'notify'; level: 'info' | 'warning' | 'error'; title: string; body: string; threadId: Id | null; requestId?: Id | null; notificationId?: number; kind?: NotifyKind }
 
 /** Attention kinds need the user; message kinds (`done`, `delegation-settled`) are informational and expire. */
 export type NotifyKind =
@@ -986,7 +986,7 @@ export type HostMethods = {
   'keychain.delete': { params: { account: string }; result: {} }
   'secret.prompt': { params: { requestId: Id; title: string; origin: string; fieldKinds: Array<'username' | 'password' | 'otp'> }; result: { values: Record<string, string> | null } }
   'file.grant.redeem': { params: { grantId: string }; result: { path: AbsolutePath; dev: string; ino: string; size: number } }
-  'notify': { params: { title: string; body: string; threadId: Id | null; onlyWhenUnfocused?: boolean; deepLink?: string }; result: {} }
+  'notify': { params: { title: string; body: string; threadId: Id | null; onlyWhenUnfocused?: boolean; deepLink?: string; requestId?: Id | null; notificationId?: number; kind?: NotifyKind }; result: {} }
   'permissions.status': { params: {}; result: Record<HostPermission, PermissionStatus> }
   'permissions.request': { params: { permission: HostPermission }; result: { status: PermissionStatus; needsRelaunch: boolean } }
   'computer.screenshot': { params: { displayId?: number; maxWidth?: number; region?: { x: number; y: number; width: number; height: number } }; result: ScreenshotResult }

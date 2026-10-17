@@ -382,7 +382,7 @@ test("vault failure leaves login retryable, never ready", async () => {
   const f = fixture("claude")
   f.kernel.callHost = async () => ({ success: false, errorCode: "HOST_ERROR", error: "synthetic-secret-error" })
   await expect(f.flow.action(f.bot, { action: "paste", value: token })).rejects.toThrow()
-  expect(await f.flow.status(f.bot)).toEqual({ provider: "claude", state: "error" })
+  await expect(f.flow.status(f.bot)).rejects.toThrow("cofre")
 })
 
 test("cancel during a pending vault write removes the late credential without activating it", async () => {
@@ -574,3 +574,32 @@ for (const provider of ["claude", "codex", "opencode"] as const)
       expect(existsSync(path)).toBe(false)
     }
   })
+
+for (const provider of ["claude", "codex"] as const)
+  for (const terminal of ["cancelled", "error"] as const)
+    test(`${provider}: ${terminal} login rechecks a saved VM credential without starting another CLI`, async () => {
+      const f = fixture(provider, terminal === "error" ? "fail" : "wait")
+      f.bot.machine = "vm"
+      // Keep shell discovery pending until cancellation, or let the CLI fail.
+      await f.flow.action(f.bot, { action: "start" })
+      if (terminal === "error") await waitState(f, "error")
+      else await f.flow.action(f.bot, { action: "cancel" })
+      expect((await f.flow.status(f.bot)).state).toBe(terminal)
+      f.vault.set(providerLoginAccount(f.bot.id, provider), provider === "claude" ? token : codex)
+      const before = f.invocations.length
+      expect(await f.flow.status(f.bot)).toEqual({ provider, state: "ready" })
+      expect(await f.flow.status(f.bot)).toEqual({ provider, state: "ready" })
+      expect(f.invocations).toHaveLength(before)
+      expect(storedProviderLoginSource(f.kernel, f.bot)).toBe("vault")
+    })
+
+test("a temporary vault failure recovers through status without launching login", async () => {
+  const f = fixture("claude")
+  f.vault.set(providerLoginAccount(f.bot.id, "claude"), token)
+  const callHost = f.kernel.callHost
+  f.kernel.callHost = async () => ({ success: false, errorCode: "HOST_ERROR", error: "unavailable" })
+  await expect(f.flow.status(f.bot)).rejects.toThrow()
+  f.kernel.callHost = callHost
+  expect(await f.flow.status(f.bot)).toEqual({ provider: "claude", state: "ready" })
+  expect(f.invocations).toHaveLength(0)
+})
