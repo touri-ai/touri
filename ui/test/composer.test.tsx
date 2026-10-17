@@ -7,7 +7,10 @@ import App from "../src/App"
 import { createMockApi } from "../src/api/mock"
 import { Composer } from "../src/components/Composer"
 
-vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn(), convertFileSrc: (path: string) => path }))
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: vi.fn(async (command: string) => (command === "server_mode_status" ? { mode: "local", url: null } : null)),
+  convertFileSrc: (path: string) => path,
+}))
 vi.mock("@tauri-apps/api/webview", () => ({
   getCurrentWebview: () => ({ onDragDropEvent: vi.fn().mockResolvedValue(vi.fn()) }),
 }))
@@ -233,6 +236,7 @@ describe("composer island", () => {
     expect(clicked).toHaveBeenCalledOnce()
     fireEvent.change(input, { target: { files: [new File(["a"], "plano.md")] } })
     await waitFor(() => expect(api.calls.some((call) => call.route === "POST /attachments")).toBe(true))
-    expect(invoke).not.toHaveBeenCalled()
+    expect(invoke).toHaveBeenCalledWith("server_mode_status", {})
+    expect(vi.mocked(invoke).mock.calls.every(([command]) => command === "server_mode_status")).toBe(true)
   })
 })

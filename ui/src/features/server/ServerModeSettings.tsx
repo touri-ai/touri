@@ -35,7 +35,7 @@ export const ServerModeSettings = ({
     try {
       if (action === "pair") {
         const result = await invokeCommand("server_mode_pair", { url: url.trim(), code: code.trim() })
-        if (!result || result.mode !== "server") throw new Error("SERVER_PAIR")
+        if (result?.mode !== "server") throw new Error("SERVER_PAIR")
         setMessage(t("Servidor conectado. O touri vai reiniciar neste modo."))
       } else if (action === "test") {
         const result = await invokeCommand("server_mode_test", {})
@@ -43,7 +43,7 @@ export const ServerModeSettings = ({
         setMessage(t("Conexão com o servidor confirmada."))
       } else {
         const result = await invokeCommand("server_mode_local", {})
-        if (!result || result.mode !== "local") throw new Error("SERVER_LOCAL")
+        if (result?.mode !== "local") throw new Error("SERVER_LOCAL")
         setMessage(t("O touri vai reiniciar no modo local."))
       }
     } catch (caught) {

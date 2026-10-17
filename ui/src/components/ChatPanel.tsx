@@ -1,4 +1,3 @@
-import { useIsServerMode } from "../features/server/serverMode"
 import type { Bot, BotGroup, Id, MachineState, Message, Routine, RoutineRun, Run, Thread } from "@touri/contracts"
 import { failureRetryHint, sanitizeDiagnostic } from "@touri/contracts/run-failure"
 import {
@@ -18,6 +17,7 @@ import { useComposerDraft } from "../composerDraft"
 import { userFacingRunError } from "../errors"
 import { ComputerGrantCard } from "../features/computer"
 import { InlineLivePreview, InlinePreviewContext, screenTool } from "../features/desktop/InlineLivePreview"
+import { useIsServerMode } from "../features/server/serverMode"
 import { localizeNotice, t, threadTitle } from "../i18n"
 import { machineStateForDisplay } from "../machineState"
 import { messageMarkdown } from "../messageMarkdown"

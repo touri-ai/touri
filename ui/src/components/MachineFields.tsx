@@ -1,10 +1,10 @@
 import type { Bot, MachineCapability, MachineState } from "@touri/contracts"
 import { type ReactNode, useEffect, useRef, useState } from "react"
 import { userFacingError } from "../errors"
+import { useIsServerMode } from "../features/server/serverMode"
 import { machineStatusLabel, t } from "../i18n"
 import { machineStateForDisplay } from "../machineState"
 import { hostComputerSupported } from "../platform"
-import { useIsServerMode } from "../features/server/serverMode"
 import { SettingsRow, SettingsSwitch } from "./SettingsLayout"
 
 type MachineValues = Pick<Bot, "machine" | "machineIdleMinutes" | "vmProviderLogin" | "hostComputerUse">

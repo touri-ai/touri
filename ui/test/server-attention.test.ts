@@ -1,5 +1,5 @@
-import type { NotificationRecord, UiEventEnvelope } from "@touri/contracts"
 import { cleanup, renderHook } from "@testing-library/react"
+import type { NotificationRecord, UiEventEnvelope } from "@touri/contracts"
 import { afterEach, expect, it, vi } from "vitest"
 import type { TauriInvoke, UiApi } from "../src/api/client"
 import { installServerAttention, useServerAttention } from "../src/features/server/serverAttention"

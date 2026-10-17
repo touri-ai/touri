@@ -1,7 +1,7 @@
 import type { Bot, BotBrowser } from "@touri/contracts"
 import { useId, useState } from "react"
-import { t } from "../i18n"
 import { useIsServerMode } from "../features/server/serverMode"
+import { t } from "../i18n"
 
 const EXPLAINED_KEY = "touri.local-chrome.explained"
 const wasExplained = (): boolean => {

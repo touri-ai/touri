@@ -56,6 +56,7 @@ import { isNewBotShortcut, isPaletteShortcut } from "./features/commandPalette/s
 import { HistoryMigrationStatus } from "./features/history/HistoryMigrationStatus"
 import { ReportErrorButton } from "./features/reports/ReportErrorButton"
 import { ReportMenuLauncher } from "./features/reports/ReportMenuLauncher"
+import { useServerAttention } from "./features/server/serverAttention"
 import {
   isNativeDesktop,
   ServerModeProvider,
@@ -63,7 +64,6 @@ import {
   serverModeErrorCode,
   useServerMode,
 } from "./features/server/serverMode"
-import { useServerAttention } from "./features/server/serverAttention"
 import { localizeNotice, t } from "./i18n"
 import { type DeepLinkRequest, installNativeDeepLinks } from "./nativeDeepLinks"
 import { requestTaskResume, requestTaskReview } from "./recoveryEvents"

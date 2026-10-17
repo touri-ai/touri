@@ -6,8 +6,8 @@ import {
   type Message,
   type RegisteredErrorCode,
   type Run,
-  type ServerModeStatus,
   type SendMessageInput,
+  type ServerModeStatus,
   type TauriCommands,
   type UiEventEnvelope,
 } from "@touri/contracts"

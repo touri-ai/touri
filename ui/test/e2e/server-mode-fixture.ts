@@ -1,4 +1,4 @@
-import { spawn, spawnSync, type ChildProcess } from "node:child_process"
+import { type ChildProcess, spawn, spawnSync } from "node:child_process"
 import { randomBytes } from "node:crypto"
 import { mkdtemp, readFile, rm } from "node:fs/promises"
 import { createServer, request as httpRequest, type Server } from "node:http"

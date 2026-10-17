@@ -8,7 +8,7 @@ vi.mock("@tauri-apps/api/webview", () => ({
 }))
 
 import App from "../src/App"
-import type { ApiRequest } from "../src/api/client"
+import type { ApiRequest, TauriInvoke } from "../src/api/client"
 import { createMockApi } from "../src/api/mock"
 
 afterEach(() => {
@@ -28,7 +28,12 @@ const fixture = (blocked = false) => {
   }) as ApiRequest
   return api
 }
-const mount = (api: ReturnType<typeof createMockApi>) => render(<App kernel={{ services: { api } }} />)
+const invoke = (async (command: string) => {
+  if (command === "server_mode_status") return { mode: "local", url: null }
+  if (command === "deep_link_pending") return null
+  return {}
+}) as TauriInvoke
+const mount = (api: ReturnType<typeof createMockApi>) => render(<App kernel={{ services: { api, invoke } }} />)
 const composer = () => screen.findByRole("textbox", { name: "Mensagem para mark" })
 
 test.each(["web", "desktop"])("%s restores a login-blocked draft after the app remounts", async (surface) => {
