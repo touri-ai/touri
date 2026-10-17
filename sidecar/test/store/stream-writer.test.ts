@@ -107,6 +107,21 @@ test("starting another message does not checkpoint an unrelated streaming reply"
   }
 })
 
+test("two provider frames cannot overfill the per-message byte budget", async () => {
+  const f = await fixture()
+  try {
+    f.store.appendDelta({ threadId: "t", messageId: "a", partIndex: 0, delta: "a".repeat(7_000) })
+    expect(f.events).toEqual([])
+    f.store.appendDelta({ threadId: "t", messageId: "a", partIndex: 0, delta: "b".repeat(7_000) })
+    expect(f.events.filter(({ event }) => event.type === "message.delta")).toHaveLength(1)
+    f.store.flushWrites?.()
+    expect(f.events.filter(({ event }) => event.type === "message.delta")).toHaveLength(2)
+    expect(f.store.activePath({ threadId: "t", leafId: "a" })[0]?.text).toBe("a".repeat(7_000) + "b".repeat(7_000))
+  } finally {
+    f.close()
+  }
+})
+
 test("a periodic checkpoint inside a large frame preserves subsequent chunk and frame offsets", async () => {
   const f = await fixture()
   const now = Date.now()

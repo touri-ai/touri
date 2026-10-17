@@ -265,6 +265,8 @@ export const createStreamWriter = ({
     if (input.partIndex > message.parts.length || (part && part.type !== "text" && part.type !== "reasoning"))
       return reject("validation")
     for (const delta of chunks(input.delta)) {
+      const buffered = runBytes.get(keyOf(input.threadId, input.messageId)) ?? 0
+      if (buffered && buffered + Buffer.byteLength(delta) > STREAM_WRITE_LIMITS.bytes) flush()
       const target = projectionFor(input.threadId, input.messageId)?.message
       if (!target) return reject("validation")
       const previous = target.parts[input.partIndex]
