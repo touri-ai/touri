@@ -958,6 +958,7 @@ export const BotSettingsModal = ({
   initialSection,
   focusSetting,
 }: BotSettingsModalProps) => {
+  const host = useHost(api)
   const routinesFocusRef = useRef<HTMLElement | null>(null)
   const [deletingRoutine, setDeletingRoutine] = useState<Routine | null>(null)
   const [vmMemory, setVmMemory] = useState(settings?.botVmMemoryMb ?? 1536)
@@ -1341,7 +1342,7 @@ export const BotSettingsModal = ({
 
                 {api && bot.machine === "vm" && <BotNetworkSettings api={api} botId={bot.id} />}
               </SettingsGroup>
-              {(hostComputerSupported || machine.machine === "vm") && (
+              {((host === "mac" && hostComputerSupported) || machine.machine === "vm") && (
                 <SettingsGroup title={t("Controle do computador")}>
                   <label className="toggle-row" htmlFor="settings-computer-use" data-setting-id="computerUse">
                     <span>
@@ -1544,7 +1545,7 @@ export const BotSettingsModal = ({
                   ? t("Assumir controle não autoriza ações automáticas do bot. Revise essas ações no chat.")
                   : t("O controle do computador precisa de uma permissão por tempo limitado em cada conversa.")}
               </p>
-              {api && bot.computerUse && bot.mainThreadId && "__TAURI_INTERNALS__" in window && (
+              {api && host === "mac" && bot.computerUse && bot.mainThreadId && "__TAURI_INTERNALS__" in window && (
                 <>
                   <p>{t("Esta permissão vale para a conversa principal deste bot.")}</p>
                   <ComputerGrantCard api={api} botId={bot.id} threadId={bot.mainThreadId} botName={bot.name} />

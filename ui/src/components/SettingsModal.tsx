@@ -4,15 +4,23 @@ import type { TauriInvoke, UiApi } from "../api/client"
 import { readTheme, setTheme, type ThemePreference } from "../design/theme"
 import { userFacingError } from "../errors"
 import { CloudPreferences } from "../features/cloud/CloudPreferences"
-import { APP_SETTINGS_SECTIONS, type AppSettingsSectionId, SETTINGS } from "../features/commandPalette/settingsRegistry"
+import {
+  APP_SETTINGS_SECTIONS,
+  type AppSettingsSectionId,
+  SERVER_SETTINGS_SECTION,
+  SETTINGS,
+} from "../features/commandPalette/settingsRegistry"
 import { paletteShortcutLabel } from "../features/commandPalette/shortcut"
 import { useSettingFocus } from "../features/commandPalette/useSettingFocus"
 import { ComputerUseSettings } from "../features/computer"
 import { readInlinePreviewPreference, setInlinePreviewPreference } from "../features/desktop/inlinePreviewPreference"
 import { DoctorChecks } from "../features/doctor/DoctorChecks"
 import { ReportProblem } from "../features/reports/ReportProblem"
+import { ServerModeSettings } from "../features/server/ServerModeSettings"
+import { isNativeDesktop } from "../features/server/serverMode"
 import { t } from "../i18n"
 import { hostComputerSupported } from "../platform"
+import { useHost } from "../useHost"
 import { Modal } from "./Modal"
 import { NotificationDeliverySettings } from "./NotificationDeliverySettings"
 import {
@@ -33,8 +41,9 @@ type SettingsModalProps = {
   /** Registry setting id to focus and highlight once the dialog opens (command palette). */
   focusSetting?: string | null
   reportErrorCode?: string | undefined
-  invokeCommand?: TauriInvoke
-  api?: UiApi
+  invokeCommand?: TauriInvoke | undefined
+  serverConnectionErrorCode?: string | null | undefined
+  api?: UiApi | undefined
   settings: ApiRoutes["GET /settings"]["res"]["settings"] | null
   onClose: () => void
   onSave: (patch: Partial<ApiRoutes["PATCH /settings"]["req"]>) => Promise<void>
@@ -53,7 +62,9 @@ export const SettingsModal = ({
   doctorError,
   onRefreshDoctor,
   onImport,
+  serverConnectionErrorCode,
 }: SettingsModalProps) => {
+  const host = useHost(api)
   const [section, setSection] = useState(
     initialSection === "report" || initialSection === "general"
       ? "diagnostics"
@@ -113,9 +124,9 @@ export const SettingsModal = ({
       setSaving(false)
     }
   }
-  const sections = APP_SETTINGS_SECTIONS
+  const sections = [...APP_SETTINGS_SECTIONS, ...(isNativeDesktop() ? [SERVER_SETTINGS_SECTION] : [])]
   const pane = (id: AppSettingsSectionId) => {
-    const entry = APP_SETTINGS_SECTIONS.find((candidate) => candidate.id === id)
+    const entry = sections.find((candidate) => candidate.id === id)
     return { active: section, id, title: entry?.label ?? id, description: entry?.description ?? "" }
   }
   return (
@@ -196,7 +207,11 @@ export const SettingsModal = ({
           </SettingsDisclosure>
         </SettingsPane>
         <SettingsPane {...pane("privacy")}>
-          <p className="field-help">{t("Seus dados ficam neste Mac. Conexões externas são opcionais.")}</p>
+          <p className="field-help">
+            {host === "server"
+              ? t("Seus dados e os logins dos bots ficam no servidor escolhido.")
+              : t("Seus dados ficam neste Mac. Conexões externas são opcionais.")}
+          </p>
           <SettingsDisclosure
             title={t("Dados, permissões e conexões")}
             description={t("Escolha o que guardar e o que os bots podem usar.")}
@@ -249,7 +264,9 @@ export const SettingsModal = ({
                 </code>
               </div>
             </div>
-            {hostComputerSupported && <ComputerUseSettings className="settings-computer-permissions" />}
+            {host === "mac" && hostComputerSupported && (
+              <ComputerUseSettings className="settings-computer-permissions" />
+            )}
             {settings?.cloud && api && <CloudPreferences api={api} settings={settings} onSave={onSave} />}
           </SettingsDisclosure>
         </SettingsPane>
@@ -399,13 +416,18 @@ export const SettingsModal = ({
             {(open) => open && <ReportProblem api={api} invokeCommand={invokeCommand} errorCode={reportErrorCode} />}
           </SettingsDisclosure>
         </SettingsPane>
+        {isNativeDesktop() && (
+          <SettingsPane {...pane("advanced")}>
+            <ServerModeSettings invokeCommand={invokeCommand} connectionErrorCode={serverConnectionErrorCode} />
+          </SettingsPane>
+        )}
       </SettingsLayout>
       {error && (
         <p className="settings-save-error warning-callout" role="alert">
           {error}
         </p>
       )}
-      {!(section === "diagnostics" && reportOpen) && (
+      {section !== "advanced" && !(section === "diagnostics" && reportOpen) && (
         <div className="modal-actions">
           <button type="button" className="button button-quiet" onClick={onClose}>
             {t("Cancel")}

@@ -18,6 +18,72 @@ export const ptBR = {
   "Rede local ajuda":
     "Desativado por padrão. Bloqueios valem agora; novos acessos exigem reiniciar o computador do bot. Seu computador e os serviços internos de infraestrutura continuam protegidos.",
 
+  "Este preview está no servidor. Peça ao bot para abri-lo no navegador do servidor.":
+    "Este preview está no servidor. Peça ao bot para abri-lo no navegador do servidor.",
+  "Abrir touri": "Abrir touri",
+  "Pausar todos os bots": "Pausar todos os bots",
+  "Sair do touri": "Sair do touri",
+  // Optional native server mode.
+  "Qualquer pasta do servidor": "Qualquer pasta do servidor",
+  "O aplicativo e o servidor usam versões diferentes. Atualize os dois e tente novamente.":
+    "O aplicativo e o servidor usam versões diferentes. Atualize os dois e tente novamente.",
+  "Muitas tentativas de pareamento. Aguarde alguns minutos e gere outro código no servidor.":
+    "Muitas tentativas de pareamento. Aguarde alguns minutos e gere outro código no servidor.",
+  "Usar um servidor touri": "Usar um servidor touri",
+  "Escolha se os bots trabalham neste Mac ou em um servidor touri.":
+    "Escolha se os bots trabalham neste Mac ou em um servidor touri.",
+  "Não foi possível acessar o cofre do sistema. Desbloqueie-o e tente novamente ou volte ao modo local.":
+    "Não foi possível acessar o cofre do sistema. Desbloqueie-o e tente novamente ou volte ao modo local.",
+  "Use um endereço HTTPS do seu servidor touri. HTTP só é permitido neste computador.":
+    "Use um endereço HTTPS do seu servidor touri. HTTP só é permitido neste computador.",
+  "Não foi possível parear este aplicativo. Gere outro código no servidor e tente novamente.":
+    "Não foi possível parear este aplicativo. Gere outro código no servidor e tente novamente.",
+  "Não foi possível conectar ao servidor. Confira o endereço e a rede e tente novamente.":
+    "Não foi possível conectar ao servidor. Confira o endereço e a rede e tente novamente.",
+  "Seus bots, conversas, arquivos e logins ficam no servidor escolhido. Este Mac mostra a interface, sem iniciar bots locais.":
+    "Seus bots, conversas, arquivos e logins ficam no servidor escolhido. Este Mac mostra a interface, sem iniciar bots locais.",
+  "As pastas, a tela e o navegador pessoal deste Mac não ficam disponíveis para os bots do servidor.":
+    "As pastas, a tela e o navegador pessoal deste Mac não ficam disponíveis para os bots do servidor.",
+  "Modo servidor ativo": "Modo servidor ativo",
+  "Modo local ativo": "Modo local ativo",
+  "Verificando modo do aplicativo…": "Verificando modo do aplicativo…",
+  "Endereço do servidor": "Endereço do servidor",
+  "Código de pareamento": "Código de pareamento",
+  "No computador do servidor, execute touri pair para gerar um código de uso único. Cole o código abaixo; ele expira em poucos minutos.":
+    "No computador do servidor, execute touri pair para gerar um código de uso único. Cole o código abaixo; ele expira em poucos minutos.",
+  "A conexão fica guardada no cofre do sistema. Ao conectar ou voltar ao modo local, o aplicativo reinicia.":
+    "A conexão fica guardada no cofre do sistema. Ao conectar ou voltar ao modo local, o aplicativo reinicia.",
+  "Conectar ao servidor": "Conectar ao servidor",
+  "Voltar ao modo local": "Voltar ao modo local",
+  "Aguarde…": "Aguarde…",
+  "Servidor conectado. O touri vai reiniciar neste modo.": "Servidor conectado. O touri vai reiniciar neste modo.",
+  "Conexão com o servidor confirmada.": "Conexão com o servidor confirmada.",
+  "O touri vai reiniciar no modo local.": "O touri vai reiniciar no modo local.",
+  "Seus dados e os logins dos bots ficam no servidor escolhido.":
+    "Seus dados e os logins dos bots ficam no servidor escolhido.",
+  "As pastas abaixo pertencem ao servidor. Pastas deste Mac não são compartilhadas.":
+    "As pastas abaixo pertencem ao servidor. Pastas deste Mac não são compartilhadas.",
+  "Acesso a qualquer pasta do servidor": "Acesso a qualquer pasta do servidor",
+  "As permissões e o isolamento são aplicados pelo servidor. Revise o acesso antes de salvar.":
+    "As permissões e o isolamento são aplicados pelo servidor. Revise o acesso antes de salvar.",
+  "Este bot poderá ler arquivos de todo o servidor e, conforme o nível de acesso, alterá-los ou apagá-los. Conceda este acesso apenas a bots em que confia.":
+    "Este bot poderá ler arquivos de todo o servidor e, conforme o nível de acesso, alterá-los ou apagá-los. Conceda este acesso apenas a bots em que confia.",
+  "Seu navegador pessoal fica indisponível no modo servidor. Use o navegador do servidor ou do computador isolado.":
+    "Seu navegador pessoal fica indisponível no modo servidor. Use o navegador do servidor ou do computador isolado.",
+  "O bot trabalha no servidor escolhido, sem acessar este Mac.":
+    "O bot trabalha no servidor escolhido, sem acessar este Mac.",
+  "Neste servidor": "Neste servidor",
+  "Modo servidor": "Modo servidor",
+  "Servidor offline. Tentando reconectar…": "Servidor offline. Tentando reconectar…",
+  "Servidor offline. Suas mensagens ficam na fila e serão enviadas ao reconectar.":
+    "Servidor offline. Suas mensagens ficam na fila e serão enviadas ao reconectar.",
+  "Sem conexão. Suas mensagens ficam na fila e serão enviadas ao reconectar.":
+    "Sem conexão. Suas mensagens ficam na fila e serão enviadas ao reconectar.",
+  "Um bot precisa da sua atenção.": "Um bot precisa da sua atenção.",
+  "Esta opção está disponível apenas no aplicativo para computador.":
+    "Esta opção está disponível apenas no aplicativo para computador.",
+  "trabalha no servidor escolhido; não pode acessar os arquivos deste Mac.":
+    "trabalha no servidor escolhido; não pode acessar os arquivos deste Mac.",
   "As ferramentas do touri não carregaram nesta máquina. Tente novamente; se persistir, confira a instalação do touri e as permissões deste servidor.":
     "As ferramentas do touri não carregaram nesta máquina. Tente novamente; se persistir, confira a instalação do touri e as permissões deste servidor.",
   "Ferramentas do touri · {name}": "Ferramentas do touri · {name}",
@@ -1891,6 +1957,72 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Rede local ajuda":
     "Off by default. Restrictions apply now; additional access requires restarting the bot’s computer. Your computer and internal infrastructure services remain protected.",
 
+  "Qualquer pasta do servidor": "Any folder on the server",
+  "O aplicativo e o servidor usam versões diferentes. Atualize os dois e tente novamente.":
+    "The app and server use different versions. Update both and try again.",
+  "Muitas tentativas de pareamento. Aguarde alguns minutos e gere outro código no servidor.":
+    "Too many pairing attempts. Wait a few minutes and generate another code on the server.",
+  "Este preview está no servidor. Peça ao bot para abri-lo no navegador do servidor.":
+    "This preview is on the server. Ask the bot to open it in the server’s browser.",
+  "Abrir touri": "Open touri",
+  "Pausar todos os bots": "Pause all bots",
+  "Sair do touri": "Quit touri",
+  // Optional native server mode.
+  "Usar um servidor touri": "Use a touri server",
+  "Escolha se os bots trabalham neste Mac ou em um servidor touri.":
+    "Choose whether bots work on this Mac or on a touri server.",
+  "Não foi possível acessar o cofre do sistema. Desbloqueie-o e tente novamente ou volte ao modo local.":
+    "Could not access the system vault. Unlock it and try again, or return to local mode.",
+  "Use um endereço HTTPS do seu servidor touri. HTTP só é permitido neste computador.":
+    "Use an HTTPS address for your touri server. HTTP is allowed only on this computer.",
+  "Não foi possível parear este aplicativo. Gere outro código no servidor e tente novamente.":
+    "Could not pair this app. Generate another code on the server and try again.",
+  "Não foi possível conectar ao servidor. Confira o endereço e a rede e tente novamente.":
+    "Could not connect to the server. Check the address and network, then try again.",
+  "Seus bots, conversas, arquivos e logins ficam no servidor escolhido. Este Mac mostra a interface, sem iniciar bots locais.":
+    "Your bots, conversations, files and sign-ins stay on the selected server. This Mac shows the interface without starting local bots.",
+  "As pastas, a tela e o navegador pessoal deste Mac não ficam disponíveis para os bots do servidor.":
+    "This Mac’s folders, screen and personal browser are unavailable to the server’s bots.",
+  "Modo servidor ativo": "Server mode active",
+  "Modo local ativo": "Local mode active",
+  "Verificando modo do aplicativo…": "Checking app mode…",
+  "Endereço do servidor": "Server address",
+  "Código de pareamento": "Pairing code",
+  "No computador do servidor, execute touri pair para gerar um código de uso único. Cole o código abaixo; ele expira em poucos minutos.":
+    "On the server computer, run touri pair to generate a one-time code. Paste it below; it expires in a few minutes.",
+  "A conexão fica guardada no cofre do sistema. Ao conectar ou voltar ao modo local, o aplicativo reinicia.":
+    "The connection is stored in the system vault. Connecting or returning to local mode restarts the app.",
+  "Conectar ao servidor": "Connect to server",
+  "Voltar ao modo local": "Return to local mode",
+  "Aguarde…": "Please wait…",
+  "Servidor conectado. O touri vai reiniciar neste modo.": "Server connected. touri will restart in this mode.",
+  "Conexão com o servidor confirmada.": "Server connection confirmed.",
+  "O touri vai reiniciar no modo local.": "touri will restart in local mode.",
+  "Seus dados e os logins dos bots ficam no servidor escolhido.":
+    "Your data and bot sign-ins stay on the selected server.",
+  "As pastas abaixo pertencem ao servidor. Pastas deste Mac não são compartilhadas.":
+    "The folders below belong to the server. This Mac’s folders are not shared.",
+  "Acesso a qualquer pasta do servidor": "Access any folder on the server",
+  "As permissões e o isolamento são aplicados pelo servidor. Revise o acesso antes de salvar.":
+    "The server applies permissions and isolation. Review access before saving.",
+  "Este bot poderá ler arquivos de todo o servidor e, conforme o nível de acesso, alterá-los ou apagá-los. Conceda este acesso apenas a bots em que confia.":
+    "This bot can read files across the server and, depending on its access level, change or delete them. Grant this access only to bots you trust.",
+  "Seu navegador pessoal fica indisponível no modo servidor. Use o navegador do servidor ou do computador isolado.":
+    "Your personal browser is unavailable in server mode. Use the server’s browser or the isolated computer’s browser.",
+  "O bot trabalha no servidor escolhido, sem acessar este Mac.":
+    "The bot works on the selected server without accessing this Mac.",
+  "Neste servidor": "On this server",
+  "Modo servidor": "Server mode",
+  "Servidor offline. Tentando reconectar…": "Server offline. Trying to reconnect…",
+  "Servidor offline. Suas mensagens ficam na fila e serão enviadas ao reconectar.":
+    "Server offline. Your messages are queued and will be sent when the connection returns.",
+  "Sem conexão. Suas mensagens ficam na fila e serão enviadas ao reconectar.":
+    "Disconnected. Your messages are queued and will be sent when the connection returns.",
+  "Um bot precisa da sua atenção.": "A bot needs your attention.",
+  "Esta opção está disponível apenas no aplicativo para computador.":
+    "This option is available only in the desktop app.",
+  "trabalha no servidor escolhido; não pode acessar os arquivos deste Mac.":
+    "works on the selected server; cannot access this Mac’s files.",
   "As ferramentas do touri não carregaram nesta máquina. Tente novamente; se persistir, confira a instalação do touri e as permissões deste servidor.":
     "The touri tools did not start on this machine. Try again; if this continues, check the touri installation and this server’s permissions.",
   "Ferramentas do touri · {name}": "touri tools · {name}",

@@ -5,6 +5,7 @@ import { computerKillSwitchEvent } from "../computerKillSwitch"
 import { CloudComputer } from "../features/cloud/CloudComputer"
 import { DesktopPanel } from "../features/desktop/DesktopPanel"
 import { VmCapabilityNotice } from "../features/desktop/VmCapabilityNotice"
+import { useIsServerMode } from "../features/server/serverMode"
 import { localizeNotice, machineStatusLabel, t } from "../i18n"
 import { useComputerPresence } from "../machineIntents"
 import { machineStateForDisplay } from "../machineState"
@@ -388,8 +389,9 @@ const LocalBotComputer = ({
   )
 }
 
-export const BotComputer = (props: Parameters<typeof LocalBotComputer>[0]) =>
-  props.bot.machine === "local" && !("__TAURI_INTERNALS__" in window) ? (
+export const BotComputer = (props: Parameters<typeof LocalBotComputer>[0]) => {
+  const serverMode = useIsServerMode()
+  return props.bot.machine === "local" && (serverMode || !("__TAURI_INTERNALS__" in window)) ? (
     <section className="bot-computer" aria-label={`Computador de ${props.bot.name}`}>
       <p role="status">
         {t("Este servidor não tem uma área de trabalho para controlar. Você pode conversar e trabalhar com arquivos.")}
@@ -412,3 +414,4 @@ export const BotComputer = (props: Parameters<typeof LocalBotComputer>[0]) =>
   ) : (
     <LocalBotComputer {...props} />
   )
+}

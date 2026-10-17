@@ -2,6 +2,7 @@ import type { Bot, BotFolder } from "@touri/contracts"
 import { useState } from "react"
 import type { TauriInvoke, UiApi } from "../api/client"
 import { t } from "../i18n"
+import { useIsServerMode } from "../features/server/serverMode"
 import { FolderPicker } from "./FolderPicker"
 import { Modal } from "./Modal"
 import { SettingsSwitch } from "./SettingsLayout"
@@ -31,11 +32,17 @@ export const BotFolderSettings = ({
   onFolders: (folders: BotFolder[]) => void
   onAnyFolderAccess: (enabled: boolean) => void
 }) => {
+  const serverMode = useIsServerMode()
   const [confirming, setConfirming] = useState(false)
   const [picking, setPicking] = useState(false)
   return (
     <div className="bot-folder-settings">
       <strong>{t("Pastas que este bot pode acessar")}</strong>
+      {serverMode && (
+        <p className="field-help">
+          {t("As pastas abaixo pertencem ao servidor. Pastas deste Mac não são compartilhadas.")}
+        </p>
+      )}
       {!folders.length && <p className="field-help">{t("Nenhuma pasta adicional.")}</p>}
       <ul className="bot-folder-list">
         {folders.map((folder, index) => (
@@ -94,7 +101,9 @@ export const BotFolderSettings = ({
         <>
           <label className="toggle-row" htmlFor="settings-any-folder">
             <span>
-              <strong>{t("Acesso a qualquer pasta deste Mac")}</strong>
+              <strong>
+                {t(serverMode ? "Acesso a qualquer pasta do servidor" : "Acesso a qualquer pasta deste Mac")}
+              </strong>
               <small>{t("O nível de acesso e as aprovações continuam valendo.")}</small>
             </span>
             <SettingsSwitch
@@ -110,13 +119,15 @@ export const BotFolderSettings = ({
             )}
           </p>
           <p className="field-help">
-            {machine === "vm"
-              ? t(
-                  "Na VM, sua pasta pessoal aparece em /host/home; as demais, em /host/<nome>. As exclusões são ocultadas por montagens somente leitura.",
-                )
-              : t(
-                  "No Mac, o sandbox do macOS bloqueia as exclusões e a escrita nas pastas somente leitura, inclusive em comandos de terminal. As alterações valem a partir da próxima mensagem.",
-                )}
+            {serverMode
+              ? t("As permissões e o isolamento são aplicados pelo servidor. Revise o acesso antes de salvar.")
+              : machine === "vm"
+                ? t(
+                    "Na VM, sua pasta pessoal aparece em /host/home; as demais, em /host/<nome>. As exclusões são ocultadas por montagens somente leitura.",
+                  )
+                : t(
+                    "No Mac, o sandbox do macOS bloqueia as exclusões e a escrita nas pastas somente leitura, inclusive em comandos de terminal. As alterações valem a partir da próxima mensagem.",
+                  )}
           </p>
           {machine === "vm" && (
             <p className="settings-inline-note">
@@ -130,9 +141,13 @@ export const BotFolderSettings = ({
       {confirming && (
         <Modal title={t("Permitir acesso a qualquer pasta?")} onClose={() => setConfirming(false)}>
           <p>
-            {t(
-              "Este bot poderá ler arquivos pessoais de todo o Mac e, conforme o nível de acesso, alterá-los ou apagá-los. Na VM, sua pasta pessoal será montada em /host/home. Conceda este acesso apenas a bots em que confia.",
-            )}
+            {serverMode
+              ? t(
+                  "Este bot poderá ler arquivos de todo o servidor e, conforme o nível de acesso, alterá-los ou apagá-los. Conceda este acesso apenas a bots em que confia.",
+                )
+              : t(
+                  "Este bot poderá ler arquivos pessoais de todo o Mac e, conforme o nível de acesso, alterá-los ou apagá-los. Na VM, sua pasta pessoal será montada em /host/home. Conceda este acesso apenas a bots em que confia.",
+                )}
           </p>
           <p>{t("As exclusões de pastas sensíveis, o nível de acesso e as aprovações continuam valendo.")}</p>
           <div className="modal-actions">

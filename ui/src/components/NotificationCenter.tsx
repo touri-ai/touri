@@ -15,6 +15,7 @@ import { dictionaries, localizeNotice, type TranslationKey, t } from "../i18n"
 import { markdownSummary } from "../markdownSummary"
 // r8-sidebar: shared attention projection; resolved and superseded failures stay in history.
 import { isFailureNotice, pendingNotifications } from "../sidebarAttention"
+import { scopedStorageKey } from "../storageScope"
 import { useAvatarBot } from "./AvatarRuntime"
 import { BotAvatar } from "./BotAvatar"
 import { ErrorNotice } from "./ErrorNotice"
@@ -26,9 +27,9 @@ export { countAttention, isAttention } from "../sidebarAttention"
 const RECENT_LIMIT = 16
 const CLEARED_KEY = "touri.notifications.cleared.v1"
 const notificationKey = (item: NotificationRecord): string => `${item.id}:${item.createdAt}`
-const readCleared = (): Set<string> => {
+const readCleared = (key: string): Set<string> => {
   try {
-    const saved: unknown = JSON.parse(localStorage.getItem(CLEARED_KEY) ?? "[]")
+    const saved: unknown = JSON.parse(localStorage.getItem(key) ?? "[]")
     return new Set(Array.isArray(saved) ? saved.filter((item): item is string => typeof item === "string") : [])
   } catch {
     return new Set()
@@ -277,7 +278,9 @@ export const NotificationBell = ({
 }) => {
   const [open, setOpen] = useState(false)
   const inserted = useInsertedIds(notifications.map((item) => String(item.id)))
-  const [clearedIds, setClearedIds] = useState(readCleared)
+  // Native mode changes restart the workspace. Retain this destination for late dismiss responses.
+  const [clearedStorageKey] = useState(() => scopedStorageKey(CLEARED_KEY))
+  const [clearedIds, setClearedIds] = useState(() => readCleared(clearedStorageKey))
   const [clearing, setClearing] = useState(false)
   const [clearError, setClearError] = useState(false)
   useEffect(() => {
@@ -330,7 +333,7 @@ export const NotificationBell = ({
       const next = new Set([...clearedIds, ...ids].slice(-1000))
       setClearedIds(next)
       try {
-        localStorage.setItem(CLEARED_KEY, JSON.stringify([...next]))
+        localStorage.setItem(clearedStorageKey, JSON.stringify([...next]))
       } catch {
         /* Keep clearing usable when storage is unavailable. */
       }

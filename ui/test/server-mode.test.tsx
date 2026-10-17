@@ -1,0 +1,220 @@
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { invoke as nativeInvoke } from "@tauri-apps/api/core"
+import { afterEach, expect, it, vi } from "vitest"
+import type { TauriInvoke } from "../src/api/client"
+import App from "../src/App"
+import { createMockApi } from "../src/api/mock"
+import { BotBrowserPicker } from "../src/components/BotBrowserPicker"
+import { PreviewPane } from "../src/components/PreviewPane"
+import { FolderPicker } from "../src/components/FolderPicker"
+import { SettingsModal } from "../src/components/SettingsModal"
+import { ServerModeSettings } from "../src/features/server/ServerModeSettings"
+import { ServerModeProvider, serverModeError } from "../src/features/server/serverMode"
+import { t } from "../src/i18n"
+import { getStorageScope, setStorageScope } from "../src/storageScope"
+
+vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => undefined) }))
+vi.mock("@tauri-apps/api/core", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@tauri-apps/api/core")>()),
+  invoke: vi.fn(async () => ({})),
+}))
+
+const native = () => Object.defineProperty(window, "__TAURI_INTERNALS__", { configurable: true, value: {} })
+const server = { mode: "server", url: "https://touri.example" } as const
+const local = { mode: "local", url: null } as const
+
+afterEach(() => {
+  cleanup()
+  Reflect.deleteProperty(window, "__TAURI_INTERNALS__")
+  setStorageScope(null)
+  vi.clearAllMocks()
+})
+
+it("keeps the advanced native server setting out of the browser app", () => {
+  const invoke = vi.fn()
+  render(<SettingsModal invokeCommand={invoke} settings={null} onSave={vi.fn()} onClose={vi.fn()} />)
+  expect(screen.queryByRole("tab", { name: "Avançado" })).not.toBeInTheDocument()
+  expect(screen.queryByRole("region", { name: "Usar um servidor touri" })).not.toBeInTheDocument()
+  expect(invoke).not.toHaveBeenCalled()
+})
+
+it("pairs with a one-time code, clears it and announces the native restart", async () => {
+  native()
+  const invoke = vi.fn(async (command: string) => (command === "server_mode_status" ? local : server))
+  render(<ServerModeSettings invokeCommand={invoke as unknown as TauriInvoke} />)
+  await screen.findByText("Modo local ativo")
+  fireEvent.change(screen.getByLabelText("Endereço do servidor"), { target: { value: "https://touri.example" } })
+  const code = screen.getByLabelText("Código de pareamento")
+  expect(code).toHaveAttribute("type", "password")
+  fireEvent.change(code, { target: { value: " 123456 " } })
+  fireEvent.click(screen.getByRole("button", { name: "Conectar ao servidor" }))
+  await screen.findByText("Servidor conectado. O touri vai reiniciar neste modo.")
+  expect(invoke).toHaveBeenCalledWith("server_mode_pair", { url: server.url, code: "123456" })
+  expect(code).toHaveValue("")
+  expect(localStorage.length).toBe(0)
+})
+
+it("tests an existing server and returns to local mode without needing its API", async () => {
+  native()
+  const invoke = vi.fn(async (command: string) => {
+    if (command === "server_mode_status") return server
+    if (command === "server_mode_test") return { ok: true }
+    return local
+  })
+  render(<ServerModeSettings invokeCommand={invoke as unknown as TauriInvoke} />)
+  fireEvent.click(await screen.findByRole("button", { name: "Testar conexão" }))
+  await screen.findByText("Conexão com o servidor confirmada.")
+  expect(invoke).toHaveBeenCalledWith("server_mode_test", {})
+  fireEvent.click(screen.getByRole("button", { name: "Voltar ao modo local" }))
+  await screen.findByText("O touri vai reiniciar no modo local.")
+  expect(invoke).toHaveBeenCalledWith("server_mode_local", {})
+})
+
+it("offers local recovery even when reading native mode fails with a locked vault", async () => {
+  native()
+  const invoke = vi.fn(async (command: string) => {
+    if (command === "server_mode_status") throw new Error("VAULT_UNAVAILABLE")
+    return local
+  })
+  render(<ServerModeSettings invokeCommand={invoke as unknown as TauriInvoke} />)
+  expect(await screen.findByRole("alert")).toHaveTextContent("Desbloqueie-o")
+  fireEvent.click(screen.getByRole("button", { name: "Voltar ao modo local" }))
+  await screen.findByText("O touri vai reiniciar no modo local.")
+  expect(invoke).toHaveBeenCalledWith("server_mode_local", {})
+  expect(screen.queryByText("VAULT_UNAVAILABLE")).not.toBeInTheDocument()
+})
+
+it("keeps server recovery reachable after startup fails and never restarts a local sidecar", async () => {
+  native()
+  const invoke = vi.fn(async (command: string) => {
+    if (command === "server_mode_status") return server
+    if (command === "server_mode_local") return local
+    throw new Error("VAULT_UNAVAILABLE")
+  })
+  render(<App kernel={{ services: { invoke: invoke as unknown as TauriInvoke } }} />)
+  expect(await screen.findByText("Servidor offline. Tentando reconectar…")).toBeVisible()
+  fireEvent.click(screen.getByRole("button", { name: "Tentar novamente" }))
+  await waitFor(() =>
+    expect(invoke.mock.calls.filter(([command]) => command === "sidecar_endpoint").length).toBeGreaterThan(1),
+  )
+  expect(invoke).not.toHaveBeenCalledWith("sidecar_restart", {})
+  fireEvent.click(screen.getByRole("button", { name: "Usar um servidor touri" }))
+  fireEvent.click(await screen.findByRole("button", { name: "Voltar ao modo local" }))
+  await screen.findByText("O touri vai reiniciar no modo local.")
+})
+
+it("waits for native mode before mounting destination-scoped UI", async () => {
+  native()
+  let resolve: ((value: typeof server) => void) | undefined
+  const invoke = vi.fn(
+    () =>
+      new Promise<typeof server>((done) => {
+        resolve = done
+      }),
+  ) as unknown as TauriInvoke
+  let mountedScope: string | null | undefined
+  const Probe = () => {
+    mountedScope = getStorageScope()
+    return <p>Workspace</p>
+  }
+  render(
+    <ServerModeProvider invoke={invoke}>
+      <Probe />
+    </ServerModeProvider>,
+  )
+  expect(screen.queryByText("Workspace")).not.toBeInTheDocument()
+  resolve?.(server)
+  await screen.findByText("Workspace")
+  expect(mountedScope).toBe(server.url)
+})
+
+it("applies the pending cold-start target after server mode loads and acknowledges that request", async () => {
+  native()
+  const api = createMockApi()
+  const pending = { requestId: 3, bot: "bot-onb", thread: null }
+  const invoke = vi.fn(async (command: string) => {
+    if (command === "server_mode_status") return server
+    if (command === "deep_link_pending") return pending
+    return {}
+  })
+  render(<App kernel={{ services: { api, invoke: invoke as unknown as TauriInvoke } }} />)
+  await screen.findByRole("textbox", { name: "Mensagem para onb" })
+  await waitFor(() => expect(invoke).toHaveBeenCalledWith("deep_link_ack", { requestId: 3 }))
+})
+
+it("authorizes the saved server account through the native vault and tests the connection again", async () => {
+  native()
+  const invoke = vi.fn(async (command: string) => (command === "server_mode_status" ? server : { ok: true }))
+  render(
+    <ServerModeSettings invokeCommand={invoke as unknown as TauriInvoke} connectionErrorCode="VAULT_ACCESS_REQUIRED" />,
+  )
+  fireEvent.click(await screen.findByRole("button", { name: "Permitir acesso ao cofre" }))
+  await screen.findByText("Conexão com o servidor confirmada.")
+  expect(nativeInvoke).toHaveBeenCalledWith("vault_authorize", { account: `server-mode/${server.url}` })
+  expect(invoke).toHaveBeenCalledWith("server_mode_test", {})
+})
+
+it("hides the Mac folder chooser and disables the personal browser in server mode", async () => {
+  native()
+  const invoke = vi.fn(async () => server) as unknown as TauriInvoke
+  const api = createMockApi()
+  render(
+    <ServerModeProvider invoke={invoke}>
+      <FolderPicker api={api} invokeCommand={invoke} onSelect={vi.fn()} onClose={vi.fn()} />
+      <BotBrowserPicker value="touri" machine="local" onChange={vi.fn()} />
+    </ServerModeProvider>,
+  )
+  await screen.findByRole("dialog", { name: "Pastas no servidor" })
+  expect(screen.queryByRole("button", { name: "Escolher no Mac…" })).not.toBeInTheDocument()
+  expect(screen.getByRole("combobox", { name: t("Bot browser") }).querySelector('option[value="local"]')).toBeDisabled()
+  await waitFor(() => expect(screen.getByText(/Seu navegador pessoal fica indisponível/)).toBeVisible())
+})
+
+it("keeps native error details private and translates recovery guidance in both languages", () => {
+  expect(serverModeError("SERVER_URL_INVALID")).toBe(
+    t("Use um endereço HTTPS do seu servidor touri. HTTP só é permitido neste computador."),
+  )
+  expect(serverModeError("SERVER_PAIRING_REQUIRED")).toContain("Gere outro código")
+  expect(serverModeError("SERVER_CONNECTION_FAILED")).toContain("Confira o endereço")
+  expect(t("Voltar ao modo local", {}, "en")).toBe("Return to local mode")
+  expect(t("Servidor offline. Tentando reconectar…", {}, "en")).toBe("Server offline. Trying to reconnect…")
+})
+
+it("keeps server mode actions independent of unsaved server preferences while offline", async () => {
+  native()
+  const invoke = vi.fn(async () => server) as unknown as TauriInvoke
+  render(
+    <SettingsModal
+      initialSection="advanced"
+      invokeCommand={invoke}
+      settings={null}
+      onSave={vi.fn()}
+      onClose={vi.fn()}
+    />,
+  )
+  await screen.findByRole("button", { name: "Voltar ao modo local" })
+  expect(screen.queryByRole("button", { name: t("Save preferences") })).not.toBeInTheDocument()
+})
+
+it("does not open a server preview URL against the Mac loopback interface", async () => {
+  native()
+  const invoke = vi.fn(async () => server) as unknown as TauriInvoke
+  render(
+    <ServerModeProvider invoke={invoke}>
+      <PreviewPane
+        preview={{
+          projectId: "project-test",
+          processId: null,
+          url: "http://127.0.0.1:18821",
+          port: 18821,
+          label: "Teste",
+        }}
+        modalOpen={false}
+        invokeCommand={invoke}
+        onOpenAgentBrowser={vi.fn()}
+      />
+    </ServerModeProvider>,
+  )
+  await screen.findByText("Este preview está no servidor. Peça ao bot para abri-lo no navegador do servidor.")
+  expect(invoke).not.toHaveBeenCalledWith("preview_show", expect.anything())
+})

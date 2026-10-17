@@ -2,6 +2,7 @@ import type { Bot, McpServer, McpTool, McpToolPolicy } from "@touri/contracts"
 import { useCallback, useEffect, useId, useRef, useState } from "react"
 import type { TauriInvoke, UiApi } from "../api/client"
 import { ApiError } from "../errors"
+import { useIsServerMode } from "../features/server/serverMode"
 import { t } from "../i18n"
 import { McpCatalog, type McpPreset, mcpPresets } from "./McpCatalog"
 import { McpSetupChecklist } from "./McpSetupChecklist"
@@ -40,6 +41,7 @@ export const BotMcpSettings = ({
   machine?: Bot["machine"]
   invokeCommand?: TauriInvoke | undefined
 }) => {
+  const serverMode = useIsServerMode()
   const sectionRef = useRef<HTMLElement>(null)
   useEffect(() => {
     if (!focusOnOpen) return
@@ -411,7 +413,7 @@ export const BotMcpSettings = ({
                   onChange={(event) => setFolder(event.target.value)}
                 />
               </label>
-              {invokeCommand && machine === "local" && (
+              {invokeCommand && !serverMode && machine === "local" && (
                 <button
                   type="button"
                   className="button button-quiet"

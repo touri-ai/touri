@@ -1,3 +1,5 @@
+import { scopedStorageKey } from "./storageScope"
+
 export type AppRoute =
   | { section: "bots"; screen: "chat" | "preview" }
   | { section: "advanced"; page: "cron" | "integracoes" | "mcp"; botId?: string }
@@ -32,7 +34,7 @@ const migrateRoute = (raw: unknown): AppRoute | undefined => {
 
 export const readWorkspaceState = (): SavedWorkspace => {
   try {
-    const raw: unknown = JSON.parse(localStorage.getItem(KEY) ?? "{}")
+    const raw: unknown = JSON.parse(localStorage.getItem(scopedStorageKey(KEY)) ?? "{}")
     if (!raw || typeof raw !== "object") return {}
     const value = raw as Record<string, unknown>
     const route = migrateRoute(value.route)
@@ -69,7 +71,7 @@ export const readWorkspaceState = (): SavedWorkspace => {
 
 export const saveWorkspaceState = (patch: SavedWorkspace): void => {
   try {
-    localStorage.setItem(KEY, JSON.stringify({ ...readWorkspaceState(), ...patch }))
+    localStorage.setItem(scopedStorageKey(KEY), JSON.stringify({ ...readWorkspaceState(), ...patch }))
   } catch {
     /* Storage may be unavailable in an embedded browser. */
   }

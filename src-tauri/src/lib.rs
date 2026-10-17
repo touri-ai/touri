@@ -14,6 +14,7 @@ pub mod preview;
 pub mod provider_login_pty;
 mod reports;
 pub mod secret_card;
+pub mod server_mode;
 pub mod sidecar;
 pub mod single_instance;
 pub mod window_config;
@@ -45,6 +46,9 @@ pub struct AppState {
     pub keychain: KeychainStore,
     pub file_grants: Arc<FileGrants>,
     pub shutting_down: AtomicBool,
+    pub server_mode: Mutex<server_mode::ServerModeStatus>,
+    pub server_mode_operation: tokio::sync::Mutex<()>,
+    pub server_relay: Mutex<Option<server_mode::ServerRelay>>,
 }
 
 impl Default for AppState {
@@ -57,6 +61,9 @@ impl Default for AppState {
             keychain: KeychainStore::new(PRODUCTION_SERVICE),
             file_grants: Arc::new(FileGrants::new()),
             shutting_down: AtomicBool::new(false),
+            server_mode: Mutex::new(server_mode::ServerModeStatus::default()),
+            server_mode_operation: tokio::sync::Mutex::new(()),
+            server_relay: Mutex::new(None),
         }
     }
 }
@@ -343,6 +350,9 @@ fn stop_runtime(app: &AppHandle<Wry>) {
         return;
     }
     computer::kill();
+    if let Ok(mut relay) = state.server_relay.lock() {
+        relay.take();
+    }
     if let Ok(bridge) = state.host_bridge.lock() {
         if let Some(bridge) = bridge.as_ref() {
             let _ = bridge.send_notification("app.willQuit", json!({}));
@@ -380,9 +390,93 @@ fn handle_drag_drop(window: &tauri::Window, drag: &tauri::DragDropEvent) {
     }
 }
 
+fn start_local_runtime(app: &tauri::App<Wry>) -> Result<(), Box<dyn std::error::Error>> {
+    let mut launch = SidecarLaunch::from_app(app.handle()).map_err(std::io::Error::other)?;
+    let keychain = app.state::<AppState>().keychain.clone();
+    let file_grants = Arc::clone(&app.state::<AppState>().file_grants);
+    let card_manager = app.state::<SecretCardManager>().inner().clone();
+    let prompt_app = app.handle().clone();
+    let notification_app = app.handle().clone();
+    let focus_app = app.handle().clone();
+    let callbacks = HostBridgeCallbacks {
+        file_grants,
+        secret_prompt: Arc::new(move |request| card_manager.prompt(&prompt_app, request)),
+        notify: Arc::new(move |title, body, _thread_id, options: NotifyOptions| {
+            use tauri_plugin_notification::NotificationExt;
+            let focused = focus_app
+                .get_webview_window("main")
+                .map(|window| {
+                    window.is_focused().unwrap_or(false) && window.is_visible().unwrap_or(false)
+                })
+                .unwrap_or(false);
+            if options.only_when_unfocused && focused {
+                return Ok(());
+            }
+            notification_app
+                .notification()
+                .builder()
+                .title(title)
+                .body(body)
+                .extra("deepLink", options.deep_link)
+                .show()
+                .map_err(|error| format!("notification failed: {error}"))
+        }),
+    };
+    let bridge = HostBridge::start(
+        launch.host_socket.clone(),
+        launch.host_token.clone(),
+        keychain,
+        callbacks,
+    )
+    .map_err(std::io::Error::other)?;
+    launch.host_socket = bridge.endpoint();
+    let supervisor =
+        SidecarSupervisor::start(app.handle().clone(), launch).map_err(std::io::Error::other)?;
+    computer::install(app.handle());
+    let hotkey_bridge = bridge.clone_for_tray();
+    if platform::HOST_COMPUTER {
+        app.global_shortcut()
+            .on_shortcut(
+                "Control+Alt+Command+Period",
+                move |app, _shortcut, event| {
+                    if event.state == ShortcutState::Pressed {
+                        computer::kill();
+                        let _ = app.emit("computer-kill-switch", ());
+                        let _ = hotkey_bridge
+                            .send_notification("computer.killSwitch", json!({ "at": now_ms() }));
+                    }
+                },
+            )
+            .map_err(std::io::Error::other)?;
+    }
+    let power_monitor = power::PowerMonitor::start(bridge.clone_for_tray());
+    let endpoint = supervisor.endpoint();
+    let state = app.state::<AppState>();
+    *state
+        .endpoint
+        .lock()
+        .map_err(|_| std::io::Error::other("endpoint state lock poisoned"))? = endpoint;
+    *state
+        .supervisor
+        .lock()
+        .map_err(|_| std::io::Error::other("supervisor state lock poisoned"))? = Some(supervisor);
+    tray::install(app.handle(), &bridge).map_err(std::io::Error::other)?;
+    *state
+        .host_bridge
+        .lock()
+        .map_err(|_| std::io::Error::other("host bridge state lock poisoned"))? = Some(bridge);
+    *state
+        .power_monitor
+        .lock()
+        .map_err(|_| std::io::Error::other("power monitor state lock poisoned"))? =
+        Some(power_monitor);
+    Ok(())
+}
+
 pub fn run() {
     tauri::Builder::default()
         .manage(AppState::default())
+        .manage(deep_link::PendingLinks::default())
         .manage(SecretCardManager::new())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
@@ -397,6 +491,19 @@ pub fn run() {
         )
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
+            let mode = app
+                .path()
+                .app_config_dir()
+                .map(|dir| server_mode::load_mode(&dir.join("server-mode.json")))
+                .unwrap_or(server_mode::ServerModeStatus {
+                    mode: server_mode::Mode::Server,
+                    url: None,
+                });
+            *app.state::<AppState>()
+                .server_mode
+                .lock()
+                .map_err(|_| std::io::Error::other("server mode state lock poisoned"))? =
+                mode.clone();
             let main_config = app
                 .config()
                 .app
@@ -405,9 +512,15 @@ pub fn run() {
                 .find(|window| window.label == "main")
                 .cloned()
                 .ok_or_else(|| std::io::Error::other("main window config missing"))?;
-            tauri::WebviewWindowBuilder::from_config(app.handle(), &main_config)?
-                .on_download(download_guard::deny_download)
-                .build()?;
+            let main_window = tauri::WebviewWindowBuilder::from_config(app.handle(), &main_config)?
+                .on_download(download_guard::deny_download);
+            let main_window = if mode.mode == server_mode::Mode::Server {
+                // Remote attachments use browser File bytes, never local host path grants.
+                main_window.disable_drag_drop_handler()
+            } else {
+                main_window
+            };
+            main_window.build()?;
             app.manage(preview::PreviewRegistry::default());
             let menu = tauri::menu::Menu::default(app.handle())?;
             i18n::localize_menu(menu.items()?)?;
@@ -440,97 +553,41 @@ pub fn run() {
             });
             app.set_menu(menu)?;
             platform::observe_display_changes(app.handle());
-            let mut launch =
-                SidecarLaunch::from_app(app.handle()).map_err(std::io::Error::other)?;
-            let keychain = app.state::<AppState>().keychain.clone();
-            let file_grants = Arc::clone(&app.state::<AppState>().file_grants);
-            let card_manager = app.state::<SecretCardManager>().inner().clone();
-            let prompt_app = app.handle().clone();
             notifications::register_clicks(app.handle());
-            let notification_app = app.handle().clone();
-            let focus_app = app.handle().clone();
-            let callbacks = HostBridgeCallbacks {
-                file_grants,
-                secret_prompt: Arc::new(move |request| card_manager.prompt(&prompt_app, request)),
-                notify: Arc::new(move |title, body, _thread_id, options: NotifyOptions| {
-                    use tauri_plugin_notification::NotificationExt;
-                    let focused = focus_app
-                        .get_webview_window("main")
-                        .map(|window| {
-                            window.is_focused().unwrap_or(false)
-                                && window.is_visible().unwrap_or(false)
-                        })
-                        .unwrap_or(false);
-                    if options.only_when_unfocused && focused {
-                        return Ok(());
-                    }
-                    notification_app
-                        .notification()
-                        .builder()
-                        .title(title)
-                        .body(body)
-                        .extra("deepLink", options.deep_link)
-                        .show()
-                        .map_err(|error| format!("notification failed: {error}"))
-                }),
-            };
-            let bridge = HostBridge::start(
-                launch.host_socket.clone(),
-                launch.host_token.clone(),
-                keychain,
-                callbacks,
-            )
-            .map_err(std::io::Error::other)?;
-            launch.host_socket = bridge.endpoint();
-            let supervisor = SidecarSupervisor::start(app.handle().clone(), launch)
-                .map_err(std::io::Error::other)?;
-            computer::install(app.handle());
-            let hotkey_bridge = bridge.clone_for_tray();
-            if platform::HOST_COMPUTER {
-                app.global_shortcut()
-                    .on_shortcut(
-                        "Control+Alt+Command+Period",
-                        move |app, _shortcut, event| {
-                            if event.state == ShortcutState::Pressed {
-                                computer::kill();
-                                let _ = app.emit("computer-kill-switch", ());
-                                let _ = hotkey_bridge.send_notification(
-                                    "computer.killSwitch",
-                                    json!({ "at": now_ms() }),
-                                );
-                            }
-                        },
-                    )
-                    .map_err(std::io::Error::other)?;
-            }
-            let power_monitor = power::PowerMonitor::start(bridge.clone_for_tray());
-            let endpoint = supervisor.endpoint();
-            let state = app.state::<AppState>();
-            *state
-                .endpoint
-                .lock()
-                .map_err(|_| std::io::Error::other("endpoint state lock poisoned"))? = endpoint;
-            *state
-                .supervisor
-                .lock()
-                .map_err(|_| std::io::Error::other("supervisor state lock poisoned"))? =
-                Some(supervisor);
-            tray::install(app.handle(), &bridge).map_err(std::io::Error::other)?;
-            *state
-                .host_bridge
-                .lock()
-                .map_err(|_| std::io::Error::other("host bridge state lock poisoned"))? =
-                Some(bridge);
-            *state
-                .power_monitor
-                .lock()
-                .map_err(|_| std::io::Error::other("power monitor state lock poisoned"))? =
-                Some(power_monitor);
+            server_mode::select_runtime(
+                &mode,
+                || start_local_runtime(app),
+                || {
+                    let state = app.state::<AppState>();
+                    let (relay, endpoint) = server_mode::start_relay(&mode, state.keychain.clone())
+                        .map_err(std::io::Error::other)?;
+                    *state
+                        .endpoint
+                        .lock()
+                        .map_err(|_| std::io::Error::other("endpoint state lock poisoned"))? =
+                        Some(endpoint);
+                    *state
+                        .server_relay
+                        .lock()
+                        .map_err(|_| std::io::Error::other("relay state lock poisoned"))? =
+                        Some(relay);
+                    tray::install_server(app.handle()).map_err(std::io::Error::other)?;
+                    Ok(())
+                },
+            )?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            deep_link::deep_link_pending,
+            deep_link::deep_link_ack,
             sidecar_endpoint,
             sidecar_restart,
+            server_mode::server_mode_status,
+            server_mode::server_mode_pair,
+            server_mode::server_mode_test,
+            server_mode::server_mode_local,
+            server_mode::server_attention,
+            server_mode::server_badge,
             preview_show,
             preview_set_bounds,
             preview_navigate,
