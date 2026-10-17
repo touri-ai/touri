@@ -692,11 +692,17 @@ test("a delayed handback cannot release a newer human takeover", async () => {
       release = resolve
     })
   await f.session(true)
-  f.desktopVm.acquire = acquire
+  let newerStarted = false
+  f.desktopVm.acquire = async (input) => {
+    newerStarted = true
+    return acquire(input)
+  }
   const handback = f.request(`/bots/${f.bot.id}/desktop/return`)
   await until(() => closing)
-  const newer = await f.session(true)
+  const pending = f.session(true)
+  await until(() => newerStarted)
   release()
+  const newer = await pending
   expect((await handback).status).toBe(409)
   expect(f.desktop.service.claim(newer.sessionId)).toBe(true)
   expect(f.runtime.kernel.services.use("computer.input")?.human(f.bot.id)).toBe(true)
@@ -720,3 +726,48 @@ test("remote runtime without input ownership support permits observation and ref
   expect(observe.status).toBe(200)
   expect(await observe.json()).toMatchObject({ control: false, humanControl: false })
 })
+
+test.each(["return", "takeover"])(
+  "%s drains a paste from an already closed viewer before transferring input",
+  async (action) => {
+    const f = await fixture()
+    const human = await f.session(true)
+    let ready = false
+    f.desktop.service.claim(human.sessionId)
+    f.desktop.service.open(human.sessionId, {
+      send: () => {
+        ready = true
+        return 1
+      },
+      close: () => {},
+    })
+    await until(() => ready)
+    let started = false
+    let finish = () => {}
+    f.desktopVm.exec = async () => {
+      started = true
+      await new Promise<void>((resolve) => {
+        finish = resolve
+      })
+      return { success: true, code: 0, stdout: "", stderr: "" }
+    }
+    const paste = f.request(`/desktop/${human.sessionId}/text`, { text: "日本" })
+    await until(() => started)
+    const closed = f.desktop.service.close(human.sessionId)
+    let transferred = false
+    const transfer = f
+      .request(`/bots/${f.bot.id}/desktop${action === "return" ? "/return" : ""}`, { control: true })
+      .then((response) => {
+        transferred = true
+        return response
+      })
+    await Bun.sleep(30)
+    const transferredBeforeDrain = transferred
+    const heldBeforeDrain = f.runtime.kernel.services.use("computer.input")?.human(f.bot.id)
+    finish()
+    await Promise.all([paste, closed])
+    expect((await transfer).status).toBe(200)
+    expect(transferredBeforeDrain).toBe(false)
+    expect(heldBeforeDrain).toBe(true)
+  },
+)

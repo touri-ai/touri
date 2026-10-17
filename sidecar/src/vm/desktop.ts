@@ -35,7 +35,10 @@ export const createDesktopGateway = (
   paste?: (input: { botId: string; text: string; signal: AbortSignal }) => Promise<void>,
 ) => {
   const sessions = new Map<string, Session>()
+  const closing = new Map<string, { botId: string; settled: Promise<void> }>()
   const pending = new Map<AbortController, { control: boolean; botId: string; settled: Promise<void> }>()
+  const drain = (botId: string) =>
+    Promise.all([...closing.values()].filter((session) => session.botId === botId).map((session) => session.settled))
   const targetEpochs = new Map<string, number>()
   const changeTarget = (botId: string) => {
     const next = (targetEpochs.get(botId) ?? 0) + 1
@@ -54,7 +57,7 @@ export const createDesktopGateway = (
     kernel.log({ level: "info", module: "vm.desktop", msg: decision, data })
   const close = (id: string, reason = "viewer closed", closeCode?: number): Promise<void> => {
     const session = sessions.get(id)
-    if (!session) return Promise.resolve()
+    if (!session) return closing.get(id)?.settled ?? Promise.resolve()
     log("Desktop session closed", { botId: session.botId, control: session.control, reason, closeCode, epoch })
     session.control = false
     sessions.delete(id)
@@ -67,7 +70,11 @@ export const createDesktopGateway = (
       const guest = session.guest
       setTimeout(() => guest.destroy(), 200).unref()
     }
-    return Promise.all([session.release().catch(() => undefined), session.inputSettled]).then(() => undefined)
+    const settled = Promise.all([session.release().catch(() => undefined), session.inputSettled]).then(() => {
+      closing.delete(id)
+    })
+    closing.set(id, { botId: session.botId, settled })
+    return settled
   }
   const revokeControl = (): void => {
     epoch += 1
@@ -207,6 +214,7 @@ export const createDesktopGateway = (
           waits.push(close(id))
         }
       await Promise.all(waits)
+      await drain(botId)
     },
     revokeControl,
     dispose: () => {
@@ -288,6 +296,7 @@ export const createDesktopGateway = (
               if (!input) throw new Error("Controle manual indisponível")
               for (const [id, session] of [...sessions])
                 if (session.botId === botId && session.control) await close(id, "human takeover")
+              await drain(botId)
               await input.take(botId, controller.signal)
               if (startEpoch !== epoch || targetEpoch !== targetEpochs.get(botId))
                 throw new Error("Controle interrompido")
@@ -347,6 +356,7 @@ export const createDesktopGateway = (
             if (request.botId === botId && request.control) controller.abort()
           for (const [id, session] of [...sessions])
             if (session.botId === botId && session.control) await close(id, "explicit handback")
+          await drain(botId)
           if (stopEpoch !== epoch || targetEpoch !== targetEpochs.get(botId))
             return { status: 409, json: { error: "O controle mudou. Tente novamente." } }
           kernel.services.use("computer.input")?.handBack(botId)

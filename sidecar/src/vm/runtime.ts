@@ -1391,6 +1391,11 @@ export const createVmRuntime = ({
     const release = await acquire({ botId: ctx.botId, signal: ctx.signal })
     try {
       ctx.signal.throwIfAborted()
+      const currentBot = botFor(ctx.botId)
+      if (!currentBot.computerUse)
+        return { success: false, errorCode: "COMPUTER_DISABLED", error: "Computer use desativado" }
+      if (writes && currentBot.access === "read-only")
+        return { success: false, errorCode: "DENIED", error: "O bot está em modo somente leitura." }
       if (writes && needsObservation.has(ctx.botId))
         return {
           success: false,

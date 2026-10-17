@@ -2538,3 +2538,41 @@ test("VM automatic input waits for explicit handback and kill prevents any furth
   expect((await f.vm.service.computer({ ctx, name: "computer_type", args: { text: "again" } })).success).toBe(false)
   expect(injections()).toHaveLength(2)
 })
+
+test("queued VM input rechecks read-only access before guest injection", async () => {
+  const f = await fixture()
+  const bot = await f.bot({ computerUse: true })
+  await initComputer(f.runtime.kernel)
+  const gate = f.runtime.kernel.services.use("computer.input")
+  if (!gate) throw new Error("Missing input owner")
+  const ctx = {
+    botId: bot.id,
+    threadId: bot.mainThreadId ?? "",
+    runId: null,
+    projectId: null,
+    cwd: "/workspace",
+    signal: new AbortController().signal,
+  }
+  const spawn = f.fake.provider.spawn
+  f.fake.provider.spawn = (input) => {
+    const child = spawn(input)
+    return child.success
+      ? { ...child, stdout: new Response(JSON.stringify({ scale: 1 })).body as ReadableStream<Uint8Array> }
+      : child
+  }
+  let finish = () => {}
+  const active = gate.run(ctx, async () => {
+    await new Promise<void>((resolve) => {
+      finish = resolve
+    })
+    return { success: true, content: [] }
+  })
+  const pending = f.vm.service.computer({ ctx, name: "computer_type", args: { text: "queued" } })
+  expect((await f.request(`/bots/${bot.id}`, { access: "read-only" }, "PATCH")).status).toBe(200)
+  finish()
+  await active
+  expect(await pending).toMatchObject({ success: false, errorCode: "DENIED" })
+  expect(
+    f.fake.calls.filter((call) => call.action === "spawn" && JSON.stringify(call.input).includes("computer.py")),
+  ).toHaveLength(0)
+})
