@@ -1,9 +1,10 @@
-import { realpathSync, statSync } from "node:fs"
+import { lstatSync, realpathSync, statSync } from "node:fs"
 import { homedir } from "node:os"
-import { basename, isAbsolute, join, parse } from "node:path"
+import { basename, dirname, isAbsolute, join, parse, relative } from "node:path"
 import type { Bot, Kernel, ToolContext, ToolRegistration, ToolResult } from "@touri/contracts"
 import { getDelegation } from "../groups/security"
 import { excludedBotFolders, parseBotFolders, withinFolder } from "../kernel/bot-folders"
+import { createWorkspaceDirectory } from "../kernel/files"
 import { discoverProjects } from "./discovery"
 import { inspectGitMetadata } from "./git"
 import type { ProjectStore } from "./types"
@@ -25,14 +26,40 @@ const snapshot = (bot: Bot) =>
     bot.approvals,
   ])
 
-const hostPath = (value: string): string => {
+const absolutePath = (value: string): string => {
   const path = value === "~" ? homedir() : value.startsWith("~/") ? join(homedir(), value.slice(2)) : value
   if (!isAbsolute(path) || /[\0\n\r*]/.test(path)) throw new Error("Informe o caminho absoluto de uma pasta deste Mac.")
+  return path
+}
+
+const hostPath = (value: string): string => {
+  const path = absolutePath(value)
   const canonical = realpathSync(path)
   if (!statSync(canonical).isDirectory()) throw new Error("O caminho precisa ser uma pasta.")
   if (canonical === parse(canonical).root)
     throw new Error("O acesso a qualquer pasta deste Mac é exclusivo dos ajustes.")
   return canonical
+}
+
+const folderTarget = (value: string) => {
+  const source = absolutePath(value)
+  if (source.split("/").includes("..")) throw new Error("Informe um caminho sem '..'.")
+  let ancestor = source
+  const missing: string[] = []
+  for (;;) {
+    try {
+      lstatSync(ancestor)
+      break
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT")
+        throw new Error("Não foi possível acessar a pasta. Verifique o caminho e as permissões.")
+      missing.unshift(basename(ancestor))
+      ancestor = dirname(ancestor)
+    }
+  }
+  const root = hostPath(ancestor)
+  const info = statSync(root)
+  return { path: join(root, ...missing), ancestor: root, missing: missing.length > 0, dev: info.dev, ino: info.ino }
 }
 
 export const createSetupTools = ({
@@ -268,12 +295,49 @@ export const createSetupTools = ({
         if (bot.machine === "cloud") return denied("Pastas deste Mac não estão disponíveis na nuvem.")
         const input = args as { path: string; mode: "read" | "read-write" }
         try {
-          const path = hostPath(input.path)
+          const target = folderTarget(input.path)
+          const explicit = bot.folders ?? []
+          const roots = [
+            ...explicit.map((folder) => folder.path),
+            bot.homeDir,
+            ...(bot.projectId ? [store.getProject(bot.projectId)?.path ?? ""] : []),
+          ].filter(Boolean)
+          if (target.missing && !roots.some((root) => withinFolder(root, target.ancestor)) && !bot.anyFolderAccess)
+            return denied(
+              "A pasta não existe e fica fora das pastas permitidas. Solicite primeiro acesso à pasta existente.",
+            )
+          if (
+            target.missing &&
+            excludedBotFolders(kernel.paths.appData).some(
+              (excluded) =>
+                withinFolder(excluded, target.path) &&
+                !explicit.some(
+                  (folder) => withinFolder(excluded, folder.path) && withinFolder(folder.path, target.path),
+                ),
+            )
+          )
+            return denied("Esta pasta é protegida. Solicite primeiro acesso à pasta existente.")
+          if (target.missing && input.mode === "read")
+            return denied("A pasta ainda não existe. Solicite acesso de leitura e escrita para criá-la.")
+          if (target.missing && bot.access === "read-only")
+            return denied("O bot está em modo somente leitura e não pode criar pastas.")
+          // A read-only ancestor wins over a narrower writable grant in every sandbox.
+          const readonly = explicit
+            .filter((folder) => folder.access === "read-only" && withinFolder(folder.path, target.path))
+            .sort((a, b) => a.path.length - b.path.length)[0]
+          const path = input.mode === "read-write" ? (readonly?.path ?? target.ancestor) : target.path
           const access = input.mode === "read" ? "read-only" : "read-write"
+          const grantInfo = statSync(path)
           const previousAccess = bot.folders?.find((folder) => folder.path === path)?.access
           const targetCurrent = () => {
             try {
-              return hostPath(input.path) === path
+              const info = statSync(path)
+              return (
+                JSON.stringify(folderTarget(input.path)) === JSON.stringify(target) &&
+                hostPath(path) === path &&
+                info.dev === grantInfo.dev &&
+                info.ino === grantInfo.ino
+              )
             } catch {
               return false
             }
@@ -287,30 +351,51 @@ export const createSetupTools = ({
               requestedPath: input.path,
               mode: input.mode,
               previousMode: previousAccess ?? null,
+              writeApproval: input.mode === "read-write" && (!!readonly || target.missing),
+              ...(target.missing ? { createPath: target.path } : {}),
               nextTurn: true,
               machine: bot.machine,
             },
             targetCurrent,
           )
-          if (!authorized?.()) return denied("O acesso não foi aprovado ou a configuração mudou.")
+          if (!authorized?.())
+            return denied(
+              "O acesso não foi aprovado ou a configuração mudou. Nenhuma pasta foi criada e as permissões foram mantidas.",
+            )
           // Walking the requested tree and revalidating existing grants require
           // consent too. Keep the final guard adjacent to the configuration write.
           const folders = parseBotFolders([
-            ...(bot.folders ?? []).filter((folder) => folder.path !== path),
+            ...explicit
+              .filter((folder) => folder.path !== path)
+              .map((folder) =>
+                access === "read-write" && withinFolder(path, folder.path) ? { ...folder, access } : folder,
+              ),
             { path, access },
           ])
           if (!authorized()) return denied("O acesso não foi aprovado ou a configuração mudou.")
-          return changed(
+          const result = changed(
             bot,
             { folders },
-            `Acesso ${input.mode === "read" ? "de leitura" : "de leitura e escrita"} à pasta ${path} concedido a este bot.`,
+            `Acesso ${input.mode === "read" ? "de leitura" : "de leitura e escrita"} à pasta ${path} concedido a este bot.${target.missing ? ` Pasta ${target.path} criada.` : ""}`,
             previousAccess !== access && (access === "read-write" || !previousAccess) ? ctx : undefined,
           )
+          if (result.success && target.missing)
+            createWorkspaceDirectory({
+              root: target.ancestor,
+              path: relative(target.ancestor, target.path),
+              identity: target,
+            })
+          return result
         } catch (error) {
           return {
             success: false,
             errorCode: "INVALID_ARGS",
-            error: error instanceof Error ? error.message : String(error),
+            error:
+              error instanceof Error && "code" in error
+                ? "Não foi possível acessar ou criar a pasta. Verifique o caminho e as permissões e tente novamente."
+                : error instanceof Error
+                  ? error.message
+                  : String(error),
           }
         }
       },

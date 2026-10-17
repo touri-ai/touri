@@ -132,6 +132,33 @@ it("folder upgrades show the old and requested permissions", () => {
   ).toBeInTheDocument()
 })
 
+it("a missing subfolder reviews one write approval on the ancestor and explains automatic creation", () => {
+  const tool: ToolCallPart = {
+    type: "tool_call",
+    callId: "missing-folder",
+    tool: "mcp__touri__folder_access_request",
+    summary: "folder_access_request",
+    inputJson: JSON.stringify({ path: "/fixtures/output/images", mode: "read-write" }),
+    outputJson: null,
+    ok: null,
+  }
+  const card = approval("folder_access_request", {
+    path: "/fixtures/output",
+    requestedPath: "/fixtures/output/images",
+    createPath: "/fixtures/output/images",
+    mode: "read-write",
+    previousMode: "read-only",
+    writeApproval: true,
+  })
+  const view = render(<ToolCallList parts={[tool, card]} api={createMockApi()} createdAt={0} />)
+  expect(view.container.querySelectorAll(".tool-call-card")).toHaveLength(1)
+  expect(screen.getByText("Permitir escrita em /fixtures/output?")).toBeVisible()
+  expect(screen.getByText(/Após aprovar, a pasta \/fixtures\/output\/images será criada automaticamente/)).toBeVisible()
+  expect(t("Permitir escrita em {path}?", { path: "/fixtures/output" }, "en")).toBe(
+    "Allow writing in /fixtures/output?",
+  )
+})
+
 it("an external MCP tool with the same name keeps its own presentation", () => {
   render(
     <ApprovalCard

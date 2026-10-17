@@ -68,6 +68,32 @@ export const openWorkspaceDirectory = ({ root, path }: { root: string; path: str
   }
 }
 
+/** Creates subdirectories under an existing root without following links or changing its permissions. */
+export const createWorkspaceDirectory = ({
+  root,
+  path,
+  identity,
+}: {
+  root: string
+  path: string
+  identity: { dev: number; ino: number }
+}): void => {
+  if (path.includes("\0") || path.startsWith("/") || path.split("/").some((part) => part === ".."))
+    throw new TouriError("TOURI-E2000")
+  let fd = openWorkspaceDirectory({ root, path: "" })
+  try {
+    const info = fstatSync(fd)
+    if (info.dev !== identity.dev || info.ino !== identity.ino) throw new TouriError("TOURI-E2000")
+    for (const part of path.split("/").filter(Boolean)) {
+      const next = directoryAt(fd, part, true)
+      closeSync(fd)
+      fd = next
+    }
+  } finally {
+    closeSync(fd)
+  }
+}
+
 export const MAX_ATTACHMENT_BYTES = 15 * 1024 * 1024
 
 /** Read one bounded regular file through pinned, no-follow directory descriptors. */

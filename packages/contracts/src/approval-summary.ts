@@ -16,6 +16,9 @@ const copy = {
   "Interagir com o navegador": "Interact with the browser",
   "Interagir com o computador": "Interact with the computer",
   "Conceder acesso à pasta": "Grant folder access",
+  "Permitir escrita em {path}?": "Allow writing in {path}?",
+  "Após aprovar, a pasta {path} será criada automaticamente.":
+    "After approval, the folder {path} will be created automatically.",
   "Somente leitura": "Read-only",
   "Leitura e escrita": "Read and write",
   "Permitir {mode} em {path} para este bot": "Allow {mode} in {path} for this bot",
@@ -82,7 +85,14 @@ export const approvalSummary = (approval: Approval, locale: Locale = "pt-BR"): {
           : "A mudança entra em vigor no próximo turno da VM.",
         locale,
       )}`
-    return { title: text("Conceder acesso à pasta", locale), body }
+    if (typeof input.createPath === "string")
+      body += ` ${text("Após aprovar, a pasta {path} será criada automaticamente.", locale, { path: input.createPath })}`
+    return {
+      title: input.writeApproval
+        ? text("Permitir escrita em {path}?", locale, { path: input.path })
+        : text("Conceder acesso à pasta", locale),
+      body,
+    }
   }
   const [title, body]: [keyof typeof copy, keyof typeof copy] =
     approval.request === "command" || /^(Bash|shell|terminal|exec_command)$/i.test(leaf)

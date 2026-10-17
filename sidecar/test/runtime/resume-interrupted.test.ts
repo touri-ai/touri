@@ -1,13 +1,25 @@
 import type { Database } from "bun:sqlite"
-import { expect, test } from "bun:test"
-import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { expect, mock, test } from "bun:test"
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import type { Message, Run } from "@touri/contracts"
+import type { ApprovalPart, Message, Run } from "@touri/contracts"
 import { createKernel } from "../../src/kernel"
 import { init as initNotify } from "../../src/notify"
+import { createProjectStore } from "../../src/projects/repository"
+import { createSetupTools } from "../../src/projects/setup-tools"
 import { continuationMarkers } from "../../src/runtime/continuations"
 import { createRuntimeEngine } from "../../src/runtime/engine"
+import * as folderAccess from "../../src/runtime/folder-access"
 import { createWorkState } from "../../src/runtime/work-state"
 import { init as initStore } from "../../src/store"
 
@@ -160,6 +172,92 @@ exec '${process.execPath}' '${fake}' "$@"
     },
   }
 }
+
+test("an approved folder write grant automatically continues with updated Codex writable roots", async () => {
+  // The fixture provider only speaks JSON-RPC. Assert the generated sandbox policy
+  // separately so this lifecycle test also runs on Linux without Seatbelt.
+  const f = await fixture()
+  const original = { ...folderAccess }
+  mock.module("../../src/runtime/folder-access", () => ({
+    ...original,
+    spawnFolderProvider: (
+      kernel: Parameters<typeof original.spawnFolderProvider>[0],
+      args: Parameters<typeof original.spawnFolderProvider>[1],
+      input: Parameters<typeof original.spawnFolderProvider>[2],
+    ) => {
+      const profile = original.localFolderProfile(kernel, args, input.env)
+      for (const folder of args.bot.folders ?? [])
+        expect(profile.includes(`(deny file-write* (subpath ${JSON.stringify(folder.path)}))`)).toBe(
+          folder.access === "read-only",
+        )
+      return kernel.spawnTree(input)
+    },
+  }))
+  try {
+    mkdirSync(join(f.assets, "output"))
+    const folder = realpathSync(join(f.assets, "output"))
+    const target = join(folder, "images")
+    f.first.db
+      .query("UPDATE bots SET folders_json=? WHERE id='b'")
+      .run(JSON.stringify([{ path: folder, access: "read-only" }]))
+    f.first.runtime.kernel.services.provide("approvals.present", f.first.engine.approvalBridge.present)
+    f.first.runtime.kernel.services.provide("runtime.continueAfterApproval", f.first.engine.continueAfterApproval)
+    f.disableResume()
+    const run = f.send(f.first.engine, "Salve as imagens na subpasta solicitada")
+    await waitFor(f.streamed("INÍCIO"))
+    const tool = createSetupTools({
+      kernel: f.first.runtime.kernel,
+      store: createProjectStore({ kernel: f.first.runtime.kernel }),
+    }).find((tool) => tool.name === "folder_access_request")
+    if (!tool) throw new Error("Missing folder tool")
+    const call = tool.handler({
+      ctx: {
+        botId: "b",
+        threadId: "t",
+        runId: run.id,
+        projectId: null,
+        cwd: folder,
+        signal: new AbortController().signal,
+      },
+      args: { path: target, mode: "read-write" },
+    })
+    let card: ApprovalPart | undefined
+    await waitFor(() => {
+      card = f.first.store
+        .activePath({ threadId: "t" })
+        .flatMap((message) => message.parts)
+        .find((part): part is ApprovalPart => part.type === "approval" && part.decision === "pending")
+      return !!card
+    })
+    if (!card) throw new Error("Missing approval")
+    expect(existsSync(target)).toBe(false)
+    expect((await f.first.engine.answerApproval({ approvalId: card.approvalId, decision: "approved" })).success).toBe(
+      true,
+    )
+    expect(await call).toMatchObject({ success: true, structured: { automaticContinuation: true } })
+    expect(existsSync(target)).toBe(true)
+    f.writeScenario({ deltas: ["Imagens salvas."] })
+    f.release()
+    await waitFor(() => f.runs().length === 2 && f.runs().every((run) => run.status === "succeeded"))
+    expect(f.links()).toMatchObject([{ previous_run_id: run.id, reason: "permission_granted" }])
+    expect(f.markers()).toMatchObject([{ text: continuationMarkers.permission_granted }])
+    const sessions = f.frames().filter((frame) => frame.method === "thread/start")
+    expect(sessions).toHaveLength(2)
+    expect(JSON.stringify(sessions[0]?.params.config)).not.toContain(folder)
+    expect(JSON.stringify(sessions[1]?.params.config)).toContain(folder)
+    expect(
+      JSON.stringify(
+        f
+          .frames()
+          .filter((frame) => frame.method === "turn/start")
+          .at(-1)?.params.input,
+      ),
+    ).toContain("The approved configuration is now applied")
+  } finally {
+    await f.close()
+    mock.module("../../src/runtime/folder-access", () => original)
+  }
+}, 30_000)
 
 test("app restart continues an interrupted turn in the same provider session", async () => {
   const f = await fixture()

@@ -155,7 +155,26 @@ export const ptBR = {
   "Vincular projeto": "Vincular projeto",
   "Vincular {name} ({path}) a este bot": "Vincular {name} ({path}) a este bot",
   "Substitui o projeto {name} ({path}).": "Substitui o projeto {name} ({path}).",
+  "Informe um caminho sem '..'.": "Informe um caminho sem '..'.",
+  "Não foi possível acessar a pasta. Verifique o caminho e as permissões.":
+    "Não foi possível acessar a pasta. Verifique o caminho e as permissões.",
+  "A pasta não existe e fica fora das pastas permitidas. Solicite primeiro acesso à pasta existente.":
+    "A pasta não existe e fica fora das pastas permitidas. Solicite primeiro acesso à pasta existente.",
+  "Esta pasta é protegida. Solicite primeiro acesso à pasta existente.":
+    "Esta pasta é protegida. Solicite primeiro acesso à pasta existente.",
+  "A pasta ainda não existe. Solicite acesso de leitura e escrita para criá-la.":
+    "A pasta ainda não existe. Solicite acesso de leitura e escrita para criá-la.",
+  "O bot está em modo somente leitura e não pode criar pastas.":
+    "O bot está em modo somente leitura e não pode criar pastas.",
+  "O acesso não foi aprovado ou a configuração mudou. Nenhuma pasta foi criada e as permissões foram mantidas.":
+    "O acesso não foi aprovado ou a configuração mudou. Nenhuma pasta foi criada e as permissões foram mantidas.",
+  "Não foi possível acessar ou criar a pasta. Verifique o caminho e as permissões e tente novamente.":
+    "Não foi possível acessar ou criar a pasta. Verifique o caminho e as permissões e tente novamente.",
+  "Pasta {path} criada.": "Pasta {path} criada.",
   "Conceder acesso à pasta": "Conceder acesso à pasta",
+  "Permitir escrita em {path}?": "Permitir escrita em {path}?",
+  "Após aprovar, a pasta {path} será criada automaticamente.":
+    "Após aprovar, a pasta {path} será criada automaticamente.",
   "Permitir {mode} em {path} para este bot": "Permitir {mode} em {path} para este bot",
   "Acesso anterior: {mode}.": "Acesso anterior: {mode}.",
   "Desvincular projeto": "Desvincular projeto",
@@ -1494,7 +1513,26 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Vincular projeto": "Link project",
   "Vincular {name} ({path}) a este bot": "Link {name} ({path}) to this bot",
   "Substitui o projeto {name} ({path}).": "Replaces project {name} ({path}).",
+  "Informe um caminho sem '..'.": "Enter a path without '..'.",
+  "Não foi possível acessar a pasta. Verifique o caminho e as permissões.":
+    "Could not access the folder. Check its path and permissions.",
+  "A pasta não existe e fica fora das pastas permitidas. Solicite primeiro acesso à pasta existente.":
+    "The folder does not exist and is outside the allowed folders. Request access to the existing folder first.",
+  "Esta pasta é protegida. Solicite primeiro acesso à pasta existente.":
+    "This folder is protected. Request access to the existing folder first.",
+  "A pasta ainda não existe. Solicite acesso de leitura e escrita para criá-la.":
+    "The folder does not exist yet. Request read and write access to create it.",
+  "O bot está em modo somente leitura e não pode criar pastas.":
+    "The bot is in read-only mode and cannot create folders.",
+  "O acesso não foi aprovado ou a configuração mudou. Nenhuma pasta foi criada e as permissões foram mantidas.":
+    "Access was not approved or the configuration changed. No folders were created and permissions were kept.",
+  "Não foi possível acessar ou criar a pasta. Verifique o caminho e as permissões e tente novamente.":
+    "Could not access or create the folder. Check its path and permissions and try again.",
+  "Pasta {path} criada.": "Folder {path} created.",
   "Conceder acesso à pasta": "Grant folder access",
+  "Permitir escrita em {path}?": "Allow writing in {path}?",
+  "Após aprovar, a pasta {path} será criada automaticamente.":
+    "After approval, folder {path} will be created automatically.",
   "Permitir {mode} em {path} para este bot": "Allow {mode} in {path} for this bot",
   "Acesso anterior: {mode}.": "Previous access: {mode}.",
   "Desvincular projeto": "Unlink project",

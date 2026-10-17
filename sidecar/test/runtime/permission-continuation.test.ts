@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite"
 import { expect, spyOn, test } from "bun:test"
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { ApprovalPart, ProviderAdapter, StartTurnArgs } from "@touri/contracts"
@@ -21,12 +21,12 @@ const waitFor = async (predicate: () => boolean): Promise<void> => {
 
 const requestText = "Crie um arquivo notas.md com a palavra teste e me mostre o conteúdo."
 
-const fixture = async () => {
+const fixture = async ({ missingOutput = false } = {}) => {
   // Canonical: macOS tmpdir lives behind /var -> /private/var, and grants refuse moved folders.
   const root = realpathSync(mkdtempSync(join(tmpdir(), "touri-permission-continuation-")))
-  const folder = join(root, "notes")
   const reference = join(root, "reference")
-  mkdirSync(folder)
+  const folder = missingOutput ? join(reference, "images", "generated") : join(root, "notes")
+  if (!missingOutput) mkdirSync(folder)
   mkdirSync(reference)
   // Exercise the real store and approval bridge without opening a network listener.
   const serve = spyOn(Bun, "serve").mockReturnValue({
@@ -64,7 +64,7 @@ const fixture = async () => {
         releases[index] = resolve
         args.signal.addEventListener("abort", () => resolve(), { once: true })
       })
-      const canWrite = writableTurnFolders(args).includes(folder)
+      const canWrite = writableTurnFolders(args).includes(missingOutput ? reference : folder)
       if (canWrite && !args.signal.aborted) writeFileSync(join(folder, "notas.md"), "teste")
       args.onEvent({ type: "text_delta", itemId: "reply", delta: canWrite ? "teste" : "Acesso pendente." })
       return { success: true, externalSessionId: `session-${index}`, rolloutPath: null, status: "succeeded" }
@@ -144,8 +144,53 @@ const fixture = async () => {
   }
   send()
   await waitFor(() => turns.length === 1)
-  return { folder, reference, turns, db, store, engine, call, answer, finish, close }
+  return { folder, reference, turns, db, store, engine, call, cards, answer, finish, close }
 }
+
+test("approved missing output folders are created before exactly one permission continuation", async () => {
+  const f = await fixture({ missingOutput: true })
+  try {
+    f.db.exec("INSERT INTO settings(key,value_json,updated_at) VALUES ('resumeInterruptedTurns','false',1)")
+    const approval = f.call()
+    expect(existsSync(f.folder)).toBe(false)
+    const id = await f.answer()
+    expect(await approval).toMatchObject({ success: true, structured: { automaticContinuation: true } })
+    expect(existsSync(f.folder)).toBe(true)
+    expect(f.cards()).toHaveLength(1)
+    expect(f.cards()[0]?.detail).toContain(`"path":"${f.reference}"`)
+    expect(f.cards()[0]?.detail).toContain(`"createPath":"${f.folder}"`)
+    expect(f.turns).toHaveLength(1)
+    expect(writableTurnFolders(f.turns[0] as StartTurnArgs)).toEqual([])
+    await f.finish(0)
+    await waitFor(() => f.turns.length === 2)
+    expect(writableTurnFolders(f.turns[1] as StartTurnArgs)).toEqual([f.reference])
+    expect(f.turns[1]?.input).toContainEqual({ type: "text", text: expect.stringContaining(requestText) })
+    expect(await f.engine.answerApproval({ approvalId: id, decision: "approved" })).toMatchObject({ success: false })
+    await f.finish(1)
+    expect(readFileSync(join(f.folder, "notas.md"), "utf8")).toBe("teste")
+    expect(f.turns).toHaveLength(2)
+    expect(f.db.query("SELECT reason FROM run_continuations").all()).toEqual([{ reason: "permission_granted" }])
+  } finally {
+    await f.close()
+  }
+})
+
+test("denied missing output folders are neither created nor continued", async () => {
+  const f = await fixture({ missingOutput: true })
+  try {
+    const approval = f.call()
+    await f.answer("denied")
+    expect((await approval).success).toBe(false)
+    await f.finish(0)
+    expect(existsSync(f.folder)).toBe(false)
+    expect(f.cards()).toHaveLength(1)
+    expect(f.turns).toHaveLength(1)
+    expect(f.db.query("SELECT * FROM run_continuations").all()).toEqual([])
+    expect(f.store.getBot({ botId: "b" })?.folders).toEqual([{ path: f.reference, access: "read-only" }])
+  } finally {
+    await f.close()
+  }
+})
 
 test("approved folder access continues once on the same thread with the original request and exact new scope", async () => {
   const f = await fixture()

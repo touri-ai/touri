@@ -1,5 +1,6 @@
 import { afterEach, expect, test } from "bun:test"
 import {
+  chmodSync,
   existsSync,
   fstatSync,
   fsyncSync,
@@ -24,6 +25,7 @@ import {
   atomicAppendFile,
   atomicWriteFile,
   createAtomicWriter,
+  createWorkspaceDirectory,
   ensurePrivateDirectory,
   prepareDatabaseFile,
   readPrivateFile,
@@ -41,6 +43,28 @@ const fixture = () => {
 }
 afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true })
+})
+
+test("workspace directory creation preserves existing modes and refuses escape links", () => {
+  const { root, outside } = fixture()
+  chmodSync(root, 0o755)
+  const identity = statSync(root)
+  createWorkspaceDirectory({ root, path: "images/generated", identity })
+  expect(statSync(join(root, "images/generated")).isDirectory()).toBe(true)
+  expect(statSync(root).mode & 0o777).toBe(0o755)
+  symlinkSync(outside, join(root, "escape"))
+  expect(() => createWorkspaceDirectory({ root, path: "escape/images", identity })).toThrow()
+  expect(() => createWorkspaceDirectory({ root, path: "../images", identity })).toThrow()
+  expect(existsSync(join(outside, "images"))).toBe(false)
+})
+
+test("workspace directory creation refuses a replaced ancestor", () => {
+  const { root } = fixture()
+  const identity = statSync(root)
+  renameSync(root, `${root}-original`)
+  mkdirSync(root)
+  expect(() => createWorkspaceDirectory({ root, path: "images", identity })).toThrow()
+  expect(existsSync(join(root, "images"))).toBe(false)
 })
 
 test("atomic replacement persists file before rename and directory after rename", () => {

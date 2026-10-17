@@ -71,9 +71,9 @@ describe("local files in chat Markdown", () => {
     expect(screen.queryByRole("dialog")).toBeNull()
   })
 
-  it("previews raster images without navigating to their local path", async () => {
+  it("previews raster file bytes without navigating to their local path", async () => {
     const { evidence } = fixture(async () => ({ name: "shot.png", mime: "image/png", base64: "iVBORw0KGgo=" }))
-    render(<MarkdownContent evidence={evidence} content="[imagem](/workspace/shot.png)" />)
+    render(<MarkdownContent evidence={evidence} content="[imagem](/workspace/shot.bin)" />)
     fireEvent.click(await screen.findByRole("button", { name: "imagem", exact: true }))
     const preview = await screen.findByRole("dialog")
     expect(preview.querySelector("img")).toHaveAttribute("src", "data:image/png;base64,iVBORw0KGgo=")
@@ -106,7 +106,7 @@ describe("local files in chat Markdown", () => {
     expect(screen.queryByRole("button", { name: "/workspace/ignorar.md" })).toBeNull()
   })
 
-  it.each([403, 422])("shows a friendly inline message for unavailable files (%s)", async (status) => {
+  it.each([403, 404, 422])("shows a friendly inline message for unavailable files (%s)", async (status) => {
     const { evidence } = fixture(async () => {
       throw new ApiError(status, '{"error":"NOT_FOUND"}')
     })

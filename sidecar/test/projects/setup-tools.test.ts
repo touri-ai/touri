@@ -526,6 +526,102 @@ test("denial and cancellation leave folders unchanged, even with standing grants
   expect(f.currentBot()?.folders).toEqual([])
 })
 
+for (const missing of [false, true]) {
+  test(`write access ${missing ? "creates a missing subfolder" : "recovers an existing folder"} under a read-only root`, async () => {
+    const f = await fixture()
+    const folders: Bot["folders"] = [{ path: f.home, access: "read-only" }]
+    expect((await f.request("PATCH", `/bots/${f.bot.id}`, { folders })).status).toBe(200)
+    const target = missing ? join(f.path, "images", "generated") : f.path
+    const call = f.call("folder_access_request", { path: target, mode: "read-write" })
+    const card = await f.pending()
+    expect(card.detail).toContain(`"path":"${f.home}"`)
+    expect(card.detail).toContain('"previousMode":"read-only"')
+    if (missing) {
+      expect(card.detail).toContain(`"createPath":"${target}"`)
+      expect(existsSync(target)).toBe(false)
+    }
+    expect(f.currentBot()?.folders).toEqual(folders)
+    expect((await f.answer("allow")).status).toBe(200)
+    expect(await call).toMatchObject({ success: true, structured: { effective: "next-turn" } })
+    expect(existsSync(target)).toBe(true)
+    expect(f.currentBot()?.folders).toEqual([{ path: f.home, access: "read-write" }])
+    expect(f.cards).toHaveLength(1)
+    writeFileSync(join(target, "image.png"), "image fixture")
+  })
+}
+
+test("denying a missing folder leaves the tree and read-only grant unchanged", async () => {
+  const f = await fixture()
+  const folders: Bot["folders"] = [{ path: f.home, access: "read-only" }]
+  expect((await f.request("PATCH", `/bots/${f.bot.id}`, { folders })).status).toBe(200)
+  const target = join(f.path, "images")
+  const call = f.call("folder_access_request", { path: target, mode: "read-write" })
+  expect((await f.answer("deny")).status).toBe(200)
+  expect(await call).toMatchObject({
+    success: false,
+    errorCode: "DENIED",
+    error: expect.stringContaining("Nenhuma pasta foi criada"),
+  })
+  expect(existsSync(target)).toBe(false)
+  expect(f.currentBot()?.folders).toEqual(folders)
+})
+
+test("missing folders outside allowed roots and through escape links are refused without approval", async () => {
+  const f = await fixture()
+  expect(
+    (await f.request("PATCH", `/bots/${f.bot.id}`, { folders: [{ path: f.path, access: "read-only" }] })).status,
+  ).toBe(200)
+  symlinkSync(f.root, join(f.path, "escape"))
+  for (const path of [join(f.home, "outside", "images"), join(f.path, "escape", "images")]) {
+    expect(await f.call("folder_access_request", { path, mode: "read-write" })).toMatchObject({
+      success: false,
+      errorCode: "DENIED",
+    })
+    expect(existsSync(path)).toBe(false)
+  }
+  expect(f.cards).toEqual([])
+})
+
+test("a missing path retargeted while awaiting approval is not created or granted", async () => {
+  const f = await fixture()
+  const folders: Bot["folders"] = [{ path: f.home, access: "read-only" }]
+  expect((await f.request("PATCH", `/bots/${f.bot.id}`, { folders })).status).toBe(200)
+  const target = join(f.path, "images", "generated")
+  const call = f.call("folder_access_request", { path: target, mode: "read-write" })
+  await f.pending()
+  symlinkSync(f.root, join(f.path, "images"))
+  expect((await f.answer("allow")).status).toBe(410)
+  expect((await call).success).toBe(false)
+  expect(existsSync(join(f.root, "generated"))).toBe(false)
+  expect(f.currentBot()?.folders).toEqual(folders)
+})
+
+test("missing folders under writable grants are created with one approval on the nearest existing ancestor", async () => {
+  const f = await fixture()
+  expect(
+    (await f.request("PATCH", `/bots/${f.bot.id}`, { folders: [{ path: f.home, access: "read-write" }] })).status,
+  ).toBe(200)
+  const target = join(f.path, "images", "generated")
+  const call = f.call("folder_access_request", { path: target, mode: "read-write" })
+  expect((await f.pending()).detail).toContain(`"path":"${f.path}"`)
+  expect((await f.answer("allow")).status).toBe(200)
+  expect((await call).success).toBe(true)
+  expect(existsSync(target)).toBe(true)
+  expect(f.cards).toHaveLength(1)
+})
+
+test("global read-only mode and protected subtrees cannot be bypassed by creating a folder", async () => {
+  const f = await fixture({ access: "read-only", anyFolderAccess: true })
+  for (const path of [join(f.bot.homeDir, "images"), join(f.runtime.kernel.paths.appData, "protected", "images")]) {
+    expect(await f.call("folder_access_request", { path, mode: "read-write" })).toMatchObject({
+      success: false,
+      errorCode: "DENIED",
+    })
+    expect(existsSync(path)).toBe(false)
+  }
+  expect(f.cards).toEqual([])
+})
+
 test("schema forbids other bot IDs, any-folder access, invalid modes and ambiguous project targets", async () => {
   const f = await fixture()
   for (const [name, args] of [

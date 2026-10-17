@@ -4,6 +4,18 @@ import { expect, test } from "@playwright/test"
 test.use({ channel: "chromium" })
 
 test("chat files open in touri, download checked bytes and show inline errors", async ({ page }, testInfo) => {
+  const png = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==",
+    "base64",
+  )
+  await page.route("**/api/v1/bots/*/images?*", async (route) => {
+    const path = new URL(route.request().url()).searchParams.get("path")
+    await route.fulfill(
+      path === "/output/post.png"
+        ? { status: 200, contentType: "image/png", body: png }
+        : { status: 404, json: { error: "Arquivo não encontrado" } },
+    )
+  })
   await page.route("**/api/v1/bots/*/files/content?*", async (route) => {
     const path = new URL(route.request().url()).searchParams.get("path")
     await route.fulfill({
@@ -16,6 +28,10 @@ test("chat files open in touri, download checked bytes and show inline errors", 
   })
   await page.goto("/test/e2e/markdown-harness.html?view=files&theme=light")
   const location = page.url()
+  await expect(page.getByRole("img", { name: "Baixar PNG" })).toBeVisible()
+  await expect(page.getByRole("img", { name: "planned.png" })).toHaveCount(0)
+  await expect(page.getByText(/Prévia indisponível|Tentar novamente/)).toHaveCount(0)
+  await page.screenshot({ path: testInfo.outputPath("generated-image-and-file-links.png") })
   await page.getByRole("button", { name: "notas.md", exact: true }).click()
   await expect(page.getByRole("heading", { name: "Notas salvas" })).toBeVisible()
   expect(page.url()).toBe(location)
@@ -34,5 +50,12 @@ test("chat files open in touri, download checked bytes and show inline errors", 
   await expect(page.getByRole("alert")).not.toContainText("NOT_FOUND")
   await page.getByRole("button", { name: "Sem acesso" }).click()
   await expect(page.getByRole("alert").last()).toContainText("pastas permitidas")
+  const imageDownload = page.waitForEvent("download")
+  await page.getByRole("button", { name: "Baixar PNG", exact: true }).click()
+  const image = await imageDownload
+  expect(image.suggestedFilename()).toBe("post.png")
+  const imagePath = await image.path()
+  if (!imagePath) throw new Error("Missing image download")
+  expect(await readFile(imagePath)).toEqual(png)
   expect(page.url()).toBe(location)
 })

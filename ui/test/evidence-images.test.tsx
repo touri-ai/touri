@@ -67,6 +67,101 @@ const fixture = () => {
 }
 
 describe("safe markdown evidence", () => {
+  it("keeps planned filenames plain until the authenticated image read succeeds", async () => {
+    const { context, request } = fixture()
+    let finish: ((value: Blob) => void) | undefined
+    request.mockImplementationOnce(
+      () =>
+        new Promise<Blob>((resolve) => {
+          finish = resolve
+        }),
+    )
+    request.mockRejectedValueOnce(new ApiError(404, "Arquivo não encontrado"))
+    const view = render(
+      <MarkdownContent evidence={context} content="Vou criar `post-01.png` e ![Post 2](post-02.png)." />,
+    )
+    await waitFor(() => expect(request).toHaveBeenCalledTimes(2))
+    expect(screen.queryByRole("button", { name: /Abrir captura/ })).toBeNull()
+    expect(view.container.querySelector("figure, img")).toBeNull()
+    expect(screen.queryByText(/Prévia indisponível|Tentar novamente|Carregando imagem/)).toBeNull()
+    expect(screen.getByText("post-01.png", { selector: "code" })).toBeVisible()
+    await act(async () => finish?.(blob))
+    expect(await screen.findByRole("img", { name: "post-01.png" })).toBeVisible()
+    expect(screen.getAllByRole("button", { name: /Abrir captura/ })).toHaveLength(1)
+  })
+
+  it("downloads Markdown image links through the authenticated endpoint without local-path navigation", async () => {
+    const { context, request } = fixture()
+    render(<MarkdownContent evidence={context} content="[Baixar imagem 1 — PNG](/output/post-01.png)" />)
+    const download = await screen.findByRole("button", { name: "Baixar imagem 1 — PNG" })
+    expect(screen.queryByRole("link", { name: "Baixar imagem 1 — PNG" })).toBeNull()
+    fireEvent.click(download)
+    await waitFor(() =>
+      expect(saveInvoke).toHaveBeenCalledWith("save_file", expect.objectContaining({ name: "post-01.png" })),
+    )
+    expect(request).toHaveBeenCalledWith(
+      "GET /bots/:id/images",
+      { path: "/output/post-01.png" },
+      { id: context.bot.id },
+    )
+  })
+  it("rechecks a missing image after the bot finishes producing it", async () => {
+    const api = createMockApi()
+    const { context, request } = fixture()
+    request.mockRejectedValueOnce(new ApiError(404, "Arquivo não encontrado"))
+    const value = { ...context, api: { ...api, request: request as never } }
+    render(<MarkdownContent evidence={value} content="Vou criar `post-01.png`." />)
+    await waitFor(() => expect(request).toHaveBeenCalledOnce())
+    expect(screen.queryByRole("img")).toBeNull()
+    const { runs } = await api.request("GET /workspace/activity", {})
+    const run = runs[0]
+    if (!run) throw new Error("Missing run fixture")
+    act(() => api.emit({ type: "run.updated", run: { ...run, botId: value.bot.id, finishedAt: 1 } }))
+    expect(await screen.findByRole("img", { name: "post-01.png" })).toBeVisible()
+    expect(request).toHaveBeenCalledTimes(2)
+  })
+  it("previews and downloads generic file links using the report directory and shows read errors", async () => {
+    const { context, request } = fixture()
+    request.mockResolvedValueOnce({ name: "report.pdf", mime: "application/pdf", base64: btoa("File bytes") } as never)
+    request.mockRejectedValueOnce(new ApiError(403, "Pasta não autorizada"))
+    render(<MarkdownContent evidence={{ ...context, base: "/output" }} content="[Baixar relatório](report.pdf)" />)
+    const button = await screen.findByRole("button", { name: "Baixar relatório" })
+    fireEvent.click(button)
+    expect(await screen.findByRole("dialog", { name: "report.pdf" })).toBeVisible()
+    fireEvent.click(screen.getByRole("button", { name: "Baixar arquivo" }))
+    await waitFor(() =>
+      expect(saveInvoke).toHaveBeenCalledWith("save_file", { name: "report.pdf", dataBase64: btoa("File bytes") }),
+    )
+    expect(request).toHaveBeenCalledWith(
+      "GET /bots/:id/files/content",
+      { path: "/output/report.pdf" },
+      { id: context.bot.id },
+    )
+    fireEvent.click(screen.getByRole("button", { name: "Fechar arquivo" }))
+    fireEvent.click(button)
+    expect(await screen.findByRole("alert")).toHaveTextContent("pastas permitidas")
+  })
+  it("keeps generic file previews and authenticated image downloads together in the same message", async () => {
+    const { context, request } = fixture()
+    request.mockImplementation(async (route) =>
+      route === "GET /bots/:id/files/content"
+        ? ({ name: "notes.md", mime: "text/markdown", base64: btoa("# Saved notes") } as never)
+        : blob,
+    )
+    render(<MarkdownContent evidence={context} content="[Notas](/output/notes.md) · [Baixar PNG](/output/post.png)" />)
+    expect(await screen.findByRole("img", { name: "Baixar PNG" })).toBeVisible()
+    fireEvent.click(screen.getByRole("button", { name: "Notas" }))
+    expect(await screen.findByRole("heading", { name: "Saved notes" })).toBeVisible()
+    fireEvent.click(screen.getByRole("button", { name: "Fechar arquivo" }))
+    fireEvent.click(screen.getByRole("button", { name: "Baixar PNG" }))
+    await waitFor(() =>
+      expect(saveInvoke).toHaveBeenCalledWith("save_file", expect.objectContaining({ name: "post.png" })),
+    )
+    expect(request).toHaveBeenCalledWith("GET /bots/:id/images", { path: "/output/post.png" }, { id: context.bot.id })
+    const reads = request.mock.calls.filter(([route]) => route === "GET /bots/:id/files/content")
+    expect(reads).toEqual([["GET /bots/:id/files/content", { path: "/output/notes.md" }, { id: context.bot.id }]])
+    expect(document.querySelector('a[href^="/output/"]')).toBeNull()
+  })
   it("detects syntax, links, bare and inline-code paths, deduplicates and leaves fenced code/remote/HTML alone", async () => {
     const { context, request } = fixture()
     const view = render(

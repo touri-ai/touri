@@ -2,6 +2,13 @@ import { closeSync, fstatSync, readSync } from "node:fs"
 import { dirname, isAbsolute, relative, resolve } from "node:path"
 import type { Kernel, RouteModule, VmRuntime } from "@touri/contracts"
 import { openWorkspaceDirectory, openWorkspaceEntry } from "../kernel/files"
+import {
+  checkGuestFileError,
+  guestFileErrors,
+  WorkspacePathError,
+  workspaceError,
+  workspacePath,
+} from "./workspace-path"
 
 export const MAX_IMAGE_BYTES = 15 * 1024 * 1024
 export const imageMime = (bytes: Uint8Array): string | null => {
@@ -79,10 +86,10 @@ export const localImage = (root: string, path: string) => {
 }
 
 // No shell interpolation, no symlink following at any component, bounded regular-file read.
-export const guestImage = `import os,sys,stat,base64,json
+export const guestImage = guestFileErrors(`import os,sys,stat,base64,json
 parts=sys.argv[1].split('/')
 if any(p in ('..','') or '\\\\' in p for p in parts): raise Exception('Caminho inválido')
-fd=os.open('/workspace',os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+fd=os.open(sys.argv[3] if len(sys.argv)>3 else '/workspace',os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
 try:
  for part in parts[:-1]:
   child=os.open(part,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=fd)
@@ -95,7 +102,7 @@ try:
   f.seek(int(sys.argv[2]))
   data=f.read(393216)
  print(json.dumps(dict(size=info.st_size,data=base64.b64encode(data).decode())))
-finally: os.close(fd)`
+finally: os.close(fd)`)
 
 export const evidenceImageRoute = (kernel: Kernel, vm: VmRuntime): RouteModule["routes"][number] => ({
   method: "GET",
@@ -129,15 +136,11 @@ export const evidenceImageRoute = (kernel: Kernel, vm: VmRuntime): RouteModule["
         if (!owned) return { status: 404, json: { error: "Anexo não encontrado para este bot" } }
         return localImage(kernel.paths.attachmentsDir, imagePath(kernel.paths.attachmentsDir, attachment.path))
       }
-      const project = bot.projectId
-        ? (db.query("SELECT path FROM projects WHERE id = ? AND archived_at IS NULL").get(bot.projectId) as {
-            path: string
-          } | null)
-        : null
-      const root =
-        bot.machine === "vm" || bot.machine === "cloud" ? "/workspace" : (project?.path ?? bot.cwd ?? bot.homeDir)
-      const path = imagePath(root, query.path ?? "", query.base ?? "")
-      if (bot.machine !== "vm" && bot.machine !== "cloud") return localImage(root, path)
+      if (!query.path) throw new WorkspacePathError(400)
+      const { root, path } = workspacePath(kernel, bot, query.path, query.base)
+      if (!path) throw new WorkspacePathError(400)
+      if (bot.machine !== "vm" && bot.machine !== "cloud")
+        return localImage("/", [root.slice(1), path].filter(Boolean).join("/"))
       if (!vm.states().some((state) => state.botId === bot.id && state.status === "running"))
         return {
           status: 409,
@@ -156,10 +159,11 @@ export const evidenceImageRoute = (kernel: Kernel, vm: VmRuntime): RouteModule["
         const result = await vm.exec({
           botId: bot.id,
           command: "python3",
-          args: ["-c", guestImage, path, String(offset)],
+          args: ["-c", guestImage, path, String(offset), root],
           signal,
         })
         if (!result.success || result.stdout.length > 530_000) throw new Error("Imagem indisponível")
+        checkGuestFileError(result.stdout)
         const chunk = JSON.parse(result.stdout) as { size: number; data: string }
         if (
           !Number.isSafeInteger(chunk.size) ||
@@ -202,8 +206,8 @@ export const evidenceImageRoute = (kernel: Kernel, vm: VmRuntime): RouteModule["
         await finish()
         throw error
       }
-    } catch {
-      return { status: 422, json: { error: "Imagem inválida, fora do workspace ou acima de 15 MB" } }
+    } catch (error) {
+      return workspaceError(error)
     }
   },
 })
