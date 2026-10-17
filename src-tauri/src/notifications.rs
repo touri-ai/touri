@@ -102,7 +102,7 @@ pub fn notification_open_settings() -> Result<(), String> {
 
 pub fn register_clicks<R: Runtime>(app: &AppHandle<R>) {
     let target_app = app.clone();
-    app.notification().on_action(move |event| {
+    if let Err(error) = app.notification().on_action(move |event| {
         let url = event.notification().and_then(|notification| {
             notification
                 .extra()
@@ -112,5 +112,7 @@ pub fn register_clicks<R: Runtime>(app: &AppHandle<R>) {
         if let Some(link) = crate::deep_link::notification_target(event.action_id(), url) {
             crate::deep_link::dispatch(&target_app, &link);
         }
-    });
+    }) {
+        eprintln!("[notifications] click handler registration failed: {error}");
+    }
 }
