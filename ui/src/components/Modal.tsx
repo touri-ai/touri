@@ -1,5 +1,18 @@
-import { useEffect, useRef } from "react"
+import { createContext, type ReactNode, useContext, useEffect, useRef } from "react"
+import { createPortal } from "react-dom"
 import { t } from "../i18n"
+
+const ModalLayerContext = createContext(false)
+
+/** Escape page transforms/stacking contexts while retaining animated dialog ancestry. */
+export const ModalLayer = ({ children }: { children: ReactNode }) => {
+  const inLayer = useContext(ModalLayerContext)
+  // Native modal dialogs make body portals inert; keep their confirmations in the top layer.
+  const container = useRef(document.activeElement?.closest("dialog[open]") ?? document.body)
+  return inLayer
+    ? children
+    : createPortal(<ModalLayerContext.Provider value={true}>{children}</ModalLayerContext.Provider>, container.current)
+}
 
 type ModalProps = {
   onClose: () => void
@@ -79,27 +92,30 @@ export const Modal = ({
     }
   }, [])
   return (
-    <div className="modal-backdrop" role="presentation">
-      {/* biome-ignore lint/a11y/useAriaPropsSupportedByRole: Both dialog and alertdialog support aria-modal. */}
-      <section
-        ref={cardRef}
-        className={`modal-card ${className}`}
-        role={role}
-        aria-modal="true"
-        aria-label={title}
-        aria-describedby={describedBy}
-      >
-        <header className="modal-header">
-          <div>
-            <p className="eyebrow">{eyebrow}</p>
-            <h2>{title}</h2>
-          </div>
-          <button type="button" className="icon-button modal-close" onClick={onClose} aria-label={t("Close dialog")}>
-            ×
-          </button>
-        </header>
-        {children}
-      </section>
-    </div>
+    <ModalLayer>
+      <div className="modal-backdrop" role="presentation">
+        {/* biome-ignore lint/a11y/useAriaPropsSupportedByRole: Both dialog and alertdialog support aria-modal. */}
+        <section
+          ref={cardRef}
+          className={`modal-card ${className}`}
+          role={role}
+          aria-modal="true"
+          aria-label={title}
+          aria-describedby={describedBy}
+        >
+          <header className="modal-header">
+            <div>
+              <p className="eyebrow">{eyebrow}</p>
+              <h2>{title}</h2>
+            </div>
+            <button type="button" className="icon-button modal-close" onClick={onClose} aria-label={t("Close dialog")}>
+              ×
+            </button>
+          </header>
+          {/* Nested confirmations must escape this panel's animated transform too. */}
+          <ModalLayerContext.Provider value={false}>{children}</ModalLayerContext.Provider>
+        </section>
+      </div>
+    </ModalLayer>
   )
 }

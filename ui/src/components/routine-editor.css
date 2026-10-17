@@ -1,18 +1,37 @@
 .modal-card.routine-editor {
   width: min(600px, 100%);
   max-height: calc(100dvh - 40px);
-  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.routine-editor .modal-header {
+  flex: none;
 }
 .routine-editor form {
-  padding: 20px 24px 0;
+  display: flex;
+  min-height: 0;
 }
 .routine-editor form > fieldset {
   margin: 0;
   display: grid;
-  gap: 16px;
+  grid-template-rows: minmax(0, 1fr) auto auto;
+  flex: 1;
+  min-height: 0;
   border: 0;
   padding: 0;
   min-width: 0;
+}
+.routine-fields {
+  display: grid;
+  gap: 16px;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 20px 24px;
+}
+.routine-editor .routine-delete-button {
+  margin: 0 24px 16px;
 }
 .routine-editor label {
   display: grid;
@@ -76,10 +95,8 @@
 }
 .routine-editor .routine-modal-actions {
   flex-wrap: wrap;
-  position: sticky;
-  bottom: 0;
   background: var(--surface-panel);
-  padding-block: 10px;
+  padding: 10px 24px;
 }
 .routine-editor :is(input, select, textarea, button):focus-visible {
   outline: 2px solid var(--text-primary);
@@ -95,7 +112,7 @@
   overflow-wrap: anywhere;
 }
 @media (max-width: 600px) {
-  .routine-editor form {
+  .routine-fields {
     padding-inline: 16px;
   }
   .routine-editor .routine-form-grid {

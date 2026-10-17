@@ -57,18 +57,19 @@ const renderBotSettings = async (machine: Bot["machine"]) => {
 }
 
 test.each(["local", "vm"] as const)("Linux %s bot settings gate only host computer use", async (machine) => {
-  const { container } = await renderBotSettings(machine)
+  await renderBotSettings(machine)
+  const dialog = screen.getByRole("dialog")
   fireEvent.click(screen.getByRole("button", { name: "Avançado" }))
   fireEvent.click(screen.getByRole("tab", { name: "Computador", exact: true }))
-  expect(container.querySelector("#settings-computer-use") !== null).toBe(machine === "vm")
-  expect(container.querySelector("#machine-host-control")).toBeNull()
-  expect(container.querySelector("#settings-browser")).not.toBeNull()
+  expect(dialog.querySelector("#settings-computer-use") !== null).toBe(machine === "vm")
+  expect(dialog.querySelector("#machine-host-control")).toBeNull()
+  expect(dialog.querySelector("#settings-browser")).not.toBeNull()
   expect(screen.getByRole("combobox", { name: t("Bot browser") })).toBeEnabled()
 })
 
 test("Linux app preferences omit native host permissions after the settings split", async () => {
   const api = createMockApi()
-  const { container } = render(
+  render(
     <SettingsModal
       settings={(await api.request("GET /settings", {})).settings}
       initialSection="privacy"
@@ -77,6 +78,6 @@ test("Linux app preferences omit native host permissions after the settings spli
     />,
   )
   fireEvent.click(screen.getByText("Dados, permissões e conexões"))
-  expect(container.querySelector(".settings-computer-permissions")).toBeNull()
+  expect(screen.getByRole("dialog").querySelector(".settings-computer-permissions")).toBeNull()
   expect(invoke).not.toHaveBeenCalledWith("permissions_status")
 })

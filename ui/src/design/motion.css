@@ -175,8 +175,11 @@ select {
   transition-timing-function: var(--ease-quick);
 }
 .motion-modal {
-  /* Retain a layout box for WebKit accessibility updates inside dialogs. */
+  /* Keep the WebKit accessibility box, sized to the viewport above the sidebar. */
   display: block;
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
 }
 .motion-popover,
 .motion-toast {

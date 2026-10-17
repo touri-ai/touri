@@ -116,7 +116,7 @@ export const installDoctor = (
             json: {
               ...report,
               checks: [
-                ...report.checks.filter((item) => !item.id.startsWith("vm-mcp:")),
+                ...report.checks.filter((item) => !/^(?:vm|local)-mcp:/.test(item.id)),
                 ...mcpStartupChecks(kernel.db as Database),
               ],
             },

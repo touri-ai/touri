@@ -2485,7 +2485,7 @@ a {
 .modal-card,
 .search-modal {
   width: min(720px, 100%);
-  max-height: calc(100vh - 40px);
+  max-height: calc(100dvh - 40px);
   overflow: auto;
   border: 1px solid var(--border-dialog);
   border-radius: var(--radius-14);
@@ -2494,7 +2494,8 @@ a {
   box-shadow: var(--elevation-modal);
 }
 .modal-card {
-  scroll-padding-top: 110px;
+  scroll-padding-block: 110px;
+  overscroll-behavior: contain;
 }
 .modal-header {
   position: sticky;
@@ -2528,9 +2529,17 @@ a {
 }
 .modal-actions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: var(--space-8);
   padding: var(--space-17) var(--space-25) var(--space-22);
+  background: var(--surface-panel);
+}
+/* Settings already pin actions outside their independently scrolling panes. */
+.modal-card:not(.settings-modal) .modal-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
 }
 .modal-card input,
 .modal-card select,
