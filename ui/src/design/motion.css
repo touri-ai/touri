@@ -174,7 +174,10 @@ select {
   transition-duration: var(--duration-quick);
   transition-timing-function: var(--ease-quick);
 }
-.motion-modal,
+.motion-modal {
+  /* Retain a layout box for WebKit accessibility updates inside dialogs. */
+  display: block;
+}
 .motion-popover,
 .motion-toast {
   display: contents;

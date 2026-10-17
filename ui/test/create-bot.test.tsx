@@ -308,6 +308,32 @@ it("sets only role and instructions from a job and can clear the choice", async 
   )
 })
 
+it("opens QA Café with the selected notes job and fills its starter prompt without sending", async () => {
+  const api = accounts({ codex: "ready" })
+  api.getState().bots.splice(0)
+  api.getState().threads.splice(0)
+  render(<App kernel={{ services: { api } }} />)
+  fireEvent.click(await screen.findByRole("button", { name: "Criar meu primeiro bot" }))
+  fireEvent.change(screen.getByLabelText("Nome"), { target: { value: "QA Café" } })
+  fireEvent.click(screen.getByRole("radio", { name: "Caderno em ordem" }))
+  await screen.findByText(/Usa o Codex/)
+  fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Criar bot", exact: true }))
+  const composer = await screen.findByRole("textbox", { name: "Mensagem para QA Café" })
+  const job = getJobTemplates().find((job) => job.id === "notes-in-order")
+  if (!job) throw new Error("Missing notes job")
+  expect(api.calls.find((call) => call.route === "POST /bots")?.input).toMatchObject({
+    name: "QA Café",
+    roleLine: job.roleLine,
+    instructions: job.instructions,
+  })
+  const start = screen.getByRole("region", { name: "Comece uma conversa com QA Café" })
+  const prompt = within(start).getByRole("button", { name: "Organize estas anotações por assunto." })
+  expect(within(start).queryByRole("button", { name: /plano de testes|contexto deste projeto/ })).toBeNull()
+  fireEvent.click(prompt)
+  expect(composer).toHaveValue("Organize estas anotações por assunto.")
+  expect(api.calls.some((call) => call.route === "POST /threads/:id/messages")).toBe(false)
+})
+
 it("reports account discovery failures and keeps sign-in choices available", async () => {
   const api = createMockApi()
   const request = api.request

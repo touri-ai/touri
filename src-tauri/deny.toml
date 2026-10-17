@@ -1,22 +1,35 @@
-# Keep license acceptance explicit. These are the licenses in the desktop tree;
-# unknown licenses and security vulnerabilities remain errors.
-[licenses]
-allow = [
-    "Apache-2.0",
-    "Apache-2.0 WITH LLVM-exception",
-    "BSD-2-Clause",
-    "BSD-3-Clause",
-    "CDLA-Permissive-2.0",
-    "ISC",
-    "MIT",
-    "MPL-2.0",
-    "Unicode-3.0",
-    "Zlib",
-]
+[graph]
+# Audit the shipping macOS app and the phase-one Linux desktop.
+targets = ["aarch64-apple-darwin", "x86_64-unknown-linux-gnu"]
 
 [advisories]
-# GTK's glib-macros 0.18 still uses proc-macro-error 1; upstream has no safe
-# upgrade. This is an unmaintained build-time macro, not a vulnerability waiver.
-ignore = [
-    { id = "RUSTSEC-2024-0370", reason = "Transitive glib-macros dependency; no safe upstream upgrade is available." },
+# cargo-deny always rejects known vulnerabilities; do not weaken that gate.
+unmaintained = "all"
+unsound = "all"
+yanked = "deny"
+ignore = []
+
+[licenses]
+# Selected from the actual macOS dependency tree, including build dependencies.
+# Unicode-3.0: ICU/unicode-ident; Zlib: foldhash/zlib-rs.
+allow = ["Apache-2.0", "BSD-3-Clause", "ISC", "MIT", "Unicode-3.0", "Zlib"]
+# Existing MPL distribution precedent: THIRD_PARTY_NOTICES and
+# docs/licenses/novnc-MPL-2.0.txt. Keep these unmodified dependencies under MPL,
+# retain their notices and provide corresponding source when distributing.
+# Keep file-level copyleft exceptions scoped to the crates that require them.
+exceptions = [
+    { crate = "cssparser", allow = ["MPL-2.0"] },
+    { crate = "cssparser-macros", allow = ["MPL-2.0"] },
+    { crate = "dtoa-short", allow = ["MPL-2.0"] },
+    { crate = "option-ext", allow = ["MPL-2.0"] },
+    { crate = "selectors", allow = ["MPL-2.0"] },
 ]
+
+[bans]
+multiple-versions = "warn"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []

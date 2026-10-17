@@ -969,10 +969,6 @@
   overflow-y: auto;
   padding: var(--space-24) var(--space-32);
 }
-.bot-settings-overview[hidden],
-.settings-advanced-content[hidden] {
-  display: none;
-}
 .bot-settings-overview .settings-avatar-field {
   padding: 0;
 }
@@ -995,6 +991,10 @@
   display: flex;
   flex: 1;
   min-height: 0;
+}
+.bot-settings-overview[hidden],
+.settings-advanced-content[hidden] {
+  display: none;
 }
 .settings-disclosure {
   margin-bottom: var(--space-16);

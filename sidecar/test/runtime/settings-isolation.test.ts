@@ -251,6 +251,7 @@ for (const vm of [false, true]) {
       for (const resumed of [false, true]) {
         test(`Codex explicitly sets ${vm ? "VM" : "host"} ${access}/${approvals} ${resumed ? "resume" : "new"} policy`, async () => {
           const f = fixture(vm, "codex")
+          const outer = !vm && process.platform === "darwin"
           f.args.bot.access = access
           f.args.bot.approvals = approvals
           if (resumed) f.args.session = { externalSessionId: "old-session", rolloutPath: null } as ProviderSession
@@ -261,7 +262,8 @@ for (const vm of [false, true]) {
           if (access === "full") {
             expect(f.calls[0]?.args).toContain('sandbox_mode="danger-full-access"')
             expect(f.calls[0]?.args).toContain(`approval_policy=${JSON.stringify(approvals)}`)
-          } else if (access === "read-only") expect(f.calls[0]?.args).toContain('sandbox_mode="read-only"')
+          } else if (access === "read-only")
+            expect(f.calls[0]?.args).toContain(outer ? 'sandbox_mode="danger-full-access"' : 'sandbox_mode="read-only"')
           const requests = readFileSync(requestLogPath, "utf8")
             .trim()
             .split("\n")
@@ -269,7 +271,8 @@ for (const vm of [false, true]) {
           const session = requests.find((request) => request.method === (resumed ? "thread/resume" : "thread/start"))
           expect(session?.params).toMatchObject({
             cwd: f.workspace,
-            sandbox: access === "full" ? "danger-full-access" : access,
+            // On macOS host turns touri's Seatbelt profile is the boundary; Codex cannot nest its own.
+            sandbox: access === "full" || outer ? "danger-full-access" : access,
             approvalPolicy: access === "read-only" ? "never" : approvals,
             approvalsReviewer: "user",
           })
@@ -359,7 +362,14 @@ for (const provider of ["claude", "codex"] as const)
           .split("\n")
           .map((line) => JSON.parse(line))
         const request = requests.find((request) => request.method === "thread/start")
-        expect(request.params.config.sandbox_workspace_write.writable_roots).toContain(grantedRW)
-        expect(request.params.config.sandbox_workspace_write.writable_roots).not.toContain(grantedRO)
+        if (!vm && process.platform === "darwin") {
+          expect(request.params.sandbox).toBe("danger-full-access")
+          const profile = f.calls[0]?.args[1] ?? ""
+          expect(profile).toContain(`(subpath ${JSON.stringify(grantedRW)})`)
+          expect(profile).toContain(`(deny file-write* (subpath ${JSON.stringify(grantedRO)}))`)
+        } else {
+          expect(request.params.config.sandbox_workspace_write.writable_roots).toContain(grantedRW)
+          expect(request.params.config.sandbox_workspace_write.writable_roots).not.toContain(grantedRO)
+        }
       }
     })

@@ -49,7 +49,12 @@ jobs:
       - run: cargo check
       - run: cargo clippy -- -D warnings
       - run: cargo test
-      - run: cargo install cargo-deny --version 0.20.2 --locked
+      - name: Install cargo-deny
+        uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
+        with:
+          tool: cargo-deny@0.20.2
+      - name: Test dependency policy
+        run: python3 ../scripts/test-rust-policy.py
       - run: cargo deny check
 
   ui:
