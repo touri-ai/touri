@@ -32,7 +32,7 @@ export const installTools = [
   ["docker", "brew install --cask docker"],
 ]
 
-export const systemSettingsCommand = "open /System/Applications/System\\\\ Settings.app"
+export const systemSettingsCommand = "open /System/Applications/System\\ Settings.app"
 
 export const containerKernelPresent = () =>
   existsSync(join(homedir(), "Library/Application Support/com.apple.container/kernels/default.kernel-arm64"))
