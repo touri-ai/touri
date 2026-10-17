@@ -75,7 +75,7 @@ export const createStreamWriter = ({
     ).seq ?? 0
 
   const settle = (): void => {
-    if (database.inTransaction || !unsettled.length) return
+    if (!unsettled.length || database.inTransaction) return
     const lost = unsettled.filter(({ event, raw, seq }) => {
       if (raw === null) {
         // A temporarily stale generation/status may itself have rolled back.

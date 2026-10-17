@@ -78,6 +78,24 @@ test("coalesces active messages in one timed flush and publishes only durable re
   }
 })
 
+test("shutdown drains accepted text and can be repeated after the database closes", async () => {
+  const f = await fixture()
+  try {
+    f.store.appendDelta({ threadId: "t", messageId: "a", partIndex: 0, delta: "Preservar" })
+    expect(() => f.runtime.stop()).not.toThrow()
+    expect(() => f.runtime.stop()).not.toThrow()
+    const recovered = openDatabase({ filename: join(f.root, "touri.db") })
+    try {
+      materializeTranscript(recovered)
+      expect(recovered.query("SELECT text FROM messages WHERE id = 'a'").get()).toEqual({ text: "Preservar" })
+    } finally {
+      recovered.close()
+    }
+  } finally {
+    f.close()
+  }
+})
+
 test("8 KiB flushes immediately, splits large UTF-8 frames, and terminal writes drain the remainder", async () => {
   const f = await fixture()
   try {

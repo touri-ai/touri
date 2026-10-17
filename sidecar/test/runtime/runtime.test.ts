@@ -480,7 +480,7 @@ test.each(["claude", "codex"] as const)(
   },
 )
 
-test("Claude hidden thinking estimates reach live parts without inventing reasoning text", async () => {
+test("provider hidden thinking estimates reach live parts without inventing reasoning text", async () => {
   const thinking = (estimated_tokens: number) => ({
     type: "stream_event",
     event: {

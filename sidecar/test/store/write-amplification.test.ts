@@ -112,6 +112,12 @@ test("long agentic turns bound durable commits, row mutations and physical WAL b
     // path on the same fixture; it reports measurements without applying budgets.
     const baseline = process.env.TOURI_WRITE_BASELINE === "1"
     const batched = !baseline && typeof store.appendParts === "function"
+    const streamed: string[] = []
+    let publishedProgress = 0
+    runtime.kernel.subscribe(({ event }) => {
+      if (event.type === "message.delta") streamed.push(event.delta)
+      if (event.type === "message.parts") publishedProgress += event.parts.length
+    })
     store.flushWrites?.()
     database.exec("PRAGMA wal_autocheckpoint = 0; PRAGMA wal_checkpoint(TRUNCATE)")
     const changesBefore = totalChanges(database)
@@ -135,6 +141,10 @@ test("long agentic turns bound durable commits, row mutations and physical WAL b
         })
     }
     store.flushWrites?.()
+    // Finalization supplies a full snapshot; verify live delivery before that
+    // snapshot could conceal a writer that silently dropped accepted work.
+    expect(streamed.join("")).toBe(delta.repeat(2_000))
+    if (batched) expect(publishedProgress).toBe(300)
     database.transaction(() => {
       const complete: Run = { ...run, status: "succeeded", finishedAt: Date.now() }
       command = record(complete, { ...command, exitCode: 0, resolution: "succeeded" })
