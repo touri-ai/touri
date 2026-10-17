@@ -1,6 +1,7 @@
 import type { Bot, MachineCapability, MachineState } from "@touri/contracts"
 import { type ReactNode, useEffect, useRef, useState } from "react"
 import { userFacingError } from "../errors"
+import { useIsServerMode } from "../features/server/serverMode"
 import { machineStatusLabel, t } from "../i18n"
 import { machineStateForDisplay } from "../machineState"
 import { hostComputerSupported } from "../platform"
@@ -30,6 +31,7 @@ export const MachineFields = ({
   technicalDetails?: ReactNode
   technicalDetailsOpen?: boolean
 }) => {
+  const serverMode = useIsServerMode()
   const state = machineStateForDisplay(rawState)
   const [confirmReset, setConfirmReset] = useState(false)
   const [confirmRestart, setConfirmRestart] = useState(false)
@@ -74,7 +76,7 @@ export const MachineFields = ({
             {values.machine === "cloud"
               ? "O runtime inteiro roda na nuvem, com sua chave API e sem depender do Mac."
               : values.machine === "local"
-                ? t("Local machine help")
+                ? t(serverMode ? "O bot trabalha no servidor escolhido, sem acessar este Mac." : "Local machine help")
                 : t("VM machine help")}
           </p>
         </div>
@@ -102,7 +104,7 @@ export const MachineFields = ({
                 {provider === "opencode" ? "Na nuvem — OpenCode ainda indisponível" : "Na nuvem"}
               </option>
             )}
-            <option value="local">{t("Local machine")}</option>
+            <option value="local">{t(serverMode ? "Neste servidor" : "Local machine")}</option>
             <option value="vm" disabled={!capability?.available}>
               {t("Isolated Linux VM")}
               {!capability?.available ? ` — ${t("No virtualization on this host")}` : ""}
@@ -138,7 +140,7 @@ export const MachineFields = ({
               onChange={(event) => onChange({ vmProviderLogin: event.target.checked })}
             />
           </label>
-          {hostComputerSupported && (
+          {!serverMode && hostComputerSupported && (
             <label className="toggle-row" htmlFor="machine-host-control">
               <span>
                 <strong>{t("Allow host computer use")}</strong>

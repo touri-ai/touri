@@ -5,6 +5,7 @@ import { join } from "node:path"
 import type { Bot, Kernel, ProviderEvent, ProviderSession, StartTurnArgs, Thread } from "@touri/contracts"
 import { createKernel } from "../../src/kernel"
 import { folderGuestPath } from "../../src/kernel/bot-folders"
+import { folderAccessUnavailable, refreshHostFolderAccess } from "../../src/kernel/folder-capability"
 import { createOpenCodeAdapter } from "../../src/runtime/opencode/adapter"
 import { fullAccess, openCodePermissions, providerSecretEnv } from "../../src/runtime/opencode/config"
 import { openCodeEvents, readOpenCodeSse } from "../../src/runtime/opencode/events"
@@ -29,10 +30,15 @@ const fixture = (scenario: Record<string, unknown> = {}, vm = false) => {
     return runtime.kernel.spawnTree({
       ...input,
       cmd: process.execPath,
+      env: { ...input.env, TOURI_OPENCODE_SCENARIO: scenarioPath, TOURI_OPENCODE_RECORD: recordPath },
       args: [
         "run",
         join(import.meta.dir, "../fakes/fake-opencode.ts"),
-        ...(input.cmd === "/usr/bin/sandbox-exec" ? input.args.slice(3) : input.args),
+        ...(input.cmd === "/usr/bin/sandbox-exec"
+          ? input.args.slice(3)
+          : /\/bwrap$/.test(input.cmd)
+            ? input.args.slice(input.args.indexOf("--") + 2)
+            : input.args),
       ],
     })
   }
@@ -346,11 +352,13 @@ for (const vm of [false, true])
     mkdirSync(ro)
     const path = realpathSync(ro)
     f.args.bot.folders = [{ path, access: "read-only" }]
-    f.args.bot.anyFolderAccess = true
+    f.args.bot.anyFolderAccess = vm || process.platform !== "linux"
+    const available =
+      process.platform === "darwin" || (process.platform === "linux" && (await refreshHostFolderAccess()))
     const result = await f.adapter.startTurn(f.args)
-    if (!vm && process.platform !== "darwin") {
+    if (!vm && !available) {
       expect(result).toMatchObject({ success: false, errorCode: "cli_crash" })
-      if (!result.success) expect(result.error).toContain("sandbox do macOS")
+      if (!result.success) expect(result.error).toBe(folderAccessUnavailable)
       expect(f.calls).toHaveLength(0)
       return
     }
@@ -359,8 +367,8 @@ for (const vm of [false, true])
     const granted = vm ? folderGuestPath(path) : path
     expect(config.permission.external_directory).toMatchObject({
       [`${granted}/**`]: "allow",
-      [vm ? "/host/home/**" : "/**"]: "allow",
+      ...(f.args.bot.anyFolderAccess ? { [vm ? "/host/home/**" : "/**"]: "allow" } : {}),
     })
     expect(config.permission.edit).toMatchObject({ [`${granted}/**`]: "deny" })
-    expect(f.calls.some((call) => call.cmd === "/usr/bin/sandbox-exec")).toBe(!vm)
+    expect(f.calls.some((call) => call.cmd === "/usr/bin/sandbox-exec" || /\/bwrap$/.test(call.cmd))).toBe(!vm)
   })

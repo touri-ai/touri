@@ -510,6 +510,7 @@ export const createKernel = ({ appData, web }: { appData?: string; web?: WebMode
   })
 
   const stop = (): void => {
+    services.use("store.api")?.flushWrites?.()
     clearInterval(revocationTimer)
     for (const controller of pendingRequests) controller.abort()
     for (const socket of liveSockets) socket.close(1001, "Servidor encerrado")

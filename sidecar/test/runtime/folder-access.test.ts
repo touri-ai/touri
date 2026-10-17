@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from "bun:test"
+import { afterEach, expect, spyOn, test } from "bun:test"
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
 import { createServer } from "node:net"
 import { tmpdir } from "node:os"
@@ -6,8 +6,10 @@ import { join } from "node:path"
 import type { Bot, Kernel, StartTurnArgs } from "@touri/contracts"
 import { createKernel } from "../../src/kernel"
 import { canonicalPath, excludedBotFolders, folderGuestPath, parseBotFolders } from "../../src/kernel/bot-folders"
+import * as folderCapability from "../../src/kernel/folder-capability"
 import { createAppPaths, resolveMcpSocketPath } from "../../src/kernel/paths"
 import { claudeSettings } from "../../src/runtime/claude/settings"
+import { codexAccessParams, outerFolderSandbox } from "../../src/runtime/codex/config"
 import {
   localFolderProfile,
   spawnFolderProvider,
@@ -72,13 +74,36 @@ test("folder grants default off, persist per bot, reject malformed input and onl
   const f = await fixture()
   expect(f.bot.folders).toEqual([])
   expect(f.bot.anyFolderAccess).toBe(false)
-  const folders = [
+  const folders: NonNullable<Bot["folders"]> = [
     { path: f.ro, access: "read-only" },
     { path: f.rw, access: "read-write" },
   ]
-  const response = await f.request(`/bots/${f.bot.id}`, { folders, anyFolderAccess: true })
+  const anyFolderAccess = process.platform !== "linux"
+  const response = await f.request(`/bots/${f.bot.id}`, { folders, anyFolderAccess })
   expect(response.status).toBe(200)
-  expect(((await response.json()) as { bot: Bot }).bot).toMatchObject({ folders, anyFolderAccess: true })
+  expect(((await response.json()) as { bot: Bot }).bot).toMatchObject({ folders, anyFolderAccess })
+  if (process.platform === "linux") {
+    const broad = await f.request(`/bots/${f.bot.id}`, { anyFolderAccess: true })
+    expect(broad.status).toBe(400)
+    expect(await broad.json()).toMatchObject({
+      errorCode: "FOLDER_SELECTION_REQUIRED",
+      error: folderCapability.specificFoldersRequired,
+    })
+    expect(f.runtime.kernel.services.use("store.api")?.getBot({ botId: f.bot.id })?.anyFolderAccess).toBe(false)
+    const root = await f.request(`/bots/${f.bot.id}`, { folders: [{ path: "/", access: "read-only" }] })
+    expect(root.status).toBe(400)
+    expect(await root.json()).toMatchObject({ error: folderCapability.specificFoldersRequired })
+    expect(f.runtime.kernel.services.use("store.api")?.getBot({ botId: f.bot.id })?.folders).toEqual(folders)
+    for (const path of ["/proc", "/sys", "/dev", "/dev/shm"]) {
+      const protectedFolder = await f.request(`/bots/${f.bot.id}`, { folders: [{ path, access: "read-only" }] })
+      expect(protectedFolder.status).toBe(400)
+      expect(await protectedFolder.json()).toMatchObject({
+        errorCode: "FOLDER_PROTECTED",
+        error: "Esta pasta é protegida. Escolha outra pasta.",
+      })
+      expect(f.runtime.kernel.services.use("store.api")?.getBot({ botId: f.bot.id })?.folders).toEqual(folders)
+    }
+  }
   expect((await f.request(`/bots/${f.bot.id}`, { folders: [{ path: f.ro, access: "full" }] })).status).toBe(400)
   expect((await f.request(`/bots/${f.bot.id}`, { anyFolderAccess: "yes" })).status).toBe(400)
   const other = await f.request("/bots", { name: "Other", provider: "codex" }, "POST")
@@ -89,6 +114,87 @@ test("folder grants default off, persist per bot, reject malformed input and onl
     body: JSON.stringify({ anyFolderAccess: false }),
   })
   expect(unauthenticated.status).toBe(401)
+})
+
+test("unavailable confinement rejects API and setup grants without persisting and still permits removal", async () => {
+  const f = await fixture()
+  const available = spyOn(folderCapability, "hostFolderAccessAvailable").mockReturnValue(false)
+  try {
+    const folder = { path: f.ro, access: "read-only" as const }
+    const response = await f.request(`/bots/${f.bot.id}`, { folders: [folder] })
+    expect(response.status).toBe(400)
+    expect(await response.text()).toContain("Nenhuma permissão foi adicionada")
+    expect((await f.request(`/bots/${f.bot.id}`, { anyFolderAccess: true })).status).toBe(400)
+    expect((await f.request("/bots", { name: "New", provider: "codex", folders: [folder] }, "POST")).status).toBe(400)
+    const configure = f.runtime.kernel.services.use("bots.configureAccess")
+    expect(configure?.({ botId: f.bot.id, patch: { folders: [folder] } })).toMatchObject({ success: false })
+    const store = f.runtime.kernel.services.use("store.api")
+    expect(store?.getBot({ botId: f.bot.id })?.folders).toEqual([])
+    expect((await f.request(`/bots/${f.bot.id}`, { folders: [], anyFolderAccess: false })).status).toBe(200)
+  } finally {
+    available.mockRestore()
+  }
+})
+
+test("Linux provider spawning enforces RO and RW grants instead of failing the conversation", async () => {
+  if (process.platform !== "linux" || !(await folderCapability.refreshHostFolderAccess())) return
+  const f = await fixture()
+  f.args.bot.folders = [
+    { path: f.ro, access: "read-only" },
+    { path: f.rw, access: "read-write" },
+  ]
+  writeFileSync(join(f.ro, "reference.txt"), "unchanged")
+  const run = async (path: string) => {
+    const child = spawnFolderProvider(f.runtime.kernel, f.args, {
+      cmd: "/bin/sh",
+      args: ["-c", 'printf saved > "$1"', "test", path],
+      cwd: f.bot.homeDir,
+      env: f.args.env,
+    })
+    expect(child.success).toBe(true)
+    if (!child.success) throw new Error(child.error)
+    const [exit] = await Promise.all([
+      child.exited,
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+    ])
+    return exit.code
+  }
+  expect(await run(join(f.ro, "reference.txt"))).not.toBe(0)
+  expect(readFileSync(join(f.ro, "reference.txt"), "utf8")).toBe("unchanged")
+  expect(await run(join(f.rw, "saved.txt"))).toBe(0)
+  expect(readFileSync(join(f.rw, "saved.txt"), "utf8")).toBe("saved")
+})
+
+test("off macOS, full access and grant-free turns spawn the provider directly, with or without confinement", async () => {
+  if (process.platform === "darwin") return
+  const f = await fixture()
+  const spawned: string[] = []
+  const kernel = {
+    ...f.runtime.kernel,
+    spawnTree: (input: Parameters<Kernel["spawnTree"]>[0]) => {
+      spawned.push(input.cmd)
+      return { success: false, errorCode: "SPAWN_FAILED", error: "captured" } as const
+    },
+  } as Kernel
+  const input = { cmd: "/bin/true", args: [], cwd: f.bot.homeDir, env: f.args.env }
+  const unavailable = spyOn(folderCapability, "hostFolderAccessAvailable").mockReturnValue(false)
+  try {
+    // Full access means no folder restriction: saved grants never wrap or refuse it.
+    f.args.bot = { ...f.bot, access: "full", folders: [{ path: f.ro, access: "read-only" }], anyFolderAccess: true }
+    expect(spawnFolderProvider(kernel, f.args, input)).toMatchObject({ error: "captured" })
+    f.args.bot = { ...f.bot, access: "workspace-write", folders: [], anyFolderAccess: false }
+    expect(spawnFolderProvider(kernel, f.args, input)).toMatchObject({ error: "captured" })
+    expect(spawned).toEqual(["/bin/true", "/bin/true"])
+    // A real grant without a working boundary is refused rather than silently dropped.
+    f.args.bot = { ...f.bot, access: "workspace-write", folders: [{ path: f.ro, access: "read-only" }] }
+    expect(spawnFolderProvider(kernel, f.args, input)).toMatchObject({
+      error: folderCapability.folderAccessUnavailable,
+    })
+    expect(spawned).toHaveLength(2)
+  } finally {
+    unavailable.mockRestore()
+  }
 })
 
 test("realpath grants reject escape symlinks, duplicates, conflicting overlaps and retargeted directories", async () => {
@@ -184,9 +290,115 @@ test("provider permissions and session identity follow grants and guest paths wi
   expect(writableTurnFolders(f.args)).toEqual([])
 })
 
-test("local profile denies sensitive trees including touri's API credential, even with full access", async () => {
+test.each(["missing", "retargeted"])(
+  "full local access ignores %s grants and saved read-only restrictions",
+  async (state) => {
+    const f = await fixture()
+    f.bot.access = "full"
+    f.bot.approvals = "never"
+    f.bot.anyFolderAccess = true
+    f.bot.folders = [
+      { path: f.ro, access: "read-only" },
+      { path: f.rw, access: "read-write" },
+    ]
+    rmSync(f.rw, { recursive: true })
+    if (state === "retargeted") symlinkSync(f.ro, f.rw)
+
+    expect(turnFolders(f.args)).toEqual([])
+    expect(writableTurnFolders(f.args)).toEqual([])
+    expect((await claudeSettings(f.args, { HOME: f.home })).settings.permissions.deny).toEqual([])
+    const permissions = openCodeConfig(f.args).permission
+    expect(permissions["*"]).toBe("allow")
+    expect(permissions.external_directory).toBeUndefined()
+    expect(permissions.edit).toBeUndefined()
+    expect(localFolderProfile(f.runtime.kernel, f.args, { HOME: f.home }, f.home)).toBe("(version 1)\n(allow default)")
+  },
+)
+
+test.each(["linux", "darwin", "win32"])("full local provider spawn preserves its input on %s", async (platform) => {
   const f = await fixture()
   f.bot.access = "full"
+  f.bot.anyFolderAccess = true
+  f.bot.folders = [{ path: join(f.root, "missing"), access: "read-only" }]
+  const calls: Parameters<Kernel["spawnTree"]>[0][] = []
+  const result = { success: false, errorCode: "SPAWN_FAILED", error: "fixture" } as const
+  const kernel = {
+    ...f.runtime.kernel,
+    spawnTree: (input: Parameters<Kernel["spawnTree"]>[0]) => {
+      calls.push(input)
+      return result
+    },
+  }
+  const input = { cmd: "fake-provider", args: ["fake"], env: { SENTINEL: "preserved" }, cwd: f.ro }
+  const descriptor = Object.getOwnPropertyDescriptor(process, "platform")
+  if (!descriptor) throw new Error("Missing platform descriptor")
+  try {
+    Object.defineProperty(process, "platform", { ...descriptor, value: platform })
+    expect(outerFolderSandbox(f.args)).toBe(false)
+    expect(codexAccessParams(f.args).sandbox).toBe("danger-full-access")
+    expect(spawnFolderProvider(kernel, f.args, input)).toBe(result)
+    expect(calls).toEqual([input])
+    expect(calls[0]).toBe(input)
+  } finally {
+    Object.defineProperty(process, "platform", descriptor)
+  }
+})
+
+test("full access still uses the VM execution boundary and guest folder paths", async () => {
+  const f = await fixture()
+  f.bot.access = "full"
+  f.bot.anyFolderAccess = true
+  f.bot.folders = [{ path: f.ro, access: "read-only" }]
+  const calls: Parameters<Kernel["spawnTree"]>[0][] = []
+  const result = { success: false, errorCode: "SPAWN_FAILED", error: "fixture" } as const
+  f.args.execution = {
+    spawn: (input) => {
+      calls.push(input)
+      return result
+    },
+    writeFile: async () => {},
+  }
+  const kernel = {
+    ...f.runtime.kernel,
+    spawnTree: () => {
+      throw new Error("Must use VM execution")
+    },
+  }
+  const input = { cmd: "fake-provider", args: [], env: {}, cwd: "/workspace" }
+  expect(spawnFolderProvider(kernel, f.args, input)).toBe(result)
+  expect(calls).toEqual([input])
+  expect(turnFolders(f.args)).toEqual([
+    { path: "/host/home", access: "read-write" },
+    { path: folderGuestPath(f.ro), access: "read-only" },
+  ])
+})
+
+test.each(["linux", "win32"])("workspace grants fail closed without a host sandbox on %s", async (platform) => {
+  const f = await fixture()
+  f.bot.access = "workspace-write"
+  f.bot.folders = [{ path: f.ro, access: "read-only" }]
+  const kernel = {
+    ...f.runtime.kernel,
+    spawnTree: () => {
+      throw new Error("Must not spawn without confinement")
+    },
+  }
+  const descriptor = Object.getOwnPropertyDescriptor(process, "platform")
+  if (!descriptor) throw new Error("Missing platform descriptor")
+  try {
+    Object.defineProperty(process, "platform", { ...descriptor, value: platform })
+    expect(spawnFolderProvider(kernel, f.args, { cmd: "fake-provider", args: [], env: {}, cwd: f.ro })).toMatchObject({
+      success: false,
+      errorCode: "SPAWN_FAILED",
+    })
+  } finally {
+    Object.defineProperty(process, "platform", descriptor)
+  }
+})
+
+test("workspace profile denies sensitive trees including touri's API credential", async () => {
+  const f = await fixture()
+  f.bot.access = "workspace-write"
   f.bot.anyFolderAccess = true
   f.bot.folders = [{ path: f.ro, access: "read-only" }]
   const profile = localFolderProfile(f.runtime.kernel, f.args, { HOME: f.home }, f.home)
@@ -206,6 +418,7 @@ test("local profile denies sensitive trees including touri's API credential, eve
   }
   spawnFolderProvider(kernel, f.args, { cmd: "fake-provider", args: ["fake"], env: {}, cwd: f.ro })
   if (process.platform === "darwin") expect(calls[0]?.cmd).toBe("/usr/bin/sandbox-exec")
+  else if (process.platform === "linux") expect(calls).toHaveLength(0)
   else expect(calls).toHaveLength(0)
 })
 
@@ -213,7 +426,7 @@ test("macOS sandbox actually prevents shell writes, sensitive reads and API cred
   if (process.platform !== "darwin") return
   const f = await fixture()
   f.bot.anyFolderAccess = true
-  f.bot.access = "full"
+  f.bot.access = "workspace-write"
   f.bot.folders = [{ path: f.ro, access: "read-only" }]
   writeFileSync(join(f.ro, "keep"), "unchanged")
   writeFileSync(join(f.home, ".ssh/id"), "secret")

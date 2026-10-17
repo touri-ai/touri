@@ -1,0 +1,60 @@
+{
+  "success": true,
+  "steps": [
+    {
+      "name": "direct-write",
+      "status": "succeeded",
+      "tools": [],
+      "savedFolders": 0
+    },
+    {
+      "name": "redundant-tools",
+      "status": "succeeded",
+      "tools": [
+        {
+          "tool": "folder_access_request",
+          "ok": true,
+          "alreadyAccessible": true
+        },
+        {
+          "tool": "project_link",
+          "ok": true,
+          "alreadyAccessible": true
+        }
+      ],
+      "savedFolders": 0
+    },
+    {
+      "name": "legacy-grant-write",
+      "status": "succeeded",
+      "tools": [],
+      "savedFolders": 1
+    },
+    {
+      "name": "later-greeting",
+      "status": "succeeded",
+      "tools": [],
+      "savedFolders": 1
+    }
+  ],
+  "files": [
+    {
+      "name": "first.txt",
+      "content": "synthetic-first"
+    },
+    {
+      "name": "second.txt",
+      "content": "synthetic-second"
+    },
+    {
+      "name": "third.txt",
+      "content": "synthetic-third"
+    }
+  ],
+  "projectRegisteredByRedundantSetup": false,
+  "productionUiBuild": {
+    "exitCode": 0,
+    "modulesTransformed": 1087,
+    "buildSeconds": 17.52
+  }
+}

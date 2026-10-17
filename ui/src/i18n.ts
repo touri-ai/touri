@@ -3,6 +3,34 @@ import { userFacingError } from "./errors"
 /** All UI copy lives here. pt-BR is the default; English is available for a future locale picker. */
 export type Locale = "pt-BR" | "en"
 export const ptBR = {
+  "Abrir resultado completo": "Abrir resultado completo",
+  "Carregando resultado…": "Carregando resultado…",
+  "Carregar mais saída": "Carregar mais saída",
+  "Esta imagem é grande demais para abrir aqui.": "Esta imagem é grande demais para abrir aqui.",
+  "Não foi possível abrir o resultado. Tente novamente.": "Não foi possível abrir o resultado. Tente novamente.",
+  "Intervalo de saída inválido": "Intervalo de saída inválido",
+  "Resultado não encontrado": "Resultado não encontrado",
+  "pode ler e alterar arquivos em qualquer pasta que a conta do sistema permita.":
+    "pode ler e alterar arquivos em qualquer pasta que a conta do sistema permita.",
+  "O acesso total permite ler, criar, alterar e apagar arquivos em qualquer pasta que a conta do sistema permita. As pastas e exclusões salvas não limitam este acesso.":
+    "O acesso total permite ler, criar, alterar e apagar arquivos em qualquer pasta que a conta do sistema permita. As pastas e exclusões salvas não limitam este acesso.",
+  "Não pede aprovações do provedor. Use apenas com bots em que você confia.":
+    "Não pede aprovações do provedor. Use apenas com bots em que você confia.",
+  "As aprovações do provedor continuam valendo.": "As aprovações do provedor continuam valendo.",
+  "O acesso total vale só no computador isolado e nas pastas compartilhadas. As permissões de cada pasta continuam valendo.":
+    "O acesso total vale só no computador isolado e nas pastas compartilhadas. As permissões de cada pasta continuam valendo.",
+  "O acesso total vale só na máquina na nuvem e não dá acesso aos arquivos deste computador.":
+    "O acesso total vale só na máquina na nuvem e não dá acesso aos arquivos deste computador.",
+  "Pastas salvas para modos de acesso restrito": "Pastas salvas para modos de acesso restrito",
+  "Estas opções ficam salvas para modos de acesso restrito. Elas não limitam o acesso total atual.":
+    "Estas opções ficam salvas para modos de acesso restrito. Elas não limitam o acesso total atual.",
+  "As permissões da conta do sistema continuam valendo.": "As permissões da conta do sistema continuam valendo.",
+  "Acesso a qualquer pasta no modo restrito": "Acesso a qualquer pasta no modo restrito",
+  "Esta opção só vale quando o acesso é restrito.": "Esta opção só vale quando o acesso é restrito.",
+  "Esta opção fica salva para modos de acesso restrito. O acesso total atual não muda.":
+    "Esta opção fica salva para modos de acesso restrito. O acesso total atual não muda.",
+  "Para usar processos supervisionados e o Preview, vincule o projeto nas configurações do bot.":
+    "Para usar processos supervisionados e o Preview, vincule o projeto nas configurações do bot.",
   "Agendar esta tarefa": "Agendar esta tarefa",
   "VM machine help":
     "Mais seguro: trabalha num computador separado só para este bot, dentro deste computador. A tela e o navegador ficam separados dos seus. Você escolhe quais pastas compartilhar. Projetos usam uma cópia da última versão registrada.",
@@ -18,6 +46,94 @@ export const ptBR = {
   "Rede local ajuda":
     "Desativado por padrão. Bloqueios valem agora; novos acessos exigem reiniciar o computador do bot. Seu computador e os serviços internos de infraestrutura continuam protegidos.",
 
+  "Este preview está no servidor. Peça ao bot para abri-lo no navegador do servidor.":
+    "Este preview está no servidor. Peça ao bot para abri-lo no navegador do servidor.",
+  "Abrir touri": "Abrir touri",
+  "Pausar todos os bots": "Pausar todos os bots",
+  "Sair do touri": "Sair do touri",
+  "Conectando ao servidor…": "Conectando ao servidor…",
+  // Optional native server mode.
+  "Qualquer pasta do servidor": "Qualquer pasta do servidor",
+  "O aplicativo e o servidor usam versões diferentes. Atualize os dois e tente novamente.":
+    "O aplicativo e o servidor usam versões diferentes. Atualize os dois e tente novamente.",
+  "Muitas tentativas de pareamento. Aguarde alguns minutos e gere outro código no servidor.":
+    "Muitas tentativas de pareamento. Aguarde alguns minutos e gere outro código no servidor.",
+  "Usar um servidor touri": "Usar um servidor touri",
+  "Escolha se os bots trabalham neste Mac ou em um servidor touri.":
+    "Escolha se os bots trabalham neste Mac ou em um servidor touri.",
+  "Não foi possível acessar o cofre do sistema. Desbloqueie-o e tente novamente ou volte ao modo local.":
+    "Não foi possível acessar o cofre do sistema. Desbloqueie-o e tente novamente ou volte ao modo local.",
+  "Use um endereço HTTPS do seu servidor touri. HTTP só é permitido neste computador.":
+    "Use um endereço HTTPS do seu servidor touri. HTTP só é permitido neste computador.",
+  "Não foi possível parear este aplicativo. Gere outro código no servidor e tente novamente.":
+    "Não foi possível parear este aplicativo. Gere outro código no servidor e tente novamente.",
+  "Não foi possível conectar ao servidor. Confira o endereço e a rede e tente novamente.":
+    "Não foi possível conectar ao servidor. Confira o endereço e a rede e tente novamente.",
+  "Seus bots, conversas, arquivos e logins ficam no servidor escolhido. Este Mac mostra a interface, sem iniciar bots locais.":
+    "Seus bots, conversas, arquivos e logins ficam no servidor escolhido. Este Mac mostra a interface, sem iniciar bots locais.",
+  "As pastas, a tela e o navegador pessoal deste Mac não ficam disponíveis para os bots do servidor.":
+    "As pastas, a tela e o navegador pessoal deste Mac não ficam disponíveis para os bots do servidor.",
+  "Modo servidor ativo": "Modo servidor ativo",
+  "Modo local ativo": "Modo local ativo",
+  "Verificando modo do aplicativo…": "Verificando modo do aplicativo…",
+  "Endereço do servidor": "Endereço do servidor",
+  "Código de pareamento": "Código de pareamento",
+  "No computador do servidor, execute touri pair para gerar um código de uso único. Cole o código abaixo; ele expira em poucos minutos.":
+    "No computador do servidor, execute touri pair para gerar um código de uso único. Cole o código abaixo; ele expira em poucos minutos.",
+  "A conexão fica guardada no cofre do sistema. Ao conectar ou voltar ao modo local, o aplicativo reinicia.":
+    "A conexão fica guardada no cofre do sistema. Ao conectar ou voltar ao modo local, o aplicativo reinicia.",
+  "Conectar ao servidor": "Conectar ao servidor",
+  "Voltar ao modo local": "Voltar ao modo local",
+  "Aguarde…": "Aguarde…",
+  "Servidor conectado. O touri vai reiniciar neste modo.": "Servidor conectado. O touri vai reiniciar neste modo.",
+  "Conexão com o servidor confirmada.": "Conexão com o servidor confirmada.",
+  "O touri vai reiniciar no modo local.": "O touri vai reiniciar no modo local.",
+  "Seus dados e os logins dos bots ficam no servidor escolhido.":
+    "Seus dados e os logins dos bots ficam no servidor escolhido.",
+  "As pastas abaixo pertencem ao servidor. Pastas deste Mac não são compartilhadas.":
+    "As pastas abaixo pertencem ao servidor. Pastas deste Mac não são compartilhadas.",
+  "Acesso a qualquer pasta do servidor": "Acesso a qualquer pasta do servidor",
+  "As permissões e o isolamento são aplicados pelo servidor. Revise o acesso antes de salvar.":
+    "As permissões e o isolamento são aplicados pelo servidor. Revise o acesso antes de salvar.",
+  "Este bot poderá ler arquivos de todo o servidor e, conforme o nível de acesso, alterá-los ou apagá-los. Conceda este acesso apenas a bots em que confia.":
+    "Este bot poderá ler arquivos de todo o servidor e, conforme o nível de acesso, alterá-los ou apagá-los. Conceda este acesso apenas a bots em que confia.",
+  "Seu navegador pessoal fica indisponível no modo servidor. Use o navegador do servidor ou do computador isolado.":
+    "Seu navegador pessoal fica indisponível no modo servidor. Use o navegador do servidor ou do computador isolado.",
+  "O bot trabalha no servidor escolhido, sem acessar este Mac.":
+    "O bot trabalha no servidor escolhido, sem acessar este Mac.",
+  "Neste servidor": "Neste servidor",
+  "Modo servidor": "Modo servidor",
+  "Servidor offline. Tentando reconectar…": "Servidor offline. Tentando reconectar…",
+  "Servidor offline. Suas mensagens ficam na fila e serão enviadas ao reconectar.":
+    "Servidor offline. Suas mensagens ficam na fila e serão enviadas ao reconectar.",
+  "Sem conexão. Suas mensagens ficam na fila e serão enviadas ao reconectar.":
+    "Sem conexão. Suas mensagens ficam na fila e serão enviadas ao reconectar.",
+  "Um bot precisa da sua atenção.": "Um bot precisa da sua atenção.",
+  "Esta opção está disponível apenas no aplicativo para computador.":
+    "Esta opção está disponível apenas no aplicativo para computador.",
+  "trabalha no servidor escolhido; não pode acessar os arquivos deste Mac.":
+    "trabalha no servidor escolhido; não pode acessar os arquivos deste Mac.",
+  Atividade: "Atividade",
+  "Mostrar mais": "Mostrar mais",
+  "Mostrar menos": "Mostrar menos",
+  "Ver atividade": "Ver atividade",
+  "Arquivos lidos": "Arquivos lidos",
+  Comandos: "Comandos",
+  Buscas: "Buscas",
+  Edições: "Edições",
+  "Outras ações": "Outras ações",
+  "Trabalhou por {duration}": "Trabalhou por {duration}",
+  "{count} ação": "{count} ação",
+  "{count} ações": "{count} ações",
+  "{count} s": "{count} s",
+  "{count} min": "{count} min",
+  "{count} h": "{count} h",
+  "Diagrama Mermaid": "Diagrama Mermaid",
+  "Preparando diagrama…": "Preparando diagrama…",
+  "Ver código": "Ver código",
+  "Ver diagrama": "Ver diagrama",
+  "Não foi possível renderizar o diagrama. O código está abaixo.":
+    "Não foi possível renderizar o diagrama. O código está abaixo.",
   "As ferramentas do touri não carregaram nesta máquina. Tente novamente; se persistir, confira a instalação do touri e as permissões deste servidor.":
     "As ferramentas do touri não carregaram nesta máquina. Tente novamente; se persistir, confira a instalação do touri e as permissões deste servidor.",
   "Ferramentas do touri · {name}": "Ferramentas do touri · {name}",
@@ -581,6 +697,8 @@ export const ptBR = {
     "O acesso não foi aprovado ou a configuração mudou. Nenhuma pasta foi criada e as permissões foram mantidas.",
   "Não foi possível acessar ou criar a pasta. Verifique o caminho e as permissões e tente novamente.":
     "Não foi possível acessar ou criar a pasta. Verifique o caminho e as permissões e tente novamente.",
+  "Este bot já tem acesso a esta pasta. Nenhuma permissão foi alterada.":
+    "Este bot já tem acesso a esta pasta. Nenhuma permissão foi alterada.",
   "Pasta {path} criada.": "Pasta {path} criada.",
   "Conceder acesso à pasta": "Conceder acesso à pasta",
   "Permitir escrita em {path}?": "Permitir escrita em {path}?",
@@ -1243,10 +1361,10 @@ export const ptBR = {
     "Atualizar uma rotina deste bot. Somente o usuário pode habilitar uma rotina pausada.",
   "List projects and Git repositories only in this bot's already granted folders and connected project. Never searches the home directory on its own. Read-only; no approval required. Ask the user for a path when nothing is available.":
     "Listar projetos e repositórios Git somente nas pastas já permitidas a este bot e no projeto vinculado. Não busca na pasta pessoal por conta própria. Somente leitura, sem aprovação. Peça um caminho ao usuário se nada estiver disponível.",
-  "Register a Mac folder as a project if needed and link it to this calling bot only. Supply exactly one of path or projectId. Always requires explicit user approval in chat, even with approvals disabled. VM changes apply next turn.":
-    "Registrar uma pasta do Mac como projeto e vinculá-la somente a este bot, pelo caminho ou identificador. Sempre exige aprovação explícita no chat. Na VM, a mudança vale a partir da próxima mensagem.",
-  "Request access to a specific Mac folder for this calling bot only, with mode read or read-write. Always requires explicit user approval. Cannot enable any-folder access. VM changes apply next turn.":
-    "Pedir acesso de leitura ou leitura e escrita a uma pasta do Mac para este bot. Sempre exige aprovação explícita. Não permite acesso a qualquer pasta. Na VM, vale a partir da próxima mensagem.",
+  "Register a host folder as a project if needed and link it to this calling bot only. Supply exactly one of path or projectId. Full local access or an already writable local path returns alreadyAccessible immediately without changing configuration, registering a project or adding a grant. Otherwise requires explicit user approval in chat, even with approvals disabled. VM changes apply next turn.":
+    "Vincular uma pasta deste computador como projeto somente a este bot. Se o bot já pode gravar na pasta, apenas confirma o acesso existente, sem vincular um projeto nem alterar permissões. Caso contrário, exige aprovação explícita no chat. Na máquina isolada, vale a partir da próxima mensagem.",
+  "Request access to a specific host folder for this calling bot only, with mode read or read-write. Full local access or an already writable local path returns alreadyAccessible immediately without saving a grant or requesting approval. Create missing subfolders directly when already writable. Otherwise requires explicit user approval. Cannot enable any-folder access. VM changes apply next turn.":
+    "Pedir acesso de leitura ou leitura e escrita a uma pasta deste computador. Se o bot já pode gravar nela, apenas confirma o acesso existente, sem salvar permissões nem pedir aprovação. Crie subpastas diretamente onde já pode gravar. Novos acessos exigem aprovação explícita. Na máquina isolada, vale a partir da próxima mensagem.",
   "Unlink the project from this calling bot only. Narrows access without approval and posts a notice in chat. VM changes apply next turn.":
     "Desvincular o projeto somente deste bot, sem aprovação, e mostrar um aviso no chat. Na VM, a mudança vale a partir da próxima mensagem.",
   "Remove a specific folder grant from this calling bot only. Narrows access without approval and posts a notice in chat. Cannot change the user-only any-folder toggle. VM changes apply next turn.":
@@ -1377,6 +1495,7 @@ export const ptBR = {
   "Pending approval count": "{count} aprovações pendentes",
   "Visible count": "{count} visíveis",
   "Tool count": "{count} chamadas de ferramenta",
+  "Tool group count": "{count} ferramentas",
   "Search shortcut": "⌘K buscar",
   "Message bot": "Mensagem para {name}",
   "Routine skipped named": "Rotina adiada: {name}",
@@ -1399,10 +1518,6 @@ export const ptBR = {
   "Workspace write · approvals": "Pede permissão antes de mudar arquivos",
   "Workspace write": "Pede permissão antes de mudar arquivos",
   "Full access": "Acesso total",
-  "Full access skips provider approvals. Folder access is configured separately.":
-    "O acesso total dispensa aprovações do provedor. A escrita segue as permissões de pastas configuradas para o bot. A opção “Acesso a qualquer pasta deste Mac” é independente; as exclusões de pastas sensíveis continuam valendo. Use apenas com bots em que você confia.",
-  "Codex full access disables provider approvals and sandboxing; touri folder restrictions still apply.":
-    "No acesso total, o Codex executa sem pedir aprovação e sem o sandbox do provedor. As restrições de pastas do touri, as políticas MCP e as permissões de controle do computador continuam valendo.",
   Cancel: "Cancelar",
   "Creating…": "Criando…",
   "teammate configuration": "configuração do bot",
@@ -1789,11 +1904,12 @@ export const ptBR = {
   Processos: "Processos",
   "Nenhum projeto (começa na pasta do bot)": "Nenhum projeto (começa na pasta do bot)",
   "Projeto do bot": "Projeto do bot",
+  "Somente pasta do bot": "Somente pasta do bot",
   "Sem projeto": "Sem projeto",
   "Adicionar projeto…": "Adicionar projeto…",
   "Aguarde o turno terminar para alterar o projeto.": "Aguarde o turno terminar para alterar o projeto.",
-  "Commit Git copiado para /workspace a partir da próxima mensagem.":
-    "Commit Git copiado para /workspace a partir da próxima mensagem.",
+  "O commit Git do projeto será copiado para /workspace no próximo turno.":
+    "O commit Git do projeto será copiado para /workspace no próximo turno.",
   "Não foi possível alterar o projeto.": "Não foi possível alterar o projeto.",
   "Cron atualizado": "Rotina atualizada",
   "Nova rotina": "Nova rotina",
@@ -1859,9 +1975,49 @@ export const ptBR = {
   assistant: "Assistente",
   system: "Sistema",
   tool: "Ferramenta",
+  // Local folder confinement and recovery.
+  "Esta pasta fica no servidor.": "Esta pasta fica no servidor.",
+  "Esta pasta é protegida. Escolha outra pasta.": "Esta pasta é protegida. Escolha outra pasta.",
+  "Não foi possível acessar o login do bot com segurança. Entre novamente na conta nas configurações.":
+    "Não foi possível acessar o login do bot com segurança. Entre novamente na conta nas configurações.",
+  "Neste computador, adicione as pastas uma por uma. O acesso a todas as pastas não está disponível. Remova essa permissão nas configurações do bot para continuar com tarefas.":
+    "Neste computador, adicione as pastas uma por uma. O acesso a todas as pastas não está disponível. Remova essa permissão nas configurações do bot para continuar com tarefas.",
+  "Este computador não consegue proteger o acesso a pastas. Nenhuma permissão foi adicionada. Você pode continuar conversando ou enviar um arquivo.":
+    "Este computador não consegue proteger o acesso a pastas. Nenhuma permissão foi adicionada. Você pode continuar conversando ou enviar um arquivo.",
+  "As permissões de pastas salvas não funcionam neste computador. Você pode conversar sem ferramentas. Remova essas permissões nas configurações do bot para continuar com tarefas.":
+    "As permissões de pastas salvas não funcionam neste computador. Você pode conversar sem ferramentas. Remova essas permissões nas configurações do bot para continuar com tarefas.",
+  "Remover permissões antigas": "Remover permissões antigas",
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  "Abrir resultado completo": "Open full result",
+  "Carregando resultado…": "Loading result…",
+  "Carregar mais saída": "Load more output",
+  "Esta imagem é grande demais para abrir aqui.": "This image is too large to open here.",
+  "Não foi possível abrir o resultado. Tente novamente.": "Could not open the result. Try again.",
+  "Intervalo de saída inválido": "Invalid output range",
+  "Resultado não encontrado": "Result not found",
+  "pode ler e alterar arquivos em qualquer pasta que a conta do sistema permita.":
+    "can read and change files in any folder the system account permits.",
+  "O acesso total permite ler, criar, alterar e apagar arquivos em qualquer pasta que a conta do sistema permita. As pastas e exclusões salvas não limitam este acesso.":
+    "Full access allows reading, creating, changing and deleting files in any folder the system account permits. Saved folders and exclusions do not limit this access.",
+  "Não pede aprovações do provedor. Use apenas com bots em que você confia.":
+    "Does not request provider approvals. Use only with bots you trust.",
+  "As aprovações do provedor continuam valendo.": "Provider approvals still apply.",
+  "O acesso total vale só no computador isolado e nas pastas compartilhadas. As permissões de cada pasta continuam valendo.":
+    "Full access applies only inside the isolated machine and shared folders. Each folder's permissions still apply.",
+  "O acesso total vale só na máquina na nuvem e não dá acesso aos arquivos deste computador.":
+    "Full access applies only inside the cloud machine and does not provide access to files on this computer.",
+  "Pastas salvas para modos de acesso restrito": "Saved folders for restricted access modes",
+  "Estas opções ficam salvas para modos de acesso restrito. Elas não limitam o acesso total atual.":
+    "These settings are saved for restricted access modes. They do not limit current full access.",
+  "As permissões da conta do sistema continuam valendo.": "System account permissions still apply.",
+  "Acesso a qualquer pasta no modo restrito": "Access to any folder in restricted mode",
+  "Esta opção só vale quando o acesso é restrito.": "This option only applies when access is restricted.",
+  "Esta opção fica salva para modos de acesso restrito. O acesso total atual não muda.":
+    "This option is saved for restricted access modes. The current full access does not change.",
+  "Para usar processos supervisionados e o Preview, vincule o projeto nas configurações do bot.":
+    "To use supervised processes and Preview, link the project in the bot settings.",
   "Tentar de novo": "Try again",
   "Agendar esta tarefa": "Schedule this task",
   "Local machine": "On this computer",
@@ -1895,6 +2051,94 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Rede local ajuda":
     "Off by default. Restrictions apply now; additional access requires restarting the bot’s computer. Your computer and internal infrastructure services remain protected.",
 
+  "Qualquer pasta do servidor": "Any folder on the server",
+  "O aplicativo e o servidor usam versões diferentes. Atualize os dois e tente novamente.":
+    "The app and server use different versions. Update both and try again.",
+  "Muitas tentativas de pareamento. Aguarde alguns minutos e gere outro código no servidor.":
+    "Too many pairing attempts. Wait a few minutes and generate another code on the server.",
+  "Este preview está no servidor. Peça ao bot para abri-lo no navegador do servidor.":
+    "This preview is on the server. Ask the bot to open it in the server’s browser.",
+  "Abrir touri": "Open touri",
+  "Pausar todos os bots": "Pause all bots",
+  "Sair do touri": "Quit touri",
+  "Conectando ao servidor…": "Connecting to the server…",
+  // Optional native server mode.
+  "Usar um servidor touri": "Use a touri server",
+  "Escolha se os bots trabalham neste Mac ou em um servidor touri.":
+    "Choose whether bots work on this Mac or on a touri server.",
+  "Não foi possível acessar o cofre do sistema. Desbloqueie-o e tente novamente ou volte ao modo local.":
+    "Could not access the system vault. Unlock it and try again, or return to local mode.",
+  "Use um endereço HTTPS do seu servidor touri. HTTP só é permitido neste computador.":
+    "Use an HTTPS address for your touri server. HTTP is allowed only on this computer.",
+  "Não foi possível parear este aplicativo. Gere outro código no servidor e tente novamente.":
+    "Could not pair this app. Generate another code on the server and try again.",
+  "Não foi possível conectar ao servidor. Confira o endereço e a rede e tente novamente.":
+    "Could not connect to the server. Check the address and network, then try again.",
+  "Seus bots, conversas, arquivos e logins ficam no servidor escolhido. Este Mac mostra a interface, sem iniciar bots locais.":
+    "Your bots, conversations, files and sign-ins stay on the selected server. This Mac shows the interface without starting local bots.",
+  "As pastas, a tela e o navegador pessoal deste Mac não ficam disponíveis para os bots do servidor.":
+    "This Mac’s folders, screen and personal browser are unavailable to the server’s bots.",
+  "Modo servidor ativo": "Server mode active",
+  "Modo local ativo": "Local mode active",
+  "Verificando modo do aplicativo…": "Checking app mode…",
+  "Endereço do servidor": "Server address",
+  "Código de pareamento": "Pairing code",
+  "No computador do servidor, execute touri pair para gerar um código de uso único. Cole o código abaixo; ele expira em poucos minutos.":
+    "On the server computer, run touri pair to generate a one-time code. Paste it below; it expires in a few minutes.",
+  "A conexão fica guardada no cofre do sistema. Ao conectar ou voltar ao modo local, o aplicativo reinicia.":
+    "The connection is stored in the system vault. Connecting or returning to local mode restarts the app.",
+  "Conectar ao servidor": "Connect to server",
+  "Voltar ao modo local": "Return to local mode",
+  "Aguarde…": "Please wait…",
+  "Servidor conectado. O touri vai reiniciar neste modo.": "Server connected. touri will restart in this mode.",
+  "Conexão com o servidor confirmada.": "Server connection confirmed.",
+  "O touri vai reiniciar no modo local.": "touri will restart in local mode.",
+  "Seus dados e os logins dos bots ficam no servidor escolhido.":
+    "Your data and bot sign-ins stay on the selected server.",
+  "As pastas abaixo pertencem ao servidor. Pastas deste Mac não são compartilhadas.":
+    "The folders below belong to the server. This Mac’s folders are not shared.",
+  "Acesso a qualquer pasta do servidor": "Access any folder on the server",
+  "As permissões e o isolamento são aplicados pelo servidor. Revise o acesso antes de salvar.":
+    "The server applies permissions and isolation. Review access before saving.",
+  "Este bot poderá ler arquivos de todo o servidor e, conforme o nível de acesso, alterá-los ou apagá-los. Conceda este acesso apenas a bots em que confia.":
+    "This bot can read files across the server and, depending on its access level, change or delete them. Grant this access only to bots you trust.",
+  "Seu navegador pessoal fica indisponível no modo servidor. Use o navegador do servidor ou do computador isolado.":
+    "Your personal browser is unavailable in server mode. Use the server’s browser or the isolated computer’s browser.",
+  "O bot trabalha no servidor escolhido, sem acessar este Mac.":
+    "The bot works on the selected server without accessing this Mac.",
+  "Neste servidor": "On this server",
+  "Modo servidor": "Server mode",
+  "Servidor offline. Tentando reconectar…": "Server offline. Trying to reconnect…",
+  "Servidor offline. Suas mensagens ficam na fila e serão enviadas ao reconectar.":
+    "Server offline. Your messages are queued and will be sent when the connection returns.",
+  "Sem conexão. Suas mensagens ficam na fila e serão enviadas ao reconectar.":
+    "Disconnected. Your messages are queued and will be sent when the connection returns.",
+  "Um bot precisa da sua atenção.": "A bot needs your attention.",
+  "Esta opção está disponível apenas no aplicativo para computador.":
+    "This option is available only in the desktop app.",
+  "trabalha no servidor escolhido; não pode acessar os arquivos deste Mac.":
+    "works on the selected server; cannot access this Mac’s files.",
+  Atividade: "Activity",
+  "Mostrar mais": "Show more",
+  "Mostrar menos": "Show less",
+  "Ver atividade": "View activity",
+  "Arquivos lidos": "Files read",
+  Comandos: "Commands",
+  Buscas: "Searches",
+  Edições: "Edits",
+  "Outras ações": "Other actions",
+  "Trabalhou por {duration}": "Worked for {duration}",
+  "{count} ação": "{count} action",
+  "{count} ações": "{count} actions",
+  "{count} s": "{count} s",
+  "{count} min": "{count} min",
+  "{count} h": "{count} h",
+  "Diagrama Mermaid": "Mermaid diagram",
+  "Preparando diagrama…": "Preparing diagram…",
+  "Ver código": "View code",
+  "Ver diagrama": "View diagram",
+  "Não foi possível renderizar o diagrama. O código está abaixo.":
+    "Could not render the diagram. The code is shown below.",
   "As ferramentas do touri não carregaram nesta máquina. Tente novamente; se persistir, confira a instalação do touri e as permissões deste servidor.":
     "The touri tools did not start on this machine. Try again; if this continues, check the touri installation and this server’s permissions.",
   "Ferramentas do touri · {name}": "touri tools · {name}",
@@ -1943,10 +2187,10 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
     "On this Mac, the macOS sandbox blocks excluded folders and writing in read-only folders, including terminal commands. Changes take effect from the next message.",
   "Ao salvar, as pastas valerão a partir da próxima mensagem, quando a máquina será recriada. Os arquivos da máquina serão preservados.":
     "Saved folders take effect from the next message, when the machine will be recreated. Files on the machine will be preserved.",
-  "Register a Mac folder as a project if needed and link it to this calling bot only. Supply exactly one of path or projectId. Always requires explicit user approval in chat, even with approvals disabled. VM changes apply next turn.":
-    "Register a Mac folder as a project if needed and link it to this calling bot only. Supply exactly one of path or projectId. Always requires explicit user approval in chat, even with approvals disabled. VM changes take effect from the next message.",
-  "Request access to a specific Mac folder for this calling bot only, with mode read or read-write. Always requires explicit user approval. Cannot enable any-folder access. VM changes apply next turn.":
-    "Request access to a specific Mac folder for this calling bot only, with mode read or read-write. Always requires explicit user approval. Cannot enable any-folder access. VM changes take effect from the next message.",
+  "Register a host folder as a project if needed and link it to this calling bot only. Supply exactly one of path or projectId. Full local access or an already writable local path returns alreadyAccessible immediately without changing configuration, registering a project or adding a grant. Otherwise requires explicit user approval in chat, even with approvals disabled. VM changes apply next turn.":
+    "Register a host folder as a project if needed and link it to this calling bot only. Supply exactly one of path or projectId. Full local access or an already writable local path returns alreadyAccessible immediately without changing configuration, registering a project or adding a grant. Otherwise requires explicit user approval in chat, even with approvals disabled. VM changes take effect from the next message.",
+  "Request access to a specific host folder for this calling bot only, with mode read or read-write. Full local access or an already writable local path returns alreadyAccessible immediately without saving a grant or requesting approval. Create missing subfolders directly when already writable. Otherwise requires explicit user approval. Cannot enable any-folder access. VM changes apply next turn.":
+    "Request access to a specific host folder for this calling bot only, with mode read or read-write. Full local access or an already writable local path returns alreadyAccessible immediately without saving a grant or requesting approval. Create missing subfolders directly when already writable. Otherwise requires explicit user approval. Cannot enable any-folder access. VM changes take effect from the next message.",
   "Unlink the project from this calling bot only. Narrows access without approval and posts a notice in chat. VM changes apply next turn.":
     "Unlink the project from this calling bot only. Narrows access without approval and posts a notice in chat. VM changes take effect from the next message.",
   "Remove a specific folder grant from this calling bot only. Narrows access without approval and posts a notice in chat. Cannot change the user-only any-folder toggle. VM changes apply next turn.":
@@ -2520,6 +2764,8 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
     "Access was not approved or the configuration changed. No folders were created and permissions were kept.",
   "Não foi possível acessar ou criar a pasta. Verifique o caminho e as permissões e tente novamente.":
     "Could not access or create the folder. Check its path and permissions and try again.",
+  "Este bot já tem acesso a esta pasta. Nenhuma permissão foi alterada.":
+    "This bot already has access to this folder. No permissions were changed.",
   "Pasta {path} criada.": "Folder {path} created.",
   "Conceder acesso à pasta": "Grant folder access",
   "Permitir escrita em {path}?": "Allow writing in {path}?",
@@ -3013,6 +3259,7 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Pending approval count": "{count} pending approvals",
   "Visible count": "{count} visible",
   "Tool count": "{count} tool calls",
+  "Tool group count": "{count} tools",
   "Search shortcut": "⌘K search",
   "Message bot": "Message {name}",
   "Routine skipped named": "Routine skipped: {name}",
@@ -3094,11 +3341,12 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   Processos: "Processes",
   "Nenhum projeto (começa na pasta do bot)": "No project (starts in the bot folder)",
   "Projeto do bot": "Bot project",
+  "Somente pasta do bot": "Bot folder only",
   "Sem projeto": "No project",
   "Adicionar projeto…": "Add project…",
   "Aguarde o turno terminar para alterar o projeto.": "Wait for the turn to finish before changing the project.",
-  "Commit Git copiado para /workspace a partir da próxima mensagem.":
-    "The project's Git commit will be copied to /workspace from the next message.",
+  "O commit Git do projeto será copiado para /workspace no próximo turno.":
+    "The project's Git commit will be copied to /workspace next turn.",
   "Não foi possível alterar o projeto.": "Could not change the project.",
   "Cron atualizado": "Routine updated",
   "Nova rotina": "New routine",
@@ -3156,6 +3404,18 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   assistant: "Assistant",
   system: "System",
   tool: "Tool",
+  // Local folder confinement and recovery.
+  "Esta pasta fica no servidor.": "This folder is on the server.",
+  "Esta pasta é protegida. Escolha outra pasta.": "This folder is protected. Choose another folder.",
+  "Não foi possível acessar o login do bot com segurança. Entre novamente na conta nas configurações.":
+    "The bot's sign-in could not be accessed safely. Sign in again in settings.",
+  "Neste computador, adicione as pastas uma por uma. O acesso a todas as pastas não está disponível. Remova essa permissão nas configurações do bot para continuar com tarefas.":
+    "On this computer, add folders individually. Access to all folders is unavailable. Remove that permission in the bot settings to continue with tasks.",
+  "Este computador não consegue proteger o acesso a pastas. Nenhuma permissão foi adicionada. Você pode continuar conversando ou enviar um arquivo.":
+    "This computer cannot protect folder access. No permission was added. You can keep chatting or send a file.",
+  "As permissões de pastas salvas não funcionam neste computador. Você pode conversar sem ferramentas. Remova essas permissões nas configurações do bot para continuar com tarefas.":
+    "Saved folder permissions do not work on this computer. You can chat without tools. Remove these permissions in the bot settings to continue with tasks.",
+  "Remover permissões antigas": "Remove old permissions",
 }
 export const dictionaries = {
   "pt-BR": ptBR,
@@ -3194,6 +3454,7 @@ const singular: Partial<Record<TranslationKey, [string, string]>> = {
     "{count} message queued · waiting for connection",
   ],
   "Tool count": ["{count} chamada de ferramenta", "{count} tool call"],
+  "Tool group count": ["{count} ferramenta", "{count} tool"],
   "Notifications need attention": [
     "Notificações, {count} precisa de atenção",
     "Notifications, {count} needs attention",
@@ -3339,4 +3600,21 @@ export const accessLabel = (
           ? "Acesso total com aprovação"
           : "Full access"
   return t(key, {}, locale)
+}
+
+export const fullAccessDescription = (
+  { machine, approvals }: Pick<Bot, "machine" | "approvals">,
+  locale: Locale = "pt-BR",
+): string => {
+  const boundary =
+    machine === "local"
+      ? "O acesso total permite ler, criar, alterar e apagar arquivos em qualquer pasta que a conta do sistema permita. As pastas e exclusões salvas não limitam este acesso."
+      : machine === "vm"
+        ? "O acesso total vale só no computador isolado e nas pastas compartilhadas. As permissões de cada pasta continuam valendo."
+        : "O acesso total vale só na máquina na nuvem e não dá acesso aos arquivos deste computador."
+  const policy =
+    approvals === "never"
+      ? "Não pede aprovações do provedor. Use apenas com bots em que você confia."
+      : "As aprovações do provedor continuam valendo."
+  return `${t(boundary, {}, locale)} ${t(policy, {}, locale)}`
 }

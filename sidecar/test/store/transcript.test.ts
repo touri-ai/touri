@@ -200,6 +200,7 @@ test("a stored sequence collision rejects the append and advances from the actua
       .query("INSERT INTO transcript_entries(thread_id,seq,generation,event_json,at) VALUES ('t',2,1,?,?)")
       .run(JSON.stringify({ type: "transcript.resync" }), Date.now())
     f.store.appendDelta({ threadId: "t", messageId: "reply", partIndex: 0, delta: "Conflito" })
+    f.store.flushWrites?.()
     expect(f.db.query("SELECT seq, json_extract(record_json, '$.reason') AS reason FROM rejections").get()).toEqual({
       seq: 3,
       reason: "seq_conflict",
@@ -291,18 +292,25 @@ test("500 streaming deltas write small replay entries and growth stays linear in
       const delta = "Olá 🚀 ".repeat(3)
       for (let index = 0; index < chunks; index++)
         f.store.appendDelta({ threadId: "t", messageId: "reply", partIndex: 0, delta })
+      f.store.flushWrites?.()
       const walBytes = statSync(`${f.runtime.kernel.paths.db}-wal`).size
       const entries = f.db.query("SELECT event_json FROM transcript_entries ORDER BY seq").all() as {
         event_json: string
       }[]
       const events = f.db.query("SELECT event_json FROM ui_event_log ORDER BY seq").all() as { event_json: string }[]
       const deltas = entries.map((row) => JSON.parse(row.event_json)).filter((event) => event.type === "message.delta")
-      expect(deltas).toHaveLength(chunks)
-      expect(deltas.map((event) => event.offset)).toEqual(
-        Array.from({ length: chunks }, (_, index) => index * delta.length),
-      )
-      expect(entries).toHaveLength(chunks + 1)
-      expect(events.filter((row) => JSON.parse(row.event_json).type === "message.delta")).toHaveLength(chunks)
+      expect(deltas.length).toBeLessThan(chunks / 10)
+      expect(deltas.map((event) => event.delta).join("")).toBe(delta.repeat(chunks))
+      let offset = 0
+      for (const event of deltas) {
+        expect(event.offset).toBe(offset)
+        expect(Buffer.byteLength(event.delta)).toBeLessThanOrEqual(8192)
+        offset += event.delta.length
+      }
+      expect(entries).toHaveLength(deltas.length + 1)
+      const pointers = events.filter((row) => JSON.parse(row.event_json).type === "message.delta")
+      expect(pointers).toHaveLength(deltas.length)
+      expect(pointers.every((row) => JSON.parse(row.event_json).ref === true)).toBe(true)
       f.store.updateMessage({ threadId: "t", messageId: "reply", patch: { status: "complete" } })
       expect(f.store.activePath({ threadId: "t" })[0]?.text).toBe(delta.repeat(chunks))
       const bytes = [...entries, ...events].reduce((sum, row) => sum + Buffer.byteLength(row.event_json), 0)
@@ -327,7 +335,11 @@ test("a crash before a projection checkpoint recovers text and reasoning without
     ])
     f.store.appendDelta({ threadId: "t", messageId: "reply", partIndex: 0, delta: "Pensando 🚀" })
     f.store.appendDelta({ threadId: "t", messageId: "reply", partIndex: 1, delta: "Resposta" })
+    f.store.flushWrites?.()
     expect(f.db.query("SELECT text FROM messages WHERE id = 'reply'").get()).toEqual({ text: "" })
+    expect(f.db.query("SELECT * FROM transcript_pending_deltas").all()).toEqual([
+      { thread_id: "t", message_id: "reply" },
+    ])
     const db = openDatabase({ filename: f.runtime.kernel.paths.db })
     try {
       const bus = createEventBus(db)
@@ -344,10 +356,42 @@ test("a crash before a projection checkpoint recovers text and reasoning without
       materializeTranscript(db)
       expect(bus.replay(0).filter((row) => row.event.type === "message.delta")).toHaveLength(2)
       expect(db.query("SELECT COUNT(*) AS n FROM transcript_entries").get()).toEqual({ n: 3 })
+      expect(db.query("SELECT * FROM transcript_pending_deltas").all()).toEqual([])
       bus.stop()
     } finally {
       db.close()
     }
+  } finally {
+    f.close()
+  }
+})
+
+test("checkpointed transcript reads never revisit historical delta bodies", async () => {
+  const f = await fixture()
+  try {
+    insertReply(f)
+    for (let index = 0; index < 1000; index++)
+      f.store.appendDelta({ threadId: "t", messageId: "reply", partIndex: 0, delta: "Texto 🚀 " })
+    materializeTranscript(f.db)
+    const reads: string[] = []
+    const query = f.db.query.bind(f.db)
+    f.db.query = ((sql: string) => {
+      reads.push(sql)
+      return query(sql)
+    }) as typeof f.db.query
+    try {
+      for (let index = 0; index < 100; index++) materializeTranscript(f.db)
+    } finally {
+      f.db.query = query
+    }
+    expect(reads).toHaveLength(100)
+    expect(reads.every((sql) => sql === "SELECT 1 FROM transcript_pending_deltas LIMIT 1")).toBe(true)
+    f.store.appendDelta({ threadId: "t", messageId: "reply", partIndex: 0, delta: "Fim" })
+    materializeTranscript(f.db)
+    expect(f.db.query("SELECT text FROM messages WHERE id = 'reply'").get()).toEqual({
+      text: `${"Texto 🚀 ".repeat(1000)}Fim`,
+    })
+    expect(f.db.query("SELECT * FROM transcript_pending_deltas").all()).toEqual([])
   } finally {
     f.close()
   }
@@ -365,6 +409,7 @@ test("a rolled-back delta cannot poison the next stream even if another write re
     ).toThrow("rollback")
     insertReply(f, "other")
     f.store.appendDelta({ threadId: "t", messageId: "reply", partIndex: 0, delta: "Preservar" })
+    f.store.flushWrites?.()
     materializeTranscript(f.db)
     expect(f.db.query("SELECT text FROM messages WHERE id = 'reply'").get()).toEqual({ text: "Preservar" })
     expect(f.db.query("SELECT seq FROM transcript_entries ORDER BY seq").all()).toEqual([
@@ -381,8 +426,10 @@ test("retention preserves snapshots, rejects expired cursors, and only compactio
   const f = await fixture()
   try {
     insertReply(f)
-    for (let index = 0; index < 12; index++)
+    for (let index = 0; index < 12; index++) {
       f.store.appendDelta({ threadId: "t", messageId: "reply", partIndex: 0, delta: `${index}|` })
+      f.store.flushWrites?.()
+    }
     compactTranscript({ database: f.db, entriesPerThread: 3, events: 4, maxAgeMs: Number.MAX_SAFE_INTEGER })
     const bus = createEventBus(f.db)
     expect(f.db.query("SELECT COUNT(*) AS n FROM transcript_entries").get()).toEqual({ n: 3 })
@@ -597,7 +644,7 @@ test("transcript has contiguous per-thread revisions; restart replays an unpubli
       `http://127.0.0.1:${f.runtime.handshake.port}/api/v1/threads/t/transcript?since=2&limit=2`,
       { headers: { Authorization: "Bearer dev-ui-token", Origin: "tauri://localhost" } },
     )
-    expect(await response.json()).toMatchObject({ entries: [{ seq: 3 }, { seq: 4 }], hasMore: true })
+    expect(await response.json()).toMatchObject({ entries: [], hasMore: false, resync: true })
   } finally {
     f.close()
   }

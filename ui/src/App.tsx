@@ -56,11 +56,21 @@ import { isNewBotShortcut, isPaletteShortcut } from "./features/commandPalette/s
 import { HistoryMigrationStatus } from "./features/history/HistoryMigrationStatus"
 import { ReportErrorButton } from "./features/reports/ReportErrorButton"
 import { ReportMenuLauncher } from "./features/reports/ReportMenuLauncher"
+import { useServerAttention } from "./features/server/serverAttention"
+import {
+  isNativeDesktop,
+  ServerModeProvider,
+  serverModeError,
+  serverModeErrorCode,
+  useServerMode,
+} from "./features/server/serverMode"
 import { localizeNotice, t } from "./i18n"
+import { type DeepLinkRequest, installNativeDeepLinks } from "./nativeDeepLinks"
 import { requestTaskResume, requestTaskReview } from "./recoveryEvents"
 import type { RoutineDraft } from "./routineDraft"
 import { isFailureNotice } from "./sidebarAttention"
 import { useHost } from "./useHost"
+import { useWebNavigation } from "./useWebNavigation"
 import { useWorkspace } from "./useWorkspace"
 import { type AppRoute, readWorkspaceState, saveWorkspaceState } from "./workspaceState"
 
@@ -111,6 +121,8 @@ const withStartupDeadline = async <T,>(operation: Promise<T>): Promise<T> => {
 }
 
 const AppContent = ({ kernel }: AppProps) => {
+  const serverState = useServerMode()
+  const serverMode = serverState.status?.mode === "server" || Boolean(serverState.error)
   const [api, setApi] = useState<UiApi | null>(() => kernel?.services?.api ?? null)
   const host = useHost(api)
   const attachmentButtonRef = useRef<HTMLButtonElement>(null)
@@ -121,6 +133,7 @@ const AppContent = ({ kernel }: AppProps) => {
     kernel?.services?.api ? "ready" : "loading",
   )
   const [connectionError, setConnectionError] = useState<string | null>(null)
+  const [connectionErrorCode, setConnectionErrorCode] = useState<string | null>(null)
   const [connectionAttempt, setConnectionAttempt] = useState(0)
   const [retryingConnection, setRetryingConnection] = useState(false)
   const [panelsByBot, setPanelsByBot] = useState<Record<string, boolean>>(() => readWorkspaceState().panelsByBot ?? {})
@@ -172,6 +185,7 @@ const AppContent = ({ kernel }: AppProps) => {
   useEffect(() => installComputerKillSwitch(activeApi, invokeCommand, setLocalNotice), [activeApi, invokeCommand])
   const workspace = useWorkspace(activeApi, api !== null)
   const { data, actions } = workspace
+  useServerAttention({ api, invoke: invokeCommand, enabled: isNativeDesktop() && serverMode, data })
   const section = route.section
   const advancedPage = route.section === "advanced" ? route.page : null
   const screen = route.section === "bots" ? route.screen : "chat"
@@ -195,7 +209,8 @@ const AppContent = ({ kernel }: AppProps) => {
     const fail = (reason: string): void => {
       clearTimeout(startupTimer)
       setConnectionState("error")
-      setConnectionError(reason)
+      setConnectionError(serverMode ? serverModeError(reason) : reason)
+      setConnectionErrorCode(serverModeErrorCode(reason))
       setRetryingConnection(false)
     }
     const connect = async (): Promise<void> => {
@@ -210,7 +225,14 @@ const AppContent = ({ kernel }: AppProps) => {
           setConnectionState("ready")
           return
         }
-        const endpoint = isTauriRuntime() ? await resolveSidecarEndpoint(invokeCommand) : webEndpoint(window.location)
+        if (isTauriRuntime() && !serverState.status) throw new Error("SERVER_STATUS")
+        const resolveEndpoint = async () => {
+          const endpoint = await resolveSidecarEndpoint(invokeCommand)
+          return serverState.status?.mode === "server"
+            ? { ...endpoint, scope: serverState.status.url ?? "https://unavailable.invalid" }
+            : endpoint
+        }
+        const endpoint = isTauriRuntime() ? await resolveEndpoint() : webEndpoint(window.location)
         if (!active || attempt !== generation) return
         const existing = apiRef.current
         existing?.updateEndpoint?.(endpoint)
@@ -218,7 +240,7 @@ const AppContent = ({ kernel }: AppProps) => {
           ? existing
           : createApiClient({
               endpoint,
-              ...(isTauriRuntime() ? { resolveEndpoint: () => resolveSidecarEndpoint(invokeCommand) } : {}),
+              ...(isTauriRuntime() ? { resolveEndpoint } : {}),
             })
         await resolved.request("GET /health", {})
         if (!active || attempt !== generation) return
@@ -226,6 +248,7 @@ const AppContent = ({ kernel }: AppProps) => {
         setApi(resolved)
         setConnectionState("ready")
         setConnectionError(null)
+        setConnectionErrorCode(null)
         setRetryingConnection(false)
       } catch (error) {
         if (!active || attempt !== generation) return
@@ -234,7 +257,7 @@ const AppContent = ({ kernel }: AppProps) => {
           return
         }
         fail(errorMessage(error))
-        if (!isTauriRuntime()) {
+        if (!isTauriRuntime() || serverMode) {
           retryTimer = setTimeout(() => {
             if (active) void connect()
           }, 2000)
@@ -286,7 +309,7 @@ const AppContent = ({ kernel }: AppProps) => {
         stop()
       })
     }
-  }, [invokeCommand, kernel?.services?.api, connectionAttempt])
+  }, [invokeCommand, kernel?.services?.api, connectionAttempt, serverMode, serverState.status])
 
   useEffect(() => {
     if (!api || api.isMock) return
@@ -301,10 +324,15 @@ const AppContent = ({ kernel }: AppProps) => {
         return
       }
       setConnectionState("error")
-      setConnectionError(t("The sidecar connection is not available."))
+      setConnectionError(
+        serverMode ? t("Servidor offline. Tentando reconectar…") : t("The sidecar connection is not available."),
+      )
       if (isTauriRuntime()) {
         void resolveSidecarEndpoint(invokeCommand).catch((error: unknown) => {
-          if (active && disconnected) setConnectionError(errorMessage(error))
+          if (active && disconnected) {
+            setConnectionError(serverMode ? serverModeError(error) : errorMessage(error))
+            setConnectionErrorCode(serverModeErrorCode(error))
+          }
         })
       }
     })
@@ -312,7 +340,7 @@ const AppContent = ({ kernel }: AppProps) => {
       active = false
       unsubscribe?.()
     }
-  }, [api, invokeCommand])
+  }, [api, invokeCommand, serverMode])
 
   useEffect(() => {
     const handler = (event: KeyboardEvent): void => {
@@ -337,27 +365,49 @@ const AppContent = ({ kernel }: AppProps) => {
     return () => window.removeEventListener("keydown", handler)
   }, [])
 
-  const [pendingLink, setPendingLink] = useState<DeepLink | null>(() => parseDeepLink(window.location.search))
+  const [pendingLink, setPendingLink] = useState<DeepLinkRequest | null>(() =>
+    isTauriRuntime() ? parseDeepLink(window.location.search) : null,
+  )
   useEffect(() => {
-    if (!isTauriRuntime()) return
-    let unlisten: (() => void) | null = null
-    let cancelled = false
-    void listen<DeepLink>("deep-link", (event) => setPendingLink(event.payload)).then((stop) => {
-      if (cancelled) stop()
-      else unlisten = stop
+    if (!isTauriRuntime() || requestedComputer) return
+    return installNativeDeepLinks({
+      listen: (receive) => listen("deep-link", (event) => receive(event.payload)),
+      invoke: invokeCommand,
+      onLink: setPendingLink,
     })
-    return () => {
-      cancelled = true
-      unlisten?.()
-    }
-  }, [])
+  }, [invokeCommand, requestedComputer])
   useEffect(() => {
     if (!pendingLink || data.bots.length === 0) return
     actions.selectLocation(pendingLink)
     setRoute({ section: "bots", screen: "chat" })
     setPendingLink(null)
-    if (!isTauriRuntime()) window.history.replaceState(null, "", window.location.pathname)
-  }, [pendingLink, data.bots.length, actions, setRoute])
+    if (pendingLink.requestId !== undefined)
+      void invokeCommand("deep_link_ack", { requestId: pendingLink.requestId }).catch(() => undefined)
+  }, [pendingLink, data.bots.length, actions, setRoute, invokeCommand])
+
+  const restoreWebLocation = useCallback(
+    (location: DeepLink, restoredRoute?: AppRoute): void => {
+      actions.selectLocation(location)
+      // Browser traversal supersedes any pending page snapshot before restoring synchronously.
+      navigatePage(route, restoredRoute ?? { section: "bots", screen: "chat" }, updateRoute, { immediate: true })
+    },
+    [actions.selectLocation, route],
+  )
+  const webLocationExists = useCallback(
+    ({ bot, thread }: DeepLink): boolean =>
+      (bot === null || data.bots.some((item) => item.id === bot)) &&
+      (thread === null || data.threads.some((item) => item.id === thread && item.botId === bot)),
+    [data.bots, data.threads],
+  )
+  useWebNavigation({
+    enabled: !isTauriRuntime() && !requestedComputer,
+    ready: api !== null && data.loaded,
+    bot: data.selectedBotId,
+    thread: data.selectedThreadId,
+    route,
+    restore: restoreWebLocation,
+    exists: webLocationExists,
+  })
 
   const [approvalFocus, setApprovalFocus] = useState<(ApprovalTarget & { request: number }) | null>(null)
   const reviewApproval = (target: ApprovalTarget): void => {
@@ -569,7 +619,8 @@ const AppContent = ({ kernel }: AppProps) => {
     setConnectionError((current) => current ?? data.notice ?? t("The sidecar connection is not available."))
     setRetryingConnection(true)
     try {
-      if (isTauriRuntime()) await withStartupDeadline(invokeCommand("sidecar_restart", {}))
+      if (isTauriRuntime() && serverState.error) await withStartupDeadline(serverState.refresh())
+      if (isTauriRuntime() && !serverMode) await withStartupDeadline(invokeCommand("sidecar_restart", {}))
       setConnectionAttempt((attempt) => attempt + 1)
     } catch (error) {
       setConnectionState("error")
@@ -578,23 +629,55 @@ const AppContent = ({ kernel }: AppProps) => {
     }
   }
 
-  if (connectionState === "error" && !(api?.sendMessage && data.bots.length > 0))
-    return (
+  const settingsModal = modal === "settings" && (
+    <SettingsModal
+      api={api ?? undefined}
+      invokeCommand={invokeCommand}
+      doctor={data.doctor}
+      doctorError={data.doctorError}
+      onRefreshDoctor={actions.refreshDoctor}
+      onImport={() => setModal("import")}
+      initialSection={settingsInitialSection}
+      focusSetting={settingFocus}
+      settings={data.settings}
+      serverConnectionErrorCode={connectionErrorCode}
+      onClose={closeModal}
+      onSave={actions.updateSettings}
+    />
+  )
+  const openServerSettings = () => {
+    setSettingsInitialSection("advanced")
+    setModal("settings")
+  }
+  const recovery = (reason: string) => (
+    <>
       <SidecarErrorScreen
-        reason={connectionError ?? t("Unknown connection error")}
+        reason={reason}
         onRetry={retryConnection}
         retrying={retryingConnection}
+        serverMode={serverMode}
+        onSettings={isNativeDesktop() ? openServerSettings : undefined}
       />
-    )
-  if (!api && connectionState === "loading") return <LoadingScreen />
-  if (!api)
-    return <SidecarErrorScreen reason={t("The sidecar connection is not available.")} onRetry={retryConnection} />
-  if (data.loading && data.bots.length === 0) return <LoadingScreen />
-  if (!api.isMock && data.bots.length === 0 && data.notice)
-    return <SidecarErrorScreen reason={data.notice} onRetry={retryConnection} />
+      {settingsModal}
+    </>
+  )
+  const loading = () => (
+    <>
+      <LoadingScreen serverMode={serverMode} onSettings={isNativeDesktop() ? openServerSettings : undefined} />
+      {settingsModal}
+    </>
+  )
+  if (connectionState === "error" && !(api?.sendMessage && data.bots.length > 0))
+    return recovery(connectionError ?? t("Unknown connection error"))
+  if (!api && connectionState === "loading") return loading()
+  if (!api) return recovery(t("The sidecar connection is not available."))
+  if (data.loading && data.bots.length === 0) return loading()
+  if (!api.isMock && data.bots.length === 0 && data.notice) return recovery(data.notice)
   // Doctor and import are reachable from onboarding, before any bot exists, so they render outside the main layout too.
   const setupModal =
-    modal === "doctor" ? (
+    modal === "settings" ? (
+      settingsModal
+    ) : modal === "doctor" ? (
       <DoctorModal
         api={api}
         doctor={data.doctor}
@@ -679,6 +762,7 @@ const AppContent = ({ kernel }: AppProps) => {
           onCreateBot={() => openModal("bot")}
           onDoctor={() => openModal("doctor")}
           onImport={() => openModal("import")}
+          onSettings={isNativeDesktop() ? openServerSettings : undefined}
         />
         <MotionPresence show={setupModal !== null} kind="modal">
           <ErrorBoundary key={modal} area="o diálogo" dialog api={api} onClose={closeModal}>
@@ -725,7 +809,14 @@ const AppContent = ({ kernel }: AppProps) => {
         <HistoryMigrationStatus api={api} />
         {connectionState === "error" && (
           <div className="notice-bar" role="status">
-            Sem conexão. Suas mensagens ficam na fila e serão enviadas ao reconectar.
+            {serverMode
+              ? t("Servidor offline. Suas mensagens ficam na fila e serão enviadas ao reconectar.")
+              : t("Sem conexão. Suas mensagens ficam na fila e serão enviadas ao reconectar.")}
+            {serverMode && (
+              <button type="button" className="button button-quiet" onClick={openServerSettings}>
+                {t("Usar um servidor touri")}
+              </button>
+            )}
           </div>
         )}
         {/* r8 motion: transient notice presence */}
@@ -788,6 +879,8 @@ const AppContent = ({ kernel }: AppProps) => {
         <ApprovalNotice notifications={data.notifications} messages={data.activityMessages} onReview={reviewApproval} />
         <div className="app-grid">
           <SidebarDrawer
+            serverMode={serverMode}
+            serverUrl={serverState.status?.url ?? null}
             host={data.routineHost}
             groups={data.groups}
             onNewGroup={() => {
@@ -914,6 +1007,15 @@ const AppContent = ({ kernel }: AppProps) => {
                         bot={selectedBot}
                         messages={selectedMessages}
                         runs={data.runs}
+                        projects={data.projects}
+                        onOpenModel={() => openModal("bot-model")}
+                        onSelectProject={async (projectId) => {
+                          if (selectedBot) await actions.updateBot(selectedBot.id, { projectId })
+                        }}
+                        onAddProject={() => {
+                          openModal("project")
+                          setProjectLinkBotId(selectedBot?.id ?? null)
+                        }}
                         routines={data.routines}
                         routineRuns={data.routineRuns}
                         onSend={actions.sendMessage}
@@ -1004,19 +1106,6 @@ const AppContent = ({ kernel }: AppProps) => {
                               onModel={() => openModal("bot-model")}
                               onPermissions={() => openModal("bot-permissions")}
                               onPreview={() => setScreen("preview")}
-                              active={data.runs.some(
-                                (run) =>
-                                  run.botId === selectedBot.id &&
-                                  ["queued", "starting", "running"].includes(run.status),
-                              )}
-                              projects={data.projects}
-                              onSelectProject={async (projectId) => {
-                                if (selectedBot) await actions.updateBot(selectedBot.id, { projectId })
-                              }}
-                              onAddProject={() => {
-                                openModal("project")
-                                setProjectLinkBotId(selectedBot?.id ?? null)
-                              }}
                               onRole={(roleLine) => actions.updateBot(selectedBot.id, { roleLine })}
                             />
                           </ErrorBoundary>
@@ -1074,21 +1163,6 @@ const AppContent = ({ kernel }: AppProps) => {
                 onNotice={showNotice}
               />
             )}
-            {modal === "settings" && (
-              <SettingsModal
-                api={api}
-                invokeCommand={invokeCommand}
-                doctor={data.doctor}
-                doctorError={data.doctorError}
-                onRefreshDoctor={actions.refreshDoctor}
-                onImport={() => setModal("import")}
-                initialSection={settingsInitialSection}
-                focusSetting={settingFocus}
-                settings={data.settings}
-                onClose={closeModal}
-                onSave={actions.updateSettings}
-              />
-            )}
             {modal === "bot-model" && selectedBot && (
               <BotModelModal
                 key={`${selectedBot.id}:${selectedBot.provider}`}
@@ -1115,10 +1189,21 @@ const AppContent = ({ kernel }: AppProps) => {
   )
 }
 
-const LoadingScreen = () => (
+const LoadingScreen = ({
+  serverMode = false,
+  onSettings,
+}: {
+  serverMode?: boolean
+  onSettings?: (() => void) | undefined
+}) => (
   <main className="loading-screen">
     <BotAvatar bot={{ id: "touri", color: "#e5322d" }} size={64} mood="connecting" />
-    <p>{t("Warming the local workspace…")}</p>
+    <p>{t(serverMode ? "Conectando ao servidor…" : "Warming the local workspace…")}</p>
+    {onSettings && (
+      <button type="button" className="button button-quiet" onClick={onSettings}>
+        {t("Usar um servidor touri")}
+      </button>
+    )}
     <MotionSkeleton />
   </main>
 )
@@ -1127,22 +1212,28 @@ const SidecarErrorScreen = ({
   reason,
   onRetry,
   retrying = false,
+  serverMode = false,
+  onSettings,
 }: {
   reason: string
   onRetry: () => void
   retrying?: boolean
+  serverMode?: boolean
+  onSettings?: (() => void) | undefined
 }) => (
   <main className="error-screen">
     <div className="error-card" role="alert">
       <img className="error-bull" src="/touri-bull.png" alt="touri" />
-      <p className="eyebrow">{t("local connection")}</p>
+      <p className="eyebrow">{serverMode ? t("Modo servidor") : t("local connection")}</p>
       <h1>{t("Couldn’t connect to touri services.")}</h1>
       <p>
-        {reason === startupTimeoutMessage() || reason.startsWith("sidecar handshake timed out")
-          ? startupTimeoutMessage()
-          : reason.startsWith("schema mismatch:")
-            ? t("The app and the local service use incompatible versions.")
-            : t("Touri is unavailable until the local service reconnects.")}
+        {serverMode
+          ? t("Servidor offline. Tentando reconectar…")
+          : reason === startupTimeoutMessage() || reason.startsWith("sidecar handshake timed out")
+            ? startupTimeoutMessage()
+            : reason.startsWith("schema mismatch:")
+              ? t("The app and the local service use incompatible versions.")
+              : t("Touri is unavailable until the local service reconnects.")}
       </p>
       <div className="error-reason">
         <ErrorNotice error={reason} showActions={false} />
@@ -1151,6 +1242,11 @@ const SidecarErrorScreen = ({
         {t("Retry connection")}
         <span>→</span>
       </button>
+      {onSettings && (
+        <button type="button" className="button button-quiet" onClick={onSettings}>
+          {t("Usar um servidor touri")}
+        </button>
+      )}
       <ReportErrorButton message={reason} fallbackCode="TOURI-E1009" offline />
       <small>{t("The app will not replace your workspace with demo data.")}</small>
     </div>
@@ -1162,11 +1258,13 @@ const OnboardingLanding = ({
   onCreateBot,
   onDoctor,
   onImport,
+  onSettings,
 }: {
   host: "mac" | "server"
   onCreateBot: () => void
   onDoctor: () => void
   onImport: () => void
+  onSettings?: (() => void) | undefined
 }) => (
   <main className="onboarding-screen">
     <div className="onboarding-card">
@@ -1182,6 +1280,11 @@ const OnboardingLanding = ({
         </button>
       </div>
       <div className="onboarding-secondary">
+        {onSettings && (
+          <button type="button" className="text-button" onClick={onSettings}>
+            {t("Usar um servidor touri")}
+          </button>
+        )}
         <span>
           {t("Already use another tool?")}{" "}
           <button type="button" className="text-button" onClick={onImport}>
@@ -1197,12 +1300,12 @@ const OnboardingLanding = ({
 )
 
 const App = (props: AppProps) => (
-  <>
+  <ServerModeProvider invoke={props.kernel?.services?.invoke ?? undefined} fallback={<LoadingScreen />}>
     <ErrorBoundary area="o app" app api={props.kernel?.services?.api ?? undefined}>
       <AppContent {...props} />
     </ErrorBoundary>
     <ReportMenuLauncher api={props.kernel?.services?.api ?? undefined} />
-  </>
+  </ServerModeProvider>
 )
 
 export default App

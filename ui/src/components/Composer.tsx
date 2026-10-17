@@ -1,10 +1,11 @@
-import type { Bot, Id, Run } from "@touri/contracts"
+import type { Bot, Id, Project, Run } from "@touri/contracts"
 import { type ComponentProps, type RefObject, useEffect, useId, useLayoutEffect, useRef, useState } from "react"
 import type { UiApi } from "../api/client"
 import { attachmentAccept, maxAttachmentBytes } from "../attachmentFiles"
 import { composerKeyAction } from "../composerKeys"
 import { userFacingError } from "../errors"
 import { useCloudAccount } from "../features/cloud/useCloudAccount"
+import { useIsServerMode } from "../features/server/serverMode"
 import { dropRejectionMessage, type FileDrop, listenForFileDrops } from "../fileDrops"
 import { t } from "../i18n"
 import { useComposerMachineIntent } from "../machineIntents"
@@ -12,8 +13,10 @@ import { useProviderLogin } from "../useProviderLogin"
 import { useMascotComposer } from "./AvatarRuntime"
 import { BotAvatar } from "./BotAvatar"
 import { ComposerNotice } from "./ComposerNotice"
+import { ComposerProjectChip } from "./ComposerProjectChip"
 import { ErrorText } from "./ErrorDetails"
 import { ProviderLoginFlow } from "./ProviderLoginFlow"
+import { providerName } from "./ProviderMark"
 import { useReveal } from "./Reveal"
 import "./Composer.css"
 
@@ -30,6 +33,11 @@ type ComposerProps = {
   inputRef: RefObject<HTMLTextAreaElement | null>
   attachmentButtonRef?: RefObject<HTMLButtonElement | null> | undefined
   activeRun: Run | null
+  botActive?: boolean
+  projects?: Project[] | undefined
+  onOpenModel?: (() => void) | undefined
+  onSelectProject?: ((projectId: Id | null) => Promise<void>) | undefined
+  onAddProject?: (() => void) | undefined
   queuedCount: number
   onSend: (text: string, parentId?: Id | null, attachmentIds?: Array<Id>) => Promise<void>
   onCancel: (runId: Id) => Promise<void>
@@ -80,11 +88,17 @@ export const Composer = ({
   inputRef,
   attachmentButtonRef,
   activeRun,
+  botActive = false,
+  projects = [],
+  onOpenModel,
+  onSelectProject,
+  onAddProject,
   queuedCount,
   onSend,
   onCancel,
   notice,
 }: ComposerProps) => {
+  const serverMode = useIsServerMode()
   const login = useProviderLogin(api, bot?.id ?? "", bot?.provider ?? "codex", !!bot && bot.machine !== "cloud", false)
   const { account: cloudAccount } = useCloudAccount(api, bot?.machine === "cloud")
   const cloudUnavailable = bot?.machine === "cloud" && cloudAccount?.runtimeAvailable !== true
@@ -149,6 +163,9 @@ export const Composer = ({
   useLayoutEffect(() => {
     const input = inputRef.current
     if (!input) return
+    // Native sizing avoids forcing transcript layout several times on every edit.
+    // Keep the measured fallback for webviews that do not support it yet.
+    if (typeof CSS !== "undefined" && CSS.supports?.("field-sizing", "content")) return
     const measure = () => {
       const current = input.getBoundingClientRect().height
       input.style.transition = "none"
@@ -199,12 +216,12 @@ export const Composer = ({
   const attachGrantedRef = useRef(attachGranted)
   attachGrantedRef.current = attachGranted
   useEffect(() => {
-    if (!("__TAURI_INTERNALS__" in window)) return
+    if (serverMode || !("__TAURI_INTERNALS__" in window)) return
     return listenForFileDrops({
       onActive: setDragging,
       onDrop: (drop) => void attachGrantedRef.current(drop),
     })
-  }, [])
+  }, [serverMode])
   const addBrowserFiles = async (selected: FileList | null) => {
     if (!selected?.length) return
     const upload = api.uploadAttachment
@@ -333,7 +350,7 @@ export const Composer = ({
       onDrop={(event) => {
         event.preventDefault()
         setDragging(false)
-        if (!("__TAURI_INTERNALS__" in window)) addBrowserFiles(event.dataTransfer.files)
+        if (serverMode || !("__TAURI_INTERNALS__" in window)) addBrowserFiles(event.dataTransfer.files)
       }}
     >
       {dragging && (
@@ -481,6 +498,37 @@ export const Composer = ({
           >
             <Icon kind="attach" />
           </button>
+          {bot && bot.machine !== "cloud" && (
+            <>
+              {onOpenModel && (
+                <button
+                  type="button"
+                  className="composer-model"
+                  aria-label={t("Choose model")}
+                  title={t("Bot model sentence", {
+                    provider: providerName(bot.provider),
+                    model: bot.model || t("Padrão do provedor"),
+                  })}
+                  onClick={onOpenModel}
+                >
+                  <span className="composer-model-name">
+                    {providerName(bot.provider)} · {bot.model || t("Padrão do provedor")}
+                  </span>
+                  <span aria-hidden="true">⌄</span>
+                </button>
+              )}
+              {onSelectProject && (
+                <ComposerProjectChip
+                  key={bot.id}
+                  bot={bot}
+                  projects={projects}
+                  active={botActive || Boolean(activeRun)}
+                  onSelect={onSelectProject}
+                  onAdd={onAddProject}
+                />
+              )}
+            </>
+          )}
         </div>
         <div className="composer-actions">
           {activeRun && !showStop && (

@@ -12,6 +12,15 @@ if (!bot || !thread || !reply) throw new Error("Missing data fixture")
 bot.name = "Dados"
 bot.projectId = null
 bot.homeDir = "/workspace/bot"
+if (new URLSearchParams(location.search).has("full")) {
+  Object.assign(bot, {
+    machine: "local",
+    access: "full",
+    approvals: "never",
+    anyFolderAccess: false,
+    folders: [{ path: "/workspace/reference", access: "read-only" }],
+  })
+}
 Object.assign(reply, {
   id: "missing-data",
   threadId: thread.id,

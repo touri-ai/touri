@@ -1,4 +1,3 @@
-import { existsSync } from "node:fs"
 import { homedir, tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import type { Kernel, StartTurnArgs } from "@touri/contracts"
@@ -9,16 +8,21 @@ import {
   resolveBotFolder,
   withinFolder,
 } from "../kernel/bot-folders"
+import { folderAccessUnavailable, hostFolderAccessAvailable, linuxSandboxBinary } from "../kernel/folder-capability"
 import { resolveMcpSocketPath } from "../kernel/paths"
+import { linuxFolderEnvironment, linuxFolderSandbox } from "./linux-folder-sandbox"
 
 // Keep the picker preflight aligned with the host provider's actual boundary.
-export const hostFolderAccessAvailable = (): boolean =>
-  process.platform === "darwin" && existsSync("/usr/bin/sandbox-exec")
+export { hostFolderAccessAvailable } from "../kernel/folder-capability"
 
 export const turnFolders = (args: StartTurnArgs) => {
+  // Full local access is the user's opt-in to the OS user's permissions. Saved
+  // grants must neither narrow it nor fail validation before the provider starts.
+  // Guest execution still needs its explicit host mounts.
+  if (args.bot.access === "full" && !args.execution) return []
   const folders = (args.bot.folders ?? []).map((folder) => {
     if (args.execution) return { ...folder, path: folderGuestPath(folder.path) }
-    const path = resolveBotFolder(folder.path)
+    const path = resolveBotFolder(folder.path, process.platform !== "linux")
     if (path !== folder.path) throw new Error("A pasta mudou de destino. Adicione-a novamente nas configurações.")
     return { ...folder, path }
   })
@@ -43,6 +47,7 @@ export const localFolderProfile = (
   env: Record<string, string>,
   home = homedir(),
 ): string => {
+  if (args.bot.access === "full" && !args.execution) return "(version 1)\n(allow default)"
   const folders = turnFolders(args)
   const explicit = args.bot.folders ?? []
   // Provider bookkeeping must remain writable even for a read-only conversation.
@@ -116,9 +121,19 @@ export const localFolderProfile = (
       rules.push(`(deny file-read* file-write* (require-all ${subpath(denied)} ${except(exemptions)}))`)
     }
   }
-  // Full provider access never makes read-only folder grants writable.
   return rules.join("\n")
 }
+
+/**
+ * Off macOS, only a bot with explicit folder grants is confined. Full access
+ * means no folder restriction, so its saved grants never wrap or break a turn;
+ * grant-free and tool-free turns keep the provider's own boundary.
+ */
+export const folderConfinementRequired = (args: StartTurnArgs): boolean =>
+  !args.execution &&
+  !args.conversationOnly &&
+  args.bot.access !== "full" &&
+  (!!args.bot.anyFolderAccess || !!args.bot.folders?.length)
 
 export const spawnFolderProvider = (
   kernel: Kernel,
@@ -126,11 +141,34 @@ export const spawnFolderProvider = (
   input: Parameters<Kernel["spawnTree"]>[0],
 ): ReturnType<Kernel["spawnTree"]> => {
   if (args.execution) return args.execution.spawn(input)
-  // Do not silently drop the security boundary on a host without Seatbelt.
-  if (process.platform !== "darwin" && !args.bot.anyFolderAccess && !args.bot.folders?.length)
-    return kernel.spawnTree(input)
-  if (!hostFolderAccessAvailable())
-    return { success: false, errorCode: "SPAWN_FAILED", error: "O acesso a pastas requer o sandbox do macOS." }
+  if (args.bot.access === "full") return kernel.spawnTree(input)
+  if (process.platform !== "darwin") {
+    if (!folderConfinementRequired(args)) return kernel.spawnTree(input)
+    // Never silently drop a folder grant's platform boundary.
+    const binary = linuxSandboxBinary()
+    if (!binary || !hostFolderAccessAvailable())
+      return { success: false, errorCode: "SPAWN_FAILED", error: folderAccessUnavailable }
+    try {
+      return kernel.spawnTree({
+        ...input,
+        cmd: binary,
+        env: linuxFolderEnvironment(args, input.env),
+        args: [
+          ...linuxFolderSandbox(kernel, args, input.env, input.env.HOME ?? homedir(), input.cmd),
+          "--",
+          input.cmd,
+          ...input.args,
+        ],
+      })
+    } catch (error) {
+      return {
+        success: false,
+        errorCode: "SPAWN_FAILED",
+        error: error instanceof Error ? error.message : folderAccessUnavailable,
+      }
+    }
+  }
+  if (!hostFolderAccessAvailable()) return { success: false, errorCode: "SPAWN_FAILED", error: folderAccessUnavailable }
   return kernel.spawnTree({
     ...input,
     cmd: "/usr/bin/sandbox-exec",

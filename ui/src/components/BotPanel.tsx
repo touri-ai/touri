@@ -1,4 +1,4 @@
-import type { Bot, BotGroup, Id, MachineState, Project, Routine } from "@touri/contracts"
+import type { Bot, BotGroup, MachineState, Routine } from "@touri/contracts"
 import { useCallback, useEffect, useRef, useState } from "react"
 import type { UiApi } from "../api/client"
 import { userFacingError } from "../errors"
@@ -8,7 +8,6 @@ import { BotAvatar } from "./BotAvatar"
 import { BotComputer } from "./BotComputer"
 import { BotDetails } from "./BotDetails"
 import { BotLibrary } from "./BotLibrary"
-import { ComposerProjectChip } from "./ComposerProjectChip"
 import { ErrorText } from "./ErrorDetails"
 import { useSegmentedControl } from "./Motion"
 import { PanelIcon } from "./PanelIcon"
@@ -35,19 +34,11 @@ export const BotPanel = ({
   onPermissions,
   onRole,
   onPreview,
-  projects = [],
-  active = false,
-  onSelectProject,
-  onAddProject,
   libraryRequest,
   computerTabRequest = 0,
 }: {
   api: UiApi
   onPreview?: () => void
-  projects?: Project[]
-  active?: boolean
-  onSelectProject?: (projectId: Id | null) => Promise<void>
-  onAddProject?: () => void
   groups?: BotGroup[]
   onGroup?: (group: BotGroup) => void
   bot: Bot
@@ -197,16 +188,6 @@ export const BotPanel = ({
         {tab === "details" && (
           <div className="bot-details">
             <BotDetails bot={bot} onSettings={onSettings} onModel={onModel} onPermissions={onPermissions}>
-              {bot.machine !== "cloud" && onSelectProject && (
-                <ComposerProjectChip
-                  key={bot.id}
-                  bot={bot}
-                  projects={projects}
-                  active={active}
-                  onSelect={onSelectProject}
-                  onAdd={onAddProject}
-                />
-              )}
               {onPreview && (
                 <button className="button button-quiet" type="button" onClick={onPreview}>
                   {t("Project preview")}

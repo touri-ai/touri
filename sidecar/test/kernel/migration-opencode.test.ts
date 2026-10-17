@@ -4,6 +4,7 @@ import { copyFileSync, mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { openDatabase, SCHEMA_VERSION } from "../../src/kernel/db"
+import { assertLiveTranscriptReferences } from "./migration-transcript-fixture"
 
 test("0012 upgrades a copy of a populated schema 11 database, preserving rows, indexes, triggers and inbound FKs", async () => {
   const root = mkdtempSync(join(tmpdir(), "touri-opencode-upgrade-"))
@@ -59,12 +60,16 @@ test("0012 upgrades a copy of a populated schema 11 database, preserving rows, i
         expect(
           db
             .query(
-              `SELECT ${columns.get(table)} FROM ${table} ${table === "settings" ? "WHERE key NOT LIKE 'memory-trust:%'" : ""} ORDER BY 1`,
+              `SELECT ${columns.get(table)} FROM ${table} ${table === "settings" ? "WHERE key NOT LIKE 'memory-trust:%' AND key <> 'storage.upgrade.22'" : ""} ORDER BY 1`,
             )
             .all(),
         ).toEqual(before.get(table) ?? [])
         expect(db.query(`PRAGMA foreign_key_list(${table})`).all()).toEqual(fks.get(table) ?? [])
       }
+      const upgrade = db.query("SELECT value_json FROM settings WHERE key='storage.upgrade.22'").get() as {
+        value_json: string
+      }
+      expect(JSON.parse(upgrade.value_json)).toEqual({ cursor: 0, total: 1, backup: false })
       expect(db.query("PRAGMA foreign_key_check").all()).toEqual([])
       expect(db.query("PRAGMA integrity_check").get()).toEqual({ integrity_check: "ok" })
       expect(db.query("PRAGMA foreign_keys").get()).toEqual({ foreign_keys: 1 })
@@ -101,6 +106,8 @@ test("0012 upgrades a copy of a populated schema 11 database, preserving rows, i
       ),
     ).toThrow()
     expect(() => db.exec("UPDATE bots SET provider='unknown' WHERE id='c'")).toThrow()
+    assertLiveTranscriptReferences(db, "t")
+    expect(db.query("PRAGMA foreign_key_check").all()).toEqual([])
     const fixture = new Database(original, { readonly: true })
     expect(fixture.query("SELECT provider FROM bots WHERE id='c'").get()).toEqual({ provider: "codex" })
     fixture.close()

@@ -1,7 +1,7 @@
 import { redactToolText } from "@touri/contracts/redaction"
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import type { UiApi } from "../api/client"
-import { localizeToolText } from "../i18n"
+import { localizeToolText, t } from "../i18n"
 import { contrastAnsiColor } from "./ansiContrast"
 import { parseAnsiOutput } from "./ansiOutput"
 import { browserToolResult } from "./browserToolPresentation"
@@ -13,6 +13,9 @@ import type { ToolLanguage } from "./toolHighlight"
 import { asToolRecord, parseToolValue } from "./toolPresentation"
 
 type OutputImage = { src: string; mime: string }
+const MAX_IMAGE_OUTPUT_BYTES = 20 * 1024 * 1024
+const imageEnvelope = (text: string): boolean =>
+  /"type"\s*:\s*"image"|data:image\/[^;]+;base64,|"(?:dataBase64|imageBase64)"\s*:/.test(text)
 
 const localizedPrettyValue = (value: unknown): string =>
   JSON.stringify(parseToolValue(localizeToolText(redactToolText(JSON.stringify(value)))), null, 2)
@@ -206,19 +209,22 @@ export const ToolOutput = ({
 export const StoredToolOutput = ({
   api,
   attachmentId,
+  preview,
   callId,
   diff = false,
   browser = false,
 }: {
   api?: UiApi | undefined
   attachmentId: string
+  preview?: string | undefined
   callId: string
   diff?: boolean
   browser?: boolean
 }) => {
   const [raw, setRaw] = useState<string | null>(null)
+  const [nextOffset, setNextOffset] = useState<number | null>(0)
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState(false)
+  const [error, setError] = useState<"load" | "image_size" | null>(null)
   const generation = useRef(0)
   useEffect(() => {
     generation.current += 1
@@ -230,35 +236,76 @@ export const StoredToolOutput = ({
     if (!api || loading) return
     const attempt = generation.current
     setLoading(true)
-    setError(false)
+    setError(null)
     try {
-      const file = await api.request("GET /attachments/:id", {}, { id: attachmentId })
-      const text = await file.text()
-      if (generation.current === attempt) setRaw(text)
+      let page = await api.request(
+        "GET /attachments/:id/content",
+        { offset: nextOffset ?? 0, limit: 64 * 1024 },
+        { id: attachmentId },
+      )
+      const chunks = [page.text]
+      // Images need a complete envelope to render. Keep bounded pages private
+      // until the explicit open finishes, so partial base64 never reaches chat.
+      const image = !diff && (preview === "" || imageEnvelope((raw ?? "") + page.text))
+      if (image) {
+        let bytes = new TextEncoder().encode((raw ?? "") + page.text).byteLength
+        while (true) {
+          if (generation.current !== attempt) return
+          if (page.bytes > MAX_IMAGE_OUTPUT_BYTES || bytes > MAX_IMAGE_OUTPUT_BYTES) {
+            setError("image_size")
+            return
+          }
+          if (page.nextOffset === null) break
+          page = await api.request(
+            "GET /attachments/:id/content",
+            { offset: page.nextOffset, limit: 64 * 1024 },
+            { id: attachmentId },
+          )
+          chunks.push(page.text)
+          bytes += new TextEncoder().encode(page.text).byteLength
+        }
+      }
+      if (generation.current === attempt) {
+        setRaw((previous) => (previous ?? "") + chunks.join(""))
+        setNextOffset(page.nextOffset)
+      }
     } catch {
-      if (generation.current === attempt) setError(true)
+      if (generation.current === attempt) setError("load")
     } finally {
       if (generation.current === attempt) setLoading(false)
     }
   }
   const result = browser && raw !== null ? browserToolResult(raw) : null
-  return raw === null ? (
-    <div>
-      <button type="button" className="button button-quiet" disabled={!api || loading} onClick={() => void load()}>
-        {loading ? "Carregando resultado…" : "Abrir resultado completo"}
-      </button>
-      {error && <p role="status">Não foi possível abrir o resultado. Tente novamente.</p>}
-    </div>
-  ) : diff ? (
-    <RevealDetails className="tool-details tool-output" summary="Resultado">
-      <DiffOutput source={raw} />
-    </RevealDetails>
-  ) : (
+  return (
     <>
+      {raw === null && preview && <ToolText text={preview} />}
       {result?.title && <p className="tool-summary">{result.title}</p>}
       {result?.url && <p className="tool-summary">{result.url}</p>}
-      {(result ? result.output : raw) != null && (
-        <ToolOutput raw={(result ? result.output : raw) ?? ""} callId={callId} />
+      {raw !== null &&
+        (diff ? (
+          <RevealDetails className="tool-details tool-output" summary="Resultado">
+            <DiffOutput source={raw} />
+          </RevealDetails>
+        ) : (
+          (result ? result.output : raw) != null && (
+            <ToolOutput raw={(result ? result.output : raw) ?? ""} callId={callId} />
+          )
+        ))}
+      {nextOffset !== null && (
+        <button type="button" className="button button-quiet" disabled={!api || loading} onClick={() => void load()}>
+          {loading
+            ? t("Carregando resultado…")
+            : raw === null
+              ? t("Abrir resultado completo")
+              : t("Carregar mais saída")}
+        </button>
+      )}
+      {error && (
+        <p role="status">
+          {error === "image_size"
+            ? t("Esta imagem é grande demais para abrir aqui.")
+            : t("Não foi possível abrir o resultado. Tente novamente.")}
+        </p>
       )}
     </>
   )

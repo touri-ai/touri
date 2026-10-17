@@ -176,27 +176,38 @@ it("keeps approved execution separate from the decision, including its recorded 
   expect(view.container.querySelector(".tool-status-chip")).toHaveTextContent("Executando")
 })
 
-it("retains decision time and focuses the collapsed group when a server update moves the approval", async () => {
-  vi.spyOn(Date, "now").mockReturnValue(timestamp)
-  const api = createMockApi()
-  let resolve: () => void = () => undefined
-  api.request = vi.fn(
-    () =>
-      new Promise<void>((done) => {
-        resolve = done
-      }),
-  ) as ApiRequest
-  const props = { api, finished: false, createdAt: timestamp }
-  const view = render(<ToolCallList {...props} parts={[tool, approval]} />)
-  fireEvent.click(screen.getByRole("button", { name: "Aprovar" }))
-  view.rerender(<ToolCallList {...props} parts={[tool, { ...approval, decision: "approved" }]} />)
-  await act(async () => resolve())
-  const card = screen.getByRole("article", { name: "Aprovação de ferramenta" })
-  expect(view.container.querySelector(".tool-group > summary")).toHaveFocus()
-  expect(view.container.querySelector(".tool-group")).not.toHaveAttribute("open")
-  expect(card.querySelector(".tool-decision-chip time")).toHaveAttribute("dateTime", new Date(timestamp).toISOString())
-  expect(view.container.querySelectorAll(".tool-call-card")).toHaveLength(1)
-})
+it.each(["before", "after"] as const)(
+  "retains decision time and focuses the closed summary when the server update arrives %s the answer",
+  async (order) => {
+    const user = userEvent.setup()
+    vi.spyOn(Date, "now").mockReturnValue(timestamp)
+    const api = createMockApi()
+    let resolve: () => void = () => undefined
+    api.request = vi.fn(
+      () =>
+        new Promise<void>((done) => {
+          resolve = done
+        }),
+    ) as ApiRequest
+    const props = { api, finished: false, createdAt: timestamp }
+    const view = render(<ToolCallList {...props} parts={[tool, approval]} />)
+    fireEvent.click(screen.getByRole("button", { name: "Aprovar" }))
+    const resolvedParts: MessagePart[] = [tool, { ...approval, decision: "approved" }]
+    if (order === "before") view.rerender(<ToolCallList {...props} parts={resolvedParts} />)
+    await act(async () => resolve())
+    if (order === "after") view.rerender(<ToolCallList {...props} parts={resolvedParts} />)
+    expect(view.container.querySelector(".tool-group > summary")).toHaveFocus()
+    expect(view.container.querySelector(".tool-group")).not.toHaveAttribute("open")
+    expect(view.container.querySelector(".tool-call-card")).toBeNull()
+    await user.click(screen.getByText("1 ferramenta"))
+    const card = await screen.findByRole("article", { name: "Aprovação de ferramenta" })
+    expect(card.querySelector(".tool-decision-chip time")).toHaveAttribute(
+      "dateTime",
+      new Date(timestamp).toISOString(),
+    )
+    expect(view.container.querySelectorAll(".tool-call-card")).toHaveLength(1)
+  },
+)
 
 it.each(["approved", "denied"] as const)(
   "keeps terminal cards collapsed after an approval is %s until the user expands them",
@@ -214,9 +225,9 @@ it.each(["approved", "denied"] as const)(
     const resolved = { ...approval, decision }
     view.rerender(<ToolCallList {...props} parts={[earlier, tool, resolved]} />)
     expect(view.container.querySelector(".tool-group")).not.toHaveAttribute("open")
-    const command = screen.getByText("printf QA_R7_APROVADO")
-    expect(command).not.toBeVisible()
+    expect(screen.queryByText("printf QA_R7_APROVADO")).toBeNull()
     await user.click(screen.getByText("2 ferramentas"))
+    const command = await screen.findByText("printf QA_R7_APROVADO")
     expect(command).toBeVisible()
     view.rerender(
       <ToolCallList
@@ -228,8 +239,49 @@ it.each(["approved", "denied"] as const)(
     expect(view.container.querySelector(".tool-group")).toHaveAttribute("open")
     await user.click(screen.getByText("2 ferramentas"))
     expect(command).not.toBeVisible()
+    await user.click(screen.getByText("2 ferramentas"))
+    expect(command).toBeVisible()
+    expect(screen.getByText("printf QA_R7_APROVADO")).toBe(command)
   },
 )
+
+it("mounts completed tool content on first expansion and preserves technical details when reopened", async () => {
+  const user = userEvent.setup()
+  const view = render(
+    <ToolCallList
+      parts={[{ ...tool, ok: true, outputJson: '{"result":"Generated result"}' }]}
+      finished
+      createdAt={timestamp}
+    />,
+  )
+  expect(screen.getByText("1 ferramenta")).toBeVisible()
+  expect(view.container.querySelector(".tool-group-cards")).toBeNull()
+  expect(view.container.querySelector(".tool-call-card")).toBeNull()
+  expect(screen.queryByText("printf QA_R7_APROVADO")).toBeNull()
+
+  await user.click(screen.getByText("1 ferramenta"))
+  const card = await screen.findByRole("article", { name: "Ferramenta · Terminal" })
+  expect(within(card).getByRole("figure", { name: "Comando" })).toHaveTextContent("printf QA_R7_APROVADO")
+  await user.click(within(card).getByText("Detalhes técnicos"))
+  expect(card.querySelector(".tool-technical")).toHaveAttribute("open")
+  await user.click(screen.getByText("1 ferramenta"))
+  expect(card).not.toBeVisible()
+  await user.click(screen.getByText("1 ferramenta"))
+  expect(screen.getByRole("article", { name: "Ferramenta · Terminal" })).toBe(card)
+  expect(card.querySelector(".tool-technical")).toHaveAttribute("open")
+  await user.click(within(card).getByText("Resultado"))
+  expect(card.querySelector(".tool-output")).toHaveAttribute("open")
+  expect(card.querySelector(".tool-output")).toHaveTextContent("Generated result")
+})
+
+it.each([
+  ["pt-BR", 1, "1 ferramenta"],
+  ["pt-BR", 2, "2 ferramentas"],
+  ["en", 1, "1 tool"],
+  ["en", 2, "2 tools"],
+] as const)("localizes the collapsed tool count in %s for %s tools", (locale, count, label) => {
+  expect(t("Tool group count", { count }, locale)).toBe(label)
+})
 
 it("does not invent a decision timestamp for restored approvals", () => {
   const view = render(<ApprovalCard part={{ ...approval, decision: "approved" }} tool={tool} createdAt={timestamp} />)
@@ -316,12 +368,14 @@ it("groups two completed calls inside one disclosure and keeps matched pending a
     />,
   )
   const group = view.container.querySelector(".tool-group")
-  expect(group?.querySelectorAll(".tool-call-card")).toHaveLength(2)
+  expect(group?.querySelectorAll(".tool-call-card")).toHaveLength(0)
   expect(group?.querySelector("[data-approval-id]")).toBeNull()
   expect(screen.getByRole("button", { name: "Aprovar" })).toBeVisible()
-  expect(view.container.querySelectorAll(".tool-call-card")).toHaveLength(3)
+  expect(view.container.querySelectorAll(".tool-call-card")).toHaveLength(1)
   await user.click(screen.getByText("2 ferramentas"))
   expect(screen.getByText("pwd")).toBeVisible()
+  expect(group?.querySelectorAll(".tool-call-card")).toHaveLength(2)
+  expect(view.container.querySelectorAll(".tool-call-card")).toHaveLength(3)
   expect(screen.getAllByText("Terminal")).toHaveLength(3)
 })
 

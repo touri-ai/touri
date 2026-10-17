@@ -185,7 +185,7 @@ export const ComposerProjectChip = ({
                 aria-disabled={saving}
                 onClick={() => void select(null)}
               >
-                <span>{t("Nenhum projeto (começa na pasta do bot)")}</span>
+                <span>{t("Somente pasta do bot")}</span>
                 <span aria-hidden="true">{bot.projectId === null ? "✓" : ""}</span>
               </button>
               <button
@@ -204,7 +204,7 @@ export const ComposerProjectChip = ({
             </div>
             {bot.machine === "vm" && (
               <p id={noteId} className="composer-project-note">
-                {t("Commit Git copiado para /workspace a partir da próxima mensagem.")}
+                {t("O commit Git do projeto será copiado para /workspace no próximo turno.")}
               </p>
             )}
             {error && (

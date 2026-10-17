@@ -9,6 +9,7 @@ import { createStandingGrantStore } from "../../src/approvals/grants"
 import { mcpStartupChecks } from "../../src/doctor/mcp"
 import { createKernel } from "../../src/kernel"
 import { openDatabase } from "../../src/kernel/db"
+import { hostFolderAccessAvailable } from "../../src/kernel/folder-capability"
 import { init as initNotify } from "../../src/notify"
 import { createCodexAdapter } from "../../src/runtime/codex/adapter"
 import { createRuntimeEngine } from "../../src/runtime/engine"
@@ -16,6 +17,7 @@ import { MCP_STARTUP_MESSAGE } from "../../src/runtime/mcp-startup"
 import { createRuntimePersistence } from "../../src/runtime/persistence"
 import { createRoutineScheduler } from "../../src/runtime/routines/scheduler"
 import { init as initStore } from "../../src/store"
+import { fakeProviderSpawn } from "../fakes/provider-spawn"
 import { createTestStore, type TestStore } from "./fake-store"
 
 const repoRoot = join(import.meta.dir, "..", "..", "..")
@@ -110,6 +112,7 @@ const fixture = async ({
     ),
   )
   const runtime = createKernel({ appData: root })
+  runtime.kernel.spawnTree = fakeProviderSpawn(runtime.kernel.spawnTree, fakePath, scenario)
   const timestamp = Date.now()
   const bot: Bot = {
     id: "bot-runtime",
@@ -173,7 +176,7 @@ const fixture = async ({
   mkdirSync(bot.homeDir, { recursive: true })
   writeFileSync(join(bot.homeDir, "MEMORY.md"), "Memory fixture\n")
   seedDatabase({ database: runtime.kernel.db as Database, bot, thread })
-  const store = createTestStore({ bot, thread })
+  const store = createTestStore({ bot, thread, publish: runtime.kernel.publish })
   runtime.kernel.services.provide("store.api", store)
   const engine = createRuntimeEngine({
     kernel: runtime.kernel,
@@ -234,6 +237,7 @@ test("pausing a cached routine prevents cron attempts and survives runtime repla
     await waitFor(() => f.engine.listRoutineRuns(result.routine.id)[0]?.status === "succeeded")
     await f.engine.shutdown()
     reopened = createKernel({ appData: f.root })
+    reopened.kernel.spawnTree = fakeProviderSpawn(reopened.kernel.spawnTree, f.fakePath, f.scenario)
     reopened.kernel.services.provide("store.api", f.store)
     replacement = createRuntimeEngine({ kernel: reopened.kernel, codexCommand: f.fakePath })
     await Promise.all([f.engine.tick(Date.now() + 900_000), replacement.tick(Date.now() + 900_000)])
@@ -480,7 +484,7 @@ test.each(["claude", "codex"] as const)(
   },
 )
 
-test("Claude hidden thinking estimates reach live message snapshots without inventing reasoning text", async () => {
+test("provider hidden thinking estimates reach live parts without inventing reasoning text", async () => {
   const thinking = (estimated_tokens: number) => ({
     type: "stream_event",
     event: {
@@ -496,10 +500,15 @@ test("Claude hidden thinking estimates reach live message snapshots without inve
       events: [thinking(120), thinking(230), { type: "delta", delta: "Pronto." }, { type: "complete" }],
     },
   })
-  const snapshots: Message[] = []
+  const live: Message["parts"][] = []
   const unsubscribe = f.runtime.kernel.subscribe(({ event }) => {
-    if ((event.type === "message.created" || event.type === "message.updated") && event.message.role === "assistant")
-      snapshots.push(event.message)
+    if (
+      (event.type === "message.created" || event.type === "message.updated") &&
+      event.message.role === "assistant" &&
+      event.message.status === "streaming"
+    )
+      live.push(event.message.parts)
+    if (event.type === "message.parts") live.push(event.parts.map(({ part }) => part))
   })
   try {
     await initStore(f.runtime.kernel)
@@ -513,15 +522,12 @@ test("Claude hidden thinking estimates reach live message snapshots without inve
     if (!queued.success) throw new Error(queued.error)
     await waitFor(() => terminal(queued.run.status))
     expect(queued.run.status).toBe("succeeded")
-    const live = snapshots.filter((message) => message.status === "streaming")
     expect(
       new Set(
-        live.flatMap((message) =>
-          message.parts.flatMap((part) => (part.type === "reasoning" ? [part.estimatedTokens] : [])),
-        ),
+        live.flatMap((parts) => parts.flatMap((part) => (part.type === "reasoning" ? [part.estimatedTokens] : []))),
       ),
     ).toEqual(new Set([120, 350]))
-    expect(live.every((message) => message.text === "")).toBe(true)
+    expect(live.every((parts) => parts.every((part) => part.type !== "text" || part.text === ""))).toBe(true)
     const reply = store.activePath({ threadId: f.thread.id }).find((item) => item.role === "assistant")
     expect(reply?.parts).toEqual([
       { type: "reasoning", text: "", estimatedTokens: 350 },
@@ -775,7 +781,7 @@ test.serial("streaming preserves deltas, command parts, completion and usage", a
   }
 })
 
-test.serial("the store/runtime integration publishes one event per streamed delta", async () => {
+test.serial("the store/runtime integration publishes coalesced deltas once in order", async () => {
   const value = await fixture({
     scenario: {
       events: [
@@ -800,12 +806,82 @@ test.serial("the store/runtime integration publishes one event per streamed delt
     if (!queued.success) throw new Error(queued.error)
     await waitFor(() => terminal(queued.run.status))
     expect(queued.run.status).toBe("succeeded")
-    expect(deltas).toEqual(["a", "b", "c"])
+    expect(deltas.join("")).toBe("abc")
+    expect(deltas.length).toBeLessThanOrEqual(3)
     expect(store.activePath({ threadId: value.thread.id }).find((message) => message.role === "assistant")?.text).toBe(
       "abc",
     )
   } finally {
     unsubscribe?.()
+    await closeFixture(value)
+  }
+})
+
+test.serial("tool publications persist only changed parts and preserve completed output references", async () => {
+  const output = "resultado ".repeat(2000)
+  const prose = "prosa ".repeat(4000)
+  const value = await fixture({
+    scenario: {
+      events: [
+        { type: "delta", delta: prose },
+        { type: "command", callId: "first", command: "echo ok", output: "ok" },
+        { type: "command", callId: "second", command: "cat result.txt", output },
+        { type: "command", callId: "second", command: "cat result.txt", output: "" },
+        { type: "delta", delta: "Pronto." },
+        { type: "complete" },
+      ],
+    },
+  })
+  try {
+    await initStore(value.runtime.kernel)
+    const store = value.runtime.kernel.services.use("store.api")
+    if (!store?.appendParts) throw new Error("Compact store API missing")
+    const patches: Array<Parameters<NonNullable<StoreApi["appendParts"]>>[0]> = []
+    const updates: Array<Parameters<StoreApi["updateMessage"]>[0]> = []
+    const append = store.appendParts
+    const update = store.updateMessage
+    store.appendParts = (args) => {
+      append(args)
+      patches.push(structuredClone(args))
+    }
+    store.updateMessage = (args) => {
+      updates.push(structuredClone(args))
+      return update(args)
+    }
+    const events: import("@touri/contracts").UiEvent[] = []
+    const unsubscribe = value.runtime.kernel.subscribe(({ event }) => events.push(event))
+    try {
+      const queued = value.engine.enqueue({
+        threadId: value.thread.id,
+        requestMessageId: addUser(store, value.thread, "Confira os resultados.").id,
+        trigger: "user",
+      })
+      if (!queued.success) throw new Error(queued.error)
+      await waitFor(() => terminal(queued.run.status))
+      expect(queued.run.status).toBe("succeeded")
+      expect(
+        patches.map((patch) => patch.parts.map(({ part }) => ("callId" in part ? part.callId : part.type))),
+      ).toEqual([["first"], ["second"], ["second"]])
+      expect(JSON.stringify(patches)).not.toContain(prose)
+      expect(JSON.stringify(patches)).not.toContain(output)
+      const completed = patches[1]?.parts[0]?.part
+      expect(completed).toMatchObject({ outputBytes: Buffer.byteLength(output), outputTail: "" })
+      expect(patches[2]?.parts[0]?.part).toMatchObject(completed ?? {})
+      expect(updates).toHaveLength(1)
+      expect(updates[0]?.patch.status).toBe("complete")
+      const reply = store.activePath({ threadId: value.thread.id }).find((row) => row.id === queued.run.replyMessageId)
+      expect(reply?.parts.find((part) => "callId" in part && part.callId === "second")).toMatchObject(completed ?? {})
+      expect(reply?.text).toBe(`${prose}\n\nPronto.`)
+      expect(
+        events.filter((event) => event.type === "message.created" && event.message.role === "assistant"),
+      ).toHaveLength(1)
+      expect(
+        events.filter((event) => event.type === "message.updated" && event.message.role === "assistant"),
+      ).toHaveLength(1)
+    } finally {
+      unsubscribe()
+    }
+  } finally {
     await closeFixture(value)
   }
 })
@@ -2210,7 +2286,9 @@ test.serial(
       const args =
         calls.find(
           (call) =>
-            call.cmd === value.fakePath || (call.cmd === "/usr/bin/sandbox-exec" && call.args[2] === value.fakePath),
+            call.cmd === value.fakePath ||
+            (call.cmd === "/usr/bin/sandbox-exec" && call.args[2] === value.fakePath) ||
+            (/\/bwrap$/.test(call.cmd) && call.args.includes(value.fakePath)),
         )?.args ?? []
       expect(args).toContain("--permission-prompt-tool")
       expect(args).toContain("mcp__touri__approval_prompt")
@@ -2334,7 +2412,7 @@ test.serial("transcript: cancellation during environment loading never launches 
   }
 })
 
-test.serial("a local bot with a provider profile runs the CLI with that profile as its home", async () => {
+test.serial("a local bot uses its selected provider profile for authentication and isolated bookkeeping", async () => {
   const value = await fixture({ provider: "claude" })
   try {
     const envLog = join(value.assets, "claude-home.log")
@@ -2357,11 +2435,21 @@ test.serial("a local bot with a provider profile runs the CLI with that profile 
     await run("default home")
     const bot = value.store.bots.get(value.bot.id)
     if (!bot) throw new Error("Fixture bot missing")
+    const profile = join(value.runtime.kernel.paths.appData, "provider-profiles", "clav", "claude")
+    mkdirSync(profile, { recursive: true })
+    writeFileSync(join(profile, "settings.json"), JSON.stringify({ forceLoginOrgUUID: "selected-profile" }))
     bot.providerProfile = "clav"
     await run("profile home")
     const homes = readFileSync(envLog, "utf8").trim().split("\n")
     expect(homes[0]).not.toContain("provider-profiles")
-    expect(homes.at(-1)).toBe(join(value.runtime.kernel.paths.appData, "provider-profiles", "clav", "claude"))
+    expect(homes.at(-1)).toBe(
+      process.platform === "linux" && hostFolderAccessAvailable() ? join(bot.homeDir, ".touri-claude") : profile,
+    )
+    expect(
+      JSON.parse(
+        readFileSync(join(value.runtime.kernel.paths.runDir, "claude", `${value.thread.id}.settings.json`), "utf8"),
+      ),
+    ).toMatchObject({ forceLoginOrgUUID: "selected-profile" })
   } finally {
     await closeFixture(value)
   }
@@ -2624,6 +2712,7 @@ test.serial("deletion drops queued catch-up work and a cached due schedule stays
     expect(value.engine.runRoutine({ routineId: routine.id, triggerSource: "manual" }).success).toBe(false)
     await value.engine.shutdown()
     reopened = createKernel({ appData: value.root })
+    reopened.kernel.spawnTree = fakeProviderSpawn(reopened.kernel.spawnTree, value.fakePath, value.scenario)
     reopened.kernel.services.provide("store.api", value.store)
     replacement = createRuntimeEngine({ kernel: reopened.kernel, codexCommand: value.fakePath })
     await replacement.tick(Date.now() + 900_000)

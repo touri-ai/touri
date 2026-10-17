@@ -1,5 +1,6 @@
 import type { Bot, BotBrowser } from "@touri/contracts"
 import { useId, useState } from "react"
+import { useIsServerMode } from "../features/server/serverMode"
 import { t } from "../i18n"
 
 const EXPLAINED_KEY = "touri.local-chrome.explained"
@@ -22,6 +23,7 @@ export const BotBrowserPicker = ({
   disabled?: boolean
   onChange: (browser: BotBrowser) => void
 }) => {
+  const serverMode = useIsServerMode()
   const id = useId()
   const [explained, setExplained] = useState(wasExplained)
   return (
@@ -37,7 +39,7 @@ export const BotBrowserPicker = ({
         <option value="touri" disabled={machine === "vm"}>
           {t("touri Chrome")}
         </option>
-        <option value="local" disabled={machine !== "local"}>
+        <option value="local" disabled={serverMode || machine !== "local"}>
           {t("My Chrome")}
         </option>
         <option value="machine" disabled={machine !== "vm"}>
@@ -45,11 +47,15 @@ export const BotBrowserPicker = ({
         </option>
       </select>
       <p id={`${id}-help`} className="field-help">
-        {machine === "local"
-          ? t("Machine Chrome requires a bot on the Linux machine.")
-          : t("My Chrome is available only for bots on this Mac. A remote machine cannot reach your Mac's Chrome.")}
+        {serverMode
+          ? t(
+              "Seu navegador pessoal fica indisponível no modo servidor. Use o navegador do servidor ou do computador isolado.",
+            )
+          : machine === "local"
+            ? t("Machine Chrome requires a bot on the Linux machine.")
+            : t("My Chrome is available only for bots on this Mac. A remote machine cannot reach your Mac's Chrome.")}
       </p>
-      {value === "local" && machine === "local" && (
+      {!serverMode && value === "local" && machine === "local" && (
         <>
           {!explained && (
             <div className="warning-callout" role="note">

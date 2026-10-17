@@ -1,6 +1,7 @@
 import type { PreviewBounds, PreviewTarget } from "@touri/contracts"
 import { useEffect, useRef, useState } from "react"
 import type { TauriInvoke } from "../api/client"
+import { useIsServerMode } from "../features/server/serverMode"
 import { t } from "../i18n"
 import { NativePreview } from "../nativePreview"
 import { ScreenState } from "./ScreenPrimitives"
@@ -25,6 +26,7 @@ const boundsFor = (element: HTMLElement): PreviewBounds => {
 }
 
 export const PreviewPane = ({ preview, modalOpen, invokeCommand, onOpenAgentBrowser }: PreviewPaneProps) => {
+  const serverMode = useIsServerMode()
   const slotRef = useRef<HTMLDivElement>(null)
   const [label, setLabel] = useState<string | null>(null)
   const [nativeUnavailable, setNativeUnavailable] = useState(false)
@@ -35,7 +37,7 @@ export const PreviewPane = ({ preview, modalOpen, invokeCommand, onOpenAgentBrow
   useEffect(() => {
     setLabel(null)
     setNativeUnavailable(false)
-    if (!url || modalOpen || !slotRef.current) return
+    if (serverMode || !url || modalOpen || !slotRef.current) return
     const slot = slotRef.current
     const native = new NativePreview(invokeCommand)
     let active = true
@@ -94,7 +96,7 @@ export const PreviewPane = ({ preview, modalOpen, invokeCommand, onOpenAgentBrow
       document.removeEventListener("visibilitychange", visibility)
       void native.hide().catch(() => undefined)
     }
-  }, [invokeCommand, modalOpen, url, revision])
+  }, [invokeCommand, modalOpen, url, revision, serverMode])
 
   const reload = (): void => {
     if (label) void invokeCommand("preview_reload", { label }).catch(() => setNativeUnavailable(true))
@@ -104,6 +106,13 @@ export const PreviewPane = ({ preview, modalOpen, invokeCommand, onOpenAgentBrow
   const openExternal = (): void => {
     if (preview) void invokeCommand("open_external", { url: preview.url })
   }
+
+  if (serverMode && preview)
+    return (
+      <div className="preview-empty">
+        <p>{t("Este preview está no servidor. Peça ao bot para abri-lo no navegador do servidor.")}</p>
+      </div>
+    )
 
   if (!preview)
     return (

@@ -89,7 +89,14 @@ const run = async (provider: "codex" | "claude", frames: unknown[]) => {
   })
   const events: ProviderEvent[] = []
   const result = await adapter.startTurn({
-    bot: { access: "full", approvals: "on-request", homeDir: root, model: null, reasoningEffort: null } as Bot,
+    bot: {
+      provider,
+      access: "full",
+      approvals: "on-request",
+      homeDir: root,
+      model: null,
+      reasoningEffort: null,
+    } as Bot,
     thread: { id: "thread-review" } as Thread,
     session: null,
     fingerprint: { cwd: root } as StartTurnArgs["fingerprint"],
@@ -209,7 +216,7 @@ test("Claude permission bridge includes the actual tool folder and keeps large r
   const f = await run("claude", [{ type: "approval_request", tool_name: "Bash", input: { command: "bun test" } }])
   const bot = { id: "bot-review", machine: "local" } as Bot
   const thread = { id: "thread-review", botId: bot.id } as Thread
-  f.kernel.services.provide("store.api", createTestStore({ bot, thread }))
+  f.kernel.services.provide("store.api", createTestStore({ bot, thread, publish: f.kernel.publish }))
   const cards: ApprovalPart[] = []
   const bridge = createApprovalBridge({
     kernel: f.kernel,

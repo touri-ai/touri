@@ -21,12 +21,11 @@ import type {
   Thread,
   ThreadKind,
   ThreadUsage,
-  UiEvent,
 } from "@touri/contracts"
 import { normalizeBotName } from "@touri/contracts"
 import { validAvatarColor, validAvatarShape } from "@touri/contracts/avatar"
 import { installDoctor } from "../doctor"
-import { parseBotFolders } from "../kernel/bot-folders"
+import { parseBotFolders, protectedFolder } from "../kernel/bot-folders"
 import { DEFAULT_DATA_RETENTION_DAYS, validDataRetentionDays } from "../kernel/data-maintenance"
 import { SCHEMA_VERSION } from "../kernel/db"
 import {
@@ -37,8 +36,9 @@ import {
   MAX_ATTACHMENT_BYTES,
   readBoundedFile,
 } from "../kernel/files"
+import { folderGrantProblem, refreshHostFolderAccess, specificFoldersRequired } from "../kernel/folder-capability"
 import { historyThreadPending, hydrateHistoryEvent } from "../kernel/history-backfill"
-import { externalizeMessageParts, OUTPUT_BLOB_ORIGIN } from "../kernel/output-blobs"
+import { externalizeMessageParts, OUTPUT_BLOB_ORIGIN, readOutputAttachment } from "../kernel/output-blobs"
 import { isProfileProvider, validProviderProfileName } from "../kernel/provider-profiles"
 import { materializeTranscript } from "../kernel/transcript-storage"
 import { hostComputerSupported } from "../platform"
@@ -46,10 +46,11 @@ import { touriVersion } from "../version"
 import { DEFAULT_BOT_VM_MEMORY_MB, DEFAULT_MACHINE_IDLE_MINUTES, validBotVmMemory } from "../vm/resources"
 import { redeemFileGrant } from "./redeemFileGrant"
 import { createSendJournal } from "./send-journal"
-import { appendRejection, recordTranscriptRejection } from "./transcript-rejections"
+import { createStreamWriter } from "./stream-writer"
 import { type RawMessage, readWorkspaceActivity } from "./workspace-activity"
 
 export const name = "store"
+export const BOTS_SQL = "SELECT * FROM bots WHERE archived_at IS NULL ORDER BY sort_order ASC, created_at ASC"
 
 type RawBot = {
   id: string
@@ -123,16 +124,6 @@ type RawAttachment = {
   bytes: number
   origin_path: string | null
   created_at: number
-}
-
-type PendingDelta = {
-  threadId: string
-  messageId: string
-  parts: Array<MessagePart>
-  text: string
-  updatedSeq: number
-  checkpointSize: number
-  lastEvent: string | null
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null
@@ -437,9 +428,9 @@ const writeSettings = ({ database, settings }: { database: Database; settings: A
 }
 
 export const init = async (kernel: Kernel): Promise<void> => {
+  await refreshHostFolderAccess()
   installDoctor(kernel)
   const database = kernel.db as Database
-  const pendingDeltas = new Map<string, PendingDelta>()
   materializeTranscript(database)
 
   const getBot = ({ botId }: { botId: string }): Bot | null => {
@@ -468,10 +459,8 @@ export const init = async (kernel: Kernel): Promise<void> => {
       .run(message.text, message.threadId, message.id)
   }
 
-  const flushDeltas = (): void => {
-    materializeTranscript(database)
-    pendingDeltas.clear()
-  }
+  const streamWriter = createStreamWriter({ kernel, database, getMessage, getThread })
+  const flushDeltas = streamWriter.checkpoint
 
   const updateThreadRow = ({
     threadId,
@@ -552,7 +541,8 @@ export const init = async (kernel: Kernel): Promise<void> => {
   }
 
   const updateMessage: StoreApi["updateMessage"] = ({ threadId, messageId, patch }) => {
-    flushDeltas()
+    if (patch.parts !== undefined && patch.text !== undefined) streamWriter.drain()
+    else flushDeltas()
     const current = getMessage({ threadId, messageId })
     if (!current) return { success: false, errorCode: "NOT_FOUND", error: `Message ${messageId} was not found` }
     // A terminal run reply can still settle its tools, but its text and outcome are final.
@@ -575,13 +565,22 @@ export const init = async (kernel: Kernel): Promise<void> => {
       updatedAt: now(),
     }
     next.parts = externalizeMessageParts({ database, appData: kernel.paths.appData, parts: next.parts })
+    const partsJson = JSON.stringify(next.parts)
+    if (
+      next.status === current.status &&
+      next.text === current.text &&
+      next.runId === current.runId &&
+      partsJson === JSON.stringify(current.parts)
+    )
+      return { success: true, message: current }
     database
       .query(
         "UPDATE messages SET status = ?, parts_json = ?, text = ?, run_id = ?, updated_at = ? WHERE thread_id = ? AND id = ?",
       )
-      .run(next.status, JSON.stringify(next.parts), next.text, next.runId, next.updatedAt, threadId, messageId)
-    refreshFts({ message: next })
+      .run(next.status, partsJson, next.text, next.runId, next.updatedAt, threadId, messageId)
+    if (next.text !== current.text) refreshFts({ message: next })
     const stored = getMessage({ threadId, messageId }) ?? next
+    streamWriter.invalidate(threadId, messageId)
     kernel.publish({ type: "message.updated", message: stored })
     return { success: true, message: stored }
   }
@@ -857,10 +856,35 @@ export const init = async (kernel: Kernel): Promise<void> => {
     try {
       input.folders = body.folders === undefined ? (existing?.folders ?? []) : parseBotFolders(body.folders)
     } catch (error) {
-      return { input: null, error: error instanceof Error ? error.message : String(error) }
+      const message = error instanceof Error ? error.message : String(error)
+      return {
+        input: null,
+        error: message,
+        ...(message === specificFoldersRequired ? { errorCode: "FOLDER_SELECTION_REQUIRED" } : {}),
+        ...(message === protectedFolder ? { errorCode: "FOLDER_PROTECTED" } : {}),
+      }
     }
     if (input.machine === "cloud" && (input.anyFolderAccess || input.folders.length))
       return { input: null, error: "Pastas deste Mac não estão disponíveis na nuvem." }
+    // Narrowing/removing old grants and unrelated settings must remain possible
+    // even when this host has lost its confinement capability.
+    const expandsFolders =
+      (input.anyFolderAccess && !existing?.anyFolderAccess) ||
+      input.folders.some(
+        (folder) =>
+          !existing?.folders?.some(
+            (old) => old.path === folder.path && (old.access === "read-write" || old.access === folder.access),
+          ),
+      )
+    if (expandsFolders || (existing?.machine !== input.machine && input.machine === "local")) {
+      const problem = folderGrantProblem({ ...input, machine: input.machine ?? "local" })
+      if (problem)
+        return {
+          input: null,
+          errorCode: problem === specificFoldersRequired ? "FOLDER_SELECTION_REQUIRED" : "FOLDER_ACCESS_UNAVAILABLE",
+          error: problem,
+        }
+    }
     if (input.cwd !== undefined && input.cwd !== null && !isAbsolute(input.cwd))
       return { input: null, error: "cwd must be absolute" }
     if (
@@ -1150,100 +1174,9 @@ export const init = async (kernel: Kernel): Promise<void> => {
 
   const storeApi: StoreApi = {
     insertMessage,
-    appendDelta: (input) => {
-      const { threadId, messageId, partIndex, delta } = input
-      const reject = (reason: Parameters<typeof recordTranscriptRejection>[2]) =>
-        recordTranscriptRejection(kernel, input, reason)
-      const thread = getThread({ threadId })
-      const invalid = appendRejection(input, thread)
-      if (invalid) return reject(invalid)
-      const key = JSON.stringify([threadId, messageId])
-      const message = getMessage({ threadId, messageId })
-      if (!message || !thread) return reject("validation")
-      if (message.generation !== thread.generation || message.status !== "streaming") return reject("stale_generation")
-      if (message.runId) {
-        const run = database.query("SELECT status FROM runs WHERE id = ?").get(message.runId) as {
-          status: string
-        } | null
-        if (run && !["queued", "starting", "running"].includes(run.status)) return reject("stale_generation")
-      }
-      const existing = pendingDeltas.get(key)
-      const tail = existing
-        ? (database
-            .query("SELECT event_json FROM transcript_entries WHERE thread_id = ? AND seq = ?")
-            .get(threadId, existing.updatedSeq) as { event_json: string } | null)
-        : null
-      const current =
-        existing &&
-        tail?.event_json === existing.lastEvent &&
-        existing.updatedSeq > (message.updatedSeq ?? 0) &&
-        existing.updatedSeq <= (thread.updatedSeq ?? 0)
-          ? existing
-          : {
-              threadId,
-              messageId,
-              parts: structuredClone(message.parts),
-              text: message.text,
-              updatedSeq: message.updatedSeq ?? 0,
-              checkpointSize: JSON.stringify(message.parts).length,
-              lastEvent: null,
-            }
-      const part = current.parts[partIndex]
-      if (partIndex > current.parts.length) return reject("validation")
-      if (part !== undefined && part.type !== "text" && part.type !== "reasoning") return reject("validation")
-      const offset = part?.type === "text" || part?.type === "reasoning" ? part.text.length : 0
-      const event: Extract<UiEvent, { type: "message.delta" }> = {
-        type: "message.delta",
-        threadId,
-        messageId,
-        partIndex,
-        delta,
-        offset,
-        partType: part?.type === "reasoning" ? "reasoning" : "text",
-        updatedSeq: (thread.updatedSeq ?? 0) + 1,
-        generation: thread.generation ?? 1,
-        updatedAt: now(),
-      }
-      const eventJson = JSON.stringify(event)
-      let appended = false
-      try {
-        appended = database.transaction(() => {
-          const updated = database
-            .query(
-              "UPDATE threads SET updated_seq = updated_seq + 1 WHERE id = ? AND generation = ? AND updated_seq = ?",
-            )
-            .run(threadId, thread.generation ?? 1, thread.updatedSeq ?? 0)
-          if (!updated.changes) return false
-          database
-            .query("INSERT INTO transcript_entries(thread_id, seq, generation, event_json, at) VALUES (?, ?, ?, ?, ?)")
-            .run(threadId, event.updatedSeq ?? 0, event.generation ?? 1, eventJson, event.updatedAt ?? now())
-          return true
-        })()
-      } catch (error) {
-        if (
-          !(error instanceof Error) ||
-          !("code" in error) ||
-          error.code !== "SQLITE_CONSTRAINT_UNIQUE" ||
-          !error.message.includes("transcript_entries.thread_id, transcript_entries.seq")
-        )
-          throw error
-      }
-      if (!appended)
-        return reject(getThread({ threadId })?.generation !== thread.generation ? "stale_generation" : "seq_conflict")
-      if (part?.type === "text" || part?.type === "reasoning") {
-        current.parts[partIndex] = { ...part, text: part.text + delta }
-        if (part.type === "text") current.text += delta
-      } else if (part === undefined) {
-        current.parts[partIndex] = { type: "text", text: delta }
-        current.text += delta
-      }
-      current.updatedSeq = event.updatedSeq ?? 0
-      current.lastEvent = eventJson
-      pendingDeltas.set(key, current)
-      // Geometric checkpoints bound projection writes even for a very long reply.
-      if (JSON.stringify(current.parts).length >= Math.max(16_384, current.checkpointSize * 2)) flushDeltas()
-      kernel.publish(event)
-    },
+    appendDelta: streamWriter.appendDelta,
+    appendParts: streamWriter.appendParts,
+    flushWrites: streamWriter.drain,
     updateMessage,
     activePath,
     setActiveLeaf,
@@ -1260,6 +1193,7 @@ export const init = async (kernel: Kernel): Promise<void> => {
   const handleCreateBot = async ({ body }: { body: unknown }): Promise<RouteResponse> => {
     const record = requestRecord(body)
     if (!record) return errorResponse(400, "INVALID_ARGS", "Request body must be an object")
+    await refreshHostFolderAccess()
     const parsed = botFromBody({ body: record })
     if (!parsed.input || parsed.error)
       return errorResponse(400, parsed.errorCode ?? "INVALID_ARGS", parsed.error ?? "Invalid bot")
@@ -1306,9 +1240,7 @@ export const init = async (kernel: Kernel): Promise<void> => {
         method: "GET",
         path: "/bots",
         handler: async () => {
-          const rows = database
-            .query("SELECT * FROM bots WHERE archived_at IS NULL ORDER BY sort_order ASC, created_at ASC")
-            .all() as Array<RawBot>
+          const rows = database.query(BOTS_SQL).all() as Array<RawBot>
           return jsonResponse(200, { bots: rows.map(asBot) })
         },
       },
@@ -1317,6 +1249,7 @@ export const init = async (kernel: Kernel): Promise<void> => {
         method: "PATCH",
         path: "/bots/:id",
         handler: async ({ params, body }) => {
+          await refreshHostFolderAccess()
           const bot = getBot({ botId: params.id ?? "" })
           if (!bot) return errorResponse(404, "NOT_FOUND", "Bot not found")
           const record = requestRecord(body)
@@ -1592,6 +1525,12 @@ export const init = async (kernel: Kernel): Promise<void> => {
             )
           }
         },
+      },
+      {
+        method: "GET",
+        path: "/attachments/:id/content",
+        handler: async ({ params, query }) =>
+          readOutputAttachment({ database, appData: kernel.paths.appData, id: params.id ?? "", query }),
       },
       {
         method: "GET",

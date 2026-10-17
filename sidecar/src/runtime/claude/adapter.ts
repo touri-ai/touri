@@ -63,9 +63,11 @@ const claudeConfig = async ({
     root,
     path,
     content: JSON.stringify({
-      mcpServers: {
-        touri: { command: args.mcp.command, args: args.mcp.args, env: args.mcp.env },
-      },
+      mcpServers: args.conversationOnly
+        ? {}
+        : {
+            touri: { command: args.mcp.command, args: args.mcp.args, env: args.mcp.env },
+          },
     }),
   })
 }
@@ -144,6 +146,7 @@ export const createClaudeAdapter = ({
     const sessionId = args.session?.externalSessionId ?? randomUUID()
     const commandArgs = [
       "-p",
+      ...(args.conversationOnly ? ["--tools", ""] : []),
       "--input-format",
       "stream-json",
       "--output-format",

@@ -25,6 +25,13 @@ vi.mock("../src/api/client", async (importOriginal) => ({
 
 const endpoint = { baseUrl: "http://127.0.0.1:43123", wsUrl: "ws://127.0.0.1:43123/api/v1/events", token: "test" }
 const reason = "schema mismatch: shell expects 6, sidecar reported 5"
+const localInvoke = (handler: (command: string, args: unknown) => Promise<unknown>) =>
+  vi.fn(async (command: string, args: unknown) => {
+    if (command === "server_mode_status") return { mode: "local", url: null }
+    if (command === "deep_link_pending") return null
+    if (command === "deep_link_ack") return {}
+    return handler(command, args)
+  })
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -60,7 +67,7 @@ describe("sidecar failure blocking state", () => {
       return request(...args)
     }) as ApiRequest
     let available = false
-    const invoke = vi.fn(async (command: string) => {
+    const invoke = localInvoke(async (command: string) => {
       if (command === "sidecar_endpoint" && stage === "endpoint" && !available) await pending
       return endpoint
     })
@@ -89,7 +96,7 @@ describe("sidecar failure blocking state", () => {
 
   it("enables recovery again when the shell never acknowledges a restart", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] })
-    const invoke = vi.fn(async (command: string) => {
+    const invoke = localInvoke(async (command: string) => {
       if (command === "sidecar_restart") return new Promise(() => undefined)
       throw reason
     })
@@ -105,7 +112,7 @@ describe("sidecar failure blocking state", () => {
   })
 
   it("reads startup failures from the shell and cannot be dismissed", async () => {
-    const invoke = vi.fn(async () => {
+    const invoke = localInvoke(async () => {
       throw reason
     })
     render(<App kernel={{ services: { invoke: invoke as TauriInvoke } }} />)
@@ -116,9 +123,10 @@ describe("sidecar failure blocking state", () => {
     ).toBeVisible()
     expect(within(alert).getByText(reason)).not.toBeVisible()
     expect(within(alert).getByText("O aplicativo e o serviço local usam versões incompatíveis.")).toBeVisible()
-    expect(within(alert).getAllByRole("button")).toHaveLength(2)
+    expect(within(alert).getAllByRole("button")).toHaveLength(3)
     expect(within(alert).getByRole("button", { name: /Tentar novamente/ })).toBeVisible()
     expect(within(alert).getByRole("button", { name: "Reportar este problema" })).toBeVisible()
+    expect(within(alert).getByRole("button", { name: "Usar um servidor touri" })).toBeVisible()
     fireEvent.keyDown(window, { key: "Escape" })
     fireEvent.click(screen.getByRole("main"))
     expect(alert).toBeVisible()
@@ -131,7 +139,7 @@ describe("sidecar failure blocking state", () => {
   it("blocks a loaded workspace on sidecar-failed and asks the shell to restart before recovering", async () => {
     let restart: (() => void) | undefined
     let available = true
-    const invoke = vi.fn(async (command: string) => {
+    const invoke = localInvoke(async (command: string) => {
       if (command === "sidecar_restart") {
         await new Promise<void>((resolve) => {
           restart = resolve
@@ -176,7 +184,8 @@ describe("sidecar failure blocking state", () => {
       return api.request(route, input, path)
     }
     vi.mocked(createApiClient).mockReturnValue({ ...api, request, isMock: false })
-    render(<App kernel={{ services: { invoke: (async () => endpoint) as TauriInvoke } }} />)
+    const invoke = localInvoke(async () => endpoint)
+    render(<App kernel={{ services: { invoke: invoke as TauriInvoke } }} />)
     await waitFor(() => expect(finish).toBeDefined())
     act(() => shell.listeners.get("sidecar-failed")?.({ payload: reason }))
     await act(async () => finish?.())
@@ -185,7 +194,7 @@ describe("sidecar failure blocking state", () => {
   })
 
   it("keeps a restart command rejection visible", async () => {
-    const invoke = vi.fn(async (command: string) => {
+    const invoke = localInvoke(async (command: string) => {
       throw command === "sidecar_restart" ? "sidecar supervisor is not ready" : reason
     })
     render(<App kernel={{ services: { invoke: invoke as TauriInvoke } }} />)
@@ -207,7 +216,7 @@ describe("sidecar failure blocking state", () => {
         }
       },
     }
-    const invoke = vi.fn(async () => {
+    const invoke = localInvoke(async () => {
       throw reason
     })
     render(<App kernel={{ services: { api, invoke: invoke as TauriInvoke } }} />)

@@ -27,7 +27,7 @@ const terminalReason = (status: Run["status"]): Exclude<ToolResolution, "running
 
 export const createToolResolutions = (kernel: Kernel) => {
   const database = kernel.db instanceof Database ? kernel.db : null
-  const record = (run: Run, part: ToolPart, recovering = false): ToolPart => {
+  const record = (run: Run, part: ToolPart, recovering = false, persist = true): ToolPart => {
     const previous = database
       ?.query("SELECT resolution, resolved_at, part_json FROM tool_resolutions WHERE run_id = ? AND call_id = ?")
       .get(run.id, part.callId) as { resolution: ToolResolution; resolved_at: number | null; part_json: string } | null
@@ -60,11 +60,15 @@ export const createToolResolutions = (kernel: Kernel) => {
     const next = database
       ? (externalizeMessageParts({ database, appData: kernel.paths.appData, parts: [resolved] })[0] as ToolPart)
       : resolved
-    database
-      ?.query(`INSERT INTO tool_resolutions(run_id, call_id, thread_id, part_json, resolution, resolved_at)
+    if (persist)
+      database
+        ?.query(`INSERT INTO tool_resolutions(run_id, call_id, thread_id, part_json, resolution, resolved_at)
       VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(run_id, call_id) DO UPDATE SET
-      part_json = excluded.part_json, resolution = excluded.resolution, resolved_at = excluded.resolved_at`)
-      .run(run.id, part.callId, run.threadId, JSON.stringify(next), resolution, next.resolvedAt ?? null)
+      part_json = excluded.part_json, resolution = excluded.resolution, resolved_at = excluded.resolved_at
+      WHERE tool_resolutions.part_json IS NOT excluded.part_json
+        OR tool_resolutions.resolution IS NOT excluded.resolution
+        OR tool_resolutions.resolved_at IS NOT excluded.resolved_at`)
+        .run(run.id, part.callId, run.threadId, JSON.stringify(next), resolution, next.resolvedAt ?? null)
     return next
   }
   const finish = (run: Run, parts: MessagePart[], reason: Exclude<ToolResolution, "running">): MessagePart[] => {

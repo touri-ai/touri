@@ -1,5 +1,6 @@
 import { listen } from "@tauri-apps/api/event"
 import { createTauriInvoke, type TauriInvoke, type UiApi } from "./api/client"
+import { getStorageScope } from "./storageScope"
 
 export const computerKillSwitchEvent = "computer-kill-switch"
 
@@ -10,7 +11,7 @@ export const installComputerKillSwitch = (
   onError: (error: unknown) => void = () => {},
 ) => {
   const revoke = () => window.dispatchEvent(new Event(computerKillSwitchEvent))
-  const native = "__TAURI_INTERNALS__" in window
+  const native = "__TAURI_INTERNALS__" in window && getStorageScope() === null
   const keydown = (event: KeyboardEvent) => {
     if (!event.ctrlKey || !event.altKey || !event.metaKey || (event.code !== "Period" && event.key !== ".")) return
     event.preventDefault()

@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react"
 import type { UiApi } from "./api/client"
+import { useServerMode } from "./features/server/serverMode"
 
 /** Host identity comes from the sidecar, never from the browser's OS. */
 export const useHost = (api?: UiApi | null) => {
+  const { status } = useServerMode()
   const [host, setHost] = useState<"mac" | "server">("__TAURI_INTERNALS__" in window ? "mac" : "server")
   useEffect(() => {
     let active = true
@@ -17,5 +19,5 @@ export const useHost = (api?: UiApi | null) => {
       active = false
     }
   }, [api])
-  return host
+  return status?.mode === "server" ? "server" : host
 }

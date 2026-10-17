@@ -254,6 +254,7 @@ export const ToolCallCard = ({
           key={part.outputAttachmentId}
           api={api}
           attachmentId={part.outputAttachmentId}
+          preview={part.outputPreview}
           callId={part.callId}
           diff={part.type === "file_change"}
           browser={!!browser}

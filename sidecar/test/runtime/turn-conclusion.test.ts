@@ -135,7 +135,13 @@ test.each(["closing", "intro"])(
       )
       expect(completed).toBeGreaterThan(0)
       const deltas = f.events.filter((event) => event.type === "message.delta")
-      expect(deltas.at(-1)).toMatchObject({ partIndex: 2, delta: closing.slice(15) })
+      expect(deltas.at(-1)).toMatchObject({ partIndex: 2 })
+      expect(
+        deltas
+          .filter((event) => event.partIndex === 2)
+          .map((event) => event.delta)
+          .join(""),
+      ).toBe(`\n\n${closing}`)
       expect(f.events.slice(completed + 1).some((event) => event.type === "message.delta")).toBe(false)
       const terminal = f.events[completed] as { type: "message.updated"; message: Message }
       expect(terminal.message.text).toBe(reply.text)

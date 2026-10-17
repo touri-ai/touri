@@ -210,6 +210,7 @@ test("profile a restart and initial workspace requests with 15 bots, 134 threads
     })
     store.appendDelta({ threadId: "thread-0", messageId: "pending-reply", partIndex: 0, delta: "Recovered " })
     store.appendDelta({ threadId: "thread-0", messageId: "pending-reply", partIndex: 0, delta: "in order" })
+    store.flushWrites?.()
     const projection = () => (kernel.db as Database).query("SELECT text FROM messages WHERE id = 'pending-reply'").get()
     expect(projection()).toEqual({ text: "" })
     materializeTranscript(kernel.db as Database)

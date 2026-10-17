@@ -3,7 +3,7 @@ import { createConnection, type Socket } from "node:net"
 import { isAbsolute, relative, resolve } from "node:path"
 import type { SidecarModule } from "@touri/contracts"
 import { createKernel, type KernelRuntime } from "./kernel"
-import { acquireRuntimeLock, watchParent } from "./kernel/lifecycle"
+import { acquireRuntimeLock, watchParent, watchShutdownRequest } from "./kernel/lifecycle"
 import { createAppPaths } from "./kernel/paths"
 import { safeThreadId } from "./mcp/auth"
 import { registerShim } from "./mcp/shim-registry"
@@ -121,6 +121,7 @@ const runServe = async (): Promise<void> => {
   process.once("SIGTERM", shutdown)
   process.once("SIGINT", shutdown)
   watchParent(shutdown)
+  watchShutdownRequest(shutdown)
   if (stopping) return
   initialization = initModules(runtime)
   await initialization

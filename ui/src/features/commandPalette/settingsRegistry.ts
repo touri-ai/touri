@@ -5,7 +5,7 @@ import { t } from "../../i18n"
  * Single source for settings labels. The settings dialogs render these sections and rows,
  * and the command palette indexes the same records, so a label can never drift between them.
  */
-export type AppSettingsSectionId = "appearance" | "privacy" | "updates" | "notifications" | "diagnostics"
+export type AppSettingsSectionId = "appearance" | "privacy" | "updates" | "notifications" | "diagnostics" | "advanced"
 export type BotSettingsSectionId = "model" | "access" | "computer" | "project" | "tools" | "permissions" | "routines"
 export type TouriPage = "cron" | "integracoes" | "mcp"
 
@@ -54,6 +54,14 @@ export const APP_SETTINGS_SECTIONS: ReadonlyArray<SectionDefinition<AppSettingsS
     keywords: ["doctor", "armazenamento", "relatório", "bug", "erro", "suporte", "memória", "vm"],
   },
 ]
+
+export const SERVER_SETTINGS_SECTION: SectionDefinition<AppSettingsSectionId> = {
+  id: "advanced",
+  label: t("Avançado"),
+  description: t("Escolha se os bots trabalham neste Mac ou em um servidor touri."),
+  icon: "computer",
+  keywords: ["servidor", "pareamento", "conexão", "modo local"],
+}
 
 export const BOT_SETTINGS_SECTIONS: ReadonlyArray<SectionDefinition<BotSettingsSectionId>> = [
   {
@@ -326,7 +334,10 @@ const breadcrumb = (definition: SettingDefinition): string => {
 
 /** Every searchable settings destination, derived from the registry above. */
 export const settingsIndex = ({ hasBot }: { hasBot: boolean }): Array<SettingsIndexEntry> => [
-  ...APP_SETTINGS_SECTIONS.map((section) => ({
+  ...[
+    ...APP_SETTINGS_SECTIONS,
+    ...(typeof window !== "undefined" && "__TAURI_INTERNALS__" in window ? [SERVER_SETTINGS_SECTION] : []),
+  ].map((section) => ({
     id: `app-section:${section.id}`,
     label: section.label,
     detail: `${t("Preferências")} · ${section.description}`,

@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import App from "../src/App"
 import type { TauriInvoke } from "../src/api/client"
 import { createMockApi } from "../src/api/mock"
+import { t } from "../src/i18n"
 import { selectFolder } from "./folder-picker-helpers"
 
 afterEach(() => vi.restoreAllMocks())
@@ -36,13 +37,12 @@ const setup = async ({
   archived.archivedAt = Date.now()
   render(<App kernel={{ services: { api, ...(invoke ? { invoke } : {}) } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
-  fireEvent.click(screen.getByRole("button", { name: "Painel do bot" }))
   return { api, bot, current, other }
 }
 
 const chip = () => screen.getByRole("button", { name: "Projeto do bot" })
 const picker = () => screen.getByRole("menu", { name: "Projeto do bot" })
-const vmNote = "Commit Git copiado para /workspace a partir da próxima mensagem."
+const vmNote = "O commit Git do projeto será copiado para /workspace no próximo turno."
 
 const activeRun = (bot: Bot): Run => ({
   id: "project-test-run",
@@ -63,12 +63,45 @@ const activeRun = (bot: Bot): Run => ({
   finishedAt: null,
 })
 
-describe("advanced project picker", () => {
-  it("keeps its menu outside the scrolling bot panel while preserving selection and focus return", async () => {
+describe("composer project picker", () => {
+  it("shows the project beside the provider/model in the composer with the bot panel closed", async () => {
+    const user = userEvent.setup()
+    const { bot, current } = await setup()
+    const composer = screen.getByRole("form", { name: "Compor mensagem" })
+    const model = within(composer).getByRole("button", { name: "Escolher modelo" })
+    expect(model).toHaveTextContent(`Codex · ${bot.model ?? "Padrão do provedor"}`)
+    expect(within(composer).getByRole("button", { name: "Projeto do bot" })).toHaveTextContent(current.name)
+    expect(model.nextElementSibling).toContainElement(chip())
+    expect(screen.getByRole("button", { name: "Painel do bot" })).toHaveAttribute("aria-expanded", "false")
+    await user.click(model)
+    const dialog = await screen.findByRole("dialog", { name: "Escolher modelo" })
+    expect(within(dialog).getByRole("textbox", { name: "Modelo" })).toHaveValue(bot.model ?? "")
+    fireEvent.click(within(dialog).getByRole("button", { name: "Fechar diálogo" }))
+    await waitFor(() => expect(dialog).not.toBeInTheDocument())
+    await waitFor(() => expect(model).toHaveFocus())
+    fireEvent.click(screen.getByRole("button", { name: "Painel do bot" }))
+    expect(screen.getAllByRole("button", { name: "Projeto do bot" })).toHaveLength(1)
+  })
+
+  it("provides Portuguese and English project labels and next-turn guidance", () => {
+    const copy = [
+      ["Projeto do bot", "Bot project"],
+      ["Sem projeto", "No project"],
+      ["Somente pasta do bot", "Bot folder only"],
+      ["Adicionar projeto…", "Add project…"],
+      [vmNote, "The project's Git commit will be copied to /workspace next turn."],
+    ] as const
+    for (const [portuguese, english] of copy) {
+      expect(t(portuguese, {}, "pt-BR")).toBe(portuguese)
+      expect(t(portuguese, {}, "en")).toBe(english)
+    }
+  })
+
+  it("keeps its menu outside the composer while preserving selection and focus return", async () => {
     const user = userEvent.setup()
     const { other } = await setup()
     await user.click(chip())
-    expect(picker().closest(".bot-panel-body")).toBeNull()
+    expect(picker().closest(".composer-island")).toBeNull()
     expect(picker().closest(".composer-project-picker")?.parentElement).toBe(document.body)
     const focused = document.activeElement
     await user.pointer({
@@ -107,7 +140,7 @@ describe("advanced project picker", () => {
       expect(chip()).toHaveTextContent("Hodler")
       fireEvent.click(chip())
       expect(within(picker()).getByRole("menuitemradio", { name: "Hodler" })).toHaveAttribute("aria-checked", "true")
-      expect(within(picker()).getByRole("menuitemradio", { name: /Nenhum projeto/ })).toHaveAttribute(
+      expect(within(picker()).getByRole("menuitemradio", { name: /Somente pasta do bot/ })).toHaveAttribute(
         "aria-checked",
         "false",
       )
@@ -121,9 +154,10 @@ describe("advanced project picker", () => {
     expect(within(picker()).getByRole("menuitemradio", { name: current.name })).toHaveAttribute("aria-checked", "true")
     expect(within(picker()).getByRole("menuitemradio", { name: other.name })).toHaveAttribute("aria-checked", "false")
     expect(screen.queryByRole("menuitemradio", { name: "Projeto arquivado" })).not.toBeInTheDocument()
-    expect(
-      within(picker()).getByRole("menuitemradio", { name: "Nenhum projeto (começa na pasta do bot)" }),
-    ).toHaveAttribute("aria-checked", "false")
+    expect(within(picker()).getByRole("menuitemradio", { name: "Somente pasta do bot" })).toHaveAttribute(
+      "aria-checked",
+      "false",
+    )
     expect(within(picker()).getByRole("menuitem", { name: "Adicionar projeto…" })).toBeVisible()
   })
 
@@ -131,9 +165,10 @@ describe("advanced project picker", () => {
     await setup({ linked: false })
     expect(chip()).toHaveTextContent("Sem projeto")
     fireEvent.click(chip())
-    expect(
-      within(picker()).getByRole("menuitemradio", { name: "Nenhum projeto (começa na pasta do bot)" }),
-    ).toHaveAttribute("aria-checked", "true")
+    expect(within(picker()).getByRole("menuitemradio", { name: "Somente pasta do bot" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    )
   })
 
   it("PATCHes the chosen project immediately and updates the chip", async () => {
@@ -153,7 +188,7 @@ describe("advanced project picker", () => {
   it("PATCHes null to unlink and updates the chip", async () => {
     const { api, bot } = await setup()
     fireEvent.click(chip())
-    fireEvent.click(within(picker()).getByRole("menuitemradio", { name: "Nenhum projeto (começa na pasta do bot)" }))
+    fireEvent.click(within(picker()).getByRole("menuitemradio", { name: "Somente pasta do bot" }))
     await waitFor(() => expect(chip()).toHaveTextContent("Sem projeto"))
     expect(api.calls.find((call) => call.route === "PATCH /bots/:id")).toEqual({
       route: "PATCH /bots/:id",
@@ -162,28 +197,45 @@ describe("advanced project picker", () => {
     })
   })
 
-  it("locks and closes the picker when a turn starts, then unlocks when it finishes", async () => {
+  it.each(["queued", "starting", "running"] as const)(
+    "locks and closes the picker for a %s turn, then unlocks when it finishes",
+    async (status) => {
+      const { api, bot } = await setup()
+      fireEvent.click(chip())
+      const run = { ...activeRun(bot), status }
+      act(() => api.emit({ type: "run.updated", run }))
+      expect(chip()).toBeDisabled()
+      expect(chip()).toHaveAttribute("title", "Aguarde o turno terminar para alterar o projeto.")
+      expect(chip()).toHaveAccessibleDescription("Aguarde o turno terminar para alterar o projeto.")
+      expect(screen.queryByRole("menu")).not.toBeInTheDocument()
+      fireEvent.click(chip())
+      expect(screen.queryByRole("menu")).not.toBeInTheDocument()
+      expect(api.calls.filter((call) => call.route === "PATCH /bots/:id")).toHaveLength(0)
+      act(() => api.emit({ type: "run.updated", run: { ...run, status: "succeeded", finishedAt: Date.now() } }))
+      expect(chip()).toBeEnabled()
+      fireEvent.click(chip())
+      expect(picker()).toBeVisible()
+    },
+  )
+
+  it("locks for this bot's turns in another thread and stays available for other bots' turns", async () => {
     const { api, bot } = await setup()
-    fireEvent.click(chip())
-    const run = activeRun(bot)
-    act(() => api.emit({ type: "run.updated", run }))
-    expect(chip()).toBeDisabled()
-    expect(chip()).toHaveAttribute("title", "Aguarde o turno terminar para alterar o projeto.")
-    expect(chip()).toHaveAccessibleDescription("Aguarde o turno terminar para alterar o projeto.")
-    expect(screen.queryByRole("menu")).not.toBeInTheDocument()
-    fireEvent.click(chip())
-    expect(screen.queryByRole("menu")).not.toBeInTheDocument()
-    expect(api.calls.filter((call) => call.route === "PATCH /bots/:id")).toHaveLength(0)
-    act(() => api.emit({ type: "run.updated", run: { ...run, status: "succeeded", finishedAt: Date.now() } }))
+    const run = { ...activeRun(bot), threadId: "another-thread" }
+    act(() => api.emit({ type: "run.updated", run: { ...run, botId: "bot-onb" } }))
     expect(chip()).toBeEnabled()
     fireEvent.click(chip())
-    expect(picker()).toBeVisible()
+    act(() => api.emit({ type: "run.updated", run }))
+    expect(chip()).toBeDisabled()
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument()
+    act(() => api.emit({ type: "run.updated", run: { ...run, status: "succeeded", finishedAt: Date.now() } }))
+    expect(chip()).toBeEnabled()
   })
 
   it("supports Tab, Enter, arrow navigation, selection, Escape and focus restoration", async () => {
     const user = userEvent.setup()
     const { current, other } = await setup()
-    chip().focus()
+    screen.getByRole("button", { name: "Escolher modelo" }).focus()
+    await user.tab()
     expect(chip()).toHaveFocus()
     await user.keyboard("{Enter}")
     expect(within(picker()).getByRole("menuitemradio", { name: current.name })).toHaveFocus()
@@ -213,10 +265,10 @@ describe("advanced project picker", () => {
     await user.click(screen.getByRole("textbox", { name: "Mensagem para mark" }))
     expect(screen.queryByRole("menu")).not.toBeInTheDocument()
     await user.click(chip())
-    await user.keyboard("{End}")
-    await user.tab()
+    await user.keyboard("{Home}")
+    await user.tab({ shift: true })
     expect(screen.queryByRole("menu")).not.toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "Preview do projeto" })).toHaveFocus()
+    expect(screen.getByRole("button", { name: "Escolher modelo" })).toHaveFocus()
   })
 
   it.each(["local", "vm"] as const)("shows the snapshot note only for VM bots (%s)", async (machine) => {
@@ -290,7 +342,7 @@ describe("advanced project picker", () => {
     const request = api.request
     api.request = (async (route, ...args) =>
       route === "GET /projects/discover"
-        ? { repositories: [{ path: "/Users/demo/javascript/Hodler", name: "Hodler", lastModified: 1_000 }] }
+        ? { repositories: [{ path: "/tmp/discovered/Hodler", name: "Hodler", lastModified: 1_000 }] }
         : request(route, ...args)) as typeof request
     fireEvent.click(chip())
     fireEvent.click(within(picker()).getByRole("menuitem", { name: "Adicionar projeto…" }))
@@ -301,11 +353,9 @@ describe("advanced project picker", () => {
     expect(
       api.calls.find(
         (call) =>
-          call.route === "POST /projects" &&
-          "path" in call.input &&
-          call.input.path === "/Users/demo/javascript/Hodler",
+          call.route === "POST /projects" && "path" in call.input && call.input.path === "/tmp/discovered/Hodler",
       )?.input,
-    ).toEqual({ path: "/Users/demo/javascript/Hodler", name: "Hodler" })
+    ).toEqual({ path: "/tmp/discovered/Hodler", name: "Hodler" })
     expect(api.calls.filter((call) => call.route === "PATCH /bots/:id")).toContainEqual({
       route: "PATCH /bots/:id",
       input: { projectId: bot.projectId },
@@ -328,7 +378,7 @@ describe("advanced project picker", () => {
     const option = within(picker()).getByRole("menuitemradio", { name: other.name })
     fireEvent.click(option)
     fireEvent.click(option)
-    fireEvent.click(within(picker()).getByRole("menuitemradio", { name: "Nenhum projeto (começa na pasta do bot)" }))
+    fireEvent.click(within(picker()).getByRole("menuitemradio", { name: "Somente pasta do bot" }))
     expect(chip()).toBeDisabled()
     expect(picker()).toHaveAttribute("aria-busy", "true")
     await act(async () => finish?.())

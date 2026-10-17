@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, expect, it, vi } from "vitest"
 import App from "../src/App"
+import type { TauriInvoke } from "../src/api/client"
 import { createMockApi } from "../src/api/mock"
 import { type DeepLink, parseDeepLink } from "../src/deepLink"
 
@@ -82,7 +83,7 @@ it("selects the bot and thread named by the page query on load", async () => {
   await screen.findByRole("textbox", { name: "Mensagem para onb" })
   expect(screen.getByRole("button", { name: /^Bots/ })).toHaveAttribute("aria-current", "page")
   expect(screen.getByRole("button", { name: /Welcome/ })).toHaveClass("selected")
-  expect(window.location.search).toBe("")
+  expect(parseDeepLink(window.location.href)).toEqual({ bot: "bot-onb", thread: "thread-onb" })
 })
 
 it("selects the requested thread even when it is not the bot's default thread", async () => {
@@ -93,7 +94,7 @@ it("selects the requested thread even when it is not the bot's default thread", 
   await screen.findByRole("textbox", { name: "Mensagem para onb" }, { timeout: 5000 })
   expect(screen.getByRole("button", { name: /^Bots/ })).toHaveAttribute("aria-current", "page")
   expect(screen.getByRole("button", { name: /Web link target/ })).toHaveClass("selected")
-  expect(window.location.search).toBe("")
+  expect(parseDeepLink(window.location.href)).toEqual({ bot: "bot-onb", thread: thread.id })
 })
 
 it("opens a notification's bot and thread from the touri tab", async () => {
@@ -126,7 +127,12 @@ it("opens a native touri:// deep link from the touri tab", async () => {
   Object.defineProperty(window, "__TAURI_INTERNALS__", { value: {}, configurable: true })
   const api = createMockApi()
   const { thread } = await api.request("POST /threads", { botId: "bot-onb", title: "Native link target" })
-  render(<App kernel={{ services: { api } }} />)
+  const invoke = (async (command: string) => {
+    if (command === "server_mode_status") return { mode: "local", url: null }
+    if (command === "deep_link_pending") return null
+    return {}
+  }) as TauriInvoke
+  render(<App kernel={{ services: { api, invoke } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
   await waitFor(() => expect(nativeLinks.handler).not.toBeNull())
   fireEvent.click(screen.getByRole("button", { name: "Avançado", exact: true }))

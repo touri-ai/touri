@@ -105,7 +105,7 @@
     },
     {
       "name": "project_link",
-      "description": "Register a Mac folder as a project if needed and link it to this calling bot only. Supply exactly one of path or projectId. Always requires explicit user approval in chat, even with approvals disabled. VM changes apply next turn.",
+      "description": "Register a host folder as a project if needed and link it to this calling bot only. Supply exactly one of path or projectId. Full local access or an already writable local path returns alreadyAccessible immediately without changing configuration, registering a project or adding a grant. Otherwise requires explicit user approval in chat, even with approvals disabled. VM changes apply next turn.",
       "inputSchema": { "type": "object", "additionalProperties": false,
         "properties": { "path": { "type": "string", "minLength": 1 }, "projectId": { "type": "string", "minLength": 1 } },
         "minProperties": 1, "maxProperties": 1 },
@@ -113,7 +113,7 @@
     },
     {
       "name": "folder_access_request",
-      "description": "Request access to a specific Mac folder for this calling bot only, with mode read or read-write. Always requires explicit user approval. Cannot enable any-folder access. VM changes apply next turn.",
+      "description": "Request access to a specific host folder for this calling bot only, with mode read or read-write. Full local access or an already writable local path returns alreadyAccessible immediately without saving a grant or requesting approval. Create missing subfolders directly when already writable. Otherwise requires explicit user approval. Cannot enable any-folder access. VM changes apply next turn.",
       "inputSchema": { "type": "object", "required": ["path", "mode"], "additionalProperties": false,
         "properties": { "path": { "type": "string", "minLength": 1 }, "mode": { "enum": ["read", "read-write"] } } },
       "x-touri": { "group": "project", "mvp": true, "mutates": true, "deadlineMs": 1800000 }

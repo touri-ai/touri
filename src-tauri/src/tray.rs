@@ -63,3 +63,35 @@ fn now_ms() -> i64 {
         .map(|duration| duration.as_millis() as i64)
         .unwrap_or_default()
 }
+
+/// Server mode keeps window/pause/quit controls without constructing a local host bridge.
+pub fn install_server<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
+    let open = MenuItem::with_id(app, "open", "Abrir touri", true, None::<&str>)
+        .map_err(|_| "create server tray failed")?;
+    let pause = MenuItem::with_id(app, "pause-all", "Pausar todos os bots", true, None::<&str>)
+        .map_err(|_| "create server tray failed")?;
+    let quit = MenuItem::with_id(app, "quit", "Sair do touri", true, None::<&str>)
+        .map_err(|_| "create server tray failed")?;
+    let menu =
+        Menu::with_items(app, &[&open, &pause, &quit]).map_err(|_| "create server tray failed")?;
+    tauri::tray::TrayIconBuilder::with_id("touri-tray")
+        .icon(Image::new(
+            include_bytes!("../icons/tray-template.rgba"),
+            44,
+            44,
+        ))
+        .icon_as_template(true)
+        .menu(&menu)
+        .tooltip("touri")
+        .on_menu_event(move |app, event| match event.id().as_ref() {
+            "open" => crate::window_config::show_main(app, None),
+            "pause-all" => {
+                let _ = app.emit("pause-all-bots", ());
+            }
+            "quit" => app.exit(0),
+            _ => {}
+        })
+        .build(app)
+        .map(|_| ())
+        .map_err(|_| "create server tray failed".into())
+}

@@ -6,7 +6,7 @@ import type { Bot, Kernel, ProviderEvent, ProviderSession, StartTurnArgs, Thread
 import { createServices } from "../../src/kernel/services"
 import { createClaudeAdapter } from "../../src/runtime/claude/adapter"
 import { createCodexAdapter } from "../../src/runtime/codex/adapter"
-import { codexAccessParams } from "../../src/runtime/codex/config"
+import { codexAccessParams, outerFolderSandbox } from "../../src/runtime/codex/config"
 import { localFolderProfile } from "../../src/runtime/folder-access"
 import { withLocalTurnTemp } from "../../src/runtime/local-turn-temp"
 
@@ -123,7 +123,7 @@ const fixture = (provider: "codex" | "claude" = "codex", scenarios: Array<Record
     command: process.execPath,
   })
   const args: StartTurnArgs = {
-    bot: { access: "workspace-write", approvals: "on-request", homeDir: workspace } as Bot,
+    bot: { provider, access: "workspace-write", approvals: "on-request", homeDir: workspace } as Bot,
     thread: { id: "thread-sandbox" } as Thread,
     session: null,
     fingerprint: { cwd: workspace } as StartTurnArgs["fingerprint"],
@@ -166,7 +166,7 @@ for (const provider of ["codex", "claude"] as const) {
         expect(session).toMatchObject({
           params: {
             config: {
-              ...(process.platform === "darwin"
+              ...(outerFolderSandbox(f.args)
                 ? {}
                 : { sandbox_workspace_write: { writable_roots: expect.arrayContaining([temporary]) } }),
               shell_environment_policy: { set: { TMPDIR: temporary, TMP: temporary, TEMP: temporary } },
@@ -317,7 +317,7 @@ test("Codex makes approved read-write folders and private temp writable without 
     { path: reference, access: "read-only" },
   ]
   await withLocalTurnTemp(f.kernel, f.args, async (args) => {
-    const config = codexAccessParams(args, "linux").config as { sandbox_workspace_write: { writable_roots: string[] } }
+    const config = codexAccessParams(args, "win32").config as { sandbox_workspace_write: { writable_roots: string[] } }
     expect(config.sandbox_workspace_write.writable_roots).toEqual(
       expect.arrayContaining([f.workspace, writable, args.env.TMPDIR]),
     )
@@ -327,6 +327,31 @@ test("Codex makes approved read-write folders and private temp writable without 
     expect(profile).toContain(`(deny file-write* (subpath ${JSON.stringify(reference)}))`)
   })
 })
+
+for (const provider of ["codex", "claude"] as const) {
+  test(`${provider} disables tools and MCP when recovering incompatible grants`, async () => {
+    const f = fixture(provider)
+    f.args.conversationOnly = true
+    f.args.bot.access = "read-only"
+    expect(await f.adapter.startTurn(f.args)).toMatchObject({ success: true, status: "succeeded" })
+    if (provider === "codex") {
+      expect(f.requests.find((request) => request.method === "thread/start")).toMatchObject({
+        params: {
+          approvalPolicy: "never",
+          config: {
+            features: { shell_tool: false, apply_patch_freeform: false },
+            tools: { view_image: false },
+            mcp_servers: {},
+          },
+        },
+      })
+      expect(f.calls[0]?.args).toContain("mcp_servers={}")
+    } else {
+      const command = f.calls[0]?.args ?? []
+      expect(command[command.indexOf("--tools") + 1]).toBe("")
+    }
+  })
+}
 
 test("on macOS Codex relies on touri's Seatbelt profile instead of nesting its own sandbox", async () => {
   const f = fixture()
@@ -342,7 +367,9 @@ test("on macOS Codex relies on touri's Seatbelt profile instead of nesting its o
       sandbox: "danger-full-access",
       approvalPolicy: "never",
     })
-    expect(codexAccessParams(args, "linux")).toMatchObject({ sandbox: "workspace-write" })
+    expect(codexAccessParams(args, "linux")).toMatchObject({
+      sandbox: outerFolderSandbox(args, "linux") ? "danger-full-access" : "workspace-write",
+    })
     // The outer profile still confines writes for read-only bots to provider bookkeeping.
     const readOnly = localFolderProfile(
       f.kernel,

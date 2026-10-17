@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import type { TauriInvoke, UiApi } from "../api/client"
 import { userFacingError } from "../errors"
+import { useIsServerMode } from "../features/server/serverMode"
 import { t } from "../i18n"
 import { Modal } from "./Modal"
 import "./folder-picker.css"
@@ -24,6 +25,7 @@ export const FolderPicker = ({
   onSelect: (folder: BotFolder) => void | Promise<void>
   onClose: () => void
 }) => {
+  const serverMode = useIsServerMode()
   const [listing, setListing] = useState<FolderListing | null>(null)
   const [busy, setBusy] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -83,7 +85,7 @@ export const FolderPicker = ({
       setBusy(false)
     }
   }
-  const desktop = "__TAURI_INTERNALS__" in window
+  const desktop = !serverMode && "__TAURI_INTERNALS__" in window
   const unavailable = requireAccess && listing && !listing.canGrant
   const crumbs = listing
     ? listing.path
@@ -100,20 +102,29 @@ export const FolderPicker = ({
     >
       <div className="folder-picker-body">
         <p className="field-help">
-          {desktop
-            ? t("As pastas estão no computador onde o touri está rodando.")
-            : t(
-                "Esta pasta fica no servidor. Para enviar um arquivo do celular ou computador, use Enviar arquivo deste dispositivo.",
-              )}
+          {desktop ? t("As pastas estão no computador onde o touri está rodando.") : t("Esta pasta fica no servidor.")}
         </p>
         {unavailable && (
           <div role="status">
             <p>{t("Não foi possível liberar a pasta com segurança. Seu bot continua disponível.")}</p>
+            <p>
+              {t(
+                "Este computador não consegue proteger o acesso a pastas. Nenhuma permissão foi adicionada. Você pode continuar conversando ou enviar um arquivo.",
+              )}
+            </p>
             {onUpload && (
               <button type="button" className="button button-quiet" onClick={onUpload}>
-                {t("Enviar arquivo deste dispositivo")}
+                {t("Anexar arquivo")}
               </button>
             )}
+            <button
+              type="button"
+              className="button button-quiet"
+              disabled={busy}
+              onClick={() => void load(listing.path)}
+            >
+              {t("Verificar ambiente")}
+            </button>
           </div>
         )}
         <nav aria-label={t("Caminho da pasta")} className="folder-picker-breadcrumbs">
@@ -187,7 +198,7 @@ export const FolderPicker = ({
             </button>
           </div>
         </details>
-        {invokeCommand && "__TAURI_INTERNALS__" in window && (
+        {invokeCommand && desktop && (
           <button
             type="button"
             className="button-quiet"

@@ -128,6 +128,7 @@ export const initCloud = (kernel: Kernel) => {
               "message.created",
               "message.updated",
               "message.delta",
+              "message.parts",
               "run.updated",
               "thread.updated",
               "approval.requested",

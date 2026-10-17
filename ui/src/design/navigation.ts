@@ -7,13 +7,18 @@ let activeTransition: ViewTransition | undefined
 let navigation = 0
 
 /** Snapshot the outgoing page when available; the component provides a WebKit fallback. */
-export const navigatePage = (from: AppRoute, to: AppRoute, commit: (route: AppRoute) => void): void => {
+export const navigatePage = (
+  from: AppRoute,
+  to: AppRoute,
+  commit: (route: AppRoute) => void,
+  { immediate = false }: { immediate?: boolean } = {},
+): void => {
   const current = ++navigation
   const root = document.documentElement
   activeTransition?.skipTransition()
   activeTransition = undefined
   delete root.dataset.pageTransition
-  if (pageKey(from) === pageKey(to) || isMotionReduced() || !document.startViewTransition) {
+  if (immediate || pageKey(from) === pageKey(to) || isMotionReduced() || !document.startViewTransition) {
     commit(to)
     return
   }

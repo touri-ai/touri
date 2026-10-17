@@ -1,5 +1,6 @@
 import type { Message, Run, SendMessageInput, UiEvent } from "@touri/contracts"
 import { ApiError } from "../errors"
+import { scopedStorageKey } from "../storageScope"
 import type { ApiRequest } from "./client"
 
 type PendingSend = { input: SendMessageInput & { clientNonce: string; deadline: number }; message: Message }
@@ -9,15 +10,19 @@ export const createSendJournal = ({
   request,
   emit,
   storage,
+  scope,
   now = Date.now,
 }: {
   request: ApiRequest
   emit: (event: UiEvent) => void
   storage: Pick<Storage, "getItem" | "setItem">
+  /** A stable server origin keeps pending sends bound to their original machine. */
+  scope?: string | null
   now?: () => number
 }) => {
+  const storageKey = scopedStorageKey(STORAGE_KEY, scope ?? null)
   const read = (): PendingSend[] => {
-    const saved = storage.getItem(STORAGE_KEY)
+    const saved = storage.getItem(storageKey)
     if (!saved) return []
     const parsed = JSON.parse(saved) as unknown
     if (!Array.isArray(parsed)) throw new Error("A fila de mensagens salva está inválida.")
@@ -29,7 +34,7 @@ export const createSendJournal = ({
   let timer: ReturnType<typeof setTimeout> | undefined
   let retryTimer: ReturnType<typeof setTimeout> | undefined
   let retryDelay = 500
-  const save = (): void => storage.setItem(STORAGE_KEY, JSON.stringify(entries))
+  const save = (): void => storage.setItem(storageKey, JSON.stringify(entries))
   const status = (entry: PendingSend, next: NonNullable<Message["delivery"]>["status"]): void => {
     if (!entries.includes(entry)) return
     entry.message = {

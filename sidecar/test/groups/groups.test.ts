@@ -3,7 +3,7 @@ import { afterEach, expect, test } from "bun:test"
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import type { Bot, GroupInput, Run, ToolContext } from "@touri/contracts"
+import type { Bot, GroupInput, Kernel, Run, ToolContext } from "@touri/contracts"
 import { init as initGroups } from "../../src/groups"
 import { createGroupRuntime } from "../../src/groups/runtime"
 import { delegatedBot, delegationCeiling, delegationSecrets, setDelegation } from "../../src/groups/security"
@@ -17,6 +17,7 @@ import { createRuntimeEngine } from "../../src/runtime/engine"
 import { composeDeveloperInstructions } from "../../src/runtime/instructions"
 import { createRuntimePersistence } from "../../src/runtime/persistence"
 import { init as initStore } from "../../src/store"
+import { fakeProviderSpawn } from "../fakes/provider-spawn"
 
 const cleanups: (() => void)[] = []
 afterEach(() => {
@@ -433,6 +434,61 @@ test("target approval stays pending until user decision; timeout cancels a stall
   expect(f.store.activePath({ threadId: f.thread.id }).some((m) => m.text === "late answer")).toBe(false)
 })
 
+test("shared replies mirror compact tool parts and subsequent delta offsets", async () => {
+  let f: Awaited<ReturnType<typeof fixture>>
+  f = await fixture(async (ctx, complete) => {
+    const inserted = f.store.insertMessage({
+      message: {
+        id: f.host.kernel.newId(),
+        threadId: ctx.threadId,
+        parentId: f.store.getThread({ threadId: ctx.threadId })?.activeLeafId ?? null,
+        role: "assistant",
+        kind: "text",
+        status: "streaming",
+        runId: ctx.runId,
+        text: "Lendo.",
+        parts: [{ type: "text", text: "Lendo." }],
+        sender: null,
+        source: "local",
+      },
+    })
+    if (!inserted.success || !f.store.appendParts) throw new Error("Compact store missing")
+    f.store.appendParts({
+      threadId: ctx.threadId,
+      messageId: inserted.message.id,
+      parts: [
+        {
+          partIndex: 1,
+          part: {
+            type: "command",
+            callId: "shared-command",
+            command: "cat result.txt",
+            cwd: "/project",
+            exitCode: null,
+            outputTail: "etapa 1",
+            resolution: "running",
+          },
+        },
+      ],
+    })
+    f.store.flushWrites?.()
+    f.store.appendDelta({ threadId: ctx.threadId, messageId: inserted.message.id, partIndex: 2, delta: "\n\nPronto." })
+    f.store.flushWrites?.()
+    const shared = f.store.activePath({ threadId: f.thread.id }).find((message) => message.runId === ctx.runId)
+    expect(shared?.parts.map((part) => part.type)).toEqual(["text", "command", "text"])
+    expect(shared?.parts[1]).toMatchObject({ callId: "shared-command", outputTail: "etapa 1" })
+    expect(shared?.text).toBe("Lendo.\n\nPronto.")
+    expect(
+      f.db
+        .query("SELECT thread_id FROM tool_resolutions WHERE run_id = ? AND call_id = ?")
+        .get(ctx.runId, "shared-command"),
+    ).toEqual({ thread_id: ctx.threadId })
+    complete("Pronto.")
+  })
+  const run = f.send("@dev confira")
+  await until(() => f.persistence.getRun(run.id)?.status === "succeeded")
+})
+
 test("0008 upgrades a populated version 7 DB atomically and can reopen safely", async () => {
   const f = await fixture()
   const name = f.bots[0]?.name
@@ -474,12 +530,14 @@ test("real provider runtime delegates with concurrency cap 1, isolated sessions 
     scenario,
     JSON.stringify({
       waitForApproval: true,
-      events: [
+      events: [{ type: "approval", approvalId: "pm-permission", command: "echo pm" }],
+      afterApproval: [
+        { type: "command", command: "echo pm", exitCode: 0, output: "pm" },
         { type: "delta", delta: "Plano" },
-        { type: "approval", approvalId: "pm-permission", command: "echo pm" },
       ],
     }),
   )
+  f.host.kernel.spawnTree = fakeProviderSpawn(f.host.kernel.spawnTree, command, scenario)
   const engine = createRuntimeEngine({
     kernel: f.host.kernel,
     codexCommand: command,
@@ -517,9 +575,10 @@ test("real provider runtime delegates with concurrency cap 1, isolated sessions 
     scenario,
     JSON.stringify({
       waitForApproval: true,
-      events: [
+      events: [{ type: "approval", approvalId: "dev-permission", command: "echo dev" }],
+      afterApproval: [
+        { type: "command", command: "echo dev", exitCode: 0, output: "dev" },
         { type: "delta", delta: "Código entregue" },
-        { type: "approval", approvalId: "dev-permission", command: "echo dev" },
       ],
     }),
   )
@@ -822,7 +881,8 @@ test("B05: the real engine starts a delegated provider turn under the ceiling, a
   const pm = f.bots[0] as Bot
   const dev = f.bots[1] as Bot
   f.db.query("UPDATE bots SET access='full', approvals='never', machine='local' WHERE id IN (?,?)").run(pm.id, dev.id)
-  const runDelegated = async (caller: Bot): Promise<string> => {
+  const fakeSpawn = fakeProviderSpawn(f.host.kernel.spawnTree, command, scenario)
+  const runDelegated = async (caller: Bot) => {
     const target = f.store.getBot({ botId: dev.id }) as Bot
     const participant = f.data.participant(f.group, f.thread.id, dev.id)
     setDelegation(f.host.kernel, participant.id, {
@@ -848,6 +908,11 @@ test("B05: the real engine starts a delegated provider turn under the ceiling, a
     })
     if (!message.success) throw new Error(message.error)
     writeFileSync(argvLog, "")
+    let launch: Parameters<Kernel["spawnTree"]>[0] | undefined
+    f.host.kernel.spawnTree = (input) => {
+      launch = input
+      return fakeSpawn(input)
+    }
     const engine = createRuntimeEngine({
       kernel: f.host.kernel,
       codexCommand: command,
@@ -870,15 +935,25 @@ test("B05: the real engine starts a delegated provider turn under the ceiling, a
       await Bun.sleep(20)
     setDelegation(f.host.kernel, participant.id, null)
     await engine.shutdown()
-    return readFileSync(argvLog, "utf8")
+    return { argv: readFileSync(argvLog, "utf8"), launch }
   }
   const equal = await runDelegated(f.store.getBot({ botId: pm.id }) as Bot)
-  expect(equal).toContain("danger-full-access")
+  expect(equal.argv).toContain("danger-full-access")
   const reduced = await runDelegated({ ...(f.store.getBot({ botId: pm.id }) as Bot), access: "read-only" })
-  expect(reduced).not.toContain("danger-full-access")
-  expect(reduced).toContain("read-only")
+  if (/\/bwrap$/.test(reduced.launch?.cmd ?? "")) {
+    expect(
+      reduced.launch?.args.some(
+        (arg, index, args) =>
+          arg === "--ro-bind" && args[index + 1] === reduced.launch?.cwd && args[index + 2] === reduced.launch?.cwd,
+      ),
+    ).toBe(true)
+    expect(reduced.argv).toContain('approval_policy="never"')
+  } else {
+    expect(reduced.argv).not.toContain("danger-full-access")
+    expect(reduced.argv).toContain("read-only")
+  }
   const guest = await runDelegated({ ...(f.store.getBot({ botId: pm.id }) as Bot), machine: "vm" })
-  expect(guest).not.toContain("danger-full-access")
+  expect(guest.argv).not.toContain("danger-full-access")
 }, 20000)
 
 test("B05: approval cannot survive target configuration changes while waiting", async () => {
