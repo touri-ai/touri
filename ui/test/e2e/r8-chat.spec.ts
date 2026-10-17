@@ -61,7 +61,9 @@ if (phase === "after") {
       await page.getByRole("button", { name: "Painel do bot", exact: true }).evaluate((element) => {
         if (element.getAttribute("aria-expanded") === "true") (element as HTMLButtonElement).click()
       })
-      const reasoning = page.getByRole("button", { name: "Raciocínio" })
+      const reasoning = page.locator(".turn-activity-toggle")
+      await expect(page.getByRole("button", { name: "Raciocínio", exact: true })).toHaveCount(0)
+      await expect(page.locator(".chat-reasoning")).toHaveCount(0)
       await reasoning.focus()
       await page.keyboard.press("Space")
       await expect(reasoning).toHaveAttribute("aria-expanded", "true")
@@ -109,8 +111,8 @@ if (phase === "after") {
     await page.setViewportSize({ width: 1440, height: 900 })
     await page.emulateMedia({ reducedMotion: "reduce" })
     await page.goto("/test/e2e/r8-chat-harness.html?view=disclosures&theme=light")
-    const tools = page.locator(".tool-turn > details > summary")
-    // The cards are the existing production components; only their scroll container changes.
+    const tools = page.locator(".turn-activity-toggle")
+    await expect(page.locator(".tool-call-card")).toHaveCount(0)
     await expect(tools).toBeVisible()
     const before = (await tools.boundingBox())?.y ?? 0
     await tools.click()

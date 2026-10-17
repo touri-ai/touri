@@ -24,9 +24,11 @@ const renderMessages = (messages: Message[]) =>
   render(<VirtualMessageList messages={messages} onSwitchBranch={vi.fn()} onRetry={vi.fn(async () => {})} />)
 
 describe("r8 chat reading", () => {
-  it("renders every text part and reasoning as Markdown, with an accessible disclosure", async () => {
+  it("renders every text part and keeps reasoning in one accessible activity disclosure", async () => {
     renderMessages([
       message({
+        createdAt: 1,
+        updatedAt: 1,
         parts: [
           { type: "reasoning", text: "**Plano**\n\n- Conferir a leitura" },
           { type: "text", text: "## Resultado\n\n" },
@@ -36,9 +38,11 @@ describe("r8 chat reading", () => {
     ])
     expect(await screen.findByRole("heading", { name: "Resultado" })).toBeVisible()
     expect(screen.getByText("Texto completo", { selector: "strong" })).toBeVisible()
-    const toggle = screen.getByRole("button", { name: "Raciocínio" })
+    const toggle = screen.getByRole("button", { name: "Atividade" })
+    expect(toggle).toHaveClass("turn-activity-toggle")
     expect(toggle).toHaveAttribute("aria-expanded", "false")
     expect(toggle.getAttribute("aria-controls")).toBeTruthy()
+    expect(screen.queryByText("Plano", { selector: "strong" })).toBeNull()
     fireEvent.click(toggle)
     expect(toggle).toHaveAttribute("aria-expanded", "true")
     expect(await screen.findByText("Plano", { selector: "strong" })).toBeVisible()

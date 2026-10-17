@@ -1,16 +1,6 @@
 import type { Bot, BotGroup, Id, MachineState, Message, Routine, RoutineRun, Run, Thread } from "@touri/contracts"
 import { failureRetryHint, sanitizeDiagnostic } from "@touri/contracts/run-failure"
-import {
-  Fragment,
-  type ReactNode,
-  useContext,
-  useEffect,
-  useId,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react"
+import { Fragment, type ReactNode, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import type { UiApi } from "../api/client"
 import type { ApprovalFocus } from "../approvalNavigation"
 import { useComposerDraft } from "../composerDraft"
@@ -30,6 +20,7 @@ import {
 import { type RoutineDraft, repeatTaskDraft, suggestedRoutineDraft } from "../routineDraft"
 import { failureTimeLabel, runErrorFor } from "../runError"
 import { ActivityMark } from "./ActivityMark"
+import { ApprovalCard } from "./ApprovalCard"
 import { useAvatarBot, useMascotSnapshot, useMessageMascotState, useThreadBot } from "./AvatarRuntime"
 import { withApprovalAnswers } from "./activityStatus"
 import { BotAvatar } from "./BotAvatar"
@@ -50,7 +41,9 @@ import { useInsertedIds } from "./Motion"
 import { mascotSignalFor } from "./mascotState"
 import { ToolCallList } from "./ToolCallList"
 import { ToolText } from "./ToolOutput"
+import { TurnActivity } from "./TurnActivity"
 import { toolStatus } from "./toolPresentation"
+import { approvalTools, assistantSegments } from "./turnActivity"
 import { type EditMessage, UserMessageEdit } from "./UserMessageEdit"
 
 type ChatPanelProps = {
@@ -274,7 +267,7 @@ export const VirtualMessageList = ({
         onClickCapture={(event) => {
           if (!(event.target instanceof Element)) return
           const control = event.target.closest<HTMLElement>(
-            "summary, .chat-disclosure-toggle, .disclosure-summary, .message-error-history > button",
+            "summary, .chat-disclosure-toggle, .turn-activity-toggle, .disclosure-summary, .message-error-history > button",
           )
           if (!control) return
           const list = event.currentTarget
@@ -518,18 +511,35 @@ const MessageBubble = ({
     !parts.some((part) => part.type === "approval" && part.decision === "pending")
       ? mascotSignalFor({ botId: run?.botId ?? "", runs: run ? [run] : [], messages: [{ ...message, parts }] }).state
       : runtimeState
-  const reasoning = message.parts.filter((part) => part.type === "reasoning" && part.text.trim())
-  const reasoningId = useId()
-  const [reasoningExpanded, setReasoningExpanded] = useState(false)
+  const answeredId = Object.keys(answers).at(-1)
+  useLayoutEffect(() => {
+    if (!answeredId) return
+    Array.from(root.current?.querySelectorAll<HTMLElement>("[data-approval-id]") ?? [])
+      .find((card) => card.dataset.approvalId === answeredId)
+      ?.focus({ preventScroll: true })
+  }, [answeredId])
   const markdown = messageMarkdown(message)
   const text = message.role === "assistant" ? markdown.replace(connectDataMarker, "") : markdown
   const technicalNotice =
     message.role === "system" &&
     message.parts.some((part) => part.type === "notice" && part.code === "session_replaced")
-  const longContent =
-    message.role === "assistant" &&
-    message.status !== "streaming" &&
-    (text.length > 4000 || text.split("\n").length > 40)
+  const renderAnswer = (content: string) => {
+    const answer = content.replace(connectDataMarker, "")
+    if (!answer.trim()) return null
+    return message.status !== "streaming" && (answer.length > 4000 || answer.split("\n").length > 40) ? (
+      <ChatDisclosure
+        className="chat-long-content"
+        label={t("Mostrar mais")}
+        expandedLabel={t("Mostrar menos")}
+        preview={<MarkdownContent content={answer} evidence={evidence} preview />}
+      >
+        <MarkdownContent content={answer} evidence={evidence} />
+      </ChatDisclosure>
+    ) : (
+      <MarkdownContent content={answer} evidence={evidence} />
+    )
+  }
+  const matchedApprovals = approvalTools(parts)
   const failure = runErrorFor(message, run, machine?.status === "running")
   const runError =
     vmBotId &&
@@ -698,43 +708,59 @@ const MessageBubble = ({
           </span>
         )}
       </div>
-      {reasoning.length > 0 && (
-        <ChatDisclosure
-          key={message.status === "streaming" ? "live" : "saved"}
-          id={reasoningId}
-          className="chat-reasoning"
-          label="Raciocínio"
-          expanded={message.status === "streaming" ? reasoningExpanded : undefined}
-          onExpandedChange={setReasoningExpanded}
-        >
-          <MarkdownContent
-            content={reasoning.map((part) => (part.type === "reasoning" ? part.text : "")).join("\n\n")}
-          />
-        </ChatDisclosure>
-      )}
-      {text &&
-        (technicalNotice ? (
+      {message.role === "assistant" ? (
+        assistantSegments({ ...message, parts }).map((segment) => {
+          if (segment.type === "text") return <Fragment key={segment.key}>{renderAnswer(segment.text)}</Fragment>
+          if (segment.type === "approval")
+            return (
+              <ApprovalCard
+                key={segment.key}
+                part={segment.part}
+                tool={matchedApprovals.get(segment.part.approvalId)}
+                api={api}
+                finished={message.status !== "streaming"}
+                createdAt={message.createdAt}
+                onResolved={(_, decision) =>
+                  setAnswers((current) => ({ ...current, [segment.part.approvalId]: decision }))
+                }
+              />
+            )
+          if (segment.type === "attachments")
+            return <MessageAttachments key={segment.key} parts={segment.parts} api={api} />
+          return (
+            <TurnActivity
+              key={segment.key}
+              message={{ ...message, parts }}
+              state={mascotState}
+              run={run}
+              api={api}
+              bot={bot}
+              onCancel={onCancel}
+              preparingEnvironment={Boolean(vmBotId)}
+              onFocusApproval={(approvalId) => {
+                const card = Array.from(root.current?.querySelectorAll<HTMLElement>("[data-approval-id]") ?? []).find(
+                  (element) => element.dataset.approvalId === approvalId,
+                )
+                card?.scrollIntoView?.({ block: "center", behavior: "instant" })
+                card?.focus({ preventScroll: true })
+              }}
+            />
+          )
+        })
+      ) : text ? (
+        technicalNotice ? (
           <ChatDisclosure label={t("Detalhes técnicos")}>
             <pre>{text}</pre>
           </ChatDisclosure>
         ) : message.role === "tool" ? (
           <ToolText text={text} />
-        ) : longContent ? (
-          <ChatDisclosure
-            className="chat-long-content"
-            label="Mostrar mais"
-            expandedLabel="Mostrar menos"
-            preview={<MarkdownContent content={text} evidence={evidence} preview />}
-          >
-            <MarkdownContent content={text} evidence={evidence} />
-          </ChatDisclosure>
         ) : (
-          <MarkdownContent
-            content={message.role === "system" ? localizeNotice(text) : text}
-            evidence={message.role === "assistant" ? evidence : undefined}
-          />
-        ))}
-      <MessageAttachments parts={parts.filter((part) => part.type === "image" || part.type === "file")} api={api} />
+          <MarkdownContent content={message.role === "system" ? localizeNotice(text) : text} />
+        )
+      ) : null}
+      {message.role !== "assistant" && (
+        <MessageAttachments parts={parts.filter((part) => part.type === "image" || part.type === "file")} api={api} />
+      )}
       {message.role === "user" && onEdit && (
         <UserMessageEdit
           message={message}
@@ -742,34 +768,13 @@ const MessageBubble = ({
           disabled={editDisabled || message.delivery?.status === "queued" || message.delivery?.status === "sent"}
         />
       )}
-      <ToolCallList
-        parts={parts}
-        api={api}
-        finished={message.status !== "streaming"}
-        createdAt={message.createdAt}
-        onResolved={(approvalId, decision) => setAnswers((current) => ({ ...current, [approvalId]: decision }))}
-      />
-      {message.role === "assistant" && message.status === "streaming" && (
-        <ActivityMark
-          state={mascotState}
-          run={run}
-          updatedAt={message.updatedAt}
-          api={api}
-          onCancel={onCancel}
-          preparingEnvironment={Boolean(vmBotId)}
-          bot={bot}
-          threadId={message.threadId}
+      {message.role !== "assistant" && (
+        <ToolCallList
           parts={parts}
-          reasoningId={reasoningId}
-          reasoningExpanded={reasoningExpanded}
-          onExpandReasoning={() => setReasoningExpanded(true)}
-          onFocusApproval={(approvalId) => {
-            const card = Array.from(root.current?.querySelectorAll<HTMLElement>("[data-approval-id]") ?? []).find(
-              (element) => element.dataset.approvalId === approvalId,
-            )
-            card?.scrollIntoView?.({ block: "center", behavior: "instant" })
-            card?.focus({ preventScroll: true })
-          }}
+          api={api}
+          finished={message.status !== "streaming"}
+          createdAt={message.createdAt}
+          onResolved={(approvalId, decision) => setAnswers((current) => ({ ...current, [approvalId]: decision }))}
         />
       )}
       {parts.some(screenTool) && (

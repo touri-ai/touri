@@ -132,7 +132,7 @@ describe("r3 P2 chat and navigation", () => {
         ]}
       />,
     )
-    fireEvent.click(screen.getByText("1 ferramenta"))
+    fireEvent.click(screen.getByRole("button", { name: /1 ação/ }))
     expect(screen.getByText("Encerrado")).toBeVisible()
     expect(screen.getByText("Resultado histórico indisponível.")).toBeVisible()
     expect(screen.queryByText("Aguardando resultado.")).toBeNull()
