@@ -9,6 +9,7 @@
     "./approval-summary": "./src/approval-summary.ts",
     "./redaction": "./src/redaction.ts",
     "./run-failure": "./src/run-failure.ts",
+    "./routine-cron": "./src/routine-cron.ts",
     "./errors": "./src/errors.ts"
   },
   "dependencies": {

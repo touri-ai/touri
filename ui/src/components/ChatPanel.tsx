@@ -8,6 +8,7 @@ import { InlineLivePreview, InlinePreviewContext, screenTool } from "../features
 import { localizeNotice, t, threadTitle } from "../i18n"
 import { machineStateForDisplay } from "../machineState"
 import { messageMarkdown } from "../messageMarkdown"
+import { type RoutineDraft, repeatTaskDraft, suggestedRoutineDraft } from "../routineDraft"
 import { failureTimeLabel, runErrorFor } from "../runError"
 import { ActivityMark } from "./ActivityMark"
 import { useAvatarBot, useMascotSnapshot, useMessageMascotState, useThreadBot } from "./AvatarRuntime"
@@ -33,6 +34,7 @@ import { toolStatus } from "./toolPresentation"
 import { type EditMessage, UserMessageEdit } from "./UserMessageEdit"
 
 type ChatPanelProps = {
+  onRepeatTask?: ((draft: RoutineDraft) => void) | undefined
   group?: BotGroup | null
   groupMembers?: Bot[]
   onEditGroup?: () => void
@@ -698,6 +700,7 @@ const MessageBubble = ({
 }
 
 export const ChatPanel = ({
+  onRepeatTask,
   group = null,
   groupMembers = [],
   onEditGroup = () => {},
@@ -803,6 +806,11 @@ export const ChatPanel = ({
     )
       visibleMessages.push(message)
   }
+  const repeatDraft =
+    !group && bot && !activeRun
+      ? (repeatTaskDraft(bot, thread, visibleMessages) ??
+        (visibleMessages.length === 0 ? suggestedRoutineDraft(bot) : null))
+      : null
   const latestReply = [...visibleMessages].reverse().find((message) => message.role === "assistant")
   const connectDataReply =
     !group &&
@@ -940,6 +948,23 @@ export const ChatPanel = ({
             ) : null
           }
           timelineCards={[
+            ...(repeatDraft && onRepeatTask && !connectDataReply
+              ? [
+                  {
+                    id: `repeat-${latestReply?.id}`,
+                    createdAt: (latestReply?.createdAt ?? 0) + 2,
+                    content: (
+                      <button
+                        type="button"
+                        className="outline-button repeat-task-button"
+                        onClick={() => onRepeatTask(repeatDraft)}
+                      >
+                        {t("Repetir esta tarefa")}
+                      </button>
+                    ),
+                  },
+                ]
+              : []),
             ...(connectDataReply && onOpenToolCatalog
               ? [
                   {
