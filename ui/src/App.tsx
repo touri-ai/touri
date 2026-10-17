@@ -427,6 +427,8 @@ const AppContent = ({ kernel }: AppProps) => {
   )
 
   const notice = localNotice ?? data.notice
+  // This completion notice already points to the inline account recovery control.
+  const noticeHasInlineRecovery = notice === t("Bot created. Could not connect your account. Sign in below to chat.")
   const noticeRecord = data.notifications.find(
     (item) => typeof notice === "string" && notice.endsWith(localizeNotice(item.body)),
   )
@@ -650,9 +652,10 @@ const AppContent = ({ kernel }: AppProps) => {
           {Boolean(notice) && (
             <div className="notice-bar" role="status">
               <span>◈</span>
-              {typeof notice !== "string" ||
-              errorRecovery(notice).classified ||
-              /erro|falh|failed|Error|[{}]/i.test(notice) ? (
+              {!noticeHasInlineRecovery &&
+              (typeof notice !== "string" ||
+                errorRecovery(notice).classified ||
+                /erro|falh|failed|Error|[{}]/i.test(notice)) ? (
                 <ErrorNotice
                   error={notice}
                   context={noticeContext}
@@ -677,9 +680,9 @@ const AppContent = ({ kernel }: AppProps) => {
                     }
                   }}
                 />
-              ) : (
+              ) : typeof notice === "string" ? (
                 notice
-              )}
+              ) : null}
               <button
                 type="button"
                 onClick={() => {
