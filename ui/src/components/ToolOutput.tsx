@@ -161,12 +161,21 @@ export const ToolOutput = ({
   raw,
   callId,
   language,
+  live = false,
 }: {
   raw: string
   callId: string
   language?: ToolLanguage | undefined
+  live?: boolean
 }) => {
   const { images, text } = readOutput(raw)
+  const liveRef = useRef<HTMLDivElement>(null)
+  // Keep the newest lines in view even when the tail exceeds the scroll region.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: new output must advance the live scroll position.
+  useLayoutEffect(() => {
+    const region = liveRef.current?.querySelector("figure")
+    if (live && region) region.scrollTop = region.scrollHeight
+  }, [live, text])
   return (
     <>
       {images.length > 0 && (
@@ -179,11 +188,17 @@ export const ToolOutput = ({
           }))}
         />
       )}
-      {text && (
-        <RevealDetails className="tool-details tool-output" summary="Resultado">
-          <ToolText text={text} language={language} />
-        </RevealDetails>
-      )}
+      {text &&
+        (live ? (
+          <div className="tool-details tool-output" ref={liveRef}>
+            <p>Resultado</p>
+            <ToolText text={redactToolText(text).slice(-1200)} language={language} />
+          </div>
+        ) : (
+          <RevealDetails className="tool-details tool-output" summary="Resultado">
+            <ToolText text={text} language={language} />
+          </RevealDetails>
+        ))}
     </>
   )
 }

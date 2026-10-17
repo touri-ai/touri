@@ -277,6 +277,9 @@ export type TranscriptRejection = {
 export type DeliveryState = { clientNonce: string; deadline: EpochMs; status: 'queued' | 'sent' | 'acked' | 'failed' }
 
 export type ToolCallPart = {
+  startedAt?: EpochMs
+  outputMode?: 'streaming' | 'on_completion'
+  outputTail?: string
   outputAttachmentId?: Id
   outputBytes?: number
   resolution?: ToolResolution
@@ -290,6 +293,8 @@ export type ToolCallPart = {
   ok: boolean | null
 }
 export type CommandPart = {
+  startedAt?: EpochMs
+  outputMode?: 'streaming' | 'on_completion'
   outputAttachmentId?: Id
   outputBytes?: number
   resolution?: ToolResolution
