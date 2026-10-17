@@ -7,6 +7,7 @@ import type {
   GroupInput,
   Id,
   ImportReport,
+  McpServer,
   Message,
   NotificationRecord,
   ProcessRunState,
@@ -480,6 +481,14 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
     }
     if (key === "GET /bots/:id/grants") return { grants: [] } as ApiRoutes[typeof route]["res"]
     if (key === "GET /bots/:id/mcp") return { servers: [] } as ApiRoutes[typeof route]["res"]
+    if (key === "GET /bots/:id/mcp/prerequisites")
+      return {
+        prerequisites: { machine: "local", status: "checked", node: true, oauthKeys: true, credentials: true },
+      } as ApiRoutes[typeof route]["res"]
+    if (key === "POST /bots/:id/mcp/test" || key === "PUT /bots/:id/mcp/:name")
+      return {
+        server: { ...(input as McpServer), tools: [{ name: "sample_tool", description: "Ferramenta de exemplo" }] },
+      } as ApiRoutes[typeof route]["res"]
     if (key === "GET /provider-profiles") return { profiles: [] } as ApiRoutes[typeof route]["res"]
     if (key === "GET /providers/opencode/models")
       return {

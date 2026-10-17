@@ -23,6 +23,68 @@ export const ptBR = {
     "Meu Chrome indisponível. No Google Chrome, abra chrome://inspect/#remote-debugging, permita a depuração remota e aceite o pedido de permissão do Chrome quando o bot conectar.",
   "Allow this teammate to use its own browser tabs.":
     "Permitir que este colega use as próprias abas no navegador escolhido.",
+  "Arquivos locais": "Arquivos locais",
+  "Catálogo de integrações MCP": "Catálogo de integrações MCP",
+  "Escolher pasta…": "Escolher pasta…",
+  "Não foi possível escolher a pasta. Tente novamente.": "Não foi possível escolher a pasta. Tente novamente.",
+  "Conectar uma integração": "Conectar uma integração",
+  "Escolha o que seu bot poderá fazer. A conexão vale somente para este bot.":
+    "Escolha o que seu bot poderá fazer. A conexão vale somente para este bot.",
+  "O que você precisa": "O que você precisa",
+  "Leia, organize e envie mensagens com a conta que você autorizar.":
+    "Leia, organize e envie mensagens com a conta que você autorizar.",
+  "Uma conta Google e uma preparação no Google Cloud. Vamos orientar cada etapa.":
+    "Uma conta Google e uma preparação no Google Cloud. Vamos orientar cada etapa.",
+  "O bot pode ler e editar arquivos nas pastas que você escolher.":
+    "O bot pode ler e editar arquivos nas pastas que você escolher.",
+  "Uma pasta permitida na máquina do bot e Node.js. Não precisa de conta ou senha.":
+    "Uma pasta permitida na máquina do bot e Node.js. Não precisa de conta ou senha.",
+  "Configuração técnica (MCP)": "Configuração técnica (MCP)",
+  "Preparar {name}": "Preparar {name}",
+  "Faça a preparação na máquina em que o bot trabalha. Na VM, o login do Mac não é copiado.":
+    "Faça a preparação na máquina em que o bot trabalha. Na VM, o login do Mac não é copiado.",
+  "Verificando a preparação…": "Verificando a preparação…",
+  "Não foi possível verificar a preparação. Tente novamente.":
+    "Não foi possível verificar a preparação. Tente novamente.",
+  "Na nuvem, use uma conexão HTTP na configuração técnica.": "Na nuvem, use uma conexão HTTP na configuração técnica.",
+  "Ligue a máquina deste bot e clique em Verificar preparação novamente.":
+    "Ligue a máquina deste bot e clique em Verificar preparação novamente.",
+  "Preparação concluída. Teste a conexão para continuar.": "Preparação concluída. Teste a conexão para continuar.",
+  "Instalar Node.js": "Instalar Node.js",
+  "Instale a versão 18 ou mais recente para executar a conexão.":
+    "Instale a versão 18 ou mais recente para executar a conexão.",
+  "Baixar Node.js": "Baixar Node.js",
+  "Criar o acesso no Google": "Criar o acesso no Google",
+  "Escolha ou crie um projeto no Google Cloud e ative a API do Gmail.":
+    "Escolha ou crie um projeto no Google Cloud e ative a API do Gmail.",
+  "Abrir Google Cloud": "Abrir Google Cloud",
+  "Crie uma credencial OAuth do tipo App para computador e baixe o arquivo JSON.":
+    "Crie uma credencial OAuth do tipo App para computador e baixe o arquivo JSON.",
+  "Criar credencial": "Criar credencial",
+  "Na pasta pessoal dessa máquina, crie a pasta .gmail-mcp e salve o arquivo como gcp-oauth.keys.json.":
+    "Na pasta pessoal dessa máquina, crie a pasta .gmail-mcp e salve o arquivo como gcp-oauth.keys.json.",
+  "Autorizar sua conta Google": "Autorizar sua conta Google",
+  "Abra o Terminal nessa máquina e cole este comando. No navegador, escolha a conta e revise o acesso solicitado.":
+    "Abra o Terminal nessa máquina e cole este comando. No navegador, escolha a conta e revise o acesso solicitado.",
+  "Ao concluir, a autorização será salva em credentials.json na pasta .gmail-mcp.":
+    "Ao concluir, a autorização será salva em credentials.json na pasta .gmail-mcp.",
+  "Etapas já detectadas foram puladas. Depois de concluir, verifique novamente.":
+    "Etapas já detectadas foram puladas. Depois de concluir, verifique novamente.",
+  "Ver instruções completas de {name}": "Ver instruções completas de {name}",
+  "Verificar preparação novamente": "Verificar preparação novamente",
+  "Instale Node.js na máquina deste bot, verifique a preparação e tente novamente.":
+    "Instale Node.js na máquina deste bot, verifique a preparação e tente novamente.",
+  "Não foi possível conectar. Confira a preparação, o endereço ou o acesso à rede e teste novamente.":
+    "Não foi possível conectar. Confira a preparação, o endereço ou o acesso à rede e teste novamente.",
+  "Testando conexão…": "Testando conexão…",
+  "Testar conexão": "Testar conexão",
+  "Buscando as ferramentas disponíveis…": "Buscando as ferramentas disponíveis…",
+  "Conexão pronta: {count} ferramentas disponíveis. Salve para usá-las neste bot.":
+    "Conexão pronta: {count} ferramentas disponíveis. Salve para usá-las neste bot.",
+  "O servidor respondeu, mas não ofereceu ferramentas. Confira a configuração e teste novamente.":
+    "O servidor respondeu, mas não ofereceu ferramentas. Confira a configuração e teste novamente.",
+  "Salvando conexão…": "Salvando conexão…",
+  "Salvar conexão": "Salvar conexão",
   "Conectar dados": "Conectar dados",
   "Escolha como disponibilizar os dados para este bot.": "Escolha como disponibilizar os dados para este bot.",
   "Anexar arquivo/CSV": "Anexar arquivo/CSV",
@@ -1352,6 +1414,67 @@ export const ptBR = {
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  "Arquivos locais": "Local files",
+  "Catálogo de integrações MCP": "MCP integration catalog",
+  "Escolher pasta…": "Choose folder…",
+  "Não foi possível escolher a pasta. Tente novamente.": "Could not choose a folder. Try again.",
+  "Conectar uma integração": "Connect an integration",
+  "Escolha o que seu bot poderá fazer. A conexão vale somente para este bot.":
+    "Choose what your bot can do. This connection applies only to this bot.",
+  "O que você precisa": "What you need",
+  "Leia, organize e envie mensagens com a conta que você autorizar.":
+    "Read, organize and send messages with the account you authorize.",
+  "Uma conta Google e uma preparação no Google Cloud. Vamos orientar cada etapa.":
+    "A Google account and preparation in Google Cloud. We will guide you through each step.",
+  "O bot pode ler e editar arquivos nas pastas que você escolher.":
+    "The bot can read and edit files in the folders you choose.",
+  "Uma pasta permitida na máquina do bot e Node.js. Não precisa de conta ou senha.":
+    "An allowed folder on the bot’s machine and Node.js. No account or password needed.",
+  "Configuração técnica (MCP)": "Technical configuration (MCP)",
+  "Preparar {name}": "Prepare {name}",
+  "Faça a preparação na máquina em que o bot trabalha. Na VM, o login do Mac não é copiado.":
+    "Prepare the connection on the machine where the bot works. Your Mac login is not copied into a VM.",
+  "Verificando a preparação…": "Checking preparation…",
+  "Não foi possível verificar a preparação. Tente novamente.": "Could not check preparation. Try again.",
+  "Na nuvem, use uma conexão HTTP na configuração técnica.":
+    "In the cloud, use an HTTP connection in technical configuration.",
+  "Ligue a máquina deste bot e clique em Verificar preparação novamente.":
+    "Start this bot’s machine and click Check preparation again.",
+  "Preparação concluída. Teste a conexão para continuar.": "Preparation complete. Test the connection to continue.",
+  "Instalar Node.js": "Install Node.js",
+  "Instale a versão 18 ou mais recente para executar a conexão.": "Install version 18 or later to run the connection.",
+  "Baixar Node.js": "Download Node.js",
+  "Criar o acesso no Google": "Set up Google access",
+  "Escolha ou crie um projeto no Google Cloud e ative a API do Gmail.":
+    "Choose or create a Google Cloud project and enable the Gmail API.",
+  "Abrir Google Cloud": "Open Google Cloud",
+  "Crie uma credencial OAuth do tipo App para computador e baixe o arquivo JSON.":
+    "Create an OAuth credential of type Desktop app and download the JSON file.",
+  "Criar credencial": "Create credential",
+  "Na pasta pessoal dessa máquina, crie a pasta .gmail-mcp e salve o arquivo como gcp-oauth.keys.json.":
+    "In that machine’s home folder, create .gmail-mcp and save the file as gcp-oauth.keys.json.",
+  "Autorizar sua conta Google": "Authorize your Google account",
+  "Abra o Terminal nessa máquina e cole este comando. No navegador, escolha a conta e revise o acesso solicitado.":
+    "Open Terminal on that machine and paste this command. In the browser, choose the account and review the requested access.",
+  "Ao concluir, a autorização será salva em credentials.json na pasta .gmail-mcp.":
+    "When complete, authorization will be saved as credentials.json in .gmail-mcp.",
+  "Etapas já detectadas foram puladas. Depois de concluir, verifique novamente.":
+    "Steps already detected were skipped. Check again when you finish.",
+  "Ver instruções completas de {name}": "View full instructions for {name}",
+  "Verificar preparação novamente": "Check preparation again",
+  "Instale Node.js na máquina deste bot, verifique a preparação e tente novamente.":
+    "Install Node.js on this bot’s machine, check preparation and try again.",
+  "Não foi possível conectar. Confira a preparação, o endereço ou o acesso à rede e teste novamente.":
+    "Could not connect. Check preparation, the address or network access and test again.",
+  "Testando conexão…": "Testing connection…",
+  "Testar conexão": "Test connection",
+  "Buscando as ferramentas disponíveis…": "Looking for available tools…",
+  "Conexão pronta: {count} ferramentas disponíveis. Salve para usá-las neste bot.":
+    "Connection ready: {count} tools available. Save to use them with this bot.",
+  "O servidor respondeu, mas não ofereceu ferramentas. Confira a configuração e teste novamente.":
+    "The server responded but offered no tools. Check the configuration and test again.",
+  "Salvando conexão…": "Saving connection…",
+  "Salvar conexão": "Save connection",
   "Conectar dados": "Connect data",
   "Escolha como disponibilizar os dados para este bot.": "Choose how to make the data available to this bot.",
   "Anexar arquivo/CSV": "Attach a file/CSV",
@@ -2114,6 +2237,10 @@ export const plural = (count: number, one: string, other: string, locale: Locale
   (locale === "pt-BR" ? count === 1 : pluralRules[locale].select(count) === "one") ? one : other
 
 const singular: Partial<Record<TranslationKey, [string, string]>> = {
+  "Conexão pronta: {count} ferramentas disponíveis. Salve para usá-las neste bot.": [
+    "Conexão pronta: {count} ferramenta disponível. Salve para usá-la neste bot.",
+    "Connection ready: {count} tool available. Save to use it with this bot.",
+  ],
   "Bot routine count": ["{count} rotina", "{count} routine"],
   "Queued messages waiting": [
     "{count} mensagem na fila · aguardando conexão",

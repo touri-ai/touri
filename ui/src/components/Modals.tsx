@@ -1476,6 +1476,8 @@ export const BotSettingsModal = ({
               <BotMcpSettings
                 api={api}
                 botId={bot.id}
+                machine={bot.machine}
+                invokeCommand={invokeCommand}
                 onPermissionsChange={() => setGrantsRevision((revision) => revision + 1)}
                 focusOnOpen={focusMcp}
                 {...(onOpenIntegrations ? { onOpenIntegrations } : {})}
