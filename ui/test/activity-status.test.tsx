@@ -57,6 +57,7 @@ it("keeps provider reasoning and token estimates out of the main status in both 
   const live: Message = { ...message, parts: [{ type: "reasoning", text: "", estimatedTokens: 120 }] }
   const view = render(<VirtualMessageList {...props} messages={[live]} />)
   expect(screen.getByRole("status")).toHaveTextContent("Preparando a resposta…")
+  expect(view.container.querySelectorAll(".turn-activity")).toHaveLength(1)
   expect(screen.queryByRole("button", { name: "Raciocínio" })).toBeNull()
   view.rerender(<VirtualMessageList {...props} messages={[{ ...live, status: "complete" }]} />)
   expect(view.container.querySelector(".activity-mark")).toBeNull()
@@ -97,10 +98,12 @@ it("updates a single live line, opens full reasoning and collapses it when the t
   const props = { onSwitchBranch: () => undefined, onRetry: async () => undefined }
   const live: Message = { ...message, parts: [{ type: "reasoning", text: "Conferi a fila. Verificando o lock" }] }
   const view = render(<VirtualMessageList {...props} messages={[live]} />)
-  const disclosure = screen.getByRole("button", { name: "Raciocínio" })
-  expect(disclosure).toHaveAttribute("aria-expanded", "false")
   const preview = screen.getByRole("button", { name: "Preparando a resposta…" })
-  expect(preview).toHaveAttribute("aria-controls", disclosure.getAttribute("aria-controls"))
+  expect(preview).toHaveClass("turn-activity-toggle")
+  expect(preview).toHaveAttribute("aria-expanded", "false")
+  expect(preview.getAttribute("aria-controls")).toBeTruthy()
+  expect(screen.queryByText("Conferi a fila. Verificando o lock")).toBeNull()
+  expect(screen.queryByRole("button", { name: "Raciocínio" })).toBeNull()
   view.rerender(
     <VirtualMessageList
       {...props}
@@ -117,12 +120,14 @@ it("updates a single live line, opens full reasoning and collapses it when the t
   view.rerender(<VirtualMessageList {...props} messages={[{ ...live, parts: [...reasoning, read] }]} />)
   expect(screen.getByRole("button", { name: "Lendo README.md…" })).toBe(preview)
   fireEvent.click(screen.getByRole("button", { name: "Lendo README.md…" }))
-  expect(disclosure).toHaveAttribute("aria-expanded", "true")
+  expect(preview).toHaveAttribute("aria-expanded", "true")
+  expect(screen.getByRole("heading", { name: "Raciocínio" })).toBeVisible()
   expect(screen.getByText("Conferi a fila. Verificando o lock do payout…")).toBeVisible()
   view.rerender(<VirtualMessageList {...props} messages={[{ ...live, status: "complete" }]} />)
   expect(view.container.querySelector(".activity-mark")).toBeNull()
-  expect(screen.getByRole("button", { name: "Raciocínio" })).toHaveAttribute("aria-expanded", "false")
-  fireEvent.click(screen.getByRole("button", { name: "Raciocínio" }))
+  expect(screen.getByRole("button", { name: "Atividade" })).toHaveAttribute("aria-expanded", "false")
+  expect(screen.queryByText("Conferi a fila. Verificando o lock")).toBeNull()
+  fireEvent.click(screen.getByRole("button", { name: "Atividade" }))
   expect(screen.getByText("Conferi a fila. Verificando o lock")).toBeVisible()
 })
 
@@ -209,6 +214,8 @@ for (const [action, expected] of [
     await screen.findByText(expected)
     expect(screen.queryByRole("link", { name: "Preciso da sua autorização." })).toBeNull()
     expect(view.container.querySelectorAll(".tool-call-card")).toHaveLength(1)
+    expect(view.container.querySelector(".turn-activity .tool-call-card")).toBeNull()
+    expect(view.container.querySelector("[data-approval-id]")?.closest(".turn-activity")).toBeNull()
     expect(view.container.querySelector(".activity-mark .tb-avatar")).toHaveAttribute("data-bot-id", bot.id)
   })
 }

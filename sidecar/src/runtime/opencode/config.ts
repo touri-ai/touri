@@ -74,6 +74,10 @@ export const openCodeConfig = (args: StartTurnArgs) => {
         }
       : {}),
   }
+  if (args.conversationOnly) {
+    for (const key of Object.keys(permission)) delete permission[key]
+    permission["*"] = "deny"
+  }
   return {
     $schema: "https://opencode.ai/config.json",
     autoupdate: false,
@@ -83,9 +87,16 @@ export const openCodeConfig = (args: StartTurnArgs) => {
     permission,
     agent: { touri: { mode: "primary", description: "Assistente do touri", permission } },
     plugin: [],
-    mcp: {
-      touri: { type: "local", command: [args.mcp.command, ...args.mcp.args], environment: args.mcp.env, enabled: true },
-    },
+    mcp: args.conversationOnly
+      ? {}
+      : {
+          touri: {
+            type: "local",
+            command: [args.mcp.command, ...args.mcp.args],
+            environment: args.mcp.env,
+            enabled: true,
+          },
+        },
   }
 }
 

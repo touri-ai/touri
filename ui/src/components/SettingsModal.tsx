@@ -315,21 +315,34 @@ export const SettingsModal = ({
                   />
                 )}
                 <SettingsGroup>
-                  <SettingsRow
-                    title={SETTINGS.vmMemory.label}
-                    description={SETTINGS.vmMemory.description}
-                    htmlFor={SETTINGS.vmMemory.controlId}
-                    settingId={SETTINGS.vmMemory.id}
+                  <details
+                    className="settings-technical-details"
+                    ref={(details) => {
+                      if (
+                        details &&
+                        (focusSetting === "vmMemory" ||
+                          Boolean(error && (!Number.isInteger(vmMemory) || vmMemory < 512 || vmMemory > 16384)))
+                      )
+                        details.open = true
+                    }}
                   >
-                    <input
-                      id={SETTINGS.vmMemory.controlId}
-                      type="number"
-                      min={512}
-                      max={16384}
-                      value={vmMemory}
-                      onChange={(event) => setVmMemory(Number(event.target.value))}
-                    />
-                  </SettingsRow>
+                    <summary>{t("Detalhes técnicos")}</summary>
+                    <SettingsRow
+                      title={SETTINGS.vmMemory.label}
+                      description={SETTINGS.vmMemory.description}
+                      htmlFor={SETTINGS.vmMemory.controlId}
+                      settingId={SETTINGS.vmMemory.id}
+                    >
+                      <input
+                        id={SETTINGS.vmMemory.controlId}
+                        type="number"
+                        min={512}
+                        max={16384}
+                        value={vmMemory}
+                        onChange={(event) => setVmMemory(Number(event.target.value))}
+                      />
+                    </SettingsRow>
+                  </details>
                   <label
                     className="toggle-row"
                     htmlFor={SETTINGS.resumeInterruptedTurns.controlId}

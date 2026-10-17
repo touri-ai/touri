@@ -71,7 +71,7 @@ describe("tool screenshots", () => {
     "renders a screenshot thumbnail, opens it and offers a download",
     (data) => {
       renderResult(data)
-      fireEvent.click(screen.getByText("1 ferramenta", { selector: "summary" }))
+      fireEvent.click(screen.getByRole("button", { name: /1 ação/ }))
       fireEvent.click(screen.getByText("Resultado", { selector: "summary" }))
       const output = screen.getByText(/Display da VM/, { selector: "code" })
       expect(output).toHaveTextContent("Display da VM")
@@ -91,6 +91,7 @@ describe("tool screenshots", () => {
   )
   it("does not render executable image formats or dump their payload into text", () => {
     renderResult("PHN2Zz48c2NyaXB0Pjwvc2NyaXB0Pjwvc3ZnPg==", "image/svg+xml")
+    fireEvent.click(screen.getByRole("button", { name: /1 ação/ }))
     expect(screen.queryByAltText("Captura de tela da ferramenta")).not.toBeInTheDocument()
     expect(document.body).not.toHaveTextContent("PHN2Zz48c2NyaXB0Pjwvc2NyaXB0Pjwvc3ZnPg==")
   })
@@ -179,7 +180,7 @@ describe("failed turns", () => {
       />,
     )
     expect(screen.getByRole("alert")).toHaveTextContent("Não encontrei o programa do provedor")
-    fireEvent.click(screen.getByRole("button", { name: "Tentar novamente" }))
+    fireEvent.click(screen.getByRole("button", { name: "Tentar de novo" }))
     expect(retried).toEqual(["run-1"])
   })
 })

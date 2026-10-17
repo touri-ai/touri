@@ -388,10 +388,6 @@
   position: relative;
 }
 
-.bot-actions-menu .bot-context-menu {
-  position: absolute;
-  z-index: 12;
-  inset-inline-end: 0;
-  top: 100%;
+.bot-context-menu {
   min-width: 168px;
 }

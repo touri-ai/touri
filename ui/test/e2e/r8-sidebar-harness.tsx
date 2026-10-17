@@ -113,6 +113,16 @@ api.notify({
   body: "O provedor encerrou inesperadamente. Tente novamente.",
   createdAt: now - 40_000,
 })
+if (new URLSearchParams(location.search).has("menus")) {
+  for (const name of ["Planejamento", "Revisão", "Notas", "Pesquisa"])
+    await api.request("POST /groups", {
+      name,
+      color: "#d64bad",
+      avatarShape: "cercle",
+      memberIds: ["sidebar-bot-2", "sidebar-bot-3"],
+      coordinatorBotId: null,
+    })
+}
 localStorage.setItem(
   "touri.workspace.v1",
   JSON.stringify({ botId: "sidebar-bot-2", threadId: "sidebar-thread-2", route: { section: "bots", screen: "chat" } }),

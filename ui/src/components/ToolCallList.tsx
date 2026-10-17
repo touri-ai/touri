@@ -1,6 +1,7 @@
 import type { ApprovalPart, MessagePart } from "@touri/contracts"
-import { useLayoutEffect, useRef, useState } from "react"
+import { type ReactNode, useLayoutEffect, useRef, useState } from "react"
 import type { UiApi } from "../api/client"
+import { t } from "../i18n"
 import { ApprovalCard } from "./ApprovalCard"
 import { ToolCallCard } from "./ToolCallCard"
 import { approvalMatchesTool, type ToolPart } from "./toolPresentation"
@@ -36,6 +37,36 @@ const groupTools = (parts: MessagePart[]): ToolEntry[][] => {
   }
   if (group.length) groups.push(group)
   return groups
+}
+
+/** Keep historical cards dormant until their group is opened, then preserve their disclosure state. */
+const ToolGroup = ({
+  entries,
+  focusId,
+  children,
+}: {
+  entries: ToolEntry[]
+  focusId: string | undefined
+  children: ReactNode
+}) => {
+  const group = useRef<HTMLDetailsElement>(null)
+  const [mounted, setMounted] = useState(false)
+  const focusedApproval = entries.some((entry) => entry.approval?.approvalId === focusId) ? focusId : undefined
+  useLayoutEffect(() => {
+    if (focusedApproval && !group.current?.open) group.current?.querySelector("summary")?.focus({ preventScroll: true })
+  }, [focusedApproval])
+  return (
+    <details
+      className="tool-group"
+      ref={group}
+      onToggle={(event) => {
+        if (event.target === event.currentTarget && event.currentTarget.open) setMounted(true)
+      }}
+    >
+      <summary>{t("Tool group count", { count: entries.length })}</summary>
+      {mounted && <div className="tool-group-cards">{children}</div>}
+    </details>
+  )
 }
 
 export const ToolCallList = ({
@@ -92,12 +123,9 @@ export const ToolCallList = ({
         return (
           <div className="tool-turn" key={entries[0]?.id}>
             {grouped.length > 0 && (
-              <details className="tool-group">
-                <summary>
-                  {grouped.length} {grouped.length === 1 ? "ferramenta" : "ferramentas"}
-                </summary>
-                <div className="tool-group-cards">{grouped.map(card)}</div>
-              </details>
+              <ToolGroup entries={grouped} focusId={focusId}>
+                {grouped.map(card)}
+              </ToolGroup>
             )}
             {pending.map(card)}
           </div>

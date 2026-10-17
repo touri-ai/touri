@@ -16,6 +16,7 @@ type Scenario = {
   toolPidPath?: string
   badResume?: boolean
   waitForApproval?: boolean
+  afterApproval?: Array<unknown>
   logPath?: string
   requestLogPath?: string
   pauseAfterFirstDelta?: string
@@ -225,6 +226,10 @@ process.stdin.on("data", (chunk: string) => {
       if (!scenario.ignoreInterrupt) interrupted = true
     } else if (waitingForApproval && id === 99) {
       waitingForApproval = false
+      for (const event of scenario.afterApproval ?? []) {
+        const frame = eventFrame(event, `fake-turn-${turnCount}`)
+        if (frame) output(frame)
+      }
       output({ method: "turn/completed", params: { status: "succeeded", turnId: `fake-turn-${turnCount}` } })
     } else if (id !== null) output({ jsonrpc: "2.0", id, result: {} })
   }

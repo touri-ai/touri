@@ -79,7 +79,7 @@ it.each(cases)("projects %s in chat, bell, global notice and computer", async (d
     <VirtualMessageList messages={[failedMessage]} runs={[run]} onRetry={vi.fn()} onSwitchBranch={vi.fn()} />,
   )
   expect(screen.getByRole("alert")).toHaveTextContent(message)
-  expect(screen.getByRole("button", { name: action })).toBeVisible()
+  expect(screen.getByRole("button", { name: action === "Tentar novamente" ? "Tentar de novo" : action })).toBeVisible()
   expectClosedDiagnostics(chat.container)
   chat.unmount()
   const item = api.notify({
@@ -212,7 +212,7 @@ it("never replays a confirmed write on review or resume", () => {
       onSwitchBranch={vi.fn()}
     />,
   )
-  expect(screen.queryByRole("button", { name: "Tentar novamente" })).not.toBeInTheDocument()
+  expect(screen.queryByRole("button", { name: "Tentar de novo" })).not.toBeInTheDocument()
   fireEvent.click(screen.getByRole("button", { name: "Ver ações realizadas" }))
   expect(screen.getByRole("region", { name: "Ações registradas" })).toBeVisible()
   fireEvent.click(screen.getByRole("button", { name: "Retomar tarefa" }))

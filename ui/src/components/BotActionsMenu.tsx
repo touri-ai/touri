@@ -1,5 +1,7 @@
-import { useEffect, useRef } from "react"
+import { useEffect, useId, useRef } from "react"
+import { createPortal } from "react-dom"
 import { t } from "../i18n"
+import { useAnchoredPopover } from "./useAnchoredPopover"
 
 export const BotActionsMenu = ({
   name,
@@ -18,16 +20,22 @@ export const BotActionsMenu = ({
 }) => {
   const container = useRef<HTMLDivElement>(null)
   const trigger = useRef<HTMLButtonElement>(null)
-  const menu = useRef<HTMLDivElement>(null)
+  const { surface: menu, style, portalRoot } = useAnchoredPopover(open, trigger)
+  const menuId = useId()
   useEffect(() => {
     if (!open) return
     menu.current?.querySelector<HTMLButtonElement>("button")?.focus()
     const close = (event: MouseEvent) => {
-      if (event.target instanceof Node && !container.current?.contains(event.target)) setOpen(false)
+      if (
+        event.target instanceof Node &&
+        !container.current?.contains(event.target) &&
+        !menu.current?.contains(event.target)
+      )
+        setOpen(false)
     }
     window.addEventListener("mousedown", close)
     return () => window.removeEventListener("mousedown", close)
-  }, [open, setOpen])
+  }, [open, setOpen, menu])
   const launch = (action: () => void) => {
     trigger.current?.focus()
     setOpen(false)
@@ -39,7 +47,13 @@ export const BotActionsMenu = ({
       className="bot-actions-menu"
       ref={container}
       onBlur={(event) => {
-        if (!(event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget))) setOpen(false)
+        if (
+          !(
+            event.relatedTarget instanceof Node &&
+            (event.currentTarget.contains(event.relatedTarget) || menu.current?.contains(event.relatedTarget))
+          )
+        )
+          setOpen(false)
       }}
     >
       <button
@@ -49,7 +63,14 @@ export const BotActionsMenu = ({
         aria-label={t("Actions for {name}", { name })}
         aria-haspopup="menu"
         aria-expanded={open}
-        onClick={() => setOpen(!open)}
+        aria-controls={open ? menuId : undefined}
+        onMouseDown={(event) => {
+          if (open) event.preventDefault()
+        }}
+        onClick={() => {
+          if (open) trigger.current?.focus()
+          setOpen(!open)
+        }}
         onKeyDown={(event) => {
           if (event.key === "ArrowDown") {
             event.preventDefault()
@@ -59,41 +80,52 @@ export const BotActionsMenu = ({
       >
         ···
       </button>
-      {open && (
-        <div
-          className="bot-context-menu"
-          ref={menu}
-          role="menu"
-          aria-label={t("Actions for {name}", { name })}
-          onKeyDown={(event) => {
-            if (event.key === "Escape") {
-              event.stopPropagation()
-              trigger.current?.focus()
-              setOpen(false)
-            }
-            const buttons = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>("button"))
-            const index =
-              document.activeElement instanceof HTMLButtonElement ? buttons.indexOf(document.activeElement) : -1
-            const direction = event.key === "ArrowDown" ? 1 : event.key === "ArrowUp" ? -1 : 0
-            if (!direction && event.key !== "Home" && event.key !== "End") return
-            event.preventDefault()
-            const next = event.key === "Home" ? 0 : event.key === "End" ? buttons.length - 1 : index + direction
-            buttons[(next + buttons.length) % buttons.length]?.focus()
-          }}
-        >
-          <button type="button" role="menuitem" onClick={() => launch(onSettings)}>
-            {t("Advanced")}
-          </button>
-          <button type="button" role="menuitem" onClick={() => launch(onRoutines)}>
-            {t("Routines")}
-          </button>
-          {onDelete && (
-            <button type="button" role="menuitem" className="tool-action-deny" onClick={() => launch(onDelete)}>
-              {t("Delete bot")}
+      {open &&
+        createPortal(
+          <div
+            className="bot-context-menu"
+            id={menuId}
+            style={style}
+            ref={menu}
+            role="menu"
+            aria-label={t("Actions for {name}", { name })}
+            // Native mouse clicks can blur a button without focusing the next one. Keep the menu until click activates it.
+            onMouseDown={(event) => event.preventDefault()}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                event.preventDefault()
+                event.stopPropagation()
+                trigger.current?.focus()
+                setOpen(false)
+              }
+              if (event.key === "Tab") {
+                trigger.current?.focus()
+                setOpen(false)
+              }
+              const buttons = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>("button"))
+              const index =
+                document.activeElement instanceof HTMLButtonElement ? buttons.indexOf(document.activeElement) : -1
+              const direction = event.key === "ArrowDown" ? 1 : event.key === "ArrowUp" ? -1 : 0
+              if (!direction && event.key !== "Home" && event.key !== "End") return
+              event.preventDefault()
+              const next = event.key === "Home" ? 0 : event.key === "End" ? buttons.length - 1 : index + direction
+              buttons[(next + buttons.length) % buttons.length]?.focus()
+            }}
+          >
+            <button type="button" role="menuitem" onClick={() => launch(onSettings)}>
+              {t("Advanced")}
             </button>
-          )}
-        </div>
-      )}
+            <button type="button" role="menuitem" onClick={() => launch(onRoutines)}>
+              {t("Routines")}
+            </button>
+            {onDelete && (
+              <button type="button" role="menuitem" className="tool-action-deny" onClick={() => launch(onDelete)}>
+                {t("Delete bot")}
+              </button>
+            )}
+          </div>,
+          portalRoot,
+        )}
     </div>
   )
 }
