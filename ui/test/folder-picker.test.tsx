@@ -46,10 +46,15 @@ it("keeps unsupported grants disabled and offers device upload without selecting
   expect(screen.getByRole("radio", { name: "Somente leitura", exact: true })).toBeDisabled()
   fireEvent.click(useFolder())
   expect(f.select).not.toHaveBeenCalled()
-  fireEvent.click(screen.getByRole("button", { name: "Enviar arquivo deste dispositivo" }))
+  fireEvent.click(screen.getByRole("button", { name: "Anexar arquivo" }))
   expect(upload).toHaveBeenCalledOnce()
   expect(f.select).not.toHaveBeenCalled()
   expect(screen.queryByRole("button", { name: "/", exact: true })).not.toBeInTheDocument()
+  f.request.mockResolvedValueOnce(f.listing())
+  fireEvent.click(screen.getByRole("button", { name: "Verificar ambiente" }))
+  await waitFor(() => expect(useFolder()).toBeEnabled())
+  expect(f.request).toHaveBeenLastCalledWith("GET /folders", { path: "/workspace" })
+  expect(f.select).not.toHaveBeenCalled()
 })
 
 it("starts at home, navigates folders and breadcrumbs, and confirms read-only access by default", async () => {

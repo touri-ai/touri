@@ -116,9 +116,17 @@ export const FolderPicker = ({
             </p>
             {onUpload && (
               <button type="button" className="button button-quiet" onClick={onUpload}>
-                {t("Enviar arquivo deste dispositivo")}
+                {t("Anexar arquivo")}
               </button>
             )}
+            <button
+              type="button"
+              className="button button-quiet"
+              disabled={busy}
+              onClick={() => void load(listing.path)}
+            >
+              {t("Verificar ambiente")}
+            </button>
           </div>
         )}
         <nav aria-label={t("Caminho da pasta")} className="folder-picker-breadcrumbs">
