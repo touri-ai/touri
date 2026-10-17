@@ -190,11 +190,6 @@ const routineError = (input: RoutineCreate): string | null => {
 
 const cloneRun = (run: Run): Run => ({ ...run, usage: run.usage ? { ...run.usage } : null })
 
-const partIndex = (parts: Array<MessagePart>, type: "text" | "reasoning"): number => {
-  const index = parts.findIndex((part) => part.type === type)
-  return index >= 0 ? index : parts.length
-}
-
 export const createRuntimeEngine = ({
   kernel,
   codexCommand,
@@ -479,7 +474,8 @@ export const createRuntimeEngine = ({
       const separator = state.text && !state.textItemIds.has(event.itemId) ? "\n\n" : ""
       state.textItemIds.add(event.itemId)
       const delta = separator + event.delta
-      const existing = state.parts.find((part): part is TextPart => part.type === "text")
+      const prose = [...state.parts].reverse().find((part) => part.type === "text" || part.type === "reasoning")
+      const existing = prose?.type === "text" ? prose : undefined
       if (existing) existing.text += delta
       else state.parts.push({ type: "text", text: delta })
       state.text += delta
@@ -487,18 +483,35 @@ export const createRuntimeEngine = ({
         store.appendDelta({
           threadId: run.threadId,
           messageId: state.replyMessageId,
-          partIndex: partIndex(state.parts, "text"),
+          partIndex: existing ? state.parts.indexOf(existing) : state.parts.length - 1,
           delta,
           ...(state.generation === null ? {} : { generation: state.generation }),
         })
       return
     }
     if (event.type === "reasoning_delta") {
-      const existing = state.parts.find(
-        (part): part is Extract<MessagePart, { type: "reasoning" }> => part.type === "reasoning",
-      )
-      if (existing) existing.text += event.delta
-      else state.parts.push({ type: "reasoning", text: event.delta })
+      if (!event.delta) return
+      const last = state.parts.at(-1)
+      if (last?.type === "reasoning") {
+        state.parts = [...state.parts.slice(0, -1), { type: "reasoning", text: last.text + event.delta }]
+        if (state.replyMessageId)
+          store.appendDelta({
+            threadId: run.threadId,
+            messageId: state.replyMessageId,
+            partIndex: state.parts.length - 1,
+            delta: event.delta,
+            ...(state.generation === null ? {} : { generation: state.generation }),
+          })
+      } else {
+        state.parts.push({ type: "reasoning", text: event.delta })
+        if (state.replyMessageId) publishMessage({ store, state, run, status: "streaming" })
+        else {
+          const request = store
+            .activePath({ threadId: run.threadId })
+            .find((message) => message.id === run.requestMessageId)
+          if (request) ensureReply({ run, state, store, parentId: request.id })
+        }
+      }
       return
     }
     if (event.type === "item") {

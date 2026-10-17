@@ -6,16 +6,24 @@ export const ChatDisclosure = ({
   expandedLabel = label,
   className = "",
   preview,
+  id,
+  expanded: controlledExpanded,
+  onExpandedChange,
   children,
 }: {
   label: string
   expandedLabel?: string
   className?: string
   preview?: ReactNode
+  id?: string
+  expanded?: boolean | undefined
+  onExpandedChange?: (expanded: boolean) => void
   children: ReactNode
 }) => {
-  const [expanded, setExpanded] = useState(false)
-  const contentId = useId()
+  const [localExpanded, setExpanded] = useState(false)
+  const expanded = controlledExpanded ?? localExpanded
+  const generatedId = useId()
+  const contentId = id ?? generatedId
   const contentRef = useRef<HTMLDivElement>(null)
   useLayoutEffect(() => {
     const content = contentRef.current
@@ -35,7 +43,10 @@ export const ChatDisclosure = ({
         className="chat-disclosure-toggle"
         aria-expanded={expanded}
         aria-controls={contentId}
-        onClick={() => setExpanded((value) => !value)}
+        onClick={() => {
+          setExpanded(!expanded)
+          onExpandedChange?.(!expanded)
+        }}
       >
         <svg
           className="chat-disclosure-chevron"

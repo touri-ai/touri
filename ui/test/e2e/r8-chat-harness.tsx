@@ -104,6 +104,18 @@ if (view === "conversation") {
       },
     ],
   })
+} else if (view === "thinking") {
+  bot.machine = "local"
+  add("user", "Confira o lock do payout antes de continuar.")
+  add("assistant", "", {
+    status: "streaming",
+    parts: [
+      {
+        type: "reasoning",
+        text: "Conferi a fila de pagamentos. Verificando o lock do payout e a ordem das operações antes de continuar…",
+      },
+    ],
+  })
 } else if (view === "long" || view === "history") {
   if (view === "history") {
     for (let index = 0; index < 18; index++) {

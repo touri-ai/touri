@@ -3887,12 +3887,6 @@ a {
 .activity-mark[data-mascot-state="thinking"] {
   --activity-ink: var(--text-secondary);
 }
-.activity-mark[data-mascot-state="working-tool"] {
-  --activity-ink: var(--text-link);
-}
-.activity-mark[data-mascot-state="typing"] {
-  --activity-ink: var(--text-success);
-}
 .activity-mark[data-mascot-state="waiting-approval"] {
   --activity-ink: var(--text-warning);
 }
@@ -3908,7 +3902,31 @@ a {
 }
 .activity-label {
   min-width: 0;
-  overflow-wrap: anywhere;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.activity-reasoning-button {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  text-align: left;
+  cursor: pointer;
+}
+.activity-reasoning-button:hover {
+  color: var(--text-primary);
+}
+.activity-reasoning-button:focus-visible {
+  outline: 2px solid var(--accent-info);
+  outline-offset: -2px;
+  border-radius: var(--radius-4);
 }
 .activity-approval-link {
   color: inherit;

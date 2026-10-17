@@ -25,9 +25,9 @@ export const createTestStore = ({ bot, thread }: { bot: Bot; thread: Thread }): 
     const message = messages.get(messageId)
     if (!message) return
     const part = message.parts[partIndex]
-    if (part?.type === "text") part.text += delta
+    if (part?.type === "text" || part?.type === "reasoning") part.text += delta
     else message.parts[partIndex] = { type: "text", text: delta }
-    message.text += delta
+    if (part?.type !== "reasoning") message.text += delta
     message.updatedAt = now()
   }
 

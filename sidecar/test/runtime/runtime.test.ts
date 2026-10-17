@@ -370,6 +370,82 @@ test("an unrelated MCP server failure does not disable touri tools", async () =>
   }
 })
 
+test.each(["claude", "codex"] as const)(
+  "%s reasoning reaches the transcript while the reply is streaming",
+  async (provider) => {
+    const thinking = (index: number, text: string) =>
+      provider === "claude"
+        ? {
+            type: "stream_event",
+            event: { type: "content_block_delta", index, delta: { type: "thinking_delta", thinking: text } },
+          }
+        : { method: "item/reasoning/summaryTextDelta", params: { itemId: `reason-${index}`, delta: text } }
+    const f = await fixture({
+      provider,
+      scenario: {
+        slowMs: 50,
+        events: [
+          thinking(0, "Conferi a fila. "),
+          thinking(0, "Verificando o lock."),
+          provider === "claude"
+            ? { type: "tool", callId: "read", name: "Read", input: { file_path: "/project/payout.ts" } }
+            : {
+                method: "item/started",
+                params: {
+                  item: {
+                    type: "mcpToolCall",
+                    id: "read",
+                    tool: "Read",
+                    arguments: { file_path: "/project/payout.ts" },
+                  },
+                },
+              },
+          thinking(2, "Conferindo "),
+          thinking(2, "o resultado."),
+          { type: "delta", delta: "Pronto." },
+          { type: "complete" },
+        ],
+      },
+    })
+    try {
+      await initStore(f.runtime.kernel)
+      const store = f.runtime.kernel.services.use("store.api")
+      if (!store) throw new Error("Store missing")
+      const snapshots: Message[] = []
+      const append = store.appendDelta
+      store.appendDelta = (args) => {
+        append(args)
+        const reply = store.activePath({ threadId: f.thread.id }).find((item) => item.id === args.messageId)
+        if (reply?.parts[args.partIndex]?.type === "reasoning") snapshots.push(structuredClone(reply))
+      }
+      const queued = f.engine.enqueue({
+        threadId: f.thread.id,
+        requestMessageId: addUser(store, f.thread, "Confira a fila.").id,
+        trigger: "user",
+      })
+      if (!queued.success) throw new Error(queued.error)
+      await waitFor(() => terminal(queued.run.status))
+      expect(queued.run.status).toBe("succeeded")
+      expect(snapshots.length).toBeGreaterThanOrEqual(2)
+      expect(snapshots.every((reply) => reply.status === "streaming" && reply.text === "")).toBe(true)
+      const reply = store.activePath({ threadId: f.thread.id }).find((item) => item.role === "assistant")
+      expect(reply?.parts.filter((part) => part.type === "reasoning")).toEqual([
+        { type: "reasoning", text: "Conferi a fila. Verificando o lock." },
+        { type: "reasoning", text: "Conferindo o resultado." },
+      ])
+      expect(reply?.text).toBe("Pronto.")
+      const deltas = (f.runtime.kernel.db as Database)
+        .query(
+          "SELECT event_json FROM transcript_entries WHERE json_extract(event_json, '$.partType') = 'reasoning' ORDER BY id",
+        )
+        .all() as { event_json: string }[]
+      expect(deltas.length).toBeGreaterThanOrEqual(2)
+    } finally {
+      await closeFixture(f)
+    }
+  },
+)
+
 test("Codex Markdown item boundaries survive deltas, completed-only items and persisted transcript reads", async () => {
   const first = "Vou inspecionar os links públicos e visitar duas rotas reais, capturando cada tela na VM."
   const second = "Os links legais existem, mas o clique automático falhou na verificação do alvo."
