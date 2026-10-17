@@ -290,8 +290,12 @@ export const createSetupTools = ({
           if (input.projectId && (!registered || registered.archivedAt !== null))
             return { success: false, errorCode: "NOT_FOUND", error: "Projeto não encontrado." }
           const source = registered?.path ?? input.path ?? ""
-          const path = hostPath(source, bot.machine === "local" && bot.access === "full")
+          // Like folder_access_request, confirming full local access must not
+          // depend on the target existing or being inspectable by this process.
+          if (bot.machine === "local" && bot.access === "full") return unchangedAccess(bot, absolutePath(source), true)
+          const path = hostPath(source)
           const project = registered ?? store.getProjectByPath(path)
+          if (project && bot.projectId === project.id) return unchangedAccess(bot, path, true)
           if (alreadyWritable(bot, ctx, path)) return unchangedAccess(bot, path, true)
           const name = project?.name ?? basename(path)
           const previous = bot.projectId ? store.getProject(bot.projectId) : null
