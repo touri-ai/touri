@@ -203,7 +203,12 @@ for (const errorCode of ["VAULT_ACCESS_REQUIRED", "VAULT_TIMEOUT", "VAULT_CANCEL
       expect((error as ProviderLoginError).reason).toBe("vault-locked")
       expect((error as ProviderLoginError).message).not.toContain("setup-token")
       expect(await flow.status(f.bot)).toMatchObject({ state: "vault-locked" })
-      const doctor = (await providerLoginChecks(f.kernel, f.root, new AbortController().signal))[0]
+      const doctor = (
+        await providerLoginChecks(f.kernel, f.root, new AbortController().signal, {
+          platform: "darwin",
+          headless: false,
+        })
+      )[0]
       expect(doctor).toMatchObject({ action: "authorize-vault", vaultAccount: "bot/upgraded/codex-vm-login" })
       expect(storedProviderLoginSource(f.kernel, f.bot)).toBe("vault")
     } finally {
