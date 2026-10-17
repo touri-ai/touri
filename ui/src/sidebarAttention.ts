@@ -24,9 +24,25 @@ export const reconcileFailureNotifications = (
     if (isResolvedNotification(item) || !isFailureNotice(item) || item.threadId === null) return item
     const later = runs.find(
       (run) =>
-        run.botId === item.botId && run.threadId === item.threadId && (run.startedAt ?? run.queuedAt) > item.createdAt,
+        run.botId === item.botId &&
+        run.threadId === item.threadId &&
+        (run.status === "succeeded"
+          ? (run.finishedAt ?? run.startedAt ?? run.queuedAt)
+          : (run.startedAt ?? run.queuedAt)) > item.createdAt,
     )
-    return later ? { ...item, resolvedAt: later.startedAt ?? later.queuedAt, resolution: "expired" } : item
+    const completed = items.find(
+      (next) =>
+        next.kind === "done" &&
+        next.botId === item.botId &&
+        next.threadId === item.threadId &&
+        next.createdAt > item.createdAt,
+    )
+    const resolvedAt = later
+      ? later.status === "succeeded"
+        ? (later.finishedAt ?? later.startedAt ?? later.queuedAt)
+        : (later.startedAt ?? later.queuedAt)
+      : completed?.createdAt
+    return resolvedAt ? { ...item, resolvedAt, resolution: "expired" } : item
   })
 
 /** A later run or completion in the same conversation makes a failure historical. */

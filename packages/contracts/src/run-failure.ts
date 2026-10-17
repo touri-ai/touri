@@ -18,7 +18,7 @@ export type RunFailureStage =
   | "turn"
 
 export type FailureAction =
-  | { kind: "setting"; settingId: "vmMemory" | "providerLogin"; label: string }
+  | { kind: "setting"; settingId: "vmMemory" | "providerLogin" | "browserEnabled" | "computerUse"; label: string }
   | { kind: "doctor"; label: string }
   | { kind: "machine_service"; label: string }
 

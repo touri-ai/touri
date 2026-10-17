@@ -36,7 +36,7 @@ const pulse = (sequence: number): ImageData => {
   data.set([sequence, 0x30, 0x40, 255], (4 * 8 + 4) * 4)
   return { data, width: 8, height: 8, colorSpace: "srgb" }
 }
-const bot = { id: "vm", name: "Tela", machine: "vm", computerUse: true } as Bot
+const bot = { id: "vm", name: "Tela", machine: "vm", computerUse: true, browserEnabled: true } as Bot
 const fixture = () => {
   const request = vi.fn(async (route: string, body: { control?: boolean }) =>
     route === "POST /bots/:id/desktop"
@@ -98,10 +98,12 @@ test("manual takeover does not require or change bot automation permission; only
 
 test("a remote runtime without a pause protocol stays in observation with no dead control button", async () => {
   const f = fixture()
-  render(<DesktopPanel bot={{ ...bot, machine: "cloud" }} api={f.api} />)
+  render(<DesktopPanel bot={{ ...bot, machine: "cloud", computerUse: false, browserEnabled: false }} api={f.api} />)
   await connected()
   expect(screen.queryByRole("button", { name: "Assumir controle" })).toBeNull()
   expect(screen.queryByRole("button", { name: "Devolver ao bot" })).toBeNull()
+  expect(screen.queryByRole("button", { name: "Ativar navegador" })).toBeNull()
+  expect(screen.queryByRole("button", { name: "Configurar controle" })).toBeNull()
   expect(
     screen.getByText(
       "O controle manual não está disponível nesta máquina. Você pode acompanhar a tela e conversar com o bot.",
@@ -132,7 +134,9 @@ test("a late observation snapshot cannot erase a newer human ownership event", a
   await act(async () => finish?.({ sessionId: "observe", path: "/api/v1/desktop/observe/socket", control: false }))
   await connected()
   expect(screen.getByRole("button", { name: "Devolver ao bot" })).toBeEnabled()
-  expect(screen.getByText("Você está no controle. O bot aguarda você terminar.")).toBeInTheDocument()
+  expect(
+    screen.getByText("O bot está aguardando. Assuma o controle para usar o teclado e o mouse."),
+  ).toBeInTheDocument()
   expect(screen.getByLabelText("Digitar na VM")).toBeDisabled()
 })
 
@@ -737,4 +741,76 @@ test("screen loss keeps human ownership until explicit return and Stop cancels o
   await waitFor(() => expect(f.request).toHaveBeenCalledWith("POST /runs/:id/cancel", {}, { id: "pending" }))
   expect(f.request).not.toHaveBeenCalledWith("POST /runs/:id/cancel", {}, { id: "other" })
   expect(f.request).not.toHaveBeenCalledWith("POST /runs/:id/cancel", {}, { id: "done" })
+})
+
+test("human ownership without a frame announces waiting, never usable control", async () => {
+  const f = fixture()
+  f.request.mockImplementation(async (route) =>
+    route === "POST /bots/:id/desktop"
+      ? { sessionId: "human", path: "/desktop/human", control: false, humanControl: true }
+      : {},
+  )
+  render(<DesktopPanel bot={bot} api={f.api} />)
+  await waitFor(() => expect(viewers).toHaveLength(1))
+  const viewer = viewers[0]
+  if (!viewer) throw new Error("Missing viewer")
+  viewer.getImageData = () => ({ ...pulse(0), data: new Uint8ClampedArray(8 * 8 * 4) })
+  await connected()
+  expect(screen.queryByText("Você está no controle. O bot aguarda você terminar.")).toBeNull()
+  expect(
+    screen.getByText("O bot está aguardando. O controle ficará disponível quando a imagem chegar."),
+  ).toBeInTheDocument()
+  expect(screen.getByRole("button", { name: "Devolver ao bot" })).toBeEnabled()
+  expect(screen.getByLabelText("Digitar na VM")).toBeDisabled()
+})
+
+test("a disabled browser explains the real state and opens settings without changing consent", async () => {
+  const f = fixture()
+  render(<DesktopPanel bot={{ ...bot, browserEnabled: false, computerUse: false }} api={f.api} />)
+  await connected()
+  expect(screen.queryByText("Peça ao bot para abrir uma página. Ela aparecerá aqui na tela da VM.")).toBeNull()
+  expect(screen.getByText("O navegador deste bot está desativado.")).toBeInTheDocument()
+  expect(
+    screen.getByText(
+      "O controle automático do computador está desativado. Você ainda pode assumir o controle manualmente.",
+    ),
+  ).toBeInTheDocument()
+  expect(screen.getByRole("button", { name: "Ativar navegador" })).toBeEnabled()
+  expect(f.request.mock.calls.some(([route]) => route.startsWith("PATCH"))).toBe(false)
+})
+
+test("reconnect immediately reports progress, disables input and times out a missing session response", async () => {
+  const f = fixture()
+  render(<DesktopPanel bot={bot} api={f.api} />)
+  await connected()
+  f.request.mockImplementation(async (route) => (route === "POST /bots/:id/desktop" ? new Promise(() => {}) : {}))
+  vi.useFakeTimers()
+  fireEvent.click(screen.getByRole("button", { name: "Reconectar tela" }))
+  expect(screen.getByRole("button", { name: "Reconectando tela…" })).toBeInTheDocument()
+  expect(screen.getByLabelText("Digitar na VM")).toBeDisabled()
+  await act(async () => vi.advanceTimersByTimeAsync(30_100))
+  expect(screen.getByText(/A VM não respondeu ao pedido da tela em 30 s/)).toBeInTheDocument()
+  expect(screen.getByText("Não foi possível receber a imagem")).toBeInTheDocument()
+})
+
+test("takeover keeps pointer and keyboard input off until its own first frame", async () => {
+  vi.useFakeTimers()
+  const f = fixture()
+  render(<DesktopPanel bot={bot} api={f.api} />)
+  await act(async () => vi.advanceTimersByTimeAsync(10))
+  await act(async () => viewers[0]?.dispatchEvent(new Event("connect")))
+  fireEvent.click(screen.getByRole("button", { name: "Assumir controle" }))
+  await act(async () => vi.advanceTimersByTimeAsync(10))
+  const viewer = viewers[1]
+  if (!viewer) throw new Error("Missing takeover viewer")
+  viewer.getImageData = () => ({ ...pulse(0), data: new Uint8ClampedArray(8 * 8 * 4) })
+  await act(async () => viewer.dispatchEvent(new Event("connect")))
+  expect(viewer.viewOnly).toBe(true)
+  expect(screen.getByLabelText("Digitar na VM")).toBeDisabled()
+  expect(screen.queryByText("Você está no controle")).toBeNull()
+  viewer.getImageData = () => pulse(2)
+  await act(async () => vi.advanceTimersByTimeAsync(1_000))
+  expect(viewer.viewOnly).toBe(false)
+  expect(screen.getByLabelText("Digitar na VM")).toBeEnabled()
+  expect(screen.getByText("Você está no controle")).toBeInTheDocument()
 })

@@ -20,13 +20,25 @@ export const init = async (kernel: Kernel): Promise<void> => {
     notifier.resolveRequest({ requestId, resolution })
   })
 
+  // Heal history written by an older runtime or a completion missed while restarting.
+  const historical = (kernel.db as Database)
+    .query(`SELECT DISTINCT n.id FROM notifications n
+      JOIN runs r ON r.bot_id = n.bot_id
+      JOIN threads t ON t.id = r.thread_id
+      WHERE n.resolved_at IS NULL AND n.kind IN ('turn-failed', 'routine-failed', 'routine-deferred')
+        AND n.thread_id = COALESCE(t.group_thread_id, r.thread_id)
+        AND r.status = 'succeeded' AND r.finished_at > n.created_at`)
+    .all() as Array<{ id: number }>
+  for (const item of historical) notifier.finish({ id: item.id, resolution: "expired" })
+
   kernel.subscribe(({ event }) => {
-    if (event.type === "run.updated" && ["queued", "starting", "running"].includes(event.run.status)) {
+    if (event.type === "run.updated" && ["queued", "starting", "running", "succeeded"].includes(event.run.status)) {
       const { run } = event
       const threadId =
         kernel.services.use("store.api")?.getThread({ threadId: run.threadId })?.groupThreadId ?? run.threadId
+      const handledAt = run.status === "succeeded" ? run.finishedAt : (run.startedAt ?? run.queuedAt)
       for (const item of store.unresolvedForThread({ threadId, kinds: RESOLVED_BY_NEW_RUN }))
-        if (item.botId === run.botId && item.createdAt <= (run.startedAt ?? run.queuedAt))
+        if (handledAt !== null && item.botId === run.botId && item.createdAt <= handledAt)
           notifier.finish({ id: item.id, resolution: "expired" })
     }
     if (event.type !== "message.created" || event.message.role !== "user") return

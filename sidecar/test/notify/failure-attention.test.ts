@@ -134,3 +134,73 @@ test.each(["retry", "user", "routine"] as const)(
     }
   },
 )
+
+test("a successful completion resolves older attention even when its starting events were missed", async () => {
+  const h = await fixture()
+  try {
+    const store = createNotificationStore({ db: h.kernel.db as Database })
+    const failure = h.send({ kind: "turn-failed", botId: "bot", threadId: "thread", title: "Failed", body: "Retry" })
+    const other = h.send({ kind: "turn-failed", botId: "bot", threadId: "other", title: "Failed", body: "Keep" })
+    const approval = h.send({ kind: "approval", botId: "bot", threadId: "thread", title: "Approval", body: "Keep" })
+    const run: Run = {
+      id: "success",
+      botId: "bot",
+      threadId: "thread",
+      provider: "codex",
+      trigger: "user",
+      status: "succeeded",
+      routineRunId: null,
+      requestMessageId: null,
+      replyMessageId: null,
+      externalTurnId: null,
+      errorClass: null,
+      errorMessage: null,
+      usage: null,
+      queuedAt: failure.createdAt + 1,
+      startedAt: failure.createdAt + 2,
+      finishedAt: failure.createdAt + 3,
+    }
+    h.kernel.publish({ type: "run.updated", run })
+    expect(store.get(failure.id)?.resolution).toBe("expired")
+    expect(store.recent(20).find((item) => item.id === failure.id)?.resolvedAt).not.toBeNull()
+    expect(store.get(other.id)?.resolvedAt).toBeNull()
+    expect(store.get(approval.id)?.resolvedAt).toBeNull()
+    expect(store.logSince({ since: 0 }).filter((entry) => entry.type === "resolved")).toHaveLength(1)
+    h.kernel.publish({ type: "run.updated", run })
+    expect(store.logSince({ since: 0 }).filter((entry) => entry.type === "resolved")).toHaveLength(1)
+  } finally {
+    h.close()
+  }
+})
+
+test("startup resolves persisted failures after a later success, including a group member thread", async () => {
+  const h = await fixture()
+  try {
+    const db = h.kernel.db as Database
+    db.query(
+      "INSERT INTO bots (id, name, provider, home_dir, created_at, updated_at) VALUES ('bot', 'Bot', 'codex', '.', 1, 1)",
+    ).run()
+    db.query(
+      "INSERT INTO threads (id, bot_id, title, created_at, updated_at) VALUES ('group', 'bot', 'Grupo', 1, 1)",
+    ).run()
+    db.query(
+      "INSERT INTO threads (id, bot_id, title, created_at, updated_at, group_thread_id) VALUES ('member', 'bot', 'Conversa', 1, 1, 'group')",
+    ).run()
+    const old = h.send({ kind: "turn-failed", botId: "bot", threadId: "group", title: "Failed", body: "Retry" })
+    const recent = h.send({ kind: "turn-failed", botId: "bot", threadId: "group", title: "New failure", body: "Keep" })
+    const other = h.send({ kind: "turn-failed", botId: "bot", threadId: "other", title: "Other", body: "Keep" })
+    db.query("UPDATE notifications SET created_at = ? WHERE id = ?").run(100, old.id)
+    db.query("UPDATE notifications SET created_at = ? WHERE id = ?").run(400, recent.id)
+    db.query(
+      "INSERT INTO runs (id, thread_id, bot_id, provider, trigger, status, queued_at, started_at, finished_at) VALUES ('success', 'member', 'bot', 'codex', 'user', 'succeeded', 200, 210, 300)",
+    ).run()
+    await initNotify(h.kernel)
+    const store = createNotificationStore({ db })
+    expect(store.get(old.id)?.resolution).toBe("expired")
+    expect(store.get(recent.id)?.resolvedAt).toBeNull()
+    expect(store.get(other.id)?.resolvedAt).toBeNull()
+    expect(store.recent(10)).toHaveLength(3)
+  } finally {
+    h.close()
+  }
+})

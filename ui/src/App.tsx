@@ -608,6 +608,38 @@ const AppContent = ({ kernel }: AppProps) => {
       </ErrorBoundary>
     </MotionPresence>
   )
+  const botSettingsModal = (modal === "bot-settings" || modal === "bot-permissions" || modal === "bot-mcp") &&
+    selectedBot && (
+      <BotSettingsModal
+        invokeCommand={invokeCommand}
+        bots={data.bots}
+        permissionsOnly={modal === "bot-permissions"}
+        focusMcp={modal === "bot-mcp"}
+        onAttachFile={() => {
+          attachmentButtonRef.current?.click()
+          closeModal()
+        }}
+        initialSection={modal === "bot-settings" ? botSettingsSection : undefined}
+        focusSetting={modal === "bot-settings" ? settingFocus : null}
+        activeTurns={data.runs.some(
+          (run) => run.botId === selectedBot.id && ["queued", "starting", "running"].includes(run.status),
+        )}
+        onOpenRoutines={() => openBotRoutines(selectedBot.id)}
+        onOpenIntegrations={() => {
+          closeModal()
+          setRoute({ section: "advanced", page: "integracoes" })
+        }}
+        api={api}
+        capability={data.machineCapability}
+        machineState={data.machines.find((state) => state.botId === selectedBot.id)}
+        bot={selectedBot}
+        settings={data.settings}
+        projects={data.projects}
+        routines={botRoutines}
+        actions={actions}
+        onClose={closeModal}
+      />
+    )
   if (data.bots.length === 0)
     return (
       <AvatarRuntimeProvider value={{ ...data, messages: data.activityMessages }}>
@@ -629,27 +661,30 @@ const AppContent = ({ kernel }: AppProps) => {
   if (requestedComputer)
     return (
       <AvatarRuntimeProvider value={{ ...data, messages: data.activityMessages }}>
-        <main className="computer-window">
-          <header>
-            <h1>Computador de {selectedBot?.name ?? "bot"}</h1>
-          </header>
-          {selectedBot?.id === requestedComputer ? (
-            <ErrorBoundary key={selectedBot.id} area="o computador" api={api}>
-              <BotComputer
-                autoOpen
-                key={selectedBot.id}
-                api={api}
-                bot={selectedBot}
-                machine={data.machines.find((state) => state.botId === selectedBot.id)}
-                activeTurns={data.runs.some(
-                  (run) => run.botId === selectedBot.id && ["queued", "starting", "running"].includes(run.status),
-                )}
-              />
-            </ErrorBoundary>
-          ) : (
-            <p role="alert">Bot não encontrado.</p>
-          )}
-        </main>
+        <FailureActionContext.Provider value={runFailureAction}>
+          <main className="computer-window">
+            <header>
+              <h1>Computador de {selectedBot?.name ?? "bot"}</h1>
+            </header>
+            {selectedBot?.id === requestedComputer ? (
+              <ErrorBoundary key={selectedBot.id} area="o computador" api={api}>
+                <BotComputer
+                  autoOpen
+                  key={selectedBot.id}
+                  api={api}
+                  bot={selectedBot}
+                  machine={data.machines.find((state) => state.botId === selectedBot.id)}
+                  activeTurns={data.runs.some(
+                    (run) => run.botId === selectedBot.id && ["queued", "starting", "running"].includes(run.status),
+                  )}
+                />
+              </ErrorBoundary>
+            ) : (
+              <p role="alert">Bot não encontrado.</p>
+            )}
+          </main>
+          {botSettingsModal}
+        </FailureActionContext.Provider>
       </AvatarRuntimeProvider>
     )
 
@@ -1032,37 +1067,7 @@ const AppContent = ({ kernel }: AppProps) => {
                 onClose={closeModal}
               />
             )}
-            {(modal === "bot-settings" || modal === "bot-permissions" || modal === "bot-mcp") && selectedBot && (
-              <BotSettingsModal
-                invokeCommand={invokeCommand}
-                bots={data.bots}
-                permissionsOnly={modal === "bot-permissions"}
-                focusMcp={modal === "bot-mcp"}
-                onAttachFile={() => {
-                  attachmentButtonRef.current?.click()
-                  closeModal()
-                }}
-                initialSection={modal === "bot-settings" ? botSettingsSection : undefined}
-                focusSetting={modal === "bot-settings" ? settingFocus : null}
-                activeTurns={data.runs.some(
-                  (run) => run.botId === selectedBot.id && ["queued", "starting", "running"].includes(run.status),
-                )}
-                onOpenRoutines={() => openBotRoutines(selectedBot.id)}
-                onOpenIntegrations={() => {
-                  closeModal()
-                  setRoute({ section: "advanced", page: "integracoes" })
-                }}
-                api={api}
-                capability={data.machineCapability}
-                machineState={data.machines.find((state) => state.botId === selectedBot.id)}
-                bot={selectedBot}
-                settings={data.settings}
-                projects={data.projects}
-                routines={botRoutines}
-                actions={actions}
-                onClose={closeModal}
-              />
-            )}
+            {botSettingsModal}
           </ErrorBoundary>
         </MotionPresence>
       </main>
