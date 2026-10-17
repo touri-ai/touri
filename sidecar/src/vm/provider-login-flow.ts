@@ -314,7 +314,7 @@ export const createProviderLoginFlow = ({
         else {
           const resolved = await resolveProviderExecutable({
             kernel,
-            command,
+            command: process.env[`TOURI_${command.toUpperCase()}_BIN`] ?? command,
             env: { ...base, PATH: [base.PATH, join(hostHome, ".opencode/bin")].filter(Boolean).join(":") },
           })
           if (!resolved.success) throw new Error("cli")
@@ -570,10 +570,23 @@ export const createProviderLoginFlow = ({
         return { status: 400, json: { error: "Provedor inválido" } }
       const target = { id, provider: input.provider as Bot["provider"] }
       try {
+        if (method === "POST" && input.action === "cancel") return { status: 200, json: { ...cancel(target), host } }
+        // Readiness must not invoke the provider or spend a model response. Login and
+        // installation are independent: credentials can outlive an uninstalled CLI.
+        const base = buildChildEnv({ base: await kernel.shellEnv() })
+        const command = process.env[`TOURI_${target.provider.toUpperCase()}_BIN`] ?? target.provider
+        const resolved = await resolveProviderExecutable({
+          kernel,
+          command,
+          env: { ...base, PATH: [base.PATH, join(hostHome, ".opencode/bin")].filter(Boolean).join(":") },
+        })
+        const view =
+          method === "GET" || (!resolved.success && ["start", "use-host", "adopt"].includes(input.action ?? ""))
+            ? await status(target)
+            : await action(target, { ...input, action: input.action ?? "" })
         return {
           status: 200,
-          json:
-            method === "GET" ? await status(target) : await action(target, { ...input, action: input.action ?? "" }),
+          json: { ...view, host, executable: resolved.success ? "available" : "missing" },
         }
       } catch {
         return { status: 503, json: { error: "Não foi possível configurar o login. Tente novamente." } }

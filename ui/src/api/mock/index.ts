@@ -516,7 +516,12 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
       } as unknown as ApiRoutes[typeof route]["res"]
     }
     if (key === "GET /bots/:id/provider-login/flow" || key === "POST /bots/:id/provider-login/flow")
-      return { provider: (input as { provider: string }).provider, state: "ready" } as ApiRoutes[typeof route]["res"]
+      return {
+        provider: (input as { provider: string }).provider,
+        state: "ready",
+        executable: "available",
+        host: "server",
+      } as ApiRoutes[typeof route]["res"]
     if (key === "GET /bots/:id/provider-login")
       return {
         provider: "claude",
@@ -524,6 +529,8 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
         source: "missing",
         message: "Login não conectado nesta máquina.",
       } as ApiRoutes[typeof route]["res"]
+    if (key === "GET /health")
+      return { ok: true, version: "0.1.0", schemaVersion: 1, host: "server" } as ApiRoutes[typeof route]["res"]
     if (key === "POST /ui/errors") return { ok: true } as ApiRoutes[typeof route]["res"]
     if (key === "POST /computer/kill") return { revoked: 1 } as ApiRoutes[typeof route]["res"]
     if (key === "GET /bots/:id/files")

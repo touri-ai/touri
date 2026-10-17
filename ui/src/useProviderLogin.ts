@@ -72,7 +72,7 @@ export const useProviderLogin = (api: UiApi, botId: string, provider: Bot["provi
         if (requestedRevision === revision.current) {
           setFlow(result)
           if (result.state === "ready") setError(null)
-          if (!initialized && result.state === "idle") {
+          if (!initialized && result.state === "idle" && result.executable !== "missing") {
             initialized = true
             await act("start")
           }
@@ -98,12 +98,26 @@ export const useProviderLogin = (api: UiApi, botId: string, provider: Bot["provi
     pages.add(key)
     void openPage(flow.verificationUrl)
   }, [api, botId, provider, enabled, matches, flow, openPage])
+  const recheck = async () => {
+    const current = generation.current
+    const requestedRevision = ++revision.current
+    setBusy(true)
+    try {
+      const result = await api.request("GET /bots/:id/provider-login/flow", { provider }, { id: botId })
+      if (current === generation.current && requestedRevision === revision.current) setFlow(result)
+    } catch {
+      if (current === generation.current) setError(t("Não foi possível verificar o login."))
+    } finally {
+      if (current === generation.current) setBusy(false)
+    }
+  }
   return {
+    recheck,
     flow: matches ? flow : null,
     error,
     busy,
     act,
     openPage,
-    blocked: enabled && (!matches || flow?.state !== "ready"),
+    blocked: enabled && (!matches || flow?.state !== "ready" || flow.executable === "missing"),
   }
 }

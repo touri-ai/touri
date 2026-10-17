@@ -1,6 +1,7 @@
 import { useEffect, useId, useState } from "react"
 import { localizeNotice, t } from "../i18n"
 import type { useProviderLogin } from "../useProviderLogin"
+import { ProviderInstallation } from "./ProviderInstallation"
 
 export const ProviderLoginFlow = ({ login }: { login: ReturnType<typeof useProviderLogin> }) => {
   const { flow, error, busy, act } = login
@@ -15,6 +16,15 @@ export const ProviderLoginFlow = ({ login }: { login: ReturnType<typeof useProvi
     const result = await act("code", code)
     if (result) setCode("")
   }
+  if (flow?.executable === "missing")
+    return (
+      <ProviderInstallation
+        provider={flow.provider}
+        host={flow.host ?? "server"}
+        busy={busy}
+        onRecheck={() => void login.recheck()}
+      />
+    )
   if (error && flow?.state !== "waiting" && flow?.state !== "ready")
     return (
       <div className="provider-login-flow">

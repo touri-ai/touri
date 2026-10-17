@@ -22,7 +22,7 @@ export const ProviderLogin = ({
   const login = useProviderLogin(api, botId, provider)
   const callbacks = useRef({ onConfigured, onReadyChange })
   callbacks.current = { onConfigured, onReadyChange }
-  const ready = login.flow?.state === "ready"
+  const ready = login.flow?.state === "ready" && login.flow.executable !== "missing"
   useEffect(() => {
     callbacks.current.onReadyChange?.(ready)
     if (ready) callbacks.current.onConfigured()

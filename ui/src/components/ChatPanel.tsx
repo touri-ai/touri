@@ -931,6 +931,8 @@ export const ChatPanel = ({
               ) : (
                 <ConversationStart
                   bot={bot}
+                  onFolder={onOpenPermissions}
+                  onAttach={() => attachmentButtonRef.current?.click()}
                   onChoose={(prompt) => {
                     setDraft(prompt)
                     composerRef.current?.focus()

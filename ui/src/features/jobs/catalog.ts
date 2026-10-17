@@ -1,3 +1,4 @@
+import type { Bot } from "@touri/contracts"
 import { type Locale, t } from "../../i18n"
 
 export const JOB_GROUP_IDS = ["daily", "communication", "code", "research", "customers", "operations"] as const
@@ -57,3 +58,17 @@ export const getJobTemplates = (locale: Locale = "pt-BR"): JobTemplate[] =>
     roleLine: t(`jobs.${id}.roleLine`, {}, locale),
     instructions: t("job.starter", { task: t(`jobs.${id}.task`, {}, locale) }, locale),
   }))
+
+/** Repository work requires an explicitly connected source, never assumed project context. */
+export const needsRepository = (bot: Bot | null): boolean => {
+  if (!bot) return false
+  const sourceJobs = new Set(["repository-map", "critical-tests", "change-explainer", "dependency-plan"])
+  for (const locale of ["pt-BR", "en"] as const)
+    if (
+      getJobTemplates(locale).some(
+        (job) => sourceJobs.has(job.id) && (bot.roleLine === job.roleLine || bot.instructions === job.instructions),
+      )
+    )
+      return true
+  return /\b(repository|repositório|desenvolvedor|developer|programador|coder)\b/i.test(bot.roleLine ?? "")
+}

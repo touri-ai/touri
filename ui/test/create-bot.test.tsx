@@ -167,7 +167,7 @@ it("creates from the landing with only a name in two clicks and no technical fie
   fireEvent.click(within(dialog).getByRole("button", { name: "Criar bot" }))
   clicks++
   expect(await screen.findByRole("textbox", { name: "Mensagem para Clara" })).toBeVisible()
-  expect(clicks).toBeLessThanOrEqual(3)
+  expect(clicks).toBe(2)
   const call = api.calls.find((call) => call.route === "POST /bots")
   expect(call?.input).toMatchObject({
     name: "Clara",
@@ -196,7 +196,7 @@ it.each([
   const api = accounts(states)
   const create = vi.fn(async () => undefined)
   render(<BotCreateModal api={api} onClose={vi.fn()} onCreate={create} />)
-  await screen.findByText(`Usa o ${name}, que já está conectado neste Mac.`)
+  await screen.findByText(`Usa o ${name}, conectado neste servidor.`)
   expect(screen.queryByRole("region", { name: "Escolha uma conta" })).toBeNull()
   fireEvent.change(screen.getByLabelText("Nome"), { target: { value: "Clara" } })
   fireEvent.click(screen.getByRole("button", { name: "Criar bot" }))

@@ -32,7 +32,9 @@ it("offers 30 original jobs with stable unique ids and complete copy in both lan
       expect(job.instructions).not.toMatch(/\{task\}/)
       expect(job.instructions.split("\n").length).toBeGreaterThanOrEqual(4)
       expect(job.instructions.split("\n").length).toBeLessThanOrEqual(8)
-      expect(job.instructions).toContain("Mac")
+      expect(job.instructions).toContain(
+        locale === "en" ? "computer running touri" : "computador onde o touri está rodando",
+      )
       expect(job.instructions).toContain("CLI")
       expect(job.instructions).toContain(locale === "en" ? "browser" : "navegador")
       expect(job.instructions).toContain(

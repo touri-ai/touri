@@ -4,6 +4,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, st
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { Bot, Message, StoreApi, Thread } from "@touri/contracts"
+import { t } from "../../../ui/src/i18n"
 import { createStandingGrantStore } from "../../src/approvals/grants"
 import { mcpStartupChecks } from "../../src/doctor/mcp"
 import { createKernel } from "../../src/kernel"
@@ -2327,5 +2328,40 @@ test.serial("a local bot with a provider profile runs the CLI with that profile 
     expect(homes.at(-1)).toBe(join(value.runtime.kernel.paths.appData, "provider-profiles", "clav", "claude"))
   } finally {
     await closeFixture(value)
+  }
+})
+
+runtimeTest.serial("first notes example completes in Portuguese without a connected project or folder", async () => {
+  const response = "- Comprar café\n- Revisar orçamento\n- Marcar reunião"
+  const f = await fixture({ scenario: { events: [{ type: "delta", delta: response }, { type: "complete" }] } })
+  const requestLogPath = join(f.assets, "requests.jsonl")
+  try {
+    f.bot.cwd = null
+    f.bot.folders = []
+    ;(f.runtime.kernel.db as Database).query("UPDATE bots SET cwd=NULL WHERE id=?").run(f.bot.id)
+    writeFileSync(
+      f.scenario,
+      JSON.stringify({ requestLogPath, events: [{ type: "delta", delta: response }, { type: "complete" }] }),
+    )
+    const prompt = t("onboarding.examplePrompt")
+    const request = addUser(f.store, f.thread, prompt)
+    const queued = f.engine.enqueue({ threadId: f.thread.id, requestMessageId: request.id, trigger: "user" })
+    if (!queued.success) throw new Error(queued.error)
+    await waitFor(() => terminal(queued.run.status))
+    expect(queued.run.status).toBe("succeeded")
+    expect(f.bot.projectId).toBeNull()
+    expect(f.bot.folders).toEqual([])
+    const replies = f.store.activePath({ threadId: f.thread.id }).filter((item) => item.role === "assistant")
+    expect(replies.at(-1)?.text).toBe(response)
+    const requests = readFileSync(requestLogPath, "utf8")
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line))
+    const starts = requests.filter((item) => item.method === "turn/start")
+    expect(starts).toHaveLength(1)
+    expect(JSON.stringify(starts[0])).toContain("lista em português do Brasil")
+    expect(JSON.stringify(starts[0])).toContain("Comprar café; revisar orçamento; marcar reunião.")
+  } finally {
+    await closeFixture(f)
   }
 })
