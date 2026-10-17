@@ -365,6 +365,12 @@ test("compact part revisions preserve streamed prose, output references and reas
   expect(applyParts(streamed, patch)).toEqual(streamed)
   expect(streamed[0]?.parts[2]).toEqual(patch.parts[1]?.part)
   expect(applyParts([{ ...initial, status: "complete" }], patch)[0]?.status).toBe("complete")
+  expect(
+    applyParts([initial], {
+      ...patch,
+      parts: [{ partIndex: 0, part: { type: "reasoning", text: "Conferindo" } }],
+    })[0],
+  ).toMatchObject({ text: "", parts: [{ type: "reasoning", text: "Conferindo" }] })
 })
 
 test("an expired WebSocket cursor signals resync and resumes without reconnecting in a loop", async () => {

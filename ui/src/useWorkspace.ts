@@ -307,9 +307,7 @@ export const applyParts = (
     return {
       ...message,
       parts,
-      ...(event.parts.some(({ part }) => part.type === "text")
-        ? { text: parts.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("") }
-        : {}),
+      text: parts.flatMap((part) => (part.type === "text" ? [part.text] : [])).join(""),
       updatedAt: event.updatedAt ?? Date.now(),
       ...(event.updatedSeq !== undefined ? { updatedSeq: event.updatedSeq } : {}),
       ...(event.generation !== undefined ? { generation: event.generation } : {}),

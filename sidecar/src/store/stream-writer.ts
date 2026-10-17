@@ -56,7 +56,7 @@ export const createStreamWriter = ({
   let checkpointAt = Date.now()
   let flushing = false
   const outside = new WeakSet<StreamEvent>()
-  let unsettled: Array<{ event: StreamEvent; raw: string; seq: number }> = []
+  let unsettled: Array<{ event: StreamEvent; raw: string | null; seq: number }> = []
   const keyOf = (threadId: string, messageId: string): string => JSON.stringify([threadId, messageId])
 
   const tailSeq = (threadId: string, messageId: string): number =>
@@ -77,6 +77,12 @@ export const createStreamWriter = ({
   const settle = (): void => {
     if (database.inTransaction || !unsettled.length) return
     const lost = unsettled.filter(({ event, raw, seq }) => {
+      if (raw === null) {
+        // A temporarily stale generation/status may itself have rolled back.
+        const thread = getThread({ threadId: event.threadId })
+        const message = getMessage({ threadId: event.threadId, messageId: event.messageId })
+        return thread?.generation === event.generation && message?.status === "streaming"
+      }
       const row = database
         .query("SELECT event_json FROM transcript_entries WHERE thread_id = ? AND seq = ?")
         .get(event.threadId, seq) as { event_json: string } | null
@@ -130,6 +136,11 @@ export const createStreamWriter = ({
           }
         }
         for (const event of batch) {
+          const outcome =
+            outerTransaction && outside.has(event)
+              ? { event: structuredClone(event), raw: null as string | null, seq: 0 }
+              : null
+          if (outcome) awaitingCommit.push(outcome)
           const thread = getThread({ threadId: event.threadId })
           const head = database
             .query("SELECT status, run_id FROM messages WHERE thread_id = ? AND id = ?")
@@ -148,6 +159,17 @@ export const createStreamWriter = ({
           ) {
             if (event.type === "message.delta") recordTranscriptRejection(kernel, event, "stale_generation")
             projections.delete(keyOf(event.threadId, event.messageId))
+            continue
+          }
+          const seq = (thread.updatedSeq ?? 0) + 1
+          if (
+            database.query("SELECT 1 FROM transcript_entries WHERE thread_id = ? AND seq = ?").get(event.threadId, seq)
+          ) {
+            if (event.type === "message.delta") recordTranscriptRejection(kernel, event, "seq_conflict")
+            projections.delete(keyOf(event.threadId, event.messageId))
+            materializeTranscript(database)
+            const message = getMessage({ threadId: event.threadId, messageId: event.messageId })
+            if (message) rebased.set(keyOf(event.threadId, event.messageId), message)
             continue
           }
           const rebasedMessage = rebased.get(keyOf(event.threadId, event.messageId))
@@ -175,21 +197,16 @@ export const createStreamWriter = ({
               .flatMap((part) => (part.type === "text" ? [part.text] : []))
               .join("")
           }
-          const seq = (thread.updatedSeq ?? 0) + 1
-          if (
-            database.query("SELECT 1 FROM transcript_entries WHERE thread_id = ? AND seq = ?").get(event.threadId, seq)
-          ) {
-            if (event.type === "message.delta") recordTranscriptRejection(kernel, event, "seq_conflict")
-            projections.delete(keyOf(event.threadId, event.messageId))
-            continue
-          }
           event.updatedSeq = seq
           database.query("UPDATE threads SET updated_seq = ? WHERE id = ?").run(seq, event.threadId)
           const raw = JSON.stringify(event)
           const entry = database
             .query("INSERT INTO transcript_entries(thread_id, seq, generation, event_json, at) VALUES (?, ?, ?, ?, ?)")
             .run(event.threadId, seq, event.generation ?? 1, raw, event.updatedAt ?? Date.now())
-          if (outerTransaction && outside.has(event)) awaitingCommit.push({ event: structuredClone(event), raw, seq })
+          if (outcome) {
+            outcome.raw = raw
+            outcome.seq = seq
+          }
           if (event.type === "message.parts")
             database
               .query("INSERT INTO transcript_part_entries(entry_id, thread_id, message_id) VALUES (?, ?, ?)")
