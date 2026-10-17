@@ -10,6 +10,27 @@ export const ptBR = {
   "Não foi possível abrir o resultado. Tente novamente.": "Não foi possível abrir o resultado. Tente novamente.",
   "Intervalo de saída inválido": "Intervalo de saída inválido",
   "Resultado não encontrado": "Resultado não encontrado",
+  "pode ler e alterar arquivos em qualquer pasta que a conta do sistema permita.":
+    "pode ler e alterar arquivos em qualquer pasta que a conta do sistema permita.",
+  "O acesso total permite ler, criar, alterar e apagar arquivos em qualquer pasta que a conta do sistema permita. As pastas e exclusões salvas não limitam este acesso.":
+    "O acesso total permite ler, criar, alterar e apagar arquivos em qualquer pasta que a conta do sistema permita. As pastas e exclusões salvas não limitam este acesso.",
+  "Não pede aprovações do provedor. Use apenas com bots em que você confia.":
+    "Não pede aprovações do provedor. Use apenas com bots em que você confia.",
+  "As aprovações do provedor continuam valendo.": "As aprovações do provedor continuam valendo.",
+  "O acesso total vale só no computador isolado e nas pastas compartilhadas. As permissões de cada pasta continuam valendo.":
+    "O acesso total vale só no computador isolado e nas pastas compartilhadas. As permissões de cada pasta continuam valendo.",
+  "O acesso total vale só na máquina na nuvem e não dá acesso aos arquivos deste computador.":
+    "O acesso total vale só na máquina na nuvem e não dá acesso aos arquivos deste computador.",
+  "Pastas salvas para modos de acesso restrito": "Pastas salvas para modos de acesso restrito",
+  "Estas opções ficam salvas para modos de acesso restrito. Elas não limitam o acesso total atual.":
+    "Estas opções ficam salvas para modos de acesso restrito. Elas não limitam o acesso total atual.",
+  "As permissões da conta do sistema continuam valendo.": "As permissões da conta do sistema continuam valendo.",
+  "Acesso a qualquer pasta no modo restrito": "Acesso a qualquer pasta no modo restrito",
+  "Esta opção só vale quando o acesso é restrito.": "Esta opção só vale quando o acesso é restrito.",
+  "Esta opção fica salva para modos de acesso restrito. O acesso total atual não muda.":
+    "Esta opção fica salva para modos de acesso restrito. O acesso total atual não muda.",
+  "Para usar processos supervisionados e o Preview, vincule o projeto nas configurações do bot.":
+    "Para usar processos supervisionados e o Preview, vincule o projeto nas configurações do bot.",
   "Agendar esta tarefa": "Agendar esta tarefa",
   "VM machine help":
     "Mais seguro: trabalha num computador separado só para este bot, dentro deste computador. A tela e o navegador ficam separados dos seus. Você escolhe quais pastas compartilhar. Projetos usam uma cópia da última versão registrada.",
@@ -609,6 +630,8 @@ export const ptBR = {
     "O acesso não foi aprovado ou a configuração mudou. Nenhuma pasta foi criada e as permissões foram mantidas.",
   "Não foi possível acessar ou criar a pasta. Verifique o caminho e as permissões e tente novamente.":
     "Não foi possível acessar ou criar a pasta. Verifique o caminho e as permissões e tente novamente.",
+  "Este bot já tem acesso a esta pasta. Nenhuma permissão foi alterada.":
+    "Este bot já tem acesso a esta pasta. Nenhuma permissão foi alterada.",
   "Pasta {path} criada.": "Pasta {path} criada.",
   "Conceder acesso à pasta": "Conceder acesso à pasta",
   "Permitir escrita em {path}?": "Permitir escrita em {path}?",
@@ -1271,10 +1294,10 @@ export const ptBR = {
     "Atualizar uma rotina deste bot. Somente o usuário pode habilitar uma rotina pausada.",
   "List projects and Git repositories only in this bot's already granted folders and connected project. Never searches the home directory on its own. Read-only; no approval required. Ask the user for a path when nothing is available.":
     "Listar projetos e repositórios Git somente nas pastas já permitidas a este bot e no projeto vinculado. Não busca na pasta pessoal por conta própria. Somente leitura, sem aprovação. Peça um caminho ao usuário se nada estiver disponível.",
-  "Register a Mac folder as a project if needed and link it to this calling bot only. Supply exactly one of path or projectId. Always requires explicit user approval in chat, even with approvals disabled. VM changes apply next turn.":
-    "Registrar uma pasta do Mac como projeto e vinculá-la somente a este bot, pelo caminho ou identificador. Sempre exige aprovação explícita no chat. Na VM, a mudança vale a partir da próxima mensagem.",
-  "Request access to a specific Mac folder for this calling bot only, with mode read or read-write. Always requires explicit user approval. Cannot enable any-folder access. VM changes apply next turn.":
-    "Pedir acesso de leitura ou leitura e escrita a uma pasta do Mac para este bot. Sempre exige aprovação explícita. Não permite acesso a qualquer pasta. Na VM, vale a partir da próxima mensagem.",
+  "Register a host folder as a project if needed and link it to this calling bot only. Supply exactly one of path or projectId. Full local access or an already writable local path returns alreadyAccessible immediately without changing configuration, registering a project or adding a grant. Otherwise requires explicit user approval in chat, even with approvals disabled. VM changes apply next turn.":
+    "Vincular uma pasta deste computador como projeto somente a este bot. Se o bot já pode gravar na pasta, apenas confirma o acesso existente, sem vincular um projeto nem alterar permissões. Caso contrário, exige aprovação explícita no chat. Na máquina isolada, vale a partir da próxima mensagem.",
+  "Request access to a specific host folder for this calling bot only, with mode read or read-write. Full local access or an already writable local path returns alreadyAccessible immediately without saving a grant or requesting approval. Create missing subfolders directly when already writable. Otherwise requires explicit user approval. Cannot enable any-folder access. VM changes apply next turn.":
+    "Pedir acesso de leitura ou leitura e escrita a uma pasta deste computador. Se o bot já pode gravar nela, apenas confirma o acesso existente, sem salvar permissões nem pedir aprovação. Crie subpastas diretamente onde já pode gravar. Novos acessos exigem aprovação explícita. Na máquina isolada, vale a partir da próxima mensagem.",
   "Unlink the project from this calling bot only. Narrows access without approval and posts a notice in chat. VM changes apply next turn.":
     "Desvincular o projeto somente deste bot, sem aprovação, e mostrar um aviso no chat. Na VM, a mudança vale a partir da próxima mensagem.",
   "Remove a specific folder grant from this calling bot only. Narrows access without approval and posts a notice in chat. Cannot change the user-only any-folder toggle. VM changes apply next turn.":
@@ -1428,10 +1451,6 @@ export const ptBR = {
   "Workspace write · approvals": "Pede permissão antes de mudar arquivos",
   "Workspace write": "Pede permissão antes de mudar arquivos",
   "Full access": "Acesso total",
-  "Full access skips provider approvals. Folder access is configured separately.":
-    "O acesso total dispensa aprovações do provedor. A escrita segue as permissões de pastas configuradas para o bot. A opção “Acesso a qualquer pasta deste Mac” é independente; as exclusões de pastas sensíveis continuam valendo. Use apenas com bots em que você confia.",
-  "Codex full access disables provider approvals and sandboxing; touri folder restrictions still apply.":
-    "No acesso total, o Codex executa sem pedir aprovação e sem o sandbox do provedor. As restrições de pastas do touri, as políticas MCP e as permissões de controle do computador continuam valendo.",
   Cancel: "Cancelar",
   "Creating…": "Criando…",
   "teammate configuration": "configuração do bot",
@@ -1906,6 +1925,27 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Não foi possível abrir o resultado. Tente novamente.": "Could not open the result. Try again.",
   "Intervalo de saída inválido": "Invalid output range",
   "Resultado não encontrado": "Result not found",
+  "pode ler e alterar arquivos em qualquer pasta que a conta do sistema permita.":
+    "can read and change files in any folder the system account permits.",
+  "O acesso total permite ler, criar, alterar e apagar arquivos em qualquer pasta que a conta do sistema permita. As pastas e exclusões salvas não limitam este acesso.":
+    "Full access allows reading, creating, changing and deleting files in any folder the system account permits. Saved folders and exclusions do not limit this access.",
+  "Não pede aprovações do provedor. Use apenas com bots em que você confia.":
+    "Does not request provider approvals. Use only with bots you trust.",
+  "As aprovações do provedor continuam valendo.": "Provider approvals still apply.",
+  "O acesso total vale só no computador isolado e nas pastas compartilhadas. As permissões de cada pasta continuam valendo.":
+    "Full access applies only inside the isolated machine and shared folders. Each folder's permissions still apply.",
+  "O acesso total vale só na máquina na nuvem e não dá acesso aos arquivos deste computador.":
+    "Full access applies only inside the cloud machine and does not provide access to files on this computer.",
+  "Pastas salvas para modos de acesso restrito": "Saved folders for restricted access modes",
+  "Estas opções ficam salvas para modos de acesso restrito. Elas não limitam o acesso total atual.":
+    "These settings are saved for restricted access modes. They do not limit current full access.",
+  "As permissões da conta do sistema continuam valendo.": "System account permissions still apply.",
+  "Acesso a qualquer pasta no modo restrito": "Access to any folder in restricted mode",
+  "Esta opção só vale quando o acesso é restrito.": "This option only applies when access is restricted.",
+  "Esta opção fica salva para modos de acesso restrito. O acesso total atual não muda.":
+    "This option is saved for restricted access modes. The current full access does not change.",
+  "Para usar processos supervisionados e o Preview, vincule o projeto nas configurações do bot.":
+    "To use supervised processes and Preview, link the project in the bot settings.",
   "Tentar de novo": "Try again",
   "Agendar esta tarefa": "Schedule this task",
   "Local machine": "On this computer",
@@ -2008,10 +2048,10 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
     "On this Mac, the macOS sandbox blocks excluded folders and writing in read-only folders, including terminal commands. Changes take effect from the next message.",
   "Ao salvar, as pastas valerão a partir da próxima mensagem, quando a máquina será recriada. Os arquivos da máquina serão preservados.":
     "Saved folders take effect from the next message, when the machine will be recreated. Files on the machine will be preserved.",
-  "Register a Mac folder as a project if needed and link it to this calling bot only. Supply exactly one of path or projectId. Always requires explicit user approval in chat, even with approvals disabled. VM changes apply next turn.":
-    "Register a Mac folder as a project if needed and link it to this calling bot only. Supply exactly one of path or projectId. Always requires explicit user approval in chat, even with approvals disabled. VM changes take effect from the next message.",
-  "Request access to a specific Mac folder for this calling bot only, with mode read or read-write. Always requires explicit user approval. Cannot enable any-folder access. VM changes apply next turn.":
-    "Request access to a specific Mac folder for this calling bot only, with mode read or read-write. Always requires explicit user approval. Cannot enable any-folder access. VM changes take effect from the next message.",
+  "Register a host folder as a project if needed and link it to this calling bot only. Supply exactly one of path or projectId. Full local access or an already writable local path returns alreadyAccessible immediately without changing configuration, registering a project or adding a grant. Otherwise requires explicit user approval in chat, even with approvals disabled. VM changes apply next turn.":
+    "Register a host folder as a project if needed and link it to this calling bot only. Supply exactly one of path or projectId. Full local access or an already writable local path returns alreadyAccessible immediately without changing configuration, registering a project or adding a grant. Otherwise requires explicit user approval in chat, even with approvals disabled. VM changes take effect from the next message.",
+  "Request access to a specific host folder for this calling bot only, with mode read or read-write. Full local access or an already writable local path returns alreadyAccessible immediately without saving a grant or requesting approval. Create missing subfolders directly when already writable. Otherwise requires explicit user approval. Cannot enable any-folder access. VM changes apply next turn.":
+    "Request access to a specific host folder for this calling bot only, with mode read or read-write. Full local access or an already writable local path returns alreadyAccessible immediately without saving a grant or requesting approval. Create missing subfolders directly when already writable. Otherwise requires explicit user approval. Cannot enable any-folder access. VM changes take effect from the next message.",
   "Unlink the project from this calling bot only. Narrows access without approval and posts a notice in chat. VM changes apply next turn.":
     "Unlink the project from this calling bot only. Narrows access without approval and posts a notice in chat. VM changes take effect from the next message.",
   "Remove a specific folder grant from this calling bot only. Narrows access without approval and posts a notice in chat. Cannot change the user-only any-folder toggle. VM changes apply next turn.":
@@ -2585,6 +2625,8 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
     "Access was not approved or the configuration changed. No folders were created and permissions were kept.",
   "Não foi possível acessar ou criar a pasta. Verifique o caminho e as permissões e tente novamente.":
     "Could not access or create the folder. Check its path and permissions and try again.",
+  "Este bot já tem acesso a esta pasta. Nenhuma permissão foi alterada.":
+    "This bot already has access to this folder. No permissions were changed.",
   "Pasta {path} criada.": "Folder {path} created.",
   "Conceder acesso à pasta": "Grant folder access",
   "Permitir escrita em {path}?": "Allow writing in {path}?",
@@ -3418,4 +3460,21 @@ export const accessLabel = (
           ? "Acesso total com aprovação"
           : "Full access"
   return t(key, {}, locale)
+}
+
+export const fullAccessDescription = (
+  { machine, approvals }: Pick<Bot, "machine" | "approvals">,
+  locale: Locale = "pt-BR",
+): string => {
+  const boundary =
+    machine === "local"
+      ? "O acesso total permite ler, criar, alterar e apagar arquivos em qualquer pasta que a conta do sistema permita. As pastas e exclusões salvas não limitam este acesso."
+      : machine === "vm"
+        ? "O acesso total vale só no computador isolado e nas pastas compartilhadas. As permissões de cada pasta continuam valendo."
+        : "O acesso total vale só na máquina na nuvem e não dá acesso aos arquivos deste computador."
+  const policy =
+    approvals === "never"
+      ? "Não pede aprovações do provedor. Use apenas com bots em que você confia."
+      : "As aprovações do provedor continuam valendo."
+  return `${t(boundary, {}, locale)} ${t(policy, {}, locale)}`
 }

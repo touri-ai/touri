@@ -25,7 +25,7 @@ import { ComputerGrantCard } from "../features/computer"
 import { DoctorChecks } from "../features/doctor/DoctorChecks"
 import { NOT_SURE_JOB_ID } from "../features/jobs/catalog"
 import { JobPicker } from "../features/jobs/JobPicker"
-import { accessLabel, plural, statusLabel, t } from "../i18n"
+import { accessLabel, fullAccessDescription, plural, statusLabel, t } from "../i18n"
 import { hostComputerSupported } from "../platform"
 import { useHost } from "../useHost"
 import type { WorkspaceActions } from "../useWorkspace"
@@ -714,6 +714,7 @@ export const BotCreateModal = ({
                 api={api}
                 simple={!advanced}
                 readOnly={access === "read-only"}
+                fullAccess={access === "full" || access === "full-approved"}
                 folders={folders}
                 anyFolderAccess={anyFolderAccess}
                 machine={machine.machine}
@@ -813,16 +814,15 @@ export const BotCreateModal = ({
                   <option value="full">{t("Full access")}</option>
                   {provider !== "codex" && <option value="full-approved">{t("Acesso total com aprovação")}</option>}
                 </select>
-                {provider === "codex" && (
-                  <p>
-                    {t(
-                      "Codex full access disables provider approvals and sandboxing; touri folder restrictions still apply.",
-                    )}
-                  </p>
-                )}
-                {access === "full" && (
+                {(access === "full" || access === "full-approved") && (
                   <div className="warning-callout">
-                    {t("Full access skips provider approvals. Folder access is configured separately.")}
+                    {fullAccessDescription({
+                      machine: machine.machine,
+                      approvals:
+                        access === "full" || (provider === "codex" && access === "full-approved")
+                          ? "never"
+                          : "on-request",
+                    })}
                   </div>
                 )}
                 <label className="toggle-row" htmlFor="create-browser">
@@ -1481,16 +1481,9 @@ export const BotSettingsModal = ({
                     folders={folders}
                     anyFolderAccess={anyFolderAccess}
                   />
-                  {provider === "codex" && (
-                    <p>
-                      {t(
-                        "Codex full access disables provider approvals and sandboxing; touri folder restrictions still apply.",
-                      )}
-                    </p>
-                  )}
-                  {access === "full" && (
+                  {(access === "full" || access === "full-approved") && (
                     <div className="warning-callout">
-                      {t("Full access skips provider approvals. Folder access is configured separately.")}
+                      {fullAccessDescription({ ...draftAccess, machine: machine.machine })}
                     </div>
                   )}
                 </div>
@@ -1517,6 +1510,7 @@ export const BotSettingsModal = ({
                   api={api}
                   onUpload={onAttachFile}
                   readOnly={access === "read-only"}
+                  fullAccess={draftAccess.access === "full"}
                   folders={folders}
                   anyFolderAccess={anyFolderAccess}
                   machine={machine.machine}

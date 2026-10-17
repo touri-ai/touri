@@ -54,7 +54,7 @@ const fixture = async (patch: Partial<Bot> = {}) => {
   const response = await request("POST", "/bots", {
     name: "setup-bot",
     provider: "codex",
-    access: "full",
+    access: "workspace-write",
     approvals: "never",
     ...patch,
     // Seed broad grants below as legacy data; Linux no longer accepts new ones.
@@ -139,6 +139,108 @@ const fixture = async (patch: Partial<Bot> = {}) => {
     currentBot,
   }
 }
+
+for (const approvals of ["never", "on-request"] as const) {
+  test(`full local access with ${approvals} never saves redundant setup or interrupts the task`, async () => {
+    const f = await fixture({ access: "full", approvals })
+    const probe = spyOn(folderCapability, "refreshHostFolderAccess").mockResolvedValue(false)
+    cleanups.push(() => probe.mockRestore())
+    const stale = join(f.root, "missing-grant")
+    f.db
+      .query("UPDATE bots SET folders_json = ?, cwd = ? WHERE id = ?")
+      .run(JSON.stringify([{ path: stale, access: "read-only" }]), f.path, f.bot.id)
+    const before = f.currentBot()
+    let continuations = 0
+    f.runtime.kernel.services.provide("runtime.continueAfterApproval", () => {
+      continuations++
+      return true
+    })
+    for (const path of ["/", f.root, f.path, f.bot.homeDir, join(f.path, "new-output")]) {
+      for (const mode of ["read", "read-write"] as const)
+        expect(await f.call("folder_access_request", { path, mode })).toMatchObject({
+          success: true,
+          structured: {
+            alreadyAccessible: true,
+            unchanged: true,
+            effective: "current-turn",
+            automaticContinuation: false,
+          },
+        })
+    }
+    for (const path of ["/", f.path])
+      expect(await f.call("project_link", { path })).toMatchObject({
+        success: true,
+        structured: { projectId: null, alreadyAccessible: true, unchanged: true },
+      })
+    expect(f.store.listProjects()).toEqual([])
+    expect(f.currentBot()).toEqual(before)
+    expect(existsSync(join(f.path, "new-output"))).toBe(false)
+    expect(f.cards).toEqual([])
+    expect(probe).not.toHaveBeenCalled()
+    expect(continuations).toBe(0)
+    expect(f.events.some((event) => event.type === "bot.updated" || event.type === "project.created")).toBe(false)
+  })
+}
+
+for (const root of ["home", "cwd", "thread", "project", "project-data", "fallback", "grant", "any-folder"] as const) {
+  test(`workspace access to its ${root} returns unchanged success without consent`, async () => {
+    const f = await fixture({ anyFolderAccess: root === "any-folder" })
+    let target = f.path
+    if (root === "home") target = f.bot.homeDir
+    if (root === "cwd") f.db.query("UPDATE bots SET cwd = ? WHERE id = ?").run(target, f.bot.id)
+    if (root === "thread") f.db.query("UPDATE threads SET cwd_override = ? WHERE id = ?").run(target, f.caller.threadId)
+    if (["project", "project-data", "fallback"].includes(root)) {
+      const dataDir = join(f.runtime.kernel.paths.projectsDir, "project")
+      mkdirSync(dataDir, { recursive: true })
+      expect(
+        f.store.createProject({
+          id: "project",
+          name: "Workspace",
+          path: target,
+          gitRemote: null,
+          defaultBranch: null,
+          dataDir,
+          now: 1,
+        }).success,
+      ).toBe(true)
+      expect((await f.request("PATCH", `/bots/${f.bot.id}`, { projectId: "project" })).status).toBe(200)
+      if (root === "project-data") target = dataDir
+      if (root === "fallback") {
+        const invalid = join(f.root, "file")
+        writeFileSync(invalid, "not a directory")
+        f.db.query("UPDATE threads SET cwd_override = ? WHERE id = ?").run(invalid, f.caller.threadId)
+      }
+    }
+    if (root === "grant")
+      expect(
+        (await f.request("PATCH", `/bots/${f.bot.id}`, { folders: [{ path: target, access: "read-write" }] })).status,
+      ).toBe(200)
+    const before = f.currentBot()
+    const alias = join(f.root, "alias")
+    symlinkSync(target, alias)
+    for (const path of [target, alias]) {
+      expect(await f.call("folder_access_request", { path, mode: "read-write" })).toMatchObject({
+        success: true,
+        structured: { alreadyAccessible: true, unchanged: true },
+      })
+      expect(await f.call("project_link", { path })).toMatchObject({
+        success: true,
+        structured: { projectId: before?.projectId, alreadyAccessible: true, unchanged: true },
+      })
+    }
+    expect(f.currentBot()).toEqual(before)
+    expect(f.cards).toEqual([])
+  })
+}
+
+test("a full isolated bot still needs consent to expose a host folder", async () => {
+  const f = await fixture({ machine: "vm", access: "full" })
+  const call = f.call("folder_access_request", { path: f.path, mode: "read-write" })
+  expect((await f.pending()).decision).toBe("pending")
+  expect((await f.answer("deny")).status).toBe(200)
+  expect((await call).success).toBe(false)
+  expect(f.currentBot()?.folders).toEqual([])
+})
 
 test("discovery lists only projects and repositories in this bot's granted folders without approval", async () => {
   const f = await fixture()
@@ -419,7 +521,7 @@ test("project link revalidates the reviewed realpath after post-consent inspecti
   expect(f.currentBot()?.projectId).toBeNull()
 })
 
-for (const access of ["read-only", "workspace-write", "full"] as const) {
+for (const access of ["read-only", "workspace-write"] as const) {
   test(`${access} bot with approvals=never must get explicit consent to register and link a project`, async () => {
     const f = await fixture({ access })
     const call = f.call("project_link", { path: f.path })
@@ -460,7 +562,7 @@ test("denying a project link registers nothing and changes no configuration", as
 })
 
 test("projectId and registered paths reuse a project and unlink is visible without approval", async () => {
-  const f = await fixture({ approvals: "on-request" })
+  const f = await fixture({ access: "read-only", approvals: "on-request" })
   const created = f.store.createProject({
     id: "project",
     name: "Hodler",
@@ -471,11 +573,14 @@ test("projectId and registered paths reuse a project and unlink is visible witho
     now: 1,
   })
   expect(created.success).toBe(true)
-  for (const args of [{ projectId: "project" }, { path: f.path }]) {
-    const call = f.call("project_link", args)
-    expect((await f.answer("allow")).status).toBe(200)
-    expect((await call).success).toBe(true)
-  }
+  const link = f.call("project_link", { projectId: "project" })
+  expect((await f.answer("allow")).status).toBe(200)
+  expect((await link).success).toBe(true)
+  expect(await f.call("project_link", { path: f.path })).toMatchObject({
+    success: true,
+    structured: { alreadyAccessible: true, projectId: "project", unchanged: true },
+  })
+  expect(f.cards).toHaveLength(1)
   expect(f.store.listProjects()).toHaveLength(1)
   const cardCount = f.cards.length
   expect((await f.call("project_unlink")).success).toBe(true)
@@ -609,18 +714,19 @@ test("a missing path retargeted while awaiting approval is not created or grante
   expect(f.currentBot()?.folders).toEqual(folders)
 })
 
-test("missing folders under writable grants are created with one approval on the nearest existing ancestor", async () => {
+test("missing folders under writable grants need no approval, creation or new grant", async () => {
   const f = await fixture()
-  expect(
-    (await f.request("PATCH", `/bots/${f.bot.id}`, { folders: [{ path: f.home, access: "read-write" }] })).status,
-  ).toBe(200)
+  const folders = [{ path: f.home, access: "read-write" }]
+  expect((await f.request("PATCH", `/bots/${f.bot.id}`, { folders })).status).toBe(200)
+  const before = f.currentBot()
   const target = join(f.path, "images", "generated")
-  const call = f.call("folder_access_request", { path: target, mode: "read-write" })
-  expect((await f.pending()).detail).toContain(`"path":"${f.path}"`)
-  expect((await f.answer("allow")).status).toBe(200)
-  expect((await call).success).toBe(true)
-  expect(existsSync(target)).toBe(true)
-  expect(f.cards).toHaveLength(1)
+  expect(await f.call("folder_access_request", { path: target, mode: "read-write" })).toMatchObject({
+    success: true,
+    structured: { alreadyAccessible: true, unchanged: true, effective: "current-turn" },
+  })
+  expect(existsSync(target)).toBe(false)
+  expect(f.currentBot()).toEqual(before)
+  expect(f.cards).toEqual([])
 })
 
 test("global read-only mode and protected subtrees cannot be bypassed by creating a folder", async () => {
@@ -720,13 +826,13 @@ test("configuration edits or filesystem retargeting while a card is pending inva
   expect(f.currentBot()?.folders).toEqual([])
 })
 
-test("local setup reports the host and next message for project and folder changes", async () => {
-  const f = await fixture()
-  for (const [name, args] of [
-    ["project_link", { path: f.path }],
-    ["folder_access_request", { path: f.path, mode: "read-write" }],
+test("local setup reports the host and next message only when configuration changes", async () => {
+  for (const [name, args, remove, removeArgs] of [
+    ["project_link", { path: "target" }, "project_unlink", {}],
+    ["folder_access_request", { path: "target", mode: "read-write" }, "folder_access_remove", { path: "target" }],
   ] as const) {
-    const call = f.call(name, args)
+    const f = await fixture()
+    const call = f.call(name, { ...args, path: f.path })
     expect((await f.pending()).detail).toContain('"nextTurn":true')
     expect((await f.pending()).detail).toContain('"machine":"local"')
     expect((await f.answer("allow")).status).toBe(200)
@@ -736,19 +842,10 @@ test("local setup reports the host and next message for project and folder chang
       structured: { effective: "next-turn" },
       content: [{ type: "text", text: expect.stringContaining("próxima mensagem") }],
     })
-    if (!result.success) throw new Error(result.error)
-    expect(result.structured).toHaveProperty("message", expect.not.stringContaining("VM"))
     expect(JSON.stringify(result)).toContain("neste Mac")
-  }
-  for (const [name, args] of [
-    ["project_unlink", {}],
-    ["folder_access_remove", { path: f.path }],
-  ] as const) {
-    const result = await f.call(name, args)
-    expect(result.success).toBe(true)
-    expect(JSON.stringify(result)).toContain("próxima mensagem")
-    if (!result.success) throw new Error(result.error)
-    expect(result.structured).toHaveProperty("message", expect.not.stringContaining("VM"))
+    const removed = await f.call(remove, "path" in removeArgs ? { path: f.path } : {})
+    expect(removed.success).toBe(true)
+    expect(JSON.stringify(removed)).toContain("próxima mensagem")
   }
 })
 
@@ -876,4 +973,16 @@ test("bot_rename denies foreign threads, delegated requests and cancellation", a
   expect(f.currentBot()?.name).toBe(f.bot.name)
   expect(f.runtime.kernel.services.use("store.api")?.getBot({ botId: other.id })?.name).toBe("other")
   expect(f.cards).toEqual([])
+})
+
+test("read-only grants override the implicit writable cwd for restricted bots", async () => {
+  const f = await fixture()
+  f.db.query("UPDATE bots SET cwd = ? WHERE id = ?").run(f.path, f.bot.id)
+  expect(
+    (await f.request("PATCH", `/bots/${f.bot.id}`, { folders: [{ path: f.path, access: "read-only" }] })).status,
+  ).toBe(200)
+  const call = f.call("folder_access_request", { path: f.path, mode: "read-write" })
+  expect((await f.answer("deny")).status).toBe(200)
+  expect(await call).toMatchObject({ success: false, errorCode: "DENIED" })
+  expect(f.currentBot()?.folders).toEqual([{ path: f.path, access: "read-only" }])
 })
