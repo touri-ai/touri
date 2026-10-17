@@ -34,8 +34,8 @@ const cases = [
     scope: { source: "mcp", server: "touri", tool: "folder_access_request" },
     detail:
       'folder_access_request: {"path":"/workspace/phase-a","requestedPath":"/workspace/alias","mode":"read-write","previousMode":null,"nextTurn":false}',
-    pt: { title: "Conceder acesso à pasta", body: "Permitir Leitura e escrita em /workspace/phase-a para este bot" },
-    en: { title: "Grant folder access", body: "Allow Read and write in /workspace/phase-a for this bot" },
+    pt: { title: "Conceder acesso à pasta", body: "Permitir Leitura e escrita em /workspace/phase-a para este bot." },
+    en: { title: "Grant folder access", body: "Allow Read and write in /workspace/phase-a for this bot." },
   },
   {
     kind: "terminal command",
@@ -83,8 +83,31 @@ for (const locale of ["pt-BR", "en"] as const) {
     )
     expect(summary.body).toBe(
       locale === "en"
-        ? "Allow Read-only in /workspace/phase-a for this bot Previous access: Read and write. The change takes effect on the next VM turn."
-        : "Permitir Somente leitura em /workspace/phase-a para este bot Acesso anterior: Leitura e escrita. A mudança entra em vigor no próximo turno da VM.",
+        ? "Allow Read-only in /workspace/phase-a for this bot. Previous access: Read and write. The change takes effect on the next VM turn."
+        : "Permitir Somente leitura em /workspace/phase-a para este bot. Acesso anterior: Leitura e escrita. A mudança entra em vigor no próximo turno da VM.",
+    )
+  })
+  test(`${locale}: write-access titles are approval echoes and local timing starts a new sentence`, () => {
+    const summary = approvalSummary(
+      {
+        ...cases[0],
+        detail: JSON.stringify({
+          path: "/workspace/output",
+          mode: "read-write",
+          nextTurn: true,
+          machine: "local",
+          writeApproval: true,
+          createPath: "/workspace/output/images",
+        }),
+      },
+      locale,
+    )
+    expect(isApprovalNoticeTitle(summary.title)).toBe(true)
+    expect(isApprovalNoticeTitle(`Café Ideias: ${summary.title}`)).toBe(true)
+    expect(summary.body).toContain(
+      locale === "en"
+        ? "for this bot. The change takes effect on the next local turn. After approval,"
+        : "para este bot. A mudança entra em vigor no próximo turno local. Após aprovar,",
     )
   })
 }
@@ -118,7 +141,7 @@ test("folder names may contain brackets without becoming technical data", () => 
   })
   expect(summary).toEqual({
     title: "Conceder acesso à pasta",
-    body: "Permitir Somente leitura em /workspace/phase-a[qa] para este bot",
+    body: "Permitir Somente leitura em /workspace/phase-a[qa] para este bot.",
   })
 })
 

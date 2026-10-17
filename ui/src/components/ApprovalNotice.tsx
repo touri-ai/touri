@@ -1,7 +1,7 @@
 import type { Message, NotificationRecord } from "@touri/contracts"
 import { useEffect, useRef, useState } from "react"
 import type { ApprovalTarget } from "../approvalNavigation"
-import { approvalNotificationSummary } from "../approvalNotice"
+import { approvalBarSummary, approvalNotificationSummary } from "../approvalNotice"
 import { isResolvedNotification, reconcileApprovalNotifications, uniqueApprovalNotifications } from "../approvalState"
 import { t } from "../i18n"
 
@@ -51,13 +51,13 @@ export const ApprovalNotice = ({
         {t("Autorizado. Retomando a tarefa.")}
       </div>
     ) : null
-  const summary = approvalNotificationSummary(item, messages)
+  const summary = approvalBarSummary(approvalNotificationSummary(item, messages))
   return (
     <div className="notice-bar approval-notice" role="status">
       <span className="notice-content">
         {t("{bot} precisa de você: autorizar {action}.", {
           bot: item.botName ?? "touri",
-          action: summary.body.charAt(0).toLocaleLowerCase() + summary.body.slice(1),
+          action: summary.body.charAt(0).toLocaleLowerCase() + summary.body.slice(1).replace(/\.$/, ""),
         })}
       </span>
       <button
