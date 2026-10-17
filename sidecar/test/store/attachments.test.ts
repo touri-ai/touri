@@ -1,0 +1,115 @@
+import type { Database } from "bun:sqlite"
+import { afterEach, expect, test } from "bun:test"
+import { mkdtempSync, rmSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
+import type { Attachment, Message } from "@touri/contracts"
+import { createKernel } from "../../src/kernel"
+import { MAX_ATTACHMENT_BYTES } from "../../src/kernel/files"
+import { init } from "../../src/store"
+
+const cleanup: Array<() => void> = []
+afterEach(() => {
+  for (const close of cleanup.splice(0)) close()
+})
+const fixture = async () => {
+  const root = mkdtempSync(join(tmpdir(), "touri-attachment-qa-"))
+  const runtime = createKernel({ appData: root })
+  cleanup.push(() => {
+    runtime.stop()
+    rmSync(root, { recursive: true, force: true })
+  })
+  await init(runtime.kernel)
+  const db = runtime.kernel.db as Database
+  db.exec(`INSERT INTO bots(id,name,provider,home_dir,created_at,updated_at) VALUES ('b','Teste','codex','/tmp',1,1);
+    INSERT INTO threads(id,bot_id,title,created_at,updated_at) VALUES ('t','b','Anexos',1,1);`)
+  const store = runtime.kernel.services.use("store.api")
+  if (!store?.sendMessage) throw new Error("Store missing")
+  const request = (path: string, method = "GET", body?: unknown) =>
+    fetch(`http://127.0.0.1:${runtime.handshake.port}/api/v1${path}`, {
+      method,
+      headers: {
+        Authorization: "Bearer dev-ui-token",
+        Origin: "tauri://localhost",
+        "Content-Type": "application/json",
+      },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    })
+  return { runtime, store, request }
+}
+const png = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jvN8AAAAASUVORK5CYII=",
+  "base64",
+)
+
+test("common small text, Markdown, JSON, CSV, PDF and image uploads retain their bytes", async () => {
+  const f = await fixture()
+  for (const [name, content] of [
+    ["teste.txt", Buffer.from("conteúdo")],
+    ["teste.md", Buffer.from("# Plano")],
+    ["teste.json", Buffer.from('{"ok":true}')],
+    ["teste.csv", Buffer.from("a,b\n1,2")],
+    ["teste.pdf", Buffer.from("%PDF-1.4\n%%EOF")],
+    ["teste.png", png],
+  ] as const) {
+    const uploaded = await f.request("/attachments", "POST", { name, dataBase64: content.toString("base64") })
+    expect(uploaded.status).toBe(201)
+    const { attachment } = (await uploaded.json()) as { attachment: Attachment }
+    const download = await f.request(`/attachments/${attachment.id}`)
+    expect(Buffer.from(await download.arrayBuffer())).toEqual(content)
+  }
+})
+
+test("sent attachment names and IDs survive history reload and an edited sibling prompt", async () => {
+  const f = await fixture()
+  const ids: string[] = []
+  for (const [name, content] of [
+    ["teste-anexo.txt", Buffer.from("notas")],
+    ["teste-imagem.png", png],
+  ] as const) {
+    const uploaded = await f.request("/attachments", "POST", { name, dataBase64: content.toString("base64") })
+    ids.push(((await uploaded.json()) as { attachment: Attachment }).attachment.id)
+  }
+  // Offline sends still persist the authoritative parts; no runtime or provider is started.
+  for (const [clientNonce, text] of [
+    ["original", "Confira os anexos"],
+    ["edited", "Confira os anexos novamente"],
+  ]) {
+    await f.request("/threads/t/messages", "POST", {
+      threadId: "t",
+      parentId: null,
+      text,
+      attachmentIds: ids,
+      clientNonce,
+    })
+  }
+  const [textId, imageId] = ids
+  if (!textId || !imageId) throw new Error("Missing uploaded attachments")
+  const history = await f.request("/threads/t/messages?all=true")
+  const { messages } = (await history.json()) as { messages: Message[] }
+  expect(messages).toHaveLength(2)
+  for (const message of messages) {
+    expect(message.parentId).toBeNull()
+    expect(message.parts.filter((part) => part.type === "file" || part.type === "image")).toEqual([
+      { type: "file", attachmentId: textId, name: "teste-anexo.txt", mime: "application/octet-stream" },
+      { type: "image", attachmentId: imageId, name: "teste-imagem.png", mime: "image/png" },
+    ])
+  }
+  expect(f.store.activePath({ threadId: "t" }).at(-1)?.id).toBe("send:edited")
+  f.store.setActiveLeaf({ threadId: "t", leafId: "send:original" })
+  expect(f.store.activePath({ threadId: "t" }).at(-1)?.text).toBe("Confira os anexos")
+})
+
+test("oversized attachment content is rejected with the size limit", async () => {
+  const f = await fixture()
+  const response = await f.request("/attachments", "POST", {
+    name: "grande.pdf",
+    dataBase64: Buffer.alloc(MAX_ATTACHMENT_BYTES + 1).toString("base64"),
+  })
+  expect(response.status).toBe(413)
+  expect(await response.json()).toMatchObject({
+    errorCode: "ATTACHMENT_TOO_LARGE",
+    code: "TOURI-E2003",
+    error: "Escolha um arquivo de até 15 MB.",
+  })
+})

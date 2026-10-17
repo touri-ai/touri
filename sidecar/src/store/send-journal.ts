@@ -116,20 +116,24 @@ export const createSendJournal = ({
     }
     const parts: Array<MessagePart> = [{ type: "text", text: input.text }]
     for (const attachmentId of input.attachmentIds) {
-      const attachment = database.query("SELECT mime, path FROM attachments WHERE id = ?").get(attachmentId) as {
+      const attachment = database
+        .query("SELECT mime, path, origin_path FROM attachments WHERE id = ?")
+        .get(attachmentId) as {
         mime: string
         path: string
+        origin_path: string | null
       } | null
       if (!attachment)
         return { status: 400, json: { errorCode: "ATTACHMENT_NOT_FOUND", error: "Anexo não encontrado." } }
+      const name = (attachment.origin_path ?? attachment.path).split(/[\\/]/).at(-1) || attachmentId
       parts.push(
         attachment.mime.startsWith("image/")
-          ? { type: "image", attachmentId, mime: attachment.mime }
+          ? { type: "image", attachmentId, mime: attachment.mime, name }
           : {
               type: "file",
               attachmentId,
               mime: attachment.mime,
-              name: attachment.path.split("/").at(-1) ?? attachmentId,
+              name,
             },
       )
     }

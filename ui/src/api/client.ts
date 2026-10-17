@@ -10,6 +10,7 @@ import {
   type TauriCommands,
   type UiEventEnvelope,
 } from "@touri/contracts"
+import { maxAttachmentBytes } from "../attachmentFiles"
 import { ApiError } from "../errors"
 import { t } from "../i18n"
 import { createSendJournal } from "./sendJournal"
@@ -431,7 +432,7 @@ export const createApiClient = ({
   return {
     request,
     uploadAttachment: async (file) => {
-      if (file.size > 15 * 1024 * 1024) throw new Error("Escolha um arquivo de até 15 MB")
+      if (file.size > maxAttachmentBytes) throw new Error(t("Escolha um arquivo de até 15 MB"))
       const dataBase64 = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader()
         reader.onload = () => resolve(String(reader.result).split(",")[1] ?? "")
@@ -445,7 +446,14 @@ export const createApiClient = ({
         signal: AbortSignal.timeout(30_000),
         body: JSON.stringify({ name: file.name, dataBase64 }),
       })
-      if (!response.ok) throw new ApiError(response.status, "Não foi possível anexar o arquivo")
+      if (!response.ok) {
+        const detail = (await response.json().catch(() => null)) as { error?: unknown; errorCode?: string } | null
+        throw new ApiError(
+          response.status,
+          typeof detail?.error === "string" ? detail.error : t("Não foi possível anexar o arquivo"),
+          detail?.errorCode,
+        )
+      }
       return ((await response.json()) as { attachment: Attachment }).attachment
     },
     updateEndpoint: (next) => {

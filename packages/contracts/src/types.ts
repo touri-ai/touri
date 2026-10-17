@@ -259,7 +259,7 @@ export type MessageStatus = 'streaming' | 'complete' | 'failed' | 'canceled'
 
 export type TextPart = { type: 'text'; text: string }
 export type ReasoningPart = { type: 'reasoning'; text: string }
-export type ImagePart = { type: 'image'; attachmentId: Id; mime: string }
+export type ImagePart = { type: 'image'; attachmentId: Id; mime: string; name?: string }
 export type FilePart = { type: 'file'; attachmentId: Id; name: string; mime: string }
 export type ToolResolution = 'running' | 'succeeded' | 'failed' | 'canceled' | 'interrupted' | 'unknown' | 'cancelled_by_user' | 'interrupted_by_restart' | 'completed_unobserved'
 export type TranscriptAppend = { threadId: Id; messageId: Id; partIndex: number; delta: string; generation?: number; expectedSeq?: number }

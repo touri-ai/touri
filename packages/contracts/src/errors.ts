@@ -88,6 +88,7 @@ export const errorRegistry = {
   "TOURI-E2000": entry("storage", "filesystem", false, "Não foi possível gravar neste caminho com segurança.", 403),
   "TOURI-E2001": entry("storage", "filesystem", true, "Não foi possível salvar o arquivo. Tente novamente.", 500),
   "TOURI-E2002": entry("storage", "filesystem", false, "Libere espaço no disco para salvar o arquivo.", 507),
+  "TOURI-E2003": entry("storage", "attachment", false, "Escolha um arquivo de até 15 MB.", 413),
   "TOURI-E3000": entry(
     "provider",
     "cli",
@@ -181,6 +182,7 @@ export const errorRegistry = {
 export type RegisteredErrorCode = keyof typeof errorRegistry
 
 const aliases: Record<string, RegisteredErrorCode> = {
+  ATTACHMENT_TOO_LARGE: "TOURI-E2003",
   INVALID_ARGS: "TOURI-E1001",
   INVALID_JSON: "TOURI-E1001",
   INVALID_CODE: "TOURI-E1011",

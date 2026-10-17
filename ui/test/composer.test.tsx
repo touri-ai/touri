@@ -60,6 +60,33 @@ const setup = ({
 const run = { id: "active", status: "running" } as Run
 
 describe("composer island", () => {
+  it("explicitly accepts common documents and images in the desktop picker and registers each one", async () => {
+    Object.assign(window, { __TAURI_INTERNALS__: {} })
+    const { api } = setup()
+    const input = screen.getByLabelText("Anexar arquivos")
+    for (const token of [".txt", ".md", ".json", ".csv", ".pdf", "image/*"]) {
+      expect(input.getAttribute("accept")?.split(",")).toContain(token)
+    }
+    const names = ["notas.txt", "plano.md", "dados.json", "tabela.csv", "livro.pdf", "foto.png"]
+    fireEvent.change(input, { target: { files: names.map((name) => new File(["arquivo"], name)) } })
+    await waitFor(() =>
+      expect(api.calls.filter((call) => call.route === "POST /attachments")).toHaveLength(names.length),
+    )
+    for (const name of names) expect(screen.getByRole("button", { name: `Remover ${name}` })).toBeVisible()
+  })
+
+  it("reports the size limit and blocks sending without uploading an oversized file", async () => {
+    const { api } = setup({ draft: "Mensagem com anexo" })
+    const file = new File(["arquivo"], "grande.pdf")
+    Object.defineProperty(file, "size", { value: 15 * 1024 * 1024 + 1 })
+    fireEvent.change(screen.getByLabelText("Anexar arquivos"), { target: { files: [file] } })
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Não foi possível anexar grande.pdf. Escolha um arquivo de até 15 MB",
+    )
+    expect(api.calls.filter((call) => call.route === "POST /attachments")).toHaveLength(0)
+    expect(screen.getByRole("button", { name: "Enviar" })).toBeDisabled()
+  })
+
   it("shows only attachment and send controls, without model or permissions", async () => {
     setup({ access: "read-only" })
     await waitFor(() => expect(screen.queryByText("Colar token manualmente")).toBeNull())

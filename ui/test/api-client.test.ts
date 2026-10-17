@@ -273,3 +273,21 @@ test("A07: file chooser uploads send bounded bytes without host paths or an acti
   const body = JSON.parse(String(fetchImpl.mock.calls[0]?.[1]?.body))
   expect(body).toEqual({ name: "test.svg", dataBase64: btoa("<svg/>") })
 })
+
+test("attachment uploads preserve the server's rejection reason", async () => {
+  const fetchImpl = vi.fn(
+    async () =>
+      new Response(JSON.stringify({ error: "Arquivo acima de 15 MB", errorCode: "ATTACHMENT_TOO_LARGE" }), {
+        status: 413,
+      }),
+  )
+  const api = createApiClient({
+    endpoint: { baseUrl: "http://localhost:1", wsUrl: "ws://localhost:1", token: "test" },
+    fetchImpl,
+  })
+  await expect(api.uploadAttachment?.(new File(["small"], "a.txt"))).rejects.toMatchObject({
+    message: "Arquivo acima de 15 MB",
+    errorCode: "ATTACHMENT_TOO_LARGE",
+    status: 413,
+  })
+})

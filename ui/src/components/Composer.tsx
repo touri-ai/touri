@@ -1,6 +1,7 @@
 import type { Bot, Id, Run } from "@touri/contracts"
 import { type ComponentProps, type RefObject, useEffect, useId, useLayoutEffect, useRef, useState } from "react"
 import type { UiApi } from "../api/client"
+import { attachmentAccept, maxAttachmentBytes } from "../attachmentFiles"
 import { composerKeyAction } from "../composerKeys"
 import { userFacingError } from "../errors"
 import { useCloudAccount } from "../features/cloud/useCloudAccount"
@@ -161,34 +162,9 @@ export const Composer = ({
     return () => observer?.disconnect()
   }, [draft, inputRef])
 
-  const registerPaths = async (paths: Array<string>) => {
-    setError(null)
-    const pending = paths.map((path) => ({
-      path,
-      key: crypto.randomUUID(),
-      name: path.split(/[\\/]/).at(-1) || t("Attachment fallback name"),
-    }))
-    setFiles((current) => [
-      ...current,
-      ...pending.map(({ key, name }) => ({ key, name, id: null, status: "loading" as const })),
-    ])
-    for (const file of pending) {
-      try {
-        const { attachment } = await api.request("POST /attachments", { path: file.path })
-        if (!alive.current) return
-        setFiles((current) =>
-          current.map((item) => (item.key === file.key ? { ...item, id: attachment.id, status: "ready" } : item)),
-        )
-      } catch (failure) {
-        if (!alive.current) return
-        setFiles((current) => current.map((item) => (item.key === file.key ? { ...item, status: "failed" } : item)))
-        setError(t("Could not attach file", { name: file.name, reason: userFacingError(failure) }))
-      }
-    }
-  }
   const attachGranted = async ({ granted, rejected }: FileDrop) => {
     setDragging(false)
-    setError(rejected[0] ? dropRejectionMessage(rejected[0]) : null)
+    setError(rejected.length ? rejected.map(dropRejectionMessage).join(" ") : null)
     const pending = granted.map((grant) => ({ ...grant, key: crypto.randomUUID() }))
     setFiles((current) => [
       ...current,
@@ -219,16 +195,19 @@ export const Composer = ({
   }, [])
   const addBrowserFiles = async (selected: FileList | null) => {
     if (!selected?.length) return
-    if (api.isMock) return registerPaths(Array.from(selected, (file) => `/mock/${file.name}`))
-    if (!api.uploadAttachment) return
+    const upload = api.uploadAttachment
+    if (!api.isMock && !upload) return
     setError(null)
     setPicking(true)
     for (const file of Array.from(selected)) {
       const key = crypto.randomUUID()
       setFiles((current) => [...current, { key, name: file.name, id: null, status: "loading" }])
       try {
-        const attachment = await api.uploadAttachment(file)
-        if (!alive.current) return
+        if (file.size > maxAttachmentBytes) throw new Error(t("Escolha um arquivo de até 15 MB"))
+        const attachment = api.isMock
+          ? (await api.request("POST /attachments", { path: `/mock/${file.name}` })).attachment
+          : await upload?.(file)
+        if (!alive.current || !attachment) return
         setFiles((current) =>
           current.map((item) => (item.key === key ? { ...item, id: attachment.id, status: "ready" } : item)),
         )
@@ -436,6 +415,7 @@ export const Composer = ({
           <input
             ref={fileInput}
             type="file"
+            accept={attachmentAccept}
             multiple
             tabIndex={-1}
             className="visually-hidden"
@@ -449,7 +429,7 @@ export const Composer = ({
             type="button"
             className="composer-icon"
             aria-label={t("Anexar arquivo")}
-            title={t("Anexar arquivo")}
+            title={t("Texto, Markdown, JSON, CSV, PDF e imagens · até 15 MB por arquivo.")}
             disabled={picking || cloudUnavailable}
             onClick={() => void chooseFiles()}
           >

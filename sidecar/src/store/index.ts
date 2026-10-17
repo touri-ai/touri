@@ -1533,11 +1533,16 @@ export const init = async (kernel: Kernel): Promise<void> => {
               : errorResponse(404, "NOT_FOUND", "Attachment source file not found")
           }
           if (
+            record &&
+            isString(record.dataBase64) &&
+            record.dataBase64.length > Math.ceil(MAX_ATTACHMENT_BYTES / 3) * 4
+          )
+            return errorResponse(413, "ATTACHMENT_TOO_LARGE", "Arquivo acima de 15 MB")
+          if (
             !record ||
             !isString(record.dataBase64) ||
             !isString(record.name) ||
             record.name.length > 255 ||
-            record.dataBase64.length > Math.ceil(MAX_ATTACHMENT_BYTES / 3) * 4 ||
             !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(record.dataBase64)
           )
             return errorResponse(400, "INVALID_ARGS", "Envie um arquivo de até 15 MB")

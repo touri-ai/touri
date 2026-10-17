@@ -278,3 +278,29 @@
   white-space: nowrap;
   text-overflow: ellipsis;
 }
+
+.group-context-members {
+  display: grid;
+  gap: 12px;
+  padding: 0;
+  list-style-position: inside;
+  text-align: left;
+}
+.group-context-members li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.group-context-members small {
+  display: block;
+  color: var(--text-secondary);
+  font-weight: 400;
+}
+.conversation-start .group-context-members {
+  width: fit-content;
+  margin: 20px auto;
+}
+.group-panel .muted-copy {
+  font-size: 12px;
+  line-height: 1.6;
+}

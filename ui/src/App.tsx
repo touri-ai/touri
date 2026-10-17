@@ -22,7 +22,7 @@ import CronScreen from "./components/CronScreen"
 import { ErrorBoundary } from "./components/ErrorBoundary"
 import { EvidenceContext } from "./components/EvidenceGallery"
 import { FailureActionContext } from "./components/FailureActionContext"
-import { GroupModal } from "./components/Groups"
+import { GroupModal, GroupPanel } from "./components/Groups"
 import {
   BotCreateModal,
   BotModelModal,
@@ -711,7 +711,7 @@ const AppContent = ({ kernel }: AppProps) => {
               <FailureActionContext.Provider value={runFailureAction}>
                 <EvidenceContext.Provider value={evidenceContext}>
                   <div
-                    className={`bot-workspace motion-workspace ${panelOpen ? "has-bot-panel" : ""} ${expandedBot === selectedBot?.id ? "computer-expanded" : ""}`}
+                    className={`bot-workspace motion-workspace ${panelOpen ? "has-bot-panel" : ""} ${!selectedGroup && expandedBot === selectedBot?.id ? "computer-expanded" : ""}`}
                     data-motion-panel-open={panelOpen}
                   >
                     <ErrorBoundary key={selectedThread?.id ?? selectedBot?.id ?? "chat"} area="a conversa" api={api}>
@@ -763,59 +763,79 @@ const AppContent = ({ kernel }: AppProps) => {
                       />
                     </ErrorBoundary>
                     {/* r8 motion: preserve the panel during its inert exit */}
-                    <MotionPresence show={panelOpen && Boolean(selectedBot)} kind="panel">
-                      {selectedBot && (
-                        <ErrorBoundary key={selectedBot.id} area="o painel do bot" api={api}>
-                          <BotPanel
-                            libraryRequest={
-                              libraryRequest?.botId === selectedBot.id ? (libraryRequest ?? undefined) : undefined
-                            }
-                            computerTabRequest={
-                              computerTabRequest?.botId === selectedBot.id ? computerTabRequest.request : 0
-                            }
-                            key={selectedBot.id}
-                            api={api}
-                            groups={data.groups.filter((g) => g.memberIds.includes(selectedBot.id))}
-                            onGroup={(g) => {
-                              const thread = data.threads.find((t) => t.groupId === g.id && !t.groupThreadId)
-                              if (thread) actions.selectThread(thread.id)
-                            }}
-                            bot={selectedBot}
-                            machine={data.machines.find((state) => state.botId === selectedBot.id)}
-                            routines={botRoutines}
-                            activeTurns={data.runs.some(
-                              (run) =>
-                                run.botId === selectedBot.id && ["queued", "starting", "running"].includes(run.status),
-                            )}
-                            paused={modal !== null || searchOpen || notificationsOpen}
-                            expanded={expandedBot === selectedBot.id}
-                            onExpand={() => setExpandedBot((id) => (id === selectedBot.id ? null : selectedBot.id))}
-                            onWindow={() => openComputerWindow(selectedBot.id)}
-                            onClose={() => {
-                              setPanelOpen(false)
-                              window.requestAnimationFrame(() =>
-                                document.querySelector<HTMLButtonElement>(".bot-panel-toggle")?.focus(),
-                              )
-                            }}
-                            onSettings={() => openModal("bot-settings")}
-                            onModel={() => openModal("bot-model")}
-                            onPermissions={() => openModal("bot-permissions")}
-                            onPreview={() => setScreen("preview")}
-                            active={data.runs.some(
-                              (run) =>
-                                run.botId === selectedBot.id && ["queued", "starting", "running"].includes(run.status),
-                            )}
-                            projects={data.projects}
-                            onSelectProject={async (projectId) => {
-                              if (selectedBot) await actions.updateBot(selectedBot.id, { projectId })
-                            }}
-                            onAddProject={() => {
-                              openModal("project")
-                              setProjectLinkBotId(selectedBot?.id ?? null)
-                            }}
-                            onRole={(roleLine) => actions.updateBot(selectedBot.id, { roleLine })}
-                          />
-                        </ErrorBoundary>
+                    <MotionPresence show={panelOpen && Boolean(selectedGroup || selectedBot)} kind="panel">
+                      {selectedGroup ? (
+                        <GroupPanel
+                          key={selectedGroup.id}
+                          group={selectedGroup}
+                          bots={groupMembers}
+                          onEdit={() => {
+                            setEditingGroup(selectedGroup)
+                            openModal("group")
+                          }}
+                          onClose={() => {
+                            setPanelOpen(false)
+                            window.requestAnimationFrame(() =>
+                              document.querySelector<HTMLButtonElement>(".bot-panel-toggle")?.focus(),
+                            )
+                          }}
+                        />
+                      ) : (
+                        selectedBot && (
+                          <ErrorBoundary key={selectedBot.id} area="o painel do bot" api={api}>
+                            <BotPanel
+                              libraryRequest={
+                                libraryRequest?.botId === selectedBot.id ? (libraryRequest ?? undefined) : undefined
+                              }
+                              computerTabRequest={
+                                computerTabRequest?.botId === selectedBot.id ? computerTabRequest.request : 0
+                              }
+                              key={selectedBot.id}
+                              api={api}
+                              groups={data.groups.filter((g) => g.memberIds.includes(selectedBot.id))}
+                              onGroup={(g) => {
+                                const thread = data.threads.find((t) => t.groupId === g.id && !t.groupThreadId)
+                                if (thread) actions.selectThread(thread.id)
+                              }}
+                              bot={selectedBot}
+                              machine={data.machines.find((state) => state.botId === selectedBot.id)}
+                              routines={botRoutines}
+                              activeTurns={data.runs.some(
+                                (run) =>
+                                  run.botId === selectedBot.id &&
+                                  ["queued", "starting", "running"].includes(run.status),
+                              )}
+                              paused={modal !== null || searchOpen || notificationsOpen}
+                              expanded={expandedBot === selectedBot.id}
+                              onExpand={() => setExpandedBot((id) => (id === selectedBot.id ? null : selectedBot.id))}
+                              onWindow={() => openComputerWindow(selectedBot.id)}
+                              onClose={() => {
+                                setPanelOpen(false)
+                                window.requestAnimationFrame(() =>
+                                  document.querySelector<HTMLButtonElement>(".bot-panel-toggle")?.focus(),
+                                )
+                              }}
+                              onSettings={() => openModal("bot-settings")}
+                              onModel={() => openModal("bot-model")}
+                              onPermissions={() => openModal("bot-permissions")}
+                              onPreview={() => setScreen("preview")}
+                              active={data.runs.some(
+                                (run) =>
+                                  run.botId === selectedBot.id &&
+                                  ["queued", "starting", "running"].includes(run.status),
+                              )}
+                              projects={data.projects}
+                              onSelectProject={async (projectId) => {
+                                if (selectedBot) await actions.updateBot(selectedBot.id, { projectId })
+                              }}
+                              onAddProject={() => {
+                                openModal("project")
+                                setProjectLinkBotId(selectedBot?.id ?? null)
+                              }}
+                              onRole={(roleLine) => actions.updateBot(selectedBot.id, { roleLine })}
+                            />
+                          </ErrorBoundary>
+                        )
                       )}
                     </MotionPresence>
                   </div>
