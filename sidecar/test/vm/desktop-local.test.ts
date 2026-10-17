@@ -195,6 +195,7 @@ test.skipIf(!available)(
       expect(await page.getByRole("button", { name: "Assumir controle", exact: true }).isEnabled()).toBe(true)
       await page.getByRole("button", { name: "Assumir controle", exact: true }).click()
       await page.getByRole("button", { name: "Devolver ao bot" }).waitFor()
+      await browserExpect(page.getByLabel("Digitar na VM")).toBeEnabled()
       if (process.env.TOURI_SCREENSHOT_DIR) {
         await page.screenshot({ path: join(process.env.TOURI_SCREENSHOT_DIR, "control.png"), fullPage: true })
         await page.setViewportSize({ width: 390, height: 844 })
