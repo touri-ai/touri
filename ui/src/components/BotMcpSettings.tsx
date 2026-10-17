@@ -1,9 +1,10 @@
-import type { McpServer, McpTool, McpToolPolicy } from "@touri/contracts"
-import { useEffect, useId, useRef, useState } from "react"
-import type { UiApi } from "../api/client"
+import type { Bot, McpServer, McpTool, McpToolPolicy } from "@touri/contracts"
+import { useCallback, useEffect, useId, useRef, useState } from "react"
+import type { TauriInvoke, UiApi } from "../api/client"
 import { ApiError } from "../errors"
 import { t } from "../i18n"
-import { McpCatalog } from "./McpCatalog"
+import { McpCatalog, type McpPreset, mcpPresets } from "./McpCatalog"
+import { McpSetupChecklist } from "./McpSetupChecklist"
 
 const parseArgs = (value: string): string[] | null => {
   try {
@@ -20,12 +21,16 @@ export const BotMcpSettings = ({
   onOpenIntegrations,
   onPermissionsChange,
   focusOnOpen = false,
+  machine = "local",
+  invokeCommand,
 }: {
   api: UiApi
   botId: string
   onOpenIntegrations?: () => void
   onPermissionsChange?: () => void
   focusOnOpen?: boolean
+  machine?: Bot["machine"]
+  invokeCommand?: TauriInvoke | undefined
 }) => {
   const sectionRef = useRef<HTMLElement>(null)
   useEffect(() => {
@@ -41,6 +46,13 @@ export const BotMcpSettings = ({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [missingCommand, setMissingCommand] = useState(false)
+  const [advanced, setAdvanced] = useState(false)
+  const [preset, setPreset] = useState<McpPreset | null>(null)
+  const [setupReady, setSetupReady] = useState(false)
+  const [tested, setTested] = useState<McpServer | null>(null)
+  const [testing, setTesting] = useState(false)
+  const [picking, setPicking] = useState(false)
+  const operationRef = useRef(false)
   const folderHelpId = useId()
   const argsHelpId = useId()
   const commandErrorId = useId()
@@ -53,6 +65,36 @@ export const BotMcpSettings = ({
     filesystemIndex < 0 ||
     (folders.length > 0 && folders.every((path) => path.startsWith("/") && !/[\0\n\r]/.test(path)))
   const canAttach = validName && !!endpoint.trim() && (transport === "http" || (!!parsedArgs && validFolders))
+  const resetTest = () => {
+    setTested(null)
+    setError(null)
+    setMissingCommand(false)
+  }
+  const preparationReady = useCallback((ready: boolean) => {
+    setSetupReady(ready)
+    if (!ready) setTested(null)
+  }, [])
+  const setFolder = (path: string) => {
+    if (!parsedArgs || filesystemIndex < 0) return
+    resetTest()
+    setArgs(JSON.stringify([...parsedArgs.slice(0, filesystemIndex + 1), path, ...folders.slice(1)]))
+  }
+  const chooseFolder = async () => {
+    if (!invokeCommand || operationRef.current || busy) return
+    operationRef.current = true
+    setBusy(true)
+    setPicking(true)
+    try {
+      const result = await invokeCommand("pick_folder", { title: t("Dar acesso a uma pasta") })
+      if (result?.path) setFolder(result.path)
+    } catch {
+      setError(t("Não foi possível escolher a pasta. Tente novamente."))
+    } finally {
+      operationRef.current = false
+      setBusy(false)
+      setPicking(false)
+    }
+  }
   useEffect(() => {
     let active = true
     void api
@@ -67,35 +109,64 @@ export const BotMcpSettings = ({
       active = false
     }
   }, [api, botId])
+  const serverConfig = (): McpServer =>
+    transport === "http"
+      ? { name: name.trim(), transport, url: endpoint.trim(), tools: [] }
+      : { name: name.trim(), transport, command: endpoint.trim(), args: parsedArgs ?? [], tools: [] }
+  const connectionError = (error: unknown) => {
+    const missing = error instanceof ApiError && error.code === "TOURI-E1012"
+    setMissingCommand(missing)
+    setError(
+      missing
+        ? advanced
+          ? t("O comando MCP “{command}” não foi encontrado. Confira a instalação e o PATH na máquina deste bot.", {
+              command: endpoint.trim(),
+            })
+          : t("Instale Node.js na máquina deste bot, verifique a preparação e tente novamente.")
+        : t("Não foi possível conectar. Confira a preparação, o endereço ou o acesso à rede e teste novamente."),
+    )
+  }
+  const testConnection = async () => {
+    if (operationRef.current || busy || !canAttach || (!advanced && !setupReady)) return
+    operationRef.current = true
+    setBusy(true)
+    setTesting(true)
+    setTested(null)
+    setError(null)
+    setMissingCommand(false)
+    try {
+      const result = await api.request("POST /bots/:id/mcp/test", serverConfig(), { id: botId })
+      setTested(result.server)
+    } catch (error) {
+      connectionError(error)
+    } finally {
+      operationRef.current = false
+      setTesting(false)
+      setBusy(false)
+    }
+  }
   const attach = async () => {
-    if (busy || !canAttach) return
+    if (operationRef.current || busy || !canAttach || !tested?.tools.length || (!advanced && !setupReady)) return
+    operationRef.current = true
     setBusy(true)
     setError(null)
     setMissingCommand(false)
     try {
-      const server: McpServer =
-        transport === "http"
-          ? { name: name.trim(), transport, url: endpoint.trim(), tools: [] }
-          : { name: name.trim(), transport, command: endpoint.trim(), args: parsedArgs ?? [], tools: [] }
+      const server = serverConfig()
       const result = await api.request("PUT /bots/:id/mcp/:name", server, { id: botId, name: server.name })
       setServers((current) => [...current.filter((item) => item.name !== result.server.name), result.server])
       onPermissionsChange?.()
       setName("")
       setEndpoint("")
       setArgs("[]")
+      setTested(null)
+      setPreset(null)
+      setAdvanced(false)
     } catch (error) {
-      const missing = error instanceof ApiError && error.code === "TOURI-E1012"
-      setMissingCommand(missing)
-      setError(
-        missing
-          ? t("O comando MCP “{command}” não foi encontrado. Confira a instalação e o PATH na máquina deste bot.", {
-              command: endpoint.trim(),
-            })
-          : error instanceof Error
-            ? error.message
-            : t("Servidor MCP indisponível."),
-      )
+      setTested(null)
+      connectionError(error)
     } finally {
+      operationRef.current = false
       setBusy(false)
     }
   }
@@ -133,7 +204,13 @@ export const BotMcpSettings = ({
         </button>
       )}
       <McpCatalog
+        disabled={busy}
         onSelect={(server) => {
+          const selected = mcpPresets.find((item) => item.server.name === server.name)
+          resetTest()
+          setAdvanced(false)
+          setPreset(selected ? { ...selected } : null)
+          setSetupReady(false)
           setError(null)
           setMissingCommand(false)
           setName(server.name)
@@ -142,6 +219,30 @@ export const BotMcpSettings = ({
           setArgs(server.transport === "stdio" ? JSON.stringify(server.args) : "[]")
         }}
       />
+      <button
+        type="button"
+        className="text-button"
+        disabled={busy}
+        aria-expanded={advanced}
+        onClick={() => {
+          setPreset(null)
+          setAdvanced((value) => !value)
+          setTested(null)
+          setError(null)
+        }}
+      >
+        {t("Configuração técnica (MCP)")}
+      </button>
+      {preset && !advanced && (
+        <McpSetupChecklist
+          key={preset.server.name}
+          api={api}
+          botId={botId}
+          preset={preset}
+          onReady={preparationReady}
+          disabled={busy}
+        />
+      )}
       {servers.length === 0 && (
         <p>{t("Nenhum servidor externo conectado. Gmail e outras integrações precisam de uma conexão MCP.")}</p>
       )}
@@ -198,93 +299,138 @@ export const BotMcpSettings = ({
           </button>
         </article>
       ))}
-      <label>
-        {t("Nome do servidor MCP")}
-        <input
-          value={name}
-          aria-invalid={!!name && !validName}
-          aria-describedby={name && !validName ? nameHelpId : undefined}
-          onChange={(event) => setName(event.target.value)}
-        />
-      </label>
-      {name && !validName && (
-        <p id={nameHelpId} role="alert">
-          {t("Use de 1 a 64 letras sem acentos, números, _ ou -, começando por uma letra. O nome touri é reservado.")}
-        </p>
+      {advanced && (
+        <fieldset className="mcp-connection" disabled={busy}>
+          <legend>{t("Configuração técnica (MCP)")}</legend>
+          <label>
+            {t("Nome do servidor MCP")}
+            <input
+              value={name}
+              aria-invalid={!!name && !validName}
+              aria-describedby={name && !validName ? nameHelpId : undefined}
+              onChange={(event) => {
+                resetTest()
+                setName(event.target.value)
+              }}
+            />
+          </label>
+          {name && !validName && (
+            <p id={nameHelpId} role="alert">
+              {t(
+                "Use de 1 a 64 letras sem acentos, números, _ ou -, começando por uma letra. O nome touri é reservado.",
+              )}
+            </p>
+          )}
+          <label>
+            {t("Transporte MCP")}
+            <select
+              value={transport}
+              onChange={(event) => {
+                resetTest()
+                setTransport(event.target.value as "stdio" | "http")
+              }}
+            >
+              <option value="stdio">stdio</option>
+              <option value="http">HTTP</option>
+            </select>
+          </label>
+          <label>
+            {transport === "stdio" ? t("Comando MCP") : t("URL MCP")}
+            <input
+              value={endpoint}
+              aria-invalid={missingCommand}
+              aria-describedby={missingCommand ? commandErrorId : undefined}
+              onChange={(event) => {
+                resetTest()
+                setEndpoint(event.target.value)
+              }}
+            />
+          </label>
+          {transport === "stdio" && (
+            <>
+              <label>
+                {t("Argumentos MCP (lista JSON)")}
+                <input
+                  value={args}
+                  aria-invalid={!parsedArgs}
+                  aria-describedby={!parsedArgs ? argsHelpId : undefined}
+                  onChange={(event) => {
+                    resetTest()
+                    setArgs(event.target.value)
+                  }}
+                />
+              </label>
+              {!parsedArgs && (
+                <p id={argsHelpId} role="alert">
+                  {t('Informe uma lista JSON de textos. Exemplo: ["--porta", "3000"] ou [].')}
+                </p>
+              )}
+            </>
+          )}
+        </fieldset>
       )}
-      <label>
-        {t("Transporte MCP")}
-        <select
-          value={transport}
-          onChange={(event) => {
-            setTransport(event.target.value as "stdio" | "http")
-            setMissingCommand(false)
-            setError(null)
-          }}
-        >
-          <option value="stdio">stdio</option>
-          <option value="http">HTTP</option>
-        </select>
-      </label>
-      <label>
-        {transport === "stdio" ? t("Comando MCP") : t("URL MCP")}
-        <input
-          value={endpoint}
-          aria-invalid={missingCommand}
-          aria-describedby={missingCommand ? commandErrorId : undefined}
-          onChange={(event) => {
-            setEndpoint(event.target.value)
-            setMissingCommand(false)
-            setError(null)
-          }}
-        />
-      </label>
-      {transport === "stdio" && (
-        <>
-          {filesystemIndex >= 0 && parsedArgs && (
+      {(preset || advanced) && (
+        <div className="mcp-connection">
+          {transport === "stdio" && filesystemIndex >= 0 && parsedArgs && (
             <>
               <label>
                 {t("Pasta permitida (caminho absoluto)")}
                 <input
                   required
+                  disabled={busy}
                   value={folders[0] ?? ""}
                   aria-describedby={folderHelpId}
                   aria-invalid={!validFolders}
-                  onChange={(event) =>
-                    setArgs(
-                      JSON.stringify([
-                        ...parsedArgs.slice(0, filesystemIndex + 1),
-                        event.target.value,
-                        ...folders.slice(1),
-                      ]),
-                    )
-                  }
+                  onChange={(event) => setFolder(event.target.value)}
                 />
               </label>
+              {invokeCommand && machine === "local" && (
+                <button
+                  type="button"
+                  className="button button-quiet"
+                  disabled={busy}
+                  onClick={() => void chooseFolder()}
+                >
+                  {t("Escolher pasta…")}
+                </button>
+              )}
               <small id={folderHelpId}>
                 {t("Informe pelo menos uma pasta com caminho absoluto antes de conectar.")}
               </small>
             </>
           )}
-          <label>
-            {t("Argumentos MCP (lista JSON)")}
-            <input
-              value={args}
-              aria-invalid={!parsedArgs}
-              aria-describedby={!parsedArgs ? argsHelpId : undefined}
-              onChange={(event) => setArgs(event.target.value)}
-            />
-          </label>
-          {!parsedArgs && (
-            <p id={argsHelpId} role="alert">
-              {t('Informe uma lista JSON de textos. Exemplo: ["--porta", "3000"] ou [].')}
+          <button
+            type="button"
+            className="button button-quiet"
+            disabled={busy || !canAttach || (!advanced && !setupReady)}
+            onClick={() => void testConnection()}
+          >
+            {testing ? t("Testando conexão…") : t("Testar conexão")}
+          </button>
+          {testing && <p role="status">{t("Buscando as ferramentas disponíveis…")}</p>}
+          {tested && (
+            <p role="status">
+              {tested.tools.length > 0
+                ? t("Conexão pronta: {count} ferramentas disponíveis. Salve para usá-las neste bot.", {
+                    count: tested.tools.length,
+                  })
+                : t("O servidor respondeu, mas não ofereceu ferramentas. Confira a configuração e teste novamente.")}
             </p>
           )}
-        </>
+          <button
+            type="button"
+            className="button button-quiet"
+            disabled={busy || !canAttach || !tested?.tools.length || (!advanced && !setupReady)}
+            onClick={() => void attach()}
+          >
+            {busy && !testing && !picking
+              ? t("Salvando conexão…")
+              : advanced
+                ? t("Conectar servidor MCP")
+                : t("Salvar conexão")}
+          </button>
+        </div>
       )}
-      <button type="button" className="button button-quiet" disabled={busy || !canAttach} onClick={() => void attach()}>
-        {busy ? t("Verificando ferramentas…") : t("Conectar servidor MCP")}
-      </button>
       {error && (
         <p id={commandErrorId} role="alert">
           {error}

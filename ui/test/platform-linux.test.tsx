@@ -5,6 +5,7 @@ import { afterEach, expect, test, vi } from "vitest"
 import { createMockApi } from "../src/api/mock"
 import { MachineFields } from "../src/components/MachineFields"
 import { BotSettingsModal, SettingsModal } from "../src/components/Modals"
+import { t } from "../src/i18n"
 import type { WorkspaceActions } from "../src/useWorkspace"
 
 afterEach(() => {
@@ -42,7 +43,7 @@ const renderBotSettings = async (machine: Bot["machine"]) => {
   await act(async () => {
     result = render(
       <BotSettingsModal
-        bot={{ ...base, machine }}
+        bot={{ ...base, machine, browser: machine === "vm" ? "machine" : "touri" }}
         api={api}
         settings={settings}
         projects={[]}
@@ -61,6 +62,8 @@ test.each(["local", "vm"] as const)("Linux %s bot settings gate only host comput
   fireEvent.click(screen.getByRole("tab", { name: "Computador", exact: true }))
   expect(container.querySelector("#settings-computer-use") !== null).toBe(machine === "vm")
   expect(container.querySelector("#machine-host-control")).toBeNull()
+  expect(container.querySelector("#settings-browser")).not.toBeNull()
+  expect(screen.getByRole("combobox", { name: t("Bot browser") })).toBeEnabled()
 })
 
 test("Linux app preferences omit native host permissions after the settings split", async () => {

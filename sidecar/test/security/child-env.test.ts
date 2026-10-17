@@ -70,6 +70,7 @@ const bot = (root: string): Bot => {
     homeDir: root,
     mainThreadId: "thread-env",
     browserEnabled: false,
+    browser: "touri",
     computerUse: false,
     machine: "local",
     machineIdleMinutes: 15,

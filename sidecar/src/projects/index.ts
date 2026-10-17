@@ -1,4 +1,5 @@
 import type { Kernel } from "@touri/contracts"
+import { createFolderRoutes } from "./folders"
 import { createProjectStore } from "./repository"
 import { createProjectInfo, createProjectRoutes } from "./routes"
 import { createSupervisor } from "./supervisor"
@@ -11,6 +12,7 @@ export const init = async (kernel: Kernel): Promise<void> => {
   const supervisor = createSupervisor({ kernel, store })
   const projectInfo = createProjectInfo({ kernel, store, supervisor })
   kernel.services.provide("projects.info", projectInfo)
+  kernel.registerRoutes(createFolderRoutes({ appData: kernel.paths.appData }))
   kernel.registerRoutes(createProjectRoutes({ kernel, store, supervisor }))
   const registration = kernel.registerTools({ tools: createProjectTools({ kernel, store, supervisor, projectInfo }) })
   if (!registration.success)

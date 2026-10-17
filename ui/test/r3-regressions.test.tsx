@@ -302,12 +302,15 @@ describe("r3 login and MCP settings", () => {
           : { server: { ...input, tools: [{ name: "search_threads", description: "" }] } },
       ) as ApiRequest
       render(<BotMcpSettings api={{ ...api, request }} botId="mail-r3" />)
+      fireEvent.click(screen.getByRole("button", { name: "Configuração técnica (MCP)" }))
       await screen.findByText(/Nenhum servidor externo conectado/)
       fireEvent.change(screen.getByLabelText("Nome do servidor MCP"), { target: { value: "gmail" } })
       fireEvent.change(screen.getByLabelText("Transporte MCP"), { target: { value: transport } })
       fireEvent.change(screen.getByLabelText(transport === "stdio" ? "Comando MCP" : "URL MCP"), {
         target: { value: transport === "stdio" ? "gmail-mcp" : "https://example.com/mcp" },
       })
+      fireEvent.click(screen.getByRole("button", { name: "Testar conexão" }))
+      await waitFor(() => expect(screen.getByRole("button", { name: "Conectar servidor MCP" })).toBeEnabled())
       fireEvent.click(screen.getByRole("button", { name: "Conectar servidor MCP" }))
       await screen.findByText("search_threads")
       expect(request).toHaveBeenCalledWith("PUT /bots/:id/mcp/:name", expect.objectContaining({ transport }), {

@@ -39,6 +39,7 @@ const makeBot = ({
   homeDir: join(root, "bots", item.id),
   mainThreadId: null,
   browserEnabled: true,
+  browser: "touri",
   computerUse: false,
   machine: "local",
   machineIdleMinutes: 15,
