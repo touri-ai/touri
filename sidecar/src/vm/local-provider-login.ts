@@ -44,7 +44,7 @@ export const prepareLocalProviderLogin = async (
   bot: Bot,
   signal: AbortSignal,
   hostHome = homedir(),
-) => {
+): Promise<{ env: Record<string, string>; release: () => void }> => {
   signal.throwIfAborted()
   if (storedProviderLoginSource(kernel, bot) !== "vault") {
     if (bot.provider === "codex" && bot.machine === "local" && !bot.providerProfile)
