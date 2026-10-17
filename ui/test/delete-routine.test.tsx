@@ -70,17 +70,22 @@ it("does not offer deletion for an unsaved draft", async () => {
   expect(within(screen.getByRole("dialog")).queryByRole("button", { name: "Excluir rotina" })).toBeNull()
 })
 
-it("deletes from the bot's Advanced → Routines tab and keeps settings open", async () => {
+it("deletes from the routines list reached directly through Advanced → Routines", async () => {
   const { api, routine } = await fixture()
   showBotSettings()
   const settings = screen.getByRole("dialog")
   fireEvent.click(within(settings).getByRole("button", { name: "Avançado", exact: true }))
   fireEvent.click(within(settings).getByRole("tab", { name: "Rotinas" }))
-  fireEvent.click(within(settings).getByRole("button", { name: `Excluir rotina ${routine.name}` }))
+  await waitFor(() => expect(settings).not.toBeInTheDocument())
+  fireEvent.click(
+    within(screen.getByRole("group", { name: `Ações da rotina ${routine.name}` })).getByRole("button", {
+      name: "Excluir rotina",
+    }),
+  )
   fireEvent.click(screen.getByRole("button", { name: "Excluir", exact: true }))
   await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull())
-  expect(settings).toBeVisible()
-  expect(within(settings).queryByText(routine.name)).toBeNull()
+  expect(screen.getByRole("region", { name: "Rotinas", exact: true })).toBeVisible()
+  expect(screen.queryByText(routine.name)).toBeNull()
   expect(deletes(api)).toHaveLength(1)
 })
 

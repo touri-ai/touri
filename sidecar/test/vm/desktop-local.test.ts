@@ -15,7 +15,9 @@ import { vncPasswordFile } from "../../src/vm/vnc-auth"
 import { fakeVmProvider } from "./fake-provider"
 import { attemptVnc } from "./vnc-client"
 
+// This fixture starts real X11/browser processes; honor the shared integration-test switch.
 const available =
+  process.env.TOURI_VM_INTEGRATION !== "0" &&
   process.platform === "linux" &&
   ["Xvfb", "x11vnc", "python3"].every((tool) => Bun.which(tool)) &&
   existsSync(chromium.executablePath())

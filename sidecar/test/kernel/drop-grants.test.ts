@@ -3,6 +3,7 @@ import {
   mkdirSync,
   mkdtempSync,
   realpathSync,
+  renameSync,
   rmSync,
   statSync,
   symlinkSync,
@@ -112,8 +113,10 @@ test("drop grant: a grant is bound to the exact path, device and inode the shell
   const pinned = grantFor(file)
   const swapped = await f.post({ grantId: f.issue({ ...pinned, path: other }) })
   expect(swapped.status).toBe(400)
-  rmSync(file)
+  // Keep the pinned inode alive: unlink/recreate may immediately reuse it on Linux.
+  renameSync(file, join(f.root, "original.txt"))
   writeFileSync(file, "replacement")
+  expect(grantFor(file).ino).not.toBe(pinned.ino)
   expect((await f.post({ grantId: f.issue(pinned) })).status).toBe(400)
 })
 

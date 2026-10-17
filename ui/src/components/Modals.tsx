@@ -26,6 +26,8 @@ import { DoctorChecks } from "../features/doctor/DoctorChecks"
 import { NOT_SURE_JOB_ID } from "../features/jobs/catalog"
 import { JobPicker } from "../features/jobs/JobPicker"
 import { accessLabel, plural, statusLabel, t } from "../i18n"
+import { hostComputerSupported } from "../platform"
+import { useHost } from "../useHost"
 import type { WorkspaceActions } from "../useWorkspace"
 import { type AvatarChoice, AvatarPicker } from "./AvatarPicker"
 import { BotAccessSummary } from "./BotAccessSummary"
@@ -41,6 +43,7 @@ import { DiscoveredProjects } from "./DiscoveredProjects"
 import { FolderPicker } from "./FolderPicker"
 import { MachineFields } from "./MachineFields"
 import { Modal } from "./Modal"
+import { ProviderInstallation } from "./ProviderInstallation"
 import { ProviderLogin } from "./ProviderLogin"
 import { ProviderMark, providerName } from "./ProviderMark"
 import { ProviderModelField } from "./ProviderModelField"
@@ -440,7 +443,9 @@ export const BotCreateModal = ({
   const [roleLine, setRoleLine] = useState("")
   const [title, setTitle] = useState("")
   const [loginDraftId] = useState(() => `draft-${crypto.randomUUID()}`)
+  const fallbackHost = useHost(api)
   const login = useCreateProvider(api, loginDraftId)
+  const host = login.flow?.host ?? fallbackHost
   const { provider } = login
   const [jobId, setJobId] = useState(NOT_SURE_JOB_ID)
   const [advanced, setAdvanced] = useState(false)
@@ -483,7 +488,9 @@ export const BotCreateModal = ({
       return
     }
     if (api && machine.machine !== "cloud" && (!login.ready || login.checking)) {
-      setError(t("Sign in above before creating your bot."))
+      setError(
+        t(login.flow?.executable === "missing" ? "onboarding.installFirst" : "Sign in above before creating your bot."),
+      )
       signInRef.current?.focus()
       return
     }
@@ -594,17 +601,28 @@ export const BotCreateModal = ({
             <div className="bot-create-defaults" aria-live="polite">
               {machine.machine !== "cloud" &&
                 (login.checking ? (
-                  <p>{t("Checking accounts on this Mac…")}</p>
+                  <p>{t("onboarding.checking", { host: host === "mac" ? "Mac" : t("onboarding.server") })}</p>
                 ) : (
                   login.ready && (
-                    <p>{t("Uses {name}, already signed in on this Mac.", { name: providerName(provider) })}</p>
+                    <p>
+                      {t("onboarding.uses", {
+                        provider: providerName(provider),
+                        host: host === "mac" ? "Mac" : t("onboarding.server"),
+                      })}
+                    </p>
                   )
                 ))}
               {access === "workspace-write" && <p>{t("Asks permission before changing files.")}</p>}
             </div>
             {api && machine.machine !== "cloud" && !login.checking && !login.ready && (
               <section ref={signInRef} tabIndex={-1} className="bot-create-login" aria-label={t("Choose an account")}>
-                <p>{t("Sign in to an account to create your bot.")}</p>
+                <p>
+                  {t(
+                    login.flow?.executable === "missing"
+                      ? "onboarding.installFirst"
+                      : "Sign in to an account to create your bot.",
+                  )}
+                </p>
                 <div className="bot-create-accounts">
                   {CREATE_PROVIDERS.map((candidate) => (
                     <button
@@ -618,17 +636,29 @@ export const BotCreateModal = ({
                     </button>
                   ))}
                 </div>
-                <ProviderLogin
-                  key={provider}
-                  api={api}
-                  botId={loginDraftId}
-                  provider={provider}
-                  onConfigured={() => {}}
-                  onReadyChange={(ready) => {
-                    login.setReady(ready)
-                    if (ready) setError(null)
-                  }}
-                />
+                {login.flow?.executable === "missing" ? (
+                  <ProviderInstallation
+                    provider={provider}
+                    host={host}
+                    busy={login.checking}
+                    onRecheck={() => {
+                      setError(null)
+                      void login.selectProvider(provider).then(() => document.getElementById("bot-name")?.focus())
+                    }}
+                  />
+                ) : (
+                  <ProviderLogin
+                    key={provider}
+                    api={api}
+                    botId={loginDraftId}
+                    provider={provider}
+                    onConfigured={() => {}}
+                    onReadyChange={(ready) => {
+                      login.setReady(ready)
+                      if (ready) setError(null)
+                    }}
+                  />
+                )}
               </section>
             )}
             {login.error && machine.machine !== "cloud" && !login.ready && (
@@ -1132,7 +1162,7 @@ export const BotSettingsModal = ({
         <SettingsLayout
           sections={sections}
           active={section}
-          onChange={setSection}
+          onChange={(next) => (next === "routines" && onOpenRoutines ? onOpenRoutines() : setSection(next))}
           label={t("Seções das configurações do bot")}
         >
           <SettingsPane {...botPane("model")}>
@@ -1299,27 +1329,29 @@ export const BotSettingsModal = ({
               )}
               {api && bot.machine === "vm" && <BotNetworkSettings api={api} botId={bot.id} />}
             </SettingsGroup>
-            <SettingsGroup title={t("Controle do computador")}>
-              <label className="toggle-row" htmlFor="settings-computer-use">
-                <span>
-                  <strong>{t("Computer use")}</strong>
-                  <small>
-                    {machine.machine === "vm" && !machine.hostComputerUse
-                      ? t("Controls only Xvfb in the VM; cannot access the host screen.")
-                      : t("Off by default; each turn still needs a time-boxed grant.")}
-                  </small>
-                </span>
-                <SettingsSwitch
-                  id="settings-computer-use"
-                  checked={bot.computerUse}
-                  disabled={updating || saving}
-                  onChange={(event) => {
-                    const computerUse = event.target.checked
-                    void immediateAction(() => actions.updateBot(bot.id, { computerUse }))
-                  }}
-                />
-              </label>
-            </SettingsGroup>
+            {(hostComputerSupported || machine.machine === "vm") && (
+              <SettingsGroup title={t("Controle do computador")}>
+                <label className="toggle-row" htmlFor="settings-computer-use">
+                  <span>
+                    <strong>{t("Computer use")}</strong>
+                    <small>
+                      {machine.machine === "vm" && !machine.hostComputerUse
+                        ? t("Controls only Xvfb in the VM; cannot access the host screen.")
+                        : t("Off by default; each turn still needs a time-boxed grant.")}
+                    </small>
+                  </span>
+                  <SettingsSwitch
+                    id="settings-computer-use"
+                    checked={bot.computerUse}
+                    disabled={updating || saving}
+                    onChange={(event) => {
+                      const computerUse = event.target.checked
+                      void immediateAction(() => actions.updateBot(bot.id, { computerUse }))
+                    }}
+                  />
+                </label>
+              </SettingsGroup>
+            )}
             <SettingsGroup>
               <label className="toggle-row" htmlFor="settings-browser">
                 <span>
@@ -1585,14 +1617,15 @@ export const BotSettingsModal = ({
           {saveError}
         </p>
       )}
-      <fieldset className="modal-actions" aria-label={t("Ações das configurações do bot")}>
+      {/* biome-ignore lint/a11y/useSemanticElements: WebKit drops flex fieldset children from the macOS accessibility tree. */}
+      <div className="modal-actions" role="group" aria-label={t("Ações das configurações do bot")}>
         <button type="button" className="button button-quiet" onClick={onClose}>
           {t("Cancel")}
         </button>
         <button type="button" className="button button-brand" onClick={() => void save()} disabled={saving || updating}>
           {saving ? t("Saving…") : t("Save settings")}
         </button>
-      </fieldset>
+      </div>
     </Modal>
   )
 }
@@ -1618,7 +1651,7 @@ type ProcessEntry = { spec: ProcessSpec; run: import("@touri/contracts").Process
 const folderKey = (value: string): string =>
   `/${value
     .trim()
-    .split("/")
+    .split(/[\\/]/)
     .filter((segment) => segment && segment !== ".")
     .join("/")}`
 

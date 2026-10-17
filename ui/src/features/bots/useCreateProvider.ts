@@ -8,6 +8,7 @@ export const CREATE_PROVIDERS = ["codex", "claude", "opencode"] as const
 
 export const useCreateProvider = (api: UiApi | undefined, draftId: string) => {
   const [provider, setProvider] = useState<Bot["provider"]>("codex")
+  const [flow, setFlow] = useState<ProviderLoginFlow | null>(null)
   const [ready, setReady] = useState(!api)
   const [checking, setChecking] = useState(!!api)
   const [error, setError] = useState<string | null>(null)
@@ -16,6 +17,11 @@ export const useCreateProvider = (api: UiApi | undefined, draftId: string) => {
   const prepare = useCallback(
     async (next: Bot["provider"], flow: ProviderLoginFlow, current: number) => {
       if (!api || generation.current !== current) return
+      setFlow(flow)
+      if (flow.executable === "missing") {
+        setReady(false)
+        return
+      }
       const result =
         flow.state === "host-available"
           ? await retryProviderLogin(
@@ -28,7 +34,10 @@ export const useCreateProvider = (api: UiApi | undefined, draftId: string) => {
               () => generation.current === current,
             )
           : flow
-      if (generation.current === current) setReady(result.state === "ready")
+      if (generation.current === current) {
+        setFlow(result)
+        setReady(result.state === "ready" && result.executable !== "missing")
+      }
     },
     [api, draftId],
   )
@@ -48,10 +57,14 @@ export const useCreateProvider = (api: UiApi | undefined, draftId: string) => {
         )
         if (generation.current !== current) return
         const index = results.findIndex(
-          (result) => result.status === "fulfilled" && ["ready", "host-available"].includes(result.value.state),
+          (result) =>
+            result.status === "fulfilled" &&
+            result.value.executable !== "missing" &&
+            ["ready", "host-available"].includes(result.value.state),
         )
-        const next = CREATE_PROVIDERS[index] ?? "codex"
-        const result = results[index]
+        const selected = index >= 0 ? index : 0
+        const next = CREATE_PROVIDERS[selected] ?? "codex"
+        const result = results[selected]
         setProvider(next)
         if (result?.status === "fulfilled") await prepare(next, result.value, current)
         if (results.some((result) => result.status === "rejected"))
@@ -76,6 +89,7 @@ export const useCreateProvider = (api: UiApi | undefined, draftId: string) => {
     const current = ++generation.current
     const previous = provider
     setProvider(next)
+    setFlow(null)
     setReady(!api)
     setChecking(!!api)
     setError(null)
@@ -95,5 +109,5 @@ export const useCreateProvider = (api: UiApi | undefined, draftId: string) => {
     }
   }
 
-  return { provider, ready, checking, error, selectProvider, setReady }
+  return { provider, ready, checking, error, flow, selectProvider, setReady }
 }

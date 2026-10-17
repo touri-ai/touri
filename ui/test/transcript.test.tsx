@@ -679,13 +679,7 @@ test("delivery states and interrupted tools render in Portuguese", () => {
     ],
   })
   render(<VirtualMessageList messages={rows} onSwitchBranch={() => undefined} onRetry={async () => undefined} />)
-  for (const label of [
-    "Na fila · aguardando conexão",
-    "Enviada · aguardando confirmação",
-    "Entregue",
-    "Falha na entrega",
-    "Encerrado",
-  ])
+  for (const label of ["Na fila · aguardando conexão", "Enviando…", "Entregue", "Falha na entrega", "Encerrado"])
     expect(screen.getByText(label)).toBeInTheDocument()
   expect(screen.queryByText("Em execução")).toBeNull()
 })
@@ -729,7 +723,8 @@ test("a restored live run exposes Parar and continues streaming until completion
       ? ({ runs: [active] } as never)
       : api.request(route, input, pathValues)
   render(<App kernel={{ services: { api: { ...api, request } } }} />)
-  expect(await screen.findByRole("button", { name: "Parar" })).toBeVisible()
+  const composer = await screen.findByRole("form", { name: "Compor mensagem" })
+  expect(await within(composer).findByRole("button", { name: "Parar" }, { timeout: 5000 })).toBeVisible()
   act(() =>
     api.emit({
       type: "message.delta",

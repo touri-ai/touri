@@ -4,6 +4,8 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { Bot, Kernel, ProviderEvent, ProviderSession, StartTurnArgs, Thread } from "@touri/contracts"
 import { createKernel } from "../../src/kernel"
+import { folderGuestPath } from "../../src/kernel/bot-folders"
+import { folderAccessUnavailable, refreshHostFolderAccess } from "../../src/kernel/folder-capability"
 import { createOpenCodeAdapter } from "../../src/runtime/opencode/adapter"
 import { fullAccess, openCodePermissions, providerSecretEnv } from "../../src/runtime/opencode/config"
 import { openCodeEvents, readOpenCodeSse } from "../../src/runtime/opencode/events"
@@ -28,10 +30,15 @@ const fixture = (scenario: Record<string, unknown> = {}, vm = false) => {
     return runtime.kernel.spawnTree({
       ...input,
       cmd: process.execPath,
+      env: { ...input.env, TOURI_OPENCODE_SCENARIO: scenarioPath, TOURI_OPENCODE_RECORD: recordPath },
       args: [
         "run",
         join(import.meta.dir, "../fakes/fake-opencode.ts"),
-        ...(input.cmd === "/usr/bin/sandbox-exec" ? input.args.slice(3) : input.args),
+        ...(input.cmd === "/usr/bin/sandbox-exec"
+          ? input.args.slice(3)
+          : /\/bwrap$/.test(input.cmd)
+            ? input.args.slice(input.args.indexOf("--") + 2)
+            : input.args),
       ],
     })
   }
@@ -337,20 +344,31 @@ test("OpenCode recognizes v2 permission requests used by 1.18.13", () => {
   ).toMatchObject({ api: "v2", id: "per", permission: "shell.exec", patterns: ["printf teste"] })
 })
 
-test("OpenCode receives explicit folder permissions and an outer sandbox for terminal commands", async () => {
-  const f = fixture()
-  const { realpathSync } = await import("node:fs")
-  const ro = join(f.root, "reference")
-  mkdirSync(ro)
-  const path = realpathSync(ro)
-  f.args.bot.folders = [{ path, access: "read-only" }]
-  f.args.bot.anyFolderAccess = process.platform !== "linux"
-  expect((await f.adapter.startTurn(f.args)).success).toBe(true)
-  const config = f.records().find((record) => record.type === "spawn").config
-  expect(config.permission.external_directory).toMatchObject({
-    [`${path}/**`]: "allow",
-    ...(process.platform === "linux" ? {} : { "/**": "allow" }),
+for (const vm of [false, true])
+  test(`OpenCode folder grants preserve CLI policy and require ${vm ? "guest execution" : "a host sandbox"}`, async () => {
+    const f = fixture({}, vm)
+    const { realpathSync } = await import("node:fs")
+    const ro = join(f.root, "reference")
+    mkdirSync(ro)
+    const path = realpathSync(ro)
+    f.args.bot.folders = [{ path, access: "read-only" }]
+    f.args.bot.anyFolderAccess = vm || process.platform !== "linux"
+    const available =
+      process.platform === "darwin" || (process.platform === "linux" && (await refreshHostFolderAccess()))
+    const result = await f.adapter.startTurn(f.args)
+    if (!vm && !available) {
+      expect(result).toMatchObject({ success: false, errorCode: "cli_crash" })
+      if (!result.success) expect(result.error).toBe(folderAccessUnavailable)
+      expect(f.calls).toHaveLength(0)
+      return
+    }
+    expect(result.success).toBe(true)
+    const config = f.records().find((record) => record.type === "spawn").config
+    const granted = vm ? folderGuestPath(path) : path
+    expect(config.permission.external_directory).toMatchObject({
+      [`${granted}/**`]: "allow",
+      ...(f.args.bot.anyFolderAccess ? { [vm ? "/host/home/**" : "/**"]: "allow" } : {}),
+    })
+    expect(config.permission.edit).toMatchObject({ [`${granted}/**`]: "deny" })
+    expect(f.calls.some((call) => call.cmd === "/usr/bin/sandbox-exec" || /\/bwrap$/.test(call.cmd))).toBe(!vm)
   })
-  expect(config.permission.edit).toMatchObject({ [`${path}/**`]: "deny" })
-  expect(f.calls.some((call) => call.cmd === "/usr/bin/sandbox-exec" || /\/bwrap$/.test(call.cmd))).toBe(true)
-})

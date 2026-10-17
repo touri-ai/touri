@@ -865,7 +865,11 @@ test("an acknowledged queued run is recovered after restart without creating a s
   let engine: ReturnType<typeof createRuntimeEngine> | null = null
   try {
     f.store.sendMessage?.(input())
-    engine = createRuntimeEngine({ kernel: f.runtime.kernel, codexCommand: "/definitely/missing/touri-test-cli" })
+    engine = createRuntimeEngine({
+      kernel: f.runtime.kernel,
+      codexCommand: "/definitely/missing/touri-test-cli",
+      environment: { PATH: process.env.PATH ?? "/usr/bin:/bin" },
+    })
     const deadline = Date.now() + 3000
     while (Date.now() < deadline && engine.listRuns("t")[0]?.finishedAt === null) await Bun.sleep(10)
     expect(engine.listRuns("t")[0]).toMatchObject({ id: "r1", status: "failed", errorClass: "cli_missing" })

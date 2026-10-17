@@ -22,7 +22,7 @@ test("schema 18 keeps existing host bots on touri and VM bots on the machine bro
     )
     database.close()
     database = openDatabase({ filename })
-    expect(SCHEMA_VERSION).toBe(19)
+    expect(SCHEMA_VERSION).toBe(20)
     expect(database.query("SELECT id,browser FROM bots ORDER BY id").all()).toEqual([
       { id: "guest", browser: "machine" },
       { id: "host", browser: "touri" },
@@ -36,7 +36,9 @@ test("schema 18 keeps existing host bots on touri and VM bots on the machine bro
     database.close()
     database = openDatabase({ filename })
     expect(database.query("SELECT browser FROM bots WHERE id='host'").get()).toEqual({ browser: "local" })
-    expect(database.query("SELECT value FROM schema_meta WHERE key='schema_version'").get()).toEqual({ value: "19" })
+    expect(database.query("SELECT value FROM schema_meta WHERE key='schema_version'").get()).toEqual({
+      value: String(SCHEMA_VERSION),
+    })
     expect(database.query("PRAGMA foreign_key_check").all()).toEqual([])
   } finally {
     database.close()

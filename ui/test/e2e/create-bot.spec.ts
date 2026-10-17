@@ -18,7 +18,7 @@ test("only a name takes two clicks from the landing to chat", async ({ page }) =
   clicks++
   await expect(page.getByRole("textbox", { name: "Mensagem para Clara" })).toBeVisible()
   await expect(dialog).toHaveCount(0)
-  expect(clicks).toBeLessThanOrEqual(3)
+  expect(clicks).toBe(2)
 })
 
 test("a job can be searched and chosen by keyboard, with advanced edits preserved", async ({ page }) => {
@@ -58,7 +58,7 @@ test("a missing account is explained inline and creating succeeds after sign-in"
   await expect(dialog.getByRole("region", { name: "Escolha uma conta" })).toBeFocused()
   await expect(dialog.getByLabel("Nome", { exact: true })).toHaveValue("Clara")
   await dialog.getByRole("button", { name: "Claude Code", exact: true }).click()
-  await dialog.getByRole("button", { name: "Usar outra conta", exact: true }).click()
+  await dialog.getByRole("button", { name: "Tentar de novo", exact: true }).click()
   await expect(dialog.getByText(/Usa o Claude Code/)).toBeVisible()
   await expect(dialog.getByRole("alert")).toHaveCount(0)
   await dialog.getByRole("button", { name: "Criar bot", exact: true }).click()

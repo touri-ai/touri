@@ -1,3 +1,4 @@
+import { delimiter } from "node:path"
 import type { AbsolutePath, Kernel, Result } from "@touri/contracts"
 import { withToolPath } from "../kernel/shell-env"
 import { resolveExecutable } from "./utils"
@@ -30,7 +31,7 @@ export const resolveProviderExecutable = async ({
   if (direct.success) return { success: true, path: direct.path, env }
   const path = await shellPath(kernel)
   if (!path) return direct
-  const widened = { ...env, PATH: [env.PATH, path].filter(Boolean).join(":") }
+  const widened = { ...env, PATH: [env.PATH, path].filter(Boolean).join(delimiter) }
   const retried = resolveExecutable({ command, env: widened })
   return retried.success ? { success: true, path: retried.path, env: widened } : direct
 }

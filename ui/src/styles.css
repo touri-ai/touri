@@ -3969,11 +3969,24 @@ a {
 .activity-mascot .tb-avatar {
   filter: none;
 }
+.activity-copy {
+  min-width: 0;
+  flex: 1;
+}
+.activity-delay p {
+  margin: 8px 0;
+  line-height: 1.5;
+}
+.activity-delay-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
 .activity-label {
   min-width: 0;
   overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 .activity-reasoning-button {
   display: block;
@@ -3984,8 +3997,8 @@ a {
   background: transparent;
   color: inherit;
   font: inherit;
-  white-space: nowrap;
-  text-overflow: ellipsis;
+  white-space: normal;
+  overflow-wrap: anywhere;
   text-align: left;
   cursor: pointer;
 }
@@ -4461,13 +4474,15 @@ a {
 }
 .provider-login-flow {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-8);
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-12);
+  min-width: 0;
+  max-width: 100%;
 }
 .provider-login-flow > p,
 .provider-login-flow > div {
-  flex-basis: 100%;
+  max-width: 100%;
   margin: 0;
 }
 

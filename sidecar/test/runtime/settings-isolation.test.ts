@@ -4,6 +4,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { Bot, Kernel, ProviderEvent, ProviderSession, StartTurnArgs, Thread } from "@touri/contracts"
 import { createKernel } from "../../src/kernel"
+import { folderGuestPath } from "../../src/kernel/bot-folders"
 import { createClaudeAdapter } from "../../src/runtime/claude/adapter"
 import { readOnlyAllow, readOnlyDeny } from "../../src/runtime/claude/settings"
 import { createCodexAdapter } from "../../src/runtime/codex/adapter"
@@ -320,11 +321,10 @@ for (const vm of [false, true]) {
   })
 }
 
-for (const provider of ["claude", "codex"] as const) {
-  test.skipIf(process.platform !== "darwin")(
-    `${provider} receives folder grants through CLI policy and the inherited host sandbox`,
-    async () => {
-      const f = fixture(false, provider)
+for (const provider of ["claude", "codex"] as const)
+  for (const vm of [false, true])
+    test(`${provider} folder grants preserve CLI policy and require ${vm ? "guest execution" : "a host sandbox"}`, async () => {
+      const f = fixture(vm, provider)
       const ro = join(f.root, "reference")
       const rw = join(f.root, "writable")
       mkdirSync(ro)
@@ -338,27 +338,38 @@ for (const provider of ["claude", "codex"] as const) {
       ]
       const requestLogPath = join(f.root, "folder-requests.jsonl")
       writeFileSync(f.scenario, JSON.stringify({ events: [{ type: "complete" }], requestLogPath }))
-      expect((await f.adapter.startTurn(f.args)).success).toBe(true)
-      expect(f.calls[0]?.cmd).toBe("/usr/bin/sandbox-exec")
+      const result = await f.adapter.startTurn(f.args)
+      if (!vm && process.platform !== "darwin") {
+        expect(result).toMatchObject({ success: false, errorCode: "cli_crash" })
+        if (!result.success) expect(result.error).toContain("sandbox do macOS")
+        expect(f.calls).toHaveLength(0)
+        return
+      }
+      expect(result.success).toBe(true)
+      expect(f.calls[0]?.cmd).toBe(vm ? provider : "/usr/bin/sandbox-exec")
+      const grantedRO = vm ? folderGuestPath(realpathSync(ro)) : realpathSync(ro)
+      const grantedRW = vm ? folderGuestPath(realpathSync(rw)) : realpathSync(rw)
       if (provider === "claude") {
         const cli = f.calls[0]?.args ?? []
-        expect(cli).toContain(realpathSync(ro))
-        expect(cli).toContain(realpathSync(rw))
+        expect(cli).toContain(grantedRO)
+        expect(cli).toContain(grantedRW)
         const added = cli.flatMap((arg, i) => (arg === "--add-dir" ? [cli[i + 1]] : []))
-        expect(added).toContain(realpathSync(ro))
-        expect(added).toContain(realpathSync(rw))
+        expect(added).toContain(grantedRO)
+        expect(added).toContain(grantedRW)
       } else {
         const requests = readFileSync(requestLogPath, "utf8")
           .trim()
           .split("\n")
           .map((line) => JSON.parse(line))
         const request = requests.find((request) => request.method === "thread/start")
-        // Seatbelt cannot nest: Codex runs unsandboxed inside touri's profile, which grants the folders.
-        expect(request.params.sandbox).toBe("danger-full-access")
-        const profile = f.calls[0]?.args[1] ?? ""
-        expect(profile).toContain(`(subpath ${JSON.stringify(realpathSync(rw))})`)
-        expect(profile).toContain(`(deny file-write* (subpath ${JSON.stringify(realpathSync(ro))}))`)
+        if (!vm && process.platform === "darwin") {
+          expect(request.params.sandbox).toBe("danger-full-access")
+          const profile = f.calls[0]?.args[1] ?? ""
+          expect(profile).toContain(`(subpath ${JSON.stringify(grantedRW)})`)
+          expect(profile).toContain(`(deny file-write* (subpath ${JSON.stringify(grantedRO)}))`)
+        } else {
+          expect(request.params.config.sandbox_workspace_write.writable_roots).toContain(grantedRW)
+          expect(request.params.config.sandbox_workspace_write.writable_roots).not.toContain(grantedRO)
+        }
       }
-    },
-  )
-}
+    })

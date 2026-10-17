@@ -1,6 +1,18 @@
 use std::collections::HashMap;
 use std::fs::{canonicalize, symlink_metadata, Metadata};
+#[cfg(unix)]
 use std::os::unix::fs::MetadataExt;
+#[cfg(windows)]
+trait UnsupportedFileIdentity {
+    fn dev(&self) -> u64 {
+        0
+    }
+    fn ino(&self) -> u64 {
+        0
+    }
+}
+#[cfg(windows)]
+impl UnsupportedFileIdentity for Metadata {}
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -93,6 +105,10 @@ fn new_grant_id() -> Result<String, RejectReason> {
 }
 
 fn classify(metadata: &Metadata) -> Option<RejectReason> {
+    // Native Windows file identity is required before drop grants can be redeemed.
+    if cfg!(windows) {
+        return Some(RejectReason::Unsupported);
+    }
     let kind = metadata.file_type();
     if kind.is_symlink() {
         return Some(RejectReason::Symlink);
@@ -215,7 +231,7 @@ impl FileGrants {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
     use std::fs::{create_dir_all, remove_dir_all, write, File};

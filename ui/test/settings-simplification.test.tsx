@@ -231,6 +231,7 @@ it.each([
       onWindow={vi.fn()}
       onClose={vi.fn()}
       onSettings={vi.fn()}
+      onRoutines={vi.fn()}
       onPermissions={vi.fn()}
       onRole={vi.fn()}
     />,

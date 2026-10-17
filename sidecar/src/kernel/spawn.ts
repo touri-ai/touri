@@ -1,12 +1,14 @@
 import { dlopen } from "bun:ffi"
 import { closeSync, createWriteStream, existsSync, read as readFd, write as writeFd } from "node:fs"
 import type { Kernel } from "@touri/contracts"
+import { libcLibrary } from "../platform/posix"
+import { desktopHelper } from "../platform/windows-native"
 import { withToolPath } from "./shell-env"
 
 type SpawnResult = ReturnType<Kernel["spawnTree"]>
 
 const openLegacyLibc = () =>
-  dlopen(process.platform === "darwin" ? "/usr/lib/libSystem.B.dylib" : "libc.so.6", {
+  dlopen(libcLibrary, {
     dup: { args: ["i32"], returns: "i32" },
   })
 let legacyLibc: ReturnType<typeof openLegacyLibc> | undefined
@@ -133,6 +135,12 @@ export const spawnTree = ({
   extraFds?: number
 }): SpawnResult => {
   try {
+    if (process.platform === "win32" && extraFds > 0)
+      return {
+        success: false,
+        errorCode: "SPAWN_FAILED",
+        error: "Windows local browser pipe descriptors are unavailable; use the VM browser",
+      }
     const spawn = () => {
       const stdio: ["pipe", "pipe", "pipe", ...Array<"socket-fd" | "pipe">] = [
         "pipe",
@@ -141,10 +149,10 @@ export const spawnTree = ({
         ...Array.from({ length: extraFds }, () => extraPipeMode),
       ]
       return Bun.spawn({
-        cmd: [cmd, ...args],
+        cmd: process.platform === "win32" ? [desktopHelper(), "--spawn-tree", "--", cmd, ...args] : [cmd, ...args],
         cwd,
         env: { ...env, PATH: withToolPath(env).PATH },
-        detached: true,
+        detached: process.platform !== "win32",
         stdio,
       })
     }

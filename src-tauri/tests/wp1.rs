@@ -4,7 +4,9 @@ use std::time::Duration;
 use touri_lib::host_bridge::{HostBridge, HostBridgeCallbacks, AUTH_REQUIRED_CODE};
 use touri_lib::keychain::KeychainStore;
 use touri_lib::preview::{allows_preview_url, parse_preview_url};
-use touri_lib::sidecar::{next_backoff, parse_handshake, SidecarLaunch, SidecarSupervisor};
+use touri_lib::sidecar::{next_backoff, parse_handshake};
+#[cfg(unix)]
+use touri_lib::sidecar::{SidecarLaunch, SidecarSupervisor};
 use touri_lib::window_config::{parse_position, parse_size, WindowPlacement, DEFAULT_WINDOW_SIZE};
 
 #[test]
@@ -41,7 +43,8 @@ fn wp1_host_bridge_requires_authentication_before_dispatch() {
         callbacks,
     )
     .expect("host bridge starts");
-    let mut stream = std::os::unix::net::UnixStream::connect(&socket).expect("connect host bridge");
+    let mut stream =
+        touri_lib::platform::transport::connect(&bridge.endpoint()).expect("connect host bridge");
     use std::io::{BufRead, BufReader, Write};
     stream
         .set_read_timeout(Some(Duration::from_secs(2)))
@@ -77,7 +80,8 @@ fn wp1_quit_notification_is_sent_over_the_authenticated_bridge() {
         callbacks,
     )
     .expect("host bridge starts");
-    let mut stream = std::os::unix::net::UnixStream::connect(&socket).expect("connect host bridge");
+    let mut stream =
+        touri_lib::platform::transport::connect(&bridge.endpoint()).expect("connect host bridge");
     use std::io::{BufRead, BufReader, Write};
     stream
         .set_read_timeout(Some(Duration::from_secs(2)))
@@ -133,6 +137,7 @@ fn wp1_sidecar_handshake_and_bounded_restart_policy_are_automated() {
     );
 }
 
+#[cfg(unix)]
 #[test]
 fn wp1_sidecar_restarts_after_kill_and_stops_on_quit() {
     let root = std::env::temp_dir().join(format!("touri-wp1-supervisor-{}", std::process::id()));
@@ -248,6 +253,7 @@ fn icon_pngs_are_eight_bit_rgba() {
 }
 
 #[test]
+#[cfg(unix)]
 fn drop_grants_redeem_once_over_the_authenticated_bridge_only() {
     use std::io::{BufRead, BufReader, Write};
     let root = std::env::temp_dir().join(format!("touri-drop-bridge-{}", std::process::id()));
@@ -270,7 +276,7 @@ fn drop_grants_redeem_once_over_the_authenticated_bridge_only() {
         callbacks,
     )
     .expect("host bridge starts");
-    let mut stream = std::os::unix::net::UnixStream::connect(&socket).expect("connect");
+    let mut stream = touri_lib::platform::transport::connect(&bridge.endpoint()).expect("connect");
     stream
         .set_read_timeout(Some(Duration::from_secs(2)))
         .expect("timeout");
@@ -285,7 +291,8 @@ fn drop_grants_redeem_once_over_the_authenticated_bridge_only() {
     reader.read_line(&mut line).expect("read");
     let denied: serde_json::Value = serde_json::from_str(&line).expect("json");
     assert_eq!(denied["error"]["code"], AUTH_REQUIRED_CODE);
-    let mut stream = std::os::unix::net::UnixStream::connect(&socket).expect("connect again");
+    let mut stream =
+        touri_lib::platform::transport::connect(&bridge.endpoint()).expect("connect again");
     stream
         .set_read_timeout(Some(Duration::from_secs(2)))
         .expect("timeout");
@@ -306,7 +313,8 @@ fn drop_grants_redeem_once_over_the_authenticated_bridge_only() {
         .as_str()
         .expect("path")
         .ends_with("drop.txt"));
-    let mut stream = std::os::unix::net::UnixStream::connect(&socket).expect("connect third");
+    let mut stream =
+        touri_lib::platform::transport::connect(&bridge.endpoint()).expect("connect third");
     stream
         .set_read_timeout(Some(Duration::from_secs(2)))
         .expect("timeout");
@@ -323,4 +331,20 @@ fn drop_grants_redeem_once_over_the_authenticated_bridge_only() {
     assert!(replay["error"].is_object());
     bridge.shutdown();
     let _ = std::fs::remove_dir_all(root);
+}
+
+#[cfg(windows)]
+#[test]
+fn windows_drop_grants_fail_closed_until_native_identity_is_implemented() {
+    let root = std::env::temp_dir().join(format!("touri-drop-unsupported-{}", std::process::id()));
+    std::fs::create_dir_all(&root).unwrap();
+    let path = root.join("fixture.txt");
+    std::fs::write(&path, "fixture").unwrap();
+    let outcome = touri_lib::file_grants::FileGrants::new().issue(&[path]);
+    assert!(outcome.granted.is_empty());
+    assert_eq!(
+        outcome.rejected[0].reason,
+        touri_lib::file_grants::RejectReason::Unsupported
+    );
+    std::fs::remove_dir_all(root).unwrap();
 }

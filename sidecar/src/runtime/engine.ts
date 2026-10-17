@@ -31,11 +31,11 @@ import { approvalOutcome } from "../approvals/outcome"
 import { delegatedBot } from "../groups/security"
 import { buildChildEnv } from "../kernel"
 import { folderGrantProblem, refreshHostFolderAccess } from "../kernel/folder-capability"
-import { resolveMcpSocketPath } from "../kernel/paths"
 import { providerProfileEnv } from "../kernel/provider-profiles"
 import { redactStructured } from "../kernel/redact"
 import { attachedServers, resolveAttachedMcp } from "../mcp/attached"
 import { reapOrphanShims } from "../mcp/shim-registry"
+import { resolveMcpEndpoint } from "../platform/transport"
 import { prepareLocalProviderLogin } from "../vm/local-provider-login"
 import { ProviderLoginError } from "../vm/provider-login"
 import { redactVmEvents } from "../vm/redact-events"
@@ -435,7 +435,7 @@ export const createRuntimeEngine = ({
       env: {
         TOURI_APP_DATA: kernel.paths.appData,
         TOURI_RUN_DIR: kernel.paths.runDir,
-        TOURI_MCP_SOCK: resolveMcpSocketPath(kernel.paths),
+        TOURI_MCP_SOCK: resolveMcpEndpoint(kernel.paths),
       },
     }
   }
@@ -865,7 +865,7 @@ export const createRuntimeEngine = ({
         ...providerProfileEnv({ appData: kernel.paths.appData, bot }),
         TOURI_RUN_DIR: kernel.paths.runDir,
         TOURI_APP_DATA: kernel.paths.appData,
-        ...(bot.machine === "vm" ? {} : { TOURI_MCP_SOCK: resolveMcpSocketPath(kernel.paths) }),
+        ...(bot.machine === "vm" ? {} : { TOURI_MCP_SOCK: resolveMcpEndpoint(kernel.paths) }),
         ...(projectDataDir ? { TOURI_PROJECT_DATA_DIR: projectDataDir } : {}),
       },
     })
@@ -970,8 +970,10 @@ export const createRuntimeEngine = ({
         const startTurn: ProviderAdapter["startTurn"] = prepared
           ? (args) => startVmTurn({ kernel, provider, args })
           : provider.startTurn
-        const invoke = (): ReturnType<typeof startTurn> =>
-          startTurn({
+        const invoke = (): ReturnType<typeof startTurn> => {
+          // Publish before invocation: startup and a silent provider are different waits.
+          if (!run.providerStartedAt) updateRun(run, { providerStartedAt: Date.now() })
+          return startTurn({
             ...(conversationOnly ? { conversationOnly: true } : {}),
             thread,
             bot: turnBot,
@@ -986,6 +988,7 @@ export const createRuntimeEngine = ({
             onEvent,
             signal: controller.signal,
           })
+        }
         const invokeWithRetry = (): ReturnType<typeof startTurn> =>
           retryTransient({
             run: invoke,

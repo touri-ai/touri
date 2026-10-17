@@ -3,11 +3,13 @@ import { join } from "node:path"
 import type { Kernel } from "@touri/contracts"
 import { atomicWriteFile, ensurePrivateDirectory, readPrivateFile, removePrivateFile } from "../kernel/files"
 import { runPs } from "../kernel/ps"
+import { terminateWindowsProvider, windowsProviderIdentity } from "../platform/windows-native"
 import type { ChildProcess } from "./provider-io"
 
 // The CLI children have their own process groups and can outlive a crashed sidecar.
 // Persist their birth identity before reading output; a reused PID must never be killed.
 const identity = async (pid: number): Promise<{ birth: string; alive: boolean } | null> => {
+  if (process.platform === "win32") return windowsProviderIdentity(pid)
   if (process.platform === "linux") {
     try {
       const stat = readFileSync(`/proc/${pid}/stat`, "utf8")
@@ -49,6 +51,8 @@ const signalGroup = (pgid: number, signal: "SIGTERM" | "SIGKILL"): boolean => {
 
 /** When the provider leader exits, whatever it left in its process group (MCP shims, helpers) is stopped. */
 export const reapGroupAfterExit = (child: ChildProcess): void => {
+  // The Windows stdio helper's native job closes when its leader exits.
+  if (process.platform === "win32") return
   void child.exited
     .then(() => {
       if (!signalGroup(child.pid, "SIGTERM")) return
@@ -102,11 +106,13 @@ export const reapProviderProcesses = async (kernel: Kernel): Promise<void> => {
     const current = await identity(record.pid)
     if (current?.alive && current.birth === record.birth && Number(current.birth.split(/\s+/)[0]) === record.pid) {
       // Recovery does not adopt a native turn: fence it and stop its entire group.
-      try {
-        process.kill(-record.pid, "SIGKILL")
-      } catch (error) {
-        if (!(error instanceof Error && "code" in error && error.code === "ESRCH")) throw error
-      }
+      if (process.platform === "win32") await terminateWindowsProvider(record.pid, record.birth)
+      else
+        try {
+          process.kill(-record.pid, "SIGKILL")
+        } catch (error) {
+          if (!(error instanceof Error && "code" in error && error.code === "ESRCH")) throw error
+        }
     }
     removePrivateFile({ root: kernel.paths.appData, path })
   }

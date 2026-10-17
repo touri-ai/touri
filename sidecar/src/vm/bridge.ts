@@ -1,5 +1,6 @@
 import { createConnection, type Socket } from "node:net"
 import { MCP_LIMITS } from "../mcp/connection"
+import { connectionOptions } from "../platform/transport"
 
 /** Idle host connections the guest bridge keeps ready for new MCP clients. */
 export const BRIDGE_IDLE_POOL = 4
@@ -76,7 +77,7 @@ export const connectMcpBridge = ({
       if (buffer.subarray(0, newline).toString() !== "paired") return socket.destroy()
       leaveIdle()
       fill()
-      const upstream = createConnection(socketPath)
+      const upstream = createConnection(connectionOptions(socketPath))
       sockets.add(upstream)
       upstream.on("error", () => socket.destroy())
       upstream.on("close", () => {

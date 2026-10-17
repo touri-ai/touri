@@ -1,7 +1,7 @@
 import type { Database } from "bun:sqlite"
 import type { DoctorCheck, Kernel } from "@touri/contracts"
 import { browserSessionKeyAccount, hasBotSession, loadBotSession, SessionVaultError } from "../browser/sessionVault"
-import { SERVER_VAULT_GUIDANCE } from "../vm/provider-login"
+import { NATIVE_VAULT_GUIDANCE, SERVER_VAULT_GUIDANCE } from "../vm/provider-login"
 import { check } from "./check"
 import type { LocalProbes } from "./local"
 
@@ -27,7 +27,7 @@ export const browserSessionChecks = async (
     } catch (error) {
       signal.throwIfAborted()
       if (host.platform !== "darwin" || host.headless) {
-        checks.push(check(id, label, "fail", SERVER_VAULT_GUIDANCE))
+        checks.push(check(id, label, "fail", host.headless ? SERVER_VAULT_GUIDANCE : NATIVE_VAULT_GUIDANCE))
         continue
       }
       const recoverable =

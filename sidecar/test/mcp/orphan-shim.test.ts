@@ -120,12 +120,19 @@ test("a provider leader that exits on its own does not leave its shim behind", a
     cmd: "bun",
     args: ["run", providerFake],
     cwd: root,
-    env: { ...shimEnv(root, sock), FAKE_SHIM_PID_FILE: pidFile, FAKE_PROVIDER_EXITS: "1", FAKE_SHIM_DETACHED: "0" },
+    env: {
+      ...shimEnv(root, sock),
+      FAKE_SHIM_PID_FILE: pidFile,
+      FAKE_PROVIDER_EXITS: "1",
+      FAKE_PROVIDER_EXIT_FILE: join(root, "leader.exit"),
+      FAKE_SHIM_DETACHED: "0",
+    },
   })
   if (!spawned.success) throw new Error(spawned.error)
   await trackProviderProcess(runtime.kernel, spawned)
   const shimPid = await readPid(pidFile)
   expect(await waitFor(() => sockets.length === 1)).toBe(true)
+  writeFileSync(join(root, "leader.exit"), "ready")
   await spawned.exited
   expect(await waitFor(() => !alive(shimPid))).toBe(true)
   runtime.stop()

@@ -219,6 +219,7 @@ export const createKernel = ({ appData, web }: { appData?: string; web?: WebMode
             ok: true,
             version,
             schemaVersion: SCHEMA_VERSION,
+            host: process.platform === "darwin" && process.env.TOURI_HEADLESS !== "1" ? "mac" : "server",
             historyMigration: historyMigrationStatus(database),
           },
         }),
