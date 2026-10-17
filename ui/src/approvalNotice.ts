@@ -26,5 +26,24 @@ export const approvalNotificationSummary = (item: NotificationRecord, messages: 
           },
         )
       : { title: item.title, body: item.body }
-  return { ...summary, technical: redactToolText(part?.detail ?? (legacy ? item.body : "")) }
+  const detail = part?.detail ?? (legacy ? item.body : "")
+  const isCommand = (part?.request ?? (/command$/.test(item.title) ? "command" : null)) === "command"
+  const command = isCommand ? commandText(detail) : null
+  const technical = redactToolText(detail)
+  return { ...summary, command, technical: technical.trim() === command ? "" : technical }
+}
+
+// The bell is where people decide; show the command itself, never only a generic label.
+const commandText = (detail: string): string | null => {
+  let value: unknown
+  try {
+    value = JSON.parse(detail)
+  } catch {
+    // Older notifications carried the plain command as their body.
+    return detail.trim() ? redactToolText(detail.trim()) : null
+  }
+  const record = value && typeof value === "object" ? (value as Record<string, unknown>) : null
+  const command = record?.command ?? record?.cmd
+  const text = Array.isArray(command) ? command.map(String).join(" ") : typeof command === "string" ? command : null
+  return text ? redactToolText(text) : null
 }

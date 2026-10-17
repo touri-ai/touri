@@ -3,6 +3,7 @@ import { expect, test, vi } from "vitest"
 import { apiRouteKeys, createApiClient, resolveSidecarEndpoint, type TauriInvoke } from "../src/api/client"
 
 const contractRouteKeys: Array<keyof ApiRoutes> = [
+  "GET /workspace/activity",
   "GET /groups",
   "POST /groups",
   "PATCH /groups/:id",

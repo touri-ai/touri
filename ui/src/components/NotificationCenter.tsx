@@ -147,6 +147,7 @@ const NotificationRow = ({
           </time>
         )}
         {body.toLowerCase() !== t(KIND_KEY[item.kind]).toLowerCase() && <p className="notification-body">{body}</p>}
+        {approval?.command && <pre className="notification-command">{approval.command}</pre>}
         {approval?.technical && (
           <details className="notification-technical">
             <summary>{t("Detalhes técnicos")}</summary>

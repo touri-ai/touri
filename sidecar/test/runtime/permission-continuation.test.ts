@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite"
 import { expect, spyOn, test } from "bun:test"
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { ApprovalPart, ProviderAdapter, StartTurnArgs } from "@touri/contracts"
@@ -22,7 +22,8 @@ const waitFor = async (predicate: () => boolean): Promise<void> => {
 const requestText = "Crie um arquivo notas.md com a palavra teste e me mostre o conteúdo."
 
 const fixture = async () => {
-  const root = mkdtempSync(join(tmpdir(), "touri-permission-continuation-"))
+  // Canonical: macOS tmpdir lives behind /var -> /private/var, and grants refuse moved folders.
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "touri-permission-continuation-")))
   const folder = join(root, "notes")
   const reference = join(root, "reference")
   mkdirSync(folder)

@@ -188,6 +188,7 @@ a {
   flex-shrink: 0;
   font-size: var(--type-12);
 }
+.notification-command,
 .notification-technical pre {
   max-height: 180px;
   overflow: auto;
@@ -3948,6 +3949,12 @@ a {
 }
 .activity-mark[data-mascot-state="thinking"] {
   --activity-ink: var(--text-secondary);
+}
+.activity-mark[data-mascot-state="working-tool"] {
+  --activity-ink: var(--text-link);
+}
+.activity-mark[data-mascot-state="typing"] {
+  --activity-ink: var(--text-success);
 }
 .activity-mark[data-mascot-state="waiting-approval"] {
   --activity-ink: var(--text-warning);
