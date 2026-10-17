@@ -31,7 +31,7 @@ export const toolLeaf = (name: string): string => name.split("__").at(-1) ?? nam
 export const toolIdentity = (name: string, server?: string) => {
   const leaf = toolLeaf(name)
   const mcp = /^mcp__(.+?)__(.+)$/.exec(name)
-  const kind: ToolKind = /^(Bash|shell|terminal|exec_command)$/i.test(leaf)
+  const kind: ToolKind = /^(Bash|PowerShell|shell|terminal|exec_command)$/i.test(leaf)
     ? "terminal"
     : leaf.startsWith("browser_")
       ? "browser"
