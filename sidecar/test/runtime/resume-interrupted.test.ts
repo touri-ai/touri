@@ -243,8 +243,12 @@ test("an approved folder write grant automatically continues with updated Codex 
     expect(f.markers()).toMatchObject([{ text: continuationMarkers.permission_granted }])
     const sessions = f.frames().filter((frame) => frame.method === "thread/start")
     expect(sessions).toHaveLength(2)
-    expect(JSON.stringify(sessions[0]?.params.config)).not.toContain(folder)
-    expect(JSON.stringify(sessions[1]?.params.config)).toContain(folder)
+    // On macOS the grant lives in touri's Seatbelt profile (asserted in the spawn mock above), not in
+    // Codex's writable roots, because Codex cannot nest its own sandbox there.
+    if (process.platform !== "darwin") {
+      expect(JSON.stringify(sessions[0]?.params.config)).not.toContain(folder)
+      expect(JSON.stringify(sessions[1]?.params.config)).toContain(folder)
+    }
     expect(
       JSON.stringify(
         f
