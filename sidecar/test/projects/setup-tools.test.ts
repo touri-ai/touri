@@ -31,10 +31,10 @@ afterEach(() => {
   for (const close of cleanups.splice(0)) close()
 })
 
-const fixture = async (patch: Partial<Bot> = {}) => {
+const fixture = async (patch: Partial<Bot> = {}, projectName = "Hodler") => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "touri-setup-")))
   const home = join(root, "home")
-  const path = join(home, "Hodler")
+  const path = join(home, projectName)
   mkdirSync(join(path, ".git"), { recursive: true })
   const runtime = createKernel({ appData: join(root, "app") })
   const db = runtime.kernel.db as Database
@@ -720,37 +720,38 @@ test("configuration edits or filesystem retargeting while a card is pending inva
   expect(f.currentBot()?.folders).toEqual([])
 })
 
-test("local setup reports the host and next message for project and folder changes", async () => {
-  const f = await fixture()
-  for (const [name, args] of [
-    ["project_link", { path: f.path }],
-    ["folder_access_request", { path: f.path, mode: "read-write" }],
-  ] as const) {
-    const call = f.call(name, args)
-    expect((await f.pending()).detail).toContain('"nextTurn":true')
-    expect((await f.pending()).detail).toContain('"machine":"local"')
-    expect((await f.answer("allow")).status).toBe(200)
-    const result = await call
-    expect(result).toMatchObject({
-      success: true,
-      structured: { effective: "next-turn" },
-      content: [{ type: "text", text: expect.stringContaining("próxima mensagem") }],
-    })
-    if (!result.success) throw new Error(result.error)
-    expect(result.structured).toHaveProperty("message", expect.not.stringContaining("VM"))
-    expect(JSON.stringify(result)).toContain("neste Mac")
-  }
-  for (const [name, args] of [
-    ["project_unlink", {}],
-    ["folder_access_remove", { path: f.path }],
-  ] as const) {
-    const result = await f.call(name, args)
-    expect(result.success).toBe(true)
-    expect(JSON.stringify(result)).toContain("próxima mensagem")
-    if (!result.success) throw new Error(result.error)
-    expect(result.structured).toHaveProperty("message", expect.not.stringContaining("VM"))
-  }
-})
+for (const projectName of ["Hodler", "VM-tools"])
+  test(`local setup reports the host and next message for project and folder changes: ${projectName}`, async () => {
+    const f = await fixture({}, projectName)
+    for (const [name, args] of [
+      ["project_link", { path: f.path }],
+      ["folder_access_request", { path: f.path, mode: "read-write" }],
+    ] as const) {
+      const call = f.call(name, args)
+      expect((await f.pending()).detail).toContain('"nextTurn":true')
+      expect((await f.pending()).detail).toContain('"machine":"local"')
+      expect((await f.answer("allow")).status).toBe(200)
+      const result = await call
+      expect(result).toMatchObject({
+        success: true,
+        structured: { effective: "next-turn" },
+        content: [{ type: "text", text: expect.stringContaining("próxima mensagem") }],
+      })
+      if (!result.success) throw new Error(result.error)
+      expect(result.structured).toHaveProperty("message", expect.not.stringContaining("próxima mensagem na VM"))
+      expect(JSON.stringify(result)).toContain("neste Mac")
+    }
+    for (const [name, args] of [
+      ["project_unlink", {}],
+      ["folder_access_remove", { path: f.path }],
+    ] as const) {
+      const result = await f.call(name, args)
+      expect(result.success).toBe(true)
+      expect(JSON.stringify(result)).toContain("próxima mensagem")
+      if (!result.success) throw new Error(result.error)
+      expect(result.structured).toHaveProperty("message", expect.not.stringContaining("próxima mensagem na VM"))
+    }
+  })
 
 test("VM setup takes effect from the next message without invoking any VM runtime", async () => {
   const f = await fixture({ machine: "vm" })
