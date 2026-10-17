@@ -155,7 +155,7 @@ export const ptBR = {
   "Permitir escrita em {path}?": "Permitir escrita em {path}?",
   "Após aprovar, a pasta {path} será criada automaticamente.":
     "Após aprovar, a pasta {path} será criada automaticamente.",
-  "Permitir {mode} em {path} para este bot": "Permitir {mode} em {path} para este bot",
+  "Permitir {mode} em {path} para este bot.": "Permitir {mode} em {path} para este bot.",
   "Acesso anterior: {mode}.": "Acesso anterior: {mode}.",
   "Desvincular projeto": "Desvincular projeto",
   "Desvincular o projeto deste bot.": "Desvincular o projeto deste bot.",
@@ -1513,7 +1513,7 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Permitir escrita em {path}?": "Allow writing in {path}?",
   "Após aprovar, a pasta {path} será criada automaticamente.":
     "After approval, folder {path} will be created automatically.",
-  "Permitir {mode} em {path} para este bot": "Allow {mode} in {path} for this bot",
+  "Permitir {mode} em {path} para este bot.": "Allow {mode} in {path} for this bot.",
   "Acesso anterior: {mode}.": "Previous access: {mode}.",
   "Desvincular projeto": "Unlink project",
   "Desvincular o projeto deste bot.": "Unlink this bot's project.",
