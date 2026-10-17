@@ -132,6 +132,9 @@ describe("Grupos", () => {
     fireEvent.click(within(modal).getByRole("button", { name: "Criar grupo" }))
     const composer = await screen.findByRole("textbox", { name: "Mensagem para Produto" })
     expect(screen.getByText("mark · coordenador, onb")).toBeVisible()
+    const header = within(document.querySelector(".group-header") as HTMLElement)
+    expect(header.getByText("2 membros", { exact: true })).toBeVisible()
+    expect(header.getByRole("img", { name: "2 membros: mark, onb", exact: true })).toBeVisible()
     const payload = api.calls.find((c) => c.route === "POST /groups")?.input
     expect(payload).toMatchObject({ name: "Produto", memberIds: ["bot-mark", "bot-onb"], coordinatorBotId: "bot-mark" })
     fireEvent.focus(composer)
@@ -146,6 +149,8 @@ describe("Grupos", () => {
     expect(within(edit).getByLabelText("Coordenador")).toHaveValue("")
     fireEvent.click(within(edit).getByRole("button", { name: "Salvar grupo" }))
     await screen.findByRole("textbox", { name: "Mensagem para Produto" })
+    expect(header.getByText("1 membro", { exact: true })).toBeVisible()
+    expect(header.getByRole("img", { name: "1 membro: onb", exact: true })).toBeVisible()
     expect(api.calls.find((c) => c.route === "PATCH /groups/:id")?.input).toMatchObject({
       memberIds: ["bot-onb"],
       coordinatorBotId: null,
@@ -193,6 +198,9 @@ describe("Grupos", () => {
       await api.request("DELETE /bots/:id", { name: "onb", deleteVolumes: false }, { id: "bot-onb" })
     })
     const deleted = await within(row as HTMLElement).findByRole("img", { name: "Membro excluído: onb" })
+    const header = within(document.querySelector(".group-header") as HTMLElement)
+    expect(header.getByText("1 membro", { exact: true })).toBeVisible()
+    expect(header.getByRole("img", { name: "1 membro: mark", exact: true })).toBeVisible()
     expect(deleted.querySelector(".tb-avatar")).toHaveAttribute("data-bot-id", "bot-onb")
     expect(row?.querySelector('[data-bot-id="bot-mark"]')).toBeNull()
     expect(row?.querySelector(".message-role")).toHaveTextContent("onb")

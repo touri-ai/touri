@@ -1,6 +1,7 @@
 import type { ApiRoutes } from "@touri/contracts"
 import { useEffect, useState } from "react"
 import type { UiApi } from "../../api/client"
+import { t } from "../../i18n"
 
 type Report = ApiRoutes["GET /doctor/storage"]["res"]
 const size = (bytes: number) => `${(bytes / 1024 ** 2).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} MB`
@@ -88,7 +89,11 @@ export const DoctorStorage = ({ api }: { api: UiApi }) => {
       </button>
       <p role="status" aria-live="polite">
         {report?.maintenance.running
-          ? `${report.maintenance.processed.toLocaleString("pt-BR")} de ${report.maintenance.total.toLocaleString("pt-BR")} registros processados`
+          ? t("Storage records processed", {
+              processed: report.maintenance.processed.toLocaleString("pt-BR"),
+              total: report.maintenance.total.toLocaleString("pt-BR"),
+              count: report.maintenance.total,
+            })
           : ""}
         {error ?? report?.maintenance.error}
       </p>
