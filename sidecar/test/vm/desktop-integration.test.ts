@@ -121,7 +121,7 @@ test.skipIf(!appleContainerAvailable)(
       await page.goto(
         `${origin}/test/e2e/fixtures/desktop.html?computer&endpoint=${encodeURIComponent(endpoint)}&bot=${bot.id}`,
       )
-      await page.getByRole("button", { name: "Controlar", exact: true }).waitFor({ timeout: 600_000 })
+      await page.getByRole("button", { name: "Assumir controle", exact: true }).waitFor({ timeout: 600_000 })
       await browserExpect.poll(() => claimed, { timeout: 600_000 }).toBe(1)
       await release()
       release = undefined
@@ -260,8 +260,8 @@ test.skipIf(!appleContainerAvailable)(
           return (value as { result?: { value?: boolean } }).result?.value
         })
         .toBe(true)
-      await page.getByRole("button", { name: "Controlar", exact: true }).click()
-      await page.getByRole("button", { name: "Parar controle" }).waitFor({ timeout: 30_000 })
+      await page.getByRole("button", { name: "Assumir controle", exact: true }).click()
+      await page.getByRole("button", { name: "Devolver ao bot" }).waitFor({ timeout: 30_000 })
       await guestVisible(page)
       await page.getByLabel("Digitar na VM").fill("Olá 日本")
       let typed = ""
@@ -303,9 +303,9 @@ test.skipIf(!appleContainerAvailable)(
       )
       expect(await page.getByLabel("Digitar na VM").isDisabled()).toBe(true)
       await guestVisible(page)
-      expect(await page.getByRole("button", { name: "Controlar", exact: true }).getAttribute("aria-pressed")).toBe(
-        "false",
-      )
+      expect(
+        await page.getByRole("button", { name: "Assumir controle", exact: true }).getAttribute("aria-pressed"),
+      ).toBe("false")
       expect(
         (
           (await cdp.call("Runtime.evaluate", {
@@ -324,11 +324,11 @@ test.skipIf(!appleContainerAvailable)(
       await popout.waitForFunction(
         () => document.querySelector<HTMLButtonElement>(".desktop-panel button[aria-pressed]")?.disabled === false,
       )
-      await popout.getByRole("button", { name: "Controlar", exact: true }).click()
-      await popout.getByRole("button", { name: "Parar controle" }).waitFor()
+      await popout.getByRole("button", { name: "Assumir controle", exact: true }).click()
+      await popout.getByRole("button", { name: "Devolver ao bot" }).waitFor()
       await guestVisible(popout)
       runtime.emitHostNotification({ method: "computer.killSwitch", params: { at: Date.now() } })
-      await popout.getByRole("button", { name: "Tela travada — reconectar" }).waitFor()
+      await popout.getByRole("button", { name: "Reconectar tela" }).last().waitFor()
       expect(await popout.getByLabel("Digitar na VM").isDisabled()).toBe(true)
       expect(await page.getByLabel("Digitar na VM").isDisabled()).toBe(true)
       await popout.close()
@@ -348,7 +348,7 @@ test.skipIf(!appleContainerAvailable)(
           })
         ).success,
       ).toBe(true)
-      await page.getByRole("button", { name: "Tela travada — reconectar" }).waitFor({ timeout: 20_000 })
+      await page.getByRole("button", { name: "Reconectar tela" }).last().waitFor({ timeout: 20_000 })
       expect(
         (
           await trustedExec({
@@ -362,7 +362,7 @@ test.skipIf(!appleContainerAvailable)(
           })
         ).success,
       ).toBe(true)
-      await page.getByRole("button", { name: "Tela travada — reconectar" }).click()
+      await page.getByRole("button", { name: "Reconectar tela" }).last().click()
       await page.waitForFunction(
         () => document.querySelector<HTMLButtonElement>(".desktop-panel button[aria-pressed]")?.disabled === false,
       )
@@ -370,9 +370,9 @@ test.skipIf(!appleContainerAvailable)(
 
       // Pause only the VNC process inside this test's disposable guest. The X11 heartbeat still runs.
       expect((await trustedExec({ botId, command: "pkill", args: ["-STOP", "-x", "x11vnc"] })).success).toBe(true)
-      await page.getByRole("button", { name: "Tela travada — reconectar" }).waitFor({ timeout: 20_000 })
+      await page.getByRole("button", { name: "Reconectar tela" }).last().waitFor({ timeout: 20_000 })
       expect((await trustedExec({ botId, command: "pkill", args: ["-CONT", "-x", "x11vnc"] })).success).toBe(true)
-      await page.getByRole("button", { name: "Tela travada — reconectar" }).click()
+      await page.getByRole("button", { name: "Reconectar tela" }).last().click()
       await page.waitForFunction(
         () => document.querySelector<HTMLButtonElement>(".desktop-panel button[aria-pressed]")?.disabled === false,
       )

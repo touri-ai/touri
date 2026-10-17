@@ -37,6 +37,7 @@ import { BotMcpSettings } from "./BotMcpSettings"
 import { BotNetworkSettings } from "./BotNetworkSettings"
 import { BotStandingGrants } from "./BotStandingGrants"
 import { DeleteBotDialog } from "./DeleteBotDialog"
+import { DeleteRoutineDialog } from "./DeleteRoutineDialog"
 import { DiscoveredProjects } from "./DiscoveredProjects"
 import { FolderPicker } from "./FolderPicker"
 import { MachineFields } from "./MachineFields"
@@ -928,6 +929,8 @@ export const BotSettingsModal = ({
   initialSection,
   focusSetting,
 }: BotSettingsModalProps) => {
+  const routinesFocusRef = useRef<HTMLElement | null>(null)
+  const [deletingRoutine, setDeletingRoutine] = useState<Routine | null>(null)
   const [vmMemory, setVmMemory] = useState(settings?.botVmMemoryMb ?? 1536)
   const [name, setName] = useState(bot.name)
   const [avatar, setAvatar] = useState<AvatarChoice>(() => {
@@ -1492,9 +1495,11 @@ export const BotSettingsModal = ({
           <SettingsPane {...botPane("permissions")}>
             {api && <BotStandingGrants key={grantsRevision} api={api} botId={bot.id} />}
             <p className="field-help">
-              {t("O controle do computador precisa de uma permissão por tempo limitado em cada conversa.")}
+              {bot.machine === "vm"
+                ? t("Assumir controle não autoriza ações automáticas do bot. Revise essas ações no chat.")
+                : t("O controle do computador precisa de uma permissão por tempo limitado em cada conversa.")}
             </p>
-            {api && bot.computerUse && bot.mainThreadId && (
+            {api && bot.computerUse && bot.mainThreadId && "__TAURI_INTERNALS__" in window && (
               <>
                 <p>{t("Esta permissão vale para a conversa principal deste bot.")}</p>
                 <ComputerGrantCard api={api} botId={bot.id} threadId={bot.mainThreadId} botName={bot.name} />
@@ -1546,6 +1551,18 @@ export const BotSettingsModal = ({
                       onChange={() => void immediateAction(() => actions.toggleRoutine(routine))}
                       aria-label={t("Enable routine", { name: routine.name })}
                     />
+                    <button
+                      type="button"
+                      className="routine-delete-button"
+                      disabled={updating || saving}
+                      aria-label={t("Excluir rotina {name}", { name: routine.name })}
+                      onClick={(event) => {
+                        routinesFocusRef.current = event.currentTarget.closest('[role="tabpanel"]')
+                        setDeletingRoutine(routine)
+                      }}
+                    >
+                      {t("Excluir rotina")}
+                    </button>
                   </div>
                 ))}
                 {botRoutines.length === 0 && (
@@ -1558,6 +1575,14 @@ export const BotSettingsModal = ({
           </SettingsPane>
         </SettingsLayout>
       </div>
+      {deletingRoutine && (
+        <DeleteRoutineDialog
+          routine={deletingRoutine}
+          onDelete={actions.deleteRoutine}
+          onClose={() => setDeletingRoutine(null)}
+          onDeleted={() => routinesFocusRef.current?.focus()}
+        />
+      )}
       {saveError && (
         <p className="settings-save-error warning-callout" role="alert">
           {saveError}

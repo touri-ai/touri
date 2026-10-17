@@ -2,9 +2,10 @@ import { expect, test } from "bun:test"
 import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import type { ToolRegistration } from "@touri/contracts"
+import type { Bot, ToolRegistration } from "@touri/contracts"
 import { init, withToolDeadline } from "../../src/browser"
 import { createBrowserEngine } from "../../src/browser/engine"
+import { init as initComputer } from "../../src/computer"
 import { createKernel } from "../../src/kernel"
 import { init as initStore } from "../../src/store"
 import "./test-helper"
@@ -148,6 +149,68 @@ test("the last failed browser tool of a bot is exposed to the screen viewers", a
     })
     expect(body.lastFailure?.error.length).toBeGreaterThan(0)
   } finally {
+    runtime.stop()
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test("VM browser keyboard and mouse tools wait for handback; kill blocks subsequent CDP input", async () => {
+  const root = mkdtempSync(join(tmpdir(), "touri-browser-handoff-"))
+  const runtime = createKernel({ appData: root })
+  const handlers = new Map<string, ToolRegistration>()
+  const register = runtime.kernel.registerTools
+  runtime.kernel.registerTools = (input) => {
+    for (const tool of input.tools) handlers.set(tool.name, tool)
+    return register(input)
+  }
+  try {
+    await initStore(runtime.kernel)
+    await initComputer(runtime.kernel)
+    await init(runtime.kernel)
+    const response = await fetch(`http://127.0.0.1:${runtime.handshake.port}/api/v1/bots`, {
+      method: "POST",
+      headers: { Authorization: "Bearer dev-ui-token", "x-touri-client": "handoff-test" },
+      body: JSON.stringify({ name: "Tela", provider: "codex", machine: "local" }),
+    })
+    expect(response.status).toBe(201)
+    const { bot } = (await response.json()) as { bot: Bot }
+    ;(runtime.kernel.db as import("bun:sqlite").Database)
+      .query("UPDATE bots SET machine = 'vm', browser = 'machine' WHERE id = ?")
+      .run(bot.id)
+    const gate = runtime.kernel.services.use("computer.input")
+    if (!gate) throw new Error("Missing input owner")
+    const ctx = {
+      botId: bot.id,
+      threadId: bot.mainThreadId ?? "",
+      runId: null,
+      projectId: null,
+      cwd: root,
+      signal: new AbortController().signal,
+    }
+    await gate.take(bot.id, ctx.signal)
+    for (const name of ["browser_click", "browser_type", "browser_press"]) {
+      let settled = false
+      const pending = handlers
+        .get(name)
+        ?.handler({ ctx, args: { tabId: "missing" } })
+        .then((result) => {
+          settled = true
+          return result
+        })
+      await Bun.sleep(10)
+      expect(settled).toBe(false)
+      gate.handBack(bot.id)
+      const result = await pending
+      expect(result?.success).toBe(false)
+      expect(settled).toBe(true)
+      await gate.take(bot.id, ctx.signal)
+    }
+    gate.kill()
+    expect(await handlers.get("browser_type")?.handler({ ctx, args: { tabId: "missing" } })).toMatchObject({
+      errorCode: "COMPUTER_KILLED",
+    })
+  } finally {
+    runtime.emitHostNotification({ method: "app.willQuit", params: {} })
     runtime.stop()
     rmSync(root, { recursive: true, force: true })
   }

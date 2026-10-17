@@ -268,7 +268,7 @@ describe("r8 screens", () => {
     fireEvent.click(screen.getByRole("button", { name: /Notificações/ }))
     const rows = screen.getAllByTestId("notification-row")
     expect(rows[0]).toHaveTextContent("Revisão concluída")
-    expect(rows[1]).toHaveTextContent("Falha anterior")
+    expect(rows[1]).toHaveTextContent("Não consegui conectar à sua IA.")
     expect(screen.getByRole("heading", { name: "Hoje" })).toBeVisible()
     expect(screen.getByRole("heading", { name: "Anteriores" })).toBeVisible()
     fireEvent.click(within(rows[0] as HTMLElement).getByRole("button", { name: "Marcar como lida" }))

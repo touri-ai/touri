@@ -25,7 +25,7 @@ import type {
 } from "@touri/contracts"
 import { publicError } from "@touri/contracts"
 import { redactToolText } from "@touri/contracts/redaction"
-import { refineErrorClass, safeRunFailure } from "@touri/contracts/run-failure"
+import { hasRecordedActions, refineErrorClass, safeRunFailure } from "@touri/contracts/run-failure"
 import { createApprovalBridge } from "../approvals/bridge"
 import { approvalOutcome } from "../approvals/outcome"
 import { delegatedBot } from "../groups/security"
@@ -117,6 +117,7 @@ type RoutineUpdate = {
 }
 
 type RuntimeEngine = {
+  ready: Promise<void>
   enqueue: (args: {
     threadId: Id
     requestMessageId: Id
@@ -129,7 +130,7 @@ type RuntimeEngine = {
   continueAfterApproval: ServiceMap["runtime.continueAfterApproval"]
   cancel: (id: Id) => Result<{ run: Run }, "NOT_FOUND">
   cancelBotTurns: (args: { botId: Id }) => Promise<void>
-  retry: (id: Id) => Result<{ run: Run }, "NOT_FOUND" | "THREAD_NOT_FOUND" | "BOT_PAUSED">
+  retry: (id: Id) => Result<{ run: Run }, "NOT_FOUND" | "THREAD_NOT_FOUND" | "BOT_PAUSED" | "CONFLICT">
   answerApproval: (args: {
     approvalId: Id
     decision: "approved" | "denied"
@@ -157,6 +158,7 @@ type RuntimeEngine = {
     fromTool: boolean
     botId?: Id
   }) => Result<{ routine: Routine }, "NOT_FOUND" | "NOT_OWNED" | "INVALID_ARGS">
+  deleteRoutine: (routineId: Id) => Result<object, "NOT_FOUND">
   runRoutine: (args: {
     routineId: Id
     triggerSource: RoutineRun["triggerSource"]
@@ -1237,6 +1239,15 @@ export const createRuntimeEngine = ({
       return null
     // Effects whose outcome is unknown wait for the user; the work notice already explains them.
     if (hasUncertainWork(run.id)) return null
+    if (reason !== "permission_granted") {
+      const parts =
+        kernel.services
+          .use("store.api")
+          ?.activePath({ threadId: run.threadId })
+          .filter((message) => message.runId === run.id)
+          .flatMap((message) => message.parts) ?? []
+      if (hasRecordedActions(parts)) return null
+    }
     const session =
       continuations.resumePoint(run.id) ??
       persistence.getActiveSession({ threadId: run.threadId, provider: run.provider })
@@ -1268,6 +1279,7 @@ export const createRuntimeEngine = ({
   }
 
   const startContinuation = ({ run, plan }: { run: Run; plan: ContinuationPlan }): boolean => {
+    if (!routineAllowsContinuation(run)) return false
     const store = kernel.services.use("store.api")
     const thread = store?.getThread({ threadId: run.threadId })
     if (!store || !thread) return false
@@ -1380,6 +1392,8 @@ export const createRuntimeEngine = ({
   }
 
   const drain = async (): Promise<void> => {
+    // A recovered turn must not run alongside the previous provider process.
+    await startupCleanup
     while (!shuttingDown && ownsRuntime() && active.size < maxConcurrentRuns) {
       const nextIndex = queued.findIndex((runId) => {
         const run = persistence.getRun(runId)
@@ -1522,9 +1536,33 @@ export const createRuntimeEngine = ({
     await Promise.all(runs.map((run) => executions.get(run.id)))
   }
 
-  const retry = (id: Id): Result<{ run: Run }, "NOT_FOUND" | "THREAD_NOT_FOUND" | "BOT_PAUSED"> => {
+  const retry = (id: Id): Result<{ run: Run }, "NOT_FOUND" | "THREAD_NOT_FOUND" | "BOT_PAUSED" | "CONFLICT"> => {
     const previous = persistence.getRun(id)
     if (!previous?.requestMessageId) return { success: false, errorCode: "NOT_FOUND", error: "Run not found" }
+    if (["queued", "starting", "running", "succeeded"].includes(previous.status))
+      return { success: true, run: previous }
+    // A retry is identified by the failed run, including after a lost HTTP acknowledgement.
+    const attempts = persistence.listRuns(previous.threadId, { all: true })
+    const previousIndex = attempts.findIndex((run) => run.id === previous.id)
+    const existing = attempts
+      .slice(0, previousIndex)
+      .find((run) => run.requestMessageId === previous.requestMessageId && run.trigger === "retry")
+    if (existing) return { success: true, run: existing }
+    const parts =
+      kernel.services
+        .use("store.api")
+        ?.activePath({
+          threadId: previous.threadId,
+          ...(previous.replyMessageId ? { leafId: previous.replyMessageId } : {}),
+        })
+        .filter((message) => message.runId === previous.id)
+        .flatMap((message) => message.parts) ?? []
+    if (hasRecordedActions(parts))
+      return {
+        success: false,
+        errorCode: "CONFLICT",
+        error: "A resposta foi interrompida. Algumas ações podem ter sido concluídas.",
+      }
     return previous.routineRunId
       ? enqueue({
           threadId: previous.threadId,
@@ -1732,6 +1770,20 @@ export const createRuntimeEngine = ({
     return { success: true, routine: next }
   }
 
+  const deleteRoutine = (routineId: Id): Result<object, "NOT_FOUND"> => {
+    if (!persistence.getRoutine(routineId))
+      return { success: false, errorCode: "NOT_FOUND", error: "Routine not found" }
+    const pending = new Set(persistence.listRoutineRuns(routineId).map((run) => run.id))
+    // Queued work has not started yet and must not fire after deletion. Starting
+    // and running turns keep their existing controller and timeout and finish.
+    for (const run of persistence.listQueuedRuns()) {
+      if (run.routineRunId && pending.has(run.routineRunId)) cancel(run.id)
+    }
+    persistence.deleteRoutine(routineId)
+    kernel.publish({ type: "routine.deleted", routineId })
+    return { success: true }
+  }
+
   const recordSkipped = ({
     routine,
     scheduledFor,
@@ -1934,14 +1986,24 @@ export const createRuntimeEngine = ({
     }
     approvalBridge.dispose()
     shutdownPromise = (async () => {
+      await startupCleanup
       await Promise.all(Object.values(adapters).map((adapter) => adapter.shutdown()))
       await Promise.all(executions.values())
     })()
     return shutdownPromise
   }
 
-  reapProviderProcesses(kernel)
-  reapOrphanShims(kernel.paths.runDir)
+  // Both scans run `ps` asynchronously (#121); the record list is read before the first await.
+  const startupCleanup = Promise.all([reapProviderProcesses(kernel), reapOrphanShims(kernel.paths.runDir)])
+    .then(() => undefined)
+    .catch((error) =>
+      kernel.log({
+        level: "error",
+        module: "runtime",
+        msg: "Falha ao encerrar processos órfãos",
+        data: { error: error instanceof Error ? error.message : String(error) },
+      }),
+    )
   const recovered = new Set<Id>()
   for (const run of persistence.listActiveRuns()) {
     recovered.add(run.id)
@@ -2008,6 +2070,7 @@ export const createRuntimeEngine = ({
   queueMicrotask(() => void drain())
 
   return {
+    ready: startupCleanup,
     enqueue,
     activeRun,
     continueAfterApproval,
@@ -2022,6 +2085,7 @@ export const createRuntimeEngine = ({
     listRoutineRuns,
     createRoutine,
     updateRoutine,
+    deleteRoutine,
     runRoutine,
     tick,
     shutdown,

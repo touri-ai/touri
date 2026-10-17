@@ -184,3 +184,9 @@
   line-height: 1.6;
 }
 /* End r8 panel viewing hint. */
+
+.desktop-panel > .desktop-observe-note {
+  padding: var(--space-10) var(--space-12);
+  border-bottom: 1px solid var(--border-divider);
+  background: var(--surface-control);
+}

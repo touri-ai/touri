@@ -276,7 +276,7 @@ export const createCodexAdapter = ({
       children.delete(spawned)
       expireApprovals()
     })
-    if (!args.execution) trackProviderProcess(kernel, spawned)
+    if (!args.execution) await trackProviderProcess(kernel, spawned)
     let mcpError: string | null = null
     let stopped = false
     let completed = false

@@ -24,6 +24,7 @@ import {
 
 type Target = Pick<Bot, "id" | "provider">
 type Child = Extract<ReturnType<Kernel["spawnTree"]>, { success: true }>
+
 type Session = {
   target: Target
   view: ProviderLoginFlow
@@ -171,12 +172,19 @@ export const createProviderLoginFlow = ({
     delete session.directory
     delete session.child
   }
+  /** The login home is removed again once the CLI tree is dead, so a late write cannot leave a credential behind. */
+  const stopLoginChild = (session: Session): void => {
+    const { child, directory } = session
+    if (!child) return
+    void killProviderLoginPty(child).finally(() => {
+      if (directory) rmSync(directory, { recursive: true, force: true })
+    })
+  }
   const cancel = (target: Target, state: "cancelled" | "error" = "cancelled") => {
     const session = sessions.get(key(target))
     if (session) {
       const child = session.child
-      // The process scan can yield to the event loop, so stop the CLI before publishing the final state.
-      if (child) killProviderLoginPty(child)
+      stopLoginChild(session)
       session.view = {
         provider: target.provider,
         state,
@@ -375,7 +383,7 @@ export const createProviderLoginFlow = ({
         session.view = { provider: command, state: "ready" }
       } catch {
         if (session.view.state === "waiting") {
-          if (session.child) killProviderLoginPty(session.child)
+          stopLoginChild(session)
           session.view = {
             provider: target.provider,
             state: "error",

@@ -9,6 +9,47 @@ export const ptBR = {
     "O cofre nativo está disponível no aplicativo desktop. O modo servidor usa seu próprio cofre local.",
   "O cofre nativo não respondeu em até 4s. Verifique o desbloqueio e reabra o touri.":
     "O cofre nativo não respondeu em até 4s. Verifique o desbloqueio e reabra o touri.",
+  // Routine deletion.
+  "Excluir rotina": "Excluir rotina",
+  "Excluir rotina {name}": "Excluir rotina {name}",
+  "Ações da rotina {name}": "Ações da rotina {name}",
+  "Excluir a rotina {name}?": "Excluir a rotina {name}?",
+  "Ela não vai mais rodar. O histórico de execuções continua nas conversas.":
+    "Ela não vai mais rodar. O histórico de execuções continua nas conversas.",
+  "Não foi possível excluir a rotina. Tente novamente.": "Não foi possível excluir a rotina. Tente novamente.",
+  "Excluindo…": "Excluindo…",
+  Excluir: "Excluir",
+
+  "seu provedor": "seu provedor",
+  "o arquivo": "o arquivo",
+  "Não consegui conectar à sua IA. Sua mensagem está salva.":
+    "Não consegui conectar à sua IA. Sua mensagem está salva.",
+  "Não consegui conectar à sua IA. Verifique a conexão e tente novamente.":
+    "Não consegui conectar à sua IA. Verifique a conexão e tente novamente.",
+  "Entre novamente no {provedor} para continuar.": "Entre novamente no {provedor} para continuar.",
+  "Entrar na conta": "Entrar na conta",
+  "O {provedor} atingiu o limite de uso. Tente após {horario}.":
+    "O {provedor} atingiu o limite de uso. Tente após {horario}.",
+  "O {provedor} atingiu o limite de uso. Tente mais tarde.": "O {provedor} atingiu o limite de uso. Tente mais tarde.",
+  "Não há espaço para salvar {arquivo}.": "Não há espaço para salvar {arquivo}.",
+  "Verificar armazenamento": "Verificar armazenamento",
+  "A resposta foi interrompida. Algumas ações podem ter sido concluídas.":
+    "A resposta foi interrompida. Algumas ações podem ter sido concluídas.",
+  "Ver ações realizadas": "Ver ações realizadas",
+  "Retomar tarefa": "Retomar tarefa",
+  "Ver tarefa": "Ver tarefa",
+  "Verificar ambiente": "Verificar ambiente",
+  "Não foi possível concluir esta ação. Confira os detalhes do erro.":
+    "Não foi possível concluir esta ação. Confira os detalhes do erro.",
+  "Revise as ações registradas antes de continuar. Nenhuma ação será repetida automaticamente.":
+    "Revise as ações registradas antes de continuar. Nenhuma ação será repetida automaticamente.",
+  "Conferi as ações registradas. Quero continuar a tarefa a partir do estado atual, sem repetir ações já concluídas.":
+    "Conferi as ações registradas. Quero continuar a tarefa a partir do estado atual, sem repetir ações já concluídas.",
+  "O rascunho atual foi preservado. Revise as ações registradas antes de enviar.":
+    "O rascunho atual foi preservado. Revise as ações registradas antes de enviar.",
+  "Ações registradas": "Ações registradas",
+  "Nenhuma ação confirmada no histórico. Confira o estado atual antes de continuar.":
+    "Nenhuma ação confirmada no histórico. Confira o estado atual antes de continuar.",
   "Enviar arquivo deste dispositivo": "Enviar arquivo deste dispositivo",
   "Escolher pasta do servidor": "Escolher pasta do servidor",
   "Pastas no servidor": "Pastas no servidor",
@@ -77,6 +118,43 @@ export const ptBR = {
   failed: "falhou",
   skipped: "não executado",
   canceled: "cancelado",
+
+  // Computer viewing and manual control.
+  "O controle manual não está disponível nesta máquina. Você pode acompanhar a tela e conversar com o bot.":
+    "O controle manual não está disponível nesta máquina. Você pode acompanhar a tela e conversar com o bot.",
+  "A tela pode ter mudado durante seu controle. Observe novamente antes de continuar.":
+    "A tela pode ter mudado durante seu controle. Observe novamente antes de continuar.",
+  "Assumir controle não autoriza ações automáticas do bot. Revise essas ações no chat.":
+    "Assumir controle não autoriza ações automáticas do bot. Revise essas ações no chat.",
+  "O controle foi interrompido. Assuma e devolva ao bot para permitir novas entradas.":
+    "O controle foi interrompido. Assuma e devolva ao bot para permitir novas entradas.",
+  "Controle indisponível": "Controle indisponível",
+  "O controle mudou. Tente novamente.": "O controle mudou. Tente novamente.",
+  "Controle interrompido": "Controle interrompido",
+  "Controle manual indisponível": "Controle manual indisponível",
+  "Abrir arquivos": "Abrir arquivos",
+  Conversar: "Conversar",
+  "A tela da VM conectou, mas não enviou nenhuma imagem. Tente reconectar a tela.":
+    "A tela da VM conectou, mas não enviou nenhuma imagem. Tente reconectar a tela.",
+  "A tela da VM não respondeu em 15 s. Verifique se a máquina está ligada; tente reconectar a tela.":
+    "A tela da VM não respondeu em 15 s. Verifique se a máquina está ligada; tente reconectar a tela.",
+  "Não foi possível parar a tarefa. Tente novamente.": "Não foi possível parar a tarefa. Tente novamente.",
+  "Não foi possível devolver o controle. Reconecte a tela e tente novamente.":
+    "Não foi possível devolver o controle. Reconecte a tela e tente novamente.",
+  "Assuma o controle para digitar": "Assuma o controle para digitar",
+  "Ao assumir, só você usa o teclado e o mouse. A automação do bot continua com a permissão atual.":
+    "Ao assumir, só você usa o teclado e o mouse. A automação do bot continua com a permissão atual.",
+  "Este servidor não tem uma área de trabalho para controlar. Você pode conversar e trabalhar com arquivos.":
+    "Este servidor não tem uma área de trabalho para controlar. Você pode conversar e trabalhar com arquivos.",
+  "Parar tarefa": "Parar tarefa",
+  "Reconectar tela": "Reconectar tela",
+  "A conexão com a tela caiu. A tarefa pode continuar em execução.":
+    "A conexão com a tela caiu. A tarefa pode continuar em execução.",
+  "Devolver ao bot": "Devolver ao bot",
+  "Você está no controle. O bot aguarda você terminar.": "Você está no controle. O bot aguarda você terminar.",
+  "Você está no controle": "Você está no controle",
+  "Assumir controle": "Assumir controle",
+  "Acompanhar a tela": "Acompanhar a tela",
 
   "{bot} precisa de você: autorizar {action}.": "{bot} precisa de você: autorizar {action}.",
   "Autorizado. Retomando a tarefa.": "Autorizado. Retomando a tarefa.",
@@ -1643,6 +1721,46 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
     "The native vault is available in the desktop app. Server mode uses its own local vault.",
   "O cofre nativo não respondeu em até 4s. Verifique o desbloqueio e reabra o touri.":
     "The native vault did not respond within 4 seconds. Check that it is unlocked and reopen touri.",
+  // Routine deletion.
+  "Excluir rotina": "Delete routine",
+  "Excluir rotina {name}": "Delete routine {name}",
+  "Ações da rotina {name}": "Actions for routine {name}",
+  "Excluir a rotina {name}?": "Delete routine {name}?",
+  "Ela não vai mais rodar. O histórico de execuções continua nas conversas.":
+    "It will no longer run. Execution history remains in conversations.",
+  "Não foi possível excluir a rotina. Tente novamente.": "Could not delete the routine. Try again.",
+  "Excluindo…": "Deleting…",
+  Excluir: "Delete",
+
+  "seu provedor": "your provider",
+  "o arquivo": "the file",
+  "Não consegui conectar à sua IA. Sua mensagem está salva.": "I could not connect to your AI. Your message is saved.",
+  "Não consegui conectar à sua IA. Verifique a conexão e tente novamente.":
+    "I could not connect to your AI. Check your connection and try again.",
+  "Entre novamente no {provedor} para continuar.": "Sign in to {provedor} again to continue.",
+  "Entrar na conta": "Sign in",
+  "O {provedor} atingiu o limite de uso. Tente após {horario}.":
+    "{provedor} has reached its usage limit. Try after {horario}.",
+  "O {provedor} atingiu o limite de uso. Tente mais tarde.": "{provedor} has reached its usage limit. Try again later.",
+  "Não há espaço para salvar {arquivo}.": "There is not enough space to save {arquivo}.",
+  "Verificar armazenamento": "Check storage",
+  "A resposta foi interrompida. Algumas ações podem ter sido concluídas.":
+    "The response was interrupted. Some actions may have completed.",
+  "Ver ações realizadas": "View recorded actions",
+  "Retomar tarefa": "Resume task",
+  "Ver tarefa": "View task",
+  "Verificar ambiente": "Check environment",
+  "Não foi possível concluir esta ação. Confira os detalhes do erro.":
+    "Could not complete this action. Check the error details.",
+  "Revise as ações registradas antes de continuar. Nenhuma ação será repetida automaticamente.":
+    "Review the recorded actions before continuing. No action will be repeated automatically.",
+  "Conferi as ações registradas. Quero continuar a tarefa a partir do estado atual, sem repetir ações já concluídas.":
+    "I reviewed the recorded actions. Continue the task from the current state without repeating completed actions.",
+  "O rascunho atual foi preservado. Revise as ações registradas antes de enviar.":
+    "Your current draft was preserved. Review the recorded actions before sending.",
+  "Ações registradas": "Recorded actions",
+  "Nenhuma ação confirmada no histórico. Confira o estado atual antes de continuar.":
+    "No confirmed action in history. Check the current state before continuing.",
   "Enviar arquivo deste dispositivo": "Send a file from this device",
   "Escolher pasta do servidor": "Choose a server folder",
   "Pastas no servidor": "Server folders",
@@ -1713,6 +1831,43 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   running: "Running",
   succeeded: "Completed",
   canceled: "Canceled",
+
+  // Computer viewing and manual control.
+  "O controle manual não está disponível nesta máquina. Você pode acompanhar a tela e conversar com o bot.":
+    "Manual control is unavailable on this machine. You can watch the screen and chat with the bot.",
+  "A tela pode ter mudado durante seu controle. Observe novamente antes de continuar.":
+    "The screen may have changed while you were in control. Observe it again before continuing.",
+  "Assumir controle não autoriza ações automáticas do bot. Revise essas ações no chat.":
+    "Taking control does not authorize the bot to act automatically. Review those actions in chat.",
+  "O controle foi interrompido. Assuma e devolva ao bot para permitir novas entradas.":
+    "Control was stopped. Take over and return to the bot to allow new input.",
+  "Controle indisponível": "Control is unavailable",
+  "O controle mudou. Tente novamente.": "Control changed. Try again.",
+  "Controle interrompido": "Control stopped",
+  "Controle manual indisponível": "Manual control is unavailable",
+  "Abrir arquivos": "Open files",
+  Conversar: "Chat",
+  "A tela da VM conectou, mas não enviou nenhuma imagem. Tente reconectar a tela.":
+    "The VM screen connected without sending an image. Try reconnecting the screen.",
+  "A tela da VM não respondeu em 15 s. Verifique se a máquina está ligada; tente reconectar a tela.":
+    "The VM screen did not respond within 15 s. Check that the machine is running and reconnect the screen.",
+  "Não foi possível parar a tarefa. Tente novamente.": "Could not stop the task. Try again.",
+  "Não foi possível devolver o controle. Reconecte a tela e tente novamente.":
+    "Could not return control. Reconnect the screen and try again.",
+  "Assuma o controle para digitar": "Take control to type",
+  "Ao assumir, só você usa o teclado e o mouse. A automação do bot continua com a permissão atual.":
+    "When you take over, only you use the keyboard and mouse. The bot keeps its current automation permission.",
+  "Este servidor não tem uma área de trabalho para controlar. Você pode conversar e trabalhar com arquivos.":
+    "This server has no desktop to control. You can chat and work with files.",
+  "Parar tarefa": "Stop task",
+  "Reconectar tela": "Reconnect screen",
+  "A conexão com a tela caiu. A tarefa pode continuar em execução.":
+    "The screen connection dropped. The task may still be running.",
+  "Devolver ao bot": "Return to bot",
+  "Você está no controle. O bot aguarda você terminar.": "You are in control. The bot is waiting for you to finish.",
+  "Você está no controle": "You are in control",
+  "Assumir controle": "Take control",
+  "Acompanhar a tela": "Watch the screen",
 
   "{bot} precisa de você: autorizar {action}.": "{bot} needs you: authorize {action}.",
   "Autorizado. Retomando a tarefa.": "Authorized. Resuming the task.",

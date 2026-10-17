@@ -48,8 +48,8 @@ export const mcpStartupChecks = (db: Database) => {
 
 const ORPHAN_PARENT_PID = 1
 
-export const orphanShimCheck = (runDir: string) => {
-  const orphans = listLiveShims(runDir).filter((shim) => shim.ppid === ORPHAN_PARENT_PID)
+export const orphanShimCheck = async (runDir: string) => {
+  const orphans = (await listLiveShims(runDir)).filter((shim) => shim.ppid === ORPHAN_PARENT_PID)
   if (orphans.length === 0)
     return check("mcp-orphan-shims", "Ferramentas do touri · processos órfãos", "pass", "Nenhum processo MCP órfão.")
   return check(

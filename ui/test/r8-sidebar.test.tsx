@@ -129,7 +129,9 @@ it("opening a failure clears row and bell attention persistently, while keeping 
   await screen.findByRole("textbox", { name: "Mensagem para onb" })
   fireEvent.click(screen.getByRole("button", { name: "Notificações" }))
   expect(
-    within(screen.getByRole("region", { name: "Central de notificações" })).getByText("Falha recente"),
+    within(screen.getByRole("region", { name: "Central de notificações" })).getByText(
+      "Não foi possível concluir esta ação. Confira os detalhes do erro.",
+    ),
   ).toBeVisible()
 })
 
@@ -154,7 +156,7 @@ it("shows chronological notifications and leaves a superseded failure out of the
   )
   expect(rows[0]).toHaveTextContent("Conclusão recente")
   expect(rows[1]).toHaveTextContent("Pergunta pendente")
-  expect(rows[2]).toHaveTextContent("Falha histórica")
+  expect(rows[2]).toHaveTextContent("Não foi possível concluir esta ação. Confira os detalhes do erro.")
   expect(screen.queryByRole("button", { name: "Abrir falha de onb" })).toBeNull()
 })
 

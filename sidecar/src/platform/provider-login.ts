@@ -1,5 +1,6 @@
 import { win32 } from "node:path"
 import type { Kernel } from "@touri/contracts"
+import { runPs } from "../kernel/ps"
 import { buildChildEnv } from "../kernel/shell-env"
 import { spawnTree } from "../kernel/spawn"
 import { macosProviderLoginPty } from "./macos/provider-login"
@@ -52,19 +53,18 @@ export const spawnProviderLoginPty = ({
     : { success: false, errorCode: "SPAWN_FAILED", error: pty.message }
 }
 
-export const killProviderLoginPty = (child: Extract<ReturnType<Kernel["spawnTree"]>, { success: true }>) => {
+export const killProviderLoginPty = async (
+  child: Extract<ReturnType<Kernel["spawnTree"]>, { success: true }>,
+): Promise<void> => {
   try {
-    // Windows spawnTree owns the entire helper/ConPTY job; no POSIX process scan.
     if (process.platform === "win32") return
     // PTY helpers may put their CLI in another process group. Stop descendants before the helper.
-    const result = Bun.spawnSync({
-      cmd: ["/bin/ps", "-axo", "pid=,ppid="],
-      stdout: "pipe",
-      stderr: "ignore",
-      timeout: 1000,
-    })
-    const rows = result.stdout
-      .toString()
+    // A stopped helper stays their parent while the asynchronous scan runs (#121).
+    try {
+      process.kill(child.pid, "SIGSTOP")
+    } catch {}
+    const result = await runPs(["-axo", "pid=,ppid="], 1000)
+    const rows = (result?.stdout ?? "")
       .trim()
       .split("\n")
       .map((line) => line.trim().split(/\s+/).map(Number))

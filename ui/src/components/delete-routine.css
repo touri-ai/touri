@@ -1,0 +1,67 @@
+.routine-delete-button {
+  color: var(--text-danger);
+  background: var(--surface-danger);
+  border: 1px solid var(--text-danger);
+  border-radius: var(--radius-8);
+  padding: 8px 12px;
+  cursor: pointer;
+}
+.routine-delete-button:hover:not(:disabled) {
+  background: var(--surface-danger-selected);
+}
+.routine-delete-button:focus-visible {
+  outline: 2px solid var(--text-danger);
+  outline-offset: 2px;
+}
+.modal-card.delete-routine-dialog {
+  width: min(480px, 100%);
+}
+.delete-routine-dialog > p {
+  padding: 0 24px;
+  font-size: var(--type-14);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.delete-routine-dialog h2 {
+  overflow-wrap: anywhere;
+}
+.routine-actions {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+.r8-screen .routine-actions .routine-delete-button {
+  color: var(--text-danger);
+  background: var(--surface-danger);
+  border-color: var(--text-danger);
+}
+.r8-screen .routine-actions .routine-delete-button:hover {
+  color: var(--text-danger);
+  background: var(--surface-danger-selected);
+}
+@media (max-width: 1000px) {
+  .cron-screen.r8-screen .routine-item {
+    grid-template-columns: 32px minmax(0, 1fr);
+  }
+  .cron-screen.r8-screen .routine-actions {
+    grid-column: 2 / -1;
+    grid-row: auto;
+    flex-wrap: wrap;
+    justify-self: start;
+  }
+}
+@media (max-width: 600px) {
+  .settings-modal .settings-pane .routine-row {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .settings-modal .settings-pane .routine-row > span {
+    flex-basis: 100%;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+}
+.settings-modal .settings-advanced-content > .settings-layout {
+  min-width: 0;
+}

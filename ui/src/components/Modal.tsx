@@ -7,9 +7,19 @@ type ModalProps = {
   title: string
   eyebrow?: string
   className?: string
+  role?: "dialog" | "alertdialog"
+  describedBy?: string
 }
 
-export const Modal = ({ onClose, children, title, eyebrow = "touri", className = "" }: ModalProps) => {
+export const Modal = ({
+  onClose,
+  children,
+  title,
+  eyebrow = "touri",
+  className = "",
+  role = "dialog",
+  describedBy,
+}: ModalProps) => {
   const cardRef = useRef<HTMLElement>(null)
   const returnFocusRef = useRef(document.activeElement)
   const closeRef = useRef(onClose)
@@ -70,7 +80,15 @@ export const Modal = ({ onClose, children, title, eyebrow = "touri", className =
   }, [])
   return (
     <div className="modal-backdrop" role="presentation">
-      <section ref={cardRef} className={`modal-card ${className}`} role="dialog" aria-modal="true" aria-label={title}>
+      {/* biome-ignore lint/a11y/useAriaPropsSupportedByRole: Both dialog and alertdialog support aria-modal. */}
+      <section
+        ref={cardRef}
+        className={`modal-card ${className}`}
+        role={role}
+        aria-modal="true"
+        aria-label={title}
+        aria-describedby={describedBy}
+      >
         <header className="modal-header">
           <div>
             <p className="eyebrow">{eyebrow}</p>

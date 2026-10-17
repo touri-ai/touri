@@ -1,0 +1,27 @@
+.error-notice {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.error-notice p {
+  margin: 0 0 8px;
+}
+
+.error-recovery-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin-bottom: 8px;
+}
+
+.error-notice .error-recovery-actions button {
+  margin: 0;
+  padding: 2px 0;
+  font: inherit;
+  text-align: left;
+}
+
+.error-notice .error-details code {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

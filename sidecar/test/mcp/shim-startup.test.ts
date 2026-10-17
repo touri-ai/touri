@@ -117,7 +117,7 @@ test("concurrent turns behind an intermediate shell all load tools even when the
   expect(await Promise.all(runs.map((run) => run.replied))).toEqual(threads.map(() => true))
   await Bun.sleep(800)
   for (const run of runs) expect(run.child.exitCode).toBeNull()
-  expect(listLiveShims(join(root, "run")).length).toBe(threads.length)
+  expect((await listLiveShims(join(root, "run"))).length).toBe(threads.length)
 })
 
 test("a shim stopped before answering names the stage on stderr", async () => {
@@ -147,7 +147,7 @@ test("ending one provider turn does not reap the shim of a turn that is starting
   const runtime = createKernel({ appData: root })
   const pidA = join(root, "a.pid")
   const pidB = join(root, "b.pid")
-  const spawnProvider = (pidFile: string) => {
+  const spawnProvider = async (pidFile: string) => {
     const spawned = runtime.kernel.spawnTree({
       cmd: "bun",
       args: ["run", providerFake],
@@ -155,11 +155,11 @@ test("ending one provider turn does not reap the shim of a turn that is starting
       env: { ...providerEnv({ root, sock, leakedParent: false }), FAKE_SHIM_PID_FILE: pidFile },
     })
     if (!spawned.success) throw new Error(spawned.error)
-    trackProviderProcess(runtime.kernel, spawned)
+    await trackProviderProcess(runtime.kernel, spawned)
     return spawned
   }
-  const first = spawnProvider(pidA)
-  const second = spawnProvider(pidB)
+  const first = await spawnProvider(pidA)
+  const second = await spawnProvider(pidB)
   const pidOf = async (path: string): Promise<number> => {
     await waitFor(() => {
       try {
@@ -182,7 +182,7 @@ test("ending one provider turn does not reap the shim of a turn that is starting
   expect(await waitFor(() => !alive(shimA))).toBe(true)
   await Bun.sleep(2_500)
   expect(alive(shimB)).toBe(true)
-  expect(listLiveShims(join(root, "run")).map((shim) => shim.record.pid)).toContain(shimB)
+  expect((await listLiveShims(join(root, "run"))).map((shim) => shim.record.pid)).toContain(shimB)
   second.kill("SIGTERM")
   await second.exited
   runtime.stop()

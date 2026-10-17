@@ -5,7 +5,7 @@ import { hostPlatform } from "../platform"
 import { check } from "./check"
 import { createDoctorCommand } from "./command"
 import { collectLocalChecks, sidecarChecks } from "./local"
-import { mcpStartupChecks } from "./mcp"
+import { mcpStartupChecks, orphanShimCheck } from "./mcp"
 import { collectNetworkChecks, withinDeadline } from "./network"
 
 export type DoctorCollector = (signal: AbortSignal) => Promise<Array<DoctorCheck>>
@@ -68,6 +68,10 @@ export const createDoctorService = (collect: DoctorCollector, timeoutMs = 20_000
 export const collectDoctorChecks = async (kernel: Kernel, signal: AbortSignal): Promise<Array<DoctorCheck>> => {
   // Read the schema before asynchronous work; shutdown can close the database.
   const checks = sidecarChecks(kernel)
+  // The shim scan runs `ps` asynchronously (#121); keep its place before the version row.
+  const orphans = await orphanShimCheck(kernel.paths.runDir)
+  const versionRow = checks.findIndex((item) => item.id === "sidecar-version")
+  checks.splice(versionRow < 0 ? checks.length : versionRow, 0, orphans)
   const local = async (): Promise<Array<DoctorCheck>> => {
     const environment = await withinDeadline(() => kernel.shellEnv(), signal, 9000)
     return collectLocalChecks(kernel, environment, createDoctorCommand(kernel, environment), signal)

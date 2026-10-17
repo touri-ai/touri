@@ -27,10 +27,10 @@ const alive = (pid: number): boolean => {
   return state.trim() !== "" && !state.trim().startsWith("Z")
 }
 
-const waitFor = async (condition: () => boolean, ms = 8_000): Promise<boolean> => {
+const waitFor = async (condition: () => boolean | Promise<boolean>, ms = 8_000): Promise<boolean> => {
   const deadline = Date.now() + ms
   while (Date.now() < deadline) {
-    if (condition()) return true
+    if (await condition()) return true
     await Bun.sleep(50)
   }
   return condition()
@@ -84,7 +84,7 @@ test("cancelling a provider turn terminates the MCP shim it spawned", async () =
     env: { ...shimEnv(root, sock), FAKE_SHIM_PID_FILE: pidFile },
   })
   if (!spawned.success) throw new Error(spawned.error)
-  trackProviderProcess(runtime.kernel, spawned)
+  await trackProviderProcess(runtime.kernel, spawned)
   const shimPid = await readPid(pidFile)
   expect(await waitFor(() => sockets.length === 1)).toBe(true)
   expect(alive(shimPid)).toBe(true)
@@ -111,7 +111,7 @@ test("a provider leader that exits on its own does not leave its shim behind", a
     },
   })
   if (!spawned.success) throw new Error(spawned.error)
-  trackProviderProcess(runtime.kernel, spawned)
+  await trackProviderProcess(runtime.kernel, spawned)
   const shimPid = await readPid(pidFile)
   expect(await waitFor(() => sockets.length === 1)).toBe(true)
   writeFileSync(join(root, "leader.exit"), "ready")
@@ -185,11 +185,11 @@ test("the startup sweep and Doctor only touch shims recorded by this install", a
     bystander.kill("SIGKILL")
     if (alive(orphan)) process.kill(orphan, "SIGKILL")
   })
-  expect(await waitFor(() => listLiveShims(runDir).some((shim) => shim.record.pid === orphan))).toBe(true)
-  expect(await waitFor(() => orphanShimCheck(runDir).status === "warn")).toBe(true)
-  expect(orphanShimCheck(runDir).detail).toContain(String(orphan))
-  expect(reapOrphanShims(runDir)).toEqual([orphan])
+  expect(await waitFor(async () => (await listLiveShims(runDir)).some((shim) => shim.record.pid === orphan))).toBe(true)
+  expect(await waitFor(async () => (await orphanShimCheck(runDir)).status === "warn")).toBe(true)
+  expect((await orphanShimCheck(runDir)).detail).toContain(String(orphan))
+  expect(await reapOrphanShims(runDir)).toEqual([orphan])
   expect(await waitFor(() => !alive(orphan))).toBe(true)
   expect(alive(bystander.pid)).toBe(true)
-  expect(orphanShimCheck(runDir).status).toBe("pass")
+  expect((await orphanShimCheck(runDir)).status).toBe("pass")
 })

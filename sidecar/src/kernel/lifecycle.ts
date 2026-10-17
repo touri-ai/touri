@@ -6,6 +6,7 @@ import { processIdentity as linuxProcessIdentity } from "../platform/linux"
 import { closeOnExec, errnoSymbol, libcLibrary, wouldBlock } from "../platform/posix"
 import { acquireWindowsRuntimeLock, watchWindowsParent } from "../platform/windows-native"
 import { ensurePrivateDirectory } from "./files"
+import { runPs } from "./ps"
 
 const openNative = () =>
   dlopen(libcLibrary, {
@@ -28,20 +29,11 @@ const signal = (pid: number, kind: "SIGTERM" | "SIGKILL") => {
   }
 }
 
-const identity = (pid: number): Identity | null => {
+const identity = async (pid: number): Promise<Identity | null> => {
   if (process.platform === "linux") return linuxProcessIdentity(pid)
-  const result = Bun.spawnSync({
-    cmd: ["/bin/ps", "-o", "stat=,ppid=,lstart=", "-p", String(pid)],
-    env: { PATH: "/usr/bin:/bin", LC_ALL: "C" },
-    stdout: "pipe",
-    stderr: "ignore",
-    timeout: 1000,
-  })
-  const match = result.stdout
-    .toString()
-    .trim()
-    .match(/^(\S+)\s+(\d+)\s+(.+)$/)
-  return result.exitCode === 0 && match
+  const result = await runPs(["-o", "stat=,ppid=,lstart=", "-p", String(pid)], 1000)
+  const match = result?.stdout.trim().match(/^(\S+)\s+(\d+)\s+(.+)$/)
+  return result?.exitCode === 0 && match
     ? { startTime: match[3] ?? "", parentPid: Number(match[2]), alive: !/^[ZX]/.test(match[1] ?? "") }
     : null
 }
@@ -81,7 +73,7 @@ export const acquireRuntimeLock = async (
       } catch {
         /* Another process may still be writing its ownership record. */
       }
-      const current = owner ? identity(owner.pid) : null
+      const current = owner ? await identity(owner.pid) : null
       if (owner && current?.alive && current.startTime === owner.startTime) {
         // A headless daemon deliberately has no supervising shell; PPID 1 is valid for it.
         if (
@@ -106,7 +98,7 @@ export const acquireRuntimeLock = async (
       if (Date.now() - started >= timeoutMs) throw new Error("O runtime anterior não liberou a pasta de dados")
       await Bun.sleep(50)
     }
-    const current = identity(process.pid)
+    const current = await identity(process.pid)
     if (!current) throw new Error("Não foi possível identificar o runtime")
     ftruncateSync(fd, 0)
     writeSync(fd, JSON.stringify({ pid: process.pid, startTime: current.startTime, parentPid }), 0, "utf8")

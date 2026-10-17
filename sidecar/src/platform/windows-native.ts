@@ -3,6 +3,7 @@ import type { AppPaths } from "@touri/contracts"
 import { TouriError } from "../kernel/errors"
 import { withDeadline } from "../kernel/policy"
 import { buildChildEnv } from "../kernel/shell-env"
+import { runHelperBlocking } from "./helper-worker"
 
 export const desktopHelper = (): string => {
   const helper = process.env.TOURI_DESKTOP_HELPER
@@ -10,26 +11,29 @@ export const desktopHelper = (): string => {
   return helper
 }
 
-const nativeProcessOperation = (args: string[]): unknown => {
-  const child = Bun.spawnSync({
+const nativeProcessOperation = async (args: string[]): Promise<unknown> => {
+  const child = Bun.spawn({
     cmd: [desktopHelper(), ...args],
     stdout: "pipe",
-    stderr: "pipe",
+    stderr: "ignore",
     env: buildChildEnv(),
-    timeout: 5_000,
   })
+  const timer = setTimeout(() => child.kill("SIGKILL"), 5_000)
   try {
-    const response = JSON.parse(child.stdout.toString()) as { ok?: boolean; value?: unknown }
-    if (child.exitCode !== 0 || response.ok !== true) throw new Error("Native process operation failed")
+    const [text, exitCode] = await Promise.all([new Response(child.stdout).text(), child.exited])
+    const response = JSON.parse(text) as { ok?: boolean; value?: unknown }
+    if (exitCode !== 0 || response.ok !== true) throw new TouriError("TOURI-E2001")
     return response.value
   } catch {
     throw new TouriError("TOURI-E2001")
+  } finally {
+    clearTimeout(timer)
   }
 }
 
-export const windowsProviderIdentity = (pid: number): { birth: string; alive: boolean } | null => {
+export const windowsProviderIdentity = async (pid: number): Promise<{ birth: string; alive: boolean } | null> => {
   if (!Number.isSafeInteger(pid) || pid <= 1) throw new TouriError("TOURI-E2000")
-  const value = nativeProcessOperation(["--process-identity", String(pid)])
+  const value = await nativeProcessOperation(["--process-identity", String(pid)])
   if (value === null) return null
   const result = value as { birth?: unknown; alive?: unknown }
   if (typeof result?.birth !== "string" || !result.birth.startsWith(`${pid} `) || typeof result.alive !== "boolean")
@@ -37,9 +41,9 @@ export const windowsProviderIdentity = (pid: number): { birth: string; alive: bo
   return { birth: result.birth, alive: result.alive }
 }
 
-export const terminateWindowsProvider = (pid: number, birth: string): void => {
+export const terminateWindowsProvider = async (pid: number, birth: string): Promise<void> => {
   if (!Number.isSafeInteger(pid) || pid <= 1 || !birth.startsWith(`${pid} `)) throw new TouriError("TOURI-E2000")
-  if (typeof nativeProcessOperation(["--terminate-process", String(pid), birth]) !== "boolean")
+  if (typeof (await nativeProcessOperation(["--terminate-process", String(pid), birth])) !== "boolean")
     throw new TouriError("TOURI-E2001")
 }
 
@@ -47,17 +51,17 @@ export const nativeFileOperation = <T>(
   op: string,
   input: { root: string; path: string; content?: string; to?: string; max_bytes?: number },
 ): T => {
-  const child = Bun.spawnSync({
-    cmd: [desktopHelper(), "--native-fs"],
-    stdin: Buffer.from(JSON.stringify({ op, ...input })),
-    stdout: "pipe",
-    stderr: "pipe",
+  const child = runHelperBlocking({
+    command: [desktopHelper(), "--native-fs"],
+    input: JSON.stringify({ op, ...input }),
     env: buildChildEnv(),
-    timeout: 10_000,
+    maxResponseBytes: op.startsWith("read")
+      ? Math.min(64 * 1024 * 1024, Math.ceil(((input.max_bytes ?? 32 * 1024 * 1024) * 4) / 3) + 16_384)
+      : 1024 * 1024,
   })
   let response: { ok?: boolean; value?: T; code?: string }
   try {
-    response = JSON.parse(child.stdout.toString())
+    response = JSON.parse(child.stdout)
   } catch {
     throw new TouriError("TOURI-E2001")
   }

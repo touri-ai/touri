@@ -150,7 +150,8 @@ export const runMcpStdio = ({ threadId, appData }: { threadId: string; appData?:
     return Promise.resolve()
   }
   const socketPath = process.env.TOURI_MCP_SOCK ?? resolveMcpEndpoint(paths)
-  const unregister = registerShim({ runDir: paths.runDir, thread: threadId })
+  // Registration probes `ps` in the background so it never delays the MCP handshake.
+  const registration = registerShim({ runDir: paths.runDir, thread: threadId })
   return new Promise((resolve) => {
     const socket = createConnection(connectionOptions(socketPath))
     const state = { answered: false, finished: false }
@@ -160,9 +161,9 @@ export const runMcpStdio = ({ threadId, appData }: { threadId: string; appData?:
       state.finished = true
       if (!state.answered) process.stderr.write(`${mcpStartupFailureLine({ stage: reason })}\n`)
       stopWatching()
-      unregister()
       socket.destroy()
-      process.stdout.write("", () => resolve())
+      // The caller exits right after; drop this shim's record first.
+      void registration.then((unregister) => unregister()).finally(() => process.stdout.write("", () => resolve()))
     }
     const onStdinEnd = (): void => {
       setTimeout(() => finish("stdin_closed"), STDIN_EOF_GRACE_MS).unref()
