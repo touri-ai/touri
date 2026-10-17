@@ -87,6 +87,10 @@ export const activityLabelFor = (
       .split(/(?<=[.!?…])\s+/)
       .at(-1)
     if (sentence) return shortLabel(`${t(activityKeys.thinking, {}, locale)}: ${sentence}`)
+    if (latest.estimatedTokens !== undefined) {
+      const thinking = `${t(activityKeys.thinking, {}, locale)}…`
+      return latest.estimatedTokens > 0 ? `${thinking} (~${latest.estimatedTokens} tokens)` : thinking
+    }
   }
   if (tool && (tool.type === "tool_call" || tool.type === "command" || tool.type === "file_change")) {
     const path = toolPresentation(tool).filePaths[0]

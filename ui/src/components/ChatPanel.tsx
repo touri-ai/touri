@@ -484,7 +484,7 @@ const MessageBubble = ({
     !parts.some((part) => part.type === "approval" && part.decision === "pending")
       ? mascotSignalFor({ botId: run?.botId ?? "", runs: run ? [run] : [], messages: [{ ...message, parts }] }).state
       : runtimeState
-  const reasoning = message.parts.filter((part) => part.type === "reasoning")
+  const reasoning = message.parts.filter((part) => part.type === "reasoning" && part.text.trim())
   const reasoningId = useId()
   const [reasoningExpanded, setReasoningExpanded] = useState(false)
   const text = messageMarkdown(message)

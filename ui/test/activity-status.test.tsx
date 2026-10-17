@@ -44,6 +44,27 @@ const message: Message = {
 
 afterEach(cleanup)
 
+it("updates hidden Claude thinking progress without an empty reasoning disclosure", () => {
+  const props = { onSwitchBranch: () => undefined, onRetry: async () => undefined }
+  const live: Message = { ...message, parts: [{ type: "reasoning", text: "", estimatedTokens: 120 }] }
+  const view = render(<VirtualMessageList {...props} messages={[live]} />)
+  const status = screen.getByRole("status")
+  expect(status).toHaveTextContent("Pensando… (~120 tokens)")
+  expect(screen.queryByRole("button", { name: "Raciocínio" })).toBeNull()
+  expect(status.querySelector("button")).toBeNull()
+  const parts: MessagePart[] = [{ type: "reasoning", text: "", estimatedTokens: 350 }]
+  view.rerender(<VirtualMessageList {...props} messages={[{ ...live, parts }]} />)
+  expect(screen.getByRole("status")).toBe(status)
+  expect(status).toHaveTextContent("Pensando… (~350 tokens)")
+  expect(activityLabelFor("thinking", parts, "en")).toBe("Thinking… (~350 tokens)")
+  expect(activityLabelFor("thinking", [{ type: "reasoning", text: "", estimatedTokens: 0 }])).toBe("Pensando…")
+  expect(activityLabelFor("working-tool", [...parts, read])).toBe("Lendo README.md")
+  expect(activityLabelFor("typing", [...parts, { type: "text", text: "Pronto." }])).toBe("Trabalhando")
+  view.rerender(<VirtualMessageList {...props} messages={[{ ...live, parts, status: "complete" }]} />)
+  expect(view.container.querySelector(".activity-mark")).toBeNull()
+  expect(screen.queryByRole("button", { name: "Raciocínio" })).toBeNull()
+})
+
 it("shows the latest reasoning sentence as deltas arrive, ahead of the generic activity", () => {
   const parts: MessagePart[] = [{ type: "reasoning", text: "Conferi a fila. Verificando o lock do payout" }]
   expect(activityLabelFor("thinking", parts)).toBe("Pensando: Verificando o lock do payout")

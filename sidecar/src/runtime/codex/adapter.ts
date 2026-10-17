@@ -531,6 +531,7 @@ export const createCodexAdapter = ({
             ...(args.handoffPacket ? { textPrefix: args.handoffPacket } : {}),
           }),
           cwd: args.fingerprint.cwd,
+          summary: "auto",
           ...(args.bot.reasoningEffort ? { effort: args.bot.reasoningEffort } : {}),
         })
       } catch (error) {

@@ -258,7 +258,7 @@ export type MessageKind = 'text' | 'tool' | 'notice' | 'approval'
 export type MessageStatus = 'streaming' | 'complete' | 'failed' | 'canceled'
 
 export type TextPart = { type: 'text'; text: string }
-export type ReasoningPart = { type: 'reasoning'; text: string }
+export type ReasoningPart = { type: 'reasoning'; text: string; estimatedTokens?: number }
 export type ImagePart = { type: 'image'; attachmentId: Id; mime: string; name?: string }
 export type FilePart = { type: 'file'; attachmentId: Id; name: string; mime: string }
 export type ToolResolution = 'running' | 'succeeded' | 'failed' | 'canceled' | 'interrupted' | 'unknown' | 'cancelled_by_user' | 'interrupted_by_restart' | 'completed_unobserved'
@@ -606,6 +606,7 @@ export type ProviderEvent =
   | { type: 'turn_started'; externalTurnId: string }
   | { type: 'text_delta'; itemId: string; delta: string }
   | { type: 'reasoning_delta'; itemId: string; delta: string }
+  | { type: 'reasoning_progress'; estimatedTokens: number }
   | { type: 'item'; part: MessagePart }
   | { type: 'approval_request'; approvalId: Id; part: ApprovalPart }
   | { type: 'usage'; usage: Partial<RunUsage>; contextTokens: number | null; contextWindow: number | null }

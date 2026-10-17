@@ -489,11 +489,16 @@ export const createRuntimeEngine = ({
         })
       return
     }
-    if (event.type === "reasoning_delta") {
-      if (!event.delta) return
+    if (event.type === "reasoning_delta" || event.type === "reasoning_progress") {
+      if (event.type === "reasoning_delta" && !event.delta) return
       const last = state.parts.at(-1)
-      if (last?.type === "reasoning") {
-        state.parts = [...state.parts.slice(0, -1), { type: "reasoning", text: last.text + event.delta }]
+      const previous = last?.type === "reasoning" ? last : { type: "reasoning" as const, text: "" }
+      const part =
+        event.type === "reasoning_progress"
+          ? { ...previous, estimatedTokens: event.estimatedTokens }
+          : { ...previous, text: previous.text + event.delta }
+      state.parts = last?.type === "reasoning" ? [...state.parts.slice(0, -1), part] : [...state.parts, part]
+      if (last?.type === "reasoning" && event.type === "reasoning_delta") {
         if (state.replyMessageId)
           store.appendDelta({
             threadId: run.threadId,
@@ -503,7 +508,6 @@ export const createRuntimeEngine = ({
             ...(state.generation === null ? {} : { generation: state.generation }),
           })
       } else {
-        state.parts.push({ type: "reasoning", text: event.delta })
         if (state.replyMessageId) publishMessage({ store, state, run, status: "streaming" })
         else {
           const request = store
