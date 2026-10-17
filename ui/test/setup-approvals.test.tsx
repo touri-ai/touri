@@ -1,5 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import type { ApprovalPart, ToolCallPart } from "@touri/contracts"
+import { approvalSummary } from "@touri/contracts/approval-summary"
 import { afterEach, expect, it } from "vitest"
 import { createMockApi } from "../src/api/mock"
 import { ApprovalCard } from "../src/components/ApprovalCard"
@@ -33,17 +34,19 @@ it("local folder approval explains when access applies in plain language", () =>
     />,
   )
   expect(
-    screen.getByText(
-      "Permitir Leitura e escrita em /tmp/notes para este bot. Vale a partir da próxima resposta do bot.",
-    ),
+    screen.getByText("Permitir Leitura e escrita em /tmp/notes para este bot. Vale a partir da próxima mensagem."),
   ).toBeInTheDocument()
 })
 
-it("approval timing uses plain English for local and VM bots", () => {
-  expect(t("Vale a partir da próxima resposta do bot.", {}, "en")).toBe("Applies from the bot’s next response.")
-  expect(t("Vale a partir da próxima resposta do bot na VM.", {}, "en")).toBe(
-    "Applies from the bot’s next response in the VM.",
-  )
+it.each([
+  ["local", "Vale a partir da próxima mensagem.", "Takes effect from the next message."],
+  ["vm", "Vale a partir da próxima mensagem na VM.", "Takes effect from the next message in the VM."],
+] as const)("keeps %s approval timing consistent in Portuguese and English", (machine, portuguese, english) => {
+  const part = approval("folder_access_request", { path: "/workspace/notes", mode: "read", nextTurn: true, machine })
+  expect(approvalSummary(part).body).toBe(`Permitir Somente leitura em /workspace/notes para este bot. ${portuguese}`)
+  expect(approvalSummary(part, "en").body).toBe(`Allow Read-only in /workspace/notes for this bot. ${english}`)
+  expect(t(portuguese)).toBe(portuguese)
+  expect(t(portuguese, {}, "en")).toBe(english)
 })
 
 it("project approval shows the reviewed project and replaced project, even when the provider passed only an ID", async () => {
@@ -105,7 +108,7 @@ for (const [mode, label] of [
     expect(screen.getByText("Conceder acesso à pasta")).toBeInTheDocument()
     expect(
       screen.getByText(
-        `Permitir ${label} em /workspace/Documents para este bot. Vale a partir da próxima resposta do bot na VM.`,
+        `Permitir ${label} em /workspace/Documents para este bot. Vale a partir da próxima mensagem na VM.`,
       ),
     ).toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Sempre neste bot" })).toBeNull()
@@ -213,7 +216,7 @@ for (const tool of ["project_link", "folder_access_request"]) {
         expect(article).toHaveAttribute("data-call-id", "setup-call")
         expect(view.container.querySelectorAll(".tool-call-card")).toHaveLength(1)
         expect(article.querySelector(".tool-summary")).toHaveTextContent(path)
-        expect(article.querySelector(".tool-summary")).toHaveTextContent("próxima resposta do bot na VM")
+        expect(article.querySelector(".tool-summary")).toHaveTextContent("próxima mensagem na VM")
         expect(screen.queryByText("2 ferramentas")).toBeNull()
         if (tool === "folder_access_request") {
           expect(article.querySelector(".tool-summary")).toHaveTextContent("Acesso anterior: Somente leitura.")
@@ -285,8 +288,8 @@ it("keeps setup notices, errors and both merged UI features in Portuguese and En
     ["O acesso não foi aprovado ou a configuração mudou.", "Access was not approved or the configuration changed."],
     ["Pasta não encontrada nas permissões deste bot.", "Folder not found in this bot’s permissions."],
     [
-      "A configuração foi salva neste Mac e será aplicada no próximo turno local.",
-      "The configuration was saved on this Mac and will apply on the next local turn.",
+      "A configuração foi salva neste Mac. Vale a partir da próxima mensagem.",
+      "The configuration was saved on this Mac. Takes effect from the next message.",
     ],
     ["Projeto {name} ({path}) vinculado a este bot.", "Project {name} ({path}) linked to this bot."],
     ["Projeto {name} desvinculado deste bot.", "Project {name} unlinked from this bot."],

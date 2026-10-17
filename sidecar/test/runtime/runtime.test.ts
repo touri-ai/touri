@@ -728,7 +728,8 @@ test.serial("streaming preserves deltas, command parts, completion and usage", a
     expect(queued.run.status).toBe("succeeded")
     const assistant = [...value.store.messages.values()].find((message) => message.role === "assistant")
     expect(assistant?.status).toBe("complete")
-    expect(assistant?.text).toBe("hello")
+    // The fixture ends on a command with no closing text, so the turn gets a confirmed conclusion.
+    expect(assistant?.text).toBe("hello\n\nDone.")
     expect(assistant?.parts.some((part) => part.type === "command")).toBe(true)
     expect(queued.run.usage?.inputTokens).toBe(3)
     expect(queued.run.usage?.outputTokens).toBe(4)

@@ -375,7 +375,7 @@ export const BotModelModal = ({
           }
         }}
       >
-        <p>{t("Choose the model for this bot’s next turns.")}</p>
+        <p>{t("Choose the model for this bot’s next messages.")}</p>
         <label htmlFor="composer-model">{t("Model")}</label>
         <ProviderModelField
           id="composer-model"
@@ -1210,7 +1210,7 @@ export const BotSettingsModal = ({
                 />
                 <small id="soul-help" className="field-help">
                   {t("Detailed guidance for the bot. Saved as SOUL.md in the bot’s folder.")}{" "}
-                  {t("Applied on the next turn.")}
+                  {t("Takes effect from the next message.")}
                 </small>
                 {instructions.includes("coordinate_bots") && (
                   <p className="warning-callout">

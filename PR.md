@@ -27,3 +27,21 @@ Contract edits change copy only; no schema or persisted data format changes.
 Native macOS QA was unavailable on this Linux runner. No latency benchmark was performed.
 
 VISION promise served: **#7 — Calm, clear, native**: readable outcomes and approvals in the user's language. **#3 — Nothing is lost**: final text and tool outcomes remain ordered and persisted in history.
+
+## Approval UX follow-up
+
+1. Approval reminders now say “{bot} pede sua aprovação: {summary}” / “{bot} asks for your approval: {summary}”. They preserve the summary's capitalization and compact folder paths, without adding another action verb.
+2. Settings, folder/project approvals, VM hints and setup results consistently refer to the next message in Portuguese and English. Shared contract changes affect copy only; no schema or stored format changes.
+3. Model help asks for a model name accepted by the named provider. Model defaults and the OpenCode installation hint also use plain provider names.
+4. Answering an approval no longer opens its tool group. Pending approval cards remain visible; manual expansion stays under the user's control through later output updates. After a resolution moves the card into a collapsed group, keyboard focus goes to its summary instead of hidden command details.
+
+Validation:
+
+- Before the fix, `cd ui && NODE_OPTIONS=--max-old-space-size=768 timeout 90s bunx vitest run test/tool-cards.test.tsx --maxWorkers=2 --testTimeout=20000 -t 'keeps terminal cards collapsed'` failed both new approval/denial regressions because the group had `open=""`. Both pass with the fix; the server-update race test also verifies focus on the collapsed summary and retention of the decision timestamp.
+- Final UI run: `cd ui && NODE_OPTIONS=--max-old-space-size=768 bunx vitest run test/{approval-notice,setup-approvals,approval-content,settings-simplification,qa-settings-setup,r8-settings,bot-network-settings,tool-cards,model-picker,bot-folders,composer-project,opencode,approval-navigation,approval-sync,notification-delivery,browser-tool-cards}.test.tsx --maxWorkers=2 --testTimeout=20000` — **229 passed across 16 files**. Includes rendered copy, both languages, compact paths, approval/resume and manual disclosure behavior.
+- `bunx tsc --noEmit -p tsconfig.base.json` — passed.
+- `bunx biome check` with all 25 changed TypeScript/TSX files — passed with one existing unused `readOnly` parameter warning in `BotFolderSettings.tsx`; the same warning was reproduced from `origin/main`.
+- `bun test --timeout 20000 sidecar/test/projects/setup-tools.test.ts` — all 37 tests stopped at server startup with `EADDRINUSE` on automatic port allocation. The local and VM setup tests reproduced the same startup failure in a temporary `origin/main` snapshot. Their assertions remain unverified in this environment.
+- `git diff --check` — passed. Native macOS QA remains unavailable on this Linux runner. No latency benchmark was performed.
+
+VISION promises served: **#7 — Calm, clear, native** and **#4 — The user is in charge**: readable approvals and deliberate access to command details.

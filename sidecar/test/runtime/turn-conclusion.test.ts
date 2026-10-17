@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite"
 import { expect, spyOn, test } from "bun:test"
-import { mkdtempSync, rmSync } from "node:fs"
+import { mkdtempSync, realpathSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { Message, MessagePart, ProviderAdapter, ProviderEvent, StartTurnArgs, UiEvent } from "@touri/contracts"
@@ -18,7 +18,7 @@ const fixture = async (
   script: (args: StartTurnArgs) => Promise<void>,
   requestText = "Crie notas.md com três ideias.",
 ) => {
-  const root = mkdtempSync(join(tmpdir(), "touri-conclusion-"))
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "touri-conclusion-")))
   const serve = spyOn(Bun, "serve").mockReturnValue({
     port: 0,
     stop: () => {},
@@ -74,7 +74,8 @@ const fixture = async (
     store,
     db,
     finish: async () => {
-      const deadline = Date.now() + 2000
+      // A fresh kernel loads the login shell environment on its first turn; that takes seconds on macOS.
+      const deadline = Date.now() + 15_000
       while (queued.run.status !== "succeeded") {
         if (Date.now() > deadline) throw new Error("Turn did not finish")
         await Bun.sleep(5)

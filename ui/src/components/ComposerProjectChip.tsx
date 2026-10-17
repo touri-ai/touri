@@ -186,7 +186,7 @@ export const ComposerProjectChip = ({
           </div>
           {bot.machine === "vm" && (
             <p id={noteId} className="composer-project-note">
-              {t("Commit Git copiado para /workspace no próximo turno.")}
+              {t("Commit Git copiado para /workspace a partir da próxima mensagem.")}
             </p>
           )}
           {error && (

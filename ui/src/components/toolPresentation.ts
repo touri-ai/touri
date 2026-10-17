@@ -147,7 +147,7 @@ const setupPresentation = (name: string, input: Record<string, unknown> | null) 
     summary = t("Remover o acesso deste bot a {path}.", { path })
   } else return null
   if (input?.nextTurn)
-    summary += ` ${t(input.machine === "local" ? "Vale a partir da próxima resposta do bot." : "Vale a partir da próxima resposta do bot na VM.")}`
+    summary += ` ${t(input.machine === "local" ? "Vale a partir da próxima mensagem." : "Vale a partir da próxima mensagem na VM.")}`
   return { name: title, summary, preview, approvalLabel, canApprove: true }
 }
 

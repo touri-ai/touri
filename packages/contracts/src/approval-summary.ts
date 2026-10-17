@@ -23,8 +23,8 @@ const copy = {
   "Leitura e escrita": "Read and write",
   "Permitir {mode} em {path} para este bot.": "Allow {mode} in {path} for this bot.",
   "Acesso anterior: {mode}.": "Previous access: {mode}.",
-  "Vale a partir da próxima resposta do bot na VM.": "Applies from the bot’s next response in the VM.",
-  "Vale a partir da próxima resposta do bot.": "Applies from the bot’s next response.",
+  "Vale a partir da próxima mensagem na VM.": "Takes effect from the next message in the VM.",
+  "Vale a partir da próxima mensagem.": "Takes effect from the next message.",
   "Detalhes indisponíveis": "Details unavailable",
   "Não foi possível mostrar os detalhes desta ação. Negue e peça ao bot para solicitar novamente.":
     "The details of this action could not be shown. Deny it and ask the bot to request it again.",
@@ -80,9 +80,7 @@ export const approvalSummary = (approval: Approval, locale: Locale = "pt-BR"): {
       })}`
     if (input.nextTurn)
       body += ` ${text(
-        input.machine === "local"
-          ? "Vale a partir da próxima resposta do bot."
-          : "Vale a partir da próxima resposta do bot na VM.",
+        input.machine === "local" ? "Vale a partir da próxima mensagem." : "Vale a partir da próxima mensagem na VM.",
         locale,
       )}`
     if (typeof input.createPath === "string")

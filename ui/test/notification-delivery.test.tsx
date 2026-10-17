@@ -59,7 +59,7 @@ it("never claims delivery when OS authorization cannot be checked", async () => 
 it("provides matching English copy", () => {
   expect(t("Você tem {n} solicitações pendentes.", { n: 2 }, "en")).toBe("You have 2 pending requests.")
   expect(t("Os avisos do sistema estão desativados.", {}, "en")).toBe("System notifications are disabled.")
-  expect(t("{bot} precisa de você: autorizar {action}.", { bot: "Team", action: "write files" }, "en")).toBe(
-    "Team needs you: authorize write files.",
+  expect(t("{bot} pede sua aprovação: {summary}", { bot: "Team", summary: "Write files" }, "en")).toBe(
+    "Team asks for your approval: Write files",
   )
 })

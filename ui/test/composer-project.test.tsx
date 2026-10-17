@@ -42,7 +42,7 @@ const setup = async ({
 
 const chip = () => screen.getByRole("button", { name: "Projeto do bot" })
 const picker = () => screen.getByRole("menu", { name: "Projeto do bot" })
-const vmNote = "Commit Git copiado para /workspace no próximo turno."
+const vmNote = "Commit Git copiado para /workspace a partir da próxima mensagem."
 
 const activeRun = (bot: Bot): Run => ({
   id: "project-test-run",
