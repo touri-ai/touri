@@ -81,6 +81,13 @@
       "x-touri": { "group": "core", "mvp": true, "mutates": true }
     },
     {
+      "name": "bot_rename",
+      "description": "Rename this calling bot only when the user asks. Low-risk identity change; posts a visible notice in chat without an approval card. Never available for delegated requests. Use 1 to 80 characters without line breaks or control characters.",
+      "inputSchema": { "type": "object", "required": ["name"], "additionalProperties": false,
+        "properties": { "name": { "type": "string", "minLength": 1 } } },
+      "x-touri": { "group": "project", "mvp": true, "mutates": true }
+    },
+    {
       "name": "project_discover",
       "description": "List projects and Git repositories only in this bot's already granted folders and connected project. Never searches the home directory on its own. Read-only; no approval required. Ask the user for a path when nothing is available.",
       "inputSchema": { "type": "object", "additionalProperties": false, "properties": {} },

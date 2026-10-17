@@ -24,6 +24,7 @@ import type {
   ThreadUsage,
   UiEvent,
 } from "@touri/contracts"
+import { normalizeBotName } from "@touri/contracts"
 import { validAvatarColor, validAvatarShape } from "@touri/contracts/avatar"
 import { installDoctor } from "../doctor"
 import { parseBotFolders } from "../kernel/bot-folders"
@@ -740,12 +741,13 @@ export const init = async (kernel: Kernel): Promise<void> => {
     body: Record<string, unknown>
     existing?: Bot
   }): { input: CreateBotInput | null; error: string | null; errorCode?: string } => {
-    const name = body.name ?? existing?.name
+    const name = normalizeBotName(body.name === undefined ? existing?.name : body.name)
     const provider = body.provider ?? existing?.provider
-    if (!isString(name) || name.trim().length === 0) return { input: null, error: "name is required" }
+    if (!name)
+      return { input: null, error: "Use de 1 a 80 caracteres, sem quebras de linha ou caracteres de controle." }
     if (provider !== "codex" && provider !== "claude" && provider !== "opencode")
       return { input: null, error: "provider deve ser Codex, Claude ou OpenCode" }
-    const input: CreateBotInput = { name: name.trim(), provider }
+    const input: CreateBotInput = { name, provider }
     if (body.machine !== undefined && body.machine !== "local" && body.machine !== "vm" && body.machine !== "cloud")
       return { input: null, error: "machine must be local, vm or cloud" }
     input.machine = (body.machine as Bot["machine"] | undefined) ?? existing?.machine ?? "local"
@@ -1037,6 +1039,24 @@ export const init = async (kernel: Kernel): Promise<void> => {
     return updated
   }
 
+  kernel.services.provide("bots.rename", ({ botId, name: value }) => {
+    const bot = getBot({ botId })
+    if (!bot) return { success: false, errorCode: "NOT_FOUND", error: "Bot não encontrado." }
+    const name = normalizeBotName(value)
+    if (!name)
+      return {
+        success: false,
+        errorCode: "INVALID_ARGS",
+        error: "Use de 1 a 80 caracteres, sem quebras de linha ou caracteres de controle.",
+      }
+    // Identity changes must not reconfigure or stop a machine during its own turn.
+    database.query("UPDATE bots SET name = ?, updated_at = ? WHERE id = ?").run(name, now(), botId)
+    const updated = getBot({ botId })
+    if (!updated) return { success: false, errorCode: "NOT_FOUND", error: "Bot não encontrado." }
+    kernel.publish({ type: "bot.updated", bot: updated })
+    return { success: true, bot: updated }
+  })
+
   // MCP setup changes share PATCH's validation, storage and bot.updated event.
   // They must not stop a VM while its current turn is waiting for the tool.
   kernel.services.provide("bots.configureAccess", ({ botId, patch }) => {
@@ -1285,7 +1305,7 @@ export const init = async (kernel: Kernel): Promise<void> => {
           const record = requestRecord(body)
           if (!record) return errorResponse(400, "INVALID_ARGS", "Request body must be an object")
           const parsed = botFromBody({
-            body: { ...record, name: record.name ?? bot.name, provider: record.provider ?? bot.provider },
+            body: { ...record, provider: record.provider ?? bot.provider },
             existing: bot,
           })
           if (!parsed.input || parsed.error)

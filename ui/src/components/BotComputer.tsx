@@ -8,6 +8,7 @@ import { DesktopPanel } from "../features/desktop/DesktopPanel"
 import { localizeNotice, machineStatusLabel } from "../i18n"
 import { useComputerPresence } from "../machineIntents"
 import { machineStateForDisplay } from "../machineState"
+import { MachineStopButton } from "./MachineStopButton"
 import { PanelIcon } from "./PanelIcon"
 
 const LocalBotComputer = ({
@@ -15,6 +16,7 @@ const LocalBotComputer = ({
   bot,
   machine: rawMachine,
   paused = false,
+  activeTurns = false,
   autoOpen = false,
   expanded = false,
   onExpand,
@@ -26,6 +28,7 @@ const LocalBotComputer = ({
   machine?: MachineState | undefined
   autoOpen?: boolean
   paused?: boolean
+  activeTurns?: boolean
   expanded?: boolean
   onExpand?: () => void
   onWindow?: () => Promise<void>
@@ -190,6 +193,20 @@ const LocalBotComputer = ({
         {status === "error" && machine?.error && <p role="alert">{userFacingError(machine.error)}</p>}
         {bot.machine === "vm" ? (
           <div className="computer-actions">
+            {status === "running" && (
+              <MachineStopButton
+                api={api}
+                botId={bot.id}
+                activeTurns={activeTurns}
+                onStopped={() => {
+                  openGeneration.current += 1
+                  awaitingComputer.current = false
+                  setBusy(false)
+                  setEntered(false)
+                  setViewerControl(false)
+                }}
+              />
+            )}
             {(!entered || status !== "running") && (
               <button
                 className="button button-brand"

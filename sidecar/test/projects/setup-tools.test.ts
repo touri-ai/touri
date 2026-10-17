@@ -136,6 +136,7 @@ const fixture = async (patch: Partial<Bot> = {}) => {
 test("discovery lists only projects and repositories in this bot's granted folders without approval", async () => {
   const f = await fixture()
   expect(f.router.list({ caller: f.caller }).map((tool) => tool.name)).toEqual([
+    "bot_rename",
     "project_discover",
     "project_link",
     "folder_access_request",
@@ -664,5 +665,75 @@ test("removing a grant keeps the user-only any-folder toggle and unrelated grant
   expect((await f.call("folder_access_remove", { path: f.path })).success).toBe(true)
   expect(f.currentBot()?.folders).toEqual([{ path: extra, access: "read-only" }])
   expect(f.currentBot()?.anyFolderAccess).toBe(true)
+  expect(f.cards).toEqual([])
+})
+
+for (const machine of ["local", "vm"] as const)
+  test(`bot_rename on ${machine} renames only the caller, publishes the new name and posts a notice without approval`, async () => {
+    const f = await fixture({ machine, access: "read-only", approvals: "on-request" })
+    const before = f.currentBot()
+    if (!before) throw new Error("Missing bot")
+    expect(await f.call("bot_rename", { name: " Bia QA Renomeada " })).toMatchObject({
+      success: true,
+      structured: { name: "Bia QA Renomeada" },
+    })
+    expect(f.currentBot()).toEqual({ ...before, name: "Bia QA Renomeada", updatedAt: expect.any(Number) })
+    expect(f.cards).toEqual([])
+    expect(f.events).toContainEqual(
+      expect.objectContaining({
+        type: "bot.updated",
+        bot: expect.objectContaining({ id: f.bot.id, name: "Bia QA Renomeada" }),
+      }),
+    )
+    expect(f.events).toContainEqual(
+      expect.objectContaining({
+        type: "message.created",
+        message: expect.objectContaining({
+          threadId: f.caller.threadId,
+          role: "system",
+          kind: "notice",
+          text: expect.stringContaining("Bia QA Renomeada"),
+        }),
+      }),
+    )
+    expect(f.runtime.kernel.services.use("store.api")?.activePath({ threadId: f.caller.threadId }).at(-1)?.kind).toBe(
+      "notice",
+    )
+  })
+
+test("bot_rename validates names like creation and settings; cannot target another bot", async () => {
+  const f = await fixture()
+  for (const name of [null, 123, "", "   ", "a".repeat(81), "Bia\nQA", "Bia\tQA", "Bia\0QA", "Bia\u2028QA"]) {
+    expect(await f.call("bot_rename", { name })).toMatchObject({ success: false, errorCode: "INVALID_ARGS" })
+    expect((await f.request("POST", "/bots", { name, provider: "codex" })).status).toBe(400)
+    expect((await f.request("PATCH", `/bots/${f.bot.id}`, { name })).status).toBe(400)
+  }
+  expect(await f.call("bot_rename", { name: "Other", botId: "other" })).toMatchObject({
+    success: false,
+    errorCode: "INVALID_ARGS",
+  })
+  expect(await f.call("bot_rename", { name: 123 })).toMatchObject({ success: false, errorCode: "INVALID_ARGS" })
+  expect((await f.call("bot_rename", { name: "Bia • São Paulo 🤖" })).success).toBe(true)
+  expect((await f.call("bot_rename", { name: ` ${"a".repeat(80)} ` })).success).toBe(true)
+  expect(f.currentBot()?.name).toBe("a".repeat(80))
+  expect(f.cards).toEqual([])
+})
+
+test("bot_rename denies foreign threads, delegated requests and cancellation", async () => {
+  const f = await fixture()
+  const other = (await (await f.request("POST", "/bots", { name: "other", provider: "codex" })).json()).bot as Bot
+  expect((await f.call("bot_rename", { name: "Changed" }, { ...f.caller, botId: other.id })).success).toBe(false)
+  const controller = new AbortController()
+  controller.abort()
+  expect((await f.call("bot_rename", { name: "Changed" }, f.caller, controller.signal)).success).toBe(false)
+  setDelegation(f.runtime.kernel, f.caller.threadId, {
+    ceiling: f.bot,
+    caller: { id: other.id, name: other.name },
+    groupThreadId: "group",
+    secrets: false,
+  })
+  expect((await f.call("bot_rename", { name: "Changed" })).success).toBe(false)
+  expect(f.currentBot()?.name).toBe(f.bot.name)
+  expect(f.runtime.kernel.services.use("store.api")?.getBot({ botId: other.id })?.name).toBe("other")
   expect(f.cards).toEqual([])
 })

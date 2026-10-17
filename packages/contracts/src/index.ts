@@ -3,6 +3,7 @@ import catalog from "../mcp-tools.json"
 import type { Result } from "./types"
 
 export * from "./avatar"
+export * from "./bot-name"
 export * from "./cloud"
 export * from "./errors"
 export * from "./reports"

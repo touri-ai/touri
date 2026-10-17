@@ -46,6 +46,15 @@ export const ptBR = {
   "Tamanho completo: {count} caracteres": "Tamanho completo: {count} caracteres",
   "Os detalhes da rotina excedem o limite de revisão.": "Os detalhes da rotina excedem o limite de revisão.",
 
+  "Rename this calling bot only when the user asks. Low-risk identity change; posts a visible notice in chat without an approval card. Never available for delegated requests. Use 1 to 80 characters without line breaks or control characters.":
+    "Renomeia somente este bot quando você pede e mostra um aviso no chat, sem cartão de aprovação. Não permite renomear por pedidos delegados. Use de 1 a 80 caracteres, sem quebras de linha ou caracteres de controle.",
+  "Aguarde o turno terminar ou pare o turno para parar a máquina.":
+    "Aguarde o turno terminar ou pare o turno para parar a máquina.",
+  "Para a máquina e mantém seus dados.": "Para a máquina e mantém seus dados.",
+  "Bot renomeado de {previous} para {name}.": "Bot renomeado de {previous} para {name}.",
+  "O nome aparece na navegação e nas conversas.": "O nome aparece na navegação e nas conversas.",
+  "Use de 1 a 80 caracteres, sem quebras de linha ou caracteres de controle.":
+    "Use de 1 a 80 caracteres, sem quebras de linha ou caracteres de controle.",
   "Vincular projeto": "Vincular projeto",
   "Vincular {name} ({path}) a este bot": "Vincular {name} ({path}) a este bot",
   "Substitui o projeto {name} ({path}).": "Substitui o projeto {name} ({path}).",
@@ -1287,6 +1296,13 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "horário de São Paulo": "São Paulo time",
   "Detalhes do agendamento": "Schedule details",
 
+  "Aguarde o turno terminar ou pare o turno para parar a máquina.":
+    "Wait for the turn to finish, or stop the turn, before stopping the computer.",
+  "Para a máquina e mantém seus dados.": "Stops the computer and keeps its data.",
+  "Bot renomeado de {previous} para {name}.": "Bot renamed from {previous} to {name}.",
+  "O nome aparece na navegação e nas conversas.": "The name appears in navigation and conversations.",
+  "Use de 1 a 80 caracteres, sem quebras de linha ou caracteres de controle.":
+    "Use 1 to 80 characters without line breaks or control characters.",
   "Vincular projeto": "Link project",
   "Vincular {name} ({path}) a este bot": "Link {name} ({path}) to this bot",
   "Substitui o projeto {name} ({path}).": "Replaces project {name} ({path}).",
@@ -1926,6 +1942,9 @@ export const statusLabel = (status: string): string => {
 
 /** Translate only application-authored notices, leaving bot/user content intact. */
 export const localizeNotice = (value: string): string => {
+  const renamed = /^Bot renomeado de ("(?:[^"\\]|\\.)*") para ("(?:[^"\\]|\\.)*")\.$/.exec(value)
+  if (renamed)
+    return t("Bot renomeado de {previous} para {name}.", { previous: renamed[1] ?? "", name: renamed[2] ?? "" })
   if (/^(?:canceled:\s*)?(?:Error:\s*)*(?:Turno cancelado|Cancelado por você)(?:\s.*)?$/i.test(value.trim()))
     return t("Cancelado por você")
   if (/^(?:Error:\s*)*sidecar request failed:/i.test(value)) return userFacingError(value)

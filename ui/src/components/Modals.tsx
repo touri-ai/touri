@@ -12,6 +12,7 @@ import type {
   Routine,
   SecretMeta,
 } from "@touri/contracts"
+import { normalizeBotName } from "@touri/contracts"
 import { avatarProfileFor } from "@touri/contracts/avatar"
 import { useCallback, useEffect, useRef, useState } from "react"
 import type { TauriInvoke, UiApi } from "../api/client"
@@ -465,6 +466,11 @@ export const BotCreateModal = ({
   const submit = async (event: React.FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault()
     if (!name.trim() || saving || projectBusy) return
+    const validName = normalizeBotName(name)
+    if (!validName) {
+      setError(t("Use de 1 a 80 caracteres, sem quebras de linha ou caracteres de controle."))
+      return
+    }
     if (api && machine.machine !== "cloud" && (!login.ready || login.checking)) {
       setError(t("Sign in above before creating your bot."))
       signInRef.current?.focus()
@@ -484,7 +490,7 @@ export const BotCreateModal = ({
     setError(null)
     try {
       const input = {
-        name: name.trim(),
+        name: validName,
         roleLine: roleLine.trim() || null,
         title: title.trim() || null,
         provider,
@@ -966,6 +972,12 @@ export const BotSettingsModal = ({
       setSaveError(t("Dê um nome ao bot."))
       return
     }
+    const validName = normalizeBotName(name)
+    if (!validName) {
+      setAdvanced(false)
+      setSaveError(t("Use de 1 a 80 caracteres, sem quebras de linha ou caracteres de controle."))
+      return
+    }
     if (settings && (!Number.isInteger(vmMemory) || vmMemory < 512 || vmMemory > 16384)) {
       setAdvanced(true)
       setSection("computer")
@@ -978,7 +990,7 @@ export const BotSettingsModal = ({
       if (settings && vmMemory !== (settings.botVmMemoryMb ?? 1536))
         await actions.updateSettings({ botVmMemoryMb: vmMemory })
       await actions.updateBot(bot.id, {
-        name: name.trim(),
+        name: validName,
         ...avatar,
         ...machine,
         roleLine: roleLine.trim() || null,

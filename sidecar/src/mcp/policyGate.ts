@@ -10,9 +10,10 @@ export const CONSENT_REQUIRED_TOOLS: ReadonlySet<string> = new Set(["ask_bot", "
 /** Catalogued as read-only, but arbitrary page script can submit forms or post; a delegated run treats it as mutating. */
 const DELEGATED_MUTATING_TOOLS: ReadonlySet<string> = new Set(["browser_evaluate"])
 
-// Setup handlers always require their own scoped, single-use human consent,
-// including for read-only bots and bots configured with approvals="never".
+// Setup handlers enforce their own self-scoping and consent. Identity changes
+// and access reductions need only a notice, including for read-only bots.
 const SELF_CONFIGURATION_TOOLS: ReadonlySet<string> = new Set([
+  "bot_rename",
   "project_link",
   "project_unlink",
   "folder_access_request",
