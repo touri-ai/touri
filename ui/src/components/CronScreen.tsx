@@ -153,7 +153,7 @@ const CronScreen = ({
       <ScreenHeader
         id="cron-title"
         title={t("Routines")}
-        description={`${routines.length} ${routines.length === 1 ? "rotina" : "rotinas"} · executadas enquanto o touri está aberto`}
+        description={t("Routine execution count", { count: routines.length })}
         actions={
           <>
             <button type="button" className="outline-button" onClick={() => void actions.refresh()}>
