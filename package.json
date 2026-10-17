@@ -10,12 +10,19 @@
   "scripts": {
     "typecheck": "bunx tsc --noEmit -p tsconfig.base.json",
     "test": "bun test sidecar/test",
+    "test:sidecar:portable": "bun scripts/test-sidecar-portable.ts",
+    "test:sidecar:smoke": "bun scripts/smoke-sidecar.ts",
     "lint": "bunx biome check .",
     "icons:generate": "bun scripts/gen-icons.ts",
-    "build:sidecar": "bun build --compile --target=bun-darwin-arm64 sidecar/src/main.ts --outfile src-tauri/binaries/touri-sidecar-aarch64-apple-darwin",
+    "build:sidecar": "bun scripts/build-sidecar.ts",
     "tauri": "bunx tauri",
     "build:cli": "bun scripts/build-cli.ts",
-    "touri": "bun sidecar/src/cli/main.ts"
+    "touri": "bun sidecar/src/cli/main.ts",
+    "build:sidecar:linux": "bun scripts/build-sidecar.ts linux-x64",
+    "build:sidecar:linux:arm64": "bun scripts/build-sidecar.ts linux-arm64",
+    "build:sidecar:windows": "bun scripts/build-sidecar.ts windows-msvc-x64",
+    "build:sidecar:windows:gnu": "bun scripts/build-sidecar.ts windows-x64",
+    "build:sidecar:macos": "bun scripts/build-sidecar.ts darwin-arm64"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.2.0",

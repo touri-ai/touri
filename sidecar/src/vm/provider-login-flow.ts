@@ -1,15 +1,16 @@
 import type { Database } from "bun:sqlite"
 import { chmodSync, mkdirSync, mkdtempSync, rmSync } from "node:fs"
 import { homedir } from "node:os"
-import { join } from "node:path"
+import { delimiter, join } from "node:path"
 import { stripVTControlCharacters } from "node:util"
 import type { Bot, Kernel, ProviderLoginFlow, RouteModule } from "@touri/contracts"
 import { withDeadline } from "../kernel/policy"
-import { runPs } from "../kernel/ps"
 import { buildChildEnv } from "../kernel/shell-env"
+import { killProviderLoginPty, spawnProviderLoginPty } from "../platform/provider-login"
 import { resolveProviderExecutable } from "../runtime/resolveProviderExecutable"
 import {
   loginTarget,
+  NATIVE_VAULT_GUIDANCE,
   ProviderLoginError,
   providerLoginAccount,
   providerLoginSourceKey,
@@ -23,39 +24,7 @@ import {
 
 type Target = Pick<Bot, "id" | "provider">
 type Child = Extract<ReturnType<Kernel["spawnTree"]>, { success: true }>
-const killLoginChild = async (child: Child): Promise<void> => {
-  try {
-    // PTY helpers may put their CLI in another process group. Stop descendants before the helper.
-    // A stopped helper stays their parent while the asynchronous scan runs (#121).
-    try {
-      process.kill(child.pid, "SIGSTOP")
-    } catch {}
-    const result = await runPs(["-axo", "pid=,ppid="], 1000)
-    const rows = (result?.stdout ?? "")
-      .trim()
-      .split("\n")
-      .map((line) => line.trim().split(/\s+/).map(Number))
-    const descendants = new Set([child.pid])
-    for (let pass = 0; pass < rows.length; pass++) {
-      let added = false
-      for (const [pid, parent] of rows)
-        if (pid && parent && descendants.has(parent) && !descendants.has(pid)) {
-          descendants.add(pid)
-          added = true
-        }
-      if (!added) break
-    }
-    for (const pid of [...descendants].reverse())
-      if (pid !== child.pid) {
-        try {
-          process.kill(pid, "SIGKILL")
-        } catch {}
-      }
-  } catch {
-  } finally {
-    child.kill("SIGKILL")
-  }
-}
+
 type Session = {
   target: Target
   view: ProviderLoginFlow
@@ -222,7 +191,7 @@ export const createProviderLoginFlow = ({
   const stopLoginChild = (session: Session): void => {
     const { child, directory } = session
     if (!child) return
-    void killLoginChild(child).finally(() => {
+    void killProviderLoginPty(child).finally(() => {
       if (directory) rmSync(directory, { recursive: true, force: true })
     })
   }
@@ -255,7 +224,12 @@ export const createProviderLoginFlow = ({
         value = await readVault(kernel, target, loginTarget(target.provider), {})
       } catch (error) {
         if (host === "server" && error instanceof ProviderLoginError)
-          return { provider: target.provider, state: "error", host, message: SERVER_VAULT_GUIDANCE }
+          return {
+            provider: target.provider,
+            state: "error",
+            host,
+            message: headless ? SERVER_VAULT_GUIDANCE : NATIVE_VAULT_GUIDANCE,
+          }
         if (
           host === "mac" &&
           error instanceof ProviderLoginError &&
@@ -332,24 +306,17 @@ export const createProviderLoginFlow = ({
           const resolved = await resolveProviderExecutable({
             kernel,
             command: process.env[`TOURI_${command.toUpperCase()}_BIN`] ?? command,
-            env: { ...base, PATH: [base.PATH, join(hostHome, ".opencode/bin")].filter(Boolean).join(":") },
+            env: { ...base, PATH: [base.PATH, join(hostHome, ".opencode/bin")].filter(Boolean).join(delimiter) },
           })
           if (!resolved.success) throw new Error("cli")
           if (session.view.state !== "waiting") return
           env.PATH = resolved.env.PATH ?? ""
-          const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`
-          if (process.platform === "darwin") env.TOURI_LOGIN_ARGV = [resolved.path, ...args].join("\x1f")
-          spawned = kernel.spawnTree({
-            cmd: process.platform === "darwin" ? "/usr/bin/expect" : "/usr/bin/script",
-            args:
-              process.platform === "darwin"
-                ? [
-                    "-c",
-                    'set timeout -1; log_user 1; set stty_init "columns 240 rows 40"; spawn -noecho {*}[split $env(TOURI_LOGIN_ARGV) "\\x1f"]; interact',
-                  ]
-                : ["-qefc", [resolved.path, ...args].map(quote).join(" "), "/dev/null"],
+          spawned = spawnProviderLoginPty({
+            command: resolved.path,
+            args,
             cwd: directory,
             env,
+            spawn: kernel.spawnTree,
           })
         }
         if (!spawned.success) throw new Error("cli")

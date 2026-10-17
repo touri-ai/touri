@@ -4,10 +4,11 @@ import { isAbsolute, relative, resolve } from "node:path"
 import type { SidecarModule } from "@touri/contracts"
 import { createKernel, type KernelRuntime } from "./kernel"
 import { acquireRuntimeLock, watchParent } from "./kernel/lifecycle"
-import { createAppPaths, resolveMcpSocketPath } from "./kernel/paths"
+import { createAppPaths } from "./kernel/paths"
 import { safeThreadId } from "./mcp/auth"
 import { registerShim } from "./mcp/shim-registry"
 import { type McpShimStage, mcpStartupFailureLine } from "./mcp/startup-stage"
+import { connectionOptions, resolveMcpEndpoint } from "./platform/transport"
 
 const STDIN_EOF_GRACE_MS = 1_000
 
@@ -148,11 +149,11 @@ export const runMcpStdio = ({ threadId, appData }: { threadId: string; appData?:
     process.exitCode = 1
     return Promise.resolve()
   }
-  const socketPath = process.env.TOURI_MCP_SOCK ?? resolveMcpSocketPath(paths)
+  const socketPath = process.env.TOURI_MCP_SOCK ?? resolveMcpEndpoint(paths)
   // Registration probes `ps` in the background so it never delays the MCP handshake.
   const registration = registerShim({ runDir: paths.runDir, thread: threadId })
   return new Promise((resolve) => {
-    const socket = createConnection(socketPath)
+    const socket = createConnection(connectionOptions(socketPath))
     const state = { answered: false, finished: false }
     let stopWatching: () => void = () => undefined
     const finish = (reason: McpShimStage): void => {

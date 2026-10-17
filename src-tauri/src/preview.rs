@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 
@@ -113,11 +112,7 @@ pub fn parse_external_url(value: &str) -> Result<Url, String> {
 // Only explicit main-UI actions call this. Preview navigation never opens OS handlers.
 pub fn open_external(url: &str) -> Result<(), String> {
     let parsed = parse_external_url(url)?;
-    Command::new("open")
-        .arg(parsed.as_str())
-        .spawn()
-        .map(|_| ())
-        .map_err(|error| format!("open external URL failed: {error}"))
+    crate::platform::open_external(parsed.as_str())
 }
 
 struct OwnedPreviews<T> {

@@ -19,7 +19,12 @@ pub fn install<R: Runtime>(app: &AppHandle<R>, host_bridge: &HostBridge) -> Resu
     .map_err(|error| format!("create tray Stop item failed: {error}"))?;
     let quit = MenuItem::with_id(app, "quit", "Sair do touri", true, None::<&str>)
         .map_err(|error| format!("create tray Quit item failed: {error}"))?;
-    let menu = Menu::with_items(app, &[&open, &pause, &stop_computer, &quit])
+    let items: Vec<&dyn tauri::menu::IsMenuItem<R>> = if crate::platform::HOST_COMPUTER {
+        vec![&open, &pause, &stop_computer, &quit]
+    } else {
+        vec![&open, &pause, &quit]
+    };
+    let menu = Menu::with_items(app, &items)
         .map_err(|error| format!("create tray menu failed: {error}"))?;
     let bridge = host_bridge.clone_for_tray();
     tauri::tray::TrayIconBuilder::with_id("touri-tray")

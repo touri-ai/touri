@@ -3,6 +3,12 @@ import { userFacingError } from "./errors"
 /** All UI copy lives here. pt-BR is the default; English is available for a future locale picker. */
 export type Locale = "pt-BR" | "en"
 export const ptBR = {
+  "O aplicativo não conseguiu acessar o cofre nativo. Desbloqueie o cofre do sistema e tente novamente.":
+    "O aplicativo não conseguiu acessar o cofre nativo. Desbloqueie o cofre do sistema e tente novamente.",
+  "O cofre nativo está disponível no aplicativo desktop. O modo servidor usa seu próprio cofre local.":
+    "O cofre nativo está disponível no aplicativo desktop. O modo servidor usa seu próprio cofre local.",
+  "O cofre nativo não respondeu em até 4s. Verifique o desbloqueio e reabra o touri.":
+    "O cofre nativo não respondeu em até 4s. Verifique o desbloqueio e reabra o touri.",
   "Escolha um método com código para entrar por este aparelho.":
     "Escolha um método com código para entrar por este aparelho.",
   "Entre no {provedor} para o servidor: abra este link neste aparelho":
@@ -1764,6 +1770,12 @@ export const ptBR = {
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  "O aplicativo não conseguiu acessar o cofre nativo. Desbloqueie o cofre do sistema e tente novamente.":
+    "The app could not access the native vault. Unlock the system vault and try again.",
+  "O cofre nativo está disponível no aplicativo desktop. O modo servidor usa seu próprio cofre local.":
+    "The native vault is available in the desktop app. Server mode uses its own local vault.",
+  "O cofre nativo não respondeu em até 4s. Verifique o desbloqueio e reabra o touri.":
+    "The native vault did not respond within 4 seconds. Check that it is unlocked and reopen touri.",
   "Escolha um método com código para entrar por este aparelho.":
     "Choose a code-based method to sign in on this device.",
   "Entre no {provedor} para o servidor: abra este link neste aparelho":

@@ -1,6 +1,7 @@
 import type { Database } from "bun:sqlite"
 import type { DoctorCheck, DoctorReport, Kernel } from "@touri/contracts"
 import { storageStats } from "../kernel/data-maintenance"
+import { hostPlatform } from "../platform"
 import { check } from "./check"
 import { createDoctorCommand } from "./command"
 import { collectLocalChecks, sidecarChecks } from "./local"
@@ -36,7 +37,7 @@ export const createDoctorService = (collect: DoctorCollector, timeoutMs = 20_000
                 "Diagnóstico",
                 "fail",
                 "Não foi possível concluir o diagnóstico. Tente novamente; se persistir, reabra o touri.",
-                "open -a touri",
+                hostPlatform.appOpenCommand,
               ),
             ],
             running: false,
@@ -86,7 +87,7 @@ export const collectDoctorChecks = async (kernel: Kernel, signal: AbortSignal): 
           index === 0 ? "Ambiente local" : "Conexão com os provedores",
           "fail",
           "Esta parte do diagnóstico não pôde ser concluída. Execute novamente para verificar o ambiente.",
-          "open -a touri",
+          hostPlatform.appOpenCommand,
         ),
       )
   }

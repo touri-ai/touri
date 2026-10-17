@@ -12,6 +12,7 @@ import { readInlinePreviewPreference, setInlinePreviewPreference } from "../feat
 import { DoctorChecks } from "../features/doctor/DoctorChecks"
 import { ReportProblem } from "../features/reports/ReportProblem"
 import { t } from "../i18n"
+import { hostComputerSupported } from "../platform"
 import { Modal } from "./Modal"
 import { NotificationDeliverySettings } from "./NotificationDeliverySettings"
 import {
@@ -248,7 +249,7 @@ export const SettingsModal = ({
                 </code>
               </div>
             </div>
-            <ComputerUseSettings className="settings-computer-permissions" />
+            {hostComputerSupported && <ComputerUseSettings className="settings-computer-permissions" />}
             {settings?.cloud && api && <CloudPreferences api={api} settings={settings} onSave={onSave} />}
           </SettingsDisclosure>
         </SettingsPane>

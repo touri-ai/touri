@@ -1,14 +1,8 @@
 import { expect, test } from "bun:test"
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs"
 import { createServer } from "node:net"
-import { tmpdir } from "node:os"
-import { join } from "node:path"
 import { createHostClient } from "../../src/kernel/host-client"
 
 test("host client authenticates over NDJSON and reconnects after a socket closes", async () => {
-  const root = mkdtempSync(join(tmpdir(), "touri-host-"))
-  const socketPath = join(root, "host.sock")
-  mkdirSync(root, { recursive: true })
   const methods: Array<string> = []
   let connectionCount = 0
   const server = createServer((socket) => {
@@ -30,7 +24,8 @@ test("host client authenticates over NDJSON and reconnects after a socket closes
       }
     })
   })
-  await new Promise<void>((resolve) => server.listen(socketPath, resolve))
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve))
+  const socketPath = `tcp://127.0.0.1:${(server.address() as { port: number }).port}`
   const client = createHostClient({ socketPath, token: "host-token", onNotification: () => undefined })
   try {
     const first = await client.callHost("keychain.get", { account: "global/API_KEY" })
@@ -43,14 +38,11 @@ test("host client authenticates over NDJSON and reconnects after a socket closes
   } finally {
     client.close()
     server.close()
-    rmSync(root, { recursive: true, force: true })
   }
 })
 
 for (const errorCode of ["VAULT_ACCESS_REQUIRED", "VAULT_TIMEOUT", "VAULT_CANCELLED", "VAULT_UNAVAILABLE"] as const)
   test(`host client preserves native ${errorCode} as a typed failure`, async () => {
-    const root = mkdtempSync(join(tmpdir(), "touri-host-vault-"))
-    const socketPath = join(root, "host.sock")
     const server = createServer((socket) => {
       let buffer = ""
       socket.on("data", (chunk) => {
@@ -71,7 +63,8 @@ for (const errorCode of ["VAULT_ACCESS_REQUIRED", "VAULT_TIMEOUT", "VAULT_CANCEL
         }
       })
     })
-    await new Promise<void>((resolve) => server.listen(socketPath, resolve))
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve))
+    const socketPath = `tcp://127.0.0.1:${(server.address() as { port: number }).port}`
     const client = createHostClient({ socketPath, token: "test-token", onNotification: () => {} })
     try {
       expect(await client.callHost("keychain.get", { account: "bot/test/login" })).toEqual({
@@ -82,6 +75,5 @@ for (const errorCode of ["VAULT_ACCESS_REQUIRED", "VAULT_TIMEOUT", "VAULT_CANCEL
     } finally {
       client.close()
       server.close()
-      rmSync(root, { recursive: true, force: true })
     }
   })

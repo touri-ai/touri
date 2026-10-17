@@ -41,6 +41,7 @@ import { historyThreadPending, hydrateHistoryEvent } from "../kernel/history-bac
 import { externalizeMessageParts, OUTPUT_BLOB_ORIGIN } from "../kernel/output-blobs"
 import { isProfileProvider, validProviderProfileName } from "../kernel/provider-profiles"
 import { materializeTranscript } from "../kernel/transcript-storage"
+import { hostComputerSupported } from "../platform"
 import { touriVersion } from "../version"
 import { DEFAULT_BOT_VM_MEMORY_MB, DEFAULT_MACHINE_IDLE_MINUTES, validBotVmMemory } from "../vm/resources"
 import { redeemFileGrant } from "./redeemFileGrant"
@@ -776,6 +777,7 @@ export const init = async (kernel: Kernel): Promise<void> => {
         return { input: null, error: `${field} must be a boolean` }
       input[field] = (body[field] as boolean | undefined) ?? existing?.[field] ?? false
     }
+    if (!hostComputerSupported) input.hostComputerUse = false
     if (input.machine === "cloud") {
       input.vmProviderLogin = false
       input.hostComputerUse = false

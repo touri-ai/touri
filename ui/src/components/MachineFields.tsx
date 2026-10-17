@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react"
 import { userFacingError } from "../errors"
 import { machineStatusLabel, t } from "../i18n"
 import { machineStateForDisplay } from "../machineState"
+import { hostComputerSupported } from "../platform"
 import { SettingsRow, SettingsSwitch } from "./SettingsLayout"
 
 type MachineValues = Pick<Bot, "machine" | "machineIdleMinutes" | "vmProviderLogin" | "hostComputerUse">
@@ -133,17 +134,19 @@ export const MachineFields = ({
               onChange={(event) => onChange({ vmProviderLogin: event.target.checked })}
             />
           </label>
-          <label className="toggle-row" htmlFor="machine-host-control">
-            <span>
-              <strong>{t("Allow host computer use")}</strong>
-              <small>{t("Host computer use help")}</small>
-            </span>
-            <SettingsSwitch
-              id="machine-host-control"
-              checked={values.hostComputerUse}
-              onChange={(event) => onChange({ hostComputerUse: event.target.checked })}
-            />
-          </label>
+          {hostComputerSupported && (
+            <label className="toggle-row" htmlFor="machine-host-control">
+              <span>
+                <strong>{t("Allow host computer use")}</strong>
+                <small>{t("Host computer use help")}</small>
+              </span>
+              <SettingsSwitch
+                id="machine-host-control"
+                checked={values.hostComputerUse}
+                onChange={(event) => onChange({ hostComputerUse: event.target.checked })}
+              />
+            </label>
+          )}
           {state?.progress && (
             <p className="machine-progress" aria-live="polite">
               {state.progress}

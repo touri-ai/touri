@@ -12,9 +12,9 @@ import { reapProviderProcesses, stopProviderChildren, trackProviderProcess } fro
 import { init as initStore } from "../../src/store"
 import { socketTicket } from "../fakes/ws-ticket"
 
-const waitFor = async (predicate: () => boolean): Promise<void> => {
+const waitFor = async (predicate: () => boolean | Promise<boolean>): Promise<void> => {
   const deadline = Date.now() + 10_000
-  while (!predicate()) {
+  while (!(await predicate())) {
     if (Date.now() > deadline) throw new Error("Timed out waiting for transcript")
     await Bun.sleep(10)
   }
@@ -440,7 +440,16 @@ test.each(["SIGTERM", "shell crash", "orphan takeover"] as const)(
         }),
       })
       expect(response.ok).toBe(true)
-      await waitFor(() => f.store.activePath({ threadId: "t" }).some((message) => message.text === "INÍCIO"))
+      // Read through the active sidecar: activePath materializes deltas and must
+      // not compete with that process for a SQLite write transaction.
+      await waitFor(async () => {
+        const snapshot = await fetch(`http://127.0.0.1:${port}/api/v1/threads/t/messages`, {
+          headers: { Authorization: `Bearer ${token}`, Origin: "http://localhost:1420" },
+        })
+        expect(snapshot.ok).toBe(true)
+        const body = (await snapshot.json()) as { messages: Array<{ text: string }> }
+        return body.messages.some((message) => message.text === "INÍCIO")
+      })
       const records = readdirSync(join(f.runtime.kernel.paths.runDir, "provider-processes"))
       providerPid = Number(records[0]?.replace(".json", ""))
       expect(providerPid).toBeGreaterThan(0)

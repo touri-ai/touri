@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core"
 import { useEffect, useState } from "react"
 import { t } from "../../i18n"
+import { hostComputerSupported } from "../../platform"
 
 type PermissionState = "granted" | "denied" | "not-determined"
 type Permission = "accessibility" | "screen-recording"
@@ -29,7 +30,7 @@ export const ComputerUseSettings = ({ className = "" }: ComputerUseSettingsProps
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!("__TAURI_INTERNALS__" in window)) return
+    if (!hostComputerSupported || !("__TAURI_INTERNALS__" in window)) return
     let mounted = true
     const refresh = async (): Promise<void> => {
       try {
@@ -73,6 +74,7 @@ export const ComputerUseSettings = ({ className = "" }: ComputerUseSettingsProps
       </p>
     )
 
+  if (!hostComputerSupported) return null
   return (
     <section
       className={`rounded-2xl border border-stone-200 bg-white p-5 shadow-sm dark:border-stone-800 dark:bg-stone-900 ${className}`}

@@ -7,7 +7,7 @@
 --     (legacy app uses UUIDs), so a re-import hits the same primary key.
 --   * timestamps are INTEGER milliseconds since epoch (UTC).
 --   * *_json columns hold JSON validated by the types in types.ts.
---   * Only WP2 (store) writes migrations. This file is migration 0001.
+--   * This is a contract snapshot through schema_version 6; runtime migrations are incremental.
 
 CREATE TABLE schema_meta (
   key   TEXT PRIMARY KEY,

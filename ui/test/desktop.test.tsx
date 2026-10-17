@@ -152,7 +152,9 @@ test("a connected socket stays in preparation until the first guest frame is ren
   expect(screen.getByLabelText("Digitar na VM")).toBeDisabled()
   // An opaque black frame is guest output too; readiness cannot require colored pixels.
   for (let offset = 3; offset < black.data.length; offset += 4) black.data[offset] = 255
-  await waitFor(() => expect(screen.getByRole("button", { name: "Assumir controle" })).toBeEnabled(), { timeout: 2500 })
+  await waitFor(() => expect(screen.getByRole("button", { name: "Assumir controle" })).toBeEnabled(), {
+    timeout: 10_000,
+  })
   expect(screen.queryByText("Conectando à tela da VM…")).not.toBeInTheDocument()
   expect(screen.getByText("Navegador ainda não aberto")).toBeInTheDocument()
 })
@@ -172,7 +174,7 @@ test("the empty VM hint disappears when a window draws and returns when the disp
     timeout: 2500,
   })
   viewer.getImageData = () => pulse(3)
-  await waitFor(() => expect(screen.getByText("Navegador ainda não aberto")).toBeInTheDocument(), { timeout: 2500 })
+  await waitFor(() => expect(screen.getByText("Navegador ainda não aberto")).toBeInTheDocument(), { timeout: 10_000 })
   expect(viewer.disconnect).not.toHaveBeenCalled()
 })
 

@@ -223,7 +223,7 @@ for (const host of [
   { platform: "linux", headless: false },
   { platform: "darwin", headless: true },
 ] as const)
-  test(`${host.platform} headless=${host.headless}: chat gives server vault guidance without macOS authorization`, async () => {
+  test(`${host.platform} headless=${host.headless}: chat distinguishes native vault guidance from server mode`, async () => {
     const { createProviderLoginFlow } = await import("../../src/vm/provider-login-flow")
     const f = fixture(async () => ({ success: false, errorCode: "HOST_ERROR", error: "offline" }), false)
     f.kernel.subscribe = () => () => {}
@@ -233,7 +233,7 @@ for (const host of [
       expect(await flow.status(f.bot)).toMatchObject({
         state: "error",
         host: "server",
-        message: expect.stringContaining("cofre local do servidor"),
+        message: expect.stringContaining(host.headless ? "cofre local do servidor" : "cofre nativo"),
       })
     } finally {
       flow.dispose()

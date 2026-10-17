@@ -25,7 +25,7 @@ test("C-10: every preview IPC resolves an owned handle and requires the main cal
 })
 
 test("B03: native events recheck the protected input target at the posting boundary", () => {
-  const source = rust("computer/input.rs")
+  const source = rust("platform/macos/computer_input.rs")
   expect(source).toContain("CGWindowListCopyWindowInfo")
   expect(source).toContain("frontmostApplication")
   for (const statement of source.matchAll(/([a-z_]+)\.post\(CGEventTapLocation::HID\)/g)) {
@@ -34,7 +34,7 @@ test("B03: native events recheck the protected input target at the posting bound
 })
 
 test("B03: a local native event filter rejects marked synthetic events even after a focus race", () => {
-  const source = rust("computer/input.rs")
+  const source = rust("platform/macos/computer_input.rs")
   expect(source).toContain("addLocalMonitorForEventsMatchingMask")
   expect(source).toContain("EVENT_SOURCE_USER_DATA")
   expect(rust("computer/mod.rs")).toContain("input::install_consent_guard()")
