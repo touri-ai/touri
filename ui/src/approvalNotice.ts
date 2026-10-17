@@ -33,6 +33,21 @@ export const approvalNotificationSummary = (item: NotificationRecord, messages: 
   return { ...summary, command, technical: technical.trim() === command ? "" : technical }
 }
 
+export const approvalBarSummary = (summary: { title: string; body: string }) => {
+  const folder =
+    /^(Permitir (?:Somente leitura|Leitura e escrita) em |Allow (?:Read-only|Read and write) in )(\/.*?)( para este bot| for this bot)(?=[. ]|$)/.exec(
+      summary.body,
+    )
+  if (!folder) return summary
+  const path = folder[2] ?? "/"
+  const name = path.split("/").filter(Boolean).at(-1)
+  const shortPath = name ? `…/${name}` : "/"
+  return {
+    title: summary.title.replace(path, shortPath),
+    body: `${folder[1]}${shortPath}${folder[3]}.`,
+  }
+}
+
 // The bell is where people decide; show the command itself, never only a generic label.
 const commandText = (detail: string): string | null => {
   let value: unknown

@@ -4,6 +4,7 @@ import { approvalOutcome } from "../../approvals/outcome"
 import { claudeApprovalKind, claudeApprovalPayload } from "../../approvals/payload"
 import { buildChildEnv } from "../../kernel"
 import { redactStructured } from "../../kernel/redact"
+import { commandOutputTail, createCommandOutput } from "../command-output"
 import { spawnFolderProvider, turnFolders } from "../folder-access"
 import { loadTurnImages } from "../loadTurnImages"
 import { withLocalTurnTemp } from "../local-turn-temp"
@@ -22,6 +23,7 @@ const inputText = (input: StartTurnArgs["input"]): string =>
   input.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("\n")
 
 const errorText = (error: unknown): string => (error instanceof Error ? error.message : String(error))
+const shellTool = (name: string): boolean => name === "Bash" || name === "PowerShell"
 
 const partFromContent = (value: unknown): MessagePart | null => {
   const content = asRecord(value)
@@ -194,10 +196,25 @@ export const createClaudeAdapter = ({
     let completed = false
     let stopped = false
     const toolCalls = new Map<string, Extract<MessagePart, { type: "tool_call" }>>()
+    const outputs = new Map<
+      string,
+      { stream: ReturnType<typeof createCommandOutput>; length: number; suffix: string }
+    >()
     const streamedTools = new Map<number, { callId: string; json: string }>()
     const emitTool = (part: Extract<MessagePart, { type: "tool_call" }>): void => {
-      toolCalls.set(part.callId, part)
-      args.onEvent({ type: "item", part })
+      const previous = toolCalls.get(part.callId)
+      const next = {
+        ...previous,
+        ...part,
+        ...(shellTool(part.tool)
+          ? {
+              startedAt: previous?.startedAt ?? Date.now(),
+              outputMode: part.outputMode ?? previous?.outputMode ?? "on_completion",
+            }
+          : {}),
+      } satisfies Extract<MessagePart, { type: "tool_call" }>
+      toolCalls.set(part.callId, next)
+      args.onEvent({ type: "item", part: next })
     }
     let sawText = false
     const thinkingBlocks = new Map<number, string>()
@@ -266,6 +283,36 @@ export const createClaudeAdapter = ({
             args.onEvent({ type: "turn_started", externalTurnId: `claude-turn-${sessionId}` })
           }
         }
+      } else if (type === "tool_progress" || type === "progress") {
+        const data = asRecord(frame.data) ?? frame
+        const callId = stringValue(frame.parentToolUseID) ?? stringValue(frame.tool_use_id)
+        const call = callId ? toolCalls.get(callId) : null
+        if (call && shellTool(call.tool) && call.ok === null) {
+          const snapshot = stringValue(data.fullOutput)
+          const partial = stringValue(data.output)
+          if (snapshot !== null || partial !== null) {
+            const output = outputs.get(call.callId) ?? {
+              stream: createCommandOutput(kernel.redact),
+              length: 0,
+              suffix: "",
+            }
+            // Native progress carries cumulative fullOutput; output alone is a tail snapshot too.
+            const text = snapshot ?? partial ?? ""
+            if (
+              snapshot === null ||
+              text.length < output.length ||
+              text.slice(output.length - output.suffix.length, output.length) !== output.suffix
+            ) {
+              output.stream = createCommandOutput(kernel.redact)
+              output.length = 0
+            }
+            const delta = text.slice(output.length)
+            output.length = text.length
+            output.suffix = commandOutputTail(text)
+            outputs.set(call.callId, output)
+            emitTool({ ...call, outputMode: "streaming", outputTail: output.stream.append(delta) })
+          }
+        }
       } else if (type === "stream_event") {
         const event = asRecord(frame.event) ?? {}
         const delta = asRecord(event.delta)
@@ -332,9 +379,11 @@ export const createClaudeAdapter = ({
           if (call)
             emitTool({
               ...call,
+              ...(outputs.has(callId) ? { outputTail: outputs.get(callId)?.stream.flush() ?? "" } : {}),
               outputJson: typeof result.content === "string" ? result.content : JSON.stringify(result.content ?? null),
               ok: result.is_error !== true,
             })
+          outputs.delete(callId)
         }
       } else if (type === "approval_request") {
         const approvalId = stringValue(frame.approval_id) ?? stringValue(frame.id) ?? `claude-approval-${randomUUID()}`

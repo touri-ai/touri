@@ -4,10 +4,9 @@ import { approvalSummary } from "@touri/contracts/approval-summary"
 import { afterEach, expect, it, vi } from "vitest"
 import App from "../src/App"
 import { createMockApi } from "../src/api/mock"
-import { approvalNotificationSummary } from "../src/approvalNotice"
+import { approvalBarSummary, approvalNotificationSummary } from "../src/approvalNotice"
 import { ApprovalNotice } from "../src/components/ApprovalNotice"
 import { NotificationBell } from "../src/components/NotificationCenter"
-import { toolPresentation } from "../src/components/toolPresentation"
 
 afterEach(cleanup)
 
@@ -52,6 +51,29 @@ const message = (part: ApprovalPart): Message => ({
   updatedAt: 1,
 })
 
+it.each(["pt-BR", "en"] as const)("keeps full folder details in %s outside the compact bar", (locale) => {
+  const summary = approvalSummary(
+    {
+      ...folder,
+      detail: JSON.stringify({
+        path: "/workspace/reports/phase a/",
+        mode: "read-write",
+        nextTurn: true,
+        machine: "local",
+        writeApproval: true,
+        createPath: "/workspace/reports/phase a/images",
+      }),
+    },
+    locale,
+  )
+  const compact = approvalBarSummary(summary)
+  expect(compact.title).toContain("…/phase a")
+  expect(compact.body).toContain("…/phase a")
+  expect(`${compact.title} ${compact.body}`).not.toContain("/workspace")
+  expect(compact.body).not.toMatch(/próximo turno|next local turn|images/)
+  expect(summary.body).toContain("/workspace/reports/phase a/images")
+})
+
 it("does not trust technical prefixes in stored notification titles", () => {
   const summary = approvalNotificationSummary(
     { ...notification, title: "internal_tool: Terminal", body: 'Bash: {"command":"printf marker"}' },
@@ -63,7 +85,7 @@ it("does not trust technical prefixes in stored notification titles", () => {
 })
 
 it("uses the card's canonical summary for legacy and current folder notifications", () => {
-  const summary = toolPresentation(undefined, folder).summary
+  const summary = "Permitir Leitura e escrita em …/phase-a para este bot."
   const props = { notifications: [notification], messages: [message(folder)], onReview: vi.fn() }
   const view = render(<ApprovalNotice {...props} />)
   const notice = screen.getByRole("status")
@@ -88,18 +110,19 @@ it("dismisses only the reminder, keeps approval pending, and shows the next requ
   expect(screen.getByRole("status")).toBeInTheDocument()
 })
 
-it.each(["message", "notification"])("removes a resolved approval reminder via %s", (source) => {
-  render(
-    <ApprovalNotice
-      notifications={[
-        source === "notification" ? { ...notification, resolution: "allow", resolvedAt: 2 } : notification,
-      ]}
-      messages={source === "message" ? [message({ ...folder, decision: "approved", resolvedAt: 2 })] : []}
-      onReview={vi.fn()}
-    />,
-  )
-  expect(screen.queryByRole("status")).toBeNull()
-})
+it.each(["approved", "denied", "expired"] as const)(
+  "removes a resolved approval reminder via message: %s",
+  (decision) => {
+    render(
+      <ApprovalNotice
+        notifications={[notification]}
+        messages={[message({ ...folder, decision, resolvedAt: 2 })]}
+        onReview={vi.fn()}
+      />,
+    )
+    expect(screen.queryByRole("status")).toBeNull()
+  },
+)
 
 it.each([true, false])("keeps technical details collapsed in the notification center (card loaded: %s)", (loaded) => {
   const open = vi.fn()
@@ -143,3 +166,41 @@ it("does not duplicate headless approval echoes as generic notices", async () =>
   fireEvent.click(panel)
   expect(panel).toHaveAttribute("aria-expanded", "true")
 })
+
+it.each(["allow", "deny", "expired"] as const)(
+  "clears a write-access notice after %s without dismissing it",
+  async (resolution) => {
+    const api = createMockApi()
+    render(<App kernel={{ services: { api } }} />)
+    await screen.findByRole("textbox", { name: "Mensagem para mark" })
+    const part: ApprovalPart = {
+      ...folder,
+      detail: JSON.stringify({
+        path: "/workspace/reports/phase a",
+        createPath: "/workspace/reports/phase a/images",
+        mode: "read-write",
+        writeApproval: true,
+        nextTurn: true,
+        machine: "local",
+      }),
+    }
+    let item = notification
+    act(() => {
+      item = api.notify({ ...notification, botId: "bot-mark", threadId: "thread-mark-main", ...approvalSummary(part) })
+      api.emit({
+        type: "notify",
+        level: "warning",
+        title: `Café Ideias: ${item.title}`,
+        body: item.body,
+        threadId: item.threadId,
+      })
+    })
+    expect(document.querySelector(".notice-bar:not(.approval-notice)")).toBeNull()
+    const notice = document.querySelector(".approval-notice")
+    expect(notice).toHaveTextContent("Permitir escrita em …/phase a?")
+    expect(notice).not.toHaveTextContent("/workspace")
+    expect(notice).not.toHaveTextContent("será criada automaticamente")
+    act(() => api.emit({ type: "notification.resolved", notification: { ...item, resolution, resolvedAt: 2 } }))
+    expect(document.querySelector(".notice-bar")).toBeNull()
+  },
+)

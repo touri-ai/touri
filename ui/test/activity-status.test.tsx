@@ -4,7 +4,7 @@ import { afterEach, expect, it } from "vitest"
 import { createMockApi } from "../src/api/mock"
 import { ActivityMark } from "../src/components/ActivityMark"
 import { AvatarRuntimeProvider } from "../src/components/AvatarRuntime"
-import { activityLabelFor } from "../src/components/activityStatus"
+import { activityLabelFor, reasoningMatchesLocale } from "../src/components/activityStatus"
 import { VirtualMessageList } from "../src/components/ChatPanel"
 import { mascotLabelFor } from "../src/components/mascotState"
 
@@ -44,6 +44,47 @@ const message: Message = {
 
 afterEach(cleanup)
 
+it.each([
+  ["O usuário está pedindo uma imagem.", true, false],
+  ["Vou conferir os arquivos do projeto.", true, false],
+  ["Let's see how best to set this up.", false, true],
+  ["The user is asking for an image.", false, true],
+  ["Verificando o lock do payout no README.md", true, false],
+  ["Checking the README.md for API configuration", false, true],
+  ["API README.md", false, false],
+  ["o the", false, false],
+  ["", false, false],
+])("recognizes the language of a reasoning preview: %s", (text, portuguese, english) => {
+  expect(reasoningMatchesLocale(text, "pt-BR")).toBe(portuguese)
+  expect(reasoningMatchesLocale(text, "en")).toBe(english)
+})
+
+it("uses the activity mark's locale for reasoning previews", () => {
+  const text = "The user is asking for an image."
+  render(<ActivityMark state="thinking" parts={[{ type: "reasoning", text }]} locale="en" />)
+  expect(screen.getByRole("status")).toHaveTextContent(`Thinking: ${text}`)
+})
+
+it.each(["The user is asking for an image.", "Let's see how best to set this up."])(
+  "keeps foreign reasoning out of the activity line: %s",
+  (text) => {
+    const parts: MessagePart[] = [{ type: "reasoning", text }]
+    expect(activityLabelFor("thinking", parts)).toBe("Pensando")
+    expect(activityLabelFor("working-tool", [read, ...parts])).toBe("Lendo README.md")
+    const view = render(
+      <VirtualMessageList
+        messages={[{ ...message, parts }]}
+        onSwitchBranch={() => undefined}
+        onRetry={async () => undefined}
+      />,
+    )
+    expect(screen.getByRole("status")).not.toHaveTextContent(text)
+    fireEvent.click(screen.getByRole("button", { name: "Pensando" }))
+    expect(screen.getByText(text)).toBeVisible()
+    view.unmount()
+  },
+)
+
 it("updates hidden Claude thinking progress without an empty reasoning disclosure", () => {
   const props = { onSwitchBranch: () => undefined, onRetry: async () => undefined }
   const live: Message = { ...message, parts: [{ type: "reasoning", text: "", estimatedTokens: 120 }] }
@@ -74,7 +115,7 @@ it("shows the latest reasoning sentence as deltas arrive, ahead of the generic a
   expect(
     activityLabelFor("thinking", [{ type: "reasoning", text: "Conferi a fila. Verificando\no lock do payout…" }]),
   ).toBe("Pensando: Verificando o lock do payout…")
-  expect(activityLabelFor("working-tool", [read, ...parts], "en")).toBe("Thinking: Verificando o lock do payout")
+  expect(activityLabelFor("working-tool", [read, ...parts], "en")).toBe("Reading README.md")
   expect(activityLabelFor("working-tool", [...parts, read])).toBe("Lendo README.md")
   expect(activityLabelFor("thinking", [...parts, { ...read, ok: true }])).toBe("Pensando")
   expect(activityLabelFor("thinking", [{ type: "reasoning", text: " \n " }])).toBe("Pensando")

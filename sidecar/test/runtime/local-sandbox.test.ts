@@ -166,7 +166,9 @@ for (const provider of ["codex", "claude"] as const) {
         expect(session).toMatchObject({
           params: {
             config: {
-              sandbox_workspace_write: { writable_roots: expect.arrayContaining([temporary]) },
+              ...(process.platform === "darwin"
+                ? {}
+                : { sandbox_workspace_write: { writable_roots: expect.arrayContaining([temporary]) } }),
               shell_environment_policy: { set: { TMPDIR: temporary, TMP: temporary, TEMP: temporary } },
             },
           },
@@ -315,7 +317,7 @@ test("Codex makes approved read-write folders and private temp writable without 
     { path: reference, access: "read-only" },
   ]
   await withLocalTurnTemp(f.kernel, f.args, async (args) => {
-    const config = codexAccessParams(args).config as { sandbox_workspace_write: { writable_roots: string[] } }
+    const config = codexAccessParams(args, "linux").config as { sandbox_workspace_write: { writable_roots: string[] } }
     expect(config.sandbox_workspace_write.writable_roots).toEqual(
       expect.arrayContaining([f.workspace, writable, args.env.TMPDIR]),
     )
@@ -323,5 +325,52 @@ test("Codex makes approved read-write folders and private temp writable without 
     const profile = localFolderProfile(f.kernel, args, args.env, f.workspace)
     expect(profile).toContain(`(subpath ${JSON.stringify(writable)})`)
     expect(profile).toContain(`(deny file-write* (subpath ${JSON.stringify(reference)}))`)
+  })
+})
+
+test("on macOS Codex relies on touri's Seatbelt profile instead of nesting its own sandbox", async () => {
+  const f = fixture()
+  const writable = join(f.root, "approved")
+  mkdirSync(writable)
+  f.args.bot.folders = [{ path: writable, access: "read-write" }]
+  await withLocalTurnTemp(f.kernel, f.args, async (args) => {
+    expect(codexAccessParams(args, "darwin")).toMatchObject({
+      sandbox: "danger-full-access",
+      approvalPolicy: args.bot.approvals,
+    })
+    expect(codexAccessParams({ ...args, bot: { ...args.bot, access: "read-only" } }, "darwin")).toMatchObject({
+      sandbox: "danger-full-access",
+      approvalPolicy: "never",
+    })
+    expect(codexAccessParams(args, "linux")).toMatchObject({ sandbox: "workspace-write" })
+    // The outer profile still confines writes for read-only bots to provider bookkeeping.
+    const readOnly = localFolderProfile(
+      f.kernel,
+      { ...args, bot: { ...args.bot, access: "read-only" } },
+      args.env,
+      f.workspace,
+    )
+    expect(readOnly).not.toContain(`(subpath ${JSON.stringify(writable)})`)
+  })
+})
+
+test.skipIf(process.platform !== "darwin")("macOS cannot apply a nested sandbox under touri's profile", async () => {
+  const f = fixture()
+  await withLocalTurnTemp(f.kernel, f.args, async (args) => {
+    const profile = localFolderProfile(f.kernel, args, args.env, f.workspace)
+    const nested = Bun.spawnSync({
+      cmd: [
+        "/usr/bin/sandbox-exec",
+        "-p",
+        profile,
+        "/usr/bin/sandbox-exec",
+        "-p",
+        "(version 1)(allow default)",
+        "/usr/bin/true",
+      ],
+      env: args.env,
+    })
+    // Documents why Codex runs without its own sandbox inside the outer profile.
+    expect(nested.exitCode).not.toBe(0)
   })
 })
