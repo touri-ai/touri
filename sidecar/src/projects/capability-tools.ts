@@ -109,8 +109,8 @@ export const createCapabilityTools = (
         if (!result.success) return result
         const automaticContinuation = kernel.services.use("runtime.continueAfterApproval")?.(ctx) === true
         const message = automaticContinuation
-          ? "Acesso ativado neste bot. Encerre este turno; o touri retomará a tarefa automaticamente com a configuração aprovada."
-          : "Acesso ativado neste bot. A configuração será aplicada no próximo turno."
+          ? "Acesso ativado neste bot. Encerre sua resposta agora, sem falar em turnos nem em retomada: o touri retoma a tarefa sozinho com a configuração aprovada e avisa o usuário."
+          : "Acesso ativado neste bot. Vale a partir da próxima mensagem."
         return {
           success: true,
           content: [{ type: "text", text: message }],
