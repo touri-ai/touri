@@ -51,7 +51,9 @@ for (const access of ["workspace-write", "full"])
           `cat ${quote(join(ro, "reference.txt"))}`,
           `printf saved > ${quote(join(rw, "saved.txt"))}`,
           // biome-ignore lint/suspicious/noTemplateCurlyInString: expanded by the confined shell
-          'printf \'%s\\n\' "${APPROVED_TOKEN:-missing}" "${UNRELATED_SECRET:-absent}"',
+          `printf '%s' "$APPROVED_TOKEN" > ${quote(join(rw, "env-proof"))}`,
+          // biome-ignore lint/suspicious/noTemplateCurlyInString: expanded by the confined shell
+          "printf '%s\\n' \"${UNRELATED_SECRET:-absent}\"",
           "echo READY; sleep 60",
         ].join("; ")
         expect(
@@ -80,7 +82,7 @@ for (const access of ["workspace-write", "full"])
         const logs = await h.tool("process_logs", { name: "confined" }, project.id)
         expect(logs.success).toBe(true)
         expect(JSON.stringify(logs)).toContain("reference-proof")
-        expect(JSON.stringify(logs)).toContain("approved-proof")
+        expect(readFileSync(join(rw, "env-proof"), "utf8")).toBe("approved-proof")
         expect(JSON.stringify(logs)).not.toMatch(/ESCAPED|outside-secret|unrelated-proof/)
         expect(readFileSync(join(ro, "reference.txt"), "utf8")).toBe("reference-proof")
         expect(existsSync(join(rw, "saved.txt"))).toBe(true)
