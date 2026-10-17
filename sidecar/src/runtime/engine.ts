@@ -78,6 +78,7 @@ type RunState = {
   text: string
   textItemIds: Set<string>
   parts: Array<MessagePart>
+  dirtyParts: Set<number>
   replyMessageId: Id | null
   turnStarted: boolean
   externalSessionId: string | null
@@ -304,6 +305,8 @@ export const createRuntimeEngine = ({
   }
 
   const finishLiveRun = (run: Run, finish: () => void): void => {
+    // Accepted streaming work survives even if the final transaction rolls back.
+    kernel.services.use("store.api")?.flushWrites?.()
     const write = (): void => {
       if (isLive(run)) finish()
     }
@@ -319,6 +322,7 @@ export const createRuntimeEngine = ({
       text: "",
       textItemIds: new Set(),
       parts: [],
+      dirtyParts: new Set(),
       replyMessageId: null,
       turnStarted: false,
       externalSessionId: null,
@@ -366,9 +370,12 @@ export const createRuntimeEngine = ({
     const result = store.insertMessage({ message })
     if (!result.success) return
     state.replyMessageId = result.message.id
+    for (const index of state.dirtyParts) {
+      const part = state.parts[index]
+      if (part && !("callId" in part)) state.dirtyParts.delete(index)
+    }
     run.replyMessageId = result.message.id
     persistence.saveRun(run)
-    kernel.publish({ type: "message.created", message: result.message })
   }
 
   const publishMessage = ({
@@ -385,16 +392,43 @@ export const createRuntimeEngine = ({
     if (state.outputTimer) clearTimeout(state.outputTimer)
     state.outputTimer = null
     state.lastOutputPublishedAt = Date.now()
-    state.parts = state.cancelRequested
-      ? tools.finish(run, state.parts, "cancelled_by_user")
-      : state.parts.map((part) => ("callId" in part ? tools.record(run, part) : part))
+    if (state.cancelRequested) {
+      state.parts = tools.finish(run, state.parts, "cancelled_by_user")
+      for (let index = 0; index < state.parts.length; index++) state.dirtyParts.add(index)
+    }
+    if (status === "streaming" && store.appendParts) {
+      const parts = [...state.dirtyParts]
+        .sort((a, b) => a - b)
+        .flatMap((partIndex) => {
+          const part = state.parts[partIndex]
+          if (!part) return []
+          return [{ partIndex, part: "callId" in part ? tools.record(run, part, false, false) : part }]
+        })
+      if (!state.replyMessageId || !parts.length) return
+      store.appendParts({
+        threadId: run.threadId,
+        messageId: state.replyMessageId,
+        parts,
+        ...(state.generation === null ? {} : { generation: state.generation }),
+      })
+      // The store can replace completed output with a durable attachment reference.
+      for (const patch of parts) state.parts[patch.partIndex] = patch.part
+      // Consent must be durable and visible before the approved action can proceed.
+      if (parts.some(({ part }) => part.type === "approval")) store.flushWrites?.()
+      state.dirtyParts.clear()
+      return
+    }
+    state.parts = state.parts.map((part) => ("callId" in part ? tools.record(run, part) : part))
     if (!state.replyMessageId) return
     const updated = store.updateMessage({
       threadId: run.threadId,
       messageId: state.replyMessageId,
       patch: { status, parts: state.parts, text: state.text, runId: run.id },
     })
-    if (updated.success) kernel.publish({ type: "message.updated", message: updated.message })
+    if (updated.success) {
+      state.parts = structuredClone(updated.message.parts)
+      state.dirtyParts.clear()
+    }
   }
 
   const notice = ({
@@ -423,7 +457,6 @@ export const createRuntimeEngine = ({
         source: "local",
       },
     })
-    if (result.success) kernel.publish({ type: "message.created", message: result.message })
     return result.success ? result.message.id : null
   }
 
@@ -540,6 +573,7 @@ export const createRuntimeEngine = ({
             ...(state.generation === null ? {} : { generation: state.generation }),
           })
       } else {
+        state.dirtyParts.add(state.parts.length - 1)
         if (state.replyMessageId) publishMessage({ store, state, run, status: "streaming" })
         else {
           const request = store
@@ -572,6 +606,7 @@ export const createRuntimeEngine = ({
       const previous = state.parts[index]
       if (previous?.type === "tool_call" && part.type === "tool_call") {
         state.parts[index] = {
+          ...previous,
           ...part,
           inputJson: part.inputJson === "{}" ? previous.inputJson : part.inputJson,
           outputJson: part.outputJson ?? previous.outputJson,
@@ -580,6 +615,7 @@ export const createRuntimeEngine = ({
         }
       } else if (previous?.type === "command" && part.type === "command") {
         state.parts[index] = {
+          ...previous,
           ...part,
           command: part.command || previous.command,
           cwd: part.cwd || previous.cwd,
@@ -587,17 +623,22 @@ export const createRuntimeEngine = ({
           exitCode: part.exitCode ?? previous.exitCode,
           ...(previous.startedAt !== undefined ? { startedAt: previous.startedAt } : {}),
         }
+      } else if (previous?.type === "file_change" && part.type === "file_change") {
+        state.parts[index] = { ...previous, ...part, diff: part.diff ?? previous.diff }
       } else if (index >= 0) state.parts[index] = part
       else {
         state.parts.push(part)
         if (part.type === "tool_call") state.usage.toolCalls += 1
       }
-      const thread = store.getThread({ threadId: run.threadId })
-      const request =
-        run.requestMessageId && thread
-          ? store.activePath({ threadId: run.threadId }).find((message) => message.id === run.requestMessageId)
-          : null
-      if (request) ensureReply({ run, state, store, parentId: request.id })
+      state.dirtyParts.add(index >= 0 ? index : state.parts.length - 1)
+      if (!state.replyMessageId) {
+        const thread = store.getThread({ threadId: run.threadId })
+        const request =
+          run.requestMessageId && thread
+            ? store.activePath({ threadId: run.threadId }).find((message) => message.id === run.requestMessageId)
+            : null
+        if (request) ensureReply({ run, state, store, parentId: request.id })
+      }
       const liveOutput =
         previous &&
         ((part.type === "command" && part.exitCode === null) ||
@@ -622,6 +663,7 @@ export const createRuntimeEngine = ({
           if (part?.type === "approval") {
             part.decision = "expired"
             part.resolvedAt = Date.now()
+            state.dirtyParts.add(state.parts.indexOf(part))
           }
           notices.resolve({ requestId: approvalId, resolution: "expired" })
         }
@@ -652,6 +694,7 @@ export const createRuntimeEngine = ({
       }
       const approvalId = kernel.newId()
       state.parts.push({ ...event.part, approvalId, botId: run.botId, createdAt: event.part.createdAt ?? Date.now() })
+      state.dirtyParts.add(state.parts.length - 1)
       notices.approval({
         botId: run.botId,
         threadId: run.threadId,
@@ -660,12 +703,14 @@ export const createRuntimeEngine = ({
         detail: event.part.detail,
         scope: event.part.scope,
       })
-      const thread = store.getThread({ threadId: run.threadId })
-      const request =
-        run.requestMessageId && thread
-          ? store.activePath({ threadId: run.threadId }).find((message) => message.id === run.requestMessageId)
-          : null
-      if (request) ensureReply({ run, state, store, parentId: request.id })
+      if (!state.replyMessageId) {
+        const thread = store.getThread({ threadId: run.threadId })
+        const request =
+          run.requestMessageId && thread
+            ? store.activePath({ threadId: run.threadId }).find((message) => message.id === run.requestMessageId)
+            : null
+        if (request) ensureReply({ run, state, store, parentId: request.id })
+      }
       pendingApprovals.set(approvalId, {
         runId: run.id,
         providerApprovalId: event.approvalId,
@@ -1365,7 +1410,6 @@ export const createRuntimeEngine = ({
       },
     })
     if (!marker.success) return false
-    kernel.publish({ type: "message.created", message: marker.message })
     const next = enqueue({
       threadId: thread.id,
       requestMessageId: marker.message.id,
@@ -1674,6 +1718,7 @@ export const createRuntimeEngine = ({
     if (approval) {
       approval.decision = decision
       approval.resolvedAt = Date.now()
+      state.dirtyParts.add(state.parts.indexOf(approval))
     }
     const run = persistence.getRun(pending.runId)
     const store = run ? kernel.services.use("store.api") : null
@@ -1694,6 +1739,7 @@ export const createRuntimeEngine = ({
       )
       if (existing >= 0) state.parts[existing] = part
       else state.parts.push(part)
+      state.dirtyParts.add(existing >= 0 ? existing : state.parts.length - 1)
       const thread = store.getThread({ threadId: ctx.threadId })
       if (!thread) return false
       ensureReply({ run, state, store, parentId: run.requestMessageId ?? thread.activeLeafId ?? run.id })

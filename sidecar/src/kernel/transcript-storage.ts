@@ -2,6 +2,7 @@ import type { Database } from "bun:sqlite"
 import type { MessagePart, UiEvent } from "@touri/contracts"
 
 type Delta = Extract<UiEvent, { type: "message.delta" }>
+type StreamEvent = Delta | Extract<UiEvent, { type: "message.parts" }>
 type Projection = {
   id: string
   thread_id: string
@@ -19,16 +20,24 @@ export const materializeTranscript = (database: Database): void => {
   database.transaction(() => {
     const rows = database
       .query(
-        // CROSS JOIN keeps the small dirty-message queue as the outer loop.
-        // Scanning all historical deltas on each message read still grows with history.
-        `SELECT e.seq AS delta_seq, e.at, e.event_json, m.id, m.thread_id
+        // Drive both indexed stream lookups from the small dirty-message queue.
+        `SELECT e.id AS entry_id, e.seq AS delta_seq, e.at, e.event_json, m.id, m.thread_id
          FROM transcript_pending_deltas p
          CROSS JOIN messages m
          CROSS JOIN transcript_entries e INDEXED BY transcript_delta_message
          WHERE m.thread_id = p.thread_id AND m.id = p.message_id
            AND e.thread_id = p.thread_id AND json_extract(e.event_json, '$.messageId') = p.message_id
            AND json_extract(e.event_json, '$.type') = 'message.delta' AND e.seq > m.updated_seq
-         ORDER BY e.id`,
+         UNION ALL
+         SELECT e.id AS entry_id, e.seq AS delta_seq, e.at, e.event_json, m.id, m.thread_id
+         FROM transcript_pending_deltas p
+         CROSS JOIN messages m
+         CROSS JOIN transcript_part_entries part INDEXED BY transcript_part_message
+         CROSS JOIN transcript_entries e
+         WHERE m.thread_id = p.thread_id AND m.id = p.message_id
+           AND part.thread_id = p.thread_id AND part.message_id = p.message_id
+           AND e.id = part.entry_id AND e.seq > m.updated_seq
+         ORDER BY entry_id`,
       )
       .all() as Array<{ id: string; thread_id: string; delta_seq: number; at: number; event_json: string }>
     const projections = new Map<string, Projection & { parts: MessagePart[] }>()
@@ -41,14 +50,26 @@ export const materializeTranscript = (database: Database): void => {
           .get(row.thread_id, row.id) as Projection
         projection = { ...snapshot, parts: JSON.parse(snapshot.parts_json) as MessagePart[] }
       }
-      const event = JSON.parse(row.event_json) as Delta
-      const part = projection.parts[event.partIndex]
-      const text = part?.type === "text" || part?.type === "reasoning" ? part.text : ""
-      if (event.offset === undefined || event.offset > text.length) throw new Error("Transcript delta has a gap")
-      const suffix = event.delta.slice(Math.max(0, text.length - event.offset))
-      const partType = event.partType ?? (part?.type === "reasoning" ? "reasoning" : "text")
-      projection.parts[event.partIndex] = { type: partType, text: text + suffix }
-      if (partType === "text") projection.text += suffix
+      const event = JSON.parse(row.event_json) as StreamEvent
+      if (event.type === "message.parts") {
+        for (const patch of event.parts) {
+          if (patch.partIndex > projection.parts.length) throw new Error("Transcript part has a gap")
+          projection.parts[patch.partIndex] = patch.part
+        }
+        projection.text = projection.parts.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("")
+      } else {
+        const part = projection.parts[event.partIndex]
+        const text = part?.type === "text" || part?.type === "reasoning" ? part.text : ""
+        if (event.offset === undefined || event.offset > text.length) throw new Error("Transcript delta has a gap")
+        const suffix = event.delta.slice(Math.max(0, text.length - event.offset))
+        const partType = event.partType ?? (part?.type === "reasoning" ? "reasoning" : "text")
+        projection.parts[event.partIndex] = {
+          ...(part?.type === partType ? part : {}),
+          type: partType,
+          text: text + suffix,
+        }
+        if (partType === "text") projection.text += suffix
+      }
       projection.updated_seq = row.delta_seq
       projection.generation = event.generation ?? projection.generation
       projection.updated_at = row.at

@@ -36,7 +36,7 @@ const summarizeParts = (parts: MessagePart[]): MessagePart[] => {
       return []
     }
     if (part.type !== "tool_call" && part.type !== "command" && part.type !== "file_change") return [part]
-    const { outputAttachmentId: _id, outputBytes: _bytes, ...summary } = part
+    const { outputAttachmentId: _id, outputBytes: _bytes, outputPreview: _preview, ...summary } = part
     if (
       summary.type === "tool_call" &&
       (part.outputAttachmentId || summary.outputJson !== null || summary.inputJson !== "{}" || summary.outputTail)
@@ -84,7 +84,7 @@ export const compactMessageBatch = ({
 }): { cursor: number; changed: boolean } =>
   database.transaction(() => {
     const rows = database
-      .query(`SELECT m.rowid AS row_id, m.thread_id, m.id, m.updated_at,
+      .query(`SELECT m.rowid AS row_id, m.thread_id, m.id, m.run_id, m.updated_at,
       m.status, EXISTS(SELECT 1 FROM runs r WHERE r.thread_id = m.thread_id
         AND r.status IN ('queued','starting','running')) AS active
     FROM messages m WHERE m.rowid > ? AND m.rowid <= ? ORDER BY m.rowid LIMIT ?`)
@@ -92,6 +92,7 @@ export const compactMessageBatch = ({
       row_id: number
       thread_id: string
       id: string
+      run_id: string | null
       updated_at: number
       status: string
       active: number
@@ -111,13 +112,35 @@ export const compactMessageBatch = ({
         .query("SELECT parts_json FROM messages WHERE thread_id = ? AND id = ?")
         .get(row.thread_id, row.id) as { parts_json: string }
       const parts = JSON.parse(body.parts_json) as MessagePart[]
-      const next = days > 0 && row.updated_at < now - days * DAY ? summarizeParts(parts) : parts
+      const expired = days > 0 && row.updated_at < now - days * DAY
+      const next = expired ? summarizeParts(parts) : parts
       const json = JSON.stringify(externalizeMessageParts({ database, appData, parts: next }))
       if (json !== body.parts_json) {
         database
           .query("UPDATE messages SET parts_json = ? WHERE thread_id = ? AND id = ?")
           .run(json, row.thread_id, row.id)
         changed = true
+      }
+      // Recovery state follows the same retention policy after its run settles.
+      // Retained message/journal references still protect the shared body file.
+      if (expired && row.run_id) {
+        const terminal = database
+          .query("SELECT 1 FROM runs WHERE id = ? AND status IN ('succeeded','failed','canceled','interrupted')")
+          .get(row.run_id)
+        if (terminal)
+          for (const part of parts) {
+            if (!("callId" in part)) continue
+            const tool = database
+              .query("SELECT part_json FROM tool_resolutions WHERE run_id = ? AND call_id = ?")
+              .get(row.run_id, part.callId) as { part_json: string } | null
+            if (!tool) continue
+            const summary = JSON.stringify(summarizeParts([JSON.parse(tool.part_json) as MessagePart])[0])
+            if (summary === tool.part_json) continue
+            database
+              .query("UPDATE tool_resolutions SET part_json = ? WHERE run_id = ? AND call_id = ?")
+              .run(summary, row.run_id, part.callId)
+            changed = true
+          }
       }
     }
     database.exec("UPDATE transcript_maintenance SET projection_write = 0 WHERE id = 1")

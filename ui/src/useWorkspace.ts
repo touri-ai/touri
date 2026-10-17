@@ -259,7 +259,12 @@ export const applyDelta = (
     // An offset makes snapshot/delta overlap and replay safe without deleting legitimate repeated words.
     const suffix = offset === undefined ? delta : delta.slice(Math.max(0, previous.length - offset))
     const reasoning = revision?.partType === "reasoning" || current?.type === "reasoning"
-    if (reasoning) parts[partIndex] = { type: "reasoning", text: previous + suffix }
+    if (reasoning)
+      parts[partIndex] = {
+        ...(current?.type === "reasoning" ? current : {}),
+        type: "reasoning",
+        text: previous + suffix,
+      }
     else parts[partIndex] = { type: "text", text: previous + suffix }
     return {
       ...message,
@@ -270,6 +275,53 @@ export const applyDelta = (
       ...(revision?.generation !== undefined ? { generation: revision.generation } : {}),
     }
   })
+
+const hasPartGap = (length: number, patches: Extract<UiEvent, { type: "message.parts" }>["parts"]): boolean => {
+  let nextLength = length
+  for (const { partIndex } of [...patches].sort((a, b) => a.partIndex - b.partIndex)) {
+    if (!Number.isInteger(partIndex) || partIndex < 0 || partIndex > nextLength) return true
+    nextLength = Math.max(nextLength, partIndex + 1)
+  }
+  return false
+}
+
+export const applyParts = (
+  messages: Array<Message>,
+  event: Extract<UiEvent, { type: "message.parts" }>,
+): Array<Message> =>
+  messages.map((message) => {
+    if (message.id !== event.messageId || message.threadId !== event.threadId || message.status !== "streaming")
+      return message
+    if (event.updatedSeq !== undefined && event.updatedSeq <= (message.updatedSeq ?? 0)) return message
+    if (event.generation !== undefined && event.generation < (message.generation ?? 0)) return message
+    if (hasPartGap(message.parts.length, event.parts)) return message
+    const parts = [...message.parts]
+    for (const { partIndex, part } of [...event.parts].sort((a, b) => a.partIndex - b.partIndex)) {
+      const previous = parts[partIndex]
+      parts[partIndex] =
+        part.type === "approval" &&
+        part.decision === "pending" &&
+        previous?.type === "approval" &&
+        previous.approvalId === part.approvalId &&
+        previous.decision !== "pending"
+          ? previous
+          : structuredClone(part)
+    }
+    return {
+      ...message,
+      parts,
+      text: parts.flatMap((part) => (part.type === "text" ? [part.text] : [])).join(""),
+      updatedAt: event.updatedAt ?? Date.now(),
+      ...(event.updatedSeq !== undefined ? { updatedSeq: event.updatedSeq } : {}),
+      ...(event.generation !== undefined ? { generation: event.generation } : {}),
+    }
+  })
+
+type MessageStreamEvent = Extract<UiEvent, { type: "message.delta" | "message.parts" }>
+const applyStreamEvent = (messages: Array<Message>, event: MessageStreamEvent): Array<Message> =>
+  event.type === "message.parts"
+    ? applyParts(messages, event)
+    : applyDelta(messages, event.messageId, event.delta, event.partIndex, event.offset, event)
 
 const MAX_NOTIFICATIONS = 200
 
@@ -349,7 +401,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
       {
         attempt: number
         promise: Promise<void>
-        deltas: Array<Extract<UiEvent, { type: "message.delta" }>>
+        deltas: Array<MessageStreamEvent>
       }
     >(),
   )
@@ -398,7 +450,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
       const pending = threadLoads.current.get(threadId)
       if (pending?.attempt === attempt) return pending.promise
       if (!force && loadedThreads.current.get(threadId) === attempt) return Promise.resolve()
-      const deltas: Array<Extract<UiEvent, { type: "message.delta" }>> = []
+      const deltas: Array<MessageStreamEvent> = []
       const promise = Promise.all([
         api.request("GET /threads/:id/messages", { all: true }, { id: threadId }),
         api.request("GET /threads/:id/runs", { all: true }, { id: threadId }),
@@ -408,10 +460,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
           loadedThreads.current.set(threadId, attempt)
           setData((current) => ({
             ...current,
-            messages: deltas.reduce(
-              (rows, event) => applyDelta(rows, event.messageId, event.delta, event.partIndex, event.offset, event),
-              messages.messages.reduce(updateMessage, current.messages),
-            ),
+            messages: deltas.reduce(applyStreamEvent, messages.messages).reduce(updateMessage, current.messages),
             runs: mergeRunRows(current.runs, runs.runs),
           }))
         })
@@ -564,12 +613,17 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
         privateThreads.current.has(event.message.threadId)
       )
         return
-      if (event.type === "message.delta" && privateThreads.current.has(event.threadId)) return
+      if (
+        (event.type === "message.delta" || event.type === "message.parts") &&
+        privateThreads.current.has(event.threadId)
+      )
+        return
       if (event.type === "transcript.resync") {
         resync()
         return
       }
-      if (event.type === "message.delta") threadLoads.current.get(event.threadId)?.deltas.push(event)
+      if (event.type === "message.delta" || event.type === "message.parts")
+        threadLoads.current.get(event.threadId)?.deltas.push(event)
       if (event.type === "run.updated") liveRuns.current.set(event.run.id, ++runRevision.current)
       setData((current) => {
         if (event.type === "machine.updated")
@@ -612,11 +666,15 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
                   )
                 : current.threads,
           }
-        if (event.type === "message.delta") {
+        if (event.type === "message.delta" || event.type === "message.parts") {
           const message = current.messages.find((row) => row.id === event.messageId && row.threadId === event.threadId)
-          const part = message?.parts[event.partIndex]
+          const part = event.type === "message.delta" ? message?.parts[event.partIndex] : undefined
           const length = part?.type === "text" || part?.type === "reasoning" ? part.text.length : 0
-          if (!message || (event.offset !== undefined && event.offset > length)) {
+          const gap =
+            event.type === "message.delta"
+              ? event.offset !== undefined && event.offset > length
+              : hasPartGap(message?.parts.length ?? 0, event.parts)
+          if (!message || gap) {
             // Unopened threads have no snapshot to repair; selection fetches their current history.
             if (event.threadId === current.selectedThreadId && !threadLoads.current.has(event.threadId))
               queueMicrotask(() => {
@@ -626,7 +684,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
           }
           return {
             ...current,
-            messages: applyDelta(current.messages, event.messageId, event.delta, event.partIndex, event.offset, event),
+            messages: applyStreamEvent(current.messages, event),
           }
         }
         if (event.type === "run.updated") return { ...current, runs: mergeRunRows(current.runs, [event.run]) }

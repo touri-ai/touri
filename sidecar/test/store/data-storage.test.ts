@@ -14,7 +14,14 @@ import {
 import { openDatabase } from "../../src/kernel/db"
 import { createEventBus } from "../../src/kernel/event-bus"
 import transcriptSql from "../../src/kernel/migrations/0007.sql" with { type: "text" }
-import { boundedProcessLog, OUTPUT_BLOB_THRESHOLD } from "../../src/kernel/output-blobs"
+import {
+  boundedProcessLog,
+  externalizeMessageParts,
+  OUTPUT_BLOB_PREVIEW_BYTES,
+  OUTPUT_BLOB_READ_BYTES,
+  OUTPUT_BLOB_THRESHOLD,
+  OUTPUT_INLINE_BUDGET_BYTES,
+} from "../../src/kernel/output-blobs"
 import { compactTranscript } from "../../src/kernel/transcript-storage"
 import { createToolResolutions } from "../../src/runtime/tool-resolutions"
 import { init as initStore } from "../../src/store"
@@ -154,12 +161,14 @@ test("blob cutoff measures UTF-8 bytes; screenshots below cutoff are offloaded; 
   const f = await fixture()
   let reopened: Database | undefined
   try {
+    expect(OUTPUT_BLOB_THRESHOLD).toBe(8 * 1024)
     insert(f, "boundary", [tool("x".repeat(OUTPUT_BLOB_THRESHOLD))])
     expect((f.store.activePath({ threadId: "t" })[0]?.parts[0] as ToolCallPart)?.outputAttachmentId).toBeUndefined()
     const output = "é".repeat(40_000)
     for (const id of ["one", "two"]) insert(f, id, [tool(output)])
     const part = f.store.activePath({ threadId: "t" })[0]?.parts[0] as ToolCallPart
     expect(part.outputJson).toBeNull()
+    expect(part.outputPreview).toBe("é".repeat(OUTPUT_BLOB_PREVIEW_BYTES / 2))
     expect(part.outputBytes).toBe(80_000)
     const blob = f.database.query("SELECT path FROM attachments WHERE id = ?").get(part.outputAttachmentId ?? "") as {
       path: string
@@ -189,157 +198,160 @@ test("blob cutoff measures UTF-8 bytes; screenshots below cutoff are offloaded; 
   }
 })
 
-test("many small command and tool outputs share a bounded inline budget without losing full results", async () => {
+test("live output stays inline and completion writes one content-addressed body with a bounded preview", async () => {
   const f = await fixture()
   try {
-    const outputs = Array.from({ length: 50 }, (_, index) => `${index}: ${"é".repeat(2000)}`)
-    const parts: MessagePart[] = outputs.map((output, index) =>
-      index % 2
-        ? { ...tool(output), callId: `tool-${index}` }
-        : {
-            type: "command",
-            callId: `command-${index}`,
-            command: "echo teste",
-            cwd: "/tmp",
-            exitCode: 0,
-            outputTail: output,
-          },
-    )
-    insert(f, "many", parts)
-    const message = f.store.activePath({ threadId: "t" })[0]
-    let inlineBytes = 0
-    let externalized = 0
-    for (const [index, part] of (message?.parts ?? []).entries()) {
-      if (part.type !== "tool_call" && part.type !== "command") throw new Error("Unexpected part")
-      const expectedOutput = outputs[index]
-      if (expectedOutput === undefined) throw new Error("Output missing")
-      const inline = part.type === "tool_call" ? part.outputJson : part.outputTail
-      inlineBytes += Buffer.byteLength(inline ?? "")
-      if (part.outputAttachmentId) {
-        externalized++
-        const blob = f.database.query("SELECT path FROM attachments WHERE id = ?").get(part.outputAttachmentId) as {
-          path: string
-        }
-        expect(readFileSync(blob.path, "utf8")).toBe(expectedOutput)
-      } else expect(inline).toBe(expectedOutput)
-    }
-    expect(inlineBytes).toBeLessThanOrEqual(OUTPUT_BLOB_THRESHOLD)
-    expect(externalized).toBeGreaterThan(0)
-    const entry = f.database.query("SELECT MAX(length(event_json)) AS n FROM transcript_entries").get() as { n: number }
-    expect(entry.n).toBeLessThan(256)
-    expect(parts[49]).toMatchObject({ outputJson: outputs[49] })
-  } finally {
-    f.close()
-  }
-})
-
-test("tool progress tails cannot bypass output offloading and repeated writes add no versions", async () => {
-  const f = await fixture()
-  try {
-    const output = "Progresso completo. ".repeat(5000)
-    const part = { ...tool(""), outputJson: null, outputTail: output, ok: null } as ToolCallPart
-    insert(f, "progress", [part])
-    const message = f.store.activePath({ threadId: "t" })[0]
-    if (!message) throw new Error("Message missing")
-    const stored = message.parts[0] as ToolCallPart
-    expect(stored.outputAttachmentId).toBeString()
-    expect(stored.outputTail).toBeUndefined()
-    const blob = f.database.query("SELECT path FROM attachments WHERE id = ?").get(stored.outputAttachmentId ?? "") as {
-      path: string
-    }
-    expect(readFileSync(blob.path, "utf8")).toBe(output)
-    const before = f.database.query("SELECT total_changes() AS n").get()
-    f.store.updateMessage({ threadId: "t", messageId: "progress", patch: { parts: message.parts } })
-    expect(f.database.query("SELECT total_changes() AS n").get()).toEqual(before)
-    expect(f.database.query("SELECT COUNT(*) AS n FROM transcript_entries").get()).toEqual({ n: 1 })
-
-    f.database.exec(
-      "INSERT INTO runs(id,thread_id,bot_id,provider,trigger,status,queued_at) VALUES ('r','t','b','codex','user','running',1)",
-    )
-    const resolutions = createToolResolutions(f.runtime.kernel)
-    const run = { id: "r", threadId: "t" } as Run
-    resolutions.record(run, tool("Resultado"))
-    const changes = f.database.query("SELECT total_changes() AS n").get()
-    resolutions.record(run, tool("Resultado"))
-    expect(f.database.query("SELECT total_changes() AS n").get()).toEqual(changes)
-  } finally {
-    f.close()
-  }
-})
-
-test("completed output cannot crowd live command progress into a new file on every frame", async () => {
-  const f = await fixture()
-  try {
-    const parts: MessagePart[] = Array.from({ length: 20 }, (_, index) => ({
+    const output = `${"line\n".repeat(3000)}última linha`
+    const command: MessagePart = {
       type: "command",
-      callId: `done-${index}`,
-      command: "echo teste",
-      cwd: "/tmp",
-      exitCode: 0,
-      outputTail: `${index}: ${"x".repeat(4000)}`,
-    }))
-    const running = {
-      type: "command" as const,
-      callId: "running",
-      command: "echo progresso",
+      callId: "cmd",
+      command: "printf resultado",
       cwd: "/tmp",
       exitCode: null,
-      outputTail: "0".repeat(16 * 1024),
+      outputTail: output,
+      resolution: "running",
     }
-    parts.push(running)
-    insert(f, "progress-budget", parts)
-    const files = f.database.query("SELECT COUNT(*) AS n FROM attachments").get()
-    for (let frame = 1; frame <= 8; frame++) {
-      const outputTail = String(frame).repeat(16 * 1024)
-      parts[parts.length - 1] = { ...running, outputTail }
-      f.store.updateMessage({ threadId: "t", messageId: "progress-budget", patch: { parts } })
-      const saved = f.store.activePath({ threadId: "t" })[0]?.parts
-      if (!saved) throw new Error("Message missing")
-      const progress = saved.at(-1)
-      if (progress?.type !== "command") throw new Error("Command missing")
-      expect(progress.outputTail).toBe(outputTail)
-      expect(progress.outputAttachmentId).toBeUndefined()
-      const inlineBytes = saved.reduce(
-        (total, part) => total + (part.type === "command" ? Buffer.byteLength(part.outputTail) : 0),
-        0,
-      )
-      expect(inlineBytes).toBeLessThanOrEqual(OUTPUT_BLOB_THRESHOLD)
-      expect(f.database.query("SELECT COUNT(*) AS n FROM attachments").get()).toEqual(files)
-    }
+    const live = externalizeMessageParts({ database: f.database, appData: f.root, parts: [command] })
+    expect(live).toEqual([command])
+    expect(f.database.query("SELECT COUNT(*) AS n FROM attachments").get()).toEqual({ n: 0 })
+    const parts = externalizeMessageParts({
+      database: f.database,
+      appData: f.root,
+      parts: [{ ...command, exitCode: 0, resolution: "succeeded" }],
+    })
+    const stored = parts[0]
+    if (stored?.type !== "command") throw new Error("Missing command result")
+    expect(stored.outputAttachmentId).toMatch(/^[a-f0-9]{64}$/)
+    expect(stored.outputTail).toBe("")
+    expect(stored.outputPreview?.endsWith("última linha")).toBe(true)
+    expect(Buffer.byteLength(stored.outputPreview ?? "")).toBeLessThanOrEqual(OUTPUT_BLOB_PREVIEW_BYTES)
+    expect(externalizeMessageParts({ database: f.database, appData: f.root, parts })).toEqual(parts)
+    expect(f.database.query("SELECT COUNT(*) AS n FROM attachments").get()).toEqual({ n: 1 })
+    insert(f, "completed", parts)
+    f.database.query("UPDATE messages SET updated_at = 1 WHERE id = 'completed'").run()
+    compactMessageBatch({ database: f.database, appData: f.root, cursor: 0, total: 100 })
+    const summary = JSON.parse(
+      (f.database.query("SELECT parts_json FROM messages WHERE id = 'completed'").get() as { parts_json: string })
+        .parts_json,
+    ) as MessagePart[]
+    expect(summary[0]).not.toHaveProperty("outputPreview")
   } finally {
     f.close()
   }
 })
 
-test("final tool previews remain visible and oversized result plus preview stays fully recoverable", async () => {
+test("saved output pages cap reads and preserve UTF-8 across continuation cursors", async () => {
   const f = await fixture()
   try {
-    const outputTail = "step 1\nstep 2\n"
-    insert(f, "final-preview", [{ ...tool("done"), outputTail }])
-    expect(f.store.activePath({ threadId: "t" })[0]?.parts[0]).toMatchObject({ outputJson: "done", outputTail })
-    const completeTail = "Saída completa. ".repeat(8000)
-    insert(f, "large-preview", [{ ...tool("done"), outputTail: completeTail }])
+    const output = `${"a".repeat(OUTPUT_BLOB_READ_BYTES - 1)}🦜${"é".repeat(70_000)}`
+    insert(f, "paged", [tool(output)])
     const part = f.store.activePath({ threadId: "t" })[0]?.parts[0] as ToolCallPart
-    expect(part.outputJson).toBeNull()
-    expect(part.outputTail).toBeUndefined()
-    expect(part.outputAttachmentId).toBeString()
-    const blob = f.database.query("SELECT path FROM attachments WHERE id = ?").get(part.outputAttachmentId ?? "") as {
-      path: string
+    const url = `http://127.0.0.1:${f.runtime.handshake.port}/api/v1/attachments/${part.outputAttachmentId}/content`
+    const first = await fetch(`${url}?limit=999999999`, { headers })
+    expect(first.status).toBe(200)
+    type Page = { text: string; offset: number; nextOffset: number | null; bytes: number }
+    let page = (await first.json()) as Page
+    expect(page.text).toBe("a".repeat(OUTPUT_BLOB_READ_BYTES - 1))
+    expect(page.nextOffset).toBe(OUTPUT_BLOB_READ_BYTES - 1)
+    expect(page.bytes).toBe(Buffer.byteLength(output))
+    let restored = page.text
+    while (page.nextOffset !== null) {
+      const offset = page.nextOffset
+      page = (await (await fetch(`${url}?offset=${offset}`, { headers })).json()) as Page
+      expect(page.offset).toBe(offset)
+      expect(Buffer.byteLength(page.text)).toBeLessThanOrEqual(OUTPUT_BLOB_READ_BYTES)
+      expect(page.text).not.toContain("�")
+      restored += page.text
     }
-    expect(JSON.parse(readFileSync(blob.path, "utf8"))).toEqual({ outputJson: "done", outputTail: completeTail })
+    expect(restored).toBe(output)
+    for (const query of ["offset=-1", "offset=1.5", "offset=999999999", "limit=0", "limit=invalid"])
+      expect((await fetch(`${url}?${query}`, { headers })).status).toBe(400)
+    expect((await fetch(url)).status).toBe(401)
   } finally {
     f.close()
   }
 })
 
-test("process replay keeps a bounded UTF-8 tail of the file-backed log", () => {
-  const tail = "Fim 🚀"
-  const event = { type: "process.log" as const, processId: "p", lines: ["é".repeat(100_000), tail] }
-  const bounded = boundedProcessLog(event)
-  expect(Buffer.byteLength(bounded.lines.join("\n"))).toBeLessThanOrEqual(OUTPUT_BLOB_THRESHOLD)
-  expect(bounded.lines.at(-1)).toBe(tail)
-  expect(bounded.lines.join("\n")).not.toContain("�")
-  expect(event.lines[0]?.length).toBe(100_000)
+test("output ranges remain readable when a prior user upload already owns the same content hash", async () => {
+  const f = await fixture()
+  try {
+    const output = "Resultado compartilhado. ".repeat(1000)
+    const baseUrl = `http://127.0.0.1:${f.runtime.handshake.port}/api/v1/attachments`
+    const uploaded = await fetch(baseUrl, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ name: "resultado.txt", dataBase64: Buffer.from(output).toString("base64") }),
+    })
+    expect(uploaded.status).toBe(201)
+    const { attachment } = (await uploaded.json()) as { attachment: { id: string } }
+    insert(f, "shared-upload", [tool(output)])
+    const part = f.store.activePath({ threadId: "t" })[0]?.parts[0] as ToolCallPart
+    expect(part.outputAttachmentId).toBe(attachment.id)
+    const response = await fetch(`${baseUrl}/${attachment.id}/content`, { headers })
+    expect(response.status).toBe(200)
+    expect(await response.json()).toMatchObject({ text: output, nextOffset: null })
+  } finally {
+    f.close()
+  }
+})
+
+test("a compact tool patch alone keeps its output body until the journal is retained out", async () => {
+  const f = await fixture()
+  try {
+    const [part] = externalizeMessageParts({
+      database: f.database,
+      appData: f.root,
+      parts: [tool("Resultado do diário. ".repeat(1000))],
+    })
+    f.database.query("INSERT INTO transcript_entries(thread_id,seq,generation,event_json,at) VALUES ('t',1,1,?,?)").run(
+      JSON.stringify({
+        type: "message.parts",
+        threadId: "t",
+        messageId: "reply",
+        updatedSeq: 1,
+        generation: 1,
+        parts: [{ partIndex: 0, part }],
+      }),
+      Date.now(),
+    )
+    expect(await collectUnusedOutputBlobs(f.database, f.root)).toBe(0)
+    compactTranscript({ database: f.database, events: 0, entriesPerThread: 0, maxAgeMs: 0, now: Date.now() + 1 })
+    expect(await collectUnusedOutputBlobs(f.database, f.root)).toBe(0) // unpublished recovery tail stays protected
+    f.runtime.kernel.publish({ type: "transcript.resync" })
+    compactTranscript({ database: f.database, events: 0, entriesPerThread: 0, maxAgeMs: 0, now: Date.now() + 1 })
+    expect(await collectUnusedOutputBlobs(f.database, f.root)).toBe(1)
+  } finally {
+    f.close()
+  }
+})
+
+test("retention releases completed recovery outputs when only snapshot locators remain", async () => {
+  const f = await fixture()
+  try {
+    f.database.exec(
+      "INSERT INTO runs(id,thread_id,bot_id,provider,trigger,status,queued_at) SELECT 'r','t','b',provider,'user','succeeded',1 FROM bots WHERE id='b'",
+    )
+    const tools = createToolResolutions(f.runtime.kernel)
+    const part = tools.record({ id: "r", threadId: "t" } as Run, tool("Resultado antigo. ".repeat(1000)))
+    insert(f, "old-recovery", [part])
+    f.database.query("UPDATE messages SET run_id = 'r', updated_at = 1 WHERE id = 'old-recovery'").run()
+    compactMessageBatch({ database: f.database, appData: f.root, cursor: 0, total: 100 })
+    const record = f.database.query("SELECT part_json FROM tool_resolutions WHERE run_id = 'r'").get() as {
+      part_json: string
+    }
+    expect(JSON.parse(record.part_json)).not.toHaveProperty("outputAttachmentId")
+    expect(JSON.parse(record.part_json)).not.toHaveProperty("outputPreview")
+    // Snapshot locators resolve to the retained summary; they do not keep the
+    // removed body alive after both message and recovery retention have expired.
+    expect(await collectUnusedOutputBlobs(f.database, f.root)).toBe(1)
+    compactTranscript({ database: f.database, events: 0, entriesPerThread: 0, maxAgeMs: 0, now: Date.now() + 1 })
+    expect(await collectUnusedOutputBlobs(f.database, f.root)).toBe(0)
+    f.runtime.kernel.publish({ type: "transcript.resync" })
+    compactTranscript({ database: f.database, events: 0, entriesPerThread: 0, maxAgeMs: 0, now: Date.now() + 1 })
+    expect(await collectUnusedOutputBlobs(f.database, f.root)).toBe(0)
+  } finally {
+    f.close()
+  }
 })
 
 test("30-day retention preserves conversation text, tool summaries, status and FTS; retries add no events or summaries", async () => {
@@ -642,7 +654,7 @@ test("interrupted tool reconciliation preserves file-backed results even without
     const row = f.database.query("SELECT part_json FROM tool_resolutions WHERE run_id = 'r'").get() as {
       part_json: string
     }
-    expect(row.part_json.length).toBeLessThan(1000)
+    expect(row.part_json.length).toBeLessThan(2048)
     const recovered = tools.finish(run, [], "interrupted_by_restart")
     expect(recovered).toEqual([{ ...recorded, resolution: "completed_unobserved" }])
     expect(await collectUnusedOutputBlobs(f.database, f.root)).toBe(0)
@@ -653,4 +665,157 @@ test("interrupted tool reconciliation preserves file-backed results even without
   } finally {
     f.close()
   }
+})
+
+test("many small command and tool outputs share a bounded inline budget without losing full results", async () => {
+  const f = await fixture()
+  try {
+    const outputs = Array.from({ length: 50 }, (_, index) => `${index}: ${"é".repeat(2000)}`)
+    const parts: MessagePart[] = outputs.map((output, index) =>
+      index % 2
+        ? { ...tool(output), callId: `tool-${index}` }
+        : {
+            type: "command",
+            callId: `command-${index}`,
+            command: "echo teste",
+            cwd: "/tmp",
+            exitCode: 0,
+            outputTail: output,
+          },
+    )
+    insert(f, "many", parts)
+    const message = f.store.activePath({ threadId: "t" })[0]
+    let inlineBytes = 0
+    let externalized = 0
+    for (const [index, part] of (message?.parts ?? []).entries()) {
+      if (part.type !== "tool_call" && part.type !== "command") throw new Error("Unexpected part")
+      const expectedOutput = outputs[index]
+      if (expectedOutput === undefined) throw new Error("Output missing")
+      const inline = part.type === "tool_call" ? part.outputJson : part.outputTail
+      inlineBytes += Buffer.byteLength(inline ?? "")
+      if (part.outputAttachmentId) {
+        externalized++
+        const blob = f.database.query("SELECT path FROM attachments WHERE id = ?").get(part.outputAttachmentId) as {
+          path: string
+        }
+        expect(readFileSync(blob.path, "utf8")).toBe(expectedOutput)
+      } else expect(inline).toBe(expectedOutput)
+    }
+    expect(inlineBytes).toBeLessThanOrEqual(OUTPUT_INLINE_BUDGET_BYTES)
+    expect(externalized).toBeGreaterThan(0)
+    const entry = f.database.query("SELECT MAX(length(event_json)) AS n FROM transcript_entries").get() as { n: number }
+    expect(entry.n).toBeLessThan(256)
+    expect(parts[49]).toMatchObject({ outputJson: outputs[49] })
+  } finally {
+    f.close()
+  }
+})
+
+test("tool progress tails cannot bypass output offloading and repeated writes add no versions", async () => {
+  const f = await fixture()
+  try {
+    const output = "Progresso completo. ".repeat(5000)
+    const part = { ...tool(""), outputJson: null, outputTail: output, ok: null } as ToolCallPart
+    insert(f, "progress", [part])
+    const message = f.store.activePath({ threadId: "t" })[0]
+    if (!message) throw new Error("Message missing")
+    const stored = message.parts[0] as ToolCallPart
+    expect(stored.outputAttachmentId).toBeString()
+    expect(stored.outputTail).toBeUndefined()
+    const blob = f.database.query("SELECT path FROM attachments WHERE id = ?").get(stored.outputAttachmentId ?? "") as {
+      path: string
+    }
+    expect(readFileSync(blob.path, "utf8")).toBe(output)
+    const before = f.database.query("SELECT total_changes() AS n").get()
+    f.store.updateMessage({ threadId: "t", messageId: "progress", patch: { parts: message.parts } })
+    expect(f.database.query("SELECT total_changes() AS n").get()).toEqual(before)
+    expect(f.database.query("SELECT COUNT(*) AS n FROM transcript_entries").get()).toEqual({ n: 1 })
+
+    f.database.exec(
+      "INSERT INTO runs(id,thread_id,bot_id,provider,trigger,status,queued_at) VALUES ('r','t','b','codex','user','running',1)",
+    )
+    const resolutions = createToolResolutions(f.runtime.kernel)
+    const run = { id: "r", threadId: "t" } as Run
+    resolutions.record(run, tool("Resultado"))
+    const changes = f.database.query("SELECT total_changes() AS n").get()
+    resolutions.record(run, tool("Resultado"))
+    expect(f.database.query("SELECT total_changes() AS n").get()).toEqual(changes)
+  } finally {
+    f.close()
+  }
+})
+
+test("completed output cannot crowd live command progress into a new file on every frame", async () => {
+  const f = await fixture()
+  try {
+    const parts: MessagePart[] = Array.from({ length: 20 }, (_, index) => ({
+      type: "command",
+      callId: `done-${index}`,
+      command: "echo teste",
+      cwd: "/tmp",
+      exitCode: 0,
+      outputTail: `${index}: ${"x".repeat(4000)}`,
+    }))
+    const running = {
+      type: "command" as const,
+      callId: "running",
+      command: "echo progresso",
+      cwd: "/tmp",
+      exitCode: null,
+      outputTail: "0".repeat(16 * 1024),
+    }
+    parts.push(running)
+    insert(f, "progress-budget", parts)
+    const files = f.database.query("SELECT COUNT(*) AS n FROM attachments").get()
+    for (let frame = 1; frame <= 8; frame++) {
+      const outputTail = String(frame).repeat(16 * 1024)
+      parts[parts.length - 1] = { ...running, outputTail }
+      f.store.updateMessage({ threadId: "t", messageId: "progress-budget", patch: { parts } })
+      const saved = f.store.activePath({ threadId: "t" })[0]?.parts
+      if (!saved) throw new Error("Message missing")
+      const progress = saved.at(-1)
+      if (progress?.type !== "command") throw new Error("Command missing")
+      expect(progress.outputTail).toBe(outputTail)
+      expect(progress.outputAttachmentId).toBeUndefined()
+      const inlineBytes = saved.reduce(
+        (total, part) => total + (part.type === "command" ? Buffer.byteLength(part.outputTail) : 0),
+        0,
+      )
+      expect(inlineBytes).toBeLessThanOrEqual(OUTPUT_INLINE_BUDGET_BYTES)
+      expect(f.database.query("SELECT COUNT(*) AS n FROM attachments").get()).toEqual(files)
+    }
+  } finally {
+    f.close()
+  }
+})
+
+test("final tool previews remain visible and oversized result plus preview stays fully recoverable", async () => {
+  const f = await fixture()
+  try {
+    const outputTail = "step 1\nstep 2\n"
+    insert(f, "final-preview", [{ ...tool("done"), outputTail }])
+    expect(f.store.activePath({ threadId: "t" })[0]?.parts[0]).toMatchObject({ outputJson: "done", outputTail })
+    const completeTail = "Saída completa. ".repeat(8000)
+    insert(f, "large-preview", [{ ...tool("done"), outputTail: completeTail }])
+    const part = f.store.activePath({ threadId: "t" })[0]?.parts[0] as ToolCallPart
+    expect(part.outputJson).toBeNull()
+    expect(part.outputTail).toBeUndefined()
+    expect(part.outputAttachmentId).toBeString()
+    const blob = f.database.query("SELECT path FROM attachments WHERE id = ?").get(part.outputAttachmentId ?? "") as {
+      path: string
+    }
+    expect(JSON.parse(readFileSync(blob.path, "utf8"))).toEqual({ outputJson: "done", outputTail: completeTail })
+  } finally {
+    f.close()
+  }
+})
+
+test("process replay keeps a bounded UTF-8 tail of the file-backed log", () => {
+  const tail = "Fim 🚀"
+  const event = { type: "process.log" as const, processId: "p", lines: ["é".repeat(100_000), tail] }
+  const bounded = boundedProcessLog(event)
+  expect(Buffer.byteLength(bounded.lines.join("\n"))).toBeLessThanOrEqual(OUTPUT_INLINE_BUDGET_BYTES)
+  expect(bounded.lines.at(-1)).toBe(tail)
+  expect(bounded.lines.join("\n")).not.toContain("�")
+  expect(event.lines[0]?.length).toBe(100_000)
 })

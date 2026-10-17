@@ -2,6 +2,7 @@ import type { Database } from "bun:sqlite"
 import type { UiEvent, UiEventEnvelope } from "@touri/contracts"
 import type { ServerWebSocket } from "bun"
 import { boundedProcessLog } from "./output-blobs"
+import { captureTranscript as captureEntries, type TranscriptRef } from "./transcript-events"
 import { compactTranscript, materializeTranscript } from "./transcript-storage"
 
 export type EventSocketData = { channel: "events"; since?: number }
@@ -9,13 +10,7 @@ export type EventSocketData = { channel: "events"; since?: number }
 /** A reconnect replays at most this much; a larger gap is cheaper to reload over REST. */
 export const REPLAY_LIMITS = { events: 2_000, bytes: 2 * 1024 * 1024 }
 
-type MessageRef = {
-  type: "message.created" | "message.updated"
-  ref: true
-  threadId: string
-  messageId: string
-  seq: number
-}
+type MessageRef = TranscriptRef
 const isMessageRef = (value: unknown): value is MessageRef =>
   typeof value === "object" && value !== null && (value as { ref?: unknown }).ref === true
 const messageKey = (event: UiEvent): string | null =>
@@ -64,48 +59,9 @@ export const createEventBus = (database?: Database) => {
     }
   }
 
-  // Messages are captured by SQLite triggers in the same transaction as their projection.
-  // Recover entries whose publisher crashed before sending them to the UI.
+  // Also recovers a committed tail whose publisher stopped before delivery.
   const captureTranscript = (): void => {
-    if (!database || stopped) return
-    database.transaction(() => {
-      const checkpoint = Number(
-        (
-          database.query("SELECT value FROM schema_meta WHERE key = 'transcript_event_checkpoint'").get() as {
-            value: string
-          } | null
-        )?.value ?? 0,
-      )
-      const statement = database.prepare("SELECT id, at, event_json FROM transcript_entries WHERE id > ? ORDER BY id")
-      let last = checkpoint
-      try {
-        const rows = statement.iterate(checkpoint) as Iterable<{ id: number; at: number; event_json: string }>
-        for (const row of rows) {
-          last = row.id
-          const event = JSON.parse(row.event_json) as (UiEvent & { legacy?: boolean }) | MessageRef
-          if ("legacy" in event && event.legacy) continue
-          // Both journals store a pointer; only messages owns the current snapshot.
-          const stored =
-            !isMessageRef(event) &&
-            (event.type === "message.created" || event.type === "message.updated") &&
-            event.message.updatedSeq !== undefined
-              ? JSON.stringify({
-                  type: event.type,
-                  ref: true,
-                  threadId: event.message.threadId,
-                  messageId: event.message.id,
-                  seq: event.message.updatedSeq,
-                } satisfies MessageRef)
-              : row.event_json
-          database.query("INSERT INTO ui_event_log(at, event_json) VALUES (?, ?)").run(row.at, stored)
-        }
-      } finally {
-        // Releasing the reader also permits checkpoints after startup recovery.
-        statement.finalize()
-      }
-      if (last > checkpoint)
-        database.query("UPDATE schema_meta SET value = ? WHERE key = 'transcript_event_checkpoint'").run(String(last))
-    })()
+    if (database && !stopped) captureEntries(database)
   }
 
   const hydrateRef = (event: MessageRef): UiEvent => {
@@ -120,6 +76,15 @@ export const createEventBus = (database?: Database) => {
       revision.message.id === event.messageId
     )
       return revision
+    if (event.type === "message.delta" || event.type === "message.parts") {
+      if (
+        !isMessageRef(revision) &&
+        (revision?.type === "message.delta" || revision?.type === "message.parts") &&
+        revision.messageId === event.messageId
+      )
+        return revision
+      return { type: "transcript.resync" }
+    }
     // Retention removed that revision: the current projection is newer and supersedes it.
     const current = database
       .query("SELECT payload FROM transcript_message_events WHERE thread_id = ? AND id = ?")
@@ -176,7 +141,11 @@ export const createEventBus = (database?: Database) => {
     if (!rows) return resync()
     const stored = rows.map((row) => JSON.parse(row.event_json) as UiEvent | MessageRef)
     const keyOf = (event: UiEvent | MessageRef): string | null =>
-      isMessageRef(event) ? JSON.stringify([event.threadId, event.messageId]) : messageKey(event)
+      isMessageRef(event)
+        ? event.type === "message.created" || event.type === "message.updated"
+          ? JSON.stringify([event.threadId, event.messageId])
+          : null
+        : messageKey(event)
     const latest = new Map<string, number>()
     stored.forEach((event, index) => {
       const key = keyOf(event)
@@ -189,7 +158,7 @@ export const createEventBus = (database?: Database) => {
       const value = stored[index] as UiEvent | MessageRef
       const key = keyOf(value)
       let event: UiEvent
-      if (!key) event = value as UiEvent
+      if (!key) event = isMessageRef(value) ? hydrateRef(value) : (value as UiEvent)
       else if (sent.has(key)) event = { type: "transcript.superseded" }
       else {
         sent.add(key)
@@ -200,6 +169,7 @@ export const createEventBus = (database?: Database) => {
             ? { type: value.type as "message.created" | "message.updated", message: revision.message }
             : { type: "transcript.superseded" }
       }
+      if (event.type === "transcript.resync") return resync()
       const envelope = { seq: row.seq, at: row.at, event }
       bytes += payloadFor(envelope).length
       if (bytes > REPLAY_LIMITS.bytes) return resync()
@@ -240,7 +210,7 @@ export const createEventBus = (database?: Database) => {
         (event.type === "message.created" || event.type === "message.updated") &&
         event.message.updatedSeq !== undefined
       ) &&
-      !(event.type === "message.delta" && event.updatedSeq !== undefined) &&
+      !((event.type === "message.delta" || event.type === "message.parts") && event.updatedSeq !== undefined) &&
       event.type !== "transcript.rejected"
     )
       database

@@ -34,3 +34,18 @@ it("names the chosen context in both languages", () => {
   expect(t("Dados disponíveis para {bot}.", { bot: "Data" }, "en")).toBe("Data available for Data.")
   expect(t("Conexão disponível: {name}", { name: "dados" }, "en")).toBe("Connection available: dados")
 })
+
+// Redundant setup confirms existing access without implying a project was linked.
+it.each([
+  [
+    "Este bot já tem acesso a esta pasta. Nenhuma permissão foi alterada.",
+    "This bot already has access to this folder. No permissions were changed.",
+  ],
+  [
+    "Para usar processos supervisionados e o Preview, vincule o projeto nas configurações do bot.",
+    "To use supervised processes and Preview, link the project in the bot settings.",
+  ],
+] as const)("localizes unchanged folder access: %s", (key, english) => {
+  expect(t(key, {}, "pt-BR")).toBe(key)
+  expect(t(key, {}, "en")).toBe(english)
+})

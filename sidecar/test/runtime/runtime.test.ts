@@ -176,7 +176,7 @@ const fixture = async ({
   mkdirSync(bot.homeDir, { recursive: true })
   writeFileSync(join(bot.homeDir, "MEMORY.md"), "Memory fixture\n")
   seedDatabase({ database: runtime.kernel.db as Database, bot, thread })
-  const store = createTestStore({ bot, thread })
+  const store = createTestStore({ bot, thread, publish: runtime.kernel.publish })
   runtime.kernel.services.provide("store.api", store)
   const engine = createRuntimeEngine({
     kernel: runtime.kernel,
@@ -484,7 +484,7 @@ test.each(["claude", "codex"] as const)(
   },
 )
 
-test("Claude hidden thinking estimates reach live message snapshots without inventing reasoning text", async () => {
+test("provider hidden thinking estimates reach live parts without inventing reasoning text", async () => {
   const thinking = (estimated_tokens: number) => ({
     type: "stream_event",
     event: {
@@ -500,10 +500,15 @@ test("Claude hidden thinking estimates reach live message snapshots without inve
       events: [thinking(120), thinking(230), { type: "delta", delta: "Pronto." }, { type: "complete" }],
     },
   })
-  const snapshots: Message[] = []
+  const live: Message["parts"][] = []
   const unsubscribe = f.runtime.kernel.subscribe(({ event }) => {
-    if ((event.type === "message.created" || event.type === "message.updated") && event.message.role === "assistant")
-      snapshots.push(event.message)
+    if (
+      (event.type === "message.created" || event.type === "message.updated") &&
+      event.message.role === "assistant" &&
+      event.message.status === "streaming"
+    )
+      live.push(event.message.parts)
+    if (event.type === "message.parts") live.push(event.parts.map(({ part }) => part))
   })
   try {
     await initStore(f.runtime.kernel)
@@ -517,15 +522,12 @@ test("Claude hidden thinking estimates reach live message snapshots without inve
     if (!queued.success) throw new Error(queued.error)
     await waitFor(() => terminal(queued.run.status))
     expect(queued.run.status).toBe("succeeded")
-    const live = snapshots.filter((message) => message.status === "streaming")
     expect(
       new Set(
-        live.flatMap((message) =>
-          message.parts.flatMap((part) => (part.type === "reasoning" ? [part.estimatedTokens] : [])),
-        ),
+        live.flatMap((parts) => parts.flatMap((part) => (part.type === "reasoning" ? [part.estimatedTokens] : []))),
       ),
     ).toEqual(new Set([120, 350]))
-    expect(live.every((message) => message.text === "")).toBe(true)
+    expect(live.every((parts) => parts.every((part) => part.type !== "text" || part.text === ""))).toBe(true)
     const reply = store.activePath({ threadId: f.thread.id }).find((item) => item.role === "assistant")
     expect(reply?.parts).toEqual([
       { type: "reasoning", text: "", estimatedTokens: 350 },
@@ -779,7 +781,7 @@ test.serial("streaming preserves deltas, command parts, completion and usage", a
   }
 })
 
-test.serial("the store/runtime integration publishes one event per streamed delta", async () => {
+test.serial("the store/runtime integration publishes coalesced deltas once in order", async () => {
   const value = await fixture({
     scenario: {
       events: [
@@ -804,12 +806,82 @@ test.serial("the store/runtime integration publishes one event per streamed delt
     if (!queued.success) throw new Error(queued.error)
     await waitFor(() => terminal(queued.run.status))
     expect(queued.run.status).toBe("succeeded")
-    expect(deltas).toEqual(["a", "b", "c"])
+    expect(deltas.join("")).toBe("abc")
+    expect(deltas.length).toBeLessThanOrEqual(3)
     expect(store.activePath({ threadId: value.thread.id }).find((message) => message.role === "assistant")?.text).toBe(
       "abc",
     )
   } finally {
     unsubscribe?.()
+    await closeFixture(value)
+  }
+})
+
+test.serial("tool publications persist only changed parts and preserve completed output references", async () => {
+  const output = "resultado ".repeat(2000)
+  const prose = "prosa ".repeat(4000)
+  const value = await fixture({
+    scenario: {
+      events: [
+        { type: "delta", delta: prose },
+        { type: "command", callId: "first", command: "echo ok", output: "ok" },
+        { type: "command", callId: "second", command: "cat result.txt", output },
+        { type: "command", callId: "second", command: "cat result.txt", output: "" },
+        { type: "delta", delta: "Pronto." },
+        { type: "complete" },
+      ],
+    },
+  })
+  try {
+    await initStore(value.runtime.kernel)
+    const store = value.runtime.kernel.services.use("store.api")
+    if (!store?.appendParts) throw new Error("Compact store API missing")
+    const patches: Array<Parameters<NonNullable<StoreApi["appendParts"]>>[0]> = []
+    const updates: Array<Parameters<StoreApi["updateMessage"]>[0]> = []
+    const append = store.appendParts
+    const update = store.updateMessage
+    store.appendParts = (args) => {
+      append(args)
+      patches.push(structuredClone(args))
+    }
+    store.updateMessage = (args) => {
+      updates.push(structuredClone(args))
+      return update(args)
+    }
+    const events: import("@touri/contracts").UiEvent[] = []
+    const unsubscribe = value.runtime.kernel.subscribe(({ event }) => events.push(event))
+    try {
+      const queued = value.engine.enqueue({
+        threadId: value.thread.id,
+        requestMessageId: addUser(store, value.thread, "Confira os resultados.").id,
+        trigger: "user",
+      })
+      if (!queued.success) throw new Error(queued.error)
+      await waitFor(() => terminal(queued.run.status))
+      expect(queued.run.status).toBe("succeeded")
+      expect(
+        patches.map((patch) => patch.parts.map(({ part }) => ("callId" in part ? part.callId : part.type))),
+      ).toEqual([["first"], ["second"], ["second"]])
+      expect(JSON.stringify(patches)).not.toContain(prose)
+      expect(JSON.stringify(patches)).not.toContain(output)
+      const completed = patches[1]?.parts[0]?.part
+      expect(completed).toMatchObject({ outputBytes: Buffer.byteLength(output), outputTail: "" })
+      expect(patches[2]?.parts[0]?.part).toMatchObject(completed ?? {})
+      expect(updates).toHaveLength(1)
+      expect(updates[0]?.patch.status).toBe("complete")
+      const reply = store.activePath({ threadId: value.thread.id }).find((row) => row.id === queued.run.replyMessageId)
+      expect(reply?.parts.find((part) => "callId" in part && part.callId === "second")).toMatchObject(completed ?? {})
+      expect(reply?.text).toBe(`${prose}\n\nPronto.`)
+      expect(
+        events.filter((event) => event.type === "message.created" && event.message.role === "assistant"),
+      ).toHaveLength(1)
+      expect(
+        events.filter((event) => event.type === "message.updated" && event.message.role === "assistant"),
+      ).toHaveLength(1)
+    } finally {
+      unsubscribe()
+    }
+  } finally {
     await closeFixture(value)
   }
 })

@@ -79,7 +79,7 @@ for (const provider of ["codex", "claude", "opencode"] as const) {
     expect(instructions).toContain("Do not request shell escalation for mkdir")
     expect(instructions).toContain("When a setup tool reports automaticContinuation")
     expect(instructions).toContain("Do not ask the user to send another message or approve the same scope again")
-    expect(instructions).toContain("Project and folder changes are saved on this Mac immediately")
+    expect(instructions).toContain("Project and folder changes are saved on this host immediately")
     expect(instructions).toContain("next local turn")
     expect(instructions).not.toContain("VM changes take effect")
     expect(instructions).not.toContain("recreate the machine before switching projects")
@@ -96,13 +96,15 @@ for (const provider of ["codex", "claude", "opencode"] as const) {
       anyFolderAccess: true,
     })
     expect(instructions).toContain(JSON.stringify(homedir()))
-    expect(instructions).toContain("can read and write anywhere the user can")
+    expect(instructions).toContain("can read and write anywhere the operating-system user can")
     expect(instructions).toContain("full access without approvals")
     expect(instructions).toContain("search the disk first with rg, fd or find")
     for (const path of ["~/javascript", "~/code", "~/Projects", "~/src", "~/dev"]) expect(instructions).toContain(path)
     expect(instructions).toContain("A linked project is required for supervised processes, secrets and Preview")
-    expect(instructions).toContain("offer to link the app folder with project_link({path})")
-    expect(instructions).toContain("After approval, use process_define/process_start, then preview_open")
+    expect(instructions).toContain("connect the app folder in this bot's project settings")
+    expect(instructions).toContain(
+      "Confirm that a project is actually linked before using process_define/process_start",
+    )
     expect(instructions).toContain("A server started with a shell tool is not registered in Preview")
     expect(instructions).not.toContain("Ask the user to connect a project when needed")
     expect(instructions).not.toContain("Only the bot folder and connected project")
@@ -146,17 +148,22 @@ for (const provider of ["codex", "claude", "opencode"] as const) {
 test("local approvals, read-only mode and folder grants describe their actual limits", async () => {
   const f = await fixture()
   const approved = await f.compose({ machine: "local", access: "full", approvals: "on-request" })
-  expect(approved).toContain("You can reach other folders on this Mac")
+  expect(approved).toContain("can read and write anywhere the operating-system user can")
   expect(approved).toContain("request approval for each such action")
   expect(approved).not.toContain("full access without approvals")
   const workspace = await f.compose({ access: "workspace-write", approvals: "on-request", anyFolderAccess: false })
   expect(workspace).toContain(
-    "limits writes to the bot home, connected project and explicitly granted read-write folders",
+    "limits writes to the cwd, bot home, project data and explicitly granted read-write folders",
   )
+  expect(workspace).toContain("Create files and missing subfolders directly within writable roots")
+  expect(workspace).toContain("no folder-access approval is needed there")
+  expect(workspace).not.toContain("can read and write anywhere the operating-system user can")
   const readonly = await f.compose({ access: "read-only", anyFolderAccess: true })
   expect(readonly).toContain("Filesystem access is read-only")
+  expect(readonly).toContain("Folder grants cannot override global read-only mode")
   expect(readonly).not.toContain("MEMORY.md is yours to update")
   expect(readonly).not.toContain("Writing is allowed")
+  expect(readonly).not.toContain("can read and write anywhere the operating-system user can")
 })
 
 test("VM isolation is described even without a runtime service; only granted host mounts are accessible", async () => {
@@ -174,12 +181,12 @@ test("VM isolation is described even without a runtime service; only granted hos
     machine: "vm",
     access: "read-only",
     anyFolderAccess: true,
-    folders: [{ path: "/Users/demo/reference", access: "read-write" }],
+    folders: [{ path: "/reference", access: "read-write" }],
   })
   expect(mounted).toContain("Only the explicitly mounted host folders")
   expect(mounted).toContain("Host home → /host/home")
   expect(mounted).toContain("read-only")
-  expect(mounted).not.toContain("This Mac: /")
+  expect(mounted).not.toContain("Local host: /")
 })
 
 test("cloud instructions never promise local disk access", async () => {
@@ -189,7 +196,7 @@ test("cloud instructions never promise local disk access", async () => {
     access: "full",
     approvals: "never",
     anyFolderAccess: true,
-    folders: [{ path: "/Users/demo/reference", access: "read-write" }],
+    folders: [{ path: "/reference", access: "read-write" }],
   })
   expect(instructions).toContain("isolated cloud machine")
   expect(instructions).not.toContain("VM changes take effect")
@@ -197,8 +204,8 @@ test("cloud instructions never promise local disk access", async () => {
   expect(instructions).not.toContain("search the disk first")
   expect(instructions).not.toContain("continue this bounded read-only disk search")
   expect(instructions).not.toContain("full access without approvals")
-  expect(instructions).not.toContain("This Mac: /")
-  expect(instructions).not.toContain("/Users/demo/reference")
+  expect(instructions).not.toContain("Local host: /")
+  expect(instructions).not.toContain("/reference")
 })
 
 test("R7: current identity, roster and UI override obsolete SOUL and memory without changing user data", async () => {
@@ -365,3 +372,39 @@ test("R11-REG-05 existing full-access bots keep their memory after upgrade witho
   f.db.query("UPDATE bots SET access='full' WHERE id=?").run(f.bot.id)
   await expect(f.compose()).rejects.toThrow("must not be re-reviewed")
 })
+
+for (const provider of ["codex", "claude", "opencode"] as const) {
+  test(`${provider}: full local instructions override stale folder limits and permit direct output creation`, async () => {
+    const f = await fixture({ provider, soul: "Request folder approval before editing the workspace." })
+    for (const approvals of ["never", "on-request"] as const) {
+      for (const anyFolderAccess of [false, true]) {
+        const text = await f.compose({
+          machine: "local",
+          access: "full",
+          approvals,
+          anyFolderAccess,
+          folders: [{ path: "/workspace/full-access-canary", access: "read-only" }],
+        })
+        const guidance = text.slice(text.indexOf("Actual enabled capabilities"))
+        expect(guidance).toContain("can read and write anywhere the operating-system user can")
+        expect(guidance).toContain("Do not request folder access or link a project just to write files")
+        expect(guidance).toContain("including in your cwd or bot home")
+        expect(guidance).toContain("Operating-system permissions still apply")
+        expect(guidance).not.toContain("/workspace/full-access-canary")
+        expect(guidance).not.toContain("Excluded unless explicitly granted")
+        expect(guidance).not.toContain("limits writes to")
+        expect(text).toContain("create it directly with your file or shell tools")
+        expect(text).toContain(
+          "both tools return alreadyAccessible without changing configuration or requesting approval",
+        )
+        expect(text).toContain("its alreadyAccessible result does not register a project for Preview")
+        expect(text).toContain("a folder grant cannot fix it")
+        expect(text).not.toContain("These changes always need")
+        expect(text).not.toContain("When a requested output folder does not exist, call folder_access_request")
+        if (approvals === "never")
+          expect(guidance).toContain("Perform authorized writes directly without an approval card")
+        else expect(guidance).toContain("This approval policy does not remove existing filesystem access")
+      }
+    }
+  })
+}

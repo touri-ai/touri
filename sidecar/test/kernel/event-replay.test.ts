@@ -109,6 +109,7 @@ test("a reconnect gets each message once, in its latest revision, with contiguou
     insertReply(f)
     streamCommands(f, 20, 200)
     f.store.appendDelta({ threadId: "t", messageId: "reply", partIndex: 20, delta: "Pronto" })
+    f.store.flushWrites?.()
     const bus = createEventBus(f.db)
     const caughtUp = bus.catchUp(1)
     expect(caughtUp.map(({ seq }) => seq)).toEqual(bus.replay(1).map(({ seq }) => seq))

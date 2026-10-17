@@ -61,10 +61,25 @@ const fixture = async (approvals: Bot["approvals"] = "never") => {
   runtime.kernel.services.provide("runtime.activeRun", ({ threadId: requestedThread }) =>
     requestedThread === threadId ? persistence.getRun(runId) : null,
   )
+  const store = runtime.kernel.services.use("store.api")
+  if (!store) throw new Error("Store missing")
   const cards = (): ApprovalPart[] => {
-    const row = db.query("SELECT parts_json FROM messages WHERE run_id = ?").get(runId) as { parts_json: string } | null
-    return row ? (JSON.parse(row.parts_json) as ApprovalPart[]).filter((part) => part.type === "approval") : []
+    return store
+      .activePath({ threadId })
+      .flatMap((message) =>
+        message.runId === runId ? message.parts.filter((part): part is ApprovalPart => part.type === "approval") : [],
+      )
   }
+  const publishedCards: ApprovalPart[] = []
+  const unsubscribe = runtime.kernel.subscribe(({ event }) => {
+    const parts =
+      event.type === "message.created" || event.type === "message.updated"
+        ? event.message.parts
+        : event.type === "message.parts"
+          ? event.parts.map(({ part }) => part)
+          : []
+    for (const part of parts) if (part.type === "approval") publishedCards.push(structuredClone(part))
+  })
   const controller = new AbortController()
   const ctx: ToolContext = {
     botId: bot.id,
@@ -114,11 +129,12 @@ const fixture = async (approvals: Bot["approvals"] = "never") => {
   const routine = async () =>
     ((await (await request("GET", "/routines")).json()) as { routines: Routine[] }).routines[0]
   cleanups.push(async () => {
+    unsubscribe()
     await runtime.kernel.services.use("runtime.shutdown")?.()
     runtime.stop()
     rmSync(root, { recursive: true, force: true })
   })
-  return { runtime, request, bot, cards, controller, call, gatewayCall, routine, tools, ctx }
+  return { runtime, request, bot, cards, publishedCards, controller, call, gatewayCall, routine, tools, ctx }
 }
 
 test("chat-created daily routines require an inline approval even with approvals off and a standing grant", async () => {
@@ -135,6 +151,10 @@ test("chat-created daily routines require an inline approval even with approvals
   expect(await f.routine()).toMatchObject({ enabled: false, nextRunAt: null })
   const response = await f.request("POST", `/approvals/${card.approvalId}`, { decision: "approved", standing: true })
   expect(response.status).toBe(200)
+  expect(f.publishedCards.filter((part) => part.approvalId === card.approvalId).at(-1)).toMatchObject({
+    decision: "approved",
+    standing: false,
+  })
   expect(f.cards()[0]).toMatchObject({ decision: "approved", standing: false })
   expect(await result).toMatchObject({ success: true, structured: { enabled: true, continuity: "main-thread" } })
   const routine = await f.routine()

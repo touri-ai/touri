@@ -7,7 +7,7 @@ import { createMockApi } from "../src/api/mock"
 import { createSendJournal } from "../src/api/sendJournal"
 import { VirtualMessageList } from "../src/components/ChatPanel"
 import { ApiError } from "../src/errors"
-import { applyDelta, updateMessage, useWorkspace } from "../src/useWorkspace"
+import { applyDelta, applyParts, updateMessage, useWorkspace } from "../src/useWorkspace"
 
 const input = {
   threadId: "thread",
@@ -313,6 +313,66 @@ test("delta offsets and revisions prevent gaps, duplicates and stale snapshots, 
   )
 })
 
+test("compact part revisions preserve streamed prose, output references and reasoning offsets on replay", () => {
+  const initial: Message = {
+    ...message(),
+    role: "assistant",
+    status: "streaming",
+    text: "Olá",
+    parts: [{ type: "text", text: "Olá" }],
+  }
+  const patch: Extract<UiEvent, { type: "message.parts" }> = {
+    type: "message.parts",
+    threadId: initial.threadId,
+    messageId: initial.id,
+    updatedSeq: 5,
+    generation: 1,
+    parts: [
+      { partIndex: 1, part: { type: "reasoning", text: "Conferindo", estimatedTokens: 120 } },
+      {
+        partIndex: 2,
+        part: {
+          type: "command",
+          callId: "read",
+          command: "cat result.txt",
+          cwd: "/project",
+          outputTail: "",
+          exitCode: 0,
+          outputAttachmentId: "output:content-hash",
+          outputBytes: 32_000,
+        },
+      },
+    ],
+  }
+  const applied = applyParts([initial], patch)
+  expect(applied[0]).toMatchObject({ text: "Olá", updatedSeq: 5, parts: [initial.parts[0], {}, patch.parts[1]?.part] })
+  expect(applyParts(applied, patch)).toEqual(applied)
+  expect(applyParts(applied, { ...patch, updatedSeq: 6, generation: 0 })).toEqual(applied)
+  expect(applyParts([initial], { ...patch, parts: patch.parts.slice(1) })).toEqual([initial])
+  const delta: Extract<UiEvent, { type: "message.delta" }> = {
+    type: "message.delta",
+    threadId: initial.threadId,
+    messageId: initial.id,
+    partIndex: 1,
+    partType: "reasoning",
+    offset: 10,
+    delta: " a fila",
+    updatedSeq: 6,
+    generation: 1,
+  }
+  const streamed = applyDelta(applied, initial.id, delta.delta, delta.partIndex, delta.offset, delta)
+  expect(streamed[0]?.parts[1]).toEqual({ type: "reasoning", text: "Conferindo a fila", estimatedTokens: 120 })
+  expect(applyParts(streamed, patch)).toEqual(streamed)
+  expect(streamed[0]?.parts[2]).toEqual(patch.parts[1]?.part)
+  expect(applyParts([{ ...initial, status: "complete" }], patch)[0]?.status).toBe("complete")
+  expect(
+    applyParts([initial], {
+      ...patch,
+      parts: [{ partIndex: 0, part: { type: "reasoning", text: "Conferindo" } }],
+    })[0],
+  ).toMatchObject({ text: "", parts: [{ type: "reasoning", text: "Conferindo" }] })
+})
+
 test("an expired WebSocket cursor signals resync and resumes without reconnecting in a loop", async () => {
   vi.useFakeTimers()
   class Socket extends EventTarget {
@@ -451,7 +511,7 @@ test("resync refetches the thread snapshot and replaces text lost outside the re
   expect(api.calls.filter((call) => call.route === "GET /threads/:id/messages").length).toBeGreaterThan(callsBefore)
 })
 
-test("deltas arriving while a resync snapshot is in flight are replayed after the snapshot", async () => {
+test("part patches and deltas arriving during a resync replay in order after its snapshot", async () => {
   const base = createMockApi()
   const stored = base.getState().messages.find((row) => row.role === "assistant")
   if (!stored) throw new Error("Missing fixture message")
@@ -484,15 +544,33 @@ test("deltas arriving while a resync snapshot is in flight are replayed after th
   await act(async () => {
     await ready
   })
+  const command = {
+    type: "command" as const,
+    callId: "read",
+    command: "cat result.txt",
+    cwd: "/project",
+    outputTail: "ok",
+    exitCode: 0,
+  }
+  act(() =>
+    base.emit({
+      type: "message.parts",
+      threadId: stored.threadId,
+      messageId: stored.id,
+      parts: [{ partIndex: 1, part: command }],
+      updatedSeq: 3,
+      generation: 1,
+    }),
+  )
   act(() =>
     base.emit({
       type: "message.delta",
       threadId: stored.threadId,
       messageId: stored.id,
-      partIndex: 0,
-      offset: 2,
+      partIndex: 2,
+      offset: 0,
       delta: " mundo",
-      updatedSeq: 3,
+      updatedSeq: 4,
       generation: 1,
     }),
   )
@@ -503,7 +581,8 @@ test("deltas arriving while a resync snapshot is in flight are replayed after th
   await waitFor(() =>
     expect(hook.result.current.data.messages.find((row) => row.id === stored.id)).toMatchObject({
       text: "Oi mundo",
-      updatedSeq: 3,
+      updatedSeq: 4,
+      parts: [{ type: "text", text: "Oi" }, command, { type: "text", text: " mundo" }],
     }),
   )
 })

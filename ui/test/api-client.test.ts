@@ -71,6 +71,7 @@ const contractRouteKeys: Array<keyof ApiRoutes> = [
   "GET /search",
   "POST /attachments",
   "GET /attachments/:id",
+  "GET /attachments/:id/content",
   "GET /routines",
   "POST /routines",
   "PATCH /routines/:id",
@@ -264,6 +265,22 @@ test("streams evidence images as authenticated blobs with encoded workspace path
   expect(image.type).toBe("image/png")
   expect(fetchImpl).toHaveBeenCalledWith(
     "http://127.0.0.1:43123/api/v1/bots/bot/images?path=shots%2Fa%20b.png&base=reports",
+    expect.objectContaining({ headers: { Authorization: "Bearer ui-token" }, method: "GET" }),
+  )
+})
+
+test("reads output continuation pages as authenticated JSON rather than attachment blobs", async () => {
+  const page = { text: "Resultado", offset: 65536, nextOffset: null, bytes: 65545 }
+  const fetchImpl = vi.fn(async () => Response.json(page))
+  const api = createApiClient({
+    endpoint: { baseUrl: "http://127.0.0.1:43123", wsUrl: "ws://127.0.0.1:43123/events", token: "ui-token" },
+    fetchImpl,
+  })
+  await expect(
+    api.request("GET /attachments/:id/content", { offset: 65536, limit: 65536 }, { id: "output" }),
+  ).resolves.toEqual(page)
+  expect(fetchImpl).toHaveBeenCalledWith(
+    "http://127.0.0.1:43123/api/v1/attachments/output/content?offset=65536&limit=65536",
     expect.objectContaining({ headers: { Authorization: "Bearer ui-token" }, method: "GET" }),
   )
 })

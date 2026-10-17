@@ -25,7 +25,7 @@ import { ComputerGrantCard } from "../features/computer"
 import { DoctorChecks } from "../features/doctor/DoctorChecks"
 import { NOT_SURE_JOB_ID } from "../features/jobs/catalog"
 import { JobPicker } from "../features/jobs/JobPicker"
-import { accessLabel, plural, statusLabel, t } from "../i18n"
+import { accessLabel, fullAccessDescription, plural, statusLabel, t } from "../i18n"
 import { hostComputerSupported } from "../platform"
 import { useHost } from "../useHost"
 import type { WorkspaceActions } from "../useWorkspace"
@@ -405,9 +405,13 @@ export const BotModelModal = ({
   )
 }
 
-// Projects already allow writes. Keep an explicit grant only to restrict them or replace an existing grant.
-const projectFolderPatch = (folders: BotFolder[], folder: BotFolder): { folders?: BotFolder[] } =>
-  folder.access === "read-write" && !folders.some((item) => item.path === folder.path)
+// VM projects copy a Git commit; a selected host folder still needs its own grant.
+const projectFolderPatch = (
+  folders: BotFolder[],
+  folder: BotFolder,
+  machine: Bot["machine"],
+): { folders?: BotFolder[] } =>
+  machine !== "vm" && folder.access === "read-write" && !folders.some((item) => item.path === folder.path)
     ? {}
     : { folders: [...folders.filter((item) => item.path !== folder.path), folder] }
 
@@ -549,7 +553,10 @@ export const BotCreateModal = ({
       setAddedProjects((current) => [...current.filter((item) => item.id !== project.id), project])
       setProjectId(project.id)
       if (folder)
-        setFolders((current) => projectFolderPatch(current, { ...folder, path: project.path }).folders ?? current)
+        setFolders(
+          (current) =>
+            projectFolderPatch(current, { ...folder, path: project.path }, machine.machine).folders ?? current,
+        )
       setAddingProject(false)
     } finally {
       setProjectBusy(false)
@@ -714,6 +721,7 @@ export const BotCreateModal = ({
                 api={api}
                 simple={!advanced}
                 readOnly={access === "read-only"}
+                fullAccess={access === "full" || access === "full-approved"}
                 folders={folders}
                 anyFolderAccess={anyFolderAccess}
                 machine={machine.machine}
@@ -813,16 +821,15 @@ export const BotCreateModal = ({
                   <option value="full">{t("Full access")}</option>
                   {provider !== "codex" && <option value="full-approved">{t("Acesso total com aprovação")}</option>}
                 </select>
-                {provider === "codex" && (
-                  <p>
-                    {t(
-                      "Codex full access disables provider approvals and sandboxing; touri folder restrictions still apply.",
-                    )}
-                  </p>
-                )}
-                {access === "full" && (
+                {(access === "full" || access === "full-approved") && (
                   <div className="warning-callout">
-                    {t("Full access skips provider approvals. Folder access is configured separately.")}
+                    {fullAccessDescription({
+                      machine: machine.machine,
+                      approvals:
+                        access === "full" || (provider === "codex" && access === "full-approved")
+                          ? "never"
+                          : "on-request",
+                    })}
                   </div>
                 )}
                 <label className="toggle-row" htmlFor="create-browser">
@@ -1427,7 +1434,10 @@ export const BotSettingsModal = ({
                       actions={actions}
                       onLinked={(project, folder) => {
                         setProjectId(project.id)
-                        if (folder) setFolders((current) => projectFolderPatch(current, folder).folders ?? current)
+                        if (folder)
+                          setFolders(
+                            (current) => projectFolderPatch(current, folder, machine.machine).folders ?? current,
+                          )
                       }}
                       onClose={() => setAddingProject(false)}
                       onOpenPreview={() => setAddingProject(false)}
@@ -1481,16 +1491,9 @@ export const BotSettingsModal = ({
                     folders={folders}
                     anyFolderAccess={anyFolderAccess}
                   />
-                  {provider === "codex" && (
-                    <p>
-                      {t(
-                        "Codex full access disables provider approvals and sandboxing; touri folder restrictions still apply.",
-                      )}
-                    </p>
-                  )}
-                  {access === "full" && (
+                  {(access === "full" || access === "full-approved") && (
                     <div className="warning-callout">
-                      {t("Full access skips provider approvals. Folder access is configured separately.")}
+                      {fullAccessDescription({ ...draftAccess, machine: machine.machine })}
                     </div>
                   )}
                 </div>
@@ -1517,6 +1520,7 @@ export const BotSettingsModal = ({
                   api={api}
                   onUpload={onAttachFile}
                   readOnly={access === "read-only"}
+                  fullAccess={draftAccess.access === "full"}
                   folders={folders}
                   anyFolderAccess={anyFolderAccess}
                   machine={machine.machine}
@@ -1854,8 +1858,10 @@ export const ProjectModal = ({
       setConnectedProject(nextProject)
       const grant = !discovered && projectFolder ? { ...projectFolder, path: nextProject.path } : undefined
       setProjectFolder(grant ?? null)
-      const folderPatch = (botId: string) =>
-        grant ? projectFolderPatch(bots.find((bot) => bot.id === botId)?.folders ?? [], grant) : {}
+      const folderPatch = (botId: string) => {
+        const bot = bots.find((bot) => bot.id === botId)
+        return grant && bot ? projectFolderPatch(bot.folders ?? [], grant, bot.machine) : {}
+      }
       if (linkBotId) {
         await actions.updateBot(linkBotId, { projectId: nextProject.id, ...folderPatch(linkBotId) })
         onLinked?.(nextProject, grant)
@@ -1889,7 +1895,7 @@ export const ProjectModal = ({
           actions.updateBot(bot.id, {
             projectId: selectedBotIds.includes(bot.id) ? connectedProject.id : null,
             ...(selectedBotIds.includes(bot.id) && projectFolder
-              ? projectFolderPatch(bot.folders ?? [], { ...projectFolder, path: connectedProject.path })
+              ? projectFolderPatch(bot.folders ?? [], { ...projectFolder, path: connectedProject.path }, bot.machine)
               : {}),
           }),
         ),

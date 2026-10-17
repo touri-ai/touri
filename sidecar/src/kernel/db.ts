@@ -25,10 +25,11 @@ import botBrowserSql from "./migrations/0019.sql" with { type: "text" }
 import responseActivitySql from "./migrations/0020.sql" with { type: "text" }
 import workspaceActivitySql from "./migrations/0021.sql" with { type: "text" }
 import transcriptReferencesSql from "./migrations/0022.sql" with { type: "text" }
+import streamWriterSql from "./migrations/0023.sql" with { type: "text" }
 import { withSuspendedSchemaObjects } from "./schema-rebuild"
 import { applyUpgradeBaselines } from "./upgradeBaselines"
 
-export const SCHEMA_VERSION = 22
+export const SCHEMA_VERSION = 23
 
 const FREE_PAGE_RATIO_LIMIT = 0.2
 
@@ -47,7 +48,7 @@ export const openDatabase = ({ filename }: { filename: string }): Database => {
   // Before the first table is created, new stores can opt into bounded page
   // reclamation without a full rewrite. Existing stores reuse their free pages.
   database.exec(
-    "PRAGMA busy_timeout = 5000; PRAGMA auto_vacuum = INCREMENTAL; PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA journal_size_limit = 8388608;",
+    "PRAGMA busy_timeout = 5000; PRAGMA auto_vacuum = INCREMENTAL; PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA journal_size_limit = 8388608; PRAGMA synchronous = FULL;",
   )
   database.exec(migrationSql)
   database.exec(notificationsSql)
@@ -171,7 +172,9 @@ export const openDatabase = ({ filename }: { filename: string }): Database => {
       database.exec(workspaceActivitySql)
     if (!database.query("SELECT 1 FROM schema_meta WHERE key = 'transcript_projection_references_version'").get())
       database.exec(transcriptReferencesSql)
-    database.exec("UPDATE schema_meta SET value = '22' WHERE key = 'schema_version'")
+    if (!database.query("SELECT 1 FROM schema_meta WHERE key = 'stream_writer_version' AND value = '2'").get())
+      database.exec(streamWriterSql)
+    database.exec("UPDATE schema_meta SET value = '23' WHERE key = 'schema_version'")
   })()
   return database
 }

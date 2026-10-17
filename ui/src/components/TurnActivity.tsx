@@ -7,7 +7,7 @@ import { ActivityMark } from "./ActivityMark"
 import { MarkdownContent } from "./MarkdownContent"
 import type { MascotState } from "./mascotState"
 import { ToolCallCard } from "./ToolCallCard"
-import { activityGroupLabels, activityGroups, activitySummary, activityTools, approvalTools } from "./turnActivity"
+import { activityGroupLabels, activityGroups, activitySummary, activityTools, approvalTools } from "./turnActivityModel"
 import "./turn-activity.css"
 
 export const TurnActivity = ({

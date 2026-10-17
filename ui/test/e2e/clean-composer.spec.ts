@@ -3,17 +3,18 @@ import { expect, test } from "@playwright/test"
 
 test.use({ viewport: { width: 1440, height: 900 } })
 
-test("chat starts with a clean composer and remembers the panel choice", async ({ page }) => {
+test("chat exposes quick model and project controls and remembers the panel choice", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" })
   await page.goto("/test/e2e/r8-composer-harness.html")
   const input = page.getByRole("textbox", { name: "Mensagem para mark" })
   await expect(input).toBeVisible()
   const composer = page.getByRole("form", { name: "Compor mensagem" })
-  await expect(composer.locator("button")).toHaveCount(2)
+  await expect(composer.locator("button")).toHaveCount(4)
   await expect(composer.getByRole("button", { name: "Anexar arquivo", exact: true })).toBeVisible()
   await expect(composer.getByRole("button", { name: "Enviar", exact: true })).toBeDisabled()
-  await expect(composer).not.toContainText(/Codex|gpt-|Permissões/)
-  await expect(composer.locator(".composer-model, .composer-shield, .composer-project")).toHaveCount(0)
+  await expect(composer.getByRole("button", { name: "Escolher modelo", exact: true })).toHaveText(/Codex · gpt-/)
+  await expect(composer.getByRole("button", { name: "Projeto do bot", exact: true })).toBeVisible()
+  await expect(composer.locator(".composer-shield")).toHaveCount(0)
   const toggle = page.getByRole("button", { name: "Painel do bot", exact: true })
   const panel = page.getByRole("complementary", { name: "Painel de mark" })
   await expect(toggle).toHaveAttribute("aria-expanded", "false")
