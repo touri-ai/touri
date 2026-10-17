@@ -928,8 +928,10 @@ export const createRuntimeEngine = ({
         const startTurn: ProviderAdapter["startTurn"] = prepared
           ? (args) => startVmTurn({ kernel, provider, args })
           : provider.startTurn
-        const invoke = (): ReturnType<typeof startTurn> =>
-          startTurn({
+        const invoke = (): ReturnType<typeof startTurn> => {
+          // Publish before invocation: startup and a silent provider are different waits.
+          if (!run.providerStartedAt) updateRun(run, { providerStartedAt: Date.now() })
+          return startTurn({
             thread,
             bot: turnBot,
             session,
@@ -943,6 +945,7 @@ export const createRuntimeEngine = ({
             onEvent,
             signal: controller.signal,
           })
+        }
         const invokeWithRetry = (): ReturnType<typeof startTurn> =>
           retryTransient({
             run: invoke,

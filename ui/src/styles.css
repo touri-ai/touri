@@ -3969,11 +3969,24 @@ a {
 .activity-mascot .tb-avatar {
   filter: none;
 }
+.activity-copy {
+  min-width: 0;
+  flex: 1;
+}
+.activity-delay p {
+  margin: 8px 0;
+  line-height: 1.5;
+}
+.activity-delay-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
 .activity-label {
   min-width: 0;
   overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 .activity-reasoning-button {
   display: block;
@@ -3984,8 +3997,8 @@ a {
   background: transparent;
   color: inherit;
   font: inherit;
-  white-space: nowrap;
-  text-overflow: ellipsis;
+  white-space: normal;
+  overflow-wrap: anywhere;
   text-align: left;
   cursor: pointer;
 }

@@ -70,6 +70,7 @@ const run = (trigger: Run["trigger"], status: Run["status"]): Run => ({
   usage: null,
   queuedAt: 1,
   startedAt: 1,
+  providerStartedAt: Date.now(),
   finishedAt: status === "running" ? null : 2,
 })
 const thread: Thread = {
@@ -381,7 +382,7 @@ describe("r2 regressions", () => {
         onOpenTools={() => undefined}
       />,
     )
-    expect(screen.getByText("Trabalhando")).toBeVisible()
+    expect(screen.getByText("Trabalhando…")).toBeVisible()
     expect(document.querySelector(".run-card")).toBeNull()
     view.rerender(
       <ChatPanel
@@ -463,3 +464,60 @@ it("P2: normalizes duplicate IDs in a REST snapshot", async () => {
   expect(hook.result.current.data.bots).toHaveLength(3)
   expect(hook.result.current.data.threads).toHaveLength(2)
 })
+
+it.each(["queued", "starting"] as const)(
+  "keeps the provider-start phase after a late %s acceptance snapshot",
+  async (status) => {
+    const fixture = fixtureApi()
+    let release: ((value: ApiRoutes["POST /threads/:id/messages"]["res"]) => void) | undefined
+    const request: ApiRequest = async (route, input, path) => {
+      if (route === "POST /threads/:id/messages")
+        return (await new Promise<ApiRoutes["POST /threads/:id/messages"]["res"]>((resolve) => {
+          release = resolve
+        })) as ApiRoutes[typeof route]["res"]
+      return fixture.api.request(route, input, path)
+    }
+    const api: UiApi = { ...fixture.api, request }
+    const hook = renderHook(() => useWorkspace(api))
+    await waitFor(() => expect(hook.result.current.data.loading).toBe(false))
+    const thread = hook.result.current.data.threads.find((row) => row.id === hook.result.current.data.selectedThreadId)
+    if (!thread?.botId) throw new Error("Missing selected conversation")
+    const started: Run = {
+      ...run("user", "starting"),
+      id: "phase-run",
+      threadId: thread.id,
+      botId: thread.botId,
+      requestMessageId: "phase-request",
+      providerStartedAt: Date.now(),
+      finishedAt: null,
+    }
+    let sending: Promise<void> | undefined
+    act(() => {
+      sending = hook.result.current.actions.sendMessage("Organize minhas notas.")
+    })
+    await waitFor(() => expect(release).toBeDefined())
+    act(() => fixture.mock.emit({ type: "run.updated", run: started }))
+    expect(hook.result.current.data.runs.find((row) => row.id === started.id)?.providerStartedAt).toBe(
+      started.providerStartedAt,
+    )
+    const stale: Run = { ...started, status }
+    delete stale.providerStartedAt
+    await act(async () => {
+      release?.({
+        message: {
+          ...message([]),
+          id: "phase-request",
+          threadId: thread.id,
+          role: "user",
+          text: "Organize minhas notas.",
+        },
+        run: stale,
+      })
+      await sending
+    })
+    expect(hook.result.current.data.runs.find((row) => row.id === started.id)?.providerStartedAt).toBe(
+      started.providerStartedAt,
+    )
+    expect(hook.result.current.data.runs.find((row) => row.id === started.id)?.status).toBe("starting")
+  },
+)

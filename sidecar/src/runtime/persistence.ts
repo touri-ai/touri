@@ -81,6 +81,7 @@ export const toRun = (value: unknown): Run | null => {
     routineRunId: nullableText(row, "routine_run_id"),
     queuedAt: integer(row, "queued_at"),
     startedAt: nullableInteger(row, "started_at"),
+    ...(row.provider_started_at == null ? {} : { providerStartedAt: integer(row, "provider_started_at") }),
     finishedAt: nullableInteger(row, "finished_at"),
   }
 }
@@ -248,12 +249,12 @@ export const createRuntimePersistence = ({ database }: { database: unknown }): R
     const error = persistedRunError(run)
     const result = db
       .query(
-        `INSERT INTO runs (id, thread_id, bot_id, provider, trigger, request_message_id, reply_message_id, external_turn_id, status, error_class, error_message, usage_json, routine_run_id, queued_at, started_at, finished_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO runs (id, thread_id, bot_id, provider, trigger, request_message_id, reply_message_id, external_turn_id, status, error_class, error_message, usage_json, routine_run_id, queued_at, started_at, finished_at, provider_started_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET request_message_id=excluded.request_message_id, reply_message_id=excluded.reply_message_id,
          external_turn_id=excluded.external_turn_id, status=excluded.status, error_class=excluded.error_class,
          error_message=excluded.error_message, usage_json=excluded.usage_json, routine_run_id=excluded.routine_run_id,
-         queued_at=excluded.queued_at, started_at=excluded.started_at, finished_at=excluded.finished_at
+         queued_at=excluded.queued_at, started_at=excluded.started_at, finished_at=excluded.finished_at, provider_started_at=excluded.provider_started_at
          WHERE runs.status IN ('queued', 'starting', 'running')`,
       )
       .run(
@@ -273,6 +274,7 @@ export const createRuntimePersistence = ({ database }: { database: unknown }): R
         run.queuedAt,
         run.startedAt,
         run.finishedAt,
+        run.providerStartedAt ?? null,
       )
     if (result.changes === 0) return false
     const current = runs.get(run.id)

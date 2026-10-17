@@ -70,6 +70,7 @@ type VirtualMessageListProps = {
   onSwitchBranch: (message: Message, siblings: Array<Message>, index: number) => void
   onRetry: (runId: Id) => Promise<void>
   onEdit?: EditMessage | undefined
+  onCancel?: ((runId: Id) => Promise<void>) | undefined
   editDisabled?: boolean
   header?: ReactNode
   allMessages?: Array<Message>
@@ -94,7 +95,7 @@ export const activeMessagePath = (messages: Array<Message>, leafId: Id | null): 
 
 const deliveryLabels = {
   queued: "Na fila · aguardando conexão",
-  sent: "Enviada · aguardando confirmação",
+  sent: t("Sending message…"),
   acked: "Entregue",
   failed: "Falha na entrega",
 }
@@ -117,6 +118,7 @@ export const VirtualMessageList = ({
   onSwitchBranch,
   onRetry,
   onEdit,
+  onCancel,
   editDisabled = false,
   header,
   timelineCards = [],
@@ -362,6 +364,7 @@ export const VirtualMessageList = ({
                     onSwitchBranch={onSwitchBranch}
                     onRetry={onRetry}
                     onEdit={onEdit}
+                    onCancel={onCancel}
                     editDisabled={editDisabled}
                   />
                 </Fragment>
@@ -448,6 +451,7 @@ const MessageBubble = ({
   onSwitchBranch,
   onRetry,
   onEdit,
+  onCancel,
   editDisabled,
 }: {
   inserted: boolean
@@ -462,6 +466,7 @@ const MessageBubble = ({
   onSwitchBranch: (message: Message, siblings: Array<Message>, index: number) => void
   onRetry: (runId: Id) => Promise<void>
   onEdit?: EditMessage | undefined
+  onCancel?: ((runId: Id) => Promise<void>) | undefined
   editDisabled: boolean
 }) => {
   const runtimeState = useMessageMascotState(message, run)
@@ -633,6 +638,11 @@ const MessageBubble = ({
       {message.role === "assistant" && message.status === "streaming" && (
         <ActivityMark
           state={mascotState}
+          run={run}
+          updatedAt={message.updatedAt}
+          api={api}
+          onCancel={onCancel}
+          preparingEnvironment={Boolean(vmBotId)}
           bot={bot}
           threadId={message.threadId}
           parts={parts}
@@ -921,6 +931,7 @@ export const ChatPanel = ({
             if (next) void onSwitchBranch(thread.id, next.id)
           }}
           onRetry={onRetry}
+          onCancel={onCancel}
           // Group replies use a flat history, so sibling edits cannot be selected there.
           onEdit={group ? undefined : onSend}
           editDisabled={Boolean(activeRun)}
@@ -965,7 +976,15 @@ export const ChatPanel = ({
                         <div className="message-meta">
                           <span className="message-role">{bot?.name ?? "touri"}</span>
                         </div>
-                        <ActivityMark state={activityState} bot={bot ?? undefined} threadId={thread.id} />
+                        <ActivityMark
+                          state={activityState === "waiting-approval" ? activityState : "thinking"}
+                          bot={bot ?? undefined}
+                          threadId={thread.id}
+                          run={activeRun}
+                          api={api}
+                          onCancel={onCancel}
+                          preparingEnvironment={bot?.machine === "vm"}
+                        />
                       </article>
                     ),
                   },
