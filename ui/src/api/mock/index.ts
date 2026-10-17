@@ -999,6 +999,7 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
     if (key === "GET /folders") {
       const path = (input as ApiRoutes["GET /folders"]["req"]).path ?? "/workspace"
       return {
+        canGrant: true,
         home: "/workspace",
         path,
         parent: path === "/" ? null : path.slice(0, path.lastIndexOf("/")) || "/",

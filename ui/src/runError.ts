@@ -8,6 +8,7 @@ import {
   safeRunFailure,
   sanitizeDiagnostic,
 } from "@touri/contracts/run-failure"
+import { type ErrorRecovery, errorRecovery } from "./errorRecovery"
 import { t } from "./i18n"
 
 export type RunErrorView = Omit<RunFailureDetail, "hint"> & {
@@ -16,6 +17,7 @@ export type RunErrorView = Omit<RunFailureDetail, "hint"> & {
   stageLabel: string
   hint: string
   specificHint: boolean
+  recovery: ErrorRecovery
 }
 
 const TITLES: Record<string, string> = {
@@ -84,6 +86,13 @@ export const runErrorFor = (message: Message, candidate?: Run, machineReady = fa
         ? failureRetryHint(failure.stage, true)
         : (hint ?? failureRetryHint(failure.stage, machineReady)),
     specificHint: hint !== undefined,
+    recovery: errorRecovery(run?.errorMessage ?? raw, {
+      errorClass,
+      provider: run?.provider,
+      parts: message.parts,
+      savedMessage: !!run?.requestMessageId,
+      occurredAt: run?.finishedAt ?? message.updatedAt,
+    }),
   }
 }
 

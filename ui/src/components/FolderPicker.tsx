@@ -1,5 +1,6 @@
 import type { BotFolder, FolderListing } from "@touri/contracts"
 import { useCallback, useEffect, useRef, useState } from "react"
+import { createPortal } from "react-dom"
 import type { TauriInvoke, UiApi } from "../api/client"
 import { userFacingError } from "../errors"
 import { t } from "../i18n"
@@ -12,8 +13,12 @@ export const FolderPicker = ({
   initialAccess = "read-only",
   onSelect,
   onClose,
+  requireAccess = false,
+  onUpload,
 }: {
   api: UiApi
+  requireAccess?: boolean
+  onUpload?: (() => void) | undefined
   invokeCommand?: TauriInvoke | undefined
   initialAccess?: BotFolder["access"]
   onSelect: (folder: BotFolder) => void | Promise<void>
@@ -29,8 +34,11 @@ export const FolderPicker = ({
   const [confirming, setConfirming] = useState(false)
   const generation = useRef(0)
   const busyRef = useRef(false)
+  const listRef = useRef<HTMLDivElement>(null)
+  const restoreListFocus = useRef(false)
   const load = useCallback(
     async (path?: string) => {
+      restoreListFocus.current = !!document.activeElement?.closest(".folder-picker-list")
       const request = ++generation.current
       setBusy(true)
       setListing(null)
@@ -56,6 +64,11 @@ export const FolderPicker = ({
       generation.current++
     }
   }, [load])
+  useEffect(() => {
+    if (!listing || !restoreListFocus.current) return
+    restoreListFocus.current = false
+    listRef.current?.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus()
+  }, [listing])
   const run = async (action: () => Promise<void>) => {
     if (busyRef.current) return
     busyRef.current = true
@@ -70,22 +83,39 @@ export const FolderPicker = ({
       setBusy(false)
     }
   }
+  const desktop = "__TAURI_INTERNALS__" in window
+  const unavailable = requireAccess && listing && !listing.canGrant
   const crumbs = listing
-    ? [
-        { name: "/", path: "/" },
-        ...listing.path
-          .split("/")
-          .filter(Boolean)
-          .map((name, index, parts) => ({
-            name,
-            path: `/${parts.slice(0, index + 1).join("/")}`,
-          })),
-      ]
+    ? listing.path
+        .slice(listing.home.length)
+        .split("/")
+        .filter(Boolean)
+        .map((name, index, parts) => ({ name, path: `${listing.home}/${parts.slice(0, index + 1).join("/")}` }))
     : []
-  return (
-    <Modal title={t("Escolher pasta")} className="folder-picker" onClose={() => !busyRef.current && onClose()}>
+  return createPortal(
+    <Modal
+      title={desktop ? t("Escolher pasta") : t("Pastas no servidor")}
+      className="folder-picker"
+      onClose={() => !busyRef.current && onClose()}
+    >
       <div className="folder-picker-body">
-        <p className="field-help">{t("As pastas estão no computador onde o touri está rodando.")}</p>
+        <p className="field-help">
+          {desktop
+            ? t("As pastas estão no computador onde o touri está rodando.")
+            : t(
+                "Esta pasta fica no servidor. Para enviar um arquivo do celular ou computador, use Enviar arquivo deste dispositivo.",
+              )}
+        </p>
+        {unavailable && (
+          <div role="status">
+            <p>{t("Não foi possível liberar a pasta com segurança. Seu bot continua disponível.")}</p>
+            {onUpload && (
+              <button type="button" className="button button-quiet" onClick={onUpload}>
+                {t("Enviar arquivo deste dispositivo")}
+              </button>
+            )}
+          </div>
+        )}
         <nav aria-label={t("Caminho da pasta")} className="folder-picker-breadcrumbs">
           <button type="button" className="button-quiet" disabled={busy} onClick={() => void load()}>
             {t("Pasta pessoal")}
@@ -103,7 +133,7 @@ export const FolderPicker = ({
             </button>
           ))}
         </nav>
-        <div className="folder-picker-list" aria-busy={busy}>
+        <div ref={listRef} className="folder-picker-list" aria-busy={busy}>
           {busy && <p role="status">{t("Carregando pastas…")}</p>}
           {listing?.parent && (
             <button
@@ -175,7 +205,7 @@ export const FolderPicker = ({
         <button
           type="button"
           className="button-quiet"
-          disabled={busy || !listing}
+          disabled={busy || !listing || !!unavailable}
           onClick={() => {
             setCreating(true)
             setName("")
@@ -228,7 +258,7 @@ export const FolderPicker = ({
             )}
           </div>
         )}
-        <fieldset className="folder-picker-access" disabled={busy}>
+        <fieldset className="folder-picker-access" disabled={busy || !!unavailable}>
           <legend>{t("Acesso à pasta")}</legend>
           <label>
             <input
@@ -240,7 +270,7 @@ export const FolderPicker = ({
               checked={access === "read-only"}
               onChange={() => setAccess("read-only")}
             />
-            {t("O bot pode ler")}
+            {t("Somente leitura")}
           </label>
           <label>
             <input
@@ -265,10 +295,10 @@ export const FolderPicker = ({
           <button
             type="button"
             className="button button-brand"
-            disabled={busy || !listing || confirming}
+            disabled={busy || !listing || confirming || !!unavailable}
             onClick={() =>
               void run(async () => {
-                if (listing) await onSelect({ path: listing.path, access })
+                if (listing && !unavailable) await onSelect({ path: listing.path, access })
               })
             }
           >
@@ -276,6 +306,7 @@ export const FolderPicker = ({
           </button>
         </div>
       </div>
-    </Modal>
+    </Modal>,
+    document.body,
   )
 }

@@ -203,7 +203,47 @@ fn permissions_request(permission: String) -> Result<computer::PermissionsReques
 
 #[tauri::command]
 fn secret_save(state: State<'_, AppState>, account: String, value: String) -> Result<(), String> {
-    state.keychain.set(&account, &value)
+    state
+        .keychain
+        .set(&account, &value)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+async fn vault_authorize(
+    app: AppHandle<Wry>,
+    state: State<'_, AppState>,
+    account: String,
+) -> Result<(), keychain::KeychainError> {
+    // Focus the actual app before Security.framework asks the system to authorize.
+    let (sender, receiver) = std::sync::mpsc::sync_channel(1);
+    let foreground = app.clone();
+    app.run_on_main_thread(move || {
+        let result = (|| {
+            foreground
+                .show()
+                .map_err(|_| keychain::KeychainError::VaultUnavailable)?;
+            let window = foreground
+                .get_window("main")
+                .ok_or(keychain::KeychainError::VaultUnavailable)?;
+            window
+                .unminimize()
+                .and_then(|_| window.show())
+                .and_then(|_| window.set_focus())
+                .map_err(|_| keychain::KeychainError::VaultUnavailable)
+        })();
+        let _ = sender.send(result);
+    })
+    .map_err(|_| keychain::KeychainError::VaultUnavailable)?;
+    let store = state.keychain.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        receiver
+            .recv_timeout(std::time::Duration::from_secs(2))
+            .map_err(|_| keychain::KeychainError::VaultTimeout)??;
+        store.authorize(&account)
+    })
+    .await
+    .map_err(|_| keychain::KeychainError::VaultUnavailable)?
 }
 
 #[tauri::command]
@@ -510,6 +550,7 @@ pub fn run() {
             permissions_open_settings,
             permissions_request,
             secret_save,
+            vault_authorize,
             pick_folder,
             reveal_in_finder,
             open_external,

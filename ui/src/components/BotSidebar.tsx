@@ -248,6 +248,7 @@ export const Sidebar = (props: SidebarProps) => {
           <NotificationBell
             notifications={notifications}
             messages={messages}
+            runs={props.runs ?? []}
             actions={{
               ...props.notificationActions,
               open: (item) => navigate(() => props.notificationActions.open(item)),

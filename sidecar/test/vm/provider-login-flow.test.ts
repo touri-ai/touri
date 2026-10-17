@@ -379,10 +379,10 @@ test("OpenCode provider and method menus accept only navigation keys through the
 })
 
 test("vault failure leaves login retryable, never ready", async () => {
-  const f = fixture("claude")
+  const f = fixture("claude", "success", 3000, { platform: "darwin", headless: false })
   f.kernel.callHost = async () => ({ success: false, errorCode: "HOST_ERROR", error: "synthetic-secret-error" })
   await expect(f.flow.action(f.bot, { action: "paste", value: token })).rejects.toThrow()
-  await expect(f.flow.status(f.bot)).rejects.toThrow("cofre")
+  expect(await f.flow.status(f.bot)).toMatchObject({ state: "vault-locked" })
 })
 
 test("cancel during a pending vault write removes the late credential without activating it", async () => {
@@ -594,11 +594,11 @@ for (const provider of ["claude", "codex"] as const)
     })
 
 test("a temporary vault failure recovers through status without launching login", async () => {
-  const f = fixture("claude")
+  const f = fixture("claude", "success", 3000, { platform: "darwin", headless: false })
   f.vault.set(providerLoginAccount(f.bot.id, "claude"), token)
   const callHost = f.kernel.callHost
   f.kernel.callHost = async () => ({ success: false, errorCode: "HOST_ERROR", error: "unavailable" })
-  await expect(f.flow.status(f.bot)).rejects.toThrow()
+  expect(await f.flow.status(f.bot)).toMatchObject({ state: "vault-locked" })
   f.kernel.callHost = callHost
   expect(await f.flow.status(f.bot)).toEqual({ provider: "claude", state: "ready" })
   expect(f.invocations).toHaveLength(0)

@@ -86,7 +86,7 @@ export const createSendJournal = ({
           emit({ type: "run.updated", run: response.run })
           retryDelay = 500
         } catch (error) {
-          if (error instanceof ApiError && error.status < 500) status(entry, "failed")
+          if (error instanceof ApiError && error.status >= 400 && error.status < 500) status(entry, "failed")
           // Keep sent when acknowledgement was lost. Reconnect retries this exact nonce and deadline.
           else if (entries.includes(entry)) {
             scheduleRetry()

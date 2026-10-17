@@ -1,5 +1,16 @@
 import type { Bot, BotGroup, Id, MachineState, Message, Routine, RoutineRun, Run, Thread } from "@touri/contracts"
-import { Fragment, type ReactNode, useContext, useId, useLayoutEffect, useMemo, useRef, useState } from "react"
+import { failureRetryHint, sanitizeDiagnostic } from "@touri/contracts/run-failure"
+import {
+  Fragment,
+  type ReactNode,
+  useContext,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react"
 import type { UiApi } from "../api/client"
 import type { ApprovalFocus } from "../approvalNavigation"
 import { userFacingRunError } from "../errors"
@@ -8,6 +19,13 @@ import { InlineLivePreview, InlinePreviewContext, screenTool } from "../features
 import { localizeNotice, t, threadTitle } from "../i18n"
 import { machineStateForDisplay } from "../machineState"
 import { messageMarkdown } from "../messageMarkdown"
+import {
+  consumeTaskResume,
+  consumeTaskReview,
+  requestTaskResume,
+  resumeTaskEvent,
+  reviewTaskEvent,
+} from "../recoveryEvents"
 import { type RoutineDraft, repeatTaskDraft, suggestedRoutineDraft } from "../routineDraft"
 import { failureTimeLabel, runErrorFor } from "../runError"
 import { ActivityMark } from "./ActivityMark"
@@ -19,6 +37,7 @@ import { Composer } from "./Composer"
 import { ConnectDataCard, connectDataMarker } from "./ConnectDataCard"
 import { ConversationStart } from "./ConversationStart"
 import { ErrorDetails, ErrorText } from "./ErrorDetails"
+import { ErrorNotice } from "./ErrorNotice"
 import { EvidenceContext } from "./EvidenceGallery"
 import { FailureActionContext } from "./FailureActionContext"
 import { GroupConversationStart, GroupHeader } from "./Groups"
@@ -43,6 +62,7 @@ type ChatPanelProps = {
   onTogglePanel?: () => void
   routines?: Array<Routine>
   routineRuns?: Array<RoutineRun>
+  attachmentButtonRef?: React.RefObject<HTMLButtonElement | null> | undefined
   onOpenPermissions?: () => void
   onOpenToolCatalog?: () => void
   onOpenProviderLogin?: () => void
@@ -509,36 +529,109 @@ const MessageBubble = ({
       ? null
       : failure
   const [failureExpanded, setFailureExpanded] = useState(false)
+  const [reviewingActions, setReviewingActions] = useState(false)
+  useEffect(() => {
+    const review = () => {
+      if (!message.runId || !consumeTaskReview(message.runId)) return
+      setReviewingActions(true)
+      root.current?.scrollIntoView?.({ block: "center" })
+    }
+    review()
+    window.addEventListener(reviewTaskEvent, review)
+    return () => window.removeEventListener(reviewTaskEvent, review)
+  }, [message.runId])
   const failedAt = run?.finishedAt ?? message.updatedAt
   const failureTime = failureTimeLabel(failedAt)
   const onFailureAction = useContext(FailureActionContext)
   const failureAction = runError?.action
   const failureContent = runError && (
     <div className="message-error" role="alert">
-      <strong>{runError.title}</strong>
-      <p>
-        {runError.stageLabel} · {runError.detail}
-      </p>
-      <time className="message-error-meta" dateTime={new Date(failedAt).toISOString()}>
-        {failureTime}
-      </time>
-      <ErrorDetails code={runError.code} />
-      {(vmBotId || runError.specificHint) && <p>{runError.hint}</p>}
-      {failureAction && failureAction.kind !== "machine_service" && (
-        <button type="button" className="text-button" onClick={() => onFailureAction(failureAction)}>
-          {failureAction.label}
-        </button>
-      )}
-      {vmBotId &&
-        api &&
-        (runError.action?.kind === "machine_service" ||
-          message.parts.some(
-            (part) => part.type === "notice" && /^machine_service_(?:unavailable|start_failed):/.test(part.text),
-          )) && <MachineServiceButton api={api} botId={vmBotId} />}
-      {message.runId && (!vmBotId || machine?.status === "running") && (
-        <button type="button" className="text-button retry-button" onClick={() => void onRetry(message.runId ?? "")}>
-          {vmBotId ? "Tentar de novo" : t("Tentar novamente")}
-        </button>
+      {runError.recovery.classified ||
+      (runError.stage === "turn" && !/^TOURI-E800[12]$/.test(runError.code)) ||
+      runError.stage === "provider_protocol" ? (
+        <>
+          <ErrorNotice
+            recovery={runError.recovery}
+            onAction={async (action) => {
+              if (action === "retry") await onRetry(message.runId ?? "")
+              else if (action === "review") setReviewingActions(true)
+              else if (action === "resume") {
+                setReviewingActions(true)
+                requestTaskResume(message.threadId)
+              } else
+                onFailureAction(
+                  action === "login"
+                    ? { kind: "setting", settingId: "providerLogin", label: "" }
+                    : { kind: "doctor", label: "" },
+                )
+            }}
+          />
+          {vmBotId && !runError.recovery.classified && <p>{failureRetryHint(runError.stage)}</p>}
+          {reviewingActions && (
+            <section aria-label={t("Ações registradas")} tabIndex={-1}>
+              <p>{t("Revise as ações registradas antes de continuar. Nenhuma ação será repetida automaticamente.")}</p>
+              <ul>
+                {message.parts.flatMap((part, index) => {
+                  const summary =
+                    part.type === "tool_call"
+                      ? part.summary
+                      : part.type === "command"
+                        ? part.command
+                        : part.type === "file_change"
+                          ? part.paths.join(", ")
+                          : null
+                  return summary
+                    ? [
+                        <li key={"callId" in part ? part.callId : part.type}>
+                          <details>
+                            <summary>
+                              {t("Ações registradas")} {index + 1}
+                            </summary>
+                            <pre>{sanitizeDiagnostic(summary)}</pre>
+                          </details>
+                        </li>,
+                      ]
+                    : []
+                })}
+              </ul>
+              {!message.parts.some((part) => ["tool_call", "command", "file_change"].includes(part.type)) && (
+                <p>{t("Nenhuma ação confirmada no histórico. Confira o estado atual antes de continuar.")}</p>
+              )}
+            </section>
+          )}
+        </>
+      ) : (
+        <>
+          <strong>{runError.title}</strong>
+          <p>
+            {runError.stageLabel} · {runError.detail}
+          </p>
+          <time className="message-error-meta" dateTime={new Date(failedAt).toISOString()}>
+            {failureTime}
+          </time>
+          <ErrorDetails code={runError.code} />
+          {(vmBotId || runError.specificHint) && <p>{runError.hint}</p>}
+          {failureAction && failureAction.kind !== "machine_service" && (
+            <button type="button" className="text-button" onClick={() => onFailureAction(failureAction)}>
+              {failureAction.label}
+            </button>
+          )}
+          {vmBotId &&
+            api &&
+            (runError.action?.kind === "machine_service" ||
+              message.parts.some(
+                (part) => part.type === "notice" && /^machine_service_(?:unavailable|start_failed):/.test(part.text),
+              )) && <MachineServiceButton api={api} botId={vmBotId} />}
+          {message.runId && (!vmBotId || machine?.status === "running") && (
+            <button
+              type="button"
+              className="text-button retry-button"
+              onClick={() => void onRetry(message.runId ?? "")}
+            >
+              {vmBotId ? "Tentar de novo" : t("Tentar novamente")}
+            </button>
+          )}
+        </>
       )}
     </div>
   )
@@ -721,6 +814,7 @@ export const ChatPanel = ({
   onComputerGrant,
   onOpenTools,
   onOpenPermissions,
+  attachmentButtonRef: sharedAttachmentButtonRef,
   onOpenToolCatalog,
   onOpenProviderLogin,
   onOpenComputer,
@@ -731,7 +825,25 @@ export const ChatPanel = ({
   const [draft, setDraft] = useState("")
   const mascotSnapshot = useMascotSnapshot({ id: bot?.id ?? "", color: bot?.color ?? null }, thread?.id)
   const composerRef = useRef<HTMLTextAreaElement>(null)
-  const attachmentButtonRef = useRef<HTMLButtonElement>(null)
+  const recoveryThreadId = thread?.id
+  useEffect(() => {
+    const resume = () => {
+      if (!recoveryThreadId || !consumeTaskResume(recoveryThreadId)) return
+      setDraft(
+        (current) =>
+          current ||
+          t(
+            "Conferi as ações registradas. Quero continuar a tarefa a partir do estado atual, sem repetir ações já concluídas.",
+          ),
+      )
+      composerRef.current?.focus()
+    }
+    resume()
+    window.addEventListener(resumeTaskEvent, resume)
+    return () => window.removeEventListener(resumeTaskEvent, resume)
+  }, [recoveryThreadId])
+  const localAttachmentButtonRef = useRef<HTMLButtonElement>(null)
+  const attachmentButtonRef = sharedAttachmentButtonRef ?? localAttachmentButtonRef
   const activeRun = useMemo(
     () =>
       runs.find(
@@ -972,6 +1084,7 @@ export const ChatPanel = ({
                     createdAt: connectDataReply.createdAt + 1,
                     content: (
                       <ConnectDataCard
+                        desktop={"__TAURI_INTERNALS__" in window}
                         onAttach={() => attachmentButtonRef.current?.click()}
                         onFolder={bot?.machine === "cloud" ? undefined : onOpenPermissions}
                         onCatalog={onOpenToolCatalog}

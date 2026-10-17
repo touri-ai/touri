@@ -1,7 +1,9 @@
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto"
 import { join } from "node:path"
 import type { Kernel } from "@touri/contracts"
+import { TouriError } from "../kernel/errors"
 import { atomicWriteFile, ensurePrivateDirectory, readPrivateFile, removePrivateFile } from "../kernel/files"
+import { withDeadline } from "../kernel/policy"
 
 export type SavedCookie = Record<string, unknown>
 export type SavedSession = {
@@ -20,7 +22,20 @@ const SAFE_BOT_ID = /^[A-Za-z0-9_-]+$/
 
 export const emptySession = (): SavedSession => ({ cookies: [], storage: {} })
 
-const keyAccount = (botId: string): string => `browser-session-key:${botId}`
+export const browserSessionKeyAccount = (botId: string): string => `browser-session-key:${botId}`
+
+export class SessionVaultError extends Error {
+  constructor(readonly errorCode = "SESSION_UNREADABLE") {
+    super("Não foi possível ler a sessão salva do navegador. Abra o Diagnóstico para verificar o cofre.")
+  }
+}
+
+const vaultCall = async <T>(operation: () => Promise<T>): Promise<T> =>
+  withDeadline({ operation, timeoutMs: 4000 }).catch((error) => {
+    throw new SessionVaultError(
+      error instanceof TouriError && error.code === "TOURI-E1008" ? "VAULT_TIMEOUT" : "VAULT_UNAVAILABLE",
+    )
+  })
 
 const sessionsDir = (kernel: Kernel): string => join(kernel.paths.browserDir, "sessions")
 
@@ -44,25 +59,26 @@ const toSession = (value: unknown): SavedSession | null => {
 }
 
 const readKey = async (kernel: Kernel, botId: string): Promise<Buffer | null> => {
-  const result = await kernel.callHost("keychain.get", { account: keyAccount(botId) }).catch(() => null)
-  if (!result?.success || typeof result.value.value !== "string") return null
+  const result = await vaultCall(() => kernel.callHost("keychain.get", { account: browserSessionKeyAccount(botId) }))
+  if (!result.success) throw new SessionVaultError(result.errorCode)
+  if (result.value.value === null) return null
   const key = Buffer.from(result.value.value, "base64")
-  return key.byteLength === KEY_BYTES ? key : null
+  if (key.byteLength !== KEY_BYTES) throw new SessionVaultError()
+  return key
 }
 
-const ensureKey = async (kernel: Kernel, botId: string): Promise<Buffer | null> => {
-  const existing = await readKey(kernel, botId)
-  if (existing) return existing
+const createKey = async (kernel: Kernel, botId: string): Promise<Buffer> => {
   const created = randomBytes(KEY_BYTES)
-  const stored = await kernel
-    .callHost("keychain.set", { account: keyAccount(botId), value: created.toString("base64") })
-    .catch(() => null)
-  if (!stored?.success) return null
-  return (await readKey(kernel, botId)) ? created : null
+  const stored = await vaultCall(() =>
+    kernel.callHost("keychain.set", { account: browserSessionKeyAccount(botId), value: created.toString("base64") }),
+  )
+  if (!stored.success) throw new SessionVaultError(stored.errorCode)
+  const confirmed = await readKey(kernel, botId)
+  if (!confirmed?.equals(created)) throw new SessionVaultError()
+  return confirmed
 }
 
-const seal = (plain: string, key: Buffer | null): Envelope => {
-  if (!key) return { v: 1, enc: "none", data: Buffer.from(plain).toString("base64") }
+const seal = (plain: string, key: Buffer): Envelope => {
   const iv = randomBytes(IV_BYTES)
   const cipher = createCipheriv("aes-256-gcm", key, iv)
   const data = Buffer.concat([cipher.update(plain, "utf8"), cipher.final()])
@@ -96,8 +112,9 @@ const toEnvelope = (value: unknown): Envelope | null => {
 
 /**
  * Bot-private browser session file (cookies and per-origin localStorage). The file is mode 0600 inside a 0700
- * directory and is encrypted with AES-256-GCM using a per-bot key kept in the host keychain. When the keychain is
- * unavailable it falls back to the file mode alone. The content is never logged or reported.
+ * directory and is encrypted with AES-256-GCM using a per-bot key kept in the host keychain. An unavailable
+ * vault is an unknown, read-only state: never discard ciphertext, replace its key, or save without encryption.
+ * Legacy enc:none files remain readable and are encrypted on the next successful save.
  */
 export const hasBotSession = (kernel: Kernel, botId: string): boolean =>
   SAFE_BOT_ID.test(botId) &&
@@ -112,9 +129,11 @@ export const loadBotSession = async (kernel: Kernel, botId: string): Promise<Sav
   })
   if (!raw) return emptySession()
   const envelope = toEnvelope(parseJson(raw.toString("utf8")))
-  if (!envelope) return emptySession()
+  if (!envelope) throw new SessionVaultError()
   const plain = open(envelope, envelope.enc === "none" ? null : await readKey(kernel, botId))
-  return toSession(plain === null ? null : parseJson(plain)) ?? emptySession()
+  const session = toSession(plain === null ? null : parseJson(plain))
+  if (!session) throw new SessionVaultError()
+  return session
 }
 
 export const saveBotSession = async ({
@@ -129,7 +148,24 @@ export const saveBotSession = async ({
   if (!SAFE_BOT_ID.test(botId)) return false
   const plain = JSON.stringify(session)
   if (plain.length > MAX_SESSION_BYTES) return false
-  const key = await ensureKey(kernel, botId)
+  let key: Buffer
+  try {
+    // Even a save without a prior load must preserve an unreadable existing file.
+    const raw = readPrivateFile({
+      root: kernel.paths.appData,
+      path: sessionPath(kernel, botId),
+      maxBytes: MAX_SESSION_BYTES * 2,
+    })
+    const envelope = raw ? toEnvelope(parseJson(raw.toString("utf8"))) : null
+    if (raw && !envelope) return false
+    const existing = await readKey(kernel, botId)
+    if (envelope?.enc === "aes-256-gcm") {
+      if (!existing || !toSession(parseJson(open(envelope, existing) ?? ""))) return false
+    }
+    key = existing ?? (await createKey(kernel, botId))
+  } catch {
+    return false
+  }
   ensurePrivateDirectory({ root: kernel.paths.appData, path: sessionsDir(kernel) })
   atomicWriteFile({
     root: kernel.paths.appData,
@@ -143,7 +179,7 @@ export const saveBotSession = async ({
 export const removeBotSession = async (kernel: Kernel, botId: string): Promise<void> => {
   if (!SAFE_BOT_ID.test(botId)) return
   removePrivateFile({ root: kernel.paths.appData, path: sessionPath(kernel, botId) })
-  const result = await kernel.callHost("keychain.delete", { account: keyAccount(botId) })
+  const result = await kernel.callHost("keychain.delete", { account: browserSessionKeyAccount(botId) })
   if (!result.success) throw new Error("Não foi possível apagar a chave da sessão do navegador do bot.")
 }
 

@@ -707,8 +707,8 @@ test("an interrupted run with a streaming snapshot renders interruption and retr
       onRetry={async () => undefined}
     />,
   )
-  expect(screen.getByText("A resposta foi interrompida ao reiniciar o touri")).toBeVisible()
-  expect(screen.getByRole("button", { name: "Tentar novamente" })).toBeVisible()
+  expect(screen.getByText("A resposta foi interrompida. Algumas ações podem ter sido concluídas.")).toBeVisible()
+  expect(screen.getByRole("button", { name: "Retomar tarefa" })).toBeVisible()
   expect(screen.queryByText("Cancelado")).toBeNull()
 })
 

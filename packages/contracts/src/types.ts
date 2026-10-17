@@ -49,6 +49,8 @@ export type Result<T, C extends string = string> = Ok<T> | Err<C>
 export type DiscoveredProject = { path: AbsolutePath; name: string; lastModified: number }
 
 export type FolderListing = {
+  /** Whether this host can enforce provider folder grants. Browsing alone grants nothing. */
+  canGrant: boolean
   home: AbsolutePath
   path: AbsolutePath
   parent: AbsolutePath | null
@@ -679,7 +681,7 @@ export type ProviderProfile = { name: string; provider: Provider; loggedIn: bool
 
 export type ProviderLoginFlow = {
   provider: Provider
-  state: 'idle' | 'host-available' | 'waiting' | 'ready' | 'cancelled' | 'error'
+  state: 'idle' | 'host-available' | 'waiting' | 'ready' | 'cancelled' | 'error' | 'vault-locked'
   /** Sidecar host, independent of the browser. Sent only when a valid host login can be imported. */
   host?: 'mac' | 'server'
   deviceCode?: string
@@ -742,7 +744,7 @@ export type ApiRoutes = {
       ready: boolean
       source: 'token' | 'file' | 'guest' | 'missing'
       configuredSource?: 'vault' | 'host-file'
-      health?: 'ready' | 'not-found' | 'transport' | 'invalid'
+      health?: 'ready' | 'not-found' | 'transport' | 'invalid' | 'vault-locked'
       message: string
     }
   }
@@ -866,7 +868,9 @@ export type DoctorCheck = {
   fix: string | null
   durationMs?: number
   errorCode?: string
-  action?: 'start-machine-service'
+  action?: 'start-machine-service' | 'authorize-vault'
+  /** Account to authorize in the native app; never contains the secret. */
+  vaultAccount?: string
 }
 export type DoctorReport = { checks: Array<DoctorCheck>; running?: boolean; checkedAt?: EpochMs | null }
 
@@ -978,6 +982,8 @@ export type ScreenshotResult = {
   scale: number
   displayId: number
 }
+
+export type VaultErrorCode = 'VAULT_ACCESS_REQUIRED' | 'VAULT_TIMEOUT' | 'VAULT_CANCELLED' | 'VAULT_UNAVAILABLE'
 
 export type HostMethods = {
   auth: { params: { token: string }; result: { ok: true } }
@@ -1104,7 +1110,7 @@ export type ServiceMap = {
   'groups.runtime': {
     enqueue: ServiceMap['runtime.enqueue']
     cancel: (id: Id) => boolean
-    retry: (id: Id) => ReturnType<ServiceMap['runtime.enqueue']> | null
+    retry: (id: Id) => Result<{ run: Run }, 'THREAD_NOT_FOUND' | 'BOT_PAUSED' | 'CONFLICT'> | null
     listRuns: (threadId: Id) => Array<Run>
     shutdown: () => void
     canCoordinate: (threadId: Id) => boolean
@@ -1201,7 +1207,7 @@ export type Kernel = {
   subscribe: (listener: (envelope: UiEventEnvelope) => void) => () => void
   registerRoutes: (module: RouteModule) => void
   registerTools: RegisterTools
-  callHost: <M extends keyof HostMethods>(method: M, params: HostMethods[M]['params']) => Promise<Result<{ value: HostMethods[M]['result'] }, 'HOST_UNAVAILABLE' | 'HOST_ERROR'>>
+  callHost: <M extends keyof HostMethods>(method: M, params: HostMethods[M]['params']) => Promise<Result<{ value: HostMethods[M]['result'] }, 'HOST_UNAVAILABLE' | 'HOST_ERROR' | VaultErrorCode>>
   onHostNotification: (listener: (notification: HostNotification) => void) => () => void
   redact: (text: string) => string
   addRedactionValue: (value: string) => void

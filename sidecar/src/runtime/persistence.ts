@@ -203,7 +203,9 @@ export const createRuntimePersistence = ({ database }: { database: unknown }): R
   const listRuns = (threadId: Id, options?: { all?: boolean }): Array<Run> => {
     if (db) {
       const rows = db
-        .query(`SELECT * FROM runs WHERE thread_id = ? ORDER BY queued_at DESC${options?.all ? "" : " LIMIT 50"}`)
+        .query(
+          `SELECT * FROM runs WHERE thread_id = ? ORDER BY queued_at DESC, rowid DESC${options?.all ? "" : " LIMIT 50"}`,
+        )
         .all(threadId)
       return rows.map(toRun).filter((run): run is Run => run !== null)
     }

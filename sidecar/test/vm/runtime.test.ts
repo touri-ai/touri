@@ -1527,7 +1527,7 @@ test("Claude unanswered credential handoff returns an actionable login error and
   f.runtime.kernel.callHost = (() => new Promise(() => {})) as Kernel["callHost"]
   await expect(
     f.vm.service.prepareTurn({ botId: bot.id, threadId: bot.mainThreadId ?? "thread", token: "mcp" }),
-  ).rejects.toThrow("claude setup-token")
+  ).rejects.toThrow("O cofre de segredos não respondeu. Tente novamente.")
   expect(f.vm.service.states()[0]?.errorCode).toBe("TOURI-E3001")
   f.runtime.kernel.callHost = (async () => ({
     success: true,
