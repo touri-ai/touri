@@ -65,6 +65,8 @@ export type WorkspaceData = {
   selectedThreadId: Id | null
   activeProjectId: Id | null
   loading: boolean
+  /** A successful snapshot is required before a web deep link can be resolved. */
+  loaded: boolean
   notice: string | null
   importProgress: { phase: string; done: number; total: number } | null
   computerGrantRequest: { threadId: Id } | null
@@ -142,6 +144,7 @@ const emptyState = (): WorkspaceData => ({
   selectedThreadId: readWorkspaceState().threadId ?? null,
   activeProjectId: null,
   loading: true,
+  loaded: false,
   notice: null,
   importProgress: null,
   computerGrantRequest: null,
@@ -511,6 +514,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
           selectedThreadId: selectedThread?.id ?? null,
           activeProjectId: selectedBot?.projectId ?? null,
           loading: false,
+          loaded: true,
           notice: null,
         }
       })
