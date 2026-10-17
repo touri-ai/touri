@@ -1,17 +1,26 @@
 import type { McpServer } from "@touri/contracts"
 import { t } from "../i18n"
 
-export const mcpPresets: Array<{ server: McpServer; title: string; guidance: string; setup?: string; docs: string }> = [
+export type McpPreset = {
+  server: McpServer
+  title: string
+  description: string
+  guidance: string
+  setup?: string
+  docs: string
+}
+
+export const mcpPresets: McpPreset[] = [
   {
     title: "Gmail",
     server: { name: "gmail", transport: "stdio", command: "npx", args: ["-y", "@shinzolabs/gmail-mcp"], tools: [] },
-    guidance:
-      "Requer Node.js 18+, Gmail API ativada no Google Cloud e cliente OAuth do tipo App para computador. Salve o JSON em ~/.gmail-mcp/gcp-oauth.keys.json e autorize a conta para gerar ~/.gmail-mcp/credentials.json. Depois conecte o servidor abaixo.",
+    description: t("Leia, organize e envie mensagens com a conta que você autorizar."),
+    guidance: t("Uma conta Google e uma preparação no Google Cloud. Vamos orientar cada etapa."),
     setup: "npx @shinzolabs/gmail-mcp auth",
     docs: "https://github.com/shinzo-labs/gmail-mcp#prerequisites",
   },
   {
-    title: "Arquivos locais",
+    title: t("Arquivos locais"),
     server: {
       name: "arquivos",
       transport: "stdio",
@@ -19,35 +28,36 @@ export const mcpPresets: Array<{ server: McpServer; title: string; guidance: str
       args: ["-y", "@modelcontextprotocol/server-filesystem"],
       tools: [],
     },
-    guidance: t(
-      "Requer Node.js. Ao usar esta configuração, informe o caminho absoluto de uma pasta permitida no campo abaixo. Não requer login ou token.",
-    ),
+    description: t("O bot pode ler e editar arquivos nas pastas que você escolher."),
+    guidance: t("Uma pasta permitida na máquina do bot e Node.js. Não precisa de conta ou senha."),
     docs: "https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem",
   },
 ]
 
-export const McpCatalog = ({ onSelect }: { onSelect?: (server: McpServer) => void }) => (
-  <section className="mcp-catalog" aria-label="Catálogo de integrações MCP">
-    <h3>Conectar uma integração</h3>
-    <p>
-      Prepare o servidor na máquina em que o bot executa. Para um bot em VM, os arquivos e o login devem estar na VM; o
-      login do host não é copiado.
-    </p>
+export const McpCatalog = ({
+  onSelect,
+  disabled = false,
+}: {
+  onSelect?: (server: McpServer) => void
+  disabled?: boolean
+}) => (
+  <section className="mcp-catalog" aria-label={t("Catálogo de integrações MCP")}>
+    <h3>{t("Conectar uma integração")}</h3>
+    <p>{t("Escolha o que seu bot poderá fazer. A conexão vale somente para este bot.")}</p>
     {mcpPresets.map((preset) => (
       <article key={preset.server.name}>
         <h4>{preset.title}</h4>
+        <p>{preset.description}</p>
+        <strong>{t("O que você precisa")}</strong>
         <p>{preset.guidance}</p>
-        {preset.setup && (
-          <p>
-            <code>{preset.setup}</code>
-          </p>
-        )}
-        <a href={preset.docs} target="_blank" rel="noreferrer">
-          Instruções do servidor {preset.title}
-        </a>
         {onSelect && (
-          <button type="button" className="button button-quiet" onClick={() => onSelect(preset.server)}>
-            Usar configuração {preset.title}
+          <button
+            type="button"
+            className="button button-quiet"
+            disabled={disabled}
+            onClick={() => onSelect(preset.server)}
+          >
+            {t("Conectar")}
           </button>
         )}
       </article>

@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MCP connection preparation and testing",
+  "description": "Additive API contracts. GET /bots/:id/mcp/prerequisites returns prerequisites on the bot's machine without starting it. POST /bots/:id/mcp/test accepts McpServer and returns its discovered tools without persisting connections or permissions. Existing persistence schema is unchanged.",
+  "$defs": {
+    "prerequisitesResponse": {
+      "type": "object",
+      "required": ["prerequisites"],
+      "additionalProperties": false,
+      "properties": {
+        "prerequisites": {
+          "type": "object",
+          "required": ["machine", "status", "node", "oauthKeys", "credentials"],
+          "additionalProperties": false,
+          "properties": {
+            "machine": { "enum": ["local", "vm", "cloud"] },
+            "status": { "enum": ["checked", "unavailable"] },
+            "node": { "type": "boolean" },
+            "oauthKeys": { "type": "boolean" },
+            "credentials": { "type": "boolean" }
+          }
+        }
+      }
+    },
+    "testRequest": {
+      "type": "object",
+      "required": ["name", "transport", "tools"],
+      "properties": {
+        "name": { "type": "string", "pattern": "^[a-zA-Z][a-zA-Z0-9_-]{0,63}$", "not": { "const": "touri" } },
+        "tools": { "type": "array", "items": { "type": "object" } },
+        "transport": { "enum": ["stdio", "http"] },
+        "command": { "type": "string", "minLength": 1 },
+        "args": { "type": "array", "items": { "type": "string" } },
+        "url": { "type": "string", "format": "uri" }
+      },
+      "oneOf": [
+        { "properties": { "transport": { "const": "stdio" } }, "required": ["command", "args"] },
+        { "properties": { "transport": { "const": "http" } }, "required": ["url"] }
+      ]
+    },
+    "testResponse": {
+      "type": "object",
+      "required": ["server"],
+      "additionalProperties": false,
+      "properties": { "server": { "$ref": "#/$defs/testRequest" } }
+    }
+  }
+}

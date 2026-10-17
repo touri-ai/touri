@@ -55,6 +55,8 @@ export const apiRouteKeys = [
   "PATCH /bots/:id",
   "DELETE /bots/:id",
   "GET /bots/:id/mcp",
+  "GET /bots/:id/mcp/prerequisites",
+  "POST /bots/:id/mcp/test",
   "PUT /bots/:id/mcp/:name",
   "DELETE /bots/:id/mcp/:name",
   "PATCH /bots/:id/mcp/:name/tools/:tool",
