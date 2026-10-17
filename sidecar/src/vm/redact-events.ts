@@ -25,6 +25,7 @@ export const redactVmEvents = ({
   const handle = (event: ProviderEvent) => {
     if (event.type === "text_delta" || event.type === "reasoning_delta") {
       const key = `${event.type}:${event.itemId}`
+      if (!pending.has(key)) flush()
       let value = pending.get(key)
       if (!value) {
         value = { type: event.type, itemId: event.itemId, stream: createStreamingRedactor(redact, secrets) }
@@ -34,6 +35,8 @@ export const redactVmEvents = ({
       if (delta) emit({ ...event, delta })
       return
     }
+    // Preserve semantic boundaries even when a credential prefix is still buffered.
+    if (event.type === "item" || event.type === "approval_request") flush()
     if (event.type === "turn_completed") {
       flush()
       emit({ ...event, errorMessage: event.errorMessage === null ? null : redact(event.errorMessage) })

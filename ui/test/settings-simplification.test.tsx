@@ -79,6 +79,10 @@ it("keeps every former bot setting within the Advanced button and one section cl
         expect(screen.getByLabelText(name, { selector: name === "Modelo" ? "input" : "select" })).toBeVisible()
       expect(screen.getByLabelText("Título (opcional)")).toBeVisible()
       expect(screen.getByLabelText("Instruções do bot")).toBeVisible()
+      expect(screen.getByLabelText("Instruções do bot")).toHaveAccessibleDescription(
+        "Orientações detalhadas para o bot. Salvas no arquivo SOUL.md na pasta do bot. Vale a partir da próxima mensagem.",
+      )
+      expect(t("Takes effect from the next message.", {}, "en")).toBe("Takes effect from the next message.")
       expect(screen.getByRole("button", { name: "Excluir bot" })).toBeVisible()
     },
     Acesso: () => {

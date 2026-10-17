@@ -35,7 +35,7 @@ export const ProviderModelField = ({
     if (provider !== "opencode") {
       setStatus(
         t(
-          "{provider} does not expose a model list in touri. Use the provider default or enter a model ID supported by your CLI.",
+          "{provider} does not expose a model list in touri. Use the provider default or enter a model name that {provider} accepts.",
           {
             provider: providerName(provider),
           },
@@ -61,7 +61,7 @@ export const ProviderModelField = ({
                 ? t("Default model: {model}. You can also enter another model.", { model: result.defaultModel })
                 : t("Select a model or use the OpenCode default.")
               : t("OpenCode returned no models. Use the default or enter a provider/model ID.")
-            : t("OpenCode is unavailable. Install the CLI and check Doctor; you can enter a model manually."),
+            : t("OpenCode is unavailable. Install OpenCode and check Doctor; you can enter a model manually."),
         )
       })
       .catch(() => {
@@ -83,7 +83,7 @@ export const ProviderModelField = ({
           aria-describedby={`${listId}-status`}
         >
           <option value="">
-            {t("CLI default")}
+            {t("Padrão do provedor")}
             {defaultModel ? ` · ${defaultModel}` : ""}
           </option>
           {value && !models.includes(value) && <option value={value}>{value}</option>}
@@ -99,7 +99,7 @@ export const ProviderModelField = ({
           value={value}
           onChange={(event) => onChange(event.target.value)}
           list={provider === "opencode" ? listId : undefined}
-          placeholder={defaultModel ?? t("CLI default")}
+          placeholder={defaultModel ?? t("Padrão do provedor")}
           aria-describedby={`${listId}-status`}
           disabled={disabled}
         />

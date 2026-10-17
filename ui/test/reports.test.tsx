@@ -334,7 +334,7 @@ it("exports a reduced offline report and records history when the sidecar is una
     command === "report_shell_diagnostics"
       ? {
           home: "/Users/test",
-          versions: { app: "0.1.0", schema: 10 },
+          versions: { app: "0.2.0", schema: 10 },
           logs: { "sidecar-stderr.log": "Bearer fake-token\n/Users/test/project" },
         }
       : { path: "/Users/test/Downloads/offline.zip" },
