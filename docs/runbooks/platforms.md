@@ -2,14 +2,16 @@
 
 macOS and Linux have desktop builds. Windows x64 now has native runtime adapters and a CI build workflow, but remains in progress until its native fixtures, installers and desktop onboarding are executed on Windows.
 
-| Platform | Runtime implementation | Verified in this worktree |
+| Platform | Runtime implementation | Evidence and remaining verification |
 | --- | --- | --- |
 | macOS / Apple Silicon | Existing Keychain, host computer use and Apple container provider | Existing macOS CI/release commands retained; no macOS execution on the Linux host |
-| Linux / x86_64 | Secret Service, local bots/browser, Podman or Docker OCI bots | AppImage/.deb builds, packaged Xvfb onboarding/native vault, compiled API smoke and full suites; live OCI blocked by host user-namespace policy |
+| Linux / x86_64 | Secret Service, local bots/browser, Podman or Docker OCI bots | Native checks and compiled bot/API smoke; earlier port sessions built AppImage/.deb packages. The current integration still needs packaged GUI revalidation and the release dependency audit in [#154](https://github.com/touri-ai/touri/issues/154); live OCI was blocked by host user-namespace policy |
 | Linux / arm64 | Same Linux runtime; native GTK/WebKit packaging required | Sidecar cross-build only; native packages/runtime still need ARM64 hardware |
 | Windows / x86_64 | Credential Manager, ConPTY, authenticated loopback RPC/MCP, private file/lock/job helpers, Docker Desktop WSL2 provider | Windows GNU Rust check including native fixtures, sidecar .exe cross-builds, portable transport/provider tests on Linux; Windows execution/installer results pending |
 
 ## Linux
+
+Linux builds are phase-one candidates. The shipping dependency gate retains main's macOS scope. A diagnostic Linux audit is blocked by the GTK 3 dependency graph: glib's [string-variant iteration advisory](https://rustsec.org/advisories/RUSTSEC-2024-0429.html), an [unmaintained build macro](https://rustsec.org/advisories/RUSTSEC-2024-0370.html), and the policy's missing acceptance of target-lexicon's LLVM license exception. [Issue #154](https://github.com/touri-ai/touri/issues/154) tracks remediation before a Linux release. Compilation and API smoke results do not establish a clean dependency audit or application-level reachability of the affected iterator.
 
 Use Bun 1.4.3+, Rust 1.90+, GTK 3, WebKitGTK 4.1, Ayatana AppIndicator, librsvg, D-Bus development headers, patchelf and xdg-utils. Debian packages include `libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libdbus-1-dev patchelf xdg-utils`. AppImage bundling requires network access to Tauri's packaging tools. `APPIMAGE_EXTRACT_AND_RUN=1` supports build hosts without FUSE.
 

@@ -1,6 +1,7 @@
 [graph]
-# Audit the shipping macOS app and the phase-one Linux desktop.
-targets = ["aarch64-apple-darwin", "x86_64-unknown-linux-gnu"]
+# Match the shipping macOS app and its CI runner.
+# Linux release-audit blockers are tracked in touri-ai/touri#154.
+targets = ["aarch64-apple-darwin"]
 
 [advisories]
 # cargo-deny always rejects known vulnerabilities; do not weaken that gate.
