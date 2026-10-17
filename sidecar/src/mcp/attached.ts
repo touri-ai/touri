@@ -7,6 +7,7 @@ import { createStandingGrantStore, registerStandingGrantRoutes } from "../approv
 import { TouriError } from "../kernel/errors"
 import { buildChildEnv } from "../kernel/shell-env"
 import { touriVersion } from "../version"
+import { mcpPrerequisites } from "./prerequisites"
 
 const connectionKey = (server: McpServer): string =>
   JSON.stringify(
@@ -227,6 +228,40 @@ export const registerAttachedMcpRoutes = (kernel: Kernel): void => {
         method: "GET",
         path: "/bots/:id/mcp",
         handler: async ({ params }) => ({ status: 200, json: { servers: attachedServers(kernel, params.id ?? "") } }),
+      },
+      {
+        method: "GET",
+        path: "/bots/:id/mcp/prerequisites",
+        handler: async ({ params }) => {
+          const bot = kernel.services.use("store.api")?.getBot({ botId: params.id ?? "" })
+          if (!bot) return { status: 404, json: { error: "Bot não encontrado" } }
+          try {
+            return { status: 200, json: { prerequisites: await mcpPrerequisites(kernel, bot) } }
+          } catch {
+            return { status: 400, json: { error: "Não foi possível verificar a preparação. Tente novamente." } }
+          }
+        },
+      },
+      {
+        method: "POST",
+        path: "/bots/:id/mcp/test",
+        handler: async ({ params, body }) => {
+          const bot = kernel.services.use("store.api")?.getBot({ botId: params.id ?? "" })
+          if (!bot) return { status: 404, json: { error: "Bot não encontrado" } }
+          try {
+            const config = validateMcpServer(body)
+            if (bot.machine === "cloud" && config.transport === "stdio")
+              return { status: 400, json: { error: "Na nuvem, use uma conexão HTTP na configuração técnica." } }
+            const server = await discoverMcpTools(kernel, bot, config)
+            return { status: 200, json: { server } }
+          } catch (error) {
+            const missing = error instanceof TouriError && error.code === "TOURI-E1012"
+            return {
+              status: 400,
+              json: { errorCode: missing ? "MCP_EXECUTABLE_NOT_FOUND" : "MCP_CONNECTION_FAILED" },
+            }
+          }
+        },
       },
       {
         method: "PUT",
