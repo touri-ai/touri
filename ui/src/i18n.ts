@@ -66,7 +66,6 @@ export const ptBR = {
   "Não foi possível salvar o rascunho. Copie sua mensagem antes de fechar o touri.":
     "Não foi possível salvar o rascunho. Copie sua mensagem antes de fechar o touri.",
   "O navegador deste bot está desativado.": "O navegador deste bot está desativado.",
-  "Ativar navegador": "Ativar navegador",
   "O controle automático do computador está desativado. Você ainda pode assumir o controle manualmente.":
     "O controle automático do computador está desativado. Você ainda pode assumir o controle manualmente.",
   "O bot está aguardando. O controle ficará disponível quando a imagem chegar.":
@@ -1909,7 +1908,6 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Não foi possível salvar o rascunho. Copie sua mensagem antes de fechar o touri.":
     "Could not save the draft. Copy your message before closing touri.",
   "O navegador deste bot está desativado.": "This bot's browser is disabled.",
-  "Ativar navegador": "Enable browser",
   "O controle automático do computador está desativado. Você ainda pode assumir o controle manualmente.":
     "Automated computer control is disabled. You can still take manual control.",
   "O bot está aguardando. O controle ficará disponível quando a imagem chegar.":
