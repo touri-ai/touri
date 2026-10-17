@@ -760,6 +760,7 @@ const AppContent = ({ kernel }: AppProps) => {
         <ApprovalNotice notifications={data.notifications} messages={data.activityMessages} onReview={reviewApproval} />
         <div className="app-grid">
           <SidebarDrawer
+            host={data.routineHost}
             groups={data.groups}
             onNewGroup={() => {
               setEditingGroup(null)

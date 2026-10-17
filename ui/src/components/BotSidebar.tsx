@@ -26,6 +26,7 @@ import { type HoldReason, useSidebarOrder } from "./useSidebarOrder"
 import "./bot-sidebar.css"
 
 type SidebarProps = {
+  host?: "mac" | "server"
   onNavigate?: () => void
   groups?: BotGroup[]
   onNewGroup?: () => void
@@ -258,6 +259,7 @@ export const Sidebar = (props: SidebarProps) => {
           />
         </div>
         <GlobalAdvancedMenu
+          host={props.host}
           page={props.section === "advanced" ? props.advancedPage : null}
           onPage={(page) => navigate(() => props.onAdvancedPage(page))}
           onProject={() => navigate(props.onProject)}
