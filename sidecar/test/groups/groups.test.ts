@@ -17,6 +17,7 @@ import { createRuntimeEngine } from "../../src/runtime/engine"
 import { composeDeveloperInstructions } from "../../src/runtime/instructions"
 import { createRuntimePersistence } from "../../src/runtime/persistence"
 import { init as initStore } from "../../src/store"
+import { fakeProviderSpawn } from "../fakes/provider-spawn"
 
 const cleanups: (() => void)[] = []
 afterEach(() => {
@@ -481,7 +482,7 @@ test("real provider runtime delegates with concurrency cap 1, isolated sessions 
     }),
   )
   const engine = createRuntimeEngine({
-    kernel: f.host.kernel,
+    kernel: { ...f.host.kernel, spawnTree: fakeProviderSpawn(f.host.kernel.spawnTree, command, scenario) },
     codexCommand: command,
     environment: { PATH: process.env.PATH ?? "", TOURI_FAKE_SCENARIO: scenario },
     maxConcurrentRuns: 1,
@@ -849,7 +850,7 @@ test("B05: the real engine starts a delegated provider turn under the ceiling, a
     if (!message.success) throw new Error(message.error)
     writeFileSync(argvLog, "")
     const engine = createRuntimeEngine({
-      kernel: f.host.kernel,
+      kernel: { ...f.host.kernel, spawnTree: fakeProviderSpawn(f.host.kernel.spawnTree, command, scenario) },
       codexCommand: command,
       environment: { PATH: process.env.PATH ?? "", TOURI_FAKE_SCENARIO: scenario },
       interruptGraceMs: 100,

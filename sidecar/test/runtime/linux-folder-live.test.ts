@@ -16,13 +16,13 @@ import { homedir, tmpdir } from "node:os"
 import { join } from "node:path"
 import type { ApprovalPart, Bot, Message, Run } from "@touri/contracts"
 
-// Opt-in: uses the signed-in local provider, a compiled sidecar, and disposable data.
+// Opt-in: uses the signed-in local provider and disposable data. Build inside the
+// serialized test gate when no precompiled sidecar is supplied.
 test.skipIf(process.platform !== "linux" || process.env.TOURI_LIVE_FOLDER_QA !== "1")(
   "live Linux provider survives RO and RW approvals and a server restart",
   async () => {
-    const binary = process.env.TOURI_LIVE_SIDECAR
-    if (!binary) throw new Error("Set TOURI_LIVE_SIDECAR to the compiled sidecar")
     const data = mkdtempSync(join(tmpdir(), "touri-folder-live-"))
+    const binary = process.env.TOURI_LIVE_SIDECAR ?? join(data, "sidecar")
     const workspace = mkdtempSync(join(homedir(), "touri-folder-live-"))
     const marker = `read-proof-${randomUUID()}`
     const folder = join(workspace, "reference")
@@ -87,6 +87,27 @@ test.skipIf(process.platform !== "linux" || process.env.TOURI_LIVE_FOLDER_QA !==
       child = undefined
     }
     try {
+      if (!process.env.TOURI_LIVE_SIDECAR) {
+        for (const input of [
+          { cmd: [process.execPath, "run", "build"], cwd: join(import.meta.dir, "../../../ui") },
+          {
+            cwd: data,
+            cmd: [
+              process.execPath,
+              "build",
+              "--compile",
+              "--target=bun-linux-x64-baseline",
+              join(import.meta.dir, "../../src/main.ts"),
+              "--outfile",
+              binary,
+            ],
+          },
+        ]) {
+          const build = Bun.spawn({ ...input, stdout: "ignore", stderr: "pipe" })
+          const stderr = await new Response(build.stderr).text()
+          if (await build.exited) throw new Error(`Live build failed: ${stderr}`)
+        }
+      }
       await start()
       expect((await request<{ canGrant: boolean }>(`/folders?path=${encodeURIComponent(workspace)}`)).canGrant).toBe(
         true,

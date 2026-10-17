@@ -2,6 +2,7 @@ import type { Database } from "bun:sqlite"
 import { createHash } from "node:crypto"
 import { existsSync, readdirSync, statSync } from "node:fs"
 import { join, posix } from "node:path"
+import { platform } from "node:process"
 import type {
   Bot,
   Kernel,
@@ -17,6 +18,7 @@ import { delegatedBot } from "../groups/security"
 import { buildChildEnv } from "../kernel"
 import { atomicAppendFile, atomicWriteFile, ensurePrivateDirectory, removePrivateFile } from "../kernel/files"
 import { backoffDelay, debounce, sleep } from "../kernel/policy"
+import { linuxRuntimeEnvironment } from "../platform/linux-environment"
 import { projectSandboxCommand } from "../platform/project-sandbox"
 import { surfaceUncertainEffects } from "../runtime/work-notice"
 import { createWorkState, type WorkEffect, type WorkObservation, type WorkState } from "../runtime/work-state"
@@ -710,14 +712,23 @@ export const createSupervisor = ({
     )
       return errorResult("DENIED", "A política do bot não permite iniciar este processo.")
     if (ctx && botId !== ctx.botId) return errorResult("DENIED", "Este processo pertence a outro responsável.")
-    const policy = JSON.stringify([bot?.access, bot?.approvals, bot?.machine, bot?.projectId])
+    const policyOf = (value: Bot | null) =>
+      JSON.stringify([
+        value?.access,
+        value?.approvals,
+        value?.machine,
+        value?.projectId,
+        value?.folders,
+        value?.anyFolderAccess,
+      ])
+    const policy = policyOf(bot)
     const destination = botId ? approvalDestination(kernel, botId) : null
     const authorizationCurrent = () => {
       const latest = effective()
       return (
         !signal?.aborted &&
         !ctx?.signal.aborted &&
-        JSON.stringify([latest?.access, latest?.approvals, latest?.machine, latest?.projectId]) === policy &&
+        policyOf(latest) === policy &&
         (!botId || approvalDestination(kernel, botId) === destination) &&
         JSON.stringify(store.getProcessSpec({ processId: spec.id })) === JSON.stringify(spec)
       )
@@ -754,7 +765,7 @@ export const createSupervisor = ({
       cwd: spec.cwd,
       env: environment.env,
     }
-    if (!vm && bot?.access === "workspace-write") {
+    if (!vm && bot && (bot.access === "workspace-write" || platform === "linux")) {
       const temporary = join(project.dataDir, "tmp", spec.id)
       ensurePrivateDirectory({ root: kernel.paths.appData, path: temporary })
       // The launcher runs before confinement. Loader hooks and project PATH
@@ -762,8 +773,17 @@ export const createSupervisor = ({
       localSpawn.env = Object.fromEntries(
         Object.entries({ ...environment.env, TMPDIR: temporary }).filter(([name]) => !/^(?:LD_|DYLD_)/i.test(name)),
       )
+      if (platform === "linux")
+        localSpawn.env = { ...linuxRuntimeEnvironment(environment.env, Object.keys(spec.env)), TMPDIR: temporary }
       const roots = [project.path, bot.homeDir, project.dataDir, temporary]
-      const sandbox = projectSandboxCommand({ roots, shell, command })
+      const sandbox = projectSandboxCommand({
+        roots,
+        shell,
+        command,
+        folders: bot.folders ?? [],
+        appData: kernel.paths.appData,
+        env: environment.env,
+      })
       if (!sandbox)
         return errorResult("DENIED", "O sandbox local está indisponível. Execute este processo na máquina do bot.")
       localSpawn = { ...localSpawn, ...sandbox }

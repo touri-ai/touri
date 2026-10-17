@@ -6,6 +6,9 @@ import { canonicalPath, withinFolder } from "../kernel/bot-folders"
 import { ensurePrivateDirectory } from "../kernel/files"
 import { linuxProtectedFolders, linuxSandboxBase, specificFoldersRequired } from "../kernel/folder-capability"
 import { resolveMcpSocketPath } from "../kernel/paths"
+import { linuxRuntimeEnvironment } from "../platform/linux-environment"
+import { linuxProgramFiles, linuxProgramLinks } from "../platform/linux-programs"
+import { codexAuthenticationKeys } from "./codex/home"
 import { turnFolders } from "./folder-access"
 
 const privateTemp = (env: Record<string, string>, runDir: string): string =>
@@ -26,13 +29,6 @@ const credential = (path: string, roots: string[]): string | undefined => {
 /** Keep unrelated host credentials and loader/shell injection out of the CLI and its tools. */
 export const linuxFolderEnvironment = (args: StartTurnArgs, env: Record<string, string>): Record<string, string> => {
   const common = [
-    "PATH",
-    "LANG",
-    "LC_ALL",
-    "LC_CTYPE",
-    "TZ",
-    "TERM",
-    "COLORTERM",
     "TOURI_APP_DATA",
     "TOURI_RUN_DIR",
     "TOURI_MCP_SOCK",
@@ -46,7 +42,12 @@ export const linuxFolderEnvironment = (args: StartTurnArgs, env: Record<string, 
     "OTEL_LOGS_EXPORTER",
   ]
   const provider = {
-    codex: ["CODEX_HOME", "OPENAI_API_KEY", "OPENAI_BASE_URL"],
+    codex: [
+      "CODEX_HOME",
+      "OPENAI_API_KEY",
+      "OPENAI_BASE_URL",
+      ...(args.bot.provider === "codex" ? codexAuthenticationKeys(env.CODEX_HOME) : []),
+    ],
     claude: [
       "CLAUDE_CONFIG_DIR",
       "ANTHROPIC_API_KEY",
@@ -55,6 +56,25 @@ export const linuxFolderEnvironment = (args: StartTurnArgs, env: Record<string, 
       "CLAUDE_CODE_OAUTH_TOKEN",
       "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC",
       "CLAUDE_CODE_ENABLE_TELEMETRY",
+      "ANTHROPIC_CUSTOM_HEADERS",
+      "CLAUDE_CODE_USE_BEDROCK",
+      "CLAUDE_CODE_USE_VERTEX",
+      "CLAUDE_CODE_USE_FOUNDRY",
+      ...(env.CLAUDE_CODE_USE_BEDROCK === "1"
+        ? [
+            "AWS_ACCESS_KEY_ID",
+            "AWS_SECRET_ACCESS_KEY",
+            "AWS_SESSION_TOKEN",
+            "AWS_REGION",
+            "AWS_DEFAULT_REGION",
+            "AWS_BEARER_TOKEN_BEDROCK",
+            "ANTHROPIC_BEDROCK_BASE_URL",
+          ]
+        : []),
+      ...(env.CLAUDE_CODE_USE_VERTEX === "1" ? ["ANTHROPIC_VERTEX_PROJECT_ID", "CLOUD_ML_REGION"] : []),
+      ...(env.CLAUDE_CODE_USE_FOUNDRY === "1"
+        ? ["ANTHROPIC_FOUNDRY_API_KEY", "ANTHROPIC_FOUNDRY_RESOURCE", "ANTHROPIC_FOUNDRY_BASE_URL"]
+        : []),
     ],
     opencode: [
       "XDG_DATA_HOME",
@@ -82,33 +102,18 @@ export const linuxFolderEnvironment = (args: StartTurnArgs, env: Record<string, 
     ],
   }[args.bot.provider]
   return {
-    HOME: "/touri/home",
-    XDG_CONFIG_HOME: "/touri/config",
-    XDG_CACHE_HOME: "/touri/cache",
-    XDG_STATE_HOME: "/touri/state",
-    SHELL: "/bin/sh",
+    ...linuxRuntimeEnvironment(env, [...common, ...provider]),
     TMPDIR: privateTemp(env, env.TOURI_RUN_DIR ?? "/touri/run"),
     TMP: privateTemp(env, env.TOURI_RUN_DIR ?? "/touri/run"),
     TEMP: privateTemp(env, env.TOURI_RUN_DIR ?? "/touri/run"),
     ...Object.fromEntries(
-      [...common, ...provider].filter((key) => env[key] !== undefined).map((key) => [key, env[key]]),
+      provider
+        .filter((key) => ["CODEX_HOME", "XDG_DATA_HOME", "XDG_CONFIG_HOME"].includes(key) && env[key] !== undefined)
+        .map((key) => [key, env[key]]),
     ),
     ...(args.bot.provider === "claude" ? { CLAUDE_CONFIG_DIR: join(args.bot.homeDir, ".touri-claude") } : {}),
     TOURI_PID_NAMESPACE: "1",
   }
-}
-
-// Expose a CLI package, never the surrounding installation or home. Native
-// executables need only their file; JS launchers also need their package assets.
-const executableFiles = (path: string): string[] => {
-  const real = canonicalPath(path)
-  if (!/\.[cm]?js$/.test(real)) return [real]
-  let directory = dirname(real)
-  while (directory !== "/") {
-    if (existsSync(join(directory, "package.json"))) return [directory]
-    directory = dirname(directory)
-  }
-  return [real]
 }
 
 /** Inherited allowlist: tools can only reach these mounts, regardless of CLI approvals. */
@@ -177,7 +182,7 @@ export const linuxFolderSandbox = (
     args.mcp?.command,
     ...["node", "bun"].map((name) => Bun.which(name, { PATH: env.PATH ?? "/usr/local/bin:/usr/bin:/bin" })),
   ].filter((path): path is string => !!path && existsSync(path))
-  const programs = [...new Set(executables.flatMap(executableFiles))]
+  const programs = [...new Set(executables.flatMap(linuxProgramFiles))]
   const internal = [...readonly, ...state, ...workspace, ...programs].filter(existsSync)
   const mounts = [...linuxSandboxBase]
   const bind = (path: string, write: boolean) => {
@@ -208,14 +213,14 @@ export const linuxFolderSandbox = (
   }
   for (const path of readonly.filter(existsSync)) bind(path, false)
   for (const path of state) bind(path, true)
+  // This file selects which host authentication variables may cross next turn.
+  // Provider bookkeeping remains writable, but tools cannot change that selection.
+  if (args.bot.provider === "codex" && env.CODEX_HOME && existsSync(join(env.CODEX_HOME, "config.toml")))
+    bind(join(env.CODEX_HOME, "config.toml"), false)
   for (const path of programs) bind(path, false)
   if (claudeCredential) mounts.push("--bind", claudeCredential, join(claudeHome, ".credentials.json"))
   // Reconstruct executable links without binding their parent directories.
-  for (const path of executables) {
-    const real = canonicalPath(path)
-    if (real !== path && !linuxSandboxBase.includes(dirname(path)))
-      mounts.push("--dir", dirname(path), "--symlink", real, path)
-  }
+  mounts.push(...linuxProgramLinks(executables, linuxSandboxBase))
   // Existing runtime symlinks (e.g. Codex auth) must resolve to just their leaf.
   // No host /proc or /dev survives: both are freshly mounted by the base policy.
   mounts.push("--remount-ro", "/")

@@ -190,6 +190,56 @@ test.skipIf(!available)("Linux rejects a saved grant replaced with a symlink bef
   expect(() => linuxFolderSandbox(f.kernel, f.args, f.args.env, f.home)).toThrow()
 })
 
+test.skipIf(!available)("only the active Codex endpoint's authentication variables survive", () => {
+  const f = fixture()
+  writeFileSync(
+    join(f.args.env.CODEX_HOME ?? "", "config.toml"),
+    [
+      'model_provider = "selected"',
+      "[model_providers.selected]",
+      'env_key = "CUSTOM_ENDPOINT_TOKEN"',
+      'env_http_headers = { "X-Account" = "CUSTOM_ACCOUNT_HEADER", "X-Unsafe" = "LD_PRELOAD" }',
+      "[model_providers.other]",
+      'env_key = "OTHER_ENDPOINT_TOKEN"',
+    ].join("\n"),
+  )
+  Object.assign(f.args.env, {
+    CUSTOM_ENDPOINT_TOKEN: "selected-proof",
+    CUSTOM_ACCOUNT_HEADER: "account-proof",
+    OTHER_ENDPOINT_TOKEN: "other-proof",
+    LD_PRELOAD: "/private/inject.so",
+  })
+  const result = f.shell("env")
+  expect(result.exitCode).toBe(0)
+  expect(result.stdout.toString()).toContain("CUSTOM_ENDPOINT_TOKEN=selected-proof")
+  expect(result.stdout.toString()).toContain("CUSTOM_ACCOUNT_HEADER=account-proof")
+  expect(result.stdout.toString()).not.toMatch(/other-proof|inject\.so/)
+  expect(f.shell('printf changed > "$CODEX_HOME/config.toml"').exitCode).not.toBe(0)
+  expect(f.shell('rm "$CODEX_HOME/config.toml"').exitCode).not.toBe(0)
+})
+
+test.skipIf(!available)("Claude keeps selected cloud authentication without unrelated host credentials", () => {
+  const f = fixture()
+  f.args.bot.provider = "claude"
+  Object.assign(f.args.env, {
+    ANTHROPIC_API_KEY: "selected-proof",
+    AWS_ACCESS_KEY_ID: "cloud-id",
+    AWS_SECRET_ACCESS_KEY: "cloud-secret",
+    ANTHROPIC_FOUNDRY_API_KEY: "foundry-proof",
+    UNRELATED_SECRET: "other-proof",
+  })
+  expect(f.shell("env").stdout.toString()).not.toMatch(/cloud-secret|foundry-proof|other-proof/)
+  f.args.env.CLAUDE_CODE_USE_BEDROCK = "1"
+  const result = f.shell("env")
+  expect(result.exitCode).toBe(0)
+  expect(result.stdout.toString()).toContain("AWS_SECRET_ACCESS_KEY=cloud-secret")
+  expect(result.stdout.toString()).not.toMatch(/foundry-proof|other-proof/)
+  delete f.args.env.CLAUDE_CODE_USE_BEDROCK
+  f.args.env.CLAUDE_CODE_USE_FOUNDRY = "1"
+  expect(f.shell("env").stdout.toString()).toContain("ANTHROPIC_FOUNDRY_API_KEY=foundry-proof")
+  expect(f.shell("env").stdout.toString()).not.toContain("cloud-secret")
+})
+
 test.skipIf(!available)("noncanonical saved grants and a root workspace cannot widen the boundary", () => {
   const f = fixture()
   const alias = join(f.root, "alias")

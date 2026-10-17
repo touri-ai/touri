@@ -1,7 +1,8 @@
-import { existsSync, lstatSync, readlinkSync } from "node:fs"
+import { existsSync } from "node:fs"
 import { homedir } from "node:os"
 import { join } from "node:path"
 import type { Bot } from "@touri/contracts"
+import { linuxSystemLinks } from "../platform/linux-programs"
 import { canonicalPath, excludedBotFolders, resolveBotFolder, specificFoldersRequired } from "./bot-folders"
 
 export { specificFoldersRequired } from "./bot-folders"
@@ -49,11 +50,7 @@ export const linuxSandboxBase = [
   ...["/usr/bin", "/usr/sbin", "/usr/lib", "/usr/lib64", "/usr/share/zoneinfo", "/usr/share/locale"]
     .filter(existsSync)
     .flatMap((path) => ["--ro-bind", path, path]),
-  ...["/bin", "/sbin", "/lib", "/lib64"]
-    .filter(existsSync)
-    .flatMap((path) =>
-      lstatSync(path).isSymbolicLink() ? ["--symlink", readlinkSync(path), path] : ["--ro-bind", path, path],
-    ),
+  ...linuxSystemLinks(["/bin", "/sbin", "/lib", "/lib64"]),
   ...[
     "/etc/ld.so.cache",
     "/etc/alternatives",
