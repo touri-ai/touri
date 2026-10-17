@@ -970,14 +970,18 @@ export const BotSettingsModal = ({
   const [title, setTitle] = useState(bot.title ?? "")
   const [deleting, setDeleting] = useState(false)
   const [instructions, setInstructions] = useState(bot.instructions)
-  const [machine, setMachine] = useState<
-    Pick<Bot, "machine" | "machineIdleMinutes" | "vmProviderLogin" | "hostComputerUse">
-  >({
+  const [machineChanges, setMachine] = useState<
+    Partial<Pick<Bot, "machine" | "machineIdleMinutes" | "vmProviderLogin" | "hostComputerUse">>
+  >({})
+  // Login may finish after this dialog opens. Keep untouched fields live and
+  // omit them from PATCH so an unrelated save cannot revoke a newer login.
+  const machine = {
     machine: bot.machine,
     machineIdleMinutes: bot.machineIdleMinutes,
     vmProviderLogin: bot.vmProviderLogin,
     hostComputerUse: bot.hostComputerUse,
-  })
+    ...machineChanges,
+  }
   const [browser, setBrowser] = useState(bot.browser ?? "touri")
   const [provider, setProvider] = useState(bot.provider)
   const [model, setModel] = useState(bot.model ?? "")
@@ -1059,7 +1063,7 @@ export const BotSettingsModal = ({
       await actions.updateBot(bot.id, {
         name: validName,
         ...avatar,
-        ...machine,
+        ...machineChanges,
         browser,
         roleLine: roleLine.trim() || null,
         title: title.trim() || null,

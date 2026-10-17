@@ -1,8 +1,38 @@
-import { expect, test } from "bun:test"
+import { expect, mock, test } from "bun:test"
 import type { Bot, VmRuntime } from "@touri/contracts"
 import { normalizeErrorBody } from "../../src/kernel/errors"
 import { init } from "../../src/store"
 import { testKernel } from "../kernel/test-kernel"
+
+test("unrelated VM PATCH and capability approval preserve login while allowing explicit opt-out", async () => {
+  const f = testKernel()
+  try {
+    await init(f.kernel)
+    const stop = mock(async () => {})
+    f.kernel.services.provide("vm.runtime", { capability: { available: true }, stop } as unknown as VmRuntime)
+    const { bot } = (
+      await f.request("POST /bots", {
+        name: "QA VM",
+        provider: "codex",
+        machine: "vm",
+        vmProviderLogin: true,
+      })
+    ).json as { bot: Bot }
+    for (const patch of [{ browserEnabled: false }, { name: "QA VM renamed" }, { machineIdleMinutes: 20 }]) {
+      const response = await f.request("PATCH /bots/:id", patch, { id: bot.id })
+      expect(response.status).toBe(200)
+      expect(response.json).toMatchObject({ bot: { ...patch, vmProviderLogin: true, providerProfile: null } })
+    }
+    const approval = f.kernel.services.use("bots.configureAccess")?.({ botId: bot.id, patch: { browserEnabled: true } })
+    expect(approval).toMatchObject({ success: true, bot: { browserEnabled: true, vmProviderLogin: true } })
+    expect(stop).not.toHaveBeenCalled()
+    expect((await f.request("PATCH /bots/:id", { vmProviderLogin: false }, { id: bot.id })).json).toMatchObject({
+      bot: { vmProviderLogin: false },
+    })
+  } finally {
+    f.close()
+  }
+})
 
 test("store persists browser choices and rejects local Chrome on VM create, patch and machine changes", async () => {
   const f = testKernel()
