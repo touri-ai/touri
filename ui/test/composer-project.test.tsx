@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import App from "../src/App"
 import type { TauriInvoke } from "../src/api/client"
 import { createMockApi } from "../src/api/mock"
+import { selectFolder } from "./folder-picker-helpers"
 
 afterEach(() => vi.restoreAllMocks())
 
@@ -213,7 +214,7 @@ describe("advanced project picker", () => {
     expect(screen.queryByText(vmNote)).not.toBeInTheDocument()
   })
 
-  it("reuses project creation and the native folder picker, linking the new project to this bot", async () => {
+  it("reuses project creation and the folder browser, linking the new project to this bot", async () => {
     const invoke = vi.fn(async () => ({ path: "/tmp/new-repo" })) as ReturnType<typeof vi.fn> & TauriInvoke
     const { api, bot } = await setup({ invoke })
     fireEvent.click(chip())
@@ -222,8 +223,9 @@ describe("advanced project picker", () => {
     expect(within(dialog).getByRole("checkbox", { name: /mark/ })).toBeChecked()
     expect(within(dialog).getByRole("checkbox", { name: /mark/ })).toBeDisabled()
     fireEvent.click(within(dialog).getByRole("button", { name: "Escolher pasta" }))
+    await selectFolder("/tmp/new-repo", "read-write")
     await waitFor(() => expect(within(dialog).getByLabelText("Pasta do projeto")).toHaveValue("/tmp/new-repo"))
-    expect(invoke).toHaveBeenCalledWith("pick_folder", { title: "Conectar uma pasta de projeto" })
+    expect(invoke).not.toHaveBeenCalled()
     fireEvent.change(within(dialog).getByLabelText("Nome do projeto"), { target: { value: "Novo repositório" } })
     fireEvent.click(within(dialog).getByRole("button", { name: "Conectar projeto" }))
     await waitFor(() => expect(chip()).toHaveTextContent("Novo repositório"))

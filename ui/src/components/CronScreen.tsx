@@ -111,7 +111,7 @@ const CronScreen = ({
       <ScreenHeader
         id="cron-title"
         title={t("Routines")}
-        description={routineHostNotice(host)}
+        description={`${t("Bot routine count", { count: routines.length })} · ${routineHostNotice(host)}`}
         actions={
           <>
             <button type="button" className="outline-button" onClick={() => void actions.refresh()}>

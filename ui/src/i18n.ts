@@ -57,6 +57,31 @@ export const ptBR = {
   skipped: "não executado",
   canceled: "cancelado",
 
+  "As pastas estão no computador onde o touri está rodando.":
+    "As pastas estão no computador onde o touri está rodando.",
+  "Caminho da pasta": "Caminho da pasta",
+  "Pasta pessoal": "Pasta pessoal",
+  "Carregando pastas…": "Carregando pastas…",
+  "Voltar uma pasta": "Voltar uma pasta",
+  "Nenhuma subpasta aqui.": "Nenhuma subpasta aqui.",
+  Pastas: "Pastas",
+  "Há mais pastas. Use Digitar caminho para abrir uma que não aparece.":
+    "Há mais pastas. Use Digitar caminho para abrir uma que não aparece.",
+  "Digitar caminho": "Digitar caminho",
+  "Abrir pasta": "Abrir pasta",
+  "Escolher no Mac…": "Escolher no Mac…",
+  "Nova pasta": "Nova pasta",
+  "Nome da nova pasta": "Nome da nova pasta",
+  "Criar pasta?": "Criar pasta?",
+  "Criar a pasta {name} dentro de {path}?": "Criar a pasta {name} dentro de {path}?",
+  "Criar pasta": "Criar pasta",
+  "Acesso à pasta": "Acesso à pasta",
+  "O bot pode ler": "O bot pode ler",
+  "O bot pode ler e salvar arquivos aqui": "O bot pode ler e salvar arquivos aqui",
+  "Usar esta pasta": "Usar esta pasta",
+  "Usar uma pasta": "Usar uma pasta",
+  "Escolha uma pasta navegando pelas pastas deste computador.":
+    "Escolha uma pasta navegando pelas pastas deste computador.",
   "Bot browser": "Navegador do bot",
   "My Chrome is available only for bots on this Mac. A remote machine cannot reach your Mac's Chrome. Choose Machine Chrome for a bot on the Linux machine.":
     "Meu Chrome só funciona em bots neste Mac. A máquina remota não pode acessar o Chrome do Mac. Escolha Chrome da máquina para um bot na máquina Linux.",
@@ -256,6 +281,10 @@ export const ptBR = {
     "Texto, Markdown, JSON, CSV, PDF e imagens · até 15 MB por arquivo.",
   "Comece uma conversa com {name}": "Comece uma conversa com {name}",
   "Membros do grupo": "Membros do grupo",
+  "Group member count": "{count} membros",
+  "Group members label": "{count} membros: {names}",
+  "Grupos / {name}": "Grupos / {name}",
+  "Editar grupo": "Editar grupo",
   "Sem menções, todos os membros respondem na ordem da lista. Use @nome para escolher quem responde.":
     "Sem menções, todos os membros respondem na ordem da lista. Use @nome para escolher quem responde.",
   "{name} coordena as respostas e pode delegar aos membros. Use @nome para falar com um membro.":
@@ -371,6 +400,8 @@ export const ptBR = {
   "This bot has no groups yet.": "Este bot ainda não pertence a um grupo.",
   "Bot routines": "Rotinas deste bot",
   "Bot routine count": "{count} rotinas",
+  "Routine execution count": "{count} rotinas · executadas enquanto o touri está aberto",
+  "Storage records processed": "{processed} de {total} registros processados",
   "Next routine time": "Próxima: {time} · {timezone}",
   "Waiting for the next schedule": "Aguardando próximo agendamento",
   "Routine paused": "Pausada",
@@ -1314,7 +1345,9 @@ export const ptBR = {
   "app preferences": "preferências do aplicativo",
   "Bot settings": "Configurações de {name}",
   "Import step": "importação / etapa {step} de 5",
-  "Import counts": "{messages} mensagens e {threads} conversas importadas. As rotinas estão pausadas.",
+  "Import message count": "{count} mensagens",
+  "Imported conversation count": "{count} conversas importadas",
+  "Import counts": "{messages} e {threads}. As rotinas estão pausadas.",
   "Checks ready": "{count} verificações prontas",
   "Enable routine": "Habilitar {name}",
   "Avatar shape": "Forma {shape}",
@@ -1523,6 +1556,29 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   succeeded: "Completed",
   canceled: "Canceled",
 
+  "As pastas estão no computador onde o touri está rodando.": "Folders are on the computer running touri.",
+  "Caminho da pasta": "Folder path",
+  "Pasta pessoal": "Home folder",
+  "Carregando pastas…": "Loading folders…",
+  "Voltar uma pasta": "Go up one folder",
+  "Nenhuma subpasta aqui.": "No subfolders here.",
+  Pastas: "Folders",
+  "Há mais pastas. Use Digitar caminho para abrir uma que não aparece.":
+    "There are more folders. Use Type a path to open one that is not shown.",
+  "Digitar caminho": "Type a path",
+  "Abrir pasta": "Open folder",
+  "Escolher no Mac…": "Choose on Mac…",
+  "Nova pasta": "New folder",
+  "Nome da nova pasta": "New folder name",
+  "Criar pasta?": "Create folder?",
+  "Criar a pasta {name} dentro de {path}?": "Create folder {name} inside {path}?",
+  "Criar pasta": "Create folder",
+  "Acesso à pasta": "Folder access",
+  "O bot pode ler": "The bot can read",
+  "O bot pode ler e salvar arquivos aqui": "The bot can read and save files here",
+  "Usar esta pasta": "Use this folder",
+  "Usar uma pasta": "Use a folder",
+  "Escolha uma pasta navegando pelas pastas deste computador.": "Browse this computer to choose a folder.",
   "Arquivos locais": "Local files",
   "Catálogo de integrações MCP": "MCP integration catalog",
   "Escolher pasta…": "Choose folder…",
@@ -1730,6 +1786,10 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
     "Text, Markdown, JSON, CSV, PDF and images · up to 15 MB per file.",
   "Comece uma conversa com {name}": "Start a conversation with {name}",
   "Membros do grupo": "Group members",
+  "Group member count": "{count} members",
+  "Group members label": "{count} members: {names}",
+  "Grupos / {name}": "Groups / {name}",
+  "Editar grupo": "Edit group",
   "Sem menções, todos os membros respondem na ordem da lista. Use @nome para escolher quem responde.":
     "Without mentions, all members reply in list order. Use @name to choose who replies.",
   "{name} coordena as respostas e pode delegar aos membros. Use @nome para falar com um membro.":
@@ -1808,6 +1868,8 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "This bot has no groups yet.": "This bot has no groups yet.",
   "Bot routines": "This bot’s routines",
   "Bot routine count": "{count} routines",
+  "Routine execution count": "{count} routines · run while touri is open",
+  "Storage records processed": "{processed} of {total} records processed",
   "Next routine time": "Next: {time} · {timezone}",
   "Waiting for the next schedule": "Waiting for the next schedule",
   "Routine paused": "Paused",
@@ -2201,7 +2263,9 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Caminho absoluto da pasta": "Absolute folder path",
   "Bot settings": "{name} settings",
   "Import step": "import / step {step} of 5",
-  "Import counts": "{messages} messages and {threads} conversations imported. Routines are paused.",
+  "Import message count": "{count} messages",
+  "Imported conversation count": "{count} imported conversations",
+  "Import counts": "{messages} and {threads}. Routines are paused.",
   "Checks ready": "{count} checks ready",
   "Enable routine": "Enable {name}",
   "Avatar shape": "Shape {shape}",
@@ -2346,11 +2410,27 @@ export const plural = (count: number, one: string, other: string, locale: Locale
   (locale === "pt-BR" ? count === 1 : pluralRules[locale].select(count) === "one") ? one : other
 
 const singular: Partial<Record<TranslationKey, [string, string]>> = {
+  "Group member count": ["{count} membro", "{count} member"],
+  "Group members label": ["{count} membro: {names}", "{count} member: {names}"],
   "Conexão pronta: {count} ferramentas disponíveis. Salve para usá-las neste bot.": [
     "Conexão pronta: {count} ferramenta disponível. Salve para usá-la neste bot.",
     "Connection ready: {count} tool available. Save to use it with this bot.",
   ],
   "Bot routine count": ["{count} rotina", "{count} routine"],
+  "Routine execution count": [
+    "{count} rotina · executada enquanto o touri está aberto",
+    "{count} routine · runs while touri is open",
+  ],
+  "Storage records processed": [
+    "{processed} de {total} registro processado",
+    "{processed} of {total} record processed",
+  ],
+  "Import message count": ["{count} mensagem", "{count} message"],
+  "Imported conversation count": ["{count} conversa importada", "{count} imported conversation"],
+  "A cada hora, aos {minute} minutos": ["A cada hora, ao {minute} minuto", "Every hour at {minute} minute past"],
+  "A cada {count} minutos": ["A cada {count} minuto", "Every {count} minute"],
+  "A cada {count} horas": ["A cada {count} hora", "Every {count} hour"],
+  "Tamanho completo: {count} caracteres": ["Tamanho completo: {count} caractere", "Full length: {count} character"],
   "Queued messages waiting": [
     "{count} mensagem na fila · aguardando conexão",
     "{count} message queued · waiting for connection",
@@ -2377,10 +2457,17 @@ export const t = (
 ): string => {
   let template = dictionaries[locale][key]
   const one = singular[key]?.[locale === "pt-BR" ? 0 : 1]
-  if (one && typeof params.count === "number") template = plural(params.count, one, template, locale)
-  if (key === "Import counts" && locale === "pt-BR")
-    template = `{messages} ${plural(Number(params.messages), "mensagem", "mensagens")} e {threads} ${plural(Number(params.threads), "conversa importada", "conversas importadas")}. As rotinas estão pausadas.`
-  return template.replace(/\{(\w+)\}/g, (_, name: string) => String(params[name] ?? `{${name}}`))
+  const count = key === "A cada hora, aos {minute} minutos" ? params.minute : params.count
+  if (one && typeof count === "number") template = plural(count, one, template, locale)
+  const values =
+    key === "Import counts"
+      ? {
+          ...params,
+          messages: t("Import message count", { count: Number(params.messages) }, locale),
+          threads: t("Imported conversation count", { count: Number(params.threads) }, locale),
+        }
+      : params
+  return template.replace(/\{(\w+)\}/g, (_, name: string) => String(values[name] ?? `{${name}}`))
 }
 
 /** Localize auto-generated imported date titles; preserve arbitrary user titles. */

@@ -83,11 +83,21 @@
   gap: 18px;
   min-height: 90px;
 }
+.group-header > div:first-child {
+  min-width: 0;
+  max-width: 100%;
+}
 .group-heading-name {
   display: flex;
   align-items: center;
   gap: 10px;
   margin-top: 7px;
+}
+.group-member-count {
+  flex-shrink: 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  white-space: nowrap;
 }
 .group-header-members {
   display: flex;
