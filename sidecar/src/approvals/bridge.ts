@@ -2,8 +2,10 @@ import { isDeepStrictEqual } from "node:util"
 import type { ApprovalInput, ApprovalPart, ApprovalResult, Kernel, ServiceMap } from "@touri/contracts"
 import { redactStructured } from "../kernel/redact"
 import { createRuntimeNotices } from "../runtime/notices"
+import { asRecord, stringValue } from "../runtime/utils"
 import { bindApprovalScope, createStandingGrantStore, sameScope } from "./grants"
 import { approvalOutcome } from "./outcome"
+import { claudeApprovalKind, claudeApprovalPayload } from "./payload"
 
 export const createApprovalBridge = ({
   kernel,
@@ -108,7 +110,11 @@ export const createApprovalBridge = ({
             promptLength: prompt.length,
           }
         : input.input
-    const detail = `${input.toolName}: ${JSON.stringify(redactStructured(reviewInput, kernel.redact))}`
+    const nativeReview = input.scope.source === "claude"
+    const payload = nativeReview
+      ? claudeApprovalPayload(reviewInput, stringValue(asRecord(input.ctx)?.cwd) ?? undefined)
+      : reviewInput
+    const detail = `${input.toolName}: ${JSON.stringify(redactStructured(payload, kernel.redact))}`
     // Never offer routine activation with a truncated review, even for unusually
     // large schedule metadata. The routine stays paused when delivery is refused.
     if (routineReview && detail.length > 8000)
@@ -119,10 +125,10 @@ export const createApprovalBridge = ({
       createdAt: Date.now(),
       approvalId,
       botId: input.ctx.botId,
-      request: "permission",
+      request: nativeReview ? claudeApprovalKind(input.toolName) : "permission",
       scope: input.scope,
       allowStanding,
-      detail: detail.slice(0, 8000),
+      detail: nativeReview ? detail : detail.slice(0, 8000),
       decision: "pending",
     }
     return new Promise((resolve) => {

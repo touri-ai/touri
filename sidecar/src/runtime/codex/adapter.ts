@@ -9,6 +9,7 @@ import type {
   RunErrorClass,
   StartTurnArgs,
 } from "@touri/contracts"
+import { codexApprovalPayload } from "../../approvals/payload"
 import { buildChildEnv } from "../../kernel"
 import { redactStructured } from "../../kernel/redact"
 import { touriVersion } from "../../version"
@@ -75,12 +76,21 @@ const partFromItem = (value: unknown, completed = false): MessagePart | null => 
     } satisfies CommandPart
   }
   if (type.includes("file") && type.includes("change")) {
-    const paths = Array.isArray(item.paths) ? item.paths.filter((path): path is string => typeof path === "string") : []
+    const changes = Array.isArray(item.changes) ? item.changes.map(asRecord) : []
+    const paths = Array.isArray(item.paths)
+      ? item.paths.filter((path): path is string => typeof path === "string")
+      : changes.flatMap((change) => (typeof change?.path === "string" ? [change.path] : []))
     return {
       type: "file_change",
       callId,
       paths,
-      diff: stringValue(item.diff),
+      diff:
+        stringValue(item.diff) ??
+        (changes
+          .map((change) => stringValue(change?.diff) ?? "")
+          .filter(Boolean)
+          .join("\n") ||
+          null),
       resolution:
         item.status === "failed" || item.error
           ? "failed"
@@ -276,6 +286,7 @@ export const createCodexAdapter = ({
     let rolloutPath: string | null = args.session?.rolloutPath ?? null
     let turnId: string | null = null
     const agentTexts = new Map<string, string>()
+    const approvalItems = new Map<string, Record<string, unknown>>()
     const emitAgentText = (itemId: string, delta: string): void => {
       if (!delta) return
       agentTexts.set(itemId, (agentTexts.get(itemId) ?? "") + delta)
@@ -362,6 +373,10 @@ export const createCodexAdapter = ({
         if (delta) args.onEvent({ type: "reasoning_delta", itemId: stringValue(params.itemId) ?? "reasoning", delta })
       } else if (method === "item/started" || method === "item/completed") {
         const item = asRecord(params.item ?? params)
+        const itemId = stringValue(item?.id) ?? stringValue(item?.callId)
+        if (method === "item/started" && item && itemId && /command|file.*change/i.test(stringValue(item.type) ?? ""))
+          approvalItems.set(itemId, item)
+        if (method === "item/completed" && itemId) approvalItems.delete(itemId)
         if (method === "item/completed" && (item?.type === "agentMessage" || item?.type === "agent_message")) {
           const itemId = stringValue(item.id) ?? "agent"
           const text = stringValue(item.text) ?? ""
@@ -407,7 +422,12 @@ export const createCodexAdapter = ({
           type: "approval",
           approvalId,
           request,
-          detail: JSON.stringify(redactStructured(params, kernel.redact)),
+          detail: JSON.stringify(
+            redactStructured(
+              codexApprovalPayload(params, approvalItems.get(stringValue(params.itemId) ?? ""), args.fingerprint.cwd),
+              kernel.redact,
+            ),
+          ),
           decision: "pending",
         } as const
         approvals.set(approvalId, { child: spawned, requestId: frame.id, threadId: args.thread.id, part })

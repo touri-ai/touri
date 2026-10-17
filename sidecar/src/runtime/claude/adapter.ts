@@ -1,7 +1,9 @@
 import { randomUUID } from "node:crypto"
 import type { Kernel, MessagePart, ProviderAdapter, Result, RunErrorClass, StartTurnArgs } from "@touri/contracts"
 import { approvalOutcome } from "../../approvals/outcome"
+import { claudeApprovalKind, claudeApprovalPayload } from "../../approvals/payload"
 import { buildChildEnv } from "../../kernel"
+import { redactStructured } from "../../kernel/redact"
 import { spawnFolderProvider, turnFolders } from "../folder-access"
 import { loadTurnImages } from "../loadTurnImages"
 import { mcpStartupError, touriMcpStartupFailed } from "../mcp-startup"
@@ -307,6 +309,7 @@ export const createClaudeAdapter = ({
       } else if (type === "approval_request") {
         const approvalId = stringValue(frame.approval_id) ?? stringValue(frame.id) ?? `claude-approval-${randomUUID()}`
         const toolUseId = stringValue(frame.tool_use_id) ?? approvalId
+        const toolName = stringValue(frame.tool_name) ?? "Bash"
         approvals.set(approvalId, { child: spawned, toolUseId })
         args.onEvent({
           type: "approval_request",
@@ -314,9 +317,14 @@ export const createClaudeAdapter = ({
           part: {
             type: "approval",
             approvalId,
-            request: "command",
-            scope: { source: "claude", tool: stringValue(frame.tool_name) ?? "Bash" },
-            detail: JSON.stringify(frame.input ?? {}),
+            request: claudeApprovalKind(toolName),
+            scope: { source: "claude", tool: toolName },
+            detail: JSON.stringify(
+              redactStructured(
+                claudeApprovalPayload(frame.input ?? {}, args.fingerprint.cwd, stringValue(frame.reason)),
+                kernel.redact,
+              ),
+            ),
             decision: "pending",
           },
         })
