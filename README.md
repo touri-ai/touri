@@ -10,6 +10,10 @@ and secrets never leave the machine unless you explicitly configure a remote.
 
 Built with Tauri v2 (Rust shell), a Bun sidecar and a React UI.
 
+<p align="center">
+  <img src="docs/media/touri-demo.gif" alt="Creating a bot, a live reply, a folder approval, the saved file and a daily routine in touri" width="800">
+</p>
+
 ## Features
 
 - Persistent bots with their own instructions, memory, skills and full branching chat history.
