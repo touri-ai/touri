@@ -480,55 +480,71 @@
   margin: var(--space-12) var(--space-28);
 }
 /* MCP keeps its existing connection and policy controls in the dedicated pane. */
-.settings-pane[aria-label="MCP"] > .bot-mcp-settings {
+.settings-pane > .bot-mcp-settings {
   font-size: var(--type-13);
   line-height: var(--leading-body);
 }
-.settings-pane[aria-label="MCP"] > .bot-mcp-settings > h3 {
+.settings-pane > .bot-mcp-settings > h3 {
   display: none;
 }
-.settings-pane[aria-label="MCP"] .bot-mcp-settings p {
+.settings-pane .bot-mcp-settings p {
   color: var(--text-secondary);
   font-size: var(--type-12);
   line-height: var(--leading-body);
 }
-.settings-pane[aria-label="MCP"] .mcp-catalog,
-.settings-pane[aria-label="MCP"] .bot-mcp-settings > article {
+.settings-pane .mcp-catalog,
+.settings-pane .bot-mcp-settings > article {
   margin: var(--space-20) 0;
   padding: var(--space-20);
   border: 1px solid var(--border-divider);
   border-radius: var(--radius-12);
   background: var(--surface-settings-card);
 }
-.settings-pane[aria-label="MCP"] .mcp-catalog h3 {
+.settings-pane .mcp-catalog h3 {
   margin: 0;
   font-size: var(--type-14);
 }
-.settings-pane[aria-label="MCP"] .mcp-catalog article {
+.settings-pane .mcp-catalog article {
   margin-top: var(--space-20);
   padding-top: var(--space-16);
   border-top: 1px solid var(--border-divider);
 }
-.settings-pane[aria-label="MCP"] .mcp-catalog h4 {
+.settings-pane .mcp-catalog h4 {
   margin: 0;
   font-size: var(--type-13);
 }
-.settings-pane[aria-label="MCP"] .mcp-catalog a {
+.settings-pane .mcp-catalog a {
   display: block;
   margin-bottom: var(--space-12);
   color: var(--text-link);
 }
-.settings-pane[aria-label="MCP"] .bot-mcp-settings > label {
+.settings-pane .mcp-connection label {
   display: grid;
   gap: var(--space-8);
   margin: var(--space-16) 0;
   font-size: var(--type-12);
 }
-.settings-pane[aria-label="MCP"] .bot-mcp-settings code {
+.settings-pane .mcp-connection,
+.settings-pane .mcp-setup {
+  margin: var(--space-16) 0;
+  padding: var(--space-16);
+  border: 1px solid var(--border-divider);
+  border-radius: var(--radius-8);
+  min-width: 0;
+}
+.settings-pane .mcp-connection button {
+  margin: var(--space-8) var(--space-8) 0 0;
+}
+.settings-pane .mcp-setup a {
+  display: block;
+  margin: var(--space-8) 0;
+  color: var(--text-link);
+}
+.settings-pane .bot-mcp-settings code {
   overflow-wrap: anywhere;
 }
 /* The MCP tool editor uses the same grouped controls as the global MCP screen. */
-.settings-pane[aria-label="MCP"] .bot-mcp-settings > article > fieldset {
+.settings-pane .bot-mcp-settings > article > fieldset {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-12) var(--space-20);
@@ -538,21 +554,21 @@
   border-radius: var(--radius-8);
   min-width: 0;
 }
-.settings-pane[aria-label="MCP"] .bot-mcp-settings > article > fieldset > legend {
+.settings-pane .bot-mcp-settings > article > fieldset > legend {
   padding: 0 var(--space-6);
   font: var(--weight-medium) var(--type-12) var(--font-mono);
 }
-.settings-pane[aria-label="MCP"] .bot-mcp-settings > article > fieldset > p {
+.settings-pane .bot-mcp-settings > article > fieldset > p {
   grid-column: 1 / -1;
   margin: 0;
 }
-.settings-pane[aria-label="MCP"] .bot-mcp-settings > article > fieldset > label {
+.settings-pane .bot-mcp-settings > article > fieldset > label {
   display: grid;
   gap: var(--space-6);
   color: var(--text-secondary);
   font-size: var(--type-12);
 }
-.settings-pane[aria-label="MCP"] .bot-mcp-settings > article > .text-button {
+.settings-pane .bot-mcp-settings > article > .text-button {
   min-height: 36px;
   padding: var(--space-8) var(--space-12);
   border: 1px solid var(--border-notice);
