@@ -10,8 +10,9 @@ export const linuxProgramFiles = (path: string): string[] => {
   // has an independently identifiable runtime root (including scoped packages).
   const parts = dirname(real).split("/")
   const modules = parts.lastIndexOf("node_modules")
-  if (modules >= 0) {
+  if (modules >= 0 && parts[modules + 1]) {
     const scoped = parts[modules + 1]?.startsWith("@")
+    if (scoped && !parts[modules + 2]) return [real]
     const directory = parts.slice(0, modules + (scoped ? 3 : 2)).join("/")
     if (existsSync(join(directory, "package.json"))) return [directory]
   }
