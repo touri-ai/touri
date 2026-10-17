@@ -32,7 +32,7 @@ beforeEach(() => {
   const mock = createMockApi()
   const request: ApiRequest = async (route, input, path) =>
     route === "GET /health"
-      ? ({ ok: true, version: "0.1.0", schemaVersion: 6 } as ApiRoutes[typeof route]["res"])
+      ? ({ ok: true, version: "0.2.0", schemaVersion: 6 } as ApiRoutes[typeof route]["res"])
       : mock.request(route, input, path)
   vi.mocked(createApiClient).mockReturnValue({ ...mock, request, isMock: false })
 })
@@ -111,7 +111,7 @@ describe("sidecar failure blocking state", () => {
         await new Promise<void>((resolve) => {
           finish = resolve
         })
-        return { ok: true, version: "0.1.0", schemaVersion: 6 } as ApiRoutes[typeof route]["res"]
+        return { ok: true, version: "0.2.0", schemaVersion: 6 } as ApiRoutes[typeof route]["res"]
       }
       return api.request(route, input, path)
     }

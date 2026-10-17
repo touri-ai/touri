@@ -208,9 +208,7 @@ it("counts one pending target across duplicate message parts and reminders", () 
 
 it("fills the action in the approval reminder", () => {
   render(<ApprovalNotice notifications={[note]} messages={[message()]} onReview={vi.fn()} />)
-  expect(screen.getByRole("status")).toHaveTextContent(
-    "Café Ideias precisa de você: autorizar executar comando no terminal.",
-  )
+  expect(screen.getByRole("status")).toHaveTextContent("Café Ideias pede sua aprovação: Executar comando no terminal")
   expect(screen.getByRole("status")).not.toHaveTextContent(/[{}]/)
 })
 

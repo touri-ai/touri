@@ -83,8 +83,8 @@ for (const locale of ["pt-BR", "en"] as const) {
     )
     expect(summary.body).toBe(
       locale === "en"
-        ? "Allow Read-only in /workspace/phase-a for this bot. Previous access: Read and write. The change takes effect on the next VM turn."
-        : "Permitir Somente leitura em /workspace/phase-a para este bot. Acesso anterior: Leitura e escrita. A mudança entra em vigor no próximo turno da VM.",
+        ? "Allow Read-only in /workspace/phase-a for this bot. Previous access: Read and write. Takes effect from the next message in the VM."
+        : "Permitir Somente leitura em /workspace/phase-a para este bot. Acesso anterior: Leitura e escrita. Vale a partir da próxima mensagem na VM.",
     )
   })
   test(`${locale}: write-access titles are approval echoes and local timing starts a new sentence`, () => {
@@ -106,8 +106,8 @@ for (const locale of ["pt-BR", "en"] as const) {
     expect(isApprovalNoticeTitle(`Café Ideias: ${summary.title}`)).toBe(true)
     expect(summary.body).toContain(
       locale === "en"
-        ? "for this bot. The change takes effect on the next local turn. After approval,"
-        : "para este bot. A mudança entra em vigor no próximo turno local. Após aprovar,",
+        ? "for this bot. Takes effect from the next message. After approval,"
+        : "para este bot. Vale a partir da próxima mensagem. Após aprovar,",
     )
   })
 }
