@@ -1,11 +1,11 @@
 import { afterEach, expect, test } from "bun:test"
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { createServer, type Server, type Socket } from "node:net"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { orphanShimCheck } from "../../src/doctor/mcp"
 import { createKernel } from "../../src/kernel"
-import { listLiveShims, reapOrphanShims } from "../../src/mcp/shim-registry"
+import { listLiveShims, reapOrphanShims, registerShim } from "../../src/mcp/shim-registry"
 import { trackProviderProcess } from "../../src/runtime/provider-processes"
 
 const providerFake = join(import.meta.dir, "..", "fakes", "fake-provider-with-shim.ts")
@@ -16,6 +16,24 @@ const cleanups: Array<() => void> = []
 afterEach(() => {
   for (const cleanup of cleanups.splice(0)) cleanup()
 })
+
+test.skipIf(process.platform !== "linux")(
+  "PID namespace shims never publish local PIDs to the host process registry",
+  async () => {
+    const root = mkdtempSync(join(tmpdir(), "touri-shim-namespace-"))
+    const previous = process.env.TOURI_PID_NAMESPACE
+    process.env.TOURI_PID_NAMESPACE = "1"
+    try {
+      const unregister = await registerShim({ runDir: root, thread: "fixture" })
+      expect(existsSync(join(root, "mcp-shims"))).toBe(false)
+      unregister()
+    } finally {
+      if (previous === undefined) delete process.env.TOURI_PID_NAMESPACE
+      else process.env.TOURI_PID_NAMESPACE = previous
+      rmSync(root, { recursive: true, force: true })
+    }
+  },
+)
 
 const alive = (pid: number): boolean => {
   try {

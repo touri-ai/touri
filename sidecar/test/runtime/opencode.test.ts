@@ -349,5 +349,5 @@ test("OpenCode receives explicit folder permissions and an outer sandbox for ter
   const config = f.records().find((record) => record.type === "spawn").config
   expect(config.permission.external_directory).toMatchObject({ [`${path}/**`]: "allow", "/**": "allow" })
   expect(config.permission.edit).toMatchObject({ [`${path}/**`]: "deny" })
-  expect(f.calls.some((call) => call.cmd === "/usr/bin/sandbox-exec")).toBe(true)
+  expect(f.calls.some((call) => call.cmd === "/usr/bin/sandbox-exec" || /\/bwrap$/.test(call.cmd))).toBe(true)
 })

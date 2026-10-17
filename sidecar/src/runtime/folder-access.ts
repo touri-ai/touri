@@ -1,4 +1,3 @@
-import { existsSync } from "node:fs"
 import { homedir, tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import type { Kernel, StartTurnArgs } from "@touri/contracts"
@@ -9,11 +8,12 @@ import {
   resolveBotFolder,
   withinFolder,
 } from "../kernel/bot-folders"
+import { folderAccessUnavailable, hostFolderAccessAvailable, linuxSandboxBinary } from "../kernel/folder-capability"
 import { resolveMcpSocketPath } from "../kernel/paths"
+import { linuxFolderSandbox } from "./linux-folder-sandbox"
 
 // Keep the picker preflight aligned with the host provider's actual boundary.
-export const hostFolderAccessAvailable = (): boolean =>
-  process.platform === "darwin" && existsSync("/usr/bin/sandbox-exec")
+export { hostFolderAccessAvailable } from "../kernel/folder-capability"
 
 export const turnFolders = (args: StartTurnArgs) => {
   const folders = (args.bot.folders ?? []).map((folder) => {
@@ -126,11 +126,30 @@ export const spawnFolderProvider = (
   input: Parameters<Kernel["spawnTree"]>[0],
 ): ReturnType<Kernel["spawnTree"]> => {
   if (args.execution) return args.execution.spawn(input)
-  // Do not silently drop the security boundary on a host without Seatbelt.
   if (process.platform !== "darwin" && !args.bot.anyFolderAccess && !args.bot.folders?.length)
     return kernel.spawnTree(input)
-  if (!hostFolderAccessAvailable())
-    return { success: false, errorCode: "SPAWN_FAILED", error: "O acesso a pastas requer o sandbox do macOS." }
+  // Never silently drop a folder grant's platform boundary.
+  if (!hostFolderAccessAvailable()) {
+    if (!args.bot.anyFolderAccess && !args.bot.folders?.length) return kernel.spawnTree(input)
+    return { success: false, errorCode: "SPAWN_FAILED", error: folderAccessUnavailable }
+  }
+  const binary = linuxSandboxBinary()
+  if (binary) {
+    try {
+      return kernel.spawnTree({
+        ...input,
+        cmd: binary,
+        env: { ...input.env, TOURI_PID_NAMESPACE: "1" },
+        args: [...linuxFolderSandbox(kernel, args, input.env), "--", input.cmd, ...input.args],
+      })
+    } catch (error) {
+      return {
+        success: false,
+        errorCode: "SPAWN_FAILED",
+        error: error instanceof Error ? error.message : folderAccessUnavailable,
+      }
+    }
+  }
   return kernel.spawnTree({
     ...input,
     cmd: "/usr/bin/sandbox-exec",

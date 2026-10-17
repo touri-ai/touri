@@ -30,6 +30,7 @@ import { createApprovalBridge } from "../approvals/bridge"
 import { approvalOutcome } from "../approvals/outcome"
 import { delegatedBot } from "../groups/security"
 import { buildChildEnv } from "../kernel"
+import { folderGrantProblem, refreshHostFolderAccess } from "../kernel/folder-capability"
 import { resolveMcpSocketPath } from "../kernel/paths"
 import { providerProfileEnv } from "../kernel/provider-profiles"
 import { redactStructured } from "../kernel/redact"
@@ -72,6 +73,7 @@ import { startVmTurn } from "./vm-turn"
 import { createWorkState, type WorkState } from "./work-state"
 
 type RunState = {
+  replyParentId?: Id | undefined
   text: string
   textItemIds: Set<string>
   parts: Array<MessagePart>
@@ -350,7 +352,7 @@ export const createRuntimeEngine = ({
     const message: Omit<Message, "createdAt" | "updatedAt"> = {
       id: kernel.newId(),
       threadId: run.threadId,
-      parentId,
+      parentId: state.replyParentId ?? parentId,
       role: "assistant",
       kind: "text",
       status: "streaming",
@@ -404,7 +406,7 @@ export const createRuntimeEngine = ({
     run: Run
     parentId: Id
     part: Extract<MessagePart, { type: "notice" }>
-  }): void => {
+  }): Id | null => {
     const result = store.insertMessage({
       message: {
         id: kernel.newId(),
@@ -421,6 +423,7 @@ export const createRuntimeEngine = ({
       },
     })
     if (result.success) kernel.publish({ type: "message.created", message: result.message })
+    return result.success ? result.message.id : null
   }
 
   const makeMcpToken = (threadId: Id): { command: string; args: Array<string>; env: Record<string, string> } => {
@@ -726,8 +729,8 @@ export const createRuntimeEngine = ({
     }
     const thread = store.getThread({ threadId: run.threadId })
     const ownBot = thread ? store.getBot({ botId: thread.botId }) : null
-    const bot = thread && ownBot ? delegatedBot(kernel, thread.id, ownBot) : null
-    if (!thread || !bot) {
+    const candidateBot = thread && ownBot ? delegatedBot(kernel, thread.id, ownBot) : null
+    if (!thread || !candidateBot) {
       updateRun(run, {
         status: "failed",
         errorClass: "unknown",
@@ -737,6 +740,36 @@ export const createRuntimeEngine = ({
       return
     }
     const state = getState(run.id)
+    if (candidateBot.machine === "local" && (candidateBot.anyFolderAccess || candidateBot.folders?.length))
+      await refreshHostFolderAccess()
+    const conversationOnly = !!folderGrantProblem(candidateBot)
+    const bot: Bot = conversationOnly
+      ? {
+          ...candidateBot,
+          folders: [],
+          anyFolderAccess: false,
+          access: "read-only",
+          projectId: null,
+          cwd: null,
+          mcpServers: [],
+          browserEnabled: false,
+          computerUse: false,
+        }
+      : candidateBot
+    if (conversationOnly) {
+      state.replyParentId =
+        notice({
+          store,
+          run,
+          parentId: run.requestMessageId ?? thread.activeLeafId ?? run.id,
+          part: {
+            type: "notice",
+            level: "warning",
+            code: "folder_access_unavailable",
+            text: "As permissões de pastas salvas não funcionam neste computador. Você pode conversar sem ferramentas. Remova essas permissões nas configurações do bot para continuar com tarefas.",
+          },
+        }) ?? undefined
+    }
     const request = activePathMessage({ store, run })
     const resumedFrom = request?.role === "system" ? continuationReasonOf(request.text) : null
     const link = continuations.link(run.id)
@@ -903,7 +936,7 @@ export const createRuntimeEngine = ({
           signal?.throwIfAborted()
           const turnBot = delegatedBot(kernel, thread.id, {
             ...(prepared?.bot ?? bot),
-            mcpServers: await resolveAttachedMcp(kernel, prepared?.bot ?? bot),
+            mcpServers: conversationOnly ? [] : await resolveAttachedMcp(kernel, prepared?.bot ?? bot),
           })
           signal?.throwIfAborted()
           const turnInstructions = await composeDeveloperInstructions({
@@ -939,6 +972,7 @@ export const createRuntimeEngine = ({
           : provider.startTurn
         const invoke = (): ReturnType<typeof startTurn> =>
           startTurn({
+            ...(conversationOnly ? { conversationOnly: true } : {}),
             thread,
             bot: turnBot,
             session,

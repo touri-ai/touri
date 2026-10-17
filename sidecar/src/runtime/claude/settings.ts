@@ -77,8 +77,9 @@ export const claudeSettings = async (args: StartTurnArgs, env: Record<string, st
     settings: {
       ...auth,
       permissions: {
-        allow: args.bot.access === "read-only" ? readOnlyAllow : [],
+        allow: args.conversationOnly ? [] : args.bot.access === "read-only" ? readOnlyAllow : [],
         deny: [
+          ...(args.conversationOnly ? ["*"] : []),
           ...(args.bot.access === "read-only" ? readOnlyDeny : []),
           ...turnFolders(args)
             .filter((folder) => folder.access === "read-only")

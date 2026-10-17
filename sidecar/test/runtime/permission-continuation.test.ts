@@ -5,6 +5,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { ApprovalPart, ProviderAdapter, StartTurnArgs } from "@touri/contracts"
 import { createKernel } from "../../src/kernel"
+import * as folderCapability from "../../src/kernel/folder-capability"
 import { createProjectStore } from "../../src/projects/repository"
 import { createSetupTools } from "../../src/projects/setup-tools"
 import { createRuntimeEngine } from "../../src/runtime/engine"
@@ -85,7 +86,7 @@ const fixture = async ({ missingOutput = false } = {}) => {
     return project ? { project, git: null, hints: [], processes: [], previews: [], secretNames: [] } : null
   })
   const tools = createSetupTools({ kernel: runtime.kernel, store: projects })
-  const send = () => {
+  const send = (text = requestText) => {
     const message = store.insertMessage({
       message: {
         id: runtime.kernel.newId(),
@@ -95,8 +96,8 @@ const fixture = async ({ missingOutput = false } = {}) => {
         kind: "text",
         status: "complete",
         runId: null,
-        text: requestText,
-        parts: [{ type: "text", text: requestText }],
+        text,
+        parts: [{ type: "text", text }],
         sender: null,
         source: "local",
       },
@@ -144,8 +145,59 @@ const fixture = async ({ missingOutput = false } = {}) => {
   }
   send()
   await waitFor(() => turns.length === 1)
-  return { folder, reference, turns, db, store, engine, call, cards, answer, finish, close }
+  return { folder, reference, turns, db, store, engine, call, cards, answer, finish, close, send }
 }
+
+test("saved incompatible grants allow later greetings in conversation-only mode without losing stored permissions", async () => {
+  const f = await fixture()
+  const unavailable = spyOn(folderCapability, "hostFolderAccessAvailable").mockReturnValue(false)
+  try {
+    await f.finish(0)
+    f.send("oi")
+    await waitFor(() => f.turns.length === 2)
+    expect(f.turns[1]).toMatchObject({
+      conversationOnly: true,
+      bot: { folders: [], anyFolderAccess: false, access: "read-only", projectId: null },
+    })
+    expect(f.turns[1]?.input).toContainEqual({ type: "text", text: expect.stringContaining("oi") })
+    expect(f.store.getBot({ botId: "b" })?.folders).toEqual([{ path: f.reference, access: "read-only" }])
+    const result = await f.call()
+    expect(result).toMatchObject({ success: false })
+    expect(f.cards()).toHaveLength(0)
+    await f.finish(1)
+    expect(
+      f.store
+        .activePath({ threadId: "t" })
+        .some((message) =>
+          message.parts.some((part) => part.type === "notice" && part.code === "folder_access_unavailable"),
+        ),
+    ).toBe(true)
+    f.send("oi de novo")
+    await waitFor(() => f.turns.length === 3)
+    expect(f.turns[2]?.conversationOnly).toBe(true)
+    await f.finish(2)
+  } finally {
+    unavailable.mockRestore()
+    await f.close()
+  }
+})
+
+test("a reopened bot with saved grants can start its first conversation on an incompatible host", async () => {
+  const unavailable = spyOn(folderCapability, "hostFolderAccessAvailable").mockReturnValue(false)
+  const f = await fixture()
+  try {
+    expect(f.turns[0]?.conversationOnly).toBe(true)
+    await f.finish(0)
+    f.send("oi")
+    await waitFor(() => f.turns.length === 2)
+    expect(f.turns[1]?.conversationOnly).toBe(true)
+    await f.finish(1)
+    expect(f.store.getBot({ botId: "b" })?.folders).toHaveLength(1)
+  } finally {
+    unavailable.mockRestore()
+    await f.close()
+  }
+})
 
 test("approved missing output folders are created before exactly one permission continuation", async () => {
   const f = await fixture({ missingOutput: true })

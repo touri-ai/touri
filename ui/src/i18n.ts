@@ -3,6 +3,12 @@ import { userFacingError } from "./errors"
 /** All UI copy lives here. pt-BR is the default; English is available for a future locale picker. */
 export type Locale = "pt-BR" | "en"
 export const ptBR = {
+  // Local folder confinement and recovery.
+  "Este computador não consegue proteger o acesso a pastas. Nenhuma permissão foi adicionada. Você pode continuar conversando ou enviar um arquivo.":
+    "Este computador não consegue proteger o acesso a pastas. Nenhuma permissão foi adicionada. Você pode continuar conversando ou enviar um arquivo.",
+  "As permissões de pastas salvas não funcionam neste computador. Você pode conversar sem ferramentas. Remova essas permissões nas configurações do bot para continuar com tarefas.":
+    "As permissões de pastas salvas não funcionam neste computador. Você pode conversar sem ferramentas. Remova essas permissões nas configurações do bot para continuar com tarefas.",
+  "Remover permissões antigas": "Remover permissões antigas",
   // Routine deletion.
   "Excluir rotina": "Excluir rotina",
   "Excluir rotina {name}": "Excluir rotina {name}",
@@ -1734,6 +1740,12 @@ export const ptBR = {
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  // Local folder confinement and recovery.
+  "Este computador não consegue proteger o acesso a pastas. Nenhuma permissão foi adicionada. Você pode continuar conversando ou enviar um arquivo.":
+    "This computer cannot protect folder access. No permission was added. You can keep chatting or send a file.",
+  "As permissões de pastas salvas não funcionam neste computador. Você pode conversar sem ferramentas. Remova essas permissões nas configurações do bot para continuar com tarefas.":
+    "Saved folder permissions do not work on this computer. You can chat without tools. Remove these permissions in the bot settings to continue with tasks.",
+  "Remover permissões antigas": "Remove old permissions",
   // Routine deletion.
   "Excluir rotina": "Delete routine",
   "Excluir rotina {name}": "Delete routine {name}",
