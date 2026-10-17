@@ -107,6 +107,8 @@ it("keeps every former bot setting within the Advanced button and one section cl
       expect(screen.getByText("Pasta de trabalho")).toBeVisible()
     },
     Ferramentas: () => {
+      // The raw MCP form now sits behind the technical option; friendly catalog cards come first.
+      fireEvent.click(screen.getByRole("button", { name: "Configuração técnica (MCP)" }))
       for (const name of ["Nome do servidor MCP", "Transporte MCP", "Comando MCP", "Argumentos MCP (lista JSON)"]) {
         expect(screen.getByLabelText(name)).toBeVisible()
       }
