@@ -1562,6 +1562,10 @@ export const ptBR = {
   "local connection": "conexão local",
   "Couldn’t connect to touri services.": "Não foi possível conectar aos serviços do touri.",
   "Retry connection": "Tentar novamente",
+  "Preparing report…": "Preparando relatório…",
+  "Report this problem": "Reportar este problema",
+  "The local service took too long to respond. Try connecting again.":
+    "O serviço local demorou para responder. Tente conectar novamente.",
   "The app and the local service use incompatible versions.":
     "O aplicativo e o serviço local usam versões incompatíveis.",
   "Touri is unavailable until the local service reconnects.":

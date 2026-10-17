@@ -38,12 +38,72 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  vi.useRealTimers()
   vi.restoreAllMocks()
   shell.listeners.clear()
   Reflect.deleteProperty(window, "__TAURI_INTERNALS__")
 })
 
 describe("sidecar failure blocking state", () => {
+  it.each(["endpoint", "health"])("offers recovery when the first %s request never settles", async (stage) => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] })
+    const unavailableInvoke = vi.fn(() => new Promise(() => undefined))
+    Object.defineProperty(window, "__TAURI_INTERNALS__", { configurable: true, value: { invoke: unavailableInvoke } })
+    let finish: (() => void) | undefined
+    const pending = new Promise<void>((resolve) => {
+      finish = resolve
+    })
+    const api = vi.mocked(createApiClient)({ endpoint })
+    const request = api.request
+    api.request = (async (...args) => {
+      if (stage === "health" && args[0] === "GET /health") await pending
+      return request(...args)
+    }) as ApiRequest
+    let available = false
+    const invoke = vi.fn(async (command: string) => {
+      if (command === "sidecar_endpoint" && stage === "endpoint" && !available) await pending
+      return endpoint
+    })
+    await act(async () => render(<App kernel={{ services: { invoke: invoke as TauriInvoke } }} />))
+    expect(screen.getByText("Preparando o espaço de trabalho…")).toBeVisible()
+    await act(async () => vi.advanceTimersByTimeAsync(20_000))
+    const alert = screen.getByRole("alert")
+    expect(within(alert).getByRole("button", { name: /Tentar novamente/ })).toBeEnabled()
+    expect(within(alert).getByRole("button", { name: "Reportar este problema" })).toBeEnabled()
+    expect(
+      within(alert).getByText("O serviço local demorou para responder. Tente conectar novamente.", { selector: "p" }),
+    ).toBeVisible()
+    // Reporting must open without waiting for the same unavailable service.
+    await act(async () => fireEvent.click(within(alert).getByRole("button", { name: "Reportar este problema" })))
+    const report = screen.getByRole("dialog", { name: "Reportar problema" })
+    expect(report).toBeVisible()
+    expect(unavailableInvoke).not.toHaveBeenCalled()
+    fireEvent.keyDown(document, { key: "Escape" })
+    await act(async () => finish?.())
+    expect(alert).toBeVisible()
+    available = true
+    await act(async () => fireEvent.click(within(alert).getByRole("button", { name: /Tentar novamente/ })))
+    expect(invoke).toHaveBeenCalledWith("sidecar_restart", {})
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+  })
+
+  it("enables recovery again when the shell never acknowledges a restart", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] })
+    const invoke = vi.fn(async (command: string) => {
+      if (command === "sidecar_restart") return new Promise(() => undefined)
+      throw reason
+    })
+    await act(async () => render(<App kernel={{ services: { invoke: invoke as TauriInvoke } }} />))
+    const retry = screen.getByRole("button", { name: /Tentar novamente/ })
+    await act(async () => fireEvent.click(retry))
+    expect(retry).toBeDisabled()
+    await act(async () => vi.advanceTimersByTimeAsync(20_000))
+    expect(retry).toBeEnabled()
+    expect(
+      screen.getByText("O serviço local demorou para responder. Tente conectar novamente.", { selector: "p" }),
+    ).toBeVisible()
+  })
+
   it("reads startup failures from the shell and cannot be dismissed", async () => {
     const invoke = vi.fn(async () => {
       throw reason

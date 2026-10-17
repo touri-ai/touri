@@ -6,7 +6,7 @@ use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{mpsc, Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
@@ -34,6 +34,7 @@ pub struct SidecarHandshake {
 
 pub const SIDECAR_SCHEMA_VERSION: u32 = 20;
 const MAX_IDENTICAL_HANDSHAKE_FAILURES: usize = 3;
+const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(15);
 
 pub fn parse_handshake(line: &str) -> Result<SidecarHandshake, String> {
     let value: serde_json::Value = serde_json::from_str(line.trim())
@@ -519,9 +520,31 @@ fn spawn_sidecar<R: Runtime>(
             return Err(error.into());
         }
     };
-    let mut reader = BufReader::new(stdout);
-    let mut line = String::new();
-    if let Err(error) = reader.read_line(&mut line) {
+    // Reading a line can block forever, including when only part of the JSON arrives.
+    // Keep setup and restarts bounded so the webview can offer recovery.
+    let (sender, receiver) = mpsc::sync_channel(1);
+    thread::spawn(move || {
+        let mut reader = BufReader::new(stdout);
+        let mut line = String::new();
+        let result = reader.read_line(&mut line);
+        let _ = sender.send((result, reader, line));
+    });
+    let (result, mut reader, line) = match receiver.recv_timeout(HANDSHAKE_TIMEOUT) {
+        Ok(result) => result,
+        Err(_) => {
+            let message = "sidecar handshake timed out after 15 seconds".to_string();
+            let _ = child.kill();
+            let _ = child.wait();
+            // A descendant may still hold a pipe open. Reader threads must not
+            // turn the startup deadline into another unbounded join.
+            append_shell_log_line(&launch.logs_dir, &message);
+            return Err(SpawnFailure {
+                reason: message,
+                handshake: true,
+            });
+        }
+    };
+    if let Err(error) = result {
         let message = format!("read sidecar handshake failed: {error}");
         let _ = child.kill();
         let _ = child.wait();
@@ -867,6 +890,9 @@ fn is_existing_executable(path: &Path) -> bool {
 
 #[cfg(test)]
 mod tests {
+    // Tests that replace the process-wide sidecar override cannot run together.
+    #[cfg(unix)]
+    static SIDECAR_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
     #[cfg(unix)]
     #[test]
     fn r13_app_data_run_and_logs_are_owner_only_even_under_a_loose_umask() {
@@ -1062,6 +1088,7 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn supervisor_preserves_the_failure_and_manual_restart_resumes_after_the_limit() {
+        let _environment = SIDECAR_ENV_LOCK.lock().unwrap();
         use std::os::unix::fs::PermissionsExt;
         use std::time::Instant;
 
@@ -1138,6 +1165,54 @@ mod tests {
         );
         assert!(supervisor.state.lock().unwrap().last_error.is_none());
         supervisor.stop();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn an_unterminated_handshake_times_out_and_reaps_the_child() {
+        let _environment = SIDECAR_ENV_LOCK.lock().unwrap();
+        use std::os::unix::fs::PermissionsExt;
+
+        let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("target")
+            .join(format!("stalled-handshake-test-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        let script = root.join("fake-sidecar.sh");
+        let child_pid = root.join("fake-sidecar.sh.pid");
+        std::fs::write(
+            &script,
+            "#!/bin/sh\nprintf '%s' \"$$\" > \"$0.pid\"\nprintf '%s' '{\"type\":'\nexec sleep 60\n",
+        )
+        .unwrap();
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let previous = std::env::var_os("TOURI_SIDECAR_BIN");
+        std::env::set_var("TOURI_SIDECAR_BIN", &script);
+        let app = tauri::test::mock_app();
+        let launch = SidecarLaunch::new(root.join("app-data")).unwrap();
+        let result = super::spawn_sidecar(app.handle(), &launch);
+        if let Some(previous) = previous {
+            std::env::set_var("TOURI_SIDECAR_BIN", previous);
+        } else {
+            std::env::remove_var("TOURI_SIDECAR_BIN");
+        }
+        let pid = std::fs::read_to_string(child_pid)
+            .unwrap()
+            .parse::<i32>()
+            .unwrap();
+        let log = std::fs::read_to_string(launch.logs_dir.join("sidecar-shell.log")).unwrap();
+        std::fs::remove_dir_all(root).unwrap();
+        let failure = result.expect_err("a partial handshake must fail");
+        assert_eq!(
+            failure.reason,
+            "sidecar handshake timed out after 15 seconds"
+        );
+        assert!(
+            failure.handshake,
+            "repeated startup stalls must use the bounded retry policy"
+        );
+        assert!(log.contains(&failure.reason));
+        // The timed-out process must be killed and waited on, not left running or zombied.
+        assert_eq!(unsafe { libc::kill(pid, 0) }, -1);
     }
 
     #[test]
