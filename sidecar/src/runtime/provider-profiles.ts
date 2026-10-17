@@ -7,7 +7,7 @@ import {
   providerProfileDir,
   validProviderProfileName,
 } from "../kernel/provider-profiles"
-import { buildChildEnv } from "../kernel/shell-env"
+import { buildChildEnv, withToolPath } from "../kernel/shell-env"
 import { resolveExecutable } from "./utils"
 
 const STATUS_TIMEOUT_MS = 10_000
@@ -19,7 +19,7 @@ const claudeStatus = async ({
   dir: string
   env: Record<string, string>
 }): Promise<{ loggedIn: boolean; account: string | null }> => {
-  const childEnv = buildChildEnv({ base: env, overrides: { CLAUDE_CONFIG_DIR: dir } })
+  const childEnv = withToolPath(buildChildEnv({ base: env, overrides: { CLAUDE_CONFIG_DIR: dir } }))
   const resolved = resolveExecutable({ command: process.env.TOURI_CLAUDE_BIN ?? "claude", env: childEnv })
   if (!resolved.success) return { loggedIn: false, account: null }
   try {

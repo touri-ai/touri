@@ -1,3 +1,4 @@
+import { withToolPath } from "../kernel/shell-env"
 import { tailscaleHttpsPort } from "./args"
 
 export type CommandOutput = { code: number; stdout: string; stderr: string }
@@ -9,7 +10,7 @@ export type TailscaleExposeResult = TailscaleExposeSuccess | TailscaleExposeErro
 
 export const runCommand: RunCommand = async (cmd, args) => {
   try {
-    const child = Bun.spawn([cmd, ...args], { stdout: "pipe", stderr: "pipe", stdin: "ignore" })
+    const child = Bun.spawn([cmd, ...args], { env: withToolPath(), stdout: "pipe", stderr: "pipe", stdin: "ignore" })
     const [stdout, stderr, code] = await Promise.all([
       new Response(child.stdout).text(),
       new Response(child.stderr).text(),

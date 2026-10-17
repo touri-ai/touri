@@ -52,6 +52,7 @@ const toolDirectories = ({ home, exists }: { home: string; exists: (path: string
   return [
     `${home}/.local/bin`,
     `${home}/.bun/bin`,
+    `${home}/.opencode/bin`,
     `${home}/.volta/bin`,
     `${home}/.local/share/mise/shims`,
     `${home}/.asdf/shims`,
@@ -81,9 +82,12 @@ export const mergePath = ({
   return merged.filter((entry, index) => merged.indexOf(entry) === index).join(":")
 }
 
-const withToolPath = (environment: NodeJS.ProcessEnv | Record<string, string>): Record<string, string> => {
+// Use the same tool directories for discovery and execution, including Finder launches.
+export const withToolPath = (
+  environment: NodeJS.ProcessEnv | Record<string, string> = process.env,
+): Record<string, string> & { PATH: string } => {
   const result = buildChildEnv({ base: environment })
-  return { ...result, PATH: mergePath({ path: result.PATH, home: result.HOME ?? homedir() }) }
+  return { ...result, PATH: mergePath({ path: result.PATH ?? process.env.PATH, home: result.HOME ?? homedir() }) }
 }
 
 export const createShellEnv = ({ spawn, shell }: { spawn: Kernel["spawnTree"]; shell?: string }) => {
