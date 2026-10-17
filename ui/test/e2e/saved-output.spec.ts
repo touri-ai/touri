@@ -2,7 +2,7 @@ import { mkdirSync } from "node:fs"
 import { resolve } from "node:path"
 import { expect, test } from "@playwright/test"
 
-test.use({ viewport: { width: 1100, height: 840 }, reducedMotion: "reduce" })
+test.use({ channel: "chromium", viewport: { width: 1100, height: 840 }, reducedMotion: "reduce" })
 const phase = process.env.SAVED_OUTPUT_PHASE === "before" ? "before" : "after"
 const evidence = resolve(import.meta.dirname, "../../../docs/qa/write-path")
 const output = `Resumo: 300 etapas concluídas.\n${"Etapa finalizada com sucesso.\n".repeat(3000)}Última linha preservada.`

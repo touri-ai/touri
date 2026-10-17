@@ -55,18 +55,80 @@ export const createStreamWriter = ({
   let timer: ReturnType<typeof setTimeout> | null = null
   let checkpointAt = Date.now()
   let flushing = false
+  const outside = new WeakSet<StreamEvent>()
+  let unsettled: Array<{ event: StreamEvent; raw: string; seq: number }> = []
   const keyOf = (threadId: string, messageId: string): string => JSON.stringify([threadId, messageId])
+
+  const tailSeq = (threadId: string, messageId: string): number =>
+    (
+      database
+        .query(`SELECT MAX(seq) AS seq FROM (
+      SELECT seq FROM (SELECT seq FROM transcript_entries INDEXED BY transcript_delta_message
+        WHERE thread_id = ? AND json_extract(event_json, '$.messageId') = ?
+          AND json_extract(event_json, '$.type') = 'message.delta'
+        ORDER BY seq DESC LIMIT 1)
+      UNION ALL
+      SELECT seq FROM (SELECT e.seq FROM transcript_part_entries p JOIN transcript_entries e ON e.id = p.entry_id
+        WHERE p.thread_id = ? AND p.message_id = ? ORDER BY p.entry_id DESC LIMIT 1)
+    )`)
+        .get(threadId, messageId, threadId, messageId) as { seq: number | null }
+    ).seq ?? 0
+
+  const settle = (): void => {
+    if (database.inTransaction || !unsettled.length) return
+    const lost = unsettled.filter(({ event, raw, seq }) => {
+      const row = database
+        .query("SELECT event_json FROM transcript_entries WHERE thread_id = ? AND seq = ?")
+        .get(event.threadId, seq) as { event_json: string } | null
+      return row?.event_json !== raw
+    })
+    unsettled = []
+    if (!lost.length) return
+    // Only work accepted before the outer transaction belongs to the retry.
+    // Work created by that transaction must disappear with its rollback.
+    projections.clear()
+    for (const { event } of lost) {
+      const restored = structuredClone(event)
+      delete restored.updatedSeq
+      outside.add(restored)
+      pending.push(restored)
+    }
+    runBytes.clear()
+    lastByMessage.clear()
+  }
 
   const flush = (): void => {
     if (flushing) return
+    settle()
     if (timer) clearTimeout(timer)
     timer = null
-    if (!pending.length) return
+    if (!pending.length) {
+      if (unsettled.length) timer = setTimeout(flushLater, STREAM_WRITE_LIMITS.delayMs)
+      return
+    }
     flushing = true
     const batch = pending
     const committed: StreamEvent[] = []
+    const outerTransaction = database.inTransaction
+    const awaitingCommit: typeof unsettled = []
     try {
       database.transaction(() => {
+        const rebased = new Map<string, Message>()
+        for (const event of batch) {
+          const key = keyOf(event.threadId, event.messageId)
+          if (rebased.has(key)) continue
+          const cached = projections.get(key)
+          const head = getMessage({ threadId: event.threadId, messageId: event.messageId })
+          if (
+            !cached ||
+            head?.updatedSeq !== cached.baseSeq ||
+            tailSeq(event.threadId, event.messageId) > (cached.message.updatedSeq ?? 0)
+          ) {
+            materializeTranscript(database)
+            const message = getMessage({ threadId: event.threadId, messageId: event.messageId })
+            if (message) rebased.set(key, message)
+          }
+        }
         for (const event of batch) {
           const thread = getThread({ threadId: event.threadId })
           const head = database
@@ -88,6 +150,31 @@ export const createStreamWriter = ({
             projections.delete(keyOf(event.threadId, event.messageId))
             continue
           }
+          const rebasedMessage = rebased.get(keyOf(event.threadId, event.messageId))
+          if (rebasedMessage) {
+            if (event.type === "message.delta") {
+              const part = rebasedMessage.parts[event.partIndex]
+              if (
+                event.partIndex > rebasedMessage.parts.length ||
+                (part && part.type !== "text" && part.type !== "reasoning")
+              ) {
+                recordTranscriptRejection(kernel, event, "validation")
+                continue
+              }
+              const text = part && "text" in part ? part.text : ""
+              event.offset = text.length
+              rebasedMessage.parts[event.partIndex] = {
+                ...part,
+                type: event.partType ?? "text",
+                text: text + event.delta,
+              }
+            } else {
+              for (const { partIndex, part } of event.parts) rebasedMessage.parts[partIndex] = structuredClone(part)
+            }
+            rebasedMessage.text = rebasedMessage.parts
+              .flatMap((part) => (part.type === "text" ? [part.text] : []))
+              .join("")
+          }
           const seq = (thread.updatedSeq ?? 0) + 1
           if (
             database.query("SELECT 1 FROM transcript_entries WHERE thread_id = ? AND seq = ?").get(event.threadId, seq)
@@ -102,6 +189,7 @@ export const createStreamWriter = ({
           const entry = database
             .query("INSERT INTO transcript_entries(thread_id, seq, generation, event_json, at) VALUES (?, ?, ?, ?, ?)")
             .run(event.threadId, seq, event.generation ?? 1, raw, event.updatedAt ?? Date.now())
+          if (outerTransaction && outside.has(event)) awaitingCommit.push({ event: structuredClone(event), raw, seq })
           if (event.type === "message.parts")
             database
               .query("INSERT INTO transcript_part_entries(entry_id, thread_id, message_id) VALUES (?, ?, ?)")
@@ -123,7 +211,14 @@ export const createStreamWriter = ({
                 )
             }
           }
-          const projection = projections.get(keyOf(event.threadId, event.messageId))
+          const key = keyOf(event.threadId, event.messageId)
+          if (rebasedMessage)
+            projections.set(key, {
+              message: rebasedMessage,
+              baseSeq: getMessage({ threadId: event.threadId, messageId: event.messageId })?.updatedSeq ?? 0,
+              lastEvent: null,
+            })
+          const projection = projections.get(key)
           if (projection) {
             projection.message.updatedSeq = seq
             projection.lastEvent = raw
@@ -140,14 +235,20 @@ export const createStreamWriter = ({
           checkpointAt = Date.now()
         }
       })()
+      unsettled.push(...awaitingCommit)
       pending = []
       runBytes.clear()
       lastByMessage.clear()
       // Publication sees only committed journal entries (or waits for an outer transaction).
       for (const event of committed) kernel.publish(event)
+    } catch (error) {
+      // A failed transaction can leave an in-memory rebase only partly applied.
+      // Retry the complete batch against durable state, including all offsets.
+      for (const event of batch) projections.delete(keyOf(event.threadId, event.messageId))
+      throw error
     } finally {
       flushing = false
-      if (pending.length && !timer) timer = setTimeout(flushLater, STREAM_WRITE_LIMITS.delayMs)
+      if ((pending.length || unsettled.length) && !timer) timer = setTimeout(flushLater, STREAM_WRITE_LIMITS.delayMs)
     }
   }
 
@@ -184,7 +285,8 @@ export const createStreamWriter = ({
         head?.updated_seq === cached.baseSeq &&
         head.generation === cached.message.generation &&
         head.status === "streaming" &&
-        (!cached.lastEvent || last?.event_json === cached.lastEvent)
+        (!cached.lastEvent || last?.event_json === cached.lastEvent) &&
+        tailSeq(threadId, messageId) <= (cached.message.updatedSeq ?? 0)
       )
         return cached
       flush()
@@ -217,7 +319,14 @@ export const createStreamWriter = ({
     return next
   }
 
+  const beforeAppend = (): void => {
+    settle()
+    // Keep preaccepted work distinct from work owned by an outer transaction.
+    if (pending.length && (database.inTransaction || !projections.size)) flush()
+  }
+
   const queue = (event: StreamEvent, bytes: number): void => {
+    if (!database.inTransaction) outside.add(event)
     const eventKey = keyOf(event.threadId, event.messageId)
     const last = lastByMessage.get(eventKey)
     if (
@@ -226,6 +335,7 @@ export const createStreamWriter = ({
       last.threadId === event.threadId &&
       last.messageId === event.messageId &&
       last.partIndex === event.partIndex &&
+      outside.has(last) === outside.has(event) &&
       last.generation === event.generation &&
       (last.offset ?? 0) + last.delta.length === event.offset &&
       Buffer.byteLength(last.delta) + bytes <= STREAM_WRITE_LIMITS.bytes
@@ -244,6 +354,7 @@ export const createStreamWriter = ({
   }
 
   const appendDelta: StoreApi["appendDelta"] = (input) => {
+    beforeAppend()
     // Explicit optimistic-concurrency writes retain their immediate sequence semantics.
     if (input.expectedSeq !== undefined) flush()
     const thread = getThread({ threadId: input.threadId })
@@ -297,8 +408,9 @@ export const createStreamWriter = ({
   }
 
   const appendParts: NonNullable<StoreApi["appendParts"]> = (input) => {
-    const thread = getThread({ threadId: input.threadId })
-    const current = projectionFor(input.threadId, input.messageId)
+    beforeAppend()
+    let thread = getThread({ threadId: input.threadId })
+    let current = projectionFor(input.threadId, input.messageId)
     if (
       !current ||
       !thread ||
@@ -307,20 +419,47 @@ export const createStreamWriter = ({
       current.message.status !== "streaming"
     )
       return
-    const parts = input.parts.map((patch) => {
-      if (
-        !Number.isSafeInteger(patch.partIndex) ||
-        patch.partIndex < 0 ||
-        patch.partIndex > current.message.parts.length
-      )
-        throw new Error("Invalid stream part index")
-      const part =
-        externalizeMessageParts({ database, appData: kernel.paths.appData, parts: [patch.part] })[0] ?? patch.part
-      patch.part = part
-      current.message.parts[patch.partIndex] = structuredClone(part)
-      return { partIndex: patch.partIndex, part: structuredClone(part) }
-    })
+    const validateIndices = (initialLength: number): void => {
+      let length = initialLength
+      for (const patch of input.parts) {
+        if (!Number.isSafeInteger(patch.partIndex) || patch.partIndex < 0 || patch.partIndex > length)
+          throw new Error("Invalid stream part index")
+        if (patch.partIndex === length) length++
+      }
+    }
+    // A later invalid patch must not change offsets in the cached projection or
+    // externalize an earlier part. Prepare the whole event before applying it.
+    validateIndices(current.message.parts.length)
+    const prepared = input.parts.map(({ partIndex, part }) => ({ partIndex, part: structuredClone(part) }))
+    const parts = prepared.map(({ partIndex, part }) => ({
+      partIndex,
+      part: externalizeMessageParts({ database, appData: kernel.paths.appData, parts: [part] })[0] ?? part,
+    }))
     if (!parts.length) return
+    const bytes = Buffer.byteLength(JSON.stringify(parts))
+    const buffered = runBytes.get(keyOf(input.threadId, input.messageId)) ?? 0
+    // Small patches share the delta batch cap. An indivisible live progress
+    // payload above 8 KiB flushes immediately and may include bounded deltas;
+    // retaining its complete live tail is required for existing UI behavior.
+    if (bytes <= STREAM_WRITE_LIMITS.bytes && buffered && buffered + bytes > STREAM_WRITE_LIMITS.bytes) {
+      flush()
+      thread = getThread({ threadId: input.threadId })
+      current = projectionFor(input.threadId, input.messageId)
+      if (
+        !current ||
+        !thread ||
+        (input.generation !== undefined && input.generation !== thread.generation) ||
+        current.message.generation !== thread.generation ||
+        current.message.status !== "streaming"
+      )
+        return
+      validateIndices(current.message.parts.length)
+    }
+    for (const [index, patch] of parts.entries()) {
+      current.message.parts[patch.partIndex] = structuredClone(patch.part)
+      const original = input.parts[index]
+      if (original) original.part = structuredClone(patch.part)
+    }
     current.message.text = current.message.parts.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("")
     queue(
       {
@@ -331,7 +470,7 @@ export const createStreamWriter = ({
         generation: thread.generation ?? 1,
         updatedAt: Date.now(),
       },
-      Buffer.byteLength(JSON.stringify(parts)),
+      bytes,
     )
     // A completed result is a durability boundary, even for a short output.
     if (parts.some(({ part }) => "callId" in part && resolutionOf(part) !== "running")) flush()
@@ -339,6 +478,7 @@ export const createStreamWriter = ({
 
   const drain = (): void => {
     if (flushing) return
+    settle()
     // Subscribers can enqueue group mirrors during publication. Lifecycle/read
     // boundaries must include that work before closing or taking a snapshot.
     while (pending.length) flush()

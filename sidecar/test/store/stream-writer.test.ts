@@ -122,6 +122,88 @@ test("two provider frames cannot overfill the per-message byte budget", async ()
   }
 })
 
+test("an invalid patch list leaves the cached projection unchanged", async () => {
+  const f = await fixture()
+  try {
+    expect(() =>
+      f.store.appendParts?.({
+        threadId: "t",
+        messageId: "a",
+        parts: [
+          { partIndex: 0, part: { type: "text", text: "Descartar" } },
+          { partIndex: 99, part: { type: "reasoning", text: "Inválido" } },
+        ],
+      }),
+    ).toThrow("Invalid stream part index")
+    expect(f.events).toEqual([])
+    f.store.appendDelta({ threadId: "t", messageId: "a", partIndex: 0, delta: "Preservar" })
+    f.store.flushWrites?.()
+    materializeTranscript(f.database)
+    expect(f.database.query("SELECT text FROM messages WHERE id = 'a'").get()).toEqual({ text: "Preservar" })
+    expect(f.events.filter(({ event }) => event.type === "message.parts")).toHaveLength(0)
+  } finally {
+    f.close()
+  }
+})
+
+test("small patches cannot overfill a buffered delta batch", async () => {
+  const f = await fixture()
+  try {
+    const text = "a".repeat(7_000)
+    const reasoning = "b".repeat(2_000)
+    f.store.appendDelta({ threadId: "t", messageId: "a", partIndex: 0, delta: text })
+    f.store.appendParts?.({
+      threadId: "t",
+      messageId: "a",
+      parts: [{ partIndex: 1, part: { type: "reasoning", text: reasoning } }],
+    })
+    expect(f.events.map(({ event }) => event.type)).toEqual(["message.delta"])
+    f.store.flushWrites?.()
+    expect(f.events.map(({ event }) => event.type)).toEqual(["message.delta", "message.parts"])
+    materializeTranscript(f.database)
+    const row = f.database.query("SELECT text, parts_json FROM messages WHERE id = 'a'").get() as {
+      text: string
+      parts_json: string
+    }
+    expect(row.text).toBe(text)
+    expect(JSON.parse(row.parts_json)[1]).toMatchObject({ text: reasoning })
+  } finally {
+    f.close()
+  }
+})
+
+test("an indivisible large live tail flushes immediately without truncating progress", async () => {
+  const f = await fixture()
+  try {
+    const outputTail = "output".repeat(2_048)
+    f.store.appendDelta({ threadId: "t", messageId: "a", partIndex: 0, delta: "a".repeat(7_000) })
+    f.store.appendParts?.({
+      threadId: "t",
+      messageId: "a",
+      parts: [
+        {
+          partIndex: 1,
+          part: {
+            type: "command",
+            callId: "command",
+            command: "printf output",
+            cwd: "/tmp",
+            exitCode: null,
+            outputTail,
+            resolution: "running",
+          },
+        },
+      ],
+    })
+    expect(f.events.map(({ event }) => event.type)).toEqual(["message.delta", "message.parts"])
+    const progress = f.events.find(({ event }) => event.type === "message.parts")?.event
+    expect(progress?.type === "message.parts" ? progress.parts[0]?.part : null).toMatchObject({ outputTail })
+    expect(f.database.query("SELECT COUNT(*) AS n FROM attachments").get()).toEqual({ n: 0 })
+  } finally {
+    f.close()
+  }
+})
+
 test("a periodic checkpoint inside a large frame preserves subsequent chunk and frame offsets", async () => {
   const f = await fixture()
   const now = Date.now()
