@@ -21,10 +21,11 @@ import continuationsSql from "./migrations/0015.sql" with { type: "text" }
 import botFoldersSql from "./migrations/0016.sql" with { type: "text" }
 import providerProfilesSql from "./migrations/0017.sql" with { type: "text" }
 import permissionContinuationsSql from "./migrations/0018.sql" with { type: "text" }
+import botBrowserSql from "./migrations/0019.sql" with { type: "text" }
 import { withSuspendedSchemaObjects } from "./schema-rebuild"
 import { applyUpgradeBaselines } from "./upgradeBaselines"
 
-export const SCHEMA_VERSION = 18
+export const SCHEMA_VERSION = 19
 
 const FREE_PAGE_RATIO_LIMIT = 0.2
 
@@ -146,6 +147,11 @@ export const openDatabase = ({ filename }: { filename: string }): Database => {
     if (!database.query("SELECT value FROM schema_meta WHERE key = 'permission_continuations_version'").get())
       database.exec(permissionContinuationsSql)
     database.exec("UPDATE schema_meta SET value = '18' WHERE key = 'schema_version'")
+  })()
+  database.transaction(() => {
+    const columns = database.query("PRAGMA table_info(bots)").all() as Array<{ name: string }>
+    if (!columns.some((column) => column.name === "browser")) database.exec(botBrowserSql)
+    database.exec("UPDATE schema_meta SET value = '19' WHERE key = 'schema_version'")
   })()
   applyUpgradeBaselines({ database })
   return database

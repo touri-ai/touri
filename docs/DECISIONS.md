@@ -3,6 +3,38 @@
 Answers to the open questions in `docs/SPEC.md` section 11, recorded 2026-10-12 for the v0.1 MVP.
 Each answer is the default the implementation follows until changed here.
 
+## 2026-10-17 — Per-bot browser and personal Chrome consent (#78, schema 19)
+
+`browser: touri | local | machine` is stored per bot. The default remains the touri-owned profile;
+existing Linux VM bots migrate to `machine` because that is how vm-router already routed them.
+`local` is explicit opt-in and unavailable to remote bots: a VM cannot reach the host's Chrome.
+
+Meu Chrome attaches to the running Google Chrome, using `DevToolsActivePort` in the user's Chrome
+data directory (macOS: `~/Library/Application Support/Google/Chrome`; Linux: `~/.config/google-chrome`).
+Only the first-line port and second-line `/devtools/browser/...` path are accepted; the WebSocket
+authority is always `127.0.0.1`. There is no HTTP discovery or fallback to the touri profile. Missing,
+stale, denied or refused connections return `LOCAL_BROWSER_UNAVAILABLE` / `TOURI-E4006` and tell the
+user to open `chrome://inspect/#remote-debugging`, enable remote debugging, and accept Chrome's
+permission prompt when the bot connects. No subprocess, relaunch, command-line flags or process
+termination is part of this flow. `stop()` only disconnects CDP.
+
+The default browser context shares existing sign-ins. `Target.createTarget` uses `newWindow:true`
+so bot work appears in a separate window. Browser-level auto-attach is disabled; only targets with
+recorded `owner_bot_id` ownership and popups from those targets are managed. User tabs are never
+adopted by matching URL, read or closed. Cookies stay in Chrome rather than touri's session vault.
+Idle unload, bot deletion, switching browsers, shutdown and app quit close owned targets only,
+never `Browser.close`. The picker explains shared sessions once, keeps consent instructions
+visible, and says the user can close the window or press Stop. No new native indicator is included.
+
+[Chrome's debugging-switch change](https://developer.chrome.com/blog/remote-debugging-port) applies
+from Chrome 136 to the default data directory; touri therefore never relaunches the personal profile
+with `--remote-debugging-port`. The [Chrome DevTools consent-flow documentation](https://github.com/ChromeDevTools/chrome-devtools-mcp/blob/main/docs/advanced-usage.md#automatically-connecting-to-a-running-chrome-instance)
+describes the inspect-page flow from M144. **Minimum supported Chrome version: still to be verified
+on a Mac**, including actual DevToolsActivePort creation, permission accept/refuse, a signed-in
+session, a separate window and shutdown preserving personal tabs. Fake CDP tests do not establish
+real Chrome compatibility. Snapshot, refs, takeover, secret entry, retries and SITE_BLOCKED remain
+the existing engine rules.
+
 | # | Question | Decision |
 |---|---|---|
 | 1 | License, owner, signing, touri web code | **Apache-2.0.** Plain open source under our own copyright. All code is original and nothing is copied from other projects; `NOTICE` holds only our copyright line. The importer only reads the source data format. No GitHub org/repo and no Apple Developer team yet: builds are unsigned local builds. Signing, notarization and the updater are wired in config and the release workflow but **disabled**. |

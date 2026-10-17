@@ -48,6 +48,14 @@ export type Result<T, C extends string = string> = Ok<T> | Err<C>
 
 export type DiscoveredProject = { path: AbsolutePath; name: string; lastModified: number }
 
+export type FolderListing = {
+  home: AbsolutePath
+  path: AbsolutePath
+  parent: AbsolutePath | null
+  folders: Array<{ name: string; path: AbsolutePath }>
+  truncated: boolean
+}
+
 export type Project = {
   id: Id
   name: string
@@ -89,6 +97,7 @@ export type ApprovalInput = { ctx: Pick<ToolContext, 'botId' | 'threadId' | 'run
 export type ApprovalResult = Result<{ behavior: 'allow' | 'deny'; updatedInput?: unknown; message?: string }, 'NOT_FOUND' | 'TIMEOUT' | 'DENIED'>
 
 export type BotFolder = { path: AbsolutePath; access: 'read-only' | 'read-write' }
+export type BotBrowser = 'touri' | 'local' | 'machine'
 
 export type Bot = {
   /** Defaults for bots created before schema 16: [] and false. */
@@ -120,6 +129,7 @@ export type Bot = {
   homeDir: AbsolutePath
   mainThreadId: Id | null
   browserEnabled: boolean
+  browser: BotBrowser
   computerUse: boolean
   machine: BotMachine
   machineIdleMinutes: number
@@ -550,6 +560,7 @@ export type BrowserErrorCode =
   | 'REPEATED_FAILURE'
   | 'SECRET_ENTRY_ACTIVE'
   | 'ENGINE_UNAVAILABLE'
+  | 'LOCAL_BROWSER_UNAVAILABLE'
   | 'NAVIGATION_FAILED'
   | 'URL_NOT_ALLOWED'
   | 'SITE_BLOCKED'
@@ -661,7 +672,7 @@ export type ProviderAdapter = {
 /* ------------------------------------------------------------------------------------------ */
 
 export type CreateBotInput = { cloudApiKey?: string } & Pick<Bot, 'name' | 'provider'> &
-  Partial<Pick<Bot, 'title' | 'roleLine' | 'description' | 'color' | 'avatarShape' | 'avatarSeed' | 'instructions' | 'model' | 'reasoningEffort' | 'access' | 'approvals' | 'projectId' | 'cwd' | 'browserEnabled' | 'computerUse' | 'machine' | 'machineIdleMinutes' | 'vmProviderLogin' | 'hostComputerUse' | 'folders' | 'anyFolderAccess' | 'providerProfile' | 'claudeAiConnectors'>>
+  Partial<Pick<Bot, 'title' | 'roleLine' | 'description' | 'color' | 'avatarShape' | 'avatarSeed' | 'instructions' | 'model' | 'reasoningEffort' | 'access' | 'approvals' | 'projectId' | 'cwd' | 'browserEnabled' | 'browser' | 'computerUse' | 'machine' | 'machineIdleMinutes' | 'vmProviderLogin' | 'hostComputerUse' | 'folders' | 'anyFolderAccess' | 'providerProfile' | 'claudeAiConnectors'>>
 
 /** A named login under `<appData>/provider-profiles/<name>`, created with `touri profile login`. */
 export type ProviderProfile = { name: string; provider: Provider; loggedIn: boolean; account: string | null }
@@ -781,6 +792,8 @@ export type ApiRoutes = {
   }
   'GET /projects': { req: {}; res: { projects: Array<Project> } }
   'GET /projects/discover': { req: {}; res: { repositories: Array<DiscoveredProject> } }
+  'GET /folders': { req: { path?: AbsolutePath }; res: FolderListing }
+  'POST /folders': { req: { path: AbsolutePath; name: string }; res: { path: AbsolutePath } }
   'POST /projects': {
     req: { path: AbsolutePath; name?: string } | { gitUrl: string; parentDir: AbsolutePath; name?: string }
     res: { project: Project }
