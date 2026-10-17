@@ -18,7 +18,7 @@ test("only a name takes two clicks from the landing to chat", async ({ page }) =
   clicks++
   await expect(page.getByRole("textbox", { name: "Mensagem para Clara" })).toBeVisible()
   await expect(dialog).toHaveCount(0)
-  expect(clicks).toBeLessThanOrEqual(3)
+  expect(clicks).toBe(2)
 })
 
 test("a job can be searched and chosen by keyboard, with advanced edits preserved", async ({ page }) => {

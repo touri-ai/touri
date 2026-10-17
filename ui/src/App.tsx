@@ -60,6 +60,7 @@ import { localizeNotice, t } from "./i18n"
 import { requestTaskResume, requestTaskReview } from "./recoveryEvents"
 import type { RoutineDraft } from "./routineDraft"
 import { isFailureNotice } from "./sidebarAttention"
+import { useHost } from "./useHost"
 import { useWorkspace } from "./useWorkspace"
 import { type AppRoute, readWorkspaceState, saveWorkspaceState } from "./workspaceState"
 
@@ -95,6 +96,7 @@ const errorMessage = userFacingError
 
 const AppContent = ({ kernel }: AppProps) => {
   const [api, setApi] = useState<UiApi | null>(() => kernel?.services?.api ?? null)
+  const host = useHost(api)
   const attachmentButtonRef = useRef<HTMLButtonElement>(null)
   const apiRef = useRef(api)
   apiRef.current = api
@@ -602,6 +604,7 @@ const AppContent = ({ kernel }: AppProps) => {
       <AvatarRuntimeProvider value={{ ...data, messages: data.activityMessages }}>
         {botModal}
         <OnboardingLanding
+          host={host}
           onCreateBot={() => openModal("bot")}
           onDoctor={() => openModal("doctor")}
           onImport={() => openModal("import")}
@@ -1113,10 +1116,12 @@ const SidecarErrorScreen = ({
 )
 
 const OnboardingLanding = ({
+  host,
   onCreateBot,
   onDoctor,
   onImport,
 }: {
+  host: "mac" | "server"
   onCreateBot: () => void
   onDoctor: () => void
   onImport: () => void
@@ -1127,7 +1132,7 @@ const OnboardingLanding = ({
         <img className="brand-bull" src="/touri-bull.png" alt="" />
         <span className="brand-name">touri</span>
       </h1>
-      <p>{t("Your bots work on your Mac, with your accounts. Nothing leaves here.")}</p>
+      <p>{t("onboarding.privacy", { host: host === "mac" ? "Mac" : t("onboarding.server") })}</p>
       <div className="onboarding-actions">
         <button type="button" className="button button-brand" onClick={onCreateBot}>
           {t("Create my first bot")}
@@ -1142,7 +1147,7 @@ const OnboardingLanding = ({
           </button>
         </span>
         <button type="button" className="text-button" onClick={onDoctor}>
-          {t("Check this Mac")}
+          {t(host === "mac" ? "Check this Mac" : "onboarding.checkServer")}
         </button>
       </div>
     </div>

@@ -1292,7 +1292,13 @@ export const init = async (kernel: Kernel): Promise<void> => {
       {
         method: "GET",
         path: "/health",
-        handler: async () => jsonResponse(200, { ok: true, version: touriVersion, schemaVersion: SCHEMA_VERSION }),
+        handler: async () =>
+          jsonResponse(200, {
+            ok: true,
+            version: touriVersion,
+            schemaVersion: SCHEMA_VERSION,
+            host: process.platform === "darwin" && process.env.TOURI_HEADLESS !== "1" ? "mac" : "server",
+          }),
       },
       {
         method: "GET",
