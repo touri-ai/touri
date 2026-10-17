@@ -1859,6 +1859,10 @@ export const ptBR = {
   "Título (opcional)": "Título (opcional)",
   "Bot local": "Bot local",
   "Nenhuma mensagem ainda": "Nenhuma mensagem ainda",
+  "Criando conversa…": "Criando conversa…",
+  "Não foi possível criar a conversa. Seu rascunho foi mantido.":
+    "Não foi possível criar a conversa. Seu rascunho foi mantido.",
+  "Tentar criar conversa novamente": "Tentar criar conversa novamente",
   "Nova conversa": "Nova conversa",
   "Local · grátis": "Local · grátis",
   Você: "Você",
@@ -3305,6 +3309,10 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Título (opcional)": "Title (optional)",
   "Bot local": "Local bot",
   "Nenhuma mensagem ainda": "No messages yet",
+  "Criando conversa…": "Creating conversation…",
+  "Não foi possível criar a conversa. Seu rascunho foi mantido.":
+    "Could not create the conversation. Your draft was kept.",
+  "Tentar criar conversa novamente": "Try creating the conversation again",
   "Nova conversa": "New conversation",
   "Local · grátis": "Local · free",
   Você: "You",

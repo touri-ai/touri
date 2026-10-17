@@ -8,11 +8,12 @@ export type DraftComposerHandle = { setDraft: (draft: string) => void }
 
 type DraftComposerProps = Omit<ComponentProps<typeof Composer>, "draft" | "onDraft"> & {
   draftRef: Ref<DraftComposerHandle>
+  draftIdentity?: string | undefined
 }
 
 /** Keep edits and durable draft writes local so typing never renders the transcript. */
-export const DraftComposer = ({ draftRef, onSend, ...props }: DraftComposerProps) => {
-  const { draft, setDraft, draftSaveFailed } = useComposerDraft(props.threadId)
+export const DraftComposer = ({ draftRef, draftIdentity, onSend, ...props }: DraftComposerProps) => {
+  const { draft, setDraft, draftSaveFailed } = useComposerDraft(props.threadId, draftIdentity)
   useImperativeHandle(draftRef, () => ({ setDraft }), [setDraft])
   const { threadId, inputRef } = props
   useEffect(() => {
