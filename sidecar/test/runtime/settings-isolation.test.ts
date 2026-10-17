@@ -5,6 +5,7 @@ import { join } from "node:path"
 import type { Bot, Kernel, ProviderEvent, ProviderSession, StartTurnArgs, Thread } from "@touri/contracts"
 import { createKernel } from "../../src/kernel"
 import { folderGuestPath } from "../../src/kernel/bot-folders"
+import { folderAccessUnavailable, refreshHostFolderAccess } from "../../src/kernel/folder-capability"
 import { createClaudeAdapter } from "../../src/runtime/claude/adapter"
 import { readOnlyAllow, readOnlyDeny } from "../../src/runtime/claude/settings"
 import { createCodexAdapter } from "../../src/runtime/codex/adapter"
@@ -38,10 +39,15 @@ const fixture = (vm = false, provider: "claude" | "codex" = "claude") => {
     return runtime.kernel.spawnTree({
       ...input,
       cmd: process.execPath,
+      env: { ...input.env, TOURI_FAKE_SCENARIO: scenario },
       args: [
         "run",
         join(import.meta.dir, `../fakes/fake-${provider}.ts`),
-        ...(input.cmd === "/usr/bin/sandbox-exec" ? input.args.slice(3) : input.args),
+        ...(input.cmd === "/usr/bin/sandbox-exec"
+          ? input.args.slice(3)
+          : /\/bwrap$/.test(input.cmd)
+            ? input.args.slice(input.args.indexOf("--") + 2)
+            : input.args),
       ],
     })
   }
@@ -49,7 +55,14 @@ const fixture = (vm = false, provider: "claude" | "codex" = "claude") => {
   const adapter = createAdapter({ kernel: { ...runtime.kernel, spawnTree: spawn }, command: process.execPath })
   const events: ProviderEvent[] = []
   const args: StartTurnArgs = {
-    bot: { access: "full", approvals: "on-request", homeDir: home, model: null, reasoningEffort: null } as Bot,
+    bot: {
+      provider,
+      access: "full",
+      approvals: "on-request",
+      homeDir: home,
+      model: null,
+      reasoningEffort: null,
+    } as Bot,
     thread: { id: "thread-settings" } as Thread,
     session: null,
     fingerprint: { cwd: workspace } as StartTurnArgs["fingerprint"],
@@ -338,15 +351,18 @@ for (const provider of ["claude", "codex"] as const)
       ]
       const requestLogPath = join(f.root, "folder-requests.jsonl")
       writeFileSync(f.scenario, JSON.stringify({ events: [{ type: "complete" }], requestLogPath }))
+      const available =
+        process.platform === "darwin" || (process.platform === "linux" && (await refreshHostFolderAccess()))
       const result = await f.adapter.startTurn(f.args)
-      if (!vm && process.platform !== "darwin") {
+      if (!vm && !available) {
         expect(result).toMatchObject({ success: false, errorCode: "cli_crash" })
-        if (!result.success) expect(result.error).toContain("sandbox do macOS")
+        if (!result.success) expect(result.error).toBe(folderAccessUnavailable)
         expect(f.calls).toHaveLength(0)
         return
       }
       expect(result.success).toBe(true)
-      expect(f.calls[0]?.cmd).toBe(vm ? provider : "/usr/bin/sandbox-exec")
+      if (!vm && process.platform === "linux") expect(f.calls[0]?.cmd).toMatch(/\/bwrap$/)
+      else expect(f.calls[0]?.cmd).toBe(vm ? provider : "/usr/bin/sandbox-exec")
       const grantedRO = vm ? folderGuestPath(realpathSync(ro)) : realpathSync(ro)
       const grantedRW = vm ? folderGuestPath(realpathSync(rw)) : realpathSync(rw)
       if (provider === "claude") {
@@ -362,11 +378,13 @@ for (const provider of ["claude", "codex"] as const)
           .split("\n")
           .map((line) => JSON.parse(line))
         const request = requests.find((request) => request.method === "thread/start")
-        if (!vm && process.platform === "darwin") {
+        if (!vm) {
           expect(request.params.sandbox).toBe("danger-full-access")
-          const profile = f.calls[0]?.args[1] ?? ""
-          expect(profile).toContain(`(subpath ${JSON.stringify(grantedRW)})`)
-          expect(profile).toContain(`(deny file-write* (subpath ${JSON.stringify(grantedRO)}))`)
+          if (process.platform === "darwin") {
+            const profile = f.calls[0]?.args[1] ?? ""
+            expect(profile).toContain(`(subpath ${JSON.stringify(grantedRW)})`)
+            expect(profile).toContain(`(deny file-write* (subpath ${JSON.stringify(grantedRO)}))`)
+          }
         } else {
           expect(request.params.config.sandbox_workspace_write.writable_roots).toContain(grantedRW)
           expect(request.params.config.sandbox_workspace_write.writable_roots).not.toContain(grantedRO)

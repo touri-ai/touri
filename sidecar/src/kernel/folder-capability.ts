@@ -2,13 +2,12 @@ import { existsSync, lstatSync, readlinkSync } from "node:fs"
 import { homedir } from "node:os"
 import { join } from "node:path"
 import type { Bot } from "@touri/contracts"
-import { canonicalPath, excludedBotFolders } from "./bot-folders"
+import { canonicalPath, excludedBotFolders, resolveBotFolder, specificFoldersRequired } from "./bot-folders"
+
+export { specificFoldersRequired } from "./bot-folders"
 
 export const folderAccessUnavailable =
   "Este computador não consegue proteger o acesso a pastas. Nenhuma permissão foi adicionada. Você pode continuar conversando ou enviar um arquivo."
-
-export const specificFoldersRequired =
-  "Neste computador, adicione as pastas uma por uma. O acesso a todas as pastas não está disponível. Remova essa permissão nas configurações do bot para continuar com tarefas."
 
 export const linuxProtectedFolders = (appData: string, home = homedir()): string[] => [
   ...new Set(
@@ -26,6 +25,12 @@ export const folderGrantProblem = (bot: Pick<Bot, "machine" | "folders" | "anyFo
   if (!hostFolderAccessAvailable()) return folderAccessUnavailable
   if (process.platform === "linux" && (bot.anyFolderAccess || bot.folders?.some((folder) => folder.path === "/")))
     return specificFoldersRequired
+  try {
+    if (bot.folders?.some((folder) => resolveBotFolder(folder.path, false) !== folder.path))
+      return folderAccessUnavailable
+  } catch {
+    return folderAccessUnavailable
+  }
   return null
 }
 

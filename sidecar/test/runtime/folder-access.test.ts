@@ -73,7 +73,7 @@ test("folder grants default off, persist per bot, reject malformed input and onl
   const f = await fixture()
   expect(f.bot.folders).toEqual([])
   expect(f.bot.anyFolderAccess).toBe(false)
-  const folders = [
+  const folders: NonNullable<Bot["folders"]> = [
     { path: f.ro, access: "read-only" },
     { path: f.rw, access: "read-write" },
   ]
@@ -84,8 +84,15 @@ test("folder grants default off, persist per bot, reject malformed input and onl
   if (process.platform === "linux") {
     const broad = await f.request(`/bots/${f.bot.id}`, { anyFolderAccess: true })
     expect(broad.status).toBe(400)
-    expect(await broad.json()).toMatchObject({ errorCode: "FOLDER_ACCESS_UNAVAILABLE" })
+    expect(await broad.json()).toMatchObject({
+      errorCode: "FOLDER_SELECTION_REQUIRED",
+      error: folderCapability.specificFoldersRequired,
+    })
     expect(f.runtime.kernel.services.use("store.api")?.getBot({ botId: f.bot.id })?.anyFolderAccess).toBe(false)
+    const root = await f.request(`/bots/${f.bot.id}`, { folders: [{ path: "/", access: "read-only" }] })
+    expect(root.status).toBe(400)
+    expect(await root.json()).toMatchObject({ error: folderCapability.specificFoldersRequired })
+    expect(f.runtime.kernel.services.use("store.api")?.getBot({ botId: f.bot.id })?.folders).toEqual(folders)
   }
   expect((await f.request(`/bots/${f.bot.id}`, { folders: [{ path: f.ro, access: "full" }] })).status).toBe(400)
   expect((await f.request(`/bots/${f.bot.id}`, { anyFolderAccess: "yes" })).status).toBe(400)

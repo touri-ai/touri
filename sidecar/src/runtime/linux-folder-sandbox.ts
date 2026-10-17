@@ -1,6 +1,6 @@
-import { existsSync, statSync } from "node:fs"
+import { existsSync, lstatSync, readlinkSync, statSync } from "node:fs"
 import { homedir } from "node:os"
-import { dirname, join } from "node:path"
+import { dirname, join, resolve } from "node:path"
 import type { Kernel, StartTurnArgs } from "@touri/contracts"
 import { canonicalPath, withinFolder } from "../kernel/bot-folders"
 import { ensurePrivateDirectory } from "../kernel/files"
@@ -10,6 +10,18 @@ import { turnFolders } from "./folder-access"
 
 const privateTemp = (env: Record<string, string>, runDir: string): string =>
   env.TMPDIR && withinFolder(join(runDir, "provider-tmp"), canonicalPath(env.TMPDIR)) ? env.TMPDIR : "/tmp"
+
+const loginUnavailable =
+  "Não foi possível acessar o login do bot com segurança. Entre novamente na conta nas configurações."
+
+// A writable login link must never turn into a mount of the DB, another bot's
+// credentials, or arbitrary host files on the next turn.
+const credential = (path: string, roots: string[]): string | undefined => {
+  if (!existsSync(path)) return undefined
+  const real = canonicalPath(path)
+  if (!statSync(real).isFile() || !roots.some((root) => withinFolder(root, real))) throw new Error(loginUnavailable)
+  return real
+}
 
 /** Keep unrelated host credentials and loader/shell injection out of the CLI and its tools. */
 export const linuxFolderEnvironment = (args: StartTurnArgs, env: Record<string, string>): Record<string, string> => {
@@ -113,6 +125,29 @@ export const linuxFolderSandbox = (
   const folders = turnFolders(args)
   const claudeHome = join(args.bot.homeDir, ".touri-claude")
   if (args.bot.provider === "claude") ensurePrivateDirectory({ root: args.bot.homeDir, path: claudeHome })
+  const hostCodex = join(canonicalPath(home), ".codex")
+  const codexAuth = args.bot.provider === "codex" && env.CODEX_HOME ? join(env.CODEX_HOME, "auth.json") : undefined
+  const codexCredential = codexAuth
+    ? credential(codexAuth, [
+        canonicalPath(env.CODEX_HOME ?? ""),
+        ...(canonicalPath(hostCodex) === hostCodex ? [hostCodex] : []),
+      ])
+    : undefined
+  const codexAlias =
+    codexAuth && codexCredential && lstatSync(codexAuth).isSymbolicLink()
+      ? resolve(dirname(codexAuth), readlinkSync(codexAuth))
+      : undefined
+  const claudeSource = env.CLAUDE_CONFIG_DIR ?? join(canonicalPath(home), ".claude")
+  const claudeCredential =
+    args.bot.provider === "claude" &&
+    !env.CLAUDE_CODE_OAUTH_TOKEN &&
+    !env.ANTHROPIC_API_KEY &&
+    !env.ANTHROPIC_AUTH_TOKEN
+      ? credential(
+          join(claudeSource, ".credentials.json"),
+          canonicalPath(claudeSource) === resolve(claudeSource) ? [canonicalPath(claudeSource)] : [],
+        )
+      : undefined
   const runDir = env.TOURI_RUN_DIR ?? kernel.paths.runDir
   const readonly = [
     env.TOURI_MCP_SOCK ?? resolveMcpSocketPath({ ...kernel.paths, runDir }),
@@ -128,7 +163,8 @@ export const linuxFolderSandbox = (
     ...(args.bot.provider === "opencode" ? [env.XDG_DATA_HOME, env.XDG_CONFIG_HOME] : []),
     ...(args.bot.provider === "opencode" && env.OPENCODE_CONFIG ? [dirname(env.OPENCODE_CONFIG)] : []),
     // The managed auth symlink shares token refreshes, but no host sessions/config.
-    ...(args.bot.provider === "codex" && env.CODEX_HOME ? [canonicalPath(join(env.CODEX_HOME, "auth.json"))] : []),
+    codexCredential,
+    codexAlias,
   ].filter((path): path is string => !!path && existsSync(path))
   const workspace = [args.bot.homeDir, args.fingerprint.cwd, env.TOURI_PROJECT_DATA_DIR]
     .filter((path): path is string => !!path && existsSync(path))
@@ -171,11 +207,7 @@ export const linuxFolderSandbox = (
   for (const path of readonly.filter(existsSync)) bind(path, false)
   for (const path of state) bind(path, true)
   for (const path of programs) bind(path, false)
-  if (args.bot.provider === "claude") {
-    const credentials = join(env.CLAUDE_CONFIG_DIR ?? join(home, ".claude"), ".credentials.json")
-    if (existsSync(credentials))
-      mounts.push("--bind", canonicalPath(credentials), join(claudeHome, ".credentials.json"))
-  }
+  if (claudeCredential) mounts.push("--bind", claudeCredential, join(claudeHome, ".credentials.json"))
   // Reconstruct executable links without binding their parent directories.
   for (const path of executables) {
     const real = canonicalPath(path)

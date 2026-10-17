@@ -3,6 +3,9 @@ import { lstatSync, readdirSync, realpathSync, statSync } from "node:fs"
 import { homedir } from "node:os"
 import { basename, isAbsolute, join, relative, resolve, sep } from "node:path"
 import type { Bot, BotFolder } from "@touri/contracts"
+import { errorRegistry } from "@touri/contracts"
+
+export const specificFoldersRequired = errorRegistry["TOURI-E2011"].message
 
 export const withinFolder = (root: string, path: string): boolean => {
   const part = relative(root, path)
@@ -18,12 +21,15 @@ export const folderGuestPath = (path: string): string => {
 }
 
 // Do not follow links while walking. A granted tree must not silently expose a
-// second host tree. Recheck at turn/boot time as well as when accepting UI input.
-export const resolveBotFolder = (path: string): string => {
+// second host tree. Runtime callers with a minimal filesystem can validate just
+// the root: links created after approval then dangle without blocking later turns.
+export const resolveBotFolder = (path: string, inspectContents = true): string => {
   if (!isAbsolute(path) || /[\0\n\r,]/.test(path)) throw new Error("Escolha uma pasta com caminho absoluto válido.")
   const canonical = realpathSync(path)
   if (!statSync(canonical).isDirectory()) throw new Error("O caminho precisa ser uma pasta.")
+  if (process.platform === "linux" && canonical === "/") throw new Error(specificFoldersRequired)
   if (lstatSync(path).isSymbolicLink()) throw new Error("Escolha a pasta original, não um link simbólico.")
+  if (!inspectContents) return canonical
   const pending = [canonical]
   let entries = 0
   while (pending.length) {

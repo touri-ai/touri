@@ -1,12 +1,15 @@
-import { afterEach, expect, spyOn, test } from "bun:test"
+import { afterEach, expect, setDefaultTimeout, spyOn, test } from "bun:test"
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
 import { homedir } from "node:os"
 import { join } from "node:path"
 import type { Kernel, StartTurnArgs } from "@touri/contracts"
-import { refreshHostFolderAccess } from "../../src/kernel/folder-capability"
+import { folderGrantProblem, refreshHostFolderAccess } from "../../src/kernel/folder-capability"
 import { spawnTree } from "../../src/kernel/spawn"
 import { spawnFolderProvider } from "../../src/runtime/folder-access"
 import { linuxFolderEnvironment, linuxFolderSandbox } from "../../src/runtime/linux-folder-sandbox"
+
+// Each case starts several real namespaces; loaded CI hosts need time for I/O.
+setDefaultTimeout(30_000)
 
 const cleanups: Array<() => void> = []
 afterEach(() => {
@@ -80,7 +83,7 @@ const fixture = () => {
       ],
       cwd: workspace,
       env: linuxFolderEnvironment(args, args.env),
-      timeout: 5000,
+      timeout: 10_000,
     })
   return { root, home, appData, workspace, ro, rw, kernel, args, shell }
 }
@@ -161,7 +164,7 @@ test.skipIf(!available)("Linux does not inherit host secrets, auth sockets or ex
   const f = fixture()
   Object.assign(f.args.env, {
     UNRELATED_SECRET: "host-secret-proof",
-    AWS_SECRET_ACCESS_KEY: "host-secret-proof",
+    UNRELATED_API_KEY: "host-secret-proof",
     ANTHROPIC_API_KEY: "other-provider-proof",
     SSH_AUTH_SOCK: "/run/private-agent",
     NODE_OPTIONS: "--require=/private/inject.js",
@@ -183,6 +186,7 @@ test.skipIf(!available)("Linux rejects a saved grant replaced with a symlink bef
   const f = fixture()
   rmSync(f.ro, { recursive: true })
   symlinkSync(join(f.home, "ungranted"), f.ro)
+  expect(folderGrantProblem(f.args.bot)).not.toBeNull()
   expect(() => linuxFolderSandbox(f.kernel, f.args, f.args.env, f.home)).toThrow()
 })
 
@@ -199,6 +203,8 @@ test.skipIf(!available)("noncanonical saved grants and a root workspace cannot w
 
 test.skipIf(!available)("the actual provider spawn drops unrelated credentials before entering bwrap", async () => {
   const f = fixture()
+  // This synthetic HOME is not the host login selected by the real spawn path.
+  rmSync(join(f.args.env.CODEX_HOME ?? "", "auth.json"))
   f.kernel.spawnTree = spawnTree
   const child = spawnFolderProvider(f.kernel, f.args, {
     cmd: "/usr/bin/env",
@@ -226,6 +232,40 @@ test.skipIf(!available)("host temporary directories and shared provider history 
   expect(f.shell('cat "$1"', join(source, "history.jsonl")).exitCode).not.toBe(0)
   expect(f.shell('cat "$CLAUDE_CONFIG_DIR/.credentials.json"').stdout.toString()).toBe("current-login")
   expect(f.shell('printf state > "$CLAUDE_CONFIG_DIR/state"').exitCode).toBe(0)
+})
+
+test.skipIf(!available)("a linked login exposes only the required credential leaf", () => {
+  const f = fixture()
+  const config = join(f.home, ".codex/login")
+  mkdirSync(config)
+  writeFileSync(join(config, "current-auth.json"), "current-login")
+  writeFileSync(join(config, "other-auth.json"), "other-login")
+  const auth = join(f.home, ".codex/auth.json")
+  rmSync(auth)
+  symlinkSync(join(config, "current-auth.json"), auth)
+  expect(f.shell('cat "$CODEX_HOME/auth.json"').stdout.toString()).toBe("current-login")
+  expect(f.shell('cat "$1"', join(config, "other-auth.json")).exitCode).not.toBe(0)
+  expect(f.shell('cat "$1"', join(f.home, ".codex/sessions/private")).exitCode).not.toBe(0)
+})
+
+test.skipIf(!available)("credential symlinks cannot smuggle protected or ungranted files into the mounts", () => {
+  const f = fixture()
+  const providerHome = f.args.env.CODEX_HOME ?? ""
+  for (const target of [
+    join(f.appData, "touri.db"),
+    join(f.appData, "provider/other/auth.json"),
+    join(f.home, ".env"),
+  ]) {
+    rmSync(join(providerHome, "auth.json"), { force: true })
+    symlinkSync(target, join(providerHome, "auth.json"))
+    expect(() => linuxFolderSandbox(f.kernel, f.args, f.args.env, f.home)).toThrow("login do bot com segurança")
+    f.args.bot.provider = "claude"
+    f.args.env.CLAUDE_CONFIG_DIR = providerHome
+    symlinkSync(target, join(providerHome, ".credentials.json"))
+    expect(() => linuxFolderSandbox(f.kernel, f.args, f.args.env, f.home)).toThrow("login do bot com segurança")
+    rmSync(join(providerHome, ".credentials.json"))
+    f.args.bot.provider = "codex"
+  }
 })
 
 test.skipIf(!available)("Linux read-only bot keeps user files immutable and runtime writable", () => {
@@ -273,8 +313,11 @@ test.skipIf(!available)(
     ).not.toBe(0)
     expect(readFileSync(join(f.ro, "reference.txt"), "utf8")).toBe("reference")
     expect(f.shell('ln "$1" "$2/hardlink"', join(f.ro, "reference.txt"), f.rw).exitCode).not.toBe(0)
-    symlinkSync(f.ro, join(f.rw, "escape"))
-    expect(() => linuxFolderSandbox(f.kernel, f.args, f.args.env, f.home)).toThrow()
+    symlinkSync(join(f.home, "ungranted"), join(f.rw, "escape"))
+    // Later turns keep working with the same saved grant. Its new link still
+    // cannot reach the unbound target in the next fresh namespace.
+    expect(f.shell('cat "$1/escape/marker"', f.rw).exitCode).not.toBe(0)
+    expect(f.shell("printf ready").stdout.toString()).toBe("ready")
   },
 )
 

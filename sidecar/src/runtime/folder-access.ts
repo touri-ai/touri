@@ -18,7 +18,7 @@ export { hostFolderAccessAvailable } from "../kernel/folder-capability"
 export const turnFolders = (args: StartTurnArgs) => {
   const folders = (args.bot.folders ?? []).map((folder) => {
     if (args.execution) return { ...folder, path: folderGuestPath(folder.path) }
-    const path = resolveBotFolder(folder.path)
+    const path = resolveBotFolder(folder.path, process.platform !== "linux")
     if (path !== folder.path) throw new Error("A pasta mudou de destino. Adicione-a novamente nas configurações.")
     return { ...folder, path }
   })

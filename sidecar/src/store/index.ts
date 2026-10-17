@@ -37,7 +37,7 @@ import {
   MAX_ATTACHMENT_BYTES,
   readBoundedFile,
 } from "../kernel/files"
-import { folderGrantProblem, refreshHostFolderAccess } from "../kernel/folder-capability"
+import { folderGrantProblem, refreshHostFolderAccess, specificFoldersRequired } from "../kernel/folder-capability"
 import { historyThreadPending, hydrateHistoryEvent } from "../kernel/history-backfill"
 import { externalizeMessageParts, OUTPUT_BLOB_ORIGIN } from "../kernel/output-blobs"
 import { isProfileProvider, validProviderProfileName } from "../kernel/provider-profiles"
@@ -859,7 +859,12 @@ export const init = async (kernel: Kernel): Promise<void> => {
     try {
       input.folders = body.folders === undefined ? (existing?.folders ?? []) : parseBotFolders(body.folders)
     } catch (error) {
-      return { input: null, error: error instanceof Error ? error.message : String(error) }
+      const message = error instanceof Error ? error.message : String(error)
+      return {
+        input: null,
+        error: message,
+        ...(message === specificFoldersRequired ? { errorCode: "FOLDER_SELECTION_REQUIRED" } : {}),
+      }
     }
     if (input.machine === "cloud" && (input.anyFolderAccess || input.folders.length))
       return { input: null, error: "Pastas deste Mac não estão disponíveis na nuvem." }
@@ -875,7 +880,12 @@ export const init = async (kernel: Kernel): Promise<void> => {
       )
     if (expandsFolders || (existing?.machine !== input.machine && input.machine === "local")) {
       const problem = folderGrantProblem({ ...input, machine: input.machine ?? "local" })
-      if (problem) return { input: null, errorCode: "FOLDER_ACCESS_UNAVAILABLE", error: problem }
+      if (problem)
+        return {
+          input: null,
+          errorCode: problem === specificFoldersRequired ? "FOLDER_SELECTION_REQUIRED" : "FOLDER_ACCESS_UNAVAILABLE",
+          error: problem,
+        }
     }
     if (input.cwd !== undefined && input.cwd !== null && !isAbsolute(input.cwd))
       return { input: null, error: "cwd must be absolute" }

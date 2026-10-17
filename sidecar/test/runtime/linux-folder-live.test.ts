@@ -1,7 +1,17 @@
 import { Database } from "bun:sqlite"
 import { expect, test } from "bun:test"
 import { randomUUID } from "node:crypto"
-import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import {
+  closeSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  openSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs"
 import { homedir, tmpdir } from "node:os"
 import { join } from "node:path"
 import type { ApprovalPart, Bot, Message, Run } from "@touri/contracts"
@@ -160,6 +170,8 @@ test.skipIf(process.platform !== "linux" || process.env.TOURI_LIVE_FOLDER_QA !==
       )
       expect(approvals.some((item) => item.mode === "read-write" && item.decision === "approved")).toBe(true)
       expect(readFileSync(saved, "utf8")).toBe("saved-proof")
+      // A link added after approval must stay harmless across later turns.
+      symlinkSync(workspace, join(folder, "outside-link"))
       const beforeRestart = await send("oi. Responda apenas: Oi! Não use ferramentas.")
       expect(beforeRestart.some((message) => message.role === "assistant" && message.text.includes("Oi!"))).toBe(true)
       await stop()
