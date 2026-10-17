@@ -612,7 +612,15 @@ export const BotCreateModal = ({
                     </p>
                   )
                 ))}
-              {access === "workspace-write" && <p>{t("Asks permission before changing files.")}</p>}
+              <BotAccessSummary
+                machine={machine.machine}
+                access={access === "full-approved" ? "full" : (access as Bot["access"])}
+                approvals={
+                  access === "full" || (provider === "codex" && access === "full-approved") ? "never" : "on-request"
+                }
+                folders={folders}
+                anyFolderAccess={anyFolderAccess}
+              />
             </div>
             {api && machine.machine !== "cloud" && !login.checking && !login.ready && (
               <section ref={signInRef} tabIndex={-1} className="bot-create-login" aria-label={t("Choose an account")}>
@@ -817,15 +825,6 @@ export const BotCreateModal = ({
                     })}
                   </div>
                 )}
-                <BotAccessSummary
-                  machine={machine.machine}
-                  access={access === "full-approved" ? "full" : (access as Bot["access"])}
-                  approvals={
-                    access === "full" || (provider === "codex" && access === "full-approved") ? "never" : "on-request"
-                  }
-                  folders={folders}
-                  anyFolderAccess={anyFolderAccess}
-                />
                 <label className="toggle-row" htmlFor="create-browser">
                   <span>{t("Browser enabled")}</span>
                   <SettingsSwitch

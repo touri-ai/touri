@@ -4,8 +4,9 @@ import { afterEach, expect, it, vi } from "vitest"
 import App from "../src/App"
 import type { TauriInvoke } from "../src/api/client"
 import { createMockApi } from "../src/api/mock"
+import { BotFolderSettings } from "../src/components/BotFolderSettings"
 import { BotCreateModal, BotSettingsModal } from "../src/components/Modals"
-import { fullAccessDescription } from "../src/i18n"
+import { fullAccessDescription, t } from "../src/i18n"
 import type { WorkspaceActions } from "../src/useWorkspace"
 import { selectFolder } from "./folder-picker-helpers"
 
@@ -47,6 +48,103 @@ const setup = async (patch: Partial<Bot> = {}) => {
 }
 const anyToggle = () => screen.getByRole("switch", { name: /Acesso a qualquer pasta/ })
 const save = () => fireEvent.click(screen.getByRole("button", { name: "Salvar configurações" }))
+
+it("keeps full local access guidance when saved folder confinement is unavailable", async () => {
+  const api = createMockApi()
+  const request = api.request
+  api.request = (async (route, input, params) => {
+    if (route === "GET /folders")
+      return { canGrant: false, home: "/workspace", path: "/workspace", parent: null, folders: [], truncated: false }
+    return request(route, input, params)
+  }) as typeof api.request
+  const onFolders = vi.fn()
+  await act(async () => {
+    render(
+      <BotFolderSettings
+        api={api}
+        fullAccess
+        folders={[{ path: "/workspace/reference", access: "read-only" }]}
+        anyFolderAccess
+        machine="local"
+        disabled={false}
+        onFolders={onFolders}
+        onAnyFolderAccess={vi.fn()}
+      />,
+    )
+  })
+  expect(screen.getByText("Pastas salvas para modos de acesso restrito")).toBeVisible()
+  expect(screen.getByText(/Elas não limitam o acesso total atual/)).toBeVisible()
+  expect(screen.queryByText(/Você pode conversar sem ferramentas/)).not.toBeInTheDocument()
+  expect(screen.queryByRole("button", { name: "Remover permissões antigas" })).not.toBeInTheDocument()
+  expect(onFolders).not.toHaveBeenCalled()
+})
+
+it("offers removing incompatible saved grants without changing them before the user clicks", async () => {
+  const api = createMockApi()
+  const request = api.request
+  api.request = (async (route, input, params) => {
+    if (route === "GET /folders")
+      return { canGrant: false, home: "/workspace", path: "/workspace", parent: null, folders: [], truncated: false }
+    return request(route, input, params)
+  }) as typeof api.request
+  const onFolders = vi.fn()
+  const onAny = vi.fn()
+  render(
+    <BotFolderSettings
+      api={api}
+      folders={[{ path: "/workspace/reference", access: "read-only" }]}
+      anyFolderAccess
+      machine="local"
+      disabled={false}
+      onFolders={onFolders}
+      onAnyFolderAccess={onAny}
+    />,
+  )
+  const remove = await screen.findByRole("button", { name: "Remover permissões antigas" })
+  expect(screen.getByText(/Você pode conversar sem ferramentas/)).toBeVisible()
+  expect(onFolders).not.toHaveBeenCalled()
+  fireEvent.click(remove)
+  expect(onFolders).toHaveBeenCalledWith([])
+  expect(onAny).toHaveBeenCalledWith(false)
+  expect(t("Remover permissões antigas", {}, "en")).toBe("Remove old permissions")
+})
+
+it("clears a stale unavailable warning after choosing a folder with restored confinement", async () => {
+  const api = createMockApi()
+  let canGrant = false
+  const request = api.request
+  api.request = (async (route, input, params) =>
+    route === "GET /folders"
+      ? { canGrant, home: "/workspace", path: "/workspace", parent: null, folders: [], truncated: false }
+      : request(route, input, params)) as typeof api.request
+  const onFolders = vi.fn()
+  render(
+    <BotFolderSettings
+      api={api}
+      folders={[{ path: "/workspace/reference", access: "read-only" }]}
+      anyFolderAccess={false}
+      machine="local"
+      disabled={false}
+      onFolders={onFolders}
+      onAnyFolderAccess={vi.fn()}
+    />,
+  )
+  await screen.findByRole("button", { name: "Remover permissões antigas" })
+  canGrant = true
+  fireEvent.click(screen.getByRole("button", { name: "Adicionar pasta…" }))
+  const picker = await screen.findByRole("dialog", { name: "Pastas no servidor" })
+  const use = within(picker).getByRole("button", { name: "Usar esta pasta" })
+  await waitFor(() => expect(use).toBeEnabled())
+  fireEvent.click(use)
+  await waitFor(() =>
+    expect(screen.queryByRole("button", { name: "Remover permissões antigas" })).not.toBeInTheDocument(),
+  )
+  expect(onFolders).toHaveBeenCalledWith([
+    { path: "/workspace/reference", access: "read-only" },
+    { path: "/workspace", access: "read-only" },
+  ])
+  expect(t("Esta pasta fica no servidor.", {}, "en")).toBe("This folder is on the server.")
+})
 
 it.each(["codex", "claude", "opencode"] as const)(
   "explains that %s full local access is not limited by saved folder settings during creation",

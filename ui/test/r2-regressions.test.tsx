@@ -318,7 +318,7 @@ describe("r2 regressions", () => {
         onRetry={async () => undefined}
       />,
     )
-    fireEvent.click(screen.getByText("2 ferramentas"))
+    fireEvent.click(screen.getByRole("button", { name: /2 ações/ }))
     const commands = screen.getAllByRole("figure", { name: "Comando" })
     expect(commands[0]).toHaveTextContent("ls src/app")
     expect(commands[1]).toHaveTextContent("cat README.md")

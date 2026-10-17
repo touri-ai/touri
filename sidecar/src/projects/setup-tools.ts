@@ -5,6 +5,7 @@ import type { Bot, Kernel, ToolContext, ToolRegistration, ToolResult } from "@to
 import { getDelegation } from "../groups/security"
 import { canonicalPath, excludedBotFolders, parseBotFolders, withinFolder } from "../kernel/bot-folders"
 import { createWorkspaceDirectory } from "../kernel/files"
+import { folderAccessUnavailable, refreshHostFolderAccess } from "../kernel/folder-capability"
 import { createCapabilityTools } from "./capability-tools"
 import { discoverProjects } from "./discovery"
 import { inspectGitMetadata } from "./git"
@@ -353,6 +354,7 @@ export const createSetupTools = ({
           // is also safe for missing output directories: the bot can create them
           // directly under its current policy, without changing configuration.
           if (alreadyWritable(bot, ctx, target.path)) return unchangedAccess(bot, target.path)
+          if (bot.machine === "local" && !(await refreshHostFolderAccess())) return denied(folderAccessUnavailable)
           const explicit = bot.folders ?? []
           const roots = [
             ...explicit.map((folder) => folder.path),
@@ -419,6 +421,7 @@ export const createSetupTools = ({
             return denied(
               "O acesso não foi aprovado ou a configuração mudou. Nenhuma pasta foi criada e as permissões foram mantidas.",
             )
+          if (bot.machine === "local" && !(await refreshHostFolderAccess())) return denied(folderAccessUnavailable)
           // Walking the requested tree and revalidating existing grants require
           // consent too. Keep the final guard adjacent to the configuration write.
           const folders = parseBotFolders([

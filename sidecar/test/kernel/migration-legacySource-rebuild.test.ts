@@ -6,6 +6,7 @@ import { join } from "node:path"
 import { DEPRECATED_IMPORT_ALIAS } from "../../src/importer/deprecatedAliases"
 import { openDatabase, SCHEMA_VERSION } from "../../src/kernel/db"
 import { legacySourceRebuild } from "../../src/kernel/legacySourceRebuild"
+import { assertLiveTranscriptReferences, REPLACED_TRANSCRIPT_TRIGGERS } from "./migration-transcript-fixture"
 
 const quote = (name: string): string => `"${name.replaceAll('"', '""')}"`
 const foreignKeys = (db: Database, table: string) =>
@@ -104,7 +105,14 @@ for (let version = 1; version < SCHEMA_VERSION; version++) {
           for (const fk of fks) expect(afterFks).toContainEqual(fk)
         }
         const after = schemaObjects(db)
-        for (const object of objects) expect(after).toContainEqual(object)
+        for (const object of objects) {
+          // 0022 intentionally replaces the two native message capture triggers.
+          // Their reference/hydration behavior is exercised below; custom schema
+          // dependencies must retain their complete original definitions.
+          if (REPLACED_TRANSCRIPT_TRIGGERS.has(object.name))
+            expect(after.some((current) => current.name === object.name && current.type === "trigger")).toBe(true)
+          else expect(after).toContainEqual(object)
+        }
         for (const table of ["bots", "threads", "messages", "routines"])
           expect(db.query(`SELECT source FROM ${quote(table)} ORDER BY rowid`).all()).toEqual([
             { source: "legacy" },
@@ -135,14 +143,7 @@ for (let version = 1; version < SCHEMA_VERSION; version++) {
       }
       db.exec("UPDATE runs SET status = 'starting' WHERE id = 'r'")
       expect(db.query("SELECT generation FROM threads WHERE id = 't'").get()).toEqual({ generation: generation + 1 })
-      db.exec(`INSERT INTO messages(id,thread_id,role,kind,text,created_at,updated_at)
-        VALUES ('live','t','assistant','text','After upgrade',3,3)`)
-      db.exec("UPDATE messages SET text = 'Edited' WHERE id = 'live'")
-      expect(db.query("SELECT seq, updated_seq FROM messages WHERE id = 'live'").get()).toEqual({
-        seq: updated_seq + 1,
-        updated_seq: updated_seq + 2,
-      })
-      expect(db.query("SELECT COUNT(*) AS n FROM transcript_entries WHERE seq > ?").get(updated_seq)).toEqual({ n: 2 })
+      assertLiveTranscriptReferences(db, "t", "live", updated_seq)
       expect(() => db.exec("INSERT INTO threads SELECT * FROM threads WHERE id = 't'")).toThrow()
       expect(() => db.exec("UPDATE threads SET bot_id = 'missing'")).toThrow()
       db.exec("UPDATE bots SET provider = 'opencode' WHERE id = 'b'")

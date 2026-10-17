@@ -25,7 +25,7 @@ import { stopProviderChildren, trackProviderProcess } from "../provider-processe
 import { resolveProviderExecutable } from "../resolveProviderExecutable"
 import { asRecord, classifyProviderError, resolveExecutable, stringValue } from "../utils"
 import { codexInputItems } from "./codexInputItems"
-import { codexAccessParams, outerSeatbelt } from "./config"
+import { codexAccessParams, outerFolderSandbox } from "./config"
 
 type RpcResponse = { id: number; result?: unknown; error?: { message?: string } }
 
@@ -177,6 +177,33 @@ const codexArgs = ({ args, mcp }: { args: StartTurnArgs; mcp: StartTurnArgs["mcp
     "-c",
     `mcp_servers={touri={command=${JSON.stringify(mcp.command)},args=${JSON.stringify(mcp.args)},default_tools_approval_mode="${TOURI_TOOLS_APPROVAL_MODE}"}}`,
   )
+  if (args.conversationOnly)
+    result.push(
+      "-c",
+      "mcp_servers={}",
+      "--disable",
+      "shell_tool",
+      "--disable",
+      "apply_patch_freeform",
+      "--disable",
+      "view_image",
+      "--disable",
+      "image_generation",
+      "--disable",
+      "apps",
+      "--disable",
+      "plugins",
+      "--disable",
+      "code_mode",
+      "--disable",
+      "code_mode_host",
+      "--disable",
+      "multi_agent",
+      "-c",
+      "tools.view_image=false",
+      "-c",
+      'web_search="disabled"',
+    )
   if (args.bot.access === "full")
     result.push(
       "-c",
@@ -188,7 +215,7 @@ const codexArgs = ({ args, mcp }: { args: StartTurnArgs; mcp: StartTurnArgs["mcp
     // On macOS touri's Seatbelt profile is the boundary (see codexAccessParams).
     result.push(
       "-c",
-      outerSeatbelt(args) ? 'sandbox_mode="danger-full-access"' : 'sandbox_mode="read-only"',
+      outerFolderSandbox(args) ? 'sandbox_mode="danger-full-access"' : 'sandbox_mode="read-only"',
       "-c",
       'approval_policy="never"',
     )
@@ -563,14 +590,16 @@ export const createCodexAdapter = ({
                   otel: { exporter: "none", trace_exporter: "none", metrics_exporter: "none", log_user_prompt: false },
                 }
               : {}),
-            mcp_servers: {
-              touri: {
-                command: args.mcp.command,
-                args: args.mcp.args,
-                env: args.mcp.env,
-                default_tools_approval_mode: TOURI_TOOLS_APPROVAL_MODE,
-              },
-            },
+            mcp_servers: args.conversationOnly
+              ? {}
+              : {
+                  touri: {
+                    command: args.mcp.command,
+                    args: args.mcp.args,
+                    env: args.mcp.env,
+                    default_tools_approval_mode: TOURI_TOOLS_APPROVAL_MODE,
+                  },
+                },
           },
         }
         const sessionRequest = args.session
