@@ -968,6 +968,13 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
       emit({ type: "routine.updated", routine, lastRun: null })
       return { routine } as ApiRoutes[typeof route]["res"]
     }
+    if (key === "DELETE /routines/:id") {
+      const index = routines.findIndex((routine) => routine.id === pathValues.id)
+      if (index < 0) throw new Error("routine not found")
+      routines.splice(index, 1)
+      emit({ type: "routine.deleted", routineId: pathValues.id ?? "" })
+      return {} as ApiRoutes[typeof route]["res"]
+    }
     if (key === "POST /routines/:id/run") {
       const routine = routines.find((candidate) => candidate.id === pathValues.id)
       if (!routine) throw new Error("routine not found")

@@ -2548,6 +2548,94 @@ test.serial("newly activated routines wait for a future slot instead of replayin
   }
 })
 
+const routineForDeletion = (value: Fixture) => {
+  const result = value.engine.createRoutine({
+    input: {
+      botId: value.bot.id,
+      name: "Organizar notas",
+      prompt: "Organize minhas notas",
+      cron: "*/5 * * * *",
+      timezone: "UTC",
+      enabled: true,
+      continuity: "main-thread",
+      resultsThreadId: null,
+      timeoutMinutes: 30,
+      overlap: "queue",
+      catchUpMinutes: 30,
+    },
+    forceDisabled: false,
+  })
+  if (!result.success) throw new Error(result.error)
+  return result.routine
+}
+
+test.serial("deleting a running routine lets its turn finish and preserves conversation and run history", async () => {
+  const value = await fixture({
+    scenario: { slowMs: 100, events: [{ type: "delta", delta: "Notas organizadas" }, { type: "complete" }] },
+  })
+  try {
+    const routine = routineForDeletion(value)
+    const started = value.engine.runRoutine({ routineId: routine.id, triggerSource: "manual" })
+    if (!started.success || !started.routineRun.runId) throw new Error("Missing run")
+    const runId = started.routineRun.runId
+    await waitFor(() =>
+      value.engine.listRuns(value.thread.id).some((run) => run.id === runId && run.status === "running"),
+    )
+    expect(value.engine.deleteRoutine(routine.id).success).toBe(true)
+    expect(value.engine.listRoutines()).toEqual([])
+    await waitFor(() =>
+      value.engine.listRuns(value.thread.id).some((run) => run.id === runId && run.status === "succeeded"),
+    )
+    expect(
+      value.store
+        .activePath({ threadId: value.thread.id })
+        .some((message) => message.text.includes("Notas organizadas")),
+    ).toBe(true)
+    const persistence = createRuntimePersistence({ database: value.runtime.kernel.db })
+    expect(persistence.getRun(runId)?.status).toBe("succeeded")
+    expect(persistence.getRoutine(routine.id)).toBeNull()
+    expect((value.runtime.kernel.db as Database).query("PRAGMA foreign_key_check").all()).toEqual([])
+  } finally {
+    await closeFixture(value)
+  }
+})
+
+test.serial("deletion drops queued catch-up work and a cached due schedule stays deleted after reopening", async () => {
+  const value = await fixture({ maxConcurrentRuns: 0 })
+  let reopened: ReturnType<typeof createKernel> | undefined
+  let replacement: ReturnType<typeof createRuntimeEngine> | undefined
+  try {
+    const routine = routineForDeletion(value)
+    const due = Date.now() - 120_000
+    value.engine.updateRoutine({ routineId: routine.id, patch: { nextRunAt: due }, fromTool: false })
+    await value.engine.tick()
+    const queuedRun = value.engine.listRuns(value.thread.id)[0]
+    expect(queuedRun?.status).toBe("queued")
+    expect(value.engine.listRoutineRuns(routine.id)[0]?.triggerSource).toBe("catch-up")
+    // Populate both caches before deletion, then verify a later tick cannot revive it.
+    value.engine.listRoutines()
+    value.engine.listRoutineRuns(routine.id)
+    expect(value.engine.deleteRoutine(routine.id).success).toBe(true)
+    expect(value.engine.listRuns(value.thread.id)[0]?.status).toBe("canceled")
+    await value.engine.tick(Date.now() + 600_000)
+    expect(value.engine.listRuns(value.thread.id)).toHaveLength(1)
+    expect(value.engine.listRoutineRuns(routine.id)).toEqual([])
+    expect(value.engine.runRoutine({ routineId: routine.id, triggerSource: "manual" }).success).toBe(false)
+    await value.engine.shutdown()
+    reopened = createKernel({ appData: value.root })
+    reopened.kernel.services.provide("store.api", value.store)
+    replacement = createRuntimeEngine({ kernel: reopened.kernel, codexCommand: value.fakePath })
+    await replacement.tick(Date.now() + 900_000)
+    expect(replacement.listRoutines()).toEqual([])
+    expect(replacement.listRuns(value.thread.id)).toHaveLength(1)
+    expect(replacement.listRuns(value.thread.id)[0]?.status).toBe("canceled")
+  } finally {
+    await replacement?.shutdown()
+    reopened?.stop()
+    await closeFixture(value)
+  }
+})
+
 runtimeTest.serial("first notes example completes in Portuguese without a connected project or folder", async () => {
   const response = "- Comprar café\n- Revisar orçamento\n- Marcar reunião"
   const f = await fixture({ scenario: { events: [{ type: "delta", delta: response }, { type: "complete" }] } })
