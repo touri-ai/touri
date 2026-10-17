@@ -224,7 +224,7 @@ it("reconciles lost send acknowledgements with the same nonce and stops permanen
   const inputs: unknown[] = []
   const request = vi.fn(async (_route, input) => {
     inputs.push(structuredClone(input))
-    if (inputs.length === 1) throw new TypeError("network error")
+    if (inputs.length === 1) throw new ApiError(0, "", undefined, "TOURI-E1010")
     throw new ApiError(401, "Unauthorized")
   })
   const journal = createSendJournal({
