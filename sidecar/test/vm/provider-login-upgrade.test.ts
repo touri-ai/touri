@@ -160,7 +160,7 @@ for (const provider of ["claude", "codex"] as const)
     )
     f.db.run("INSERT INTO bots VALUES ('upgraded','Bot de teste',?,'vm',1,NULL)", [provider])
     f.db.run("INSERT INTO settings VALUES (?, '\"vault\"', 1)", [providerLoginSourceKey(f.bot)])
-    const flow = createProviderLoginFlow({ kernel: f.kernel, hostHome: f.root })
+    const flow = createProviderLoginFlow({ kernel: f.kernel, hostHome: f.root, platform: "darwin", headless: false })
     try {
       const doctor = async () => (await providerLoginChecks(f.kernel, f.root, new AbortController().signal))[0]
       expect((await doctor())?.status).toBe("fail")
@@ -197,7 +197,7 @@ for (const errorCode of ["VAULT_ACCESS_REQUIRED", "VAULT_TIMEOUT", "VAULT_CANCEL
     )
     f.db.run("INSERT INTO bots VALUES ('upgraded','Bot de teste','codex','vm',1,NULL)")
     f.db.run("INSERT INTO settings VALUES (?, '\"vault\"', 1)", [providerLoginSourceKey(f.bot)])
-    const flow = createProviderLoginFlow({ kernel: f.kernel, hostHome: f.root })
+    const flow = createProviderLoginFlow({ kernel: f.kernel, hostHome: f.root, platform: "darwin", headless: false })
     try {
       const error = await readProviderLogin(f.kernel, f.bot, f.root).catch((error: unknown) => error)
       expect((error as ProviderLoginError).reason).toBe("vault-locked")
