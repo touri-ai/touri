@@ -540,6 +540,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
       const allThreads = [...botThreads.flat(), ...groupThreads.flatMap((r) => r.threads)]
       if (attempt !== generation.current) return
       setData((current) => {
+        const threads = mergeThreads(current.threads, allThreads)
         const runIds = new Set(activityResponse.runs.map((run) => run.id))
         const runs = mergeRunRows(
           current.runs.filter(
@@ -551,7 +552,6 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
           activityResponse.runs,
         )
         const selectedBot = current.bots.find((bot) => bot.id === current.selectedBotId) ?? current.bots[0]
-        const threads = mergeThreads(current.threads, allThreads)
         const selectedThread =
           threads.find((thread) => thread.id === current.selectedThreadId && thread.botId === selectedBot?.id) ??
           lastActiveThread(
