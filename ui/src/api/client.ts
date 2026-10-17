@@ -80,6 +80,7 @@ export const apiRouteKeys = [
   "POST /bots/:id/machine/intent",
   "POST /bots/:id/machine/reset",
   "POST /bots/:id/desktop",
+  "POST /bots/:id/desktop/return",
   "POST /desktop/:id/text",
   "DELETE /desktop/:id",
   "GET /bots/:id/threads",

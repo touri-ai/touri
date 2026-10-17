@@ -117,6 +117,7 @@ type RoutineUpdate = {
 }
 
 type RuntimeEngine = {
+  ready: Promise<void>
   enqueue: (args: {
     threadId: Id
     requestMessageId: Id
@@ -1391,6 +1392,8 @@ export const createRuntimeEngine = ({
   }
 
   const drain = async (): Promise<void> => {
+    // A recovered turn must not run alongside the previous provider process.
+    await startupCleanup
     while (!shuttingDown && ownsRuntime() && active.size < maxConcurrentRuns) {
       const nextIndex = queued.findIndex((runId) => {
         const run = persistence.getRun(runId)
@@ -1983,14 +1986,24 @@ export const createRuntimeEngine = ({
     }
     approvalBridge.dispose()
     shutdownPromise = (async () => {
+      await startupCleanup
       await Promise.all(Object.values(adapters).map((adapter) => adapter.shutdown()))
       await Promise.all(executions.values())
     })()
     return shutdownPromise
   }
 
-  reapProviderProcesses(kernel)
-  reapOrphanShims(kernel.paths.runDir)
+  // Both scans run `ps` asynchronously (#121); the record list is read before the first await.
+  const startupCleanup = Promise.all([reapProviderProcesses(kernel), reapOrphanShims(kernel.paths.runDir)])
+    .then(() => undefined)
+    .catch((error) =>
+      kernel.log({
+        level: "error",
+        module: "runtime",
+        msg: "Falha ao encerrar processos órfãos",
+        data: { error: error instanceof Error ? error.message : String(error) },
+      }),
+    )
   const recovered = new Set<Id>()
   for (const run of persistence.listActiveRuns()) {
     recovered.add(run.id)
@@ -2057,6 +2070,7 @@ export const createRuntimeEngine = ({
   queueMicrotask(() => void drain())
 
   return {
+    ready: startupCleanup,
     enqueue,
     activeRun,
     continueAfterApproval,

@@ -209,6 +209,12 @@ for (const provider of ["claude", "codex", "opencode"] as const)
     expect(existsSync(invocation?.cwd ?? "")).toBe(false)
   })
 
+// The descendant scan runs `ps` asynchronously (#121), so the SIGKILL lands a moment after the state changes.
+const waitKilled = async (kills: Array<string>): Promise<void> => {
+  for (let attempt = 0; !kills.includes("SIGKILL") && attempt < 200; attempt++) await Bun.sleep(10)
+  expect(kills).toContain("SIGKILL")
+}
+
 test("poll exposes only device challenge, cancel kills CLI and never saves credentials", async () => {
   const f = fixture("codex", "wait")
   await f.flow.action(f.bot, { action: "start" })
@@ -223,7 +229,7 @@ test("poll exposes only device challenge, cancel kills CLI and never saves crede
     verificationUrl: "https://auth.openai.com/codex/device",
   })
   expect((await f.flow.action(f.bot, { action: "cancel" })).state).toBe("cancelled")
-  expect(f.kills).toContain("SIGKILL")
+  await waitKilled(f.kills)
   expect(f.vault.size).toBe(0)
 })
 
@@ -232,7 +238,7 @@ test("timeout kills the spawned CLI and offers retry without saving", async () =
   await f.flow.action(f.bot, { action: "start" })
   const view = await waitState(f, "error")
   expect(view.message).toContain("expirou")
-  expect(f.kills).toContain("SIGKILL")
+  await waitKilled(f.kills)
   expect(f.vault.size).toBe(0)
 })
 
@@ -555,7 +561,7 @@ for (const event of ["deleted", "provider-changed", "cloud"])
             bot: { ...f.bot, ...(event === "cloud" ? { machine: "cloud" as const } : { provider: "claude" as const }) },
           },
     )
-    expect(f.kills).toContain("SIGKILL")
+    await waitKilled(f.kills)
     expect(f.vault.size).toBe(0)
   })
 

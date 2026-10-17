@@ -11,6 +11,7 @@ src-tauri/binaries/*
 ui/test-results/
 ui/playwright-report/
 .bun-cache/
+.vite-cache/
 
 docs/qa/
 .env

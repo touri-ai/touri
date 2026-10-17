@@ -762,7 +762,8 @@ export type ApiRoutes = {
   'POST /bots/:id/machine/restart': { req: { stopTurns?: boolean }; res: { machine: MachineState } }
   'POST /bots/:id/machine/intent': { req: { intent: MachineIntent; viewerId?: string }; res: { machine: MachineState } }
   'POST /bots/:id/machine/reset': { req: { confirm: true; projectId?: Id | null; stopTurns?: boolean }; res: { machine: MachineState } }
-  'POST /bots/:id/desktop': { req: { control?: boolean; resume?: boolean; preview?: boolean }; res: { sessionId: string; path: string; control: boolean } }
+  'POST /bots/:id/desktop': { req: { control?: boolean; resume?: boolean; preview?: boolean }; res: { sessionId: string; path: string; control: boolean; humanControl?: boolean } }
+  'POST /bots/:id/desktop/return': { req: {}; res: {} }
   'POST /desktop/:id/text': { req: { text: string }; res: {} }
   'DELETE /desktop/:id': { req: {}; res: {} }
   'GET /bots/:id/threads': { req: {}; res: { threads: Array<Thread> } }
@@ -910,6 +911,7 @@ export type UiEvent =
   | { type: 'preview.available'; preview: PreviewTarget }
   | { type: 'browser.tab'; tab: BrowserTabInfo & { ownerBotId: Id | null } }
   | { type: 'browser.secret_requested'; requestId: Id; tabId: Id; origin: string; fieldKinds: Array<'username' | 'password' | 'otp'> }
+  | { type: 'desktop.control'; botId: Id; human: boolean }
   | { type: 'computer.state'; active: boolean; botId: Id | null; grantId: Id | null }
   | { type: 'import.progress'; importId: Id; phase: string; done: number; total: number }
   | { type: 'notification.created'; notification: NotificationRecord }
@@ -1137,6 +1139,7 @@ export type ServiceMap = {
   'runtime.shutdown': () => Promise<void>
   'projects.info': (args: { projectId: Id; botId?: Id }) => Promise<ProjectInfo | null>
   'browser.tabsForBot': (args: { botId: Id }) => Array<BrowserTabInfo>
+  'computer.input': ComputerInput
   'computer.isActive': () => { active: boolean; botId: Id | null }
   'notify.emit': (input: NotifyInput) => NotificationRecord
   'runtime.answerApproval': (args: { approvalId: Id; decision: 'approved' | 'denied'; standing?: boolean; message?: string }) => Promise<Result<{}, 'NOT_FOUND'>>
@@ -1164,6 +1167,14 @@ export type VmRuntime = {
   stop: (input: { botId: Id }) => Promise<void>
   destroy: (input: { botId: Id; deleteVolumes?: boolean }) => Promise<void>
   doctor: () => Promise<Array<DoctorCheck>>
+}
+
+export type ComputerInput = {
+  human: (botId: Id) => boolean
+  take: (botId: Id, signal: AbortSignal) => Promise<void>
+  handBack: (botId: Id) => void
+  run: (ctx: ToolContext, operation: (signal: AbortSignal) => Promise<ToolResult>) => Promise<ToolResult>
+  kill: () => void
 }
 
 /** Authenticated, one-use desktop connections; the VM module owns their leases and input policy. */

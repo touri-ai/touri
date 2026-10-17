@@ -73,6 +73,7 @@ const routineInput = ({
 
 export const init = async (kernel: Kernel): Promise<void> => {
   const engine = createRuntimeEngine({ kernel })
+  await engine.ready
   const groups = createGroupRuntime(kernel, engine)
   kernel.services.provide("groups.runtime", groups)
   const scheduler = createRoutineScheduler({ kernel, engine })

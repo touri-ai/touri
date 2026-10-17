@@ -284,6 +284,8 @@ export const BotPanel = ({
             onExpand={onExpand}
             onWindow={onWindow}
             onPermissions={onPermissions}
+            onChat={onClose}
+            onFiles={() => setTab("library")}
           />
         )}
       </div>
