@@ -504,7 +504,7 @@ export const createRuntimeEngine = ({
     if (event.type === "session") {
       state.externalSessionId = event.externalSessionId
       state.rolloutPath = event.rolloutPath
-      if (state.fingerprint)
+      if (state.fingerprint) {
         continuations.saveResumePoint({
           runId: run.id,
           point: {
@@ -513,6 +513,25 @@ export const createRuntimeEngine = ({
             fingerprint: state.fingerprint,
           },
         })
+        // A turn can outlive the server. Ordinary follow-ups need this session too,
+        // even when automatic continuation is disabled or unsafe.
+        const current = persistence.getActiveSession({ threadId: run.threadId, provider: run.provider })
+        const sameSession = current?.externalSessionId === event.externalSessionId
+        if (current && !sameSession) persistence.markSession({ id: current.id, state: "replaced" })
+        const now = Date.now()
+        persistence.saveSession({
+          id: sameSession ? current.id : kernel.newId(),
+          threadId: run.threadId,
+          provider: run.provider,
+          externalSessionId: event.externalSessionId,
+          rolloutPath: event.rolloutPath,
+          fingerprint: state.fingerprint,
+          state: "active",
+          model: store.getBot({ botId: run.botId })?.model ?? null,
+          createdAt: sameSession ? current.createdAt : now,
+          lastUsedAt: now,
+        })
+      }
       return
     }
     if (event.type === "turn_started") {
@@ -828,6 +847,16 @@ export const createRuntimeEngine = ({
     const link = continuations.link(run.id)
     const originalRun = link ? persistence.getRun(link.originalRunId) : null
     const previousRun = link ? persistence.getRun(link.previousRunId) : null
+    const precedingRun = persistence
+      .listRuns(thread.id)
+      .find((attempt) => attempt.id !== run.id && attempt.status !== "queued")
+    const unacceptedRequest =
+      !resumedFrom &&
+      precedingRun?.errorClass === "app_restart" &&
+      precedingRun.externalTurnId === null &&
+      precedingRun.requestMessageId !== request?.id
+        ? activePathMessage({ store, run: precedingRun })
+        : null
     // A session can be saved before the provider accepts the first turn. The bounded
     // carryover alone cannot deliver that request's full text or attachments after a restart.
     const originalRequest =
@@ -840,18 +869,24 @@ export const createRuntimeEngine = ({
       ? [continuationPrompt(resumedFrom), originalRequest ? `Original request:\n${originalRequest.text}` : null]
           .filter(Boolean)
           .join("\n\n")
-      : (request?.text ?? "")
+      : [
+          unacceptedRequest ? `Original request (interrupted before acceptance):\n${unacceptedRequest.text}` : null,
+          request?.text,
+        ]
+          .filter(Boolean)
+          .join("\n\n")
     const carryover = thread.carryoverNote
     if (carryover) store.updateThread({ threadId: thread.id, patch: { carryoverNote: null } })
     const toolSummary = tools.summary(store, thread.id, request?.id)
     const inputText = [carryover, toolSummary, requestText].filter(Boolean).join("\n\n")
+    const requestParts = unacceptedRequest
+      ? [...unacceptedRequest.parts, ...(request?.parts ?? [])]
+      : ((originalRequest ?? request)?.parts ?? [])
     const input: Array<TextPart | Extract<MessagePart, { type: "image" }>> = request
       ? [
           { type: "text", text: inputText },
-          ...csvInput({ kernel, parts: (originalRequest ?? request).parts }),
-          ...(originalRequest ?? request).parts.filter(
-            (part): part is Extract<MessagePart, { type: "image" }> => part.type === "image",
-          ),
+          ...csvInput({ kernel, parts: requestParts }),
+          ...requestParts.filter((part): part is Extract<MessagePart, { type: "image" }> => part.type === "image"),
         ]
       : [{ type: "text", text: inputText }]
     const { cwd, projectDataDir } =
@@ -879,9 +914,32 @@ export const createRuntimeEngine = ({
       mcpCommand: mcp.command,
       mcpArgs: mcp.args,
     })
+    // Older versions saved the first session only as a per-run resume point.
+    // Adopt it for a manual follow-up as well as for automatic continuations.
+    if (!persistence.getActiveSession({ threadId: thread.id, provider: bot.provider })) {
+      if (precedingRun?.provider === bot.provider && precedingRun.errorClass === "app_restart")
+        adoptResumeSession(precedingRun)
+    }
     const previousSession = persistence.getActiveSession({ threadId: thread.id, provider: bot.provider })
     let session = previousSession
     let handoffPacket: string | null = null
+    const restoreContext = (reason: string): void => {
+      if (!handoffPacket)
+        state.replyParentId =
+          notice({
+            store,
+            run,
+            parentId: state.replyParentId ?? run.requestMessageId ?? thread.activeLeafId ?? run.id,
+            part: {
+              type: "notice",
+              level: "info",
+              code: "context_restored",
+              text: "O contexto da conversa foi recuperado do histórico salvo.",
+            },
+          }) ?? state.replyParentId
+      handoffPacket = buildHandoffPacket({ kernel, thread, reason })
+    }
+    if (unacceptedRequest) restoreContext("app restarted before the original turn was accepted")
     const previousAttempt =
       run.trigger === "retry"
         ? persistence
@@ -893,17 +951,18 @@ export const createRuntimeEngine = ({
       // The persisted transcript is the reliable context after reopening the app.
       if (session) persistence.markSession({ id: session.id, state: "replaced" })
       session = null
+      restoreContext("app restarted during the previous turn")
       handoffPacket = bounded({
         value: [
           "Continue from the partial transcript. Check the recorded work and current state before repeating actions; finish the user's original request.",
-          buildHandoffPacket({ kernel, thread, reason: "app restarted during the previous turn" }),
+          handoffPacket,
         ].join("\n"),
         max: 32_000,
       })
     }
     if (session && session.fingerprint !== mcpFingerprint.hash && session.fingerprint !== "imported") {
       persistence.markSession({ id: session.id, state: "replaced" })
-      handoffPacket = buildHandoffPacket({ kernel, thread, reason: "session fingerprint changed" })
+      restoreContext("session fingerprint changed")
       notice({
         store,
         run,
@@ -917,6 +976,14 @@ export const createRuntimeEngine = ({
       })
       session = null
     }
+    if (
+      !session &&
+      !handoffPacket &&
+      store
+        .activePath({ threadId: thread.id })
+        .some((message) => message.id !== request?.id && (message.role === "user" || message.role === "assistant"))
+    )
+      restoreContext("native session unavailable")
     const baseEnvironment = bot.machine === "vm" ? {} : environment?.PATH ? environment : await kernel.shellEnv()
     const env = buildChildEnv({
       base: baseEnvironment,
@@ -1066,7 +1133,7 @@ export const createRuntimeEngine = ({
           !controller.signal.aborted
         ) {
           persistence.markSession({ id: session.id, state: "failed" })
-          handoffPacket = buildHandoffPacket({ kernel, thread, reason: "native session could not be resumed" })
+          restoreContext("native session could not be resumed")
           session = null
           providerResult = await invokeWithRetry()
         }
@@ -1113,18 +1180,19 @@ export const createRuntimeEngine = ({
     if (result.success) {
       state.externalSessionId = state.externalSessionId ?? result.externalSessionId
       state.rolloutPath = state.rolloutPath ?? result.rolloutPath
-      const sessionRow = session ?? {
-        id: kernel.newId(),
-        threadId: thread.id,
-        provider: bot.provider,
-        externalSessionId: state.externalSessionId,
-        rolloutPath: state.rolloutPath,
-        fingerprint: mcpFingerprint.hash,
-        state: "active",
-        model: bot.model,
-        createdAt: Date.now(),
-        lastUsedAt: Date.now(),
-      }
+      const sessionRow = persistence.getActiveSession({ threadId: thread.id, provider: bot.provider }) ??
+        session ?? {
+          id: kernel.newId(),
+          threadId: thread.id,
+          provider: bot.provider,
+          externalSessionId: state.externalSessionId,
+          rolloutPath: state.rolloutPath,
+          fingerprint: mcpFingerprint.hash,
+          state: "active",
+          model: bot.model,
+          createdAt: Date.now(),
+          lastUsedAt: Date.now(),
+        }
       persistence.saveSession({
         ...sessionRow,
         externalSessionId: state.externalSessionId,

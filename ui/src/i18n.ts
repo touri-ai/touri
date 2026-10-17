@@ -3,6 +3,8 @@ import { userFacingError } from "./errors"
 /** All UI copy lives here. pt-BR is the default; English is available for a future locale picker. */
 export type Locale = "pt-BR" | "en"
 export const ptBR = {
+  "O contexto da conversa foi recuperado do histórico salvo.":
+    "O contexto da conversa foi recuperado do histórico salvo.",
   "Abrir resultado completo": "Abrir resultado completo",
   "Carregando resultado…": "Carregando resultado…",
   "Carregar mais saída": "Carregar mais saída",
@@ -1992,6 +1994,8 @@ export const ptBR = {
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  "O contexto da conversa foi recuperado do histórico salvo.":
+    "The conversation context was restored from saved history.",
   "Abrir resultado completo": "Open full result",
   "Carregando resultado…": "Loading result…",
   "Carregar mais saída": "Load more output",

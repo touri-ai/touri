@@ -342,6 +342,7 @@ export type NoticePart = {
     | 'run_failed'
     | 'run_canceled'
     | 'session_replaced'
+    | 'context_restored'
     | 'compaction'
     | 'routine_run'
     | 'imported'

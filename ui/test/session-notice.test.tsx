@@ -2,8 +2,32 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react"
 import type { Message } from "@touri/contracts"
 import { afterEach, expect, it } from "vitest"
 import { VirtualMessageList } from "../src/components/ChatPanel"
+import { t } from "../src/i18n"
 
 afterEach(cleanup)
+
+it("shows history restoration in the conversation and provides both locales", () => {
+  const text = "O contexto da conversa foi recuperado do histórico salvo."
+  const message: Message = {
+    id: "restored",
+    threadId: "thread",
+    parentId: null,
+    role: "system",
+    kind: "notice",
+    status: "complete",
+    runId: "run",
+    text,
+    parts: [{ type: "notice", code: "context_restored", level: "info", text }],
+    sender: null,
+    source: "local",
+    createdAt: 1,
+    updatedAt: 1,
+  }
+  render(<VirtualMessageList messages={[message]} onSwitchBranch={async () => {}} onRetry={async () => {}} />)
+  expect(screen.getByText(text)).toBeVisible()
+  expect(screen.queryByRole("button", { name: "Detalhes técnicos" })).toBeNull()
+  expect(t(text, {}, "en")).toBe("The conversation context was restored from saved history.")
+})
 
 it("keeps provider session handoff notices in collapsed technical details", () => {
   const text = "The native provider session was replaced and a handoff was supplied."

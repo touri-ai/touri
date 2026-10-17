@@ -97,8 +97,7 @@ exec '${process.execPath}' '${fake}' "$@"
   const first = await open({ resumeBackoffMs })
   first.db.exec(`INSERT INTO bots(id,name,provider,home_dir,created_at,updated_at) VALUES ('b','Teste','codex','/tmp',1,1);
     INSERT INTO threads(id,bot_id,title,created_at,updated_at) VALUES ('t','b','Conversa',1,1);`)
-  const send = (engine: Engine, text = "Tarefa longa"): Run => {
-    const store = first.store
+  const send = (engine: Engine, text = "Tarefa longa", store = first.store): Run => {
     const request = store.insertMessage({
       message: {
         id: first.runtime.kernel.newId(),
@@ -304,6 +303,162 @@ test("app restart continues an interrupted turn in the same provider session", a
     await f.close()
   }
 }, 30_000)
+
+for (const restart of ["crash", "shutdown", "legacy"] as const) {
+  test(`a manual follow-up resumes the interrupted Codex session after ${restart}`, async () => {
+    const f = await fixture()
+    try {
+      f.disableResume()
+      f.writeScenario({ ...PAUSED, sessionId: "persisted-session", rolloutPath: "/fixture/rollout.jsonl" })
+      const original = f.send(f.first.engine, "Prepare o relatório mensal e confira os totais.")
+      await waitFor(f.streamed("INÍCIO"))
+      // The identity and actual app-server thread.path must be durable before completion.
+      expect(f.first.db.query("SELECT external_session_id, rollout_path FROM provider_sessions").all()).toEqual([
+        { external_session_id: "persisted-session", rollout_path: "/fixture/rollout.jsonl" },
+      ])
+      if (restart === "shutdown") await f.first.engine.shutdown()
+      // Simulate an installation whose interrupted turn predates event-time persistence.
+      if (restart === "legacy") f.first.db.exec("DELETE FROM provider_sessions")
+      f.writeScenario({ sessionId: "persisted-session", deltas: ["Concluí o relatório."] })
+      const reopened = await f.open()
+      expect(f.runs().find((run) => run.id === original.id)?.error_class).toBe("app_restart")
+      const next = f.send(reopened.engine, "Continue de onde parou.", reopened.store)
+      await waitFor(() => f.runs().some((run) => run.id === next.id && run.status === "succeeded"))
+      const sessions = f.frames().filter((frame) => ["thread/start", "thread/resume"].includes(frame.method))
+      expect(sessions.map((frame) => frame.method)).toEqual(["thread/start", "thread/resume"])
+      expect(sessions.at(-1)?.params).toMatchObject({
+        threadId: "persisted-session",
+        path: "/fixture/rollout.jsonl",
+      })
+      expect(
+        f.first.db
+          .query("SELECT external_session_id, rollout_path FROM provider_sessions WHERE state = 'active'")
+          .all(),
+      ).toEqual([{ external_session_id: "persisted-session", rollout_path: "/fixture/rollout.jsonl" }])
+      expect(f.first.db.query("SELECT COUNT(*) AS count FROM provider_sessions").get()).toEqual({ count: 1 })
+    } finally {
+      await f.close()
+    }
+  }, 30_000)
+}
+
+test.each(["follow-up", "retry"])("a manual %s delivers the complete unaccepted request once", async (action) => {
+  const f = await fixture()
+  try {
+    f.disableResume()
+    f.writeScenario({ pauseBeforeTurnStart: join(f.assets, "accept-turn") })
+    const text = `${"Confira cada total e registre as diferenças. ".repeat(500)}MARCADOR_FINAL_TAREFA`
+    const original = f.send(f.first.engine, text)
+    await waitFor(() => f.frames().some((frame) => frame.method === "turn/start"))
+    expect(original.externalTurnId).toBeNull()
+    await f.first.engine.shutdown()
+    f.writeScenario({ deltas: ["Relatório concluído."] })
+    const reopened = await f.open()
+    const queued =
+      action === "retry"
+        ? reopened.engine.retry(original.id)
+        : { success: true as const, run: f.send(reopened.engine, "Continue de onde parou.", reopened.store) }
+    if (!queued.success) throw new Error(queued.error)
+    const next = queued.run
+    await waitFor(() => f.runs().some((run) => run.id === next.id && run.status === "succeeded"))
+    const input = JSON.stringify(
+      f
+        .frames()
+        .filter((frame) => frame.method === "turn/start")
+        .at(-1)?.params.input,
+    )
+    expect(input).toContain(text)
+    expect(input.split(text)).toHaveLength(2)
+    if (action === "follow-up") expect(input).toContain("Continue de onde parou.")
+    expect(
+      reopened.store
+        .activePath({ threadId: "t" })
+        .some((message) => message.parts.some((part) => part.type === "notice" && part.code === "context_restored")),
+    ).toBe(true)
+  } finally {
+    await f.close()
+  }
+}, 30_000)
+
+for (const recovery of ["missing", "rejected", "exit", "notification", "auth", "accepted-error"] as const) {
+  test(`a manual follow-up preserves task context when native recovery is ${recovery}`, async () => {
+    const f = await fixture()
+    try {
+      f.disableResume()
+      f.first.db.query("UPDATE bots SET instructions = ? WHERE id = 'b'").run("Confira os valores antes de concluir.")
+      f.send(f.first.engine, "Prepare o relatório mensal e confira os totais.")
+      await waitFor(f.streamed("INÍCIO"))
+      expect(
+        f.first.store
+          .activePath({ threadId: "t" })
+          .some((message) => message.parts.some((part) => part.type === "notice" && part.code === "context_restored")),
+      ).toBe(false)
+      await f.first.engine.shutdown()
+      if (recovery === "missing") f.first.db.exec("DELETE FROM provider_sessions; DELETE FROM run_resume_points;")
+      f.writeScenario({
+        sessionId: "replacement-session",
+        deltas: ["Concluí o relatório."],
+        ...(recovery === "rejected" ? { badResume: true } : {}),
+        ...(recovery === "notification" ? { resumeError: "failed to recover session" } : {}),
+        ...(recovery === "accepted-error"
+          ? { events: [{ method: "error", params: { message: "failed to recover session" } }] }
+          : {}),
+        ...(recovery === "exit" || recovery === "auth"
+          ? {
+              resumeExit: {
+                code: 0,
+                stderr: `ERROR codex_core::session: failed to recover session${recovery === "auth" ? ": login required" : ""}`,
+              },
+            }
+          : {}),
+      })
+      const reopened = await f.open()
+      const next = f.send(reopened.engine, "Continue de onde parou.", reopened.store)
+      await waitFor(() => f.runs().some((run) => run.id === next.id && ["succeeded", "failed"].includes(run.status)))
+      const methods = f
+        .frames()
+        .filter((frame) => ["thread/start", "thread/resume"].includes(frame.method))
+        .map((frame) => frame.method)
+      if (recovery === "auth" || recovery === "accepted-error") {
+        expect(f.runs().find((run) => run.id === next.id)?.status).toBe("failed")
+        if (recovery === "auth") expect(f.runs().find((run) => run.id === next.id)?.error_class).toBe("cli_auth")
+        expect(methods).toEqual(["thread/start", "thread/resume"])
+        return
+      }
+      expect(f.runs().find((run) => run.id === next.id)?.status).toBe("succeeded")
+      expect(methods).toEqual(
+        recovery === "missing" ? ["thread/start", "thread/start"] : ["thread/start", "thread/resume", "thread/start"],
+      )
+      const input = JSON.stringify(
+        f
+          .frames()
+          .filter((frame) => frame.method === "turn/start")
+          .at(-1)?.params.input,
+      )
+      expect(input).toContain("[touri handoff]")
+      expect(input).toContain("Prepare o relatório mensal e confira os totais.")
+      expect(input).toContain("INÍCIO")
+      expect(input).toContain("Continue de onde parou.")
+      const start = f
+        .frames()
+        .filter((frame) => frame.method === "thread/start")
+        .at(-1)
+      expect(start?.params.developerInstructions).toContain("Confira os valores antes de concluir.")
+      const path = reopened.store.activePath({ threadId: "t" })
+      expect(
+        path.filter((message) =>
+          message.parts.some((part) => part.type === "notice" && part.code === "context_restored"),
+        ),
+      ).toHaveLength(1)
+      expect(path.at(-1)?.text).toBe("Concluí o relatório.")
+      expect(
+        f.first.db.query("SELECT external_session_id FROM provider_sessions WHERE state = 'active'").all(),
+      ).toEqual([{ external_session_id: "replacement-session" }])
+    } finally {
+      await f.close()
+    }
+  }, 30_000)
+}
 
 test("a turn interrupted by quitting touri is continued when it reopens", async () => {
   const f = await fixture()

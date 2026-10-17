@@ -131,7 +131,7 @@ printf '%s\\n' '${token}'
   }
   const kernel = {
     db,
-    paths: { runDir: root },
+    paths: { appData: root, runDir: root },
     spawnTree: (input: Parameters<Kernel["spawnTree"]>[0]) => {
       invocations.push({ provider, ...input })
       return trackedSpawn(input)
