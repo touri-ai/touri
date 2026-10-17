@@ -26,3 +26,9 @@ Adding a bot folder or choosing another project folder opened a server-path prom
 - Endpoint tests use the real route registry. Live HTTP setup failed in this environment (`EADDRINUSE`); Chromium startup was denied (`Operation not permitted`), so a screenshot could not be captured. Native macOS behavior could not be exercised on Linux.
 
 VISION promises served: **#7, Calm, clear, native**, through discoverable navigation and plain Portuguese permissions; **#4, The user is in charge**, through explicit folder grants and confirmation before creation. All operations stay local (**#1, Your machine, your data**).
+
+## Re-run outside the sandbox (rebased on main incl. #137)
+
+- Default access is **read-only** with an explicit "O bot pode ler e salvar arquivos aqui" choice; a bot that needs to write asks once ("Permitir escrita em <pasta>?", from #116) and continues.
+- `bun test sidecar/test/projects/folders.test.ts sidecar/test/kernel/files.test.ts` → 30 pass (Linux), 11/11 endpoint tests on macOS.
+- UI: full suite on Linux 1086/1088 and on macOS with timeouts under heavy machine load; the failing files rerun green (17/17 and 45/45 with normal timeouts). tsc clean.
