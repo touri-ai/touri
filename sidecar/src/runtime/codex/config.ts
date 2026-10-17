@@ -3,7 +3,7 @@ import { canonicalPath } from "../../kernel/bot-folders"
 import { writableTurnFolders } from "../folder-access"
 
 export const outerSeatbelt = (args: StartTurnArgs, platform = process.platform): boolean =>
-  platform === "darwin" && !args.execution
+  platform === "darwin" && !args.execution && args.bot.access !== "full"
 
 export const codexAccessParams = (args: StartTurnArgs, platform = process.platform): Record<string, unknown> => {
   const reviewer = { approvalsReviewer: "user" }

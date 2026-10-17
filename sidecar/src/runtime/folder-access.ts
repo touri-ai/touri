@@ -16,6 +16,10 @@ export const hostFolderAccessAvailable = (): boolean =>
   process.platform === "darwin" && existsSync("/usr/bin/sandbox-exec")
 
 export const turnFolders = (args: StartTurnArgs) => {
+  // Full local access is the user's opt-in to the OS user's permissions. Saved
+  // grants must neither narrow it nor fail validation before the provider starts.
+  // Guest execution still needs its explicit host mounts.
+  if (args.bot.access === "full" && !args.execution) return []
   const folders = (args.bot.folders ?? []).map((folder) => {
     if (args.execution) return { ...folder, path: folderGuestPath(folder.path) }
     const path = resolveBotFolder(folder.path)
@@ -43,6 +47,7 @@ export const localFolderProfile = (
   env: Record<string, string>,
   home = homedir(),
 ): string => {
+  if (args.bot.access === "full" && !args.execution) return "(version 1)\n(allow default)"
   const folders = turnFolders(args)
   const explicit = args.bot.folders ?? []
   // Provider bookkeeping must remain writable even for a read-only conversation.
@@ -116,7 +121,6 @@ export const localFolderProfile = (
       rules.push(`(deny file-read* file-write* (require-all ${subpath(denied)} ${except(exemptions)}))`)
     }
   }
-  // Full provider access never makes read-only folder grants writable.
   return rules.join("\n")
 }
 
@@ -126,6 +130,7 @@ export const spawnFolderProvider = (
   input: Parameters<Kernel["spawnTree"]>[0],
 ): ReturnType<Kernel["spawnTree"]> => {
   if (args.execution) return args.execution.spawn(input)
+  if (args.bot.access === "full") return kernel.spawnTree(input)
   // Do not silently drop the security boundary on a host without Seatbelt.
   if (process.platform !== "darwin" && !args.bot.anyFolderAccess && !args.bot.folders?.length)
     return kernel.spawnTree(input)

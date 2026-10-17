@@ -5,6 +5,7 @@ import App from "../src/App"
 import type { TauriInvoke } from "../src/api/client"
 import { createMockApi } from "../src/api/mock"
 import { BotCreateModal, BotSettingsModal } from "../src/components/Modals"
+import { fullAccessDescription } from "../src/i18n"
 import type { WorkspaceActions } from "../src/useWorkspace"
 import { selectFolder } from "./folder-picker-helpers"
 
@@ -44,42 +45,65 @@ const setup = async (patch: Partial<Bot> = {}) => {
   })
   return { api, bot, invoke, updateBot }
 }
-const anyToggle = () => screen.getByRole("switch", { name: /Acesso a qualquer pasta deste Mac/ })
+const anyToggle = () => screen.getByRole("switch", { name: /Acesso a qualquer pasta/ })
 const save = () => fireEvent.click(screen.getByRole("button", { name: "Salvar configurações" }))
 
 it.each(["codex", "claude", "opencode"] as const)(
-  "explains that %s full access preserves the separate folder limits during creation",
+  "explains that %s full local access is not limited by saved folder settings during creation",
   (provider) => {
     render(<BotCreateModal onClose={vi.fn()} onCreate={vi.fn()} />)
     fireEvent.change(screen.getByLabelText("Nome"), { target: { value: "Pesquisa" } })
     fireEvent.click(screen.getByRole("button", { name: "Avançado" }))
     fireEvent.change(screen.getByLabelText("Provedor"), { target: { value: provider } })
     fireEvent.change(screen.getByLabelText("Acesso"), { target: { value: "full" } })
-    expect(screen.getByText(/O acesso total dispensa aprovações/)).toHaveTextContent(
-      "A escrita segue as permissões de pastas configuradas para o bot.",
+    expect(screen.getByText(/O acesso total permite ler/)).toHaveTextContent(
+      "As pastas e exclusões salvas não limitam este acesso.",
     )
-    expect(screen.getByText(/O acesso total dispensa aprovações/)).toHaveTextContent(
-      "A opção “Acesso a qualquer pasta deste Mac” é independente",
-    )
-    expect(screen.queryByText(/escreva em qualquer pasta/)).not.toBeInTheDocument()
-    if (provider === "codex")
-      expect(screen.getByText(/sem o sandbox do provedor/)).toHaveTextContent("As restrições de pastas do touri")
+    expect(screen.getByText(/O acesso total permite ler/)).toHaveTextContent("Não pede aprovações do provedor.")
+    expect(screen.getByText(/Acesso total; pode ler e alterar arquivos em qualquer pasta/)).toBeVisible()
+    expect(screen.getByText(/As pastas e a opção abaixo ficam salvas/)).toBeVisible()
+    expect(screen.queryByText(/perfis de navegadores e dados do touri ficam bloqueados/)).not.toBeInTheDocument()
     expect(anyToggle()).not.toBeChecked()
     fireEvent.click(anyToggle())
+    expect(screen.getByText(/Esta opção fica salva para modos de acesso restrito/)).toBeVisible()
     fireEvent.click(screen.getByRole("button", { name: "Permitir acesso" }))
     expect(anyToggle()).toBeChecked()
-    expect(screen.getByText(/O acesso total dispensa aprovações/)).toHaveTextContent(
-      "A escrita segue as permissões de pastas configuradas para o bot.",
-    )
+    expect(screen.getByText(/O acesso total permite ler/)).toHaveTextContent("As pastas e exclusões salvas não limitam")
   },
 )
 
-it("uses the same full-access explanation in bot settings", async () => {
-  await setup({ provider: "codex", access: "full", approvals: "never" })
-  expect(screen.getByText(/O acesso total dispensa aprovações/)).toHaveTextContent(
-    "A opção “Acesso a qualquer pasta deste Mac” é independente",
+it.each(["never", "on-request"] as const)(
+  "explains full local access with %s approvals in bot settings",
+  async (approvals) => {
+    await setup({
+      provider: "codex",
+      access: "full",
+      approvals,
+      folders: [{ path: "/reference", access: "read-only" }],
+    })
+    expect(screen.getByText(/O acesso total permite ler/)).toHaveTextContent(
+      "qualquer pasta que a conta do sistema permita",
+    )
+    expect(screen.getByText(/O acesso total permite ler/)).toHaveTextContent(
+      approvals === "never" ? "Não pede aprovações do provedor." : "As aprovações do provedor continuam valendo.",
+    )
+    expect(screen.getByRole("combobox", { name: "Acesso à pasta /reference" })).toBeEnabled()
+    expect(screen.getByRole("combobox", { name: "Acesso à pasta /reference" })).toHaveValue("read-only")
+    expect(screen.getByText("Pastas salvas para modos de acesso restrito")).toBeVisible()
+    expect(screen.queryByText(/sandbox do macOS bloqueia/)).not.toBeInTheDocument()
+    fireEvent.change(screen.getByRole("combobox", { name: "Acesso", exact: true }), {
+      target: { value: "workspace-write" },
+    })
+    expect(screen.getByText(/sandbox do macOS bloqueia/)).toBeVisible()
+    expect(screen.queryByText(/O acesso total permite ler/)).not.toBeInTheDocument()
+    expect(screen.getByRole("combobox", { name: "Acesso à pasta /reference" })).toHaveValue("read-only")
+  },
+)
+
+it("explains full local filesystem access and provider approvals in English", () => {
+  expect(fullAccessDescription({ machine: "local", approvals: "on-request" }, "en")).toContain(
+    "Saved folders and exclusions do not limit this access. Provider approvals still apply.",
   )
-  expect(screen.getByText(/sem o sandbox do provedor/)).toHaveTextContent("As restrições de pastas do touri")
 })
 
 it.each(["read-only", "read-write"] as const)(
@@ -141,11 +165,16 @@ it("requires confirmation, supports cancel/Escape, and disables broad access wit
 })
 
 it("explains VM paths, masking and recreation from the next message while preserving files", async () => {
-  await setup({ machine: "vm" })
+  await setup({ machine: "vm", access: "full", approvals: "never" })
   expect(screen.getByText(/as pastas valerão a partir da próxima mensagem/)).toHaveTextContent(
     "Os arquivos da máquina serão preservados.",
   )
   expect(screen.getByText(/sua pasta pessoal aparece em/)).toHaveTextContent("/host/home")
+  expect(screen.getByText(/O acesso total vale só no computador isolado/)).toHaveTextContent(
+    "As permissões de cada pasta continuam valendo.",
+  )
+  expect(screen.getByText(/perfis de navegadores e dados do touri ficam bloqueados/)).toBeVisible()
+  expect(screen.queryByText(/As pastas e a opção abaixo ficam salvas/)).not.toBeInTheDocument()
 })
 
 it.each(["read-only", "read-write"] as const)(

@@ -10,6 +10,7 @@ export const BotFolderSettings = ({
   api,
   simple = false,
   readOnly = false,
+  fullAccess = false,
   folders,
   anyFolderAccess,
   machine,
@@ -23,6 +24,7 @@ export const BotFolderSettings = ({
   api?: UiApi | undefined
   simple?: boolean
   readOnly?: boolean
+  fullAccess?: boolean
   folders: BotFolder[]
   anyFolderAccess: boolean
   machine: Bot["machine"]
@@ -33,9 +35,19 @@ export const BotFolderSettings = ({
 }) => {
   const [confirming, setConfirming] = useState(false)
   const [picking, setPicking] = useState(false)
+  const unrestricted = machine === "local" && fullAccess
   return (
     <div className="bot-folder-settings">
-      <strong>{t("Pastas que este bot pode acessar")}</strong>
+      <strong>
+        {unrestricted ? t("Pastas salvas para modos de acesso restrito") : t("Pastas que este bot pode acessar")}
+      </strong>
+      {unrestricted && (
+        <p className="field-help">
+          {t(
+            "As pastas e a opção abaixo ficam salvas para quando você escolher um acesso restrito. Elas não limitam o acesso total atual.",
+          )}
+        </p>
+      )}
       {!folders.length && <p className="field-help">{t("Nenhuma pasta adicional.")}</p>}
       <ul className="bot-folder-list">
         {folders.map((folder, index) => (
@@ -94,8 +106,14 @@ export const BotFolderSettings = ({
         <>
           <label className="toggle-row" htmlFor="settings-any-folder">
             <span>
-              <strong>{t("Acesso a qualquer pasta deste Mac")}</strong>
-              <small>{t("O nível de acesso e as aprovações continuam valendo.")}</small>
+              <strong>
+                {unrestricted ? t("Acesso a qualquer pasta no modo restrito") : t("Acesso a qualquer pasta deste Mac")}
+              </strong>
+              <small>
+                {unrestricted
+                  ? t("Esta opção só vale quando o acesso é restrito.")
+                  : t("O nível de acesso e as aprovações continuam valendo.")}
+              </small>
             </span>
             <SettingsSwitch
               id="settings-any-folder"
@@ -104,20 +122,26 @@ export const BotFolderSettings = ({
               onChange={(event) => (event.target.checked ? setConfirming(true) : onAnyFolderAccess(false))}
             />
           </label>
-          <p className="field-help">
-            {t(
-              "Keychains, ~/.ssh, perfis de navegadores e dados do touri ficam bloqueados, salvo pastas adicionadas explicitamente. Os arquivos necessários ao funcionamento deste bot continuam disponíveis.",
-            )}
-          </p>
-          <p className="field-help">
-            {machine === "vm"
-              ? t(
-                  "Na VM, sua pasta pessoal aparece em /host/home; as demais, em /host/<nome>. As exclusões são ocultadas por montagens somente leitura.",
-                )
-              : t(
-                  "No Mac, o sandbox do macOS bloqueia as exclusões e a escrita nas pastas somente leitura, inclusive em comandos de terminal. As alterações valem a partir da próxima mensagem.",
+          {unrestricted ? (
+            <p className="field-help">{t("As permissões da conta do sistema continuam valendo.")}</p>
+          ) : (
+            <>
+              <p className="field-help">
+                {t(
+                  "Keychains, ~/.ssh, perfis de navegadores e dados do touri ficam bloqueados, salvo pastas adicionadas explicitamente. Os arquivos necessários ao funcionamento deste bot continuam disponíveis.",
                 )}
-          </p>
+              </p>
+              <p className="field-help">
+                {machine === "vm"
+                  ? t(
+                      "Na VM, sua pasta pessoal aparece em /host/home; as demais, em /host/<nome>. As exclusões são ocultadas por montagens somente leitura.",
+                    )
+                  : t(
+                      "No Mac, o sandbox do macOS bloqueia as exclusões e a escrita nas pastas somente leitura, inclusive em comandos de terminal. As alterações valem a partir da próxima mensagem.",
+                    )}
+              </p>
+            </>
+          )}
           {machine === "vm" && (
             <p className="settings-inline-note">
               {t(
@@ -130,11 +154,15 @@ export const BotFolderSettings = ({
       {confirming && (
         <Modal title={t("Permitir acesso a qualquer pasta?")} onClose={() => setConfirming(false)}>
           <p>
-            {t(
-              "Este bot poderá ler arquivos pessoais de todo o Mac e, conforme o nível de acesso, alterá-los ou apagá-los. Na VM, sua pasta pessoal será montada em /host/home. Conceda este acesso apenas a bots em que confia.",
-            )}
+            {unrestricted
+              ? t("Esta opção fica salva para modos de acesso restrito. O acesso total atual não muda.")
+              : t(
+                  "Este bot poderá ler arquivos pessoais de todo o Mac e, conforme o nível de acesso, alterá-los ou apagá-los. Na VM, sua pasta pessoal será montada em /host/home. Conceda este acesso apenas a bots em que confia.",
+                )}
           </p>
-          <p>{t("As exclusões de pastas sensíveis, o nível de acesso e as aprovações continuam valendo.")}</p>
+          {!unrestricted && (
+            <p>{t("As exclusões de pastas sensíveis, o nível de acesso e as aprovações continuam valendo.")}</p>
+          )}
           <div className="modal-actions">
             <button type="button" className="button-quiet" data-initial-focus onClick={() => setConfirming(false)}>
               {t("Cancelar")}

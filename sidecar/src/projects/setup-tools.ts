@@ -3,7 +3,7 @@ import { homedir } from "node:os"
 import { basename, dirname, isAbsolute, join, parse, relative } from "node:path"
 import type { Bot, Kernel, ToolContext, ToolRegistration, ToolResult } from "@touri/contracts"
 import { getDelegation } from "../groups/security"
-import { excludedBotFolders, parseBotFolders, withinFolder } from "../kernel/bot-folders"
+import { canonicalPath, excludedBotFolders, parseBotFolders, withinFolder } from "../kernel/bot-folders"
 import { createWorkspaceDirectory } from "../kernel/files"
 import { createCapabilityTools } from "./capability-tools"
 import { discoverProjects } from "./discovery"
@@ -33,16 +33,16 @@ const absolutePath = (value: string): string => {
   return path
 }
 
-const hostPath = (value: string): string => {
+const hostPath = (value: string, allowRoot = false): string => {
   const path = absolutePath(value)
   const canonical = realpathSync(path)
   if (!statSync(canonical).isDirectory()) throw new Error("O caminho precisa ser uma pasta.")
-  if (canonical === parse(canonical).root)
+  if (!allowRoot && canonical === parse(canonical).root)
     throw new Error("O acesso a qualquer pasta deste Mac é exclusivo dos ajustes.")
   return canonical
 }
 
-const folderTarget = (value: string) => {
+const folderTarget = (value: string, allowRoot = false) => {
   const source = absolutePath(value)
   if (source.split("/").includes("..")) throw new Error("Informe um caminho sem '..'.")
   let ancestor = source
@@ -58,7 +58,7 @@ const folderTarget = (value: string) => {
       ancestor = dirname(ancestor)
     }
   }
-  const root = hostPath(ancestor)
+  const root = hostPath(ancestor, allowRoot)
   const info = statSync(root)
   return { path: join(root, ...missing), ancestor: root, missing: missing.length > 0, dev: info.dev, ino: info.ino }
 }
@@ -76,6 +76,56 @@ export const createSetupTools = ({
     // A peer's delegated request cannot persist changes outside its ceiling.
     if (ctx.signal.aborted || getDelegation(kernel, ctx.threadId)) return null
     return bot && api()?.getThread({ threadId: ctx.threadId })?.botId === bot.id ? bot : null
+  }
+  const alreadyWritable = (bot: Bot, ctx: ToolContext, path: string): boolean => {
+    if (bot.machine !== "local") return false
+    if (bot.access === "full") return true
+    if (bot.access === "read-only") return false
+    const explicit = bot.folders ?? []
+    const inside = (root: string) => withinFolder(canonicalPath(root), path)
+    if (explicit.some((folder) => folder.access === "read-only" && inside(folder.path))) return false
+    const project = bot.projectId ? store.getProject(bot.projectId) : null
+    const internal = [bot.homeDir, ...(project ? [project.dataDir] : [])]
+    if (excludedBotFolders(kernel.paths.appData).some((excluded) => withinFolder(excluded, path))) {
+      if (!internal.some(inside) && !explicit.some((folder) => inside(folder.path))) return false
+    }
+    const thread = api()?.getThread({ threadId: ctx.threadId })
+    // Runtime chooses the first usable candidate. By tool-call time its cwd
+    // already exists; do not create directories while checking a no-op.
+    const cwd =
+      [thread?.cwdOverride, bot.cwd, project?.path].find((candidate) => {
+        if (!candidate) return false
+        try {
+          return statSync(candidate).isDirectory()
+        } catch {
+          return false
+        }
+      }) ?? bot.homeDir
+    return (
+      bot.anyFolderAccess === true ||
+      [
+        bot.homeDir,
+        cwd,
+        ...(project ? [project.dataDir] : []),
+        ...explicit.filter((folder) => folder.access === "read-write").map((folder) => folder.path),
+      ].some(inside)
+    )
+  }
+  const unchangedAccess = (bot: Bot, path: string, projectLink = false): ToolResult => {
+    const message = "Este bot já tem acesso a esta pasta. Nenhuma permissão foi alterada."
+    const nextStep = "Para usar processos supervisionados e o Preview, vincule o projeto nas configurações do bot."
+    return {
+      success: true,
+      content: [{ type: "text", text: projectLink ? `${message} ${nextStep}` : message }],
+      structured: {
+        path,
+        projectId: bot.projectId,
+        alreadyAccessible: true,
+        unchanged: true,
+        automaticContinuation: false,
+        effective: "current-turn",
+      },
+    }
   }
   const changed = (
     bot: Bot,
@@ -231,8 +281,9 @@ export const createSetupTools = ({
           if (input.projectId && (!registered || registered.archivedAt !== null))
             return { success: false, errorCode: "NOT_FOUND", error: "Projeto não encontrado." }
           const source = registered?.path ?? input.path ?? ""
-          const path = hostPath(source)
+          const path = hostPath(source, bot.machine === "local" && bot.access === "full")
           const project = registered ?? store.getProjectByPath(path)
+          if (alreadyWritable(bot, ctx, path)) return unchangedAccess(bot, path, true)
           const name = project?.name ?? basename(path)
           const previous = bot.projectId ? store.getProject(bot.projectId) : null
           const targetCurrent = () => {
@@ -297,7 +348,11 @@ export const createSetupTools = ({
         if (bot.machine === "cloud") return denied("Pastas deste Mac não estão disponíveis na nuvem.")
         const input = args as { path: string; mode: "read" | "read-write" }
         try {
-          const target = folderTarget(input.path)
+          const target = folderTarget(input.path, bot.machine === "local" && bot.access === "full")
+          // Do not turn existing write access into a persisted restriction. This
+          // is also safe for missing output directories: the bot can create them
+          // directly under its current policy, without changing configuration.
+          if (alreadyWritable(bot, ctx, target.path)) return unchangedAccess(bot, target.path)
           const explicit = bot.folders ?? []
           const roots = [
             ...explicit.map((folder) => folder.path),
