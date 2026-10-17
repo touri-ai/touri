@@ -79,19 +79,34 @@ export type LoginInvocation = {
 }
 const isDraft = (id: string) => /^draft-[0-9a-f-]{36}$/.test(id)
 const key = (target: Target) => `${target.id}:${target.provider}`
-const claudeVerificationUrl = (output: string) => {
+const verificationUrl = (provider: Bot["provider"], output: string) => {
   let latest: string | undefined
+  // OSC 8 retains full URLs even when the visible terminal link wraps.
   // biome-ignore lint/suspicious/noControlCharactersInRegex: OSC 8 uses ESC and BEL delimiters.
-  for (const match of output.matchAll(/\u001b\]8;[^;\u0007\u001b]*;([^\u0007\u001b]*)(?:\u0007|\u001b\\)/g)) {
+  const links = [...output.matchAll(/\u001b\]8;[^;\u0007\u001b]*;([^\u0007\u001b]*)(?:\u0007|\u001b\\)/g)].map(
+    (match) => match[1] ?? "",
+  )
+  const text = stripVTControlCharacters(output).replace(/\r/g, "")
+  // Wait for a delimiter: a read can end halfway through a URL.
+  const printed = [...text.matchAll(/https:\/\/[^\s<>"']+(?=[\s<>"'])/g)].map((match) => match[0])
+  for (const candidate of [...printed, ...links]) {
     try {
-      const url = new URL(match[1] ?? "")
+      const url = new URL(candidate)
+      if (url.protocol !== "https:" || url.username || url.password || url.port) continue
       if (
-        url.origin === "https://claude.com" &&
-        url.pathname === "/cai/oauth/authorize" &&
-        !url.username &&
-        !url.password
+        [...url.searchParams.keys()].some((key) => /^(?:access_token|refresh_token|id_token|api_key|token)$/i.test(key))
       )
-        latest = url.href
+        continue
+      const allowed =
+        provider === "claude"
+          ? url.origin === "https://claude.com" && url.pathname === "/cai/oauth/authorize"
+          : provider === "codex"
+            ? ["auth.openai.com", "chatgpt.com"].includes(url.hostname) &&
+              ["/codex/device", "/device", "/activate", "/oauth/device"].includes(url.pathname)
+            : // OpenCode can delegate login to the provider chosen in its CLI menu.
+              /^[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}$/i.test(url.hostname) &&
+              !/\.(?:local|internal|localhost)$/i.test(url.hostname)
+      if (allowed) latest = url.href
     } catch {}
   }
   return latest
@@ -219,7 +234,8 @@ export const createProviderLoginFlow = ({
       session.view = {
         provider: target.provider,
         state,
-        ...(state === "error" ? { message: "O login expirou. Tente novamente." } : {}),
+        host,
+        ...(state === "error" ? { retryable: true, message: "O login expirou. Tente novamente." } : {}),
       }
       delete session.secret
       clean(session)
@@ -267,7 +283,7 @@ export const createProviderLoginFlow = ({
   const start = async (target: Target): Promise<ProviderLoginFlow> => {
     const existing = sessions.get(key(target))
     if (existing?.view.state === "waiting") return { ...existing.view }
-    const session: Session = { target, view: { provider: target.provider, state: "waiting" } }
+    const session: Session = { target, view: { provider: target.provider, state: "waiting", host } }
     sessions.set(key(target), session)
     session.timer = setTimeout(() => cancel(session.target, "error"), timeoutMs)
     session.timer.unref()
@@ -298,6 +314,11 @@ export const createProviderLoginFlow = ({
           "BUN_OPTIONS",
         ])
           delete (env as Record<string, string>)[name]
+        if (host === "server") {
+          env.BROWSER = "echo"
+          delete env.DISPLAY
+          delete env.WAYLAND_DISPLAY
+        }
         const command = target.provider
         const args =
           command === "claude"
@@ -343,14 +364,19 @@ export const createProviderLoginFlow = ({
               output += decoder.decode(chunk, { stream: true })
               if (output.length > 128_000) throw new Error("output")
               if (session.view.state !== "waiting") continue
-              // OSC 8 contains the complete URL even when Ink wraps its visible text.
-              if (command === "claude") {
-                const url = claudeVerificationUrl(output)
-                if (url) session.view.verificationUrl = url
+              const url = verificationUrl(command, output)
+              if (url) {
+                kernel.addRedactionValue(url)
+                session.view.verificationUrl = url
+                if (command === "opencode") delete session.view.prompt
               }
               const text = stripVTControlCharacters(output).replace(/\r/g, "")
-              if (command === "claude") {
-                const prompt = text.lastIndexOf("Paste code here")
+              if (command === "claude" || command === "opencode") {
+                const prompt =
+                  command === "claude"
+                    ? text.lastIndexOf("Paste code here")
+                    : ([...text.matchAll(/(?:^|\n)[│◇◆\s]*(?:paste|enter)(?: the)? (?:authorization )?code/gi)].at(-1)
+                        ?.index ?? -1)
                 if (prompt > (session.pastePrompt ?? -1)) {
                   session.pastePrompt = prompt
                   session.codeReady = true
@@ -382,24 +408,13 @@ export const createProviderLoginFlow = ({
               for (const token of text.matchAll(/sk-ant-oat01-[\w-]+/g)) redact(token[0])
               const code =
                 command !== "claude" &&
-                (text.match(/(?:code|código)\s*[:\n]?\s*([A-Z0-9]{4,5}(?:-[A-Z0-9]{4,5}){1,2})\b/i)?.[1] ??
+                ([
+                  ...text.matchAll(/(?:code|código)(?:\s+is)?\s*[:\n]?\s*([A-Z0-9]{4,5}(?:-[A-Z0-9]{4,5}){1,2})\b/gi),
+                ].at(-1)?.[1] ??
                   text.match(/(?:^|\n)\s*([A-Z0-9]{4,5}-[A-Z0-9]{4,5})\s*(?:\n|$)/)?.[1])
               if (code) {
                 kernel.addRedactionValue(code)
                 session.view.deviceCode = code
-              }
-              for (const match of text.matchAll(/https:\/\/[^\s<>"']+/g)) {
-                if (command === "claude") break
-                try {
-                  const url = new URL(match[0])
-                  if (
-                    ["auth.openai.com", "chatgpt.com", "claude.ai", "console.anthropic.com", "opencode.ai"].includes(
-                      url.hostname,
-                    ) &&
-                    ["/codex/device", "/device", "/activate", "/oauth/device"].includes(url.pathname)
-                  )
-                    session.view.verificationUrl = url.origin + url.pathname
-                } catch {}
               }
             }
           } finally {
@@ -420,6 +435,8 @@ export const createProviderLoginFlow = ({
           session.view = {
             provider: target.provider,
             state: "error",
+            host,
+            retryable: true,
             message: "Não foi possível concluir o login. Tente novamente ou cole o token manualmente.",
           }
         }
@@ -448,7 +465,7 @@ export const createProviderLoginFlow = ({
         throw new Error("Código inválido.")
       const session = sessions.get(key(target))
       if (
-        target.provider !== "claude" ||
+        (target.provider !== "claude" && target.provider !== "opencode") ||
         session?.view.state !== "waiting" ||
         !session.child ||
         !session.view.needsCode ||
@@ -485,6 +502,14 @@ export const createProviderLoginFlow = ({
         input.input === "up" ? "\u001b[A" : input.input === "down" ? "\u001b[B" : input.input === "enter" ? "\r" : null
       if (target.provider !== "opencode" || !bytes || !session?.child || !session.view.prompt)
         throw new Error("Seleção indisponível.")
+      if (
+        host === "server" &&
+        input.input === "enter" &&
+        session.view.prompt?.kind === "method" &&
+        /\bbrowser\b/i.test(session.view.prompt.choice) &&
+        !/\bheadless\b/i.test(session.view.prompt.choice)
+      )
+        throw new Error("Escolha um método com código para entrar por este aparelho.")
       const writer = session.child.stdin.getWriter()
       try {
         await writer.write(new TextEncoder().encode(bytes))
@@ -518,7 +543,7 @@ export const createProviderLoginFlow = ({
       const value = input.value?.trim() ?? ""
       if (value.length > 20_000 || !validLogin(target.provider, value)) throw new Error("Login inválido.")
       cancel(target)
-      const session: Session = { target, view: { provider: target.provider, state: "waiting" } }
+      const session: Session = { target, view: { provider: target.provider, state: "waiting", host } }
       sessions.set(key(target), session)
       try {
         await save(session, value)

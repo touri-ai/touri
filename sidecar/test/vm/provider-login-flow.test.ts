@@ -26,7 +26,7 @@ const fixture = (
   provider: Bot["provider"] = "codex",
   mode = "success",
   timeoutMs = 3000,
-  options: { bridge?: boolean; url?: string; platform?: NodeJS.Platform; headless?: boolean } = {},
+  options: { bridge?: boolean; url?: string; platform?: NodeJS.Platform; headless?: boolean; output?: string } = {},
 ) => {
   const root = mkdtempSync(join(tmpdir(), "touri-flow-test-"))
   const db = new Database(":memory:")
@@ -59,16 +59,27 @@ const fixture = (
     import { join } from "node:path"
     import { createInterface } from "node:readline"
     const [provider, mode] = process.argv.slice(2)
-    console.log("Open https://auth.openai.com/codex/device and enter code: ABCD-EFGH")
+    if (mode !== "headless-device") console.log("Open https://auth.openai.com/codex/device and enter code: ABCD-EFGH")
+    if (mode === "headless-device") {
+      const challenge = ${JSON.stringify(options.output ?? "Open this URL: https://opencode.ai/auth?state=synthetic-state\nYour one-time code is: 1234-5678")}
+      process.stderr.write(challenge.slice(0, 24))
+      await Bun.sleep(20)
+      console.error(challenge.slice(24))
+      await Bun.sleep(30000)
+    }
     if (mode === "wait") await Bun.sleep(30000)
     if (mode === "fail") { console.error("synthetic-secret-error"); process.exit(1) }
-    if (mode === "menu") {
+    if (mode === "menu" || mode === "menu-browser") {
       console.log("Select provider\\n│ ● OpenAI\\n│ ○ Anthropic")
       await new Promise((resolve) => process.stdin.once("data", resolve))
-      console.log("Select login method\\n│ ● ChatGPT Pro")
+      console.log("Select login method\\n│ ● " + (mode === "menu-browser" ? "Conta (browser)" : "ChatGPT Pro"))
+      if (mode === "menu-browser") {
+        await new Promise((resolve) => process.stdin.once("data", resolve))
+        console.log("Select login method\\n│ ● Conta (headless)")
+      }
       await new Promise((resolve) => process.stdin.once("data", resolve))
     }
-    if (provider === "claude" && mode.startsWith("code-")) {
+    if ((provider === "claude" || provider === "opencode") && mode.startsWith("code-")) {
       const lines = createInterface({ input: process.stdin })[Symbol.asyncIterator]()
       const url = ${JSON.stringify(options.url ?? authorizeUrl)}
       const end = mode === "code-st" ? "\\x1b\\\\" : "\\x07"
@@ -76,9 +87,9 @@ const fixture = (
       console.log("Browser didn't open? Use the url below to sign in (c to copy)")
       const link = "\\x1b]8;id=login;" + url + end + url.replace("?", "?\\n") + "\\x1b]8;;" + end
       // Split the OSC sequence across output chunks too.
-      process.stdout.write(link.slice(0, 30))
+      process.stdout.write(mode === "code-plain" ? "" : link.slice(0, 30))
       await Bun.sleep(10)
-      console.log(link.slice(30))
+      console.log(mode === "code-plain" ? url : link.slice(30))
       console.log("\\x1b[32mPaste code here if prompted >\\x1b[0m")
       let code = (await lines.next()).value
       console.log(code)
@@ -225,6 +236,7 @@ test("poll exposes only device challenge, cancel kills CLI and never saves crede
   expect(await f.flow.status(f.bot)).toEqual({
     provider: "codex",
     state: "waiting",
+    host: process.platform === "darwin" && process.env.TOURI_HEADLESS !== "1" ? "mac" : "server",
     deviceCode: "ABCD-EFGH",
     verificationUrl: "https://auth.openai.com/codex/device",
   })
@@ -449,6 +461,7 @@ for (const mode of ["code-bel", "code-st"])
     expect(await waitView(f, (view) => !!view.needsCode)).toEqual({
       provider: "claude",
       state: "waiting",
+      host: process.platform === "darwin" && process.env.TOURI_HEADLESS !== "1" ? "mac" : "server",
       needsCode: true,
       verificationUrl: authorizeUrl,
     })
@@ -608,4 +621,79 @@ test("a temporary vault failure recovers through status without launching login"
   f.kernel.callHost = callHost
   expect(await f.flow.status(f.bot)).toEqual({ provider: "claude", state: "ready" })
   expect(f.invocations).toHaveLength(0)
+})
+
+for (const provider of ["codex", "opencode"] as const)
+  test(`${provider}: headless login exposes a complete CLI URL and copyable device code, then cancels`, async () => {
+    const url =
+      provider === "codex"
+        ? "https://auth.openai.com/codex/device?user_code=1234-5678"
+        : "https://opencode.ai/auth?state=synthetic-state"
+    const f = fixture(provider, "headless-device", 3000, {
+      platform: "linux",
+      headless: true,
+      output: `\x1b[36mOpen this URL: ${url}\x1b[0m\nYour one-time code is: 1234-5678`,
+    })
+    await f.flow.action(f.bot, { action: "start" })
+    const view = await waitView(f, (view) => view.verificationUrl === url)
+    expect(view).toMatchObject({ state: "waiting", host: "server", deviceCode: "1234-5678" })
+    expect(f.invocations[0]?.env.BROWSER).toBe("echo")
+    expect(f.invocations[0]?.env.DISPLAY).toBeUndefined()
+    expect(f.kernel.redact("1234-5678")).toBe("[REDACTED]")
+    expect((await f.flow.action(f.bot, { action: "cancel" })).state).toBe("cancelled")
+    await waitKilled(f.kills)
+    expect(f.vault.size).toBe(0)
+  })
+
+test("headless Claude accepts a plain printed authorize URL and completes with a pasted code", async () => {
+  const f = fixture("claude", "code-plain", 3000, { platform: "linux", headless: true })
+  await f.flow.action(f.bot, { action: "start" })
+  const view = await waitView(f, (view) => !!view.needsCode)
+  expect(view).toMatchObject({ host: "server", verificationUrl: authorizeUrl })
+  expect(f.invocations[0]?.env.BROWSER).toBe("echo")
+  await f.flow.action(f.bot, { action: "code", value: browserCode })
+  await waitState(f, "ready")
+  expect(f.vault.get(providerLoginAccount(f.bot.id, "claude"))).toBe(token)
+})
+
+for (const provider of ["codex", "claude", "opencode"] as const)
+  test(`${provider}: a headless timeout is retryable, clears the old challenge and stops each attempt`, async () => {
+    const f = fixture(provider, "wait", 300, { platform: "linux", headless: true })
+    await f.flow.action(f.bot, { action: "start" })
+    expect(await waitState(f, "error")).toMatchObject({
+      host: "server",
+      retryable: true,
+      message: "O login expirou. Tente novamente.",
+    })
+    await waitKilled(f.kills)
+    expect((await f.flow.status(f.bot)).verificationUrl).toBeUndefined()
+    expect((await f.flow.action(f.bot, { action: "start" })).state).toBe("waiting")
+    await waitView(f, () => f.invocations.length === 2)
+    await f.flow.action(f.bot, { action: "cancel" })
+    for (let i = 0; f.kills.length < 2 && i < 100; i++) await Bun.sleep(10)
+    expect(f.kills).toHaveLength(2)
+    expect(f.vault.size).toBe(0)
+  })
+
+test("headless OpenCode returns the authorization code to the CLI without a server browser", async () => {
+  const url = "https://opencode.ai/auth?state=synthetic-state"
+  const f = fixture("opencode", "code-plain", 3000, { platform: "linux", headless: true, url })
+  await f.flow.action(f.bot, { action: "start" })
+  expect(await waitView(f, (view) => !!view.needsCode)).toMatchObject({ host: "server", verificationUrl: url })
+  await f.flow.action(f.bot, { action: "code", value: browserCode })
+  await waitState(f, "ready")
+  expect(f.vault.get(providerLoginAccount(f.bot.id, "opencode"))).toBe(openCode)
+})
+
+test("headless OpenCode rejects the server-browser method and lets the user choose headless instead", async () => {
+  const f = fixture("opencode", "menu-browser", 3000, { platform: "linux", headless: true })
+  await f.flow.action(f.bot, { action: "start" })
+  await waitView(f, (view) => view.prompt?.kind === "provider")
+  await f.flow.action(f.bot, { action: "input", input: "enter" })
+  await waitView(f, (view) => view.prompt?.choice === "Conta (browser)")
+  await expect(f.flow.action(f.bot, { action: "input", input: "enter" })).rejects.toThrow("método com código")
+  await f.flow.action(f.bot, { action: "input", input: "down" })
+  await waitView(f, (view) => view.prompt?.choice === "Conta (headless)")
+  await f.flow.action(f.bot, { action: "input", input: "enter" })
+  await waitState(f, "ready")
 })

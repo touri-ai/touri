@@ -1,0 +1,23 @@
+.provider-device-code {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+}
+
+.provider-login-flow .provider-device-code input {
+  width: 13ch;
+  max-width: 100%;
+  font-family: var(--font-mono);
+}
+
+.provider-device-code > p {
+  flex-basis: 100%;
+  margin: 0;
+}
+
+.provider-verification-link {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}

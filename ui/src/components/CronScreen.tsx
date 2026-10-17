@@ -1,6 +1,6 @@
 import type { Bot, Id, Message, Routine, RoutineRun } from "@touri/contracts"
 import { AVATAR_COLOR_CHOICES, avatarColorFor } from "@touri/contracts/avatar"
-import { useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { type ApprovalTarget, pendingApprovalTargets } from "../approvalNavigation"
 import { userFacingError } from "../errors"
 import { t } from "../i18n"
@@ -58,6 +58,10 @@ const CronScreen = ({
   onReviewApprovals,
   onNotice,
 }: CronScreenProps) => {
+  const listRef = useRef<HTMLElement>(null)
+  useEffect(() => {
+    listRef.current?.focus()
+  }, [])
   const startingRef = useRef(new Set<Id>())
   const [starting, setStarting] = useState<Set<Id>>(new Set())
   const runNow = async (routineId: Id): Promise<void> => {
@@ -109,7 +113,12 @@ const CronScreen = ({
   }
 
   return (
-    <section className="workspace-screen r8-screen cron-screen" aria-labelledby="cron-title">
+    <section
+      ref={listRef}
+      tabIndex={-1}
+      className="workspace-screen r8-screen cron-screen"
+      aria-labelledby="cron-title"
+    >
       <ScreenHeader
         id="cron-title"
         title={t("Routines")}

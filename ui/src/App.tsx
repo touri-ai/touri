@@ -496,6 +496,11 @@ const AppContent = ({ kernel }: AppProps) => {
     }
     openDestination(command.destination)
   }
+  const openBotRoutines = (botId: Id): void => {
+    closeModal()
+    if (botId !== data.selectedBotId) actions.selectBot(botId)
+    setRoute({ section: "advanced", page: "cron", botId })
+  }
   const openDestination = (destination: PaletteDestination): void => {
     if (destination.kind === "page") {
       setRoute({ section: "advanced", page: destination.page })
@@ -508,6 +513,10 @@ const AppContent = ({ kernel }: AppProps) => {
       return
     }
     if (destination.kind === "bot-settings") {
+      if (destination.section === "routines" && selectedBot) {
+        openBotRoutines(selectedBot.id)
+        return
+      }
       setBotSettingsSection(destination.section)
       setModal("bot-settings")
       return
@@ -737,10 +746,7 @@ const AppContent = ({ kernel }: AppProps) => {
             advancedPage={advancedPage}
             onChat={() => setRoute({ section: "bots", screen: "chat" })}
             onAdvancedPage={(page) => setRoute({ section: "advanced", page })}
-            onRoutines={(botId) => {
-              if (botId !== data.selectedBotId) actions.selectBot(botId)
-              setRoute({ section: "advanced", page: "cron", botId })
-            }}
+            onRoutines={openBotRoutines}
             onProject={() => openModal("project")}
             onImport={() => openModal("import")}
             onSelect={actions.selectBot}
@@ -925,6 +931,7 @@ const AppContent = ({ kernel }: AppProps) => {
                                 )
                               }}
                               onSettings={() => openModal("bot-settings")}
+                              onRoutines={() => openBotRoutines(selectedBot.id)}
                               onModel={() => openModal("bot-model")}
                               onPermissions={() => openModal("bot-permissions")}
                               onPreview={() => setScreen("preview")}
@@ -1037,10 +1044,7 @@ const AppContent = ({ kernel }: AppProps) => {
                 activeTurns={data.runs.some(
                   (run) => run.botId === selectedBot.id && ["queued", "starting", "running"].includes(run.status),
                 )}
-                onOpenRoutines={() => {
-                  closeModal()
-                  setRoute({ section: "advanced", page: "cron", botId: selectedBot.id })
-                }}
+                onOpenRoutines={() => openBotRoutines(selectedBot.id)}
                 onOpenIntegrations={() => {
                   closeModal()
                   setRoute({ section: "advanced", page: "integracoes" })

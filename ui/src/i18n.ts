@@ -3,6 +3,19 @@ import { userFacingError } from "./errors"
 /** All UI copy lives here. pt-BR is the default; English is available for a future locale picker. */
 export type Locale = "pt-BR" | "en"
 export const ptBR = {
+  "Escolha um método com código para entrar por este aparelho.":
+    "Escolha um método com código para entrar por este aparelho.",
+  "Entre no {provedor} para o servidor: abra este link neste aparelho":
+    "Entre no {provedor} para o servidor: abra este link neste aparelho",
+  "Preparando o login do {provedor} para o servidor…": "Preparando o login do {provedor} para o servidor…",
+  "O login expira em até 10 minutos. Você pode cancelar a qualquer momento.":
+    "O login expira em até 10 minutos. Você pode cancelar a qualquer momento.",
+  "O login expirou. Tente novamente.": "O login expirou. Tente novamente.",
+  "Copiar código": "Copiar código",
+  "Código copiado.": "Código copiado.",
+  "Não foi possível copiar. Selecione e copie o código acima.":
+    "Não foi possível copiar. Selecione e copie o código acima.",
+
   // Routine deletion.
   "Excluir rotina": "Excluir rotina",
   "Excluir rotina {name}": "Excluir rotina {name}",
@@ -1709,6 +1722,20 @@ export const ptBR = {
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  "Escolha um método com código para entrar por este aparelho.":
+    "Choose a code-based method to sign in on this device.",
+  "Entre no {provedor} para o servidor: abra este link neste aparelho":
+    "Sign in to {provedor} for the server: open this link on this device",
+  "Preparando o login do {provedor} para o servidor…": "Preparing {provedor} sign-in for the server…",
+  "O login expira em até 10 minutos. Você pode cancelar a qualquer momento.":
+    "Sign-in expires within 10 minutes. You can cancel at any time.",
+  "O login expirou. Tente novamente.": "Sign-in expired. Try again.",
+  "Não foi possível concluir o login. Tente novamente ou cole o token manualmente.":
+    "Could not complete sign-in. Try again or paste the token manually.",
+  "Copiar código": "Copy code",
+  "Código copiado.": "Code copied.",
+  "Não foi possível copiar. Selecione e copie o código acima.": "Could not copy. Select and copy the code above.",
+
   // Routine deletion.
   "Excluir rotina": "Delete routine",
   "Excluir rotina {name}": "Delete routine {name}",

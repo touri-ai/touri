@@ -2,6 +2,7 @@ import { useEffect, useId, useState } from "react"
 import { localizeNotice, t } from "../i18n"
 import type { useProviderLogin } from "../useProviderLogin"
 import { VaultAccessButton } from "./VaultAccessButton"
+import "./provider-login-flow.css"
 
 export const ProviderLoginFlow = ({
   login,
@@ -13,11 +14,27 @@ export const ProviderLoginFlow = ({
   const { flow, error, busy, act, recheck } = login
   const provider = login.provider === "claude" ? "Claude" : login.provider === "codex" ? "Codex" : "OpenCode"
   const hostIsMac = flow?.host === "mac"
+  const serverLogin = flow?.host === "server"
+  const desktopMethod =
+    serverLogin &&
+    flow?.prompt?.kind === "method" &&
+    /\bbrowser\b/i.test(flow.prompt.choice) &&
+    !/\bheadless\b/i.test(flow.prompt.choice)
+  const [copyNotice, setCopyNotice] = useState<{ code: string; message: string } | null>(null)
   const [code, setCode] = useState("")
   const codeId = useId()
   useEffect(() => {
     if (!flow?.needsCode) setCode("")
   }, [flow?.needsCode])
+  const copyCode = async () => {
+    if (!flow?.deviceCode) return
+    try {
+      await navigator.clipboard.writeText(flow.deviceCode)
+      setCopyNotice({ code: flow.deviceCode, message: t("Código copiado.") })
+    } catch {
+      setCopyNotice({ code: flow.deviceCode, message: t("Não foi possível copiar. Selecione e copie o código acima.") })
+    }
+  }
   const sendCode = async () => {
     if (busy || !code.trim()) return
     const result = await act("code", code)
@@ -31,7 +48,11 @@ export const ProviderLoginFlow = ({
           : !flow
             ? t("Verificando login…")
             : flow.state === "waiting"
-              ? t("Aguardando login no navegador…")
+              ? serverLogin
+                ? flow.verificationUrl
+                  ? t("Entre no {provedor} para o servidor: abra este link neste aparelho", { provedor: provider })
+                  : t("Preparando o login do {provedor} para o servidor…", { provedor: provider })
+                : t("Aguardando login no navegador…")
               : flow.state === "ready"
                 ? t("Login disponível para este bot.")
                 : flow.state === "host-available"
@@ -41,7 +62,7 @@ export const ProviderLoginFlow = ({
                     : flow.state === "cancelled"
                       ? t("Login cancelado.")
                       : flow.state === "error"
-                        ? flow.host === "server" && flow.message
+                        ? (serverLogin || flow.retryable) && flow.message
                           ? localizeNotice(flow.message)
                           : t("Não foi possível concluir o login. Verifique de novo ou use outra conta.")
                         : t("Entre no provedor para enviar mensagens.")}
@@ -55,6 +76,7 @@ export const ProviderLoginFlow = ({
       )}
       {flow?.state === "waiting" && (
         <>
+          {serverLogin && <p>{t("O login expira em até 10 minutos. Você pode cancelar a qualquer momento.")}</p>}
           {flow.prompt && (
             <div>
               <p>
@@ -77,10 +99,11 @@ export const ProviderLoginFlow = ({
               >
                 {t("Próxima opção")}
               </button>
+              {serverLogin && <p>{t("Escolha um método com código para entrar por este aparelho.")}</p>}
               <button
                 type="button"
                 className="button button-brand"
-                disabled={busy}
+                disabled={busy || desktopMethod}
                 onClick={() => void act("input", undefined, "enter")}
               >
                 {t("Confirmar opção")}
@@ -88,9 +111,14 @@ export const ProviderLoginFlow = ({
             </div>
           )}
           {flow.deviceCode && (
-            <p>
-              {t("Código de login")}: <strong>{flow.deviceCode}</strong>
-            </p>
+            <div className="provider-device-code">
+              <label htmlFor={`${codeId}-device`}>{t("Código de login")}</label>
+              <input id={`${codeId}-device`} value={flow.deviceCode} readOnly spellCheck={false} autoComplete="off" />
+              <button type="button" className="button button-quiet" onClick={() => void copyCode()}>
+                {t("Copiar código")}
+              </button>
+              {copyNotice?.code === flow.deviceCode && <p role="status">{copyNotice.message}</p>}
+            </div>
           )}
           {flow.needsCode && (
             <div>
@@ -131,15 +159,27 @@ export const ProviderLoginFlow = ({
           {flow.verificationUrl && (
             <a
               href={flow.verificationUrl}
+              className="provider-verification-link"
               target="_blank"
               rel="noreferrer"
               onClick={(event) => {
+                if (serverLogin) return
                 event.preventDefault()
                 if (flow.verificationUrl) void login.openPage(flow.verificationUrl)
               }}
             >
               {t("Abrir página de login")}
             </a>
+          )}
+          {serverLogin && (
+            <button
+              type="button"
+              className="button button-quiet"
+              disabled={busy}
+              onClick={() => void act("cancel").then((result) => result && act("start"))}
+            >
+              {t("Tentar de novo")}
+            </button>
           )}
           <button type="button" className="button button-quiet" disabled={busy} onClick={() => void act("cancel")}>
             {t("Cancelar login")}
@@ -155,9 +195,13 @@ export const ProviderLoginFlow = ({
         flow.state !== "waiting" &&
         flow.state !== "ready" &&
         flow.state !== "vault-locked" &&
-        !(flow.state === "error" && flow.host === "server") && (
+        !(flow.state === "error" && serverLogin && !flow.retryable) && (
           <button type="button" className="button button-quiet" disabled={busy} onClick={() => void act("start")}>
-            {flow.state === "idle" ? t("Entrar no {provider}", { provider }) : t("Usar outra conta")}
+            {flow.retryable || flow.state === "cancelled"
+              ? t("Tentar de novo")
+              : flow.state === "idle"
+                ? t("Entrar no {provider}", { provider })
+                : t("Usar outra conta")}
           </button>
         )}
       {flow?.state !== "waiting" &&

@@ -70,7 +70,7 @@ it("F012 distinguishes creation permission from the later activation action", ()
   expect(screen.queryByRole("button", { name: "Ativar rotina" })).toBeNull()
 })
 
-it("F013 describes the daily schedule in settings and on the Rotinas screen", async () => {
+it("F013 opens the bot routines screen directly from the settings tab", async () => {
   const api = createMockApi()
   await api.request("PATCH /routines/:id", { cron: "0 9 * * *" }, { id: "routine-daily" })
   render(<App kernel={{ services: { api } }} />)
@@ -79,16 +79,12 @@ it("F013 describes the daily schedule in settings and on the Rotinas screen", as
   const dialog = screen.getByRole("dialog")
   fireEvent.click(within(dialog).getByRole("button", { name: "Avançado" }))
   fireEvent.click(within(dialog).getByRole("tab", { name: "Rotinas" }))
-  expect(within(dialog).getByText("Todo dia às 09:00 · horário de São Paulo")).toBeVisible()
-  fireEvent.click(within(dialog).getByText("Detalhes do agendamento"))
-  expect(within(dialog).getByText("0 9 * * * · America/Sao_Paulo")).toBeVisible()
-  fireEvent.click(within(dialog).getByRole("button", { name: "Fechar diálogo" }))
   await waitFor(() => expect(dialog).not.toBeInTheDocument())
-  openRoutines()
   expect(screen.getByRole("heading", { name: "Rotinas" })).toBeVisible()
   expect(screen.getByRole("button", { name: /Criar rotina/ })).toBeVisible()
   const routines = screen.getByRole("region", { name: "Rotinas" })
   expect(within(routines).getByText("Todo dia às 09:00 · horário de São Paulo")).toBeVisible()
+  await waitFor(() => expect(routines).toHaveFocus())
 })
 
 it("F013 names the routines page Rotinas in the command palette", () => {
@@ -173,4 +169,29 @@ it.each([
   view.rerender(<Sidebar {...props} {...navigation} />)
   expect(screen.queryByRole("menu")).toBeNull()
   expect(trigger).toHaveAttribute("aria-expanded", "false")
+})
+
+it("opens the empty bot's routines directly from Configure routines and focuses the list", async () => {
+  const api = createMockApi()
+  render(<App kernel={{ services: { api } }} />)
+  await screen.findByRole("textbox", { name: "Mensagem para mark" })
+  const sidebar = screen.getByRole("navigation", { name: "Barra lateral" })
+  fireEvent.click(sidebar.querySelector('[data-bot-entry="bot-onb"] .bot-row-main') as HTMLElement)
+  await screen.findByRole("textbox", { name: "Mensagem para onb" })
+  fireEvent.click(screen.getByRole("button", { name: "Painel do bot" }))
+  fireEvent.click(screen.getByRole("button", { name: "Configurar rotinas" }))
+  const routines = await screen.findByRole("region", { name: "Rotinas" })
+  expect(screen.queryByRole("dialog")).toBeNull()
+  expect(within(routines).getByRole("button", { name: "onb", exact: true })).toHaveAttribute("aria-pressed", "true")
+  expect(within(routines).queryByText("Resumo diário")).toBeNull()
+  await waitFor(() => expect(routines).toHaveFocus())
+})
+
+it.each(["mark", "onb"])("opens and focuses %s's routines from its actions menu", async (name) => {
+  render(<App kernel={{ services: { api: createMockApi() } }} />)
+  await screen.findByRole("textbox", { name: "Mensagem para mark" })
+  openRoutines(name)
+  const routines = await screen.findByRole("region", { name: "Rotinas" })
+  expect(within(routines).getByRole("button", { name, exact: true })).toHaveAttribute("aria-pressed", "true")
+  await waitFor(() => expect(routines).toHaveFocus())
 })
