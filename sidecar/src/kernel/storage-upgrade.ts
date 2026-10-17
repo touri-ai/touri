@@ -95,7 +95,10 @@ self.onmessage = async ({ data: { filename, destination, online } }) => {
       source.close(); source = null;
     }
     stage = "verify";
-    backup = new Database(destination, { readonly: true });
+    // A page backup may retain a WAL-mode header. Open only the private copy
+    // writable to recover it and make it independent of temporary WAL/SHM files.
+    backup = new Database(destination, { readwrite: true, create: false });
+    if (backup.query("PRAGMA journal_mode = DELETE").get().journal_mode !== "delete") throw new Error("backup");
     if (backup.query("PRAGMA quick_check").get().quick_check !== "ok") throw new Error("backup");
     backup.close(); backup = null;
     stage = "sync";

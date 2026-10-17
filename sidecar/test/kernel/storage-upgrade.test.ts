@@ -62,6 +62,7 @@ test("existing history is backed up before resumable pruning; unpublished output
     const backupPath = join(f.root, "backups", "history-before-22.db")
     const backup = new Database(backupPath, { readonly: true })
     try {
+      expect(backup.query("PRAGMA journal_mode").get()).toEqual({ journal_mode: "delete" })
       expect(backup.query("PRAGMA integrity_check").get()).toEqual({ integrity_check: "ok" })
       expect(backup.query("SELECT COUNT(*) AS n FROM transcript_entries").get()).toEqual({ n: 91 })
       expect(backup.query("SELECT text,parts_json FROM messages WHERE id = 'm'").get()).toEqual(original)
@@ -135,6 +136,7 @@ test.skipIf(process.platform === "win32")(
       const backupPath = join(f.root, "backups", "history-before-22.db")
       const backup = new Database(backupPath, { readonly: true })
       try {
+        expect(backup.query("PRAGMA journal_mode").get()).toEqual({ journal_mode: "delete" })
         expect(backup.query("SELECT text,parts_json,updated_seq FROM messages WHERE id = 'm'").get()).toEqual(original)
         expect(backup.query("SELECT COUNT(*) AS n FROM transcript_entries").get()).toEqual({ n: 92 })
         expect(backup.query("SELECT * FROM attachments WHERE id = 'wal-output'").get()).toEqual(attachment)
@@ -144,6 +146,7 @@ test.skipIf(process.platform === "win32")(
       }
       expect(database.query("SELECT text,parts_json,updated_seq FROM messages WHERE id = 'm'").get()).toEqual(original)
       expect(database.query("SELECT COUNT(*) AS n FROM transcript_entries").get()).toEqual({ n: 92 })
+      expect(database.query("PRAGMA journal_mode").get()).toEqual({ journal_mode: "wal" })
       expect(statSync(backupPath).mode & 0o777).toBe(0o600)
     } finally {
       upgrade.dispose()
