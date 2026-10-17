@@ -32,7 +32,16 @@ const handlers: Record<string, (args: { deps: Deps; params: unknown }) => Promis
   },
   notify: async ({ deps, params }) => {
     const note = params as HostMethods["notify"]["params"]
-    deps.publish({ type: "notify", level: "info", title: note.title, body: note.body, threadId: note.threadId })
+    deps.publish({
+      type: "notify",
+      level: "info",
+      title: note.title,
+      body: note.body,
+      threadId: note.threadId,
+      ...(note.requestId === undefined ? {} : { requestId: note.requestId }),
+      ...(note.notificationId === undefined ? {} : { notificationId: note.notificationId }),
+      ...(note.kind === undefined ? {} : { kind: note.kind }),
+    })
     return done({})
   },
   "secret.prompt": async () => {

@@ -3,8 +3,10 @@ import { approvalSummary, isApprovalNoticeTitle } from "@touri/contracts/approva
 import { redactToolText } from "@touri/contracts/redaction"
 
 export const approvalNotificationSummary = (item: NotificationRecord, messages: Message[]) => {
-  const message = messages.find((message) =>
-    message.parts.some((part) => part.type === "approval" && part.approvalId === item.requestId),
+  const message = messages.find(
+    (message) =>
+      message.threadId === item.threadId &&
+      message.parts.some((part) => part.type === "approval" && part.approvalId === item.requestId),
   )
   const part = message?.parts.find(
     (part): part is ApprovalPart => part.type === "approval" && part.approvalId === item.requestId,

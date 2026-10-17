@@ -68,14 +68,14 @@ it("uses the card's canonical summary for legacy and current folder notification
   const view = render(<ApprovalNotice {...props} />)
   const notice = screen.getByRole("status")
   expect(notice).toHaveTextContent("Café Ideias")
-  expect(notice).toHaveTextContent(summary)
+  expect(notice).toHaveTextContent(summary.charAt(0).toLocaleLowerCase() + summary.slice(1))
   expect(notice).not.toHaveTextContent(/folder_access_request|requestedPath|previousMode|nextTurn|[{}]/)
   fireEvent.click(within(notice).getByRole("button", { name: "Revisar" }))
   expect(props.onReview).toHaveBeenCalledWith({ threadId: "thread-a", approvalId: folder.approvalId })
   view.rerender(
     <ApprovalNotice {...props} notifications={[{ ...notification, ...approvalSummary(folder) }]} messages={[]} />,
   )
-  expect(screen.getByRole("status")).toHaveTextContent(summary)
+  expect(screen.getByRole("status")).toHaveTextContent(summary.charAt(0).toLocaleLowerCase() + summary.slice(1))
 })
 
 it("dismisses only the reminder, keeps approval pending, and shows the next request", () => {
@@ -84,7 +84,9 @@ it("dismisses only the reminder, keeps approval pending, and shows the next requ
   fireEvent.click(screen.getByRole("button", { name: "Dispensar aviso" }))
   expect(screen.queryByRole("status")).toBeNull()
   expect(notification.resolution).toBeNull()
-  view.rerender(<ApprovalNotice {...props} notifications={[notification, { ...notification, id: 2 }]} />)
+  view.rerender(
+    <ApprovalNotice {...props} notifications={[notification, { ...notification, id: 2, requestId: "next-request" }]} />,
+  )
   expect(screen.getByRole("status")).toBeInTheDocument()
 })
 

@@ -3,6 +3,28 @@ import { userFacingError } from "./errors"
 /** All UI copy lives here. pt-BR is the default; English is available for a future locale picker. */
 export type Locale = "pt-BR" | "en"
 export const ptBR = {
+  "{bot} precisa de você: autorizar {action}.": "{bot} precisa de você: autorizar {action}.",
+  "Autorizado. Retomando a tarefa.": "Autorizado. Retomando a tarefa.",
+  "Os avisos do sistema estão desativados.": "Os avisos do sistema estão desativados.",
+  "Abrir ajustes": "Abrir ajustes",
+  "Testar aviso": "Testar aviso",
+  "Com esta página fechada, os avisos ficam guardados no servidor.":
+    "Com esta página fechada, os avisos ficam guardados no servidor.",
+  "Você tem {n} solicitações pendentes.": "Você tem {n} solicitações pendentes.",
+  "O sistema permite avisos. Teste a entrega.": "O sistema permite avisos. Teste a entrega.",
+  "Os avisos estão desativados no touri.": "Os avisos estão desativados no touri.",
+  "O sistema ainda não autorizou os avisos.": "O sistema ainda não autorizou os avisos.",
+  "Não foi possível verificar a autorização do sistema. Teste a entrega.":
+    "Não foi possível verificar a autorização do sistema. Teste a entrega.",
+  "Aviso de teste do touri": "Aviso de teste do touri",
+  "Se este aviso apareceu, a entrega está funcionando.": "Se este aviso apareceu, a entrega está funcionando.",
+  "Teste enviado. Confira se o aviso apareceu no sistema.": "Teste enviado. Confira se o aviso apareceu no sistema.",
+  "Não foi possível testar os avisos. Abra os ajustes e tente novamente.":
+    "Não foi possível testar os avisos. Abra os ajustes e tente novamente.",
+  "Aprovado por você": "Aprovado por você",
+  "Aprovação expirada": "Aprovação expirada",
+  "Negado por você": "Negado por você",
+
   "Conectar dados": "Conectar dados",
   "Escolha como disponibilizar os dados para este bot.": "Escolha como disponibilizar os dados para este bot.",
   "Anexar arquivo/CSV": "Anexar arquivo/CSV",
@@ -1332,6 +1354,29 @@ export const ptBR = {
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  "{bot} precisa de você: autorizar {action}.": "{bot} needs you: authorize {action}.",
+  "Autorizado. Retomando a tarefa.": "Authorized. Resuming the task.",
+  "Os avisos do sistema estão desativados.": "System notifications are disabled.",
+  "Abrir ajustes": "Open settings",
+  "Testar aviso": "Test notification",
+  "Com esta página fechada, os avisos ficam guardados no servidor.":
+    "When this page is closed, notifications are kept on the server.",
+  "Você tem {n} solicitações pendentes.": "You have {n} pending requests.",
+  "O sistema permite avisos. Teste a entrega.": "The system allows notifications. Test delivery.",
+  "Os avisos estão desativados no touri.": "Notifications are disabled in touri.",
+  "O sistema ainda não autorizou os avisos.": "The system has not authorized notifications yet.",
+  "Não foi possível verificar a autorização do sistema. Teste a entrega.":
+    "Could not verify system authorization. Test delivery.",
+  "Aviso de teste do touri": "touri test notification",
+  "Se este aviso apareceu, a entrega está funcionando.": "If you see this notification, delivery is working.",
+  "Teste enviado. Confira se o aviso apareceu no sistema.":
+    "Test sent. Check whether the notification appeared in the system.",
+  "Não foi possível testar os avisos. Abra os ajustes e tente novamente.":
+    "Could not test notifications. Open settings and try again.",
+  "Aprovado por você": "Approved by you",
+  "Aprovação expirada": "Approval expired",
+  "Negado por você": "Denied by you",
+
   "Conectar dados": "Connect data",
   "Escolha como disponibilizar os dados para este bot.": "Choose how to make the data available to this bot.",
   "Anexar arquivo/CSV": "Attach a file/CSV",
