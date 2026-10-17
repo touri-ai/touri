@@ -147,6 +147,16 @@ export const openWorkspaceEntry = (directory: number, name: string): number => {
   return fd
 }
 
+/** Creates one new child under a pinned directory, refusing existing entries. */
+export const createWorkspaceChildDirectory = (directory: number, name: string): void => {
+  if (!name || name === "." || name === ".." || name.includes("/") || name.includes("\0"))
+    throw new TouriError("TOURI-E2000")
+  if (native.mkdirat(directory, cstring(name), 0o700) < 0) {
+    if (errno() === 17) throw Object.assign(new Error("Directory exists"), { code: "EEXIST" })
+    throw failure()
+  }
+}
+
 const rootDirectory = (root: string): number => {
   if (root.includes("\0") || resolve(root) === sep) throw new TouriError("TOURI-E2000")
   const absolute = resolve(root)

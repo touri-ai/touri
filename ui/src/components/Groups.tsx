@@ -1,13 +1,24 @@
 import type { Bot, BotGroup, GroupInput, Thread } from "@touri/contracts"
 import { useEffect, useRef, useState } from "react"
 import { userFacingError } from "../errors"
-import { t } from "../i18n"
+import { type Locale, t } from "../i18n"
 import { AvatarPicker } from "./AvatarPicker"
 import { BotAvatar } from "./BotAvatar"
 import "./groups.css"
 
-export const MemberMascots = ({ bots }: { bots: Bot[] }) => (
-  <span role="img" className="group-mascots" aria-label={bots.map((b) => b.name).join(", ")}>
+export const MemberMascots = ({ bots, locale = "pt-BR" }: { bots: Bot[]; locale?: Locale }) => (
+  <span
+    role="img"
+    className="group-mascots"
+    aria-label={t(
+      bots.length ? "Group members label" : "Group member count",
+      {
+        count: bots.length,
+        names: bots.map((b) => b.name).join(", "),
+      },
+      locale,
+    )}
+  >
     {bots.slice(0, 4).map((bot) => (
       <BotAvatar key={bot.id} bot={bot} size={24} />
     ))}
@@ -181,33 +192,40 @@ export const GroupHeader = ({
   onEdit,
   panelOpen,
   onTogglePanel,
+  locale = "pt-BR",
 }: {
   group: BotGroup
   bots: Bot[]
   onEdit: () => void
   panelOpen?: boolean
   onTogglePanel?: (() => void) | undefined
+  locale?: Locale
 }) => (
   <header className="chat-header group-header">
     <div>
-      <span className="chat-header-crumb">Grupos / {group.name}</span>
+      <span className="chat-header-crumb">{t("Grupos / {name}", { name: group.name }, locale)}</span>
       <div className="group-heading-name">
         <BotAvatar
           bot={{ id: group.id, color: group.color, avatarShape: group.avatarShape, avatarSeed: group.avatarSeed }}
           size={30}
         />
         <strong>{group.name}</strong>
+        <span className="group-member-count">{t("Group member count", { count: bots.length }, locale)}</span>
       </div>
     </div>
     <div className="group-header-members">
-      <MemberMascots bots={bots} />
-      <span>{bots.map((b) => `${b.name}${b.id === group.coordinatorBotId ? " · coordenador" : ""}`).join(", ")}</span>
+      <MemberMascots bots={bots} locale={locale} />
+      <span>
+        {bots
+          .map((b) => `${b.name}${b.id === group.coordinatorBotId ? t("Group coordinator suffix", {}, locale) : ""}`)
+          .join(", ")}
+      </span>
     </div>
     {onTogglePanel && (
       <button
         type="button"
         className="toolbar-icon bot-panel-toggle"
-        aria-label={t("Painel do grupo")}
+        aria-label={t("Painel do grupo", {}, locale)}
         aria-expanded={panelOpen}
         aria-controls="bot-panel"
         onClick={onTogglePanel}
@@ -216,7 +234,7 @@ export const GroupHeader = ({
       </button>
     )}
     <button type="button" className="button button-quiet" onClick={onEdit}>
-      Editar grupo
+      {t("Editar grupo", {}, locale)}
     </button>
   </header>
 )

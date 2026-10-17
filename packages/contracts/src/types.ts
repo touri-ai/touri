@@ -48,6 +48,14 @@ export type Result<T, C extends string = string> = Ok<T> | Err<C>
 
 export type DiscoveredProject = { path: AbsolutePath; name: string; lastModified: number }
 
+export type FolderListing = {
+  home: AbsolutePath
+  path: AbsolutePath
+  parent: AbsolutePath | null
+  folders: Array<{ name: string; path: AbsolutePath }>
+  truncated: boolean
+}
+
 export type Project = {
   id: Id
   name: string
@@ -784,6 +792,8 @@ export type ApiRoutes = {
   }
   'GET /projects': { req: {}; res: { projects: Array<Project> } }
   'GET /projects/discover': { req: {}; res: { repositories: Array<DiscoveredProject> } }
+  'GET /folders': { req: { path?: AbsolutePath }; res: FolderListing }
+  'POST /folders': { req: { path: AbsolutePath; name: string }; res: { path: AbsolutePath } }
   'POST /projects': {
     req: { path: AbsolutePath; name?: string } | { gitUrl: string; parentDir: AbsolutePath; name?: string }
     res: { project: Project }
