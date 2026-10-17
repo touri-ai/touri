@@ -63,9 +63,14 @@ for (const [device, width, height] of [
       await dialog.getByRole("button", { name: "Criar bot", exact: true }).click()
       await expect(dialog.getByRole("alert")).toContainText("Instale a IA")
       await expect(dialog.getByText(/Usa o Codex/)).toHaveCount(0)
+      await page.context().route("https://developers.openai.com/codex/cli/", (route) =>
+        route.fulfill({ contentType: "text/html", body: "Installation guide fixture" }),
+      )
       const popup = page.waitForEvent("popup")
       await dialog.getByRole("link", { name: "Ver como instalar" }).click()
-      await (await popup).close()
+      const guide = await popup
+      await expect(guide).toHaveURL("https://developers.openai.com/codex/cli/")
+      await guide.close()
       await page.evaluate(() => (window as unknown as HarnessWindow).installCli())
       await dialog.getByRole("button", { name: "Verificar novamente" }).click()
       await expect(dialog.getByText("Usa o Codex, conectado neste servidor.")).toBeVisible()
