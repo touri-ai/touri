@@ -32,7 +32,9 @@ export const parseMcpShimStage = (text: string): McpShimStage => {
   const marker = text.match(/touri MCP startup failed: ([a-z_]+)/)
   const named = MCP_SHIM_STAGES.find((stage) => stage === marker?.[1])
   if (named) return named
+  if (/Unable to read MCP token/i.test(text)) return "token_unavailable"
+  if (/MCP socket error/i.test(text)) return "socket_error"
   if (/time(?:d)?[ -]?out|timeout/i.test(text)) return "handshake_timeout"
-  if (/connection closed|initialize response|transport closed/i.test(text)) return "closed_before_initialize"
+  if (/connection closed|initialize (?:response|closed)|transport closed/i.test(text)) return "closed_before_initialize"
   return "unknown"
 }

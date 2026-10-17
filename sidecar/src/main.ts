@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs"
-import { createConnection } from "node:net"
+import { createConnection, type Socket } from "node:net"
 import { isAbsolute, relative, resolve } from "node:path"
 import type { SidecarModule } from "@touri/contracts"
 import { createKernel, type KernelRuntime } from "./kernel"
@@ -144,16 +144,24 @@ export const runMcpStdio = ({ threadId, appData }: { threadId: string; appData?:
   let token: string
   try {
     token = readFileSync(tokenPath, "utf8").trim()
-  } catch (error) {
-    process.stderr.write(`Unable to read MCP token: ${error instanceof Error ? error.message : String(error)}\n`)
+    if (!token) throw new Error("Empty MCP token")
+  } catch {
+    process.stderr.write(`${mcpStartupFailureLine({ stage: "token_unavailable" })}\n`)
     process.exitCode = 1
     return Promise.resolve()
   }
-  const socketPath = process.env.TOURI_MCP_SOCK ?? resolveMcpEndpoint(paths)
+  let socket: Socket
+  try {
+    const socketPath = process.env.TOURI_MCP_SOCK ?? resolveMcpEndpoint(paths)
+    socket = createConnection(connectionOptions(socketPath))
+  } catch {
+    process.stderr.write(`${mcpStartupFailureLine({ stage: "socket_error" })}\n`)
+    process.exitCode = 1
+    return Promise.resolve()
+  }
   // Registration probes `ps` in the background so it never delays the MCP handshake.
   const registration = registerShim({ runDir: paths.runDir, thread: threadId })
   return new Promise((resolve) => {
-    const socket = createConnection(connectionOptions(socketPath))
     const state = { answered: false, finished: false }
     let stopWatching: () => void = () => undefined
     const finish = (reason: McpShimStage): void => {
@@ -168,8 +176,7 @@ export const runMcpStdio = ({ threadId, appData }: { threadId: string; appData?:
     const onStdinEnd = (): void => {
       setTimeout(() => finish("stdin_closed"), STDIN_EOF_GRACE_MS).unref()
     }
-    socket.once("error", (error) => {
-      process.stderr.write(`MCP socket error: ${error.message}\n`)
+    socket.once("error", () => {
       process.exitCode = 1
       finish("socket_error")
     })
