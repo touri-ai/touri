@@ -344,7 +344,7 @@ const AppContent = ({ kernel }: AppProps) => {
           .filter(
             (run) =>
               run.threadId === item.threadId &&
-              run.status === "failed" &&
+              (run.status === "failed" || run.status === "interrupted") &&
               (run.finishedAt ?? 0) <= item.createdAt + 1000,
           )
           .sort((a, b) => (b.finishedAt ?? 0) - (a.finishedAt ?? 0))[0]
@@ -437,7 +437,7 @@ const AppContent = ({ kernel }: AppProps) => {
         .filter(
           (run) =>
             run.threadId === noticeRecord.threadId &&
-            run.status === "failed" &&
+            (run.status === "failed" || run.status === "interrupted") &&
             (run.finishedAt ?? 0) <= noticeRecord.createdAt + 1000,
         )
         .sort((a, b) => (b.finishedAt ?? 0) - (a.finishedAt ?? 0))[0]

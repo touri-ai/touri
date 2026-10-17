@@ -100,7 +100,9 @@ const NotificationRow = ({
   const failedRun = runs
     .filter(
       (run) =>
-        run.threadId === item.threadId && run.status === "failed" && (run.finishedAt ?? 0) <= item.createdAt + 1000,
+        run.threadId === item.threadId &&
+        (run.status === "failed" || run.status === "interrupted") &&
+        (run.finishedAt ?? 0) <= item.createdAt + 1000,
     )
     .sort((a, b) => (b.finishedAt ?? 0) - (a.finishedAt ?? 0))[0]
   const failedMessage = messages.find((message) => message.id === failedRun?.replyMessageId)

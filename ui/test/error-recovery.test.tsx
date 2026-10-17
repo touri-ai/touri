@@ -299,3 +299,39 @@ it("closes the bell before running recovery for its own notification", async () 
   await waitFor(() => expect(recover).toHaveBeenCalledWith(item, "login"))
   expect(screen.getByRole("button", { name: /Notificações/ })).toHaveAttribute("aria-expanded", "false")
 })
+
+it("opens recorded actions from a notification for a restart-interrupted run", async () => {
+  const api = createMockApi()
+  const { bots, threads } = api.getState()
+  const bot = bots[0]
+  const thread = threads.find((item) => item.botId === bot?.id)
+  if (!bot || !thread) throw new Error("Missing conversation")
+  const message = {
+    ...failed("app_restart", [
+      { type: "command", callId: "saved", command: "save notes.md", output: "saved", exitCode: 0 },
+    ]),
+    threadId: thread.id,
+  }
+  const run: Run = {
+    ...runFor("app_restart"),
+    threadId: thread.id,
+    botId: bot.id,
+    status: "interrupted",
+    errorClass: "app_restart",
+  }
+  api.notify({ kind: "turn-failed", botId: bot.id, threadId: thread.id, title: "Turn failed", body: "app_restart" })
+  const original = api.request.bind(api)
+  api.request = vi.fn((route, input, path) => {
+    if (route === "GET /threads/:id/messages") return Promise.resolve({ messages: [message], activeLeafId: message.id })
+    if (route === "GET /threads/:id/runs") return Promise.resolve({ runs: [run] })
+    if (route === "GET /workspace/activity") return Promise.resolve({ runs: [run], messages: [message] })
+    return original(route, input, path)
+  }) as typeof api.request
+  render(<App kernel={{ services: { api } }} />)
+  await screen.findByRole("textbox", { name: /^Mensagem para/ })
+  fireEvent.click(screen.getByRole("button", { name: /Notificações/ }))
+  const row = screen.getByTestId("notification-row")
+  fireEvent.click(within(row).getByRole("button", { name: "Ver ações realizadas" }))
+  expect(await screen.findByRole("region", { name: "Ações registradas" })).toBeVisible()
+  expect(api.request).not.toHaveBeenCalledWith("POST /runs/:id/retry", expect.anything(), expect.anything())
+})
