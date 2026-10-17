@@ -682,8 +682,10 @@ export type ProviderProfile = { name: string; provider: Provider; loggedIn: bool
 export type ProviderLoginFlow = {
   provider: Provider
   state: 'idle' | 'host-available' | 'waiting' | 'ready' | 'cancelled' | 'error' | 'vault-locked'
-  /** Sidecar host, independent of the browser. Sent only when a valid host login can be imported. */
+  /** Sidecar host, independent of the browser; also identifies remote login attempts. */
   host?: 'mac' | 'server'
+  /** An expired or failed CLI attempt can be started again; vault errors require repair. */
+  retryable?: boolean
   deviceCode?: string
   verificationUrl?: string
   needsCode?: boolean
