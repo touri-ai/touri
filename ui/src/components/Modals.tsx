@@ -30,6 +30,7 @@ import type { WorkspaceActions } from "../useWorkspace"
 import { type AvatarChoice, AvatarPicker } from "./AvatarPicker"
 import { BotAccessSummary } from "./BotAccessSummary"
 import { BotAvatar } from "./BotAvatar"
+import { BotBrowserPicker } from "./BotBrowserPicker"
 import { BotFolderSettings } from "./BotFolderSettings"
 import { BotMcpSettings } from "./BotMcpSettings"
 import { BotNetworkSettings } from "./BotNetworkSettings"
@@ -449,6 +450,7 @@ export const BotCreateModal = ({
   const [folders, setFolders] = useState<BotFolder[]>([])
   const [anyFolderAccess, setAnyFolderAccess] = useState(false)
   const [browserEnabled, setBrowserEnabled] = useState(true)
+  const [browser, setBrowser] = useState<Bot["browser"]>("touri")
   const [error, setError] = useState<string | null>(null)
   const [access, setAccess] = useState("workspace-write")
   const [machine, setMachine] = useState<
@@ -501,6 +503,7 @@ export const BotCreateModal = ({
         folders: machine.machine === "cloud" ? [] : folders,
         anyFolderAccess: machine.machine !== "cloud" && anyFolderAccess,
         browserEnabled,
+        browser,
         access: access === "full-approved" ? ("full" as const) : (access as Bot["access"]),
         approvals:
           access === "full" || (provider === "codex" && access === "full-approved")
@@ -779,6 +782,7 @@ export const BotCreateModal = ({
                     onChange={(event) => setBrowserEnabled(event.target.checked)}
                   />
                 </label>
+                <BotBrowserPicker value={browser} machine={machine.machine} disabled={saving} onChange={setBrowser} />
                 <MachineFields
                   values={machine}
                   cloudConnected={cloudAccount?.connected === true}
@@ -787,6 +791,14 @@ export const BotCreateModal = ({
                   onChange={(patch) => {
                     setMachine((current) => ({ ...current, ...patch }))
                     if (patch.machine === "cloud") setProjectId("")
+                    if (patch.machine)
+                      setBrowser((current) =>
+                        patch.machine === "vm"
+                          ? "machine"
+                          : current === "machine" || patch.machine === "cloud"
+                            ? "touri"
+                            : current,
+                      )
                   }}
                 />
                 {machine.machine === "cloud" && (
@@ -912,6 +924,7 @@ export const BotSettingsModal = ({
     vmProviderLogin: bot.vmProviderLogin,
     hostComputerUse: bot.hostComputerUse,
   })
+  const [browser, setBrowser] = useState(bot.browser ?? "touri")
   const [provider, setProvider] = useState(bot.provider)
   const [model, setModel] = useState(bot.model ?? "")
   const [access, setAccess] = useState<string>(
@@ -993,6 +1006,7 @@ export const BotSettingsModal = ({
         name: validName,
         ...avatar,
         ...machine,
+        browser,
         roleLine: roleLine.trim() || null,
         title: title.trim() || null,
         instructions,
@@ -1218,7 +1232,17 @@ export const BotSettingsModal = ({
                 provider={provider}
                 {...(capability ? { capability } : {})}
                 {...(machineState ? { state: machineState } : {})}
-                onChange={(patch) => setMachine((current) => ({ ...current, ...patch }))}
+                onChange={(patch) => {
+                  setMachine((current) => ({ ...current, ...patch }))
+                  if (patch.machine)
+                    setBrowser((current) =>
+                      patch.machine === "vm"
+                        ? "machine"
+                        : current === "machine" || patch.machine === "cloud"
+                          ? "touri"
+                          : current,
+                    )
+                }}
                 {...(bot.machine === "vm"
                   ? {
                       onAction: (reset: boolean, stopTurns?: boolean) =>
@@ -1276,7 +1300,7 @@ export const BotSettingsModal = ({
               <label className="toggle-row" htmlFor="settings-browser">
                 <span>
                   <strong>{t("Browser enabled")}</strong>
-                  <small>{t("Allow this teammate to use its touri-owned Chrome tabs.")}</small>
+                  <small>{t("Allow this teammate to use its own browser tabs.")}</small>
                 </span>
                 <SettingsSwitch
                   id="settings-browser"
@@ -1288,6 +1312,12 @@ export const BotSettingsModal = ({
                   }}
                 />
               </label>
+              <BotBrowserPicker
+                value={browser}
+                machine={machine.machine}
+                disabled={saving || updating}
+                onChange={setBrowser}
+              />
             </SettingsGroup>
           </SettingsPane>
           <SettingsPane {...botPane("project")}>
@@ -1446,6 +1476,8 @@ export const BotSettingsModal = ({
               <BotMcpSettings
                 api={api}
                 botId={bot.id}
+                machine={bot.machine}
+                invokeCommand={invokeCommand}
                 onPermissionsChange={() => setGrantsRevision((revision) => revision + 1)}
                 focusOnOpen={focusMcp}
                 {...(onOpenIntegrations ? { onOpenIntegrations } : {})}

@@ -54,16 +54,20 @@ export type BrowserStore = {
 export const createBrowserStore = ({
   kernel,
   profile = "default",
+  retainTargets = false,
 }: {
   kernel: Kernel
   profile?: string
+  retainTargets?: boolean
 }): BrowserStore => {
   const database = kernel.db as Database
   const tabs = new Map<Id, TabState>()
 
   const load = (): Array<TabState> => {
     database
-      .query("UPDATE browser_tabs SET state = 'unloaded', cdp_target_id = NULL WHERE state = 'live' AND profile = ?")
+      .query(
+        `UPDATE browser_tabs SET state = 'unloaded'${retainTargets ? "" : ", cdp_target_id = NULL"} WHERE state = 'live' AND profile = ?`,
+      )
       .run(profile)
     const rows = database
       .query<BrowserTabRow, [string]>(
@@ -73,7 +77,7 @@ export const createBrowserStore = ({
     const loaded = rows.map((row) => {
       const tab: TabState = {
         info: toInfo(row),
-        targetId: null,
+        targetId: retainTargets && row.owner_bot_id ? row.cdp_target_id : null,
         sessionId: null,
         frameSessions: new Map(),
         generation: 0,

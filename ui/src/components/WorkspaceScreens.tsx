@@ -79,15 +79,10 @@ export const IntegrationsScreen = ({ api, botId, botName, onConfigure, modalOpen
                         {server ? "Configurado" : "Não conectado"}
                       </span>
                     </div>
-                    <p>
-                      {preset.title === "Gmail"
-                        ? "Leia e organize e-mails com a conta que você autorizar."
-                        : "Disponibilize apenas as pastas que você escolher."}
-                    </p>
+                    <p>{preset.description}</p>
                     <details>
                       <summary>Como conectar</summary>
                       <p>{preset.guidance}</p>
-                      {preset.setup && <code>{preset.setup}</code>}
                       <a href={preset.docs} target="_blank" rel="noreferrer">
                         Instruções do servidor {preset.title} ↗
                       </a>
