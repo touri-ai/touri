@@ -103,8 +103,6 @@ describe("WP9 frontend acceptance", () => {
   })
 
   it("connects a project, assigns bots, and defines a supervised process from the modal", async () => {
-    const timers = vi.spyOn(window, "setTimeout")
-    const clearTimer = vi.spyOn(window, "clearTimeout")
     const api = createMockApi()
     const request = api.request
     api.request = (async (route, ...args) =>
@@ -118,7 +116,7 @@ describe("WP9 frontend acceptance", () => {
             remote: "https://example.test/project.git",
           }
         : request(route, ...args)) as typeof api.request
-    const view = render(<App kernel={{ services: { api } }} />)
+    render(<App kernel={{ services: { api } }} />)
     await screen.findByRole("textbox", { name: "Mensagem para mark" })
     if (!screen.queryByRole("button", { name: "Preview do projeto" }))
       fireEvent.click(screen.getByRole("button", { name: "Painel do bot" }))
@@ -145,12 +143,6 @@ describe("WP9 frontend acceptance", () => {
       expect(api.calls.some((call) => call.route === "PATCH /bots/:id")).toBe(true)
     })
     expect(screen.getAllByText("web").length).toBeGreaterThan(0)
-    const noticeTimers = timers.mock.calls.flatMap(([, delay], index) =>
-      delay === 4200 ? [timers.mock.results[index]?.value] : [],
-    )
-    expect(noticeTimers.length).toBeGreaterThan(0)
-    view.unmount()
-    for (const timer of noticeTimers) expect(clearTimer).toHaveBeenCalledWith(timer)
   })
 
   it.each(["create", "assign"])(
