@@ -342,43 +342,47 @@ for (const restart of ["crash", "shutdown", "legacy"] as const) {
   }, 30_000)
 }
 
-test.each(["follow-up", "retry"])("a manual %s delivers the complete unaccepted request once", async (action) => {
-  const f = await fixture()
-  try {
-    f.disableResume()
-    f.writeScenario({ pauseBeforeTurnStart: join(f.assets, "accept-turn") })
-    const text = `${"Confira cada total e registre as diferenças. ".repeat(500)}MARCADOR_FINAL_TAREFA`
-    const original = f.send(f.first.engine, text)
-    await waitFor(() => f.frames().some((frame) => frame.method === "turn/start"))
-    expect(original.externalTurnId).toBeNull()
-    await f.first.engine.shutdown()
-    f.writeScenario({ deltas: ["Relatório concluído."] })
-    const reopened = await f.open()
-    const queued =
-      action === "retry"
-        ? reopened.engine.retry(original.id)
-        : { success: true as const, run: f.send(reopened.engine, "Continue de onde parou.", reopened.store) }
-    if (!queued.success) throw new Error(queued.error)
-    const next = queued.run
-    await waitFor(() => f.runs().some((run) => run.id === next.id && run.status === "succeeded"))
-    const input = JSON.stringify(
-      f
-        .frames()
-        .filter((frame) => frame.method === "turn/start")
-        .at(-1)?.params.input,
-    )
-    expect(input).toContain(text)
-    expect(input.split(text)).toHaveLength(2)
-    if (action === "follow-up") expect(input).toContain("Continue de onde parou.")
-    expect(
-      reopened.store
-        .activePath({ threadId: "t" })
-        .some((message) => message.parts.some((part) => part.type === "notice" && part.code === "context_restored")),
-    ).toBe(true)
-  } finally {
-    await f.close()
-  }
-}, 30_000)
+test.each(["follow-up", "retry"])(
+  "a manual %s delivers the complete unaccepted request once",
+  async (action) => {
+    const f = await fixture()
+    try {
+      f.disableResume()
+      f.writeScenario({ pauseBeforeTurnStart: join(f.assets, "accept-turn") })
+      const text = `${"Confira cada total e registre as diferenças. ".repeat(500)}MARCADOR_FINAL_TAREFA`
+      const original = f.send(f.first.engine, text)
+      await waitFor(() => f.frames().some((frame) => frame.method === "turn/start"))
+      expect(original.externalTurnId).toBeNull()
+      await f.first.engine.shutdown()
+      f.writeScenario({ deltas: ["Relatório concluído."] })
+      const reopened = await f.open()
+      const queued =
+        action === "retry"
+          ? reopened.engine.retry(original.id)
+          : { success: true as const, run: f.send(reopened.engine, "Continue de onde parou.", reopened.store) }
+      if (!queued.success) throw new Error(queued.error)
+      const next = queued.run
+      await waitFor(() => f.runs().some((run) => run.id === next.id && run.status === "succeeded"))
+      const input = JSON.stringify(
+        f
+          .frames()
+          .filter((frame) => frame.method === "turn/start")
+          .at(-1)?.params.input,
+      )
+      expect(input).toContain(text)
+      expect(input.split(text)).toHaveLength(2)
+      if (action === "follow-up") expect(input).toContain("Continue de onde parou.")
+      expect(
+        reopened.store
+          .activePath({ threadId: "t" })
+          .some((message) => message.parts.some((part) => part.type === "notice" && part.code === "context_restored")),
+      ).toBe(true)
+    } finally {
+      await f.close()
+    }
+  },
+  30_000,
+)
 
 for (const recovery of ["missing", "rejected", "exit", "notification", "auth", "accepted-error"] as const) {
   test(`a manual follow-up preserves task context when native recovery is ${recovery}`, async () => {
