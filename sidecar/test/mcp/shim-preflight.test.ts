@@ -63,3 +63,47 @@ test("legacy shim and provider diagnostics retain their known startup stages", (
     "closed_before_initialize",
   )
 })
+
+test.each([
+  { id: 0, token: false, stage: "token_unavailable" },
+  { id: "init-request", token: false, stage: "token_unavailable" },
+  { id: 0, token: true, stage: "socket_error" },
+])(
+  "a provider receives $stage through initialize response $id even if it drops stderr",
+  async ({ id, token, stage }) => {
+    const root = mkdtempSync(join(tmpdir(), "touri-shim-initialize-"))
+    if (token) {
+      mkdirSync(join(root, "run/mcp-tokens"), { recursive: true, mode: 0o700 })
+      writeFileSync(join(root, "run/mcp-tokens/missing"), "fixture-token", { mode: 0o600 })
+    }
+    const binary = process.env.TOURI_TEST_SHIM_BIN
+    const child = Bun.spawn({
+      cmd: binary
+        ? [binary, "mcp-stdio", "--thread", "missing"]
+        : [process.execPath, "run", join(import.meta.dir, "../../src/cli/main.ts"), "mcp-stdio", "--thread", "missing"],
+      env: { ...process.env, TOURI_APP_DATA: root },
+      stdin: "pipe",
+      stdout: "pipe",
+      stderr: "ignore",
+    })
+    try {
+      const request = JSON.stringify({ jsonrpc: "2.0", id, method: "initialize", params: {} })
+      child.stdin.write(request.slice(0, 15))
+      await Bun.sleep(10)
+      child.stdin.write(`${request.slice(15)}\n`)
+      const output = await new Response(child.stdout).text()
+      expect(await child.exited).toBe(1)
+      const reply = JSON.parse(output)
+      expect(reply).toEqual({
+        jsonrpc: "2.0",
+        id,
+        error: { code: -32603, message: `touri MCP startup failed: ${stage}` },
+      })
+      expect(parseMcpShimStage(reply.error.message)).toBe(stage)
+    } finally {
+      child.kill()
+      await child.exited
+      rmSync(root, { recursive: true, force: true })
+    }
+  },
+)
