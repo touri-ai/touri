@@ -411,3 +411,53 @@ test("an AskUserQuestion prompt becomes a question notification and other tools 
     h.close()
   }
 })
+
+test("a repeated request emits once and resolution clears older duplicate records", async () => {
+  const h = await harness()
+  try {
+    const input = {
+      kind: "approval" as const,
+      botId: null,
+      threadId: "thread-repeat",
+      title: "Approve command",
+      body: "pwd",
+      requestId: "same-request",
+    }
+    const first = emitter(h)(input)
+    expect(emitter(h)(input).id).toBe(first.id)
+    const db = h.runtime.kernel.db as Database
+    expect(db.query("SELECT COUNT(*) AS count FROM notifications WHERE request_id = ?").get(input.requestId)).toEqual({
+      count: 1,
+    })
+    const legacy = createNotificationStore({ db }).insert(input).notification
+    h.runtime.kernel.services.use("notify.resolve")?.({ requestId: input.requestId, resolution: "allow" })
+    const rows = db.query("SELECT resolution FROM notifications WHERE id IN (?, ?)").all(first.id, legacy.id)
+    expect(rows).toEqual([{ resolution: "allow" }, { resolution: "allow" }])
+    expect((await (await h.call("GET", "/api/notifications/pending")).json()).notifications).toEqual([])
+  } finally {
+    h.close()
+  }
+})
+
+test("dismissing an approval reminder never answers the runtime request", async () => {
+  const h = await harness()
+  try {
+    const decisions: unknown[] = []
+    h.runtime.kernel.services.provide("runtime.answerApproval", async (decision) => {
+      decisions.push(decision)
+      return { success: true }
+    })
+    const record = emitter(h)({
+      kind: "approval",
+      botId: null,
+      threadId: "thread-dismiss",
+      requestId: "pending-after-dismiss",
+      title: "Approve command",
+      body: "pwd",
+    })
+    expect((await h.call("POST", `/api/notifications/${record.id}/dismiss`)).status).toBe(200)
+    expect(decisions).toEqual([])
+  } finally {
+    h.close()
+  }
+})

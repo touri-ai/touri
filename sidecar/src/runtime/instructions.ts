@@ -294,8 +294,13 @@ export const composeDeveloperInstructions = async ({
         ? `You are in group ${JSON.stringify(group?.name)}${group?.coordinator_bot_id === bot.id ? " with the coordinator role" : " as a member"}. You have real touri MCP tools coordinate_bots and ask_bot. Delegate with ask_bot({bot, message}); its final answer returns into your current turn. Only members of this group are reachable. Respect approvals. Maximum depth 2 and 6 calls per group turn; do not delegate back to a caller.`
         : "coordinate_bots is unavailable unless listed among verified MCP tools. Without a verified coordination tool, guide the user to the Bots tab, select the destination bot by its current name, open or create a conversation and send the task there. The user brings results back to this conversation. Do not claim to send tasks yourself.",
       `Your current bot name in Bots is ${JSON.stringify(bot.name)}. Use this exact name when referring to yourself, including in greetings and self-introductions.`,
+      ...(bot.roleLine?.trim()
+        ? [
+            `Your current job is ${JSON.stringify(bot.roleLine.trim().slice(0, 1_000))}. Use this job and Bot SOUL to guide every reply, including the first greeting. The bot name is only a name; never infer a different job from it.`,
+          ]
+        : []),
       `Current bot names in Bots (use these exact names, not aliases or handles from SOUL or history): ${botNames.map(({ name }) => JSON.stringify(name)).join(", ") || "(no other bots listed)"}.`,
-      "The current identity, roster and UI override names, rooms and handles in SOUL, memory, skills and history, including descriptions of your role. Preserve the role but describe it using current bot names and the actual UI. Historical rooms are not current coordination destinations. When an old reference clearly identifies one listed bot, use that bot's exact current name. Do not infer a replacement by adding or removing a suffix without checking the roster; if the intended bot is ambiguous or absent from the roster, ask the user which current bot to use.",
+      "The current identity, roster and UI override names, rooms and handles in SOUL, memory, skills and history. Preserve the configured job and SOUL instructions but describe them using current bot names and the actual UI. Historical rooms are not current coordination destinations. When an old reference clearly identifies one listed bot, use that bot's exact current name. Do not infer a replacement by adding or removing a suffix without checking the roster; if the intended bot is ambiguous or absent from the roster, ask the user which current bot to use.",
       "The UI has Grupos with group conversations, optional coordinators and @member mentions. Direct bot conversations do not enable coordination. Use only tools enabled for the current turn.",
     ].join("\n"),
     [

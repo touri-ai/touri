@@ -1,7 +1,9 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { useState } from "react"
-import { afterEach, expect, it } from "vitest"
+import { afterEach, expect, it, vi } from "vitest"
+import { createMockApi } from "../src/api/mock"
+import { ConversationStart } from "../src/components/ConversationStart"
 import { getJobTemplates, JOB_GROUP_IDS, jobGroupName, NOT_SURE_JOB_ID } from "../src/features/jobs/catalog"
 import { JobPicker } from "../src/features/jobs/JobPicker"
 import { dictionaries, type Locale } from "../src/i18n"
@@ -23,13 +25,18 @@ it("offers 30 original jobs with stable unique ids and complete copy in both lan
     }
     for (const job of getJobTemplates(locale)) {
       expect(job.id).toMatch(/^[a-z]+(?:-[a-z]+)*$/)
-      for (const field of ["name", "description", "roleLine", "task"]) {
+      for (const field of ["name", "description", "roleLine", "task", "prompts"]) {
         const key = `jobs.${job.id}.${field}`
         expect(dictionary[key as keyof typeof dictionary]?.trim()).toBeTruthy()
         expect(dictionary[key as keyof typeof dictionary]).not.toBe(key)
       }
       for (const field of [job.name, job.description, job.roleLine, job.instructions]) expect(field.trim()).not.toBe("")
       expect(job.instructions).not.toMatch(/\{task\}/)
+      expect(job.instructions).toContain(job.name)
+      expect(job.instructions).toContain(job.roleLine)
+      expect(job.starterPrompts).toHaveLength(3)
+      expect(new Set(job.starterPrompts).size).toBe(3)
+      expect(job.starterPrompts.every((prompt) => prompt.trim().length > 0)).toBe(true)
       expect(job.instructions.split("\n").length).toBeGreaterThanOrEqual(4)
       expect(job.instructions.split("\n").length).toBeLessThanOrEqual(8)
       expect(job.instructions).toContain("Mac")
@@ -40,6 +47,27 @@ it("offers 30 original jobs with stable unique ids and complete copy in both lan
       )
     }
   }
+})
+
+it.each([
+  ["pt-BR", "notes-in-order", "Organize estas anotações por assunto."],
+  ["pt-BR", "focused-week", "Ajude a escolher três prioridades para esta semana."],
+  ["pt-BR", "packing-checklist", "Ajude a montar a mala para minha próxima viagem."],
+  ["pt-BR", "study-blocks", "Divida este assunto em sessões curtas de estudo."],
+  ["en", "notes-in-order", "Organize these notes by topic."],
+  ["en", "focused-week", "Help me choose three priorities for this week."],
+  ["en", "packing-checklist", "Help me pack for my next trip."],
+  ["en", "study-blocks", "Break this subject into short study sessions."],
+] as const)("shows %s prompts for %s even when the bot is named QA Café", (locale, jobId, prompt) => {
+  const bot = createMockApi().getState().bots[0]
+  const job = getJobTemplates(locale).find((job) => job.id === jobId)
+  if (!bot || !job) throw new Error("Missing catalog fixture")
+  const choose = vi.fn()
+  render(<ConversationStart bot={{ ...bot, name: "QA Café", roleLine: job.roleLine }} onChoose={choose} />)
+  expect(screen.getAllByRole("button")).toHaveLength(3)
+  fireEvent.click(screen.getByRole("button", { name: prompt }))
+  expect(choose).toHaveBeenCalledWith(prompt)
+  expect(screen.queryByRole("button", { name: /plano de testes|contexto deste projeto/ })).toBeNull()
 })
 
 const Picker = ({ locale = "pt-BR" }: { locale?: Locale }) => {

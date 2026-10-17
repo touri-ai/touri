@@ -5,6 +5,38 @@ import type { Bot, Kernel } from "@touri/contracts"
 import { openWorkspaceEntry } from "../kernel/files"
 import { withDeadline } from "../kernel/policy"
 
+const record = (value: unknown): Record<string, unknown> | null =>
+  value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null
+const nonempty = (value: unknown) => typeof value === "string" && value.trim().length > 0
+/** Structural/expiry validation only; provider CLI refreshes and validates with its own service. */
+export const validLogin = (provider: Bot["provider"], value: string, host = false): boolean => {
+  if (provider === "claude" && !host) return /^sk-ant-oat01-[\w-]+$/.test(value.trim())
+  try {
+    const auth = record(JSON.parse(value))
+    if (!auth) return false
+    if (provider === "codex") {
+      const tokens = record(auth.tokens)
+      return nonempty(auth.OPENAI_API_KEY) || (nonempty(tokens?.access_token) && nonempty(tokens?.refresh_token))
+    }
+    if (provider === "claude") {
+      const oauth = record(auth.claudeAiOauth)
+      return nonempty(oauth?.accessToken) && typeof oauth?.expiresAt === "number" && oauth.expiresAt > Date.now()
+    }
+    return Object.values(auth).some((value) => {
+      const entry = record(value)
+      return (
+        (entry?.type === "api" && nonempty(entry.key)) ||
+        (entry?.type === "oauth" &&
+          nonempty(entry.access) &&
+          nonempty(entry.refresh) &&
+          (typeof entry.expires !== "number" || entry.expires > Date.now()))
+      )
+    })
+  } catch {
+    return false
+  }
+}
+
 export const providerLoginAccount = (botId: string, provider: Bot["provider"]): string =>
   `bot/${botId}/${provider}-vm-login`
 export const redactProviderLogin = (kernel: Kernel, value: string) => {
