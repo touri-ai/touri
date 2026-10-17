@@ -701,3 +701,22 @@ test("a delayed handback cannot release a newer human takeover", async () => {
   expect(f.desktop.service.claim(newer.sessionId)).toBe(true)
   expect(f.runtime.kernel.services.use("computer.input")?.human(f.bot.id)).toBe(true)
 })
+
+test("remote runtime without input ownership support permits observation and refuses manual input", async () => {
+  const f = await fixture()
+  const store = f.runtime.kernel.services.use("store.api")
+  if (!store) throw new Error("Missing store")
+  f.runtime.kernel.services.provide("store.api", {
+    ...store,
+    getBot: (input) => {
+      const found = store.getBot(input)
+      return found?.id === f.bot.id ? { ...found, machine: "cloud" as const } : found
+    },
+  })
+  f.desktopVm.acquire = async () => async () => {}
+  expect((await f.request(`/bots/${f.bot.id}/desktop`, { control: true })).status).toBe(409)
+  expect(f.forwarded).toEqual([])
+  const observe = await f.request(`/bots/${f.bot.id}/desktop`, { control: false })
+  expect(observe.status).toBe(200)
+  expect(await observe.json()).toMatchObject({ control: false, humanControl: false })
+})

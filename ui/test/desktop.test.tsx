@@ -96,6 +96,21 @@ test("manual takeover does not require or change bot automation permission; only
   expect(f.request.mock.calls.some(([route]) => route.startsWith("PATCH"))).toBe(false)
 })
 
+test("a remote runtime without a pause protocol stays in observation with no dead control button", async () => {
+  const f = fixture()
+  render(<DesktopPanel bot={{ ...bot, machine: "cloud" }} api={f.api} />)
+  await connected()
+  expect(screen.queryByRole("button", { name: "Assumir controle" })).toBeNull()
+  expect(screen.queryByRole("button", { name: "Devolver ao bot" })).toBeNull()
+  expect(
+    screen.getByText(
+      "O controle manual não está disponível nesta máquina. Você pode acompanhar a tela e conversar com o bot.",
+    ),
+  ).toBeInTheDocument()
+  expect(viewers[0]?.viewOnly).toBe(true)
+  expect(f.request).toHaveBeenCalledWith("POST /bots/:id/desktop", { control: false }, { id: "vm" })
+})
+
 test("a late observation snapshot cannot erase a newer human ownership event", async () => {
   const f = fixture()
   let notify = () => {}

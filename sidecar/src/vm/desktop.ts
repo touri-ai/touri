@@ -80,7 +80,7 @@ export const createDesktopGateway = (
     return (
       (!session.device || session.device.active()) &&
       (bot?.machine === "vm" || bot?.machine === "cloud") &&
-      (!session.control || bot?.machine === "vm" || bot.computerUse)
+      (!session.control || bot?.machine === "vm")
     )
   }
   const unsubscribe = kernel.subscribe(({ event }) => {
@@ -240,10 +240,13 @@ export const createDesktopGateway = (
             return { status: 409, json: { error: "A máquina está parada" } }
           log("Desktop control requested", { botId, control, computerUse: bot.computerUse, epoch })
           if (typeof control !== "boolean") return { status: 400, json: { error: "Modo de controle inválido" } }
-          if (control && bot.machine === "cloud" && !bot.computerUse)
+          if (control && bot.machine === "cloud")
             return {
-              status: 403,
-              json: { error: "Ative a permissão de controle do computador nas configurações do bot" },
+              status: 409,
+              json: {
+                error:
+                  "O controle manual não está disponível nesta máquina. Você pode acompanhar a tela e conversar com o bot.",
+              },
             }
           if (disposed || sessions.size + pending.size >= 16)
             return { status: 503, json: { error: "Conexões da tela indisponíveis" } }
@@ -277,7 +280,7 @@ export const createDesktopGateway = (
             if (
               disposed ||
               (currentBot?.machine !== "vm" && currentBot?.machine !== "cloud") ||
-              (control && (startEpoch !== epoch || (currentBot.machine === "cloud" && !currentBot.computerUse)))
+              (control && (startEpoch !== epoch || currentBot.machine !== "vm"))
             )
               throw new Error("Controle interrompido; conecte novamente em modo de observação")
             if (control && bot.machine === "vm") {

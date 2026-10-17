@@ -3,6 +3,8 @@ import { userFacingError } from "./errors"
 /** All UI copy lives here. pt-BR is the default; English is available for a future locale picker. */
 export type Locale = "pt-BR" | "en"
 export const ptBR = {
+  "O controle manual não está disponível nesta máquina. Você pode acompanhar a tela e conversar com o bot.":
+    "O controle manual não está disponível nesta máquina. Você pode acompanhar a tela e conversar com o bot.",
   "A tela pode ter mudado durante seu controle. Observe novamente antes de continuar.":
     "A tela pode ter mudado durante seu controle. Observe novamente antes de continuar.",
   "Assumir controle não autoriza ações automáticas do bot. Revise essas ações no chat.":
@@ -1628,6 +1630,8 @@ export const ptBR = {
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  "O controle manual não está disponível nesta máquina. Você pode acompanhar a tela e conversar com o bot.":
+    "Manual control is unavailable on this machine. You can watch the screen and chat with the bot.",
   "A tela pode ter mudado durante seu controle. Observe novamente antes de continuar.":
     "The screen may have changed while you were in control. Observe it again before continuing.",
   "Assumir controle não autoriza ações automáticas do bot. Revise essas ações no chat.":

@@ -43,6 +43,7 @@ export const DesktopPanel = ({
   onControlChange?: (active: boolean) => void
 }) => {
   useComputerPresence(api, bot)
+  const manualAvailable = bot.machine === "vm"
   const slot = useRef<HTMLDivElement>(null)
   const input = useRef<HTMLTextAreaElement>(null)
   const [phase, setPhase] = useState<Phase>("connecting")
@@ -238,7 +239,7 @@ export const DesktopPanel = ({
         work: api.request(
           "POST /bots/:id/desktop",
           {
-            control: retries === 0 && requestedControl,
+            control: retries === 0 && requestedControl && manualAvailable,
             ...(lastConnection.current === bot.id ? { resume: true } : {}),
           },
           { id: bot.id },
@@ -329,7 +330,7 @@ export const DesktopPanel = ({
       document.removeEventListener("visibilitychange", visibility)
       window.removeEventListener(computerKillSwitchEvent, revoke)
     }
-  }, [api, bot.id, paused, requestedControl, attempt])
+  }, [api, bot.id, manualAvailable, paused, requestedControl, attempt])
 
   useEffect(() => {
     if (phase !== "ready" || !emptyDisplay || api.isMock) return
@@ -391,32 +392,41 @@ export const DesktopPanel = ({
           {controlling ? t("Você está no controle") : t("Acompanhar a tela")}
         </span>
         <div className="toolbar-actions">
-          <button
-            type="button"
-            className="button button-quiet"
-            aria-pressed={controlling}
-            disabled={returning || (!controlling && phase !== "ready")}
-            onClick={() => {
-              if (controlling) void handBack()
-              else {
-                setRequestedControl(true)
-                setAttempt((value) => value + 1)
-              }
-            }}
-          >
-            {controlling ? t("Devolver ao bot") : t("Assumir controle")}
-          </button>
-          {humanControl && !controlling && (
-            <button type="button" className="button button-quiet" disabled={returning} onClick={() => void handBack()}>
-              {t("Devolver ao bot")}
-            </button>
+          {manualAvailable && (
+            <>
+              <button
+                type="button"
+                className="button button-quiet"
+                aria-pressed={controlling}
+                disabled={returning || (!controlling && phase !== "ready")}
+                onClick={() => {
+                  if (controlling) void handBack()
+                  else {
+                    setRequestedControl(true)
+                    setAttempt((value) => value + 1)
+                  }
+                }}
+              >
+                {controlling ? t("Devolver ao bot") : t("Assumir controle")}
+              </button>
+              {humanControl && !controlling && (
+                <button
+                  type="button"
+                  className="button button-quiet"
+                  disabled={returning}
+                  onClick={() => void handBack()}
+                >
+                  {t("Devolver ao bot")}
+                </button>
+              )}
+            </>
           )}
           <button type="button" className="button button-quiet" disabled={paused || returning} onClick={reconnect}>
             {t("Reconectar tela")}
           </button>
         </div>
       </header>
-      {humanControl && (
+      {manualAvailable && humanControl && (
         <p className="desktop-observe-note" role="status">
           {t("Você está no controle. O bot aguarda você terminar.")}
         </p>
@@ -475,7 +485,11 @@ export const DesktopPanel = ({
       <div className={`desktop-input ${controlling ? "" : "desktop-input-observe"}`}>
         {!controlling && (
           <p className="desktop-observe-note">
-            {t("Ao assumir, só você usa o teclado e o mouse. A automação do bot continua com a permissão atual.")}
+            {manualAvailable
+              ? t("Ao assumir, só você usa o teclado e o mouse. A automação do bot continua com a permissão atual.")
+              : t(
+                  "O controle manual não está disponível nesta máquina. Você pode acompanhar a tela e conversar com o bot.",
+                )}
           </p>
         )}
         <label htmlFor={`desktop-input-${bot.id}`}>Digitar na VM</label>
