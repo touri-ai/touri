@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, expect, it } from "vitest"
 import App from "../src/App"
+import type { ApiRequest } from "../src/api/client"
 import { createMockApi } from "../src/api/mock"
 import { dictionaries } from "../src/i18n"
 import { openRoutines, showBotSettings } from "./workspaceNavigation"
@@ -50,7 +51,7 @@ it("limits primary navigation to the bot list and Advanced, with chat and compos
   ])
   expect(within(sidebar).queryAllByRole("tab")).toHaveLength(0)
   expect(document.querySelector(".bot-panel")).toBeNull()
-  for (const name of ["Cron", "MCP", "Integrações", "Projetos", "Importar", "Verificar este Mac", "Rotinas"])
+  for (const name of ["Cron", "MCP", "Integrações", "Projetos", "Importar", "Verificar servidor", "Rotinas"])
     expect(within(sidebar).queryByRole("button", { name, exact: true })).toBeNull()
   expect(sidebar.querySelectorAll("[data-bot-entry]")).toHaveLength(3)
   const advanced = within(sidebar).getByRole("button", { name: "Avançado", exact: true })
@@ -77,13 +78,15 @@ it("shows one primary hire action and quiet secondary actions, even when checks 
     within(landing)
       .getAllByRole("button")
       .map((button) => button.textContent),
-  ).toEqual(["Criar meu primeiro bot→", "Importar", "Verificar este Mac"])
-  expect(landing).toHaveTextContent("Seus bots trabalham no seu Mac, com as suas contas. Nada sai daqui.")
+  ).toEqual(["Criar meu primeiro bot→", "Importar", "Verificar servidor"])
+  expect(landing).toHaveTextContent(
+    "O histórico fica neste servidor. Sua IA recebe o conteúdo necessário para responder. O touri não coleta telemetria.",
+  )
   expect(landing).toHaveTextContent("Já usa outra ferramenta?")
   expect(landing).not.toHaveTextContent(/Prontas|Avisos|Falhas|\d/)
   expect(dictionaries.en["Create my first bot"]).toBe("Create my first bot")
-  expect(dictionaries.en["Your bots work on your Mac, with your accounts. Nothing leaves here."]).toBe(
-    "Your bots work on your Mac, with your accounts. Nothing leaves here.",
+  expect(dictionaries.en["onboarding.privacy"]).toBe(
+    "History stays on this {host}. Your AI receives the content needed to respond. touri collects no telemetry.",
   )
 })
 
@@ -93,9 +96,8 @@ it("opens the full routines screen from the bot's Advanced settings", async () =
   showBotSettings()
   fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Avançado" }))
   fireEvent.click(within(screen.getByRole("dialog")).getByRole("tab", { name: "Rotinas" }))
-  fireEvent.click(screen.getByRole("button", { name: "Gerenciar rotinas" }))
   expect(await screen.findByRole("heading", { name: "Rotinas" })).toBeVisible()
-  expect(screen.queryByRole("dialog")).toBeNull()
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
   expect(
     within(screen.getByRole("group", { name: "Filtros de rotinas" })).getByRole("button", {
       name: "mark",
@@ -125,4 +127,21 @@ it("keeps project processes available after opening the active bot's routines", 
   fireEvent.click(within(panel).getByRole("button", { name: "Preview do projeto" }))
   await waitFor(() => expect(screen.getByRole("button", { name: "Subir tudo" })).toBeEnabled())
   expect(document.querySelectorAll(".preview-process-entry")).toHaveLength(2)
+})
+
+it("names the server diagnostics consistently after onboarding and opens it", async () => {
+  const api = createMockApi()
+  const request = api.request
+  api.request = (async (route, input, path) =>
+    route === "GET /routines"
+      ? { ...(await request(route, input, path)), host: "server" }
+      : request(route, input, path)) as ApiRequest
+  render(<App kernel={{ services: { api } }} />)
+  await screen.findByRole("textbox", { name: "Mensagem para mark" })
+  fireEvent.click(screen.getByRole("button", { name: "Avançado", exact: true }))
+  const menu = screen.getByRole("navigation", { name: "Opções avançadas" })
+  const action = within(menu).getByRole("button", { name: "Verificar servidor", exact: true })
+  expect(within(menu).queryByRole("button", { name: "Verificar este Mac" })).toBeNull()
+  fireEvent.click(action)
+  expect(await screen.findByRole("dialog", { name: "Diagnóstico" })).toBeVisible()
 })

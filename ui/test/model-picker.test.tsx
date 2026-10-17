@@ -5,6 +5,7 @@ import App from "../src/App"
 import type { ApiRequest } from "../src/api/client"
 import { createMockApi } from "../src/api/mock"
 import { BotModelModal } from "../src/components/Modals"
+import { t } from "../src/i18n"
 
 afterEach(() => {
   cleanup()
@@ -72,7 +73,19 @@ it.each([
   const { bot, dialog, list } = await openPicker(provider)
   expect(within(dialog).getByText(new RegExp(`O ${name} não disponibiliza uma lista de modelos`))).toBeVisible()
   const field = within(dialog).getByRole("textbox", { name: "Modelo" })
-  expect(field).toHaveAccessibleDescription(/Use o padrão do provedor ou informe um identificador/)
+  expect(field).toHaveAccessibleDescription(
+    `O ${name} não disponibiliza uma lista de modelos no touri. Use o padrão do provedor ou informe o nome de um modelo que o ${name} aceite.`,
+  )
+  expect(
+    t(
+      "{provider} does not expose a model list in touri. Use the provider default or enter a model name that {provider} accepts.",
+      { provider: name },
+      "en",
+    ),
+  ).toBe(
+    `${name} does not expose a model list in touri. Use the provider default or enter a model name that ${name} accepts.`,
+  )
+  expect(within(dialog).getByText("Escolha o modelo para as próximas mensagens deste bot.")).toBeVisible()
   expect(list).not.toHaveBeenCalled()
   fireEvent.change(field, { target: { value: " custom-model " } })
   fireEvent.click(within(dialog).getByRole("button", { name: "Salvar modelo" }))

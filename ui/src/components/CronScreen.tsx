@@ -1,12 +1,13 @@
 import type { Bot, Id, Message, Routine, RoutineRun } from "@touri/contracts"
 import { AVATAR_COLOR_CHOICES, avatarColorFor } from "@touri/contracts/avatar"
-import { useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { type ApprovalTarget, pendingApprovalTargets } from "../approvalNavigation"
 import { userFacingError } from "../errors"
 import { t } from "../i18n"
 import { draftFromRoutine, newRoutineDraft } from "../routineDraft"
 import type { WorkspaceActions } from "../useWorkspace"
 import { BotAvatar } from "./BotAvatar"
+import { DeleteRoutineDialog } from "./DeleteRoutineDialog"
 import { RoutineEditor, routineHostNotice } from "./RoutineEditor"
 import { RoutineSchedule } from "./RoutineSchedule"
 import { ScreenHeader, ScreenState } from "./ScreenPrimitives"
@@ -57,6 +58,21 @@ const CronScreen = ({
   onReviewApprovals,
   onNotice,
 }: CronScreenProps) => {
+  const listRef = useRef<HTMLElement>(null)
+  useEffect(() => {
+    const focusList = () => {
+      if (document.querySelector(".modal-card")) return false
+      listRef.current?.focus()
+      return true
+    }
+    if (focusList()) return
+    // The settings dialog restores its trigger during exit; focus the destination afterwards.
+    const observer = new MutationObserver(() => {
+      if (focusList()) observer.disconnect()
+    })
+    observer.observe(document.body, { childList: true, subtree: true })
+    return () => observer.disconnect()
+  }, [])
   const startingRef = useRef(new Set<Id>())
   const [starting, setStarting] = useState<Set<Id>>(new Set())
   const runNow = async (routineId: Id): Promise<void> => {
@@ -77,6 +93,7 @@ const CronScreen = ({
   )
   const [stateFilter, setStateFilter] = useState<"all" | "active" | "paused">("all")
   const [month, setMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1))
+  const [deleting, setDeleting] = useState<Routine | null>(null)
   const [editor, setEditor] = useState<RoutineEditorState>(null)
   const pendingApprovals = useMemo(() => pendingApprovalTargets(messages), [messages])
   const visibleRoutines = routines.filter(
@@ -107,7 +124,12 @@ const CronScreen = ({
   }
 
   return (
-    <section className="workspace-screen r8-screen cron-screen" aria-labelledby="cron-title">
+    <section
+      ref={listRef}
+      tabIndex={-1}
+      className="workspace-screen r8-screen cron-screen"
+      aria-labelledby="cron-title"
+    >
       <ScreenHeader
         id="cron-title"
         title={t("Routines")}
@@ -235,7 +257,10 @@ const CronScreen = ({
                             : "Sem próxima execução"}
                         </small>
                       </span>
-                      <span className="routine-actions">
+                      <fieldset
+                        className="routine-actions"
+                        aria-label={t("Ações da rotina {name}", { name: routine.name })}
+                      >
                         <button
                           type="button"
                           aria-label={`Rodar agora ${routine.name}`}
@@ -270,7 +295,10 @@ const CronScreen = ({
                         >
                           Editar
                         </button>
-                      </span>
+                        <button type="button" className="routine-delete-button" onClick={() => setDeleting(routine)}>
+                          {t("Excluir rotina")}
+                        </button>
+                      </fieldset>
                     </article>
                   )
                 })
@@ -381,6 +409,18 @@ const CronScreen = ({
           </div>
         </section>
       </div>
+      {deleting && (
+        <DeleteRoutineDialog
+          routine={deleting}
+          onDelete={actions.deleteRoutine}
+          onClose={() => setDeleting(null)}
+          onDeleted={() => {
+            const heading = document.getElementById("cron-title")
+            heading?.setAttribute("tabindex", "-1")
+            heading?.focus()
+          }}
+        />
+      )}
       {editor && (
         <RoutineEditor
           initial={editor.routine ? draftFromRoutine(editor.routine) : newRoutineDraft(editor.botId)}
@@ -388,7 +428,12 @@ const CronScreen = ({
           bots={bots}
           host={host}
           actions={actions}
-          onClose={() => setEditor(null)}
+          onClose={() => {
+            setEditor(null)
+            const heading = document.getElementById("cron-title")
+            heading?.setAttribute("tabindex", "-1")
+            heading?.focus()
+          }}
         />
       )}
     </section>

@@ -1,6 +1,6 @@
 [graph]
-# Match the shipping app and the macos-26 CI runner. Add
-# x86_64-unknown-linux-gnu when the Linux desktop port is supported.
+# Match the shipping macOS app and its CI runner.
+# Linux release-audit blockers are tracked in touri-ai/touri#154.
 targets = ["aarch64-apple-darwin"]
 
 [advisories]

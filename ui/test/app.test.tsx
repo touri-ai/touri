@@ -336,7 +336,7 @@ describe("WP9 frontend acceptance", () => {
         },
       })
     })
-    const retry = await screen.findByRole("button", { name: "Tentar novamente" })
+    const retry = await screen.findByRole("button", { name: "Tentar de novo" })
     fireEvent.click(retry)
     await waitFor(() => expect(api.calls.some((call) => call.route === "POST /runs/:id/retry")).toBe(true))
   })
@@ -423,8 +423,12 @@ describe("WP9 frontend acceptance", () => {
         route === "GET /bots" ? { bots: [] } : mock.request(route, input, pathValues)) as typeof mock.request,
     }
     render(<App kernel={{ services: { api } }} />)
-    expect(await screen.findByText("Seus bots trabalham no seu Mac, com as suas contas. Nada sai daqui.")).toBeVisible()
-    fireEvent.click(await screen.findByRole("button", { name: /Verificar este Mac/ }))
+    expect(
+      await screen.findByText(
+        "O histórico fica neste servidor. Sua IA recebe o conteúdo necessário para responder. O touri não coleta telemetria.",
+      ),
+    ).toBeVisible()
+    fireEvent.click(await screen.findByRole("button", { name: /Verificar servidor/ }))
     expect(await screen.findByRole("dialog", { name: "Diagnóstico" })).toBeVisible()
     fireEvent.keyDown(document, { key: "Escape" })
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Diagnóstico" })).toBeNull())
@@ -453,13 +457,13 @@ describe("WP9 frontend acceptance", () => {
       }) as typeof mock.request,
     }
     const view = render(<App kernel={{ services: { api } }} />)
-    fireEvent.click(await screen.findByRole("button", { name: "Verificar este Mac" }))
+    fireEvent.click(await screen.findByRole("button", { name: "Verificar servidor" }))
     await screen.findByRole("dialog", { name: "Diagnóstico" })
     fireEvent.keyDown(document, { key: "Escape" })
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Diagnóstico" })).toBeNull())
     expect(view.container.querySelector(".onboarding-screen")).not.toHaveTextContent(/Falhas|Avisos|verificações/)
     expect(view.container.querySelector(".onboarding-screen .status-dot")).toBeNull()
-    expect(screen.getByRole("button", { name: "Verificar este Mac" })).toBeVisible()
+    expect(screen.getByRole("button", { name: "Verificar servidor" })).toBeVisible()
   })
 
   it("opens the bot creation dialog from the empty-state landing by button and by Cmd+N", async () => {

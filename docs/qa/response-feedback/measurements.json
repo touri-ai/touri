@@ -1,0 +1,122 @@
+[
+  {
+    "conversation": 1,
+    "confirmationMs": 17.5,
+    "acceptedActivityMs": 14.700000002980232,
+    "timing": {
+      "conversation": 1,
+      "sendToAcceptMs": 219,
+      "acceptToFirstEventMs": 4877,
+      "sendToFirstTextMs": 5113,
+      "providerToFirstEventMs": 4830
+    }
+  },
+  {
+    "conversation": 2,
+    "confirmationMs": 8.100000001490116,
+    "acceptedActivityMs": 12.799999997019768,
+    "timing": {
+      "conversation": 2,
+      "sendToAcceptMs": 209,
+      "acceptToFirstEventMs": 4863,
+      "sendToFirstTextMs": 5094,
+      "providerToFirstEventMs": 4842
+    }
+  },
+  {
+    "conversation": 3,
+    "confirmationMs": 8.899999998509884,
+    "acceptedActivityMs": 13.700000002980232,
+    "timing": {
+      "conversation": 3,
+      "sendToAcceptMs": 209,
+      "acceptToFirstEventMs": 4875,
+      "sendToFirstTextMs": 5122,
+      "providerToFirstEventMs": 4850
+    }
+  },
+  {
+    "conversation": 4,
+    "confirmationMs": 13.5,
+    "acceptedActivityMs": 15.899999998509884,
+    "timing": {
+      "conversation": 4,
+      "sendToAcceptMs": 213,
+      "acceptToFirstEventMs": 4869,
+      "sendToFirstTextMs": 5103,
+      "providerToFirstEventMs": 4845
+    }
+  },
+  {
+    "conversation": 5,
+    "confirmationMs": 9.899999998509884,
+    "acceptedActivityMs": 13,
+    "timing": {
+      "conversation": 5,
+      "sendToAcceptMs": 212,
+      "acceptToFirstEventMs": 4850,
+      "sendToFirstTextMs": 5091,
+      "providerToFirstEventMs": 4831
+    }
+  },
+  {
+    "conversation": 6,
+    "confirmationMs": 8.699999995529652,
+    "acceptedActivityMs": 14.800000004470348,
+    "timing": {
+      "conversation": 6,
+      "sendToAcceptMs": 211,
+      "acceptToFirstEventMs": 4863,
+      "sendToFirstTextMs": 5093,
+      "providerToFirstEventMs": 4828
+    }
+  },
+  {
+    "conversation": 7,
+    "confirmationMs": 8.799999997019768,
+    "acceptedActivityMs": 12.799999997019768,
+    "timing": {
+      "conversation": 7,
+      "sendToAcceptMs": 209,
+      "acceptToFirstEventMs": 4845,
+      "sendToFirstTextMs": 5070,
+      "providerToFirstEventMs": 4823
+    }
+  },
+  {
+    "conversation": 8,
+    "confirmationMs": 8.600000001490116,
+    "acceptedActivityMs": 12.5,
+    "timing": {
+      "conversation": 8,
+      "sendToAcceptMs": 210,
+      "acceptToFirstEventMs": 4894,
+      "sendToFirstTextMs": 5158,
+      "providerToFirstEventMs": 4870
+    }
+  },
+  {
+    "conversation": 9,
+    "confirmationMs": 8.5,
+    "acceptedActivityMs": 12.800000004470348,
+    "timing": {
+      "conversation": 9,
+      "sendToAcceptMs": 209,
+      "acceptToFirstEventMs": 4854,
+      "sendToFirstTextMs": 5080,
+      "providerToFirstEventMs": 4832
+    }
+  },
+  {
+    "conversation": 10,
+    "confirmationMs": 8,
+    "acceptedActivityMs": 15.600000001490116,
+    "timing": {
+      "conversation": 10,
+      "sendToAcceptMs": 210,
+      "acceptToFirstEventMs": 4853,
+      "sendToFirstTextMs": 5081,
+      "providerToFirstEventMs": 4829
+    }
+  }
+]

@@ -3,6 +3,8 @@ import { homedir } from "node:os"
 import type { Kernel } from "@touri/contracts"
 import { initCloud } from "../cloud/module"
 import { routeVmRuntime } from "../cloud/runtime"
+import { machineCapability, ociEngine } from "../platform"
+import { createOciProvider } from "../platform/oci-provider"
 import { createAppleContainerProvider } from "./apple-container"
 import { deleteBotRoute } from "./delete-bot"
 import { createDesktopGateway } from "./desktop"
@@ -26,14 +28,17 @@ export const init = async (kernel: Kernel): Promise<void> => {
   kernel.onHostNotification((notification) => {
     if (notification.method === "app.willQuit") loginFlow.dispose()
   })
-  const runtime = createVmRuntime({
-    kernel,
-    provider: createAppleContainerProvider({
-      dataDir: kernel.paths.appData,
-      warn: (code, detail) =>
-        kernel.log({ level: "warn", module: "vm", msg: code, data: { detail: kernel.redact(detail) } }),
-    }),
-  })
+  const engine = ociEngine()
+  const provider =
+    process.platform !== "darwin"
+      ? createOciProvider({ engine: engine ?? "docker", dataDir: kernel.paths.appData })
+      : createAppleContainerProvider({
+          dataDir: kernel.paths.appData,
+          warn: (code, detail) =>
+            kernel.log({ level: "warn", module: "vm", msg: code, data: { detail: kernel.redact(detail) } }),
+        })
+  const capability = machineCapability()
+  const runtime = createVmRuntime({ kernel, provider, capability })
   const cloud = initCloud(kernel)
   const service = routeVmRuntime(kernel, runtime.service, cloud.runtime)
   kernel.services.provide("vm.runtime", service)
@@ -189,10 +194,14 @@ export const init = async (kernel: Kernel): Promise<void> => {
       {
         method: "GET",
         path: "/machines",
-        handler: async () => ({
-          status: 200,
-          json: { capability: runtime.service.capability, machines: service.states() },
-        }),
+        handler: async () => {
+          if (engine && process.env.TOURI_HEADLESS !== "1") {
+            const ready = await provider.startService()
+            capability.available = ready.success
+            capability.reason = ready.success ? null : ready.error
+          }
+          return { status: 200, json: { capability: runtime.service.capability, machines: service.states() } }
+        },
       },
       ...machineActionRoutes(kernel, service),
       ...botWorkspaceRoutes(kernel, service),

@@ -60,6 +60,7 @@ for (const provider of ["codex", "claude", "opencode"] as const) {
       "project_unlink",
       "folder_access_request",
       "folder_access_remove",
+      "capability_request",
     ])
       expect(instructions).toContain(tool)
     expect(instructions).toContain("instead of describing UI steps")
@@ -68,6 +69,9 @@ for (const provider of ["codex", "claude", "opencode"] as const) {
     expect(instructions).toContain("without an approval card")
     expect(instructions).toContain("After success, use the returned name as your current identity")
     expect(instructions).toContain("explicit approval card")
+    expect(instructions).toContain("Routine and delegated runs cannot request capabilities")
+    expect(instructions).toContain("instead of sending them to settings")
+    expect(instructions).toContain("never the person's personal browser")
     expect(instructions).toContain("Any-folder access is a user-only settings toggle")
     expect(instructions).toContain("EACCES, EPERM, EROFS or Operation not permitted")
     expect(instructions).toContain("single write-access approval")
@@ -138,7 +142,7 @@ test("VM isolation is described even without a runtime service; only granted hos
   expect(isolated).toContain("isolated Linux VM")
   expect(isolated).toContain("Host paths are not mounted")
   expect(isolated).toContain("Your bot home is /workspace/.home")
-  expect(isolated).toContain("VM changes take effect on the next turn")
+  expect(isolated).toContain("VM changes take effect from the user’s next message")
   expect(isolated).toContain("recreate the machine before switching projects")
   expect(isolated).not.toContain("next local turn")
   expect(isolated).not.toContain("search the disk first")

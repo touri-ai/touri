@@ -4,7 +4,8 @@ import type { UiApi } from "../api/client"
 import { computerKillSwitchEvent } from "../computerKillSwitch"
 import { CloudComputer } from "../features/cloud/CloudComputer"
 import { DesktopPanel } from "../features/desktop/DesktopPanel"
-import { localizeNotice, machineStatusLabel } from "../i18n"
+import { VmCapabilityNotice } from "../features/desktop/VmCapabilityNotice"
+import { localizeNotice, machineStatusLabel, t } from "../i18n"
 import { useComputerPresence } from "../machineIntents"
 import { machineStateForDisplay } from "../machineState"
 import { ErrorNotice } from "./ErrorNotice"
@@ -34,6 +35,8 @@ const LocalBotComputer = ({
   onExpand?: () => void
   onWindow?: () => Promise<void>
   onPermissions?: () => void
+  onChat?: () => void
+  onFiles?: () => void
 }) => {
   useComputerPresence(api, bot)
   const failureAction = useContext(FailureActionContext)
@@ -238,7 +241,7 @@ const LocalBotComputer = ({
                   : preparing
                     ? "Preparando…"
                     : status === "running"
-                      ? "Entrar no computador"
+                      ? t("Acompanhar a tela")
                       : inactivityPaused
                         ? "Ligar"
                         : "Ligar computador"}
@@ -264,6 +267,7 @@ const LocalBotComputer = ({
         )}
         {bot.paused && <p>Retome o bot nas configurações para ligar o computador.</p>}
       </div>
+      {bot.machine === "vm" && (!entered || status !== "running") && <VmCapabilityNotice bot={bot} />}
       {bot.machine === "vm" && (!entered || status !== "running") && (
         <div className={`computer-entry ${preparing || busy ? "computer-entry-preparing" : ""}`}>
           <PanelIcon name="computer" />
@@ -301,7 +305,7 @@ const LocalBotComputer = ({
           {bot.machine === "vm"
             ? entered && status === "running" && view === "desktop"
               ? "Interrompe o controle do computador imediatamente."
-              : "Somente observar ao entrar. Controle exige permissão do bot."
+              : t("Ao assumir, só você usa o teclado e o mouse. A automação do bot continua com a permissão atual.")
             : "Autorização temporária · atalho de emergência ⌃⌥⌘."}
         </small>
         {controlActive && (
@@ -385,7 +389,25 @@ const LocalBotComputer = ({
 }
 
 export const BotComputer = (props: Parameters<typeof LocalBotComputer>[0]) =>
-  props.bot.machine === "cloud" ? (
+  props.bot.machine === "local" && !("__TAURI_INTERNALS__" in window) ? (
+    <section className="bot-computer" aria-label={`Computador de ${props.bot.name}`}>
+      <p role="status">
+        {t("Este servidor não tem uma área de trabalho para controlar. Você pode conversar e trabalhar com arquivos.")}
+      </p>
+      <div className="computer-actions">
+        {props.onChat && (
+          <button type="button" className="button button-quiet" onClick={props.onChat}>
+            {t("Conversar")}
+          </button>
+        )}
+        {props.onFiles && (
+          <button type="button" className="button button-quiet" onClick={props.onFiles}>
+            {t("Abrir arquivos")}
+          </button>
+        )}
+      </div>
+    </section>
+  ) : props.bot.machine === "cloud" ? (
     <CloudComputer api={props.api} bot={props.bot} {...(props.machine ? { machine: props.machine } : {})} />
   ) : (
     <LocalBotComputer {...props} />

@@ -73,6 +73,7 @@ const routineInput = ({
 
 export const init = async (kernel: Kernel): Promise<void> => {
   const engine = createRuntimeEngine({ kernel })
+  await engine.ready
   const groups = createGroupRuntime(kernel, engine)
   kernel.services.provide("groups.runtime", groups)
   const scheduler = createRoutineScheduler({ kernel, engine })
@@ -240,6 +241,14 @@ export const init = async (kernel: Kernel): Promise<void> => {
           return result.success
             ? { status: 200, json: { routine: result.routine } }
             : routeError(result.errorCode, result.error)
+        },
+      },
+      {
+        method: "DELETE",
+        path: "/routines/:id",
+        handler: async ({ params }) => {
+          const result = engine.deleteRoutine(params.id ?? "")
+          return result.success ? { status: 200, json: {} } : routeError(result.errorCode, result.error)
         },
       },
       {

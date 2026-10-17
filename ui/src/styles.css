@@ -2485,7 +2485,7 @@ a {
 .modal-card,
 .search-modal {
   width: min(720px, 100%);
-  max-height: calc(100vh - 40px);
+  max-height: calc(100dvh - 40px);
   overflow: auto;
   border: 1px solid var(--border-dialog);
   border-radius: var(--radius-14);
@@ -2494,7 +2494,8 @@ a {
   box-shadow: var(--elevation-modal);
 }
 .modal-card {
-  scroll-padding-top: 110px;
+  scroll-padding-block: 110px;
+  overscroll-behavior: contain;
 }
 .modal-header {
   position: sticky;
@@ -2528,9 +2529,17 @@ a {
 }
 .modal-actions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: var(--space-8);
   padding: var(--space-17) var(--space-25) var(--space-22);
+  background: var(--surface-panel);
+}
+/* Settings already pin actions outside their independently scrolling panes. */
+.modal-card:not(.settings-modal) .modal-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
 }
 .modal-card input,
 .modal-card select,
@@ -3969,11 +3978,24 @@ a {
 .activity-mascot .tb-avatar {
   filter: none;
 }
+.activity-copy {
+  min-width: 0;
+  flex: 1;
+}
+.activity-delay p {
+  margin: 8px 0;
+  line-height: 1.5;
+}
+.activity-delay-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
 .activity-label {
   min-width: 0;
   overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 .activity-reasoning-button {
   display: block;
@@ -3984,8 +4006,8 @@ a {
   background: transparent;
   color: inherit;
   font: inherit;
-  white-space: nowrap;
-  text-overflow: ellipsis;
+  white-space: normal;
+  overflow-wrap: anywhere;
   text-align: left;
   cursor: pointer;
 }
@@ -4461,13 +4483,15 @@ a {
 }
 .provider-login-flow {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-8);
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-12);
+  min-width: 0;
+  max-width: 100%;
 }
 .provider-login-flow > p,
 .provider-login-flow > div {
-  flex-basis: 100%;
+  max-width: 100%;
   margin: 0;
 }
 

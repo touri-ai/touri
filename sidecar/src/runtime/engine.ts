@@ -30,11 +30,11 @@ import { createApprovalBridge } from "../approvals/bridge"
 import { approvalOutcome } from "../approvals/outcome"
 import { delegatedBot } from "../groups/security"
 import { buildChildEnv } from "../kernel"
-import { resolveMcpSocketPath } from "../kernel/paths"
 import { providerProfileEnv } from "../kernel/provider-profiles"
 import { redactStructured } from "../kernel/redact"
 import { attachedServers, resolveAttachedMcp } from "../mcp/attached"
 import { reapOrphanShims } from "../mcp/shim-registry"
+import { resolveMcpEndpoint } from "../platform/transport"
 import { prepareLocalProviderLogin } from "../vm/local-provider-login"
 import { ProviderLoginError } from "../vm/provider-login"
 import { redactVmEvents } from "../vm/redact-events"
@@ -67,6 +67,7 @@ import { formatRoutineTitle, nextCronSlot, parseCron, previousCronSlot, validTim
 import { sessionFingerprint, workingDirectory } from "./session"
 import { createToolResolutions } from "./tool-resolutions"
 import { retryTransient } from "./transient-retry"
+import { turnConclusion } from "./turn-conclusion"
 import { bounded, randomHexToken, writePrivateFile } from "./utils"
 import { startVmTurn } from "./vm-turn"
 import { createWorkState, type WorkState } from "./work-state"
@@ -117,6 +118,7 @@ type RoutineUpdate = {
 }
 
 type RuntimeEngine = {
+  ready: Promise<void>
   enqueue: (args: {
     threadId: Id
     requestMessageId: Id
@@ -157,6 +159,7 @@ type RuntimeEngine = {
     fromTool: boolean
     botId?: Id
   }) => Result<{ routine: Routine }, "NOT_FOUND" | "NOT_OWNED" | "INVALID_ARGS">
+  deleteRoutine: (routineId: Id) => Result<object, "NOT_FOUND">
   runRoutine: (args: {
     routineId: Id
     triggerSource: RoutineRun["triggerSource"]
@@ -430,7 +433,7 @@ export const createRuntimeEngine = ({
       env: {
         TOURI_APP_DATA: kernel.paths.appData,
         TOURI_RUN_DIR: kernel.paths.runDir,
-        TOURI_MCP_SOCK: resolveMcpSocketPath(kernel.paths),
+        TOURI_MCP_SOCK: resolveMcpEndpoint(kernel.paths),
       },
     }
   }
@@ -497,11 +500,11 @@ export const createRuntimeEngine = ({
       }
       // Provider items are separate Markdown documents; chunks within an item are not.
       // Persist the separator as part of the delta so replay and crash recovery agree.
-      const separator = state.text && !state.textItemIds.has(event.itemId) ? "\n\n" : ""
+      const last = state.parts.at(-1)
+      const separator = state.text && (!state.textItemIds.has(event.itemId) || last?.type !== "text") ? "\n\n" : ""
       state.textItemIds.add(event.itemId)
       const delta = separator + event.delta
-      const prose = [...state.parts].reverse().find((part) => part.type === "text" || part.type === "reasoning")
-      const existing = prose?.type === "text" ? prose : undefined
+      const existing = last?.type === "text" ? last : undefined
       if (existing) existing.text += delta
       else state.parts.push({ type: "text", text: delta })
       state.text += delta
@@ -837,7 +840,7 @@ export const createRuntimeEngine = ({
         ...providerProfileEnv({ appData: kernel.paths.appData, bot }),
         TOURI_RUN_DIR: kernel.paths.runDir,
         TOURI_APP_DATA: kernel.paths.appData,
-        ...(bot.machine === "vm" ? {} : { TOURI_MCP_SOCK: resolveMcpSocketPath(kernel.paths) }),
+        ...(bot.machine === "vm" ? {} : { TOURI_MCP_SOCK: resolveMcpEndpoint(kernel.paths) }),
         ...(projectDataDir ? { TOURI_PROJECT_DATA_DIR: projectDataDir } : {}),
       },
     })
@@ -942,8 +945,10 @@ export const createRuntimeEngine = ({
         const startTurn: ProviderAdapter["startTurn"] = prepared
           ? (args) => startVmTurn({ kernel, provider, args })
           : provider.startTurn
-        const invoke = (): ReturnType<typeof startTurn> =>
-          startTurn({
+        const invoke = (): ReturnType<typeof startTurn> => {
+          // Publish before invocation: startup and a silent provider are different waits.
+          if (!run.providerStartedAt) updateRun(run, { providerStartedAt: Date.now() })
+          return startTurn({
             thread,
             bot: turnBot,
             session,
@@ -957,6 +962,7 @@ export const createRuntimeEngine = ({
             onEvent,
             signal: controller.signal,
           })
+        }
         const invokeWithRetry = (): ReturnType<typeof startTurn> =>
           retryTransient({
             run: invoke,
@@ -991,6 +997,7 @@ export const createRuntimeEngine = ({
           error: kernel.redact(error instanceof Error ? error.message : String(error)),
         }
       } finally {
+        // A completion frame is advisory; drain trailing text before publishing a terminal reply.
         flushEvents?.()
         await prepared?.release()
         releaseLogin?.()
@@ -1053,6 +1060,12 @@ export const createRuntimeEngine = ({
         finishLiveRun(run, () => {
           ensureReply({ run, state, store, parentId: run.requestMessageId ?? thread.activeLeafId ?? run.id })
           state.parts = tools.finish(run, state.parts, "unknown")
+          const conclusion = turnConclusion({
+            parts: state.parts,
+            requestText: (originalRequest ?? request)?.text ?? "",
+          })
+          if (conclusion)
+            handleEvent({ run, store, state, event: { type: "text_delta", itemId: kernel.newId(), delta: conclusion } })
           publishMessage({ store, state, run, status: "complete" })
           updateRun(run, {
             status: "succeeded",
@@ -1284,6 +1297,7 @@ export const createRuntimeEngine = ({
   }
 
   const startContinuation = ({ run, plan }: { run: Run; plan: ContinuationPlan }): boolean => {
+    if (!routineAllowsContinuation(run)) return false
     const store = kernel.services.use("store.api")
     const thread = store?.getThread({ threadId: run.threadId })
     if (!store || !thread) return false
@@ -1396,6 +1410,8 @@ export const createRuntimeEngine = ({
   }
 
   const drain = async (): Promise<void> => {
+    // A recovered turn must not run alongside the previous provider process.
+    await startupCleanup
     while (!shuttingDown && ownsRuntime() && active.size < maxConcurrentRuns) {
       const nextIndex = queued.findIndex((runId) => {
         const run = persistence.getRun(runId)
@@ -1772,6 +1788,20 @@ export const createRuntimeEngine = ({
     return { success: true, routine: next }
   }
 
+  const deleteRoutine = (routineId: Id): Result<object, "NOT_FOUND"> => {
+    if (!persistence.getRoutine(routineId))
+      return { success: false, errorCode: "NOT_FOUND", error: "Routine not found" }
+    const pending = new Set(persistence.listRoutineRuns(routineId).map((run) => run.id))
+    // Queued work has not started yet and must not fire after deletion. Starting
+    // and running turns keep their existing controller and timeout and finish.
+    for (const run of persistence.listQueuedRuns()) {
+      if (run.routineRunId && pending.has(run.routineRunId)) cancel(run.id)
+    }
+    persistence.deleteRoutine(routineId)
+    kernel.publish({ type: "routine.deleted", routineId })
+    return { success: true }
+  }
+
   const recordSkipped = ({
     routine,
     scheduledFor,
@@ -1974,14 +2004,24 @@ export const createRuntimeEngine = ({
     }
     approvalBridge.dispose()
     shutdownPromise = (async () => {
+      await startupCleanup
       await Promise.all(Object.values(adapters).map((adapter) => adapter.shutdown()))
       await Promise.all(executions.values())
     })()
     return shutdownPromise
   }
 
-  reapProviderProcesses(kernel)
-  reapOrphanShims(kernel.paths.runDir)
+  // Both scans run `ps` asynchronously (#121); the record list is read before the first await.
+  const startupCleanup = Promise.all([reapProviderProcesses(kernel), reapOrphanShims(kernel.paths.runDir)])
+    .then(() => undefined)
+    .catch((error) =>
+      kernel.log({
+        level: "error",
+        module: "runtime",
+        msg: "Falha ao encerrar processos órfãos",
+        data: { error: error instanceof Error ? error.message : String(error) },
+      }),
+    )
   const recovered = new Set<Id>()
   for (const run of persistence.listActiveRuns()) {
     recovered.add(run.id)
@@ -2048,6 +2088,7 @@ export const createRuntimeEngine = ({
   queueMicrotask(() => void drain())
 
   return {
+    ready: startupCleanup,
     enqueue,
     activeRun,
     continueAfterApproval,
@@ -2062,6 +2103,7 @@ export const createRuntimeEngine = ({
     listRoutineRuns,
     createRoutine,
     updateRoutine,
+    deleteRoutine,
     runRoutine,
     tick,
     shutdown,

@@ -1,14 +1,18 @@
 import type { Database } from "bun:sqlite"
 import { chmodSync, mkdirSync, mkdtempSync, rmSync } from "node:fs"
 import { homedir } from "node:os"
-import { join } from "node:path"
+import { delimiter, join } from "node:path"
 import { stripVTControlCharacters } from "node:util"
 import type { Bot, Kernel, ProviderLoginFlow, RouteModule } from "@touri/contracts"
 import { withDeadline } from "../kernel/policy"
+import { providerProfileEnv } from "../kernel/provider-profiles"
 import { buildChildEnv } from "../kernel/shell-env"
+import { killProviderLoginPty, spawnProviderLoginPty } from "../platform/provider-login"
+import { providerProfileStatus } from "../runtime/provider-profiles"
 import { resolveProviderExecutable } from "../runtime/resolveProviderExecutable"
 import {
   loginTarget,
+  NATIVE_VAULT_GUIDANCE,
   ProviderLoginError,
   providerLoginAccount,
   providerLoginSourceKey,
@@ -22,41 +26,7 @@ import {
 
 type Target = Pick<Bot, "id" | "provider">
 type Child = Extract<ReturnType<Kernel["spawnTree"]>, { success: true }>
-const killLoginChild = (child: Child) => {
-  try {
-    // PTY helpers may put their CLI in another process group. Stop descendants before the helper.
-    const result = Bun.spawnSync({
-      cmd: ["/bin/ps", "-axo", "pid=,ppid="],
-      stdout: "pipe",
-      stderr: "ignore",
-      timeout: 1000,
-    })
-    const rows = result.stdout
-      .toString()
-      .trim()
-      .split("\n")
-      .map((line) => line.trim().split(/\s+/).map(Number))
-    const descendants = new Set([child.pid])
-    for (let pass = 0; pass < rows.length; pass++) {
-      let added = false
-      for (const [pid, parent] of rows)
-        if (pid && parent && descendants.has(parent) && !descendants.has(pid)) {
-          descendants.add(pid)
-          added = true
-        }
-      if (!added) break
-    }
-    for (const pid of [...descendants].reverse())
-      if (pid !== child.pid) {
-        try {
-          process.kill(pid, "SIGKILL")
-        } catch {}
-      }
-  } catch {
-  } finally {
-    child.kill("SIGKILL")
-  }
-}
+
 type Session = {
   target: Target
   view: ProviderLoginFlow
@@ -80,19 +50,34 @@ export type LoginInvocation = {
 }
 const isDraft = (id: string) => /^draft-[0-9a-f-]{36}$/.test(id)
 const key = (target: Target) => `${target.id}:${target.provider}`
-const claudeVerificationUrl = (output: string) => {
+const verificationUrl = (provider: Bot["provider"], output: string) => {
   let latest: string | undefined
+  // OSC 8 retains full URLs even when the visible terminal link wraps.
   // biome-ignore lint/suspicious/noControlCharactersInRegex: OSC 8 uses ESC and BEL delimiters.
-  for (const match of output.matchAll(/\u001b\]8;[^;\u0007\u001b]*;([^\u0007\u001b]*)(?:\u0007|\u001b\\)/g)) {
+  const links = [...output.matchAll(/\u001b\]8;[^;\u0007\u001b]*;([^\u0007\u001b]*)(?:\u0007|\u001b\\)/g)].map(
+    (match) => match[1] ?? "",
+  )
+  const text = stripVTControlCharacters(output).replace(/\r/g, "")
+  // Wait for a delimiter: a read can end halfway through a URL.
+  const printed = [...text.matchAll(/https:\/\/[^\s<>"']+(?=[\s<>"'])/g)].map((match) => match[0])
+  for (const candidate of [...printed, ...links]) {
     try {
-      const url = new URL(match[1] ?? "")
+      const url = new URL(candidate)
+      if (url.protocol !== "https:" || url.username || url.password || url.port) continue
       if (
-        url.origin === "https://claude.com" &&
-        url.pathname === "/cai/oauth/authorize" &&
-        !url.username &&
-        !url.password
+        [...url.searchParams.keys()].some((key) => /^(?:access_token|refresh_token|id_token|api_key|token)$/i.test(key))
       )
-        latest = url.href
+        continue
+      const allowed =
+        provider === "claude"
+          ? url.origin === "https://claude.com" && url.pathname === "/cai/oauth/authorize"
+          : provider === "codex"
+            ? ["auth.openai.com", "chatgpt.com"].includes(url.hostname) &&
+              ["/codex/device", "/device", "/activate", "/oauth/device"].includes(url.pathname)
+            : // OpenCode can delegate login to the provider chosen in its CLI menu.
+              /^[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}$/i.test(url.hostname) &&
+              !/\.(?:local|internal|localhost)$/i.test(url.hostname)
+      if (allowed) latest = url.href
     } catch {}
   }
   return latest
@@ -120,6 +105,7 @@ export const createProviderLoginFlow = ({
   headless = process.env.TOURI_HEADLESS === "1",
   timeoutMs = 10 * 60_000,
   invoke,
+  profileStatus = providerProfileStatus,
 }: {
   kernel: Kernel
   hostHome?: string
@@ -127,6 +113,7 @@ export const createProviderLoginFlow = ({
   headless?: boolean
   timeoutMs?: number
   invoke?: (input: LoginInvocation) => ReturnType<Kernel["spawnTree"]>
+  profileStatus?: typeof providerProfileStatus
 }) => {
   const host = platform === "darwin" && !headless ? "mac" : "server"
   const hostUnavailable = host === "mac" ? "Login deste Mac indisponível." : "Login deste servidor indisponível."
@@ -204,16 +191,24 @@ export const createProviderLoginFlow = ({
     delete session.directory
     delete session.child
   }
+  /** The login home is removed again once the CLI tree is dead, so a late write cannot leave a credential behind. */
+  const stopLoginChild = (session: Session): void => {
+    const { child, directory } = session
+    if (!child) return
+    void killProviderLoginPty(child).finally(() => {
+      if (directory) rmSync(directory, { recursive: true, force: true })
+    })
+  }
   const cancel = (target: Target, state: "cancelled" | "error" = "cancelled") => {
     const session = sessions.get(key(target))
     if (session) {
       const child = session.child
-      // The process scan can yield to the event loop, so stop the CLI before publishing the final state.
-      if (child) killLoginChild(child)
+      stopLoginChild(session)
       session.view = {
         provider: target.provider,
         state,
-        ...(state === "error" ? { message: "O login expirou. Tente novamente." } : {}),
+        host,
+        ...(state === "error" ? { retryable: true, message: "O login expirou. Tente novamente." } : {}),
       }
       delete session.secret
       clean(session)
@@ -221,7 +216,32 @@ export const createProviderLoginFlow = ({
     }
     return session?.view ?? { provider: target.provider, state }
   }
+  /** A bot with a provider profile signs in through that profile, never the vault or the host login. */
+  const profileLogin = async (target: Target): Promise<ProviderLoginFlow | null> => {
+    if (isDraft(target.id)) return null
+    const bot = kernel.services.use("store.api")?.getBot({ botId: target.id })
+    const profile = bot?.providerProfile
+    if (!bot || !profile || bot.provider !== target.provider) return null
+    if (!Object.keys(providerProfileEnv({ appData: kernel.paths.appData, bot })).length) return null
+    if (bot.provider !== "claude" && bot.provider !== "codex") return null
+    const { loggedIn } = await profileStatus({
+      appData: kernel.paths.appData,
+      profile,
+      provider: bot.provider,
+      env: buildChildEnv({ base: await kernel.shellEnv() }),
+    })
+    return loggedIn
+      ? { provider: target.provider, state: "ready", host }
+      : {
+          provider: target.provider,
+          state: "error",
+          host,
+          message: `O perfil ${profile} não está logado. No servidor, rode: touri profile login ${profile}`,
+        }
+  }
   const status = async (target: Target): Promise<ProviderLoginFlow> => {
+    const profile = await profileLogin(target)
+    if (profile) return profile
     const current = sessions.get(key(target))
     // A cancelled browser attempt must not mask an existing or repaired saved login.
     if (current && (current.view.state === "waiting" || isDraft(target.id))) return { ...current.view }
@@ -233,7 +253,12 @@ export const createProviderLoginFlow = ({
         value = await readVault(kernel, target, loginTarget(target.provider), {})
       } catch (error) {
         if (host === "server" && error instanceof ProviderLoginError)
-          return { provider: target.provider, state: "error", host, message: SERVER_VAULT_GUIDANCE }
+          return {
+            provider: target.provider,
+            state: "error",
+            host,
+            message: headless ? SERVER_VAULT_GUIDANCE : NATIVE_VAULT_GUIDANCE,
+          }
         if (
           host === "mac" &&
           error instanceof ProviderLoginError &&
@@ -261,7 +286,7 @@ export const createProviderLoginFlow = ({
   const start = async (target: Target): Promise<ProviderLoginFlow> => {
     const existing = sessions.get(key(target))
     if (existing?.view.state === "waiting") return { ...existing.view }
-    const session: Session = { target, view: { provider: target.provider, state: "waiting" } }
+    const session: Session = { target, view: { provider: target.provider, state: "waiting", host } }
     sessions.set(key(target), session)
     session.timer = setTimeout(() => cancel(session.target, "error"), timeoutMs)
     session.timer.unref()
@@ -292,6 +317,11 @@ export const createProviderLoginFlow = ({
           "BUN_OPTIONS",
         ])
           delete (env as Record<string, string>)[name]
+        if (host === "server") {
+          env.BROWSER = "echo"
+          delete env.DISPLAY
+          delete env.WAYLAND_DISPLAY
+        }
         const command = target.provider
         const args =
           command === "claude"
@@ -304,25 +334,18 @@ export const createProviderLoginFlow = ({
         else {
           const resolved = await resolveProviderExecutable({
             kernel,
-            command,
-            env: { ...base, PATH: [base.PATH, join(hostHome, ".opencode/bin")].filter(Boolean).join(":") },
+            command: process.env[`TOURI_${command.toUpperCase()}_BIN`] ?? command,
+            env: { ...base, PATH: [base.PATH, join(hostHome, ".opencode/bin")].filter(Boolean).join(delimiter) },
           })
           if (!resolved.success) throw new Error("cli")
           if (session.view.state !== "waiting") return
           env.PATH = resolved.env.PATH ?? ""
-          const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`
-          if (process.platform === "darwin") env.TOURI_LOGIN_ARGV = [resolved.path, ...args].join("\x1f")
-          spawned = kernel.spawnTree({
-            cmd: process.platform === "darwin" ? "/usr/bin/expect" : "/usr/bin/script",
-            args:
-              process.platform === "darwin"
-                ? [
-                    "-c",
-                    'set timeout -1; log_user 1; set stty_init "columns 240 rows 40"; spawn -noecho {*}[split $env(TOURI_LOGIN_ARGV) "\\x1f"]; interact',
-                  ]
-                : ["-qefc", [resolved.path, ...args].map(quote).join(" "), "/dev/null"],
+          spawned = spawnProviderLoginPty({
+            command: resolved.path,
+            args,
             cwd: directory,
             env,
+            spawn: kernel.spawnTree,
           })
         }
         if (!spawned.success) throw new Error("cli")
@@ -337,14 +360,19 @@ export const createProviderLoginFlow = ({
               output += decoder.decode(chunk, { stream: true })
               if (output.length > 128_000) throw new Error("output")
               if (session.view.state !== "waiting") continue
-              // OSC 8 contains the complete URL even when Ink wraps its visible text.
-              if (command === "claude") {
-                const url = claudeVerificationUrl(output)
-                if (url) session.view.verificationUrl = url
+              const url = verificationUrl(command, output)
+              if (url) {
+                kernel.addRedactionValue(url)
+                session.view.verificationUrl = url
+                if (command === "opencode") delete session.view.prompt
               }
               const text = stripVTControlCharacters(output).replace(/\r/g, "")
-              if (command === "claude") {
-                const prompt = text.lastIndexOf("Paste code here")
+              if (command === "claude" || command === "opencode") {
+                const prompt =
+                  command === "claude"
+                    ? text.lastIndexOf("Paste code here")
+                    : ([...text.matchAll(/(?:^|\n)[│◇◆\s]*(?:paste|enter)(?: the)? (?:authorization )?code/gi)].at(-1)
+                        ?.index ?? -1)
                 if (prompt > (session.pastePrompt ?? -1)) {
                   session.pastePrompt = prompt
                   session.codeReady = true
@@ -376,24 +404,13 @@ export const createProviderLoginFlow = ({
               for (const token of text.matchAll(/sk-ant-oat01-[\w-]+/g)) redact(token[0])
               const code =
                 command !== "claude" &&
-                (text.match(/(?:code|código)\s*[:\n]?\s*([A-Z0-9]{4,5}(?:-[A-Z0-9]{4,5}){1,2})\b/i)?.[1] ??
+                ([
+                  ...text.matchAll(/(?:code|código)(?:\s+is)?\s*[:\n]?\s*([A-Z0-9]{4,5}(?:-[A-Z0-9]{4,5}){1,2})\b/gi),
+                ].at(-1)?.[1] ??
                   text.match(/(?:^|\n)\s*([A-Z0-9]{4,5}-[A-Z0-9]{4,5})\s*(?:\n|$)/)?.[1])
               if (code) {
                 kernel.addRedactionValue(code)
                 session.view.deviceCode = code
-              }
-              for (const match of text.matchAll(/https:\/\/[^\s<>"']+/g)) {
-                if (command === "claude") break
-                try {
-                  const url = new URL(match[0])
-                  if (
-                    ["auth.openai.com", "chatgpt.com", "claude.ai", "console.anthropic.com", "opencode.ai"].includes(
-                      url.hostname,
-                    ) &&
-                    ["/codex/device", "/device", "/activate", "/oauth/device"].includes(url.pathname)
-                  )
-                    session.view.verificationUrl = url.origin + url.pathname
-                } catch {}
               }
             }
           } finally {
@@ -410,10 +427,12 @@ export const createProviderLoginFlow = ({
         session.view = { provider: command, state: "ready" }
       } catch {
         if (session.view.state === "waiting") {
-          if (session.child) killLoginChild(session.child)
+          stopLoginChild(session)
           session.view = {
             provider: target.provider,
             state: "error",
+            host,
+            retryable: true,
             message: "Não foi possível concluir o login. Tente novamente ou cole o token manualmente.",
           }
         }
@@ -435,6 +454,10 @@ export const createProviderLoginFlow = ({
     target: Target,
     input: { action: string; value?: string; draftId?: string; input?: string },
   ): Promise<ProviderLoginFlow> => {
+    if (input.action !== "cancel") {
+      const profile = await profileLogin(target)
+      if (profile) return profile
+    }
     if (input.action === "cancel") return cancel(target)
     if (input.action === "code") {
       const value = typeof input.value === "string" ? input.value.trim() : ""
@@ -442,7 +465,7 @@ export const createProviderLoginFlow = ({
         throw new Error("Código inválido.")
       const session = sessions.get(key(target))
       if (
-        target.provider !== "claude" ||
+        (target.provider !== "claude" && target.provider !== "opencode") ||
         session?.view.state !== "waiting" ||
         !session.child ||
         !session.view.needsCode ||
@@ -479,6 +502,14 @@ export const createProviderLoginFlow = ({
         input.input === "up" ? "\u001b[A" : input.input === "down" ? "\u001b[B" : input.input === "enter" ? "\r" : null
       if (target.provider !== "opencode" || !bytes || !session?.child || !session.view.prompt)
         throw new Error("Seleção indisponível.")
+      if (
+        host === "server" &&
+        input.input === "enter" &&
+        session.view.prompt?.kind === "method" &&
+        /\bbrowser\b/i.test(session.view.prompt.choice) &&
+        !/\bheadless\b/i.test(session.view.prompt.choice)
+      )
+        throw new Error("Escolha um método com código para entrar por este aparelho.")
       const writer = session.child.stdin.getWriter()
       try {
         await writer.write(new TextEncoder().encode(bytes))
@@ -512,7 +543,7 @@ export const createProviderLoginFlow = ({
       const value = input.value?.trim() ?? ""
       if (value.length > 20_000 || !validLogin(target.provider, value)) throw new Error("Login inválido.")
       cancel(target)
-      const session: Session = { target, view: { provider: target.provider, state: "waiting" } }
+      const session: Session = { target, view: { provider: target.provider, state: "waiting", host } }
       sessions.set(key(target), session)
       try {
         await save(session, value)
@@ -560,10 +591,23 @@ export const createProviderLoginFlow = ({
         return { status: 400, json: { error: "Provedor inválido" } }
       const target = { id, provider: input.provider as Bot["provider"] }
       try {
+        if (method === "POST" && input.action === "cancel") return { status: 200, json: { ...cancel(target), host } }
+        // Readiness must not invoke the provider or spend a model response. Login and
+        // installation are independent: credentials can outlive an uninstalled CLI.
+        const base = buildChildEnv({ base: await kernel.shellEnv() })
+        const command = process.env[`TOURI_${target.provider.toUpperCase()}_BIN`] ?? target.provider
+        const resolved = await resolveProviderExecutable({
+          kernel,
+          command,
+          env: { ...base, PATH: [base.PATH, join(hostHome, ".opencode/bin")].filter(Boolean).join(":") },
+        })
+        const view =
+          method === "GET" || (!resolved.success && ["start", "use-host", "adopt"].includes(input.action ?? ""))
+            ? await status(target)
+            : await action(target, { ...input, action: input.action ?? "" })
         return {
           status: 200,
-          json:
-            method === "GET" ? await status(target) : await action(target, { ...input, action: input.action ?? "" }),
+          json: { ...view, host, executable: resolved.success ? "available" : "missing" },
         }
       } catch {
         return { status: 503, json: { error: "Não foi possível configurar o login. Tente novamente." } }

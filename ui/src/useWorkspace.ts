@@ -35,6 +35,7 @@ import { userFacingError } from "./errors"
 import { adoptProviderLogin } from "./features/bots/providerLogin"
 import { useDoctorReport } from "./features/doctor/useDoctorReport"
 import { localizeNotice, t } from "./i18n"
+import { localResponseTimings } from "./localResponseTimings"
 import { useMachineParking } from "./machineIntents"
 import { reconcileFailureNotifications } from "./sidebarAttention"
 import { readWorkspaceState, saveWorkspaceState } from "./workspaceState"
@@ -90,6 +91,7 @@ export type WorkspaceActions = {
   toggleRoutine: (routine: Routine) => Promise<void>
   runRoutine: (routineId: Id) => Promise<void>
   createRoutine: (input: ApiRoutes["POST /routines"]["req"]) => Promise<Routine>
+  deleteRoutine: (routineId: Id) => Promise<void>
   updateRoutine: (routineId: Id, patch: ApiRoutes["PATCH /routines/:id"]["req"]) => Promise<Routine>
   createProject: (input: ApiRoutes["POST /projects"]["req"]) => Promise<Project>
   createProcess: (
@@ -155,13 +157,22 @@ const uniqueById = <T extends { id: Id }>(rows: Array<T>): Array<T> => {
   return [...result.values()]
 }
 
-const mergeRunRows = <T extends { id: Id; status: string; finishedAt: number | null }>(
+const mergeRunRows = <
+  T extends { id: Id; status: string; finishedAt: number | null; providerStartedAt?: number | null },
+>(
   current: T[],
   incoming: T[],
 ): T[] => {
   const rows = new Map(current.map((row) => [row.id, row]))
   for (const row of incoming) {
     const previous = rows.get(row.id)
+    // A late acceptance can predate provider invocation.
+    if (
+      previous?.providerStartedAt != null &&
+      row.providerStartedAt == null &&
+      ["queued", "starting"].includes(row.status)
+    )
+      continue
     // A REST response may arrive after the terminal WebSocket event.
     if (
       previous?.finishedAt !== null &&
@@ -539,6 +550,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
     // too large or expired. Reloading every conversation on each reconnect kept a slow client behind.
     const unsubscribe = api.subscribe((envelope: UiEventEnvelope) => {
       const event = envelope.event
+      localResponseTimings().observe(event)
       if (event.type === "thread.updated" && event.thread.groupThreadId) {
         privateThreads.current.add(event.thread.id)
         return
@@ -614,6 +626,8 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
           }
         }
         if (event.type === "run.updated") return { ...current, runs: mergeRunRows(current.runs, [event.run]) }
+        if (event.type === "routine.deleted")
+          return { ...current, routines: current.routines.filter((routine) => routine.id !== event.routineId) }
         if (event.type === "routine.updated")
           return {
             ...current,
@@ -853,7 +867,10 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
   const sendMessage = useCallback(
     async (text: string, parentId?: Id | null, attachmentIds: Array<Id> = []): Promise<void> => {
       if (!selectedThread || !text.trim()) return
+      const clientNonce = crypto.randomUUID()
+      localResponseTimings().begin(selectedThread.id, clientNonce)
       const input = {
+        clientNonce,
         threadId: selectedThread.id,
         parentId: parentId === undefined ? selectedThread.activeLeafId : parentId,
         text: text.trim(),
@@ -862,6 +879,8 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
       const response = api.sendMessage
         ? await api.sendMessage(input)
         : await api.request("POST /threads/:id/messages", input, { id: selectedThread.id })
+      localResponseTimings().observe({ type: "message.updated", message: response.message })
+      if (response.run) localResponseTimings().observe({ type: "run.updated", run: response.run })
       setData((current) => ({
         ...current,
         messages: updateMessage(current.messages, response.message),
@@ -935,15 +954,25 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
           : Promise.resolve(true),
         api.request("GET /bots/:id/threads", {}, { id: response.bot.id }).catch(() => ({ threads: [] })),
       ])
-      setData((current) => ({
-        ...current,
-        bots: uniqueById([...current.bots, response.bot]),
-        selectedBotId: response.bot.id,
-        threads: mergeThreads(current.threads, threadsResponse.threads),
-        selectedThreadId: response.bot.mainThreadId ?? threadsResponse.threads[0]?.id ?? null,
-        activeProjectId: response.bot.projectId,
-        processes: [],
-      }))
+      // Adoption can enable the VM login after POST /bots. Its creation snapshot
+      // must not overwrite that update, even when the event stream reconnects.
+      const refreshedBot = loginDraftId
+        ? (await api.request("GET /bots", {}).catch(() => ({ bots: [] }))).bots.find(
+            (bot) => bot.id === response.bot.id,
+          )
+        : undefined
+      setData((current) => {
+        const bot = refreshedBot ?? current.bots.find((bot) => bot.id === response.bot.id) ?? response.bot
+        return {
+          ...current,
+          bots: uniqueById([...current.bots, bot]),
+          selectedBotId: bot.id,
+          threads: mergeThreads(current.threads, threadsResponse.threads),
+          selectedThreadId: bot.mainThreadId ?? threadsResponse.threads[0]?.id ?? null,
+          activeProjectId: bot.projectId,
+          processes: [],
+        }
+      })
       return { loginReady }
     },
     [api],
@@ -976,6 +1005,14 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
       const response = await api.request("POST /routines", input)
       setData((current) => ({ ...current, routines: uniqueById([...current.routines, response.routine]) }))
       return response.routine
+    },
+    [api],
+  )
+
+  const deleteRoutine = useCallback(
+    async (routineId: Id): Promise<void> => {
+      await api.request("DELETE /routines/:id", {}, { id: routineId })
+      setData((current) => ({ ...current, routines: current.routines.filter((routine) => routine.id !== routineId) }))
     },
     [api],
   )
@@ -1235,6 +1272,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
       runRoutine,
       createRoutine,
       updateRoutine,
+      deleteRoutine,
       createProject,
       createProcess,
       startProcess,

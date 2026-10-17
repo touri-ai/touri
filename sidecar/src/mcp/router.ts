@@ -4,6 +4,7 @@ import { approvalDestination } from "../approvals/grants"
 import { hiddenInGroupSession } from "../groups/privacy"
 import { delegatedBot, getDelegation } from "../groups/security"
 import { redactStructured } from "../kernel/redact"
+import { capabilitySupport } from "../projects/capability-support"
 import { createProjectStore } from "../projects/repository"
 import { auditToolCall } from "./audit"
 import type { McpCallerContext } from "./auth"
@@ -160,7 +161,27 @@ export const createToolRouter = ({
     const experimental = isExperimental(kernel)
     const builtIn = toolCatalog.tools
       .filter((tool) => registrations.has(tool.name) && visibleTo({ tool, caller, experimental, kernel }))
-      .map((tool) => ({ name: tool.name, description: tool.description, inputSchema: tool.inputSchema }))
+      .flatMap<{ name: string; description: string; inputSchema: unknown }>((tool) => {
+        if (tool.name !== "capability_request")
+          return [{ name: tool.name, description: tool.description, inputSchema: tool.inputSchema }]
+        const bot = kernel.services.use("store.api")?.getBot({ botId: caller.botId })
+        const capabilities = bot
+          ? (["browser", "computer_use"] as const).filter(
+              (capability) => capabilitySupport(kernel, bot, capability) === null,
+            )
+          : []
+        if (!capabilities.length) return []
+        return [
+          {
+            name: tool.name,
+            description: tool.description,
+            inputSchema: {
+              ...tool.inputSchema,
+              properties: { ...tool.inputSchema.properties, capability: { enum: capabilities } },
+            },
+          },
+        ]
+      })
     return [
       ...builtIn,
       ...attachedTools(kernel, caller.botId, caller.threadId)

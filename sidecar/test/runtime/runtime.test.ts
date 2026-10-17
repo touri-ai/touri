@@ -4,6 +4,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, st
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { Bot, Message, StoreApi, Thread } from "@touri/contracts"
+import { t } from "../../../ui/src/i18n"
 import { createStandingGrantStore } from "../../src/approvals/grants"
 import { mcpStartupChecks } from "../../src/doctor/mcp"
 import { createKernel } from "../../src/kernel"
@@ -760,7 +761,8 @@ test.serial("streaming preserves deltas, command parts, completion and usage", a
     expect(queued.run.status).toBe("succeeded")
     const assistant = [...value.store.messages.values()].find((message) => message.role === "assistant")
     expect(assistant?.status).toBe("complete")
-    expect(assistant?.text).toBe("hello")
+    // The fixture ends on a command with no closing text, so the turn gets a confirmed conclusion.
+    expect(assistant?.text).toBe("hello\n\nDone.")
     expect(assistant?.parts.some((part) => part.type === "command")).toBe(true)
     expect(queued.run.usage?.inputTokens).toBe(3)
     expect(queued.run.usage?.outputTokens).toBe(4)
@@ -2308,6 +2310,7 @@ test.serial("transcript: a late tool start during cancellation remains resolved"
 
 test.serial("transcript: cancellation during environment loading never launches the queued turn", async () => {
   const value = await fixture()
+  await value.engine.ready
   let release: (environment: Record<string, string>) => void = () => undefined
   const environment = new Promise<Record<string, string>>((resolve) => {
     release = resolve
@@ -2317,7 +2320,7 @@ test.serial("transcript: cancellation during environment loading never launches 
     const request = addUser(value.store, value.thread, "cancel before launch")
     const queued = value.engine.enqueue({ threadId: value.thread.id, requestMessageId: request.id, trigger: "user" })
     if (!queued.success) throw new Error(queued.error)
-    await Promise.resolve()
+    await waitFor(() => value.engine.activeRun({ threadId: value.thread.id })?.id === queued.run.id)
     expect(value.engine.activeRun({ threadId: value.thread.id })?.id).toBe(queued.run.id)
     value.engine.cancel(queued.run.id)
     release({ PATH: process.env.PATH ?? "" })
@@ -2541,6 +2544,129 @@ test.serial("newly activated routines wait for a future slot instead of replayin
     expect(created.routine.nextRunAt).toBeGreaterThan(before)
     await f.engine.tick(before)
     expect(f.engine.listRoutineRuns(created.routine.id)).toEqual([])
+  } finally {
+    await closeFixture(f)
+  }
+})
+
+const routineForDeletion = (value: Fixture) => {
+  const result = value.engine.createRoutine({
+    input: {
+      botId: value.bot.id,
+      name: "Organizar notas",
+      prompt: "Organize minhas notas",
+      cron: "*/5 * * * *",
+      timezone: "UTC",
+      enabled: true,
+      continuity: "main-thread",
+      resultsThreadId: null,
+      timeoutMinutes: 30,
+      overlap: "queue",
+      catchUpMinutes: 30,
+    },
+    forceDisabled: false,
+  })
+  if (!result.success) throw new Error(result.error)
+  return result.routine
+}
+
+test.serial("deleting a running routine lets its turn finish and preserves conversation and run history", async () => {
+  const value = await fixture({
+    scenario: { slowMs: 100, events: [{ type: "delta", delta: "Notas organizadas" }, { type: "complete" }] },
+  })
+  try {
+    const routine = routineForDeletion(value)
+    const started = value.engine.runRoutine({ routineId: routine.id, triggerSource: "manual" })
+    if (!started.success || !started.routineRun.runId) throw new Error("Missing run")
+    const runId = started.routineRun.runId
+    await waitFor(() =>
+      value.engine.listRuns(value.thread.id).some((run) => run.id === runId && run.status === "running"),
+    )
+    expect(value.engine.deleteRoutine(routine.id).success).toBe(true)
+    expect(value.engine.listRoutines()).toEqual([])
+    await waitFor(() =>
+      value.engine.listRuns(value.thread.id).some((run) => run.id === runId && run.status === "succeeded"),
+    )
+    expect(
+      value.store
+        .activePath({ threadId: value.thread.id })
+        .some((message) => message.text.includes("Notas organizadas")),
+    ).toBe(true)
+    const persistence = createRuntimePersistence({ database: value.runtime.kernel.db })
+    expect(persistence.getRun(runId)?.status).toBe("succeeded")
+    expect(persistence.getRoutine(routine.id)).toBeNull()
+    expect((value.runtime.kernel.db as Database).query("PRAGMA foreign_key_check").all()).toEqual([])
+  } finally {
+    await closeFixture(value)
+  }
+})
+
+test.serial("deletion drops queued catch-up work and a cached due schedule stays deleted after reopening", async () => {
+  const value = await fixture({ maxConcurrentRuns: 0 })
+  let reopened: ReturnType<typeof createKernel> | undefined
+  let replacement: ReturnType<typeof createRuntimeEngine> | undefined
+  try {
+    const routine = routineForDeletion(value)
+    const due = Date.now() - 120_000
+    value.engine.updateRoutine({ routineId: routine.id, patch: { nextRunAt: due }, fromTool: false })
+    await value.engine.tick()
+    const queuedRun = value.engine.listRuns(value.thread.id)[0]
+    expect(queuedRun?.status).toBe("queued")
+    expect(value.engine.listRoutineRuns(routine.id)[0]?.triggerSource).toBe("catch-up")
+    // Populate both caches before deletion, then verify a later tick cannot revive it.
+    value.engine.listRoutines()
+    value.engine.listRoutineRuns(routine.id)
+    expect(value.engine.deleteRoutine(routine.id).success).toBe(true)
+    expect(value.engine.listRuns(value.thread.id)[0]?.status).toBe("canceled")
+    await value.engine.tick(Date.now() + 600_000)
+    expect(value.engine.listRuns(value.thread.id)).toHaveLength(1)
+    expect(value.engine.listRoutineRuns(routine.id)).toEqual([])
+    expect(value.engine.runRoutine({ routineId: routine.id, triggerSource: "manual" }).success).toBe(false)
+    await value.engine.shutdown()
+    reopened = createKernel({ appData: value.root })
+    reopened.kernel.services.provide("store.api", value.store)
+    replacement = createRuntimeEngine({ kernel: reopened.kernel, codexCommand: value.fakePath })
+    await replacement.tick(Date.now() + 900_000)
+    expect(replacement.listRoutines()).toEqual([])
+    expect(replacement.listRuns(value.thread.id)).toHaveLength(1)
+    expect(replacement.listRuns(value.thread.id)[0]?.status).toBe("canceled")
+  } finally {
+    await replacement?.shutdown()
+    reopened?.stop()
+    await closeFixture(value)
+  }
+})
+
+runtimeTest.serial("first notes example completes in Portuguese without a connected project or folder", async () => {
+  const response = "- Comprar café\n- Revisar orçamento\n- Marcar reunião"
+  const f = await fixture({ scenario: { events: [{ type: "delta", delta: response }, { type: "complete" }] } })
+  const requestLogPath = join(f.assets, "requests.jsonl")
+  try {
+    f.bot.cwd = null
+    f.bot.folders = []
+    ;(f.runtime.kernel.db as Database).query("UPDATE bots SET cwd=NULL WHERE id=?").run(f.bot.id)
+    writeFileSync(
+      f.scenario,
+      JSON.stringify({ requestLogPath, events: [{ type: "delta", delta: response }, { type: "complete" }] }),
+    )
+    const prompt = t("onboarding.examplePrompt")
+    const request = addUser(f.store, f.thread, prompt)
+    const queued = f.engine.enqueue({ threadId: f.thread.id, requestMessageId: request.id, trigger: "user" })
+    if (!queued.success) throw new Error(queued.error)
+    await waitFor(() => terminal(queued.run.status))
+    expect(queued.run.status).toBe("succeeded")
+    expect(f.bot.projectId).toBeNull()
+    expect(f.bot.folders).toEqual([])
+    const replies = f.store.activePath({ threadId: f.thread.id }).filter((item) => item.role === "assistant")
+    expect(replies.at(-1)?.text).toBe(response)
+    const requests = readFileSync(requestLogPath, "utf8")
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line))
+    const starts = requests.filter((item) => item.method === "turn/start")
+    expect(starts).toHaveLength(1)
+    expect(JSON.stringify(starts[0])).toContain("lista em português do Brasil")
+    expect(JSON.stringify(starts[0])).toContain("Comprar café; revisar orçamento; marcar reunião.")
   } finally {
     await closeFixture(f)
   }

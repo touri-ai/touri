@@ -13,6 +13,7 @@ import {
 } from "react"
 import type { UiApi } from "../api/client"
 import type { ApprovalFocus } from "../approvalNavigation"
+import { useComposerDraft } from "../composerDraft"
 import { userFacingRunError } from "../errors"
 import { ComputerGrantCard } from "../features/computer"
 import { InlineLivePreview, InlinePreviewContext, screenTool } from "../features/desktop/InlineLivePreview"
@@ -92,6 +93,7 @@ type VirtualMessageListProps = {
   onSwitchBranch: (message: Message, siblings: Array<Message>, index: number) => void
   onRetry: (runId: Id) => Promise<void>
   onEdit?: EditMessage | undefined
+  onCancel?: ((runId: Id) => Promise<void>) | undefined
   editDisabled?: boolean
   header?: ReactNode
   allMessages?: Array<Message>
@@ -116,7 +118,7 @@ export const activeMessagePath = (messages: Array<Message>, leafId: Id | null): 
 
 const deliveryLabels = {
   queued: "Na fila · aguardando conexão",
-  sent: "Enviada · aguardando confirmação",
+  sent: t("Sending message…"),
   acked: "Entregue",
   failed: "Falha na entrega",
 }
@@ -139,6 +141,7 @@ export const VirtualMessageList = ({
   onSwitchBranch,
   onRetry,
   onEdit,
+  onCancel,
   editDisabled = false,
   header,
   timelineCards = [],
@@ -384,6 +387,7 @@ export const VirtualMessageList = ({
                     onSwitchBranch={onSwitchBranch}
                     onRetry={onRetry}
                     onEdit={onEdit}
+                    onCancel={onCancel}
                     editDisabled={editDisabled}
                   />
                 </Fragment>
@@ -470,6 +474,7 @@ const MessageBubble = ({
   onSwitchBranch,
   onRetry,
   onEdit,
+  onCancel,
   editDisabled,
 }: {
   inserted: boolean
@@ -484,6 +489,7 @@ const MessageBubble = ({
   onSwitchBranch: (message: Message, siblings: Array<Message>, index: number) => void
   onRetry: (runId: Id) => Promise<void>
   onEdit?: EditMessage | undefined
+  onCancel?: ((runId: Id) => Promise<void>) | undefined
   editDisabled: boolean
 }) => {
   const runtimeState = useMessageMascotState(message, run)
@@ -517,6 +523,9 @@ const MessageBubble = ({
   const [reasoningExpanded, setReasoningExpanded] = useState(false)
   const markdown = messageMarkdown(message)
   const text = message.role === "assistant" ? markdown.replace(connectDataMarker, "") : markdown
+  const technicalNotice =
+    message.role === "system" &&
+    message.parts.some((part) => part.type === "notice" && part.code === "session_replaced")
   const longContent =
     message.role === "assistant" &&
     message.status !== "streaming" &&
@@ -544,6 +553,17 @@ const MessageBubble = ({
   const failureTime = failureTimeLabel(failedAt)
   const onFailureAction = useContext(FailureActionContext)
   const failureAction = runError?.action
+  const failureRecovery = runError && {
+    ...runError.recovery,
+    actions: [
+      ...runError.recovery.actions,
+      ...(message.runId &&
+      message.status === "failed" &&
+      !runError.recovery.actions.some((action) => ["retry", "review", "resume", "storage"].includes(action.kind))
+        ? [{ kind: "retry" as const, label: t("Tentar de novo") }]
+        : []),
+    ].map((action) => (action.kind === "retry" ? { ...action, label: t("Tentar de novo") } : action)),
+  }
   const failureContent = runError && (
     <div className="message-error" role="alert">
       {runError.recovery.classified ||
@@ -551,7 +571,7 @@ const MessageBubble = ({
       runError.stage === "provider_protocol" ? (
         <>
           <ErrorNotice
-            recovery={runError.recovery}
+            recovery={failureRecovery ?? runError.recovery}
             onAction={async (action) => {
               if (action === "retry") await onRetry(message.runId ?? "")
               else if (action === "review") setReviewingActions(true)
@@ -628,7 +648,7 @@ const MessageBubble = ({
               className="text-button retry-button"
               onClick={() => void onRetry(message.runId ?? "")}
             >
-              {vmBotId ? "Tentar de novo" : t("Tentar novamente")}
+              {t("Tentar de novo")}
             </button>
           )}
         </>
@@ -693,7 +713,11 @@ const MessageBubble = ({
         </ChatDisclosure>
       )}
       {text &&
-        (message.role === "tool" ? (
+        (technicalNotice ? (
+          <ChatDisclosure label={t("Detalhes técnicos")}>
+            <pre>{text}</pre>
+          </ChatDisclosure>
+        ) : message.role === "tool" ? (
           <ToolText text={text} />
         ) : longContent ? (
           <ChatDisclosure
@@ -728,6 +752,11 @@ const MessageBubble = ({
       {message.role === "assistant" && message.status === "streaming" && (
         <ActivityMark
           state={mascotState}
+          run={run}
+          updatedAt={message.updatedAt}
+          api={api}
+          onCancel={onCancel}
+          preparingEnvironment={Boolean(vmBotId)}
           bot={bot}
           threadId={message.threadId}
           parts={parts}
@@ -822,7 +851,7 @@ export const ChatPanel = ({
   routineRuns = [],
 }: ChatPanelProps) => {
   const machine = machineStateForDisplay(rawMachine)
-  const [draft, setDraft] = useState("")
+  const { draft, setDraft, draftSaveFailed } = useComposerDraft(thread?.id)
   const mascotSnapshot = useMascotSnapshot({ id: bot?.id ?? "", color: bot?.color ?? null }, thread?.id)
   const composerRef = useRef<HTMLTextAreaElement>(null)
   const recoveryThreadId = thread?.id
@@ -841,7 +870,7 @@ export const ChatPanel = ({
     resume()
     window.addEventListener(resumeTaskEvent, resume)
     return () => window.removeEventListener(resumeTaskEvent, resume)
-  }, [recoveryThreadId])
+  }, [recoveryThreadId, setDraft])
   const localAttachmentButtonRef = useRef<HTMLButtonElement>(null)
   const attachmentButtonRef = sharedAttachmentButtonRef ?? localAttachmentButtonRef
   const activeRun = useMemo(
@@ -862,12 +891,6 @@ export const ChatPanel = ({
       ),
     [runs, thread?.id, serviceRecovered],
   )
-
-  // A draft belongs to one conversation, including when navigating while an upload is pending.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: reset only when the conversation changes
-  useLayoutEffect(() => {
-    setDraft("")
-  }, [thread?.id])
 
   if (!thread)
     return (
@@ -1041,6 +1064,7 @@ export const ChatPanel = ({
             if (next) void onSwitchBranch(thread.id, next.id)
           }}
           onRetry={onRetry}
+          onCancel={onCancel}
           // Group replies use a flat history, so sibling edits cannot be selected there.
           onEdit={group ? undefined : onSend}
           editDisabled={Boolean(activeRun)}
@@ -1051,6 +1075,8 @@ export const ChatPanel = ({
               ) : (
                 <ConversationStart
                   bot={bot}
+                  onFolder={onOpenPermissions}
+                  onAttach={() => attachmentButtonRef.current?.click()}
                   onChoose={(prompt) => {
                     setDraft(prompt)
                     composerRef.current?.focus()
@@ -1071,7 +1097,7 @@ export const ChatPanel = ({
                         className="outline-button repeat-task-button"
                         onClick={() => onRepeatTask(repeatDraft)}
                       >
-                        {t("Repetir esta tarefa")}
+                        {t("Agendar esta tarefa")}
                       </button>
                     ),
                   },
@@ -1103,7 +1129,15 @@ export const ChatPanel = ({
                         <div className="message-meta">
                           <span className="message-role">{bot?.name ?? "touri"}</span>
                         </div>
-                        <ActivityMark state={activityState} bot={bot ?? undefined} threadId={thread.id} />
+                        <ActivityMark
+                          state={activityState === "waiting-approval" ? activityState : "thinking"}
+                          bot={bot ?? undefined}
+                          threadId={thread.id}
+                          run={activeRun}
+                          api={api}
+                          onCancel={onCancel}
+                          preparingEnvironment={bot?.machine === "vm"}
+                        />
                       </article>
                     ),
                   },
@@ -1135,6 +1169,9 @@ export const ChatPanel = ({
         />
       </InlinePreviewContext.Provider>
       {/* r8 composer: notices and the input island stay isolated from transcript activity. */}
+      {draftSaveFailed && (
+        <p role="alert">{t("Não foi possível salvar o rascunho. Copie sua mensagem antes de fechar o touri.")}</p>
+      )}
       <Composer
         key={`composer-${thread.id}`}
         notice={{
@@ -1157,7 +1194,11 @@ export const ChatPanel = ({
         attachmentButtonRef={attachmentButtonRef}
         activeRun={activeRun}
         queuedCount={visibleMessages.filter((message) => message.delivery?.status === "queued").length}
-        onSend={onSend}
+        onSend={async (...args) => {
+          await onSend(...args)
+          // Sending may finish after navigation has unmounted this conversation's composer.
+          setDraft((current) => (current === draft ? "" : current))
+        }}
         onCancel={onCancel}
         onOpenPermissions={group ? undefined : onOpenPermissions}
         onOpenProviderLogin={group ? undefined : onOpenProviderLogin}
@@ -1224,7 +1265,7 @@ const RunCard = ({
         </div>
         {failed && (
           <button type="button" className="open-run-link" onClick={() => void onRetry(run.id)}>
-            {t("Tentar novamente")}
+            {t("Tentar de novo")}
           </button>
         )}
       </div>

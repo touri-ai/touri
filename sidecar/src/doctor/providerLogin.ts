@@ -2,6 +2,7 @@ import type { Database } from "bun:sqlite"
 import type { Bot, DoctorCheck, Kernel } from "@touri/contracts"
 import {
   loginTarget,
+  NATIVE_VAULT_GUIDANCE,
   ProviderLoginError,
   providerLoginAccount,
   readHostLoginFile,
@@ -63,7 +64,8 @@ const vaultCheck = async (
     )
   } catch (error) {
     signal.throwIfAborted()
-    if (host.platform !== "darwin" || host.headless) return check(id, label, "fail", SERVER_VAULT_GUIDANCE)
+    if (host.headless) return check(id, label, "fail", SERVER_VAULT_GUIDANCE)
+    if (host.platform !== "darwin") return check(id, label, "fail", NATIVE_VAULT_GUIDANCE)
     const detail = error instanceof ProviderLoginError ? error.message : "O cofre de segredos não respondeu."
     return {
       ...check(id, label, "fail", `${bot.name}: ${detail}`, target.command),
@@ -90,15 +92,21 @@ const botCheck = async (
     } catch {}
     const label = `Login · ${bot.name} · arquivo do host`
     return present
-      ? check(id, label, "pass", `${bot.name}: usa o arquivo de login do ${target.label} neste Mac.`)
-      : check(id, label, "fail", `${bot.name}: arquivo de login do ${target.label} ausente neste Mac.`, target.command)
+      ? check(id, label, "pass", `${bot.name}: usa o arquivo de login do ${target.label} neste computador.`)
+      : check(
+          id,
+          label,
+          "fail",
+          `${bot.name}: arquivo de login do ${target.label} ausente neste computador.`,
+          target.command,
+        )
   }
   if (source === "vault") return vaultCheck(kernel, bot, signal, `Login · ${bot.name} · cofre`, host)
   return check(
     id,
     `Login · ${bot.name} · fonte pendente`,
     "warn",
-    `${bot.name}: a fonte do login será definida no próximo turno. Ou escolha em ${SETTINGS_PATH}.`,
+    `${bot.name}: a fonte do login será definida na próxima mensagem. Ou escolha em ${SETTINGS_PATH}.`,
   )
 }
 

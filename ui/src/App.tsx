@@ -60,6 +60,7 @@ import { localizeNotice, t } from "./i18n"
 import { requestTaskResume, requestTaskReview } from "./recoveryEvents"
 import type { RoutineDraft } from "./routineDraft"
 import { isFailureNotice } from "./sidebarAttention"
+import { useHost } from "./useHost"
 import { useWorkspace } from "./useWorkspace"
 import { type AppRoute, readWorkspaceState, saveWorkspaceState } from "./workspaceState"
 
@@ -95,6 +96,7 @@ const errorMessage = userFacingError
 
 const AppContent = ({ kernel }: AppProps) => {
   const [api, setApi] = useState<UiApi | null>(() => kernel?.services?.api ?? null)
+  const host = useHost(api)
   const attachmentButtonRef = useRef<HTMLButtonElement>(null)
   const apiRef = useRef(api)
   apiRef.current = api
@@ -496,6 +498,11 @@ const AppContent = ({ kernel }: AppProps) => {
     }
     openDestination(command.destination)
   }
+  const openBotRoutines = (botId: Id): void => {
+    closeModal()
+    if (botId !== data.selectedBotId) actions.selectBot(botId)
+    setRoute({ section: "advanced", page: "cron", botId })
+  }
   const openDestination = (destination: PaletteDestination): void => {
     if (destination.kind === "page") {
       setRoute({ section: "advanced", page: destination.page })
@@ -508,6 +515,10 @@ const AppContent = ({ kernel }: AppProps) => {
       return
     }
     if (destination.kind === "bot-settings") {
+      if (destination.section === "routines" && selectedBot) {
+        openBotRoutines(selectedBot.id)
+        return
+      }
       setBotSettingsSection(destination.section)
       setModal("bot-settings")
       return
@@ -597,11 +608,46 @@ const AppContent = ({ kernel }: AppProps) => {
       </ErrorBoundary>
     </MotionPresence>
   )
+  const botSettingsModal = (modal === "bot-settings" || modal === "bot-permissions" || modal === "bot-mcp") &&
+    selectedBot && (
+      <BotSettingsModal
+        invokeCommand={invokeCommand}
+        bots={data.bots}
+        permissionsOnly={modal === "bot-permissions"}
+        focusMcp={modal === "bot-mcp"}
+        {...(!requestedComputer && {
+          onAttachFile: () => {
+            attachmentButtonRef.current?.click()
+            closeModal()
+          },
+          onOpenRoutines: () => openBotRoutines(selectedBot.id),
+          onOpenIntegrations: () => {
+            closeModal()
+            setRoute({ section: "advanced", page: "integracoes" })
+          },
+        })}
+        initialSection={modal === "bot-settings" ? botSettingsSection : undefined}
+        focusSetting={modal === "bot-settings" ? settingFocus : null}
+        activeTurns={data.runs.some(
+          (run) => run.botId === selectedBot.id && ["queued", "starting", "running"].includes(run.status),
+        )}
+        api={api}
+        capability={data.machineCapability}
+        machineState={data.machines.find((state) => state.botId === selectedBot.id)}
+        bot={selectedBot}
+        settings={data.settings}
+        projects={data.projects}
+        routines={botRoutines}
+        actions={actions}
+        onClose={closeModal}
+      />
+    )
   if (data.bots.length === 0)
     return (
       <AvatarRuntimeProvider value={{ ...data, messages: data.activityMessages }}>
         {botModal}
         <OnboardingLanding
+          host={host}
           onCreateBot={() => openModal("bot")}
           onDoctor={() => openModal("doctor")}
           onImport={() => openModal("import")}
@@ -617,27 +663,30 @@ const AppContent = ({ kernel }: AppProps) => {
   if (requestedComputer)
     return (
       <AvatarRuntimeProvider value={{ ...data, messages: data.activityMessages }}>
-        <main className="computer-window">
-          <header>
-            <h1>Computador de {selectedBot?.name ?? "bot"}</h1>
-          </header>
-          {selectedBot?.id === requestedComputer ? (
-            <ErrorBoundary key={selectedBot.id} area="o computador" api={api}>
-              <BotComputer
-                autoOpen
-                key={selectedBot.id}
-                api={api}
-                bot={selectedBot}
-                machine={data.machines.find((state) => state.botId === selectedBot.id)}
-                activeTurns={data.runs.some(
-                  (run) => run.botId === selectedBot.id && ["queued", "starting", "running"].includes(run.status),
-                )}
-              />
-            </ErrorBoundary>
-          ) : (
-            <p role="alert">Bot não encontrado.</p>
-          )}
-        </main>
+        <FailureActionContext.Provider value={runFailureAction}>
+          <main className="computer-window">
+            <header>
+              <h1>Computador de {selectedBot?.name ?? "bot"}</h1>
+            </header>
+            {selectedBot?.id === requestedComputer ? (
+              <ErrorBoundary key={selectedBot.id} area="o computador" api={api}>
+                <BotComputer
+                  autoOpen
+                  key={selectedBot.id}
+                  api={api}
+                  bot={selectedBot}
+                  machine={data.machines.find((state) => state.botId === selectedBot.id)}
+                  activeTurns={data.runs.some(
+                    (run) => run.botId === selectedBot.id && ["queued", "starting", "running"].includes(run.status),
+                  )}
+                />
+              </ErrorBoundary>
+            ) : (
+              <p role="alert">Bot não encontrado.</p>
+            )}
+          </main>
+          {botSettingsModal}
+        </FailureActionContext.Provider>
       </AvatarRuntimeProvider>
     )
 
@@ -711,6 +760,7 @@ const AppContent = ({ kernel }: AppProps) => {
         <ApprovalNotice notifications={data.notifications} messages={data.activityMessages} onReview={reviewApproval} />
         <div className="app-grid">
           <SidebarDrawer
+            host={data.routineHost}
             groups={data.groups}
             onNewGroup={() => {
               setEditingGroup(null)
@@ -737,10 +787,7 @@ const AppContent = ({ kernel }: AppProps) => {
             advancedPage={advancedPage}
             onChat={() => setRoute({ section: "bots", screen: "chat" })}
             onAdvancedPage={(page) => setRoute({ section: "advanced", page })}
-            onRoutines={(botId) => {
-              if (botId !== data.selectedBotId) actions.selectBot(botId)
-              setRoute({ section: "advanced", page: "cron", botId })
-            }}
+            onRoutines={openBotRoutines}
             onProject={() => openModal("project")}
             onImport={() => openModal("import")}
             onSelect={actions.selectBot}
@@ -925,6 +972,7 @@ const AppContent = ({ kernel }: AppProps) => {
                                 )
                               }}
                               onSettings={() => openModal("bot-settings")}
+                              onRoutines={() => openBotRoutines(selectedBot.id)}
                               onModel={() => openModal("bot-model")}
                               onPermissions={() => openModal("bot-permissions")}
                               onPreview={() => setScreen("preview")}
@@ -1022,40 +1070,7 @@ const AppContent = ({ kernel }: AppProps) => {
                 onClose={closeModal}
               />
             )}
-            {(modal === "bot-settings" || modal === "bot-permissions" || modal === "bot-mcp") && selectedBot && (
-              <BotSettingsModal
-                invokeCommand={invokeCommand}
-                bots={data.bots}
-                permissionsOnly={modal === "bot-permissions"}
-                focusMcp={modal === "bot-mcp"}
-                onAttachFile={() => {
-                  attachmentButtonRef.current?.click()
-                  closeModal()
-                }}
-                initialSection={modal === "bot-settings" ? botSettingsSection : undefined}
-                focusSetting={modal === "bot-settings" ? settingFocus : null}
-                activeTurns={data.runs.some(
-                  (run) => run.botId === selectedBot.id && ["queued", "starting", "running"].includes(run.status),
-                )}
-                onOpenRoutines={() => {
-                  closeModal()
-                  setRoute({ section: "advanced", page: "cron", botId: selectedBot.id })
-                }}
-                onOpenIntegrations={() => {
-                  closeModal()
-                  setRoute({ section: "advanced", page: "integracoes" })
-                }}
-                api={api}
-                capability={data.machineCapability}
-                machineState={data.machines.find((state) => state.botId === selectedBot.id)}
-                bot={selectedBot}
-                settings={data.settings}
-                projects={data.projects}
-                routines={botRoutines}
-                actions={actions}
-                onClose={closeModal}
-              />
-            )}
+            {botSettingsModal}
           </ErrorBoundary>
         </MotionPresence>
       </main>
@@ -1113,10 +1128,12 @@ const SidecarErrorScreen = ({
 )
 
 const OnboardingLanding = ({
+  host,
   onCreateBot,
   onDoctor,
   onImport,
 }: {
+  host: "mac" | "server"
   onCreateBot: () => void
   onDoctor: () => void
   onImport: () => void
@@ -1127,7 +1144,7 @@ const OnboardingLanding = ({
         <img className="brand-bull" src="/touri-bull.png" alt="" />
         <span className="brand-name">touri</span>
       </h1>
-      <p>{t("Your bots work on your Mac, with your accounts. Nothing leaves here.")}</p>
+      <p>{t("onboarding.privacy", { host: host === "mac" ? "Mac" : t("onboarding.server") })}</p>
       <div className="onboarding-actions">
         <button type="button" className="button button-brand" onClick={onCreateBot}>
           {t("Create my first bot")}
@@ -1142,7 +1159,7 @@ const OnboardingLanding = ({
           </button>
         </span>
         <button type="button" className="text-button" onClick={onDoctor}>
-          {t("Check this Mac")}
+          {t(host === "mac" ? "Check this Mac" : "onboarding.checkServer")}
         </button>
       </div>
     </div>

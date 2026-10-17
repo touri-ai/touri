@@ -3,6 +3,121 @@ import { userFacingError } from "./errors"
 /** All UI copy lives here. pt-BR is the default; English is available for a future locale picker. */
 export type Locale = "pt-BR" | "en"
 export const ptBR = {
+  "Agendar esta tarefa": "Agendar esta tarefa",
+  "VM machine help":
+    "Mais seguro: trabalha num computador separado só para este bot, dentro deste computador. A tela e o navegador ficam separados dos seus. Você escolhe quais pastas compartilhar. Projetos usam uma cópia da última versão registrada.",
+  "Provider login safety help":
+    "Ao ativar, este bot pode usar sua conta para trabalhar no computador separado. Desligado, sua conta não é compartilhada com ele.",
+  "Atualizar computador ajuda":
+    "Reinicia o computador separado e aplica as atualizações disponíveis. Os arquivos e logins são mantidos.",
+  "Redefinir computador ajuda": "Apaga os arquivos, sessões e logins do computador separado para começar de novo.",
+  "Computador separado detalhes":
+    "Tela isolada com Xvfb no Linux. O controle da sua tela só é permitido se você autorizar a opção acima.",
+  "Conexão da máquina indisponível":
+    "O computador separado não está disponível aqui. Abra os detalhes técnicos para ver o motivo.",
+  "Rede local ajuda":
+    "Desativado por padrão. Bloqueios valem agora; novos acessos exigem reiniciar o computador do bot. Seu computador e os serviços internos de infraestrutura continuam protegidos.",
+
+  "As ferramentas do touri não carregaram nesta máquina. Tente novamente; se persistir, confira a instalação do touri e as permissões deste servidor.":
+    "As ferramentas do touri não carregaram nesta máquina. Tente novamente; se persistir, confira a instalação do touri e as permissões deste servidor.",
+  "Ferramentas do touri · {name}": "Ferramentas do touri · {name}",
+  "O último turno verificado concluiu sem falha de inicialização do MCP.":
+    "O último turno verificado concluiu sem falha de inicialização do MCP.",
+  "Ainda não há um turno concluído para verificar o carregamento das ferramentas nesta máquina.":
+    "Ainda não há um turno concluído para verificar o carregamento das ferramentas nesta máquina.",
+  Ativar: "Ativar",
+  "Agora não": "Agora não",
+  "Este recurso não está disponível para bots na nuvem.": "Este recurso não está disponível para bots na nuvem.",
+  "O computador isolado não está disponível neste servidor.":
+    "O computador isolado não está disponível neste servidor.",
+  "O controle da tela deste computador não é suportado nesta plataforma.":
+    "O controle da tela deste computador não é suportado nesta plataforma.",
+  "O navegador não está instalado neste servidor. Peça à pessoa responsável para instalá-lo.":
+    "O navegador não está instalado neste servidor. Peça à pessoa responsável para instalá-lo.",
+  "O navegador precisa de uma sessão gráfica ou do modo sem janela neste servidor.":
+    "O navegador precisa de uma sessão gráfica ou do modo sem janela neste servidor.",
+  "Este acesso só pode ser solicitado pelo próprio bot em uma conversa com a pessoa, fora de rotinas e delegações.":
+    "Este acesso só pode ser solicitado pelo próprio bot em uma conversa com a pessoa, fora de rotinas e delegações.",
+  "Informe o recurso e um motivo curto, sem quebras de linha.":
+    "Informe o recurso e um motivo curto, sem quebras de linha.",
+  "Este recurso já está ativado neste bot.": "Este recurso já está ativado neste bot.",
+  "O acesso não foi ativado. Se quiser ativar depois, abra as configurações deste bot e ative o navegador ou o controle do computador. Respeite a decisão e não solicite novamente.":
+    "O acesso não foi ativado. Se quiser ativar depois, abra as configurações deste bot e ative o navegador ou o controle do computador. Respeite a decisão e não solicite novamente.",
+  "Acesso ativado neste bot. Encerre sua resposta agora, sem falar em turnos nem em retomada: o touri retoma a tarefa sozinho com a configuração aprovada e avisa o usuário.":
+    "Acesso ativado neste bot. Encerre sua resposta agora, sem falar em turnos nem em retomada: o touri retoma a tarefa sozinho com a configuração aprovada e avisa o usuário.",
+  "Acesso ativado neste bot. Vale a partir da próxima mensagem.":
+    "Acesso ativado neste bot. Vale a partir da próxima mensagem.",
+  "Ativar navegador": "Ativar navegador",
+  "Ativar controle do computador": "Ativar controle do computador",
+  "{bot} quer ativar o navegador dele para {reason}.": "{bot} quer ativar o navegador dele para {reason}.",
+  "{bot} quer ativar o controle do computador para {reason}.":
+    "{bot} quer ativar o controle do computador para {reason}.",
+  "Abre páginas no navegador isolado deste bot.": "Abre páginas no navegador isolado deste bot.",
+  "Pode ver a tela e clicar ou digitar, somente onde o touri permite.":
+    "Pode ver a tela e clicar ou digitar, somente onde o touri permite.",
+  "Controla somente a tela do computador isolado do bot.": "Controla somente a tela do computador isolado do bot.",
+  "Controla a tela deste computador, com as permissões do touri.":
+    "Controla a tela deste computador, com as permissões do touri.",
+  "A configuração fica salva neste bot. Você pode desativar nos ajustes.":
+    "A configuração fica salva neste bot. Você pode desativar nos ajustes.",
+  "Após ativar, o touri retoma a tarefa automaticamente.": "Após ativar, o touri retoma a tarefa automaticamente.",
+  "Ask the person to enable this bot's isolated browser or supported computer control with an explicit approval card. Use a short reason tied to their task. Never enables silently, never available to unattended or delegated runs. On automaticContinuation, finish this turn; touri resumes the original task with updated tools. On denial, do not ask again; explain how to enable it later in bot settings.":
+    "Pedir à pessoa para ativar o navegador isolado ou o controle do computador deste bot por um cartão de aprovação explícita. Informe um motivo curto ligado à tarefa. Indisponível para rotinas e delegações. Após ativar, encerre o turno para o touri retomar a tarefa. Se negado, respeite a decisão e explique como ativar depois nas configurações do bot.",
+
+  "{bot} pede sua aprovação: {summary}": "{bot} pede sua aprovação: {summary}",
+  "O aplicativo não conseguiu acessar o cofre nativo. Desbloqueie o cofre do sistema e tente novamente.":
+    "O aplicativo não conseguiu acessar o cofre nativo. Desbloqueie o cofre do sistema e tente novamente.",
+  "O cofre nativo está disponível no aplicativo desktop. O modo servidor usa seu próprio cofre local.":
+    "O cofre nativo está disponível no aplicativo desktop. O modo servidor usa seu próprio cofre local.",
+  "O cofre nativo não respondeu em até 4s. Verifique o desbloqueio e reabra o touri.":
+    "O cofre nativo não respondeu em até 4s. Verifique o desbloqueio e reabra o touri.",
+  "Escolha um método com código para entrar por este aparelho.":
+    "Escolha um método com código para entrar por este aparelho.",
+  "Entre no {provedor} para o servidor: abra este link neste aparelho":
+    "Entre no {provedor} para o servidor: abra este link neste aparelho",
+  "Preparando o login do {provedor} para o servidor…": "Preparando o login do {provedor} para o servidor…",
+  "O login expira em até 10 minutos. Você pode cancelar a qualquer momento.":
+    "O login expira em até 10 minutos. Você pode cancelar a qualquer momento.",
+  "O login expirou. Tente novamente.": "O login expirou. Tente novamente.",
+  "Copiar código": "Copiar código",
+  "Código copiado.": "Código copiado.",
+  "Não foi possível copiar. Selecione e copie o código acima.":
+    "Não foi possível copiar. Selecione e copie o código acima.",
+  Resolvido: "Resolvido",
+  "Configurar controle": "Configurar controle",
+  "Não foi possível salvar o rascunho. Copie sua mensagem antes de fechar o touri.":
+    "Não foi possível salvar o rascunho. Copie sua mensagem antes de fechar o touri.",
+  "O navegador deste bot está desativado.": "O navegador deste bot está desativado.",
+  "O controle automático do computador está desativado. Você ainda pode assumir o controle manualmente.":
+    "O controle automático do computador está desativado. Você ainda pode assumir o controle manualmente.",
+  "O bot está aguardando. O controle ficará disponível quando a imagem chegar.":
+    "O bot está aguardando. O controle ficará disponível quando a imagem chegar.",
+  "O bot está aguardando. Assuma o controle para usar o teclado e o mouse.":
+    "O bot está aguardando. Assuma o controle para usar o teclado e o mouse.",
+  "Reconectando tela…": "Reconectando tela…",
+  "O navegador não abriu a página": "O navegador não abriu a página",
+  "Navegador ainda não aberto": "Navegador ainda não aberto",
+  "Navegador desativado": "Navegador desativado",
+  "Peça ao bot para abrir uma página. Ela aparecerá aqui na tela da VM.":
+    "Peça ao bot para abrir uma página. Ela aparecerá aqui na tela da VM.",
+  "Não foi possível receber a imagem": "Não foi possível receber a imagem",
+  "Tela pausada": "Tela pausada",
+  "A tela voltará quando a conexão for retomada.": "A tela voltará quando a conexão for retomada.",
+  "Pedindo a sessão da tela à VM…": "Pedindo a sessão da tela à VM…",
+  "Abrindo o canal da tela…": "Abrindo o canal da tela…",
+  "Sem imagem ainda. Aguardando a primeira imagem da VM.": "Sem imagem ainda. Aguardando a primeira imagem da VM.",
+
+  // Routine deletion.
+  "Excluir rotina": "Excluir rotina",
+  "Excluir rotina {name}": "Excluir rotina {name}",
+  "Ações da rotina {name}": "Ações da rotina {name}",
+  "Excluir a rotina {name}?": "Excluir a rotina {name}?",
+  "Ela não vai mais rodar. O histórico de execuções continua nas conversas.":
+    "Ela não vai mais rodar. O histórico de execuções continua nas conversas.",
+  "Não foi possível excluir a rotina. Tente novamente.": "Não foi possível excluir a rotina. Tente novamente.",
+  "Excluindo…": "Excluindo…",
+  Excluir: "Excluir",
+
   "seu provedor": "seu provedor",
   "o arquivo": "o arquivo",
   "Não consegui conectar à sua IA. Sua mensagem está salva.":
@@ -102,6 +217,43 @@ export const ptBR = {
   skipped: "não executado",
   canceled: "cancelado",
 
+  // Computer viewing and manual control.
+  "O controle manual não está disponível nesta máquina. Você pode acompanhar a tela e conversar com o bot.":
+    "O controle manual não está disponível nesta máquina. Você pode acompanhar a tela e conversar com o bot.",
+  "A tela pode ter mudado durante seu controle. Observe novamente antes de continuar.":
+    "A tela pode ter mudado durante seu controle. Observe novamente antes de continuar.",
+  "Assumir controle não autoriza ações automáticas do bot. Revise essas ações no chat.":
+    "Assumir controle não autoriza ações automáticas do bot. Revise essas ações no chat.",
+  "O controle foi interrompido. Assuma e devolva ao bot para permitir novas entradas.":
+    "O controle foi interrompido. Assuma e devolva ao bot para permitir novas entradas.",
+  "Controle indisponível": "Controle indisponível",
+  "O controle mudou. Tente novamente.": "O controle mudou. Tente novamente.",
+  "Controle interrompido": "Controle interrompido",
+  "Controle manual indisponível": "Controle manual indisponível",
+  "Abrir arquivos": "Abrir arquivos",
+  Conversar: "Conversar",
+  "A tela da VM conectou, mas não enviou nenhuma imagem. Tente reconectar a tela.":
+    "A tela da VM conectou, mas não enviou nenhuma imagem. Tente reconectar a tela.",
+  "A tela da VM não respondeu em 15 s. Verifique se a máquina está ligada; tente reconectar a tela.":
+    "A tela da VM não respondeu em 15 s. Verifique se a máquina está ligada; tente reconectar a tela.",
+  "Não foi possível parar a tarefa. Tente novamente.": "Não foi possível parar a tarefa. Tente novamente.",
+  "Não foi possível devolver o controle. Reconecte a tela e tente novamente.":
+    "Não foi possível devolver o controle. Reconecte a tela e tente novamente.",
+  "Assuma o controle para digitar": "Assuma o controle para digitar",
+  "Ao assumir, só você usa o teclado e o mouse. A automação do bot continua com a permissão atual.":
+    "Ao assumir, só você usa o teclado e o mouse. A automação do bot continua com a permissão atual.",
+  "Este servidor não tem uma área de trabalho para controlar. Você pode conversar e trabalhar com arquivos.":
+    "Este servidor não tem uma área de trabalho para controlar. Você pode conversar e trabalhar com arquivos.",
+  "Parar tarefa": "Parar tarefa",
+  "Reconectar tela": "Reconectar tela",
+  "A conexão com a tela caiu. A tarefa pode continuar em execução.":
+    "A conexão com a tela caiu. A tarefa pode continuar em execução.",
+  "Devolver ao bot": "Devolver ao bot",
+  "Você está no controle. O bot aguarda você terminar.": "Você está no controle. O bot aguarda você terminar.",
+  "Você está no controle": "Você está no controle",
+  "Assumir controle": "Assumir controle",
+  "Acompanhar a tela": "Acompanhar a tela",
+
   "{bot} precisa de você: autorizar {action}.": "{bot} precisa de você: autorizar {action}.",
   "Autorizado. Retomando a tarefa.": "Autorizado. Retomando a tarefa.",
   "Os avisos do sistema estão desativados.": "Os avisos do sistema estão desativados.",
@@ -155,7 +307,8 @@ export const ptBR = {
   "touri Chrome": "Chrome do touri",
   "My Chrome": "Meu Chrome",
   "Machine Chrome": "Chrome da máquina",
-  "Machine Chrome requires a bot on the Linux machine.": "Chrome da máquina requer um bot na máquina Linux.",
+  "Machine Chrome requires a bot on the Linux machine.":
+    "O navegador do computador separado requer que o bot trabalhe nele.",
   "My Chrome is available only for bots on this Mac. A remote machine cannot reach your Mac's Chrome.":
     "Meu Chrome só funciona em bots neste Mac. A máquina remota não pode acessar o Chrome do Mac.",
   "The bot will act inside your signed-in sessions in a separate Chrome window. You can close that window or press Stop at any time.":
@@ -231,6 +384,52 @@ export const ptBR = {
     "O servidor respondeu, mas não ofereceu ferramentas. Confira a configuração e teste novamente.",
   "Salvando conexão…": "Salvando conexão…",
   "Salvar conexão": "Salvar conexão",
+  // Response feedback: keep this block together for parallel UI changes.
+  "Preparando a resposta…": "Preparando a resposta…",
+  "Preparando o ambiente…": "Preparando o ambiente…",
+  "Lendo {arquivo}…": "Lendo {arquivo}…",
+  "Preciso da sua autorização.": "Preciso da sua autorização.",
+  "Ainda aguardando a IA responder.": "Ainda aguardando a IA responder.",
+  "A tarefa continua em execução.": "A tarefa continua em execução.",
+  "A resposta está demorando. Você pode continuar esperando ou verificar a conexão.":
+    "A resposta está demorando. Você pode continuar esperando ou verificar a conexão.",
+  "Verificar conexão": "Verificar conexão",
+  "Verificando conexão…": "Verificando conexão…",
+  "A conexão com o touri está disponível. A IA pode continuar demorando.":
+    "A conexão com o touri está disponível. A IA pode continuar demorando.",
+  "Não foi possível conectar ao touri. Verifique sua conexão.":
+    "Não foi possível conectar ao touri. Verifique sua conexão.",
+  "Não foi possível parar. Tente novamente.": "Não foi possível parar. Tente novamente.",
+
+  // First conversation and host transparency.
+  "onboarding.server": "servidor",
+  "onboarding.privacy":
+    "O histórico fica neste {host}. Sua IA recebe o conteúdo necessário para responder. O touri não coleta telemetria.",
+  "onboarding.uses": "Usa o {provider}, conectado neste {host}.",
+  "onboarding.checking": "Verificando instalação e login neste {host}…",
+  "onboarding.missing": "O {provider} ainda não está instalado neste {host}.",
+  "onboarding.install": "Ver como instalar",
+  "onboarding.installLinkError": "Não foi possível abrir o navegador. Copie o endereço do link para ver como instalar.",
+  "onboarding.recheck": "Verificar novamente",
+  "onboarding.installFirst": "Instale a IA neste computador e verifique novamente antes de criar seu bot.",
+  "onboarding.checkServer": "Verificar servidor",
+  "onboarding.conversation": "Comece uma conversa com {name}",
+  "onboarding.notes": "Cole suas notas para eu organizar em uma lista.",
+  "onboarding.example": "Usar exemplo",
+  "onboarding.exampleNotes": "Comprar café; revisar orçamento; marcar reunião.",
+  "onboarding.examplePrompt":
+    "Organize estas notas em uma lista em português do Brasil. Use somente o texto abaixo, sem acessar arquivos, projetos ou integrações. Responda com a lista, sem apresentação.\n\nComprar café; revisar orçamento; marcar reunião.",
+  "onboarding.repositoryNeeded":
+    "Escolha a pasta do repositório para começar, ou use um exemplo de notas sem conectar nada.",
+  "onboarding.repositoryUpload":
+    "Anexe os arquivos do repositório para começar, ou use um exemplo de notas sem conectar nada.",
+  "onboarding.repositoryFolder": "Escolher pasta do repositório",
+  "onboarding.repositoryRequest":
+    "Quero trabalhar com um repositório. Peça a pasta ou um anexo antes de analisar; ainda não conectei o código.",
+  "onboarding.repositoryAction": "Explique o repositório conectado.",
+  "onboarding.repositoryPrompt":
+    "Explique a estrutura do repositório conectado usando somente as pastas autorizadas. Se o código não estiver disponível, peça a pasta ou um anexo antes de analisar.",
+
   "Conectar dados": "Conectar dados",
   "Escolha como disponibilizar os dados para este bot.": "Escolha como disponibilizar os dados para este bot.",
   "Anexar arquivo/CSV": "Anexar arquivo/CSV",
@@ -263,8 +462,8 @@ export const ptBR = {
   "Pastas deste Mac não estão disponíveis na nuvem.": "Pastas deste Mac não estão disponíveis na nuvem.",
   "O acesso não foi aprovado ou a configuração mudou.": "O acesso não foi aprovado ou a configuração mudou.",
   "Pasta não encontrada nas permissões deste bot.": "Pasta não encontrada nas permissões deste bot.",
-  "A configuração foi salva neste Mac e será aplicada no próximo turno local.":
-    "A configuração foi salva neste Mac e será aplicada no próximo turno local.",
+  "A configuração foi salva neste Mac. Vale a partir da próxima mensagem.":
+    "A configuração foi salva neste Mac. Vale a partir da próxima mensagem.",
   "Projeto {name} ({path}) vinculado a este bot.": "Projeto {name} ({path}) vinculado a este bot.",
   "Projeto {name} desvinculado deste bot.": "Projeto {name} desvinculado deste bot.",
   "Acesso {mode} à pasta {path} concedido a este bot.": "Acesso {mode} à pasta {path} concedido a este bot.",
@@ -393,8 +592,8 @@ export const ptBR = {
   "Desvincular o projeto deste bot.": "Desvincular o projeto deste bot.",
   "Remover acesso à pasta": "Remover acesso à pasta",
   "Remover o acesso deste bot a {path}.": "Remover o acesso deste bot a {path}.",
-  "A mudança entra em vigor no próximo turno da VM.": "A mudança entra em vigor no próximo turno da VM.",
-  "A mudança entra em vigor no próximo turno local.": "A mudança entra em vigor no próximo turno local.",
+  "Vale a partir da próxima mensagem na VM.": "Vale a partir da próxima mensagem na VM.",
+  "Vale a partir da próxima mensagem.": "Vale a partir da próxima mensagem.",
   "Retomado após aprovação de acesso": "Retomado após aprovação de acesso",
   "Baixar imagem": "Baixar imagem",
   "Delete bot": "Excluir bot",
@@ -415,8 +614,6 @@ export const ptBR = {
   Integrations: "Integrações",
   "Report a problem": "Reportar problema",
 
-  "Your bots work on your Mac, with your accounts. Nothing leaves here.":
-    "Seus bots trabalham no seu Mac, com as suas contas. Nada sai daqui.",
   "Create my first bot": "Criar meu primeiro bot",
   "Already use another tool?": "Já usa outra ferramenta?",
   Advanced: "Avançado",
@@ -841,9 +1038,7 @@ export const ptBR = {
   "Bot created. Could not connect your account. Sign in below to chat.":
     "Bot criado. Não foi possível conectar sua conta. Entre na conta abaixo para conversar.",
   Instructions: "Instruções",
-  "Uses {name}, already signed in on this Mac.": "Usa o {name}, que já está conectado neste Mac.",
   "Asks permission before changing files.": "Pede permissão antes de mudar arquivos.",
-  "Checking accounts on this Mac…": "Verificando contas neste Mac…",
   "Sign in to an account to create your bot.": "Entre em uma conta para criar seu bot.",
   "Choose an account": "Escolha uma conta",
   "Sign in above before creating your bot.": "Entre em uma conta acima antes de criar seu bot.",
@@ -857,7 +1052,7 @@ export const ptBR = {
   "Connect tools after creating this bot, in its advanced settings.":
     "Conecte ferramentas depois de criar este bot, nas configurações avançadas dele.",
   "job.starter":
-    "## {name}\n- {role} {task}\n- Na primeira conversa, apresente brevemente como pode ajudar neste trabalho.\n- Confirme o objetivo e peça o contexto que faltar.\n- Trabalhe no Mac do usuário com a CLI dele e somente os acessos liberados.\n- Use o navegador quando precisar conferir informações e indique as fontes.\n- Peça permissão antes de mudar arquivos ou enviar algo; apresente um rascunho primeiro.\n- Ao terminar, conte o que encontrou e o que depende da pessoa.",
+    "## {name}\n- {role} {task}\n- Na primeira conversa, apresente brevemente como pode ajudar neste trabalho.\n- Confirme o objetivo e peça o contexto que faltar.\n- Trabalhe no computador onde o touri está rodando com o login do usuário e somente os acessos liberados.\n- Use o navegador quando precisar conferir informações e indique as fontes.\n- Peça permissão antes de mudar arquivos ou enviar algo; apresente um rascunho primeiro.\n- Ao terminar, conte o que encontrou e o que depende da pessoa.",
 
   "Activity thinking": "Pensando",
   "Activity working": "Trabalhando",
@@ -891,10 +1086,10 @@ export const ptBR = {
     "Keychains, ~/.ssh, perfis de navegadores e dados do touri ficam bloqueados, salvo pastas adicionadas explicitamente. Os arquivos necessários ao funcionamento deste bot continuam disponíveis.",
   "Na VM, sua pasta pessoal aparece em /host/home; as demais, em /host/<nome>. As exclusões são ocultadas por montagens somente leitura.":
     "Na VM, sua pasta pessoal aparece em /host/home; as demais, em /host/<nome>. As exclusões são ocultadas por montagens somente leitura.",
-  "No Mac, o sandbox do macOS bloqueia as exclusões e a escrita nas pastas somente leitura, inclusive em comandos de terminal. As alterações valem no próximo turno.":
-    "No Mac, o sandbox do macOS bloqueia as exclusões e a escrita nas pastas somente leitura, inclusive em comandos de terminal. As alterações valem no próximo turno.",
-  "Ao salvar, as pastas serão aplicadas com a recriação da máquina no próximo turno. Os arquivos da máquina serão preservados.":
-    "Ao salvar, as pastas serão aplicadas com a recriação da máquina no próximo turno. Os arquivos da máquina serão preservados.",
+  "No Mac, o sandbox do macOS bloqueia as exclusões e a escrita nas pastas somente leitura, inclusive em comandos de terminal. As alterações valem a partir da próxima mensagem.":
+    "No Mac, o sandbox do macOS bloqueia as exclusões e a escrita nas pastas somente leitura, inclusive em comandos de terminal. As alterações valem a partir da próxima mensagem.",
+  "Ao salvar, as pastas valerão a partir da próxima mensagem, quando a máquina será recriada. Os arquivos da máquina serão preservados.":
+    "Ao salvar, as pastas valerão a partir da próxima mensagem, quando a máquina será recriada. Os arquivos da máquina serão preservados.",
   "Permitir acesso a qualquer pasta?": "Permitir acesso a qualquer pasta?",
   "Este bot poderá ler arquivos pessoais de todo o Mac e, conforme o nível de acesso, alterá-los ou apagá-los. Na VM, sua pasta pessoal será montada em /host/home. Conceda este acesso apenas a bots em que confia.":
     "Este bot poderá ler arquivos pessoais de todo o Mac e, conforme o nível de acesso, alterá-los ou apagá-los. Na VM, sua pasta pessoal será montada em /host/home. Conceda este acesso apenas a bots em que confia.",
@@ -1049,13 +1244,13 @@ export const ptBR = {
   "List projects and Git repositories only in this bot's already granted folders and connected project. Never searches the home directory on its own. Read-only; no approval required. Ask the user for a path when nothing is available.":
     "Listar projetos e repositórios Git somente nas pastas já permitidas a este bot e no projeto vinculado. Não busca na pasta pessoal por conta própria. Somente leitura, sem aprovação. Peça um caminho ao usuário se nada estiver disponível.",
   "Register a Mac folder as a project if needed and link it to this calling bot only. Supply exactly one of path or projectId. Always requires explicit user approval in chat, even with approvals disabled. VM changes apply next turn.":
-    "Registrar uma pasta do Mac como projeto e vinculá-la somente a este bot, pelo caminho ou identificador. Sempre exige aprovação explícita no chat. Na VM, a mudança vale no próximo turno.",
+    "Registrar uma pasta do Mac como projeto e vinculá-la somente a este bot, pelo caminho ou identificador. Sempre exige aprovação explícita no chat. Na VM, a mudança vale a partir da próxima mensagem.",
   "Request access to a specific Mac folder for this calling bot only, with mode read or read-write. Always requires explicit user approval. Cannot enable any-folder access. VM changes apply next turn.":
-    "Pedir acesso de leitura ou leitura e escrita a uma pasta do Mac para este bot. Sempre exige aprovação explícita. Não permite acesso a qualquer pasta. Na VM, vale no próximo turno.",
+    "Pedir acesso de leitura ou leitura e escrita a uma pasta do Mac para este bot. Sempre exige aprovação explícita. Não permite acesso a qualquer pasta. Na VM, vale a partir da próxima mensagem.",
   "Unlink the project from this calling bot only. Narrows access without approval and posts a notice in chat. VM changes apply next turn.":
-    "Desvincular o projeto somente deste bot, sem aprovação, e mostrar um aviso no chat. Na VM, a mudança vale no próximo turno.",
+    "Desvincular o projeto somente deste bot, sem aprovação, e mostrar um aviso no chat. Na VM, a mudança vale a partir da próxima mensagem.",
   "Remove a specific folder grant from this calling bot only. Narrows access without approval and posts a notice in chat. Cannot change the user-only any-folder toggle. VM changes apply next turn.":
-    "Remover o acesso deste bot a uma pasta, sem aprovação, e mostrar um aviso no chat. O acesso a qualquer pasta continua exclusivo das configurações do usuário. Na VM, vale no próximo turno.",
+    "Remover o acesso deste bot a uma pasta, sem aprovação, e mostrar um aviso no chat. O acesso a qualquer pasta continua exclusivo das configurações do usuário. Na VM, vale a partir da próxima mensagem.",
   "Describe this bot's project: path, git branch/dirty state, defined processes with status and ports, available previews, and the NAMES (never values) of configured secrets.":
     "Consultar pasta, estado Git, processos, portas, visualizações e nomes dos segredos do projeto deste bot.",
   'Create or replace a long-running process the app supervises (dev server, mongod, redis-server...). It survives your turn and app restarts (when autostart). Never start long-running servers with your shell tool; define them here. cwd must be inside the project or its data dir (<dataDir> is substituted). env values may reference secrets as {"secret":"NAME"}.':
@@ -1129,26 +1324,27 @@ export const ptBR = {
   "Bot machine": "Máquina do bot",
   "Machine running": "rodando",
   "Machine resting": "Em repouso",
-  "No virtualization on this host": "sem virtualização neste host",
-  "Local machine": "local · neste host",
-  "Isolated Linux VM": "vm · Linux isolado",
-  "Local machine help": "Usa as ferramentas e pastas deste host, como hoje.",
-  "VM machine help":
+  "No virtualization on this host": "indisponível neste computador",
+  "Local machine": "Neste computador",
+  "Isolated Linux VM": "Separado só para o bot",
+  "Local machine help":
+    "Trabalha diretamente neste computador, usando as ferramentas instaladas e as pastas que você permitir.",
+  "VM machine technical help":
     "Uma micro-VM por bot, criada no primeiro turno e reutilizada. Arquivos em /workspace. Projetos recebem uma cópia do commit Git; arquivos ignorados ficam no host. Navegador e controle do computador operam no display Linux isolado.",
   "Stop after idle minutes": "Parar após minutos sem atividade",
-  "Use provider login in VM": "Usar meu login do {provider} dentro da VM",
+  "Use provider login in VM": "Usar meu login do {provider} no computador separado",
   "VM provider login help":
     "O login fica disponível apenas nas execuções deste bot. Para Claude no macOS, salve um token gerado por claude setup-token no cofre de segredos abaixo.",
   "Allow host computer use": "Permitir controle do computador na tela deste Mac",
   "Host computer use help":
-    "Autorização separada: as ferramentas de controle do computador passam a controlar o Mac, com concessão temporária. Desmarcado, usam exclusivamente Xvfb na VM.",
+    "Permite ao bot usar sua tela, teclado e mouse com uma autorização temporária. Desligado, ele controla apenas a tela do computador separado.",
   "Restart machine": "Reiniciar máquina",
   "Recreate machine": "Recriar do zero",
   "Reset machine confirmation":
-    "Apagar todos os arquivos, sessões, navegador e logins desta VM? Esta ação não pode ser desfeita.",
+    "Apagar todos os arquivos, sessões, navegador e logins do computador separado? Esta ação não pode ser desfeita.",
   "Delete and recreate": "Apagar e recriar",
   "Controls only Xvfb in the VM; cannot access the host screen.":
-    "Controla somente Xvfb na VM; não acessa a tela do host.",
+    "Controla apenas a tela do computador separado. Sua tela pessoal fica fora do alcance.",
   "touri uses local CLIs or isolated Linux machines. Host login in a VM requires per-bot opt-in.":
     "O touri usa programas locais ou máquinas Linux isoladas. Usar o login do host na VM exige autorização por bot.",
   "No navegador, digite o caminho. No app Tauri, use o seletor nativo.":
@@ -1218,22 +1414,22 @@ export const ptBR = {
   "Describe this bot’s role, tasks and style.": "Descreva o papel, as tarefas e o estilo deste bot.",
   "Detailed guidance for the bot. Saved as SOUL.md in the bot’s folder.":
     "Orientações detalhadas para o bot. Salvas no arquivo SOUL.md na pasta do bot.",
-  "Applied on the next turn.": "Aplicado no próximo turno.",
+  "Takes effect from the next message.": "Vale a partir da próxima mensagem.",
   Model: "Modelo",
   "CLI default": "Padrão do provedor",
   "Choose model": "Escolher modelo",
   "Save model": "Salvar modelo",
-  "Choose the model for this bot’s next turns.": "Escolha o modelo para os próximos turnos deste bot.",
-  "{provider} does not expose a model list in touri. Use the provider default or enter a model ID supported by your CLI.":
-    "O {provider} não disponibiliza uma lista de modelos no touri. Use o padrão do provedor ou informe um identificador de modelo compatível com sua CLI.",
+  "Choose the model for this bot’s next messages.": "Escolha o modelo para as próximas mensagens deste bot.",
+  "{provider} does not expose a model list in touri. Use the provider default or enter a model name that {provider} accepts.":
+    "O {provider} não disponibiliza uma lista de modelos no touri. Use o padrão do provedor ou informe o nome de um modelo que o {provider} aceite.",
   "Loading OpenCode models…": "Carregando modelos do OpenCode…",
   "Default model: {model}. You can also enter another model.":
     "Padrão: {model}. Você também pode informar outro modelo.",
   "Select a model or use the OpenCode default.": "Selecione um modelo ou use o padrão do OpenCode.",
   "OpenCode returned no models. Use the default or enter a provider/model ID.":
     "O OpenCode não retornou modelos. Use o padrão ou informe um identificador provedor/modelo.",
-  "OpenCode is unavailable. Install the CLI and check Doctor; you can enter a model manually.":
-    "OpenCode indisponível. Instale a CLI e confira o Doctor; você pode informar o modelo manualmente.",
+  "OpenCode is unavailable. Install OpenCode and check Doctor; you can enter a model manually.":
+    "OpenCode indisponível. Instale o OpenCode e confira o Doctor; você pode informar o modelo manualmente.",
   "Could not list models. Use the default or enter a provider/model ID manually.":
     "Não foi possível listar os modelos. Use o padrão ou informe o identificador provedor/modelo manualmente.",
   "Enter a provider/model ID, e.g. openrouter/deepseek/deepseek-v3.2.":
@@ -1592,7 +1788,8 @@ export const ptBR = {
   "Sem projeto": "Sem projeto",
   "Adicionar projeto…": "Adicionar projeto…",
   "Aguarde o turno terminar para alterar o projeto.": "Aguarde o turno terminar para alterar o projeto.",
-  "Commit Git copiado para /workspace no próximo turno.": "Commit Git copiado para /workspace no próximo turno.",
+  "Commit Git copiado para /workspace a partir da próxima mensagem.":
+    "Commit Git copiado para /workspace a partir da próxima mensagem.",
   "Não foi possível alterar o projeto.": "Não foi possível alterar o projeto.",
   "Cron atualizado": "Rotina atualizada",
   "Nova rotina": "Nova rotina",
@@ -1661,6 +1858,150 @@ export const ptBR = {
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  "Tentar de novo": "Try again",
+  "Agendar esta tarefa": "Schedule this task",
+  "Local machine": "On this computer",
+  "Isolated Linux VM": "Separate computer for the bot",
+  "No virtualization on this host": "unavailable on this computer",
+  "Local machine help": "Works directly on this computer, using installed tools and the folders you allow.",
+  "VM machine help":
+    "Safer: works in a separate computer just for this bot, inside this computer. Its screen and browser stay separate from yours. You choose which folders to share. Projects use a copy of the latest recorded version.",
+  "VM machine technical help":
+    "One Linux micro-VM per bot, created on first use and reused. Files live in /workspace. Projects receive a copy of the Git commit; ignored files stay on the host. Browser and computer control use the isolated Linux display.",
+  "Use provider login in VM": "Use my {provider} login on the separate computer",
+  "Provider login safety help":
+    "When enabled, this bot can use your account to work on the separate computer. When disabled, your account is not shared with it.",
+  "VM provider login help":
+    "The login is available only to this bot’s runs. Some providers require a login token in the secrets vault below.",
+  "Allow host computer use": "Allow control of my own screen",
+  "Host computer use help":
+    "Lets the bot use your screen, keyboard and mouse with temporary permission. When disabled, it controls only the separate computer’s screen.",
+  "Reset machine confirmation":
+    "Delete all files, sessions, browser data and logins from the separate computer? This cannot be undone.",
+  "Controls only Xvfb in the VM; cannot access the host screen.":
+    "Controls only the separate computer’s screen. Your personal screen stays out of reach.",
+  "Machine Chrome requires a bot on the Linux machine.":
+    "The separate computer’s browser requires the bot to work there.",
+  "Atualizar computador ajuda":
+    "Restarts the separate computer and applies available updates. Files and logins are kept.",
+  "Redefinir computador ajuda": "Deletes files, sessions and logins from the separate computer to start over.",
+  "Computador separado detalhes":
+    "Isolated display with Xvfb on Linux. Control of your screen requires enabling the option above.",
+  "Conexão da máquina indisponível": "The separate computer is not available here. Open technical details to see why.",
+  "Rede local ajuda":
+    "Off by default. Restrictions apply now; additional access requires restarting the bot’s computer. Your computer and internal infrastructure services remain protected.",
+
+  "As ferramentas do touri não carregaram nesta máquina. Tente novamente; se persistir, confira a instalação do touri e as permissões deste servidor.":
+    "The touri tools did not start on this machine. Try again; if this continues, check the touri installation and this server’s permissions.",
+  "Ferramentas do touri · {name}": "touri tools · {name}",
+  "O último turno verificado concluiu sem falha de inicialização do MCP.":
+    "The last verified turn completed without a tool startup failure.",
+  "Ainda não há um turno concluído para verificar o carregamento das ferramentas nesta máquina.":
+    "No completed turn is available yet to verify the tools on this machine.",
+  Ativar: "Enable",
+  "Agora não": "Not now",
+  "Este recurso não está disponível para bots na nuvem.": "This capability is unavailable for cloud bots.",
+  "O computador isolado não está disponível neste servidor.": "The isolated computer is unavailable on this server.",
+  "O controle da tela deste computador não é suportado nesta plataforma.":
+    "Screen control of this computer is unsupported on this platform.",
+  "O navegador não está instalado neste servidor. Peça à pessoa responsável para instalá-lo.":
+    "The browser is not installed on this server. Ask its administrator to install it.",
+  "O navegador precisa de uma sessão gráfica ou do modo sem janela neste servidor.":
+    "The browser needs a graphical session or headless mode on this server.",
+  "Este acesso só pode ser solicitado pelo próprio bot em uma conversa com a pessoa, fora de rotinas e delegações.":
+    "Only the bot itself can request this access in a conversation with the person, outside routines and delegations.",
+  "Informe o recurso e um motivo curto, sem quebras de linha.":
+    "Provide the capability and a short reason without line breaks.",
+  "Este recurso já está ativado neste bot.": "This capability is already enabled for this bot.",
+  "O acesso não foi ativado. Se quiser ativar depois, abra as configurações deste bot e ative o navegador ou o controle do computador. Respeite a decisão e não solicite novamente.":
+    "Access was not enabled. To enable it later, open this bot’s settings and enable browser or computer control. Respect the decision and do not request again.",
+  "Acesso ativado neste bot. Encerre sua resposta agora, sem falar em turnos nem em retomada: o touri retoma a tarefa sozinho com a configuração aprovada e avisa o usuário.":
+    "Access enabled for this bot. End your reply now without mentioning turns or resuming: touri resumes the task on its own with the approved configuration and tells the user.",
+  "Acesso ativado neste bot. Vale a partir da próxima mensagem.":
+    "Access enabled for this bot. It applies from the next message.",
+  "Ativar navegador": "Enable browser",
+  "Ativar controle do computador": "Enable computer control",
+  "{bot} quer ativar o navegador dele para {reason}.": "{bot} wants to enable its browser to {reason}.",
+  "{bot} quer ativar o controle do computador para {reason}.": "{bot} wants to enable computer control to {reason}.",
+  "Abre páginas no navegador isolado deste bot.": "Opens pages in this bot's isolated browser.",
+  "Pode ver a tela e clicar ou digitar, somente onde o touri permite.":
+    "Can see the screen and click or type, only where touri allows.",
+  "Controla somente a tela do computador isolado do bot.": "Controls only the bot's isolated computer screen.",
+  "Controla a tela deste computador, com as permissões do touri.":
+    "Controls this computer's screen, subject to touri permissions.",
+  "A configuração fica salva neste bot. Você pode desativar nos ajustes.":
+    "The setting is saved for this bot. You can turn it off in settings.",
+  "Após ativar, o touri retoma a tarefa automaticamente.": "After enabling, touri resumes the task automatically.",
+  "Ask the person to enable this bot's isolated browser or supported computer control with an explicit approval card. Use a short reason tied to their task. Never enables silently, never available to unattended or delegated runs. On automaticContinuation, finish this turn; touri resumes the original task with updated tools. On denial, do not ask again; explain how to enable it later in bot settings.":
+    "Ask the person to enable this bot's isolated browser or supported computer control with an explicit approval card. Use a short reason tied to their task. Never enables silently, never available to unattended or delegated runs. On automaticContinuation, finish this turn; touri resumes the original task with updated tools. On denial, do not ask again; explain how to enable it later in bot settings.",
+
+  "No Mac, o sandbox do macOS bloqueia as exclusões e a escrita nas pastas somente leitura, inclusive em comandos de terminal. As alterações valem a partir da próxima mensagem.":
+    "On this Mac, the macOS sandbox blocks excluded folders and writing in read-only folders, including terminal commands. Changes take effect from the next message.",
+  "Ao salvar, as pastas valerão a partir da próxima mensagem, quando a máquina será recriada. Os arquivos da máquina serão preservados.":
+    "Saved folders take effect from the next message, when the machine will be recreated. Files on the machine will be preserved.",
+  "Register a Mac folder as a project if needed and link it to this calling bot only. Supply exactly one of path or projectId. Always requires explicit user approval in chat, even with approvals disabled. VM changes apply next turn.":
+    "Register a Mac folder as a project if needed and link it to this calling bot only. Supply exactly one of path or projectId. Always requires explicit user approval in chat, even with approvals disabled. VM changes take effect from the next message.",
+  "Request access to a specific Mac folder for this calling bot only, with mode read or read-write. Always requires explicit user approval. Cannot enable any-folder access. VM changes apply next turn.":
+    "Request access to a specific Mac folder for this calling bot only, with mode read or read-write. Always requires explicit user approval. Cannot enable any-folder access. VM changes take effect from the next message.",
+  "Unlink the project from this calling bot only. Narrows access without approval and posts a notice in chat. VM changes apply next turn.":
+    "Unlink the project from this calling bot only. Narrows access without approval and posts a notice in chat. VM changes take effect from the next message.",
+  "Remove a specific folder grant from this calling bot only. Narrows access without approval and posts a notice in chat. Cannot change the user-only any-folder toggle. VM changes apply next turn.":
+    "Remove a specific folder grant from this calling bot only. Narrows access without approval and posts a notice in chat. Cannot change the user-only any-folder toggle. VM changes take effect from the next message.",
+  "{bot} pede sua aprovação: {summary}": "{bot} asks for your approval: {summary}",
+  "O aplicativo não conseguiu acessar o cofre nativo. Desbloqueie o cofre do sistema e tente novamente.":
+    "The app could not access the native vault. Unlock the system vault and try again.",
+  "O cofre nativo está disponível no aplicativo desktop. O modo servidor usa seu próprio cofre local.":
+    "The native vault is available in the desktop app. Server mode uses its own local vault.",
+  "O cofre nativo não respondeu em até 4s. Verifique o desbloqueio e reabra o touri.":
+    "The native vault did not respond within 4 seconds. Check that it is unlocked and reopen touri.",
+  "Escolha um método com código para entrar por este aparelho.":
+    "Choose a code-based method to sign in on this device.",
+  "Entre no {provedor} para o servidor: abra este link neste aparelho":
+    "Sign in to {provedor} for the server: open this link on this device",
+  "Preparando o login do {provedor} para o servidor…": "Preparing {provedor} sign-in for the server…",
+  "O login expira em até 10 minutos. Você pode cancelar a qualquer momento.":
+    "Sign-in expires within 10 minutes. You can cancel at any time.",
+  "O login expirou. Tente novamente.": "Sign-in expired. Try again.",
+  "Não foi possível concluir o login. Tente novamente ou cole o token manualmente.":
+    "Could not complete sign-in. Try again or paste the token manually.",
+  "Copiar código": "Copy code",
+  "Código copiado.": "Code copied.",
+  "Não foi possível copiar. Selecione e copie o código acima.": "Could not copy. Select and copy the code above.",
+  Resolvido: "Resolved",
+  "Configurar controle": "Configure control",
+  "Não foi possível salvar o rascunho. Copie sua mensagem antes de fechar o touri.":
+    "Could not save the draft. Copy your message before closing touri.",
+  "O navegador deste bot está desativado.": "This bot's browser is disabled.",
+  "O controle automático do computador está desativado. Você ainda pode assumir o controle manualmente.":
+    "Automated computer control is disabled. You can still take manual control.",
+  "O bot está aguardando. O controle ficará disponível quando a imagem chegar.":
+    "The bot is waiting. Control will be available when the image arrives.",
+  "O bot está aguardando. Assuma o controle para usar o teclado e o mouse.":
+    "The bot is waiting. Take control to use the keyboard and mouse.",
+  "Reconectando tela…": "Reconnecting screen…",
+  "O navegador não abriu a página": "The browser did not open the page",
+  "Navegador ainda não aberto": "Browser not opened yet",
+  "Navegador desativado": "Browser disabled",
+  "Peça ao bot para abrir uma página. Ela aparecerá aqui na tela da VM.":
+    "Ask the bot to open a page. It will appear here on the VM screen.",
+  "Não foi possível receber a imagem": "Could not receive the image",
+  "Tela pausada": "Screen paused",
+  "A tela voltará quando a conexão for retomada.": "The screen will return when the connection resumes.",
+  "Pedindo a sessão da tela à VM…": "Requesting a screen session from the VM…",
+  "Abrindo o canal da tela…": "Opening the screen connection…",
+  "Sem imagem ainda. Aguardando a primeira imagem da VM.": "No image yet. Waiting for the first VM image.",
+
+  // Routine deletion.
+  "Excluir rotina": "Delete routine",
+  "Excluir rotina {name}": "Delete routine {name}",
+  "Ações da rotina {name}": "Actions for routine {name}",
+  "Excluir a rotina {name}?": "Delete routine {name}?",
+  "Ela não vai mais rodar. O histórico de execuções continua nas conversas.":
+    "It will no longer run. Execution history remains in conversations.",
+  "Não foi possível excluir a rotina. Tente novamente.": "Could not delete the routine. Try again.",
+  "Excluindo…": "Deleting…",
+  Excluir: "Delete",
+
   "seu provedor": "your provider",
   "o arquivo": "the file",
   "Não consegui conectar à sua IA. Sua mensagem está salva.": "I could not connect to your AI. Your message is saved.",
@@ -1760,6 +2101,43 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   running: "Running",
   succeeded: "Completed",
   canceled: "Canceled",
+
+  // Computer viewing and manual control.
+  "O controle manual não está disponível nesta máquina. Você pode acompanhar a tela e conversar com o bot.":
+    "Manual control is unavailable on this machine. You can watch the screen and chat with the bot.",
+  "A tela pode ter mudado durante seu controle. Observe novamente antes de continuar.":
+    "The screen may have changed while you were in control. Observe it again before continuing.",
+  "Assumir controle não autoriza ações automáticas do bot. Revise essas ações no chat.":
+    "Taking control does not authorize the bot to act automatically. Review those actions in chat.",
+  "O controle foi interrompido. Assuma e devolva ao bot para permitir novas entradas.":
+    "Control was stopped. Take over and return to the bot to allow new input.",
+  "Controle indisponível": "Control is unavailable",
+  "O controle mudou. Tente novamente.": "Control changed. Try again.",
+  "Controle interrompido": "Control stopped",
+  "Controle manual indisponível": "Manual control is unavailable",
+  "Abrir arquivos": "Open files",
+  Conversar: "Chat",
+  "A tela da VM conectou, mas não enviou nenhuma imagem. Tente reconectar a tela.":
+    "The VM screen connected without sending an image. Try reconnecting the screen.",
+  "A tela da VM não respondeu em 15 s. Verifique se a máquina está ligada; tente reconectar a tela.":
+    "The VM screen did not respond within 15 s. Check that the machine is running and reconnect the screen.",
+  "Não foi possível parar a tarefa. Tente novamente.": "Could not stop the task. Try again.",
+  "Não foi possível devolver o controle. Reconecte a tela e tente novamente.":
+    "Could not return control. Reconnect the screen and try again.",
+  "Assuma o controle para digitar": "Take control to type",
+  "Ao assumir, só você usa o teclado e o mouse. A automação do bot continua com a permissão atual.":
+    "When you take over, only you use the keyboard and mouse. The bot keeps its current automation permission.",
+  "Este servidor não tem uma área de trabalho para controlar. Você pode conversar e trabalhar com arquivos.":
+    "This server has no desktop to control. You can chat and work with files.",
+  "Parar tarefa": "Stop task",
+  "Reconectar tela": "Reconnect screen",
+  "A conexão com a tela caiu. A tarefa pode continuar em execução.":
+    "The screen connection dropped. The task may still be running.",
+  "Devolver ao bot": "Return to bot",
+  "Você está no controle. O bot aguarda você terminar.": "You are in control. The bot is waiting for you to finish.",
+  "Você está no controle": "You are in control",
+  "Assumir controle": "Take control",
+  "Acompanhar a tela": "Watch the screen",
 
   "{bot} precisa de você: autorizar {action}.": "{bot} needs you: authorize {action}.",
   "Autorizado. Retomando a tarefa.": "Authorized. Resuming the task.",
@@ -1876,6 +2254,51 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
     "The server responded but offered no tools. Check the configuration and test again.",
   "Salvando conexão…": "Saving connection…",
   "Salvar conexão": "Save connection",
+  // Response feedback: keep this block together for parallel UI changes.
+  "Preparando a resposta…": "Preparing a reply…",
+  "Preparando o ambiente…": "Preparing the environment…",
+  "Lendo {arquivo}…": "Reading {arquivo}…",
+  "Preciso da sua autorização.": "I need your permission.",
+  "Ainda aguardando a IA responder.": "Still waiting for the AI to respond.",
+  "A tarefa continua em execução.": "The task is still running.",
+  "A resposta está demorando. Você pode continuar esperando ou verificar a conexão.":
+    "The reply is taking longer. You can keep waiting or check the connection.",
+  "Verificar conexão": "Check connection",
+  "Verificando conexão…": "Checking connection…",
+  "A conexão com o touri está disponível. A IA pode continuar demorando.":
+    "The connection to touri is available. The AI may still take longer.",
+  "Não foi possível conectar ao touri. Verifique sua conexão.": "Could not connect to touri. Check your connection.",
+  "Não foi possível parar. Tente novamente.": "Could not stop. Try again.",
+
+  // First conversation and host transparency.
+  "onboarding.server": "server",
+  "onboarding.privacy":
+    "History stays on this {host}. Your AI receives the content needed to respond. touri collects no telemetry.",
+  "onboarding.uses": "Uses {provider}, signed in on this {host}.",
+  "onboarding.checking": "Checking installation and login on this {host}…",
+  "onboarding.missing": "{provider} is not installed on this {host} yet.",
+  "onboarding.install": "See how to install",
+  "onboarding.installLinkError": "Could not open the browser. Copy the link address to see how to install.",
+  "onboarding.recheck": "Check again",
+  "onboarding.installFirst": "Install the AI on this computer and check again before creating your bot.",
+  "onboarding.checkServer": "Check server",
+  "onboarding.conversation": "Start a conversation with {name}",
+  "onboarding.notes": "Paste your notes and I will organize them into a list.",
+  "onboarding.example": "Use example",
+  "onboarding.exampleNotes": "Buy coffee; review the budget; schedule a meeting.",
+  "onboarding.examplePrompt":
+    "Organize these notes into a list in English. Use only the text below, without accessing files, projects or integrations. Reply with the list, without an introduction.\n\nBuy coffee; review the budget; schedule a meeting.",
+  "onboarding.repositoryNeeded":
+    "Choose the repository folder to start, or use a notes example without connecting anything.",
+  "onboarding.repositoryUpload":
+    "Attach repository files to start, or use a notes example without connecting anything.",
+  "onboarding.repositoryFolder": "Choose repository folder",
+  "onboarding.repositoryRequest":
+    "I want to work with a repository. Ask for the folder or an attachment before analyzing; I have not connected the code yet.",
+  "onboarding.repositoryAction": "Explain the connected repository.",
+  "onboarding.repositoryPrompt":
+    "Explain the connected repository structure using only authorized folders. If the code is unavailable, ask for the folder or an attachment before analyzing.",
+
   "Conectar dados": "Connect data",
   "Escolha como disponibilizar os dados para este bot.": "Choose how to make the data available to this bot.",
   "Anexar arquivo/CSV": "Attach a file/CSV",
@@ -1972,8 +2395,8 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Pastas deste Mac não estão disponíveis na nuvem.": "Folders on this Mac are unavailable in the cloud.",
   "O acesso não foi aprovado ou a configuração mudou.": "Access was not approved or the configuration changed.",
   "Pasta não encontrada nas permissões deste bot.": "Folder not found in this bot’s permissions.",
-  "A configuração foi salva neste Mac e será aplicada no próximo turno local.":
-    "The configuration was saved on this Mac and will apply on the next local turn.",
+  "A configuração foi salva neste Mac. Vale a partir da próxima mensagem.":
+    "The configuration was saved on this Mac. Takes effect from the next message.",
   "Projeto {name} ({path}) vinculado a este bot.": "Project {name} ({path}) linked to this bot.",
   "Projeto {name} desvinculado deste bot.": "Project {name} unlinked from this bot.",
   "Acesso {mode} à pasta {path} concedido a este bot.": "This bot was granted {mode} access to folder {path}.",
@@ -2104,8 +2527,8 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Desvincular o projeto deste bot.": "Unlink this bot's project.",
   "Remover acesso à pasta": "Remove folder access",
   "Remover o acesso deste bot a {path}.": "Remove this bot's access to {path}.",
-  "A mudança entra em vigor no próximo turno da VM.": "The change takes effect on the VM's next turn.",
-  "A mudança entra em vigor no próximo turno local.": "The change takes effect on the next local turn.",
+  "Vale a partir da próxima mensagem na VM.": "Takes effect from the next message in the VM.",
+  "Vale a partir da próxima mensagem.": "Takes effect from the next message.",
   "Retomado após aprovação de acesso": "Resumed after access approval",
   "Baixar imagem": "Download image",
   "Unread messages": "{count} unread messages",
@@ -2515,9 +2938,7 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "New bot": "New bot",
   Advanced: "Advanced",
   Instructions: "Instructions",
-  "Uses {name}, already signed in on this Mac.": "Uses {name}, already signed in on this Mac.",
   "Asks permission before changing files.": "Asks permission before changing files.",
-  "Checking accounts on this Mac…": "Checking accounts on this Mac…",
   "Sign in to an account to create your bot.": "Sign in to an account to create your bot.",
   "Choose an account": "Choose an account",
   "Sign in above before creating your bot.": "Sign in above before creating your bot.",
@@ -2531,7 +2952,7 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Connect tools after creating this bot, in its advanced settings.":
     "Connect tools after creating this bot, in its advanced settings.",
   "job.starter":
-    "## {name}\n- {role} {task}\n- In the first conversation, briefly explain how you can help with this job.\n- Confirm the goal and ask for missing context.\n- Work on the user’s Mac with their own CLI and only allowed access.\n- Use the browser when you need to check information and include sources.\n- Ask permission before changing files or sending anything; show a draft first.\n- When finished, explain what you found and what needs the person’s attention.",
+    "## {name}\n- {role} {task}\n- In the first conversation, briefly explain how you can help with this job.\n- Confirm the goal and ask for missing context.\n- Work on the computer running touri with the user’s own login and only allowed access.\n- Use the browser when you need to check information and include sources.\n- Ask permission before changing files or sending anything; show a draft first.\n- When finished, explain what you found and what needs the person’s attention.",
 
   "Activity thinking": "Thinking",
   "Activity working": "Working",
@@ -2672,8 +3093,8 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Sem projeto": "No project",
   "Adicionar projeto…": "Add project…",
   "Aguarde o turno terminar para alterar o projeto.": "Wait for the turn to finish before changing the project.",
-  "Commit Git copiado para /workspace no próximo turno.":
-    "The project's Git commit will be copied to /workspace on the next turn.",
+  "Commit Git copiado para /workspace a partir da próxima mensagem.":
+    "The project's Git commit will be copied to /workspace from the next message.",
   "Não foi possível alterar o projeto.": "Could not change the project.",
   "Cron atualizado": "Routine updated",
   "Nova rotina": "New routine",
@@ -2826,6 +3247,8 @@ export const statusLabel = (status: string): string => {
 
 /** Translate only application-authored notices, leaving bot/user content intact. */
 export const localizeNotice = (value: string): string => {
+  const toolCheck = /^Ferramentas do touri · (.+)$/.exec(value)
+  if (toolCheck) return t("Ferramentas do touri · {name}", { name: toolCheck[1] ?? "" })
   const browserSession = /^Navegador · (.+) · sessão salva$/.exec(value)
   if (browserSession) return t("Navegador · {name} · sessão salva", { name: browserSession[1] ?? "" })
   const invalidLogin = /^(.+): login do (Claude|Codex|OpenCode) inválido\. Conecte novamente\.$/.exec(value)

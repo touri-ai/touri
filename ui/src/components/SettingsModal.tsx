@@ -12,6 +12,7 @@ import { readInlinePreviewPreference, setInlinePreviewPreference } from "../feat
 import { DoctorChecks } from "../features/doctor/DoctorChecks"
 import { ReportProblem } from "../features/reports/ReportProblem"
 import { t } from "../i18n"
+import { hostComputerSupported } from "../platform"
 import { Modal } from "./Modal"
 import { NotificationDeliverySettings } from "./NotificationDeliverySettings"
 import {
@@ -248,7 +249,7 @@ export const SettingsModal = ({
                 </code>
               </div>
             </div>
-            <ComputerUseSettings className="settings-computer-permissions" />
+            {hostComputerSupported && <ComputerUseSettings className="settings-computer-permissions" />}
             {settings?.cloud && api && <CloudPreferences api={api} settings={settings} onSave={onSave} />}
           </SettingsDisclosure>
         </SettingsPane>
@@ -314,21 +315,34 @@ export const SettingsModal = ({
                   />
                 )}
                 <SettingsGroup>
-                  <SettingsRow
-                    title={SETTINGS.vmMemory.label}
-                    description={SETTINGS.vmMemory.description}
-                    htmlFor={SETTINGS.vmMemory.controlId}
-                    settingId={SETTINGS.vmMemory.id}
+                  <details
+                    className="settings-technical-details"
+                    ref={(details) => {
+                      if (
+                        details &&
+                        (focusSetting === "vmMemory" ||
+                          Boolean(error && (!Number.isInteger(vmMemory) || vmMemory < 512 || vmMemory > 16384)))
+                      )
+                        details.open = true
+                    }}
                   >
-                    <input
-                      id={SETTINGS.vmMemory.controlId}
-                      type="number"
-                      min={512}
-                      max={16384}
-                      value={vmMemory}
-                      onChange={(event) => setVmMemory(Number(event.target.value))}
-                    />
-                  </SettingsRow>
+                    <summary>{t("Detalhes técnicos")}</summary>
+                    <SettingsRow
+                      title={SETTINGS.vmMemory.label}
+                      description={SETTINGS.vmMemory.description}
+                      htmlFor={SETTINGS.vmMemory.controlId}
+                      settingId={SETTINGS.vmMemory.id}
+                    >
+                      <input
+                        id={SETTINGS.vmMemory.controlId}
+                        type="number"
+                        min={512}
+                        max={16384}
+                        value={vmMemory}
+                        onChange={(event) => setVmMemory(Number(event.target.value))}
+                      />
+                    </SettingsRow>
+                  </details>
                   <label
                     className="toggle-row"
                     htmlFor={SETTINGS.resumeInterruptedTurns.controlId}

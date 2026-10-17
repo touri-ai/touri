@@ -386,3 +386,25 @@ test("A06: only an explicitly trusted loopback HTTPS proxy can pair and rotate S
   const token = cookie.split(";")[0]?.split("=")[1] ?? ""
   expect(store.verifyDeviceToken(token)).toBeNull()
 })
+
+test("a trusted-proxy server still pairs a direct loopback client that sends no forwarding headers", async () => {
+  const { store, secrets } = makeGate()
+  const gate = createWebGate({
+    store,
+    secrets,
+    ui,
+    trustedProxy: true,
+    limiter: createRateLimiter({ maxFailures: 3, windowMs: 60_000 }),
+  })
+  const pair = (origin: string) => {
+    const request = new Request("http://127.0.0.1:8795/pair", {
+      method: "POST",
+      headers: { host: "127.0.0.1:8795", origin },
+      body: JSON.stringify({ code: store.createPairingCode().code }),
+    })
+    return gate({ request, url: new URL(request.url), clientIp: "127.0.0.1" })
+  }
+  expect((await pair("http://127.0.0.1:8795"))?.status).toBe(200)
+  expect((await pair("https://127.0.0.1:8795"))?.status).toBe(403)
+  expect((await pair("http://evil.example"))?.status).toBe(403)
+})

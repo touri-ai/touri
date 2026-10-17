@@ -20,7 +20,10 @@ beforeAll(() => {
   document.head.append(styles)
 })
 afterAll(() => styles.remove())
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  vi.unstubAllGlobals()
+})
 
 const botSettings = async (patch: Partial<Bot> = {}, initialSection?: BotSettingsSectionId) => {
   const api = createMockApi()
@@ -84,7 +87,8 @@ const botSettings = async (patch: Partial<Bot> = {}, initialSection?: BotSetting
       />
     </MotionPresence>,
   )
-  await waitFor(() => expect(screen.getByText("Conexão disponível: review")).toBeInTheDocument())
+  // Only the open pane is mounted, so MCP tools load once their tab is shown.
+  if (initialSection === "tools") await screen.findByText("Conexão disponível: review")
   return { bot, routine: botRoutine, actions, onClose, onOpenRoutines }
 }
 
@@ -101,7 +105,11 @@ const expectExposed = (control: HTMLElement, checkedAncestors = new Set<HTMLElem
   }
 }
 
+// WebKit drops every later sibling from the macOS AX tree when a display:none subtree holds a <select>.
+const expectNoHiddenSelect = (scope: HTMLElement) => expect(scope.querySelector("[hidden] select")).toBeNull()
+
 const expectNamedControls = (scope: HTMLElement) => {
+  expectNoHiddenSelect(scope)
   const queries = within(scope)
   const reachable = [
     "button",
@@ -115,7 +123,7 @@ const expectNamedControls = (scope: HTMLElement) => {
     "link",
   ].flatMap((role) => queries.queryAllByRole(role, { name: /\S/ }))
   const controls = Array.from(scope.querySelectorAll<HTMLElement>("button, input, select, textarea, a[href]")).filter(
-    (control) => !control.closest("[hidden]"),
+    (control) => !control.closest("[hidden], details:not([open])"),
   )
   expect(controls.length).toBeGreaterThan(0)
   const checkedAncestors = new Set<HTMLElement>()
@@ -155,6 +163,7 @@ it("keeps every identity control named and exposed, with no axe violations", asy
 it.each(BOT_SETTINGS_SECTIONS)(
   "keeps $label controls named and exposed, with no axe violations",
   async (section) => {
+    if (section.id === "permissions") vi.stubGlobal("__TAURI_INTERNALS__", {})
     await botSettings({ provider: "claude", computerUse: true, mainThreadId: "thread-review" }, section.id)
     const dialog = screen.getByRole("dialog")
     const tab = screen.getByRole("tab", { name: section.label })
@@ -180,11 +189,15 @@ it.each(BOT_SETTINGS_SECTIONS)(
       expect(within(panel).getByRole("combobox", { name: "Política · review" })).toBeVisible()
     }
     if (section.id === "permissions") {
-      expect(within(panel).getByRole("button", { name: "Revogar" })).toBeVisible()
+      expect(await within(panel).findByRole("button", { name: "Revogar" })).toBeVisible()
       expect(within(panel).getByRole("combobox", { name: t("For") })).toBeVisible()
       expect(within(panel).getByRole("button", { name: "Permitir controle do computador" })).toBeVisible()
     }
     expectNamedControls(dialog)
+    if (section.id === "computer") {
+      fireEvent.click(within(panel).getByText("Detalhes técnicos"))
+      expectNamedControls(dialog)
+    }
     await expectNoViolations(dialog)
   },
   10_000,
@@ -198,6 +211,8 @@ it("keeps VM environment, host access and browser controls named and exposed", a
   expect(within(panel).getByRole("switch", { name: /Permitir controle do computador na tela/ })).toBeVisible()
   expect(within(panel).getByRole("combobox", { name: "Navegador do bot" })).toHaveValue("machine")
   expectNamedControls(panel)
+  fireEvent.click(within(panel).getByText("Detalhes técnicos"))
+  expectNamedControls(panel)
   await expectNoViolations(screen.getByRole("dialog"))
 }, 10_000)
 
@@ -209,6 +224,7 @@ it("keeps Cancel and Save in the dialog's accessible tree after expanding and co
   for (const expanded of [true, false, true, false]) {
     await user.click(advanced)
     expect(advanced).toHaveAttribute("aria-expanded", String(expanded))
+    expectNoHiddenSelect(dialog)
     expectExposed(within(dialog).getByRole("button", { name: "Cancelar", exact: true }))
     expectExposed(within(dialog).getByRole("button", { name: "Salvar configurações" }))
   }
@@ -223,34 +239,15 @@ it("keeps Cancel and Save in the dialog's accessible tree after expanding and co
   expect(onClose).toHaveBeenCalledOnce()
 }, 15_000)
 
-it("exposes the selected Routines panel, its row and actions after switching tabs and reopening Advanced", async () => {
+it("opens the bot routines list directly from the tab by pointer or keyboard", async () => {
   const user = userEvent.setup()
-  const { routine, actions, onOpenRoutines } = await botSettings()
-  const advanced = screen.getByRole("button", { name: "Avançado" })
-  await user.click(advanced)
+  const { onOpenRoutines } = await botSettings()
+  await user.click(screen.getByRole("button", { name: "Avançado" }))
   const tab = screen.getByRole("tab", { name: "Rotinas" })
   await user.click(tab)
-  await user.click(screen.getByRole("tab", { name: "Modelo" }))
-  expect(screen.queryByRole("tabpanel", { name: "Rotinas" })).toBeNull()
-  act(() => tab.focus())
-  await user.keyboard("{End}")
-  expect(tab).toHaveFocus()
-  expect(tab).toHaveAttribute("aria-selected", "true")
-  await user.click(advanced)
-  expect(screen.queryByRole("tabpanel", { name: "Rotinas" })).toBeNull()
-  await user.click(advanced)
-  const panel = screen.getByRole("tabpanel", { name: "Rotinas" })
-  expect(panel).toHaveAttribute("aria-labelledby", tab.id)
-  expect(within(panel).getByText("Revisar tarefas")).toBeVisible()
-  expectNamedControls(panel)
-  await user.click(within(panel).getByRole("button", { name: "Gerenciar rotinas" }))
   expect(onOpenRoutines).toHaveBeenCalledOnce()
-  await user.click(within(panel).getByRole("button", { name: "Rodar agora" }))
-  await waitFor(() => expect(actions.runRoutine).toHaveBeenCalledWith(routine.id))
-  const toggle = within(panel).getByRole("switch", { name: "Habilitar Revisar tarefas" })
-  expect(toggle).toBeChecked()
-  act(() => toggle.focus())
-  await user.keyboard(" ")
-  await waitFor(() => expect(actions.toggleRoutine).toHaveBeenCalledWith(routine))
-  await expectNoViolations(screen.getByRole("dialog"))
-}, 15_000)
+  act(() => screen.getByRole("tab", { name: "Modelo" }).focus())
+  await user.keyboard("{End}")
+  expect(onOpenRoutines).toHaveBeenCalledTimes(2)
+  expect(tab).toHaveFocus()
+})

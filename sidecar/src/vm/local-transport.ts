@@ -5,10 +5,13 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { authorizeGatewayRequest, withoutCapabilityCookies } from "./gateway-session"
 
-export const privateSocket = () => {
+export const privateSocket = (platform = process.platform) => {
   const directory = mkdtempSync(join(tmpdir(), "touri-channel-"))
-  chmodSync(directory, 0o700)
-  return { path: join(directory, "s"), remove: () => rmSync(directory, { recursive: true, force: true }) }
+  if (platform !== "win32") chmodSync(directory, 0o700)
+  return {
+    path: platform === "win32" ? `\\\\.\\pipe\\touri-channel-${randomBytes(32).toString("hex")}` : join(directory, "s"),
+    remove: () => rmSync(directory, { recursive: true, force: true }),
+  }
 }
 
 export const trustedGatewayOrigin = (origin: string | null, host: string) =>

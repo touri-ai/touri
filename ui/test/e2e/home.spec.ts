@@ -77,7 +77,8 @@ test("bot actions support keyboard access and routines keep their bot filter aft
   const settings = page.getByRole("dialog")
   await settings.getByRole("button", { name: "Avançado", exact: true }).click()
   await settings.getByRole("tab", { name: "Rotinas", exact: true }).click()
-  await settings.getByRole("button", { name: "Gerenciar rotinas" }).click()
+  await expect(settings).toHaveCount(0)
+  await expect(page.getByRole("region", { name: "Rotinas", exact: true })).toBeFocused()
   await expect(filter).toHaveAttribute("aria-pressed", "true")
 })
 
@@ -86,10 +87,10 @@ test("first run has one primary action, secondary links and no diagnostic counts
   await expect(page.getByRole("heading", { name: "touri" })).toBeVisible()
   await expect(page.locator(".onboarding-actions button")).toHaveText(["Criar meu primeiro bot→"])
   await expect(page.getByRole("main")).toContainText(
-    "Seus bots trabalham no seu Mac, com as suas contas. Nada sai daqui.",
+    "O histórico fica neste servidor. Sua IA recebe o conteúdo necessário para responder. O touri não coleta telemetria.",
   )
   await expect(page.getByRole("main")).not.toContainText(/Prontas|Avisos|Falhas|\d/)
-  await page.getByRole("button", { name: "Verificar este Mac" }).click()
+  await page.getByRole("button", { name: "Verificar servidor" }).click()
   await expect(page.getByRole("dialog", { name: "Diagnóstico" })).toBeVisible()
   await page.getByRole("button", { name: "Fechar diálogo" }).click()
   await page.getByRole("button", { name: "Importar", exact: true }).click()

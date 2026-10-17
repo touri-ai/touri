@@ -22,7 +22,7 @@ jobs:
         with:
           bun-version: 1.2.21
       - run: bun install --frozen-lockfile
-      - run: bun run build:sidecar
+      - run: bun run build:sidecar:macos
       - name: Build unsigned arm64 app
         if: env.TOURI_ENABLE_SIGNING != 'true'
         run: bunx tauri build --target aarch64-apple-darwin

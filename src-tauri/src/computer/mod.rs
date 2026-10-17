@@ -81,11 +81,13 @@ pub fn key_generation() -> u64 {
     KILL_GENERATION.load(Ordering::SeqCst)
 }
 
+#[cfg(target_os = "macos")]
 pub(crate) fn input_generation() -> Result<u64, HostError> {
     ensure_live()?;
     Ok(key_generation())
 }
 
+#[cfg(any(target_os = "macos", test))]
 pub(crate) fn ensure_input_generation(generation: u64) -> Result<(), HostError> {
     if KILLED.load(Ordering::SeqCst) || key_generation() != generation {
         Err(HostError::Killed)

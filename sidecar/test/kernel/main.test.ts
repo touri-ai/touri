@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { SCHEMA_VERSION } from "../../src/kernel/db"
+import { touriVersion } from "../../src/version"
 
 const readFirstLine = async (stream: ReadableStream<Uint8Array>): Promise<string> => {
   const reader = stream.getReader()
@@ -29,7 +30,11 @@ test("serve mode prints a handshake and skips missing work-package modules", asy
   try {
     const line = await readFirstLine(child.stdout)
     const handshake = JSON.parse(line) as { type: string; port: number; version: string; schemaVersion: number }
-    expect(handshake).toMatchObject({ type: "touri-sidecar-ready", version: "0.1.0", schemaVersion: SCHEMA_VERSION })
+    expect(handshake).toMatchObject({
+      type: "touri-sidecar-ready",
+      version: touriVersion,
+      schemaVersion: SCHEMA_VERSION,
+    })
     expect(handshake.port).toBeGreaterThan(0)
     child.kill()
     await child.exited

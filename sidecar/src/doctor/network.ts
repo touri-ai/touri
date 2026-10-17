@@ -1,6 +1,7 @@
 import { lookup } from "node:dns/promises"
 import { connect } from "node:tls"
 import type { DoctorCheck } from "@touri/contracts"
+import { hostPlatform } from "../platform"
 import { check } from "./check"
 
 export const providerTargets = [
@@ -126,7 +127,7 @@ export const collectNetworkChecks = async (
                   ? `Falha ao validar TLS de ${target.host}. Verifique a data do Mac, certificados e proxy da rede.`
                   : `Sem resposta da API em até ${timeoutMs / 1000}s. Verifique conexão, VPN, firewall e proxy.`,
               stage === "dns"
-                ? "open /System/Applications/System\\ Settings.app"
+                ? hostPlatform.systemSettingsCommand
                 : stage === "tls"
                   ? `curl --verbose --head --connect-timeout 5 '${url}'`
                   : `curl --head --connect-timeout 5 '${url}'`,

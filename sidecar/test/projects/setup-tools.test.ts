@@ -135,7 +135,12 @@ const fixture = async (patch: Partial<Bot> = {}) => {
 
 test("discovery lists only projects and repositories in this bot's granted folders without approval", async () => {
   const f = await fixture()
-  expect(f.router.list({ caller: f.caller }).map((tool) => tool.name)).toEqual([
+  expect(
+    f.router
+      .list({ caller: f.caller })
+      .map((tool) => tool.name)
+      .filter((name) => name !== "capability_request"),
+  ).toEqual([
     "bot_rename",
     "project_discover",
     "project_link",
@@ -473,7 +478,7 @@ test("projectId and registered paths reuse a project and unlink is visible witho
       type: "message.created",
       message: expect.objectContaining({
         kind: "notice",
-        text: "Projeto Hodler desvinculado deste bot. A configuração foi salva neste Mac e será aplicada no próximo turno local.",
+        text: "Projeto Hodler desvinculado deste bot. A configuração foi salva neste Mac. Vale a partir da próxima mensagem.",
       }),
     }),
   )
@@ -501,7 +506,7 @@ for (const [mode, access] of [
       expect.objectContaining({
         type: "message.created",
         message: expect.objectContaining({
-          text: `Acesso à pasta ${f.path} removido deste bot. A configuração foi salva neste Mac e será aplicada no próximo turno local.`,
+          text: `Acesso à pasta ${f.path} removido deste bot. A configuração foi salva neste Mac. Vale a partir da próxima mensagem.`,
         }),
       }),
     )
@@ -686,7 +691,7 @@ test("configuration edits or filesystem retargeting while a card is pending inva
   expect(f.currentBot()?.folders).toEqual([])
 })
 
-test("local setup reports the host and next local turn for project and folder changes", async () => {
+test("local setup reports the host and next message for project and folder changes", async () => {
   const f = await fixture()
   for (const [name, args] of [
     ["project_link", { path: f.path }],
@@ -700,7 +705,7 @@ test("local setup reports the host and next local turn for project and folder ch
     expect(result).toMatchObject({
       success: true,
       structured: { effective: "next-turn" },
-      content: [{ type: "text", text: expect.stringContaining("próximo turno local") }],
+      content: [{ type: "text", text: expect.stringContaining("próxima mensagem") }],
     })
     if (!result.success) throw new Error(result.error)
     expect(result.structured).toHaveProperty("message", expect.not.stringContaining("VM"))
@@ -712,13 +717,13 @@ test("local setup reports the host and next local turn for project and folder ch
   ] as const) {
     const result = await f.call(name, args)
     expect(result.success).toBe(true)
-    expect(JSON.stringify(result)).toContain("próximo turno local")
+    expect(JSON.stringify(result)).toContain("próxima mensagem")
     if (!result.success) throw new Error(result.error)
     expect(result.structured).toHaveProperty("message", expect.not.stringContaining("VM"))
   }
 })
 
-test("VM setup is saved for next turn without invoking any VM runtime", async () => {
+test("VM setup takes effect from the next message without invoking any VM runtime", async () => {
   const f = await fixture({ machine: "vm" })
   for (const [name, args] of [
     ["project_link", { path: f.path }],
@@ -730,7 +735,7 @@ test("VM setup is saved for next turn without invoking any VM runtime", async ()
     expect(await call).toMatchObject({
       success: true,
       structured: { effective: "next-turn" },
-      content: [{ type: "text", text: expect.stringContaining("próximo turno da VM") }],
+      content: [{ type: "text", text: expect.stringContaining("próxima mensagem na VM") }],
     })
   }
   expect(f.currentBot()?.folders).toEqual([{ path: f.path, access: "read-write" }])

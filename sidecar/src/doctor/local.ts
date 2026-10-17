@@ -1,18 +1,22 @@
 import type { Database } from "bun:sqlite"
-import { existsSync, readFileSync, statfsSync } from "node:fs"
+import { readFileSync, statfsSync } from "node:fs"
 import { freemem, homedir, release, totalmem } from "node:os"
 import { join } from "node:path"
 import type { DoctorCheck, Kernel } from "@touri/contracts"
-import { publicError } from "@touri/contracts"
 import { SCHEMA_VERSION } from "../kernel/db"
+import { hostPlatform, ociEngine, platformFor } from "../platform"
+import { containerKernelPresent } from "../platform/macos"
+import { appleContainerChecks } from "../platform/macos/doctor-local"
+import { probeOciService, WINDOWS_VM_FIX } from "../platform/oci-health"
+import { providerLoginPty } from "../platform/provider-login"
 import { touriVersion } from "../version"
 import { BOT_IMAGE, imageContext } from "../vm/image"
-import { containerMemoryChecks } from "../vm/memory-doctor"
+import { NATIVE_VAULT_GUIDANCE } from "../vm/provider-login"
 import { browserSessionChecks } from "./browserSessions"
 import { check, shellQuote } from "./check"
 import { codexSessionsCheck } from "./codex-sessions"
 import type { DoctorCommand } from "./command"
-import { mcpSocketPathCheck, mcpStartupChecks, orphanShimCheck } from "./mcp"
+import { mcpSocketPathCheck, mcpStartupChecks } from "./mcp"
 import { withinDeadline } from "./network"
 import { providerLoginChecks } from "./providerLogin"
 
@@ -38,8 +42,7 @@ export const localProbes: LocalProbes = {
     const fs = statfsSync(path)
     return fs.bavail * fs.bsize
   },
-  kernelPresent: () =>
-    existsSync(join(homedir(), "Library/Application Support/com.apple.container/kernels/default.kernel-arm64")),
+  kernelPresent: containerKernelPresent,
   memory: () => ({ total: totalmem(), free: freemem() }),
   prepareImage: imageContext,
 }
@@ -58,7 +61,6 @@ export const sidecarChecks = (kernel: Kernel): Array<DoctorCheck> => {
   return [
     ...mcpStartupChecks(kernel.db as Database),
     mcpSocketPathCheck(kernel.paths),
-    orphanShimCheck(kernel.paths.runDir),
     check("sidecar-version", "Serviço local · versão", "pass", `touri ${version}; Bun ${Bun.version}.`),
     check(
       "sidecar-schema",
@@ -67,7 +69,7 @@ export const sidecarChecks = (kernel: Kernel): Array<DoctorCheck> => {
       Number(schema) === SCHEMA_VERSION
         ? `Esquema ${schema}, compatível com o serviço local.`
         : `Esquema ${schema ?? "indisponível"}; o serviço espera ${SCHEMA_VERSION}. Atualize o aplicativo completo e reabra-o.`,
-      "open -a touri",
+      hostPlatform.appOpenCommand,
     ),
   ]
 }
@@ -77,8 +79,14 @@ const cliChecks = async (
   path: string | null,
   run: DoctorCommand,
   signal: AbortSignal,
+  platform = process.platform as string,
 ): Promise<Array<DoctorCheck>> => {
-  const install = name === "claude" ? "brew install --cask claude-code" : "npm install -g @openai/codex"
+  const install =
+    name === "claude"
+      ? platform === "darwin"
+        ? "brew install --cask claude-code"
+        : "npm install -g @anthropic-ai/claude-code"
+      : "npm install -g @openai/codex"
   const login = name === "claude" ? "claude auth login" : "codex login"
   if (!path)
     return [
@@ -227,156 +235,57 @@ const containerChecks = async (
   run: DoctorCommand,
   signal: AbortSignal,
   probes: LocalProbes,
+  shellPath: string,
 ): Promise<Array<DoctorCheck>> => {
-  const hostReady =
-    probes.platform === "darwin" &&
-    probes.arch === "arm64" &&
-    Number(probes.osRelease.split(".")[0]) >= 25 &&
-    !probes.headless
-  if (!hostReady || !path) {
-    const detail = !hostReady
-      ? "Máquinas isoladas exigem Apple Silicon e macOS 26 no aplicativo desktop. Bots locais continuam disponíveis."
-      : "Apple container não encontrado no PATH. Instale-o para usar máquinas isoladas."
-    const fix = !hostReady ? "softwareupdate --list" : "brew install container"
+  if (probes.headless && probes.platform !== "darwin")
     return [
-      check("container", "Apple container · versão", "warn", detail, fix),
+      check("container", "Máquinas · serviço", "warn", "Bots locais disponíveis no modo servidor"),
+      check("vm-system", "Máquinas · serviço", "warn", "Bots locais disponíveis no modo servidor"),
+      check("vm-image", "Máquinas · imagem", "warn", "Imagem não verificada"),
+    ]
+  if (probes.platform !== "darwin") {
+    const engine = ociEngine(probes.platform as NodeJS.Platform, (name) => probes.which(name, shellPath))
+    if (!engine)
+      return [
+        check(
+          "vm-system",
+          "Máquinas · serviço",
+          "warn",
+          probes.platform === "win32" ? WINDOWS_VM_FIX : "Podman/Docker unavailable. Local bots remain available.",
+          probes.platform === "win32" ? WINDOWS_VM_FIX : "Install rootless Podman or Docker Desktop",
+        ),
+      ]
+    const executable = probes.which(engine, shellPath) ?? engine
+    const service = await probeOciService({
+      engine,
+      platform: probes.platform,
+      run: async (args) => {
+        const output = await run(executable, args, signal)
+        return { ...output, code: output.code ?? 127 }
+      },
+    })
+    const image = service.code === 0 ? await run(executable, ["image", "inspect", BOT_IMAGE], signal) : null
+    return [
       check(
         "vm-system",
-        "Apple container · serviço",
-        "warn",
-        "Serviço não verificado: resolva o requisito de Apple container primeiro.",
-        fix,
+        `${engine} · serviço`,
+        service.code === 0 ? "pass" : "warn",
+        service.code === 0
+          ? `${engine} ready`
+          : probes.platform === "win32"
+            ? WINDOWS_VM_FIX
+            : "Container engine unavailable; check rootless user namespaces / daemon. Local bots remain available.",
+        probes.platform === "win32" ? WINDOWS_VM_FIX : `${engine} info`,
       ),
       check(
         "vm-image",
         "Máquinas · imagem",
-        "warn",
-        `${BOT_IMAGE} não verificada: resolva o requisito de Apple container primeiro.`,
-        fix,
+        image?.code === 0 ? "pass" : "warn",
+        image?.code === 0 ? `${BOT_IMAGE} cached` : "The bot image will be built on first use",
       ),
     ]
   }
-  const [version, service, image, containers] = await Promise.all([
-    run(path, ["--version"], signal),
-    run(path, ["system", "status"], signal),
-    run(path, ["image", "inspect", BOT_IMAGE], signal),
-    run(path, ["list", "--all", "--format", "json"], signal),
-  ])
-  const number = version.stdout.match(/\b(\d+)\.(\d+)(?:\.(\d+))?\b/)
-  const supported =
-    version.code === 0 &&
-    !version.timedOut &&
-    Boolean(number && (Number(number[1]) > 1 || (Number(number[1]) === 1 && Number(number[2]) >= 5)))
-  const serviceReady = service.code === 0 && !service.timedOut
-  const imageReady = image.code === 0 && !image.timedOut
-  const checks = [
-    check(
-      "container",
-      "Apple container · versão",
-      supported ? "pass" : "warn",
-      supported
-        ? `Apple container ${number?.[0]} disponível.`
-        : "Apple container 1.5.0 ou mais recente é necessário; a versão não foi confirmada ou está desatualizada.",
-      "brew upgrade container",
-    ),
-    {
-      ...check(
-        "vm-system",
-        "Apple container · serviço",
-        serviceReady ? "pass" : "fail",
-        serviceReady
-          ? "Serviço de virtualização ativo."
-          : `${publicError("MACHINE_SERVICE_UNAVAILABLE").error} [TOURI-E8001]`,
-        "container system start",
-      ),
-      ...(!serviceReady ? { errorCode: "TOURI-E8001", action: "start-machine-service" as const } : {}),
-    },
-  ]
-  if (imageReady) checks.push(check("vm-image", "Máquinas · imagem", "pass", `${BOT_IMAGE} presente no cache local.`))
-  else if (!serviceReady || image.timedOut)
-    checks.push(
-      check(
-        "vm-image",
-        "Máquinas · imagem",
-        "warn",
-        "A presença da imagem não pôde ser confirmada. Inicie o serviço e execute o diagnóstico novamente.",
-        "container system start",
-      ),
-    )
-  else {
-    try {
-      const context = probes.prepareImage(kernel.paths.appData)
-      checks.push(
-        check(
-          "vm-image",
-          "Máquinas · imagem",
-          "warn",
-          `${BOT_IMAGE} ausente. O primeiro turno constrói a imagem; para antecipar, execute o comando abaixo.`,
-          `container build --tag ${shellQuote(BOT_IMAGE)} --file ${shellQuote(join(context, "Containerfile"))} ${shellQuote(context)}`,
-        ),
-      )
-    } catch {
-      checks.push(
-        check(
-          "vm-image",
-          "Máquinas · imagem",
-          "fail",
-          "Imagem ausente e não foi possível preparar os arquivos de construção. Verifique o espaço e as permissões da pasta de dados.",
-          `ls -ld ${shellQuote(kernel.paths.appData)}`,
-        ),
-      )
-    }
-  }
-  // Keep the VM prerequisites that the previous diagnostic already exposed.
-  try {
-    const present = probes.kernelPresent()
-    checks.push(
-      check(
-        "vm-kernel",
-        "Máquinas · kernel Linux",
-        present ? "pass" : "warn",
-        present
-          ? "Kernel Linux padrão presente."
-          : "Kernel Linux padrão ausente. Configure-o antes de iniciar uma máquina.",
-        "container system kernel set --recommended",
-      ),
-    )
-  } catch {
-    checks.push(
-      check(
-        "vm-kernel",
-        "Máquinas · kernel Linux",
-        "warn",
-        "Não foi possível verificar o kernel Linux padrão.",
-        "container system status",
-      ),
-    )
-  }
-  try {
-    const memory = probes.memory()
-    const ready = memory.total >= 4 * 1024 ** 3 && memory.free >= 2 * 1024 ** 3
-    checks.push(
-      check(
-        "vm-ram",
-        "Máquinas · memória",
-        ready ? "pass" : "warn",
-        `${(memory.total / 1024 ** 3).toFixed(1)} GiB de RAM total; ${(memory.free / 1024 ** 3).toFixed(1)} GiB livres. Recomendados 4 GiB no Mac e 2 GiB livres para iniciar uma máquina.`,
-        "open -a 'Activity Monitor'",
-      ),
-    )
-  } catch {
-    checks.push(
-      check(
-        "vm-ram",
-        "Máquinas · memória",
-        "warn",
-        "Não foi possível consultar a memória disponível.",
-        "open -a 'Activity Monitor'",
-      ),
-    )
-  }
-  checks.push(...containerMemoryChecks(containers))
-  return checks
+  return appleContainerChecks(kernel, path, run, signal, probes)
 }
 
 export const diskCheck = (path: string, probes: LocalProbes, imagePresent: boolean): DoctorCheck => {
@@ -389,7 +298,7 @@ export const diskCheck = (path: string, probes: LocalProbes, imagePresent: boole
       "Armazenamento · espaço livre",
       gb < 5 ? "fail" : gb < recommended ? "warn" : "pass",
       `${gb.toFixed(1)} GiB livres. ${recommended} GiB recomendados${imagePresent ? " para as máquinas" : " para construir a imagem"}. ${gb < recommended ? "Revise os arquivos e libere espaço antes de criar uma máquina." : ""}`.trim(),
-      "open /System/Applications/System\\ Settings.app",
+      hostPlatform.systemSettingsCommand,
     )
   } catch {
     return check(
@@ -403,12 +312,15 @@ export const diskCheck = (path: string, probes: LocalProbes, imagePresent: boole
 }
 
 export const keychainCheck = async (kernel: Kernel, signal: AbortSignal, probes: LocalProbes): Promise<DoctorCheck> => {
-  if (probes.platform !== "darwin" || probes.headless)
+  const hostPlatform = platformFor(probes.platform)
+  if (probes.headless)
     return check(
       "keychain",
-      "Chaves do macOS",
+      hostPlatform.secretStoreLabel,
       "warn",
-      "O cofre nativo está disponível apenas no aplicativo desktop do macOS. O modo servidor usa seu próprio cofre local.",
+      probes.platform === "darwin"
+        ? "O cofre nativo está disponível apenas no aplicativo desktop do macOS. O modo servidor usa seu próprio cofre local."
+        : "O cofre nativo está disponível no aplicativo desktop. O modo servidor usa seu próprio cofre local.",
     )
   try {
     // An intentionally unused touri account tests native access without reading user credentials.
@@ -419,21 +331,23 @@ export const keychainCheck = async (kernel: Kernel, signal: AbortSignal, probes:
     )
     return check(
       "keychain",
-      "Chaves do macOS",
+      hostPlatform.secretStoreLabel,
       result.success ? "pass" : "fail",
       result.success
         ? "Consulta ao cofre nativo concluída pelo aplicativo. Nenhuma credencial foi exibida ou registrada."
-        : "O aplicativo não conseguiu acessar o cofre nativo. Abra Acesso às Chaves e verifique o desbloqueio e as permissões do touri.",
-      "open -a 'Keychain Access'",
+        : probes.platform === "darwin"
+          ? "O aplicativo não conseguiu acessar o cofre nativo. Abra Acesso às Chaves e verifique o desbloqueio e as permissões do touri."
+          : NATIVE_VAULT_GUIDANCE,
+      probes.platform === "darwin" ? hostPlatform.secretStoreFix : null,
     )
   } catch {
     signal.throwIfAborted()
     return check(
       "keychain",
-      "Chaves do macOS",
+      hostPlatform.secretStoreLabel,
       "fail",
       "O cofre nativo não respondeu em até 4s. Verifique o desbloqueio e reabra o touri.",
-      "open -a 'Keychain Access'",
+      probes.platform === "darwin" ? hostPlatform.secretStoreFix : null,
     )
   }
 }
@@ -466,8 +380,8 @@ export const collectLocalChecks = async (
     ),
   ]
   const [claude, codex, opencode, containers, keychain, logins, codexSessions, browserSessions] = await Promise.all([
-    cliChecks("claude", probes.which("claude", path), safeRun, signal),
-    cliChecks("codex", probes.which("codex", path), safeRun, signal),
+    cliChecks("claude", probes.which("claude", path), safeRun, signal, probes.platform),
+    cliChecks("codex", probes.which("codex", path), safeRun, signal, probes.platform),
     openCodeChecks(
       probes.which("opencode", path) ??
         probes.which(join(environment.HOME ?? homedir(), ".opencode/bin/opencode"), path),
@@ -476,22 +390,32 @@ export const collectLocalChecks = async (
       environment,
       kernel,
     ),
-    containerChecks(kernel, probes.which("container", path), safeRun, signal, probes),
+    containerChecks(kernel, probes.which("container", path), safeRun, signal, probes, path),
     keychainCheck(kernel, signal, probes),
     providerLoginChecks(kernel, environment.HOME ?? homedir(), signal, probes),
     codexSessionsCheck(environment.HOME ?? homedir(), signal),
     browserSessionChecks(kernel, signal, probes),
   ])
   checks.push(...claude, ...codex, ...opencode, ...logins, codexSessions, ...browserSessions)
-  for (const [name, command] of [
-    ["git", "xcode-select --install"],
-    ["brew", "open https://brew.sh"],
-    ["node", "brew install node"],
-    ["pnpm", "npm install -g pnpm"],
-    ["mongod", "brew tap mongodb/brew && brew install mongodb-community"],
-    ["redis-server", "brew install redis"],
-    ["docker", "brew install --cask docker"],
-  ]) {
+  if (probes.platform !== "darwin") {
+    const pty = providerLoginPty(probes.platform, "provider", [], environment.TOURI_DESKTOP_HELPER)
+    const available = pty.supported && !!probes.which(pty.command, path)
+    checks.push(
+      check(
+        "provider-login-pty",
+        "Login · terminal",
+        available ? "pass" : "warn",
+        !pty.supported
+          ? pty.message
+          : available
+            ? `${probes.platform === "win32" ? "ConPTY" : "PTY script"} disponível; o login atual usa importação de credenciais.`
+            : probes.platform === "win32"
+              ? "Reinstale o aplicativo para disponibilizar o helper ConPTY. A importação continua disponível."
+              : "Instale util-linux para disponibilizar script. O login por importação continua disponível.",
+      ),
+    )
+  }
+  for (const [name, command] of [...platformFor(probes.platform).installTools]) {
     if (!name || !command) continue
     const resolved = probes.which(name, path)
     checks.push(

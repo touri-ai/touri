@@ -202,8 +202,10 @@ describe("R6: novo turno visível", () => {
     fireEvent.change(composer, { target: { value: "Mostre o novo turno" } })
     fireEvent.keyDown(composer, { key: "Enter" })
     await waitFor(() => expect(composer).toHaveValue(""))
-    expect(await within(list).findByText("Mostre o novo turno")).toBeVisible()
-    expect(list.scrollTop).toBe(1400)
+    await waitFor(() => {
+      expect(within(list).getByText("Mostre o novo turno")).toBeVisible()
+      expect(list.scrollTop).toBe(1400)
+    })
   })
 
   it("renders the latest turn in a virtualized history and preserves manual reading during deltas", () => {
@@ -305,7 +307,7 @@ describe("R6: cancelamento e confirmação", () => {
     expect(screen.getByText("Cancelado por você")).toBeVisible()
     expect(screen.getByText("Trabalho já realizado")).toBeVisible()
     expect(screen.queryByRole("alert")).toBeNull()
-    expect(screen.queryByRole("button", { name: "Tentar novamente" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "Tentar de novo" })).toBeNull()
     expect(document.body).not.toHaveTextContent(/canceled:|Turno cancelado/)
   })
 

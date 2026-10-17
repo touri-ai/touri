@@ -119,6 +119,13 @@
       "x-touri": { "group": "project", "mvp": true, "mutates": true, "deadlineMs": 1800000 }
     },
     {
+      "name": "capability_request",
+      "description": "Ask the person to enable this bot's isolated browser or supported computer control with an explicit approval card. Use a short reason tied to their task. Never enables silently, never available to unattended or delegated runs. On automaticContinuation, finish this turn; touri resumes the original task with updated tools. On denial, do not ask again; explain how to enable it later in bot settings.",
+      "inputSchema": { "type": "object", "required": ["capability", "reason"], "additionalProperties": false,
+        "properties": { "capability": { "enum": ["browser", "computer_use"] }, "reason": { "type": "string", "minLength": 1, "maxLength": 240, "pattern": "^(?=.*\\S)[^\\u0000-\\u001f\\u007f-\\u009f\\u2028\\u2029]+$" } } },
+      "x-touri": { "group": "project", "mvp": true, "mutates": true, "deadlineMs": 1800000 }
+    },
+    {
       "name": "project_unlink",
       "description": "Unlink the project from this calling bot only. Narrows access without approval and posts a notice in chat. VM changes apply next turn.",
       "inputSchema": { "type": "object", "additionalProperties": false, "properties": {} },

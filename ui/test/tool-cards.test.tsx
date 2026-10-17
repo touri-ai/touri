@@ -176,7 +176,7 @@ it("keeps approved execution separate from the decision, including its recorded 
   expect(view.container.querySelector(".tool-status-chip")).toHaveTextContent("Executando")
 })
 
-it("retains decision time and focus when a server update moves the approval into its tool group", async () => {
+it("retains decision time and focuses the collapsed group when a server update moves the approval", async () => {
   vi.spyOn(Date, "now").mockReturnValue(timestamp)
   const api = createMockApi()
   let resolve: () => void = () => undefined
@@ -192,11 +192,44 @@ it("retains decision time and focus when a server update moves the approval into
   view.rerender(<ToolCallList {...props} parts={[tool, { ...approval, decision: "approved" }]} />)
   await act(async () => resolve())
   const card = screen.getByRole("article", { name: "Aprovação de ferramenta" })
-  expect(card).toHaveFocus()
-  expect(view.container.querySelector(".tool-group")).toHaveAttribute("open")
+  expect(view.container.querySelector(".tool-group > summary")).toHaveFocus()
+  expect(view.container.querySelector(".tool-group")).not.toHaveAttribute("open")
   expect(card.querySelector(".tool-decision-chip time")).toHaveAttribute("dateTime", new Date(timestamp).toISOString())
   expect(view.container.querySelectorAll(".tool-call-card")).toHaveLength(1)
 })
+
+it.each(["approved", "denied"] as const)(
+  "keeps terminal cards collapsed after an approval is %s until the user expands them",
+  async (decision) => {
+    const user = userEvent.setup()
+    const earlier = { ...tool, callId: "earlier", inputJson: '{"command":"pwd"}', ok: true }
+    const props = { api: createMockApi(), createdAt: timestamp, finished: false }
+    const view = render(<ToolCallList {...props} parts={[earlier, tool, approval]} />)
+    expect(view.container.querySelector(".tool-group")).not.toHaveAttribute("open")
+    expect(
+      within(screen.getByRole("article", { name: "Aprovação de ferramenta" })).getByRole("figure", { name: "Comando" }),
+    ).toBeVisible()
+    await user.click(screen.getByRole("button", { name: decision === "approved" ? "Aprovar" : "Negar" }))
+    await screen.findByText(decision === "approved" ? "Aprovado por você" : "Negado por você")
+    const resolved = { ...approval, decision }
+    view.rerender(<ToolCallList {...props} parts={[earlier, tool, resolved]} />)
+    expect(view.container.querySelector(".tool-group")).not.toHaveAttribute("open")
+    const command = screen.getByText("printf QA_R7_APROVADO")
+    expect(command).not.toBeVisible()
+    await user.click(screen.getByText("2 ferramentas"))
+    expect(command).toBeVisible()
+    view.rerender(
+      <ToolCallList
+        {...props}
+        parts={[earlier, { ...tool, ok: true, outputJson: "QA_R7_APROVADO" }, resolved]}
+        finished
+      />,
+    )
+    expect(view.container.querySelector(".tool-group")).toHaveAttribute("open")
+    await user.click(screen.getByText("2 ferramentas"))
+    expect(command).not.toBeVisible()
+  },
+)
 
 it("does not invent a decision timestamp for restored approvals", () => {
   const view = render(<ApprovalCard part={{ ...approval, decision: "approved" }} tool={tool} createdAt={timestamp} />)

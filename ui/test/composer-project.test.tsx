@@ -42,7 +42,7 @@ const setup = async ({
 
 const chip = () => screen.getByRole("button", { name: "Projeto do bot" })
 const picker = () => screen.getByRole("menu", { name: "Projeto do bot" })
-const vmNote = "Commit Git copiado para /workspace no próximo turno."
+const vmNote = "Commit Git copiado para /workspace a partir da próxima mensagem."
 
 const activeRun = (bot: Bot): Run => ({
   id: "project-test-run",
@@ -64,6 +64,24 @@ const activeRun = (bot: Bot): Run => ({
 })
 
 describe("advanced project picker", () => {
+  it("keeps its menu outside the scrolling bot panel while preserving selection and focus return", async () => {
+    const user = userEvent.setup()
+    const { other } = await setup()
+    await user.click(chip())
+    expect(picker().closest(".bot-panel-body")).toBeNull()
+    expect(picker().closest(".composer-project-picker")?.parentElement).toBe(document.body)
+    const focused = document.activeElement
+    await user.pointer({
+      keys: "[MouseLeft>]",
+      target: within(picker()).getByRole("menuitemradio", { name: other.name }),
+    })
+    expect(document.activeElement).toBe(focused)
+    await user.pointer({ keys: "[/MouseLeft]" })
+    await waitFor(() => expect(screen.queryByRole("menu", { name: "Projeto do bot" })).toBeNull())
+    expect(chip()).toHaveFocus()
+    expect(chip()).toHaveTextContent(other.name)
+  })
+
   it.each(["bot-only", "project-first", "bot-first"])(
     "F011: reflects an approved project link across navigation (%s)",
     async (order) => {

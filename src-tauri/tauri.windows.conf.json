@@ -1,0 +1,6 @@
+{
+  "bundle": {
+    "targets": ["msi", "nsis"],
+    "icon": ["icons/icon.ico"]
+  }
+}

@@ -132,7 +132,15 @@ test("process start detects a random HTTP port, publishes preview, and stops the
     if (!started.success) return
     const run = started.structured as { pid: number; pgid: number; ports: Array<{ port: number }> }
     expect(run.ports.length).toBeGreaterThan(0)
-    const previews = await json(await harness.request(`/previews?projectId=${project.id}`))
+    let previews = await json(await harness.request(`/previews?projectId=${project.id}`))
+    const previewDeadline = Date.now() + 10_000
+    while (
+      !(previews.previews as Array<{ url: string }>).some((preview) => preview.url.startsWith("http://127.0.0.1:")) &&
+      Date.now() < previewDeadline
+    ) {
+      await Bun.sleep(25)
+      previews = await json(await harness.request(`/previews?projectId=${project.id}`))
+    }
     expect(
       (previews.previews as Array<{ url: string }>).some((preview) => preview.url.startsWith("http://127.0.0.1:")),
     ).toBe(true)
@@ -237,7 +245,20 @@ test("crash restart policy stops after five failures and orphan cleanup restarts
         "SELECT count(*) AS count FROM process_runs WHERE process_id = (SELECT id FROM processes WHERE name = 'autoweb')",
       )
       .get() as { count: number }
+    const previous = database
+      .query(
+        "SELECT pid FROM process_runs WHERE process_id = (SELECT id FROM processes WHERE name = 'autoweb') AND status IN ('running','ready')",
+      )
+      .get() as { pid: number }
     await init(harness.runtime.kernel)
+    await waitFor(() => {
+      try {
+        process.kill(previous.pid, 0)
+        return false
+      } catch {
+        return true
+      }
+    })
     await waitFor(() => {
       const row = database
         .query(

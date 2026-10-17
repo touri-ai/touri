@@ -71,7 +71,7 @@ it("opens bot settings with identity, mascot and one access sentence, then revea
   )
 })
 
-it("keeps every former bot setting within the Advanced button and one section click", async () => {
+it("keeps common bot settings nearby and technical settings behind a disclosure", async () => {
   await botSettings({ machine: "vm", computerUse: true, mainThreadId: "thread-mark" })
   const checks: Record<string, () => void> = {
     Modelo: () => {
@@ -79,6 +79,10 @@ it("keeps every former bot setting within the Advanced button and one section cl
         expect(screen.getByLabelText(name, { selector: name === "Modelo" ? "input" : "select" })).toBeVisible()
       expect(screen.getByLabelText("Título (opcional)")).toBeVisible()
       expect(screen.getByLabelText("Instruções do bot")).toBeVisible()
+      expect(screen.getByLabelText("Instruções do bot")).toHaveAccessibleDescription(
+        "Orientações detalhadas para o bot. Salvas no arquivo SOUL.md na pasta do bot. Vale a partir da próxima mensagem.",
+      )
+      expect(t("Takes effect from the next message.", {}, "en")).toBe("Takes effect from the next message.")
       expect(screen.getByRole("button", { name: "Excluir bot" })).toBeVisible()
     },
     Acesso: () => {
@@ -91,6 +95,8 @@ it("keeps every former bot setting within the Advanced button and one section cl
     Computador: () => {
       expect(screen.getByLabelText("Máquina", { exact: true })).toBeVisible()
       expect(screen.getByLabelText("Parar após minutos sem atividade")).toBeVisible()
+      expect(screen.getByLabelText(SETTINGS.vmMemory.label)).not.toBeVisible()
+      fireEvent.click(screen.getByText("Detalhes técnicos"))
       expect(screen.getByLabelText(SETTINGS.vmMemory.label)).toBeVisible()
       for (const name of [
         /Usar meu login/,
@@ -116,7 +122,10 @@ it("keeps every former bot setting within the Advanced button and one section cl
     },
     Permissões: () => {
       expect(screen.getByRole("heading", { name: "Permissões permanentes" })).toBeVisible()
-      expect(screen.getByRole("button", { name: "Permitir controle do computador" })).toBeVisible()
+      expect(screen.queryByRole("button", { name: "Permitir controle do computador" })).toBeNull()
+      expect(
+        screen.getByText("Assumir controle não autoriza ações automáticas do bot. Revise essas ações no chat."),
+      ).toBeVisible()
     },
     Rotinas: () => {
       expect(screen.getByRole("tabpanel", { name: "Rotinas" })).toBeVisible()
@@ -140,7 +149,7 @@ it("keeps local provider accounts and connectors in Access within two clicks", a
   expect(screen.getByRole("switch", { name: /Conectores do claude.ai/ })).toBeVisible()
 })
 
-it("keeps app sections short, with every registry setting and diagnostics at most two clicks away", async () => {
+it("keeps app sections short and technical settings within their disclosure", async () => {
   const user = userEvent.setup()
   const api = createMockApi()
   render(
@@ -183,10 +192,16 @@ it("keeps app sections short, with every registry setting and diagnostics at mos
     if (disclosure) await user.click(screen.getByText(disclosure))
     for (const setting of Object.values(SETTINGS)) {
       if (setting.scope !== "app" || setting.section !== section.id) continue
+      if (setting.id === "vmMemory") await user.click(screen.getByText("Detalhes técnicos"))
       expect(document.querySelector(`[data-setting-id="${setting.id}"]`)).toBeVisible()
     }
     if (section.id === "privacy")
-      expect(screen.getByRole("heading", { name: "Permitir que um bot controle o Mac" })).toBeVisible()
+      expect(
+        screen.getByText(
+          "Este servidor não tem uma área de trabalho para controlar. Você pode conversar e trabalhar com arquivos.",
+        ),
+      ).toBeVisible()
+    expect(screen.queryByRole("heading", { name: "Permitir que um bot controle o Mac" })).toBeNull()
     if (section.id === "diagnostics") {
       expect(screen.getByRole("button", { name: "Verificar novamente" })).toBeVisible()
       expect(screen.getByRole("region", { name: "Armazenamento" })).toBeVisible()
@@ -223,6 +238,7 @@ it.each([
       onWindow={vi.fn()}
       onClose={vi.fn()}
       onSettings={vi.fn()}
+      onRoutines={vi.fn()}
       onPermissions={vi.fn()}
       onRole={vi.fn()}
     />,

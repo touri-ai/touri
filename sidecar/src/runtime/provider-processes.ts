@@ -2,11 +2,14 @@ import { readdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 import type { Kernel } from "@touri/contracts"
 import { atomicWriteFile, ensurePrivateDirectory, readPrivateFile, removePrivateFile } from "../kernel/files"
+import { runPs } from "../kernel/ps"
+import { terminateWindowsProvider, windowsProviderIdentity } from "../platform/windows-native"
 import type { ChildProcess } from "./provider-io"
 
 // The CLI children have their own process groups and can outlive a crashed sidecar.
 // Persist their birth identity before reading output; a reused PID must never be killed.
-const identity = (pid: number): { birth: string; alive: boolean } | null => {
+const identity = async (pid: number): Promise<{ birth: string; alive: boolean } | null> => {
+  if (process.platform === "win32") return windowsProviderIdentity(pid)
   if (process.platform === "linux") {
     try {
       const stat = readFileSync(`/proc/${pid}/stat`, "utf8")
@@ -16,22 +19,16 @@ const identity = (pid: number): { birth: string; alive: boolean } | null => {
       return null
     }
   }
-  const result = Bun.spawnSync({
-    cmd: ["/bin/ps", "-o", "stat=,pgid=,lstart=", "-p", String(pid)],
-    env: { PATH: "/usr/bin:/bin", LC_ALL: "C" },
-    stdout: "pipe",
-    stderr: "ignore",
-    timeout: 5_000,
-  })
-  const value = result.stdout.toString().trim()
+  const result = await runPs(["-o", "stat=,pgid=,lstart=", "-p", String(pid)], 5_000)
+  const value = result?.stdout.trim() ?? ""
   const split = value.indexOf(" ")
-  return result.exitCode === 0 && split > 0 ? { birth: value.slice(split).trim(), alive: !/^[ZX]/.test(value) } : null
+  return result?.exitCode === 0 && split > 0 ? { birth: value.slice(split).trim(), alive: !/^[ZX]/.test(value) } : null
 }
 
 const directory = (kernel: Kernel): string => join(kernel.paths.runDir, "provider-processes")
 
-const isAlive = (pid: number): boolean => {
-  const current = identity(pid)
+const isAlive = async (pid: number): Promise<boolean> => {
+  const current = await identity(pid)
   if (current) return current.alive
   try {
     process.kill(pid, 0)
@@ -54,6 +51,8 @@ const signalGroup = (pgid: number, signal: "SIGTERM" | "SIGKILL"): boolean => {
 
 /** When the provider leader exits, whatever it left in its process group (MCP shims, helpers) is stopped. */
 export const reapGroupAfterExit = (child: ChildProcess): void => {
+  // The Windows stdio helper's native job closes when its leader exits.
+  if (process.platform === "win32") return
   void child.exited
     .then(() => {
       if (!signalGroup(child.pid, "SIGTERM")) return
@@ -62,10 +61,10 @@ export const reapGroupAfterExit = (child: ChildProcess): void => {
     .catch(() => undefined)
 }
 
-export const trackProviderProcess = (kernel: Kernel, child: ChildProcess): void => {
+export const trackProviderProcess = async (kernel: Kernel, child: ChildProcess): Promise<void> => {
   if (child.target === "remote") return
   reapGroupAfterExit(child)
-  const processIdentity = identity(child.pid)
+  const processIdentity = await identity(child.pid)
   if (!processIdentity) {
     try {
       process.kill(child.pid, 0)
@@ -94,7 +93,7 @@ export const trackProviderProcess = (kernel: Kernel, child: ChildProcess): void 
     .catch(() => undefined)
 }
 
-export const reapProviderProcesses = (kernel: Kernel): void => {
+export const reapProviderProcesses = async (kernel: Kernel): Promise<void> => {
   const dir = directory(kernel)
   ensurePrivateDirectory({ root: kernel.paths.appData, path: dir })
   for (const name of readdirSync(dir)) {
@@ -104,14 +103,16 @@ export const reapProviderProcesses = (kernel: Kernel): void => {
     if (!bytes) continue
     const record = JSON.parse(bytes.toString()) as { pid: number; birth: string }
     if (!Number.isSafeInteger(record.pid) || record.pid <= 1 || record.pid !== Number(name.slice(0, -5))) continue
-    const current = identity(record.pid)
+    const current = await identity(record.pid)
     if (current?.alive && current.birth === record.birth && Number(current.birth.split(/\s+/)[0]) === record.pid) {
       // Recovery does not adopt a native turn: fence it and stop its entire group.
-      try {
-        process.kill(-record.pid, "SIGKILL")
-      } catch (error) {
-        if (!(error instanceof Error && "code" in error && error.code === "ESRCH")) throw error
-      }
+      if (process.platform === "win32") await terminateWindowsProvider(record.pid, record.birth)
+      else
+        try {
+          process.kill(-record.pid, "SIGKILL")
+        } catch (error) {
+          if (!(error instanceof Error && "code" in error && error.code === "ESRCH")) throw error
+        }
     }
     removePrivateFile({ root: kernel.paths.appData, path })
   }
@@ -132,7 +133,7 @@ export const stopProviderChildren = async (children: Set<ChildProcess>): Promise
         })
         // Bun can miss an exit notification under load. A zombie cannot write any more
         // output, and must not leave shutdown waiting on the missed notification.
-        while (!exited && isAlive(child.pid)) await Promise.race([observed, Bun.sleep(100)])
+        while (!exited && (await isAlive(child.pid))) await Promise.race([observed, Bun.sleep(100)])
         children.delete(child)
       }),
     )

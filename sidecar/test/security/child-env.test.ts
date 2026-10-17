@@ -1,5 +1,5 @@
 import { expect, setDefaultTimeout, test } from "bun:test"
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { Bot, Thread } from "@touri/contracts"
@@ -232,6 +232,8 @@ test("supervised project children receive no internal auth or MCP token environm
         expect(defined.success).toBe(true)
         const started = await harness.tool("process_start", { name: "env-dump", waitMs: 3_000 }, body.project.id)
         expect(started.success).toBe(true)
+        const deadline = Date.now() + 10_000
+        while (!existsSync(dumpPath) && Date.now() < deadline) await Bun.sleep(25)
         const childEnvironment = JSON.parse(readFileSync(dumpPath, "utf8")) as Record<string, string | undefined>
         for (const key of [
           "TOURI_UI_TOKEN",
@@ -249,4 +251,4 @@ test("supervised project children receive no internal auth or MCP token environm
       }
     },
   )
-})
+}, 30_000)

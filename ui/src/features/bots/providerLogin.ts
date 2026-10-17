@@ -28,19 +28,19 @@ export const adoptProviderLogin = async (api: UiApi, bot: Bot, draftId: string):
         { id: bot.id },
       ),
     )
-    if (flow.state === "ready") return
+    if (flow.state === "ready" && flow.executable !== "missing") return
   } catch {
     // The login may have been saved even if its response was lost.
   }
   const flow = await retryProviderLogin(() =>
     api.request("GET /bots/:id/provider-login/flow", { provider: bot.provider }, { id: bot.id }),
   )
-  if (flow.state === "ready") return
-  if (flow.state === "host-available") {
+  if (flow.state === "ready" && flow.executable !== "missing") return
+  if (flow.state === "host-available" && flow.executable !== "missing") {
     const connected = await retryProviderLogin(() =>
       api.request("POST /bots/:id/provider-login/flow", { provider: bot.provider, action: "use-host" }, { id: bot.id }),
     )
-    if (connected.state === "ready") return
+    if (connected.state === "ready" && connected.executable !== "missing") return
   }
   throw new Error("Login unavailable")
 }

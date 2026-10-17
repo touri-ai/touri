@@ -1,10 +1,11 @@
 import { createHash } from "node:crypto"
-import { homedir, platform, tmpdir } from "node:os"
+import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 import type { AppPaths } from "@touri/contracts"
 
-const defaultRoot = (): string =>
-  platform() === "darwin" ? join(homedir(), "Library", "Application Support", "touri") : join(homedir(), ".touri")
+import { hostPlatform } from "../platform"
+
+const defaultRoot = hostPlatform.defaultDataRoot
 
 export const resolveMcpSocketPath = (
   paths: Pick<AppPaths, "appData" | "runDir">,

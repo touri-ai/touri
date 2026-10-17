@@ -4,6 +4,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { Bot, Kernel, ProviderEvent, ProviderSession, StartTurnArgs, Thread } from "@touri/contracts"
 import { createKernel } from "../../src/kernel"
+import { folderGuestPath } from "../../src/kernel/bot-folders"
 import { createOpenCodeAdapter } from "../../src/runtime/opencode/adapter"
 import { fullAccess, openCodePermissions, providerSecretEnv } from "../../src/runtime/opencode/config"
 import { openCodeEvents, readOpenCodeSse } from "../../src/runtime/opencode/events"
@@ -337,17 +338,29 @@ test("OpenCode recognizes v2 permission requests used by 1.18.13", () => {
   ).toMatchObject({ api: "v2", id: "per", permission: "shell.exec", patterns: ["printf teste"] })
 })
 
-test("OpenCode receives explicit folder permissions and an outer sandbox for terminal commands", async () => {
-  const f = fixture()
-  const { realpathSync } = await import("node:fs")
-  const ro = join(f.root, "reference")
-  mkdirSync(ro)
-  const path = realpathSync(ro)
-  f.args.bot.folders = [{ path, access: "read-only" }]
-  f.args.bot.anyFolderAccess = true
-  expect((await f.adapter.startTurn(f.args)).success).toBe(true)
-  const config = f.records().find((record) => record.type === "spawn").config
-  expect(config.permission.external_directory).toMatchObject({ [`${path}/**`]: "allow", "/**": "allow" })
-  expect(config.permission.edit).toMatchObject({ [`${path}/**`]: "deny" })
-  expect(f.calls.some((call) => call.cmd === "/usr/bin/sandbox-exec")).toBe(true)
-})
+for (const vm of [false, true])
+  test(`OpenCode folder grants preserve CLI policy and require ${vm ? "guest execution" : "a host sandbox"}`, async () => {
+    const f = fixture({}, vm)
+    const { realpathSync } = await import("node:fs")
+    const ro = join(f.root, "reference")
+    mkdirSync(ro)
+    const path = realpathSync(ro)
+    f.args.bot.folders = [{ path, access: "read-only" }]
+    f.args.bot.anyFolderAccess = true
+    const result = await f.adapter.startTurn(f.args)
+    if (!vm && process.platform !== "darwin") {
+      expect(result).toMatchObject({ success: false, errorCode: "cli_crash" })
+      if (!result.success) expect(result.error).toContain("sandbox do macOS")
+      expect(f.calls).toHaveLength(0)
+      return
+    }
+    expect(result.success).toBe(true)
+    const config = f.records().find((record) => record.type === "spawn").config
+    const granted = vm ? folderGuestPath(path) : path
+    expect(config.permission.external_directory).toMatchObject({
+      [`${granted}/**`]: "allow",
+      [vm ? "/host/home/**" : "/**"]: "allow",
+    })
+    expect(config.permission.edit).toMatchObject({ [`${granted}/**`]: "deny" })
+    expect(f.calls.some((call) => call.cmd === "/usr/bin/sandbox-exec")).toBe(!vm)
+  })

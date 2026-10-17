@@ -45,11 +45,17 @@ export const useDoctorReport = (api: UiApi, enabled = true) => {
     const unsubscribe = api.subscribeConnection?.((connected) => {
       if (connected) void read()
     })
+    // /doctor overlays observed tool health on its cached probes; ordinary reads do not rerun them.
+    const unsubscribeRuns = api.subscribe(({ event }) => {
+      if (event.type === "run.updated" && ["succeeded", "failed", "canceled", "interrupted"].includes(event.run.status))
+        void read()
+    })
     return () => {
       active.current = false
       generation.current += 1
       clearTimeout(timer.current)
       unsubscribe?.()
+      unsubscribeRuns()
     }
   }, [api, enabled, read])
 

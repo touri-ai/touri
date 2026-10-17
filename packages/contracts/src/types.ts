@@ -95,6 +95,9 @@ export type McpPrerequisites = {
 }
 export type ApprovalScope = { source: 'mcp' | 'computer' | 'claude' | 'opencode'; tool: string; server?: string }
 export type StandingGrant = { id: Id; botId: Id; scope: ApprovalScope; grantedAt: EpochMs }
+export type BotCapability = 'browser' | 'computer_use'
+export type CapabilityRequestInput = { capability: BotCapability; reason: string }
+
 export type ApprovalInput = { ctx: Pick<ToolContext, 'botId' | 'threadId' | 'runId' | 'signal'>; scope: ApprovalScope; toolName: string; input: unknown; toolUseId?: string; allowStanding?: boolean; isCurrent?: () => boolean }
 export type ApprovalResult = Result<{ behavior: 'allow' | 'deny'; updatedInput?: unknown; message?: string }, 'NOT_FOUND' | 'TIMEOUT' | 'DENIED'>
 
@@ -270,6 +273,8 @@ export type Run = {
   routineRunId: Id | null
   queuedAt: EpochMs
   startedAt: EpochMs | null
+  /** Provider invocation, after environment preparation. Absent on older runs. */
+  providerStartedAt?: EpochMs | null
   finishedAt: EpochMs | null
 }
 
@@ -682,8 +687,12 @@ export type ProviderProfile = { name: string; provider: Provider; loggedIn: bool
 export type ProviderLoginFlow = {
   provider: Provider
   state: 'idle' | 'host-available' | 'waiting' | 'ready' | 'cancelled' | 'error' | 'vault-locked'
-  /** Sidecar host, independent of the browser. Sent only when a valid host login can be imported. */
+  /** Sidecar host, independent of the browser and login state. */
   host?: 'mac' | 'server'
+  /** File/executable check only; never starts a model request. Independent of login state. */
+  executable?: 'available' | 'missing'
+  /** An expired or failed CLI attempt can be started again; vault errors require repair. */
+  retryable?: boolean
   deviceCode?: string
   verificationUrl?: string
   needsCode?: boolean
@@ -715,7 +724,7 @@ export type ApiRoutes = {
   'POST /cloud/bots/:id/wake': { req: {}; res: { machine: MachineState } }
   'PUT /cloud/bots/:id/key': { req: { apiKey: string }; res: {} }
 
-  'GET /health': { req: {}; res: { ok: true; version: string; schemaVersion: number; historyMigration?: { running: boolean; done: number; total: number } } }
+  'GET /health': { req: {}; res: { ok: true; version: string; schemaVersion: number; host?: 'mac' | 'server'; historyMigration?: { running: boolean; done: number; total: number } } }
   'POST /ui/errors': { req: { area: string; message: string; stack: string; componentStack: string }; res: { ok: true } }
   'POST /reports/:id/saved': { req: { destination: 'zip' | 'github' }; res: {} }
   'POST /reports/history': { req: { history: import('./reports').ReportHistory[] }; res: {} }
@@ -762,7 +771,8 @@ export type ApiRoutes = {
   'POST /bots/:id/machine/restart': { req: { stopTurns?: boolean }; res: { machine: MachineState } }
   'POST /bots/:id/machine/intent': { req: { intent: MachineIntent; viewerId?: string }; res: { machine: MachineState } }
   'POST /bots/:id/machine/reset': { req: { confirm: true; projectId?: Id | null; stopTurns?: boolean }; res: { machine: MachineState } }
-  'POST /bots/:id/desktop': { req: { control?: boolean; resume?: boolean; preview?: boolean }; res: { sessionId: string; path: string; control: boolean } }
+  'POST /bots/:id/desktop': { req: { control?: boolean; resume?: boolean; preview?: boolean }; res: { sessionId: string; path: string; control: boolean; humanControl?: boolean } }
+  'POST /bots/:id/desktop/return': { req: {}; res: {} }
   'POST /desktop/:id/text': { req: { text: string }; res: {} }
   'DELETE /desktop/:id': { req: {}; res: {} }
   'GET /bots/:id/threads': { req: {}; res: { threads: Array<Thread> } }
@@ -783,6 +793,7 @@ export type ApiRoutes = {
   'GET /routines': { req: { botId?: Id }; res: { routines: Array<Routine>; host?: 'mac' | 'server' } }
   'POST /routines': { req: Omit<Routine, 'id' | 'nextRunAt' | 'source' | 'createdAt' | 'updatedAt'>; res: { routine: Routine } }
   'PATCH /routines/:id': { req: Partial<Omit<Routine, 'id' | 'source'>>; res: { routine: Routine } }
+  'DELETE /routines/:id': { req: {}; res: {} }
   'POST /routines/:id/run': { req: {}; res: { routineRun: RoutineRun } }
   'GET /routine-runs': {
     req: { botId?: Id; from?: number; to?: number }
@@ -902,12 +913,14 @@ export type UiEvent =
   | { type: 'transcript.rejected'; rejection: TranscriptRejection }
   | { type: 'message.updated'; message: Message }
   | { type: 'run.updated'; run: Run }
+  | { type: 'routine.deleted'; routineId: Id }
   | { type: 'routine.updated'; routine: Routine; lastRun: RoutineRun | null }
   | { type: 'process.updated'; spec: ProcessSpec; run: ProcessRunState | null }
   | { type: 'process.log'; processId: Id; lines: Array<string> }
   | { type: 'preview.available'; preview: PreviewTarget }
   | { type: 'browser.tab'; tab: BrowserTabInfo & { ownerBotId: Id | null } }
   | { type: 'browser.secret_requested'; requestId: Id; tabId: Id; origin: string; fieldKinds: Array<'username' | 'password' | 'otp'> }
+  | { type: 'desktop.control'; botId: Id; human: boolean }
   | { type: 'computer.state'; active: boolean; botId: Id | null; grantId: Id | null }
   | { type: 'import.progress'; importId: Id; phase: string; done: number; total: number }
   | { type: 'notification.created'; notification: NotificationRecord }
@@ -1103,7 +1116,7 @@ export type StoreApi = {
 /** Cross-module services. Providers call `provide` in their init; consumers must tolerate `null` from `use`. */
 export type ServiceMap = {
   'bots.rename': (input: { botId: Id; name: string }) => Result<{ bot: Bot }, 'NOT_FOUND' | 'INVALID_ARGS'>
-  'bots.configureAccess': (input: { botId: Id; patch: Partial<Pick<Bot, 'projectId' | 'folders'>> }) => Result<{ bot: Bot }, 'NOT_FOUND' | 'INVALID_ARGS' | 'MACHINE_PROJECT_CHANGE'>
+  'bots.configureAccess': (input: { botId: Id; patch: Partial<Pick<Bot, 'projectId' | 'folders' | 'browserEnabled' | 'browser' | 'computerUse'>> }) => Result<{ bot: Bot }, 'NOT_FOUND' | 'INVALID_ARGS' | 'MACHINE_PROJECT_CHANGE'>
   'diagnostics.errors': () => Array<{ code: string; at: number }>
   'groups.runtime': {
     enqueue: ServiceMap['runtime.enqueue']
@@ -1135,6 +1148,7 @@ export type ServiceMap = {
   'runtime.shutdown': () => Promise<void>
   'projects.info': (args: { projectId: Id; botId?: Id }) => Promise<ProjectInfo | null>
   'browser.tabsForBot': (args: { botId: Id }) => Array<BrowserTabInfo>
+  'computer.input': ComputerInput
   'computer.isActive': () => { active: boolean; botId: Id | null }
   'notify.emit': (input: NotifyInput) => NotificationRecord
   'runtime.answerApproval': (args: { approvalId: Id; decision: 'approved' | 'denied'; standing?: boolean; message?: string }) => Promise<Result<{}, 'NOT_FOUND'>>
@@ -1162,6 +1176,14 @@ export type VmRuntime = {
   stop: (input: { botId: Id }) => Promise<void>
   destroy: (input: { botId: Id; deleteVolumes?: boolean }) => Promise<void>
   doctor: () => Promise<Array<DoctorCheck>>
+}
+
+export type ComputerInput = {
+  human: (botId: Id) => boolean
+  take: (botId: Id, signal: AbortSignal) => Promise<void>
+  handBack: (botId: Id) => void
+  run: (ctx: ToolContext, operation: (signal: AbortSignal) => Promise<ToolResult>) => Promise<ToolResult>
+  kill: () => void
 }
 
 /** Authenticated, one-use desktop connections; the VM module owns their leases and input policy. */

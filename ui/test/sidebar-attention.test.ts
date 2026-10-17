@@ -57,3 +57,25 @@ it.each(["approval", "question", "takeover", "incident"] as const)(
     expect(pendingNotifications([notice], [], [retry])).toEqual([notice])
   },
 )
+
+it("marks a failure as resolved history when completion is newer but the run started before the notice", async () => {
+  const { reconcileFailureNotifications } = await import("../src/sidebarAttention")
+  const api = createMockApi()
+  const failure = {
+    ...api.notify({
+      kind: "turn-failed",
+      botId: retry.botId,
+      threadId: retry.threadId,
+      title: "Falha",
+      body: "Tente novamente.",
+    }),
+    createdAt: 300,
+  }
+  const completed = { ...retry, status: "succeeded" as const, finishedAt: 400 }
+  expect(pendingNotifications([failure], [], [completed])).toEqual([])
+  expect(reconcileFailureNotifications([failure], [completed])[0]).toMatchObject({
+    resolvedAt: 400,
+    resolution: "expired",
+  })
+  expect(pendingNotifications([failure], [], [{ ...completed, finishedAt: 250 }])).toEqual([failure])
+})

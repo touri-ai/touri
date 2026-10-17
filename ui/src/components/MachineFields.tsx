@@ -1,8 +1,9 @@
 import type { Bot, MachineCapability, MachineState } from "@touri/contracts"
-import { useEffect, useRef, useState } from "react"
+import { type ReactNode, useEffect, useRef, useState } from "react"
 import { userFacingError } from "../errors"
 import { machineStatusLabel, t } from "../i18n"
 import { machineStateForDisplay } from "../machineState"
+import { hostComputerSupported } from "../platform"
 import { SettingsRow, SettingsSwitch } from "./SettingsLayout"
 
 type MachineValues = Pick<Bot, "machine" | "machineIdleMinutes" | "vmProviderLogin" | "hostComputerUse">
@@ -15,6 +16,8 @@ export const MachineFields = ({
   onChange,
   onAction,
   activeTurns = false,
+  technicalDetails,
+  technicalDetailsOpen = false,
 }: {
   values: MachineValues
   provider: Bot["provider"]
@@ -24,6 +27,8 @@ export const MachineFields = ({
   onChange: (patch: Partial<MachineValues>) => void
   onAction?: (reset: boolean, stopTurns?: boolean) => Promise<void>
   activeTurns?: boolean
+  technicalDetails?: ReactNode
+  technicalDetailsOpen?: boolean
 }) => {
   const state = machineStateForDisplay(rawState)
   const [confirmReset, setConfirmReset] = useState(false)
@@ -100,7 +105,7 @@ export const MachineFields = ({
             <option value="local">{t("Local machine")}</option>
             <option value="vm" disabled={!capability?.available}>
               {t("Isolated Linux VM")}
-              {!capability?.available ? ` — ${capability?.reason ?? t("No virtualization on this host")}` : ""}
+              {!capability?.available ? ` — ${t("No virtualization on this host")}` : ""}
             </option>
           </select>
         </div>
@@ -125,7 +130,7 @@ export const MachineFields = ({
                   provider: provider === "opencode" ? "OpenCode" : provider === "codex" ? "Codex" : "Claude",
                 })}
               </strong>
-              <small>{t("VM provider login help")}</small>
+              <small>{t("Provider login safety help")}</small>
             </span>
             <SettingsSwitch
               id="machine-provider-login"
@@ -133,21 +138,18 @@ export const MachineFields = ({
               onChange={(event) => onChange({ vmProviderLogin: event.target.checked })}
             />
           </label>
-          <label className="toggle-row" htmlFor="machine-host-control">
-            <span>
-              <strong>{t("Allow host computer use")}</strong>
-              <small>{t("Host computer use help")}</small>
-            </span>
-            <SettingsSwitch
-              id="machine-host-control"
-              checked={values.hostComputerUse}
-              onChange={(event) => onChange({ hostComputerUse: event.target.checked })}
-            />
-          </label>
-          {state?.progress && (
-            <p className="machine-progress" aria-live="polite">
-              {state.progress}
-            </p>
+          {hostComputerSupported && (
+            <label className="toggle-row" htmlFor="machine-host-control">
+              <span>
+                <strong>{t("Allow host computer use")}</strong>
+                <small>{t("Host computer use help")}</small>
+              </span>
+              <SettingsSwitch
+                id="machine-host-control"
+                checked={values.hostComputerUse}
+                onChange={(event) => onChange({ hostComputerUse: event.target.checked })}
+              />
+            </label>
           )}
           {(state?.error || error) && (
             <p className="warning-callout" role="alert">
@@ -155,17 +157,9 @@ export const MachineFields = ({
               {userFacingError(error ?? state?.error)}
             </p>
           )}
-          {state?.connection && (
-            <p className="field-help">
-              {state.connection.provider} · {state.memoryMb} MiB · {state.connection.machineId}
-            </p>
-          )}
           {onAction && (
             <div className="machine-actions">
-              <SettingsRow
-                title="Atualizar o computador do bot"
-                description="Reinicia a VM e aplica a imagem disponível. Os arquivos e logins são mantidos."
-              >
+              <SettingsRow title="Atualizar o computador do bot" description={t("Atualizar computador ajuda")}>
                 <button
                   ref={restartTrigger}
                   type="button"
@@ -176,10 +170,7 @@ export const MachineFields = ({
                   {busy && !confirmReset ? "Atualizando…" : "Atualizar o computador do Bot"}
                 </button>
               </SettingsRow>
-              <SettingsRow
-                title="Redefinir o computador do bot"
-                description="Apaga os arquivos, sessões e logins da VM para começar de novo."
-              >
+              <SettingsRow title="Redefinir o computador do bot" description={t("Redefinir computador ajuda")}>
                 <button
                   ref={resetTrigger}
                   type="button"
@@ -246,6 +237,33 @@ export const MachineFields = ({
             </div>
           )}
         </>
+      )}
+      {capability?.available === false && <p className="field-help">{t("Conexão da máquina indisponível")}</p>}
+      {(values.machine === "vm" || capability?.reason || technicalDetails) && (
+        <details
+          className="settings-technical-details"
+          ref={(details) => {
+            // Validation may open the field without closing it as the user corrects the value.
+            if (details && technicalDetailsOpen) details.open = true
+          }}
+        >
+          <summary>{t("Detalhes técnicos")}</summary>
+          {!capability?.available && capability?.reason && <p className="field-help">{capability.reason}</p>}
+          {values.machine === "vm" && (
+            <>
+              <p className="field-help">{t("VM machine technical help")}</p>
+              <p className="field-help">{t("VM provider login help")}</p>
+              <p className="field-help">{t("Computador separado detalhes")}</p>
+              {state?.progress && <p className="machine-progress">{state.progress}</p>}
+              {state?.connection && (
+                <p className="field-help">
+                  {state.connection.provider} · {state.memoryMb} MiB · {state.connection.machineId}
+                </p>
+              )}
+            </>
+          )}
+          {technicalDetails}
+        </details>
       )}
     </section>
   )

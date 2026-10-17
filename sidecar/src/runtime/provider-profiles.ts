@@ -3,6 +3,7 @@ import { join } from "node:path"
 import type { ProviderProfile } from "@touri/contracts"
 import {
   PROVIDER_PROFILES_DIR,
+  type ProfileProvider,
   profileProviders,
   providerProfileDir,
   validProviderProfileName,
@@ -41,6 +42,25 @@ const claudeStatus = async ({
   }
 }
 
+/** Sign-in status of one profile. Credentials are never read; Claude reports its own status. */
+export const providerProfileStatus = async ({
+  appData,
+  profile,
+  provider,
+  env,
+}: {
+  appData: string
+  profile: string
+  provider: ProfileProvider
+  env: Record<string, string>
+}): Promise<{ loggedIn: boolean; account: string | null }> => {
+  const dir = providerProfileDir({ appData, profile, provider })
+  if (!existsSync(dir) || !statSync(dir).isDirectory()) return { loggedIn: false, account: null }
+  return provider === "claude"
+    ? claudeStatus({ dir, env })
+    : { loggedIn: existsSync(join(dir, "auth.json")), account: null }
+}
+
 /** Lists the profiles on disk. Credentials are never read; Claude reports its own status. */
 export const listProviderProfiles = async ({
   appData,
@@ -58,9 +78,11 @@ export const listProviderProfiles = async ({
       const dir = providerProfileDir({ appData, profile: name, provider })
       if (!existsSync(dir) || !statSync(dir).isDirectory()) continue
       profiles.push(
-        provider === "claude"
-          ? claudeStatus({ dir, env }).then((status) => ({ name, provider, ...status }))
-          : Promise.resolve({ name, provider, loggedIn: existsSync(join(dir, "auth.json")), account: null }),
+        providerProfileStatus({ appData, profile: name, provider, env }).then((status) => ({
+          name,
+          provider,
+          ...status,
+        })),
       )
     }
   }

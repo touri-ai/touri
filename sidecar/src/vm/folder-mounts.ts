@@ -1,6 +1,6 @@
 import { chmodSync } from "node:fs"
 import { homedir } from "node:os"
-import { join, relative } from "node:path"
+import { join, posix, relative, sep } from "node:path"
 import type { Bot, Kernel } from "@touri/contracts"
 import {
   canonicalPath,
@@ -47,7 +47,12 @@ export const botFolderMounts = (kernel: Kernel, bot: Bot, hostHome = homedir()):
       )
       .filter((path, _, all) => !all.some((other) => other !== path && withinFolder(other, path)))
     for (const path of masks)
-      mounts.push({ type: "bind", source: empty, target: join(root.target, relative(root.path, path)), readOnly: true })
+      mounts.push({
+        type: "bind",
+        source: empty,
+        target: posix.join(root.target, relative(root.path, path).split(sep).join("/")),
+        readOnly: true,
+      })
     // A read-only grant cannot be bypassed through a broader writable mount.
     for (const folder of explicit.filter(
       (folder) => folder.access === "read-only" && folder.path !== root.path && withinFolder(root.path, folder.path),
@@ -56,7 +61,7 @@ export const botFolderMounts = (kernel: Kernel, bot: Bot, hostHome = homedir()):
       mounts.push({
         type: "bind",
         source: folder.path,
-        target: join(root.target, relative(root.path, folder.path)),
+        target: posix.join(root.target, relative(root.path, folder.path).split(sep).join("/")),
         readOnly: true,
       })
     }

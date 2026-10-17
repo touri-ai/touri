@@ -28,7 +28,7 @@ export const sessionFingerprint = ({
     ],
     // Sessions live in the CLI home, so a profile switch must start a new native session.
     // Appended only when set, so existing sessions keep their hash.
-    toolsetVersion: `touri-tools-2:folders=${botFolderFingerprint(bot)}:browser=${bot.browserEnabled}:computer=${bot.computerUse}:approvals=${bot.approvals}${bot.providerProfile ? `:profile=${bot.providerProfile}` : ""}${bot.claudeAiConnectors ? ":connectors=claude-ai" : ""}`,
+    toolsetVersion: `touri-tools-3:folders=${botFolderFingerprint(bot)}:browser=${bot.browserEnabled}:computer=${bot.computerUse}:approvals=${bot.approvals}${bot.providerProfile ? `:profile=${bot.providerProfile}` : ""}${bot.claudeAiConnectors ? ":connectors=claude-ai" : ""}`,
   }
   return { fingerprint, hash: sha256(canonicalJson(fingerprint)) }
 }
