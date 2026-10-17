@@ -61,7 +61,7 @@ it.each(["codex", "claude", "opencode"] as const)(
     )
     expect(screen.getByText(/O acesso total permite ler/)).toHaveTextContent("Não pede aprovações do provedor.")
     expect(screen.getByText(/Acesso total; pode ler e alterar arquivos em qualquer pasta/)).toBeVisible()
-    expect(screen.getByText(/As pastas e a opção abaixo ficam salvas/)).toBeVisible()
+    expect(screen.getByText(/Estas opções ficam salvas para modos de acesso restrito/)).toBeVisible()
     expect(screen.queryByText(/perfis de navegadores e dados do touri ficam bloqueados/)).not.toBeInTheDocument()
     expect(anyToggle()).not.toBeChecked()
     fireEvent.click(anyToggle())
@@ -174,7 +174,7 @@ it("explains VM paths, masking and recreation from the next message while preser
     "As permissões de cada pasta continuam valendo.",
   )
   expect(screen.getByText(/perfis de navegadores e dados do touri ficam bloqueados/)).toBeVisible()
-  expect(screen.queryByText(/As pastas e a opção abaixo ficam salvas/)).not.toBeInTheDocument()
+  expect(screen.queryByText(/Estas opções ficam salvas para modos de acesso restrito/)).not.toBeInTheDocument()
 })
 
 it.each(["read-only", "read-write"] as const)(

@@ -15,8 +15,8 @@ export const ptBR = {
   "O acesso total vale só na máquina na nuvem e não dá acesso aos arquivos deste computador.":
     "O acesso total vale só na máquina na nuvem e não dá acesso aos arquivos deste computador.",
   "Pastas salvas para modos de acesso restrito": "Pastas salvas para modos de acesso restrito",
-  "As pastas e a opção abaixo ficam salvas para quando você escolher um acesso restrito. Elas não limitam o acesso total atual.":
-    "As pastas e a opção abaixo ficam salvas para quando você escolher um acesso restrito. Elas não limitam o acesso total atual.",
+  "Estas opções ficam salvas para modos de acesso restrito. Elas não limitam o acesso total atual.":
+    "Estas opções ficam salvas para modos de acesso restrito. Elas não limitam o acesso total atual.",
   "As permissões da conta do sistema continuam valendo.": "As permissões da conta do sistema continuam valendo.",
   "Acesso a qualquer pasta no modo restrito": "Acesso a qualquer pasta no modo restrito",
   "Esta opção só vale quando o acesso é restrito.": "Esta opção só vale quando o acesso é restrito.",
@@ -1872,8 +1872,8 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "O acesso total vale só na máquina na nuvem e não dá acesso aos arquivos deste computador.":
     "Full access applies only inside the cloud machine and does not provide access to files on this computer.",
   "Pastas salvas para modos de acesso restrito": "Saved folders for restricted access modes",
-  "As pastas e a opção abaixo ficam salvas para quando você escolher um acesso restrito. Elas não limitam o acesso total atual.":
-    "The folders and option below are saved for when you choose restricted access. They do not limit the current full access.",
+  "Estas opções ficam salvas para modos de acesso restrito. Elas não limitam o acesso total atual.":
+    "These settings are saved for restricted access modes. They do not limit current full access.",
   "As permissões da conta do sistema continuam valendo.": "System account permissions still apply.",
   "Acesso a qualquer pasta no modo restrito": "Access to any folder in restricted mode",
   "Esta opção só vale quando o acesso é restrito.": "This option only applies when access is restricted.",

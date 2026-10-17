@@ -43,9 +43,7 @@ export const BotFolderSettings = ({
       </strong>
       {unrestricted && (
         <p className="field-help">
-          {t(
-            "As pastas e a opção abaixo ficam salvas para quando você escolher um acesso restrito. Elas não limitam o acesso total atual.",
-          )}
+          {t("Estas opções ficam salvas para modos de acesso restrito. Elas não limitam o acesso total atual.")}
         </p>
       )}
       {!folders.length && <p className="field-help">{t("Nenhuma pasta adicional.")}</p>}
