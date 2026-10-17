@@ -11,43 +11,27 @@ import type {
   Thread,
 } from "@touri/contracts"
 import { failureRetryHint, sanitizeDiagnostic } from "@touri/contracts/run-failure"
-import {
-  Fragment,
-  type ReactNode,
-  useContext,
-  useEffect,
-  useId,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react"
+import { Fragment, type ReactNode, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import type { UiApi } from "../api/client"
 import type { ApprovalFocus } from "../approvalNavigation"
-import { useComposerDraft } from "../composerDraft"
 import { userFacingRunError } from "../errors"
 import { ComputerGrantCard } from "../features/computer"
 import { InlineLivePreview, InlinePreviewContext, screenTool } from "../features/desktop/InlineLivePreview"
 import { localizeNotice, t, threadTitle } from "../i18n"
 import { machineStateForDisplay } from "../machineState"
 import { messageMarkdown } from "../messageMarkdown"
-import {
-  consumeTaskResume,
-  consumeTaskReview,
-  requestTaskResume,
-  resumeTaskEvent,
-  reviewTaskEvent,
-} from "../recoveryEvents"
+import { consumeTaskReview, requestTaskResume, reviewTaskEvent } from "../recoveryEvents"
 import { type RoutineDraft, repeatTaskDraft, suggestedRoutineDraft } from "../routineDraft"
 import { failureTimeLabel, runErrorFor } from "../runError"
 import { ActivityMark } from "./ActivityMark"
+import { ApprovalCard } from "./ApprovalCard"
 import { useAvatarBot, useMascotSnapshot, useMessageMascotState, useThreadBot } from "./AvatarRuntime"
 import { withApprovalAnswers } from "./activityStatus"
 import { BotAvatar } from "./BotAvatar"
 import { ChatDisclosure } from "./ChatDisclosure"
-import { Composer } from "./Composer"
 import { ConnectDataCard, connectDataMarker } from "./ConnectDataCard"
 import { ConversationStart } from "./ConversationStart"
+import { DraftComposer, type DraftComposerHandle } from "./DraftComposer"
 import { ErrorDetails, ErrorText } from "./ErrorDetails"
 import { ErrorNotice } from "./ErrorNotice"
 import { EvidenceContext } from "./EvidenceGallery"
@@ -61,7 +45,9 @@ import { useInsertedIds } from "./Motion"
 import { mascotSignalFor } from "./mascotState"
 import { ToolCallList } from "./ToolCallList"
 import { ToolText } from "./ToolOutput"
+import { TurnActivity } from "./TurnActivity"
 import { toolStatus } from "./toolPresentation"
+import { approvalTools, assistantSegments } from "./turnActivity"
 import { type EditMessage, UserMessageEdit } from "./UserMessageEdit"
 
 type ChatPanelProps = {
@@ -289,7 +275,7 @@ export const VirtualMessageList = ({
         onClickCapture={(event) => {
           if (!(event.target instanceof Element)) return
           const control = event.target.closest<HTMLElement>(
-            "summary, .chat-disclosure-toggle, .disclosure-summary, .message-error-history > button",
+            "summary, .chat-disclosure-toggle, .turn-activity-toggle, .disclosure-summary, .message-error-history > button",
           )
           if (!control) return
           const list = event.currentTarget
@@ -533,18 +519,35 @@ const MessageBubble = ({
     !parts.some((part) => part.type === "approval" && part.decision === "pending")
       ? mascotSignalFor({ botId: run?.botId ?? "", runs: run ? [run] : [], messages: [{ ...message, parts }] }).state
       : runtimeState
-  const reasoning = message.parts.filter((part) => part.type === "reasoning" && part.text.trim())
-  const reasoningId = useId()
-  const [reasoningExpanded, setReasoningExpanded] = useState(false)
+  const answeredId = Object.keys(answers).at(-1)
+  useLayoutEffect(() => {
+    if (!answeredId) return
+    Array.from(root.current?.querySelectorAll<HTMLElement>("[data-approval-id]") ?? [])
+      .find((card) => card.dataset.approvalId === answeredId)
+      ?.focus({ preventScroll: true })
+  }, [answeredId])
   const markdown = messageMarkdown(message)
   const text = message.role === "assistant" ? markdown.replace(connectDataMarker, "") : markdown
   const technicalNotice =
     message.role === "system" &&
     message.parts.some((part) => part.type === "notice" && part.code === "session_replaced")
-  const longContent =
-    message.role === "assistant" &&
-    message.status !== "streaming" &&
-    (text.length > 4000 || text.split("\n").length > 40)
+  const renderAnswer = (content: string) => {
+    const answer = content.replace(connectDataMarker, "")
+    if (!answer.trim()) return null
+    return message.status !== "streaming" && (answer.length > 4000 || answer.split("\n").length > 40) ? (
+      <ChatDisclosure
+        className="chat-long-content"
+        label={t("Mostrar mais")}
+        expandedLabel={t("Mostrar menos")}
+        preview={<MarkdownContent content={answer} evidence={evidence} preview />}
+      >
+        <MarkdownContent content={answer} evidence={evidence} />
+      </ChatDisclosure>
+    ) : (
+      <MarkdownContent content={answer} evidence={evidence} />
+    )
+  }
+  const matchedApprovals = approvalTools(parts)
   const failure = runErrorFor(message, run, machine?.status === "running")
   const runError =
     vmBotId &&
@@ -568,6 +571,17 @@ const MessageBubble = ({
   const failureTime = failureTimeLabel(failedAt)
   const onFailureAction = useContext(FailureActionContext)
   const failureAction = runError?.action
+  const failureRecovery = runError && {
+    ...runError.recovery,
+    actions: [
+      ...runError.recovery.actions,
+      ...(message.runId &&
+      message.status === "failed" &&
+      !runError.recovery.actions.some((action) => ["retry", "review", "resume", "storage"].includes(action.kind))
+        ? [{ kind: "retry" as const, label: t("Tentar de novo") }]
+        : []),
+    ].map((action) => (action.kind === "retry" ? { ...action, label: t("Tentar de novo") } : action)),
+  }
   const failureContent = runError && (
     <div className="message-error" role="alert">
       {runError.recovery.classified ||
@@ -575,7 +589,7 @@ const MessageBubble = ({
       runError.stage === "provider_protocol" ? (
         <>
           <ErrorNotice
-            recovery={runError.recovery}
+            recovery={failureRecovery ?? runError.recovery}
             onAction={async (action) => {
               if (action === "retry") await onRetry(message.runId ?? "")
               else if (action === "review") setReviewingActions(true)
@@ -652,7 +666,7 @@ const MessageBubble = ({
               className="text-button retry-button"
               onClick={() => void onRetry(message.runId ?? "")}
             >
-              {vmBotId ? "Tentar de novo" : t("Tentar novamente")}
+              {t("Tentar de novo")}
             </button>
           )}
         </>
@@ -702,43 +716,59 @@ const MessageBubble = ({
           </span>
         )}
       </div>
-      {reasoning.length > 0 && (
-        <ChatDisclosure
-          key={message.status === "streaming" ? "live" : "saved"}
-          id={reasoningId}
-          className="chat-reasoning"
-          label="Raciocínio"
-          expanded={message.status === "streaming" ? reasoningExpanded : undefined}
-          onExpandedChange={setReasoningExpanded}
-        >
-          <MarkdownContent
-            content={reasoning.map((part) => (part.type === "reasoning" ? part.text : "")).join("\n\n")}
-          />
-        </ChatDisclosure>
-      )}
-      {text &&
-        (technicalNotice ? (
+      {message.role === "assistant" ? (
+        assistantSegments({ ...message, parts }).map((segment) => {
+          if (segment.type === "text") return <Fragment key={segment.key}>{renderAnswer(segment.text)}</Fragment>
+          if (segment.type === "approval")
+            return (
+              <ApprovalCard
+                key={segment.key}
+                part={segment.part}
+                tool={matchedApprovals.get(segment.part.approvalId)}
+                api={api}
+                finished={message.status !== "streaming"}
+                createdAt={message.createdAt}
+                onResolved={(_, decision) =>
+                  setAnswers((current) => ({ ...current, [segment.part.approvalId]: decision }))
+                }
+              />
+            )
+          if (segment.type === "attachments")
+            return <MessageAttachments key={segment.key} parts={segment.parts} api={api} />
+          return (
+            <TurnActivity
+              key={segment.key}
+              message={{ ...message, parts }}
+              state={mascotState}
+              run={run}
+              api={api}
+              bot={bot}
+              onCancel={onCancel}
+              preparingEnvironment={Boolean(vmBotId)}
+              onFocusApproval={(approvalId) => {
+                const card = Array.from(root.current?.querySelectorAll<HTMLElement>("[data-approval-id]") ?? []).find(
+                  (element) => element.dataset.approvalId === approvalId,
+                )
+                card?.scrollIntoView?.({ block: "center", behavior: "instant" })
+                card?.focus({ preventScroll: true })
+              }}
+            />
+          )
+        })
+      ) : text ? (
+        technicalNotice ? (
           <ChatDisclosure label={t("Detalhes técnicos")}>
             <pre>{text}</pre>
           </ChatDisclosure>
         ) : message.role === "tool" ? (
           <ToolText text={text} />
-        ) : longContent ? (
-          <ChatDisclosure
-            className="chat-long-content"
-            label="Mostrar mais"
-            expandedLabel="Mostrar menos"
-            preview={<MarkdownContent content={text} evidence={evidence} preview />}
-          >
-            <MarkdownContent content={text} evidence={evidence} />
-          </ChatDisclosure>
         ) : (
-          <MarkdownContent
-            content={message.role === "system" ? localizeNotice(text) : text}
-            evidence={message.role === "assistant" ? evidence : undefined}
-          />
-        ))}
-      <MessageAttachments parts={parts.filter((part) => part.type === "image" || part.type === "file")} api={api} />
+          <MarkdownContent content={message.role === "system" ? localizeNotice(text) : text} />
+        )
+      ) : null}
+      {message.role !== "assistant" && (
+        <MessageAttachments parts={parts.filter((part) => part.type === "image" || part.type === "file")} api={api} />
+      )}
       {message.role === "user" && onEdit && (
         <UserMessageEdit
           message={message}
@@ -746,34 +776,13 @@ const MessageBubble = ({
           disabled={editDisabled || message.delivery?.status === "queued" || message.delivery?.status === "sent"}
         />
       )}
-      <ToolCallList
-        parts={parts}
-        api={api}
-        finished={message.status !== "streaming"}
-        createdAt={message.createdAt}
-        onResolved={(approvalId, decision) => setAnswers((current) => ({ ...current, [approvalId]: decision }))}
-      />
-      {message.role === "assistant" && message.status === "streaming" && (
-        <ActivityMark
-          state={mascotState}
-          run={run}
-          updatedAt={message.updatedAt}
-          api={api}
-          onCancel={onCancel}
-          preparingEnvironment={Boolean(vmBotId)}
-          bot={bot}
-          threadId={message.threadId}
+      {message.role !== "assistant" && (
+        <ToolCallList
           parts={parts}
-          reasoningId={reasoningId}
-          reasoningExpanded={reasoningExpanded}
-          onExpandReasoning={() => setReasoningExpanded(true)}
-          onFocusApproval={(approvalId) => {
-            const card = Array.from(root.current?.querySelectorAll<HTMLElement>("[data-approval-id]") ?? []).find(
-              (element) => element.dataset.approvalId === approvalId,
-            )
-            card?.scrollIntoView?.({ block: "center", behavior: "instant" })
-            card?.focus({ preventScroll: true })
-          }}
+          api={api}
+          finished={message.status !== "streaming"}
+          createdAt={message.createdAt}
+          onResolved={(approvalId, decision) => setAnswers((current) => ({ ...current, [approvalId]: decision }))}
         />
       )}
       {parts.some(screenTool) && (
@@ -859,26 +868,9 @@ export const ChatPanel = ({
   routineRuns = [],
 }: ChatPanelProps) => {
   const machine = machineStateForDisplay(rawMachine)
-  const { draft, setDraft, draftSaveFailed } = useComposerDraft(thread?.id)
   const mascotSnapshot = useMascotSnapshot({ id: bot?.id ?? "", color: bot?.color ?? null }, thread?.id)
   const composerRef = useRef<HTMLTextAreaElement>(null)
-  const recoveryThreadId = thread?.id
-  useEffect(() => {
-    const resume = () => {
-      if (!recoveryThreadId || !consumeTaskResume(recoveryThreadId)) return
-      setDraft(
-        (current) =>
-          current ||
-          t(
-            "Conferi as ações registradas. Quero continuar a tarefa a partir do estado atual, sem repetir ações já concluídas.",
-          ),
-      )
-      composerRef.current?.focus()
-    }
-    resume()
-    window.addEventListener(resumeTaskEvent, resume)
-    return () => window.removeEventListener(resumeTaskEvent, resume)
-  }, [recoveryThreadId, setDraft])
+  const draftComposerRef = useRef<DraftComposerHandle>(null)
   const localAttachmentButtonRef = useRef<HTMLButtonElement>(null)
   const attachmentButtonRef = sharedAttachmentButtonRef ?? localAttachmentButtonRef
   const activeRun = useMemo(
@@ -1086,7 +1078,7 @@ export const ChatPanel = ({
                   onFolder={onOpenPermissions}
                   onAttach={() => attachmentButtonRef.current?.click()}
                   onChoose={(prompt) => {
-                    setDraft(prompt)
+                    draftComposerRef.current?.setDraft(prompt)
                     composerRef.current?.focus()
                   }}
                 />
@@ -1105,7 +1097,7 @@ export const ChatPanel = ({
                         className="outline-button repeat-task-button"
                         onClick={() => onRepeatTask(repeatDraft)}
                       >
-                        {t("Repetir esta tarefa")}
+                        {t("Agendar esta tarefa")}
                       </button>
                     ),
                   },
@@ -1177,11 +1169,9 @@ export const ChatPanel = ({
         />
       </InlinePreviewContext.Provider>
       {/* r8 composer: notices and the input island stay isolated from transcript activity. */}
-      {draftSaveFailed && (
-        <p role="alert">{t("Não foi possível salvar o rascunho. Copie sua mensagem antes de fechar o touri.")}</p>
-      )}
-      <Composer
+      <DraftComposer
         key={`composer-${thread.id}`}
+        draftRef={draftComposerRef}
         notice={{
           bot,
           latestReply,
@@ -1196,8 +1186,6 @@ export const ChatPanel = ({
         threadId={thread.id}
         parentId={thread.activeLeafId}
         api={api}
-        draft={draft}
-        onDraft={setDraft}
         inputRef={composerRef}
         attachmentButtonRef={attachmentButtonRef}
         activeRun={activeRun}
@@ -1207,11 +1195,7 @@ export const ChatPanel = ({
         onSelectProject={onSelectProject}
         onAddProject={onAddProject}
         queuedCount={visibleMessages.filter((message) => message.delivery?.status === "queued").length}
-        onSend={async (...args) => {
-          await onSend(...args)
-          // Sending may finish after navigation has unmounted this conversation's composer.
-          setDraft((current) => (current === draft ? "" : current))
-        }}
+        onSend={onSend}
         onCancel={onCancel}
         onOpenPermissions={group ? undefined : onOpenPermissions}
         onOpenProviderLogin={group ? undefined : onOpenProviderLogin}
@@ -1278,7 +1262,7 @@ const RunCard = ({
         </div>
         {failed && (
           <button type="button" className="open-run-link" onClick={() => void onRetry(run.id)}>
-            {t("Tentar novamente")}
+            {t("Tentar de novo")}
           </button>
         )}
       </div>

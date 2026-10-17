@@ -131,3 +131,21 @@ export const watchParent = (
   check()
   return () => clearInterval(timer)
 }
+
+/**
+ * Windows has no SIGTERM: the desktop shell asks for a clean shutdown by closing the sidecar's stdin.
+ * Only the shell sets the flag, so a sidecar started with an empty stdin does not stop at once.
+ */
+export const watchShutdownRequest = (shutdown: () => void, env = process.env): void => {
+  if (env.TOURI_SHUTDOWN_ON_STDIN_EOF !== "1") return
+  void (async () => {
+    try {
+      // The shell never writes; only the end of input matters.
+      const reader = Bun.stdin.stream().getReader()
+      while (!(await reader.read()).done) {}
+    } catch {
+      /* A broken pipe is a closed pipe. */
+    }
+    shutdown()
+  })()
+}

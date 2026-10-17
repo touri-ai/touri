@@ -32,7 +32,7 @@ pub struct SidecarHandshake {
     pub schema_version: u32,
 }
 
-pub const SIDECAR_SCHEMA_VERSION: u32 = 20;
+pub const SIDECAR_SCHEMA_VERSION: u32 = 22;
 const MAX_IDENTICAL_HANDSHAKE_FAILURES: usize = 3;
 
 pub fn parse_handshake(line: &str) -> Result<SidecarHandshake, String> {
@@ -297,8 +297,9 @@ impl<R: Runtime> SidecarSupervisor<R> {
             if let Some(child) = state.child.as_mut() {
                 #[cfg(unix)]
                 let _ = unsafe { libc::kill(child.id() as libc::pid_t, libc::SIGTERM) };
+                // End of input runs the same clean shutdown as SIGTERM; the deadline below still kills.
                 #[cfg(windows)]
-                let _ = child.kill();
+                drop(child.stdin.take());
             }
         }
         let deadline = Instant::now() + Duration::from_secs(10);
@@ -482,6 +483,11 @@ fn spawn_sidecar<R: Runtime>(
         "TOURI_DESKTOP_HELPER",
         std::env::current_exe().map_err(|error| error.to_string())?,
     );
+    // Windows has no SIGTERM. `stop` closes this pipe to ask for a clean shutdown.
+    #[cfg(windows)]
+    command
+        .env("TOURI_SHUTDOWN_ON_STDIN_EOF", "1")
+        .stdin(Stdio::piped());
     command
         .arg("serve")
         .env("TOURI_UI_TOKEN", &ui_token)

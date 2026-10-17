@@ -15,6 +15,8 @@
     var(--elevation-card);
 }
 .composer-island textarea {
+  field-sizing: content;
+  width: 100%;
   min-height: 38px;
   max-height: 190px;
   padding: var(--space-6) var(--space-4);
@@ -24,6 +26,13 @@
   transition: height var(--duration-standard) var(--ease-standard);
   scrollbar-width: thin;
   scrollbar-color: var(--scrollbar-chat) transparent;
+}
+@supports (field-sizing: content) {
+  .composer-island textarea {
+    height: auto;
+    overflow-y: auto;
+    transition: none;
+  }
 }
 .composer-island .composer-footer {
   gap: var(--space-8);

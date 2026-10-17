@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react"
 import { t } from "../i18n"
 
 type GlobalAdvancedMenuProps = {
+  host?: "mac" | "server" | undefined
   page: "cron" | "integracoes" | "mcp" | null
   onPage: (page: "integracoes" | "mcp") => void
   onProject: () => void
@@ -9,7 +10,14 @@ type GlobalAdvancedMenuProps = {
   onImport: () => void
 }
 
-export const GlobalAdvancedMenu = ({ page, onPage, onProject, onDoctor, onImport }: GlobalAdvancedMenuProps) => {
+export const GlobalAdvancedMenu = ({
+  host = "mac",
+  page,
+  onPage,
+  onProject,
+  onDoctor,
+  onImport,
+}: GlobalAdvancedMenuProps) => {
   const [open, setOpen] = useState(false)
   const container = useRef<HTMLDivElement>(null)
   const trigger = useRef<HTMLButtonElement>(null)
@@ -73,7 +81,7 @@ export const GlobalAdvancedMenu = ({ page, onPage, onProject, onDoctor, onImport
             {t("Projects")}
           </button>
           <button type="button" className="sidebar-nav-item" onClick={() => launch(onDoctor)}>
-            {t("Check this Mac")}
+            {t(host === "mac" ? "Check this Mac" : "onboarding.checkServer")}
           </button>
           <button type="button" className="sidebar-nav-item" onClick={() => launch(onImport)}>
             {t("Import")}

@@ -35,10 +35,15 @@ const env: NodeJS.ProcessEnv = {
   TOURI_OPENCODE_REAL: "0",
   TOURI_DOCTOR_SKIP_PROVIDER_PROBES: "1",
 }
-if (windows) env.TOURI_DESKTOP_HELPER = process.env.TOURI_DESKTOP_HELPER ?? resolve("src-tauri/target/debug/touri.exe")
+if (windows) {
+  env.TOURI_DESKTOP_HELPER = process.env.TOURI_DESKTOP_HELPER ?? resolve("src-tauri/target/debug/touri.exe")
+  // Stop the sidecar the way the desktop shell does on Windows: by closing its stdin.
+  env.TOURI_SHUTDOWN_ON_STDIN_EOF = "1"
+}
 const child = Bun.spawn({
   cmd: [binary, "serve"],
   env,
+  stdin: "pipe",
   stdout: Bun.file(join(root, "stdout.log")),
   stderr: Bun.file(join(root, "stderr.log")),
 })
@@ -106,11 +111,18 @@ try {
   if (existsSync(join(root, "stderr.log"))) console.error(readFileSync(join(root, "stderr.log"), "utf8").slice(-4000))
   process.exitCode = 1
 } finally {
-  child.kill("SIGTERM")
-  await Promise.race([child.exited, Bun.sleep(3000)])
+  if (windows) child.stdin.end()
+  else child.kill("SIGTERM")
+  // The sidecar's own shutdown deadline is 10 seconds.
+  await Promise.race([child.exited, Bun.sleep(12_000)])
   if (child.exitCode === null) {
     child.kill("SIGKILL")
     await child.exited
+    console.error("Compiled sidecar did not shut down cleanly within its deadline")
+    process.exitCode = 1
+  } else if (child.exitCode !== 0) {
+    console.error(`Compiled sidecar shutdown exited with code ${child.exitCode}`)
+    process.exitCode = 1
   }
   rmSync(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 })
 }

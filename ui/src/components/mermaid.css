@@ -1,0 +1,26 @@
+.mermaid-block {
+  min-width: 0;
+  max-width: 100%;
+  margin: var(--space-12) 0;
+  overflow: hidden;
+}
+
+.mermaid-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+}
+
+.mermaid-diagram {
+  max-width: 100%;
+  overflow: auto;
+  padding: var(--space-16);
+  background: var(--surface-code);
+}
+
+.markdown-content .mermaid-notice {
+  margin: 0;
+  padding: var(--space-12);
+  color: var(--text-secondary);
+  font-size: var(--type-12);
+}

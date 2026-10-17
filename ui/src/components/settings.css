@@ -45,10 +45,13 @@
 .settings-layout {
   display: grid;
   grid-template-columns: 204px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   flex: 1;
   min-height: 0;
 }
 .settings-nav {
+  min-height: 0;
+  overflow-y: auto;
   padding: var(--space-20) var(--space-12);
   border-right: 1px solid var(--border-divider);
   background: var(--surface-settings-nav);
@@ -87,6 +90,7 @@
 .settings-pane {
   flex: 1;
   min-width: 0;
+  min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: var(--space-28) var(--space-32);
@@ -869,6 +873,7 @@
   }
   .settings-nav {
     display: flex;
+    flex: none;
     overflow-x: auto;
     padding: var(--space-8);
     border-right: 0;
@@ -1042,4 +1047,22 @@
 }
 .settings-row-control code {
   overflow-wrap: anywhere;
+}
+
+.settings-technical-details > summary {
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: var(--type-13);
+  padding: var(--space-8) 0;
+}
+.settings-technical-details > .field-help {
+  margin-top: var(--space-8);
+  line-height: 1.6;
+}
+.settings-group-card > .settings-technical-details {
+  padding: var(--space-12) var(--space-20);
+}
+.machine-environment-control select {
+  min-width: 0;
+  max-width: 100%;
 }

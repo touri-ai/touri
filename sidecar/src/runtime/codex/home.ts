@@ -21,6 +21,19 @@ const providerKeys = [
   "query_params",
 ]
 
+/** Only the active endpoint's named authentication variables cross confinement. */
+export const codexAuthenticationKeys = (home: string | undefined): string[] => {
+  if (!home || !existsSync(join(home, "config.toml"))) return []
+  const config = asRecord(
+    Bun.TOML.parse(readBoundedFile({ root: home, path: join(home, "config.toml"), maxBytes: 1024 * 1024 }).toString()),
+  )
+  if (typeof config?.model_provider !== "string") return []
+  const provider = asRecord(asRecord(config.model_providers)?.[config.model_provider])
+  return [provider?.env_key, ...Object.values(asRecord(provider?.env_http_headers) ?? {})].filter(
+    (value): value is string => typeof value === "string" && /^[A-Za-z_][A-Za-z0-9_]*$/.test(value),
+  )
+}
+
 const tomlValue = (value: unknown): string => {
   if (typeof value === "string" || typeof value === "boolean" || (typeof value === "number" && Number.isFinite(value)))
     return JSON.stringify(value)

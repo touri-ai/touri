@@ -1,5 +1,5 @@
 import { homedir } from "node:os"
-import { join } from "node:path"
+import { join, resolve } from "node:path"
 import { DEPRECATED_IMPORT_ALIAS } from "../importer/deprecatedAliases"
 import { validProviderProfileName } from "../kernel/provider-profiles"
 
@@ -113,7 +113,8 @@ const parsePort = (raw: string | undefined): { success: true; port: number } | P
   return { success: true, port }
 }
 
-const dataDirOf = (flags: Flags): string => expandHome(flags.values["--data-dir"] ?? "~/.touri")
+// Absolute, so the TOURI_APP_DATA that `serve` exports still resolves from the bots' workspace cwd.
+const dataDirOf = (flags: Flags): string => resolve(expandHome(flags.values["--data-dir"] ?? "~/.touri"))
 
 const buildServe = (flags: Flags): ParseCliResult => {
   const port = parsePort(flags.values["--port"])

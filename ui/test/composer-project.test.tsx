@@ -97,6 +97,24 @@ describe("composer project picker", () => {
     }
   })
 
+  it("keeps its menu outside the composer while preserving selection and focus return", async () => {
+    const user = userEvent.setup()
+    const { other } = await setup()
+    await user.click(chip())
+    expect(picker().closest(".composer-island")).toBeNull()
+    expect(picker().closest(".composer-project-picker")?.parentElement).toBe(document.body)
+    const focused = document.activeElement
+    await user.pointer({
+      keys: "[MouseLeft>]",
+      target: within(picker()).getByRole("menuitemradio", { name: other.name }),
+    })
+    expect(document.activeElement).toBe(focused)
+    await user.pointer({ keys: "[/MouseLeft]" })
+    await waitFor(() => expect(screen.queryByRole("menu", { name: "Projeto do bot" })).toBeNull())
+    expect(chip()).toHaveFocus()
+    expect(chip()).toHaveTextContent(other.name)
+  })
+
   it.each(["bot-only", "project-first", "bot-first"])(
     "F011: reflects an approved project link across navigation (%s)",
     async (order) => {
@@ -248,7 +266,6 @@ describe("composer project picker", () => {
     expect(screen.queryByRole("menu")).not.toBeInTheDocument()
     await user.click(chip())
     await user.keyboard("{Home}")
-    await user.tab({ shift: true })
     await user.tab({ shift: true })
     expect(screen.queryByRole("menu")).not.toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Escolher modelo" })).toHaveFocus()

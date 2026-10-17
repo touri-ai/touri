@@ -1,9 +1,9 @@
 import { readFileSync } from "node:fs"
-import { createConnection } from "node:net"
+import { createConnection, type Socket } from "node:net"
 import { isAbsolute, relative, resolve } from "node:path"
 import type { SidecarModule } from "@touri/contracts"
 import { createKernel, type KernelRuntime } from "./kernel"
-import { acquireRuntimeLock, watchParent } from "./kernel/lifecycle"
+import { acquireRuntimeLock, watchParent, watchShutdownRequest } from "./kernel/lifecycle"
 import { createAppPaths } from "./kernel/paths"
 import { safeThreadId } from "./mcp/auth"
 import { registerShim } from "./mcp/shim-registry"
@@ -121,10 +121,56 @@ const runServe = async (): Promise<void> => {
   process.once("SIGTERM", shutdown)
   process.once("SIGINT", shutdown)
   watchParent(shutdown)
+  watchShutdownRequest(shutdown)
   if (stopping) return
   initialization = initModules(runtime)
   await initialization
   if (!stopping) process.stdout.write(`${JSON.stringify(runtime.handshake)}\n`)
+}
+
+/** Some provider CLIs discard child stderr. Return a protocol error to their initialize request too. */
+const rejectMcpInitialize = (stage: McpShimStage): Promise<void> => {
+  const message = mcpStartupFailureLine({ stage })
+  process.stderr.write(`${message}\n`)
+  process.exitCode = 1
+  return new Promise((resolve) => {
+    let buffer = ""
+    const finish = (id?: string | number): void => {
+      clearTimeout(timer)
+      process.stdin.off("data", onData)
+      process.stdin.off("end", onEnd)
+      process.stdin.off("error", onEnd)
+      process.stdin.pause()
+      if (id === undefined) resolve()
+      else
+        process.stdout.write(`${JSON.stringify({ jsonrpc: "2.0", id, error: { code: -32603, message } })}\n`, () =>
+          resolve(),
+        )
+    }
+    const onEnd = (): void => finish()
+    const onData = (chunk: Buffer): void => {
+      buffer += chunk.toString("utf8")
+      if (buffer.length > 65_536) {
+        finish()
+        return
+      }
+      if (!buffer.includes("\n")) return
+      try {
+        const frame = JSON.parse(buffer.slice(0, buffer.indexOf("\n")))
+        finish(
+          frame?.method === "initialize" && (typeof frame.id === "string" || typeof frame.id === "number")
+            ? frame.id
+            : undefined,
+        )
+      } catch {
+        finish()
+      }
+    }
+    const timer = setTimeout(onEnd, 1000)
+    process.stdin.on("data", onData)
+    process.stdin.once("end", onEnd)
+    process.stdin.once("error", onEnd)
+  })
 }
 
 export const runMcpStdio = ({ threadId, appData }: { threadId: string; appData?: string }): Promise<void> => {
@@ -144,32 +190,39 @@ export const runMcpStdio = ({ threadId, appData }: { threadId: string; appData?:
   let token: string
   try {
     token = readFileSync(tokenPath, "utf8").trim()
-  } catch (error) {
-    process.stderr.write(`Unable to read MCP token: ${error instanceof Error ? error.message : String(error)}\n`)
-    process.exitCode = 1
-    return Promise.resolve()
+    if (!token) throw new Error("Empty MCP token")
+  } catch {
+    return rejectMcpInitialize("token_unavailable")
   }
-  const socketPath = process.env.TOURI_MCP_SOCK ?? resolveMcpEndpoint(paths)
+  let socket: Socket
+  try {
+    const socketPath = process.env.TOURI_MCP_SOCK ?? resolveMcpEndpoint(paths)
+    socket = createConnection(connectionOptions(socketPath))
+  } catch {
+    return rejectMcpInitialize("socket_error")
+  }
   // Registration probes `ps` in the background so it never delays the MCP handshake.
   const registration = registerShim({ runDir: paths.runDir, thread: threadId })
   return new Promise((resolve) => {
-    const socket = createConnection(connectionOptions(socketPath))
     const state = { answered: false, finished: false }
     let stopWatching: () => void = () => undefined
     const finish = (reason: McpShimStage): void => {
       if (state.finished) return
       state.finished = true
-      if (!state.answered) process.stderr.write(`${mcpStartupFailureLine({ stage: reason })}\n`)
+      const rejected = !state.answered && reason === "socket_error" ? rejectMcpInitialize(reason) : Promise.resolve()
+      if (!state.answered && reason !== "socket_error")
+        process.stderr.write(`${mcpStartupFailureLine({ stage: reason })}\n`)
       stopWatching()
       socket.destroy()
       // The caller exits right after; drop this shim's record first.
-      void registration.then((unregister) => unregister()).finally(() => process.stdout.write("", () => resolve()))
+      void Promise.all([rejected, registration.then((unregister) => unregister())]).finally(() =>
+        process.stdout.write("", () => resolve()),
+      )
     }
     const onStdinEnd = (): void => {
       setTimeout(() => finish("stdin_closed"), STDIN_EOF_GRACE_MS).unref()
     }
-    socket.once("error", (error) => {
-      process.stderr.write(`MCP socket error: ${error.message}\n`)
+    socket.once("error", () => {
       process.exitCode = 1
       finish("socket_error")
     })

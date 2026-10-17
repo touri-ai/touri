@@ -161,6 +161,9 @@ export const Composer = ({
   useLayoutEffect(() => {
     const input = inputRef.current
     if (!input) return
+    // Native sizing avoids forcing transcript layout several times on every edit.
+    // Keep the measured fallback for webviews that do not support it yet.
+    if (typeof CSS !== "undefined" && CSS.supports?.("field-sizing", "content")) return
     const measure = () => {
       const current = input.getBoundingClientRect().height
       input.style.transition = "none"

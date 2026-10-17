@@ -1,6 +1,7 @@
 import { type ReactNode, type RefObject, useLayoutEffect, useRef, useState } from "react"
 import { isMotionReduced, observeMotionPreference } from "../design/motionPreference"
 import { motionTiers } from "../design/spring"
+import { ModalLayer } from "./Modal"
 import { useReveal } from "./Reveal"
 
 /** Retain a surface for its exit only. Closed content becomes inert immediately. */
@@ -38,7 +39,7 @@ export const MotionPresence = ({
     }
   }, [show])
   if (!mounted && !show) return null
-  return (
+  const surface = (
     <div
       ref={ref}
       className={`motion-presence motion-${kind}`}
@@ -49,6 +50,7 @@ export const MotionPresence = ({
       {show ? children : retained.current}
     </div>
   )
+  return kind === "modal" ? <ModalLayer>{surface}</ModalLayer> : surface
 }
 
 /** IDs, never message text, trigger insertion. Initial history and scope changes stay still. */

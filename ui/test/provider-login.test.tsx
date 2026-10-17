@@ -1,16 +1,16 @@
 import { act, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react"
-import type { ApiRoutes, Message, ProviderLoginFlow } from "@touri/contracts"
+import type { ApiRoutes, Bot, Message, ProviderLoginFlow } from "@touri/contracts"
 import { createRef, useState } from "react"
 import { afterEach, expect, it, vi } from "vitest"
 import type { ApiRequest } from "../src/api/client"
 import { createMockApi } from "../src/api/mock"
 import { Composer } from "../src/components/Composer"
-import { BotCreateModal } from "../src/components/Modals"
+import { BotCreateModal, BotSettingsModal } from "../src/components/Modals"
 import { ProviderLogin } from "../src/components/ProviderLogin"
 import { ApiError } from "../src/errors"
 import { t } from "../src/i18n"
 import { useProviderLogin } from "../src/useProviderLogin"
-import { useWorkspace } from "../src/useWorkspace"
+import { useWorkspace, type WorkspaceActions } from "../src/useWorkspace"
 
 afterEach(() => vi.useRealTimers())
 const fixture = (state: ProviderLoginFlow["state"] = "idle") => {
@@ -400,6 +400,77 @@ it("opens the created bot when adoption succeeded but its response was lost", as
     { id: result.current.data.selectedBotId },
   )
   expect(result.current.data.selectedThreadId).toBe(result.current.data.bots.at(-1)?.mainThreadId)
+})
+
+it.each([false, true])("keeps the adopted VM login with event subscription %s", async (enabled) => {
+  const api = createMockApi()
+  const original = api.request
+  api.request = (async (route, input, path) => {
+    const result = await original(route, input, path)
+    if (route === "POST /bots/:id/provider-login/flow" && (input as { action?: string }).action === "adopt") {
+      await original("PATCH /bots/:id", { vmProviderLogin: true }, path)
+    }
+    return route === "POST /bots" ? structuredClone(result) : result
+  }) as ApiRequest
+  const { result } = renderHook(() => useWorkspace(api, enabled))
+  if (enabled) await waitFor(() => expect(result.current.data.loading).toBe(false))
+  await act(async () => {
+    await result.current.actions.createBot({ name: "QA VM", provider: "codex", machine: "vm" }, "draft-test")
+  })
+  const bot = result.current.data.bots.find((bot) => bot.id === result.current.data.selectedBotId)
+  expect(bot?.vmProviderLogin).toBe(true)
+})
+
+it("saving unrelated VM settings does not send a stale login flag after a bot update", async () => {
+  const api = createMockApi()
+  const original = api.getState().bots[0]
+  if (!original) throw new Error("Missing bot")
+  const initial: Bot = { ...original, provider: "codex", machine: "vm", browser: "machine", vmProviderLogin: false }
+  const updateBot = vi.fn<WorkspaceActions["updateBot"]>(async () => {})
+  const props = {
+    api,
+    projects: [],
+    routines: [],
+    capability: { available: true, reason: null, provider: null },
+    initialSection: "computer",
+    actions: { updateBot } as unknown as WorkspaceActions,
+    onClose: vi.fn(),
+    onOpenIntegrations: vi.fn(),
+  }
+  const view = render(<BotSettingsModal {...props} bot={initial} />)
+  // A login flow can finish while the settings dialog is already open.
+  view.rerender(<BotSettingsModal {...props} bot={{ ...initial, vmProviderLogin: true }} />)
+  expect(screen.getByRole("switch", { name: /Usar meu login do Codex/ })).toBeChecked()
+  fireEvent.click(screen.getByRole("switch", { name: /Navegador habilitado/ }))
+  await waitFor(() => expect(updateBot).toHaveBeenCalledWith(initial.id, { browserEnabled: false }))
+  fireEvent.click(screen.getByRole("button", { name: "Salvar configurações" }))
+  await waitFor(() => expect(props.onClose).toHaveBeenCalled())
+  expect(updateBot.mock.calls.at(-1)?.[1]).not.toHaveProperty("vmProviderLogin")
+})
+
+it("saving an explicit VM login opt-out still sends false", async () => {
+  const api = createMockApi()
+  const original = api.getState().bots[0]
+  if (!original) throw new Error("Missing bot")
+  const bot: Bot = { ...original, provider: "codex", machine: "vm", browser: "machine", vmProviderLogin: true }
+  const updateBot = vi.fn<WorkspaceActions["updateBot"]>(async () => {})
+  render(
+    <BotSettingsModal
+      bot={bot}
+      projects={[]}
+      routines={[]}
+      capability={{ available: true, reason: null, provider: null }}
+      initialSection="computer"
+      actions={{ updateBot } as unknown as WorkspaceActions}
+      onClose={vi.fn()}
+      onOpenIntegrations={vi.fn()}
+    />,
+  )
+  fireEvent.click(screen.getByRole("switch", { name: /Usar meu login do Codex/ }))
+  fireEvent.click(screen.getByRole("button", { name: "Salvar configurações" }))
+  await waitFor(() =>
+    expect(updateBot).toHaveBeenCalledWith(bot.id, expect.objectContaining({ vmProviderLogin: false })),
+  )
 })
 
 const recoveringComposer = (f: ReturnType<typeof fixture>, onSend = vi.fn().mockResolvedValue(undefined)) => {

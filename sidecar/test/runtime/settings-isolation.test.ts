@@ -5,6 +5,7 @@ import { join } from "node:path"
 import type { Bot, Kernel, ProviderEvent, ProviderSession, StartTurnArgs, Thread } from "@touri/contracts"
 import { createKernel } from "../../src/kernel"
 import { folderGuestPath } from "../../src/kernel/bot-folders"
+import { folderAccessUnavailable, refreshHostFolderAccess } from "../../src/kernel/folder-capability"
 import { createClaudeAdapter } from "../../src/runtime/claude/adapter"
 import { readOnlyAllow, readOnlyDeny } from "../../src/runtime/claude/settings"
 import { createCodexAdapter } from "../../src/runtime/codex/adapter"
@@ -38,10 +39,15 @@ const fixture = (vm = false, provider: "claude" | "codex" = "claude") => {
     return runtime.kernel.spawnTree({
       ...input,
       cmd: process.execPath,
+      env: { ...input.env, TOURI_FAKE_SCENARIO: scenario },
       args: [
         "run",
         join(import.meta.dir, `../fakes/fake-${provider}.ts`),
-        ...(input.cmd === "/usr/bin/sandbox-exec" ? input.args.slice(3) : input.args),
+        ...(input.cmd === "/usr/bin/sandbox-exec"
+          ? input.args.slice(3)
+          : /\/bwrap$/.test(input.cmd)
+            ? input.args.slice(input.args.indexOf("--") + 2)
+            : input.args),
       ],
     })
   }
@@ -49,7 +55,14 @@ const fixture = (vm = false, provider: "claude" | "codex" = "claude") => {
   const adapter = createAdapter({ kernel: { ...runtime.kernel, spawnTree: spawn }, command: process.execPath })
   const events: ProviderEvent[] = []
   const args: StartTurnArgs = {
-    bot: { access: "full", approvals: "on-request", homeDir: home, model: null, reasoningEffort: null } as Bot,
+    bot: {
+      provider,
+      access: "full",
+      approvals: "on-request",
+      homeDir: home,
+      model: null,
+      reasoningEffort: null,
+    } as Bot,
     thread: { id: "thread-settings" } as Thread,
     session: null,
     fingerprint: { cwd: workspace } as StartTurnArgs["fingerprint"],
@@ -93,7 +106,9 @@ for (const vm of [false, true])
       const env = f.calls[0]?.env
       expect(env?.DISABLE_TELEMETRY).toBe("1")
       expect(env?.DISABLE_ERROR_REPORTING).toBe("1")
-      expect(env?.CLAUDE_CODE_ENABLE_TELEMETRY).toBe("0")
+      expect(env?.CLAUDE_CODE_ENABLE_TELEMETRY).toBe(
+        provider === "codex" && /\/bwrap$/.test(f.calls[0]?.cmd ?? "") ? undefined : "0",
+      )
       for (const key of ["OTEL_TRACES_EXPORTER", "OTEL_METRICS_EXPORTER", "OTEL_LOGS_EXPORTER"])
         expect(env?.[key]).toBe("none")
     })
@@ -174,7 +189,7 @@ for (const vm of [false, true]) {
         expect(call.args.includes("--permission-prompt-tool")).toBe(
           approvals === "on-request" && access !== "read-only",
         )
-        expect(call.env.HOME).toBe(f.home)
+        expect(call.env.HOME).toBe(/\/bwrap$/.test(call.cmd) ? "/touri/home" : f.home)
         expect(call.cwd).toBe(f.workspace)
         expect(call.args).toContain(resumed ? "--resume" : "--session-id")
         expect(readFileSync(join(f.home, ".claude/settings.json"), "utf8")).toContain("auto")
@@ -251,7 +266,9 @@ for (const vm of [false, true]) {
       for (const resumed of [false, true]) {
         test(`Codex explicitly sets ${vm ? "VM" : "host"} ${access}/${approvals} ${resumed ? "resume" : "new"} policy`, async () => {
           const f = fixture(vm, "codex")
-          const outer = !vm && process.platform === "darwin"
+          const outer =
+            !vm &&
+            (process.platform === "darwin" || (process.platform === "linux" && (await refreshHostFolderAccess())))
           f.args.bot.access = access
           f.args.bot.approvals = approvals
           if (resumed) f.args.session = { externalSessionId: "old-session", rolloutPath: null } as ProviderSession
@@ -271,7 +288,7 @@ for (const vm of [false, true]) {
           const session = requests.find((request) => request.method === (resumed ? "thread/resume" : "thread/start"))
           expect(session?.params).toMatchObject({
             cwd: f.workspace,
-            // On macOS host turns touri's Seatbelt profile is the boundary; Codex cannot nest its own.
+            // An inherited host boundary replaces the provider's inner sandbox.
             sandbox: access === "full" || outer ? "danger-full-access" : access,
             approvalPolicy: access === "read-only" ? "never" : approvals,
             approvalsReviewer: "user",
@@ -338,15 +355,18 @@ for (const provider of ["claude", "codex"] as const)
       ]
       const requestLogPath = join(f.root, "folder-requests.jsonl")
       writeFileSync(f.scenario, JSON.stringify({ events: [{ type: "complete" }], requestLogPath }))
+      const available =
+        process.platform === "darwin" || (process.platform === "linux" && (await refreshHostFolderAccess()))
       const result = await f.adapter.startTurn(f.args)
-      if (!vm && process.platform !== "darwin") {
+      if (!vm && !available) {
         expect(result).toMatchObject({ success: false, errorCode: "cli_crash" })
-        if (!result.success) expect(result.error).toContain("sandbox do macOS")
+        if (!result.success) expect(result.error).toBe(folderAccessUnavailable)
         expect(f.calls).toHaveLength(0)
         return
       }
       expect(result.success).toBe(true)
-      expect(f.calls[0]?.cmd).toBe(vm ? provider : "/usr/bin/sandbox-exec")
+      if (!vm && process.platform === "linux") expect(f.calls[0]?.cmd).toMatch(/\/bwrap$/)
+      else expect(f.calls[0]?.cmd).toBe(vm ? provider : "/usr/bin/sandbox-exec")
       const grantedRO = vm ? folderGuestPath(realpathSync(ro)) : realpathSync(ro)
       const grantedRW = vm ? folderGuestPath(realpathSync(rw)) : realpathSync(rw)
       if (provider === "claude") {
@@ -362,11 +382,13 @@ for (const provider of ["claude", "codex"] as const)
           .split("\n")
           .map((line) => JSON.parse(line))
         const request = requests.find((request) => request.method === "thread/start")
-        if (!vm && process.platform === "darwin") {
+        if (!vm) {
           expect(request.params.sandbox).toBe("danger-full-access")
-          const profile = f.calls[0]?.args[1] ?? ""
-          expect(profile).toContain(`(subpath ${JSON.stringify(grantedRW)})`)
-          expect(profile).toContain(`(deny file-write* (subpath ${JSON.stringify(grantedRO)}))`)
+          if (process.platform === "darwin") {
+            const profile = f.calls[0]?.args[1] ?? ""
+            expect(profile).toContain(`(subpath ${JSON.stringify(grantedRW)})`)
+            expect(profile).toContain(`(deny file-write* (subpath ${JSON.stringify(grantedRO)}))`)
+          }
         } else {
           expect(request.params.config.sandbox_workspace_write.writable_roots).toContain(grantedRW)
           expect(request.params.config.sandbox_workspace_write.writable_roots).not.toContain(grantedRO)

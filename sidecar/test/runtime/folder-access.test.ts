@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from "bun:test"
+import { afterEach, expect, spyOn, test } from "bun:test"
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
 import { createServer } from "node:net"
 import { tmpdir } from "node:os"
@@ -6,6 +6,7 @@ import { join } from "node:path"
 import type { Bot, Kernel, StartTurnArgs } from "@touri/contracts"
 import { createKernel } from "../../src/kernel"
 import { canonicalPath, excludedBotFolders, folderGuestPath, parseBotFolders } from "../../src/kernel/bot-folders"
+import * as folderCapability from "../../src/kernel/folder-capability"
 import { createAppPaths, resolveMcpSocketPath } from "../../src/kernel/paths"
 import { claudeSettings } from "../../src/runtime/claude/settings"
 import {
@@ -72,13 +73,36 @@ test("folder grants default off, persist per bot, reject malformed input and onl
   const f = await fixture()
   expect(f.bot.folders).toEqual([])
   expect(f.bot.anyFolderAccess).toBe(false)
-  const folders = [
+  const folders: NonNullable<Bot["folders"]> = [
     { path: f.ro, access: "read-only" },
     { path: f.rw, access: "read-write" },
   ]
-  const response = await f.request(`/bots/${f.bot.id}`, { folders, anyFolderAccess: true })
+  const anyFolderAccess = process.platform !== "linux"
+  const response = await f.request(`/bots/${f.bot.id}`, { folders, anyFolderAccess })
   expect(response.status).toBe(200)
-  expect(((await response.json()) as { bot: Bot }).bot).toMatchObject({ folders, anyFolderAccess: true })
+  expect(((await response.json()) as { bot: Bot }).bot).toMatchObject({ folders, anyFolderAccess })
+  if (process.platform === "linux") {
+    const broad = await f.request(`/bots/${f.bot.id}`, { anyFolderAccess: true })
+    expect(broad.status).toBe(400)
+    expect(await broad.json()).toMatchObject({
+      errorCode: "FOLDER_SELECTION_REQUIRED",
+      error: folderCapability.specificFoldersRequired,
+    })
+    expect(f.runtime.kernel.services.use("store.api")?.getBot({ botId: f.bot.id })?.anyFolderAccess).toBe(false)
+    const root = await f.request(`/bots/${f.bot.id}`, { folders: [{ path: "/", access: "read-only" }] })
+    expect(root.status).toBe(400)
+    expect(await root.json()).toMatchObject({ error: folderCapability.specificFoldersRequired })
+    expect(f.runtime.kernel.services.use("store.api")?.getBot({ botId: f.bot.id })?.folders).toEqual(folders)
+    for (const path of ["/proc", "/sys", "/dev", "/dev/shm"]) {
+      const protectedFolder = await f.request(`/bots/${f.bot.id}`, { folders: [{ path, access: "read-only" }] })
+      expect(protectedFolder.status).toBe(400)
+      expect(await protectedFolder.json()).toMatchObject({
+        errorCode: "FOLDER_PROTECTED",
+        error: "Esta pasta é protegida. Escolha outra pasta.",
+      })
+      expect(f.runtime.kernel.services.use("store.api")?.getBot({ botId: f.bot.id })?.folders).toEqual(folders)
+    }
+  }
   expect((await f.request(`/bots/${f.bot.id}`, { folders: [{ path: f.ro, access: "full" }] })).status).toBe(400)
   expect((await f.request(`/bots/${f.bot.id}`, { anyFolderAccess: "yes" })).status).toBe(400)
   const other = await f.request("/bots", { name: "Other", provider: "codex" }, "POST")
@@ -89,6 +113,87 @@ test("folder grants default off, persist per bot, reject malformed input and onl
     body: JSON.stringify({ anyFolderAccess: false }),
   })
   expect(unauthenticated.status).toBe(401)
+})
+
+test("unavailable confinement rejects API and setup grants without persisting and still permits removal", async () => {
+  const f = await fixture()
+  const available = spyOn(folderCapability, "hostFolderAccessAvailable").mockReturnValue(false)
+  try {
+    const folder = { path: f.ro, access: "read-only" as const }
+    const response = await f.request(`/bots/${f.bot.id}`, { folders: [folder] })
+    expect(response.status).toBe(400)
+    expect(await response.text()).toContain("Nenhuma permissão foi adicionada")
+    expect((await f.request(`/bots/${f.bot.id}`, { anyFolderAccess: true })).status).toBe(400)
+    expect((await f.request("/bots", { name: "New", provider: "codex", folders: [folder] }, "POST")).status).toBe(400)
+    const configure = f.runtime.kernel.services.use("bots.configureAccess")
+    expect(configure?.({ botId: f.bot.id, patch: { folders: [folder] } })).toMatchObject({ success: false })
+    const store = f.runtime.kernel.services.use("store.api")
+    expect(store?.getBot({ botId: f.bot.id })?.folders).toEqual([])
+    expect((await f.request(`/bots/${f.bot.id}`, { folders: [], anyFolderAccess: false })).status).toBe(200)
+  } finally {
+    available.mockRestore()
+  }
+})
+
+test("Linux provider spawning enforces RO and RW grants instead of failing the conversation", async () => {
+  if (process.platform !== "linux" || !(await folderCapability.refreshHostFolderAccess())) return
+  const f = await fixture()
+  f.args.bot.folders = [
+    { path: f.ro, access: "read-only" },
+    { path: f.rw, access: "read-write" },
+  ]
+  writeFileSync(join(f.ro, "reference.txt"), "unchanged")
+  const run = async (path: string) => {
+    const child = spawnFolderProvider(f.runtime.kernel, f.args, {
+      cmd: "/bin/sh",
+      args: ["-c", 'printf saved > "$1"', "test", path],
+      cwd: f.bot.homeDir,
+      env: f.args.env,
+    })
+    expect(child.success).toBe(true)
+    if (!child.success) throw new Error(child.error)
+    const [exit] = await Promise.all([
+      child.exited,
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+    ])
+    return exit.code
+  }
+  expect(await run(join(f.ro, "reference.txt"))).not.toBe(0)
+  expect(readFileSync(join(f.ro, "reference.txt"), "utf8")).toBe("unchanged")
+  expect(await run(join(f.rw, "saved.txt"))).toBe(0)
+  expect(readFileSync(join(f.rw, "saved.txt"), "utf8")).toBe("saved")
+})
+
+test("off macOS, full access and grant-free turns spawn the provider directly, with or without confinement", async () => {
+  if (process.platform === "darwin") return
+  const f = await fixture()
+  const spawned: string[] = []
+  const kernel = {
+    ...f.runtime.kernel,
+    spawnTree: (input: Parameters<Kernel["spawnTree"]>[0]) => {
+      spawned.push(input.cmd)
+      return { success: false, errorCode: "SPAWN_FAILED", error: "captured" } as const
+    },
+  } as Kernel
+  const input = { cmd: "/bin/true", args: [], cwd: f.bot.homeDir, env: f.args.env }
+  const unavailable = spyOn(folderCapability, "hostFolderAccessAvailable").mockReturnValue(false)
+  try {
+    // Full access means no folder restriction: saved grants never wrap or refuse it.
+    f.args.bot = { ...f.bot, access: "full", folders: [{ path: f.ro, access: "read-only" }], anyFolderAccess: true }
+    expect(spawnFolderProvider(kernel, f.args, input)).toMatchObject({ error: "captured" })
+    f.args.bot = { ...f.bot, access: "workspace-write", folders: [], anyFolderAccess: false }
+    expect(spawnFolderProvider(kernel, f.args, input)).toMatchObject({ error: "captured" })
+    expect(spawned).toEqual(["/bin/true", "/bin/true"])
+    // A real grant without a working boundary is refused rather than silently dropped.
+    f.args.bot = { ...f.bot, access: "workspace-write", folders: [{ path: f.ro, access: "read-only" }] }
+    expect(spawnFolderProvider(kernel, f.args, input)).toMatchObject({
+      error: folderCapability.folderAccessUnavailable,
+    })
+    expect(spawned).toHaveLength(2)
+  } finally {
+    unavailable.mockRestore()
+  }
 })
 
 test("realpath grants reject escape symlinks, duplicates, conflicting overlaps and retargeted directories", async () => {
@@ -206,6 +311,7 @@ test("local profile denies sensitive trees including touri's API credential, eve
   }
   spawnFolderProvider(kernel, f.args, { cmd: "fake-provider", args: ["fake"], env: {}, cwd: f.ro })
   if (process.platform === "darwin") expect(calls[0]?.cmd).toBe("/usr/bin/sandbox-exec")
+  else if (process.platform === "linux") expect(calls).toHaveLength(0)
   else expect(calls).toHaveLength(0)
 })
 

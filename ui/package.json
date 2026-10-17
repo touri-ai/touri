@@ -18,13 +18,15 @@
     "@norbert_bodziony/bloub": "0.4.1",
     "@novnc/novnc": "1.7.0",
     "@tauri-apps/api": "^2.8.0",
+    "dompurify": "^3.4.17",
+    "mermaid": "^12.2.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
+    "remark-parse": "^11.0.0",
     "shiki": "^3.15.0",
-    "unified": "^11.0.5",
-    "remark-parse": "^11.0.0"
+    "unified": "^11.0.5"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.10.2",

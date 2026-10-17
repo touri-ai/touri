@@ -13,7 +13,7 @@ type SavedWorkspace = {
 const KEY = "touri.workspace.v1"
 
 /** Preserve saved destinations when global pages move behind Advanced. */
-const migrateRoute = (raw: unknown): AppRoute | undefined => {
+export const migrateRoute = (raw: unknown): AppRoute | undefined => {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined
   const route = raw as Record<string, unknown>
   if (route.section === "bots" && (route.screen === "chat" || route.screen === "preview"))
