@@ -482,8 +482,9 @@ test("real provider runtime delegates with concurrency cap 1, isolated sessions 
       ],
     }),
   )
+  f.host.kernel.spawnTree = fakeProviderSpawn(f.host.kernel.spawnTree, command, scenario)
   const engine = createRuntimeEngine({
-    kernel: { ...f.host.kernel, spawnTree: fakeProviderSpawn(f.host.kernel.spawnTree, command, scenario) },
+    kernel: f.host.kernel,
     codexCommand: command,
     environment: { PATH: process.env.PATH ?? "", TOURI_FAKE_SCENARIO: scenario },
     maxConcurrentRuns: 1,
@@ -825,6 +826,7 @@ test("B05: the real engine starts a delegated provider turn under the ceiling, a
   const pm = f.bots[0] as Bot
   const dev = f.bots[1] as Bot
   f.db.query("UPDATE bots SET access='full', approvals='never', machine='local' WHERE id IN (?,?)").run(pm.id, dev.id)
+  const fakeSpawn = fakeProviderSpawn(f.host.kernel.spawnTree, command, scenario)
   const runDelegated = async (caller: Bot) => {
     const target = f.store.getBot({ botId: dev.id }) as Bot
     const participant = f.data.participant(f.group, f.thread.id, dev.id)
@@ -852,15 +854,12 @@ test("B05: the real engine starts a delegated provider turn under the ceiling, a
     if (!message.success) throw new Error(message.error)
     writeFileSync(argvLog, "")
     let launch: Parameters<Kernel["spawnTree"]>[0] | undefined
-    const fakeSpawn = fakeProviderSpawn(f.host.kernel.spawnTree, command, scenario)
+    f.host.kernel.spawnTree = (input) => {
+      launch = input
+      return fakeSpawn(input)
+    }
     const engine = createRuntimeEngine({
-      kernel: {
-        ...f.host.kernel,
-        spawnTree: (input) => {
-          launch = input
-          return fakeSpawn(input)
-        },
-      },
+      kernel: f.host.kernel,
       codexCommand: command,
       environment: { PATH: process.env.PATH ?? "", TOURI_FAKE_SCENARIO: scenario },
       interruptGraceMs: 100,
