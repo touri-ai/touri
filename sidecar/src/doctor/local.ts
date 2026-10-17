@@ -12,7 +12,7 @@ import { browserSessionChecks } from "./browserSessions"
 import { check, shellQuote } from "./check"
 import { codexSessionsCheck } from "./codex-sessions"
 import type { DoctorCommand } from "./command"
-import { mcpSocketPathCheck, mcpStartupChecks, orphanShimCheck } from "./mcp"
+import { mcpSocketPathCheck, mcpStartupChecks } from "./mcp"
 import { withinDeadline } from "./network"
 import { providerLoginChecks } from "./providerLogin"
 
@@ -58,7 +58,6 @@ export const sidecarChecks = (kernel: Kernel): Array<DoctorCheck> => {
   return [
     ...mcpStartupChecks(kernel.db as Database),
     mcpSocketPathCheck(kernel.paths),
-    orphanShimCheck(kernel.paths.runDir),
     check("sidecar-version", "Serviço local · versão", "pass", `touri ${version}; Bun ${Bun.version}.`),
     check(
       "sidecar-schema",

@@ -1973,8 +1973,15 @@ export const createRuntimeEngine = ({
     return shutdownPromise
   }
 
-  reapProviderProcesses(kernel)
-  reapOrphanShims(kernel.paths.runDir)
+  // Both scans run `ps` asynchronously (#121); the record list is read before the first await.
+  void Promise.all([reapProviderProcesses(kernel), reapOrphanShims(kernel.paths.runDir)]).catch((error) =>
+    kernel.log({
+      level: "error",
+      module: "runtime",
+      msg: "Falha ao encerrar processos órfãos",
+      data: { error: error instanceof Error ? error.message : String(error) },
+    }),
+  )
   const recovered = new Set<Id>()
   for (const run of persistence.listActiveRuns()) {
     recovered.add(run.id)

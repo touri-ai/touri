@@ -228,7 +228,7 @@ test("remote process streams stdin/stdout/stderr and cancel never uses a local P
   if (!child.success) throw new Error(child.error)
   expect(child.target).toBe("remote")
   expect(child.pid).toBe(0)
-  trackProviderProcess(runtime.kernel, child)
+  await trackProviderProcess(runtime.kernel, child)
   const writer = child.stdin.getWriter()
   await writer.write(new TextEncoder().encode("hello cloud"))
   await writer.close()
