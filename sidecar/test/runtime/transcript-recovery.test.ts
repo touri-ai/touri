@@ -28,8 +28,12 @@ const fixture = async (ignoreTerm = false, interruptGraceMs = 30) => {
   const scenario = join(assets, "scenario.json")
   const command = join(assets, "codex")
   const release = join(assets, "continue")
-  const fake = join(import.meta.dir, "../fakes/fake-codex.ts")
-  writeFileSync(command, `#!/bin/sh\nexec '${process.execPath}' '${fake}' "$@"\n`)
+  const fake = join(assets, "fake-codex.ts")
+  writeFileSync(fake, readFileSync(join(import.meta.dir, "../fakes/fake-codex.ts"), "utf8"))
+  writeFileSync(
+    command,
+    `#!/bin/sh\nexport TOURI_FAKE_SCENARIO='${scenario}'\nexec '${process.execPath}' '${fake}' "$@"\n`,
+  )
   chmodSync(command, 0o700)
   writeFileSync(
     scenario,
@@ -39,8 +43,10 @@ const fixture = async (ignoreTerm = false, interruptGraceMs = 30) => {
   await initStore(runtime.kernel)
   const db = runtime.kernel.db as Database
   // These cases cover the manual recovery path; automatic continuation is covered in resume-interrupted.test.ts.
-  db.exec(`INSERT INTO bots(id,name,provider,home_dir,created_at,updated_at) VALUES ('b','Teste','codex','/tmp',1,1);
-    INSERT INTO threads(id,bot_id,title,created_at,updated_at) VALUES ('t','b','Conversa',1,1);
+  db.query("INSERT INTO bots(id,name,provider,home_dir,created_at,updated_at) VALUES ('b','Teste','codex',?,1,1)").run(
+    assets,
+  )
+  db.exec(`INSERT INTO threads(id,bot_id,title,created_at,updated_at) VALUES ('t','b','Conversa',1,1);
     INSERT INTO settings(key,value_json,updated_at) VALUES ('resumeInterruptedTurns','false',1);`)
   const store = runtime.kernel.services.use("store.api")
   if (!store) throw new Error("Store missing")
