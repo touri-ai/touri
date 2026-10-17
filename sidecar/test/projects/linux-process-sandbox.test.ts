@@ -51,6 +51,7 @@ for (const access of ["workspace-write", "full"])
           `cat ${quote(join(ro, "reference.txt"))}`,
           `printf saved > ${quote(join(rw, "saved.txt"))}`,
           `printf '%s' "$APPROVED_TOKEN" > ${quote(join(rw, "env-proof"))}`,
+          `printf '%s' "$NODE_ENV" > ${quote(join(rw, "mode-proof"))}`,
           // biome-ignore lint/suspicious/noTemplateCurlyInString: expanded by the confined shell
           "printf '%s\\n' \"${UNRELATED_SECRET:-absent}\"",
           "echo READY; sleep 60",
@@ -62,7 +63,7 @@ for (const access of ["workspace-write", "full"])
               {
                 name: "confined",
                 command: script,
-                env: { APPROVED_TOKEN: "approved-proof" },
+                env: { APPROVED_TOKEN: "approved-proof", NODE_ENV: "production" },
                 ready: { logRegex: "READY" },
                 autostart: false,
               },
@@ -82,6 +83,7 @@ for (const access of ["workspace-write", "full"])
         expect(logs.success).toBe(true)
         expect(JSON.stringify(logs)).toContain("reference-proof")
         expect(readFileSync(join(rw, "env-proof"), "utf8")).toBe("approved-proof")
+        expect(readFileSync(join(rw, "mode-proof"), "utf8")).toBe("production")
         expect(JSON.stringify(logs)).not.toMatch(/ESCAPED|outside-secret|unrelated-proof/)
         expect(readFileSync(join(ro, "reference.txt"), "utf8")).toBe("reference-proof")
         expect(existsSync(join(rw, "saved.txt"))).toBe(true)

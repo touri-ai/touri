@@ -1,6 +1,6 @@
 // These values can execute code in the host launcher before confinement starts.
 const executableEnvironment =
-  /^(?:LD_|DYLD_|BASH_FUNC_|GCONV_PATH$|GLIBC_TUNABLES$|LOCPATH$|NODE_|BUN_|PYTHON|PERL|RUBY|BASH_ENV$|ENV$|ZDOTDIR$|SHELLOPTS$|PS4$)/i
+  /^(?:LD_|DYLD_|BASH_FUNC_|GCONV_PATH$|GLIBC_TUNABLES$|LOCPATH$|NODE_(?:OPTIONS|PATH)$|BUN_OPTIONS$|PYTHON(?:PATH|HOME|STARTUP)$|PERL(?:5OPT|5LIB|IO)$|RUBY(?:OPT|LIB)$|BASH_ENV$|ENV$|ZDOTDIR$|SHELLOPTS$|PS4$)/i
 
 export const linuxRuntimeEnvironment = (
   env: Record<string, string>,
