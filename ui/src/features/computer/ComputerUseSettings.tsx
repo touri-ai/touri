@@ -29,6 +29,7 @@ export const ComputerUseSettings = ({ className = "" }: ComputerUseSettingsProps
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
+    if (!("__TAURI_INTERNALS__" in window)) return
     let mounted = true
     const refresh = async (): Promise<void> => {
       try {
@@ -64,6 +65,13 @@ export const ComputerUseSettings = ({ className = "" }: ComputerUseSettingsProps
       setBusy(null)
     }
   }
+
+  if (!("__TAURI_INTERNALS__" in window))
+    return (
+      <p className={className}>
+        {t("Este servidor não tem uma área de trabalho para controlar. Você pode conversar e trabalhar com arquivos.")}
+      </p>
+    )
 
   return (
     <section

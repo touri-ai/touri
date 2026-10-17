@@ -66,34 +66,74 @@ const fixture = () => {
 afterEach(() => {
   cleanup()
   viewers.splice(0)
-  vi.unstubAllGlobals()
-  vi.restoreAllMocks()
   vi.useRealTimers()
+  vi.restoreAllMocks()
+  vi.unstubAllGlobals()
 })
 const connected = async () => {
   await waitFor(() => expect(viewers.length).toBeGreaterThan(0))
   await act(async () => viewers.at(-1)?.dispatchEvent(new Event("connect")))
 }
 
-test("desktop starts view-only, requires explicit control and revokes when bot permission changes", async () => {
+test("manual takeover does not require or change bot automation permission; only explicit return resumes it", async () => {
   const f = fixture()
-  const view = render(<DesktopPanel bot={bot} api={f.api} />)
+  render(<DesktopPanel bot={{ ...bot, computerUse: false }} api={f.api} />)
   await connected()
-  expect(screen.getByRole("heading", { name: "Tela da VM" })).toHaveClass("desktop-title")
-  expect(screen.getByText("Somente observar")).toHaveClass("desktop-mode")
-  expect(screen.getByRole("button", { name: "Reconectar" })).toHaveClass("button-quiet")
-  expect(f.request).toHaveBeenCalledWith("POST /bots/:id/desktop", { control: false }, { id: "vm" })
+  expect(screen.getByText("Acompanhar a tela")).toHaveClass("desktop-mode")
   expect(viewers[0]?.viewOnly).toBe(true)
   expect(screen.getByLabelText("Digitar na VM")).toBeDisabled()
-  fireEvent.click(screen.getByRole("button", { name: "Controlar" }))
+  fireEvent.click(screen.getByRole("button", { name: "Assumir controle" }))
   await waitFor(() => expect(viewers).toHaveLength(2))
   await connected()
   expect(f.request).toHaveBeenCalledWith("POST /bots/:id/desktop", { control: true, resume: true }, { id: "vm" })
-  expect(screen.getByRole("button", { name: "Parar controle" })).toHaveAttribute("aria-pressed", "true")
+  expect(screen.getByText("Você está no controle. O bot aguarda você terminar.")).toBeInTheDocument()
   expect(screen.getByLabelText("Digitar na VM")).toBeEnabled()
-  view.rerender(<DesktopPanel bot={{ ...bot, computerUse: false }} api={f.api} />)
-  await waitFor(() => expect(screen.getByRole("button", { name: "Controlar" })).toBeDisabled())
-  expect(viewers[1]?.disconnect).toHaveBeenCalled()
+  fireEvent.click(screen.getByRole("button", { name: "Devolver ao bot" }))
+  await waitFor(() => expect(f.request).toHaveBeenCalledWith("POST /bots/:id/desktop/return", {}, { id: "vm" }))
+  await waitFor(() => expect(viewers).toHaveLength(3))
+  await connected()
+  expect(viewers.at(-1)?.viewOnly).toBe(true)
+  expect(f.request.mock.calls.some(([route]) => route.startsWith("PATCH"))).toBe(false)
+})
+
+test("a remote runtime without a pause protocol stays in observation with no dead control button", async () => {
+  const f = fixture()
+  render(<DesktopPanel bot={{ ...bot, machine: "cloud" }} api={f.api} />)
+  await connected()
+  expect(screen.queryByRole("button", { name: "Assumir controle" })).toBeNull()
+  expect(screen.queryByRole("button", { name: "Devolver ao bot" })).toBeNull()
+  expect(
+    screen.getByText(
+      "O controle manual não está disponível nesta máquina. Você pode acompanhar a tela e conversar com o bot.",
+    ),
+  ).toBeInTheDocument()
+  expect(viewers[0]?.viewOnly).toBe(true)
+  expect(f.request).toHaveBeenCalledWith("POST /bots/:id/desktop", { control: false }, { id: "vm" })
+})
+
+test("a late observation snapshot cannot erase a newer human ownership event", async () => {
+  const f = fixture()
+  let notify = () => {}
+  f.api.subscribe = (listener) => {
+    notify = () => listener({ seq: 1, at: 1, event: { type: "desktop.control", botId: bot.id, human: true } })
+    return () => {}
+  }
+  let finish: ((session: { sessionId: string; path: string; control: boolean }) => void) | undefined
+  f.request.mockImplementation(async (route) =>
+    route === "POST /bots/:id/desktop"
+      ? new Promise((resolve) => {
+          finish = resolve
+        })
+      : {},
+  )
+  render(<DesktopPanel bot={bot} api={f.api} />)
+  await waitFor(() => expect(finish).toBeDefined())
+  act(() => notify())
+  await act(async () => finish?.({ sessionId: "observe", path: "/api/v1/desktop/observe/socket", control: false }))
+  await connected()
+  expect(screen.getByRole("button", { name: "Devolver ao bot" })).toBeEnabled()
+  expect(screen.getByText("Você está no controle. O bot aguarda você terminar.")).toBeInTheDocument()
+  expect(screen.getByLabelText("Digitar na VM")).toBeDisabled()
 })
 
 test("a connected socket stays in preparation until the first guest frame is rendered", async () => {
@@ -108,11 +148,11 @@ test("a connected socket stays in preparation until the first guest frame is ren
   await connected()
   expect(screen.getByText("Conectando…")).toBeInTheDocument()
   expect(screen.getByText("Sem imagem ainda. Aguardando a primeira imagem da VM.")).toBeInTheDocument()
-  expect(screen.getByRole("button", { name: "Controlar" })).toBeDisabled()
+  expect(screen.getByRole("button", { name: "Assumir controle" })).toBeDisabled()
   expect(screen.getByLabelText("Digitar na VM")).toBeDisabled()
   // An opaque black frame is guest output too; readiness cannot require colored pixels.
   for (let offset = 3; offset < black.data.length; offset += 4) black.data[offset] = 255
-  await waitFor(() => expect(screen.getByRole("button", { name: "Controlar" })).toBeEnabled(), { timeout: 2500 })
+  await waitFor(() => expect(screen.getByRole("button", { name: "Assumir controle" })).toBeEnabled(), { timeout: 2500 })
   expect(screen.queryByText("Conectando à tela da VM…")).not.toBeInTheDocument()
   expect(screen.getByText("Navegador ainda não aberto")).toBeInTheDocument()
 })
@@ -122,7 +162,7 @@ test("the empty VM hint disappears when a window draws and returns when the disp
   render(<DesktopPanel bot={bot} api={f.api} />)
   await connected()
   expect(screen.getByText("Navegador ainda não aberto")).toBeInTheDocument()
-  expect(screen.getByRole("button", { name: "Controlar" })).toBeEnabled()
+  expect(screen.getByRole("button", { name: "Assumir controle" })).toBeEnabled()
   const viewer = viewers[0]
   if (!viewer) throw new Error("Missing viewer")
   const window = pulse(2)
@@ -187,7 +227,7 @@ test("the emergency chord is captured in the VM textarea and cannot reach the gu
   try {
     render(<DesktopPanel bot={bot} api={f.api} />)
     await connected()
-    fireEvent.click(screen.getByRole("button", { name: "Controlar" }))
+    fireEvent.click(screen.getByRole("button", { name: "Assumir controle" }))
     await waitFor(() => expect(viewers).toHaveLength(2))
     await connected()
     const controller = viewers[1]
@@ -202,7 +242,7 @@ test("the emergency chord is captured in the VM textarea and cannot reach the gu
     expect(input).toBeDisabled()
     await waitFor(() => expect(viewers).toHaveLength(3))
     await connected()
-    expect(screen.getByRole("button", { name: "Controlar" })).toHaveAttribute("aria-pressed", "false")
+    expect(screen.getByRole("button", { name: "Assumir controle" })).toHaveAttribute("aria-pressed", "false")
     expect(input).toBeDisabled()
   } finally {
     uninstall()
@@ -213,7 +253,7 @@ test("pressing on the screen under control focuses the VM keyboard before noVNC 
   const f = fixture()
   const view = render(<DesktopPanel bot={bot} api={f.api} />)
   await connected()
-  fireEvent.click(screen.getByRole("button", { name: "Controlar" }))
+  fireEvent.click(screen.getByRole("button", { name: "Assumir controle" }))
   await waitFor(() => expect(viewers).toHaveLength(2))
   await connected()
   const input = screen.getByLabelText("Digitar na VM")
@@ -236,7 +276,7 @@ test("an occluded window (document hidden) still shows its first image", async (
     const f = fixture()
     render(<DesktopPanel bot={bot} api={f.api} />)
     await connected()
-    await waitFor(() => expect(screen.getByRole("button", { name: "Controlar" })).toBeEnabled())
+    await waitFor(() => expect(screen.getByRole("button", { name: "Assumir controle" })).toBeEnabled())
     expect(screen.queryByText("Sem imagem ainda. Aguardando a primeira imagem da VM.")).toBeNull()
   } finally {
     Object.defineProperty(document, "hidden", { configurable: true, value: false })
@@ -256,7 +296,7 @@ test("a kill event during connection refuses a late control response", async () 
         })
       : (request ?? (async () => ({})))(route, body),
   )
-  fireEvent.click(screen.getByRole("button", { name: "Controlar" }))
+  fireEvent.click(screen.getByRole("button", { name: "Assumir controle" }))
   await waitFor(() => expect(finish).toBeDefined())
   act(() => window.dispatchEvent(new Event(computerKillSwitchEvent)))
   await act(async () =>
@@ -271,13 +311,13 @@ test("disconnect surfaces a tripwire and reconnect always requests observation",
   const f = fixture()
   render(<DesktopPanel bot={bot} api={f.api} />)
   await connected()
-  fireEvent.click(screen.getByRole("button", { name: "Controlar" }))
+  fireEvent.click(screen.getByRole("button", { name: "Assumir controle" }))
   await waitFor(() => expect(viewers).toHaveLength(2))
   await connected()
   act(() => viewers.at(-1)?.dispatchEvent(new Event("disconnect")))
-  expect(screen.getByRole("button", { name: "Tela travada — reconectar" })).toBeInTheDocument()
+  expect(screen.getByText("Não foi possível receber a imagem")).toBeInTheDocument()
   expect(screen.getByLabelText("Digitar na VM")).toBeDisabled()
-  fireEvent.click(screen.getByRole("button", { name: "Tela travada — reconectar" }))
+  fireEvent.click(screen.getAllByRole("button", { name: "Reconectar tela" })[0])
   await waitFor(() =>
     expect(f.request).toHaveBeenLastCalledWith(
       "POST /bots/:id/desktop",
@@ -358,7 +398,7 @@ test("a late paste failure from the old session cannot close a reconnected viewe
   )
   render(<DesktopPanel bot={bot} api={f.api} />)
   await connected()
-  fireEvent.click(screen.getByRole("button", { name: "Controlar" }))
+  fireEvent.click(screen.getByRole("button", { name: "Assumir controle" }))
   await waitFor(() => expect(viewers).toHaveLength(2))
   await connected()
   fireEvent.input(screen.getByLabelText("Digitar na VM"), { target: { value: "日本" } })
@@ -375,7 +415,7 @@ test("a late paste failure from the old session cannot close a reconnected viewe
     await Promise.resolve()
   })
   expect(viewers.at(-1)?.disconnect).not.toHaveBeenCalled()
-  expect(screen.getByRole("button", { name: "Controlar" })).toBeEnabled()
+  expect(screen.getByRole("button", { name: "Assumir controle" })).toBeEnabled()
 })
 
 test("rendered heartbeat stalling shows reconnection even while the RFB socket stays open", async () => {
@@ -395,7 +435,7 @@ test("rendered heartbeat stalling shows reconnection even while the RFB socket s
       tick?.()
     }
   })
-  expect(screen.getByRole("button", { name: "Tela travada — reconectar" })).toBeInTheDocument()
+  expect(screen.getByText("Não foi possível receber a imagem")).toBeInTheDocument()
 })
 
 test("unmount releases one-use session and disconnects the viewer", async () => {
@@ -429,7 +469,7 @@ test("pausing for a modal disconnects control and resumes in observation", async
   const f = fixture()
   const view = render(<DesktopPanel bot={bot} api={f.api} />)
   await connected()
-  fireEvent.click(screen.getByRole("button", { name: "Controlar" }))
+  fireEvent.click(screen.getByRole("button", { name: "Assumir controle" }))
   await waitFor(() => expect(viewers).toHaveLength(2))
   await connected()
   view.rerender(<DesktopPanel bot={bot} api={f.api} paused />)
@@ -467,9 +507,9 @@ test("a static black desktop stays ready for 30 seconds without closing or creat
   act(() => {
     for (now = 1_000; now <= 30_000; now += 1_000) tick?.()
   })
-  expect(screen.getByRole("button", { name: "Controlar" })).toBeEnabled()
+  expect(screen.getByRole("button", { name: "Assumir controle" })).toBeEnabled()
   expect(screen.queryByText("Conectando…")).not.toBeInTheDocument()
-  expect(screen.queryByRole("button", { name: "Tela travada — reconectar" })).not.toBeInTheDocument()
+  expect(screen.queryByText("Não foi possível receber a imagem")).not.toBeInTheDocument()
   expect(viewer.disconnect).not.toHaveBeenCalled()
   expect(f.request.mock.calls.filter(([route]) => route === "POST /bots/:id/desktop")).toHaveLength(1)
   expect(f.request.mock.calls.filter(([route]) => route === "DELETE /desktop/:id")).toHaveLength(0)
@@ -487,7 +527,7 @@ test.each(["keyboard", "mouse"])("%s input followed by no draw trips a display w
   })
   render(<DesktopPanel bot={bot} api={f.api} />)
   await connected()
-  fireEvent.click(screen.getByRole("button", { name: "Controlar" }))
+  fireEvent.click(screen.getByRole("button", { name: "Assumir controle" }))
   await waitFor(() => expect(viewers).toHaveLength(2))
   const viewer = viewers[1]
   if (!viewer) throw new Error("Missing viewer")
@@ -508,7 +548,7 @@ test.each(["keyboard", "mouse"])("%s input followed by no draw trips a display w
     now = 8_000
     tick?.()
   })
-  expect(screen.getByRole("button", { name: "Tela travada — reconectar" })).toBeInTheDocument()
+  expect(screen.getByText("Não foi possível receber a imagem")).toBeInTheDocument()
   expect(screen.getByLabelText("Digitar na VM")).toBeDisabled()
   expect(viewer.disconnect).toHaveBeenCalled()
 })
@@ -650,7 +690,7 @@ test("a desktop session request that never answers ends with a real pt-BR cause 
     await vi.advanceTimersByTimeAsync(30_500)
   })
   expect(screen.getByText(/A VM não respondeu ao pedido da tela em 30 s/)).toBeInTheDocument()
-  expect(screen.getByRole("button", { name: "Tela travada — reconectar" })).toBeInTheDocument()
+  expect(screen.getByText("Não foi possível receber a imagem")).toBeInTheDocument()
 })
 
 test("a socket that connects but never delivers a frame reports the handshake timeout", async () => {
@@ -665,4 +705,34 @@ test("a socket that connects but never delivers a frame reports the handshake ti
     await vi.advanceTimersByTimeAsync(15_500)
   })
   expect(screen.getByText(/A tela da VM não respondeu em 15 s/)).toBeInTheDocument()
+})
+
+test("screen loss keeps human ownership until explicit return and Stop cancels only this bot's task", async () => {
+  const f = fixture()
+  const original = f.request.getMockImplementation()
+  if (!original) throw new Error("Missing request")
+  f.request.mockImplementation(async (route, body) =>
+    route === "GET /workspace/activity"
+      ? {
+          runs: [
+            { id: "pending", botId: bot.id, status: "running" },
+            { id: "other", botId: "other", status: "running" },
+            { id: "done", botId: bot.id, status: "succeeded" },
+          ],
+        }
+      : original(route, body),
+  )
+  render(<DesktopPanel bot={bot} api={f.api} />)
+  await connected()
+  fireEvent.click(screen.getByRole("button", { name: "Assumir controle" }))
+  await waitFor(() => expect(viewers).toHaveLength(2))
+  await connected()
+  act(() => viewers.at(-1)?.dispatchEvent(new Event("disconnect")))
+  expect(screen.getByText("A conexão com a tela caiu. A tarefa pode continuar em execução.")).toBeInTheDocument()
+  expect(screen.getByRole("button", { name: "Devolver ao bot" })).toBeEnabled()
+  expect(f.request.mock.calls.some(([route]) => route === "POST /bots/:id/desktop/return")).toBe(false)
+  fireEvent.click(screen.getByRole("button", { name: "Parar tarefa" }))
+  await waitFor(() => expect(f.request).toHaveBeenCalledWith("POST /runs/:id/cancel", {}, { id: "pending" }))
+  expect(f.request).not.toHaveBeenCalledWith("POST /runs/:id/cancel", {}, { id: "other" })
+  expect(f.request).not.toHaveBeenCalledWith("POST /runs/:id/cancel", {}, { id: "done" })
 })

@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react"
 import type { UiApi } from "../../api/client"
 import { PanelIcon } from "../../components/PanelIcon"
 import { computerKillSwitchEvent } from "../../computerKillSwitch"
+import { t } from "../../i18n"
 import { useComputerPresence } from "../../machineIntents"
 import { createDesktopKeyboard } from "./keyboard"
 import { DisplayLiveness, isEmptyDisplay } from "./liveness"
@@ -17,8 +18,9 @@ const SESSION_TIMEOUT_MS = 30_000
 const HANDSHAKE_TIMEOUT_MS = 15_000
 const SESSION_TIMEOUT_MESSAGE =
   "A VM não respondeu ao pedido da tela em 30 s. Confira se a máquina está ligada (Doctor) e reconecte."
-const HANDSHAKE_TIMEOUT_MESSAGE =
-  "A tela da VM não respondeu em 15 s. Verifique se a máquina está ligada; se continuar, reinicie a máquina."
+const HANDSHAKE_TIMEOUT_MESSAGE = t(
+  "A tela da VM não respondeu em 15 s. Verifique se a máquina está ligada; tente reconectar a tela.",
+)
 const STAGE_TEXT: Record<Stage, string> = {
   session: "Pedindo a sessão da tela à VM…",
   channel: "Abrindo o canal da tela…",
@@ -27,8 +29,7 @@ const STAGE_TEXT: Record<Stage, string> = {
 
 const FAILURE_POLL_MS = 3_000
 
-const FIRST_IMAGE_TIMEOUT_MESSAGE =
-  "A tela da VM conectou, mas não enviou nenhuma imagem. Reconecte; se continuar, reinicie a máquina."
+const FIRST_IMAGE_TIMEOUT_MESSAGE = t("A tela da VM conectou, mas não enviou nenhuma imagem. Tente reconectar a tela.")
 
 export const DesktopPanel = ({
   api,
@@ -42,6 +43,7 @@ export const DesktopPanel = ({
   onControlChange?: (active: boolean) => void
 }) => {
   useComputerPresence(api, bot)
+  const manualAvailable = bot.machine === "vm"
   const slot = useRef<HTMLDivElement>(null)
   const input = useRef<HTMLTextAreaElement>(null)
   const [phase, setPhase] = useState<Phase>("connecting")
@@ -50,6 +52,11 @@ export const DesktopPanel = ({
   const [stage, setStage] = useState<Stage>("session")
   const [attempt, setAttempt] = useState(0)
   const [requestedControl, setRequestedControl] = useState(false)
+  const ownershipVersion = useRef(0)
+  const [humanControl, setHumanControl] = useState(false)
+  const [stoppingTask, setStoppingTask] = useState(false)
+  const [returning, setReturning] = useState(false)
+  const disableInput = useRef<() => void>(() => {})
   const [controlling, setControlling] = useState(false)
   const lastConnection = useRef<string | null>(null)
   const [browserFailure, setBrowserFailure] = useState<BrowserFailureInfo | null>(null)
@@ -60,8 +67,19 @@ export const DesktopPanel = ({
   }, [controlling, onControlChange])
 
   useEffect(() => {
-    if (paused || !bot.computerUse) setRequestedControl(false)
-  }, [paused, bot.computerUse])
+    if (paused) setRequestedControl(false)
+  }, [paused])
+
+  useEffect(
+    () =>
+      api.subscribe(({ event }) => {
+        if (event.type === "desktop.control" && event.botId === bot.id) {
+          ownershipVersion.current += 1
+          setHumanControl(event.human)
+        }
+      }),
+    [api, bot.id],
+  )
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: attempt explicitly reconnects the viewer
   useEffect(() => {
@@ -112,6 +130,11 @@ export const DesktopPanel = ({
       sessionId = null
       if (id) void api.request("DELETE /desktop/:id", {}, { id }).catch(() => undefined)
     }
+    disableInput.current = () => {
+      keyboard.reset()
+      if (viewer) viewer.viewOnly = true
+      setControlling(false)
+    }
     const stop = () => {
       keyboard.reset()
       connected = false
@@ -134,7 +157,7 @@ export const DesktopPanel = ({
       setError(message ?? null)
       if (recover && lastConnection.current === bot.id && retries < 5) {
         const delay = Math.min(16_000, 1_000 * 2 ** retries++)
-        setError(message ? `${message} Reconectando…` : "A conexão com a tela foi interrompida. Reconectando…")
+        setError(message ?? t("A conexão com a tela caiu. A tarefa pode continuar em execução."))
         retryTimer = setTimeout(() => {
           if (!active) return
           failed = false
@@ -211,11 +234,12 @@ export const DesktopPanel = ({
       const { default: RFB } = await import("@novnc/novnc")
       if (!active) return
       setStage("session")
+      const snapshotVersion = ownershipVersion.current
       const session = await withTimeout({
         work: api.request(
           "POST /bots/:id/desktop",
           {
-            control: retries === 0 && requestedControl && bot.computerUse,
+            control: retries === 0 && requestedControl && manualAvailable,
             ...(lastConnection.current === bot.id ? { resume: true } : {}),
           },
           { id: bot.id },
@@ -225,6 +249,7 @@ export const DesktopPanel = ({
       })
       sessionId = session.sessionId
       if (!active) return releaseSession()
+      if (snapshotVersion === ownershipVersion.current) setHumanControl(session.humanControl ?? session.control)
       setStage("channel")
       const socketUrl = await withTimeout({
         work: Promise.resolve(api.websocketUrl(session.path)),
@@ -305,7 +330,7 @@ export const DesktopPanel = ({
       document.removeEventListener("visibilitychange", visibility)
       window.removeEventListener(computerKillSwitchEvent, revoke)
     }
-  }, [api, bot.id, bot.computerUse, paused, requestedControl, attempt])
+  }, [api, bot.id, manualAvailable, paused, requestedControl, attempt])
 
   useEffect(() => {
     if (phase !== "ready" || !emptyDisplay || api.isMock) return
@@ -329,34 +354,84 @@ export const DesktopPanel = ({
     setRequestedControl(false)
     setAttempt((value) => value + 1)
   }
+  const stopTask = async () => {
+    if (stoppingTask) return
+    disableInput.current()
+    setStoppingTask(true)
+    try {
+      const { runs } = await api.request("GET /workspace/activity", {})
+      for (const run of runs)
+        if (run.botId === bot.id && ["queued", "starting", "running"].includes(run.status))
+          await api.request("POST /runs/:id/cancel", {}, { id: run.id })
+    } catch {
+      setError(t("Não foi possível parar a tarefa. Tente novamente."))
+    } finally {
+      setStoppingTask(false)
+    }
+  }
+  const handBack = async () => {
+    if (returning) return
+    disableInput.current()
+    setReturning(true)
+    try {
+      await api.request("POST /bots/:id/desktop/return", {}, { id: bot.id })
+      setHumanControl(false)
+      setRequestedControl(false)
+      setAttempt((value) => value + 1)
+    } catch {
+      setError(t("Não foi possível devolver o controle. Reconecte a tela e tente novamente."))
+    } finally {
+      setReturning(false)
+    }
+  }
   return (
     <section className="desktop-panel" aria-label={`Tela da VM de ${bot.name}`}>
       <header className="desktop-toolbar">
         <h2 className="desktop-title">Tela da VM</h2>
         <span className="desktop-mode" role="status">
-          {controlling ? "Controle ativo" : "Somente observar"}
+          {controlling ? t("Você está no controle") : t("Acompanhar a tela")}
         </span>
         <div className="toolbar-actions">
-          <button
-            type="button"
-            className="button button-quiet"
-            aria-pressed={controlling}
-            disabled={!bot.computerUse || phase !== "ready"}
-            title={
-              !bot.computerUse ? "Ative a permissão de controle do computador nas configurações do bot" : undefined
-            }
-            onClick={() => {
-              setRequestedControl(!controlling)
-              setAttempt((value) => value + 1)
-            }}
-          >
-            {controlling ? "Parar controle" : "Controlar"}
-          </button>
-          <button type="button" className="button button-quiet" disabled={paused} onClick={reconnect}>
-            Reconectar
+          {manualAvailable && (
+            <>
+              <button
+                type="button"
+                className="button button-quiet"
+                aria-pressed={controlling}
+                disabled={returning || (!controlling && phase !== "ready")}
+                onClick={() => {
+                  if (controlling) void handBack()
+                  else {
+                    setRequestedControl(true)
+                    setAttempt((value) => value + 1)
+                  }
+                }}
+              >
+                {controlling ? t("Devolver ao bot") : t("Assumir controle")}
+              </button>
+              {humanControl && !controlling && (
+                <button
+                  type="button"
+                  className="button button-quiet"
+                  disabled={returning}
+                  onClick={() => void handBack()}
+                >
+                  {t("Devolver ao bot")}
+                </button>
+              )}
+            </>
+          )}
+          <button type="button" className="button button-quiet" disabled={paused || returning} onClick={reconnect}>
+            {t("Reconectar tela")}
           </button>
         </div>
       </header>
+      {manualAvailable && humanControl && (
+        <p className="desktop-observe-note" role="status">
+          {t("Você está no controle. O bot aguarda você terminar.")}
+        </p>
+      )}
+      {error && phase === "ready" && <p role="alert">{error}</p>}
       <div className="desktop-display" data-phase={phase}>
         <div ref={slot} className="desktop-canvas" />
         {phase === "ready" && emptyDisplay && (
@@ -381,9 +456,20 @@ export const DesktopPanel = ({
               <>
                 <PanelIcon name="computer" />
                 <strong>Não foi possível receber a imagem</strong>
-                <p>{error ?? "A conexão com a tela foi interrompida. Reconecte para continuar."}</p>
+                <p>{t("A conexão com a tela caiu. A tarefa pode continuar em execução.")}</p>
+                {error && error !== t("A conexão com a tela caiu. A tarefa pode continuar em execução.") && (
+                  <p>{error}</p>
+                )}
                 <button type="button" className="button button-brand" onClick={reconnect}>
-                  Tela travada — reconectar
+                  {t("Reconectar tela")}
+                </button>
+                <button
+                  type="button"
+                  className="button button-quiet"
+                  disabled={stoppingTask}
+                  onClick={() => void stopTask()}
+                >
+                  {t("Parar tarefa")}
                 </button>
               </>
             ) : (
@@ -398,7 +484,13 @@ export const DesktopPanel = ({
       </div>
       <div className={`desktop-input ${controlling ? "" : "desktop-input-observe"}`}>
         {!controlling && (
-          <p className="desktop-observe-note">Somente observar. Ative Controlar para usar o teclado e o mouse.</p>
+          <p className="desktop-observe-note">
+            {manualAvailable
+              ? t("Ao assumir, só você usa o teclado e o mouse. A automação do bot continua com a permissão atual.")
+              : t(
+                  "O controle manual não está disponível nesta máquina. Você pode acompanhar a tela e conversar com o bot.",
+                )}
+          </p>
         )}
         <label htmlFor={`desktop-input-${bot.id}`}>Digitar na VM</label>
         <textarea
@@ -407,7 +499,7 @@ export const DesktopPanel = ({
           rows={1}
           disabled={!controlling || phase !== "ready"}
           placeholder={
-            controlling ? "Digite aqui ou clique na tela para usar o teclado" : "Ative Controlar para digitar"
+            controlling ? "Digite aqui ou clique na tela para usar o teclado" : t("Assuma o controle para digitar")
           }
           aria-describedby={`desktop-help-${bot.id}`}
           autoCapitalize="off"
