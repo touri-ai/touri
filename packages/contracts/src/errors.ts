@@ -110,6 +110,13 @@ export const errorRegistry = {
     "Este computador não consegue proteger o acesso a pastas. Nenhuma permissão foi adicionada. Você pode continuar conversando ou enviar um arquivo.",
     400,
   ),
+  "TOURI-E2011": entry(
+    "storage",
+    "folder-selection",
+    false,
+    "Neste computador, adicione as pastas uma por uma. O acesso a todas as pastas não está disponível. Remova essa permissão nas configurações do bot para continuar com tarefas.",
+    400,
+  ),
   "TOURI-E3000": entry(
     "provider",
     "cli",
@@ -298,6 +305,7 @@ const aliases: Record<string, RegisteredErrorCode> = {
   PROJECT_CONNECT_FAILED: "TOURI-E6008",
   MACHINE_PROJECT_CHANGE: "TOURI-E6009",
   FOLDER_ACCESS_UNAVAILABLE: "TOURI-E2010",
+  FOLDER_SELECTION_REQUIRED: "TOURI-E2011",
   PROCESS_EXISTS: "TOURI-E1005",
   PROCESS_CYCLE: "TOURI-E1005",
   IMPORT_FAILED: "TOURI-E7000",
