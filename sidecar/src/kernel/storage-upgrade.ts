@@ -29,18 +29,26 @@ import { openSync, fsyncSync, closeSync } from "node:fs";
 self.onmessage = ({ data: { filename, destination } }) => {
   let source;
   let backup;
+  let stage = "open-source";
   try {
     source = new Database(filename, { readonly: true });
     source.exec("PRAGMA busy_timeout = 1000");
+    stage = "copy";
     source.query("VACUUM INTO ?").run(destination);
     source.close(); source = null;
+    stage = "verify";
     backup = new Database(destination, { readonly: true });
     if (backup.query("PRAGMA quick_check").get().quick_check !== "ok") throw new Error("backup");
     backup.close(); backup = null;
-    const fd = openSync(destination, "r");
+    stage = "sync";
+    const fd = openSync(destination, "r+");
     try { fsyncSync(fd); } finally { closeSync(fd); }
     self.postMessage({ ok: true });
-  } catch { self.postMessage({ ok: false }); }
+  } catch (error) {
+    const code = typeof error?.code === "string" && /^[A-Z0-9_]{1,64}$/.test(error.code)
+      ? error.code : "BACKUP_FAILED";
+    self.postMessage({ ok: false, stage, code });
+  }
   finally { source?.close(); backup?.close(); }
 };`
 
@@ -97,7 +105,13 @@ export const createStorageUpgrade = ({ database, appData }: { database: Database
       await new Promise<void>((resolve, reject) => {
         rejectBackup = reject
         worker = new Worker(url, { smol: true })
-        worker.onmessage = ({ data }) => (data.ok ? resolve() : reject(new Error("Storage backup failed")))
+        worker.onmessage = ({ data }) => {
+          if (data?.ok === true) return resolve()
+          const stage = ["open-source", "copy", "verify", "sync"].includes(data?.stage) ? data.stage : "worker"
+          const code =
+            typeof data?.code === "string" && /^[A-Z0-9_]{1,64}$/.test(data.code) ? data.code : "BACKUP_FAILED"
+          reject(new Error(`Storage backup failed (${stage}: ${code})`))
+        }
         worker.onerror = () => reject(new Error("Storage backup failed"))
         worker.postMessage({ filename: database.filename, destination: temporary })
       })

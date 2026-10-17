@@ -309,11 +309,19 @@ test("live inserts, edits and deltas reserve newer revisions while pending reade
       database.query("SELECT COUNT(*) AS n FROM ui_event_log WHERE json_extract(event_json, '$.legacy') = 1").get(),
     ).toEqual({ n: 0 })
     const transcript = await (await fetch(`${url}/transcript?since=0`, { headers })).json()
-    expect(transcript.resync).toBe(false)
-    expect(transcript.entries[0]).toMatchObject({
-      seq: 1,
-      event: { type: "message.created", message: { id: "m0", text: "Editado durante a atualização" } },
+    // The live reply's initial pointer was superseded by its text checkpoint.
+    // An older cursor refreshes complete snapshots; a current cursor can resume.
+    expect(transcript).toMatchObject({ resync: true, entries: [], lastSeq: 153 })
+    const resumed = await (await fetch(`${url}/transcript?since=152`, { headers })).json()
+    expect(resumed).toMatchObject({
+      resync: false,
+      entries: [{ seq: 153, event: { type: "message.delta", messageId: "live", delta: "Novo conteúdo" } }],
     })
+    const current = await (await fetch(`${url}/messages?all=true`, { headers })).json()
+    expect(current.messages.find((message: { id: string }) => message.id === "m0").text).toBe(
+      "Editado durante a atualização",
+    )
+    expect(current.messages.find((message: { id: string }) => message.id === "live").text).toBe("Novo conteúdo")
     expect(database.query("SELECT COUNT(*) AS n FROM transcript_entries WHERE thread_id = 't3'").get()).toEqual({
       n: 153,
     })

@@ -37,9 +37,13 @@ const summarizeParts = (parts: MessagePart[]): MessagePart[] => {
     }
     if (part.type !== "tool_call" && part.type !== "command" && part.type !== "file_change") return [part]
     const { outputAttachmentId: _id, outputBytes: _bytes, ...summary } = part
-    if (part.type === "tool_call" && (part.outputAttachmentId || part.outputJson !== null || part.inputJson !== "{}")) {
+    if (
+      summary.type === "tool_call" &&
+      (part.outputAttachmentId || summary.outputJson !== null || summary.inputJson !== "{}" || summary.outputTail)
+    ) {
       summarized = true
-      return [{ ...summary, type: "tool_call", inputJson: "{}", outputJson: null } as MessagePart]
+      const { outputTail: _tail, ...toolSummary } = summary
+      return [{ ...toolSummary, inputJson: "{}", outputJson: null }]
     }
     if (part.type === "command" && (part.outputAttachmentId || part.outputTail)) {
       summarized = true

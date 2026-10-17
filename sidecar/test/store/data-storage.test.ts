@@ -13,6 +13,7 @@ import {
 } from "../../src/kernel/data-maintenance"
 import { openDatabase } from "../../src/kernel/db"
 import { createEventBus } from "../../src/kernel/event-bus"
+import transcriptSql from "../../src/kernel/migrations/0007.sql" with { type: "text" }
 import { boundedProcessLog, OUTPUT_BLOB_THRESHOLD } from "../../src/kernel/output-blobs"
 import { compactTranscript } from "../../src/kernel/transcript-storage"
 import { createToolResolutions } from "../../src/runtime/tool-resolutions"
@@ -83,11 +84,22 @@ for (const kind of ["text", "tool", "screenshot"] as const) {
   test(`bytes per turn: ${kind} attributes snapshot/event/blob growth and bounds DB duplication`, async () => {
     const f = await fixture()
     const legacy = openDatabase({ filename: join(f.root, "legacy.db") })
+    // Reproduce the shipped full-snapshot writer. Opening a second current DB
+    // would compare against the new locator format and hide the saved copies.
+    legacy.exec("DROP TRIGGER messages_transcript_insert; DROP TRIGGER messages_transcript_update;")
+    legacy.exec(
+      transcriptSql.slice(
+        transcriptSql.indexOf("CREATE TRIGGER messages_transcript_insert"),
+        transcriptSql.indexOf("CREATE TRIGGER run_transcript_generation"),
+      ),
+    )
     seed(legacy)
     const bus = createEventBus(legacy)
     try {
       f.database.exec("PRAGMA wal_checkpoint(TRUNCATE)")
+      legacy.exec("PRAGMA wal_checkpoint(TRUNCATE)")
       const initial = statSync(join(f.root, "touri.db")).size
+      const legacyInitial = statSync(join(f.root, "legacy.db")).size
       const rawInsert = legacy.query(
         "INSERT INTO messages(id,thread_id,role,kind,text,parts_json,created_at,updated_at) VALUES (?,'t',?,'text','Texto preservado',?,?,?)",
       )
@@ -125,7 +137,7 @@ for (const kind of ["text", "tool", "screenshot"] as const) {
       } else {
         expect(logical / oldLogical).toBeLessThan(0.03)
         expect(stats.attachmentBytes).toBeGreaterThan(1_000_000)
-        expect(stats.databaseBytes / old.databaseBytes).toBeLessThan(0.2)
+        expect((stats.databaseBytes - initial) / (old.databaseBytes - legacyInitial)).toBeLessThan(0.2)
       }
       console.info(
         `Bytes/turn (${kind}): DB ${(stats.databaseBytes - initial) / 10}; text ${stats.messageTextBytes / 10}; parts ${stats.messagePartsBytes / 10}; transcript ${stats.transcriptBytes / 10}; UI events ${stats.eventBytes / 10}; blobs ${stats.attachmentBytes / 10}; legacy payload ${oldLogical / 10}`,
@@ -299,6 +311,27 @@ test("completed output cannot crowd live command progress into a new file on eve
   }
 })
 
+test("final tool previews remain visible and oversized result plus preview stays fully recoverable", async () => {
+  const f = await fixture()
+  try {
+    const outputTail = "step 1\nstep 2\n"
+    insert(f, "final-preview", [{ ...tool("done"), outputTail }])
+    expect(f.store.activePath({ threadId: "t" })[0]?.parts[0]).toMatchObject({ outputJson: "done", outputTail })
+    const completeTail = "Saída completa. ".repeat(8000)
+    insert(f, "large-preview", [{ ...tool("done"), outputTail: completeTail }])
+    const part = f.store.activePath({ threadId: "t" })[0]?.parts[0] as ToolCallPart
+    expect(part.outputJson).toBeNull()
+    expect(part.outputTail).toBeUndefined()
+    expect(part.outputAttachmentId).toBeString()
+    const blob = f.database.query("SELECT path FROM attachments WHERE id = ?").get(part.outputAttachmentId ?? "") as {
+      path: string
+    }
+    expect(JSON.parse(readFileSync(blob.path, "utf8"))).toEqual({ outputJson: "done", outputTail: completeTail })
+  } finally {
+    f.close()
+  }
+})
+
 test("process replay keeps a bounded UTF-8 tail of the file-backed log", () => {
   const tail = "Fim 🚀"
   const event = { type: "process.log" as const, processId: "p", lines: ["é".repeat(100_000), tail] }
@@ -312,7 +345,12 @@ test("process replay keeps a bounded UTF-8 tail of the file-backed log", () => {
 test("30-day retention preserves conversation text, tool summaries, status and FTS; retries add no events or summaries", async () => {
   const f = await fixture()
   try {
-    insert(f, "old", [tool("x".repeat(80_000)), { type: "reasoning", text: "Raciocínio antigo" }])
+    insert(f, "old", [
+      tool("x".repeat(80_000)),
+      { ...tool("small result"), outputTail: "Old command details" },
+      { ...tool(""), inputJson: "{}", outputJson: null, outputTail: "Preview-only details" },
+      { type: "reasoning", text: "Raciocínio antigo" },
+    ])
     insert(f, "recent", [tool("y".repeat(80_000))])
     f.database.query("UPDATE messages SET updated_at = ? WHERE id = 'old'").run(Date.now() - 31 * 86400_000)
     const before = f.database.query("SELECT COUNT(*) AS n FROM transcript_entries").get()
@@ -329,6 +367,11 @@ test("30-day retention preserves conversation text, tool summaries, status and F
       outputJson: null,
     })
     expect((old[0] as ToolCallPart).outputAttachmentId).toBeUndefined()
+    expect(old.filter((part) => part.type === "tool_call").map((part) => part.outputTail)).toEqual([
+      undefined,
+      undefined,
+      undefined,
+    ])
     expect(old.some((part) => part.type === "reasoning")).toBe(false)
     expect(old.filter((part) => part.type === "notice" && part.code === "compaction")).toHaveLength(1)
     expect(f.database.query("SELECT text,status FROM messages WHERE id = 'old'").get()).toEqual({

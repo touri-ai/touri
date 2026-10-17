@@ -43,12 +43,16 @@ const withoutProgressTail = ({ outputTail: _tail, ...part }: ToolCallPart): Tool
 
 const partOutput = (part: MessagePart): string | null | undefined =>
   part.type === "tool_call"
-    ? (part.outputJson ?? part.outputTail)
+    ? part.outputJson || part.outputTail
     : part.type === "command"
       ? part.outputTail
       : part.type === "file_change"
         ? part.diff
         : null
+
+const inlineOutputBytes = (part: MessagePart, output: string): number =>
+  Buffer.byteLength(output) +
+  (part.type === "tool_call" && part.outputJson && part.outputTail ? Buffer.byteLength(part.outputTail) : 0)
 
 const runningOutput = (part: MessagePart): boolean => {
   if ("resolution" in part && part.resolution && part.resolution !== "running") return false
@@ -71,7 +75,7 @@ export const externalizeMessageParts = ({
     parts.reduce((total, part) => {
       const output = runningOutput(part) ? partOutput(part) : null
       if (!output) return total
-      const bytes = Buffer.byteLength(output)
+      const bytes = inlineOutputBytes(part, output)
       return bytes <= OUTPUT_BLOB_THRESHOLD && !containsImage(output) ? total + bytes : total
     }, 0),
   )
@@ -80,8 +84,8 @@ export const externalizeMessageParts = ({
   return parts.map((part) => {
     if (part.type !== "tool_call" && part.type !== "command" && part.type !== "file_change") return part
     const output = partOutput(part)
-    if (!output) return part.type === "tool_call" && part.outputJson !== null ? withoutProgressTail(part) : part
-    const bytes = Buffer.byteLength(output)
+    if (!output) return part
+    const bytes = inlineOutputBytes(part, output)
     const live = runningOutput(part)
     const withinBudget = live
       ? liveInlineBytes + bytes <= reservedLiveBytes
@@ -90,20 +94,27 @@ export const externalizeMessageParts = ({
       if (live) liveInlineBytes += bytes
       else inlineBytes += bytes
       const { outputAttachmentId: _id, outputBytes: _bytes, ...inline } = part
-      return inline.type === "tool_call" && inline.outputJson !== null ? withoutProgressTail(inline) : inline
+      return inline
     }
-    const id = createHash("sha256").update(output).digest("hex")
+    // A final result can include a separate command preview. Preserve both when
+    // offloading instead of silently discarding the preview or leaving it unbounded.
+    const fullOutput =
+      part.type === "tool_call" && part.outputJson && part.outputTail
+        ? JSON.stringify({ outputJson: part.outputJson, outputTail: part.outputTail })
+        : output
+    const fullBytes = Buffer.byteLength(fullOutput)
+    const id = createHash("sha256").update(fullOutput).digest("hex")
     const existing = database.query("SELECT path FROM attachments WHERE id = ?").get(id) as { path: string } | null
     const path = existing?.path ?? join(appData, "attachments", id.slice(0, 2), `${id}.tool-output.txt`)
     // Commit the durable file before any row/event can refer to it. An interrupted
     // transaction may leave an orphan, which the maintenance collector can remove.
-    if (!existsSync(path)) atomicWriteFile({ root: appData, path, content: output })
+    if (!existsSync(path)) atomicWriteFile({ root: appData, path, content: fullOutput })
     database
       .query(
         "INSERT OR IGNORE INTO attachments(id,path,mime,bytes,origin_path,created_at) VALUES (?,?,'text/plain',?,?,?)",
       )
-      .run(id, path, bytes, OUTPUT_BLOB_ORIGIN, Date.now())
-    const reference = { outputAttachmentId: id, outputBytes: bytes }
+      .run(id, path, fullBytes, OUTPUT_BLOB_ORIGIN, Date.now())
+    const reference = { outputAttachmentId: id, outputBytes: fullBytes }
     if (part.type === "tool_call") return { ...withoutProgressTail(part), ...reference, outputJson: null }
     if (part.type === "command") return { ...part, ...reference, outputTail: "" }
     return { ...part, ...reference, diff: null }
