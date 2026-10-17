@@ -18,6 +18,12 @@ const setup = async ({
   invoke?: TauriInvoke
 } = {}) => {
   const api = createMockApi()
+  const request = api.request
+  // REST responses are snapshots, not aliases of the mock server's live state.
+  api.request = (async (route, ...args) => {
+    const response = await request(route, ...args)
+    return route === "GET /projects" ? structuredClone(response) : response
+  }) as typeof api.request
   const bot = api.getState().bots[0]
   if (!bot) throw new Error("Missing bot fixture")
   bot.machine = machine
@@ -57,6 +63,38 @@ const activeRun = (bot: Bot): Run => ({
 })
 
 describe("advanced project picker", () => {
+  it.each(["bot-only", "project-first", "bot-first"])(
+    "F011: reflects an approved project link across navigation (%s)",
+    async (order) => {
+      const { api, bot } = await setup({ linked: false })
+      const { project } = await api.request("POST /projects", { path: "/tmp/Hodler", name: "Hodler" })
+      expect(chip()).toHaveTextContent("Sem projeto")
+      const reloads = api.calls.filter((call) => call.route === "GET /projects").length
+      if (order === "project-first") act(() => api.emit({ type: "project.created", project }))
+      await act(async () => api.emit({ type: "bot.updated", bot: { ...bot, projectId: project.id } }))
+      // Observe the fallback independently, before a later project event can mask it.
+      if (order !== "project-first") {
+        await waitFor(() => expect(chip()).toHaveTextContent("Hodler"))
+        expect(api.calls.filter((call) => call.route === "GET /projects").length).toBeGreaterThan(reloads)
+      } else {
+        expect(api.calls.filter((call) => call.route === "GET /projects")).toHaveLength(reloads)
+      }
+      if (order === "bot-first") act(() => api.emit({ type: "project.created", project }))
+      await waitFor(() => expect(chip()).toHaveTextContent("Hodler"))
+      fireEvent.click(screen.getByRole("button", { name: /^onb Operations/ }))
+      await screen.findByRole("textbox", { name: "Mensagem para onb" })
+      fireEvent.click(screen.getByRole("button", { name: /^mark Campaign/ }))
+      await screen.findByRole("textbox", { name: "Mensagem para mark" })
+      expect(chip()).toHaveTextContent("Hodler")
+      fireEvent.click(chip())
+      expect(within(picker()).getByRole("menuitemradio", { name: "Hodler" })).toHaveAttribute("aria-checked", "true")
+      expect(within(picker()).getByRole("menuitemradio", { name: /Nenhum projeto/ })).toHaveAttribute(
+        "aria-checked",
+        "false",
+      )
+    },
+  )
+
   it("shows the current project and lists only active projects with the current one checked", async () => {
     const { current, other } = await setup()
     expect(chip()).toHaveTextContent(current.name)

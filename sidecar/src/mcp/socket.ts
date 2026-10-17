@@ -1,7 +1,9 @@
-import { chmodSync, mkdirSync, unlinkSync } from "node:fs"
+import { chmodSync, unlinkSync } from "node:fs"
 import { createServer, type Server, type Socket } from "node:net"
 import { dirname } from "node:path"
 import type { Kernel, ToolRegistration } from "@touri/contracts"
+import { ensurePrivateDirectory } from "../kernel/files"
+import { resolveMcpSocketPath } from "../kernel/paths"
 import { MCP_LIMITS, serveMcpConnection } from "./connection"
 
 const unlinkIfPresent = (path: string): void => {
@@ -19,16 +21,14 @@ export const createMcpSocket = ({
   kernel: Kernel
   registrations: Map<string, ToolRegistration>
 }) => {
-  const socketPath = `${kernel.paths.runDir}/mcp.sock`
+  const socketPath = resolveMcpSocketPath(kernel.paths)
   const tokenDir = `${kernel.paths.runDir}/mcp-tokens`
   const connections = new Set<Socket>()
   let server: Server | null = null
 
   const listen = async (): Promise<void> => {
-    mkdirSync(dirname(socketPath), { recursive: true, mode: 0o700 })
-    mkdirSync(tokenDir, { recursive: true, mode: 0o700 })
-    chmodSync(dirname(socketPath), 0o700)
-    chmodSync(tokenDir, 0o700)
+    ensurePrivateDirectory({ root: dirname(socketPath) })
+    ensurePrivateDirectory({ root: kernel.paths.appData, path: tokenDir })
     unlinkIfPresent(socketPath)
     const candidate = createServer((socket) => {
       if (connections.size >= MCP_LIMITS.connections) {

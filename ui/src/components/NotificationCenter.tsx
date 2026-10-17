@@ -413,7 +413,7 @@ export const NotificationBell = ({
               ))}
           </section>
         </MotionPresence>,
-        document.body,
+        container.current?.closest("dialog") ?? document.body,
       )}
     </div>
   )
