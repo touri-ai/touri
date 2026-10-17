@@ -2,6 +2,7 @@ import type { ApprovalPart } from "@touri/contracts"
 import { useId, useRef, useState } from "react"
 import type { UiApi } from "../api/client"
 import { userFacingError } from "../errors"
+import { t } from "../i18n"
 import { ToolCallCard } from "./ToolCallCard"
 import { type ToolPart, toolPresentation } from "./toolPresentation"
 
@@ -33,6 +34,9 @@ export const ApprovalCard = ({
   const status = part.decision === "pending" ? (decision ?? part.decision) : part.decision
   const permanent = status === "approved" && (part.standing || standingGranted)
   const presentation = toolPresentation(tool, part)
+  const capabilityRequest =
+    part.scope?.server === "touri" && part.scope.tool.split("__").at(-1) === "capability_request"
+  const allowStanding = part.allowStanding && !capabilityRequest
   const toolName = presentation.name
   const scopeHelp = `Toda a ferramenta ${toolName} poderá agir neste bot sem pedir novamente. Permite novas chamadas de ${toolName} neste bot sem pedir aprovação, inclusive com outros parâmetros. Você pode revogar essa permissão.`
   const revoke = async () => {
@@ -130,7 +134,7 @@ export const ApprovalCard = ({
               >
                 {busy ? "Enviando…" : (presentation.approvalLabel ?? "Aprovar")}
               </button>
-              {part.allowStanding && (
+              {allowStanding && (
                 <span className="tool-standing-action">
                   <button
                     className="tool-action tool-action-secondary"
@@ -152,10 +156,10 @@ export const ApprovalCard = ({
                 disabled={busy || !api}
                 onClick={() => void answer(false)}
               >
-                Negar
+                {capabilityRequest ? t("Agora não") : "Negar"}
               </button>
             </div>
-            {part.allowStanding && <p className="tool-standing-help">{scopeHelp}</p>}
+            {allowStanding && <p className="tool-standing-help">{scopeHelp}</p>}
             <span className="tool-shortcuts">
               Com o cartão em foco: <kbd>Esc</kbd> nega
             </span>

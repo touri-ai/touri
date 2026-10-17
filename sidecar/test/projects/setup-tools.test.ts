@@ -135,7 +135,12 @@ const fixture = async (patch: Partial<Bot> = {}) => {
 
 test("discovery lists only projects and repositories in this bot's granted folders without approval", async () => {
   const f = await fixture()
-  expect(f.router.list({ caller: f.caller }).map((tool) => tool.name)).toEqual([
+  expect(
+    f.router
+      .list({ caller: f.caller })
+      .map((tool) => tool.name)
+      .filter((name) => name !== "capability_request"),
+  ).toEqual([
     "bot_rename",
     "project_discover",
     "project_link",
