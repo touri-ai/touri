@@ -28,6 +28,7 @@ type ComposerProps = {
   draft: string
   onDraft: (draft: string) => void
   inputRef: RefObject<HTMLTextAreaElement | null>
+  attachmentButtonRef?: RefObject<HTMLButtonElement | null> | undefined
   activeRun: Run | null
   queuedCount: number
   onSend: (text: string, parentId?: Id | null, attachmentIds?: Array<Id>) => Promise<void>
@@ -77,6 +78,7 @@ export const Composer = ({
   draft,
   onDraft,
   inputRef,
+  attachmentButtonRef,
   activeRun,
   queuedCount,
   onSend,
@@ -427,6 +429,7 @@ export const Composer = ({
           />
           <button
             type="button"
+            ref={attachmentButtonRef}
             className="composer-icon"
             aria-label={t("Anexar arquivo")}
             title={t("Texto, Markdown, JSON, CSV, PDF e imagens · até 15 MB por arquivo.")}

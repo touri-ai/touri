@@ -15,6 +15,7 @@ import { withApprovalAnswers } from "./activityStatus"
 import { BotAvatar } from "./BotAvatar"
 import { ChatDisclosure } from "./ChatDisclosure"
 import { Composer } from "./Composer"
+import { ConnectDataCard, connectDataMarker } from "./ConnectDataCard"
 import { ConversationStart } from "./ConversationStart"
 import { ErrorDetails, ErrorText } from "./ErrorDetails"
 import { EvidenceContext } from "./EvidenceGallery"
@@ -41,6 +42,7 @@ type ChatPanelProps = {
   routines?: Array<Routine>
   routineRuns?: Array<RoutineRun>
   onOpenPermissions?: () => void
+  onOpenToolCatalog?: () => void
   onOpenProviderLogin?: () => void
   onOpenComputer?: () => void
   thread: Thread | null
@@ -485,7 +487,8 @@ const MessageBubble = ({
       ? mascotSignalFor({ botId: run?.botId ?? "", runs: run ? [run] : [], messages: [{ ...message, parts }] }).state
       : runtimeState
   const reasoning = message.parts.filter((part) => part.type === "reasoning")
-  const text = messageMarkdown(message)
+  const markdown = messageMarkdown(message)
+  const text = message.role === "assistant" ? markdown.replace(connectDataMarker, "") : markdown
   const longContent =
     message.role === "assistant" &&
     message.status !== "streaming" &&
@@ -684,6 +687,7 @@ export const ChatPanel = ({
   onComputerGrant,
   onOpenTools,
   onOpenPermissions,
+  onOpenToolCatalog,
   onOpenProviderLogin,
   onOpenComputer,
   routines = [],
@@ -693,6 +697,7 @@ export const ChatPanel = ({
   const [draft, setDraft] = useState("")
   const mascotSnapshot = useMascotSnapshot({ id: bot?.id ?? "", color: bot?.color ?? null }, thread?.id)
   const composerRef = useRef<HTMLTextAreaElement>(null)
+  const attachmentButtonRef = useRef<HTMLButtonElement>(null)
   const activeRun = useMemo(
     () =>
       runs.find(
@@ -768,6 +773,16 @@ export const ChatPanel = ({
       visibleMessages.push(message)
   }
   const latestReply = [...visibleMessages].reverse().find((message) => message.role === "assistant")
+  const connectDataReply =
+    !group &&
+    bot &&
+    !activeRun &&
+    latestReply?.status === "complete" &&
+    [...visibleMessages].reverse().find((message) => message.role === "user" || message.role === "assistant") ===
+      latestReply &&
+    connectDataMarker.test(messageMarkdown(latestReply))
+      ? latestReply
+      : null
   const activityState =
     mascotSnapshot.state === "idle"
       ? mascotSignalFor({
@@ -894,6 +909,21 @@ export const ChatPanel = ({
             ) : null
           }
           timelineCards={[
+            ...(connectDataReply && onOpenToolCatalog
+              ? [
+                  {
+                    id: `connect-data-${connectDataReply.id}`,
+                    createdAt: connectDataReply.createdAt + 1,
+                    content: (
+                      <ConnectDataCard
+                        onAttach={() => attachmentButtonRef.current?.click()}
+                        onFolder={bot?.machine === "cloud" ? undefined : onOpenPermissions}
+                        onCatalog={onOpenToolCatalog}
+                      />
+                    ),
+                  },
+                ]
+              : []),
             ...(awaitingReply
               ? [
                   {
@@ -955,6 +985,7 @@ export const ChatPanel = ({
         draft={draft}
         onDraft={setDraft}
         inputRef={composerRef}
+        attachmentButtonRef={attachmentButtonRef}
         activeRun={activeRun}
         queuedCount={visibleMessages.filter((message) => message.delivery?.status === "queued").length}
         onSend={onSend}

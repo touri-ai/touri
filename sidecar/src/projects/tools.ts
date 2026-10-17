@@ -87,7 +87,14 @@ export const createProjectTools = ({
     return true
   }
   const project_info: ToolHandler = async ({ ctx }) => {
-    if (ctx.projectId === null) return resultError("PROJECT_REQUIRED", "This bot has no project configured")
+    if (ctx.projectId === null)
+      return ok(
+        {
+          project: null,
+          hint: "Nenhum projeto está vinculado a este bot. Um projeto descreve arquivos, processos e Preview; não conecta os dados de uma empresa. Se faltarem dados ou uma ferramenta para atender ao pedido, ofereça anexar um arquivo/CSV, dar acesso a uma pasta ou adicionar uma ferramenta do catálogo. Pergunte qual opção o usuário prefere e termine com uma linha separada: <!-- touri:connect-data -->",
+        },
+        "Nenhum projeto vinculado.",
+      )
     const info = await projectInfo({ projectId: ctx.projectId, botId: ctx.botId })
     const vmBot = kernel.services.use("store.api")?.getBot({ botId: ctx.botId })?.machine === "vm"
     return info === null
