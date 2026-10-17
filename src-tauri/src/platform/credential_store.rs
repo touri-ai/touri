@@ -1,3 +1,4 @@
+use crate::keychain::KeychainError;
 use keyring::{Entry, Error};
 use std::sync::{Arc, Mutex};
 pub const PRODUCTION_SERVICE: &str = "ai.touri.desktop.secret";
@@ -6,11 +7,11 @@ pub struct KeychainStore {
     service: String,
     lock: Arc<Mutex<()>>,
 }
-fn storage_error(_: Error) -> String {
+fn storage_error(_: Error) -> KeychainError {
     // Error variants may carry secret bytes. Never include backend errors in logs/RPC.
-    "Secret store unavailable; unlock the desktop secret service or credential manager".into()
+    KeychainError::VaultUnavailable
 }
-fn optional(value: Result<String, Error>) -> Result<Option<String>, String> {
+fn optional(value: Result<String, Error>) -> Result<Option<String>, KeychainError> {
     match value {
         Ok(value) => Ok(Some(value)),
         Err(Error::NoEntry) => Ok(None),
@@ -24,21 +25,34 @@ impl KeychainStore {
             lock: Arc::new(Mutex::new(())),
         }
     }
-    fn entry(&self, account: &str) -> Result<Entry, String> {
+    fn entry(&self, account: &str) -> Result<Entry, KeychainError> {
         Entry::new(&self.service, account).map_err(storage_error)
     }
-    pub fn get(&self, account: &str) -> Result<Option<String>, String> {
-        let _guard = self.lock.lock().map_err(|_| "secret store lock poisoned")?;
+    pub fn authorize(&self, _: &str) -> Result<(), KeychainError> {
+        // Native authorization recovery is specific to the macOS signing boundary.
+        Err(KeychainError::VaultUnavailable)
+    }
+    pub fn get(&self, account: &str) -> Result<Option<String>, KeychainError> {
+        let _guard = self
+            .lock
+            .lock()
+            .map_err(|_| KeychainError::VaultUnavailable)?;
         optional(self.entry(account)?.get_password())
     }
-    pub fn set(&self, account: &str, value: &str) -> Result<(), String> {
-        let _guard = self.lock.lock().map_err(|_| "secret store lock poisoned")?;
+    pub fn set(&self, account: &str, value: &str) -> Result<(), KeychainError> {
+        let _guard = self
+            .lock
+            .lock()
+            .map_err(|_| KeychainError::VaultUnavailable)?;
         self.entry(account)?
             .set_password(value)
             .map_err(storage_error)
     }
-    pub fn delete(&self, account: &str) -> Result<(), String> {
-        let _guard = self.lock.lock().map_err(|_| "secret store lock poisoned")?;
+    pub fn delete(&self, account: &str) -> Result<(), KeychainError> {
+        let _guard = self
+            .lock
+            .lock()
+            .map_err(|_| KeychainError::VaultUnavailable)?;
         match self.entry(account)?.delete_credential() {
             Ok(()) | Err(Error::NoEntry) => Ok(()),
             Err(error) => Err(storage_error(error)),
@@ -55,8 +69,16 @@ mod tests {
             optional(Ok("fixture".into())).unwrap(),
             Some("fixture".into())
         );
-        assert!(
-            !storage_error(Error::BadEncoding(b"secret-value".to_vec())).contains("secret-value")
+        assert!(!storage_error(Error::BadEncoding(b"secret-value".to_vec()))
+            .to_string()
+            .contains("secret-value"));
+    }
+    #[test]
+    fn macos_authorization_is_unavailable_without_touching_the_native_store() {
+        let store = KeychainStore::new("ai.touri.desktop.authorization-test");
+        assert_eq!(
+            store.authorize("unused"),
+            Err(KeychainError::VaultUnavailable)
         );
     }
     #[test]
@@ -67,6 +89,14 @@ mod tests {
         store.delete(&account).unwrap();
         assert_eq!(store.get(&account).unwrap(), None);
         store.set(&account, "port-test-fixture").unwrap();
+        assert_eq!(
+            store.get(&account).unwrap().as_deref(),
+            Some("port-test-fixture")
+        );
+        assert_eq!(
+            store.authorize(&account),
+            Err(KeychainError::VaultUnavailable)
+        );
         assert_eq!(
             store.get(&account).unwrap().as_deref(),
             Some("port-test-fixture")

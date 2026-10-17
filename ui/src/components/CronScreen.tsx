@@ -4,13 +4,16 @@ import { useMemo, useRef, useState } from "react"
 import { type ApprovalTarget, pendingApprovalTargets } from "../approvalNavigation"
 import { userFacingError } from "../errors"
 import { t } from "../i18n"
+import { draftFromRoutine, newRoutineDraft } from "../routineDraft"
 import type { WorkspaceActions } from "../useWorkspace"
 import { BotAvatar } from "./BotAvatar"
+import { RoutineEditor, routineHostNotice } from "./RoutineEditor"
 import { RoutineSchedule } from "./RoutineSchedule"
 import { ScreenHeader, ScreenState } from "./ScreenPrimitives"
 import "./screens.css"
 
 type CronScreenProps = {
+  host?: "mac" | "server"
   initialBotFilter?: Id | undefined
   loading?: boolean
   loadError?: string | null
@@ -42,6 +45,7 @@ export const calendarBotColors = (bots: Array<Bot>): Map<Id, string> => {
 
 const CronScreen = ({
   bots,
+  host = "server",
   initialBotFilter,
   loading = false,
   loadError = null,
@@ -102,58 +106,12 @@ const CronScreen = ({
     runsByDate.set(day, existing)
   }
 
-  const saveRoutine = async (input: RoutineEditorState): Promise<void> => {
-    if (!input) return
-    try {
-      if (input.routine && !input.isNew) {
-        await actions.updateRoutine(input.routine.id, {
-          name: input.routine.name,
-          prompt: input.routine.prompt,
-          cron: input.routine.cron,
-          timezone: input.routine.timezone,
-          continuity: input.routine.continuity,
-          timeoutMinutes: input.routine.timeoutMinutes,
-          catchUpMinutes: input.routine.catchUpMinutes,
-        })
-        onNotice(t("Cron atualizado"))
-      } else {
-        const draft = input.routine ?? {
-          name: t("Nova rotina"),
-          prompt: "",
-          cron: "0 9 * * 1-5",
-          timezone: "America/Sao_Paulo",
-          continuity: "main-thread" as const,
-          timeoutMinutes: 30,
-          catchUpMinutes: 30,
-        }
-        await actions.createRoutine({
-          botId: input.botId,
-          name: draft.name,
-          prompt: draft.prompt,
-          cron: draft.cron,
-          timezone: draft.timezone,
-          enabled: false,
-          continuity: draft.continuity,
-          resultsThreadId: null,
-          timeoutMinutes: draft.timeoutMinutes,
-          overlap: "skip",
-          catchUpMinutes: draft.catchUpMinutes,
-        })
-        onNotice(t("Cron criado e pausado para revisão"))
-      }
-    } catch (error) {
-      onNotice(error instanceof Error ? error.message : t("Não foi possível salvar a rotina"))
-    } finally {
-      setEditor(null)
-    }
-  }
-
   return (
     <section className="workspace-screen r8-screen cron-screen" aria-labelledby="cron-title">
       <ScreenHeader
         id="cron-title"
         title={t("Routines")}
-        description={t("Routine execution count", { count: routines.length })}
+        description={`${t("Bot routine count", { count: routines.length })} · ${routineHostNotice(host)}`}
         actions={
           <>
             <button type="button" className="outline-button" onClick={() => void actions.refresh()}>
@@ -296,9 +254,11 @@ const CronScreen = ({
                           type="button"
                           aria-label={routine.enabled ? `Pausar ${routine.name}` : `Retomar ${routine.name}`}
                           onClick={() =>
-                            void actions
-                              .toggleRoutine(routine)
-                              .catch((error: unknown) => onNotice(userFacingError(error)))
+                            routine.enabled
+                              ? void actions
+                                  .toggleRoutine(routine)
+                                  .catch((error: unknown) => onNotice(userFacingError(error)))
+                              : setEditor({ routine: { ...routine }, botId: routine.botId, isNew: false })
                           }
                         >
                           {routine.enabled ? "Pausar" : "Retomar"}
@@ -331,6 +291,29 @@ const CronScreen = ({
                 />
               )}
             </div>
+            <details className="routine-run-history">
+              <summary>{t("Histórico de execuções")}</summary>
+              <ul>
+                {[...routineRuns]
+                  .filter((run) => visibleRoutines.some((routine) => routine.id === run.routineId))
+                  .sort((a, b) => b.scheduledFor - a.scheduledFor)
+                  .slice(0, 50)
+                  .map((run) => {
+                    const routine = routines.find((routine) => routine.id === run.routineId)
+                    return (
+                      <li key={run.id}>
+                        <strong>{routine?.name}</strong> ·{" "}
+                        {new Date(run.scheduledFor).toLocaleString("pt-BR", { timeZone: routine?.timezone ?? "UTC" })} ·{" "}
+                        {routine?.timezone} · {t(run.status)}
+                        {run.status === "skipped" && (
+                          <p>{t("Disparo não executado: touri indisponível ou execução anterior em andamento.")}</p>
+                        )}
+                        {run.triggerSource === "catch-up" && <p>{t("Recuperação após indisponibilidade")}</p>}
+                      </li>
+                    )
+                  })}
+              </ul>
+            </details>
           </section>
         </div>
         <section className="cron-card calendar-card" aria-label={t("Calendário mensal")}>
@@ -400,11 +383,12 @@ const CronScreen = ({
       </div>
       {editor && (
         <RoutineEditor
-          editor={editor}
+          initial={editor.routine ? draftFromRoutine(editor.routine) : newRoutineDraft(editor.botId)}
+          routineId={editor.routine?.id}
           bots={bots}
-          onChange={setEditor}
+          host={host}
+          actions={actions}
           onClose={() => setEditor(null)}
-          onSave={() => void saveRoutine(editor)}
         />
       )}
     </section>
@@ -447,139 +431,6 @@ const buildCalendar = (month: Date): Array<{ key: string; number: number; inMont
         month.getFullYear() === today.getFullYear(),
     }
   })
-}
-
-const RoutineEditor = ({
-  editor,
-  bots,
-  onChange,
-  onClose,
-  onSave,
-}: {
-  editor: NonNullable<RoutineEditorState>
-  bots: Array<Bot>
-  onChange: (value: NonNullable<RoutineEditorState>) => void
-  onClose: () => void
-  onSave: () => void
-}) => {
-  const routine = editor.routine ?? {
-    id: "new",
-    botId: editor.botId,
-    name: t("Nova rotina"),
-    prompt: "",
-    cron: "0 9 * * 1-5",
-    timezone: "America/Sao_Paulo",
-    enabled: false,
-    continuity: "main-thread" as const,
-    resultsThreadId: null,
-    timeoutMinutes: 30,
-    overlap: "skip" as const,
-    catchUpMinutes: 30,
-    nextRunAt: null,
-    source: "local" as const,
-    createdAt: 0,
-    updatedAt: 0,
-  }
-  const update = (patch: Partial<Routine>): void => onChange({ ...editor, routine: { ...routine, ...patch } })
-  return (
-    <div className="routine-modal-backdrop" role="presentation">
-      <form
-        className="routine-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-label={editor.isNew ? t("Criar cron") : t("Editar cron")}
-        onSubmit={(event) => {
-          event.preventDefault()
-          onSave()
-        }}
-      >
-        <div className="routine-modal-header">
-          <div>
-            <span className="screen-crumb">touri / {t("Routines")}</span>
-            <h2>{editor.isNew ? t("Criar cron") : t("Editar cron")}</h2>
-          </div>
-          <button type="button" onClick={onClose} aria-label={t("Fechar")}>
-            ×
-          </button>
-        </div>
-        <label>
-          Bot
-          <select
-            value={routine.botId}
-            onChange={(event) => {
-              onChange({ ...editor, botId: event.target.value, routine: { ...routine, botId: event.target.value } })
-            }}
-          >
-            {bots.map((bot) => (
-              <option key={bot.id} value={bot.id}>
-                {bot.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          {t("Nome")}
-          <input value={routine.name} onChange={(event) => update({ name: event.target.value })} />
-        </label>
-        <label>
-          Prompt
-          <textarea value={routine.prompt} onChange={(event) => update({ prompt: event.target.value })} rows={4} />
-        </label>
-        <div className="routine-form-grid">
-          <label>
-            Cron
-            <input value={routine.cron} onChange={(event) => update({ cron: event.target.value })} />
-          </label>
-          <label>
-            {t("Timezone")}
-            <input value={routine.timezone} onChange={(event) => update({ timezone: event.target.value })} />
-          </label>
-        </div>
-        <div className="routine-form-grid">
-          <label>
-            Continuidade
-            <select
-              value={routine.continuity}
-              onChange={(event) => update({ continuity: event.target.value as Routine["continuity"] })}
-            >
-              <option value="main-thread">Conversa principal</option>
-              <option value="new-thread">Nova conversa por execução</option>
-              <option value="results-thread">Conversa de resultados</option>
-            </select>
-          </label>
-          <label>
-            Limite de execução (minutos)
-            <input
-              type="number"
-              min={1}
-              max={240}
-              value={routine.timeoutMinutes}
-              onChange={(event) => update({ timeoutMinutes: Number(event.target.value) })}
-            />
-          </label>
-          <label>
-            Recuperar disparos atrasados por (minutos)
-            <input
-              type="number"
-              min={0}
-              max={1440}
-              value={routine.catchUpMinutes}
-              onChange={(event) => update({ catchUpMinutes: Number(event.target.value) })}
-            />
-          </label>
-        </div>
-        <p className="routine-form-note">{t("Novas rotinas começam pausadas para você revisar o primeiro disparo.")}</p>
-        <div className="routine-modal-actions">
-          <button type="button" className="outline-button" onClick={onClose}>
-            {t("Cancelar")}
-          </button>
-          <button type="submit" className="brand-button">
-            {t("Salvar cron")}
-          </button>
-        </div>
-      </form>
-    </div>
-  )
 }
 
 export default CronScreen

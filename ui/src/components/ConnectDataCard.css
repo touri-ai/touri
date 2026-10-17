@@ -16,3 +16,10 @@
   flex-wrap: wrap;
   gap: var(--space-8);
 }
+
+@media (max-width: 600px) {
+  .connect-data-actions > button {
+    min-height: 44px;
+    text-align: left;
+  }
+}

@@ -3,6 +3,81 @@ import { userFacingError } from "./errors"
 /** All UI copy lives here. pt-BR is the default; English is available for a future locale picker. */
 export type Locale = "pt-BR" | "en"
 export const ptBR = {
+  "O aplicativo não conseguiu acessar o cofre nativo. Desbloqueie o cofre do sistema e tente novamente.":
+    "O aplicativo não conseguiu acessar o cofre nativo. Desbloqueie o cofre do sistema e tente novamente.",
+  "O cofre nativo está disponível no aplicativo desktop. O modo servidor usa seu próprio cofre local.":
+    "O cofre nativo está disponível no aplicativo desktop. O modo servidor usa seu próprio cofre local.",
+  "O cofre nativo não respondeu em até 4s. Verifique o desbloqueio e reabra o touri.":
+    "O cofre nativo não respondeu em até 4s. Verifique o desbloqueio e reabra o touri.",
+  "Enviar arquivo deste dispositivo": "Enviar arquivo deste dispositivo",
+  "Escolher pasta do servidor": "Escolher pasta do servidor",
+  "Pastas no servidor": "Pastas no servidor",
+  "Esta pasta fica no servidor. Para enviar um arquivo do celular ou computador, use Enviar arquivo deste dispositivo.":
+    "Esta pasta fica no servidor. Para enviar um arquivo do celular ou computador, use Enviar arquivo deste dispositivo.",
+  "Não foi possível liberar a pasta com segurança. Seu bot continua disponível.":
+    "Não foi possível liberar a pasta com segurança. Seu bot continua disponível.",
+  "A conexão direta com esta fonte ainda não está disponível. Exporte um CSV para começar.":
+    "A conexão direta com esta fonte ainda não está disponível. Exporte um CSV para começar.",
+  "Anexar CSV": "Anexar CSV",
+  "Dados disponíveis para {bot}.": "Dados disponíveis para {bot}.",
+  "Continuar tarefa": "Continuar tarefa",
+  "Conexão disponível: {name}": "Conexão disponível: {name}",
+  "Esta pasta fica fora das pastas autorizáveis do servidor.":
+    "Esta pasta fica fora das pastas autorizáveis do servidor.",
+  // Routine editor and repeat-task flow.
+  Bot: "Bot",
+  "Repetir esta tarefa": "Repetir esta tarefa",
+  "Quando?": "Quando?",
+  Tarefa: "Tarefa",
+  Frequência: "Frequência",
+  "Dias úteis": "Dias úteis",
+  "Todos os dias": "Todos os dias",
+  "Escolher dias": "Escolher dias",
+  Às: "Às",
+  "Dias da semana": "Dias da semana",
+  "Fuso horário": "Fuso horário",
+  "Horário de Brasília": "Horário de Brasília",
+  "Destino dos resultados": "Destino dos resultados",
+  "Nesta conversa": "Nesta conversa",
+  "Conversa principal": "Conversa principal",
+  "Nova conversa por execução": "Nova conversa por execução",
+  "Conversa de resultados": "Conversa de resultados",
+  "Expressão cron": "Expressão cron",
+  "Fuso IANA": "Fuso IANA",
+  "Limite de execução (minutos)": "Limite de execução (minutos)",
+  "Recuperar disparos atrasados por (minutos)": "Recuperar disparos atrasados por (minutos)",
+  "Revisar rotina": "Revisar rotina",
+  "{bot} fará {task}, {schedule}.": "{bot} fará {task}, {schedule}.",
+  "Contexto autorizado": "Contexto autorizado",
+  "Histórico desta conversa e permissões atuais do bot.": "Histórico desta conversa e permissões atuais do bot.",
+  "Permissões atuais do bot.": "Permissões atuais do bot.",
+  "Todas as pastas já autorizadas ao bot": "Todas as pastas já autorizadas ao bot",
+  "Sem pasta externa autorizada.": "Sem pasta externa autorizada.",
+  Fontes: "Fontes",
+  "Esta rotina não concede novos acessos. Mudanças de permissões do bot também afetam a rotina.":
+    "Esta rotina não concede novos acessos. Mudanças de permissões do bot também afetam a rotina.",
+  "Próximas três execuções": "Próximas três execuções",
+  "Escolha dias, hora e fuso válidos para ver as próximas execuções.":
+    "Escolha dias, hora e fuso válidos para ver as próximas execuções.",
+  "Funciona enquanto o touri estiver em execução neste Mac.":
+    "Funciona enquanto o touri estiver em execução neste Mac.",
+  "Funciona enquanto o touri estiver em execução no servidor. Você pode fechar esta página.":
+    "Funciona enquanto o touri estiver em execução no servidor. Você pode fechar esta página.",
+  "Não foi possível salvar ou iniciar a rotina. Seu rascunho continua aqui. Tente novamente.":
+    "Não foi possível salvar ou iniciar a rotina. Seu rascunho continua aqui. Tente novamente.",
+  "Teste iniciado. O resultado aparecerá no destino escolhido. A rotina continua pausada.":
+    "Teste iniciado. O resultado aparecerá no destino escolhido. A rotina continua pausada.",
+  "Testar agora": "Testar agora",
+  "Histórico de execuções": "Histórico de execuções",
+  "Disparo não executado: touri indisponível ou execução anterior em andamento.":
+    "Disparo não executado: touri indisponível ou execução anterior em andamento.",
+  "Recuperação após indisponibilidade": "Recuperação após indisponibilidade",
+  scheduled: "agendado",
+  succeeded: "concluído",
+  failed: "falhou",
+  skipped: "não executado",
+  canceled: "cancelado",
+
   "{bot} precisa de você: autorizar {action}.": "{bot} precisa de você: autorizar {action}.",
   "Autorizado. Retomando a tarefa.": "Autorizado. Retomando a tarefa.",
   "Os avisos do sistema estão desativados.": "Os avisos do sistema estão desativados.",
@@ -836,6 +911,28 @@ export const ptBR = {
   "Não foi possível remover o login.": "Não foi possível remover o login.",
   "Login do provedor nesta máquina": "Login do provedor nesta máquina",
   "Verificando login…": "Verificando login…",
+  "Outras opções": "Outras opções",
+  "O cofre de segredos não respondeu. Tente novamente.": "O cofre de segredos não respondeu. Tente novamente.",
+  "O cofre local do servidor está indisponível. Verifique as permissões da pasta de dados do servidor e reinicie o serviço do touri. O login salvo será mantido.":
+    "O cofre local do servidor está indisponível. Verifique as permissões da pasta de dados do servidor e reinicie o serviço do touri. O login salvo será mantido.",
+  "Não foi possível ler a sessão salva do navegador. Abra o Diagnóstico para verificar o cofre.":
+    "Não foi possível ler a sessão salva do navegador. Abra o Diagnóstico para verificar o cofre.",
+  "Permita o acesso ao cofre para restaurar a sessão salva do navegador.":
+    "Permita o acesso ao cofre para restaurar a sessão salva do navegador.",
+  "Não foi possível ler a sessão salva do navegador. Os dados salvos foram mantidos. Verifique o cofre e tente novamente.":
+    "Não foi possível ler a sessão salva do navegador. Os dados salvos foram mantidos. Verifique o cofre e tente novamente.",
+  "Sessão salva do navegador disponível.": "Sessão salva do navegador disponível.",
+  "Navegador · {name} · sessão salva": "Navegador · {name} · sessão salva",
+  "O cofre de segredos não respondeu. Permita o acesso ao cofre para continuar.":
+    "O cofre de segredos não respondeu. Permita o acesso ao cofre para continuar.",
+  "Na janela do macOS, escolha Permitir sempre. Sua mensagem continuará automaticamente.":
+    "Na janela do macOS, escolha Permitir sempre. Sua mensagem continuará automaticamente.",
+  "O acesso não foi autorizado. Tente novamente e escolha Permitir sempre na janela do macOS.":
+    "O acesso não foi autorizado. Tente novamente e escolha Permitir sempre na janela do macOS.",
+  "Aguardando permissão do macOS…": "Aguardando permissão do macOS…",
+  "Permitir acesso ao cofre": "Permitir acesso ao cofre",
+  "Na janela do macOS, escolha Permitir sempre.": "Na janela do macOS, escolha Permitir sempre.",
+  "Permita o acesso ao cofre para usar o login salvo.": "Permita o acesso ao cofre para usar o login salvo.",
   "Aguardando login no navegador…": "Aguardando login no navegador…",
   "Login disponível para este bot.": "Login disponível para este bot.",
   "Há um login disponível neste Mac.": "Há um login disponível neste Mac.",
@@ -1540,6 +1637,83 @@ export const ptBR = {
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  "O aplicativo não conseguiu acessar o cofre nativo. Desbloqueie o cofre do sistema e tente novamente.":
+    "The app could not access the native vault. Unlock the system vault and try again.",
+  "O cofre nativo está disponível no aplicativo desktop. O modo servidor usa seu próprio cofre local.":
+    "The native vault is available in the desktop app. Server mode uses its own local vault.",
+  "O cofre nativo não respondeu em até 4s. Verifique o desbloqueio e reabra o touri.":
+    "The native vault did not respond within 4 seconds. Check that it is unlocked and reopen touri.",
+  "Enviar arquivo deste dispositivo": "Send a file from this device",
+  "Escolher pasta do servidor": "Choose a server folder",
+  "Pastas no servidor": "Server folders",
+  "Somente leitura": "Read only",
+  "Esta pasta fica no servidor. Para enviar um arquivo do celular ou computador, use Enviar arquivo deste dispositivo.":
+    "This folder is on the server. To send a file from your phone or computer, use Send a file from this device.",
+  "Não foi possível liberar a pasta com segurança. Seu bot continua disponível.":
+    "Folder access could not be granted safely. Your bot is still available.",
+  "A conexão direta com esta fonte ainda não está disponível. Exporte um CSV para começar.":
+    "A direct connection to this source is not available yet. Export a CSV to get started.",
+  "Anexar CSV": "Attach CSV",
+  "Dados disponíveis para {bot}.": "Data available for {bot}.",
+  "Continuar tarefa": "Continue task",
+  "Conexão disponível: {name}": "Connection available: {name}",
+  "Esta pasta fica fora das pastas autorizáveis do servidor.":
+    "This folder is outside the server’s available folder roots.",
+  // Routine editor and repeat-task flow.
+  Bot: "Bot",
+  "Repetir esta tarefa": "Repeat this task",
+  "Quando?": "When?",
+  Tarefa: "Task",
+  Frequência: "Frequency",
+  "Dias úteis": "Weekdays",
+  "Todos os dias": "Every day",
+  "Escolher dias": "Choose days",
+  Às: "At",
+  "Dias da semana": "Days of the week",
+  "Fuso horário": "Time zone",
+  "Horário de Brasília": "Brasília time",
+  "Destino dos resultados": "Results destination",
+  "Nesta conversa": "This conversation",
+  "Conversa principal": "Main conversation",
+  "Nova conversa por execução": "New conversation for each run",
+  "Conversa de resultados": "Results conversation",
+  "Expressão cron": "Cron expression",
+  "Fuso IANA": "IANA time zone",
+  "Limite de execução (minutos)": "Run time limit (minutes)",
+  "Recuperar disparos atrasados por (minutos)": "Catch up missed runs within (minutes)",
+  "Revisar rotina": "Review routine",
+  "{bot} fará {task}, {schedule}.": "{bot} will do {task}, {schedule}.",
+  "Contexto autorizado": "Authorized context",
+  "Histórico desta conversa e permissões atuais do bot.":
+    "This conversation’s history and the bot’s current permissions.",
+  "Permissões atuais do bot.": "The bot’s current permissions.",
+  "Todas as pastas já autorizadas ao bot": "All folders already authorized for this bot",
+  "Sem pasta externa autorizada.": "No external folder authorized.",
+  Fontes: "Sources",
+  "Esta rotina não concede novos acessos. Mudanças de permissões do bot também afetam a rotina.":
+    "This routine grants no new access. Changes to the bot’s permissions also affect the routine.",
+  "Próximas três execuções": "Next three runs",
+  "Escolha dias, hora e fuso válidos para ver as próximas execuções.":
+    "Choose valid days, time and time zone to see the next runs.",
+  "Funciona enquanto o touri estiver em execução neste Mac.": "Runs while touri is running on this Mac.",
+  "Funciona enquanto o touri estiver em execução no servidor. Você pode fechar esta página.":
+    "Runs while touri is running on the server. You can close this page.",
+  "Não foi possível salvar ou iniciar a rotina. Seu rascunho continua aqui. Tente novamente.":
+    "Could not save or start the routine. Your draft is still here. Try again.",
+  "Teste iniciado. O resultado aparecerá no destino escolhido. A rotina continua pausada.":
+    "Test started. The result will appear at the selected destination. The routine remains paused.",
+  "Testar agora": "Test now",
+  "Histórico de execuções": "Run history",
+  "Disparo não executado: touri indisponível ou execução anterior em andamento.":
+    "Run skipped: touri was unavailable or a previous run was still in progress.",
+  "Recuperação após indisponibilidade": "Recovery after downtime",
+  failed: "Failed",
+  skipped: "Skipped",
+  scheduled: "Scheduled",
+  running: "Running",
+  succeeded: "Completed",
+  canceled: "Canceled",
+
   "{bot} precisa de você: autorizar {action}.": "{bot} needs you: authorize {action}.",
   "Autorizado. Retomando a tarefa.": "Authorized. Resuming the task.",
   "Os avisos do sistema estão desativados.": "System notifications are disabled.",
@@ -1696,6 +1870,28 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Abrir prévia": "Open preview",
   "Abrir a prévia do projeto em {path}": "Open the project preview at {path}",
   "Verificando login…": "Checking sign-in…",
+  "Outras opções": "Other options",
+  "O cofre de segredos não respondeu. Tente novamente.": "The vault did not respond. Try again.",
+  "O cofre local do servidor está indisponível. Verifique as permissões da pasta de dados do servidor e reinicie o serviço do touri. O login salvo será mantido.":
+    "The server’s local vault is unavailable. Check the permissions of the server’s data folder and restart the touri service. The saved sign-in will be kept.",
+  "Não foi possível ler a sessão salva do navegador. Abra o Diagnóstico para verificar o cofre.":
+    "Could not read the saved browser session. Open Diagnostics to check the vault.",
+  "Permita o acesso ao cofre para restaurar a sessão salva do navegador.":
+    "Allow vault access to restore the saved browser session.",
+  "Não foi possível ler a sessão salva do navegador. Os dados salvos foram mantidos. Verifique o cofre e tente novamente.":
+    "Could not read the saved browser session. The saved data has been kept. Check the vault and try again.",
+  "Sessão salva do navegador disponível.": "Saved browser session is available.",
+  "Navegador · {name} · sessão salva": "Browser · {name} · saved session",
+  "O cofre de segredos não respondeu. Permita o acesso ao cofre para continuar.":
+    "The vault did not respond. Allow vault access to continue.",
+  "Na janela do macOS, escolha Permitir sempre. Sua mensagem continuará automaticamente.":
+    "In the macOS window, choose Always Allow. Your message will continue automatically.",
+  "O acesso não foi autorizado. Tente novamente e escolha Permitir sempre na janela do macOS.":
+    "Access was not authorized. Try again and choose Always Allow in the macOS window.",
+  "Aguardando permissão do macOS…": "Waiting for macOS permission…",
+  "Permitir acesso ao cofre": "Allow vault access",
+  "Na janela do macOS, escolha Permitir sempre.": "In the macOS window, choose Always Allow.",
+  "Permita o acesso ao cofre para usar o login salvo.": "Allow vault access to use the saved sign-in.",
   "Aguardando login no navegador…": "Waiting for sign-in in the browser…",
   "Login disponível para este bot.": "Sign-in is ready for this bot.",
   "Login cancelado.": "Sign-in cancelled.",
@@ -2583,6 +2779,8 @@ export const statusLabel = (status: string): string => {
 
 /** Translate only application-authored notices, leaving bot/user content intact. */
 export const localizeNotice = (value: string): string => {
+  const browserSession = /^Navegador · (.+) · sessão salva$/.exec(value)
+  if (browserSession) return t("Navegador · {name} · sessão salva", { name: browserSession[1] ?? "" })
   const invalidLogin = /^(.+): login do (Claude|Codex|OpenCode) inválido\. Conecte novamente\.$/.exec(value)
   if (invalidLogin)
     return t("{name}: login do {provider} inválido. Conecte novamente.", {

@@ -11,6 +11,10 @@ import {
 } from "../kernel/bot-folders"
 import { resolveMcpSocketPath } from "../kernel/paths"
 
+// Keep the picker preflight aligned with the host provider's actual boundary.
+export const hostFolderAccessAvailable = (): boolean =>
+  process.platform === "darwin" && existsSync("/usr/bin/sandbox-exec")
+
 export const turnFolders = (args: StartTurnArgs) => {
   const folders = (args.bot.folders ?? []).map((folder) => {
     if (args.execution) return { ...folder, path: folderGuestPath(folder.path) }
@@ -125,7 +129,7 @@ export const spawnFolderProvider = (
   // Do not silently drop the security boundary on a host without Seatbelt.
   if (process.platform !== "darwin" && !args.bot.anyFolderAccess && !args.bot.folders?.length)
     return kernel.spawnTree(input)
-  if (process.platform !== "darwin" || !existsSync("/usr/bin/sandbox-exec"))
+  if (!hostFolderAccessAvailable())
     return { success: false, errorCode: "SPAWN_FAILED", error: "O acesso a pastas requer o sandbox do macOS." }
   return kernel.spawnTree({
     ...input,

@@ -903,6 +903,7 @@ type BotSettingsModalProps = {
   projects: Array<Project>
   routines: Array<Routine>
   actions: WorkspaceActions
+  onAttachFile?: (() => void) | undefined
   onClose: () => void
 }
 
@@ -918,6 +919,7 @@ export const BotSettingsModal = ({
   routines,
   actions,
   onClose,
+  onAttachFile,
   capability,
   machineState,
   activeTurns = false,
@@ -1464,6 +1466,7 @@ export const BotSettingsModal = ({
             {machine.machine !== "cloud" && (
               <BotFolderSettings
                 api={api}
+                onUpload={onAttachFile}
                 readOnly={access === "read-only"}
                 folders={folders}
                 anyFolderAccess={anyFolderAccess}
@@ -1503,6 +1506,10 @@ export const BotSettingsModal = ({
               <BotMcpSettings
                 api={api}
                 botId={bot.id}
+                botName={bot.name}
+                onContinue={onClose}
+                onAttach={onAttachFile}
+                onFolder={() => setSection("access")}
                 machine={bot.machine}
                 invokeCommand={invokeCommand}
                 onPermissionsChange={() => setGrantsRevision((revision) => revision + 1)}

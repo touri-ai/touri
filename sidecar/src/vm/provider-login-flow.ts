@@ -10,11 +10,14 @@ import { killProviderLoginPty, spawnProviderLoginPty } from "../platform/provide
 import { resolveProviderExecutable } from "../runtime/resolveProviderExecutable"
 import {
   loginTarget,
+  NATIVE_VAULT_GUIDANCE,
+  ProviderLoginError,
   providerLoginAccount,
   providerLoginSourceKey,
   readHostLoginFile,
   readVault,
   redactProviderLogin,
+  SERVER_VAULT_GUIDANCE,
   storedProviderLoginSource,
   validLogin,
 } from "./provider-login"
@@ -192,7 +195,25 @@ export const createProviderLoginFlow = ({
     const source = isDraft(target.id) ? null : storedProviderLoginSource(kernel, target)
     if (!source && hostAvailable(target.provider)) return { provider: target.provider, state: "host-available", host }
     if (source !== "host-file" && !isDraft(target.id)) {
-      const value = await readVault(kernel, target, loginTarget(target.provider), {})
+      let value: string | null
+      try {
+        value = await readVault(kernel, target, loginTarget(target.provider), {})
+      } catch (error) {
+        if (host === "server" && error instanceof ProviderLoginError)
+          return {
+            provider: target.provider,
+            state: "error",
+            host,
+            message: headless ? SERVER_VAULT_GUIDANCE : NATIVE_VAULT_GUIDANCE,
+          }
+        if (
+          host === "mac" &&
+          error instanceof ProviderLoginError &&
+          (error.reason === "vault-locked" || error.reason === "transport")
+        )
+          return { provider: target.provider, state: "vault-locked" }
+        throw error
+      }
       if (value) {
         redact(value)
         if (validLogin(target.provider, value)) {

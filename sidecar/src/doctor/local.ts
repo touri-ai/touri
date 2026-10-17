@@ -11,6 +11,8 @@ import { probeOciService, WINDOWS_VM_FIX } from "../platform/oci-health"
 import { providerLoginPty } from "../platform/provider-login"
 import { touriVersion } from "../version"
 import { BOT_IMAGE, imageContext } from "../vm/image"
+import { NATIVE_VAULT_GUIDANCE } from "../vm/provider-login"
+import { browserSessionChecks } from "./browserSessions"
 import { check, shellQuote } from "./check"
 import { codexSessionsCheck } from "./codex-sessions"
 import type { DoctorCommand } from "./command"
@@ -320,7 +322,6 @@ export const keychainCheck = async (kernel: Kernel, signal: AbortSignal, probes:
       probes.platform === "darwin"
         ? "O cofre nativo está disponível apenas no aplicativo desktop do macOS. O modo servidor usa seu próprio cofre local."
         : "O cofre nativo está disponível no aplicativo desktop. O modo servidor usa seu próprio cofre local.",
-      hostPlatform.appOpenCommand,
     )
   try {
     // An intentionally unused touri account tests native access without reading user credentials.
@@ -337,8 +338,8 @@ export const keychainCheck = async (kernel: Kernel, signal: AbortSignal, probes:
         ? "Consulta ao cofre nativo concluída pelo aplicativo. Nenhuma credencial foi exibida ou registrada."
         : probes.platform === "darwin"
           ? "O aplicativo não conseguiu acessar o cofre nativo. Abra Acesso às Chaves e verifique o desbloqueio e as permissões do touri."
-          : "O aplicativo não conseguiu acessar o cofre nativo. Desbloqueie o serviço de segredos da sessão.",
-      hostPlatform.secretStoreFix,
+          : NATIVE_VAULT_GUIDANCE,
+      probes.platform === "darwin" ? hostPlatform.secretStoreFix : null,
     )
   } catch {
     signal.throwIfAborted()
@@ -347,7 +348,7 @@ export const keychainCheck = async (kernel: Kernel, signal: AbortSignal, probes:
       hostPlatform.secretStoreLabel,
       "fail",
       "O cofre nativo não respondeu em até 4s. Verifique o desbloqueio e reabra o touri.",
-      hostPlatform.secretStoreFix,
+      probes.platform === "darwin" ? hostPlatform.secretStoreFix : null,
     )
   }
 }
@@ -379,7 +380,7 @@ export const collectLocalChecks = async (
       'exec "$SHELL" -l',
     ),
   ]
-  const [claude, codex, opencode, containers, keychain, logins, codexSessions] = await Promise.all([
+  const [claude, codex, opencode, containers, keychain, logins, codexSessions, browserSessions] = await Promise.all([
     cliChecks("claude", probes.which("claude", path), safeRun, signal, probes.platform),
     cliChecks("codex", probes.which("codex", path), safeRun, signal, probes.platform),
     openCodeChecks(
@@ -392,10 +393,11 @@ export const collectLocalChecks = async (
     ),
     containerChecks(kernel, probes.which("container", path), safeRun, signal, probes, path),
     keychainCheck(kernel, signal, probes),
-    providerLoginChecks(kernel, environment.HOME ?? homedir(), signal),
+    providerLoginChecks(kernel, environment.HOME ?? homedir(), signal, probes),
     codexSessionsCheck(environment.HOME ?? homedir(), signal),
+    browserSessionChecks(kernel, signal, probes),
   ])
-  checks.push(...claude, ...codex, ...opencode, ...logins, codexSessions)
+  checks.push(...claude, ...codex, ...opencode, ...logins, codexSessions, ...browserSessions)
   if (probes.platform !== "darwin") {
     const pty = providerLoginPty(probes.platform, "provider", [], environment.TOURI_DESKTOP_HELPER)
     const available = pty.supported && !!probes.which(pty.command, path)

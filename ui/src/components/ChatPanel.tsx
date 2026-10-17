@@ -8,6 +8,7 @@ import { InlineLivePreview, InlinePreviewContext, screenTool } from "../features
 import { localizeNotice, t, threadTitle } from "../i18n"
 import { machineStateForDisplay } from "../machineState"
 import { messageMarkdown } from "../messageMarkdown"
+import { type RoutineDraft, repeatTaskDraft, suggestedRoutineDraft } from "../routineDraft"
 import { failureTimeLabel, runErrorFor } from "../runError"
 import { ActivityMark } from "./ActivityMark"
 import { useAvatarBot, useMascotSnapshot, useMessageMascotState, useThreadBot } from "./AvatarRuntime"
@@ -33,6 +34,7 @@ import { toolStatus } from "./toolPresentation"
 import { type EditMessage, UserMessageEdit } from "./UserMessageEdit"
 
 type ChatPanelProps = {
+  onRepeatTask?: ((draft: RoutineDraft) => void) | undefined
   group?: BotGroup | null
   groupMembers?: Bot[]
   onEditGroup?: () => void
@@ -41,6 +43,7 @@ type ChatPanelProps = {
   onTogglePanel?: () => void
   routines?: Array<Routine>
   routineRuns?: Array<RoutineRun>
+  attachmentButtonRef?: React.RefObject<HTMLButtonElement | null> | undefined
   onOpenPermissions?: () => void
   onOpenToolCatalog?: () => void
   onOpenProviderLogin?: () => void
@@ -698,6 +701,7 @@ const MessageBubble = ({
 }
 
 export const ChatPanel = ({
+  onRepeatTask,
   group = null,
   groupMembers = [],
   onEditGroup = () => {},
@@ -718,6 +722,7 @@ export const ChatPanel = ({
   onComputerGrant,
   onOpenTools,
   onOpenPermissions,
+  attachmentButtonRef: sharedAttachmentButtonRef,
   onOpenToolCatalog,
   onOpenProviderLogin,
   onOpenComputer,
@@ -728,7 +733,8 @@ export const ChatPanel = ({
   const [draft, setDraft] = useState("")
   const mascotSnapshot = useMascotSnapshot({ id: bot?.id ?? "", color: bot?.color ?? null }, thread?.id)
   const composerRef = useRef<HTMLTextAreaElement>(null)
-  const attachmentButtonRef = useRef<HTMLButtonElement>(null)
+  const localAttachmentButtonRef = useRef<HTMLButtonElement>(null)
+  const attachmentButtonRef = sharedAttachmentButtonRef ?? localAttachmentButtonRef
   const activeRun = useMemo(
     () =>
       runs.find(
@@ -803,6 +809,11 @@ export const ChatPanel = ({
     )
       visibleMessages.push(message)
   }
+  const repeatDraft =
+    !group && bot && !activeRun
+      ? (repeatTaskDraft(bot, thread, visibleMessages) ??
+        (visibleMessages.length === 0 ? suggestedRoutineDraft(bot) : null))
+      : null
   const latestReply = [...visibleMessages].reverse().find((message) => message.role === "assistant")
   const connectDataReply =
     !group &&
@@ -940,6 +951,23 @@ export const ChatPanel = ({
             ) : null
           }
           timelineCards={[
+            ...(repeatDraft && onRepeatTask && !connectDataReply
+              ? [
+                  {
+                    id: `repeat-${latestReply?.id}`,
+                    createdAt: (latestReply?.createdAt ?? 0) + 2,
+                    content: (
+                      <button
+                        type="button"
+                        className="outline-button repeat-task-button"
+                        onClick={() => onRepeatTask(repeatDraft)}
+                      >
+                        {t("Repetir esta tarefa")}
+                      </button>
+                    ),
+                  },
+                ]
+              : []),
             ...(connectDataReply && onOpenToolCatalog
               ? [
                   {
@@ -947,6 +975,7 @@ export const ChatPanel = ({
                     createdAt: connectDataReply.createdAt + 1,
                     content: (
                       <ConnectDataCard
+                        desktop={"__TAURI_INTERNALS__" in window}
                         onAttach={() => attachmentButtonRef.current?.click()}
                         onFolder={bot?.machine === "cloud" ? undefined : onOpenPermissions}
                         onCatalog={onOpenToolCatalog}
