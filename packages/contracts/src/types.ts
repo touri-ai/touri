@@ -307,6 +307,7 @@ export type ToolCallPart = {
   outputTail?: string
   outputAttachmentId?: Id
   outputBytes?: number
+  outputPreview?: string
   resolution?: ToolResolution
   resolvedAt?: EpochMs | null
   type: 'tool_call'
@@ -322,6 +323,7 @@ export type CommandPart = {
   outputMode?: 'streaming' | 'on_completion'
   outputAttachmentId?: Id
   outputBytes?: number
+  outputPreview?: string
   resolution?: ToolResolution
   resolvedAt?: EpochMs | null
   type: 'command'
@@ -331,7 +333,7 @@ export type CommandPart = {
   exitCode: number | null
   outputTail: string
 }
-export type FileChangePart = { outputAttachmentId?: Id; outputBytes?: number; resolution?: ToolResolution; resolvedAt?: EpochMs | null; completedOutcome?: 'succeeded' | 'failed'; type: 'file_change'; callId: string; paths: Array<string>; diff: string | null }
+export type FileChangePart = { outputAttachmentId?: Id; outputBytes?: number; outputPreview?: string; resolution?: ToolResolution; resolvedAt?: EpochMs | null; completedOutcome?: 'succeeded' | 'failed'; type: 'file_change'; callId: string; paths: Array<string>; diff: string | null }
 export type NoticePart = {
   failure?: import('./run-failure').RunFailureDetail
   type: 'notice'
@@ -790,6 +792,7 @@ export type ApiRoutes = {
   'GET /search': { req: { q: string; botId?: Id }; res: { hits: Array<{ threadId: Id; messageId: Id; snippet: string }> } }
   'POST /attachments': { req: { grantId: string } | { path: AbsolutePath }; res: { attachment: Attachment } }
   'GET /attachments/:id': { req: {}; res: Blob }
+  'GET /attachments/:id/content': { req: { offset?: number; limit?: number }; res: { text: string; offset: number; nextOffset: number | null; bytes: number } }
   'GET /routines': { req: { botId?: Id }; res: { routines: Array<Routine>; host?: 'mac' | 'server' } }
   'POST /routines': { req: Omit<Routine, 'id' | 'nextRunAt' | 'source' | 'createdAt' | 'updatedAt'>; res: { routine: Routine } }
   'PATCH /routines/:id': { req: Partial<Omit<Routine, 'id' | 'source'>>; res: { routine: Routine } }
@@ -907,6 +910,7 @@ export type UiEvent =
   | { type: 'thread.updated'; thread: Thread }
   | { type: 'message.created'; message: Message }
   | { type: 'message.delta'; threadId: Id; messageId: Id; partIndex: number; delta: string; offset?: number; updatedSeq?: number; generation?: number; partType?: 'text' | 'reasoning'; updatedAt?: EpochMs }
+  | { type: 'message.parts'; threadId: Id; messageId: Id; parts: Array<{ partIndex: number; part: MessagePart }>; updatedSeq?: number; generation?: number; updatedAt?: EpochMs }
   | { type: 'transcript.resync' }
   /** Replay placeholder for a message revision already sent in its latest form earlier in the same replay. */
   | { type: 'transcript.superseded' }
@@ -1103,6 +1107,8 @@ export type StoreApi = {
   drainSendQueue?: () => void
   insertMessage: (args: { message: Omit<Message, 'createdAt' | 'updatedAt'> }) => Result<{ message: Message }, 'THREAD_NOT_FOUND' | 'PARENT_NOT_FOUND'>
   appendDelta: (args: TranscriptAppend) => void
+  appendParts?: (args: { threadId: Id; messageId: Id; parts: Array<{ partIndex: number; part: MessagePart }>; generation?: number }) => void
+  flushWrites?: () => void
   updateMessage: (args: { threadId: Id; messageId: Id; patch: Partial<Pick<Message, 'status' | 'parts' | 'text' | 'runId'>> }) => Result<{ message: Message }, 'NOT_FOUND'>
   activePath: (args: { threadId: Id; leafId?: Id }) => Array<Message>
   setActiveLeaf: (args: { threadId: Id; leafId: Id }) => Result<{ thread: Thread }, 'NOT_FOUND'>
