@@ -289,19 +289,17 @@ test("a compact tool patch alone keeps its output body until the journal is reta
       appData: f.root,
       parts: [tool("Resultado do diário. ".repeat(1000))],
     })
-    f.database
-      .query("INSERT INTO transcript_entries(thread_id,seq,generation,event_json,at) VALUES ('t',1,1,?,?)")
-      .run(
-        JSON.stringify({
-          type: "message.parts",
-          threadId: "t",
-          messageId: "reply",
-          updatedSeq: 1,
-          generation: 1,
-          parts: [{ partIndex: 0, part }],
-        }),
-        Date.now(),
-      )
+    f.database.query("INSERT INTO transcript_entries(thread_id,seq,generation,event_json,at) VALUES ('t',1,1,?,?)").run(
+      JSON.stringify({
+        type: "message.parts",
+        threadId: "t",
+        messageId: "reply",
+        updatedSeq: 1,
+        generation: 1,
+        parts: [{ partIndex: 0, part }],
+      }),
+      Date.now(),
+    )
     expect(await collectUnusedOutputBlobs(f.database, f.root)).toBe(0)
     compactTranscript({ database: f.database, events: 0, entriesPerThread: 0, maxAgeMs: 0, now: Date.now() + 1 })
     expect(await collectUnusedOutputBlobs(f.database, f.root)).toBe(0) // unpublished recovery tail stays protected
