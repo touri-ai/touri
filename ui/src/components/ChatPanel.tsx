@@ -41,6 +41,7 @@ type ChatPanelProps = {
   onTogglePanel?: () => void
   routines?: Array<Routine>
   routineRuns?: Array<RoutineRun>
+  attachmentButtonRef?: React.RefObject<HTMLButtonElement | null> | undefined
   onOpenPermissions?: () => void
   onOpenToolCatalog?: () => void
   onOpenProviderLogin?: () => void
@@ -718,6 +719,7 @@ export const ChatPanel = ({
   onComputerGrant,
   onOpenTools,
   onOpenPermissions,
+  attachmentButtonRef: sharedAttachmentButtonRef,
   onOpenToolCatalog,
   onOpenProviderLogin,
   onOpenComputer,
@@ -728,7 +730,8 @@ export const ChatPanel = ({
   const [draft, setDraft] = useState("")
   const mascotSnapshot = useMascotSnapshot({ id: bot?.id ?? "", color: bot?.color ?? null }, thread?.id)
   const composerRef = useRef<HTMLTextAreaElement>(null)
-  const attachmentButtonRef = useRef<HTMLButtonElement>(null)
+  const localAttachmentButtonRef = useRef<HTMLButtonElement>(null)
+  const attachmentButtonRef = sharedAttachmentButtonRef ?? localAttachmentButtonRef
   const activeRun = useMemo(
     () =>
       runs.find(
@@ -947,6 +950,7 @@ export const ChatPanel = ({
                     createdAt: connectDataReply.createdAt + 1,
                     content: (
                       <ConnectDataCard
+                        desktop={"__TAURI_INTERNALS__" in window}
                         onAttach={() => attachmentButtonRef.current?.click()}
                         onFolder={bot?.machine === "cloud" ? undefined : onOpenPermissions}
                         onCatalog={onOpenToolCatalog}

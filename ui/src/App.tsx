@@ -90,6 +90,7 @@ const errorMessage = userFacingError
 
 const AppContent = ({ kernel }: AppProps) => {
   const [api, setApi] = useState<UiApi | null>(() => kernel?.services?.api ?? null)
+  const attachmentButtonRef = useRef<HTMLButtonElement>(null)
   const apiRef = useRef(api)
   apiRef.current = api
   const [invokeCommand] = useState<TauriInvoke>(() => kernel?.services?.invoke ?? createTauriInvoke())
@@ -767,6 +768,7 @@ const AppContent = ({ kernel }: AppProps) => {
                               request: (value?.request ?? 0) + 1,
                             }))
                         }}
+                        attachmentButtonRef={attachmentButtonRef}
                         onOpenPermissions={() => openModal("bot-permissions")}
                         onOpenToolCatalog={() => openModal("bot-mcp")}
                         onOpenProviderLogin={() => {
@@ -933,6 +935,10 @@ const AppContent = ({ kernel }: AppProps) => {
                 bots={data.bots}
                 permissionsOnly={modal === "bot-permissions"}
                 focusMcp={modal === "bot-mcp"}
+                onAttachFile={() => {
+                  attachmentButtonRef.current?.click()
+                  closeModal()
+                }}
                 initialSection={modal === "bot-settings" ? botSettingsSection : undefined}
                 focusSetting={modal === "bot-settings" ? settingFocus : null}
                 activeTurns={data.runs.some(

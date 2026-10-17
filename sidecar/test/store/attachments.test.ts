@@ -6,6 +6,7 @@ import { join } from "node:path"
 import type { Attachment, Message } from "@touri/contracts"
 import { createKernel } from "../../src/kernel"
 import { MAX_ATTACHMENT_BYTES } from "../../src/kernel/files"
+import { csvInput } from "../../src/runtime/csv-input"
 import { init } from "../../src/store"
 
 const cleanup: Array<() => void> = []
@@ -41,6 +42,34 @@ const png = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jvN8AAAAASUVORK5CYII=",
   "base64",
 )
+
+test("a device CSV upload becomes real provider data without any folder grant", async () => {
+  const f = await fixture()
+  const content = "cadastro,valor\nregistro-a,12\nregistro-b,30\n"
+  const uploaded = await f.request("/attachments", "POST", {
+    name: "cadastros.csv",
+    dataBase64: Buffer.from(content).toString("base64"),
+  })
+  expect(uploaded.status).toBe(201)
+  const { attachment } = (await uploaded.json()) as { attachment: Attachment }
+  const sent = await f.request("/threads/t/messages", "POST", {
+    threadId: "t",
+    parentId: null,
+    text: "Some os valores.",
+    attachmentIds: [attachment.id],
+    clientNonce: "csv-upload",
+  })
+  // This fixture is offline: the message is journaled for the runtime to resume.
+  expect(sent.status).toBe(503)
+  const { messages } = (await (await f.request("/threads/t/messages?all=true")).json()) as { messages: Message[] }
+  const parts = messages[0]?.parts ?? []
+  expect(parts).toContainEqual(
+    expect.objectContaining({ type: "file", name: "cadastros.csv", attachmentId: attachment.id }),
+  )
+  const input = csvInput({ kernel: f.runtime.kernel, parts })
+  expect(input[0]?.text).toContain(JSON.stringify({ name: "cadastros.csv", content }))
+  expect(f.store.getBot({ botId: "b" })).toMatchObject({ folders: [], anyFolderAccess: false })
+})
 
 test("common small text, Markdown, JSON, CSV, PDF and image uploads retain their bytes", async () => {
   const f = await fixture()

@@ -268,6 +268,37 @@ const addUser = (store: StoreApi, thread: Thread, text: string): Message => {
 
 const terminal = (status: string): boolean => ["succeeded", "failed", "canceled", "interrupted"].includes(status)
 
+test("an attached CSV reaches the provider as real rows rather than a filename placeholder", async () => {
+  const f = await fixture()
+  try {
+    const requestLogPath = join(f.assets, "csv-requests.jsonl")
+    writeFileSync(f.scenario, JSON.stringify({ requestLogPath, events: [{ type: "complete" }] }))
+    const path = join(f.runtime.kernel.paths.attachmentsDir, "cadastros.csv")
+    mkdirSync(f.runtime.kernel.paths.attachmentsDir, { recursive: true })
+    const csv = "cadastro,valor\nregistro-a,12\nregistro-b,30\n"
+    writeFileSync(path, csv)
+    ;(f.runtime.kernel.db as Database)
+      .query("INSERT INTO attachments(id,path,mime,bytes,created_at) VALUES (?,?,?,?,1)")
+      .run("table", path, "text/csv", Buffer.byteLength(csv))
+    const request = addUser(f.store, f.thread, "Some os valores dos cadastros anexados.")
+    request.parts.push({ type: "file", attachmentId: "table", mime: "text/csv", name: "cadastros.csv" })
+    const result = f.engine.enqueue({ threadId: f.thread.id, requestMessageId: request.id, trigger: "user" })
+    if (!result.success) throw new Error(result.error)
+    await waitFor(() => terminal(result.run.status))
+    expect(result.run.status).toBe("succeeded")
+    const frames = readFileSync(requestLogPath, "utf8")
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line))
+    const text = frames.find((frame) => frame.method === "turn/start").params.input[0].text
+    expect(text).toContain(JSON.stringify({ name: "cadastros.csv", content: csv }))
+    expect(text).toContain("do not invent records")
+    expect(text).not.toContain(path)
+  } finally {
+    await closeFixture(f)
+  }
+})
+
 test.each([
   ["codex", "stderr"],
   ["codex", "event"],

@@ -312,6 +312,9 @@ describe("r3 login and MCP settings", () => {
       fireEvent.click(screen.getByRole("button", { name: "Testar conexão" }))
       await waitFor(() => expect(screen.getByRole("button", { name: "Conectar servidor MCP" })).toBeEnabled())
       fireEvent.click(screen.getByRole("button", { name: "Conectar servidor MCP" }))
+      await screen.findByText(/Conexão disponível:/)
+      expect(screen.queryByText("search_threads")).not.toBeInTheDocument()
+      fireEvent.click(screen.getByRole("button", { name: "Configuração técnica (MCP)" }))
       await screen.findByText("search_threads")
       expect(request).toHaveBeenCalledWith("PUT /bots/:id/mcp/:name", expect.objectContaining({ transport }), {
         id: "mail-r3",
