@@ -6,7 +6,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { WebSocketOptions } from "bun"
 import { createKernel, isAllowedOrigin } from "../../src/kernel"
-import { openDatabase } from "../../src/kernel/db"
+import { openDatabase, SCHEMA_VERSION } from "../../src/kernel/db"
 import baseSql from "../../src/kernel/migrations/0001.sql" with { type: "text" }
 import notificationsSql from "../../src/kernel/migrations/0002.sql" with { type: "text" }
 import avatarsSql from "../../src/kernel/migrations/0003.sql" with { type: "text" }
@@ -54,11 +54,13 @@ test("migration applies with foreign keys clean and exposes the handshake", () =
   const runtime = createKernel({ appData: root })
   try {
     const database = runtime.kernel.db as Database
-    expect(database.query("SELECT value FROM schema_meta WHERE key = 'schema_version'").get()).toEqual({ value: "17" })
+    expect(database.query("SELECT value FROM schema_meta WHERE key = 'schema_version'").get()).toEqual({
+      value: String(SCHEMA_VERSION),
+    })
     expect(database.query("PRAGMA foreign_key_check").all()).toEqual([])
     expect(runtime.handshake.type).toBe("touri-sidecar-ready")
     expect(runtime.handshake.port).toBeGreaterThan(0)
-    expect(runtime.handshake.schemaVersion).toBe(17)
+    expect(runtime.handshake.schemaVersion).toBe(SCHEMA_VERSION)
   } finally {
     runtime.stop()
     rmSync(root, { recursive: true, force: true })
@@ -74,7 +76,7 @@ test("opening an existing database applies migrations idempotently", () => {
     expect(
       (second.kernel.db as Database).query("SELECT value FROM schema_meta WHERE key = 'schema_version'").get(),
     ).toEqual({
-      value: "17",
+      value: String(SCHEMA_VERSION),
     })
   } finally {
     second.stop()
@@ -112,7 +114,7 @@ test.each(["avatars", "vm", "r2-role"])(
       database.close()
       database = openDatabase({ filename })
       expect(database.query("SELECT value FROM schema_meta WHERE key = 'schema_version'").get()).toEqual({
-        value: "17",
+        value: String(SCHEMA_VERSION),
       })
       expect(database.query("SELECT value FROM schema_meta WHERE key = 'avatar_identity_version'").get()).toEqual({
         value: "1",
@@ -197,7 +199,7 @@ test("HTTP auth rejects bad token, Origin, and Host with 401, 403, and 421", asy
     const healthy = await fetch(url, { headers })
     expect(healthy.status).toBe(200)
     expect(healthy.headers.get("Access-Control-Allow-Origin")).toBe("tauri://localhost")
-    expect(await healthy.json()).toMatchObject({ ok: true, schemaVersion: 17 })
+    expect(await healthy.json()).toMatchObject({ ok: true, schemaVersion: SCHEMA_VERSION })
   } finally {
     runtime.stop()
     if (previousToken === undefined) delete process.env.TOURI_UI_TOKEN

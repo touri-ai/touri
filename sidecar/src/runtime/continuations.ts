@@ -2,15 +2,13 @@ import { Database } from "bun:sqlite"
 import type { Id, RunErrorClass } from "@touri/contracts"
 
 /**
- * Automatic continuation of interrupted turns. A turn cut off by a restart, a provider crash or a
- * stopped bot computer is continued in the same provider session by a new run whose request is a
- * visible marker in the thread. Every continuation is linked to the turn it continues, which bounds
- * how many times one original turn is continued.
+ * Automatic continuation of interrupted turns and approved configuration changes. Each continuation
+ * is linked to the turn it continues and uses a visible system marker as its request.
  */
 
-export type ContinuationReason = "app_restart" | "provider_crash"
+export type ContinuationReason = "app_restart" | "provider_crash" | "permission_granted"
 
-/** At most this many automatic continuations per original turn. */
+/** At most this many interrupted-turn continuations per original turn. */
 export const MAX_AUTO_CONTINUATIONS = 2
 /** A provider or bot computer that dies mid-turn is resumed once per original turn. */
 export const MAX_CRASH_CONTINUATIONS = 1
@@ -24,11 +22,13 @@ export const CRASH_ERROR_CLASSES: ReadonlyArray<RunErrorClass> = ["cli_crash", "
 export const continuationMarkers: Record<ContinuationReason, string> = {
   app_restart: "Retomado após reinício do touri",
   provider_crash: "Retomado após falha do provedor",
+  permission_granted: "Retomado após aprovação de acesso",
 }
 
 const reasonDetails: Record<ContinuationReason, string> = {
   app_restart: "touri restarted",
   provider_crash: "the provider process or the bot computer stopped unexpectedly",
+  permission_granted: "approved access requires a new provider turn",
 }
 
 /** Reads the continuation reason back from a marker's text; null for any other message. */
@@ -40,10 +40,17 @@ export const continuationReasonOf = (text: string): ContinuationReason | null =>
 /** The instruction sent to the provider in place of the marker's text. */
 export const continuationPrompt = (reason: ContinuationReason): string =>
   [
-    `[touri: your previous turn was cut off before it finished (${reasonDetails[reason]}).`,
+    reason === "permission_granted"
+      ? "[touri: the user approved access during the previous turn. The approved configuration is now applied."
+      : `[touri: your previous turn was cut off before it finished (${reasonDetails[reason]}).`,
     "This is an automatic continuation of the same task, not a new request.",
     "Before repeating any action, check the current state (files, running processes, recorded work and tool results) and do not redo steps that already took effect.",
     "Then continue the user's original request from where it stopped.]",
+    ...(reason === "permission_granted"
+      ? [
+          "Use only the approved scope; do not request the same access again or ask the user to send a continuation message.",
+        ]
+      : []),
   ].join(" ")
 
 export type ResumePoint = { externalSessionId: string; rolloutPath: string | null; fingerprint: string }
@@ -70,7 +77,7 @@ type PointRow = { external_session_id: string; rollout_path: string | null; fing
 type LinkRow = { run_id: string; original_run_id: string; previous_run_id: string; reason: string; created_at: number }
 
 const toLink = (row: LinkRow | null): ContinuationLink | null =>
-  row && (row.reason === "app_restart" || row.reason === "provider_crash")
+  row && (row.reason === "app_restart" || row.reason === "provider_crash" || row.reason === "permission_granted")
     ? {
         runId: row.run_id,
         originalRunId: row.original_run_id,

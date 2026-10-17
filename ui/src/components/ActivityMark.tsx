@@ -13,12 +13,18 @@ export const ActivityMark = ({
   bot = defaultBot,
   threadId,
   onFocusApproval,
+  onExpandReasoning,
+  reasoningId,
+  reasoningExpanded,
 }: {
   state: MascotState
   parts?: readonly MessagePart[]
   bot?: AvatarIdentity | undefined
   threadId?: string | undefined
   onFocusApproval?: (approvalId: string) => void
+  onExpandReasoning?: (() => void) | undefined
+  reasoningId?: string | undefined
+  reasoningExpanded?: boolean | undefined
 }) => {
   const reduced = useReducedMotion()
   const busy = mascotIsBusy(state)
@@ -51,6 +57,16 @@ export const ActivityMark = ({
             {label}
             <span aria-hidden="true"> ↗</span>
           </a>
+        ) : onExpandReasoning && parts.some((part) => part.type === "reasoning" && part.text.trim()) ? (
+          <button
+            type="button"
+            className="activity-reasoning-button"
+            aria-controls={reasoningId}
+            aria-expanded={reasoningExpanded}
+            onClick={onExpandReasoning}
+          >
+            {label}
+          </button>
         ) : (
           label
         )}

@@ -85,6 +85,7 @@ export const init = async (kernel: Kernel): Promise<void> => {
   kernel.services.provide("approvals.approve", engine.approvalBridge.approve)
   kernel.services.provide("approvals.settle", engine.approvalBridge.settle)
   kernel.services.provide("runtime.activeRun", ({ threadId }) => engine.activeRun({ threadId }))
+  kernel.services.provide("runtime.continueAfterApproval", engine.continueAfterApproval)
   kernel.services.provide("runtime.cancelBotTurns", engine.cancelBotTurns)
   kernel.services.provide("runtime.shutdown", async () => {
     scheduler.stop()

@@ -9,6 +9,7 @@ import {
   resolveBotFolder,
   withinFolder,
 } from "../kernel/bot-folders"
+import { resolveMcpSocketPath } from "../kernel/paths"
 
 export const turnFolders = (args: StartTurnArgs) => {
   const folders = (args.bot.folders ?? []).map((folder) => {
@@ -43,14 +44,21 @@ export const localFolderProfile = (
   // Provider bookkeeping must remain writable even for a read-only conversation.
   const runDir = env.TOURI_RUN_DIR ?? kernel.paths.runDir
   const runtimePaths = [
-    join(runDir, "mcp.sock"),
+    env.TOURI_MCP_SOCK ?? resolveMcpSocketPath({ ...kernel.paths, runDir }),
     join(runDir, "mcp-tokens", args.thread.id),
     join(runDir, "mcp-shims"),
+    ...[env.TMPDIR, env.TMP, env.TEMP].filter((path): path is string => !!path),
     ...["mcp.json", "system.md", "settings.json"].map((suffix) =>
       join(runDir, "claude", `${args.thread.id}.${suffix}`),
     ),
     ...(env.OPENCODE_CONFIG ? [dirname(env.OPENCODE_CONFIG)] : []),
     ...[env.CODEX_HOME, env.CLAUDE_CONFIG_DIR, env.XDG_DATA_HOME].filter((path): path is string => !!path),
+    // The managed Codex home's auth link must remain writable for shared token refreshes.
+    ...(args.bot.provider === "codex" &&
+    env.CODEX_HOME &&
+    canonicalPath(join(env.CODEX_HOME, "auth.json")) === canonicalPath(join(home, ".codex/auth.json"))
+      ? [canonicalPath(join(env.CODEX_HOME, "auth.json"))]
+      : []),
   ]
   const state = [
     ...runtimePaths,

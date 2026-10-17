@@ -7,6 +7,7 @@ import { createMockApi } from "../src/api/mock"
 import { Composer } from "../src/components/Composer"
 import { BotCreateModal } from "../src/components/Modals"
 import { ProviderLogin } from "../src/components/ProviderLogin"
+import { ApiError } from "../src/errors"
 import { t } from "../src/i18n"
 import { useWorkspace } from "../src/useWorkspace"
 
@@ -64,6 +65,29 @@ it("starts OAuth automatically, polls the device code and cancels without restar
     await vi.advanceTimersByTimeAsync(2000)
   })
   expect(f.request.mock.calls.filter(([, input]) => input.action === "start")).toHaveLength(starts.length)
+})
+
+it("stops retrying a temporary login failure after its view closes", async () => {
+  const f = fixture("host-available")
+  const original = f.api.request
+  let attempts = 0
+  f.api.request = (async (route, input, path) => {
+    if (route === "POST /bots/:id/provider-login/flow" && (input as { action: string }).action === "use-host") {
+      attempts++
+      throw new ApiError(503, "unavailable", "TOURI-E1009")
+    }
+    return original(route, input, path)
+  }) as ApiRequest
+  const view = render(<ProviderLogin api={f.api} botId="bot" provider="codex" onConfigured={vi.fn()} />)
+  const button = await screen.findByRole("button", { name: "Usar login deste servidor" })
+  vi.useFakeTimers()
+  await act(async () => fireEvent.click(button))
+  expect(attempts).toBe(1)
+  view.unmount()
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(1000)
+  })
+  expect(attempts).toBe(1)
 })
 
 it.each(["mac", "server"] as const)("offers the %s host login first and connects with one click", async (host) => {
@@ -348,14 +372,15 @@ it("relays OpenCode menu navigation to its own CLI", async () => {
   )
 })
 
-it("adopts creation login into the created bot and reuses that bot after a failed adoption", async () => {
+it("opens the created bot when adoption succeeded but its response was lost", async () => {
   const api = createMockApi()
   const original = api.request
   let denied = true
   const request = vi.fn(async (route: keyof ApiRoutes, input: never, path?: Record<string, string>) => {
     if (route === "POST /bots/:id/provider-login/flow" && denied) {
       denied = false
-      throw new Error("vault unavailable")
+      await original(route, input, path)
+      throw new ApiError(503, "unavailable", "TOURI-E1009")
     }
     return original(route, input, path)
   })
@@ -363,10 +388,7 @@ it("adopts creation login into the created bot and reuses that bot after a faile
   const { result } = renderHook(() => useWorkspace(api, false))
   const input = { provider: "codex" as const, name: "Pesquisa" }
   await act(async () => {
-    await expect(result.current.actions.createBot(input, "draft-test")).rejects.toThrow("vault unavailable")
-  })
-  await act(async () => {
-    await result.current.actions.createBot(input, "draft-test")
+    await expect(result.current.actions.createBot(input, "draft-test")).resolves.toEqual({ loginReady: true })
   })
   expect(request.mock.calls.filter(([route]) => route === "POST /bots")).toHaveLength(1)
   expect(request).toHaveBeenCalledWith(
@@ -374,4 +396,5 @@ it("adopts creation login into the created bot and reuses that bot after a faile
     { provider: "codex", action: "adopt", draftId: "draft-test" },
     { id: result.current.data.selectedBotId },
   )
+  expect(result.current.data.selectedThreadId).toBe(result.current.data.bots.at(-1)?.mainThreadId)
 })

@@ -309,6 +309,28 @@ test("creation draft login is adopted by the created bot's vault, never returned
   expect(f.vault.get(providerLoginAccount(f.bot.id, "claude"))).toBe(token)
 })
 
+test("creation adoption route recovers from a temporary vault failure and accepts a repeated request", async () => {
+  const f = fixture("claude")
+  const draft = { ...f.bot, id: "draft-00000000-0000-4000-8000-000000000000" }
+  await f.flow.action(draft, { action: "paste", value: token })
+  const route = f.flow.routes.find((route) => route.method === "POST")
+  if (!route) throw new Error("Missing route")
+  const request = {
+    params: { id: f.bot.id },
+    query: {},
+    body: { provider: "claude", action: "adopt", draftId: draft.id },
+    signal: new AbortController().signal,
+  }
+  const callHost = f.kernel.callHost
+  f.kernel.callHost = async () => ({ success: false, errorCode: "HOST_ERROR", error: "unavailable" })
+  expect((await route.handler(request)).status).toBe(503)
+  expect((await f.flow.status(draft)).state).toBe("ready")
+  f.kernel.callHost = callHost
+  expect((await route.handler(request)).status).toBe(200)
+  expect((await route.handler(request)).status).toBe(200)
+  expect(f.vault.get(providerLoginAccount(f.bot.id, "claude"))).toBe(token)
+})
+
 test("paste fallback validates and saves to the selected provider even before config is saved", async () => {
   const f = fixture("claude")
   const target = { ...f.bot, provider: "codex" as const }
