@@ -3,6 +3,21 @@ import { userFacingError } from "./errors"
 /** All UI copy lives here. pt-BR is the default; English is available for a future locale picker. */
 export type Locale = "pt-BR" | "en"
 export const ptBR = {
+  "Agendar esta tarefa": "Agendar esta tarefa",
+  "VM machine help":
+    "Mais seguro: trabalha num computador separado só para este bot, dentro deste computador. A tela e o navegador ficam separados dos seus. Você escolhe quais pastas compartilhar. Projetos usam uma cópia da última versão registrada.",
+  "Provider login safety help":
+    "Ao ativar, este bot pode usar sua conta para trabalhar no computador separado. Desligado, sua conta não é compartilhada com ele.",
+  "Atualizar computador ajuda":
+    "Reinicia o computador separado e aplica as atualizações disponíveis. Os arquivos e logins são mantidos.",
+  "Redefinir computador ajuda": "Apaga os arquivos, sessões e logins do computador separado para começar de novo.",
+  "Computador separado detalhes":
+    "Tela isolada com Xvfb no Linux. O controle da sua tela só é permitido se você autorizar a opção acima.",
+  "Conexão da máquina indisponível":
+    "O computador separado não está disponível aqui. Abra os detalhes técnicos para ver o motivo.",
+  "Rede local ajuda":
+    "Desativado por padrão. Bloqueios valem agora; novos acessos exigem reiniciar o computador do bot. Seu computador e os serviços internos de infraestrutura continuam protegidos.",
+
   "As ferramentas do touri não carregaram nesta máquina. Tente novamente; se persistir, confira a instalação do touri e as permissões deste servidor.":
     "As ferramentas do touri não carregaram nesta máquina. Tente novamente; se persistir, confira a instalação do touri e as permissões deste servidor.",
   "Ferramentas do touri · {name}": "Ferramentas do touri · {name}",
@@ -292,7 +307,8 @@ export const ptBR = {
   "touri Chrome": "Chrome do touri",
   "My Chrome": "Meu Chrome",
   "Machine Chrome": "Chrome da máquina",
-  "Machine Chrome requires a bot on the Linux machine.": "Chrome da máquina requer um bot na máquina Linux.",
+  "Machine Chrome requires a bot on the Linux machine.":
+    "O navegador do computador separado requer que o bot trabalhe nele.",
   "My Chrome is available only for bots on this Mac. A remote machine cannot reach your Mac's Chrome.":
     "Meu Chrome só funciona em bots neste Mac. A máquina remota não pode acessar o Chrome do Mac.",
   "The bot will act inside your signed-in sessions in a separate Chrome window. You can close that window or press Stop at any time.":
@@ -1308,26 +1324,27 @@ export const ptBR = {
   "Bot machine": "Máquina do bot",
   "Machine running": "rodando",
   "Machine resting": "Em repouso",
-  "No virtualization on this host": "sem virtualização neste host",
-  "Local machine": "local · neste host",
-  "Isolated Linux VM": "vm · Linux isolado",
-  "Local machine help": "Usa as ferramentas e pastas deste host, como hoje.",
-  "VM machine help":
+  "No virtualization on this host": "indisponível neste computador",
+  "Local machine": "Neste computador",
+  "Isolated Linux VM": "Separado só para o bot",
+  "Local machine help":
+    "Trabalha diretamente neste computador, usando as ferramentas instaladas e as pastas que você permitir.",
+  "VM machine technical help":
     "Uma micro-VM por bot, criada no primeiro turno e reutilizada. Arquivos em /workspace. Projetos recebem uma cópia do commit Git; arquivos ignorados ficam no host. Navegador e controle do computador operam no display Linux isolado.",
   "Stop after idle minutes": "Parar após minutos sem atividade",
-  "Use provider login in VM": "Usar meu login do {provider} dentro da VM",
+  "Use provider login in VM": "Usar meu login do {provider} no computador separado",
   "VM provider login help":
     "O login fica disponível apenas nas execuções deste bot. Para Claude no macOS, salve um token gerado por claude setup-token no cofre de segredos abaixo.",
   "Allow host computer use": "Permitir controle do computador na tela deste Mac",
   "Host computer use help":
-    "Autorização separada: as ferramentas de controle do computador passam a controlar o Mac, com concessão temporária. Desmarcado, usam exclusivamente Xvfb na VM.",
+    "Permite ao bot usar sua tela, teclado e mouse com uma autorização temporária. Desligado, ele controla apenas a tela do computador separado.",
   "Restart machine": "Reiniciar máquina",
   "Recreate machine": "Recriar do zero",
   "Reset machine confirmation":
-    "Apagar todos os arquivos, sessões, navegador e logins desta VM? Esta ação não pode ser desfeita.",
+    "Apagar todos os arquivos, sessões, navegador e logins do computador separado? Esta ação não pode ser desfeita.",
   "Delete and recreate": "Apagar e recriar",
   "Controls only Xvfb in the VM; cannot access the host screen.":
-    "Controla somente Xvfb na VM; não acessa a tela do host.",
+    "Controla apenas a tela do computador separado. Sua tela pessoal fica fora do alcance.",
   "touri uses local CLIs or isolated Linux machines. Host login in a VM requires per-bot opt-in.":
     "O touri usa programas locais ou máquinas Linux isoladas. Usar o login do host na VM exige autorização por bot.",
   "No navegador, digite o caminho. No app Tauri, use o seletor nativo.":
@@ -1841,6 +1858,39 @@ export const ptBR = {
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  "Tentar de novo": "Try again",
+  "Agendar esta tarefa": "Schedule this task",
+  "Local machine": "On this computer",
+  "Isolated Linux VM": "Separate computer for the bot",
+  "No virtualization on this host": "unavailable on this computer",
+  "Local machine help": "Works directly on this computer, using installed tools and the folders you allow.",
+  "VM machine help":
+    "Safer: works in a separate computer just for this bot, inside this computer. Its screen and browser stay separate from yours. You choose which folders to share. Projects use a copy of the latest recorded version.",
+  "VM machine technical help":
+    "One Linux micro-VM per bot, created on first use and reused. Files live in /workspace. Projects receive a copy of the Git commit; ignored files stay on the host. Browser and computer control use the isolated Linux display.",
+  "Use provider login in VM": "Use my {provider} login on the separate computer",
+  "Provider login safety help":
+    "When enabled, this bot can use your account to work on the separate computer. When disabled, your account is not shared with it.",
+  "VM provider login help":
+    "The login is available only to this bot’s runs. Some providers require a login token in the secrets vault below.",
+  "Allow host computer use": "Allow control of my own screen",
+  "Host computer use help":
+    "Lets the bot use your screen, keyboard and mouse with temporary permission. When disabled, it controls only the separate computer’s screen.",
+  "Reset machine confirmation":
+    "Delete all files, sessions, browser data and logins from the separate computer? This cannot be undone.",
+  "Controls only Xvfb in the VM; cannot access the host screen.":
+    "Controls only the separate computer’s screen. Your personal screen stays out of reach.",
+  "Machine Chrome requires a bot on the Linux machine.":
+    "The separate computer’s browser requires the bot to work there.",
+  "Atualizar computador ajuda":
+    "Restarts the separate computer and applies available updates. Files and logins are kept.",
+  "Redefinir computador ajuda": "Deletes files, sessions and logins from the separate computer to start over.",
+  "Computador separado detalhes":
+    "Isolated display with Xvfb on Linux. Control of your screen requires enabling the option above.",
+  "Conexão da máquina indisponível": "The separate computer is not available here. Open technical details to see why.",
+  "Rede local ajuda":
+    "Off by default. Restrictions apply now; additional access requires restarting the bot’s computer. Your computer and internal infrastructure services remain protected.",
+
   "As ferramentas do touri não carregaram nesta máquina. Tente novamente; se persistir, confira a instalação do touri e as permissões deste servidor.":
     "The touri tools did not start on this machine. Try again; if this continues, check the touri installation and this server’s permissions.",
   "Ferramentas do touri · {name}": "touri tools · {name}",

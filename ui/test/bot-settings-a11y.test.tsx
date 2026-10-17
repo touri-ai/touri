@@ -123,7 +123,7 @@ const expectNamedControls = (scope: HTMLElement) => {
     "link",
   ].flatMap((role) => queries.queryAllByRole(role, { name: /\S/ }))
   const controls = Array.from(scope.querySelectorAll<HTMLElement>("button, input, select, textarea, a[href]")).filter(
-    (control) => !control.closest("[hidden]"),
+    (control) => !control.closest("[hidden], details:not([open])"),
   )
   expect(controls.length).toBeGreaterThan(0)
   const checkedAncestors = new Set<HTMLElement>()
@@ -194,6 +194,10 @@ it.each(BOT_SETTINGS_SECTIONS)(
       expect(within(panel).getByRole("button", { name: "Permitir controle do computador" })).toBeVisible()
     }
     expectNamedControls(dialog)
+    if (section.id === "computer") {
+      fireEvent.click(within(panel).getByText("Detalhes técnicos"))
+      expectNamedControls(dialog)
+    }
     await expectNoViolations(dialog)
   },
   10_000,
@@ -206,6 +210,8 @@ it("keeps VM environment, host access and browser controls named and exposed", a
   expect(within(panel).getByRole("switch", { name: /Usar meu login/ })).toBeVisible()
   expect(within(panel).getByRole("switch", { name: /Permitir controle do computador na tela/ })).toBeVisible()
   expect(within(panel).getByRole("combobox", { name: "Navegador do bot" })).toHaveValue("machine")
+  expectNamedControls(panel)
+  fireEvent.click(within(panel).getByText("Detalhes técnicos"))
   expectNamedControls(panel)
   await expectNoViolations(screen.getByRole("dialog"))
 }, 10_000)

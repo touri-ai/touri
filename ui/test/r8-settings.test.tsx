@@ -19,6 +19,7 @@ it("saves the VM memory preference from Diagnostics and refuses invalid caps", a
   render(<SettingsModal settings={null} onClose={vi.fn()} onSave={save} />)
   fireEvent.click(screen.getByRole("tab", { name: "Diagnóstico" }))
   fireEvent.click(screen.getByText("Verificar e cuidar deste computador"))
+  fireEvent.click(screen.getByText("Detalhes técnicos"))
   const memory = screen.getByLabelText("Memória por computador do bot (MiB)")
   expect(memory).toHaveValue(1536)
   fireEvent.change(memory, { target: { value: "256" } })
