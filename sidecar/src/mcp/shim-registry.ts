@@ -21,6 +21,9 @@ const probe = async (pid: number): Promise<{ birth: string; ppid: number; comman
 
 /** Records this shim in the install's private run directory so a later sweep can prove ownership. */
 export const registerShim = async ({ runDir, thread }: { runDir: string; thread: string }): Promise<() => void> => {
+  // Namespace PIDs do not identify host processes. The enclosing provider owns
+  // and reaps this whole PID namespace; never publish these IDs to the host sweep.
+  if (process.platform === "linux" && process.env.TOURI_PID_NAMESPACE === "1") return () => undefined
   const current = await probe(process.pid)
   if (!current) return () => undefined
   const path = join(shimDir(runDir), `${process.pid}.json`)

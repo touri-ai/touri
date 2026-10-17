@@ -1934,18 +1934,27 @@ a {
   background: var(--surface-panel);
   box-shadow: var(--elevation-popover);
 }
-.project-menu button {
+/* Portaled menus need their own button reset outside the sidebar and bot panel. */
+.project-menu button,
+.bot-context-menu button {
   width: 100%;
   padding: var(--space-8) var(--space-10);
   border: 0;
   border-radius: var(--radius-6);
   background: transparent;
   color: var(--text-primary);
-  text-align: left;
+  text-align: start;
   font-size: var(--type-12);
 }
-.project-menu button:hover {
+.project-menu button:hover,
+.project-menu button:focus-visible,
+.bot-context-menu button:hover,
+.bot-context-menu button:focus-visible {
   background: var(--surface-control);
+}
+.project-menu button:focus-visible,
+.bot-context-menu button:focus-visible {
+  outline-offset: -2px;
 }
 .connect-project-empty {
   width: 100%;
@@ -2485,7 +2494,7 @@ a {
 .modal-card,
 .search-modal {
   width: min(720px, 100%);
-  max-height: calc(100vh - 40px);
+  max-height: calc(100dvh - 40px);
   overflow: auto;
   border: 1px solid var(--border-dialog);
   border-radius: var(--radius-14);
@@ -2494,7 +2503,8 @@ a {
   box-shadow: var(--elevation-modal);
 }
 .modal-card {
-  scroll-padding-top: 110px;
+  scroll-padding-block: 110px;
+  overscroll-behavior: contain;
 }
 .modal-header {
   position: sticky;
@@ -2528,9 +2538,17 @@ a {
 }
 .modal-actions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: var(--space-8);
   padding: var(--space-17) var(--space-25) var(--space-22);
+  background: var(--surface-panel);
+}
+/* Settings already pin actions outside their independently scrolling panes. */
+.modal-card:not(.settings-modal) .modal-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
 }
 .modal-card input,
 .modal-card select,
@@ -3745,6 +3763,13 @@ a {
   border-radius: var(--menu-corner);
   padding: var(--space-8);
   text-align: start;
+}
+.bot-context-menu .tool-action-deny {
+  color: var(--text-danger);
+}
+.bot-context-menu .tool-action-deny:hover,
+.bot-context-menu .tool-action-deny:focus-visible {
+  background: var(--surface-notice);
 }
 .delete-bot-files {
   display: flex;

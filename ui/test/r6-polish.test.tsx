@@ -307,7 +307,7 @@ describe("R6: cancelamento e confirmação", () => {
     expect(screen.getByText("Cancelado por você")).toBeVisible()
     expect(screen.getByText("Trabalho já realizado")).toBeVisible()
     expect(screen.queryByRole("alert")).toBeNull()
-    expect(screen.queryByRole("button", { name: "Tentar novamente" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "Tentar de novo" })).toBeNull()
     expect(document.body).not.toHaveTextContent(/canceled:|Turno cancelado/)
   })
 

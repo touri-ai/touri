@@ -5,8 +5,10 @@ import { delimiter, join } from "node:path"
 import { stripVTControlCharacters } from "node:util"
 import type { Bot, Kernel, ProviderLoginFlow, RouteModule } from "@touri/contracts"
 import { withDeadline } from "../kernel/policy"
+import { providerProfileEnv } from "../kernel/provider-profiles"
 import { buildChildEnv } from "../kernel/shell-env"
 import { killProviderLoginPty, spawnProviderLoginPty } from "../platform/provider-login"
+import { providerProfileStatus } from "../runtime/provider-profiles"
 import { resolveProviderExecutable } from "../runtime/resolveProviderExecutable"
 import {
   loginTarget,
@@ -103,6 +105,7 @@ export const createProviderLoginFlow = ({
   headless = process.env.TOURI_HEADLESS === "1",
   timeoutMs = 10 * 60_000,
   invoke,
+  profileStatus = providerProfileStatus,
 }: {
   kernel: Kernel
   hostHome?: string
@@ -110,6 +113,7 @@ export const createProviderLoginFlow = ({
   headless?: boolean
   timeoutMs?: number
   invoke?: (input: LoginInvocation) => ReturnType<Kernel["spawnTree"]>
+  profileStatus?: typeof providerProfileStatus
 }) => {
   const host = platform === "darwin" && !headless ? "mac" : "server"
   const hostUnavailable = host === "mac" ? "Login deste Mac indisponível." : "Login deste servidor indisponível."
@@ -212,7 +216,32 @@ export const createProviderLoginFlow = ({
     }
     return session?.view ?? { provider: target.provider, state }
   }
+  /** A bot with a provider profile signs in through that profile, never the vault or the host login. */
+  const profileLogin = async (target: Target): Promise<ProviderLoginFlow | null> => {
+    if (isDraft(target.id)) return null
+    const bot = kernel.services.use("store.api")?.getBot({ botId: target.id })
+    const profile = bot?.providerProfile
+    if (!bot || !profile || bot.provider !== target.provider) return null
+    if (!Object.keys(providerProfileEnv({ appData: kernel.paths.appData, bot })).length) return null
+    if (bot.provider !== "claude" && bot.provider !== "codex") return null
+    const { loggedIn } = await profileStatus({
+      appData: kernel.paths.appData,
+      profile,
+      provider: bot.provider,
+      env: buildChildEnv({ base: await kernel.shellEnv() }),
+    })
+    return loggedIn
+      ? { provider: target.provider, state: "ready", host }
+      : {
+          provider: target.provider,
+          state: "error",
+          host,
+          message: `O perfil ${profile} não está logado. No servidor, rode: touri profile login ${profile}`,
+        }
+  }
   const status = async (target: Target): Promise<ProviderLoginFlow> => {
+    const profile = await profileLogin(target)
+    if (profile) return profile
     const current = sessions.get(key(target))
     // A cancelled browser attempt must not mask an existing or repaired saved login.
     if (current && (current.view.state === "waiting" || isDraft(target.id))) return { ...current.view }
@@ -425,6 +454,10 @@ export const createProviderLoginFlow = ({
     target: Target,
     input: { action: string; value?: string; draftId?: string; input?: string },
   ): Promise<ProviderLoginFlow> => {
+    if (input.action !== "cancel") {
+      const profile = await profileLogin(target)
+      if (profile) return profile
+    }
     if (input.action === "cancel") return cancel(target)
     if (input.action === "code") {
       const value = typeof input.value === "string" ? input.value.trim() : ""

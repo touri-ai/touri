@@ -65,6 +65,8 @@ export type WorkspaceData = {
   selectedThreadId: Id | null
   activeProjectId: Id | null
   loading: boolean
+  /** A successful snapshot is required before a web deep link can be resolved. */
+  loaded: boolean
   notice: string | null
   importProgress: { phase: string; done: number; total: number } | null
   computerGrantRequest: { threadId: Id } | null
@@ -142,6 +144,7 @@ const emptyState = (): WorkspaceData => ({
   selectedThreadId: readWorkspaceState().threadId ?? null,
   activeProjectId: null,
   loading: true,
+  loaded: false,
   notice: null,
   importProgress: null,
   computerGrantRequest: null,
@@ -511,6 +514,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
           selectedThreadId: selectedThread?.id ?? null,
           activeProjectId: selectedBot?.projectId ?? null,
           loading: false,
+          loaded: true,
           notice: null,
         }
       })
@@ -954,15 +958,25 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
           : Promise.resolve(true),
         api.request("GET /bots/:id/threads", {}, { id: response.bot.id }).catch(() => ({ threads: [] })),
       ])
-      setData((current) => ({
-        ...current,
-        bots: uniqueById([...current.bots, response.bot]),
-        selectedBotId: response.bot.id,
-        threads: mergeThreads(current.threads, threadsResponse.threads),
-        selectedThreadId: response.bot.mainThreadId ?? threadsResponse.threads[0]?.id ?? null,
-        activeProjectId: response.bot.projectId,
-        processes: [],
-      }))
+      // Adoption can enable the VM login after POST /bots. Its creation snapshot
+      // must not overwrite that update, even when the event stream reconnects.
+      const refreshedBot = loginDraftId
+        ? (await api.request("GET /bots", {}).catch(() => ({ bots: [] }))).bots.find(
+            (bot) => bot.id === response.bot.id,
+          )
+        : undefined
+      setData((current) => {
+        const bot = refreshedBot ?? current.bots.find((bot) => bot.id === response.bot.id) ?? response.bot
+        return {
+          ...current,
+          bots: uniqueById([...current.bots, bot]),
+          selectedBotId: bot.id,
+          threads: mergeThreads(current.threads, threadsResponse.threads),
+          selectedThreadId: bot.mainThreadId ?? threadsResponse.threads[0]?.id ?? null,
+          activeProjectId: bot.projectId,
+          processes: [],
+        }
+      })
       return { loginReady }
     },
     [api],

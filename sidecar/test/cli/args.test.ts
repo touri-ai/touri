@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test"
 import { homedir } from "node:os"
-import { join } from "node:path"
+import { join, resolve } from "node:path"
 import { expandHome, parseCli } from "../../src/cli/args"
 import { remoteAccessWarning } from "../../src/cli/remoteAccessWarning"
 import { DEPRECATED_IMPORT_ALIAS } from "../../src/importer/deprecatedAliases"
@@ -101,6 +101,12 @@ test("mcp-stdio, version and help", () => {
       command: { dataDir: "/x" },
     },
   )
+  expect(parseCli(["serve", "--data-dir", "./data"])).toMatchObject({
+    command: { options: { dataDir: resolve("data") } },
+  })
+  expect(parseCli(["mcp-stdio", "--thread", "t1", "--data-dir", "./data"])).toMatchObject({
+    command: { dataDir: resolve("data") },
+  })
   expect(parseCli(["--version"])).toEqual({ success: true, command: { name: "version" } })
   expect(parseCli([])).toEqual({ success: true, command: { name: "help" } })
   expect(parseCli(["serve", "--help"])).toEqual({ success: true, command: { name: "help" } })

@@ -71,7 +71,7 @@ it("opens bot settings with identity, mascot and one access sentence, then revea
   )
 })
 
-it("keeps every former bot setting within the Advanced button and one section click", async () => {
+it("keeps common bot settings nearby and technical settings behind a disclosure", async () => {
   await botSettings({ machine: "vm", computerUse: true, mainThreadId: "thread-mark" })
   const checks: Record<string, () => void> = {
     Modelo: () => {
@@ -95,6 +95,8 @@ it("keeps every former bot setting within the Advanced button and one section cl
     Computador: () => {
       expect(screen.getByLabelText("Máquina", { exact: true })).toBeVisible()
       expect(screen.getByLabelText("Parar após minutos sem atividade")).toBeVisible()
+      expect(screen.getByLabelText(SETTINGS.vmMemory.label)).not.toBeVisible()
+      fireEvent.click(screen.getByText("Detalhes técnicos"))
       expect(screen.getByLabelText(SETTINGS.vmMemory.label)).toBeVisible()
       for (const name of [
         /Usar meu login/,
@@ -147,7 +149,7 @@ it("keeps local provider accounts and connectors in Access within two clicks", a
   expect(screen.getByRole("switch", { name: /Conectores do claude.ai/ })).toBeVisible()
 })
 
-it("keeps app sections short, with every registry setting and diagnostics at most two clicks away", async () => {
+it("keeps app sections short and technical settings within their disclosure", async () => {
   const user = userEvent.setup()
   const api = createMockApi()
   render(
@@ -190,6 +192,7 @@ it("keeps app sections short, with every registry setting and diagnostics at mos
     if (disclosure) await user.click(screen.getByText(disclosure))
     for (const setting of Object.values(SETTINGS)) {
       if (setting.scope !== "app" || setting.section !== section.id) continue
+      if (setting.id === "vmMemory") await user.click(screen.getByText("Detalhes técnicos"))
       expect(document.querySelector(`[data-setting-id="${setting.id}"]`)).toBeVisible()
     }
     if (section.id === "privacy")

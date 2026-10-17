@@ -155,248 +155,252 @@ export const RoutineEditor = ({
         }}
       >
         <fieldset disabled={busy}>
-          {!review ? (
-            <>
-              <div className="routine-form-grid">
+          <div className="routine-fields">
+            {!review ? (
+              <>
+                <div className="routine-form-grid">
+                  <label>
+                    {t("Bot")}
+                    <select
+                      value={draft.botId}
+                      disabled={!!savedId}
+                      onChange={(event) =>
+                        update({ botId: event.target.value, resultsThreadId: null, continuity: "main-thread" })
+                      }
+                    >
+                      {bots.map((bot) => (
+                        <option key={bot.id} value={bot.id}>
+                          {bot.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    {t("Nome")}
+                    <input
+                      data-initial-focus
+                      required
+                      maxLength={80}
+                      value={draft.name}
+                      onChange={(event) => update({ name: event.target.value })}
+                    />
+                  </label>
+                </div>
                 <label>
-                  {t("Bot")}
-                  <select
-                    value={draft.botId}
-                    disabled={!!savedId}
-                    onChange={(event) =>
-                      update({ botId: event.target.value, resultsThreadId: null, continuity: "main-thread" })
-                    }
-                  >
-                    {bots.map((bot) => (
-                      <option key={bot.id} value={bot.id}>
-                        {bot.name}
+                  {t("Tarefa")}
+                  <textarea
+                    required
+                    maxLength={8000}
+                    rows={3}
+                    value={draft.prompt}
+                    onChange={(event) => update({ prompt: event.target.value })}
+                  />
+                </label>
+                {simple && (
+                  <>
+                    <div className="routine-form-grid">
+                      <label>
+                        {t("Frequência")}
+                        <select
+                          value={simple.frequency}
+                          onChange={(event) => {
+                            const next = { ...simple, frequency: event.target.value as typeof simple.frequency }
+                            setSimple(next)
+                            update({ cron: simpleCron(next) })
+                          }}
+                        >
+                          <option value="weekdays">{t("Dias úteis")}</option>
+                          <option value="daily">{t("Todos os dias")}</option>
+                          <option value="days">{t("Escolher dias")}</option>
+                        </select>
+                      </label>
+                      <label>
+                        {t("Às")}
+                        <input
+                          type="time"
+                          required
+                          value={simple.time}
+                          onChange={(event) => {
+                            const next = { ...simple, time: event.target.value }
+                            setSimple(next)
+                            update({ cron: simpleCron(next) })
+                          }}
+                        />
+                      </label>
+                    </div>
+                    {simple.frequency === "days" && (
+                      <fieldset className="routine-days">
+                        <legend>{t("Dias da semana")}</legend>
+                        {[1, 2, 3, 4, 5, 6, 0].map((day) => (
+                          <label key={day}>
+                            <input
+                              type="checkbox"
+                              checked={simple.days.includes(day)}
+                              onChange={(event) => {
+                                const next = {
+                                  ...simple,
+                                  days: event.target.checked
+                                    ? [...simple.days, day]
+                                    : simple.days.filter((value) => value !== day),
+                                }
+                                setSimple(next)
+                                update({ cron: simpleCron(next) })
+                              }}
+                            />
+                            {t(weekdays[day] ?? "domingo")}
+                          </label>
+                        ))}
+                      </fieldset>
+                    )}
+                  </>
+                )}
+                <label>
+                  {t("Fuso horário")}
+                  <select value={draft.timezone} onChange={(event) => update({ timezone: event.target.value })}>
+                    {[
+                      ...new Set([
+                        "America/Sao_Paulo",
+                        "America/Manaus",
+                        "America/Rio_Branco",
+                        "America/Noronha",
+                        "UTC",
+                        draft.timezone,
+                      ]),
+                    ].map((zone) => (
+                      <option key={zone} value={zone}>
+                        {zone === "America/Sao_Paulo" ? t("Horário de Brasília") : zone}
                       </option>
                     ))}
                   </select>
                 </label>
                 <label>
-                  {t("Nome")}
-                  <input
-                    data-initial-focus
-                    required
-                    maxLength={80}
-                    value={draft.name}
-                    onChange={(event) => update({ name: event.target.value })}
-                  />
+                  {t("Destino dos resultados")}
+                  <select
+                    value={draft.continuity}
+                    onChange={(event) => update({ continuity: event.target.value as Routine["continuity"] })}
+                  >
+                    <option value="main-thread">{t("Conversa principal")}</option>
+                    <option value="new-thread">{t("Nova conversa por execução")}</option>
+                    <option value="results-thread">
+                      {draft.resultsThreadId ? t("Nesta conversa") : t("Conversa de resultados")}
+                    </option>
+                  </select>
                 </label>
-              </div>
-              <label>
-                {t("Tarefa")}
-                <textarea
-                  required
-                  maxLength={8000}
-                  rows={3}
-                  value={draft.prompt}
-                  onChange={(event) => update({ prompt: event.target.value })}
-                />
-              </label>
-              {simple && (
-                <>
+                <details open={!simple}>
+                  <summary>{t("Avançado")}</summary>
+                  <label>
+                    {t("Expressão cron")}
+                    <input
+                      value={draft.cron}
+                      onChange={(event) => {
+                        setSimple(simpleSchedule(event.target.value))
+                        update({ cron: event.target.value })
+                      }}
+                    />
+                  </label>
+                  <label>
+                    {t("Fuso IANA")}
+                    <input value={draft.timezone} onChange={(event) => update({ timezone: event.target.value })} />
+                  </label>
                   <div className="routine-form-grid">
                     <label>
-                      {t("Frequência")}
-                      <select
-                        value={simple.frequency}
-                        onChange={(event) => {
-                          const next = { ...simple, frequency: event.target.value as typeof simple.frequency }
-                          setSimple(next)
-                          update({ cron: simpleCron(next) })
-                        }}
-                      >
-                        <option value="weekdays">{t("Dias úteis")}</option>
-                        <option value="daily">{t("Todos os dias")}</option>
-                        <option value="days">{t("Escolher dias")}</option>
-                      </select>
+                      {t("Limite de execução (minutos)")}
+                      <input
+                        type="number"
+                        min={1}
+                        max={240}
+                        value={draft.timeoutMinutes}
+                        onChange={(event) => update({ timeoutMinutes: Number(event.target.value) })}
+                      />
                     </label>
                     <label>
-                      {t("Às")}
+                      {t("Recuperar disparos atrasados por (minutos)")}
                       <input
-                        type="time"
-                        required
-                        value={simple.time}
-                        onChange={(event) => {
-                          const next = { ...simple, time: event.target.value }
-                          setSimple(next)
-                          update({ cron: simpleCron(next) })
-                        }}
+                        type="number"
+                        min={0}
+                        max={1440}
+                        value={draft.catchUpMinutes}
+                        onChange={(event) => update({ catchUpMinutes: Number(event.target.value) })}
                       />
                     </label>
                   </div>
-                  {simple.frequency === "days" && (
-                    <fieldset className="routine-days">
-                      <legend>{t("Dias da semana")}</legend>
-                      {[1, 2, 3, 4, 5, 6, 0].map((day) => (
-                        <label key={day}>
-                          <input
-                            type="checkbox"
-                            checked={simple.days.includes(day)}
-                            onChange={(event) => {
-                              const next = {
-                                ...simple,
-                                days: event.target.checked
-                                  ? [...simple.days, day]
-                                  : simple.days.filter((value) => value !== day),
-                              }
-                              setSimple(next)
-                              update({ cron: simpleCron(next) })
-                            }}
-                          />
-                          {t(weekdays[day] ?? "domingo")}
-                        </label>
-                      ))}
-                    </fieldset>
-                  )}
-                </>
-              )}
-              <label>
-                {t("Fuso horário")}
-                <select value={draft.timezone} onChange={(event) => update({ timezone: event.target.value })}>
-                  {[
-                    ...new Set([
-                      "America/Sao_Paulo",
-                      "America/Manaus",
-                      "America/Rio_Branco",
-                      "America/Noronha",
-                      "UTC",
-                      draft.timezone,
-                    ]),
-                  ].map((zone) => (
-                    <option key={zone} value={zone}>
-                      {zone === "America/Sao_Paulo" ? t("Horário de Brasília") : zone}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                {t("Destino dos resultados")}
-                <select
-                  value={draft.continuity}
-                  onChange={(event) => update({ continuity: event.target.value as Routine["continuity"] })}
-                >
-                  <option value="main-thread">{t("Conversa principal")}</option>
-                  <option value="new-thread">{t("Nova conversa por execução")}</option>
-                  <option value="results-thread">
-                    {draft.resultsThreadId ? t("Nesta conversa") : t("Conversa de resultados")}
-                  </option>
-                </select>
-              </label>
-              <details open={!simple}>
-                <summary>{t("Avançado")}</summary>
-                <label>
-                  {t("Expressão cron")}
-                  <input
-                    value={draft.cron}
-                    onChange={(event) => {
-                      setSimple(simpleSchedule(event.target.value))
-                      update({ cron: event.target.value })
-                    }}
-                  />
-                </label>
-                <label>
-                  {t("Fuso IANA")}
-                  <input value={draft.timezone} onChange={(event) => update({ timezone: event.target.value })} />
-                </label>
-                <div className="routine-form-grid">
-                  <label>
-                    {t("Limite de execução (minutos)")}
-                    <input
-                      type="number"
-                      min={1}
-                      max={240}
-                      value={draft.timeoutMinutes}
-                      onChange={(event) => update({ timeoutMinutes: Number(event.target.value) })}
-                    />
-                  </label>
-                  <label>
-                    {t("Recuperar disparos atrasados por (minutos)")}
-                    <input
-                      type="number"
-                      min={0}
-                      max={1440}
-                      value={draft.catchUpMinutes}
-                      onChange={(event) => update({ catchUpMinutes: Number(event.target.value) })}
-                    />
-                  </label>
-                </div>
-              </details>
-            </>
-          ) : (
-            <section ref={reviewRef} tabIndex={-1} className="routine-review" aria-label={t("Revisar rotina")}>
-              <p className="routine-summary">
-                {t("{bot} fará {task}, {schedule}.", {
-                  bot: bot?.name ?? "",
-                  task: draft.name,
-                  schedule: routineSchedule(draft.cron, draft.timezone).replace(/^De /, "de "),
-                })}
-              </p>
-              <h3>{t("Tarefa")}</h3>
-              <p className="routine-instruction">{draft.prompt}</p>
-              <h3>{t("Destino dos resultados")}</h3>
-              <p>{destination}</p>
-            </section>
-          )}
-          <section className="routine-context" aria-label={t("Contexto autorizado")}>
-            <h3>{t("Contexto autorizado")}</h3>
-            <p>
-              {draft.continuity === "results-thread" && draft.resultsThreadId
-                ? t("Histórico desta conversa e permissões atuais do bot.")
-                : t("Permissões atuais do bot.")}
-            </p>
-            {bot?.anyFolderAccess ? (
-              <p>{t("Todas as pastas já autorizadas ao bot")}</p>
+                </details>
+              </>
             ) : (
-              <ul>
-                {[...new Set([bot?.cwd, ...(bot?.folders ?? []).map((folder) => folder.path)].filter(Boolean))].map(
-                  (path) => (
-                    <li key={path}>{path}</li>
-                  ),
-                )}
-              </ul>
+              <section ref={reviewRef} tabIndex={-1} className="routine-review" aria-label={t("Revisar rotina")}>
+                <p className="routine-summary">
+                  {t("{bot} fará {task}, {schedule}.", {
+                    bot: bot?.name ?? "",
+                    task: draft.name,
+                    schedule: routineSchedule(draft.cron, draft.timezone).replace(/^De /, "de "),
+                  })}
+                </p>
+                <h3>{t("Tarefa")}</h3>
+                <p className="routine-instruction">{draft.prompt}</p>
+                <h3>{t("Destino dos resultados")}</h3>
+                <p>{destination}</p>
+              </section>
             )}
-            {!bot?.cwd && !bot?.folders?.length && !bot?.anyFolderAccess && <p>{t("Sem pasta externa autorizada.")}</p>}
-            {!!bot?.mcpServers?.length && (
+            <section className="routine-context" aria-label={t("Contexto autorizado")}>
+              <h3>{t("Contexto autorizado")}</h3>
               <p>
-                {t("Fontes")}: {bot.mcpServers.map((server) => server.name).join(", ")}
+                {draft.continuity === "results-thread" && draft.resultsThreadId
+                  ? t("Histórico desta conversa e permissões atuais do bot.")
+                  : t("Permissões atuais do bot.")}
+              </p>
+              {bot?.anyFolderAccess ? (
+                <p>{t("Todas as pastas já autorizadas ao bot")}</p>
+              ) : (
+                <ul>
+                  {[...new Set([bot?.cwd, ...(bot?.folders ?? []).map((folder) => folder.path)].filter(Boolean))].map(
+                    (path) => (
+                      <li key={path}>{path}</li>
+                    ),
+                  )}
+                </ul>
+              )}
+              {!bot?.cwd && !bot?.folders?.length && !bot?.anyFolderAccess && (
+                <p>{t("Sem pasta externa autorizada.")}</p>
+              )}
+              {!!bot?.mcpServers?.length && (
+                <p>
+                  {t("Fontes")}: {bot.mcpServers.map((server) => server.name).join(", ")}
+                </p>
+              )}
+              <p>{t("Esta rotina não concede novos acessos. Mudanças de permissões do bot também afetam a rotina.")}</p>
+            </section>
+            <section aria-label={t("Próximas três execuções")}>
+              <h3>{t("Próximas três execuções")}</h3>
+              {dates.length ? (
+                <ol className="routine-dates">
+                  {dates.map((date) => (
+                    <li key={date}>
+                      <time dateTime={new Date(date).toISOString()}>
+                        {new Date(date).toLocaleString("pt-BR", {
+                          timeZone: draft.timezone,
+                          weekday: "short",
+                          day: "2-digit",
+                          month: "short",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </time>
+                    </li>
+                  ))}
+                </ol>
+              ) : (
+                <p role="alert">{t("Escolha dias, hora e fuso válidos para ver as próximas execuções.")}</p>
+              )}
+              <small>{draft.timezone === "America/Sao_Paulo" ? t("Horário de Brasília") : draft.timezone}</small>
+            </section>
+            <p className="routine-form-note">{routineHostNotice(host)}</p>
+            {error && <p role="alert">{error}</p>}
+            {tested && (
+              <p role="status">
+                {t("Teste iniciado. O resultado aparecerá no destino escolhido. A rotina continua pausada.")}
               </p>
             )}
-            <p>{t("Esta rotina não concede novos acessos. Mudanças de permissões do bot também afetam a rotina.")}</p>
-          </section>
-          <section aria-label={t("Próximas três execuções")}>
-            <h3>{t("Próximas três execuções")}</h3>
-            {dates.length ? (
-              <ol className="routine-dates">
-                {dates.map((date) => (
-                  <li key={date}>
-                    <time dateTime={new Date(date).toISOString()}>
-                      {new Date(date).toLocaleString("pt-BR", {
-                        timeZone: draft.timezone,
-                        weekday: "short",
-                        day: "2-digit",
-                        month: "short",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                    </time>
-                  </li>
-                ))}
-              </ol>
-            ) : (
-              <p role="alert">{t("Escolha dias, hora e fuso válidos para ver as próximas execuções.")}</p>
-            )}
-            <small>{draft.timezone === "America/Sao_Paulo" ? t("Horário de Brasília") : draft.timezone}</small>
-          </section>
-          <p className="routine-form-note">{routineHostNotice(host)}</p>
-          {error && <p role="alert">{error}</p>}
-          {tested && (
-            <p role="status">
-              {t("Teste iniciado. O resultado aparecerá no destino escolhido. A rotina continua pausada.")}
-            </p>
-          )}
+          </div>
           <div className="routine-modal-actions">
             <button type="button" className="outline-button" onClick={onClose}>
               {t("Cancelar")}

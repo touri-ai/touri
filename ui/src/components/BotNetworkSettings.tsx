@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react"
 import type { UiApi } from "../api/client"
+import { t } from "../i18n"
 import { SettingsRow, SettingsSwitch } from "./SettingsLayout"
 
 type Policy = {
@@ -77,10 +78,7 @@ export const BotNetworkSettings = ({ api, botId }: { api: UiApi; botId: string }
   }
   return (
     <section aria-label="Proteção de rede">
-      <SettingsRow
-        title="Permitir acesso à rede local"
-        description="Desativado por padrão. Bloqueios entram em vigor agora; permissões adicionais só após reiniciar a máquina. O host e endereços de metadados continuam bloqueados."
-      >
+      <SettingsRow title="Permitir acesso à rede local" description={t("Rede local ajuda")}>
         <SettingsSwitch
           aria-label="Permitir acesso à rede local"
           checked={status?.requested.allowLan ?? false}

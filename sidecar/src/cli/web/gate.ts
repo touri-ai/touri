@@ -88,11 +88,12 @@ export const originAllowed = (request: Request, proxy = false): boolean => {
   const origin = request.headers.get("origin")
   if (origin === null) return true
   const host = (proxy ? request.headers.get("x-forwarded-host") : null) ?? request.headers.get("host")
+  // A loopback request without forwarding headers (local CLI, SSH tunnel) did not come through the proxy.
+  const forwardedProto = proxy ? request.headers.get("x-forwarded-proto") : null
   try {
     return (
       new URL(origin).host === host &&
-      new URL(origin).protocol ===
-        (proxy ? `${request.headers.get("x-forwarded-proto")}:` : new URL(request.url).protocol)
+      new URL(origin).protocol === (forwardedProto ? `${forwardedProto}:` : new URL(request.url).protocol)
     )
   } catch {
     return false

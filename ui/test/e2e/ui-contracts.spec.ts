@@ -141,7 +141,7 @@ test("A14: tool deltas keep insertion stable and disclosures preserve the readin
   expect(await card.evaluate((node) => node.getAnimations().length)).toBe(0)
   await page.emulateMedia({ reducedMotion: "reduce" })
   const list = page.getByTestId("virtual-message-list")
-  await list.locator(".tool-group > summary").last().press("Enter")
+  await list.locator(".turn-activity-toggle").last().press("Enter")
   const summary = list.locator(".tool-output > summary").last()
   await summary.scrollIntoViewIfNeeded()
   const before = await summary.evaluate((node) => node.getBoundingClientRect().top)

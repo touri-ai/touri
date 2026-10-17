@@ -82,6 +82,34 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: bash scripts/test-ui-affected.sh ${{ github.event.pull_request.base.sha }}
 
+  composer-performance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      TOURI_DOCTOR_SKIP_PROVIDER_PROBES: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.2.21
+      - run: bun install --frozen-lockfile
+      - name: Install browser
+        working-directory: ui
+        run: bunx playwright install --with-deps chromium
+      - name: Check long-conversation typing
+        working-directory: ui
+        run: bunx playwright test test/e2e/composer-performance.spec.ts --workers=1
+      - name: Keep synthetic performance evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: composer-performance
+          path: |
+            ui/test-results/**/composer-performance.json
+            ui/test-results/**/composer-performance.png
+          if-no-files-found: ignore
+          retention-days: 7
+
   license-check:
     runs-on: macos-14
     steps:

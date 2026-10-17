@@ -2,6 +2,7 @@ import type { Database } from "bun:sqlite"
 import { createHash } from "node:crypto"
 import { existsSync, readdirSync, statSync } from "node:fs"
 import { join, posix } from "node:path"
+import { platform } from "node:process"
 import type {
   Bot,
   Kernel,
@@ -17,6 +18,7 @@ import { delegatedBot } from "../groups/security"
 import { buildChildEnv } from "../kernel"
 import { atomicAppendFile, atomicWriteFile, ensurePrivateDirectory, removePrivateFile } from "../kernel/files"
 import { backoffDelay, debounce, sleep } from "../kernel/policy"
+import { linuxRuntimeEnvironment } from "../platform/linux-environment"
 import { projectSandboxCommand } from "../platform/project-sandbox"
 import { surfaceUncertainEffects } from "../runtime/work-notice"
 import { createWorkState, type WorkEffect, type WorkObservation, type WorkState } from "../runtime/work-state"
@@ -29,6 +31,15 @@ import type { ManagedProcess, ProjectErrorCode, ProjectResult, ProjectStore, Sup
 const now = (): number => Date.now()
 
 const ACCESS_RANK: Record<Bot["access"], number> = { "read-only": 0, "workspace-write": 1, full: 2 }
+const processPolicy = (value: Bot | null) =>
+  JSON.stringify([
+    value?.access,
+    value?.approvals,
+    value?.machine,
+    value?.projectId,
+    value?.folders,
+    value?.anyFolderAccess,
+  ])
 
 const PROCESS_BOOT_AT: number = Date.now()
 
@@ -171,6 +182,7 @@ export const createSupervisor = ({
 }): Supervisor => {
   const work: WorkState = workState ?? createWorkState({ database: kernel.db as Database })
   const managed = new Map<string, ManagedProcess>()
+  const processPolicies = new Map<string, { botId: string; policy: string; child: ManagedProcess["child"] }>()
   const stopRequested = new Set<string>()
   const failureHistory = new Map<string, Array<number>>()
   const restartTimers = new Map<string, ReturnType<typeof setTimeout>>()
@@ -414,6 +426,7 @@ export const createSupervisor = ({
     void process.child.exited.then(async (exit) => {
       if (managed.get(process.spec.id)?.run.id !== process.run.id) return
       managed.delete(process.spec.id)
+      processPolicies.delete(process.spec.id)
       clearProcessTimers(process.spec.id)
       const ended = now()
       const machineStopped =
@@ -710,14 +723,14 @@ export const createSupervisor = ({
     )
       return errorResult("DENIED", "A política do bot não permite iniciar este processo.")
     if (ctx && botId !== ctx.botId) return errorResult("DENIED", "Este processo pertence a outro responsável.")
-    const policy = JSON.stringify([bot?.access, bot?.approvals, bot?.machine, bot?.projectId])
+    const policy = processPolicy(bot)
     const destination = botId ? approvalDestination(kernel, botId) : null
     const authorizationCurrent = () => {
       const latest = effective()
       return (
         !signal?.aborted &&
         !ctx?.signal.aborted &&
-        JSON.stringify([latest?.access, latest?.approvals, latest?.machine, latest?.projectId]) === policy &&
+        processPolicy(latest) === policy &&
         (!botId || approvalDestination(kernel, botId) === destination) &&
         JSON.stringify(store.getProcessSpec({ processId: spec.id })) === JSON.stringify(spec)
       )
@@ -754,7 +767,10 @@ export const createSupervisor = ({
       cwd: spec.cwd,
       env: environment.env,
     }
-    if (!vm && bot?.access === "workspace-write") {
+    // Full access has no folder restriction; other Linux bots with grants keep their boundary.
+    const linuxGrants =
+      platform === "linux" && bot?.access !== "full" && !!(bot?.folders?.length || bot?.anyFolderAccess)
+    if (!vm && bot && (bot.access === "workspace-write" || linuxGrants)) {
       const temporary = join(project.dataDir, "tmp", spec.id)
       ensurePrivateDirectory({ root: kernel.paths.appData, path: temporary })
       // The launcher runs before confinement. Loader hooks and project PATH
@@ -762,8 +778,17 @@ export const createSupervisor = ({
       localSpawn.env = Object.fromEntries(
         Object.entries({ ...environment.env, TMPDIR: temporary }).filter(([name]) => !/^(?:LD_|DYLD_)/i.test(name)),
       )
+      if (platform === "linux")
+        localSpawn.env = { ...linuxRuntimeEnvironment(environment.env, Object.keys(spec.env)), TMPDIR: temporary }
       const roots = [project.path, bot.homeDir, project.dataDir, temporary]
-      const sandbox = projectSandboxCommand({ roots, shell, command })
+      const sandbox = projectSandboxCommand({
+        roots,
+        shell,
+        command,
+        folders: bot.folders ?? [],
+        appData: kernel.paths.appData,
+        env: environment.env,
+      })
       if (!sandbox)
         return errorResult("DENIED", "O sandbox local está indisponível. Execute este processo na máquina do bot.")
       localSpawn = { ...localSpawn, ...sandbox }
@@ -798,6 +823,12 @@ export const createSupervisor = ({
             env: environment.env,
           })
         : kernel.spawnTree(localSpawn)
+    if (child.success && botId)
+      processPolicies.set(spec.id, {
+        botId,
+        child,
+        policy: processPolicy(kernel.services.use("store.api")?.getBot({ botId }) ?? null),
+      })
     await release?.()
     if (!child.success) {
       work.recordResult({ effectId, turnId, status: "failed", exitCode: null })
@@ -851,6 +882,13 @@ export const createSupervisor = ({
     }
     managed.set(spec.id, process)
     monitor({ project, process })
+    if (!authorizationCurrent() || stopRequested.has(spec.id)) {
+      stopRequested.add(spec.id)
+      process.stopped = true
+      child.kill("SIGKILL")
+      await child.exited
+      return errorResult("DENIED", "A autorização mudou antes da execução.")
+    }
     portTimers.set(
       spec.id,
       setInterval(() => {
@@ -1138,5 +1176,22 @@ export const createSupervisor = ({
     for (const processId of processes) await stop({ processId })
   }
 
+  kernel.subscribe(({ event }) => {
+    if (event.type !== "bot.updated" && event.type !== "bot.deleted") return
+    const botId = event.type === "bot.updated" ? event.bot.id : event.botId
+    for (const [id, authorization] of processPolicies) {
+      if (
+        authorization.botId !== botId ||
+        (event.type === "bot.updated" && authorization.policy === processPolicy(event.bot))
+      )
+        continue
+      const process = managed.get(id)
+      // A namespace cannot narrow existing mounts. Stop the complete tree before
+      // a later turn can keep using a removed or downgraded grant.
+      stopRequested.add(id)
+      if (process) process.stopped = true
+      authorization.child.kill("SIGKILL")
+    }
+  })
   return { define, start, stop, restart, list, logs, previews, openPreview, stopAll, cleanupOrphans, autostart }
 }

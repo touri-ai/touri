@@ -10,7 +10,7 @@ for (const viewport of [
   test(`repeat a useful result with explicit review at ${viewport.width}px`, async ({ page }, testInfo) => {
     await page.setViewportSize(viewport)
     await page.goto("/test/e2e/home-harness.html", { waitUntil: "domcontentloaded" })
-    await page.getByRole("button", { name: "Repetir esta tarefa" }).click()
+    await page.getByRole("button", { name: "Agendar esta tarefa" }).click()
     const dialog = page.getByRole("dialog", { name: "Quando?" })
     await expect(dialog.getByRole("textbox", { name: "Tarefa", exact: true })).toHaveValue("Review the campaign")
     await dialog.getByLabel("Nome", { exact: true }).fill("Organizar notas")

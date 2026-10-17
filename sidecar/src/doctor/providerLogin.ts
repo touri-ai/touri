@@ -106,7 +106,7 @@ const botCheck = async (
     id,
     `Login · ${bot.name} · fonte pendente`,
     "warn",
-    `${bot.name}: a fonte do login será definida no próximo turno. Ou escolha em ${SETTINGS_PATH}.`,
+    `${bot.name}: a fonte do login será definida na próxima mensagem. Ou escolha em ${SETTINGS_PATH}.`,
   )
 }
 

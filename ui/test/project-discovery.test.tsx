@@ -143,6 +143,42 @@ it("creation access summary follows VM mounts and read-only access", async () =>
   )
 })
 
+it.each([
+  [
+    "local",
+    "workspace-write",
+    "Pede permissão antes de mudar arquivos; alterações ficam na pasta do bot, no projeto e nas pastas liberadas.",
+  ],
+  ["local", "read-only", "Somente leitura; pode ler arquivos no Mac, sem alterá-los."],
+  ["vm", "full", "Acesso total; só no computador isolado."],
+] as const)("creation keeps the %s/%s summary visible with Advanced closed", async (machine, access, summary) => {
+  await creation()
+  fireEvent.change(screen.getByLabelText("Máquina"), { target: { value: machine } })
+  fireEvent.change(screen.getByLabelText("Acesso", { selector: "select" }), { target: { value: access } })
+  fireEvent.click(screen.getByRole("button", { name: "Avançado" }))
+  expect(screen.getByRole("button", { name: "Avançado" })).toHaveAttribute("aria-expanded", "false")
+  expect(screen.getByText(summary)).toBeVisible()
+})
+
+it("creation summary reflects Codex approvals after switching from full access with approval", async () => {
+  const f = await creation()
+  fireEvent.change(screen.getByLabelText("Provedor"), { target: { value: "claude" } })
+  fireEvent.change(screen.getByLabelText("Acesso", { selector: "select" }), { target: { value: "full-approved" } })
+  expect(screen.getByText(/^Acesso total com aprovação;/)).toBeVisible()
+  fireEvent.change(screen.getByLabelText("Provedor"), { target: { value: "codex" } })
+  expect(screen.getByLabelText("Acesso", { selector: "select" })).toHaveValue("full")
+  expect(screen.queryByText(/^Acesso total com aprovação;/)).not.toBeInTheDocument()
+  expect(screen.getByText(/^Acesso total;/)).toBeVisible()
+  await screen.findByText(/Usa o Codex/)
+  fireEvent.click(screen.getByRole("button", { name: "Criar bot" }))
+  await waitFor(() =>
+    expect(f.create).toHaveBeenCalledWith(
+      expect.objectContaining({ provider: "codex", access: "full", approvals: "never" }),
+      expect.any(String),
+    ),
+  )
+})
+
 it("settings adds and links a discovered repository in one click without the folder picker", async () => {
   const api = discoveryApi()
   const bot = api.getState().bots[0]

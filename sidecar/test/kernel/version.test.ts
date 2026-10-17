@@ -29,7 +29,10 @@ test("the 0.2.0 release keeps workspace and desktop versions in sync", () => {
 
 test("the Debian package declares the documented Linux runtime dependencies", () => {
   const config = JSON.parse(readFileSync(join(repoRoot, "src-tauri/tauri.conf.json"), "utf8"))
-  expect(config.bundle.linux?.deb?.depends).toEqual(
+  const linux = JSON.parse(readFileSync(join(repoRoot, "src-tauri/tauri.linux.conf.json"), "utf8"))
+  // Tauri replaces arrays in platform overrides instead of appending to them.
+  const depends = linux.bundle?.linux?.deb?.depends ?? config.bundle.linux?.deb?.depends
+  expect(depends).toEqual(
     expect.arrayContaining(["libwebkit2gtk-4.1-0", "libsecret-1-0", "libsqlite3-0", "xdg-utils", "dbus-user-session"]),
   )
 })

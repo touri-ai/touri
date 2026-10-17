@@ -100,20 +100,29 @@ export const FolderPicker = ({
     >
       <div className="folder-picker-body">
         <p className="field-help">
-          {desktop
-            ? t("As pastas estão no computador onde o touri está rodando.")
-            : t(
-                "Esta pasta fica no servidor. Para enviar um arquivo do celular ou computador, use Enviar arquivo deste dispositivo.",
-              )}
+          {desktop ? t("As pastas estão no computador onde o touri está rodando.") : t("Esta pasta fica no servidor.")}
         </p>
         {unavailable && (
           <div role="status">
             <p>{t("Não foi possível liberar a pasta com segurança. Seu bot continua disponível.")}</p>
+            <p>
+              {t(
+                "Este computador não consegue proteger o acesso a pastas. Nenhuma permissão foi adicionada. Você pode continuar conversando ou enviar um arquivo.",
+              )}
+            </p>
             {onUpload && (
               <button type="button" className="button button-quiet" onClick={onUpload}>
-                {t("Enviar arquivo deste dispositivo")}
+                {t("Anexar arquivo")}
               </button>
             )}
+            <button
+              type="button"
+              className="button button-quiet"
+              disabled={busy}
+              onClick={() => void load(listing.path)}
+            >
+              {t("Verificar ambiente")}
+            </button>
           </div>
         )}
         <nav aria-label={t("Caminho da pasta")} className="folder-picker-breadcrumbs">

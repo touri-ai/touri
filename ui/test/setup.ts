@@ -4,7 +4,10 @@ import { afterEach, vi } from "vitest"
 
 configure({ asyncUtilTimeout: 10_000 })
 
-afterEach(() => localStorage.clear())
+afterEach(() => {
+  localStorage.clear()
+  window.history.replaceState(null, "", "/")
+})
 
 Object.defineProperty(window, "matchMedia", {
   writable: true,

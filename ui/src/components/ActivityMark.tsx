@@ -30,7 +30,7 @@ export const ActivityMark = ({
   parts?: readonly MessagePart[]
   bot?: AvatarIdentity | undefined
   threadId?: string | undefined
-  onFocusApproval?: (approvalId: string) => void
+  onFocusApproval?: ((approvalId: string) => void) | undefined
   onExpandReasoning?: (() => void) | undefined
   reasoningId?: string | undefined
   reasoningExpanded?: boolean | undefined
@@ -80,13 +80,15 @@ export const ActivityMark = ({
   const slow = !waiting && quietMs >= 30_000
   const label = waiting
     ? activityLabelFor(state, parts, locale)
-    : preparingEnvironment && !providerAt
-      ? t("Preparando o ambiente…", {}, locale)
-      : quietMs >= 10_000 && activeToolFor(parts)
-        ? t("A tarefa continua em execução.", {}, locale)
-        : quietMs >= 10_000 && providerAt
-          ? t("Ainda aguardando a IA responder.", {}, locale)
-          : activityLabelFor(state, parts, locale)
+    : slow
+      ? t("A resposta está demorando. Você pode continuar esperando ou verificar a conexão.", {}, locale)
+      : preparingEnvironment && !providerAt
+        ? t("Preparando o ambiente…", {}, locale)
+        : quietMs >= 10_000 && activeToolFor(parts)
+          ? t("A tarefa continua em execução.", {}, locale)
+          : quietMs >= 10_000 && providerAt
+            ? t("Ainda aguardando a IA responder.", {}, locale)
+            : activityLabelFor(state, parts, locale)
   return (
     <div
       className="activity-mark"
@@ -98,6 +100,28 @@ export const ActivityMark = ({
       <span className="activity-mascot" aria-hidden="true">
         <BotAvatar bot={bot} still size={24} state={state} {...(threadId ? { threadId } : {})} />
       </span>
+      {waiting && approvalId && onExpandReasoning && (
+        <button
+          type="button"
+          className="turn-activity-toggle"
+          aria-label={t("Ver atividade", {}, locale)}
+          aria-controls={reasoningId}
+          aria-expanded={reasoningExpanded}
+          onClick={onExpandReasoning}
+        >
+          <svg
+            className="turn-activity-chevron"
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            aria-hidden="true"
+          >
+            <path d="m9 5 7 7-7 7" />
+          </svg>
+        </button>
+      )}
       <div className="activity-copy">
         <span className="activity-label" role="status" aria-atomic="true">
           {state === "waiting-approval" && approvalId ? (
@@ -113,14 +137,25 @@ export const ActivityMark = ({
               {label}
               <span aria-hidden="true"> ↗</span>
             </a>
-          ) : onExpandReasoning && parts.some((part) => part.type === "reasoning" && part.text.trim()) ? (
+          ) : onExpandReasoning ? (
             <button
               type="button"
-              className="activity-reasoning-button"
+              className="activity-reasoning-button turn-activity-toggle"
               aria-controls={reasoningId}
               aria-expanded={reasoningExpanded}
               onClick={onExpandReasoning}
             >
+              <svg
+                className="turn-activity-chevron"
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                aria-hidden="true"
+              >
+                <path d="m9 5 7 7-7 7" />
+              </svg>
               {label}
             </button>
           ) : (
@@ -129,9 +164,6 @@ export const ActivityMark = ({
         </span>
         {slow && (
           <div className="activity-delay">
-            <p role="status">
-              {t("A resposta está demorando. Você pode continuar esperando ou verificar a conexão.", {}, locale)}
-            </p>
             <div className="activity-delay-actions">
               {api && (
                 <button

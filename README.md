@@ -41,7 +41,8 @@ Built with Tauri v2 (Rust shell), a Bun sidecar and a React UI.
 
 ## Install (GitHub Releases)
 
-Download the latest `.dmg` from the Releases page and drag `touri.app` to `/Applications`.
+For macOS, download the [v0.1.0 disk image](https://github.com/touri-ai/touri/releases/download/v0.1.0/touri_0.1.0_aarch64.dmg) and drag `touri.app` to `/Applications`.
+The v0.2.0 prerelease provides Linux packages; the macOS download remains v0.1.0.
 Release builds are currently unsigned and not notarized, so macOS Gatekeeper blocks the first launch:
 
 1. Open `touri.app`. macOS shows a warning and refuses to open it.
@@ -58,18 +59,28 @@ xattr -dr com.apple.quarantine /Applications/touri.app
 
 ### Linux install
 
-Use an AppImage or Debian package for your architecture. With the AppImage:
+Download the [Linux x86_64 AppImage](https://github.com/touri-ai/touri/releases/download/v0.2.0/touri_0.2.0_amd64.AppImage) or use the Debian package below. With the AppImage:
 
 ```sh
-chmod +x touri_*.AppImage
-./touri_*.AppImage
+chmod +x touri_0.2.0_amd64.AppImage
+./touri_0.2.0_amd64.AppImage
 ```
 
-On Debian/Ubuntu:
+On Debian 13 x86_64 (or a compatible desktop with glibc 2.39 or newer), download [touri 0.2.0 (.deb)](https://github.com/touri-ai/touri/releases/download/v0.2.0/touri_0.2.0_amd64.deb),
+then run this command in the download folder:
 
 ```sh
-sudo apt install ./touri_*.deb
+sudo apt install ./touri_0.2.0_amd64.deb
 ```
+
+SHA-256 for `touri_0.2.0_amd64.deb`:
+
+```text
+2db31d0292ea0aee052fe988cda9a5313b3621731089807dbf70956a1bd53005
+```
+
+This package was built on Debian 13 x86_64. Checksums for all Linux assets are also in
+[SHA256SUMS](https://github.com/touri-ai/touri/releases/download/v0.2.0/SHA256SUMS).
 
 Linux needs WebKitGTK 4.1, SQLite, xdg-utils, and a session D-Bus with libsecret and an
 unlocked Secret Service keyring, such as GNOME Keyring or KWallet with its Secret Service

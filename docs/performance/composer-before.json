@@ -1,0 +1,169 @@
+{
+  "phase": "baseline",
+  "cpuRate": 4,
+  "messages": 500,
+  "toolCalls": 3000,
+  "initialLoadMs": 16807.699999999255,
+  "keypresses": 20,
+  "p95HandlerMs": 3054.2999999988824,
+  "p95NextFrameMs": 3500.7999999988824,
+  "p95AfterFrameMs": 4390.299999998882,
+  "reactCommits": 123,
+  "p95ReactRenderMs": 805.2000000104308,
+  "renders": {
+    "Composer": 41,
+    "VirtualMessageList": 60,
+    "MarkdownContent": 1980,
+    "ToolCallList": 1980
+  },
+  "mainThreadMs": {
+    "LayoutDuration": 109.0049999999998,
+    "RecalcStyleDuration": 65.97699999999995,
+    "ScriptDuration": 81575.217,
+    "TaskDuration": 85904.55900000001
+  },
+  "mainThreadMsPerKey": 4295.22795,
+  "p95MainThreadMs": 4794.178000000003,
+  "samples": [
+    {
+      "start": 26267.300000000745,
+      "handlerMs": 2819.7999999988824,
+      "frameMs": 3137.39999999851,
+      "afterFrameMs": 3978.89999999851,
+      "mainThreadMs": 5550.428999999997
+    },
+    {
+      "start": 31000.099999999627,
+      "handlerMs": 2599.2000000011176,
+      "frameMs": 2937.5999999996275,
+      "afterFrameMs": 3813,
+      "mainThreadMs": 4015.5139999999997
+    },
+    {
+      "start": 35511.199999999255,
+      "handlerMs": 2485.4000000003725,
+      "frameMs": 2844.10000000149,
+      "afterFrameMs": 3809,
+      "mainThreadMs": 4044.696999999999
+    },
+    {
+      "start": 40030.5,
+      "handlerMs": 2506.5999999996275,
+      "frameMs": 2805.199999999255,
+      "afterFrameMs": 3627.199999999255,
+      "mainThreadMs": 3814.288000000005
+    },
+    {
+      "start": 44365.199999999255,
+      "handlerMs": 2525.4000000003725,
+      "frameMs": 2846.60000000149,
+      "afterFrameMs": 3818.2000000011176,
+      "mainThreadMs": 4169.511999999997
+    },
+    {
+      "start": 49026.300000000745,
+      "handlerMs": 3054.2999999988824,
+      "frameMs": 3500.7999999988824,
+      "afterFrameMs": 4566.699999999255,
+      "mainThreadMs": 4794.178000000003
+    },
+    {
+      "start": 54525.40000000037,
+      "handlerMs": 2740.699999999255,
+      "frameMs": 3123.9000000003725,
+      "afterFrameMs": 4156,
+      "mainThreadMs": 4506.2599999999975
+    },
+    {
+      "start": 59557.300000000745,
+      "handlerMs": 2654.7999999988824,
+      "frameMs": 2954,
+      "afterFrameMs": 3829.5,
+      "mainThreadMs": 4219.144
+    },
+    {
+      "start": 64211.09999999963,
+      "handlerMs": 2558.5999999996275,
+      "frameMs": 2882.2000000011176,
+      "afterFrameMs": 3847.2000000011176,
+      "mainThreadMs": 4035.6280000000024
+    },
+    {
+      "start": 68829.09999999963,
+      "handlerMs": 2615.5,
+      "frameMs": 2993.2000000011176,
+      "afterFrameMs": 3808.5,
+      "mainThreadMs": 4045.357999999993
+    },
+    {
+      "start": 73317,
+      "handlerMs": 2764,
+      "frameMs": 3070.800000000745,
+      "afterFrameMs": 3865.5,
+      "mainThreadMs": 4096.74600000001
+    },
+    {
+      "start": 77972.30000000075,
+      "handlerMs": 2620.5,
+      "frameMs": 3115.5,
+      "afterFrameMs": 3997.5999999996275,
+      "mainThreadMs": 4132.577999999995
+    },
+    {
+      "start": 82739.09999999963,
+      "handlerMs": 2620.0999999996275,
+      "frameMs": 2969.2000000011176,
+      "afterFrameMs": 3941.5999999996275,
+      "mainThreadMs": 4225.6869999999935
+    },
+    {
+      "start": 87626.40000000037,
+      "handlerMs": 2976.4000000003725,
+      "frameMs": 3379.5999999996275,
+      "afterFrameMs": 4164,
+      "mainThreadMs": 4467.14
+    },
+    {
+      "start": 92571.90000000037,
+      "handlerMs": 2733,
+      "frameMs": 3154.9000000003725,
+      "afterFrameMs": 4051.7999999988824,
+      "mainThreadMs": 4099.426000000009
+    },
+    {
+      "start": 97332.19999999925,
+      "handlerMs": 2430.10000000149,
+      "frameMs": 2770,
+      "afterFrameMs": 3608.800000000745,
+      "mainThreadMs": 3981.3729999999905
+    },
+    {
+      "start": 101791.90000000037,
+      "handlerMs": 2897.5999999996275,
+      "frameMs": 3257.199999999255,
+      "afterFrameMs": 4100.699999999255,
+      "mainThreadMs": 4287.000000000006
+    },
+    {
+      "start": 106627.40000000037,
+      "handlerMs": 3153.7999999988824,
+      "frameMs": 3544.199999999255,
+      "afterFrameMs": 4390.299999998882,
+      "mainThreadMs": 4665.689999999998
+    },
+    {
+      "start": 111915.69999999925,
+      "handlerMs": 2847.60000000149,
+      "frameMs": 3175.7000000011176,
+      "afterFrameMs": 4059.60000000149,
+      "mainThreadMs": 4303.694000000007
+    },
+    {
+      "start": 116794.5,
+      "handlerMs": 2948.4000000003725,
+      "frameMs": 3295.5,
+      "afterFrameMs": 4072.9000000003725,
+      "mainThreadMs": 4391.064
+    }
+  ]
+}
