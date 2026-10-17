@@ -40,7 +40,7 @@ const PAUSED = { pauseAfterFirstDelta: "release", ignoreInterrupt: true, deltas:
  * A fake Codex on a real store. `crash-once` makes the next provider process exit mid-turn;
  * every other turn follows scenario.json.
  */
-const fixture = async () => {
+const fixture = async ({ resumeBackoffMs = 50 }: { resumeBackoffMs?: number } = {}) => {
   const root = mkdtempSync(join(tmpdir(), "touri-resume-"))
   // Recovery fixtures must not depend on a provider reading touri's private data.
   const assets = mkdtempSync(join(tmpdir(), "touri-resume-provider-"))
@@ -92,7 +92,7 @@ exec '${process.execPath}' '${fake}' "$@"
     if (!store) throw new Error("Store missing")
     return { runtime, engine, store, db: runtime.kernel.db as Database }
   }
-  const first = await open({ resumeBackoffMs: 50 })
+  const first = await open({ resumeBackoffMs })
   first.db.exec(`INSERT INTO bots(id,name,provider,home_dir,created_at,updated_at) VALUES ('b','Teste','codex','/tmp',1,1);
     INSERT INTO threads(id,bot_id,title,created_at,updated_at) VALUES ('t','b','Conversa',1,1);`)
   const send = (engine: Engine, text = "Tarefa longa"): Run => {
@@ -481,6 +481,42 @@ test("a routine interrupted by a restart continues within its timeout instead of
     await f.close()
   }
 }, 30_000)
+
+test("deleting a routine during crash backoff prevents its automatic continuation", async () => {
+  const f = await fixture({ resumeBackoffMs: 500 })
+  try {
+    f.writeScenario({ events: [{ type: "complete" }] })
+    f.crashOnce()
+    const created = f.first.engine.createRoutine({
+      forceDisabled: false,
+      input: {
+        botId: "b",
+        name: "Notes",
+        prompt: "Summarize notes",
+        cron: "0 9 * * *",
+        timezone: "UTC",
+        enabled: true,
+        continuity: "main-thread",
+        resultsThreadId: null,
+        timeoutMinutes: 30,
+        overlap: "queue",
+        catchUpMinutes: 30,
+      },
+    })
+    if (!created.success) throw new Error(created.error)
+    f.first.db.exec("UPDATE bots SET main_thread_id = 't' WHERE id = 'b'")
+    const started = f.first.engine.runRoutine({ routineId: created.routine.id, triggerSource: "manual" })
+    if (!started.success) throw new Error(started.error)
+    await waitFor(() => f.runs()[0]?.status === "failed")
+    expect(f.first.engine.deleteRoutine(created.routine.id).success).toBe(true)
+    await Bun.sleep(700)
+    expect(f.runs()).toHaveLength(1)
+    expect(f.links()).toHaveLength(0)
+    expect(f.first.engine.listRoutines()).toEqual([])
+  } finally {
+    await f.close()
+  }
+})
 
 test("a routine past its timeout is canceled after a restart, as before", async () => {
   const f = await fixture()

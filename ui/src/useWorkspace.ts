@@ -91,6 +91,7 @@ export type WorkspaceActions = {
   toggleRoutine: (routine: Routine) => Promise<void>
   runRoutine: (routineId: Id) => Promise<void>
   createRoutine: (input: ApiRoutes["POST /routines"]["req"]) => Promise<Routine>
+  deleteRoutine: (routineId: Id) => Promise<void>
   updateRoutine: (routineId: Id, patch: ApiRoutes["PATCH /routines/:id"]["req"]) => Promise<Routine>
   createProject: (input: ApiRoutes["POST /projects"]["req"]) => Promise<Project>
   createProcess: (
@@ -625,6 +626,8 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
           }
         }
         if (event.type === "run.updated") return { ...current, runs: mergeRunRows(current.runs, [event.run]) }
+        if (event.type === "routine.deleted")
+          return { ...current, routines: current.routines.filter((routine) => routine.id !== event.routineId) }
         if (event.type === "routine.updated")
           return {
             ...current,
@@ -996,6 +999,14 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
     [api],
   )
 
+  const deleteRoutine = useCallback(
+    async (routineId: Id): Promise<void> => {
+      await api.request("DELETE /routines/:id", {}, { id: routineId })
+      setData((current) => ({ ...current, routines: current.routines.filter((routine) => routine.id !== routineId) }))
+    },
+    [api],
+  )
+
   const updateRoutine = useCallback(
     async (routineId: Id, patch: ApiRoutes["PATCH /routines/:id"]["req"]): Promise<Routine> => {
       const response = await api.request("PATCH /routines/:id", patch, { id: routineId })
@@ -1251,6 +1262,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
       runRoutine,
       createRoutine,
       updateRoutine,
+      deleteRoutine,
       createProject,
       createProcess,
       startProcess,

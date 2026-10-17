@@ -98,6 +98,7 @@ export const apiRouteKeys = [
   "GET /routines",
   "POST /routines",
   "PATCH /routines/:id",
+  "DELETE /routines/:id",
   "POST /routines/:id/run",
   "GET /routine-runs",
   "GET /mcp/tools",

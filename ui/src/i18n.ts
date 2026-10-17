@@ -3,6 +3,17 @@ import { userFacingError } from "./errors"
 /** All UI copy lives here. pt-BR is the default; English is available for a future locale picker. */
 export type Locale = "pt-BR" | "en"
 export const ptBR = {
+  // Routine deletion.
+  "Excluir rotina": "Excluir rotina",
+  "Excluir rotina {name}": "Excluir rotina {name}",
+  "Ações da rotina {name}": "Ações da rotina {name}",
+  "Excluir a rotina {name}?": "Excluir a rotina {name}?",
+  "Ela não vai mais rodar. O histórico de execuções continua nas conversas.":
+    "Ela não vai mais rodar. O histórico de execuções continua nas conversas.",
+  "Não foi possível excluir a rotina. Tente novamente.": "Não foi possível excluir a rotina. Tente novamente.",
+  "Excluindo…": "Excluindo…",
+  Excluir: "Excluir",
+
   "seu provedor": "seu provedor",
   "o arquivo": "o arquivo",
   "Não consegui conectar à sua IA. Sua mensagem está salva.":
@@ -1715,6 +1726,17 @@ export const ptBR = {
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  // Routine deletion.
+  "Excluir rotina": "Delete routine",
+  "Excluir rotina {name}": "Delete routine {name}",
+  "Ações da rotina {name}": "Actions for routine {name}",
+  "Excluir a rotina {name}?": "Delete routine {name}?",
+  "Ela não vai mais rodar. O histórico de execuções continua nas conversas.":
+    "It will no longer run. Execution history remains in conversations.",
+  "Não foi possível excluir a rotina. Tente novamente.": "Could not delete the routine. Try again.",
+  "Excluindo…": "Deleting…",
+  Excluir: "Delete",
+
   "seu provedor": "your provider",
   "o arquivo": "the file",
   "Não consegui conectar à sua IA. Sua mensagem está salva.": "I could not connect to your AI. Your message is saved.",

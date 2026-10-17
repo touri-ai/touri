@@ -36,6 +36,7 @@ import { BotMcpSettings } from "./BotMcpSettings"
 import { BotNetworkSettings } from "./BotNetworkSettings"
 import { BotStandingGrants } from "./BotStandingGrants"
 import { DeleteBotDialog } from "./DeleteBotDialog"
+import { DeleteRoutineDialog } from "./DeleteRoutineDialog"
 import { DiscoveredProjects } from "./DiscoveredProjects"
 import { FolderPicker } from "./FolderPicker"
 import { MachineFields } from "./MachineFields"
@@ -927,6 +928,8 @@ export const BotSettingsModal = ({
   initialSection,
   focusSetting,
 }: BotSettingsModalProps) => {
+  const routinesFocusRef = useRef<HTMLElement | null>(null)
+  const [deletingRoutine, setDeletingRoutine] = useState<Routine | null>(null)
   const [vmMemory, setVmMemory] = useState(settings?.botVmMemoryMb ?? 1536)
   const [name, setName] = useState(bot.name)
   const [avatar, setAvatar] = useState<AvatarChoice>(() => {
@@ -1545,6 +1548,18 @@ export const BotSettingsModal = ({
                       onChange={() => void immediateAction(() => actions.toggleRoutine(routine))}
                       aria-label={t("Enable routine", { name: routine.name })}
                     />
+                    <button
+                      type="button"
+                      className="routine-delete-button"
+                      disabled={updating || saving}
+                      aria-label={t("Excluir rotina {name}", { name: routine.name })}
+                      onClick={(event) => {
+                        routinesFocusRef.current = event.currentTarget.closest('[role="tabpanel"]')
+                        setDeletingRoutine(routine)
+                      }}
+                    >
+                      {t("Excluir rotina")}
+                    </button>
                   </div>
                 ))}
                 {botRoutines.length === 0 && (
@@ -1557,6 +1572,14 @@ export const BotSettingsModal = ({
           </SettingsPane>
         </SettingsLayout>
       </div>
+      {deletingRoutine && (
+        <DeleteRoutineDialog
+          routine={deletingRoutine}
+          onDelete={actions.deleteRoutine}
+          onClose={() => setDeletingRoutine(null)}
+          onDeleted={() => routinesFocusRef.current?.focus()}
+        />
+      )}
       {saveError && (
         <p className="settings-save-error warning-callout" role="alert">
           {saveError}

@@ -38,6 +38,7 @@ const fixture = () => {
     createRoutine: vi.fn(async (_input: RoutineDraft) => created),
     updateRoutine: vi.fn(async (_id: string, _patch: Partial<RoutineDraft>) => created),
     runRoutine: vi.fn(async () => {}),
+    deleteRoutine: vi.fn(async () => {}),
   }
   return { api, state, bot, draft, created, actions }
 }
