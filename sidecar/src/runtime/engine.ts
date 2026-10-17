@@ -30,7 +30,12 @@ import { createApprovalBridge } from "../approvals/bridge"
 import { approvalOutcome } from "../approvals/outcome"
 import { delegatedBot } from "../groups/security"
 import { buildChildEnv } from "../kernel"
-import { folderGrantProblem, refreshHostFolderAccess } from "../kernel/folder-capability"
+import {
+  folderAccessUnavailable,
+  folderGrantProblem,
+  hostFolderAccessAvailable,
+  refreshHostFolderAccess,
+} from "../kernel/folder-capability"
 import { providerProfileEnv } from "../kernel/provider-profiles"
 import { redactStructured } from "../kernel/redact"
 import { attachedServers, resolveAttachedMcp } from "../mcp/attached"
@@ -741,9 +746,14 @@ export const createRuntimeEngine = ({
       return
     }
     const state = getState(run.id)
-    if (candidateBot.machine === "local" && (candidateBot.anyFolderAccess || candidateBot.folders?.length))
+    if (
+      candidateBot.machine === "local" &&
+      (process.platform === "linux" || candidateBot.anyFolderAccess || candidateBot.folders?.length)
+    )
       await refreshHostFolderAccess()
-    const conversationOnly = !!folderGrantProblem(candidateBot)
+    const conversationOnly =
+      !!folderGrantProblem(candidateBot) ||
+      (candidateBot.machine === "local" && process.platform === "linux" && !hostFolderAccessAvailable())
     const bot: Bot = conversationOnly
       ? {
           ...candidateBot,
@@ -767,7 +777,10 @@ export const createRuntimeEngine = ({
             type: "notice",
             level: "warning",
             code: "folder_access_unavailable",
-            text: "As permissões de pastas salvas não funcionam neste computador. Você pode conversar sem ferramentas. Remova essas permissões nas configurações do bot para continuar com tarefas.",
+            text:
+              candidateBot.anyFolderAccess || candidateBot.folders?.length
+                ? "As permissões de pastas salvas não funcionam neste computador. Você pode conversar sem ferramentas. Remova essas permissões nas configurações do bot para continuar com tarefas."
+                : folderAccessUnavailable,
           },
         }) ?? undefined
     }

@@ -6,10 +6,14 @@ import { canonicalPath } from "../kernel/bot-folders"
 export const linuxProgramFiles = (path: string): string[] => {
   const real = canonicalPath(path)
   if (!/\.[cm]?js$/.test(real)) return [real]
-  let directory = dirname(real)
-  while (directory !== "/") {
+  // A loose script does not authorize its ancestors. Only an installed package
+  // has an independently identifiable runtime root (including scoped packages).
+  const parts = dirname(real).split("/")
+  const modules = parts.lastIndexOf("node_modules")
+  if (modules >= 0) {
+    const scoped = parts[modules + 1]?.startsWith("@")
+    const directory = parts.slice(0, modules + (scoped ? 3 : 2)).join("/")
     if (existsSync(join(directory, "package.json"))) return [directory]
-    directory = dirname(directory)
   }
   return [real]
 }

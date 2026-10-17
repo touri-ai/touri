@@ -190,6 +190,21 @@ test.skipIf(!available)("Linux rejects a saved grant replaced with a symlink bef
   expect(() => linuxFolderSandbox(f.kernel, f.args, f.args.env, f.home)).toThrow()
 })
 
+test.skipIf(!available)("a loose JavaScript executable cannot authorize its package ancestors", () => {
+  const f = fixture()
+  const script = join(f.home, "bin/helper.js")
+  mkdirSync(join(f.home, "bin"))
+  writeFileSync(join(f.home, "package.json"), '{"name":"private-home"}')
+  writeFileSync(script, 'process.stdout.write(require("node:fs").readFileSync(process.argv[2], "utf8"))')
+  f.args.mcp = { command: script, args: [], env: {} }
+  for (const path of [join(f.home, "ungranted/marker"), join(f.home, ".ssh/key"), join(f.appData, "touri.db")]) {
+    const child = f.shell('node "$1" "$2"', script, path)
+    expect(child.exitCode).not.toBe(0)
+    expect(child.stdout.toString()).toBe("")
+  }
+  expect(f.shell('node "$1" "$2"', script, join(f.ro, "reference.txt")).stdout.toString()).toBe("reference")
+})
+
 test.skipIf(!available)("only the active Codex endpoint's authentication variables survive", () => {
   const f = fixture()
   writeFileSync(

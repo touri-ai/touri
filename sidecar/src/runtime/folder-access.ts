@@ -126,6 +126,10 @@ export const spawnFolderProvider = (
   input: Parameters<Kernel["spawnTree"]>[0],
 ): ReturnType<Kernel["spawnTree"]> => {
   if (args.execution) return args.execution.spawn(input)
+  if (process.platform === "linux" && !hostFolderAccessAvailable())
+    return args.conversationOnly
+      ? kernel.spawnTree(input)
+      : { success: false, errorCode: "SPAWN_FAILED", error: folderAccessUnavailable }
   if (
     process.platform !== "darwin" &&
     !hostFolderAccessAvailable() &&
