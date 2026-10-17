@@ -200,6 +200,14 @@ test("static serving falls back to index.html for app routes, never for missing 
   expect(asset?.headers.get("cache-control")).toContain("immutable")
 })
 
+test("chat file reads require authentication and reach API routing rather than static assets", async () => {
+  const { call, pair } = makeGate()
+  const path = "/api/v1/bots/bot/files/content?path=%2Fworkspace%2Fnotes.md"
+  expect((await call({ path }))?.status).toBe(401)
+  const { cookie } = await pair()
+  expect(await call({ path, headers: { cookie } })).toBeNull()
+})
+
 test("R13: --no-pair never admits an unpaired caller; another macOS account shares 127.0.0.1", async () => {
   const { call } = makeGate()
   const direct = { host: "127.0.0.1:8795" }

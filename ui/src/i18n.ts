@@ -3,6 +3,16 @@ import { userFacingError } from "./errors"
 /** All UI copy lives here. pt-BR is the default; English is available for a future locale picker. */
 export type Locale = "pt-BR" | "en"
 export const ptBR = {
+  "Baixar arquivo": "Baixar arquivo",
+  "Fechar arquivo": "Fechar arquivo",
+  "Arquivos disponíveis quando a máquina estiver ligada.": "Arquivos disponíveis quando a máquina estiver ligada.",
+  "Abra este arquivo na conversa do bot que o salvou.": "Abra este arquivo na conversa do bot que o salvou.",
+  "Este arquivo está fora das pastas permitidas para este bot.":
+    "Este arquivo está fora das pastas permitidas para este bot.",
+  "Não foi possível abrir este arquivo. Ele pode ter sido removido, ser um atalho ou ter mais de 512 KiB.":
+    "Não foi possível abrir este arquivo. Ele pode ter sido removido, ser um atalho ou ter mais de 512 KiB.",
+  "Prévia indisponível para este formato. Baixe para abrir no seu computador.":
+    "Prévia indisponível para este formato. Baixe para abrir no seu computador.",
   "List registered projects and Git repositories discovered on this Mac. Read-only; no approval required. Use this before asking the user for a project path.":
     "Listar projetos registrados e repositórios Git encontrados neste Mac. Somente leitura, sem aprovação. Use antes de pedir o caminho de um projeto.",
   "Informe o caminho absoluto de uma pasta deste Mac.": "Informe o caminho absoluto de uma pasta deste Mac.",
@@ -1267,6 +1277,17 @@ export const ptBR = {
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  "Baixar arquivo": "Download file",
+  "Fechar arquivo": "Close file",
+  "Arquivos disponíveis quando a máquina estiver ligada.": "Files are available when the machine is running.",
+  "Abra este arquivo na conversa do bot que o salvou.":
+    "Open this file in the conversation with the bot that saved it.",
+  "Este arquivo está fora das pastas permitidas para este bot.":
+    "This file is outside the folders allowed for this bot.",
+  "Não foi possível abrir este arquivo. Ele pode ter sido removido, ser um atalho ou ter mais de 512 KiB.":
+    "Could not open this file. It may have been removed, be a shortcut or exceed 512 KiB.",
+  "Prévia indisponível para este formato. Baixe para abrir no seu computador.":
+    "Preview unavailable for this format. Download it to open on your computer.",
   "Há um login disponível neste Mac.": "A login is available on this Mac.",
   "Há um login disponível neste servidor.": "A login is available on this server.",
   "Usar login deste Mac": "Use this Mac’s login",

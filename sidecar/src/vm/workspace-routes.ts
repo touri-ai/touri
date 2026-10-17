@@ -1,9 +1,10 @@
 import { randomBytes } from "node:crypto"
 import { closeSync, fstatSync, readSync } from "node:fs"
 import { readdir, realpath } from "node:fs/promises"
-import { basename, resolve } from "node:path"
+import { basename, relative, resolve } from "node:path"
 import type { Bot, Kernel, RouteModule, VmRuntime, WorkspaceFile } from "@touri/contracts"
 
+import { canonicalPath, excludedBotFolders, folderGuestPath, withinFolder } from "../kernel/bot-folders"
 import { openWorkspaceDirectory, openWorkspaceEntry } from "../kernel/files"
 import { evidenceImageRoute } from "./evidence-images"
 import { cancelGuestShell, guestShell } from "./guest-shell"
@@ -17,18 +18,53 @@ const validPath = (path: string) =>
   path.split("/").every((part) => part === "" || (!part.startsWith(".") && part !== ".."))
 const mimeFor = (name: string) => Bun.file(name).type || "application/octet-stream"
 
+const fileTarget = (kernel: Kernel, bot: Bot, path: string, workspace: string) => {
+  const guest = bot.machine === "vm" || bot.machine === "cloud"
+  const folders =
+    bot.machine === "cloud"
+      ? []
+      : (bot.folders ?? []).map((folder) => folder.path).filter((path) => guest || canonicalPath(path) === path)
+  const roots = guest
+    ? [
+        "/workspace",
+        ...folders.map(folderGuestPath),
+        ...(bot.anyFolderAccess && bot.machine === "vm" ? ["/host/home"] : []),
+      ]
+    : [workspace, bot.homeDir, ...folders, ...(bot.anyFolderAccess ? ["/"] : [])]
+  const target = path.startsWith("/") ? path : resolve(roots[0] ?? workspace, path)
+  const match = roots
+    .flatMap((root) => [root, ...(guest ? [] : [canonicalPath(root)])].map((spelling) => ({ root, spelling })))
+    .sort((a, b) => b.spelling.length - a.spelling.length)
+    .find(({ spelling }) => withinFolder(spelling, target))
+  if (!match) return null
+  if (!guest) {
+    const canonical = canonicalPath(target)
+    if (
+      excludedBotFolders(kernel.paths.appData).some(
+        (excluded) =>
+          withinFolder(excluded, canonical) &&
+          ![bot.homeDir, ...folders].some(
+            (root) => withinFolder(excluded, canonicalPath(root)) && withinFolder(canonicalPath(root), canonical),
+          ),
+      )
+    )
+      return null
+  }
+  return { root: match.root, path: relative(match.spelling, target) }
+}
+
 // The guest reads as its regular user. Paths are arguments, never shell interpolation.
 const guestFiles = `import os,sys,json,base64,mimetypes,stat
-path=sys.argv[2]
+path=sys.argv[3]
 parts=[p for p in path.split('/') if p]
 if any(p.startswith('.') for p in parts): raise Exception('Caminho inválido')
-fd=os.open('/workspace',os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+fd=os.open(sys.argv[1],os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
 try:
- for part in (parts if sys.argv[1]=='list' else parts[:-1]):
+ for part in (parts if sys.argv[2]=='list' else parts[:-1]):
   child=os.open(part,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=fd)
   os.close(fd)
   fd=child
- if sys.argv[1]=='list':
+ if sys.argv[2]=='list':
   result=[]
   for entry in sorted(os.scandir(fd),key=lambda e:(not e.is_dir(follow_symlinks=False),e.name.lower())):
    if entry.name.startswith('.') or entry.name=='node_modules' or entry.is_symlink(): continue
@@ -130,17 +166,31 @@ export const botWorkspaceRoutes = (kernel: Kernel, vm: VmRuntime): RouteModule["
       handler: async ({ params, query }) => {
         const bot = kernel.services.use("store.api")?.getBot({ botId: params.id ?? "" })
         if (!bot || bot.archivedAt) return { status: 404, json: { error: "Bot não encontrado" } }
-        const path = query.path ?? ""
-        if (!validPath(path) || (content && !path)) return { status: 400, json: { error: "Caminho inválido" } }
+        const requested = query.path ?? ""
+        if (
+          requested.length >= 4096 ||
+          /[\\\0]/.test(requested) ||
+          requested.split("/").some((part) => part === "." || part === "..") ||
+          (!content && !validPath(requested)) ||
+          (content && !requested)
+        )
+          return { status: 400, json: { error: "Caminho inválido" } }
         try {
-          if (bot.machine !== "vm") {
-            const project = bot.projectId
+          const guest = bot.machine === "vm" || bot.machine === "cloud"
+          const project =
+            !guest && bot.projectId
               ? ((kernel.db as import("bun:sqlite").Database)
                   .query("SELECT path FROM projects WHERE id = ? AND archived_at IS NULL")
                   .get(bot.projectId) as { path: string } | null)
               : null
-            return { status: 200, json: await localFiles(bot, path, content, project?.path ?? bot.cwd ?? bot.homeDir) }
-          }
+          const workspace = guest ? "/workspace" : (project?.path ?? bot.cwd ?? bot.homeDir)
+          const target = content ? fileTarget(kernel, bot, requested, workspace) : { root: workspace, path: requested }
+          if (!target)
+            return { status: 403, json: { error: "Este arquivo está fora das pastas permitidas para este bot." } }
+          if (!validPath(target.path) || (content && !target.path))
+            return { status: 400, json: { error: "Caminho inválido" } }
+          const { root, path } = target
+          if (!guest) return { status: 200, json: await localFiles(bot, path, content, root) }
           if (!vm.states().some((state) => state.botId === bot.id && state.status === "running"))
             return {
               status: 409,
@@ -155,7 +205,7 @@ export const botWorkspaceRoutes = (kernel: Kernel, vm: VmRuntime): RouteModule["
             const result = await vm.exec({
               botId: bot.id,
               command: "python3",
-              args: ["-c", guestFiles, content ? "read" : "list", path],
+              args: ["-c", guestFiles, root, content ? "read" : "list", path],
               signal,
             })
             if (!result.success) throw new Error(result.error)
@@ -166,7 +216,11 @@ export const botWorkspaceRoutes = (kernel: Kernel, vm: VmRuntime): RouteModule["
         } catch (error) {
           return {
             status: 422,
-            json: { error: kernel.redact(error instanceof Error ? error.message : "Arquivos indisponíveis") },
+            json: {
+              error: content
+                ? "Não foi possível ler o arquivo. Ele pode ter sido removido, ser um atalho ou ter mais de 512 KiB."
+                : kernel.redact(error instanceof Error ? error.message : "Arquivos indisponíveis"),
+            },
           }
         }
       },
