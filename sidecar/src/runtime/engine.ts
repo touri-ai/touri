@@ -739,8 +739,15 @@ export const createRuntimeEngine = ({
     const resumedFrom = request?.role === "system" ? continuationReasonOf(request.text) : null
     const link = continuations.link(run.id)
     const originalRun = link ? persistence.getRun(link.originalRunId) : null
+    const previousRun = link ? persistence.getRun(link.previousRunId) : null
+    // A session can be saved before the provider accepts the first turn. The bounded
+    // carryover alone cannot deliver that request's full text or attachments after a restart.
     const originalRequest =
-      resumedFrom === "permission_granted" && originalRun ? activePathMessage({ store, run: originalRun }) : null
+      originalRun &&
+      (resumedFrom === "permission_granted" ||
+        (resumedFrom === "app_restart" && originalRun.externalTurnId === null && previousRun?.externalTurnId === null))
+        ? activePathMessage({ store, run: originalRun })
+        : null
     const requestText = resumedFrom
       ? [continuationPrompt(resumedFrom), originalRequest ? `Original request:\n${originalRequest.text}` : null]
           .filter(Boolean)
