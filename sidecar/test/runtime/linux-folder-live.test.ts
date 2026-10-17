@@ -219,6 +219,11 @@ test.skipIf(process.platform !== "linux" || process.env.TOURI_LIVE_FOLDER_QA !==
         ),
       ).toBe(true)
       await request(`/bots/${bot.id}`, { anyFolderAccess: false }, "PATCH")
+      expect(readFileSync(join(folder, "reference.txt"), "utf8")).toBe(marker)
+      expect(readFileSync(saved, "utf8")).toBe("saved-proof")
+      expect(
+        (await messages()).messages.some((message) => message.role === "assistant" && message.text.includes(marker)),
+      ).toBe(true)
       console.log(
         "Live Linux: picker/create, RO approval/read, blocked RO write, RW approval/write, restart/greeting, broad-grant refusal/recovery/removal: passed",
       )
