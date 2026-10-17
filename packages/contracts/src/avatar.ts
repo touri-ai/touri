@@ -193,7 +193,8 @@ export const createAvatarEngine = (profile: AvatarProfile, mood: AvatarMood): Bo
     SHAPE_BY_ID.get(profile.shape)?.radii,
     avatarExpressionProfile(profile, mood),
   )
-  engine.setLook({ yaw: 0, pitch: 10, mix: 1, spin: 0, wander: 0 }, 0, 0)
+  // Settle the initial gaze before time zero; a zero-duration morph divides 0 by 0 on the first frame.
+  engine.setLook({ yaw: 0, pitch: 10, mix: 1, spin: 0, wander: 0 }, -BotEngine.LOOK_MORPH)
   return engine
 }
 export const avatarHasClock = (
