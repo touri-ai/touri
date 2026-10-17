@@ -45,3 +45,8 @@ Validation:
 - `git diff --check` — passed. Native macOS QA remains unavailable on this Linux runner. No latency benchmark was performed.
 
 VISION promises served: **#7 — Calm, clear, native** and **#4 — The user is in charge**: readable approvals and deliberate access to command details.
+
+## Re-run outside the sandbox (merged with main e867776)
+
+- Linux: `bun test sidecar/test/runtime/ sidecar/test/projects/setup-tools.test.ts sidecar/test/security/` → 499 pass; the notices tests were updated to the new next-message copy (21/21); remaining failure is the desktop-orphan-takeover test, which also fails 2/3 runs on plain main. UI full suite 1334/1335 (local-file-links passes 9/9 alone).
+- macOS: every `sidecar/test/runtime/*.test.ts` file passes except the same flaky desktop-orphan-takeover (2/3 on main too). `runtime.test.ts` streaming test now expects the confirmed conclusion ("hello\n\nDone."), the intended behaviour for a turn ending on a command. `turn-conclusion.test.ts` uses a canonical temp root and a 15 s deadline (a fresh kernel loads the login shell on its first turn, ~2.5 s on macOS).
