@@ -20,7 +20,7 @@ The native acceptance example uses the same `KeychainStore` implementation as th
 | Stable certificate: build A writes a separate disposable item | Success |
 | Re-sign as build B with the same certificate and identifier | Designated requirement unchanged; original value reads without a new prompt |
 
-**Pending acceptance:** a human must confirm the system authorization dialog is visible and select **Permitir sempre**, then verify the ad-hoc build B's normal read returns the original value. The automation cannot access the protected macOS authorization app. Keep the PR in draft until this check is complete. No claim is made that the installed app's existing login has been repaired.
+**Pending acceptance:** a human must confirm the system authorization dialog is visible and select **Permitir sempre**, then verify the ad-hoc build B's normal read returns the original value. The automation cannot access the protected macOS authorization app. This protected system-dialog acceptance remains a manual check. No claim is made that the installed app's existing login has been repaired.
 
 For an affected bot after installing the candidate build: attempt to send the message, click **Permitir acesso ao cofre**, and choose **Permitir sempre** in the macOS dialog (enter the login keychain password if requested). The attempted draft retries automatically. Doctor provides the same authorization action.
 
