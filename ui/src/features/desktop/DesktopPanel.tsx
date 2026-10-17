@@ -7,6 +7,7 @@ import { t } from "../../i18n"
 import { useComputerPresence } from "../../machineIntents"
 import { createDesktopKeyboard } from "./keyboard"
 import { DisplayLiveness, isEmptyDisplay } from "./liveness"
+import { VmCapabilityNotice } from "./VmCapabilityNotice"
 import { withTimeout } from "./withTimeout"
 import "./desktop.css"
 
@@ -21,11 +22,11 @@ const SESSION_TIMEOUT_MESSAGE =
 const HANDSHAKE_TIMEOUT_MESSAGE = t(
   "A tela da VM não respondeu em 15 s. Verifique se a máquina está ligada; tente reconectar a tela.",
 )
-const STAGE_TEXT: Record<Stage, string> = {
+const STAGE_TEXT = {
   session: "Pedindo a sessão da tela à VM…",
   channel: "Abrindo o canal da tela…",
   image: "Sem imagem ainda. Aguardando a primeira imagem da VM.",
-}
+} as const
 
 const FAILURE_POLL_MS = 3_000
 
@@ -51,6 +52,7 @@ export const DesktopPanel = ({
   const [emptyDisplay, setEmptyDisplay] = useState(false)
   const [stage, setStage] = useState<Stage>("session")
   const [attempt, setAttempt] = useState(0)
+  const [reconnecting, setReconnecting] = useState(false)
   const [requestedControl, setRequestedControl] = useState(false)
   const ownershipVersion = useRef(0)
   const [humanControl, setHumanControl] = useState(false)
@@ -153,6 +155,7 @@ export const DesktopPanel = ({
       failed = true
       stop()
       setPhase("stalled")
+      setReconnecting(false)
       setControlling(false)
       setError(message ?? null)
       if (recover && lastConnection.current === bot.id && retries < 5) {
@@ -269,7 +272,8 @@ export const DesktopPanel = ({
       })
       viewer = new RFB(container, socket, { shared: true })
       const currentViewer = viewer
-      viewer.viewOnly = !session.control
+      // Input remains off until a real guest image has arrived.
+      viewer.viewOnly = true
       viewer.scaleViewport = true
       viewer.resizeSession = false
       viewer.focusOnClick = false
@@ -293,6 +297,8 @@ export const DesktopPanel = ({
             if (painted && !displayed) {
               displayed = true
               setPhase("ready")
+              setReconnecting(false)
+              viewer.viewOnly = !session.control
               setControlling(session.control)
               retries = 0
             }
@@ -351,6 +357,11 @@ export const DesktopPanel = ({
   }, [api, bot.id, phase, emptyDisplay])
 
   const reconnect = () => {
+    disableInput.current()
+    setReconnecting(true)
+    setPhase("connecting")
+    setStage("session")
+    setError(null)
     setRequestedControl(false)
     setAttempt((value) => value + 1)
   }
@@ -422,13 +433,18 @@ export const DesktopPanel = ({
             </>
           )}
           <button type="button" className="button button-quiet" disabled={paused || returning} onClick={reconnect}>
-            {t("Reconectar tela")}
+            {reconnecting ? t("Reconectando tela…") : t("Reconectar tela")}
           </button>
         </div>
       </header>
+      <VmCapabilityNotice bot={bot} />
       {manualAvailable && humanControl && (
         <p className="desktop-observe-note" role="status">
-          {t("Você está no controle. O bot aguarda você terminar.")}
+          {controlling
+            ? t("Você está no controle. O bot aguarda você terminar.")
+            : phase === "ready"
+              ? t("O bot está aguardando. Assuma o controle para usar o teclado e o mouse.")
+              : t("O bot está aguardando. O controle ficará disponível quando a imagem chegar.")}
         </p>
       )}
       {error && phase === "ready" && <p role="alert">{error}</p>}
@@ -437,15 +453,19 @@ export const DesktopPanel = ({
         {phase === "ready" && emptyDisplay && (
           <div className="desktop-status desktop-empty" role="status">
             <PanelIcon name="computer" />
-            {browserFailure ? (
+            {browserFailure && bot.browserEnabled !== false ? (
               <>
-                <strong>O navegador não abriu a página</strong>
+                <strong>{t("O navegador não abriu a página")}</strong>
                 <p>{browserFailure.error}</p>
               </>
             ) : (
               <>
-                <strong>Navegador ainda não aberto</strong>
-                <p>Peça ao bot para abrir uma página. Ela aparecerá aqui na tela da VM.</p>
+                <strong>
+                  {bot.browserEnabled !== false ? t("Navegador ainda não aberto") : t("Navegador desativado")}
+                </strong>
+                {bot.browserEnabled !== false && (
+                  <p>{t("Peça ao bot para abrir uma página. Ela aparecerá aqui na tela da VM.")}</p>
+                )}
               </>
             )}
           </div>
@@ -455,7 +475,7 @@ export const DesktopPanel = ({
             {phase === "stalled" ? (
               <>
                 <PanelIcon name="computer" />
-                <strong>Não foi possível receber a imagem</strong>
+                <strong>{t("Não foi possível receber a imagem")}</strong>
                 <p>{t("A conexão com a tela caiu. A tarefa pode continuar em execução.")}</p>
                 {error && error !== t("A conexão com a tela caiu. A tarefa pode continuar em execução.") && (
                   <p>{error}</p>
@@ -475,8 +495,10 @@ export const DesktopPanel = ({
             ) : (
               <>
                 <PanelIcon name="computer" />
-                <strong>{phase === "paused" ? "Tela pausada" : "Conectando…"}</strong>
-                <p>{phase === "paused" ? "A tela voltará quando a conexão for retomada." : STAGE_TEXT[stage]}</p>
+                <strong>
+                  {phase === "paused" ? t("Tela pausada") : reconnecting ? t("Reconectando tela…") : t("Conectando…")}
+                </strong>
+                <p>{phase === "paused" ? t("A tela voltará quando a conexão for retomada.") : t(STAGE_TEXT[stage])}</p>
               </>
             )}
           </div>

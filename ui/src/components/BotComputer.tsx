@@ -4,6 +4,7 @@ import type { UiApi } from "../api/client"
 import { computerKillSwitchEvent } from "../computerKillSwitch"
 import { CloudComputer } from "../features/cloud/CloudComputer"
 import { DesktopPanel } from "../features/desktop/DesktopPanel"
+import { VmCapabilityNotice } from "../features/desktop/VmCapabilityNotice"
 import { localizeNotice, machineStatusLabel, t } from "../i18n"
 import { useComputerPresence } from "../machineIntents"
 import { machineStateForDisplay } from "../machineState"
@@ -266,6 +267,7 @@ const LocalBotComputer = ({
         )}
         {bot.paused && <p>Retome o bot nas configurações para ligar o computador.</p>}
       </div>
+      {bot.machine === "vm" && (!entered || status !== "running") && <VmCapabilityNotice bot={bot} />}
       {bot.machine === "vm" && (!entered || status !== "running") && (
         <div className={`computer-entry ${preparing || busy ? "computer-entry-preparing" : ""}`}>
           <PanelIcon name="computer" />

@@ -279,7 +279,9 @@ test("a stopped warm response gives an actionable error and machine cancellation
   }
   render(<BotComputer api={api} bot={bot} machine={machine("error", null, "canceled: Turno cancelado")} />)
   expect(screen.queryByText(/Cancelado/i)).toBeNull()
-  expect(screen.getByRole("status")).toHaveTextContent("parado")
+  expect(screen.getAllByRole("status").find((node) => node.classList.contains("machine-chip"))).toHaveTextContent(
+    "parado",
+  )
   await act(async () => fireEvent.click(screen.getByRole("button", { name: "Ligar computador" })))
   expect(screen.getByRole("alert")).toHaveTextContent("O computador ainda não está pronto")
   expect(screen.queryByText(/Cancelado/i)).toBeNull()
