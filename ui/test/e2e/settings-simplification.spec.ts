@@ -26,7 +26,7 @@ test("bot identity stays simple and every advanced section remains reachable", a
     "Permissões",
     "Rotinas",
   ])
-  for (const section of ["Modelo", "Acesso", "Computador", "Projeto", "Ferramentas", "Permissões", "Rotinas"]) {
+  for (const section of ["Modelo", "Acesso", "Computador", "Projeto", "Ferramentas", "Permissões"]) {
     await dialog.getByRole("tab", { name: section, exact: true }).click()
     await expect(dialog.getByRole("tabpanel", { name: section, exact: true })).toBeVisible()
   }
@@ -42,6 +42,11 @@ test("bot identity stays simple and every advanced section remains reachable", a
   await page.keyboard.press("Escape")
   await expect(dialog).toHaveCount(0)
   await expect(trigger).toBeFocused()
+  await showBotAdvanced(page)
+  await dialog.getByRole("button", { name: "Avançado", exact: true }).click()
+  await dialog.getByRole("tab", { name: "Rotinas", exact: true }).click()
+  await expect(dialog).toHaveCount(0)
+  await expect(page.getByRole("region", { name: "Rotinas", exact: true })).toBeFocused()
 })
 
 test("app preferences disclose technical controls and preserve edits between sections", async ({ page }) => {

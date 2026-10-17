@@ -77,7 +77,8 @@ test("bot actions support keyboard access and routines keep their bot filter aft
   const settings = page.getByRole("dialog")
   await settings.getByRole("button", { name: "Avançado", exact: true }).click()
   await settings.getByRole("tab", { name: "Rotinas", exact: true }).click()
-  await settings.getByRole("button", { name: "Gerenciar rotinas" }).click()
+  await expect(settings).toHaveCount(0)
+  await expect(page.getByRole("region", { name: "Rotinas", exact: true })).toBeFocused()
   await expect(filter).toHaveAttribute("aria-pressed", "true")
 })
 
