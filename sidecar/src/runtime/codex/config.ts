@@ -6,6 +6,7 @@ import { folderConfinementRequired, writableTurnFolders } from "../folder-access
 // Only a turn that actually runs inside touri's outer boundary may skip Codex's own sandbox.
 export const outerFolderSandbox = (args: StartTurnArgs, platform = process.platform): boolean =>
   !args.execution &&
+  args.bot.access !== "full" &&
   (platform === "darwin" || (platform === "linux" && folderConfinementRequired(args) && hostFolderAccessAvailable()))
 
 export const codexAccessParams = (args: StartTurnArgs, platform = process.platform): Record<string, unknown> => {
