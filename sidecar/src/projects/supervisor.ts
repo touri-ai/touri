@@ -182,7 +182,7 @@ export const createSupervisor = ({
 }): Supervisor => {
   const work: WorkState = workState ?? createWorkState({ database: kernel.db as Database })
   const managed = new Map<string, ManagedProcess>()
-  const processPolicies = new Map<string, { botId: string; policy: string }>()
+  const processPolicies = new Map<string, { botId: string; policy: string; child: ManagedProcess["child"] }>()
   const stopRequested = new Set<string>()
   const failureHistory = new Map<string, Array<number>>()
   const restartTimers = new Map<string, ReturnType<typeof setTimeout>>()
@@ -820,6 +820,12 @@ export const createSupervisor = ({
             env: environment.env,
           })
         : kernel.spawnTree(localSpawn)
+    if (child.success && botId)
+      processPolicies.set(spec.id, {
+        botId,
+        child,
+        policy: processPolicy(kernel.services.use("store.api")?.getBot({ botId }) ?? null),
+      })
     await release?.()
     if (!child.success) {
       work.recordResult({ effectId, turnId, status: "failed", exitCode: null })
@@ -872,13 +878,8 @@ export const createSupervisor = ({
       }
     }
     managed.set(spec.id, process)
-    if (botId)
-      processPolicies.set(spec.id, {
-        botId,
-        policy: processPolicy(kernel.services.use("store.api")?.getBot({ botId }) ?? null),
-      })
     monitor({ project, process })
-    if (!authorizationCurrent()) {
+    if (!authorizationCurrent() || stopRequested.has(spec.id)) {
       stopRequested.add(spec.id)
       process.stopped = true
       child.kill("SIGKILL")
@@ -1182,12 +1183,11 @@ export const createSupervisor = ({
       )
         continue
       const process = managed.get(id)
-      if (!process) continue
       // A namespace cannot narrow existing mounts. Stop the complete tree before
       // a later turn can keep using a removed or downgraded grant.
       stopRequested.add(id)
-      process.stopped = true
-      process.child.kill("SIGKILL")
+      if (process) process.stopped = true
+      authorization.child.kill("SIGKILL")
     }
   })
   return { define, start, stop, restart, list, logs, previews, openPreview, stopAll, cleanupOrphans, autostart }
