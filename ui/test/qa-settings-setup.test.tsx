@@ -154,6 +154,8 @@ it("F007: keeps footer actions in a named accessible group across Tools, Permiss
     />,
   )
   const footer = screen.getByRole("group", { name: "Ações das configurações do bot" })
+  // WebKit (the macOS app) hides children of a flex <fieldset> from the accessibility tree.
+  expect(footer.tagName).not.toBe("FIELDSET")
   await user.click(screen.getByRole("button", { name: "Avançado" }))
   expect(screen.getByRole("group", { name: "Ações das configurações do bot" })).toBe(footer)
   for (const name of ["Ferramentas", "Permissões", "Computador"]) {
