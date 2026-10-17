@@ -103,30 +103,33 @@ it("keeps server recovery reachable after startup fails and never restarts a loc
   await screen.findByText("O touri vai reiniciar no modo local.")
 })
 
-it("waits for native mode before mounting destination-scoped UI", async () => {
-  native()
-  let resolve: ((value: typeof server) => void) | undefined
-  const invoke = vi.fn(
-    () =>
-      new Promise<typeof server>((done) => {
-        resolve = done
-      }),
-  ) as unknown as TauriInvoke
-  let mountedScope: string | null | undefined
-  const Probe = () => {
-    mountedScope = getStorageScope()
-    return <p>Workspace</p>
-  }
-  render(
-    <ServerModeProvider invoke={invoke}>
-      <Probe />
-    </ServerModeProvider>,
-  )
-  expect(screen.queryByText("Workspace")).not.toBeInTheDocument()
-  resolve?.(server)
-  await screen.findByText("Workspace")
-  expect(mountedScope).toBe(server.url)
-})
+it.each([server, { mode: "server", url: null } as const])(
+  "waits for native mode before mounting destination-scoped UI (%j)",
+  async (status) => {
+    native()
+    let resolve: ((value: typeof status) => void) | undefined
+    const invoke = vi.fn(
+      () =>
+        new Promise<typeof status>((done) => {
+          resolve = done
+        }),
+    ) as unknown as TauriInvoke
+    let mountedScope: string | null | undefined
+    const Probe = () => {
+      mountedScope = getStorageScope()
+      return <p>Workspace</p>
+    }
+    render(
+      <ServerModeProvider invoke={invoke}>
+        <Probe />
+      </ServerModeProvider>,
+    )
+    expect(screen.queryByText("Workspace")).not.toBeInTheDocument()
+    resolve?.(status)
+    await screen.findByText("Workspace")
+    expect(mountedScope).toBe(status.url ?? "https://unavailable.invalid")
+  },
+)
 
 it("applies the pending cold-start target after server mode loads and acknowledges that request", async () => {
   native()
@@ -139,6 +142,8 @@ it("applies the pending cold-start target after server mode loads and acknowledg
   })
   render(<App kernel={{ services: { api, invoke: invoke as unknown as TauriInvoke } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para onb" })
+  expect(screen.getByText("Modo servidor")).toHaveAttribute("title", server.url)
+  expect(screen.queryByText("Local · grátis")).not.toBeInTheDocument()
   await waitFor(() => expect(invoke).toHaveBeenCalledWith("deep_link_ack", { requestId: 3 }))
 })
 
@@ -217,4 +222,21 @@ it("does not open a server preview URL against the Mac loopback interface", asyn
   )
   await screen.findByText("Este preview está no servidor. Peça ao bot para abri-lo no navegador do servidor.")
   expect(invoke).not.toHaveBeenCalledWith("preview_show", expect.anything())
+})
+
+it("keeps local recovery usable while the first server connection is still pending", async () => {
+  native()
+  const invoke = vi.fn(async (command: string) => {
+    if (command === "server_mode_status") return server
+    if (command === "sidecar_endpoint") return new Promise(() => undefined)
+    if (command === "server_mode_local") return local
+    return null
+  })
+  render(<App kernel={{ services: { invoke: invoke as unknown as TauriInvoke } }} />)
+  await screen.findByText("Conectando ao servidor…")
+  fireEvent.click(screen.getByRole("button", { name: "Usar um servidor touri" }))
+  fireEvent.click(await screen.findByRole("button", { name: "Voltar ao modo local" }))
+  await screen.findByText("O touri vai reiniciar no modo local.")
+  expect(invoke).toHaveBeenCalledWith("server_mode_local", {})
+  expect(invoke).not.toHaveBeenCalledWith("sidecar_restart", {})
 })

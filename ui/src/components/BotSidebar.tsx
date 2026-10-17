@@ -26,6 +26,8 @@ import { type HoldReason, useSidebarOrder } from "./useSidebarOrder"
 import "./bot-sidebar.css"
 
 type SidebarProps = {
+  serverMode?: boolean
+  serverUrl?: string | null
   host?: "mac" | "server"
   onNavigate?: () => void
   groups?: BotGroup[]
@@ -243,7 +245,9 @@ export const Sidebar = (props: SidebarProps) => {
             </span>
             <span>
               <strong>{t("Você")}</strong>
-              <small>{t("Local · grátis")}</small>
+              <small title={props.serverUrl ?? undefined}>
+                {props.serverMode ? t("Modo servidor") : t("Local · grátis")}
+              </small>
             </span>
           </button>
           <NotificationBell

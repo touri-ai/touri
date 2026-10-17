@@ -5007,6 +5007,7 @@ dependencies = [
  "objc2-user-notifications",
  "portable-pty",
  "reqwest",
+ "rustls",
  "screencapturekit",
  "security-framework",
  "security-framework-sys",

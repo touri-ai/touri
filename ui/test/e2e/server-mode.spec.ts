@@ -57,6 +57,7 @@ test("desktop server mode pairs with a real isolated server and resyncs after a 
 
     // The native shell restarts after saving the secure credential; reload models that boundary.
     await page.reload()
+    await expect(page.locator(".user-chip")).toContainText("Modo servidor")
     await expect(page.getByRole("textbox", { name: "Mensagem para Servidor de teste" })).toBeVisible()
     await page.locator(".user-chip").click()
     await dialog.getByRole("tab", { name: "Avançado", exact: true }).click()
@@ -110,6 +111,7 @@ test("desktop server mode pairs with a real isolated server and resyncs after a 
     await expect.poll(() => server.localReturns).toBe(1)
     await expect(dialog.getByRole("status").filter({ hasText: /reiniciar/i })).toBeVisible()
     await page.reload()
+    await expect(page.locator(".user-chip")).toContainText("Local · grátis")
     await expect(page.getByRole("textbox", { name: "Mensagem para Retomado no servidor" })).toBeVisible()
     await page.locator(".user-chip").click()
     await dialog.getByRole("tab", { name: "Avançado", exact: true }).click()

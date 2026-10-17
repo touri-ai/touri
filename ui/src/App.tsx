@@ -208,8 +208,8 @@ const AppContent = ({ kernel }: AppProps) => {
         if (isTauriRuntime() && !serverState.status) throw new Error("SERVER_STATUS")
         const resolveEndpoint = async () => {
           const endpoint = await resolveSidecarEndpoint(invokeCommand)
-          return serverState.status?.mode === "server" && serverState.status.url
-            ? { ...endpoint, scope: serverState.status.url }
+          return serverState.status?.mode === "server"
+            ? { ...endpoint, scope: serverState.status.url ?? "https://unavailable.invalid" }
             : endpoint
         }
         const endpoint = isTauriRuntime() ? await resolveEndpoint() : webEndpoint(window.location)
@@ -607,11 +607,17 @@ const AppContent = ({ kernel }: AppProps) => {
       {settingsModal}
     </>
   )
+  const loading = () => (
+    <>
+      <LoadingScreen serverMode={serverMode} onSettings={isNativeDesktop() ? openServerSettings : undefined} />
+      {settingsModal}
+    </>
+  )
   if (connectionState === "error" && !(api?.sendMessage && data.bots.length > 0))
     return recovery(connectionError ?? t("Unknown connection error"))
-  if (!api && connectionState === "loading") return <LoadingScreen />
+  if (!api && connectionState === "loading") return loading()
   if (!api) return recovery(t("The sidecar connection is not available."))
-  if (data.loading && data.bots.length === 0) return <LoadingScreen />
+  if (data.loading && data.bots.length === 0) return loading()
   if (!api.isMock && data.bots.length === 0 && data.notice) return recovery(data.notice)
   // Doctor and import are reachable from onboarding, before any bot exists, so they render outside the main layout too.
   const setupModal =
@@ -819,6 +825,8 @@ const AppContent = ({ kernel }: AppProps) => {
         <ApprovalNotice notifications={data.notifications} messages={data.activityMessages} onReview={reviewApproval} />
         <div className="app-grid">
           <SidebarDrawer
+            serverMode={serverMode}
+            serverUrl={serverState.status?.url ?? null}
             host={data.routineHost}
             groups={data.groups}
             onNewGroup={() => {
@@ -1131,10 +1139,21 @@ const AppContent = ({ kernel }: AppProps) => {
   )
 }
 
-const LoadingScreen = () => (
+const LoadingScreen = ({
+  serverMode = false,
+  onSettings,
+}: {
+  serverMode?: boolean
+  onSettings?: (() => void) | undefined
+}) => (
   <main className="loading-screen">
     <BotAvatar bot={{ id: "touri", color: "#e5322d" }} size={64} mood="connecting" />
-    <p>{t("Warming the local workspace…")}</p>
+    <p>{t(serverMode ? "Conectando ao servidor…" : "Warming the local workspace…")}</p>
+    {onSettings && (
+      <button type="button" className="button button-quiet" onClick={onSettings}>
+        {t("Usar um servidor touri")}
+      </button>
+    )}
     <MotionSkeleton />
   </main>
 )

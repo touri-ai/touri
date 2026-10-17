@@ -23,6 +23,7 @@ export const ptBR = {
   "Abrir touri": "Abrir touri",
   "Pausar todos os bots": "Pausar todos os bots",
   "Sair do touri": "Sair do touri",
+  "Conectando ao servidor…": "Conectando ao servidor…",
   // Optional native server mode.
   "Qualquer pasta do servidor": "Qualquer pasta do servidor",
   "O aplicativo e o servidor usam versões diferentes. Atualize os dois e tente novamente.":
@@ -1967,6 +1968,7 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Abrir touri": "Open touri",
   "Pausar todos os bots": "Pause all bots",
   "Sair do touri": "Quit touri",
+  "Conectando ao servidor…": "Connecting to the server…",
   // Optional native server mode.
   "Usar um servidor touri": "Use a touri server",
   "Escolha se os bots trabalham neste Mac ou em um servidor touri.":

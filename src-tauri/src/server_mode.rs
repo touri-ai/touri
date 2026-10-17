@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::Path;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, Once};
 use std::time::{Duration, Instant};
 
 use axum::body::{to_bytes, Body};
@@ -157,7 +157,17 @@ fn persist_mode(path: &Path, status: &ServerModeStatus) -> Result<(), String> {
     result
 }
 
+fn ensure_crypto_provider() {
+    static INITIALIZED: Once = Once::new();
+    INITIALIZED.call_once(|| {
+        // Share one provider with the updater and the WebSocket TLS transport. A provider already
+        // selected by another native component remains valid; install_default never replaces it.
+        let _ = rustls::crypto::ring::default_provider().install_default();
+    });
+}
+
 fn native_client() -> Result<Client, String> {
+    ensure_crypto_provider();
     Client::builder()
         // All callers validate an HTTPS origin (or explicit loopback HTTP for a local server).
         .no_proxy()
@@ -850,6 +860,7 @@ fn upstream_headers(headers: &HeaderMap) -> HeaderMap {
 type UpstreamSocket =
     tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
 async fn upstream_socket(state: &RelayState, uri: &str) -> Result<UpstreamSocket, String> {
+    ensure_crypto_provider();
     // Recheck after reconnect: the server may have upgraded while this desktop was offline.
     let token = state.validated_token(true).await?;
     let base = state.url.as_deref().ok_or("SERVER_CONFIG_INVALID")?;
@@ -1050,6 +1061,17 @@ pub fn server_badge(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn native_http_and_websocket_tls_share_an_explicit_crypto_provider() {
+        let _client =
+            native_client().expect("native HTTP client must configure TLS without panicking");
+        assert!(rustls::crypto::CryptoProvider::get_default().is_some());
+        let _plain_client = Client::builder().no_proxy().build().unwrap();
+        let _websocket_tls = rustls::ClientConfig::builder()
+            .with_root_certificates(rustls::RootCertStore::empty())
+            .with_no_client_auth();
+    }
 
     #[test]
     fn bundled_computer_viewers_can_read_mode_without_permission_to_mutate_it() {
