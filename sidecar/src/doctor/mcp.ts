@@ -22,23 +22,26 @@ export const mcpStartupChecks = (db: Database) => {
   // Keep a failure visible until that bot completes a successful turn, even
   // across app restarts. These checks report observed CLI health without waking VMs.
   const rows = db
-    .query(`SELECT b.id, b.name, r.status, r.error_message FROM bots b
+    .query(`SELECT b.id, b.name, b.machine, r.status, r.error_message FROM bots b
     LEFT JOIN runs r ON r.id = (SELECT id FROM runs WHERE bot_id = b.id
       AND (status = 'succeeded' OR error_message LIKE ?) ORDER BY queued_at DESC, rowid DESC LIMIT 1)
-    WHERE b.machine = 'vm' AND b.archived_at IS NULL`)
+    WHERE b.machine IN ('local', 'vm') AND b.archived_at IS NULL`)
     .all(`${MCP_STARTUP_MESSAGE}%`) as Array<{
     id: string
     name: string
+    machine: "local" | "vm"
     status: string | null
     error_message: string | null
   }>
   return rows.map((row) =>
     check(
-      `vm-mcp:${row.id}`,
+      `${row.machine === "vm" ? "vm" : "local"}-mcp:${row.id}`,
       `Ferramentas do touri · ${row.name}`,
       isMcpStartupError(row.error_message) ? "fail" : row.status === "succeeded" ? "pass" : "warn",
       isMcpStartupError(row.error_message)
-        ? `${MCP_STARTUP_MESSAGE}. Tente novamente; se persistir, pare e inicie a máquina nas permissões do bot.`
+        ? row.machine === "vm"
+          ? `${MCP_STARTUP_MESSAGE}. Tente novamente; se persistir, pare e inicie a máquina nas permissões do bot.`
+          : `${MCP_STARTUP_MESSAGE}. Tente novamente; se persistir, confira a instalação do touri e as permissões deste servidor.`
         : row.status === "succeeded"
           ? "O último turno verificado concluiu sem falha de inicialização do MCP."
           : "Ainda não há um turno concluído para verificar o carregamento das ferramentas nesta máquina.",

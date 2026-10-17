@@ -3,6 +3,13 @@ import { userFacingError } from "./errors"
 /** All UI copy lives here. pt-BR is the default; English is available for a future locale picker. */
 export type Locale = "pt-BR" | "en"
 export const ptBR = {
+  "As ferramentas do touri não carregaram nesta máquina. Tente novamente; se persistir, confira a instalação do touri e as permissões deste servidor.":
+    "As ferramentas do touri não carregaram nesta máquina. Tente novamente; se persistir, confira a instalação do touri e as permissões deste servidor.",
+  "Ferramentas do touri · {name}": "Ferramentas do touri · {name}",
+  "O último turno verificado concluiu sem falha de inicialização do MCP.":
+    "O último turno verificado concluiu sem falha de inicialização do MCP.",
+  "Ainda não há um turno concluído para verificar o carregamento das ferramentas nesta máquina.":
+    "Ainda não há um turno concluído para verificar o carregamento das ferramentas nesta máquina.",
   Ativar: "Ativar",
   "Agora não": "Agora não",
   "Este recurso não está disponível para bots na nuvem.": "Este recurso não está disponível para bots na nuvem.",
@@ -1834,6 +1841,13 @@ export const ptBR = {
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  "As ferramentas do touri não carregaram nesta máquina. Tente novamente; se persistir, confira a instalação do touri e as permissões deste servidor.":
+    "The touri tools did not start on this machine. Try again; if this continues, check the touri installation and this server’s permissions.",
+  "Ferramentas do touri · {name}": "touri tools · {name}",
+  "O último turno verificado concluiu sem falha de inicialização do MCP.":
+    "The last verified turn completed without a tool startup failure.",
+  "Ainda não há um turno concluído para verificar o carregamento das ferramentas nesta máquina.":
+    "No completed turn is available yet to verify the tools on this machine.",
   Ativar: "Enable",
   "Agora não": "Not now",
   "Este recurso não está disponível para bots na nuvem.": "This capability is unavailable for cloud bots.",
@@ -3183,6 +3197,8 @@ export const statusLabel = (status: string): string => {
 
 /** Translate only application-authored notices, leaving bot/user content intact. */
 export const localizeNotice = (value: string): string => {
+  const toolCheck = /^Ferramentas do touri · (.+)$/.exec(value)
+  if (toolCheck) return t("Ferramentas do touri · {name}", { name: toolCheck[1] ?? "" })
   const browserSession = /^Navegador · (.+) · sessão salva$/.exec(value)
   if (browserSession) return t("Navegador · {name} · sessão salva", { name: browserSession[1] ?? "" })
   const invalidLogin = /^(.+): login do (Claude|Codex|OpenCode) inválido\. Conecte novamente\.$/.exec(value)

@@ -188,48 +188,61 @@ test("module initialization starts Doctor in the background without waiting for 
   }
 })
 
-test("cached Doctor reports reflect a new VM MCP failure and recovery without rerunning probes", async () => {
-  const root = mkdtempSync(join(tmpdir(), "touri-doctor-mcp-"))
-  const runtime = createKernel({ appData: root })
-  const db = runtime.kernel.db as Database
-  let calls = 0
-  const service = installDoctor(runtime.kernel, async () => {
-    calls++
-    return [check("example", "Local", "pass", "Pronto.")]
-  })
-  const read = async () =>
-    (await (
-      await fetch(`http://127.0.0.1:${runtime.handshake.port}/api/v1/doctor`, {
-        headers: { Authorization: "Bearer dev-ui-token", Origin: "tauri://localhost" },
-      })
-    ).json()) as DoctorReport
-  try {
-    service.start()
-    await service.settled()
-    db.query(
-      "INSERT INTO bots (id, name, provider, machine, home_dir, created_at, updated_at) VALUES ('bot', 'Checkout', 'codex', 'vm', ?, 1, 1)",
-    ).run(root)
-    db.query(
-      "INSERT INTO threads (id, bot_id, kind, title, created_at, updated_at) VALUES ('thread', 'bot', 'chat', 'Checkout', 1, 1)",
-    ).run()
-    expect((await read()).checks).toContainEqual(expect.objectContaining({ id: "vm-mcp:bot", status: "warn" }))
-    db.query(
-      "INSERT INTO runs (id, thread_id, bot_id, provider, trigger, status, error_class, error_message, queued_at) VALUES ('failed', 'thread', 'bot', 'codex', 'user', 'failed', 'cli_protocol', ?, 1)",
-    ).run(MCP_STARTUP_MESSAGE)
-    expect((await read()).checks).toContainEqual(
-      expect.objectContaining({
-        id: "vm-mcp:bot",
-        status: "fail",
-        detail: expect.stringContaining(MCP_STARTUP_MESSAGE),
-      }),
-    )
-    db.query(
-      "INSERT INTO runs (id, thread_id, bot_id, provider, trigger, status, queued_at) VALUES ('recovered', 'thread', 'bot', 'codex', 'user', 'succeeded', 2)",
-    ).run()
-    expect((await read()).checks).toContainEqual(expect.objectContaining({ id: "vm-mcp:bot", status: "pass" }))
-    expect(calls).toBe(1)
-  } finally {
-    runtime.stop()
-    rmSync(root, { recursive: true, force: true })
-  }
-})
+test.each(["local", "vm"] as const)(
+  "cached Doctor reports reflect a new %s MCP failure and recovery without rerunning probes",
+  async (machine) => {
+    const prefix = machine === "vm" ? "vm-mcp" : "local-mcp"
+    const root = mkdtempSync(join(tmpdir(), "touri-doctor-mcp-"))
+    const runtime = createKernel({ appData: root })
+    const db = runtime.kernel.db as Database
+    let calls = 0
+    const service = installDoctor(runtime.kernel, async () => {
+      calls++
+      return [
+        check("example", "Local", "pass", "Pronto."),
+        check(`${prefix}:bot`, "Cached tools", "pass", "Cached result"),
+      ]
+    })
+    const read = async () =>
+      (await (
+        await fetch(`http://127.0.0.1:${runtime.handshake.port}/api/v1/doctor`, {
+          headers: { Authorization: "Bearer dev-ui-token", Origin: "tauri://localhost" },
+        })
+      ).json()) as DoctorReport
+    try {
+      service.start()
+      await service.settled()
+      db.query(
+        "INSERT INTO bots (id, name, provider, machine, home_dir, created_at, updated_at) VALUES ('bot', 'Checkout', 'codex', ?, ?, 1, 1)",
+      ).run(machine, root)
+      db.query(
+        "INSERT INTO threads (id, bot_id, kind, title, created_at, updated_at) VALUES ('thread', 'bot', 'chat', 'Checkout', 1, 1)",
+      ).run()
+      expect((await read()).checks).toContainEqual(expect.objectContaining({ id: `${prefix}:bot`, status: "warn" }))
+      db.query(
+        "INSERT INTO runs (id, thread_id, bot_id, provider, trigger, status, error_class, error_message, queued_at) VALUES ('failed', 'thread', 'bot', 'codex', 'user', 'failed', 'cli_protocol', ?, 1)",
+      ).run(MCP_STARTUP_MESSAGE)
+      expect((await read()).checks).toContainEqual(
+        expect.objectContaining({
+          id: `${prefix}:bot`,
+          status: "fail",
+          detail: expect.stringContaining(MCP_STARTUP_MESSAGE),
+        }),
+      )
+      if (machine === "local") {
+        const failed = (await read()).checks.find((item) => item.id === `${prefix}:bot`)
+        expect(failed?.detail).toContain("instalação do touri")
+        expect(failed?.detail).not.toContain("inicie a máquina")
+        expect((await read()).checks.filter((item) => item.id === `${prefix}:bot`)).toHaveLength(1)
+      }
+      db.query(
+        "INSERT INTO runs (id, thread_id, bot_id, provider, trigger, status, queued_at) VALUES ('recovered', 'thread', 'bot', 'codex', 'user', 'succeeded', 2)",
+      ).run()
+      expect((await read()).checks).toContainEqual(expect.objectContaining({ id: `${prefix}:bot`, status: "pass" }))
+      expect(calls).toBe(1)
+    } finally {
+      runtime.stop()
+      rmSync(root, { recursive: true, force: true })
+    }
+  },
+)
