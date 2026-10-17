@@ -9,10 +9,12 @@ import type {
   RunErrorClass,
   StartTurnArgs,
 } from "@touri/contracts"
+import { redactToolText } from "@touri/contracts/redaction"
 import { codexApprovalPayload } from "../../approvals/payload"
 import { buildChildEnv } from "../../kernel"
 import { redactStructured } from "../../kernel/redact"
 import { touriVersion } from "../../version"
+import { createCommandOutput } from "../command-output"
 import { spawnFolderProvider } from "../folder-access"
 import { loadTurnImages } from "../loadTurnImages"
 import { withLocalTurnTemp } from "../local-turn-temp"
@@ -276,6 +278,7 @@ export const createCodexAdapter = ({
     let rolloutPath: string | null = args.session?.rolloutPath ?? null
     let turnId: string | null = null
     const agentTexts = new Map<string, string>()
+    const commands = new Map<string, { part: CommandPart; output: ReturnType<typeof createCommandOutput> }>()
     const approvalItems = new Map<string, Record<string, unknown>>()
     const emitAgentText = (itemId: string, delta: string): void => {
       if (!delta) return
@@ -374,6 +377,14 @@ export const createCodexAdapter = ({
       } else if (method === "item/reasoning/summaryTextDelta") {
         const delta = stringValue(params.delta) ?? ""
         if (delta) args.onEvent({ type: "reasoning_delta", itemId: stringValue(params.itemId) ?? "reasoning", delta })
+      } else if (method === "item/commandExecution/outputDelta") {
+        const callId = stringValue(params.itemId)
+        const command = callId ? commands.get(callId) : null
+        const delta = stringValue(params.delta)
+        if (command && delta) {
+          command.part = { ...command.part, outputTail: command.output.append(delta) }
+          args.onEvent({ type: "item", part: command.part })
+        }
       } else if (method === "item/started" || method === "item/completed") {
         const item = asRecord(params.item ?? params)
         const itemId = stringValue(item?.id) ?? stringValue(item?.callId)
@@ -387,7 +398,27 @@ export const createCodexAdapter = ({
           // Some app-server clients supply only a completed item, or omit its last delta.
           if (text.startsWith(streamed)) emitAgentText(itemId, text.slice(streamed.length))
         }
-        const part = partFromItem(params.item ?? params, method === "item/completed")
+        let part = partFromItem(params.item ?? params, method === "item/completed")
+        if (part?.type === "command") {
+          const previous = commands.get(part.callId)
+          const output = previous?.output ?? createCommandOutput(kernel.redact)
+          const completed = method === "item/completed"
+          const finalOutput = completed ? output.flush() : ""
+          part = {
+            ...part,
+            command: part.command || previous?.part.command || "",
+            cwd: part.cwd || previous?.part.cwd || "",
+            startedAt: previous?.part.startedAt ?? Date.now(),
+            outputMode: "streaming",
+            outputTail: part.outputTail
+              ? completed
+                ? redactToolText(part.outputTail, kernel.redact)
+                : output.append(part.outputTail)
+              : finalOutput || previous?.part.outputTail || "",
+          }
+          if (completed) commands.delete(part.callId)
+          else commands.set(part.callId, { part, output })
+        }
         if (
           method === "item/completed" &&
           part?.type === "command" &&

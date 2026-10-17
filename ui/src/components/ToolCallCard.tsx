@@ -1,5 +1,5 @@
 import type { ApprovalPart } from "@touri/contracts"
-import { type KeyboardEventHandler, type ReactNode, useId } from "react"
+import { type KeyboardEventHandler, type ReactNode, useEffect, useId, useState } from "react"
 import type { UiApi } from "../api/client"
 import { compactApprovalDiff } from "./approvalContent"
 import { browserToolPresentation, browserToolResult } from "./browserToolPresentation"
@@ -50,6 +50,20 @@ const labels: Record<ToolStatus, string> = {
 export const toolTime = (timestamp: number): string =>
   new Date(timestamp).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
 
+const CommandElapsed = ({ startedAt }: { startedAt: number }) => {
+  const [now, setNow] = useState(Date.now)
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1_000)
+    return () => clearInterval(timer)
+  }, [])
+  return (
+    <span role="timer" aria-label="Tempo de execução">
+      {" "}
+      · {Math.max(0, Math.floor((now - startedAt) / 1_000))} s
+    </span>
+  )
+}
+
 export const ToolCallCard = ({
   part,
   approval,
@@ -93,11 +107,14 @@ export const ToolCallCard = ({
       : pending
         ? createdAt
         : (part?.resolvedAt ?? createdAt)
+  const liveCommand = status === "running" && presentation.kind === "terminal"
   const rawOutput =
     part?.type === "tool_call"
-      ? part.outputJson
+      ? liveCommand
+        ? part.outputTail || part.outputJson
+        : (part.outputJson ?? part.outputTail)
       : part?.type === "command"
-        ? part.outputTail || "Sem saída"
+        ? part.outputTail || (liveCommand ? null : "Sem saída")
         : part?.diff
   return (
     <article
@@ -130,6 +147,9 @@ export const ToolCallCard = ({
           {labels[status]}
           {timestamp !== undefined && (
             <time dateTime={new Date(timestamp).toISOString()}> · {toolTime(timestamp)}</time>
+          )}
+          {liveCommand && part && "startedAt" in part && part.startedAt !== undefined && (
+            <CommandElapsed startedAt={part.startedAt} />
           )}
         </span>
       </header>
@@ -222,6 +242,13 @@ export const ToolCallCard = ({
       )}
       {result?.title && <p className="tool-summary">{result.title}</p>}
       {result?.url && <p className="tool-summary">{result.url}</p>}
+      {liveCommand && !rawOutput && !part?.outputAttachmentId && (
+        <p className="tool-summary">
+          {part && "outputMode" in part && part.outputMode === "on_completion"
+            ? "A saída aparece quando o comando terminar."
+            : "Aguardando saída do comando…"}
+        </p>
+      )}
       {part?.outputAttachmentId ? (
         <StoredToolOutput
           key={part.outputAttachmentId}
@@ -237,7 +264,11 @@ export const ToolCallCard = ({
             <DiffOutput source={rawOutput ?? ""} />
           </RevealDetails>
         ) : (
-          <ToolOutput raw={(result ? result.output : rawOutput) ?? ""} callId={part?.callId ?? "tool-output"} />
+          <ToolOutput
+            raw={(result ? result.output : rawOutput) ?? ""}
+            callId={part?.callId ?? "tool-output"}
+            live={liveCommand}
+          />
         )
       ) : null}
       {part && !part.outputAttachmentId && rawOutput == null && status === "closed" && (
