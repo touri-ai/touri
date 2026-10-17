@@ -41,13 +41,21 @@ for (const width of [1440, 1100]) {
         for (const [tab, view] of [
           ["Permissões", "bot-permissions"],
           ["Ferramentas", "bot-mcp"],
-          ["Rotinas", "bot-routines"],
         ] as const) {
           await page.getByRole("dialog").getByRole("tab", { name: tab, exact: true }).click()
           await shot(view)
         }
       }
-      await page.getByRole("button", { name: "Fechar diálogo" }).click()
+      if (phase === "after") {
+        await page.getByRole("dialog").getByRole("tab", { name: "Rotinas", exact: true }).click()
+        await expect(page.getByRole("dialog")).toHaveCount(0)
+        const routines = page.getByRole("region", { name: "Rotinas", exact: true })
+        await expect(routines).toBeFocused()
+        expect(await routines.evaluate((element) => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1)
+        await page.screenshot({
+          path: `${evidence}/${phase}-bot-routines${width === 1100 ? "-narrow" : ""}-${theme}.png`,
+        })
+      } else await page.getByRole("button", { name: "Fechar diálogo" }).click()
       await page.getByRole("button", { name: /Você Local/ }).click()
       await shot("preferences")
       if (phase === "after") {

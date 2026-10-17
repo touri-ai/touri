@@ -80,6 +80,7 @@ test("panel tabs are accessible from arrows and save the label", async () => {
       onWindow={vi.fn()}
       onClose={vi.fn()}
       onSettings={vi.fn()}
+      onRoutines={vi.fn()}
       onPermissions={vi.fn()}
       onRole={role}
     />,
@@ -198,6 +199,7 @@ test("library opens markdown through the existing renderer, navigates folders an
       onWindow={vi.fn()}
       onClose={vi.fn()}
       onSettings={vi.fn()}
+      onRoutines={vi.fn()}
       onPermissions={vi.fn()}
       onRole={vi.fn()}
     />,

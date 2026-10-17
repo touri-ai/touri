@@ -204,7 +204,7 @@ it("composer keeps an attempted message as a draft and sends it once login succe
     />,
   )
   await act(async () => {})
-  expect(screen.getByText("ABCD-EFGH")).toBeVisible()
+  expect(screen.getByRole("textbox", { name: "Código de login" })).toHaveValue("ABCD-EFGH")
   expect(screen.queryByText(/Entre no .+ para continuar/)).toBeNull()
   expect(screen.queryByRole("button", { name: "Entrar no provedor" })).toBeNull()
   const button = screen.getByRole("button", { name: "Enviar" })
@@ -506,7 +506,7 @@ it("offers provider sign-in explicitly and cancellation leaves the draft usable"
   fireEvent.click(await screen.findByRole("button", { name: `Entrar no ${provider}` }))
   fireEvent.click(await screen.findByRole("button", { name: "Cancelar login" }))
   await screen.findByText("Login cancelado.")
-  expect(screen.getByRole("button", { name: "Usar outra conta" })).toBeEnabled()
+  expect(screen.getByRole("button", { name: "Tentar de novo" })).toBeEnabled()
   expect(screen.getByRole("button", { name: "Verificar de novo" })).toBeEnabled()
   expect(screen.getByRole("button", { name: "Enviar" })).toBeEnabled()
   expect(screen.getByRole("textbox")).toHaveValue("Oi! Em uma linha, o que você faz?")
@@ -556,4 +556,112 @@ it.each([
   expect(t(key, {}, "en")).toBe(english)
   expect(t("Entrar no {provider}", { provider: "Claude" }, "pt-BR")).toBe("Entrar no Claude")
   expect(t("Entrar no {provider}", { provider: "Claude" }, "en")).toBe("Sign in to Claude")
+})
+
+it.each(["codex", "claude", "opencode"] as const)(
+  "%s server login offers a device link and copyable code without opening a desktop",
+  async (provider) => {
+    const f = fixture("waiting")
+    const open = vi.spyOn(window, "open").mockImplementation(() => null)
+    const copy = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: copy } })
+    const url = "https://opencode.ai/auth?state=synthetic-state"
+    f.setFlow({ provider, state: "waiting", host: "server", deviceCode: "1234-5678", verificationUrl: url })
+    render(<ProviderLogin api={f.api} botId="draft-test" provider={provider} onConfigured={vi.fn()} />)
+    await screen.findByText(/para o servidor: abra este link neste aparelho/)
+    expect(screen.getByText(/O login expira em até 10 minutos/)).toBeVisible()
+    expect(screen.getByRole("link", { name: "Abrir página de login" })).toHaveAttribute("href", url)
+    expect(screen.getByRole("textbox", { name: "Código de login" })).toHaveValue("1234-5678")
+    expect(open).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole("button", { name: "Copiar código" }))
+    await screen.findByText("Código copiado.")
+    expect(copy).toHaveBeenCalledWith("1234-5678")
+    copy.mockRejectedValueOnce(new Error("unavailable"))
+    fireEvent.click(screen.getByRole("button", { name: "Copiar código" }))
+    await screen.findByText("Não foi possível copiar. Selecione e copie o código acima.")
+    fireEvent.click(screen.getByRole("button", { name: "Cancelar login" }))
+    await screen.findByText("Login cancelado.")
+    expect(screen.queryByRole("link")).toBeNull()
+    expect(screen.queryByRole("textbox", { name: "Código de login" })).toBeNull()
+    open.mockRestore()
+  },
+)
+
+it("restarts a timed-out server login instead of offering only a status check", async () => {
+  const f = fixture("error")
+  f.setFlow({
+    provider: "codex",
+    state: "error",
+    host: "server",
+    retryable: true,
+    message: "O login expirou. Tente novamente.",
+  })
+  render(<ProviderLogin api={f.api} botId="draft-test" provider="codex" onConfigured={vi.fn()} />)
+  await screen.findByText("O login expirou. Tente novamente.")
+  fireEvent.click(screen.getByRole("button", { name: "Tentar de novo" }))
+  await screen.findByText("Aguardando login no navegador…")
+  expect(f.request).toHaveBeenCalledWith(
+    "POST /bots/:id/provider-login/flow",
+    { provider: "codex", action: "start" },
+    { id: "draft-test" },
+  )
+})
+
+it("restarts a waiting server attempt by cancelling the old CLI first", async () => {
+  const f = fixture("waiting")
+  f.setFlow({ provider: "opencode", state: "waiting", host: "server" })
+  render(<ProviderLogin api={f.api} botId="draft-test" provider="opencode" onConfigured={vi.fn()} />)
+  fireEvent.click(await screen.findByRole("button", { name: "Tentar de novo" }))
+  await waitFor(() =>
+    expect(f.request.mock.calls.filter(([route]) => route.startsWith("POST")).map(([, input]) => input.action)).toEqual(
+      ["cancel", "start"],
+    ),
+  )
+})
+
+it.each([
+  [
+    "Entre no {provedor} para o servidor: abra este link neste aparelho",
+    "Sign in to {provedor} for the server: open this link on this device",
+  ],
+  ["O login expirou. Tente novamente.", "Sign-in expired. Try again."],
+  ["Copiar código", "Copy code"],
+  ["Código copiado.", "Code copied."],
+  ["Não foi possível copiar. Selecione e copie o código acima.", "Could not copy. Select and copy the code above."],
+] as const)("translates remote login copy: %s", (key, english) => {
+  expect(t(key, {}, "pt-BR")).toBe(key)
+  expect(t(key, {}, "en")).toBe(english)
+})
+
+it("blocks the OpenCode method that requires a server browser while allowing menu navigation", async () => {
+  const f = fixture("waiting")
+  f.setFlow({
+    provider: "opencode",
+    state: "waiting",
+    host: "server",
+    prompt: { kind: "method", choice: "Conta (browser)" },
+  })
+  render(<ProviderLogin api={f.api} botId="draft-test" provider="opencode" onConfigured={vi.fn()} />)
+  await screen.findByText("Escolha um método com código para entrar por este aparelho.")
+  expect(screen.getByRole("button", { name: "Confirmar opção" })).toBeDisabled()
+  expect(screen.getByRole("button", { name: "Próxima opção" })).toBeEnabled()
+})
+
+it("does not restart a server CLI if the login view closes while cancellation is pending", async () => {
+  const f = fixture("waiting")
+  f.setFlow({ provider: "opencode", state: "waiting", host: "server" })
+  const request = f.api.request
+  let finish: (() => void) | undefined
+  f.api.request = (async (route, input, path) => {
+    if (route === "POST /bots/:id/provider-login/flow" && (input as { action?: string }).action === "cancel")
+      await new Promise<void>((resolve) => {
+        finish = resolve
+      })
+    return request(route, input, path)
+  }) as ApiRequest
+  const view = render(<ProviderLogin api={f.api} botId="draft-test" provider="opencode" onConfigured={vi.fn()} />)
+  fireEvent.click(await screen.findByRole("button", { name: "Tentar de novo" }))
+  view.unmount()
+  await act(async () => finish?.())
+  expect(f.request.mock.calls.some(([, input]) => input.action === "start")).toBe(false)
 })

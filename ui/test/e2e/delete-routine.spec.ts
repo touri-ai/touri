@@ -75,26 +75,28 @@ for (const width of [1440, 390]) {
     await expect(page.getByRole("heading", { name: "Rotinas", exact: true })).toBeFocused()
     await expect(page.getByText("Sua primeira rotina começa aqui")).toBeVisible()
 
-    // The bot's routines tab uses the same accessible confirmation.
+    // The bot's routines tab opens the filtered list and its accessible confirmation.
     await page.reload()
     if (width === 390) await page.getByRole("button", { name: "Abrir menu" }).click()
     await showBotAdvanced(page)
     const settings = page.getByRole("dialog")
     await settings.getByRole("button", { name: "Avançado", exact: true }).click()
     await settings.getByRole("tab", { name: "Rotinas", exact: true }).click()
-    await settings.getByRole("button", { name: "Excluir rotina Daily brief", exact: true }).scrollIntoViewIfNeeded()
+    await expect(settings).toHaveCount(0)
+    const routines = page.getByRole("region", { name: "Rotinas", exact: true })
+    await expect(routines).toBeFocused()
+    await trigger.scrollIntoViewIfNeeded()
     expect(
-      await settings.locator(".routine-row").evaluate((element) => element.scrollWidth - element.clientWidth),
+      await routines.locator(".routine-item").evaluate((element) => element.scrollWidth - element.clientWidth),
     ).toBeLessThanOrEqual(1)
-    expect(await settings.evaluate((element) => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1)
+    expect(await routines.evaluate((element) => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1)
     await page.screenshot({ path: testInfo.outputPath("bot-routines.png"), animations: "disabled" })
-    await settings.getByRole("button", { name: "Excluir rotina Daily brief", exact: true }).click()
+    await trigger.click()
     await page.getByRole("alertdialog").getByRole("button", { name: "Excluir", exact: true }).click()
     await expect(page.getByRole("alertdialog")).toHaveCount(0)
-    await expect(settings).toBeVisible()
-    await expect(settings.getByRole("tabpanel", { name: "Rotinas", exact: true })).toBeFocused()
-    await expect(settings.getByRole("button", { name: "Excluir rotina Daily brief", exact: true })).toHaveCount(0)
-    await settings.getByRole("button", { name: "Fechar diálogo" }).click()
+    await expect(settings).toHaveCount(0)
+    await expect(routines.getByRole("heading", { name: "Rotinas", exact: true })).toBeFocused()
+    await expect(trigger).toHaveCount(0)
     if (width === 390) await page.getByRole("button", { name: "Abrir menu" }).click()
     await page.getByRole("button", { name: /^Bots/ }).click()
     await expect(page.getByText("Review the campaign", { exact: true }).first()).toBeVisible()

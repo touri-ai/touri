@@ -688,6 +688,8 @@ export type ProviderLoginFlow = {
   host?: 'mac' | 'server'
   /** File/executable check only; never starts a model request. Independent of login state. */
   executable?: 'available' | 'missing'
+  /** An expired or failed CLI attempt can be started again; vault errors require repair. */
+  retryable?: boolean
   deviceCode?: string
   verificationUrl?: string
   needsCode?: boolean

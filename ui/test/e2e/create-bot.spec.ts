@@ -58,7 +58,7 @@ test("a missing account is explained inline and creating succeeds after sign-in"
   await expect(dialog.getByRole("region", { name: "Escolha uma conta" })).toBeFocused()
   await expect(dialog.getByLabel("Nome", { exact: true })).toHaveValue("Clara")
   await dialog.getByRole("button", { name: "Claude Code", exact: true }).click()
-  await dialog.getByRole("button", { name: "Usar outra conta", exact: true }).click()
+  await dialog.getByRole("button", { name: "Tentar de novo", exact: true }).click()
   await expect(dialog.getByText(/Usa o Claude Code/)).toBeVisible()
   await expect(dialog.getByRole("alert")).toHaveCount(0)
   await dialog.getByRole("button", { name: "Criar bot", exact: true }).click()
