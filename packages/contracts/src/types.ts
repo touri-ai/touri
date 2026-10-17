@@ -860,6 +860,7 @@ export type UiEvent =
   | { type: 'machine.updated'; machine: MachineState }
   | { type: 'bot.updated'; bot: Bot }
   | { type: 'bot.deleted'; botId: Id }
+  | { type: 'project.created'; project: Project }
   | { type: 'thread.updated'; thread: Thread }
   | { type: 'message.created'; message: Message }
   | { type: 'message.delta'; threadId: Id; messageId: Id; partIndex: number; delta: string; offset?: number; updatedSeq?: number; generation?: number; partType?: 'text' | 'reasoning'; updatedAt?: EpochMs }
@@ -1095,6 +1096,7 @@ export type ServiceMap = {
   'store.api': StoreApi
   'runtime.enqueue': (args: { threadId: Id; requestMessageId: Id; trigger: RunTrigger }) => Result<{ run: Run }, 'THREAD_NOT_FOUND' | 'BOT_PAUSED'>
   'runtime.activeRun': (args: { threadId: Id }) => Run | null
+  'runtime.continueAfterApproval': (ctx: Pick<ToolContext, 'botId' | 'threadId' | 'runId' | 'signal'>) => boolean
   'runtime.cancelBotTurns': (args: { botId: Id }) => Promise<void>
   'runtime.shutdown': () => Promise<void>
   'projects.info': (args: { projectId: Id; botId?: Id }) => Promise<ProjectInfo | null>

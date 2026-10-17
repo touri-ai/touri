@@ -4,7 +4,7 @@ import { copyFileSync, mkdtempSync, rmSync, statSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { createKernel } from "../../src/kernel"
-import { openDatabase } from "../../src/kernel/db"
+import { openDatabase, SCHEMA_VERSION } from "../../src/kernel/db"
 import { createEventBus } from "../../src/kernel/event-bus"
 import { backfillHistoryBatch, historyMigrationStatus, hydrateHistoryEvent } from "../../src/kernel/history-backfill"
 import { legacySourceRebuild } from "../../src/kernel/legacySourceRebuild"
@@ -25,6 +25,7 @@ import legacySourceSql from "../../src/kernel/migrations/0014.sql" with { type: 
 import continuationsSql from "../../src/kernel/migrations/0015.sql" with { type: "text" }
 import botFoldersSql from "../../src/kernel/migrations/0016.sql" with { type: "text" }
 import providerProfilesSql from "../../src/kernel/migrations/0017.sql" with { type: "text" }
+import permissionContinuationsSql from "../../src/kernel/migrations/0018.sql" with { type: "text" }
 import { TRANSCRIPT_RETENTION } from "../../src/kernel/transcript-storage"
 import { init as initStore } from "../../src/store"
 
@@ -130,7 +131,11 @@ test("schema 11 answers health in under a second while a 2–5 MB history is bac
     const health = await (await fetch(`${url}/health`, { headers })).json()
     const healthMs = performance.now() - started
     expect(healthMs).toBeLessThan(1000)
-    expect(health).toMatchObject({ ok: true, schemaVersion: 17, historyMigration: { running: true, total: 600 } })
+    expect(health).toMatchObject({
+      ok: true,
+      schemaVersion: SCHEMA_VERSION,
+      historyMigration: { running: true, total: 600 },
+    })
     const snapshot = await (await fetch(`${url}/threads/t3/messages`, { headers })).json()
     expect(snapshot.messages).toHaveLength(150)
     expect(snapshot.messages[0].text).toContain("3/0: Histórico preservado.")
@@ -194,6 +199,7 @@ test("interrupted batches resume idempotently and match the shipped synchronous 
     synchronous.exec(continuationsSql)
     synchronous.exec(botFoldersSql)
     synchronous.exec(providerProfilesSql)
+    synchronous.exec(permissionContinuationsSql)
     database = openDatabase({ filename })
     expect(database.query("SELECT type, name, sql FROM sqlite_master ORDER BY name").all()).toEqual(
       synchronous.query("SELECT type, name, sql FROM sqlite_master ORDER BY name").all(),

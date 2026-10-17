@@ -4,6 +4,7 @@ import { approvalOutcome } from "../../approvals/outcome"
 import { buildChildEnv } from "../../kernel"
 import { spawnFolderProvider, turnFolders } from "../folder-access"
 import { loadTurnImages } from "../loadTurnImages"
+import { withLocalTurnTemp } from "../local-turn-temp"
 import { mcpStartupError, touriMcpStartupFailed } from "../mcp-startup"
 import { applyProviderPrivacy, cliTelemetryOff } from "../privacy"
 import { type ChildProcess, readProviderStderr, startLineReader, writeLine } from "../provider-io"
@@ -105,7 +106,7 @@ export const createClaudeAdapter = ({
     return { success: true, path: resolved.path, version: stdout.trim().split(/\s+/)[0] ?? "unknown", loggedIn: true }
   }
 
-  const startTurn = async (
+  const startAttempt = async (
     args: StartTurnArgs,
   ): Promise<ReturnType<ProviderAdapter["startTurn"]> extends Promise<infer T> ? T : never> => {
     const env = args.execution ? { ...args.env } : buildChildEnv({ base: process.env, overrides: args.env })
@@ -171,6 +172,7 @@ export const createClaudeAdapter = ({
       commandArgs.push("--effort", args.bot.reasoningEffort === "xhigh" ? "max" : args.bot.reasoningEffort)
     const projectDataDir = env.TOURI_PROJECT_DATA_DIR
     if (projectDataDir) commandArgs.push("--add-dir", projectDataDir)
+    if (!args.execution && env.TMPDIR) commandArgs.push("--add-dir", env.TMPDIR)
     for (const folder of turnFolders(args)) commandArgs.push("--add-dir", folder.path)
     const spawned = spawnFolderProvider(kernel, args, {
       cmd: resolved.path,
@@ -425,6 +427,8 @@ export const createClaudeAdapter = ({
     if (!completed) spawned.kill("SIGTERM")
     return output
   }
+
+  const startTurn: ProviderAdapter["startTurn"] = (args) => withLocalTurnTemp(kernel, args, startAttempt)
 
   const answerApproval = async ({
     approvalId,

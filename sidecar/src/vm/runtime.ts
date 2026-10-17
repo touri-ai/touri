@@ -15,6 +15,7 @@ import type {
 } from "@touri/contracts"
 import { botFolderFingerprint } from "../kernel/bot-folders"
 import { atomicWriteFile, ensurePrivateDirectory, removePrivateFile } from "../kernel/files"
+import { resolveMcpSocketPath } from "../kernel/paths"
 import { isIdle } from "../kernel/policy"
 import { safeThreadId } from "../mcp/auth"
 import { createRunMcpToken } from "../mcp/run-token"
@@ -972,7 +973,7 @@ export const createVmRuntime = ({
                 port: port.hostPort,
                 transport: port.url,
                 token: session.token,
-                socketPath: join(kernel.paths.runDir, "mcp.sock"),
+                socketPath: resolveMcpSocketPath(kernel.paths),
               }),
             )
           }

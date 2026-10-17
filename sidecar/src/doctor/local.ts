@@ -9,8 +9,9 @@ import { touriVersion } from "../version"
 import { BOT_IMAGE, imageContext } from "../vm/image"
 import { containerMemoryChecks } from "../vm/memory-doctor"
 import { check, shellQuote } from "./check"
+import { codexSessionsCheck } from "./codex-sessions"
 import type { DoctorCommand } from "./command"
-import { mcpStartupChecks, orphanShimCheck } from "./mcp"
+import { mcpSocketPathCheck, mcpStartupChecks, orphanShimCheck } from "./mcp"
 import { withinDeadline } from "./network"
 import { providerLoginChecks } from "./providerLogin"
 
@@ -55,6 +56,7 @@ export const sidecarChecks = (kernel: Kernel): Array<DoctorCheck> => {
   } catch {}
   return [
     ...mcpStartupChecks(kernel.db as Database),
+    mcpSocketPathCheck(kernel.paths),
     orphanShimCheck(kernel.paths.runDir),
     check("sidecar-version", "Serviço local · versão", "pass", `touri ${version}; Bun ${Bun.version}.`),
     check(
@@ -463,7 +465,7 @@ export const collectLocalChecks = async (
       'exec "$SHELL" -l',
     ),
   ]
-  const [claude, codex, opencode, containers, keychain, logins] = await Promise.all([
+  const [claude, codex, opencode, containers, keychain, logins, codexSessions] = await Promise.all([
     cliChecks("claude", probes.which("claude", path), safeRun, signal),
     cliChecks("codex", probes.which("codex", path), safeRun, signal),
     openCodeChecks(
@@ -477,8 +479,9 @@ export const collectLocalChecks = async (
     containerChecks(kernel, probes.which("container", path), safeRun, signal, probes),
     keychainCheck(kernel, signal, probes),
     providerLoginChecks(kernel, environment.HOME ?? homedir(), signal),
+    codexSessionsCheck(environment.HOME ?? homedir(), signal),
   ])
-  checks.push(...claude, ...codex, ...opencode, ...logins)
+  checks.push(...claude, ...codex, ...opencode, ...logins, codexSessions)
   for (const [name, command] of [
     ["git", "xcode-select --install"],
     ["brew", "open https://brew.sh"],

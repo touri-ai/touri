@@ -422,8 +422,13 @@ for (const access of ["read-only", "workspace-write", "full"] as const) {
     expect((await f.answer("allow")).status).toBe(200)
     expect((await call).success).toBe(true)
     const project = f.store.listProjects()[0]
+    if (!project) throw new Error("Project was not registered")
     expect(project?.path).toBe(f.path)
     expect(f.currentBot()?.projectId).toBe(project?.id)
+    expect(f.events).toContainEqual({ type: "project.created", project })
+    expect(f.events.findIndex((event) => event.type === "project.created")).toBeLessThan(
+      f.events.findIndex((event) => event.type === "bot.updated"),
+    )
     expect(f.events).toContainEqual(
       expect.objectContaining({ type: "bot.updated", bot: expect.objectContaining({ projectId: project?.id }) }),
     )
@@ -436,6 +441,7 @@ test("denying a project link registers nothing and changes no configuration", as
   expect((await f.answer("deny")).status).toBe(200)
   expect(await call).toMatchObject({ success: false, errorCode: "DENIED" })
   expect(f.store.listProjects()).toEqual([])
+  expect(f.events.some((event) => event.type === "project.created")).toBe(false)
   expect(f.currentBot()?.projectId).toBeNull()
   expect(f.cards.at(-1)?.decision).toBe("denied")
 })
@@ -591,7 +597,8 @@ test("local setup reports the host and next local turn for project and folder ch
     ["folder_access_request", { path: f.path, mode: "read-write" }],
   ] as const) {
     const call = f.call(name, args)
-    expect((await f.pending()).detail).toContain('"nextTurn":false')
+    expect((await f.pending()).detail).toContain('"nextTurn":true')
+    expect((await f.pending()).detail).toContain('"machine":"local"')
     expect((await f.answer("allow")).status).toBe(200)
     const result = await call
     expect(result).toMatchObject({
@@ -599,7 +606,8 @@ test("local setup reports the host and next local turn for project and folder ch
       structured: { effective: "next-turn" },
       content: [{ type: "text", text: expect.stringContaining("próximo turno local") }],
     })
-    expect(JSON.stringify(result)).not.toContain("VM")
+    if (!result.success) throw new Error(result.error)
+    expect(result.structured).toHaveProperty("message", expect.not.stringContaining("VM"))
     expect(JSON.stringify(result)).toContain("neste Mac")
   }
   for (const [name, args] of [
@@ -609,7 +617,8 @@ test("local setup reports the host and next local turn for project and folder ch
     const result = await f.call(name, args)
     expect(result.success).toBe(true)
     expect(JSON.stringify(result)).toContain("próximo turno local")
-    expect(JSON.stringify(result)).not.toContain("VM")
+    if (!result.success) throw new Error(result.error)
+    expect(result.structured).toHaveProperty("message", expect.not.stringContaining("VM"))
   }
 })
 
