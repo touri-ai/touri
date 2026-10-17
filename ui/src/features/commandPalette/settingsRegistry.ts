@@ -270,7 +270,12 @@ export type SettingsIndexEntry = {
 }
 
 const PAGES: ReadonlyArray<{ page: TouriPage; label: string; detail: string; keywords: Array<string> }> = [
-  { page: "cron", label: t("Cron"), detail: t("Rotinas agendadas dos bots"), keywords: ["rotinas", "agendamento"] },
+  {
+    page: "cron",
+    label: t("Routines"),
+    detail: t("Rotinas agendadas dos bots"),
+    keywords: ["cron", "rotinas", "agendamento"],
+  },
   {
     page: "integracoes",
     label: t("Integrações"),

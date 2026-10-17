@@ -10,7 +10,7 @@ import { listProviderProfiles } from "../runtime/provider-profiles"
 import { resolveExecutable } from "../runtime/utils"
 import type { CliCommand } from "./args"
 import { usageText } from "./args"
-import { type AuthStore, openAuthStore } from "./auth/store"
+import { type AuthStore, isDatabaseBusy, openAuthStore } from "./auth/store"
 import { runDoctor } from "./doctor"
 import { authDbName, runServeCommand } from "./serve"
 import { isProcessAlive, readServeInfo } from "./serveInfo"
@@ -207,9 +207,16 @@ export const runCommandLine = async (command: CliCommand): Promise<number> => {
     await runServeCommand(command.options)
     return -1
   }
-  if (command.name === "pair") return runPair(command)
-  if (command.name === "devices") return runDevices(command)
-  if (command.name === "status") return runStatus(command)
+  if (command.name === "pair" || command.name === "devices" || command.name === "status") {
+    try {
+      if (command.name === "pair") return await runPair(command)
+      if (command.name === "devices") return await runDevices(command)
+      return await runStatus(command)
+    } catch (error) {
+      if (!isDatabaseBusy(error)) throw error
+      return fail("Server may still be starting: database is busy. Try again in a few seconds.")
+    }
+  }
   if (command.name === "doctor") return runDoctor(command)
   if (command.name === "import-legacy") return runImport(command)
   if (command.name === "profile-list") return runProfileList(command)

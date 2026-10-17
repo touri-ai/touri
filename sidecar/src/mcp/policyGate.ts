@@ -10,6 +10,15 @@ export const CONSENT_REQUIRED_TOOLS: ReadonlySet<string> = new Set(["ask_bot", "
 /** Catalogued as read-only, but arbitrary page script can submit forms or post; a delegated run treats it as mutating. */
 const DELEGATED_MUTATING_TOOLS: ReadonlySet<string> = new Set(["browser_evaluate"])
 
+// Setup handlers always require their own scoped, single-use human consent,
+// including for read-only bots and bots configured with approvals="never".
+const SELF_CONFIGURATION_TOOLS: ReadonlySet<string> = new Set([
+  "project_link",
+  "project_unlink",
+  "folder_access_request",
+  "folder_access_remove",
+])
+
 const OBSERVED_BY_OWN_GUARDS: ReadonlySet<string> = new Set([
   "notify_user",
   "preview_open",
@@ -37,4 +46,6 @@ const OBSERVED_BY_OWN_GUARDS: ReadonlySet<string> = new Set([
  * so there every mutating tool is gated against the ceiling.
  */
 export const requiresPolicyGate = ({ name, mutates, delegated }: PolicyGateArgs): boolean =>
-  (mutates || (delegated && DELEGATED_MUTATING_TOOLS.has(name))) && (delegated || !OBSERVED_BY_OWN_GUARDS.has(name))
+  !SELF_CONFIGURATION_TOOLS.has(name) &&
+  (mutates || (delegated && DELEGATED_MUTATING_TOOLS.has(name))) &&
+  (delegated || !OBSERVED_BY_OWN_GUARDS.has(name))

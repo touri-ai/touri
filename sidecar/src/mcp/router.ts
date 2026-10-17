@@ -83,7 +83,8 @@ const visibleTo = ({
   if (meta.providers && !meta.providers.includes(caller.provider)) return false
   if (meta.group === "browser" && !caller.browserEnabled) return false
   if (meta.group === "computer" && !caller.computerUse) return false
-  if (!caller.projectId && ["process", "secret", "preview"].includes(meta.group)) return false
+  // Keep preview_open callable so an unlinked bot receives the setup requirement.
+  if (!caller.projectId && ["process", "secret"].includes(meta.group)) return false
   if (meta.group === "secret" && getDelegation(kernel, caller.threadId)?.secrets === false) return false
   if (hostEscalation(kernel, caller, meta.group)) return false
   return true

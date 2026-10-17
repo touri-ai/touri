@@ -114,7 +114,7 @@ export const ProviderLogin = ({
               ? "Execute opencode auth login e cole o conteúdo de ~/.local/share/opencode/auth.json. O arquivo será compartilhado somente para leitura com esta máquina."
               : provider === "claude"
                 ? t(
-                    "Gere um token OAuth no terminal com claude setup-token e cole abaixo. Ele será usado somente nas execuções deste bot na VM.",
+                    "No Terminal deste Mac, execute claude setup-token e cole o token OAuth abaixo. Ele será usado somente por este bot, na máquina escolhida para ele.",
                   )
                 : t(
                     'Execute codex -c cli_auth_credentials_store="file" login --device-auth no terminal e cole o conteúdo de ~/.codex/auth.json abaixo.',

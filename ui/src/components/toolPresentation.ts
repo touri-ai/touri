@@ -1,6 +1,7 @@
 import type { ApprovalPart, MessagePart } from "@touri/contracts"
 import { redactToolText } from "@touri/contracts/redaction"
-import { localizeToolText } from "../i18n"
+import { localizeToolText, t } from "../i18n"
+import { routineSchedule } from "../routineSchedule"
 
 export type ToolPart = Extract<MessagePart, { type: "tool_call" | "command" | "file_change" }>
 export type ToolKind = "terminal" | "browser" | "computer" | "files" | "tool"
@@ -81,6 +82,65 @@ const approvalDetail = (approval: ApprovalPart): string => {
   return approval.detail.startsWith(prefix) ? approval.detail.slice(prefix.length).trimStart() : approval.detail
 }
 
+const setupPresentation = (name: string, input: Record<string, unknown> | null) => {
+  if (name.includes("__") && !name.startsWith("mcp__touri__")) return null
+  const leaf = toolLeaf(name)
+  const path = typeof input?.path === "string" ? input.path : ""
+  if (
+    ["routine_create", "project_link", "folder_access_request", "project_unlink", "folder_access_remove"].includes(
+      leaf,
+    ) &&
+    (!input ||
+      (leaf === "routine_create" &&
+        ![input.name, input.cron, input.timezone].every((value) => typeof value === "string" && value.trim())))
+  )
+    return {
+      name: t("Detalhes indisponíveis"),
+      summary: t("Não foi possível mostrar os detalhes desta ação. Negue e peça ao bot para solicitar novamente."),
+      canApprove: false,
+    }
+  let title: string
+  let summary: string
+  let preview = ""
+  let approvalLabel: string | undefined
+  if (leaf === "routine_create") {
+    title = input?.routineId ? t("Ativar rotina") : t("Criar cron")
+    summary = `${String(input?.name ?? "")} · ${routineSchedule(String(input?.cron ?? ""), String(input?.timezone ?? ""))}`
+    if (input?.routineId) approvalLabel = t("Ativar rotina “{name}”", { name: String(input.name) })
+    const prompt = typeof input?.promptPreview === "string" ? input.promptPreview : input?.prompt
+    if (typeof prompt === "string") {
+      preview = `${t("Prévia da instrução")}\n${prompt}`
+      const length = typeof input?.promptLength === "number" ? input.promptLength : prompt.length
+      preview += `\n${t("Tamanho completo: {count} caracteres", { count: length })}`
+    }
+  } else if (leaf === "project_link") {
+    title = t("Vincular projeto")
+    summary = t("Vincular {name} ({path}) a este bot", {
+      name: String(input?.name ?? path.split("/").filter(Boolean).at(-1) ?? input?.projectId ?? t("Projeto")),
+      path,
+    })
+    const previous = asToolRecord(input?.previousProject)
+    if (previous)
+      summary += ` ${t("Substitui o projeto {name} ({path}).", { name: String(previous.name), path: String(previous.path) })}`
+  } else if (leaf === "folder_access_request") {
+    title = t("Conceder acesso à pasta")
+    summary = t("Permitir {mode} em {path} para este bot", {
+      mode: t(input?.mode === "read" ? "Somente leitura" : "Leitura e escrita"),
+      path,
+    })
+    if (input?.previousMode)
+      summary += ` ${t("Acesso anterior: {mode}.", { mode: t(input.previousMode === "read-only" ? "Somente leitura" : "Leitura e escrita") })}`
+  } else if (leaf === "project_unlink") {
+    title = t("Desvincular projeto")
+    summary = t("Desvincular o projeto deste bot.")
+  } else if (leaf === "folder_access_remove") {
+    title = t("Remover acesso à pasta")
+    summary = t("Remover o acesso deste bot a {path}.", { path })
+  } else return null
+  if (input?.nextTurn) summary += ` ${t("A mudança entra em vigor no próximo turno da VM.")}`
+  return { name: title, summary, preview, approvalLabel, canApprove: true }
+}
+
 export const toolPresentation = (part?: ToolPart, approval?: ApprovalPart) => {
   const name = part
     ? part.type === "tool_call"
@@ -102,6 +162,15 @@ export const toolPresentation = (part?: ToolPart, approval?: ApprovalPart) => {
       : ""
   const value = safeValue(raw)
   const args = asToolRecord(value)
+  // An approval contains the reviewed, canonical target. Provider tool input may
+  // contain only an ID or an alias and must not override that reviewed summary.
+  const setup =
+    !approval || approval.scope?.server === "touri"
+      ? setupPresentation(
+          approval ? approvalToolName(approval) : name,
+          approval ? asToolRecord(safeValue(approvalDetail(approval))) : args,
+        )
+      : null
   const identity = toolIdentity(name, approval?.scope?.server)
   const description = typeof args?.description === "string" ? args.description : ""
   const summary = part?.type === "tool_call" && !/^Claude tool |^[{[]/.test(part.summary) ? part.summary : ""
@@ -130,32 +199,39 @@ export const toolPresentation = (part?: ToolPart, approval?: ApprovalPart) => {
     : null
   return {
     ...identity,
+    ...(setup ? { name: setup.name } : {}),
+    canApprove: setup?.canApprove ?? true,
+    approvalLabel: setup?.approvalLabel,
     filePaths,
-    summary: localizeToolText(
-      description ||
-        summary ||
-        (typeof value === "string" && !/^[{[]/.test(value.trim()) && identity.kind !== "terminal"
-          ? value
-          : defaults[identity.kind]),
-    ),
+    summary:
+      setup?.summary ??
+      localizeToolText(
+        description ||
+          summary ||
+          (typeof value === "string" && !/^[{[]/.test(value.trim()) && identity.kind !== "terminal"
+            ? value
+            : defaults[identity.kind]),
+      ),
     code:
-      identity.kind === "terminal"
-        ? typeof command === "string"
-          ? command
-          : Array.isArray(command)
-            ? command.join(" ")
-            : typeof value === "string" && !/^[{[]/.test(value.trim())
-              ? value
-              : "Comando indisponível. Abra os detalhes técnicos."
-        : filePaths.length && parameters && Object.keys(parameters).length === 0
-          ? ""
-          : prettyToolValue(
-              parameters
-                ? parameters
-                : typeof value === "string" && /^[{[]/.test(value.trim())
-                  ? "Parâmetros incompletos. Abra os detalhes técnicos."
-                  : value,
-            ),
+      setup && approval
+        ? (setup.preview ?? "")
+        : identity.kind === "terminal"
+          ? typeof command === "string"
+            ? command
+            : Array.isArray(command)
+              ? command.join(" ")
+              : typeof value === "string" && !/^[{[]/.test(value.trim())
+                ? value
+                : "Comando indisponível. Abra os detalhes técnicos."
+          : filePaths.length && parameters && Object.keys(parameters).length === 0
+            ? ""
+            : prettyToolValue(
+                parameters
+                  ? parameters
+                  : typeof value === "string" && /^[{[]/.test(value.trim())
+                    ? "Parâmetros incompletos. Abra os detalhes técnicos."
+                    : value,
+              ),
     technical: redactToolText(typeof value === "string" ? raw : JSON.stringify(value, null, 2)),
   }
 }
@@ -199,5 +275,17 @@ export const approvalMatchesTool = (approval: ApprovalPart, part: ToolPart): boo
   if (toolLeaf(name) !== toolLeaf(part.tool)) return false
   const mcpServer = /^mcp__(.+?)__/.exec(part.tool)?.[1]
   if (approval.scope?.server && mcpServer && approval.scope.server !== mcpServer) return false
+  // Setup cards retain the original spelling for matching and the canonical
+  // path for presentation. Enrichment must not split one operation into two cards.
+  if (approval.scope?.source === "mcp" && approval.scope.server === "touri" && mcpServer === "touri") {
+    const original = asToolRecord(parseToolValue(part.inputJson))
+    const target = args?.requestedPath ?? args?.path
+    if (toolLeaf(name) === "project_link") {
+      if (typeof original?.projectId === "string") return original.projectId === args?.projectId
+      if (typeof original?.path === "string") return original.path === target
+    }
+    if (toolLeaf(name) === "folder_access_request")
+      return typeof original?.path === "string" && original.path === target && original.mode === args?.mode
+  }
   return canonicalValue(input) === canonicalValue(parseToolValue(part.inputJson))
 }

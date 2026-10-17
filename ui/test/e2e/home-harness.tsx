@@ -6,6 +6,7 @@ import "../../src/styles.css"
 
 initializeTheme()
 const api = createMockApi()
+Object.assign(window, { workspaceQa: { api } })
 const state = api.getState()
 const scenario = new URLSearchParams(location.search).get("scenario")
 if (scenario === "empty") state.bots.splice(0)

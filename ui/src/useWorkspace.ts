@@ -41,6 +41,7 @@ export type WorkspaceData = {
   machines: Array<MachineState>
   threads: Array<Thread>
   messages: Array<Message>
+  activityMessages: Array<Message>
   runs: Array<Run>
   projects: Array<Project>
   processes: Array<ProcessEntry>
@@ -114,6 +115,7 @@ const emptyState = (): WorkspaceData => ({
   machines: [],
   threads: [],
   messages: [],
+  activityMessages: [],
   runs: [],
   projects: [],
   processes: [],
@@ -261,6 +263,7 @@ const withoutBot = (data: WorkspaceData, botId: Id): WorkspaceData => {
       ? (threads.find((thread) => thread.botId === selectedBotId)?.id ?? null)
       : data.selectedThreadId,
     messages: data.messages.filter((message) => !threadIds.has(message.threadId)),
+    activityMessages: data.activityMessages.filter((message) => !threadIds.has(message.threadId)),
     runs: data.runs.filter((run) => run.botId !== botId),
     routines: data.routines.filter((routine) => !routineIds.has(routine.id)),
     routineRuns: data.routineRuns.filter((run) => !routineIds.has(run.routineId)),
@@ -306,10 +309,25 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
   const createdLoginDrafts = useRef(new Map<string, Bot>())
   const diagnosis = useDoctorReport(api, enabled)
   const [data, setData] = useState<WorkspaceData>(emptyState)
+  const currentData = useRef(data)
+  currentData.current = data
   useMachineParking(api, data.bots, enabled && !data.loading)
   const privateThreads = useRef(new Set<string>())
   const threadsByBot = useRef(readWorkspaceState().threadsByBot ?? {})
   const generation = useRef(0)
+  const runRevision = useRef(0)
+  const liveRuns = useRef(new Map<Id, number>())
+  const loadedThreads = useRef(new Map<Id, number>())
+  const threadLoads = useRef(
+    new Map<
+      Id,
+      {
+        attempt: number
+        promise: Promise<void>
+        deltas: Array<Extract<UiEvent, { type: "message.delta" }>>
+      }
+    >(),
+  )
   const projectGeneration = useRef(0)
   const [projectRevision, setProjectRevision] = useState(0)
   useEffect(() => {
@@ -349,9 +367,46 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
     [api],
   )
 
+  const loadThread = useCallback(
+    (threadId: Id, force = false): Promise<void> => {
+      const attempt = generation.current
+      const pending = threadLoads.current.get(threadId)
+      if (pending?.attempt === attempt) return pending.promise
+      if (!force && loadedThreads.current.get(threadId) === attempt) return Promise.resolve()
+      const deltas: Array<Extract<UiEvent, { type: "message.delta" }>> = []
+      const promise = Promise.all([
+        api.request("GET /threads/:id/messages", { all: true }, { id: threadId }),
+        api.request("GET /threads/:id/runs", { all: true }, { id: threadId }),
+      ])
+        .then(([messages, runs]) => {
+          if (attempt !== generation.current) return
+          loadedThreads.current.set(threadId, attempt)
+          setData((current) => ({
+            ...current,
+            messages: deltas.reduce(
+              (rows, event) => applyDelta(rows, event.messageId, event.delta, event.partIndex, event.offset, event),
+              messages.messages.reduce(updateMessage, current.messages),
+            ),
+            runs: mergeRunRows(current.runs, runs.runs),
+          }))
+        })
+        .catch((error: unknown) => {
+          if (attempt === generation.current)
+            setData((current) => ({ ...current, notice: t("Service request failed", { error: errorMessage(error) }) }))
+        })
+        .finally(() => {
+          if (threadLoads.current.get(threadId)?.promise === promise) threadLoads.current.delete(threadId)
+        })
+      threadLoads.current.set(threadId, { attempt, promise, deltas })
+      return promise
+    },
+    [api],
+  )
+
   const load = useCallback(async (): Promise<void> => {
     if (!enabled) return
     const attempt = ++generation.current
+    const runsAtStart = runRevision.current
     try {
       const [
         groupResponse,
@@ -364,6 +419,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
         routineRunsResponse,
         notificationsResponse,
         machineResponse,
+        activityResponse,
       ] = await Promise.all([
         api.request("GET /groups", {}).catch(() => ({ groups: [] })),
         api.request("GET /bots", {}),
@@ -378,34 +434,36 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
           capability: { available: false, reason: t("No virtualization on this host"), provider: null },
           machines: [],
         })),
+        api.request("GET /workspace/activity", {}),
       ])
-      const botThreads = await Promise.all(
-        botResponse.bots.map(async (bot) => {
-          const response = await api.request("GET /bots/:id/threads", {}, { id: bot.id })
-          return response.threads
-        }),
-      )
-      const groupThreads = await Promise.all(
-        (groupResponse?.groups ?? []).map((g) => api.request("GET /groups/:id/threads", {}, { id: g.id })),
-      )
+      const [botThreads, groupThreads] = await Promise.all([
+        Promise.all(
+          botResponse.bots.map(async (bot) => {
+            const response = await api.request("GET /bots/:id/threads", {}, { id: bot.id })
+            return response.threads
+          }),
+        ),
+        Promise.all((groupResponse?.groups ?? []).map((g) => api.request("GET /groups/:id/threads", {}, { id: g.id }))),
+      ])
       const allThreads = [...botThreads.flat(), ...groupThreads.flatMap((r) => r.threads)]
-      const threadMessages = await Promise.all(
-        allThreads.map(async (thread) => {
-          const [response, runResponse] = await Promise.all([
-            api.request("GET /threads/:id/messages", { all: true }, { id: thread.id }),
-            api.request("GET /threads/:id/runs", { all: true }, { id: thread.id }),
-          ])
-          return { messages: response.messages, runs: runResponse.runs }
-        }),
-      )
       if (attempt !== generation.current) return
       setData((current) => {
+        const runIds = new Set(activityResponse.runs.map((run) => run.id))
+        const runs = mergeRunRows(
+          current.runs.filter(
+            (run) =>
+              !["queued", "starting", "running"].includes(run.status) ||
+              runIds.has(run.id) ||
+              (liveRuns.current.get(run.id) ?? 0) > runsAtStart,
+          ),
+          activityResponse.runs,
+        )
         const selectedBot = botResponse.bots.find((bot) => bot.id === current.selectedBotId) ?? botResponse.bots[0]
         const selectedThread =
           allThreads.find((thread) => thread.id === current.selectedThreadId && thread.botId === selectedBot?.id) ??
           lastActiveThread(
             allThreads,
-            threadMessages.flatMap((entry) => entry.runs),
+            runs,
             selectedBot?.id ?? "",
             current.selectedThreadId ?? threadsByBot.current[selectedBot?.id ?? ""],
           )
@@ -416,14 +474,9 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
           machineCapability: machineResponse.capability,
           machines: machineResponse.machines,
           threads: mergeThreads(current.threads, allThreads),
-          messages: [...threadMessages.flatMap((entry) => entry.messages), ...(api.pendingMessages?.() ?? [])].reduce(
-            updateMessage,
-            current.messages,
-          ),
-          runs: mergeRunRows(
-            current.runs,
-            threadMessages.flatMap((entry) => entry.runs),
-          ),
+          messages: (api.pendingMessages?.() ?? []).reduce(updateMessage, current.messages),
+          activityMessages: activityResponse.messages,
+          runs,
           projects: projectResponse.projects,
           previews: previewResponse.previews,
           browserTabs: browserResponse.tabs,
@@ -439,6 +492,15 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
         }
       })
       setProjectRevision((value) => value + 1)
+      const selected = currentData.current
+      const threadId = selected.selectedThreadId
+      if (
+        !selected.loading &&
+        threadId &&
+        botResponse.bots.some((bot) => bot.id === selected.selectedBotId) &&
+        allThreads.some((thread) => thread.id === threadId && thread.botId === selected.selectedBotId)
+      )
+        await loadThread(threadId)
     } catch (error) {
       if (attempt !== generation.current) return
       setData((current) => ({
@@ -449,36 +511,20 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
           : t("Service request failed", { error: errorMessage(error) }),
       }))
     }
-  }, [api, enabled])
+  }, [api, enabled, loadThread])
 
   useEffect(() => {
     if (!enabled) return
-    void load()
+    let active = true
     let resyncing: Promise<void> | null = null
-    let replayDeltas: Array<Extract<UiEvent, { type: "message.delta" }>> = []
     const resync = (): void => {
       if (resyncing) return
-      resyncing = load()
-        .then(() => {
-          const pending = replayDeltas
-          replayDeltas = []
-          if (pending.length)
-            setData((current) => ({
-              ...current,
-              messages: pending.reduce(
-                (messages, event) =>
-                  applyDelta(messages, event.messageId, event.delta, event.partIndex, event.offset, event),
-                current.messages,
-              ),
-            }))
-        })
-        .finally(() => {
-          resyncing = null
-        })
+      resyncing = load().finally(() => {
+        resyncing = null
+      })
     }
-    const unsubscribeConnection = api.subscribeConnection?.((connected) => {
-      if (connected) resync()
-    })
+    // A reconnect needs no reload: the sidecar replays the gap, or sends a resync frame when the gap is
+    // too large or expired. Reloading every conversation on each reconnect kept a slow client behind.
     const unsubscribe = api.subscribe((envelope: UiEventEnvelope) => {
       const event = envelope.event
       if (event.type === "thread.updated" && event.thread.groupThreadId) {
@@ -495,7 +541,8 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
         resync()
         return
       }
-      if (event.type === "message.delta" && resyncing) replayDeltas.push(event)
+      if (event.type === "message.delta") threadLoads.current.get(event.threadId)?.deltas.push(event)
+      if (event.type === "run.updated") liveRuns.current.set(event.run.id, ++runRevision.current)
       setData((current) => {
         if (event.type === "machine.updated")
           return {
@@ -540,8 +587,12 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
           const part = message?.parts[event.partIndex]
           const length = part?.type === "text" || part?.type === "reasoning" ? part.text.length : 0
           if (!message || (event.offset !== undefined && event.offset > length)) {
-            if (!resyncing) replayDeltas.push(event)
-            queueMicrotask(resync)
+            // Unopened threads have no snapshot to repair; selection fetches their current history.
+            if (event.threadId === current.selectedThreadId && !threadLoads.current.has(event.threadId))
+              queueMicrotask(() => {
+                void loadThread(event.threadId, true)
+                threadLoads.current.get(event.threadId)?.deltas.push(event)
+              })
           }
           return {
             ...current,
@@ -590,12 +641,16 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
         return current
       })
     })
+    // Subscribe first, then load: the snapshot starts where live delivery does.
+    void (api.cursorReady?.() ?? Promise.resolve()).then(() => {
+      if (active) void load()
+    })
     return () => {
+      active = false
       generation.current += 1
       unsubscribe()
-      unsubscribeConnection?.()
     }
-  }, [api, enabled, load])
+  }, [api, enabled, load, loadThread])
 
   const selectedBot = useMemo(
     () => data.bots.find((bot) => bot.id === data.selectedBotId) ?? null,
@@ -605,6 +660,11 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
     () => data.threads.find((thread) => thread.id === data.selectedThreadId) ?? null,
     [data.threads, data.selectedThreadId],
   )
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: refresh and reconnect also refresh the selected transcript
+  useEffect(() => {
+    if (enabled && !data.loading && data.selectedThreadId) void loadThread(data.selectedThreadId)
+  }, [enabled, data.loading, data.selectedThreadId, projectRevision, loadThread])
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: each REST reload must refresh processes, even when project ID is unchanged
   useEffect(() => {
@@ -1011,19 +1071,39 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
     [api],
   )
 
+  const activityMessages = useMemo(() => {
+    const rows = new Map(
+      data.activityMessages.map((message) => [JSON.stringify([message.threadId, message.id]), message]),
+    )
+    for (const message of data.messages) {
+      const key = JSON.stringify([message.threadId, message.id])
+      const activity = rows.get(key)
+      if (
+        activity &&
+        ((activity.updatedSeq ?? 0) > (message.updatedSeq ?? 0) ||
+          ((activity.updatedSeq ?? 0) === (message.updatedSeq ?? 0) && activity.updatedAt > message.updatedAt))
+      )
+        continue
+      rows.set(key, message)
+    }
+    return reconcileApprovalMessages([...rows.values()], data.notifications)
+  }, [data.activityMessages, data.messages, data.notifications])
+
   const approvalMessages = useMemo(
     () => reconcileApprovalMessages(data.messages, data.notifications),
     [data.messages, data.notifications],
   )
   const notifications = useMemo(
-    () => reconcileFailureNotifications(reconcileApprovalNotifications(data.notifications, data.messages), data.runs),
-    [data.messages, data.notifications, data.runs],
+    () =>
+      reconcileFailureNotifications(reconcileApprovalNotifications(data.notifications, activityMessages), data.runs),
+    [activityMessages, data.notifications, data.runs],
   )
 
   return {
     data: {
       ...data,
       messages: approvalMessages,
+      activityMessages,
       notifications,
       doctor: diagnosis.report,
       doctorError: diagnosis.error,

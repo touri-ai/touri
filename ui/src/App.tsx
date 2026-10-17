@@ -541,7 +541,7 @@ const AppContent = ({ kernel }: AppProps) => {
     ) : null
   if (data.bots.length === 0)
     return (
-      <AvatarRuntimeProvider value={data}>
+      <AvatarRuntimeProvider value={{ ...data, messages: data.activityMessages }}>
         <OnboardingLanding
           onCreateBot={() => openModal("bot")}
           onDoctor={() => openModal("doctor")}
@@ -558,7 +558,7 @@ const AppContent = ({ kernel }: AppProps) => {
 
   if (requestedComputer)
     return (
-      <AvatarRuntimeProvider value={data}>
+      <AvatarRuntimeProvider value={{ ...data, messages: data.activityMessages }}>
         <main className="computer-window">
           <header>
             <h1>Computador de {selectedBot?.name ?? "bot"}</h1>
@@ -581,7 +581,7 @@ const AppContent = ({ kernel }: AppProps) => {
     )
 
   return (
-    <AvatarRuntimeProvider value={data}>
+    <AvatarRuntimeProvider value={{ ...data, messages: data.activityMessages }}>
       <main className="app-shell">
         <HistoryMigrationStatus api={api} />
         {connectionState === "error" && (
@@ -620,7 +620,7 @@ const AppContent = ({ kernel }: AppProps) => {
             bots={data.bots}
             onDeleteBot={actions.deleteBot}
             threads={data.threads}
-            messages={data.messages}
+            messages={data.activityMessages}
             runs={data.runs}
             floatUpdates={data.settings?.sidebarFloatUpdates ?? true}
             selectedBotId={selectedBot?.id ?? null}
@@ -683,7 +683,7 @@ const AppContent = ({ kernel }: AppProps) => {
                 selectedBotId={data.selectedBotId}
                 routines={data.routines}
                 routineRuns={data.routineRuns}
-                messages={data.messages}
+                messages={data.activityMessages}
                 actions={actions}
                 onReviewApprovals={reviewApproval}
                 onNotice={showNotice}
@@ -820,6 +820,7 @@ const AppContent = ({ kernel }: AppProps) => {
         {/* r8 motion: central overlay presence (settings content stays owned by its package) */}
         <ErrorBoundary area="a busca" dialog api={api} onClose={() => setSearchOpen(false)}>
           <CommandPalette
+            api={api}
             open={searchOpen}
             bots={data.bots}
             threads={data.threads}

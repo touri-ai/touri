@@ -44,8 +44,8 @@ const KIND_KEY: Record<NotificationRecord["kind"], TranslationKey> = {
   "delegation-settled": "Delegation",
 }
 
-const hasReplyBox = (item: NotificationRecord): boolean =>
-  item.kind === "question" || (item.kind === "done" && item.body.trim().endsWith("?"))
+// Only a real question from the bot gets a reply box; a finished turn that ends in "?" is a reply.
+const hasReplyBox = (item: NotificationRecord): boolean => item.kind === "question"
 
 const age = (createdAt: number, now: number): string => {
   const minutes = Math.max(0, Math.round((now - createdAt) / 60_000))

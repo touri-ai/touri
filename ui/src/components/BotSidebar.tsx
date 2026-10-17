@@ -1,5 +1,5 @@
 import type { Bot, BotGroup, Id, Message, NotificationRecord, Run, Thread } from "@touri/contracts"
-import { Fragment, type ReactNode, useMemo, useState } from "react"
+import { Fragment, type ReactNode, useEffect, useMemo, useState } from "react"
 import { type ApprovalTarget, pendingApprovalTargets } from "../approvalNavigation"
 import { reconcileApprovalMessages } from "../approvalState"
 import { BOT_ACTIVITY_LABELS, type BotActivity } from "../botActivity"
@@ -165,6 +165,7 @@ export const Sidebar = (props: SidebarProps) => {
                 )}
                 <BotEntry
                   key={bot.id}
+                  navigationKey={`${props.section}:${props.advancedPage}:${props.selectedBotId}:${props.selectedThreadId}`}
                   bot={bot}
                   activity={ordered.activity.get(bot.id) ?? null}
                   onHold={ordered.hold}
@@ -247,6 +248,7 @@ export const Sidebar = (props: SidebarProps) => {
 }
 
 const BotEntry = ({
+  navigationKey,
   insertedThreads,
   bot,
   activity,
@@ -267,6 +269,7 @@ const BotEntry = ({
   onNotification,
   onDelete,
 }: {
+  navigationKey: string
   bot: Bot
   activity: BotActivity | null
   onHold: (botId: Id, reason: HoldReason, active: boolean) => void
@@ -288,6 +291,8 @@ const BotEntry = ({
   onDelete?: ((botId: string, name: string, deleteVolumes: boolean) => Promise<void>) | undefined
 }) => {
   const [menuOpen, setMenuOpen] = useState(false)
+  // biome-ignore lint/correctness/useExhaustiveDependencies: dismiss on any navigation, including another bot's thread
+  useEffect(() => setMenuOpen(false), [navigationKey])
   const [deleting, setDeleting] = useState(false)
   const snapshot = useMascotSnapshot(bot)
   const ids = threads.map((thread) => thread.id)

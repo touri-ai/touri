@@ -418,6 +418,7 @@ describe("r3 P3 integrity", () => {
     const { api } = fixture()
     const hook = renderHook(() => useWorkspace(api))
     await waitFor(() => expect(hook.result.current.data.loading).toBe(false))
+    await waitFor(() => expect(hook.result.current.data.processes.length).toBeGreaterThan(0))
     const order = hook.result.current.data.bots.map((bot) => bot.id)
     const bot = hook.result.current.data.bots[0] as Bot
     const process = hook.result.current.data.processes[0]

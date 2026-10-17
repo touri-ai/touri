@@ -655,6 +655,8 @@ export type ProviderProfile = { name: string; provider: Provider; loggedIn: bool
 export type ProviderLoginFlow = {
   provider: Provider
   state: 'idle' | 'host-available' | 'waiting' | 'ready' | 'cancelled' | 'error'
+  /** Sidecar host, independent of the browser. Sent only when a valid host login can be imported. */
+  host?: 'mac' | 'server'
   deviceCode?: string
   verificationUrl?: string
   needsCode?: boolean
@@ -741,6 +743,8 @@ export type ApiRoutes = {
   'GET /threads/:id/messages': { req: { all?: boolean }; res: { messages: Array<Message>; activeLeafId: Id | null } }
   'POST /threads/:id/messages': { req: SendMessageInput; res: { message: Message; run: Run } }
   'GET /threads/:id/runs': { req: { all?: boolean }; res: { runs: Array<Run> } }
+  /** Compact sidebar messages and latest/active runs; never a transcript snapshot. */
+  'GET /workspace/activity': { req: Record<string, never>; res: { messages: Array<Message>; runs: Array<Run> } }
   'POST /runs/:id/cancel': { req: {}; res: { run: Run } }
   'POST /runs/:id/retry': { req: {}; res: { run: Run } }
   'POST /approvals/:id': { req: { decision: 'approved' | 'denied'; standing?: boolean }; res: {} }
@@ -859,6 +863,8 @@ export type UiEvent =
   | { type: 'message.created'; message: Message }
   | { type: 'message.delta'; threadId: Id; messageId: Id; partIndex: number; delta: string; offset?: number; updatedSeq?: number; generation?: number; partType?: 'text' | 'reasoning'; updatedAt?: EpochMs }
   | { type: 'transcript.resync' }
+  /** Replay placeholder for a message revision already sent in its latest form earlier in the same replay. */
+  | { type: 'transcript.superseded' }
   | { type: 'transcript.rejected'; rejection: TranscriptRejection }
   | { type: 'message.updated'; message: Message }
   | { type: 'run.updated'; run: Run }
@@ -1060,6 +1066,7 @@ export type StoreApi = {
 
 /** Cross-module services. Providers call `provide` in their init; consumers must tolerate `null` from `use`. */
 export type ServiceMap = {
+  'bots.configureAccess': (input: { botId: Id; patch: Partial<Pick<Bot, 'projectId' | 'folders'>> }) => Result<{ bot: Bot }, 'NOT_FOUND' | 'INVALID_ARGS' | 'MACHINE_PROJECT_CHANGE'>
   'diagnostics.errors': () => Array<{ code: string; at: number }>
   'groups.runtime': {
     enqueue: ServiceMap['runtime.enqueue']

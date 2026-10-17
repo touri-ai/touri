@@ -20,6 +20,7 @@ import legacySourceSql from "./migrations/0014.sql" with { type: "text" }
 import continuationsSql from "./migrations/0015.sql" with { type: "text" }
 import botFoldersSql from "./migrations/0016.sql" with { type: "text" }
 import providerProfilesSql from "./migrations/0017.sql" with { type: "text" }
+import { withSuspendedSchemaObjects } from "./schema-rebuild"
 import { applyUpgradeBaselines } from "./upgradeBaselines"
 
 export const SCHEMA_VERSION = 17
@@ -38,7 +39,7 @@ export const openDatabase = ({ filename }: { filename: string }): Database => {
     databasePath,
     sqliteFlags.SQLITE_OPEN_READWRITE | sqliteFlags.SQLITE_OPEN_CREATE | sqliteFlags.SQLITE_OPEN_NOFOLLOW,
   )
-  database.exec("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;")
+  database.exec("PRAGMA busy_timeout = 5000; PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;")
   database.exec(migrationSql)
   database.exec(notificationsSql)
   database.transaction(() => {
@@ -93,8 +94,14 @@ export const openDatabase = ({ filename }: { filename: string }): Database => {
   // Disabling FKs inside a transaction is ineffective. Rebuild without renaming
   // the original tables so inbound references continue to point to their names.
   database.exec("PRAGMA foreign_keys = OFF")
+  let rebuilt: Array<string> = []
   try {
     database.transaction(() => {
+      // Normalize historical source constraints and rows before 0012 copies bots
+      // into a table whose source constraint already expects the current label.
+      const result = legacySourceRebuild({ database })
+      if (!result.success) throw new Error(`Legacy source migration: ${result.error}`)
+      rebuilt = result.rebuilt
       if (!database.query("SELECT value FROM schema_meta WHERE key = 'opencode_provider_version'").get()) {
         const objects = database
           .query(
@@ -105,38 +112,24 @@ export const openDatabase = ({ filename }: { filename: string }): Database => {
           table,
           count: (database.query(`SELECT COUNT(*) AS n FROM ${table}`).get() as { n: number }).n,
         }))
-        database.exec(opencodeSql)
+        withSuspendedSchemaObjects(database, () => database.exec(opencodeSql))
         for (const { table, count } of counts)
           if ((database.query(`SELECT COUNT(*) AS n FROM ${table}`).get() as { n: number }).n !== count)
             throw new Error("OpenCode migration: row count changed")
         for (const object of objects) {
           if (!database.query("SELECT 1 FROM sqlite_schema WHERE name = ?").get(object.name)) database.exec(object.sql)
         }
-        if (database.query("PRAGMA foreign_key_check").all().length)
-          throw new Error("OpenCode migration: invalid foreign keys")
       }
+      if (database.query("PRAGMA foreign_key_check").all().length)
+        throw new Error("Database rebuild: invalid foreign keys")
       database.exec("UPDATE schema_meta SET value = '12' WHERE key = 'schema_version'")
     })()
   } finally {
     database.exec("PRAGMA foreign_keys = ON")
   }
-  database.transaction(() => database.exec(workRecoverySql))()
-  database.exec("PRAGMA foreign_keys = OFF")
-  const rebuilt = (() => {
-    try {
-      return database.transaction(() => {
-        const result = legacySourceRebuild({ database })
-        if (!result.success) throw new Error(`Legacy source migration: ${result.error}`)
-        database.exec(legacySourceSql)
-        if (database.query("PRAGMA foreign_key_check").all().length)
-          throw new Error("Legacy source migration: invalid foreign keys")
-        return result.rebuilt
-      })()
-    } finally {
-      database.exec("PRAGMA foreign_keys = ON")
-    }
-  })()
   if (rebuilt.length) reclaimRebuiltPages(database)
+  database.transaction(() => database.exec(workRecoverySql))()
+  database.transaction(() => database.exec(legacySourceSql))()
   database.transaction(() => database.exec(continuationsSql))()
   database.transaction(() => {
     const columns = database.query("PRAGMA table_info(bots)").all() as Array<{ name: string }>

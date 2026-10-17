@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto"
 import { join } from "node:path"
 import type { HostNotification, Kernel, RouteModule, SidecarHandshake, UiEvent } from "@touri/contracts"
 import type { ServerWebSocket } from "bun"
+import { compressBufferedResponse } from "../cli/web/compression"
 import { touriVersion } from "../version"
 import { createStorageMaintenance } from "./data-maintenance"
 import { openDatabase, SCHEMA_VERSION } from "./db"
@@ -414,7 +415,8 @@ export const createKernel = ({ appData, web }: { appData?: string; web?: WebMode
           },
         })
       }
-      return jsonResponse(response.status, response.json, request.headers.get("origin"))
+      const json = jsonResponse(response.status, response.json, request.headers.get("origin"))
+      return web ? compressBufferedResponse(request, json) : json
     },
     websocket: {
       // Presence follows connection lifetime even when hidden WebViews suspend timers.

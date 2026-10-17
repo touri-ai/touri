@@ -1,9 +1,15 @@
 import { existsSync } from "node:fs"
 import { extname, isAbsolute, join, normalize, relative, resolve } from "node:path"
 import { readBoundedFile } from "../../kernel/files"
+import { type CompressedVariants, compressedVariants, compressibleType } from "./compression"
 import { embeddedUi } from "./embeddedUi"
 
-export type UiAsset = { file: Blob; type: string; immutable: boolean }
+export type UiAsset = {
+  file: Blob
+  type: string
+  immutable: boolean
+  compressed?: () => Promise<CompressedVariants>
+}
 
 export type UiAssets = {
   source: "embedded" | "directory" | "none"
@@ -63,15 +69,29 @@ export const directoryAssets = (directory: string): UiAssets => {
   }
 }
 
-export const embeddedAssets = (files: Record<string, string> = embeddedUi): UiAssets => ({
-  source: "embedded",
-  get: (relativePath) => {
-    const safe = safeRelativePath(relativePath)
-    const target = safe === null ? undefined : files[safe]
-    if (safe === null || target === undefined) return null
-    return toAsset({ path: safe, file: Bun.file(target) })
-  },
-})
+export const embeddedAssets = (files: Record<string, string> = embeddedUi): UiAssets => {
+  const assets = new Map<string, UiAsset>()
+  return {
+    source: "embedded",
+    get: (relativePath) => {
+      const safe = safeRelativePath(relativePath)
+      const target = safe === null ? undefined : files[safe]
+      if (safe === null || target === undefined) return null
+      const cached = assets.get(safe)
+      if (cached) return cached
+      const asset = toAsset({ path: safe, file: Bun.file(target) })
+      if (asset.file.size >= 1024 && compressibleType(asset.type)) {
+        let compressed: Promise<CompressedVariants> | undefined
+        asset.compressed = () => {
+          compressed ??= asset.file.arrayBuffer().then((bytes) => compressedVariants(new Uint8Array(bytes)))
+          return compressed
+        }
+      }
+      assets.set(safe, asset)
+      return asset
+    },
+  }
+}
 
 export const noAssets: UiAssets = { source: "none", get: () => null }
 

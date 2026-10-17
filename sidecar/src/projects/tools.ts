@@ -7,6 +7,7 @@ import { runCommand } from "./git"
 import { processOwner, saveProcessOwner } from "./ownership"
 import { ensureProjectPath } from "./paths"
 import { resolveEnvSecret } from "./secrets"
+import { createSetupTools } from "./setup-tools"
 import type { ProjectStore, Supervisor } from "./types"
 
 type RecordValue = Record<string, unknown>
@@ -409,44 +410,27 @@ export const createProjectTools = ({
   const preview_open: ToolHandler = async ({ ctx, args }) => {
     const input = record(args)
     const project = projectFor({ store, projectId: ctx.projectId })
-    if (project === null) return resultError("PROJECT_REQUIRED", "This bot has no project configured")
-    const opened =
-      typeof input?.port === "number"
-        ? typeof input.process === "string"
-          ? supervisor.openPreview({
-              vmBotId:
-                kernel.services.use("store.api")?.getBot({ botId: ctx.botId })?.machine === "vm" ? ctx.botId : null,
-              project,
-              port: input.port,
-              processName: input.process,
-              path: typeof input.path === "string" ? input.path : "/",
-            })
-          : supervisor.openPreview({
-              vmBotId:
-                kernel.services.use("store.api")?.getBot({ botId: ctx.botId })?.machine === "vm" ? ctx.botId : null,
-              project,
-              port: input.port,
-              path: typeof input.path === "string" ? input.path : "/",
-            })
-        : typeof input?.process === "string"
-          ? supervisor.openPreview({
-              vmBotId:
-                kernel.services.use("store.api")?.getBot({ botId: ctx.botId })?.machine === "vm" ? ctx.botId : null,
-              project,
-              processName: input.process,
-              path: typeof input.path === "string" ? input.path : "/",
-            })
-          : supervisor.openPreview({
-              vmBotId:
-                kernel.services.use("store.api")?.getBot({ botId: ctx.botId })?.machine === "vm" ? ctx.botId : null,
-              project,
-              path: typeof input?.path === "string" ? input.path : "/",
-            })
-    return opened.success ? ok(opened.preview, "Preview opened") : resultError(opened.errorCode, opened.error)
+    if (project === null)
+      return resultError(
+        "PROJECT_REQUIRED",
+        "Nenhum Preview foi criado. O Preview exige um projeto vinculado e um processo HTTP supervisionado deste bot. Ofereça vincular a pasta do aplicativo com project_link({path}), aguarde a aprovação explícita do usuário e use process_define/process_start antes de preview_open. Um servidor iniciado pelo terminal não aparece no Preview.",
+      )
+    const opened = supervisor.openPreview({
+      botId: ctx.botId,
+      vmBotId: kernel.services.use("store.api")?.getBot({ botId: ctx.botId })?.machine === "vm" ? ctx.botId : null,
+      project,
+      ...(typeof input?.port === "number" ? { port: input.port } : {}),
+      ...(typeof input?.process === "string" ? { processName: input.process } : {}),
+      path: typeof input?.path === "string" ? input.path : "/",
+    })
+    return opened.success
+      ? ok(opened.preview, "Preview disponível no touri. Abra o painel Preview para visualizar o aplicativo.")
+      : resultError(opened.errorCode, opened.error)
   }
 
   return [
     { name: "project_info", group: "project", handler: project_info },
+    ...createSetupTools({ kernel, store }),
     { name: "process_define", group: "process", handler: process_define },
     { name: "process_start", group: "process", handler: process_start },
     { name: "process_stop", group: "process", handler: process_stop },

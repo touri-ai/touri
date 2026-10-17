@@ -163,6 +163,7 @@ it("clears sidebar and bell attention when the failure card retries before a not
     if (path?.id === thread.id && route === "GET /threads/:id/messages")
       return Promise.resolve({ messages: [message], activeLeafId: message.id })
     if (path?.id === thread.id && route === "GET /threads/:id/runs") return Promise.resolve({ runs: [historicalRun] })
+    if (route === "GET /workspace/activity") return Promise.resolve({ messages: [message], runs: [historicalRun] })
     if (route === "POST /runs/:id/retry") return Promise.resolve({ run: retry })
     return originalRequest(route, input, path)
   }) as typeof api.request

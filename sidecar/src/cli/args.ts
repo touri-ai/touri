@@ -203,7 +203,10 @@ const buildWithPort = (flags: Flags, name: "status" | "doctor"): ParseCliResult 
 }
 
 /** Parses `process.argv.slice(2)` into a typed command. */
-export const parseCli = (argv: Array<string>): ParseCliResult => {
+export const parseCli = (
+  argv: Array<string>,
+  env: Record<string, string | undefined> = process.env,
+): ParseCliResult => {
   const parsed = parseFlags(argv)
   if (!parsed.success) return parsed
   const { flags } = parsed
@@ -223,7 +226,10 @@ export const parseCli = (argv: Array<string>): ParseCliResult => {
   if (command === "mcp-stdio") {
     const threadId = flags.values["--thread"]
     if (threadId === undefined) return { success: false, error: "mcp-stdio needs --thread <id>" }
-    return { success: true, command: { name: "mcp-stdio", threadId, dataDir: dataDirOf(flags) } }
+    // The runtime launches the shim with TOURI_APP_DATA, not --data-dir, so a server on a custom data dir is found.
+    const dataDir =
+      flags.values["--data-dir"] === undefined && env.TOURI_APP_DATA ? env.TOURI_APP_DATA : dataDirOf(flags)
+    return { success: true, command: { name: "mcp-stdio", threadId, dataDir } }
   }
   return { success: false, error: `Unknown command ${command}` }
 }

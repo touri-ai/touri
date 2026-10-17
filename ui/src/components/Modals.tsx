@@ -42,6 +42,7 @@ import { ProviderMark, providerName } from "./ProviderMark"
 import { ProviderModelField } from "./ProviderModelField"
 import { ProviderProfileFields } from "./ProviderProfileFields"
 import { SecretsPanel } from "./RightPanels"
+import { RoutineSchedule } from "./RoutineSchedule"
 import { SettingsGroup, SettingsLayout, SettingsPane, SettingsRow, SettingsSwitch } from "./SettingsLayout"
 import "./settings.css"
 
@@ -1451,9 +1452,7 @@ export const BotSettingsModal = ({
                   <div className="routine-row" key={routine.id}>
                     <span>
                       <strong>{routine.name}</strong>
-                      <small>
-                        {routine.cron} · {routine.timezone}
-                      </small>
+                      <RoutineSchedule routine={routine} />
                     </span>
                     <button
                       type="button"
@@ -1486,14 +1485,14 @@ export const BotSettingsModal = ({
           {saveError}
         </p>
       )}
-      <div className="modal-actions">
+      <fieldset className="modal-actions" aria-label={t("Ações das configurações do bot")}>
         <button type="button" className="button button-quiet" onClick={onClose}>
           {t("Cancel")}
         </button>
         <button type="button" className="button button-brand" onClick={() => void save()} disabled={saving || updating}>
           {saving ? t("Saving…") : t("Save settings")}
         </button>
-      </div>
+      </fieldset>
     </Modal>
   )
 }

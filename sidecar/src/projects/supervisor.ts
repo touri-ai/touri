@@ -334,7 +334,7 @@ export const createSupervisor = ({
       process.previewBases ??= new Map()
       process.previewBases.set(port, base)
       if (process.spec.vmBotId && !forwarded) return
-      const response = await fetch(`${base}/`, { signal: controller.signal })
+      const response = await fetch(`${base}/`, { signal: controller.signal, redirect: "manual" })
       if (response.status >= 100 && response.status <= 599) {
         process.previewPorts.add(port)
         kernel.publish({
@@ -1034,35 +1034,42 @@ export const createSupervisor = ({
   }
 
   const openPreview = ({
+    botId,
     project,
     port,
     processName,
     path,
     vmBotId,
   }: Parameters<Supervisor["openPreview"]>[0]): ProjectResult<{ preview: PreviewTarget }> => {
-    if (!path.startsWith("/") || path.startsWith("//"))
+    if (!path.startsWith("/") || path.startsWith("//") || /[\\\s]/.test(path))
       return errorResult("INVALID_ARGS", "Preview path must be local and start with /")
-    const candidates = processName
-      ? [...managed.values()].filter(
-          (process) =>
-            process.spec.projectId === project.id &&
-            process.spec.name === processName &&
-            (vmBotId === undefined || (process.spec.vmBotId ?? null) === vmBotId),
-        )
-      : [...managed.values()].filter(
-          (process) =>
-            process.spec.projectId === project.id &&
-            (vmBotId === undefined || (process.spec.vmBotId ?? null) === vmBotId),
-        )
+    const candidates = [...managed.values()].filter(
+      (process) =>
+        process.spec.projectId === project.id &&
+        (processName === undefined || process.spec.name === processName) &&
+        (vmBotId === undefined || (process.spec.vmBotId ?? null) === vmBotId) &&
+        (botId === undefined || (process.spec.vmBotId ?? processOwner(kernel, process.spec.id)?.botId) === botId),
+    )
     const candidate =
       port === undefined
         ? candidates.find((process) => process.ports.some((item) => process.previewPorts.has(item.port)))
         : candidates.find((process) =>
-            process.ports.some((item) => item.port === port || process.hostPorts?.get(item.port) === port),
+            process.ports.some(
+              (item) =>
+                process.previewPorts.has(item.port) &&
+                (item.port === port || process.hostPorts?.get(item.port) === port),
+            ),
           )
-    const selectedPort = port ?? candidate?.ports.find((item) => candidate.previewPorts.has(item.port))?.port
+    const selectedPort = candidate?.ports.find(
+      (item) =>
+        candidate.previewPorts.has(item.port) &&
+        (port === undefined || item.port === port || candidate.hostPorts?.get(item.port) === port),
+    )?.port
     if (!candidate || selectedPort === undefined)
-      return errorResult("PREVIEW_NOT_FOUND", "No HTTP preview is available for that process")
+      return errorResult(
+        "PREVIEW_NOT_FOUND",
+        "Nenhum Preview foi criado. Use process_define/process_start para iniciar um processo HTTP deste bot no projeto vinculado, aguarde a porta HTTP ficar disponível e tente preview_open novamente. Servidores iniciados pelo terminal e processos de outros bots não podem ser usados.",
+      )
     const hostPort = candidate.hostPorts?.get(selectedPort) ?? selectedPort
     const preview: PreviewTarget = {
       vmBotId: candidate.spec.vmBotId ?? null,

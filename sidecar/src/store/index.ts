@@ -12,7 +12,6 @@ import type {
   Kernel,
   Message,
   MessagePart,
-  MessageStatus,
   Provider,
   ReasoningEffort,
   RouteModule,
@@ -46,6 +45,7 @@ import { DEFAULT_BOT_VM_MEMORY_MB, DEFAULT_MACHINE_IDLE_MINUTES, validBotVmMemor
 import { redeemFileGrant } from "./redeemFileGrant"
 import { createSendJournal } from "./send-journal"
 import { appendRejection, recordTranscriptRejection } from "./transcript-rejections"
+import { type RawMessage, readWorkspaceActivity } from "./workspace-activity"
 
 export const name = "store"
 
@@ -111,28 +111,6 @@ type RawThread = {
   created_at: number
   updated_at: number
   archived_at: number | null
-}
-
-type RawMessage = {
-  seq: number
-  generation: number
-  updated_seq: number
-  client_nonce: string | null
-  delivery_status: NonNullable<Message["delivery"]>["status"] | null
-  delivery_deadline: number | null
-  id: string
-  thread_id: string
-  parent_id: string | null
-  role: Message["role"]
-  kind: Message["kind"]
-  status: MessageStatus
-  run_id: string | null
-  text: string
-  parts_json: string
-  sender_json: string | null
-  source: string
-  created_at: number
-  updated_at: number
 }
 
 type RawAttachment = {
@@ -1037,6 +1015,29 @@ export const init = async (kernel: Kernel): Promise<void> => {
     return updated
   }
 
+  // MCP setup changes share PATCH's validation, storage and bot.updated event.
+  // They must not stop a VM while its current turn is waiting for the tool.
+  kernel.services.provide("bots.configureAccess", ({ botId, patch }) => {
+    const bot = getBot({ botId })
+    if (!bot) return { success: false, errorCode: "NOT_FOUND", error: "Bot não encontrado." }
+    const parsed = botFromBody({ body: { ...patch, name: bot.name, provider: bot.provider }, existing: bot })
+    if (!parsed.input || parsed.error)
+      return { success: false, errorCode: "INVALID_ARGS", error: parsed.error ?? "Configuração inválida." }
+    const machine = database.query("SELECT project_id FROM bot_machines WHERE bot_id = ?").get(botId) as {
+      project_id: string | null
+    } | null
+    if (patch.projectId && machine?.project_id && patch.projectId !== machine.project_id)
+      return {
+        success: false,
+        errorCode: "MACHINE_PROJECT_CHANGE",
+        error: "Recrie a máquina do zero antes de trocar o projeto; o volume atual foi preservado",
+      }
+    const updated = patchBot({ bot, input: parsed.input, paused: undefined })
+    return updated
+      ? { success: true, bot: updated }
+      : { success: false, errorCode: "NOT_FOUND", error: "Bot não encontrado." }
+  })
+
   const insertAttachment = ({
     path,
     originPath,
@@ -1237,6 +1238,15 @@ export const init = async (kernel: Kernel): Promise<void> => {
   const routes: RouteModule = {
     name: "store",
     routes: [
+      {
+        method: "GET",
+        path: "/workspace/activity",
+        handler: async () => {
+          flushDeltas()
+          const { messages, runs } = readWorkspaceActivity(database)
+          return jsonResponse(200, { messages: messages.map(asMessage), runs })
+        },
+      },
       {
         method: "GET",
         path: "/health",

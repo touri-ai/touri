@@ -4,6 +4,24 @@ import { openGlobalPage, showBotAdvanced, showBotRoutines } from "./home-navigat
 
 test.use({ viewport: { width: 1440, height: 900 }, reducedMotion: "reduce" })
 
+test("workspace loads history on selection and keeps background activity", async ({ page }) => {
+  await page.goto("/test/e2e/home-harness.html")
+  await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
+  const histories = () =>
+    page.evaluate(() => {
+      const api = (
+        window as unknown as { workspaceQa: { api: { calls: { route: string; pathValues: { id?: string } }[] } } }
+      ).workspaceQa.api
+      return api.calls.filter((call) => call.route === "GET /threads/:id/messages").map((call) => call.pathValues.id)
+    })
+  await expect.poll(histories).toEqual(["thread-mark"])
+  const sidebar = page.getByRole("navigation", { name: "Barra lateral" })
+  await expect(sidebar.locator('[data-bot-entry="bot-onb"]')).toHaveAttribute("data-activity", "working")
+  await sidebar.locator('[data-bot-entry="bot-onb"] .bot-row-main').click()
+  await expect(page.getByRole("textbox", { name: "Mensagem para onb" })).toBeVisible()
+  await expect.poll(histories).toEqual(["thread-mark", "thread-onb"])
+})
+
 test("Home keeps advanced pages behind a single door and groups bots by their work", async ({ page }) => {
   await page.goto("/test/e2e/home-harness.html")
   await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
@@ -48,7 +66,9 @@ test("bot actions support keyboard access and routines keep their bot filter aft
   await expect(trigger).toBeFocused()
   await showBotRoutines(page)
   await expect(page.getByRole("heading", { name: "Rotinas", exact: true })).toBeVisible()
-  const filter = page.getByRole("group", { name: "Filtros de cron" }).getByRole("button", { name: "mark", exact: true })
+  const filter = page
+    .getByRole("group", { name: "Filtros de rotinas" })
+    .getByRole("button", { name: "mark", exact: true })
   await expect(filter).toHaveAttribute("aria-pressed", "true")
   await page.reload()
   await expect(filter).toHaveAttribute("aria-pressed", "true")

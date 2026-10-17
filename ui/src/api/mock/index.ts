@@ -692,6 +692,67 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
       emit({ type: "thread.updated", thread })
       return { thread } as ApiRoutes[typeof route]["res"]
     }
+    if (key === "GET /workspace/activity") {
+      const visible = threads.filter((thread) => !thread.groupThreadId && !thread.archivedAt)
+      const selected = new Set<Message>()
+      for (const thread of visible) {
+        const rows = messages.filter((message) => message.threadId === thread.id)
+        const latest = [...rows].sort((a, b) => b.createdAt - a.createdAt)
+        for (const row of [
+          latest.find(
+            (message) =>
+              message.text.trim() || message.parts.some((part) => part.type === "approval" || part.type === "notice"),
+          ),
+          latest.find((message) => message.role === "assistant"),
+          [...rows].sort((a, b) => b.updatedAt - a.updatedAt).find((message) => message.role === "assistant"),
+          [...rows]
+            .sort((a, b) => b.updatedAt - a.updatedAt)
+            .find((message) => message.role === "assistant" && message.status !== "streaming"),
+          [...rows]
+            .sort((a, b) => b.updatedAt - a.updatedAt)
+            .find((message) => message.role === "assistant" && message.status === "complete"),
+          ...rows.filter((message) => message.parts.some((part) => part.type === "approval")),
+        ])
+          if (row) selected.add(row)
+      }
+      const latestRuns = visible.flatMap((thread) => {
+        const rows = [...runs.values()]
+          .filter((run) => run.threadId === thread.id)
+          .sort((a, b) => b.queuedAt - a.queuedAt)
+        return rows.filter((run, index) => index === 0 || ["queued", "starting", "running"].includes(run.status))
+      })
+      return {
+        messages: [...selected].map((message) => ({
+          ...structuredClone(message),
+          text: message.text.slice(0, 512),
+          parts: message.parts.filter((part) => part.type === "approval" || part.type === "notice"),
+        })),
+        runs: latestRuns,
+      } as ApiRoutes[typeof route]["res"]
+    }
+    if (key === "GET /search") {
+      const query = input as ApiRoutes["GET /search"]["req"]
+      const tokens = query.q.toLocaleLowerCase().trim().split(/\s+/u)
+      return {
+        hits: messages
+          .filter((message) => {
+            const thread = threads.find((thread) => thread.id === message.threadId)
+            return (
+              thread &&
+              !thread.groupThreadId &&
+              (!query.botId || thread.botId === query.botId) &&
+              tokens.every((token) => message.text.toLocaleLowerCase().includes(token))
+            )
+          })
+          .slice(-50)
+          .reverse()
+          .map((message) => ({
+            threadId: message.threadId,
+            messageId: message.id,
+            snippet: message.text.slice(0, 512),
+          })),
+      } as ApiRoutes[typeof route]["res"]
+    }
     if (key === "GET /bots") return { bots } as ApiRoutes[typeof route]["res"]
     if (key === "POST /bots") {
       const botInput = input as ApiRoutes["POST /bots"]["req"]
