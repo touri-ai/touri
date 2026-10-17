@@ -20,11 +20,13 @@ Uma configuração inválida, um cofre bloqueado ou um servidor indisponível n�
 
 Execute os checks somente pelo gate de evidências da instalação de desenvolvimento. A suíte `e2e` inclui `ui/test/e2e/server-mode.spec.ts`; o próprio fixture constrói a interface dentro da execução serializada do gate.
 
+Nesta entrega, o gate informou que os checks estão pausados pelo responsável. O retorno `skipped` significa **não executado**, mesmo com código de saída zero. Typecheck, formatação, testes, build e compilação Rust ainda precisam de validação em revisão/CI. A suíte Rust de CI cobre os testes de inicialização, relay e links nativos.
+
 O teste cria um diretório temporário do sistema, escolhe uma porta privada de loopback e inicia um processo real `touri serve` com `--data-dir` e `--ui-dir` explícitos. O comando `touri pair` cria códigos no banco real desse processo. A interface compilada exercita conectar, testar conexão, voltar ao modo local, rejeição de reutilização do código, atualização recebida ao vivo e recuperação após uma lacuna maior que o limite de replay de 2 MiB. Nesse último caso, verifica o frame real de ressincronização e a recarga do estado por REST. O fixture encerra somente seu processo e remove seu diretório ao finalizar.
 
 O navegador substitui somente o IPC e o relay nativo por um adaptador de teste. O token de dispositivo fica na memória desse adaptador; todas as APIs, tickets e eventos vêm do servidor real. O fixture usa a exceção de HTTP para loopback explícito (`127.0.0.1`, `localhost` ou `[::1]`); origens externas exigem HTTPS. Esse teste não verifica TLS, o cofre do sistema, a janela nativa, ausência de subprocessos no desktop ou consumo de memória no macOS. Os testes Rust cobrem as decisões de inicialização e as regras do relay; a validação abaixo completa a evidência.
 
-As capturas usam apenas nomes e dados sintéticos:
+Quando o teste e2e puder executar, ele gerará as capturas abaixo usando apenas nomes e dados sintéticos. Elas ainda estão pendentes nesta entrega:
 
 - `docs/evidence/server-mode-settings.png`: configuração e teste da conexão.
 - `docs/evidence/server-mode-offline.png`: estado sem conexão, com o estado existente preservado.

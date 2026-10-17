@@ -4,18 +4,17 @@ export default defineConfig({
   testDir: "./test/e2e",
   timeout: 20_000,
   use: {
-    channel: "chrome",
     headless: true,
-    baseURL: process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:1420",
+    baseURL: process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:14278",
     trace: { mode: "retain-on-failure", screenshots: false },
   },
   ...(process.env.PLAYWRIGHT_BASE_URL
     ? {}
     : {
         webServer: {
-          command: "VITE_ENABLE_MOCK=true bun run dev -- --host 127.0.0.1",
-          url: "http://127.0.0.1:1420",
-          reuseExistingServer: true,
+          command: "VITE_ENABLE_MOCK=true bun run dev -- --host 127.0.0.1 --port 14278 --strictPort",
+          url: "http://127.0.0.1:14278",
+          reuseExistingServer: false,
           timeout: 30_000,
         },
       }),

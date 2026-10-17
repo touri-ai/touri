@@ -17,7 +17,7 @@ import { readInlinePreviewPreference, setInlinePreviewPreference } from "../feat
 import { DoctorChecks } from "../features/doctor/DoctorChecks"
 import { ReportProblem } from "../features/reports/ReportProblem"
 import { ServerModeSettings } from "../features/server/ServerModeSettings"
-import { isNativeDesktop } from "../features/server/serverMode"
+import { isNativeDesktop, useIsServerMode } from "../features/server/serverMode"
 import { t } from "../i18n"
 import { hostComputerSupported } from "../platform"
 import { useHost } from "../useHost"
@@ -65,6 +65,7 @@ export const SettingsModal = ({
   serverConnectionErrorCode,
 }: SettingsModalProps) => {
   const host = useHost(api)
+  const serverMode = useIsServerMode()
   const [section, setSection] = useState(
     initialSection === "report" || initialSection === "general"
       ? "diagnostics"
@@ -264,9 +265,7 @@ export const SettingsModal = ({
                 </code>
               </div>
             </div>
-            {host === "mac" && hostComputerSupported && (
-              <ComputerUseSettings className="settings-computer-permissions" />
-            )}
+            {!serverMode && hostComputerSupported && <ComputerUseSettings className="settings-computer-permissions" />}
             {settings?.cloud && api && <CloudPreferences api={api} settings={settings} onSave={onSave} />}
           </SettingsDisclosure>
         </SettingsPane>

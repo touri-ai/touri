@@ -25,6 +25,7 @@ import { ComputerGrantCard } from "../features/computer"
 import { DoctorChecks } from "../features/doctor/DoctorChecks"
 import { NOT_SURE_JOB_ID } from "../features/jobs/catalog"
 import { JobPicker } from "../features/jobs/JobPicker"
+import { useIsServerMode } from "../features/server/serverMode"
 import { accessLabel, plural, statusLabel, t } from "../i18n"
 import { hostComputerSupported } from "../platform"
 import { useHost } from "../useHost"
@@ -958,7 +959,7 @@ export const BotSettingsModal = ({
   initialSection,
   focusSetting,
 }: BotSettingsModalProps) => {
-  const host = useHost(api)
+  const serverMode = useIsServerMode()
   const routinesFocusRef = useRef<HTMLElement | null>(null)
   const [deletingRoutine, setDeletingRoutine] = useState<Routine | null>(null)
   const [vmMemory, setVmMemory] = useState(settings?.botVmMemoryMb ?? 1536)
@@ -1342,7 +1343,7 @@ export const BotSettingsModal = ({
 
                 {api && bot.machine === "vm" && <BotNetworkSettings api={api} botId={bot.id} />}
               </SettingsGroup>
-              {((host === "mac" && hostComputerSupported) || machine.machine === "vm") && (
+              {((hostComputerSupported && !serverMode) || machine.machine === "vm") && (
                 <SettingsGroup title={t("Controle do computador")}>
                   <label className="toggle-row" htmlFor="settings-computer-use" data-setting-id="computerUse">
                     <span>
@@ -1545,12 +1546,16 @@ export const BotSettingsModal = ({
                   ? t("Assumir controle não autoriza ações automáticas do bot. Revise essas ações no chat.")
                   : t("O controle do computador precisa de uma permissão por tempo limitado em cada conversa.")}
               </p>
-              {api && host === "mac" && bot.computerUse && bot.mainThreadId && "__TAURI_INTERNALS__" in window && (
-                <>
-                  <p>{t("Esta permissão vale para a conversa principal deste bot.")}</p>
-                  <ComputerGrantCard api={api} botId={bot.id} threadId={bot.mainThreadId} botName={bot.name} />
-                </>
-              )}
+              {api &&
+                (!serverMode || bot.machine === "vm") &&
+                bot.computerUse &&
+                bot.mainThreadId &&
+                "__TAURI_INTERNALS__" in window && (
+                  <>
+                    <p>{t("Esta permissão vale para a conversa principal deste bot.")}</p>
+                    <ComputerGrantCard api={api} botId={bot.id} threadId={bot.mainThreadId} botName={bot.name} />
+                  </>
+                )}
             </SettingsPane>
             <SettingsPane {...botPane("tools")}>
               {api && (

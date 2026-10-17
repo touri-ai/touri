@@ -2,16 +2,18 @@ import { invoke as nativeInvoke } from "@tauri-apps/api/core"
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, expect, it, vi } from "vitest"
 import App from "../src/App"
-import type { TauriInvoke } from "../src/api/client"
+import type { ApiRequest, TauriInvoke } from "../src/api/client"
 import { createMockApi } from "../src/api/mock"
 import { BotBrowserPicker } from "../src/components/BotBrowserPicker"
 import { FolderPicker } from "../src/components/FolderPicker"
+import { BotSettingsModal } from "../src/components/Modals"
 import { PreviewPane } from "../src/components/PreviewPane"
 import { SettingsModal } from "../src/components/SettingsModal"
 import { ServerModeSettings } from "../src/features/server/ServerModeSettings"
 import { ServerModeProvider, serverModeError } from "../src/features/server/serverMode"
 import { t } from "../src/i18n"
 import { getStorageScope, setStorageScope } from "../src/storageScope"
+import type { WorkspaceActions } from "../src/useWorkspace"
 
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => undefined) }))
 vi.mock("@tauri-apps/api/core", async (importOriginal) => ({
@@ -93,7 +95,7 @@ it("keeps server recovery reachable after startup fails and never restarts a loc
   })
   render(<App kernel={{ services: { invoke: invoke as unknown as TauriInvoke } }} />)
   expect(await screen.findByText("Servidor offline. Tentando reconectar…")).toBeVisible()
-  fireEvent.click(screen.getByRole("button", { name: "Tentar novamente" }))
+  fireEvent.click(screen.getByRole("button", { name: /Tentar novamente/ }))
   await waitFor(() =>
     expect(invoke.mock.calls.filter(([command]) => command === "sidecar_endpoint").length).toBeGreaterThan(1),
   )
@@ -173,6 +175,60 @@ it("hides the Mac folder chooser and disables the personal browser in server mod
   expect(screen.queryByRole("button", { name: "Escolher no Mac…" })).not.toBeInTheDocument()
   expect(screen.getByRole("combobox", { name: t("Bot browser") }).querySelector('option[value="local"]')).toBeDisabled()
   await waitFor(() => expect(screen.getByText(/Seu navegador pessoal fica indisponível/)).toBeVisible())
+})
+
+it.each(["local", "vm"] as const)(
+  "preserves server VM permissions without exposing Mac control (%s)",
+  async (machine) => {
+    native()
+    const api = createMockApi()
+    const base = api.getState().bots[0]
+    if (!base) throw new Error("Missing bot fixture")
+    const bot = { ...base, machine, computerUse: true, mainThreadId: "thread-mark" }
+    const originalRequest = api.request
+    const grant = vi.fn(async (_input: unknown) => ({ grantId: "grant-server", expiresAt: Date.now() + 1_800_000 }))
+    api.request = (async (route, input, path) =>
+      route === "POST /computer/grants" ? grant(input) : originalRequest(route, input, path)) as ApiRequest
+    const invoke = vi.fn(async () => server) as unknown as TauriInvoke
+    render(
+      <ServerModeProvider invoke={invoke}>
+        <BotSettingsModal
+          api={api}
+          bot={bot}
+          settings={null}
+          projects={[]}
+          routines={[]}
+          actions={{ updateBot: vi.fn() } as unknown as WorkspaceActions}
+          initialSection="computer"
+          onClose={vi.fn()}
+        />
+      </ServerModeProvider>,
+    )
+    await screen.findByRole("tabpanel", { name: "Computador" })
+    if (machine === "vm") expect(screen.getByRole("switch", { name: /^Controle do computador/ })).toBeVisible()
+    else expect(screen.queryByRole("switch", { name: /^Controle do computador/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole("switch", { name: new RegExp(t("Allow host computer use")) })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole("tab", { name: "Permissões" }))
+    if (machine === "vm") {
+      fireEvent.click(await screen.findByRole("button", { name: "Permitir controle do computador" }))
+      await screen.findByText(/Permitido até/)
+      expect(grant).toHaveBeenCalledWith({ botId: bot.id, threadId: "thread-mark", minutes: 30 })
+    } else expect(screen.queryByRole("button", { name: "Permitir controle do computador" })).not.toBeInTheDocument()
+    expect(nativeInvoke).not.toHaveBeenCalledWith("permissions_request", expect.anything())
+  },
+)
+
+it("hides client Mac permission requests in server app preferences", async () => {
+  native()
+  const invoke = vi.fn(async () => server) as unknown as TauriInvoke
+  render(
+    <ServerModeProvider invoke={invoke}>
+      <SettingsModal settings={null} initialSection="privacy" onSave={vi.fn()} onClose={vi.fn()} />
+    </ServerModeProvider>,
+  )
+  fireEvent.click(await screen.findByText("Dados, permissões e conexões"))
+  expect(screen.queryByRole("heading", { name: "Permitir que um bot controle o Mac" })).not.toBeInTheDocument()
+  expect(nativeInvoke).not.toHaveBeenCalledWith("permissions_status")
 })
 
 it("keeps native error details private and translates recovery guidance in both languages", () => {
