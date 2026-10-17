@@ -21,6 +21,11 @@ test("the registry has stable four-digit codes, Portuguese messages and complete
   expect(publicError("DEADLINE_EXCEEDED")).toMatchObject({ code: "TOURI-E1008", retryable: true })
   expect(publicError("STALE_REF")).toMatchObject({ domain: "browser", code: "TOURI-E4001" })
   expect(publicError("SITE_BLOCKED")).toMatchObject({ domain: "browser", code: "TOURI-E4005", retryable: false })
+  expect(publicError("LOCAL_BROWSER_UNAVAILABLE")).toMatchObject({
+    domain: "browser",
+    code: "TOURI-E4006",
+    retryable: false,
+  })
   expect(publicError("COMPUTER_NOT_GRANTED")).toMatchObject({ domain: "computer", code: "TOURI-E5000" })
   expect(publicError("PROCESS_START_FAILED")).toMatchObject({ domain: "project", code: "TOURI-E6000" })
   expect(publicError("IMPORT_FAILED")).toMatchObject({ domain: "import", code: "TOURI-E7000" })

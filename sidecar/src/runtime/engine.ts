@@ -42,6 +42,7 @@ import { MachineServiceError } from "../vm/service-error"
 import { VmStageError, vmStage } from "../vm/stage"
 import { createClaudeAdapter } from "./claude/adapter"
 import { createCodexAdapter } from "./codex/adapter"
+import { COMMAND_OUTPUT_INTERVAL_MS, commandOutputTail } from "./command-output"
 import {
   CONTINUATION_WINDOW_MS,
   type ContinuationReason,
@@ -85,6 +86,8 @@ type RunState = {
   generation: number | null
   fingerprint: string | null
   continueAfterApproval: boolean
+  outputTimer: ReturnType<typeof setTimeout> | null
+  lastOutputPublishedAt: number
 }
 
 type ContinuationPlan = { reason: ContinuationReason; originalRunId: Id }
@@ -317,6 +320,8 @@ export const createRuntimeEngine = ({
       generation: null,
       fingerprint: null,
       continueAfterApproval: false,
+      outputTimer: null,
+      lastOutputPublishedAt: 0,
     }
     states.set(runId, created)
     return created
@@ -366,6 +371,9 @@ export const createRuntimeEngine = ({
     run: Run
     status: Message["status"]
   }): void => {
+    if (state.outputTimer) clearTimeout(state.outputTimer)
+    state.outputTimer = null
+    state.lastOutputPublishedAt = Date.now()
     state.parts = state.cancelRequested
       ? tools.finish(run, state.parts, "cancelled_by_user")
       : state.parts.map((part) => ("callId" in part ? tools.record(run, part) : part))
@@ -538,6 +546,11 @@ export const createRuntimeEngine = ({
         type: event.part.type,
         ...("callId" in event.part ? { callId: event.part.callId } : {}),
       })
+      if (
+        (part.type === "command" && part.exitCode === null) ||
+        (part.type === "tool_call" && part.ok === null && part.outputTail !== undefined)
+      )
+        part.outputTail = commandOutputTail(part.outputTail ?? "")
       const index =
         "callId" in part
           ? state.parts.findIndex(
@@ -551,6 +564,7 @@ export const createRuntimeEngine = ({
           inputJson: part.inputJson === "{}" ? previous.inputJson : part.inputJson,
           outputJson: part.outputJson ?? previous.outputJson,
           ok: part.ok ?? previous.ok,
+          ...(previous.startedAt !== undefined ? { startedAt: previous.startedAt } : {}),
         }
       } else if (previous?.type === "command" && part.type === "command") {
         state.parts[index] = {
@@ -559,6 +573,7 @@ export const createRuntimeEngine = ({
           cwd: part.cwd || previous.cwd,
           outputTail: part.outputTail || previous.outputTail,
           exitCode: part.exitCode ?? previous.exitCode,
+          ...(previous.startedAt !== undefined ? { startedAt: previous.startedAt } : {}),
         }
       } else if (index >= 0) state.parts[index] = part
       else {
@@ -571,6 +586,18 @@ export const createRuntimeEngine = ({
           ? store.activePath({ threadId: run.threadId }).find((message) => message.id === run.requestMessageId)
           : null
       if (request) ensureReply({ run, state, store, parentId: request.id })
+      const liveOutput =
+        previous &&
+        ((part.type === "command" && part.exitCode === null) ||
+          (part.type === "tool_call" && part.ok === null && part.outputTail !== undefined))
+      const remaining = COMMAND_OUTPUT_INTERVAL_MS - (Date.now() - state.lastOutputPublishedAt)
+      if (liveOutput && remaining > 0) {
+        state.outputTimer ??= setTimeout(() => {
+          state.outputTimer = null
+          if (!shuttingDown && isLive(run)) publishMessage({ store, state, run, status: "streaming" })
+        }, remaining)
+        return
+      }
       publishMessage({ store, state, run, status: "streaming" })
       return
     }
@@ -1885,6 +1912,10 @@ export const createRuntimeEngine = ({
   const shutdown = (): Promise<void> => {
     if (shutdownPromise) return shutdownPromise
     shuttingDown = true
+    for (const state of states.values()) {
+      if (state.outputTimer) clearTimeout(state.outputTimer)
+      state.outputTimer = null
+    }
     for (const [id, pending] of pendingContinuations) {
       clearTimeout(pending.timer)
       pendingContinuations.delete(id)

@@ -33,6 +33,113 @@ export const ptBR = {
   "Ações registradas": "Ações registradas",
   "Nenhuma ação confirmada no histórico. Confira o estado atual antes de continuar.":
     "Nenhuma ação confirmada no histórico. Confira o estado atual antes de continuar.",
+  "As pastas estão no computador onde o touri está rodando.":
+    "As pastas estão no computador onde o touri está rodando.",
+  "Caminho da pasta": "Caminho da pasta",
+  "Pasta pessoal": "Pasta pessoal",
+  "Carregando pastas…": "Carregando pastas…",
+  "Voltar uma pasta": "Voltar uma pasta",
+  "Nenhuma subpasta aqui.": "Nenhuma subpasta aqui.",
+  Pastas: "Pastas",
+  "Há mais pastas. Use Digitar caminho para abrir uma que não aparece.":
+    "Há mais pastas. Use Digitar caminho para abrir uma que não aparece.",
+  "Digitar caminho": "Digitar caminho",
+  "Abrir pasta": "Abrir pasta",
+  "Escolher no Mac…": "Escolher no Mac…",
+  "Nova pasta": "Nova pasta",
+  "Nome da nova pasta": "Nome da nova pasta",
+  "Criar pasta?": "Criar pasta?",
+  "Criar a pasta {name} dentro de {path}?": "Criar a pasta {name} dentro de {path}?",
+  "Criar pasta": "Criar pasta",
+  "Acesso à pasta": "Acesso à pasta",
+  "O bot pode ler": "O bot pode ler",
+  "O bot pode ler e salvar arquivos aqui": "O bot pode ler e salvar arquivos aqui",
+  "Usar esta pasta": "Usar esta pasta",
+  "Usar uma pasta": "Usar uma pasta",
+  "Escolha uma pasta navegando pelas pastas deste computador.":
+    "Escolha uma pasta navegando pelas pastas deste computador.",
+  "Bot browser": "Navegador do bot",
+  "My Chrome is available only for bots on this Mac. A remote machine cannot reach your Mac's Chrome. Choose Machine Chrome for a bot on the Linux machine.":
+    "Meu Chrome só funciona em bots neste Mac. A máquina remota não pode acessar o Chrome do Mac. Escolha Chrome da máquina para um bot na máquina Linux.",
+  "touri Chrome": "Chrome do touri",
+  "My Chrome": "Meu Chrome",
+  "Machine Chrome": "Chrome da máquina",
+  "Machine Chrome requires a bot on the Linux machine.": "Chrome da máquina requer um bot na máquina Linux.",
+  "My Chrome is available only for bots on this Mac. A remote machine cannot reach your Mac's Chrome.":
+    "Meu Chrome só funciona em bots neste Mac. A máquina remota não pode acessar o Chrome do Mac.",
+  "The bot will act inside your signed-in sessions in a separate Chrome window. You can close that window or press Stop at any time.":
+    "O bot vai agir nas suas sessões já conectadas, em uma janela separada do Chrome. Você pode fechar essa janela ou apertar Parar a qualquer momento.",
+  "Got it": "Entendi",
+  "In Google Chrome, open": "No Google Chrome, abra",
+  "Allow remote debugging.": "Permita a depuração remota.",
+  "Accept Chrome's permission prompt when the bot connects.":
+    "Aceite o pedido de permissão do Chrome quando o bot conectar.",
+  "My Chrome is unavailable. In Google Chrome, open chrome://inspect/#remote-debugging, allow remote debugging and accept Chrome's permission prompt when the bot connects.":
+    "Meu Chrome indisponível. No Google Chrome, abra chrome://inspect/#remote-debugging, permita a depuração remota e aceite o pedido de permissão do Chrome quando o bot conectar.",
+  "Allow this teammate to use its own browser tabs.":
+    "Permitir que este colega use as próprias abas no navegador escolhido.",
+  "Arquivos locais": "Arquivos locais",
+  "Catálogo de integrações MCP": "Catálogo de integrações MCP",
+  "Escolher pasta…": "Escolher pasta…",
+  "Não foi possível escolher a pasta. Tente novamente.": "Não foi possível escolher a pasta. Tente novamente.",
+  "Conectar uma integração": "Conectar uma integração",
+  "Escolha o que seu bot poderá fazer. A conexão vale somente para este bot.":
+    "Escolha o que seu bot poderá fazer. A conexão vale somente para este bot.",
+  "O que você precisa": "O que você precisa",
+  "Leia, organize e envie mensagens com a conta que você autorizar.":
+    "Leia, organize e envie mensagens com a conta que você autorizar.",
+  "Uma conta Google e uma preparação no Google Cloud. Vamos orientar cada etapa.":
+    "Uma conta Google e uma preparação no Google Cloud. Vamos orientar cada etapa.",
+  "O bot pode ler e editar arquivos nas pastas que você escolher.":
+    "O bot pode ler e editar arquivos nas pastas que você escolher.",
+  "Uma pasta permitida na máquina do bot e Node.js. Não precisa de conta ou senha.":
+    "Uma pasta permitida na máquina do bot e Node.js. Não precisa de conta ou senha.",
+  "Configuração técnica (MCP)": "Configuração técnica (MCP)",
+  "Preparar {name}": "Preparar {name}",
+  "Faça a preparação na máquina em que o bot trabalha. Na VM, o login do Mac não é copiado.":
+    "Faça a preparação na máquina em que o bot trabalha. Na VM, o login do Mac não é copiado.",
+  "Verificando a preparação…": "Verificando a preparação…",
+  "Não foi possível verificar a preparação. Tente novamente.":
+    "Não foi possível verificar a preparação. Tente novamente.",
+  "Na nuvem, use uma conexão HTTP na configuração técnica.": "Na nuvem, use uma conexão HTTP na configuração técnica.",
+  "Ligue a máquina deste bot e clique em Verificar preparação novamente.":
+    "Ligue a máquina deste bot e clique em Verificar preparação novamente.",
+  "Preparação concluída. Teste a conexão para continuar.": "Preparação concluída. Teste a conexão para continuar.",
+  "Instalar Node.js": "Instalar Node.js",
+  "Instale a versão 18 ou mais recente para executar a conexão.":
+    "Instale a versão 18 ou mais recente para executar a conexão.",
+  "Baixar Node.js": "Baixar Node.js",
+  "Criar o acesso no Google": "Criar o acesso no Google",
+  "Escolha ou crie um projeto no Google Cloud e ative a API do Gmail.":
+    "Escolha ou crie um projeto no Google Cloud e ative a API do Gmail.",
+  "Abrir Google Cloud": "Abrir Google Cloud",
+  "Crie uma credencial OAuth do tipo App para computador e baixe o arquivo JSON.":
+    "Crie uma credencial OAuth do tipo App para computador e baixe o arquivo JSON.",
+  "Criar credencial": "Criar credencial",
+  "Na pasta pessoal dessa máquina, crie a pasta .gmail-mcp e salve o arquivo como gcp-oauth.keys.json.":
+    "Na pasta pessoal dessa máquina, crie a pasta .gmail-mcp e salve o arquivo como gcp-oauth.keys.json.",
+  "Autorizar sua conta Google": "Autorizar sua conta Google",
+  "Abra o Terminal nessa máquina e cole este comando. No navegador, escolha a conta e revise o acesso solicitado.":
+    "Abra o Terminal nessa máquina e cole este comando. No navegador, escolha a conta e revise o acesso solicitado.",
+  "Ao concluir, a autorização será salva em credentials.json na pasta .gmail-mcp.":
+    "Ao concluir, a autorização será salva em credentials.json na pasta .gmail-mcp.",
+  "Etapas já detectadas foram puladas. Depois de concluir, verifique novamente.":
+    "Etapas já detectadas foram puladas. Depois de concluir, verifique novamente.",
+  "Ver instruções completas de {name}": "Ver instruções completas de {name}",
+  "Verificar preparação novamente": "Verificar preparação novamente",
+  "Instale Node.js na máquina deste bot, verifique a preparação e tente novamente.":
+    "Instale Node.js na máquina deste bot, verifique a preparação e tente novamente.",
+  "Não foi possível conectar. Confira a preparação, o endereço ou o acesso à rede e teste novamente.":
+    "Não foi possível conectar. Confira a preparação, o endereço ou o acesso à rede e teste novamente.",
+  "Testando conexão…": "Testando conexão…",
+  "Testar conexão": "Testar conexão",
+  "Buscando as ferramentas disponíveis…": "Buscando as ferramentas disponíveis…",
+  "Conexão pronta: {count} ferramentas disponíveis. Salve para usá-las neste bot.":
+    "Conexão pronta: {count} ferramentas disponíveis. Salve para usá-las neste bot.",
+  "O servidor respondeu, mas não ofereceu ferramentas. Confira a configuração e teste novamente.":
+    "O servidor respondeu, mas não ofereceu ferramentas. Confira a configuração e teste novamente.",
+  "Salvando conexão…": "Salvando conexão…",
+  "Salvar conexão": "Salvar conexão",
   "Conectar dados": "Conectar dados",
   "Escolha como disponibilizar os dados para este bot.": "Escolha como disponibilizar os dados para este bot.",
   "Anexar arquivo/CSV": "Anexar arquivo/CSV",
@@ -150,6 +257,10 @@ export const ptBR = {
     "Texto, Markdown, JSON, CSV, PDF e imagens · até 15 MB por arquivo.",
   "Comece uma conversa com {name}": "Comece uma conversa com {name}",
   "Membros do grupo": "Membros do grupo",
+  "Group member count": "{count} membros",
+  "Group members label": "{count} membros: {names}",
+  "Grupos / {name}": "Grupos / {name}",
+  "Editar grupo": "Editar grupo",
   "Sem menções, todos os membros respondem na ordem da lista. Use @nome para escolher quem responde.":
     "Sem menções, todos os membros respondem na ordem da lista. Use @nome para escolher quem responde.",
   "{name} coordena as respostas e pode delegar aos membros. Use @nome para falar com um membro.":
@@ -185,7 +296,7 @@ export const ptBR = {
   "Permitir escrita em {path}?": "Permitir escrita em {path}?",
   "Após aprovar, a pasta {path} será criada automaticamente.":
     "Após aprovar, a pasta {path} será criada automaticamente.",
-  "Permitir {mode} em {path} para este bot": "Permitir {mode} em {path} para este bot",
+  "Permitir {mode} em {path} para este bot.": "Permitir {mode} em {path} para este bot.",
   "Acesso anterior: {mode}.": "Acesso anterior: {mode}.",
   "Desvincular projeto": "Desvincular projeto",
   "Desvincular o projeto deste bot.": "Desvincular o projeto deste bot.",
@@ -265,6 +376,8 @@ export const ptBR = {
   "This bot has no groups yet.": "Este bot ainda não pertence a um grupo.",
   "Bot routines": "Rotinas deste bot",
   "Bot routine count": "{count} rotinas",
+  "Routine execution count": "{count} rotinas · executadas enquanto o touri está aberto",
+  "Storage records processed": "{processed} de {total} registros processados",
   "Next routine time": "Próxima: {time} · {timezone}",
   "Waiting for the next schedule": "Aguardando próximo agendamento",
   "Routine paused": "Pausada",
@@ -1208,7 +1321,9 @@ export const ptBR = {
   "app preferences": "preferências do aplicativo",
   "Bot settings": "Configurações de {name}",
   "Import step": "importação / etapa {step} de 5",
-  "Import counts": "{messages} mensagens e {threads} conversas importadas. As rotinas estão pausadas.",
+  "Import message count": "{count} mensagens",
+  "Imported conversation count": "{count} conversas importadas",
+  "Import counts": "{messages} e {threads}. As rotinas estão pausadas.",
   "Checks ready": "{count} verificações prontas",
   "Enable routine": "Habilitar {name}",
   "Avatar shape": "Forma {shape}",
@@ -1391,6 +1506,90 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Ações registradas": "Recorded actions",
   "Nenhuma ação confirmada no histórico. Confira o estado atual antes de continuar.":
     "No confirmed action in history. Check the current state before continuing.",
+  "As pastas estão no computador onde o touri está rodando.": "Folders are on the computer running touri.",
+  "Caminho da pasta": "Folder path",
+  "Pasta pessoal": "Home folder",
+  "Carregando pastas…": "Loading folders…",
+  "Voltar uma pasta": "Go up one folder",
+  "Nenhuma subpasta aqui.": "No subfolders here.",
+  Pastas: "Folders",
+  "Há mais pastas. Use Digitar caminho para abrir uma que não aparece.":
+    "There are more folders. Use Type a path to open one that is not shown.",
+  "Digitar caminho": "Type a path",
+  "Abrir pasta": "Open folder",
+  "Escolher no Mac…": "Choose on Mac…",
+  "Nova pasta": "New folder",
+  "Nome da nova pasta": "New folder name",
+  "Criar pasta?": "Create folder?",
+  "Criar a pasta {name} dentro de {path}?": "Create folder {name} inside {path}?",
+  "Criar pasta": "Create folder",
+  "Acesso à pasta": "Folder access",
+  "O bot pode ler": "The bot can read",
+  "O bot pode ler e salvar arquivos aqui": "The bot can read and save files here",
+  "Usar esta pasta": "Use this folder",
+  "Usar uma pasta": "Use a folder",
+  "Escolha uma pasta navegando pelas pastas deste computador.": "Browse this computer to choose a folder.",
+  "Arquivos locais": "Local files",
+  "Catálogo de integrações MCP": "MCP integration catalog",
+  "Escolher pasta…": "Choose folder…",
+  "Não foi possível escolher a pasta. Tente novamente.": "Could not choose a folder. Try again.",
+  "Conectar uma integração": "Connect an integration",
+  "Escolha o que seu bot poderá fazer. A conexão vale somente para este bot.":
+    "Choose what your bot can do. This connection applies only to this bot.",
+  "O que você precisa": "What you need",
+  "Leia, organize e envie mensagens com a conta que você autorizar.":
+    "Read, organize and send messages with the account you authorize.",
+  "Uma conta Google e uma preparação no Google Cloud. Vamos orientar cada etapa.":
+    "A Google account and preparation in Google Cloud. We will guide you through each step.",
+  "O bot pode ler e editar arquivos nas pastas que você escolher.":
+    "The bot can read and edit files in the folders you choose.",
+  "Uma pasta permitida na máquina do bot e Node.js. Não precisa de conta ou senha.":
+    "An allowed folder on the bot’s machine and Node.js. No account or password needed.",
+  "Configuração técnica (MCP)": "Technical configuration (MCP)",
+  "Preparar {name}": "Prepare {name}",
+  "Faça a preparação na máquina em que o bot trabalha. Na VM, o login do Mac não é copiado.":
+    "Prepare the connection on the machine where the bot works. Your Mac login is not copied into a VM.",
+  "Verificando a preparação…": "Checking preparation…",
+  "Não foi possível verificar a preparação. Tente novamente.": "Could not check preparation. Try again.",
+  "Na nuvem, use uma conexão HTTP na configuração técnica.":
+    "In the cloud, use an HTTP connection in technical configuration.",
+  "Ligue a máquina deste bot e clique em Verificar preparação novamente.":
+    "Start this bot’s machine and click Check preparation again.",
+  "Preparação concluída. Teste a conexão para continuar.": "Preparation complete. Test the connection to continue.",
+  "Instalar Node.js": "Install Node.js",
+  "Instale a versão 18 ou mais recente para executar a conexão.": "Install version 18 or later to run the connection.",
+  "Baixar Node.js": "Download Node.js",
+  "Criar o acesso no Google": "Set up Google access",
+  "Escolha ou crie um projeto no Google Cloud e ative a API do Gmail.":
+    "Choose or create a Google Cloud project and enable the Gmail API.",
+  "Abrir Google Cloud": "Open Google Cloud",
+  "Crie uma credencial OAuth do tipo App para computador e baixe o arquivo JSON.":
+    "Create an OAuth credential of type Desktop app and download the JSON file.",
+  "Criar credencial": "Create credential",
+  "Na pasta pessoal dessa máquina, crie a pasta .gmail-mcp e salve o arquivo como gcp-oauth.keys.json.":
+    "In that machine’s home folder, create .gmail-mcp and save the file as gcp-oauth.keys.json.",
+  "Autorizar sua conta Google": "Authorize your Google account",
+  "Abra o Terminal nessa máquina e cole este comando. No navegador, escolha a conta e revise o acesso solicitado.":
+    "Open Terminal on that machine and paste this command. In the browser, choose the account and review the requested access.",
+  "Ao concluir, a autorização será salva em credentials.json na pasta .gmail-mcp.":
+    "When complete, authorization will be saved as credentials.json in .gmail-mcp.",
+  "Etapas já detectadas foram puladas. Depois de concluir, verifique novamente.":
+    "Steps already detected were skipped. Check again when you finish.",
+  "Ver instruções completas de {name}": "View full instructions for {name}",
+  "Verificar preparação novamente": "Check preparation again",
+  "Instale Node.js na máquina deste bot, verifique a preparação e tente novamente.":
+    "Install Node.js on this bot’s machine, check preparation and try again.",
+  "Não foi possível conectar. Confira a preparação, o endereço ou o acesso à rede e teste novamente.":
+    "Could not connect. Check preparation, the address or network access and test again.",
+  "Testando conexão…": "Testing connection…",
+  "Testar conexão": "Test connection",
+  "Buscando as ferramentas disponíveis…": "Looking for available tools…",
+  "Conexão pronta: {count} ferramentas disponíveis. Salve para usá-las neste bot.":
+    "Connection ready: {count} tools available. Save to use them with this bot.",
+  "O servidor respondeu, mas não ofereceu ferramentas. Confira a configuração e teste novamente.":
+    "The server responded but offered no tools. Check the configuration and test again.",
+  "Salvando conexão…": "Saving connection…",
+  "Salvar conexão": "Save connection",
   "Conectar dados": "Connect data",
   "Escolha como disponibilizar os dados para este bot.": "Choose how to make the data available to this bot.",
   "Anexar arquivo/CSV": "Attach a file/CSV",
@@ -1537,6 +1736,10 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
     "Text, Markdown, JSON, CSV, PDF and images · up to 15 MB per file.",
   "Comece uma conversa com {name}": "Start a conversation with {name}",
   "Membros do grupo": "Group members",
+  "Group member count": "{count} members",
+  "Group members label": "{count} members: {names}",
+  "Grupos / {name}": "Groups / {name}",
+  "Editar grupo": "Edit group",
   "Sem menções, todos os membros respondem na ordem da lista. Use @nome para escolher quem responde.":
     "Without mentions, all members reply in list order. Use @name to choose who replies.",
   "{name} coordena as respostas e pode delegar aos membros. Use @nome para falar com um membro.":
@@ -1572,7 +1775,7 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Permitir escrita em {path}?": "Allow writing in {path}?",
   "Após aprovar, a pasta {path} será criada automaticamente.":
     "After approval, folder {path} will be created automatically.",
-  "Permitir {mode} em {path} para este bot": "Allow {mode} in {path} for this bot",
+  "Permitir {mode} em {path} para este bot.": "Allow {mode} in {path} for this bot.",
   "Acesso anterior: {mode}.": "Previous access: {mode}.",
   "Desvincular projeto": "Unlink project",
   "Desvincular o projeto deste bot.": "Unlink this bot's project.",
@@ -1615,6 +1818,8 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "This bot has no groups yet.": "This bot has no groups yet.",
   "Bot routines": "This bot’s routines",
   "Bot routine count": "{count} routines",
+  "Routine execution count": "{count} routines · run while touri is open",
+  "Storage records processed": "{processed} of {total} records processed",
   "Next routine time": "Next: {time} · {timezone}",
   "Waiting for the next schedule": "Waiting for the next schedule",
   "Routine paused": "Paused",
@@ -2008,7 +2213,9 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Caminho absoluto da pasta": "Absolute folder path",
   "Bot settings": "{name} settings",
   "Import step": "import / step {step} of 5",
-  "Import counts": "{messages} messages and {threads} conversations imported. Routines are paused.",
+  "Import message count": "{count} messages",
+  "Imported conversation count": "{count} imported conversations",
+  "Import counts": "{messages} and {threads}. Routines are paused.",
   "Checks ready": "{count} checks ready",
   "Enable routine": "Enable {name}",
   "Avatar shape": "Shape {shape}",
@@ -2153,7 +2360,27 @@ export const plural = (count: number, one: string, other: string, locale: Locale
   (locale === "pt-BR" ? count === 1 : pluralRules[locale].select(count) === "one") ? one : other
 
 const singular: Partial<Record<TranslationKey, [string, string]>> = {
+  "Group member count": ["{count} membro", "{count} member"],
+  "Group members label": ["{count} membro: {names}", "{count} member: {names}"],
+  "Conexão pronta: {count} ferramentas disponíveis. Salve para usá-las neste bot.": [
+    "Conexão pronta: {count} ferramenta disponível. Salve para usá-la neste bot.",
+    "Connection ready: {count} tool available. Save to use it with this bot.",
+  ],
   "Bot routine count": ["{count} rotina", "{count} routine"],
+  "Routine execution count": [
+    "{count} rotina · executada enquanto o touri está aberto",
+    "{count} routine · runs while touri is open",
+  ],
+  "Storage records processed": [
+    "{processed} de {total} registro processado",
+    "{processed} of {total} record processed",
+  ],
+  "Import message count": ["{count} mensagem", "{count} message"],
+  "Imported conversation count": ["{count} conversa importada", "{count} imported conversation"],
+  "A cada hora, aos {minute} minutos": ["A cada hora, ao {minute} minuto", "Every hour at {minute} minute past"],
+  "A cada {count} minutos": ["A cada {count} minuto", "Every {count} minute"],
+  "A cada {count} horas": ["A cada {count} hora", "Every {count} hour"],
+  "Tamanho completo: {count} caracteres": ["Tamanho completo: {count} caractere", "Full length: {count} character"],
   "Queued messages waiting": [
     "{count} mensagem na fila · aguardando conexão",
     "{count} message queued · waiting for connection",
@@ -2180,10 +2407,17 @@ export const t = (
 ): string => {
   let template = dictionaries[locale][key]
   const one = singular[key]?.[locale === "pt-BR" ? 0 : 1]
-  if (one && typeof params.count === "number") template = plural(params.count, one, template, locale)
-  if (key === "Import counts" && locale === "pt-BR")
-    template = `{messages} ${plural(Number(params.messages), "mensagem", "mensagens")} e {threads} ${plural(Number(params.threads), "conversa importada", "conversas importadas")}. As rotinas estão pausadas.`
-  return template.replace(/\{(\w+)\}/g, (_, name: string) => String(params[name] ?? `{${name}}`))
+  const count = key === "A cada hora, aos {minute} minutos" ? params.minute : params.count
+  if (one && typeof count === "number") template = plural(count, one, template, locale)
+  const values =
+    key === "Import counts"
+      ? {
+          ...params,
+          messages: t("Import message count", { count: Number(params.messages) }, locale),
+          threads: t("Imported conversation count", { count: Number(params.threads) }, locale),
+        }
+      : params
+  return template.replace(/\{(\w+)\}/g, (_, name: string) => String(values[name] ?? `{${name}}`))
 }
 
 /** Localize auto-generated imported date titles; preserve arbitrary user titles. */

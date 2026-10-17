@@ -202,6 +202,9 @@ export type ReasoningPart = { type: 'reasoning'; text: string }
 export type ImagePart = { type: 'image'; attachmentId: Id; mime: string }
 export type FilePart = { type: 'file'; attachmentId: Id; name: string; mime: string }
 export type ToolCallPart = {
+  startedAt?: EpochMs
+  outputMode?: 'streaming' | 'on_completion'
+  outputTail?: string
   type: 'tool_call'
   callId: string
   tool: string
@@ -211,6 +214,8 @@ export type ToolCallPart = {
   ok: boolean | null
 }
 export type CommandPart = {
+  startedAt?: EpochMs
+  outputMode?: 'streaming' | 'on_completion'
   type: 'command'
   callId: string
   command: string

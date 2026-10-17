@@ -1,6 +1,8 @@
 import { existsSync, readFileSync, rmSync } from "node:fs"
+import { homedir } from "node:os"
 import { join } from "node:path"
 import type { Kernel } from "@touri/contracts"
+import { errorRegistry } from "@touri/contracts/errors"
 import { buildChildEnv } from "../kernel"
 import { atomicWriteFile, ensurePrivateDirectory } from "../kernel/files"
 import { poll } from "../kernel/policy"
@@ -222,6 +224,75 @@ export const parseDevToolsActivePort = (value: string): { port: number; path: st
   const path = lines[1]
   if (!Number.isInteger(port) || port < 1 || port > 65535 || !path?.startsWith("/")) return null
   return { port, path }
+}
+
+export class LocalBrowserUnavailableError extends Error {
+  readonly errorCode = "LOCAL_BROWSER_UNAVAILABLE"
+  constructor() {
+    super(errorRegistry["TOURI-E4006"].message)
+    this.name = "LocalBrowserUnavailableError"
+  }
+}
+
+/** Attaches to Chrome with the user's consent. This launcher owns only its CDP connection. */
+export const attachLocalChrome = ({
+  dataDir = process.platform === "darwin"
+    ? join(homedir(), "Library", "Application Support", "Google", "Chrome")
+    : join(homedir(), ".config", "google-chrome"),
+  timeoutMs = 5000,
+}: {
+  dataDir?: string
+  timeoutMs?: number
+} = {}): ChromeLauncher => {
+  let client: CdpClient | null = null
+  let pending: Promise<{ client: CdpClient }> | null = null
+  let lifetime = new AbortController()
+  const start = async (): Promise<{ client: CdpClient }> => {
+    if (client && !client.isClosed()) return { client }
+    if (pending) return pending
+    const controller = new AbortController()
+    lifetime = controller
+    pending = (async () => {
+      let transport: CdpClient | null = null
+      try {
+        const lines = readFileSync(join(dataDir, "DevToolsActivePort"), "utf8").split(/\r?\n/)
+        const port = lines[0]?.trim() ?? ""
+        const path = lines[1]?.trim() ?? ""
+        // Accept only the two Chrome fields, never a URL, authority, query or redirect.
+        if (
+          !/^\d+$/.test(port) ||
+          Number(port) < 1 ||
+          Number(port) > 65535 ||
+          !/^\/devtools\/browser\/[\w-]+$/.test(path)
+        )
+          throw new LocalBrowserUnavailableError()
+        transport = await connectCdpWebSocket({
+          url: `ws://127.0.0.1:${Number(port)}${path}`,
+          timeoutMs,
+          signal: controller.signal,
+        })
+        await transport.call("Browser.getVersion")
+        controller.signal.throwIfAborted()
+        client = transport
+        return { client }
+      } catch {
+        await transport?.close()
+        throw new LocalBrowserUnavailableError()
+      }
+    })().finally(() => {
+      pending = null
+    })
+    return pending
+  }
+  return {
+    start,
+    stop: async () => {
+      lifetime.abort()
+      const current = client
+      client = null
+      await current?.close()
+    },
+  }
 }
 
 const chromeExecutable = async ({

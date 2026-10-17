@@ -36,6 +36,36 @@ const activityKeys: Record<ActivityKind, TranslationKey> = {
   waiting: "Activity waiting",
 }
 
+const languageWords = {
+  "pt-BR": new Set(
+    "o os de do da dos das e em na nos nas um uma para por com que se eu voce vamos vou ja foi esta estou ao aos pelo pela isso esse essa este nao precisa preciso conferindo verificando analisando".split(
+      " ",
+    ),
+  ),
+  en: new Set(
+    "the and of to in is it this that for with on from i we you your user are be let how can should need will have has was were what which then see".split(
+      " ",
+    ),
+  ),
+}
+
+/** Ambiguous fragments keep the localized generic activity. */
+export const reasoningMatchesLocale = (text: string, locale: Locale): boolean => {
+  const words =
+    text
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/\p{M}/gu, "")
+      .match(/\p{L}+/gu) ?? []
+  let portuguese = 0
+  let english = 0
+  for (const word of words) {
+    if (languageWords["pt-BR"].has(word)) portuguese++
+    if (languageWords.en.has(word)) english++
+  }
+  return locale === "pt-BR" ? portuguese > english : english > portuguese
+}
+
 const activeToolFor = (parts: readonly MessagePart[]) =>
   [...parts]
     .reverse()
@@ -86,8 +116,9 @@ export const activityLabelFor = (
       .trim()
       .split(/(?<=[.!?…])\s+/)
       .at(-1)
-    if (sentence) return shortLabel(`${t(activityKeys.thinking, {}, locale)}: ${sentence}`)
-    if (latest.estimatedTokens !== undefined) {
+    if (sentence && reasoningMatchesLocale(sentence, locale))
+      return shortLabel(`${t(activityKeys.thinking, {}, locale)}: ${sentence}`)
+    if (!sentence && latest.estimatedTokens !== undefined) {
       const thinking = `${t(activityKeys.thinking, {}, locale)}…`
       return latest.estimatedTokens > 0 ? `${thinking} (~${latest.estimatedTokens} tokens)` : thinking
     }

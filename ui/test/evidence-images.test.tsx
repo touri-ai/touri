@@ -25,6 +25,13 @@ beforeEach(() => {
   saveInvoke.mockClear()
   vi.stubGlobal("Blob", NodeBlob)
   vi.stubGlobal("PointerEvent", MouseEvent)
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      disconnect() {}
+    },
+  )
   HTMLElement.prototype.setPointerCapture = vi.fn()
   vi.stubGlobal(
     "createImageBitmap",
@@ -257,12 +264,14 @@ it("opens the same lightbox for tool screenshots with zoom, navigation, saving, 
   await waitFor(() => expect(dialog.querySelector("img")).not.toBeNull())
   expect(dialog.querySelector("img")?.getAttribute("src")).toMatch(/^data:image\//)
   fireEvent.click(screen.getByRole("button", { name: "Aumentar zoom" }))
-  expect(dialog.querySelector("img")).toHaveStyle({ transform: "translate(0px, 0px) scale(1.5)" })
+  expect(dialog.querySelector("img")).toHaveStyle({ transform: "translate(-50%, -50%) translate(0px, 0px) scale(1.5)" })
   const stage = dialog.querySelector(".evidence-stage")
   if (!stage) throw new Error("Missing image stage")
   fireEvent.pointerDown(stage, { clientX: 10, clientY: 10 })
   fireEvent.pointerMove(stage, { clientX: 60, clientY: 30 })
-  expect(dialog.querySelector("img")).toHaveStyle({ transform: "translate(50px, 20px) scale(1.5)" })
+  expect(dialog.querySelector("img")).toHaveStyle({
+    transform: "translate(-50%, -50%) translate(50px, 20px) scale(1.5)",
+  })
   fireEvent.pointerUp(stage)
   fireEvent.click(screen.getByRole("button", { name: "Próxima" }))
   expect(dialog).toHaveTextContent("2/2")
@@ -291,6 +300,100 @@ it("opens workspace evidence in the Library from the lightbox", async () => {
   fireEvent.click(await screen.findByRole("button", { name: "Abrir na Biblioteca" }))
   expect(context.onLibrary).toHaveBeenCalledWith("/workspace/a.png")
   expect(screen.queryByRole("dialog")).toBeNull()
+})
+it.each([
+  [1080, 1080, 0.6],
+  [2160, 1080, 1200 / 2160],
+  [1080, 2160, 0.3],
+])("fits a %d×%d image and lets zoom-out and fit change its scale", async (width, height, fit) => {
+  const bounds = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({
+    width: 1200,
+    height: 648,
+  } as DOMRect)
+  try {
+    render(
+      <EvidenceGallery
+        images={[
+          {
+            path: "square.png",
+            src: "data:image/png;base64,iVBORw0KGgo=",
+            filename: "square.png",
+            caption: "Quadrado",
+          },
+        ]}
+      />,
+    )
+    fireEvent.click(screen.getByRole("button", { name: /Abrir captura/ }))
+    const dialog = await screen.findByRole("dialog")
+    await waitFor(() => expect(dialog.querySelector("img")).not.toBeNull())
+    const image = dialog.querySelector("img")
+    if (!image) throw new Error("Missing full image")
+    Object.defineProperties(image, {
+      naturalWidth: { value: width },
+      naturalHeight: { value: height },
+    })
+    fireEvent.load(image)
+    expect(image.style.transform).toContain(`scale(${fit})`)
+    fireEvent.click(screen.getByRole("button", { name: "Diminuir zoom" }))
+    expect(image.style.transform).toContain(`scale(${fit * 0.5})`)
+    fireEvent.click(screen.getByRole("button", { name: "Aumentar zoom" }))
+    expect(image.style.transform).toContain(`scale(${fit})`)
+    fireEvent.click(screen.getByRole("button", { name: "Aumentar zoom" }))
+    fireEvent.click(screen.getByRole("button", { name: "Ajustar imagem" }))
+    expect(image.style.transform).toContain(`scale(${fit})`)
+    const stage = dialog.querySelector(".evidence-stage")
+    if (!stage) throw new Error("Missing image stage")
+    fireEvent.wheel(stage, { deltaY: 1 })
+    expect(image.style.transform).toContain(`scale(${fit * 0.75})`)
+  } finally {
+    bounds.mockRestore()
+  }
+})
+it("refits the image when its available area changes", async () => {
+  let resize: (() => void) | undefined
+  const disconnect = vi.fn()
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      constructor(callback: () => void) {
+        resize = callback
+      }
+      observe() {}
+      disconnect = disconnect
+    },
+  )
+  const bounds = vi
+    .spyOn(HTMLElement.prototype, "getBoundingClientRect")
+    .mockReturnValue({ width: 1200, height: 648 } as DOMRect)
+  try {
+    const view = render(
+      <EvidenceGallery
+        images={[
+          {
+            path: "square.png",
+            src: "data:image/png;base64,iVBORw0KGgo=",
+            filename: "square.png",
+            caption: "Quadrado",
+          },
+        ]}
+      />,
+    )
+    fireEvent.click(screen.getByRole("button", { name: /Abrir captura/ }))
+    const dialog = await screen.findByRole("dialog")
+    await waitFor(() => expect(dialog.querySelector("img")).not.toBeNull())
+    const image = dialog.querySelector("img")
+    if (!image) throw new Error("Missing full image")
+    Object.defineProperties(image, { naturalWidth: { value: 1080 }, naturalHeight: { value: 1080 } })
+    fireEvent.load(image)
+    expect(image.style.transform).toContain("scale(0.6)")
+    bounds.mockReturnValue({ width: 324, height: 648 } as DOMRect)
+    act(() => resize?.())
+    expect(image.style.transform).toContain("scale(0.3)")
+    view.unmount()
+    expect(disconnect).toHaveBeenCalledOnce()
+  } finally {
+    bounds.mockRestore()
+  }
 })
 it("shows stopped VM availability and Computer action without starting a machine", async () => {
   const { context, request } = fixture()
