@@ -254,3 +254,16 @@ it("keeps a rejected update open and never enables it on cancel", async () => {
   expect(f.actions.updateRoutine).toHaveBeenCalledOnce()
   expect(f.actions.createRoutine).not.toHaveBeenCalled()
 })
+
+it("offers a recurring job's draft in the empty conversation without persisting the selection", async () => {
+  const f = fixture()
+  const template = required(getJobTemplates().find((job) => job.id === "team-update"))
+  Object.assign(required(f.state.bots[0]), { roleLine: template.roleLine, instructions: template.instructions })
+  f.state.messages.splice(0)
+  for (const thread of f.state.threads) thread.activeLeafId = null
+  render(<App kernel={{ services: { api: f.api } }} />)
+  fireEvent.click(await screen.findByRole("button", { name: "Repetir esta tarefa" }, { timeout: 15000 }))
+  expect(screen.getByRole("textbox", { name: "Tarefa" })).toHaveValue(template.instructions)
+  expect(screen.getByLabelText("Às")).toHaveValue("09:00")
+  expect(f.api.calls.filter((call) => ["POST /routines", "PATCH /routines/:id"].includes(call.route))).toEqual([])
+}, 30000)
