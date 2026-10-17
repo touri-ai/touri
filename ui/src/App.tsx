@@ -33,6 +33,7 @@ import {
 } from "./components/Modals"
 import { MotionPresence, MotionSkeleton } from "./components/Motion"
 import { PageTransition } from "./components/PageTransition"
+import { RoutineEditor } from "./components/RoutineEditor"
 import { SidebarDrawer } from "./components/SidebarDrawer"
 import { IntegrationsScreen, McpScreen, PreviewScreen } from "./components/WorkspaceScreens"
 import { installComputerKillSwitch } from "./computerKillSwitch"
@@ -54,6 +55,7 @@ import { HistoryMigrationStatus } from "./features/history/HistoryMigrationStatu
 import { ReportErrorButton } from "./features/reports/ReportErrorButton"
 import { ReportMenuLauncher } from "./features/reports/ReportMenuLauncher"
 import { t } from "./i18n"
+import type { RoutineDraft } from "./routineDraft"
 import { isFailureNotice } from "./sidebarAttention"
 import { useWorkspace } from "./useWorkspace"
 import { type AppRoute, readWorkspaceState, saveWorkspaceState } from "./workspaceState"
@@ -130,6 +132,7 @@ const AppContent = ({ kernel }: AppProps) => {
     [route],
   )
   useEffect(() => saveWorkspaceState({ route }), [route])
+  const [routineDraft, setRoutineDraft] = useState<RoutineDraft | null>(null)
   const [localNotice, setLocalNotice] = useState<string | null>(null)
   const [searchOpen, setSearchOpen] = useState(false)
   const [notificationsOpen, setNotificationsOpen] = useState(false)
@@ -691,6 +694,7 @@ const AppContent = ({ kernel }: AppProps) => {
               />
             ) : section === "advanced" && advancedPage === "cron" ? (
               <CronScreen
+                host={data.routineHost}
                 key={route.section === "advanced" ? (route.botId ?? "all") : "all"}
                 initialBotFilter={route.section === "advanced" ? route.botId : undefined}
                 loading={data.loading}
@@ -729,6 +733,7 @@ const AppContent = ({ kernel }: AppProps) => {
                   >
                     <ErrorBoundary key={selectedThread?.id ?? selectedBot?.id ?? "chat"} area="a conversa" api={api}>
                       <ChatPanel
+                        onRepeatTask={setRoutineDraft}
                         group={selectedGroup}
                         groupMembers={groupMembers}
                         onEditGroup={() => {
@@ -960,6 +965,15 @@ const AppContent = ({ kernel }: AppProps) => {
           </ErrorBoundary>
         </MotionPresence>
       </main>
+      {routineDraft && (
+        <RoutineEditor
+          initial={routineDraft}
+          bots={data.bots}
+          host={data.routineHost}
+          actions={actions}
+          onClose={() => setRoutineDraft(null)}
+        />
+      )}
     </AvatarRuntimeProvider>
   )
 }

@@ -913,6 +913,7 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
     }
     if (key === "GET /routines")
       return {
+        host: "mac",
         routines: routines.filter(
           (routine) =>
             !input || !(input as { botId?: string }).botId || routine.botId === (input as { botId?: string }).botId,

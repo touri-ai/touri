@@ -3,6 +3,60 @@ import { userFacingError } from "./errors"
 /** All UI copy lives here. pt-BR is the default; English is available for a future locale picker. */
 export type Locale = "pt-BR" | "en"
 export const ptBR = {
+  // Routine editor and repeat-task flow.
+  Bot: "Bot",
+  "Repetir esta tarefa": "Repetir esta tarefa",
+  "Quando?": "Quando?",
+  Tarefa: "Tarefa",
+  Frequência: "Frequência",
+  "Dias úteis": "Dias úteis",
+  "Todos os dias": "Todos os dias",
+  "Escolher dias": "Escolher dias",
+  Às: "Às",
+  "Dias da semana": "Dias da semana",
+  "Fuso horário": "Fuso horário",
+  "Horário de Brasília": "Horário de Brasília",
+  "Destino dos resultados": "Destino dos resultados",
+  "Nesta conversa": "Nesta conversa",
+  "Conversa principal": "Conversa principal",
+  "Nova conversa por execução": "Nova conversa por execução",
+  "Conversa de resultados": "Conversa de resultados",
+  "Expressão cron": "Expressão cron",
+  "Fuso IANA": "Fuso IANA",
+  "Limite de execução (minutos)": "Limite de execução (minutos)",
+  "Recuperar disparos atrasados por (minutos)": "Recuperar disparos atrasados por (minutos)",
+  "Revisar rotina": "Revisar rotina",
+  "{bot} fará {task}, {schedule}.": "{bot} fará {task}, {schedule}.",
+  "Contexto autorizado": "Contexto autorizado",
+  "Histórico desta conversa e permissões atuais do bot.": "Histórico desta conversa e permissões atuais do bot.",
+  "Permissões atuais do bot.": "Permissões atuais do bot.",
+  "Todas as pastas já autorizadas ao bot": "Todas as pastas já autorizadas ao bot",
+  "Sem pasta externa autorizada.": "Sem pasta externa autorizada.",
+  Fontes: "Fontes",
+  "Esta rotina não concede novos acessos. Mudanças de permissões do bot também afetam a rotina.":
+    "Esta rotina não concede novos acessos. Mudanças de permissões do bot também afetam a rotina.",
+  "Próximas três execuções": "Próximas três execuções",
+  "Escolha dias, hora e fuso válidos para ver as próximas execuções.":
+    "Escolha dias, hora e fuso válidos para ver as próximas execuções.",
+  "Funciona enquanto o touri estiver em execução neste Mac.":
+    "Funciona enquanto o touri estiver em execução neste Mac.",
+  "Funciona enquanto o touri estiver em execução no servidor. Você pode fechar esta página.":
+    "Funciona enquanto o touri estiver em execução no servidor. Você pode fechar esta página.",
+  "Não foi possível salvar ou iniciar a rotina. Seu rascunho continua aqui. Tente novamente.":
+    "Não foi possível salvar ou iniciar a rotina. Seu rascunho continua aqui. Tente novamente.",
+  "Teste iniciado. O resultado aparecerá no destino escolhido. A rotina continua pausada.":
+    "Teste iniciado. O resultado aparecerá no destino escolhido. A rotina continua pausada.",
+  "Testar agora": "Testar agora",
+  "Histórico de execuções": "Histórico de execuções",
+  "Disparo não executado: touri indisponível ou execução anterior em andamento.":
+    "Disparo não executado: touri indisponível ou execução anterior em andamento.",
+  "Recuperação após indisponibilidade": "Recuperação após indisponibilidade",
+  scheduled: "agendado",
+  succeeded: "concluído",
+  failed: "falhou",
+  skipped: "não executado",
+  canceled: "cancelado",
+
   "Conectar dados": "Conectar dados",
   "Escolha como disponibilizar os dados para este bot.": "Escolha como disponibilizar os dados para este bot.",
   "Anexar arquivo/CSV": "Anexar arquivo/CSV",
@@ -1332,6 +1386,61 @@ export const ptBR = {
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  // Routine editor and repeat-task flow.
+  Bot: "Bot",
+  "Repetir esta tarefa": "Repeat this task",
+  "Quando?": "When?",
+  Tarefa: "Task",
+  Frequência: "Frequency",
+  "Dias úteis": "Weekdays",
+  "Todos os dias": "Every day",
+  "Escolher dias": "Choose days",
+  Às: "At",
+  "Dias da semana": "Days of the week",
+  "Fuso horário": "Time zone",
+  "Horário de Brasília": "Brasília time",
+  "Destino dos resultados": "Results destination",
+  "Nesta conversa": "This conversation",
+  "Conversa principal": "Main conversation",
+  "Nova conversa por execução": "New conversation for each run",
+  "Conversa de resultados": "Results conversation",
+  "Expressão cron": "Cron expression",
+  "Fuso IANA": "IANA time zone",
+  "Limite de execução (minutos)": "Run time limit (minutes)",
+  "Recuperar disparos atrasados por (minutos)": "Catch up missed runs within (minutes)",
+  "Revisar rotina": "Review routine",
+  "{bot} fará {task}, {schedule}.": "{bot} will do {task}, {schedule}.",
+  "Contexto autorizado": "Authorized context",
+  "Histórico desta conversa e permissões atuais do bot.":
+    "This conversation’s history and the bot’s current permissions.",
+  "Permissões atuais do bot.": "The bot’s current permissions.",
+  "Todas as pastas já autorizadas ao bot": "All folders already authorized for this bot",
+  "Sem pasta externa autorizada.": "No external folder authorized.",
+  Fontes: "Sources",
+  "Esta rotina não concede novos acessos. Mudanças de permissões do bot também afetam a rotina.":
+    "This routine grants no new access. Changes to the bot’s permissions also affect the routine.",
+  "Próximas três execuções": "Next three runs",
+  "Escolha dias, hora e fuso válidos para ver as próximas execuções.":
+    "Choose valid days, time and time zone to see the next runs.",
+  "Funciona enquanto o touri estiver em execução neste Mac.": "Runs while touri is running on this Mac.",
+  "Funciona enquanto o touri estiver em execução no servidor. Você pode fechar esta página.":
+    "Runs while touri is running on the server. You can close this page.",
+  "Não foi possível salvar ou iniciar a rotina. Seu rascunho continua aqui. Tente novamente.":
+    "Could not save or start the routine. Your draft is still here. Try again.",
+  "Teste iniciado. O resultado aparecerá no destino escolhido. A rotina continua pausada.":
+    "Test started. The result will appear at the selected destination. The routine remains paused.",
+  "Testar agora": "Test now",
+  "Histórico de execuções": "Run history",
+  "Disparo não executado: touri indisponível ou execução anterior em andamento.":
+    "Run skipped: touri was unavailable or a previous run was still in progress.",
+  "Recuperação após indisponibilidade": "Recovery after downtime",
+  failed: "Failed",
+  skipped: "Skipped",
+  scheduled: "Scheduled",
+  running: "Running",
+  succeeded: "Completed",
+  canceled: "Canceled",
+
   "Conectar dados": "Connect data",
   "Escolha como disponibilizar os dados para este bot.": "Choose how to make the data available to this bot.",
   "Anexar arquivo/CSV": "Attach a file/CSV",

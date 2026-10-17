@@ -13,6 +13,7 @@ import { createCodexAdapter } from "../../src/runtime/codex/adapter"
 import { createRuntimeEngine } from "../../src/runtime/engine"
 import { MCP_STARTUP_MESSAGE } from "../../src/runtime/mcp-startup"
 import { createRuntimePersistence } from "../../src/runtime/persistence"
+import { createRoutineScheduler } from "../../src/runtime/routines/scheduler"
 import { init as initStore } from "../../src/store"
 import { createTestStore, type TestStore } from "./fake-store"
 
@@ -1397,6 +1398,7 @@ test.serial(
       })
       if (!enabled.success) throw new Error(enabled.error)
       const at = Date.UTC(2026, 9, 12, 14, 0)
+      value.engine.updateRoutine({ routineId: enabled.routine.id, patch: { nextRunAt: at }, fromTool: false })
       await Promise.all([value.engine.tick(at), secondEngine.tick(at)])
       const db = value.runtime.kernel.db as Database
       await waitFor(
@@ -2327,5 +2329,137 @@ test.serial("a local bot with a provider profile runs the CLI with that profile 
     expect(homes.at(-1)).toBe(join(value.runtime.kernel.paths.appData, "provider-profiles", "clav", "claude"))
   } finally {
     await closeFixture(value)
+  }
+})
+
+test.serial("server routines run without browser clients and persist downtime and catch-up history", async () => {
+  const value = await fixture({
+    scenario: { events: [{ type: "delta", delta: "Notas organizadas" }, { type: "complete" }] },
+  })
+  try {
+    const created = value.engine.createRoutine({
+      input: {
+        botId: value.bot.id,
+        name: "Organizar notas",
+        prompt: "Organize minhas notas",
+        cron: "0 9 * * 1-5",
+        timezone: "America/Sao_Paulo",
+        enabled: true,
+        continuity: "results-thread",
+        resultsThreadId: value.thread.id,
+        timeoutMinutes: 30,
+        overlap: "skip",
+        catchUpMinutes: 30,
+      },
+      forceDisabled: false,
+    })
+    if (!created.success) throw new Error(created.error)
+    const due = Date.parse("2026-10-19T12:00:00Z")
+    value.engine.updateRoutine({ routineId: created.routine.id, patch: { nextRunAt: due }, fromTool: false })
+    // No browser or UI is connected to this host. Its scheduler still executes.
+    const scheduler = createRoutineScheduler({ kernel: value.runtime.kernel, engine: value.engine, intervalMs: 10 })
+    const liveDue = Math.floor(Date.now() / 60_000) * 60_000
+    value.engine.updateRoutine({ routineId: created.routine.id, patch: { nextRunAt: liveDue }, fromTool: false })
+    try {
+      await waitFor(() => value.engine.listRoutineRuns(created.routine.id)[0]?.status === "succeeded")
+    } finally {
+      scheduler.stop()
+    }
+    value.engine.updateRoutine({ routineId: created.routine.id, patch: { nextRunAt: due }, fromTool: false })
+    await value.engine.tick(due + 5 * 60_000)
+    await waitFor(() => value.engine.listRoutineRuns(created.routine.id)[0]?.status === "succeeded")
+    expect(value.engine.listRoutineRuns(created.routine.id)[0]).toMatchObject({
+      triggerSource: "catch-up",
+      threadId: value.thread.id,
+      scheduledFor: due,
+    })
+    const missed = due + 24 * 60 * 60_000
+    value.engine.updateRoutine({ routineId: created.routine.id, patch: { nextRunAt: missed }, fromTool: false })
+    await value.engine.tick(missed + 60 * 60_000)
+    expect(value.engine.listRoutineRuns(created.routine.id)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          status: "skipped",
+          triggerSource: "catch-up",
+          scheduledFor: missed,
+          summary: expect.stringContaining("touri estava fechado"),
+        }),
+      ]),
+    )
+    await value.engine.tick(missed + 60 * 60_000)
+    expect(value.engine.listRoutineRuns(created.routine.id).filter((run) => run.scheduledFor === missed)).toHaveLength(
+      1,
+    )
+  } finally {
+    await closeFixture(value)
+  }
+})
+
+test.serial("editing a routine task or destination pauses it until a new explicit activation", async () => {
+  const value = await fixture()
+  try {
+    const created = value.engine.createRoutine({
+      input: {
+        botId: value.bot.id,
+        name: "Organizar notas",
+        prompt: "Organize minhas notas",
+        cron: "0 9 * * 1-5",
+        timezone: "America/Sao_Paulo",
+        enabled: true,
+        continuity: "main-thread",
+        resultsThreadId: null,
+        timeoutMinutes: 30,
+        overlap: "skip",
+        catchUpMinutes: 30,
+      },
+      forceDisabled: false,
+    })
+    if (!created.success) throw new Error(created.error)
+    for (const patch of [{ prompt: "Organize outras notas" }, { continuity: "new-thread" as const }]) {
+      const edited = value.engine.updateRoutine({
+        routineId: created.routine.id,
+        patch,
+        fromTool: true,
+        botId: value.bot.id,
+      })
+      expect(edited).toMatchObject({ success: true, routine: { enabled: false, nextRunAt: null } })
+      const activated = value.engine.updateRoutine({
+        routineId: created.routine.id,
+        patch: { enabled: true },
+        fromTool: false,
+      })
+      expect(activated).toMatchObject({ success: true, routine: { enabled: true } })
+    }
+  } finally {
+    await closeFixture(value)
+  }
+})
+
+test.serial("newly activated routines wait for a future slot instead of replaying unreviewed past work", async () => {
+  const f = await fixture()
+  try {
+    const before = Date.now()
+    const created = f.engine.createRoutine({
+      forceDisabled: false,
+      input: {
+        botId: f.bot.id,
+        name: "Organizar notas",
+        prompt: "Organize minhas notas",
+        cron: "0 9 * * 1-5",
+        timezone: "America/Sao_Paulo",
+        enabled: true,
+        continuity: "main-thread",
+        resultsThreadId: null,
+        timeoutMinutes: 30,
+        overlap: "skip",
+        catchUpMinutes: 30,
+      },
+    })
+    if (!created.success) throw new Error(created.error)
+    expect(created.routine.nextRunAt).toBeGreaterThan(before)
+    await f.engine.tick(before)
+    expect(f.engine.listRoutineRuns(created.routine.id)).toEqual([])
+  } finally {
+    await closeFixture(f)
   }
 })
