@@ -60,7 +60,7 @@ for (const theme of ["light", "dark"] as const) {
       await expect(panel.getByRole("alert")).toBeVisible()
       await shot("computer-error")
       await state("running")
-      await panel.getByRole("button", { name: "Entrar no computador" }).click()
+      await panel.getByRole("button", { name: "Acompanhar a tela" }).click()
       await expect(panel.getByRole("button", { name: "Terminal", exact: true })).toBeVisible()
       if (phase === "after") await expect(panel.locator('.desktop-display[data-phase="ready"]')).toBeVisible()
       await shot("desktop")

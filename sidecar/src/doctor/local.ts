@@ -8,10 +8,11 @@ import { SCHEMA_VERSION } from "../kernel/db"
 import { touriVersion } from "../version"
 import { BOT_IMAGE, imageContext } from "../vm/image"
 import { containerMemoryChecks } from "../vm/memory-doctor"
+import { browserSessionChecks } from "./browserSessions"
 import { check, shellQuote } from "./check"
 import { codexSessionsCheck } from "./codex-sessions"
 import type { DoctorCommand } from "./command"
-import { mcpSocketPathCheck, mcpStartupChecks, orphanShimCheck } from "./mcp"
+import { mcpSocketPathCheck, mcpStartupChecks } from "./mcp"
 import { withinDeadline } from "./network"
 import { providerLoginChecks } from "./providerLogin"
 
@@ -57,7 +58,6 @@ export const sidecarChecks = (kernel: Kernel): Array<DoctorCheck> => {
   return [
     ...mcpStartupChecks(kernel.db as Database),
     mcpSocketPathCheck(kernel.paths),
-    orphanShimCheck(kernel.paths.runDir),
     check("sidecar-version", "Serviço local · versão", "pass", `touri ${version}; Bun ${Bun.version}.`),
     check(
       "sidecar-schema",
@@ -408,7 +408,6 @@ export const keychainCheck = async (kernel: Kernel, signal: AbortSignal, probes:
       "Chaves do macOS",
       "warn",
       "O cofre nativo está disponível apenas no aplicativo desktop do macOS. O modo servidor usa seu próprio cofre local.",
-      "open -a touri",
     )
   try {
     // An intentionally unused touri account tests native access without reading user credentials.
@@ -465,7 +464,7 @@ export const collectLocalChecks = async (
       'exec "$SHELL" -l',
     ),
   ]
-  const [claude, codex, opencode, containers, keychain, logins, codexSessions] = await Promise.all([
+  const [claude, codex, opencode, containers, keychain, logins, codexSessions, browserSessions] = await Promise.all([
     cliChecks("claude", probes.which("claude", path), safeRun, signal),
     cliChecks("codex", probes.which("codex", path), safeRun, signal),
     openCodeChecks(
@@ -478,10 +477,11 @@ export const collectLocalChecks = async (
     ),
     containerChecks(kernel, probes.which("container", path), safeRun, signal, probes),
     keychainCheck(kernel, signal, probes),
-    providerLoginChecks(kernel, environment.HOME ?? homedir(), signal),
+    providerLoginChecks(kernel, environment.HOME ?? homedir(), signal, probes),
     codexSessionsCheck(environment.HOME ?? homedir(), signal),
+    browserSessionChecks(kernel, signal, probes),
   ])
-  checks.push(...claude, ...codex, ...opencode, ...logins, codexSessions)
+  checks.push(...claude, ...codex, ...opencode, ...logins, codexSessions, ...browserSessions)
   for (const [name, command] of [
     ["git", "xcode-select --install"],
     ["brew", "open https://brew.sh"],

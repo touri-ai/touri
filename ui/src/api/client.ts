@@ -80,6 +80,7 @@ export const apiRouteKeys = [
   "POST /bots/:id/machine/intent",
   "POST /bots/:id/machine/reset",
   "POST /bots/:id/desktop",
+  "POST /bots/:id/desktop/return",
   "POST /desktop/:id/text",
   "DELETE /desktop/:id",
   "GET /bots/:id/threads",
@@ -397,7 +398,13 @@ export const createApiClient = ({
       } catch {
         // Keep the plain response body when it is not JSON.
       }
-      throw new ApiError(response.status, message, errorCode, code)
+      const retryAfter = response.headers.get("Retry-After")
+      const retryAt = retryAfter
+        ? /^\d+$/.test(retryAfter)
+          ? Date.now() + Number(retryAfter) * 1000
+          : Date.parse(retryAfter)
+        : undefined
+      throw new ApiError(response.status, message, errorCode, code, retryAt)
     }
     if (isBlobRoute(String(route))) return (await response.blob()) as ApiRoutes[typeof route]["res"]
     return (await response.json()) as ApiRoutes[typeof route]["res"]

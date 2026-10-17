@@ -89,7 +89,20 @@ export const init = async (kernel: Kernel): Promise<void> => {
     name,
     group: "browser",
     handler: async (input) => {
-      const result = await handler(input)
+      const bot = kernel.services.use("store.api")?.getBot({ botId: input.ctx.botId })
+      const writes = ![
+        "browser_list_tabs",
+        "browser_snapshot",
+        "browser_screenshot",
+        "browser_wait_for",
+        "browser_request_takeover",
+      ].includes(name)
+      const vmInput = bot?.machine === "vm" && bot.browser === "machine" && writes
+      const gate = vmInput ? kernel.services.use("computer.input") : null
+      if (vmInput && !gate) return { success: false, errorCode: "COMPUTER_DISABLED", error: "Controle indisponível" }
+      const result = gate
+        ? await gate.run(input.ctx, (signal) => handler({ ...input, ctx: { ...input.ctx, signal } }))
+        : await handler(input)
       if (!result.success)
         failures.set(input.ctx.botId, {
           tool: name,

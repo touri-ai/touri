@@ -185,6 +185,8 @@ export const createVmRuntime = ({
   const parkRequested = new Map<string, { intent: "idle" }>()
   const children = new Map<string, Set<Extract<ReturnType<Kernel["spawnTree"]>, { success: true }>>>()
   const screenshots = new Map<string, { scale: number; x: number; y: number }>()
+  const screenRevisions = new Map<string, number>()
+  const needsObservation = new Set<string>()
   const namespace = createHash("sha256").update(kernel.paths.appData).digest("hex").slice(0, 10)
   const metadata = (botId: string) =>
     db.query("SELECT * FROM bot_machines WHERE bot_id = ?").get(botId) as Metadata | null
@@ -1380,12 +1382,26 @@ export const createVmRuntime = ({
         }
       },
     })
-  const computer: VmRuntime["computer"] = async ({ ctx, name, args }): Promise<ToolResult> => {
+  const computerOperation: VmRuntime["computer"] = async ({ ctx, name, args }): Promise<ToolResult> => {
     const bot = botFor(ctx.botId)
+    const observationRevision = screenRevisions.get(ctx.botId) ?? 0
+    const writes = !["computer_screenshot", "computer_frontmost"].includes(name)
     if (!bot.computerUse) return { success: false, errorCode: "COMPUTER_DISABLED", error: "Computer use desativado" }
     if (ctx.signal.aborted) return { success: false, errorCode: "DEADLINE_EXCEEDED", error: "Operação cancelada" }
-    const release = await acquire({ botId: ctx.botId })
+    const release = await acquire({ botId: ctx.botId, signal: ctx.signal })
     try {
+      ctx.signal.throwIfAborted()
+      const currentBot = botFor(ctx.botId)
+      if (!currentBot.computerUse)
+        return { success: false, errorCode: "COMPUTER_DISABLED", error: "Computer use desativado" }
+      if (writes && currentBot.access === "read-only")
+        return { success: false, errorCode: "DENIED", error: "O bot está em modo somente leitura." }
+      if (writes && needsObservation.has(ctx.botId))
+        return {
+          success: false,
+          errorCode: "COMPUTER_NO_SCREENSHOT",
+          error: "A tela pode ter mudado durante seu controle. Observe novamente antes de continuar.",
+        }
       const input = { ...((args as Record<string, unknown>) ?? {}) }
       if (["computer_click", "computer_scroll"].includes(name)) {
         const map = screenshots.get(ctx.botId)
@@ -1424,7 +1440,13 @@ export const createVmRuntime = ({
         return { success: false, errorCode: "VM_COMPUTER_ERROR", error: "Falha ao operar display Xvfb da VM" }
       const result = JSON.parse(stdout) as { data?: string; scale: number; region?: { x: number; y: number } }
       if (name === "computer_screenshot" && result.data) {
-        screenshots.set(ctx.botId, { scale: result.scale, x: result.region?.x ?? 0, y: result.region?.y ?? 0 })
+        if (
+          observationRevision === (screenRevisions.get(ctx.botId) ?? 0) &&
+          !kernel.services.use("computer.input")?.human(ctx.botId)
+        ) {
+          screenshots.set(ctx.botId, { scale: result.scale, x: result.region?.x ?? 0, y: result.region?.y ?? 0 })
+          needsObservation.delete(ctx.botId)
+        }
         return {
           success: true,
           content: [{ type: "image", data: result.data, mimeType: "image/png" }],
@@ -1439,6 +1461,14 @@ export const createVmRuntime = ({
     } finally {
       await release()
     }
+  }
+  const computer: VmRuntime["computer"] = (input) => {
+    const gate = kernel.services.use("computer.input")
+    const writes = !["computer_screenshot", "computer_frontmost"].includes(input.name)
+    if (!writes) return computerOperation(input)
+    if (!gate)
+      return Promise.resolve({ success: false, errorCode: "COMPUTER_DISABLED", error: "Controle indisponível" })
+    return gate.run(input.ctx, (signal) => computerOperation({ ...input, ctx: { ...input.ctx, signal } }))
   }
   const service: VmRuntime = {
     capability,
@@ -1484,6 +1514,11 @@ export const createVmRuntime = ({
     doctor: () => provider.doctor(),
   }
   const unsubscribe = kernel.subscribe(({ event }) => {
+    if (event.type === "desktop.control") {
+      screenRevisions.set(event.botId, (screenRevisions.get(event.botId) ?? 0) + 1)
+      needsObservation.add(event.botId)
+      screenshots.delete(event.botId)
+    }
     if (event.type === "bot.updated" && !event.bot.vmProviderLogin) revoke(event.bot.id)
   })
   const timer = setInterval(() => {

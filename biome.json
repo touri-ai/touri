@@ -40,6 +40,7 @@
       "!dist",
       "!node_modules",
       "!**/.bun-cache",
+      "!**/.vite-cache",
       "!src-tauri/binaries",
       "!src-tauri/gen",
       "!src-tauri/icons/icon.iconset",

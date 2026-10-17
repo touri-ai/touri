@@ -55,6 +55,7 @@ export type WorkspaceData = {
   processes: Array<ProcessEntry>
   previews: Array<PreviewTarget>
   browserTabs: Array<BrowserTabInfo & { ownerBotId: Id | null }>
+  routineHost: "mac" | "server"
   routines: Array<Routine>
   routineRuns: Array<RoutineRun>
   doctor: DoctorReport | null
@@ -89,8 +90,8 @@ export type WorkspaceActions = {
   createBot: (input: ApiRoutes["POST /bots"]["req"], loginDraftId?: string) => Promise<{ loginReady: boolean }>
   toggleRoutine: (routine: Routine) => Promise<void>
   runRoutine: (routineId: Id) => Promise<void>
-  createRoutine: (input: ApiRoutes["POST /routines"]["req"]) => Promise<void>
-  updateRoutine: (routineId: Id, patch: ApiRoutes["PATCH /routines/:id"]["req"]) => Promise<void>
+  createRoutine: (input: ApiRoutes["POST /routines"]["req"]) => Promise<Routine>
+  updateRoutine: (routineId: Id, patch: ApiRoutes["PATCH /routines/:id"]["req"]) => Promise<Routine>
   createProject: (input: ApiRoutes["POST /projects"]["req"]) => Promise<Project>
   createProcess: (
     projectId: Id,
@@ -130,6 +131,7 @@ const emptyState = (): WorkspaceData => ({
   processes: [],
   previews: [],
   browserTabs: [],
+  routineHost: "server",
   routines: [],
   routineRuns: [],
   doctor: null,
@@ -499,6 +501,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
           projects: projectResponse.projects,
           previews: previewResponse.previews,
           browserTabs: browserResponse.tabs,
+          routineHost: routinesResponse.host ?? "server",
           routines: uniqueById(routinesResponse.routines),
           routineRuns: uniqueById(routineRunsResponse.routineRuns),
           settings: settingsResponse.settings,
@@ -985,20 +988,22 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
   )
 
   const createRoutine = useCallback(
-    async (input: ApiRoutes["POST /routines"]["req"]): Promise<void> => {
+    async (input: ApiRoutes["POST /routines"]["req"]): Promise<Routine> => {
       const response = await api.request("POST /routines", input)
       setData((current) => ({ ...current, routines: uniqueById([...current.routines, response.routine]) }))
+      return response.routine
     },
     [api],
   )
 
   const updateRoutine = useCallback(
-    async (routineId: Id, patch: ApiRoutes["PATCH /routines/:id"]["req"]): Promise<void> => {
+    async (routineId: Id, patch: ApiRoutes["PATCH /routines/:id"]["req"]): Promise<Routine> => {
       const response = await api.request("PATCH /routines/:id", patch, { id: routineId })
       setData((current) => ({
         ...current,
         routines: current.routines.map((routine) => (routine.id === routineId ? response.routine : routine)),
       }))
+      return response.routine
     },
     [api],
   )

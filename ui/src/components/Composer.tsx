@@ -367,7 +367,7 @@ export const Composer = ({
       {login.blocked && (
         <aside className="composer-login-card" aria-label={t("Authentication required")}>
           <p>{t("Sua mensagem fica como rascunho até o login estar pronto.")}</p>
-          <ProviderLoginFlow login={login} />
+          <ProviderLoginFlow login={login} resumeMessage />
         </aside>
       )}
       <textarea

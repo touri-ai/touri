@@ -133,7 +133,7 @@ export const createOpenCodeAdapter = ({
         }
       child = spawned
       children.add(child)
-      if (!args.execution) trackProviderProcess(kernel, child)
+      if (!args.execution) await trackProviderProcess(kernel, child)
       let ready: (port: number) => void = () => {}
       const portPromise = new Promise<number>((resolve) => {
         ready = resolve

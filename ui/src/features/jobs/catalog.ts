@@ -10,6 +10,7 @@ export type JobTemplate = {
   roleLine: string
   instructions: string
   starterPrompts: string[]
+  suggestedCron?: string
 }
 export const NOT_SURE_JOB_ID = "not-sure-yet"
 
@@ -66,4 +67,6 @@ export const getJobTemplates = (locale: Locale = "pt-BR"): JobTemplate[] =>
       locale,
     ),
     starterPrompts: t(`jobs.${id}.prompts`, {}, locale).split("\n"),
+    ...(["team-update", "shift-handover"].includes(id) ? { suggestedCron: "0 9 * * 1-5" } : {}),
+    ...(id === "focused-week" ? { suggestedCron: "0 9 * * 1" } : {}),
   }))

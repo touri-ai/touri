@@ -1,5 +1,9 @@
 import { publicError } from "./errors"
-import type { RunErrorClass } from "./types"
+import type { MessagePart, RunErrorClass } from "./types"
+
+/** Unknown tool outcomes are effects too: a missing acknowledgement is not proof of rollback. */
+export const hasRecordedActions = (parts: ReadonlyArray<MessagePart>): boolean =>
+  parts.some((part) => part.type === "tool_call" || part.type === "command" || part.type === "file_change")
 
 export type RunFailureStage =
   | "machine_boot"

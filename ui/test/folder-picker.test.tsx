@@ -14,9 +14,10 @@ afterEach(() => {
 const setup = () => {
   const api = createMockApi()
   const listing = (path = "/workspace"): FolderListing => ({
+    canGrant: true,
     home: "/workspace",
     path,
-    parent: path === "/workspace" ? "/" : "/workspace",
+    parent: path === "/workspace" ? null : "/workspace",
     truncated: false,
     folders: path === "/workspace" ? [{ name: "Projects", path: "/workspace/Projects" }] : [],
   })
@@ -32,18 +33,34 @@ const setup = () => {
 }
 const useFolder = () => screen.getByRole("button", { name: "Usar esta pasta" })
 
+it("keeps unsupported grants disabled and offers device upload without selecting a folder", async () => {
+  const f = setup()
+  f.request.mockResolvedValue({ ...f.listing(), canGrant: false })
+  const upload = vi.fn()
+  render(<FolderPicker api={f.api} requireAccess onUpload={upload} onSelect={f.select} onClose={f.close} />)
+  await screen.findByText("Não foi possível liberar a pasta com segurança. Seu bot continua disponível.")
+  expect(screen.getByRole("dialog", { name: "Pastas no servidor" })).toBeVisible()
+  expect(useFolder()).toBeDisabled()
+  fireEvent.click(useFolder())
+  expect(f.select).not.toHaveBeenCalled()
+  fireEvent.click(screen.getByRole("button", { name: "Enviar arquivo deste dispositivo" }))
+  expect(upload).toHaveBeenCalledOnce()
+  expect(f.select).not.toHaveBeenCalled()
+  expect(screen.queryByRole("button", { name: "/", exact: true })).not.toBeInTheDocument()
+})
+
 it("starts at home, navigates folders and breadcrumbs, and confirms read-only access by default", async () => {
   const f = setup()
   render(<FolderPicker api={f.api} onSelect={f.select} onClose={f.close} />)
   expect(useFolder()).toBeDisabled()
   expect(await screen.findByRole("button", { name: "Projects" })).toBeEnabled()
   expect(f.request).toHaveBeenCalledWith("GET /folders", {})
-  expect(screen.getByRole("radio", { name: "O bot pode ler", exact: true })).toBeChecked()
+  expect(screen.getByRole("radio", { name: "Somente leitura", exact: true })).toBeChecked()
   fireEvent.click(screen.getByRole("button", { name: "Projects" }))
   expect(await screen.findByText("Nenhuma subpasta aqui.")).toBeVisible()
   expect(f.select).not.toHaveBeenCalled()
   fireEvent.click(
-    within(screen.getByRole("navigation", { name: "Caminho da pasta" })).getByRole("button", { name: "workspace" }),
+    within(screen.getByRole("navigation", { name: "Caminho da pasta" })).getByRole("button", { name: "Pasta pessoal" }),
   )
   await screen.findByRole("button", { name: "Projects" })
   fireEvent.click(useFolder())
@@ -138,7 +155,7 @@ it("offers the native desktop chooser while still requiring an explicit folder g
   await screen.findByText("Nenhuma subpasta aqui.")
   expect(invoke).toHaveBeenCalledWith("pick_folder", { title: "Escolher pasta" })
   expect(f.select).not.toHaveBeenCalled()
-  expect(screen.getByRole("radio", { name: "O bot pode ler", exact: true })).toBeChecked()
+  expect(screen.getByRole("radio", { name: "Somente leitura", exact: true })).toBeChecked()
   fireEvent.click(screen.getByRole("radio", { name: "O bot pode ler e salvar arquivos aqui" }))
   fireEvent.click(useFolder())
   await waitFor(() => expect(f.select).toHaveBeenCalledWith({ path: "/workspace/Projects", access: "read-write" }))

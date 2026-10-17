@@ -209,6 +209,12 @@ for (const provider of ["claude", "codex", "opencode"] as const)
     expect(existsSync(invocation?.cwd ?? "")).toBe(false)
   })
 
+// The descendant scan runs `ps` asynchronously (#121), so the SIGKILL lands a moment after the state changes.
+const waitKilled = async (kills: Array<string>): Promise<void> => {
+  for (let attempt = 0; !kills.includes("SIGKILL") && attempt < 200; attempt++) await Bun.sleep(10)
+  expect(kills).toContain("SIGKILL")
+}
+
 test("poll exposes only device challenge, cancel kills CLI and never saves credentials", async () => {
   const f = fixture("codex", "wait")
   await f.flow.action(f.bot, { action: "start" })
@@ -223,7 +229,7 @@ test("poll exposes only device challenge, cancel kills CLI and never saves crede
     verificationUrl: "https://auth.openai.com/codex/device",
   })
   expect((await f.flow.action(f.bot, { action: "cancel" })).state).toBe("cancelled")
-  expect(f.kills).toContain("SIGKILL")
+  await waitKilled(f.kills)
   expect(f.vault.size).toBe(0)
 })
 
@@ -232,7 +238,7 @@ test("timeout kills the spawned CLI and offers retry without saving", async () =
   await f.flow.action(f.bot, { action: "start" })
   const view = await waitState(f, "error")
   expect(view.message).toContain("expirou")
-  expect(f.kills).toContain("SIGKILL")
+  await waitKilled(f.kills)
   expect(f.vault.size).toBe(0)
 })
 
@@ -379,10 +385,10 @@ test("OpenCode provider and method menus accept only navigation keys through the
 })
 
 test("vault failure leaves login retryable, never ready", async () => {
-  const f = fixture("claude")
+  const f = fixture("claude", "success", 3000, { platform: "darwin", headless: false })
   f.kernel.callHost = async () => ({ success: false, errorCode: "HOST_ERROR", error: "synthetic-secret-error" })
   await expect(f.flow.action(f.bot, { action: "paste", value: token })).rejects.toThrow()
-  await expect(f.flow.status(f.bot)).rejects.toThrow("cofre")
+  expect(await f.flow.status(f.bot)).toMatchObject({ state: "vault-locked" })
 })
 
 test("cancel during a pending vault write removes the late credential without activating it", async () => {
@@ -555,7 +561,7 @@ for (const event of ["deleted", "provider-changed", "cloud"])
             bot: { ...f.bot, ...(event === "cloud" ? { machine: "cloud" as const } : { provider: "claude" as const }) },
           },
     )
-    expect(f.kills).toContain("SIGKILL")
+    await waitKilled(f.kills)
     expect(f.vault.size).toBe(0)
   })
 
@@ -594,11 +600,11 @@ for (const provider of ["claude", "codex"] as const)
     })
 
 test("a temporary vault failure recovers through status without launching login", async () => {
-  const f = fixture("claude")
+  const f = fixture("claude", "success", 3000, { platform: "darwin", headless: false })
   f.vault.set(providerLoginAccount(f.bot.id, "claude"), token)
   const callHost = f.kernel.callHost
   f.kernel.callHost = async () => ({ success: false, errorCode: "HOST_ERROR", error: "unavailable" })
-  await expect(f.flow.status(f.bot)).rejects.toThrow()
+  expect(await f.flow.status(f.bot)).toMatchObject({ state: "vault-locked" })
   f.kernel.callHost = callHost
   expect(await f.flow.status(f.bot)).toEqual({ provider: "claude", state: "ready" })
   expect(f.invocations).toHaveLength(0)

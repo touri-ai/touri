@@ -923,6 +923,7 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
     }
     if (key === "GET /routines")
       return {
+        host: "mac",
         routines: routines.filter(
           (routine) =>
             !input || !(input as { botId?: string }).botId || routine.botId === (input as { botId?: string }).botId,
@@ -991,6 +992,7 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
     if (key === "GET /folders") {
       const path = (input as ApiRoutes["GET /folders"]["req"]).path ?? "/workspace"
       return {
+        canGrant: true,
         home: "/workspace",
         path,
         parent: path === "/" ? null : path.slice(0, path.lastIndexOf("/")) || "/",

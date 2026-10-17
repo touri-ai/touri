@@ -1,4 +1,4 @@
-import type { Message, NotificationRecord, RespondBehavior } from "@touri/contracts"
+import type { Message, NotificationRecord, RespondBehavior, Run } from "@touri/contracts"
 import { useEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import { type ApprovalTarget, pendingApprovalTargets } from "../approvalNavigation"
@@ -10,13 +10,14 @@ import {
   resolvedApprovalLabel,
   uniqueApprovalNotifications,
 } from "../approvalState"
-import { userFacingError } from "../errors"
+import type { RecoveryAction } from "../errorRecovery"
 import { dictionaries, localizeNotice, type TranslationKey, t } from "../i18n"
 import { markdownSummary } from "../markdownSummary"
 // r8-sidebar: shared attention projection; resolved and superseded failures stay in history.
 import { pendingNotifications } from "../sidebarAttention"
 import { useAvatarBot } from "./AvatarRuntime"
 import { BotAvatar } from "./BotAvatar"
+import { ErrorNotice } from "./ErrorNotice"
 import { MotionPresence, useInsertedIds } from "./Motion"
 import "./screens.css"
 
@@ -63,6 +64,7 @@ export type NotificationActions = {
   dismissAll: () => Promise<void>
   respond: (args: { notification: NotificationRecord; behavior: RespondBehavior; message?: string }) => Promise<void>
   reply: (args: { notification: NotificationRecord; text: string }) => Promise<void>
+  recover?: (item: NotificationRecord, action: RecoveryAction) => Promise<void>
 }
 
 const NotificationRow = ({
@@ -71,17 +73,19 @@ const NotificationRow = ({
   actions,
   inserted,
   messages,
+  runs,
 }: {
   item: NotificationRecord
   now: number
   actions: NotificationActions
   inserted: boolean
   messages: Message[]
+  runs: Run[]
 }) => {
   const bot = useAvatarBot(item.botId)
   const [text, setText] = useState("")
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<unknown>(null)
   const resolved = isResolvedNotification(item)
   const approval = item.kind === "approval" ? approvalNotificationSummary(item, messages) : null
   const title =
@@ -97,13 +101,23 @@ const NotificationRow = ({
           )
       : (approval?.title ?? markdownSummary(localizeNotice(item.title)))
   const body = approval?.body ?? markdownSummary(localizeNotice(item.body))
+  const failed = item.kind === "turn-failed" || item.kind === "routine-failed" || item.kind === "incident"
+  const failedRun = runs
+    .filter(
+      (run) =>
+        run.threadId === item.threadId &&
+        (run.status === "failed" || run.status === "interrupted") &&
+        (run.finishedAt ?? 0) <= item.createdAt + 1000,
+    )
+    .sort((a, b) => (b.finishedAt ?? 0) - (a.finishedAt ?? 0))[0]
+  const failedMessage = messages.find((message) => message.id === failedRun?.replyMessageId)
   const run = async (task: () => Promise<void>): Promise<void> => {
     setBusy(true)
     setError(null)
     try {
       await task()
     } catch (error) {
-      setError(userFacingError(error))
+      setError(error)
     } finally {
       setBusy(false)
     }
@@ -143,15 +157,30 @@ const NotificationRow = ({
             {age(item.createdAt, now)}
           </time>
         </div>
-        {![t(KIND_KEY[item.kind]), dictionaries.en[KIND_KEY[item.kind]], item.kind].some(
-          (label) => label.toLowerCase() === title.toLowerCase(),
-        ) && <p className="notification-title">{title}</p>}
+        {!failed &&
+          ![t(KIND_KEY[item.kind]), dictionaries.en[KIND_KEY[item.kind]], item.kind].some(
+            (label) => label.toLowerCase() === title.toLowerCase(),
+          ) && <p className="notification-title">{title}</p>}
         {item.resolvedAt !== null && item.kind === "approval" && (
           <time dateTime={new Date(item.resolvedAt).toISOString()}>
             {new Date(item.resolvedAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
           </time>
         )}
-        {body.toLowerCase() !== t(KIND_KEY[item.kind]).toLowerCase() && <p className="notification-body">{body}</p>}
+        {failed ? (
+          <ErrorNotice
+            error={failedRun?.errorMessage ?? item.body}
+            context={{
+              provider: failedRun?.provider,
+              errorClass: failedRun?.errorClass,
+              parts: failedMessage?.parts,
+              savedMessage: !!failedRun?.requestMessageId,
+              occurredAt: failedRun?.finishedAt ?? item.createdAt,
+            }}
+            onAction={(action) => (actions.recover ? actions.recover(item, action) : actions.open(item))}
+          />
+        ) : (
+          body.toLowerCase() !== t(KIND_KEY[item.kind]).toLowerCase() && <p className="notification-body">{body}</p>
+        )}
         {approval?.command && <pre className="notification-command">{approval.command}</pre>}
         {approval?.technical && (
           <details className="notification-technical">
@@ -218,7 +247,11 @@ const NotificationRow = ({
             </button>
           )}
         </div>
-        {error && <p role="alert">{error}</p>}
+        {error !== null && (
+          <div role="alert">
+            <ErrorNotice error={error} />
+          </div>
+        )}
       </div>
     </li>
   )
@@ -227,6 +260,7 @@ const NotificationRow = ({
 export const NotificationBell = ({
   notifications,
   messages = [],
+  runs = [],
   actions,
   now = Date.now(),
   onOpenChange,
@@ -234,6 +268,7 @@ export const NotificationBell = ({
 }: {
   notifications: Array<NotificationRecord>
   messages?: Array<Message>
+  runs?: Array<Run>
   actions: NotificationActions
   now?: number
   onOpenChange?: (open: boolean) => void
@@ -250,6 +285,11 @@ export const NotificationBell = ({
   }, [open, onOpenChange])
   const navigationActions = {
     ...actions,
+    recover: async (item: NotificationRecord, action: RecoveryAction) => {
+      setOpen(false)
+      if (actions.recover) await actions.recover(item, action)
+      else actions.open(item)
+    },
     open: (item: NotificationRecord) => {
       setOpen(false)
       actions.open(item)
@@ -412,6 +452,7 @@ export const NotificationBell = ({
                         actions={navigationActions}
                         inserted={inserted.has(String(item.id))}
                         messages={messages}
+                        runs={runs}
                       />
                     ))}
                   </ul>

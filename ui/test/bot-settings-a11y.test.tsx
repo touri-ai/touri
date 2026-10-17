@@ -20,7 +20,10 @@ beforeAll(() => {
   document.head.append(styles)
 })
 afterAll(() => styles.remove())
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  vi.unstubAllGlobals()
+})
 
 const botSettings = async (patch: Partial<Bot> = {}, initialSection?: BotSettingsSectionId) => {
   const api = createMockApi()
@@ -84,7 +87,7 @@ const botSettings = async (patch: Partial<Bot> = {}, initialSection?: BotSetting
       />
     </MotionPresence>,
   )
-  await waitFor(() => expect(screen.getByText("review · stdio")).toBeInTheDocument())
+  await waitFor(() => expect(screen.getByText("Conexão disponível: review")).toBeInTheDocument())
   return { bot, routine: botRoutine, actions, onClose, onOpenRoutines }
 }
 
@@ -155,6 +158,7 @@ it("keeps every identity control named and exposed, with no axe violations", asy
 it.each(BOT_SETTINGS_SECTIONS)(
   "keeps $label controls named and exposed, with no axe violations",
   async (section) => {
+    if (section.id === "permissions") vi.stubGlobal("__TAURI_INTERNALS__", {})
     await botSettings({ provider: "claude", computerUse: true, mainThreadId: "thread-review" }, section.id)
     const dialog = screen.getByRole("dialog")
     const tab = screen.getByRole("tab", { name: section.label })

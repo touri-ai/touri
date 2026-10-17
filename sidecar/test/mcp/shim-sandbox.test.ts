@@ -19,7 +19,7 @@ test.skipIf(process.platform !== "darwin" || !existsSync("/usr/bin/sandbox-exec"
     const script = join(root, "register.ts")
     writeFileSync(
       script,
-      `import { registerShim } from ${JSON.stringify(registry)}\nconst unregister = registerShim({ runDir: ${JSON.stringify(root)}, thread: "thread" })\nunregister()\nprocess.stdout.write("registered-ok")\n`,
+      `import { registerShim } from ${JSON.stringify(registry)}\nconst unregister = await registerShim({ runDir: ${JSON.stringify(root)}, thread: "thread" })\nunregister()\nprocess.stdout.write("registered-ok")\n`,
     )
     const profile = '(version 1)(allow default)(deny process-exec (literal "/bin/ps"))'
     const result = Bun.spawnSync({

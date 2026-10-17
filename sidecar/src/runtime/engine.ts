@@ -25,7 +25,7 @@ import type {
 } from "@touri/contracts"
 import { publicError } from "@touri/contracts"
 import { redactToolText } from "@touri/contracts/redaction"
-import { refineErrorClass, safeRunFailure } from "@touri/contracts/run-failure"
+import { hasRecordedActions, refineErrorClass, safeRunFailure } from "@touri/contracts/run-failure"
 import { createApprovalBridge } from "../approvals/bridge"
 import { approvalOutcome } from "../approvals/outcome"
 import { delegatedBot } from "../groups/security"
@@ -55,6 +55,7 @@ import {
   MAX_AUTO_CONTINUATIONS,
   MAX_CRASH_CONTINUATIONS,
 } from "./continuations"
+import { csvInput } from "./csv-input"
 import { buildHandoffPacket } from "./handoff"
 import { composeDeveloperInstructions } from "./instructions"
 import { isMcpStartupError } from "./mcp-startup"
@@ -116,6 +117,7 @@ type RoutineUpdate = {
 }
 
 type RuntimeEngine = {
+  ready: Promise<void>
   enqueue: (args: {
     threadId: Id
     requestMessageId: Id
@@ -128,7 +130,7 @@ type RuntimeEngine = {
   continueAfterApproval: ServiceMap["runtime.continueAfterApproval"]
   cancel: (id: Id) => Result<{ run: Run }, "NOT_FOUND">
   cancelBotTurns: (args: { botId: Id }) => Promise<void>
-  retry: (id: Id) => Result<{ run: Run }, "NOT_FOUND" | "THREAD_NOT_FOUND" | "BOT_PAUSED">
+  retry: (id: Id) => Result<{ run: Run }, "NOT_FOUND" | "THREAD_NOT_FOUND" | "BOT_PAUSED" | "CONFLICT">
   answerApproval: (args: {
     approvalId: Id
     decision: "approved" | "denied"
@@ -184,7 +186,12 @@ const routineError = (input: RoutineCreate): string | null => {
   if (
     !input.name.trim() ||
     input.name.length > 80 ||
+    !input.prompt.trim() ||
     input.prompt.length > 8_000 ||
+    !Number.isInteger(input.catchUpMinutes) ||
+    input.catchUpMinutes < 0 ||
+    input.catchUpMinutes > 1440 ||
+    !Number.isInteger(input.timeoutMinutes) ||
     input.timeoutMinutes < 1 ||
     input.timeoutMinutes > 240
   )
@@ -747,6 +754,7 @@ export const createRuntimeEngine = ({
     const input: Array<TextPart | Extract<MessagePart, { type: "image" }>> = request
       ? [
           { type: "text", text: inputText },
+          ...csvInput({ kernel, parts: (originalRequest ?? request).parts }),
           ...(originalRequest ?? request).parts.filter(
             (part): part is Extract<MessagePart, { type: "image" }> => part.type === "image",
           ),
@@ -1233,6 +1241,15 @@ export const createRuntimeEngine = ({
       return null
     // Effects whose outcome is unknown wait for the user; the work notice already explains them.
     if (hasUncertainWork(run.id)) return null
+    if (reason !== "permission_granted") {
+      const parts =
+        kernel.services
+          .use("store.api")
+          ?.activePath({ threadId: run.threadId })
+          .filter((message) => message.runId === run.id)
+          .flatMap((message) => message.parts) ?? []
+      if (hasRecordedActions(parts)) return null
+    }
     const session =
       continuations.resumePoint(run.id) ??
       persistence.getActiveSession({ threadId: run.threadId, provider: run.provider })
@@ -1376,6 +1393,8 @@ export const createRuntimeEngine = ({
   }
 
   const drain = async (): Promise<void> => {
+    // A recovered turn must not run alongside the previous provider process.
+    await startupCleanup
     while (!shuttingDown && ownsRuntime() && active.size < maxConcurrentRuns) {
       const nextIndex = queued.findIndex((runId) => {
         const run = persistence.getRun(runId)
@@ -1518,9 +1537,33 @@ export const createRuntimeEngine = ({
     await Promise.all(runs.map((run) => executions.get(run.id)))
   }
 
-  const retry = (id: Id): Result<{ run: Run }, "NOT_FOUND" | "THREAD_NOT_FOUND" | "BOT_PAUSED"> => {
+  const retry = (id: Id): Result<{ run: Run }, "NOT_FOUND" | "THREAD_NOT_FOUND" | "BOT_PAUSED" | "CONFLICT"> => {
     const previous = persistence.getRun(id)
     if (!previous?.requestMessageId) return { success: false, errorCode: "NOT_FOUND", error: "Run not found" }
+    if (["queued", "starting", "running", "succeeded"].includes(previous.status))
+      return { success: true, run: previous }
+    // A retry is identified by the failed run, including after a lost HTTP acknowledgement.
+    const attempts = persistence.listRuns(previous.threadId, { all: true })
+    const previousIndex = attempts.findIndex((run) => run.id === previous.id)
+    const existing = attempts
+      .slice(0, previousIndex)
+      .find((run) => run.requestMessageId === previous.requestMessageId && run.trigger === "retry")
+    if (existing) return { success: true, run: existing }
+    const parts =
+      kernel.services
+        .use("store.api")
+        ?.activePath({
+          threadId: previous.threadId,
+          ...(previous.replyMessageId ? { leafId: previous.replyMessageId } : {}),
+        })
+        .filter((message) => message.runId === previous.id)
+        .flatMap((message) => message.parts) ?? []
+    if (hasRecordedActions(parts))
+      return {
+        success: false,
+        errorCode: "CONFLICT",
+        error: "A resposta foi interrompida. Algumas ações podem ter sido concluídas.",
+      }
     return previous.routineRunId
       ? enqueue({
           threadId: previous.threadId,
@@ -1641,6 +1684,8 @@ export const createRuntimeEngine = ({
       return { success: false, errorCode: "BOT_NOT_FOUND", error: "Bot not found" }
     const validation = routineError(input)
     if (validation) return { success: false, errorCode: "INVALID_ARGS", error: validation }
+    if (input.resultsThreadId && store.getThread({ threadId: input.resultsThreadId })?.botId !== input.botId)
+      return { success: false, errorCode: "INVALID_ARGS", error: "Results conversation must belong to this bot" }
     const now = Date.now()
     const routine: Routine = {
       id: kernel.newId(),
@@ -1660,6 +1705,11 @@ export const createRuntimeEngine = ({
       createdAt: now,
       updatedAt: now,
     }
+    if (routine.enabled) {
+      const parsed = parseCron(routine.cron)
+      if (parsed.success)
+        routine.nextRunAt = nextCronSlot({ cron: parsed.cron, timezone: routine.timezone, at: now + 1 })
+    }
     persistence.saveRoutine(routine)
     kernel.publish({ type: "routine.updated", routine, lastRun: null })
     return { success: true, routine }
@@ -1678,6 +1728,19 @@ export const createRuntimeEngine = ({
     if (fromTool && patch.enabled === true)
       return { success: false, errorCode: "INVALID_ARGS", error: "Agents cannot enable routines" }
     const next = { ...routine, ...patch, id: routine.id, botId: routine.botId, updatedAt: Date.now() }
+    // A changed task or destination needs a new explicit human activation.
+    const reviewedFields = [
+      "prompt",
+      "cron",
+      "timezone",
+      "continuity",
+      "resultsThreadId",
+      "timeoutMinutes",
+      "catchUpMinutes",
+      "overlap",
+    ] as const
+    if (patch.enabled !== true && reviewedFields.some((field) => next[field] !== routine[field])) next.enabled = false
+
     const validation = routineError({
       botId: next.botId,
       name: next.name,
@@ -1692,11 +1755,16 @@ export const createRuntimeEngine = ({
       catchUpMinutes: next.catchUpMinutes,
     })
     if (validation) return { success: false, errorCode: "INVALID_ARGS", error: validation }
+    if (
+      next.resultsThreadId &&
+      kernel.services.use("store.api")?.getThread({ threadId: next.resultsThreadId })?.botId !== next.botId
+    )
+      return { success: false, errorCode: "INVALID_ARGS", error: "Results conversation must belong to this bot" }
     if (!next.enabled) next.nextRunAt = null
     else if (!routine.enabled || next.cron !== routine.cron || next.timezone !== routine.timezone) {
       const parsed = parseCron(next.cron)
       if (parsed.success)
-        next.nextRunAt = nextCronSlot({ cron: parsed.cron, timezone: next.timezone, at: Date.now() + 60_000 })
+        next.nextRunAt = nextCronSlot({ cron: parsed.cron, timezone: next.timezone, at: Date.now() + 1 })
     }
     persistence.updateRoutine(next)
     kernel.publish({ type: "routine.updated", routine: next, lastRun: persistence.listRoutineRuns(next.id)[0] ?? null })
@@ -1712,7 +1780,7 @@ export const createRuntimeEngine = ({
     scheduledFor: number
     triggerSource: RoutineRun["triggerSource"]
   }): void => {
-    persistence.insertRoutineRun({
+    const inserted = persistence.insertRoutineRun({
       id: kernel.newId(),
       routineId: routine.id,
       scheduledFor,
@@ -1724,6 +1792,8 @@ export const createRuntimeEngine = ({
       startedAt: null,
       finishedAt: Date.now(),
     })
+    if (!inserted.success) return
+    kernel.publish({ type: "routine.updated", routine, lastRun: inserted.routineRun })
     notices.deferred({
       botId: routine.botId,
       threadId: null,
@@ -1872,7 +1942,12 @@ export const createRuntimeEngine = ({
       if (due <= now) {
         if (now - due > routine.catchUpMinutes * 60_000)
           recordSkipped({ routine, scheduledFor: due, triggerSource: "catch-up" })
-        else void runRoutine({ routineId: routine.id, triggerSource: "cron", scheduledFor: due })
+        else
+          void runRoutine({
+            routineId: routine.id,
+            triggerSource: now - due >= 60_000 ? "catch-up" : "cron",
+            scheduledFor: due,
+          })
         const next = nextCronSlot({ cron: parsed.cron, timezone: routine.timezone, at: due + 60_000 })
         updateNextRun({ routineId: routine.id, nextRunAt: next })
       }
@@ -1898,14 +1973,24 @@ export const createRuntimeEngine = ({
     }
     approvalBridge.dispose()
     shutdownPromise = (async () => {
+      await startupCleanup
       await Promise.all(Object.values(adapters).map((adapter) => adapter.shutdown()))
       await Promise.all(executions.values())
     })()
     return shutdownPromise
   }
 
-  reapProviderProcesses(kernel)
-  reapOrphanShims(kernel.paths.runDir)
+  // Both scans run `ps` asynchronously (#121); the record list is read before the first await.
+  const startupCleanup = Promise.all([reapProviderProcesses(kernel), reapOrphanShims(kernel.paths.runDir)])
+    .then(() => undefined)
+    .catch((error) =>
+      kernel.log({
+        level: "error",
+        module: "runtime",
+        msg: "Falha ao encerrar processos órfãos",
+        data: { error: error instanceof Error ? error.message : String(error) },
+      }),
+    )
   const recovered = new Set<Id>()
   for (const run of persistence.listActiveRuns()) {
     recovered.add(run.id)
@@ -1972,6 +2057,7 @@ export const createRuntimeEngine = ({
   queueMicrotask(() => void drain())
 
   return {
+    ready: startupCleanup,
     enqueue,
     activeRun,
     continueAfterApproval,

@@ -17,7 +17,9 @@ export const BotFolderSettings = ({
   invokeCommand,
   onFolders,
   onAnyFolderAccess,
+  onUpload,
 }: {
+  onUpload?: (() => void) | undefined
   api?: UiApi | undefined
   simple?: boolean
   readOnly?: boolean
@@ -79,6 +81,8 @@ export const BotFolderSettings = ({
           api={api}
           invokeCommand={invokeCommand}
           initialAccess="read-only"
+          requireAccess
+          onUpload={onUpload}
           onClose={() => setPicking(false)}
           onSelect={(folder) => {
             if (!folders.some((item) => item.path === folder.path)) onFolders([...folders, folder])
