@@ -142,7 +142,8 @@ test("long history keeps typing independent of transcript work", async ({ page, 
       ["sidecar/src/cli/main.ts", "serve", "--data-dir", dataDir, "--port", String(port), "--ui-dir", uiDir],
       {
         cwd: repository,
-        env: { ...process.env, TOURI_HEADLESS: "1" },
+        // Keep this synthetic fixture independent of installed providers and their diagnostic polling.
+        env: { ...process.env, TOURI_HEADLESS: "1", TOURI_DOCTOR_SKIP_PROVIDER_PROBES: "1" },
         stdio: ["ignore", "pipe", "pipe"],
       },
     )
