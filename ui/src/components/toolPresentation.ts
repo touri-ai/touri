@@ -137,7 +137,8 @@ const setupPresentation = (name: string, input: Record<string, unknown> | null) 
     title = t("Remover acesso à pasta")
     summary = t("Remover o acesso deste bot a {path}.", { path })
   } else return null
-  if (input?.nextTurn) summary += ` ${t("A mudança entra em vigor no próximo turno da VM.")}`
+  if (input?.nextTurn)
+    summary += ` ${t(input.machine === "local" ? "A mudança entra em vigor no próximo turno local." : "A mudança entra em vigor no próximo turno da VM.")}`
   return { name: title, summary, preview, approvalLabel, canApprove: true }
 }
 

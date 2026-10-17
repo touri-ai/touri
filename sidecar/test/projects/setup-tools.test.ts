@@ -591,7 +591,8 @@ test("local setup reports the host and next local turn for project and folder ch
     ["folder_access_request", { path: f.path, mode: "read-write" }],
   ] as const) {
     const call = f.call(name, args)
-    expect((await f.pending()).detail).toContain('"nextTurn":false')
+    expect((await f.pending()).detail).toContain('"nextTurn":true')
+    expect((await f.pending()).detail).toContain('"machine":"local"')
     expect((await f.answer("allow")).status).toBe(200)
     const result = await call
     expect(result).toMatchObject({

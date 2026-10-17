@@ -49,21 +49,39 @@ export const createSetupTools = ({
     if (ctx.signal.aborted || getDelegation(kernel, ctx.threadId)) return null
     return bot && api()?.getThread({ threadId: ctx.threadId })?.botId === bot.id ? bot : null
   }
-  const changed = (bot: Bot, patch: Partial<Pick<Bot, "projectId" | "folders">>, text: string) => {
+  const changed = (
+    bot: Bot,
+    patch: Partial<Pick<Bot, "projectId" | "folders">>,
+    text: string,
+    approvedContext?: ToolContext,
+  ) => {
     const configure = kernel.services.use("bots.configureAccess")
     if (!configure) return denied("A configuração do bot está indisponível.")
     const result = configure({ botId: bot.id, patch })
     if (!result.success) return result
-    const message =
+    const automatic =
+      approvedContext && snapshot(bot) !== snapshot(result.bot)
+        ? kernel.services.use("runtime.continueAfterApproval")?.(approvedContext) === true
+        : false
+    const timing =
       bot.machine === "vm"
         ? `${text} A mudança entra em vigor no próximo turno da VM.`
         : bot.machine === "local"
           ? `${text} A configuração foi salva neste Mac e será aplicada no próximo turno local.`
           : text
+    const message = automatic
+      ? `${timing} Encerre este turno; o touri retomará a tarefa automaticamente com a configuração aprovada.`
+      : timing
     return {
       success: true as const,
       content: [{ type: "text" as const, text: message }],
-      structured: { projectId: result.bot.projectId, folders: result.bot.folders, effective: "next-turn", message },
+      structured: {
+        projectId: result.bot.projectId,
+        folders: result.bot.folders,
+        effective: "next-turn",
+        automaticContinuation: automatic,
+        message,
+      },
     }
   }
   const notice = (ctx: ToolContext, text: string) => {
@@ -206,7 +224,8 @@ export const createSetupTools = ({
               name,
               projectId: project?.id ?? null,
               previousProject: previous ? { name: previous.name, path: previous.path } : null,
-              nextTurn: bot.machine === "vm",
+              nextTurn: bot.machine !== "cloud",
+              machine: bot.machine,
             },
             targetCurrent,
           )
@@ -230,7 +249,7 @@ export const createSetupTools = ({
             if (!created.success) return created
             linked = created.project
           }
-          return changed(bot, { projectId: linked.id }, `Projeto ${name} (${path}) vinculado a este bot.`)
+          return changed(bot, { projectId: linked.id }, `Projeto ${name} (${path}) vinculado a este bot.`, ctx)
         } catch (error) {
           return {
             success: false,
@@ -251,6 +270,7 @@ export const createSetupTools = ({
         try {
           const path = hostPath(input.path)
           const access = input.mode === "read" ? "read-only" : "read-write"
+          const previousAccess = bot.folders?.find((folder) => folder.path === path)?.access
           const targetCurrent = () => {
             try {
               return hostPath(input.path) === path
@@ -266,8 +286,9 @@ export const createSetupTools = ({
               path,
               requestedPath: input.path,
               mode: input.mode,
-              previousMode: bot.folders?.find((folder) => folder.path === path)?.access ?? null,
-              nextTurn: bot.machine === "vm",
+              previousMode: previousAccess ?? null,
+              nextTurn: true,
+              machine: bot.machine,
             },
             targetCurrent,
           )
@@ -283,6 +304,7 @@ export const createSetupTools = ({
             bot,
             { folders },
             `Acesso ${input.mode === "read" ? "de leitura" : "de leitura e escrita"} à pasta ${path} concedido a este bot.`,
+            previousAccess !== access && (access === "read-write" || !previousAccess) ? ctx : undefined,
           )
         } catch (error) {
           return {

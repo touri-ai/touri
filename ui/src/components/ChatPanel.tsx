@@ -287,7 +287,11 @@ export const VirtualMessageList = ({
               if (isResumeMarker(saved))
                 return (
                   <p key={saved.id} className="run-resumed-marker" role="note" data-message-id={saved.id}>
-                    <span>{saved.text}</span>
+                    <span>
+                      {saved.text === "Retomado após aprovação de acesso"
+                        ? t("Retomado após aprovação de acesso")
+                        : saved.text}
+                    </span>
                   </p>
                 )
               const run = runs.find((run) => run.id === saved.runId)
