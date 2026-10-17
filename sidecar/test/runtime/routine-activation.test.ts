@@ -261,3 +261,39 @@ test("the gateway still denies routine creation for read-only bots", async () =>
   expect(f.cards()).toHaveLength(0)
   expect(await f.routine()).toBeUndefined()
 })
+
+test("the routine editor preserves its reviewed destination, recovery window and scheduler host", async () => {
+  const f = await fixture()
+  const listing = (await (await f.request("GET", "/routines")).json()) as { host: string }
+  expect(listing.host).toBe(process.platform === "darwin" ? "mac" : "server")
+  const response = await f.request("POST", "/routines", {
+    botId: f.bot.id,
+    name: "Organizar notas",
+    prompt: "Organize as notas desta conversa",
+    cron: "0 9 * * 1-5",
+    timezone: "America/Sao_Paulo",
+    enabled: true,
+    continuity: "results-thread",
+    resultsThreadId: f.bot.mainThreadId,
+    timeoutMinutes: 20,
+    catchUpMinutes: 45,
+    overlap: "skip",
+  })
+  expect(response.status).toBe(201)
+  const { routine } = (await response.json()) as { routine: Routine }
+  expect(routine).toMatchObject({
+    enabled: true,
+    resultsThreadId: f.bot.mainThreadId,
+    catchUpMinutes: 45,
+    timeoutMinutes: 20,
+  })
+  expect(routine.nextRunAt).toBeGreaterThan(Date.now())
+  const edited = await f.request("PATCH", `/routines/${routine.id}`, { prompt: "Organize outras notas" })
+  expect(edited.status).toBe(200)
+  expect(await edited.json()).toMatchObject({ routine: { enabled: false, nextRunAt: null } })
+  const changed = await f.request("PATCH", `/routines/${routine.id}`, { resultsThreadId: null, enabled: true })
+  expect(changed.status).toBe(200)
+  expect(await changed.json()).toMatchObject({ routine: { resultsThreadId: null, enabled: true } })
+  const invalid = await f.request("PATCH", `/routines/${routine.id}`, { resultsThreadId: "another-conversation" })
+  expect(invalid.status).toBe(400)
+})

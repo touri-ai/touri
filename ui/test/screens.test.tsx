@@ -175,6 +175,8 @@ describe("r8 screens", () => {
     expect((await api.request("GET /routines", {})).routines[0]?.enabled).toBe(false)
     expect(api.calls.some((call) => call.route === "PATCH /routines/:id")).toBe(false)
     fireEvent.click(screen.getByRole("button", { name: "Retomar Daily brief" }))
+    fireEvent.click(screen.getByRole("button", { name: "Revisar rotina" }))
+    fireEvent.click(screen.getByRole("button", { name: "Ativar rotina" }))
     await screen.findByRole("button", { name: "Pausar Daily brief" })
     expect((await api.request("GET /routines", {})).routines[0]?.enabled).toBe(true)
   })
