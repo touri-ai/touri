@@ -192,7 +192,7 @@ const accessParams = (args: StartTurnArgs): Record<string, unknown> => {
 export const createCodexAdapter = ({
   kernel,
   command,
-  interruptGraceMs = 10_000,
+  interruptGraceMs = 2_000,
 }: {
   kernel: Kernel
   command?: string
@@ -290,8 +290,14 @@ export const createCodexAdapter = ({
       const id = nextRequestId++
       return new Promise((resolve, reject) => {
         responseWaiters.set(id, { resolve, reject })
-        void writeLine({ stdin: spawned.stdin, value: { jsonrpc: "2.0", id, method, params } })
+        void writeLine({ stdin: spawned.stdin, value: { jsonrpc: "2.0", id, method, params } }).catch((error) => {
+          responseWaiters.delete(id)
+          reject(error)
+        })
       })
+    }
+    const interrupt = (): void => {
+      if (turnId) void sendRequest("turn/interrupt", { threadId: externalSessionId, turnId }).catch(() => undefined)
     }
     let finish: (
       result:
@@ -354,6 +360,7 @@ export const createCodexAdapter = ({
       if (method === "turn/started") {
         turnId = stringValue(params.turnId) ?? stringValue(asRecord(params.turn)?.id) ?? stringValue(params.id)
         if (turnId) args.onEvent({ type: "turn_started", externalTurnId: turnId })
+        if (stopped) interrupt()
       } else if (method === "item/agentMessage/delta") {
         const delta = stringValue(params.delta) ?? stringValue(asRecord(params.item)?.delta)
         if (delta) emitAgentText(stringValue(params.itemId) ?? stringValue(asRecord(params.item)?.id) ?? "agent", delta)
@@ -476,6 +483,7 @@ export const createCodexAdapter = ({
     void (async () => {
       try {
         await sendRequest("initialize", { clientInfo: { name: "touri", version: touriVersion } })
+        args.signal.throwIfAborted()
         const access = accessParams(args)
         // Native resumes can carry a previous run's MCP arguments. Always override
         // the persisted configuration with this turn's credential before turn/start.
@@ -514,6 +522,7 @@ export const createCodexAdapter = ({
               ...turnConfig,
             }
         const sessionResponse = await sendRequest(args.session ? "thread/resume" : "thread/start", sessionRequest)
+        args.signal.throwIfAborted()
         const details = sessionDetails(sessionResponse.result)
         externalSessionId = details.id
         rolloutPath = details.rolloutPath
@@ -523,7 +532,7 @@ export const createCodexAdapter = ({
           complete({ success: false, errorCode: loaded.errorCode, error: loaded.error })
           return
         }
-        await sendRequest("turn/start", {
+        const turnResponse = await sendRequest("turn/start", {
           threadId: externalSessionId,
           input: codexInputItems({
             input: args.input,
@@ -533,6 +542,8 @@ export const createCodexAdapter = ({
           cwd: args.fingerprint.cwd,
           ...(args.bot.reasoningEffort ? { effort: args.bot.reasoningEffort } : {}),
         })
+        turnId ??= stringValue(asRecord(asRecord(turnResponse.result)?.turn)?.id)
+        if (stopped) interrupt()
       } catch (error) {
         const message = errorText(error)
         complete({
@@ -566,22 +577,27 @@ export const createCodexAdapter = ({
           error: `Codex exited (${signal ?? code ?? "unknown"})${stderr ? `: ${stderr}` : ""}`,
         })
     })
+    let finishCancellation: () => void = () => undefined
+    const cancellationDeadline = new Promise<string>((resolve) => {
+      finishCancellation = () => resolve("")
+    })
     const abort = (): void => {
-      if (completed) return
+      if (stopped) return
       stopped = true
-      if (turnId)
-        void writeLine({
-          stdin: spawned.stdin,
-          value: { jsonrpc: "2.0", method: "turn/interrupt", params: { threadId: externalSessionId, turnId } },
-        })
-      const killTimer = setTimeout(() => spawned.kill("SIGKILL"), interruptGraceMs)
-      void onExit.finally(() => clearTimeout(killTimer))
+      if (!completed) interrupt()
+      const killTimer = setTimeout(() => {
+        spawned.kill("SIGKILL")
+        complete({ success: false, errorCode: "canceled", error: "Turno cancelado" })
+        finishCancellation()
+      }, interruptGraceMs)
+      // A tool may keep stderr open after the provider leader exits.
+      void Promise.all([onExit, stderrOutput]).finally(() => clearTimeout(killTimer))
     }
     args.signal.addEventListener("abort", abort, { once: true })
     if (args.signal.aborted) abort()
     const output = await resultPromise
+    await Promise.race([stderrOutput, cancellationDeadline])
     args.signal.removeEventListener("abort", abort)
-    await stderrOutput
     if (mcpError) return { success: false, errorCode: "cli_protocol", error: mcpError }
     if (!completed) spawned.kill("SIGTERM")
     return output

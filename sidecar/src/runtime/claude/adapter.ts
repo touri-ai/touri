@@ -68,7 +68,7 @@ const claudeConfig = async ({
 export const createClaudeAdapter = ({
   kernel,
   command,
-  interruptGraceMs = 10_000,
+  interruptGraceMs = 2_000,
 }: {
   kernel: Kernel
   command?: string
@@ -377,20 +377,27 @@ export const createClaudeAdapter = ({
           error: `Claude exited (${signal ?? code ?? "unknown"})`,
         })
     })
+    let finishCancellation: () => void = () => undefined
+    const cancellationDeadline = new Promise<string>((resolve) => {
+      finishCancellation = () => resolve("")
+    })
     const abort = (): void => {
-      if (completed) return
+      if (stopped) return
       stopped = true
-      void writeLine({
-        stdin: spawned.stdin,
-        value: { type: "control_request", request_id: randomUUID(), request: { subtype: "interrupt" } },
-      })
-      const killTimer = setTimeout(() => spawned.kill("SIGKILL"), interruptGraceMs)
-      void onExit.finally(() => clearTimeout(killTimer))
+      spawned.kill("SIGINT")
+      const killTimer = setTimeout(() => {
+        spawned.kill("SIGKILL")
+        complete({ success: false, errorCode: "canceled", error: "Turno cancelado" })
+        finishCancellation()
+      }, interruptGraceMs)
+      // A tool may keep stderr open after the provider leader exits.
+      void Promise.all([onExit, stderrPromise]).finally(() => clearTimeout(killTimer))
     }
     args.signal.addEventListener("abort", abort, { once: true })
+    if (args.signal.aborted) abort()
     const output = await resultPromise
+    const stderr = await Promise.race([stderrPromise, cancellationDeadline])
     args.signal.removeEventListener("abort", abort)
-    const stderr = await stderrPromise
     if (mcpError) return { success: false, errorCode: "cli_protocol", error: mcpError }
     if (!completed && classifyProviderError(stderr) === "cli_auth")
       return { success: false, errorCode: "cli_auth", error: kernel.redact(stderr.trim()) }

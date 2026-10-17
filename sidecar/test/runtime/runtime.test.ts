@@ -658,6 +658,125 @@ test.serial("a provider that ignores interrupt is killed after the cancellation 
   }
 })
 
+test.each(["codex", "claude"] as const)(
+  "%s cancellation interrupts first and preserves history within the default two-second grace period",
+  async (provider) => {
+    const value = await fixture({ provider })
+    const requestLogPath = join(value.assets, "requests.jsonl")
+    const signalLogPath = join(value.assets, "signal.log")
+    writeFileSync(
+      value.scenario,
+      JSON.stringify({
+        ignoreInterrupt: true,
+        slowMs: 30_000,
+        deltas: ["partial reply", "still working"],
+        requestLogPath,
+        signalLogPath,
+      }),
+    )
+    try {
+      const request = addUser(value.store, value.thread, "stop a busy provider")
+      const result = value.engine.enqueue({ threadId: value.thread.id, requestMessageId: request.id, trigger: "user" })
+      if (!result.success) throw new Error(result.error)
+      const run = result.run
+      await waitFor(() =>
+        value.store.activePath({ threadId: value.thread.id }).some((message) => message.text === "partial reply"),
+      )
+      const started = performance.now()
+      value.engine.cancel(run.id)
+      await waitFor(() => terminal(run.status), 2_500)
+      expect(performance.now() - started).toBeLessThan(2_500)
+      expect(run).toMatchObject({ status: "canceled", errorClass: "canceled" })
+      const history = value.store.activePath({ threadId: value.thread.id })
+      expect(history).toContainEqual(expect.objectContaining({ id: request.id, text: request.text }))
+      expect(history.find((message) => message.runId === run.id)).toMatchObject({
+        status: "canceled",
+        text: "partial reply",
+        parts: expect.arrayContaining([
+          { type: "notice", code: "run_canceled", level: "info", text: "Cancelado por você" },
+        ]),
+      })
+      if (provider === "codex") {
+        const requests = readFileSync(requestLogPath, "utf8")
+          .trim()
+          .split("\n")
+          .map((line) => JSON.parse(line))
+        expect(requests.find((request) => request.method === "turn/interrupt")).toMatchObject({
+          id: expect.any(Number),
+          params: { threadId: "fake-codex-session", turnId: "fake-turn-1" },
+        })
+      } else expect(readFileSync(signalLogPath, "utf8")).toBe("SIGINT")
+    } finally {
+      await closeFixture(value)
+    }
+  },
+)
+
+test.each(["interrupt", "completion"] as const)(
+  "cancellation kills a tool holding stderr open after provider %s and releases the queue",
+  async (exit) => {
+    const value = await fixture({ interruptGraceMs: 100 })
+    let providerExited = false
+    const spawn = value.runtime.kernel.spawnTree
+    value.runtime.kernel.spawnTree = (args) => {
+      const child = spawn(args)
+      if (child.success && args.args.includes("app-server"))
+        void child.exited.then(() => {
+          providerExited = true
+        })
+      return child
+    }
+    const toolPidPath = join(value.assets, "tool.pid")
+    writeFileSync(
+      value.scenario,
+      JSON.stringify({
+        exitOnInterrupt: true,
+        toolPidPath,
+        slowMs: exit === "completion" ? 0 : 30_000,
+        deltas: ["partial reply"],
+      }),
+    )
+    let toolPid: number | undefined
+    try {
+      const result = value.engine.enqueue({
+        threadId: value.thread.id,
+        requestMessageId: addUser(value.store, value.thread, "start a tool").id,
+        trigger: "user",
+      })
+      if (!result.success) throw new Error(result.error)
+      await waitFor(() => existsSync(toolPidPath))
+      const pid = Number(readFileSync(toolPidPath, "utf8"))
+      toolPid = pid
+      if (exit === "completion") await waitFor(() => providerExited)
+      value.engine.cancel(result.run.id)
+      writeFileSync(value.scenario, JSON.stringify({ deltas: ["next reply"] }))
+      const next = value.engine.enqueue({
+        threadId: value.thread.id,
+        requestMessageId: addUser(value.store, value.thread, "next task").id,
+        trigger: "user",
+      })
+      if (!next.success) throw new Error(next.error)
+      expect(next.run.status).toBe("queued")
+      await waitFor(() => terminal(result.run.status), 500)
+      expect(result.run.status).toBe("canceled")
+      await waitFor(() => terminal(next.run.status), 2_000)
+      expect(next.run.status).toBe("succeeded")
+      if (process.platform === "linux") {
+        const path = `/proc/${pid}/stat`
+        const stat = existsSync(path) ? readFileSync(path, "utf8") : null
+        expect(stat === null || /^[ZX]/.test(stat.slice(stat.lastIndexOf(")") + 2))).toBe(true)
+      } else expect(() => process.kill(pid, 0)).toThrow()
+    } finally {
+      if (toolPid) {
+        try {
+          process.kill(toolPid, "SIGKILL")
+        } catch {}
+      }
+      await closeFixture(value)
+    }
+  },
+)
+
 test.serial("Codex approval requests create a pending ApprovalPart and receive the decision", async () => {
   const value = await fixture({
     scenario: { waitForApproval: true, events: [{ type: "approval", approvalId: "approval-fixture" }] },

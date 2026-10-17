@@ -112,11 +112,12 @@ export const Composer = ({
   const [files, setFiles] = useState<Array<AttachedFile>>([])
   const [error, setError] = useState<string | null>(null)
   const [sending, setSending] = useState(false)
-  const [stopping, setStopping] = useState(false)
+  const [stoppingRunId, setStoppingRunId] = useState<string | null>(null)
   const [picking, setPicking] = useState(false)
   const [dragging, setDragging] = useState(false)
   const sendingRef = useRef(false)
-  const stoppingRef = useRef(false)
+  const stoppingRef = useRef<string | null>(null)
+  const stopping = Boolean(activeRun && activeRun.id === stoppingRunId)
   const alive = useRef(true)
   const draftRef = useRef(draft)
   draftRef.current = draft
@@ -253,17 +254,20 @@ export const Composer = ({
     }
   }
   const stop = async () => {
-    if (!activeRun || stoppingRef.current) return
-    stoppingRef.current = true
-    setStopping(true)
+    if (!activeRun || stoppingRef.current === activeRun.id) return
+    const runId = activeRun.id
+    stoppingRef.current = runId
+    setStoppingRunId(runId)
     setError(null)
     try {
-      await onCancel(activeRun.id)
+      await onCancel(runId)
     } catch (failure) {
-      if (alive.current) setError(t("Could not stop reply", { reason: userFacingError(failure) }))
-    } finally {
-      stoppingRef.current = false
-      if (alive.current) setStopping(false)
+      if (stoppingRef.current !== runId) return
+      stoppingRef.current = null
+      if (alive.current) {
+        setStoppingRunId(null)
+        setError(t("Could not stop reply", { reason: userFacingError(failure) }))
+      }
     }
   }
   const hasContent = Boolean(draft.trim() || files.length)
@@ -440,13 +444,14 @@ export const Composer = ({
           {activeRun && !showStop && (
             <button
               type="button"
-              className="composer-icon"
-              aria-label={t("Stop reply button")}
+              className={stopping ? "composer-stop" : "composer-icon"}
+              aria-label={stopping ? t("Stopping reply…") : t("Stop reply button")}
               title={t("Stop reply")}
               disabled={stopping}
               onClick={() => void stop()}
             >
               <Icon kind="stop" />
+              {stopping && t("Stopping reply…")}
             </button>
           )}
           {showStop ? (

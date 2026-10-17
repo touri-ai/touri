@@ -1401,10 +1401,10 @@ export const createRuntimeEngine = ({
     }
     const state = getState(id)
     state.cancelRequested = true
+    controllers.get(id)?.abort()
     state.parts = tools.finish(run, state.parts, "cancelled_by_user")
     const store = kernel.services.use("store.api")
     if (store) publishMessage({ store, state, run, status: "streaming" })
-    controllers.get(id)?.abort()
     approvalBridge.cancelRun(id)
     return { success: true, run }
   }
