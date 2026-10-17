@@ -625,6 +625,8 @@ export const ptBR = {
     "Não foi possível acessar ou criar a pasta. Verifique o caminho e as permissões e tente novamente.",
   "Este bot já tem acesso a esta pasta. Nenhuma permissão foi alterada.":
     "Este bot já tem acesso a esta pasta. Nenhuma permissão foi alterada.",
+  "Este bot já tem acesso total aos arquivos deste computador. Continue a tarefa diretamente e crie as pastas necessárias com suas ferramentas. Não é preciso pedir autorização de pasta. As permissões do sistema operacional continuam valendo.":
+    "Este bot já tem acesso total aos arquivos deste computador. Continue a tarefa diretamente e crie as pastas necessárias com suas ferramentas. Não é preciso pedir autorização de pasta. As permissões do sistema operacional continuam valendo.",
   "Pasta {path} criada.": "Pasta {path} criada.",
   "Conceder acesso à pasta": "Conceder acesso à pasta",
   "Permitir escrita em {path}?": "Permitir escrita em {path}?",
@@ -2613,6 +2615,8 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
     "Could not access or create the folder. Check its path and permissions and try again.",
   "Este bot já tem acesso a esta pasta. Nenhuma permissão foi alterada.":
     "This bot already has access to this folder. No permissions were changed.",
+  "Este bot já tem acesso total aos arquivos deste computador. Continue a tarefa diretamente e crie as pastas necessárias com suas ferramentas. Não é preciso pedir autorização de pasta. As permissões do sistema operacional continuam valendo.":
+    "This bot already has full access to this computer's files. Continue the task directly and create the folders you need with your tools. No folder authorization is needed. Operating-system permissions still apply.",
   "Pasta {path} criada.": "Folder {path} created.",
   "Conceder acesso à pasta": "Grant folder access",
   "Permitir escrita em {path}?": "Allow writing in {path}?",

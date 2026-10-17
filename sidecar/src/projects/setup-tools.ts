@@ -43,9 +43,14 @@ const hostPath = (value: string, allowRoot = false): string => {
   return canonical
 }
 
-const folderTarget = (value: string, allowRoot = false) => {
+const folderRequestPath = (value: string): string => {
   const source = absolutePath(value)
   if (source.split("/").includes("..")) throw new Error("Informe um caminho sem '..'.")
+  return source
+}
+
+const folderTarget = (value: string) => {
+  const source = folderRequestPath(value)
   let ancestor = source
   const missing: string[] = []
   for (;;) {
@@ -59,7 +64,7 @@ const folderTarget = (value: string, allowRoot = false) => {
       ancestor = dirname(ancestor)
     }
   }
-  const root = hostPath(ancestor, allowRoot)
+  const root = hostPath(ancestor)
   const info = statSync(root)
   return { path: join(root, ...missing), ancestor: root, missing: missing.length > 0, dev: info.dev, ino: info.ino }
 }
@@ -113,7 +118,10 @@ export const createSetupTools = ({
     )
   }
   const unchangedAccess = (bot: Bot, path: string, projectLink = false): ToolResult => {
-    const message = "Este bot já tem acesso a esta pasta. Nenhuma permissão foi alterada."
+    const message =
+      bot.machine === "local" && bot.access === "full"
+        ? "Este bot já tem acesso total aos arquivos deste computador. Continue a tarefa diretamente e crie as pastas necessárias com suas ferramentas. Não é preciso pedir autorização de pasta. As permissões do sistema operacional continuam valendo."
+        : "Este bot já tem acesso a esta pasta. Nenhuma permissão foi alterada."
     const nextStep = "Para usar processos supervisionados e o Preview, vincule o projeto nas configurações do bot."
     return {
       success: true,
@@ -349,12 +357,16 @@ export const createSetupTools = ({
         if (bot.machine === "cloud") return denied("Pastas deste Mac não estão disponíveis na nuvem.")
         const input = args as { path: string; mode: "read" | "read-write" }
         try {
-          const target = folderTarget(input.path, bot.machine === "local" && bot.access === "full")
+          const source = folderRequestPath(input.path)
+          // Full local access is a policy choice, independent of whether this
+          // path exists or can currently be inspected. A grant cannot repair
+          // OS permissions; tell the bot to continue under its existing policy.
+          if (bot.machine === "local" && bot.access === "full") return unchangedAccess(bot, source)
+          const target = folderTarget(source)
           // Do not turn existing write access into a persisted restriction. This
           // is also safe for missing output directories: the bot can create them
           // directly under its current policy, without changing configuration.
           if (alreadyWritable(bot, ctx, target.path)) return unchangedAccess(bot, target.path)
-          if (bot.machine === "local" && !(await refreshHostFolderAccess())) return denied(folderAccessUnavailable)
           const explicit = bot.folders ?? []
           const roots = [
             ...explicit.map((folder) => folder.path),
@@ -380,6 +392,7 @@ export const createSetupTools = ({
             return denied("A pasta ainda não existe. Solicite acesso de leitura e escrita para criá-la.")
           if (target.missing && bot.access === "read-only")
             return denied("O bot está em modo somente leitura e não pode criar pastas.")
+          if (bot.machine === "local" && !(await refreshHostFolderAccess())) return denied(folderAccessUnavailable)
           // A read-only ancestor wins over a narrower writable grant in every sandbox.
           const readonly = explicit
             .filter((folder) => folder.access === "read-only" && withinFolder(folder.path, target.path))

@@ -10,7 +10,9 @@ import {
   symlinkSync,
   writeFileSync,
 } from "node:fs"
+import * as fs from "node:fs"
 import { tmpdir } from "node:os"
+import * as os from "node:os"
 import { join } from "node:path"
 import type { ApprovalPart, Bot, ToolRegistration, UiEvent } from "@touri/contracts"
 import { createApprovalBridge } from "../../src/approvals/bridge"
@@ -141,6 +143,55 @@ const fixture = async (patch: Partial<Bot> = {}) => {
 }
 
 for (const approvals of ["never", "on-request"] as const) {
+  test(`full local folder requests with ${approvals} confirm access before inspecting paths`, async () => {
+    const f = await fixture({ access: "full", approvals })
+    const before = f.currentBot()
+    const parent = join(f.home, "projects")
+    mkdirSync(parent)
+    const home = spyOn(os, "homedir").mockReturnValue(f.home)
+    const lstat = spyOn(fs, "lstatSync")
+    const realpath = spyOn(fs, "realpathSync")
+    const stat = spyOn(fs, "statSync")
+    const probe = spyOn(folderCapability, "refreshHostFolderAccess").mockResolvedValue(false)
+    cleanups.push(() => {
+      home.mockRestore()
+      lstat.mockRestore()
+      realpath.mockRestore()
+      stat.mockRestore()
+      probe.mockRestore()
+    })
+    let continuations = 0
+    f.runtime.kernel.services.provide("runtime.continueAfterApproval", () => {
+      continuations++
+      return true
+    })
+    for (const suffix of ["projects", "projects/new-output", "missing-parent/output"]) {
+      for (const mode of ["read", "read-write"] as const) {
+        const result = await f.call("folder_access_request", { path: `~/${suffix}`, mode })
+        expect(result).toMatchObject({
+          success: true,
+          structured: {
+            path: join(f.home, suffix),
+            alreadyAccessible: true,
+            unchanged: true,
+            automaticContinuation: false,
+            effective: "current-turn",
+          },
+        })
+        expect(result.content?.[0]).toMatchObject({ text: expect.stringContaining("acesso total") })
+      }
+    }
+    expect(lstat).not.toHaveBeenCalled()
+    expect(realpath).not.toHaveBeenCalled()
+    expect(stat).not.toHaveBeenCalled()
+    expect(probe).not.toHaveBeenCalled()
+    expect(f.currentBot()).toEqual(before)
+    expect(f.cards).toEqual([])
+    expect(continuations).toBe(0)
+    expect(existsSync(join(parent, "new-output"))).toBe(false)
+    expect(existsSync(join(f.home, "missing-parent"))).toBe(false)
+  })
+
   test(`full local access with ${approvals} never saves redundant setup or interrupts the task`, async () => {
     const f = await fixture({ access: "full", approvals })
     const probe = spyOn(folderCapability, "refreshHostFolderAccess").mockResolvedValue(false)
@@ -682,6 +733,65 @@ test("denying a missing folder leaves the tree and read-only grant unchanged", a
   })
   expect(existsSync(target)).toBe(false)
   expect(f.currentBot()?.folders).toEqual(folders)
+})
+
+test("missing folder requests explain the path before probing unavailable confinement", async () => {
+  const f = await fixture()
+  const parent = join(f.home, "projects")
+  mkdirSync(parent)
+  const folders: Bot["folders"] = [{ path: f.home, access: "read-only" }]
+  f.db.query("UPDATE bots SET folders_json = ? WHERE id = ?").run(JSON.stringify(folders), f.bot.id)
+  const home = spyOn(os, "homedir").mockReturnValue(f.home)
+  const probe = spyOn(folderCapability, "refreshHostFolderAccess").mockResolvedValue(false)
+  cleanups.push(() => {
+    home.mockRestore()
+    probe.mockRestore()
+  })
+  for (const path of ["~/projects/new-output", join(parent, "new-output")]) {
+    expect(await f.call("folder_access_request", { path, mode: "read" })).toMatchObject({
+      success: false,
+      errorCode: "DENIED",
+      error: "A pasta ainda não existe. Solicite acesso de leitura e escrita para criá-la.",
+    })
+  }
+  expect(await f.call("folder_access_request", { path: join(f.root, "missing"), mode: "read-write" })).toMatchObject({
+    success: false,
+    errorCode: "DENIED",
+    error: "A pasta não existe e fica fora das pastas permitidas. Solicite primeiro acesso à pasta existente.",
+  })
+  expect(probe).not.toHaveBeenCalled()
+  expect(f.currentBot()?.folders).toEqual(folders)
+  expect(f.cards).toEqual([])
+  expect(existsSync(join(parent, "new-output"))).toBe(false)
+})
+
+test("a plain missing home-relative folder is created only after approving its allowed parent", async () => {
+  const f = await fixture()
+  const parent = join(f.home, "projects")
+  mkdirSync(parent)
+  const folders: Bot["folders"] = [{ path: parent, access: "read-only" }]
+  f.db.query("UPDATE bots SET folders_json = ? WHERE id = ?").run(JSON.stringify(folders), f.bot.id)
+  const home = spyOn(os, "homedir").mockReturnValue(f.home)
+  const probe = spyOn(folderCapability, "refreshHostFolderAccess").mockResolvedValue(true)
+  const available = spyOn(folderCapability, "hostFolderAccessAvailable").mockReturnValue(true)
+  cleanups.push(() => {
+    home.mockRestore()
+    probe.mockRestore()
+    available.mockRestore()
+  })
+  const target = join(parent, "new-output")
+  const call = f.call("folder_access_request", { path: "~/projects/new-output", mode: "read-write" })
+  const card = await f.pending()
+  expect(card.detail).toContain('"requestedPath":"~/projects/new-output"')
+  expect(card.detail).toContain(`"path":"${parent}"`)
+  expect(card.detail).toContain(`"createPath":"${target}"`)
+  expect(existsSync(target)).toBe(false)
+  expect(f.currentBot()?.folders).toEqual(folders)
+  expect((await f.answer("allow")).status).toBe(200)
+  expect(await call).toMatchObject({ success: true, structured: { effective: "next-turn" } })
+  expect(f.cards).toHaveLength(1)
+  expect(existsSync(target)).toBe(true)
+  expect(f.currentBot()?.folders).toEqual([{ path: parent, access: "read-write" }])
 })
 
 test("missing folders outside allowed roots and through escape links are refused without approval", async () => {
