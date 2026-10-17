@@ -34,7 +34,7 @@ it("local folder approval reports the next local turn", () => {
   )
   expect(
     screen.getByText(
-      "Permitir Leitura e escrita em /tmp/notes para este bot A mudança entra em vigor no próximo turno local.",
+      "Permitir Leitura e escrita em /tmp/notes para este bot. A mudança entra em vigor no próximo turno local.",
     ),
   ).toBeInTheDocument()
 })
@@ -55,16 +55,16 @@ it("project approval shows the reviewed project and replaced project, even when 
       api={api}
       tool={tool}
       part={approval("project_link", {
-        path: "/Users/test/javascript/Hodler",
+        path: "/workspace/javascript/Hodler",
         name: "Hodler",
-        previousProject: { name: "Anterior", path: "/Users/test/Anterior" },
+        previousProject: { name: "Anterior", path: "/workspace/Anterior" },
       })}
     />,
   )
   expect(screen.getByText("Vincular projeto")).toBeInTheDocument()
   expect(
     screen.getByText(
-      "Vincular Hodler (/Users/test/javascript/Hodler) a este bot Substitui o projeto Anterior (/Users/test/Anterior).",
+      "Vincular Hodler (/workspace/javascript/Hodler) a este bot Substitui o projeto Anterior (/workspace/Anterior).",
     ),
   ).toBeInTheDocument()
   expect(screen.queryByRole("button", { name: "Sempre neste bot" })).toBeNull()
@@ -92,13 +92,13 @@ for (const [mode, label] of [
     render(
       <ApprovalCard
         api={api}
-        part={approval("folder_access_request", { path: "/Users/test/Documents", mode, nextTurn: true })}
+        part={approval("folder_access_request", { path: "/workspace/Documents", mode, nextTurn: true })}
       />,
     )
     expect(screen.getByText("Conceder acesso à pasta")).toBeInTheDocument()
     expect(
       screen.getByText(
-        `Permitir ${label} em /Users/test/Documents para este bot A mudança entra em vigor no próximo turno da VM.`,
+        `Permitir ${label} em /workspace/Documents para este bot. A mudança entra em vigor no próximo turno da VM.`,
       ),
     ).toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Sempre neste bot" })).toBeNull()
@@ -119,7 +119,7 @@ it("folder upgrades show the old and requested permissions", () => {
     <ApprovalCard
       api={createMockApi()}
       part={approval("folder_access_request", {
-        path: "/Users/test/Documents",
+        path: "/workspace/Documents",
         mode: "read-write",
         previousMode: "read-only",
       })}
@@ -127,7 +127,7 @@ it("folder upgrades show the old and requested permissions", () => {
   )
   expect(
     screen.getByText(
-      "Permitir Leitura e escrita em /Users/test/Documents para este bot Acesso anterior: Somente leitura.",
+      "Permitir Leitura e escrita em /workspace/Documents para este bot. Acesso anterior: Somente leitura.",
     ),
   ).toBeInTheDocument()
 })
@@ -174,10 +174,10 @@ it("an external MCP tool with the same name keeps its own presentation", () => {
 })
 
 for (const tool of ["project_link", "folder_access_request"]) {
-  for (const requestedPath of ["/Users/test/Documents", "~/Documents", "/Users/test/alias"]) {
+  for (const requestedPath of ["/workspace/Documents", "~/Documents", "/workspace/alias"]) {
     for (const decision of ["pending", "approved"] as const) {
       it(`${tool} ${decision} attaches one reviewed card for ${requestedPath}`, () => {
-        const path = "/Users/test/Documents"
+        const path = "/workspace/Documents"
         const input = { path: requestedPath, ...(tool === "folder_access_request" ? { mode: "read-write" } : {}) }
         const call: ToolCallPart = {
           type: "tool_call",
