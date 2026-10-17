@@ -126,7 +126,7 @@ printf '%s\\n' '${token}'
       return trackedSpawn(input)
     },
     services: { use: () => ({ getBot: ({ botId }: { botId: string }) => (botId === bot.id ? bot : null) }) },
-    shellEnv: async () => ({ PATH: bin }),
+    shellEnv: async () => ({ HOME: root, PATH: bin }),
     redact: redactor.redact,
     addRedactionValue: (value: string) => {
       redactions.push(value)
@@ -594,8 +594,15 @@ for (const provider of ["codex", "claude", "opencode"] as const)
           ? codex
           : openCode,
     )
-    const binary = join(f.root, "fake bin", provider)
-    rmSync(binary)
+    // A unique configured basename keeps host-installed CLIs out of this fixture.
+    const binary = join(f.root, "fake bin", `readiness-fixture-${provider}`)
+    const variable = `TOURI_${provider.toUpperCase()}_BIN`
+    const previous = process.env[variable]
+    process.env[variable] = binary
+    cleanups.push(() => {
+      if (previous === undefined) delete process.env[variable]
+      else process.env[variable] = previous
+    })
     const request = {
       params: { id: draftId },
       query: { provider },
