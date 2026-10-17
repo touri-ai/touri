@@ -170,7 +170,7 @@ it("clears sidebar and bell attention when the failure card retries before a not
   render(<App kernel={{ services: { api } }} />)
   const card = await screen.findByRole("alert")
   expect(screen.getByRole("button", { name: "Notificações, 1 precisa de atenção" })).toBeVisible()
-  fireEvent.click(within(card).getByRole("button", { name: "Tentar novamente" }))
+  fireEvent.click(within(card).getByRole("button", { name: "Tentar de novo" }))
   await waitFor(() => {
     expect(api.request).toHaveBeenCalledWith("POST /runs/:id/retry", {}, { id: run.id })
     expect(document.querySelector(`[data-bot-entry="${bot.id}"]`)).toHaveAttribute("data-activity", "working")

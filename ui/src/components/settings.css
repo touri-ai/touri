@@ -1048,3 +1048,21 @@
 .settings-row-control code {
   overflow-wrap: anywhere;
 }
+
+.settings-technical-details > summary {
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: var(--type-13);
+  padding: var(--space-8) 0;
+}
+.settings-technical-details > .field-help {
+  margin-top: var(--space-8);
+  line-height: 1.6;
+}
+.settings-group-card > .settings-technical-details {
+  padding: var(--space-12) var(--space-20);
+}
+.machine-environment-control select {
+  min-width: 0;
+  max-width: 100%;
+}
