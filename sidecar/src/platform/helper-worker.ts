@@ -29,7 +29,9 @@ const source = `self.onmessage = async ({ data }) => {
       }
     } finally { reader.releaseLock(); }
     exitCode = await child.exited;
-    status = 1;
+    // A deadline kill can settle before the waiting caller wakes up.
+    // Publish failure even when that child exit was otherwise handled normally.
+    status = Date.now() < deadline ? 1 : 2;
   } catch {
     if (child) { try { child.kill("SIGKILL"); } catch {} await child.exited.catch(() => {}); }
   } finally {
