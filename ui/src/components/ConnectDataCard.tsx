@@ -8,9 +8,11 @@ export const ConnectDataCard = ({
   onAttach,
   onFolder,
   onCatalog,
+  desktop = false,
 }: {
   onAttach: () => void
   onFolder?: (() => void) | undefined
+  desktop?: boolean
   onCatalog: () => void
 }) => (
   <section className="connect-data-card" aria-label={t("Conectar dados")}>
@@ -18,11 +20,11 @@ export const ConnectDataCard = ({
     <p>{t("Escolha como disponibilizar os dados para este bot.")}</p>
     <div className="connect-data-actions">
       <button type="button" className="button button-quiet" onClick={onAttach}>
-        {t("Anexar arquivo/CSV")}
+        {t("Enviar arquivo deste dispositivo")}
       </button>
       {onFolder && (
         <button type="button" className="button button-quiet" onClick={onFolder}>
-          {t("Dar acesso a uma pasta")}
+          {desktop ? t("Escolher pasta") : t("Escolher pasta do servidor")}
         </button>
       )}
       <button type="button" className="button button-quiet" onClick={onCatalog}>

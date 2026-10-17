@@ -91,7 +91,7 @@ test("A13b: state ink interpolates and reduced motion retains its static destina
   await page.emulateMedia({ reducedMotion: "reduce" })
   await expect.poll(() => mark.evaluate((node) => node.getAnimations({ subtree: true }).length)).toBe(0)
   await page.getByRole("button", { name: "Aguardar aprovação", exact: true }).click()
-  await expect(mark).toContainText("Aguardando você")
+  await expect(mark).toContainText("Preciso da sua autorização.")
   await expect(mark).toHaveCSS("transition-duration", "0s")
 })
 

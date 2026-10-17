@@ -1,6 +1,7 @@
 import { afterEach, expect, test } from "bun:test"
 import {
   chmodSync,
+  closeSync,
   existsSync,
   fstatSync,
   fsyncSync,
@@ -25,8 +26,10 @@ import {
   atomicAppendFile,
   atomicWriteFile,
   createAtomicWriter,
+  createWorkspaceChildDirectory,
   createWorkspaceDirectory,
   ensurePrivateDirectory,
+  openWorkspaceDirectory,
   prepareDatabaseFile,
   readPrivateFile,
 } from "../../src/kernel/files"
@@ -43,6 +46,20 @@ const fixture = () => {
 }
 afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true })
+})
+
+test.skipIf(process.platform === "win32")("selected folder creation uses the platform native adapter", () => {
+  const { root, outside } = fixture()
+  const fd = openWorkspaceDirectory({ root, path: "" })
+  try {
+    createWorkspaceChildDirectory(fd, "output")
+    expect(statSync(join(root, "output")).isDirectory()).toBe(true)
+    expect(statSync(join(root, "output")).mode & 0o777).toBe(0o700)
+    expect(() => createWorkspaceChildDirectory(fd, "../outside/escape")).toThrow()
+    expect(existsSync(join(outside, "escape"))).toBe(false)
+  } finally {
+    closeSync(fd)
+  }
 })
 
 test("workspace directory creation preserves existing modes and refuses escape links", () => {

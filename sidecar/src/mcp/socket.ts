@@ -2,8 +2,8 @@ import { chmodSync, unlinkSync } from "node:fs"
 import { createServer, type Server, type Socket } from "node:net"
 import { dirname } from "node:path"
 import type { Kernel, ToolRegistration } from "@touri/contracts"
-import { ensurePrivateDirectory } from "../kernel/files"
-import { resolveMcpSocketPath } from "../kernel/paths"
+import { atomicWriteFile, ensurePrivateDirectory, removePrivateFile } from "../kernel/files"
+import { mcpEndpoint, mcpEndpointFile, resolveMcpEndpoint } from "../platform/transport"
 import { MCP_LIMITS, serveMcpConnection } from "./connection"
 
 const unlinkIfPresent = (path: string): void => {
@@ -17,19 +17,23 @@ const unlinkIfPresent = (path: string): void => {
 export const createMcpSocket = ({
   kernel,
   registrations,
+  transport = process.platform === "win32" ? "tcp" : "local",
 }: {
   kernel: Kernel
   registrations: Map<string, ToolRegistration>
+  transport?: "tcp" | "local"
 }) => {
-  const socketPath = resolveMcpSocketPath(kernel.paths)
+  let socketPath = transport === "local" ? resolveMcpEndpoint(kernel.paths) : ""
   const tokenDir = `${kernel.paths.runDir}/mcp-tokens`
   const connections = new Set<Socket>()
   let server: Server | null = null
 
   const listen = async (): Promise<void> => {
-    ensurePrivateDirectory({ root: dirname(socketPath) })
     ensurePrivateDirectory({ root: kernel.paths.appData, path: tokenDir })
-    unlinkIfPresent(socketPath)
+    if (transport === "local") {
+      ensurePrivateDirectory({ root: dirname(socketPath) })
+      unlinkIfPresent(socketPath)
+    }
     const candidate = createServer((socket) => {
       if (connections.size >= MCP_LIMITS.connections) {
         socket.destroy()
@@ -47,12 +51,27 @@ export const createMcpSocket = ({
       }
       const onListening = (): void => {
         candidate.off("error", onError)
-        chmodSync(socketPath, 0o600)
-        resolve()
+        try {
+          if (transport === "tcp") {
+            const address = candidate.address()
+            if (!address || typeof address === "string") throw new Error("MCP loopback bind failed")
+            socketPath = `tcp://127.0.0.1:${address.port}`
+            atomicWriteFile({
+              root: kernel.paths.appData,
+              path: mcpEndpointFile(kernel.paths.runDir),
+              content: JSON.stringify(socketPath),
+            })
+          } else chmodSync(socketPath, 0o600)
+          resolve()
+        } catch (error) {
+          candidate.close()
+          reject(error)
+        }
       }
       candidate.once("error", onError)
       candidate.once("listening", onListening)
-      candidate.listen(socketPath)
+      if (transport === "tcp") candidate.listen(0, "127.0.0.1")
+      else candidate.listen(socketPath)
       candidate.unref()
     })
   }
@@ -70,8 +89,22 @@ export const createMcpSocket = ({
         }
       })
     }
-    unlinkIfPresent(socketPath)
+    if (transport === "local") unlinkIfPresent(socketPath)
+    else {
+      try {
+        if (mcpEndpoint(kernel.paths.runDir, "win32") === socketPath)
+          removePrivateFile({ root: kernel.paths.appData, path: mcpEndpointFile(kernel.paths.runDir) })
+      } catch (error) {
+        if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error
+      }
+    }
   }
 
-  return { listen, close, socketPath }
+  return {
+    listen,
+    close,
+    get socketPath() {
+      return socketPath
+    },
+  }
 }

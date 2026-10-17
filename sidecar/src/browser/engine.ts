@@ -13,6 +13,8 @@ import type {
   ToolResult,
 } from "@touri/contracts"
 import { approveSecretRelease } from "../approvals/secrets"
+import { hostPlatform } from "../platform"
+import * as macos from "../platform/macos"
 import { CHALLENGE_ELEMENT_IDS, classifyBlockedPage, describeBlockedPage } from "./blockedPage"
 import {
   type ChromeLauncher,
@@ -23,7 +25,14 @@ import {
 import { assignLegacyCookies } from "./legacyCookieMigration"
 import { describeNavigationFailure, isChromeErrorPage, isLoadableUrl, networkErrorCode, stripHash } from "./navigation"
 import { withOneTransientRetry } from "./retry"
-import { emptySession, loadBotSession, type SavedCookie, type SavedSession, saveBotSession } from "./sessionVault"
+import {
+  emptySession,
+  loadBotSession,
+  type SavedCookie,
+  type SavedSession,
+  SessionVaultError,
+  saveBotSession,
+} from "./sessionVault"
 import { createBrowserStore, publicTabInfo } from "./store"
 import type {
   BrowserEngine,
@@ -1675,13 +1684,12 @@ export const createBrowserEngine = ({
   }
 
   const focusManagedChrome = async (): Promise<void> => {
-    if (windowConfig.headless || discoverBotId || localBrowser) return
+    if (windowConfig.headless || discoverBotId || localBrowser || hostPlatform !== macos) return
     const env = { ...(await kernel.shellEnv()), ...process.env }
     const cleanEnv: Record<string, string> = {}
     for (const [key, value] of Object.entries(env)) if (value !== undefined) cleanEnv[key] = value
     const front = kernel.spawnTree({
-      cmd: "/usr/bin/osascript",
-      args: ["-e", 'tell application "Google Chrome" to activate'],
+      ...macos.focusChrome,
       cwd: kernel.paths.appData,
       env: cleanEnv,
     })
@@ -1784,9 +1792,10 @@ export const createBrowserEngine = ({
     if (!client) return null
     legacyMigration ??= legacyCookies().catch(() => undefined)
     await legacyMigration
+    // Do not create an empty context that could later replace a locked saved session.
+    const saved = botId === "" ? emptySession() : await loadBotSession(kernel, botId)
     const created = asString(cdpResult(await client.call<unknown>("Target.createBrowserContext", {})).browserContextId)
     if (!created) return null
-    const saved = botId === "" ? emptySession() : await loadBotSession(kernel, botId).catch(() => emptySession())
     savedSessions.set(botId, saved)
     pendingStorage.set(botId, { ...saved.storage })
     contextOwners.set(botId, created)
@@ -1801,9 +1810,9 @@ export const createBrowserEngine = ({
     const key = botId ?? ""
     const existing = browserContexts.get(key)
     if (existing) return existing
-    const created = createContext(key).catch(() => {
+    const created = createContext(key).catch((error) => {
       browserContexts.delete(key)
-      return null
+      throw error
     })
     browserContexts.set(key, created)
     return created
@@ -1985,7 +1994,17 @@ export const createBrowserEngine = ({
       tab.targetId = null
     }
     const wanted = normalizeBrowserUrl(tab.info.url || "about:blank") ?? "about:blank"
-    const contextId = await browserContextFor(tab.info.ownerBotId)
+    let contextId: string | null
+    try {
+      contextId = await browserContextFor(tab.info.ownerBotId)
+    } catch (error) {
+      return failure(
+        "ENGINE_UNAVAILABLE",
+        error instanceof SessionVaultError
+          ? error.message
+          : "O Chrome não conseguiu isolar a sessão do navegador deste bot.",
+      )
+    }
     if (contextId === null)
       return failure("ENGINE_UNAVAILABLE", "O Chrome não conseguiu isolar a sessão do navegador deste bot.")
     const result = cdpResult(

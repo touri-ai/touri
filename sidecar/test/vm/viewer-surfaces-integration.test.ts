@@ -297,9 +297,10 @@ test.skipIf(!appleContainerAvailable)(
       await popout.evaluate(() => (window as unknown as { __touriReveal: () => void }).__touriReveal())
       if (PROOF_DIR) await popout.screenshot({ path: join(PROOF_DIR, "popout.png") })
 
-      // R13-02: Controlar, then a real pointer click and typed keys through the viewer's RFB path.
-      await popout.getByRole("button", { name: "Controlar", exact: true }).click()
-      await popout.getByRole("button", { name: "Parar controle" }).waitFor({ timeout: 30_000 })
+      // R13-02: Take over, then a real pointer click and typed keys through the viewer's RFB path.
+      await popout.getByRole("button", { name: "Assumir controle", exact: true }).click()
+      await popout.getByRole("button", { name: "Devolver ao bot" }).waitFor({ timeout: 30_000 })
+      await browserExpect(popout.getByLabel("Digitar na VM")).toBeEnabled()
       if (PROOF_DIR) await popout.screenshot({ path: join(PROOF_DIR, "takeover-before.png") })
       const clicksBefore = (await guest<number>("window.clicks")) ?? 0
       const canvas = popout.locator(".desktop-canvas canvas")

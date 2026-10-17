@@ -54,7 +54,7 @@ describe("sidecar failure blocking state", () => {
     expect(
       within(alert).getByRole("heading", { name: "Não foi possível conectar aos serviços do touri." }),
     ).toBeVisible()
-    expect(within(alert).getByText(reason)).toBeVisible()
+    expect(within(alert).getByText(reason)).not.toBeVisible()
     expect(within(alert).getByText("O aplicativo e o serviço local usam versões incompatíveis.")).toBeVisible()
     expect(within(alert).getAllByRole("button")).toHaveLength(2)
     expect(within(alert).getByRole("button", { name: /Tentar novamente/ })).toBeVisible()
@@ -64,6 +64,8 @@ describe("sidecar failure blocking state", () => {
     expect(alert).toBeVisible()
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument()
     expect(createApiClient).not.toHaveBeenCalled()
+    fireEvent.click(within(alert).getByText("Detalhes do erro"))
+    expect(within(alert).getByText(reason)).toBeVisible()
   })
 
   it("blocks a loaded workspace on sidecar-failed and asks the shell to restart before recovering", async () => {
@@ -84,7 +86,7 @@ describe("sidecar failure blocking state", () => {
     available = false
     act(() => shell.listeners.get("sidecar-failed")?.({ payload: reason }))
     const alert = await screen.findByRole("alert")
-    expect(within(alert).getByText(reason)).toBeVisible()
+    expect(within(alert).getByText(reason)).not.toBeVisible()
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument()
     fireEvent.click(within(alert).getByRole("button", { name: /Tentar novamente/ }))
     await waitFor(() => expect(invoke).toHaveBeenCalledWith("sidecar_restart", {}))
@@ -92,7 +94,7 @@ describe("sidecar failure blocking state", () => {
     expect(within(alert).getByRole("button", { name: /Tentar novamente/ })).toBeDisabled()
     await act(async () => restart?.())
     await waitFor(() => expect(screen.getByRole("button", { name: /Tentar novamente/ })).toBeEnabled())
-    expect(screen.getByText(reason)).toBeVisible()
+    expect(screen.getByText(reason)).not.toBeVisible()
     available = true
     act(() => shell.listeners.get("sidecar-ready")?.({ payload: endpoint }))
     await screen.findByRole("textbox", { name: "Mensagem para mark" })
@@ -118,7 +120,7 @@ describe("sidecar failure blocking state", () => {
     await waitFor(() => expect(finish).toBeDefined())
     act(() => shell.listeners.get("sidecar-failed")?.({ payload: reason }))
     await act(async () => finish?.())
-    expect(screen.getByText(reason)).toBeVisible()
+    expect(screen.getByText(reason)).not.toBeVisible()
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument()
   })
 
@@ -128,7 +130,7 @@ describe("sidecar failure blocking state", () => {
     })
     render(<App kernel={{ services: { invoke: invoke as TauriInvoke } }} />)
     fireEvent.click(await screen.findByRole("button", { name: /Tentar novamente/ }))
-    expect(await screen.findByText("sidecar supervisor is not ready")).toBeVisible()
+    expect(await screen.findByText("sidecar supervisor is not ready")).not.toBeVisible()
     expect(screen.getByRole("button", { name: /Tentar novamente/ })).toBeEnabled()
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument()
   })
@@ -151,7 +153,7 @@ describe("sidecar failure blocking state", () => {
     render(<App kernel={{ services: { api, invoke: invoke as TauriInvoke } }} />)
     await screen.findByRole("textbox", { name: "Mensagem para mark" })
     act(() => connection?.(false))
-    expect(await screen.findByText(reason)).toBeVisible()
+    expect(await screen.findByText(reason)).not.toBeVisible()
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument()
     act(() => connection?.(true))
     await screen.findByRole("textbox", { name: "Mensagem para mark" })

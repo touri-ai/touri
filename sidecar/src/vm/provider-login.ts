@@ -2,7 +2,7 @@ import type { Database } from "bun:sqlite"
 import { closeSync, constants, fstatSync, openSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 import type { Bot, Kernel } from "@touri/contracts"
-import { openWorkspaceEntry } from "../kernel/files"
+import { openWorkspaceEntry, readBoundedFile } from "../kernel/files"
 import { withDeadline } from "../kernel/policy"
 
 const record = (value: unknown): Record<string, unknown> | null =>
@@ -79,7 +79,7 @@ export const loginTarget = (provider: Bot["provider"]): LoginTarget => {
     return { directory: ".codex", file: "auth.json", label: "Codex", command: "codex login --device-auth" }
   return { directory: ".claude", file: ".credentials.json", label: "Claude", command: "claude setup-token" }
 }
-export type ProviderLoginFailure = "not-found" | "transport" | "invalid"
+export type ProviderLoginFailure = "not-found" | "transport" | "invalid" | "vault-locked"
 export class ProviderLoginError extends Error {
   readonly errorCode = "cli_auth"
   readonly code = "TOURI-E3001"
@@ -91,6 +91,10 @@ export class ProviderLoginError extends Error {
 }
 
 export const readHostLoginFile = (hostHome: string, target: LoginTarget): string => {
+  if (process.platform === "win32") {
+    const root = join(hostHome, target.directory)
+    return readBoundedFile({ root, path: join(root, target.file), maxBytes: 20000 }).toString("utf8")
+  }
   const directory = openSync(
     join(hostHome, target.directory),
     constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
@@ -120,13 +124,18 @@ export const hostLoginFileExists = (hostHome: string, provider: Bot["provider"])
 const notConnectedMessage = (target: LoginTarget): string =>
   `${target.label} ainda não está conectado neste bot. Abra Permissões do bot > Computador > Login do provedor e escolha o arquivo de login do host ou salve um login no cofre (${target.command}).`
 
-const vaultTransportMessage = (target: LoginTarget): string =>
-  `O cofre de segredos não respondeu. Autorize o acesso ao cofre do macOS ou salve um login com ${target.command} nas permissões do bot.`
+const vaultTransportMessage = (): string => "O cofre de segredos não respondeu. Tente novamente."
+
+export const NATIVE_VAULT_GUIDANCE =
+  "O aplicativo não conseguiu acessar o cofre nativo. Desbloqueie o cofre do sistema e tente novamente."
+
+export const SERVER_VAULT_GUIDANCE =
+  "O cofre local do servidor está indisponível. Verifique as permissões da pasta de dados do servidor e reinicie o serviço do touri. O login salvo será mantido."
 
 export const readVault = async (
   kernel: Kernel,
   bot: Pick<Bot, "id" | "provider">,
-  target: LoginTarget,
+  _target: LoginTarget,
   options: { signal?: AbortSignal; timeoutMs?: number },
 ): Promise<string | null> => {
   const stored = await withDeadline({
@@ -135,8 +144,10 @@ export const readVault = async (
     ...(options.signal ? { signal: options.signal } : {}),
   }).catch(() => {
     options.signal?.throwIfAborted()
-    throw new ProviderLoginError(vaultTransportMessage(target), "transport")
+    throw new ProviderLoginError(vaultTransportMessage(), "transport")
   })
+  if (!stored.success && ["VAULT_ACCESS_REQUIRED", "VAULT_TIMEOUT", "VAULT_CANCELLED"].includes(stored.errorCode))
+    throw new ProviderLoginError("Permita o acesso ao cofre para usar o login salvo.", "vault-locked")
   if (!stored.success)
     throw new ProviderLoginError("O cofre de segredos está indisponível. Tente novamente.", "transport")
   return stored.value.value || null

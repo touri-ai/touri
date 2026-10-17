@@ -37,6 +37,11 @@ export const createDoctorCommand =
   (kernel: Pick<Kernel, "spawnTree" | "paths">, environment: Record<string, string>, timeoutMs = 4000): DoctorCommand =>
   async (command, args, signal) => {
     signal.throwIfAborted()
+    if (
+      process.env.TOURI_DOCTOR_SKIP_PROVIDER_PROBES === "1" &&
+      /(?:^|[\\/])(claude|codex|opencode)(?:\.exe)?$/.test(command)
+    )
+      return { code: 127, stdout: "", stderr: "Provider probes disabled", timedOut: false }
     const child = kernel.spawnTree({
       cmd: command,
       args,

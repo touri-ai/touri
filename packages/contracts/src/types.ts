@@ -49,6 +49,8 @@ export type Result<T, C extends string = string> = Ok<T> | Err<C>
 export type DiscoveredProject = { path: AbsolutePath; name: string; lastModified: number }
 
 export type FolderListing = {
+  /** Whether this host can enforce provider folder grants. Browsing alone grants nothing. */
+  canGrant: boolean
   home: AbsolutePath
   path: AbsolutePath
   parent: AbsolutePath | null
@@ -268,6 +270,8 @@ export type Run = {
   routineRunId: Id | null
   queuedAt: EpochMs
   startedAt: EpochMs | null
+  /** Provider invocation, after environment preparation. Absent on older runs. */
+  providerStartedAt?: EpochMs | null
   finishedAt: EpochMs | null
 }
 
@@ -679,9 +683,13 @@ export type ProviderProfile = { name: string; provider: Provider; loggedIn: bool
 
 export type ProviderLoginFlow = {
   provider: Provider
-  state: 'idle' | 'host-available' | 'waiting' | 'ready' | 'cancelled' | 'error'
-  /** Sidecar host, independent of the browser. Sent only when a valid host login can be imported. */
+  state: 'idle' | 'host-available' | 'waiting' | 'ready' | 'cancelled' | 'error' | 'vault-locked'
+  /** Sidecar host, independent of the browser and login state. */
   host?: 'mac' | 'server'
+  /** File/executable check only; never starts a model request. Independent of login state. */
+  executable?: 'available' | 'missing'
+  /** An expired or failed CLI attempt can be started again; vault errors require repair. */
+  retryable?: boolean
   deviceCode?: string
   verificationUrl?: string
   needsCode?: boolean
@@ -713,7 +721,7 @@ export type ApiRoutes = {
   'POST /cloud/bots/:id/wake': { req: {}; res: { machine: MachineState } }
   'PUT /cloud/bots/:id/key': { req: { apiKey: string }; res: {} }
 
-  'GET /health': { req: {}; res: { ok: true; version: string; schemaVersion: number; historyMigration?: { running: boolean; done: number; total: number } } }
+  'GET /health': { req: {}; res: { ok: true; version: string; schemaVersion: number; host?: 'mac' | 'server'; historyMigration?: { running: boolean; done: number; total: number } } }
   'POST /ui/errors': { req: { area: string; message: string; stack: string; componentStack: string }; res: { ok: true } }
   'POST /reports/:id/saved': { req: { destination: 'zip' | 'github' }; res: {} }
   'POST /reports/history': { req: { history: import('./reports').ReportHistory[] }; res: {} }
@@ -742,7 +750,7 @@ export type ApiRoutes = {
       ready: boolean
       source: 'token' | 'file' | 'guest' | 'missing'
       configuredSource?: 'vault' | 'host-file'
-      health?: 'ready' | 'not-found' | 'transport' | 'invalid'
+      health?: 'ready' | 'not-found' | 'transport' | 'invalid' | 'vault-locked'
       message: string
     }
   }
@@ -760,7 +768,8 @@ export type ApiRoutes = {
   'POST /bots/:id/machine/restart': { req: { stopTurns?: boolean }; res: { machine: MachineState } }
   'POST /bots/:id/machine/intent': { req: { intent: MachineIntent; viewerId?: string }; res: { machine: MachineState } }
   'POST /bots/:id/machine/reset': { req: { confirm: true; projectId?: Id | null; stopTurns?: boolean }; res: { machine: MachineState } }
-  'POST /bots/:id/desktop': { req: { control?: boolean; resume?: boolean; preview?: boolean }; res: { sessionId: string; path: string; control: boolean } }
+  'POST /bots/:id/desktop': { req: { control?: boolean; resume?: boolean; preview?: boolean }; res: { sessionId: string; path: string; control: boolean; humanControl?: boolean } }
+  'POST /bots/:id/desktop/return': { req: {}; res: {} }
   'POST /desktop/:id/text': { req: { text: string }; res: {} }
   'DELETE /desktop/:id': { req: {}; res: {} }
   'GET /bots/:id/threads': { req: {}; res: { threads: Array<Thread> } }
@@ -778,9 +787,10 @@ export type ApiRoutes = {
   'GET /search': { req: { q: string; botId?: Id }; res: { hits: Array<{ threadId: Id; messageId: Id; snippet: string }> } }
   'POST /attachments': { req: { grantId: string } | { path: AbsolutePath }; res: { attachment: Attachment } }
   'GET /attachments/:id': { req: {}; res: Blob }
-  'GET /routines': { req: { botId?: Id }; res: { routines: Array<Routine> } }
+  'GET /routines': { req: { botId?: Id }; res: { routines: Array<Routine>; host?: 'mac' | 'server' } }
   'POST /routines': { req: Omit<Routine, 'id' | 'nextRunAt' | 'source' | 'createdAt' | 'updatedAt'>; res: { routine: Routine } }
   'PATCH /routines/:id': { req: Partial<Omit<Routine, 'id' | 'source'>>; res: { routine: Routine } }
+  'DELETE /routines/:id': { req: {}; res: {} }
   'POST /routines/:id/run': { req: {}; res: { routineRun: RoutineRun } }
   'GET /routine-runs': {
     req: { botId?: Id; from?: number; to?: number }
@@ -865,7 +875,9 @@ export type DoctorCheck = {
   fix: string | null
   durationMs?: number
   errorCode?: string
-  action?: 'start-machine-service'
+  action?: 'start-machine-service' | 'authorize-vault'
+  /** Account to authorize in the native app; never contains the secret. */
+  vaultAccount?: string
 }
 export type DoctorReport = { checks: Array<DoctorCheck>; running?: boolean; checkedAt?: EpochMs | null }
 
@@ -898,12 +910,14 @@ export type UiEvent =
   | { type: 'transcript.rejected'; rejection: TranscriptRejection }
   | { type: 'message.updated'; message: Message }
   | { type: 'run.updated'; run: Run }
+  | { type: 'routine.deleted'; routineId: Id }
   | { type: 'routine.updated'; routine: Routine; lastRun: RoutineRun | null }
   | { type: 'process.updated'; spec: ProcessSpec; run: ProcessRunState | null }
   | { type: 'process.log'; processId: Id; lines: Array<string> }
   | { type: 'preview.available'; preview: PreviewTarget }
   | { type: 'browser.tab'; tab: BrowserTabInfo & { ownerBotId: Id | null } }
   | { type: 'browser.secret_requested'; requestId: Id; tabId: Id; origin: string; fieldKinds: Array<'username' | 'password' | 'otp'> }
+  | { type: 'desktop.control'; botId: Id; human: boolean }
   | { type: 'computer.state'; active: boolean; botId: Id | null; grantId: Id | null }
   | { type: 'import.progress'; importId: Id; phase: string; done: number; total: number }
   | { type: 'notification.created'; notification: NotificationRecord }
@@ -976,6 +990,8 @@ export type ScreenshotResult = {
   scale: number
   displayId: number
 }
+
+export type VaultErrorCode = 'VAULT_ACCESS_REQUIRED' | 'VAULT_TIMEOUT' | 'VAULT_CANCELLED' | 'VAULT_UNAVAILABLE'
 
 export type HostMethods = {
   auth: { params: { token: string }; result: { ok: true } }
@@ -1102,7 +1118,7 @@ export type ServiceMap = {
   'groups.runtime': {
     enqueue: ServiceMap['runtime.enqueue']
     cancel: (id: Id) => boolean
-    retry: (id: Id) => ReturnType<ServiceMap['runtime.enqueue']> | null
+    retry: (id: Id) => Result<{ run: Run }, 'THREAD_NOT_FOUND' | 'BOT_PAUSED' | 'CONFLICT'> | null
     listRuns: (threadId: Id) => Array<Run>
     shutdown: () => void
     canCoordinate: (threadId: Id) => boolean
@@ -1129,6 +1145,7 @@ export type ServiceMap = {
   'runtime.shutdown': () => Promise<void>
   'projects.info': (args: { projectId: Id; botId?: Id }) => Promise<ProjectInfo | null>
   'browser.tabsForBot': (args: { botId: Id }) => Array<BrowserTabInfo>
+  'computer.input': ComputerInput
   'computer.isActive': () => { active: boolean; botId: Id | null }
   'notify.emit': (input: NotifyInput) => NotificationRecord
   'runtime.answerApproval': (args: { approvalId: Id; decision: 'approved' | 'denied'; standing?: boolean; message?: string }) => Promise<Result<{}, 'NOT_FOUND'>>
@@ -1156,6 +1173,14 @@ export type VmRuntime = {
   stop: (input: { botId: Id }) => Promise<void>
   destroy: (input: { botId: Id; deleteVolumes?: boolean }) => Promise<void>
   doctor: () => Promise<Array<DoctorCheck>>
+}
+
+export type ComputerInput = {
+  human: (botId: Id) => boolean
+  take: (botId: Id, signal: AbortSignal) => Promise<void>
+  handBack: (botId: Id) => void
+  run: (ctx: ToolContext, operation: (signal: AbortSignal) => Promise<ToolResult>) => Promise<ToolResult>
+  kill: () => void
 }
 
 /** Authenticated, one-use desktop connections; the VM module owns their leases and input policy. */
@@ -1199,7 +1224,7 @@ export type Kernel = {
   subscribe: (listener: (envelope: UiEventEnvelope) => void) => () => void
   registerRoutes: (module: RouteModule) => void
   registerTools: RegisterTools
-  callHost: <M extends keyof HostMethods>(method: M, params: HostMethods[M]['params']) => Promise<Result<{ value: HostMethods[M]['result'] }, 'HOST_UNAVAILABLE' | 'HOST_ERROR'>>
+  callHost: <M extends keyof HostMethods>(method: M, params: HostMethods[M]['params']) => Promise<Result<{ value: HostMethods[M]['result'] }, 'HOST_UNAVAILABLE' | 'HOST_ERROR' | VaultErrorCode>>
   onHostNotification: (listener: (notification: HostNotification) => void) => () => void
   redact: (text: string) => string
   addRedactionValue: (value: string) => void

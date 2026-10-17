@@ -23,8 +23,9 @@
     },
     "listing": {
       "type": "object",
-      "required": ["home", "path", "parent", "folders", "truncated"],
+      "required": ["home", "path", "parent", "folders", "truncated", "canGrant"],
       "properties": {
+        "canGrant": { "type": "boolean" },
         "home": { "type": "string" },
         "path": { "type": "string" },
         "parent": { "type": ["string", "null"] },

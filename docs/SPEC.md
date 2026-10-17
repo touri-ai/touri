@@ -842,7 +842,7 @@ Each imported text gets an FTS row.
 - **Apache-2.0** for the repo, own copyright. All code is original: no code is copied from other agent projects. The importer only reads the legacy app data format. A `NOTICE` file carries the copyright line only.
 - `TRADEMARKS.md`: the "touri" name and logo are not licensed under Apache-2.0.
 - **No third-party chat UI code is copied.** The chat UI is original.
-- **Dependency policy.** Only MIT/Apache/BSD/ISC/OFL dependencies. CI runs a license check (`license-checker` on bun deps, `cargo deny` on Rust).
+- **Dependency policy.** MIT/Apache/BSD/ISC/OFL dependencies, plus the Rust licenses and per-crate exceptions documented in [Rust dependency licenses](licenses/rust-dependencies.md). CI runs a license check (`license-checker` on bun deps, `cargo deny` on Rust). `src-tauri/deny.toml` enforces the Rust allow-list and narrowly scoped MPL-2.0 exceptions.
 
 ### 9.3 Repo structure
 

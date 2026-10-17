@@ -7,6 +7,7 @@ import { createMockApi } from "../src/api/mock"
 import { BotCreateModal } from "../src/components/Modals"
 import { ApiError } from "../src/errors"
 import { getJobTemplates } from "../src/features/jobs/catalog"
+import { t } from "../src/i18n"
 
 afterEach(() => {
   cleanup()
@@ -173,7 +174,7 @@ it("creates from the landing with only a name in two clicks and no technical fie
   fireEvent.click(within(dialog).getByRole("button", { name: "Criar bot" }))
   clicks++
   expect(await screen.findByRole("textbox", { name: "Mensagem para Clara" })).toBeVisible()
-  expect(clicks).toBeLessThanOrEqual(3)
+  expect(clicks).toBe(2)
   const call = api.calls.find((call) => call.route === "POST /bots")
   expect(call?.input).toMatchObject({
     name: "Clara",
@@ -202,7 +203,7 @@ it.each([
   const api = accounts(states)
   const create = vi.fn(async () => undefined)
   render(<BotCreateModal api={api} onClose={vi.fn()} onCreate={create} />)
-  await screen.findByText(`Usa o ${name}, que já está conectado neste Mac.`)
+  await screen.findByText(`Usa o ${name}, conectado neste servidor.`)
   expect(screen.queryByRole("region", { name: "Escolha uma conta" })).toBeNull()
   fireEvent.change(screen.getByLabelText("Nome"), { target: { value: "Clara" } })
   fireEvent.click(screen.getByRole("button", { name: "Criar bot" }))
@@ -308,7 +309,7 @@ it("sets only role and instructions from a job and can clear the choice", async 
   )
 })
 
-it("opens QA Café with the selected notes job and fills its starter prompt without sending", async () => {
+it("opens QA Café with the selected notes job and fills the source-free example without sending", async () => {
   const api = accounts({ codex: "ready" })
   api.getState().bots.splice(0)
   api.getState().threads.splice(0)
@@ -327,10 +328,10 @@ it("opens QA Café with the selected notes job and fills its starter prompt with
     instructions: job.instructions,
   })
   const start = screen.getByRole("region", { name: "Comece uma conversa com QA Café" })
-  const prompt = within(start).getByRole("button", { name: "Organize estas anotações por assunto." })
+  const prompt = within(start).getByRole("button", { name: "Usar exemplo", exact: true })
   expect(within(start).queryByRole("button", { name: /plano de testes|contexto deste projeto/ })).toBeNull()
   fireEvent.click(prompt)
-  expect(composer).toHaveValue("Organize estas anotações por assunto.")
+  expect(composer).toHaveValue(t("onboarding.examplePrompt"))
   expect(api.calls.some((call) => call.route === "POST /threads/:id/messages")).toBe(false)
 })
 

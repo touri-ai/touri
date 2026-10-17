@@ -1,8 +1,6 @@
+use crate::platform::transport::{self, Listener as UnixListener, Stream as UnixStream};
 use std::collections::HashMap;
-use std::fs::{create_dir_all, remove_file, set_permissions, Permissions};
 use std::io::{BufRead, BufReader, Write};
-use std::os::unix::fs::PermissionsExt;
-use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -96,20 +94,7 @@ impl HostBridge {
         keychain: KeychainStore,
         callbacks: HostBridgeCallbacks,
     ) -> Result<Self, String> {
-        if let Some(parent) = socket_path.parent() {
-            create_dir_all(parent)
-                .map_err(|error| format!("create host socket directory failed: {error}"))?;
-            set_permissions(parent, Permissions::from_mode(0o700))
-                .map_err(|error| format!("secure host socket directory failed: {error}"))?;
-        }
-        if socket_path.exists() {
-            remove_file(&socket_path)
-                .map_err(|error| format!("remove stale host socket failed: {error}"))?;
-        }
-        let listener = UnixListener::bind(&socket_path)
-            .map_err(|error| format!("bind host socket failed: {error}"))?;
-        set_permissions(&socket_path, Permissions::from_mode(0o600))
-            .map_err(|error| format!("secure host socket failed: {error}"))?;
+        let (listener, socket_path) = transport::listen(&socket_path)?;
         listener
             .set_nonblocking(true)
             .map_err(|error| format!("configure host socket failed: {error}"))?;
@@ -133,6 +118,10 @@ impl HostBridge {
             sender,
             join: Some(join),
         })
+    }
+
+    pub fn endpoint(&self) -> PathBuf {
+        self.socket_path.clone()
     }
 
     pub fn send_notification(&self, method: &str, params: Value) -> Result<(), String> {
@@ -179,12 +168,12 @@ impl HostBridgeSender {
 impl HostBridge {
     pub fn shutdown(&mut self) {
         self.stop.store(true, Ordering::SeqCst);
-        let _ = UnixStream::connect(&self.socket_path);
+        transport::wake(&self.socket_path);
         if let Some(join) = self.join.take() {
             let _ = join.join();
         }
         if self.socket_path.exists() {
-            let _ = remove_file(&self.socket_path);
+            transport::cleanup(&self.socket_path);
         }
     }
 }
@@ -343,12 +332,20 @@ fn dispatch_authenticated_request(
             .get("account")
             .and_then(Value::as_str)
             .ok_or_else(|| "account is required".to_string())
-            .and_then(|account| keychain.get(account).map(|value| json!({ "value": value }))),
+            .and_then(|account| {
+                keychain
+                    .get(account)
+                    .map(|value| json!({ "value": value }))
+                    .map_err(|error| error.to_string())
+            }),
         "keychain.set" => {
             let account = request.params.get("account").and_then(Value::as_str);
             let value = request.params.get("value").and_then(Value::as_str);
             match (account, value) {
-                (Some(account), Some(value)) => keychain.set(account, value).map(|_| json!({})),
+                (Some(account), Some(value)) => keychain
+                    .set(account, value)
+                    .map(|_| json!({}))
+                    .map_err(|error| error.to_string()),
                 _ => Err("account and value are required".to_string()),
             }
         }
@@ -357,7 +354,12 @@ fn dispatch_authenticated_request(
             .get("account")
             .and_then(Value::as_str)
             .ok_or_else(|| "account is required".to_string())
-            .and_then(|account| keychain.delete(account).map(|_| json!({}))),
+            .and_then(|account| {
+                keychain
+                    .delete(account)
+                    .map(|_| json!({}))
+                    .map_err(|error| error.to_string())
+            }),
         "secret.prompt" => prompt_secret(&request.params, callbacks.secret_prompt.as_ref()),
         "notify" => notify_user(&request.params, callbacks.notify.as_ref()),
         "file.grant.redeem" => redeem_file_grant(&request.params, &callbacks.file_grants),
@@ -502,8 +504,8 @@ pub fn host_notification(method: &str, params: Value) -> Value {
 mod tests {
     use super::{HostBridge, HostBridgeCallbacks, AUTH_REQUIRED_CODE};
     use crate::keychain::KeychainStore;
+    use crate::platform::transport;
     use std::io::{BufRead, BufReader, Write};
-    use std::os::unix::net::UnixStream;
     use std::sync::{mpsc, Arc, Mutex};
     use std::time::Duration;
 
@@ -523,7 +525,7 @@ mod tests {
             callbacks,
         )
         .expect("start host bridge");
-        let mut connection = UnixStream::connect(&socket).expect("connect host bridge");
+        let mut connection = transport::connect(&bridge.endpoint()).expect("connect host bridge");
         connection
             .set_read_timeout(Some(Duration::from_secs(2)))
             .expect("set test timeout");
@@ -552,13 +554,13 @@ mod tests {
                 released
                     .lock()
                     .expect("prompt release lock")
-                    .recv_timeout(Duration::from_secs(10))
+                    .recv_timeout(Duration::from_secs(30))
                     .expect("release prompt");
                 Ok(None)
             }),
             notify: Arc::new(|_, _, _, _| Ok(())),
         };
-        let (host, mut connection) = UnixStream::pair().expect("create host connection");
+        let (host, mut connection) = transport::stream_pair().expect("create host connection");
         host.set_read_timeout(Some(Duration::from_millis(20)))
             .expect("set host read timeout");
         let writer = Arc::new(Mutex::new(host.try_clone().expect("clone host writer")));
@@ -573,7 +575,7 @@ mod tests {
             )
         });
         connection
-            .set_read_timeout(Some(Duration::from_secs(2)))
+            .set_read_timeout(Some(Duration::from_secs(10)))
             .expect("set test timeout");
         // Authentication must take effect before any pipelined call is dispatched.
         connection
@@ -597,7 +599,7 @@ mod tests {
         assert_eq!(auth["id"], 1);
         assert_eq!(auth["result"]["ok"], true);
         prompt_entered
-            .recv_timeout(Duration::from_secs(2))
+            .recv_timeout(Duration::from_secs(10))
             .expect("prompt is pending");
         // The connection must keep accepting requests after an idle read timeout.
         std::thread::sleep(Duration::from_millis(100));

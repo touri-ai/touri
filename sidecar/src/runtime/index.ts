@@ -65,14 +65,15 @@ const routineInput = ({
   timezone: stringField(args, "timezone"),
   enabled,
   continuity: continuityField(args.continuity),
-  resultsThreadId: null,
+  resultsThreadId: typeof args.resultsThreadId === "string" ? args.resultsThreadId : null,
   timeoutMinutes: numberField(args, "timeoutMinutes", 30),
-  overlap: "skip",
-  catchUpMinutes: 30,
+  overlap: overlapField(args.overlap),
+  catchUpMinutes: numberField(args, "catchUpMinutes", 30),
 })
 
 export const init = async (kernel: Kernel): Promise<void> => {
   const engine = createRuntimeEngine({ kernel })
+  await engine.ready
   const groups = createGroupRuntime(kernel, engine)
   kernel.services.provide("groups.runtime", groups)
   const scheduler = createRoutineScheduler({ kernel, engine })
@@ -188,7 +189,10 @@ export const init = async (kernel: Kernel): Promise<void> => {
       {
         method: "GET",
         path: "/routines",
-        handler: async ({ query }) => ({ status: 200, json: { routines: engine.listRoutines(query.botId) } }),
+        handler: async ({ query }) => ({
+          status: 200,
+          json: { routines: engine.listRoutines(query.botId), host: process.platform === "darwin" ? "mac" : "server" },
+        }),
       },
       {
         method: "GET",
@@ -228,6 +232,8 @@ export const init = async (kernel: Kernel): Promise<void> => {
           if (typeof args.timezone === "string") patch.timezone = args.timezone
           if (typeof args.enabled === "boolean") patch.enabled = args.enabled
           if (args.continuity !== undefined) patch.continuity = continuityField(args.continuity)
+          if (args.resultsThreadId === null || typeof args.resultsThreadId === "string")
+            patch.resultsThreadId = args.resultsThreadId
           if (args.timeoutMinutes !== undefined) patch.timeoutMinutes = numberField(args, "timeoutMinutes", 30)
           if (args.overlap !== undefined) patch.overlap = overlapField(args.overlap)
           if (args.catchUpMinutes !== undefined) patch.catchUpMinutes = numberField(args, "catchUpMinutes", 30)
@@ -235,6 +241,14 @@ export const init = async (kernel: Kernel): Promise<void> => {
           return result.success
             ? { status: 200, json: { routine: result.routine } }
             : routeError(result.errorCode, result.error)
+        },
+      },
+      {
+        method: "DELETE",
+        path: "/routines/:id",
+        handler: async ({ params }) => {
+          const result = engine.deleteRoutine(params.id ?? "")
+          return result.success ? { status: 200, json: {} } : routeError(result.errorCode, result.error)
         },
       },
       {

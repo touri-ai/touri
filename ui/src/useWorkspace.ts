@@ -35,6 +35,7 @@ import { userFacingError } from "./errors"
 import { adoptProviderLogin } from "./features/bots/providerLogin"
 import { useDoctorReport } from "./features/doctor/useDoctorReport"
 import { localizeNotice, t } from "./i18n"
+import { localResponseTimings } from "./localResponseTimings"
 import { useMachineParking } from "./machineIntents"
 import { reconcileFailureNotifications } from "./sidebarAttention"
 import { readWorkspaceState, saveWorkspaceState } from "./workspaceState"
@@ -54,6 +55,7 @@ export type WorkspaceData = {
   processes: Array<ProcessEntry>
   previews: Array<PreviewTarget>
   browserTabs: Array<BrowserTabInfo & { ownerBotId: Id | null }>
+  routineHost: "mac" | "server"
   routines: Array<Routine>
   routineRuns: Array<RoutineRun>
   doctor: DoctorReport | null
@@ -88,8 +90,9 @@ export type WorkspaceActions = {
   createBot: (input: ApiRoutes["POST /bots"]["req"], loginDraftId?: string) => Promise<{ loginReady: boolean }>
   toggleRoutine: (routine: Routine) => Promise<void>
   runRoutine: (routineId: Id) => Promise<void>
-  createRoutine: (input: ApiRoutes["POST /routines"]["req"]) => Promise<void>
-  updateRoutine: (routineId: Id, patch: ApiRoutes["PATCH /routines/:id"]["req"]) => Promise<void>
+  createRoutine: (input: ApiRoutes["POST /routines"]["req"]) => Promise<Routine>
+  deleteRoutine: (routineId: Id) => Promise<void>
+  updateRoutine: (routineId: Id, patch: ApiRoutes["PATCH /routines/:id"]["req"]) => Promise<Routine>
   createProject: (input: ApiRoutes["POST /projects"]["req"]) => Promise<Project>
   createProcess: (
     projectId: Id,
@@ -129,6 +132,7 @@ const emptyState = (): WorkspaceData => ({
   processes: [],
   previews: [],
   browserTabs: [],
+  routineHost: "server",
   routines: [],
   routineRuns: [],
   doctor: null,
@@ -153,13 +157,22 @@ const uniqueById = <T extends { id: Id }>(rows: Array<T>): Array<T> => {
   return [...result.values()]
 }
 
-const mergeRunRows = <T extends { id: Id; status: string; finishedAt: number | null }>(
+const mergeRunRows = <
+  T extends { id: Id; status: string; finishedAt: number | null; providerStartedAt?: number | null },
+>(
   current: T[],
   incoming: T[],
 ): T[] => {
   const rows = new Map(current.map((row) => [row.id, row]))
   for (const row of incoming) {
     const previous = rows.get(row.id)
+    // A late acceptance can predate provider invocation.
+    if (
+      previous?.providerStartedAt != null &&
+      row.providerStartedAt == null &&
+      ["queued", "starting"].includes(row.status)
+    )
+      continue
     // A REST response may arrive after the terminal WebSocket event.
     if (
       previous?.finishedAt !== null &&
@@ -489,6 +502,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
           projects: projectResponse.projects,
           previews: previewResponse.previews,
           browserTabs: browserResponse.tabs,
+          routineHost: routinesResponse.host ?? "server",
           routines: uniqueById(routinesResponse.routines),
           routineRuns: uniqueById(routineRunsResponse.routineRuns),
           settings: settingsResponse.settings,
@@ -536,6 +550,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
     // too large or expired. Reloading every conversation on each reconnect kept a slow client behind.
     const unsubscribe = api.subscribe((envelope: UiEventEnvelope) => {
       const event = envelope.event
+      localResponseTimings().observe(event)
       if (event.type === "thread.updated" && event.thread.groupThreadId) {
         privateThreads.current.add(event.thread.id)
         return
@@ -611,6 +626,8 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
           }
         }
         if (event.type === "run.updated") return { ...current, runs: mergeRunRows(current.runs, [event.run]) }
+        if (event.type === "routine.deleted")
+          return { ...current, routines: current.routines.filter((routine) => routine.id !== event.routineId) }
         if (event.type === "routine.updated")
           return {
             ...current,
@@ -850,7 +867,10 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
   const sendMessage = useCallback(
     async (text: string, parentId?: Id | null, attachmentIds: Array<Id> = []): Promise<void> => {
       if (!selectedThread || !text.trim()) return
+      const clientNonce = crypto.randomUUID()
+      localResponseTimings().begin(selectedThread.id, clientNonce)
       const input = {
+        clientNonce,
         threadId: selectedThread.id,
         parentId: parentId === undefined ? selectedThread.activeLeafId : parentId,
         text: text.trim(),
@@ -859,6 +879,8 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
       const response = api.sendMessage
         ? await api.sendMessage(input)
         : await api.request("POST /threads/:id/messages", input, { id: selectedThread.id })
+      localResponseTimings().observe({ type: "message.updated", message: response.message })
+      if (response.run) localResponseTimings().observe({ type: "run.updated", run: response.run })
       setData((current) => ({
         ...current,
         messages: updateMessage(current.messages, response.message),
@@ -969,20 +991,30 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
   )
 
   const createRoutine = useCallback(
-    async (input: ApiRoutes["POST /routines"]["req"]): Promise<void> => {
+    async (input: ApiRoutes["POST /routines"]["req"]): Promise<Routine> => {
       const response = await api.request("POST /routines", input)
       setData((current) => ({ ...current, routines: uniqueById([...current.routines, response.routine]) }))
+      return response.routine
+    },
+    [api],
+  )
+
+  const deleteRoutine = useCallback(
+    async (routineId: Id): Promise<void> => {
+      await api.request("DELETE /routines/:id", {}, { id: routineId })
+      setData((current) => ({ ...current, routines: current.routines.filter((routine) => routine.id !== routineId) }))
     },
     [api],
   )
 
   const updateRoutine = useCallback(
-    async (routineId: Id, patch: ApiRoutes["PATCH /routines/:id"]["req"]): Promise<void> => {
+    async (routineId: Id, patch: ApiRoutes["PATCH /routines/:id"]["req"]): Promise<Routine> => {
       const response = await api.request("PATCH /routines/:id", patch, { id: routineId })
       setData((current) => ({
         ...current,
         routines: current.routines.map((routine) => (routine.id === routineId ? response.routine : routine)),
       }))
+      return response.routine
     },
     [api],
   )
@@ -1230,6 +1262,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
       runRoutine,
       createRoutine,
       updateRoutine,
+      deleteRoutine,
       createProject,
       createProcess,
       startProcess,

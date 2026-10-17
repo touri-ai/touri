@@ -22,13 +22,13 @@ test("A04 source authorizer denies ATTACH, VACUUM INTO, writes and hostile views
   const path = join(root, "source.db")
   const db = new Database(path)
   db.exec(
-    "CREATE TABLE messages(text TEXT); INSERT INTO messages VALUES ('ordinary'); CREATE TABLE thread_state(thread_id TEXT,active_leaf_id TEXT)",
+    "CREATE TABLE messages(text TEXT); INSERT INTO messages VALUES ('ordinary'), (''); CREATE TABLE thread_state(thread_id TEXT,active_leaf_id TEXT)",
   )
   db.close()
   try {
     const snapshot = openLegacySnapshot(path)
     try {
-      expect(snapshot.query("SELECT text FROM messages").all()).toEqual([{ text: "ordinary" }])
+      expect(snapshot.query("SELECT text FROM messages").all()).toEqual([{ text: "ordinary" }, { text: "" }])
       for (const sql of [
         `ATTACH '${join(root, "attached.db")}' AS other`,
         `VACUUM INTO '${join(root, "vacuum.db")}'`,

@@ -1,8 +1,22 @@
 import { createConnection, type Socket } from "node:net"
 import type { HostMethods, HostNotification, Kernel } from "@touri/contracts"
+import { connectionOptions } from "../platform/transport"
 
 type RpcResponse = { id?: number; result?: unknown; error?: { message?: string } }
 type Pending = { resolve: (response: RpcResponse) => void; reject: (error: Error) => void }
+
+type HostErrorCode = "HOST_ERROR" | "VAULT_ACCESS_REQUIRED" | "VAULT_TIMEOUT" | "VAULT_CANCELLED" | "VAULT_UNAVAILABLE"
+const hostErrorCode = (message?: string): HostErrorCode => {
+  switch (message) {
+    case "VAULT_ACCESS_REQUIRED":
+    case "VAULT_TIMEOUT":
+    case "VAULT_CANCELLED":
+    case "VAULT_UNAVAILABLE":
+      return message
+    default:
+      return "HOST_ERROR"
+  }
+}
 
 const record = (value: unknown): Record<string, unknown> | null => {
   if (typeof value !== "object" || value === null) return null
@@ -13,10 +27,12 @@ export const createHostClient = ({
   socketPath,
   token,
   onNotification,
+  requestTimeoutMs = 30_000,
 }: {
   socketPath: string
   token: string
   onNotification: (notification: HostNotification) => void
+  requestTimeoutMs?: number
 }) => {
   let socket: Socket | null = null
   let connecting: Promise<Socket> | null = null
@@ -33,11 +49,15 @@ export const createHostClient = ({
     buffer = ""
   }
 
-  const receive = (chunk: Buffer): void => {
-    buffer += chunk.toString("utf8")
+  const receive = (chunk: string): void => {
+    buffer += chunk
     let newline = buffer.indexOf("\n")
     while (newline >= 0) {
       const line = buffer.slice(0, newline).trim()
+      if (Buffer.byteLength(line) > 1_048_576) {
+        failConnection(new Error("Host bridge frame too large"))
+        return
+      }
       buffer = buffer.slice(newline + 1)
       newline = buffer.indexOf("\n")
       if (!line) continue
@@ -58,6 +78,7 @@ export const createHostClient = ({
         failConnection(new Error("Invalid host bridge JSON-RPC frame"))
       }
     }
+    if (Buffer.byteLength(buffer) > 1_048_576) failConnection(new Error("Host bridge frame too large"))
   }
 
   const request = (method: string, params: unknown): Promise<RpcResponse> =>
@@ -67,15 +88,29 @@ export const createHostClient = ({
         return
       }
       const id = nextId++
-      pending.set(id, { resolve, reject })
+      const timer = setTimeout(() => {
+        pending.delete(id)
+        reject(new Error("Host bridge request timed out"))
+      }, requestTimeoutMs)
+      timer.unref()
+      pending.set(id, {
+        resolve: (response) => {
+          clearTimeout(timer)
+          resolve(response)
+        },
+        reject: (error) => {
+          clearTimeout(timer)
+          reject(error)
+        },
+      })
       socket.write(`${JSON.stringify({ jsonrpc: "2.0", id, method, params })}\n`)
     })
 
   const connect = async (): Promise<Socket> => {
-    if (socket) return socket
     if (connecting) return connecting
+    if (socket) return socket
     connecting = new Promise<Socket>((resolve, reject) => {
-      const candidate = createConnection(socketPath)
+      const candidate = createConnection(connectionOptions(socketPath))
       const fail = (error: Error): void => {
         candidate.destroy()
         failConnection(error)
@@ -84,6 +119,7 @@ export const createHostClient = ({
       candidate.once("error", fail)
       candidate.once("connect", async () => {
         candidate.off("error", fail)
+        candidate.setEncoding("utf8")
         candidate.on("error", (error) => failConnection(error instanceof Error ? error : new Error(String(error))))
         candidate.on("data", receive)
         socket = candidate
@@ -112,7 +148,11 @@ export const createHostClient = ({
       await connect()
       const response = await request(method, params)
       if (response.error)
-        return { success: false, errorCode: "HOST_ERROR", error: response.error.message ?? "Host error" }
+        return {
+          success: false,
+          errorCode: hostErrorCode(response.error.message),
+          error: response.error.message ?? "Host error",
+        }
       return { success: true, value: response.result as HostMethods[typeof method]["result"] }
     } catch (error) {
       return {

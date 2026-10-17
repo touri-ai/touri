@@ -6,7 +6,7 @@ import { createMockApi } from "../src/api/mock"
 import { ConversationStart } from "../src/components/ConversationStart"
 import { getJobTemplates, JOB_GROUP_IDS, jobGroupName, NOT_SURE_JOB_ID } from "../src/features/jobs/catalog"
 import { JobPicker } from "../src/features/jobs/JobPicker"
-import { dictionaries, type Locale } from "../src/i18n"
+import { dictionaries, type Locale, t } from "../src/i18n"
 
 afterEach(cleanup)
 
@@ -39,7 +39,9 @@ it("offers 30 original jobs with stable unique ids and complete copy in both lan
       expect(job.starterPrompts.every((prompt) => prompt.trim().length > 0)).toBe(true)
       expect(job.instructions.split("\n").length).toBeGreaterThanOrEqual(4)
       expect(job.instructions.split("\n").length).toBeLessThanOrEqual(8)
-      expect(job.instructions).toContain("Mac")
+      expect(job.instructions).toContain(
+        locale === "en" ? "computer running touri" : "computador onde o touri está rodando",
+      )
       expect(job.instructions).toContain("CLI")
       expect(job.instructions).toContain(locale === "en" ? "browser" : "navegador")
       expect(job.instructions).toContain(
@@ -58,17 +60,20 @@ it.each([
   ["en", "focused-week", "Help me choose three priorities for this week."],
   ["en", "packing-checklist", "Help me pack for my next trip."],
   ["en", "study-blocks", "Break this subject into short study sessions."],
-] as const)("shows %s prompts for %s even when the bot is named QA Café", (locale, jobId, prompt) => {
-  const bot = createMockApi().getState().bots[0]
-  const job = getJobTemplates(locale).find((job) => job.id === jobId)
-  if (!bot || !job) throw new Error("Missing catalog fixture")
-  const choose = vi.fn()
-  render(<ConversationStart bot={{ ...bot, name: "QA Café", roleLine: job.roleLine }} onChoose={choose} />)
-  expect(screen.getAllByRole("button")).toHaveLength(3)
-  fireEvent.click(screen.getByRole("button", { name: prompt }))
-  expect(choose).toHaveBeenCalledWith(prompt)
-  expect(screen.queryByRole("button", { name: /plano de testes|contexto deste projeto/ })).toBeNull()
-})
+] as const)(
+  "offers a source-free example for %s job %s even when the bot is named QA Café",
+  (locale, jobId, _prompt) => {
+    const bot = createMockApi().getState().bots[0]
+    const job = getJobTemplates(locale).find((job) => job.id === jobId)
+    if (!bot || !job) throw new Error("Missing catalog fixture")
+    const choose = vi.fn()
+    render(<ConversationStart bot={{ ...bot, name: "QA Café", roleLine: job.roleLine }} onChoose={choose} />)
+    expect(screen.getAllByRole("button")).toHaveLength(1)
+    fireEvent.click(screen.getByRole("button", { name: "Usar exemplo" }))
+    expect(choose).toHaveBeenCalledExactlyOnceWith(t("onboarding.examplePrompt"))
+    expect(screen.queryByRole("button", { name: /plano de testes|contexto deste projeto/ })).toBeNull()
+  },
+)
 
 const Picker = ({ locale = "pt-BR" }: { locale?: Locale }) => {
   const [value, setValue] = useState(NOT_SURE_JOB_ID)

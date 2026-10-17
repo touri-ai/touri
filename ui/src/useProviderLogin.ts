@@ -50,7 +50,8 @@ export const useProviderLogin = (
           )
         const result =
           action === "start" || action === "use-host" ? await retryProviderLogin(request, active) : await request()
-        if (active()) setFlow(result)
+        if (!active()) return null
+        setFlow(result)
         return result
       } catch {
         if (active()) setError(t("Não foi possível configurar o login. Tente novamente."))
@@ -95,7 +96,7 @@ export const useProviderLogin = (
         if (requestedRevision === revision.current) {
           setFlow(result)
           setError(null)
-          if (autoStart && !initialized && result.state === "idle") {
+          if (autoStart && !initialized && result.state === "idle" && result.executable !== "missing") {
             initialized = true
             await act("start")
           }
@@ -114,7 +115,15 @@ export const useProviderLogin = (
     }
   }, [api, botId, provider, enabled, autoStart, act])
   useEffect(() => {
-    if (!matches || !enabled || provider === "claude" || flow?.state !== "waiting" || !flow.verificationUrl) return
+    if (
+      !matches ||
+      !enabled ||
+      provider === "claude" ||
+      flow?.host === "server" ||
+      flow?.state !== "waiting" ||
+      !flow.verificationUrl
+    )
+      return
     const pages = openedPages.get(api) ?? new Set<string>()
     openedPages.set(api, pages)
     const key = `${botId}:${provider}`
@@ -130,6 +139,7 @@ export const useProviderLogin = (
     recheck,
     openPage,
     provider,
-    blocked: enabled && (!matches || flow?.state !== "ready"),
+    botId,
+    blocked: enabled && (!matches || flow?.state !== "ready" || flow.executable === "missing"),
   }
 }

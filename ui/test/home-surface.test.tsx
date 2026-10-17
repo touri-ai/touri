@@ -50,7 +50,7 @@ it("limits primary navigation to the bot list and Advanced, with chat and compos
   ])
   expect(within(sidebar).queryAllByRole("tab")).toHaveLength(0)
   expect(document.querySelector(".bot-panel")).toBeNull()
-  for (const name of ["Cron", "MCP", "Integrações", "Projetos", "Importar", "Verificar este Mac", "Rotinas"])
+  for (const name of ["Cron", "MCP", "Integrações", "Projetos", "Importar", "Verificar servidor", "Rotinas"])
     expect(within(sidebar).queryByRole("button", { name, exact: true })).toBeNull()
   expect(sidebar.querySelectorAll("[data-bot-entry]")).toHaveLength(3)
   const advanced = within(sidebar).getByRole("button", { name: "Avançado", exact: true })
@@ -77,13 +77,15 @@ it("shows one primary hire action and quiet secondary actions, even when checks 
     within(landing)
       .getAllByRole("button")
       .map((button) => button.textContent),
-  ).toEqual(["Criar meu primeiro bot→", "Importar", "Verificar este Mac"])
-  expect(landing).toHaveTextContent("Seus bots trabalham no seu Mac, com as suas contas. Nada sai daqui.")
+  ).toEqual(["Criar meu primeiro bot→", "Importar", "Verificar servidor"])
+  expect(landing).toHaveTextContent(
+    "O histórico fica neste servidor. Sua IA recebe o conteúdo necessário para responder. O touri não coleta telemetria.",
+  )
   expect(landing).toHaveTextContent("Já usa outra ferramenta?")
   expect(landing).not.toHaveTextContent(/Prontas|Avisos|Falhas|\d/)
   expect(dictionaries.en["Create my first bot"]).toBe("Create my first bot")
-  expect(dictionaries.en["Your bots work on your Mac, with your accounts. Nothing leaves here."]).toBe(
-    "Your bots work on your Mac, with your accounts. Nothing leaves here.",
+  expect(dictionaries.en["onboarding.privacy"]).toBe(
+    "History stays on this {host}. Your AI receives the content needed to respond. touri collects no telemetry.",
   )
 })
 
@@ -93,9 +95,8 @@ it("opens the full routines screen from the bot's Advanced settings", async () =
   showBotSettings()
   fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Avançado" }))
   fireEvent.click(within(screen.getByRole("dialog")).getByRole("tab", { name: "Rotinas" }))
-  fireEvent.click(screen.getByRole("button", { name: "Gerenciar rotinas" }))
   expect(await screen.findByRole("heading", { name: "Rotinas" })).toBeVisible()
-  expect(screen.queryByRole("dialog")).toBeNull()
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
   expect(
     within(screen.getByRole("group", { name: "Filtros de rotinas" })).getByRole("button", {
       name: "mark",

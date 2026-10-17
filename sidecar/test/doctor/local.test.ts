@@ -1,8 +1,9 @@
 import { expect, test } from "bun:test"
-import { mkdtempSync, rmSync } from "node:fs"
+import { mkdtempSync, readFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { DoctorCheck, Kernel } from "@touri/contracts"
+import { botSessionPath, saveBotSession } from "../../src/browser/sessionVault"
 import { type CommandResult, createDoctorCommand, type DoctorCommand } from "../../src/doctor/command"
 import {
   collectLocalChecks,
@@ -16,6 +17,7 @@ import { createKernel } from "../../src/kernel"
 import { SCHEMA_VERSION } from "../../src/kernel/db"
 import { createAppPaths } from "../../src/kernel/paths"
 import { BOT_IMAGE } from "../../src/vm/image"
+import { providerLoginSourceKey } from "../../src/vm/provider-login"
 
 const signal = (): AbortSignal => new AbortController().signal
 const output = (stdout = "", code = 0, stderr = "", timedOut = false): CommandResult => ({
@@ -73,6 +75,94 @@ const find = (checks: Array<DoctorCheck>, id: string): DoctorCheck => {
   if (!item) throw new Error(`missing check ${id}`)
   return item
 }
+
+for (const host of [
+  { platform: "darwin", headless: false },
+  { platform: "linux", headless: true },
+  { platform: "linux", headless: false },
+  { platform: "darwin", headless: true },
+])
+  test(`${host.platform} headless=${host.headless}: Doctor offers only recovery available on its host`, async () => {
+    const f = fixture()
+    try {
+      const db = f.kernel.db as import("bun:sqlite").Database
+      db.run(
+        "INSERT INTO bots (id,name,provider,home_dir,machine,vm_provider_login,created_at,updated_at) VALUES ('saved','Bot de teste','codex',?,'vm',1,1,1)",
+        [f.kernel.paths.appData],
+      )
+      db.run("INSERT INTO settings VALUES (?, '\"vault\"', 1)", [
+        providerLoginSourceKey({ id: "saved", provider: "codex" }),
+      ])
+      const keys = new Map<string, string>()
+      const working: Kernel = {
+        ...f.kernel,
+        callHost: (async (method: string, input: { account: string; value?: string }) => {
+          if (method === "keychain.set") keys.set(input.account, input.value ?? "")
+          return { success: true, value: { value: keys.get(input.account) ?? null } }
+        }) as Kernel["callHost"],
+      }
+      expect(
+        await saveBotSession({
+          kernel: working,
+          botId: "saved",
+          session: { cookies: [{ name: "synthetic" }], storage: {} },
+        }),
+      ).toBe(true)
+      const path = botSessionPath(f.kernel, "saved")
+      const ciphertext = readFileSync(path)
+      const denied: Kernel = {
+        ...f.kernel,
+        callHost: async () => ({ success: false, errorCode: "VAULT_TIMEOUT", error: "synthetic failure" }),
+      }
+      const checks = await collectLocalChecks(
+        denied,
+        { PATH: "/login/shell/bin", HOME: f.kernel.paths.appData },
+        command,
+        signal(),
+        { ...probes, ...host },
+      )
+      const login = find(checks, "provider-login:saved")
+      const browser = find(checks, "browser-session:saved")
+      expect(login.status).toBe("fail")
+      if (host.platform === "darwin" && !host.headless) {
+        expect(login).toMatchObject({ action: "authorize-vault", vaultAccount: "bot/saved/codex-vm-login" })
+        expect(browser).toMatchObject({ action: "authorize-vault", vaultAccount: "browser-session-key:saved" })
+      } else if (!host.headless) {
+        expect(login.action).toBeUndefined()
+        expect(login.vaultAccount).toBeUndefined()
+        expect(login.detail).toContain("cofre nativo")
+        expect(login.detail).not.toContain("cofre local do servidor")
+        expect(login.fix).toBeNull()
+        expect(find(checks, "keychain").fix).toBeNull()
+        expect(browser.action).toBeUndefined()
+        expect(browser.vaultAccount).toBeUndefined()
+        expect(browser.detail).toContain("cofre nativo")
+        expect(browser.detail).not.toContain("cofre local do servidor")
+      } else {
+        expect(login.action).toBeUndefined()
+        expect(login.vaultAccount).toBeUndefined()
+        expect(login.detail).toContain("cofre local do servidor")
+        expect(login.detail).not.toMatch(/macOS|Permita o acesso/)
+        expect(login.fix).toBeNull()
+        expect(find(checks, "keychain").fix).toBeNull()
+        expect(browser.action).toBeUndefined()
+        expect(browser.vaultAccount).toBeUndefined()
+        expect(browser.detail).toContain("cofre local do servidor")
+      }
+      expect(readFileSync(path)).toEqual(ciphertext)
+      const recovered = await collectLocalChecks(
+        working,
+        { PATH: "/login/shell/bin", HOME: f.kernel.paths.appData },
+        command,
+        signal(),
+        { ...probes, ...host },
+      )
+      expect(find(recovered, "browser-session:saved")).toMatchObject({ status: "pass" })
+      expect(readFileSync(path)).toEqual(ciphertext)
+    } finally {
+      f.close()
+    }
+  })
 
 test("local checks use login-shell PATH, status-only CLI commands, and the native Keychain bridge", async () => {
   const f = fixture()
@@ -342,10 +432,10 @@ test("missing image provides a build command pointing to prepared original sourc
   }
 })
 
-test("unsupported hosts warn without touching container commands or native Keychain", async () => {
+test("unsupported Apple hosts warn without touching container commands or native Keychain", async () => {
   const f = fixture()
   try {
-    for (const host of [{ platform: "linux" }, { arch: "x64" }, { osRelease: "24.0.0" }, { headless: true }]) {
+    for (const host of [{ arch: "x64" }, { osRelease: "24.0.0" }, { headless: true }]) {
       const calls: Array<string> = []
       const checks = await collectLocalChecks(
         f.kernel,
@@ -359,7 +449,7 @@ test("unsupported hosts warn without touching container commands or native Keych
       )
       expect(find(checks, "container").status).toBe("warn")
       expect(calls.some((item) => item.endsWith("container"))).toBe(false)
-      if (host.platform === "linux" || host.headless) expect(find(checks, "keychain").status).toBe("warn")
+      if ("headless" in host && host.headless) expect(find(checks, "keychain").status).toBe("warn")
     }
   } finally {
     f.close()
@@ -534,3 +624,47 @@ test("a failed output stream cancels its sibling instead of leaving a pending re
   expect(result).toEqual({ code: null, stdout: "", stderr: "", timedOut: false })
   expect(canceled).toBe(true)
 })
+
+for (const platform of ["linux", "win32"])
+  test(`${platform} doctor uses OCI and native secret store checks`, async () => {
+    const f = fixture()
+    const calls: Array<{ binary: string; args: string[] }> = []
+    try {
+      const checks = await collectLocalChecks(
+        f.kernel,
+        { PATH: "/login/shell/bin" },
+        async (binary, args, abort) => {
+          calls.push({ binary, args })
+          if (platform === "win32" && args[0] === "info")
+            return {
+              code: 0,
+              stdout: JSON.stringify({
+                OSType: "linux",
+                OperatingSystem: "Docker Desktop",
+                KernelVersion: "fixture-WSL2",
+              }),
+              stderr: "",
+              timedOut: false,
+            }
+          if (platform === "win32" && args[0] === "context")
+            return {
+              code: 0,
+              stdout: JSON.stringify("npipe:////./pipe/dockerDesktopLinuxEngine"),
+              stderr: "",
+              timedOut: false,
+            }
+          return command(binary, args, abort)
+        },
+        signal(),
+        { ...probes, platform },
+      )
+      expect(find(checks, "vm-system").status).toBe("pass")
+      expect(find(checks, "keychain").status).toBe("pass")
+      expect(calls.some((c) => c.binary.endsWith("container"))).toBe(false)
+      expect(calls.some((c) => c.args[0] === "info")).toBe(true)
+      expect(JSON.stringify(checks)).not.toContain("brew install")
+      expect(JSON.stringify(checks)).not.toContain("Apple Silicon")
+    } finally {
+      f.close()
+    }
+  })

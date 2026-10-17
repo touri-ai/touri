@@ -113,7 +113,7 @@ test("A13b: activity ink follows state with a static reduced-motion equivalent",
   const view = render(<ActivityMark state="working-tool" parts={[tool]} />)
   expect(view.container.querySelector(".activity-mark")).toHaveAttribute("data-reduced-motion", "true")
   view.rerender(<ActivityMark state="waiting-approval" />)
-  expect(screen.getByRole("status")).toHaveTextContent("Aguardando você")
+  expect(screen.getByRole("status")).toHaveTextContent("Preciso da sua autorização.")
 })
 
 test("A14: tool insertion and native disclosure share reveal without restarting on deltas", async () => {

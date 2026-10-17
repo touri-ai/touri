@@ -30,6 +30,7 @@ export const BotPanel = ({
   onWindow,
   onClose,
   onSettings,
+  onRoutines,
   onModel,
   onPermissions,
   onRole,
@@ -59,6 +60,7 @@ export const BotPanel = ({
   onWindow: () => Promise<void>
   onClose: () => void
   onSettings: () => void
+  onRoutines: () => void
   onModel?: () => void
   onPermissions: () => void
   onRole: (roleLine: string | null) => Promise<void>
@@ -261,7 +263,7 @@ export const BotPanel = ({
                   <PanelIcon name="clock" />
                   <strong>{t("No scheduled routines")}</strong>
                   <p>{t("Set a routine for recurring tasks.")}</p>
-                  <button className="button button-quiet" type="button" onClick={onSettings}>
+                  <button className="button button-quiet" type="button" onClick={onRoutines}>
                     {t("Configure routines")}
                   </button>
                 </div>
@@ -284,6 +286,8 @@ export const BotPanel = ({
             onExpand={onExpand}
             onWindow={onWindow}
             onPermissions={onPermissions}
+            onChat={onClose}
+            onFiles={() => setTab("library")}
           />
         )}
       </div>

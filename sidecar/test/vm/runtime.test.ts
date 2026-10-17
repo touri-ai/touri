@@ -892,7 +892,7 @@ test("VM engine resumes the turn once when the bot computer stops mid-turn", asy
     scenario,
     JSON.stringify({
       requestLogPath: requests,
-      events: [{ type: "delta", delta: "parcial." }, { type: "sleep" }],
+      events: [{ type: "delta", delta: "parcial\n" }, { type: "sleep" }],
       slowMs: 1000,
     }),
   )
@@ -929,9 +929,9 @@ test("VM engine resumes the turn once when the bot computer stops mid-turn", asy
     if (!request.success) throw new Error(request.error)
     const started = engine.enqueue({ threadId, requestMessageId: request.message.id, trigger: "user" })
     if (!started.success) throw new Error(started.error)
-    for (let i = 0; i < 400 && !store.activePath({ threadId }).some((message) => message.text === "parcial."); i++)
+    for (let i = 0; i < 400 && !store.activePath({ threadId }).some((message) => message.text === "parcial\n"); i++)
       await Bun.sleep(5)
-    writeFileSync(scenario, JSON.stringify({ requestLogPath: requests, deltas: ["retomado."] }))
+    writeFileSync(scenario, JSON.stringify({ requestLogPath: requests, deltas: ["retomado\n"] }))
     // The container stops outside touri (host sleep, crash, OOM): its processes die without a result.
     const startsBefore = f.fake.calls.filter((call) => call.action === "start").length
     for (const id of f.fake.machines.keys()) f.fake.machines.set(id, "stopped")
@@ -950,9 +950,9 @@ test("VM engine resumes the turn once when the bot computer stops mid-turn", asy
     ).toEqual([{ previous_run_id: started.run.id, reason: "provider_crash" }])
     expect(store.activePath({ threadId }).map((message) => message.text)).toEqual([
       "Gere o relatório",
-      "parcial.",
+      "parcial\n",
       "Retomado após falha do provedor",
-      "retomado.",
+      "retomado\n",
     ])
     const sessions = readFileSync(requests, "utf8")
       .trim()
@@ -967,8 +967,8 @@ test("VM engine resumes the turn once when the bot computer stops mid-turn", asy
 })
 
 const waitForTerminal = async (run: { status: string }) => {
-  for (let attempt = 0; attempt < 200 && !["failed", "canceled", "succeeded"].includes(run.status); attempt++)
-    await Bun.sleep(5)
+  const deadline = Date.now() + 10_000
+  while (!["failed", "canceled", "succeeded"].includes(run.status) && Date.now() < deadline) await Bun.sleep(10)
   expect(["failed", "canceled", "succeeded"]).toContain(run.status)
 }
 
@@ -1020,7 +1020,8 @@ test.each(["status", "image", "start", "ready"])(
       publish(event)
     }
     const scenario = join(f.root, "scenario.json")
-    writeFileSync(scenario, JSON.stringify({ deltas: ["Pronto."] }))
+    // Terminate the fixture so a random transient-secret prefix cannot mask its last byte.
+    writeFileSync(scenario, JSON.stringify({ deltas: ["Pronto\n"] }))
     const spawn = f.fake.provider.spawn
     const guests: Array<Promise<unknown>> = []
     let providerStarts = 0
@@ -1052,7 +1053,7 @@ test.each(["status", "image", "start", "ready"])(
       expect(engine.listRuns(run.threadId)).toHaveLength(1)
       expect(f.vm.service.states()[0]).toMatchObject({ status: "running", error: null, errorCode: null })
       expect(states).not.toContain("error")
-      expect(store.activePath({ threadId: run.threadId }).at(-1)?.text).toBe("Pronto.")
+      expect(store.activePath({ threadId: run.threadId }).at(-1)?.text).toBe("Pronto\n")
     } finally {
       await engine.shutdown()
       await Promise.all(guests)
@@ -1527,7 +1528,7 @@ test("Claude unanswered credential handoff returns an actionable login error and
   f.runtime.kernel.callHost = (() => new Promise(() => {})) as Kernel["callHost"]
   await expect(
     f.vm.service.prepareTurn({ botId: bot.id, threadId: bot.mainThreadId ?? "thread", token: "mcp" }),
-  ).rejects.toThrow("claude setup-token")
+  ).rejects.toThrow("O cofre de segredos não respondeu. Tente novamente.")
   expect(f.vm.service.states()[0]?.errorCode).toBe("TOURI-E3001")
   f.runtime.kernel.callHost = (async () => ({
     success: true,
@@ -2497,3 +2498,82 @@ test("a delayed vault read uses the same five-second allowance as chat and reach
   expect(prepared.env.CLAUDE_CODE_OAUTH_TOKEN).toBe("sk-ant-oat01-synthetic-delayed-token")
   await prepared.release()
 }, 10000)
+
+test("VM automatic input waits for explicit handback and kill prevents any further guest injection", async () => {
+  const f = await fixture()
+  const bot = await f.bot({ computerUse: true })
+  await initComputer(f.runtime.kernel)
+  const gate = f.runtime.kernel.services.use("computer.input")
+  if (!gate) throw new Error("Missing input owner")
+  const ctx = {
+    botId: bot.id,
+    threadId: bot.mainThreadId ?? "",
+    runId: null,
+    projectId: null,
+    cwd: "/workspace",
+    signal: new AbortController().signal,
+  }
+  const spawn = f.fake.provider.spawn
+  f.fake.provider.spawn = (input) => {
+    const child = spawn(input)
+    return child.success
+      ? {
+          ...child,
+          stdout: new Response(JSON.stringify({ data: "cG5n", scale: 1 })).body as ReadableStream<Uint8Array>,
+        }
+      : child
+  }
+  await gate.take(bot.id, ctx.signal)
+  const pending = f.vm.service.computer({ ctx, name: "computer_type", args: { text: "next" } })
+  await Bun.sleep(10)
+  expect(f.fake.calls.filter((call) => call.action === "spawn")).toHaveLength(0)
+  gate.handBack(bot.id)
+  expect(await pending).toMatchObject({ success: false, errorCode: "COMPUTER_NO_SCREENSHOT" })
+  const injections = () =>
+    f.fake.calls.filter((call) => call.action === "spawn" && JSON.stringify(call.input).includes("computer.py"))
+  expect(injections()).toHaveLength(0)
+  expect((await f.vm.service.computer({ ctx, name: "computer_screenshot", args: {} })).success).toBe(true)
+  expect((await f.vm.service.computer({ ctx, name: "computer_type", args: { text: "next" } })).success).toBe(true)
+  expect(injections()).toHaveLength(2)
+  gate.kill()
+  expect((await f.vm.service.computer({ ctx, name: "computer_type", args: { text: "again" } })).success).toBe(false)
+  expect(injections()).toHaveLength(2)
+})
+
+test("queued VM input rechecks read-only access before guest injection", async () => {
+  const f = await fixture()
+  const bot = await f.bot({ computerUse: true })
+  await initComputer(f.runtime.kernel)
+  const gate = f.runtime.kernel.services.use("computer.input")
+  if (!gate) throw new Error("Missing input owner")
+  const ctx = {
+    botId: bot.id,
+    threadId: bot.mainThreadId ?? "",
+    runId: null,
+    projectId: null,
+    cwd: "/workspace",
+    signal: new AbortController().signal,
+  }
+  const spawn = f.fake.provider.spawn
+  f.fake.provider.spawn = (input) => {
+    const child = spawn(input)
+    return child.success
+      ? { ...child, stdout: new Response(JSON.stringify({ scale: 1 })).body as ReadableStream<Uint8Array> }
+      : child
+  }
+  let finish = () => {}
+  const active = gate.run(ctx, async () => {
+    await new Promise<void>((resolve) => {
+      finish = resolve
+    })
+    return { success: true, content: [] }
+  })
+  const pending = f.vm.service.computer({ ctx, name: "computer_type", args: { text: "queued" } })
+  expect((await f.request(`/bots/${bot.id}`, { access: "read-only" }, "PATCH")).status).toBe(200)
+  finish()
+  await active
+  expect(await pending).toMatchObject({ success: false, errorCode: "DENIED" })
+  expect(
+    f.fake.calls.filter((call) => call.action === "spawn" && JSON.stringify(call.input).includes("computer.py")),
+  ).toHaveLength(0)
+})

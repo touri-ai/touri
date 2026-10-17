@@ -1,0 +1,36 @@
+[graph]
+# Match the shipping macOS app and its CI runner.
+# Linux release-audit blockers are tracked in touri-ai/touri#154.
+targets = ["aarch64-apple-darwin"]
+
+[advisories]
+# cargo-deny always rejects known vulnerabilities; do not weaken that gate.
+unmaintained = "all"
+unsound = "all"
+yanked = "deny"
+ignore = []
+
+[licenses]
+# Selected from the actual macOS dependency tree, including build dependencies.
+# Unicode-3.0: ICU/unicode-ident; Zlib: foldhash/zlib-rs.
+allow = ["Apache-2.0", "BSD-3-Clause", "ISC", "MIT", "Unicode-3.0", "Zlib"]
+# Existing MPL distribution precedent: THIRD_PARTY_NOTICES and
+# docs/licenses/novnc-MPL-2.0.txt. Keep these unmodified dependencies under MPL,
+# retain their notices and provide corresponding source when distributing.
+# Keep file-level copyleft exceptions scoped to the crates that require them.
+exceptions = [
+    { crate = "cssparser", allow = ["MPL-2.0"] },
+    { crate = "cssparser-macros", allow = ["MPL-2.0"] },
+    { crate = "dtoa-short", allow = ["MPL-2.0"] },
+    { crate = "option-ext", allow = ["MPL-2.0"] },
+    { crate = "selectors", allow = ["MPL-2.0"] },
+]
+
+[bans]
+multiple-versions = "warn"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []

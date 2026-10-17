@@ -37,30 +37,54 @@ export const mcpPresets: McpPreset[] = [
 export const McpCatalog = ({
   onSelect,
   disabled = false,
+  technical = false,
+  onAttach,
+  onFolder,
 }: {
+  technical?: boolean
+  onAttach?: (() => void) | undefined
+  onFolder?: (() => void) | undefined
   onSelect?: (server: McpServer) => void
   disabled?: boolean
 }) => (
   <section className="mcp-catalog" aria-label={t("Catálogo de integrações MCP")}>
     <h3>{t("Conectar uma integração")}</h3>
     <p>{t("Escolha o que seu bot poderá fazer. A conexão vale somente para este bot.")}</p>
-    {mcpPresets.map((preset) => (
-      <article key={preset.server.name}>
-        <h4>{preset.title}</h4>
-        <p>{preset.description}</p>
-        <strong>{t("O que você precisa")}</strong>
-        <p>{preset.guidance}</p>
-        {onSelect && (
-          <button
-            type="button"
-            className="button button-quiet"
-            disabled={disabled}
-            onClick={() => onSelect(preset.server)}
-          >
-            {t("Conectar")}
-          </button>
-        )}
-      </article>
-    ))}
+    {!technical && (
+      <>
+        <p>{t("A conexão direta com esta fonte ainda não está disponível. Exporte um CSV para começar.")}</p>
+        <div className="connect-data-actions">
+          {onAttach && (
+            <button type="button" className="button button-quiet" disabled={disabled} onClick={onAttach}>
+              {t("Anexar CSV")}
+            </button>
+          )}
+          {onFolder && (
+            <button type="button" className="button button-quiet" disabled={disabled} onClick={onFolder}>
+              {"__TAURI_INTERNALS__" in window ? t("Escolher pasta") : t("Escolher pasta do servidor")}
+            </button>
+          )}
+        </div>
+      </>
+    )}
+    {technical &&
+      mcpPresets.map((preset) => (
+        <article key={preset.server.name}>
+          <h4>{preset.title}</h4>
+          <p>{preset.description}</p>
+          <strong>{t("O que você precisa")}</strong>
+          <p>{preset.guidance}</p>
+          {onSelect && (
+            <button
+              type="button"
+              className="button button-quiet"
+              disabled={disabled}
+              onClick={() => onSelect(preset.server)}
+            >
+              {t("Conectar")}
+            </button>
+          )}
+        </article>
+      ))}
   </section>
 )

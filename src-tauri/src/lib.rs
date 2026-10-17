@@ -8,8 +8,10 @@ mod i18n;
 pub mod keychain;
 mod notification_permission;
 mod notifications;
+pub mod platform;
 pub mod power;
 pub mod preview;
+pub mod provider_login_pty;
 mod reports;
 pub mod secret_card;
 pub mod sidecar;
@@ -21,7 +23,6 @@ pub mod deep_link;
 mod deep_link_target;
 mod tray;
 
-use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -180,20 +181,7 @@ fn computer_kill_switch(
 
 #[tauri::command]
 fn permissions_open_settings(permission: String) -> Result<(), String> {
-    let url = match permission.as_str() {
-        "accessibility" => {
-            "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
-        }
-        "screen-recording" => {
-            "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"
-        }
-        _ => return Err("unknown permission".to_string()),
-    };
-    Command::new("open")
-        .arg(url)
-        .spawn()
-        .map(|_| ())
-        .map_err(|error| format!("open permission settings failed: {error}"))
+    platform::permission_settings(&permission)
 }
 
 #[tauri::command]
@@ -203,7 +191,55 @@ fn permissions_request(permission: String) -> Result<computer::PermissionsReques
 
 #[tauri::command]
 fn secret_save(state: State<'_, AppState>, account: String, value: String) -> Result<(), String> {
-    state.keychain.set(&account, &value)
+    state
+        .keychain
+        .set(&account, &value)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+async fn vault_authorize(
+    app: AppHandle<Wry>,
+    state: State<'_, AppState>,
+    account: String,
+) -> Result<(), keychain::KeychainError> {
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = app;
+        state.keychain.authorize(&account)
+    }
+    #[cfg(target_os = "macos")]
+    {
+        // Focus the actual app before Security.framework asks the system to authorize.
+        let (sender, receiver) = std::sync::mpsc::sync_channel(1);
+        let foreground = app.clone();
+        app.run_on_main_thread(move || {
+            let result = (|| {
+                foreground
+                    .show()
+                    .map_err(|_| keychain::KeychainError::VaultUnavailable)?;
+                let window = foreground
+                    .get_window("main")
+                    .ok_or(keychain::KeychainError::VaultUnavailable)?;
+                window
+                    .unminimize()
+                    .and_then(|_| window.show())
+                    .and_then(|_| window.set_focus())
+                    .map_err(|_| keychain::KeychainError::VaultUnavailable)
+            })();
+            let _ = sender.send(result);
+        })
+        .map_err(|_| keychain::KeychainError::VaultUnavailable)?;
+        let store = state.keychain.clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            receiver
+                .recv_timeout(std::time::Duration::from_secs(2))
+                .map_err(|_| keychain::KeychainError::VaultTimeout)??;
+            store.authorize(&account)
+        })
+        .await
+        .map_err(|_| keychain::KeychainError::VaultUnavailable)?
+    }
 }
 
 #[tauri::command]
@@ -219,12 +255,7 @@ fn pick_folder(app: AppHandle<Wry>, title: String) -> Option<String> {
 
 #[tauri::command]
 fn reveal_in_finder(path: String) -> Result<(), String> {
-    Command::new("open")
-        .arg("-R")
-        .arg(path)
-        .spawn()
-        .map(|_| ())
-        .map_err(|error| format!("reveal in Finder failed: {error}"))
+    platform::reveal(&path)
 }
 
 #[tauri::command]
@@ -408,9 +439,9 @@ pub fn run() {
                 }
             });
             app.set_menu(menu)?;
-            #[cfg(target_os = "macos")]
-            window_config::observe_display_changes(app.handle());
-            let launch = SidecarLaunch::from_app(app.handle()).map_err(std::io::Error::other)?;
+            platform::observe_display_changes(app.handle());
+            let mut launch =
+                SidecarLaunch::from_app(app.handle()).map_err(std::io::Error::other)?;
             let keychain = app.state::<AppState>().keychain.clone();
             let file_grants = Arc::clone(&app.state::<AppState>().file_grants);
             let card_manager = app.state::<SecretCardManager>().inner().clone();
@@ -450,25 +481,28 @@ pub fn run() {
                 callbacks,
             )
             .map_err(std::io::Error::other)?;
+            launch.host_socket = bridge.endpoint();
             let supervisor = SidecarSupervisor::start(app.handle().clone(), launch)
                 .map_err(std::io::Error::other)?;
             computer::install(app.handle());
             let hotkey_bridge = bridge.clone_for_tray();
-            app.global_shortcut()
-                .on_shortcut(
-                    "Control+Alt+Command+Period",
-                    move |app, _shortcut, event| {
-                        if event.state == ShortcutState::Pressed {
-                            computer::kill();
-                            let _ = app.emit("computer-kill-switch", ());
-                            let _ = hotkey_bridge.send_notification(
-                                "computer.killSwitch",
-                                json!({ "at": now_ms() }),
-                            );
-                        }
-                    },
-                )
-                .map_err(std::io::Error::other)?;
+            if platform::HOST_COMPUTER {
+                app.global_shortcut()
+                    .on_shortcut(
+                        "Control+Alt+Command+Period",
+                        move |app, _shortcut, event| {
+                            if event.state == ShortcutState::Pressed {
+                                computer::kill();
+                                let _ = app.emit("computer-kill-switch", ());
+                                let _ = hotkey_bridge.send_notification(
+                                    "computer.killSwitch",
+                                    json!({ "at": now_ms() }),
+                                );
+                            }
+                        },
+                    )
+                    .map_err(std::io::Error::other)?;
+            }
             let power_monitor = power::PowerMonitor::start(bridge.clone_for_tray());
             let endpoint = supervisor.endpoint();
             let state = app.state::<AppState>();
@@ -510,6 +544,7 @@ pub fn run() {
             permissions_open_settings,
             permissions_request,
             secret_save,
+            vault_authorize,
             pick_folder,
             reveal_in_finder,
             open_external,
@@ -556,32 +591,27 @@ pub fn run() {
         })
         .build(tauri::generate_context!())
         .expect("error while running touri")
-        .run(|app, event| match event {
-            tauri::RunEvent::Ready => {
-                if !std::env::args().any(|arg| arg == "--hidden") {
-                    window_config::show_main(app, Some(window_config::restore(app)));
+        .run(|app, event| {
+            match event {
+                tauri::RunEvent::Ready => {
+                    if !std::env::args().any(|arg| arg == "--hidden") {
+                        window_config::show_main(app, Some(window_config::restore(app)));
+                    }
                 }
-                #[cfg(target_os = "macos")]
-                window_config::log_native_windows(app);
-            }
-            #[cfg(target_os = "macos")]
-            tauri::RunEvent::Reopen { .. } => window_config::show_main(app, None),
-            tauri::RunEvent::ExitRequested { .. } => stop_runtime(app),
-            tauri::RunEvent::Opened { urls } => {
-                for url in urls {
-                    deep_link::handle_url(app, url.as_str());
-                }
-            }
-            tauri::RunEvent::Resumed => {
-                if let Some(state) = app.try_state::<AppState>() {
-                    if let Ok(bridge) = state.host_bridge.lock() {
-                        if let Some(bridge) = bridge.as_ref() {
-                            let _ = bridge
-                                .send_notification("power.sleep", json!({ "sleeping": false }));
+
+                tauri::RunEvent::ExitRequested { .. } => stop_runtime(app),
+                tauri::RunEvent::Resumed => {
+                    if let Some(state) = app.try_state::<AppState>() {
+                        if let Ok(bridge) = state.host_bridge.lock() {
+                            if let Some(bridge) = bridge.as_ref() {
+                                let _ = bridge
+                                    .send_notification("power.sleep", json!({ "sleeping": false }));
+                            }
                         }
                     }
                 }
+                _ => {}
             }
-            _ => {}
+            platform::after_run_event(app, &event);
         });
 }

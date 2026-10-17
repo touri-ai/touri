@@ -1,5 +1,7 @@
 use std::collections::VecDeque;
-use std::fs::{create_dir_all, metadata, remove_file, rename, OpenOptions};
+#[cfg(unix)]
+use std::fs::create_dir_all;
+use std::fs::{metadata, remove_file, rename, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -30,7 +32,7 @@ pub struct SidecarHandshake {
     pub schema_version: u32,
 }
 
-pub const SIDECAR_SCHEMA_VERSION: u32 = 19;
+pub const SIDECAR_SCHEMA_VERSION: u32 = 20;
 const MAX_IDENTICAL_HANDSHAKE_FAILURES: usize = 3;
 
 pub fn parse_handshake(line: &str) -> Result<SidecarHandshake, String> {
@@ -293,7 +295,10 @@ impl<R: Runtime> SidecarSupervisor<R> {
         self.stop.store(true, Ordering::SeqCst);
         if let Ok(mut state) = self.state.lock() {
             if let Some(child) = state.child.as_mut() {
+                #[cfg(unix)]
                 let _ = unsafe { libc::kill(child.id() as libc::pid_t, libc::SIGTERM) };
+                #[cfg(windows)]
+                let _ = child.kill();
             }
         }
         let deadline = Instant::now() + Duration::from_secs(10);
@@ -472,6 +477,11 @@ fn spawn_sidecar<R: Runtime>(
     );
     let mut command = Command::new(binary);
     inherit_safe_environment(&mut command);
+    #[cfg(windows)]
+    command.env(
+        "TOURI_DESKTOP_HELPER",
+        std::env::current_exe().map_err(|error| error.to_string())?,
+    );
     command
         .arg("serve")
         .env("TOURI_UI_TOKEN", &ui_token)
@@ -738,13 +748,19 @@ fn append_sidecar_log_line(filename: &Path, line: &str, source: &str) {
 
 /// Owner-only from the first byte: other macOS accounts never see app data or logs.
 fn create_private_dir(path: &std::path::Path) -> std::io::Result<()> {
+    #[cfg(windows)]
+    return crate::platform::windows_files::ensure_private_directory(path);
+    #[cfg(unix)]
     create_dir_all(path)?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700))?;
     }
-    Ok(())
+    #[cfg(unix)]
+    {
+        Ok(())
+    }
 }
 
 fn private_append_options() -> OpenOptions {
@@ -811,7 +827,15 @@ fn sidecar_binary<R: Runtime>(app: &AppHandle<R>) -> PathBuf {
     }
     if let Some(sibling) = std::env::current_exe()
         .ok()
-        .and_then(|exe| exe.parent().map(|dir| dir.join("touri-sidecar")))
+        .and_then(|exe| {
+            exe.parent().map(|dir| {
+                dir.join(if cfg!(windows) {
+                    "touri-sidecar.exe"
+                } else {
+                    "touri-sidecar"
+                })
+            })
+        })
         .filter(|path| path.exists())
     {
         return sibling;
@@ -843,6 +867,7 @@ fn is_existing_executable(path: &Path) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(unix)]
     #[test]
     fn r13_app_data_run_and_logs_are_owner_only_even_under_a_loose_umask() {
         use std::os::unix::fs::{MetadataExt, PermissionsExt};
@@ -888,9 +913,10 @@ mod tests {
     }
     use super::{
         is_internal_auth_environment, next_backoff, parse_handshake, HandshakeRetryPolicy,
-        SidecarLaunch, SidecarSupervisor, SpawnFailure, MAX_IDENTICAL_HANDSHAKE_FAILURES,
-        SIDECAR_SCHEMA_VERSION,
+        SpawnFailure, MAX_IDENTICAL_HANDSHAKE_FAILURES, SIDECAR_SCHEMA_VERSION,
     };
+    #[cfg(unix)]
+    use super::{SidecarLaunch, SidecarSupervisor};
     use std::time::Duration;
 
     #[test]
@@ -904,6 +930,27 @@ mod tests {
         .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "sql"))
         .count();
         assert_eq!(migrations as u32, SIDECAR_SCHEMA_VERSION);
+    }
+
+    #[test]
+    fn current_sidecar_schema_handshake_is_accepted() {
+        let schema = include_str!("../../sidecar/src/kernel/db.ts")
+            .lines()
+            .find_map(|line| line.strip_prefix("export const SCHEMA_VERSION = "))
+            .expect("sidecar schema declaration")
+            .trim_end_matches(';')
+            .parse::<u32>()
+            .expect("sidecar schema number");
+        let handshake = serde_json::json!({
+            "type": "touri-sidecar-ready",
+            "port": 43123,
+            "pid": 99,
+            "version": "0.1.0",
+            "schemaVersion": schema,
+        });
+        let parsed = parse_handshake(&handshake.to_string())
+            .expect("the current sidecar must be able to start the desktop");
+        assert_eq!(parsed.schema_version, schema);
     }
 
     #[test]
@@ -1012,6 +1059,7 @@ mod tests {
         assert_eq!(policy.consecutive, 1);
     }
 
+    #[cfg(unix)]
     #[test]
     fn supervisor_preserves_the_failure_and_manual_restart_resumes_after_the_limit() {
         use std::os::unix::fs::PermissionsExt;

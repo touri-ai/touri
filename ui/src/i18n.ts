@@ -4,6 +4,173 @@ import { userFacingError } from "./errors"
 export type Locale = "pt-BR" | "en"
 export const ptBR = {
   "{bot} pede sua aprovação: {summary}": "{bot} pede sua aprovação: {summary}",
+  "O aplicativo não conseguiu acessar o cofre nativo. Desbloqueie o cofre do sistema e tente novamente.":
+    "O aplicativo não conseguiu acessar o cofre nativo. Desbloqueie o cofre do sistema e tente novamente.",
+  "O cofre nativo está disponível no aplicativo desktop. O modo servidor usa seu próprio cofre local.":
+    "O cofre nativo está disponível no aplicativo desktop. O modo servidor usa seu próprio cofre local.",
+  "O cofre nativo não respondeu em até 4s. Verifique o desbloqueio e reabra o touri.":
+    "O cofre nativo não respondeu em até 4s. Verifique o desbloqueio e reabra o touri.",
+  "Escolha um método com código para entrar por este aparelho.":
+    "Escolha um método com código para entrar por este aparelho.",
+  "Entre no {provedor} para o servidor: abra este link neste aparelho":
+    "Entre no {provedor} para o servidor: abra este link neste aparelho",
+  "Preparando o login do {provedor} para o servidor…": "Preparando o login do {provedor} para o servidor…",
+  "O login expira em até 10 minutos. Você pode cancelar a qualquer momento.":
+    "O login expira em até 10 minutos. Você pode cancelar a qualquer momento.",
+  "O login expirou. Tente novamente.": "O login expirou. Tente novamente.",
+  "Copiar código": "Copiar código",
+  "Código copiado.": "Código copiado.",
+  "Não foi possível copiar. Selecione e copie o código acima.":
+    "Não foi possível copiar. Selecione e copie o código acima.",
+
+  // Routine deletion.
+  "Excluir rotina": "Excluir rotina",
+  "Excluir rotina {name}": "Excluir rotina {name}",
+  "Ações da rotina {name}": "Ações da rotina {name}",
+  "Excluir a rotina {name}?": "Excluir a rotina {name}?",
+  "Ela não vai mais rodar. O histórico de execuções continua nas conversas.":
+    "Ela não vai mais rodar. O histórico de execuções continua nas conversas.",
+  "Não foi possível excluir a rotina. Tente novamente.": "Não foi possível excluir a rotina. Tente novamente.",
+  "Excluindo…": "Excluindo…",
+  Excluir: "Excluir",
+
+  "seu provedor": "seu provedor",
+  "o arquivo": "o arquivo",
+  "Não consegui conectar à sua IA. Sua mensagem está salva.":
+    "Não consegui conectar à sua IA. Sua mensagem está salva.",
+  "Não consegui conectar à sua IA. Verifique a conexão e tente novamente.":
+    "Não consegui conectar à sua IA. Verifique a conexão e tente novamente.",
+  "Entre novamente no {provedor} para continuar.": "Entre novamente no {provedor} para continuar.",
+  "Entrar na conta": "Entrar na conta",
+  "O {provedor} atingiu o limite de uso. Tente após {horario}.":
+    "O {provedor} atingiu o limite de uso. Tente após {horario}.",
+  "O {provedor} atingiu o limite de uso. Tente mais tarde.": "O {provedor} atingiu o limite de uso. Tente mais tarde.",
+  "Não há espaço para salvar {arquivo}.": "Não há espaço para salvar {arquivo}.",
+  "Verificar armazenamento": "Verificar armazenamento",
+  "A resposta foi interrompida. Algumas ações podem ter sido concluídas.":
+    "A resposta foi interrompida. Algumas ações podem ter sido concluídas.",
+  "Ver ações realizadas": "Ver ações realizadas",
+  "Retomar tarefa": "Retomar tarefa",
+  "Ver tarefa": "Ver tarefa",
+  "Verificar ambiente": "Verificar ambiente",
+  "Não foi possível concluir esta ação. Confira os detalhes do erro.":
+    "Não foi possível concluir esta ação. Confira os detalhes do erro.",
+  "Revise as ações registradas antes de continuar. Nenhuma ação será repetida automaticamente.":
+    "Revise as ações registradas antes de continuar. Nenhuma ação será repetida automaticamente.",
+  "Conferi as ações registradas. Quero continuar a tarefa a partir do estado atual, sem repetir ações já concluídas.":
+    "Conferi as ações registradas. Quero continuar a tarefa a partir do estado atual, sem repetir ações já concluídas.",
+  "O rascunho atual foi preservado. Revise as ações registradas antes de enviar.":
+    "O rascunho atual foi preservado. Revise as ações registradas antes de enviar.",
+  "Ações registradas": "Ações registradas",
+  "Nenhuma ação confirmada no histórico. Confira o estado atual antes de continuar.":
+    "Nenhuma ação confirmada no histórico. Confira o estado atual antes de continuar.",
+  "Enviar arquivo deste dispositivo": "Enviar arquivo deste dispositivo",
+  "Escolher pasta do servidor": "Escolher pasta do servidor",
+  "Pastas no servidor": "Pastas no servidor",
+  "Esta pasta fica no servidor. Para enviar um arquivo do celular ou computador, use Enviar arquivo deste dispositivo.":
+    "Esta pasta fica no servidor. Para enviar um arquivo do celular ou computador, use Enviar arquivo deste dispositivo.",
+  "Não foi possível liberar a pasta com segurança. Seu bot continua disponível.":
+    "Não foi possível liberar a pasta com segurança. Seu bot continua disponível.",
+  "A conexão direta com esta fonte ainda não está disponível. Exporte um CSV para começar.":
+    "A conexão direta com esta fonte ainda não está disponível. Exporte um CSV para começar.",
+  "Anexar CSV": "Anexar CSV",
+  "Dados disponíveis para {bot}.": "Dados disponíveis para {bot}.",
+  "Continuar tarefa": "Continuar tarefa",
+  "Conexão disponível: {name}": "Conexão disponível: {name}",
+  "Esta pasta fica fora das pastas autorizáveis do servidor.":
+    "Esta pasta fica fora das pastas autorizáveis do servidor.",
+  // Routine editor and repeat-task flow.
+  Bot: "Bot",
+  "Repetir esta tarefa": "Repetir esta tarefa",
+  "Quando?": "Quando?",
+  Tarefa: "Tarefa",
+  Frequência: "Frequência",
+  "Dias úteis": "Dias úteis",
+  "Todos os dias": "Todos os dias",
+  "Escolher dias": "Escolher dias",
+  Às: "Às",
+  "Dias da semana": "Dias da semana",
+  "Fuso horário": "Fuso horário",
+  "Horário de Brasília": "Horário de Brasília",
+  "Destino dos resultados": "Destino dos resultados",
+  "Nesta conversa": "Nesta conversa",
+  "Conversa principal": "Conversa principal",
+  "Nova conversa por execução": "Nova conversa por execução",
+  "Conversa de resultados": "Conversa de resultados",
+  "Expressão cron": "Expressão cron",
+  "Fuso IANA": "Fuso IANA",
+  "Limite de execução (minutos)": "Limite de execução (minutos)",
+  "Recuperar disparos atrasados por (minutos)": "Recuperar disparos atrasados por (minutos)",
+  "Revisar rotina": "Revisar rotina",
+  "{bot} fará {task}, {schedule}.": "{bot} fará {task}, {schedule}.",
+  "Contexto autorizado": "Contexto autorizado",
+  "Histórico desta conversa e permissões atuais do bot.": "Histórico desta conversa e permissões atuais do bot.",
+  "Permissões atuais do bot.": "Permissões atuais do bot.",
+  "Todas as pastas já autorizadas ao bot": "Todas as pastas já autorizadas ao bot",
+  "Sem pasta externa autorizada.": "Sem pasta externa autorizada.",
+  Fontes: "Fontes",
+  "Esta rotina não concede novos acessos. Mudanças de permissões do bot também afetam a rotina.":
+    "Esta rotina não concede novos acessos. Mudanças de permissões do bot também afetam a rotina.",
+  "Próximas três execuções": "Próximas três execuções",
+  "Escolha dias, hora e fuso válidos para ver as próximas execuções.":
+    "Escolha dias, hora e fuso válidos para ver as próximas execuções.",
+  "Funciona enquanto o touri estiver em execução neste Mac.":
+    "Funciona enquanto o touri estiver em execução neste Mac.",
+  "Funciona enquanto o touri estiver em execução no servidor. Você pode fechar esta página.":
+    "Funciona enquanto o touri estiver em execução no servidor. Você pode fechar esta página.",
+  "Não foi possível salvar ou iniciar a rotina. Seu rascunho continua aqui. Tente novamente.":
+    "Não foi possível salvar ou iniciar a rotina. Seu rascunho continua aqui. Tente novamente.",
+  "Teste iniciado. O resultado aparecerá no destino escolhido. A rotina continua pausada.":
+    "Teste iniciado. O resultado aparecerá no destino escolhido. A rotina continua pausada.",
+  "Testar agora": "Testar agora",
+  "Histórico de execuções": "Histórico de execuções",
+  "Disparo não executado: touri indisponível ou execução anterior em andamento.":
+    "Disparo não executado: touri indisponível ou execução anterior em andamento.",
+  "Recuperação após indisponibilidade": "Recuperação após indisponibilidade",
+  scheduled: "agendado",
+  succeeded: "concluído",
+  failed: "falhou",
+  skipped: "não executado",
+  canceled: "cancelado",
+
+  // Computer viewing and manual control.
+  "O controle manual não está disponível nesta máquina. Você pode acompanhar a tela e conversar com o bot.":
+    "O controle manual não está disponível nesta máquina. Você pode acompanhar a tela e conversar com o bot.",
+  "A tela pode ter mudado durante seu controle. Observe novamente antes de continuar.":
+    "A tela pode ter mudado durante seu controle. Observe novamente antes de continuar.",
+  "Assumir controle não autoriza ações automáticas do bot. Revise essas ações no chat.":
+    "Assumir controle não autoriza ações automáticas do bot. Revise essas ações no chat.",
+  "O controle foi interrompido. Assuma e devolva ao bot para permitir novas entradas.":
+    "O controle foi interrompido. Assuma e devolva ao bot para permitir novas entradas.",
+  "Controle indisponível": "Controle indisponível",
+  "O controle mudou. Tente novamente.": "O controle mudou. Tente novamente.",
+  "Controle interrompido": "Controle interrompido",
+  "Controle manual indisponível": "Controle manual indisponível",
+  "Abrir arquivos": "Abrir arquivos",
+  Conversar: "Conversar",
+  "A tela da VM conectou, mas não enviou nenhuma imagem. Tente reconectar a tela.":
+    "A tela da VM conectou, mas não enviou nenhuma imagem. Tente reconectar a tela.",
+  "A tela da VM não respondeu em 15 s. Verifique se a máquina está ligada; tente reconectar a tela.":
+    "A tela da VM não respondeu em 15 s. Verifique se a máquina está ligada; tente reconectar a tela.",
+  "Não foi possível parar a tarefa. Tente novamente.": "Não foi possível parar a tarefa. Tente novamente.",
+  "Não foi possível devolver o controle. Reconecte a tela e tente novamente.":
+    "Não foi possível devolver o controle. Reconecte a tela e tente novamente.",
+  "Assuma o controle para digitar": "Assuma o controle para digitar",
+  "Ao assumir, só você usa o teclado e o mouse. A automação do bot continua com a permissão atual.":
+    "Ao assumir, só você usa o teclado e o mouse. A automação do bot continua com a permissão atual.",
+  "Este servidor não tem uma área de trabalho para controlar. Você pode conversar e trabalhar com arquivos.":
+    "Este servidor não tem uma área de trabalho para controlar. Você pode conversar e trabalhar com arquivos.",
+  "Parar tarefa": "Parar tarefa",
+  "Reconectar tela": "Reconectar tela",
+  "A conexão com a tela caiu. A tarefa pode continuar em execução.":
+    "A conexão com a tela caiu. A tarefa pode continuar em execução.",
+  "Devolver ao bot": "Devolver ao bot",
+  "Você está no controle. O bot aguarda você terminar.": "Você está no controle. O bot aguarda você terminar.",
+  "Você está no controle": "Você está no controle",
+  "Assumir controle": "Assumir controle",
+  "Acompanhar a tela": "Acompanhar a tela",
+
+  "{bot} precisa de você: autorizar {action}.": "{bot} precisa de você: autorizar {action}.",
   "Autorizado. Retomando a tarefa.": "Autorizado. Retomando a tarefa.",
   "Os avisos do sistema estão desativados.": "Os avisos do sistema estão desativados.",
   "Abrir ajustes": "Abrir ajustes",
@@ -132,6 +299,52 @@ export const ptBR = {
     "O servidor respondeu, mas não ofereceu ferramentas. Confira a configuração e teste novamente.",
   "Salvando conexão…": "Salvando conexão…",
   "Salvar conexão": "Salvar conexão",
+  // Response feedback: keep this block together for parallel UI changes.
+  "Preparando a resposta…": "Preparando a resposta…",
+  "Preparando o ambiente…": "Preparando o ambiente…",
+  "Lendo {arquivo}…": "Lendo {arquivo}…",
+  "Preciso da sua autorização.": "Preciso da sua autorização.",
+  "Ainda aguardando a IA responder.": "Ainda aguardando a IA responder.",
+  "A tarefa continua em execução.": "A tarefa continua em execução.",
+  "A resposta está demorando. Você pode continuar esperando ou verificar a conexão.":
+    "A resposta está demorando. Você pode continuar esperando ou verificar a conexão.",
+  "Verificar conexão": "Verificar conexão",
+  "Verificando conexão…": "Verificando conexão…",
+  "A conexão com o touri está disponível. A IA pode continuar demorando.":
+    "A conexão com o touri está disponível. A IA pode continuar demorando.",
+  "Não foi possível conectar ao touri. Verifique sua conexão.":
+    "Não foi possível conectar ao touri. Verifique sua conexão.",
+  "Não foi possível parar. Tente novamente.": "Não foi possível parar. Tente novamente.",
+
+  // First conversation and host transparency.
+  "onboarding.server": "servidor",
+  "onboarding.privacy":
+    "O histórico fica neste {host}. Sua IA recebe o conteúdo necessário para responder. O touri não coleta telemetria.",
+  "onboarding.uses": "Usa o {provider}, conectado neste {host}.",
+  "onboarding.checking": "Verificando instalação e login neste {host}…",
+  "onboarding.missing": "O {provider} ainda não está instalado neste {host}.",
+  "onboarding.install": "Ver como instalar",
+  "onboarding.installLinkError": "Não foi possível abrir o navegador. Copie o endereço do link para ver como instalar.",
+  "onboarding.recheck": "Verificar novamente",
+  "onboarding.installFirst": "Instale a IA neste computador e verifique novamente antes de criar seu bot.",
+  "onboarding.checkServer": "Verificar servidor",
+  "onboarding.conversation": "Comece uma conversa com {name}",
+  "onboarding.notes": "Cole suas notas para eu organizar em uma lista.",
+  "onboarding.example": "Usar exemplo",
+  "onboarding.exampleNotes": "Comprar café; revisar orçamento; marcar reunião.",
+  "onboarding.examplePrompt":
+    "Organize estas notas em uma lista em português do Brasil. Use somente o texto abaixo, sem acessar arquivos, projetos ou integrações. Responda com a lista, sem apresentação.\n\nComprar café; revisar orçamento; marcar reunião.",
+  "onboarding.repositoryNeeded":
+    "Escolha a pasta do repositório para começar, ou use um exemplo de notas sem conectar nada.",
+  "onboarding.repositoryUpload":
+    "Anexe os arquivos do repositório para começar, ou use um exemplo de notas sem conectar nada.",
+  "onboarding.repositoryFolder": "Escolher pasta do repositório",
+  "onboarding.repositoryRequest":
+    "Quero trabalhar com um repositório. Peça a pasta ou um anexo antes de analisar; ainda não conectei o código.",
+  "onboarding.repositoryAction": "Explique o repositório conectado.",
+  "onboarding.repositoryPrompt":
+    "Explique a estrutura do repositório conectado usando somente as pastas autorizadas. Se o código não estiver disponível, peça a pasta ou um anexo antes de analisar.",
+
   "Conectar dados": "Conectar dados",
   "Escolha como disponibilizar os dados para este bot.": "Escolha como disponibilizar os dados para este bot.",
   "Anexar arquivo/CSV": "Anexar arquivo/CSV",
@@ -316,8 +529,6 @@ export const ptBR = {
   Integrations: "Integrações",
   "Report a problem": "Reportar problema",
 
-  "Your bots work on your Mac, with your accounts. Nothing leaves here.":
-    "Seus bots trabalham no seu Mac, com as suas contas. Nada sai daqui.",
   "Create my first bot": "Criar meu primeiro bot",
   "Already use another tool?": "Já usa outra ferramenta?",
   Advanced: "Avançado",
@@ -742,9 +953,7 @@ export const ptBR = {
   "Bot created. Could not connect your account. Sign in below to chat.":
     "Bot criado. Não foi possível conectar sua conta. Entre na conta abaixo para conversar.",
   Instructions: "Instruções",
-  "Uses {name}, already signed in on this Mac.": "Usa o {name}, que já está conectado neste Mac.",
   "Asks permission before changing files.": "Pede permissão antes de mudar arquivos.",
-  "Checking accounts on this Mac…": "Verificando contas neste Mac…",
   "Sign in to an account to create your bot.": "Entre em uma conta para criar seu bot.",
   "Choose an account": "Escolha uma conta",
   "Sign in above before creating your bot.": "Entre em uma conta acima antes de criar seu bot.",
@@ -758,7 +967,7 @@ export const ptBR = {
   "Connect tools after creating this bot, in its advanced settings.":
     "Conecte ferramentas depois de criar este bot, nas configurações avançadas dele.",
   "job.starter":
-    "## {name}\n- {role} {task}\n- Na primeira conversa, apresente brevemente como pode ajudar neste trabalho.\n- Confirme o objetivo e peça o contexto que faltar.\n- Trabalhe no Mac do usuário com a CLI dele e somente os acessos liberados.\n- Use o navegador quando precisar conferir informações e indique as fontes.\n- Peça permissão antes de mudar arquivos ou enviar algo; apresente um rascunho primeiro.\n- Ao terminar, conte o que encontrou e o que depende da pessoa.",
+    "## {name}\n- {role} {task}\n- Na primeira conversa, apresente brevemente como pode ajudar neste trabalho.\n- Confirme o objetivo e peça o contexto que faltar.\n- Trabalhe no computador onde o touri está rodando com a CLI do usuário e somente os acessos liberados.\n- Use o navegador quando precisar conferir informações e indique as fontes.\n- Peça permissão antes de mudar arquivos ou enviar algo; apresente um rascunho primeiro.\n- Ao terminar, conte o que encontrou e o que depende da pessoa.",
 
   "Activity thinking": "Pensando",
   "Activity working": "Trabalhando",
@@ -836,6 +1045,28 @@ export const ptBR = {
   "Não foi possível remover o login.": "Não foi possível remover o login.",
   "Login do provedor nesta máquina": "Login do provedor nesta máquina",
   "Verificando login…": "Verificando login…",
+  "Outras opções": "Outras opções",
+  "O cofre de segredos não respondeu. Tente novamente.": "O cofre de segredos não respondeu. Tente novamente.",
+  "O cofre local do servidor está indisponível. Verifique as permissões da pasta de dados do servidor e reinicie o serviço do touri. O login salvo será mantido.":
+    "O cofre local do servidor está indisponível. Verifique as permissões da pasta de dados do servidor e reinicie o serviço do touri. O login salvo será mantido.",
+  "Não foi possível ler a sessão salva do navegador. Abra o Diagnóstico para verificar o cofre.":
+    "Não foi possível ler a sessão salva do navegador. Abra o Diagnóstico para verificar o cofre.",
+  "Permita o acesso ao cofre para restaurar a sessão salva do navegador.":
+    "Permita o acesso ao cofre para restaurar a sessão salva do navegador.",
+  "Não foi possível ler a sessão salva do navegador. Os dados salvos foram mantidos. Verifique o cofre e tente novamente.":
+    "Não foi possível ler a sessão salva do navegador. Os dados salvos foram mantidos. Verifique o cofre e tente novamente.",
+  "Sessão salva do navegador disponível.": "Sessão salva do navegador disponível.",
+  "Navegador · {name} · sessão salva": "Navegador · {name} · sessão salva",
+  "O cofre de segredos não respondeu. Permita o acesso ao cofre para continuar.":
+    "O cofre de segredos não respondeu. Permita o acesso ao cofre para continuar.",
+  "Na janela do macOS, escolha Permitir sempre. Sua mensagem continuará automaticamente.":
+    "Na janela do macOS, escolha Permitir sempre. Sua mensagem continuará automaticamente.",
+  "O acesso não foi autorizado. Tente novamente e escolha Permitir sempre na janela do macOS.":
+    "O acesso não foi autorizado. Tente novamente e escolha Permitir sempre na janela do macOS.",
+  "Aguardando permissão do macOS…": "Aguardando permissão do macOS…",
+  "Permitir acesso ao cofre": "Permitir acesso ao cofre",
+  "Na janela do macOS, escolha Permitir sempre.": "Na janela do macOS, escolha Permitir sempre.",
+  "Permita o acesso ao cofre para usar o login salvo.": "Permita o acesso ao cofre para usar o login salvo.",
   "Aguardando login no navegador…": "Aguardando login no navegador…",
   "Login disponível para este bot.": "Login disponível para este bot.",
   "Há um login disponível neste Mac.": "Há um login disponível neste Mac.",
@@ -1554,6 +1785,175 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Remove a specific folder grant from this calling bot only. Narrows access without approval and posts a notice in chat. Cannot change the user-only any-folder toggle. VM changes apply next turn.":
     "Remove a specific folder grant from this calling bot only. Narrows access without approval and posts a notice in chat. Cannot change the user-only any-folder toggle. VM changes take effect from the next message.",
   "{bot} pede sua aprovação: {summary}": "{bot} asks for your approval: {summary}",
+  "O aplicativo não conseguiu acessar o cofre nativo. Desbloqueie o cofre do sistema e tente novamente.":
+    "The app could not access the native vault. Unlock the system vault and try again.",
+  "O cofre nativo está disponível no aplicativo desktop. O modo servidor usa seu próprio cofre local.":
+    "The native vault is available in the desktop app. Server mode uses its own local vault.",
+  "O cofre nativo não respondeu em até 4s. Verifique o desbloqueio e reabra o touri.":
+    "The native vault did not respond within 4 seconds. Check that it is unlocked and reopen touri.",
+  "Escolha um método com código para entrar por este aparelho.":
+    "Choose a code-based method to sign in on this device.",
+  "Entre no {provedor} para o servidor: abra este link neste aparelho":
+    "Sign in to {provedor} for the server: open this link on this device",
+  "Preparando o login do {provedor} para o servidor…": "Preparing {provedor} sign-in for the server…",
+  "O login expira em até 10 minutos. Você pode cancelar a qualquer momento.":
+    "Sign-in expires within 10 minutes. You can cancel at any time.",
+  "O login expirou. Tente novamente.": "Sign-in expired. Try again.",
+  "Não foi possível concluir o login. Tente novamente ou cole o token manualmente.":
+    "Could not complete sign-in. Try again or paste the token manually.",
+  "Copiar código": "Copy code",
+  "Código copiado.": "Code copied.",
+  "Não foi possível copiar. Selecione e copie o código acima.": "Could not copy. Select and copy the code above.",
+
+  // Routine deletion.
+  "Excluir rotina": "Delete routine",
+  "Excluir rotina {name}": "Delete routine {name}",
+  "Ações da rotina {name}": "Actions for routine {name}",
+  "Excluir a rotina {name}?": "Delete routine {name}?",
+  "Ela não vai mais rodar. O histórico de execuções continua nas conversas.":
+    "It will no longer run. Execution history remains in conversations.",
+  "Não foi possível excluir a rotina. Tente novamente.": "Could not delete the routine. Try again.",
+  "Excluindo…": "Deleting…",
+  Excluir: "Delete",
+
+  "seu provedor": "your provider",
+  "o arquivo": "the file",
+  "Não consegui conectar à sua IA. Sua mensagem está salva.": "I could not connect to your AI. Your message is saved.",
+  "Não consegui conectar à sua IA. Verifique a conexão e tente novamente.":
+    "I could not connect to your AI. Check your connection and try again.",
+  "Entre novamente no {provedor} para continuar.": "Sign in to {provedor} again to continue.",
+  "Entrar na conta": "Sign in",
+  "O {provedor} atingiu o limite de uso. Tente após {horario}.":
+    "{provedor} has reached its usage limit. Try after {horario}.",
+  "O {provedor} atingiu o limite de uso. Tente mais tarde.": "{provedor} has reached its usage limit. Try again later.",
+  "Não há espaço para salvar {arquivo}.": "There is not enough space to save {arquivo}.",
+  "Verificar armazenamento": "Check storage",
+  "A resposta foi interrompida. Algumas ações podem ter sido concluídas.":
+    "The response was interrupted. Some actions may have completed.",
+  "Ver ações realizadas": "View recorded actions",
+  "Retomar tarefa": "Resume task",
+  "Ver tarefa": "View task",
+  "Verificar ambiente": "Check environment",
+  "Não foi possível concluir esta ação. Confira os detalhes do erro.":
+    "Could not complete this action. Check the error details.",
+  "Revise as ações registradas antes de continuar. Nenhuma ação será repetida automaticamente.":
+    "Review the recorded actions before continuing. No action will be repeated automatically.",
+  "Conferi as ações registradas. Quero continuar a tarefa a partir do estado atual, sem repetir ações já concluídas.":
+    "I reviewed the recorded actions. Continue the task from the current state without repeating completed actions.",
+  "O rascunho atual foi preservado. Revise as ações registradas antes de enviar.":
+    "Your current draft was preserved. Review the recorded actions before sending.",
+  "Ações registradas": "Recorded actions",
+  "Nenhuma ação confirmada no histórico. Confira o estado atual antes de continuar.":
+    "No confirmed action in history. Check the current state before continuing.",
+  "Enviar arquivo deste dispositivo": "Send a file from this device",
+  "Escolher pasta do servidor": "Choose a server folder",
+  "Pastas no servidor": "Server folders",
+  "Somente leitura": "Read only",
+  "Esta pasta fica no servidor. Para enviar um arquivo do celular ou computador, use Enviar arquivo deste dispositivo.":
+    "This folder is on the server. To send a file from your phone or computer, use Send a file from this device.",
+  "Não foi possível liberar a pasta com segurança. Seu bot continua disponível.":
+    "Folder access could not be granted safely. Your bot is still available.",
+  "A conexão direta com esta fonte ainda não está disponível. Exporte um CSV para começar.":
+    "A direct connection to this source is not available yet. Export a CSV to get started.",
+  "Anexar CSV": "Attach CSV",
+  "Dados disponíveis para {bot}.": "Data available for {bot}.",
+  "Continuar tarefa": "Continue task",
+  "Conexão disponível: {name}": "Connection available: {name}",
+  "Esta pasta fica fora das pastas autorizáveis do servidor.":
+    "This folder is outside the server’s available folder roots.",
+  // Routine editor and repeat-task flow.
+  Bot: "Bot",
+  "Repetir esta tarefa": "Repeat this task",
+  "Quando?": "When?",
+  Tarefa: "Task",
+  Frequência: "Frequency",
+  "Dias úteis": "Weekdays",
+  "Todos os dias": "Every day",
+  "Escolher dias": "Choose days",
+  Às: "At",
+  "Dias da semana": "Days of the week",
+  "Fuso horário": "Time zone",
+  "Horário de Brasília": "Brasília time",
+  "Destino dos resultados": "Results destination",
+  "Nesta conversa": "This conversation",
+  "Conversa principal": "Main conversation",
+  "Nova conversa por execução": "New conversation for each run",
+  "Conversa de resultados": "Results conversation",
+  "Expressão cron": "Cron expression",
+  "Fuso IANA": "IANA time zone",
+  "Limite de execução (minutos)": "Run time limit (minutes)",
+  "Recuperar disparos atrasados por (minutos)": "Catch up missed runs within (minutes)",
+  "Revisar rotina": "Review routine",
+  "{bot} fará {task}, {schedule}.": "{bot} will do {task}, {schedule}.",
+  "Contexto autorizado": "Authorized context",
+  "Histórico desta conversa e permissões atuais do bot.":
+    "This conversation’s history and the bot’s current permissions.",
+  "Permissões atuais do bot.": "The bot’s current permissions.",
+  "Todas as pastas já autorizadas ao bot": "All folders already authorized for this bot",
+  "Sem pasta externa autorizada.": "No external folder authorized.",
+  Fontes: "Sources",
+  "Esta rotina não concede novos acessos. Mudanças de permissões do bot também afetam a rotina.":
+    "This routine grants no new access. Changes to the bot’s permissions also affect the routine.",
+  "Próximas três execuções": "Next three runs",
+  "Escolha dias, hora e fuso válidos para ver as próximas execuções.":
+    "Choose valid days, time and time zone to see the next runs.",
+  "Funciona enquanto o touri estiver em execução neste Mac.": "Runs while touri is running on this Mac.",
+  "Funciona enquanto o touri estiver em execução no servidor. Você pode fechar esta página.":
+    "Runs while touri is running on the server. You can close this page.",
+  "Não foi possível salvar ou iniciar a rotina. Seu rascunho continua aqui. Tente novamente.":
+    "Could not save or start the routine. Your draft is still here. Try again.",
+  "Teste iniciado. O resultado aparecerá no destino escolhido. A rotina continua pausada.":
+    "Test started. The result will appear at the selected destination. The routine remains paused.",
+  "Testar agora": "Test now",
+  "Histórico de execuções": "Run history",
+  "Disparo não executado: touri indisponível ou execução anterior em andamento.":
+    "Run skipped: touri was unavailable or a previous run was still in progress.",
+  "Recuperação após indisponibilidade": "Recovery after downtime",
+  failed: "Failed",
+  skipped: "Skipped",
+  scheduled: "Scheduled",
+  running: "Running",
+  succeeded: "Completed",
+  canceled: "Canceled",
+
+  // Computer viewing and manual control.
+  "O controle manual não está disponível nesta máquina. Você pode acompanhar a tela e conversar com o bot.":
+    "Manual control is unavailable on this machine. You can watch the screen and chat with the bot.",
+  "A tela pode ter mudado durante seu controle. Observe novamente antes de continuar.":
+    "The screen may have changed while you were in control. Observe it again before continuing.",
+  "Assumir controle não autoriza ações automáticas do bot. Revise essas ações no chat.":
+    "Taking control does not authorize the bot to act automatically. Review those actions in chat.",
+  "O controle foi interrompido. Assuma e devolva ao bot para permitir novas entradas.":
+    "Control was stopped. Take over and return to the bot to allow new input.",
+  "Controle indisponível": "Control is unavailable",
+  "O controle mudou. Tente novamente.": "Control changed. Try again.",
+  "Controle interrompido": "Control stopped",
+  "Controle manual indisponível": "Manual control is unavailable",
+  "Abrir arquivos": "Open files",
+  Conversar: "Chat",
+  "A tela da VM conectou, mas não enviou nenhuma imagem. Tente reconectar a tela.":
+    "The VM screen connected without sending an image. Try reconnecting the screen.",
+  "A tela da VM não respondeu em 15 s. Verifique se a máquina está ligada; tente reconectar a tela.":
+    "The VM screen did not respond within 15 s. Check that the machine is running and reconnect the screen.",
+  "Não foi possível parar a tarefa. Tente novamente.": "Could not stop the task. Try again.",
+  "Não foi possível devolver o controle. Reconecte a tela e tente novamente.":
+    "Could not return control. Reconnect the screen and try again.",
+  "Assuma o controle para digitar": "Take control to type",
+  "Ao assumir, só você usa o teclado e o mouse. A automação do bot continua com a permissão atual.":
+    "When you take over, only you use the keyboard and mouse. The bot keeps its current automation permission.",
+  "Este servidor não tem uma área de trabalho para controlar. Você pode conversar e trabalhar com arquivos.":
+    "This server has no desktop to control. You can chat and work with files.",
+  "Parar tarefa": "Stop task",
+  "Reconectar tela": "Reconnect screen",
+  "A conexão com a tela caiu. A tarefa pode continuar em execução.":
+    "The screen connection dropped. The task may still be running.",
+  "Devolver ao bot": "Return to bot",
+  "Você está no controle. O bot aguarda você terminar.": "You are in control. The bot is waiting for you to finish.",
+  "Você está no controle": "You are in control",
+  "Assumir controle": "Take control",
+  "Acompanhar a tela": "Watch the screen",
+
+  "{bot} precisa de você: autorizar {action}.": "{bot} needs you: authorize {action}.",
   "Autorizado. Retomando a tarefa.": "Authorized. Resuming the task.",
   "Os avisos do sistema estão desativados.": "System notifications are disabled.",
   "Abrir ajustes": "Open settings",
@@ -1668,6 +2068,51 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
     "The server responded but offered no tools. Check the configuration and test again.",
   "Salvando conexão…": "Saving connection…",
   "Salvar conexão": "Save connection",
+  // Response feedback: keep this block together for parallel UI changes.
+  "Preparando a resposta…": "Preparing a reply…",
+  "Preparando o ambiente…": "Preparing the environment…",
+  "Lendo {arquivo}…": "Reading {arquivo}…",
+  "Preciso da sua autorização.": "I need your permission.",
+  "Ainda aguardando a IA responder.": "Still waiting for the AI to respond.",
+  "A tarefa continua em execução.": "The task is still running.",
+  "A resposta está demorando. Você pode continuar esperando ou verificar a conexão.":
+    "The reply is taking longer. You can keep waiting or check the connection.",
+  "Verificar conexão": "Check connection",
+  "Verificando conexão…": "Checking connection…",
+  "A conexão com o touri está disponível. A IA pode continuar demorando.":
+    "The connection to touri is available. The AI may still take longer.",
+  "Não foi possível conectar ao touri. Verifique sua conexão.": "Could not connect to touri. Check your connection.",
+  "Não foi possível parar. Tente novamente.": "Could not stop. Try again.",
+
+  // First conversation and host transparency.
+  "onboarding.server": "server",
+  "onboarding.privacy":
+    "History stays on this {host}. Your AI receives the content needed to respond. touri collects no telemetry.",
+  "onboarding.uses": "Uses {provider}, signed in on this {host}.",
+  "onboarding.checking": "Checking installation and login on this {host}…",
+  "onboarding.missing": "{provider} is not installed on this {host} yet.",
+  "onboarding.install": "See how to install",
+  "onboarding.installLinkError": "Could not open the browser. Copy the link address to see how to install.",
+  "onboarding.recheck": "Check again",
+  "onboarding.installFirst": "Install the AI on this computer and check again before creating your bot.",
+  "onboarding.checkServer": "Check server",
+  "onboarding.conversation": "Start a conversation with {name}",
+  "onboarding.notes": "Paste your notes and I will organize them into a list.",
+  "onboarding.example": "Use example",
+  "onboarding.exampleNotes": "Buy coffee; review the budget; schedule a meeting.",
+  "onboarding.examplePrompt":
+    "Organize these notes into a list in English. Use only the text below, without accessing files, projects or integrations. Reply with the list, without an introduction.\n\nBuy coffee; review the budget; schedule a meeting.",
+  "onboarding.repositoryNeeded":
+    "Choose the repository folder to start, or use a notes example without connecting anything.",
+  "onboarding.repositoryUpload":
+    "Attach repository files to start, or use a notes example without connecting anything.",
+  "onboarding.repositoryFolder": "Choose repository folder",
+  "onboarding.repositoryRequest":
+    "I want to work with a repository. Ask for the folder or an attachment before analyzing; I have not connected the code yet.",
+  "onboarding.repositoryAction": "Explain the connected repository.",
+  "onboarding.repositoryPrompt":
+    "Explain the connected repository structure using only authorized folders. If the code is unavailable, ask for the folder or an attachment before analyzing.",
+
   "Conectar dados": "Connect data",
   "Escolha como disponibilizar os dados para este bot.": "Choose how to make the data available to this bot.",
   "Anexar arquivo/CSV": "Attach a file/CSV",
@@ -1709,6 +2154,28 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Abrir prévia": "Open preview",
   "Abrir a prévia do projeto em {path}": "Open the project preview at {path}",
   "Verificando login…": "Checking sign-in…",
+  "Outras opções": "Other options",
+  "O cofre de segredos não respondeu. Tente novamente.": "The vault did not respond. Try again.",
+  "O cofre local do servidor está indisponível. Verifique as permissões da pasta de dados do servidor e reinicie o serviço do touri. O login salvo será mantido.":
+    "The server’s local vault is unavailable. Check the permissions of the server’s data folder and restart the touri service. The saved sign-in will be kept.",
+  "Não foi possível ler a sessão salva do navegador. Abra o Diagnóstico para verificar o cofre.":
+    "Could not read the saved browser session. Open Diagnostics to check the vault.",
+  "Permita o acesso ao cofre para restaurar a sessão salva do navegador.":
+    "Allow vault access to restore the saved browser session.",
+  "Não foi possível ler a sessão salva do navegador. Os dados salvos foram mantidos. Verifique o cofre e tente novamente.":
+    "Could not read the saved browser session. The saved data has been kept. Check the vault and try again.",
+  "Sessão salva do navegador disponível.": "Saved browser session is available.",
+  "Navegador · {name} · sessão salva": "Browser · {name} · saved session",
+  "O cofre de segredos não respondeu. Permita o acesso ao cofre para continuar.":
+    "The vault did not respond. Allow vault access to continue.",
+  "Na janela do macOS, escolha Permitir sempre. Sua mensagem continuará automaticamente.":
+    "In the macOS window, choose Always Allow. Your message will continue automatically.",
+  "O acesso não foi autorizado. Tente novamente e escolha Permitir sempre na janela do macOS.":
+    "Access was not authorized. Try again and choose Always Allow in the macOS window.",
+  "Aguardando permissão do macOS…": "Waiting for macOS permission…",
+  "Permitir acesso ao cofre": "Allow vault access",
+  "Na janela do macOS, escolha Permitir sempre.": "In the macOS window, choose Always Allow.",
+  "Permita o acesso ao cofre para usar o login salvo.": "Allow vault access to use the saved sign-in.",
   "Aguardando login no navegador…": "Waiting for sign-in in the browser…",
   "Login disponível para este bot.": "Sign-in is ready for this bot.",
   "Login cancelado.": "Sign-in cancelled.",
@@ -2285,9 +2752,7 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "New bot": "New bot",
   Advanced: "Advanced",
   Instructions: "Instructions",
-  "Uses {name}, already signed in on this Mac.": "Uses {name}, already signed in on this Mac.",
   "Asks permission before changing files.": "Asks permission before changing files.",
-  "Checking accounts on this Mac…": "Checking accounts on this Mac…",
   "Sign in to an account to create your bot.": "Sign in to an account to create your bot.",
   "Choose an account": "Choose an account",
   "Sign in above before creating your bot.": "Sign in above before creating your bot.",
@@ -2301,7 +2766,7 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Connect tools after creating this bot, in its advanced settings.":
     "Connect tools after creating this bot, in its advanced settings.",
   "job.starter":
-    "## {name}\n- {role} {task}\n- In the first conversation, briefly explain how you can help with this job.\n- Confirm the goal and ask for missing context.\n- Work on the user’s Mac with their own CLI and only allowed access.\n- Use the browser when you need to check information and include sources.\n- Ask permission before changing files or sending anything; show a draft first.\n- When finished, explain what you found and what needs the person’s attention.",
+    "## {name}\n- {role} {task}\n- In the first conversation, briefly explain how you can help with this job.\n- Confirm the goal and ask for missing context.\n- Work on the computer running touri with the user’s own CLI and only allowed access.\n- Use the browser when you need to check information and include sources.\n- Ask permission before changing files or sending anything; show a draft first.\n- When finished, explain what you found and what needs the person’s attention.",
 
   "Activity thinking": "Thinking",
   "Activity working": "Working",
@@ -2596,6 +3061,8 @@ export const statusLabel = (status: string): string => {
 
 /** Translate only application-authored notices, leaving bot/user content intact. */
 export const localizeNotice = (value: string): string => {
+  const browserSession = /^Navegador · (.+) · sessão salva$/.exec(value)
+  if (browserSession) return t("Navegador · {name} · sessão salva", { name: browserSession[1] ?? "" })
   const invalidLogin = /^(.+): login do (Claude|Codex|OpenCode) inválido\. Conecte novamente\.$/.exec(value)
   if (invalidLogin)
     return t("{name}: login do {provider} inválido. Conecte novamente.", {

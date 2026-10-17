@@ -32,7 +32,7 @@ test("Finder PATH resolves and launches installed tools with the same child envi
          import { resolveProviderExecutable } from "./sidecar/src/runtime/resolveProviderExecutable";
          import { createVmCommandRunner } from "./sidecar/src/vm/command";
          import { createAppleContainerProvider } from "./sidecar/src/vm/apple-container";
-         import { machineCapability } from "./sidecar/src/vm/doctor";
+         import { machineCapability } from "./sidecar/src/platform/macos";
          const env = {HOME: process.env.HOME, PATH: process.env.PATH};
          const tools = ${JSON.stringify(tools)};
          const system = tools.map(command => Bun.which(command));

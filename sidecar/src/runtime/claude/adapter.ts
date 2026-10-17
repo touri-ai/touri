@@ -192,7 +192,7 @@ export const createClaudeAdapter = ({
       }
     children.add(spawned)
     void spawned.exited.then(() => children.delete(spawned))
-    if (!args.execution) trackProviderProcess(kernel, spawned)
+    if (!args.execution) await trackProviderProcess(kernel, spawned)
     let completed = false
     let stopped = false
     const toolCalls = new Map<string, Extract<MessagePart, { type: "tool_call" }>>()
