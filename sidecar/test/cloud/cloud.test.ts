@@ -228,7 +228,7 @@ test("remote process streams stdin/stdout/stderr and cancel never uses a local P
   if (!child.success) throw new Error(child.error)
   expect(child.target).toBe("remote")
   expect(child.pid).toBe(0)
-  trackProviderProcess(runtime.kernel, child)
+  await trackProviderProcess(runtime.kernel, child)
   const writer = child.stdin.getWriter()
   await writer.write(new TextEncoder().encode("hello cloud"))
   await writer.close()
@@ -336,7 +336,7 @@ test("sealed v2 binds generation/expiration in AES-GCM AAD while local v1 remain
   expect(JSON.parse(sealConnection({ connection, key, token: "local" })).version).toBe(1)
 })
 
-test("desktop/VNC authenticates through the gateway; control revoke closes the viewer", async () => {
+test("remote desktop authenticates in observation and rejects control without a pause protocol", async () => {
   const { client, tokens, request, runtime, cloud } = await fixture()
   await client.store(tokens)
   runtime.kernel.services.provide("vm.runtime", cloud.runtime)
@@ -353,8 +353,10 @@ test("desktop/VNC authenticates through the gateway; control revoke closes the v
     cloudApiKey: "desktop-api-key",
   })
   expect(created.status).toBe(201)
-  const session = await request("POST", `/bots/${created.body.bot.id}/desktop`, { control: true })
+  expect((await request("POST", `/bots/${created.body.bot.id}/desktop`, { control: true })).status).toBe(409)
+  const session = await request("POST", `/bots/${created.body.bot.id}/desktop`, { control: false })
   expect(session.status).toBe(200)
+  expect(session.body.control).toBe(false)
   expect(session.body.password).toBeUndefined()
   const frames: Buffer[] = []
   let closed = false
@@ -373,6 +375,8 @@ test("desktop/VNC authenticates through the gateway; control revoke closes the v
   while (!frames.length && Date.now() < deadline) await Bun.sleep(10)
   expect(frames[0]?.toString()).toBe("RFB 003.008\n")
   desktop.service.revokeControl()
+  expect(closed).toBe(false)
+  desktop.service.close(session.body.sessionId)
   expect(closed).toBe(true)
   expect(frames.map((frame) => frame.toString()).join("")).not.toContain("testVNC!")
 })

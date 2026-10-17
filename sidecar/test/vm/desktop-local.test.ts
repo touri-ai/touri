@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { existsSync, mkdtempSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs"
 import { createServer as createTcpServer } from "node:net"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -19,6 +19,15 @@ const available =
   process.platform === "linux" &&
   ["Xvfb", "x11vnc", "python3"].every((tool) => Bun.which(tool)) &&
   existsSync(chromium.executablePath())
+
+const unusedPort = async () => {
+  const reservation = createTcpServer()
+  await new Promise<void>((resolve) => reservation.listen(0, "127.0.0.1", resolve))
+  const address = reservation.address()
+  await new Promise<void>((resolve) => reservation.close(() => resolve()))
+  if (!address || typeof address === "string") throw new Error("Missing test port")
+  return address.port
+}
 
 test.skipIf(!available)(
   "real local X11/noVNC: heartbeat, Unicode/IME, mouse, stop and frozen render",
@@ -42,8 +51,10 @@ test.skipIf(!available)(
     })
     const vite = await createServer({
       root: join(import.meta.dir, "../../../ui"),
+      ...(process.env.TOURI_VITE_CACHE_DIR ? { cacheDir: process.env.TOURI_VITE_CACHE_DIR } : {}),
       configFile: join(import.meta.dir, "../../../ui/vite.config.ts"),
-      server: { host: "127.0.0.1", port: 0, strictPort: false },
+      optimizeDeps: { entries: ["test/e2e/fixtures/desktop.html"] },
+      server: { host: "127.0.0.1", port: await unusedPort(), strictPort: true },
     })
     let desktop: ReturnType<typeof createDesktopGateway> | undefined
     let viewer: Awaited<ReturnType<typeof chromium.launch>> | undefined
@@ -129,7 +140,7 @@ test.skipIf(!available)(
           body: JSON.stringify(body),
         })
       const { bot } = (await (
-        await request("/bots", { name: "Tela de teste", provider: "codex", machine: "vm", computerUse: true })
+        await request("/bots", { name: "Tela de teste", provider: "codex", machine: "vm", computerUse: false })
       ).json()) as { bot: Bot }
       await vite.listen()
       const viteAddress = vite.httpServer?.address()
@@ -162,6 +173,11 @@ test.skipIf(!available)(
         null,
         { timeout: 30_000 },
       )
+      if (process.env.TOURI_SCREENSHOT_DIR) {
+        mkdirSync(process.env.TOURI_SCREENSHOT_DIR, { recursive: true })
+        await page.setViewportSize({ width: 1440, height: 900 })
+        await page.screenshot({ path: join(process.env.TOURI_SCREENSHOT_DIR, "observe.png"), fullPage: true })
+      }
       expect(statSync(passwordPath).mode & 0o777).toBe(0o600)
       expect(await attemptVnc(address.port)).toBe(false)
       expect(await attemptVnc(address.port, "wrong123")).toBe(false)
@@ -176,9 +192,17 @@ test.skipIf(!available)(
       expect(readFileSync(logPath, "utf8")).not.toContain(password)
       expect(await page.getByLabel("Digitar na VM").isDisabled()).toBe(true)
       await page.waitForTimeout(9_000)
-      expect(await page.getByRole("button", { name: "Controlar", exact: true }).isEnabled()).toBe(true)
-      await page.getByRole("button", { name: "Controlar", exact: true }).click()
-      await page.getByRole("button", { name: "Parar controle" }).waitFor()
+      expect(await page.getByRole("button", { name: "Assumir controle", exact: true }).isEnabled()).toBe(true)
+      await page.getByRole("button", { name: "Assumir controle", exact: true }).click()
+      await page.getByRole("button", { name: "Devolver ao bot" }).waitFor()
+      await browserExpect(page.getByLabel("Digitar na VM")).toBeEnabled()
+      if (process.env.TOURI_SCREENSHOT_DIR) {
+        await page.screenshot({ path: join(process.env.TOURI_SCREENSHOT_DIR, "control.png"), fullPage: true })
+        await page.setViewportSize({ width: 390, height: 844 })
+        await page.screenshot({ path: join(process.env.TOURI_SCREENSHOT_DIR, "control-mobile.png"), fullPage: true })
+        expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
+        await page.setViewportSize({ width: 1000, height: 800 })
+      }
       await guestPage.bringToFront()
       await guestPage.locator("textarea").focus()
       await page.getByLabel("Digitar na VM").fill("Olá 日本")
@@ -206,8 +230,15 @@ test.skipIf(!available)(
       if (!bounds) throw new Error("Viewer canvas missing")
       await canvas.click({ position: { x: bounds.width / 4, y: bounds.height / 2 } })
       await browserExpect.poll(() => guestPage.evaluate(() => document.body.dataset.clicked)).toBe("yes")
+      expect(runtime.kernel.services.use("computer.input")?.human(bot.id)).toBe(true)
+      await page.getByRole("button", { name: "Devolver ao bot", exact: true }).click()
+      await browserExpect.poll(() => runtime.kernel.services.use("computer.input")?.human(bot.id)).toBe(false)
+      await browserExpect(page.getByRole("button", { name: "Assumir controle", exact: true })).toBeEnabled()
+      expect(await page.getByLabel("Digitar na VM").isDisabled()).toBe(true)
+      await page.getByRole("button", { name: "Assumir controle", exact: true }).click()
+      await page.getByRole("button", { name: "Devolver ao bot", exact: true }).waitFor()
       expect((await request("/computer/kill")).status).toBe(200)
-      await page.getByRole("button", { name: "Tela travada — reconectar" }).click()
+      await page.getByRole("button", { name: "Reconectar tela" }).last().click()
       await page.waitForFunction(
         () => document.querySelector<HTMLButtonElement>("button[aria-pressed]")?.disabled === false,
       )
@@ -224,16 +255,27 @@ test.skipIf(!available)(
       expect(await page.getByLabel("Digitar na VM").isDisabled()).toBe(true)
       // Stop only our pulse: transport and RFB remain live, but rendered liveness must fail.
       heartbeat.kill("SIGSTOP")
-      await page.getByRole("button", { name: "Tela travada — reconectar" }).waitFor({ timeout: 15_000 })
+      await page.getByRole("button", { name: "Reconectar tela" }).last().waitFor({ timeout: 15_000 })
       heartbeat.kill("SIGCONT")
-      await page.getByRole("button", { name: "Tela travada — reconectar" }).click()
+      await page.getByRole("button", { name: "Reconectar tela" }).last().click()
       await page.waitForFunction(
         () => document.querySelector<HTMLButtonElement>("button[aria-pressed]")?.disabled === false,
       )
       vnc.kill("SIGSTOP")
-      await page.getByRole("button", { name: "Tela travada — reconectar" }).waitFor({ timeout: 15_000 })
+      await page.getByRole("button", { name: "Reconectar tela" }).last().waitFor({ timeout: 15_000 })
       vnc.kill("SIGCONT")
       expect(errors).toEqual([])
+      if (process.env.TOURI_SCREENSHOT_DIR) {
+        await page.goto(`${origin}/test/e2e/fixtures/desktop.html?headless`)
+        await page.getByRole("button", { name: "Conversar", exact: true }).waitFor()
+        await page.setViewportSize({ width: 1440, height: 900 })
+        await page.screenshot({ path: join(process.env.TOURI_SCREENSHOT_DIR, "headless.png"), fullPage: true })
+        await page.setViewportSize({ width: 390, height: 844 })
+        await page.screenshot({ path: join(process.env.TOURI_SCREENSHOT_DIR, "headless-mobile.png"), fullPage: true })
+        expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
+        await page.getByRole("button", { name: "Abrir arquivos", exact: true }).click()
+        expect(await page.locator("#root").getAttribute("data-action")).toBe("files")
+      }
     } finally {
       // Resume only test-owned processes before teardown, even when a freeze assertion fails.
       for (const child of children) if (child.exitCode === null) child.kill("SIGCONT")
@@ -250,5 +292,5 @@ test.skipIf(!available)(
       rmSync(root, { recursive: true, force: true })
     }
   },
-  120_000,
+  240_000,
 )

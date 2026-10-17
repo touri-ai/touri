@@ -488,6 +488,7 @@ export const createComputerController = (kernel: Kernel, options: ControllerOpti
   }
 
   const kill = ({ revokedBy }: { revokedBy: "user" | "kill-switch" }): number => {
+    kernel.services.use("computer.input")?.kill()
     kernel.services.use("vm.desktop")?.revokeControl()
     kernel.services.use("vm.stopShells")?.()
     epoch += 1

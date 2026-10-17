@@ -2309,6 +2309,7 @@ test.serial("transcript: a late tool start during cancellation remains resolved"
 
 test.serial("transcript: cancellation during environment loading never launches the queued turn", async () => {
   const value = await fixture()
+  await value.engine.ready
   let release: (environment: Record<string, string>) => void = () => undefined
   const environment = new Promise<Record<string, string>>((resolve) => {
     release = resolve
@@ -2318,7 +2319,7 @@ test.serial("transcript: cancellation during environment loading never launches 
     const request = addUser(value.store, value.thread, "cancel before launch")
     const queued = value.engine.enqueue({ threadId: value.thread.id, requestMessageId: request.id, trigger: "user" })
     if (!queued.success) throw new Error(queued.error)
-    await Promise.resolve()
+    await waitFor(() => value.engine.activeRun({ threadId: value.thread.id })?.id === queued.run.id)
     expect(value.engine.activeRun({ threadId: value.thread.id })?.id).toBe(queued.run.id)
     value.engine.cancel(queued.run.id)
     release({ PATH: process.env.PATH ?? "" })

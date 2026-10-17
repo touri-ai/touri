@@ -5,6 +5,7 @@ import { join } from "node:path"
 import { stripVTControlCharacters } from "node:util"
 import type { Bot, Kernel, ProviderLoginFlow, RouteModule } from "@touri/contracts"
 import { withDeadline } from "../kernel/policy"
+import { runPs } from "../kernel/ps"
 import { buildChildEnv } from "../kernel/shell-env"
 import { resolveProviderExecutable } from "../runtime/resolveProviderExecutable"
 import {
@@ -22,17 +23,15 @@ import {
 
 type Target = Pick<Bot, "id" | "provider">
 type Child = Extract<ReturnType<Kernel["spawnTree"]>, { success: true }>
-const killLoginChild = (child: Child) => {
+const killLoginChild = async (child: Child): Promise<void> => {
   try {
     // PTY helpers may put their CLI in another process group. Stop descendants before the helper.
-    const result = Bun.spawnSync({
-      cmd: ["/bin/ps", "-axo", "pid=,ppid="],
-      stdout: "pipe",
-      stderr: "ignore",
-      timeout: 1000,
-    })
-    const rows = result.stdout
-      .toString()
+    // A stopped helper stays their parent while the asynchronous scan runs (#121).
+    try {
+      process.kill(child.pid, "SIGSTOP")
+    } catch {}
+    const result = await runPs(["-axo", "pid=,ppid="], 1000)
+    const rows = (result?.stdout ?? "")
       .trim()
       .split("\n")
       .map((line) => line.trim().split(/\s+/).map(Number))
@@ -204,12 +203,19 @@ export const createProviderLoginFlow = ({
     delete session.directory
     delete session.child
   }
+  /** The login home is removed again once the CLI tree is dead, so a late write cannot leave a credential behind. */
+  const stopLoginChild = (session: Session): void => {
+    const { child, directory } = session
+    if (!child) return
+    void killLoginChild(child).finally(() => {
+      if (directory) rmSync(directory, { recursive: true, force: true })
+    })
+  }
   const cancel = (target: Target, state: "cancelled" | "error" = "cancelled") => {
     const session = sessions.get(key(target))
     if (session) {
       const child = session.child
-      // The process scan can yield to the event loop, so stop the CLI before publishing the final state.
-      if (child) killLoginChild(child)
+      stopLoginChild(session)
       session.view = {
         provider: target.provider,
         state,
@@ -410,7 +416,7 @@ export const createProviderLoginFlow = ({
         session.view = { provider: command, state: "ready" }
       } catch {
         if (session.view.state === "waiting") {
-          if (session.child) killLoginChild(session.child)
+          stopLoginChild(session)
           session.view = {
             provider: target.provider,
             state: "error",

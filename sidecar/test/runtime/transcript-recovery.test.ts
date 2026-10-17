@@ -508,11 +508,11 @@ test("orphan cleanup verifies process birth before signaling a reused PID", asyn
   })
   if (!child.success) throw new Error(child.error)
   try {
-    trackProviderProcess(f.runtime.kernel, child)
+    await trackProviderProcess(f.runtime.kernel, child)
     const path = join(f.runtime.kernel.paths.runDir, "provider-processes", `${child.pid}.json`)
     const record = await Bun.file(path).json()
     writeFileSync(path, JSON.stringify({ ...record, birth: "a different process birth" }))
-    reapProviderProcesses(f.runtime.kernel)
+    await reapProviderProcesses(f.runtime.kernel)
     process.kill(child.pid, 0)
     expect(readdirSync(join(f.runtime.kernel.paths.runDir, "provider-processes"))).toEqual([])
   } finally {
