@@ -75,9 +75,7 @@ export const Modal = ({
     document.addEventListener("keydown", handleKey, true)
     return () => {
       document.removeEventListener("keydown", handleKey, true)
-      // Navigation may already have focused its destination while this dialog exits.
-      if (previous?.isConnected && (document.activeElement === document.body || card.contains(document.activeElement)))
-        previous.focus({ preventScroll: true })
+      if (previous?.isConnected) previous.focus({ preventScroll: true })
     }
   }, [])
   return (

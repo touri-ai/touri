@@ -60,7 +60,18 @@ const CronScreen = ({
 }: CronScreenProps) => {
   const listRef = useRef<HTMLElement>(null)
   useEffect(() => {
-    listRef.current?.focus()
+    const focusList = () => {
+      if (document.querySelector(".modal-card")) return false
+      listRef.current?.focus()
+      return true
+    }
+    if (focusList()) return
+    // The settings dialog restores its trigger during exit; focus the destination afterwards.
+    const observer = new MutationObserver(() => {
+      if (focusList()) observer.disconnect()
+    })
+    observer.observe(document.body, { childList: true, subtree: true })
+    return () => observer.disconnect()
   }, [])
   const startingRef = useRef(new Set<Id>())
   const [starting, setStarting] = useState<Set<Id>>(new Set())
