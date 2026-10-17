@@ -10,7 +10,7 @@ import { BOT_IMAGE, imageContext } from "../vm/image"
 import { containerMemoryChecks } from "../vm/memory-doctor"
 import { check, shellQuote } from "./check"
 import type { DoctorCommand } from "./command"
-import { mcpStartupChecks, orphanShimCheck } from "./mcp"
+import { mcpSocketPathCheck, mcpStartupChecks, orphanShimCheck } from "./mcp"
 import { withinDeadline } from "./network"
 import { providerLoginChecks } from "./providerLogin"
 
@@ -55,6 +55,7 @@ export const sidecarChecks = (kernel: Kernel): Array<DoctorCheck> => {
   } catch {}
   return [
     ...mcpStartupChecks(kernel.db as Database),
+    mcpSocketPathCheck(kernel.paths),
     orphanShimCheck(kernel.paths.runDir),
     check("sidecar-version", "Serviço local · versão", "pass", `touri ${version}; Bun ${Bun.version}.`),
     check(

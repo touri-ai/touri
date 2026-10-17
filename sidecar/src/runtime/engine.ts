@@ -29,6 +29,7 @@ import { createApprovalBridge } from "../approvals/bridge"
 import { approvalOutcome } from "../approvals/outcome"
 import { delegatedBot } from "../groups/security"
 import { buildChildEnv } from "../kernel"
+import { resolveMcpSocketPath } from "../kernel/paths"
 import { providerProfileEnv } from "../kernel/provider-profiles"
 import { redactStructured } from "../kernel/redact"
 import { attachedServers, resolveAttachedMcp } from "../mcp/attached"
@@ -410,7 +411,11 @@ export const createRuntimeEngine = ({
     return {
       command: kernel.paths.sidecarBinary,
       args: ["mcp-stdio", "--thread", threadId],
-      env: { TOURI_APP_DATA: kernel.paths.appData, TOURI_RUN_DIR: kernel.paths.runDir },
+      env: {
+        TOURI_APP_DATA: kernel.paths.appData,
+        TOURI_RUN_DIR: kernel.paths.runDir,
+        TOURI_MCP_SOCK: resolveMcpSocketPath(kernel.paths),
+      },
     }
   }
 
@@ -756,6 +761,7 @@ export const createRuntimeEngine = ({
         ...providerProfileEnv({ appData: kernel.paths.appData, bot }),
         TOURI_RUN_DIR: kernel.paths.runDir,
         TOURI_APP_DATA: kernel.paths.appData,
+        ...(bot.machine === "vm" ? {} : { TOURI_MCP_SOCK: resolveMcpSocketPath(kernel.paths) }),
         ...(projectDataDir ? { TOURI_PROJECT_DATA_DIR: projectDataDir } : {}),
       },
     })

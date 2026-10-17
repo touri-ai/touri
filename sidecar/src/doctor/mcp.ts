@@ -1,7 +1,22 @@
 import type { Database } from "bun:sqlite"
+import { join } from "node:path"
+import type { AppPaths } from "@touri/contracts"
+import { resolveMcpSocketPath } from "../kernel/paths"
 import { listLiveShims } from "../mcp/shim-registry"
 import { isMcpStartupError, MCP_STARTUP_MESSAGE } from "../runtime/mcp-startup"
 import { check } from "./check"
+
+export const mcpSocketPathCheck = (paths: AppPaths) => {
+  const fallback = resolveMcpSocketPath(paths) !== join(paths.runDir, "mcp.sock")
+  return check(
+    "mcp-socket-path",
+    "Ferramentas do touri · conexão local",
+    "pass",
+    fallback
+      ? "O caminho dos dados é longo; a conexão local usa uma pasta temporária privada com caminho curto. Nenhuma ação necessária."
+      : "A conexão local usa a pasta de execução do aplicativo.",
+  )
+}
 
 export const mcpStartupChecks = (db: Database) => {
   // Keep a failure visible until that bot completes a successful turn, even

@@ -9,6 +9,7 @@ import {
   resolveBotFolder,
   withinFolder,
 } from "../kernel/bot-folders"
+import { resolveMcpSocketPath } from "../kernel/paths"
 
 export const turnFolders = (args: StartTurnArgs) => {
   const folders = (args.bot.folders ?? []).map((folder) => {
@@ -43,7 +44,7 @@ export const localFolderProfile = (
   // Provider bookkeeping must remain writable even for a read-only conversation.
   const runDir = env.TOURI_RUN_DIR ?? kernel.paths.runDir
   const runtimePaths = [
-    join(runDir, "mcp.sock"),
+    env.TOURI_MCP_SOCK ?? resolveMcpSocketPath({ ...kernel.paths, runDir }),
     join(runDir, "mcp-tokens", args.thread.id),
     join(runDir, "mcp-shims"),
     ...["mcp.json", "system.md", "settings.json"].map((suffix) =>
