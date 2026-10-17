@@ -1,5 +1,6 @@
 import type { MessagePart } from "@touri/contracts"
 import type { AvatarIdentity } from "@touri/contracts/avatar"
+import type { Locale } from "../i18n"
 import { activityKindFor, activityLabelFor } from "./activityStatus"
 import { BotAvatar } from "./BotAvatar"
 import { type MascotState, mascotIsBusy, mascotPhaseFor } from "./mascotState"
@@ -16,6 +17,7 @@ export const ActivityMark = ({
   onExpandReasoning,
   reasoningId,
   reasoningExpanded,
+  locale = "pt-BR",
 }: {
   state: MascotState
   parts?: readonly MessagePart[]
@@ -25,13 +27,14 @@ export const ActivityMark = ({
   onExpandReasoning?: (() => void) | undefined
   reasoningId?: string | undefined
   reasoningExpanded?: boolean | undefined
+  locale?: Locale
 }) => {
   const reduced = useReducedMotion()
   const busy = mascotIsBusy(state)
   if (!busy && state !== "waiting-approval") return null
   const pending = parts.find((part) => part.type === "approval" && part.decision === "pending")
   const approvalId = pending?.type === "approval" ? pending.approvalId : undefined
-  const label = activityLabelFor(state, parts)
+  const label = activityLabelFor(state, parts, locale)
   return (
     <div
       className="activity-mark"

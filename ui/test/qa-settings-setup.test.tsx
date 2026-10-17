@@ -19,6 +19,7 @@ it.each(["não é json", "[", "{}", "[42]"])("F024: explains invalid MCP JSON %s
   const api = createMockApi()
   render(<BotMcpSettings api={api} botId="json-bot" />)
   await screen.findByText(/Nenhum servidor externo conectado/)
+  fireEvent.click(screen.getByRole("button", { name: "Configuração técnica (MCP)" }))
   fireEvent.change(screen.getByLabelText("Nome do servidor MCP"), { target: { value: "test" } })
   fireEvent.change(screen.getByLabelText("Comando MCP"), { target: { value: "node" } })
   const args = screen.getByLabelText("Argumentos MCP (lista JSON)")
@@ -31,33 +32,35 @@ it.each(["não é json", "[", "{}", "[42]"])("F024: explains invalid MCP JSON %s
   expect(screen.queryByText(/JSON Parse error|Unexpected/)).toBeNull()
   fireEvent.change(args, { target: { value: ' ["--porta", "3000"] ' } })
   expect(args).toHaveAttribute("aria-invalid", "false")
-  expect(screen.getByRole("button", { name: "Conectar servidor MCP" })).toBeEnabled()
+  expect(screen.getByRole("button", { name: "Testar conexão" })).toBeEnabled()
 })
 
 it("F025: shows the missing MCP command through the real API error boundary and allows retry", async () => {
   const user = userEvent.setup()
   const fetchImpl = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) =>
-    init?.method === "PUT"
+    init?.method === "POST"
       ? Response.json({ errorCode: "MCP_EXECUTABLE_NOT_FOUND", code: "TOURI-E1012" }, { status: 400 })
       : Response.json({ servers: [] }),
   )
   const api = createApiClient({ endpoint: { baseUrl: "", wsUrl: "", token: "" }, fetchImpl })
   render(<BotMcpSettings api={api} botId="missing-command" />)
+  fireEvent.click(screen.getByRole("button", { name: "Configuração técnica (MCP)" }))
   fireEvent.change(screen.getByLabelText("Nome do servidor MCP"), { target: { value: "qa-command" } })
   fireEvent.change(screen.getByLabelText("Comando MCP"), { target: { value: "touri-qa-command-does-not-exist" } })
   for (let i = 0; i < 2; i++) {
-    await user.click(screen.getByRole("button", { name: "Conectar servidor MCP" }))
+    await user.click(screen.getByRole("button", { name: "Testar conexão" }))
     expect(await screen.findByRole("alert")).toHaveTextContent(/touri-qa-command-does-not-exist.*não foi encontrado/)
     expect(screen.getByRole("alert")).toHaveTextContent(/máquina deste bot/)
     expect(screen.getByLabelText("Comando MCP")).toHaveAttribute("aria-invalid", "true")
   }
-  expect(fetchImpl.mock.calls.filter(([, init]) => init?.method === "PUT")).toHaveLength(2)
+  expect(fetchImpl.mock.calls.filter(([, init]) => init?.method === "POST")).toHaveLength(2)
 })
 
 it("F025: identifies an invalid server name before attempting a connection", async () => {
   const api = createMockApi()
   render(<BotMcpSettings api={api} botId="bad-name" />)
   await screen.findByText(/Nenhum servidor externo conectado/)
+  fireEvent.click(screen.getByRole("button", { name: "Configuração técnica (MCP)" }))
   fireEvent.change(screen.getByLabelText("Nome do servidor MCP"), { target: { value: "QA comando inexistente" } })
   fireEvent.change(screen.getByLabelText("Comando MCP"), { target: { value: "touri-qa-command-does-not-exist" } })
   expect(screen.getByLabelText("Nome do servidor MCP")).toHaveAttribute("aria-invalid", "true")
@@ -69,12 +72,19 @@ it("F025: identifies an invalid server name before attempting a connection", asy
 it("F005: requires an absolute folder before connecting the local-files preset", async () => {
   const api = createMockApi()
   const request = vi.fn(async (route, input) =>
-    route === "GET /bots/:id/mcp" ? { servers: [] } : { server: { ...input, tools: [] } },
+    route === "GET /bots/:id/mcp"
+      ? { servers: [] }
+      : { server: { ...input, tools: [{ name: "list_files", description: "" }] } },
   ) as ApiRequest
   render(<BotMcpSettings api={{ ...api, request }} botId="files-bot" />)
   await screen.findByText(/Nenhum servidor externo conectado/)
-  fireEvent.click(screen.getByRole("button", { name: "Usar configuração Arquivos locais" }))
-  const connect = screen.getByRole("button", { name: "Conectar servidor MCP" })
+  fireEvent.click(screen.getByRole("button", { name: "Configuração técnica (MCP)" }))
+  fireEvent.change(screen.getByLabelText("Nome do servidor MCP"), { target: { value: "arquivos" } })
+  fireEvent.change(screen.getByLabelText("Comando MCP"), { target: { value: "npx" } })
+  fireEvent.change(screen.getByLabelText("Argumentos MCP (lista JSON)"), {
+    target: { value: '["-y","@modelcontextprotocol/server-filesystem"]' },
+  })
+  const connect = screen.getByRole("button", { name: "Testar conexão" })
   expect(connect).toBeDisabled()
   const folder = screen.getByRole("textbox", { name: "Pasta permitida (caminho absoluto)" })
   expect(folder).toBeRequired()
@@ -82,9 +92,11 @@ it("F005: requires an absolute folder before connecting the local-files preset",
   expect(connect).toBeDisabled()
   fireEvent.click(connect)
   expect(request).not.toHaveBeenCalledWith("PUT /bots/:id/mcp/:name", expect.anything(), expect.anything())
-  fireEvent.change(folder, { target: { value: "/Users/test/Meus arquivos" } })
+  fireEvent.change(folder, { target: { value: "/workspace/Meus arquivos" } })
   expect(connect).toBeEnabled()
   fireEvent.click(connect)
+  await waitFor(() => expect(screen.getByRole("button", { name: "Conectar servidor MCP" })).toBeEnabled())
+  fireEvent.click(screen.getByRole("button", { name: "Conectar servidor MCP" }))
   await waitFor(() =>
     expect(request).toHaveBeenCalledWith(
       "PUT /bots/:id/mcp/:name",
@@ -92,7 +104,7 @@ it("F005: requires an absolute folder before connecting the local-files preset",
         name: "arquivos",
         transport: "stdio",
         command: "npx",
-        args: ["-y", "@modelcontextprotocol/server-filesystem", "/Users/test/Meus arquivos"],
+        args: ["-y", "@modelcontextprotocol/server-filesystem", "/workspace/Meus arquivos"],
         tools: [],
       },
       { id: "files-bot", name: "arquivos" },
@@ -103,19 +115,24 @@ it("F005: requires an absolute folder before connecting the local-files preset",
 it("F005: validates edited JSON too and does not require a folder for Gmail or HTTP", async () => {
   render(<BotMcpSettings api={createMockApi()} botId="files-bot" />)
   await screen.findByText(/Nenhum servidor externo conectado/)
-  fireEvent.click(screen.getByRole("button", { name: "Usar configuração Arquivos locais" }))
-  const connect = screen.getByRole("button", { name: "Conectar servidor MCP" })
+  fireEvent.click(screen.getByRole("button", { name: "Configuração técnica (MCP)" }))
+  fireEvent.change(screen.getByLabelText("Nome do servidor MCP"), { target: { value: "arquivos" } })
+  fireEvent.change(screen.getByLabelText("Comando MCP"), { target: { value: "npx" } })
+  fireEvent.change(screen.getByLabelText("Argumentos MCP (lista JSON)"), {
+    target: { value: '["-y","@modelcontextprotocol/server-filesystem"]' },
+  })
+  const connect = screen.getByRole("button", { name: "Testar conexão" })
   const args = screen.getByLabelText("Argumentos MCP (lista JSON)")
   for (const value of ["[", "{}", "[42]", '["-y","@modelcontextprotocol/server-filesystem","relative"]']) {
     fireEvent.change(args, { target: { value } })
     expect(connect).toBeDisabled()
   }
   fireEvent.change(args, {
-    target: { value: '["-y","@modelcontextprotocol/server-filesystem","/Users/test/Documents"]' },
+    target: { value: '["-y","@modelcontextprotocol/server-filesystem","/workspace/Documents"]' },
   })
   expect(connect).toBeEnabled()
-  expect(screen.getByLabelText("Pasta permitida (caminho absoluto)")).toHaveValue("/Users/test/Documents")
-  fireEvent.click(screen.getByRole("button", { name: "Usar configuração Gmail" }))
+  expect(screen.getByLabelText("Pasta permitida (caminho absoluto)")).toHaveValue("/workspace/Documents")
+  fireEvent.change(args, { target: { value: '["-y","@shinzolabs/gmail-mcp"]' } })
   expect(connect).toBeEnabled()
   expect(screen.queryByLabelText("Pasta permitida (caminho absoluto)")).toBeNull()
   fireEvent.change(screen.getByLabelText("Argumentos MCP (lista JSON)"), { target: { value: "[" } })

@@ -1,7 +1,7 @@
 import type { Message, NotificationRecord } from "@touri/contracts"
 import { useState } from "react"
 import type { ApprovalTarget } from "../approvalNavigation"
-import { approvalNotificationSummary } from "../approvalNotice"
+import { approvalBarSummary, approvalNotificationSummary } from "../approvalNotice"
 import { isResolvedNotification, reconcileApprovalNotifications } from "../approvalState"
 import { t } from "../i18n"
 
@@ -26,7 +26,7 @@ export const ApprovalNotice = ({
     )
     .sort((a, b) => b.createdAt - a.createdAt || b.id - a.id)[0]
   if (!item) return null
-  const summary = approvalNotificationSummary(item, messages)
+  const summary = approvalBarSummary(approvalNotificationSummary(item, messages))
   return (
     <div className="notice-bar approval-notice" role="status">
       <span className="notice-content">

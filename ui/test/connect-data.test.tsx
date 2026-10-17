@@ -71,7 +71,9 @@ it("opens the existing tool catalog without connecting a server", async () => {
   const { api } = await setup()
   fireEvent.click(screen.getByRole("button", { name: "Adicionar ferramenta do catálogo" }))
   const catalog = await screen.findByRole("region", { name: "Catálogo de integrações MCP" })
-  expect(within(catalog).getByRole("button", { name: "Usar configuração Arquivos locais" })).toBeVisible()
+  expect(within(catalog).getAllByRole("button", { name: "Conectar", exact: true })).toHaveLength(2)
+  expect(screen.queryByLabelText("Transporte MCP")).not.toBeInTheDocument()
+  expect(screen.queryByLabelText("Argumentos MCP (lista JSON)")).not.toBeInTheDocument()
   expect(api.calls.filter((call) => call.route === "PUT /bots/:id/mcp/:name")).toEqual([])
 })
 

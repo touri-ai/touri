@@ -21,7 +21,7 @@ const copy = {
     "After approval, the folder {path} will be created automatically.",
   "Somente leitura": "Read-only",
   "Leitura e escrita": "Read and write",
-  "Permitir {mode} em {path} para este bot": "Allow {mode} in {path} for this bot",
+  "Permitir {mode} em {path} para este bot.": "Allow {mode} in {path} for this bot.",
   "Acesso anterior: {mode}.": "Previous access: {mode}.",
   "A mudança entra em vigor no próximo turno da VM.": "The change takes effect on the next VM turn.",
   "A mudança entra em vigor no próximo turno local.": "The change takes effect on the next local turn.",
@@ -70,7 +70,7 @@ export const approvalSummary = (approval: Approval, locale: Locale = "pt-BR"): {
           locale,
         ),
       }
-    let body = text("Permitir {mode} em {path} para este bot", locale, {
+    let body = text("Permitir {mode} em {path} para este bot.", locale, {
       mode: text(input.mode === "read" ? "Somente leitura" : "Leitura e escrita", locale),
       path: input.path,
     })
@@ -111,6 +111,7 @@ export const approvalSummary = (approval: Approval, locale: Locale = "pt-BR"): {
 
 export const isApprovalNoticeTitle = (title: string): boolean =>
   /(?:^|: )Approve (?:action|command|file change)$/.test(title) ||
+  /(?:^|: )(?:Permitir escrita em|Allow writing in) \/[^\r\n]*\?$/.test(title) ||
   (
     [
       "Terminal",
