@@ -101,7 +101,12 @@ export class AvatarGaze {
   ): Look {
     const blend = -Math.expm1(-9 * Math.min(0.1, Math.max(0, time - this.last)))
     this.last = time
-    const known = pointer !== null && box !== undefined && box.width > 0
+    const known =
+      pointer !== null &&
+      box !== undefined &&
+      box.width > 0 &&
+      box.height > 0 &&
+      Number.isFinite(pointer.x + pointer.y + box.left + box.top + box.width + box.height)
     if (known) {
       const unit = (value: number) => Math.max(-1, Math.min(1, value / 320))
       this.yaw += (24 * unit(pointer.x - box.left - box.width / 2) - this.yaw) * blend
@@ -143,7 +148,7 @@ export const attachAvatarGaze = (
   const press = (): void => gaze.press()
   element.addEventListener("pointerdown", press)
   return {
-    sample: (time) => gaze.sample(time, position, element.getBoundingClientRect()),
+    sample: (time) => gaze.sample(time, position, element.isConnected ? element.getBoundingClientRect() : undefined),
     release: () => {
       element.removeEventListener("pointerdown", press)
       subscribers.delete(token)

@@ -523,34 +523,45 @@ const AppContent = ({ kernel }: AppProps) => {
     ) : modal === "import" ? (
       <ImportWizard bots={data.bots} api={api} onClose={closeModal} onNotice={showNotice} />
     ) : null
-  const botModal =
-    modal === "bot" ? (
-      <BotCreateModal
-        api={api}
-        invokeCommand={invokeCommand}
-        cloudEnabled={data.settings?.cloud === true}
-        capability={data.machineCapability}
-        projects={data.projects}
-        onCreateProject={actions.createProject}
-        onClose={closeModal}
-        onCreate={async (input, loginDraftId) => {
-          await actions.createBot(input, loginDraftId)
-          setRoute({ section: "bots", screen: "chat" })
-        }}
-      />
-    ) : null
+  // Keep creation mounted when the first bot's live event replaces onboarding with the workspace.
+  const botModal = (
+    <MotionPresence show={modal === "bot"} kind="modal">
+      <ErrorBoundary area="o diálogo" dialog api={api} onClose={closeModal}>
+        {modal === "bot" && (
+          <BotCreateModal
+            api={api}
+            invokeCommand={invokeCommand}
+            cloudEnabled={data.settings?.cloud === true}
+            capability={data.machineCapability}
+            projects={data.projects}
+            onCreateProject={actions.createProject}
+            onClose={closeModal}
+            onCreate={async (input, loginDraftId) => {
+              const { loginReady } = await actions.createBot(input, loginDraftId)
+              setRoute({ section: "bots", screen: "chat" })
+              showNotice(
+                loginReady
+                  ? t("{name} created.", { name: input.name })
+                  : t("Bot created. Could not connect your account. Sign in below to chat."),
+              )
+            }}
+          />
+        )}
+      </ErrorBoundary>
+    </MotionPresence>
+  )
   if (data.bots.length === 0)
     return (
       <AvatarRuntimeProvider value={{ ...data, messages: data.activityMessages }}>
+        {botModal}
         <OnboardingLanding
           onCreateBot={() => openModal("bot")}
           onDoctor={() => openModal("doctor")}
           onImport={() => openModal("import")}
         />
-        <MotionPresence show={setupModal !== null || botModal !== null} kind="modal">
+        <MotionPresence show={setupModal !== null} kind="modal">
           <ErrorBoundary key={modal} area="o diálogo" dialog api={api} onClose={closeModal}>
             {setupModal}
-            {botModal}
           </ErrorBoundary>
         </MotionPresence>
       </AvatarRuntimeProvider>
@@ -585,6 +596,7 @@ const AppContent = ({ kernel }: AppProps) => {
 
   return (
     <AvatarRuntimeProvider value={{ ...data, messages: data.activityMessages }}>
+      {botModal}
       <main className="app-shell">
         <HistoryMigrationStatus api={api} />
         {connectionState === "error" && (
@@ -858,7 +870,7 @@ const AppContent = ({ kernel }: AppProps) => {
             onRun={runPaletteCommand}
           />
         </ErrorBoundary>
-        <MotionPresence show={modal !== null} kind="modal">
+        <MotionPresence show={modal !== null && modal !== "bot"} kind="modal">
           <ErrorBoundary key={modal} area="o diálogo" dialog api={api} onClose={closeModal}>
             {modal === "group" && (
               <GroupModal
@@ -872,7 +884,6 @@ const AppContent = ({ kernel }: AppProps) => {
               />
             )}
             {setupModal}
-            {botModal}
             {modal === "project" && (
               <ProjectModal
                 project={null}

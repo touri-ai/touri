@@ -132,6 +132,7 @@ const appAssets = (): void => {
   appMaster(master)
   copyFileSync(SOURCE, join(ROOT, "ui/public/touri-bull.png"))
   for (const [name, size] of Object.entries(flat)) resized(master, size, join(ICONS, name))
+  magick([join(ICONS, "32x32.png"), join(ROOT, "ui/public/favicon.ico")])
   rmSync(ICONSET, { recursive: true, force: true })
   mkdirSync(ICONSET, { recursive: true })
   for (const [name, size] of Object.entries(iconset)) resized(master, size, join(ICONSET, name))

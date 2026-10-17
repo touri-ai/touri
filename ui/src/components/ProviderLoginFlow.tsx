@@ -15,6 +15,20 @@ export const ProviderLoginFlow = ({ login }: { login: ReturnType<typeof useProvi
     const result = await act("code", code)
     if (result) setCode("")
   }
+  if (error && flow?.state !== "waiting" && flow?.state !== "ready")
+    return (
+      <div className="provider-login-flow">
+        <p role="alert">{error}</p>
+        <button
+          type="button"
+          className="button button-brand"
+          disabled={busy}
+          onClick={() => void act(flow?.state === "host-available" ? "use-host" : "start")}
+        >
+          {t("Tentar novamente")}
+        </button>
+      </div>
+    )
   return (
     <div className="provider-login-flow">
       <p aria-live="polite">

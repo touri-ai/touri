@@ -1,10 +1,10 @@
 import { readFileSync } from "node:fs"
 import { createConnection } from "node:net"
-import { isAbsolute, join, relative, resolve } from "node:path"
+import { isAbsolute, relative, resolve } from "node:path"
 import type { SidecarModule } from "@touri/contracts"
 import { createKernel, type KernelRuntime } from "./kernel"
 import { acquireRuntimeLock, watchParent } from "./kernel/lifecycle"
-import { createAppPaths } from "./kernel/paths"
+import { createAppPaths, resolveMcpSocketPath } from "./kernel/paths"
 import { safeThreadId } from "./mcp/auth"
 import { registerShim } from "./mcp/shim-registry"
 import { type McpShimStage, mcpStartupFailureLine } from "./mcp/startup-stage"
@@ -148,7 +148,7 @@ export const runMcpStdio = ({ threadId, appData }: { threadId: string; appData?:
     process.exitCode = 1
     return Promise.resolve()
   }
-  const socketPath = process.env.TOURI_MCP_SOCK ?? join(paths.runDir, "mcp.sock")
+  const socketPath = process.env.TOURI_MCP_SOCK ?? resolveMcpSocketPath(paths)
   const unregister = registerShim({ runDir: paths.runDir, thread: threadId })
   return new Promise((resolve) => {
     const socket = createConnection(socketPath)

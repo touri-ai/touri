@@ -1,9 +1,10 @@
 import type { Database } from "bun:sqlite"
 import { expect, test } from "bun:test"
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { dirname, join } from "node:path"
 import { createKernel } from "../../src/kernel"
+import { resolveMcpSocketPath } from "../../src/kernel/paths"
 import { init, stop } from "../../src/mcp"
 import { createFixtureStore } from "./store-fixture"
 
@@ -24,9 +25,15 @@ const readLine = async (stream: ReadableStream<Uint8Array>): Promise<string> => 
   }
 }
 
-test("the real stdio shim forwards MCP requests with the exact WP3 command shape", async () => {
-  const root = mkdtempSync(join(tmpdir(), "touri-wp4-shim-"))
+test.each([
+  { name: "normal data dir", long: false, explicit: false },
+  { name: "long data dir", long: true, explicit: false },
+  { name: "long data dir with a resolved socket in env", long: true, explicit: true },
+])("the real stdio shim forwards MCP requests with $name", async ({ long, explicit }) => {
+  const parent = mkdtempSync(join(tmpdir(), "touri-wp4-shim-"))
+  const root = long ? join(parent, "data-".repeat(30)) : parent
   const runtime = createKernel({ appData: root })
+  const socketPath = resolveMcpSocketPath(runtime.kernel.paths)
   const token = "e".repeat(64)
   mkdirSync(join(root, "run", "mcp-tokens"), { recursive: true, mode: 0o700 })
   writeFileSync(join(root, "run", "mcp-tokens", "thread-mark"), token, { mode: 0o600 })
@@ -47,6 +54,9 @@ test("the real stdio shim forwards MCP requests with the exact WP3 command shape
   let child: ReturnType<typeof Bun.spawn> | null = null
   try {
     await init(runtime.kernel)
+    expect(Buffer.byteLength(socketPath)).toBeLessThan(process.platform === "darwin" ? 104 : 108)
+    expect(statSync(dirname(socketPath)).mode & 0o777).toBe(0o700)
+    expect(statSync(socketPath).mode & 0o777).toBe(0o600)
     const configuredBinary = process.env.TOURI_TEST_SHIM_BIN
     const command = configuredBinary ?? "bun"
     const args = configuredBinary
@@ -55,7 +65,12 @@ test("the real stdio shim forwards MCP requests with the exact WP3 command shape
     child = Bun.spawn({
       cmd: [command, ...args],
       cwd: join(import.meta.dir, "..", "..", ".."),
-      env: { ...process.env, TOURI_APP_DATA: root },
+      env: {
+        ...process.env,
+        TOURI_APP_DATA: root,
+        TOURI_MCP_SOCK: explicit ? socketPath : undefined,
+        ...(explicit ? { TMPDIR: join(parent, "different-temp-dir") } : {}),
+      },
       stdin: "pipe",
       stdout: "pipe",
       stderr: "pipe",
@@ -80,6 +95,7 @@ test("the real stdio shim forwards MCP requests with the exact WP3 command shape
     if (child) await child.exited
     await stop({ kernel: runtime.kernel })
     runtime.stop()
-    rmSync(root, { recursive: true, force: true })
+    if (long) rmSync(dirname(socketPath), { recursive: true, force: true })
+    rmSync(parent, { recursive: true, force: true })
   }
 })

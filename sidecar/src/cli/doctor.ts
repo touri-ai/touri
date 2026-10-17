@@ -2,6 +2,7 @@ import { accessSync, constants, existsSync, statSync } from "node:fs"
 import { arch, homedir, platform } from "node:os"
 import { join } from "node:path"
 import { codexSessionsCheck } from "../doctor/codex-sessions"
+import { createAppPaths, resolveMcpSocketPath } from "../kernel/paths"
 import { createAppleContainerProvider } from "../vm"
 import type { CliCommand } from "./args"
 import { computerUseDisabledReason } from "./host/headlessHost"
@@ -30,15 +31,16 @@ const dataDirCheck = (dataDir: string): DoctorCheck => {
   }
 }
 
-const maxSocketPath = 100
-
-const socketPathCheck = (dataDir: string): DoctorCheck => {
-  const path = join(dataDir, "run", "mcp.sock")
-  if (path.length <= maxSocketPath) return { name: "mcp socket path", level: "ok", detail: `${path.length} chars` }
+export const socketPathCheck = (dataDir: string): DoctorCheck => {
+  const paths = createAppPaths({ appData: dataDir })
+  const path = resolveMcpSocketPath(paths)
+  const fallback = path !== join(paths.runDir, "mcp.sock")
   return {
     name: "mcp socket path",
-    level: "fail",
-    detail: `${path.length} chars exceeds the unix socket limit; use a shorter --data-dir`,
+    level: "ok",
+    detail: fallback
+      ? `${Buffer.byteLength(path)} bytes; using a short private temporary socket directory because the data dir path is too long`
+      : `${Buffer.byteLength(path)} bytes`,
   }
 }
 

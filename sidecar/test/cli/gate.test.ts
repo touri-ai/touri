@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test"
-import { mkdtempSync, rmSync } from "node:fs"
+import { mkdtempSync, readFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { createRateLimiter } from "../../src/cli/auth/rateLimit"
@@ -7,7 +7,7 @@ import { openAuthStore } from "../../src/cli/auth/store"
 import { createSecretStore } from "../../src/cli/host/secretStore"
 import { createWebGate, deviceCookieName } from "../../src/cli/web/gate"
 import { isDirectLoopback } from "../../src/cli/web/loopback"
-import type { UiAsset, UiAssets } from "../../src/cli/web/uiAssets"
+import { directoryAssets, embeddedAssets, type UiAsset, type UiAssets } from "../../src/cli/web/uiAssets"
 
 const files: Record<string, UiAsset> = {
   "index.html": { file: new Blob(["<html>app</html>"]), type: "text/html; charset=utf-8", immutable: false },
@@ -60,7 +60,7 @@ const makeGate = () => {
     const payload = (await response?.json()) as { token: string }
     return { token: payload.token, cookie: `${deviceCookieName}=${payload.token}` }
   }
-  return { call, pair, store, intercept, secrets }
+  return { call, pair, store, intercept, secrets, limiter }
 }
 
 test("unauthenticated root shows the pairing page and the API answers 401", async () => {
@@ -198,6 +198,26 @@ test("static serving falls back to index.html for app routes, never for missing 
   expect((await call({ path: "/missing.js", headers: { cookie } }))?.status).toBe(404)
   const asset = await call({ path: "/assets/app.js", headers: { cookie } })
   expect(asset?.headers.get("cache-control")).toContain("immutable")
+})
+
+test("serves the linked app favicon from directory and embedded UI assets", async () => {
+  const { store, secrets, limiter, pair } = makeGate()
+  const { cookie } = await pair()
+  const publicDir = new URL("../../../ui/public/", import.meta.url)
+  const html = readFileSync(new URL("../../../ui/index.html", import.meta.url), "utf8")
+  expect(html).toContain('<link rel="icon" type="image/x-icon" href="/favicon.ico" />')
+  for (const assets of [
+    directoryAssets(publicDir.pathname),
+    embeddedAssets({ "favicon.ico": new URL("favicon.ico", publicDir).pathname }),
+  ]) {
+    const intercept = createWebGate({ store, secrets, limiter, ui: assets })
+    const url = new URL("https://app.example/favicon.ico")
+    const response = await intercept({ request: new Request(url, { headers: { cookie } }), url, clientIp: null })
+    if (!response) throw new Error("Favicon response missing")
+    expect(response.status).toBe(200)
+    expect(response.headers.get("content-type")).toBe("image/x-icon")
+    expect(new Uint8Array(await response.arrayBuffer()).slice(0, 4)).toEqual(new Uint8Array([0, 0, 1, 0]))
+  }
 })
 
 test("R13: --no-pair never admits an unpaired caller; another macOS account shares 127.0.0.1", async () => {

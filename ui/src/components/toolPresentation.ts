@@ -137,8 +137,31 @@ const setupPresentation = (name: string, input: Record<string, unknown> | null) 
     title = t("Remover acesso à pasta")
     summary = t("Remover o acesso deste bot a {path}.", { path })
   } else return null
-  if (input?.nextTurn) summary += ` ${t("A mudança entra em vigor no próximo turno da VM.")}`
+  if (input?.nextTurn)
+    summary += ` ${t(input.machine === "local" ? "A mudança entra em vigor no próximo turno local." : "A mudança entra em vigor no próximo turno da VM.")}`
   return { name: title, summary, preview, approvalLabel, canApprove: true }
+}
+
+const projectToolPresentation = (name: string, input: Record<string, unknown> | null) => {
+  if (name.includes("__") && !name.startsWith("mcp__touri__")) return null
+  const process = typeof input?.name === "string" ? input.name : t("do projeto")
+  const command = typeof input?.command === "string" ? `: ${input.command}` : ""
+  const presentations: Record<string, { name: string; summary: string }> = {
+    process_list: { name: t("Listar processos"), summary: t("Consultar os processos do projeto e seus estados") },
+    process_define: {
+      name: t("Definir processo"),
+      summary: t("Definir o processo {name}{command}", { name: process, command }),
+    },
+    process_start: { name: t("Iniciar processo"), summary: t("Iniciar o processo {name}", { name: process }) },
+    process_stop: { name: t("Parar processo"), summary: t("Parar o processo {name}", { name: process }) },
+    process_restart: { name: t("Reiniciar processo"), summary: t("Reiniciar o processo {name}", { name: process }) },
+    process_logs: { name: t("Ler logs"), summary: t("Consultar os logs do processo {name}", { name: process }) },
+    preview_open: {
+      name: t("Abrir prévia"),
+      summary: t("Abrir a prévia do projeto em {path}", { path: typeof input?.path === "string" ? input.path : "/" }),
+    },
+  }
+  return presentations[toolLeaf(name)] ?? null
 }
 
 export const toolPresentation = (part?: ToolPart, approval?: ApprovalPart) => {
@@ -171,6 +194,7 @@ export const toolPresentation = (part?: ToolPart, approval?: ApprovalPart) => {
           approval ? asToolRecord(safeValue(approvalDetail(approval))) : args,
         )
       : null
+  const projectTool = !approval || approval.scope?.server === "touri" ? projectToolPresentation(name, args) : null
   const identity = toolIdentity(name, approval?.scope?.server)
   const description = typeof args?.description === "string" ? args.description : ""
   const summary = part?.type === "tool_call" && !/^Claude tool |^[{[]/.test(part.summary) ? part.summary : ""
@@ -202,9 +226,11 @@ export const toolPresentation = (part?: ToolPart, approval?: ApprovalPart) => {
     ...(setup ? { name: setup.name } : {}),
     canApprove: setup?.canApprove ?? true,
     approvalLabel: setup?.approvalLabel,
+    ...(projectTool ? { name: projectTool.name } : {}),
     filePaths,
     summary:
       setup?.summary ??
+      projectTool?.summary ??
       localizeToolText(
         description ||
           summary ||

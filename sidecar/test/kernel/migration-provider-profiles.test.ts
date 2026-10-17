@@ -21,7 +21,7 @@ test("schema 16 upgrades bots to the host login with connectors off and preserve
     )
     database.close()
     database = openDatabase({ filename })
-    expect(SCHEMA_VERSION).toBe(17)
+    expect(SCHEMA_VERSION).toBe(18)
     expect(database.query("SELECT name,provider_profile,claude_ai_connectors FROM bots").get()).toEqual({
       name: "Keep",
       provider_profile: null,
@@ -35,7 +35,9 @@ test("schema 16 upgrades bots to the host login with connectors off and preserve
       provider_profile: "clav",
       claude_ai_connectors: 1,
     })
-    expect(database.query("SELECT value FROM schema_meta WHERE key='schema_version'").get()).toEqual({ value: "17" })
+    expect(database.query("SELECT value FROM schema_meta WHERE key='schema_version'").get()).toEqual({
+      value: String(SCHEMA_VERSION),
+    })
     expect(database.query("PRAGMA foreign_key_check").all()).toEqual([])
   } finally {
     database.close()
