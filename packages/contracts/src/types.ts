@@ -1027,8 +1027,18 @@ export type HostNotification =
 /* ------------------------------------------------------------------------------------------ */
 
 export type PreviewBounds = { x: number; y: number; width: number; height: number }
+export type ServerModeStatus = { mode: 'local' | 'server'; url: string | null }
+export type PendingDeepLink = { requestId: number; bot: string | null; thread: string | null }
 
 export type TauriCommands = {
+  deep_link_pending: { args: {}; result: PendingDeepLink | null }
+  deep_link_ack: { args: { requestId: number }; result: {} }
+  server_mode_status: { args: {}; result: ServerModeStatus }
+  server_mode_pair: { args: { url: string; code: string }; result: ServerModeStatus }
+  server_mode_test: { args: {}; result: { ok: true } }
+  server_mode_local: { args: {}; result: ServerModeStatus }
+  server_attention: { args: { title: string; body: string; deepLink?: string }; result: {} }
+  server_badge: { args: { count: number }; result: {} }
   computer_kill_switch: { args: {}; result: {} }
   save_file: { args: { name: string; dataBase64: string }; result: { path: string | null } }
   report_save_zip: { args: { dataBase64: string }; result: { path: string } }
