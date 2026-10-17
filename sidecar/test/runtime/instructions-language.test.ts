@@ -37,6 +37,11 @@ for (const provider of ["codex", "claude", "opencode"] as const) {
         ),
       ).toBe(true)
       expect(instructions.includes("including live reasoning summaries")).toBe(true)
+      expect(
+        instructions.includes(
+          "After using tools, finish with one or two sentences in the user's language saying what was done and where (file names or paths), or what blocked it. Only claim results confirmed by the tools.",
+        ),
+      ).toBe(true)
     } finally {
       db.close()
     }

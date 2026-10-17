@@ -14,6 +14,46 @@ export const ptBR = {
     "As permissões de pastas salvas não funcionam neste computador. Você pode conversar sem ferramentas. Remova essas permissões nas configurações do bot para continuar com tarefas.",
   "Remover permissões antigas": "Remover permissões antigas",
 
+  Ativar: "Ativar",
+  "Agora não": "Agora não",
+  "Este recurso não está disponível para bots na nuvem.": "Este recurso não está disponível para bots na nuvem.",
+  "O computador isolado não está disponível neste servidor.":
+    "O computador isolado não está disponível neste servidor.",
+  "O controle da tela deste computador não é suportado nesta plataforma.":
+    "O controle da tela deste computador não é suportado nesta plataforma.",
+  "O navegador não está instalado neste servidor. Peça à pessoa responsável para instalá-lo.":
+    "O navegador não está instalado neste servidor. Peça à pessoa responsável para instalá-lo.",
+  "O navegador precisa de uma sessão gráfica ou do modo sem janela neste servidor.":
+    "O navegador precisa de uma sessão gráfica ou do modo sem janela neste servidor.",
+  "Este acesso só pode ser solicitado pelo próprio bot em uma conversa com a pessoa, fora de rotinas e delegações.":
+    "Este acesso só pode ser solicitado pelo próprio bot em uma conversa com a pessoa, fora de rotinas e delegações.",
+  "Informe o recurso e um motivo curto, sem quebras de linha.":
+    "Informe o recurso e um motivo curto, sem quebras de linha.",
+  "Este recurso já está ativado neste bot.": "Este recurso já está ativado neste bot.",
+  "O acesso não foi ativado. Se quiser ativar depois, abra as configurações deste bot e ative o navegador ou o controle do computador. Respeite a decisão e não solicite novamente.":
+    "O acesso não foi ativado. Se quiser ativar depois, abra as configurações deste bot e ative o navegador ou o controle do computador. Respeite a decisão e não solicite novamente.",
+  "Acesso ativado neste bot. Encerre este turno; o touri retomará a tarefa automaticamente com a configuração aprovada.":
+    "Acesso ativado neste bot. Encerre este turno; o touri retomará a tarefa automaticamente com a configuração aprovada.",
+  "Acesso ativado neste bot. A configuração será aplicada no próximo turno.":
+    "Acesso ativado neste bot. A configuração será aplicada no próximo turno.",
+  "Ativar navegador": "Ativar navegador",
+  "Ativar controle do computador": "Ativar controle do computador",
+  "{bot} quer ativar o navegador dele para {reason}.": "{bot} quer ativar o navegador dele para {reason}.",
+  "{bot} quer ativar o controle do computador para {reason}.":
+    "{bot} quer ativar o controle do computador para {reason}.",
+  "Abre páginas no navegador isolado deste bot.": "Abre páginas no navegador isolado deste bot.",
+  "Pode ver a tela e clicar ou digitar, somente onde o touri permite.":
+    "Pode ver a tela e clicar ou digitar, somente onde o touri permite.",
+  "Controla somente a tela do computador isolado do bot.": "Controla somente a tela do computador isolado do bot.",
+  "Controla a tela deste computador, com as permissões do touri.":
+    "Controla a tela deste computador, com as permissões do touri.",
+  "A configuração fica salva neste bot. Você pode desativar nos ajustes.":
+    "A configuração fica salva neste bot. Você pode desativar nos ajustes.",
+  "Após ativar, o touri retoma a tarefa automaticamente.": "Após ativar, o touri retoma a tarefa automaticamente.",
+  "Ask the person to enable this bot's isolated browser or supported computer control with an explicit approval card. Use a short reason tied to their task. Never enables silently, never available to unattended or delegated runs. On automaticContinuation, finish this turn; touri resumes the original task with updated tools. On denial, do not ask again; explain how to enable it later in bot settings.":
+    "Pedir à pessoa para ativar o navegador isolado ou o controle do computador deste bot por um cartão de aprovação explícita. Informe um motivo curto ligado à tarefa. Indisponível para rotinas e delegações. Após ativar, encerre o turno para o touri retomar a tarefa. Se negado, respeite a decisão e explique como ativar depois nas configurações do bot.",
+
+  "{bot} pede sua aprovação: {summary}": "{bot} pede sua aprovação: {summary}",
   "O aplicativo não conseguiu acessar o cofre nativo. Desbloqueie o cofre do sistema e tente novamente.":
     "O aplicativo não conseguiu acessar o cofre nativo. Desbloqueie o cofre do sistema e tente novamente.",
   "O cofre nativo está disponível no aplicativo desktop. O modo servidor usa seu próprio cofre local.":
@@ -387,8 +427,8 @@ export const ptBR = {
   "Pastas deste Mac não estão disponíveis na nuvem.": "Pastas deste Mac não estão disponíveis na nuvem.",
   "O acesso não foi aprovado ou a configuração mudou.": "O acesso não foi aprovado ou a configuração mudou.",
   "Pasta não encontrada nas permissões deste bot.": "Pasta não encontrada nas permissões deste bot.",
-  "A configuração foi salva neste Mac e será aplicada no próximo turno local.":
-    "A configuração foi salva neste Mac e será aplicada no próximo turno local.",
+  "A configuração foi salva neste Mac. Vale a partir da próxima mensagem.":
+    "A configuração foi salva neste Mac. Vale a partir da próxima mensagem.",
   "Projeto {name} ({path}) vinculado a este bot.": "Projeto {name} ({path}) vinculado a este bot.",
   "Projeto {name} desvinculado deste bot.": "Projeto {name} desvinculado deste bot.",
   "Acesso {mode} à pasta {path} concedido a este bot.": "Acesso {mode} à pasta {path} concedido a este bot.",
@@ -517,8 +557,8 @@ export const ptBR = {
   "Desvincular o projeto deste bot.": "Desvincular o projeto deste bot.",
   "Remover acesso à pasta": "Remover acesso à pasta",
   "Remover o acesso deste bot a {path}.": "Remover o acesso deste bot a {path}.",
-  "A mudança entra em vigor no próximo turno da VM.": "A mudança entra em vigor no próximo turno da VM.",
-  "A mudança entra em vigor no próximo turno local.": "A mudança entra em vigor no próximo turno local.",
+  "Vale a partir da próxima mensagem na VM.": "Vale a partir da próxima mensagem na VM.",
+  "Vale a partir da próxima mensagem.": "Vale a partir da próxima mensagem.",
   "Retomado após aprovação de acesso": "Retomado após aprovação de acesso",
   "Baixar imagem": "Baixar imagem",
   "Delete bot": "Excluir bot",
@@ -1011,10 +1051,10 @@ export const ptBR = {
     "Keychains, ~/.ssh, perfis de navegadores e dados do touri ficam bloqueados, salvo pastas adicionadas explicitamente. Os arquivos necessários ao funcionamento deste bot continuam disponíveis.",
   "Na VM, sua pasta pessoal aparece em /host/home; as demais, em /host/<nome>. As exclusões são ocultadas por montagens somente leitura.":
     "Na VM, sua pasta pessoal aparece em /host/home; as demais, em /host/<nome>. As exclusões são ocultadas por montagens somente leitura.",
-  "No Mac, o sandbox do macOS bloqueia as exclusões e a escrita nas pastas somente leitura, inclusive em comandos de terminal. As alterações valem no próximo turno.":
-    "No Mac, o sandbox do macOS bloqueia as exclusões e a escrita nas pastas somente leitura, inclusive em comandos de terminal. As alterações valem no próximo turno.",
-  "Ao salvar, as pastas serão aplicadas com a recriação da máquina no próximo turno. Os arquivos da máquina serão preservados.":
-    "Ao salvar, as pastas serão aplicadas com a recriação da máquina no próximo turno. Os arquivos da máquina serão preservados.",
+  "No Mac, o sandbox do macOS bloqueia as exclusões e a escrita nas pastas somente leitura, inclusive em comandos de terminal. As alterações valem a partir da próxima mensagem.":
+    "No Mac, o sandbox do macOS bloqueia as exclusões e a escrita nas pastas somente leitura, inclusive em comandos de terminal. As alterações valem a partir da próxima mensagem.",
+  "Ao salvar, as pastas valerão a partir da próxima mensagem, quando a máquina será recriada. Os arquivos da máquina serão preservados.":
+    "Ao salvar, as pastas valerão a partir da próxima mensagem, quando a máquina será recriada. Os arquivos da máquina serão preservados.",
   "Permitir acesso a qualquer pasta?": "Permitir acesso a qualquer pasta?",
   "Este bot poderá ler arquivos pessoais de todo o Mac e, conforme o nível de acesso, alterá-los ou apagá-los. Na VM, sua pasta pessoal será montada em /host/home. Conceda este acesso apenas a bots em que confia.":
     "Este bot poderá ler arquivos pessoais de todo o Mac e, conforme o nível de acesso, alterá-los ou apagá-los. Na VM, sua pasta pessoal será montada em /host/home. Conceda este acesso apenas a bots em que confia.",
@@ -1169,13 +1209,13 @@ export const ptBR = {
   "List projects and Git repositories only in this bot's already granted folders and connected project. Never searches the home directory on its own. Read-only; no approval required. Ask the user for a path when nothing is available.":
     "Listar projetos e repositórios Git somente nas pastas já permitidas a este bot e no projeto vinculado. Não busca na pasta pessoal por conta própria. Somente leitura, sem aprovação. Peça um caminho ao usuário se nada estiver disponível.",
   "Register a Mac folder as a project if needed and link it to this calling bot only. Supply exactly one of path or projectId. Always requires explicit user approval in chat, even with approvals disabled. VM changes apply next turn.":
-    "Registrar uma pasta do Mac como projeto e vinculá-la somente a este bot, pelo caminho ou identificador. Sempre exige aprovação explícita no chat. Na VM, a mudança vale no próximo turno.",
+    "Registrar uma pasta do Mac como projeto e vinculá-la somente a este bot, pelo caminho ou identificador. Sempre exige aprovação explícita no chat. Na VM, a mudança vale a partir da próxima mensagem.",
   "Request access to a specific Mac folder for this calling bot only, with mode read or read-write. Always requires explicit user approval. Cannot enable any-folder access. VM changes apply next turn.":
-    "Pedir acesso de leitura ou leitura e escrita a uma pasta do Mac para este bot. Sempre exige aprovação explícita. Não permite acesso a qualquer pasta. Na VM, vale no próximo turno.",
+    "Pedir acesso de leitura ou leitura e escrita a uma pasta do Mac para este bot. Sempre exige aprovação explícita. Não permite acesso a qualquer pasta. Na VM, vale a partir da próxima mensagem.",
   "Unlink the project from this calling bot only. Narrows access without approval and posts a notice in chat. VM changes apply next turn.":
-    "Desvincular o projeto somente deste bot, sem aprovação, e mostrar um aviso no chat. Na VM, a mudança vale no próximo turno.",
+    "Desvincular o projeto somente deste bot, sem aprovação, e mostrar um aviso no chat. Na VM, a mudança vale a partir da próxima mensagem.",
   "Remove a specific folder grant from this calling bot only. Narrows access without approval and posts a notice in chat. Cannot change the user-only any-folder toggle. VM changes apply next turn.":
-    "Remover o acesso deste bot a uma pasta, sem aprovação, e mostrar um aviso no chat. O acesso a qualquer pasta continua exclusivo das configurações do usuário. Na VM, vale no próximo turno.",
+    "Remover o acesso deste bot a uma pasta, sem aprovação, e mostrar um aviso no chat. O acesso a qualquer pasta continua exclusivo das configurações do usuário. Na VM, vale a partir da próxima mensagem.",
   "Describe this bot's project: path, git branch/dirty state, defined processes with status and ports, available previews, and the NAMES (never values) of configured secrets.":
     "Consultar pasta, estado Git, processos, portas, visualizações e nomes dos segredos do projeto deste bot.",
   'Create or replace a long-running process the app supervises (dev server, mongod, redis-server...). It survives your turn and app restarts (when autostart). Never start long-running servers with your shell tool; define them here. cwd must be inside the project or its data dir (<dataDir> is substituted). env values may reference secrets as {"secret":"NAME"}.':
@@ -1338,22 +1378,22 @@ export const ptBR = {
   "Describe this bot’s role, tasks and style.": "Descreva o papel, as tarefas e o estilo deste bot.",
   "Detailed guidance for the bot. Saved as SOUL.md in the bot’s folder.":
     "Orientações detalhadas para o bot. Salvas no arquivo SOUL.md na pasta do bot.",
-  "Applied on the next turn.": "Aplicado no próximo turno.",
+  "Takes effect from the next message.": "Vale a partir da próxima mensagem.",
   Model: "Modelo",
   "CLI default": "Padrão do provedor",
   "Choose model": "Escolher modelo",
   "Save model": "Salvar modelo",
-  "Choose the model for this bot’s next turns.": "Escolha o modelo para os próximos turnos deste bot.",
-  "{provider} does not expose a model list in touri. Use the provider default or enter a model ID supported by your CLI.":
-    "O {provider} não disponibiliza uma lista de modelos no touri. Use o padrão do provedor ou informe um identificador de modelo compatível com sua CLI.",
+  "Choose the model for this bot’s next messages.": "Escolha o modelo para as próximas mensagens deste bot.",
+  "{provider} does not expose a model list in touri. Use the provider default or enter a model name that {provider} accepts.":
+    "O {provider} não disponibiliza uma lista de modelos no touri. Use o padrão do provedor ou informe o nome de um modelo que o {provider} aceite.",
   "Loading OpenCode models…": "Carregando modelos do OpenCode…",
   "Default model: {model}. You can also enter another model.":
     "Padrão: {model}. Você também pode informar outro modelo.",
   "Select a model or use the OpenCode default.": "Selecione um modelo ou use o padrão do OpenCode.",
   "OpenCode returned no models. Use the default or enter a provider/model ID.":
     "O OpenCode não retornou modelos. Use o padrão ou informe um identificador provedor/modelo.",
-  "OpenCode is unavailable. Install the CLI and check Doctor; you can enter a model manually.":
-    "OpenCode indisponível. Instale a CLI e confira o Doctor; você pode informar o modelo manualmente.",
+  "OpenCode is unavailable. Install OpenCode and check Doctor; you can enter a model manually.":
+    "OpenCode indisponível. Instale o OpenCode e confira o Doctor; você pode informar o modelo manualmente.",
   "Could not list models. Use the default or enter a provider/model ID manually.":
     "Não foi possível listar os modelos. Use o padrão ou informe o identificador provedor/modelo manualmente.",
   "Enter a provider/model ID, e.g. openrouter/deepseek/deepseek-v3.2.":
@@ -1712,7 +1752,8 @@ export const ptBR = {
   "Sem projeto": "Sem projeto",
   "Adicionar projeto…": "Adicionar projeto…",
   "Aguarde o turno terminar para alterar o projeto.": "Aguarde o turno terminar para alterar o projeto.",
-  "Commit Git copiado para /workspace no próximo turno.": "Commit Git copiado para /workspace no próximo turno.",
+  "Commit Git copiado para /workspace a partir da próxima mensagem.":
+    "Commit Git copiado para /workspace a partir da próxima mensagem.",
   "Não foi possível alterar o projeto.": "Não foi possível alterar o projeto.",
   "Cron atualizado": "Rotina atualizada",
   "Nova rotina": "Nova rotina",
@@ -1792,6 +1833,56 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
     "Saved folder permissions do not work on this computer. You can chat without tools. Remove these permissions in the bot settings to continue with tasks.",
   "Remover permissões antigas": "Remove old permissions",
 
+  Ativar: "Enable",
+  "Agora não": "Not now",
+  "Este recurso não está disponível para bots na nuvem.": "This capability is unavailable for cloud bots.",
+  "O computador isolado não está disponível neste servidor.": "The isolated computer is unavailable on this server.",
+  "O controle da tela deste computador não é suportado nesta plataforma.":
+    "Screen control of this computer is unsupported on this platform.",
+  "O navegador não está instalado neste servidor. Peça à pessoa responsável para instalá-lo.":
+    "The browser is not installed on this server. Ask its administrator to install it.",
+  "O navegador precisa de uma sessão gráfica ou do modo sem janela neste servidor.":
+    "The browser needs a graphical session or headless mode on this server.",
+  "Este acesso só pode ser solicitado pelo próprio bot em uma conversa com a pessoa, fora de rotinas e delegações.":
+    "Only the bot itself can request this access in a conversation with the person, outside routines and delegations.",
+  "Informe o recurso e um motivo curto, sem quebras de linha.":
+    "Provide the capability and a short reason without line breaks.",
+  "Este recurso já está ativado neste bot.": "This capability is already enabled for this bot.",
+  "O acesso não foi ativado. Se quiser ativar depois, abra as configurações deste bot e ative o navegador ou o controle do computador. Respeite a decisão e não solicite novamente.":
+    "Access was not enabled. To enable it later, open this bot’s settings and enable browser or computer control. Respect the decision and do not request again.",
+  "Acesso ativado neste bot. Encerre este turno; o touri retomará a tarefa automaticamente com a configuração aprovada.":
+    "Access enabled for this bot. Finish this turn; touri will resume the task automatically with the approved configuration.",
+  "Acesso ativado neste bot. A configuração será aplicada no próximo turno.":
+    "Access enabled for this bot. The setting will apply on the next turn.",
+  "Ativar navegador": "Enable browser",
+  "Ativar controle do computador": "Enable computer control",
+  "{bot} quer ativar o navegador dele para {reason}.": "{bot} wants to enable its browser to {reason}.",
+  "{bot} quer ativar o controle do computador para {reason}.": "{bot} wants to enable computer control to {reason}.",
+  "Abre páginas no navegador isolado deste bot.": "Opens pages in this bot's isolated browser.",
+  "Pode ver a tela e clicar ou digitar, somente onde o touri permite.":
+    "Can see the screen and click or type, only where touri allows.",
+  "Controla somente a tela do computador isolado do bot.": "Controls only the bot's isolated computer screen.",
+  "Controla a tela deste computador, com as permissões do touri.":
+    "Controls this computer's screen, subject to touri permissions.",
+  "A configuração fica salva neste bot. Você pode desativar nos ajustes.":
+    "The setting is saved for this bot. You can turn it off in settings.",
+  "Após ativar, o touri retoma a tarefa automaticamente.": "After enabling, touri resumes the task automatically.",
+  "Ask the person to enable this bot's isolated browser or supported computer control with an explicit approval card. Use a short reason tied to their task. Never enables silently, never available to unattended or delegated runs. On automaticContinuation, finish this turn; touri resumes the original task with updated tools. On denial, do not ask again; explain how to enable it later in bot settings.":
+    "Ask the person to enable this bot's isolated browser or supported computer control with an explicit approval card. Use a short reason tied to their task. Never enables silently, never available to unattended or delegated runs. On automaticContinuation, finish this turn; touri resumes the original task with updated tools. On denial, do not ask again; explain how to enable it later in bot settings.",
+
+  "No Mac, o sandbox do macOS bloqueia as exclusões e a escrita nas pastas somente leitura, inclusive em comandos de terminal. As alterações valem a partir da próxima mensagem.":
+    "On this Mac, the macOS sandbox blocks excluded folders and writing in read-only folders, including terminal commands. Changes take effect from the next message.",
+  "Ao salvar, as pastas valerão a partir da próxima mensagem, quando a máquina será recriada. Os arquivos da máquina serão preservados.":
+    "Saved folders take effect from the next message, when the machine will be recreated. Files on the machine will be preserved.",
+  "Register a Mac folder as a project if needed and link it to this calling bot only. Supply exactly one of path or projectId. Always requires explicit user approval in chat, even with approvals disabled. VM changes apply next turn.":
+    "Register a Mac folder as a project if needed and link it to this calling bot only. Supply exactly one of path or projectId. Always requires explicit user approval in chat, even with approvals disabled. VM changes take effect from the next message.",
+  "Request access to a specific Mac folder for this calling bot only, with mode read or read-write. Always requires explicit user approval. Cannot enable any-folder access. VM changes apply next turn.":
+    "Request access to a specific Mac folder for this calling bot only, with mode read or read-write. Always requires explicit user approval. Cannot enable any-folder access. VM changes take effect from the next message.",
+  "Unlink the project from this calling bot only. Narrows access without approval and posts a notice in chat. VM changes apply next turn.":
+    "Unlink the project from this calling bot only. Narrows access without approval and posts a notice in chat. VM changes take effect from the next message.",
+  "Remove a specific folder grant from this calling bot only. Narrows access without approval and posts a notice in chat. Cannot change the user-only any-folder toggle. VM changes apply next turn.":
+    "Remove a specific folder grant from this calling bot only. Narrows access without approval and posts a notice in chat. Cannot change the user-only any-folder toggle. VM changes take effect from the next message.",
+  "{bot} pede sua aprovação: {summary}": "{bot} asks for your approval: {summary}",
   "O aplicativo não conseguiu acessar o cofre nativo. Desbloqueie o cofre do sistema e tente novamente.":
     "The app could not access the native vault. Unlock the system vault and try again.",
   "O cofre nativo está disponível no aplicativo desktop. O modo servidor usa seu próprio cofre local.":
@@ -2216,8 +2307,8 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Pastas deste Mac não estão disponíveis na nuvem.": "Folders on this Mac are unavailable in the cloud.",
   "O acesso não foi aprovado ou a configuração mudou.": "Access was not approved or the configuration changed.",
   "Pasta não encontrada nas permissões deste bot.": "Folder not found in this bot’s permissions.",
-  "A configuração foi salva neste Mac e será aplicada no próximo turno local.":
-    "The configuration was saved on this Mac and will apply on the next local turn.",
+  "A configuração foi salva neste Mac. Vale a partir da próxima mensagem.":
+    "The configuration was saved on this Mac. Takes effect from the next message.",
   "Projeto {name} ({path}) vinculado a este bot.": "Project {name} ({path}) linked to this bot.",
   "Projeto {name} desvinculado deste bot.": "Project {name} unlinked from this bot.",
   "Acesso {mode} à pasta {path} concedido a este bot.": "This bot was granted {mode} access to folder {path}.",
@@ -2348,8 +2439,8 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Desvincular o projeto deste bot.": "Unlink this bot's project.",
   "Remover acesso à pasta": "Remove folder access",
   "Remover o acesso deste bot a {path}.": "Remove this bot's access to {path}.",
-  "A mudança entra em vigor no próximo turno da VM.": "The change takes effect on the VM's next turn.",
-  "A mudança entra em vigor no próximo turno local.": "The change takes effect on the next local turn.",
+  "Vale a partir da próxima mensagem na VM.": "Takes effect from the next message in the VM.",
+  "Vale a partir da próxima mensagem.": "Takes effect from the next message.",
   "Retomado após aprovação de acesso": "Resumed after access approval",
   "Baixar imagem": "Download image",
   "Unread messages": "{count} unread messages",
@@ -2914,8 +3005,8 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Sem projeto": "No project",
   "Adicionar projeto…": "Add project…",
   "Aguarde o turno terminar para alterar o projeto.": "Wait for the turn to finish before changing the project.",
-  "Commit Git copiado para /workspace no próximo turno.":
-    "The project's Git commit will be copied to /workspace on the next turn.",
+  "Commit Git copiado para /workspace a partir da próxima mensagem.":
+    "The project's Git commit will be copied to /workspace from the next message.",
   "Não foi possível alterar o projeto.": "Could not change the project.",
   "Cron atualizado": "Routine updated",
   "Nova rotina": "New routine",

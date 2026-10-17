@@ -22,6 +22,7 @@ import type {
 } from "@touri/contracts"
 import { toolCatalog } from "@touri/contracts"
 import { avatarColorFor, avatarShapeFor } from "@touri/contracts/avatar"
+import rootPackage from "../../../../package.json"
 import seedJson from "../../../../sidecar/test/fixtures/ui-seed.json"
 import type { ApiRequest, UiApi } from "../client"
 
@@ -531,7 +532,12 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
         message: "Login não conectado nesta máquina.",
       } as ApiRoutes[typeof route]["res"]
     if (key === "GET /health")
-      return { ok: true, version: "0.1.0", schemaVersion: 1, host: "server" } as ApiRoutes[typeof route]["res"]
+      return {
+        ok: true,
+        version: rootPackage.version,
+        schemaVersion: 1,
+        host: "server",
+      } as ApiRoutes[typeof route]["res"]
     if (key === "POST /ui/errors") return { ok: true } as ApiRoutes[typeof route]["res"]
     if (key === "POST /computer/kill") return { revoked: 1 } as ApiRoutes[typeof route]["res"]
     if (key === "GET /bots/:id/files")
@@ -996,7 +1002,7 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
     }
     if (key === "GET /mcp/tools")
       return {
-        server: { name: "touri", version: "0.1.0" },
+        server: { name: "touri", version: rootPackage.version },
         tools: toolCatalog.tools.map((tool) => ({
           name: tool.name,
           description: tool.description,

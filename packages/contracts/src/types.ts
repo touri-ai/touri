@@ -95,6 +95,9 @@ export type McpPrerequisites = {
 }
 export type ApprovalScope = { source: 'mcp' | 'computer' | 'claude' | 'opencode'; tool: string; server?: string }
 export type StandingGrant = { id: Id; botId: Id; scope: ApprovalScope; grantedAt: EpochMs }
+export type BotCapability = 'browser' | 'computer_use'
+export type CapabilityRequestInput = { capability: BotCapability; reason: string }
+
 export type ApprovalInput = { ctx: Pick<ToolContext, 'botId' | 'threadId' | 'runId' | 'signal'>; scope: ApprovalScope; toolName: string; input: unknown; toolUseId?: string; allowStanding?: boolean; isCurrent?: () => boolean }
 export type ApprovalResult = Result<{ behavior: 'allow' | 'deny'; updatedInput?: unknown; message?: string }, 'NOT_FOUND' | 'TIMEOUT' | 'DENIED'>
 
@@ -1116,7 +1119,7 @@ export type StoreApi = {
 /** Cross-module services. Providers call `provide` in their init; consumers must tolerate `null` from `use`. */
 export type ServiceMap = {
   'bots.rename': (input: { botId: Id; name: string }) => Result<{ bot: Bot }, 'NOT_FOUND' | 'INVALID_ARGS'>
-  'bots.configureAccess': (input: { botId: Id; patch: Partial<Pick<Bot, 'projectId' | 'folders'>> }) => Result<{ bot: Bot }, 'NOT_FOUND' | 'INVALID_ARGS' | 'MACHINE_PROJECT_CHANGE'>
+  'bots.configureAccess': (input: { botId: Id; patch: Partial<Pick<Bot, 'projectId' | 'folders' | 'browserEnabled' | 'browser' | 'computerUse'>> }) => Result<{ bot: Bot }, 'NOT_FOUND' | 'INVALID_ARGS' | 'MACHINE_PROJECT_CHANGE'>
   'diagnostics.errors': () => Array<{ code: string; at: number }>
   'groups.runtime': {
     enqueue: ServiceMap['runtime.enqueue']

@@ -3,9 +3,10 @@ import { expect, spyOn, test } from "bun:test"
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import type { ApprovalPart, ProviderAdapter, StartTurnArgs } from "@touri/contracts"
+import type { ApprovalPart, ProviderAdapter, StartTurnArgs, ToolRegistration } from "@touri/contracts"
 import { createKernel } from "../../src/kernel"
 import * as folderCapability from "../../src/kernel/folder-capability"
+import { createToolRouter } from "../../src/mcp/router"
 import { createProjectStore } from "../../src/projects/repository"
 import { createSetupTools } from "../../src/projects/setup-tools"
 import { createRuntimeEngine } from "../../src/runtime/engine"
@@ -22,7 +23,8 @@ const waitFor = async (predicate: () => boolean): Promise<void> => {
 
 const requestText = "Crie um arquivo notas.md com a palavra teste e me mostre o conteúdo."
 
-const fixture = async ({ missingOutput = false } = {}) => {
+const fixture = async ({ missingOutput = false, browserTask = false } = {}) => {
+  const taskText = browserTask ? "Abra https://example.test/reference; pode ativar seu navegador." : requestText
   // Canonical: macOS tmpdir lives behind /var -> /private/var, and grants refuse moved folders.
   const root = realpathSync(mkdtempSync(join(tmpdir(), "touri-permission-continuation-")))
   const reference = join(root, "reference")
@@ -52,6 +54,9 @@ const fixture = async ({ missingOutput = false } = {}) => {
     JSON.stringify([{ path: reference, access: "read-only" }]),
   )
   db.exec("INSERT INTO threads(id,bot_id,title,created_at,updated_at) VALUES ('t','b','Conversa',1,1)")
+  if (browserTask) db.exec("UPDATE bots SET browser_enabled=0 WHERE id='b'")
+  const opened: string[] = []
+  let router: ReturnType<typeof createToolRouter>
   const turns: StartTurnArgs[] = []
   const releases: Array<() => void> = []
   const adapter: ProviderAdapter = {
@@ -65,9 +70,31 @@ const fixture = async ({ missingOutput = false } = {}) => {
         releases[index] = resolve
         args.signal.addEventListener("abort", () => resolve(), { once: true })
       })
+      if (browserTask && args.bot.browserEnabled && !args.signal.aborted) {
+        const result = await router.call({
+          id: 1,
+          name: "browser_open",
+          args: { url: "https://example.test/reference" },
+          caller: {
+            botId: "b",
+            threadId: "t",
+            projectId: null,
+            cwd: args.bot.homeDir,
+            provider: "codex",
+            browserEnabled: args.bot.browserEnabled,
+            computerUse: args.bot.computerUse,
+          },
+          signal: args.signal,
+        })
+        expect(result.success).toBe(true)
+      }
       const canWrite = writableTurnFolders(args).includes(missingOutput ? reference : folder)
       if (canWrite && !args.signal.aborted) writeFileSync(join(folder, "notas.md"), "teste")
-      args.onEvent({ type: "text_delta", itemId: "reply", delta: canWrite ? "teste" : "Acesso pendente." })
+      args.onEvent({
+        type: "text_delta",
+        itemId: "reply",
+        delta: browserTask && args.bot.browserEnabled ? "Página aberta." : canWrite ? "teste" : "Acesso pendente.",
+      })
       return { success: true, externalSessionId: `session-${index}`, rolloutPath: null, status: "succeeded" }
     },
     answerApproval: async () => ({ success: true }),
@@ -78,6 +105,7 @@ const fixture = async ({ missingOutput = false } = {}) => {
     providerAdapters: { codex: adapter },
     environment: { PATH: "/usr/bin" },
   })
+  runtime.kernel.services.provide("runtime.activeRun", engine.activeRun)
   runtime.kernel.services.provide("approvals.present", engine.approvalBridge.present)
   runtime.kernel.services.provide("runtime.continueAfterApproval", engine.continueAfterApproval)
   const projects = createProjectStore({ kernel: runtime.kernel })
@@ -86,7 +114,32 @@ const fixture = async ({ missingOutput = false } = {}) => {
     return project ? { project, git: null, hints: [], processes: [], previews: [], secretNames: [] } : null
   })
   const tools = createSetupTools({ kernel: runtime.kernel, store: projects })
-  const send = (text = requestText) => {
+  const registrations = new Map<string, ToolRegistration>(tools.map((tool) => [tool.name, tool]))
+  registrations.set("browser_open", {
+    name: "browser_open",
+    group: "browser",
+    handler: async ({ args }) => {
+      opened.push((args as { url: string }).url)
+      return { success: true, content: [] }
+    },
+  })
+  router = createToolRouter({ kernel: runtime.kernel, registrations })
+  runtime.kernel.services.provide("mcp.botTools", (bot) =>
+    router
+      .list({
+        caller: {
+          botId: bot.id,
+          threadId: "t",
+          projectId: null,
+          cwd: bot.homeDir,
+          provider: bot.provider,
+          browserEnabled: bot.browserEnabled,
+          computerUse: bot.computerUse,
+        },
+      })
+      .map((tool) => tool.name),
+  )
+  const send = (text = taskText) => {
     const message = store.insertMessage({
       message: {
         id: runtime.kernel.newId(),
@@ -145,7 +198,7 @@ const fixture = async ({ missingOutput = false } = {}) => {
   }
   send()
   await waitFor(() => turns.length === 1)
-  return { folder, reference, turns, db, store, engine, call, cards, answer, finish, close, send }
+  return { folder, reference, turns, db, store, engine, call, cards, answer, finish, close, send, opened }
 }
 
 test("saved incompatible grants allow later greetings in conversation-only mode without losing stored permissions", async () => {
@@ -369,3 +422,52 @@ test("canceling after approval stops the task without a continuation", async () 
     await f.close()
   }
 })
+
+for (const decision of ["approved", "denied"] as const) {
+  test(`browser ${decision} applies only the reviewed setting and continues the original task only after approval`, async () => {
+    const previous = { bin: process.env.TOURI_CHROME_BIN, headless: process.env.TOURI_BROWSER_HEADLESS }
+    process.env.TOURI_CHROME_BIN = process.execPath
+    process.env.TOURI_BROWSER_HEADLESS = "1"
+    const f = await fixture({ browserTask: true })
+    try {
+      const pending = f.call("capability_request", { capability: "browser", reason: "abrir a página solicitada" })
+      const id = await f.answer(decision)
+      expect(await pending).toMatchObject(
+        decision === "approved"
+          ? { success: true, structured: { automaticContinuation: true } }
+          : { success: false, errorCode: "DENIED" },
+      )
+      expect(f.opened).toEqual([])
+      expect(f.turns[0]?.bot.browserEnabled).toBe(false)
+      await f.finish(0)
+      if (decision === "approved") {
+        await waitFor(() => f.turns.length === 2)
+        expect(f.turns[1]?.bot).toMatchObject({ browserEnabled: true, computerUse: false, browser: "touri" })
+        expect(f.turns[1]?.fingerprint.toolsetVersion).not.toBe(f.turns[0]?.fingerprint.toolsetVersion)
+        expect(f.turns[1]?.session).toBeNull()
+        expect(f.turns[1]?.input).toContainEqual({
+          type: "text",
+          text: expect.stringContaining("https://example.test/reference"),
+        })
+        await f.finish(1)
+        expect(f.opened).toEqual(["https://example.test/reference"])
+        expect(f.store.activePath({ threadId: "t" }).at(-1)?.text).toBe("Página aberta.")
+      } else {
+        expect(f.turns).toHaveLength(1)
+        expect(f.opened).toEqual([])
+        expect(f.store.getBot({ botId: "b" })?.browserEnabled).toBe(false)
+      }
+      expect(f.db.query("SELECT reason FROM run_continuations").all()).toEqual(
+        decision === "approved" ? [{ reason: "permission_granted" }] : [],
+      )
+      expect(f.cards()).toHaveLength(1)
+      expect(await f.engine.answerApproval({ approvalId: id, decision: "approved" })).toMatchObject({ success: false })
+    } finally {
+      await f.close()
+      if (previous.bin === undefined) delete process.env.TOURI_CHROME_BIN
+      else process.env.TOURI_CHROME_BIN = previous.bin
+      if (previous.headless === undefined) delete process.env.TOURI_BROWSER_HEADLESS
+      else process.env.TOURI_BROWSER_HEADLESS = previous.headless
+    }
+  })
+}

@@ -6,6 +6,7 @@ import { getDelegation } from "../groups/security"
 import { excludedBotFolders, parseBotFolders, withinFolder } from "../kernel/bot-folders"
 import { createWorkspaceDirectory } from "../kernel/files"
 import { folderAccessUnavailable, refreshHostFolderAccess } from "../kernel/folder-capability"
+import { createCapabilityTools } from "./capability-tools"
 import { discoverProjects } from "./discovery"
 import { inspectGitMetadata } from "./git"
 import type { ProjectStore } from "./types"
@@ -93,9 +94,9 @@ export const createSetupTools = ({
         : false
     const timing =
       bot.machine === "vm"
-        ? `${text} A mudança entra em vigor no próximo turno da VM.`
+        ? `${text} Vale a partir da próxima mensagem na VM.`
         : bot.machine === "local"
-          ? `${text} A configuração foi salva neste Mac e será aplicada no próximo turno local.`
+          ? `${text} A configuração foi salva neste Mac. Vale a partir da próxima mensagem.`
           : text
     const message = automatic
       ? `${timing} Encerre este turno; o touri retomará a tarefa automaticamente com a configuração aprovada.`
@@ -156,6 +157,7 @@ export const createSetupTools = ({
   }
 
   return [
+    ...createCapabilityTools(kernel),
     {
       name: "bot_rename",
       group: "project",

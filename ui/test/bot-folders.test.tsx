@@ -172,9 +172,9 @@ it("requires confirmation, supports cancel/Escape, and disables broad access wit
   expect(screen.queryByRole("dialog", { name: "Permitir acesso a qualquer pasta?" })).not.toBeInTheDocument()
 })
 
-it("explains VM paths, masking and next-turn recreation while preserving files", async () => {
+it("explains VM paths, masking and recreation from the next message while preserving files", async () => {
   await setup({ machine: "vm" })
-  expect(screen.getByText(/as pastas serão aplicadas.*próximo turno/)).toHaveTextContent(
+  expect(screen.getByText(/as pastas valerão a partir da próxima mensagem/)).toHaveTextContent(
     "Os arquivos da máquina serão preservados.",
   )
   expect(screen.getByText(/sua pasta pessoal aparece em/)).toHaveTextContent("/host/home")
