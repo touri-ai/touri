@@ -63,9 +63,11 @@ for (const [device, width, height] of [
       await dialog.getByRole("button", { name: "Criar bot", exact: true }).click()
       await expect(dialog.getByRole("alert")).toContainText("Instale a IA")
       await expect(dialog.getByText(/Usa o Codex/)).toHaveCount(0)
-      await page.context().route("https://developers.openai.com/codex/cli/", (route) =>
-        route.fulfill({ contentType: "text/html", body: "Installation guide fixture" }),
-      )
+      await page
+        .context()
+        .route("https://developers.openai.com/codex/cli/", (route) =>
+          route.fulfill({ contentType: "text/html", body: "Installation guide fixture" }),
+        )
       const popup = page.waitForEvent("popup")
       await dialog.getByRole("link", { name: "Ver como instalar" }).click()
       const guide = await popup
