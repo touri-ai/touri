@@ -261,3 +261,30 @@ it("does not resurrect a decision received while a resume snapshot is in flight"
     "allow",
   )
 })
+
+it("keeps newly fetched requests when returning with a full local notification history", async () => {
+  const api = createMockApi()
+  const older = Array.from({ length: 200 }, (_, index) => ({
+    ...allowed,
+    id: index + 1,
+    requestId: `old-${index}`,
+  })).reverse()
+  const newer = Array.from({ length: 200 }, (_, index) => ({
+    ...note,
+    id: index + 201,
+    requestId: `new-${index}`,
+  })).reverse()
+  let resumed = false
+  const request: ApiRequest = async (route, input, path) => {
+    if (route === "GET /notifications") return { notifications: resumed ? newer : older } as never
+    return api.request(route, input, path)
+  }
+  const client = { ...api, request }
+  const hook = renderHook(() => useWorkspace(client))
+  await waitFor(() => expect(hook.result.current.data.notifications).toHaveLength(200))
+  resumed = true
+  act(() => window.dispatchEvent(new Event("online")))
+  await waitFor(() => expect(hook.result.current.data.pendingRequestsOnReturn).toBe(200))
+  expect(hook.result.current.data.notifications.some((item) => item.id === 400)).toBe(true)
+  expect(hook.result.current.data.notifications.some((item) => item.id === 1)).toBe(false)
+})

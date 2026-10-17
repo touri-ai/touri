@@ -294,7 +294,8 @@ const upsertNotification = (list: Array<NotificationRecord>, next: NotificationR
         item.id === next.id ? (item.resolvedAt !== null && next.resolvedAt === null ? item : next) : item,
       )
     : [next, ...list]
-  return merged.slice(0, MAX_NOTIFICATIONS)
+  // Snapshot merge order is not age: retain the newest server IDs at the history limit.
+  return merged.sort((a, b) => b.id - a.id).slice(0, MAX_NOTIFICATIONS)
 }
 
 const errorMessage = userFacingError
