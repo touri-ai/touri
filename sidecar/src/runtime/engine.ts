@@ -66,6 +66,7 @@ import { formatRoutineTitle, nextCronSlot, parseCron, previousCronSlot, validTim
 import { sessionFingerprint, workingDirectory } from "./session"
 import { createToolResolutions } from "./tool-resolutions"
 import { retryTransient } from "./transient-retry"
+import { turnConclusion } from "./turn-conclusion"
 import { bounded, randomHexToken, writePrivateFile } from "./utils"
 import { startVmTurn } from "./vm-turn"
 import { createWorkState, type WorkState } from "./work-state"
@@ -491,11 +492,11 @@ export const createRuntimeEngine = ({
       }
       // Provider items are separate Markdown documents; chunks within an item are not.
       // Persist the separator as part of the delta so replay and crash recovery agree.
-      const separator = state.text && !state.textItemIds.has(event.itemId) ? "\n\n" : ""
+      const last = state.parts.at(-1)
+      const separator = state.text && (!state.textItemIds.has(event.itemId) || last?.type !== "text") ? "\n\n" : ""
       state.textItemIds.add(event.itemId)
       const delta = separator + event.delta
-      const prose = [...state.parts].reverse().find((part) => part.type === "text" || part.type === "reasoning")
-      const existing = prose?.type === "text" ? prose : undefined
+      const existing = last?.type === "text" ? last : undefined
       if (existing) existing.text += delta
       else state.parts.push({ type: "text", text: delta })
       state.text += delta
@@ -977,6 +978,7 @@ export const createRuntimeEngine = ({
           error: kernel.redact(error instanceof Error ? error.message : String(error)),
         }
       } finally {
+        // A completion frame is advisory; drain trailing text before publishing a terminal reply.
         flushEvents?.()
         await prepared?.release()
         releaseLogin?.()
@@ -1039,6 +1041,12 @@ export const createRuntimeEngine = ({
         finishLiveRun(run, () => {
           ensureReply({ run, state, store, parentId: run.requestMessageId ?? thread.activeLeafId ?? run.id })
           state.parts = tools.finish(run, state.parts, "unknown")
+          const conclusion = turnConclusion({
+            parts: state.parts,
+            requestText: (originalRequest ?? request)?.text ?? "",
+          })
+          if (conclusion)
+            handleEvent({ run, store, state, event: { type: "text_delta", itemId: kernel.newId(), delta: conclusion } })
           publishMessage({ store, state, run, status: "complete" })
           updateRun(run, {
             status: "succeeded",

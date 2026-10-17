@@ -20,7 +20,7 @@ const approval = (tool: string, input: unknown): ApprovalPart => ({
   decision: "pending",
 })
 
-it("local folder approval reports the next local turn", () => {
+it("local folder approval explains when access applies in plain language", () => {
   render(
     <ApprovalCard
       api={createMockApi()}
@@ -34,9 +34,16 @@ it("local folder approval reports the next local turn", () => {
   )
   expect(
     screen.getByText(
-      "Permitir Leitura e escrita em /tmp/notes para este bot. A mudança entra em vigor no próximo turno local.",
+      "Permitir Leitura e escrita em /tmp/notes para este bot. Vale a partir da próxima resposta do bot.",
     ),
   ).toBeInTheDocument()
+})
+
+it("approval timing uses plain English for local and VM bots", () => {
+  expect(t("Vale a partir da próxima resposta do bot.", {}, "en")).toBe("Applies from the bot’s next response.")
+  expect(t("Vale a partir da próxima resposta do bot na VM.", {}, "en")).toBe(
+    "Applies from the bot’s next response in the VM.",
+  )
 })
 
 it("project approval shows the reviewed project and replaced project, even when the provider passed only an ID", async () => {
@@ -98,7 +105,7 @@ for (const [mode, label] of [
     expect(screen.getByText("Conceder acesso à pasta")).toBeInTheDocument()
     expect(
       screen.getByText(
-        `Permitir ${label} em /workspace/Documents para este bot. A mudança entra em vigor no próximo turno da VM.`,
+        `Permitir ${label} em /workspace/Documents para este bot. Vale a partir da próxima resposta do bot na VM.`,
       ),
     ).toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Sempre neste bot" })).toBeNull()
@@ -206,7 +213,7 @@ for (const tool of ["project_link", "folder_access_request"]) {
         expect(article).toHaveAttribute("data-call-id", "setup-call")
         expect(view.container.querySelectorAll(".tool-call-card")).toHaveLength(1)
         expect(article.querySelector(".tool-summary")).toHaveTextContent(path)
-        expect(article.querySelector(".tool-summary")).toHaveTextContent("próximo turno da VM")
+        expect(article.querySelector(".tool-summary")).toHaveTextContent("próxima resposta do bot na VM")
         expect(screen.queryByText("2 ferramentas")).toBeNull()
         if (tool === "folder_access_request") {
           expect(article.querySelector(".tool-summary")).toHaveTextContent("Acesso anterior: Somente leitura.")

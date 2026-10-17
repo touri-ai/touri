@@ -495,6 +495,9 @@ const MessageBubble = ({
   const [reasoningExpanded, setReasoningExpanded] = useState(false)
   const markdown = messageMarkdown(message)
   const text = message.role === "assistant" ? markdown.replace(connectDataMarker, "") : markdown
+  const technicalNotice =
+    message.role === "system" &&
+    message.parts.some((part) => part.type === "notice" && part.code === "session_replaced")
   const longContent =
     message.role === "assistant" &&
     message.status !== "streaming" &&
@@ -598,7 +601,11 @@ const MessageBubble = ({
         </ChatDisclosure>
       )}
       {text &&
-        (message.role === "tool" ? (
+        (technicalNotice ? (
+          <ChatDisclosure label={t("Detalhes técnicos")}>
+            <pre>{text}</pre>
+          </ChatDisclosure>
+        ) : message.role === "tool" ? (
           <ToolText text={text} />
         ) : longContent ? (
           <ChatDisclosure
