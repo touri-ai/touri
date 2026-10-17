@@ -37,7 +37,9 @@ if (root && params.get("view") === "files") {
     <main style={{ maxWidth: 900, margin: "24px auto", padding: 24 }}>
       <MarkdownContent
         evidence={evidence}
-        content="Salvo em [notas.md](/workspace/notas.md).\n\n[Arquivo removido](/workspace/missing.md) · [Sem acesso](/outside/private.txt)"
+        content={
+          "Salvo em [notas.md](/workspace/notas.md).\n\n[Arquivo removido](/workspace/missing.md) · [Sem acesso](/outside/private.txt)\n\n[Baixar PNG](/output/post.png) · Vou criar `planned.png`."
+        }
       />
     </main>,
   )

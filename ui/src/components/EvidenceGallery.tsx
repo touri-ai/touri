@@ -24,7 +24,7 @@ const inlineImage = (src: string): Blob | null => {
   const bytes = Uint8Array.from(atob(match[2] ?? ""), (c) => c.charCodeAt(0))
   return new Blob([bytes], { type: match[1] || "image/png" })
 }
-const readImage = async (image: EvidenceImage, context: EvidenceContextValue | null): Promise<Blob> => {
+export const readImage = async (image: EvidenceImage, context: EvidenceContextValue | null): Promise<Blob> => {
   if (image.src) return inlineImage(image.src) ?? (await fetch(image.src)).blob()
   if (!context) throw new Error("Imagem indisponível")
   const attachmentId = /^\/(?:api\/v1\/)?attachments\/([a-f0-9]{64})$/i.exec(image.path)?.[1]
@@ -41,11 +41,13 @@ const Thumbnail = ({
   index,
   open,
   context,
+  inline,
 }: {
   image: EvidenceImage
   index: number
   open: () => void
   context: EvidenceContextValue | null
+  inline: boolean
 }) => {
   const root = useRef<HTMLElement>(null)
   const [visible, setVisible] = useState(false)
@@ -98,6 +100,27 @@ const Thumbnail = ({
       alive = false
     }
   }, [image, context, visible, revision])
+  useEffect(() => {
+    if (!inline || src || !context) return
+    return context.api.subscribe(({ event }) => {
+      if (event.type === "run.updated" && event.run.botId === context.bot.id && event.run.finishedAt)
+        setRevision((value) => value + 1)
+    })
+  }, [inline, src, context])
+  if (inline && !src)
+    return (
+      <span ref={root}>
+        {image.filename}
+        {error.startsWith("Imagem disponível") && (
+          <span role="status">
+            {error}{" "}
+            <button type="button" onClick={() => context?.onComputer?.()}>
+              Abrir Computador
+            </button>
+          </span>
+        )}
+      </span>
+    )
   return (
     <figure ref={root} className="evidence-image">
       <button
@@ -134,7 +157,7 @@ const Thumbnail = ({
           {error.startsWith("Imagem disponível") ? "Abrir Computador" : "Tentar novamente"}
         </button>
       )}
-      {image.src && (
+      {(image.src || src) && (
         <button
           type="button"
           className="text-button"
@@ -148,7 +171,7 @@ const Thumbnail = ({
   )
 }
 
-export const EvidenceGallery = ({ images }: { images: EvidenceImage[] }) => {
+export const EvidenceGallery = ({ images, inline = false }: { images: EvidenceImage[]; inline?: boolean }) => {
   const context = useContext(EvidenceContext)
   const [selected, setSelected] = useState<number | null>(null)
   const identity = JSON.stringify(images)
@@ -158,7 +181,14 @@ export const EvidenceGallery = ({ images }: { images: EvidenceImage[] }) => {
     <>
       <section className="evidence-gallery" aria-label="Imagens de evidência">
         {items.map((image, index) => (
-          <Thumbnail key={image.path} image={image} index={index} context={context} open={() => setSelected(index)} />
+          <Thumbnail
+            key={image.path}
+            image={image}
+            index={index}
+            context={context}
+            inline={inline}
+            open={() => setSelected(index)}
+          />
         ))}
       </section>
       {selected !== null && (

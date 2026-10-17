@@ -27,6 +27,7 @@ export const BotLibrary = ({
   onComputer?: (() => void) | undefined
 }) => {
   const [path, setPath] = useState("")
+  const [folderRoot, setFolderRoot] = useState<string | null>(null)
   const [files, setFiles] = useState<WorkspaceFile[]>([])
   const [loading, setLoading] = useState(true)
   const [revision, setRevision] = useState(0)
@@ -41,12 +42,14 @@ export const BotLibrary = ({
   const title = useRef<HTMLHeadingElement>(null)
   const generation = useRef(0)
   const origin =
-    bot.machine === "vm"
+    bot.machine === "vm" || bot.machine === "cloud"
       ? "Workspace da VM"
       : bot.projectId || (bot.cwd && bot.cwd !== bot.homeDir)
         ? "Workspace do projeto"
         : "Pasta do bot"
-  const rootPath = bot.machine === "vm" ? "/workspace" : bot.projectId ? projectPath : bot.cwd || bot.homeDir
+  const remote = bot.machine === "vm" || bot.machine === "cloud"
+  const rootPath = remote ? "/workspace" : bot.cwd || (bot.projectId ? projectPath : bot.homeDir)
+  const currentRoot = folderRoot ?? rootPath
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: revision also retries origin lookup
   useEffect(() => {
@@ -113,10 +116,8 @@ export const BotLibrary = ({
     setReadError(null)
     try {
       if (download && imageName.test(entry.name)) {
-        const relative =
-          rootPath && entry.path.startsWith(`${rootPath}/`) ? entry.path.slice(rootPath.length + 1) : entry.path
         const raw = await api
-          .request("GET /bots/:id/files/content", { path: relative }, { id: bot.id })
+          .request("GET /bots/:id/files/content", { path: entry.path }, { id: bot.id })
           .catch(() => null)
         if (current !== generation.current) return
         if (raw) return void (await saveBytes(raw))
@@ -129,7 +130,7 @@ export const BotLibrary = ({
           name: entry.name,
           mime: "image/preview",
           base64: "",
-          imagePath: rootPath ? `${rootPath}/${entry.path}` : entry.name,
+          imagePath: entry.path.startsWith("/") ? entry.path : rootPath ? `${rootPath}/${entry.path}` : entry.path,
         })
         return
       }
@@ -148,7 +149,12 @@ export const BotLibrary = ({
     setFile(null)
     setReadError(null)
     setBusy(false)
-    if (!file) setPath(path.split("/").slice(0, -1).join("/"))
+    if (!file) {
+      if (path === currentRoot) {
+        setFolderRoot(null)
+        setPath("")
+      } else setPath(path.split("/").slice(0, -1).join("/"))
+    }
   }
   const navigateImage = useCallback(
     (target: string, base = "") => {
@@ -161,14 +167,17 @@ export const BotLibrary = ({
       if (relative.split("/").includes("..")) return
       const name = relative.split("/").at(-1) ?? "Imagem"
       if (relative.startsWith("/")) {
-        setFile({ name, mime: "image/preview", base64: "", imagePath: relative })
+        setFolderRoot(bot.folders?.find((folder) => relative.startsWith(`${folder.path}/`))?.path ?? null)
+        setPath(relative.split("/").slice(0, -1).join("/"))
+        setFile(null)
+        setPendingImage({ name, path: relative })
         return
       }
       setPath(relative.split("/").slice(0, -1).join("/"))
       setFile(null)
       setPendingImage({ name, path: rootPath ? `${rootPath}/${relative}` : relative })
     },
-    [rootPath],
+    [rootPath, bot.folders],
   )
   const evidence = useMemo<EvidenceContextValue>(
     () => ({
@@ -189,7 +198,8 @@ export const BotLibrary = ({
       setPendingImage(null)
     }
   }, [pendingImage, loading])
-  const parts = path.split("/").filter(Boolean)
+  const breadcrumbBase = currentRoot && path.startsWith(currentRoot) ? currentRoot : path.startsWith("/") ? "" : null
+  const parts = (breadcrumbBase ? path.slice(breadcrumbBase.length) : path).split("/").filter(Boolean)
   return (
     <section ref={section} className="bot-library" aria-label={`Biblioteca de ${bot.name}`}>
       {notice && (
@@ -230,7 +240,12 @@ export const BotLibrary = ({
                 <PanelIcon name="download" />
               </button>
             </div>
-            <p className="library-file-location">{[rootPath, path, file.name].filter(Boolean).join("/")}</p>
+            <p className="library-file-location">
+              {file.imagePath ??
+                [path.startsWith("/") ? path : [rootPath, path].filter(Boolean).join("/"), file.name]
+                  .filter(Boolean)
+                  .join("/")}
+            </p>
           </header>
           <div className="library-viewer-content">
             {file.mime === "image/preview" ? (
@@ -256,7 +271,7 @@ export const BotLibrary = ({
         <>
           <header className="library-origin">
             <div className="library-heading">
-              <h3>{origin}</h3>
+              <h3>{folderRoot ? "Pasta autorizada" : origin}</h3>
               <button
                 className="panel-icon-button"
                 type="button"
@@ -269,7 +284,7 @@ export const BotLibrary = ({
               </button>
             </div>
             <p className="library-root-path">
-              {rootPath ?? (rootError ? "Caminho do projeto indisponível" : "Carregando caminho…")}
+              {currentRoot ?? (rootError ? "Caminho do projeto indisponível" : "Carregando caminho…")}
             </p>
             {rootError && (
               <button className="button button-quiet" type="button" onClick={() => setRevision((value) => value + 1)}>
@@ -280,12 +295,32 @@ export const BotLibrary = ({
               Imagens de até 15 MB; demais arquivos de até 512 KiB. Pastas ocultas e links não são exibidos.
             </p>
           </header>
+          {!!bot.folders?.length && (
+            <nav className="library-breadcrumbs" aria-label="Pastas autorizadas">
+              {bot.folders.map((folder) => (
+                <button
+                  key={folder.path}
+                  type="button"
+                  disabled={busy}
+                  onClick={() => {
+                    setFolderRoot(folder.path)
+                    setPath(folder.path)
+                  }}
+                >
+                  <PanelIcon name="folder" /> {folder.path}
+                </button>
+              ))}
+            </nav>
+          )}
           <nav className="library-breadcrumbs" aria-label="Caminho da biblioteca">
             <button
               type="button"
-              disabled={busy || !path}
+              disabled={busy || (!path && !folderRoot)}
               aria-current={!path ? "page" : undefined}
-              onClick={() => setPath("")}
+              onClick={() => {
+                setFolderRoot(null)
+                setPath("")
+              }}
             >
               Raiz
             </button>
@@ -296,7 +331,11 @@ export const BotLibrary = ({
                   type="button"
                   disabled={busy || index === parts.length - 1}
                   aria-current={index === parts.length - 1 ? "page" : undefined}
-                  onClick={() => setPath(parts.slice(0, index + 1).join("/"))}
+                  onClick={() =>
+                    setPath(
+                      `${breadcrumbBase === null ? "" : `${breadcrumbBase}/`}${parts.slice(0, index + 1).join("/")}`,
+                    )
+                  }
                 >
                   {part}
                 </button>
