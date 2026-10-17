@@ -32,7 +32,7 @@ pub struct SidecarHandshake {
     pub schema_version: u32,
 }
 
-pub const SIDECAR_SCHEMA_VERSION: u32 = 17;
+pub const SIDECAR_SCHEMA_VERSION: u32 = 18;
 const MAX_IDENTICAL_HANDSHAKE_FAILURES: usize = 3;
 
 pub fn parse_handshake(line: &str) -> Result<SidecarHandshake, String> {
@@ -930,6 +930,27 @@ mod tests {
         .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "sql"))
         .count();
         assert_eq!(migrations as u32, SIDECAR_SCHEMA_VERSION);
+    }
+
+    #[test]
+    fn current_sidecar_schema_handshake_is_accepted() {
+        let schema = include_str!("../../sidecar/src/kernel/db.ts")
+            .lines()
+            .find_map(|line| line.strip_prefix("export const SCHEMA_VERSION = "))
+            .expect("sidecar schema declaration")
+            .trim_end_matches(';')
+            .parse::<u32>()
+            .expect("sidecar schema number");
+        let handshake = serde_json::json!({
+            "type": "touri-sidecar-ready",
+            "port": 43123,
+            "pid": 99,
+            "version": "0.1.0",
+            "schemaVersion": schema,
+        });
+        let parsed = parse_handshake(&handshake.to_string())
+            .expect("the current sidecar must be able to start the desktop");
+        assert_eq!(parsed.schema_version, schema);
     }
 
     #[test]
