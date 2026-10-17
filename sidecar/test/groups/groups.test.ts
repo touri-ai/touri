@@ -33,7 +33,7 @@ const fixture = async (
   hook?: (ctx: ToolContext, complete: (text: string) => void) => Promise<void>,
   timeout = 1000,
 ) => {
-  const root = mkdtempSync(join(import.meta.dir, ".groups-"))
+  const root = mkdtempSync(join(tmpdir(), "touri-groups-"))
   const host = createKernel({ appData: root })
   await initStore(host.kernel)
   await initGroups(host.kernel)
