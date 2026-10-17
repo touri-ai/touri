@@ -147,7 +147,13 @@ for (const size of sizes) {
       await checkLayer(page, create)
       await create.getByLabel("Nome", { exact: true }).fill("Clara")
       await create.getByRole("button", { name: "Avançado", exact: true }).click()
-      await checkReachable(create, create.getByLabel("Instruções do bot", { exact: true }))
+      await checkReachable(
+        create,
+        create
+          .locator(".bot-create-content")
+          .locator("input:visible, select:visible, textarea:visible, button:visible")
+          .last(),
+      )
       await page.screenshot({ path: info.outputPath("create-advanced.png") })
     })
 
