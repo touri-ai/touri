@@ -37,7 +37,7 @@ import {
   readBoundedFile,
 } from "../kernel/files"
 import { historyThreadPending, hydrateHistoryEvent } from "../kernel/history-backfill"
-import { externalizeMessageParts, OUTPUT_BLOB_ORIGIN } from "../kernel/output-blobs"
+import { externalizeMessageParts, OUTPUT_BLOB_ORIGIN, readOutputAttachment } from "../kernel/output-blobs"
 import { isProfileProvider, validProviderProfileName } from "../kernel/provider-profiles"
 import { materializeTranscript } from "../kernel/transcript-storage"
 import { hostComputerSupported } from "../platform"
