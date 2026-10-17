@@ -98,7 +98,7 @@ export const createSetupTools = ({
           ? `${text} A configuração foi salva neste Mac. Vale a partir da próxima mensagem.`
           : text
     const message = automatic
-      ? `${timing} Encerre este turno; o touri retomará a tarefa automaticamente com a configuração aprovada.`
+      ? `${timing} Encerre sua resposta agora, sem falar em turnos nem em retomada: o touri retoma a tarefa sozinho com a configuração aprovada e avisa o usuário.`
       : timing
     return {
       success: true as const,

@@ -306,6 +306,8 @@ describe("r4 workflow polish", () => {
     fireEvent.change(screen.getByLabelText("Provedor"), { target: { value: "codex" } })
     expect(screen.getByLabelText("Modelo", { selector: "input" })).toHaveValue("")
     expect(screen.getByLabelText("Raciocínio")).toHaveValue("")
+    // The Access pane mounts on demand, so the new provider's login starts when it is shown.
+    fireEvent.click(screen.getByRole("tab", { name: "Acesso" }))
     await waitFor(() =>
       expect(request).toHaveBeenCalledWith(
         "POST /bots/:id/provider-login/flow",
@@ -313,8 +315,7 @@ describe("r4 workflow polish", () => {
         { id: bot.id },
       ),
     )
-    fireEvent.click(screen.getByRole("tab", { name: "Acesso" }))
-    expect(screen.getByRole("button", { name: "Cancelar login" })).toBeEnabled()
+    expect(await screen.findByRole("button", { name: "Cancelar login" })).toBeEnabled()
   })
 
   it("opens Logs with the only process already selected", async () => {

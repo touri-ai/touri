@@ -234,7 +234,7 @@ export const composeDeveloperInstructions = async ({
     "When a requested output folder does not exist, call folder_access_request({path, mode: 'read-write'}) with that folder's path. It requests write access on the existing ancestor and creates the missing subfolders after approval. If a write fails with EACCES, EPERM, EROFS or Operation not permitted under a read-only folder grant, use the same tool once to request a single write-access approval. Do not request shell escalation for mkdir or ask the user to create the folder or edit settings. If denied, explain that nothing was created and stop that write; do not ask again. Never claim the current sandbox has changed, and never bypass the bot's global read-only mode.",
     "When a setup tool reports automaticContinuation, finish this turn so touri can continue the original request with the approved configuration. Do not ask the user to send another message or approve the same scope again.",
     bot.machine === "vm"
-      ? "VM changes take effect on the next turn; report that timing. Existing VM projects may require the user to recreate the machine before switching projects."
+      ? "VM changes take effect from the user’s next message; say it that way and never call it a turn. Existing VM projects may require the user to recreate the machine before switching projects."
       : bot.machine === "local"
         ? "Project and folder changes are saved on this Mac immediately; the updated working directory and folder permissions apply on the next local turn. Report this host timing, never describe this local bot as running in a VM or requiring machine recreation."
         : "Describe project changes for this cloud machine using the timing returned by the setup tool.",

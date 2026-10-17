@@ -87,7 +87,8 @@ const botSettings = async (patch: Partial<Bot> = {}, initialSection?: BotSetting
       />
     </MotionPresence>,
   )
-  await waitFor(() => expect(screen.getByText("Conexão disponível: review")).toBeInTheDocument())
+  // Only the open pane is mounted, so MCP tools load once their tab is shown.
+  if (initialSection === "tools") await screen.findByText("Conexão disponível: review")
   return { bot, routine: botRoutine, actions, onClose, onOpenRoutines }
 }
 
@@ -104,7 +105,11 @@ const expectExposed = (control: HTMLElement, checkedAncestors = new Set<HTMLElem
   }
 }
 
+// WebKit drops every later sibling from the macOS AX tree when a display:none subtree holds a <select>.
+const expectNoHiddenSelect = (scope: HTMLElement) => expect(scope.querySelector("[hidden] select")).toBeNull()
+
 const expectNamedControls = (scope: HTMLElement) => {
+  expectNoHiddenSelect(scope)
   const queries = within(scope)
   const reachable = [
     "button",
@@ -184,7 +189,7 @@ it.each(BOT_SETTINGS_SECTIONS)(
       expect(within(panel).getByRole("combobox", { name: "Política · review" })).toBeVisible()
     }
     if (section.id === "permissions") {
-      expect(within(panel).getByRole("button", { name: "Revogar" })).toBeVisible()
+      expect(await within(panel).findByRole("button", { name: "Revogar" })).toBeVisible()
       expect(within(panel).getByRole("combobox", { name: t("For") })).toBeVisible()
       expect(within(panel).getByRole("button", { name: "Permitir controle do computador" })).toBeVisible()
     }
@@ -213,6 +218,7 @@ it("keeps Cancel and Save in the dialog's accessible tree after expanding and co
   for (const expanded of [true, false, true, false]) {
     await user.click(advanced)
     expect(advanced).toHaveAttribute("aria-expanded", String(expanded))
+    expectNoHiddenSelect(dialog)
     expectExposed(within(dialog).getByRole("button", { name: "Cancelar", exact: true }))
     expectExposed(within(dialog).getByRole("button", { name: "Salvar configurações" }))
   }
