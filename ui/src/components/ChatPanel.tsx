@@ -36,7 +36,7 @@ import { ToolCallList } from "./ToolCallList"
 import { ToolText } from "./ToolOutput"
 import { TurnActivity } from "./TurnActivity"
 import { toolStatus } from "./toolPresentation"
-import { approvalTools, assistantSegments } from "./turnActivity"
+import { approvalTools, assistantSegments } from "./turnActivityModel"
 import { type EditMessage, UserMessageEdit } from "./UserMessageEdit"
 
 type ChatPanelProps = {
