@@ -1,6 +1,7 @@
 import type { Database } from "bun:sqlite"
 import type { UiEvent, UiEventEnvelope } from "@touri/contracts"
 import type { ServerWebSocket } from "bun"
+import { boundedProcessLog } from "./output-blobs"
 import { captureTranscript as captureEntries, type TranscriptRef } from "./transcript-events"
 import { compactTranscript, materializeTranscript } from "./transcript-storage"
 
@@ -68,14 +69,16 @@ export const createEventBus = (database?: Database) => {
     const entry = database
       .query("SELECT event_json FROM transcript_entries WHERE thread_id = ? AND seq = ?")
       .get(event.threadId, event.seq) as { event_json: string } | null
-    const revision = entry ? (JSON.parse(entry.event_json) as UiEvent) : null
+    const revision = entry ? (JSON.parse(entry.event_json) as UiEvent | MessageRef) : null
     if (
+      !isMessageRef(revision) &&
       (revision?.type === "message.created" || revision?.type === "message.updated") &&
       revision.message.id === event.messageId
     )
       return revision
     if (event.type === "message.delta" || event.type === "message.parts") {
       if (
+        !isMessageRef(revision) &&
         (revision?.type === "message.delta" || revision?.type === "message.parts") &&
         revision.messageId === event.messageId
       )
@@ -210,7 +213,9 @@ export const createEventBus = (database?: Database) => {
       !((event.type === "message.delta" || event.type === "message.parts") && event.updatedSeq !== undefined) &&
       event.type !== "transcript.rejected"
     )
-      database.query("INSERT INTO ui_event_log(at, event_json) VALUES (?, ?)").run(Date.now(), JSON.stringify(event))
+      database
+        .query("INSERT INTO ui_event_log(at, event_json) VALUES (?, ?)")
+        .run(Date.now(), JSON.stringify(event.type === "process.log" ? boundedProcessLog(event) : event))
     if (database.inTransaction) {
       if (!scheduled) {
         scheduled = true

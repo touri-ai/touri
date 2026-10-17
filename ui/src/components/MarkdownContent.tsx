@@ -9,6 +9,7 @@ import { DiffOutput } from "./DiffOutput"
 import { EvidenceContext, type EvidenceContextValue, EvidenceGallery, readImage } from "./EvidenceGallery"
 import { decodedEvidencePath, type EvidenceNode, evidenceImages, evidencePath } from "./evidenceMarkdown"
 import { LocalFileLink } from "./LocalFileLink"
+import { MermaidDiagram } from "./MermaidDiagram"
 import { syntaxTheme } from "./syntaxTheme"
 
 type MarkdownRendererProps = {
@@ -111,6 +112,8 @@ const LazyMarkdown = lazy(async () => {
     pre: ({ children }) => {
       if (!isValidElement<{ className?: string; children?: ReactNode }>(children)) return <pre>{children}</pre>
       const language = children.props.className?.replace(/^language-/, "") ?? "text"
+      if (language.toLowerCase() === "mermaid" && !preview)
+        return <MermaidDiagram source={String(children.props.children ?? "").replace(/\n$/, "")} />
       if (language === "diff") return <DiffOutput source={String(children.props.children ?? "").replace(/\n$/, "")} />
       return (
         <ShikiCode

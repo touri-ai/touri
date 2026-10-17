@@ -217,7 +217,10 @@ export const createStreamWriter = ({
               database
                 .query(`INSERT INTO tool_resolutions(run_id, call_id, thread_id, part_json, resolution, resolved_at)
                 VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(run_id, call_id) DO UPDATE SET
-                part_json = excluded.part_json, resolution = excluded.resolution, resolved_at = excluded.resolved_at`)
+                part_json = excluded.part_json, resolution = excluded.resolution, resolved_at = excluded.resolved_at
+                WHERE tool_resolutions.part_json IS NOT excluded.part_json
+                  OR tool_resolutions.resolution IS NOT excluded.resolution
+                  OR tool_resolutions.resolved_at IS NOT excluded.resolved_at`)
                 .run(
                   head.run_id,
                   part.callId,
@@ -448,10 +451,19 @@ export const createStreamWriter = ({
     // externalize an earlier part. Prepare the whole event before applying it.
     validateIndices(current.message.parts.length)
     const prepared = input.parts.map(({ partIndex, part }) => ({ partIndex, part: structuredClone(part) }))
+    const candidate = [...current.message.parts]
+    for (const { partIndex, part } of prepared) candidate[partIndex] = part
+    const externalized = externalizeMessageParts({ database, appData: kernel.paths.appData, parts: candidate })
     const parts = prepared.map(({ partIndex, part }) => ({
       partIndex,
-      part: externalizeMessageParts({ database, appData: kernel.paths.appData, parts: [part] })[0] ?? part,
+      part: externalized[partIndex] ?? part,
     }))
+    // Reserving space for new live output can offload an older completed part.
+    // Journal those replacements too so recovery observes the same shared budget.
+    const patched = new Set(prepared.map(({ partIndex }) => partIndex))
+    for (const [partIndex, part] of externalized.entries())
+      if (!patched.has(partIndex) && JSON.stringify(part) !== JSON.stringify(candidate[partIndex]))
+        parts.push({ partIndex, part })
     if (!parts.length) return
     const bytes = Buffer.byteLength(JSON.stringify(parts))
     const buffered = runBytes.get(keyOf(input.threadId, input.messageId)) ?? 0

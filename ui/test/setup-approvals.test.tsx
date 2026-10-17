@@ -1,4 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
 import type { ApprovalPart, ToolCallPart } from "@touri/contracts"
 import { approvalSummary } from "@touri/contracts/approval-summary"
 import { afterEach, expect, it } from "vitest"
@@ -186,7 +187,8 @@ it("an external MCP tool with the same name keeps its own presentation", () => {
 for (const tool of ["project_link", "folder_access_request"]) {
   for (const requestedPath of ["/workspace/Documents", "~/Documents", "/workspace/alias"]) {
     for (const decision of ["pending", "approved"] as const) {
-      it(`${tool} ${decision} attaches one reviewed card for ${requestedPath}`, () => {
+      it(`${tool} ${decision} attaches one reviewed card for ${requestedPath}`, async () => {
+        const user = userEvent.setup()
         const path = "/workspace/Documents"
         const input = { path: requestedPath, ...(tool === "folder_access_request" ? { mode: "read-write" } : {}) }
         const call: ToolCallPart = {
@@ -212,6 +214,7 @@ for (const tool of ["project_link", "folder_access_request"]) {
         const view = render(
           <ToolCallList parts={[call, card]} api={createMockApi()} finished={decision === "approved"} createdAt={0} />,
         )
+        if (decision === "approved") await user.click(screen.getByText("1 ferramenta"))
         const article = screen.getByRole("article", { name: "Aprovação de ferramenta" })
         expect(article).toHaveAttribute("data-call-id", "setup-call")
         expect(view.container.querySelectorAll(".tool-call-card")).toHaveLength(1)

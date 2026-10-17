@@ -171,7 +171,7 @@ for (const provider of ["codex", "claude"] as const) {
     const { root, adapter } = value
     const received: ProviderEvent[] = []
     const args: StartTurnArgs = {
-      bot: { access: "full", approvals: "never", homeDir: root, model: null, reasoningEffort: null } as Bot,
+      bot: { provider, access: "full", approvals: "never", homeDir: root, model: null, reasoningEffort: null } as Bot,
       thread: { id: "command-thread" } as Thread,
       session: null,
       fingerprint: { cwd: root } as StartTurnArgs["fingerprint"],

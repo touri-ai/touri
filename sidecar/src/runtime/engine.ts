@@ -30,6 +30,7 @@ import { createApprovalBridge } from "../approvals/bridge"
 import { approvalOutcome } from "../approvals/outcome"
 import { delegatedBot } from "../groups/security"
 import { buildChildEnv } from "../kernel"
+import { folderAccessUnavailable, folderGrantProblem, refreshHostFolderAccess } from "../kernel/folder-capability"
 import { providerProfileEnv } from "../kernel/provider-profiles"
 import { redactStructured } from "../kernel/redact"
 import { attachedServers, resolveAttachedMcp } from "../mcp/attached"
@@ -73,6 +74,7 @@ import { startVmTurn } from "./vm-turn"
 import { createWorkState, type WorkState } from "./work-state"
 
 type RunState = {
+  replyParentId?: Id | undefined
   text: string
   textItemIds: Set<string>
   parts: Array<MessagePart>
@@ -355,7 +357,7 @@ export const createRuntimeEngine = ({
     const message: Omit<Message, "createdAt" | "updatedAt"> = {
       id: kernel.newId(),
       threadId: run.threadId,
-      parentId,
+      parentId: state.replyParentId ?? parentId,
       role: "assistant",
       kind: "text",
       status: "streaming",
@@ -439,8 +441,8 @@ export const createRuntimeEngine = ({
     run: Run
     parentId: Id
     part: Extract<MessagePart, { type: "notice" }>
-  }): void => {
-    store.insertMessage({
+  }): Id | null => {
+    const result = store.insertMessage({
       message: {
         id: kernel.newId(),
         threadId: run.threadId,
@@ -455,6 +457,7 @@ export const createRuntimeEngine = ({
         source: "local",
       },
     })
+    return result.success ? result.message.id : null
   }
 
   const makeMcpToken = (threadId: Id): { command: string; args: Array<string>; env: Record<string, string> } => {
@@ -772,8 +775,8 @@ export const createRuntimeEngine = ({
     }
     const thread = store.getThread({ threadId: run.threadId })
     const ownBot = thread ? store.getBot({ botId: thread.botId }) : null
-    const bot = thread && ownBot ? delegatedBot(kernel, thread.id, ownBot) : null
-    if (!thread || !bot) {
+    const candidateBot = thread && ownBot ? delegatedBot(kernel, thread.id, ownBot) : null
+    if (!thread || !candidateBot) {
       updateRun(run, {
         status: "failed",
         errorClass: "unknown",
@@ -783,12 +786,56 @@ export const createRuntimeEngine = ({
       return
     }
     const state = getState(run.id)
+    // Full access has no folder restriction: a saved grant must never degrade it.
+    const grantsApply =
+      candidateBot.machine === "local" &&
+      candidateBot.access !== "full" &&
+      (!!candidateBot.anyFolderAccess || !!candidateBot.folders?.length)
+    if (grantsApply) await refreshHostFolderAccess()
+    const conversationOnly = grantsApply && !!folderGrantProblem(candidateBot)
+    const bot: Bot = conversationOnly
+      ? {
+          ...candidateBot,
+          folders: [],
+          anyFolderAccess: false,
+          access: "read-only",
+          projectId: null,
+          cwd: null,
+          mcpServers: [],
+          browserEnabled: false,
+          computerUse: false,
+        }
+      : candidateBot
+    if (conversationOnly) {
+      state.replyParentId =
+        notice({
+          store,
+          run,
+          parentId: run.requestMessageId ?? thread.activeLeafId ?? run.id,
+          part: {
+            type: "notice",
+            level: "warning",
+            code: "folder_access_unavailable",
+            text:
+              candidateBot.anyFolderAccess || candidateBot.folders?.length
+                ? "As permissões de pastas salvas não funcionam neste computador. Você pode conversar sem ferramentas. Remova essas permissões nas configurações do bot para continuar com tarefas."
+                : folderAccessUnavailable,
+          },
+        }) ?? undefined
+    }
     const request = activePathMessage({ store, run })
     const resumedFrom = request?.role === "system" ? continuationReasonOf(request.text) : null
     const link = continuations.link(run.id)
     const originalRun = link ? persistence.getRun(link.originalRunId) : null
+    const previousRun = link ? persistence.getRun(link.previousRunId) : null
+    // A session can be saved before the provider accepts the first turn. The bounded
+    // carryover alone cannot deliver that request's full text or attachments after a restart.
     const originalRequest =
-      resumedFrom === "permission_granted" && originalRun ? activePathMessage({ store, run: originalRun }) : null
+      originalRun &&
+      (resumedFrom === "permission_granted" ||
+        (resumedFrom === "app_restart" && originalRun.externalTurnId === null && previousRun?.externalTurnId === null))
+        ? activePathMessage({ store, run: originalRun })
+        : null
     const requestText = resumedFrom
       ? [continuationPrompt(resumedFrom), originalRequest ? `Original request:\n${originalRequest.text}` : null]
           .filter(Boolean)
@@ -949,7 +996,7 @@ export const createRuntimeEngine = ({
           signal?.throwIfAborted()
           const turnBot = delegatedBot(kernel, thread.id, {
             ...(prepared?.bot ?? bot),
-            mcpServers: await resolveAttachedMcp(kernel, prepared?.bot ?? bot),
+            mcpServers: conversationOnly ? [] : await resolveAttachedMcp(kernel, prepared?.bot ?? bot),
           })
           signal?.throwIfAborted()
           const turnInstructions = await composeDeveloperInstructions({
@@ -987,6 +1034,7 @@ export const createRuntimeEngine = ({
           // Publish before invocation: startup and a silent provider are different waits.
           if (!run.providerStartedAt) updateRun(run, { providerStartedAt: Date.now() })
           return startTurn({
+            ...(conversationOnly ? { conversationOnly: true } : {}),
             thread,
             bot: turnBot,
             session,

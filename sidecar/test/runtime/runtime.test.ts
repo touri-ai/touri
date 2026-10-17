@@ -9,6 +9,7 @@ import { createStandingGrantStore } from "../../src/approvals/grants"
 import { mcpStartupChecks } from "../../src/doctor/mcp"
 import { createKernel } from "../../src/kernel"
 import { openDatabase } from "../../src/kernel/db"
+import { hostFolderAccessAvailable } from "../../src/kernel/folder-capability"
 import { init as initNotify } from "../../src/notify"
 import { createCodexAdapter } from "../../src/runtime/codex/adapter"
 import { createRuntimeEngine } from "../../src/runtime/engine"
@@ -16,6 +17,7 @@ import { MCP_STARTUP_MESSAGE } from "../../src/runtime/mcp-startup"
 import { createRuntimePersistence } from "../../src/runtime/persistence"
 import { createRoutineScheduler } from "../../src/runtime/routines/scheduler"
 import { init as initStore } from "../../src/store"
+import { fakeProviderSpawn } from "../fakes/provider-spawn"
 import { createTestStore, type TestStore } from "./fake-store"
 
 const repoRoot = join(import.meta.dir, "..", "..", "..")
@@ -110,6 +112,7 @@ const fixture = async ({
     ),
   )
   const runtime = createKernel({ appData: root })
+  runtime.kernel.spawnTree = fakeProviderSpawn(runtime.kernel.spawnTree, fakePath, scenario)
   const timestamp = Date.now()
   const bot: Bot = {
     id: "bot-runtime",
@@ -234,6 +237,7 @@ test("pausing a cached routine prevents cron attempts and survives runtime repla
     await waitFor(() => f.engine.listRoutineRuns(result.routine.id)[0]?.status === "succeeded")
     await f.engine.shutdown()
     reopened = createKernel({ appData: f.root })
+    reopened.kernel.spawnTree = fakeProviderSpawn(reopened.kernel.spawnTree, f.fakePath, f.scenario)
     reopened.kernel.services.provide("store.api", f.store)
     replacement = createRuntimeEngine({ kernel: reopened.kernel, codexCommand: f.fakePath })
     await Promise.all([f.engine.tick(Date.now() + 900_000), replacement.tick(Date.now() + 900_000)])
@@ -2282,7 +2286,9 @@ test.serial(
       const args =
         calls.find(
           (call) =>
-            call.cmd === value.fakePath || (call.cmd === "/usr/bin/sandbox-exec" && call.args[2] === value.fakePath),
+            call.cmd === value.fakePath ||
+            (call.cmd === "/usr/bin/sandbox-exec" && call.args[2] === value.fakePath) ||
+            (/\/bwrap$/.test(call.cmd) && call.args.includes(value.fakePath)),
         )?.args ?? []
       expect(args).toContain("--permission-prompt-tool")
       expect(args).toContain("mcp__touri__approval_prompt")
@@ -2406,7 +2412,7 @@ test.serial("transcript: cancellation during environment loading never launches 
   }
 })
 
-test.serial("a local bot with a provider profile runs the CLI with that profile as its home", async () => {
+test.serial("a local bot uses its selected provider profile for authentication and isolated bookkeeping", async () => {
   const value = await fixture({ provider: "claude" })
   try {
     const envLog = join(value.assets, "claude-home.log")
@@ -2429,11 +2435,21 @@ test.serial("a local bot with a provider profile runs the CLI with that profile 
     await run("default home")
     const bot = value.store.bots.get(value.bot.id)
     if (!bot) throw new Error("Fixture bot missing")
+    const profile = join(value.runtime.kernel.paths.appData, "provider-profiles", "clav", "claude")
+    mkdirSync(profile, { recursive: true })
+    writeFileSync(join(profile, "settings.json"), JSON.stringify({ forceLoginOrgUUID: "selected-profile" }))
     bot.providerProfile = "clav"
     await run("profile home")
     const homes = readFileSync(envLog, "utf8").trim().split("\n")
     expect(homes[0]).not.toContain("provider-profiles")
-    expect(homes.at(-1)).toBe(join(value.runtime.kernel.paths.appData, "provider-profiles", "clav", "claude"))
+    expect(homes.at(-1)).toBe(
+      process.platform === "linux" && hostFolderAccessAvailable() ? join(bot.homeDir, ".touri-claude") : profile,
+    )
+    expect(
+      JSON.parse(
+        readFileSync(join(value.runtime.kernel.paths.runDir, "claude", `${value.thread.id}.settings.json`), "utf8"),
+      ),
+    ).toMatchObject({ forceLoginOrgUUID: "selected-profile" })
   } finally {
     await closeFixture(value)
   }
@@ -2696,6 +2712,7 @@ test.serial("deletion drops queued catch-up work and a cached due schedule stays
     expect(value.engine.runRoutine({ routineId: routine.id, triggerSource: "manual" }).success).toBe(false)
     await value.engine.shutdown()
     reopened = createKernel({ appData: value.root })
+    reopened.kernel.spawnTree = fakeProviderSpawn(reopened.kernel.spawnTree, value.fakePath, value.scenario)
     reopened.kernel.services.provide("store.api", value.store)
     replacement = createRuntimeEngine({ kernel: reopened.kernel, codexCommand: value.fakePath })
     await replacement.tick(Date.now() + 900_000)

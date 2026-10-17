@@ -1,0 +1,115 @@
+import type { Message, Run } from "@touri/contracts"
+import type { AvatarIdentity } from "@touri/contracts/avatar"
+import { useEffect, useId, useState } from "react"
+import type { UiApi } from "../api/client"
+import { type Locale, t } from "../i18n"
+import { ActivityMark } from "./ActivityMark"
+import { MarkdownContent } from "./MarkdownContent"
+import type { MascotState } from "./mascotState"
+import { ToolCallCard } from "./ToolCallCard"
+import { activityGroupLabels, activityGroups, activitySummary, activityTools, approvalTools } from "./turnActivity"
+import "./turn-activity.css"
+
+export const TurnActivity = ({
+  message,
+  run,
+  api,
+  bot,
+  state,
+  preparingEnvironment,
+  onCancel,
+  onFocusApproval,
+  locale = "pt-BR",
+}: {
+  message: Message
+  run?: Run | undefined
+  api?: UiApi | undefined
+  bot?: AvatarIdentity | undefined
+  state: MascotState
+  preparingEnvironment?: boolean | undefined
+  onCancel?: ((runId: string) => Promise<void>) | undefined
+  onFocusApproval?: ((approvalId: string) => void) | undefined
+  locale?: Locale
+}) => {
+  const id = useId()
+  const [expanded, setExpanded] = useState(false)
+  const live = message.status === "streaming"
+  useEffect(() => {
+    if (!live) setExpanded(false)
+  }, [live])
+  const tools = activityTools(message.parts)
+  const approvals = new Set([...approvalTools(message.parts).values()].map((part) => part.callId))
+  const groups = activityGroups(tools.filter((part) => !approvals.has(part.callId)))
+  const reasoning = message.parts.flatMap((part) => (part.type === "reasoning" && part.text.trim() ? [part.text] : []))
+  return (
+    <div className="turn-activity" data-running={live}>
+      {live ? (
+        <ActivityMark
+          state={state}
+          run={run}
+          updatedAt={message.updatedAt}
+          parts={message.parts}
+          bot={bot}
+          threadId={message.threadId}
+          api={api}
+          onCancel={onCancel}
+          preparingEnvironment={preparingEnvironment}
+          locale={locale}
+          reasoningId={id}
+          reasoningExpanded={expanded}
+          onExpandReasoning={() => setExpanded((value) => !value)}
+          onFocusApproval={onFocusApproval}
+        />
+      ) : (
+        <button
+          className="turn-activity-toggle"
+          type="button"
+          aria-controls={id}
+          aria-expanded={expanded}
+          onClick={() => setExpanded((value) => !value)}
+        >
+          <svg
+            className="turn-activity-chevron"
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            aria-hidden="true"
+          >
+            <path d="m9 5 7 7-7 7" />
+          </svg>
+          {activitySummary(message, run, locale)}
+        </button>
+      )}
+      <div id={id} hidden={!expanded} className="turn-activity-details">
+        {expanded && (
+          <>
+            {groups.map(({ kind, tools: entries }) => (
+              <section key={kind} className="turn-activity-group" aria-label={t(activityGroupLabels[kind], {}, locale)}>
+                <h4>
+                  {t(activityGroupLabels[kind], {}, locale)} · {entries.length}
+                </h4>
+                {entries.map((part) => (
+                  <ToolCallCard
+                    key={part.callId}
+                    part={part}
+                    api={api}
+                    finished={!live}
+                    createdAt={message.createdAt}
+                  />
+                ))}
+              </section>
+            ))}
+            {reasoning.length > 0 && (
+              <section className="turn-activity-group chat-reasoning" aria-label={t("Reasoning", {}, locale)}>
+                <h4>{t("Reasoning", {}, locale)}</h4>
+                <MarkdownContent content={reasoning.join("\n\n")} />
+              </section>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  )
+}

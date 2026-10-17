@@ -21,6 +21,8 @@ const authEnvKeys = new Set([
   "AWS_SECRET_ACCESS_KEY",
   "AWS_SESSION_TOKEN",
   "AWS_PROFILE",
+  "AWS_SHARED_CREDENTIALS_FILE",
+  "AWS_CONFIG_FILE",
   "AWS_REGION",
   "AWS_DEFAULT_REGION",
   "AWS_BEARER_TOKEN_BEDROCK",
@@ -77,8 +79,9 @@ export const claudeSettings = async (args: StartTurnArgs, env: Record<string, st
     settings: {
       ...auth,
       permissions: {
-        allow: args.bot.access === "read-only" ? readOnlyAllow : [],
+        allow: args.conversationOnly ? [] : args.bot.access === "read-only" ? readOnlyAllow : [],
         deny: [
+          ...(args.conversationOnly ? ["*"] : []),
           ...(args.bot.access === "read-only" ? readOnlyDeny : []),
           ...turnFolders(args)
             .filter((folder) => folder.access === "read-only")

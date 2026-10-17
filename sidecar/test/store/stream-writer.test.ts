@@ -7,10 +7,12 @@ import type { UiEventEnvelope } from "@touri/contracts"
 import { createKernel } from "../../src/kernel"
 import { openDatabase } from "../../src/kernel/db"
 import { createEventBus } from "../../src/kernel/event-bus"
+import { OUTPUT_INLINE_BUDGET_BYTES } from "../../src/kernel/output-blobs"
 import { profileProviders } from "../../src/kernel/provider-profiles"
 import { compactTranscript, materializeTranscript } from "../../src/kernel/transcript-storage"
 import { init as initStore } from "../../src/store"
 import { STREAM_WRITE_LIMITS } from "../../src/store/stream-writer"
+import { readWorkspaceActivity } from "../../src/store/workspace-activity"
 
 const fixture = async () => {
   const root = mkdtempSync(join(tmpdir(), "touri-stream-writer-"))
@@ -91,6 +93,112 @@ test("shutdown drains accepted text and can be repeated after the database close
     } finally {
       recovered.close()
     }
+  } finally {
+    f.close()
+  }
+})
+
+test("part-only recovery uses the dirty queue and keeps workspace approvals current before checkpoints", async () => {
+  const f = await fixture()
+  try {
+    const approval = {
+      type: "approval" as const,
+      approvalId: "request",
+      request: "command" as const,
+      detail: "pwd",
+      decision: "pending" as const,
+    }
+    f.store.appendParts?.({ threadId: "t", messageId: "a", parts: [{ partIndex: 1, part: approval }] })
+    f.store.flushWrites?.()
+    expect(f.database.query("SELECT * FROM transcript_pending_deltas").all()).toEqual([
+      { thread_id: "t", message_id: "a" },
+    ])
+    const activity = readWorkspaceActivity(f.database).messages.find((message) => message.id === "a")
+    expect(JSON.parse(activity?.parts_json ?? "[]")).toEqual([approval])
+    const recovered = openDatabase({ filename: f.runtime.kernel.paths.db })
+    try {
+      const bus = createEventBus(recovered)
+      const snapshot = recovered.query("SELECT parts_json FROM messages WHERE id = 'a'").get() as {
+        parts_json: string
+      }
+      expect(JSON.parse(snapshot.parts_json)[1]).toEqual(approval)
+      expect(recovered.query("SELECT * FROM transcript_pending_deltas").all()).toEqual([])
+      expect(bus.replay(0).some(({ event }) => event.type === "message.created")).toBe(true)
+      expect(bus.replay(0).some(({ event }) => event.type === "message.parts")).toBe(true)
+      bus.stop()
+    } finally {
+      recovered.close()
+    }
+    f.store.appendParts?.({
+      threadId: "t",
+      messageId: "a",
+      parts: [{ partIndex: 1, part: { ...approval, decision: "approved" } }],
+    })
+    f.store.flushWrites?.()
+    expect(f.database.query("SELECT decision FROM workspace_message_attention WHERE message_id = 'a'").get()).toEqual({
+      decision: "approved",
+    })
+    f.store.appendParts?.({
+      threadId: "t",
+      messageId: "a",
+      parts: [{ partIndex: 1, part: { type: "reasoning", text: "Continuar" } }],
+    })
+    f.store.flushWrites?.()
+    expect(f.database.query("SELECT * FROM workspace_message_attention WHERE message_id = 'a'").all()).toEqual([])
+  } finally {
+    f.close()
+  }
+})
+
+test("streamed completed outputs share the inline budget and reserve space for new live progress", async () => {
+  const f = await fixture()
+  try {
+    for (let index = 1; index <= 20; index++)
+      f.store.appendParts?.({
+        threadId: "t",
+        messageId: "a",
+        parts: [
+          {
+            partIndex: index,
+            part: {
+              type: "command",
+              callId: `done-${index}`,
+              command: "echo teste",
+              cwd: "/tmp",
+              exitCode: 0,
+              outputTail: `${index}: ${"x".repeat(4000)}`,
+            },
+          },
+        ],
+      })
+    const outputTail = "p".repeat(16 * 1024)
+    f.store.appendParts?.({
+      threadId: "t",
+      messageId: "a",
+      parts: [
+        {
+          partIndex: 21,
+          part: {
+            type: "command",
+            callId: "live",
+            command: "echo progresso",
+            cwd: "/tmp",
+            exitCode: null,
+            outputTail,
+            resolution: "running",
+          },
+        },
+      ],
+    })
+    const message = f.store.activePath({ threadId: "t", leafId: "a" })[0]
+    expect(message?.parts[21]).toMatchObject({ outputTail })
+    const inlineBytes = message?.parts.reduce(
+      (total, part) => total + (part.type === "command" ? Buffer.byteLength(part.outputTail) : 0),
+      0,
+    )
+    expect(inlineBytes).toBeLessThanOrEqual(OUTPUT_INLINE_BUDGET_BYTES)
+    const patches = f.events.flatMap(({ event }) => (event.type === "message.parts" ? [event] : [])).at(-1)?.parts
+    expect(patches?.some(({ partIndex, part }) => partIndex < 21 && "outputAttachmentId" in part)).toBe(true)
   } finally {
     f.close()
   }

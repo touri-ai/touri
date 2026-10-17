@@ -1,5 +1,5 @@
 import type { Bot, BotFolder } from "@touri/contracts"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import type { TauriInvoke, UiApi } from "../api/client"
 import { t } from "../i18n"
 import { FolderPicker } from "./FolderPicker"
@@ -9,7 +9,6 @@ import { SettingsSwitch } from "./SettingsLayout"
 export const BotFolderSettings = ({
   api,
   simple = false,
-  readOnly = false,
   folders,
   anyFolderAccess,
   machine,
@@ -33,9 +32,52 @@ export const BotFolderSettings = ({
 }) => {
   const [confirming, setConfirming] = useState(false)
   const [picking, setPicking] = useState(false)
+  const [available, setAvailable] = useState<boolean | null>(null)
+  useEffect(() => {
+    let current = true
+    if (api && machine === "local")
+      void api
+        .request("GET /folders", {})
+        .then((listing) => {
+          if (current) setAvailable(listing.canGrant)
+        })
+        .catch(() => {
+          if (current) setAvailable(false)
+        })
+    return () => {
+      current = false
+    }
+  }, [api, machine])
   return (
     <div className="bot-folder-settings">
       <strong>{t("Pastas que este bot pode acessar")}</strong>
+      {available === false && !folders.length && !anyFolderAccess && (
+        <p role="status">
+          {t(
+            "Este computador não consegue proteger o acesso a pastas. Nenhuma permissão foi adicionada. Você pode continuar conversando ou enviar um arquivo.",
+          )}
+        </p>
+      )}
+      {available === false && (folders.length > 0 || anyFolderAccess) && (
+        <div role="status">
+          <p>
+            {t(
+              "As permissões de pastas salvas não funcionam neste computador. Você pode conversar sem ferramentas. Remova essas permissões nas configurações do bot para continuar com tarefas.",
+            )}
+          </p>
+          <button
+            type="button"
+            className="button-quiet"
+            disabled={disabled || picking}
+            onClick={() => {
+              onFolders([])
+              onAnyFolderAccess(false)
+            }}
+          >
+            {t("Remover permissões antigas")}
+          </button>
+        </div>
+      )}
       {!folders.length && <p className="field-help">{t("Nenhuma pasta adicional.")}</p>}
       <ul className="bot-folder-list">
         {folders.map((folder, index) => (
@@ -43,7 +85,7 @@ export const BotFolderSettings = ({
             <span className="bot-folder-path">{folder.path}</span>
             <select
               aria-label={t("Acesso à pasta {path}", { path: folder.path })}
-              disabled={disabled || picking}
+              disabled={disabled || picking || available === false}
               value={folder.access}
               onChange={(event) =>
                 onFolders(
@@ -85,6 +127,7 @@ export const BotFolderSettings = ({
           onUpload={onUpload}
           onClose={() => setPicking(false)}
           onSelect={(folder) => {
+            setAvailable(true)
             if (!folders.some((item) => item.path === folder.path)) onFolders([...folders, folder])
             setPicking(false)
           }}
@@ -100,7 +143,7 @@ export const BotFolderSettings = ({
             <SettingsSwitch
               id="settings-any-folder"
               checked={anyFolderAccess}
-              disabled={disabled || picking}
+              disabled={disabled || picking || (available === false && !anyFolderAccess)}
               onChange={(event) => (event.target.checked ? setConfirming(true) : onAnyFolderAccess(false))}
             />
           </label>

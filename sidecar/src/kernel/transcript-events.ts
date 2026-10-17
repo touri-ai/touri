@@ -19,35 +19,43 @@ export const captureTranscript = (database: Database): void => {
         }
       ).value,
     )
-    const rows = database
-      .query("SELECT id, at, event_json FROM transcript_entries WHERE id > ? ORDER BY id")
-      .all(checkpoint) as Array<{ id: number; at: number; event_json: string }>
-    for (const row of rows) {
-      const event = JSON.parse(row.event_json) as UiEvent & { legacy?: boolean }
-      if (event.legacy) continue
-      let stored = row.event_json
-      if (event.type === "message.created" || event.type === "message.updated") {
-        if (event.message.updatedSeq !== undefined)
+    const statement = database.prepare("SELECT id, at, event_json FROM transcript_entries WHERE id > ? ORDER BY id")
+    let last = checkpoint
+    try {
+      const rows = statement.iterate(checkpoint) as Iterable<{ id: number; at: number; event_json: string }>
+      for (const row of rows) {
+        last = row.id
+        const event = JSON.parse(row.event_json) as (UiEvent & { legacy?: boolean }) | TranscriptRef
+        if ("legacy" in event && event.legacy) continue
+        if ("ref" in event) {
+          database.query("INSERT INTO ui_event_log(at, event_json) VALUES (?, ?)").run(row.at, row.event_json)
+          continue
+        }
+        let stored = row.event_json
+        if (event.type === "message.created" || event.type === "message.updated") {
+          if (event.message.updatedSeq !== undefined)
+            stored = JSON.stringify({
+              type: event.type,
+              ref: true,
+              threadId: event.message.threadId,
+              messageId: event.message.id,
+              seq: event.message.updatedSeq,
+            } satisfies TranscriptRef)
+        } else if (event.type === "message.delta" || event.type === "message.parts") {
           stored = JSON.stringify({
             type: event.type,
             ref: true,
-            threadId: event.message.threadId,
-            messageId: event.message.id,
-            seq: event.message.updatedSeq,
+            threadId: event.threadId,
+            messageId: event.messageId,
+            seq: event.updatedSeq ?? 0,
           } satisfies TranscriptRef)
-      } else if (event.type === "message.delta" || event.type === "message.parts") {
-        stored = JSON.stringify({
-          type: event.type,
-          ref: true,
-          threadId: event.threadId,
-          messageId: event.messageId,
-          seq: event.updatedSeq ?? 0,
-        } satisfies TranscriptRef)
+        }
+        database.query("INSERT INTO ui_event_log(at, event_json) VALUES (?, ?)").run(row.at, stored)
       }
-      database.query("INSERT INTO ui_event_log(at, event_json) VALUES (?, ?)").run(row.at, stored)
+    } finally {
+      statement.finalize()
     }
-    const last = rows.at(-1)
-    if (last)
-      database.query("UPDATE schema_meta SET value = ? WHERE key = 'transcript_event_checkpoint'").run(String(last.id))
+    if (last > checkpoint)
+      database.query("UPDATE schema_meta SET value = ? WHERE key = 'transcript_event_checkpoint'").run(String(last))
   })()
 }

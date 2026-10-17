@@ -23,16 +23,20 @@ for (const width of [1440, 390]) {
     await page.screenshot({ path: `${directory}/${phase}-${width}.png` })
     if (phase === "before") return
     await expect(page.locator(".activity-label")).toHaveText("Preparando a resposta…")
-    await expect(page.getByRole("button", { name: "Raciocínio", exact: true })).toHaveAttribute(
-      "aria-expanded",
-      "false",
-    )
+    await expect(page.locator(".turn-activity-toggle")).toHaveAttribute("aria-expanded", "false")
+    await expect(page.getByRole("button", { name: "Raciocínio", exact: true })).toHaveCount(0)
     await page.clock.fastForward(10_250)
     await expect(page.locator(".activity-label")).toHaveText("Ainda aguardando a IA responder.")
     await page.clock.fastForward(20_000)
+    await expect(page.locator(".activity-label")).toHaveText(
+      "A resposta está demorando. Você pode continuar esperando ou verificar a conexão.",
+    )
+    await expect(page.locator(".activity-label")).toHaveCount(1)
+    await expect(page.locator(".activity-mascot")).toHaveCount(1)
+    await expect(page.getByText("Ainda aguardando a IA responder.", { exact: true })).toHaveCount(0)
     await expect(page.getByRole("button", { name: "Verificar conexão", exact: true })).toBeVisible()
     await page.screenshot({ path: `${directory}/long-wait-${width}.png` })
-    const warning = page.locator(".activity-delay")
+    const warning = page.locator(".activity-mark")
     expect(await warning.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
     await page.getByRole("button", { name: "Verificar conexão", exact: true }).click()
     await expect(page.getByText("A conexão com o touri está disponível. A IA pode continuar demorando.")).toBeVisible()
@@ -56,6 +60,10 @@ if (phase === "after") {
     await page.clock.fastForward(10_250)
     await expect(page.locator(".activity-label")).toHaveText("Ainda aguardando a IA responder.")
     await page.clock.fastForward(20_000)
+    await expect(page.locator(".activity-label")).toHaveText(
+      "A resposta está demorando. Você pode continuar esperando ou verificar a conexão.",
+    )
+    await expect(page.getByText("Ainda aguardando a IA responder.", { exact: true })).toHaveCount(0)
     await expect(page.getByRole("button", { name: "Verificar conexão" })).toBeVisible()
     await page.clock.fastForward(4_750)
     expect(await page.evaluate("window.feedback.sends()")).toBe(1)

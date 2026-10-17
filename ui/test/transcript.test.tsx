@@ -757,7 +757,12 @@ test("delivery states and interrupted tools render in Portuguese", () => {
       },
     ],
   })
-  render(<VirtualMessageList messages={rows} onSwitchBranch={() => undefined} onRetry={async () => undefined} />)
+  const view = render(
+    <VirtualMessageList messages={rows} onSwitchBranch={() => undefined} onRetry={async () => undefined} />,
+  )
+  const activity = view.container.querySelector<HTMLButtonElement>(".turn-activity-toggle")
+  expect(activity).not.toBeNull()
+  if (activity) fireEvent.click(activity)
   for (const label of ["Na fila · aguardando conexão", "Enviando…", "Entregue", "Falha na entrega", "Encerrado"])
     expect(screen.getByText(label)).toBeInTheDocument()
   expect(screen.queryByText("Em execução")).toBeNull()

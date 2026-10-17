@@ -4,6 +4,7 @@ import { getDelegation } from "../../groups/security"
 import { buildChildEnv } from "../../kernel"
 import { spawnFolderProvider } from "../folder-access"
 import { loadTurnImages } from "../loadTurnImages"
+import { withLocalTurnTemp } from "../local-turn-temp"
 import { mcpStartupError } from "../mcp-startup"
 import { applyProviderPrivacy, cliTelemetryOff } from "../privacy"
 import { type ChildProcess, readProviderStderr, startLineReader } from "../provider-io"
@@ -212,7 +213,7 @@ export const createOpenCodeAdapter = ({
         throw new Error("Configurações externas alteraram as permissões do OpenCode; o turno foi bloqueado")
       const mcp = asRecord(await request("/mcp"))
       const touriStatus = asRecord(mcp?.touri)
-      if (touriStatus?.status !== "connected")
+      if (!args.conversationOnly && touriStatus?.status !== "connected")
         return {
           success: false,
           errorCode: "cli_protocol",
@@ -342,6 +343,7 @@ export const createOpenCodeAdapter = ({
       submitted = true
       await request(`/session/${encodeURIComponent(sessionID)}/prompt_async`, {
         agent: "touri",
+        ...(args.conversationOnly ? { tools: { "*": false } } : {}),
         system: args.developerInstructions,
         ...(model ? { model: modelSpec(model) } : {}),
         ...(args.bot.reasoningEffort ? { variant: args.bot.reasoningEffort } : {}),
@@ -390,7 +392,7 @@ export const createOpenCodeAdapter = ({
   }
   return {
     provider: "opencode",
-    startTurn,
+    startTurn: (args) => withLocalTurnTemp(kernel, args, startTurn),
     detect: async () => {
       const env = buildChildEnv({ base: await kernel.shellEnv() })
       const binary = openCodeBinary(env, command)

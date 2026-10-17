@@ -1,9 +1,12 @@
 import type { StartTurnArgs } from "@touri/contracts"
 import { canonicalPath } from "../../kernel/bot-folders"
-import { writableTurnFolders } from "../folder-access"
+import { hostFolderAccessAvailable } from "../../kernel/folder-capability"
+import { folderConfinementRequired, writableTurnFolders } from "../folder-access"
 
-export const outerSeatbelt = (args: StartTurnArgs, platform = process.platform): boolean =>
-  platform === "darwin" && !args.execution
+// Only a turn that actually runs inside touri's outer boundary may skip Codex's own sandbox.
+export const outerFolderSandbox = (args: StartTurnArgs, platform = process.platform): boolean =>
+  !args.execution &&
+  (platform === "darwin" || (platform === "linux" && folderConfinementRequired(args) && hostFolderAccessAvailable()))
 
 export const codexAccessParams = (args: StartTurnArgs, platform = process.platform): Record<string, unknown> => {
   const reviewer = { approvalsReviewer: "user" }
@@ -15,13 +18,34 @@ export const codexAccessParams = (args: StartTurnArgs, platform = process.platfo
         },
       }
     : {}
+  if (args.conversationOnly)
+    return {
+      ...reviewer,
+      sandbox: "read-only",
+      approvalPolicy: "never",
+      config: {
+        ...config,
+        features: {
+          shell_tool: false,
+          apply_patch_freeform: false,
+          view_image: false,
+          image_generation: false,
+          apps: false,
+          plugins: false,
+          code_mode: false,
+          code_mode_host: false,
+          multi_agent: false,
+        },
+        tools: { view_image: false },
+        web_search: "disabled",
+        mcp_servers: {},
+      },
+    }
   if (args.bot.access === "full")
     return { ...reviewer, sandbox: "danger-full-access", approvalPolicy: args.bot.approvals, config }
-  // On macOS every local turn already runs inside touri's Seatbelt profile (spawnFolderProvider), which
-  // limits writes to the same roots and also hides sensitive folders. Seatbelt refuses to apply a second
-  // sandbox under any profile with a deny rule, so Codex's own sandbox could never start there and every
-  // command became a "run without sandbox" approval. The outer profile is the boundary on macOS.
-  if (outerSeatbelt(args, platform))
+  // Host folder grants already have an inherited platform boundary. Avoid a
+  // nested provider sandbox that cannot initialize inside that boundary.
+  if (outerFolderSandbox(args, platform))
     return {
       ...reviewer,
       sandbox: "danger-full-access",

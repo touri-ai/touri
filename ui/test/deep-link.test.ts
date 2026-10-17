@@ -1,5 +1,5 @@
 import { expect, test } from "vitest"
-import { buildDeepLink, parseDeepLink } from "../src/deepLink"
+import { buildDeepLink, buildWebDeepLink, parseDeepLink } from "../src/deepLink"
 
 test("parses the desktop scheme with bot and thread", () => {
   expect(parseDeepLink("touri://open?bot=bot-1&thread=thread-9")).toEqual({ bot: "bot-1", thread: "thread-9" })
@@ -23,4 +23,12 @@ test("rejects empty selections, foreign hosts and non-links", () => {
 test("buildDeepLink round-trips", () => {
   const link = { bot: "bot x", thread: "t/1" }
   expect(parseDeepLink(buildDeepLink(link))).toEqual(link)
+})
+
+test("web links round-trip while retaining the path, other parameters and fragment", () => {
+  const selection = { bot: "bot x", thread: "t/1" }
+  const link = buildWebDeepLink(selection, "https://example.test/app/?mode=web&bot=old#chat")
+  expect(link).toBe("/app/?mode=web&bot=bot+x&thread=t%2F1#chat")
+  expect(parseDeepLink(link)).toEqual(selection)
+  expect(buildWebDeepLink({ bot: null, thread: null }, `https://example.test${link}`)).toBe("/app/?mode=web#chat")
 })

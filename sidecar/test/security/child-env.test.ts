@@ -131,6 +131,10 @@ test("provider children receive no internal auth or MCP token environment", asyn
   )
   chmodSync(fakePath, 0o700)
   const runtime = createKernel({ appData: root })
+  const spawn = runtime.kernel.spawnTree
+  // Add only the test instrument after filtering; keep the actual namespace and
+  // every internal credential exactly as the provider boundary supplied them.
+  runtime.kernel.spawnTree = (input) => spawn({ ...input, env: { ...input.env, TOURI_SECURITY_ENV_DUMP: dumpPath } })
   const adapter = createCodexAdapter({ kernel: runtime.kernel, command: fakePath })
   const argsEnv = {
     PATH: process.env.PATH ?? "/usr/bin",

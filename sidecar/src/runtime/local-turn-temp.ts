@@ -2,6 +2,7 @@ import { mkdtempSync, realpathSync, rmSync } from "node:fs"
 import { join } from "node:path"
 import type { Kernel, StartTurnArgs } from "@touri/contracts"
 import { ensurePrivateDirectory } from "../kernel/files"
+import { refreshHostFolderAccess } from "../kernel/folder-capability"
 
 export const withLocalTurnTemp = async <T>(
   kernel: Kernel,
@@ -9,6 +10,8 @@ export const withLocalTurnTemp = async <T>(
   run: (args: StartTurnArgs) => Promise<T>,
 ): Promise<T> => {
   if (args.execution) return run(args)
+  if (process.platform === "linux" || args.bot.anyFolderAccess || args.bot.folders?.length)
+    await refreshHostFolderAccess()
   const directory = join(kernel.paths.runDir, "provider-tmp")
   ensurePrivateDirectory({ root: kernel.paths.appData, path: directory })
   const temporary = realpathSync(mkdtempSync(join(directory, "turn-")))

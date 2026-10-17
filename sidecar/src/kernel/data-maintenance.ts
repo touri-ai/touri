@@ -5,6 +5,7 @@ import type { MessagePart, StorageMaintenanceStatus, StorageStats } from "@touri
 import { removePrivateFile } from "./files"
 import { historyMigrationStatus } from "./history-backfill"
 import { attachmentReferences, externalizeMessageParts, OUTPUT_BLOB_ORIGIN } from "./output-blobs"
+import { createStorageUpgrade, maintainDatabasePages } from "./storage-upgrade"
 import { compactTranscript } from "./transcript-storage"
 
 export const DEFAULT_DATA_RETENTION_DAYS = 30
@@ -37,19 +38,12 @@ const summarizeParts = (parts: MessagePart[]): MessagePart[] => {
     if (part.type !== "tool_call" && part.type !== "command" && part.type !== "file_change") return [part]
     const { outputAttachmentId: _id, outputBytes: _bytes, outputPreview: _preview, ...summary } = part
     if (
-      part.type === "tool_call" &&
-      (part.outputAttachmentId || part.outputJson !== null || part.outputTail || part.inputJson !== "{}")
+      summary.type === "tool_call" &&
+      (part.outputAttachmentId || summary.outputJson !== null || summary.inputJson !== "{}" || summary.outputTail)
     ) {
       summarized = true
-      return [
-        {
-          ...summary,
-          type: "tool_call",
-          inputJson: "{}",
-          outputJson: null,
-          ...(part.outputTail === undefined ? {} : { outputTail: "" }),
-        } as MessagePart,
-      ]
+      const { outputTail: _tail, ...toolSummary } = summary
+      return [{ ...toolSummary, inputJson: "{}", outputJson: null }]
     }
     if (part.type === "command" && (part.outputAttachmentId || part.outputTail)) {
       summarized = true
@@ -90,7 +84,7 @@ export const compactMessageBatch = ({
 }): { cursor: number; changed: boolean } =>
   database.transaction(() => {
     const rows = database
-      .query(`SELECT m.rowid AS row_id, m.thread_id, m.id, m.run_id, m.parts_json, m.updated_at,
+      .query(`SELECT m.rowid AS row_id, m.thread_id, m.id, m.run_id, m.updated_at,
       m.status, EXISTS(SELECT 1 FROM runs r WHERE r.thread_id = m.thread_id
         AND r.status IN ('queued','starting','running')) AS active
     FROM messages m WHERE m.rowid > ? AND m.rowid <= ? ORDER BY m.rowid LIMIT ?`)
@@ -99,7 +93,6 @@ export const compactMessageBatch = ({
       thread_id: string
       id: string
       run_id: string | null
-      parts_json: string
       updated_at: number
       status: string
       active: number
@@ -113,11 +106,16 @@ export const compactMessageBatch = ({
       if (nextCursor !== cursor && performance.now() - started >= 8) break
       nextCursor = row.row_id
       if (row.status === "streaming" || row.active) continue
-      const parts = JSON.parse(row.parts_json) as MessagePart[]
+      // Fetch one body at a time: a legacy message can contain megabytes of tool
+      // output, so loading a whole batch before yielding defeats the time budget.
+      const body = database
+        .query("SELECT parts_json FROM messages WHERE thread_id = ? AND id = ?")
+        .get(row.thread_id, row.id) as { parts_json: string }
+      const parts = JSON.parse(body.parts_json) as MessagePart[]
       const expired = days > 0 && row.updated_at < now - days * DAY
       const next = expired ? summarizeParts(parts) : parts
       const json = JSON.stringify(externalizeMessageParts({ database, appData, parts: next }))
-      if (json !== row.parts_json) {
+      if (json !== body.parts_json) {
         database
           .query("UPDATE messages SET parts_json = ? WHERE thread_id = ? AND id = ?")
           .run(json, row.thread_id, row.id)
@@ -156,6 +154,9 @@ export const collectUnusedOutputBlobs = async (
   yieldBatch: (() => Promise<void>) | null = () => Bun.sleep(0),
   deletedBotAttachments = new Set<string>(),
 ): Promise<number> => {
+  // Bot deletion can request collection while the backup worker is reading.
+  // Keep its referenced files intact until their backup pins are committed.
+  if (database.query("SELECT 1 FROM schema_meta WHERE key = 'storage_upgrade_22' AND value <> 'done'").get()) return 0
   // Include replay/recovery references, so retention never deletes a file still
   // needed by an unpublished entry or a reconnecting client. User uploads stay.
   const pending = database
@@ -167,7 +168,9 @@ export const collectUnusedOutputBlobs = async (
     if (Array.isArray(ids)) for (const id of ids) if (typeof id === "string") eligible.add(id)
   }
   const candidates = database
-    .query("SELECT id,path FROM attachments WHERE origin_path=? OR id IN (SELECT value FROM json_each(?))")
+    .query(`SELECT id,path FROM attachments
+      WHERE (origin_path=? OR id IN (SELECT value FROM json_each(?)))
+        AND NOT EXISTS (SELECT 1 FROM storage_backup_attachments b WHERE b.attachment_id = attachments.id)`)
     .all(OUTPUT_BLOB_ORIGIN, JSON.stringify([...eligible])) as Array<{ id: string; path: string }>
   const changes = () => Number((database.query("SELECT total_changes() AS n").get() as { n: number }).n)
   let observed = changes()
@@ -280,8 +283,22 @@ export const createStorageMaintenance = ({
   } catch {
     /* A damaged marker safely retries the idempotent pass. */
   }
-  let status: StorageMaintenanceStatus = { running: false, processed: progress.cursor, total: progress.total }
+  const upgrade = createStorageUpgrade({ database, appData })
+  let status: StorageMaintenanceStatus = upgrade.snapshot() ?? {
+    running: false,
+    processed: progress.cursor,
+    total: progress.total,
+  }
   let stopped = false
+  // Reclaim only a few pages per turn. PASSIVE checkpoints never wait for readers.
+  const pageTimer = setInterval(() => {
+    if (stopped || upgrade.snapshot()) return
+    try {
+      maintainDatabasePages(database)
+    } catch {
+      onError()
+    }
+  }, 60_000)
   let manual = false
   let vacuum = false
   let timer: ReturnType<typeof setTimeout> | undefined
@@ -297,6 +314,19 @@ export const createStorageMaintenance = ({
       return
     }
     try {
+      if (upgrade.snapshot()) {
+        status = upgrade.snapshot() ?? status
+        const pending = await upgrade.step()
+        if (stopped) return
+        status = upgrade.snapshot() ?? status
+        if (pending) {
+          timer = setTimeout(step, 10)
+          return
+        }
+        publishResync()
+        // Revisit message outputs even if the previous daily pass was recent.
+        progress = { cursor: 0, total: 0, completedAt: 0 }
+      }
       if (!status.running) {
         if (progress.completedAt > Date.now() - DAY) {
           timer = setTimeout(step, DAY)
@@ -325,7 +355,10 @@ export const createStorageMaintenance = ({
       // Capture the recovery tail before pruning. Snapshots/files retain detail;
       // removing replay entries causes clients to refresh from those snapshots.
       if (progress.changed || manual) publishResync()
-      compactTranscript(manual ? { database, events: 0, entriesPerThread: 0, maxAgeMs: 0 } : { database })
+      if (compactTranscript(manual ? { database, events: 0, entriesPerThread: 0, maxAgeMs: 0 } : { database })) {
+        timer = setTimeout(step, 10)
+        return
+      }
       await collectUnusedOutputBlobs(database, appData, Date.now(), async () => {
         await Bun.sleep(0)
         if (stopped) throw new Error("Manutenção encerrada")
@@ -333,6 +366,7 @@ export const createStorageMaintenance = ({
       if (stopped) return
       if (vacuum) {
         database.exec("PRAGMA wal_checkpoint(TRUNCATE)")
+        database.exec("PRAGMA auto_vacuum=INCREMENTAL")
         database.exec("VACUUM")
         database.exec("PRAGMA wal_checkpoint(TRUNCATE)")
       }
@@ -365,6 +399,8 @@ export const createStorageMaintenance = ({
     snapshot: (): StorageMaintenanceStatus => ({ ...status }),
     dispose: () => {
       stopped = true
+      upgrade.dispose()
+      clearInterval(pageTimer)
       clearTimeout(timer)
     },
   }

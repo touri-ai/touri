@@ -2,13 +2,31 @@ import type { Database } from "bun:sqlite"
 import { createHash } from "node:crypto"
 import { closeSync, constants, existsSync, fstatSync, openSync, readSync } from "node:fs"
 import { basename, dirname, join, relative } from "node:path"
-import type { MessagePart, RouteResponse } from "@touri/contracts"
+import type { MessagePart, RouteResponse, ToolCallPart, UiEvent } from "@touri/contracts"
 import { assertPrivateFile, atomicWriteFile, openWorkspaceDirectory, openWorkspaceEntry } from "./files"
 
 export const OUTPUT_BLOB_THRESHOLD = 8 * 1024
+export const OUTPUT_INLINE_BUDGET_BYTES = 64 * 1024
 export const OUTPUT_BLOB_PREVIEW_BYTES = 1024
 export const OUTPUT_BLOB_READ_BYTES = 64 * 1024
 export const OUTPUT_BLOB_ORIGIN = "touri:tool-output"
+
+// The supervisor already keeps the complete redacted process log in its file.
+// The replay journal only needs a bounded window, including for a single long line.
+export const boundedProcessLog = (event: Extract<UiEvent, { type: "process.log" }>): typeof event => {
+  let remaining = OUTPUT_INLINE_BUDGET_BYTES
+  const lines: string[] = []
+  for (let index = event.lines.length - 1; index >= 0 && remaining > 0; index--) {
+    const line = event.lines[index] ?? ""
+    const bytes = Buffer.from(line)
+    let start = Math.max(0, bytes.length - remaining)
+    while (start < bytes.length && ((bytes[start] ?? 0) & 0xc0) === 0x80) start++
+    const tail = bytes.subarray(start).toString("utf8")
+    lines.unshift(tail)
+    remaining -= Buffer.byteLength(tail) + 1
+  }
+  return { ...event, lines }
+}
 
 export const attachmentReferences = (value: unknown, ids = new Set<string>()): Set<string> => {
   if (!value || typeof value !== "object") return ids
@@ -53,6 +71,21 @@ const completed = (part: Extract<MessagePart, { callId: string }>): boolean => {
   return part.diff !== null
 }
 
+const withoutProgressTail = ({ outputTail: _tail, ...part }: ToolCallPart): ToolCallPart => part
+
+const partOutput = (part: MessagePart): string | null | undefined =>
+  part.type === "tool_call"
+    ? part.outputJson || part.outputTail
+    : part.type === "command"
+      ? part.outputTail
+      : part.type === "file_change"
+        ? part.diff
+        : null
+
+const inlineOutputBytes = (part: MessagePart, output: string): number =>
+  Buffer.byteLength(output) +
+  (part.type === "tool_call" && part.outputJson && part.outputTail ? Buffer.byteLength(part.outputTail) : 0)
+
 export const externalizeMessageParts = ({
   database,
   appData,
@@ -61,51 +94,69 @@ export const externalizeMessageParts = ({
   database: Database
   appData: string
   parts: MessagePart[]
-}): MessagePart[] =>
-  parts.map((part) => {
+}): MessagePart[] => {
+  // Reserve the shared inline budget for live progress. An indivisible live
+  // frame remains inline even above the budget; the writer flushes it immediately.
+  const reservedLiveBytes = Math.min(
+    OUTPUT_INLINE_BUDGET_BYTES,
+    parts.reduce((total, part) => {
+      const output = "callId" in part && !completed(part) ? partOutput(part) : null
+      if (!output) return total
+      return total + inlineOutputBytes(part, output)
+    }, 0),
+  )
+  let inlineBytes = 0
+  return parts.map((part) => {
     if (part.type !== "tool_call" && part.type !== "command" && part.type !== "file_change") return part
     // A changing live tail must not create a new durable file on every publish.
     if (!completed(part)) return part
-    const output =
-      part.type === "tool_call"
-        ? (part.outputJson ?? part.outputTail)
-        : part.type === "command"
-          ? part.outputTail
-          : part.diff
+    const output = partOutput(part)
     if (!output) return part
-    const bytes = Buffer.byteLength(output)
-    if (bytes <= OUTPUT_BLOB_THRESHOLD && !containsImage(output)) {
+    const bytes = inlineOutputBytes(part, output)
+    if (
+      bytes <= OUTPUT_BLOB_THRESHOLD &&
+      inlineBytes + bytes <= OUTPUT_INLINE_BUDGET_BYTES - reservedLiveBytes &&
+      !containsImage(output)
+    ) {
+      inlineBytes += bytes
       const { outputAttachmentId: _id, outputBytes: _bytes, outputPreview: _preview, ...inline } = part
       return inline
     }
-    const id = createHash("sha256").update(output).digest("hex")
+    // A final result can include a separate command preview. Preserve both when
+    // offloading instead of silently discarding the preview or leaving it unbounded.
+    const fullOutput =
+      part.type === "tool_call" && part.outputJson && part.outputTail
+        ? JSON.stringify({ outputJson: part.outputJson, outputTail: part.outputTail })
+        : output
+    const fullBytes = Buffer.byteLength(fullOutput)
+    const id = createHash("sha256").update(fullOutput).digest("hex")
     const existing = database.query("SELECT path FROM attachments WHERE id = ?").get(id) as { path: string } | null
     const path = existing?.path ?? join(appData, "attachments", id.slice(0, 2), `${id}.tool-output.txt`)
     // Commit the durable file before any row/event can refer to it. An interrupted
     // transaction may leave an orphan, which the maintenance collector can remove.
-    if (!existsSync(path)) atomicWriteFile({ root: appData, path, content: output })
+    if (!existsSync(path)) atomicWriteFile({ root: appData, path, content: fullOutput })
     database
       .query(
         "INSERT OR IGNORE INTO attachments(id,path,mime,bytes,origin_path,created_at) VALUES (?,?,'text/plain',?,?,?)",
       )
-      .run(id, path, bytes, OUTPUT_BLOB_ORIGIN, Date.now())
+      .run(id, path, fullBytes, OUTPUT_BLOB_ORIGIN, Date.now())
     const reference = {
       outputAttachmentId: id,
-      outputBytes: bytes,
+      outputBytes: fullBytes,
       outputPreview: containsImage(output)
         ? ""
         : outputPreview(part.type === "tool_call" ? part.outputTail || output : output, part.type === "command"),
     }
     if (part.type === "tool_call")
       return {
-        ...part,
+        ...withoutProgressTail(part),
         ...reference,
         outputJson: null,
-        ...(part.outputTail === undefined ? {} : { outputTail: "" }),
       }
     if (part.type === "command") return { ...part, ...reference, outputTail: "" }
     return { ...part, ...reference, diff: null }
   })
+}
 
 /** Only an explicitly requested page is read, even for very large saved results. */
 export const readOutputAttachment = ({

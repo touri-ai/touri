@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite"
-import { afterEach, expect, test } from "bun:test"
+import { afterEach, expect, spyOn, test } from "bun:test"
 import {
   chmodSync,
   existsSync,
@@ -17,6 +17,7 @@ import { createApprovalBridge } from "../../src/approvals/bridge"
 import { createStandingGrantStore } from "../../src/approvals/grants"
 import { setDelegation } from "../../src/groups/security"
 import { createKernel } from "../../src/kernel"
+import * as folderCapability from "../../src/kernel/folder-capability"
 import type { McpCallerContext } from "../../src/mcp/auth"
 import { createToolRouter } from "../../src/mcp/router"
 import { init as initNotify } from "../../src/notify"
@@ -56,10 +57,16 @@ const fixture = async (patch: Partial<Bot> = {}) => {
     access: "full",
     approvals: "never",
     ...patch,
+    // Seed broad grants below as legacy data; Linux no longer accepts new ones.
+    anyFolderAccess: false,
     machine: "local",
   })
   expect(response.status).toBe(201)
   const { bot } = (await response.json()) as { bot: Bot }
+  if (patch.anyFolderAccess) {
+    db.query("UPDATE bots SET any_folder_access = 1 WHERE id = ?").run(bot.id)
+    bot.anyFolderAccess = true
+  }
   if (patch.machine === "vm") {
     db.query("UPDATE bots SET machine = 'vm' WHERE id = ?").run(bot.id)
     bot.machine = "vm"
@@ -192,7 +199,8 @@ test("discovery lists only projects and repositories in this bot's granted folde
     success: true,
     structured: { projects: [{ id: "project" }], repositories: [] },
   })
-  expect((await f.request("PATCH", `/bots/${f.bot.id}`, { projectId: null, anyFolderAccess: true })).status).toBe(200)
+  expect((await f.request("PATCH", `/bots/${f.bot.id}`, { projectId: null })).status).toBe(200)
+  f.db.query("UPDATE bots SET any_folder_access = 1 WHERE id = ?").run(f.bot.id)
   expect(await f.call("project_discover")).toMatchObject({
     success: true,
     structured: { projects: [], repositories: [] },
@@ -648,6 +656,27 @@ test("schema forbids other bot IDs, any-folder access, invalid modes and ambiguo
   expect(f.currentBot()?.anyFolderAccess).toBe(false)
 })
 
+for (const pending of [false, true])
+  test(`unavailable confinement ${pending ? "during approval" : "before approval"} never persists a folder grant`, async () => {
+    const f = await fixture()
+    const probe = spyOn(folderCapability, "refreshHostFolderAccess").mockResolvedValue(pending)
+    try {
+      const call = f.call("folder_access_request", { path: f.path, mode: "read" })
+      if (pending) {
+        await f.pending()
+        probe.mockResolvedValue(false)
+        await f.answer("allow")
+      }
+      expect(await call).toMatchObject({ success: false, error: folderCapability.folderAccessUnavailable })
+      expect(f.currentBot()?.folders).toEqual([])
+      expect(f.currentBot()?.anyFolderAccess).toBe(false)
+      expect(existsSync(f.path)).toBe(true)
+      if (!pending) expect(f.cards).toEqual([])
+    } finally {
+      probe.mockRestore()
+    }
+  })
+
 test("a foreign thread and delegated peer cannot change this bot", async () => {
   const f = await fixture()
   const other = (await (await f.request("POST", "/bots", { name: "other", provider: "codex" })).json()).bot as Bot
@@ -759,7 +788,7 @@ test("simultaneous approvals cannot overwrite a configuration changed by another
 })
 
 test("removing a grant keeps the user-only any-folder toggle and unrelated grants intact", async () => {
-  const f = await fixture({ anyFolderAccess: true })
+  const f = await fixture()
   const extra = join(f.home, "extra")
   mkdirSync(extra)
   expect(
@@ -772,6 +801,7 @@ test("removing a grant keeps the user-only any-folder toggle and unrelated grant
       })
     ).status,
   ).toBe(200)
+  f.db.query("UPDATE bots SET any_folder_access = 1 WHERE id = ?").run(f.bot.id)
   expect((await f.call("folder_access_remove", { path: f.path })).success).toBe(true)
   expect(f.currentBot()?.folders).toEqual([{ path: extra, access: "read-only" }])
   expect(f.currentBot()?.anyFolderAccess).toBe(true)

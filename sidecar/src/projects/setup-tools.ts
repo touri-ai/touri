@@ -5,6 +5,7 @@ import type { Bot, Kernel, ToolContext, ToolRegistration, ToolResult } from "@to
 import { getDelegation } from "../groups/security"
 import { excludedBotFolders, parseBotFolders, withinFolder } from "../kernel/bot-folders"
 import { createWorkspaceDirectory } from "../kernel/files"
+import { folderAccessUnavailable, refreshHostFolderAccess } from "../kernel/folder-capability"
 import { createCapabilityTools } from "./capability-tools"
 import { discoverProjects } from "./discovery"
 import { inspectGitMetadata } from "./git"
@@ -295,6 +296,7 @@ export const createSetupTools = ({
         const bot = self(ctx)
         if (!bot) return denied("Somente o próprio bot, sem delegação, pode alterar sua configuração.")
         if (bot.machine === "cloud") return denied("Pastas deste Mac não estão disponíveis na nuvem.")
+        if (bot.machine === "local" && !(await refreshHostFolderAccess())) return denied(folderAccessUnavailable)
         const input = args as { path: string; mode: "read" | "read-write" }
         try {
           const target = folderTarget(input.path)
@@ -364,6 +366,7 @@ export const createSetupTools = ({
             return denied(
               "O acesso não foi aprovado ou a configuração mudou. Nenhuma pasta foi criada e as permissões foram mantidas.",
             )
+          if (bot.machine === "local" && !(await refreshHostFolderAccess())) return denied(folderAccessUnavailable)
           // Walking the requested tree and revalidating existing grants require
           // consent too. Keep the final guard adjacent to the configuration write.
           const folders = parseBotFolders([

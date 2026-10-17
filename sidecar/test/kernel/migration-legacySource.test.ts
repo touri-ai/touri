@@ -5,6 +5,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { DEPRECATED_IMPORT_ALIAS } from "../../src/importer/deprecatedAliases"
 import { openDatabase, SCHEMA_VERSION } from "../../src/kernel/db"
+import { assertLiveTranscriptReferences } from "./migration-transcript-fixture"
 
 const OLD = DEPRECATED_IMPORT_ALIAS
 const SOURCE_TABLES = ["bots", "threads", "messages", "routines"]
@@ -75,9 +76,6 @@ const snapshot = (db: Database, tables: Array<string>, columns?: Map<string, Arr
   fks: new Map(tables.map((table) => [table, db.query(`PRAGMA foreign_key_list(${table})`).all()])),
 })
 
-// Schema objects that migrations after 0014 add on the same open.
-const LATER_MIGRATION_OBJECTS = ["run_continuations_original", "transcript_part_message"]
-
 const withoutSource = (row: unknown): unknown => {
   const { source: _source, ...rest } = row as Record<string, unknown>
 
@@ -117,14 +115,14 @@ test("0014 upgrades a copy of a populated schema 13 database with old-label rows
       const after = snapshot(db, tables, columns)
       expect(after.rows).toEqual(before.rows)
       expect(after.fks).toEqual(before.fks)
-      expect(
-        db
-          .query(
-            "SELECT name FROM sqlite_schema WHERE type IN ('index','trigger','view') AND name NOT LIKE 'sqlite_%' ORDER BY name",
-          )
-          .all()
-          .filter((row) => !LATER_MIGRATION_OBJECTS.includes((row as { name: string }).name)),
-      ).toEqual(objectsBefore)
+      const objectsAfter = db
+        .query(
+          "SELECT name FROM sqlite_schema WHERE type IN ('index','trigger','view') AND name NOT LIKE 'sqlite_%' ORDER BY name",
+        )
+        .all()
+      // Later migrations add query indexes and replace native transcript trigger
+      // bodies; every original object must still exist under its original name.
+      for (const object of objectsBefore) expect(objectsAfter).toContainEqual(object)
       expect(db.query("PRAGMA foreign_key_check").all()).toEqual([])
       expect(db.query("PRAGMA integrity_check").get()).toEqual({ integrity_check: "ok" })
       expect(db.query("PRAGMA foreign_keys").get()).toEqual({ foreign_keys: 1 })
@@ -161,6 +159,7 @@ test("0014 upgrades a copy of a populated schema 13 database with old-label rows
       db.close()
       db = openDatabase({ filename })
     }
+    assertLiveTranscriptReferences(db, "t-local")
     expect(() => db.exec(`UPDATE bots SET source='${OLD}' WHERE id='b-local'`)).toThrow()
     db.exec("UPDATE bots SET source='legacy' WHERE id='b-local'")
     expect(() => db.exec("DELETE FROM threads WHERE id='t-old'")).not.toThrow()

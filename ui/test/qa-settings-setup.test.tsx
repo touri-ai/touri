@@ -201,11 +201,16 @@ it("F008: a standalone completed project card includes the project folder name",
   expect(screen.getByText(`Vincular Hodler (${path}) a este bot`)).toBeVisible()
 })
 
-it.each([{ path }, { projectId: "hodler-id" }])("F008: preserves the reviewed name for completed input %j", (input) => {
-  const view = render(<ToolCallList parts={[linked(input), approved]} finished createdAt={0} />)
-  expect(view.container.querySelectorAll(".tool-call-card")).toHaveLength(1)
-  expect(screen.getByText(`Vincular Hodler personalizado (${path}) a este bot`)).toBeInTheDocument()
-})
+it.each([{ path }, { projectId: "hodler-id" }])(
+  "F008: preserves the reviewed name for completed input %j",
+  async (input) => {
+    const user = userEvent.setup()
+    const view = render(<ToolCallList parts={[linked(input), approved]} finished createdAt={0} />)
+    await user.click(screen.getByText("1 ferramenta"))
+    expect(view.container.querySelectorAll(".tool-call-card")).toHaveLength(1)
+    expect(screen.getByText(`Vincular Hodler personalizado (${path}) a este bot`)).toBeInTheDocument()
+  },
+)
 
 it("F008: canonical setup matching never associates another target or external server", () => {
   expect(approvalMatchesTool(approved, linked({ path: "/Users/test/Other" }))).toBe(false)
