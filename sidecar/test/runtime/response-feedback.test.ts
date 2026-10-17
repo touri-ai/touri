@@ -48,7 +48,7 @@ test.each(["codex", "claude", "opencode"] as Provider[])(
     const engine = createRuntimeEngine({
       kernel: runtime.kernel,
       providerAdapters: { [provider]: adapter },
-      environment: { PATH: "/usr/bin" },
+      environment: { PATH: "/usr/bin", HOME: root },
       interruptGraceMs: 10,
     })
     try {
