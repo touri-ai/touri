@@ -3100,6 +3100,46 @@ a {
   }
 }
 @media (max-width: 620px) {
+  .mobile-menu-button {
+    position: absolute;
+    z-index: 60;
+    top: 6px;
+    left: 12px;
+    width: 40px;
+    height: 40px;
+  }
+  .sidebar-drawer {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    max-width: none;
+    height: 100%;
+    max-height: none;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+  }
+  .sidebar-drawer[open] {
+    display: flex;
+  }
+  .sidebar-drawer::backdrop {
+    background: var(--surface-backdrop);
+  }
+  .sidebar-drawer .bot-sidebar {
+    display: flex;
+    width: min(320px, calc(100% - 48px));
+    height: 100%;
+  }
+  .sidebar-drawer .traffic-light-spacer,
+  .sidebar-drawer .sidebar-traffic-lights {
+    display: none;
+  }
+  .app-grid .chat-panel > .chat-header,
+  .app-grid .workspace-page .screen-header {
+    padding-left: 64px;
+  }
   .app-grid {
     grid-template-columns: 1fr;
   }

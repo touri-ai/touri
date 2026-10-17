@@ -962,6 +962,8 @@ export const ptBR = {
   "Save preferences": "Salvar preferências",
   Preferences: "Preferências",
   "Workspace sidebar": "Barra lateral",
+  "Open menu": "Abrir menu",
+  "Close menu": "Fechar menu",
   "Dismiss notice": "Dispensar aviso",
   "Local teammate": "Bot local",
   running: "em execução",

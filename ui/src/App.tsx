@@ -15,8 +15,6 @@ import { AvatarRuntimeProvider } from "./components/AvatarRuntime"
 import { BotAvatar } from "./components/BotAvatar"
 import { BotComputer } from "./components/BotComputer"
 import { BotPanel } from "./components/BotPanel"
-// r8-sidebar: bot list and navigation live in an isolated component.
-import { Sidebar } from "./components/BotSidebar"
 import { ChatPanel } from "./components/ChatPanel"
 import CronScreen from "./components/CronScreen"
 import { ErrorBoundary } from "./components/ErrorBoundary"
@@ -34,6 +32,7 @@ import {
 } from "./components/Modals"
 import { MotionPresence, MotionSkeleton } from "./components/Motion"
 import { PageTransition } from "./components/PageTransition"
+import { SidebarDrawer } from "./components/SidebarDrawer"
 import { IntegrationsScreen, McpScreen, PreviewScreen } from "./components/WorkspaceScreens"
 import { installComputerKillSwitch } from "./computerKillSwitch"
 import { openComputerWindow } from "./computerWindow"
@@ -605,7 +604,7 @@ const AppContent = ({ kernel }: AppProps) => {
           )}
         </MotionPresence>
         <div className="app-grid">
-          <Sidebar
+          <SidebarDrawer
             groups={data.groups}
             onNewGroup={() => {
               setEditingGroup(null)
