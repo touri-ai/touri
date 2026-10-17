@@ -5,7 +5,7 @@ test.use({ channel: "chromium", reducedMotion: "reduce" })
 
 for (const width of [390, 1440]) {
   test(`server folder creation and grant at ${width}px`, async ({ page }) => {
-    await page.setViewportSize({ width, height: width === 390 ? 844 : 1100 })
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 900 })
     await page.goto(`/test/e2e/data-access-harness.html${before ? "?unavailable" : ""}`)
     await page.getByRole("button", { name: "Escolher pasta do servidor" }).click()
     await page.getByRole("button", { name: "Adicionar pasta…" }).click()
@@ -41,7 +41,7 @@ for (const width of [390, 1440]) {
 
 test("saved incompatible permissions can be removed from settings", async ({ page }) => {
   test.skip(before)
-  await page.setViewportSize({ width: 1100, height: 1000 })
+  await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto("/test/e2e/data-access-harness.html?unavailable")
   await page.evaluate(() => {
     const state = (
