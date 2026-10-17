@@ -195,6 +195,11 @@ for (const size of [
       await expect(page.getByRole("dialog")).toBeVisible()
       await page.keyboard.press("Escape")
       await page.getByRole("button", { name: "Painel do bot", exact: true }).click()
+      await page.getByRole("button", { name: "Fechar painel do bot", exact: true }).click()
+      await expect(page.getByRole("button", { name: "Painel do bot", exact: true })).toHaveAttribute(
+        "aria-expanded",
+        "false",
+      )
       await page.getByRole("button", { name: "Projeto do bot" }).click()
       const projectMenu = page.getByRole("menu", { name: "Projeto do bot" })
       await exposed(page, projectMenu)
