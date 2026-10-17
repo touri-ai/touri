@@ -76,6 +76,8 @@ const contractRouteKeys: Array<keyof ApiRoutes> = [
   "GET /mcp/tools",
   "GET /projects",
   "GET /projects/discover",
+  "GET /folders",
+  "POST /folders",
   "POST /projects",
   "GET /projects/:id/git",
   "GET /projects/:id/secrets",

@@ -100,6 +100,8 @@ export const apiRouteKeys = [
   "GET /mcp/tools",
   "GET /projects",
   "GET /projects/discover",
+  "GET /folders",
+  "POST /folders",
   "POST /projects",
   "GET /projects/:id/git",
   "GET /projects/:id/secrets",
@@ -502,10 +504,6 @@ type WebHandlers = {
 
 const webHandlers: WebHandlers = {
   secret_save: async ({ account, value }) => ((await postJson("/api/v1/host/secret", { account, value })) ? {} : null),
-  pick_folder: async () => {
-    const path = window.prompt(t("Folder path on the server"))
-    return path ? { path } : null
-  },
   open_external: async ({ url }) => {
     window.open(url, "_blank", "noopener")
     return {}

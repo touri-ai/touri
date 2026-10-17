@@ -3,6 +3,31 @@ import { userFacingError } from "./errors"
 /** All UI copy lives here. pt-BR is the default; English is available for a future locale picker. */
 export type Locale = "pt-BR" | "en"
 export const ptBR = {
+  "As pastas estão no computador onde o touri está rodando.":
+    "As pastas estão no computador onde o touri está rodando.",
+  "Caminho da pasta": "Caminho da pasta",
+  "Pasta pessoal": "Pasta pessoal",
+  "Carregando pastas…": "Carregando pastas…",
+  "Voltar uma pasta": "Voltar uma pasta",
+  "Nenhuma subpasta aqui.": "Nenhuma subpasta aqui.",
+  Pastas: "Pastas",
+  "Há mais pastas. Use Digitar caminho para abrir uma que não aparece.":
+    "Há mais pastas. Use Digitar caminho para abrir uma que não aparece.",
+  "Digitar caminho": "Digitar caminho",
+  "Abrir pasta": "Abrir pasta",
+  "Escolher no Mac…": "Escolher no Mac…",
+  "Nova pasta": "Nova pasta",
+  "Nome da nova pasta": "Nome da nova pasta",
+  "Criar pasta?": "Criar pasta?",
+  "Criar a pasta {name} dentro de {path}?": "Criar a pasta {name} dentro de {path}?",
+  "Criar pasta": "Criar pasta",
+  "Acesso à pasta": "Acesso à pasta",
+  "O bot pode ler": "O bot pode ler",
+  "O bot pode ler e salvar arquivos aqui": "O bot pode ler e salvar arquivos aqui",
+  "Usar esta pasta": "Usar esta pasta",
+  "Usar uma pasta": "Usar uma pasta",
+  "Escolha uma pasta navegando pelas pastas deste computador.":
+    "Escolha uma pasta navegando pelas pastas deste computador.",
   "Conectar dados": "Conectar dados",
   "Escolha como disponibilizar os dados para este bot.": "Escolha como disponibilizar os dados para este bot.",
   "Anexar arquivo/CSV": "Anexar arquivo/CSV",
@@ -1332,6 +1357,29 @@ export const ptBR = {
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  "As pastas estão no computador onde o touri está rodando.": "Folders are on the computer running touri.",
+  "Caminho da pasta": "Folder path",
+  "Pasta pessoal": "Home folder",
+  "Carregando pastas…": "Loading folders…",
+  "Voltar uma pasta": "Go up one folder",
+  "Nenhuma subpasta aqui.": "No subfolders here.",
+  Pastas: "Folders",
+  "Há mais pastas. Use Digitar caminho para abrir uma que não aparece.":
+    "There are more folders. Use Type a path to open one that is not shown.",
+  "Digitar caminho": "Type a path",
+  "Abrir pasta": "Open folder",
+  "Escolher no Mac…": "Choose on Mac…",
+  "Nova pasta": "New folder",
+  "Nome da nova pasta": "New folder name",
+  "Criar pasta?": "Create folder?",
+  "Criar a pasta {name} dentro de {path}?": "Create folder {name} inside {path}?",
+  "Criar pasta": "Create folder",
+  "Acesso à pasta": "Folder access",
+  "O bot pode ler": "The bot can read",
+  "O bot pode ler e salvar arquivos aqui": "The bot can read and save files here",
+  "Usar esta pasta": "Use this folder",
+  "Usar uma pasta": "Use a folder",
+  "Escolha uma pasta navegando pelas pastas deste computador.": "Browse this computer to choose a folder.",
   "Conectar dados": "Connect data",
   "Escolha como disponibilizar os dados para este bot.": "Choose how to make the data available to this bot.",
   "Anexar arquivo/CSV": "Attach a file/CSV",
