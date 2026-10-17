@@ -65,6 +65,11 @@ test("existing history is backed up before resumable pruning; unpublished output
       expect(backup.query("PRAGMA integrity_check").get()).toEqual({ integrity_check: "ok" })
       expect(backup.query("SELECT COUNT(*) AS n FROM transcript_entries").get()).toEqual({ n: 91 })
       expect(backup.query("SELECT text,parts_json FROM messages WHERE id = 'm'").get()).toEqual(original)
+      expect(backup.query("SELECT path,bytes,origin_path FROM attachments WHERE id = 'backup-output'").get()).toEqual({
+        path: outputPath,
+        bytes: 32,
+        origin_path: OUTPUT_BLOB_ORIGIN,
+      })
     } finally {
       backup.close()
     }
@@ -102,6 +107,47 @@ test("existing history is backed up before resumable pruning; unpublished output
     rmSync(f.root, { recursive: true, force: true })
   }
 })
+
+test.skipIf(process.platform === "win32")(
+  "online backup includes committed WAL pages while preserving the source",
+  async () => {
+    const f = legacy()
+    const database = openDatabase({ filename: f.filename })
+    const upgrade = createStorageUpgrade({ database, appData: f.root, backupMethod: "online" })
+    try {
+      database.exec("PRAGMA wal_autocheckpoint = 0")
+      database.exec("UPDATE messages SET text = 'Texto confirmado no WAL' WHERE id = 'm'")
+      const outputPath = join(f.root, "attachments", "wal-output.txt")
+      atomicWriteFile({ root: f.root, path: outputPath, content: "Saída confirmada no WAL" })
+      database
+        .query(
+          "INSERT INTO attachments(id,path,mime,bytes,origin_path,created_at) VALUES ('wal-output',?,'text/plain',32,?,1)",
+        )
+        .run(outputPath, OUTPUT_BLOB_ORIGIN)
+      const attachment = database.query("SELECT * FROM attachments WHERE id = 'wal-output'").get()
+      const original = database.query("SELECT text,parts_json,updated_seq FROM messages WHERE id = 'm'").get()
+      expect(statSync(`${f.filename}-wal`).size).toBeGreaterThan(0)
+      expect(await upgrade.step()).toBe(true)
+      const backupPath = join(f.root, "backups", "history-before-22.db")
+      const backup = new Database(backupPath, { readonly: true })
+      try {
+        expect(backup.query("SELECT text,parts_json,updated_seq FROM messages WHERE id = 'm'").get()).toEqual(original)
+        expect(backup.query("SELECT COUNT(*) AS n FROM transcript_entries").get()).toEqual({ n: 92 })
+        expect(backup.query("SELECT * FROM attachments WHERE id = 'wal-output'").get()).toEqual(attachment)
+        expect(backup.query("PRAGMA integrity_check").get()).toEqual({ integrity_check: "ok" })
+      } finally {
+        backup.close()
+      }
+      expect(database.query("SELECT text,parts_json,updated_seq FROM messages WHERE id = 'm'").get()).toEqual(original)
+      expect(database.query("SELECT COUNT(*) AS n FROM transcript_entries").get()).toEqual({ n: 92 })
+      expect(statSync(backupPath).mode & 0o777).toBe(0o600)
+    } finally {
+      upgrade.dispose()
+      database.close()
+      rmSync(f.root, { recursive: true, force: true })
+    }
+  },
+)
 
 test("missing or malformed progress never bypasses the backup of an existing store", () => {
   const f = legacy()

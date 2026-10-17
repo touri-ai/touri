@@ -26,16 +26,74 @@ export const maintainDatabasePages = (database: Database): void => {
 // the entire old history on the main thread. Keep the backup local and private.
 const backupSource = `import { Database } from "bun:sqlite";
 import { openSync, fsyncSync, closeSync } from "node:fs";
-self.onmessage = ({ data: { filename, destination } }) => {
+const onlineCopy = async (filename, destination) => {
+  const { dlopen } = await import("bun:ffi");
+  const library = dlopen(process.platform === "darwin" ? "/usr/lib/libsqlite3.dylib" : "libsqlite3.so.0", {
+    sqlite3_open_v2: { args: ["cstring", "ptr", "i32", "ptr"], returns: "i32" },
+    sqlite3_close_v2: { args: ["ptr"], returns: "i32" },
+    sqlite3_busy_timeout: { args: ["ptr", "i32"], returns: "i32" },
+    sqlite3_exec: { args: ["ptr", "cstring", "ptr", "ptr", "ptr"], returns: "i32" },
+    sqlite3_errcode: { args: ["ptr"], returns: "i32" },
+    sqlite3_backup_init: { args: ["ptr", "cstring", "ptr", "cstring"], returns: "ptr" },
+    sqlite3_backup_step: { args: ["ptr", "i32"], returns: "i32" },
+    sqlite3_backup_finish: { args: ["ptr"], returns: "i32" },
+  });
+  const sqlite = library.symbols;
+  let source = 0;
+  let target = 0;
+  let operation = null;
+  const fail = (code) => { throw Object.assign(new Error("Online backup failed"), { code: "SQLITE_NATIVE_" + code }); };
+  const open = (path, flags) => {
+    const pointer = new BigUint64Array(1);
+    const code = sqlite.sqlite3_open_v2(Buffer.from(path + "\\0"), pointer, flags | 0x01000000, null);
+    const handle = Number(pointer[0]);
+    if (code !== 0) { if (handle) sqlite.sqlite3_close_v2(handle); fail(code); }
+    return handle;
+  };
+  try {
+    // Both native pointers belong to this library. Bun's numeric handle indexes
+    // must never be passed to an independently loaded SQLite implementation.
+    source = open(filename, 1);
+    target = open(destination, 2);
+    sqlite.sqlite3_busy_timeout(source, 1000);
+    sqlite.sqlite3_busy_timeout(target, 1000);
+    // Hold one WAL read snapshot even when live writers commit between steps.
+    const begun = sqlite.sqlite3_exec(source, Buffer.from("BEGIN; SELECT 1 FROM sqlite_schema LIMIT 1;\\0"), null, null, null);
+    if (begun !== 0) fail(begun);
+    const main = Buffer.from("main\\0");
+    operation = sqlite.sqlite3_backup_init(target, main, source, main);
+    if (!operation) fail(sqlite.sqlite3_errcode(target));
+    let waitingSince = Date.now();
+    while (true) {
+      const code = sqlite.sqlite3_backup_step(operation, 256);
+      if (code === 101) break;
+      if (code === 0) waitingSince = Date.now();
+      else if ((code !== 5 && code !== 6) || Date.now() - waitingSince >= 5000) fail(code);
+      await Bun.sleep(code === 0 ? 0 : 25);
+    }
+    const finished = sqlite.sqlite3_backup_finish(operation);
+    operation = null;
+    if (finished !== 0) fail(finished);
+  } finally {
+    if (operation) sqlite.sqlite3_backup_finish(operation);
+    if (target) sqlite.sqlite3_close_v2(target);
+    if (source) sqlite.sqlite3_close_v2(source);
+    library.close();
+  }
+};
+self.onmessage = async ({ data: { filename, destination, online } }) => {
   let source;
   let backup;
   let stage = "open-source";
   try {
-    source = new Database(filename, { readonly: true });
-    source.exec("PRAGMA busy_timeout = 1000");
     stage = "copy";
-    source.query("VACUUM INTO ?").run(destination);
-    source.close(); source = null;
+    if (online) await onlineCopy(filename, destination);
+    else {
+      source = new Database(filename, { readonly: true });
+      source.exec("PRAGMA busy_timeout = 1000");
+      source.query("VACUUM INTO ?").run(destination);
+      source.close(); source = null;
+    }
     stage = "verify";
     backup = new Database(destination, { readonly: true });
     if (backup.query("PRAGMA quick_check").get().quick_check !== "ok") throw new Error("backup");
@@ -52,7 +110,15 @@ self.onmessage = ({ data: { filename, destination } }) => {
   finally { source?.close(); backup?.close(); }
 };`
 
-export const createStorageUpgrade = ({ database, appData }: { database: Database; appData: string }) => {
+export const createStorageUpgrade = ({
+  database,
+  appData,
+  backupMethod = process.platform === "darwin" ? "online" : "vacuum",
+}: {
+  database: Database
+  appData: string
+  backupMethod?: "online" | "vacuum"
+}) => {
   const row = database.query("SELECT value_json FROM settings WHERE key = ?").get(progressKey) as {
     value_json: string
   } | null
@@ -113,7 +179,7 @@ export const createStorageUpgrade = ({ database, appData }: { database: Database
           reject(new Error(`Storage backup failed (${stage}: ${code})`))
         }
         worker.onerror = () => reject(new Error("Storage backup failed"))
-        worker.postMessage({ filename: database.filename, destination: temporary })
+        worker.postMessage({ filename: database.filename, destination: temporary, online: backupMethod === "online" })
       })
       if (stopped) return
       movePrivateFile({ root: appData, from: temporary, to: destination })
