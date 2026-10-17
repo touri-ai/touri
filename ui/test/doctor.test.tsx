@@ -1,5 +1,5 @@
 import { act, cleanup, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react"
-import type { DoctorReport } from "@touri/contracts"
+import type { DoctorReport, Run } from "@touri/contracts"
 import { afterEach, expect, it, vi } from "vitest"
 import type { ApiRequest, UiApi } from "../src/api/client"
 import { createMockApi } from "../src/api/mock"
@@ -249,4 +249,47 @@ it("does not poll while disabled and reloads the cached diagnostic after reconne
   expect(doctor).toHaveBeenLastCalledWith({})
   view.unmount()
   expect(connection).toBeUndefined()
+})
+
+it("updates cached tool health after terminal run events without rerunning environment probes", async () => {
+  const mock = createMockApi()
+  const doctor = vi.fn(async (_input: { refresh?: boolean }) => report)
+  const api = { ...apiWithDoctor(doctor), subscribe: mock.subscribe }
+  const view = renderHook(() => useDoctorReport(api))
+  await waitFor(() => expect(view.result.current.report).toEqual(report))
+  const run: Run = {
+    id: "health-run",
+    botId: "bot-mark",
+    threadId: "thread-mark",
+    provider: "codex",
+    trigger: "user",
+    status: "running",
+    routineRunId: null,
+    requestMessageId: null,
+    replyMessageId: null,
+    externalTurnId: null,
+    errorClass: null,
+    errorMessage: null,
+    usage: null,
+    queuedAt: 1,
+    startedAt: 2,
+    finishedAt: null,
+  }
+  act(() => mock.emit({ type: "run.updated", run }))
+  expect(doctor).toHaveBeenCalledTimes(1)
+  const failed: DoctorReport = {
+    ...report,
+    checks: [
+      { id: "local-mcp:bot-mark", label: "Tools", status: "fail", ok: false, detail: "Startup failed", fix: null },
+    ],
+  }
+  doctor.mockResolvedValueOnce(failed)
+  act(() => mock.emit({ type: "run.updated", run: { ...run, status: "failed", finishedAt: 3 } }))
+  await waitFor(() => expect(view.result.current.report).toEqual(failed))
+  act(() => mock.emit({ type: "run.updated", run: { ...run, status: "succeeded", finishedAt: 4 } }))
+  await waitFor(() => expect(view.result.current.report).toEqual(report))
+  expect(doctor.mock.calls).toEqual([[{}], [{}], [{}]])
+  view.unmount()
+  act(() => mock.emit({ type: "run.updated", run: { ...run, status: "failed", finishedAt: 5 } }))
+  expect(doctor).toHaveBeenCalledTimes(3)
 })
