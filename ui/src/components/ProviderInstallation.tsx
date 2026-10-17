@@ -1,4 +1,6 @@
 import type { Bot } from "@touri/contracts"
+import { useState } from "react"
+import { CloudLink } from "../features/cloud/CloudLink"
 import { t } from "../i18n"
 import { providerName } from "./ProviderMark"
 
@@ -18,19 +20,23 @@ export const ProviderInstallation = ({
   host: "mac" | "server"
   busy: boolean
   onRecheck: () => void
-}) => (
-  <div className="provider-login-flow" role="status">
-    <p>
-      {t("onboarding.missing", {
-        provider: providerName(provider),
-        host: host === "mac" ? "Mac" : t("onboarding.server"),
-      })}
-    </p>
-    <a href={installationGuides[provider]} target="_blank" rel="noreferrer">
-      {t("onboarding.install")}
-    </a>
-    <button type="button" className="button button-quiet" disabled={busy} onClick={onRecheck}>
-      {t("onboarding.recheck")}
-    </button>
-  </div>
-)
+}) => {
+  const [error, setError] = useState(false)
+  return (
+    <div className="provider-login-flow" role="status">
+      <p>
+        {t("onboarding.missing", {
+          provider: providerName(provider),
+          host: host === "mac" ? "Mac" : t("onboarding.server"),
+        })}
+      </p>
+      <CloudLink href={installationGuides[provider]} className="" onError={() => setError(true)}>
+        {t("onboarding.install")}
+      </CloudLink>
+      {error && <p role="alert">{t("onboarding.installLinkError")}</p>}
+      <button type="button" className="button button-quiet" disabled={busy} onClick={onRecheck}>
+        {t("onboarding.recheck")}
+      </button>
+    </div>
+  )
+}
