@@ -145,6 +145,39 @@ test("a thousand background replies retain only small activity summaries", async
   expect(summaries.some((message) => message.id === "background-999")).toBe(true)
 })
 
+test("background previews append new prose parts and ignore replayed revisions", async () => {
+  const api = createMockApi()
+  const reply = offscreenMessage(api)
+  Object.assign(reply, {
+    status: "streaming",
+    text: "Primeiro trecho. ",
+    parts: [
+      { type: "text", text: "Primeiro trecho. " },
+      { type: "command", callId: "preview-command", command: "pwd", cwd: "/project", outputTail: "", exitCode: 0 },
+    ],
+    updatedSeq: 1,
+  })
+  const hook = renderHook(() => useWorkspace(api))
+  await waitFor(() => expect(hook.result.current.data.loading).toBe(false))
+  const preview = () => hook.result.current.data.activityMessages.find((message) => message.id === reply.id)?.text
+  const delta = {
+    type: "message.delta" as const,
+    threadId: reply.threadId,
+    messageId: reply.id,
+    partIndex: 2,
+    offset: 0,
+    delta: "Continuação após a ferramenta.",
+    updatedSeq: 2,
+  }
+  act(() => api.emit(delta))
+  expect(preview()).toBe(`Primeiro trecho. ${delta.delta}`)
+  act(() => api.emit(delta))
+  expect(preview()).toBe(`Primeiro trecho. ${delta.delta}`)
+  act(() => api.emit({ ...delta, offset: delta.delta.length, delta: "x".repeat(1000), updatedSeq: 3 }))
+  expect(preview()).toHaveLength(512)
+  expect(hook.result.current.data.messages.some((message) => message.threadId === reply.threadId)).toBe(false)
+})
+
 test("resolved background approvals are evicted before their notifications rotate out", async () => {
   const api = createMockApi()
   const hook = renderHook(() => useWorkspace(api))

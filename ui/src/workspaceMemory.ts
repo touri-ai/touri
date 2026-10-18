@@ -98,8 +98,11 @@ export const updateActivityStream = (
     let text = message.text
     let parts = message.parts
     if (event.type === "message.delta" && event.partType !== "reasoning") {
+      // Revisions already reject replay; offsets address individual parts, not the combined preview.
       const suffix =
-        event.offset === undefined ? event.delta : event.delta.slice(Math.max(0, text.length - event.offset))
+        event.updatedSeq !== undefined || event.offset === undefined
+          ? event.delta
+          : event.delta.slice(Math.max(0, text.length - event.offset))
       text = (text + suffix).slice(0, 512)
     }
     if (event.type === "message.parts") {
