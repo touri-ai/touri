@@ -1,0 +1,51 @@
+import { expect, test } from "@playwright/test"
+
+test.use({ channel: "chromium", reducedMotion: "reduce" })
+
+for (const viewport of [
+  { width: 1440, height: 900 },
+  { width: 390, height: 844 },
+]) {
+  test(`work queue and performance at ${viewport.width}px`, async ({ page }) => {
+    await page.setViewportSize(viewport)
+    await page.goto("/test/e2e/work-harness.html")
+    await expect(page.getByRole("textbox", { name: "Mensagem para Planejamento" })).toBeVisible()
+    const openAdvanced = async () => {
+      if (viewport.width === 390) await page.getByRole("button", { name: "Abrir menu" }).click()
+      await page.getByRole("button", { name: "Avançado", exact: true }).click()
+    }
+
+    await openAdvanced()
+    await page.getByRole("button", { name: "Trabalho", exact: true }).click()
+
+    const running = page.getByRole("region", { name: "Trabalhando", exact: true })
+    const queued = page.getByRole("region", { name: "Na fila", exact: true })
+    await expect(running.getByRole("article")).toHaveCount(3)
+    await expect(queued.getByRole("article")).toHaveCount(2)
+    await expect(page.getByText("Na fila · 2º de 2")).toBeVisible()
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+
+    await page.evaluate(() => {
+      const fixture = window as Window & { workQa?: { finishFirst: () => void } }
+      fixture.workQa?.finishFirst()
+    })
+
+    await expect(queued.getByRole("article")).toHaveCount(1, { timeout: 1000 })
+    await expect(running.getByRole("article")).toHaveCount(3)
+    await expect(page.getByText("Na fila · 1º de 1")).toBeVisible()
+    await page.getByRole("button", { name: "Tarefa de organização" }).click()
+    await expect(page.getByRole("textbox", { name: "Mensagem para Organização" })).toBeVisible()
+    await expect(page.getByText("Na fila · 1º de 1")).toBeVisible()
+
+    await openAdvanced()
+    await page.getByRole("button", { name: "Desempenho", exact: true }).click()
+    await page.getByRole("spinbutton", { name: "Tarefas ao mesmo tempo" }).fill("4")
+    await page.getByRole("button", { name: "Salvar limite" }).click()
+    await expect(page.getByText("Limite salvo.")).toBeVisible()
+    await openAdvanced()
+    await page.getByRole("button", { name: "Trabalho", exact: true }).click()
+    await openAdvanced()
+    await page.getByRole("button", { name: "Desempenho", exact: true }).click()
+    await expect(page.getByRole("spinbutton", { name: "Tarefas ao mesmo tempo" })).toHaveValue("4")
+  })
+}

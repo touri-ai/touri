@@ -52,6 +52,7 @@ export type WorkspaceData = {
   messages: Array<Message>
   activityMessages: Array<Message>
   runs: Array<Run>
+  workRuns: Array<Run>
   projects: Array<Project>
   processes: Array<ProcessEntry>
   previews: Array<PreviewTarget>
@@ -134,6 +135,7 @@ const emptyState = (): WorkspaceData => ({
   messages: [],
   activityMessages: [],
   runs: [],
+  workRuns: [],
   projects: [],
   processes: [],
   previews: [],
@@ -352,6 +354,7 @@ const withoutBot = (data: WorkspaceData, botId: Id): WorkspaceData => {
     messages: data.messages.filter((message) => !threadIds.has(message.threadId)),
     activityMessages: data.activityMessages.filter((message) => !threadIds.has(message.threadId)),
     runs: data.runs.filter((run) => run.botId !== botId),
+    workRuns: data.workRuns.filter((run) => run.botId !== botId),
     routines: data.routines.filter((routine) => !routineIds.has(routine.id)),
     routineRuns: data.routineRuns.filter((run) => !routineIds.has(run.routineId)),
     machines: data.machines.filter((machine) => machine.botId !== botId),
@@ -505,6 +508,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
         notificationsResponse,
         machineResponse,
         activityResponse,
+        workResponse,
       ] = await Promise.all([
         api.request("GET /groups", {}).catch(() => ({ groups: [] })),
         api.request("GET /bots", {}).then((response) => {
@@ -536,6 +540,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
           machines: [],
         })),
         api.request("GET /workspace/activity", {}),
+        api.request("GET /runs", {}),
       ])
       const [botThreads, groupThreads] = await Promise.all([
         Promise.all(
@@ -558,7 +563,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
               runIds.has(run.id) ||
               (liveRuns.current.get(run.id) ?? 0) > runsAtStart,
           ),
-          activityResponse.runs,
+          mergeRunRows(activityResponse.runs, workResponse.runs),
         )
         const selectedBot = current.bots.find((bot) => bot.id === current.selectedBotId) ?? current.bots[0]
         const selectedThread =
@@ -579,6 +584,10 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
           threads,
           messages: (api.pendingMessages?.() ?? []).reduce(updateMessage, current.messages),
           activityMessages: activityResponse.messages,
+          workRuns: mergeRunRows(
+            workResponse.runs,
+            current.workRuns.filter((run) => (liveRuns.current.get(run.id) ?? 0) > runsAtStart),
+          ).filter((run) => ["queued", "starting", "running"].includes(run.status)),
           runs,
           projects: projectResponse.projects,
           previews: previewResponse.previews,
@@ -718,7 +727,14 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
             messages: applyStreamEvent(current.messages, event),
           }
         }
-        if (event.type === "run.updated") return { ...current, runs: mergeRunRows(current.runs, [event.run]) }
+        if (event.type === "run.updated")
+          return {
+            ...current,
+            runs: mergeRunRows(current.runs, [event.run]),
+            workRuns: mergeRunRows(current.workRuns, event.run.origin ? [event.run] : []).filter((run) =>
+              ["queued", "starting", "running"].includes(run.status),
+            ),
+          }
         if (event.type === "routine.deleted")
           return { ...current, routines: current.routines.filter((routine) => routine.id !== event.routineId) }
         if (event.type === "routine.updated")

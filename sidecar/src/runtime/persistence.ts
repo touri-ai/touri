@@ -150,6 +150,7 @@ export type RuntimePersistence = {
   routines: Map<Id, Routine>
   routineRuns: Map<Id, RoutineRun>
   getRun: (id: Id) => Run | null
+  listWorkRuns: () => Array<Run>
   listActiveRuns: () => Array<Run>
   listQueuedRuns: () => Array<Run>
   listRuns: (threadId: Id, options?: { all?: boolean }) => Array<Run>
@@ -226,6 +227,26 @@ export const createRuntimePersistence = ({ database }: { database: unknown }): R
       .all()
       .map(toRun)
       .filter((run): run is Run => run !== null)
+  }
+
+  const listWorkRuns = (): Array<Run> => {
+    if (!db) return [...runs.values()].filter((run) => ["queued", "starting", "running"].includes(run.status))
+
+    return db
+      .query(`SELECT r.*, coalesce(root.thread_id, r.thread_id) AS thread_id FROM runs r
+      LEFT JOIN group_run_links link ON link.run_id = r.id
+      LEFT JOIN runs root ON root.id = link.turn_id
+      JOIN bots b ON b.id = r.bot_id
+      JOIN threads t ON t.id = coalesce(root.thread_id, r.thread_id)
+      WHERE r.status IN ('queued', 'starting', 'running')
+        AND r.id NOT IN (SELECT run_id FROM group_turns)
+        AND b.archived_at IS NULL AND t.archived_at IS NULL
+      ORDER BY r.queued_at, r.rowid`)
+      .all()
+      .flatMap((row) => {
+        const run = toRun(row)
+        return run ? [run] : []
+      })
   }
 
   const listActiveRuns = (): Array<Run> => {
@@ -524,6 +545,7 @@ export const createRuntimePersistence = ({ database }: { database: unknown }): R
     routineRuns,
     getRun,
     listActiveRuns,
+    listWorkRuns,
     listQueuedRuns,
     listRuns,
     saveRun,

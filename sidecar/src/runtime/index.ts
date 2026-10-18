@@ -76,14 +76,18 @@ const routineInput = ({
 
 export const init = async (kernel: Kernel): Promise<void> => {
   const engine = createRuntimeEngine({ kernel })
+  kernel.services.provide("runtime.settingsChanged", engine.settingsChanged)
   await engine.ready
   const groups = createGroupRuntime(kernel, engine)
   kernel.services.provide("groups.runtime", groups)
   const scheduler = createRoutineScheduler({ kernel, engine })
 
-  kernel.services.provide("runtime.enqueue", ({ threadId, requestMessageId, trigger }) =>
-    groups.enqueue({ threadId, requestMessageId, trigger }),
-  )
+  kernel.services.provide("runtime.enqueue", ({ threadId, requestMessageId, trigger }) => {
+    const result = groups.enqueue({ threadId, requestMessageId, trigger })
+    if (!result.success) return result
+
+    return { success: true, run: engine.getRunSnapshot(result.run) }
+  })
   kernel.services.provide("runtime.answerApproval", (args) => engine.answerApproval(args))
   kernel.services.provide("approvals.present", engine.approvalBridge.present)
   kernel.services.provide("approvals.approve", engine.approvalBridge.approve)
@@ -129,6 +133,11 @@ export const init = async (kernel: Kernel): Promise<void> => {
       },
       {
         method: "GET",
+        path: "/runs",
+        handler: async () => ({ status: 200, json: { runs: engine.getWorkRuns() } }),
+      },
+      {
+        method: "GET",
         path: "/threads/:id/runs",
         handler: async ({ params, query }) => {
           const thread = kernel.services.use("store.api")?.getThread({ threadId: params.id ?? "" })
@@ -143,7 +152,10 @@ export const init = async (kernel: Kernel): Promise<void> => {
               ),
             }
           }
-          return { status: 200, json: { runs: groups.listRuns(params.id ?? "", { all: query.all === "true" }) } }
+          return {
+            status: 200,
+            json: { runs: groups.listRuns(params.id ?? "", { all: query.all === "true" }).map(engine.getRunSnapshot) },
+          }
         },
       },
       {
@@ -164,7 +176,7 @@ export const init = async (kernel: Kernel): Promise<void> => {
           groups.cancel(params.id ?? "")
           const result = engine.cancel(params.id ?? "")
           return result.success
-            ? { status: 200, json: { run: result.run } }
+            ? { status: 200, json: { run: engine.getRunSnapshot(result.run) } }
             : routeError(result.errorCode, result.error)
         },
       },
@@ -174,7 +186,7 @@ export const init = async (kernel: Kernel): Promise<void> => {
         handler: async ({ params }) => {
           const result = groups.retry(params.id ?? "") ?? engine.retry(params.id ?? "")
           return result.success
-            ? { status: 200, json: { run: result.run } }
+            ? { status: 200, json: { run: engine.getRunSnapshot(result.run) } }
             : routeError(result.errorCode, result.error)
         },
       },

@@ -167,6 +167,7 @@ const createRun = ({
   botId,
   provider: "codex",
   trigger: "user",
+  origin: "message",
   requestMessageId: null,
   replyMessageId: null,
   externalTurnId: null,
@@ -1037,6 +1038,10 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
         activeLeafId: findThread(pathValues.id ?? "")?.activeLeafId ?? null,
       } as ApiRoutes[typeof route]["res"]
     }
+    if (key === "GET /runs")
+      return {
+        runs: [...runs.values()].filter((run) => ["queued", "starting", "running"].includes(run.status)),
+      } as ApiRoutes[typeof route]["res"]
     if (key === "GET /threads/:id/runs")
       return {
         runs: [...runs.values()].filter((run) => run.threadId === pathValues.id),

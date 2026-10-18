@@ -64,6 +64,7 @@ import {
   serverModeErrorCode,
   useServerMode,
 } from "./features/server/serverMode"
+import { PerformanceScreen, WorkScreen } from "./features/work/WorkScreen"
 import { localizeNotice, t } from "./i18n"
 import { type DeepLinkRequest, installNativeDeepLinks } from "./nativeDeepLinks"
 import { requestTaskResume, requestTaskReview } from "./recoveryEvents"
@@ -906,6 +907,7 @@ const AppContent = ({ kernel }: AppProps) => {
             threads={data.threads}
             messages={data.activityMessages}
             runs={data.runs}
+            workRuns={data.workRuns}
             floatUpdates={data.settings?.sidebarFloatUpdates ?? true}
             selectedBotId={selectedBot?.id ?? null}
             selectedThreadId={selectedThread?.id ?? null}
@@ -956,6 +958,19 @@ const AppContent = ({ kernel }: AppProps) => {
                 onConnectProject={() => openModal("project")}
                 onNotice={showNotice}
               />
+            ) : section === "advanced" && advancedPage === "work" ? (
+              <WorkScreen
+                runs={data.workRuns}
+                bots={data.bots}
+                threads={data.threads}
+                loading={data.loading}
+                onThread={(id) => {
+                  actions.selectThread(id)
+                  setRoute({ section: "bots", screen: "chat" })
+                }}
+              />
+            ) : section === "advanced" && advancedPage === "performance" ? (
+              <PerformanceScreen settings={data.settings} onSave={actions.updateSettings} />
             ) : section === "advanced" && advancedPage === "cron" ? (
               <CronScreen
                 host={data.routineHost}

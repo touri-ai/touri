@@ -3,6 +3,38 @@ import { userFacingError } from "./errors"
 /** All UI copy lives here. pt-BR is the default; English is available for a future locale picker. */
 export type Locale = "pt-BR" | "en"
 export const ptBR = {
+  Work: "Trabalho",
+  Performance: "Desempenho",
+  "Work description": "Veja o que cada bot está fazendo e o que aguarda uma vaga.",
+  "Work loading": "Carregando tarefas…",
+  "Work empty": "Nenhuma tarefa em execução ou na fila. Envie uma mensagem para começar.",
+  "Work queued": "Na fila",
+  "Work queued count": "{count} na fila",
+  "Work queue position": "Na fila · {position}º de {total}",
+  "Work waiting for slot": "Na fila · aguardando uma vaga",
+  "Work preparing": "Preparando",
+  "Work conversation unavailable": "Conversa indisponível",
+  "Work origin": "Origem",
+  "Work state": "Estado",
+  "Work waiting time": "Esperando há",
+  "Work elapsed time": "Em execução há",
+  "Work message": "Mensagem",
+  "Work routine": "Rotina",
+  "Work delegation": "Delegação",
+  "Work resume": "Retomada",
+  "Work seconds": "{count} s",
+  "Work minutes": "{count} min {seconds} s",
+  "Work performance description": "Escolha quantas tarefas podem executar ao mesmo tempo.",
+  "Work concurrency": "Tarefas ao mesmo tempo",
+  "Work concurrency help":
+    "O padrão é 3. Mais tarefas usam mais memória e podem deixar o computador lento. As demais aguardam na fila. Escolha de 1 a 32.",
+  "Work concurrency changes":
+    "A mudança vale imediatamente. Reduzir o limite não interrompe tarefas em andamento. Delegações entre bots podem usar uma vaga extra para concluir a tarefa de quem chamou.",
+  "Work save": "Salvar limite",
+  "Work saving": "Salvando…",
+  "Work settings saved": "Limite salvo.",
+  "Work settings error": "Não foi possível salvar. Confira a conexão e tente novamente.",
+
   "Salve o token do bot do Telegram.": "Salve o token do bot do Telegram.",
   "Token inválido ou revogado.": "Token inválido ou revogado.",
   "Não foi possível conectar ao Telegram. Confira sua conexão e tente novamente.":
@@ -2168,6 +2200,38 @@ export const ptBR = {
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  Work: "Work",
+  Performance: "Performance",
+  "Work description": "See what each bot is doing and what is waiting for a slot.",
+  "Work loading": "Loading tasks…",
+  "Work empty": "No running or queued tasks. Send a message to get started.",
+  "Work queued": "Queued",
+  "Work queued count": "{count} queued",
+  "Work queue position": "Queued · {position} of {total}",
+  "Work waiting for slot": "Queued · waiting for a slot",
+  "Work preparing": "Preparing",
+  "Work conversation unavailable": "Conversation unavailable",
+  "Work origin": "Origin",
+  "Work state": "State",
+  "Work waiting time": "Waiting for",
+  "Work elapsed time": "Running for",
+  "Work message": "Message",
+  "Work routine": "Routine",
+  "Work delegation": "Delegation",
+  "Work resume": "Resume",
+  "Work seconds": "{count} s",
+  "Work minutes": "{count} min {seconds} s",
+  "Work performance description": "Choose how many tasks can run at the same time.",
+  "Work concurrency": "Simultaneous tasks",
+  "Work concurrency help":
+    "The default is 3. More tasks use more memory and may slow down your computer. Other tasks wait in the queue. Choose from 1 to 32.",
+  "Work concurrency changes":
+    "Changes apply immediately. Lowering the limit does not interrupt running tasks. Delegations between bots may use an extra slot to finish the calling task.",
+  "Work save": "Save limit",
+  "Work saving": "Saving…",
+  "Work settings saved": "Limit saved.",
+  "Work settings error": "Could not save. Check your connection and try again.",
+
   "Salve o token do bot do Telegram.": "Save the Telegram bot token.",
   "Token inválido ou revogado.": "Invalid or revoked token.",
   "Não foi possível conectar ao Telegram. Confira sua conexão e tente novamente.":

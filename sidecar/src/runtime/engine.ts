@@ -132,6 +132,9 @@ type RuntimeEngine = {
     routineRunId?: Id
     delegated?: boolean
   }) => Result<{ run: Run }, "THREAD_NOT_FOUND" | "BOT_PAUSED">
+  getRunSnapshot: (run: Run) => Run
+  getWorkRuns: () => Array<Run>
+  settingsChanged: () => void
   listRuns: (threadId: Id, options?: { all?: boolean }) => Array<Run>
   activeRun: (args: { threadId: Id }) => Run | null
   continueAfterApproval: ServiceMap["runtime.continueAfterApproval"]
@@ -246,7 +249,7 @@ export const createRuntimeEngine = ({
       return false
     }
   }
-  const queued: Array<Id> = persistence.listQueuedRuns().map((run) => run.id)
+  let queued: Array<Id> = persistence.listQueuedRuns().map((run) => run.id)
   let shuttingDown = false
   let shutdownPromise: Promise<void> | null = null
   const tools = createToolResolutions(kernel)
@@ -276,10 +279,13 @@ export const createRuntimeEngine = ({
     }),
     ...providerAdapters,
   }
-  const maxConcurrentRuns = Math.max(
-    1,
-    configuredMaxConcurrentRuns ?? Number(process.env.TOURI_MAX_CONCURRENT_RUNS ?? 3),
-  )
+  const getMaxConcurrentRuns = (): number =>
+    Math.max(
+      1,
+      configuredMaxConcurrentRuns ??
+        kernel.services.use("store.settings")?.().maxConcurrentRuns ??
+        Number(environment?.TOURI_MAX_CONCURRENT_RUNS ?? process.env.TOURI_MAX_CONCURRENT_RUNS ?? 3),
+    )
   const routineTimeout = routineTimeoutMs ?? ((routine: Routine): number => routine.timeoutMinutes * 60_000)
 
   const notices = createRuntimeNotices({ kernel })
@@ -287,9 +293,47 @@ export const createRuntimeEngine = ({
   const continuations = createRunContinuations({ database: kernel.db })
   const pendingContinuations = new Map<Id, { timer: ReturnType<typeof setTimeout>; run: Run }>()
 
-  const publishRun = (run: Run): void => kernel.publish({ type: "run.updated", run: cloneRun(run) })
+  const getQueuedRuns = (): Run[] =>
+    queued.flatMap((id) => {
+      const run = persistence.getRun(id)
+      return run?.status === "queued" && active.get(run.threadId)?.id !== id ? [run] : []
+    })
+
+  const getRunOrigin = (run: Run): NonNullable<Run["origin"]> => {
+    if (run.origin) return run.origin
+    if (continuations.link(run.id)) return "resume"
+    const request = kernel.services
+      .use("store.api")
+      ?.activePath({
+        threadId: run.threadId,
+        ...(run.requestMessageId ? { leafId: run.requestMessageId } : {}),
+      })
+      .find((message) => message.id === run.requestMessageId)
+    if (request?.parts.some((part) => part.type === "notice" && part.code === "run_resumed")) return "resume"
+    if (request?.sender) return "delegation"
+    if (run.trigger === "routine") return "routine"
+    return "message"
+  }
+
+  const getRunSnapshot = (run: Run): Run => {
+    const waiting = getQueuedRuns()
+    const index = run.status === "queued" ? waiting.findIndex((candidate) => candidate.id === run.id) : -1
+    const thread = kernel.services.use("store.api")?.getThread({ threadId: run.threadId })
+
+    return {
+      ...cloneRun(run),
+      threadId: thread?.groupThreadId ?? run.threadId,
+      origin: getRunOrigin(persistence.getRun(run.id) ?? run),
+      queuePosition: index < 0 ? null : index + 1,
+      queueTotal: index < 0 ? null : waiting.length,
+    }
+  }
+  const publishRun = (run: Run): void => kernel.publish({ type: "run.updated", run: getRunSnapshot(run) })
+  const publishQueue = (): void => getQueuedRuns().forEach(publishRun)
+  const getWorkRuns = (): Run[] => persistence.listWorkRuns().map(getRunSnapshot)
 
   const updateRun = (run: Run, patch: Partial<Run>): Run => {
+    const leftQueue = run.status === "queued" && patch.status !== undefined && patch.status !== "queued"
     const next = { ...run, ...patch }
     if (!persistence.saveRun(next)) {
       const stored = persistence.getRun(run.id)
@@ -298,6 +342,7 @@ export const createRuntimeEngine = ({
     }
     Object.assign(run, next)
     publishRun(run)
+    if (leftQueue) publishQueue()
     return run
   }
 
@@ -1065,7 +1110,7 @@ export const createRuntimeEngine = ({
       if (!shuttingDown) void drain()
       return
     }
-    updateRun(run, { status: "starting", startedAt: Date.now() })
+    updateRun(run, { status: "starting", startedAt: run.startedAt ?? Date.now() })
     state.generation = store.getThread({ threadId: thread.id })?.generation ?? null
     state.fingerprint = mcpFingerprint.hash
     const controller = new AbortController()
@@ -1631,17 +1676,19 @@ export const createRuntimeEngine = ({
   const drain = async (): Promise<void> => {
     // A recovered turn must not run alongside the previous provider process.
     await startupCleanup
-    while (!shuttingDown && ownsRuntime() && active.size < maxConcurrentRuns) {
+    while (!shuttingDown && ownsRuntime() && active.size < getMaxConcurrentRuns()) {
       const nextIndex = queued.findIndex((runId) => {
         const run = persistence.getRun(runId)
         return run !== null && !active.has(run.threadId)
       })
       if (nextIndex < 0) return
-      const [runId] = queued.splice(nextIndex, 1)
+      const runId = queued[nextIndex]
+      queued = queued.filter((_, index) => index !== nextIndex)
       if (!runId) return
       const run = persistence.getRun(runId)
       if (run?.status !== "queued") continue
       active.set(run.threadId, run)
+      updateRun(run, { status: "starting", startedAt: Date.now() })
       const execution = execute(run)
       executions.set(run.id, execution)
       void execution.finally(() => executions.delete(run.id)).catch(() => {})
@@ -1690,8 +1737,8 @@ export const createRuntimeEngine = ({
       finishedAt: null,
     }
     persistence.saveRun(run)
-    publishRun(run)
     if (delegated) {
+      publishRun(run)
       // A synchronous peer request cannot wait behind its caller's occupied slot.
       // Only group runtime uses this path; depth/call/cycle limits bound extra work.
       queueMicrotask(() => {
@@ -1705,7 +1752,8 @@ export const createRuntimeEngine = ({
         void execution.finally(() => executions.delete(run.id)).catch(() => {})
       })
     } else {
-      queued.push(run.id)
+      queued = [...queued, run.id]
+      publishQueue()
       queueMicrotask(() => void drain())
     }
     return { success: true, run }
@@ -1732,7 +1780,7 @@ export const createRuntimeEngine = ({
     const run = persistence.getRun(id)
     if (!run) return { success: false, errorCode: "NOT_FOUND", error: "Run not found" }
     if (!["queued", "starting", "running"].includes(run.status)) return { success: true, run }
-    if (run.status === "queued") {
+    if (run.status === "queued" || (run.status === "starting" && !controllers.has(id))) {
       controllers.get(id)?.abort()
       const store = kernel.services.use("store.api")
       const thread = store?.getThread({ threadId: run.threadId })
@@ -2367,7 +2415,12 @@ export const createRuntimeEngine = ({
     enqueue,
     activeRun,
     continueAfterApproval,
-    listRuns: persistence.listRuns,
+    getRunSnapshot,
+    getWorkRuns,
+    settingsChanged: () => {
+      void drain()
+    },
+    listRuns: (threadId, options) => persistence.listRuns(threadId, options).map(getRunSnapshot),
     cancel,
     cancelBotTurns,
     retry,

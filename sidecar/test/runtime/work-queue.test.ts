@@ -1,0 +1,284 @@
+import type { Database } from "bun:sqlite"
+import { afterEach, expect, test } from "bun:test"
+import { mkdtempSync, rmSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
+import type { ProviderAdapter, Run, StartTurnArgs, StartTurnResult } from "@touri/contracts"
+import { createKernel } from "../../src/kernel"
+import { init as initRuntime } from "../../src/runtime"
+import { createRuntimeEngine } from "../../src/runtime/engine"
+import { init as initStore } from "../../src/store"
+
+const cleanups = new Set<() => Promise<void>>()
+afterEach(async () => {
+  for (const close of cleanups) await close()
+  cleanups.clear()
+})
+
+test("GET /runs exposes the global work snapshot", async () => {
+  const fixture = await getFixture()
+  await fixture.engine.shutdown()
+  await initRuntime(fixture.runtime.kernel)
+  fixture.addCleanup(async () => {
+    await fixture.runtime.kernel.services.use("runtime.shutdown")?.()
+  })
+
+  const response = await fetch(`http://127.0.0.1:${fixture.runtime.handshake.port}/api/v1/runs`, {
+    headers: { Authorization: "Bearer dev-ui-token", Origin: "tauri://localhost" },
+  })
+
+  expect(response.status).toBe(200)
+  expect(await response.json()).toEqual({ runs: [] })
+})
+
+test("five bots expose three executing turns and a live FIFO queue, then promote within one second", async () => {
+  const fixture = await getFixture()
+  const turns = fixture.sendFive()
+  await waitFor(() => fixture.getRunning().length === 3)
+
+  const waiting = fixture.engine.getWorkRuns().filter((run) => run.status === "queued")
+  expect(waiting.map((run) => [run.id, run.queuePosition, run.queueTotal])).toEqual([
+    [turns[3]?.id, 1, 2],
+    [turns[4]?.id, 2, 2],
+  ])
+  expect(fixture.engine.listRuns("thread-4")[0]?.queuePosition).toBe(2)
+  const started = Date.now()
+  fixture.finish("thread-0")
+  await waitFor(() => fixture.getRunning().some((run) => run.id === turns[3]?.id), 1000)
+
+  expect(Date.now() - started).toBeLessThan(1000)
+  expect(fixture.engine.getWorkRuns()).toHaveLength(4)
+  expect(
+    fixture
+      .getEvents()
+      .filter((run) => run.id === turns[4]?.id)
+      .at(-1),
+  ).toMatchObject({ queuePosition: 1, queueTotal: 1 })
+  expect(
+    fixture
+      .getEvents()
+      .filter((run) => run.id === turns[3]?.id)
+      .at(-1),
+  ).toMatchObject({ queuePosition: null, queueTotal: null })
+})
+
+test("canceling a waiting turn republishes the remaining positions without starting the canceled turn", async () => {
+  const fixture = await getFixture()
+  const turns = fixture.sendFive()
+  await waitFor(() => fixture.getRunning().length === 3)
+  const canceled = turns[3]
+  if (!canceled) throw new Error("Missing queued turn")
+
+  fixture.engine.cancel(canceled.id)
+
+  expect(fixture.engine.getWorkRuns().filter((run) => run.status === "queued")).toMatchObject([
+    { id: turns[4]?.id, queuePosition: 1, queueTotal: 1 },
+  ])
+  expect(
+    fixture
+      .getEvents()
+      .filter((run) => run.id === turns[4]?.id)
+      .at(-1),
+  ).toMatchObject({ queuePosition: 1, queueTotal: 1 })
+})
+
+test("saving concurrency drains immediately, lowering it lets current work finish, and the value survives replacement", async () => {
+  const fixture = await getFixture()
+  fixture.sendFive()
+  await waitFor(() => fixture.getRunning().length === 3)
+
+  expect(await fixture.saveLimit(4)).toBe(200)
+  await waitFor(() => fixture.getRunning().length === 4)
+  expect(await fixture.saveLimit(1)).toBe(200)
+  fixture.finish("thread-0")
+  fixture.finish("thread-1")
+  fixture.finish("thread-2")
+  await waitFor(() => fixture.getRunning().length === 1)
+
+  expect(fixture.engine.getWorkRuns().filter((run) => run.status === "queued")).toHaveLength(1)
+  expect(await fixture.saveLimit(0)).toBe(400)
+  expect(await fixture.saveLimit(33)).toBe(400)
+  await fixture.engine.shutdown()
+  const replacement = createRuntimeEngine({
+    kernel: fixture.runtime.kernel,
+    providerAdapters: { codex: fixture.adapter },
+  })
+  fixture.addCleanup(() => replacement.shutdown())
+  const persisted = fixture.runtime.kernel.services.use("store.settings")?.()
+
+  expect(persisted?.maxConcurrentRuns).toBe(1)
+})
+
+test("queue positions include turns behind a busy conversation while other conversations can start", async () => {
+  const fixture = await getFixture()
+  fixture.send("thread-0")
+  await waitFor(() => fixture.getRunning().length === 1)
+
+  const blocked = fixture.send("thread-0")
+  fixture.send("thread-1")
+  await waitFor(() => fixture.getRunning().length === 2)
+
+  expect(fixture.engine.getRunSnapshot(blocked)).toMatchObject({ queuePosition: 1, queueTotal: 1 })
+})
+
+test("work snapshots identify routine, delegated and resumed turns and restore queue positions from storage", async () => {
+  const fixture = await getFixture()
+  const turns = fixture.sendFive()
+  await waitFor(() => fixture.getRunning().length === 3)
+  const routine = turns[3]
+  const resumed = turns[4]
+  if (!routine || !resumed) throw new Error("Missing waiting turns")
+
+  expect(fixture.engine.getRunSnapshot(routine).origin).toBe("routine")
+  expect(fixture.engine.getRunSnapshot(resumed).origin).toBe("resume")
+  expect(fixture.engine.getRunSnapshot(turns[2] ?? resumed).origin).toBe("delegation")
+  const waitingIds = fixture.engine
+    .getWorkRuns()
+    .filter((run) => run.status === "queued")
+    .map((run) => run.id)
+  await fixture.engine.shutdown()
+  const replacement = createRuntimeEngine({
+    kernel: fixture.runtime.kernel,
+    maxConcurrentRuns: 1,
+    providerAdapters: { codex: fixture.adapter },
+  })
+  fixture.addCleanup(() => replacement.shutdown())
+
+  expect(
+    replacement
+      .getWorkRuns()
+      .filter((run) => run.status === "queued")
+      .map((run) => run.id),
+  ).toEqual(waitingIds)
+  expect(
+    replacement
+      .getWorkRuns()
+      .filter((run) => run.status === "queued")
+      .map((run) => run.queuePosition),
+  ).toEqual([1, 2])
+})
+
+const getFixture = async () => {
+  const root = mkdtempSync(join(tmpdir(), "touri-work-queue-"))
+  const runtime = createKernel({ appData: root })
+  await initStore(runtime.kernel)
+  const database = runtime.kernel.db as Database
+  const store = runtime.kernel.services.use("store.api")
+  if (!store) throw new Error("Store unavailable")
+  Array.from({ length: 5 }, (_, index) => index).forEach((index) => {
+    database
+      .query("INSERT INTO bots(id,name,provider,home_dir,created_at,updated_at) VALUES (?,?,'codex',?,1,1)")
+      .run(`bot-${index}`, `Equipe ${index}`, root)
+    database
+      .query("INSERT INTO threads(id,bot_id,title,created_at,updated_at) VALUES (?,?,?,1,1)")
+      .run(`thread-${index}`, `bot-${index}`, `Tarefa ${index}`)
+  })
+  const completions = new Map<string, () => void>()
+  const adapter = getAdapter(completions)
+  const engine = createRuntimeEngine({ kernel: runtime.kernel, providerAdapters: { codex: adapter } })
+  runtime.kernel.services.provide("runtime.settingsChanged", engine.settingsChanged)
+  let events: Run[] = []
+  const unsubscribe = runtime.kernel.subscribe(({ event }) => {
+    if (event.type === "run.updated") events = [...events, event.run]
+  })
+  let extraCleanups: Array<() => Promise<void>> = []
+  cleanups.add(async () => {
+    await engine.shutdown()
+    for (const close of extraCleanups) await close()
+    unsubscribe()
+    runtime.stop()
+    rmSync(root, { recursive: true, force: true })
+  })
+  const send = (threadId: string, index = 0): Run => {
+    const part = {
+      type: "notice" as const,
+      level: "info" as const,
+      code: "run_resumed" as const,
+      text: "Retomada de teste",
+    }
+    const request = store.insertMessage({
+      message: {
+        id: runtime.kernel.newId(),
+        threadId,
+        parentId: store.getThread({ threadId })?.activeLeafId ?? null,
+        role: index === 4 ? "system" : "user",
+        kind: "text",
+        status: "complete",
+        runId: null,
+        text: "Tarefa de demonstração",
+        parts: index === 4 ? [part] : [],
+        sender: index === 2 ? { id: "bot-0", name: "Equipe 0" } : null,
+        source: "local",
+      },
+    })
+    if (!request.success) throw new Error(request.error)
+    const result = engine.enqueue({
+      threadId,
+      requestMessageId: request.message.id,
+      trigger: index === 3 ? "routine" : "user",
+    })
+    if (!result.success) throw new Error(result.error)
+
+    return result.run
+  }
+  const saveLimit = async (limit: number) => {
+    const response = await fetch(`http://127.0.0.1:${runtime.handshake.port}/api/v1/settings`, {
+      method: "PATCH",
+      headers: {
+        Authorization: "Bearer dev-ui-token",
+        Origin: "tauri://localhost",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ maxConcurrentRuns: limit }),
+    })
+    return response.status
+  }
+
+  return {
+    runtime,
+    engine,
+    adapter,
+    send,
+    saveLimit,
+    sendFive: () => Array.from({ length: 5 }, (_, index) => send(`thread-${index}`, index)),
+    getRunning: () => engine.getWorkRuns().filter((run) => run.status === "running"),
+    getEvents: () => events,
+    finish: (threadId: string) => completions.get(threadId)?.(),
+    addCleanup: (close: () => Promise<void>) => {
+      extraCleanups = [...extraCleanups, close]
+    },
+  }
+}
+
+const getAdapter = (completions: Map<string, () => void>): ProviderAdapter => ({
+  provider: "codex",
+  detect: async () => ({ success: true, path: "/usr/bin/true", version: "test", loggedIn: true }),
+  startTurn: (args: StartTurnArgs) =>
+    new Promise<StartTurnResult>((resolve) => {
+      const finish = (status: "succeeded" | "interrupted") => {
+        args.onEvent({ type: "turn_completed", status, errorClass: null, errorMessage: null })
+        resolve({ success: true, externalSessionId: `session-${args.thread.id}`, rolloutPath: null, status })
+      }
+      completions.set(args.thread.id, () => {
+        finish("succeeded")
+      })
+      args.signal.addEventListener(
+        "abort",
+        () => {
+          finish("interrupted")
+        },
+        { once: true },
+      )
+      args.onEvent({ type: "turn_started", externalTurnId: `turn-${args.thread.id}` })
+    }),
+  answerApproval: async () => ({ success: true }),
+  shutdown: async () => {},
+})
+
+const waitFor = async (predicate: () => boolean, timeout = 5000): Promise<void> => {
+  const deadline = Date.now() + timeout
+  while (!predicate()) {
+    if (Date.now() >= deadline) throw new Error("Work state did not update in time")
+    await Bun.sleep(5)
+  }
+}

@@ -1,0 +1,85 @@
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react"
+import { afterEach, expect, it, vi } from "vitest"
+import App from "../src/App"
+import { ActivityMark } from "../src/components/ActivityMark"
+import { getQueueLabel } from "../src/features/work/presentation"
+import { PerformanceScreen, WorkScreen } from "../src/features/work/WorkScreen"
+import { createWorkApi } from "./fixtures/work-api"
+
+afterEach(cleanup)
+
+it("lists every executing and queued turn, origins and engine positions, and opens its conversation", async () => {
+  const api = createWorkApi()
+  render(<App kernel={{ services: { api } }} />)
+  await screen.findByRole("textbox", { name: "Mensagem para Planejamento" })
+
+  fireEvent.click(screen.getByRole("button", { name: "Avançado", exact: true }))
+  fireEvent.click(screen.getByRole("button", { name: "Trabalho", exact: true }))
+
+  const running = screen.getByRole("region", { name: "Trabalhando", exact: true })
+  const queued = screen.getByRole("region", { name: "Na fila", exact: true })
+  expect(within(running).getAllByRole("article")).toHaveLength(3)
+  expect(within(queued).getAllByRole("article")).toHaveLength(2)
+  expect(screen.getByText("Na fila · 1º de 2")).toBeVisible()
+  expect(screen.getByText("Na fila · 2º de 2")).toBeVisible()
+  expect(screen.getByText("Delegação")).toBeVisible()
+  expect(screen.getByText("Retomada")).toBeVisible()
+  expect(screen.getByText("Rotina")).toBeVisible()
+  const badge = screen.getByRole("button", { name: "Trabalhando 3 2 na fila" })
+  expect(badge).toBeVisible()
+
+  act(() => {
+    api.finishFirst()
+  })
+
+  expect(within(running).getAllByRole("article")).toHaveLength(3)
+  expect(within(queued).getAllByRole("article")).toHaveLength(1)
+  expect(screen.getByText("Na fila · 1º de 1")).toBeVisible()
+  fireEvent.click(screen.getByRole("button", { name: "Tarefa de organização" }))
+  expect(await screen.findByRole("textbox", { name: "Mensagem para Organização" })).toBeVisible()
+  expect(screen.getByText("Na fila · 1º de 1")).toBeVisible()
+})
+
+it("shows queue positions in Portuguese and English and uses the slot fallback without engine metadata", () => {
+  const api = createWorkApi()
+  const queued = api.getRuns()[3]
+  if (!queued) throw new Error("Missing queued turn")
+
+  const view = render(<ActivityMark state="thinking" run={queued} />)
+
+  expect(screen.getByRole("status")).toHaveTextContent("Na fila · 1º de 2")
+  expect(getQueueLabel(queued, "en")).toBe("Queued · 1 of 2")
+  view.rerender(<ActivityMark state="thinking" run={{ ...queued, queuePosition: null, queueTotal: null }} />)
+  expect(screen.getByRole("status")).toHaveTextContent("Na fila · aguardando uma vaga")
+})
+
+it("saves the concurrency limit through Advanced and restores its saved value", async () => {
+  const api = createWorkApi()
+  render(<App kernel={{ services: { api } }} />)
+  await screen.findByRole("textbox", { name: "Mensagem para Planejamento" })
+
+  fireEvent.click(screen.getByRole("button", { name: "Avançado", exact: true }))
+  fireEvent.click(screen.getByRole("button", { name: "Desempenho", exact: true }))
+  const input = screen.getByRole("spinbutton", { name: "Tarefas ao mesmo tempo" })
+  expect(input).toHaveValue(3)
+  fireEvent.change(input, { target: { value: "4" } })
+  fireEvent.click(screen.getByRole("button", { name: "Salvar limite" }))
+  await screen.findByText("Limite salvo.")
+
+  expect(api.calls).toContainEqual({ route: "PATCH /settings", input: { maxConcurrentRuns: 4 }, pathValues: {} })
+  expect((await api.request("GET /settings", {})).settings.maxConcurrentRuns).toBe(4)
+})
+
+it("keeps a failed save actionable and shows a calm empty work view", async () => {
+  const api = createWorkApi()
+  const settings = (await api.request("GET /settings", {})).settings
+  const save = vi.fn().mockRejectedValue(new Error("offline"))
+  const view = render(<PerformanceScreen settings={settings} onSave={save} />)
+
+  fireEvent.click(screen.getByRole("button", { name: "Salvar limite" }))
+
+  expect(await screen.findByRole("alert")).toHaveTextContent("Não foi possível salvar.")
+  expect(screen.getByRole("button", { name: "Salvar limite" })).toBeEnabled()
+  view.rerender(<WorkScreen runs={[]} bots={[]} threads={[]} loading={false} onThread={() => {}} />)
+  expect(screen.getByText(/Nenhuma tarefa em execução ou na fila/)).toBeVisible()
+})

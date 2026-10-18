@@ -1561,6 +1561,7 @@ export const init = async (kernel: Kernel): Promise<void> => {
           if (validationError) return errorResponse(400, "INVALID_ARGS", validationError)
           const settings = { ...readSettings({ database }), ...record } as AppSettings
           writeSettings({ database, settings })
+          if (Object.hasOwn(record, "maxConcurrentRuns")) kernel.services.use("runtime.settingsChanged")?.()
           if (
             Object.hasOwn(record, "cloud") ||
             Object.hasOwn(record, "cloudBaseUrl") ||
