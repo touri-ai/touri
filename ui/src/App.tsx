@@ -36,7 +36,7 @@ import { MotionPresence, MotionSkeleton } from "./components/Motion"
 import { PageTransition } from "./components/PageTransition"
 import { RoutineEditor } from "./components/RoutineEditor"
 import { SidebarDrawer } from "./components/SidebarDrawer"
-import { WindowFrame } from "./components/WindowFrame"
+import { getWindowChrome, WindowFrame } from "./components/WindowFrame"
 import { IntegrationsScreen, McpScreen, PreviewScreen } from "./components/WorkspaceScreens"
 import { installComputerKillSwitch } from "./computerKillSwitch"
 import { openComputerWindow } from "./computerWindow"
@@ -1317,15 +1317,23 @@ const OnboardingLanding = ({
   </main>
 )
 
-const App = (props: AppProps) => (
-  <WindowFrame>
+const App = (props: AppProps) => {
+  const chrome = getWindowChrome({
+    native: isNativeDesktop(),
+    userAgent: navigator.userAgent,
+    search: window.location.search,
+  })
+  const content = (
     <ServerModeProvider invoke={props.kernel?.services?.invoke ?? undefined} fallback={<LoadingScreen />}>
       <ErrorBoundary area="o app" app api={props.kernel?.services?.api ?? undefined}>
         <AppContent {...props} />
       </ErrorBoundary>
       <ReportMenuLauncher api={props.kernel?.services?.api ?? undefined} />
     </ServerModeProvider>
-  </WindowFrame>
-)
+  )
+  if (chrome === "system") return content
+
+  return <WindowFrame>{content}</WindowFrame>
+}
 
 export default App

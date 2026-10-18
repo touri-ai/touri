@@ -1,13 +1,8 @@
 import { type ReactNode, useLayoutEffect } from "react"
-import { isNativeDesktop } from "../features/server/serverMode"
 import "./window-frame.css"
 
 export const WindowFrame = ({ children }: { children: ReactNode }) => {
-  const computerWindow = new URLSearchParams(window.location.search).has("computer")
-  const overlay = isNativeDesktop() && /Macintosh|Mac OS X/i.test(navigator.userAgent) && !computerWindow
-  useLayoutEffect(() => installWindowInset(document.documentElement, overlay), [overlay])
-
-  if (!overlay) return children
+  useLayoutEffect(() => installWindowInset(document.documentElement), [])
 
   return (
     <div className="window-frame window-frame-overlay">
@@ -17,9 +12,19 @@ export const WindowFrame = ({ children }: { children: ReactNode }) => {
   )
 }
 
-// Body portals need the same inset as the native frame, without scanning the workspace with :has().
-const installWindowInset = (root: HTMLElement, overlay: boolean) => {
-  if (!overlay) return
+export const getWindowChrome = ({
+  native,
+  userAgent,
+  search,
+}: { native: boolean; userAgent: string; search: string }): "overlay" | "system" => {
+  if (!native || !/Macintosh|Mac OS X/i.test(userAgent)) return "system"
+  if (new URLSearchParams(search).has("computer")) return "system"
+
+  return "overlay"
+}
+
+// Body portals share the inset through the document root.
+const installWindowInset = (root: HTMLElement) => {
   const previous = root.getAttribute("data-window-overlay")
   root.setAttribute("data-window-overlay", "true")
 
