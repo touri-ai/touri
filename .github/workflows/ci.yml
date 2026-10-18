@@ -220,7 +220,7 @@ jobs:
         run: bunx playwright test test/e2e/group-coordination.spec.ts --workers=1
       - name: Check notification preferences on desktop and phone
         working-directory: ui
-        run: bunx playwright test test/e2e/notification-preferences.spec.ts --workers=1
+        run: bunx playwright test test/e2e/notification-preferences.spec.ts --workers=1 --output test-results/notification-preferences
       - name: Keep synthetic notification evidence
         if: always()
         uses: actions/upload-artifact@v4
