@@ -17,8 +17,8 @@ export const getGroupProjection = (threadId: string | undefined, messages: Messa
   const activeIds = new Set(active.map((run) => run.id))
   const working = new Set(active.map((run) => run.botId))
   const failed = new Set(
-    memberRuns
-      .filter((run) => run.groupTurnId === turn?.id && ["failed", "interrupted", "canceled"].includes(run.status))
+    getLatestRunsByMember(memberRuns.filter((run) => run.groupTurnId === turn?.id))
+      .filter((run) => ["failed", "interrupted", "canceled"].includes(run.status))
       .map((run) => run.botId),
   )
   const confirmed = getConfirmedResults(threadId, messages, runsById)
@@ -72,6 +72,19 @@ const getLatestResultsByMember = (messages: Message[]) => {
   })
 
   return results
+}
+
+const getLatestRunsByMember = (runs: Run[]): Run[] => {
+  // A local index avoids rescanning the run history for each member.
+  const latest = new Map<string, Run>()
+  runs.forEach((run) => {
+    const previous = latest.get(run.botId)
+    if (previous && previous.queuedAt >= run.queuedAt) return
+
+    latest.set(run.botId, run)
+  })
+
+  return [...latest.values()]
 }
 
 const getConfirmedResults = (threadId: string | undefined, messages: Message[], runsById: Map<string, Run>) =>

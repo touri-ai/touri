@@ -128,6 +128,18 @@ describe("group coordination", () => {
     expect(scans).not.toHaveBeenCalled()
   })
 
+  it("clears a member's failure after a later attempt in the same turn succeeds", () => {
+    const messages = [getMessage("reviewer")]
+    const failed = getRun("pending", "reviewer", "failed")
+    const succeeded = { ...getRun("result", "reviewer"), queuedAt: 2 }
+    const runs = [getRun("turn", "reviewer"), failed, succeeded]
+
+    const member = getGroupMemberState("reviewer", "shared", messages, runs)
+
+    expect(member).toMatchObject({ state: "idle", result: "Plano revisado" })
+    expect(getGroupBoard("shared", messages, runs)).toHaveLength(1)
+  })
+
   it("sends ask-everyone through the message journal and preserves a draft when requesting a summary", async () => {
     const api = createMockApi()
     await api.request("POST /groups", {
