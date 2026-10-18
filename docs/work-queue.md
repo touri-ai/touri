@@ -3,13 +3,20 @@
 `GET /runs` returns all queued, starting and running provider turns across bots.
 Each run includes its origin (`message`, `routine`, `delegation`, or `resume`).
 Group aggregate turns are excluded so a provider turn is counted once.
+`threadId` always remains the execution thread, including in `run.updated`.
+`groupThreadId` points to its visible group conversation, or is null for ordinary
+conversations. The Work screen opens `groupThreadId ?? threadId`; existing
+subscribers keep using the execution thread.
 
 `queuePosition` is one-based in the engine waiting queue; `queueTotal` is the
 number of waiting turns. Both are null for turns outside that queue. They are
 optional for compatibility with older snapshots. These are computed fields,
 not persisted columns: no database migration is required. The engine sends
 `run.updated` for waiting turns whenever the queue changes. Thread snapshots
-and the global work snapshot use the same engine projection.
+and the global work snapshot use the same engine projection. Queue publication
+loads runs and their origin/group metadata with one batch query, then computes
+positions once and publishes in submission order. It performs O(Q) work for Q
+waiting turns without database reads per published row.
 
 The queue preserves submission order among turns eligible to start. A turn
 whose conversation is already running waits until that conversation is free;
