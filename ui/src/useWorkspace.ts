@@ -32,7 +32,7 @@ import {
   uniqueApprovalNotifications,
 } from "./approvalState"
 import { moveComposerDraft } from "./composerDraft"
-import { userFacingError } from "./errors"
+import { isServiceUnavailable, userFacingError } from "./errors"
 import { adoptProviderLogin } from "./features/bots/providerLogin"
 import { useDoctorReport } from "./features/doctor/useDoctorReport"
 import { localizeNotice, t } from "./i18n"
@@ -406,6 +406,8 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
   const runRevision = useRef(0)
   const liveRuns = useRef(new Map<Id, number>())
   const loadedThreads = useRef(new Map<Id, number>())
+  const snapshotUnavailable = useRef(false)
+  const serviceNotice = useRef<string | null>(null)
   const threadLoads = useRef(
     new Map<
       Id,
@@ -473,11 +475,14 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
             ...current,
             messages: deltas.reduce(applyStreamEvent, messages.messages).reduce(updateMessage, current.messages),
             runs: mergeRunRows(current.runs, runs.runs),
+            notice: current.notice === serviceNotice.current ? null : current.notice,
           }))
         })
         .catch((error: unknown) => {
-          if (attempt === generation.current)
-            setData((current) => ({ ...current, notice: t("Service request failed", { error: errorMessage(error) }) }))
+          if (attempt !== generation.current) return
+          const notice = t("Service request failed", { error: errorMessage(error) })
+          if (isServiceUnavailable(error)) serviceNotice.current = notice
+          setData((current) => ({ ...current, notice }))
         })
         .finally(() => {
           if (threadLoads.current.get(threadId)?.promise === promise) threadLoads.current.delete(threadId)
@@ -598,6 +603,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
           notice: null,
         }
       })
+      snapshotUnavailable.current = false
       setProjectRevision((value) => value + 1)
       const selected = currentData.current
       const threadId = selected.selectedThreadId
@@ -610,6 +616,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
         await loadThread(threadId)
     } catch (error) {
       if (attempt !== generation.current) return
+      snapshotUnavailable.current = isServiceUnavailable(error)
       setData((current) => ({
         ...current,
         loading: false,
@@ -630,8 +637,8 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
         resyncing = null
       })
     }
-    // A reconnect needs no reload: the sidecar replays the gap, or sends a resync frame when the gap is
-    // too large or expired. Reloading every conversation on each reconnect kept a slow client behind.
+    // Event replay repairs an existing snapshot; an incomplete snapshot needs another full load.
+    // Reloading every conversation on every reconnect kept slow clients behind.
     const unsubscribe = api.subscribe((envelope: UiEventEnvelope) => {
       const event = envelope.event
       localResponseTimings().observe(event)
@@ -826,7 +833,12 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
     document.addEventListener("visibilitychange", visibility)
     window.addEventListener("online", refreshAttention)
     const unsubscribeConnection = api.subscribeConnection?.((connected) => {
-      if (connected) refreshAttention()
+      if (!connected) return
+      if (snapshotUnavailable.current || !currentData.current.loaded) {
+        resync()
+        return
+      }
+      refreshAttention()
     })
     // Subscribe first, then load: the snapshot starts where live delivery does.
     void (api.cursorReady?.() ?? Promise.resolve()).then(() => {

@@ -1976,7 +1976,9 @@ export const ptBR = {
   "Computer permission waiting": "{name} está aguardando permissão para controlar seu Mac.",
   Minutes: "{count} minutos",
   "Notifications need attention": "Notificações, {count} precisam de atenção",
-  "Service request failed": "Falha no serviço local: {error}",
+  "Service request failed": "Falha na conexão com o touri: {error}",
+  "O serviço do touri está indisponível. Verifique a conexão e tente novamente.":
+    "O serviço do touri está indisponível. Verifique a conexão e tente novamente.",
   "Dry run complete. Nothing was written.": "Simulação concluída. Dados preservados.",
   "Import complete. Imported routines stay disabled.":
     "Importação concluída. As rotinas importadas continuam pausadas.",
@@ -3549,7 +3551,9 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Computer permission waiting": "{name} is waiting for permission to control your Mac.",
   Minutes: "{count} minutes",
   "Notifications need attention": "Notifications, {count} need attention",
-  "Service request failed": "Local service request failed: {error}",
+  "Service request failed": "touri connection failed: {error}",
+  "O serviço do touri está indisponível. Verifique a conexão e tente novamente.":
+    "The touri service is unavailable. Check the connection and try again.",
   "Output code": "Exit code: {code}",
   "No project for bot": "No project for {name}",
   "Open agent URL": "Open in agent browser: {url}",

@@ -39,3 +39,9 @@ export class ApiError extends Error {
     this.origin = definition?.origin
   }
 }
+
+export const isServiceUnavailable = (error: unknown): boolean =>
+  error instanceof ApiError &&
+  (error.code === "TOURI-E1009" ||
+    error.errorCode === "SERVER_CONNECTION_FAILED" ||
+    (!error.code && [502, 503, 504].includes(error.status)))
