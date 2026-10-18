@@ -1,5 +1,5 @@
 import type { Bot, Goal, GoalControl, Id, Message } from "@touri/contracts"
-import { type FormEvent, useEffect, useId, useRef, useState } from "react"
+import { type FormEvent, type ReactNode, useEffect, useId, useRef, useState } from "react"
 import type { UiApi } from "../api/client"
 import { type TranslationKey, t } from "../i18n"
 import { ChatDisclosure } from "./ChatDisclosure"
@@ -139,22 +139,27 @@ export const GoalPanel = ({
     </div>
   )
 
+  const isBudgetExhausted = goal?.status === "budget_exhausted"
+  const lastStep = goal?.steps.at(-1)?.text ?? (isBudgetExhausted ? null : t("Goal waiting for checkpoint"))
+
   return (
     <section className="goal-panel" aria-label={t("Continue until done")}>
       {goal && (
-        <div className="goal-checkpoint">
+        <GoalCheckpoint status={goal.status}>
           <div className="goal-heading">
             <strong>{t("Continue until done")}</strong>
             <span role="status">{t(getStatusKey(goal.status))}</span>
           </div>
           <p className="goal-criterion">{goal.completionCriterion}</p>
-          <p>
-            {t("Goal remaining", {
-              turns: Math.max(0, goal.maxTurns - goal.turnsUsed),
-              minutes: Math.max(0, Math.ceil((goal.deadlineAt - now) / 60_000)),
-            })}
-          </p>
-          <p className="goal-last-step">{goal.steps.at(-1)?.text ?? t("Goal waiting for checkpoint")}</p>
+          {!isBudgetExhausted && (
+            <p>
+              {t("Goal remaining", {
+                turns: Math.max(0, goal.maxTurns - goal.turnsUsed),
+                minutes: Math.max(0, Math.ceil((goal.deadlineAt - now) / 60_000)),
+              })}
+            </p>
+          )}
+          {lastStep && <p className="goal-last-step">{lastStep}</p>}
           {goal.status === "budget_exhausted" && <p>{t("Goal budget exhausted help")}</p>}
           {goal.status !== "completed" && (
             <div className="goal-actions">
@@ -203,9 +208,9 @@ export const GoalPanel = ({
               </button>
             </form>
           )}
-        </div>
+        </GoalCheckpoint>
       )}
-      {(!goal || goal.status === "completed") && (
+      {!goal && (
         <ChatDisclosure label={t("Goal advanced")} expanded={advanced} onExpandedChange={setAdvanced}>
           {advanced && (
             <>
@@ -237,6 +242,17 @@ export const GoalPanel = ({
       {(failed || loadFailed) && <p role="alert">{t("Goal request failed")}</p>}
     </section>
   )
+}
+
+const GoalCheckpoint = ({ status, children }: { status: Goal["status"]; children: ReactNode }) => {
+  if (status === "completed") return <span role="status">{t("Goal completed summary")}</span>
+
+  const checkpoint = <div className="goal-checkpoint">{children}</div>
+  if (status === "budget_exhausted") {
+    return <ChatDisclosure label={t("Goal budget exhausted summary")}>{checkpoint}</ChatDisclosure>
+  }
+
+  return checkpoint
 }
 
 const getStatusKey = (status: Goal["status"]): TranslationKey => {

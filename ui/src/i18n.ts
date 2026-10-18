@@ -44,6 +44,8 @@ export const ptBR = {
   "Goal paused": "Pausado",
   "Goal budget exhausted": "Limite atingido",
   "Goal completed": "Concluído",
+  "Goal completed summary": "Objetivo concluído",
+  "Goal budget exhausted summary": "Objetivo parado · limite atingido",
   "Continuação do objetivo": "Continuação do objetivo",
   "Send the same task to all other members of this touri group in parallel and gather final answers with authorship. Each recipient counts toward the shared six-call budget. Same depth 2, cycle, access, secrecy and approval fences as ask_bot. The whole set shares the group turn deadline (120s for chat); pending approval on one member does not hold up others. Only available in group participant sessions.":
     "Envia a mesma tarefa aos outros membros do grupo em paralelo e reúne as respostas finais com autoria. Cada membro conta no limite compartilhado de seis chamadas. Mantém os limites de profundidade 2, ciclos, acesso, segredos e aprovações da delegação individual. Todos compartilham o prazo do turno (120 segundos no chat); uma aprovação pendente não impede os outros de trabalhar. Disponível apenas nas sessões de membros do grupo.",
@@ -2335,6 +2337,8 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Goal paused": "Paused",
   "Goal budget exhausted": "Limit reached",
   "Goal completed": "Completed",
+  "Goal completed summary": "Goal completed",
+  "Goal budget exhausted summary": "Goal stopped · limit reached",
   "Continuação do objetivo": "Goal continuation",
   "Sign in to {provider} for this {host}: open this link on this device":
     "Sign in to {provider} for {host}: open this link on this device",

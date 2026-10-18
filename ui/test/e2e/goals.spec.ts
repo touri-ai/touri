@@ -31,6 +31,11 @@ viewports.forEach((viewport) => {
     expect(await panel.evaluate((element) => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1)
 
     await panel.getByRole("button", { name: "Concluir agora", exact: true }).click()
-    await expect(panel.getByRole("status")).toHaveText("Concluído")
+    await expect(panel.getByRole("status")).toHaveText("Objetivo concluído")
+    await expect(panel).toHaveText("Objetivo concluído")
+    await expect(panel.getByRole("button")).toHaveCount(0)
+    await expect(panel.getByRole("textbox")).toHaveCount(0)
+    const bounds = await panel.boundingBox()
+    expect(bounds?.height).toBeLessThan(60)
   })
 })
