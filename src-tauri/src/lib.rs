@@ -475,7 +475,7 @@ fn start_local_runtime(app: &tauri::App<Wry>) -> Result<(), Box<dyn std::error::
 }
 
 pub fn run() {
-    let runtime = shell_runtime::get_runtime().expect("create shell async runtime");
+    let runtime = shell_runtime::start_runtime().expect("create shell async runtime");
     tauri::async_runtime::set(runtime.handle().clone());
 
     tauri::Builder::default()

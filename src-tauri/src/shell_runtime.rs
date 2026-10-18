@@ -1,6 +1,6 @@
 use tokio::runtime::{Builder, Runtime};
 
-pub fn get_runtime() -> std::io::Result<Runtime> {
+pub fn start_runtime() -> std::io::Result<Runtime> {
     // The shell relays I/O; bot execution lives in the sidecar or on the server.
     Builder::new_multi_thread()
         .worker_threads(2)
@@ -11,19 +11,19 @@ pub fn get_runtime() -> std::io::Result<Runtime> {
 
 #[cfg(test)]
 mod tests {
-    use super::get_runtime;
+    use super::start_runtime;
     use std::time::Duration;
 
     #[test]
     fn shell_workers_do_not_scale_with_the_machine_cpu_count() {
-        let runtime = get_runtime().unwrap();
+        let runtime = start_runtime().unwrap();
 
         assert_eq!(runtime.metrics().num_workers(), 2);
     }
 
     #[test]
     fn shell_runtime_drives_network_timers_and_blocking_work() {
-        let runtime = get_runtime().unwrap();
+        let runtime = start_runtime().unwrap();
 
         runtime.block_on(async {
             let listener = tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))
