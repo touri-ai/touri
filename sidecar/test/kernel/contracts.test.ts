@@ -58,3 +58,14 @@ test("goal checkpoints accept progress but cannot carry budget or caller changes
   expect(budgetChange.success).toBe(false)
   expect(callerChange.success).toBe(false)
 })
+
+test("ask_all validates a bounded task without accepting extra recipients", () => {
+  const message = "Revise o plano"
+  const invalidArgs = [{}, { message: "" }, { message: "x".repeat(8001) }, { message, bot: "outsider" }]
+
+  const valid = validateToolArgs({ name: "ask_all", args: { message } })
+  const invalid = invalidArgs.map((args) => validateToolArgs({ name: "ask_all", args }))
+
+  expect(valid).toEqual({ success: true, args: { message } })
+  expect(invalid.every((result) => !result.success && result.errorCode === "INVALID_ARGS")).toBe(true)
+})

@@ -125,7 +125,7 @@ export type StandingGrant = { id: Id; botId: Id; scope: ApprovalScope; grantedAt
 export type BotCapability = 'browser' | 'computer_use'
 export type CapabilityRequestInput = { capability: BotCapability; reason: string }
 
-export type ApprovalInput = { ctx: Pick<ToolContext, 'botId' | 'threadId' | 'runId' | 'signal'>; scope: ApprovalScope; toolName: string; input: unknown; toolUseId?: string; allowStanding?: boolean; isCurrent?: () => boolean }
+export type ApprovalInput = { groupMemberId?: Id; ctx: Pick<ToolContext, 'botId' | 'threadId' | 'runId' | 'signal'>; scope: ApprovalScope; toolName: string; input: unknown; toolUseId?: string; allowStanding?: boolean; isCurrent?: () => boolean }
 export type ApprovalResult = Result<{ behavior: 'allow' | 'deny'; updatedInput?: unknown; message?: string }, 'NOT_FOUND' | 'TIMEOUT' | 'DENIED'>
 
 export type BotFolder = { path: AbsolutePath; access: 'read-only' | 'read-write' }
@@ -285,6 +285,8 @@ export type RunUsage = {
 }
 
 export type Run = {
+  /** Group projection only: persisted association lives in group_run_links. */
+  groupTurnId?: Id
   id: Id
   threadId: Id
   botId: Id
@@ -387,6 +389,8 @@ export type NoticePart = {
   type: 'notice'
   level: 'info' | 'warning' | 'error'
   code:
+    | 'group_ask_all'
+    | 'group_summary'
     | 'run_failed'
     | 'run_canceled'
     | 'session_replaced'
@@ -400,6 +404,8 @@ export type NoticePart = {
   text: string
 }
 export type ApprovalPart = {
+  /** A delegation approval belongs to the caller but waits on this group member. */
+  groupMemberId?: Id
   type: 'approval'
   createdAt?: EpochMs
   approvalId: Id
@@ -802,7 +808,11 @@ export type TelegramIntegration = {
   lastRejected: { userId: string; name: string; at: EpochMs } | null
 }
 
+export type GroupAction = 'ask_all' | 'summarize'
+
 export type SendMessageInput = {
+  /** Stored as a notice part so queued delivery and retries preserve routing. */
+  groupAction?: GroupAction
   clientNonce?: string
   deadline?: EpochMs
   threadId: Id
@@ -1253,9 +1263,9 @@ export type ServiceMap = {
   'bots.configureAccess': (input: { botId: Id; patch: Partial<Pick<Bot, 'projectId' | 'folders' | 'browserEnabled' | 'browser' | 'computerUse'>> }) => Result<{ bot: Bot }, 'NOT_FOUND' | 'INVALID_ARGS' | 'MACHINE_PROJECT_CHANGE'>
   'diagnostics.errors': () => Array<{ code: string; at: number }>
   'groups.runtime': {
-    enqueue: (args: { threadId: Id; requestMessageId: Id; trigger: RunTrigger; routineRunId?: Id }) => Result<{ run: Run }, 'THREAD_NOT_FOUND' | 'BOT_PAUSED'>
+    enqueue: (args: { threadId: Id; requestMessageId: Id; trigger: RunTrigger; routineRunId?: Id }) => Result<{ run: Run }, 'THREAD_NOT_FOUND' | 'BOT_PAUSED' | 'DELEGATION_LIMIT'>
     cancel: (id: Id) => boolean
-    retry: (id: Id) => Result<{ run: Run }, 'THREAD_NOT_FOUND' | 'BOT_PAUSED' | 'CONFLICT'> | null
+    retry: (id: Id) => Result<{ run: Run }, 'THREAD_NOT_FOUND' | 'BOT_PAUSED' | 'DELEGATION_LIMIT' | 'CONFLICT'> | null
     listRuns: (threadId: Id) => Array<Run>
     shutdown: () => void
     canCoordinate: (threadId: Id) => boolean
@@ -1284,7 +1294,7 @@ export type ServiceMap = {
   'vm.shutdown': () => Promise<void>
   'vm.desktop': VmDesktop
   'store.api': StoreApi
-  'runtime.enqueue': (args: { threadId: Id; requestMessageId: Id; trigger: RunTrigger }) => Result<{ run: Run }, 'THREAD_NOT_FOUND' | 'BOT_PAUSED'>
+  'runtime.enqueue': (args: { threadId: Id; requestMessageId: Id; trigger: RunTrigger }) => Result<{ run: Run }, 'THREAD_NOT_FOUND' | 'BOT_PAUSED' | 'DELEGATION_LIMIT'>
   'runtime.activeRun': (args: { threadId: Id }) => Run | null
   'runtime.continueAfterApproval': (ctx: Pick<ToolContext, 'botId' | 'threadId' | 'runId' | 'signal'>) => boolean
   'runtime.cancelBotTurns': (args: { botId: Id }) => Promise<void>

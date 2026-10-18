@@ -93,7 +93,7 @@ export const init = async (kernel: Kernel): Promise<void> => {
   kernel.services.provide("approvals.settle", engine.approvalBridge.settle)
   kernel.services.provide("runtime.activeRun", ({ threadId }) => engine.activeRun({ threadId }))
   kernel.services.provide("runtime.continueAfterApproval", engine.continueAfterApproval)
-  kernel.services.provide("runtime.cancelBotTurns", engine.cancelBotTurns)
+  kernel.services.provide("runtime.cancelBotTurns", groups.cancelBotTurns)
   kernel.services.provide("runtime.cancelRun", ({ runId }) => {
     const grouped = groups.cancel(runId)
     return engine.cancel(runId).success || grouped
@@ -369,6 +369,7 @@ export const init = async (kernel: Kernel): Promise<void> => {
   const registration = kernel.registerTools({
     tools: [
       { name: "coordinate_bots", group: "core", handler: ({ ctx, args }) => groups.askBot(ctx, args) },
+      { name: "ask_all", group: "core", handler: ({ ctx, args }) => groups.askAll(ctx, args) },
       { name: "ask_bot", group: "core", handler: ({ ctx, args }) => groups.askBot(ctx, args) },
       { name: "goal_checkpoint", group: "core", handler: createGoalCheckpointHandler(engine) },
       { name: "routine_list", group: "core", handler: routineList },

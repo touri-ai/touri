@@ -5,7 +5,7 @@ export type PolicyGateArgs = { name: string; mutates: boolean; delegated: boolea
  * (min of caller and target) keeps the delegated run read-only. They need a consent
  * card instead, also for read-only callers whose approvals are "never".
  */
-export const CONSENT_REQUIRED_TOOLS: ReadonlySet<string> = new Set(["ask_bot", "coordinate_bots"])
+export const CONSENT_REQUIRED_TOOLS: ReadonlySet<string> = new Set(["ask_bot", "coordinate_bots", "ask_all"])
 
 /** Catalogued as read-only, but arbitrary page script can submit forms or post; a delegated run treats it as mutating. */
 const DELEGATED_MUTATING_TOOLS: ReadonlySet<string> = new Set(["browser_evaluate"])
