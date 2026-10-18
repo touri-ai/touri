@@ -187,6 +187,13 @@ it("saves the concurrency limit through Advanced and restores its saved value", 
 
   expect(api.calls).toContainEqual({ route: "PATCH /settings", input: { maxConcurrentRuns: 4 }, pathValues: {} })
   expect((await api.request("GET /settings", {})).settings.maxConcurrentRuns).toBe(4)
+
+  fireEvent.click(screen.getByRole("button", { name: "Avançado", exact: true }))
+  fireEvent.click(screen.getByRole("button", { name: "Trabalho", exact: true }))
+  expect(await screen.findByRole("heading", { name: "Trabalho", exact: true })).toBeVisible()
+  fireEvent.click(screen.getByRole("button", { name: "Avançado", exact: true }))
+  fireEvent.click(screen.getByRole("button", { name: "Desempenho", exact: true }))
+  expect(await screen.findByRole("spinbutton", { name: "Tarefas ao mesmo tempo" })).toHaveValue(4)
 })
 
 it("keeps a failed save actionable and shows a calm empty work view", async () => {
