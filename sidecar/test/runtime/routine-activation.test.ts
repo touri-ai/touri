@@ -311,7 +311,9 @@ test("the routine editor preserves its reviewed destination, recovery window and
   expect(routine.nextRunAt).toBeGreaterThan(Date.now())
   const edited = await f.request("PATCH", `/routines/${routine.id}`, { prompt: "Organize outras notas" })
   expect(edited.status).toBe(200)
-  expect(await edited.json()).toMatchObject({ routine: { enabled: false, nextRunAt: null } })
+  expect(await edited.json()).toMatchObject({
+    routine: { enabled: true, nextRunAt: routine.nextRunAt, prompt: "Organize outras notas" },
+  })
   const changed = await f.request("PATCH", `/routines/${routine.id}`, { resultsThreadId: null, enabled: true })
   expect(changed.status).toBe(200)
   expect(await changed.json()).toMatchObject({ routine: { resultsThreadId: null, enabled: true } })

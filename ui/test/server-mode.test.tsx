@@ -4,6 +4,7 @@ import { afterEach, expect, it, vi } from "vitest"
 import App from "../src/App"
 import type { ApiRequest, TauriInvoke } from "../src/api/client"
 import { createMockApi } from "../src/api/mock"
+import { BotAccessSummary } from "../src/components/BotAccessSummary"
 import { BotBrowserPicker } from "../src/components/BotBrowserPicker"
 import { FolderPicker } from "../src/components/FolderPicker"
 import { BotSettingsModal } from "../src/components/Modals"
@@ -295,4 +296,19 @@ it("keeps local recovery usable while the first server connection is still pendi
   await screen.findByText("O touri vai reiniciar no modo local.")
   expect(invoke).toHaveBeenCalledWith("server_mode_local", {})
   expect(invoke).not.toHaveBeenCalledWith("sidecar_restart", {})
+})
+
+it("describes the viewing device consistently in the server access summary", async () => {
+  native()
+  vi.mocked(nativeInvoke).mockResolvedValue(server)
+
+  render(
+    <ServerModeProvider>
+      <BotAccessSummary machine="local" access="workspace-write" approvals="on-request" />
+    </ServerModeProvider>,
+  )
+
+  const summary = await screen.findByText(/trabalha no servidor escolhido; não pode acessar os arquivos deste aparelho/)
+
+  expect(summary).toBeVisible()
 })

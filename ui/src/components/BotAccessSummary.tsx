@@ -28,7 +28,7 @@ const getAccessBoundary = (
     return anyFolderAccess || folders.length
       ? t("só no computador isolado e nas pastas compartilhadas.")
       : t("só no computador isolado.")
-  if (serverMode) return t("trabalha no servidor escolhido; não pode acessar os arquivos deste computador.")
+  if (serverMode) return t("trabalha no servidor escolhido; não pode acessar os arquivos deste aparelho.")
 
   const hostLabel = getHostLabel(host)
   if (access === "read-only") return t("can read files on this {host} without changing them.", { host: hostLabel })

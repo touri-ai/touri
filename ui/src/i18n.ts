@@ -16,8 +16,8 @@ export const ptBR = {
     "Meu Chrome só funciona em bots no computador onde o touri está rodando. Uma máquina remota não pode acessar esse navegador. Escolha Chrome da máquina para um bot na máquina Linux.",
   "Login deste computador indisponível.": "Login deste computador indisponível.",
   "Login deste servidor indisponível.": "Login deste servidor indisponível.",
-  "trabalha no servidor escolhido; não pode acessar os arquivos deste computador.":
-    "trabalha no servidor escolhido; não pode acessar os arquivos deste computador.",
+  "trabalha no servidor escolhido; não pode acessar os arquivos deste aparelho.":
+    "trabalha no servidor escolhido; não pode acessar os arquivos deste aparelho.",
   "O runtime inteiro roda na nuvem, com sua chave API e sem depender deste computador.":
     "O runtime inteiro roda na nuvem, com sua chave API e sem depender deste computador.",
   "Runtime inteiro na nuvem · chave API própria · sem acesso ao computador local.":
@@ -39,6 +39,7 @@ export const ptBR = {
   "Pastas deste servidor não estão disponíveis na nuvem.": "Pastas deste servidor não estão disponíveis na nuvem.",
   "A configuração foi salva neste servidor. Vale a partir da próxima mensagem.":
     "A configuração foi salva neste servidor. Vale a partir da próxima mensagem.",
+  "Default login on this {host}": "Login padrão deste {host}",
   "Check this {host}": "Verificar este {host}",
   "Works on this {host}.": "Trabalha neste {host}.",
   "Runs while touri is running on this {host}.": "Funciona enquanto o touri estiver em execução neste {host}.",
@@ -237,8 +238,6 @@ export const ptBR = {
   "Um bot precisa da sua atenção.": "Um bot precisa da sua atenção.",
   "Esta opção está disponível apenas no aplicativo para computador.":
     "Esta opção está disponível apenas no aplicativo para computador.",
-  "trabalha no servidor escolhido; não pode acessar os arquivos deste Mac.":
-    "trabalha no servidor escolhido; não pode acessar os arquivos deste Mac.",
   Atividade: "Atividade",
   "Mostrar mais": "Mostrar mais",
   "Mostrar menos": "Mostrar menos",
@@ -941,7 +940,6 @@ export const ptBR = {
   "About the bot": "Sobre o bot",
   "No job yet": "Ainda sem função",
   "What it can access": "O que ele pode acessar",
-  "Works on this Mac.": "Trabalha neste Mac.",
   "Works on its own computer.": "Trabalha no próprio computador.",
   "Works on the cloud computer you connected.": "Trabalha no computador na nuvem que você conectou.",
   "Access only to allowed folders": "só nas pastas que você liberar",
@@ -1692,6 +1690,11 @@ export const ptBR = {
   "Search shortcut": "⌘K buscar",
   "Message bot": "Mensagem para {name}",
   "Routine skipped named": "Rotina adiada: {name}",
+  "Rotina “{name}” não executada: o touri não estava em execução no horário agendado.":
+    "Rotina “{name}” não executada: o touri não estava em execução no horário agendado.",
+  "Rotina “{name}” não executada: o atraso ultrapassou a janela de recuperação.":
+    "Rotina “{name}” não executada: o atraso ultrapassou a janela de recuperação.",
+  "Execução de recuperação": "Execução de recuperação",
   atribuído: "atribuído",
   "não atribuído": "não atribuído",
   "Caminho absoluto da pasta": "Caminho absoluto da pasta",
@@ -1879,7 +1882,6 @@ export const ptBR = {
   "Touri is unavailable until the local service reconnects.":
     "O serviço local parou ou não conseguiu iniciar. Reconecte para continuar usando o touri.",
   "The app will not replace your workspace with demo data.": "Seu espaço de trabalho será retomado após a conexão.",
-  "Check this Mac": "Verificar este Mac",
   "Process ready · preview opened": "Processo pronto · preview aberto",
   "Unknown connection error": "Erro de conexão desconhecido",
   "The sidecar connection is not available.": "A conexão com o serviço local está indisponível.",
@@ -2216,6 +2218,22 @@ export const ptBR = {
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  "Sign in to {provider} for this {host}: open this link on this device":
+    "Sign in to {provider} for {host}: open this link on this device",
+  "Preparing {provider} sign-in for this {host}…": "Preparing {provider} sign-in for {host}…",
+  "Default login on this {host}": "Default login on {host}",
+  "Check this {host}": "Check {host}",
+  "Works on this {host}.": "Works on {host}.",
+  "Runs while touri is running on this {host}.": "Runs while touri is running on {host}.",
+  "Your data stays on this {host}. External connections are optional.":
+    "Your data stays on {host}. External connections are optional.",
+  "A login is available on this {host}.": "A login is available on {host}.",
+  "Use this {host}'s login": "Use {host}'s login",
+  "can read files on this {host} without changing them.": "can read files on {host} without changing them.",
+  "can access files across this {host}; sensitive folder exclusions still apply.":
+    "can access files across {host}; sensitive folder exclusions still apply.",
+  "Any folder on this {host}": "Any folder on {host}",
+  "Access to any folder on this {host}": "Access to any folder on {host}",
   "Meu Chrome só funciona em bots no computador onde o touri está rodando. Uma máquina remota não pode acessar esse navegador.":
     "My Chrome is available only for bots on the computer running touri. A remote machine cannot reach that browser.",
   "OpenCode está disponível no computador local e na máquina Linux. O runtime da nuvem ainda não oferece este provedor.":
@@ -2226,8 +2244,8 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
     "My Chrome is available only for bots on the computer running touri. A remote machine cannot reach that browser. Choose Machine Chrome for a bot on the Linux machine.",
   "Login deste computador indisponível.": "Login on this computer is unavailable.",
   "Login deste servidor indisponível.": "Login on this server is unavailable.",
-  "trabalha no servidor escolhido; não pode acessar os arquivos deste computador.":
-    "works on the selected server; cannot access this computer’s files.",
+  "trabalha no servidor escolhido; não pode acessar os arquivos deste aparelho.":
+    "works on the selected server; cannot access this device’s files.",
   "O runtime inteiro roda na nuvem, com sua chave API e sem depender deste computador.":
     "The entire runtime runs in the cloud, with your API key and without depending on this computer.",
   "Runtime inteiro na nuvem · chave API própria · sem acesso ao computador local.":
@@ -2250,6 +2268,11 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
     "The configuration was saved on this server. Takes effect from the next message.",
   "Este bot poderá ler arquivos pessoais de todo o computador e, conforme o nível de acesso, alterá-los ou apagá-los. Na VM, sua pasta pessoal será montada em /host/home. Conceda este acesso apenas a bots em que confia.":
     "This bot can read personal files across the computer and, depending on its access level, change or delete them. In a VM, your home folder is mounted at /host/home. Grant this access only to bots you trust.",
+  "Rotina “{name}” não executada: o touri não estava em execução no horário agendado.":
+    "Routine “{name}” did not run: touri was not running at the scheduled time.",
+  "Rotina “{name}” não executada: o atraso ultrapassou a janela de recuperação.":
+    "Routine “{name}” did not run: the delay exceeded the catch-up window.",
+  "Execução de recuperação": "Catch-up run",
   "Salve o token do bot do Telegram.": "Save the Telegram bot token.",
   "Token inválido ou revogado.": "Invalid or revoked token.",
   "Não foi possível conectar ao Telegram. Confira sua conexão e tente novamente.":
@@ -2418,8 +2441,6 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Um bot precisa da sua atenção.": "A bot needs your attention.",
   "Esta opção está disponível apenas no aplicativo para computador.":
     "This option is available only in the desktop app.",
-  "trabalha no servidor escolhido; não pode acessar os arquivos deste Mac.":
-    "works on the selected server; cannot access this Mac’s files.",
   Atividade: "Activity",
   "Mostrar mais": "Show more",
   "Mostrar menos": "Show less",
@@ -2869,10 +2890,10 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   // First conversation and host transparency.
   "onboarding.server": "server",
   "onboarding.privacy":
-    "History stays on this {host}. Your AI receives the content needed to respond. touri collects no telemetry.",
-  "onboarding.uses": "Uses {provider}, signed in on this {host}.",
-  "onboarding.checking": "Checking installation and login on this {host}…",
-  "onboarding.missing": "{provider} is not installed on this {host} yet.",
+    "History stays on {host}. Your AI receives the content needed to respond. touri collects no telemetry.",
+  "onboarding.uses": "Uses {provider}, signed in on {host}.",
+  "onboarding.checking": "Checking installation and login on {host}…",
+  "onboarding.missing": "{provider} is not installed on {host} yet.",
   "onboarding.install": "See how to install",
   "onboarding.installLinkError": "Could not open the browser. Copy the link address to see how to install.",
   "onboarding.recheck": "Check again",
@@ -3147,7 +3168,6 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "About the bot": "About the bot",
   "No job yet": "No job yet",
   "What it can access": "What it can access",
-  "Works on this Mac.": "Works on this Mac.",
   "Works on its own computer.": "Works on its own computer.",
   "Works on the cloud computer you connected.": "Works on the cloud computer you connected.",
   "Access only to allowed folders": "only in folders you allow",
@@ -3847,7 +3867,11 @@ export const t = (
   return template.replace(/\{(\w+)\}/g, (_, name: string) => String(values[name] ?? `{${name}}`))
 }
 
-export const getHostLabel = (host: HostKind, locale: Locale = "pt-BR"): string => getHostNoun(host, locale)
+export const getHostLabel = (host: HostKind, locale: Locale = "pt-BR"): string => {
+  const noun = getHostNoun(host, locale)
+
+  return locale === "en" ? `this ${noun}` : noun
+}
 
 /** Localize auto-generated imported date titles; preserve arbitrary user titles. */
 export const threadTitle = (title: string, createdAt: number): string => {
@@ -3872,6 +3896,8 @@ export const statusLabel = (status: string): string => {
 
 /** Translate only application-authored notices, leaving bot/user content intact. */
 export const localizeNotice = (value: string): string => {
+  const routineSkip = getRoutineSkipSummary(value)
+  if (routineSkip) return routineSkip
   const toolCheck = /^Ferramentas do touri · (.+)$/.exec(value)
   if (toolCheck) return t("Ferramentas do touri · {name}", { name: toolCheck[1] ?? "" })
   const browserSession = /^Navegador · (.+) · sessão salva$/.exec(value)
@@ -3909,6 +3935,26 @@ export const localizeNotice = (value: string): string => {
   }
   const skipped = value.match(/^Routine skipped: (.+)$/)
   return skipped ? t("Routine skipped named", { name: skipped[1] ?? "" }) : value
+}
+
+export const getRoutineSkipSummary = (value: string, locale: Locale = "pt-BR"): string | undefined => {
+  const offline = /^Rotina “(.+)” não executada: o touri não estava em execução no horário agendado\.$/s.exec(value)
+  if (offline)
+    return t(
+      "Rotina “{name}” não executada: o touri não estava em execução no horário agendado.",
+      { name: offline[1] ?? "" },
+      locale,
+    )
+
+  const late = /^Rotina “(.+)” não executada: o atraso ultrapassou a janela de recuperação\.$/s.exec(value)
+  if (late)
+    return t(
+      "Rotina “{name}” não executada: o atraso ultrapassou a janela de recuperação.",
+      { name: late[1] ?? "" },
+      locale,
+    )
+
+  return undefined
 }
 
 export const machineStatusLabel = (status: string, pauseReason?: string | null): string =>

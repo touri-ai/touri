@@ -40,6 +40,29 @@ const fixture = (state: ProviderLoginFlow["state"] = "idle") => {
   }
 }
 
+it.each(["ready", "idle", "host-available", "cancelled", "error", "vault-locked"] as const)(
+  "%s login does not poll at rest and refreshes when focus returns",
+  async (state) => {
+    vi.useFakeTimers()
+    const f = fixture(state)
+    const provider = f.api.getState().bots[0]?.provider
+    if (!provider) throw new Error("Missing provider fixture")
+    const hook = renderHook(() => useProviderLogin(f.api, "bot", provider, true, false))
+    await act(async () => {})
+    const reads = () => f.request.mock.calls.filter(([route]) => route === "GET /bots/:id/provider-login/flow").length
+    expect(reads()).toBe(1)
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000)
+    })
+    expect(reads()).toBe(1)
+    await act(async () => {
+      fireEvent.focus(window)
+    })
+    expect(reads()).toBe(2)
+    hook.unmount()
+  },
+)
+
 it("starts OAuth automatically, polls the device code and cancels without restarting", async () => {
   const f = fixture()
   render(<ProviderLogin api={f.api} botId="bot" provider="codex" onConfigured={vi.fn()} />)

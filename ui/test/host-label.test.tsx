@@ -4,6 +4,7 @@ import { afterEach, expect, it, vi } from "vitest"
 import type { ApiRequest, UiApi } from "../src/api/client"
 import { createMockApi } from "../src/api/mock"
 import { BotDetails } from "../src/components/BotDetails"
+import { ProviderProfileFields } from "../src/components/ProviderProfileFields"
 import { routineHostNotice } from "../src/components/RoutineEditor"
 import { getHostLabel, t } from "../src/i18n"
 import { useHost } from "../src/useHost"
@@ -67,6 +68,42 @@ it("translates computer labels and routine availability in both languages", () =
   expect(portuguese).toBe("Trabalha neste computador.")
   expect(english).toBe("Works on this computer.")
   expect(routine).toBe("Funciona enquanto o touri estiver em execução neste computador.")
+})
+
+it.each([
+  { host: "server", portuguese: "servidor", english: "this server" },
+  { host: "computer", portuguese: "computador", english: "this computer" },
+  { host: "mac", portuguese: "Mac", english: "this Mac" },
+] as const)("localizes the $host label and its sentences", ({ host, portuguese, english }) => {
+  const portugueseLabel = getHostLabel(host)
+  const englishLabel = getHostLabel(host, "en")
+
+  expect(portugueseLabel).toBe(portuguese)
+  expect(englishLabel).toBe(english)
+  expect(t("Works on this {host}.", { host: englishLabel }, "en")).toBe(`Works on ${english}.`)
+  expect(t("Check this {host}", { host: englishLabel }, "en")).toBe(`Check ${english}`)
+  expect(t("Default login on this {host}", { host: englishLabel }, "en")).toBe(`Default login on ${english}`)
+  expect(t("Default login on this {host}", { host: portugueseLabel })).toBe(`Login padrão deste ${portuguese}`)
+})
+
+it.each([
+  { host: "server", noun: "servidor" },
+  { host: "computer", noun: "computador" },
+  { host: "mac", noun: "Mac" },
+] as const)("uses the $host host for the default provider profile", async ({ host, noun }) => {
+  const api = getHostApi(host)
+  setMacBrowser()
+
+  render(
+    <ProviderProfileFields
+      api={api}
+      provider="codex"
+      values={{ providerProfile: null, claudeAiConnectors: false }}
+      onChange={vi.fn()}
+    />,
+  )
+
+  expect(await screen.findByRole("option", { name: `Login padrão deste ${noun}` })).toBeVisible()
 })
 
 const getHostApi = (host: HostKind): UiApi => {

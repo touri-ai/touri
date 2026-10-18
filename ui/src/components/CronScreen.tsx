@@ -3,7 +3,7 @@ import { AVATAR_COLOR_CHOICES, avatarColorFor } from "@touri/contracts/avatar"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { type ApprovalTarget, pendingApprovalTargets } from "../approvalNavigation"
 import { userFacingError } from "../errors"
-import { t } from "../i18n"
+import { getRoutineSkipSummary, t } from "../i18n"
 import { draftFromRoutine, newRoutineDraft } from "../routineDraft"
 import type { WorkspaceActions } from "../useWorkspace"
 import { BotAvatar } from "./BotAvatar"
@@ -334,9 +334,12 @@ const CronScreen = ({
                         {new Date(run.scheduledFor).toLocaleString("pt-BR", { timeZone: routine?.timezone ?? "UTC" })} ·{" "}
                         {routine?.timezone} · {t(run.status)}
                         {run.status === "skipped" && (
-                          <p>{t("Disparo não executado: touri indisponível ou execução anterior em andamento.")}</p>
+                          <p>
+                            {getRoutineSkipSummary(run.summary ?? "") ??
+                              t("Disparo não executado: touri indisponível ou execução anterior em andamento.")}
+                          </p>
                         )}
-                        {run.triggerSource === "catch-up" && <p>{t("Recuperação após indisponibilidade")}</p>}
+                        {run.triggerSource === "catch-up" && <p>{t("Execução de recuperação")}</p>}
                       </li>
                     )
                   })}

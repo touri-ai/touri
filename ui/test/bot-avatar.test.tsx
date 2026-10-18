@@ -69,6 +69,27 @@ afterEach(() => {
 })
 
 describe("procedural avatars", () => {
+  it("reuses every SVG mask and path across a thousand animation frames", () => {
+    let tick: FrameRequestCallback = () => undefined
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      tick = callback
+      return 1
+    })
+    vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => undefined)
+    vi.spyOn(document, "hidden", "get").mockReturnValue(false)
+    const { container } = render(<BotAvatar bot={bot} mood="working" />)
+    const svg = container.querySelector("svg")
+    if (!svg) throw new Error("Missing avatar SVG")
+    const original = [...svg.querySelectorAll("*")]
+    const initialPath = svg.querySelector("mask > path")?.getAttribute("d")
+    for (let frame = 1; frame <= 1000; frame++) act(() => tick(frame * 35))
+    const next = [...svg.querySelectorAll("*")]
+    expect(next).toHaveLength(original.length)
+    next.forEach((node, index) => {
+      expect(node).toBe(original[index])
+    })
+    expect(svg.querySelector("mask > path")?.getAttribute("d")).not.toBe(initialPath)
+  })
   it("derives stable and varied profiles from seeds, independent of bot names and ids", () => {
     const profile = avatarProfileFor({ id: "one", color: null, avatarSeed: "fixed" })
     expect(profile).toEqual(avatarProfileFor({ id: "two", color: null, avatarSeed: "fixed" }))
