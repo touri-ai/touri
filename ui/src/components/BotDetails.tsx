@@ -2,6 +2,7 @@ import type { Bot } from "@touri/contracts"
 import type { ReactNode } from "react"
 import { t } from "../i18n"
 import { BotAccessSummary } from "./BotAccessSummary"
+import { getBotModelName, getBotProviderName } from "./ProviderMark"
 
 export const BotDetails = ({
   bot,
@@ -16,7 +17,7 @@ export const BotDetails = ({
   onPermissions: () => void
   children: ReactNode
 }) => {
-  const provider = bot.provider === "claude" ? "Claude Code" : bot.provider === "opencode" ? "OpenCode" : "Codex"
+  const provider = getBotProviderName(bot)
   return (
     <>
       <section className="bot-details-section" aria-labelledby={`bot-profile-${bot.id}`}>
@@ -42,7 +43,7 @@ export const BotDetails = ({
       <section className="bot-details-section bot-details-advanced" aria-labelledby={`bot-advanced-${bot.id}`}>
         <h3 id={`bot-advanced-${bot.id}`}>{t("Bot advanced")}</h3>
         <button type="button" className="text-button bot-model-line" onClick={onModel ?? onSettings}>
-          {t("Bot model sentence", { provider, model: bot.model || t("Padrão do provedor") })}
+          {t("Bot model sentence", { provider, model: getBotModelName(bot) })}
         </button>
         <div className="bot-quick-actions">
           <button className="button button-quiet" type="button" onClick={onPermissions}>

@@ -420,7 +420,8 @@ describe("r2 regressions", () => {
         onOpenTools={() => undefined}
       />,
     )
-    expect(screen.getByText("A rotina terminou e deixou o resultado nesta conversa.")).toBeVisible()
+    expect(document.querySelector(".routine-run-marker")).toHaveTextContent("Concluído")
+    expect(screen.queryByText("A rotina terminou e deixou o resultado nesta conversa.")).toBeNull()
   })
 
   it("P10: defaults to Portuguese, keeps English, and shows notification status once", async () => {

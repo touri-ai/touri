@@ -22,8 +22,9 @@ import type {
   ThreadKind,
   ThreadUsage,
 } from "@touri/contracts"
-import { normalizeBotName } from "@touri/contracts"
+import { apiModelErrors, normalizeBotName } from "@touri/contracts"
 import { validAvatarColor, validAvatarShape } from "@touri/contracts/avatar"
+import { getApiModel } from "../api-models/config"
 import { installDoctor } from "../doctor"
 import { parseBotFolders, protectedFolder } from "../kernel/bot-folders"
 import { DEFAULT_DATA_RETENTION_DAYS, validDataRetentionDays } from "../kernel/data-maintenance"
@@ -826,6 +827,8 @@ export const init = async (kernel: Kernel): Promise<void> => {
     else if (existing) input.instructions = existing.instructions
     if (Object.hasOwn(body, "model")) input.model = body.model === null ? null : asString(body.model, "")
     else if (existing) input.model = existing.model
+    if (input.model?.startsWith("touri-api-") && (provider !== "opencode" || !getApiModel(kernel, input.model)))
+      return { input: null, errorCode: "api_model_removed", error: apiModelErrors.removed }
     if (Object.hasOwn(body, "reasoningEffort")) input.reasoningEffort = asReasoningEffort(body.reasoningEffort)
     else if (existing) input.reasoningEffort = existing.reasoningEffort
     if (Object.hasOwn(body, "access")) input.access = body.access as Bot["access"]
