@@ -34,10 +34,11 @@ const machine: MachineState = {
   createdMs: now,
   startMs: now,
 }
-for (const bot of state.bots) {
-  bot.roleLine = bot.name === "mark" ? "Planejamento e conteúdo" : "Operações"
-  bot.title = null
-}
+await Promise.all(
+  state.bots.map((bot) =>
+    api.request("PATCH /bots/:id", { roleLine: bot.roleLine ?? "Operações", title: null }, { id: bot.id }),
+  ),
+)
 for (const thread of state.threads)
   thread.title = thread.botId === "bot-mark" ? "Revisão do projeto" : "Conversa principal"
 const thread = state.threads.find((item) => item.id === "thread-mark")

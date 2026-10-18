@@ -103,6 +103,10 @@ for (const width of [1440, 1100]) {
       await page.getByRole("button", { name: "Voltar ao chat" }).click()
       await showBotAdvanced(page)
       const dialog = page.getByRole("dialog")
+
+      await expect(dialog.getByRole("textbox", { name: "O que ele faz", exact: true })).toHaveValue(
+        "Pesquisa e planejamento",
+      )
       await shot("bot-settings")
       await dialog.getByRole("button", { name: "Avançado", exact: true }).click()
       for (const [tab, view] of [
