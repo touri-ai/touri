@@ -297,9 +297,8 @@ test.skipIf(!available)("noncanonical saved grants and a root workspace cannot w
   expect(() => linuxFolderSandbox(f.kernel, f.args, f.args.env, f.home)).toThrow()
 })
 
-test.skipIf(!available)("a provider with no extra grants cannot read ungranted host files", async () => {
+test.skipIf(!available)("a provider with explicit folder grants cannot read ungranted host files", async () => {
   const f = fixture()
-  f.args.bot.folders = []
   rmSync(join(f.args.env.CODEX_HOME ?? "", "auth.json"))
   f.kernel.spawnTree = spawnTree
   const child = spawnFolderProvider(f.kernel, f.args, {
