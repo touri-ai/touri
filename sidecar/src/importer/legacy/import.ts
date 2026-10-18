@@ -1242,7 +1242,11 @@ const upsertMessages = ({
           message.source.at,
           message.source.at,
         )
-      refreshMessageSearch(database, { threadId: plan.id, id: message.source.id, text: message.text })
+      refreshMessageSearch(
+        database,
+        { threadId: plan.id, id: message.source.id, text: message.text },
+        { indexEmpty: false },
+      )
       recordImport({
         database,
         kind: "message",

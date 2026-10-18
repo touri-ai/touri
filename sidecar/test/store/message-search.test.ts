@@ -22,7 +22,7 @@ test("search updates seek indexed rowids and preserve other messages", () => {
   refreshMessageSearch(database, { threadId: "thread", id: "second", text: "vizinho" })
   const explain = database.prepare(`EXPLAIN QUERY PLAN ${DELETE_MESSAGE_SEARCH_SQL}`)
   const plan = (
-    explain.all("thread", "first") as Array<{
+    explain.all("thread", "first", "thread", "first") as Array<{
       detail: string
     }>
   )
@@ -86,6 +86,22 @@ test("message deletion removes its search row and locator in the same transactio
   expect(fixture.getHits("primeiro")).toEqual([])
   expect(fixture.getHits("segundo")).toEqual(["second"])
   expect(database.query("SELECT message_id FROM message_search_rows").all()).toEqual([{ message_id: "second" }])
+})
+
+test.each(["refresh", "delete"])("a stale locator cannot remove another message's search row during %s", (action) => {
+  const fixture = getFixture()
+  fixtures.add(fixture)
+  const { database } = fixture
+  refreshMessageSearch(database, { threadId: "thread", id: "first", text: "primeiro" })
+  refreshMessageSearch(database, { threadId: "thread", id: "second", text: "segundo" })
+  database.exec(`UPDATE message_search_rows SET fts_rowid = (
+    SELECT fts_rowid FROM message_search_rows WHERE message_id = 'second'
+  ) WHERE message_id = 'first'`)
+
+  if (action === "refresh") refreshMessageSearch(database, { threadId: "thread", id: "first", text: "novo" })
+  if (action === "delete") database.query("DELETE FROM messages WHERE id = 'first'").run()
+
+  expect(fixture.getHits("segundo")).toEqual(["second"])
 })
 
 const getFixture = () => {

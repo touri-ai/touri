@@ -346,7 +346,10 @@ export const createRuntimeEngine = ({
     // Accepted streaming work survives even if the final transaction rolls back.
     kernel.services.use("store.api")?.flushWrites?.()
     const write = (): void => {
-      if (isLive(run)) finish()
+      if (!isLive(run)) return
+
+      finish()
+      tools.clearPending(run.id)
     }
     // The terminal reply, run and tool resolutions have one winning writer.
     if (kernel.db instanceof Database) kernel.db.transaction(write)()
@@ -867,6 +870,11 @@ export const createRuntimeEngine = ({
         errorMessage: "Conversation store unavailable",
         finishedAt: Date.now(),
       })
+      return
+    }
+    await tools.reconcilePending(store, run.threadId)
+    if (!isLive(run)) {
+      active.delete(run.threadId)
       return
     }
     const thread = store.getThread({ threadId: run.threadId })

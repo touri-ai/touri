@@ -4,15 +4,15 @@ import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { createKernel } from "../../src/kernel"
+import { createRuntimeEngine } from "../../src/runtime/engine"
 import { summarizeToolResolutions } from "../../src/runtime/tool-resolution-summary"
+import { createToolResolutions, PENDING_TOOL_RECOVERY_SQL } from "../../src/runtime/tool-resolutions"
 import { init as initStore } from "../../src/store"
 
 const fixtures = new Set<Awaited<ReturnType<typeof getFixture>>>()
 
-afterEach(() => {
-  fixtures.forEach((fixture) => {
-    fixture.close()
-  })
+afterEach(async () => {
+  for (const fixture of fixtures) await fixture.close()
   fixtures.clear()
 })
 
@@ -96,6 +96,95 @@ test("reconciliation selects the latest thirty tools on the requested branch wit
   expect(summary?.match(/fixture_tool/g)).toHaveLength(30)
 })
 
+test("late imported results enter an indexed recovery queue and remain pending after a failed repair", async () => {
+  const fixture = await getFixture()
+  fixtures.add(fixture)
+  const { database, store, kernel } = fixture
+  const tools = createToolResolutions(kernel)
+  tools.reconcile(store)
+  const explain = database.prepare(`EXPLAIN QUERY PLAN ${PENDING_TOOL_RECOVERY_SQL} AND p.thread_id = ?`)
+  const plan = (explain.all("thread") as Array<{ detail: string }>).map((row) => row.detail).join("\n")
+  explain.finalize()
+  database
+    .query(`INSERT INTO tool_resolutions(run_id,call_id,thread_id,part_json,resolution)
+    VALUES ('run-a','late-result','thread',?,'succeeded')`)
+    .run(
+      JSON.stringify({
+        type: "tool_call",
+        callId: "late-result",
+        tool: "fixture_tool",
+        summary: "Resultado importado",
+        inputJson: "{}",
+        outputJson: "resultado preservado",
+        ok: true,
+      }),
+    )
+  database.exec(`CREATE TEMP TRIGGER reject_recovery BEFORE UPDATE OF parts_json ON messages
+    WHEN NEW.id = 'reply-a' BEGIN SELECT RAISE(ABORT, 'retry recovery'); END`)
+
+  await expect(tools.reconcilePending(store, "thread")).rejects.toThrow("retry recovery")
+
+  expect(plan).toContain("tool_recovery_thread")
+  expect(database.query("SELECT run_id FROM tool_recovery_pending").all()).toEqual([{ run_id: "run-a" }])
+  expect(database.query("SELECT resolution FROM tool_resolutions WHERE call_id = 'late-result'").get()).toEqual({
+    resolution: "succeeded",
+  })
+
+  database.exec("DROP TRIGGER reject_recovery")
+  await tools.reconcilePending(store, "thread")
+  const changes = database.query("SELECT total_changes() AS n").get()
+  await tools.reconcilePending(store, "thread")
+
+  expect(database.query("SELECT total_changes() AS n").get()).toEqual(changes)
+  expect(database.query("SELECT run_id FROM tool_recovery_pending").all()).toEqual([])
+  expect(store.getPathMessage?.({ threadId: "thread", messageId: "reply-a" })?.parts).toContainEqual(
+    expect.objectContaining({
+      callId: "late-result",
+      outputJson: "resultado preservado",
+      resolution: "completed_unobserved",
+    }),
+  )
+})
+
+test("normal terminal transitions consume their recovery marker atomically", async () => {
+  const fixture = await getFixture()
+  fixtures.add(fixture)
+  const { database, store, kernel } = fixture
+  const engine = createRuntimeEngine({
+    kernel,
+    environment: { PATH: "/usr/bin", HOME: kernel.paths.appData },
+    providerAdapters: {
+      codex: {
+        provider: "codex",
+        detect: async () => ({ success: true, path: "/tmp/fixture-provider", version: "1", loggedIn: true }),
+        startTurn: async (args) => {
+          args.onEvent({ type: "turn_started", externalTurnId: "fixture-turn" })
+          args.onEvent({ type: "text_delta", itemId: "reply", delta: "Concluído." })
+          return { success: true, externalSessionId: "fixture-session", rolloutPath: null, status: "succeeded" }
+        },
+        answerApproval: async () => ({ success: true }),
+        shutdown: async () => {},
+      },
+    },
+  })
+  fixture.restore.add(() => engine.shutdown())
+
+  const queued = engine.enqueue({ threadId: "thread", requestMessageId: "request-a", trigger: "user" })
+  if (!queued.success) throw new Error(queued.error)
+  await getReady(() => engine.listRuns("thread").find((run) => run.id === queued.run.id)?.status === "succeeded")
+
+  expect(database.query("SELECT run_id FROM tool_recovery_pending").all()).toEqual([])
+  expect(store.activePath({ threadId: "thread" }).at(-1)?.text).toBe("Concluído.")
+})
+
+const getReady = async (ready: () => boolean): Promise<void> => {
+  const deadline = performance.now() + 10_000
+  while (!ready()) {
+    if (performance.now() > deadline) throw new Error("Fixture turn did not finish")
+    await Bun.sleep(2)
+  }
+}
+
 const getPathSpy = (store: Awaited<ReturnType<typeof getFixture>>["store"]) => {
   const path = spyOn(store, "activePath")
   return { getCalls: () => path.mock.calls.length, restore: () => path.mockRestore() }
@@ -116,9 +205,10 @@ const getFixture = async () => {
   runtime.kernel.services.use("storage.maintenance")?.dispose()
   await initStore(runtime.kernel)
   const database = runtime.kernel.db as Database
-  database.exec(`INSERT INTO bots(id,name,provider,home_dir,created_at,updated_at)
-    VALUES ('bot','Teste','codex','/tmp/fixture',1,1);
-    INSERT INTO threads(id,bot_id,title,created_at,updated_at) VALUES ('thread','bot','Conversa',1,1);
+  database
+    .query("INSERT INTO bots(id,name,provider,home_dir,created_at,updated_at) VALUES ('bot','Teste','codex',?,1,1)")
+    .run(join(root, "bot"))
+  database.exec(`INSERT INTO threads(id,bot_id,title,created_at,updated_at) VALUES ('thread','bot','Conversa',1,1);
     INSERT INTO runs(id,thread_id,bot_id,provider,trigger,status,request_message_id,queued_at) VALUES
       ('run-a','thread','bot','codex','user','succeeded','request-a',1),
       ('run-b','thread','bot','codex','user','succeeded','request-b',2);
@@ -131,16 +221,15 @@ const getFixture = async () => {
     UPDATE threads SET active_leaf_id = 'reply-a' WHERE id = 'thread';`)
   const store = runtime.kernel.services.use("store.api")
   if (!store) throw new Error("Missing store")
-  const restore = new Set<() => void>()
+  const restore = new Set<() => void | Promise<void>>()
 
   return {
     database,
     store,
+    kernel: runtime.kernel,
     restore,
-    close: () => {
-      restore.forEach((callback) => {
-        callback()
-      })
+    close: async () => {
+      for (const callback of restore) await callback()
       runtime.stop()
       rmSync(root, { recursive: true, force: true })
     },

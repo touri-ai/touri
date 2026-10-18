@@ -186,7 +186,7 @@ export const openDatabase = ({ filename }: { filename: string }): Database => {
   })()
   database.transaction(() => database.exec(goalsSql))()
   database.transaction(() => {
-    if (!database.query("SELECT 1 FROM schema_meta WHERE key = 'message_search_rows_version'").get())
+    if (!database.query("SELECT 1 FROM schema_meta WHERE key = 'message_search_rows_version' AND value = '2'").get())
       database.exec(messageSearchSql)
     database.exec("UPDATE schema_meta SET value = '26' WHERE key = 'schema_version'")
   })()
