@@ -164,29 +164,37 @@ export const backfillHistoryBatch = (database: Database, limit = 500): Progress 
     // A deleted legacy thread/message cannot leave the worker permanently pending.
     if (processed === messages.length && messages.length < limit) progress.done = progress.total
     if (progress.done === progress.total) {
+      const retentionLimit = Math.min(limit, 50)
       const historical = database
-        .query(`SELECT id,seq,event_json FROM transcript_entries
+        .query(`SELECT id,seq FROM transcript_entries
         WHERE thread_id=? AND seq>? AND seq<=? ORDER BY seq LIMIT ?`)
-        .all(progress.threadId, progress.retentionCursor ?? 0, retainAfter, limit) as Array<{
+        .all(progress.threadId, progress.retentionCursor ?? 0, retainAfter, retentionLimit) as Array<{
         id: number
         seq: number
-        event_json: string
       }>
-      historical
-        .filter((entry) => (JSON.parse(entry.event_json) as { legacy?: boolean }).legacy)
-        .forEach((entry) => {
-          database.query("UPDATE transcript_maintenance SET delete_before_id=? WHERE id=1").run(entry.id)
-          database.query("DELETE FROM transcript_entries WHERE id=?").run(entry.id)
-          database
-            .query(`INSERT INTO transcript_retention(thread_id,through_seq) VALUES (?,?)
+      const started = performance.now()
+      let visited = 0
+      for (const entry of historical) {
+        if (visited && performance.now() - started >= 8) break
+
+        const legacy = database
+          .query("SELECT json_extract(event_json,'$.legacy') AS legacy FROM transcript_entries WHERE id=?")
+          .get(entry.id) as { legacy: number | null }
+        progress.retentionCursor = entry.seq
+        visited += 1
+        if (!legacy.legacy) continue
+
+        database.query("UPDATE transcript_maintenance SET delete_before_id=? WHERE id=1").run(entry.id)
+        database.query("DELETE FROM transcript_entries WHERE id=?").run(entry.id)
+        database
+          .query(`INSERT INTO transcript_retention(thread_id,through_seq) VALUES (?,?)
           ON CONFLICT(thread_id) DO UPDATE SET through_seq=MAX(through_seq,excluded.through_seq)`)
-            .run(progress.threadId, entry.seq)
-        })
+          .run(progress.threadId, entry.seq)
+      }
       database.exec("UPDATE transcript_maintenance SET delete_before_id=0 WHERE id=1")
-      const retainedThrough = historical.at(-1)?.seq
-      if (retainedThrough !== undefined) progress.retentionCursor = retainedThrough
       // Keep the durable marker pending until the bounded cleanup traversal ends.
-      if (historical.length === limit) progress.done = Math.max(0, progress.total - 1)
+      if (visited < historical.length || historical.length === retentionLimit)
+        progress.done = Math.max(0, progress.total - 1)
     }
     database
       .query("UPDATE settings SET value_json = ?, updated_at = ? WHERE key = ?")

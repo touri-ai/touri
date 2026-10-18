@@ -63,14 +63,27 @@ export const materializeTranscriptBatch = (database: Database, threadId?: string
     // Bound rows BEFORE JSON extraction/filtering or ordering. A LIMIT after
     // sorting both entire per-message streams would still read their full history.
     const rows = database
-      .query(`SELECT id AS entry_id,seq AS delta_seq,at,event_json,? AS id,thread_id
+      .query(`SELECT id AS entry_id,seq AS delta_seq,at,? AS id,thread_id
       FROM transcript_entries WHERE thread_id=? AND seq>? AND seq<=? ORDER BY seq LIMIT 128`)
-      .all(target.messageId, target.threadId, cursor, head) as ProjectionEntry[]
-    const next = rows.at(-1)?.delta_seq ?? head
-    const relevant = rows.filter((row) => {
-      const event = JSON.parse(row.event_json) as { type: string; messageId?: string }
-      return event.messageId === target.messageId && (event.type === "message.delta" || event.type === "message.parts")
-    })
+      .all(target.messageId, target.threadId, cursor, head) as Array<Omit<ProjectionEntry, "event_json">>
+    // Local replay/cursor accumulators avoid materializing a window of legacy
+    // full snapshots; one large historical body is fetched and released at a time.
+    const relevant: ProjectionEntry[] = []
+    const started = performance.now()
+    let next = rows.length ? cursor : head
+    for (const row of rows) {
+      if (next !== cursor && performance.now() - started >= 8) break
+
+      const body = database.query("SELECT event_json FROM transcript_entries WHERE id=?").get(row.entry_id) as {
+        event_json: string
+      }
+      const event = JSON.parse(body.event_json) as { type: string; messageId?: string }
+      next = row.delta_seq
+      if (event.messageId !== target.messageId || (event.type !== "message.delta" && event.type !== "message.parts"))
+        continue
+
+      relevant.push({ ...row, event_json: body.event_json })
+    }
     applyTranscriptEntries(database, relevant, target, next >= head)
     database
       .query(`INSERT INTO transcript_recovery_scan(thread_id,message_id,cursor) VALUES (?,?,?)
@@ -331,7 +344,10 @@ export const compactTranscript = ({
     )
     if (pendingThread) {
       materializeTranscriptBatch(database, pendingThread[0])
-      return true
+      const needsAnotherCheckpoint = Array.from(cutoffs).some(([threadId, cutoff]) =>
+        hasPendingRetentionProjection(database, threadId, cutoff),
+      )
+      if (needsAnotherCheckpoint) return true
     }
     let removed = 0
     let more = false

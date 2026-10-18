@@ -1542,18 +1542,26 @@ export const cleanupExpiredLegacyStaging = async ({
   if (!Number.isSafeInteger(cursor) || cursor < 0) cursor = 0
   const rows = measure(() =>
     database
-      .query("SELECT rowid AS cursor,id,status,report_json FROM imports WHERE rowid > ? ORDER BY rowid LIMIT ?")
+      .query("SELECT rowid AS cursor,id,status FROM imports WHERE rowid > ? ORDER BY rowid LIMIT ?")
       .all(cursor, maxEntries),
-  ) as Array<{ cursor: number; id: string; status: string; report_json: string | null }>
+  ) as Array<{ cursor: number; id: string; status: string }>
   let removed = 0
   for (const row of rows) {
     await Bun.sleep(0)
     cursor = row.cursor
-    if (row.status !== "failed" || !row.report_json) continue
+    if (row.status !== "failed") continue
+
+    const storedReport = measure(() =>
+      database.query("SELECT report_json FROM imports WHERE id=? AND status='failed'").get(row.id),
+    ) as { report_json: string | null } | null
+    if (!storedReport?.report_json) continue
 
     let report: StoredImportReport
     try {
-      report = JSON.parse(row.report_json) as StoredImportReport
+      const parsed: unknown = measure(() => JSON.parse(storedReport.report_json ?? "null"))
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) continue
+
+      report = parsed as StoredImportReport
     } catch {
       continue
     }
@@ -1579,7 +1587,7 @@ export const cleanupExpiredLegacyStaging = async ({
     measure(() =>
       database
         .query("UPDATE imports SET report_json = ? WHERE id = ? AND status='failed' AND report_json=?")
-        .run(JSON.stringify(retained), row.id, row.report_json),
+        .run(JSON.stringify(retained), row.id, storedReport.report_json),
     )
     removed += 1
   }

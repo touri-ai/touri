@@ -812,3 +812,27 @@ test("absolute attachment paths under <root>/attachments are accepted by basenam
     expect(database.query("SELECT count(*) AS count FROM attachments").get()).toEqual({ count: 1 })
   })
 })
+
+test("expiry advances bounded rowid windows past malformed and non-object reports", async () => {
+  await withImport(async ({ database, kernel }) => {
+    const insert = database.query(`INSERT INTO imports(id,source,origin,status,report_json,started_at)
+      VALUES (?,'legacy','fixture','failed',?,1)`)
+    const invalidReports = ["null", "[]", '"text"', "{}", "{"]
+    invalidReports.forEach((report, index) => {
+      insert.run(`invalid-${index}`, report)
+    })
+    const path = join(kernel.paths.importsDir, "legacy", "expired-valid")
+    mkdirSync(path, { recursive: true })
+    insert.run("expired-valid", JSON.stringify({ staging: { path, expiresAt: 1 } }))
+
+    const first = await cleanupExpiredLegacyStaging({ kernel, now: 2, maxEntries: 2 })
+    const second = await cleanupExpiredLegacyStaging({ kernel, now: 2, maxEntries: 2 })
+    const third = await cleanupExpiredLegacyStaging({ kernel, now: 2, maxEntries: 2 })
+
+    expect([first, second, third]).toEqual([0, 0, 1])
+    expect(existsSync(path)).toBe(false)
+    expect(database.query("SELECT report_json FROM imports WHERE id='expired-valid'").get()).toEqual({
+      report_json: "{}",
+    })
+  })
+})
