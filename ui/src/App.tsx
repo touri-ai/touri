@@ -830,6 +830,7 @@ const AppContent = ({ kernel }: AppProps) => {
 
   return (
     <AvatarRuntimeProvider value={{ ...data, messages: data.activityMessages }}>
+      {botModal}
       {recoveryOpen && (
         <InterruptedTasks
           {...interruptedWork}
@@ -839,7 +840,6 @@ const AppContent = ({ kernel }: AppProps) => {
           onDismiss={interruptedWork.dismiss}
         />
       )}
-      {botModal}
       <main className="app-shell">
         <HistoryMigrationStatus api={api} />
         {connectionState === "error" && (
