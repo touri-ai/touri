@@ -257,8 +257,8 @@ test("bounds history discovery and reuses the snapshot until the database change
   const pending = (await h.getTasks())[0]
   if (!pending) throw new Error("Expected pending interruption")
   Array.from({ length: 300 }, (_, index) => saveRun(h.database, `history-${index}`, "failed"))
-  // An old transcript must never be decoded by the bounded discovery window.
-  h.database.query("UPDATE messages SET parts_json = 'invalid' WHERE run_id = 'history-0'").run()
+  // Malformed old parts must never be inspected by the bounded discovery window.
+  h.database.query("UPDATE messages SET parts_json = '[null]' WHERE run_id = 'history-0'").run()
   const store = createNotificationStore({ db: h.database })
   const hub = createSseHub({ store })
   const notifier = createNotifier({ kernel: h.runtime.kernel, store, hub })
@@ -266,7 +266,7 @@ test("bounds history discovery and reuses the snapshot until the database change
 
   const tasks = sync()
   const repeated = sync()
-  h.database.query("UPDATE messages SET parts_json = 'invalid' WHERE run_id = 'history-299'").run()
+  h.database.query("UPDATE messages SET parts_json = '[null]' WHERE run_id = 'history-299'").run()
   const afterUnrelatedWrite = sync()
   saveRun(h.database, "new-interruption")
   const updated = sync()
