@@ -948,6 +948,12 @@ test("B05: the real engine starts a delegated provider turn under the ceiling, a
       ),
     ).toBe(true)
     expect(reduced.argv).toContain('approval_policy="never"')
+  } else if (reduced.launch?.cmd === "/usr/bin/sandbox-exec") {
+    expect(reduced.launch.args[0]).toBe("-p")
+    expect(reduced.launch.args[1]).toContain("(deny file-write*)")
+    // The inherited policy enforces read-only access without a nested provider sandbox.
+    expect(reduced.argv).toContain('sandbox_mode="danger-full-access"')
+    expect(reduced.argv).toContain('approval_policy="never"')
   } else {
     expect(reduced.argv).not.toContain("danger-full-access")
     expect(reduced.argv).toContain("read-only")
