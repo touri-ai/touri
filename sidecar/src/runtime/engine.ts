@@ -32,6 +32,7 @@ import { delegatedBot } from "../groups/security"
 import { createGroupStore } from "../groups/store"
 import { buildChildEnv } from "../kernel"
 import { folderAccessUnavailable, folderGrantProblem, refreshHostFolderAccess } from "../kernel/folder-capability"
+import { hasPathHistory } from "../kernel/message-path"
 import { providerProfileEnv } from "../kernel/provider-profiles"
 import { redactStructured } from "../kernel/redact"
 import { attachedServers, resolveAttachedMcp } from "../mcp/attached"
@@ -584,10 +585,7 @@ export const createRuntimeEngine = ({
       if (!event.delta) return
       if (!state.replyMessageId) {
         const thread = store.getThread({ threadId: run.threadId })
-        const request =
-          run.requestMessageId && thread
-            ? store.activePath({ threadId: run.threadId }).find((message) => message.id === run.requestMessageId)
-            : null
+        const request = run.requestMessageId && thread ? getActivePathMessage({ store, run }) : null
         if (request) ensureReply({ run, state, store, parentId: request.id })
       }
       // Provider items are separate Markdown documents; chunks within an item are not.
@@ -632,9 +630,7 @@ export const createRuntimeEngine = ({
         state.dirtyParts.add(state.parts.length - 1)
         if (state.replyMessageId) publishMessage({ store, state, run, status: "streaming" })
         else {
-          const request = store
-            .activePath({ threadId: run.threadId })
-            .find((message) => message.id === run.requestMessageId)
+          const request = getActivePathMessage({ store, run })
           if (request) ensureReply({ run, state, store, parentId: request.id })
         }
       }
@@ -689,10 +685,7 @@ export const createRuntimeEngine = ({
       state.dirtyParts.add(index >= 0 ? index : state.parts.length - 1)
       if (!state.replyMessageId) {
         const thread = store.getThread({ threadId: run.threadId })
-        const request =
-          run.requestMessageId && thread
-            ? store.activePath({ threadId: run.threadId }).find((message) => message.id === run.requestMessageId)
-            : null
+        const request = run.requestMessageId && thread ? getActivePathMessage({ store, run }) : null
         if (request) ensureReply({ run, state, store, parentId: request.id })
       }
       const liveOutput =
@@ -761,10 +754,7 @@ export const createRuntimeEngine = ({
       })
       if (!state.replyMessageId) {
         const thread = store.getThread({ threadId: run.threadId })
-        const request =
-          run.requestMessageId && thread
-            ? store.activePath({ threadId: run.threadId }).find((message) => message.id === run.requestMessageId)
-            : null
+        const request = run.requestMessageId && thread ? getActivePathMessage({ store, run }) : null
         if (request) ensureReply({ run, state, store, parentId: request.id })
       }
       pendingApprovals.set(approvalId, {
@@ -784,8 +774,21 @@ export const createRuntimeEngine = ({
     state.completionError = event.errorClass ? { errorClass: event.errorClass, errorMessage: event.errorMessage } : null
   }
 
-  const activePathMessage = ({ store, run }: { store: StoreApi; run: Run }): Message | null =>
-    store.activePath({ threadId: run.threadId }).find((message) => message.id === run.requestMessageId) ?? null
+  const getActivePathMessage = ({ store, run }: { store: StoreApi; run: Run }): Message | null => {
+    if (!run.requestMessageId) return null
+    if (store.getPathMessage) return store.getPathMessage({ threadId: run.threadId, messageId: run.requestMessageId })
+
+    return store.activePath({ threadId: run.threadId }).find((message) => message.id === run.requestMessageId) ?? null
+  }
+
+  const hasPreviousMessages = (store: StoreApi, thread: Thread, requestId: string | null): boolean => {
+    if (store.getPathMessage && kernel.db instanceof Database && thread.activeLeafId)
+      return hasPathHistory(kernel.db, thread.id, thread.activeLeafId, requestId)
+
+    return store
+      .activePath({ threadId: thread.id })
+      .some((message) => message.id !== requestId && (message.role === "user" || message.role === "assistant"))
+  }
 
   const finishRoutineRun = ({
     run,
@@ -856,8 +859,6 @@ export const createRuntimeEngine = ({
       active.delete(run.threadId)
       return
     }
-    const recoveryStore = kernel.services.use("store.api")
-    if (recoveryStore) tools.reconcile(recoveryStore, run.threadId)
     const store = kernel.services.use("store.api")
     if (!store) {
       updateRun(run, {
@@ -918,7 +919,7 @@ export const createRuntimeEngine = ({
           },
         }) ?? undefined
     }
-    const request = activePathMessage({ store, run })
+    const request = getActivePathMessage({ store, run })
     const resumedFrom = request?.role === "system" ? continuationReasonOf(request.text) : null
     const link = continuations.link(run.id)
     const originalRun = link ? persistence.getRun(link.originalRunId) : null
@@ -931,7 +932,7 @@ export const createRuntimeEngine = ({
       precedingRun?.errorClass === "app_restart" &&
       precedingRun.externalTurnId === null &&
       precedingRun.requestMessageId !== request?.id
-        ? activePathMessage({ store, run: precedingRun })
+        ? getActivePathMessage({ store, run: precedingRun })
         : null
     // A session can be saved before the provider accepts the first turn. The bounded
     // carryover alone cannot deliver that request's full text or attachments after a restart.
@@ -939,7 +940,7 @@ export const createRuntimeEngine = ({
       originalRun &&
       (resumedFrom === "permission_granted" ||
         (resumedFrom === "app_restart" && originalRun.externalTurnId === null && previousRun?.externalTurnId === null))
-        ? activePathMessage({ store, run: originalRun })
+        ? getActivePathMessage({ store, run: originalRun })
         : null
     const requestText = resumedFrom
       ? [continuationPrompt(resumedFrom), originalRequest ? `Original request:\n${originalRequest.text}` : null]
@@ -981,7 +982,7 @@ export const createRuntimeEngine = ({
       .filter(Boolean)
       .join("\n\n")
     const goalRequest = goal
-      ? store.activePath({ threadId: thread.id }).find((message) => message.id === goal.requestMessageId)
+      ? getActivePathMessage({ store, run: { ...run, requestMessageId: goal.requestMessageId } })
       : null
     const requestParts = unacceptedRequest
       ? [...unacceptedRequest.parts, ...(request?.parts ?? [])]
@@ -1080,13 +1081,7 @@ export const createRuntimeEngine = ({
       })
       session = null
     }
-    if (
-      !session &&
-      !handoffPacket &&
-      store
-        .activePath({ threadId: thread.id })
-        .some((message) => message.id !== request?.id && (message.role === "user" || message.role === "assistant"))
-    )
+    if (!session && !handoffPacket && hasPreviousMessages(store, thread, request?.id ?? null))
       restoreContext("native session unavailable")
     const baseEnvironment = bot.machine === "vm" ? {} : environment?.PATH ? environment : await kernel.shellEnv()
     const env = buildChildEnv({
@@ -1438,7 +1433,7 @@ export const createRuntimeEngine = ({
       publishMessage({ store, state, run, status: statusForError(errorClass) === "canceled" ? "canceled" : "failed" })
       const carryover = state.turnStarted
         ? `[touri: your previous turn ended with ${errorClass}. Partial output: "${bounded({ value: state.text, max: 1_500 })}"]`
-        : `[touri: your previous turn did not run (${errorClass}: ${safeError}). The user's message was: "${bounded({ value: activePathMessage({ store, run })?.text ?? "", max: 1_500 })}"]`
+        : `[touri: your previous turn did not run (${errorClass}: ${safeError}). The user's message was: "${bounded({ value: getActivePathMessage({ store, run })?.text ?? "", max: 1_500 })}"]`
       store.updateThread({ threadId: thread.id, patch: { carryoverNote: carryover } })
       updateRun(run, {
         status: statusForError(errorClass),
@@ -1792,7 +1787,7 @@ export const createRuntimeEngine = ({
       })
     } else {
       queued.push(run.id)
-      queueMicrotask(() => void drain())
+      setImmediate(() => void drain())
     }
     return { success: true, run }
   }
@@ -2466,6 +2461,8 @@ export const createRuntimeEngine = ({
   })
 
   const recoveryStore = kernel.services.use("store.api")
+  // Recovery repairs persisted history once. Terminal transitions already settle
+  // their own tools; repeating recovery per turn rescans every previous result.
   if (recoveryStore) tools.reconcile(recoveryStore)
   queueMicrotask(() => void drain())
 

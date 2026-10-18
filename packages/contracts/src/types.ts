@@ -1248,7 +1248,9 @@ export type StoreApi = {
   appendParts?: (args: { threadId: Id; messageId: Id; parts: Array<{ partIndex: number; part: MessagePart }>; generation?: number }) => void
   flushWrites?: () => void
   updateMessage: (args: { threadId: Id; messageId: Id; patch: Partial<Pick<Message, 'status' | 'parts' | 'text' | 'runId'>> }) => Result<{ message: Message }, 'NOT_FOUND'>
-  activePath: (args: { threadId: Id; leafId?: Id }) => Array<Message>
+  /** Select before hydrating bodies; fromRoot selects the oldest prefix instead of the recent tail. */
+  activePath: (args: { threadId: Id; leafId?: Id; limit?: number; fromRoot?: boolean }) => Array<Message>
+  getPathMessage?: (args: { threadId: Id; messageId: Id; leafId?: Id }) => Message | null
   setActiveLeaf: (args: { threadId: Id; leafId: Id }) => Result<{ thread: Thread }, 'NOT_FOUND'>
   getBot: (args: { botId: Id }) => Bot | null
   getThread: (args: { threadId: Id }) => Thread | null

@@ -3,7 +3,7 @@ import { afterEach, expect, test } from "bun:test"
 import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { openDatabase } from "../../src/kernel/db"
+import { openDatabase, SCHEMA_VERSION } from "../../src/kernel/db"
 
 const databases = new Set<Database>()
 const roots = new Set<string>()
@@ -59,6 +59,8 @@ test("schema 24 gains persistent goals without changing conversation or run reco
     checkpoint_json: checkpoint,
   })
   expect(reopened.query("SELECT * FROM runs").all()).toEqual(runs)
-  expect(reopened.query("SELECT value FROM schema_meta WHERE key='schema_version'").get()).toEqual({ value: "25" })
+  expect(reopened.query("SELECT value FROM schema_meta WHERE key='schema_version'").get()).toEqual({
+    value: String(SCHEMA_VERSION),
+  })
   expect(reopened.query("PRAGMA foreign_key_check").all()).toEqual([])
 })

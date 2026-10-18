@@ -32,7 +32,7 @@ export const buildHandoffPacket = ({
   const store = kernel.services.use("store.api")
   if (!store)
     return `[touri handoff]\nSession replaced: ${reason}\nFooter: Use history_search/history_read for anything older.`
-  const messages = store.activePath({ threadId: thread.id })
+  const messages = store.activePath({ threadId: thread.id, limit: 40 })
   const recent: Array<string> = []
   let recentCharacters = 0
   for (let index = messages.length - 1; index >= 0 && recentCharacters < 24_000; index -= 1) {
@@ -42,8 +42,10 @@ export const buildHandoffPacket = ({
     recent.unshift(line)
     recentCharacters += line.length
   }
-  const older = messages
-    .slice(0, Math.max(0, messages.length - recent.length))
+  const recentIds = new Set(messages.slice(-recent.length).map((message) => message.id))
+  const older = store
+    .activePath({ threadId: thread.id, limit: 24, fromRoot: true })
+    .filter((message) => !recentIds.has(message.id))
     .map((message) => `${message.role}: ${messageText(message).slice(0, 200)}`)
     .join("\n")
   const projectInfo = thread.botId ? kernel.services.use("projects.info") : null

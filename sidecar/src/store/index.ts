@@ -39,6 +39,8 @@ import {
 } from "../kernel/files"
 import { folderGrantProblem, refreshHostFolderAccess, specificFoldersRequired } from "../kernel/folder-capability"
 import { historyThreadPending, hydrateHistoryEvent } from "../kernel/history-backfill"
+import { getPathIds } from "../kernel/message-path"
+import { refreshMessageSearch } from "../kernel/message-search"
 import { externalizeMessageParts, OUTPUT_BLOB_ORIGIN, readOutputAttachment } from "../kernel/output-blobs"
 import { isProfileProvider, validProviderProfileName } from "../kernel/provider-profiles"
 import { materializeTranscript } from "../kernel/transcript-storage"
@@ -454,11 +456,11 @@ export const init = async (kernel: Kernel): Promise<void> => {
     return row ? asMessage(row) : null
   }
 
+  const hasMessage = ({ threadId, messageId }: { threadId: string; messageId: string }): boolean =>
+    !!database.query("SELECT 1 FROM messages WHERE thread_id = ? AND id = ?").get(threadId, messageId)
+
   const refreshFts = ({ message }: { message: Message }): void => {
-    database.query("DELETE FROM messages_fts WHERE thread_id = ? AND message_id = ?").run(message.threadId, message.id)
-    database
-      .query("INSERT INTO messages_fts (text, thread_id, message_id) VALUES (?, ?, ?)")
-      .run(message.text, message.threadId, message.id)
+    refreshMessageSearch(database, message)
   }
 
   const streamWriter = createStreamWriter({ kernel, database, getMessage, getThread })
@@ -508,7 +510,7 @@ export const init = async (kernel: Kernel): Promise<void> => {
   const insertMessage: StoreApi["insertMessage"] = ({ message }) => {
     if (!getThread({ threadId: message.threadId }))
       return { success: false, errorCode: "THREAD_NOT_FOUND", error: `Thread ${message.threadId} was not found` }
-    if (message.parentId !== null && !getMessage({ threadId: message.threadId, messageId: message.parentId }))
+    if (message.parentId !== null && !hasMessage({ threadId: message.threadId, messageId: message.parentId }))
       return { success: false, errorCode: "PARENT_NOT_FOUND", error: `Parent ${message.parentId} was not found` }
     const timestamp = now()
     database
@@ -587,26 +589,38 @@ export const init = async (kernel: Kernel): Promise<void> => {
     return { success: true, message: stored }
   }
 
-  const activePath: StoreApi["activePath"] = ({ threadId, leafId }) => {
+  const activePath: StoreApi["activePath"] = ({ threadId, leafId, limit, fromRoot = false }) => {
     flushDeltas()
     const thread = getThread({ threadId })
     const targetId = leafId ?? thread?.activeLeafId
     if (!targetId) return []
-    const path: Array<Message> = []
-    const seen = new Set<string>()
-    let currentId: string | null = targetId
-    while (currentId !== null && !seen.has(currentId)) {
-      seen.add(currentId)
-      const message = getMessage({ threadId, messageId: currentId })
-      if (!message) break
-      path.push(message)
-      currentId = message.parentId
-    }
-    return path.reverse()
+    const boundedLimit = limit === undefined ? undefined : Math.max(0, Math.floor(limit))
+    const ids = getPathIds(database, threadId, targetId, fromRoot ? -1 : boundedLimit)
+    const selected = fromRoot && boundedLimit !== undefined ? ids.slice(-boundedLimit) : ids
+    if (boundedLimit === 0) return []
+
+    // Reverse a fresh local array; the compiler targets the older array API.
+    return selected
+      .slice()
+      .reverse()
+      .flatMap((messageId) => {
+        const message = getMessage({ threadId, messageId })
+        return message ? [message] : []
+      })
+  }
+
+  const getPathMessage: NonNullable<StoreApi["getPathMessage"]> = ({ threadId, messageId, leafId }) => {
+    flushDeltas()
+    const targetId = leafId ?? getThread({ threadId })?.activeLeafId
+    if (!targetId) return null
+    const ids = getPathIds(database, threadId, targetId, -1, messageId)
+    if (ids.at(-1) !== messageId) return null
+
+    return getMessage({ threadId, messageId })
   }
 
   const setActiveLeaf: StoreApi["setActiveLeaf"] = ({ threadId, leafId }) => {
-    if (!getMessage({ threadId, messageId: leafId }))
+    if (!hasMessage({ threadId, messageId: leafId }))
       return { success: false, errorCode: "NOT_FOUND", error: `Message ${leafId} was not found` }
     const thread = updateThreadRow({ threadId, patch: { activeLeafId: leafId } })
     if (!thread) return { success: false, errorCode: "NOT_FOUND", error: `Thread ${threadId} was not found` }
@@ -661,7 +675,7 @@ export const init = async (kernel: Kernel): Promise<void> => {
 
   const updateThread: StoreApi["updateThread"] = ({ threadId, patch }) => {
     const activeLeafId = patch.activeLeafId
-    if (activeLeafId !== undefined && activeLeafId !== null && !getMessage({ threadId, messageId: activeLeafId }))
+    if (activeLeafId !== undefined && activeLeafId !== null && !hasMessage({ threadId, messageId: activeLeafId }))
       return { success: false, errorCode: "NOT_FOUND", error: `Message ${activeLeafId} was not found` }
     const thread = updateThreadRow({ threadId, patch })
     if (!thread) return { success: false, errorCode: "NOT_FOUND", error: `Thread ${threadId} was not found` }
@@ -1192,6 +1206,7 @@ export const init = async (kernel: Kernel): Promise<void> => {
     setActiveLeaf,
     getBot,
     getThread,
+    getPathMessage,
     createThread,
     updateThread,
     search,
