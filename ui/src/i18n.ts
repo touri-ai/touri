@@ -3,6 +3,8 @@ import { userFacingError } from "./errors"
 /** All UI copy lives here. pt-BR is the default; English is available for a future locale picker. */
 export type Locale = "pt-BR" | "en"
 export const ptBR = {
+  "O contexto da conversa foi recuperado do histórico salvo.":
+    "O contexto da conversa foi recuperado do histórico salvo.",
   "Abrir resultado completo": "Abrir resultado completo",
   "Carregando resultado…": "Carregando resultado…",
   "Carregar mais saída": "Carregar mais saída",
@@ -508,6 +510,7 @@ export const ptBR = {
   // Response feedback: keep this block together for parallel UI changes.
   "Preparando a resposta…": "Preparando a resposta…",
   "Preparando o ambiente…": "Preparando o ambiente…",
+  "Ligando o computador do bot…": "Ligando o computador do bot…",
   "Lendo {arquivo}…": "Lendo {arquivo}…",
   "Preciso da sua autorização.": "Preciso da sua autorização.",
   "Ainda aguardando a IA responder.": "Ainda aguardando a IA responder.",
@@ -1859,6 +1862,10 @@ export const ptBR = {
   "Título (opcional)": "Título (opcional)",
   "Bot local": "Bot local",
   "Nenhuma mensagem ainda": "Nenhuma mensagem ainda",
+  "Criando conversa…": "Criando conversa…",
+  "Não foi possível criar a conversa. Seu rascunho foi mantido.":
+    "Não foi possível criar a conversa. Seu rascunho foi mantido.",
+  "Tentar criar conversa novamente": "Tentar criar conversa novamente",
   "Nova conversa": "Nova conversa",
   "Local · grátis": "Local · grátis",
   Você: "Você",
@@ -1999,6 +2006,8 @@ export const ptBR = {
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  "O contexto da conversa foi recuperado do histórico salvo.":
+    "The conversation context was restored from saved history.",
   "Abrir resultado completo": "Open full result",
   "Carregando resultado…": "Loading result…",
   "Carregar mais saída": "Load more output",
@@ -2519,6 +2528,7 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   // Response feedback: keep this block together for parallel UI changes.
   "Preparando a resposta…": "Preparing a reply…",
   "Preparando o ambiente…": "Preparing the environment…",
+  "Ligando o computador do bot…": "Starting the bot’s computer…",
   "Lendo {arquivo}…": "Reading {arquivo}…",
   "Preciso da sua autorização.": "I need your permission.",
   "Ainda aguardando a IA responder.": "Still waiting for the AI to respond.",
@@ -3305,6 +3315,10 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Título (opcional)": "Title (optional)",
   "Bot local": "Local bot",
   "Nenhuma mensagem ainda": "No messages yet",
+  "Criando conversa…": "Creating conversation…",
+  "Não foi possível criar a conversa. Seu rascunho foi mantido.":
+    "Could not create the conversation. Your draft was kept.",
+  "Tentar criar conversa novamente": "Try creating the conversation again",
   "Nova conversa": "New conversation",
   "Local · grátis": "Local · free",
   Você: "You",

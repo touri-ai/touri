@@ -372,6 +372,8 @@ test("checkpointed transcript reads never revisit historical delta bodies", asyn
     insertReply(f)
     for (let index = 0; index < 1000; index++)
       f.store.appendDelta({ threadId: "t", messageId: "reply", partIndex: 0, delta: "Texto 🚀 " })
+    // The materializer consumes the durable journal, after the stream buffer is drained.
+    f.store.flushWrites?.()
     materializeTranscript(f.db)
     const reads: string[] = []
     const query = f.db.query.bind(f.db)
@@ -387,6 +389,7 @@ test("checkpointed transcript reads never revisit historical delta bodies", asyn
     expect(reads).toHaveLength(100)
     expect(reads.every((sql) => sql === "SELECT 1 FROM transcript_pending_deltas LIMIT 1")).toBe(true)
     f.store.appendDelta({ threadId: "t", messageId: "reply", partIndex: 0, delta: "Fim" })
+    f.store.flushWrites?.()
     materializeTranscript(f.db)
     expect(f.db.query("SELECT text FROM messages WHERE id = 'reply'").get()).toEqual({
       text: `${"Texto 🚀 ".repeat(1000)}Fim`,

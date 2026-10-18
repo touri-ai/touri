@@ -15,11 +15,14 @@ type Scenario = {
   exitOnInterrupt?: boolean
   toolPidPath?: string
   badResume?: boolean
+  resumeExit?: { code: number; stderr: string }
+  resumeError?: string
   waitForApproval?: boolean
   afterApproval?: Array<unknown>
   logPath?: string
   requestLogPath?: string
   pauseAfterFirstDelta?: string
+  pauseBeforeTurnStart?: string
 }
 
 const record = (value: unknown): RecordValue | null =>
@@ -206,11 +209,15 @@ process.stdin.on("data", (chunk: string) => {
     if (method === "initialize" && id !== null)
       output({ jsonrpc: "2.0", id, result: { serverInfo: { name: "fake-codex", version: "0.160.0" } } })
     else if (method === "thread/start" && id !== null)
-      output({ jsonrpc: "2.0", id, result: { thread: { id: sessionId }, rolloutPath: scenario.rolloutPath ?? null } })
+      output({ jsonrpc: "2.0", id, result: { thread: { id: sessionId, path: scenario.rolloutPath ?? null } } })
     else if (method === "thread/resume" && id !== null) {
-      if (scenario.badResume) output({ jsonrpc: "2.0", id, error: { message: "rollout not found" } })
-      else
-        output({ jsonrpc: "2.0", id, result: { thread: { id: sessionId }, rolloutPath: scenario.rolloutPath ?? null } })
+      if (scenario.resumeExit) {
+        process.stderr.write(`${scenario.resumeExit.stderr}\n`)
+        process.exit(scenario.resumeExit.code)
+      }
+      if (scenario.resumeError) output({ method: "error", params: { message: scenario.resumeError } })
+      else if (scenario.badResume) output({ jsonrpc: "2.0", id, error: { message: "rollout not found" } })
+      else output({ jsonrpc: "2.0", id, result: { thread: { id: sessionId, path: scenario.rolloutPath ?? null } } })
     } else if (method === "turn/start" && invalidInputItem(request)) {
       if (id !== null)
         output({
@@ -219,8 +226,11 @@ process.stdin.on("data", (chunk: string) => {
           error: { message: "Invalid request: data did not match any variant of untagged enum ImageReference" },
         })
     } else if (method === "turn/start") {
-      if (id !== null) output({ jsonrpc: "2.0", id, result: { turn: { id: `fake-turn-${turnCount + 1}` } } })
-      void emitTurn()
+      void (async () => {
+        if (scenario.pauseBeforeTurnStart) while (!existsSync(scenario.pauseBeforeTurnStart)) await Bun.sleep(10)
+        if (id !== null) output({ jsonrpc: "2.0", id, result: { turn: { id: `fake-turn-${turnCount + 1}` } } })
+        await emitTurn()
+      })()
     } else if (method === "turn/interrupt") {
       if (scenario.exitOnInterrupt) process.exit(0)
       if (!scenario.ignoreInterrupt) interrupted = true

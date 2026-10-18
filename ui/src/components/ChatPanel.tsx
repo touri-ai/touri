@@ -52,6 +52,9 @@ import { approvalTools, assistantSegments } from "./turnActivityModel"
 import { type EditMessage, UserMessageEdit } from "./UserMessageEdit"
 
 type ChatPanelProps = {
+  composerKey?: string | undefined
+  threadCreation?: "pending" | "failed" | undefined
+  onRetryCreateThread?: (() => void) | undefined
   onRepeatTask?: ((draft: RoutineDraft) => void) | undefined
   group?: BotGroup | null
   groupMembers?: Bot[]
@@ -836,6 +839,9 @@ const MessageBubble = ({
 }
 
 export const ChatPanel = ({
+  composerKey,
+  threadCreation,
+  onRetryCreateThread,
   onRepeatTask,
   group = null,
   groupMembers = [],
@@ -1066,7 +1072,7 @@ export const ChatPanel = ({
           vmBotId={bot?.machine === "vm" ? bot.id : undefined}
           machine={machine}
           focusApproval={focusApproval}
-          key={thread.id}
+          key={composerKey ?? thread.id}
           messages={visibleMessages}
           api={api}
           runs={runs}
@@ -1182,7 +1188,10 @@ export const ChatPanel = ({
       </InlinePreviewContext.Provider>
       {/* r8 composer: notices and the input island stay isolated from transcript activity. */}
       <DraftComposer
-        key={`composer-${thread.id}`}
+        key={`composer-${composerKey ?? thread.id}`}
+        draftIdentity={composerKey ?? thread.id}
+        threadCreation={threadCreation}
+        onRetryCreateThread={onRetryCreateThread}
         draftRef={draftComposerRef}
         notice={{
           bot,

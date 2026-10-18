@@ -146,7 +146,11 @@ const sessionDetails = (value: unknown): { id: string; rolloutPath: string | nul
   const thread = asRecord(result.thread) ?? {}
   return {
     id: stringValue(thread.id) ?? stringValue(result.threadId) ?? stringValue(result.id) ?? "codex-session",
-    rolloutPath: stringValue(result.rolloutPath) ?? stringValue(result.rollout_path) ?? stringValue(thread.rolloutPath),
+    rolloutPath:
+      stringValue(result.rolloutPath) ??
+      stringValue(result.rollout_path) ??
+      stringValue(thread.rolloutPath) ??
+      stringValue(thread.path),
   }
 }
 
@@ -310,6 +314,12 @@ export const createCodexAdapter = ({
     let externalSessionId = args.session?.externalSessionId ?? "codex-session"
     let rolloutPath: string | null = args.session?.rolloutPath ?? null
     let turnId: string | null = null
+    let resuming = false
+    const classifyError = (message: string): RunErrorClass => {
+      const errorClass = classifyProviderError(message)
+      const failedRecovery = /failed to recover|rollout.*not found|unable to load session/i.test(message)
+      return resuming && errorClass !== "cli_auth" && failedRecovery ? "cli_protocol" : errorClass
+    }
     const agentTexts = new Map<string, string>()
     const commands = new Map<string, { part: CommandPart; output: ReturnType<typeof createCommandOutput> }>()
     const approvalItems = new Map<string, Record<string, unknown>>()
@@ -554,10 +564,10 @@ export const createCodexAdapter = ({
           })
           return
         }
-        complete({ success: false, errorCode: classifyProviderError(message), error: message })
+        complete({ success: false, errorCode: classifyError(message), error: message })
       } else if (method?.includes("fatal")) {
         const message = codexErrorText(params) ?? `Erro fatal do Codex: ${kernel.redact(JSON.stringify(params))}`
-        complete({ success: false, errorCode: classifyProviderError(message), error: message })
+        complete({ success: false, errorCode: classifyError(message), error: message })
       }
     }
     const stopReader = startLineReader({
@@ -573,7 +583,6 @@ export const createCodexAdapter = ({
       }
     }).catch(() => "")
     void (async () => {
-      let resuming = false
       try {
         await sendRequest("initialize", { clientInfo: { name: "touri", version: touriVersion } })
         args.signal.throwIfAborted()
@@ -622,8 +631,10 @@ export const createCodexAdapter = ({
         args.signal.throwIfAborted()
         const details = sessionDetails(sessionResponse.result)
         externalSessionId = details.id
-        rolloutPath = details.rolloutPath
-        args.onEvent({ type: "session", externalSessionId, rolloutPath: details.rolloutPath })
+        rolloutPath =
+          details.rolloutPath ??
+          (args.session?.externalSessionId === externalSessionId ? args.session.rolloutPath : null)
+        args.onEvent({ type: "session", externalSessionId, rolloutPath })
         const loaded = loadTurnImages({ kernel, input: args.input })
         if (!loaded.success) {
           complete({ success: false, errorCode: loaded.errorCode, error: loaded.error })
@@ -644,14 +655,15 @@ export const createCodexAdapter = ({
         if (stopped) interrupt()
       } catch (error) {
         const message = errorText(error)
+        const errorClass = classifyProviderError(message)
         complete({
           success: false,
           errorCode:
-            (resuming && classifyProviderError(message) !== "cli_auth") ||
-            message.toLowerCase().includes("resume") ||
-            message.toLowerCase().includes("not found")
-              ? "cli_protocol"
-              : classifyProviderError(message),
+            errorClass === "cli_auth"
+              ? errorClass
+              : resuming || message.toLowerCase().includes("resume") || message.toLowerCase().includes("not found")
+                ? "cli_protocol"
+                : errorClass,
           error: message,
         })
       }
@@ -663,7 +675,7 @@ export const createCodexAdapter = ({
     })()
     const onExit = spawned.exited.then(async ({ code, signal }) => {
       const stderr = (await stderrOutput.catch(() => "")).trim()
-      const errorClass = classifyProviderError(stderr)
+      const errorClass = classifyError(stderr)
       if (!completed)
         complete({
           success: false,

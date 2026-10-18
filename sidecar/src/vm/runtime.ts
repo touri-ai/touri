@@ -965,23 +965,28 @@ export const createVmRuntime = ({
           tokens.add(credential.revoke)
           turnTokens.set(botId, tokens)
           tokenPath = `/workspace/.touri/run/${threadId}.${credential.tokenId}.token`
-          await writeFile({ botId, path: tokenPath, content: token, signal })
-          await writeFile({ botId, path: "/workspace/.home/SOUL.md", content: bot.instructions, signal })
-          if (!bridges.has(botId)) {
-            const session = connections.get(botId)
-            if (!session) throw new Error("Conexão da máquina ausente")
-            const port = await forwardPort({ botId, guestPort: session.connection.bridge.guestPort, signal })
-            signal.throwIfAborted()
-            bridges.set(
-              botId,
-              connectMcpBridge({
-                port: port.hostPort,
-                transport: port.url,
-                token: session.token,
-                socketPath: resolveMcpEndpoint(kernel.paths),
-              }),
-            )
-          }
+          // These independent guest operations must finish before the CLI starts.
+          // Overlap process startup instead of paying for three host/guest round trips in sequence.
+          await Promise.all([
+            writeFile({ botId, path: tokenPath, content: token, signal }),
+            writeFile({ botId, path: "/workspace/.home/SOUL.md", content: bot.instructions, signal }),
+            (async () => {
+              if (bridges.has(botId)) return
+              const session = connections.get(botId)
+              if (!session) throw new Error("Conexão da máquina ausente")
+              const port = await forwardPort({ botId, guestPort: session.connection.bridge.guestPort, signal })
+              signal.throwIfAborted()
+              bridges.set(
+                botId,
+                connectMcpBridge({
+                  port: port.hostPort,
+                  transport: port.url,
+                  token: session.token,
+                  socketPath: resolveMcpEndpoint(kernel.paths),
+                }),
+              )
+            })(),
+          ])
         },
       })
       signal?.throwIfAborted()
