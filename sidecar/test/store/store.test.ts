@@ -369,7 +369,7 @@ test("all WP2 HTTP routes respond with contract-shaped payloads", async () => {
     const health = await get("/health")
 
     expect(health.status).toBe(200)
-    expect(await health.json()).toMatchObject({ host: getHost() })
+    expect(await health.json()).toMatchObject({ hostKind: getHost() })
     expect((await get("/doctor")).status).toBe(200)
     expect((await get("/bots")).status).toBe(200)
     expect((await get(`/bots/${context.bot.id}/threads`)).status).toBe(200)

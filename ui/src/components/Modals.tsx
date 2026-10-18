@@ -451,7 +451,7 @@ export const BotCreateModal = ({
   const [loginDraftId] = useState(() => `draft-${crypto.randomUUID()}`)
   const fallbackHost = useHost(api)
   const login = useCreateProvider(api, loginDraftId)
-  const host = login.flow?.host ?? fallbackHost
+  const host = login.flow?.hostKind ?? login.flow?.host ?? fallbackHost
   const [apiModel, setApiModel] = useState("")
   const provider = apiModel ? "opencode" : login.provider
   const [jobId, setJobId] = useState(NOT_SURE_JOB_ID)

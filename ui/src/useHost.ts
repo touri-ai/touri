@@ -13,7 +13,8 @@ export const useHost = (api?: UiApi | null): HostKind => {
       void api
         .request("GET /health", {})
         .then((health) => {
-          if (active && health.host) setSnapshot({ api, host: health.host })
+          const host = health.hostKind ?? health.host
+          if (active && host) setSnapshot({ api, host })
         })
         .catch(() => {})
     return () => {

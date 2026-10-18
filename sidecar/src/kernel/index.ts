@@ -3,7 +3,7 @@ import { join } from "node:path"
 import type { HostNotification, Kernel, RouteModule, SidecarHandshake, UiEvent } from "@touri/contracts"
 import type { ServerWebSocket } from "bun"
 import { compressBufferedResponse } from "../cli/web/compression"
-import { getHost } from "../platform/host"
+import { getHostIdentity } from "../platform/host"
 import { touriVersion } from "../version"
 import { createStorageMaintenance } from "./data-maintenance"
 import { openDatabase, SCHEMA_VERSION } from "./db"
@@ -220,7 +220,7 @@ export const createKernel = ({ appData, web }: { appData?: string; web?: WebMode
             ok: true,
             version,
             schemaVersion: SCHEMA_VERSION,
-            host: getHost(),
+            ...getHostIdentity(),
             historyMigration: historyMigrationStatus(database),
           },
         }),

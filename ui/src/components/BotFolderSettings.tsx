@@ -1,4 +1,4 @@
-import type { Bot, BotFolder } from "@touri/contracts"
+import type { Bot, BotFolder, HostKind } from "@touri/contracts"
 import { useEffect, useState } from "react"
 import type { TauriInvoke, UiApi } from "../api/client"
 import { useIsServerMode } from "../features/server/serverMode"
@@ -183,19 +183,7 @@ export const BotFolderSettings = ({
                   "Keychains, ~/.ssh, perfis de navegadores e dados do touri ficam bloqueados, salvo pastas adicionadas explicitamente. Os arquivos necessários ao funcionamento deste bot continuam disponíveis.",
                 )}
               </p>
-              <p className="field-help">
-                {serverMode
-                  ? t("As permissões e o isolamento são aplicados pelo servidor. Revise o acesso antes de salvar.")
-                  : machine === "vm"
-                    ? t(
-                        "Na VM, sua pasta pessoal aparece em /host/home; as demais, em /host/<nome>. As exclusões são ocultadas por montagens somente leitura.",
-                      )
-                    : host === "mac"
-                      ? t(
-                          "No Mac, o sandbox do macOS bloqueia as exclusões e a escrita nas pastas somente leitura, inclusive em comandos de terminal. As alterações valem a partir da próxima mensagem.",
-                        )
-                      : t("As permissões da conta do sistema continuam valendo.")}
-              </p>
+              <p className="field-help">{getFolderIsolationHelp(machine, host, serverMode)}</p>
             </>
           )}
           {machine === "vm" && (
@@ -242,4 +230,18 @@ export const BotFolderSettings = ({
       )}
     </div>
   )
+}
+
+const getFolderIsolationHelp = (machine: Bot["machine"], host: HostKind, serverMode: boolean) => {
+  if (machine === "vm")
+    return t(
+      "Na VM, sua pasta pessoal aparece em /host/home; as demais, em /host/<nome>. As exclusões são ocultadas por montagens somente leitura.",
+    )
+  if (serverMode) return t("As permissões e o isolamento são aplicados pelo servidor. Revise o acesso antes de salvar.")
+  if (host === "mac")
+    return t(
+      "No Mac, o sandbox do macOS bloqueia as exclusões e a escrita nas pastas somente leitura, inclusive em comandos de terminal. As alterações valem a partir da próxima mensagem.",
+    )
+
+  return t("As permissões da conta do sistema continuam valendo.")
 }

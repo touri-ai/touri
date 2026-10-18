@@ -584,7 +584,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
           projects: projectResponse.projects,
           previews: previewResponse.previews,
           browserTabs: browserResponse.tabs,
-          routineHost: routinesResponse.host ?? "computer",
+          routineHost: routinesResponse.hostKind ?? routinesResponse.host ?? "computer",
           routines: uniqueById(routinesResponse.routines),
           routineRuns: uniqueById(routineRunsResponse.routineRuns),
           settings: settingsResponse.settings,

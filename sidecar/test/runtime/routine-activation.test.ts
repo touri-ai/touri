@@ -285,8 +285,8 @@ test("the gateway still denies routine creation for read-only bots", async () =>
 
 test("the routine editor preserves its reviewed destination, recovery window and scheduler host", async () => {
   const f = await fixture()
-  const listing = (await (await f.request("GET", "/routines")).json()) as { host: string }
-  expect(listing.host).toBe(getHost())
+  const listing = (await (await f.request("GET", "/routines")).json()) as { hostKind: string }
+  expect(listing.hostKind).toBe(getHost())
   const response = await f.request("POST", "/routines", {
     botId: f.bot.id,
     name: "Organizar notas",

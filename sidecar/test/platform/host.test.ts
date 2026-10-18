@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test"
 import { getHostKind, getHostNoun } from "@touri/contracts"
-import { getHost } from "../../src/platform/host"
+import { getHost, getHostIdentity } from "../../src/platform/host"
 
 test.each([
   ["darwin", false, "mac", "Mac", "Mac"],
@@ -14,6 +14,7 @@ test.each([
 
   expect(host).toBe(expected)
   expect(getHost(platform, headless)).toBe(host)
+  expect(getHostIdentity(platform, headless)).toEqual({ hostKind: host, host: host === "mac" ? "mac" : "server" })
   expect(getHostNoun(host)).toBe(portuguese)
   expect(getHostNoun(host, "en")).toBe(english)
 })

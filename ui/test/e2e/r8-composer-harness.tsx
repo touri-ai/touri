@@ -70,11 +70,17 @@ const fixtureRun: Run | null = ["running", "queued"].includes(view ?? "")
 const request = api.request
 const fixtureRequest: ApiRequest = async (route, input, pathValues) => {
   if (route === "GET /health")
-    return { ok: true, version: "test", schemaVersion: 1, host } as ApiRoutes[typeof route]["res"]
+    return {
+      ok: true,
+      version: "test",
+      schemaVersion: 1,
+      host: host === "mac" ? "mac" : "server",
+      hostKind: host,
+    } as ApiRoutes[typeof route]["res"]
   if (route === "GET /routines") {
     const response = await request(route, input, pathValues)
 
-    return { ...response, host } as ApiRoutes[typeof route]["res"]
+    return { ...response, host: host === "mac" ? "mac" : "server", hostKind: host } as ApiRoutes[typeof route]["res"]
   }
   if (route === "GET /threads/:id/runs" && pathValues?.id === thread.id && fixtureRun)
     return { runs: [fixtureRun] } as ApiRoutes[typeof route]["res"]

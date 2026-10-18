@@ -20,7 +20,7 @@ it.each(["mac", "computer", "server"] as const)(
     const original = api.request
     api.request = (async (route, input, path) =>
       route === "GET /health"
-        ? { ok: true, version: "test", schemaVersion: 1, host }
+        ? { ok: true, version: "test", schemaVersion: 1, host: host === "mac" ? "mac" : "server", hostKind: host }
         : original(route, input, path)) as ApiRequest
     render(<App kernel={{ services: { api } }} />)
     const privacy = await screen.findByText(t("onboarding.privacy", { host: getHostLabel(host) }))
@@ -41,11 +41,18 @@ it.each(["mac", "computer", "server"] as const)(
         return {
           provider: input.provider,
           state: "host-available",
-          host,
+          host: host === "mac" ? "mac" : "server",
+          hostKind: host,
           executable: installed ? "available" : "missing",
         }
       if (route === "POST /bots/:id/provider-login/flow")
-        return { provider: input.provider, state: "ready", host, executable: installed ? "available" : "missing" }
+        return {
+          provider: input.provider,
+          state: "ready",
+          host: host === "mac" ? "mac" : "server",
+          hostKind: host,
+          executable: installed ? "available" : "missing",
+        }
       return original(route, input, path)
     })
     api.request = request as ApiRequest

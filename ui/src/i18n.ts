@@ -3,6 +3,13 @@ import { userFacingError } from "./errors"
 /** All UI copy lives here. pt-BR is the default; English is available for a future locale picker. */
 export type Locale = "pt-BR" | "en"
 export const ptBR = {
+  "Meu Chrome só funciona em bots neste computador. A máquina remota não pode acessar o Chrome do computador.":
+    "Meu Chrome só funciona em bots neste computador. A máquina remota não pode acessar o Chrome do computador.",
+  "OpenCode está disponível no computador local e na máquina Linux. O runtime da nuvem ainda não oferece este provedor.":
+    "OpenCode está disponível no computador local e na máquina Linux. O runtime da nuvem ainda não oferece este provedor.",
+  "Sign in to {provider} for this {host}: open this link on this device":
+    "Entre no {provider} para este {host}: abra este link neste aparelho",
+  "Preparing {provider} sign-in for this {host}…": "Preparando o login do {provider} para este {host}…",
   "Verifique a data do sistema, certificados e proxy da rede.":
     "Verifique a data do sistema, certificados e proxy da rede.",
   "Meu Chrome só funciona em bots neste computador. A máquina remota não pode acessar o Chrome do computador. Escolha Chrome da máquina para um bot na máquina Linux.":
@@ -2209,6 +2216,10 @@ export const ptBR = {
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  "Meu Chrome só funciona em bots neste computador. A máquina remota não pode acessar o Chrome do computador.":
+    "My Chrome is available only for bots on this computer. A remote machine cannot reach your computer’s Chrome.",
+  "OpenCode está disponível no computador local e na máquina Linux. O runtime da nuvem ainda não oferece este provedor.":
+    "OpenCode is available on the local computer and the Linux machine. The cloud runtime does not support this provider yet.",
   "Verifique a data do sistema, certificados e proxy da rede.":
     "Check the system date, certificates and network proxy.",
   "Meu Chrome só funciona em bots neste computador. A máquina remota não pode acessar o Chrome do computador. Escolha Chrome da máquina para um bot na máquina Linux.":

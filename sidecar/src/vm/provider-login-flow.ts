@@ -3,17 +3,11 @@ import { chmodSync, mkdirSync, mkdtempSync, rmSync } from "node:fs"
 import { homedir } from "node:os"
 import { delimiter, join } from "node:path"
 import { stripVTControlCharacters } from "node:util"
-import {
-  type Bot,
-  getHostKind,
-  getHostNoun,
-  type Kernel,
-  type ProviderLoginFlow,
-  type RouteModule,
-} from "@touri/contracts"
+import { type Bot, getHostNoun, type Kernel, type ProviderLoginFlow, type RouteModule } from "@touri/contracts"
 import { withDeadline } from "../kernel/policy"
 import { providerProfileEnv } from "../kernel/provider-profiles"
 import { buildChildEnv } from "../kernel/shell-env"
+import { getHostIdentity } from "../platform/host"
 import { killProviderLoginPty, spawnProviderLoginPty } from "../platform/provider-login"
 import { providerProfileStatus } from "../runtime/provider-profiles"
 import { resolveProviderExecutable } from "../runtime/resolveProviderExecutable"
@@ -122,7 +116,8 @@ export const createProviderLoginFlow = ({
   invoke?: (input: LoginInvocation) => ReturnType<Kernel["spawnTree"]>
   profileStatus?: typeof providerProfileStatus
 }) => {
-  const host = getHostKind(platform, headless)
+  const hostContext = getHostIdentity(platform, headless)
+  const host = hostContext.hostKind
   const hostUnavailable = `Login deste ${getHostNoun(host)} indisponível.`
   const sessions = new Map<string, Session>()
   const starts = new Map<string, Promise<ProviderLoginFlow>>()
@@ -214,7 +209,7 @@ export const createProviderLoginFlow = ({
       session.view = {
         provider: target.provider,
         state,
-        host,
+        ...hostContext,
         ...(state === "error" ? { retryable: true, message: "O login expirou. Tente novamente." } : {}),
       }
       delete session.secret
@@ -238,11 +233,11 @@ export const createProviderLoginFlow = ({
       env: buildChildEnv({ base: await kernel.shellEnv() }),
     })
     return loggedIn
-      ? { provider: target.provider, state: "ready", host }
+      ? { provider: target.provider, state: "ready", ...hostContext }
       : {
           provider: target.provider,
           state: "error",
-          host,
+          ...hostContext,
           message: `O perfil ${profile} não está logado. No servidor, rode: touri profile login ${profile}`,
         }
   }
@@ -253,7 +248,8 @@ export const createProviderLoginFlow = ({
     // A cancelled browser attempt must not mask an existing or repaired saved login.
     if (current && (current.view.state === "waiting" || isDraft(target.id))) return { ...current.view }
     const source = isDraft(target.id) ? null : storedProviderLoginSource(kernel, target)
-    if (!source && hostAvailable(target.provider)) return { provider: target.provider, state: "host-available", host }
+    if (!source && hostAvailable(target.provider))
+      return { provider: target.provider, state: "host-available", ...hostContext }
     if (source !== "host-file" && !isDraft(target.id)) {
       let value: string | null
       try {
@@ -263,7 +259,7 @@ export const createProviderLoginFlow = ({
           return {
             provider: target.provider,
             state: "error",
-            host,
+            ...hostContext,
             message: headless ? SERVER_VAULT_GUIDANCE : NATIVE_VAULT_GUIDANCE,
           }
         if (
@@ -285,7 +281,7 @@ export const createProviderLoginFlow = ({
     if (hostAvailable(target.provider))
       return source === "host-file"
         ? { provider: target.provider, state: "ready" }
-        : { provider: target.provider, state: "host-available", host }
+        : { provider: target.provider, state: "host-available", ...hostContext }
     return current?.view.state === "cancelled" || current?.view.state === "error"
       ? { ...current.view }
       : { provider: target.provider, state: "idle" }
@@ -293,7 +289,7 @@ export const createProviderLoginFlow = ({
   const start = async (target: Target): Promise<ProviderLoginFlow> => {
     const existing = sessions.get(key(target))
     if (existing?.view.state === "waiting") return { ...existing.view }
-    const session: Session = { target, view: { provider: target.provider, state: "waiting", host } }
+    const session: Session = { target, view: { provider: target.provider, state: "waiting", ...hostContext } }
     sessions.set(key(target), session)
     session.timer = setTimeout(() => cancel(session.target, "error"), timeoutMs)
     session.timer.unref()
@@ -438,7 +434,7 @@ export const createProviderLoginFlow = ({
           session.view = {
             provider: target.provider,
             state: "error",
-            host,
+            ...hostContext,
             retryable: true,
             message: "Não foi possível concluir o login. Tente novamente ou cole o token manualmente.",
           }
@@ -550,7 +546,7 @@ export const createProviderLoginFlow = ({
       const value = input.value?.trim() ?? ""
       if (value.length > 20_000 || !validLogin(target.provider, value)) throw new Error("Login inválido.")
       cancel(target)
-      const session: Session = { target, view: { provider: target.provider, state: "waiting", host } }
+      const session: Session = { target, view: { provider: target.provider, state: "waiting", ...hostContext } }
       sessions.set(key(target), session)
       try {
         await save(session, value)
@@ -598,7 +594,8 @@ export const createProviderLoginFlow = ({
         return { status: 400, json: { error: "Provedor inválido" } }
       const target = { id, provider: input.provider as Bot["provider"] }
       try {
-        if (method === "POST" && input.action === "cancel") return { status: 200, json: { ...cancel(target), host } }
+        if (method === "POST" && input.action === "cancel")
+          return { status: 200, json: { ...cancel(target), ...hostContext } }
         // Readiness must not invoke the provider or spend a model response. Login and
         // installation are independent: credentials can outlive an uninstalled CLI.
         const base = buildChildEnv({ base: await kernel.shellEnv() })
@@ -614,7 +611,7 @@ export const createProviderLoginFlow = ({
             : await action(target, { ...input, action: input.action ?? "" })
         return {
           status: 200,
-          json: { ...view, host, executable: resolved.success ? "available" : "missing" },
+          json: { ...view, ...hostContext, executable: resolved.success ? "available" : "missing" },
         }
       } catch {
         return { status: 503, json: { error: "Não foi possível configurar o login. Tente novamente." } }

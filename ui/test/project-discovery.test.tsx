@@ -149,7 +149,7 @@ it.each([
     "workspace-write",
     "Pede permissão antes de mudar arquivos; alterações ficam na pasta do bot, no projeto e nas pastas liberadas.",
   ],
-  ["local", "read-only", "Somente leitura; pode ler arquivos no Mac, sem alterá-los."],
+  ["local", "read-only", "Somente leitura; pode ler arquivos no servidor, sem alterá-los."],
   ["vm", "full", "Acesso total; só no computador isolado."],
 ] as const)("creation keeps the %s/%s summary visible with Advanced closed", async (machine, access, summary) => {
   await creation()

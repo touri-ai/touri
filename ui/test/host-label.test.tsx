@@ -73,7 +73,13 @@ const getHostApi = (host: HostKind): UiApi => {
   const api = createMockApi()
   const request: ApiRequest = async (route, input, path) => {
     if (route === "GET /health")
-      return { ok: true, version: "test", schemaVersion: 1, host } as ApiRoutes[typeof route]["res"]
+      return {
+        ok: true,
+        version: "test",
+        schemaVersion: 1,
+        host: host === "mac" ? "mac" : "server",
+        hostKind: host,
+      } as ApiRoutes[typeof route]["res"]
 
     return api.request(route, input, path)
   }

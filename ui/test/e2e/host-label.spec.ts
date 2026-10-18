@@ -29,7 +29,9 @@ hosts.forEach(({ host, noun }) => {
     await panel.getByRole("button", { name: "Ajustar permissões", exact: true }).click()
 
     const permissions = page.getByRole("dialog", { name: "Permissões do bot", exact: true })
-    await expect(permissions.getByRole("switch", { name: `Acesso a qualquer pasta deste ${noun}` })).toBeVisible()
+    const folderAccess = permissions.getByRole("switch", { name: `Acesso a qualquer pasta deste ${noun}` })
+    await expect(folderAccess).toBeVisible()
+    await folderAccess.scrollIntoViewIfNeeded()
     await expect(permissions).not.toContainText("neste Mac")
     await captureHostLabel(page, `${host}-permissions.png`)
   })

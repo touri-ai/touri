@@ -168,7 +168,7 @@ it.each(["mac", "computer", "server"] as const)(
   "offers the %s host login first and connects with one click",
   async (host) => {
     const f = fixture("host-available")
-    f.setFlow({ provider: "codex", state: "host-available", host })
+    f.setFlow({ provider: "codex", state: "host-available", host: host === "mac" ? "mac" : "server", hostKind: host })
     const location = { mac: "Mac", computer: "computador", server: "servidor" }[host]
     const configured = vi.fn()
     render(<ProviderLogin api={f.api} botId="bot" provider="codex" onConfigured={configured} />)
@@ -304,7 +304,12 @@ it.each(["mac", "server"] as const)("composer identifies the %s host and waits f
   const f = fixture("host-available")
   const bot = f.api.getState().bots[0]
   if (!bot) throw new Error("Missing fixture")
-  f.setFlow({ provider: bot.provider, state: "host-available", host })
+  f.setFlow({
+    provider: bot.provider,
+    state: "host-available",
+    host: host === "mac" ? "mac" : "server",
+    hostKind: host,
+  })
   const location = { mac: "Mac", computer: "computador", server: "servidor" }[host]
   const send = vi.fn().mockResolvedValue(undefined)
   render(
@@ -707,6 +712,33 @@ it.each([
   expect(t("Entrar no {provider}", { provider: "Claude" }, "en")).toBe("Sign in to Claude")
 })
 
+it.each([
+  { hostKind: "computer", noun: "computador", hasLink: false },
+  { hostKind: "computer", noun: "computador", hasLink: true },
+  { hostKind: "server", noun: "servidor", hasLink: false },
+  { hostKind: "server", noun: "servidor", hasLink: true },
+] as const)(
+  "waiting $hostKind login with link=$hasLink describes its reported host",
+  async ({ hostKind, noun, hasLink }) => {
+    const f = fixture("waiting")
+    f.setFlow({
+      provider: "codex",
+      state: "waiting",
+      host: "server",
+      hostKind,
+      ...(hasLink ? { verificationUrl: "https://example.test/login" } : {}),
+    })
+
+    render(<ProviderLogin api={f.api} botId="draft-test" provider="codex" onConfigured={vi.fn()} />)
+
+    const message = hasLink
+      ? `Entre no Codex para este ${noun}: abra este link neste aparelho`
+      : `Preparando o login do Codex para este ${noun}…`
+    expect(await screen.findByText(message)).toBeVisible()
+    expect(screen.queryByRole("link", { name: "Abrir página de login" }) !== null).toBe(hasLink)
+  },
+)
+
 it.each(["codex", "claude", "opencode"] as const)(
   "%s server login offers a device link and copyable code without opening a desktop",
   async (provider) => {
@@ -717,7 +749,7 @@ it.each(["codex", "claude", "opencode"] as const)(
     const url = "https://opencode.ai/auth?state=synthetic-state"
     f.setFlow({ provider, state: "waiting", host: "server", deviceCode: "1234-5678", verificationUrl: url })
     render(<ProviderLogin api={f.api} botId="draft-test" provider={provider} onConfigured={vi.fn()} />)
-    await screen.findByText(/para o servidor: abra este link neste aparelho/)
+    await screen.findByText(/para este servidor: abra este link neste aparelho/)
     expect(screen.getByText(/O login expira em até 10 minutos/)).toBeVisible()
     expect(screen.getByRole("link", { name: "Abrir página de login" })).toHaveAttribute("href", url)
     expect(screen.getByRole("textbox", { name: "Código de login" })).toHaveValue("1234-5678")

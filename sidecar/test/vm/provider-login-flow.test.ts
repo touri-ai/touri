@@ -6,7 +6,7 @@ import { join } from "node:path"
 import type { Bot, Kernel, ProviderLoginFlow, UiEvent } from "@touri/contracts"
 import { createRedactor } from "../../src/kernel/redact"
 import { spawnTree } from "../../src/kernel/spawn"
-import { getHost } from "../../src/platform/host"
+import { getHostIdentity } from "../../src/platform/host"
 import { prepareLocalProviderLogin } from "../../src/vm/local-provider-login"
 import { providerLoginAccount, storedProviderLoginSource } from "../../src/vm/provider-login"
 import { createProviderLoginFlow, type LoginInvocation, validLogin } from "../../src/vm/provider-login-flow"
@@ -239,7 +239,7 @@ test("poll exposes only device challenge, cancel kills CLI and never saves crede
   expect(await f.flow.status(f.bot)).toEqual({
     provider: "codex",
     state: "waiting",
-    host: getHost(),
+    ...getHostIdentity(),
     deviceCode: "ABCD-EFGH",
     verificationUrl: "https://auth.openai.com/codex/device",
   })
@@ -265,7 +265,7 @@ for (const mode of ["invalid", "fail"])
     expect(f.vault.size).toBe(0)
   })
 
-for (const [platform, headless, host] of [
+for (const [platform, headless, hostKind] of [
   ["darwin", false, "mac"],
   ["darwin", true, "server"],
   ["linux", true, "server"],
@@ -303,7 +303,13 @@ for (const [platform, headless, host] of [
       })
       expect(response).toEqual({
         status: 200,
-        json: { provider, state: "host-available", host, executable: "available" },
+        json: {
+          provider,
+          state: "host-available",
+          hostKind,
+          host: hostKind === "mac" ? "mac" : "server",
+          executable: "available",
+        },
       })
       expect(f.invocations).toHaveLength(0)
       expect((await f.flow.action(f.bot, { action: "use-host" })).state).toBe("ready")
@@ -467,7 +473,7 @@ for (const mode of ["code-bel", "code-st"])
     expect(await waitView(f, (view) => !!view.needsCode)).toEqual({
       provider: "claude",
       state: "waiting",
-      host: getHost(),
+      ...getHostIdentity(),
       needsCode: true,
       verificationUrl: authorizeUrl,
     })
@@ -639,6 +645,7 @@ for (const provider of ["codex", "claude", "opencode"] as const)
         state: "host-available",
         executable: "missing",
         host: "server",
+        hostKind: "server",
       },
     })
     expect(await post.handler(request)).toMatchObject({ json: { executable: "missing" } })
@@ -697,7 +704,7 @@ for (const provider of ["codex", "opencode"] as const)
     })
     await f.flow.action(f.bot, { action: "start" })
     const view = await waitView(f, (view) => view.verificationUrl === url)
-    expect(view).toMatchObject({ state: "waiting", host: "server", deviceCode: "1234-5678" })
+    expect(view).toMatchObject({ state: "waiting", host: "server", hostKind: "server", deviceCode: "1234-5678" })
     expect(f.invocations[0]?.env.BROWSER).toBe("echo")
     expect(f.invocations[0]?.env.DISPLAY).toBeUndefined()
     expect(f.kernel.redact("1234-5678")).toBe("[REDACTED]")
@@ -710,7 +717,7 @@ test("headless Claude accepts a plain printed authorize URL and completes with a
   const f = fixture("claude", "code-plain", 3000, { platform: "linux", headless: true })
   await f.flow.action(f.bot, { action: "start" })
   const view = await waitView(f, (view) => !!view.needsCode)
-  expect(view).toMatchObject({ host: "server", verificationUrl: authorizeUrl })
+  expect(view).toMatchObject({ host: "server", hostKind: "server", verificationUrl: authorizeUrl })
   expect(f.invocations[0]?.env.BROWSER).toBe("echo")
   await f.flow.action(f.bot, { action: "code", value: browserCode })
   await waitState(f, "ready")
@@ -723,6 +730,7 @@ for (const provider of ["codex", "claude", "opencode"] as const)
     await f.flow.action(f.bot, { action: "start" })
     expect(await waitState(f, "error")).toMatchObject({
       host: "server",
+      hostKind: "server",
       retryable: true,
       message: "O login expirou. Tente novamente.",
     })
@@ -740,7 +748,11 @@ test("headless OpenCode returns the authorization code to the CLI without a serv
   const url = "https://opencode.ai/auth?state=synthetic-state"
   const f = fixture("opencode", "code-plain", 3000, { platform: "linux", headless: true, url })
   await f.flow.action(f.bot, { action: "start" })
-  expect(await waitView(f, (view) => !!view.needsCode)).toMatchObject({ host: "server", verificationUrl: url })
+  expect(await waitView(f, (view) => !!view.needsCode)).toMatchObject({
+    host: "server",
+    hostKind: "server",
+    verificationUrl: url,
+  })
   await f.flow.action(f.bot, { action: "code", value: browserCode })
   await waitState(f, "ready")
   expect(f.vault.get(providerLoginAccount(f.bot.id, "opencode"))).toBe(openCode)
@@ -780,8 +792,13 @@ test("a bot with a provider profile reports that profile's login and never start
     },
   })
   cleanups.push(() => flow.dispose())
-  expect(await flow.status(f.bot)).toEqual({ provider: "claude", state: "ready", host: "server" })
-  expect(await flow.action(f.bot, { action: "start" })).toEqual({ provider: "claude", state: "ready", host: "server" })
+  expect(await flow.status(f.bot)).toEqual({ provider: "claude", state: "ready", host: "server", hostKind: "server" })
+  expect(await flow.action(f.bot, { action: "start" })).toEqual({
+    provider: "claude",
+    state: "ready",
+    host: "server",
+    hostKind: "server",
+  })
   loggedIn = false
   const signedOut = await flow.status(f.bot)
   expect(signedOut.state).toBe("error")

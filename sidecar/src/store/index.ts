@@ -43,7 +43,7 @@ import { externalizeMessageParts, OUTPUT_BLOB_ORIGIN, readOutputAttachment } fro
 import { isProfileProvider, validProviderProfileName } from "../kernel/provider-profiles"
 import { materializeTranscript } from "../kernel/transcript-storage"
 import { hostComputerSupported } from "../platform"
-import { getHost } from "../platform/host"
+import { getHostIdentity } from "../platform/host"
 import { touriVersion } from "../version"
 import { DEFAULT_BOT_VM_MEMORY_MB, DEFAULT_MACHINE_IDLE_MINUTES, validBotVmMemory } from "../vm/resources"
 import { redeemFileGrant } from "./redeemFileGrant"
@@ -1238,7 +1238,7 @@ export const init = async (kernel: Kernel): Promise<void> => {
             ok: true,
             version: touriVersion,
             schemaVersion: SCHEMA_VERSION,
-            host: getHost(),
+            ...getHostIdentity(),
           }),
       },
       {

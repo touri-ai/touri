@@ -1,5 +1,5 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
-import type { Bot } from "@touri/contracts"
+import type { ApiRoutes, Bot } from "@touri/contracts"
 import { afterEach, expect, it, vi } from "vitest"
 import App from "../src/App"
 import { createWebInvoke, type TauriInvoke } from "../src/api/client"
@@ -14,8 +14,15 @@ afterEach(() => {
   cleanup()
   vi.restoreAllMocks()
 })
-const setup = async (patch: Partial<Bot> = {}) => {
-  const api = createMockApi()
+const setup = async (patch: Partial<Bot> = {}, host?: "mac") => {
+  const originalApi = createMockApi()
+  const request: typeof originalApi.request = async (route, input, path) => {
+    if (route === "GET /health" && host)
+      return { ok: true, version: "test", schemaVersion: 1, host, hostKind: host } as ApiRoutes[typeof route]["res"]
+
+    return originalApi.request(route, input, path)
+  }
+  const api = { ...originalApi, request }
   const bot = api.getState().bots[0]
   if (!bot) throw new Error("Missing bot")
   Object.assign(bot, { projectId: null, folders: [], anyFolderAccess: false }, patch)
@@ -173,12 +180,15 @@ it.each(["codex", "claude", "opencode"] as const)(
 it.each(["never", "on-request"] as const)(
   "explains full local access with %s approvals in bot settings",
   async (approvals) => {
-    await setup({
-      provider: "codex",
-      access: "full",
-      approvals,
-      folders: [{ path: "/reference", access: "read-only" }],
-    })
+    await setup(
+      {
+        provider: "codex",
+        access: "full",
+        approvals,
+        folders: [{ path: "/reference", access: "read-only" }],
+      },
+      "mac",
+    )
     expect(screen.getByText(/O acesso total permite ler/)).toHaveTextContent(
       "qualquer pasta que a conta do sistema permita",
     )

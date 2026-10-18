@@ -14,8 +14,9 @@ export const ProviderLoginFlow = ({
 }) => {
   const { flow, error, busy, act, recheck } = login
   const provider = login.provider === "claude" ? "Claude" : login.provider === "codex" ? "Codex" : "OpenCode"
-  const host = getHostLabel(flow?.host ?? "computer")
-  const serverLogin = flow?.host === "server" || flow?.host === "computer"
+  const hostKind = flow?.hostKind ?? flow?.host
+  const host = getHostLabel(hostKind ?? "computer")
+  const serverLogin = hostKind === "server" || hostKind === "computer"
   const desktopMethod =
     serverLogin &&
     flow?.prompt?.kind === "method" &&
@@ -45,7 +46,7 @@ export const ProviderLoginFlow = ({
     return (
       <ProviderInstallation
         provider={flow.provider}
-        host={flow.host ?? "computer"}
+        host={hostKind ?? "computer"}
         busy={busy}
         onRecheck={() => void login.recheck()}
       />
@@ -60,8 +61,8 @@ export const ProviderLoginFlow = ({
             : flow.state === "waiting"
               ? serverLogin
                 ? flow.verificationUrl
-                  ? t("Entre no {provedor} para o servidor: abra este link neste aparelho", { provedor: provider })
-                  : t("Preparando o login do {provedor} para o servidor…", { provedor: provider })
+                  ? t("Sign in to {provider} for this {host}: open this link on this device", { provider, host })
+                  : t("Preparing {provider} sign-in for this {host}…", { provider, host })
                 : t("Aguardando login no navegador…")
               : flow.state === "ready"
                 ? t("Login disponível para este bot.")
