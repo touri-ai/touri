@@ -24,6 +24,7 @@ export const useStreamingContent = (content: string, streaming: boolean): string
   useEffect(
     () => () => {
       if (pending.current !== null) clearTimeout(pending.current)
+      pending.current = null
     },
     [],
   )

@@ -1,4 +1,5 @@
 import { act, render, screen, waitFor } from "@testing-library/react"
+import { StrictMode } from "react"
 import remarkGfm from "remark-gfm"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { MarkdownContent } from "../src/components/MarkdownContent"
@@ -47,6 +48,24 @@ describe("streaming Markdown", () => {
     act(() => vi.advanceTimersByTime(50))
 
     expect(screen.getByTestId("text")).toHaveTextContent("Início de uma resposta")
+  })
+
+  it("continues painting after effects are replayed in strict mode", () => {
+    vi.useFakeTimers()
+    const view = render(
+      <StrictMode>
+        <StreamingText content="Início" streaming />
+      </StrictMode>,
+    )
+
+    view.rerender(
+      <StrictMode>
+        <StreamingText content="Texto mais recente" streaming />
+      </StrictMode>,
+    )
+    act(() => vi.advanceTimersByTime(100))
+
+    expect(screen.getByTestId("text")).toHaveTextContent("Texto mais recente")
   })
 
   it("flushes the exact final text on completion or cancellation and releases pending work", () => {
