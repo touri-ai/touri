@@ -1573,7 +1573,10 @@ export const createRuntimeEngine = ({
       ...(run.routineRunId ? { routineRunId: run.routineRunId } : {}),
     })
     if (!next.success) return false
-    goals.attachRun(run.id, next.run.id)
+    if (!goals.attachRun(run.id, next.run.id)) {
+      cancel(next.run.id)
+      return false
+    }
     continuations.record({
       runId: next.run.id,
       originalRunId: plan.originalRunId,
@@ -1668,7 +1671,11 @@ export const createRuntimeEngine = ({
     try {
       await execute(run)
       const finished = persistence.getRun(run.id)
-      if (finished) goals.finishTurn(finished, getState(run.id).text, pendingContinuations.has(run.id))
+      if (!finished) return
+      const state = getState(run.id)
+      const needsReview =
+        hasUncertainWork(run.id) || state.parts.some((part) => part.type === "approval" && part.decision !== "approved")
+      goals.finishTurn(finished, state.text, pendingContinuations.has(run.id), needsReview)
     } finally {
       if (budgetTimer) clearInterval(budgetTimer)
     }

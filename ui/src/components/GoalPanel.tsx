@@ -2,6 +2,7 @@ import type { Bot, Goal, GoalControl, Id, Message } from "@touri/contracts"
 import { type FormEvent, useEffect, useId, useState } from "react"
 import type { UiApi } from "../api/client"
 import { type TranslationKey, t } from "../i18n"
+import { ChatDisclosure } from "./ChatDisclosure"
 import "./goal-panel.css"
 
 export const GoalPanel = ({
@@ -185,15 +186,7 @@ export const GoalPanel = ({
         </div>
       )}
       {(!goal || goal.status === "completed") && (
-        <details open={advanced}>
-          <summary
-            onClick={(event) => {
-              event.preventDefault()
-              setAdvanced(!advanced)
-            }}
-          >
-            {t("Goal advanced")}
-          </summary>
+        <ChatDisclosure label={t("Goal advanced")} expanded={advanced} onExpandedChange={setAdvanced}>
           {advanced && (
             <>
               <p>{t("Goal mode help")}</p>
@@ -219,7 +212,7 @@ export const GoalPanel = ({
               </form>
             </>
           )}
-        </details>
+        </ChatDisclosure>
       )}
       {failed && <p role="alert">{t("Goal request failed")}</p>}
     </section>

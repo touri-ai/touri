@@ -179,9 +179,14 @@ export const createGoalRuntime = (kernel: Kernel, hooks: GoalHooks, now = Date.n
     }
   }
 
-  const finishTurn = (run: Run, summary: string, hasContinuation: boolean): void => {
+  const finishTurn = (run: Run, summary: string, hasContinuation: boolean, needsReview: boolean): void => {
     const goal = getForRun(run.id)
-    if (goal?.status !== "active" || hooks.isStopping() || hasContinuation) return
+    if (goal?.status !== "active" || hooks.isStopping()) return
+    if (needsReview) {
+      saveGoal({ ...goal, status: "paused" })
+      return
+    }
+    if (hasContinuation) return
     if (run.status !== "succeeded") {
       saveGoal({ ...goal, status: "paused" })
       return

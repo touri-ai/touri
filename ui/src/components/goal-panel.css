@@ -7,9 +7,6 @@
   font-size: var(--type-12);
   color: var(--text-secondary);
 }
-.goal-panel summary {
-  cursor: pointer;
-}
 .goal-panel p {
   margin: 6px 0;
   overflow-wrap: anywhere;

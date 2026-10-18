@@ -89,7 +89,7 @@ const makeFixture = async (onTurn?: (args: StartTurnArgs, index: number) => Prom
     return next
   }
 
-  return { engine, startTurn, adapter, database, store, restart, input: getInput() }
+  return { engine, startTurn, adapter, database, store, restart, kernel: runtime.kernel, input: getInput() }
 }
 
 const getInput = (patch: Partial<GoalStart> = {}): GoalStart => ({
@@ -282,10 +282,11 @@ test("goal checkpoints keep restart continuation caps", async () => {
   expect(fixture.startTurn).toHaveBeenCalledTimes(3)
 })
 
-test("an autonomous turn still waits for explicit approval", async () => {
+test("an autonomous turn waits for explicit approval and pauses after a denial", async () => {
   const fixture = await makeFixture(async (args) => {
     const run = fixture.engine.activeRun({ threadId: "t" })
     if (!run) throw new Error("Missing turn")
+    fixture.engine.continueAfterApproval({ botId: "b", threadId: "t", runId: run.id, signal: args.signal })
     await fixture.engine.approvalPrompt({
       ctx: { botId: "b", threadId: "t", runId: run.id, signal: args.signal },
       toolName: "Bash",
@@ -304,10 +305,13 @@ test("an autonomous turn still waits for explicit approval", async () => {
   expect(fixture.adapter.answerApproval).not.toHaveBeenCalled()
   expect(fixture.engine.goals.getGoal("t")?.status).toBe("active")
 
-  fixture.engine.goals.controlGoal("t", { action: "pause" })
+  const approval = getApproval()
+  if (approval?.type !== "approval") throw new Error("Missing approval")
+  await fixture.engine.answerApproval({ approvalId: approval.approvalId, decision: "denied" })
   await waitFor(() => fixture.engine.activeRun({ threadId: "t" }) === null)
 
   expect(getApproval()).toBeUndefined()
+  expect(fixture.startTurn).toHaveBeenCalledTimes(1)
   expect(fixture.engine.goals.getGoal("t")?.status).toBe("paused")
 })
 
@@ -342,4 +346,26 @@ test("a new user request pauses the goal and reaches the next turn", async () =>
   expect(fixture.startTurn.mock.calls[1]?.[0].input).toContainEqual(
     expect.objectContaining({ type: "text", text: expect.stringContaining(text) }),
   )
+})
+
+test("a continuation cannot escape the goal budget if it expires while being queued", async () => {
+  const fixture = await makeFixture(async (args, index) => {
+    if (index !== 1) return
+    const run = fixture.engine.activeRun({ threadId: "t" })
+    fixture.engine.continueAfterApproval({ botId: "b", threadId: "t", runId: run?.id ?? null, signal: args.signal })
+  })
+  const unsubscribe = fixture.kernel.subscribe(({ event }) => {
+    if (event.type !== "run.updated" || event.run.status !== "queued" || fixture.startTurn.mock.calls.length !== 1)
+      return
+    const goal = fixture.engine.goals.getGoal("t")
+    if (goal) fixture.engine.goals.saveGoal({ ...goal, deadlineAt: Date.now() - 1 })
+  })
+  cleanups.add(async () => unsubscribe())
+
+  fixture.engine.goals.startGoal("t", fixture.input)
+  await waitFor(() => fixture.engine.goals.getGoal("t")?.status === "budget_exhausted")
+  await waitFor(() => ["succeeded", "canceled"].includes(fixture.engine.listRuns("t")[0]?.status ?? ""))
+
+  expect(fixture.startTurn).toHaveBeenCalledTimes(1)
+  expect(fixture.engine.listRuns("t")[0]?.status).toBe("canceled")
 })
