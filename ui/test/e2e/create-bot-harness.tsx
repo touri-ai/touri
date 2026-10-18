@@ -1,4 +1,4 @@
-import type { ProviderLoginFlow } from "@touri/contracts"
+import type { HostKind, ProviderLoginFlow } from "@touri/contracts"
 import { createRoot } from "react-dom/client"
 import App from "../../src/App"
 import type { ApiRequest } from "../../src/api/client"
@@ -16,9 +16,11 @@ const signedIn = new Set<ProviderLoginFlow["provider"]>(
   new URLSearchParams(location.search).has("signed-out") ? [] : ["codex"],
 )
 const params = new URLSearchParams(location.search)
-const host = params.get("host") === "mac" ? "mac" : "server"
+const requestedHost = params.get("host")
+const hostKind: HostKind = requestedHost === "mac" || requestedHost === "computer" ? requestedHost : "server"
+const host = hostKind === "mac" ? "mac" : "server"
 let installed = !params.has("missing-cli")
-const availability = () => ({ host, executable: installed ? "available" : "missing" })
+const availability = () => ({ host, hostKind, executable: installed ? "available" : "missing" })
 Object.assign(window, {
   installCli: () => {
     installed = true
@@ -26,7 +28,7 @@ Object.assign(window, {
 })
 const request = api.request
 api.request = (async (route, input, path) => {
-  if (route === "GET /health") return { ok: true, version: "test", schemaVersion: 1, host }
+  if (route === "GET /health") return { ok: true, version: "test", schemaVersion: 1, host, hostKind }
   if (route === "GET /bots/:id/provider-login/flow") {
     const { provider } = input as { provider: ProviderLoginFlow["provider"] }
     return { provider, state: signedIn.has(provider) ? "ready" : "cancelled", ...availability() }

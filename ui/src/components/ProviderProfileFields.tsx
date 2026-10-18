@@ -1,6 +1,8 @@
 import type { Bot, ProviderProfile } from "@touri/contracts"
 import { useEffect, useState } from "react"
 import type { UiApi } from "../api/client"
+import { getHostLabel, t } from "../i18n"
+import { useHost } from "../useHost"
 import { SettingsRow, SettingsSwitch } from "./SettingsLayout"
 
 type ProfileValues = { providerProfile: string | null; claudeAiConnectors: boolean }
@@ -17,6 +19,7 @@ export const ProviderProfileFields = ({
   values: ProfileValues
   onChange: (patch: Partial<ProfileValues>) => void
 }) => {
+  const host = useHost(api)
   const [profiles, setProfiles] = useState<Array<ProviderProfile> | null>(null)
   useEffect(() => {
     let current = true
@@ -48,7 +51,7 @@ export const ProviderProfileFields = ({
           disabled={profiles === null}
           onChange={(event) => onChange({ providerProfile: event.target.value || null })}
         >
-          <option value="">Login padrão deste computador</option>
+          <option value="">{t("Default login on this {host}", { host: getHostLabel(host) })}</option>
           {options.map((profile) => (
             <option key={profile.name} value={profile.name}>
               {profile.name}

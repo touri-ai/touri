@@ -1,5 +1,5 @@
 import { listen } from "@tauri-apps/api/event"
-import type { BotGroup, Id, NotificationRecord } from "@touri/contracts"
+import type { BotGroup, HostKind, Id, NotificationRecord } from "@touri/contracts"
 import type { FailureAction } from "@touri/contracts/run-failure"
 import { type SetStateAction, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
@@ -36,6 +36,7 @@ import { MotionPresence, MotionSkeleton } from "./components/Motion"
 import { PageTransition } from "./components/PageTransition"
 import { RoutineEditor } from "./components/RoutineEditor"
 import { SidebarDrawer } from "./components/SidebarDrawer"
+import { getWindowChrome, WindowFrame } from "./components/WindowFrame"
 import { IntegrationsScreen, McpScreen, PreviewScreen } from "./components/WorkspaceScreens"
 import { installComputerKillSwitch } from "./computerKillSwitch"
 import { openComputerWindow } from "./computerWindow"
@@ -64,7 +65,7 @@ import {
   serverModeErrorCode,
   useServerMode,
 } from "./features/server/serverMode"
-import { localizeNotice, t } from "./i18n"
+import { getHostLabel, localizeNotice, t } from "./i18n"
 import { type DeepLinkRequest, installNativeDeepLinks } from "./nativeDeepLinks"
 import { requestTaskResume, requestTaskReview } from "./recoveryEvents"
 import type { RoutineDraft } from "./routineDraft"
@@ -910,7 +911,7 @@ const AppContent = ({ kernel }: AppProps) => {
               void actions.createGroupThread(g.id).catch((e) => showNotice(userFacingError(e)))
               setRoute({ section: "bots", screen: "chat" })
             }}
-            showFakeTrafficLights={api.isMock}
+            showFakeTrafficLights={api.isMock && !isNativeDesktop()}
             bots={data.bots}
             onDeleteBot={actions.deleteBot}
             threads={data.threads}
@@ -1287,7 +1288,7 @@ const OnboardingLanding = ({
   onImport,
   onSettings,
 }: {
-  host: "mac" | "server"
+  host: HostKind
   onCreateBot: () => void
   onDoctor: () => void
   onImport: () => void
@@ -1299,7 +1300,7 @@ const OnboardingLanding = ({
         <img className="brand-bull" src="/touri-bull.png" alt="" />
         <span className="brand-name">touri</span>
       </h1>
-      <p>{t("onboarding.privacy", { host: host === "mac" ? "Mac" : t("onboarding.server") })}</p>
+      <p>{t("onboarding.privacy", { host: getHostLabel(host) })}</p>
       <div className="onboarding-actions">
         <button type="button" className="button button-brand" onClick={onCreateBot}>
           {t("Create my first bot")}
@@ -1319,20 +1320,30 @@ const OnboardingLanding = ({
           </button>
         </span>
         <button type="button" className="text-button" onClick={onDoctor}>
-          {t(host === "mac" ? "Check this Mac" : "onboarding.checkServer")}
+          {t("Check this {host}", { host: getHostLabel(host) })}
         </button>
       </div>
     </div>
   </main>
 )
 
-const App = (props: AppProps) => (
-  <ServerModeProvider invoke={props.kernel?.services?.invoke ?? undefined} fallback={<LoadingScreen />}>
-    <ErrorBoundary area="o app" app api={props.kernel?.services?.api ?? undefined}>
-      <AppContent {...props} />
-    </ErrorBoundary>
-    <ReportMenuLauncher api={props.kernel?.services?.api ?? undefined} />
-  </ServerModeProvider>
-)
+const App = (props: AppProps) => {
+  const chrome = getWindowChrome({
+    native: isNativeDesktop(),
+    userAgent: navigator.userAgent,
+    search: window.location.search,
+  })
+  const content = (
+    <ServerModeProvider invoke={props.kernel?.services?.invoke ?? undefined} fallback={<LoadingScreen />}>
+      <ErrorBoundary area="o app" app api={props.kernel?.services?.api ?? undefined}>
+        <AppContent {...props} />
+      </ErrorBoundary>
+      <ReportMenuLauncher api={props.kernel?.services?.api ?? undefined} />
+    </ServerModeProvider>
+  )
+  if (chrome === "system") return content
+
+  return <WindowFrame>{content}</WindowFrame>
+}
 
 export default App

@@ -3,6 +3,7 @@ import { useEffect, useState } from "react"
 import type { UiApi } from "../../api/client"
 import { PanelIcon } from "../../components/PanelIcon"
 import { userFacingError } from "../../errors"
+import { t } from "../../i18n"
 import { DesktopPanel } from "../desktop/DesktopPanel"
 import { cloudBytes, cloudHours, useCloudAccount } from "./useCloudAccount"
 import "./cloud.css"
@@ -73,7 +74,7 @@ export const CloudComputer = ({ api, bot, machine: initial }: { api: UiApi; bot:
         </div>
         <p>
           {runtimeAvailable
-            ? "Seu bot e suas rotinas trabalham mesmo com o Mac desligado."
+            ? t("Seu bot e suas rotinas trabalham mesmo com o computador local desligado.")
             : "Execução na nuvem chega em breve"}
         </p>
         <div className="computer-actions">

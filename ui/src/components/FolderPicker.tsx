@@ -216,7 +216,7 @@ export const FolderPicker = ({
                 })
               }
             >
-              {t("Escolher no Mac…")}
+              {t("Escolher no computador…")}
             </button>
           )}
           <button
