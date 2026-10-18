@@ -185,7 +185,7 @@
   --touch-target-size: 44px;
   --menu-row-height: var(--space-32);
   --menu-corner: var(--radius-6);
-  --menu-padding: var(--space-4);
+  --menu-padding: var(--space-6);
   --bubble-radius: var(--radius-16);
   --bubble-padding-block: var(--space-10);
   --bubble-padding-inline: var(--space-14);
