@@ -169,6 +169,14 @@ const uniqueById = <T extends { id: Id }>(rows: Array<T>): Array<T> => {
   return [...result.values()]
 }
 
+const getRunPhase = (status: string): number | undefined => {
+  if (status === "queued") return 0
+  if (status === "starting") return 1
+  if (status === "running") return 2
+
+  return undefined
+}
+
 const mergeRunRows = <
   T extends { id: Id; status: string; finishedAt: number | null; providerStartedAt?: number | null },
 >(
@@ -178,6 +186,9 @@ const mergeRunRows = <
   const rows = new Map(current.map((row) => [row.id, row]))
   for (const row of incoming) {
     const previous = rows.get(row.id)
+    const previousPhase = previous ? getRunPhase(previous.status) : undefined
+    const incomingPhase = getRunPhase(row.status)
+    if (previousPhase !== undefined && incomingPhase !== undefined && incomingPhase < previousPhase) continue
     // A late acceptance can predate provider invocation.
     if (
       previous?.providerStartedAt != null &&

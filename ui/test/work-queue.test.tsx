@@ -1,10 +1,13 @@
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, renderHook, screen, waitFor, within } from "@testing-library/react"
+import type { ApiRoutes } from "@touri/contracts"
 import { afterEach, expect, it, vi } from "vitest"
 import App from "../src/App"
 import type { UiApi } from "../src/api/client"
+import { createMockApi } from "../src/api/mock"
 import { ActivityMark } from "../src/components/ActivityMark"
 import { getQueueLabel } from "../src/features/work/presentation"
 import { PerformanceScreen, WorkScreen } from "../src/features/work/WorkScreen"
+import { useWorkspace } from "../src/useWorkspace"
 import { createWorkApi } from "./fixtures/work-api"
 
 afterEach(cleanup)
@@ -65,6 +68,34 @@ it("keeps completion events newer than an in-flight global snapshot", async () =
 
   await waitFor(() => expect(screen.getAllByRole("article")).toHaveLength(4))
   expect(screen.getByText("Na fila · 1º de 1")).toBeVisible()
+})
+
+it("keeps an admitted turn out of the queue when its acceptance arrives after a live update", async () => {
+  const api = createMockApi()
+  const template = createWorkApi().getRuns()[4]
+  const message = api.getState().messages[0]
+  if (!template || !message) throw new Error("Missing mock turn")
+  const accepted = { ...template, id: "late-acceptance", botId: "bot-mark", threadId: "thread-mark" }
+  const request: UiApi["request"] = async (route, input, path) => {
+    if (route !== "POST /threads/:id/messages") return api.request(route, input, path)
+    api.emit({ type: "run.updated", run: { ...accepted, status: "starting", queuePosition: null, queueTotal: null } })
+    return {
+      run: accepted,
+      message: { ...message, id: "accepted-message", role: "user" },
+    } as ApiRoutes[typeof route]["res"]
+  }
+  const hook = renderHook(() => useWorkspace({ ...api, request }))
+  await waitFor(() => expect(hook.result.current.data.loading).toBe(false))
+
+  await act(async () => {
+    await hook.result.current.actions.sendMessage("Tarefa de demonstração")
+  })
+
+  expect(hook.result.current.data.runs.find((run) => run.id === accepted.id)).toMatchObject({
+    status: "starting",
+    queuePosition: null,
+    queueTotal: null,
+  })
 })
 
 it("shows queue positions in Portuguese and English and uses the slot fallback without engine metadata", () => {
