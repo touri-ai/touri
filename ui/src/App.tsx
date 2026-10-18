@@ -230,6 +230,16 @@ const AppContent = ({ kernel }: AppProps) => {
       setConnectionErrorCode(serverModeErrorCode(reason))
       setRetryingConnection(false)
     }
+    const scheduleRetry = (): void => {
+      clearTimeout(retryTimer)
+      retryTimer = setTimeout(() => {
+        if (!active) return
+
+        // A new effect gives every server attempt its own startup deadline.
+        if (serverMode) setConnectionAttempt((attempt) => attempt + 1)
+        else void connect()
+      }, 2000)
+    }
     const connect = async (): Promise<void> => {
       const attempt = ++generation
       try {
@@ -269,6 +279,7 @@ const AppContent = ({ kernel }: AppProps) => {
         await resolved.request("GET /health", {})
         if (!active || attempt !== generation) return
         clearTimeout(startupTimer)
+        clearTimeout(retryTimer)
         setApi(resolved)
         setConnectionState("ready")
         setConnectionError(null)
@@ -281,11 +292,7 @@ const AppContent = ({ kernel }: AppProps) => {
           return
         }
         fail(errorMessage(error))
-        if (!isTauriRuntime() || serverMode) {
-          retryTimer = setTimeout(() => {
-            if (active) void connect()
-          }, 2000)
-        }
+        if (!isTauriRuntime() || serverMode) scheduleRetry()
       }
     }
     const start = async (): Promise<void> => {
@@ -323,6 +330,7 @@ const AppContent = ({ kernel }: AppProps) => {
       // A late endpoint/health response must not dismiss the recovery screen.
       generation += 1
       fail(startupTimeoutMessage())
+      if (serverMode) scheduleRetry()
     }, STARTUP_TIMEOUT_MS)
     void start()
     return () => {
@@ -539,6 +547,11 @@ const AppContent = ({ kernel }: AppProps) => {
   const notice = localNotice ?? data.notice
   // This completion notice already points to the inline account recovery control.
   const noticeHasInlineRecovery = notice === t("Bot created. Could not connect your account. Sign in below to chat.")
+  const isErrorNotice =
+    !noticeHasInlineRecovery &&
+    (typeof notice !== "string" ||
+      errorRecovery(notice).classified ||
+      /erro|falh|failed|Error|TOURI-E\d{4}|[{}]/i.test(notice))
   const noticeRecord = data.notifications.find(
     (item) => typeof notice === "string" && notice.endsWith(localizeNotice(item.body)),
   )
@@ -857,12 +870,9 @@ const AppContent = ({ kernel }: AppProps) => {
         {/* r8 motion: transient notice presence */}
         <MotionPresence show={Boolean(notice)} kind="toast">
           {Boolean(notice) && (
-            <div className="notice-bar" role="status">
+            <div className={`notice-bar ${isErrorNotice ? "notice-error" : "notice-info"}`} role="status">
               <span>◈</span>
-              {!noticeHasInlineRecovery &&
-              (typeof notice !== "string" ||
-                errorRecovery(notice).classified ||
-                /erro|falh|failed|Error|[{}]/i.test(notice)) ? (
+              {isErrorNotice ? (
                 <ErrorNotice
                   error={notice}
                   context={noticeContext}

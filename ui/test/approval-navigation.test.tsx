@@ -68,6 +68,9 @@ const fixture = async () => {
   vi.spyOn(HTMLElement.prototype, "scrollIntoView").mockImplementation(reveal)
   render(<App kernel={{ services: { api } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
+  // Opening this conversation reloads its durable history, as the real server does.
+  api.getState().threads.push(thread)
+  api.getState().messages.push(reply)
   act(() => {
     api.emit({ type: "thread.updated", thread })
     api.emit({ type: "message.created", message: reply })

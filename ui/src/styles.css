@@ -165,6 +165,11 @@ a {
   color: var(--text-notice);
   font-size: var(--type-12);
 }
+.notice-bar.notice-info {
+  border-color: var(--border-subtle);
+  background: var(--surface-panel);
+  color: var(--text-primary);
+}
 .notice-bar button {
   margin-left: auto;
   border: 0;
