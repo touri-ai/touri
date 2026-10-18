@@ -290,6 +290,11 @@ export type Run = {
   replyMessageId: Id | null
   externalTurnId: string | null
   status: RunStatus
+  /** Engine snapshot, 1-based within the waiting queue; null outside that queue. */
+  queuePosition?: number | null
+  queueTotal?: number | null
+  /** Origin derived from the request and continuation records. */
+  origin?: 'message' | 'routine' | 'delegation' | 'resume'
   errorClass: RunErrorClass | null
   errorMessage: string | null
   usage: RunUsage | null
@@ -868,6 +873,7 @@ export type ApiRoutes = {
   'GET /threads/:id/transcript': { req: { since?: number; limit?: number }; res: { entries: Array<{ seq: number; generation: number; event: UiEvent }>; rejections: Array<TranscriptRejection>; lastSeq: number; generation: number; hasMore: boolean; resync: boolean } }
   'GET /threads/:id/messages': { req: { all?: boolean }; res: { messages: Array<Message>; activeLeafId: Id | null } }
   'POST /threads/:id/messages': { req: SendMessageInput; res: { message: Message; run: Run } }
+  'GET /runs': { req: Record<string, never>; res: { runs: Array<Run> } }
   'GET /threads/:id/runs': { req: { all?: boolean }; res: { runs: Array<Run> } }
   /** Compact sidebar messages and latest/active runs; never a transcript snapshot. */
   'GET /workspace/activity': { req: Record<string, never>; res: { messages: Array<Message>; runs: Array<Run> } }
