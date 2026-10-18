@@ -104,7 +104,7 @@ export const TurnActivity = ({
             {reasoning.length > 0 && (
               <section className="turn-activity-group chat-reasoning" aria-label={t("Reasoning", {}, locale)}>
                 <h4>{t("Reasoning", {}, locale)}</h4>
-                <MarkdownContent content={reasoning.join("\n\n")} />
+                <MarkdownContent content={reasoning.join("\n\n")} streaming={live} />
               </section>
             )}
           </>

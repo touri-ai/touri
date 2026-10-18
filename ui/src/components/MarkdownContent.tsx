@@ -1,5 +1,16 @@
 import { invoke } from "@tauri-apps/api/core"
-import { isValidElement, lazy, type ReactNode, Suspense, useContext, useEffect, useMemo, useRef, useState } from "react"
+import {
+  isValidElement,
+  lazy,
+  memo,
+  type ReactNode,
+  Suspense,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react"
 import type { Components } from "react-markdown"
 import { userFacingError } from "../errors"
 import { localFileLinks, localFilePath } from "../messageMarkdown"
@@ -11,11 +22,13 @@ import { decodedEvidencePath, type EvidenceNode, evidenceImages, evidencePath } 
 import { LocalFileLink } from "./LocalFileLink"
 import { MermaidDiagram } from "./MermaidDiagram"
 import { getMarkdownCodeHtml } from "./markdownHighlight"
+import { useStreamingContent } from "./useStreamingContent"
 
 type MarkdownRendererProps = {
   content: string
   compact?: boolean
   preview?: boolean
+  streaming?: boolean
   evidence?: EvidenceContextValue | undefined
 }
 
@@ -106,13 +119,13 @@ const LazyMarkdown = lazy(async () => {
     { unified },
     { default: remarkParse },
   ] = await Promise.all([import("react-markdown"), import("remark-gfm"), import("unified"), import("remark-parse")])
-  const buildComponents = (preview: boolean): Components => ({
+  const buildComponents = (preview: boolean, streaming = false): Components => ({
     img: ({ alt }) => <span>{alt}</span>,
     a: ({ href, children }) => <MarkdownLink href={href}>{children}</MarkdownLink>,
     pre: ({ children }) => {
       if (!isValidElement<{ className?: string; children?: ReactNode }>(children)) return <pre>{children}</pre>
       const language = children.props.className?.replace(/^language-/, "") ?? "text"
-      if (language.toLowerCase() === "mermaid" && !preview)
+      if (language.toLowerCase() === "mermaid" && !preview && !streaming)
         return <MermaidDiagram source={String(children.props.children ?? "").replace(/\n$/, "")} />
       if (language === "diff") return <DiffOutput source={String(children.props.children ?? "").replace(/\n$/, "")} />
       return (
@@ -120,6 +133,7 @@ const LazyMarkdown = lazy(async () => {
           language={language}
           source={String(children.props.children ?? "").replace(/\n$/, "")}
           copyable={!preview}
+          highlight={!streaming}
         />
       )
     },
@@ -132,10 +146,12 @@ const LazyMarkdown = lazy(async () => {
   })
   const fullComponents = buildComponents(false)
   const previewComponents = buildComponents(true)
+  const streamingComponents = buildComponents(false, true)
   const fullPlugins = [remarkGfm, localFileLinks]
   const previewPlugins = [remarkGfm, chatPreview, localFileLinks]
-  const Markdown = ({ content, preview }: MarkdownRendererProps) => {
+  const Markdown = ({ content, preview, streaming }: MarkdownRendererProps) => {
     const evidence = useContext(EvidenceContext)
+    const components = streaming ? streamingComponents : fullComponents
     const images = useMemo(() => {
       if (!evidence) return []
       const tree = unified().use(remarkParse).use(remarkGfm).parse(protectDiffFences(content)) as EvidenceNode
@@ -148,7 +164,7 @@ const LazyMarkdown = lazy(async () => {
           skipHtml
           urlTransform={(url, key) => (key === "href" && localFilePath(url) ? url : defaultUrlTransform(url))}
           remarkPlugins={preview ? previewPlugins : fullPlugins}
-          components={preview ? previewComponents : fullComponents}
+          components={preview ? previewComponents : components}
         >
           {protectDiffFences(content)}
         </ReactMarkdown>
@@ -156,10 +172,20 @@ const LazyMarkdown = lazy(async () => {
       </>
     )
   }
-  return { default: Markdown }
+  return { default: memo(Markdown) }
 })
 
-const ShikiCode = ({ language, source, copyable = true }: { language: string; source: string; copyable?: boolean }) => {
+const ShikiCode = ({
+  language,
+  source,
+  copyable = true,
+  highlight = true,
+}: {
+  language: string
+  source: string
+  copyable?: boolean
+  highlight?: boolean
+}) => {
   const [html, setHtml] = useState<string | null>(null)
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle")
   const resetRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -181,6 +207,8 @@ const ShikiCode = ({ language, source, copyable = true }: { language: string; so
   }
 
   useEffect(() => {
+    if (!highlight) return
+
     let active = true
     void getMarkdownCodeHtml(source, language)
       .then((rendered) => {
@@ -190,7 +218,7 @@ const ShikiCode = ({ language, source, copyable = true }: { language: string; so
     return () => {
       active = false
     }
-  }, [language, source])
+  }, [language, source, highlight])
 
   return (
     <div className="markdown-code">
@@ -207,7 +235,7 @@ const ShikiCode = ({ language, source, copyable = true }: { language: string; so
           {copyState === "copied" ? "Código copiado" : copyState === "failed" ? "Não foi possível copiar o código" : ""}
         </span>
       </div>
-      {html ? (
+      {html && highlight ? (
         // biome-ignore lint/security/noDangerouslySetInnerHtml: Shiki generates this markup from a code block, not user HTML.
         <div className="markdown-highlight" dangerouslySetInnerHTML={{ __html: html }} />
       ) : (
@@ -219,16 +247,26 @@ const ShikiCode = ({ language, source, copyable = true }: { language: string; so
   )
 }
 
-export const MarkdownContent = ({ content, compact = false, preview = false, evidence }: MarkdownRendererProps) => (
-  <div className={`markdown-content${compact ? " markdown-compact" : ""}`}>
-    <Suspense fallback={<p className="whitespace-pre-wrap">{preview ? content.slice(0, 600) : content}</p>}>
-      {evidence ? (
-        <EvidenceContext.Provider value={evidence}>
-          <LazyMarkdown content={content} preview={preview} />
-        </EvidenceContext.Provider>
-      ) : (
-        <LazyMarkdown content={content} preview={preview} />
-      )}
-    </Suspense>
-  </div>
-)
+export const MarkdownContent = memo(function MarkdownContent({
+  content,
+  compact = false,
+  preview = false,
+  streaming = false,
+  evidence,
+}: MarkdownRendererProps) {
+  const displayed = useStreamingContent(content, streaming)
+
+  return (
+    <div className={`markdown-content${compact ? " markdown-compact" : ""}`}>
+      <Suspense fallback={<p className="whitespace-pre-wrap">{preview ? displayed.slice(0, 600) : displayed}</p>}>
+        {evidence ? (
+          <EvidenceContext.Provider value={evidence}>
+            <LazyMarkdown content={displayed} preview={preview} streaming={streaming} />
+          </EvidenceContext.Provider>
+        ) : (
+          <LazyMarkdown content={displayed} preview={preview} streaming={streaming} />
+        )}
+      </Suspense>
+    </div>
+  )
+})
