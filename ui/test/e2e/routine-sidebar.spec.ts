@@ -23,8 +23,8 @@ for (const [name, width, height] of [
     )
 
     await conversations.getByRole("button", { name: "Histórico de rotinas" }).click()
-    await page.getByText("Histórico de execuções", { exact: true }).click()
     const history = page.locator(".routine-run-history")
+    await expect(history).toHaveAttribute("open")
     await expect(history.getByRole("button", { name: "Abrir conversa" })).toHaveCount(28)
     await history.getByRole("button", { name: "Abrir conversa" }).last().click()
     await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
@@ -45,15 +45,55 @@ for (const [name, width, height] of [
     if (name === "phone") await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
 
     await page.getByRole("button", { name: "Histórico de rotinas" }).click()
-    await page.getByText("Histórico de execuções", { exact: true }).click()
     const history = page.locator(".routine-run-history")
+    await expect(history).toHaveAttribute("open")
     await expect(history.getByRole("button", { name: "Abrir conversa" })).toHaveCount(50)
-    await history.getByRole("button", { name: "Mostrar mais execuções" }).click()
-    await expect(history.getByRole("button", { name: "Abrir conversa" })).toHaveCount(60)
+    await history.getByRole("button", { name: "Carregar mais" }).click()
+    await expect(history.getByRole("button", { name: "Abrir conversa" })).toHaveCount(10)
     await history.getByRole("button", { name: "Abrir conversa" }).last().click()
     await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
     if (name === "phone") await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
 
     await expect(page.locator(".thread-row.selected")).toContainText("18/10/2026, 08:00")
+  })
+
+  test(`routine sidebar: ${name} filters a routine and reaches its oldest of 128 results`, async ({ page }) => {
+    await page.setViewportSize({ width, height })
+    await page.emulateMedia({ reducedMotion: "reduce" })
+    await page.goto("/test/e2e/routine-sidebar-harness.html?runs=128&otherRoutines")
+    await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
+    if (name === "phone") await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
+    const conversations = page.getByRole("region", { name: "Conversas de mark" })
+    await conversations.locator(".thread-row").filter({ hasText: "Resumo diário" }).click()
+    await expect(page.locator(".message-assistant")).toContainText("Resumo pronto para conferir.")
+    if (name === "phone") await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
+    await conversations.getByRole("button", { name: "Histórico de rotinas" }).click()
+    const history = page.locator(".routine-run-history")
+
+    await expect(history).toHaveAttribute("open")
+    await expect(history.getByRole("combobox", { name: "Filtrar histórico por rotina" })).not.toHaveValue("all")
+    await expect(history.getByRole("status")).toHaveText("Execuções 1–50 de 128")
+    await expect(history.getByRole("listitem")).toHaveCount(50)
+    const directory = process.env.TOURI_ROUTINE_SIDEBAR_SHOTS_DIR
+    if (directory) {
+      await page.screenshot({ path: `${directory}/history-first-${name}.png`, animations: "disabled" })
+    }
+
+    await history.getByRole("button", { name: "Carregar mais" }).click()
+    await expect(history.getByRole("status")).toHaveText("Execuções 51–100 de 128")
+    await expect(history.getByRole("listitem")).toHaveCount(50)
+    await history.getByRole("button", { name: "Carregar mais" }).click()
+    await expect(history.getByRole("status")).toHaveText("Execuções 101–128 de 128")
+    await expect(history.getByRole("listitem")).toHaveCount(28)
+    if (directory) {
+      await page.screenshot({ path: `${directory}/history-last-${name}.png`, animations: "disabled" })
+    }
+
+    await history.getByRole("button", { name: "Abrir conversa" }).last().click()
+    await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
+    await expect(page.locator(".message-assistant")).toContainText("Resumo pronto para conferir.")
+    if (name === "phone") await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
+
+    await expect(conversations.locator(".thread-row.selected")).toContainText("18/10/2026, 08:00")
   })
 }

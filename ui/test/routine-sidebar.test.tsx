@@ -22,10 +22,11 @@ it("groups 28 routine executions without burying ordinary conversations and open
 
   fireEvent.click(within(conversations).getByRole("button", { name: "Histórico de rotinas" }))
   await screen.findByRole("heading", { name: "Rotinas", exact: true })
-  fireEvent.click(screen.getByText("Histórico de execuções", { selector: "summary" }))
   const history = document.querySelector(".routine-run-history")
   if (!(history instanceof HTMLElement)) throw new Error("Missing run history")
 
+  expect(history).toHaveAttribute("open")
+  expect(within(history).getByRole("combobox", { name: "Filtrar histórico por rotina" })).not.toHaveValue("all")
   const openButtons = within(history).getAllByRole("button", { name: "Abrir conversa" })
   expect(openButtons).toHaveLength(28)
   const oldest = openButtons.at(-1)
@@ -47,23 +48,97 @@ it("keeps routine conversations older than the first history page reachable", as
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
   fireEvent.click(screen.getByRole("button", { name: "Histórico de rotinas" }))
   await screen.findByRole("heading", { name: "Rotinas", exact: true })
-  fireEvent.click(screen.getByText("Histórico de execuções", { selector: "summary" }))
   const history = document.querySelector(".routine-run-history")
   if (!(history instanceof HTMLElement)) throw new Error("Missing run history")
 
   expect(within(history).getAllByRole("button", { name: "Abrir conversa" })).toHaveLength(50)
-  fireEvent.click(within(history).getByRole("button", { name: "Mostrar mais execuções" }))
+  fireEvent.click(within(history).getByRole("button", { name: "Carregar mais" }))
   const openButtons = within(history).getAllByRole("button", { name: "Abrir conversa" })
   const oldest = openButtons.at(-1)
   if (!oldest) throw new Error("Missing oldest run")
 
-  expect(openButtons).toHaveLength(60)
-  expect(within(history).queryByRole("button", { name: "Mostrar mais execuções" })).toBeNull()
+  expect(openButtons).toHaveLength(10)
+  expect(within(history).queryByRole("button", { name: "Carregar mais" })).toBeNull()
+  expect(within(history).getByRole("status")).toHaveTextContent("Execuções 51–60 de 60")
   fireEvent.click(oldest)
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
 
   expect(document.querySelector(".thread-row.selected")).toHaveTextContent("08:00")
   expect(await screen.findByText("Resumo pronto para conferir.", { selector: "p" })).toBeVisible()
+})
+
+it("opens selected routine history across three bounded pages despite newer runs from other routines and bots", async () => {
+  const { api, routines } = await getRoutineSidebarFixture(128, { withOtherRoutines: true })
+  const targetRoutine = routines[0]
+  if (!targetRoutine) throw new Error("Missing target routine")
+
+  render(<App kernel={{ services: { api } }} />)
+  await screen.findByRole("textbox", { name: "Mensagem para mark" })
+  const conversations = screen.getByRole("region", { name: "Conversas de mark" })
+  fireEvent.click(within(conversations).getByText("Resumo diário", { selector: "strong" }))
+  await screen.findByText("Resumo pronto para conferir.", { selector: "p" })
+  fireEvent.click(within(conversations).getByRole("button", { name: "Histórico de rotinas" }))
+  await screen.findByRole("heading", { name: "Rotinas", exact: true })
+  const history = document.querySelector(".routine-run-history")
+  if (!(history instanceof HTMLElement)) throw new Error("Missing run history")
+
+  expect(history).toHaveAttribute("open")
+  expect(screen.getByRole("button", { name: "mark", exact: true })).toHaveAttribute("aria-pressed", "true")
+  expect(within(history).getByRole("combobox", { name: "Filtrar histórico por rotina" })).toHaveValue(targetRoutine.id)
+  expect(within(history).queryByRole("option", { name: /Resumo de outro bot/ })).toBeNull()
+  expect(within(history).getByRole("status")).toHaveTextContent("Execuções 1–50 de 128")
+  expect(within(history).getAllByRole("listitem")).toHaveLength(50)
+  expect(within(history).queryByText("Outras notícias", { selector: "strong" })).toBeNull()
+
+  fireEvent.click(within(history).getByRole("button", { name: "Carregar mais" }))
+
+  expect(within(history).getAllByRole("listitem")).toHaveLength(50)
+  expect(within(history).getByRole("status")).toHaveTextContent("Execuções 51–100 de 128")
+  expect(within(history).getByRole("status")).toHaveFocus()
+
+  fireEvent.click(within(history).getByRole("button", { name: "Carregar mais" }))
+
+  expect(within(history).getAllByRole("listitem")).toHaveLength(28)
+  expect(within(history).getByRole("status")).toHaveTextContent("Execuções 101–128 de 128")
+  expect(within(history).queryByRole("button", { name: "Carregar mais" })).toBeNull()
+
+  fireEvent.click(within(history).getByRole("button", { name: "Página anterior" }))
+
+  expect(within(history).getByRole("status")).toHaveTextContent("Execuções 51–100 de 128")
+
+  fireEvent.change(within(history).getByRole("combobox", { name: "Filtrar histórico por rotina" }), {
+    target: { value: "another-routine" },
+  })
+
+  expect(within(history).getByRole("status")).toHaveTextContent("Execuções 1–50 de 80")
+  expect(within(history).queryByRole("button", { name: "Página anterior" })).toBeNull()
+
+  fireEvent.change(within(history).getByRole("combobox", { name: "Filtrar histórico por rotina" }), {
+    target: { value: targetRoutine.id },
+  })
+  fireEvent.click(within(history).getByRole("button", { name: "Carregar mais" }))
+  fireEvent.click(within(history).getByRole("button", { name: "Carregar mais" }))
+  const oldest = within(history).getAllByRole("button", { name: "Abrir conversa" }).at(-1)
+  if (!oldest) throw new Error("Missing oldest result")
+
+  fireEvent.click(oldest)
+  await screen.findByRole("textbox", { name: "Mensagem para mark" })
+
+  expect(document.querySelector(".thread-row.selected")).toHaveTextContent("08:00")
+  expect(await screen.findByText("Resumo pronto para conferir.", { selector: "p" })).toBeVisible()
+})
+
+it("reopens history from the sidebar after it was manually collapsed", async () => {
+  const { api } = await getRoutineSidebarFixture()
+
+  render(<App kernel={{ services: { api } }} />)
+  await screen.findByRole("textbox", { name: "Mensagem para mark" })
+  fireEvent.click(screen.getByRole("button", { name: "Histórico de rotinas" }))
+  const summary = await screen.findByText("Histórico de execuções", { selector: "summary" })
+  fireEvent.click(summary)
+  fireEvent.click(screen.getByRole("button", { name: "Histórico de rotinas" }))
+
+  expect(summary.closest("details")).toHaveAttribute("open")
 })
 
 it("groups by identity across renames, keeps same-name routines separate and preserves unread results", async () => {
@@ -129,6 +204,10 @@ it("labels routine times and navigation in Portuguese and English", () => {
   expect(t("Routine run history", {}, "pt-BR")).toBe("Histórico de rotinas")
   expect(t("Routine run history", {}, "en")).toBe("Routine run history")
   expect(t("Open routine conversation", {}, "en")).toBe("Open conversation")
-  expect(t("Show more routine runs", {}, "pt-BR")).toBe("Mostrar mais execuções")
-  expect(t("Show more routine runs", {}, "en")).toBe("Show more runs")
+  expect(t("Show more routine runs", {}, "pt-BR")).toBe("Carregar mais")
+  expect(t("Show more routine runs", {}, "en")).toBe("Load more")
+  expect(t("Previous routine runs page", {}, "en")).toBe("Previous page")
+  expect(t("Routine history filter", {}, "en")).toBe("Filter history by routine")
+  expect(t("All routines", {}, "en")).toBe("All routines")
+  expect(t("Routine history range", { from: 51, to: 60, total: 60 }, "en")).toBe("Runs 51–60 of 60")
 })

@@ -60,6 +60,7 @@ type SidebarProps = {
   onChat: () => void
   onAdvancedPage: (page: "integracoes" | "mcp") => void
   onRoutines: (botId: Id) => void
+  onRoutineHistory?: (botId: Id, routineId?: Id) => void
   onProject: () => void
   onImport: () => void
   onSelect: (id: Id) => void
@@ -94,6 +95,7 @@ const SidebarIcon = ({ children }: { children: ReactNode }) => (
 )
 
 export const Sidebar = (props: SidebarProps) => {
+  const openRoutineHistory = props.onRoutineHistory ?? props.onRoutines
   const navigate = (action: () => void): void => {
     props.onNavigate?.()
     action()
@@ -229,6 +231,7 @@ export const Sidebar = (props: SidebarProps) => {
                     props.onBotSettings()
                   }}
                   onRoutines={() => navigate(() => props.onRoutines(bot.id))}
+                  onRoutineHistory={(routineId) => navigate(() => openRoutineHistory(bot.id, routineId))}
                   onReviewApproval={(target) => navigate(() => props.onReviewApproval(target))}
                   onNotification={(item) => navigate(() => props.notificationActions.open(item))}
                   onDelete={props.onDeleteBot}
@@ -307,6 +310,7 @@ const BotEntry = ({
   onNewThread,
   onSettings,
   onRoutines,
+  onRoutineHistory,
   onReviewApproval,
   onNotification,
   onDelete,
@@ -329,6 +333,7 @@ const BotEntry = ({
   onNewThread: () => void
   onSettings: () => void
   onRoutines: () => void
+  onRoutineHistory: (routineId?: Id) => void
   onReviewApproval: (target: ApprovalTarget) => void
   onNotification: (item: NotificationRecord) => void
   onDelete?: ((botId: string, name: string, deleteVolumes: boolean) => Promise<void>) | undefined
@@ -417,6 +422,9 @@ const BotEntry = ({
     messages.filter((message) => message.status === "streaming").map((message) => message.threadId),
   )
   const sidebarThreads = expanded ? getSidebarThreads(threads, routineRuns, selectedThreadId, runningThreadIds) : []
+  const routineIds = sidebarThreads.flatMap(({ routineRun }) => (routineRun ? [routineRun.routineId] : []))
+  const selectedRoutineId = sidebarThreads.find(({ thread }) => thread.id === selectedThreadId)?.routineRun?.routineId
+  const historyRoutineId = selectedRoutineId ?? (routineIds.length === 1 ? routineIds[0] : undefined)
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: hover and focus only pause reordering; they trigger no action
     <div
@@ -534,7 +542,7 @@ const BotEntry = ({
             />
           ))}
           {sidebarThreads.some(({ thread }) => thread.kind === "routine") && (
-            <button type="button" className="new-thread-row" onClick={onRoutines}>
+            <button type="button" className="new-thread-row" onClick={() => onRoutineHistory(historyRoutineId)}>
               {t("Routine run history")}
             </button>
           )}
