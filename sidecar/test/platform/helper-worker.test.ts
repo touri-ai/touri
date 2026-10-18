@@ -59,7 +59,8 @@ test("native helper timeout cancels its own child before a late write", async ()
 }, 30_000)
 
 test("the compiled binary retains the helper worker without a separate script", async () => {
-  const root = mkdtempSync(join(tmpdir(), "touri-native-compiled-"))
+  // Bun stages the executable in cwd; keep its destination on the same filesystem for the final rename.
+  const root = mkdtempSync(join(process.cwd(), ".touri-native-compiled-"))
   try {
     const entry = join(root, "entry.ts")
     const binary = join(root, process.platform === "win32" ? "fixture.exe" : "fixture")
