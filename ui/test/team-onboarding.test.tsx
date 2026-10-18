@@ -127,6 +127,7 @@ it("recognizes an existing English job when creating another bot in Portuguese",
   const suggestion = await screen.findByRole("region", { name: "Coloque outro bot para trabalhar com você" })
 
   fireEvent.click(screen.getByRole("button", { name: "Criar bot", exact: true }))
+  await screen.findByText(/conectado neste/)
 
   expect(within(suggestion).queryByRole("button", { name: "Caderno em ordem" })).toBeNull()
   expect(screen.getByRole("radio", { name: "Caderno em ordem" })).toHaveAccessibleDescription(
