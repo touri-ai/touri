@@ -3,7 +3,7 @@ import { afterEach, expect, test } from "bun:test"
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import type { ApiRoutes, RouteResponse } from "@touri/contracts"
+import { type ApiRoutes, type RouteResponse, toolCatalog } from "@touri/contracts"
 import type { WebSocketOptions } from "bun"
 import { createKernel } from "../../src/kernel"
 import { socketTicket } from "../fakes/ws-ticket"
@@ -164,16 +164,26 @@ const makeServer = () => {
 }
 
 const seedRuns = (database: Database): void => {
-  database.exec(`
-    INSERT INTO bots (id, name, provider, home_dir, created_at, updated_at)
-      VALUES ('fixture-bot', 'Fixture', 'fixture', '/tmp', 1, 1);
-    INSERT INTO threads (id, bot_id, title, created_at, updated_at)
-      VALUES ('fixture-thread', 'fixture-bot', 'Fixture', 1, 1);
-    INSERT INTO runs (id, thread_id, bot_id, provider, trigger, status, queued_at)
-      VALUES ('fixture-starting', 'fixture-thread', 'fixture-bot', 'fixture', 'user', 'starting', 1),
-        ('fixture-running', 'fixture-thread', 'fixture-bot', 'fixture', 'user', 'running', 1),
-        ('fixture-done', 'fixture-thread', 'fixture-bot', 'fixture', 'user', 'succeeded', 1);
-  `)
+  const provider = toolCatalog.tools.flatMap((tool) => {
+    const metadata = tool["x-touri"]
+    return "providers" in metadata ? metadata.providers : []
+  })[0]
+  if (!provider) throw new Error("Fixture provider unavailable")
+
+  database
+    .query(`INSERT INTO bots (id, name, provider, home_dir, created_at, updated_at)
+    VALUES ('fixture-bot', 'Fixture', ?, '/tmp', 1, 1)`)
+    .run(provider)
+  database
+    .query(`INSERT INTO threads (id, bot_id, title, created_at, updated_at)
+    VALUES ('fixture-thread', 'fixture-bot', 'Fixture', 1, 1)`)
+    .run()
+  database
+    .query(`INSERT INTO runs (id, thread_id, bot_id, provider, trigger, status, queued_at)
+    VALUES ('fixture-starting', 'fixture-thread', 'fixture-bot', 'fixture', 'user', 'starting', 1),
+      ('fixture-running', 'fixture-thread', 'fixture-bot', 'fixture', 'user', 'running', 1),
+      ('fixture-done', 'fixture-thread', 'fixture-bot', 'fixture', 'user', 'succeeded', 1)`)
+    .run()
 }
 
 const getStreamResponse = (signal: AbortSignal): RouteResponse => ({
