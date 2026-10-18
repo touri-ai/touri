@@ -315,6 +315,8 @@ test("long history keeps typing independent of transcript work", async ({ page, 
       expect(renders.VirtualMessageList ?? 0, "Typing must not render the transcript").toBe(0)
       expect(renders.MarkdownContent ?? 0, "Typing must not parse message markdown").toBe(0)
       expect(renders.ToolCallList ?? 0, "Typing must not render tool history").toBe(0)
+      // Native editing before input must fit the same frame budget as the delegated handler.
+      expect(report.p95KeyToInputMs).toBeLessThan(16)
       expect(report.p95HandlerMs).toBeLessThan(16)
       // rAF includes waiting for a display refresh; allow two missed frames under a throttled CI CPU.
       expect(report.p95NextFrameMs).toBeLessThan(50)
