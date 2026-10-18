@@ -16,6 +16,7 @@ bot.projectId = null
 const request = api.request
 let session = 0
 let humanControl = false
+let loginReads = 0
 const failure =
   scenario === "attention"
     ? api.notify({
@@ -66,6 +67,11 @@ api.request = (async (route, input, path) => {
   }
   if (scenario === "login" && route === "GET /bots/:id/provider-login/flow")
     return { provider: bot.provider, state: "waiting", deviceCode: "QA" }
+  if (scenario === "login-recovery" && route === "GET /bots/:id/provider-login/flow") {
+    loginReads++
+    if (loginReads === 2) throw new Error("temporary connection failure")
+    return { provider: bot.provider, state: loginReads >= 3 ? "ready" : "waiting", deviceCode: "QA" }
+  }
   if (completed && route === "GET /workspace/activity") return { runs: [completed], messages: api.getState().messages }
   if (completed && route === "GET /threads/:id/runs") return { runs: [completed] }
   if (route === "POST /bots/:id/desktop") {
@@ -82,6 +88,6 @@ api.request = (async (route, input, path) => {
   if (route === "DELETE /desktop/:id") return {}
   return request(route, input, path)
 }) as ApiRequest
-Object.assign(window, { qaR4Api: api, qaVmFrame: "empty" })
+Object.assign(window, { qaR4Api: api, qaVmFrame: "empty", qaR4LoginReads: () => loginReads })
 const root = document.getElementById("root")
 if (root) createRoot(root).render(<App kernel={{ services: { api } }} />)

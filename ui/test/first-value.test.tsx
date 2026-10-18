@@ -195,6 +195,7 @@ it("an existing bot with saved login and a missing executable cannot send until 
   fireEvent.change(composer, { target: { value: "Olá" } })
   fireEvent.keyDown(composer, { key: "Enter" })
   expect(api.calls.filter((call) => call.route === "POST /threads/:id/messages")).toHaveLength(0)
+  await waitFor(() => expect(screen.getByRole("button", { name: "Verificar novamente" })).toBeEnabled())
   installed = true
   fireEvent.click(screen.getByRole("button", { name: "Verificar novamente" }))
   await waitFor(() => expect(screen.queryByText("O Codex ainda não está instalado neste servidor.")).toBeNull())

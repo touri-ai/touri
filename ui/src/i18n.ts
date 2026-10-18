@@ -3,6 +3,10 @@ import { userFacingError } from "./errors"
 /** All UI copy lives here. pt-BR is the default; English is available for a future locale picker. */
 export type Locale = "pt-BR" | "en"
 export const ptBR = {
+  "Salve o token do bot do Telegram.": "Salve o token do bot do Telegram.",
+  "Token inválido ou revogado.": "Token inválido ou revogado.",
+  "Não foi possível conectar ao Telegram. Confira sua conexão e tente novamente.":
+    "Não foi possível conectar ao Telegram. Confira sua conexão e tente novamente.",
   "O contexto da conversa foi recuperado do histórico salvo.":
     "O contexto da conversa foi recuperado do histórico salvo.",
   "Abrir resultado completo": "Abrir resultado completo",
@@ -35,7 +39,6 @@ export const ptBR = {
     "Para usar processos supervisionados e o Preview, vincule o projeto nas configurações do bot.",
   "Agendar esta tarefa": "Agendar esta tarefa",
   "Aprendizado contínuo": "Aprendizado contínuo",
-  Desligado: "Desligado",
   "O bot guarda fatos que valem em toda conversa e registra procedimentos que se repetem como skills. As revisões automáticas rodam como turnos extras e usam a conta do provedor do bot.":
     "O bot guarda fatos que valem em toda conversa e registra procedimentos que se repetem como skills. As revisões automáticas rodam como turnos extras e usam a conta do provedor do bot.",
   "Não foi possível carregar ou salvar o aprendizado. Tente novamente.":
@@ -310,6 +313,48 @@ export const ptBR = {
   "Horário de Brasília": "Horário de Brasília",
   "Destino dos resultados": "Destino dos resultados",
   "Nesta conversa": "Nesta conversa",
+  "Memória Mem0": "Memória Mem0",
+  "Mem0 só está disponível em conversas diretas, fora de grupos, rotinas, revisões automáticas e delegações.":
+    "Mem0 só está disponível em conversas diretas, fora de grupos, rotinas, revisões automáticas e delegações.",
+  "Lembra fatos sobre você entre conversas. Antes de cada mensagem, o bot busca no Mem0 o que já sabe; depois, envia a troca para o Mem0 extrair fatos novos.":
+    "Lembra fatos sobre você entre conversas. Antes de cada mensagem, o bot busca no Mem0 o que já sabe; depois, envia a troca para o Mem0 extrair fatos novos.",
+  "Ativar Mem0 para este bot": "Ativar Mem0 para este bot",
+  Ligado: "Ligado",
+  "Onde ficam as memórias": "Onde ficam as memórias",
+  "Mem0 Cloud": "Mem0 Cloud",
+  "Servidor próprio": "Servidor próprio",
+  "URL do servidor": "URL do servidor",
+  "Chave da API": "Chave da API",
+  "Chave salva. Digite outra para trocar.": "Chave salva. Digite outra para trocar.",
+  "Remover chave": "Remover chave",
+  Alcance: "Alcance",
+  "Memórias sobre você, compartilhadas entre bots": "Memórias sobre você, compartilhadas entre bots",
+  "Só deste bot": "Só deste bot",
+  "Enviar cada conversa ao Mem0 automaticamente": "Enviar cada conversa ao Mem0 automaticamente",
+  "Memórias por busca": "Memórias por busca",
+  "Relevância mínima (0 a 1)": "Relevância mínima (0 a 1)",
+  "Salvar Mem0": "Salvar Mem0",
+  "Salvo.": "Salvo.",
+  "Conexão funcionando.": "Conexão funcionando.",
+  "Salve as alterações antes de testar a conexão.": "Salve as alterações antes de testar a conexão.",
+  "Informe a URL do servidor.": "Informe a URL do servidor.",
+  "Salve a chave da API primeiro.": "Salve a chave da API primeiro.",
+  "O Mem0 recusou a chave. Confira a chave e tente de novo.":
+    "O Mem0 recusou a chave. Confira a chave e tente de novo.",
+  "O Mem0 não respondeu a tempo. Tente de novo.": "O Mem0 não respondeu a tempo. Tente de novo.",
+  "O servidor retornou uma resposta inválida. Confira a URL do Mem0.":
+    "O servidor retornou uma resposta inválida. Confira a URL do Mem0.",
+  "Não foi possível conectar ao Mem0. Confira a conexão e a URL e tente de novo.":
+    "Não foi possível conectar ao Mem0. Confira a conexão e a URL e tente de novo.",
+  "Não foi possível carregar o Mem0.": "Não foi possível carregar o Mem0.",
+  "Não foi possível salvar. Confira os campos e tente de novo.":
+    "Não foi possível salvar. Confira os campos e tente de novo.",
+  "Com o Mem0 ligado, o texto das suas mensagens e das respostas deste bot vai para o Mem0 Cloud.":
+    "Com o Mem0 ligado, o texto das suas mensagens e das respostas deste bot vai para o Mem0 Cloud.",
+  "Com o Mem0 ligado, o texto das suas mensagens e das respostas deste bot vai para o seu servidor Mem0, que o repassa ao modelo configurado nele.":
+    "Com o Mem0 ligado, o texto das suas mensagens e das respostas deste bot vai para o seu servidor Mem0, que o repassa ao modelo configurado nele.",
+  "O Mem0 não é usado em grupos, rotinas nem pedidos delegados.":
+    "O Mem0 não é usado em grupos, rotinas nem pedidos delegados.",
   "Conversa principal": "Conversa principal",
   "Nova conversa por execução": "Nova conversa por execução",
   "Conversa de resultados": "Conversa de resultados",
@@ -1379,6 +1424,13 @@ export const ptBR = {
     "Solicitar aprovação de uma ferramenta do Claude e devolver a decisão ao provedor.",
   "List this bot's routines. Call before routine_create; update an existing routine instead of creating a duplicate.":
     "Listar as rotinas deste bot antes de criar outra, evitando duplicações.",
+  "Search this bot's Mem0 memories about the user. Only available when Mem0 is enabled for the bot.":
+    "Buscar no Mem0 as memórias deste bot sobre o usuário.",
+  "Store one durable fact about the user in Mem0, verbatim. Never store secrets.":
+    "Guardar no Mem0 um fato duradouro sobre o usuário, sem segredos.",
+  "Replace the text of one of this bot's Mem0 memories (id from mem0_search).":
+    "Corrigir o texto de uma memória deste bot no Mem0.",
+  "Delete one of this bot's Mem0 memories (id from mem0_search).": "Apagar uma memória deste bot no Mem0.",
   "Create a routine for this bot. It is created DISABLED; the user enables it in the app.":
     "Criar uma rotina pausada para este bot. Somente o usuário pode habilitá-la no aplicativo.",
   "Create a routine for this bot and request explicit user approval in chat to activate it. Remains disabled if not approved. Always requires approval, even with approvals disabled.":
@@ -2025,9 +2077,63 @@ export const ptBR = {
   "As permissões de pastas salvas não funcionam neste computador. Você pode conversar sem ferramentas. Remova essas permissões nas configurações do bot para continuar com tarefas.":
     "As permissões de pastas salvas não funcionam neste computador. Você pode conversar sem ferramentas. Remova essas permissões nas configurações do bot para continuar com tarefas.",
   "Remover permissões antigas": "Remover permissões antigas",
+  // Telegram integration.
+  Telegram: "Telegram",
+  "Converse com este bot pelo Telegram. Só as pessoas permitidas abaixo conseguem falar com ele.":
+    "Converse com este bot pelo Telegram. Só as pessoas permitidas abaixo conseguem falar com ele.",
+  "Ativar Telegram": "Ativar Telegram",
+  Desligado: "Desligado",
+  "Conectado como @{username}": "Conectado como @{username}",
+  Conectado: "Conectado",
+  "Token do bot": "Token do bot",
+  "Token salvo": "Token salvo",
+  "Cole o token do @BotFather": "Cole o token do @BotFather",
+  "Salvar token": "Salvar token",
+  "Remover token": "Remover token",
+  "IDs de usuário permitidos": "IDs de usuário permitidos",
+  "Separe por vírgula. Vazio: ninguém consegue falar com o bot.":
+    "Separe por vírgula. Vazio: ninguém consegue falar com o bot.",
+  "Chat para resultados de rotinas": "Chat para resultados de rotinas",
+  "Enviar resultados das rotinas para esse chat": "Enviar resultados das rotinas para esse chat",
+  "Salvar Telegram": "Salvar Telegram",
+  "Pedido de {name} (ID {id})": "Pedido de {name} (ID {id})",
+  Permitir: "Permitir",
+  "Não foi possível carregar o Telegram deste bot.": "Não foi possível carregar o Telegram deste bot.",
+  "Não foi possível salvar. Confira o token e tente novamente.":
+    "Não foi possível salvar. Confira o token e tente novamente.",
+  "Atualizar status": "Atualizar status",
+  "Crie um bot com o @BotFather e cole o token. Quando alguém mandar a primeira mensagem, o ID aparece aqui para você permitir.":
+    "Crie um bot com o @BotFather e cole o token. Quando alguém mandar a primeira mensagem, o ID aparece aqui para você permitir.",
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  "Salve o token do bot do Telegram.": "Save the Telegram bot token.",
+  "Token inválido ou revogado.": "Invalid or revoked token.",
+  "Não foi possível conectar ao Telegram. Confira sua conexão e tente novamente.":
+    "Could not connect to Telegram. Check your connection and try again.",
+  "Converse com este bot pelo Telegram. Só as pessoas permitidas abaixo conseguem falar com ele.":
+    "Talk to this bot on Telegram. Only the people allowed below can reach it.",
+  "Ativar Telegram": "Enable Telegram",
+  "Conectado como @{username}": "Connected as @{username}",
+  Conectado: "Connected",
+  "Token do bot": "Bot token",
+  "Token salvo": "Token saved",
+  "Cole o token do @BotFather": "Paste the token from @BotFather",
+  "Salvar token": "Save token",
+  "Remover token": "Remove token",
+  "IDs de usuário permitidos": "Allowed user IDs",
+  "Separe por vírgula. Vazio: ninguém consegue falar com o bot.":
+    "Separate with commas. Empty: nobody can reach the bot.",
+  "Chat para resultados de rotinas": "Chat for routine results",
+  "Enviar resultados das rotinas para esse chat": "Send routine results to this chat",
+  "Salvar Telegram": "Save Telegram",
+  "Pedido de {name} (ID {id})": "Request from {name} (ID {id})",
+  Permitir: "Allow",
+  "Não foi possível carregar o Telegram deste bot.": "Could not load this bot's Telegram settings.",
+  "Não foi possível salvar. Confira o token e tente novamente.": "Could not save. Check the token and try again.",
+  "Atualizar status": "Refresh status",
+  "Crie um bot com o @BotFather e cole o token. Quando alguém mandar a primeira mensagem, o ID aparece aqui para você permitir.":
+    "Create a bot with @BotFather and paste its token. When someone sends the first message, their ID shows up here so you can allow it.",
   "O contexto da conversa foi recuperado do histórico salvo.":
     "The conversation context was restored from saved history.",
   "Abrir resultado completo": "Open full result",
@@ -2363,6 +2469,46 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Horário de Brasília": "Brasília time",
   "Destino dos resultados": "Results destination",
   "Nesta conversa": "This conversation",
+  "Memória Mem0": "Mem0 memory",
+  "Mem0 só está disponível em conversas diretas, fora de grupos, rotinas, revisões automáticas e delegações.":
+    "Mem0 is only available in direct conversations, outside groups, routines, automatic reviews and delegated requests.",
+  "Lembra fatos sobre você entre conversas. Antes de cada mensagem, o bot busca no Mem0 o que já sabe; depois, envia a troca para o Mem0 extrair fatos novos.":
+    "Remembers facts about you across conversations. Before each message the bot looks up what it already knows in Mem0; afterwards it sends the exchange to Mem0 to extract new facts.",
+  "Ativar Mem0 para este bot": "Turn on Mem0 for this bot",
+  Ligado: "On",
+  "Onde ficam as memórias": "Where memories are stored",
+  "Mem0 Cloud": "Mem0 Cloud",
+  "Servidor próprio": "Self-hosted server",
+  "URL do servidor": "Server URL",
+  "Chave da API": "API key",
+  "Chave salva. Digite outra para trocar.": "Key saved. Type another one to replace it.",
+  "Remover chave": "Remove key",
+  Alcance: "Scope",
+  "Memórias sobre você, compartilhadas entre bots": "Memories about you, shared across bots",
+  "Só deste bot": "This bot only",
+  "Enviar cada conversa ao Mem0 automaticamente": "Send each conversation to Mem0 automatically",
+  "Memórias por busca": "Memories per lookup",
+  "Relevância mínima (0 a 1)": "Minimum relevance (0 to 1)",
+  "Salvar Mem0": "Save Mem0",
+  "Salvo.": "Saved.",
+  "Conexão funcionando.": "Connection works.",
+  "Salve as alterações antes de testar a conexão.": "Save your changes before testing the connection.",
+  "Informe a URL do servidor.": "Enter the server URL.",
+  "Salve a chave da API primeiro.": "Save the API key first.",
+  "O Mem0 recusou a chave. Confira a chave e tente de novo.": "Mem0 rejected the key. Check the key and try again.",
+  "O Mem0 não respondeu a tempo. Tente de novo.": "Mem0 did not respond in time. Try again.",
+  "O servidor retornou uma resposta inválida. Confira a URL do Mem0.":
+    "The server returned an invalid response. Check the Mem0 URL.",
+  "Não foi possível conectar ao Mem0. Confira a conexão e a URL e tente de novo.":
+    "Could not connect to Mem0. Check your connection and the URL, then try again.",
+  "Não foi possível carregar o Mem0.": "Could not load Mem0.",
+  "Não foi possível salvar. Confira os campos e tente de novo.": "Could not save. Check the fields and try again.",
+  "Com o Mem0 ligado, o texto das suas mensagens e das respostas deste bot vai para o Mem0 Cloud.":
+    "With Mem0 on, the text of your messages and of this bot's replies is sent to Mem0 Cloud.",
+  "Com o Mem0 ligado, o texto das suas mensagens e das respostas deste bot vai para o seu servidor Mem0, que o repassa ao modelo configurado nele.":
+    "With Mem0 on, the text of your messages and of this bot's replies is sent to your Mem0 server, which passes it to the model configured there.",
+  "O Mem0 não é usado em grupos, rotinas nem pedidos delegados.":
+    "Mem0 is not used in groups, routines or delegated requests.",
   "Conversa principal": "Main conversation",
   "Nova conversa por execução": "New conversation for each run",
   "Conversa de resultados": "Results conversation",

@@ -449,6 +449,25 @@ export type Routine = {
   updatedAt: EpochMs
 }
 
+export type Mem0Mode = 'platform' | 'server'
+
+/** Optional Mem0 memory provider for one bot. The API key itself is never returned, only whether one is saved. */
+export type Mem0Settings = {
+  enabled: boolean
+  mode: Mem0Mode
+  /** Base URL of a self-hosted Mem0 server; unused in platform mode. */
+  url: string
+  /** `user` shares facts about the owner across bots; `bot` keeps them to this bot. */
+  scope: 'user' | 'bot'
+  autoSync: boolean
+  topK: number
+  threshold: number
+  hasApiKey: boolean
+}
+
+/** `apiKey: null` removes the saved key. */
+export type Mem0SettingsPatch = Partial<Omit<Mem0Settings, 'hasApiKey'>> & { apiKey?: string | null }
+
 export type RoutineRunStatus = 'scheduled' | 'running' | 'succeeded' | 'failed' | 'skipped' | 'canceled'
 
 export type RoutineRun = {
@@ -730,6 +749,30 @@ export type ProviderLoginFlow = {
   message?: string
 }
 
+/** Per-bot Telegram bridge. Off by default; only allowlisted private chats reach the bot. */
+export type TelegramIntegrationConfig = {
+  enabled: boolean
+  /** Telegram user IDs allowed to talk to the bot. Empty means nobody. */
+  allowedUserIds: Array<string>
+  /** Chat that receives routine results when forwardRoutines is on. */
+  homeChatId: string | null
+  forwardRoutines: boolean
+}
+
+export type TelegramIntegrationStatus = {
+  state: 'off' | 'connecting' | 'connected' | 'error'
+  username: string | null
+  error: string | null
+}
+
+export type TelegramIntegration = {
+  config: TelegramIntegrationConfig
+  tokenSaved: boolean
+  status: TelegramIntegrationStatus
+  /** Last sender refused by the allowlist, so the user can allow them in one click. */
+  lastRejected: { userId: string; name: string; at: EpochMs } | null
+}
+
 export type SendMessageInput = {
   clientNonce?: string
   deadline?: EpochMs
@@ -768,6 +811,11 @@ export type ApiRoutes = {
   'PATCH /bots/:id': { req: Partial<CreateBotInput & { paused: boolean }>; res: { bot: Bot } }
   'DELETE /bots/:id': { req: { name: string; deleteVolumes?: boolean }; res: {} }
   'GET /bots/:id/mcp': { req: {}; res: { servers: Array<McpServer> } }
+  'GET /bots/:id/integrations/telegram': { req: {}; res: { telegram: TelegramIntegration } }
+  'PUT /bots/:id/integrations/telegram': {
+    req: Partial<TelegramIntegrationConfig> & { token?: string | null }
+    res: { telegram: TelegramIntegration }
+  }
   'GET /bots/:id/learning': { req: {}; res: { learning: BotLearning } }
   'PUT /bots/:id/learning': { req: Partial<BotLearningSettings>; res: { learning: BotLearning } }
   'GET /bots/:id/mcp/prerequisites': { req: {}; res: { prerequisites: McpPrerequisites } }
@@ -871,6 +919,9 @@ export type ApiRoutes = {
   'POST /notifications/dismiss-all': { req: {}; res: { dismissed: number } }
   'POST /threads/:id/respond': { req: { requestId: string; behavior: RespondBehavior; message?: string }; res: {} }
   'POST /bots/:id/messages': { req: { text: string; threadId?: Id; sendId?: string }; res: { message: Message; run: Run } }
+  'GET /bots/:id/mem0': { req: {}; res: { settings: Mem0Settings } }
+  'PUT /bots/:id/mem0': { req: Mem0SettingsPatch; res: { settings: Mem0Settings } }
+  'POST /bots/:id/mem0/test': { req: {}; res: { ok: boolean; error?: string } }
   'GET /settings': { req: {}; res: { settings: AppSettings } }
   'PATCH /settings': { req: Partial<AppSettings>; res: { settings: AppSettings } }
 }
@@ -1172,6 +1223,15 @@ export type ServiceMap = {
     canCoordinate: (threadId: Id) => boolean
   }
   'vm.stopShells': () => void
+  'mem0.api': {
+    enabled: (botId: Id) => boolean
+    /** Static guidance for the developer instructions, or null when Mem0 is off for the bot. */
+    instructions: (botId: Id) => string | null
+    /** A fenced recalled-context block for this turn's input, or null. Never throws, waits at most ~3 s. */
+    recall: (args: { botId: Id; query: string; signal?: AbortSignal }) => Promise<string | null>
+    /** Fire and forget: stores the exchange when auto sync is on. */
+    sync: (args: { botId: Id; threadId: Id; userText: string; assistantText: string }) => void
+  }
   'approvals.present': (input: ApprovalInput) => Promise<ApprovalResult>
   'approvals.approve': (input: { approvalId: Id; decision: 'approved' | 'denied'; standing?: boolean; message?: string }) => Promise<Result<{}, 'NOT_FOUND'>>
   'approvals.settle': (input: { approvalId: Id; decision: 'denied' | 'expired' }) => void
@@ -1190,6 +1250,7 @@ export type ServiceMap = {
   'runtime.activeRun': (args: { threadId: Id }) => Run | null
   'runtime.continueAfterApproval': (ctx: Pick<ToolContext, 'botId' | 'threadId' | 'runId' | 'signal'>) => boolean
   'runtime.cancelBotTurns': (args: { botId: Id }) => Promise<void>
+  'runtime.cancelRun': (args: { runId: Id }) => boolean
   'runtime.shutdown': () => Promise<void>
   'projects.info': (args: { projectId: Id; botId?: Id }) => Promise<ProjectInfo | null>
   'browser.tabsForBot': (args: { botId: Id }) => Array<BrowserTabInfo>

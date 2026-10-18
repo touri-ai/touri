@@ -17,6 +17,7 @@ import type {
   Routine,
   RoutineRun,
   Run,
+  TelegramIntegration,
   Thread,
   UiEvent,
   UiEventEnvelope,
@@ -348,6 +349,7 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
   const bots = seed.bots.map((bot, index) => createBot(bot, index, project.id))
   const threads = seed.threads.map(createThread)
   const messages = seed.messages.map((message) => createMessage(message))
+  const mem0Settings = new Map<string, import("@touri/contracts").Mem0Settings>()
   const learning = new Map<string, BotLearning>()
   const machines = new Map<string, import("@touri/contracts").MachineState>()
   const networkPolicies = new Map<string, Record<string, unknown>>()
@@ -454,6 +456,7 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
   const findProcess = (id: string): ProcessEntry | undefined => allProcesses().find((entry) => entry.spec.id === id)
 
   const groups: BotGroup[] = []
+  const telegram = new Map<string, TelegramIntegration>()
   const request: ApiRequest = async (route, input, pathValues = {}) => {
     calls.push({ route: String(route), input, pathValues })
     const key = String(route)
@@ -484,7 +487,50 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
       return {} as ApiRoutes[typeof route]["res"]
     }
     if (key === "GET /bots/:id/grants") return { grants: [] } as ApiRoutes[typeof route]["res"]
+    if (key === "GET /bots/:id/mem0" || key === "PUT /bots/:id/mem0") {
+      const botId = pathValues.id ?? ""
+      const { apiKey, ...patch } = key === "PUT /bots/:id/mem0" ? (input as ApiRoutes["PUT /bots/:id/mem0"]["req"]) : {}
+      const current = mem0Settings.get(botId) ?? {
+        enabled: false,
+        mode: "platform" as const,
+        url: "",
+        scope: "user" as const,
+        autoSync: true,
+        topK: 6,
+        threshold: 0.3,
+        hasApiKey: false,
+      }
+      const next = {
+        ...current,
+        ...patch,
+        hasApiKey: apiKey === undefined ? current.hasApiKey : apiKey !== null,
+      }
+      mem0Settings.set(botId, next)
+      return { settings: next } as ApiRoutes[typeof route]["res"]
+    }
+    if (key === "POST /bots/:id/mem0/test") return { ok: true } as ApiRoutes[typeof route]["res"]
     if (key === "GET /bots/:id/mcp") return { servers: [] } as ApiRoutes[typeof route]["res"]
+    if (key === "GET /bots/:id/integrations/telegram" || key === "PUT /bots/:id/integrations/telegram") {
+      const botId = pathValues.id ?? ""
+      const current = telegram.get(botId) ?? {
+        config: { enabled: false, allowedUserIds: [], homeChatId: null, forwardRoutines: false },
+        tokenSaved: false,
+        status: { state: "off" as const, username: null, error: null },
+        lastRejected: null,
+      }
+      if (key === "PUT /bots/:id/integrations/telegram") {
+        const { token, ...config } = input as ApiRoutes["PUT /bots/:id/integrations/telegram"]["req"]
+        const next = { ...current, config: { ...current.config, ...config } }
+        if (token !== undefined) next.tokenSaved = token !== null
+        next.status =
+          next.config.enabled && next.tokenSaved
+            ? { state: "connected", username: "touri_mock_bot", error: null }
+            : { state: "off", username: null, error: null }
+        telegram.set(botId, next)
+        return { telegram: next } as ApiRoutes[typeof route]["res"]
+      }
+      return { telegram: current } as ApiRoutes[typeof route]["res"]
+    }
     if (key === "GET /bots/:id/learning" || key === "PUT /bots/:id/learning") {
       const id = pathValues.id ?? ""
       const current = learning.get(id) ?? {
