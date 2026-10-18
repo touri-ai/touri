@@ -40,7 +40,8 @@ const setup = async ({
   return { api, bot, current, other }
 }
 
-const chip = () => screen.getByRole("button", { name: "Projeto do bot" })
+const chip = () => screen.getByRole("button", { name: /^Projeto do bot:/ })
+const model = () => screen.getByRole("button", { name: /^Escolher modelo:/ })
 const picker = () => screen.getByRole("menu", { name: "Projeto do bot" })
 const vmNote = "O commit Git do projeto será copiado para /workspace no próximo turno."
 
@@ -68,19 +69,23 @@ describe("composer project picker", () => {
     const user = userEvent.setup()
     const { bot, current } = await setup()
     const composer = screen.getByRole("form", { name: "Compor mensagem" })
-    const model = within(composer).getByRole("button", { name: "Escolher modelo" })
-    expect(model).toHaveTextContent(`Codex · ${bot.model ?? "Padrão do provedor"}`)
-    expect(within(composer).getByRole("button", { name: "Projeto do bot" })).toHaveTextContent(current.name)
-    expect(model.nextElementSibling).toContainElement(chip())
+    const modelButton = within(composer).getByRole("button", { name: /^Escolher modelo:/ })
+    const projectButton = chip()
+    const visibleSelection = modelButton.querySelector(".composer-model-name")?.textContent ?? ""
+    expect(visibleSelection).not.toBe("")
+    expect(modelButton).toHaveAttribute("aria-label", `Escolher modelo: ${visibleSelection}`)
+    expect(projectButton).toHaveTextContent(current.name)
+    expect(projectButton).toHaveAttribute("aria-label", `Projeto do bot: ${current.name}`)
+    expect(modelButton.nextElementSibling).toContainElement(projectButton)
     expect(screen.getByRole("button", { name: "Painel do bot" })).toHaveAttribute("aria-expanded", "false")
-    await user.click(model)
+    await user.click(modelButton)
     const dialog = await screen.findByRole("dialog", { name: "Escolher modelo" })
     expect(within(dialog).getByRole("textbox", { name: "Modelo" })).toHaveValue(bot.model ?? "")
     fireEvent.click(within(dialog).getByRole("button", { name: "Fechar diálogo" }))
     await waitFor(() => expect(dialog).not.toBeInTheDocument())
-    await waitFor(() => expect(model).toHaveFocus())
+    await waitFor(() => expect(modelButton).toHaveFocus())
     fireEvent.click(screen.getByRole("button", { name: "Painel do bot" }))
-    expect(screen.getAllByRole("button", { name: "Projeto do bot" })).toHaveLength(1)
+    expect(screen.getAllByRole("button", { name: /^Projeto do bot:/ })).toHaveLength(1)
   })
 
   it("provides Portuguese and English project labels and next-turn guidance", () => {
@@ -95,6 +100,16 @@ describe("composer project picker", () => {
       expect(t(portuguese, {}, "pt-BR")).toBe(portuguese)
       expect(t(portuguese, {}, "en")).toBe(english)
     }
+    expect(t("Project selection label", { name: "Projeto de demonstração" }, "pt-BR")).toBe(
+      "Projeto do bot: Projeto de demonstração",
+    )
+    expect(t("Project selection label", { name: "Demo project" }, "en")).toBe("Bot project: Demo project")
+    expect(
+      t("Choose model with selection", { selection: "Modelo de demonstração · Padrão do provedor" }, "pt-BR"),
+    ).toBe("Escolher modelo: Modelo de demonstração · Padrão do provedor")
+    expect(t("Choose model with selection", { selection: "Demo model · Provider default" }, "en")).toBe(
+      "Choose model: Demo model · Provider default",
+    )
   })
 
   it("keeps its menu outside the composer while preserving selection and focus return", async () => {
@@ -234,7 +249,7 @@ describe("composer project picker", () => {
   it("supports Tab, Enter, arrow navigation, selection, Escape and focus restoration", async () => {
     const user = userEvent.setup()
     const { current, other } = await setup()
-    screen.getByRole("button", { name: "Escolher modelo" }).focus()
+    model().focus()
     await user.tab()
     expect(chip()).toHaveFocus()
     await user.keyboard("{Enter}")
@@ -268,7 +283,7 @@ describe("composer project picker", () => {
     await user.keyboard("{Home}")
     await user.tab({ shift: true })
     expect(screen.queryByRole("menu")).not.toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "Escolher modelo" })).toHaveFocus()
+    expect(model()).toHaveFocus()
   })
 
   it.each(["local", "vm"] as const)("shows the snapshot note only for VM bots (%s)", async (machine) => {
@@ -280,7 +295,7 @@ describe("composer project picker", () => {
 
   it("hides the chip for cloud bots", async () => {
     await setup({ machine: "cloud" })
-    expect(screen.queryByRole("button", { name: "Projeto do bot" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: /^Projeto do bot:/ })).not.toBeInTheDocument()
     expect(screen.queryByText(vmNote)).not.toBeInTheDocument()
   })
 
