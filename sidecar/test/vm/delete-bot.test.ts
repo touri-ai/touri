@@ -3,10 +3,13 @@ import { afterEach, expect, test } from "bun:test"
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import type { Bot } from "@touri/contracts"
+import type { Bot, Kernel, Run } from "@touri/contracts"
 import { botSessionPath, saveBotSession } from "../../src/browser/sessionVault"
+import { createGroupRuntime } from "../../src/groups/runtime"
+import { createGroupStore } from "../../src/groups/store"
 import { createKernel } from "../../src/kernel"
 import { createEventBus } from "../../src/kernel/event-bus"
+import { createRuntimePersistence } from "../../src/runtime/persistence"
 import { init as initStore } from "../../src/store"
 import { deleteBotRoute } from "../../src/vm/delete-bot"
 import { createVmRuntime } from "../../src/vm/runtime"
@@ -16,20 +19,22 @@ const cleanups: Array<() => Promise<void>> = []
 afterEach(async () => {
   for (const cleanup of cleanups.splice(0)) await cleanup()
 })
-const fixture = async () => {
+const fixture = async ({ callHost }: { callHost?: Kernel["callHost"] } = {}) => {
   const root = mkdtempSync(join(tmpdir(), "touri-delete-bot-"))
   mkdirSync(join(root, ".codex"))
   writeFileSync(join(root, ".codex/auth.json"), JSON.stringify({ access_token: "fake-test-only" }))
   const runtime = createKernel({ appData: join(root, "data") })
   await initStore(runtime.kernel)
   const vault = new Map<string, string>()
-  runtime.kernel.callHost = (async (method, params) => {
-    const { account, value } = params as { account: string; value?: string }
-    if (method === "keychain.get") return { success: true, value: { value: vault.get(account) ?? null } }
-    if (method === "keychain.set" && value) vault.set(account, value)
-    if (method === "keychain.delete") vault.delete(account)
-    return { success: true, value: {} }
-  }) as typeof runtime.kernel.callHost
+  runtime.kernel.callHost =
+    callHost ??
+    ((async (method, params) => {
+      const { account, value } = params as { account: string; value?: string }
+      if (method === "keychain.get") return { success: true, value: { value: vault.get(account) ?? null } }
+      if (method === "keychain.set" && value) vault.set(account, value)
+      if (method === "keychain.delete") vault.delete(account)
+      return { success: true, value: {} }
+    }) as typeof runtime.kernel.callHost)
   const fake = fakeVmProvider()
   const vm = createVmRuntime({
     kernel: runtime.kernel,
@@ -56,12 +61,307 @@ const fixture = async () => {
     return ((await response.json()) as { bot: Bot }).bot
   }
   cleanups.push(async () => {
+    runtime.kernel.services.use("groups.runtime")?.shutdown()
+    await runtime.kernel.services.use("runtime.shutdown")?.()
     await vm.dispose()
     runtime.stop()
     rmSync(root, { recursive: true, force: true })
   })
   return { root, runtime, db: runtime.kernel.db as Database, fake, vm, request, create }
 }
+
+const makeGroupHistory = async (f: Awaited<ReturnType<typeof fixture>>) => {
+  const owner = await f.create("Group owner", "local")
+  const participant = await f.create("Group participant", "local")
+  const groups = createGroupStore(f.runtime.kernel)
+  const group = groups.save({
+    name: "Test group",
+    color: "#dc2626",
+    avatarShape: "cercle",
+    memberIds: [owner.id, participant.id],
+    coordinatorBotId: owner.id,
+  })
+  const thread = groups.createThread(group)
+  const child = groups.participant(group, thread.id, participant.id)
+  f.db
+    .query(
+      "INSERT INTO runs(id,thread_id,bot_id,provider,trigger,status,queued_at,finished_at) VALUES ('group-turn',?,?,'codex','user','succeeded',1,2), ('group-reply',?,?,'codex','user','succeeded',1,2)",
+    )
+    .run(thread.id, participant.id, child.id, participant.id)
+  f.db.query("INSERT INTO group_turns VALUES ('group-turn',?,?)").run(group.id, JSON.stringify([participant.id]))
+  f.db.query("INSERT INTO group_run_links VALUES ('group-reply','group-turn',0)").run()
+  f.db
+    .query(
+      "INSERT INTO send_journal(thread_id,client_nonce,request_json,message_id,deadline,status,run_id,created_at,updated_at) VALUES (?,'group-nonce','{}','group-message',1,'acked','group-turn',1,1)",
+    )
+    .run(thread.id)
+  f.db
+    .query(
+      "INSERT INTO tool_resolutions(run_id,call_id,thread_id,part_json,resolution) VALUES ('group-turn','group-call',?,'{}','succeeded')",
+    )
+    .run(thread.id)
+  f.db
+    .query(
+      "INSERT INTO messages(id,thread_id,role,kind,run_id,text,created_at,updated_at) VALUES ('group-message',?,'user','text','group-turn','Shared conversation',1,1)",
+    )
+    .run(thread.id)
+  f.db.query("INSERT INTO group_message_links VALUES ('reply',?,'visible-reply')").run(child.id)
+
+  return { owner, participant, group, thread, child, groups }
+}
+
+const makeDeferredGroupEngine = (kernel: Kernel, runningBotId: string) => {
+  const persistence = createRuntimePersistence({ database: kernel.db as Database })
+  const store = kernel.services.use("store.api")
+  if (!store) throw new Error("Store missing")
+  const started = Promise.withResolvers<Run>()
+  const canceled = Promise.withResolvers<Run>()
+  const released = Promise.withResolvers<void>()
+  const completed = canceled.promise.then(async (run) => {
+    await released.promise
+    const finished: Run = { ...run, status: "canceled", errorClass: "canceled", finishedAt: Date.now() }
+    persistence.saveRun(finished)
+    kernel.publish({ type: "run.updated", run: finished })
+    return finished
+  })
+  const cancel = (id: string) => {
+    const run = persistence.getRun(id)
+    if (!run) return { success: false as const, errorCode: "NOT_FOUND" as const, error: "Missing test run" }
+    if (run.status === "running") canceled.resolve(run)
+    return { success: true as const, run }
+  }
+  kernel.services.provide("runtime.shutdown", async () => {
+    const active = persistence.listActiveRuns().filter((run) => run.botId === runningBotId)
+    for (const run of active) cancel(run.id)
+    released.resolve()
+    if (active.length) await completed
+  })
+  const enqueue = ({ threadId, requestMessageId }: { threadId: string; requestMessageId: string }) => {
+    const thread = store.getThread({ threadId })
+    if (!thread)
+      return { success: false as const, errorCode: "THREAD_NOT_FOUND" as const, error: "Missing test thread" }
+    const running = thread.botId === runningBotId
+    const run: Run = {
+      id: kernel.newId(),
+      threadId,
+      botId: thread.botId,
+      provider: "codex",
+      trigger: "user",
+      requestMessageId,
+      replyMessageId: null,
+      externalTurnId: null,
+      status: running ? "running" : "succeeded",
+      errorClass: null,
+      errorMessage: null,
+      usage: null,
+      routineRunId: null,
+      queuedAt: Date.now(),
+      startedAt: Date.now(),
+      finishedAt: running ? null : Date.now(),
+    }
+    persistence.saveRun(run)
+    if (running) started.resolve(run)
+    return { success: true as const, run }
+  }
+  return { enqueue, cancel, started: started.promise, canceled: canceled.promise, completed, release: released.resolve }
+}
+
+for (const member of ["owner", "participant"] as const)
+  test(`deleting an idle group ${member} preserves the shared conversation and clears cross-thread run references`, async () => {
+    const f = await fixture()
+    const history = await makeGroupHistory(f)
+    const bot = history[member]
+    const remaining = member === "owner" ? history.participant : history.owner
+
+    const response = await f.request(`/bots/${bot.id}`, { name: bot.name, deleteVolumes: true }, "DELETE")
+
+    expect(response.status).toBe(200)
+    expect(f.db.query("SELECT id FROM bots WHERE id = ?").get(bot.id)).toBeNull()
+    expect(f.db.query("SELECT id FROM bots WHERE id = ?").get(remaining.id)).not.toBeNull()
+    expect(f.db.query("SELECT id FROM threads WHERE id = ?").get(bot.mainThreadId ?? "")).toBeNull()
+    expect(f.db.query("SELECT bot_id FROM threads WHERE id = ?").get(history.thread.id)).toEqual({
+      bot_id: remaining.id,
+    })
+    expect(f.db.query("SELECT text FROM messages WHERE thread_id = ?").get(history.thread.id)).toEqual({
+      text: "Shared conversation",
+    })
+    expect(f.db.query("SELECT status, run_id FROM send_journal WHERE thread_id = ?").get(history.thread.id)).toEqual({
+      status: "acked",
+      run_id: member === "participant" ? null : "group-turn",
+    })
+    expect(history.groups.get(history.group.id)?.memberIds).toEqual([remaining.id])
+    expect(history.groups.get(history.group.id)?.coordinatorBotId).toBe(member === "owner" ? null : remaining.id)
+    expect(f.db.query("PRAGMA foreign_key_check").all()).toEqual([])
+  })
+
+test("deleting the last group member clears runs owned by a former member on its shared thread", async () => {
+  const f = await fixture()
+  const history = await makeGroupHistory(f)
+  f.db
+    .query("DELETE FROM group_members WHERE group_id = ? AND bot_id = ?")
+    .run(history.group.id, history.participant.id)
+
+  const response = await f.request(`/bots/${history.owner.id}`, { name: history.owner.name }, "DELETE")
+
+  expect(response.status).toBe(200)
+  expect(f.db.query("SELECT id FROM threads WHERE id = ?").get(history.thread.id)).toBeNull()
+  expect(f.db.query("SELECT id FROM bots WHERE id = ?").get(history.participant.id)).not.toBeNull()
+  expect(f.db.query("SELECT group_thread_id FROM threads WHERE id = ?").get(history.child.id)).toEqual({
+    group_thread_id: null,
+  })
+  expect(f.db.query("PRAGMA foreign_key_check").all()).toEqual([])
+})
+
+test("deleting an idle group member waits for another member's child and the aggregate turn to stop", async () => {
+  const f = await fixture()
+  const history = await makeGroupHistory(f)
+  const group = history.groups.save({ ...history.group, coordinatorBotId: null }, history.group)
+  const engine = makeDeferredGroupEngine(f.runtime.kernel, history.participant.id)
+  const groups = createGroupRuntime(f.runtime.kernel, engine)
+  f.runtime.kernel.services.provide("groups.runtime", groups)
+  const turn = groups.enqueue({ threadId: history.thread.id, requestMessageId: "group-message", trigger: "user" })
+  if (!turn.success) throw new Error("Could not enqueue test group turn")
+  const child = await engine.started
+  const settled = Promise.withResolvers<Run>()
+  const unsubscribe = f.runtime.kernel.subscribe(({ event }) => {
+    if (event.type !== "run.updated" || event.run.id !== turn.run.id || event.run.status !== "canceled") return
+
+    unsubscribe()
+    settled.resolve(event.run)
+  })
+  expect(turn.run.botId).toBe(history.owner.id)
+  expect(child.botId).toBe(history.participant.id)
+  expect(group.memberIds).toEqual([history.owner.id, history.participant.id])
+
+  const deletion = f.request(`/bots/${history.owner.id}`, { name: history.owner.name }, "DELETE")
+  await Promise.race([
+    engine.canceled,
+    deletion.then(() => {
+      throw new Error("Deletion completed before canceling the active group child")
+    }),
+  ])
+  expect(f.db.query("SELECT id FROM bots WHERE id = ?").get(history.owner.id)).not.toBeNull()
+  expect(f.db.query("SELECT status FROM runs WHERE id = ?").get(child.id)).toEqual({ status: "running" })
+  expect(f.db.query("SELECT status FROM runs WHERE id = ?").get(turn.run.id)).toEqual({ status: "running" })
+  engine.release()
+  const response = await deletion
+
+  expect(response.status).toBe(200)
+  expect((await engine.completed).status).toBe("canceled")
+  expect((await settled.promise).status).toBe("canceled")
+  expect(f.db.query("SELECT id FROM runs WHERE id = ?").get(turn.run.id)).toBeNull()
+  expect(f.db.query("SELECT status FROM runs WHERE id = ?").get(child.id)).toEqual({ status: "canceled" })
+  expect(f.db.query("SELECT bot_id FROM threads WHERE id = ?").get(history.thread.id)).toEqual({
+    bot_id: history.participant.id,
+  })
+  expect(f.db.query("PRAGMA foreign_key_check").all()).toEqual([])
+})
+
+test("deleting a bot switched from a virtual machine to local removes its retained machine and volumes", async () => {
+  const f = await fixture()
+  const bot = await f.create("Switched machine")
+  const release = await f.vm.service.acquire({ botId: bot.id })
+  await release()
+  const switched = await f.request(`/bots/${bot.id}`, { machine: "local" }, "PATCH")
+  expect(switched.status).toBe(200)
+  expect(f.db.query("SELECT bot_id FROM bot_machines WHERE bot_id = ?").get(bot.id)).not.toBeNull()
+
+  const response = await f.request(`/bots/${bot.id}`, { name: bot.name, deleteVolumes: true }, "DELETE")
+
+  expect(response.status).toBe(200)
+  expect(f.db.query("SELECT bot_id FROM bot_machines WHERE bot_id = ?").get(bot.id)).toBeNull()
+  expect(f.db.query("SELECT id FROM bots WHERE id = ?").get(bot.id)).toBeNull()
+  expect(f.fake.machines.size).toBe(0)
+  expect(f.fake.volumes.size).toBe(0)
+  expect(f.db.query("PRAGMA foreign_key_check").all()).toEqual([])
+})
+
+test("deletion cancels bot tasks before stopping and removing its machine and volumes", async () => {
+  const f = await fixture()
+  const bot = await f.create("Machine tasks")
+  const release = await f.vm.service.acquire({ botId: bot.id })
+  f.runtime.kernel.services.provide("runtime.cancelBotTurns", release)
+
+  const response = await f.request(`/bots/${bot.id}`, { name: bot.name, deleteVolumes: true }, "DELETE")
+
+  expect(response.status).toBe(200)
+  expect(
+    f.fake.calls.filter((call) => ["stop", "destroy", "deleteVolume"].includes(call.action)).map((call) => call.action),
+  ).toEqual(["stop", "destroy", "deleteVolume", "deleteVolume"])
+  expect(f.fake.machines.size).toBe(0)
+  expect(f.fake.volumes.size).toBe(0)
+})
+
+test("an active machine lease explains the blocker and permits retry after release", async () => {
+  const f = await fixture()
+  const bot = await f.create("Machine in use")
+  const release = await f.vm.service.acquire({ botId: bot.id })
+
+  const response = await f.request(`/bots/${bot.id}`, { name: bot.name }, "DELETE")
+  await release()
+  const retry = await f.request(`/bots/${bot.id}`, { name: bot.name }, "DELETE")
+
+  expect(response.status).toBe(409)
+  expect(await response.json()).toMatchObject({
+    code: "TOURI-E8004",
+    error: "O computador do bot ainda está em uso. Pare as tarefas e tente excluir novamente.",
+  })
+  expect(retry.status).toBe(200)
+})
+
+test("failed task cancellation identifies the blocker without exposing diagnostics", async () => {
+  const f = await fixture()
+  const bot = await f.create("Task failure", "local")
+  f.runtime.kernel.services.provide("runtime.cancelBotTurns", async () => {
+    throw new Error("private task diagnostic")
+  })
+
+  const response = await f.request(`/bots/${bot.id}`, { name: bot.name }, "DELETE")
+  const body = await response.json()
+
+  expect(response.status).toBe(409)
+  expect(body).toMatchObject({ code: "TOURI-E1015", origin: "bot-stop" })
+  expect(JSON.stringify(body)).not.toContain("private task diagnostic")
+  expect(f.runtime.kernel.services.use("store.api")?.getBot({ botId: bot.id })?.paused).toBe(false)
+  expect(existsSync(bot.homeDir)).toBe(true)
+})
+
+test("a locked credential vault identifies the blocker and preserves bot history", async () => {
+  const f = await fixture({
+    callHost: async () => ({ success: false, errorCode: "HOST_UNAVAILABLE", error: "private vault diagnostic" }),
+  })
+  const bot = await f.create("Vault failure", "local")
+
+  const response = await f.request(`/bots/${bot.id}`, { name: bot.name }, "DELETE")
+  const body = await response.json()
+
+  expect(response.status).toBe(409)
+  expect(body).toMatchObject({ code: "TOURI-E1016", origin: "bot-credentials" })
+  expect(JSON.stringify(body)).not.toContain("private vault diagnostic")
+  expect(f.db.query("SELECT id FROM threads WHERE bot_id = ?").all(bot.id)).toHaveLength(1)
+  expect(existsSync(bot.homeDir)).toBe(true)
+})
+
+test("concurrent deletion explains that deletion is already in progress", async () => {
+  const f = await fixture()
+  const bot = await f.create("Concurrent deletion", "local")
+  const started = Promise.withResolvers<void>()
+  const stopped = Promise.withResolvers<void>()
+  f.runtime.kernel.services.provide("runtime.cancelBotTurns", async () => {
+    started.resolve()
+    await stopped.promise
+  })
+
+  const first = f.request(`/bots/${bot.id}`, { name: bot.name }, "DELETE")
+  await started.promise
+  const duplicate = await f.request(`/bots/${bot.id}`, { name: bot.name }, "DELETE")
+  stopped.resolve()
+  const completed = await first
+
+  expect(duplicate.status).toBe(409)
+  expect(await duplicate.json()).toMatchObject({ code: "TOURI-E1014", origin: "bot-deletion" })
+  expect(completed.status).toBe(200)
+})
 
 test("A10 deletion purges replay copies, advances its floor and forces resync", async () => {
   const f = await fixture()
@@ -287,7 +587,13 @@ test("provider failure keeps the bot and its conversations available for retry",
   const bot = await f.create("Falha")
   await (await f.vm.service.acquire({ botId: bot.id }))()
   f.fake.provider.destroy = async () => ({ success: false, errorCode: "COMMAND_FAILED", error: "fake failure" })
-  expect((await f.request(`/bots/${bot.id}`, { name: bot.name }, "DELETE")).status).toBe(409)
+
+  const response = await f.request(`/bots/${bot.id}`, { name: bot.name }, "DELETE")
+  const body = await response.json()
+
+  expect(response.status).toBe(409)
+  expect(body).toMatchObject({ code: "TOURI-E8003", origin: "bot-deletion" })
+  expect(JSON.stringify(body)).not.toContain("fake failure")
   expect(f.runtime.kernel.services.use("store.api")?.getBot({ botId: bot.id })?.paused).toBe(false)
   expect(f.db.query("SELECT id FROM threads WHERE bot_id = ?").all(bot.id)).toHaveLength(1)
 })
