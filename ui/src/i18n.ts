@@ -34,6 +34,20 @@ export const ptBR = {
   "Para usar processos supervisionados e o Preview, vincule o projeto nas configurações do bot.":
     "Para usar processos supervisionados e o Preview, vincule o projeto nas configurações do bot.",
   "Agendar esta tarefa": "Agendar esta tarefa",
+  "Aprendizado contínuo": "Aprendizado contínuo",
+  Desligado: "Desligado",
+  "O bot guarda fatos que valem em toda conversa e registra procedimentos que se repetem como skills. As revisões automáticas rodam como turnos extras e usam a conta do provedor do bot.":
+    "O bot guarda fatos que valem em toda conversa e registra procedimentos que se repetem como skills. As revisões automáticas rodam como turnos extras e usam a conta do provedor do bot.",
+  "Não foi possível carregar ou salvar o aprendizado. Tente novamente.":
+    "Não foi possível carregar ou salvar o aprendizado. Tente novamente.",
+  "Memória automática": "Memória automática",
+  "A cada {count} conversas, revisa o que aprendeu sobre você e o ambiente. MEMORY.md: {memory} · USER.md: {user} caracteres.":
+    "A cada {count} conversas, revisa o que aprendeu sobre você e o ambiente. MEMORY.md: {memory} · USER.md: {user} caracteres.",
+  "Skills automáticas": "Skills automáticas",
+  "Depois de {count} chamadas de ferramenta, propõe skills novas ou correções. {skills} skills salvas.":
+    "Depois de {count} chamadas de ferramenta, propõe skills novas ou correções. {skills} skills salvas.",
+  "Fatos novos entram direto na memória. Mudanças em fatos existentes e qualquer skill proposta numa revisão pedem sua aprovação na conversa “Aprendizado contínuo”. Disponível para bots locais.":
+    "Fatos novos entram direto na memória. Mudanças em fatos existentes e qualquer skill proposta numa revisão pedem sua aprovação na conversa “Aprendizado contínuo”. Disponível para bots locais.",
   "VM machine help":
     "Mais seguro: trabalha num computador separado só para este bot, dentro deste computador. A tela e o navegador ficam separados dos seus. Você escolhe quais pastas compartilhar. Projetos usam uma cópia da última versão registrada.",
   "Provider login safety help":
@@ -1371,6 +1385,14 @@ export const ptBR = {
     "Criar uma rotina para este bot e pedir aprovação explícita no chat para ativá-la. Sem aprovação, continua pausada. A ativação sempre exige aprovação, mesmo quando as aprovações do bot estão desativadas.",
   "Update a routine of this bot. Cannot enable a disabled routine; only the user can.":
     "Atualizar uma rotina deste bot. Somente o usuário pode habilitar uma rotina pausada.",
+  "Save, correct or remove durable facts in your memory. target 'user' (USER.md) is who the user is: name, role, preferences, style. target 'memory' (MEMORY.md) is facts about the environment, conventions and tool quirks. Save only declarative facts that hold in every conversation; task details and procedures belong in skills. Each operation: add {content}, patch {old_text, content} (old_text must match one entry), remove {old_text}. Operations apply together; the size limit is checked on the result, so remove or shorten and add in one call when the memory is full.":
+    "Salvar, corrigir ou remover fatos duradouros na sua memória. O alvo user (USER.md) é quem o usuário é: nome, papel, preferências e estilo. O alvo memory (MEMORY.md) guarda fatos do ambiente, convenções e particularidades de ferramentas. Salve só fatos declarativos que valem em toda conversa; detalhes de tarefa e procedimentos vão para skills. Cada operação: add {content}, patch {old_text, content} (old_text deve achar uma entrada só) ou remove {old_text}. As operações valem juntas e o limite de tamanho é conferido no resultado; com a memória cheia, remova ou encurte e adicione na mesma chamada.",
+  "Record a reusable procedure as a new skill in your skills folder. Use for a class of task that will repeat, not for one case. name: lowercase letters, digits, '-' or '_'. description: one line starting with 'Use when' that says when to load it. body: Markdown steps written as rules with their reason. Fails if the skill exists; then use skill_patch.":
+    "Registrar um procedimento reutilizável como uma skill nova na sua pasta de skills. Use para uma classe de tarefa que vai se repetir, não para um caso único. name: letras minúsculas, dígitos, '-' ou '_'. description: uma linha começando com 'Use when' que diga quando carregá-la. body: passos em Markdown escritos como regras, com o motivo. Falha se a skill já existir; nesse caso use skill_patch.",
+  "Correct one of your skills by replacing old_string with new_string. old_string must appear exactly once. file_path defaults to SKILL.md; supporting files live under references/, templates/, scripts/ or assets/, and an empty old_string creates a missing supporting file.":
+    "Corrigir uma das suas skills trocando old_string por new_string. old_string deve aparecer uma única vez. file_path é SKILL.md por padrão; arquivos de apoio ficam em references/, templates/, scripts/ ou assets/, e um old_string vazio cria um arquivo de apoio que ainda não existe.",
+  "Archive one of your skills that is wrong or replaced. It moves to skills/.archive and stops being listed.":
+    "Arquivar uma das suas skills que esteja errada ou tenha sido substituída. Ela vai para skills/.archive e deixa de ser listada.",
   "List projects and Git repositories only in this bot's already granted folders and connected project. Never searches the home directory on its own. Read-only; no approval required. Ask the user for a path when nothing is available.":
     "Listar projetos e repositórios Git somente nas pastas já permitidas a este bot e no projeto vinculado. Não busca na pasta pessoal por conta própria. Somente leitura, sem aprovação. Peça um caminho ao usuário se nada estiver disponível.",
   "Register a host folder as a project if needed and link it to this calling bot only. Supply exactly one of path or projectId. Full local access or an already writable local path returns alreadyAccessible immediately without changing configuration, registering a project or adding a grant. Otherwise requires explicit user approval in chat, even with approvals disabled. VM changes apply next turn.":
@@ -2038,6 +2060,19 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
     "To use supervised processes and Preview, link the project in the bot settings.",
   "Tentar de novo": "Try again",
   "Agendar esta tarefa": "Schedule this task",
+  "Aprendizado contínuo": "Continuous learning",
+  Desligado: "Off",
+  "O bot guarda fatos que valem em toda conversa e registra procedimentos que se repetem como skills. As revisões automáticas rodam como turnos extras e usam a conta do provedor do bot.":
+    "The bot keeps facts that hold in every conversation and records repeating procedures as skills. Automatic reviews run as extra turns and use the bot's provider account.",
+  "Não foi possível carregar ou salvar o aprendizado. Tente novamente.": "Couldn't load or save learning. Try again.",
+  "Memória automática": "Automatic memory",
+  "A cada {count} conversas, revisa o que aprendeu sobre você e o ambiente. MEMORY.md: {memory} · USER.md: {user} caracteres.":
+    "Every {count} conversations, reviews what it learned about you and the environment. MEMORY.md: {memory} · USER.md: {user} characters.",
+  "Skills automáticas": "Automatic skills",
+  "Depois de {count} chamadas de ferramenta, propõe skills novas ou correções. {skills} skills salvas.":
+    "After {count} tool calls, proposes new skills or fixes. {skills} skills saved.",
+  "Fatos novos entram direto na memória. Mudanças em fatos existentes e qualquer skill proposta numa revisão pedem sua aprovação na conversa “Aprendizado contínuo”. Disponível para bots locais.":
+    "New facts go straight into memory. Changes to existing facts and any skill proposed by a review ask for your approval in the “Aprendizado contínuo” conversation. Available for local bots.",
   "Local machine": "On this computer",
   "Isolated Linux VM": "Separate computer for the bot",
   "No virtualization on this host": "unavailable on this computer",

@@ -22,6 +22,12 @@ const SELF_CONFIGURATION_TOOLS: ReadonlySet<string> = new Set([
 ])
 
 const OBSERVED_BY_OWN_GUARDS: ReadonlySet<string> = new Set([
+  // Learning tools write only the bot's own home, refuse read-only bots and send
+  // changes proposed by an automatic review to an approval card themselves.
+  "memory_write",
+  "skill_create",
+  "skill_patch",
+  "skill_archive",
   "notify_user",
   "preview_open",
   "browser_open",
