@@ -90,6 +90,12 @@ it("opens selected routine history across three bounded pages despite newer runs
   expect(within(history).getAllByRole("listitem")).toHaveLength(50)
   expect(within(history).queryByText("Outras notícias", { selector: "strong" })).toBeNull()
 
+  fireEvent.click(within(history).getByText("Histórico de execuções", { selector: "summary" }))
+  fireEvent.click(within(conversations).getByRole("button", { name: "Histórico de rotinas" }))
+
+  expect(history).toHaveAttribute("open")
+  expect(within(history).getByRole("combobox", { name: "Filtrar histórico por rotina" })).toHaveValue(targetRoutine.id)
+
   fireEvent.click(within(history).getByRole("button", { name: "Carregar mais" }))
 
   expect(within(history).getAllByRole("listitem")).toHaveLength(50)

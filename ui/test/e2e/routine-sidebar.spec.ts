@@ -74,6 +74,11 @@ for (const [name, width, height] of [
     await expect(history.getByRole("combobox", { name: "Filtrar histórico por rotina" })).not.toHaveValue("all")
     await expect(history.getByRole("status")).toHaveText("Execuções 1–50 de 128")
     await expect(history.getByRole("listitem")).toHaveCount(50)
+    await history.locator("summary").click()
+    if (name === "phone") await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
+    await conversations.getByRole("button", { name: "Histórico de rotinas" }).click()
+    await expect(history).toHaveAttribute("open")
+    await expect(history.getByRole("status")).toHaveText("Execuções 1–50 de 128")
     const directory = process.env.TOURI_ROUTINE_SIDEBAR_SHOTS_DIR
     if (directory) {
       await page.screenshot({ path: `${directory}/history-first-${name}.png`, animations: "disabled" })

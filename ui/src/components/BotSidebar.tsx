@@ -96,6 +96,10 @@ const SidebarIcon = ({ children }: { children: ReactNode }) => (
 
 export const Sidebar = (props: SidebarProps) => {
   const openRoutineHistory = props.onRoutineHistory ?? props.onRoutines
+  const selectedRoutineThreadId = props.threads.find(
+    (thread) => thread.id === props.selectedThreadId && thread.kind === "routine",
+  )?.id
+  const selectedRoutineId = props.routineRuns?.find((run) => run.threadId === selectedRoutineThreadId)?.routineId
   const navigate = (action: () => void): void => {
     props.onNavigate?.()
     action()
@@ -231,7 +235,9 @@ export const Sidebar = (props: SidebarProps) => {
                     props.onBotSettings()
                   }}
                   onRoutines={() => navigate(() => props.onRoutines(bot.id))}
-                  onRoutineHistory={(routineId) => navigate(() => openRoutineHistory(bot.id, routineId))}
+                  onRoutineHistory={(routineId) =>
+                    navigate(() => openRoutineHistory(bot.id, routineId ?? selectedRoutineId))
+                  }
                   onReviewApproval={(target) => navigate(() => props.onReviewApproval(target))}
                   onNotification={(item) => navigate(() => props.notificationActions.open(item))}
                   onDelete={props.onDeleteBot}
