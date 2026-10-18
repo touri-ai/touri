@@ -402,22 +402,25 @@ for (const nativeSession of [false, true]) {
   }, 30_000)
 }
 
-test.each(["SIGTERM", "shell crash", "orphan takeover"] as const)(
+test.each(["SIGTERM", "SIGTERM with stale parent", "shell crash", "orphan takeover"] as const)(
   "desktop %s preserves a recoverable app_restart and partial transcript",
   async (mode) => {
     const f = await fixture()
+    const direct = mode.startsWith("SIGTERM")
+    const environment = (inherited: NodeJS.ProcessEnv = process.env) => ({
+      ...inherited,
+      // Match the desktop launcher instead of inheriting or inferring a parent identity.
+      TOURI_PARENT_PID: String(process.pid),
+      TOURI_APP_DATA: f.root,
+      TOURI_CODEX_BIN: f.command,
+      TOURI_FAKE_SCENARIO: f.scenario,
+      TOURI_HEADLESS: "1",
+    })
     const child = Bun.spawn({
-      cmd:
-        mode === "SIGTERM"
-          ? [process.execPath, "run", join(import.meta.dir, "../../src/main.ts"), "serve"]
-          : [process.execPath, "run", join(import.meta.dir, "../fakes/lifecycle-parent.ts")],
-      env: {
-        ...process.env,
-        TOURI_APP_DATA: f.root,
-        TOURI_CODEX_BIN: f.command,
-        TOURI_FAKE_SCENARIO: f.scenario,
-        TOURI_HEADLESS: "1",
-      },
+      cmd: direct
+        ? [process.execPath, "run", join(import.meta.dir, "../../src/main.ts"), "serve"]
+        : [process.execPath, "run", join(import.meta.dir, "../fakes/lifecycle-parent.ts")],
+      env: environment(mode === "SIGTERM with stale parent" ? { ...process.env, TOURI_PARENT_PID: "1" } : process.env),
       stdout: "pipe",
       stderr: "pipe",
     })
@@ -428,7 +431,7 @@ test.each(["SIGTERM", "shell crash", "orphan takeover"] as const)(
     try {
       const reader = child.stdout.getReader()
       let line = ""
-      while (line.split("\n").length <= (mode === "SIGTERM" ? 1 : 2)) {
+      while (line.split("\n").length <= (direct ? 1 : 2)) {
         const chunk = await reader.read()
         if (chunk.done) throw new Error(`Sidecar exited before handshake: ${await stderr}`)
         line += new TextDecoder().decode(chunk.value)
@@ -438,7 +441,7 @@ test.each(["SIGTERM", "shell crash", "orphan takeover"] as const)(
         .trim()
         .split("\n")
         .map((entry) => JSON.parse(entry))
-      const { port, pid } = entries[mode === "SIGTERM" ? 0 : 1] as { port: number; pid: number }
+      const { port, pid } = entries[direct ? 0 : 1] as { port: number; pid: number }
       sidecarPid = pid
       const { token } = await Bun.file(join(f.runtime.kernel.paths.runDir, "handshake.json")).json()
       const response = await fetch(`http://127.0.0.1:${port}/api/v1/threads/t/messages`, {
@@ -471,19 +474,13 @@ test.each(["SIGTERM", "shell crash", "orphan takeover"] as const)(
       providerPid = Number(records[0]?.replace(".json", ""))
       expect(providerPid).toBeGreaterThan(0)
       if (mode === "orphan takeover") process.kill(pid, "SIGSTOP")
-      child.kill(mode === "SIGTERM" ? "SIGTERM" : "SIGKILL")
-      if (mode === "SIGTERM") expect(await child.exited).toBe(0)
+      child.kill(direct ? "SIGTERM" : "SIGKILL")
+      if (direct) expect(await child.exited).toBe(0)
       else await child.exited
       if (mode === "orphan takeover") {
         replacement = Bun.spawn({
           cmd: [process.execPath, "run", join(import.meta.dir, "../../src/main.ts"), "serve"],
-          env: {
-            ...process.env,
-            TOURI_APP_DATA: f.root,
-            TOURI_CODEX_BIN: f.command,
-            TOURI_FAKE_SCENARIO: f.scenario,
-            TOURI_HEADLESS: "1",
-          },
+          env: environment(),
           stdout: "pipe",
           stderr: "pipe",
         })
@@ -509,13 +506,14 @@ test.each(["SIGTERM", "shell crash", "orphan takeover"] as const)(
     } catch (error) {
       child.kill("SIGKILL")
       await child.exited
+      const logPath = join(f.root, "logs/sidecar.log")
       throw new Error(
-        `${error instanceof Error ? error.stack : String(error)}\n${await stderr}\n${readFileSync(join(f.root, "logs/sidecar.log"), "utf8")}`,
+        `${error instanceof Error ? error.stack : String(error)}\n${await stderr}\n${existsSync(logPath) ? readFileSync(logPath, "utf8") : "(sidecar log not created)"}`,
       )
     } finally {
       child.kill("SIGKILL")
       await child.exited
-      if (sidecarPid && mode !== "SIGTERM") {
+      if (sidecarPid && !direct) {
         try {
           process.kill(sidecarPid, "SIGKILL")
         } catch {}

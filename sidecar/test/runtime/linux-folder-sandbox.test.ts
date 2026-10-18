@@ -127,21 +127,18 @@ for (const provider of ["codex", "claude", "opencode"] as const)
     expect(f.shell('printf saved > "$1/saved"', f.rw).exitCode).toBe(0)
   })
 
-test.skipIf(!available)(
-  "Linux permits granted reads and writes but RO wins over full access and shell approvals",
-  () => {
-    const f = fixture()
-    for (const access of ["workspace-write", "full"] as const) {
-      f.args.bot.access = access
-      expect(f.shell('cat "$1"', join(f.ro, "reference.txt")).stdout.toString()).toBe("reference")
-      const denied = f.shell('printf changed > "$1"', join(f.ro, "reference.txt"))
-      expect(denied.exitCode).not.toBe(0)
-      expect(readFileSync(join(f.ro, "reference.txt"), "utf8")).toBe("reference")
-      expect(f.shell('printf saved > "$1"', join(f.rw, "saved.txt")).exitCode).toBe(0)
-      expect(readFileSync(join(f.rw, "saved.txt"), "utf8")).toBe("saved")
-    }
-  },
-)
+test.skipIf(!available)("Linux permits granted reads and writes but read-only grants win over shell approvals", () => {
+  const f = fixture()
+  for (const approvals of ["on-request", "never"] as const) {
+    f.args.bot.approvals = approvals
+    expect(f.shell('cat "$1"', join(f.ro, "reference.txt")).stdout.toString()).toBe("reference")
+    const denied = f.shell('printf changed > "$1"', join(f.ro, "reference.txt"))
+    expect(denied.exitCode).not.toBe(0)
+    expect(readFileSync(join(f.ro, "reference.txt"), "utf8")).toBe("reference")
+    expect(f.shell('printf saved > "$1"', join(f.rw, "saved.txt")).exitCode).toBe(0)
+    expect(readFileSync(join(f.rw, "saved.txt"), "utf8")).toBe("saved")
+  }
+})
 
 test.skipIf(!available)(
   "Linux hides API credentials and other bots while this bot and its runtime remain usable",
@@ -300,9 +297,8 @@ test.skipIf(!available)("noncanonical saved grants and a root workspace cannot w
   expect(() => linuxFolderSandbox(f.kernel, f.args, f.args.env, f.home)).toThrow()
 })
 
-test.skipIf(!available)("a provider with no extra grants cannot read ungranted host files", async () => {
+test.skipIf(!available)("a provider with explicit folder grants cannot read ungranted host files", async () => {
   const f = fixture()
-  f.args.bot.folders = []
   rmSync(join(f.args.env.CODEX_HOME ?? "", "auth.json"))
   f.kernel.spawnTree = spawnTree
   const child = spawnFolderProvider(f.kernel, f.args, {
