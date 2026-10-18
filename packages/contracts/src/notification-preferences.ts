@@ -14,17 +14,18 @@ export const canDeliverNotification = ({
   botPreference?: Bot["notifications"] | null
   now?: Date
 }): boolean => {
-  if (!enabled || preferences?.enabled === false || isQuietHour(preferences?.quietHours, now)) return false
+  if (!enabled || preferences?.enabled === false) return false
 
   const bot = notification.botId ? preferences?.bots?.[notification.botId] : undefined
   if (bot?.enabled === false) return false
+  if (isBlockingNotificationKind(notification.kind)) return true
+  if (isQuietHour(preferences?.quietHours, now)) return false
 
   const typeEnabled = bot?.types?.[notification.kind] ?? preferences?.types?.[notification.kind]
   if (typeEnabled !== undefined) return typeEnabled
 
   const digest = bot?.digest ?? preferences?.digest
   if (digest) return digest === "all" || !RESULT_KINDS.includes(notification.kind)
-  if (BLOCKING_KINDS.includes(notification.kind)) return true
   if (botPreference === "none") return false
 
   return !RESULT_KINDS.includes(notification.kind) || botPreference === "all"
@@ -60,10 +61,12 @@ export const NOTIFICATION_KINDS: readonly NotifyKind[] = [
   "delegation-settled",
   "incident",
   "done",
+  "notice",
 ]
 
 const RESULT_KINDS: readonly NotifyKind[] = ["done", "delegation-settled"]
-const BLOCKING_KINDS: readonly NotifyKind[] = ["approval", "question", "takeover"]
+export const isBlockingNotificationKind = (kind: NotifyKind): boolean =>
+  kind === "approval" || kind === "question" || kind === "takeover"
 
 const isQuietHour = (quiet: NotificationPreferences["quietHours"], now: Date): boolean => {
   if (!quiet?.enabled) return false

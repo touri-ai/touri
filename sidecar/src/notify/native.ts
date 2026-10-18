@@ -22,3 +22,14 @@ export const nativeNotificationTitle = (notification: NotificationRecord): strin
   const action = (notification.body.trim() || notification.title).replace(/\.$/, "")
   return `${notification.botName ?? "touri"} precisa de você: autorizar ${action.charAt(0).toLocaleLowerCase()}${action.slice(1)}.`
 }
+
+/** Only application-authored keys are translated; bot content keeps its original language. */
+export const getNativeNotificationBody = (
+  notification: NotificationRecord,
+  locale = Intl.DateTimeFormat().resolvedOptions().locale,
+): string => {
+  if (notification.body !== "Routine finished with no news.") return notification.body
+  if (locale.startsWith("pt")) return "Rotina concluída sem novidades."
+
+  return "Routine finished with no news."
+}

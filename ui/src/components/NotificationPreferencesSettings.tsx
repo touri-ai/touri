@@ -1,5 +1,6 @@
 import {
   type Bot,
+  isBlockingNotificationKind,
   NOTIFICATION_KINDS,
   type NotificationPreferences,
   type NotificationScopePreferences,
@@ -112,21 +113,29 @@ export const NotificationPreferencesSettings = ({
       </label>
       <fieldset>
         <legend>{t("Tipos de aviso")}</legend>
-        {NOTIFICATION_KINDS.map((kind) => (
-          <label className="notification-preference-row" key={kind}>
-            <span>{t(KIND_LABELS[kind])}</span>
-            <select
-              aria-label={t(KIND_LABELS[kind])}
-              value={getTypeValue(scope, kind)}
-              onChange={(event) => saveType(kind, event.target.value)}
-            >
-              <option value="inherit">{t("Usar padrão")}</option>
-              <option value="on">{t("Avisar")}</option>
-              <option value="off">{t("Silenciar")}</option>
-            </select>
-          </label>
-        ))}
+        {NOTIFICATION_KINDS.map((kind) =>
+          isBlockingNotificationKind(kind) ? (
+            <div className="notification-preference-row" key={kind}>
+              <span>{t(KIND_LABELS[kind])}</span>
+              <span>{t("Sempre avisar")}</span>
+            </div>
+          ) : (
+            <label className="notification-preference-row" key={kind}>
+              <span>{t(KIND_LABELS[kind])}</span>
+              <select
+                aria-label={t(KIND_LABELS[kind])}
+                value={getTypeValue(scope, kind)}
+                onChange={(event) => saveType(kind, event.target.value)}
+              >
+                <option value="inherit">{t("Usar padrão")}</option>
+                <option value="on">{t("Avisar")}</option>
+                <option value="off">{t("Silenciar")}</option>
+              </select>
+            </label>
+          ),
+        )}
       </fieldset>
+      <p>{t("Aprovações, perguntas e pedidos para você assumir continuam alertando durante o horário silencioso.")}</p>
       <p>
         {t(
           scopeId
@@ -172,7 +181,7 @@ export const NotificationPreferencesSettings = ({
         )}
         <p>
           {t(
-            "Vale para todos os bots, no horário local do computador que executa o touri. Os avisos ficam guardados e contados, sem alertas nem som. Horários iguais silenciam o dia todo.",
+            "Vale para todos os bots, no horário local do computador que executa o touri. Os outros avisos ficam guardados e contados, sem alertas nem som. Horários iguais silenciam esses avisos o dia todo.",
           )}
         </p>
       </fieldset>
@@ -191,6 +200,7 @@ const KIND_LABELS: Record<NotifyKind, TranslationKey> = {
   "delegation-settled": "Delegation",
   incident: "Incident",
   done: "Done",
+  notice: "Aviso do bot",
 }
 
 const getTypeValue = (scope: NotificationScopePreferences, kind: NotifyKind): string => {

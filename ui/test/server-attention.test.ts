@@ -129,12 +129,12 @@ it("updates the native badge from pending attention and clears it when resolved"
 it("applies type and bot filters before delivering remote attention", () => {
   const { emit, invoke } = fixture([], {
     digest: "all",
-    types: { approval: false },
-    bots: { "bot-remote": { types: { question: false } } },
+    types: { "turn-failed": false },
+    bots: { "bot-remote": { types: { "routine-failed": false } } },
   })
 
-  emit(1, { type: "notification.created", notification: note(1) })
-  emit(2, { type: "notification.created", notification: note(2, { kind: "question" }) })
+  emit(1, { type: "notification.created", notification: note(1, { kind: "turn-failed" }) })
+  emit(2, { type: "notification.created", notification: note(2, { kind: "routine-failed" }) })
   emit(3, { type: "notification.created", notification: note(3, { kind: "done" }) })
 
   expect(invoke).toHaveBeenCalledTimes(1)
@@ -144,10 +144,36 @@ it("applies type and bot filters before delivering remote attention", () => {
   )
 })
 
-it("keeps remote attention quiet during an all-day quiet window", () => {
+it("keeps non-blocking remote attention quiet during an all-day quiet window", () => {
   const { emit, invoke } = fixture([], { quietHours: { enabled: true, start: "00:00", end: "00:00", timeZone: "UTC" } })
 
-  emit(1, { type: "notification.created", notification: note(1) })
+  emit(1, { type: "notification.created", notification: note(1, { kind: "turn-failed" }) })
 
   expect(invoke).not.toHaveBeenCalled()
+})
+
+it.each(["approval", "question", "takeover"] as const)(
+  "delivers blocking %s despite quiet hours and stale type mutes",
+  (kind) => {
+    const { emit, invoke } = fixture([], {
+      types: { [kind]: false },
+      bots: { "bot-remote": { types: { [kind]: false } } },
+      quietHours: { enabled: true, start: "00:00", end: "00:00", timeZone: "UTC" },
+    })
+
+    emit(1, { type: "notification.created", notification: note(1, { kind }) })
+
+    expect(invoke).toHaveBeenCalledOnce()
+  },
+)
+
+it("delivers explicit bot notices with legacy settings even without saved preferences", () => {
+  const { emit, invoke } = fixture()
+
+  emit(1, { type: "notification.created", notification: note(1, { kind: "notice" }) })
+
+  expect(invoke).toHaveBeenCalledWith(
+    "server_attention",
+    expect.objectContaining({ body: "Há um novo aviso na central de notificações." }),
+  )
 })

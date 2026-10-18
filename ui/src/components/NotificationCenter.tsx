@@ -51,6 +51,7 @@ const KIND_KEY: Record<NotificationRecord["kind"], TranslationKey> = {
   "turn-failed": "Turn failed",
   incident: "Incident",
   done: "Done",
+  notice: "Aviso do bot",
   "delegation-settled": "Delegation",
 }
 

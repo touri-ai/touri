@@ -23,10 +23,19 @@ it("saves global, per-bot, per-type and quiet-hour preferences from web settings
   fireEvent.click(screen.getByText("Escolher avisos e horário silencioso"))
   await screen.findByRole("option", { name: "mark" })
 
+  expect(screen.queryByRole("combobox", { name: "Aprovação" })).toBeNull()
+  expect(screen.queryByRole("combobox", { name: "Pergunta" })).toBeNull()
+  expect(screen.queryByRole("combobox", { name: "Precisa de você" })).toBeNull()
+  expect(
+    screen.getByText(
+      "Aprovações, perguntas e pedidos para você assumir continuam alertando durante o horário silencioso.",
+    ),
+  ).toBeVisible()
+
   fireEvent.change(screen.getByLabelText("Avisar sobre"), { target: { value: "all" } })
-  fireEvent.change(screen.getByLabelText("Aprovação"), { target: { value: "off" } })
+  fireEvent.change(screen.getByLabelText("Aviso do bot"), { target: { value: "off" } })
   fireEvent.change(screen.getByLabelText("Aplicar a"), { target: { value: "bot-mark" } })
-  fireEvent.change(screen.getByLabelText("Pergunta"), { target: { value: "off" } })
+  fireEvent.change(screen.getByLabelText("Resposta falhou"), { target: { value: "off" } })
   fireEvent.click(screen.getByLabelText("Ativar horário silencioso"))
   fireEvent.change(screen.getByLabelText("Das"), { target: { value: "23:00" } })
   fireEvent.click(screen.getByRole("button", { name: "Salvar preferências" }))
@@ -35,8 +44,8 @@ it("saves global, per-bot, per-type and quiet-hour preferences from web settings
     expect.objectContaining({
       notificationPreferences: {
         digest: "all",
-        types: { approval: false },
-        bots: { "bot-mark": { types: { question: false } } },
+        types: { notice: false },
+        bots: { "bot-mark": { types: { "turn-failed": false } } },
         quietHours: { enabled: true, start: "23:00", end: "08:00" },
       },
     }),
@@ -119,6 +128,9 @@ it("preserves ordinary explanations of the marker in historical notifications", 
 })
 
 it("provides English preferences and rate-limit guidance", () => {
+  expect(t("Aviso do bot", {}, "en")).toBe("Bot notice")
+  expect(t("Routine finished with no news.")).toBe("Rotina concluída sem novidades.")
+  expect(t("Routine finished with no news.", {}, "en")).toBe("Routine finished with no news.")
   expect(t("Somente o que precisa de mim", {}, "en")).toBe("Only what needs me")
   expect(t("Também resultados concluídos", {}, "en")).toBe("Also completed results")
   expect(t("Horário silencioso", {}, "en")).toBe("Quiet hours")

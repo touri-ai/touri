@@ -3,6 +3,11 @@ import { userFacingError } from "./errors"
 /** All UI copy lives here. pt-BR is the default; English is available for a future locale picker. */
 export type Locale = "pt-BR" | "en"
 export const ptBR = {
+  "Aviso do bot": "Aviso do bot",
+  "Sempre avisar": "Sempre avisar",
+  "Aprovações, perguntas e pedidos para você assumir continuam alertando durante o horário silencioso.":
+    "Aprovações, perguntas e pedidos para você assumir continuam alertando durante o horário silencioso.",
+  "Routine finished with no news.": "Rotina concluída sem novidades.",
   "Escolher avisos e horário silencioso": "Escolher avisos e horário silencioso",
   "Filtre por bot e tipo, incluindo resultados concluídos.": "Filtre por bot e tipo, incluindo resultados concluídos.",
   "Save a result notification for the user. Alerts follow their type, bot and quiet-hour preferences. Limited to one notification per bot every 30 seconds; a rate-limit error means no notification was saved.":
@@ -25,8 +30,8 @@ export const ptBR = {
   "Ativar horário silencioso": "Ativar horário silencioso",
   Das: "Das",
   Até: "Até",
-  "Vale para todos os bots, no horário local do computador que executa o touri. Os avisos ficam guardados e contados, sem alertas nem som. Horários iguais silenciam o dia todo.":
-    "Vale para todos os bots, no horário local do computador que executa o touri. Os avisos ficam guardados e contados, sem alertas nem som. Horários iguais silenciam o dia todo.",
+  "Vale para todos os bots, no horário local do computador que executa o touri. Os outros avisos ficam guardados e contados, sem alertas nem som. Horários iguais silenciam esses avisos o dia todo.":
+    "Vale para todos os bots, no horário local do computador que executa o touri. Os outros avisos ficam guardados e contados, sem alertas nem som. Horários iguais silenciam esses avisos o dia todo.",
   "Os filtros controlam os alertas. Todos os avisos continuam na central de notificações.":
     "Os filtros controlam os alertas. Todos os avisos continuam na central de notificações.",
   "Com a página fechada, não há som nem avisos em segundo plano. Ao voltar, você vê as solicitações pendentes.":
@@ -2330,6 +2335,11 @@ export const ptBR = {
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  "Aviso do bot": "Bot notice",
+  "Sempre avisar": "Always alert",
+  "Aprovações, perguntas e pedidos para você assumir continuam alertando durante o horário silencioso.":
+    "Approvals, questions and requests for you to take over still alert during quiet hours.",
+  "Routine finished with no news.": "Routine finished with no news.",
   "Escolher avisos e horário silencioso": "Choose alerts and quiet hours",
   "Filtre por bot e tipo, incluindo resultados concluídos.": "Filter by bot and type, including completed results.",
   "Save a result notification for the user. Alerts follow their type, bot and quiet-hour preferences. Limited to one notification per bot every 30 seconds; a rate-limit error means no notification was saved.":
@@ -2351,8 +2361,8 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Ativar horário silencioso": "Enable quiet hours",
   Das: "From",
   Até: "Until",
-  "Vale para todos os bots, no horário local do computador que executa o touri. Os avisos ficam guardados e contados, sem alertas nem som. Horários iguais silenciam o dia todo.":
-    "Applies to all bots, using the local time of the computer running touri. Notifications are saved and counted, without alerts or sound. Equal times silence the entire day.",
+  "Vale para todos os bots, no horário local do computador que executa o touri. Os outros avisos ficam guardados e contados, sem alertas nem som. Horários iguais silenciam esses avisos o dia todo.":
+    "Applies to all bots, using the local time of the computer running touri. Other notifications are saved and counted, without alerts or sound. Equal times silence those notifications all day.",
   "Os filtros controlam os alertas. Todos os avisos continuam na central de notificações.":
     "Filters control alerts. All notifications remain in the notification center.",
   "Com a página fechada, não há som nem avisos em segundo plano. Ao voltar, você vê as solicitações pendentes.":

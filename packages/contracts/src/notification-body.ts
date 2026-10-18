@@ -11,5 +11,5 @@ export const getNotificationBody = ({
   const hasNoNewsMarker = routine ? /\bNO_NOTIFICATION\s*$/.test(body) : /(?:^|\r?\n)\s*NO_NOTIFICATION\s*$/.test(body)
   if (!hasNoNewsMarker) return body
 
-  return "Rotina concluída sem novidades."
+  return "Routine finished with no news."
 }

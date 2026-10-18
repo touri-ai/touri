@@ -25,7 +25,7 @@ export const createNotifyUserHandler = ({
     if (!emit)
       return { success: false, errorCode: "NOT_AVAILABLE", error: "Notifications are unavailable. Try again later." }
 
-    emit({ kind: "done", botId: ctx.botId, threadId: ctx.threadId, title: input.title, body: input.body })
+    emit({ kind: "notice", botId: ctx.botId, threadId: ctx.threadId, title: input.title, body: input.body })
     lastSentAt.set(ctx.botId, now)
     return {
       success: true,

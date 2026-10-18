@@ -7,7 +7,7 @@ import {
   type NotifyInput,
   type NotifyResolution,
 } from "@touri/contracts"
-import { buildDeepLink, nativeNotificationTitle } from "./native"
+import { buildDeepLink, getNativeNotificationBody, nativeNotificationTitle } from "./native"
 import { getNotificationSettings } from "./preferences"
 import type { SseHub } from "./sse"
 import type { NotificationStore } from "./store"
@@ -27,7 +27,7 @@ export const createNotifier = ({ kernel, store, hub }: { kernel: Kernel; store: 
     if (!canDeliverNotification({ notification, botPreference: bot?.notifications ?? null, ...settings })) return
     void kernel.callHost("notify", {
       title: clip({ value: nativeNotificationTitle(notification), max: MAX_TITLE }),
-      body: notification.body,
+      body: getNativeNotificationBody(notification),
       threadId: notification.threadId,
       requestId: notification.requestId,
       notificationId: notification.id,

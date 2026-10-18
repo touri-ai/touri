@@ -1061,7 +1061,7 @@ export type UiEvent =
   | { type: 'notification.resolved'; notification: NotificationRecord }
   | { type: 'notify'; level: 'info' | 'warning' | 'error'; title: string; body: string; threadId: Id | null; requestId?: Id | null; notificationId?: number; kind?: NotifyKind }
 
-/** Attention kinds need the user; message kinds (`done`, `delegation-settled`) are informational and expire. */
+/** Attention kinds need the user; message kinds (`done`, `delegation-settled`, `notice`) are informational and expire. */
 export type NotifyKind =
   | 'approval'
   | 'question'
@@ -1072,6 +1072,7 @@ export type NotifyKind =
   | 'incident'
   | 'done'
   | 'delegation-settled'
+  | 'notice'
 
 export type NotificationScopePreferences = {
   enabled?: boolean

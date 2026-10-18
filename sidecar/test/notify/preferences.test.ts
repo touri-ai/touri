@@ -13,6 +13,7 @@ import {
 import { createKernel } from "../../src/kernel"
 import { createNotifyUserHandler } from "../../src/mcp/tools/notify-user"
 import { init as initNotify } from "../../src/notify"
+import { getNativeNotificationBody } from "../../src/notify/native"
 import { createNotificationStore } from "../../src/notify/store"
 import { createRuntimeNotices } from "../../src/runtime/notices"
 import { init as initStore } from "../../src/store"
@@ -26,29 +27,31 @@ afterEach(() => {
 })
 
 test("global and bot type overrides apply before the digest and preserve legacy defaults", () => {
-  const approval = { kind: "approval", botId: "bot-demo" } as const
+  const failure = { kind: "turn-failed", botId: "bot-demo" } as const
   const done = { kind: "done", botId: "bot-demo" } as const
   const preferences: NotificationPreferences = {
     digest: "all",
-    types: { approval: false, done: false },
+    types: { "turn-failed": false, done: false },
     bots: { "bot-demo": { types: { done: true } } },
   }
 
-  const blocked = canDeliverNotification({ notification: approval, preferences })
+  const blocked = canDeliverNotification({ notification: failure, preferences })
   const overridden = canDeliverNotification({ notification: done, preferences })
 
   expect(blocked).toBe(false)
   expect(overridden).toBe(true)
   expect(canDeliverNotification({ notification: done, preferences: { digest: "attention" } })).toBe(false)
   expect(canDeliverNotification({ notification: done, preferences: { digest: "all" } })).toBe(true)
-  expect(canDeliverNotification({ notification: approval, preferences, enabled: false })).toBe(false)
+  expect(canDeliverNotification({ notification: failure, preferences, enabled: false })).toBe(false)
   expect(
     canDeliverNotification({
       notification: done,
       preferences: { ...preferences, bots: { "bot-demo": { enabled: false } } },
     }),
   ).toBe(false)
-  expect(canDeliverNotification({ notification: approval, botPreference: "none" })).toBe(true)
+  expect(canDeliverNotification({ notification: { kind: "approval", botId: "bot-demo" }, botPreference: "none" })).toBe(
+    true,
+  )
 })
 
 test.each([
@@ -62,7 +65,7 @@ test.each([
   }
 
   const allowed = canDeliverNotification({
-    notification: { kind: "approval", botId: null },
+    notification: { kind: "notice", botId: null },
     preferences,
     now: new Date(time),
   })
@@ -71,7 +74,7 @@ test.each([
 })
 
 test("quiet hours use the host time zone and support daytime and all-day windows", () => {
-  const notification = { kind: "approval", botId: null } as const
+  const notification = { kind: "notice", botId: null } as const
   const now = new Date("2026-10-18T23:00:00Z")
   const daytime = { enabled: true, start: "09:00", end: "17:00", timeZone: "Asia/Tokyo" }
 
@@ -86,6 +89,34 @@ test("quiet hours use the host time zone and support daytime and all-day windows
       now,
     }),
   ).toBe(false)
+})
+
+test.each(["approval", "question", "takeover"] as const)(
+  "blocking %s ignores quiet hours and global and bot type mutes",
+  (kind) => {
+    const notification = { kind, botId: "bot-demo" }
+    const now = new Date("2026-10-18T23:00:00Z")
+    const preferences: NotificationPreferences = {
+      digest: "attention",
+      types: { [kind]: false },
+      bots: { "bot-demo": { types: { [kind]: false } } },
+      quietHours: { enabled: true, start: "00:00", end: "00:00", timeZone: "UTC" },
+    }
+
+    const delivered = canDeliverNotification({ notification, preferences, botPreference: "none", now })
+
+    expect(delivered).toBe(true)
+    expect(canDeliverNotification({ notification, preferences, enabled: false, now })).toBe(false)
+  },
+)
+
+test("explicit notices keep their own preference while completions remain quiet by default", () => {
+  const notification = { kind: "notice", botId: "bot-demo" } as const
+
+  expect(canDeliverNotification({ notification, botPreference: "failures" })).toBe(true)
+  expect(canDeliverNotification({ notification, preferences: { digest: "attention" } })).toBe(true)
+  expect(canDeliverNotification({ notification, preferences: { types: { notice: false } } })).toBe(false)
+  expect(canDeliverNotification({ notification, botPreference: "none" })).toBe(false)
 })
 
 test.each([
@@ -106,11 +137,11 @@ test("muted records remain stored, pending and published while native delivery i
   fixture.kernel.subscribe(({ event }) => events(event))
 
   const saved = fixture.emit({
-    kind: "approval",
+    kind: "turn-failed",
     botId: null,
     threadId: null,
     title: "Revisar arquivo",
-    body: "Aprovação pendente",
+    body: "Falha no turno",
     requestId: "request-demo",
   })
 
@@ -146,8 +177,9 @@ test("notification settings round-trip through the API and malformed patches can
   })
 })
 
-test("no-news notifications contain a plain result instead of the model commentary and sentinel", async () => {
+test("no-news notifications store a key and translate it before native delivery", async () => {
   const fixture = await getFixture()
+  savePreferences(fixture.db, { digest: "all" })
 
   const saved = fixture.emit({
     kind: "done",
@@ -157,8 +189,12 @@ test("no-news notifications contain a plain result instead of the model commenta
     body: "Analisei as mensagens e não encontrei nada relevante.\n\nNO_NOTIFICATION",
   })
 
-  expect(saved.body).toBe("Rotina concluída sem novidades.")
+  expect(saved.body).toBe("Routine finished with no news.")
   expect(fixture.store.recent(10)[0]?.body).toBe(saved.body)
+  expect(fixture.callHost).toHaveBeenCalledWith(
+    "notify",
+    expect.objectContaining({ body: getNativeNotificationBody(saved) }),
+  )
 })
 
 test.each(["O código NO_NOTIFICATION indica uma execução sem novidades.", "Exemplo:\n```text\nNO_NOTIFICATION\n```"])(
@@ -179,12 +215,12 @@ test("routine markers are handled before a long result is shortened", async () =
 
   notices.done({ botId: "bot-demo", threadId: "thread-demo", summary, routine: true })
 
-  expect(fixture.store.recent(10)[0]?.body).toBe("Rotina concluída sem novidades.")
+  expect(fixture.store.recent(10)[0]?.body).toBe("Routine finished with no news.")
 })
 
 test("notify_user stores muted notifications, reports its rate limit and accepts another bot", async () => {
   const fixture = await getFixture()
-  savePreferences(fixture.db, { digest: "all", types: { done: false } })
+  savePreferences(fixture.db, { digest: "all", types: { notice: false } })
   const handler = createNotifyUserHandler({ kernel: fixture.kernel, getNow: () => 1000 })
   const args = { title: "Resultado", body: "Relatório pronto" }
 
@@ -206,15 +242,24 @@ test("notify_user stores muted notifications, reports its rate limit and accepts
   expect(fixture.callHost).not.toHaveBeenCalled()
 })
 
-test("notify_user can alert when result delivery is enabled", async () => {
+test("notify_user alerts with the default failures preference even when completion alerts are muted", async () => {
   const fixture = await getFixture()
-  savePreferences(fixture.db, { digest: "all" })
+  savePreferences(fixture.db, { types: { done: false } })
+  fixture.db
+    .query(
+      "INSERT INTO bots (id, name, provider, home_dir, created_at, updated_at) VALUES ('bot-demo', 'Demo', 'codex', '.', 1, 1)",
+    )
+    .run()
+  const bot = fixture.kernel.services.use("store.api")?.getBot({ botId: "bot-demo" })
+  if (!bot) throw new Error("Missing bot")
   const handler = createNotifyUserHandler({ kernel: fixture.kernel })
 
-  const result = await handler({ ctx: getContext("bot-demo"), args: { title: "Resultado", body: "Relatório pronto" } })
+  const result = await handler({ ctx: getContext(bot.id), args: { title: "Resultado", body: "Relatório pronto" } })
 
+  expect(bot.notifications).toBe("failures")
   expect(result.success).toBe(true)
-  expect(fixture.callHost).toHaveBeenCalledWith("notify", expect.objectContaining({ title: "Resultado", kind: "done" }))
+  expect(fixture.store.recent(1)[0]?.kind).toBe("notice")
+  expect(fixture.callHost).toHaveBeenCalledWith("notify", expect.objectContaining({ kind: "notice" }))
 })
 
 test("notify_user accepts the next alert at the rate-limit boundary", async () => {
