@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite"
-import { expect, spyOn, test } from "bun:test"
+import { afterEach, expect, spyOn, test } from "bun:test"
 import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -55,6 +55,32 @@ const fixture = async () => {
     },
   }
 }
+
+const cleanups = new Set<() => void>()
+
+afterEach(() => {
+  cleanups.forEach((cleanup) => {
+    cleanup()
+  })
+  cleanups.clear()
+})
+
+test("projection validation scales with journal batches rather than provider deltas", async () => {
+  const f = await fixture()
+  cleanups.add(f.close)
+  const query = spyOn(f.database, "query")
+  cleanups.add(() => query.mockRestore())
+
+  Array.from({ length: 1_000 }, () => f.store.appendDelta({ threadId: "t", messageId: "a", partIndex: 0, delta: "x" }))
+  f.store.flushWrites?.()
+  const validations = query.mock.calls.filter(([sql]) =>
+    sql.includes("SELECT updated_seq, generation, status FROM messages"),
+  )
+  const message = f.store.activePath({ threadId: "t", leafId: "a" })[0]
+
+  expect(validations.length).toBeLessThanOrEqual(2)
+  expect(message?.text).toBe("x".repeat(1_000))
+})
 
 test("coalesces active messages in one timed flush and publishes only durable references", async () => {
   const f = await fixture()

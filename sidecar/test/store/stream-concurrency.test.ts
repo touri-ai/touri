@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite"
-import { expect, test } from "bun:test"
+import { afterEach, expect, test } from "bun:test"
 import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -13,6 +13,31 @@ import { init as initStore } from "../../src/store"
 import { STREAM_WRITE_LIMITS } from "../../src/store/stream-writer"
 
 type Delta = Extract<UiEvent, { type: "message.delta" }>
+
+const cleanups = new Set<() => void>()
+afterEach(() => {
+  cleanups.forEach((cleanup) => {
+    cleanup()
+  })
+  cleanups.clear()
+})
+
+test("batch validation rebases every buffered delta when another connection writes between appends", async () => {
+  const f = await fixture()
+  cleanups.add(f.close)
+
+  f.store.appendDelta({ threadId: "t", messageId: "reply", partIndex: 0, delta: "a" })
+  f.appendFromSecondConnection("b", 0)
+  f.store.appendDelta({ threadId: "t", messageId: "reply", partIndex: 0, delta: "c" })
+  f.store.flushWrites?.()
+  materializeTranscript(f.database)
+
+  expect(f.database.query("SELECT text FROM messages WHERE id = 'reply'").get()).toEqual({ text: "bac" })
+  expect(f.deltas().map(({ delta, offset }) => [delta, offset])).toEqual([
+    ["b", 0],
+    ["ac", 1],
+  ])
+})
 
 const fixture = async () => {
   const root = mkdtempSync(join(tmpdir(), "touri-stream-concurrency-"))

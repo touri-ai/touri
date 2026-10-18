@@ -19,150 +19,178 @@ afterEach(async () => {
   cleanups.clear()
 })
 
-test("three active streams on large threads keep historical reads and streaming work bounded", async () => {
-  const fixture = await getFixture()
-  const turns = new Map<string, StartTurnArgs>()
-  const finishTurns = new Map<string, () => void>()
-  const engine = createRuntimeEngine({
-    kernel: fixture.kernel,
-    runStage: fixture.stageTracker.run,
-    environment: { PATH: "/usr/bin", HOME: fixture.root },
-    providerAdapters: {
-      codex: {
-        provider: "codex",
-        detect: async () => ({ success: true, path: "/tmp/fixture-provider", version: "1", loggedIn: true }),
-        startTurn: async (args) => {
-          turns.set(args.thread.id, args)
-          args.onEvent({ type: "turn_started", externalTurnId: args.thread.id })
-          await new Promise<void>((resolve) => {
-            finishTurns.set(args.thread.id, resolve)
-            args.signal.addEventListener("abort", () => resolve(), { once: true })
-          })
-          return {
-            success: true,
-            externalSessionId: `fixture-session-${args.thread.id}`,
-            rolloutPath: null,
-            status: "succeeded",
-          }
-        },
-        answerApproval: async () => ({ success: true }),
-        shutdown: async () => {},
-      },
-    },
-  })
-  cleanups.add(() => engine.shutdown())
-  fixture.kernel.services.provide("runtime.enqueue", engine.enqueue)
-  const metrics = getQueryMetrics(fixture.database)
-  cleanups.add(metrics.restore)
-  const drift = getTimerDrift()
-  cleanups.add(drift.stop)
-  await Bun.sleep(10)
-
-  const getSendTimings = async () => {
-    const started = performance.now()
-    const responses = await Promise.all(THREAD_IDS.map((threadId) => fixture.send(threadId, `initial-${threadId}`)))
-    const routeMs = performance.now() - started
-    // Returning from the route is insufficient if queued work prevents the response from reaching I/O.
-    await new Promise<void>((resolve) => setImmediate(resolve))
-    const sendMs = performance.now() - started
-    await getReady(() => turns.size === THREAD_IDS.length)
-    return { responses, routeMs, sendMs, readyMs: performance.now() - started }
-  }
-  const { responses, routeMs, sendMs, readyMs } = await traceSend(getSendTimings)
-  await Bun.sleep(10)
-  const sendReads = metrics.getMessageReads()
-  const recoveryReads = metrics.getRecoveryReads()
-  const sendMaxDelayMs = drift.getMax()
-  const sendP99DelayMs = drift.getP99()
-  const sendSamples = drift.getSamples()
-  metrics.reset()
-  drift.reset()
-  fixture.stageTimings.reset()
-  fixture.stageTracker?.reset()
-  const streamStarted = performance.now()
-  for (let batch = 0; batch < 16; batch++) {
-    fixture.stageTimings.measure("provider_event_dispatch", () => {
-      for (const turn of turns.values()) {
-        for (let delta = 0; delta < 32; delta++)
-          turn.onEvent({ type: "text_delta", itemId: "reply", delta: "Resposta incremental. ".repeat(32) })
-        turn.onEvent({
-          type: "item",
-          part: {
-            type: "tool_call",
-            callId: `stream-${batch}`,
-            tool: "fixture_tool",
-            summary: "Resultado sintético",
-            inputJson: "{}",
-            outputJson: "Resultado da ferramenta.\n".repeat(1_000),
-            ok: true,
+test.each([1, 3])(
+  "%i active streams on large threads keep historical reads and streaming work bounded",
+  async (streams) => {
+    const threadIds = THREAD_IDS.slice(0, streams)
+    const deltasPerBatch = process.env.TOURI_MESSAGE_STRESS === "1" ? 2_048 : 32
+    const fixture = await getFixture(threadIds)
+    const turns = new Map<string, StartTurnArgs>()
+    const finishTurns = new Map<string, () => void>()
+    const engine = createRuntimeEngine({
+      kernel: fixture.kernel,
+      runStage: fixture.stageTracker.run,
+      environment: { PATH: "/usr/bin", HOME: fixture.root },
+      providerAdapters: {
+        codex: {
+          provider: "codex",
+          detect: async () => ({ success: true, path: "/tmp/fixture-provider", version: "1", loggedIn: true }),
+          startTurn: async (args) => {
+            if (turns.has(args.thread.id))
+              return { success: true, externalSessionId: "fixture-followup", rolloutPath: null, status: "succeeded" }
+            turns.set(args.thread.id, args)
+            args.onEvent({ type: "turn_started", externalTurnId: args.thread.id })
+            await new Promise<void>((resolve) => {
+              finishTurns.set(args.thread.id, resolve)
+              args.signal.addEventListener("abort", () => resolve(), { once: true })
+            })
+            return {
+              success: true,
+              externalSessionId: `fixture-session-${args.thread.id}`,
+              rolloutPath: null,
+              status: "succeeded",
+            }
           },
-        })
-      }
+          answerApproval: async () => ({ success: true }),
+          shutdown: async () => {},
+        },
+      },
     })
-    fixture.stageTimings.measure("transcript_journal_flush", () => fixture.store.flushWrites?.())
-    await Bun.sleep(1)
-  }
-  await Bun.sleep(10)
-  const streamMaxDelayMs = drift.getMax()
-  const streamP99DelayMs = drift.getP99()
-  const streamSamples = drift.getSamples()
-  const streamReads = metrics.getMessageReads()
-  const streamMs = Math.round(performance.now() - streamStarted)
-  for (const finish of finishTurns.values()) finish()
-  await getReady(
-    () =>
-      (
-        fixture.database.query("SELECT count(*) AS count FROM runs WHERE status IN ('starting', 'running')").get() as {
-          count: number
+    cleanups.add(() => engine.shutdown())
+    fixture.kernel.services.provide("runtime.enqueue", engine.enqueue)
+    for (const threadId of threadIds.slice(1)) await fixture.send(threadId, `initial-${threadId}`)
+    await getReady(() => turns.size === streams - 1)
+    const metrics = getQueryMetrics(fixture.database)
+    cleanups.add(metrics.restore)
+    const drift = getTimerDrift()
+    cleanups.add(drift.stop)
+    await Bun.sleep(10)
+
+    const getSendTimings = async () => {
+      const started = performance.now()
+      const response = await fixture.send("thread", "initial-thread")
+      const routeMs = performance.now() - started
+      // Returning from the route is insufficient if queued work prevents the response from reaching I/O.
+      await new Promise<void>((resolve) => setImmediate(resolve))
+      const sendMs = performance.now() - started
+      await getReady(() => turns.size === streams)
+      return { response, routeMs, sendMs, readyMs: performance.now() - started }
+    }
+    const { response, routeMs, sendMs, readyMs } = await traceSend(getSendTimings)
+    await Bun.sleep(10)
+    const sendReads = metrics.getMessageReads()
+    const recoveryReads = metrics.getRecoveryReads()
+    const sendMaxDelayMs = drift.getMax()
+    const sendP99DelayMs = drift.getP99()
+    const sendSamples = drift.getSamples()
+    metrics.reset()
+    drift.reset()
+    fixture.stageTimings.reset()
+    fixture.stageTracker.reset()
+    const streamStarted = performance.now()
+    const deltaWork: number[] = []
+    for (let batch = 0; batch < 16; batch++) {
+      fixture.stageTimings.measure("provider_event_dispatch", () => {
+        for (const turn of turns.values()) {
+          const before = fixture.stageTimings.getCalls("runtime_text_materialization")
+          for (let delta = 0; delta < deltasPerBatch; delta++)
+            turn.onEvent({ type: "text_delta", itemId: "reply", delta: "Resposta incremental. ".repeat(32) })
+          deltaWork.push(fixture.stageTimings.getCalls("runtime_text_materialization") - before)
+          turn.onEvent({
+            type: "item",
+            part: {
+              type: "tool_call",
+              callId: `stream-${batch}`,
+              tool: "fixture_tool",
+              summary: "Resultado sintético",
+              inputJson: "{}",
+              outputJson: "Resultado da ferramenta.\n".repeat(1_000),
+              ok: true,
+            },
+          })
         }
-      ).count === 0,
-  )
-  const stages = fixture.stageTracker?.snapshot() ?? fixture.stageTimings.snapshot()
-  const expectedBatchText = "Resposta incremental. ".repeat(32 * 32)
-  const expectedText = `${Array.from({ length: 16 }, () => expectedBatchText).join("\n\n")}\n\nConcluído.`
-  const replies = THREAD_IDS.map(
-    (threadId) =>
-      (
-        fixture.database
-          .query(
-            "SELECT text FROM messages WHERE thread_id = ? AND role = 'assistant' ORDER BY created_at DESC LIMIT 1",
-          )
-          .get(threadId) as { text: string } | null
-      )?.text,
-  )
-  const measurements = {
-    messages: 1_500,
-    toolCalls: 1_500,
-    streams: turns.size,
-    routeMs: Math.round(routeMs * 10) / 10,
-    sendMs: Math.round(sendMs * 10) / 10,
-    readyMs: Math.round(readyMs * 10) / 10,
-    streamMs,
-    sendP99DelayMs: Math.round(sendP99DelayMs * 10) / 10,
-    streamP99DelayMs: Math.round(streamP99DelayMs * 10) / 10,
-    sendSamples,
-    streamSamples,
-    sendMaxDelayMs: Math.round(sendMaxDelayMs * 10) / 10,
-    streamMaxDelayMs: Math.round(streamMaxDelayMs * 10) / 10,
-    maxDelayMs: Math.round(Math.max(sendMaxDelayMs, streamMaxDelayMs) * 10) / 10,
-    sendReads,
-    recoveryReads,
-    streamReads,
-    queries: metrics.getSlowest(),
-    stages,
-  }
-  console.info(`message-send-performance ${JSON.stringify(measurements)}`)
+      })
+      fixture.stageTimings.measure("transcript_journal_flush", () => fixture.store.flushWrites?.())
+      await Bun.sleep(1)
+    }
+    await Bun.sleep(10)
+    const streamMaxDelayMs = drift.getMax()
+    const streamP99DelayMs = drift.getP99()
+    const streamSamples = drift.getSamples()
+    const streamReads = metrics.getMessageReads()
+    const streamMs = Math.round(performance.now() - streamStarted)
+    // Measure send responsiveness separately so the streaming window above has no request in flight.
+    const busyStarted = performance.now()
+    const busyResponse = await fixture.send("thread", "while-streaming")
+    await new Promise<void>((resolve) => setImmediate(resolve))
+    const busySendMs = performance.now() - busyStarted
+    const busySendReads = metrics.getMessageReads() - streamReads
+    for (const finish of finishTurns.values()) finish()
+    await getReady(
+      () =>
+        (
+          fixture.database
+            .query("SELECT count(*) AS count FROM runs WHERE status IN ('starting', 'running')")
+            .get() as {
+            count: number
+          }
+        ).count === 0,
+    )
+    const stages = fixture.stageTracker.snapshot()
+    const expectedBatchText = "Resposta incremental. ".repeat(32 * deltasPerBatch)
+    const expectedText = `${Array.from({ length: 16 }, () => expectedBatchText).join("\n\n")}\n\nConcluído.`
+    const replies = threadIds.map(
+      (threadId) =>
+        (
+          fixture.database
+            .query(
+              "SELECT text FROM messages WHERE thread_id = ? AND role = 'assistant' AND length(text) > 10000 ORDER BY created_at DESC LIMIT 1",
+            )
+            .get(threadId) as { text: string } | null
+        )?.text,
+    )
+    const measurements = {
+      messagesPerThread: 2_000,
+      toolCallsPerThread: 5_000,
+      websocketClients: 2,
+      deltasPerBatch,
+      streams: turns.size,
+      routeMs: Math.round(routeMs * 10) / 10,
+      sendMs: Math.round(sendMs * 10) / 10,
+      readyMs: Math.round(readyMs * 10) / 10,
+      streamMs,
+      busySendMs: Math.round(busySendMs * 10) / 10,
+      busySendReads,
+      runtimeMaterializationsDuringDeltas: deltaWork.reduce((total, count) => total + count, 0),
+      sendP99DelayMs: Math.round(sendP99DelayMs * 10) / 10,
+      streamP99DelayMs: Math.round(streamP99DelayMs * 10) / 10,
+      sendSamples,
+      streamSamples,
+      sendMaxDelayMs: Math.round(sendMaxDelayMs * 10) / 10,
+      streamMaxDelayMs: Math.round(streamMaxDelayMs * 10) / 10,
+      maxDelayMs: Math.round(Math.max(sendMaxDelayMs, streamMaxDelayMs) * 10) / 10,
+      sendReads,
+      recoveryReads,
+      streamReads,
+      queries: metrics.getSlowest(),
+      stages,
+    }
+    console.info(`message-send-performance ${JSON.stringify(measurements)}`)
 
-  expect(responses.map(({ status }) => status)).toEqual([201, 201, 201])
-  expect(turns.size).toBe(THREAD_IDS.length)
-  expect(sendReads).toBeLessThan(300)
-  expect(recoveryReads).toBe(0)
-  expect(streamReads).toBeLessThan(30)
-  expect(replies).toEqual(THREAD_IDS.map(() => expectedText))
-  expect(stages.find(({ stage }) => stage === "runtime_text_materialization")?.calls).toBe(THREAD_IDS.length)
-}, 60_000)
+    expect(response.status).toBe(201)
+    expect(busyResponse.status).toBe(201)
+    expect(busySendReads).toBeLessThan(20)
+    expect(turns.size).toBe(streams)
+    expect(sendReads).toBeLessThan(100)
+    expect(recoveryReads).toBe(0)
+    expect(streamReads).toBeLessThan(20)
+    expect(replies).toEqual(threadIds.map(() => expectedText))
+    expect(deltaWork).toEqual(Array.from({ length: streams * 16 }, () => 0))
+  },
+  120_000,
+)
 
-const getFixture = async () => {
+const getFixture = async (threadIds: ReadonlyArray<string>) => {
   const root = mkdtempSync(join(tmpdir(), "touri-message-performance-"))
   const runtime = getOfflineRuntime(root)
   cleanups.add(() => {
@@ -171,7 +199,7 @@ const getFixture = async () => {
   })
   runtime.kernel.services.use("storage.maintenance")?.dispose()
   const database = runtime.kernel.db as Database
-  seedHistory(database, root)
+  seedHistory(database, root, threadIds)
   const stageTimings = getStageTimings()
   const stageTracker = {
     run: stageTimings.measure,
@@ -232,7 +260,7 @@ const getOfflineRuntime = (root: string) => {
   }
 }
 
-const seedHistory = (database: Database, root: string): void => {
+const seedHistory = (database: Database, root: string, threadIds: ReadonlyArray<string>): void => {
   database.transaction(() => {
     database
       .query("INSERT INTO bots(id,name,provider,home_dir,created_at,updated_at) VALUES ('bot','Teste','codex',?,1,1)")
@@ -262,8 +290,8 @@ const seedHistory = (database: Database, root: string): void => {
     const insert = database.query(`INSERT INTO messages
       (id,thread_id,parent_id,role,kind,status,run_id,text,parts_json,created_at,updated_at)
       VALUES (?,?,?,?,'text','complete',?,?,?,?,?)`)
-    THREAD_IDS.forEach((threadId) => {
-      Array.from({ length: 500 }, (_, index) => index).forEach((index) => {
+    threadIds.forEach((threadId) => {
+      Array.from({ length: 2_000 }, (_, index) => index).forEach((index) => {
         const assistant = index % 2 === 1
         const runId = assistant ? `${threadId}-history-run-${index}` : null
         if (runId)
@@ -275,13 +303,13 @@ const seedHistory = (database: Database, root: string): void => {
             replyMessageId: `${threadId}-history-${index}`,
           })
         const text = `Mensagem ${index}. ${"Contexto da tarefa. ".repeat(200)}`
-        const parts = Array.from({ length: assistant ? 2 : 0 }, (_, tool) => ({
+        const parts = Array.from({ length: assistant ? 5 : 0 }, (_, tool) => ({
           type: "tool_call",
           callId: `${threadId}-call-${index}-${tool}`,
           tool: "fixture_tool",
           summary: "Resultado sintético",
           inputJson: "{}",
-          outputJson: "resultado ".repeat(index % 100 === 1 ? 1_600 : 100),
+          outputJson: "resultado ".repeat(index % 100 === 1 ? 12_800 : 800),
           ok: true,
           resolution: "succeeded",
           resolvedAt: index,
@@ -312,8 +340,8 @@ const seedHistory = (database: Database, root: string): void => {
         })
       })
     })
-    THREAD_IDS.forEach((threadId) => {
-      database.query("UPDATE threads SET active_leaf_id = ? WHERE id = ?").run(`${threadId}-history-499`, threadId)
+    threadIds.forEach((threadId) => {
+      database.query("UPDATE threads SET active_leaf_id = ? WHERE id = ?").run(`${threadId}-history-1999`, threadId)
     })
   })()
 }
@@ -361,20 +389,21 @@ const getStageTimings = () => {
   const stages = new Map<string, { calls: number; totalMs: number; maxMs: number }>()
 
   return {
-    measure: <T>(stage: string, action: () => T): T => {
+    measure: <T, Input = undefined>(stage: string, action: (input: Input) => T, input?: Input): T => {
       const startedAt = performance.now()
       try {
-        return action()
+        return action(input as Input)
       } finally {
         const durationMs = performance.now() - startedAt
-        const previous = stages.get(stage) ?? { calls: 0, totalMs: 0, maxMs: 0 }
-        stages.set(stage, {
-          calls: previous.calls + 1,
-          totalMs: previous.totalMs + durationMs,
-          maxMs: Math.max(previous.maxMs, durationMs),
-        })
+        const timing = stages.get(stage)
+        if (timing) {
+          timing.calls += 1
+          timing.totalMs += durationMs
+          timing.maxMs = Math.max(timing.maxMs, durationMs)
+        } else stages.set(stage, { calls: 1, totalMs: durationMs, maxMs: durationMs })
       }
     },
+    getCalls: (stage: string) => stages.get(stage)?.calls ?? 0,
     snapshot: () =>
       Object.fromEntries(
         [...stages].map(([stage, values]) => [

@@ -14,25 +14,28 @@ export type PerformanceStageTracker = {
   reset: () => void
 }
 
-export type PerformanceStageRunner = <Value>(stage: string, action: () => Value) => Value
+export type PerformanceStageRunner = <Value, Input = undefined>(
+  stage: string,
+  action: (input: Input) => Value,
+  input?: Input,
+) => Value
 
 export const createPerformanceStageTracker = (now = performance.now.bind(performance)): PerformanceStageTracker => {
-  // A bounded map keeps timing updates constant work on the streaming path.
+  // Reuse bounded counters across samples so hot callbacks allocate no timing records.
   const timings = new Map<string, StageTiming>()
-  const run = <Value>(stage: string, action: () => Value): Value => {
+  const run = <Value, Input = undefined>(stage: string, action: (input: Input) => Value, input?: Input): Value => {
     const startedAt = now()
     try {
-      return action()
+      return action(input as Input)
     } finally {
       const durationMs = now() - startedAt
-      if (timings.has(stage) || timings.size < MAX_TRACKED_STAGES) {
-        const previous = timings.get(stage) ?? { calls: 0, totalMs: 0, maxMs: 0 }
-        timings.set(stage, {
-          calls: previous.calls + 1,
-          totalMs: previous.totalMs + durationMs,
-          maxMs: Math.max(previous.maxMs, durationMs),
-        })
-      }
+      const timing = timings.get(stage)
+      if (timing) {
+        timing.calls += 1
+        timing.totalMs += durationMs
+        timing.maxMs = Math.max(timing.maxMs, durationMs)
+      } else if (timings.size < MAX_TRACKED_STAGES)
+        timings.set(stage, { calls: 1, totalMs: durationMs, maxMs: durationMs })
     }
   }
 
@@ -40,6 +43,7 @@ export const createPerformanceStageTracker = (now = performance.now.bind(perform
     run,
     snapshot: () =>
       [...timings]
+        .filter(([, timing]) => timing.calls > 0)
         .map(([stage, timing]) => ({ stage, ...timing }))
         .sort((left, right) => right.totalMs - left.totalMs || right.maxMs - left.maxMs)
         .slice(0, 8)
@@ -49,7 +53,13 @@ export const createPerformanceStageTracker = (now = performance.now.bind(perform
           totalMs: getMilliseconds(totalMs),
           maxMs: getMilliseconds(maxMs),
         })),
-    reset: () => timings.clear(),
+    reset: () => {
+      timings.forEach((timing) => {
+        timing.calls = 0
+        timing.totalMs = 0
+        timing.maxMs = 0
+      })
+    },
   }
 }
 
@@ -99,9 +109,10 @@ export const createPerformanceDiagnostics = ({
     const lagMs = Math.max(0, at - expectedAt)
     expectedAt = at + sampleMs
     samples = [...samples.filter((item) => at - item.at < 60_000).slice(-59), { at, lagMs }]
-    const stageTimings = stages.snapshot()
+    const shouldWarn = lagMs >= lagThresholdMs && at - lastLagWarningAt >= cooldownMs
+    const stageTimings = shouldWarn ? stages.snapshot() : []
     stages.reset()
-    if (lagMs < lagThresholdMs || at - lastLagWarningAt < cooldownMs) return
+    if (!shouldWarn) return
 
     lastLagWarningAt = at
     logWarning(() => ({

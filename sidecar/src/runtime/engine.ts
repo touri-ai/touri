@@ -562,7 +562,7 @@ export const createRuntimeEngine = ({
     if (state.outputTimer) clearTimeout(state.outputTimer)
     state.outputTimer = null
     state.lastOutputPublishedAt = Date.now()
-    if (status === "streaming")
+    if (status === "streaming" && !state.cancelRequested)
       state.dirtyParts.forEach((partIndex) => {
         materializePartText(state, partIndex, runStage)
       })
@@ -733,7 +733,7 @@ export const createRuntimeEngine = ({
       state.textItemIds.add(event.itemId)
       const delta = separator + event.delta
       const existing = last?.type === "text" ? last : undefined
-      const partIndex = existing ? state.parts.indexOf(existing) : state.parts.length
+      const partIndex = existing ? state.parts.length - 1 : state.parts.length
       if (!existing) state.parts.push({ type: "text", text: "" })
       appendPendingText(state, partIndex, "text", delta)
       if (state.replyMessageId)
@@ -1334,10 +1334,9 @@ export const createRuntimeEngine = ({
             })
           : await prepareInstructions()
         const turnEnv = prepared?.env ?? env
+        const dispatchEvent = (event: ProviderEvent) => handleEvent({ run, event, store, state })
         const emit = (event: ProviderEvent) =>
-          runStage
-            ? runStage("runtime_provider_event", () => handleEvent({ run, event, store, state }))
-            : handleEvent({ run, event, store, state })
+          runStage ? runStage("runtime_provider_event", dispatchEvent, event) : dispatchEvent(event)
         const safeEvents = redactVmEvents({ secrets: [], redact: kernel.redact, emit })
         flushEvents = safeEvents.flush
         // VM preparation registers its credentials with the same live registry.

@@ -2,6 +2,7 @@ import type { Database } from "bun:sqlite"
 import type { UiEvent, UiEventEnvelope } from "@touri/contracts"
 import type { ServerWebSocket } from "bun"
 import { boundedProcessLog } from "./output-blobs"
+import type { PerformanceStageRunner } from "./performance"
 import { captureTranscript as captureEntries, type TranscriptRef } from "./transcript-events"
 import { compactTranscript, materializeTranscript } from "./transcript-storage"
 
@@ -20,11 +21,9 @@ const messageKey = (event: UiEvent): string | null =>
 
 type EventSocket = Pick<ServerWebSocket<unknown>, "readyState" | "sendText"> &
   Partial<Pick<ServerWebSocket<unknown>, "close">>
-type StageRunner = <Value>(stage: string, action: () => Value) => Value
-
-export const createEventBus = (database?: Database, runStage?: StageRunner) => {
-  const measureStage = <Value>(stage: string, action: () => Value): Value =>
-    runStage ? runStage(stage, action) : action()
+export const createEventBus = (database?: Database, runStage?: PerformanceStageRunner) => {
+  const measureStage = <Value, Input>(stage: string, action: (input: Input) => Value, input: Input): Value =>
+    runStage ? runStage(stage, action, input) : action(input)
   let sequence = 0
   const listeners = new Set<(envelope: UiEventEnvelope) => void>()
   const sockets = new Set<EventSocket>()
@@ -36,12 +35,25 @@ export const createEventBus = (database?: Database, runStage?: StageRunner) => {
   let stopped = false
   let flushing = false
   let compactedAt = delivered
+  const serialize = (envelope: UiEventEnvelope): string =>
+    JSON.stringify(envelope.event.type === "transcript.resync" ? { type: "resync", lastSeq: envelope.seq } : envelope)
   const payloadFor = (envelope: UiEventEnvelope): string =>
-    measureStage("workspace_event_serialization", () =>
-      JSON.stringify(
-        envelope.event.type === "transcript.resync" ? { type: "resync", lastSeq: envelope.seq } : envelope,
-      ),
-    )
+    measureStage("workspace_event_serialization", serialize, envelope)
+
+  const broadcast = (payload: string): void => {
+    for (const socket of sockets) {
+      try {
+        if (socket.readyState !== 1 || socket.sendText(payload) === 0) {
+          sockets.delete(socket)
+          socket.close?.(1013, "Tente reconectar")
+        }
+      } catch {
+        // A window reload can close its socket between iteration and send.
+        // That client must not interrupt persistence or other subscribers.
+        sockets.delete(socket)
+      }
+    }
+  }
 
   const deliver = (envelope: UiEventEnvelope): void => {
     const payload = payloadFor(envelope)
@@ -52,26 +64,13 @@ export const createEventBus = (database?: Database, runStage?: StageRunner) => {
         // A subscriber must not turn a committed write into a failed request.
       }
     }
-    measureStage("workspace_websocket_broadcast", () => {
-      for (const socket of sockets) {
-        try {
-          if (socket.readyState !== 1 || socket.sendText(payload) === 0) {
-            sockets.delete(socket)
-            socket.close?.(1013, "Tente reconectar")
-          }
-        } catch {
-          // A window reload can close its socket between iteration and send.
-          // That client must not interrupt persistence or other subscribers.
-          sockets.delete(socket)
-        }
-      }
-    })
+    measureStage("workspace_websocket_broadcast", broadcast, payload)
   }
 
   // Also recovers a committed tail whose publisher stopped before delivery.
   const captureTranscript = (): void => {
     if (!database || stopped) return
-    measureStage("transcript_journal_capture", () => captureEntries(database))
+    measureStage("transcript_journal_capture", captureEntries, database)
   }
 
   const hydrateRef = (event: MessageRef): UiEvent => {
@@ -193,7 +192,7 @@ export const createEventBus = (database?: Database, runStage?: StageRunner) => {
     flushing = true
     try {
       while (!stopped) {
-        const pending = measureStage("transcript_event_replay", () => replay(delivered))
+        const pending = measureStage("transcript_event_replay", replay, delivered)
         if (!pending.length) break
         for (const envelope of pending) {
           delivered = envelope.seq
@@ -204,9 +203,14 @@ export const createEventBus = (database?: Database, runStage?: StageRunner) => {
       flushing = false
     }
     if (delivered - compactedAt >= 256) {
-      measureStage("transcript_retention", () => compactTranscript({ database }))
+      measureStage("transcript_retention", compactTranscript, { database })
       compactedAt = delivered
     }
+  }
+  const writeEvent = (event: UiEvent): void => {
+    database
+      ?.query("INSERT INTO ui_event_log(at, event_json) VALUES (?, ?)")
+      .run(Date.now(), JSON.stringify(event.type === "process.log" ? boundedProcessLog(event) : event))
   }
   const publish = (event: UiEvent): void => {
     if (stopped) return
@@ -223,11 +227,7 @@ export const createEventBus = (database?: Database, runStage?: StageRunner) => {
       !((event.type === "message.delta" || event.type === "message.parts") && event.updatedSeq !== undefined) &&
       event.type !== "transcript.rejected"
     )
-      measureStage("transcript_event_log_write", () => {
-        database
-          .query("INSERT INTO ui_event_log(at, event_json) VALUES (?, ?)")
-          .run(Date.now(), JSON.stringify(event.type === "process.log" ? boundedProcessLog(event) : event))
-      })
+      measureStage("transcript_event_log_write", writeEvent, event)
     if (database.inTransaction) {
       if (!scheduled) {
         scheduled = true
@@ -250,7 +250,7 @@ export const createEventBus = (database?: Database, runStage?: StageRunner) => {
       captureTranscript()
       flush()
       if (database) {
-        measureStage("transcript_retention", () => compactTranscript({ database }))
+        measureStage("transcript_retention", compactTranscript, { database })
         for (const envelope of catchUp(since)) {
           if (socket.sendText(payloadFor(envelope)) === 0) {
             socket.close?.(1013, "Tente reconectar")

@@ -162,9 +162,11 @@ export const createStreamWriter = ({
     try {
       const writeBatch = database.transaction(() => {
         const rebased = new Map<string, Message>()
+        const checked = new Set<string>()
         for (const event of batch) {
           const key = keyOf(event.threadId, event.messageId)
-          if (rebased.has(key)) continue
+          if (checked.has(key)) continue
+          checked.add(key)
           const cached = projections.get(key)
           const headSeq = getSnapshotSeq(event.threadId, event.messageId)
           if (
@@ -283,10 +285,10 @@ export const createStreamWriter = ({
           }
           committed.push(event)
         }
-        if (runStage) runStage("transcript_journal_capture", () => captureTranscript(database))
+        if (runStage) runStage("transcript_journal_capture", captureTranscript, database)
         else captureTranscript(database)
         if (Date.now() - checkpointAt >= STREAM_WRITE_LIMITS.checkpointMs) {
-          if (runStage) runStage("transcript_projection_checkpoint", () => materializeTranscript(database))
+          if (runStage) runStage("transcript_projection_checkpoint", materializeTranscript, database)
           else materializeTranscript(database)
           for (const projection of projections.values()) {
             materializeProjectionText(projection)
@@ -336,6 +338,8 @@ export const createStreamWriter = ({
     const key = keyOf(threadId, messageId)
     const cached = projections.get(key)
     if (cached) {
+      // Validate once per byte-bounded batch; flush rechecks durable state and rebases all offsets atomically.
+      if (runBytes.has(key) && !database.inTransaction) return cached
       const head = database
         .query("SELECT updated_seq, generation, status FROM messages WHERE thread_id = ? AND id = ?")
         .get(threadId, messageId) as { updated_seq: number; generation: number; status: string } | null
