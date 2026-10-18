@@ -306,10 +306,13 @@ export const compactTranscript = ({
     const cursor = (
       database.query("SELECT cursor FROM transcript_retention_cursor WHERE id=1").get() as { cursor: number }
     ).cursor
+    // One reverse-history seek per pass: gathering cutoffs for hundreds of
+    // threads before the deletion budget would still monopolize a cold store.
+    const threadLimit = 1
     const threads = database
       .query(`SELECT rowid AS cursor,id,updated_seq FROM threads
       WHERE rowid > ? ORDER BY rowid LIMIT ?`)
-      .all(cursor, limit) as Array<{
+      .all(cursor, threadLimit) as Array<{
       cursor: number
       id: string
       updated_seq: number
@@ -400,7 +403,7 @@ export const compactTranscript = ({
     if (!more)
       database
         .query("UPDATE transcript_retention_cursor SET cursor=? WHERE id=1")
-        .run(threads.length === limit ? (threads.at(-1)?.cursor ?? cursor) : 0)
-    return more || threads.length === limit
+        .run(threads.length === threadLimit ? (threads.at(-1)?.cursor ?? cursor) : 0)
+    return more || threads.length === threadLimit
   })()
 }

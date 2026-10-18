@@ -208,3 +208,27 @@ test("restart recovery checkpoints at most 128 journal entries before yielding",
   expect(fixture.getTexts()[0]).toBe("x".repeat(300))
   expect(fixture.getPending()).toBe(0)
 })
+
+test("retention seeks history for at most one thread per periodic pass", async () => {
+  const fixture = await getFixture()
+  fixture.database.transaction(() => {
+    const insert = fixture.database.query(`INSERT INTO threads(id,bot_id,title,created_at,updated_at,updated_seq)
+      VALUES (?,'bot','Synthetic',1,1,5000)`)
+    Array.from({ length: 200 }, (_, index) => index).forEach((index) => {
+      insert.run(`history-${index}`)
+    })
+  })()
+  const queries = spyOn(fixture.database, "query")
+  cleanups.add(() => {
+    queries.mockRestore()
+  })
+
+  const more = compactTranscript({ database: fixture.database, maxAgeMs: Number.MAX_SAFE_INTEGER })
+  const reverseSeeks = queries.mock.calls.filter(([sql]) =>
+    sql.includes("WHERE thread_id = ? ORDER BY seq DESC LIMIT 1 OFFSET ?"),
+  )
+
+  expect(more).toBe(true)
+  expect(reverseSeeks.length).toBeLessThanOrEqual(1)
+  expect(fixture.database.query("SELECT COUNT(*) AS n FROM threads").get()).toEqual({ n: 201 })
+})
