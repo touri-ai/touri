@@ -37,18 +37,15 @@ describe("message code highlighting", () => {
     expect(() => highlighter?.getLoadedLanguages()).toThrow("disposed")
   })
 
-  it.each(["", "text", "plaintext"])(
-    "renders %s as plain, escaped, copyable source",
-    async (language) => {
-      const source = '<script>alert("exemplo")</script>\n\n  & fim\n'
+  it.each(["", "text", "plaintext"])("renders %s as plain, escaped, copyable source", async (language) => {
+    const source = '<script>alert("exemplo")</script>\n\n  & fim\n'
 
-      const html = await getMarkdownCodeHtml(source, language)
-      const rendered = getRenderedCode(html)
+    const html = await getMarkdownCodeHtml(source, language)
+    const rendered = getRenderedCode(html)
 
-      expect(rendered.textContent).toBe(source)
-      expect(rendered.querySelector("script")).toBeNull()
-    },
-  )
+    expect(rendered.textContent).toBe(source)
+    expect(rendered.querySelector("script")).toBeNull()
+  })
 
   it.each(["unknown-fixture-language", "constructor", "__proto__"])(
     "keeps the existing plain code fallback for %s without compiling a grammar",
