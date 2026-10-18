@@ -120,7 +120,7 @@ export type WorkspaceActions = {
   updateSettings: (patch: Partial<ApiRoutes["PATCH /settings"]["req"]>) => Promise<void>
   selectLocation: (location: { bot: Id | null; thread: Id | null }) => void
   dismissNotification: (id: number) => Promise<void>
-  dismissAllNotifications: () => Promise<{ skipped: number }>
+  dismissAllNotifications: () => Promise<{ skipped: number; skippedIds?: Array<number> }>
   respondNotification: (args: {
     notification: NotificationRecord
     behavior: RespondBehavior
@@ -1374,7 +1374,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
     const result = await api.request("POST /notifications/dismiss-all", {})
     const response = await api.request("GET /notifications", {})
     setData((current) => ({ ...current, notifications: response.notifications }))
-    return { skipped: result.skipped }
+    return result
   }, [api, setData])
 
   const respondNotification = useCallback(

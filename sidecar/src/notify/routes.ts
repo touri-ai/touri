@@ -169,14 +169,16 @@ export const createNotifyRoutes = ({
         path: "/notifications/dismiss-all",
         handler: async () => {
           syncRecoveryTasks()
-          const open = store.getUnresolved()
-          const dismissible = open.filter(
-            (item) => getRecoveryAcknowledgementKeys(kernel.db as Database, item.id).length === 0,
-          )
+          const open = store.getUnresolvedAttention()
+          const skippedIds = open
+            .filter((item) => getRecoveryAcknowledgementKeys(kernel.db as Database, item.id).length > 0)
+            .map((item) => item.id)
+          const protectedIds = new Set(skippedIds)
+          const dismissible = open.filter((item) => !protectedIds.has(item.id))
           dismissible.forEach((item) => {
             notifier.finish({ id: item.id, resolution: "dismissed" })
           })
-          return { status: 200, json: { dismissed: dismissible.length, skipped: open.length - dismissible.length } }
+          return { status: 200, json: { dismissed: dismissible.length, skipped: skippedIds.length, skippedIds } }
         },
       },
       {

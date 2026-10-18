@@ -158,6 +158,7 @@ it("clears ordinary notifications while guiding uncertain work to the recovery c
     "Notificações que precisam de revisão em Tarefas interrompidas: 1.",
   )
   expect(within(bell).queryByRole("alert")).not.toBeInTheDocument()
+  await waitFor(() => expect(within(bell).getAllByTestId("notification-row")).toHaveLength(1))
   fireEvent.click(within(bell).getByRole("button", { name: "Tarefas interrompidas" }))
   const center = await screen.findByRole("dialog", { name: "Tarefas interrompidas", exact: true })
   expect(within(center).getByRole("checkbox")).toBeVisible()

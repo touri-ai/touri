@@ -140,7 +140,7 @@ export const createNotificationStore = ({ db, now = Date.now }: { db: Database; 
     return (db.query(PENDING_NOTIFICATIONS_SQL).all(since) as Array<Row>).map(asRecord)
   }
 
-  const getUnresolved = (): Array<NotificationRecord> =>
+  const getUnresolvedAttention = (): Array<NotificationRecord> =>
     (
       db
         .query(`${SELECT} WHERE n.resolved_at IS NULL
@@ -171,7 +171,18 @@ export const createNotificationStore = ({ db, now = Date.now }: { db: Database; 
       .filter((entry) => !(MESSAGE_KINDS.has(entry.notification.kind) && entry.notification.createdAt < cutoff))
   }
 
-  return { get, byRequestId, insert, resolve, unresolvedForThread, pending, getUnresolved, recent, lastSeq, logSince }
+  return {
+    get,
+    byRequestId,
+    insert,
+    resolve,
+    unresolvedForThread,
+    pending,
+    getUnresolvedAttention,
+    recent,
+    lastSeq,
+    logSince,
+  }
 }
 
 export type NotificationStore = ReturnType<typeof createNotificationStore>

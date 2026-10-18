@@ -120,7 +120,7 @@ test("uncertain effects require their existing journal key on every dismissal su
   const clearAll = await h.request("/notifications/dismiss-all", {})
 
   expect([missingKey.status, wrongKey.status, bell.status, clearAll.status]).toEqual([409, 409, 409, 200])
-  expect(await clearAll.json()).toEqual({ dismissed: 0, skipped: 1 })
+  expect(await clearAll.json()).toEqual({ dismissed: 0, skipped: 1, skippedIds: [task.notification.id] })
   expect(h.work.isBlocked({ key: "preview-key" })).toBe(true)
   expect((await h.getTasks())[0]?.notification.resolvedAt).toBeNull()
 
@@ -240,14 +240,16 @@ test("clearing the bell includes old pending items and keeps uncertain work avai
   saveRun(h.database, "ordinary")
   saveRun(h.database, "uncertain")
   saveUncertainEffect(h.work, "uncertain")
-  await h.getTasks()
+  const initial = await h.getTasks()
+  const uncertain = initial.find((task) => task.runId === "uncertain")
+  if (!uncertain) throw new Error("Expected uncertain task")
   h.database.query("UPDATE notifications SET created_at = 0").run()
 
   const response = await h.request("/notifications/dismiss-all", {})
   const tasks = await h.getTasks()
 
   expect(response.status).toBe(200)
-  expect(await response.json()).toEqual({ dismissed: 1, skipped: 1 })
+  expect(await response.json()).toEqual({ dismissed: 1, skipped: 1, skippedIds: [uncertain.notification.id] })
   expect(tasks.find((task) => task.runId === "ordinary")?.notification.resolution).toBe("dismissed")
   expect(tasks.find((task) => task.runId === "uncertain")?.notification.resolvedAt).toBeNull()
   expect(h.work.isBlocked({ key: "preview-key" })).toBe(true)

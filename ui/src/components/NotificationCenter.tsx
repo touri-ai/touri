@@ -63,7 +63,7 @@ export type NotificationActions = {
   open: (item: NotificationRecord) => void
   openRecovery?: () => void
   dismiss: (id: number) => Promise<void>
-  dismissAll: () => Promise<{ skipped: number } | undefined>
+  dismissAll: () => Promise<{ skipped: number; skippedIds?: Array<number> } | undefined>
   respond: (args: { notification: NotificationRecord; behavior: RespondBehavior; message?: string }) => Promise<void>
   reply: (args: { notification: NotificationRecord; text: string }) => Promise<void>
   recover?: (item: NotificationRecord, action: RecoveryAction) => Promise<void>
@@ -328,15 +328,17 @@ export const NotificationBell = ({
   ]
   const clear = async () => {
     if (clearing) return
-    const ids = visible.map(notificationKey)
     setClearing(true)
     setClearError(false)
     try {
       const result = await actions.dismissAll()
       setSkippedCount(result?.skipped ?? 0)
-      if (result?.skipped) return
+      if (result?.skipped && !result.skippedIds) return
 
-      const next = new Set([...clearedIds, ...ids].slice(-1000))
+      const protectedIds = new Set(result?.skippedIds ?? [])
+      const ids = visible.filter((item) => !protectedIds.has(item.id)).map(notificationKey)
+      const protectedKeys = new Set(notifications.filter((item) => protectedIds.has(item.id)).map(notificationKey))
+      const next = new Set([...clearedIds, ...ids].filter((key) => !protectedKeys.has(key)).slice(-1000))
       setClearedIds(next)
       try {
         localStorage.setItem(clearedStorageKey, JSON.stringify([...next]))

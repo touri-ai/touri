@@ -1504,6 +1504,7 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
       return {
         dismissed: dismissible.length,
         skipped: open.length - dismissible.length,
+        skippedIds: open.filter((item) => protectedIds.has(item.id)).map((item) => item.id),
       } as ApiRoutes[typeof route]["res"]
     }
     if (key === "POST /threads/:id/respond") {
