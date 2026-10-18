@@ -65,6 +65,7 @@ const CronScreen = ({
   onOpenThread,
 }: CronScreenProps) => {
   const listRef = useRef<HTMLElement>(null)
+  const historyDetails = useRef<HTMLDetailsElement>(null)
   const historyStatus = useRef<HTMLParagraphElement>(null)
   useEffect(() => {
     const focusList = () => {
@@ -104,7 +105,6 @@ const CronScreen = ({
     : "all"
   const [botFilter, setBotFilter] = useState<Id | "all">(historyBotFilter)
   const [stateFilter, setStateFilter] = useState<"all" | "active" | "paused">("all")
-  const [historyOpen, setHistoryOpen] = useState(!!history)
   const [routineFilter, setRoutineFilter] = useState<Id | "all">(historyRoutineFilter)
   const [historyPage, setHistoryPage] = useState(0)
   useEffect(() => {
@@ -112,7 +112,9 @@ const CronScreen = ({
 
     setBotFilter(historyBotFilter)
     setRoutineFilter(historyRoutineFilter)
-    setHistoryOpen(true)
+    // Native toggles stay with the browser; a history destination explicitly opens the disclosure.
+    historyDetails.current?.setAttribute("open", "")
+    historyStatus.current?.focus()
     setHistoryPage(0)
   }, [history, historyBotFilter, historyRoutineFilter])
 
@@ -368,11 +370,7 @@ const CronScreen = ({
                 />
               )}
             </div>
-            <details
-              className="routine-run-history"
-              open={historyOpen}
-              onToggle={(event) => setHistoryOpen(event.currentTarget.open)}
-            >
+            <details className="routine-run-history" ref={historyDetails}>
               <summary>{t("Histórico de execuções")}</summary>
               <label className="routine-history-filter">
                 {t("Routine history filter")}
