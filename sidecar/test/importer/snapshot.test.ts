@@ -1,5 +1,5 @@
 import { Database } from "bun:sqlite"
-import { expect, test } from "bun:test"
+import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { existsSync, mkdtempSync, rmSync, truncateSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -17,36 +17,24 @@ test("A04 oversized snapshots are rejected before SQLite opens them", () => {
   }
 })
 
-test("legacy snapshots preserve empty TEXT, NULL, UTF-8 and embedded NUL", () => {
-  const root = mkdtempSync(join(tmpdir(), "touri-snapshot-text-"))
-  const path = join(root, "source.db")
-  try {
-    const db = new Database(path)
-    try {
-      db.exec("CREATE TABLE messages(id INTEGER PRIMARY KEY, text TEXT)")
-      const insert = db.query("INSERT INTO messages(id, text) VALUES (?, ?)")
-      insert.run(1, "")
-      insert.run(2, null)
-      insert.run(3, "Olá, 世界 🌍")
-      insert.run(4, "início\0fim")
-    } finally {
-      db.close()
-    }
-    const snapshot = openLegacySnapshot(path)
-    try {
-      // Bun 1.4.3 rejects CString(ptr, 0, 0); embedded NULs still require byte-length reads.
-      expect(snapshot.query("SELECT text FROM messages ORDER BY id").all()).toEqual([
-        { text: "" },
-        { text: null },
-        { text: "Olá, 世界 🌍" },
-        { text: "início\0fim" },
-      ])
-    } finally {
-      snapshot.close()
-    }
-  } finally {
-    rmSync(root, { recursive: true, force: true })
-  }
+describe("legacy snapshot text", () => {
+  let fixture: ReturnType<typeof makeTextSnapshotFixture>
+  beforeEach(() => {
+    fixture = makeTextSnapshotFixture()
+  })
+  afterEach(() => {
+    fixture.snapshot.close()
+    rmSync(fixture.root, { recursive: true, force: true })
+  })
+
+  test("preserves empty TEXT, NULL, UTF-8 and embedded NUL", () => {
+    const query = fixture.snapshot.query("SELECT text FROM messages ORDER BY id")
+
+    const rows = query.all()
+
+    // Bun 1.4.3 rejects CString(ptr, 0, 0); embedded NULs still require byte-length reads.
+    expect(rows).toEqual([{ text: "" }, { text: null }, { text: "Olá, 世界 🌍" }, { text: "início\0fim" }])
+  })
 })
 
 test("A04 source authorizer denies ATTACH, VACUUM INTO, writes and hostile views", () => {
@@ -89,3 +77,17 @@ test("A04 source authorizer denies ATTACH, VACUUM INTO, writes and hostile views
     rmSync(root, { recursive: true, force: true })
   }
 })
+
+const makeTextSnapshotFixture = () => {
+  const root = mkdtempSync(join(tmpdir(), "touri-snapshot-text-"))
+  const path = join(root, "source.db")
+  using db = new Database(path)
+  db.exec("CREATE TABLE messages(id INTEGER PRIMARY KEY, text TEXT)")
+  const insert = db.query("INSERT INTO messages(id, text) VALUES (?, ?)")
+  insert.run(1, "")
+  insert.run(2, null)
+  insert.run(3, "Olá, 世界 🌍")
+  insert.run(4, "início\0fim")
+
+  return { root, snapshot: openLegacySnapshot(path) }
+}
