@@ -432,6 +432,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
   currentData.current = data
   useMachineParking(api, data.bots, enabled && !data.loading)
   const privateThreads = useRef(new Set<string>())
+  const deletedGroups = useRef(new Set<Id>())
   const threadsByBot = useRef(readWorkspaceState().threadsByBot ?? {})
   const generation = useRef(0)
   const runRevision = useRef(0)
@@ -656,6 +657,18 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
     }
   }, [api, enabled, loadThread])
 
+  const removeGroup = useCallback(
+    (groupId: Id): void => {
+      setData((current) => getWorkspaceWithoutGroup(current, groupId))
+      if (deletedGroups.current.has(groupId)) return
+
+      deletedGroups.current.add(groupId)
+      // Deletion must replace a snapshot already in flight, including an existing resync.
+      void load()
+    },
+    [load],
+  )
+
   useEffect(() => {
     if (!enabled) return
     let active = true
@@ -689,6 +702,10 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
         resync()
         return
       }
+      if (event.type === "group.deleted") {
+        removeGroup(event.groupId)
+        return
+      }
       if (event.type === "message.delta" || event.type === "message.parts")
         threadLoads.current.get(event.threadId)?.deltas.push(event)
       if (event.type === "run.updated") liveRuns.current.set(event.run.id, ++runRevision.current)
@@ -703,7 +720,6 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
             machines: [...current.machines.filter((state) => state.botId !== event.machine.botId), event.machine],
           }
         if (event.type === "group.updated") return { ...current, groups: uniqueById([...current.groups, event.group]) }
-        if (event.type === "group.deleted") return getWorkspaceWithoutGroup(current, event.groupId)
         if (event.type === "thread.updated" && event.thread.groupThreadId) return current
         if (event.type === "bot.updated") return { ...current, bots: uniqueById([...current.bots, event.bot]) }
         if (event.type === "bot.deleted") return withoutBot(current, event.botId)
@@ -828,9 +844,10 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
     let refreshing: Promise<void> | null = null
     const refreshAttention = (): void => {
       if (refreshing || currentData.current.loading) return
+      const attempt = generation.current
       refreshing = Promise.all([api.request("GET /notifications", {}), api.request("GET /workspace/activity", {})])
         .then(async ([snapshot, activity]) => {
-          if (!active) return
+          if (!active || attempt !== generation.current) return
           setData((current) => {
             const notifications = current.notifications.reduce(upsertNotification, snapshot.notifications)
             const messages = reconcileApprovalMessages([...activity.messages, ...current.messages], notifications)
@@ -877,7 +894,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
       document.removeEventListener("visibilitychange", visibility)
       window.removeEventListener("online", refreshAttention)
     }
-  }, [api, enabled, load, loadThread])
+  }, [api, enabled, load, loadThread, removeGroup])
 
   const selectedBot = useMemo(
     () => data.bots.find((bot) => bot.id === data.selectedBotId) ?? null,
@@ -1442,7 +1459,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
       createGroupThread,
       deleteGroup: async (id) => {
         await api.request("DELETE /groups/:id", {}, { id })
-        setData((current) => getWorkspaceWithoutGroup(current, id))
+        removeGroup(id)
       },
       createThread,
       sendMessage,

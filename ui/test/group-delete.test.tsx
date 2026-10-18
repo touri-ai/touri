@@ -227,12 +227,88 @@ describe("group deletion", () => {
     await waitFor(() => expect(result.current.data.loaded).toBe(true))
 
     act(() => result.current.actions.selectThread(thread.id))
-    act(() => api.emit({ type: "group.deleted", groupId: group.id }))
+    await act(async () => {
+      await api.request("DELETE /groups/:id", {}, { id: group.id })
+    })
 
     expect(result.current.data.groups).toEqual([])
     expect(result.current.data.selectedThreadId).not.toBe(thread.id)
     expect(result.current.data.threads.some((candidate) => candidate.id === "thread-mark")).toBe(true)
-    expect(api.calls.some((call) => call.route === "DELETE /groups/:id")).toBe(false)
+    expect(api.calls.filter((call) => call.route === "DELETE /groups/:id")).toHaveLength(1)
+  })
+
+  it("replaces an in-flight resync so an old group index cannot restore a deleted group", async () => {
+    const api = createMockApi()
+    const { group, thread } = await createGroup(api)
+    const barrier = getSnapshotBarrier()
+    const request: ApiRequest = async (route, input, pathValues) => {
+      const isDelayedSnapshot = route === "GET /groups" && api.calls.filter((call) => call.route === route).length === 1
+      const response = await api.request(route, input, pathValues)
+      if (isDelayedSnapshot) await barrier.promise
+
+      return response
+    }
+    const client = { ...api, request }
+    const { result } = renderHook(() => useWorkspace(client))
+    await waitFor(() => expect(result.current.data.loaded).toBe(true))
+    act(() => api.emit({ type: "transcript.resync" }))
+    await waitFor(() => expect(api.calls.filter((call) => call.route === "GET /groups")).toHaveLength(2))
+
+    await act(async () => {
+      api.emit({ type: "transcript.resync" })
+      await api.request("DELETE /groups/:id", {}, { id: group.id })
+    })
+    await act(async () => barrier.resolve())
+
+    expect(api.calls.filter((call) => call.route === "GET /groups")).toHaveLength(3)
+    expect(result.current.data.groups).toEqual([])
+    expect(result.current.data.threads.some((candidate) => candidate.id === thread.id)).toBe(false)
+    expect(result.current.data.loading).toBe(false)
+    expect(result.current.data.loaded).toBe(true)
+    expect(result.current.data.threads.some((candidate) => candidate.id === "thread-mark")).toBe(true)
+  })
+
+  it("ignores an older attention snapshot after deleting a group", async () => {
+    const api = createMockApi()
+    const { group, thread } = await createGroup(api)
+    const sent = await api.request(
+      "POST /threads/:id/messages",
+      {
+        threadId: thread.id,
+        text: "Histórico fictício do grupo.",
+        parentId: null,
+        attachmentIds: [],
+      },
+      { id: thread.id },
+    )
+    if (!sent.run) throw new Error("Missing group run")
+    await api.request("POST /runs/:id/cancel", {}, { id: sent.run.id })
+    api.notify({ kind: "done", title: "Grupo concluído", body: "Revisão fictícia.", threadId: thread.id })
+    const barrier = getSnapshotBarrier()
+    const request: ApiRequest = async (route, input, pathValues) => {
+      const isAttentionSnapshot = route === "GET /workspace/activity" || route === "GET /notifications"
+      const isDelayedSnapshot = isAttentionSnapshot && api.calls.filter((call) => call.route === route).length === 1
+      const response = await api.request(route, input, pathValues)
+      if (isDelayedSnapshot) await barrier.promise
+
+      return response
+    }
+    const client = { ...api, request }
+    const { result } = renderHook(() => useWorkspace(client))
+    await waitFor(() => expect(result.current.data.loaded).toBe(true))
+    act(() => window.dispatchEvent(new Event("online")))
+    await waitFor(() => expect(api.calls.filter((call) => call.route === "GET /workspace/activity")).toHaveLength(2))
+
+    await act(() => result.current.actions.deleteGroup(group.id))
+    await act(async () => barrier.resolve())
+
+    expect(result.current.data.groups).toEqual([])
+    expect(result.current.data.messages.some((message) => message.threadId === thread.id)).toBe(false)
+    expect(result.current.data.activityMessages.some((message) => message.threadId === thread.id)).toBe(false)
+    expect(result.current.data.notifications.some((item) => item.threadId === thread.id)).toBe(false)
+    expect(result.current.data.messages.some((message) => message.threadId === "thread-mark")).toBe(true)
+    expect(result.current.data.loading).toBe(false)
+    expect(result.current.data.loaded).toBe(true)
   })
 
   it("ignores a group history snapshot that arrives after the group has been deleted", async () => {
