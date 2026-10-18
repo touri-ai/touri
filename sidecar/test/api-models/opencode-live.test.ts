@@ -17,6 +17,7 @@ import { createKernel } from "../../src/kernel"
 import { buildChildEnv } from "../../src/kernel/shell-env"
 import { createOpenCodeAdapter } from "../../src/runtime/opencode/adapter"
 import { openCodeBinary } from "../../src/runtime/opencode/config"
+import { writePrivateFile } from "../../src/runtime/utils"
 
 const cleanups = new Set<() => Promise<void> | void>()
 afterEach(async () => {
@@ -33,128 +34,147 @@ const getFiles = (root: string): string[] =>
     return []
   })
 
-test.skipIf(!binary.success)(
-  "the installed executor completes a real API turn without writing the API key to disk",
-  async () => {
-    if (!binary.success) return
-    const root = mkdtempSync(join(tmpdir(), "touri-api-live-"))
-    const runtime = createKernel({ appData: root })
-    const key = "fixture-live-api-key"
-    const seen = new Set<string>()
-    const server = Bun.serve({
-      hostname: "127.0.0.1",
-      port: 0,
-      fetch: async (request) => {
-        seen.add(request.headers.get("Authorization") ?? "")
-        if (request.headers.get("Authorization") !== `Bearer ${key}`) return new Response(null, { status: 401 })
-        if (!new URL(request.url).pathname.endsWith("/chat/completions")) return new Response(null, { status: 404 })
-        const body = (await request.json()) as { model: string; stream?: boolean }
-        expect(body.model).toBe("test-model")
-        if (JSON.stringify(body).includes("fixture-reject-key"))
-          return Response.json(
-            { error: { message: `Invalid API key: ${key}`, code: "invalid_api_key" } },
-            { status: 401 },
+for (const isolated of [false, true])
+  test.skipIf(!binary.success)(
+    `the installed executor keeps API credentials out of session files on ${isolated ? "an isolated transport" : "the host"}`,
+    async () => {
+      if (!binary.success) return
+      const root = mkdtempSync(join(tmpdir(), "touri-api-live-"))
+      const runtime = createKernel({ appData: root })
+      const key = "fixture-live-api-key"
+      const seen = new Set<string>()
+      const server = Bun.serve({
+        hostname: "127.0.0.1",
+        port: 0,
+        fetch: async (request) => {
+          seen.add(request.headers.get("Authorization") ?? "")
+          if (request.headers.get("Authorization") !== `Bearer ${key}`) return new Response(null, { status: 401 })
+          if (!new URL(request.url).pathname.endsWith("/chat/completions")) return new Response(null, { status: 404 })
+          const body = (await request.json()) as { model: string; stream?: boolean }
+          expect(body.model).toBe("test-model")
+          if (JSON.stringify(body).includes("fixture-reject-key"))
+            return Response.json(
+              { error: { message: `Invalid API key: ${key}`, code: "invalid_api_key" } },
+              { status: 401 },
+            )
+          if (!body.stream)
+            return Response.json({
+              id: "completion-test",
+              choices: [{ index: 0, message: { role: "assistant", content: "OK" }, finish_reason: "stop" }],
+            })
+          const chunks = [
+            {
+              id: "completion-test",
+              object: "chat.completion.chunk",
+              created: 1,
+              model: body.model,
+              choices: [{ index: 0, delta: { role: "assistant", content: "OK" }, finish_reason: null }],
+            },
+            {
+              id: "completion-test",
+              object: "chat.completion.chunk",
+              created: 1,
+              model: body.model,
+              choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+            },
+          ]
+          return new Response(
+            chunks
+              .map((chunk) => `data: ${JSON.stringify(chunk)}\n\n`)
+              .join("")
+              .concat("data: [DONE]\n\n"),
+            { headers: { "Content-Type": "text/event-stream" } },
           )
-        if (!body.stream)
-          return Response.json({
-            id: "completion-test",
-            choices: [{ index: 0, message: { role: "assistant", content: "OK" }, finish_reason: "stop" }],
-          })
-        const chunks = [
-          {
-            id: "completion-test",
-            object: "chat.completion.chunk",
-            created: 1,
-            model: body.model,
-            choices: [{ index: 0, delta: { role: "assistant", content: "OK" }, finish_reason: null }],
-          },
-          {
-            id: "completion-test",
-            object: "chat.completion.chunk",
-            created: 1,
-            model: body.model,
-            choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
-          },
-        ]
-        return new Response(
-          chunks
-            .map((chunk) => `data: ${JSON.stringify(chunk)}\n\n`)
-            .join("")
-            .concat("data: [DONE]\n\n"),
-          { headers: { "Content-Type": "text/event-stream" } },
-        )
-      },
-    })
-    const model: ApiModel = {
-      id: "live",
-      preset: "custom",
-      name: "Teste local",
-      baseUrl: `http://127.0.0.1:${server.port}/v1`,
-      modelId: "test-model",
-    }
-    saveApiModel(runtime.kernel, model)
-    const callHost = (async (method: string, input: { account: string }) => {
-      expect(method).toBe("keychain.get")
-      expect(input.account).toBe(getApiModelAccount(model.id))
-      return { success: true, value: { value: key } }
-    }) as Kernel["callHost"]
-    const kernel = Object.assign({}, runtime.kernel, { callHost })
-    const adapter = createOpenCodeAdapter({ kernel, command: binary.path })
-    cleanups.add(() => adapter.shutdown())
-    cleanups.add(() => {
-      server.stop(true)
-    })
-    cleanups.add(() => {
-      runtime.stop()
-      rmSync(root, { recursive: true, force: true })
-    })
-    const events = new Set<ProviderEvent>()
-    const args: StartTurnArgs = {
-      bot: {
-        id: "api-bot",
-        machine: "local",
-        provider: "opencode",
-        model: getApiModelReference(model),
-        homeDir: join(root, "bots/api-bot"),
-        projectId: null,
-        access: "full",
-        approvals: "never",
-        reasoningEffort: null,
-      } as Bot,
-      thread: { id: "api-thread", title: "Teste" } as Thread,
-      session: null,
-      fingerprint: { cwd: root } as StartTurnArgs["fingerprint"],
-      developerInstructions: "Reply OK.",
-      handoffPacket: null,
-      input: [{ type: "text", text: "Hello" }],
-      mcp: { command: "unused", args: [], env: {} },
-      env: { HOME: root },
-      conversationOnly: true,
-      signal: AbortSignal.timeout(60_000),
-      onEvent: (event) => {
-        events.add(event)
-      },
-    }
-    const result = await adapter.startTurn(args)
-    expect(result).toMatchObject({ success: true, status: "succeeded" })
-    expect(seen.has(`Bearer ${key}`)).toBe(true)
-    expect(Array.from(events).some((event) => event.type === "text_delta" && event.delta.includes("OK"))).toBe(true)
-    if (!result.success || !result.externalSessionId) throw new Error("The local API fixture did not create a session")
-    const session = { externalSessionId: result.externalSessionId } as ProviderSession
+        },
+      })
+      const model: ApiModel = {
+        id: "live",
+        preset: "custom",
+        name: "Teste local",
+        baseUrl: `http://127.0.0.1:${server.port}/v1`,
+        modelId: "test-model",
+      }
+      saveApiModel(runtime.kernel, model)
+      const callHost = (async (method: string, input: { account: string }) => {
+        expect(method).toBe("keychain.get")
+        expect(input.account).toBe(getApiModelAccount(model.id))
+        return { success: true, value: { value: key } }
+      }) as Kernel["callHost"]
+      const kernel = Object.assign({}, runtime.kernel, { callHost })
+      const adapter = createOpenCodeAdapter({ kernel, command: binary.path })
+      cleanups.add(() => adapter.shutdown())
+      cleanups.add(() => {
+        server.stop(true)
+      })
+      cleanups.add(() => {
+        runtime.stop()
+        rmSync(root, { recursive: true, force: true })
+      })
+      const events = new Set<ProviderEvent>()
+      const commonArgs: StartTurnArgs = {
+        bot: {
+          id: "api-bot",
+          machine: "local",
+          provider: "opencode",
+          model: getApiModelReference(model),
+          homeDir: join(root, "bots/api-bot"),
+          projectId: null,
+          access: "full",
+          approvals: "never",
+          reasoningEffort: null,
+        } as Bot,
+        thread: { id: "api-thread", title: "Teste" } as Thread,
+        session: null,
+        fingerprint: { cwd: root } as StartTurnArgs["fingerprint"],
+        developerInstructions: "Reply OK.",
+        handoffPacket: null,
+        input: [{ type: "text", text: "Hello" }],
+        mcp: { command: Bun.which("node") ?? process.execPath, args: [], env: {} },
+        env: { HOME: root, PATH: process.env.PATH ?? "" },
+        conversationOnly: true,
+        signal: AbortSignal.timeout(60_000),
+        onEvent: (event) => {
+          events.add(event)
+        },
+      }
+      const args: StartTurnArgs = Object.assign(
+        {},
+        commonArgs,
+        isolated
+          ? {
+              execution: {
+                spawn: (input: Parameters<Kernel["spawnTree"]>[0]) =>
+                  runtime.kernel.spawnTree(
+                    Object.assign({}, input, { cmd: input.cmd === "opencode" ? binary.path : input.cmd }),
+                  ),
+                writeFile: async ({ path, content }: { path: string; content: string }) =>
+                  writePrivateFile({ root, path, content }),
+                connect: async (port: number) => `http://127.0.0.1:${port}`,
+              },
+            }
+          : {},
+      )
+      const result = await adapter.startTurn(args)
+      expect(result).toMatchObject({ success: true, status: "succeeded" })
+      expect(seen.has(`Bearer ${key}`)).toBe(true)
+      expect(Array.from(events).some((event) => event.type === "text_delta" && event.delta.includes("OK"))).toBe(true)
+      if (!result.success || !result.externalSessionId)
+        throw new Error("The local API fixture did not create a session")
+      const session = { externalSessionId: result.externalSessionId } as ProviderSession
 
-    const resumed = await adapter.startTurn(Object.assign({}, args, { session }))
+      const resumed = await adapter.startTurn(Object.assign({}, args, { session }))
 
-    expect(resumed).toMatchObject({ success: true, status: "succeeded", externalSessionId: result.externalSessionId })
+      expect(resumed).toMatchObject({ success: true, status: "succeeded", externalSessionId: result.externalSessionId })
 
-    const rejected = await adapter.startTurn(
-      Object.assign({}, args, { session, input: [{ type: "text", text: "fixture-reject-key" }] }),
-    )
+      const rejected = await adapter.startTurn(
+        Object.assign({}, args, { session, input: [{ type: "text", text: "fixture-reject-key" }] }),
+      )
 
-    expect(rejected).toMatchObject({ success: false, errorCode: "cli_auth" })
-    expect(JSON.stringify(rejected)).not.toContain(key)
-    await adapter.shutdown()
-    const leaked = getFiles(root).filter((file) => readFileSync(file).includes(Buffer.from(key)))
-    expect(leaked.map((file) => file.slice(root.length))).toEqual([])
-  },
-  90_000,
-)
+      expect(rejected).toMatchObject({ success: false, errorCode: "cli_auth" })
+      expect(JSON.stringify(rejected)).not.toContain(key)
+      await adapter.shutdown()
+      const leaked = getFiles(root).filter((file) => readFileSync(file).includes(Buffer.from(key)))
+      expect(leaked.map((file) => file.slice(root.length))).toEqual([])
+    },
+    90_000,
+  )
