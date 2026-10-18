@@ -78,7 +78,7 @@ test("lag logs count active runs and live clients and keep only route templates"
   expect(warnings).toHaveLength(1)
   expect(warnings[0]).toMatchObject({
     module: "performance",
-    msg: "Event loop delayed",
+    msg: "Atraso no event loop",
     data: {
       activeRuns: 2,
       sseClients: 1,
@@ -122,7 +122,7 @@ test("HTTP requests over two seconds log once and long-lived streams stay quiet"
   expect(fixture.getLogs()).toEqual([
     {
       module: "performance",
-      msg: "Slow HTTP request",
+      msg: "Solicitação HTTP lenta",
       level: "warn",
       at: expect.any(Number),
       data: { method: "POST", route: "/threads/:id/messages", durationMs: expect.any(Number) },

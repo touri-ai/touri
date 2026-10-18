@@ -2,7 +2,7 @@ import type { ApiRoutes, Kernel } from "@touri/contracts"
 import type { Server } from "bun"
 
 type EventLoopStats = NonNullable<ApiRoutes["GET /health"]["res"]["eventLoop"]>
-type RequestTiming = { method: string; route: string; startedAt: number }
+type RequestTracker = { inFlight: Map<Request, number>; getRoute: (request: Request) => string }
 type Context = { activeRuns: number; sseClients: number; websocketClients: number }
 type FetchHandler<SocketData> = (request: Request, server: Server<SocketData>) => Promise<Response | undefined>
 
@@ -25,8 +25,8 @@ export const createPerformanceDiagnostics = ({
   cooldownMs?: number
   startSampling?: (sample: () => void, intervalMs: number) => () => void
 }) => {
-  // Timer and request lifetimes keep local state; no request content is retained.
-  const inFlight = new Map<symbol, RequestTiming>()
+  // Timer and request lifetimes keep local state; requests are only read when a warning is written.
+  const trackers = new Set<RequestTracker>()
   let samples: Array<{ at: number; lagMs: number }> = []
   let expectedAt = now() + sampleMs
   let lastLagWarningAt = Number.NEGATIVE_INFINITY
@@ -55,28 +55,28 @@ export const createPerformanceDiagnostics = ({
     logWarning(() => ({
       level: "warn",
       module: "performance",
-      msg: "Event loop delayed",
+      msg: "Atraso no event loop",
       data: {
         eventLoop: getSnapshot(),
         ...getContext(),
-        inFlight: getSlowestRequests(inFlight, at),
+        inFlight: getSlowestRequests(trackers, at),
       },
     }))
   }
   const stopSampling = startSampling(sample, sampleMs)
 
-  const finishRequest = (id: symbol, timing: RequestTiming): void => {
-    inFlight.delete(id)
+  const finishRequest = (tracker: RequestTracker, request: Request, startedAt: number): void => {
+    tracker.inFlight.delete(request)
     const at = now()
-    const durationMs = at - timing.startedAt
+    const durationMs = at - startedAt
     if (stopped || durationMs <= slowRequestMs || at - lastRequestWarningAt < cooldownMs) return
 
     lastRequestWarningAt = at
     logWarning(() => ({
       level: "warn",
       module: "performance",
-      msg: "Slow HTTP request",
-      data: { method: timing.method, route: timing.route, durationMs: getMilliseconds(durationMs) },
+      msg: "Solicitação HTTP lenta",
+      data: { ...getRequestLabel(tracker, request), durationMs: getMilliseconds(durationMs) },
     }))
   }
 
@@ -84,16 +84,19 @@ export const createPerformanceDiagnostics = ({
     handler: FetchHandler<SocketData>,
     getRoute: (request: Request) => string,
   ): FetchHandler<SocketData> => {
+    // The fast path only records the start time; method and route are derived for warnings.
+    const tracker: RequestTracker = { inFlight: new Map(), getRoute }
+    trackers.add(tracker)
+
     return async (request, server) => {
       if (stopped) return handler(request, server)
 
-      const id = Symbol()
-      const timing = { method: getMethod(request.method), route: getRoute(request), startedAt: now() }
-      inFlight.set(id, timing)
+      const startedAt = now()
+      tracker.inFlight.set(request, startedAt)
       try {
         return await handler(request, server)
       } finally {
-        finishRequest(id, timing)
+        finishRequest(tracker, request, startedAt)
       }
     }
   }
@@ -101,7 +104,9 @@ export const createPerformanceDiagnostics = ({
   const stop = (): void => {
     stopped = true
     stopSampling()
-    inFlight.clear()
+    trackers.forEach((tracker) => {
+      tracker.inFlight.clear()
+    })
   }
 
   return { getSnapshot, observeFetch, stop }
@@ -121,14 +126,24 @@ const getEventLoopStats = (samples: Array<{ at: number; lagMs: number }>, at: nu
 }
 
 // Only the fresh snapshot is sorted; live request tracking stays unchanged.
-const getSlowestRequests = (inFlight: Map<symbol, RequestTiming>, at: number) =>
-  [...inFlight.values()]
+const getSlowestRequests = (trackers: Set<RequestTracker>, at: number) =>
+  [...trackers]
+    .flatMap((tracker) => [...tracker.inFlight].map(([request, startedAt]) => ({ tracker, request, startedAt })))
     .sort((left, right) => left.startedAt - right.startedAt)
     .slice(0, 5)
-    .map(({ method, route, startedAt }) => ({ method, route, durationMs: getMilliseconds(at - startedAt) }))
+    .map(({ tracker, request, startedAt }) => ({
+      ...getRequestLabel(tracker, request),
+      durationMs: getMilliseconds(at - startedAt),
+    }))
 
-const getMethod = (method: string): string =>
-  ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "CONNECT", "TRACE"].includes(method) ? method : "OTHER"
+const getRequestLabel = (tracker: RequestTracker, request: Request) => ({
+  method: getMethod(request.method),
+  route: tracker.getRoute(request),
+})
+
+const KNOWN_METHODS = new Set(["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "CONNECT", "TRACE"])
+
+const getMethod = (method: string): string => (KNOWN_METHODS.has(method) ? method : "OTHER")
 
 const getMilliseconds = (value: number): number => Math.round(value * 1_000) / 1_000
 
