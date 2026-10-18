@@ -141,10 +141,20 @@ jobs:
         with:
           components: rustfmt, clippy
       - name: Install Linux build dependencies
-        run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf libdbus-1-dev xdg-utils unzip gnome-keyring dbus
+        run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf libdbus-1-dev xdg-utils unzip gnome-keyring dbus bubblewrap
       - run: bun install --frozen-lockfile
       - run: bun run typecheck
       - run: bun run lint
+      - name: Verify Linux folder confinement
+        run: |
+          # Permit test namespaces on this disposable runner; production policy is unchanged.
+          if [ -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          fi
+          bun -e '
+            import { refreshHostFolderAccess } from "./sidecar/src/kernel/folder-capability.ts"
+            if (!(await refreshHostFolderAccess())) throw new Error("Linux folder confinement is unavailable")
+          '
       - run: bun test --timeout 30000 sidecar/test
       - run: bun run build:sidecar:linux
       - run: cargo fmt --manifest-path src-tauri/Cargo.toml --check
