@@ -1646,6 +1646,11 @@ export const ptBR = {
   "Search shortcut": "⌘K buscar",
   "Message bot": "Mensagem para {name}",
   "Routine skipped named": "Rotina adiada: {name}",
+  "Rotina “{name}” não executada: o touri não estava em execução no horário agendado.":
+    "Rotina “{name}” não executada: o touri não estava em execução no horário agendado.",
+  "Rotina “{name}” não executada: o atraso ultrapassou a janela de recuperação.":
+    "Rotina “{name}” não executada: o atraso ultrapassou a janela de recuperação.",
+  "Execução de recuperação": "Execução de recuperação",
   atribuído: "atribuído",
   "não atribuído": "não atribuído",
   "Caminho absoluto da pasta": "Caminho absoluto da pasta",
@@ -2170,6 +2175,11 @@ export const ptBR = {
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  "Rotina “{name}” não executada: o touri não estava em execução no horário agendado.":
+    "Routine “{name}” did not run: touri was not running at the scheduled time.",
+  "Rotina “{name}” não executada: o atraso ultrapassou a janela de recuperação.":
+    "Routine “{name}” did not run: the delay exceeded the catch-up window.",
+  "Execução de recuperação": "Catch-up run",
   "Salve o token do bot do Telegram.": "Save the Telegram bot token.",
   "Token inválido ou revogado.": "Invalid or revoked token.",
   "Não foi possível conectar ao Telegram. Confira sua conexão e tente novamente.":
@@ -3792,6 +3802,8 @@ export const statusLabel = (status: string): string => {
 
 /** Translate only application-authored notices, leaving bot/user content intact. */
 export const localizeNotice = (value: string): string => {
+  const routineSkip = getRoutineSkipSummary(value)
+  if (routineSkip) return routineSkip
   const toolCheck = /^Ferramentas do touri · (.+)$/.exec(value)
   if (toolCheck) return t("Ferramentas do touri · {name}", { name: toolCheck[1] ?? "" })
   const browserSession = /^Navegador · (.+) · sessão salva$/.exec(value)
@@ -3829,6 +3841,26 @@ export const localizeNotice = (value: string): string => {
   }
   const skipped = value.match(/^Routine skipped: (.+)$/)
   return skipped ? t("Routine skipped named", { name: skipped[1] ?? "" }) : value
+}
+
+export const getRoutineSkipSummary = (value: string, locale: Locale = "pt-BR"): string | undefined => {
+  const offline = /^Rotina “(.+)” não executada: o touri não estava em execução no horário agendado\.$/s.exec(value)
+  if (offline)
+    return t(
+      "Rotina “{name}” não executada: o touri não estava em execução no horário agendado.",
+      { name: offline[1] ?? "" },
+      locale,
+    )
+
+  const late = /^Rotina “(.+)” não executada: o atraso ultrapassou a janela de recuperação\.$/s.exec(value)
+  if (late)
+    return t(
+      "Rotina “{name}” não executada: o atraso ultrapassou a janela de recuperação.",
+      { name: late[1] ?? "" },
+      locale,
+    )
+
+  return undefined
 }
 
 export const machineStatusLabel = (status: string, pauseReason?: string | null): string =>
