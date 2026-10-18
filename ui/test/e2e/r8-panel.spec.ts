@@ -155,6 +155,7 @@ if (phase === "after") {
         )
         await expect(panel.getByRole("button", { name: "Conversar", exact: true })).toBeVisible()
         await expect(panel.getByRole("button", { name: "Abrir arquivos", exact: true })).toBeVisible()
+        await expect(panel.getByRole("button", { name: "Ligar computador", exact: true })).toHaveCount(0)
         await shot("computer-local")
         await page.goto(`${fixture}?local=true&project=true`)
         await showBotPanel(page)

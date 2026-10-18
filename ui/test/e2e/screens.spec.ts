@@ -69,10 +69,11 @@ for (const theme of ["light", "dark"] as const) {
       await page.getByRole("button", { name: "Subir tudo", exact: true }).click()
       await expect(page.getByText("Abrir no navegador do bot")).toBeVisible()
       await expect(page.locator(".preview-process-row > i.ready")).toHaveCount(2)
-      const processNotice = page.locator(".notice-bar.notice-info")
+      const processNotice = page.getByRole("status").filter({ hasText: "Processo pronto" })
       const approvalNotice = page.locator(".approval-notice")
       await expect(processNotice).toBeVisible()
       await expect(approvalNotice).toBeVisible()
+      await expect(approvalNotice).toContainText("mark pede sua aprovação")
 
       await processNotice.getByRole("button", { name: "Dispensar aviso", exact: true }).click()
 
