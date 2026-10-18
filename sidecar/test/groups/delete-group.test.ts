@@ -23,9 +23,9 @@ test("DELETE /groups/:id removes shared, participant and archived history while 
   const fixture = await getFixture()
   const participant = fixture.groups.participant(fixture.group, fixture.thread.id, fixture.peer.id)
   const archived = fixture.groups.createThread(fixture.group, "Arquivada")
-  fixture.db.query("UPDATE threads SET archived_at = 1 WHERE id = ?").run(archived.id)
   const deletedThreads = [fixture.thread, participant, archived]
   const histories = deletedThreads.map((thread) => saveHistory(fixture, thread))
+  fixture.db.query("UPDATE threads SET archived_at = 1 WHERE id = ?").run(archived.id)
   const shared = histories[0]
   const child = histories[1]
   if (!shared || !child) throw new Error("Group history missing")
