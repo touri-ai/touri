@@ -1,10 +1,15 @@
 import type { Database } from "bun:sqlite"
-import { afterEach, expect, test } from "bun:test"
+import { afterEach, expect, mock, test } from "bun:test"
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { Bot, Kernel, ProviderAdapter, Run } from "@touri/contracts"
-import { botSessionPath, loadBotSession, saveBotSession } from "../../src/browser/sessionVault"
+import {
+  botSessionPath,
+  deletedBrowserSessionKey,
+  loadBotSession,
+  saveBotSession,
+} from "../../src/browser/sessionVault"
 import { createGroupRuntime } from "../../src/groups/runtime"
 import { createGroupStore } from "../../src/groups/store"
 import { createKernel } from "../../src/kernel"
@@ -532,6 +537,71 @@ test("saved browser session cleanup runs after commit while a peer's live turn c
   expect(response.status).toBe(200)
   expect(workspace.sessionDeletions.get(history.owner.id)).toEqual({ botExists: false, inTransaction: false })
   expect(existsSync(botSessionPath(workspace.runtime.kernel, history.owner.id))).toBe(false)
+})
+
+test("a failed browser session key deletion keeps the bot deletion successful and retries later", async () => {
+  const hostState: { failBrowserKeyDelete: boolean; browserKey: string | null; browserKeyDeleteCalls: number } = {
+    failBrowserKeyDelete: true,
+    browserKey: null,
+    browserKeyDeleteCalls: 0,
+  }
+  const workspace = await fixture({
+    callHost: (async (method, params) => {
+      const { account, value } = params as { account: string; value?: string }
+      if (method === "keychain.get") return { success: true, value: { value: hostState.browserKey } }
+      if (method === "keychain.set" && value) {
+        hostState.browserKey = value
+        return { success: true, value: {} }
+      }
+      if (method === "keychain.delete" && account.startsWith("browser-session-key:")) {
+        hostState.browserKeyDeleteCalls += 1
+        if (hostState.failBrowserKeyDelete)
+          return { success: false, errorCode: "HOST_ERROR", error: "fake keychain failure" }
+        hostState.browserKey = null
+      }
+      return { success: true, value: {} }
+    }) as Kernel["callHost"],
+  })
+  const bot = await workspace.create("Session cleanup", "local")
+  const session = { cookies: [{ name: "sid", value: "fake", domain: "example.com", path: "/" }], storage: {} }
+  expect(await saveBotSession({ kernel: workspace.runtime.kernel, botId: bot.id, session })).toBe(true)
+  const file = botSessionPath(workspace.runtime.kernel, bot.id)
+  const events = new Set<string>()
+  const unsubscribe = workspace.runtime.kernel.subscribe(({ event }) => {
+    if (event.type === "bot.deleted" && event.botId === bot.id) events.add("bot.deleted")
+    if (event.type === "transcript.resync") events.add("transcript.resync")
+  })
+
+  const maintenance = workspace.runtime.kernel.services.use("storage.maintenance")
+  if (!maintenance) throw new Error("Storage maintenance missing")
+  await until(() => !maintenance.snapshot().running)
+  const start = mock(maintenance.start)
+  workspace.runtime.kernel.services.provide("storage.maintenance", { ...maintenance, start })
+
+  const response = await workspace.request(`/bots/${bot.id}`, { name: bot.name }, "DELETE")
+  unsubscribe()
+
+  expect(response.status).toBe(200)
+  expect(workspace.db.query("SELECT id FROM bots WHERE id = ?").get(bot.id)).toBeNull()
+  expect(events).toEqual(new Set(["bot.deleted", "transcript.resync"]))
+  expect(existsSync(file)).toBe(false)
+  expect(hostState.browserKey).not.toBeNull()
+  expect(workspace.db.query("SELECT key FROM settings WHERE key = ?").get(deletedBrowserSessionKey(bot.id))).toEqual({
+    key: deletedBrowserSessionKey(bot.id),
+  })
+
+  await until(() => hostState.browserKeyDeleteCalls >= 2)
+  expect(start).not.toHaveBeenCalled()
+  expect(
+    workspace.db.query("SELECT key FROM settings WHERE key = ?").get(deletedBrowserSessionKey(bot.id)),
+  ).not.toBeNull()
+
+  hostState.failBrowserKeyDelete = false
+  maintenance.scheduleSessionKeyRetry()
+  await until(() => !workspace.db.query("SELECT key FROM settings WHERE key = ?").get(deletedBrowserSessionKey(bot.id)))
+
+  expect(hostState.browserKey).toBeNull()
+  expect(workspace.db.query("SELECT key FROM settings WHERE key = ?").get(deletedBrowserSessionKey(bot.id))).toBeNull()
 })
 
 test("a failed blob collection after the bot is deleted still reports success", async () => {

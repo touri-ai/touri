@@ -131,7 +131,7 @@ export const BotFolderSettings = ({
       </ul>
       <button
         type="button"
-        className="button-quiet"
+        className="button button-quiet"
         disabled={disabled || picking || !api || folders.length >= 32}
         onClick={() => setPicking(true)}
       >

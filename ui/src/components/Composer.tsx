@@ -559,7 +559,9 @@ export const Composer = ({
                 <button
                   type="button"
                   className="composer-model"
-                  aria-label={t("Choose model")}
+                  aria-label={t("Choose model with selection", {
+                    selection: `${getBotProviderName(bot)} · ${getBotModelName(bot)}`,
+                  })}
                   title={t("Bot model sentence", {
                     provider: getBotProviderName(bot),
                     model: getBotModelName(bot),

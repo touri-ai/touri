@@ -258,11 +258,13 @@ export const createStorageMaintenance = ({
   database,
   appData,
   publishResync,
+  retryDeletedBrowserSessionKeys,
   onError,
 }: {
   database: Database
   appData: string
   publishResync: () => void
+  retryDeletedBrowserSessionKeys: (signal: AbortSignal) => Promise<void>
   onError: () => void
 }) => {
   const stored = database.query("SELECT value_json FROM settings WHERE key = ?").get(progressKey) as {
@@ -307,6 +309,25 @@ export const createStorageMaintenance = ({
       .query(`INSERT INTO settings(key,value_json,updated_at) VALUES (?,?,?)
     ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at = excluded.updated_at`)
       .run(progressKey, JSON.stringify(value), Date.now())
+  // This lifecycle owns the timer and in-flight flag; host latency never delays a compaction step.
+  const retryController = new AbortController()
+  let retryTimer: ReturnType<typeof setTimeout> | undefined
+  let retryRunning = false
+  const scheduleSessionKeyRetry = () => {
+    if (stopped || retryRunning || retryTimer !== undefined) return
+
+    retryTimer = setTimeout(async () => {
+      retryTimer = undefined
+      retryRunning = true
+      try {
+        await retryDeletedBrowserSessionKeys(retryController.signal)
+      } catch {
+        if (!stopped) onError()
+      } finally {
+        retryRunning = false
+      }
+    }, 100)
+  }
   const step = async () => {
     if (stopped) return
     if (historyMigrationStatus(database).running) {
@@ -385,7 +406,10 @@ export const createStorageMaintenance = ({
     }
   }
   timer = setTimeout(step, 100)
+  scheduleSessionKeyRetry()
+  const dailyRetryTimer = setInterval(scheduleSessionKeyRetry, DAY)
   return {
+    scheduleSessionKeyRetry,
     start: (withVacuum = false): boolean => {
       if (stopped || status.running || historyMigrationStatus(database).running) return false
       clearTimeout(timer)
@@ -399,6 +423,9 @@ export const createStorageMaintenance = ({
     snapshot: (): StorageMaintenanceStatus => ({ ...status }),
     dispose: () => {
       stopped = true
+      retryController.abort()
+      clearTimeout(retryTimer)
+      clearInterval(dailyRetryTimer)
       upgrade.dispose()
       clearInterval(pageTimer)
       clearTimeout(timer)

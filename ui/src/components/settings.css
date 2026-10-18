@@ -930,6 +930,9 @@
   display: grid;
   gap: 12px;
 }
+.bot-folder-settings > .button {
+  justify-self: start;
+}
 .bot-folder-list {
   display: grid;
   gap: 12px;

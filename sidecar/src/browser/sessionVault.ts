@@ -1,3 +1,4 @@
+import type { Database } from "bun:sqlite"
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto"
 import { join } from "node:path"
 import type { Kernel } from "@touri/contracts"
@@ -19,10 +20,14 @@ const MAX_SESSION_BYTES = 2 * 1024 * 1024
 const KEY_BYTES = 32
 const IV_BYTES = 12
 const SAFE_BOT_ID = /^[A-Za-z0-9_-]+$/
+const DELETED_SESSION_CURSOR = "storage.deleted-browser-session-key-cursor"
+const DELETED_SESSION_KEY_PREFIX = "storage.deleted-browser-session-keys:"
 
 export const emptySession = (): SavedSession => ({ cookies: [], storage: {} })
 
 export const browserSessionKeyAccount = (botId: string): string => `browser-session-key:${botId}`
+
+export const deletedBrowserSessionKey = (botId: string): string => `${DELETED_SESSION_KEY_PREFIX}${botId}`
 
 export class SessionVaultError extends Error {
   constructor(readonly errorCode = "SESSION_UNREADABLE") {
@@ -176,11 +181,70 @@ export const saveBotSession = async ({
   return true
 }
 
-export const removeBotSession = async (kernel: Kernel, botId: string): Promise<void> => {
+export const removeBotSessionFile = (kernel: Kernel, botId: string): void => {
   if (!SAFE_BOT_ID.test(botId)) return
   removePrivateFile({ root: kernel.paths.appData, path: sessionPath(kernel, botId) })
+}
+
+export const removeBotSessionKey = async (kernel: Kernel, botId: string): Promise<void> => {
+  if (!SAFE_BOT_ID.test(botId)) return
   const result = await kernel.callHost("keychain.delete", { account: browserSessionKeyAccount(botId) })
   if (!result.success) throw new Error("Não foi possível apagar a chave da sessão do navegador do bot.")
+}
+
+export const removeBotSession = async (kernel: Kernel, botId: string): Promise<void> => {
+  removeBotSessionFile(kernel, botId)
+  await removeBotSessionKey(kernel, botId)
+}
+
+export const retryDeletedBrowserSessionKeys = async (
+  kernel: Pick<Kernel, "db" | "callHost" | "log" | "redact">,
+  signal?: AbortSignal,
+): Promise<void> => {
+  if (signal?.aborted) return
+
+  const database = kernel.db as Database
+  const pending = getPendingSessionKeys(database)
+  const last = pending.at(-1)
+  if (!last) return
+
+  // Commit the rotation before host I/O so even an interrupted batch cannot starve later keys.
+  database
+    .query(`INSERT INTO settings(key,value_json,updated_at) VALUES (?,?,?)
+    ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json,updated_at=excluded.updated_at`)
+    .run(DELETED_SESSION_CURSOR, JSON.stringify(last.key), Date.now())
+  await Promise.all(
+    pending.map(async ({ key }) => {
+      const botId = key.slice(DELETED_SESSION_KEY_PREFIX.length)
+      if (!SAFE_BOT_ID.test(botId) || signal?.aborted) return
+
+      try {
+        const result = await kernel.callHost("keychain.delete", { account: browserSessionKeyAccount(botId) })
+        if (result.success && !signal?.aborted) database.query("DELETE FROM settings WHERE key = ?").run(key)
+      } catch (error) {
+        kernel.log({ level: "warn", module: "vm", msg: kernel.redact(String(error)) })
+      }
+    }),
+  )
+}
+
+const getPendingSessionKeys = (database: Database): Array<{ key: string }> => {
+  const stored = database.query("SELECT value_json FROM settings WHERE key = ?").get(DELETED_SESSION_CURSOR) as {
+    value_json: string
+  } | null
+  const cursor = stored ? parseJson(stored.value_json) : null
+  const lower =
+    typeof cursor === "string" && cursor.startsWith(DELETED_SESSION_KEY_PREFIX) ? cursor : DELETED_SESSION_KEY_PREFIX
+  const upper = `${DELETED_SESSION_KEY_PREFIX}\uffff`
+  const pending = database
+    .query("SELECT key FROM settings WHERE key > ? AND key < ? ORDER BY key LIMIT ?")
+    .all(lower, upper, 10) as Array<{ key: string }>
+  if (pending.length === 10 || lower === DELETED_SESSION_KEY_PREFIX) return pending
+
+  const wrapped = database
+    .query("SELECT key FROM settings WHERE key >= ? AND key <= ? ORDER BY key LIMIT ?")
+    .all(DELETED_SESSION_KEY_PREFIX, lower, 10 - pending.length) as Array<{ key: string }>
+  return [...pending, ...wrapped]
 }
 
 export const botSessionPath = sessionPath

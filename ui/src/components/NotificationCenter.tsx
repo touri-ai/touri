@@ -58,6 +58,13 @@ const KIND_KEY: Record<NotificationRecord["kind"], TranslationKey> = {
 // Only a real question from the bot gets a reply box; a finished turn that ends in "?" is a reply.
 const hasReplyBox = (item: NotificationRecord): boolean => item.kind === "question"
 
+const getNotificationBellLabel = (count: number): string => {
+  if (count > 9) return t("Notifications over nine need attention")
+  if (count > 0) return t("Notifications need attention", { count })
+
+  return t("Notifications")
+}
+
 const age = (createdAt: number, now: number): string => {
   const minutes = Math.max(0, Math.round((now - createdAt) / 60_000))
   if (minutes < 1) return t("now")
@@ -394,7 +401,7 @@ export const NotificationBell = ({
       <button
         type="button"
         className="settings-button notification-bell"
-        aria-label={attentionCount ? t("Notifications need attention", { count: attentionCount }) : t("Notifications")}
+        aria-label={getNotificationBellLabel(attentionCount)}
         aria-expanded={open}
         onClick={() => setOpen((current) => !current)}
       >

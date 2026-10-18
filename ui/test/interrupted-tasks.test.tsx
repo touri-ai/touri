@@ -28,9 +28,7 @@ it("groups pending work by bot, reviews recorded actions and requires acknowledg
       onDismiss={onDismiss}
     />,
   )
-  const rows = screen.getAllByTestId("interrupted-task")
-  const uncertain = rows.find((row) => within(row).queryByRole("checkbox"))
-  if (!uncertain) throw new Error("Expected uncertain journal work")
+  const uncertain = within(screen.getByRole("region", { name: "onb" })).getByTestId("interrupted-task")
 
   fireEvent.click(within(uncertain).getByRole("button", { name: /Ver ações realizadas/ }))
 
@@ -43,6 +41,34 @@ it("groups pending work by bot, reviews recorded actions and requires acknowledg
 
   expect(onDismiss).toHaveBeenCalledWith(expect.objectContaining({ id: "journal:process-demo" }), ["process-preview"])
   expect(screen.getAllByRole("region").length).toBeGreaterThanOrEqual(3)
+})
+
+it("requires acknowledgement for uncertain effects without a backend key", async () => {
+  const api = createMockApi({ scenario: "interrupted-tasks" })
+  const { tasks } = await api.request("GET /recovery", {})
+  const uncertainTask = tasks.find((task) => task.id === "run:run-interrupted")
+  if (!uncertainTask) throw new Error("Expected uncertain interrupted task")
+  const ordinaryTask = {
+    ...uncertainTask,
+    effects: uncertainTask.effects.map((effect) => ({ ...effect, uncertain: false })),
+  }
+  const props = {
+    loading: false,
+    error: null,
+    onClose: vi.fn(),
+    onReview: vi.fn(),
+    onResume: vi.fn(),
+    onDismiss: vi.fn(async () => undefined),
+  }
+  const view = render(<InterruptedTasks {...props} tasks={[uncertainTask]} />)
+
+  expect(screen.getByRole("checkbox")).toBeVisible()
+  expect(screen.getByRole("button", { name: "Descartar" })).toBeDisabled()
+
+  view.rerender(<InterruptedTasks {...props} tasks={[ordinaryTask]} />)
+
+  expect(screen.queryByRole("checkbox")).not.toBeInTheDocument()
+  expect(screen.getByRole("button", { name: "Descartar" })).toBeEnabled()
 })
 
 it("bell dismissal reconciles the center immediately and retains resolved history", async () => {
