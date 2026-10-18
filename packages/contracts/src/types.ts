@@ -307,6 +307,17 @@ export type Run = {
   finishedAt: EpochMs | null
 }
 
+/** A persisted interruption, shared by chat, notifications and the recovery center. */
+export type RecoveryTask = {
+  id: string
+  notification: NotificationRecord
+  runId: Id | null
+  routineId: Id | null
+  cause: RunErrorClass | null
+  occurredAt: EpochMs
+  effects: Array<{ description: string; uncertain: boolean; acknowledgeKey: string | null }>
+}
+
 /** Explicit, bounded work across provider turns in one local conversation. */
 export type Goal = {
   id: Id
@@ -961,10 +972,12 @@ export type ApiRoutes = {
   'POST /computer/kill': { req: {}; res: { revoked: number } }
   'POST /imports/legacy': { req: LegacyImportOptions; res: { importId: Id } }
   'GET /imports/:id': { req: {}; res: { status: 'running' | 'succeeded' | 'failed'; report: ImportReport | null } }
+  'GET /recovery': { req: {}; res: { tasks: Array<RecoveryTask> } }
+  'POST /recovery/:id/dismiss': { req: { acknowledgeKeys: Array<string> }; res: { tasks: Array<RecoveryTask> } }
   'GET /notifications': { req: { limit?: number }; res: { notifications: Array<NotificationRecord> } }
   'GET /notifications/pending': { req: {}; res: { notifications: Array<NotificationRecord>; lastSeq: number } }
   'POST /notifications/:id/dismiss': { req: {}; res: { notification: NotificationRecord } }
-  'POST /notifications/dismiss-all': { req: {}; res: { dismissed: number } }
+  'POST /notifications/dismiss-all': { req: {}; res: { dismissed: number; skipped: number; skippedIds: Array<number> } }
   'POST /threads/:id/respond': { req: { requestId: string; behavior: RespondBehavior; message?: string }; res: {} }
   'POST /bots/:id/messages': { req: { text: string; threadId?: Id; sendId?: string }; res: { message: Message; run: Run } }
   'GET /bots/:id/mem0': { req: {}; res: { settings: Mem0Settings } }

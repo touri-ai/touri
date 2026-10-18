@@ -59,6 +59,8 @@ type SidebarProps = {
   onDeleteBot?: (botId: string, name: string, deleteVolumes: boolean) => Promise<void>
   onSettings: () => void
   onDoctor: () => void
+  onRecovery?: () => void
+  recoveryCount?: number
   onSearch: () => void
   notifications: Array<NotificationRecord>
   onNotificationsOpen: (open: boolean) => void
@@ -236,6 +238,15 @@ export const Sidebar = (props: SidebarProps) => {
           onEdit={(g) => navigate(() => props.onEditGroup?.(g))}
           onNewThread={(g) => navigate(() => props.onNewGroupThread?.(g))}
         />
+      )}
+      {props.onRecovery && (
+        <button
+          type="button"
+          className="text-button sidebar-recovery"
+          onClick={() => navigate(() => props.onRecovery?.())}
+        >
+          {t("Interrupted tasks")} {props.recoveryCount ? `(${props.recoveryCount})` : ""}
+        </button>
       )}
       <div className="sidebar-footer">
         <div className="sidebar-user-row">
