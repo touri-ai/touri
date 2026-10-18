@@ -937,7 +937,7 @@ export type ApiRoutes = {
   'GET /notifications': { req: { limit?: number }; res: { notifications: Array<NotificationRecord> } }
   'GET /notifications/pending': { req: {}; res: { notifications: Array<NotificationRecord>; lastSeq: number } }
   'POST /notifications/:id/dismiss': { req: {}; res: { notification: NotificationRecord } }
-  'POST /notifications/dismiss-all': { req: {}; res: { dismissed: number } }
+  'POST /notifications/dismiss-all': { req: {}; res: { dismissed: number; skipped: number } }
   'POST /threads/:id/respond': { req: { requestId: string; behavior: RespondBehavior; message?: string }; res: {} }
   'POST /bots/:id/messages': { req: { text: string; threadId?: Id; sendId?: string }; res: { message: Message; run: Run } }
   'GET /bots/:id/mem0': { req: {}; res: { settings: Mem0Settings } }
