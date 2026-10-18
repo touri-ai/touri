@@ -164,6 +164,7 @@ it("keeps app sections short and technical settings within their disclosure", as
     />,
   )
   expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
+    "Modelos por API",
     "Aparência",
     "Privacidade",
     "Atualizações",
@@ -173,6 +174,10 @@ it("keeps app sections short and technical settings within their disclosure", as
   for (const section of APP_SETTINGS_SECTIONS) {
     await user.click(screen.getByRole("tab", { name: section.label }))
     const panel = screen.getByRole("tabpanel", { name: section.label })
+    if (section.id === "api-models") {
+      expect(within(panel).getByLabelText("Provedor da API")).toBeVisible()
+      continue
+    }
     expect(
       [...within(panel).queryAllByRole("switch"), ...within(panel).queryAllByRole("combobox")].filter(
         (control) => !control.closest("details:not([open])"),

@@ -7,6 +7,65 @@ export const ptBR = {
   "Token inválido ou revogado.": "Token inválido ou revogado.",
   "Não foi possível conectar ao Telegram. Confira sua conexão e tente novamente.":
     "Não foi possível conectar ao Telegram. Confira sua conexão e tente novamente.",
+  "API models": "Modelos por API",
+  "Choose a provider and use your own API key.": "Escolha um provedor e use sua própria chave de API.",
+  "Use a connected account": "Usar uma conta conectada",
+  "Add API models in Settings → API models. Your provider bills API usage directly.":
+    "Adicione modelos em Configurações → Modelos por API. O uso da API é cobrado pelo provedor.",
+  "Could not load API models. Reopen this screen to try again.":
+    "Não foi possível carregar os modelos por API. Reabra esta tela para tentar novamente.",
+  "Could not save or remove the API model. Try again.":
+    "Não foi possível salvar ou remover o modelo por API. Tente novamente.",
+  "Requests go directly to the provider you choose, which bills API usage. Keys stay in this computer's secret store. On a touri server, they stay in the server's encrypted secret store.":
+    "As solicitações vão direto ao provedor escolhido, que cobra pelo uso da API. As chaves ficam no cofre deste computador. Em um servidor touri, ficam no cofre criptografado do servidor.",
+  "Saved API models": "Modelos por API salvos",
+  "No API models yet. Add your first model below.": "Nenhum modelo por API ainda. Adicione o primeiro abaixo.",
+  "Key saved in secret store": "Chave guardada no cofre",
+  "Test connection to {name}": "Testar conexão com {name}",
+  "Test connection": "Testar conexão",
+  "Remove {name}": "Remover {name}",
+  "Remove API model": "Remover modelo por API",
+  "API model and saved key removed.": "Modelo por API e chave removidos.",
+  "Removing a model also deletes its key. Bots using it will need another model.":
+    "Remover um modelo também apaga sua chave. Os bots que o usam precisarão de outro modelo.",
+  "Add API model": "Adicionar modelo por API",
+  "API provider": "Provedor da API",
+  "Custom compatible API": "API compatível personalizada",
+  "API base URL": "Endereço base da API",
+  "Use the API base URL, including /v1 if required. HTTPS is required except for a local server.":
+    "Use o endereço base da API, incluindo /v1 quando necessário. Use HTTPS, exceto em um servidor local.",
+  "API key": "Chave de API",
+  "Load models": "Carregar modelos",
+  "Choose a model from the list or enter its ID.": "Escolha um modelo da lista ou digite o identificador.",
+  "This provider did not list models. Enter the model ID from your provider account.":
+    "O provedor não listou modelos. Digite o identificador do modelo que aparece na sua conta do provedor.",
+  "Model ID": "Identificador do modelo",
+  "Name (optional)": "Nome (opcional)",
+  "Testing sends a short message to the provider and may use a small amount of credit. Choose a model that supports tools for bot tasks.":
+    "O teste envia uma mensagem curta ao provedor e pode gastar um pouco de crédito. Para as tarefas do bot, escolha um modelo que aceite ferramentas.",
+  "Save API model": "Salvar modelo por API",
+  "Connecting to the provider…": "Conectando ao provedor…",
+  "Connection worked. The model is ready to use.": "Conexão confirmada. O modelo está pronto para usar.",
+  "API model saved. Choose it when creating a bot or in the bot's model settings.":
+    "Modelo por API salvo. Escolha-o ao criar um bot ou nas configurações de modelo do bot.",
+  "The provider rejected this API key. Check the key and its permissions.":
+    "O provedor recusou esta chave de API. Confira a chave e suas permissões.",
+  "Your API account has no credit. Add credit with the provider and try again.":
+    "Sua conta de API está sem crédito. Adicione saldo no provedor e tente novamente.",
+  "This model is unavailable for your API key. Check the model ID or choose another model.":
+    "Este modelo não está disponível para sua chave. Confira o identificador ou escolha outro modelo.",
+  "The provider's request limit was reached. Wait a moment and try again.":
+    "O limite de solicitações do provedor foi atingido. Aguarde um pouco e tente novamente.",
+  "Could not reach the provider. Check your connection and the API URL, then try again.":
+    "Não foi possível conectar ao provedor. Confira a conexão e o endereço da API e tente novamente.",
+  "The API returned an unexpected response. Check that it supports chat completions.":
+    "A API retornou uma resposta inesperada. Confira se ela aceita mensagens de chat.",
+  "Check the provider, API URL, key and model ID. URLs must not contain credentials.":
+    "Confira o provedor, o endereço da API, a chave e o identificador do modelo. O endereço não pode conter credenciais.",
+  "Could not access the secret store. Unlock it and try again.":
+    "Não foi possível acessar o cofre de segredos. Desbloqueie-o e tente novamente.",
+  "This API model was removed. Choose another model in the bot settings.":
+    "Este modelo por API foi removido. Escolha outro nas configurações do bot.",
   "O contexto da conversa foi recuperado do histórico salvo.":
     "O contexto da conversa foi recuperado do histórico salvo.",
   "Abrir resultado completo": "Abrir resultado completo",
@@ -2052,6 +2111,8 @@ export const ptBR = {
   Enviar: "Enviar",
   "A rotina parou antes de concluir o trabalho.": "A rotina parou antes de concluir o trabalho.",
   "A rotina está trabalhando em segundo plano.": "A rotina está trabalhando em segundo plano.",
+  "Instruções da rotina": "Instruções da rotina",
+  "Sem novidades nesta execução": "Sem novidades nesta execução",
   "A rotina terminou e deixou o resultado nesta conversa.": "A rotina terminou e deixou o resultado nesta conversa.",
   "No project details": "Os detalhes do projeto estão indisponíveis.",
   "não iniciado": "não iniciado",
@@ -3614,6 +3675,8 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   Enviar: "Send",
   "A rotina parou antes de concluir o trabalho.": "The routine stopped before finishing.",
   "A rotina está trabalhando em segundo plano.": "The routine is working in the background.",
+  "Instruções da rotina": "Routine instructions",
+  "Sem novidades nesta execução": "Nothing new this run",
   "A rotina terminou e deixou o resultado nesta conversa.": "The routine finished and left the result here.",
   Hoje: "Today",
   Ontem: "Yesterday",
