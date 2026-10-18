@@ -806,7 +806,20 @@ test("A13 structured logs redact labels and registered JSON-escaped credentials"
   expect(log.includes(JSON.stringify(value).slice(1, -1))).toBe(false)
   expect(log.includes("unknown-synthetic-credential")).toBe(false)
   expect(log.includes("unknown-synthetic-token")).toBe(false)
-  expect(() => JSON.parse(log)).not.toThrow()
+  const entries = log
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line))
+  expect(entries).toContainEqual({
+    at: expect.any(Number),
+    level: "info",
+    module: "fixture",
+    msg: "provider error",
+    data: {
+      nested: { detail: "[REDACTED]", password: "[REDACTED]" },
+      detail: "[REDACTED]",
+    },
+  })
 })
 
 test("A13 prefixed credential labels are redacted in structured and free-form diagnostics", () => {
