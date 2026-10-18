@@ -86,7 +86,7 @@ test("pause, budget editing, resume and complete require explicit clicks", async
   expect(screen.queryByRole("button", { name: "Retomar" })).toBeNull()
 })
 
-test("completing a goal leaves one quiet line when the conversation is reopened", async () => {
+test("completing a goal keeps the next goal collapsed when the conversation is reopened", async () => {
   const { api, unmount } = makeFixture()
   await startGoal()
   fireEvent.click(screen.getByRole("button", { name: "Alterar orçamento" }))
@@ -95,8 +95,8 @@ test("completing a goal leaves one quiet line when the conversation is reopened"
   await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Objetivo concluído"))
 
   const panel = screen.getByRole("region", { name: "Continuar até concluir" })
-  expect(panel).toHaveTextContent(/^Objetivo concluído$/)
-  expect(screen.queryByRole("button")).toBeNull()
+  expect(panel).toHaveTextContent(/^Objetivo concluídoNovo objetivo$/)
+  expect(screen.getByRole("button", { name: "Novo objetivo" })).toHaveAttribute("aria-expanded", "false")
   expect(screen.queryByRole("spinbutton")).toBeNull()
   expect(screen.queryByRole("textbox")).toBeNull()
 
@@ -104,8 +104,34 @@ test("completing a goal leaves one quiet line when the conversation is reopened"
   makeFixture(true, api)
 
   await screen.findByText("Objetivo concluído")
-  expect(screen.getByRole("region", { name: "Continuar até concluir" })).toHaveTextContent(/^Objetivo concluído$/)
+  expect(screen.getByRole("button", { name: "Novo objetivo" })).toHaveAttribute("aria-expanded", "false")
+  expect(screen.queryByRole("textbox")).toBeNull()
   expect(screen.queryByText("Avançado · Continuar até concluir")).toBeNull()
+})
+
+test("the collapsed new goal action opens the form and creates a second goal", async () => {
+  const { api, request } = makeFixture()
+  await startGoal()
+  fireEvent.click(screen.getByRole("button", { name: "Concluir agora" }))
+  await screen.findByText("Objetivo concluído")
+
+  fireEvent.click(screen.getByRole("button", { name: "Novo objetivo" }))
+  fireEvent.change(screen.getByRole("textbox", { name: "O que precisa estar pronto para concluir?" }), {
+    target: { value: "Resumo revisado com fontes." },
+  })
+  fireEvent.click(screen.getByRole("button", { name: "Continuar até concluir" }))
+  await screen.findByRole("button", { name: "Pausar" })
+
+  const starts = api.calls.filter((call) => call.route === "POST /threads/:id/goal")
+  expect(starts).toHaveLength(2)
+  expect(starts.at(-1)?.input).toEqual({
+    requestMessageId: request.id,
+    completionCriterion: "Resumo revisado com fontes.",
+    maxTurns: 4,
+    maxMinutes: 15,
+  })
+  expect(screen.getByRole("status")).toHaveTextContent("Em andamento")
+  expect(screen.queryByRole("button", { name: "Novo objetivo" })).toBeNull()
 })
 
 test.each(["turns", "time"] as const)("exhausting the %s budget collapses the checkpoint", async (limit) => {
@@ -182,6 +208,7 @@ test("goal state and controls have English copy", () => {
     "Goal budget exhausted help",
     "Change goal budget",
     "Goal completed summary",
+    "Goal new",
     "Goal budget exhausted summary",
   ] as const
 
@@ -192,6 +219,7 @@ test("goal state and controls have English copy", () => {
     "The limit was reached and the bot stopped. Change the budget and choose Resume to continue.",
     "Change budget",
     "Goal completed",
+    "New goal",
     "Goal stopped · limit reached",
   ])
 })

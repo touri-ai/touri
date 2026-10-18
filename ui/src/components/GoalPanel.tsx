@@ -103,6 +103,8 @@ export const GoalPanel = ({
       )
       setGoal(response.goal)
       setNow(Date.now())
+      setAdvanced(false)
+      setCriterion("")
     } catch {
       setFailed(true)
     } finally {
@@ -210,8 +212,12 @@ export const GoalPanel = ({
           )}
         </GoalCheckpoint>
       )}
-      {!goal && (
-        <ChatDisclosure label={t("Goal advanced")} expanded={advanced} onExpandedChange={setAdvanced}>
+      {(!goal || goal.status === "completed") && (
+        <ChatDisclosure
+          label={t(goal ? "Goal new" : "Goal advanced")}
+          expanded={advanced}
+          onExpandedChange={setAdvanced}
+        >
           {advanced && (
             <>
               <p>{t("Goal mode help")}</p>
