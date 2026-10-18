@@ -952,7 +952,7 @@ export const ChatPanel = ({
     return (
       <section className="chat-panel">
         <header className="chat-header" data-tauri-drag-region="deep">
-          <span className="chat-header-crumb">Bots / {bot?.name ?? "touri"}</span>
+          <span className="chat-header-crumb">{t("Bots")}</span>
           <div className="chat-bot-chip">
             {bot && <BotAvatar bot={bot} size={18} />}
             <h1 className="chat-page-heading">{bot?.name ?? "touri"}</h1>
@@ -1060,7 +1060,7 @@ export const ChatPanel = ({
         />
       ) : (
         <header className="chat-header" data-tauri-drag-region="deep">
-          <span className="chat-header-crumb">Bots / {bot?.name ?? "touri"}</span>
+          <span className="chat-header-crumb">{t("Bots")}</span>
           <div className="chat-bot-chip">
             {bot ? (
               <BotAvatar bot={bot} size={18} threadId={thread.id} state={activityState} />
