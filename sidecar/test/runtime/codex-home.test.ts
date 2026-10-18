@@ -18,8 +18,36 @@ afterEach(async () => {
 })
 
 type RpcRequest = { id: number; method: string; params: { input?: Array<{ text?: string }> } }
+type TurnFailure = { message: string; started?: boolean; direct?: boolean; text?: string }
 
-const codexProcess = (requests: RpcRequest[], resumeError?: string): ReturnType<Kernel["spawnTree"]> => {
+const getTurnFrames = (failure?: TurnFailure) => {
+  const started = { method: "turn/started", params: { turnId: "managed-turn" } }
+  if (failure) {
+    const completion = failure.direct
+      ? { method: "error", params: { message: failure.message } }
+      : { method: "turn/completed", params: { status: "failed", error: { message: failure.message } } }
+
+    return [
+      ...(failure.started ? [started] : []),
+      ...(failure.text
+        ? [{ method: "item/agentMessage/delta", params: { itemId: "reply", delta: failure.text } }]
+        : []),
+      completion,
+    ]
+  }
+
+  return [
+    started,
+    { method: "item/agentMessage/delta", params: { itemId: "reply", delta: "ok" } },
+    { method: "turn/completed", params: { status: "succeeded" } },
+  ]
+}
+
+const getProviderProcess = (
+  requests: RpcRequest[],
+  resumeError?: string,
+  failure?: TurnFailure,
+): ReturnType<Kernel["spawnTree"]> => {
   let output: ReadableStreamDefaultController<Uint8Array>
   const stdout = new ReadableStream<Uint8Array>({
     start: (controller) => {
@@ -52,11 +80,7 @@ const codexProcess = (requests: RpcRequest[], resumeError?: string): ReturnType<
           id: request.id,
           result: request.method.startsWith("thread/") ? { thread: { id: "managed-thread" } } : {},
         })
-        if (request.method === "turn/start") {
-          emit({ method: "turn/started", params: { turnId: "managed-turn" } })
-          emit({ method: "item/agentMessage/delta", params: { itemId: "reply", delta: "ok" } })
-          emit({ method: "turn/completed", params: { status: "succeeded" } })
-        }
+        if (request.method === "turn/start") getTurnFrames(failure).forEach(emit)
       },
     }),
     exited,
@@ -69,7 +93,7 @@ const codexProcess = (requests: RpcRequest[], resumeError?: string): ReturnType<
   }
 }
 
-const fixture = (resumeError?: string) => {
+const getFixture = (resumeError?: string, failures: ReadonlyArray<TurnFailure> = []) => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "touri-codex-home-")))
   const host = join(root, "host")
   const paths = createAppPaths({ appData: join(root, "data") })
@@ -144,7 +168,7 @@ const fixture = (resumeError?: string) => {
     publish: (event: UiEvent) => events.push(event),
     spawnTree: (input: Parameters<Kernel["spawnTree"]>[0]) => {
       calls.push(input)
-      return codexProcess(requests, resumeError)
+      return getProviderProcess(requests, resumeError, failures[calls.length - 1])
     },
   } as unknown as Kernel
   const store = createTestStore({ bot, thread, publish: kernel.publish })
@@ -193,18 +217,18 @@ const fixture = (resumeError?: string) => {
   }
 }
 
-const settled = async (run: { status: string }) => {
+const waitForRun = async (run: { status: string }, timeout = 5000) => {
   const start = Date.now()
   while (!["succeeded", "failed", "canceled"].includes(run.status)) {
-    if (Date.now() - start > 5000) throw new Error("Timed out waiting for turn")
+    if (Date.now() - start > timeout) throw new Error("Timed out waiting for turn")
     await Bun.sleep(10)
   }
 }
 
 test("a host-login local turn overrides the inherited Codex home with linked auth and minimal config", async () => {
-  const f = fixture()
+  const f = getFixture()
   const run = f.send("Responda só: ok")
-  await settled(run)
+  await waitForRun(run)
   expect(run.status).toBe("succeeded")
   const home = join(f.paths.appData, "provider-homes/codex", f.bot.id)
   expect(f.calls[0]?.env.CODEX_HOME).toBe(home)
@@ -214,7 +238,7 @@ test("a host-login local turn overrides the inherited Codex home with linked aut
     model_provider: "openai",
   })
   const next = f.send("Continue in the same managed home")
-  await settled(next)
+  await waitForRun(next)
   expect(next.status).toBe("succeeded")
   expect(f.requests.filter((request) => request.method === "thread/resume")).toHaveLength(1)
   // The outer macOS sandbox permits the link target, including in a read-only turn.
@@ -237,9 +261,9 @@ test("a host-login local turn overrides the inherited Codex home with linked aut
 
 for (const error of ["rollout not found", "Unable to load session"])
   test(`a host session missing from the managed home restarts with history and no visible error: ${error}`, async () => {
-    const f = fixture(error)
+    const f = getFixture(error)
     const run = f.send("Continue the synthetic task")
-    await settled(run)
+    await waitForRun(run)
     expect(run.status).toBe("succeeded")
     const requests = f.requests
     expect(requests.map((request) => request.method)).toEqual([
@@ -272,9 +296,79 @@ for (const error of ["rollout not found", "Unable to load session"])
   })
 
 test("a Codex authentication failure during resume still asks for login", async () => {
-  const f = fixture("login required")
+  const f = getFixture("login required")
   const run = f.send("Continue the synthetic task")
-  await settled(run)
+  await waitForRun(run)
   expect(run.status).toBe("failed")
   expect(f.requests.map((request) => request.method)).toEqual(["initialize", "thread/resume"])
+})
+
+test.each(["database is locked", "SQLITE_BUSY", "database table is locked"])(
+  "a failed completion before turn startup retries a transient lock: %s",
+  async (message) => {
+    const runtime = getFixture(undefined, [{ message }])
+    const request = "Continue the synthetic task"
+
+    const run = runtime.send(request)
+    await waitForRun(run)
+    const turns = runtime.requests.filter((item) => item.method === "turn/start")
+
+    expect(run.status).toBe("succeeded")
+    expect(runtime.calls).toHaveLength(2)
+    expect(turns).toHaveLength(2)
+    expect(turns.every((turn) => turn.params.input?.some((item) => item.text?.includes(request)))).toBe(true)
+    expect(
+      runtime.store.activePath({ threadId: runtime.thread.id }).filter((item) => item.role === "assistant"),
+    ).toMatchObject([{ status: "complete", text: "ok" }])
+    expect(runtime.engine.listRuns(runtime.thread.id)).toMatchObject([{ id: run.id, status: "succeeded" }])
+    expect(runtime.db.query("SELECT state FROM provider_sessions").all()).toEqual([{ state: "active" }])
+  },
+)
+
+test("a lock reported in every pre-start completion stops after the bounded retries", async () => {
+  const failures = Array.from({ length: 5 }, () => ({ message: "database is locked" }))
+  const runtime = getFixture(undefined, failures)
+
+  const run = runtime.send("Continue the synthetic task")
+  await waitForRun(run, 10_000)
+
+  expect(run).toMatchObject({ status: "failed", errorClass: "cli_protocol", errorMessage: "database is locked" })
+  expect(runtime.calls).toHaveLength(4)
+}, 15_000)
+
+test("a database lock after turn startup never replays the request", async () => {
+  const runtime = getFixture(undefined, [{ message: "database is locked", started: true }])
+
+  const run = runtime.send("Continue the synthetic task")
+  await waitForRun(run)
+
+  expect(run).toMatchObject({ status: "failed", errorClass: "cli_protocol" })
+  expect(runtime.calls).toHaveLength(1)
+  expect(runtime.requests.filter((request) => request.method === "turn/start")).toHaveLength(1)
+})
+
+test("a lock after partial output never replays a turn with a missing startup notification", async () => {
+  const runtime = getFixture(undefined, [{ message: "database is locked", text: "Partial reply" }])
+
+  const run = runtime.send("Continue the synthetic task")
+  await waitForRun(run)
+
+  expect(run).toMatchObject({ status: "failed", errorClass: "cli_protocol" })
+  expect(runtime.calls).toHaveLength(1)
+  expect(
+    runtime.store.activePath({ threadId: runtime.thread.id }).find((item) => item.role === "assistant")?.text,
+  ).toBe("Partial reply")
+})
+
+test("a later authentication failure keeps its own cause after a retried lock completion", async () => {
+  const runtime = getFixture(undefined, [
+    { message: "database is locked" },
+    { message: "login required", direct: true },
+  ])
+
+  const run = runtime.send("Continue the synthetic task")
+  await waitForRun(run)
+
+  expect(run).toMatchObject({ status: "failed", errorClass: "cli_auth", errorMessage: "login required" })
+  expect(runtime.calls).toHaveLength(2)
 })

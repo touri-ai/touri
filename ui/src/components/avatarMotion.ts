@@ -1,15 +1,52 @@
 import { blockAt, type Look, SHAPE_BY_ID } from "@norbert_bodziony/bloub"
 import {
   AVATAR_FPS,
+  type AvatarFrame,
   type AvatarMood,
   type AvatarProfile,
   avatarCycle,
   avatarExpressionProfile,
+  avatarFrameMarkup,
   createAvatarEngine,
   setAvatarState,
 } from "@touri/contracts/avatar"
 
 import type { MascotPose } from "./mascotMotion"
+
+type FrameNodes = {
+  mask: SVGPathElement
+  body: SVGPathElement
+  fill: SVGRectElement
+  group: SVGGElement
+  eyes: SVGPathElement[]
+}
+const frameNodes = new WeakMap<SVGSVGElement, FrameNodes>()
+
+/** Reuse SVG resources: replacing masks and paths each frame makes the renderer allocate continuously. */
+export const paintAvatarFrame = (svg: SVGSVGElement, frame: AvatarFrame, color: string, id: string): void => {
+  let nodes = frameNodes.get(svg)
+  if (!nodes || !svg.contains(nodes.group) || nodes.eyes.length !== frame.eyes.length) {
+    svg.innerHTML = avatarFrameMarkup(frame, color, id)
+    nodes = {
+      mask: svg.querySelector("mask > path") as SVGPathElement,
+      body: svg.querySelector("g > path") as SVGPathElement,
+      fill: svg.querySelector("[data-avatar-body]") as SVGRectElement,
+      group: svg.querySelector("g") as SVGGElement,
+      eyes: [...svg.querySelectorAll<SVGPathElement>("[data-avatar-eye]")],
+    }
+    frameNodes.set(svg, nodes)
+  }
+  nodes.mask.setAttribute("d", frame.bodyPath)
+  nodes.body.setAttribute("d", frame.bodyPath)
+  nodes.fill.setAttribute("fill", color)
+  nodes.group.setAttribute("opacity", String(frame.bodyAlpha))
+  frame.eyes.forEach((eye, index) => {
+    const path = nodes.eyes[index]
+    path?.setAttribute("d", eye.d)
+    path?.setAttribute("transform", eye.matrix)
+    path?.setAttribute("opacity", String(eye.alpha))
+  })
+}
 
 /** The clock advances only while visible. Sampling is capped independently of RAF frequency. */
 export class AvatarPlayback {
