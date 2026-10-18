@@ -40,6 +40,11 @@
 [aria-expanded="true"] > .turn-activity-chevron {
   transform: rotate(90deg);
 }
+@media (prefers-reduced-motion: reduce) {
+  .turn-activity-chevron {
+    transition: none;
+  }
+}
 .turn-activity-details {
   padding-inline-start: var(--space-16);
   border-inline-start: 1px solid var(--border-subtle);
