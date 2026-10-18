@@ -1659,7 +1659,8 @@ export const createRuntimeEngine = ({
 
   const executeGoalTurn = async (run: Run): Promise<void> => {
     const goal = goals.getForRun(run.id)
-    if (goal && (goal.status !== "active" || Date.now() >= goal.deadlineAt)) {
+    if (!goal) return execute(run)
+    if (goal.status !== "active" || Date.now() >= goal.deadlineAt) {
       goals.expireRun(run.id)
       cancel(run.id)
       active.delete(run.threadId)
@@ -1667,7 +1668,7 @@ export const createRuntimeEngine = ({
       return
     }
     // Re-read the deadline so a user budget edit takes effect during the current turn.
-    const budgetTimer = goal ? setInterval(() => goals.expireRun(run.id), 100) : null
+    const budgetTimer = setInterval(() => goals.expireRun(run.id), 100)
     try {
       await execute(run)
       const finished = persistence.getRun(run.id)
@@ -1677,7 +1678,7 @@ export const createRuntimeEngine = ({
         hasUncertainWork(run.id) || state.parts.some((part) => part.type === "approval" && part.decision !== "approved")
       goals.finishTurn(finished, state.text, pendingContinuations.has(run.id), needsReview)
     } finally {
-      if (budgetTimer) clearInterval(budgetTimer)
+      clearInterval(budgetTimer)
     }
   }
 
