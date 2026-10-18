@@ -11,6 +11,7 @@ import {
   webEndpoint,
 } from "./api/client"
 import type { ApprovalTarget } from "./approvalNavigation"
+import { isResolvedNotification } from "./approvalState"
 import { ApprovalNotice } from "./components/ApprovalNotice"
 import { AvatarRuntimeProvider } from "./components/AvatarRuntime"
 import { BotAvatar } from "./components/BotAvatar"
@@ -551,6 +552,10 @@ const AppContent = ({ kernel }: AppProps) => {
     [api, selectedBot, actions.selectBot],
   )
 
+  const pendingReturnCount = data.pendingRequestsOnReturn ?? 0
+  const hasApprovalReminder = data.notifications.some(
+    (item) => item.kind === "approval" && !!item.threadId && !!item.requestId && !isResolvedNotification(item),
+  )
   const notice = localNotice ?? data.notice
   // This completion notice already points to the inline account recovery control.
   const noticeHasInlineRecovery = notice === t("Bot created. Could not connect your account. Sign in below to chat.")
@@ -929,9 +934,9 @@ const AppContent = ({ kernel }: AppProps) => {
             </div>
           )}
         </MotionPresence>
-        {data.pendingRequestsOnReturn !== null && data.pendingRequestsOnReturn > 0 && (
+        {pendingReturnCount > 0 && !hasApprovalReminder && (
           <div className="notice-bar approval-notice" role="status">
-            {t("Você tem {n} solicitações pendentes.", { n: data.pendingRequestsOnReturn })}
+            {t("Você tem {n} solicitações pendentes.", { n: pendingReturnCount })}
             <button type="button" onClick={actions.dismissNotice} aria-label={t("Dismiss notice")}>
               ×
             </button>

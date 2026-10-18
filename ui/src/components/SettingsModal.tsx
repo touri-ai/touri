@@ -1,9 +1,8 @@
 import type { ApiRoutes, DoctorReport, NotificationPreferences } from "@touri/contracts"
-import { useState } from "react"
+import { lazy, Suspense, useState } from "react"
 import type { TauriInvoke, UiApi } from "../api/client"
 import { readTheme, setTheme, type ThemePreference } from "../design/theme"
 import { userFacingError } from "../errors"
-import { CloudPreferences } from "../features/cloud/CloudPreferences"
 import {
   APP_SETTINGS_SECTIONS,
   type AppSettingsSectionId,
@@ -16,14 +15,11 @@ import { ComputerUseSettings } from "../features/computer"
 import { readInlinePreviewPreference, setInlinePreviewPreference } from "../features/desktop/inlinePreviewPreference"
 import { DoctorChecks } from "../features/doctor/DoctorChecks"
 import { ReportProblem } from "../features/reports/ReportProblem"
-import { ServerModeSettings } from "../features/server/ServerModeSettings"
 import { isNativeDesktop, useIsServerMode } from "../features/server/serverMode"
 import { getHostLabel, t } from "../i18n"
 import { hostComputerSupported } from "../platform"
 import { useHost } from "../useHost"
-import { ApiModelsSettings } from "./ApiModelsSettings"
 import { Modal } from "./Modal"
-import { NotificationDeliverySettings } from "./NotificationDeliverySettings"
 import { NotificationPreferencesSettings } from "./NotificationPreferencesSettings"
 import {
   SettingsDisclosure,
@@ -33,6 +29,19 @@ import {
   SettingsRow,
   SettingsSwitch,
 } from "./SettingsLayout"
+
+const ApiModelsSettings = lazy(() =>
+  import("./ApiModelsSettings").then((module) => ({ default: module.ApiModelsSettings })),
+)
+const NotificationDeliverySettings = lazy(() =>
+  import("./NotificationDeliverySettings").then((module) => ({ default: module.NotificationDeliverySettings })),
+)
+const CloudPreferences = lazy(() =>
+  import("../features/cloud/CloudPreferences").then((module) => ({ default: module.CloudPreferences })),
+)
+const ServerModeSettings = lazy(() =>
+  import("../features/server/ServerModeSettings").then((module) => ({ default: module.ServerModeSettings })),
+)
 
 type SettingsModalProps = {
   doctor?: DoctorReport | null
@@ -145,7 +154,9 @@ export const SettingsModal = ({
           title={t("API models")}
           description={t("Choose a provider and use your own API key.")}
         >
-          <ApiModelsSettings api={api} />
+          <Suspense fallback={<SettingsPaneLoading />}>
+            <ApiModelsSettings api={api} />
+          </Suspense>
         </SettingsPane>
         <SettingsPane {...pane("appearance")}>
           <SettingsGroup>
@@ -280,7 +291,11 @@ export const SettingsModal = ({
               </div>
             </div>
             {!serverMode && hostComputerSupported && <ComputerUseSettings className="settings-computer-permissions" />}
-            {settings?.cloud && api && <CloudPreferences api={api} settings={settings} onSave={onSave} />}
+            {settings?.cloud && api && (
+              <Suspense fallback={<SettingsPaneLoading />}>
+                <CloudPreferences api={api} settings={settings} onSave={onSave} />
+              </Suspense>
+            )}
           </SettingsDisclosure>
         </SettingsPane>
         <SettingsPane {...pane("updates")}>
@@ -319,7 +334,9 @@ export const SettingsModal = ({
                 onChange={(event) => setNative(event.target.checked)}
               />
             </label>
-            <NotificationDeliverySettings enabled={native} />
+            <Suspense fallback={<SettingsPaneLoading />}>
+              <NotificationDeliverySettings enabled={native} />
+            </Suspense>
           </SettingsGroup>
           <SettingsDisclosure
             title={t("Escolher avisos e horário silencioso")}
@@ -445,7 +462,9 @@ export const SettingsModal = ({
         </SettingsPane>
         {isNativeDesktop() && (
           <SettingsPane {...pane("advanced")}>
-            <ServerModeSettings invokeCommand={invokeCommand} connectionErrorCode={serverConnectionErrorCode} />
+            <Suspense fallback={<SettingsPaneLoading />}>
+              <ServerModeSettings invokeCommand={invokeCommand} connectionErrorCode={serverConnectionErrorCode} />
+            </Suspense>
           </SettingsPane>
         )}
       </SettingsLayout>
@@ -467,3 +486,5 @@ export const SettingsModal = ({
     </Modal>
   )
 }
+
+const SettingsPaneLoading = () => <p role="status">{t("Loading")}</p>

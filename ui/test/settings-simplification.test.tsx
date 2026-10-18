@@ -175,7 +175,7 @@ it("keeps app sections short and technical settings within their disclosure", as
     await user.click(screen.getByRole("tab", { name: section.label }))
     const panel = screen.getByRole("tabpanel", { name: section.label })
     if (section.id === "api-models") {
-      expect(within(panel).getByLabelText("Provedor da API")).toBeVisible()
+      expect(await within(panel).findByLabelText("Provedor da API")).toBeVisible()
       continue
     }
     expect(

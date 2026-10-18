@@ -56,13 +56,13 @@ const startMemoryWorkload = (kernel: Kernel): void => {
 
 const saveBackgroundReply = (store: StoreApi, message: Message): void => {
   // Durable revisions exercise the same event delivery path as real replies.
-  const inserted = store.insertMessage({ message })
+  const inserted = store.insertMessage({ message: { ...message, text: "", parts: [] } })
   if (!inserted.success) throw new Error("Could not insert a background reply")
 
   const updated = store.updateMessage({
     threadId: message.threadId,
     messageId: message.id,
-    patch: { status: "complete" },
+    patch: { status: "complete", text: message.text, parts: message.parts },
   })
   if (!updated.success) throw new Error("Could not complete a background reply")
 }

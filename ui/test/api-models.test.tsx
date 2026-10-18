@@ -37,6 +37,8 @@ it("exposes API models in Settings and adds, discovers, tests and removes a mask
   const api = createMockApi()
   render(<SettingsModal api={api} settings={null} onSave={vi.fn()} onClose={vi.fn()} />)
   fireEvent.click(screen.getByRole("tab", { name: "Modelos por API" }))
+  await screen.findByLabelText("Provedor da API")
+
   fill()
   expect(screen.getByLabelText("Chave de API")).toHaveAttribute("type", "password")
   fireEvent.click(screen.getByRole("button", { name: "Carregar modelos" }))

@@ -228,6 +228,10 @@ test("bot menu flips and shifts after resizing, tracks scrolling, and stays in t
   await page.setViewportSize({ width: 900, height: 600 })
   await page.emulateMedia({ reducedMotion: "reduce" })
   await openWorkspace(page)
+  const returnSummary = page.getByRole("status").filter({ hasText: "Você tem 1 solicitação pendente." })
+  await returnSummary.getByRole("button", { name: "Dispensar aviso", exact: true }).click()
+  await expect(returnSummary).toHaveCount(0)
+
   // Without groups the last bot is close to the viewport bottom, so the menu must flip upward.
   await page.locator(".group-sidebar").evaluate((element) => {
     ;(element as HTMLElement).style.display = "none"

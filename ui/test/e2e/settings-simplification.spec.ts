@@ -62,7 +62,15 @@ test("bot identity stays simple and every advanced section remains reachable", a
 test("native preferences list the core tabs and advanced server settings", async ({ page }) => {
   await page.goto("/test/e2e/r8-settings-harness.html")
   await page.getByRole("button", { name: /Você Local/ }).click()
-  await expect(page.getByRole("dialog").getByRole("tab")).toHaveText(nativePreferencesTabs)
+  const dialog = page.getByRole("dialog")
+  await expect(dialog.getByRole("tab")).toHaveText(nativePreferencesTabs)
+
+  await dialog.getByRole("tab", { name: "Modelos por API", exact: true }).click()
+  await expect(dialog.getByLabel("Provedor da API")).toBeVisible()
+  await expect(dialog.getByLabel("Chave de API", { exact: true })).toHaveAttribute("type", "password")
+  await dialog.getByRole("tab", { name: "Avançado", exact: true }).click()
+  await expect(dialog.getByRole("region", { name: "Usar um servidor touri", exact: true })).toBeVisible()
+  await expect(dialog.getByLabel("Endereço do servidor", { exact: true })).toBeVisible()
 })
 
 test("app preferences disclose technical controls and preserve edits between sections", async ({ page }) => {

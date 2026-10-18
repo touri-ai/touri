@@ -118,7 +118,7 @@ test("a newer successful run leaves the old failure as resolved bell history", a
   await page.getByRole("button", { name: /Notificações/ }).click()
   const center = page.getByRole("region", { name: "Central de notificações" })
   await expect(center.locator(".notification-row.resolved")).toHaveCount(1)
-  await expect(center.getByText("Resolvido", { exact: true })).toBeVisible()
+  await expect(center.getByText("Interrupção anterior · resolvida", { exact: true })).toBeVisible()
   await shot(page, "attention-resolved")
   await page.reload()
   await expect(page.getByText("Aguardando você: revise a tarefa interrompida")).toHaveCount(0)
