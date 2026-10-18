@@ -2512,7 +2512,7 @@ test("a crash after a recorded write waits for review and never repeats the writ
   }
 })
 
-test.serial("server routines run without browser clients and persist downtime and catch-up history", async () => {
+test.serial("server routines run without browser clients and persist late-slot and catch-up history", async () => {
   const value = await fixture({
     scenario: { events: [{ type: "delta", delta: "Notas organizadas" }, { type: "complete" }] },
   })
@@ -2535,7 +2535,7 @@ test.serial("server routines run without browser clients and persist downtime an
       forceDisabled: false,
     })
     if (!created.success) throw new Error(created.error)
-    const due = Date.parse("2026-10-19T12:00:00Z")
+    const due = Date.now() + 24 * 60 * 60_000
     value.engine.updateRoutine({ routineId: created.routine.id, patch: { nextRunAt: due }, fromTool: false })
     // No browser or UI is connected to this host. Its scheduler still executes.
     const scheduler = createRoutineScheduler({ kernel: value.runtime.kernel, engine: value.engine, intervalMs: 10 })
@@ -2563,7 +2563,7 @@ test.serial("server routines run without browser clients and persist downtime an
           status: "skipped",
           triggerSource: "catch-up",
           scheduledFor: missed,
-          summary: expect.stringContaining("touri estava fechado"),
+          summary: expect.stringContaining("o atraso ultrapassou a janela de recuperação"),
         }),
       ]),
     )
@@ -2706,7 +2706,7 @@ test.serial("deletion drops queued catch-up work and a cached due schedule stays
   let replacement: ReturnType<typeof createRuntimeEngine> | undefined
   try {
     const routine = routineForDeletion(value)
-    const due = Date.now() - 120_000
+    const due = Date.now() - 180_000
     value.engine.updateRoutine({ routineId: routine.id, patch: { nextRunAt: due }, fromTool: false })
     await value.engine.tick()
     const queuedRun = value.engine.listRuns(value.thread.id)[0]

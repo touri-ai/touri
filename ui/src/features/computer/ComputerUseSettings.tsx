@@ -82,7 +82,7 @@ export const ComputerUseSettings = ({ className = "" }: ComputerUseSettingsProps
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-brand">{t("Computer use")}</p>
-          <h2 className="mt-1 font-display text-xl font-semibold">{t("Let a bot control the Mac")}</h2>
+          <h2 className="mt-1 font-display text-xl font-semibold">{t("Let a bot control this computer")}</h2>
           <p className="mt-2 max-w-xl text-sm leading-6 text-stone-600 dark:text-stone-300">
             {t("Access is off by default. Grants are time-boxed, visible in the HUD, and can be stopped with ⌃⌥⌘.")}
           </p>

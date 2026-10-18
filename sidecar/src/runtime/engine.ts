@@ -101,6 +101,8 @@ type ContinuationPlan = { reason: ContinuationReason; originalRunId: Id }
 
 type PendingApproval = { runId: Id; provider: ProviderAdapter; providerApprovalId: Id }
 
+const ROUTINE_TICK_GRACE_MS = 2 * 60_000
+
 type RoutineCreate = {
   botId: Id
   name: string
@@ -136,6 +138,7 @@ type RuntimeEngine = {
   activeRun: (args: { threadId: Id }) => Run | null
   continueAfterApproval: ServiceMap["runtime.continueAfterApproval"]
   cancel: (id: Id) => Result<{ run: Run }, "NOT_FOUND">
+  cancelRuns: (runIds: Id[]) => Promise<void>
   cancelBotTurns: (args: { botId: Id }) => Promise<void>
   retry: (id: Id) => Result<{ run: Run }, "NOT_FOUND" | "THREAD_NOT_FOUND" | "BOT_PAUSED" | "CONFLICT">
   answerApproval: (args: {
@@ -170,7 +173,10 @@ type RuntimeEngine = {
     routineId: Id
     triggerSource: RoutineRun["triggerSource"]
     scheduledFor?: number
-  }) => Result<{ routineRun: RoutineRun }, "NOT_FOUND" | "INVALID_ARGS" | "THREAD_NOT_FOUND" | "BOT_PAUSED">
+  }) => Result<
+    { routineRun: RoutineRun },
+    "NOT_FOUND" | "INVALID_ARGS" | "THREAD_NOT_FOUND" | "BOT_PAUSED" | "DELEGATION_LIMIT"
+  >
   tick: (now?: number) => Promise<void>
   shutdown: () => Promise<void>
 }
@@ -223,6 +229,7 @@ export const createRuntimeEngine = ({
   routineTimeoutMs,
   resumeBackoffMs = CRASH_RESUME_BACKOFF_MS,
   providerAdapters,
+  getNow = Date.now,
 }: {
   kernel: Kernel
   codexCommand?: string
@@ -234,7 +241,9 @@ export const createRuntimeEngine = ({
   routineTimeoutMs?: (routine: Routine) => number
   resumeBackoffMs?: number
   providerAdapters?: Partial<Record<Bot["provider"], ProviderAdapter>>
+  getNow?: () => number
 }): RuntimeEngine => {
+  const runtimeStartedAt = getNow()
   const persistence: RuntimePersistence = createRuntimePersistence({ database: kernel.db })
   const ownerPath = `${kernel.paths.runDir}/runtime-owner`
   const owner = randomHexToken()
@@ -1162,6 +1171,9 @@ export const createRuntimeEngine = ({
           ? (args) => startVmTurn({ kernel, provider, args })
           : provider.startTurn
         const invoke = (): ReturnType<typeof startTurn> => {
+          // Completion diagnostics belong to one attempt; cancellation keeps its own cause.
+          if (!controller.signal.aborted) state.completionError = null
+
           // Publish before invocation: startup and a silent provider are different waits.
           if (!run.providerStartedAt) updateRun(run, { providerStartedAt: Date.now() })
           return startTurn({
@@ -1183,8 +1195,14 @@ export const createRuntimeEngine = ({
         const invokeWithRetry = (): ReturnType<typeof startTurn> =>
           retryTransient({
             run: invoke,
-            failureOf: (outcome) => (outcome.success ? null : outcome.error),
-            canRetry: () => !state.turnStarted,
+            failureOf: (outcome) => {
+              if (!outcome.success) return outcome.error
+              if (outcome.status !== "failed") return null
+
+              // A processed completion frame can still report a failed provider turn.
+              return state.completionError?.errorMessage ?? null
+            },
+            canRetry: () => !state.turnStarted && state.parts.length === 0,
             signal: controller.signal,
           })
         let providerResult = await invokeWithRetry()
@@ -1775,8 +1793,14 @@ export const createRuntimeEngine = ({
     const runs = [...persistence.listActiveRuns(), ...queued.map((id) => persistence.getRun(id))].filter(
       (run): run is Run => !!run && run.botId === botId && ["queued", "starting", "running"].includes(run.status),
     )
-    for (const run of runs) cancel(run.id)
-    await Promise.all(runs.map((run) => executions.get(run.id)))
+    await cancelRuns(runs.map((run) => run.id))
+  }
+
+  const cancelRuns = async (runIds: Id[]): Promise<void> => {
+    runIds.forEach((runId) => {
+      cancel(runId)
+    })
+    await Promise.all(runIds.map((runId) => executions.get(runId)))
   }
 
   const retry = (id: Id): Result<{ run: Run }, "NOT_FOUND" | "THREAD_NOT_FOUND" | "BOT_PAUSED" | "CONFLICT"> => {
@@ -1948,7 +1972,7 @@ export const createRuntimeEngine = ({
       return { success: false, errorCode: "BOT_NOT_FOUND", error: "Bot not found" }
     const validation = routineError(input) ?? routineTargetError(input)
     if (validation) return { success: false, errorCode: "INVALID_ARGS", error: validation }
-    const now = Date.now()
+    const now = getNow()
     const routine: Routine = {
       id: kernel.newId(),
       botId: input.botId,
@@ -1992,8 +2016,7 @@ export const createRuntimeEngine = ({
       return { success: false, errorCode: "INVALID_ARGS", error: "Agents cannot enable routines" }
     if (fromTool && patch.groupId !== undefined && patch.groupId !== routine.groupId)
       return { success: false, errorCode: "INVALID_ARGS", error: "Agents cannot change a routine's group" }
-    const next = { ...routine, ...patch, id: routine.id, botId: routine.botId, updatedAt: Date.now() }
-    // A changed task or destination needs a new explicit human activation.
+    // Agent edits need a new human activation; HTTP edits preserve omitted fields.
     const reviewedFields = [
       "prompt",
       "cron",
@@ -2005,30 +2028,17 @@ export const createRuntimeEngine = ({
       "catchUpMinutes",
       "overlap",
     ] as const
-    if (patch.enabled !== true && reviewedFields.some((field) => next[field] !== routine[field])) next.enabled = false
+    const needsReview = fromTool && reviewedFields.some((field) => field in patch && patch[field] !== routine[field])
+    const updated = Object.assign({}, routine, patch, {
+      id: routine.id,
+      botId: routine.botId,
+      enabled: needsReview ? false : (patch.enabled ?? routine.enabled),
+      updatedAt: getNow(),
+    })
 
-    const candidate: RoutineCreate = {
-      botId: next.botId,
-      name: next.name,
-      prompt: next.prompt,
-      cron: next.cron,
-      timezone: next.timezone,
-      enabled: next.enabled,
-      continuity: next.continuity,
-      resultsThreadId: next.resultsThreadId,
-      groupId: next.groupId,
-      timeoutMinutes: next.timeoutMinutes,
-      overlap: next.overlap,
-      catchUpMinutes: next.catchUpMinutes,
-    }
-    const validation = routineError(candidate) ?? routineTargetError(candidate)
+    const validation = routineError(updated) ?? routineTargetError(updated)
     if (validation) return { success: false, errorCode: "INVALID_ARGS", error: validation }
-    if (!next.enabled) next.nextRunAt = null
-    else if (!routine.enabled || next.cron !== routine.cron || next.timezone !== routine.timezone) {
-      const parsed = parseCron(next.cron)
-      if (parsed.success)
-        next.nextRunAt = nextCronSlot({ cron: parsed.cron, timezone: next.timezone, at: Date.now() + 1 })
-    }
+    const next = Object.assign({}, updated, { nextRunAt: getRoutineNextRunAt(routine, updated, getNow()) })
     persistence.updateRoutine(next)
     kernel.publish({ type: "routine.updated", routine: next, lastRun: persistence.listRoutineRuns(next.id)[0] ?? null })
     return { success: true, routine: next }
@@ -2052,11 +2062,17 @@ export const createRuntimeEngine = ({
     routine,
     scheduledFor,
     triggerSource,
+    wasOffline,
   }: {
     routine: Routine
     scheduledFor: number
     triggerSource: RoutineRun["triggerSource"]
+    wasOffline: boolean
   }): void => {
+    const reason = wasOffline
+      ? "o touri não estava em execução no horário agendado."
+      : "o atraso ultrapassou a janela de recuperação."
+    const summary = `Rotina “${routine.name}” não executada: ${reason}`
     const inserted = persistence.insertRoutineRun({
       id: kernel.newId(),
       routineId: routine.id,
@@ -2065,9 +2081,9 @@ export const createRuntimeEngine = ({
       threadId: null,
       runId: null,
       triggerSource,
-      summary: `Rotina “${routine.name}” adiada: o touri estava fechado no horário agendado.`,
+      summary,
       startedAt: null,
-      finishedAt: Date.now(),
+      finishedAt: getNow(),
     })
     if (!inserted.success) return
     kernel.publish({ type: "routine.updated", routine, lastRun: inserted.routineRun })
@@ -2075,7 +2091,7 @@ export const createRuntimeEngine = ({
       botId: routine.botId,
       threadId: null,
       routineName: routine.name,
-      reason: `A rotina “${routine.name}” não foi executada porque o touri estava fechado no horário agendado.`,
+      reason: summary,
     })
   }
 
@@ -2087,7 +2103,10 @@ export const createRuntimeEngine = ({
     routineId: Id
     triggerSource: RoutineRun["triggerSource"]
     scheduledFor?: number
-  }): Result<{ routineRun: RoutineRun }, "NOT_FOUND" | "INVALID_ARGS" | "THREAD_NOT_FOUND" | "BOT_PAUSED"> => {
+  }): Result<
+    { routineRun: RoutineRun },
+    "NOT_FOUND" | "INVALID_ARGS" | "THREAD_NOT_FOUND" | "BOT_PAUSED" | "DELEGATION_LIMIT"
+  > => {
     const routine = persistence.getRoutine(routineId)
     const store = kernel.services.use("store.api")
     if (!routine || !store) return { success: false, errorCode: "NOT_FOUND", error: "Routine not found" }
@@ -2229,7 +2248,7 @@ export const createRuntimeEngine = ({
     return { success: true, routineRun: running }
   }
 
-  const tick = async (now = Date.now()): Promise<void> => {
+  const tick = async (now = getNow()): Promise<void> => {
     if (shuttingDown || !ownsRuntime()) return
     const updateNextRun = ({ routineId, nextRunAt }: { routineId: Id; nextRunAt: number | null }): void => {
       const latest = persistence.getRoutine(routineId)
@@ -2242,20 +2261,26 @@ export const createRuntimeEngine = ({
       let due = routine.nextRunAt
       if (due === null) {
         const previous = previousCronSlot({ cron: parsed.cron, timezone: routine.timezone, at: now })
-        if (previous !== null && now - previous <= routine.catchUpMinutes * 60_000)
+        if (previous !== null && canRunRoutineSlot(routine, previous, now, runtimeStartedAt))
           void runRoutine({ routineId: routine.id, triggerSource: "catch-up", scheduledFor: previous })
-        else if (previous !== null) recordSkipped({ routine, scheduledFor: previous, triggerSource: "catch-up" })
+        else if (previous !== null)
+          recordSkipped({
+            routine,
+            scheduledFor: previous,
+            triggerSource: "catch-up",
+            wasOffline: previous < runtimeStartedAt,
+          })
         due = nextCronSlot({ cron: parsed.cron, timezone: routine.timezone, at: now + 60_000 })
         updateNextRun({ routineId: routine.id, nextRunAt: due })
         continue
       }
       if (due <= now) {
-        if (now - due > routine.catchUpMinutes * 60_000)
-          recordSkipped({ routine, scheduledFor: due, triggerSource: "catch-up" })
+        if (!canRunRoutineSlot(routine, due, now, runtimeStartedAt))
+          recordSkipped({ routine, scheduledFor: due, triggerSource: "catch-up", wasOffline: due < runtimeStartedAt })
         else
           void runRoutine({
             routineId: routine.id,
-            triggerSource: now - due >= 60_000 ? "catch-up" : "cron",
+            triggerSource: due < runtimeStartedAt || now - due > ROUTINE_TICK_GRACE_MS ? "catch-up" : "cron",
             scheduledFor: due,
           })
         const next = nextCronSlot({ cron: parsed.cron, timezone: routine.timezone, at: due + 60_000 })
@@ -2375,6 +2400,7 @@ export const createRuntimeEngine = ({
     listRuns: persistence.listRuns,
     cancel,
     cancelBotTurns,
+    cancelRuns,
     retry,
     answerApproval,
     approvalBridge,
@@ -2388,4 +2414,21 @@ export const createRuntimeEngine = ({
     tick,
     shutdown,
   }
+}
+
+const getRoutineNextRunAt = (previous: Routine, next: Routine, now: number): number | null => {
+  if (!next.enabled) return null
+  if (previous.enabled && next.cron === previous.cron && next.timezone === previous.timezone) return next.nextRunAt
+
+  const parsed = parseCron(next.cron)
+  if (!parsed.success) return null
+
+  return nextCronSlot({ cron: parsed.cron, timezone: next.timezone, at: now + 1 })
+}
+
+const canRunRoutineSlot = (routine: Routine, scheduledFor: number, now: number, runtimeStartedAt: number): boolean => {
+  if (routine.catchUpMinutes === 0 && scheduledFor < runtimeStartedAt) return false
+
+  const catchUpWindowMs = routine.catchUpMinutes * 60_000 + ROUTINE_TICK_GRACE_MS
+  return now - scheduledFor <= catchUpWindowMs
 }

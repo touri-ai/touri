@@ -1,4 +1,4 @@
-import type { Bot, BotGroup, Id, Message, NotificationRecord, Run, Thread } from "@touri/contracts"
+import type { Bot, BotGroup, HostKind, Id, Message, NotificationRecord, Run, Thread } from "@touri/contracts"
 import { Fragment, type ReactNode, useEffect, useMemo, useState } from "react"
 import { type ApprovalTarget, pendingApprovalTargets } from "../approvalNavigation"
 import { reconcileApprovalMessages } from "../approvalState"
@@ -28,7 +28,7 @@ import "./bot-sidebar.css"
 type SidebarProps = {
   serverMode?: boolean
   serverUrl?: string | null
-  host?: "mac" | "server"
+  host?: HostKind
   onNavigate?: () => void
   groups?: BotGroup[]
   onNewGroup?: () => void

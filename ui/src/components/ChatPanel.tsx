@@ -1,6 +1,7 @@
 import type {
   Bot,
   BotGroup,
+  GroupAction,
   Id,
   MachineState,
   Message,
@@ -18,7 +19,7 @@ import { userFacingRunError } from "../errors"
 import { ComputerGrantCard } from "../features/computer"
 import { InlineLivePreview, InlinePreviewContext, screenTool } from "../features/desktop/InlineLivePreview"
 import { useIsServerMode } from "../features/server/serverMode"
-import { localizeNotice, t } from "../i18n"
+import { getHostLabel, localizeNotice, t } from "../i18n"
 import { machineStateForDisplay } from "../machineState"
 import { messageMarkdown } from "../messageMarkdown"
 import { consumeTaskReview, requestTaskResume, reviewTaskEvent } from "../recoveryEvents"
@@ -26,6 +27,7 @@ import { getRoutineReplyRun, isRoutineEmptyResult, isRoutineRun } from "../routi
 import { type RoutineDraft, repeatTaskDraft, suggestedRoutineDraft } from "../routineDraft"
 import { failureTimeLabel, runErrorFor } from "../runError"
 import { getSidebarThreadTitle } from "../sidebarThreadTitle"
+import { useHost } from "../useHost"
 import { ActivityMark } from "./ActivityMark"
 import { ApprovalCard } from "./ApprovalCard"
 import { useAvatarBot, useMascotSnapshot, useMessageMascotState, useThreadBot } from "./AvatarRuntime"
@@ -80,7 +82,7 @@ type ChatPanelProps = {
   machine?: MachineState | undefined
   messages: Array<Message>
   runs: Array<Run>
-  onSend: (text: string, parentId?: Id | null, attachmentIds?: Array<Id>) => Promise<void>
+  onSend: (text: string, parentId?: Id | null, attachmentIds?: Array<Id>, groupAction?: GroupAction) => Promise<void>
   onRetry: (runId: Id) => Promise<void>
   onCancel: (runId: Id) => Promise<void>
   onSwitchBranch: (threadId: Id, leafId: Id) => Promise<void>
@@ -898,7 +900,8 @@ export const ChatPanel = ({
   routines = [],
   routineRuns = [],
 }: ChatPanelProps) => {
-  const serverMode = useIsServerMode()
+  const host = useHost(api)
+  const serverMode = useIsServerMode() || host === "server"
   const machine = machineStateForDisplay(rawMachine)
   const mascotSnapshot = useMascotSnapshot({ id: bot?.id ?? "", color: bot?.color ?? null }, thread?.id)
   const composerRef = useRef<HTMLTextAreaElement>(null)
@@ -933,9 +936,7 @@ export const ChatPanel = ({
             {bot && <BotAvatar bot={bot} size={18} />}
             <h1 className="chat-page-heading">{bot?.name ?? "touri"}</h1>
             {bot?.anyFolderAccess && (
-              <span className="any-folder-badge">
-                {t(serverMode ? "Qualquer pasta do servidor" : "Qualquer pasta do Mac")}
-              </span>
+              <span className="any-folder-badge">{t("Any folder on this {host}", { host: getHostLabel(host) })}</span>
             )}
           </div>
           <div className="chat-toolbar">
@@ -1047,9 +1048,7 @@ export const ChatPanel = ({
             )}
             <h1 className="chat-page-heading">{bot?.name ?? "touri"}</h1>
             {bot?.anyFolderAccess && (
-              <span className="any-folder-badge">
-                {t(serverMode ? "Qualquer pasta do servidor" : "Qualquer pasta do Mac")}
-              </span>
+              <span className="any-folder-badge">{t("Any folder on this {host}", { host: getHostLabel(host) })}</span>
             )}
           </div>
           <div className="chat-toolbar">

@@ -267,7 +267,7 @@ it("shows a computer permission request only for its active conversation and pre
   view.rerender(<ChatPanel {...pending} runs={[{ ...run, threadId: "another-thread" }]} />)
   expect(screen.queryByRole("button", { name: "Permitir controle do computador" })).toBeNull()
   view.rerender(<ChatPanel {...pending} runs={[run]} />)
-  expect(screen.getByText("mark está aguardando permissão para controlar seu Mac.")).toBeVisible()
+  expect(screen.getByText("mark está aguardando permissão para controlar seu computador.")).toBeVisible()
   expect(grantRequest).not.toHaveBeenCalled()
   fireEvent.click(screen.getByRole("button", { name: "Permitir controle do computador" }))
   await waitFor(() =>
