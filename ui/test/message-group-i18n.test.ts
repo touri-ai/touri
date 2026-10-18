@@ -57,6 +57,16 @@ describe("message actions, attachments and group translations", () => {
     expect(t(key, {}, "en")).toBe(english)
   })
 
+  it("translates the ask_all member deadline for both locales", () => {
+    const description: TranslationKey =
+      "Send the same task to all other members of this touri group in parallel and gather final answers with authorship. Each recipient counts toward the shared six-call budget. Each member has its own 120-second execution budget, starting when that member's run starts; time waiting in the queue does not count. Same depth 2, cycle, access, secrecy and approval fences as ask_bot. A pending approval for one member does not hold up others. Only available in group participant sessions."
+
+    expect(t(description, {}, "pt-BR")).toBe(
+      "Envia a mesma tarefa aos outros membros do grupo em paralelo e reúne as respostas finais com autoria. Cada membro conta no limite compartilhado de seis chamadas e tem seu próprio prazo de execução de 120 segundos, contado a partir do início da execução do membro; o tempo na fila não conta. Mantém os limites de profundidade 2, ciclos, acesso, segredos e aprovações da delegação individual. Uma aprovação pendente para um membro não impede os outros de trabalhar. Disponível apenas nas sessões de membros do grupo.",
+    )
+    expect(t(description, {}, "en")).toBe(description)
+  })
+
   it("interpolates names and translated attachment errors", () => {
     expect(t("Painel do grupo {name}", { name: "QA" }, "en")).toBe("Group panel for QA")
     expect(t("Baixar {name}", { name: "notas.txt" }, "en")).toBe("Download notas.txt")
