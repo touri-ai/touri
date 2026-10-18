@@ -20,7 +20,7 @@ it("lists every executing and queued turn, origins and engine positions, and ope
   fireEvent.click(screen.getByRole("button", { name: "Avançado", exact: true }))
   fireEvent.click(screen.getByRole("button", { name: "Trabalho", exact: true }))
 
-  const running = screen.getByRole("region", { name: "Trabalhando", exact: true })
+  const running = await screen.findByRole("region", { name: "Trabalhando", exact: true })
   const queued = screen.getByRole("region", { name: "Na fila", exact: true })
   expect(within(running).getAllByRole("article")).toHaveLength(3)
   expect(within(queued).getAllByRole("article")).toHaveLength(2)
@@ -179,7 +179,7 @@ it("saves the concurrency limit through Advanced and restores its saved value", 
 
   fireEvent.click(screen.getByRole("button", { name: "Avançado", exact: true }))
   fireEvent.click(screen.getByRole("button", { name: "Desempenho", exact: true }))
-  const input = screen.getByRole("spinbutton", { name: "Tarefas ao mesmo tempo" })
+  const input = await screen.findByRole("spinbutton", { name: "Tarefas ao mesmo tempo" })
   expect(input).toHaveValue(3)
   fireEvent.change(input, { target: { value: "4" } })
   fireEvent.click(screen.getByRole("button", { name: "Salvar limite" }))

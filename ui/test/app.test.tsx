@@ -92,7 +92,7 @@ describe("WP9 frontend acceptance", () => {
     expect(screen.getByRole("heading", { name: "Integrações" })).toBeVisible()
     fireEvent.click(screen.getByRole("button", { name: /^Bots/ }))
     openRoutines()
-    expect(screen.getByRole("heading", { name: "Rotinas" })).toBeVisible()
+    expect(await screen.findByRole("heading", { name: "Rotinas" })).toBeVisible()
     first.unmount()
 
     render(<App kernel={{ services: { api } }} />)

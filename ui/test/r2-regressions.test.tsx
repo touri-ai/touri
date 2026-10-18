@@ -128,7 +128,7 @@ describe("r2 regressions", () => {
     fireEvent.click(screen.getByRole("button", { name: /onb.*Operations/ }))
     await screen.findByRole("textbox", { name: "Mensagem para onb" })
     openRoutines("onb")
-    fireEvent.click(screen.getByRole("button", { name: "Pausadas" }))
+    fireEvent.click(await screen.findByRole("button", { name: "Pausadas" }))
     const count = mock.calls.filter((call) => call.route === "GET /routines").length
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Atualizar" })))
     await waitFor(() => expect(mock.calls.filter((call) => call.route === "GET /routines").length).toBe(count + 1))
