@@ -34,12 +34,18 @@ const getFixture = async () => {
     ('thread-a','bot-a','Notas',1,1), ('thread-b','bot-b','Revisão',1,1);`)
   const { token } = JSON.parse(readFileSync(join(root, "run", "handshake.json"), "utf8")) as { token: string }
   const request = (path: string, body?: object) =>
-    fetch(`http://127.0.0.1:${runtime.handshake.port}${path}`, {
+    fetch(`http://127.0.0.1:${runtime.handshake.port}/api/v1${path}`, {
       method: body ? "POST" : "GET",
       headers: { Authorization: `Bearer ${token}`, "X-Touri-Client": "test", "Content-Type": "application/json" },
       ...(body ? { body: JSON.stringify(body) } : {}),
     })
-  const getTasks = async (): Promise<RecoveryTask[]> => (await (await request("/recovery")).json()).tasks
+  const getTasks = async (): Promise<RecoveryTask[]> => {
+    const response = await request("/recovery")
+    expect(response.status).toBe(200)
+
+    const snapshot: { tasks: RecoveryTask[] } = await response.json()
+    return snapshot.tasks
+  }
   return { runtime, database, request, getTasks, work: createWorkState({ database, now: () => 100 }) }
 }
 
