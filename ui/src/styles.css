@@ -4470,6 +4470,20 @@ a {
   color: var(--text-code);
   font: var(--type-12) / var(--leading-code) var(--font-mono);
 }
+.markdown-code-body {
+  position: relative;
+}
+.markdown-code-body > pre[aria-hidden="true"] {
+  visibility: hidden;
+}
+.markdown-code-body > .markdown-highlight {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+}
+.markdown-code-body > .markdown-highlight pre {
+  height: 100%;
+}
 .markdown-compact :is(h1, h2, h3, h4, h5, h6) {
   font-size: var(--type-14);
 }

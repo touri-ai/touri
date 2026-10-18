@@ -54,6 +54,7 @@ describe("streaming Markdown", () => {
     expect(screen.getByTestId("text")).toHaveTextContent(/^Início$/)
 
     act(() => vi.advanceTimersByTime(50))
+    act(() => vi.advanceTimersByTime(20))
 
     expect(screen.getByTestId("text")).toHaveTextContent("Início de uma resposta")
   })
@@ -72,6 +73,7 @@ describe("streaming Markdown", () => {
       </StrictMode>,
     )
     act(() => vi.advanceTimersByTime(100))
+    act(() => vi.advanceTimersByTime(20))
 
     expect(screen.getByTestId("text")).toHaveTextContent("Texto mais recente")
   })
@@ -79,6 +81,8 @@ describe("streaming Markdown", () => {
   it("flushes the exact final text on completion or cancellation and releases pending work", () => {
     vi.useFakeTimers()
     const view = render(<StreamingText content="Parcial" streaming />)
+    view.rerender(<StreamingText content="Parcial mais novo" streaming />)
+    act(() => vi.advanceTimersByTime(100))
 
     view.rerender(<StreamingText content="Resposta completa" streaming={false} />)
 
@@ -86,6 +90,7 @@ describe("streaming Markdown", () => {
     expect(vi.getTimerCount()).toBe(0)
 
     view.rerender(<StreamingText content="Outra resposta" streaming />)
+    view.rerender(<StreamingText content="Resposta mais recente" streaming />)
     view.unmount()
 
     expect(vi.getTimerCount()).toBe(0)
@@ -103,6 +108,22 @@ describe("streaming Markdown", () => {
 
     await waitFor(() => expect(getMarkdownCodeHtml).toHaveBeenCalledTimes(1))
     expect(view.container.querySelector(".shiki")).not.toBeNull()
+  })
+
+  it("keeps the code block mounted and reserves its layout when highlighting completes", async () => {
+    const content = "```typescript\nconst total = 2\n```"
+    const view = render(<MarkdownContent content={content} streaming />)
+    await screen.findByRole("button", { name: "Copiar código" })
+    const block = view.container.querySelector(".markdown-code")
+    expect(block).not.toBeNull()
+
+    view.rerender(<MarkdownContent content={content} streaming={false} />)
+
+    expect(view.container.querySelector(".markdown-code")).toBe(block)
+    await waitFor(() => expect(view.container.querySelector(".markdown-highlight .shiki")).not.toBeNull())
+    expect(view.container.querySelector(".markdown-code")).toBe(block)
+    expect(view.container.querySelector('.markdown-code-body > pre[aria-hidden="true"]')).not.toBeNull()
+    expect(view.container.querySelector(".markdown-code-body > .markdown-highlight")).not.toBeNull()
   })
 
   it("keeps a long reply copyable without compiling hidden code until it becomes visible", async () => {

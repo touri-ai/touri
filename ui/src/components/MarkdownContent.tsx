@@ -35,6 +35,7 @@ type MarkdownRendererProps = {
 }
 
 const CodeVisibilityContext = createContext(false)
+const StreamingContext = createContext(false)
 
 type PreviewNode = { type: string; value?: string; children?: PreviewNode[] }
 
@@ -116,6 +117,25 @@ const chatPreview = () => (tree: PreviewNode) => {
   trim(tree)
 }
 
+const MarkdownCodeBlock = ({ children, preview }: { children: ReactNode; preview: boolean }) => {
+  const streaming = useContext(StreamingContext)
+  if (!isValidElement<{ className?: string; children?: ReactNode }>(children)) return <pre>{children}</pre>
+
+  const language = children.props.className?.replace(/^language-/, "") ?? "text"
+  if (language.toLowerCase() === "mermaid" && !preview && !streaming)
+    return <MermaidDiagram source={String(children.props.children ?? "").replace(/\n$/, "")} />
+  if (language === "diff") return <DiffOutput source={String(children.props.children ?? "").replace(/\n$/, "")} />
+
+  return (
+    <ShikiCode
+      language={language}
+      source={String(children.props.children ?? "").replace(/\n$/, "")}
+      copyable={!preview}
+      highlight={!streaming}
+    />
+  )
+}
+
 const LazyMarkdown = lazy(async () => {
   const [
     { default: ReactMarkdown, defaultUrlTransform },
@@ -123,24 +143,10 @@ const LazyMarkdown = lazy(async () => {
     { unified },
     { default: remarkParse },
   ] = await Promise.all([import("react-markdown"), import("remark-gfm"), import("unified"), import("remark-parse")])
-  const buildComponents = (preview: boolean, streaming = false): Components => ({
+  const buildComponents = (preview: boolean): Components => ({
     img: ({ alt }) => <span>{alt}</span>,
     a: ({ href, children }) => <MarkdownLink href={href}>{children}</MarkdownLink>,
-    pre: ({ children }) => {
-      if (!isValidElement<{ className?: string; children?: ReactNode }>(children)) return <pre>{children}</pre>
-      const language = children.props.className?.replace(/^language-/, "") ?? "text"
-      if (language.toLowerCase() === "mermaid" && !preview && !streaming)
-        return <MermaidDiagram source={String(children.props.children ?? "").replace(/\n$/, "")} />
-      if (language === "diff") return <DiffOutput source={String(children.props.children ?? "").replace(/\n$/, "")} />
-      return (
-        <ShikiCode
-          language={language}
-          source={String(children.props.children ?? "").replace(/\n$/, "")}
-          copyable={!preview}
-          highlight={!streaming}
-        />
-      )
-    },
+    pre: ({ children }) => <MarkdownCodeBlock preview={preview}>{children}</MarkdownCodeBlock>,
     table: ({ children }) => (
       // biome-ignore lint/a11y/noNoninteractiveTabindex: horizontal tables must be keyboard-scrollable.
       <section className="markdown-table" tabIndex={0} aria-label="Tabela da mensagem">
@@ -150,12 +156,10 @@ const LazyMarkdown = lazy(async () => {
   })
   const fullComponents = buildComponents(false)
   const previewComponents = buildComponents(true)
-  const streamingComponents = buildComponents(false, true)
   const fullPlugins = [remarkGfm, localFileLinks]
   const previewPlugins = [remarkGfm, chatPreview, localFileLinks]
-  const Markdown = ({ content, preview, streaming }: MarkdownRendererProps) => {
+  const Markdown = ({ content, preview }: MarkdownRendererProps) => {
     const evidence = useContext(EvidenceContext)
-    const components = streaming ? streamingComponents : fullComponents
     const images = useMemo(() => {
       if (!evidence) return []
       const tree = unified().use(remarkParse).use(remarkGfm).parse(protectDiffFences(content)) as EvidenceNode
@@ -168,7 +172,7 @@ const LazyMarkdown = lazy(async () => {
           skipHtml
           urlTransform={(url, key) => (key === "href" && localFilePath(url) ? url : defaultUrlTransform(url))}
           remarkPlugins={preview ? previewPlugins : fullPlugins}
-          components={preview ? previewComponents : components}
+          components={preview ? previewComponents : fullComponents}
         >
           {protectDiffFences(content)}
         </ReactMarkdown>
@@ -232,6 +236,8 @@ const ShikiCode = ({
     }
   }, [language, source, highlight, visibleOnly, visible])
 
+  const highlighted = html !== null && highlight
+
   return (
     <div className="markdown-code" ref={root}>
       <div className="markdown-code-header">
@@ -247,14 +253,15 @@ const ShikiCode = ({
           {copyState === "copied" ? "Código copiado" : copyState === "failed" ? "Não foi possível copiar o código" : ""}
         </span>
       </div>
-      {html && highlight ? (
-        // biome-ignore lint/security/noDangerouslySetInnerHtml: Shiki generates this markup from a code block, not user HTML.
-        <div className="markdown-highlight" dangerouslySetInnerHTML={{ __html: html }} />
-      ) : (
-        <pre>
+      <div className="markdown-code-body">
+        <pre aria-hidden={highlighted || undefined}>
           <code>{source}</code>
         </pre>
-      )}
+        {highlighted && (
+          // biome-ignore lint/security/noDangerouslySetInnerHtml: Shiki generates this markup from a code block, not user HTML.
+          <div className="markdown-highlight" dangerouslySetInnerHTML={{ __html: html }} />
+        )}
+      </div>
     </div>
   )
 }
@@ -270,18 +277,20 @@ export const MarkdownContent = ({
   const visibleOnly = !streaming && (content.length > 4000 || content.split("\n").length > 40)
 
   return (
-    <CodeVisibilityContext.Provider value={visibleOnly}>
-      <div className={`markdown-content${compact ? " markdown-compact" : ""}`}>
-        <Suspense fallback={<p className="whitespace-pre-wrap">{preview ? displayed.slice(0, 600) : displayed}</p>}>
-          {evidence ? (
-            <EvidenceContext.Provider value={evidence}>
+    <StreamingContext.Provider value={streaming}>
+      <CodeVisibilityContext.Provider value={visibleOnly}>
+        <div className={`markdown-content${compact ? " markdown-compact" : ""}`}>
+          <Suspense fallback={<p className="whitespace-pre-wrap">{preview ? displayed.slice(0, 600) : displayed}</p>}>
+            {evidence ? (
+              <EvidenceContext.Provider value={evidence}>
+                <LazyMarkdown content={displayed} preview={preview} streaming={streaming} />
+              </EvidenceContext.Provider>
+            ) : (
               <LazyMarkdown content={displayed} preview={preview} streaming={streaming} />
-            </EvidenceContext.Provider>
-          ) : (
-            <LazyMarkdown content={displayed} preview={preview} streaming={streaming} />
-          )}
-        </Suspense>
-      </div>
-    </CodeVisibilityContext.Provider>
+            )}
+          </Suspense>
+        </div>
+      </CodeVisibilityContext.Provider>
+    </StreamingContext.Provider>
   )
 }
