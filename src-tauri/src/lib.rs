@@ -15,6 +15,7 @@ pub mod provider_login_pty;
 mod reports;
 pub mod secret_card;
 pub mod server_mode;
+mod shell_runtime;
 pub mod sidecar;
 pub mod single_instance;
 pub mod window_config;
@@ -474,6 +475,9 @@ fn start_local_runtime(app: &tauri::App<Wry>) -> Result<(), Box<dyn std::error::
 }
 
 pub fn run() {
+    let runtime = shell_runtime::get_runtime().expect("create shell async runtime");
+    tauri::async_runtime::set(runtime.handle().clone());
+
     tauri::Builder::default()
         .manage(AppState::default())
         .manage(deep_link::PendingLinks::default())
