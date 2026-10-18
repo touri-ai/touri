@@ -132,7 +132,7 @@ const makeDeferredGroupEngine = (kernel: Kernel, runningBotId: string) => {
   }
   kernel.services.provide("runtime.shutdown", async () => {
     const active = persistence.listActiveRuns().filter((run) => run.botId === runningBotId)
-    for (const run of active) cancel(run.id)
+    active.forEach((run) => cancel(run.id))
     released.resolve()
     if (active.length) await completed
   })
@@ -166,7 +166,8 @@ const makeDeferredGroupEngine = (kernel: Kernel, runningBotId: string) => {
   return { enqueue, cancel, started: started.promise, canceled: canceled.promise, completed, release: released.resolve }
 }
 
-for (const member of ["owner", "participant"] as const)
+const groupMembers = ["owner", "participant"] as const
+groupMembers.forEach((member) => {
   test(`deleting an idle group ${member} preserves the shared conversation and clears cross-thread run references`, async () => {
     const f = await fixture()
     const history = await makeGroupHistory(f)
@@ -193,6 +194,7 @@ for (const member of ["owner", "participant"] as const)
     expect(history.groups.get(history.group.id)?.coordinatorBotId).toBe(member === "owner" ? null : remaining.id)
     expect(f.db.query("PRAGMA foreign_key_check").all()).toEqual([])
   })
+})
 
 test("deleting the last group member clears runs owned by a former member on its shared thread", async () => {
   const f = await fixture()

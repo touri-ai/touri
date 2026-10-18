@@ -77,7 +77,7 @@ const stopBotTasks = async (kernel: Kernel, botId: string) => {
     }[]
     return [run_id, ...children.map((child) => child.run_id)]
   })
-  for (const turn of turns) kernel.services.use("groups.runtime")?.cancel(turn.run_id)
+  turns.forEach((turn) => kernel.services.use("groups.runtime")?.cancel(turn.run_id))
   await kernel.services.use("runtime.cancelBotTurns")?.({ botId })
   await waitForStoppedRuns(kernel, runIds)
   await kernel.services.use("vm.desktop")?.closeBot(botId)
@@ -123,11 +123,11 @@ const publishBotDeletion = (
   groupIds: string[],
 ) => {
   kernel.publish({ type: "transcript.resync" })
-  for (const id of groupIds) {
+  groupIds.forEach((id) => {
     const group = groups.get(id)
     if (group) kernel.publish({ type: "group.updated", group })
-    for (const thread of groups.threads(id)) kernel.publish({ type: "thread.updated", thread })
-  }
+    groups.threads(id).forEach((thread) => kernel.publish({ type: "thread.updated", thread }))
+  })
   kernel.publish({ type: "bot.deleted", botId })
 }
 
@@ -156,8 +156,8 @@ const deleteBotData = (kernel: Kernel, botId: string) => {
       botId,
       botId,
     )
-    for (const table of ["send_journal", "messages_fts", "transcript_retention"])
-      db.query(`DELETE FROM ${table} WHERE thread_id IN (${threads})`).run(botId)
+    const threadTables = ["send_journal", "messages_fts", "transcript_retention"]
+    threadTables.forEach((table) => db.query(`DELETE FROM ${table} WHERE thread_id IN (${threads})`).run(botId))
     // Open the existing retention guard only inside this scoped transaction.
     db.query(
       "UPDATE transcript_maintenance SET delete_before_id = (SELECT COALESCE(MAX(id), 0) FROM transcript_entries) WHERE id = 1",
@@ -169,8 +169,8 @@ const deleteBotData = (kernel: Kernel, botId: string) => {
     ).run(botId)
     db.query("DELETE FROM notifications WHERE bot_id = ?").run(botId)
     db.query("DELETE FROM tool_calls WHERE bot_id = ?").run(botId)
-    for (const table of ["bot_mcp_servers", "cloud_runs", "cloud_machines"])
-      db.query(`DELETE FROM ${table} WHERE bot_id = ?`).run(botId)
+    const botTables = ["bot_mcp_servers", "cloud_runs", "cloud_machines"]
+    botTables.forEach((table) => db.query(`DELETE FROM ${table} WHERE bot_id = ?`).run(botId))
     db.query("DELETE FROM processes WHERE vm_bot_id = ?").run(botId)
     db.query("DELETE FROM browser_tabs WHERE owner_bot_id = ?").run(botId)
     db.query("DELETE FROM settings WHERE key = ?").run(`approval-grants:${botId}`)
@@ -214,8 +214,8 @@ const getBotAttachments = (db: Database, botId: string) => {
       "SELECT parts_json AS json FROM messages WHERE thread_id IN (SELECT id FROM threads WHERE bot_id=?) UNION ALL SELECT event_json AS json FROM transcript_entries WHERE thread_id IN (SELECT id FROM threads WHERE bot_id=?)",
     )
     .all(botId, botId) as { json: string }[]
-  for (const row of references) attachmentReferences(JSON.parse(row.json), attachments)
-  for (const row of botReplayRows(db, botId)) attachmentReferences(JSON.parse(row.event_json), attachments)
+  references.forEach((row) => attachmentReferences(JSON.parse(row.json), attachments))
+  botReplayRows(db, botId).forEach((row) => attachmentReferences(JSON.parse(row.event_json), attachments))
   return attachments
 }
 
@@ -249,7 +249,7 @@ const getBotFilePaths = (kernel: Kernel, botId: string) => {
 
 const deleteBotFiles = (kernel: Kernel, botId: string, paths: string[]) => {
   try {
-    for (const path of paths) removePrivateFile({ root: kernel.paths.appData, path })
+    paths.forEach((path) => removePrivateFile({ root: kernel.paths.appData, path }))
     removeBotHome(kernel, botId)
   } catch (cause) {
     throw new TouriError("TOURI-E2013", { cause })
