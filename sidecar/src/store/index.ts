@@ -43,6 +43,7 @@ import { externalizeMessageParts, OUTPUT_BLOB_ORIGIN, readOutputAttachment } fro
 import { isProfileProvider, validProviderProfileName } from "../kernel/provider-profiles"
 import { materializeTranscript } from "../kernel/transcript-storage"
 import { hostComputerSupported } from "../platform"
+import { getDefaultMaxConcurrentRuns } from "../runtime/concurrency"
 import { touriVersion } from "../version"
 import { DEFAULT_BOT_VM_MEMORY_MB, DEFAULT_MACHINE_IDLE_MINUTES, validBotVmMemory } from "../vm/resources"
 import { redeemFileGrant } from "./redeemFileGrant"
@@ -300,7 +301,7 @@ const settingsDefaults = (): AppSettings => ({
   cloud: process.env.TOURI_CLOUD_ENABLED === "1",
   cloudBaseUrl: process.env.TOURI_CLOUD_BASE_URL ?? "",
   cloudWebOrigin: process.env.TOURI_CLOUD_WEB_ORIGIN ?? "https://staging.touri.ai",
-  maxConcurrentRuns: 3,
+  maxConcurrentRuns: getDefaultMaxConcurrentRuns(process.env),
   defaultProvider: "codex",
   cloneRoot: join(homedir(), "touri-projects"),
   cliTelemetry: "off",

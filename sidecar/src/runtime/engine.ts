@@ -46,6 +46,7 @@ import { VmStageError, vmStage } from "../vm/stage"
 import { createClaudeAdapter } from "./claude/adapter"
 import { createCodexAdapter } from "./codex/adapter"
 import { COMMAND_OUTPUT_INTERVAL_MS, commandOutputTail } from "./command-output"
+import { getDefaultMaxConcurrentRuns } from "./concurrency"
 import {
   CONTINUATION_WINDOW_MS,
   type ContinuationReason,
@@ -284,7 +285,7 @@ export const createRuntimeEngine = ({
       1,
       configuredMaxConcurrentRuns ??
         kernel.services.use("store.settings")?.().maxConcurrentRuns ??
-        Number(environment?.TOURI_MAX_CONCURRENT_RUNS ?? process.env.TOURI_MAX_CONCURRENT_RUNS ?? 3),
+        getDefaultMaxConcurrentRuns(environment ?? process.env),
     )
   const routineTimeout = routineTimeoutMs ?? ((routine: Routine): number => routine.timeoutMinutes * 60_000)
 

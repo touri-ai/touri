@@ -563,7 +563,9 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
               runIds.has(run.id) ||
               (liveRuns.current.get(run.id) ?? 0) > runsAtStart,
           ),
-          mergeRunRows(activityResponse.runs, workResponse.runs),
+          mergeRunRows(activityResponse.runs, workResponse.runs).filter(
+            (run) => (liveRuns.current.get(run.id) ?? 0) <= runsAtStart,
+          ),
         )
         const selectedBot = current.bots.find((bot) => bot.id === current.selectedBotId) ?? current.bots[0]
         const selectedThread =
@@ -586,7 +588,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
           activityMessages: activityResponse.messages,
           workRuns: mergeRunRows(
             workResponse.runs,
-            current.workRuns.filter((run) => (liveRuns.current.get(run.id) ?? 0) > runsAtStart),
+            current.runs.filter((run) => run.origin && (liveRuns.current.get(run.id) ?? 0) > runsAtStart),
           ).filter((run) => ["queued", "starting", "running"].includes(run.status)),
           runs,
           projects: projectResponse.projects,

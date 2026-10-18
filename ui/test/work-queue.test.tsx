@@ -1,6 +1,7 @@
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, expect, it, vi } from "vitest"
 import App from "../src/App"
+import type { UiApi } from "../src/api/client"
 import { ActivityMark } from "../src/components/ActivityMark"
 import { getQueueLabel } from "../src/features/work/presentation"
 import { PerformanceScreen, WorkScreen } from "../src/features/work/WorkScreen"
@@ -37,6 +38,32 @@ it("lists every executing and queued turn, origins and engine positions, and ope
   expect(screen.getByText("Na fila · 1º de 1")).toBeVisible()
   fireEvent.click(screen.getByRole("button", { name: "Tarefa de organização" }))
   expect(await screen.findByRole("textbox", { name: "Mensagem para Organização" })).toBeVisible()
+  expect(screen.getByText("Na fila · 1º de 1")).toBeVisible()
+})
+
+it("keeps completion events newer than an in-flight global snapshot", async () => {
+  const api = createWorkApi()
+  let release = () => {}
+  const waiting = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const request: UiApi["request"] = async (route, input, path) => {
+    const response = await api.request(route, input, path)
+    if (route === "GET /runs") await waiting
+    return response
+  }
+  render(<App kernel={{ services: { api: { ...api, request } } }} />)
+  await screen.findByRole("button", { name: "Bots 5" })
+
+  act(() => {
+    api.finishFirst()
+    release()
+  })
+  await screen.findByRole("textbox", { name: "Mensagem para Planejamento" })
+  fireEvent.click(screen.getByRole("button", { name: "Avançado", exact: true }))
+  fireEvent.click(screen.getByRole("button", { name: "Trabalho", exact: true }))
+
+  await waitFor(() => expect(screen.getAllByRole("article")).toHaveLength(4))
   expect(screen.getByText("Na fila · 1º de 1")).toBeVisible()
 })
 
