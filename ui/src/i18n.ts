@@ -3,6 +3,8 @@ import { userFacingError } from "./errors"
 /** All UI copy lives here. pt-BR is the default; English is available for a future locale picker. */
 export type Locale = "pt-BR" | "en"
 export const ptBR = {
+  "Optional scheduling adjustment was denied; continuing with the existing thread policy.":
+    "O ajuste opcional de prioridade foi negado; o servidor continua com a prioridade atual.",
   "Dictate message": "Ditar mensagem",
   "Start dictation": "Iniciar ditado",
   "Stop dictation": "Gravando… Parar ditado",
@@ -2460,6 +2462,8 @@ export const ptBR = {
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  "Optional scheduling adjustment was denied; continuing with the existing thread policy.":
+    "Optional scheduling adjustment was denied; continuing with the existing thread policy.",
   "Dictate message": "Dictate message",
   "Start dictation": "Start dictation",
   "Stop dictation": "Recording… Stop dictation",
