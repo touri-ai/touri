@@ -6,8 +6,9 @@ import type { Bot, Kernel, ProjectInfo, Thread } from "@touri/contracts"
 import { PRIVATE_BOT_TOOLS } from "../groups/privacy"
 import { getDelegation } from "../groups/security"
 import { excludedBotFolders, folderGuestPath } from "../kernel/bot-folders"
-import { MEMORY_LIMITS, parseEntries, renderEntries } from "../learning/memory"
+import { MEMORY_LIMITS, memoryFile, parseEntries, renderEntries } from "../learning/memory"
 import { readLearning } from "../learning/settings"
+import { skillDescription } from "../learning/skills"
 import { mem0SessionAllowed } from "../mem0/session"
 import { bounded, sha256 } from "./utils"
 
@@ -19,6 +20,7 @@ const reviewedMemory = async (
   thread: Thread,
   memory: string,
   signal?: AbortSignal,
+  userProfile = "",
 ): Promise<string> => {
   const db = kernel.db as Database
   const key = `memory-trust:${bot.id}`
@@ -29,7 +31,7 @@ const reviewedMemory = async (
   } catch {
     /* Unreadable provenance requires review. */
   }
-  const hash = sha256(memory)
+  const hash = sha256(userProfile ? JSON.stringify({ memory, userProfile }) : memory)
   const raised = previous
     ? accessRank[bot.access] > accessRank[previous.access] || (previous.machine !== "local" && bot.machine === "local")
     : bot.access === "full"
@@ -48,7 +50,7 @@ const reviewedMemory = async (
         }),
         Date.now(),
       )
-  if (!previous && !memory) {
+  if (!previous && !memory && !userProfile) {
     save(false)
     return memory
   }
@@ -56,7 +58,7 @@ const reviewedMemory = async (
     // Persist quarantine before waiting. A denial, crash or canceled prompt must not
     // silently promote lower-trust content on the next turn.
     save(true)
-    if (!memory) return "MEMORY_REVIEW_REQUIRED: memory unavailable; review remains pending."
+    if (!memory && !userProfile) return "MEMORY_REVIEW_REQUIRED: memory unavailable; review remains pending."
     const present = kernel.services.use("approvals.present")
     const run = kernel.services.use("runtime.activeRun")?.({ threadId: thread.id })
     const current = () => {
@@ -74,7 +76,13 @@ const reviewedMemory = async (
           scope: { source: "mcp", tool: "memory_review" },
           toolName: "Revisar memória após aumento de acesso",
           // This is the complete bounded reference that will be used, bound to its digest.
-          input: { memory, hash, from: previous?.access ?? "read-only", to: bot.access },
+          input: {
+            memory,
+            ...(userProfile ? { userProfile } : {}),
+            hash,
+            from: previous?.access ?? "read-only",
+            to: bot.access,
+          },
           allowStanding: false,
           isCurrent: current,
         })
@@ -107,7 +115,7 @@ const skillsIndex = (homeDir: string): string => {
       .filter((entry) => entry.isDirectory() && !entry.name.startsWith("."))
       .map((entry) => {
         const source = readOptional(join(skillsDir, entry.name, "SKILL.md"))
-        const description = source.match(/^description:\s*(.+)$/m)?.[1]?.trim() ?? ""
+        const description = skillDescription(source.match(/^description:\s*(.+)$/m)?.[1]?.trim() ?? "")
         return `- ${entry.name}: ${description} (${join(skillsDir, entry.name, "SKILL.md")})`
       })
       .join("\n")
@@ -184,18 +192,33 @@ export const composeDeveloperInstructions = async ({
           ...(signal ? { signal } : {}),
         })
       : null
-  const rawMemory = (
-    grouped ? "" : vmMemory?.success ? vmMemory.stdout : guest ? "" : readOptional(join(bot.homeDir, "MEMORY.md"))
-  ).slice(0, 3_500)
-  const memory = grouped
-    ? "Group memory is limited to this group's shared conversation; private bot memory is unavailable."
-    : await reviewedMemory(kernel, bot, thread, rawMemory, signal)
-  // USER.md follows MEMORY.md: withheld in groups and while memory waits for review.
   const learning = readLearning(kernel, bot.id)
   const learnsMemory = learning.memory && !guest && bot.machine === "local"
+  const localReference = (target: "memory" | "user"): string => {
+    try {
+      return readOptional(memoryFile(bot.homeDir, target))
+    } catch {
+      return ""
+    }
+  }
+  const rawMemory = (
+    grouped
+      ? ""
+      : vmMemory?.success
+        ? vmMemory.stdout
+        : guest
+          ? ""
+          : learnsMemory
+            ? localReference("memory")
+            : readOptional(join(bot.homeDir, "MEMORY.md"))
+  ).slice(0, 3_500)
+  // Both references belong to the same approval snapshot, including USER.md alone.
+  const rawUserProfile = learnsMemory && !grouped ? localReference("user").slice(0, 2_000) : ""
+  const memory = grouped
+    ? "Group memory is limited to this group's shared conversation; private bot memory is unavailable."
+    : await reviewedMemory(kernel, bot, thread, rawMemory, signal, rawUserProfile)
   const quarantined = memory.startsWith("MEMORY_REVIEW_REQUIRED")
-  const userProfile =
-    learnsMemory && !grouped && !quarantined ? readOptional(join(bot.homeDir, "USER.md")).slice(0, 2_000) : ""
+  const userProfile = quarantined ? "" : rawUserProfile
   const usage = (target: "memory" | "user", text: string) =>
     ` [${renderEntries(parseEntries(text)).length}/${MEMORY_LIMITS[target]} chars]`
   const skills = grouped

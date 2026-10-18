@@ -35,14 +35,15 @@ export const ptBR = {
     "Para usar processos supervisionados e o Preview, vincule o projeto nas configurações do bot.",
   "Agendar esta tarefa": "Agendar esta tarefa",
   "Aprendizado contínuo": "Aprendizado contínuo",
+  "Carregando aprendizado…": "Carregando aprendizado…",
   Desligado: "Desligado",
-  "O bot guarda fatos que valem em toda conversa e registra procedimentos que se repetem como skills. As revisões automáticas rodam como turnos extras e usam a conta do provedor do bot.":
-    "O bot guarda fatos que valem em toda conversa e registra procedimentos que se repetem como skills. As revisões automáticas rodam como turnos extras e usam a conta do provedor do bot.",
+  "O bot guarda fatos que valem em toda conversa e registra procedimentos que se repetem como skills. As revisões automáticas rodam como turnos extras e usam a conta e as permissões atuais do bot.":
+    "O bot guarda fatos que valem em toda conversa e registra procedimentos que se repetem como skills. As revisões automáticas rodam como turnos extras e usam a conta e as permissões atuais do bot.",
   "Não foi possível carregar ou salvar o aprendizado. Tente novamente.":
     "Não foi possível carregar ou salvar o aprendizado. Tente novamente.",
   "Memória automática": "Memória automática",
-  "A cada {count} conversas, revisa o que aprendeu sobre você e o ambiente. MEMORY.md: {memory} · USER.md: {user} caracteres.":
-    "A cada {count} conversas, revisa o que aprendeu sobre você e o ambiente. MEMORY.md: {memory} · USER.md: {user} caracteres.",
+  "A cada {count} respostas concluídas, revisa o que aprendeu sobre você e o ambiente. MEMORY.md: {memory} · USER.md: {user} caracteres.":
+    "A cada {count} respostas concluídas, revisa o que aprendeu sobre você e o ambiente. MEMORY.md: {memory} · USER.md: {user} caracteres.",
   "Skills automáticas": "Skills automáticas",
   "Depois de {count} chamadas de ferramenta, propõe skills novas ou correções. {skills} skills salvas.":
     "Depois de {count} chamadas de ferramenta, propõe skills novas ou correções. {skills} skills salvas.",
@@ -2110,13 +2111,14 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Tentar de novo": "Try again",
   "Agendar esta tarefa": "Schedule this task",
   "Aprendizado contínuo": "Continuous learning",
+  "Carregando aprendizado…": "Loading learning settings…",
   Desligado: "Off",
-  "O bot guarda fatos que valem em toda conversa e registra procedimentos que se repetem como skills. As revisões automáticas rodam como turnos extras e usam a conta do provedor do bot.":
-    "The bot keeps facts that hold in every conversation and records repeating procedures as skills. Automatic reviews run as extra turns and use the bot's provider account.",
+  "O bot guarda fatos que valem em toda conversa e registra procedimentos que se repetem como skills. As revisões automáticas rodam como turnos extras e usam a conta e as permissões atuais do bot.":
+    "The bot keeps facts that hold in every conversation and records repeating procedures as skills. Automatic reviews run as extra turns and use the bot's provider account and current permissions.",
   "Não foi possível carregar ou salvar o aprendizado. Tente novamente.": "Couldn't load or save learning. Try again.",
   "Memória automática": "Automatic memory",
-  "A cada {count} conversas, revisa o que aprendeu sobre você e o ambiente. MEMORY.md: {memory} · USER.md: {user} caracteres.":
-    "Every {count} conversations, reviews what it learned about you and the environment. MEMORY.md: {memory} · USER.md: {user} characters.",
+  "A cada {count} respostas concluídas, revisa o que aprendeu sobre você e o ambiente. MEMORY.md: {memory} · USER.md: {user} caracteres.":
+    "Every {count} completed replies, reviews what it learned about you and the environment. MEMORY.md: {memory} · USER.md: {user} characters.",
   "Skills automáticas": "Automatic skills",
   "Depois de {count} chamadas de ferramenta, propõe skills novas ou correções. {skills} skills salvas.":
     "After {count} tool calls, proposes new skills or fixes. {skills} skills saved.",
