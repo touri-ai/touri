@@ -22,6 +22,7 @@ const moduleLoaders: Array<ModuleLoader> = [
   { path: "./vm/module.ts", load: () => import("./vm/module.js") },
   { path: "./mcp/index.ts", load: () => import("./mcp/index.js") },
   { path: "./projects/index.ts", load: () => import("./projects/index.js") },
+  { path: "./mem0/index.ts", load: () => import("./mem0/index.js") },
   { path: "./browser/index.ts", load: () => import("./browser/index.js") },
   { path: "./computer/index.ts", load: () => import("./computer/index.js") },
   { path: "./runtime/index.ts", load: () => import("./runtime/index.js") },

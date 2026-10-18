@@ -63,6 +63,34 @@
       "x-touri": { "group": "core", "mvp": true, "mutates": false, "internal": true, "providers": ["claude"] }
     },
     {
+      "name": "mem0_search",
+      "description": "Search this bot's Mem0 memories about the user. Only available when Mem0 is enabled for the bot.",
+      "inputSchema": { "type": "object", "required": ["query"], "additionalProperties": false,
+        "properties": { "query": { "type": "string", "minLength": 1, "maxLength": 2000 }, "top_k": { "type": "integer", "minimum": 1, "maximum": 20, "default": 8 } } },
+      "x-touri": { "group": "core", "mvp": true, "mutates": false }
+    },
+    {
+      "name": "mem0_add",
+      "description": "Store one durable fact about the user in Mem0, verbatim. Never store secrets.",
+      "inputSchema": { "type": "object", "required": ["content"], "additionalProperties": false,
+        "properties": { "content": { "type": "string", "minLength": 1, "maxLength": 2000 } } },
+      "x-touri": { "group": "core", "mvp": true, "mutates": true }
+    },
+    {
+      "name": "mem0_update",
+      "description": "Replace the text of one of this bot's Mem0 memories (id from mem0_search).",
+      "inputSchema": { "type": "object", "required": ["memory_id", "text"], "additionalProperties": false,
+        "properties": { "memory_id": { "type": "string", "minLength": 1, "maxLength": 128 }, "text": { "type": "string", "minLength": 1, "maxLength": 2000 } } },
+      "x-touri": { "group": "core", "mvp": true, "mutates": true }
+    },
+    {
+      "name": "mem0_delete",
+      "description": "Delete one of this bot's Mem0 memories (id from mem0_search).",
+      "inputSchema": { "type": "object", "required": ["memory_id"], "additionalProperties": false,
+        "properties": { "memory_id": { "type": "string", "minLength": 1, "maxLength": 128 } } },
+      "x-touri": { "group": "core", "mvp": true, "mutates": true }
+    },
+    {
       "name": "routine_list",
       "description": "List this bot's routines. Call before routine_create; update an existing routine instead of creating a duplicate.",
       "inputSchema": { "type": "object", "additionalProperties": false, "properties": {} },

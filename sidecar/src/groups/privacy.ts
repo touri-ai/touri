@@ -6,13 +6,17 @@ export const groupHistoryThread = (thread: Thread): string | null =>
   thread.groupId ? (thread.groupThreadId ?? thread.id) : null
 
 /**
- * Routines, memory and skills are private bot configuration written in direct chats;
- * a group session can neither read nor rewrite them.
+ * Routines, local and external memory, and skills are private to direct chats;
+ * group sessions can neither read nor rewrite them.
  */
 export const PRIVATE_BOT_TOOLS: ReadonlySet<string> = new Set([
   "routine_list",
   "routine_create",
   "routine_update",
+  "mem0_search",
+  "mem0_add",
+  "mem0_update",
+  "mem0_delete",
   "memory_write",
   "skill_create",
   "skill_patch",

@@ -18,6 +18,7 @@ import { BotAvatar } from "./BotAvatar"
 import { LearningCard } from "./LearningCard"
 import { MarkdownContent } from "./MarkdownContent"
 import { mcpPresets } from "./McpCatalog"
+import { Mem0Card } from "./Mem0Card"
 import { ScreenServerPolicies, useScreenConnections } from "./ScreenConnections"
 import { ScreenHeader, ScreenState } from "./ScreenPrimitives"
 import "./screens.css"
@@ -134,6 +135,11 @@ export const IntegrationsScreen = ({ api, botId, botName, onConfigure, modalOpen
               />
             )}
           </>
+        )}
+        {botId && (
+          <div className="screen-provider-grid">
+            <Mem0Card api={api} botId={botId} />
+          </div>
         )}
         <p className="screen-help">Prepare o login na máquina do bot. Em uma VM, arquivos e credenciais ficam na VM.</p>
         {botId && (

@@ -63,32 +63,6 @@ it.each(["ready", "idle", "host-available", "cancelled", "error", "vault-locked"
   },
 )
 
-it("recovers a waiting login after a temporary polling failure without a focus event", async () => {
-  vi.useFakeTimers()
-  const f = fixture("waiting")
-  const provider = f.api.getState().bots[0]?.provider
-  if (!provider) throw new Error("Missing provider fixture")
-  const hook = renderHook(() => useProviderLogin(f.api, "bot", provider, true, false))
-  await act(async () => {})
-  f.request.mockRejectedValueOnce(new Error("Temporary connection failure"))
-  await act(async () => {
-    await vi.advanceTimersByTimeAsync(1000)
-  })
-  expect(hook.result.current.error).toBeTruthy()
-  f.setFlow({ provider, state: "ready" })
-  await act(async () => {
-    await vi.advanceTimersByTimeAsync(1000)
-  })
-  expect(hook.result.current.flow?.state).toBe("ready")
-  expect(hook.result.current.error).toBeNull()
-  const reads = f.request.mock.calls.length
-  await act(async () => {
-    await vi.advanceTimersByTimeAsync(60_000)
-  })
-  expect(f.request).toHaveBeenCalledTimes(reads)
-  hook.unmount()
-})
-
 it("starts OAuth automatically, polls the device code and cancels without restarting", async () => {
   const f = fixture()
   render(<ProviderLogin api={f.api} botId="bot" provider="codex" onConfigured={vi.fn()} />)
@@ -115,6 +89,79 @@ it("starts OAuth automatically, polls the device code and cancels without restar
     await vi.advanceTimersByTimeAsync(2000)
   })
   expect(f.request.mock.calls.filter(([, input]) => input.action === "start")).toHaveLength(starts.length)
+})
+
+it.each([true, false])(
+  "recovers a pending login after a rejected status read and stops polling when ready (autoStart: %s)",
+  async (autoStart) => {
+    vi.useFakeTimers()
+    const f = fixture(autoStart ? "idle" : "waiting")
+    const request = f.api.request
+    let reads = 0
+    let rejectNextRead = false
+    f.api.request = (async (route, input, path) => {
+      if (route === "GET /bots/:id/provider-login/flow") {
+        reads++
+        if (rejectNextRead) {
+          rejectNextRead = false
+          throw new Error("temporary connection failure")
+        }
+      }
+      return request(route, input, path)
+    }) as ApiRequest
+    const { result } = renderHook(() => useProviderLogin(f.api, "bot", "codex", true, autoStart))
+    await act(async () => {})
+    expect(result.current.flow?.state).toBe("waiting")
+    const initialReads = reads
+    rejectNextRead = true
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000)
+    })
+    expect(reads).toBe(initialReads + 1)
+    expect(result.current.flow?.state).toBe("waiting")
+    expect(result.current.blocked).toBe(true)
+    expect(result.current.error).not.toBeNull()
+
+    f.setFlow({ provider: "codex", state: "ready" })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000)
+    })
+    expect(reads).toBe(initialReads + 2)
+    expect(result.current.flow?.state).toBe("ready")
+    expect(result.current.blocked).toBe(false)
+    expect(result.current.error).toBeNull()
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000)
+    })
+    expect(reads).toBe(initialReads + 2)
+  },
+)
+
+it.each(["focus", "online"] as const)("refreshes a quiet login on %s without restarting it", async (event) => {
+  vi.useFakeTimers()
+  const f = fixture("cancelled")
+  const hook = renderHook(() => useProviderLogin(f.api, "bot", "codex", true, false))
+  await act(async () => {})
+  const reads = () => f.request.mock.calls.filter(([route]) => route === "GET /bots/:id/provider-login/flow").length
+  expect(reads()).toBe(1)
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(60_000)
+  })
+  expect(reads()).toBe(1)
+  f.setFlow({ provider: "codex", state: "ready" })
+  await act(async () => {
+    window.dispatchEvent(new Event(event))
+  })
+  expect(hook.result.current.flow?.state).toBe("ready")
+  expect(reads()).toBe(2)
+  expect(f.request.mock.calls.some(([route]) => route === "POST /bots/:id/provider-login/flow")).toBe(false)
+  hook.unmount()
+  await act(async () => {
+    window.dispatchEvent(new Event(event))
+  })
+  expect(reads()).toBe(2)
 })
 
 it("stops retrying a temporary login failure after its view closes", async () => {
@@ -610,6 +657,7 @@ it.each(["edit", "conversation"] as const)(
     if (change === "edit") fireEvent.change(screen.getByRole("textbox"), { target: { value: "Outro rascunho" } })
     else view.rerender(<Harness threadId="second-thread" />)
     f.setFlow({ provider: bot.provider, state: "ready" })
+    fireEvent.focus(window)
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1000)
     })

@@ -36,6 +36,7 @@ import { providerProfileEnv } from "../kernel/provider-profiles"
 import { redactStructured } from "../kernel/redact"
 import { attachedServers, resolveAttachedMcp } from "../mcp/attached"
 import { reapOrphanShims } from "../mcp/shim-registry"
+import { mem0SessionAllowed } from "../mem0/session"
 import { resolveMcpEndpoint } from "../platform/transport"
 import { prepareLocalProviderLogin } from "../vm/local-provider-login"
 import { ProviderLoginError } from "../vm/provider-login"
@@ -919,7 +920,29 @@ export const createRuntimeEngine = ({
     const carryover = thread.carryoverNote
     if (carryover) store.updateThread({ threadId: thread.id, patch: { carryoverNote: null } })
     const toolSummary = tools.summary(store, thread.id, request?.id)
-    const inputText = [carryover, toolSummary, requestText].filter(Boolean).join("\n\n")
+    // Optional Mem0 recall rides on this turn's input only: the stored message stays as the user wrote it.
+    // Private memories never reach group or delegated sessions, routines, retries or continuations.
+    const mem0 = kernel.services.use("mem0.api")
+    const remembers =
+      !!mem0 &&
+      !!request &&
+      request.role === "user" &&
+      !resumedFrom &&
+      run.trigger === "user" &&
+      mem0SessionAllowed(kernel, thread.id) &&
+      bot.machine !== "cloud" &&
+      mem0.enabled(bot.id)
+    let recalled: string | null = null
+    if (remembers && request) {
+      const recallController = new AbortController()
+      controllers.set(run.id, recallController)
+      try {
+        recalled = await mem0.recall({ botId: bot.id, query: request.text, signal: recallController.signal })
+      } finally {
+        controllers.delete(run.id)
+      }
+    }
+    const inputText = [recalled, carryover, toolSummary, requestText].filter(Boolean).join("\n\n")
     const requestParts = unacceptedRequest
       ? [...unacceptedRequest.parts, ...(request?.parts ?? [])]
       : ((originalRequest ?? request)?.parts ?? [])
@@ -1271,6 +1294,8 @@ export const createRuntimeEngine = ({
           })
           if (plan) scheduleContinuation({ run, plan })
           else {
+            if (remembers && request)
+              mem0?.sync({ botId: bot.id, threadId: thread.id, userText: request.text, assistantText: state.text })
             finishRoutineRun({ run, state, status: "succeeded" })
             notices.done({ botId: run.botId, threadId: run.threadId, summary: state.text })
           }
@@ -1708,6 +1733,7 @@ export const createRuntimeEngine = ({
     if (!run) return { success: false, errorCode: "NOT_FOUND", error: "Run not found" }
     if (!["queued", "starting", "running"].includes(run.status)) return { success: true, run }
     if (run.status === "queued") {
+      controllers.get(id)?.abort()
       const store = kernel.services.use("store.api")
       const thread = store?.getThread({ threadId: run.threadId })
       if (store && thread) {

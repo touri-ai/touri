@@ -449,6 +449,25 @@ export type Routine = {
   updatedAt: EpochMs
 }
 
+export type Mem0Mode = 'platform' | 'server'
+
+/** Optional Mem0 memory provider for one bot. The API key itself is never returned, only whether one is saved. */
+export type Mem0Settings = {
+  enabled: boolean
+  mode: Mem0Mode
+  /** Base URL of a self-hosted Mem0 server; unused in platform mode. */
+  url: string
+  /** `user` shares facts about the owner across bots; `bot` keeps them to this bot. */
+  scope: 'user' | 'bot'
+  autoSync: boolean
+  topK: number
+  threshold: number
+  hasApiKey: boolean
+}
+
+/** `apiKey: null` removes the saved key. */
+export type Mem0SettingsPatch = Partial<Omit<Mem0Settings, 'hasApiKey'>> & { apiKey?: string | null }
+
 export type RoutineRunStatus = 'scheduled' | 'running' | 'succeeded' | 'failed' | 'skipped' | 'canceled'
 
 export type RoutineRun = {
@@ -871,6 +890,9 @@ export type ApiRoutes = {
   'POST /notifications/dismiss-all': { req: {}; res: { dismissed: number } }
   'POST /threads/:id/respond': { req: { requestId: string; behavior: RespondBehavior; message?: string }; res: {} }
   'POST /bots/:id/messages': { req: { text: string; threadId?: Id; sendId?: string }; res: { message: Message; run: Run } }
+  'GET /bots/:id/mem0': { req: {}; res: { settings: Mem0Settings } }
+  'PUT /bots/:id/mem0': { req: Mem0SettingsPatch; res: { settings: Mem0Settings } }
+  'POST /bots/:id/mem0/test': { req: {}; res: { ok: boolean; error?: string } }
   'GET /settings': { req: {}; res: { settings: AppSettings } }
   'PATCH /settings': { req: Partial<AppSettings>; res: { settings: AppSettings } }
 }
@@ -1172,6 +1194,15 @@ export type ServiceMap = {
     canCoordinate: (threadId: Id) => boolean
   }
   'vm.stopShells': () => void
+  'mem0.api': {
+    enabled: (botId: Id) => boolean
+    /** Static guidance for the developer instructions, or null when Mem0 is off for the bot. */
+    instructions: (botId: Id) => string | null
+    /** A fenced recalled-context block for this turn's input, or null. Never throws, waits at most ~3 s. */
+    recall: (args: { botId: Id; query: string; signal?: AbortSignal }) => Promise<string | null>
+    /** Fire and forget: stores the exchange when auto sync is on. */
+    sync: (args: { botId: Id; threadId: Id; userText: string; assistantText: string }) => void
+  }
   'approvals.present': (input: ApprovalInput) => Promise<ApprovalResult>
   'approvals.approve': (input: { approvalId: Id; decision: 'approved' | 'denied'; standing?: boolean; message?: string }) => Promise<Result<{}, 'NOT_FOUND'>>
   'approvals.settle': (input: { approvalId: Id; decision: 'denied' | 'expired' }) => void
