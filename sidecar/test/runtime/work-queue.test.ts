@@ -31,7 +31,7 @@ test("GET /runs exposes the global work snapshot", async () => {
   })
 
   expect(response.status).toBe(200)
-  expect(await response.json()).toEqual({ runs: [] })
+  expect(await response.json()).toEqual({ runs: [], draining: false })
 })
 
 test("five bots expose three executing turns and a live FIFO queue, then promote within one second", async () => {
