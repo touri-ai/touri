@@ -2206,6 +2206,7 @@ export const ptBR = {
   "Open agent URL": "Abrir no navegador do bot: {url}",
   "Bot preview": "Preview do projeto",
   Hoje: "Hoje",
+  "hoje às {time}": "hoje às {time}",
   Ontem: "Ontem",
   Função: "Função",
   "Título (opcional)": "Título (opcional)",
@@ -4153,6 +4154,7 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Sem novidades nesta execução": "Nothing new this run",
   "A rotina terminou e deixou o resultado nesta conversa.": "The routine finished and left the result here.",
   Hoje: "Today",
+  "hoje às {time}": "today at {time}",
   Ontem: "Yesterday",
   user: "You",
   assistant: "Assistant",
@@ -4351,6 +4353,15 @@ const isSameCalendarDate = (
   left: ReturnType<typeof getCalendarDateParts>,
   right: ReturnType<typeof getCalendarDateParts>,
 ): boolean => left.year === right.year && left.month === right.month && left.day === right.day
+
+export const getInterruptedTaskDateLabel = (timestamp: number, locale: Locale = "pt-BR", now = Date.now()): string => {
+  const date = new Date(timestamp)
+  if (getRoutineRunRelativeDay(timestamp, now) !== "Hoje")
+    return date.toLocaleDateString(locale, { dateStyle: "short" })
+
+  const time = getRoutineRunTimeLabel(timestamp, locale)
+  return t("hoje às {time}", { time }, locale)
+}
 
 /** Localize auto-generated imported date titles; preserve arbitrary user titles. */
 export const threadTitle = (title: string, createdAt: number): string => {

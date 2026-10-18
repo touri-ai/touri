@@ -4,7 +4,7 @@ import { afterEach, expect, it, vi } from "vitest"
 import { createMockApi } from "../src/api/mock"
 import { VirtualMessageList } from "../src/components/ChatPanel"
 import { InterruptedTasks } from "../src/components/InterruptedTasks"
-import { dictionaries } from "../src/i18n"
+import { dictionaries, getInterruptedTaskDateLabel } from "../src/i18n"
 import { pendingNotifications } from "../src/sidebarAttention"
 import { RecoveryTasksContext, useRecoveryTasks } from "../src/useRecoveryTasks"
 
@@ -69,6 +69,38 @@ it("requires acknowledgement for uncertain effects without a backend key", async
 
   expect(screen.queryByRole("checkbox")).not.toBeInTheDocument()
   expect(screen.getByRole("button", { name: "Descartar" })).toBeEnabled()
+})
+
+it("shows a short local date or a minute-only label for interrupted tasks", async () => {
+  vi.useFakeTimers()
+  const now = new Date(2026, 9, 18, 12, 0)
+  vi.setSystemTime(now)
+
+  const api = createMockApi({ scenario: "interrupted-tasks" })
+  const { tasks } = await api.request("GET /recovery", {})
+  const task = tasks[0]
+  if (!task) throw new Error("Expected interrupted task")
+  const occurredAt = new Date(2026, 9, 18, 11, 28, 27).getTime()
+  const props = {
+    loading: false,
+    error: null,
+    onClose: vi.fn(),
+    onReview: vi.fn(),
+    onResume: vi.fn(),
+    onDismiss: vi.fn(),
+  }
+  const view = render(<InterruptedTasks {...props} tasks={[{ ...task, occurredAt }]} />)
+
+  expect(screen.getByText("hoje às 11:28", { selector: "time" })).toHaveAttribute(
+    "dateTime",
+    new Date(occurredAt).toISOString(),
+  )
+  expect(getInterruptedTaskDateLabel(occurredAt, "en", Date.now())).toBe("today at 11:28 AM")
+
+  const yesterday = new Date(2026, 9, 17, 11, 28, 27).getTime()
+  view.rerender(<InterruptedTasks {...props} tasks={[{ ...task, occurredAt: yesterday }]} />)
+
+  expect(screen.getByText("17/10/2026", { selector: "time" })).toBeVisible()
 })
 
 it("bell dismissal reconciles the center immediately and retains resolved history", async () => {
