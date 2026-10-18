@@ -5,6 +5,7 @@ import type {
   Id,
   Message,
   NotificationRecord,
+  Routine,
   RoutineRun,
   Run,
   Thread,
@@ -22,7 +23,7 @@ import {
   reconcileFailureNotifications,
   relativeThreadDate,
 } from "../sidebarAttention"
-import { getSidebarThreads } from "../sidebarThreads"
+import { getSidebarDataByBot, getSidebarThreads } from "../sidebarThreads"
 import { getSidebarThreadTitle } from "../sidebarThreadTitle"
 import { useMascotSnapshot } from "./AvatarRuntime"
 import { BotActionsMenu } from "./BotActionsMenu"
@@ -51,6 +52,7 @@ type SidebarProps = {
   messages: Array<Message>
   runs?: Array<Run>
   routineRuns?: Array<RoutineRun>
+  routines?: Array<Routine>
   /** Float bots with updates to the top (settings: "Mover bots com novidades para o topo"). Default on. */
   floatUpdates?: boolean
   selectedBotId: Id | null
@@ -97,6 +99,14 @@ const SidebarIcon = ({ children }: { children: ReactNode }) => (
 )
 
 export const Sidebar = (props: SidebarProps) => {
+  const sidebarDataByBot = useMemo(
+    () => getSidebarDataByBot(props.threads, props.routineRuns ?? []),
+    [props.threads, props.routineRuns],
+  )
+  const routineIds = useMemo(
+    () => props.routines && new Set(props.routines.map((routine) => routine.id)),
+    [props.routines],
+  )
   const openRoutineHistory = props.onRoutineHistory ?? props.onRoutines
   const selectedRoutineThreadId = props.threads.find(
     (thread) => thread.id === props.selectedThreadId && thread.kind === "routine",
@@ -210,8 +220,9 @@ export const Sidebar = (props: SidebarProps) => {
                   activity={ordered.activity.get(bot.id) ?? null}
                   onHold={ordered.hold}
                   insertedThreads={insertedThreads}
-                  threads={props.threads.filter((thread) => thread.botId === bot.id)}
-                  routineRuns={props.routineRuns ?? []}
+                  threads={sidebarDataByBot.get(bot.id)?.threads ?? []}
+                  routineRuns={sidebarDataByBot.get(bot.id)?.routineRuns ?? []}
+                  routineIds={routineIds}
                   messages={messages}
                   attention={attention.filter((item) => item.botId === bot.id)}
                   notifications={notifications}
@@ -316,6 +327,7 @@ const BotEntry = ({
   onHold,
   threads,
   routineRuns,
+  routineIds,
   messages,
   attention,
   notifications,
@@ -339,6 +351,7 @@ const BotEntry = ({
   insertedThreads: ReadonlySet<string>
   threads: Array<Thread>
   routineRuns: Array<RoutineRun>
+  routineIds?: ReadonlySet<string>
   messages: Array<Message>
   attention: Array<NotificationRecord>
   notifications: Array<NotificationRecord>
@@ -435,13 +448,17 @@ const BotEntry = ({
   // A dismissed or superseded failure must not keep the sidebar mascot in an error pose.
   const avatarState = snapshot.state === "error" && !failed ? "idle" : undefined
   const activityKind = activity?.kind ?? null
-  const runningThreadIds = new Set(
-    messages.filter((message) => message.status === "streaming").map((message) => message.threadId),
+  const runningThreadIds = useMemo(
+    () => new Set(messages.filter((message) => message.status === "streaming").map((message) => message.threadId)),
+    [messages],
   )
-  const sidebarThreads = expanded ? getSidebarThreads(threads, routineRuns, selectedThreadId, runningThreadIds) : []
-  const routineIds = sidebarThreads.flatMap(({ routineRun }) => (routineRun ? [routineRun.routineId] : []))
+  const sidebarThreads = useMemo(
+    () => (expanded ? getSidebarThreads(threads, routineRuns, selectedThreadId, runningThreadIds, routineIds) : []),
+    [expanded, threads, routineRuns, selectedThreadId, runningThreadIds, routineIds],
+  )
+  const visibleRoutineIds = sidebarThreads.flatMap(({ routineRun }) => (routineRun ? [routineRun.routineId] : []))
   const selectedRoutineId = sidebarThreads.find(({ thread }) => thread.id === selectedThreadId)?.routineRun?.routineId
-  const historyRoutineId = selectedRoutineId ?? (routineIds.length === 1 ? routineIds[0] : undefined)
+  const historyRoutineId = selectedRoutineId ?? (visibleRoutineIds.length === 1 ? visibleRoutineIds[0] : undefined)
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: hover and focus only pause reordering; they trigger no action
     <div
@@ -542,11 +559,12 @@ const BotEntry = ({
       {deleting && onDelete && <DeleteBotDialog bot={bot} onDelete={onDelete} onClose={() => setDeleting(false)} />}
       {expanded && (
         <section className="bot-thread-tree" aria-label={t("Conversations for {name}", { name: bot.name })}>
-          {sidebarThreads.map(({ thread, routineRun, running, unread }) => (
+          {sidebarThreads.map(({ thread, routineRun, running, unread, deletedRoutine }) => (
             <ThreadRow
               key={thread.id}
               inserted={insertedThreads.has(thread.id)}
               thread={thread}
+              deletedRoutine={deletedRoutine}
               dateLabel={
                 thread.kind === "routine"
                   ? getRoutineRunDateLabel(routineRun?.scheduledFor ?? thread.createdAt)
@@ -578,6 +596,7 @@ const BotEntry = ({
 const ThreadRow = ({
   inserted,
   thread,
+  deletedRoutine,
   dateLabel,
   unread,
   selected,
@@ -585,6 +604,7 @@ const ThreadRow = ({
   onClick,
 }: {
   thread: Thread
+  deletedRoutine: boolean
   dateLabel: string
   unread: number
   inserted: boolean
@@ -592,7 +612,7 @@ const ThreadRow = ({
   running: boolean
   onClick: () => void
 }) => {
-  const title = getSidebarThreadTitle(thread)
+  const title = deletedRoutine ? t("Deleted routine") : getSidebarThreadTitle(thread)
 
   return (
     <button

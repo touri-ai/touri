@@ -962,6 +962,7 @@ const AppContent = ({ kernel }: AppProps) => {
             messages={data.activityMessages}
             runs={data.runs}
             routineRuns={data.routineRuns}
+            routines={data.routines}
             floatUpdates={data.settings?.sidebarFloatUpdates ?? true}
             selectedBotId={selectedBot?.id ?? null}
             selectedThreadId={selectedThread?.id ?? null}
@@ -974,7 +975,7 @@ const AppContent = ({ kernel }: AppProps) => {
             onProject={() => openModal("project")}
             onImport={() => openModal("import")}
             onSelect={actions.selectBot}
-            onSelectThread={actions.selectThread}
+            onSelectThread={(threadId) => actions.selectThread(threadId, { readRoutineGroup: true })}
             onReviewApproval={reviewApproval}
             onNewThread={() => void actions.createThread()}
             onNewBot={() => openModal("bot")}

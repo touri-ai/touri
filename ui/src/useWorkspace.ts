@@ -41,6 +41,7 @@ import { localizeNotice, t } from "./i18n"
 import { localResponseTimings } from "./localResponseTimings"
 import { useMachineParking } from "./machineIntents"
 import { reconcileFailureNotifications } from "./sidebarAttention"
+import { getSidebarReadThreadIds } from "./sidebarThreads"
 import { activitySummary, retainActivity, retainRuns, TranscriptBuffer, updateActivityStream } from "./workspaceMemory"
 import { readWorkspaceState, saveWorkspaceState } from "./workspaceState"
 
@@ -85,7 +86,7 @@ export type WorkspaceActions = {
   refresh: () => Promise<void>
   refreshDoctor: () => Promise<void>
   selectBot: (botId: Id) => void
-  selectThread: (threadId: Id) => void
+  selectThread: (threadId: Id, options?: { readRoutineGroup: boolean }) => void
   createGroup: (input: GroupInput, id?: string) => Promise<void>
   createGroupThread: (id: string) => Promise<void>
   createThread: () => Promise<void>
@@ -1003,15 +1004,26 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
   )
 
   const selectThread = useCallback(
-    (threadId: Id): void => {
-      setData((current) => ({
-        ...current,
-        selectedBotId: current.threads.find((thread) => thread.id === threadId)?.botId ?? current.selectedBotId,
-        selectedThreadId: threadId,
-        threadCreation: null,
-        composerKey: null,
-        threads: current.threads.map((thread) => (thread.id === threadId ? { ...thread, unread: 0 } : thread)),
-      }))
+    (threadId: Id, options?: { readRoutineGroup: boolean }): void => {
+      setData((current) => {
+        const readIds = options?.readRoutineGroup
+          ? getSidebarReadThreadIds(
+              current.threads,
+              current.routineRuns,
+              threadId,
+              new Set(current.routines.map((routine) => routine.id)),
+            )
+          : new Set([threadId])
+
+        return {
+          ...current,
+          selectedBotId: current.threads.find((thread) => thread.id === threadId)?.botId ?? current.selectedBotId,
+          selectedThreadId: threadId,
+          threadCreation: null,
+          composerKey: null,
+          threads: current.threads.map((thread) => (readIds.has(thread.id) ? { ...thread, unread: 0 } : thread)),
+        }
+      })
     },
     [setData],
   )

@@ -6,6 +6,47 @@ for (const [name, width, height] of [
   ["desktop", 1440, 900],
   ["phone", 390, 844],
 ] as const) {
+  test(`routine sidebar: ${name} clears grouped unread runs with one click`, async ({ page }) => {
+    await page.setViewportSize({ width, height })
+    await page.emulateMedia({ reducedMotion: "reduce" })
+    await page.goto("/test/e2e/routine-sidebar-harness.html?unread")
+    await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
+    if (name === "phone") await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
+    const conversations = page.getByRole("region", { name: "Conversas de mark" })
+    const routine = conversations.getByRole("button", { name: /Resumo diário/ })
+    const directory = process.env.TOURI_ROUTINE_SIDEBAR_SHOTS_DIR
+
+    await expect(routine.locator(".sidebar-unread")).toHaveText("8")
+    if (directory) await page.screenshot({ path: `${directory}/unread-group-${name}.png`, animations: "disabled" })
+    await routine.click()
+    await expect(page.locator(".message-assistant")).toContainText("Resumo pronto para conferir.")
+    if (name === "phone") await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
+
+    await expect(routine.locator(".sidebar-unread")).toHaveCount(0)
+    await expect(page.locator(".thread-row.selected")).toContainText("14:45")
+    if (directory) await page.screenshot({ path: `${directory}/read-group-${name}.png`, animations: "disabled" })
+  })
+
+  test(`routine sidebar: ${name} keeps deleted routine conversations grouped`, async ({ page }) => {
+    await page.setViewportSize({ width, height })
+    await page.emulateMedia({ reducedMotion: "reduce" })
+    await page.goto("/test/e2e/routine-sidebar-harness.html?deleted&unread")
+    await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
+    if (name === "phone") await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
+    const conversations = page.getByRole("region", { name: "Conversas de mark" })
+    const routine = conversations.getByRole("button", { name: /Rotina excluída/ })
+
+    await expect(conversations.locator(".thread-row")).toHaveCount(2)
+    await expect(routine.locator(".sidebar-unread")).toHaveText("8")
+    await routine.click()
+    await expect(page.locator(".message-assistant")).toContainText("Resumo pronto para conferir.")
+    if (name === "phone") await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
+
+    await expect(routine.locator(".sidebar-unread")).toHaveCount(0)
+    const directory = process.env.TOURI_ROUTINE_SIDEBAR_SHOTS_DIR
+    if (directory) await page.screenshot({ path: `${directory}/deleted-group-${name}.png`, animations: "disabled" })
+  })
+
   test(`routine sidebar: ${name} groups runs and opens history`, async ({ page }) => {
     await page.setViewportSize({ width, height })
     await page.emulateMedia({ reducedMotion: "reduce" })

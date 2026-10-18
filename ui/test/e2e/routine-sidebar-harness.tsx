@@ -8,6 +8,10 @@ initializeTheme()
 const params = new URLSearchParams(window.location.search)
 const requestedRuns = Number(params.get("runs"))
 const runCount = [28, 60, 128].includes(requestedRuns) ? requestedRuns : 28
-const { api } = await getRoutineSidebarFixture(runCount, { withOtherRoutines: params.has("otherRoutines") })
+const { api } = await getRoutineSidebarFixture(runCount, {
+  withOtherRoutines: params.has("otherRoutines"),
+  unreadRuns: params.has("unread") ? 8 : 0,
+  withoutRoutineMetadata: params.has("deleted"),
+})
 const root = document.getElementById("root")
 if (root) createRoot(root).render(<App kernel={{ services: { api } }} />)

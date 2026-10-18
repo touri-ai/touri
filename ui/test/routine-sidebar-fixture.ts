@@ -1,7 +1,10 @@
 import type { Message, RoutineRun, Thread } from "@touri/contracts"
 import { createMockApi } from "../src/api/mock"
 
-export const getRoutineSidebarFixture = async (runCount = 28, { withOtherRoutines = false } = {}) => {
+export const getRoutineSidebarFixture = async (
+  runCount = 28,
+  { withOtherRoutines = false, unreadRuns = 0, withoutRoutineMetadata = false } = {},
+) => {
   const api = createMockApi()
   const state = api.getState()
   const baseThread = state.threads.find((thread) => thread.id === "thread-mark")
@@ -25,7 +28,7 @@ export const getRoutineSidebarFixture = async (runCount = 28, { withOtherRoutine
   ]
   const threads: Thread[] = [
     { ...baseThread, title: "Planejamento da semana", updatedAt: new Date(2026, 9, 18, 7).getTime() },
-    ...routineRuns.map((run) => ({
+    ...routineRuns.map((run, index) => ({
       ...baseThread,
       botId: fixtureRoutines.find((routine) => routine.id === run.routineId)?.botId ?? baseThread.botId,
       id: run.threadId ?? run.id,
@@ -34,7 +37,7 @@ export const getRoutineSidebarFixture = async (runCount = 28, { withOtherRoutine
       routineRunId: run.id,
       createdAt: run.scheduledFor,
       updatedAt: run.finishedAt ?? run.scheduledFor,
-      unread: 0,
+      unread: index < unreadRuns ? 1 : 0,
       activeLeafId: `sidebar-message-${run.id}`,
     })),
   ]
@@ -51,8 +54,9 @@ export const getRoutineSidebarFixture = async (runCount = 28, { withOtherRoutine
     updatedAt: run.finishedAt ?? run.scheduledFor,
   }))
   const request: typeof api.request = async (route, input, path) => {
-    if (route === "GET /routines") return { routines: fixtureRoutines, host: "mac" } as never
-    if (route === "GET /routine-runs") return { routineRuns } as never
+    if (route === "GET /routines")
+      return { routines: withoutRoutineMetadata ? [] : fixtureRoutines, host: "mac" } as never
+    if (route === "GET /routine-runs") return { routineRuns: withoutRoutineMetadata ? [] : routineRuns } as never
     if (route === "GET /bots/:id/threads" && fixtureRoutines.some((routine) => routine.botId === path?.id))
       return { threads: threads.filter((thread) => thread.botId === path?.id) } as never
     if (route === "GET /threads/:id/messages" && threads.some((thread) => thread.id === path?.id))
