@@ -579,7 +579,7 @@ test("search finds an older message in an unopened thread without loading its hi
   render(<App kernel={{ services: { api } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
   fireEvent.click(screen.getByRole("button", { name: "Buscar conversas" }))
-  fireEvent.change(screen.getByRole("combobox"), { target: { value: "Needle" } })
+  fireEvent.change(await screen.findByRole("combobox"), { target: { value: "Needle" } })
   expect(await screen.findByText("Needle archive")).toBeVisible()
   expect(api.calls.some((call) => call.route === "GET /search")).toBe(true)
   expect(

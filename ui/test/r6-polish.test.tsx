@@ -432,7 +432,7 @@ describe("R6: integrações e Preview/Logs", () => {
     fireEvent.click(screen.getByRole("button", { name: "Avançado", exact: true }))
     fireEvent.click(screen.getByRole("button", { name: /Integrações/ }))
     await act(async () => fireEvent.click(screen.getByRole("button", { name: `Configurar MCP de ${name}` })))
-    const mcp = screen.getByRole("region", { name: "Servidores MCP deste bot" })
+    const mcp = await screen.findByRole("region", { name: "Servidores MCP deste bot" })
     expect(reveal.mock.contexts).toContain(mcp)
     expect(mcp).toHaveFocus()
     expect(api.calls.some((call) => call.route === "GET /bots/:id/mcp" && call.pathValues.id === botId)).toBe(true)

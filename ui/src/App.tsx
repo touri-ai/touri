@@ -387,6 +387,11 @@ const AppContent = ({ kernel }: AppProps) => {
 
   useEffect(() => {
     const handler = (event: KeyboardEvent): void => {
+      // Closing remains available before the search module finishes loading.
+      if (event.key === "Escape") {
+        setSearchOpen(false)
+        return
+      }
       if (!isPaletteShortcut(event) || event.repeat) return
       event.preventDefault()
       // Dialogs (including approval confirmations) own the keyboard; the palette never opens over them.

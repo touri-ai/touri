@@ -144,7 +144,7 @@ describe("r3 P2 chat and navigation", () => {
     render(<App kernel={{ services: { api } }} />)
     await screen.findByRole("textbox", { name: "Mensagem para mark" })
     fireEvent.keyDown(window, { key: "k", metaKey: true })
-    const input = screen.getByRole("combobox", { name: "Buscar bots, conversas e configurações" })
+    const input = await screen.findByRole("combobox", { name: "Buscar bots, conversas e configurações" })
     expect(input).toHaveFocus()
     fireEvent.click(input)
     expect(input).toBeVisible()
