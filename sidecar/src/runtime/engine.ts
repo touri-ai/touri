@@ -303,6 +303,22 @@ export const createRuntimeEngine = ({
   const getRunOrigin = (run: Run): NonNullable<Run["origin"]> => {
     if (run.origin) return run.origin
     if (continuations.link(run.id)) return "resume"
+    if (!run.requestMessageId) return run.trigger === "routine" ? "routine" : "message"
+    const stored =
+      kernel.db instanceof Database
+        ? (kernel.db
+            .query(`
+      SELECT sender_json IS NOT NULL AS delegated,
+        EXISTS(SELECT 1 FROM json_each(parts_json)
+          WHERE json_extract(value, '$.type') = 'notice'
+            AND json_extract(value, '$.code') = 'run_resumed') AS resumed
+      FROM messages WHERE id = ? AND thread_id = ?
+    `)
+            .get(run.requestMessageId, run.threadId) as { delegated: number; resumed: number } | null)
+        : null
+    if (stored?.resumed) return "resume"
+    if (stored?.delegated) return "delegation"
+    if (stored) return run.trigger === "routine" ? "routine" : "message"
     const request = kernel.services
       .use("store.api")
       ?.activePath({

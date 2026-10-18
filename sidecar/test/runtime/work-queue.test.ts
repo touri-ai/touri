@@ -111,6 +111,27 @@ test("saving concurrency drains immediately, lowering it lets current work finis
   expect(persisted?.maxConcurrentRuns).toBe(1)
 })
 
+test("work snapshots read request origins without loading conversation histories", async () => {
+  const fixture = await getFixture()
+  fixture.sendFive()
+  await waitFor(() => fixture.getRunning().length === 3)
+  const store = fixture.runtime.kernel.services.use("store.api")
+  if (!store) throw new Error("Store unavailable")
+  let historyReads = 0
+  fixture.runtime.kernel.services.provide("store.api", {
+    ...store,
+    activePath: (args) => {
+      historyReads += 1
+      return store.activePath(args)
+    },
+  })
+
+  const snapshot = fixture.engine.getWorkRuns()
+
+  expect(snapshot).toHaveLength(5)
+  expect(historyReads).toBe(0)
+})
+
 test("queue positions include turns behind a busy conversation while other conversations can start", async () => {
   const fixture = await getFixture()
   fixture.send("thread-0")
