@@ -265,7 +265,106 @@ const defaultDoctor: DoctorReport = {
 }
 
 /** Optional demo states for screenshots and manual review, selected with `?mockScenario=` in the mock UI. */
-export type MockScenario = "resumed-turn"
+export type MockScenario = "resumed-turn" | "routine-conversation"
+
+export const getRoutineConversationFixture = (): {
+  thread: Thread
+  messages: Array<Message>
+  run: Run
+  routine: Routine
+  routineRun: RoutineRun
+} => {
+  const startedAt = Date.UTC(2026, 9, 17, 19, 4)
+  const finishedAt = startedAt + 35_000
+  const prompt = [
+    "Confira as mensagens recebidas desde a última execução e procure apenas assuntos que precisam de atenção hoje.",
+    "Ignore recibos automáticos, anúncios e mensagens já resolvidas. Não envie respostas nem altere a caixa de entrada.",
+    "Se houver algo importante, traga um resumo curto e indique o próximo passo. Se não houver novidades, responda apenas NO_NOTIFICATION.",
+  ].join("\n\n")
+  const request: Message = {
+    ...createMessage({ id: "m-routine-request", threadId: "thread-mark", role: "user", text: prompt }),
+    createdAt: startedAt,
+    updatedAt: startedAt,
+  }
+  const commentary = "Vou conferir as mensagens recentes e separar o que precisa de atenção."
+  const reply: Message = {
+    ...createMessage({
+      id: "m-routine-reply",
+      threadId: request.threadId,
+      role: "assistant",
+      text: `${commentary}\n\nNO_NOTIFICATION`,
+      parentId: request.id,
+      runId: "run-inbox-summary",
+    }),
+    parts: [
+      { type: "text", text: commentary },
+      {
+        type: "tool_call",
+        callId: "call-inbox-summary",
+        tool: "inbox.read",
+        summary: "Conferir mensagens recentes",
+        inputJson: '{"folder":"inbox","unreadOnly":true}',
+        outputJson: '{"checked":12,"needsAttention":0}',
+        ok: true,
+        resolution: "succeeded",
+        startedAt: startedAt + 5_000,
+        resolvedAt: finishedAt - 5_000,
+      },
+      { type: "text", text: "NO_NOTIFICATION" },
+    ],
+    createdAt: startedAt + 1_000,
+    updatedAt: finishedAt,
+  }
+  const routine: Routine = {
+    ...createRoutine("bot-mark"),
+    id: "routine-inbox-summary",
+    name: "Resumo da caixa de entrada",
+    prompt,
+    cron: "0 9,14,19 * * *",
+    enabled: true,
+    continuity: "new-thread",
+    createdAt: startedAt - 5 * 86_400_000,
+    updatedAt: startedAt,
+  }
+  const routineRun: RoutineRun = {
+    id: "routine-run-inbox-summary",
+    routineId: routine.id,
+    scheduledFor: startedAt,
+    status: "succeeded",
+    threadId: request.threadId,
+    runId: reply.runId,
+    triggerSource: "cron",
+    summary: "NO_NOTIFICATION",
+    startedAt,
+    finishedAt,
+  }
+  const run: Run = {
+    ...createRun({ id: "run-inbox-summary", threadId: request.threadId, botId: routine.botId }),
+    trigger: "routine",
+    requestMessageId: request.id,
+    replyMessageId: reply.id,
+    routineRunId: routineRun.id,
+    queuedAt: startedAt,
+    startedAt,
+    finishedAt,
+  }
+  const thread: Thread = {
+    ...createThread({
+      id: request.threadId,
+      botId: routine.botId,
+      title: `${routine.name} · 10/17/26, 7:04 PM`,
+      running: false,
+    }),
+    kind: "routine",
+    activeLeafId: reply.id,
+    routineRunId: routineRun.id,
+    unread: 0,
+    createdAt: routine.createdAt,
+    updatedAt: finishedAt,
+  }
+
+  return { thread, messages: [request, reply], run, routine, routineRun }
+}
 
 const resumedTurnFixture = (): { messages: Array<Message>; runs: Array<Run> } => {
   const request = createMessage({
@@ -344,16 +443,24 @@ const importReport: ImportReport = {
 }
 
 export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } = {}): MockApi => {
+  const routineFixture = scenario === "routine-conversation" ? getRoutineConversationFixture() : null
   const project = createProject()
   const projects: Array<Project> = [project]
   const bots = seed.bots.map((bot, index) => createBot(bot, index, project.id))
-  const threads = seed.threads.map(createThread)
-  const messages = seed.messages.map((message) => createMessage(message))
+  const threads = seed.threads.map((thread) =>
+    thread.id === routineFixture?.thread.id ? routineFixture.thread : createThread(thread),
+  )
+  const messages = [
+    ...seed.messages
+      .filter((message) => message.threadId !== routineFixture?.thread.id)
+      .map((message) => createMessage(message)),
+    ...(routineFixture?.messages ?? []),
+  ]
   const mem0Settings = new Map<string, import("@touri/contracts").Mem0Settings>()
   const learning = new Map<string, BotLearning>()
   const machines = new Map<string, import("@touri/contracts").MachineState>()
   const networkPolicies = new Map<string, Record<string, unknown>>()
-  const runs = new Map<string, Run>()
+  const runs = new Map<string, Run>(routineFixture ? [[routineFixture.run.id, routineFixture.run]] : [])
   if (scenario === "resumed-turn") {
     const fixture = resumedTurnFixture()
     messages.push(...fixture.messages)
@@ -366,9 +473,9 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
     runs.set(run.id, run)
   }
   const processesByProject = new Map<string, Array<ProcessEntry>>([[project.id, createProcesses(project)]])
-  const routines = [createRoutine("bot-mark")]
+  const routines = [routineFixture?.routine ?? createRoutine("bot-mark")]
   const routineRuns: Array<RoutineRun> = [
-    {
+    routineFixture?.routineRun ?? {
       id: "routine-run-demo",
       routineId: "routine-daily",
       scheduledFor: new Date(2026, 9, 12, 10, 0).getTime(),
