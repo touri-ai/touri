@@ -3,8 +3,8 @@ import { userFacingError } from "./errors"
 /** All UI copy lives here. pt-BR is the default; English is available for a future locale picker. */
 export type Locale = "pt-BR" | "en"
 export const ptBR = {
-  "Meu Chrome só funciona em bots neste computador. A máquina remota não pode acessar o Chrome do computador.":
-    "Meu Chrome só funciona em bots neste computador. A máquina remota não pode acessar o Chrome do computador.",
+  "Meu Chrome só funciona em bots no computador onde o touri está rodando. Uma máquina remota não pode acessar esse navegador.":
+    "Meu Chrome só funciona em bots no computador onde o touri está rodando. Uma máquina remota não pode acessar esse navegador.",
   "OpenCode está disponível no computador local e na máquina Linux. O runtime da nuvem ainda não oferece este provedor.":
     "OpenCode está disponível no computador local e na máquina Linux. O runtime da nuvem ainda não oferece este provedor.",
   "Sign in to {provider} for this {host}: open this link on this device":
@@ -12,8 +12,8 @@ export const ptBR = {
   "Preparing {provider} sign-in for this {host}…": "Preparando o login do {provider} para este {host}…",
   "Verifique a data do sistema, certificados e proxy da rede.":
     "Verifique a data do sistema, certificados e proxy da rede.",
-  "Meu Chrome só funciona em bots neste computador. A máquina remota não pode acessar o Chrome do computador. Escolha Chrome da máquina para um bot na máquina Linux.":
-    "Meu Chrome só funciona em bots neste computador. A máquina remota não pode acessar o Chrome do computador. Escolha Chrome da máquina para um bot na máquina Linux.",
+  "Meu Chrome só funciona em bots no computador onde o touri está rodando. Uma máquina remota não pode acessar esse navegador. Escolha Chrome da máquina para um bot na máquina Linux.":
+    "Meu Chrome só funciona em bots no computador onde o touri está rodando. Uma máquina remota não pode acessar esse navegador. Escolha Chrome da máquina para um bot na máquina Linux.",
   "Login deste computador indisponível.": "Login deste computador indisponível.",
   "Login deste servidor indisponível.": "Login deste servidor indisponível.",
   "trabalha no servidor escolhido; não pode acessar os arquivos deste computador.":
@@ -591,15 +591,15 @@ export const ptBR = {
   "Escolha uma pasta navegando pelas pastas deste computador.":
     "Escolha uma pasta navegando pelas pastas deste computador.",
   "Bot browser": "Navegador do bot",
-  "My Chrome is available only for bots on this computer. A remote machine cannot reach your computer's Chrome. Choose Machine Chrome for a bot on the Linux machine.":
-    "Meu Chrome só funciona em bots neste computador. A máquina remota não pode acessar o Chrome do computador. Escolha Chrome da máquina para um bot na máquina Linux.",
+  "My Chrome is available only for bots on the computer running touri. A remote machine cannot reach that browser. Choose Machine Chrome for a bot on the Linux machine.":
+    "Meu Chrome só funciona em bots no computador onde o touri está rodando. Uma máquina remota não pode acessar esse navegador. Escolha Chrome da máquina para um bot na máquina Linux.",
   "touri Chrome": "Chrome do touri",
   "My Chrome": "Meu Chrome",
   "Machine Chrome": "Chrome da máquina",
   "Machine Chrome requires a bot on the Linux machine.":
     "O navegador do computador separado requer que o bot trabalhe nele.",
-  "My Chrome is available only for bots on this computer. A remote machine cannot reach your computer's Chrome.":
-    "Meu Chrome só funciona em bots neste computador. A máquina remota não pode acessar o Chrome do computador.",
+  "My Chrome is available only for bots on the computer running touri. A remote machine cannot reach that browser.":
+    "Meu Chrome só funciona em bots no computador onde o touri está rodando. Uma máquina remota não pode acessar esse navegador.",
   "The bot will act inside your signed-in sessions in a separate Chrome window. You can close that window or press Stop at any time.":
     "O bot vai agir nas suas sessões já conectadas, em uma janela separada do Chrome. Você pode fechar essa janela ou apertar Parar a qualquer momento.",
   "Got it": "Entendi",
@@ -2216,14 +2216,14 @@ export const ptBR = {
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
-  "Meu Chrome só funciona em bots neste computador. A máquina remota não pode acessar o Chrome do computador.":
-    "My Chrome is available only for bots on this computer. A remote machine cannot reach your computer’s Chrome.",
+  "Meu Chrome só funciona em bots no computador onde o touri está rodando. Uma máquina remota não pode acessar esse navegador.":
+    "My Chrome is available only for bots on the computer running touri. A remote machine cannot reach that browser.",
   "OpenCode está disponível no computador local e na máquina Linux. O runtime da nuvem ainda não oferece este provedor.":
     "OpenCode is available on the local computer and the Linux machine. The cloud runtime does not support this provider yet.",
   "Verifique a data do sistema, certificados e proxy da rede.":
     "Check the system date, certificates and network proxy.",
-  "Meu Chrome só funciona em bots neste computador. A máquina remota não pode acessar o Chrome do computador. Escolha Chrome da máquina para um bot na máquina Linux.":
-    "My Chrome is available only for bots on this computer. A remote machine cannot reach your computer’s Chrome. Choose Machine Chrome for a bot on the Linux machine.",
+  "Meu Chrome só funciona em bots no computador onde o touri está rodando. Uma máquina remota não pode acessar esse navegador. Escolha Chrome da máquina para um bot na máquina Linux.":
+    "My Chrome is available only for bots on the computer running touri. A remote machine cannot reach that browser. Choose Machine Chrome for a bot on the Linux machine.",
   "Login deste computador indisponível.": "Login on this computer is unavailable.",
   "Login deste servidor indisponível.": "Login on this server is unavailable.",
   "trabalha no servidor escolhido; não pode acessar os arquivos deste computador.":

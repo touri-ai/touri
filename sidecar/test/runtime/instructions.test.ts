@@ -419,8 +419,13 @@ test.each([
   const host = getHostKind(platform, headless)
 
   const instructions = await f.compose({ machine: "local", access: "full", anyFolderAccess: true }, host)
+  const restricted = await f.compose({ machine: "local", access: "workspace-write", anyFolderAccess: true }, host)
 
   expect(instructions).toContain(`You run on this ${noun}.`)
-  expect(instructions).toContain(`This ${noun}: /`)
+  expect(instructions).toContain("Full local access; saved folder grants are inactive for this access level.")
+  expect(instructions).not.toContain(`This ${noun}: /`)
+  expect(restricted).toContain(`You run on this ${noun}.`)
+  expect(restricted).toContain(`This ${noun}: /`)
   expect(instructions.includes("this Mac")).toBe(noun === "Mac")
+  expect(restricted.includes("this Mac")).toBe(noun === "Mac")
 })

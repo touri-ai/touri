@@ -741,7 +741,7 @@ export const init = async (kernel: Kernel): Promise<void> => {
         input: null,
         errorCode: "LOCAL_BROWSER_REQUIRES_HOST",
         error:
-          "Meu Chrome só funciona em bots neste computador. A máquina remota não pode acessar o Chrome do computador.",
+          "Meu Chrome só funciona em bots no computador onde o touri está rodando. Uma máquina remota não pode acessar esse navegador.",
       }
     // Changing the execution destination keeps the old routing unless a browser was explicitly chosen.
     if (body.browser === undefined) {

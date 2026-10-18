@@ -1,11 +1,12 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import type { Bot } from "@touri/contracts"
+import { errorRegistry } from "@touri/contracts/errors"
 import { useState } from "react"
 import { afterEach, expect, it, vi } from "vitest"
 import { createMockApi } from "../src/api/mock"
 import { BotBrowserPicker } from "../src/components/BotBrowserPicker"
 import { BotSettingsModal } from "../src/components/Modals"
-import { t } from "../src/i18n"
+import { type TranslationKey, t } from "../src/i18n"
 import type { WorkspaceActions } from "../src/useWorkspace"
 
 afterEach(() => {
@@ -39,10 +40,27 @@ it("defaults to touri and explains local Chrome once while keeping the setup ste
 
 it("disables host browsers for VM bots and explains why Meu Chrome cannot be used", () => {
   render(<Picker machine="vm" />)
+
   expect(screen.getByRole("combobox")).toHaveValue("machine")
   expect(screen.getByRole("option", { name: "Meu Chrome" })).toBeDisabled()
   expect(screen.getByRole("option", { name: "Chrome do touri" })).toBeDisabled()
-  expect(screen.getByText(/máquina remota não pode acessar o Chrome do computador/)).toBeVisible()
+  expect(screen.getByText(/máquina remota não pode acessar esse navegador/)).toBeVisible()
+})
+
+it("uses the touri host in the public error and matching Portuguese and English browser help", () => {
+  const message = errorRegistry["TOURI-E4007"].message
+  const help =
+    "My Chrome is available only for bots on the computer running touri. A remote machine cannot reach that browser. Choose Machine Chrome for a bot on the Linux machine."
+
+  const portuguese = t(help)
+  const english = t(help, {}, "en")
+
+  expect(message).toBe(portuguese)
+  expect(portuguese).toBe(
+    "Meu Chrome só funciona em bots no computador onde o touri está rodando. Uma máquina remota não pode acessar esse navegador. Escolha Chrome da máquina para um bot na máquina Linux.",
+  )
+  expect(english).toBe(help)
+  expect(t(message as TranslationKey, {}, "en")).toBe(english)
 })
 
 it("provides English labels and a localized public error", () => {

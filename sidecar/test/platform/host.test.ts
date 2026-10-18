@@ -9,6 +9,7 @@ test.each([
   ["freebsd", false, "computer", "computador", "computer"],
   ["linux", true, "server", "servidor", "server"],
   ["darwin", true, "server", "servidor", "server"],
+  ["win32", true, "server", "servidor", "server"],
 ] as const)("%s headless=%s reports %s in both languages", (platform, headless, expected, portuguese, english) => {
   const host = getHostKind(platform, headless)
 
