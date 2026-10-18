@@ -402,13 +402,15 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
       const next = update(current)
       if (next === current) return current
       const evicted = next.messages.filter((message) => message.threadId !== next.selectedThreadId)
+      const summaries = evicted.map(activitySummary).reduce(updateMessage, next.activityMessages)
+      // Persist decisions before the capped notification history forgets their resolution.
+      const activity = summaries.some((message) => message.parts.some((part) => part.type === "approval"))
+        ? reconcileApprovalMessages(summaries, next.notifications)
+        : summaries
       return {
         ...next,
         messages: next.messages.filter((message) => message.threadId === next.selectedThreadId),
-        activityMessages: retainActivity(
-          evicted.map(activitySummary).reduce(updateMessage, next.activityMessages),
-          next.notifications,
-        ),
+        activityMessages: retainActivity(activity, next.notifications),
         runs: retainRuns(next.runs, next.selectedThreadId),
       }
     })

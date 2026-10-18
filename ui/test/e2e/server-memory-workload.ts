@@ -25,7 +25,7 @@ export const install = (kernel: Kernel): void => {
       for (let j = 0; j < 2; j++) {
         const n = ++count
         const threadId = `memory-thread-${1 + (n % 29)}`
-        const text = `${n}: ${"Synthetic background reply. ".repeat(2500)}`
+        const text = `${n}: ${"Synthetic background reply. ".repeat(Number(process.env.TOURI_MEMORY_REPLY_REPEATS ?? 2500))}`
         const at = Date.now()
         db.query(`INSERT INTO messages(id,thread_id,role,kind,status,text,parts_json,created_at,updated_at)
         VALUES (?,?,'assistant','text','complete',?,'[]',?,?)`).run(`memory-message-${n}`, threadId, text, at, at)

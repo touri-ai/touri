@@ -145,6 +145,58 @@ test("a thousand background replies retain only small activity summaries", async
   expect(summaries.some((message) => message.id === "background-999")).toBe(true)
 })
 
+test("resolved background approvals are evicted before their notifications rotate out", async () => {
+  const api = createMockApi()
+  const hook = renderHook(() => useWorkspace(api))
+  await waitFor(() => expect(hook.result.current.data.loading).toBe(false))
+  const original = api.getState().messages[0]
+  if (!original) throw new Error("Missing message fixture")
+  const started = Date.now()
+  for (let batch = 0; batch < 24; batch++)
+    act(() => {
+      for (let n = batch * 10; n < (batch + 1) * 10; n++) {
+        const requestId = `memory-approval-${n}`
+        api.emit({
+          type: "message.created",
+          message: {
+            ...original,
+            id: requestId,
+            threadId: "thread-onb",
+            role: "assistant",
+            status: "streaming",
+            text: "Approval",
+            createdAt: started + n,
+            updatedAt: started + n,
+            parts: [
+              { type: "approval", approvalId: requestId, request: "command", detail: "pwd", decision: "pending" },
+            ],
+          },
+        })
+        const notification = api.notify({
+          kind: "approval",
+          title: "Approval",
+          body: "Command",
+          botId: "bot-onb",
+          threadId: "thread-onb",
+          requestId,
+        })
+        api.emit({
+          type: "notification.resolved",
+          notification: {
+            ...notification,
+            resolvedAt: started + n,
+            resolution: "allow",
+          },
+        })
+      }
+    })
+  const summaries = hook.result.current.data.activityMessages.filter((message) =>
+    message.id.startsWith("memory-approval-"),
+  )
+  expect(summaries.length).toBeLessThanOrEqual(5)
+  expect(pendingApprovalTargets(summaries)).toHaveLength(0)
+})
+
 test("a slow offscreen history response cannot restore an evicted transcript", async () => {
   const api = createMockApi()
   offscreenMessage(api)
