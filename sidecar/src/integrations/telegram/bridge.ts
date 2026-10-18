@@ -94,17 +94,58 @@ export const createTelegramBridge = ({
     return null
   }
 
-  const send = async (chatId: string, text: string, routine = false): Promise<boolean> => {
-    for (const chunk of splitMessage(text)) {
+  const waitForRetry = (delayMs: number): Promise<void> =>
+    new Promise((resolve) => {
+      if (controller.signal.aborted) {
+        resolve()
+        return
+      }
+      const done = () => {
+        clearTimeout(timer)
+        controller.signal.removeEventListener("abort", done)
+        resolve()
+      }
+      const timer = setTimeout(done, delayMs)
+      controller.signal.addEventListener("abort", done, { once: true })
+    })
+
+  const sendTelegramMessage = async (
+    params: Parameters<TelegramApi["sendMessage"]>[0],
+    canSend: () => boolean,
+  ): Promise<TelegramMessage | null> => {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (!canSend()) return null
+      try {
+        return await api.sendMessage(params)
+      } catch (error) {
+        // Explicit flood rejections have not delivered a message; transport failures may have.
+        if (!(error instanceof TelegramApiError) || error.status !== 429 || attempt === 2) throw error
+        const delaySec = error.retryAfterSec ?? 1
+        if (delaySec > 30) throw error
+        await waitForRetry(Math.max(1, delaySec) * 1_000)
+      }
+    }
+    return null
+  }
+
+  const send = async (chatId: string, text: string, routine = false, threadId?: Id): Promise<boolean> => {
+    const canSend = () => {
+      if (stopped) return false
       const current = config()
-      if (stopped || (routine ? !current.forwardRoutines || current.homeChatId !== chatId : !chatAllowed(chatId)))
-        return false
-      await api.sendMessage({ chat_id: chatId, text: chunk })
+      if (!current.enabled) return false
+      if (routine) return current.forwardRoutines && current.homeChatId === chatId
+      return (
+        current.allowedUserIds.includes(chatId) &&
+        (threadId === undefined || store.state(botId).chats[chatId] === threadId)
+      )
+    }
+    for (const chunk of splitMessage(text)) {
+      if (!(await sendTelegramMessage({ chat_id: chatId, text: chunk }, canSend))) return false
     }
     return true
   }
-  const safeSend = (chatId: string, text: string, routine = false): Promise<void> =>
-    send(chatId, text, routine)
+  const safeSend = (chatId: string, text: string, threadId?: Id): Promise<void> =>
+    send(chatId, text, false, threadId)
       .then(() => undefined)
       .catch((error) => {
         if (!stopped) log("Falha ao enviar mensagem ao Telegram", { error: errorText(error) })
@@ -150,20 +191,20 @@ export const createTelegramBridge = ({
     const chatId = String(message.chat.id)
     const bot = storeApi()?.getBot({ botId })
     if (name === "/start") {
-      await send(chatId, `Conectado a ${bot?.name ?? "touri"}. Mande uma mensagem para começar.`)
+      void safeSend(chatId, `Conectado a ${bot?.name ?? "touri"}. Mande uma mensagem para começar.`)
       return true
     }
     if (name === "/new") {
       const thread = newThread(message)
       if (thread) stopTyping(chatId)
-      await send(chatId, thread ? `Nova conversa: ${thread.title}` : "Não consegui criar uma conversa.")
+      void safeSend(chatId, thread ? `Nova conversa: ${thread.title}` : "Não consegui criar uma conversa.")
       return true
     }
     if (name === "/stop" || name === "/status") {
       const thread = linkedThread(chatId)
       const active = thread ? kernel.services.use("runtime.activeRun")?.({ threadId: thread.id }) : null
       if (name === "/status") {
-        await send(
+        void safeSend(
           chatId,
           thread
             ? `Conversa: ${thread.title}. ${active ? "Respondendo agora." : "Nada em andamento."}`
@@ -173,7 +214,7 @@ export const createTelegramBridge = ({
       }
       const canceled = active ? (kernel.services.use("runtime.cancelRun")?.({ runId: active.id }) ?? false) : false
       if (canceled) stopTyping(chatId)
-      await send(chatId, canceled ? "Parei a resposta em andamento." : "Nada em andamento.")
+      void safeSend(chatId, canceled ? "Parei a resposta em andamento." : "Nada em andamento.")
       return true
     }
     return false
@@ -192,17 +233,19 @@ export const createTelegramBridge = ({
     const chatId = String(message.chat.id)
     const text = message.text?.trim() ?? ""
     if (!text) {
-      await send(chatId, "Por enquanto só leio mensagens de texto.")
+      void safeSend(chatId, "Por enquanto só leio mensagens de texto.")
       return
     }
     if (text.startsWith("/") && (await command(message, text.split(/\s/)[0]?.split("@")[0] ?? ""))) return
     const thread = linkedThread(chatId) ?? newThread(message)
     const api = storeApi()
     if (!thread || !api?.sendMessage) {
-      await send(chatId, "Não consegui entregar a mensagem ao bot.")
+      void safeSend(chatId, "Não consegui entregar a mensagem ao bot.")
       return
     }
-    const clientNonce = `tg-${botId}-${accountId}-${update.update_id}`
+    const epoch = store.state(botId).updateEpoch
+    const updateId = epoch ? `r${epoch}-${update.update_id}` : String(update.update_id)
+    const clientNonce = `tg-${botId}-${accountId}-${updateId}`
     const previous = (kernel.db as Database)
       .query("SELECT request_json FROM send_journal WHERE thread_id = ? AND client_nonce = ?")
       .get(thread.id, clientNonce) as { request_json: string } | null
@@ -216,7 +259,7 @@ export const createTelegramBridge = ({
       attachmentIds: [],
       clientNonce,
     })
-    if (response.status >= 400) await send(chatId, "Não consegui entregar a mensagem ao bot.")
+    if (response.status >= 400) void safeSend(chatId, "Não consegui entregar a mensagem ao bot.")
   }
 
   const onCallback = async (query: TelegramCallbackQuery): Promise<void> => {
@@ -280,24 +323,25 @@ export const createTelegramBridge = ({
     if (run.status === "interrupted" || forwarded.has(run.id)) return
     forwarded.add(run.id)
     if (run.status === "canceled") {
-      void safeSend(chatId, "Resposta cancelada.")
+      void safeSend(chatId, "Resposta cancelada.", run.threadId)
       return
     }
     if (run.status === "failed") {
-      void safeSend(chatId, "Não consegui concluir esta resposta. Veja os detalhes no touri.")
+      void safeSend(chatId, "Não consegui concluir esta resposta. Veja os detalhes no touri.", run.threadId)
       return
     }
     const path = storeApi()?.activePath({ threadId: run.threadId }) ?? []
     const reply =
       path.find((message) => message.id === run.replyMessageId) ??
       [...path].reverse().find((message) => message.role === "assistant")
-    if (reply?.text.trim()) void safeSend(chatId, reply.text)
+    if (reply?.text.trim()) void safeSend(chatId, reply.text, run.threadId)
   }
 
   const onNotification = async (notification: NotificationRecord): Promise<void> => {
     if (notification.botId !== botId || !notification.requestId || !notification.threadId) return
     if (notification.kind !== "approval" && notification.kind !== "question") return
-    const chatId = chatForThread(notification.threadId)
+    const threadId = notification.threadId
+    const chatId = chatForThread(threadId)
     if (!chatId) return
     const fullText = [notification.title, notification.body].filter(Boolean).join("\n")
     if (fullText.length > 3_500) {
@@ -317,18 +361,25 @@ export const createTelegramBridge = ({
     prompts.set(id, prompt)
     const labels = notification.kind === "approval" ? ["Aprovar", "Negar"] : ["Sim", "Não"]
     try {
-      const sent = await api.sendMessage({
-        chat_id: chatId,
-        text,
-        reply_markup: {
-          inline_keyboard: [
-            [
-              { text: labels[0] ?? "", callback_data: `tg:${id}:y` },
-              { text: labels[1] ?? "", callback_data: `tg:${id}:n` },
+      const sent = await sendTelegramMessage(
+        {
+          chat_id: chatId,
+          text,
+          reply_markup: {
+            inline_keyboard: [
+              [
+                { text: labels[0] ?? "", callback_data: `tg:${id}:y` },
+                { text: labels[1] ?? "", callback_data: `tg:${id}:n` },
+              ],
             ],
-          ],
+          },
         },
-      })
+        () => !stopped && !prompt.settled && config().enabled && chatForThread(threadId) === chatId,
+      )
+      if (!sent) {
+        prompts.delete(id)
+        return
+      }
       prompt.messageId = sent.message_id
       if (prompt.settled && !stopped) {
         await api
@@ -410,7 +461,11 @@ export const createTelegramBridge = ({
         failures = 0
         for (const update of updates) {
           if (stopped) return
-          if (update.update_id < store.state(botId).offset) continue
+          const cursor = store.state(botId)
+          // An idle Telegram sequence may restart below the last confirmed identifier.
+          if (update.update_id < cursor.offset) {
+            store.saveState(botId, { ...cursor, offset: update.update_id, updateEpoch: cursor.updateEpoch + 1 })
+          }
           if (update.message) await onMessage(update, update.message)
           else if (update.callback_query) await onCallback(update.callback_query)
           if (stopped) return

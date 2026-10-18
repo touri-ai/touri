@@ -3,6 +3,7 @@ export class TelegramApiError extends Error {
   constructor(
     readonly status: number,
     readonly description: string,
+    readonly retryAfterSec: number | null = null,
   ) {
     super(`Telegram API ${status}: ${description}`)
   }
@@ -49,12 +50,19 @@ export const createTelegramApi = ({
         ok?: boolean
         result?: T
         description?: string
+        error_code?: number
+        parameters?: { retry_after?: number }
       } | null
-      if (!response.ok || !payload?.ok)
+      if (!response.ok || !payload?.ok) {
+        const retry = payload?.parameters?.retry_after
+        const retryAfterSec = typeof retry === "number" && Number.isSafeInteger(retry) && retry >= 0 ? retry : null
+        const status = payload?.error_code ?? response.status
         throw new TelegramApiError(
-          response.status,
+          status,
           (payload?.description ?? `HTTP ${response.status}`).replaceAll(token, "[redacted]"),
+          retryAfterSec,
         )
+      }
       return payload.result as T
     } catch (error) {
       if (error instanceof TelegramApiError) throw error

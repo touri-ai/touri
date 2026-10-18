@@ -413,6 +413,7 @@ test("changing the token resets the account offset and chat links; saving the sa
   await f.configure({ token: "987654321:AAAnotherTokenForTouriTests_123456" })
   expect(store.state(f.bot.id)).toEqual({
     accountId: expect.any(String),
+    updateEpoch: 0,
     offset: 0,
     chats: {},
     lastRejected: null,
@@ -472,14 +473,14 @@ test("shutdown waits for pending restarts without creating another poller", asyn
   expect(f.integrations.status(f.bot.id).state).toBe("off")
 })
 
-test("shutdown aborts an in-flight command reply before committing its update offset", async () => {
+test("shutdown aborts an in-flight command reply after acknowledging the processed command", async () => {
   const f = await fixture()
   await f.configure({ token: TOKEN, enabled: true, allowedUserIds: ["42"] })
   f.fake.respond((call) => (call.method === "sendMessage" ? new Promise<Response>(() => {}) : null))
   f.fake.message({ text: "/start" })
   await until(() => f.fake.sent().length === 1)
   await f.integrations.stopAll()
-  expect(createTelegramStore(f.kernel).state(f.bot.id).offset).toBe(0)
+  expect(createTelegramStore(f.kernel).state(f.bot.id).offset).toBe(2)
 })
 
 test("failed secret removal keeps the existing token and reports failure", async () => {
@@ -645,35 +646,172 @@ test("/new clears typing from the previous conversation while the new conversati
   expect(f.fake.sent("sendChatAction")).toHaveLength(typing)
 })
 
-test("restart scopes saved chat links and offsets to the credential account before polling", async () => {
+test.each([false, true])(
+  "restart scopes saved chat links and offsets to the credential account (legacy: %s)",
+  async (legacy) => {
+    const f = await fixture()
+    await f.configure({ token: TOKEN, enabled: true, allowedUserIds: ["42"] })
+    f.fake.message({ text: "Conversa da conta anterior" })
+    await until(() => f.runs.length === 1)
+    const store = createTelegramStore(f.kernel)
+    await until(() => store.state(f.bot.id).offset === 2)
+    await f.configure({ enabled: false })
+    const nextToken = "987654321:AAAnotherTokenForTouriTests_123456"
+    const nextAccount = createFakeTelegram({ token: nextToken })
+    cleanup.push(() => {
+      nextAccount.stop()
+    })
+    // A process can stop after storing a replacement credential but before clearing the settings row.
+    if (legacy) store.saveState(f.bot.id, { ...store.state(f.bot.id), accountId: null })
+    f.vault.set(tokenAccount(f.bot.id), nextToken)
+    store.saveConfig(f.bot.id, { ...store.config(f.bot.id), enabled: true })
+    const restarted = createTelegramIntegrations({ kernel: f.kernel, apiBase: nextAccount.url, pollTimeoutSec: 0 })
+    cleanup.push(() => restarted.stopAll())
+
+    await restarted.start()
+    await until(() => nextAccount.sent("getUpdates").length > 0)
+    f.finish(f.runs[0] as Run, "Resultado da conta anterior")
+    await Bun.sleep(20)
+
+    expect(nextAccount.sent("getUpdates")[0]?.params.offset).toBe(0)
+    expect(store.state(f.bot.id).chats).toEqual({})
+    expect(nextAccount.sent()).toEqual([])
+
+    nextAccount.message({ text: "Conversa da nova conta" })
+    await until(() => f.runs.length === 2)
+    expect(f.runs[1]?.threadId).not.toBe(f.runs[0]?.threadId)
+  },
+)
+
+test("verified legacy conversations keep their thread and polling offset during upgrade", async () => {
   const f = await fixture()
   await f.configure({ token: TOKEN, enabled: true, allowedUserIds: ["42"] })
-  f.fake.message({ text: "Conversa da conta anterior" })
+  f.fake.message({ text: "Primeira mensagem" })
   await until(() => f.runs.length === 1)
   const store = createTelegramStore(f.kernel)
   await until(() => store.state(f.bot.id).offset === 2)
+  f.finish(f.runs[0] as Run, "Primeira resposta")
+  await until(() => f.fake.sent().length === 1)
   await f.configure({ enabled: false })
-  const nextToken = "987654321:AAAnotherTokenForTouriTests_123456"
-  const nextAccount = createFakeTelegram({ token: nextToken })
-  cleanup.push(() => {
-    nextAccount.stop()
-  })
-  // A process can stop after storing a replacement credential but before clearing the settings row.
-  f.vault.set(tokenAccount(f.bot.id), nextToken)
-  store.saveConfig(f.bot.id, { ...store.config(f.bot.id), enabled: true })
-  const restarted = createTelegramIntegrations({ kernel: f.kernel, apiBase: nextAccount.url, pollTimeoutSec: 0 })
-  cleanup.push(() => restarted.stopAll())
+  const before = store.state(f.bot.id)
+  store.saveState(f.bot.id, { ...before, accountId: null })
 
-  await restarted.start()
-  await until(() => nextAccount.sent("getUpdates").length > 0)
-  f.finish(f.runs[0] as Run, "Resultado da conta anterior")
+  await f.configure({ enabled: true })
+
+  expect(store.state(f.bot.id)).toMatchObject({ chats: before.chats, offset: before.offset })
+  f.fake.message({ text: "Continue a conversa" })
+  await until(() => f.runs.length === 2)
+  expect(f.runs[1]?.threadId).toBe(f.runs[0]?.threadId)
+})
+
+test("a restarted update sequence delivers and deduplicates a private message without losing its conversation", async () => {
+  const f = await fixture()
+  await f.configure({ token: TOKEN, enabled: true, allowedUserIds: ["42"] })
+  f.fake.message({ text: "Mensagem da sequência anterior" })
+  await until(() => f.runs.length === 1)
+  const store = createTelegramStore(f.kernel)
+  await until(() => store.state(f.bot.id).offset === 2)
+  f.finish(f.runs[0] as Run, "Resposta anterior")
+  await until(() => f.fake.sent().length === 1)
+  await f.configure({ enabled: false })
+  store.saveState(f.bot.id, { ...store.state(f.bot.id), offset: 100 })
+  const reset = {
+    update_id: 1,
+    message: {
+      message_id: 501,
+      from: { id: 42, first_name: "Ana" },
+      chat: { id: 42, type: "private" },
+      text: "Mensagem da nova sequência",
+    },
+  }
+  // The Bot API falls back to the queue head when a saved offset is beyond a restarted range.
+  f.fake.respond((call) =>
+    call.method === "getUpdates" && (Number(call.params.offset) === 100 || Number(call.params.offset) <= 1)
+      ? Response.json({ ok: true, result: [reset] })
+      : null,
+  )
+
+  await f.configure({ enabled: true })
+  await until(() => f.runs.length === 2 && store.state(f.bot.id).offset === 2)
+
+  expect(f.runs[1]?.threadId).toBe(f.runs[0]?.threadId)
+  expect(store.state(f.bot.id).updateEpoch).toBe(1)
+  expect(f.store.activePath({ threadId: f.runs[1]?.threadId ?? "" }).at(-1)?.text).toBe(reset.message.text)
+
+  await f.configure({ enabled: false })
+  store.saveState(f.bot.id, { ...store.state(f.bot.id), offset: 0 })
+  await f.configure({ enabled: true })
+  await until(() => store.state(f.bot.id).offset === 2)
+  expect(f.runs).toHaveLength(2)
+  expect(f.fake.sent().some((call) => call.params.text === "Não consegui entregar a mensagem ao bot.")).toBe(false)
+})
+
+test("long replies retry a flood-rejected chunk without resending accepted chunks", async () => {
+  const f = await fixture()
+  await f.configure({ token: TOKEN, enabled: true, allowedUserIds: ["42"] })
+  f.fake.message({ text: "Uma resposta longa" })
+  await until(() => f.runs.length === 1)
+  const first = "a".repeat(4096)
+  const second = "b".repeat(900)
+  f.fake.respond((call) =>
+    call.method === "sendMessage" &&
+    call.params.text === second &&
+    f.fake.sent().filter((attempt) => attempt.params.text === second).length === 1
+      ? Response.json(
+          { ok: false, error_code: 429, description: "Too many requests", parameters: { retry_after: 1 } },
+          { status: 429 },
+        )
+      : null,
+  )
+
+  f.finish(f.runs[0] as Run, first + second)
+  await until(() => f.fake.sent().length === 3)
+  f.kernel.publish({ type: "run.updated", run: f.runs[0] as Run })
   await Bun.sleep(20)
 
-  expect(nextAccount.sent("getUpdates")[0]?.params.offset).toBe(0)
-  expect(store.state(f.bot.id).chats).toEqual({})
-  expect(nextAccount.sent()).toEqual([])
+  expect(f.fake.sent().map((call) => call.params.text)).toEqual([first, second, second])
+})
 
-  nextAccount.message({ text: "Conversa da nova conta" })
-  await until(() => f.runs.length === 2)
-  expect(f.runs[1]?.threadId).not.toBe(f.runs[0]?.threadId)
+test("removing a sender during a flood wait prevents the retry", async () => {
+  const f = await fixture()
+  await f.configure({ token: TOKEN, enabled: true, allowedUserIds: ["42"] })
+  f.fake.message({ text: "Comece" })
+  await until(() => f.runs.length === 1)
+  f.fake.respond((call) =>
+    call.method === "sendMessage"
+      ? Response.json(
+          { ok: false, error_code: 429, description: "Too many requests", parameters: { retry_after: 1 } },
+          { status: 429 },
+        )
+      : null,
+  )
+
+  f.finish(f.runs[0] as Run, "Resposta privada")
+  await until(() => f.fake.sent().length === 1)
+  await f.configure({ allowedUserIds: [] })
+  await Bun.sleep(1_500)
+
+  expect(f.fake.sent()).toHaveLength(1)
+})
+
+test("a rate-limited command reply does not prevent the next stop command", async () => {
+  const f = await fixture()
+  await f.configure({ token: TOKEN, enabled: true, allowedUserIds: ["42"] })
+  f.fake.message({ text: "Comece" })
+  await until(() => f.runs.length === 1)
+  f.fake.respond((call) =>
+    call.method === "sendMessage"
+      ? Response.json(
+          { ok: false, error_code: 429, description: "Too many requests", parameters: { retry_after: 30 } },
+          { status: 429 },
+        )
+      : null,
+  )
+
+  f.fake.message({ text: "/status" })
+  await until(() => f.fake.sent().length === 1)
+  f.fake.message({ text: "/stop" })
+  await until(() => f.canceled.length === 1)
+
+  expect(f.canceled).toEqual([f.runs[0]?.id ?? ""])
 })

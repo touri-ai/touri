@@ -436,8 +436,13 @@ prevents recent routine results from being forwarded again after reconnecting. R
 user is removed from the allowlist. Approval buttons are bound to a unique request and its private
 Telegram message, so reconnecting never reuses an old button for a different request. The saved
 bridge state also carries an account fingerprint, so recovery after a credential change starts
-with fresh chat links and offsets. `/new` clears typing from the previous conversation while its
-work and history remain available in touri.
+with fresh chat links and offsets. Existing links with matching durable send fingerprints keep
+their conversations during upgrade. Restarted update sequences use a persisted nonce generation,
+so a lower incoming identifier can be delivered without colliding with older messages. `/new`
+clears typing from the previous conversation while its work and history remain available in touri.
+Explicit rate-limit rejections retry the rejected message up to twice for waits of at most 30
+seconds, rechecking access each time. Command effects are acknowledged independently of their
+outgoing replies, so a delayed reply cannot block `/stop`.
 
 ## 4. Projects, processes, secrets, preview (WP5; Preview pane UI in WP9, webview in WP1)
 
