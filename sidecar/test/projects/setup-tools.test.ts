@@ -152,11 +152,24 @@ const fixture = async (patch: Partial<Bot> = {}, projectName = "Hodler", host: H
 }
 
 for (const approvals of ["never", "on-request"] as const) {
-  test(`full local folder requests with ${approvals} confirm access before inspecting paths`, async () => {
+  test(`full local setup requests with ${approvals} confirm access before inspecting paths`, async () => {
     const f = await fixture({ access: "full", approvals })
     const before = f.currentBot()
     const parent = join(f.home, "projects")
     mkdirSync(parent)
+    expect(
+      f.store.createProject({
+        id: "missing-project",
+        name: "Missing project",
+        path: join(f.home, "missing-parent/project"),
+        gitRemote: null,
+        defaultBranch: null,
+        dataDir: join(f.root, "project-data"),
+        now: 1,
+      }).success,
+    ).toBe(true)
+    const projects = f.store.listProjects()
+    f.events.length = 0
     const home = spyOn(os, "homedir").mockReturnValue(f.home)
     const lstat = spyOn(fs, "lstatSync")
     const realpath = spyOn(fs, "realpathSync")
@@ -175,8 +188,12 @@ for (const approvals of ["never", "on-request"] as const) {
       return true
     })
     for (const suffix of ["projects", "projects/new-output", "missing-parent/output"]) {
-      for (const mode of ["read", "read-write"] as const) {
-        const result = await f.call("folder_access_request", { path: `~/${suffix}`, mode })
+      for (const [name, args] of [
+        ["folder_access_request", { path: `~/${suffix}`, mode: "read" }],
+        ["folder_access_request", { path: `~/${suffix}`, mode: "read-write" }],
+        ["project_link", { path: `~/${suffix}` }],
+      ] as const) {
+        const result = await f.call(name, args)
         expect(result).toMatchObject({
           success: true,
           structured: {
@@ -190,13 +207,26 @@ for (const approvals of ["never", "on-request"] as const) {
         expect(result.content?.[0]).toMatchObject({ text: expect.stringContaining("acesso total") })
       }
     }
+    expect(await f.call("project_link", { projectId: "missing-project" })).toMatchObject({
+      success: true,
+      structured: {
+        path: join(f.home, "missing-parent/project"),
+        projectId: null,
+        alreadyAccessible: true,
+        unchanged: true,
+        automaticContinuation: false,
+        effective: "current-turn",
+      },
+    })
     expect(lstat).not.toHaveBeenCalled()
     expect(realpath).not.toHaveBeenCalled()
     expect(stat).not.toHaveBeenCalled()
     expect(probe).not.toHaveBeenCalled()
     expect(f.currentBot()).toEqual(before)
+    expect(f.store.listProjects()).toEqual(projects)
     expect(f.cards).toEqual([])
     expect(continuations).toBe(0)
+    expect(f.events.some((event) => event.type === "bot.updated" || event.type === "project.created")).toBe(false)
     expect(existsSync(join(parent, "new-output"))).toBe(false)
     expect(existsSync(join(f.home, "missing-parent"))).toBe(false)
   })
@@ -636,12 +666,39 @@ test("projectId and registered paths reuse a project and unlink is visible witho
   const link = f.call("project_link", { projectId: "project" })
   expect((await f.answer("allow")).status).toBe(200)
   expect((await link).success).toBe(true)
-  expect(await f.call("project_link", { path: f.path })).toMatchObject({
-    success: true,
-    structured: { alreadyAccessible: true, projectId: "project", unchanged: true },
+  const before = f.currentBot()
+  const projects = f.store.listProjects()
+  const configure = f.runtime.kernel.services.use("bots.configureAccess")
+  if (!configure) throw new Error("Access configuration is unavailable")
+  let configurations = 0
+  f.runtime.kernel.services.provide("bots.configureAccess", (input) => {
+    configurations++
+    return configure(input)
   })
+  let continuations = 0
+  f.runtime.kernel.services.provide("runtime.continueAfterApproval", () => {
+    continuations++
+    return true
+  })
+  for (const args of [{ path: f.path }, { projectId: "project" }]) {
+    expect(await f.call("project_link", args)).toMatchObject({
+      success: true,
+      structured: {
+        path: f.path,
+        alreadyAccessible: true,
+        projectId: "project",
+        unchanged: true,
+        automaticContinuation: false,
+        effective: "current-turn",
+      },
+    })
+  }
   expect(f.cards).toHaveLength(1)
+  expect(f.currentBot()).toEqual(before)
+  expect(f.store.listProjects()).toEqual(projects)
   expect(f.store.listProjects()).toHaveLength(1)
+  expect(configurations).toBe(0)
+  expect(continuations).toBe(0)
   const cardCount = f.cards.length
   expect((await f.call("project_unlink")).success).toBe(true)
   expect(f.currentBot()?.projectId).toBeNull()

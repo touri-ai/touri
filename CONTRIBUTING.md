@@ -1,6 +1,6 @@
 # Contributing
 
-1. Install Bun 1.2.21+ and Rust 1.90+, then run `bun install`.
+1. Install Bun 1.4.3+ and Rust 1.90+, then run `bun install`.
 2. Read [STYLE.md](STYLE.md) and make a focused change with tests. All code must be original or compatibly licensed.
 3. Before opening a pull request run:
 
