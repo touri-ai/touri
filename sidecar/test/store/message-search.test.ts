@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "bun:test"
 import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { openDatabase } from "../../src/kernel/db"
+import { openDatabase, SCHEMA_VERSION } from "../../src/kernel/db"
 import { DELETE_MESSAGE_SEARCH_SQL, refreshMessageSearch } from "../../src/kernel/message-search"
 
 const fixtures = new Set<ReturnType<typeof getFixture>>()
@@ -30,13 +30,13 @@ test("schema 27 gains deletion indexes while retaining search and recovery objec
   const upgraded = fixture.reopen()
 
   expect(upgraded.query("SELECT value FROM schema_meta WHERE key = 'schema_version'").get()).toEqual({
-    value: "28",
+    value: String(SCHEMA_VERSION),
   })
 
   const reopened = fixture.reopen()
 
   expect(reopened.query("SELECT value FROM schema_meta WHERE key = 'schema_version'").get()).toEqual({
-    value: "28",
+    value: String(SCHEMA_VERSION),
   })
   expect(
     reopened

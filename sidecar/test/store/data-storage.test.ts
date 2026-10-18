@@ -1044,17 +1044,23 @@ const makeScheduledMaintenance = (
     },
   })
   scanCleanups.add(maintenance.dispose)
+  const getNextDelay = () => scheduled?.delay
 
   return {
     maintenance,
     getErrors: () => errors,
-    getNextDelay: () => scheduled?.delay,
+    getNextDelay,
     runNext: async () => {
-      const next = scheduled
-      if (!next) throw new Error("Missing maintenance callback")
-      clearTimeout(next.timer)
-      scheduled = undefined
-      await next.action()
+      // Compaction and retention can require several short preparation ticks.
+      for (let pass = 0; pass < 100; pass++) {
+        const next = scheduled
+        if (!next) throw new Error("Missing maintenance callback")
+        clearTimeout(next.timer)
+        scheduled = undefined
+        await next.action()
+        if ((getNextDelay() ?? 0) >= 1000) return
+      }
+      throw new Error("Maintenance did not finish its bounded preparation")
     },
   }
 }
