@@ -103,6 +103,10 @@ export const ptBR = {
     "O bot guarda fatos que valem em toda conversa e registra procedimentos que se repetem como skills. As revisões automáticas rodam como turnos extras e usam a conta e as permissões atuais do bot.",
   "Não foi possível carregar ou salvar o aprendizado. Tente novamente.":
     "Não foi possível carregar ou salvar o aprendizado. Tente novamente.",
+  "{file} está indisponível porque não é um arquivo local seguro. Substitua os links por um arquivo comum. Você ainda pode desligar o aprendizado.":
+    "{file} está indisponível porque não é um arquivo local seguro. Substitua os links por um arquivo comum. Você ainda pode desligar o aprendizado.",
+  "Não foi possível ler {file}. Verifique as permissões do arquivo. Você ainda pode desligar o aprendizado.":
+    "Não foi possível ler {file}. Verifique as permissões do arquivo. Você ainda pode desligar o aprendizado.",
   "Memória automática": "Memória automática",
   "A cada {count} respostas concluídas, revisa o que aprendeu sobre você e o ambiente. MEMORY.md: {memory} · USER.md: {user} caracteres.":
     "A cada {count} respostas concluídas, revisa o que aprendeu sobre você e o ambiente. MEMORY.md: {memory} · USER.md: {user} caracteres.",
@@ -2234,6 +2238,10 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "O bot guarda fatos que valem em toda conversa e registra procedimentos que se repetem como skills. As revisões automáticas rodam como turnos extras e usam a conta e as permissões atuais do bot.":
     "The bot keeps facts that hold in every conversation and records repeating procedures as skills. Automatic reviews run as extra turns and use the bot's provider account and current permissions.",
   "Não foi possível carregar ou salvar o aprendizado. Tente novamente.": "Couldn't load or save learning. Try again.",
+  "{file} está indisponível porque não é um arquivo local seguro. Substitua os links por um arquivo comum. Você ainda pode desligar o aprendizado.":
+    "{file} is unavailable because it is not a safe local file. Replace links with a regular file. You can still turn learning off.",
+  "Não foi possível ler {file}. Verifique as permissões do arquivo. Você ainda pode desligar o aprendizado.":
+    "Could not read {file}. Check the file permissions. You can still turn learning off.",
   "Memória automática": "Automatic memory",
   "A cada {count} respostas concluídas, revisa o que aprendeu sobre você e o ambiente. MEMORY.md: {memory} · USER.md: {user} caracteres.":
     "Every {count} completed replies, reviews what it learned about you and the environment. MEMORY.md: {memory} · USER.md: {user} characters.",

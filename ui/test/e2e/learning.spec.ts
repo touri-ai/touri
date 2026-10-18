@@ -1,10 +1,8 @@
-import { mkdir } from "node:fs/promises"
-import { resolve } from "node:path"
 import { expect, test } from "@playwright/test"
 import { openGlobalPage } from "./home-navigation"
 
 for (const theme of ["light", "dark"] as const) {
-  test(`learning settings stay opt-in · ${theme}`, async ({ page }) => {
+  test(`learning settings stay opt-in · ${theme}`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width: 1280, height: 900 })
     await page.addInitScript((value) => {
       localStorage.setItem("touri.appearance.v1", value)
@@ -27,8 +25,6 @@ for (const theme of ["light", "dark"] as const) {
     await expect(card.getByText("Ativo", { exact: true })).toBeVisible()
     await expect(card.getByText(/respostas concluídas/)).toBeVisible()
     await page.evaluate(() => document.fonts.ready)
-    const evidence = resolve(import.meta.dirname, "../../../docs/qa/learning")
-    await mkdir(evidence, { recursive: true })
-    await card.screenshot({ path: resolve(evidence, `${theme}.png`), animations: "disabled" })
+    await card.screenshot({ path: testInfo.outputPath(`${theme}.png`), animations: "disabled" })
   })
 }

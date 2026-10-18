@@ -17,6 +17,7 @@ import type { ApprovalInput, ApprovalResult, Bot, Run, ToolContext, ToolResult }
 import { hiddenInGroupSession } from "../../src/groups/privacy"
 import { createGroupStore } from "../../src/groups/store"
 import { createKernel } from "../../src/kernel"
+import { init as initLearning } from "../../src/learning"
 import { applyMemoryOperations, ENTRY_DELIMITER, MEMORY_LIMITS, readEntries } from "../../src/learning/memory"
 import { createLearningReviewer, REVIEW_THREAD_TITLE } from "../../src/learning/review"
 import {
@@ -80,7 +81,7 @@ const fixture = async ({ decision = "allow" }: { decision?: "allow" | "deny" } =
     cwd: bot.homeDir,
     signal: new AbortController().signal,
   })
-  return { kernel, bot, store, approvals, enqueued, ctx }
+  return { kernel, bot, store, approvals, enqueued, ctx, port: runtime.handshake.port }
 }
 
 const groupThread = (f: Awaited<ReturnType<typeof fixture>>) => {
@@ -874,3 +875,70 @@ test("legacy quoted descriptions stay discoverable while learning is off", async
   expect(readLearning(context.kernel, context.bot.id).skills).toBe(false)
   expect(instructions).toContain("Use quando resumir")
 })
+
+for (const target of ["MEMORY.md", "USER.md"] as const) {
+  test(`settings stay available and learning can be disabled with a linked ${target}`, async () => {
+    const context = await fixture()
+    await initLearning(context.kernel)
+    writeLearning(context.kernel, context.bot.id, { memory: true, skills: true })
+    const outside = join(tempHome(), "reference.md")
+    writeFileSync(outside, "Private reference")
+    symlinkSync(outside, join(context.bot.homeDir, target))
+    const url = `http://127.0.0.1:${context.port}/api/v1/bots/${context.bot.id}/learning`
+    const headers = {
+      Authorization: "Bearer dev-ui-token",
+      Origin: "tauri://localhost",
+      "Content-Type": "application/json",
+    }
+
+    const loaded = await fetch(url, { headers })
+    const saved = await fetch(url, {
+      method: "PUT",
+      headers,
+      body: JSON.stringify({ memory: false, skills: false }),
+    })
+
+    const unavailable = target === "MEMORY.md" ? { memoryError: "INVALID_PATH" } : { userError: "INVALID_PATH" }
+    expect(loaded.status).toBe(200)
+    expect(await loaded.json()).toMatchObject({ learning: { memory: true, skills: true, ...unavailable } })
+    expect(saved.status).toBe(200)
+    expect(await saved.json()).toMatchObject({ learning: { memory: false, skills: false, ...unavailable } })
+    expect(readLearning(context.kernel, context.bot.id)).toMatchObject({ memory: false, skills: false })
+    expect(readFileSync(outside, "utf8")).toBe("Private reference")
+
+    rmSync(join(context.bot.homeDir, target))
+    writeFileSync(join(context.bot.homeDir, target), "Restored")
+    const recovered = await fetch(url, { headers })
+
+    expect(await recovered.json()).toMatchObject({
+      learning: { memoryChars: target === "MEMORY.md" ? 8 : 0, userChars: target === "USER.md" ? 8 : 0 },
+    })
+  })
+}
+
+for (const target of ["MEMORY.md", "USER.md"] as const) {
+  test.skipIf(process.getuid?.() === 0)(`settings stay available with an unreadable ${target}`, async () => {
+    const context = await fixture()
+    await initLearning(context.kernel)
+    writeLearning(context.kernel, context.bot.id, { memory: true })
+    const path = join(context.bot.homeDir, target)
+    writeFileSync(path, "Saved reference")
+    chmodSync(path, 0o000)
+    const url = `http://127.0.0.1:${context.port}/api/v1/bots/${context.bot.id}/learning`
+    const headers = {
+      Authorization: "Bearer dev-ui-token",
+      Origin: "tauri://localhost",
+      "Content-Type": "application/json",
+    }
+
+    const loaded = await fetch(url, { headers })
+    const saved = await fetch(url, { method: "PUT", headers, body: JSON.stringify({ memory: false }) })
+
+    const unavailable = target === "MEMORY.md" ? { memoryError: "READ_ERROR" } : { userError: "READ_ERROR" }
+    expect(loaded.status).toBe(200)
+    expect(await loaded.json()).toMatchObject({ learning: { memory: true, ...unavailable } })
+    expect(saved.status).toBe(200)
+    expect(await saved.json()).toMatchObject({ learning: { memory: false, ...unavailable } })
+    expect(readLearning(context.kernel, context.bot.id).memory).toBe(false)
+  })
+}

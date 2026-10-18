@@ -86,6 +86,24 @@ const LearningSettings = ({ api, botId, onRetry }: { api: UiApi; botId: string; 
           </button>
         </div>
       )}
+      {learning &&
+        [
+          { file: "MEMORY.md", error: learning.memoryError },
+          { file: "USER.md", error: learning.userError },
+        ].map(({ file, error }) => {
+          if (!error) return null
+
+          return (
+            <p role="alert" key={file}>
+              {t(
+                error === "INVALID_PATH"
+                  ? "{file} está indisponível porque não é um arquivo local seguro. Substitua os links por um arquivo comum. Você ainda pode desligar o aprendizado."
+                  : "Não foi possível ler {file}. Verifique as permissões do arquivo. Você ainda pode desligar o aprendizado.",
+                { file },
+              )}
+            </p>
+          )
+        })}
       {learning && (
         <div className="learning-switches">
           <label htmlFor={`learning-memory-${botId}`}>
@@ -102,8 +120,8 @@ const LearningSettings = ({ api, botId, onRetry }: { api: UiApi; botId: string; 
                   "A cada {count} respostas concluídas, revisa o que aprendeu sobre você e o ambiente. MEMORY.md: {memory} · USER.md: {user} caracteres.",
                   {
                     count: learning.memoryEveryTurns,
-                    memory: learning.memoryChars,
-                    user: learning.userChars,
+                    memory: learning.memoryError ? "—" : learning.memoryChars,
+                    user: learning.userError ? "—" : learning.userChars,
                   },
                 )}
               </small>

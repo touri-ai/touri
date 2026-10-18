@@ -201,17 +201,15 @@ export const composeDeveloperInstructions = async ({
       return ""
     }
   }
-  const rawMemory = (
-    grouped
-      ? ""
-      : vmMemory?.success
-        ? vmMemory.stdout
-        : guest
-          ? ""
-          : learnsMemory
-            ? localReference("memory")
-            : readOptional(join(bot.homeDir, "MEMORY.md"))
-  ).slice(0, 3_500)
+  const getRawMemory = (): string => {
+    if (grouped) return ""
+    if (vmMemory?.success) return vmMemory.stdout
+    if (guest) return ""
+    if (learnsMemory) return localReference("memory")
+
+    return readOptional(join(bot.homeDir, "MEMORY.md"))
+  }
+  const rawMemory = getRawMemory().slice(0, 3_500)
   // Both references belong to the same approval snapshot, including USER.md alone.
   const rawUserProfile = learnsMemory && !grouped ? localReference("user").slice(0, 2_000) : ""
   const memory = grouped

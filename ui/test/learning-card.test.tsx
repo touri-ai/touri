@@ -56,6 +56,34 @@ describe("continuous learning card", () => {
     expect(await screen.findByRole("switch", { name: /Memória automática/ })).toBeEnabled()
   })
 
+  it.each(["INVALID_PATH", "READ_ERROR"] as const)("keeps switches usable when entries report %s", async (reason) => {
+    const api = createMockApi()
+    await api.request("PUT /bots/:id/learning", { memory: true }, { id: "bot-mark" })
+    const request = api.request.bind(api)
+    vi.spyOn(api, "request").mockImplementation(async (route, input, params) => {
+      const response = await request(route, input, params)
+      if (route !== "GET /bots/:id/learning" && route !== "PUT /bots/:id/learning") return response
+      if (!("learning" in response)) return response
+
+      return { learning: { ...response.learning, memoryError: reason } }
+    })
+    render(<LearningCard api={api} botId="bot-mark" />)
+
+    const memory = await screen.findByRole("switch", { name: /Memória automática/ })
+    const warning = await screen.findByRole("alert")
+
+    expect(warning).toHaveTextContent("MEMORY.md")
+    expect(warning).toHaveTextContent("Você ainda pode desligar o aprendizado.")
+    expect(screen.getByText(/MEMORY.md: —/)).toBeVisible()
+    expect(memory).toBeEnabled()
+    expect(memory).toBeChecked()
+
+    fireEvent.click(memory)
+
+    await waitFor(() => expect(memory).not.toBeChecked())
+    expect(warning).toBeVisible()
+  })
+
   it("appears in Integrações only when a bot is selected", async () => {
     const api = createMockApi()
     const { rerender } = render(<IntegrationsScreen api={api} botId={null} botName={null} />)
