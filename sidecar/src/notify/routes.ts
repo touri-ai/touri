@@ -1,5 +1,8 @@
+import type { Database } from "bun:sqlite"
 import type { Kernel, RouteModule, RouteResponse } from "@touri/contracts"
+import { createWorkState } from "../runtime/work-state"
 import type { Notifier } from "./notifier"
+import { createRecoverySync, getRecoveryAcknowledgementKeys } from "./recovery"
 import { parseSince, type SseHub } from "./sse"
 import type { NotificationStore } from "./store"
 
@@ -39,11 +42,13 @@ export const createNotifyRoutes = ({
   store,
   notifier,
   hub,
+  syncRecoveryTasks = createRecoverySync(kernel, store, notifier),
 }: {
   kernel: Kernel
   store: NotificationStore
   notifier: Notifier
   hub: SseHub
+  syncRecoveryTasks?: ReturnType<typeof createRecoverySync>
 }): RouteModule => {
   const respond = async ({ threadId, body }: { threadId: string; body: unknown }): Promise<RouteResponse> => {
     const parsed = parseRespond(body)
@@ -102,6 +107,36 @@ export const createNotifyRoutes = ({
     routes: [
       {
         method: "GET",
+        path: "/recovery",
+        handler: async () => ({ status: 200, json: { tasks: syncRecoveryTasks() } }),
+      },
+      {
+        method: "POST",
+        path: "/recovery/:id/dismiss",
+        handler: async ({ params, body }) => {
+          const tasks = syncRecoveryTasks()
+          const task = tasks.find((item) => item.id === params.id)
+          if (!task) return fail(404, "NOT_FOUND", "Tarefa interrompida não encontrada.")
+          const database = kernel.db as Database
+          const keys = getRecoveryAcknowledgementKeys(database, task.notification.id)
+          const acknowledged = record(body).acknowledgeKeys
+          if (!Array.isArray(acknowledged) || keys.some((key) => !acknowledged.includes(key)))
+            return fail(
+              409,
+              "ACKNOWLEDGEMENT_REQUIRED",
+              "Revise os efeitos incertos no centro de tarefas interrompidas.",
+            )
+
+          const work = createWorkState({ database })
+          const results = keys.map((key) => work.acknowledgeKey({ key }))
+          if (results.some((result) => !result.success))
+            return fail(500, "STORE_ERROR", "Não foi possível salvar a confirmação. Tente novamente.")
+          notifier.finish({ id: task.notification.id, resolution: "dismissed" })
+          return { status: 200, json: { tasks: syncRecoveryTasks() } }
+        },
+      },
+      {
+        method: "GET",
         path: "/events",
         handler: async ({ query, signal }) => ({
           status: 200,
@@ -133,18 +168,33 @@ export const createNotifyRoutes = ({
         method: "POST",
         path: "/notifications/dismiss-all",
         handler: async () => {
-          const open = store.pending()
-          for (const item of open) notifier.finish({ id: item.id, resolution: "dismissed" })
-          return { status: 200, json: { dismissed: open.length } }
+          syncRecoveryTasks()
+          const open = store.getUnresolvedAttention()
+          const skippedIds = open
+            .filter((item) => getRecoveryAcknowledgementKeys(kernel.db as Database, item.id).length > 0)
+            .map((item) => item.id)
+          const protectedIds = new Set(skippedIds)
+          const dismissible = open.filter((item) => !protectedIds.has(item.id))
+          dismissible.forEach((item) => {
+            notifier.finish({ id: item.id, resolution: "dismissed" })
+          })
+          return { status: 200, json: { dismissed: dismissible.length, skipped: skippedIds.length, skippedIds } }
         },
       },
       {
         method: "POST",
         path: "/notifications/:id/dismiss",
         handler: async ({ params }) => {
+          syncRecoveryTasks()
           const id = Number(params.id)
           const found = Number.isInteger(id) ? store.get(id) : null
           if (!found) return fail(404, "NOT_FOUND", "Notification not found")
+          if (getRecoveryAcknowledgementKeys(kernel.db as Database, id).length > 0)
+            return fail(
+              409,
+              "ACKNOWLEDGEMENT_REQUIRED",
+              "Revise os efeitos incertos no centro de tarefas interrompidas.",
+            )
           notifier.finish({ id, resolution: "dismissed" })
           return { status: 200, json: { notification: store.get(id) } }
         },

@@ -7,3 +7,53 @@
 .settings-notification-delivery p {
   margin: 0 0 12px;
 }
+
+.notification-preferences {
+  padding: 0 20px 20px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.notification-preferences fieldset {
+  min-width: 0;
+  margin: 16px 0;
+  padding: 12px;
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+}
+
+.notification-preference-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 8px 0;
+}
+
+.notification-preference-row select {
+  max-width: 62%;
+  min-width: 0;
+}
+
+.notification-quiet-times {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.notification-quiet-times label {
+  display: grid;
+  gap: 4px;
+}
+
+@media (max-width: 560px) {
+  .notification-preference-row:has(select) {
+    display: grid;
+    gap: 4px;
+  }
+
+  .notification-preference-row select {
+    width: 100%;
+    max-width: 100%;
+  }
+}

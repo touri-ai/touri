@@ -26,7 +26,7 @@ const listen = (server: Server) =>
 const close = (server: Server) => new Promise<void>((done) => server.close(() => done()))
 
 /** Browser substitute for native IPC/relay only. Pairing, REST, tickets and events use a real server. */
-export const createServerModeFixture = async () => {
+export const createServerModeFixture = async ({ initialMode = "local" }: { initialMode?: "local" | "server" } = {}) => {
   // This fixture is run by the serial evidence gate; building here keeps it inside that same lock.
   const built = spawnSync("bun", ["--cwd", "ui", "build"], { cwd: root, encoding: "utf8", timeout: 120_000 })
   if (built.status !== 0) throw new Error("The desktop UI build failed before the server-mode test")
@@ -41,7 +41,7 @@ export const createServerModeFixture = async () => {
   const eventSockets = new Set<Socket>()
   let child: ChildProcess | null = null
   let remoteToken = ""
-  let mode: "local" | "server" = "local"
+  let mode: "local" | "server" = initialMode
   let eventStreamPaused = false
   let eventConnections = 0
   let snapshotReads = 0

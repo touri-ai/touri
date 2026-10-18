@@ -73,7 +73,7 @@ it("opens bot settings with identity, mascot and one access sentence, then revea
 
 it("keeps common bot settings nearby and technical settings behind a disclosure", async () => {
   await botSettings({ machine: "vm", computerUse: true, mainThreadId: "thread-mark" })
-  const checks: Record<string, () => void> = {
+  const checks: Record<string, () => void | Promise<void>> = {
     Modelo: () => {
       for (const name of ["Provedor", "Modelo", "Raciocínio"])
         expect(screen.getByLabelText(name, { selector: name === "Modelo" ? "input" : "select" })).toBeVisible()
@@ -85,9 +85,9 @@ it("keeps common bot settings nearby and technical settings behind a disclosure"
       expect(t("Takes effect from the next message.", {}, "en")).toBe("Takes effect from the next message.")
       expect(screen.getByRole("button", { name: "Excluir bot" })).toBeVisible()
     },
-    Acesso: () => {
+    Acesso: async () => {
       expect(screen.getByRole("combobox", { name: "Acesso" })).toBeVisible()
-      expect(screen.getByLabelText("Acesso a qualquer pasta deste Mac", { exact: false })).toBeVisible()
+      expect(await screen.findByLabelText("Acesso a qualquer pasta deste servidor", { exact: false })).toBeVisible()
       expect(screen.getByRole("button", { name: "Adicionar pasta…" })).toBeVisible()
       expect(screen.getByRole("region", { name: "Login do provedor nesta máquina" })).toBeVisible()
       expect(screen.getByRole("heading", { name: "Segredos" })).toBeVisible()
@@ -100,7 +100,7 @@ it("keeps common bot settings nearby and technical settings behind a disclosure"
       expect(screen.getByLabelText(SETTINGS.vmMemory.label)).toBeVisible()
       for (const name of [
         /Usar meu login/,
-        /Permitir controle do computador na tela/,
+        /Permitir controle da tela deste computador/,
         /Controle do computador/,
         /Navegador habilitado/,
       ]) {
@@ -136,7 +136,7 @@ it("keeps common bot settings nearby and technical settings behind a disclosure"
   for (const [name, check] of Object.entries(checks)) {
     fireEvent.click(screen.getByRole("button", { name: "Avançado" }))
     fireEvent.click(screen.getByRole("tab", { name }))
-    check()
+    await check()
     fireEvent.click(screen.getByRole("button", { name: "Avançado" }))
   }
 })
@@ -206,7 +206,7 @@ it("keeps app sections short and technical settings within their disclosure", as
           "Este servidor não tem uma área de trabalho para controlar. Você pode conversar e trabalhar com arquivos.",
         ),
       ).toBeVisible()
-    expect(screen.queryByRole("heading", { name: "Permitir que um bot controle o Mac" })).toBeNull()
+    expect(screen.queryByRole("heading", { name: "Permitir que um bot controle este computador" })).toBeNull()
     if (section.id === "diagnostics") {
       expect(screen.getByRole("button", { name: "Verificar novamente" })).toBeVisible()
       expect(screen.getByRole("region", { name: "Armazenamento" })).toBeVisible()

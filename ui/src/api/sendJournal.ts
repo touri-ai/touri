@@ -112,6 +112,7 @@ export const createSendJournal = ({
     if (previous) {
       if (
         previous.input.text !== input.text ||
+        previous.input.groupAction !== input.groupAction ||
         previous.input.parentId !== input.parentId ||
         JSON.stringify(previous.input.attachmentIds) !== JSON.stringify(input.attachmentIds) ||
         (input.deadline !== undefined && input.deadline !== previous.input.deadline)

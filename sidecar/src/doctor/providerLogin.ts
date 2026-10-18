@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite"
-import type { Bot, DoctorCheck, Kernel } from "@touri/contracts"
+import { type Bot, type DoctorCheck, getHostKind, getHostNoun, type Kernel } from "@touri/contracts"
 import {
   loginTarget,
   NATIVE_VAULT_GUIDANCE,
@@ -91,13 +91,14 @@ const botCheck = async (
       present = validLogin(bot.provider, readHostLoginFile(hostHome, target), true)
     } catch {}
     const label = `Login · ${bot.name} · arquivo do host`
+    const hostNoun = getHostNoun(getHostKind(host.platform, host.headless))
     return present
-      ? check(id, label, "pass", `${bot.name}: usa o arquivo de login do ${target.label} neste computador.`)
+      ? check(id, label, "pass", `${bot.name}: usa o arquivo de login do ${target.label} neste ${hostNoun}.`)
       : check(
           id,
           label,
           "fail",
-          `${bot.name}: arquivo de login do ${target.label} ausente neste computador.`,
+          `${bot.name}: arquivo de login do ${target.label} ausente neste ${hostNoun}.`,
           target.command,
         )
   }

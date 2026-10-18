@@ -144,3 +144,24 @@ test("approval notes preserve images, structured payloads and failed tool result
     withApprovalOutcome({ success: false, errorCode: "FAILED", error: "Falhou" }, approvalOutcome.once),
   ).toMatchObject({ success: false, error: "Falhou", content: [{ type: "text", text: approvalOutcome.once }] })
 })
+
+test("delegation consent keeps the waiting member on both pending and resolved cards", async () => {
+  const scenario = await fixture()
+  const input = {
+    ctx: scenario.ctx,
+    groupMemberId: "recipient",
+    scope: { source: "mcp" as const, tool: "ask_bot" },
+    toolName: "Delegar entre limites de acesso",
+    input: { message: "Revise" },
+    allowStanding: false,
+  }
+
+  const pending = scenario.bridge.present(input)
+  const card = scenario.cards.at(-1)
+  await scenario.bridge.approve({ approvalId: card?.approvalId ?? "", decision: "denied" })
+  const result = await pending
+
+  expect(card).toMatchObject({ groupMemberId: "recipient", decision: "pending" })
+  expect(scenario.cards.at(-1)).toMatchObject({ groupMemberId: "recipient", decision: "denied" })
+  expect(result).toMatchObject({ success: true, behavior: "deny" })
+})

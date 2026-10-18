@@ -290,6 +290,7 @@ it("hides the schedule suggestion for an existing routine execution", () => {
 
   expect(screen.getByText("Resumo pronto.")).toBeVisible()
   expect(screen.queryByRole("button", { name: "Agendar esta tarefa" })).toBeNull()
+  expect(screen.queryByRole("region", { name: "Continuar até concluir" })).toBeNull()
   expect(screen.getByText("Concluído")).toBeVisible()
   expect(screen.queryByText("A rotina terminou e deixou o resultado nesta conversa.")).toBeNull()
 })
@@ -300,6 +301,7 @@ it("recognizes routine threads before run history loads", () => {
   render(<ChatPanel {...props} thread={{ ...props.thread, kind: "routine", routineRunId: "routine-slot" }} runs={[]} />)
 
   expect(screen.queryByRole("button", { name: "Agendar esta tarefa" })).toBeNull()
+  expect(screen.queryByRole("region", { name: "Continuar até concluir" })).toBeNull()
 })
 
 it("does not collapse a later human follow-up in a routine thread", () => {
