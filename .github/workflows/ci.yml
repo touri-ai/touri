@@ -272,7 +272,7 @@ jobs:
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: src-tauri/binaries/touri-sidecar-x86_64-unknown-linux-gnu
-          key: sidecar-v1-${{ runner.os }}-${{ runner.arch }}-1.4.3-${{ hashFiles('sidecar/src/**', 'packages/contracts/src/**', 'packages/contracts/*.json', 'packages/contracts/*.sql', 'bun.lock', 'package.json', 'sidecar/package.json', 'scripts/build-sidecar.ts', 'tsconfig*.json', '.github/workflows/ci.yml') }}
+          key: sidecar-v1-${{ runner.os }}-${{ runner.arch }}-1.4.3-${{ hashFiles('sidecar/src/**', 'packages/contracts/src/**', 'packages/contracts/*.json', 'packages/contracts/*.sql', 'bun.lock', 'package.json', 'sidecar/package.json', 'scripts/build-sidecar.ts', 'tsconfig*.json', 'bunfig.toml', 'sidecar/bunfig.toml', '.github/workflows/ci.yml') }}
       - if: steps.sidecar-binary.outputs.cache-hit != 'true'
         run: bun run build:sidecar:linux
       - if: needs.changes.outputs.native == 'true'
@@ -338,7 +338,7 @@ jobs:
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: src-tauri/binaries/touri-sidecar-x86_64-pc-windows-msvc.exe
-          key: sidecar-v1-${{ runner.os }}-${{ runner.arch }}-1.4.3-${{ hashFiles('sidecar/src/**', 'packages/contracts/src/**', 'packages/contracts/*.json', 'packages/contracts/*.sql', 'bun.lock', 'package.json', 'sidecar/package.json', 'scripts/build-sidecar.ts', 'tsconfig*.json', '.github/workflows/ci.yml') }}
+          key: sidecar-v1-${{ runner.os }}-${{ runner.arch }}-1.4.3-${{ hashFiles('sidecar/src/**', 'packages/contracts/src/**', 'packages/contracts/*.json', 'packages/contracts/*.sql', 'bun.lock', 'package.json', 'sidecar/package.json', 'scripts/build-sidecar.ts', 'tsconfig*.json', 'bunfig.toml', 'sidecar/bunfig.toml', '.github/workflows/ci.yml') }}
       - if: needs.changes.outputs.native == 'true' && steps.sidecar-binary.outputs.cache-hit != 'true'
         run: bun run build:sidecar:windows
       - if: needs.changes.outputs.native == 'true'
