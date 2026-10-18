@@ -213,6 +213,9 @@ jobs:
       - name: Check API model setup and bot selection
         working-directory: ui
         run: bunx playwright test test/e2e/api-models.spec.ts --workers=1
+      - name: Check group coordination on desktop and phone
+        working-directory: ui
+        run: bunx playwright test test/e2e/group-coordination.spec.ts --workers=1
       - name: Install pinned API executor
         shell: bash
         run: |
