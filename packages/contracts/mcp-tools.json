@@ -43,7 +43,7 @@
     },
     {
       "name": "notify_user",
-      "description": "Send a macOS notification to the user. Use only for results or blockers that need their attention.",
+      "description": "Save a result notification for the user. Alerts follow their type, bot and quiet-hour preferences. Limited to one notification per bot every 30 seconds; a rate-limit error means no notification was saved.",
       "inputSchema": { "type": "object", "required": ["title", "body"], "additionalProperties": false,
         "properties": { "title": { "type": "string", "maxLength": 80 }, "body": { "type": "string", "maxLength": 400 } } },
       "x-touri": { "group": "core", "mvp": true, "mutates": true }

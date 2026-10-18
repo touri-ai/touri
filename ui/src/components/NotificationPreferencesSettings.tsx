@@ -5,7 +5,7 @@ import {
   type NotificationScopePreferences,
   type NotifyKind,
 } from "@touri/contracts"
-import { useEffect, useState } from "react"
+import { useEffect, useId, useState } from "react"
 import type { UiApi } from "../api/client"
 import { type TranslationKey, t } from "../i18n"
 import { SettingsSwitch } from "./SettingsLayout"
@@ -20,6 +20,7 @@ export const NotificationPreferencesSettings = ({
   onChange: (preferences: NotificationPreferences) => void
   api?: UiApi | undefined
 }) => {
+  const controlsId = useId()
   const [bots, setBots] = useState<Bot[]>([])
   const [scopeId, setScopeId] = useState("")
   const [loadError, setLoadError] = useState(false)
@@ -88,9 +89,10 @@ export const NotificationPreferencesSettings = ({
       </label>
       {loadError && <p role="alert">{t("Não foi possível carregar os bots. Reabra as preferências.")}</p>}
       {scopeId && (
-        <label className="notification-preference-row">
+        <label className="notification-preference-row" htmlFor={`${controlsId}-bot`}>
           <span>{t("Receber avisos deste bot")}</span>
           <SettingsSwitch
+            id={`${controlsId}-bot`}
             checked={scope.enabled !== false}
             onChange={(event) => saveScope({ enabled: event.target.checked })}
           />
@@ -134,9 +136,13 @@ export const NotificationPreferencesSettings = ({
       </p>
       <fieldset>
         <legend>{t("Horário silencioso")}</legend>
-        <label className="notification-preference-row">
+        <label className="notification-preference-row" htmlFor={`${controlsId}-quiet`}>
           <span>{t("Ativar horário silencioso")}</span>
-          <SettingsSwitch checked={quiet.enabled} onChange={(event) => saveQuiet({ enabled: event.target.checked })} />
+          <SettingsSwitch
+            id={`${controlsId}-quiet`}
+            checked={quiet.enabled}
+            onChange={(event) => saveQuiet({ enabled: event.target.checked })}
+          />
         </label>
         {quiet.enabled && (
           <div className="notification-quiet-times">

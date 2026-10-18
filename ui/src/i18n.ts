@@ -3,6 +3,8 @@ import { userFacingError } from "./errors"
 /** All UI copy lives here. pt-BR is the default; English is available for a future locale picker. */
 export type Locale = "pt-BR" | "en"
 export const ptBR = {
+  "Save a result notification for the user. Alerts follow their type, bot and quiet-hour preferences. Limited to one notification per bot every 30 seconds; a rate-limit error means no notification was saved.":
+    "Guarde um aviso de resultado para o usuário. Os alertas seguem as preferências de tipo, bot e horário silencioso. Limite de um aviso por bot a cada 30 segundos; um erro de limite significa que nenhum aviso foi guardado.",
   "Usar padrão herda os filtros globais e a preferência atual do bot.":
     "Usar padrão herda os filtros globais e a preferência atual do bot.",
   "Usar padrão mantém a preferência atual de cada bot.": "Usar padrão mantém a preferência atual de cada bot.",
@@ -2201,6 +2203,8 @@ export const ptBR = {
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  "Save a result notification for the user. Alerts follow their type, bot and quiet-hour preferences. Limited to one notification per bot every 30 seconds; a rate-limit error means no notification was saved.":
+    "Save a result notification for the user. Alerts follow their type, bot and quiet-hour preferences. Limited to one notification per bot every 30 seconds; a rate-limit error means no notification was saved.",
   "Usar padrão herda os filtros globais e a preferência atual do bot.":
     "Use default inherits global filters and the bot’s current preference.",
   "Usar padrão mantém a preferência atual de cada bot.": "Use default keeps each bot’s current preference.",
