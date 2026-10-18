@@ -1,7 +1,9 @@
 import AxeBuilder from "@axe-core/playwright"
 import { expect, test } from "@playwright/test"
 
-test("group actions send a parallel request and show a confirmed board on desktop and phone", async ({ page }) => {
+test("group actions send a parallel request and show a confirmed board on desktop and phone", async ({
+  page,
+}, testInfo) => {
   await page.emulateMedia({ reducedMotion: "reduce" })
   await page.goto("/test/e2e/groups-harness.html")
   await expect(page.getByRole("textbox", { name: "Mensagem para mark", exact: true })).toBeVisible()
@@ -29,7 +31,7 @@ test("group actions send a parallel request and show a confirmed board on deskto
       "Coloquei sua solicitação na fila local. Vou manter o contexto da conversa, e o próximo passo está pronto.",
     ),
   ).toBeVisible()
-  await page.evaluate(() => {
+  const turn = await page.evaluate(() => {
     const qa = window as typeof window & {
       groupsQa: {
         api: { getState: () => { threads: { id: string; groupId?: string | null }[] }; emit: (event: unknown) => void }
@@ -117,6 +119,7 @@ test("group actions send a parallel request and show a confirmed board on deskto
         finishedAt: Date.now(),
       },
     })
+    return root
   })
   const panel = page.getByRole("complementary", { name: "Painel do grupo Equipe", exact: true })
   if (!(await panel.isVisible())) await page.getByRole("button", { name: "Painel do grupo", exact: true }).click()
@@ -125,10 +128,30 @@ test("group actions send a parallel request and show a confirmed board on deskto
   await expect(board.getByText("Raciocínio privado")).toHaveCount(0)
   await expect(panel.getByText("Trabalhando", { exact: true })).toHaveCount(0)
   await expect(panel.getByText("Aguardando você", { exact: true })).toBeVisible()
+  await page.evaluate((root) => {
+    const qa = window as typeof window & { groupsQa: { api: { emit: (event: unknown) => void } } }
+    qa.groupsQa.api.emit({
+      type: "run.updated",
+      run: {
+        ...root,
+        id: "waiting-run",
+        groupTurnId: root.id,
+        status: "failed",
+        errorClass: "unknown",
+        finishedAt: Date.now(),
+      },
+    })
+  }, turn)
+  await expect(panel.getByText("Falhou", { exact: true })).toHaveCount(1)
+  await expect(panel.getByText("Disponível", { exact: true })).toHaveCount(1)
+  await expect(board.getByText("Plano aprovado na revisão")).toBeVisible()
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.screenshot({ path: testInfo.outputPath("group-partial-success-desktop.png") })
   const violations = (await new AxeBuilder({ page }).include(".group-panel").withTags(["wcag2a", "wcag2aa"]).analyze())
     .violations
   expect(violations).toEqual([])
   await page.setViewportSize({ width: 390, height: 844 })
   await expect(board.getByText("Plano aprovado na revisão")).toBeVisible()
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+  await page.screenshot({ path: testInfo.outputPath("group-partial-success-phone.png") })
 })

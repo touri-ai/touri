@@ -138,6 +138,7 @@ type RuntimeEngine = {
   activeRun: (args: { threadId: Id }) => Run | null
   continueAfterApproval: ServiceMap["runtime.continueAfterApproval"]
   cancel: (id: Id) => Result<{ run: Run }, "NOT_FOUND">
+  cancelRuns: (runIds: Id[]) => Promise<void>
   cancelBotTurns: (args: { botId: Id }) => Promise<void>
   retry: (id: Id) => Result<{ run: Run }, "NOT_FOUND" | "THREAD_NOT_FOUND" | "BOT_PAUSED" | "CONFLICT">
   answerApproval: (args: {
@@ -1787,8 +1788,14 @@ export const createRuntimeEngine = ({
     const runs = [...persistence.listActiveRuns(), ...queued.map((id) => persistence.getRun(id))].filter(
       (run): run is Run => !!run && run.botId === botId && ["queued", "starting", "running"].includes(run.status),
     )
-    for (const run of runs) cancel(run.id)
-    await Promise.all(runs.map((run) => executions.get(run.id)))
+    await cancelRuns(runs.map((run) => run.id))
+  }
+
+  const cancelRuns = async (runIds: Id[]): Promise<void> => {
+    runIds.forEach((runId) => {
+      cancel(runId)
+    })
+    await Promise.all(runIds.map((runId) => executions.get(runId)))
   }
 
   const retry = (id: Id): Result<{ run: Run }, "NOT_FOUND" | "THREAD_NOT_FOUND" | "BOT_PAUSED" | "CONFLICT"> => {
@@ -2388,6 +2395,7 @@ export const createRuntimeEngine = ({
     listRuns: persistence.listRuns,
     cancel,
     cancelBotTurns,
+    cancelRuns,
     retry,
     answerApproval,
     approvalBridge,

@@ -345,6 +345,9 @@
 .group-member-state-waiting {
   color: var(--text-warning);
 }
+.group-member-state-failed {
+  color: var(--text-danger);
+}
 .group-member-result {
   margin: 5px 0 0;
   font-size: 12px;

@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react"
 import type { BotGroup, Message, Run } from "@touri/contracts"
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 import App from "../src/App"
 import { createMockApi } from "../src/api/mock"
 import { GroupPanel } from "../src/components/Groups"
@@ -66,6 +66,66 @@ describe("group coordination", () => {
 
     expect(member.state).toBe("waiting")
     expect(getGroupMemberState("coordinator", "shared", [message], runs).state).toBe("working")
+  })
+
+  it("keeps successful answers when one member fails and marks only that member as failed", () => {
+    const bots = createMockApi().getState().bots.slice(0, 2)
+    const first = bots[0]?.id ?? ""
+    const second = bots[1]?.id ?? ""
+    const runs = [getRun("turn", first), getRun("result", first), getRun("pending", second, "failed")]
+
+    render(
+      <GroupPanel
+        group={getGroup(bots.map((bot) => bot.id))}
+        bots={bots}
+        threadId="shared"
+        messages={[getMessage(first)]}
+        runs={runs}
+        onClose={() => {}}
+        onEdit={() => {}}
+      />,
+    )
+
+    const members = screen.getByRole("list", { name: "Membros do grupo" })
+    const [successful, failed] = within(members).getAllByRole("listitem")
+    if (!successful || !failed) throw new Error("Missing fixture members")
+    expect(within(successful).getByText("Disponível")).toBeVisible()
+    expect(within(failed).getByText("Falhou")).toBeVisible()
+    expect(
+      within(screen.getByRole("region", { name: "Resultados do turno" })).getByText("Plano revisado"),
+    ).toBeVisible()
+    expect(t("Falhou", {}, "en")).toBe("Failed")
+  })
+
+  it("reuses the indexed board and member states when their inputs have not changed", () => {
+    const bots = createMockApi().getState().bots.slice(0, 3)
+    const first = bots[0]?.id ?? ""
+    const readId = vi.fn()
+    const runs = [getRun("turn", first), getRun("result", first)].map((run) => ({
+      ...run,
+      get id() {
+        readId()
+        return run.id
+      },
+    }))
+    const scans = vi.spyOn(runs, "some")
+    const props = {
+      group: getGroup(bots.map((bot) => bot.id)),
+      bots,
+      threadId: "shared",
+      messages: [getMessage(first)],
+      runs,
+      onClose: () => {},
+      onEdit: () => {},
+    }
+    const view = render(<GroupPanel {...props} />)
+    const reads = readId.mock.calls.length
+
+    view.rerender(<GroupPanel {...props} onClose={() => {}} />)
+
+    expect(reads).toBeGreaterThan(0)
+    expect(readId).toHaveBeenCalledTimes(reads)
+    expect(scans).not.toHaveBeenCalled()
   })
 
   it("sends ask-everyone through the message journal and preserves a draft when requesting a summary", async () => {

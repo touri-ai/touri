@@ -152,6 +152,7 @@ export const Composer = ({
     parentId: Id | null
     text: string
     files: Array<AttachedFile>
+    groupAction: GroupAction | undefined
   } | null>(null)
   const stoppingRef = useRef<string | null>(null)
   const stopping = Boolean(activeRun && activeRun.id === stoppingRunId)
@@ -273,7 +274,16 @@ export const Composer = ({
     const summary = groupAction === "summarize"
     if (sendingRef.current || (summary ? sending || Boolean(activeRun) || Boolean(threadCreation) : blocked)) return
     if (login.blocked) {
-      pendingSend.current = { api, botId: bot?.id, provider: bot?.provider, threadId, parentId, text: draft, files }
+      pendingSend.current = {
+        api,
+        botId: bot?.id,
+        provider: bot?.provider,
+        threadId,
+        parentId,
+        text: draft,
+        files,
+        groupAction,
+      }
       if (login.flow?.state !== "waiting" && !login.busy) void login.recheck()
       return
     }
@@ -322,7 +332,7 @@ export const Composer = ({
     }
     if (!login.blocked) {
       pendingSend.current = null
-      void submitRef.current()
+      void submitRef.current(pending.groupAction)
     }
   }, [api, bot?.id, bot?.provider, threadId, parentId, draft, files, login.blocked])
   const stop = async () => {

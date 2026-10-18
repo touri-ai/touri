@@ -7,7 +7,8 @@ import { createRuntimePersistence, toRun } from "../runtime/persistence"
 import { crossesBoundary, delegatedBot, delegationCeiling, delegationSecrets, setDelegation } from "./security"
 import { createGroupStore, routeGroupMessage } from "./store"
 
-type Engine = Pick<ReturnType<typeof createRuntimeEngine>, "enqueue" | "cancel">
+type Engine = Pick<ReturnType<typeof createRuntimeEngine>, "enqueue" | "cancel"> &
+  Partial<Pick<ReturnType<typeof createRuntimeEngine>, "cancelBotTurns" | "cancelRuns">>
 type Turn = {
   run: Run
   group: BotGroup
@@ -50,7 +51,13 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
   const queues = new Map<string, Turn[]>()
   const busy = new Set<string>()
   let stopped = false
+  const isCurrentTurn = (turn: Turn) =>
+    !!groups.get(turn.group.id) &&
+    store.getThread({ threadId: turn.run.threadId })?.groupId === turn.group.id &&
+    !!persistence.getRun(turn.run.id)
   const save = (turn: Turn, patch: Partial<Run>) => {
+    if (!isCurrentTurn(turn)) return
+
     Object.assign(turn.run, patch)
     persistence.saveRun(turn.run)
     kernel.publish({ type: "run.updated", run: { ...turn.run } })
@@ -106,8 +113,18 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
       engine.cancel(child)
     })
   }
-  const waitRun = (id: string, signal: AbortSignal, waitMs: number): Promise<Run> =>
-    new Promise((resolve) => {
+  const cancelDeletedTurn = (turn: Turn): void => {
+    frames.forEach((frame, threadId) => {
+      if (frame.turn !== turn) return
+
+      frames.delete(threadId)
+      setDelegation(kernel, threadId, null)
+    })
+    turn.controller.abort()
+    cancelChildren(turn)
+  }
+  const waitRun = (id: string, signal: AbortSignal, deadline: number | null): Promise<Run> =>
+    new Promise((resolve, reject) => {
       let timer: ReturnType<typeof setTimeout> | undefined
       let dispose = () => {}
       const cleanup = () => {
@@ -121,19 +138,25 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
       }
       const check = () => {
         const run = readRun(id)
-        if (run && terminal(run)) {
+        if (!run) {
+          cleanup()
+          reject(new Error("Turno removido"))
+          return
+        }
+        if (terminal(run)) {
           cleanup()
           resolve(run)
+          return
         }
+        // Queue time must not consume a member's chat budget. Routines retain their absolute deadline.
+        if (timer || (deadline === null && run.startedAt === null)) return
+        const expiresAt = deadline ?? (run.startedAt ?? Date.now()) + timeoutMs
+        timer = setTimeout(abort, Math.max(1, expiresAt - Date.now()))
       }
       dispose = kernel.subscribe(({ event }) => {
         if (event.type === "run.updated" && event.run.id === id) check()
       })
       signal.addEventListener("abort", abort, { once: true })
-      timer = setTimeout(() => {
-        engine.cancel(id)
-        check()
-      }, waitMs)
       if (signal.aborted) abort()
       else check()
     })
@@ -148,6 +171,7 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
     secrets = true,
   ): Promise<string> => {
     turn.controller.signal.throwIfAborted()
+    if (!isCurrentTurn(turn)) throw new Error("Turno removido")
     if (!turn.group.memberIds.includes(botId)) throw new Error("Bot não pertence ao grupo")
     const bot = withServers(store.getBot({ botId }))
     if (!bot || bot.archivedAt || bot.paused) throw new Error("Bot indisponível ou pausado")
@@ -214,25 +238,39 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
       threadId: thread.id,
       requestMessageId: request.message.id,
       trigger: "user",
-      delegated: delegated || turn.action === "ask_all",
+      delegated,
+    })
+    const memberRun: Run = result.success
+      ? result.run
+      : {
+          ...turn.run,
+          id: kernel.newId(),
+          threadId: thread.id,
+          botId,
+          provider: bot.provider,
+          requestMessageId: request.message.id,
+          status: "failed",
+          errorClass: "unknown",
+          errorMessage: kernel.redact(result.error),
+          routineRunId: null,
+          queuedAt: Date.now(),
+          startedAt: null,
+          finishedAt: Date.now(),
+        }
+    if (!result.success) persistence.saveRun(memberRun)
+    turn.children.add(memberRun.id)
+    db.query("INSERT INTO group_run_links VALUES(?,?,?)").run(memberRun.id, turn.run.id, depth)
+    kernel.publish({
+      type: "run.updated",
+      run: { ...memberRun, threadId: turn.run.threadId, groupTurnId: turn.run.id },
     })
     if (!result.success) {
       frames.delete(thread.id)
       setDelegation(kernel, thread.id, null)
       throw new Error(result.error)
     }
-    turn.children.add(result.run.id)
-    db.query("INSERT INTO group_run_links VALUES(?,?,?)").run(result.run.id, turn.run.id, depth)
-    kernel.publish({
-      type: "run.updated",
-      run: { ...result.run, threadId: turn.run.threadId, groupTurnId: turn.run.id },
-    })
     try {
-      const run = await waitRun(
-        result.run.id,
-        turn.controller.signal,
-        turn.deadline === null ? timeoutMs : Math.max(1, turn.deadline - Date.now()),
-      )
+      const run = await waitRun(result.run.id, turn.controller.signal, turn.deadline)
       if (run.status !== "succeeded") throw new Error(run.errorMessage ?? "O bot não concluiu o pedido")
       return store.activePath({ threadId: thread.id }).find((m) => m.id === run.replyMessageId)?.text ?? ""
     } finally {
@@ -251,6 +289,14 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
   }
   // Persist a distinct shared message, so reload, FTS, transcript replay and approvals all use the store normally.
   const unsubscribe = kernel.subscribe(({ event }) => {
+    if (event.type === "transcript.resync" || event.type === "bot.deleted") {
+      turns.forEach((turn) => {
+        if (isCurrentTurn(turn) && (event.type !== "bot.deleted" || !turn.group.memberIds.includes(event.botId))) return
+
+        cancelDeletedTurn(turn)
+      })
+      return
+    }
     if (event.type === "run.updated" && !event.run.groupTurnId) {
       const link = db.query("SELECT turn_id FROM group_run_links WHERE run_id=?").get(event.run.id) as {
         turn_id: string
@@ -284,6 +330,10 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
       event.type === "message.delta" || event.type === "message.parts" ? event.threadId : event.message.threadId
     const frame = frames.get(sourceThread)
     if (!frame) return
+    if (!isCurrentTurn(frame.turn)) {
+      cancelDeletedTurn(frame.turn)
+      return
+    }
     if (event.type === "message.delta" || event.type === "message.parts") {
       const link = db
         .query("SELECT visible_message_id FROM group_message_links WHERE source_thread_id=? AND message_id=?")
@@ -375,6 +425,8 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
     const outcomes = await Promise.allSettled(
       turn.recipients.map((botId) => runBot(turn, botId, text, 0, [botId], false)),
     )
+    turn.controller.signal.throwIfAborted()
+    if (outcomes.some((outcome) => outcome.status === "fulfilled")) return
     const failure = outcomes.find((outcome) => outcome.status === "rejected")
     if (failure?.status === "rejected") throw failure.reason
   }
@@ -397,7 +449,6 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
               ...(turn.run.requestMessageId ? { leafId: turn.run.requestMessageId } : {}),
             })
             .find((m) => m.id === turn?.run.requestMessageId)
-          if (turn.deadline === null) turn.deadline = Date.now() + timeoutMs
           await runRecipients(turn, request?.text ?? "")
           save(turn, { status: "succeeded", finishedAt: Date.now() })
         } catch (error) {
@@ -504,6 +555,14 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
       }
     return true
   }
+  const cancelBotTurns = async ({ botId }: { botId: string }): Promise<void> => {
+    const affected = [...turns.values()].filter((turn) => turn.group.memberIds.includes(botId))
+    affected.forEach((turn) => {
+      cancel(turn.run.id)
+    })
+    await engine.cancelRuns?.(affected.flatMap((turn) => [...turn.children]))
+    await engine.cancelBotTurns?.({ botId })
+  }
   const listRuns = (threadId: string, options?: { all?: boolean }): Run[] => {
     const roots = persistence.listRuns(threadId, options)
     const children = db
@@ -585,8 +644,6 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
     frame.turn.reservations.add(target)
     // Tool cancellation must stop the target as well. A canceled/expired tool ends the group turn.
     const abort = () => frame.turn.controller.abort()
-    const deadline = frame.turn.deadline ?? Date.now() + timeoutMs
-    const timer = setTimeout(abort, Math.max(1, deadline - Date.now()))
     ctx.signal.addEventListener("abort", abort, { once: true })
     try {
       ctx.signal.throwIfAborted()
@@ -647,7 +704,6 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
     } catch (error) {
       return fail(frame.turn.controller.signal.aborted ? "CANCELED" : "DELEGATION_FAILED", kernel.redact(String(error)))
     } finally {
-      clearTimeout(timer)
       frame.turn.reservations.delete(target)
       ctx.signal.removeEventListener("abort", abort)
     }
@@ -689,7 +745,7 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
     for (const turn of turns.values()) cancel(turn.run.id)
     if (busy.size === 0) unsubscribe()
   }
-  return { enqueue, cancel, retry, listRuns, shutdown, canCoordinate, askBot, askAll }
+  return { enqueue, cancel, cancelBotTurns, retry, listRuns, shutdown, canCoordinate, askBot, askAll }
 }
 
 const getRecipients = (group: BotGroup, bots: Bot[], text: string, action: string | undefined) => {

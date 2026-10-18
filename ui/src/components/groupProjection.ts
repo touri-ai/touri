@@ -1,61 +1,88 @@
 import type { Message, Run } from "@touri/contracts"
 
-export const getGroupBoard = (threadId: string | undefined, messages: Message[], runs: Run[]): Message[] => {
-  const turn = runs
-    .filter((run) => run.threadId === threadId && !run.groupTurnId)
+export type GroupMemberState = {
+  state: "idle" | "working" | "waiting" | "failed"
+  label: "Disponível" | "Trabalhando" | "Aguardando você" | "Falhou"
+  result: string
+}
+
+export const getGroupProjection = (threadId: string | undefined, messages: Message[], runs: Run[]) => {
+  const threadRuns = runs.filter((run) => run.threadId === threadId)
+  const runsById = new Map(threadRuns.map((run) => [run.id, run]))
+  const turn = threadRuns
+    .filter((run) => !run.groupTurnId)
     .reduce<Run | undefined>((latest, run) => (!latest || run.queuedAt > latest.queuedAt ? run : latest), undefined)
-  if (!turn) return []
-
-  return getConfirmedResults(threadId, messages, runs).filter((message) =>
-    runs.some((run) => run.id === message.runId && run.groupTurnId === turn.id),
+  const memberRuns = threadRuns.filter((run) => run.groupTurnId)
+  const active = memberRuns.filter((run) => ["queued", "starting", "running"].includes(run.status))
+  const activeIds = new Set(active.map((run) => run.id))
+  const working = new Set(active.map((run) => run.botId))
+  const failed = new Set(
+    memberRuns
+      .filter((run) => run.groupTurnId === turn?.id && ["failed", "interrupted", "canceled"].includes(run.status))
+      .map((run) => run.botId),
   )
+  const confirmed = getConfirmedResults(threadId, messages, runsById)
+  const resultsByMember = getLatestResultsByMember(confirmed)
+  const waiting = new Set(
+    messages.flatMap((message) => {
+      if (message.threadId !== threadId || !message.runId || !activeIds.has(message.runId)) return []
+
+      return message.parts.flatMap((part) =>
+        part.type === "approval" && part.decision === "pending" ? [part.groupMemberId ?? message.sender?.id] : [],
+      )
+    }),
+  )
+  const memberIds = new Set(memberRuns.map((run) => run.botId).concat([...waiting].filter((id) => id !== undefined)))
+  const members = new Map(
+    [...memberIds].map((botId) => [
+      botId,
+      getMemberState(working.has(botId), waiting.has(botId), failed.has(botId), resultsByMember.get(botId)?.text ?? ""),
+    ]),
+  )
+  const board = turn ? confirmed.filter((message) => runsById.get(message.runId ?? "")?.groupTurnId === turn.id) : []
+
+  return { board, members }
 }
 
-export const getGroupMemberState = (botId: string, threadId: string | undefined, messages: Message[], runs: Run[]) => {
-  const groupActive = runs.filter(
-    (run) => run.groupTurnId && run.threadId === threadId && ["queued", "starting", "running"].includes(run.status),
-  )
-  const active = groupActive.filter((run) => run.botId === botId)
-  const waiting = messages.some(
-    (message) =>
-      message.threadId === threadId &&
-      groupActive.some((run) => run.id === message.runId) &&
-      message.parts.some(
-        (part) =>
-          part.type === "approval" &&
-          part.decision === "pending" &&
-          (part.groupMemberId ?? message.sender?.id) === botId,
-      ),
-  )
-  const result =
-    getConfirmedResults(threadId, messages, runs)
-      .filter((message) => message.sender?.id === botId)
-      .reduce<Message | undefined>(
-        (latest, message) => (!latest || message.createdAt > latest.createdAt ? message : latest),
-        undefined,
-      )?.text ?? ""
-  if (waiting) return { state: "waiting", label: "Aguardando você" as const, result }
-  if (active.length) return { state: "working", label: "Trabalhando" as const, result }
+export const getGroupBoard = (threadId: string | undefined, messages: Message[], runs: Run[]) =>
+  getGroupProjection(threadId, messages, runs).board
 
-  return { state: "idle", label: "Disponível" as const, result }
+export const getGroupMemberState = (botId: string, threadId: string | undefined, messages: Message[], runs: Run[]) =>
+  getGroupProjection(threadId, messages, runs).members.get(botId) ?? getIdleMemberState()
+
+export const getIdleMemberState = (): GroupMemberState => ({ state: "idle", label: "Disponível", result: "" })
+
+const getMemberState = (working: boolean, waiting: boolean, failed: boolean, result: string): GroupMemberState => {
+  if (waiting) return { state: "waiting", label: "Aguardando você", result }
+  if (working) return { state: "working", label: "Trabalhando", result }
+  if (failed) return { state: "failed", label: "Falhou", result }
+
+  return { state: "idle", label: "Disponível", result }
 }
 
-const getConfirmedResults = (threadId: string | undefined, messages: Message[], runs: Run[]) =>
+const getLatestResultsByMember = (messages: Message[]) => {
+  // A local index keeps streaming updates linear in the conversation size.
+  const results = new Map<string, Message>()
+  messages.forEach((message) => {
+    if (!message.sender) return
+    const previous = results.get(message.sender.id)
+    if (previous && previous.createdAt >= message.createdAt) return
+
+    results.set(message.sender.id, message)
+  })
+
+  return results
+}
+
+const getConfirmedResults = (threadId: string | undefined, messages: Message[], runsById: Map<string, Run>) =>
   messages
-    .filter(
-      (message) =>
-        message.threadId === threadId &&
-        message.role === "assistant" &&
-        message.status === "complete" &&
-        message.sender &&
-        runs.some(
-          (run) =>
-            run.id === message.runId &&
-            run.groupTurnId &&
-            run.status === "succeeded" &&
-            run.replyMessageId === message.id,
-        ),
-    )
+    .filter((message) => {
+      if (message.threadId !== threadId || message.role !== "assistant" || message.status !== "complete") return false
+      if (!message.sender || !message.runId) return false
+      const run = runsById.get(message.runId)
+
+      return run?.groupTurnId && run.status === "succeeded" && run.replyMessageId === message.id
+    })
     .map((message) => ({
       ...message,
       text: message.parts
