@@ -109,21 +109,18 @@ test("mirroring a settled reply does not requeue its tools", async () => {
 
   expect(database.query("SELECT run_id FROM tool_recovery_pending").all()).toEqual([])
 
-  database
-    .query("UPDATE messages SET parts_json = ? WHERE thread_id = 'thread' AND id = 'reply-a'")
-    .run(
-      JSON.stringify([
-        {
-          type: "tool_call",
-          callId: "imported",
-          tool: "fixture_tool",
-          summary: "Resultado importado",
-          inputJson: "{}",
-          outputJson: "preservado",
-          ok: true,
-        },
-      ]),
-    )
+  const importedParts = JSON.stringify([
+    {
+      type: "tool_call",
+      callId: "imported",
+      tool: "fixture_tool",
+      summary: "Resultado importado",
+      inputJson: "{}",
+      outputJson: "preservado",
+      ok: true,
+    },
+  ])
+  database.query("UPDATE messages SET parts_json = ? WHERE thread_id = 'thread' AND id = 'reply-a'").run(importedParts)
   expect(database.query("SELECT run_id,thread_id FROM tool_recovery_pending").all()).toEqual([
     { run_id: "run-a", thread_id: "thread" },
   ])
