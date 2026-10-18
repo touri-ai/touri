@@ -166,7 +166,13 @@ const makeFixture = async () => {
     runtime.stop()
     rmSync(root, { recursive: true, force: true })
   })
-  const response = await request("POST", "/bots", { name: "Notas QA", machine: "local" })
+  const settings = runtime.kernel.services.use("store.settings")?.()
+  if (!settings) throw new Error("Missing settings")
+  const response = await request("POST", "/bots", {
+    name: "Notas QA",
+    provider: settings.defaultProvider,
+    machine: "local",
+  })
   expect(response.status).toBe(201)
   const { bot } = (await response.json()) as { bot: Bot }
 
