@@ -5,6 +5,7 @@ import App from "../src/App"
 import type { ApiRequest } from "../src/api/client"
 import { createMockApi } from "../src/api/mock"
 import { ApiModelsSettings } from "../src/components/ApiModelsSettings"
+import { ApiModelPicker } from "../src/components/ApiModelPicker"
 import { BotCreateModal, BotSettingsModal } from "../src/components/Modals"
 import { SettingsModal } from "../src/components/SettingsModal"
 import { errorRecovery } from "../src/errorRecovery"
@@ -181,4 +182,14 @@ it("keeps native bot settings usable when an older endpoint returns no API catal
   await waitFor(() => expect(catalog).toHaveBeenCalledOnce())
   expect(screen.getByLabelText("Nome")).toBeVisible()
   expect(screen.queryByLabelText("Modelos por API")).toBeNull()
+})
+
+it("shows the model name while saved provider metadata is unavailable", async () => {
+  const api = createMockApi()
+  const value = getApiModelReference({ id: "missing-provider", modelId: "demo-model" })
+
+  render(<ApiModelPicker api={api} id="missing-api-model" value={value} onChange={vi.fn()} />)
+
+  expect(await screen.findByRole("option", { name: "demo-model" })).toBeInTheDocument()
+  expect(document.body.textContent).not.toContain("touri-api-missing-provider")
 })
