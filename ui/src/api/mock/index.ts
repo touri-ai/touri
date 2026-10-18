@@ -635,12 +635,9 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
       }
       if (key === "PUT /bots/:id/integrations/telegram") {
         const { token, ...config } = input as ApiRoutes["PUT /bots/:id/integrations/telegram"]["req"]
-        const next = { ...current, config: { ...current.config, ...config } }
-        if (token !== undefined) next.tokenSaved = token !== null
-        next.status =
-          next.config.enabled && next.tokenSaved
-            ? { state: "connected", username: "touri_mock_bot", error: null }
-            : { state: "off", username: null, error: null }
+        const nextConfig = { ...current.config, ...config }
+        const tokenSaved = token === undefined ? current.tokenSaved : token !== null
+        const next = { ...current, config: nextConfig, tokenSaved, status: getMockTelegramStatus(nextConfig.enabled, tokenSaved) }
         telegram.set(botId, next)
         return { telegram: next } as ApiRoutes[typeof route]["res"]
       }
@@ -1417,4 +1414,12 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
     notify,
     getState: () => ({ bots, threads, messages }),
   }
+}
+
+// Mirrors the sidecar restart: enabled without a token is an error, not "off".
+function getMockTelegramStatus(enabled: boolean, tokenSaved: boolean): TelegramIntegration["status"] {
+  if (!enabled) return { state: "off", username: null, error: null }
+  if (!tokenSaved) return { state: "error", username: null, error: "Salve o token do bot do Telegram." }
+
+  return { state: "connected", username: "touri_mock_bot", error: null }
 }

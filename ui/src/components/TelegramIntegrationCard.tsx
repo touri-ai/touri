@@ -124,8 +124,8 @@ const TelegramCard = ({ api, botId }: { api: UiApi; botId: string }) => {
         <label>
           <input
             type="checkbox"
-            checked={telegram.tokenSaved && telegram.config.enabled}
-            disabled={!telegram.tokenSaved}
+            checked={telegram.config.enabled}
+            disabled={!telegram.tokenSaved && !telegram.config.enabled}
             aria-describedby={tokenHelpId}
             onChange={(event) => void save({ enabled: event.target.checked })}
           />{" "}

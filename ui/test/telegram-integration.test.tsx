@@ -30,14 +30,27 @@ describe("Telegram integration card", () => {
     expect(api.calls.some((call) => call.route === "PUT /bots/:id/integrations/telegram")).toBe(false)
   })
 
-  it("shows off when an earlier configuration enabled the integration without a saved token", async () => {
+  it("lets an earlier configuration enabled without a saved token be turned off", async () => {
     const api = createMockApi()
     await api.request("PUT /bots/:id/integrations/telegram", { enabled: true }, { id: "bot-a" })
     render(<TelegramIntegrationCard api={api} botId="bot-a" />)
-
     const toggle = await screen.findByRole("checkbox", { name: "Ativar Telegram" })
 
+    expect(toggle).toBeChecked()
+    expect(toggle).toBeEnabled()
+    expect(screen.getByRole("status")).toHaveTextContent("Salve o token do bot do Telegram.")
+
+    fireEvent.click(toggle)
+
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Desligado"))
+    expect(api.calls.at(-1)).toMatchObject({ route: "PUT /bots/:id/integrations/telegram", input: { enabled: false } })
+    expect(toggle).not.toBeChecked()
     expect(toggle).toBeDisabled()
+
+    fireEvent.change(screen.getByLabelText("Token do bot"), { target: { value: TOKEN } })
+    fireEvent.click(screen.getByRole("button", { name: "Salvar token" }))
+
+    await waitFor(() => expect(screen.getByLabelText("Token do bot")).toHaveAttribute("placeholder", "Token salvo"))
     expect(toggle).not.toBeChecked()
     expect(screen.getByRole("status")).toHaveTextContent("Desligado")
   })
