@@ -424,6 +424,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
   const generation = useRef(0)
   const runRevision = useRef(0)
   const liveRuns = useRef(new Map<Id, number>())
+  const completedDuringLoad = useRef<Set<Id> | null>(null)
   const loadedThreads = useRef(new Map<Id, number>())
   const threadLoads = useRef(
     new Map<
@@ -487,7 +488,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
         api.request("GET /threads/:id/runs", { all: true }, { id: threadId }),
       ])
         .then(([messages, runs]) => {
-          if (attempt !== generation.current) return
+          if (attempt !== generation.current || threadLoads.current.get(threadId)?.promise !== promise) return
           retry = deltas.overflow
           if (currentData.current.selectedThreadId === threadId) {
             loadedThreads.current.clear()
@@ -506,11 +507,12 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
           })
         })
         .catch((error: unknown) => {
-          if (attempt === generation.current)
+          if (attempt === generation.current && threadLoads.current.get(threadId)?.promise === promise)
             setData((current) => ({ ...current, notice: t("Service request failed", { error: errorMessage(error) }) }))
         })
         .finally(() => {
-          if (threadLoads.current.get(threadId)?.promise === promise) threadLoads.current.delete(threadId)
+          if (threadLoads.current.get(threadId)?.promise !== promise) return
+          threadLoads.current.delete(threadId)
           if (retry && attempt === generation.current && currentData.current.selectedThreadId === threadId)
             void loadThread(threadId, true)
         })
@@ -524,6 +526,8 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
     if (!enabled) return
     const attempt = ++generation.current
     const runsAtStart = runRevision.current
+    const completedRuns = new Set<Id>()
+    completedDuringLoad.current = completedRuns
     try {
       const [
         groupResponse,
@@ -582,7 +586,9 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
       if (attempt !== generation.current) return
       setData((current) => {
         const threads = mergeThreads(current.threads, allThreads)
-        const runIds = new Set(activityResponse.runs.map((run) => run.id))
+        // A newer run may have evicted a completed row while this snapshot was in flight.
+        const incomingRuns = activityResponse.runs.filter((run) => !completedRuns.has(run.id))
+        const runIds = new Set(incomingRuns.map((run) => run.id))
         const runs = mergeRunRows(
           current.runs.filter(
             (run) =>
@@ -590,7 +596,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
               runIds.has(run.id) ||
               (liveRuns.current.get(run.id) ?? 0) > runsAtStart,
           ),
-          activityResponse.runs,
+          incomingRuns,
         )
         const selectedBot = current.bots.find((bot) => bot.id === current.selectedBotId) ?? current.bots[0]
         const selectedThread =
@@ -649,6 +655,8 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
           ? "Demo data · sidecar services are optional"
           : t("Service request failed", { error: errorMessage(error) }),
       }))
+    } finally {
+      if (attempt === generation.current) completedDuringLoad.current = null
     }
   }, [api, enabled, loadThread, setData])
 
@@ -690,7 +698,10 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
       if (event.type === "run.updated") {
         if (["queued", "starting", "running"].includes(event.run.status))
           liveRuns.current.set(event.run.id, ++runRevision.current)
-        else liveRuns.current.delete(event.run.id)
+        else {
+          liveRuns.current.delete(event.run.id)
+          completedDuringLoad.current?.add(event.run.id)
+        }
       }
       setData((current) => {
         if (event.type === "machine.updated")
@@ -880,6 +891,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
     return () => {
       active = false
       generation.current += 1
+      completedDuringLoad.current = null
       unsubscribe()
       unsubscribeConnection?.()
       document.removeEventListener("visibilitychange", visibility)
@@ -899,6 +911,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
   // biome-ignore lint/correctness/useExhaustiveDependencies: refresh and reconnect also refresh the selected transcript
   useEffect(() => {
     for (const id of loadedThreads.current.keys()) if (id !== data.selectedThreadId) loadedThreads.current.delete(id)
+    for (const id of threadLoads.current.keys()) if (id !== data.selectedThreadId) threadLoads.current.delete(id)
     if (enabled && !data.loading && data.selectedThreadId && !data.threadCreation)
       void loadThread(data.selectedThreadId)
   }, [enabled, data.loading, data.selectedThreadId, data.threadCreation, projectRevision, loadThread])

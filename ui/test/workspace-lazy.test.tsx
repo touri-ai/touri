@@ -1,5 +1,5 @@
 import { act, cleanup, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react"
-import type { Message } from "@touri/contracts"
+import type { Message, Run } from "@touri/contracts"
 import { afterEach, expect, test } from "vitest"
 import App from "../src/App"
 import type { ApiRequest } from "../src/api/client"
@@ -441,6 +441,100 @@ test("refresh clears cached active runs that completed while disconnected", asyn
   expect(hook.result.current.data.runs.some((run) => run.threadId === "thread-onb" && run.status === "running")).toBe(
     false,
   )
+})
+
+test("a stale activity snapshot cannot revive a completed run evicted by a newer run", async () => {
+  const api = createMockApi()
+  const barrier = deferred()
+  let hold = false
+  let waiting = false
+  const request: ApiRequest = async (route, input, path) => {
+    const response = structuredClone(await api.request(route, input, path))
+    if (route === "GET /workspace/activity" && hold) {
+      waiting = true
+      await barrier.promise
+    }
+    return response
+  }
+  const client = { ...api, request }
+  const hook = renderHook(() => useWorkspace(client))
+  await waitFor(() => expect(hook.result.current.data.loading).toBe(false))
+  const active = hook.result.current.data.runs.find((run) => run.threadId === "thread-onb" && run.status === "running")
+  if (!active) throw new Error("Missing active run fixture")
+  hold = true
+  let refresh = Promise.resolve()
+  act(() => {
+    refresh = hook.result.current.actions.refresh()
+  })
+  await waitFor(() => expect(waiting).toBe(true))
+  act(() => {
+    api.emit({ type: "run.updated", run: { ...active, status: "succeeded", finishedAt: Date.now() } })
+    api.emit({
+      type: "run.updated",
+      run: {
+        ...active,
+        id: "newer-completed-run",
+        status: "succeeded",
+        queuedAt: active.queuedAt + 1,
+        finishedAt: Date.now(),
+      },
+    })
+  })
+  expect(hook.result.current.data.runs.some((run) => run.id === active.id)).toBe(false)
+  await act(async () => {
+    barrier.resolve()
+    await refresh
+  })
+  expect(hook.result.current.data.runs.some((run) => run.id === active.id && run.status === "running")).toBe(false)
+})
+
+test("returning during a history load keeps fresh messages and terminal runs after the old response", async () => {
+  const api = createMockApi()
+  const message = offscreenMessage(api)
+  const barrier = deferred()
+  let waiting = false
+  let reads = 0
+  let storedRuns: Run[] | null = null
+  const request: ApiRequest = async (route, input, path) => {
+    const response = structuredClone(await api.request(route, input, path))
+    if (route === "GET /threads/:id/runs" && path?.id === "thread-onb") {
+      reads++
+      if (storedRuns) return { runs: structuredClone(storedRuns) } as never
+      waiting = true
+      await barrier.promise
+    }
+    return response
+  }
+  const client = { ...api, request }
+  const hook = renderHook(() => useWorkspace(client))
+  await waitFor(() => expect(hook.result.current.data.loading).toBe(false))
+  const active = hook.result.current.data.runs.find((run) => run.threadId === "thread-onb" && run.status === "running")
+  if (!active) throw new Error("Missing active run fixture")
+  act(() => hook.result.current.actions.selectThread("thread-onb"))
+  await waitFor(() => expect(waiting).toBe(true))
+  act(() => hook.result.current.actions.selectThread("thread-mark"))
+  const completed: Run = { ...active, status: "succeeded", finishedAt: Date.now() }
+  const newer: Run = { ...completed, id: "newer-completed-run", queuedAt: active.queuedAt + 1 }
+  storedRuns = [completed, newer]
+  act(() => {
+    Object.assign(message, {
+      text: "Histórico atual",
+      parts: [{ type: "text", text: "Histórico atual" }],
+      updatedSeq: (message.updatedSeq ?? 0) + 100,
+    })
+    api.emit({ type: "message.updated", message })
+    api.emit({ type: "run.updated", run: completed })
+    api.emit({ type: "run.updated", run: newer })
+  })
+  expect(hook.result.current.data.runs.some((run) => run.id === active.id)).toBe(false)
+  act(() => hook.result.current.actions.selectThread("thread-onb"))
+  await waitFor(() => expect(reads).toBe(2))
+  await waitFor(() =>
+    expect(hook.result.current.data.messages.find((row) => row.id === message.id)?.text).toBe("Histórico atual"),
+  )
+  await act(async () => barrier.resolve())
+  expect(hook.result.current.data.messages.find((row) => row.id === message.id)?.text).toBe("Histórico atual")
+  expect(hook.result.current.data.runs.find((run) => run.id === active.id)?.status).toBe("succeeded")
 })
 
 test("a group transcript loads only after opening the group", async () => {
