@@ -218,6 +218,17 @@ jobs:
       - name: Check group coordination on desktop and phone
         working-directory: ui
         run: bunx playwright test test/e2e/group-coordination.spec.ts --workers=1
+      - name: Check notification preferences on desktop and phone
+        working-directory: ui
+        run: bunx playwright test test/e2e/notification-preferences.spec.ts --workers=1
+      - name: Keep synthetic notification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: notification-preferences
+          path: ui/test-results/**/notification-preferences-*.png
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Keep synthetic group evidence
         if: always()
         uses: actions/upload-artifact@v4
