@@ -141,8 +141,22 @@ jobs:
         with:
           components: rustfmt, clippy
       - name: Install Linux build dependencies
-        run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf libdbus-1-dev xdg-utils unzip gnome-keyring dbus
+        run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf libdbus-1-dev xdg-utils unzip gnome-keyring dbus bubblewrap
+      - name: Allow unprivileged namespaces for sandbox tests
+        run: |
+          # Ubuntu runners restrict user namespaces through AppArmor by default.
+          if sysctl kernel.apparmor_restrict_unprivileged_userns >/dev/null 2>&1; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          fi
       - run: bun install --frozen-lockfile
+      - name: Require Linux folder sandbox
+        run: |
+          bun -e '
+            import { refreshHostFolderAccess } from "./sidecar/src/kernel/folder-capability";
+            if (!(await refreshHostFolderAccess())) {
+              throw new Error("Linux CI requires working bubblewrap user and PID namespaces");
+            }
+          '
       - run: bun run typecheck
       - run: bun run lint
       - run: bun test --timeout 30000 sidecar/test

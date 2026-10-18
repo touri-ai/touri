@@ -6,6 +6,7 @@ import { join } from "node:path"
 import type { Bot, Kernel, ToolRegistration } from "@touri/contracts"
 import { delegationCeiling, setDelegation } from "../../src/groups/security"
 import { createKernel } from "../../src/kernel"
+import { refreshHostFolderAccess } from "../../src/kernel/folder-capability"
 import { createToolRouter } from "../../src/mcp/router"
 import { createProjectStore } from "../../src/projects/repository"
 import { createSupervisor } from "../../src/projects/supervisor"
@@ -17,7 +18,7 @@ afterEach(async () => {
   for (const close of cleanup.splice(0).reverse()) await close()
 })
 
-const sandboxAvailable = existsSync("/usr/bin/sandbox-exec") || existsSync("/usr/bin/bwrap")
+const sandboxHost = process.platform === "darwin" || process.platform === "linux"
 
 const fixture = async (callerMachine: "local" | "vm") => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "touri-delegation-sinks-")))
@@ -122,35 +123,45 @@ const fixture = async (callerMachine: "local" | "vm") => {
 }
 
 const runEscape = async (f: Awaited<ReturnType<typeof fixture>>, file: string): Promise<boolean> => {
-  const command = `touch ${join(f.outside, file)}`
+  const completed = join(f.root, "project", file)
+  const command = `touch ${join(f.outside, file)}; touch ${completed}`
   expect((await f.call("process_define", { name: file, command, restart: "never" })).success).toBe(true)
   await f.call("process_start", { name: file, waitMs: 1500 })
-  await Bun.sleep(300)
+  for (let i = 0; i < 300 && !existsSync(completed); i++) await Bun.sleep(10)
+  expect(existsSync(completed)).toBe(true)
   return existsSync(join(f.outside, file))
 }
 
-test("R13-B02: a delegated provider cannot start an unconfined process on a full-access local target", async () => {
-  if (!sandboxAvailable) return
-  const control = await fixture("local")
-  expect(await runEscape(control, "control")).toBe(process.platform !== "linux")
-  if (process.platform === "linux") {
+test.skipIf(!sandboxHost)(
+  "R13-B02: full local access reaches outside the project while delegation enforces the ceiling",
+  async () => {
+    expect(await refreshHostFolderAccess()).toBe(true)
+    const control = await fixture("local")
+    expect(control.bots("target").access).toBe("full")
+    expect(await runEscape(control, "control")).toBe(true)
     control.db
       .query("UPDATE bots SET folders_json = ? WHERE id = 'target'")
-      .run(JSON.stringify([{ path: control.outside, access: "read-write" }]))
-    expect(await runEscape(control, "granted")).toBe(true)
-  }
-  const f = await fixture("local")
-  f.delegate()
-  expect(delegationCeiling(f.bots("caller"), f.bots("target")).access).toBe("workspace-write")
-  expect(await runEscape(f, "escaped")).toBe(false)
-}, 30_000)
+      .run(JSON.stringify([{ path: control.outside, access: "read-only" }]))
+    expect(await runEscape(control, "saved-grant")).toBe(true)
+    const f = await fixture("local")
+    f.delegate()
+    expect(delegationCeiling(f.bots("caller"), f.bots("target")).access).toBe("workspace-write")
+    expect(await runEscape(f, "escaped")).toBe(false)
+    expect(f.bots("target").access).toBe("full")
+  },
+  30_000,
+)
 
-test("R13-B02: guest-to-host delegation keeps the workspace-write sandbox at the supervisor", async () => {
-  if (!sandboxAvailable) return
-  const f = await fixture("vm")
-  f.delegate()
-  expect(await runEscape(f, "escaped")).toBe(false)
-}, 30_000)
+test.skipIf(!sandboxHost)(
+  "R13-B02: guest-to-host delegation keeps the workspace-write sandbox at the supervisor",
+  async () => {
+    expect(await refreshHostFolderAccess()).toBe(true)
+    const f = await fixture("vm")
+    f.delegate()
+    expect(await runEscape(f, "escaped")).toBe(false)
+  },
+  30_000,
+)
 
 test("R13-B04: process_logs and project_info only reach processes the caller owns", async () => {
   const f = await fixture("local")
