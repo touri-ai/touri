@@ -972,7 +972,7 @@ const AppContent = ({ kernel }: AppProps) => {
                 project={selectedProject}
                 processes={data.processes.filter((entry) => entry.spec.projectId === selectedProject?.id)}
                 preview={selectedPreview}
-                modalOpen={modal !== null || searchOpen || notificationsOpen}
+                modalOpen={modal !== null || searchOpen || notificationsOpen || recoveryOpen}
                 browserTabs={data.browserTabs}
                 selectedBot={selectedBot}
                 selectedThread={selectedThread}
@@ -1009,7 +1009,7 @@ const AppContent = ({ kernel }: AppProps) => {
                 api={api}
                 botId={selectedBot?.id ?? null}
                 botName={selectedBot?.name ?? null}
-                modalOpen={modal !== null}
+                modalOpen={modal !== null || recoveryOpen}
                 onConfigure={() => openModal("bot-mcp")}
               />
             ) : section === "advanced" && advancedPage === "mcp" ? (
@@ -1017,7 +1017,7 @@ const AppContent = ({ kernel }: AppProps) => {
                 api={api}
                 botId={selectedBot?.id ?? null}
                 botName={selectedBot?.name ?? null}
-                modalOpen={modal !== null}
+                modalOpen={modal !== null || recoveryOpen}
                 onConfigure={() => openModal("bot-mcp")}
               />
             ) : (
@@ -1141,7 +1141,7 @@ const AppContent = ({ kernel }: AppProps) => {
                                   run.botId === selectedBot.id &&
                                   ["queued", "starting", "running"].includes(run.status),
                               )}
-                              paused={modal !== null || searchOpen || notificationsOpen}
+                              paused={modal !== null || searchOpen || notificationsOpen || recoveryOpen}
                               expanded={expandedBot === selectedBot.id}
                               onExpand={() => setExpandedBot((id) => (id === selectedBot.id ? null : selectedBot.id))}
                               onWindow={() => openComputerWindow(selectedBot.id)}
