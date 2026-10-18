@@ -34,13 +34,14 @@ it("keeps every deleted routine conversation reachable after its run metadata is
   render(<App kernel={{ services: { api } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
   const conversations = screen.getByRole("region", { name: "Conversas de mark" })
-  const routineRows = within(conversations).getAllByRole("button", { name: /Rotina excluída/ })
+  const routineRows = within(conversations).getAllByRole("button", { name: /Resumo diário/ })
   const oldest = routineRows.at(-1)
   const nextOldest = routineRows.at(-2)
   if (!oldest || !nextOldest) throw new Error("Missing deleted routine results")
 
   expect(conversations.querySelectorAll(".thread-row")).toHaveLength(29)
   expect(routineRows).toHaveLength(28)
+  expect(oldest.querySelector("strong")).toHaveTextContent(/^Resumo diário$/)
   expect(within(conversations).queryByRole("button", { name: "Histórico de rotinas" })).toBeNull()
   expect(oldest.querySelector(".sidebar-unread")).toHaveTextContent("1")
 
@@ -307,7 +308,5 @@ it("labels routine times and navigation in Portuguese and English", () => {
   expect(t("Previous routine runs page", {}, "en")).toBe("Previous page")
   expect(t("Routine history filter", {}, "en")).toBe("Filter history by routine")
   expect(t("All routines", {}, "en")).toBe("All routines")
-  expect(t("Deleted routine", {}, "pt-BR")).toBe("Rotina excluída")
-  expect(t("Deleted routine", {}, "en")).toBe("Deleted routine")
   expect(t("Routine history range", { from: 51, to: 60, total: 60 }, "en")).toBe("Runs 51–60 of 60")
 })

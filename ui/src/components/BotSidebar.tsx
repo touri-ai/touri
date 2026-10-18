@@ -561,12 +561,11 @@ const BotEntry = ({
       {deleting && onDelete && <DeleteBotDialog bot={bot} onDelete={onDelete} onClose={() => setDeleting(false)} />}
       {expanded && (
         <section className="bot-thread-tree" aria-label={t("Conversations for {name}", { name: bot.name })}>
-          {sidebarThreads.map(({ thread, routineRun, running, unread, deletedRoutine }) => (
+          {sidebarThreads.map(({ thread, routineRun, running, unread }) => (
             <ThreadRow
               key={thread.id}
               inserted={insertedThreads.has(thread.id)}
               thread={thread}
-              deletedRoutine={deletedRoutine}
               dateLabel={
                 thread.kind === "routine"
                   ? getRoutineRunDateLabel(routineRun?.scheduledFor ?? thread.createdAt)
@@ -598,7 +597,6 @@ const BotEntry = ({
 const ThreadRow = ({
   inserted,
   thread,
-  deletedRoutine,
   dateLabel,
   unread,
   selected,
@@ -606,7 +604,6 @@ const ThreadRow = ({
   onClick,
 }: {
   thread: Thread
-  deletedRoutine: boolean
   dateLabel: string
   unread: number
   inserted: boolean
@@ -614,7 +611,7 @@ const ThreadRow = ({
   running: boolean
   onClick: () => void
 }) => {
-  const title = deletedRoutine ? t("Deleted routine") : getSidebarThreadTitle(thread)
+  const title = getSidebarThreadTitle(thread)
 
   return (
     <button

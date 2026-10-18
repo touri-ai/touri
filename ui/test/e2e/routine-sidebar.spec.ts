@@ -34,7 +34,7 @@ for (const [name, width, height] of [
     await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
     if (name === "phone") await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
     const conversations = page.getByRole("region", { name: "Conversas de mark" })
-    const routines = conversations.getByRole("button", { name: /Rotina excluída/ })
+    const routines = conversations.getByRole("button", { name: /Resumo diário/ })
     const oldest = routines.last()
 
     await expect(conversations.locator(".thread-row")).toHaveCount(29)
