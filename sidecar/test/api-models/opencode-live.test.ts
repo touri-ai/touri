@@ -8,6 +8,7 @@ import {
   getApiModelReference,
   type Kernel,
   type ProviderEvent,
+  type ProviderSession,
   type StartTurnArgs,
   type Thread,
 } from "@touri/contracts"
@@ -25,9 +26,12 @@ afterEach(async () => {
 
 const binary = openCodeBinary(buildChildEnv({ base: process.env }))
 const getFiles = (root: string): string[] =>
-  readdirSync(root, { withFileTypes: true }).flatMap((entry) =>
-    entry.isDirectory() ? getFiles(join(root, entry.name)) : entry.isFile() ? [join(root, entry.name)] : [],
-  )
+  readdirSync(root, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(root, entry.name)
+    if (entry.isDirectory()) return getFiles(path)
+    if (entry.isFile()) return [path]
+    return []
+  })
 
 test.skipIf(!binary.success)(
   "the installed executor completes a real API turn without writing the API key to disk",
@@ -42,6 +46,7 @@ test.skipIf(!binary.success)(
       port: 0,
       fetch: async (request) => {
         seen.add(request.headers.get("Authorization") ?? "")
+        if (request.headers.get("Authorization") !== `Bearer ${key}`) return new Response(null, { status: 401 })
         if (!new URL(request.url).pathname.endsWith("/chat/completions")) return new Response(null, { status: 404 })
         const body = (await request.json()) as { model: string; stream?: boolean }
         expect(body.model).toBe("test-model")
@@ -120,7 +125,7 @@ test.skipIf(!binary.success)(
       mcp: { command: "unused", args: [], env: {} },
       env: { HOME: root },
       conversationOnly: true,
-      signal: AbortSignal.timeout(35_000),
+      signal: AbortSignal.timeout(60_000),
       onEvent: (event) => {
         events.add(event)
       },
@@ -129,9 +134,15 @@ test.skipIf(!binary.success)(
     expect(result).toMatchObject({ success: true, status: "succeeded" })
     expect(seen.has(`Bearer ${key}`)).toBe(true)
     expect(Array.from(events).some((event) => event.type === "text_delta" && event.delta.includes("OK"))).toBe(true)
+    if (!result.success || !result.externalSessionId) throw new Error("The local API fixture did not create a session")
+    const session = { externalSessionId: result.externalSessionId } as ProviderSession
+
+    const resumed = await adapter.startTurn(Object.assign({}, args, { session }))
+
+    expect(resumed).toMatchObject({ success: true, status: "succeeded", externalSessionId: result.externalSessionId })
     await adapter.shutdown()
     const leaked = getFiles(root).filter((file) => readFileSync(file).includes(Buffer.from(key)))
     expect(leaked.map((file) => file.slice(root.length))).toEqual([])
   },
-  50_000,
+  90_000,
 )
