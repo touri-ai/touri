@@ -18,6 +18,9 @@ for (const theme of ["light", "dark"] as const) {
     const skills = card.getByRole("switch", { name: /Skills automáticas/ })
     await expect(memory).not.toBeChecked()
     await expect(skills).not.toBeChecked()
+    const bounds = await memory.boundingBox()
+    expect(Math.min(bounds?.width ?? 0, bounds?.height ?? 0)).toBeGreaterThanOrEqual(24)
+
     await memory.click()
     await expect(memory).toBeChecked()
     await expect(skills).not.toBeChecked()

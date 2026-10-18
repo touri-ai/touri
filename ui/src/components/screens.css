@@ -836,9 +836,58 @@
   display: flex;
   align-items: flex-start;
   gap: 10px;
+  font-size: var(--type-13);
+  line-height: var(--leading-body);
 }
 
 .learning-switches label span {
   display: grid;
   gap: 2px;
+}
+
+.learning-switches small {
+  color: var(--text-secondary);
+  font-size: var(--type-12);
+}
+
+.learning-switches .settings-switch {
+  position: relative;
+  appearance: none;
+  display: inline-block;
+  flex: none;
+  width: 42px;
+  height: 24px;
+  padding: 0;
+  margin: 0;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-pill);
+  background: var(--surface-settings-switch);
+  cursor: pointer;
+}
+
+.learning-switches .settings-switch::before {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: var(--radius-round);
+  background: var(--surface-settings-switch-thumb);
+  box-shadow: var(--elevation-badge);
+  transition: transform var(--duration-standard) var(--ease-standard);
+}
+
+.learning-switches .settings-switch:checked {
+  border-color: var(--accent-brand);
+  background: var(--accent-brand);
+}
+
+.learning-switches .settings-switch:checked::before {
+  transform: translateX(18px);
+}
+
+.learning-switches .settings-switch:disabled {
+  cursor: wait;
+  opacity: var(--opacity-disabled);
 }

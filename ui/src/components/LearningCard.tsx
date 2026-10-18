@@ -65,7 +65,7 @@ const LearningSettings = ({ api, botId, onRetry }: { api: UiApi; botId: string; 
     }
   }
   return (
-    <article className="screen-card learning-card" aria-labelledby={`learning-${botId}`}>
+    <article className="screen-card screen-provider-card learning-card" aria-labelledby={`learning-${botId}`}>
       <div className="screen-card-heading">
         <h3 id={`learning-${botId}`}>{t("Aprendizado contínuo")}</h3>
         <span className={`screen-status ${learning?.memory || learning?.skills ? "is-success" : ""}`}>
