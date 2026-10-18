@@ -72,6 +72,22 @@ export const getJobTemplates = (locale: Locale = "pt-BR"): JobTemplate[] =>
     ...(id === "focused-week" ? { suggestedCron: "0 9 * * 1" } : {}),
   }))
 
+export const getBotJobId = (bot: Pick<Bot, "roleLine" | "instructions">): string | undefined =>
+  (["pt-BR", "en"] as const)
+    .flatMap((locale) => getJobTemplates(locale))
+    .find((job) => bot.roleLine === job.roleLine || bot.instructions === job.instructions)?.id
+
+export const getComplementaryJobs = (bots: Bot[], locale: Locale = "pt-BR"): JobTemplate[] => {
+  const jobs = getJobTemplates(locale)
+  const coveredIds = bots.filter((bot) => !bot.archivedAt).map(getBotJobId)
+  const coveredGroups = jobs.filter((job) => coveredIds.includes(job.id)).map((job) => job.group)
+  const available = jobs.filter((job) => !coveredIds.includes(job.id))
+  const related = available.filter((job) => coveredGroups.includes(job.group))
+  const other = available.filter((job) => !coveredGroups.includes(job.group))
+
+  return [...related, ...other].slice(0, 3)
+}
+
 /** Repository work requires an explicitly connected source, never assumed project context. */
 export const needsRepository = (bot: Bot | null): boolean => {
   if (!bot) return false

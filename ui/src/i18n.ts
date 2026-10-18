@@ -3,6 +3,12 @@ import { userFacingError } from "./errors"
 /** All UI copy lives here. pt-BR is the default; English is available for a future locale picker. */
 export type Locale = "pt-BR" | "en"
 export const ptBR = {
+  "Put another bot to work with you": "Coloque outro bot para trabalhar com você",
+  "Bots can collaborate in a group and follow routines.": "Os bots podem colaborar em um grupo e seguir rotinas.",
+  "You already have a bot taking care of this.": "Você já tem um bot cuidando disso.",
+  "Work in a group with {name}?": "Trabalhar em grupo com {name}?",
+  "Dismiss next step": "Dispensar próximo passo",
+  "Team with {name}": "Equipe com {name}",
   "Salve o token do bot do Telegram.": "Salve o token do bot do Telegram.",
   "Token inválido ou revogado.": "Token inválido ou revogado.",
   "Não foi possível conectar ao Telegram. Confira sua conexão e tente novamente.":

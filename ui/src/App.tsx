@@ -1,5 +1,5 @@
 import { listen } from "@tauri-apps/api/event"
-import type { BotGroup, Id, NotificationRecord } from "@touri/contracts"
+import type { BotGroup, GroupInput, Id, NotificationRecord } from "@touri/contracts"
 import type { FailureAction } from "@touri/contracts/run-failure"
 import { type SetStateAction, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
@@ -54,6 +54,8 @@ import {
 } from "./features/commandPalette/settingsRegistry"
 import { isNewBotShortcut, isPaletteShortcut } from "./features/commandPalette/shortcut"
 import { HistoryMigrationStatus } from "./features/history/HistoryMigrationStatus"
+import type { JobTemplate } from "./features/jobs/catalog"
+import { type TeamFollowup, TeamNextStep } from "./features/jobs/TeamNextStep"
 import { ReportErrorButton } from "./features/reports/ReportErrorButton"
 import { ReportMenuLauncher } from "./features/reports/ReportMenuLauncher"
 import { useServerAttention } from "./features/server/serverAttention"
@@ -142,6 +144,9 @@ const AppContent = ({ kernel }: AppProps) => {
   const [computerTabRequest, setComputerTabRequest] = useState<{ botId: string; request: number } | null>(null)
   const requestedComputer = new URLSearchParams(window.location.search).get("computer")
   const [editingGroup, setEditingGroup] = useState<BotGroup | null>(null)
+  const [groupDraft, setGroupDraft] = useState<Pick<GroupInput, "name" | "memberIds"> | null>(null)
+  const [initialJob, setInitialJob] = useState<JobTemplate | null>(null)
+  const [teamFollowup, setTeamFollowup] = useState<TeamFollowup | null>(null)
   const [settingsInitialSection, setSettingsInitialSection] = useState("appearance")
   const [settingFocus, setSettingFocus] = useState<string | null>(null)
   const [botSettingsSection, setBotSettingsSection] = useState<BotSettingsSectionId | undefined>(undefined)
@@ -551,6 +556,8 @@ const AppContent = ({ kernel }: AppProps) => {
     window.setTimeout(() => setLocalNotice(null), 4200)
   }
   const openModal = (kind: ModalKind): void => {
+    if (kind === "bot") setInitialJob(null)
+    if (kind === "group") setGroupDraft(null)
     if (kind !== "settings" && kind !== "doctor" && kind !== "bot-settings") setSettingFocus(null)
     if (kind === "bot-settings") setBotSettingsSection(undefined)
     if (kind === "project") setProjectLinkBotId(null)
@@ -711,6 +718,8 @@ const AppContent = ({ kernel }: AppProps) => {
       <ErrorBoundary area="o diálogo" dialog api={api} onClose={closeModal}>
         {modal === "bot" && (
           <BotCreateModal
+            bots={data.bots}
+            initialJob={initialJob}
             api={api}
             invokeCommand={invokeCommand}
             cloudEnabled={data.settings?.cloud === true}
@@ -719,7 +728,12 @@ const AppContent = ({ kernel }: AppProps) => {
             onCreateProject={actions.createProject}
             onClose={closeModal}
             onCreate={async (input, loginDraftId) => {
-              const { loginReady } = await actions.createBot(input, loginDraftId)
+              const partner =
+                data.bots.find((bot) => bot.id === data.selectedBotId && !bot.archivedAt) ??
+                data.bots.find((bot) => !bot.archivedAt)
+              const { loginReady, bot } = await actions.createBot(input, loginDraftId)
+
+              setTeamFollowup(partner ? { botId: bot.id, partnerId: partner.id } : null)
               setRoute({ section: "bots", screen: "chat" })
               showNotice(
                 loginReady
@@ -941,6 +955,23 @@ const AppContent = ({ kernel }: AppProps) => {
             onNotificationsOpen={setNotificationsOpen}
           />
           <PageTransition route={route}>
+            {section === "bots" && screen === "chat" && !selectedGroup && (
+              <TeamNextStep
+                bots={data.bots}
+                selectedBotId={data.selectedBotId}
+                followup={teamFollowup}
+                onChooseJob={(job) => {
+                  openModal("bot")
+                  setInitialJob(job)
+                }}
+                onGroup={(bot, partner) => {
+                  setEditingGroup(null)
+                  openModal("group")
+                  setGroupDraft({ name: t("Team with {name}", { name: bot.name }), memberIds: [partner.id, bot.id] })
+                }}
+                onDismissFollowup={() => setTeamFollowup(null)}
+              />
+            )}
             {screen === "preview" ? (
               <PreviewScreen
                 threadCreation={data.threadCreation ? (data.threadCreation.pending ? "pending" : "failed") : undefined}
@@ -1161,10 +1192,12 @@ const AppContent = ({ kernel }: AppProps) => {
             {modal === "group" && (
               <GroupModal
                 group={editingGroup}
+                initial={groupDraft}
                 bots={data.bots}
                 onClose={closeModal}
                 onSave={async (input) => {
                   await actions.createGroup(input, editingGroup?.id)
+                  if (groupDraft) setTeamFollowup(null)
                   setRoute({ section: "bots", screen: "chat" })
                 }}
               />

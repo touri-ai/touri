@@ -70,6 +70,42 @@
   color: var(--text-secondary);
   font-size: var(--type-11);
 }
+.workspace-page > .team-next-step {
+  flex: none;
+}
+.team-next-step {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-12);
+  padding: var(--space-12) var(--space-16);
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--surface-settings-card);
+}
+.team-next-step h2 {
+  margin: 0;
+  font-size: var(--type-13);
+  font-weight: var(--weight-medium);
+}
+.team-next-step p {
+  margin: var(--space-4) 0;
+  color: var(--text-secondary);
+  font-size: var(--type-12);
+}
+.team-job-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-8) var(--space-16);
+  margin: var(--space-8) 0 0;
+  padding: 0;
+  list-style: none;
+}
+@media (max-width: 620px) {
+  .team-next-step {
+    /* The mobile menu stays at the leading edge of the workspace. */
+    padding-inline-start: 64px;
+  }
+}
 @media (max-width: 600px) {
   .job-grid {
     grid-template-columns: 1fr;

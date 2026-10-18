@@ -4,6 +4,7 @@ export type AppRoute =
   | { section: "bots"; screen: "chat" | "preview" }
   | { section: "advanced"; page: "cron" | "integracoes" | "mcp"; botId?: string }
 type SavedWorkspace = {
+  teamSuggestionDismissed?: boolean
   botId?: string | null
   threadId?: string | null
   threadsByBot?: Record<string, string>
@@ -39,6 +40,9 @@ export const readWorkspaceState = (): SavedWorkspace => {
     const value = raw as Record<string, unknown>
     const route = migrateRoute(value.route)
     return {
+      ...(typeof value.teamSuggestionDismissed === "boolean"
+        ? { teamSuggestionDismissed: value.teamSuggestionDismissed }
+        : {}),
       ...(value.panelsByBot && typeof value.panelsByBot === "object" && !Array.isArray(value.panelsByBot)
         ? {
             panelsByBot: Object.fromEntries(
