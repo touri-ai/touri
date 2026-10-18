@@ -1068,7 +1068,7 @@ export const ChatPanel = ({
           </div>
         </header>
       )}
-      {!group && bot && (
+      {!group && bot && !routineConversation && (
         <GoalPanel
           key={thread.id}
           api={api}
