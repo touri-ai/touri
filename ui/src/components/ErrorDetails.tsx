@@ -29,7 +29,8 @@ export const ErrorText = ({ text, code }: { text: string; code?: string | null |
 
 const getErrorDiagnostic = (text: string, code: string | null | undefined, technical: boolean): string => {
   const diagnostic = technical ? text.trim() : ""
-  const codes = [...new Set([text, code].filter(Boolean).join(" ").match(/TOURI-E\d{4}/g) ?? [])]
+  const errorText = [text, code].filter(Boolean).join(" ")
+  const codes = [...new Set(errorText.match(/TOURI-E\d{4}/g) ?? [])]
   const extraCodes = codes.filter((value) => !diagnostic.includes(value)).join(" · ")
 
   return [diagnostic, extraCodes].filter(Boolean).join("\n")
