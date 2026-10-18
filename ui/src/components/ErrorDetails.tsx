@@ -28,10 +28,10 @@ export const ErrorText = ({ text, code }: { text: string; code?: string | null |
 }
 
 const getErrorDiagnostic = (text: string, code: string | null | undefined, technical: boolean): string => {
-  const diagnostic = technical ? text.trim() : ""
+  const diagnostic = technical ? text.replace(/\s*\[?TOURI-E\d{4}\]?/g, "").trim() : ""
   const errorText = [text, code].filter(Boolean).join(" ")
   const codes = [...new Set(errorText.match(/TOURI-E\d{4}/g) ?? [])]
-  const extraCodes = codes.filter((value) => !diagnostic.includes(value)).join(" · ")
 
-  return [diagnostic, extraCodes].filter(Boolean).join("\n")
+  // Keep reference codes ahead of the diagnostic's size limit.
+  return [codes.join(" · "), diagnostic].filter(Boolean).join("\n")
 }

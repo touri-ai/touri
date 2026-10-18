@@ -32,3 +32,16 @@ test("a plain explanation needs no diagnostic disclosure", () => {
   expect(screen.getByText("Confira o computador e tente novamente.")).toBeVisible()
   expect(container.querySelector("details")).toBeNull()
 })
+
+test("long diagnostics preserve every reference code within the size limit", () => {
+  const text = `network error: ECONNRESET ${"Conexão de demonstração interrompida. ".repeat(30)} [TOURI-E1009]`
+  const { container } = render(<ErrorText text={text} code="TOURI-E8001" />)
+  const diagnostic = container.querySelector("code")?.textContent ?? ""
+
+  expect(diagnostic).toContain("TOURI-E1009")
+  expect(diagnostic).toContain("TOURI-E8001")
+  expect(diagnostic).toContain("ECONNRESET")
+  expect(diagnostic.match(/TOURI-E1009/g)).toHaveLength(1)
+  expect(diagnostic.length).toBeLessThanOrEqual(240)
+  expect(container.querySelectorAll("details")).toHaveLength(1)
+})
