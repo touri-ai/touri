@@ -105,5 +105,9 @@ export const learningToolHidden = (kernel: Kernel, botId: Id, toolName: string):
 }
 
 /** A call made from the bot's learning conversation comes from an automatic review, not from the user's chat. */
+export const markReviewThread = (kernel: Kernel, botId: Id, threadId: Id): void =>
+  writeJson(kernel, `learning-review:${threadId}`, { botId })
+
 export const isReviewThread = (kernel: Kernel, botId: Id, threadId: Id): boolean =>
-  readLearningState(kernel, botId).reviewThreadId === threadId
+  readLearningState(kernel, botId).reviewThreadId === threadId ||
+  readJson(kernel, `learning-review:${threadId}`)?.botId === botId

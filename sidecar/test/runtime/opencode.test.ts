@@ -37,6 +37,8 @@ const fixture = (scenario: Record<string, unknown> = {}, vm = false, apiKey?: st
   const spawn: Kernel["spawnTree"] = (input) => {
     calls.push(input)
     if (input.cmd === "cat") return runtime.kernel.spawnTree({ ...input, cmd: "/bin/cat" })
+    if (input.args[0]?.endsWith("/api-proxy.cjs"))
+      return runtime.kernel.spawnTree(Object.assign({}, input, { cmd: process.execPath }))
     return runtime.kernel.spawnTree({
       ...input,
       cmd: process.execPath,
@@ -416,7 +418,9 @@ for (const vm of [false, true])
     expect(spawned.config.permission["*"]).toBe("ask")
     expect(spawned.config.mcp.touri.enabled).toBe(true)
     expect(JSON.stringify(spawned)).not.toContain(key)
-    expect(fixtureState.calls.some((call) => call.env.TOURI_MODEL_API_KEY === key)).toBe(true)
+    expect(fixtureState.calls.every((call) => call.env.TOURI_MODEL_API_KEY !== key)).toBe(true)
+    expect(fixtureState.calls.some((call) => call.env.TOURI_API_SECRET === key)).toBe(vm)
+    expect(spawned.config.provider["touri-api-api-fixture"].options.baseURL).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/v1$/)
     expect(fixtureState.calls.some((call) => call.cmd === "cat")).toBe(false)
     expect(readFileSync(join(args.bot.homeDir, ".touri-opencode/thread/data/opencode/auth.json"), "utf8")).toBe("{}")
     expect(fixtureState.records().find((entry) => entry.path?.endsWith("/prompt_async")).body.model).toEqual({

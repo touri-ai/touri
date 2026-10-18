@@ -12,7 +12,7 @@ import {
   type UiEventEnvelope,
 } from "@touri/contracts"
 import { maxAttachmentBytes } from "../attachmentFiles"
-import { ApiError } from "../errors"
+import { ApiError, isServiceUnavailable } from "../errors"
 import { t } from "../i18n"
 import { scopedStorageKey } from "../storageScope"
 import { createSendJournal } from "./sendJournal"
@@ -91,6 +91,9 @@ export const apiRouteKeys = [
   "PATCH /threads/:id",
   "GET /threads/:id/transcript",
   "GET /threads/:id/messages",
+  "GET /threads/:id/goal",
+  "POST /threads/:id/goal",
+  "PATCH /threads/:id/goal",
   "POST /threads/:id/messages",
   "POST /runs/:id/cancel",
   "POST /runs/:id/retry",
@@ -281,6 +284,19 @@ export const createApiClient = ({
     }, delay)
     delay = Math.min(delay * 2, 5000)
   }
+  const reconnectUnavailableService = (): void => {
+    if (listeners.size === 0 || (disconnectedBefore && !socket)) return
+    // Reads can fail before the event socket notices a stalled server.
+    const previous = socket
+    socket = null
+    disconnectedBefore = true
+    previous?.close()
+    journal.disconnect()
+    connectionListeners.forEach((listener) => {
+      listener(false)
+    })
+    scheduleReconnect()
+  }
   const connect = async (): Promise<void> => {
     if (connecting || socket || listeners.size === 0) return
     connecting = true
@@ -405,6 +421,7 @@ export const createApiClient = ({
         await refreshEndpoint()
         response = await send()
       } catch {
+        reconnectUnavailableService()
         throw new ApiError(0, "", undefined, "TOURI-E1009")
       }
     }
@@ -427,7 +444,9 @@ export const createApiClient = ({
           ? Date.now() + Number(retryAfter) * 1000
           : Date.parse(retryAfter)
         : undefined
-      throw new ApiError(response.status, message, errorCode, code, retryAt)
+      const error = new ApiError(response.status, message, errorCode, code, retryAt)
+      if (isGet && isServiceUnavailable(error)) reconnectUnavailableService()
+      throw error
     }
     if (isBlobRoute(String(route))) return (await response.blob()) as ApiRoutes[typeof route]["res"]
     return (await response.json()) as ApiRoutes[typeof route]["res"]

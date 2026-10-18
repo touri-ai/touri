@@ -1,5 +1,5 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
-import type { Bot } from "@touri/contracts"
+import type { ApiRoutes, Bot } from "@touri/contracts"
 import { afterEach, expect, it, vi } from "vitest"
 import App from "../src/App"
 import { createWebInvoke, type TauriInvoke } from "../src/api/client"
@@ -14,8 +14,15 @@ afterEach(() => {
   cleanup()
   vi.restoreAllMocks()
 })
-const setup = async (patch: Partial<Bot> = {}) => {
-  const api = createMockApi()
+const setup = async (patch: Partial<Bot> = {}, host?: "mac") => {
+  const originalApi = createMockApi()
+  const request: typeof originalApi.request = async (route, input, path) => {
+    if (route === "GET /health" && host)
+      return { ok: true, version: "test", schemaVersion: 1, host, hostKind: host } as ApiRoutes[typeof route]["res"]
+
+    return originalApi.request(route, input, path)
+  }
+  const api = { ...originalApi, request }
   const bot = api.getState().bots[0]
   if (!bot) throw new Error("Missing bot")
   Object.assign(bot, { projectId: null, folders: [], anyFolderAccess: false }, patch)
@@ -173,12 +180,15 @@ it.each(["codex", "claude", "opencode"] as const)(
 it.each(["never", "on-request"] as const)(
   "explains full local access with %s approvals in bot settings",
   async (approvals) => {
-    await setup({
-      provider: "codex",
-      access: "full",
-      approvals,
-      folders: [{ path: "/reference", access: "read-only" }],
-    })
+    await setup(
+      {
+        provider: "codex",
+        access: "full",
+        approvals,
+        folders: [{ path: "/reference", access: "read-only" }],
+      },
+      "mac",
+    )
     expect(screen.getByText(/O acesso total permite ler/)).toHaveTextContent(
       "qualquer pasta que a conta do sistema permita",
     )
@@ -242,7 +252,8 @@ it("requires confirmation, supports cancel/Escape, and disables broad access wit
   const f = await setup()
   fireEvent.click(anyToggle())
   let dialog = screen.getByRole("dialog", { name: "Permitir acesso a qualquer pasta?" })
-  expect(within(dialog).getByText(/ler arquivos pessoais/)).toBeVisible()
+  expect(within(dialog).getByText(/ler arquivos de todo o servidor/)).toBeVisible()
+  expect(dialog).toHaveTextContent("conforme o nível de acesso, alterá-los ou apagá-los")
   expect(anyToggle()).not.toBeChecked()
   fireEvent.click(within(dialog).getByRole("button", { name: "Cancelar" }))
   expect(anyToggle()).not.toBeChecked()
@@ -394,11 +405,11 @@ it("shows the broad-access badge in the bot header and removes it when access is
   if (!bot) throw new Error("Missing bot")
   bot.anyFolderAccess = true
   render(<App kernel={{ services: { api } }} />)
-  expect(await screen.findByText("Qualquer pasta do Mac")).toBeVisible()
+  expect(await screen.findByText("Qualquer pasta deste servidor")).toBeVisible()
   await act(async () => {
     await api.request("PATCH /bots/:id", { anyFolderAccess: false }, { id: bot.id })
   })
-  expect(screen.queryByText("Qualquer pasta do Mac")).not.toBeInTheDocument()
+  expect(screen.queryByText("Qualquer pasta deste servidor")).not.toBeInTheDocument()
 })
 
 it("saving folder access preserves the bot's existing approvals", async () => {

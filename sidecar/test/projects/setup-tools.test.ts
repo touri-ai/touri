@@ -14,7 +14,15 @@ import {
 import * as os from "node:os"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import type { ApprovalPart, Bot, ToolRegistration, UiEvent } from "@touri/contracts"
+import {
+  type ApprovalPart,
+  type Bot,
+  getHostKind,
+  getHostNoun,
+  type HostKind,
+  type ToolRegistration,
+  type UiEvent,
+} from "@touri/contracts"
 import { createApprovalBridge } from "../../src/approvals/bridge"
 import { createStandingGrantStore } from "../../src/approvals/grants"
 import { setDelegation } from "../../src/groups/security"
@@ -23,6 +31,7 @@ import * as folderCapability from "../../src/kernel/folder-capability"
 import type { McpCallerContext } from "../../src/mcp/auth"
 import { createToolRouter } from "../../src/mcp/router"
 import { init as initNotify } from "../../src/notify"
+import { getHost } from "../../src/platform/host"
 import { inspectGit } from "../../src/projects/git"
 import { createProjectStore } from "../../src/projects/repository"
 import { createSetupTools } from "../../src/projects/setup-tools"
@@ -33,7 +42,7 @@ afterEach(() => {
   for (const close of cleanups.splice(0)) close()
 })
 
-const fixture = async (patch: Partial<Bot> = {}, projectName = "Hodler") => {
+const fixture = async (patch: Partial<Bot> = {}, projectName = "Hodler", host: HostKind = getHost()) => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "touri-setup-")))
   const home = join(root, "home")
   const path = join(home, projectName)
@@ -90,7 +99,7 @@ const fixture = async (patch: Partial<Bot> = {}, projectName = "Hodler") => {
   runtime.kernel.services.provide("runtime.answerApproval", bridge.approve)
   const store = createProjectStore({ kernel: runtime.kernel })
   const registrations = new Map<string, ToolRegistration>(
-    createSetupTools({ kernel: runtime.kernel, store }).map((tool) => [tool.name, tool]),
+    createSetupTools({ kernel: runtime.kernel, store, host }).map((tool) => [tool.name, tool]),
   )
   const router = createToolRouter({ kernel: runtime.kernel, registrations })
   const caller: McpCallerContext = {
@@ -143,11 +152,24 @@ const fixture = async (patch: Partial<Bot> = {}, projectName = "Hodler") => {
 }
 
 for (const approvals of ["never", "on-request"] as const) {
-  test(`full local folder requests with ${approvals} confirm access before inspecting paths`, async () => {
+  test(`full local setup requests with ${approvals} confirm access before inspecting paths`, async () => {
     const f = await fixture({ access: "full", approvals })
     const before = f.currentBot()
     const parent = join(f.home, "projects")
     mkdirSync(parent)
+    expect(
+      f.store.createProject({
+        id: "missing-project",
+        name: "Missing project",
+        path: join(f.home, "missing-parent/project"),
+        gitRemote: null,
+        defaultBranch: null,
+        dataDir: join(f.root, "project-data"),
+        now: 1,
+      }).success,
+    ).toBe(true)
+    const projects = f.store.listProjects()
+    f.events.length = 0
     const home = spyOn(os, "homedir").mockReturnValue(f.home)
     const lstat = spyOn(fs, "lstatSync")
     const realpath = spyOn(fs, "realpathSync")
@@ -166,8 +188,12 @@ for (const approvals of ["never", "on-request"] as const) {
       return true
     })
     for (const suffix of ["projects", "projects/new-output", "missing-parent/output"]) {
-      for (const mode of ["read", "read-write"] as const) {
-        const result = await f.call("folder_access_request", { path: `~/${suffix}`, mode })
+      for (const [name, args] of [
+        ["folder_access_request", { path: `~/${suffix}`, mode: "read" }],
+        ["folder_access_request", { path: `~/${suffix}`, mode: "read-write" }],
+        ["project_link", { path: `~/${suffix}` }],
+      ] as const) {
+        const result = await f.call(name, args)
         expect(result).toMatchObject({
           success: true,
           structured: {
@@ -181,13 +207,26 @@ for (const approvals of ["never", "on-request"] as const) {
         expect(result.content?.[0]).toMatchObject({ text: expect.stringContaining("acesso total") })
       }
     }
+    expect(await f.call("project_link", { projectId: "missing-project" })).toMatchObject({
+      success: true,
+      structured: {
+        path: join(f.home, "missing-parent/project"),
+        projectId: null,
+        alreadyAccessible: true,
+        unchanged: true,
+        automaticContinuation: false,
+        effective: "current-turn",
+      },
+    })
     expect(lstat).not.toHaveBeenCalled()
     expect(realpath).not.toHaveBeenCalled()
     expect(stat).not.toHaveBeenCalled()
     expect(probe).not.toHaveBeenCalled()
     expect(f.currentBot()).toEqual(before)
+    expect(f.store.listProjects()).toEqual(projects)
     expect(f.cards).toEqual([])
     expect(continuations).toBe(0)
+    expect(f.events.some((event) => event.type === "bot.updated" || event.type === "project.created")).toBe(false)
     expect(existsSync(join(parent, "new-output"))).toBe(false)
     expect(existsSync(join(f.home, "missing-parent"))).toBe(false)
   })
@@ -627,12 +666,39 @@ test("projectId and registered paths reuse a project and unlink is visible witho
   const link = f.call("project_link", { projectId: "project" })
   expect((await f.answer("allow")).status).toBe(200)
   expect((await link).success).toBe(true)
-  expect(await f.call("project_link", { path: f.path })).toMatchObject({
-    success: true,
-    structured: { alreadyAccessible: true, projectId: "project", unchanged: true },
+  const before = f.currentBot()
+  const projects = f.store.listProjects()
+  const configure = f.runtime.kernel.services.use("bots.configureAccess")
+  if (!configure) throw new Error("Access configuration is unavailable")
+  let configurations = 0
+  f.runtime.kernel.services.provide("bots.configureAccess", (input) => {
+    configurations++
+    return configure(input)
   })
+  let continuations = 0
+  f.runtime.kernel.services.provide("runtime.continueAfterApproval", () => {
+    continuations++
+    return true
+  })
+  for (const args of [{ path: f.path }, { projectId: "project" }]) {
+    expect(await f.call("project_link", args)).toMatchObject({
+      success: true,
+      structured: {
+        path: f.path,
+        alreadyAccessible: true,
+        projectId: "project",
+        unchanged: true,
+        automaticContinuation: false,
+        effective: "current-turn",
+      },
+    })
+  }
   expect(f.cards).toHaveLength(1)
+  expect(f.currentBot()).toEqual(before)
+  expect(f.store.listProjects()).toEqual(projects)
   expect(f.store.listProjects()).toHaveLength(1)
+  expect(configurations).toBe(0)
+  expect(continuations).toBe(0)
   const cardCount = f.cards.length
   expect((await f.call("project_unlink")).success).toBe(true)
   expect(f.currentBot()?.projectId).toBeNull()
@@ -642,7 +708,7 @@ test("projectId and registered paths reuse a project and unlink is visible witho
       type: "message.created",
       message: expect.objectContaining({
         kind: "notice",
-        text: "Projeto Hodler desvinculado deste bot. A configuração foi salva neste Mac. Vale a partir da próxima mensagem.",
+        text: `Projeto Hodler desvinculado deste bot. A configuração foi salva neste ${getHostNoun(getHost())}. Vale a partir da próxima mensagem.`,
       }),
     }),
   )
@@ -742,7 +808,7 @@ for (const [mode, access] of [
       expect.objectContaining({
         type: "message.created",
         message: expect.objectContaining({
-          text: `Acesso à pasta ${f.path} removido deste bot. A configuração foi salva neste Mac. Vale a partir da próxima mensagem.`,
+          text: `Acesso à pasta ${f.path} removido deste bot. A configuração foi salva neste ${getHostNoun(getHost())}. Vale a partir da próxima mensagem.`,
         }),
       }),
     )
@@ -1027,7 +1093,7 @@ for (const projectName of ["Hodler", "VM-tools"])
       })
       if (!result.success) throw new Error(result.error)
       expect(result.structured).toHaveProperty("message", expect.not.stringContaining("próxima mensagem na VM"))
-      expect(JSON.stringify(result)).toContain("neste Mac")
+      expect(JSON.stringify(result)).toContain(`neste ${getHostNoun(getHost())}`)
       const removed = await f.call(remove, "path" in removeArgs ? { path: f.path } : {})
       expect(removed.success).toBe(true)
       expect(JSON.stringify(removed)).toContain("próxima mensagem")
@@ -1173,3 +1239,20 @@ test("read-only grants override the implicit writable cwd for restricted bots", 
   expect(await call).toMatchObject({ success: false, errorCode: "DENIED" })
   expect(f.currentBot()?.folders).toEqual([{ path: f.path, access: "read-only" }])
 })
+
+test.each([
+  ["linux", false, "computador"],
+  ["linux", true, "servidor"],
+  ["darwin", false, "Mac"],
+] as const)(
+  "%s headless=%s setup notices name the host where configuration is saved",
+  async (platform, headless, noun) => {
+    const host = getHostKind(platform, headless)
+    const f = await fixture({}, "Demo", host)
+
+    const result = await f.call("project_unlink")
+
+    expect(result.success).toBe(true)
+    expect(JSON.stringify(result)).toContain(`A configuração foi salva neste ${noun}.`)
+  },
+)

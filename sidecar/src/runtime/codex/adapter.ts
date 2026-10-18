@@ -18,7 +18,7 @@ import { createCommandOutput } from "../command-output"
 import { spawnFolderProvider } from "../folder-access"
 import { loadTurnImages } from "../loadTurnImages"
 import { withLocalTurnTemp } from "../local-turn-temp"
-import { mcpStartupError, touriMcpStartupFailed } from "../mcp-startup"
+import { MCP_STARTUP_MESSAGE, mcpStartupError, touriMcpStartupFailed } from "../mcp-startup"
 import { applyProviderPrivacy, cliTelemetryOff, providerPrivacyConfig } from "../privacy"
 import { type ChildProcess, readProviderStderr, startLineReader, writeLine } from "../provider-io"
 import { stopProviderChildren, trackProviderProcess } from "../provider-processes"
@@ -270,6 +270,7 @@ export const createCodexAdapter = ({
   const startAttempt = async (
     args: StartTurnArgs,
     canRetrySandbox: () => boolean,
+    onTurnSubmitted: () => void,
   ): Promise<ReturnType<ProviderAdapter["startTurn"]> extends Promise<infer T> ? T : never> => {
     const env = applyProviderPrivacy(
       args.execution ? args.env : buildChildEnv({ base: process.env, overrides: args.env }),
@@ -585,7 +586,9 @@ export const createCodexAdapter = ({
     void (async () => {
       try {
         await sendRequest("initialize", { clientInfo: { name: "touri", version: touriVersion } })
+        if (completed) return
         args.signal.throwIfAborted()
+
         const access = codexAccessParams(args)
         // Native resumes can carry a previous run's MCP arguments. Always override
         // the persisted configuration with this turn's credential before turn/start.
@@ -627,8 +630,10 @@ export const createCodexAdapter = ({
             }
         resuming = !!args.session
         const sessionResponse = await sendRequest(resuming ? "thread/resume" : "thread/start", sessionRequest)
+        if (completed) return
         resuming = false
         args.signal.throwIfAborted()
+
         const details = sessionDetails(sessionResponse.result)
         externalSessionId = details.id
         rolloutPath =
@@ -640,6 +645,8 @@ export const createCodexAdapter = ({
           complete({ success: false, errorCode: loaded.errorCode, error: loaded.error })
           return
         }
+        // Once submitted, the task may have effects even before its acknowledgement arrives.
+        onTurnSubmitted()
         const turnResponse = await sendRequest("turn/start", {
           threadId: externalSessionId,
           input: codexInputItems({
@@ -717,6 +724,7 @@ export const createCodexAdapter = ({
 
   const startTurn: ProviderAdapter["startTurn"] = async (args) => {
     let canRetry = !args.execution
+    let canRetryTools = true
     const invoke = () =>
       withLocalTurnTemp(kernel, args, (turn) =>
         startAttempt(
@@ -738,10 +746,19 @@ export const createCodexAdapter = ({
             },
           },
           () => canRetry,
+          () => {
+            canRetryTools = false
+          },
         ),
       )
     const result = await invoke()
-    if (result.success || !canRetry || args.signal.aborted || !sandboxStartupFailed(result.error)) return result
+    if (result.success || args.signal.aborted) return result
+    if (canRetryTools && result.error === `${MCP_STARTUP_MESSAGE} [etapa: handshake_timeout]`) {
+      kernel.log({ level: "warn", module: "codex", msg: "Reiniciando as ferramentas antes de enviar o pedido" })
+      return invoke()
+    }
+    if (!canRetry || !sandboxStartupFailed(result.error)) return result
+
     canRetry = false
     kernel.log({ level: "warn", module: "codex", msg: "Codex: reiniciando o sandbox com pasta temporária privada" })
     return invoke()

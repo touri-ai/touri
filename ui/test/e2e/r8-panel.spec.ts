@@ -150,7 +150,12 @@ if (phase === "after") {
         await expect(panel.getByText("/Users/demo/Library/Application Support/touri/bots/bot-mark")).toBeVisible()
         await shot("library-bot-folder")
         await page.getByRole("tab", { name: "Computador", exact: true }).click()
-        await expect(panel.getByText("Este computador", { exact: true })).toBeVisible()
+        await expect(panel.getByRole("status")).toHaveText(
+          "Este servidor não tem uma área de trabalho para controlar. Você pode conversar e trabalhar com arquivos.",
+        )
+        await expect(panel.getByRole("button", { name: "Conversar", exact: true })).toBeVisible()
+        await expect(panel.getByRole("button", { name: "Abrir arquivos", exact: true })).toBeVisible()
+        await expect(panel.getByRole("button", { name: "Ligar computador", exact: true })).toHaveCount(0)
         await shot("computer-local")
         await page.goto(`${fixture}?local=true&project=true`)
         await showBotPanel(page)

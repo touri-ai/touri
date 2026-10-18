@@ -23,7 +23,7 @@ for (const width of [390, 1440]) {
     await expect(settings.getByText(/perfis de navegadores e dados do touri ficam bloqueados/)).toHaveCount(0)
     await settings.getByRole("combobox", { name: "Acesso", exact: true }).selectOption("workspace-write")
     await expect(guidance).toHaveCount(0)
-    await expect(settings.getByText(/sandbox do macOS bloqueia/)).toBeVisible()
+    await expect(settings.getByText(/As permissões e o isolamento são aplicados pelo servidor/)).toBeVisible()
     const patches = await page.evaluate(() =>
       (window as unknown as { dataAccessQa: { calls: Array<{ route: string }> } }).dataAccessQa.calls.filter(
         (call) => call.route === "PATCH /bots/:id",

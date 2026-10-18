@@ -6,6 +6,7 @@ import type {
   BotLearning,
   BrowserTabInfo,
   DoctorReport,
+  Goal,
   GroupInput,
   Id,
   ImportReport,
@@ -459,6 +460,7 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
     ...(routineFixture?.messages ?? []),
   ]
   const mem0Settings = new Map<string, import("@touri/contracts").Mem0Settings>()
+  const goals = new Map<string, Goal>()
   const learning = new Map<string, BotLearning>()
   const machines = new Map<string, import("@touri/contracts").MachineState>()
   const networkPolicies = new Map<string, Record<string, unknown>>()
@@ -616,10 +618,15 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
         threshold: 0.3,
         hasApiKey: false,
       }
+      const mode = patch.mode ?? current.mode
+      const url = (patch.url ?? current.url).replace(/\/+$/, "")
+      const hasDestinationChanged = mode !== current.mode || (mode === "server" && url !== current.url)
+      const hasApiKey = apiKey === undefined ? current.hasApiKey && !hasDestinationChanged : apiKey !== null
       const next = {
         ...current,
         ...patch,
-        hasApiKey: apiKey === undefined ? current.hasApiKey : apiKey !== null,
+        url,
+        hasApiKey,
       }
       mem0Settings.set(botId, next)
       return { settings: next } as ApiRoutes[typeof route]["res"]
@@ -636,12 +643,14 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
       }
       if (key === "PUT /bots/:id/integrations/telegram") {
         const { token, ...config } = input as ApiRoutes["PUT /bots/:id/integrations/telegram"]["req"]
-        const next = { ...current, config: { ...current.config, ...config } }
-        if (token !== undefined) next.tokenSaved = token !== null
-        next.status =
-          next.config.enabled && next.tokenSaved
-            ? { state: "connected", username: "touri_mock_bot", error: null }
-            : { state: "off", username: null, error: null }
+        const nextConfig = { ...current.config, ...config }
+        const tokenSaved = token === undefined ? current.tokenSaved : token !== null
+        const next = {
+          ...current,
+          config: nextConfig,
+          tokenSaved,
+          status: getMockTelegramStatus(nextConfig.enabled, tokenSaved),
+        }
         telegram.set(botId, next)
         return { telegram: next } as ApiRoutes[typeof route]["res"]
       }
@@ -1042,6 +1051,47 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
       return {
         runs: [...runs.values()].filter((run) => ["queued", "starting", "running"].includes(run.status)),
       } as ApiRoutes[typeof route]["res"]
+    if (key === "GET /threads/:id/goal")
+      return { goal: goals.get(pathValues.id ?? "") ?? null } as ApiRoutes[typeof route]["res"]
+    if (key === "POST /threads/:id/goal") {
+      const values = input as ApiRoutes["POST /threads/:id/goal"]["req"]
+      const thread = findThread(pathValues.id ?? "")
+      const request = messages.find((message) => message.id === values.requestMessageId)
+      if (!thread || !request) throw new Error("NOT_FOUND")
+      const goal: Goal = {
+        id: `goal-${now()}`,
+        threadId: thread.id,
+        botId: thread.botId,
+        requestMessageId: request.id,
+        text: request.text,
+        completionCriterion: values.completionCriterion,
+        status: "active",
+        maxTurns: values.maxTurns,
+        turnsUsed: 1,
+        deadlineAt: now() + values.maxMinutes * 60_000,
+        runId: null,
+        steps: [],
+        createdAt: now(),
+        updatedAt: now(),
+      }
+      goals.set(thread.id, goal)
+      return { goal } as ApiRoutes[typeof route]["res"]
+    }
+    if (key === "PATCH /threads/:id/goal") {
+      const values = input as ApiRoutes["PATCH /threads/:id/goal"]["req"]
+      const goal = goals.get(pathValues.id ?? "")
+      if (!goal) throw new Error("NOT_FOUND")
+      const statuses = { pause: "paused", resume: "active", complete: "completed", budget: goal.status } as const
+      const next: Goal = {
+        ...goal,
+        status: statuses[values.action],
+        maxTurns: values.maxTurns ?? goal.maxTurns,
+        deadlineAt: values.maxMinutes ? now() + values.maxMinutes * 60_000 : goal.deadlineAt,
+        updatedAt: now(),
+      }
+      goals.set(goal.threadId, next)
+      return { goal: next } as ApiRoutes[typeof route]["res"]
+    }
     if (key === "GET /threads/:id/runs")
       return {
         runs: [...runs.values()].filter((run) => run.threadId === pathValues.id),
@@ -1422,4 +1472,12 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
     notify,
     getState: () => ({ bots, threads, messages }),
   }
+}
+
+// Mirrors the sidecar restart: enabled without a token is an error, not "off".
+function getMockTelegramStatus(enabled: boolean, tokenSaved: boolean): TelegramIntegration["status"] {
+  if (!enabled) return { state: "off", username: null, error: null }
+  if (!tokenSaved) return { state: "error", username: null, error: "Salve o token do bot do Telegram." }
+
+  return { state: "connected", username: "touri_mock_bot", error: null }
 }
