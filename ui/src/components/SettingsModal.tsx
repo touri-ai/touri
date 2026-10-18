@@ -1,4 +1,4 @@
-import type { ApiRoutes, DoctorReport } from "@touri/contracts"
+import type { ApiRoutes, DoctorReport, NotificationPreferences } from "@touri/contracts"
 import { useState } from "react"
 import type { TauriInvoke, UiApi } from "../api/client"
 import { readTheme, setTheme, type ThemePreference } from "../design/theme"
@@ -24,6 +24,7 @@ import { useHost } from "../useHost"
 import { ApiModelsSettings } from "./ApiModelsSettings"
 import { Modal } from "./Modal"
 import { NotificationDeliverySettings } from "./NotificationDeliverySettings"
+import { NotificationPreferencesSettings } from "./NotificationPreferencesSettings"
 import {
   SettingsDisclosure,
   SettingsGroup,
@@ -84,6 +85,9 @@ export const SettingsModal = ({
   const [updates, setUpdates] = useState(settings?.checkForUpdates ?? false)
   const [launchAtLogin, setLaunchAtLogin] = useState(settings?.launchAtLogin ?? false)
   const [tray, setTray] = useState(settings?.keepRunningInTray ?? true)
+  const [notificationPreferences, setNotificationPreferences] = useState<NotificationPreferences>(
+    settings?.notificationPreferences ?? {},
+  )
   const [native, setNative] = useState(settings?.nativeNotifications ?? true)
   const [floatUpdates, setFloatUpdates] = useState(settings?.sidebarFloatUpdates ?? true)
   const [resumeTurns, setResumeTurns] = useState(settings?.resumeInterruptedTurns ?? true)
@@ -112,6 +116,7 @@ export const SettingsModal = ({
         checkForUpdates: updates,
         keepRunningInTray: tray,
         nativeNotifications: native,
+        notificationPreferences,
         sidebarFloatUpdates: floatUpdates,
         resumeInterruptedTurns: resumeTurns,
         botVmMemoryMb: vmMemory,
@@ -315,6 +320,11 @@ export const SettingsModal = ({
               />
             </label>
             <NotificationDeliverySettings enabled={native} />
+            <NotificationPreferencesSettings
+              value={notificationPreferences}
+              onChange={setNotificationPreferences}
+              api={api}
+            />
           </SettingsGroup>
         </SettingsPane>
         <SettingsPane {...pane("diagnostics")}>

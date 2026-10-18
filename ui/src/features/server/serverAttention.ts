@@ -1,4 +1,9 @@
-import type { NotificationRecord } from "@touri/contracts"
+import {
+  type Bot,
+  canDeliverNotification,
+  type NotificationPreferences,
+  type NotificationRecord,
+} from "@touri/contracts"
 import { useEffect, useRef } from "react"
 import type { TauriInvoke, UiApi } from "../../api/client"
 import { buildDeepLink } from "../../deepLink"
@@ -16,6 +21,8 @@ export const installServerAttention = (
     initial: ReadonlyArray<NotificationRecord>
     enabled: () => boolean
     botForThread: (thread: string) => string | null
+    preferences?: () => NotificationPreferences | undefined
+    botPreference?: (botId: string | null) => Bot["notifications"] | null
     startedAt?: number
   },
 ) => {
@@ -31,6 +38,7 @@ export const installServerAttention = (
     if (seq <= lastSeq) return
     lastSeq = seq
     if (!options.enabled()) return
+    let result = false
     let title: string
     let bot: string | null
     let thread: string | null
@@ -42,7 +50,17 @@ export const installServerAttention = (
         const oldest = seenIds.values().next().value
         if (oldest !== undefined) seenIds.delete(oldest)
       }
-      if (note.resolvedAt !== null || !isAttention(note)) return
+      if (note.resolvedAt !== null) return
+      if (!options.preferences && !isAttention(note)) return
+      if (
+        !canDeliverNotification({
+          notification: note,
+          preferences: options.preferences?.(),
+          botPreference: options.botPreference?.(note.botId) ?? null,
+        })
+      )
+        return
+      result = !isAttention(note)
       title = note.title
       thread = validId(note.threadId)
       bot = validId(note.botId) ?? (thread ? validId(options.botForThread(thread)) : null)
@@ -60,10 +78,18 @@ export const installServerAttention = (
       title = event.title
       thread = validId(event.threadId)
       bot = thread ? validId(options.botForThread(thread)) : null
+      if (
+        !canDeliverNotification({
+          notification: { kind: event.kind ?? "incident", botId: bot },
+          preferences: options.preferences?.(),
+          botPreference: options.botPreference?.(bot) ?? null,
+        })
+      )
+        return
     } else return
     void invoke("server_attention", {
       title: localizeNotice(title).slice(0, 120),
-      body: t("Um bot precisa da sua atenção."),
+      body: t(result ? "Há um novo aviso na central de notificações." : "Um bot precisa da sua atenção."),
       ...(bot || thread ? { deepLink: buildDeepLink({ bot, thread }) } : {}),
     }).catch(() => undefined)
   })
@@ -87,6 +113,8 @@ export const useServerAttention = ({
     return installServerAttention(api, invoke, {
       initial: latest.current.notifications,
       enabled: () => latest.current.settings?.nativeNotifications !== false,
+      preferences: () => latest.current.settings?.notificationPreferences,
+      botPreference: (botId) => latest.current.bots.find((bot) => bot.id === botId)?.notifications ?? null,
       botForThread: (thread) => latest.current.threads.find((item) => item.id === thread)?.botId ?? null,
     })
   }, [api, invoke, enabled, data.loading])

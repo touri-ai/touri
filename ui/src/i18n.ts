@@ -3,6 +3,39 @@ import { userFacingError } from "./errors"
 /** All UI copy lives here. pt-BR is the default; English is available for a future locale picker. */
 export type Locale = "pt-BR" | "en"
 export const ptBR = {
+  "Usar padrão herda os filtros globais e a preferência atual do bot.":
+    "Usar padrão herda os filtros globais e a preferência atual do bot.",
+  "Usar padrão mantém a preferência atual de cada bot.": "Usar padrão mantém a preferência atual de cada bot.",
+  "Aplicar a": "Aplicar a",
+  "Não foi possível carregar os bots. Reabra as preferências.":
+    "Não foi possível carregar os bots. Reabra as preferências.",
+  "Receber avisos deste bot": "Receber avisos deste bot",
+  "Avisar sobre": "Avisar sobre",
+  "Usar padrão": "Usar padrão",
+  "Somente o que precisa de mim": "Somente o que precisa de mim",
+  "Também resultados concluídos": "Também resultados concluídos",
+  "Tipos de aviso": "Tipos de aviso",
+  Avisar: "Avisar",
+  Silenciar: "Silenciar",
+  "Horário silencioso": "Horário silencioso",
+  "Ativar horário silencioso": "Ativar horário silencioso",
+  Das: "Das",
+  Até: "Até",
+  "Vale para todos os bots, no horário local do computador que executa o touri. Os avisos ficam guardados e contados, sem alertas nem som. Horários iguais silenciam o dia todo.":
+    "Vale para todos os bots, no horário local do computador que executa o touri. Os avisos ficam guardados e contados, sem alertas nem som. Horários iguais silenciam o dia todo.",
+  "Os filtros controlam os alertas. Todos os avisos continuam na central de notificações.":
+    "Os filtros controlam os alertas. Todos os avisos continuam na central de notificações.",
+  "Com a página fechada, não há som nem avisos em segundo plano. Ao voltar, você vê as solicitações pendentes.":
+    "Com a página fechada, não há som nem avisos em segundo plano. Ao voltar, você vê as solicitações pendentes.",
+  "Rotina concluída sem novidades.": "Rotina concluída sem novidades.",
+  "Notifications are limited to one every 30 seconds. Wait before trying again.":
+    "Os avisos são limitados a um a cada 30 segundos. Aguarde antes de tentar novamente.",
+  "Notifications are unavailable. Try again later.": "Os avisos estão indisponíveis. Tente novamente mais tarde.",
+  "Notification saved. Alerts follow your notification preferences.":
+    "Aviso guardado. Os alertas seguem suas preferências de notificação.",
+  "Invalid notification preferences": "Preferências de notificação inválidas",
+  "Há um novo aviso na central de notificações.": "Há um novo aviso na central de notificações.",
+
   "Salve o token do bot do Telegram.": "Salve o token do bot do Telegram.",
   "Token inválido ou revogado.": "Token inválido ou revogado.",
   "Não foi possível conectar ao Telegram. Confira sua conexão e tente novamente.":
@@ -2168,6 +2201,38 @@ export const ptBR = {
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  "Usar padrão herda os filtros globais e a preferência atual do bot.":
+    "Use default inherits global filters and the bot’s current preference.",
+  "Usar padrão mantém a preferência atual de cada bot.": "Use default keeps each bot’s current preference.",
+  "Aplicar a": "Apply to",
+  "Não foi possível carregar os bots. Reabra as preferências.": "Could not load bots. Reopen preferences.",
+  "Receber avisos deste bot": "Receive alerts from this bot",
+  "Avisar sobre": "Notify me about",
+  "Usar padrão": "Use default",
+  "Somente o que precisa de mim": "Only what needs me",
+  "Também resultados concluídos": "Also completed results",
+  "Tipos de aviso": "Notification types",
+  Avisar: "Alert",
+  Silenciar: "Mute",
+  "Horário silencioso": "Quiet hours",
+  "Ativar horário silencioso": "Enable quiet hours",
+  Das: "From",
+  Até: "Until",
+  "Vale para todos os bots, no horário local do computador que executa o touri. Os avisos ficam guardados e contados, sem alertas nem som. Horários iguais silenciam o dia todo.":
+    "Applies to all bots, using the local time of the computer running touri. Notifications are saved and counted, without alerts or sound. Equal times silence the entire day.",
+  "Os filtros controlam os alertas. Todos os avisos continuam na central de notificações.":
+    "Filters control alerts. All notifications remain in the notification center.",
+  "Com a página fechada, não há som nem avisos em segundo plano. Ao voltar, você vê as solicitações pendentes.":
+    "A closed page makes no sound and sends no background alerts. When you return, you see pending requests.",
+  "Rotina concluída sem novidades.": "Routine finished with no news.",
+  "Notifications are limited to one every 30 seconds. Wait before trying again.":
+    "Notifications are limited to one every 30 seconds. Wait before trying again.",
+  "Notifications are unavailable. Try again later.": "Notifications are unavailable. Try again later.",
+  "Notification saved. Alerts follow your notification preferences.":
+    "Notification saved. Alerts follow your notification preferences.",
+  "Invalid notification preferences": "Invalid notification preferences",
+  "Há um novo aviso na central de notificações.": "There is a new notification in the notification center.",
+
   "Salve o token do bot do Telegram.": "Save the Telegram bot token.",
   "Token inválido ou revogado.": "Invalid or revoked token.",
   "Não foi possível conectar ao Telegram. Confira sua conexão e tente novamente.":
@@ -3731,6 +3796,7 @@ const singular: Partial<Record<TranslationKey, [string, string]>> = {
   ],
   "Tool count": ["{count} chamada de ferramenta", "{count} tool call"],
   "Tool group count": ["{count} ferramenta", "{count} tool"],
+  "Você tem {n} solicitações pendentes.": ["Você tem {n} solicitação pendente.", "You have {n} pending request."],
   "Notifications need attention": [
     "Notificações, {count} precisa de atenção",
     "Notifications, {count} needs attention",
@@ -3752,7 +3818,7 @@ export const t = (
 ): string => {
   let template = dictionaries[locale][key]
   const one = singular[key]?.[locale === "pt-BR" ? 0 : 1]
-  const count = key === "A cada hora, aos {minute} minutos" ? params.minute : params.count
+  const count = key === "A cada hora, aos {minute} minutos" ? params.minute : (params.count ?? params.n)
   if (one && typeof count === "number") template = plural(count, one, template, locale)
   const values =
     key === "Import counts"

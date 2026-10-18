@@ -588,6 +588,10 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
           routineRuns: uniqueById(routineRunsResponse.routineRuns),
           settings: settingsResponse.settings,
           notifications: current.notifications.reduce(upsertNotification, notificationsResponse.notifications),
+          pendingRequestsOnReturn: countPendingRequests(
+            current.notifications.reduce(upsertNotification, notificationsResponse.notifications),
+            activityResponse.messages,
+          ),
           selectedBotId: selectedBot?.id ?? null,
           selectedThreadId,
           threadCreation,

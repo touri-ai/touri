@@ -22,7 +22,7 @@ import type {
   ThreadKind,
   ThreadUsage,
 } from "@touri/contracts"
-import { apiModelErrors, normalizeBotName } from "@touri/contracts"
+import { apiModelErrors, isNotificationPreferences, normalizeBotName } from "@touri/contracts"
 import { validAvatarColor, validAvatarShape } from "@touri/contracts/avatar"
 import { getApiModel } from "../api-models/config"
 import { installDoctor } from "../doctor"
@@ -42,6 +42,7 @@ import { historyThreadPending, hydrateHistoryEvent } from "../kernel/history-bac
 import { externalizeMessageParts, OUTPUT_BLOB_ORIGIN, readOutputAttachment } from "../kernel/output-blobs"
 import { isProfileProvider, validProviderProfileName } from "../kernel/provider-profiles"
 import { materializeTranscript } from "../kernel/transcript-storage"
+import { getLocalNotificationPreferences } from "../notify/preferences"
 import { hostComputerSupported } from "../platform"
 import { touriVersion } from "../version"
 import { DEFAULT_BOT_VM_MEMORY_MB, DEFAULT_MACHINE_IDLE_MINUTES, validBotVmMemory } from "../vm/resources"
@@ -310,6 +311,7 @@ const settingsDefaults = (): AppSettings => ({
   computerUseHotkey: "ctrl+alt+cmd+.",
   browserExecutable: "system-chrome",
   nativeNotifications: true,
+  notificationPreferences: {},
   sidebarFloatUpdates: true,
   resumeInterruptedTurns: true,
 })
@@ -330,6 +332,7 @@ const settingsKeys: Array<keyof AppSettings> = [
   "computerUseHotkey",
   "browserExecutable",
   "nativeNotifications",
+  "notificationPreferences",
   "sidebarFloatUpdates",
   "resumeInterruptedTurns",
 ]
@@ -338,6 +341,8 @@ const validSettingsPatch = (patch: Record<string, unknown>): string | null => {
   for (const key of Object.keys(patch)) {
     if (!settingsKeys.includes(key as keyof AppSettings)) return `Unknown setting ${key}`
   }
+  if (patch.notificationPreferences !== undefined && !isNotificationPreferences(patch.notificationPreferences))
+    return "Invalid notification preferences"
   if (patch.dataRetentionDays !== undefined && !validDataRetentionDays(patch.dataRetentionDays))
     return "dataRetentionDays must be an integer between 0 and 3650"
   if (patch.botVmMemoryMb !== undefined && !validBotVmMemory(patch.botVmMemoryMb))
@@ -414,7 +419,12 @@ const readSettings = ({ database }: { database: Database }): AppSettings => {
     if (key === "browserExecutable" && (value === "system-chrome" || value === "chrome-for-testing"))
       settings[key] = value
   }
-  return settings
+  const savedPreferences = rows.find((row) => row.key === "notificationPreferences")
+  const preferences = parseJson<unknown>(savedPreferences?.value_json ?? "{}", {})
+  return {
+    ...settings,
+    notificationPreferences: getLocalNotificationPreferences(isNotificationPreferences(preferences) ? preferences : {}),
+  }
 }
 
 const writeSettings = ({ database, settings }: { database: Database; settings: AppSettings }): void => {

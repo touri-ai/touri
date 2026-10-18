@@ -7,6 +7,7 @@ import { join } from "node:path"
 import type { Kernel, Run, ToolRegistration } from "@touri/contracts"
 import { createKernel } from "../../src/kernel"
 import { init, stop } from "../../src/mcp"
+import { init as initNotify } from "../../src/notify"
 import { init as initStore } from "../../src/store"
 import { createFixtureStore } from "./store-fixture"
 
@@ -395,7 +396,7 @@ test("tools validate arguments, enforce ownership, and redact audit arguments", 
   }
 })
 
-test("notify_user calls the host and rate-limits per bot", async () => {
+test("notify_user saves notifications and rate-limits per bot", async () => {
   const root = rootPath()
   const hostPath = join(root, "run", "host.sock")
   mkdirSync(join(root, "run"), { recursive: true })
@@ -412,6 +413,7 @@ test("notify_user calls the host and rate-limits per bot", async () => {
     .query("UPDATE bots SET access = 'full', approvals = 'never' WHERE id = 'bot-mark'")
     .run()
   await initStore(runtime.kernel)
+  await initNotify(runtime.kernel)
   try {
     await init(runtime.kernel)
     const client = await connectClient({ root, threadId: "thread-mark", token })

@@ -1042,7 +1042,7 @@ export type NotificationScopePreferences = {
 export type NotificationPreferences = NotificationScopePreferences & {
   bots?: Record<Id, NotificationScopePreferences>
   /** Times use the local clock; an equal start and end silences the entire day. */
-  quietHours?: { enabled: boolean; start: string; end: string }
+  quietHours?: { enabled: boolean; start: string; end: string; timeZone?: string }
 }
 
 export type NotifyResolution = 'allow' | 'deny' | 'answer' | 'replied' | 'dismissed' | 'expired' | 'canceled'
