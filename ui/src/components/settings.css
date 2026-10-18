@@ -890,6 +890,19 @@
   .settings-content {
     flex: 1;
   }
+  .settings-row,
+  .machine-environment-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .settings-row-control,
+  .machine-environment-control,
+  .settings-model-control,
+  .settings-row-control select,
+  .settings-row-control input:not([type="checkbox"]),
+  .machine-environment-control select {
+    width: 100%;
+  }
   .settings-modal .settings-grid > label {
     flex-wrap: wrap;
   }

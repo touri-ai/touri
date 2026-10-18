@@ -1162,6 +1162,9 @@ export const createRuntimeEngine = ({
           ? (args) => startVmTurn({ kernel, provider, args })
           : provider.startTurn
         const invoke = (): ReturnType<typeof startTurn> => {
+          // Completion diagnostics belong to one attempt; cancellation keeps its own cause.
+          if (!controller.signal.aborted) state.completionError = null
+
           // Publish before invocation: startup and a silent provider are different waits.
           if (!run.providerStartedAt) updateRun(run, { providerStartedAt: Date.now() })
           return startTurn({
@@ -1183,8 +1186,14 @@ export const createRuntimeEngine = ({
         const invokeWithRetry = (): ReturnType<typeof startTurn> =>
           retryTransient({
             run: invoke,
-            failureOf: (outcome) => (outcome.success ? null : outcome.error),
-            canRetry: () => !state.turnStarted,
+            failureOf: (outcome) => {
+              if (!outcome.success) return outcome.error
+              if (outcome.status !== "failed") return null
+
+              // A processed completion frame can still report a failed provider turn.
+              return state.completionError?.errorMessage ?? null
+            },
+            canRetry: () => !state.turnStarted && state.parts.length === 0,
             signal: controller.signal,
           })
         let providerResult = await invokeWithRetry()
