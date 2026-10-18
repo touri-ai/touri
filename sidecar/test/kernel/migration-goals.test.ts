@@ -3,7 +3,7 @@ import { afterEach, expect, test } from "bun:test"
 import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { openDatabase } from "../../src/kernel/db"
+import { openDatabase, SCHEMA_VERSION } from "../../src/kernel/db"
 
 const databases = new Set<Database>()
 const roots = new Set<string>()
@@ -36,6 +36,7 @@ test("schema 24 gains persistent goals without changing conversation or run reco
   const previous = openFixture(filename)
   previous.exec(`
     DROP TABLE goals;
+    DROP TABLE recovery_tasks;
     UPDATE schema_meta SET value='24' WHERE key='schema_version';
     INSERT INTO bots(id,name,provider,home_dir,created_at,updated_at) VALUES ('b','Demo','codex','/tmp/demo',1,1);
     INSERT INTO threads(id,bot_id,title,created_at,updated_at) VALUES ('t','b','Demo',1,1);
@@ -59,6 +60,40 @@ test("schema 24 gains persistent goals without changing conversation or run reco
     checkpoint_json: checkpoint,
   })
   expect(reopened.query("SELECT * FROM runs").all()).toEqual(runs)
-  expect(reopened.query("SELECT value FROM schema_meta WHERE key='schema_version'").get()).toEqual({ value: "25" })
+  expect(reopened.query("SELECT value FROM schema_meta WHERE key='schema_version'").get()).toEqual({
+    value: String(SCHEMA_VERSION),
+  })
+  expect(reopened.query("PRAGMA foreign_key_check").all()).toEqual([])
+})
+
+test("schema 25 adds recovery without losing goals on repeated opens", () => {
+  const root = mkdtempSync(join(tmpdir(), "touri-recovery-migration-"))
+  roots.add(root)
+  const filename = join(root, "touri.db")
+  const previous = openFixture(filename)
+  previous.exec(`
+    DROP TABLE recovery_tasks;
+    UPDATE schema_meta SET value='25' WHERE key='schema_version';
+    INSERT INTO bots(id,name,provider,home_dir,created_at,updated_at) VALUES ('b','Demo','codex','/tmp/demo',1,1);
+    INSERT INTO threads(id,bot_id,title,created_at,updated_at) VALUES ('t','b','Demo',1,1);
+    INSERT INTO goals(thread_id,checkpoint_json) VALUES ('t','{"text":"Revisar relatório"}');
+  `)
+  const goals = previous.query("SELECT * FROM goals").all()
+  closeFixture(previous)
+
+  const upgraded = openFixture(filename)
+  upgraded
+    .query("INSERT INTO notifications(kind,level,title,body,created_at) VALUES ('interrupted','warning','Demo','',1)")
+    .run()
+  const notification = upgraded.query("SELECT id FROM notifications LIMIT 1").get() as { id: number }
+  upgraded.query("INSERT INTO recovery_tasks(id,notification_id,turn_id) VALUES ('run:r',?,'r')").run(notification.id)
+  closeFixture(upgraded)
+  const reopened = openFixture(filename)
+
+  expect(reopened.query("SELECT * FROM goals").all()).toEqual(goals)
+  expect(reopened.query("SELECT turn_id FROM recovery_tasks WHERE id='run:r'").get()).toEqual({ turn_id: "r" })
+  expect(reopened.query("SELECT value FROM schema_meta WHERE key='schema_version'").get()).toEqual({
+    value: String(SCHEMA_VERSION),
+  })
   expect(reopened.query("PRAGMA foreign_key_check").all()).toEqual([])
 })

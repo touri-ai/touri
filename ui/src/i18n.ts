@@ -2349,6 +2349,29 @@ export const ptBR = {
   "Atualizar status": "Atualizar status",
   "Crie um bot com o @BotFather e cole o token. Quando alguém mandar a primeira mensagem, o ID aparece aqui para você permitir.":
     "Crie um bot com o @BotFather e cole o token. Quando alguém mandar a primeira mensagem, o ID aparece aqui para você permitir.",
+  "Ver erro": "Ver erro",
+  "Notificações que precisam de revisão em Tarefas interrompidas: {count}.":
+    "Notificações que precisam de revisão em Tarefas interrompidas: {count}.",
+  "Tarefas interrompidas": "Tarefas interrompidas",
+  "Tarefa interrompida não encontrada.": "Tarefa interrompida não encontrada.",
+  "Não foi possível salvar a confirmação. Tente novamente.": "Não foi possível salvar a confirmação. Tente novamente.",
+  "O touri foi reiniciado.": "O touri foi reiniciado.",
+  "Interrupted tasks": "Tarefas interrompidas",
+  "Interrupted task": "Tarefa interrompida",
+  Loading: "Carregando…",
+  "Open conversation": "Abrir conversa",
+  "Revise o que ficou pendente antes de continuar. O histórico será preservado.":
+    "Revise o que ficou pendente antes de continuar. O histórico será preservado.",
+  "Nenhuma tarefa interrompida pendente.": "Nenhuma tarefa interrompida pendente.",
+  "Interrupções resolvidas": "Interrupções resolvidas",
+  "Interrupção anterior · resolvida": "Interrupção anterior · resolvida",
+  "Resultado incerto": "Resultado incerto",
+  "Ação registrada": "Ação registrada",
+  Descartar: "Descartar",
+  "Revisei os efeitos incertos e entendo que descartar não desfaz as ações.":
+    "Revisei os efeitos incertos e entendo que descartar não desfaz as ações.",
+  "Revise os efeitos incertos no centro de tarefas interrompidas.":
+    "Revise os efeitos incertos no centro de tarefas interrompidas.",
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
@@ -4048,6 +4071,25 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "As permissões de pastas salvas não funcionam neste computador. Você pode conversar sem ferramentas. Remova essas permissões nas configurações do bot para continuar com tarefas.":
     "Saved folder permissions do not work on this computer. You can chat without tools. Remove these permissions in the bot settings to continue with tasks.",
   "Remover permissões antigas": "Remove old permissions",
+  "Ver erro": "View error",
+  "Notificações que precisam de revisão em Tarefas interrompidas: {count}.":
+    "Notifications awaiting review in Interrupted tasks: {count}.",
+  "Tarefas interrompidas": "Interrupted tasks",
+  "Tarefa interrompida não encontrada.": "Interrupted task not found.",
+  "Não foi possível salvar a confirmação. Tente novamente.": "Could not save the acknowledgement. Try again.",
+  "O touri foi reiniciado.": "touri restarted.",
+  "Revise o que ficou pendente antes de continuar. O histórico será preservado.":
+    "Review unfinished work before continuing. History will be preserved.",
+  "Nenhuma tarefa interrompida pendente.": "No interrupted tasks need review.",
+  "Interrupções resolvidas": "Resolved interruptions",
+  "Interrupção anterior · resolvida": "Previous interruption · resolved",
+  "Resultado incerto": "Uncertain outcome",
+  "Ação registrada": "Recorded action",
+  Descartar: "Dismiss",
+  "Revisei os efeitos incertos e entendo que descartar não desfaz as ações.":
+    "I reviewed the uncertain effects and understand that dismissing does not undo actions.",
+  "Revise os efeitos incertos no centro de tarefas interrompidas.":
+    "Review uncertain effects in the interrupted tasks center.",
 }
 export const dictionaries = {
   "pt-BR": ptBR,

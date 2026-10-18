@@ -9,6 +9,7 @@ import {
 } from "@touri/contracts"
 import { buildDeepLink, getNativeNotificationBody, nativeNotificationTitle } from "./native"
 import { getNotificationSettings } from "./preferences"
+import { getRecoveryAcknowledgementKeys } from "./recovery"
 import type { SseHub } from "./sse"
 import type { NotificationStore } from "./store"
 
@@ -37,7 +38,7 @@ export const createNotifier = ({ kernel, store, hub }: { kernel: Kernel; store: 
     })
   }
 
-  const emit = (input: NotifyInput): NotificationRecord => {
+  const emit = (input: NotifyInput, options: { silent?: boolean } = {}): NotificationRecord => {
     const threadId = input.threadId
       ? (kernel.services.use("store.api")?.getThread({ threadId: input.threadId })?.groupThreadId ?? input.threadId)
       : null
@@ -54,11 +55,12 @@ export const createNotifier = ({ kernel, store, hub }: { kernel: Kernel; store: 
     })
     kernel.publish({ type: "notification.created", notification })
     hub.broadcast({ seq, type: "notify", notification })
-    sendNative(notification)
+    if (!options.silent) sendNative(notification)
     return notification
   }
 
   const finish = ({ id, resolution }: { id: number; resolution: NotifyResolution }): NotificationRecord | null => {
+    if (getRecoveryAcknowledgementKeys(kernel.db as Database, id).length > 0) return null
     const resolved = store.resolve({ id, resolution })
     if (!resolved) return null
     kernel.publish({ type: "notification.resolved", notification: resolved.notification })
