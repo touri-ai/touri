@@ -235,7 +235,9 @@ test("crash restart policy stops after five failures and orphan cleanup restarts
     createServerFixture({ projectPath: harness.projectPath })
     const defined = await harness.tool(
       "process_define",
-      { name: "autoweb", command: "bun server.ts", autostart: true, ready: { logRegex: "READY" } },
+      // The previous supervisor is still alive in this harness. A real restart
+      // leaves no old monitor to race the new supervisor's autostart.
+      { name: "autoweb", command: "bun server.ts", autostart: true, restart: "never", ready: { logRegex: "READY" } },
       project.id,
     )
     expect(defined.success).toBe(true)
@@ -272,8 +274,7 @@ test("crash restart policy stops after five failures and orphan cleanup restarts
         "SELECT status FROM process_runs WHERE process_id = (SELECT id FROM processes WHERE name = 'autoweb') ORDER BY started_at",
       )
       .all() as Array<{ status: string }>
-    expect(statuses[0]?.status).toBe("stopped")
-    expect(statuses.at(-1)?.status).toBe("ready")
+    expect(statuses).toEqual([{ status: "stopped" }, { status: "ready" }])
   } finally {
     await harness.close()
     if (previousBackoff === undefined) delete process.env.TOURI_TEST_PROCESS_BACKOFF_MS
