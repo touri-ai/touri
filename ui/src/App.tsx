@@ -967,7 +967,10 @@ const AppContent = ({ kernel }: AppProps) => {
                 onGroup={(bot, partner) => {
                   setEditingGroup(null)
                   openModal("group")
-                  setGroupDraft({ name: t("Team with {name}", { name: bot.name }), memberIds: [partner.id, bot.id] })
+                  setGroupDraft({
+                    name: t("Team with {name}", { name: bot.name }).slice(0, 80),
+                    memberIds: [partner.id, bot.id],
+                  })
                 }}
                 onDismissFollowup={() => setTeamFollowup(null)}
               />

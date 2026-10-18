@@ -83,6 +83,20 @@ it("prefills a complementary job and offers a group draft with an explicit save"
   })
 })
 
+it("keeps a suggested group name within the editor limit when the bot has a long name", async () => {
+  const api = await makeFirstBotApi()
+  const name = "B".repeat(80)
+  render(<App kernel={{ services: { api } }} />)
+  await screen.findByRole("textbox", { name: "Mensagem para Clara" })
+
+  await createBot(name)
+  fireEvent.click(screen.getByRole("button", { name: "Trabalhar em grupo com Clara?" }))
+
+  const groupName = within(screen.getByRole("dialog")).getByRole("textbox", { name: "Nome do grupo" })
+  expect(groupName).toHaveAttribute("maxlength", "80")
+  expect(groupName).toHaveValue(`Equipe com ${name}`.slice(0, 80))
+})
+
 it("replaces the followup for the third bot and dismisses it without revealing another banner", async () => {
   const api = await makeFirstBotApi()
   render(<App kernel={{ services: { api } }} />)
