@@ -108,7 +108,7 @@ Tokens are never written to disk, except the per-thread MCP token files (rewritt
 
 ### 2.3 Why Bun (and the risks)
 - `bun build --compile --target=bun-darwin-arm64` gives one executable. Codesigning works on Bun ≥ 1.2.4 (we pin 1.2.21+). The entitlements need the JIT keys (section 9).
-- `bun:sqlite` is built in and synchronous. Writes are small (one message or delta flush). FTS queries are bounded (`LIMIT`).
+- `bun:sqlite` is built in and synchronous. The main WAL database uses `synchronous=NORMAL`: commits remain atomic across application crashes, while an OS crash or power loss can lose recent commits. Authentication state keeps `synchronous=FULL` on its own database connection. FTS queries are bounded (`LIMIT`).
 - Built-in `Bun.serve` covers HTTP+WS. `node:child_process` compatibility gives us `detached: true` (setsid) for process groups. Extra stdio fds are needed for `--remote-debugging-pipe`, and the WP0 spike verifies them.
 - **Risks:**
   - A Bun child-process quirk. Mitigation: all spawning goes through one kernel helper with acceptance tests (pgid, extra fds, kill tree).

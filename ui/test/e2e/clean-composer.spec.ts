@@ -9,7 +9,18 @@ test("chat exposes quick model and project controls and remembers the panel choi
   const input = page.getByRole("textbox", { name: "Mensagem para mark" })
   await expect(input).toBeVisible()
   const composer = page.getByRole("form", { name: "Compor mensagem" })
-  await expect(composer.locator("button")).toHaveCount(4)
+  const supportsDictation = await page.evaluate(
+    () =>
+      window.isSecureContext &&
+      typeof (Reflect.get(window, "SpeechRecognition") ?? Reflect.get(window, "webkitSpeechRecognition")) ===
+        "function",
+  )
+  await expect(composer.locator("button")).toHaveCount(supportsDictation ? 5 : 4)
+  if (supportsDictation)
+    await expect(composer.getByRole("button", { name: "Ditar mensagem", exact: true })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    )
   await expect(composer.getByRole("button", { name: "Anexar arquivo", exact: true })).toBeVisible()
   await expect(composer.getByRole("button", { name: "Enviar", exact: true })).toBeDisabled()
   const model = composer.getByRole("button", { name: /^Escolher modelo:/ })

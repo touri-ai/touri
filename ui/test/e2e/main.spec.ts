@@ -55,7 +55,7 @@ test("cold routines keep navigation available and focus the loaded destination",
 
   await showBotRoutines(page)
 
-  const loading = page.locator(".workspace-page").getByRole("status")
+  const loading = page.locator('.workspace-page[aria-busy="true"]').getByRole("status")
   await expect(loading).toHaveText("Carregando…")
   const screenshot = info.outputPath("routines-loading.png")
   await page.screenshot({ path: screenshot, animations: "disabled" })
