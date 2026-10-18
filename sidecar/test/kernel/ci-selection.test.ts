@@ -1,5 +1,7 @@
 import { expect, test } from "bun:test"
-import { readFileSync } from "node:fs"
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { linuxTests, needsNative, sidecarShard, testFiles } from "../../../.github/ci/selection"
 
 const workflow = readFileSync(new URL("../../../.github/workflows/ci.yml", import.meta.url), "utf8")
@@ -83,6 +85,22 @@ test("every current and future sidecar test belongs to exactly one nonempty shar
   expect(shards.every((shard) => shard.length > 0)).toBe(true)
   expect(shards.flat().sort()).toEqual([...files, ...future].sort())
   expect(sidecarShard("runtime/runtime.test.ts")).not.toBe(sidecarShard("vm/runtime.test.ts"))
+})
+
+test("discovery keeps every test suffix supported by the runner, including new directories", () => {
+  const root = mkdtempSync(join(tmpdir(), "touri-ci-selection-"))
+  try {
+    mkdirSync(join(root, "future/nested"), { recursive: true })
+    const expected = [".test", "_test", ".spec", "_spec"].flatMap((suffix) =>
+      ["js", "jsx", "ts", "tsx", "mjs", "cjs", "mts", "cts"].map(
+        (extension) => `future/nested/example${suffix}.${extension}`,
+      ),
+    )
+    for (const file of [...expected, "helper.ts", "example.test.json"]) writeFileSync(join(root, file), "")
+    expect(testFiles(root)).toEqual(expected.sort())
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
 })
 
 test("Linux PRs include platform, Linux and confinement tests without the full Unix suite", () => {
