@@ -61,6 +61,34 @@ themes.forEach((theme) => {
         await lastProject.click({ trial: true })
       })
 
+      test("sidebar shares its header with actions below the native titlebar", async ({ page }) => {
+        await page.goto("/test/e2e/window-inset-harness.html?scene=workspace")
+        await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
+        if (viewport.width <= 620) await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
+        const sidebar = page.getByRole("navigation", { name: "Barra lateral" })
+        const heading = sidebar.locator(".sidebar-list-heading")
+        const search = sidebar.getByRole("button", { name: "Buscar conversas", exact: true })
+        const create = sidebar.getByRole("button", { name: "Criar bot", exact: true })
+
+        const sidebarBox = await sidebar.boundingBox()
+        const headingBox = await heading.boundingBox()
+        const searchBox = await search.boundingBox()
+        const createBox = await create.boundingBox()
+        if (!sidebarBox || !headingBox || !searchBox || !createBox) throw new Error("Sidebar geometry unavailable")
+
+        await expect(page.locator("html")).toHaveAttribute("data-window-overlay", "true")
+        expect(headingBox.y).toBe(sidebarBox.y)
+        expect(headingBox.y).toBeGreaterThanOrEqual(44)
+        expect(searchBox.y).toBeGreaterThanOrEqual(headingBox.y)
+        expect(searchBox.y + searchBox.height).toBeLessThanOrEqual(headingBox.y + headingBox.height)
+        expect(createBox.y).toBe(searchBox.y)
+        expect(createBox.y + createBox.height).toBeLessThanOrEqual(headingBox.y + headingBox.height)
+        await expect(sidebar.locator(".traffic-light-spacer")).toBeHidden()
+        await search.click({ trial: true })
+        await create.click()
+        await expect(page.getByRole("dialog", { name: "Criar bot", exact: true })).toBeVisible()
+      })
+
       test("loading and onboarding retain a drag region", async ({ page }) => {
         await page.goto("/test/e2e/window-inset-harness.html?scene=loading")
         await expect(page.locator(".loading-screen")).toBeVisible()
@@ -82,6 +110,7 @@ test("window inset does not reserve native chrome in the browser", async ({ page
 
   await expect(page.locator(".window-titlebar")).toHaveCount(0)
   expect((await page.locator(".app-shell").boundingBox())?.y).toBe(0)
+  await expect(page.locator(".traffic-light-row")).toHaveCSS("height", "44px")
 })
 
 test("window inset leaves decorated computer popups to the system titlebar", async ({ page }) => {
