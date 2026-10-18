@@ -916,7 +916,7 @@ test.each(["active", "restarted"] as const)("legacy keys never reach a custom se
       }),
     ),
   )
-  const tested = await testConnection.handler({ params: { id: context.bot.id } })
+  const tested = await testConnection.handler({ params: { id: context.bot.id }, body: {} })
   memory.api.sync({
     botId: context.bot.id,
     threadId: context.bot.mainThreadId ?? "",
