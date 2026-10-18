@@ -8,6 +8,7 @@ import { createKernel } from "../../src/kernel"
 import {
   collectUnusedOutputBlobs,
   compactMessageBatch,
+  createStorageMaintenance,
   dataRetentionDays,
   storageStats,
 } from "../../src/kernel/data-maintenance"
@@ -22,7 +23,7 @@ import {
   OUTPUT_BLOB_THRESHOLD,
   OUTPUT_INLINE_BUDGET_BYTES,
 } from "../../src/kernel/output-blobs"
-import { createPerformanceStageTracker } from "../../src/kernel/performance"
+import { createPerformanceStageTracker, type PerformanceStageRunner } from "../../src/kernel/performance"
 import { compactTranscript } from "../../src/kernel/transcript-storage"
 import { createToolResolutions } from "../../src/runtime/tool-resolutions"
 import { init as initStore } from "../../src/store"
@@ -1015,4 +1016,129 @@ test("commits on a second SQLite connection also invalidate a collection pass", 
   expect(second).toBe(1)
   expect(existsSync(shared.path)).toBe(true)
   expect(existsSync(orphan.path)).toBe(false)
+})
+
+const makeScheduledMaintenance = (
+  scan: Awaited<ReturnType<typeof makeScanFixture>>,
+  yieldBatch: () => Promise<void>,
+  runStage: PerformanceStageRunner,
+) => {
+  // Only this fixture owns the next callback; tests advance it without waiting a day.
+  let scheduled: { action: () => Promise<void>; delay: number; timer: ReturnType<typeof setTimeout> } | undefined
+  let errors = 0
+  const maintenance = createStorageMaintenance({
+    database: scan.database,
+    appData: scan.root,
+    publishResync: () => {},
+    retryDeletedBrowserSessionKeys: async () => {},
+    onError: () => {
+      errors += 1
+    },
+    yieldBatch,
+    runStage,
+    schedule: (action, delay) => {
+      const timer = setTimeout(() => {}, 86400_000)
+      timer.unref()
+      scheduled = { action, delay, timer }
+      return timer
+    },
+  })
+  scanCleanups.add(maintenance.dispose)
+
+  return {
+    maintenance,
+    getErrors: () => errors,
+    getNextDelay: () => scheduled?.delay,
+    runNext: async () => {
+      const next = scheduled
+      if (!next) throw new Error("Missing maintenance callback")
+      clearTimeout(next.timer)
+      scheduled = undefined
+      await next.action()
+    },
+  }
+}
+
+test("a commit after the reference worker reads a batch defers without an error and rescans safely", async () => {
+  const scan = await makeScanFixture()
+  const [shared, orphan] = makeOutputCandidates(scan, 2)
+  if (!shared || !orphan) throw new Error("Missing synthetic candidates")
+  insert(scan, "seed", [])
+  const writer = new Database(scan.database.filename)
+  scanCleanups.add(() => {
+    writer.close()
+  })
+  let scanning = false
+  let commits = 0
+  const scheduled = makeScheduledMaintenance(
+    scan,
+    async () => {
+      if (!scanning || commits) return
+      writer
+        .query(`INSERT INTO messages(id,thread_id,role,kind,text,parts_json,created_at,updated_at)
+        VALUES ('worker-reference','t','assistant','text','Synthetic',?,?,?)`)
+        .run(JSON.stringify([{ ...tool(""), outputJson: null, outputAttachmentId: shared.id }]), Date.now(), Date.now())
+      commits += 1
+    },
+    (stage, action, input) => {
+      if (stage === "storage_attachment_reference_scan") scanning = true
+      return scan.stages.run(stage, action, input)
+    },
+  )
+
+  await scheduled.runNext()
+
+  expect(commits).toBe(1)
+  expect(scheduled.getNextDelay()).toBe(1000)
+  expect(scheduled.getErrors()).toBe(0)
+  expect(scheduled.maintenance.snapshot().error).toBeUndefined()
+  expect(existsSync(shared.path)).toBe(true)
+  expect(existsSync(orphan.path)).toBe(true)
+
+  await scheduled.runNext()
+
+  expect(scheduled.getErrors()).toBe(0)
+  expect(scheduled.maintenance.snapshot()).toMatchObject({ running: false })
+  expect(scheduled.maintenance.snapshot().error).toBeUndefined()
+  expect(scan.database.query("SELECT id FROM attachments").all()).toEqual([{ id: shared.id }])
+  expect(existsSync(shared.path)).toBe(true)
+  expect(existsSync(orphan.path)).toBe(false)
+})
+
+test("repeated worker deferrals back off to a cap and return to the daily schedule", async () => {
+  const scan = await makeScanFixture()
+  makeOutputCandidates(scan, 1)
+  insert(scan, "seed", [])
+  const writer = new Database(scan.database.filename)
+  scanCleanups.add(() => {
+    writer.close()
+  })
+  let scanning = false
+  const scheduled = makeScheduledMaintenance(
+    scan,
+    async () => {
+      if (!scanning) return
+      writer.query("UPDATE messages SET text = text || '.' WHERE id = 'seed'").run()
+    },
+    (stage, action, input) => {
+      if (stage === "storage_message_compaction_batch") scanning = false
+      if (stage === "storage_attachment_reference_scan") scanning = true
+      return scan.stages.run(stage, action, input)
+    },
+  )
+
+  for (const delay of [1000, 2000, 4000, 8000, 16_000, 32_000, 60_000, 86400_000]) {
+    await scheduled.runNext()
+
+    expect(scheduled.getNextDelay()).toBe(delay)
+    expect(scheduled.getErrors()).toBe(0)
+    expect(scheduled.maintenance.snapshot().error).toBeUndefined()
+  }
+
+  expect(scheduled.maintenance.snapshot().running).toBe(false)
+  expect(scan.database.query("SELECT COUNT(*) AS n FROM attachments").get()).toEqual({ n: 1 })
+
+  await scheduled.runNext()
+
+  expect(scheduled.getNextDelay()).toBe(1000)
 })

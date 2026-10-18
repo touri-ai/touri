@@ -41,6 +41,7 @@ const STAGES = [
   "vm_orphan_sweep",
   "device_revocation",
   "desktop_revocation",
+  "computer_grant_expiry",
   "browser_session_save",
   "browser_session_key_retry",
   "message_search_index",

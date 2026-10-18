@@ -1,4 +1,5 @@
 import type { Kernel } from "@touri/contracts"
+import type { PerformanceStageRunner } from "../kernel/performance"
 import { createComputerController } from "./controller"
 import { createComputerInput } from "./input-control"
 import { createComputerRoutes } from "./routes"
@@ -6,9 +7,9 @@ import { createComputerTools } from "./tools"
 
 export const name = "computer"
 
-export const init = async (kernel: Kernel): Promise<void> => {
+export const init = async (kernel: Kernel, runStage?: PerformanceStageRunner): Promise<void> => {
   kernel.services.provide("computer.input", createComputerInput(kernel))
-  const controller = createComputerController(kernel)
+  const controller = createComputerController(kernel, runStage ? { runStage } : {})
   const registration = kernel.registerTools({
     tools: createComputerTools({ controller }).map((tool) => ({
       ...tool,

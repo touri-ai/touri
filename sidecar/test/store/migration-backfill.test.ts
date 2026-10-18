@@ -100,11 +100,13 @@ test("50k legacy rows serve before backfill, yield between bounded transactions 
     database = openDatabase({ filename: join(root, "touri.db") })
     expect(historyMigrationStatus(database)).toEqual(progress)
     let previous = progress.done
-    while (historyMigrationStatus(database).running) {
+    let passes = 0
+    while (historyMigrationStatus(database).running && passes < 2000) {
       const next = backfillHistoryBatch(database)
       expect(next.done - previous).toBeLessThanOrEqual(500)
       expect(next.done).toBeGreaterThanOrEqual(previous)
       previous = next.done
+      passes += 1
     }
     expect(backfillHistoryBatch(database)).toEqual({ running: false, done: 50_000, total: 50_000 })
     expect(database.query("SELECT COUNT(*) AS n, MIN(seq) AS first, MAX(seq) AS last FROM messages").get()).toEqual({

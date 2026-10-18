@@ -3,6 +3,11 @@
 export const attachmentReferenceSource = `import { Database, constants } from "bun:sqlite";
 let database;
 const references = new Set();
+let resume;
+const yieldBatch = () => new Promise((resolve) => {
+  resume = resolve;
+  self.postMessage({ type: "batch" });
+});
 const tables = [
   ["messages", "rowid", "parts_json"],
   ["tool_resolutions", "rowid", "part_json"],
@@ -31,18 +36,25 @@ const scan = async (filename) => {
         const body = database.query("SELECT " + column + " AS json FROM " + table + " WHERE " + key + " = ?").get(row.cursor);
         if (body) collect(JSON.parse(body.json));
         cursor = row.cursor;
-
       }
-      await Bun.sleep(0);
-      if (database.query("PRAGMA data_version").get().data_version !== version) throw new Error("changed");
+      // One acknowledgement per window bounds messages and lets the owner cancel.
+      await yieldBatch();
+      if (database.query("PRAGMA data_version").get().data_version !== version) return false;
     }
   }
+  return database.query("PRAGMA data_version").get().data_version === version;
 };
 self.onmessage = async ({ data }) => {
   try {
+    if (data.type === "continue") {
+      const next = resume;
+      resume = undefined;
+      next?.();
+      return;
+    }
     if (data.type === "scan") {
-      await scan(data.filename);
-      self.postMessage({ type: "ready" });
+      const unchanged = await scan(data.filename);
+      self.postMessage({ type: unchanged ? "ready" : "changed" });
       return;
     }
     if (data.type === "candidates") {

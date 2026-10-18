@@ -31,10 +31,11 @@ import goalsSql from "./migrations/0025.sql" with { type: "text" }
 import recoveryCenterSql from "./migrations/0026.sql" with { type: "text" }
 import messageSearchSql from "./migrations/0027.sql" with { type: "text" }
 import groupDeletionSql from "./migrations/0028.sql" with { type: "text" }
+import computerGrantExpirySql from "./migrations/0029.sql" with { type: "text" }
 import { withSuspendedSchemaObjects } from "./schema-rebuild"
 import { applyUpgradeBaselines } from "./upgradeBaselines"
 
-export const SCHEMA_VERSION = 28
+export const SCHEMA_VERSION = 29
 
 const FREE_PAGE_RATIO_LIMIT = 0.2
 
@@ -203,5 +204,6 @@ export const openDatabase = ({ filename }: { filename: string }): Database => {
     database.exec("UPDATE schema_meta SET value = '27' WHERE key = 'schema_version'")
   })()
   database.transaction(() => database.exec(groupDeletionSql))()
+  database.transaction(() => database.exec(computerGrantExpirySql))()
   return database
 }

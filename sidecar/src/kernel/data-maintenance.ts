@@ -3,7 +3,7 @@ import { existsSync, statSync } from "node:fs"
 import { lstat, opendir } from "node:fs/promises"
 import { join } from "node:path"
 import type { Kernel, MessagePart, StorageMaintenanceStatus, StorageStats } from "@touri/contracts"
-import { createAttachmentReferenceScan } from "./attachment-reference-scan"
+import { AttachmentReferenceScanDeferred, createAttachmentReferenceScan } from "./attachment-reference-scan"
 import { removePrivateFile } from "./files"
 import { historyMigrationStatus } from "./history-backfill"
 import { externalizeMessageParts, OUTPUT_BLOB_ORIGIN } from "./output-blobs"
@@ -16,6 +16,12 @@ export const DEFAULT_DATA_RETENTION_DAYS = 30
 const DAY = 24 * 60 * 60 * 1000
 const progressKey = "storage.maintenance.progress"
 type Cursor = { cursor: number; total: number; completedAt: number; changed?: boolean }
+
+export const getStorageCollectionRetryDelay = (deferrals: number): number => {
+  if (deferrals >= 8) return DAY
+
+  return Math.min(60_000, 1000 * 2 ** (deferrals - 1))
+}
 
 export const validDataRetentionDays = (days: unknown): days is number =>
   Number.isInteger(days) && Number(days) >= 0 && Number(days) <= 3650
@@ -207,7 +213,7 @@ export const collectUnusedOutputBlobs = async (
   }
   let removed = 0
   let cursor = 0
-  const references = createAttachmentReferenceScan(database, runStage, signal)
+  const references = createAttachmentReferenceScan(database, runStage, signal, yieldBatch ?? undefined)
   try {
     // Start the expensive read only if a bounded candidate window needs it.
     let started = false
@@ -252,6 +258,9 @@ export const collectUnusedOutputBlobs = async (
       if (yieldBatch) await yieldBatch()
       if (changes() !== observed) return defer(removed)
     }
+  } catch (error) {
+    if (error instanceof AttachmentReferenceScanDeferred) return defer(removed)
+    throw error
   } finally {
     references.dispose()
   }
@@ -319,6 +328,8 @@ export const createStorageMaintenance = ({
   onError,
   log,
   runStage,
+  yieldBatch = () => Bun.sleep(0),
+  schedule = setTimeout,
 }: {
   database: Database
   appData: string
@@ -327,6 +338,8 @@ export const createStorageMaintenance = ({
   onError: () => void
   log?: Kernel["log"]
   runStage?: PerformanceStageRunner
+  yieldBatch?: () => Promise<void>
+  schedule?: (action: () => Promise<void>, delay: number) => ReturnType<typeof setTimeout>
 }) => {
   const stored = database.query("SELECT value_json FROM settings WHERE key = ?").get(progressKey) as {
     value_json: string
@@ -374,6 +387,7 @@ export const createStorageMaintenance = ({
   }, 60_000)
   let manual = false
   let vacuum = false
+  let collectionDeferrals = 0
   let timer: ReturnType<typeof setTimeout> | undefined
   const save = (value = progress) =>
     database
@@ -404,7 +418,7 @@ export const createStorageMaintenance = ({
   const step = async () => {
     if (stopped) return
     if (historyMigrationStatus(database).running) {
-      timer = setTimeout(step, 100)
+      timer = schedule(step, 100)
       return
     }
     try {
@@ -414,7 +428,7 @@ export const createStorageMaintenance = ({
         if (stopped) return
         status = upgrade.snapshot() ?? status
         if (pending) {
-          timer = setTimeout(step, 10)
+          timer = schedule(step, 10)
           return
         }
         publishResync()
@@ -423,7 +437,7 @@ export const createStorageMaintenance = ({
       }
       if (!status.running) {
         if (progress.completedAt > Date.now() - DAY) {
-          timer = setTimeout(step, DAY)
+          timer = schedule(step, DAY)
           return
         }
         status = { running: true, processed: progress.cursor, total: progress.total }
@@ -447,7 +461,7 @@ export const createStorageMaintenance = ({
       })()
       status = { running: true, processed: progress.cursor, total: progress.total }
       if (progress.cursor < progress.total) {
-        timer = setTimeout(step, 10)
+        timer = schedule(step, 10)
         return
       }
       // Capture the recovery tail before pruning. Snapshots/files retain detail;
@@ -456,7 +470,7 @@ export const createStorageMaintenance = ({
       const compact = () =>
         compactTranscript(manual ? { database, events: 0, entriesPerThread: 0, maxAgeMs: 0 } : { database })
       if (runStage ? runStage("transcript_retention", compact) : compact()) {
-        timer = setTimeout(step, 10)
+        timer = schedule(step, 10)
         return
       }
       let deferred = false
@@ -465,7 +479,7 @@ export const createStorageMaintenance = ({
         appData,
         Date.now(),
         async () => {
-          await Bun.sleep(0)
+          await yieldBatch()
           if (stopped) throw new Error("Manutenção encerrada")
         },
         undefined,
@@ -477,9 +491,16 @@ export const createStorageMaintenance = ({
       )
       if (stopped) return
       if (deferred) {
-        timer = setTimeout(step, 1000)
+        collectionDeferrals += 1
+        const delay = getStorageCollectionRetryDelay(collectionDeferrals)
+        if (delay === DAY) {
+          collectionDeferrals = 0
+          status = { running: false, processed: progress.cursor, total: progress.total }
+        }
+        timer = schedule(step, delay)
         return
       }
+      collectionDeferrals = 0
       if (vacuum) {
         const vacuumDatabase = (): void => {
           database.exec("PRAGMA wal_checkpoint(TRUNCATE)")
@@ -496,15 +517,15 @@ export const createStorageMaintenance = ({
       progress = { ...progress, completedAt: Date.now() }
       save()
       status = { running: false, processed: progress.cursor, total: progress.total }
-      timer = setTimeout(step, DAY)
+      timer = schedule(step, DAY)
     } catch {
       if (stopped) return
       onError()
       status = { ...status, running: false, error: "Não foi possível compactar os dados. Tente novamente." }
-      timer = setTimeout(step, 1000)
+      timer = schedule(step, 1000)
     }
   }
-  timer = setTimeout(step, 100)
+  timer = schedule(step, 100)
   scheduleSessionKeyRetry()
   const dailyRetryTimer = setInterval(scheduleSessionKeyRetry, DAY)
   return {
@@ -514,9 +535,10 @@ export const createStorageMaintenance = ({
       clearTimeout(timer)
       progress = { cursor: 0, total: 0, completedAt: 0 }
       status = { running: true, processed: 0, total: 0 }
+      collectionDeferrals = 0
       manual = true
       vacuum = withVacuum
-      timer = setTimeout(step, 0)
+      timer = schedule(step, 0)
       return true
     },
     snapshot: (): StorageMaintenanceStatus => ({ ...status }),
