@@ -672,26 +672,27 @@ test("a volume mounted by another bot is never removed", async () => {
 
 test.each(["machine", "history"] as const)(
   "a failed %s deletion preserves the saved browser session and encryption key",
-  async (step) => {
-    const f = await fixture()
-    const bot = await f.create("Session retry", step === "machine" ? "vm" : "local")
+  async (deletionStep) => {
+    const workspace = await fixture()
+    const bot = await workspace.create("Session retry", deletionStep === "machine" ? "vm" : "local")
     const session = { cookies: [{ name: "sid", value: "fake", domain: "example.com", path: "/" }], storage: {} }
-    expect(await saveBotSession({ kernel: f.runtime.kernel, botId: bot.id, session })).toBe(true)
-    const file = botSessionPath(f.runtime.kernel, bot.id)
-    const encrypted = readFileSync(file, "utf8")
-    const release = step === "machine" ? await f.vm.service.acquire({ botId: bot.id }) : async () => {}
-    if (step === "history")
-      f.db
+    expect(await saveBotSession({ kernel: workspace.runtime.kernel, botId: bot.id, session })).toBe(true)
+    const sessionFile = botSessionPath(workspace.runtime.kernel, bot.id)
+    const encryptedSession = readFileSync(sessionFile, "utf8")
+    const releaseLease =
+      deletionStep === "machine" ? await workspace.vm.service.acquire({ botId: bot.id }) : async () => {}
+    if (deletionStep === "history")
+      workspace.db
         .query("CREATE TRIGGER block_bot_deletion BEFORE DELETE ON bots BEGIN SELECT RAISE(ABORT, 'blocked'); END")
         .run()
 
-    const response = await f.request(`/bots/${bot.id}`, { name: bot.name }, "DELETE")
-    await release()
+    const response = await workspace.request(`/bots/${bot.id}`, { name: bot.name }, "DELETE")
+    await releaseLease()
 
     expect(response.status).toBe(409)
-    expect(f.db.query("SELECT id FROM bots WHERE id = ?").get(bot.id)).toEqual({ id: bot.id })
-    expect(readFileSync(file, "utf8")).toBe(encrypted)
-    expect(await loadBotSession(f.runtime.kernel, bot.id)).toEqual(session)
+    expect(workspace.db.query("SELECT id FROM bots WHERE id = ?").get(bot.id)).toEqual({ id: bot.id })
+    expect(readFileSync(sessionFile, "utf8")).toBe(encryptedSession)
+    expect(await loadBotSession(workspace.runtime.kernel, bot.id)).toEqual(session)
   },
 )
 
