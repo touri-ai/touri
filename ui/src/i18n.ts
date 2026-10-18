@@ -11,7 +11,7 @@ export const ptBR = {
   "Dictation stopping": "Encerrando o ditado…",
   "Dictation waiting": "Aguardando microfone… Cancelar ditado",
   "Dictation privacy":
-    "Seu navegador pedirá acesso ao microfone e pode enviar áudio ao serviço de reconhecimento dele. O touri não grava nem armazena áudio. A transcrição entra apenas no rascunho: revise e clique em Enviar quando quiser.",
+    "Seu navegador pedirá acesso ao microfone e pode enviar o áudio para o serviço online de reconhecimento de fala do fornecedor do navegador (na nuvem). O touri não processa, grava nem armazena áudio. A transcrição entra apenas no rascunho: revise e clique em Enviar quando quiser.",
   "Dictation unavailable": "Ditado indisponível",
   "Dictation permission denied":
     "O acesso ao microfone foi negado. Permita o microfone nas configurações deste site ou aplicativo e tente novamente. Você pode continuar digitando.",
@@ -2468,7 +2468,7 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Dictation stopping": "Stopping dictation…",
   "Dictation waiting": "Waiting for microphone… Cancel dictation",
   "Dictation privacy":
-    "Your browser will request microphone access and may send audio to its speech recognition service. touri does not record or store audio. The transcript goes only into your draft: review it and click Send when ready.",
+    "Your browser will request microphone access and may send the audio to the browser vendor's online speech recognition service (in the cloud). touri does not process, record or store audio. The transcript goes only into your draft: review it and click Send when ready.",
   "Dictation unavailable": "Dictation unavailable",
   "Dictation permission denied":
     "Microphone access was denied. Allow the microphone in this site or app settings and try again. You can keep typing.",

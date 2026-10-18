@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises"
 import { act, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { VoiceInput } from "../src/components/VoiceInput"
@@ -34,7 +35,7 @@ const setup = (locale: Locale = "pt-BR") => {
       sessions.push(this)
     }
   }
-  const transcript = vi.fn()
+  const transcript = vi.fn<(text: string) => void>()
   const active = vi.fn()
   const props = {
     contextKey: "thread-a",
@@ -61,8 +62,9 @@ const result = (text: string, isFinal = true): SpeechResultEvent => ({
 })
 
 describe("optional browser dictation", () => {
-  for (const locale of ["pt-BR", "en"] as const) {
-    it(`requires informed consent before creating a microphone session in ${locale}`, () => {
+  it.each(["pt-BR", "en"] as const)(
+    "requires informed consent before creating a microphone session in %s",
+    (locale) => {
       const { sessions, start } = setup(locale)
       expect(sessions).toHaveLength(0)
 
@@ -72,14 +74,66 @@ describe("optional browser dictation", () => {
       expect(sessions).toHaveLength(0)
       fireEvent.click(screen.getByRole("button", { name: t("Cancelar", {}, locale) }))
       const session = start()
-      expect(session.lang).toBe(locale === "en" ? "en-US" : "pt-BR")
+      expect(session.lang).toBe(locale)
       expect(session.start).toHaveBeenCalledOnce()
       expect(screen.getByRole("button", { name: t("Stop dictation", {}, locale) })).toHaveAttribute(
         "aria-pressed",
         "true",
       )
-    })
-  }
+    },
+  )
+
+  it.each([
+    ["pt-BR", "serviço online de reconhecimento de fala do fornecedor do navegador (na nuvem)", "não processa"],
+    ["en", "browser vendor's online speech recognition service (in the cloud)", "does not process"],
+  ] as const)("discloses cloud audio processing and touri's role in %s", (locale, service, processing) => {
+    setup(locale)
+
+    fireEvent.click(screen.getByRole("button", { name: t("Dictate message", {}, locale) }))
+
+    expect(screen.getByRole("dialog")).toHaveTextContent(service)
+    expect(screen.getByRole("dialog")).toHaveTextContent(processing)
+  })
+
+  it("requires fresh consent after a completed session", () => {
+    const { start, sessions } = setup()
+    const session = start()
+
+    act(() => session.onend?.())
+    fireEvent.click(screen.getByRole("button", { name: "Ditar mensagem" }))
+
+    expect(screen.getByRole("dialog")).toHaveTextContent(t("Dictation privacy"))
+    expect(sessions).toHaveLength(1)
+    expect(session.abort).toHaveBeenCalledOnce()
+  })
+
+  it("cancels capture on a locale change and uses the new locale after fresh consent", () => {
+    const { start, rerender, props, sessions } = setup()
+    const session = start()
+
+    rerender(<VoiceInput {...props} locale="en" />)
+    fireEvent.click(screen.getByRole("button", { name: "Dictate message" }))
+
+    expect(session.abort).toHaveBeenCalledOnce()
+    expect(sessions).toHaveLength(1)
+    expect(screen.getByRole("dialog")).toHaveTextContent(t("Dictation privacy", {}, "en"))
+
+    fireEvent.click(screen.getByRole("button", { name: "Start dictation" }))
+
+    expect(sessions.at(-1)?.lang).toBe("en")
+  })
+
+  it("keeps native purpose strings neutral and retains the microphone entitlement", async () => {
+    const [info, english, entitlements] = await Promise.all([
+      readFile("../src-tauri/Info.plist", "utf8"),
+      readFile("../src-tauri/locales/en.lproj/InfoPlist.strings", "utf8"),
+      readFile("../src-tauri/Entitlements.plist", "utf8"),
+    ])
+
+    expect(info).toContain("O touri usa o reconhecimento de fala somente quando você inicia o ditado de uma mensagem.")
+    expect(english).toContain("touri uses speech recognition only when you start dictating a message.")
+    expect(entitlements).toMatch(/<key>com\.apple\.security\.device\.audio-input<\/key>\s*<true\s*\/>/)
+  })
 
   it("accepts final plain text once, preserves interim indexes, and exposes no send action", () => {
     const { start, transcript } = setup()
@@ -92,6 +146,39 @@ describe("optional browser dictation", () => {
 
     expect(transcript).toHaveBeenCalledExactlyOnceWith("<script>texto ditado</script>")
     expect(screen.queryByRole("button", { name: "Enviar" })).toBeNull()
+  })
+
+  it("preserves cumulative result order and waits for an interim index before consuming later finals", () => {
+    const { start, transcript } = setup()
+    const session = start()
+    const first = { isFinal: true, 0: { transcript: "Primeiro." } }
+    const interim = { isFinal: false, 0: { transcript: "Segundo" } }
+    const second = { isFinal: true, 0: { transcript: "Segundo." } }
+    const third = { isFinal: true, 0: { transcript: "Terceiro." } }
+    const initial = { resultIndex: 0, results: [first, interim, third] }
+    const completed = { resultIndex: 1, results: [first, second, third] }
+
+    act(() => session.onresult?.(initial))
+    act(() => session.onresult?.(completed))
+    act(() => session.onresult?.(completed))
+
+    expect(transcript.mock.calls).toEqual([["Primeiro."], ["Segundo. Terceiro."]])
+  })
+
+  it("applies the character budget across callbacks, including separators between final results", () => {
+    const { start, transcript } = setup()
+    const session = start()
+    const first = { isFinal: true, 0: { transcript: "a".repeat(8_000) } }
+    const second = { isFinal: true, 0: { transcript: "b".repeat(8_000) } }
+    const third = { isFinal: true, 0: { transcript: "c".repeat(8_000) } }
+    const fourth = { isFinal: true, 0: { transcript: "d".repeat(8_000) } }
+
+    act(() => session.onresult?.({ resultIndex: 0, results: [first, second] }))
+    act(() => session.onresult?.({ resultIndex: 2, results: [first, second, third, fourth] }))
+
+    expect(transcript).toHaveBeenCalledTimes(2)
+    expect(transcript.mock.calls.reduce((total, [text]) => total + text.length, 0)).toBe(32_000)
+    expect(session.abort).toHaveBeenCalledOnce()
   })
 
   it("allows the final result after Stop, then aborts a browser that never ends", () => {

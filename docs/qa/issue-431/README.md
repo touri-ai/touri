@@ -8,7 +8,9 @@ Baseline: `2aaf77cb`. Desktop: 1440 × 900. Phone: 390 × 844. Both light and da
 
 Open `/test/e2e/home-harness.html` to reproduce the mock app.
 
-Speech is simulated with an injected browser constructor for repeatable evidence without microphone access or remote audio. `consent-*` shows the disclosure before microphone permission, and `recording-*` shows the recording/stop state. Real microphone hardware, OS prompts and vendor speech services were not exercised. The app defaults to pt-BR, like the existing translation helper; the composer accepts the existing `Locale` type and voice tests also cover English (`en-US` recognition).
+Speech is simulated with an injected browser constructor for repeatable evidence without microphone access or remote audio. `consent-*` shows the disclosure before microphone permission, and `recording-*` shows the recording/stop state. Granting and denying macOS microphone permission were not tested on real hardware. Vendor speech services were not exercised. The app defaults to pt-BR, like the existing translation helper; recognition receives the composer's `Locale` directly (`pt-BR` or `en`). Every new session requires fresh consent.
+
+The four consent images were refreshed with the explicit browser-vendor cloud disclosure. Other images retain the original fixed-clock capture described above. To reproduce the refreshed images, run `bunx playwright test test/e2e/voice-input.spec.ts`; the disclosure check records both viewport sizes in light and dark themes using only synthetic app data.
 
 | View | Before | After |
 | --- | --- | --- |

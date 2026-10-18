@@ -29,6 +29,7 @@ export const VoiceInput = ({
   const [stopping, setStopping] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const session = useRef<SpeechRecognitionSession | null>(null)
+  const progress = useRef({ nextResult: 0, remainingCharacters: 32_000 })
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const callbacks = useRef({ onTranscript, onActiveChange })
   callbacks.current = { onTranscript, onActiveChange }
@@ -84,7 +85,8 @@ export const VoiceInput = ({
     try {
       const current = new recognition()
       session.current = current
-      current.lang = locale === "en" ? "en-US" : "pt-BR"
+      progress.current = { nextResult: 0, remainingCharacters: 32_000 }
+      current.lang = locale
       current.continuous = false
       current.interimResults = false
       current.maxAlternatives = 1
@@ -92,20 +94,24 @@ export const VoiceInput = ({
         if (session.current === current) setRecording(true)
       }
       // A single dictation has bounded text and lifetime, even with a noisy browser implementation.
-      let nextResult = 0
-      let remainingCharacters = 32_000
       current.onresult = (event) => {
         if (session.current !== current) return
         const end = Math.min(event.results.length, 256)
-        const parts: string[] = []
+        const results = Array.from({ length: end }, (_, index) => event.results[index])
+        const pending = results.slice(progress.current.nextResult)
         // Browser result lists reuse indexes for interim text; advance only after a final result.
-        while (nextResult < end && remainingCharacters > 0 && event.results[nextResult]?.isFinal) {
-          const part = event.results[nextResult]?.[0]?.transcript.slice(0, Math.min(8_000, remainingCharacters)) ?? ""
-          parts.push(part)
-          remainingCharacters -= part.length
-          nextResult += 1
+        const interim = pending.findIndex((result) => !result?.isFinal)
+        const finalResults = interim === -1 ? pending : pending.slice(0, interim)
+        const text = finalResults
+          .filter((result) => result?.isFinal)
+          .map((result) => result?.[0]?.transcript.slice(0, 8_000) ?? "")
+          .reduce((text, part) => getBoundedTranscript(text, part, progress.current.remainingCharacters), "")
+        const remainingCharacters = progress.current.remainingCharacters - text.length
+
+        progress.current = {
+          nextResult: progress.current.nextResult + finalResults.length,
+          remainingCharacters,
         }
-        const text = parts.join(" ").slice(0, 32_000)
         if (text.trim()) callbacks.current.onTranscript(text)
         if (remainingCharacters === 0) finishRef.current()
       }
@@ -222,6 +228,13 @@ export const VoiceInput = ({
       )}
     </>
   )
+}
+
+const getBoundedTranscript = (text: string, part: string, budget: number): string => {
+  if (text.length >= budget) return text
+
+  const separator = text ? " " : ""
+  return `${text}${separator}${part}`.slice(0, budget)
 }
 
 const getDictationError = (code: string, locale: Locale): string => {
