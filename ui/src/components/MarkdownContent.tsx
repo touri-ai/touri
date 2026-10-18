@@ -247,13 +247,13 @@ const ShikiCode = ({
   )
 }
 
-export const MarkdownContent = memo(function MarkdownContent({
+export const MarkdownContent = ({
   content,
   compact = false,
   preview = false,
   streaming = false,
   evidence,
-}: MarkdownRendererProps) {
+}: MarkdownRendererProps) => {
   const displayed = useStreamingContent(content, streaming)
 
   return (
@@ -269,4 +269,4 @@ export const MarkdownContent = memo(function MarkdownContent({
       </Suspense>
     </div>
   )
-})
+}

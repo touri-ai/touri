@@ -1,8 +1,15 @@
 import { act, render, screen, waitFor } from "@testing-library/react"
+import remarkGfm from "remark-gfm"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { MarkdownContent } from "../src/components/MarkdownContent"
 import { getMarkdownCodeHtml } from "../src/components/markdownHighlight"
 import { useStreamingContent } from "../src/components/useStreamingContent"
+
+vi.mock("remark-gfm", async (importOriginal) => {
+  const plugin = await importOriginal<{ default: typeof remarkGfm }>()
+
+  return { default: vi.fn(plugin.default) }
+})
 
 vi.mock("../src/components/markdownHighlight", () => ({
   getMarkdownCodeHtml: vi.fn(async () => '<pre class="shiki"><code>const total = 2</code></pre>'),
@@ -17,6 +24,16 @@ afterEach(() => {
 })
 
 describe("streaming Markdown", () => {
+  it("does not reparse unchanged Markdown when the surrounding presentation changes", async () => {
+    const view = render(<MarkdownContent content="# Resposta salva" />)
+    await screen.findByRole("heading", { name: "Resposta salva" })
+    const parses = vi.mocked(remarkGfm).mock.calls.length
+
+    view.rerender(<MarkdownContent content="# Resposta salva" compact />)
+
+    expect(remarkGfm).toHaveBeenCalledTimes(parses)
+  })
+
   it("keeps the latest text at a bounded cadence without waiting for the stream to stop", () => {
     vi.useFakeTimers()
     const view = render(<StreamingText content="Início" streaming />)

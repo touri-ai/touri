@@ -25,6 +25,7 @@ test("streaming eight long replies keeps allocation work bounded", async ({ page
   await page.evaluate(() => window.dispatchEvent(new Event("start-streaming-fixture")))
 
   const started = Date.now()
+  // Samples are local to this capture; appending avoids copying the growing measurement series.
   const samples = []
   while (Date.now() - started < 15_000) {
     const heap = await cdp.send("Runtime.getHeapUsage")
