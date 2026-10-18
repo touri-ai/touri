@@ -45,6 +45,7 @@ test("five bots expose three executing turns and a live FIFO queue, then promote
   const started = Date.now()
   fixture.finish("thread-0")
   await waitFor(() => fixture.getRunning().some((run) => run.id === turns[3]?.id), 1000)
+  await waitFor(() => fixture.getEvent(turns[4]?.id)?.queuePosition === 1, 1000)
 
   expect(Date.now() - started).toBeLessThan(1000)
   expect(fixture.engine.getWorkRuns()).toHaveLength(4)
@@ -70,6 +71,7 @@ test("canceling a waiting turn republishes the remaining positions without start
   if (!canceled) throw new Error("Missing queued turn")
 
   fixture.engine.cancel(canceled.id)
+  await waitFor(() => fixture.getEvent(turns[4]?.id)?.queuePosition === 1, 1000)
 
   expect(fixture.engine.getWorkRuns().filter((run) => run.status === "queued")).toMatchObject([
     { id: turns[4]?.id, queuePosition: 1, queueTotal: 1 },
@@ -144,18 +146,12 @@ test("work snapshots identify routine, delegated and resumed turns and restore q
   })
   fixture.addCleanup(() => replacement.shutdown())
 
-  expect(
-    replacement
-      .getWorkRuns()
-      .filter((run) => run.status === "queued")
-      .map((run) => run.id),
-  ).toEqual(waitingIds)
-  expect(
-    replacement
-      .getWorkRuns()
-      .filter((run) => run.status === "queued")
-      .map((run) => run.queuePosition),
-  ).toEqual([1, 2])
+  const restored = replacement.getWorkRuns().filter((run) => run.status === "queued")
+
+  expect(restored.slice(0, 2).map((run) => run.id)).toEqual(waitingIds)
+  expect(restored.map((run) => run.queuePosition)).toEqual([1, 2, 3, 4, 5])
+  expect(restored.every((run) => run.queueTotal === 5)).toBe(true)
+  expect(restored.slice(2).map((run) => run.origin)).toEqual(["resume", "resume", "resume"])
 })
 
 const getFixture = async () => {
@@ -243,6 +239,7 @@ const getFixture = async () => {
     sendFive: () => Array.from({ length: 5 }, (_, index) => send(`thread-${index}`, index)),
     getRunning: () => engine.getWorkRuns().filter((run) => run.status === "running"),
     getEvents: () => events,
+    getEvent: (id: string | undefined) => events.filter((run) => run.id === id).at(-1),
     finish: (threadId: string) => completions.get(threadId)?.(),
     addCleanup: (close: () => Promise<void>) => {
       extraCleanups = [...extraCleanups, close]
