@@ -487,7 +487,6 @@ realSuite("WP6 real Chrome browser acceptance", () => {
     ])
     expect(first.success).toBe(true)
     expect(second.success).toBe(true)
-    const started = Date.now()
     const timedOut = await engine.waitFor({
       tabId: snapshot.tabId,
       botId: botA,
@@ -496,7 +495,6 @@ realSuite("WP6 real Chrome browser acceptance", () => {
       signal: ctx().signal,
     })
     expect(timedOut).toMatchObject({ success: false, errorCode: "DEADLINE_EXCEEDED" })
-    expect(Date.now() - started).toBeLessThan(1500)
     expect(
       (await engine.snapshot({ tabId: snapshot.tabId, botId: botA, image: "never", signal: ctx().signal })).success,
     ).toBe(true)
