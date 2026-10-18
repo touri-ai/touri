@@ -18,7 +18,9 @@ export const getApiError = (status: number, detail = ""): ApiModelError => {
   if (status === 429 || /rate[_ -]?limit|too many requests|\b130[25]\b/i.test(detail)) return "rate_limit"
   if (
     status === 404 ||
-    /model[_ -]?(not[_ -]?found|not[_ -]?exist)|(?:unknown|invalid|unavailable) model|no endpoints found/i.test(detail)
+    /model[_ -]?(not[_ -]?found|not[_ -]?exist)|model does not exist|(?:unknown|invalid|unavailable) model|no endpoints found|\b1211\b/i.test(
+      detail,
+    )
   )
     return "model_not_found"
   return "unavailable"
