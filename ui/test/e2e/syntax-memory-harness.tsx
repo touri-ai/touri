@@ -60,7 +60,13 @@ const startSyntaxMemoryFixture = () => {
     const reply = getMessage(message, sequence)
     mock.emit({
       type: "message.created",
-      message: { ...reply, id: `background-${sequence}`, threadId: `syntax-thread-${1 + (sequence % 29)}` },
+      message: {
+        ...reply,
+        id: `background-${sequence}`,
+        threadId: `syntax-thread-${1 + (sequence % 29)}`,
+        parentId: null,
+        role: "assistant",
+      },
     })
   }, 1000)
   window.addEventListener("pagehide", () => clearInterval(timer), { once: true })
