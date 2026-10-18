@@ -23,7 +23,7 @@ const setup = (locale: Locale = "pt-BR") => {
     continuous = true
     interimResults = true
     maxAlternatives = 4
-    onstart = null
+    onstart: (() => void) | null = null
     onend: (() => void) | null = null
     onerror: ((event: { error: string }) => void) | null = null
     onresult: ((event: SpeechResultEvent) => void) | null = null
@@ -50,6 +50,7 @@ const setup = (locale: Locale = "pt-BR") => {
     fireEvent.click(screen.getByRole("button", { name: t("Start dictation", {}, locale) }))
     const session = sessions.at(-1)
     if (!session) throw new Error("Expected a dictation session")
+    act(() => session.onstart?.())
     return session
   }
   return { ...view, sessions, transcript, active, props, start }
@@ -125,7 +126,7 @@ describe("optional browser dictation", () => {
 
   it("stops on unmount and bounds a session to one minute", () => {
     vi.useFakeTimers()
-    const { start, unmount } = setup()
+    const { start, unmount, active } = setup()
     const session = start()
 
     act(() => vi.advanceTimersByTime(60_000))
@@ -134,7 +135,11 @@ describe("optional browser dictation", () => {
     const second = start()
     unmount()
     expect(second.abort).toHaveBeenCalledOnce()
-    expect(vi.getTimerCount()).toBe(0)
+    const finishedCalls = active.mock.calls.length
+
+    act(() => vi.advanceTimersByTime(60_000))
+
+    expect(active).toHaveBeenCalledTimes(finishedCalls)
   })
 
   for (const code of ["not-allowed", "no-speech", "audio-capture", "network"]) {
@@ -187,6 +192,17 @@ describe("optional browser dictation", () => {
     fireEvent(document, new Event("visibilitychange"))
 
     expect(session.abort).toHaveBeenCalledOnce()
+  })
+
+  it("allows cancelling a pending microphone prompt before recording begins", () => {
+    const { sessions } = setup()
+
+    fireEvent.click(screen.getByRole("button", { name: "Ditar mensagem" }))
+    fireEvent.click(screen.getByRole("button", { name: "Iniciar ditado" }))
+    fireEvent.click(screen.getByRole("button", { name: "Aguardando microfone… Cancelar ditado" }))
+
+    expect(sessions[0]?.abort).toHaveBeenCalledOnce()
+    expect(screen.getByRole("button", { name: "Ditar mensagem" })).toHaveAttribute("aria-pressed", "false")
   })
 
   it("preserves the draft callback when the browser refuses to start", () => {

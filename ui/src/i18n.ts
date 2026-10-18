@@ -9,6 +9,7 @@ export const ptBR = {
   "Dictation stop short": "Parar",
   "Dictation recording": "Gravando. A transcrição ficará no rascunho para revisão.",
   "Dictation stopping": "Encerrando o ditado…",
+  "Dictation waiting": "Aguardando microfone… Cancelar ditado",
   "Dictation privacy":
     "Seu navegador pedirá acesso ao microfone e pode enviar áudio ao serviço de reconhecimento dele. O touri não grava nem armazena áudio. A transcrição entra apenas no rascunho: revise e clique em Enviar quando quiser.",
   "Dictation unavailable": "Ditado indisponível",
@@ -2465,6 +2466,7 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Dictation stop short": "Stop",
   "Dictation recording": "Recording. The transcript will stay in the draft for review.",
   "Dictation stopping": "Stopping dictation…",
+  "Dictation waiting": "Waiting for microphone… Cancel dictation",
   "Dictation privacy":
     "Your browser will request microphone access and may send audio to its speech recognition service. touri does not record or store audio. The transcript goes only into your draft: review it and click Send when ready.",
   "Dictation unavailable": "Dictation unavailable",

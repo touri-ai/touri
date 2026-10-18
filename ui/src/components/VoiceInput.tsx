@@ -25,6 +25,7 @@ export const VoiceInput = ({
 }) => {
   const [consent, setConsent] = useState(false)
   const [active, setActive] = useState(false)
+  const [recording, setRecording] = useState(false)
   const [stopping, setStopping] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const session = useRef<SpeechRecognitionSession | null>(null)
@@ -53,6 +54,7 @@ export const VoiceInput = ({
   const finish = () => {
     release()
     setActive(false)
+    setRecording(false)
     setStopping(false)
     callbacks.current.onActiveChange(false)
   }
@@ -86,6 +88,9 @@ export const VoiceInput = ({
       current.continuous = false
       current.interimResults = false
       current.maxAlternatives = 1
+      current.onstart = () => {
+        if (session.current === current) setRecording(true)
+      }
       // A single dictation has bounded text and lifetime, even with a noisy browser implementation.
       let nextResult = 0
       let remainingCharacters = 32_000
@@ -137,7 +142,13 @@ export const VoiceInput = ({
   }
 
   if (!recognition) return null
-  const label = active ? t("Stop dictation", {}, locale) : t("Dictate message", {}, locale)
+  const getLabel = () => {
+    if (!active) return t("Dictate message", {}, locale)
+    return t(recording ? "Stop dictation" : "Dictation waiting", {}, locale)
+  }
+  const label = getLabel()
+  const statusKey = recording ? "Dictation recording" : "Dictation waiting"
+  const status = t(stopping ? "Dictation stopping" : statusKey, {}, locale)
   return (
     <>
       <button
@@ -147,7 +158,11 @@ export const VoiceInput = ({
         aria-pressed={active}
         title={label}
         disabled={disabled || stopping}
-        onClick={() => (active ? stop() : setConsent(true))}
+        onClick={() => {
+          if (!active) return setConsent(true)
+          if (!recording) return finishRef.current()
+          stop()
+        }}
       >
         <svg
           width="18"
@@ -164,10 +179,10 @@ export const VoiceInput = ({
             <path d="M9 5a3 3 0 0 1 6 0v7a3 3 0 0 1-6 0V5ZM5 10v2a7 7 0 0 0 14 0v-2M12 19v3m-4 0h8" />
           )}
         </svg>
-        {active && t("Dictation stop short", {}, locale)}
+        {active && t(recording ? "Dictation stop short" : "Cancelar", {}, locale)}
       </button>
       <span className="visually-hidden" role="status">
-        {active ? t(stopping ? "Dictation stopping" : "Dictation recording", {}, locale) : ""}
+        {active ? status : ""}
       </span>
       {consent && (
         <Modal

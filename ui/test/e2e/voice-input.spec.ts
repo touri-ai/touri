@@ -5,10 +5,12 @@ test("dictation is opt-in, inserts plain draft text and requires an explicit sen
     class Recognition {
       static current: Recognition | undefined
       lang = ""
+      onstart?: () => void
       onresult?: (event: { resultIndex: number; results: { isFinal: boolean; 0: { transcript: string } }[] }) => void
       onend?: () => void
       start() {
         Recognition.current = this
+        this.onstart?.()
       }
       stop() {
         this.onresult?.({ resultIndex: 0, results: [{ isFinal: true, 0: { transcript: "Revise o plano fictício." } }] })
