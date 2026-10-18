@@ -34,7 +34,7 @@ import {
   uniqueApprovalNotifications,
 } from "./approvalState"
 import { moveComposerDraft } from "./composerDraft"
-import { userFacingError } from "./errors"
+import { isServiceUnavailable, userFacingError } from "./errors"
 import { adoptProviderLogin } from "./features/bots/providerLogin"
 import { useDoctorReport } from "./features/doctor/useDoctorReport"
 import { localizeNotice, t } from "./i18n"
@@ -101,7 +101,10 @@ export type WorkspaceActions = {
   updateBot: (botId: Id, patch: Partial<ApiRoutes["PATCH /bots/:id"]["req"]>) => Promise<void>
   deleteBot: (botId: Id, name: string, deleteVolumes: boolean) => Promise<void>
   machineAction: (botId: Id, reset: boolean, projectId?: Id | null, stopTurns?: boolean) => Promise<void>
-  createBot: (input: ApiRoutes["POST /bots"]["req"], loginDraftId?: string) => Promise<{ loginReady: boolean }>
+  createBot: (
+    input: ApiRoutes["POST /bots"]["req"],
+    loginDraftId?: string,
+  ) => Promise<{ loginReady: boolean; bot: Bot }>
   toggleRoutine: (routine: Routine) => Promise<void>
   runRoutine: (routineId: Id) => Promise<void>
   createRoutine: (input: ApiRoutes["POST /routines"]["req"]) => Promise<Routine>
@@ -384,7 +387,13 @@ const upsertNotification = (list: Array<NotificationRecord>, next: NotificationR
   return merged.sort((a, b) => b.id - a.id).slice(0, MAX_NOTIFICATIONS)
 }
 
-const errorMessage = userFacingError
+const getServiceErrorMessage = (error: unknown): string => {
+  const message = userFacingError(error)
+  if (!isServiceUnavailable(error)) return message
+
+  // Notices retain text only, so preserve the connection classification without relying on E1009.
+  return `SERVER_CONNECTION_FAILED: ${message}`
+}
 
 const lastActiveThread = (threads: Thread[], runs: Run[], botId: Id, rememberedId?: Id): Thread | undefined => {
   const candidates = threads.filter((thread) => thread.botId === botId && !thread.groupId)
@@ -433,6 +442,8 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
   const liveRuns = useRef(new Map<Id, number>())
   const completedDuringLoad = useRef<Set<Id> | null>(null)
   const loadedThreads = useRef(new Map<Id, number>())
+  const snapshotUnavailable = useRef(false)
+  const serviceNotice = useRef<string | null>(null)
   const threadLoads = useRef(
     new Map<
       Id,
@@ -496,6 +507,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
       ])
         .then(([messages, runs]) => {
           if (attempt !== generation.current || threadLoads.current.get(threadId)?.promise !== promise) return
+
           retry = deltas.overflow
           if (currentData.current.selectedThreadId === threadId) {
             loadedThreads.current.clear()
@@ -510,12 +522,16 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
                 .reduce(applyStreamEvent, messages.messages)
                 .reduce(updateMessage, current.messages),
               runs: mergeRunRows(current.runs, runs.runs),
+              notice: current.notice === serviceNotice.current ? null : current.notice,
             }
           })
         })
         .catch((error: unknown) => {
-          if (attempt === generation.current && threadLoads.current.get(threadId)?.promise === promise)
-            setData((current) => ({ ...current, notice: t("Service request failed", { error: errorMessage(error) }) }))
+          if (attempt !== generation.current || threadLoads.current.get(threadId)?.promise !== promise) return
+
+          const notice = t("Service request failed", { error: getServiceErrorMessage(error) })
+          if (isServiceUnavailable(error)) serviceNotice.current = notice
+          setData((current) => ({ ...current, notice }))
         })
         .finally(() => {
           if (threadLoads.current.get(threadId)?.promise !== promise) return
@@ -643,6 +659,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
           notice: null,
         }
       })
+      snapshotUnavailable.current = false
       setProjectRevision((value) => value + 1)
       const selected = currentData.current
       const threadId = selected.selectedThreadId
@@ -655,12 +672,13 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
         await loadThread(threadId)
     } catch (error) {
       if (attempt !== generation.current) return
+      snapshotUnavailable.current = isServiceUnavailable(error)
       setData((current) => ({
         ...current,
         loading: false,
         notice: api.isMock
           ? "Demo data · sidecar services are optional"
-          : t("Service request failed", { error: errorMessage(error) }),
+          : t("Service request failed", { error: getServiceErrorMessage(error) }),
       }))
     } finally {
       if (attempt === generation.current) completedDuringLoad.current = null
@@ -677,8 +695,8 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
         resyncing = null
       })
     }
-    // A reconnect needs no reload: the sidecar replays the gap, or sends a resync frame when the gap is
-    // too large or expired. Reloading every conversation on each reconnect kept a slow client behind.
+    // Event replay repairs an existing snapshot; an incomplete snapshot needs another full load.
+    // Reloading every conversation on every reconnect kept slow clients behind.
     const unsubscribe = api.subscribe((envelope: UiEventEnvelope) => {
       const event = envelope.event
       localResponseTimings().observe(event)
@@ -889,7 +907,12 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
     document.addEventListener("visibilitychange", visibility)
     window.addEventListener("online", refreshAttention)
     const unsubscribeConnection = api.subscribeConnection?.((connected) => {
-      if (connected) refreshAttention()
+      if (!connected) return
+      if (snapshotUnavailable.current || !currentData.current.loaded) {
+        resync()
+        return
+      }
+      refreshAttention()
     })
     // Subscribe first, then load: the snapshot starts where live delivery does.
     void (api.cursorReady?.() ?? Promise.resolve()).then(() => {
@@ -1196,7 +1219,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
           processes: [],
         }
       })
-      return { loginReady }
+      return { loginReady, bot: refreshedBot ?? response.bot }
     },
     [api, setData],
   )

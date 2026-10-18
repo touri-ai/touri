@@ -765,6 +765,15 @@ export const ptBR = {
   "Não foi possível parar. Tente novamente.": "Não foi possível parar. Tente novamente.",
 
   // First conversation and host transparency.
+  "Put another bot to work with you": "Coloque outro bot para trabalhar com você",
+  "Bots can collaborate in a group and follow routines.": "Os bots podem colaborar em um grupo e seguir rotinas.",
+  "You already have a bot taking care of this.": "Você já tem um bot cuidando disso.",
+  "Work in a group with {name}?": "Trabalhar em grupo com {name}?",
+  "Create a routine?": "Criar uma rotina?",
+  "Routine with {name}": "Rotina com {name}",
+  "Review today's tasks and suggest next steps.": "Revise as tarefas de hoje e sugira os próximos passos.",
+  "Dismiss next step": "Dispensar próximo passo",
+  "Team with {name}": "Equipe com {name}",
   "onboarding.server": "servidor",
   "onboarding.privacy":
     "O histórico fica neste {host}. Sua IA recebe o conteúdo necessário para responder. O touri não coleta telemetria.",
@@ -2100,7 +2109,9 @@ export const ptBR = {
   "Computer permission waiting": "{name} está aguardando permissão para controlar seu computador.",
   Minutes: "{count} minutos",
   "Notifications need attention": "Notificações, {count} precisam de atenção",
-  "Service request failed": "Falha no serviço local: {error}",
+  "Service request failed": "Falha na conexão com o touri: {error}",
+  "O serviço do touri está indisponível. Verifique a conexão e tente novamente.":
+    "O serviço do touri está indisponível. Verifique a conexão e tente novamente.",
   "Dry run complete. Nothing was written.": "Simulação concluída. Dados preservados.",
   "Import complete. Imported routines stay disabled.":
     "Importação concluída. As rotinas importadas continuam pausadas.",
@@ -3820,7 +3831,9 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Computer permission waiting": "{name} is waiting for permission to control your computer.",
   Minutes: "{count} minutes",
   "Notifications need attention": "Notifications, {count} need attention",
-  "Service request failed": "Local service request failed: {error}",
+  "Service request failed": "touri connection failed: {error}",
+  "O serviço do touri está indisponível. Verifique a conexão e tente novamente.":
+    "The touri service is unavailable. Check the connection and try again.",
   "Output code": "Exit code: {code}",
   "No project for bot": "No project for {name}",
   "Open agent URL": "Open in agent browser: {url}",

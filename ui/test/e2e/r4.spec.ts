@@ -73,7 +73,7 @@ test("r4 short numbers stay on one line and multiline composer grows", async ({ 
   await page.screenshot({ path: `${evidence}/table-composer.png` })
 })
 
-test("r4 permissions focus, integration guidance and complete creation are available", async ({ page }) => {
+test("r4 permissions focus, integration guidance and preset setup are available", async ({ page }) => {
   await showBotPanel(page)
   await page.getByRole("button", { name: "Ajustar permissões" }).click()
   const dialog = page.getByRole("dialog", { name: "Permissões do bot" })
@@ -82,10 +82,28 @@ test("r4 permissions focus, integration guidance and complete creation are avail
   await dialog.getByRole("tab", { name: "Ferramentas", exact: true }).click()
   await dialog.getByRole("button", { name: "Abrir Integrações" }).click()
   await expect(page.getByRole("heading", { name: "Integrações", exact: true })).toBeVisible()
-  await page.getByText("Como conectar").first().click()
-  await expect(page.getByText(/cliente OAuth do tipo App para computador/)).toBeVisible()
+  const gmail = page.getByRole("article").filter({ has: page.getByRole("heading", { name: "Gmail", exact: true }) })
+
+  await gmail.getByText("Como conectar", { exact: true }).click()
+
+  await expect(gmail).toContainText("Uma conta Google e uma preparação no Google Cloud. Vamos orientar cada etapa.")
+  await expect(gmail.getByRole("link", { name: "Instruções do servidor Gmail" })).toHaveAttribute(
+    "href",
+    "https://github.com/shinzo-labs/gmail-mcp#prerequisites",
+  )
+
   await page.getByRole("button", { name: "Configurar MCP de mark" }).click()
-  await page.getByRole("button", { name: "Usar configuração Gmail" }).click()
+  const settings = page.getByRole("dialog")
+  await settings.getByRole("button", { name: "Configuração técnica (MCP)", exact: true }).click()
+  await settings
+    .getByRole("article")
+    .filter({ has: page.getByRole("heading", { name: "Gmail", exact: true }) })
+    .getByRole("button", { name: "Conectar", exact: true })
+    .click()
+
+  await expect(settings.getByRole("region", { name: "Preparar Gmail", exact: true })).toContainText(
+    "Preparação concluída. Teste a conexão para continuar.",
+  )
   await expect(page.getByLabel("Nome do servidor MCP")).toHaveValue("gmail")
   await expect(page.getByLabel("Comando MCP")).toHaveValue("npx")
   await page.screenshot({ path: `${evidence}/gmail.png` })

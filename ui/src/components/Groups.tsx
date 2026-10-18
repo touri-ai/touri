@@ -279,17 +279,19 @@ export const GroupHeader = ({
 
 export const GroupModal = ({
   group,
+  initial,
   bots,
   onClose,
   onSave,
 }: {
   group: BotGroup | null
+  initial?: Pick<GroupInput, "name" | "memberIds"> | null
   bots: Bot[]
   onClose: () => void
   onSave: (input: GroupInput) => Promise<void>
 }) => {
-  const [name, setName] = useState(group?.name ?? "")
-  const [memberIds, setMembers] = useState(group?.memberIds ?? [])
+  const [name, setName] = useState(group?.name ?? initial?.name ?? "")
+  const [memberIds, setMembers] = useState(group?.memberIds ?? initial?.memberIds ?? [])
   const [coordinatorBotId, setCoordinator] = useState<string | null>(group?.coordinatorBotId ?? null)
   const [color, setColor] = useState(group?.color ?? "#dc2626")
   const [shape, setShape] = useState(group?.avatarShape ?? "cercle")
@@ -326,6 +328,10 @@ export const GroupModal = ({
         }}
       >
         <form
+          onKeyDown={(event) => {
+            // A suggested group needs an explicit save after its prefilled fields are reviewed.
+            if (initial && event.key === "Enter" && !(event.target instanceof HTMLButtonElement)) event.preventDefault()
+          }}
           onSubmit={async (event) => {
             event.preventDefault()
             setSaving(true)

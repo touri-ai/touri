@@ -33,12 +33,32 @@ export const createRouteRegistry = (onError?: (code: string) => void) => {
       onError?.(response.json.code)
     return response
   }
-  const routes: Array<Route> = []
+  let routes: Array<Route & { parts: Array<string> }> = []
   const registerRoutes = (module: RouteModule): void => {
-    for (const route of module.routes) {
-      if (!routes.some((candidate) => candidate.method === route.method && candidate.path === route.path))
-        routes.push(route)
-    }
+    const additions = module.routes.filter((route, index) => {
+      if (routes.some((candidate) => candidate.method === route.method && candidate.path === route.path)) return false
+
+      return (
+        module.routes.findIndex((candidate) => candidate.method === route.method && candidate.path === route.path) ===
+        index
+      )
+    })
+
+    routes = [...routes, ...additions.map((route) => ({ ...route, parts: split(route.path) }))]
+  }
+
+  const getTemplate = (method: string, pathname: string): string | undefined => {
+    const actual = split(pathname)
+
+    return routes.find((route) => {
+      if (route.method !== method) return false
+
+      const expected = route.parts
+      return (
+        expected.length === actual.length &&
+        expected.every((part, index) => part.startsWith(":") || part === actual[index])
+      )
+    })?.path
   }
 
   const handle = async ({
@@ -78,5 +98,5 @@ export const createRouteRegistry = (onError?: (code: string) => void) => {
     return { status: 404, json: normalizeErrorBody({ errorCode: "NOT_FOUND" }, 404) }
   }
 
-  return { registerRoutes, handle }
+  return { registerRoutes, getTemplate, handle }
 }
