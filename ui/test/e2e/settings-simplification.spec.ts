@@ -59,6 +59,7 @@ test("app preferences disclose technical controls and preserve edits between sec
     "Atualizações",
     "Notificações",
     "Diagnóstico",
+    "Avançado",
   ])
   await expect(dialog.getByRole("switch")).toHaveCount(0)
   await dialog.getByRole("combobox", { name: "Tema", exact: true }).focus()
