@@ -1,6 +1,6 @@
 import { Database } from "bun:sqlite"
 import { afterEach, expect, mock, test } from "bun:test"
-import { mkdtemp, rm, stat } from "node:fs/promises"
+import { mkdtemp, realpath, rm, stat } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { createWalCheckpointer } from "../../src/kernel/wal-checkpointer"
@@ -144,8 +144,23 @@ test("disposing a healthy checkpointer restores SQLite maintenance for a still-o
   expect(onError).not.toHaveBeenCalled()
 })
 
+test("shutdown can dispose maintenance after its database connection has already closed", async () => {
+  const { database } = await getFixture()
+  const ready = Promise.withResolvers<void>()
+  const onError = mock(() => ready.reject(new Error("Checkpoint worker failed")))
+  const checkpointer = createWalCheckpointer({ database, onReady: ready.resolve, onError })
+  cleanups.add(() => checkpointer.dispose({ closing: true }))
+  await ready.promise
+
+  database.close()
+
+  expect(() => checkpointer.dispose({ closing: true })).not.toThrow()
+  expect(onError).not.toHaveBeenCalled()
+})
+
 const getFixture = async () => {
-  const root = await mkdtemp(join(tmpdir(), "touri-wal-checkpointer-"))
+  // SQLite's no-follow open rejects directory aliases as well as a symlinked database.
+  const root = await realpath(await mkdtemp(join(tmpdir(), "touri-wal-checkpointer-")))
   cleanups.add(() => rm(root, { recursive: true, force: true }))
   const filename = join(root, "fixture.db")
   const database = new Database(filename)

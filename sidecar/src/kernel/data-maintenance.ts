@@ -447,9 +447,9 @@ export const createStorageMaintenance = ({
       return true
     },
     snapshot: (): StorageMaintenanceStatus => ({ ...status }),
-    dispose: () => {
+    dispose: ({ closing = false }: { closing?: boolean } = {}) => {
       stopped = true
-      walCheckpointer.dispose()
+      walCheckpointer.dispose({ closing })
       retryController.abort()
       clearTimeout(retryTimer)
       clearInterval(dailyRetryTimer)

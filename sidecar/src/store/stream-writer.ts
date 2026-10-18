@@ -18,7 +18,7 @@ type Projection = {
   textDeltas: Map<number, Array<string>>
   textLengths: Map<number, number>
 }
-const eventBytes = (event: StreamEvent): number =>
+const getEventBytes = (event: StreamEvent): number =>
   event.type === "message.delta" ? Buffer.byteLength(event.delta) : Buffer.byteLength(JSON.stringify(event.parts))
 
 const isBusyError = (error: unknown): boolean =>
@@ -153,7 +153,7 @@ export const createStreamWriter = ({
     pendingBytes = 0
     for (const event of pending) {
       const key = keyOf(event.threadId, event.messageId)
-      const bytes = eventBytes(event)
+      const bytes = getEventBytes(event)
       pendingBytes += bytes
       runBytes.set(key, (runBytes.get(key) ?? 0) + bytes)
       lastByMessage.set(key, event)
@@ -202,7 +202,7 @@ export const createStreamWriter = ({
     let batchCount = 0
     for (const event of pending) {
       if (batchCount >= STREAM_WRITE_LIMITS.batchEvents) break
-      const bytes = eventBytes(event)
+      const bytes = getEventBytes(event)
       if (batchCount > 0 && batchBytes + bytes > STREAM_WRITE_LIMITS.batchBytes) break
       batchBytes += bytes
       batchCount++

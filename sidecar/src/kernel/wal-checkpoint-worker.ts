@@ -39,8 +39,6 @@ self.onmessage = ({ data }) => {
   try {
     database = new Database(data.filename, sqliteFlags.SQLITE_OPEN_READWRITE | sqliteFlags.SQLITE_OPEN_NOFOLLOW);
     database.exec("PRAGMA busy_timeout = 0; PRAGMA wal_autocheckpoint = 0");
-    checkpoint();
-    if (!database) return;
     timer = setInterval(checkpoint, data.intervalMs);
     self.postMessage({ type: "ready" });
   } catch {

@@ -572,7 +572,7 @@ export const createKernel = ({ appData, web }: { appData?: string; web?: WebMode
     for (const socket of liveSockets) socket.close(1001, "Servidor encerrado")
     liveSockets.clear()
     stopHistoryBackfill()
-    storageMaintenance.dispose()
+    storageMaintenance.dispose({ closing: true })
     services.use("vm.desktop")?.dispose()
     services.use("doctor")?.dispose()
     removePrivateFile({ root: paths.appData, path: handshakePath })

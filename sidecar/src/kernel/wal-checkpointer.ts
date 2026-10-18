@@ -16,7 +16,7 @@ export const createWalCheckpointer = ({
   onReady?: () => void
   intervalMs?: number
   createWorker?: (url: string) => Worker
-}): { dispose: () => void } => {
+}): { dispose: (options?: { closing?: boolean }) => void } => {
   const previousPages = (database.query("PRAGMA wal_autocheckpoint").get() as { wal_autocheckpoint: number })
     .wal_autocheckpoint
   const fallbackPages = previousPages > 0 ? previousPages : 1_000
@@ -80,10 +80,11 @@ export const createWalCheckpointer = ({
   }
 
   return {
-    dispose: (): void => {
+    dispose: ({ closing = false }: { closing?: boolean } = {}): void => {
       if (stopped) return
       stopped = true
-      restoreAutocheckpoint()
+      // Shutdown closes the connection next; it may already have lost its backing file.
+      if (!closing) restoreAutocheckpoint()
       clearTimeout(startupTimer)
       if (!worker) {
         finish()

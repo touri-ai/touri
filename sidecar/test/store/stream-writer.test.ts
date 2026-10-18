@@ -622,7 +622,7 @@ test("large WAL stream writes avoid checkpoints and cap journal rows per transac
   const writerRows: number[] = []
   const writerDurations: number[] = []
   const stages: string[] = []
-  const lastSeq = (database: Database): number =>
+  const getLastSeq = (database: Database): number =>
     (
       database.query("SELECT MAX(seq) AS seq FROM transcript_entries WHERE thread_id = 't'").get() as {
         seq: number | null
@@ -635,11 +635,11 @@ test("large WAL stream writes avoid checkpoints and cap journal rows per transac
   ): Value => {
     stages.push(stage)
     if (stage !== "stream_journal_write" || !observedDatabase) return action(input as Input)
-    const before = lastSeq(observedDatabase)
+    const before = getLastSeq(observedDatabase)
     const startedAt = performance.now()
     const result = action(input as Input)
     writerDurations.push(performance.now() - startedAt)
-    writerRows.push(lastSeq(observedDatabase) - before)
+    writerRows.push(getLastSeq(observedDatabase) - before)
     return result
   }
   const f = await fixture(runStage)
