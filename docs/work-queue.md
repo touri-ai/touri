@@ -15,3 +15,8 @@ The queue preserves submission order among turns eligible to start. A turn
 whose conversation is already running waits until that conversation is free;
 other conversations can use the available slots. Synchronous delegated work
 can run outside the cap to avoid waiting behind its caller's occupied slot.
+
+`runtime.settingsChanged` drains available slots after a successful settings
+write. The engine reads the saved `maxConcurrentRuns` on each drain, including
+after restart. A lower limit leaves existing turns running and delays the next
+start until capacity is available; a higher limit starts waiting work immediately.
