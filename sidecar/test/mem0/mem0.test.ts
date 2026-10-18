@@ -893,3 +893,64 @@ test("canceling five lookups does not pause a healthy connection", async () => {
   )
   expect(context.fake.seen).toHaveLength(6)
 })
+
+test.each(["active", "restarted"] as const)("legacy keys never reach a custom server (%s)", async (state) => {
+  const context = await fixture()
+  const server = fakeMem0(() => memories([]))
+  await context.configure({ enabled: true, mode: "server", url: server.url })
+  savedKey(context)
+  const legacyKey = "m0-legacy-platform-key"
+  context.vault.set(`mem0/${context.bot.id}`, legacyKey)
+  const memory = state === "restarted" ? createMem0(context.kernel, { platformUrl: context.fake.url }) : context.mem0
+  const testConnection = memory.routes.routes.find(({ method }) => method === "POST")
+  if (!testConnection) throw new Error("Missing connection test route")
+  const message =
+    "A chave salva não tem um destino confirmado. Digite e salve a chave deste servidor antes de conectar."
+
+  const recall = await memory.api.recall({ botId: context.bot.id, query: "Qual a minha cidade?" })
+  const tools = await Promise.all(
+    memory.tools.map(({ handler }) =>
+      handler({
+        ctx: context.ctx(),
+        args: { query: "cidade", content: "Moro no sul.", memory_id: "m1", text: "Moro no sul." },
+      }),
+    ),
+  )
+  const tested = await testConnection.handler({ params: { id: context.bot.id } })
+  memory.api.sync({
+    botId: context.bot.id,
+    threadId: context.bot.mainThreadId ?? "",
+    userText: "Moro no sul.",
+    assistantText: "Anotado.",
+  })
+  await until(() => context.logs.some((line) => line.includes("Mem0 sync failed")))
+
+  expect(recall).toBeNull()
+  expect(tools).toEqual(memory.tools.map(() => ({ success: false, errorCode: "MEM0_UNAVAILABLE", error: message })))
+  expect(tested).toMatchObject({ status: 200, json: { ok: false, error: message } })
+  expect(server.seen).toEqual([])
+  expect(context.fake.seen).toEqual([])
+  expect(JSON.stringify({ tools, tested, logs: context.logs })).not.toContain(legacyKey)
+
+  const saved = await context.configure({ apiKey: "m0-confirmed-server-key" })
+  await memory.api.recall({ botId: context.bot.id, query: "Qual a minha cidade?" })
+
+  expect(saved.status).toBe(200)
+  expect(server.seen).toHaveLength(1)
+  expect(server.seen[0]?.headers.get("x-api-key")).toBe("m0-confirmed-server-key")
+})
+
+test("legacy keys remain usable only at the platform default", async () => {
+  const context = await fixture(() => memories([{ id: "home", memory: "Moro no sul." }]))
+  const server = fakeMem0(() => memories([]))
+  await context.configure({ enabled: true, mode: "platform", url: server.url })
+  savedKey(context)
+  context.vault.set(`mem0/${context.bot.id}`, "m0-legacy-platform-key")
+
+  const recall = await context.mem0.api.recall({ botId: context.bot.id, query: "Qual a minha cidade?" })
+
+  expect(recall).toContain("Moro no sul.")
+  expect(context.fake.seen).toHaveLength(1)
+  expect(context.fake.seen[0]?.headers.get("authorization")).toBe("Token m0-legacy-platform-key")
+  expect(server.seen).toEqual([])
+})

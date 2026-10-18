@@ -115,4 +115,21 @@ describe("Mem0 card", () => {
       "Changing the destination removes the previous key. Enter the new key before saving.",
     )
   })
+
+  it("explains how to replace a legacy key with an unconfirmed destination", async () => {
+    const api = createMockApi()
+    const message =
+      "A chave salva não tem um destino confirmado. Digite e salve a chave deste servidor antes de conectar."
+    render(<Mem0Card api={api} botId="bot-mark" />)
+    const test = await screen.findByRole("button", { name: "Testar conexão" })
+    vi.spyOn(api, "request").mockResolvedValueOnce({ ok: false, error: message })
+
+    fireEvent.click(test)
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(message)
+    expect(screen.getByLabelText("Chave da API")).toBeEnabled()
+    expect(t(message, {}, "en")).toBe(
+      "The saved key has no confirmed destination. Enter and save the key for this server before connecting.",
+    )
+  })
 })

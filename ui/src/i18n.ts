@@ -385,6 +385,8 @@ export const ptBR = {
   "URL do servidor": "URL do servidor",
   "Chave da API": "Chave da API",
   "Chave salva. Digite outra para trocar.": "Chave salva. Digite outra para trocar.",
+  "A chave salva não tem um destino confirmado. Digite e salve a chave deste servidor antes de conectar.":
+    "A chave salva não tem um destino confirmado. Digite e salve a chave deste servidor antes de conectar.",
   "Ao mudar o destino, a chave anterior é removida. Digite a nova chave antes de salvar.":
     "Ao mudar o destino, a chave anterior é removida. Digite a nova chave antes de salvar.",
   "Remover chave": "Remover chave",
@@ -2555,6 +2557,8 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "URL do servidor": "Server URL",
   "Chave da API": "API key",
   "Chave salva. Digite outra para trocar.": "Key saved. Type another one to replace it.",
+  "A chave salva não tem um destino confirmado. Digite e salve a chave deste servidor antes de conectar.":
+    "The saved key has no confirmed destination. Enter and save the key for this server before connecting.",
   "Ao mudar o destino, a chave anterior é removida. Digite a nova chave antes de salvar.":
     "Changing the destination removes the previous key. Enter the new key before saving.",
   "Remover chave": "Remove key",

@@ -437,6 +437,8 @@ export const createMem0 = (
       breaker.reset(botId)
       return json(200, { ok: true })
     } catch (error) {
+      if (error instanceof UnboundKeyError) return json(200, { ok: false, error: error.message })
+
       const status = error instanceof Mem0Error ? error.status : null
       return json(200, {
         ok: false,
@@ -512,7 +514,7 @@ const getKeyDestination = (config: Pick<Mem0Config, "mode" | "url">): string =>
   config.mode === "platform" ? "platform" : `server:${config.url}`
 
 const getSavedKey = (value: string | null, config: Mem0Config): string | null | undefined => {
-  if (!value?.startsWith(KEY_PREFIX)) return value
+  if (!value?.startsWith(KEY_PREFIX)) return getLegacyKey(value, config)
 
   try {
     const credential = record(JSON.parse(value.slice(KEY_PREFIX.length)))
@@ -523,3 +525,14 @@ const getSavedKey = (value: string | null, config: Mem0Config): string | null | 
     return undefined
   }
 }
+
+const getLegacyKey = (value: string | null, config: Mem0Config): string | null => {
+  if (!value || config.mode === "platform") return value
+
+  // Only the platform default is known for credentials saved before destination bindings existed.
+  throw new UnboundKeyError(
+    "A chave salva não tem um destino confirmado. Digite e salve a chave deste servidor antes de conectar.",
+  )
+}
+
+class UnboundKeyError extends Error {}
