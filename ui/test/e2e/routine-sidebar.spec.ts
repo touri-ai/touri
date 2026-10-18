@@ -50,9 +50,9 @@ for (const [name, width, height] of [
     const history = page.getByRole("region", { name: "Conversas de rotinas excluídas" })
 
     await expect(history.locator(".thread-row")).toHaveCount(50)
-    await history.getByRole("button", { name: "Carregar mais" }).click()
+    await history.getByRole("button", { name: "Próxima página" }).click()
     await expect(history.getByRole("status")).toHaveText("Execuções 51–100 de 128")
-    await history.getByRole("button", { name: "Carregar mais" }).click()
+    await history.getByRole("button", { name: "Próxima página" }).click()
     await expect(history.locator(".thread-row")).toHaveCount(28)
     await expect(history.getByRole("status")).toHaveText("Execuções 101–128 de 128")
     await history.getByRole("button", { name: "Página anterior" }).click()
@@ -113,7 +113,7 @@ for (const [name, width, height] of [
     const history = page.locator(".routine-run-history")
     await expect(history).toHaveAttribute("open")
     await expect(history.getByRole("button", { name: "Abrir conversa" })).toHaveCount(50)
-    await history.getByRole("button", { name: "Carregar mais" }).click()
+    await history.getByRole("button", { name: "Próxima página" }).click()
     await expect(history.getByRole("button", { name: "Abrir conversa" })).toHaveCount(10)
     await history.getByRole("button", { name: "Abrir conversa" }).last().click()
     await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
@@ -149,10 +149,10 @@ for (const [name, width, height] of [
       await page.screenshot({ path: `${directory}/history-first-${name}.png`, animations: "disabled" })
     }
 
-    await history.getByRole("button", { name: "Carregar mais" }).click()
+    await history.getByRole("button", { name: "Próxima página" }).click()
     await expect(history.getByRole("status")).toHaveText("Execuções 51–100 de 128")
     await expect(history.getByRole("listitem")).toHaveCount(50)
-    await history.getByRole("button", { name: "Carregar mais" }).click()
+    await history.getByRole("button", { name: "Próxima página" }).click()
     await expect(history.getByRole("status")).toHaveText("Execuções 101–128 de 128")
     await expect(history.getByRole("listitem")).toHaveCount(28)
     if (directory) {

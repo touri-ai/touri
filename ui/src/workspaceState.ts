@@ -4,7 +4,12 @@ export type RoutineHistoryTarget = { routineId?: string }
 
 export type AppRoute =
   | { section: "bots"; screen: "chat" | "preview" }
-  | { section: "advanced"; page: "cron" | "integracoes" | "mcp"; botId?: string; history?: RoutineHistoryTarget }
+  | {
+      section: "advanced"
+      page: "cron" | "integracoes" | "mcp" | "work" | "performance"
+      botId?: string
+      history?: RoutineHistoryTarget
+    }
 type SavedWorkspace = {
   teamSuggestionDismissed?: boolean
   teamFollowupDismissed?: boolean
@@ -27,7 +32,11 @@ export const migrateRoute = (raw: unknown): AppRoute | undefined => {
     return { section: "bots", screen: route.screen }
   if (
     (route.section === "touri" || route.section === "advanced") &&
-    (route.page === "cron" || route.page === "integracoes" || route.page === "mcp")
+    (route.page === "cron" ||
+      route.page === "integracoes" ||
+      route.page === "mcp" ||
+      route.page === "work" ||
+      route.page === "performance")
   )
     return {
       section: "advanced",

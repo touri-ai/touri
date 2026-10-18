@@ -438,7 +438,7 @@ const CronScreen = ({
                     className="outline-button"
                     onClick={() => showHistoryPage(currentHistoryPage + 1)}
                   >
-                    {t("Show more routine runs")}
+                    {t("Next routine runs page")}
                   </button>
                 )}
               </div>

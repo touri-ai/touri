@@ -31,6 +31,40 @@ viewports.forEach((viewport) => {
     expect(await panel.evaluate((element) => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1)
 
     await panel.getByRole("button", { name: "Concluir agora", exact: true }).click()
-    await expect(panel.getByRole("status")).toHaveText("Concluído")
+    await expect(panel.getByRole("status")).toHaveText("Objetivo concluído")
+    const newGoal = panel.getByRole("button", { name: "Novo objetivo", exact: true })
+    await expect(newGoal).toHaveAttribute("aria-expanded", "false")
+    await expect(panel.getByRole("button")).toHaveCount(1)
+    await expect(panel.getByRole("textbox")).toHaveCount(0)
+    const bounds = await panel.boundingBox()
+    expect(bounds?.height).toBeLessThan(90)
+
+    const directory = process.env.TOURI_GOAL_SHOTS_DIR
+    if (directory) {
+      await page.screenshot({
+        path: `${directory}/completed-${viewport.width}.png`,
+        mask: [page.locator(".composer-model")],
+        animations: "disabled",
+      })
+    }
+
+    await newGoal.click()
+    await expect(newGoal).toHaveAttribute("aria-expanded", "true")
+    await expect(panel.getByRole("status")).toHaveText("Objetivo concluído")
+    const criterion = panel.getByRole("textbox", { name: "O que precisa estar pronto para concluir?" })
+    await expect(criterion).toBeFocused()
+    await criterion.fill("Resumo revisado.")
+    if (directory) {
+      await page.screenshot({
+        path: `${directory}/new-goal-${viewport.width}.png`,
+        mask: [page.locator(".composer-model")],
+        animations: "disabled",
+      })
+    }
+    await panel.getByRole("button", { name: "Continuar até concluir", exact: true }).click()
+
+    await expect(panel.getByRole("status")).toHaveText("Em andamento")
+    await expect(panel).toContainText("Resumo revisado.")
+    await expect(newGoal).toHaveCount(0)
   })
 })

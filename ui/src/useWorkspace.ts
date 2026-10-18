@@ -56,6 +56,7 @@ export type WorkspaceData = {
   messages: Array<Message>
   activityMessages: Array<Message>
   runs: Array<Run>
+  workRuns: Array<Run>
   projects: Array<Project>
   processes: Array<ProcessEntry>
   previews: Array<PreviewTarget>
@@ -146,6 +147,7 @@ const emptyState = (): WorkspaceData => ({
   messages: [],
   activityMessages: [],
   runs: [],
+  workRuns: [],
   projects: [],
   processes: [],
   previews: [],
@@ -179,6 +181,14 @@ const uniqueById = <T extends { id: Id }>(rows: Array<T>): Array<T> => {
   return [...result.values()]
 }
 
+const getRunPhase = (status: string): number | undefined => {
+  if (status === "queued") return 0
+  if (status === "starting") return 1
+  if (status === "running") return 2
+
+  return undefined
+}
+
 const mergeRunRows = <
   T extends { id: Id; status: string; finishedAt: number | null; providerStartedAt?: number | null },
 >(
@@ -188,6 +198,9 @@ const mergeRunRows = <
   const rows = new Map(current.map((row) => [row.id, row]))
   for (const row of incoming) {
     const previous = rows.get(row.id)
+    const previousPhase = previous ? getRunPhase(previous.status) : undefined
+    const incomingPhase = getRunPhase(row.status)
+    if (previousPhase !== undefined && incomingPhase !== undefined && incomingPhase < previousPhase) continue
     // A late acceptance can predate provider invocation.
     if (
       previous?.providerStartedAt != null &&
@@ -364,6 +377,7 @@ const withoutBot = (data: WorkspaceData, botId: Id): WorkspaceData => {
     messages: data.messages.filter((message) => !threadIds.has(message.threadId)),
     activityMessages: data.activityMessages.filter((message) => !threadIds.has(message.threadId)),
     runs: data.runs.filter((run) => run.botId !== botId),
+    workRuns: data.workRuns.filter((run) => run.botId !== botId),
     routines: data.routines.filter((routine) => !routineIds.has(routine.id)),
     routineRuns: data.routineRuns.filter((run) => !routineIds.has(run.routineId)),
     machines: data.machines.filter((machine) => machine.botId !== botId),
@@ -502,6 +516,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
       if (!force && loadedThreads.current.get(threadId) === attempt) return Promise.resolve()
       const deltas = new TranscriptBuffer()
       let retry = false
+      const runsAtStart = runRevision.current
       const promise = Promise.all([
         api.request("GET /threads/:id/messages", { all: true }, { id: threadId }),
         api.request("GET /threads/:id/runs", { all: true }, { id: threadId }),
@@ -522,7 +537,10 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
               messages: deltas.events
                 .reduce(applyStreamEvent, messages.messages)
                 .reduce(updateMessage, current.messages),
-              runs: mergeRunRows(current.runs, runs.runs),
+              runs: mergeRunRows(
+                current.runs,
+                runs.runs.filter((run) => (liveRuns.current.get(run.id) ?? 0) <= runsAtStart),
+              ),
               notice: current.notice === serviceNotice.current ? null : current.notice,
             }
           })
@@ -565,6 +583,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
         notificationsResponse,
         machineResponse,
         activityResponse,
+        workResponse,
       ] = await Promise.all([
         api.request("GET /groups", {}).catch(() => ({ groups: [] })),
         api.request("GET /bots", {}).then((response) => {
@@ -596,6 +615,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
           machines: [],
         })),
         api.request("GET /workspace/activity", {}),
+        api.request("GET /runs", {}),
       ])
       const [botThreads, groupThreads] = await Promise.all([
         Promise.all(
@@ -611,7 +631,9 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
       setData((current) => {
         const threads = mergeThreads(current.threads, allThreads)
         // A newer run may have evicted a completed row while this snapshot was in flight.
-        const incomingRuns = activityResponse.runs.filter((run) => !completedRuns.has(run.id))
+        const incomingRuns = mergeRunRows(activityResponse.runs, workResponse.runs).filter(
+          (run) => !completedRuns.has(run.id) && (liveRuns.current.get(run.id) ?? 0) <= runsAtStart,
+        )
         const runIds = new Set(incomingRuns.map((run) => run.id))
         const runs = mergeRunRows(
           current.runs.filter(
@@ -643,6 +665,10 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
           threads,
           messages: (api.pendingMessages?.() ?? []).reduce(updateMessage, current.messages),
           activityMessages: activityResponse.messages,
+          workRuns: mergeRunRows(
+            workResponse.runs.filter((run) => !completedRuns.has(run.id)),
+            current.workRuns.filter((run) => (liveRuns.current.get(run.id) ?? 0) > runsAtStart),
+          ).filter((run) => ["queued", "starting", "running"].includes(run.status)),
           runs,
           projects: projectResponse.projects,
           previews: previewResponse.previews,
@@ -803,7 +829,14 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
             messages: applyStreamEvent(current.messages, event),
           }
         }
-        if (event.type === "run.updated") return { ...current, runs: mergeRunRows(current.runs, [event.run]) }
+        if (event.type === "run.updated")
+          return {
+            ...current,
+            runs: mergeRunRows(current.runs, [event.run]),
+            workRuns: mergeRunRows(current.workRuns, event.run.origin ? [event.run] : []).filter((run) =>
+              ["queued", "starting", "running"].includes(run.status),
+            ),
+          }
         if (event.type === "routine.deleted")
           return { ...current, routines: current.routines.filter((routine) => routine.id !== event.routineId) }
         if (event.type === "routine.updated")

@@ -212,6 +212,37 @@ jobs:
       - name: Install browser for API model setup
         working-directory: ui
         run: bunx playwright install --with-deps chromium
+      # Optimization during the flow would reload and reset the in-memory mock service.
+      - name: Prepare development dependencies before stateful browser checks
+        working-directory: ui
+        env:
+          VITE_ENABLE_MOCK: "true"
+        run: bunx vite optimize --force
+      - name: Check work queue and concurrency settings on desktop and phone
+        working-directory: ui
+        env:
+          TOURI_SCREENSHOT_DIR: ${{ runner.temp }}/touri-work-evidence
+        run: |
+          mkdir -p "$TOURI_SCREENSHOT_DIR"
+          bunx playwright test test/e2e/work-queue.spec.ts --workers=1
+      - name: Keep synthetic work evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: work-queue
+          path: ${{ runner.temp }}/touri-work-evidence/*.png
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Keep work navigation diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: work-queue-diagnostics
+          path: |
+            ui/test-results/**/trace.zip
+            ui/test-results/**/error-context.md
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Check API model setup and bot selection
         working-directory: ui
         run: bunx playwright test test/e2e/api-models.spec.ts --workers=1

@@ -83,7 +83,7 @@ export const DeletedRoutineHistory = ({
           )}
           {currentPage < lastPage && (
             <button type="button" className="new-thread-row" onClick={() => showPage(currentPage + 1)}>
-              {t("Show more routine runs")}
+              {t("Next routine runs page")}
             </button>
           )}
         </section>
