@@ -132,7 +132,9 @@ const makeDeferredGroupEngine = (kernel: Kernel, runningBotId: string) => {
   }
   kernel.services.provide("runtime.shutdown", async () => {
     const active = persistence.listActiveRuns().filter((run) => run.botId === runningBotId)
-    active.forEach((run) => cancel(run.id))
+    active.forEach((run) => {
+      cancel(run.id)
+    })
     released.resolve()
     if (active.length) await completed
   })
