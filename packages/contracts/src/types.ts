@@ -739,7 +739,9 @@ export type ProviderLoginFlow = {
   provider: Provider
   state: 'idle' | 'host-available' | 'waiting' | 'ready' | 'cancelled' | 'error' | 'vault-locked'
   /** Sidecar host, independent of the browser and login state. */
-  host?: HostKind
+  host?: 'mac' | 'server'
+  /** Platform-aware host identity; legacy host values remain compatible. */
+  hostKind?: HostKind
   /** File/executable check only; never starts a model request. Independent of login state. */
   executable?: 'available' | 'missing'
   /** An expired or failed CLI attempt can be started again; vault errors require repair. */
@@ -799,7 +801,7 @@ export type ApiRoutes = {
   'POST /cloud/bots/:id/wake': { req: {}; res: { machine: MachineState } }
   'PUT /cloud/bots/:id/key': { req: { apiKey: string }; res: {} }
 
-  'GET /health': { req: {}; res: { ok: true; version: string; schemaVersion: number; host?: HostKind; historyMigration?: { running: boolean; done: number; total: number } } }
+  'GET /health': { req: {}; res: { ok: true; version: string; schemaVersion: number; host?: 'mac' | 'server'; hostKind?: HostKind; historyMigration?: { running: boolean; done: number; total: number } } }
   'POST /ui/errors': { req: { area: string; message: string; stack: string; componentStack: string }; res: { ok: true } }
   'POST /reports/:id/saved': { req: { destination: 'zip' | 'github' }; res: {} }
   'POST /reports/history': { req: { history: import('./reports').ReportHistory[] }; res: {} }
@@ -879,7 +881,7 @@ export type ApiRoutes = {
   'POST /attachments': { req: { grantId: string } | { path: AbsolutePath }; res: { attachment: Attachment } }
   'GET /attachments/:id': { req: {}; res: Blob }
   'GET /attachments/:id/content': { req: { offset?: number; limit?: number }; res: { text: string; offset: number; nextOffset: number | null; bytes: number } }
-  'GET /routines': { req: { botId?: Id }; res: { routines: Array<Routine>; host?: HostKind } }
+  'GET /routines': { req: { botId?: Id }; res: { routines: Array<Routine>; host?: 'mac' | 'server'; hostKind?: HostKind } }
   'POST /routines': { req: Omit<Routine, 'id' | 'nextRunAt' | 'source' | 'createdAt' | 'updatedAt'>; res: { routine: Routine } }
   'PATCH /routines/:id': { req: Partial<Omit<Routine, 'id' | 'source'>>; res: { routine: Routine } }
   'DELETE /routines/:id': { req: {}; res: {} }
