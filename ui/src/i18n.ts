@@ -44,7 +44,8 @@ export const ptBR = {
     "Aviso guardado. Os alertas seguem suas preferências de notificação.",
   "Invalid notification preferences": "Preferências de notificação inválidas",
   "Há um novo aviso na central de notificações.": "Há um novo aviso na central de notificações.",
-
+  "Routine run history": "Histórico de rotinas",
+  "Open routine conversation": "Abrir conversa",
   "Confira os dados e os limites do objetivo.": "Confira os dados e os limites do objetivo.",
   "ERROR INVALID_ARGS: Confira os dados e os limites do objetivo.": "Confira os dados e os limites do objetivo.",
   "Aguarde o turno atual terminar ou conclua o objetivo anterior.":
@@ -2386,7 +2387,8 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
     "Notification saved. Alerts follow your notification preferences.",
   "Invalid notification preferences": "Invalid notification preferences",
   "Há um novo aviso na central de notificações.": "There is a new notification in the notification center.",
-
+  "Routine run history": "Routine run history",
+  "Open routine conversation": "Open conversation",
   "Confira os dados e os limites do objetivo.": "Check the goal details and limits.",
   "ERROR INVALID_ARGS: Confira os dados e os limites do objetivo.": "Check the goal details and limits.",
   "Aguarde o turno atual terminar ou conclua o objetivo anterior.":
@@ -4115,6 +4117,9 @@ export const getHostLabel = (host: HostKind, locale: Locale = "pt-BR"): string =
 
   return locale === "en" ? `this ${noun}` : noun
 }
+
+export const getRoutineRunDateLabel = (timestamp: number, locale: Locale = "pt-BR"): string =>
+  new Intl.DateTimeFormat(locale, { dateStyle: "short", timeStyle: "short" }).format(timestamp)
 
 /** Localize auto-generated imported date titles; preserve arbitrary user titles. */
 export const threadTitle = (title: string, createdAt: number): string => {

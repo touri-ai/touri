@@ -26,6 +26,7 @@ type CronScreenProps = {
   actions: WorkspaceActions
   onReviewApprovals: (target: ApprovalTarget) => void
   onNotice: (message: string) => void
+  onOpenThread?: (threadId: Id) => void
 }
 
 type RoutineEditorState = { routine: Routine | null; botId: Id; isNew: boolean } | null
@@ -57,6 +58,7 @@ const CronScreen = ({
   actions,
   onReviewApprovals,
   onNotice,
+  onOpenThread,
 }: CronScreenProps) => {
   const listRef = useRef<HTMLElement>(null)
   useEffect(() => {
@@ -328,6 +330,7 @@ const CronScreen = ({
                   .slice(0, 50)
                   .map((run) => {
                     const routine = routines.find((routine) => routine.id === run.routineId)
+                    const threadId = run.threadId
                     return (
                       <li key={run.id}>
                         <strong>{routine?.name}</strong> ·{" "}
@@ -340,6 +343,11 @@ const CronScreen = ({
                           </p>
                         )}
                         {run.triggerSource === "catch-up" && <p>{t("Execução de recuperação")}</p>}
+                        {threadId && onOpenThread && (
+                          <button type="button" onClick={() => onOpenThread(threadId)}>
+                            {t("Open routine conversation")}
+                          </button>
+                        )}
                       </li>
                     )
                   })}

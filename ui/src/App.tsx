@@ -931,6 +931,7 @@ const AppContent = ({ kernel }: AppProps) => {
             threads={data.threads}
             messages={data.activityMessages}
             runs={data.runs}
+            routineRuns={data.routineRuns}
             floatUpdates={data.settings?.sidebarFloatUpdates ?? true}
             selectedBotId={selectedBot?.id ?? null}
             selectedThreadId={selectedThread?.id ?? null}
@@ -1017,6 +1018,10 @@ const AppContent = ({ kernel }: AppProps) => {
                 actions={actions}
                 onReviewApprovals={reviewApproval}
                 onNotice={showNotice}
+                onOpenThread={(threadId) => {
+                  actions.selectThread(threadId)
+                  setRoute({ section: "bots", screen: "chat" })
+                }}
               />
             ) : section === "advanced" && advancedPage === "integracoes" ? (
               <IntegrationsScreen

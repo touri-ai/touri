@@ -1,17 +1,28 @@
-import type { Bot, BotGroup, HostKind, Id, Message, NotificationRecord, Run, Thread } from "@touri/contracts"
+import type {
+  Bot,
+  BotGroup,
+  HostKind,
+  Id,
+  Message,
+  NotificationRecord,
+  RoutineRun,
+  Run,
+  Thread,
+} from "@touri/contracts"
 import { Fragment, type ReactNode, useEffect, useMemo, useState } from "react"
 import { type ApprovalTarget, pendingApprovalTargets } from "../approvalNavigation"
 import { reconcileApprovalMessages } from "../approvalState"
 import { BOT_ACTIVITY_LABELS, type BotActivity } from "../botActivity"
 import { latestPreview } from "../botPreview"
 import { paletteShortcutLabel } from "../features/commandPalette/shortcut"
-import { t } from "../i18n"
+import { getRoutineRunDateLabel, t } from "../i18n"
 import {
   isFailureNotice,
   pendingNotifications,
   reconcileFailureNotifications,
   relativeThreadDate,
 } from "../sidebarAttention"
+import { getSidebarThreads } from "../sidebarThreads"
 import { getSidebarThreadTitle } from "../sidebarThreadTitle"
 import { useMascotSnapshot } from "./AvatarRuntime"
 import { BotActionsMenu } from "./BotActionsMenu"
@@ -39,6 +50,7 @@ type SidebarProps = {
   threads: Array<Thread>
   messages: Array<Message>
   runs?: Array<Run>
+  routineRuns?: Array<RoutineRun>
   /** Float bots with updates to the top (settings: "Mover bots com novidades para o topo"). Default on. */
   floatUpdates?: boolean
   selectedBotId: Id | null
@@ -191,6 +203,7 @@ export const Sidebar = (props: SidebarProps) => {
                   onHold={ordered.hold}
                   insertedThreads={insertedThreads}
                   threads={props.threads.filter((thread) => thread.botId === bot.id)}
+                  routineRuns={props.routineRuns ?? []}
                   messages={messages}
                   attention={attention.filter((item) => item.botId === bot.id)}
                   notifications={notifications}
@@ -282,6 +295,7 @@ const BotEntry = ({
   activity,
   onHold,
   threads,
+  routineRuns,
   messages,
   attention,
   notifications,
@@ -303,6 +317,7 @@ const BotEntry = ({
   onHold: (botId: Id, reason: HoldReason, active: boolean) => void
   insertedThreads: ReadonlySet<string>
   threads: Array<Thread>
+  routineRuns: Array<RoutineRun>
   messages: Array<Message>
   attention: Array<NotificationRecord>
   notifications: Array<NotificationRecord>
@@ -398,6 +413,10 @@ const BotEntry = ({
   // A dismissed or superseded failure must not keep the sidebar mascot in an error pose.
   const avatarState = snapshot.state === "error" && !failed ? "idle" : undefined
   const activityKind = activity?.kind ?? null
+  const runningThreadIds = new Set(
+    messages.filter((message) => message.status === "streaming").map((message) => message.threadId),
+  )
+  const sidebarThreads = expanded ? getSidebarThreads(threads, routineRuns, selectedThreadId, runningThreadIds) : []
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: hover and focus only pause reordering; they trigger no action
     <div
@@ -498,19 +517,27 @@ const BotEntry = ({
       {deleting && onDelete && <DeleteBotDialog bot={bot} onDelete={onDelete} onClose={() => setDeleting(false)} />}
       {expanded && (
         <section className="bot-thread-tree" aria-label={t("Conversations for {name}", { name: bot.name })}>
-          {threads
-            .filter((thread) => !thread.groupId)
-            .sort((a, b) => b.updatedAt - a.updatedAt)
-            .map((thread) => (
-              <ThreadRow
-                key={thread.id}
-                inserted={insertedThreads.has(thread.id)}
-                thread={thread}
-                selected={thread.id === selectedThreadId}
-                running={messages.some((message) => message.threadId === thread.id && message.status === "streaming")}
-                onClick={() => onSelectThread(thread.id)}
-              />
-            ))}
+          {sidebarThreads.map(({ thread, routineRun, running, unread }) => (
+            <ThreadRow
+              key={thread.id}
+              inserted={insertedThreads.has(thread.id)}
+              thread={thread}
+              dateLabel={
+                thread.kind === "routine"
+                  ? getRoutineRunDateLabel(routineRun?.scheduledFor ?? thread.createdAt)
+                  : relativeThreadDate(thread.updatedAt)
+              }
+              unread={unread}
+              selected={thread.id === selectedThreadId}
+              running={running}
+              onClick={() => onSelectThread(thread.id)}
+            />
+          ))}
+          {sidebarThreads.some(({ thread }) => thread.kind === "routine") && (
+            <button type="button" className="new-thread-row" onClick={onRoutines}>
+              {t("Routine run history")}
+            </button>
+          )}
           <button type="button" className="new-thread-row" onClick={onNewThread}>
             <SidebarIcon>
               <path d="M12 5v14M5 12h14" />
@@ -526,11 +553,15 @@ const BotEntry = ({
 const ThreadRow = ({
   inserted,
   thread,
+  dateLabel,
+  unread,
   selected,
   running,
   onClick,
 }: {
   thread: Thread
+  dateLabel: string
+  unread: number
   inserted: boolean
   selected: boolean
   running: boolean
@@ -559,13 +590,13 @@ const ThreadRow = ({
         )}
       </span>
       <span className="thread-copy">
-        <strong title={title}>{title}</strong>
-        <small>{relativeThreadDate(thread.updatedAt)}</small>
+        <strong title={thread.kind === "routine" ? `${title} · ${dateLabel}` : title}>{title}</strong>
+        <small>{dateLabel}</small>
       </span>
       {running ? (
         <span className="sidebar-status-dot state-running" role="img" aria-label={t("Em execução")} />
-      ) : thread.unread > 0 ? (
-        <span className="sidebar-unread">{thread.unread > 99 ? "99+" : thread.unread}</span>
+      ) : unread > 0 ? (
+        <span className="sidebar-unread">{unread > 99 ? "99+" : unread}</span>
       ) : null}
     </button>
   )
