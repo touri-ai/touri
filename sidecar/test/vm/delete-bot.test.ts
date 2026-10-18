@@ -261,6 +261,55 @@ test("deleting an idle group member waits for another member's child and the agg
   expect(f.db.query("PRAGMA foreign_key_check").all()).toEqual([])
 })
 
+test("deleting a group member leaves another member's active turn in the same group running", async () => {
+  const f = await fixture()
+  const history = await makeGroupHistory(f)
+  const engine = makeDeferredGroupEngine(f.runtime.kernel, history.owner.id)
+  const groups = createGroupRuntime(f.runtime.kernel, engine)
+  const canceledRunIds: string[] = []
+  f.runtime.kernel.services.provide("groups.runtime", {
+    ...groups,
+    cancel: (id: string) => {
+      canceledRunIds.push(id)
+      f.db.query("UPDATE runs SET status = 'canceled' WHERE id = ?").run(id)
+      return true
+    },
+  })
+  f.db
+    .query(
+      "INSERT INTO runs(id,thread_id,bot_id,provider,trigger,status,queued_at) VALUES ('other-turn',?,?,'codex','user','running',1)",
+    )
+    .run(history.child.id, history.participant.id)
+  f.db
+    .query("INSERT INTO group_turns VALUES ('other-turn',?,?)")
+    .run(history.group.id, JSON.stringify([history.participant.id]))
+
+  const response = await f.request(`/bots/${history.owner.id}`, { name: history.owner.name }, "DELETE")
+
+  expect(response.status).toBe(200)
+  expect(canceledRunIds).toEqual([])
+  expect(f.db.query("SELECT status FROM runs WHERE id = 'other-turn'").get()).toEqual({ status: "running" })
+  expect(f.db.query("SELECT run_id FROM group_turns WHERE run_id = 'other-turn'").get()).toEqual({
+    run_id: "other-turn",
+  })
+})
+
+test("a failed blob collection after the bot is deleted still reports success", async () => {
+  const f = await fixture()
+  const bot = await f.create("Blob collection failure", "local")
+  f.db
+    .query("INSERT INTO settings(key,value_json,updated_at) VALUES ('storage.deleted-attachments:broken','{',1)")
+    .run()
+
+  const response = await f.request(`/bots/${bot.id}`, { name: bot.name }, "DELETE")
+
+  expect(response.status).toBe(200)
+  expect(f.db.query("SELECT id FROM bots WHERE id = ?").get(bot.id)).toBeNull()
+  expect(f.db.query("SELECT key FROM settings WHERE key = ?").get(`storage.deleted-attachments:${bot.id}`)).toEqual({
+    key: `storage.deleted-attachments:${bot.id}`,
+  })
+})
+
 test("deleting a bot switched from a virtual machine to local removes its retained machine and volumes", async () => {
   const f = await fixture()
   const bot = await f.create("Switched machine")

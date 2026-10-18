@@ -44,7 +44,7 @@ export const deleteBotRoute = (kernel: Kernel, runtime: VmRuntime): RouteModule[
           .map((group) => group.id)
         const attachments = await performDeletionStep("TOURI-E2014", () => deleteBotData(kernel, botId))
         publishBotDeletion(kernel, botId, groups, groupIds)
-        await collectUnusedOutputBlobs(db, kernel.paths.appData, Date.now(), null, attachments)
+        await collectDeletedBotBlobs(kernel, attachments)
         return { status: 200, json: {} }
       } catch (error) {
         kernel.services.use("storage.maintenance")?.start()
@@ -85,13 +85,15 @@ const stopBotTasks = async (kernel: Kernel, botId: string) => {
   await kernel.services.use("vm.desktop")?.closeBot(botId)
 }
 
+// Only turns this bot answers, or whose shared thread is deleted with it; other members keep running.
 const getBotGroupTurns = (db: Database, botId: string) =>
   db
     .query(`SELECT g.run_id FROM group_turns g JOIN runs r ON r.id = g.run_id
     WHERE r.status IN ('queued','starting','running') AND (
-      g.group_id IN (SELECT group_id FROM group_members WHERE bot_id = ?)
-      OR r.bot_id = ? OR r.thread_id IN (SELECT id FROM threads WHERE bot_id = ?))`)
-    .all(botId, botId, botId) as { run_id: string }[]
+      r.bot_id = ? OR EXISTS (SELECT 1 FROM json_each(g.recipients_json) WHERE value = ?)
+      OR r.thread_id IN (SELECT t.id FROM threads t WHERE t.bot_id = ? AND NOT EXISTS (
+        SELECT 1 FROM group_members m WHERE m.group_id = t.group_id AND m.bot_id != ?)))`)
+    .all(botId, botId, botId, botId) as { run_id: string }[]
 
 const waitForStoppedRuns = async (kernel: Kernel, runIds: string[]) => {
   const db = kernel.db as Database
@@ -133,6 +135,15 @@ const publishBotDeletion = (
     })
   })
   kernel.publish({ type: "bot.deleted", botId })
+}
+
+const collectDeletedBotBlobs = async (kernel: Kernel, attachments: Set<string>) => {
+  // The bot is already gone; the pending attachment list lets storage maintenance retry later.
+  try {
+    await collectUnusedOutputBlobs(kernel.db as Database, kernel.paths.appData, Date.now(), null, attachments)
+  } catch (error) {
+    kernel.log({ level: "warn", module: "vm", msg: kernel.redact(String(error)) })
+  }
 }
 
 const deleteBotLogins = async (kernel: Kernel, botId: string) => {
