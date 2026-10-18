@@ -3,7 +3,7 @@ import { afterEach, expect, it } from "vitest"
 import App from "../src/App"
 import type { ApiRequest } from "../src/api/client"
 import { createMockApi } from "../src/api/mock"
-import { dictionaries } from "../src/i18n"
+import { dictionaries, getHostLabel, t } from "../src/i18n"
 import { openRoutines, showBotSettings } from "./workspaceNavigation"
 
 afterEach(cleanup)
@@ -85,8 +85,10 @@ it("shows one primary hire action and quiet secondary actions, even when checks 
   expect(landing).toHaveTextContent("Já usa outra ferramenta?")
   expect(landing).not.toHaveTextContent(/Prontas|Avisos|Falhas|\d/)
   expect(dictionaries.en["Create my first bot"]).toBe("Create my first bot")
-  expect(dictionaries.en["onboarding.privacy"]).toBe(
-    "History stays on this {host}. Your AI receives the content needed to respond. touri collects no telemetry.",
+  const privacy = t("onboarding.privacy", { host: getHostLabel("server", "en") }, "en")
+
+  expect(privacy).toBe(
+    "History stays on this server. Your AI receives the content needed to respond. touri collects no telemetry.",
   )
 })
 
