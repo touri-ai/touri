@@ -3,6 +3,17 @@ import { userFacingError } from "./errors"
 /** All UI copy lives here. pt-BR is the default; English is available for a future locale picker. */
 export type Locale = "pt-BR" | "en"
 export const ptBR = {
+  "Confira os dados e os limites do objetivo.": "Confira os dados e os limites do objetivo.",
+  "ERROR INVALID_ARGS: Confira os dados e os limites do objetivo.": "Confira os dados e os limites do objetivo.",
+  "Aguarde o turno atual terminar ou conclua o objetivo anterior.":
+    "Aguarde o turno atual terminar ou conclua o objetivo anterior.",
+  "ERROR CONFLICT: Aguarde o turno atual terminar ou conclua o objetivo anterior.":
+    "Aguarde o turno atual terminar ou conclua o objetivo anterior.",
+  "Não há um objetivo ativo para este turno.": "Não há um objetivo ativo para este turno.",
+  "ERROR NOT_FOUND: Não há um objetivo ativo para este turno.": "Não há um objetivo ativo para este turno.",
+  "Não foi possível registrar a conclusão do objetivo.": "Não foi possível registrar a conclusão do objetivo.",
+  "ERROR INVALID_ARGS: Não foi possível registrar a conclusão do objetivo.":
+    "Não foi possível registrar a conclusão do objetivo.",
   "Record an observed step for the user-authorized goal in this turn. Set completed=true only after verifying its agreed completion criterion. Never treats the end of a turn as completion. Cannot create goals, change budgets or grant access.":
     "Registra um passo observado do objetivo autorizado neste turno. Só marca a conclusão depois de verificar o critério combinado. Encerrar um turno não conclui o objetivo. Não cria objetivos, altera orçamentos nem concede acesso.",
   "Goal local only": "A continuação automática está disponível para bots locais. Este bot continua um turno por vez.",
@@ -2199,6 +2210,16 @@ export const ptBR = {
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  "Confira os dados e os limites do objetivo.": "Check the goal details and limits.",
+  "ERROR INVALID_ARGS: Confira os dados e os limites do objetivo.": "Check the goal details and limits.",
+  "Aguarde o turno atual terminar ou conclua o objetivo anterior.":
+    "Wait for the current turn to finish or complete the previous goal.",
+  "ERROR CONFLICT: Aguarde o turno atual terminar ou conclua o objetivo anterior.":
+    "Wait for the current turn to finish or complete the previous goal.",
+  "Não há um objetivo ativo para este turno.": "There is no active goal for this turn.",
+  "ERROR NOT_FOUND: Não há um objetivo ativo para este turno.": "There is no active goal for this turn.",
+  "Não foi possível registrar a conclusão do objetivo.": "Could not record the goal completion.",
+  "ERROR INVALID_ARGS: Não foi possível registrar a conclusão do objetivo.": "Could not record the goal completion.",
   "Record an observed step for the user-authorized goal in this turn. Set completed=true only after verifying its agreed completion criterion. Never treats the end of a turn as completion. Cannot create goals, change budgets or grant access.":
     "Record an observed step for the user-authorized goal in this turn. Set completed=true only after verifying its agreed completion criterion. Never treats the end of a turn as completion. Cannot create goals, change budgets or grant access.",
   "Goal local only": "Automatic continuation is available for local bots. This bot continues one turn at a time.",

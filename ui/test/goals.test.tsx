@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { expect, test } from "vitest"
 import { createMockApi } from "../src/api/mock"
 import { GoalPanel } from "../src/components/GoalPanel"
-import { t } from "../src/i18n"
+import { localizeToolText, t } from "../src/i18n"
 
 const makeFixture = (hasProject = true) => {
   const api = createMockApi()
@@ -128,4 +128,11 @@ test("goal state and controls have English copy", () => {
     "The limit was reached and the bot stopped. Change the budget and choose Resume to continue.",
     "Change budget",
   ])
+})
+
+test("goal checkpoint failures use plain language", () => {
+  const failure = "ERROR NOT_FOUND: Não há um objetivo ativo para este turno."
+
+  expect(localizeToolText(failure)).toBe("Não há um objetivo ativo para este turno.")
+  expect(t(failure, {}, "en")).toBe("There is no active goal for this turn.")
 })

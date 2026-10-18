@@ -260,8 +260,11 @@ const hasScopeProblem = (bot: Bot): boolean =>
   !(bot.projectId || bot.folders?.length || bot.anyFolderAccess) ||
   (bot.access !== "full" && !!folderGrantProblem(bot))
 
-const getFailure = (errorCode: "INVALID_ARGS" | "CONFLICT" | "NOT_FOUND") => ({
-  success: false as const,
-  errorCode,
-  error: errorCode,
-})
+const getFailure = (errorCode: "INVALID_ARGS" | "CONFLICT" | "NOT_FOUND") => {
+  const messages = {
+    INVALID_ARGS: "Confira os dados e os limites do objetivo.",
+    CONFLICT: "Aguarde o turno atual terminar ou conclua o objetivo anterior.",
+    NOT_FOUND: "Não há um objetivo ativo para este turno.",
+  }
+  return { success: false as const, errorCode, error: messages[errorCode] }
+}

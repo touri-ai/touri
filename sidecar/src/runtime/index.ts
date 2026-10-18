@@ -450,9 +450,10 @@ export const createGoalCheckpointHandler =
   async ({ ctx, args }) => {
     const run = engine.activeRun({ threadId: ctx.threadId })
     if (ctx.signal.aborted || !ctx.runId || run?.id !== ctx.runId || run.botId !== ctx.botId)
-      return toolError("NOT_FOUND", "No active goal for this turn")
+      return toolError("NOT_FOUND", "Não há um objetivo ativo para este turno.")
     const values = bodyRecord(args)
-    if (typeof values.completed !== "boolean") return toolError("INVALID_ARGS", "completed must be a boolean")
+    if (typeof values.completed !== "boolean")
+      return toolError("INVALID_ARGS", "Não foi possível registrar a conclusão do objetivo.")
     const result = engine.goals.recordCheckpoint({
       runId: ctx.runId,
       botId: ctx.botId,
