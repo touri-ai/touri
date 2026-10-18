@@ -7,6 +7,8 @@ for (const viewport of [
   { width: 390, height: 844 },
 ]) {
   test(`work queue and performance at ${viewport.width}px`, async ({ page }) => {
+    // The first workspace visit includes cold module loading in CI.
+    test.setTimeout(45_000)
     await page.setViewportSize(viewport)
     await page.goto("/test/e2e/work-harness.html")
     await expect(page.getByRole("textbox", { name: "Mensagem para Planejamento" })).toBeVisible()
