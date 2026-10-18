@@ -5,10 +5,10 @@ const server = startBrowserFixtureServer()
 
 afterAll(() => server.stop(true))
 
-test("R5 overflow fixture stays one button above the 200-element snapshot cap", async () => {
+test("R5 overflow fixture contains 1000 buttons for the 200-element snapshot cap", async () => {
   const response = await fetch(new URL("/large", server.url))
   const html = await response.text()
 
   expect(response.status).toBe(200)
-  expect(Array.from(html.matchAll(/<button>/g))).toHaveLength(201)
+  expect(Array.from(html.matchAll(/<button>/g))).toHaveLength(1000)
 })
