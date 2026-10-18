@@ -43,32 +43,35 @@ export const DeleteGroupDialog = ({
       title={t("Apagar grupo", {}, locale)}
       eyebrow={group.name}
       describedBy={descriptionId}
+      className="delete-group-dialog"
       onClose={() => {
         if (!busy) onClose()
       }}
     >
-      <p id={descriptionId}>
-        {t(
-          "Apagar {name} remove todas as conversas, mensagens e rotinas do grupo. Esta ação não pode ser desfeita.",
-          {
-            name: group.name,
-          },
-          locale,
-        )}
-      </p>
-      <p className="field-help">{t("Os bots e suas conversas individuais são preservados.", {}, locale)}</p>
-      <label htmlFor={nameId}>{t("Digite o nome do grupo: {name}", { name: group.name }, locale)}</label>
-      <input
-        id={nameId}
-        data-initial-focus
-        value={name}
-        disabled={busy}
-        autoComplete="off"
-        onChange={(event) => setName(event.target.value)}
-      />
-      {error && <p role="alert">{error}</p>}
+      <div className="modal-form">
+        <p id={descriptionId}>
+          {t(
+            "Apagar {name} remove todas as conversas, mensagens e rotinas do grupo. Esta ação não pode ser desfeita.",
+            {
+              name: group.name,
+            },
+            locale,
+          )}
+        </p>
+        <p className="field-help">{t("Os bots e suas conversas individuais são preservados.", {}, locale)}</p>
+        <label htmlFor={nameId}>{t("Digite o nome do grupo: {name}", { name: group.name }, locale)}</label>
+        <input
+          id={nameId}
+          data-initial-focus
+          value={name}
+          disabled={busy}
+          autoComplete="off"
+          onChange={(event) => setName(event.target.value)}
+        />
+        {error && <p role="alert">{error}</p>}
+      </div>
       <div className="modal-actions">
-        <button type="button" className="button-quiet" disabled={busy} onClick={onClose}>
+        <button type="button" className="button button-quiet" disabled={busy} onClick={onClose}>
           {t("Cancelar", {}, locale)}
         </button>
         <button
