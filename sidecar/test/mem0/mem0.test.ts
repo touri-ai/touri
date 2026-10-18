@@ -758,72 +758,112 @@ test("changing mode or server removes the previous destination's key", async () 
 })
 
 test("a failed key removal cannot move credentials to a new destination", async () => {
-  const context = await fixture()
+  const context = await fixture(undefined, (host) => async (method, params) => {
+    if (method === "keychain.delete") return { success: false, errorCode: "HOST_ERROR", error: "cofre indisponível" }
+
+    return host(method, params)
+  })
   await context.configure({ apiKey: "m0-bound-cloud-key" })
-  context.kernel.callHost = (async () => ({
-    success: false,
-    errorCode: "HOST_ERROR",
-    error: "cofre indisponível",
-  })) as Kernel["callHost"]
+
   const changed = await context.configure({ mode: "server", url: context.fake.url })
+  const { settings } = (await (await context.api(`/bots/${context.bot.id}/mem0`)).json()) as { settings: Mem0Settings }
 
   expect(changed.status).toBe(503)
-  const { settings } = (await (await context.api(`/bots/${context.bot.id}/mem0`)).json()) as { settings: Mem0Settings }
   expect(settings).toMatchObject({ mode: "platform", url: "", hasApiKey: true })
 })
 
 test("settings saves for one bot commit in order and keep the final key bound to its destination", async () => {
-  const context = await fixture()
-  const other = fakeMem0(() => memories([]))
-  const host = context.kernel.callHost
-  let isWriting = false
-  let release = () => {}
-  const pending = new Promise<void>((resolve) => {
-    release = resolve
-  })
-  context.kernel.callHost = (async (method, params) => {
-    if (method === "keychain.set") {
-      isWriting = true
-      await pending
-    }
+  const writing = getDeferred()
+  const pending = getDeferred()
+  const context = await fixture(undefined, (host) => async (method, params) => {
+    if (method !== "keychain.set") return host(method, params)
+
+    writing.resolve()
+    await pending.promise
     return host(method, params)
-  }) as Kernel["callHost"]
-  const first = context.configure({ mode: "server", url: context.fake.url, apiKey: "m0-first-server-key" })
+  })
+  const other = fakeMem0(() => memories([]))
+  const route = context.mem0.routes.routes.find(({ method }) => method === "PUT")
+  if (!route) throw new Error("Missing memory settings route")
+  const params = { id: context.bot.id }
+  const first = route.handler({
+    params,
+    body: { mode: "server", url: context.fake.url, apiKey: "m0-first-server-key" },
+  })
   cleanups.push(async () => {
-    release()
+    pending.resolve()
     await first
   })
 
-  await until(() => isWriting)
-  const second = context.configure({ mode: "server", url: other.url })
+  await writing.promise
+  const second = route.handler({ params, body: { mode: "server", url: other.url } })
   cleanups.push(async () => {
-    release()
+    pending.resolve()
     await second
   })
-  await Bun.sleep(20)
-  release()
-
-  expect((await first).status).toBe(200)
-  expect((await second).body.settings).toMatchObject({ url: other.url, hasApiKey: false })
+  pending.resolve()
+  const [firstResult, secondResult] = await Promise.all([first, second])
   const { settings } = (await (await context.api(`/bots/${context.bot.id}/mem0`)).json()) as { settings: Mem0Settings }
+
+  expect(firstResult.status).toBe(200)
+  expect(secondResult).toMatchObject({ status: 200, json: { settings: { url: other.url, hasApiKey: false } } })
   expect(settings).toMatchObject({ url: other.url, hasApiKey: false })
   expect(context.vault.size).toBe(0)
 })
 
-test("canceling five lookups does not pause a healthy connection", async () => {
-  let isBlocked = true
-  let release = () => {}
-  const pending = new Promise<void>((resolve) => {
-    release = resolve
+test("a pending destination save cannot send its replacement key to the previous destination", async () => {
+  const writing = getDeferred()
+  const pending = getDeferred()
+  const context = await fixture(undefined, (host) => async (method, params) => {
+    const result = await host(method, params)
+    if (method !== "keychain.set") return result
+
+    writing.resolve()
+    await pending.promise
+    return result
   })
+  const server = fakeMem0(() => memories([]))
+  await context.configure({ enabled: true })
+  savedKey(context)
+  context.vault.set(`mem0/${context.bot.id}`, "m0-original-destination-key")
+  const saved = context.configure({ mode: "server", url: server.url, apiKey: "m0-replacement-destination-key" })
+  cleanups.push(async () => {
+    pending.resolve()
+    await saved
+  })
+
+  await writing.promise
+  context.mem0.api.sync({
+    botId: context.bot.id,
+    threadId: context.bot.mainThreadId ?? "",
+    userText: "Prefiro café sem açúcar.",
+    assistantText: "Anotado.",
+  })
+  await Promise.all([
+    context.mem0.api.recall({ botId: context.bot.id, query: "Qual a minha bebida favorita?" }),
+    context.tool("mem0_search")({ query: "bebida favorita" }),
+    context.tool("mem0_add")({ content: "Prefiro café sem açúcar." }),
+    context.api(`/bots/${context.bot.id}/mem0/test`, {}),
+  ])
+
+  expect(context.fake.seen).toEqual([])
+  expect(server.seen).toEqual([])
+  pending.resolve()
+  expect((await saved).status).toBe(200)
+
+  await context.mem0.api.recall({ botId: context.bot.id, query: "Qual a minha bebida favorita?" })
+
+  expect(server.seen).toHaveLength(1)
+  expect(server.seen[0]?.headers.get("x-api-key")).toBe("m0-replacement-destination-key")
+})
+
+test("canceling five lookups does not pause a healthy connection", async () => {
+  const pending = getDeferred()
   const context = await fixture(async () => {
-    if (isBlocked) await pending
+    await pending.promise
     return memories([{ id: "saved", memory: "Prefere café sem açúcar." }])
   })
-  cleanups.push(() => {
-    isBlocked = false
-    release()
-  })
+  cleanups.push(pending.resolve)
   await context.configure({ enabled: true, apiKey: "m0-cancel-breaker" })
 
   for (const index of [0, 1, 2, 3, 4]) {
@@ -838,8 +878,7 @@ test("canceling five lookups does not pause a healthy connection", async () => {
     expect(await lookup).toBeNull()
   }
   await until(() => context.logs.filter((line) => line.includes("Mem0 recall skipped")).length === 5)
-  isBlocked = false
-  release()
+  pending.resolve()
 
   expect(await context.mem0.api.recall({ botId: context.bot.id, query: "Qual a minha bebida favorita?" })).toContain(
     "café",

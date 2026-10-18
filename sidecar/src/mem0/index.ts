@@ -95,6 +95,9 @@ export const createMem0 = (
   const enabled = (botId: Id): boolean => botExists(botId) && readConfig(kernel, botId).enabled
 
   const clientFor = async (botId: Id, config: Mem0Config, signal = botSignal(botId)): Promise<Mem0Client | null> => {
+    // The vault may already contain the next destination's key before its settings commit.
+    if (saves.has(botId)) return null
+
     const apiKey = (await loadKey(botId, signal)) ?? ""
     signal.throwIfAborted()
     if (config.mode === "platform" && !apiKey) return null
