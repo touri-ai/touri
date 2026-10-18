@@ -65,7 +65,7 @@ query does not offload it. WAL improves reader/writer concurrency; it does not m
   process with explicit connection ownership and cancellation. A background timer on the same
   loop still blocks while its callback runs.
 
-The operational incident to remember is a **2 GB database with APIs taking 25–56 seconds**.
+The operational incident to remember is a **743 MB database snapshot with APIs taking 25–56 seconds**.
 The [related investigation (#204)](https://github.com/touri-ai/touri/issues/204) records 56 seconds
 for bot metadata and 25 seconds for workspace activity on an earlier snapshot: accumulated
 transcript snapshots and synchronous historical work stalled unrelated endpoints. A small HTTP

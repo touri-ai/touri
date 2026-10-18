@@ -11,7 +11,7 @@ Describe the resulting behavior and relevant implementation choices.
 List checks actually run and their results; explain skipped/unavailable checks. Use synthetic data
 and include relevant event-loop/UI measurements or a reason they are not applicable.
 
-- [ ] Event loop: nada bloqueante (EVENT_LOOP.md)
+- [ ] Event loop: nothing blocking (EVENT_LOOP.md)
 - [ ] Security review (SECURITY_REVIEW.md)
 
 ## Security review
