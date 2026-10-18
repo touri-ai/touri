@@ -44,6 +44,27 @@ it("lists every executing and queued turn, origins and engine positions, and ope
   expect(screen.getByText("Na fila · 1º de 1")).toBeVisible()
 })
 
+it("opens the visible group while the work run retains its execution thread", () => {
+  const api = createWorkApi()
+  const run = api.getRuns()[0]
+  const thread = api.threads[0]
+  if (!run || !thread) throw new Error("Missing work fixture")
+  const onThread = vi.fn()
+  render(
+    <WorkScreen
+      runs={[{ ...run, threadId: "hidden-worker", groupThreadId: thread.id }]}
+      bots={api.bots}
+      threads={[thread]}
+      loading={false}
+      onThread={onThread}
+    />,
+  )
+
+  fireEvent.click(screen.getByRole("button", { name: "Tarefa de planejamento" }))
+
+  expect(onThread).toHaveBeenCalledWith(thread.id)
+})
+
 it("keeps completion events newer than an in-flight global snapshot", async () => {
   const api = createWorkApi()
   let release = () => {}

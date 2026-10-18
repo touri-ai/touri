@@ -24,6 +24,8 @@ for (const viewport of [
     await expect(queued.getByRole("article")).toHaveCount(2)
     await expect(page.getByText("Na fila · 2º de 2")).toBeVisible()
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+    if (process.env.TOURI_SCREENSHOT_DIR)
+      await page.screenshot({ path: `${process.env.TOURI_SCREENSHOT_DIR}/work-queue-${viewport.width}.png` })
 
     await page.evaluate(() => {
       const fixture = window as Window & { workQa?: { finishFirst: () => void } }
@@ -42,6 +44,8 @@ for (const viewport of [
     await page.getByRole("spinbutton", { name: "Tarefas ao mesmo tempo" }).fill("4")
     await page.getByRole("button", { name: "Salvar limite" }).click()
     await expect(page.getByText("Limite salvo.")).toBeVisible()
+    if (process.env.TOURI_SCREENSHOT_DIR)
+      await page.screenshot({ path: `${process.env.TOURI_SCREENSHOT_DIR}/work-performance-${viewport.width}.png` })
     await openAdvanced()
     await page.getByRole("button", { name: "Trabalho", exact: true }).click()
     await openAdvanced()

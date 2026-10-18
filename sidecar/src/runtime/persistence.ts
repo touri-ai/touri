@@ -83,6 +83,8 @@ export const toRun = (value: unknown): Run | null => {
     startedAt: nullableInteger(row, "started_at"),
     ...(row.provider_started_at == null ? {} : { providerStartedAt: integer(row, "provider_started_at") }),
     finishedAt: nullableInteger(row, "finished_at"),
+    ...("group_thread_id" in row ? { groupThreadId: nullableText(row, "group_thread_id") } : {}),
+    ...("origin" in row ? { origin: text(row, "origin") as Run["origin"] } : {}),
   }
 }
 
@@ -150,6 +152,7 @@ export type RuntimePersistence = {
   routines: Map<Id, Routine>
   routineRuns: Map<Id, RoutineRun>
   getRun: (id: Id) => Run | null
+  getRunSnapshots: (ids: ReadonlyArray<Id>) => Array<Run>
   listWorkRuns: () => Array<Run>
   listActiveRuns: () => Array<Run>
   listQueuedRuns: () => Array<Run>
@@ -179,6 +182,22 @@ const canUseDatabase = (value: unknown): value is Database => {
   }
 }
 
+const RUN_SNAPSHOT_SELECT = `SELECT r.*, COALESCE(root.thread_id, t.group_thread_id) AS group_thread_id,
+  CASE
+    WHEN continuation.run_id IS NOT NULL THEN 'resume'
+    WHEN EXISTS(SELECT 1 FROM json_each(request.parts_json)
+      WHERE json_extract(value, '$.type') = 'notice' AND json_extract(value, '$.code') = 'run_resumed') THEN 'resume'
+    WHEN request.sender_json IS NOT NULL THEN 'delegation'
+    WHEN r.trigger = 'routine' THEN 'routine'
+    ELSE 'message'
+  END AS origin
+  FROM runs r
+  LEFT JOIN threads t ON t.id = r.thread_id
+  LEFT JOIN group_run_links link ON link.run_id = r.id
+  LEFT JOIN runs root ON root.id = link.turn_id
+  LEFT JOIN run_continuations continuation ON continuation.run_id = r.id
+  LEFT JOIN messages request ON request.id = r.request_message_id AND request.thread_id = r.thread_id`
+
 export const createRuntimePersistence = ({ database }: { database: unknown }): RuntimePersistence => {
   const db = canUseDatabase(database) ? database : null
   const runs = new Map<Id, Run>()
@@ -201,6 +220,23 @@ export const createRuntimePersistence = ({ database }: { database: unknown }): R
     } catch {
       return null
     }
+  }
+
+  const getRunSnapshots = (ids: ReadonlyArray<Id>): Array<Run> => {
+    if (ids.length === 0) return []
+    if (!db)
+      return ids.flatMap((id) => {
+        const run = runs.get(id)
+        return run ? [run] : []
+      })
+
+    return db
+      .query(`${RUN_SNAPSHOT_SELECT} WHERE r.id IN (SELECT value FROM json_each(?))`)
+      .all(JSON.stringify(ids))
+      .flatMap((row) => {
+        const run = toRun(row)
+        return run ? [run] : []
+      })
   }
 
   const listRuns = (threadId: Id, options?: { all?: boolean }): Array<Run> => {
@@ -233,14 +269,12 @@ export const createRuntimePersistence = ({ database }: { database: unknown }): R
     if (!db) return [...runs.values()].filter((run) => ["queued", "starting", "running"].includes(run.status))
 
     return db
-      .query(`SELECT r.*, coalesce(root.thread_id, r.thread_id) AS thread_id FROM runs r
-      LEFT JOIN group_run_links link ON link.run_id = r.id
-      LEFT JOIN runs root ON root.id = link.turn_id
+      .query(`${RUN_SNAPSHOT_SELECT}
       JOIN bots b ON b.id = r.bot_id
-      JOIN threads t ON t.id = coalesce(root.thread_id, r.thread_id)
+      JOIN threads visible_thread ON visible_thread.id = COALESCE(root.thread_id, t.group_thread_id, r.thread_id)
       WHERE r.status IN ('queued', 'starting', 'running')
         AND r.id NOT IN (SELECT run_id FROM group_turns)
-        AND b.archived_at IS NULL AND t.archived_at IS NULL
+        AND b.archived_at IS NULL AND visible_thread.archived_at IS NULL
       ORDER BY r.queued_at, r.rowid`)
       .all()
       .flatMap((row) => {
@@ -544,6 +578,7 @@ export const createRuntimePersistence = ({ database }: { database: unknown }): R
     routines,
     routineRuns,
     getRun,
+    getRunSnapshots,
     listActiveRuns,
     listWorkRuns,
     listQueuedRuns,

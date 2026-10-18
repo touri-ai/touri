@@ -1,10 +1,13 @@
 import type { Database } from "bun:sqlite"
-import { afterEach, expect, test } from "bun:test"
+import { afterEach, expect, spyOn, test } from "bun:test"
 import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { ProviderAdapter, Run, StartTurnArgs, StartTurnResult } from "@touri/contracts"
+import { createGroupStore } from "../../src/groups/store"
 import { createKernel } from "../../src/kernel"
+import { createLearningReviewer } from "../../src/learning/review"
+import { readLearningState, writeLearning } from "../../src/learning/settings"
 import { init as initRuntime } from "../../src/runtime"
 import { createRuntimeEngine } from "../../src/runtime/engine"
 import { init as initStore } from "../../src/store"
@@ -206,14 +209,83 @@ test("work snapshots identify routine, delegated and resumed turns and restore q
   expect(restored.slice(2).map((run) => run.origin)).toEqual(["resume", "resume", "resume"])
 })
 
-const getFixture = async () => {
+test("group work preserves execution thread IDs in every event and keeps learning scoped to private chats", async () => {
+  const fixture = await getFixture()
+  const kernel = fixture.runtime.kernel
+  const groups = createGroupStore(kernel)
+  const group = groups.save({
+    name: "Equipe de demonstração",
+    color: "#dc2626",
+    avatarShape: "cercle",
+    memberIds: ["bot-0", "bot-1"],
+    coordinatorBotId: null,
+  })
+  const visible = groups.createThread(group)
+  const worker = groups.participant(group, visible.id, "bot-0")
+  const reviewer = createLearningReviewer(kernel)
+  writeLearning(kernel, "bot-0", { memory: true, memoryEveryTurns: 3 })
+  const unsubscribe = kernel.subscribe(({ event }) => {
+    if (event.type === "run.updated") reviewer.onRunFinished(event.run)
+  })
+  fixture.addCleanup(async () => {
+    unsubscribe()
+    reviewer.stop()
+  })
+
+  const run = fixture.send(worker.id)
+  await waitFor(() => fixture.getEvent(run.id)?.status === "running")
+  expect(fixture.engine.getWorkRuns().find((candidate) => candidate.id === run.id)).toMatchObject({
+    threadId: worker.id,
+    groupThreadId: visible.id,
+  })
+  fixture.finish(worker.id)
+  await waitFor(() => fixture.getEvent(run.id)?.status === "succeeded")
+  const privateRun = fixture.send("thread-0")
+  await waitFor(() => fixture.getEvent(privateRun.id)?.status === "running")
+  fixture.finish("thread-0")
+  await waitFor(() => fixture.getEvent(privateRun.id)?.status === "succeeded")
+
+  const events = fixture.getEvents().filter((candidate) => candidate.id === run.id)
+  expect(new Set(events.map((candidate) => candidate.status))).toEqual(
+    new Set(["queued", "starting", "running", "succeeded"]),
+  )
+  expect(events.every((candidate) => candidate.threadId === worker.id && candidate.groupThreadId === visible.id)).toBe(
+    true,
+  )
+  expect(fixture.engine.listRuns(worker.id)[0]?.threadId).toBe(worker.id)
+  expect(readLearningState(kernel, "bot-0").turns).toBe(1)
+})
+
+test("queue publication batches database reads regardless of the number of waiting turns", async () => {
+  const fixture = await getFixture(24)
+  const turns = Array.from({ length: 24 }, (_, index) => fixture.send(`thread-${index}`))
+  await waitFor(() => fixture.getRunning().length === 3)
+  const canceled = turns[3]
+  const last = turns.at(-1)
+  if (!canceled || !last) throw new Error("Missing waiting turns")
+  const database = fixture.runtime.kernel.db as Database
+  const reads = spyOn(database, "query")
+  fixture.addCleanup(async () => {
+    reads.mockRestore()
+  })
+
+  fixture.engine.cancel(canceled.id)
+  await waitFor(() => fixture.getEvent(last.id)?.queueTotal === 20)
+  const runReads = reads.mock.calls.filter(([sql]) => /\bFROM runs\b/i.test(sql)).length
+
+  expect(runReads).toBeLessThanOrEqual(12)
+  expect(fixture.getEvent(turns[4]?.id)).toMatchObject({ queuePosition: 1, queueTotal: 20 })
+  expect(fixture.getEvent(last.id)).toMatchObject({ queuePosition: 20, queueTotal: 20 })
+})
+
+const getFixture = async (botCount = 5) => {
   const root = mkdtempSync(join(tmpdir(), "touri-work-queue-"))
   const runtime = createKernel({ appData: root })
   await initStore(runtime.kernel)
   const database = runtime.kernel.db as Database
   const store = runtime.kernel.services.use("store.api")
   if (!store) throw new Error("Store unavailable")
-  Array.from({ length: 5 }, (_, index) => index).forEach((index) => {
+  Array.from({ length: botCount }, (_, index) => index).forEach((index) => {
     database
       .query("INSERT INTO bots(id,name,provider,home_dir,created_at,updated_at) VALUES (?,?,'codex',?,1,1)")
       .run(`bot-${index}`, `Equipe ${index}`, root)

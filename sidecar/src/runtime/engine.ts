@@ -328,11 +328,18 @@ export const createRuntimeEngine = ({
     getGoalNow,
   )
 
-  const getQueuedRuns = (): Run[] =>
-    queued.flatMap((id) => {
-      const run = persistence.getRun(id)
+  const getQueuedRuns = (): Run[] => {
+    const snapshots = new Map(persistence.getRunSnapshots(queued).map((run) => [run.id, run]))
+    return queued.flatMap((id) => {
+      const run = snapshots.get(id)
       return run?.status === "queued" && active.get(run.threadId)?.id !== id ? [run] : []
     })
+  }
+
+  const getQueueSnapshot = () => {
+    const waiting = getQueuedRuns()
+    return { waiting, positions: new Map(waiting.map((run, index) => [run.id, index + 1])) }
+  }
 
   const getRunOrigin = (run: Run): NonNullable<Run["origin"]> => {
     if (run.origin) return run.origin
@@ -366,22 +373,35 @@ export const createRuntimeEngine = ({
     return "message"
   }
 
-  const getRunSnapshot = (run: Run): Run => {
-    const waiting = getQueuedRuns()
-    const index = run.status === "queued" ? waiting.findIndex((candidate) => candidate.id === run.id) : -1
-    const thread = kernel.services.use("store.api")?.getThread({ threadId: run.threadId })
+  const getSnapshot = (run: Run, queue: ReturnType<typeof getQueueSnapshot>): Run => {
+    const metadata =
+      run.origin && run.groupThreadId !== undefined ? run : (persistence.getRunSnapshots([run.id])[0] ?? run)
+    const groupThreadId =
+      metadata.groupThreadId === undefined
+        ? (kernel.services.use("store.api")?.getThread({ threadId: run.threadId })?.groupThreadId ?? null)
+        : metadata.groupThreadId
+    const position = run.status === "queued" ? queue.positions.get(run.id) : undefined
 
     return {
       ...cloneRun(run),
-      threadId: thread?.groupThreadId ?? run.threadId,
-      origin: getRunOrigin(persistence.getRun(run.id) ?? run),
-      queuePosition: index < 0 ? null : index + 1,
-      queueTotal: index < 0 ? null : waiting.length,
+      groupThreadId,
+      origin: getRunOrigin(metadata),
+      queuePosition: position ?? null,
+      queueTotal: position === undefined ? null : queue.waiting.length,
     }
   }
+  const getRunSnapshot = (run: Run): Run => getSnapshot(run, getQueueSnapshot())
   const publishRun = (run: Run): void => kernel.publish({ type: "run.updated", run: getRunSnapshot(run) })
-  const publishQueue = (): void => getQueuedRuns().forEach(publishRun)
-  const getWorkRuns = (): Run[] => persistence.listWorkRuns().map(getRunSnapshot)
+  const publishQueue = (): void => {
+    const queue = getQueueSnapshot()
+    queue.waiting.forEach((run) => {
+      kernel.publish({ type: "run.updated", run: getSnapshot(run, queue) })
+    })
+  }
+  const getWorkRuns = (): Run[] => {
+    const queue = getQueueSnapshot()
+    return persistence.listWorkRuns().map((run) => getSnapshot(run, queue))
+  }
 
   const updateRun = (run: Run, patch: Partial<Run>): Run => {
     const leftQueue = run.status === "queued" && patch.status !== undefined && patch.status !== "queued"

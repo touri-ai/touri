@@ -53,7 +53,8 @@ export const WorkScreen = ({
               </h2>
               {entries.map((run) => {
                 const bot = bots.find((bot) => bot.id === run.botId)
-                const thread = threads.find((thread) => thread.id === run.threadId)
+                const threadId = run.groupThreadId ?? run.threadId
+                const thread = threads.find((thread) => thread.id === threadId)
 
                 return (
                   <article className="screen-card work-card" key={run.id} data-run-id={run.id}>
@@ -61,12 +62,7 @@ export const WorkScreen = ({
                       {bot && <BotAvatar bot={bot} size={28} />}
                       <strong>{bot?.name ?? t("Bot local")}</strong>
                     </div>
-                    <button
-                      type="button"
-                      className="work-thread"
-                      disabled={!thread}
-                      onClick={() => onThread(run.threadId)}
-                    >
+                    <button type="button" className="work-thread" disabled={!thread} onClick={() => onThread(threadId)}>
                       {thread ? getSidebarThreadTitle(thread) : t("Work conversation unavailable")}
                     </button>
                     <dl>
