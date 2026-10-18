@@ -127,8 +127,10 @@ export const forwardApiRequest = async (request: Request, options: ProxyOptions)
       transform(chunk, controller) {
         const text = redact(pending + decoder.decode(chunk, { stream: true }))
         const end = Math.max(0, text.length - keep)
-        controller.enqueue(encoder.encode(text.slice(0, end)))
-        pending = text.slice(end)
+        const previous = text.charCodeAt(end - 1)
+        const boundary = previous >= 0xd800 && previous <= 0xdbff ? end - 1 : end
+        controller.enqueue(encoder.encode(text.slice(0, boundary)))
+        pending = text.slice(boundary)
       },
       flush(controller) {
         controller.enqueue(encoder.encode(redact(pending + decoder.decode())))

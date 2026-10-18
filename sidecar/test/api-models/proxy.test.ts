@@ -80,3 +80,18 @@ test("a private transport token cannot be used as the provider credential", asyn
 
   expect(result.status).toBe(403)
 })
+
+test("streamed model replies preserve Unicode at the credential buffer boundary", async () => {
+  const reply = `🙂${"x".repeat(key.length - 1)}`
+  const fetchImpl: ApiProxyFetch = async () => new Response(reply)
+
+  const result = await forwardApiRequest(getRequest(), {
+    baseUrl: "https://api.example.com/v1",
+    key,
+    token: "temporary-token",
+    mapError: getApiError,
+    fetchImpl,
+  })
+
+  expect(await result.text()).toBe(reply)
+})
