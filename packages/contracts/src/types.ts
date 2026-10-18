@@ -307,6 +307,17 @@ export type Run = {
   finishedAt: EpochMs | null
 }
 
+/** A persisted interruption, shared by chat, notifications and the recovery center. */
+export type RecoveryTask = {
+  id: string
+  notification: NotificationRecord
+  runId: Id | null
+  routineId: Id | null
+  cause: RunErrorClass | null
+  occurredAt: EpochMs
+  effects: Array<{ description: string; uncertain: boolean; acknowledgeKey: string | null }>
+}
+
 /** Explicit, bounded work across provider turns in one local conversation. */
 export type Goal = {
   id: Id
@@ -961,10 +972,12 @@ export type ApiRoutes = {
   'POST /computer/kill': { req: {}; res: { revoked: number } }
   'POST /imports/legacy': { req: LegacyImportOptions; res: { importId: Id } }
   'GET /imports/:id': { req: {}; res: { status: 'running' | 'succeeded' | 'failed'; report: ImportReport | null } }
+  'GET /recovery': { req: {}; res: { tasks: Array<RecoveryTask> } }
+  'POST /recovery/:id/dismiss': { req: { acknowledgeKeys: Array<string> }; res: { tasks: Array<RecoveryTask> } }
   'GET /notifications': { req: { limit?: number }; res: { notifications: Array<NotificationRecord> } }
   'GET /notifications/pending': { req: {}; res: { notifications: Array<NotificationRecord>; lastSeq: number } }
   'POST /notifications/:id/dismiss': { req: {}; res: { notification: NotificationRecord } }
-  'POST /notifications/dismiss-all': { req: {}; res: { dismissed: number } }
+  'POST /notifications/dismiss-all': { req: {}; res: { dismissed: number; skipped: number; skippedIds: Array<number> } }
   'POST /threads/:id/respond': { req: { requestId: string; behavior: RespondBehavior; message?: string }; res: {} }
   'POST /bots/:id/messages': { req: { text: string; threadId?: Id; sendId?: string }; res: { message: Message; run: Run } }
   'GET /bots/:id/mem0': { req: {}; res: { settings: Mem0Settings } }
@@ -992,6 +1005,8 @@ export type AppSettings = {
   computerUseHotkey: string
   browserExecutable: 'system-chrome' | 'chrome-for-testing'
   nativeNotifications: boolean
+  /** Optional JSON setting; absent on existing installations, retaining legacy bot preferences. */
+  notificationPreferences?: NotificationPreferences
   /** Float bots that need the user, are working or have unread results to the top of the sidebar. Default: true. */
   sidebarFloatUpdates?: boolean
   /** Continue a turn cut off by a restart, a provider crash or a stopped bot computer. Default: true. */
@@ -1059,7 +1074,7 @@ export type UiEvent =
   | { type: 'notification.resolved'; notification: NotificationRecord }
   | { type: 'notify'; level: 'info' | 'warning' | 'error'; title: string; body: string; threadId: Id | null; requestId?: Id | null; notificationId?: number; kind?: NotifyKind }
 
-/** Attention kinds need the user; message kinds (`done`, `delegation-settled`) are informational and expire. */
+/** Attention kinds need the user; message kinds (`done`, `delegation-settled`, `notice`) are informational and expire. */
 export type NotifyKind =
   | 'approval'
   | 'question'
@@ -1070,6 +1085,19 @@ export type NotifyKind =
   | 'incident'
   | 'done'
   | 'delegation-settled'
+  | 'notice'
+
+export type NotificationScopePreferences = {
+  enabled?: boolean
+  digest?: 'attention' | 'all'
+  types?: Partial<Record<NotifyKind, boolean>>
+}
+
+export type NotificationPreferences = NotificationScopePreferences & {
+  bots?: Record<Id, NotificationScopePreferences>
+  /** Times use the local clock; an equal start and end silences the entire day. */
+  quietHours?: { enabled: boolean; start: string; end: string; timeZone?: string }
+}
 
 export type NotifyResolution = 'allow' | 'deny' | 'answer' | 'replied' | 'dismissed' | 'expired' | 'canceled'
 export type AvatarShape = import('@norbert_bodziony/bloub').ShapeId

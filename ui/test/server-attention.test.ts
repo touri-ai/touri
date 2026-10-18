@@ -1,5 +1,5 @@
 import { cleanup, renderHook } from "@testing-library/react"
-import type { NotificationRecord, UiEventEnvelope } from "@touri/contracts"
+import type { NotificationPreferences, NotificationRecord, UiEventEnvelope } from "@touri/contracts"
 import { afterEach, expect, it, vi } from "vitest"
 import type { TauriInvoke, UiApi } from "../src/api/client"
 import { installServerAttention, useServerAttention } from "../src/features/server/serverAttention"
@@ -25,7 +25,7 @@ const note = (id: number, patch: Partial<NotificationRecord> = {}): Notification
   ...patch,
 })
 
-const fixture = (initial: NotificationRecord[] = []) => {
+const fixture = (initial: NotificationRecord[] = [], preferences?: NotificationPreferences) => {
   let listener: ((event: UiEventEnvelope) => void) | undefined
   const unsubscribe = vi.fn()
   const api = {
@@ -38,6 +38,7 @@ const fixture = (initial: NotificationRecord[] = []) => {
   const enabled = { current: true }
   const stop = installServerAttention(api, invoke, {
     initial,
+    ...(preferences ? { preferences: () => preferences } : {}),
     startedAt: 100,
     enabled: () => enabled.current,
     botForThread: () => "bot-remote",
@@ -123,4 +124,56 @@ it("updates the native badge from pending attention and clears it when resolved"
   expect(invoke).toHaveBeenCalledWith("server_badge", { count: 1 })
   rerender({ current: { ...data, notifications: [note(1, { resolvedAt: 102, resolution: "allow" })] } })
   expect(invoke).toHaveBeenLastCalledWith("server_badge", { count: 0 })
+})
+
+it("applies type and bot filters before delivering remote attention", () => {
+  const { emit, invoke } = fixture([], {
+    digest: "all",
+    types: { "turn-failed": false },
+    bots: { "bot-remote": { types: { "routine-failed": false } } },
+  })
+
+  emit(1, { type: "notification.created", notification: note(1, { kind: "turn-failed" }) })
+  emit(2, { type: "notification.created", notification: note(2, { kind: "routine-failed" }) })
+  emit(3, { type: "notification.created", notification: note(3, { kind: "done" }) })
+
+  expect(invoke).toHaveBeenCalledTimes(1)
+  expect(invoke).toHaveBeenCalledWith(
+    "server_attention",
+    expect.objectContaining({ body: "Há um novo aviso na central de notificações." }),
+  )
+})
+
+it("keeps non-blocking remote attention quiet during an all-day quiet window", () => {
+  const { emit, invoke } = fixture([], { quietHours: { enabled: true, start: "00:00", end: "00:00", timeZone: "UTC" } })
+
+  emit(1, { type: "notification.created", notification: note(1, { kind: "turn-failed" }) })
+
+  expect(invoke).not.toHaveBeenCalled()
+})
+
+it.each(["approval", "question", "takeover"] as const)(
+  "delivers blocking %s despite quiet hours and stale type mutes",
+  (kind) => {
+    const { emit, invoke } = fixture([], {
+      types: { [kind]: false },
+      bots: { "bot-remote": { types: { [kind]: false } } },
+      quietHours: { enabled: true, start: "00:00", end: "00:00", timeZone: "UTC" },
+    })
+
+    emit(1, { type: "notification.created", notification: note(1, { kind }) })
+
+    expect(invoke).toHaveBeenCalledOnce()
+  },
+)
+
+it("delivers explicit bot notices with legacy settings even without saved preferences", () => {
+  const { emit, invoke } = fixture()
+
+  emit(1, { type: "notification.created", notification: note(1, { kind: "notice" }) })
+
+  expect(invoke).toHaveBeenCalledWith(
+    "server_attention",
+    expect.objectContaining({ body: "Há um novo aviso na central de notificações." }),
+  )
 })

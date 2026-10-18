@@ -47,7 +47,7 @@ test("migration keeps legacy rowids, removes duplicate revisions and survives ro
     DROP TABLE message_search_rows;
     DROP INDEX tool_resolutions_thread_resolution;
     DELETE FROM schema_meta WHERE key = 'message_search_rows_version';
-    UPDATE schema_meta SET value = '25' WHERE key = 'schema_version';
+    UPDATE schema_meta SET value = '26' WHERE key = 'schema_version';
     INSERT INTO messages_fts(rowid,text,thread_id,message_id) VALUES
       (4000,'antigo','thread','first'), (8000,'antigo','thread','first'),
       (9000,'vizinho','thread','second');`)

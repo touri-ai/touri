@@ -28,11 +28,12 @@ import transcriptReferencesSql from "./migrations/0022.sql" with { type: "text" 
 import streamWriterSql from "./migrations/0023.sql" with { type: "text" }
 import groupRoutinesSql from "./migrations/0024.sql" with { type: "text" }
 import goalsSql from "./migrations/0025.sql" with { type: "text" }
-import messageSearchSql from "./migrations/0026.sql" with { type: "text" }
+import recoveryCenterSql from "./migrations/0026.sql" with { type: "text" }
+import messageSearchSql from "./migrations/0027.sql" with { type: "text" }
 import { withSuspendedSchemaObjects } from "./schema-rebuild"
 import { applyUpgradeBaselines } from "./upgradeBaselines"
 
-export const SCHEMA_VERSION = 26
+export const SCHEMA_VERSION = 27
 
 const FREE_PAGE_RATIO_LIMIT = 0.2
 
@@ -185,10 +186,11 @@ export const openDatabase = ({ filename }: { filename: string }): Database => {
     database.exec("UPDATE schema_meta SET value = '24' WHERE key = 'schema_version'")
   })()
   database.transaction(() => database.exec(goalsSql))()
+  database.transaction(() => database.exec(recoveryCenterSql))()
   database.transaction(() => {
     if (!database.query("SELECT 1 FROM schema_meta WHERE key = 'message_search_rows_version' AND value = '2'").get())
       database.exec(messageSearchSql)
-    database.exec("UPDATE schema_meta SET value = '26' WHERE key = 'schema_version'")
+    database.exec("UPDATE schema_meta SET value = '27' WHERE key = 'schema_version'")
   })()
   return database
 }

@@ -1,4 +1,4 @@
-import type { ApprovalPart, Id, Kernel, NotifyResolution } from "@touri/contracts"
+import { type ApprovalPart, getNotificationBody, type Id, type Kernel, type NotifyResolution } from "@touri/contracts"
 import { approvalSummary } from "@touri/contracts/approval-summary"
 
 const DETAIL_MAX = 600
@@ -100,13 +100,26 @@ export const createRuntimeNotices = ({ kernel }: { kernel: Kernel }) => {
     })
   }
 
-  const done = ({ botId, threadId, summary }: { botId: Id; threadId: Id; summary: string }): void => {
+  const done = ({
+    botId,
+    threadId,
+    summary,
+    routine = false,
+  }: {
+    botId: Id
+    threadId: Id
+    summary: string
+    routine?: boolean
+  }): void => {
     emit("notify.emit")?.({
       kind: "done",
       botId,
       threadId,
       title: "Done",
-      body: clip({ value: summary.trim() || "Finished", max: DETAIL_MAX }),
+      body: clip({
+        value: getNotificationBody({ kind: "done", body: summary.trim() || "Finished", routine }),
+        max: DETAIL_MAX,
+      }),
     })
   }
 

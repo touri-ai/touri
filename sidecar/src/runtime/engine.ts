@@ -1350,7 +1350,12 @@ export const createRuntimeEngine = ({
               mem0?.sync({ botId: bot.id, threadId: thread.id, userText: request.text, assistantText: state.text })
             finishRoutineRun({ run, state, status: "succeeded" })
             if (goals.getForRun(run.id)?.status !== "active")
-              notices.done({ botId: run.botId, threadId: run.threadId, summary: state.text })
+              notices.done({
+                botId: run.botId,
+                threadId: run.threadId,
+                summary: state.text,
+                routine: run.trigger === "routine" || run.routineRunId !== null,
+              })
           }
         })
       } else {
