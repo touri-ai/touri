@@ -540,21 +540,24 @@ test("saved browser session cleanup runs after commit while a peer's live turn c
 })
 
 test("a failed browser session key deletion keeps the bot deletion successful and retries later", async () => {
-  const hostState = { failBrowserKeyDelete: true, browserKeyExists: false, browserKeyDeleteCalls: 0 }
+  const hostState: { failBrowserKeyDelete: boolean; browserKey: string | null; browserKeyDeleteCalls: number } = {
+    failBrowserKeyDelete: true,
+    browserKey: null,
+    browserKeyDeleteCalls: 0,
+  }
   const workspace = await fixture({
     callHost: (async (method, params) => {
       const { account, value } = params as { account: string; value?: string }
-      if (method === "keychain.get")
-        return { success: true, value: { value: hostState.browserKeyExists ? "fake-key" : null } }
+      if (method === "keychain.get") return { success: true, value: { value: hostState.browserKey } }
       if (method === "keychain.set" && value) {
-        hostState.browserKeyExists = true
+        hostState.browserKey = value
         return { success: true, value: {} }
       }
       if (method === "keychain.delete" && account.startsWith("browser-session-key:")) {
         hostState.browserKeyDeleteCalls += 1
         if (hostState.failBrowserKeyDelete)
           return { success: false, errorCode: "HOST_ERROR", error: "fake keychain failure" }
-        hostState.browserKeyExists = false
+        hostState.browserKey = null
       }
       return { success: true, value: {} }
     }) as Kernel["callHost"],
@@ -576,7 +579,7 @@ test("a failed browser session key deletion keeps the bot deletion successful an
   expect(workspace.db.query("SELECT id FROM bots WHERE id = ?").get(bot.id)).toBeNull()
   expect(events).toEqual(new Set(["bot.deleted", "transcript.resync"]))
   expect(existsSync(file)).toBe(false)
-  expect(hostState.browserKeyExists).toBe(true)
+  expect(hostState.browserKey).not.toBeNull()
   expect(workspace.db.query("SELECT key FROM settings WHERE key = ?").get(deletedBrowserSessionKey(bot.id))).toEqual({
     key: deletedBrowserSessionKey(bot.id),
   })
@@ -598,7 +601,7 @@ test("a failed browser session key deletion keeps the bot deletion successful an
       !workspace.db.query("SELECT key FROM settings WHERE key = ?").get(deletedBrowserSessionKey(bot.id)),
   )
 
-  expect(hostState.browserKeyExists).toBe(false)
+  expect(hostState.browserKey).toBeNull()
   expect(workspace.db.query("SELECT key FROM settings WHERE key = ?").get(deletedBrowserSessionKey(bot.id))).toBeNull()
 })
 
