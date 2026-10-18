@@ -153,3 +153,38 @@ test("a new chat turn resolves the same notification immediately while uncertain
   expect(resolved.find((item) => item.id === "run:uncertain")?.notification.resolvedAt).toBeNull()
   expect(h.work.isBlocked({ key: "preview-key" })).toBe(true)
 })
+
+test("journal recovery keeps one identity when its turn is subsequently marked interrupted", async () => {
+  const h = await getFixture()
+  saveRun(h.database, "recovering", "running")
+  saveUncertainEffect(h.work, "recovering")
+  const before = await h.getTasks()
+
+  h.database.query("UPDATE runs SET status = 'interrupted' WHERE id = ?").run("recovering")
+  const after = await h.getTasks()
+
+  expect(before).toHaveLength(1)
+  expect(after).toHaveLength(1)
+  expect(after[0]?.id).toBe(before[0]?.id)
+  expect(after[0]?.notification.id).toBe(before[0]?.notification.id)
+  expect(h.database.query("SELECT COUNT(*) AS count FROM notifications WHERE resolved_at IS NULL").get()).toEqual({
+    count: 1,
+  })
+})
+
+test("a later routine execution resolves a failure that never created a conversation", async () => {
+  const h = await getFixture()
+  h.database.exec(`INSERT INTO routines(id,bot_id,name,prompt,cron,timezone,created_at,updated_at)
+    VALUES ('routine','bot-b','Resumo','Organize as notas','0 9 * * *','UTC',1,1);
+    INSERT INTO routine_runs(id,routine_id,scheduled_for,status,trigger_source,finished_at)
+    VALUES ('routine-failed','routine',100,'failed','cron',200);`)
+  const before = await h.getTasks()
+
+  h.database.exec(`INSERT INTO routine_runs(id,routine_id,scheduled_for,status,trigger_source,started_at,finished_at)
+    VALUES ('routine-next','routine',300,'succeeded','manual',300,400);`)
+  const after = await h.getTasks()
+
+  expect(before).toHaveLength(1)
+  expect(after[0]?.notification.id).toBe(before[0]?.notification.id)
+  expect(after[0]?.notification.resolution).toBe("expired")
+})

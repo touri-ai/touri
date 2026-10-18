@@ -71,18 +71,18 @@ export const InterruptedTasks = (props: Props) => {
 }
 
 const TaskRow = ({ task, onReview, onResume, onDismiss }: Props & { task: RecoveryTask }) => {
-  const [reviewing, setReviewing] = useState(false)
+  const [isReviewing, setReviewing] = useState(false)
   const [acknowledgedEffects, setAcknowledgedEffects] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
+  const [isBusy, setBusy] = useState(false)
   const [error, setError] = useState<unknown>(null)
   const keys = [...new Set(task.effects.flatMap((effect) => (effect.acknowledgeKey ? [effect.acknowledgeKey] : [])))]
   const effectRevision = JSON.stringify(task.effects)
-  const acknowledged = acknowledgedEffects === effectRevision
-  const resolved = task.notification.resolvedAt !== null
+  const isAcknowledged = acknowledgedEffects === effectRevision
+  const isResolved = task.notification.resolvedAt !== null
   const title = getTaskTitle(task)
   const cause = getTaskCause(task)
   const dismiss = async () => {
-    if (busy || (keys.length > 0 && !acknowledged)) return
+    if (isBusy || (keys.length > 0 && !isAcknowledged)) return
     setBusy(true)
     setError(null)
     try {
@@ -104,12 +104,12 @@ const TaskRow = ({ task, onReview, onResume, onDismiss }: Props & { task: Recove
       <button
         type="button"
         className="text-button"
-        aria-expanded={reviewing}
+        aria-expanded={isReviewing}
         onClick={() => setReviewing((current) => !current)}
       >
         {t("Ver ações realizadas")} ({task.effects.length})
       </button>
-      {reviewing && (
+      {isReviewing && (
         <section aria-label={t("Ações registradas")}>
           {task.effects.length === 0 && (
             <p>{t("Nenhuma ação confirmada no histórico. Confira o estado atual antes de continuar.")}</p>
@@ -129,15 +129,15 @@ const TaskRow = ({ task, onReview, onResume, onDismiss }: Props & { task: Recove
           )}
         </section>
       )}
-      {!resolved && (
+      {!isResolved && (
         <>
           {keys.length > 0 && (
             <label className="interrupted-acknowledgement">
               <input
                 type="checkbox"
-                checked={acknowledged}
+                checked={isAcknowledged}
                 onChange={(event) => setAcknowledgedEffects(event.target.checked ? effectRevision : null)}
-                disabled={busy}
+                disabled={isBusy}
               />
               <span>{t("Revisei os efeitos incertos e entendo que descartar não desfaz as ações.")}</span>
             </label>
@@ -146,7 +146,7 @@ const TaskRow = ({ task, onReview, onResume, onDismiss }: Props & { task: Recove
             <button
               type="button"
               className="button button-brand"
-              disabled={busy || (!task.notification.threadId && !task.routineId)}
+              disabled={isBusy || (!task.notification.threadId && !task.routineId)}
               onClick={() => onResume(task)}
             >
               {t("Retomar tarefa")}
@@ -154,7 +154,7 @@ const TaskRow = ({ task, onReview, onResume, onDismiss }: Props & { task: Recove
             <button
               type="button"
               className="button button-quiet"
-              disabled={busy || (keys.length > 0 && !acknowledged)}
+              disabled={isBusy || (keys.length > 0 && !isAcknowledged)}
               onClick={() => void dismiss()}
             >
               {t("Descartar")}

@@ -1473,22 +1473,22 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
         lastSeq: notifications.length,
       } as ApiRoutes[typeof route]["res"]
     if (key === "POST /notifications/:id/dismiss") {
-      const protectedTask = getRecoveryTasks().some(
+      const hasProtectedTask = getRecoveryTasks().some(
         (task) =>
           task.notification.id === Number(pathValues.id) &&
           task.effects.some((effect) => effect.acknowledgeKey !== null),
       )
-      if (protectedTask) throw new Error("Revise os efeitos incertos no centro de tarefas interrompidas.")
+      if (hasProtectedTask) throw new Error("Revise os efeitos incertos no centro de tarefas interrompidas.")
       const resolved = resolveNotification({ id: Number(pathValues.id), resolution: "dismissed" })
       if (!resolved) throw new Error("notification not found")
       return { notification: resolved } as ApiRoutes[typeof route]["res"]
     }
     if (key === "POST /notifications/dismiss-all") {
-      const protectedTask = getRecoveryTasks().some(
+      const hasProtectedTask = getRecoveryTasks().some(
         (task) =>
           task.notification.resolvedAt === null && task.effects.some((effect) => effect.acknowledgeKey !== null),
       )
-      if (protectedTask) throw new Error("Revise os efeitos incertos no centro de tarefas interrompidas.")
+      if (hasProtectedTask) throw new Error("Revise os efeitos incertos no centro de tarefas interrompidas.")
       const open = notifications.filter((item) => item.resolvedAt === null)
       for (const item of open) resolveNotification({ id: item.id, resolution: "dismissed" })
       return { dismissed: open.length } as ApiRoutes[typeof route]["res"]

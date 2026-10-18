@@ -10,6 +10,7 @@ type Candidate = Omit<RecoveryTask, "notification"> & {
   threadId: string | null
   turnId: string | null
   reason: string
+  journalOnly: boolean
 }
 type RunRow = {
   id: string
@@ -30,21 +31,21 @@ export const syncRecoveryTasks = (kernel: Kernel, store: NotificationStore, noti
   const candidates = [...runs, ...journal, ...getRoutineCandidates(database, runs)]
 
   const visible = candidates.filter((candidate) => {
-    const recorded = database.query("SELECT 1 FROM recovery_tasks WHERE id = ?").get(candidate.id) !== null
-    if (recorded) return true
+    const isRecorded = database.query("SELECT 1 FROM recovery_tasks WHERE id = ?").get(candidate.id) !== null
+    if (isRecorded) return true
     const effects = candidate.turnId ? work.rebuild({ turnId: candidate.turnId }) : []
     if (effects.some((effect) => effect.state === "uncertain" && !effect.acknowledged)) return true
-    if (candidate.id.startsWith("journal:")) return false
-    return !getLaterRun(database, candidate)
+    if (candidate.journalOnly) return false
+    return !hasLaterRun(database, candidate)
   })
 
   return visible.map((candidate) => {
     const notification = saveTaskNotification(kernel, store, notifier, candidate)
     const effects = candidate.turnId ? work.rebuild({ turnId: candidate.turnId }) : []
-    const uncertain = getRecoveryAcknowledgementKeys(database, notification.id).length > 0
-    const later = getLaterRun(database, candidate)
-    const acknowledgedJournal = candidate.id.startsWith("journal:") && effects.some((effect) => effect.acknowledged)
-    if (!uncertain && (later || acknowledgedJournal) && notification.resolvedAt === null)
+    const hasUncertain = getRecoveryAcknowledgementKeys(database, notification.id).length > 0
+    const hasLater = hasLaterRun(database, candidate)
+    const isAcknowledgedJournal = candidate.journalOnly && effects.some((effect) => effect.acknowledged)
+    if (!hasUncertain && (hasLater || isAcknowledgedJournal) && notification.resolvedAt === null)
       notifier.finish({ id: notification.id, resolution: "expired" })
 
     return {
@@ -99,6 +100,7 @@ const getRunCandidates = (database: Database): Candidate[] => {
         threadId: row.thread_id,
         cause: row.error_class,
         reason: row.error_message ?? "",
+        journalOnly: false,
         occurredAt: row.occurred_at,
         effects: getPartEffects(parts),
       },
@@ -152,17 +154,19 @@ const getJournalCandidates = (kernel: Kernel, runs: Candidate[]): Candidate[] =>
     const first = effects.find((effect) => effect.state === "uncertain")
     const thread = first?.threadId ? kernel.services.use("store.api")?.getThread({ threadId: first.threadId }) : null
     if (!first || !thread) return []
+    const storedRun = database.query("SELECT id FROM runs WHERE id = ?").get(turnId) !== null
 
     return [
       {
-        id: `journal:${turnId}`,
-        runId: null,
+        id: storedRun ? `run:${turnId}` : `journal:${turnId}`,
+        runId: storedRun ? turnId : null,
         turnId,
         routineId: null,
         botId: thread.botId,
         threadId: thread.id,
         cause: "app_restart" as const,
         reason: "app_restart",
+        journalOnly: true,
         occurredAt: first.startedAt,
         effects: [],
       },
@@ -197,6 +201,7 @@ const getRoutineCandidates = (database: Database, runs: Candidate[]): Candidate[
       threadId: row.thread_id,
       cause: null,
       reason: row.summary ?? "",
+      journalOnly: false,
       occurredAt: row.occurred_at,
       effects: [],
     }))
@@ -241,9 +246,20 @@ const saveTaskNotification = (kernel: Kernel, store: NotificationStore, notifier
   return saved
 }
 
-const getLaterRun = (database: Database, candidate: Candidate): boolean =>
-  database
-    .query(`SELECT 1 FROM runs WHERE bot_id = ?
+const hasLaterRun = (database: Database, candidate: Candidate): boolean => {
+  const hasLaterRoutineRun =
+    candidate.routineId !== null &&
+    database
+      .query(`SELECT 1 FROM routine_runs WHERE routine_id = ?
+    AND status IN ('running', 'succeeded') AND COALESCE(started_at, scheduled_for) > ? LIMIT 1`)
+      .get(candidate.routineId, candidate.occurredAt) !== null
+  if (hasLaterRoutineRun) return true
+
+  return (
+    database
+      .query(`SELECT 1 FROM runs WHERE bot_id = ?
     AND thread_id = COALESCE((SELECT thread_id FROM runs WHERE id = ?), ?)
     AND COALESCE(started_at, queued_at) > ? LIMIT 1`)
-    .get(candidate.botId, candidate.runId, candidate.threadId, candidate.occurredAt) !== null
+      .get(candidate.botId, candidate.runId, candidate.threadId, candidate.occurredAt) !== null
+  )
+}
