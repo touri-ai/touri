@@ -42,6 +42,7 @@ import { historyThreadPending, hydrateHistoryEvent } from "../kernel/history-bac
 import { getPathIds } from "../kernel/message-path"
 import { refreshMessageSearch } from "../kernel/message-search"
 import { externalizeMessageParts, OUTPUT_BLOB_ORIGIN, readOutputAttachment } from "../kernel/output-blobs"
+import type { PerformanceStageRunner } from "../kernel/performance"
 import { isProfileProvider, validProviderProfileName } from "../kernel/provider-profiles"
 import { materializeTranscript } from "../kernel/transcript-storage"
 import { getLocalNotificationPreferences } from "../notify/preferences"
@@ -442,7 +443,7 @@ const writeSettings = ({ database, settings }: { database: Database; settings: A
   }
 }
 
-export const init = async (kernel: Kernel): Promise<void> => {
+export const init = async (kernel: Kernel, runStage?: PerformanceStageRunner): Promise<void> => {
   await refreshHostFolderAccess()
   installDoctor(kernel)
   const database = kernel.db as Database
@@ -474,7 +475,13 @@ export const init = async (kernel: Kernel): Promise<void> => {
     refreshMessageSearch(database, message)
   }
 
-  const streamWriter = createStreamWriter({ kernel, database, getMessage, getThread })
+  const streamWriter = createStreamWriter({
+    kernel,
+    database,
+    getMessage,
+    getThread,
+    ...(runStage ? { runStage } : {}),
+  })
   const flushDeltas = streamWriter.checkpoint
 
   const updateThreadRow = ({

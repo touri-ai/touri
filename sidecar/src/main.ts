@@ -1,10 +1,11 @@
 import { readFileSync } from "node:fs"
 import { createConnection, type Socket } from "node:net"
 import { isAbsolute, relative, resolve } from "node:path"
-import type { SidecarModule } from "@touri/contracts"
+import type { Kernel } from "@touri/contracts"
 import { createKernel, type KernelRuntime } from "./kernel"
 import { acquireRuntimeLock, watchParent, watchShutdownRequest } from "./kernel/lifecycle"
 import { createAppPaths } from "./kernel/paths"
+import type { PerformanceStageRunner } from "./kernel/performance"
 import { safeThreadId } from "./mcp/auth"
 import { registerShim } from "./mcp/shim-registry"
 import { type McpShimStage, mcpStartupFailureLine } from "./mcp/startup-stage"
@@ -32,14 +33,17 @@ const moduleLoaders: Array<ModuleLoader> = [
   { path: "./importer/index.ts", load: () => import("./importer/index.js") },
 ]
 
-type ModuleShape = { name?: string; init?: SidecarModule["init"] }
+type ModuleShape = {
+  name?: string
+  init?: (kernel: Kernel, runStage?: PerformanceStageRunner) => Promise<void> | void
+}
 
 const asModule = (value: unknown): ModuleShape => {
   if (typeof value !== "object" || value === null) return {}
   const candidate = value as Record<string, unknown>
   const result: ModuleShape = {}
   if (typeof candidate.name === "string") result.name = candidate.name
-  if (typeof candidate.init === "function") result.init = candidate.init as SidecarModule["init"]
+  if (typeof candidate.init === "function") result.init = candidate.init as NonNullable<ModuleShape["init"]>
   return result
 }
 
@@ -71,7 +75,7 @@ export const initModules = async (runtime: KernelRuntime): Promise<void> => {
       continue
     }
     try {
-      await loaded.init(runtime.kernel)
+      await loaded.init(runtime.kernel, runtime.runStage)
       runtime.kernel.log({
         level: "info",
         module: "main",

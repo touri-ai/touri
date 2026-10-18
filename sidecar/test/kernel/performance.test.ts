@@ -50,6 +50,18 @@ test("the rolling window expires, recovers and permits a later warning", () => {
   expect(probe.diagnostics.getSnapshot()).toEqual({ lagMs: 0, p99Ms: 59_000, maxMs: 59_000, samples: 2 })
 })
 
+test("lag warnings attribute completed synchronous stages with bounded timing", () => {
+  const probe = makeProbe()
+
+  probe.advance(1_000)
+  probe.diagnostics.runStage("workspace_websocket_broadcast", () => probe.advance(700))
+  probe.tick(0)
+
+  expect(probe.log.mock.calls[0]?.[0].data?.stages).toEqual([
+    { stage: "workspace_websocket_broadcast", calls: 1, totalMs: 700, maxMs: 700 },
+  ])
+})
+
 test("normal sampling stays silent and stop disposes the timer", () => {
   const probe = makeProbe()
 

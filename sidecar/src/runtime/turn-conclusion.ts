@@ -42,9 +42,11 @@ const englishRequest = (request: string): boolean => {
 export const turnConclusion = ({
   parts,
   requestText,
+  pendingPartText,
 }: {
   parts: MessagePart[]
   requestText: string
+  pendingPartText?: ReadonlyMap<number, { type: "text" | "reasoning"; chunks: ReadonlyArray<string> }>
 }): string | null => {
   let lastActivity = -1
   for (let index = parts.length - 1; index >= 0; index--) {
@@ -54,8 +56,14 @@ export const turnConclusion = ({
       break
     }
   }
-  if (lastActivity < 0 || parts.slice(lastActivity + 1).some((part) => part.type === "text" && part.text.trim()))
-    return null
+  if (lastActivity < 0) return null
+  const hasTextAfterActivity = parts.some((part, index) => {
+    if (index <= lastActivity || part.type !== "text") return false
+    if (part.text.trim()) return true
+    const pending = pendingPartText?.get(index)
+    return pending?.type === "text" && pending.chunks.some((chunk) => chunk.trim())
+  })
+  if (hasTextAfterActivity) return null
   const tools = parts.filter((part): part is ToolPart => "callId" in part)
   const denied = parts.some((part) => part.type === "approval" && part.decision === "denied")
   const unconfirmed = tools.some((part) => resultOf(part) === null)

@@ -33,6 +33,7 @@ import { createGroupStore } from "../groups/store"
 import { buildChildEnv } from "../kernel"
 import { folderAccessUnavailable, folderGrantProblem, refreshHostFolderAccess } from "../kernel/folder-capability"
 import { hasPathHistory } from "../kernel/message-path"
+import type { PerformanceStageRunner } from "../kernel/performance"
 import { providerProfileEnv } from "../kernel/provider-profiles"
 import { redactStructured } from "../kernel/redact"
 import { attachedServers, resolveAttachedMcp } from "../mcp/attached"
@@ -82,6 +83,8 @@ import { createWorkState, type WorkState } from "./work-state"
 type RunState = {
   replyParentId?: Id | undefined
   text: string
+  pendingText: Array<string>
+  pendingPartText: Map<number, { type: "text" | "reasoning"; chunks: Array<string> }>
   textItemIds: Set<string>
   parts: Array<MessagePart>
   dirtyParts: Set<number>
@@ -102,6 +105,45 @@ type RunState = {
 }
 
 type ContinuationPlan = { reason: ContinuationReason; originalRunId: Id }
+
+const appendPendingText = (state: RunState, partIndex: number, type: "text" | "reasoning", delta: string): void => {
+  const pending = state.pendingPartText.get(partIndex) ?? { type, chunks: [] }
+  // Provider chunks append in-place so each token does constant work as the reply grows.
+  pending.chunks.push(delta)
+  state.pendingPartText.set(partIndex, pending)
+  if (type === "text") state.pendingText.push(delta)
+}
+
+const materializePartText = (state: RunState, partIndex: number, runStage?: PerformanceStageRunner): void => {
+  const pending = state.pendingPartText.get(partIndex)
+  if (!pending) return
+  const part = state.parts[partIndex]
+  if (!part || (part.type !== "text" && part.type !== "reasoning")) return
+  const materialize = (): void => {
+    const current = state.parts[partIndex]
+    if (!current || (current.type !== "text" && current.type !== "reasoning")) return
+    state.parts[partIndex] = { ...current, text: current.text + pending.chunks.join("") }
+    state.pendingPartText.delete(partIndex)
+  }
+  if (runStage) runStage("runtime_text_materialization", materialize)
+  else materialize()
+}
+
+const materializePendingText = (state: RunState, runStage?: PerformanceStageRunner): void => {
+  if (!state.pendingText.length && !state.pendingPartText.size) return
+  const materialize = (): void => {
+    if (state.pendingText.length) state.text += state.pendingText.join("")
+    state.pendingText = []
+    for (const [partIndex, pending] of state.pendingPartText) {
+      const part = state.parts[partIndex]
+      if (!part || (part.type !== "text" && part.type !== "reasoning")) continue
+      state.parts[partIndex] = { ...part, text: part.text + pending.chunks.join("") }
+    }
+    state.pendingPartText.clear()
+  }
+  if (runStage) runStage("runtime_text_materialization", materialize)
+  else materialize()
+}
 
 type PendingApproval = { runId: Id; provider: ProviderAdapter; providerApprovalId: Id }
 
@@ -239,6 +281,7 @@ export const createRuntimeEngine = ({
   providerAdapters,
   getNow = Date.now,
   goalDeadlineClock,
+  runStage,
 }: {
   kernel: Kernel
   codexCommand?: string
@@ -252,6 +295,7 @@ export const createRuntimeEngine = ({
   providerAdapters?: Partial<Record<Bot["provider"], ProviderAdapter>>
   getNow?: () => number
   goalDeadlineClock?: GoalDeadlineClock
+  runStage?: PerformanceStageRunner
 }): RuntimeEngine => {
   const runtimeStartedAt = getNow()
   const persistence: RuntimePersistence = createRuntimePersistence({ database: kernel.db })
@@ -443,6 +487,8 @@ export const createRuntimeEngine = ({
     if (state) return state
     const created: RunState = {
       text: "",
+      pendingText: [],
+      pendingPartText: new Map(),
       textItemIds: new Set(),
       parts: [],
       dirtyParts: new Set(),
@@ -477,6 +523,7 @@ export const createRuntimeEngine = ({
     parentId: Id
   }): void => {
     if (state.replyMessageId) return
+    materializePendingText(state, runStage)
     const message: Omit<Message, "createdAt" | "updatedAt"> = {
       id: kernel.newId(),
       threadId: run.threadId,
@@ -515,6 +562,11 @@ export const createRuntimeEngine = ({
     if (state.outputTimer) clearTimeout(state.outputTimer)
     state.outputTimer = null
     state.lastOutputPublishedAt = Date.now()
+    if (status === "streaming")
+      state.dirtyParts.forEach((partIndex) => {
+        materializePartText(state, partIndex, runStage)
+      })
+    else materializePendingText(state, runStage)
     if (state.cancelRequested) {
       state.parts = tools.finish(run, state.parts, "cancelled_by_user")
       for (let index = 0; index < state.parts.length; index++) state.dirtyParts.add(index)
@@ -676,18 +728,19 @@ export const createRuntimeEngine = ({
       // Provider items are separate Markdown documents; chunks within an item are not.
       // Persist the separator as part of the delta so replay and crash recovery agree.
       const last = state.parts.at(-1)
-      const separator = state.text && (!state.textItemIds.has(event.itemId) || last?.type !== "text") ? "\n\n" : ""
+      const hasText = state.text.length > 0 || state.pendingText.length > 0
+      const separator = hasText && (!state.textItemIds.has(event.itemId) || last?.type !== "text") ? "\n\n" : ""
       state.textItemIds.add(event.itemId)
       const delta = separator + event.delta
       const existing = last?.type === "text" ? last : undefined
-      if (existing) existing.text += delta
-      else state.parts.push({ type: "text", text: delta })
-      state.text += delta
+      const partIndex = existing ? state.parts.indexOf(existing) : state.parts.length
+      if (!existing) state.parts.push({ type: "text", text: "" })
+      appendPendingText(state, partIndex, "text", delta)
       if (state.replyMessageId)
         store.appendDelta({
           threadId: run.threadId,
           messageId: state.replyMessageId,
-          partIndex: existing ? state.parts.indexOf(existing) : state.parts.length - 1,
+          partIndex,
           delta,
           ...(state.generation === null ? {} : { generation: state.generation }),
         })
@@ -697,27 +750,31 @@ export const createRuntimeEngine = ({
       if (event.type === "reasoning_delta" && !event.delta) return
       const last = state.parts.at(-1)
       const previous = last?.type === "reasoning" ? last : { type: "reasoning" as const, text: "" }
-      const part =
-        event.type === "reasoning_progress"
-          ? { ...previous, estimatedTokens: event.estimatedTokens }
-          : { ...previous, text: previous.text + event.delta }
-      state.parts = last?.type === "reasoning" ? [...state.parts.slice(0, -1), part] : [...state.parts, part]
-      if (last?.type === "reasoning" && event.type === "reasoning_delta") {
-        if (state.replyMessageId)
+      const partIndex = last?.type === "reasoning" ? state.parts.length - 1 : state.parts.length
+      if (event.type === "reasoning_progress") {
+        const part = { ...previous, estimatedTokens: event.estimatedTokens }
+        if (last?.type === "reasoning") state.parts[partIndex] = part
+        else state.parts.push(part)
+        state.dirtyParts.add(partIndex)
+      } else {
+        if (last?.type !== "reasoning") state.parts.push({ type: "reasoning", text: "" })
+        appendPendingText(state, partIndex, "reasoning", event.delta)
+        if (last?.type === "reasoning" && state.replyMessageId) {
           store.appendDelta({
             threadId: run.threadId,
             messageId: state.replyMessageId,
-            partIndex: state.parts.length - 1,
+            partIndex,
             delta: event.delta,
             ...(state.generation === null ? {} : { generation: state.generation }),
           })
-      } else {
-        state.dirtyParts.add(state.parts.length - 1)
-        if (state.replyMessageId) publishMessage({ store, state, run, status: "streaming" })
-        else {
-          const request = getActivePathMessage({ store, run })
-          if (request) ensureReply({ run, state, store, parentId: request.id })
+          return
         }
+        state.dirtyParts.add(partIndex)
+      }
+      if (state.replyMessageId) publishMessage({ store, state, run, status: "streaming" })
+      else {
+        const request = getActivePathMessage({ store, run })
+        if (request) ensureReply({ run, state, store, parentId: request.id })
       }
       return
     }
@@ -1277,7 +1334,10 @@ export const createRuntimeEngine = ({
             })
           : await prepareInstructions()
         const turnEnv = prepared?.env ?? env
-        const emit = (event: ProviderEvent) => handleEvent({ run, event, store, state })
+        const emit = (event: ProviderEvent) =>
+          runStage
+            ? runStage("runtime_provider_event", () => handleEvent({ run, event, store, state }))
+            : handleEvent({ run, event, store, state })
         const safeEvents = redactVmEvents({ secrets: [], redact: kernel.redact, emit })
         flushEvents = safeEvents.flush
         // VM preparation registers its credentials with the same live registry.
@@ -1415,6 +1475,7 @@ export const createRuntimeEngine = ({
           const conclusion = turnConclusion({
             parts: state.parts,
             requestText: (originalRequest ?? request)?.text ?? "",
+            pendingPartText: state.pendingPartText,
           })
           if (conclusion)
             handleEvent({ run, store, state, event: { type: "text_delta", itemId: kernel.newId(), delta: conclusion } })
@@ -2498,6 +2559,8 @@ export const createRuntimeEngine = ({
       if (reply) {
         state.replyMessageId = reply.id
         state.text = reply.text
+        state.pendingText = []
+        state.pendingPartText.clear()
         state.parts = structuredClone(reply.parts)
       }
       state.turnStarted = run.externalTurnId !== null

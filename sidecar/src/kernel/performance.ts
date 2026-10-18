@@ -5,11 +5,59 @@ type EventLoopStats = NonNullable<ApiRoutes["GET /health"]["res"]["eventLoop"]>
 type RequestTracker = { inFlight: Map<Request, number>; getRoute: (request: Request) => string }
 type Context = { activeRuns: number; sseClients: number; websocketClients: number }
 type FetchHandler<SocketData> = (request: Request, server: Server<SocketData>) => Promise<Response | undefined>
+type StageTiming = { calls: number; totalMs: number; maxMs: number }
+const MAX_TRACKED_STAGES = 16
+
+export type PerformanceStageTracker = {
+  run: PerformanceStageRunner
+  snapshot: () => Array<{ stage: string; calls: number; totalMs: number; maxMs: number }>
+  reset: () => void
+}
+
+export type PerformanceStageRunner = <Value>(stage: string, action: () => Value) => Value
+
+export const createPerformanceStageTracker = (now = performance.now.bind(performance)): PerformanceStageTracker => {
+  // A bounded map keeps timing updates constant work on the streaming path.
+  const timings = new Map<string, StageTiming>()
+  const run = <Value>(stage: string, action: () => Value): Value => {
+    const startedAt = now()
+    try {
+      return action()
+    } finally {
+      const durationMs = now() - startedAt
+      if (timings.has(stage) || timings.size < MAX_TRACKED_STAGES) {
+        const previous = timings.get(stage) ?? { calls: 0, totalMs: 0, maxMs: 0 }
+        timings.set(stage, {
+          calls: previous.calls + 1,
+          totalMs: previous.totalMs + durationMs,
+          maxMs: Math.max(previous.maxMs, durationMs),
+        })
+      }
+    }
+  }
+
+  return {
+    run,
+    snapshot: () =>
+      [...timings]
+        .map(([stage, timing]) => ({ stage, ...timing }))
+        .sort((left, right) => right.totalMs - left.totalMs || right.maxMs - left.maxMs)
+        .slice(0, 8)
+        .map(({ stage, calls, totalMs, maxMs }) => ({
+          stage,
+          calls,
+          totalMs: getMilliseconds(totalMs),
+          maxMs: getMilliseconds(maxMs),
+        })),
+    reset: () => timings.clear(),
+  }
+}
 
 export const createPerformanceDiagnostics = ({
   log,
   getContext,
   now = performance.now.bind(performance),
+  stageTracker,
   sampleMs = 1_000,
   lagThresholdMs = 500,
   slowRequestMs = 2_000,
@@ -19,6 +67,7 @@ export const createPerformanceDiagnostics = ({
   log: Kernel["log"]
   getContext: () => Context
   now?: () => number
+  stageTracker?: PerformanceStageTracker
   sampleMs?: number
   lagThresholdMs?: number
   slowRequestMs?: number
@@ -27,6 +76,7 @@ export const createPerformanceDiagnostics = ({
 }) => {
   // Timer and request lifetimes keep local state; requests are only read when a warning is written.
   const trackers = new Set<RequestTracker>()
+  const stages = stageTracker ?? createPerformanceStageTracker(now)
   let samples: Array<{ at: number; lagMs: number }> = []
   let expectedAt = now() + sampleMs
   let lastLagWarningAt = Number.NEGATIVE_INFINITY
@@ -49,6 +99,8 @@ export const createPerformanceDiagnostics = ({
     const lagMs = Math.max(0, at - expectedAt)
     expectedAt = at + sampleMs
     samples = [...samples.filter((item) => at - item.at < 60_000).slice(-59), { at, lagMs }]
+    const stageTimings = stages.snapshot()
+    stages.reset()
     if (lagMs < lagThresholdMs || at - lastLagWarningAt < cooldownMs) return
 
     lastLagWarningAt = at
@@ -59,6 +111,7 @@ export const createPerformanceDiagnostics = ({
       data: {
         eventLoop: getSnapshot(),
         ...getContext(),
+        stages: stageTimings,
         inFlight: getSlowestRequests(trackers, at),
       },
     }))
@@ -109,7 +162,7 @@ export const createPerformanceDiagnostics = ({
     })
   }
 
-  return { getSnapshot, observeFetch, stop }
+  return { getSnapshot, observeFetch, runStage: stages.run, stop }
 }
 
 const getEventLoopStats = (samples: Array<{ at: number; lagMs: number }>, at: number): EventLoopStats => {

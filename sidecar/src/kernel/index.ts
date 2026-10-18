@@ -24,7 +24,7 @@ import { createHostClient } from "./host-client"
 import { newId } from "./ids"
 import { createLogger } from "./log"
 import { createAppPaths } from "./paths"
-import { createPerformanceDiagnostics } from "./performance"
+import { createPerformanceDiagnostics, createPerformanceStageTracker, type PerformanceStageRunner } from "./performance"
 import { createRedactor } from "./redact"
 import { createRouteRegistry } from "./routes"
 import { createServices } from "./services"
@@ -44,6 +44,7 @@ export type WebMode = {
 
 export type KernelRuntime = {
   kernel: Kernel
+  runStage: PerformanceStageRunner
   handshake: SidecarHandshake
   stop: () => void
   emitHostNotification: (notification: HostNotification) => void
@@ -161,6 +162,7 @@ export const createKernel = ({ appData, web }: { appData?: string; web?: WebMode
   const log = createLogger({ paths, redact: redactor.redact })
   const database = openDatabase({ filename: paths.db })
   const services = createServices()
+  const stageTracker = createPerformanceStageTracker()
   const tools = createToolRegistry()
   const recentErrors: Array<{ code: string; at: number }> = []
   services.provide("diagnostics.errors", () =>
@@ -170,7 +172,7 @@ export const createKernel = ({ appData, web }: { appData?: string; web?: WebMode
     recentErrors.push({ code, at: Date.now() })
     if (recentErrors.length > 500) recentErrors.shift()
   })
-  const bus = createEventBus(database)
+  const bus = createEventBus(database, stageTracker.run)
   const notifications = new Set<(notification: HostNotification) => void>()
   const socketHost = createHostClient({
     socketPath: process.env.TOURI_HOST_SOCK ?? join(paths.runDir, "host.sock"),
@@ -238,6 +240,7 @@ export const createKernel = ({ appData, web }: { appData?: string; web?: WebMode
   const sseRequests = new Set<AbortController>()
   const diagnostics = createPerformanceDiagnostics({
     log,
+    stageTracker,
     getContext: () => ({
       activeRuns: (
         database.query("SELECT count(*) AS count FROM runs WHERE status IN ('starting', 'running')").get() as {
@@ -504,9 +507,13 @@ export const createKernel = ({ appData, web }: { appData?: string; web?: WebMode
     },
   })
 
-  const stopHistoryBackfill = startHistoryBackfill(database, () => {
-    log({ level: "error", module: "store", msg: "Atualização do histórico adiada; será retomada automaticamente" })
-  })
+  const stopHistoryBackfill = startHistoryBackfill(
+    database,
+    () => {
+      log({ level: "error", module: "store", msg: "Atualização do histórico adiada; será retomada automaticamente" })
+    },
+    stageTracker.run,
+  )
 
   const kernel: Kernel = {
     paths,
@@ -545,6 +552,7 @@ export const createKernel = ({ appData, web }: { appData?: string; web?: WebMode
       ),
     onError: () =>
       kernel.log({ level: "error", module: "store", msg: "Compactação adiada; será retomada automaticamente" }),
+    runStage: stageTracker.run,
   })
   services.provide("storage.maintenance", storageMaintenance)
 
@@ -576,6 +584,7 @@ export const createKernel = ({ appData, web }: { appData?: string; web?: WebMode
 
   return {
     kernel,
+    runStage: stageTracker.run,
     handshake: {
       type: "touri-sidecar-ready",
       port: server.port ?? 0,

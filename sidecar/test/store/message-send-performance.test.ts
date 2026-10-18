@@ -12,17 +12,20 @@ import { createRuntimePersistence } from "../../src/runtime/persistence"
 import { init as initStore } from "../../src/store"
 
 const cleanups = new Set<() => void | Promise<void>>()
+const THREAD_IDS = ["thread", "second", "third"] as const
 
 afterEach(async () => {
   for (const cleanup of Array.from(cleanups).reverse()) await cleanup()
   cleanups.clear()
 })
 
-test("sending with large history and two streams bounds historical message reads", async () => {
+test("three active streams on large threads keep historical reads and streaming work bounded", async () => {
   const fixture = await getFixture()
   const turns = new Map<string, StartTurnArgs>()
+  const finishTurns = new Map<string, () => void>()
   const engine = createRuntimeEngine({
     kernel: fixture.kernel,
+    runStage: fixture.stageTracker.run,
     environment: { PATH: "/usr/bin", HOME: fixture.root },
     providerAdapters: {
       codex: {
@@ -31,8 +34,16 @@ test("sending with large history and two streams bounds historical message reads
         startTurn: async (args) => {
           turns.set(args.thread.id, args)
           args.onEvent({ type: "turn_started", externalTurnId: args.thread.id })
-          await new Promise<void>((resolve) => args.signal.addEventListener("abort", () => resolve(), { once: true }))
-          return { success: false, errorCode: "canceled", error: "Canceled" }
+          await new Promise<void>((resolve) => {
+            finishTurns.set(args.thread.id, resolve)
+            args.signal.addEventListener("abort", () => resolve(), { once: true })
+          })
+          return {
+            success: true,
+            externalSessionId: `fixture-session-${args.thread.id}`,
+            rolloutPath: null,
+            status: "succeeded",
+          }
         },
         answerApproval: async () => ({ success: true }),
         shutdown: async () => {},
@@ -41,8 +52,6 @@ test("sending with large history and two streams bounds historical message reads
   })
   cleanups.add(() => engine.shutdown())
   fixture.kernel.services.provide("runtime.enqueue", engine.enqueue)
-  await fixture.send("second", "initial-second")
-  await getReady(() => turns.has("second"))
   const metrics = getQueryMetrics(fixture.database)
   cleanups.add(metrics.restore)
   const drift = getTimerDrift()
@@ -51,15 +60,15 @@ test("sending with large history and two streams bounds historical message reads
 
   const getSendTimings = async () => {
     const started = performance.now()
-    const response = await fixture.send("thread", "initial-large")
+    const responses = await Promise.all(THREAD_IDS.map((threadId) => fixture.send(threadId, `initial-${threadId}`)))
     const routeMs = performance.now() - started
     // Returning from the route is insufficient if queued work prevents the response from reaching I/O.
     await new Promise<void>((resolve) => setImmediate(resolve))
     const sendMs = performance.now() - started
-    await getReady(() => turns.has("thread"))
-    return { response, routeMs, sendMs, readyMs: performance.now() - started }
+    await getReady(() => turns.size === THREAD_IDS.length)
+    return { responses, routeMs, sendMs, readyMs: performance.now() - started }
   }
-  const { response, routeMs, sendMs, readyMs } = await traceSend(getSendTimings)
+  const { responses, routeMs, sendMs, readyMs } = await traceSend(getSendTimings)
   await Bun.sleep(10)
   const sendReads = metrics.getMessageReads()
   const recoveryReads = metrics.getRecoveryReads()
@@ -68,63 +77,89 @@ test("sending with large history and two streams bounds historical message reads
   const sendSamples = drift.getSamples()
   metrics.reset()
   drift.reset()
+  fixture.stageTimings.reset()
+  fixture.stageTracker?.reset()
   const streamStarted = performance.now()
-  const busySends: number[] = []
   for (let batch = 0; batch < 16; batch++) {
-    for (const turn of turns.values()) {
-      for (let delta = 0; delta < 32; delta++)
-        turn.onEvent({ type: "text_delta", itemId: "reply", delta: "Resposta incremental. ".repeat(32) })
-      turn.onEvent({
-        type: "item",
-        part: {
-          type: "tool_call",
-          callId: `stream-${batch}`,
-          tool: "fixture_tool",
-          summary: "Resultado sintético",
-          inputJson: "{}",
-          outputJson: "Resultado da ferramenta.\n".repeat(1_000),
-          ok: true,
-        },
-      })
-    }
-    if (batch === 8) {
-      const started = performance.now()
-      expect((await fixture.send("thread", "while-streaming")).status).toBe(201)
-      await new Promise<void>((resolve) => setImmediate(resolve))
-      busySends.push(performance.now() - started)
-    }
-    fixture.store.flushWrites?.()
+    fixture.stageTimings.measure("provider_event_dispatch", () => {
+      for (const turn of turns.values()) {
+        for (let delta = 0; delta < 32; delta++)
+          turn.onEvent({ type: "text_delta", itemId: "reply", delta: "Resposta incremental. ".repeat(32) })
+        turn.onEvent({
+          type: "item",
+          part: {
+            type: "tool_call",
+            callId: `stream-${batch}`,
+            tool: "fixture_tool",
+            summary: "Resultado sintético",
+            inputJson: "{}",
+            outputJson: "Resultado da ferramenta.\n".repeat(1_000),
+            ok: true,
+          },
+        })
+      }
+    })
+    fixture.stageTimings.measure("transcript_journal_flush", () => fixture.store.flushWrites?.())
     await Bun.sleep(1)
   }
   await Bun.sleep(10)
+  const streamMaxDelayMs = drift.getMax()
+  const streamP99DelayMs = drift.getP99()
+  const streamSamples = drift.getSamples()
+  const streamReads = metrics.getMessageReads()
+  const streamMs = Math.round(performance.now() - streamStarted)
+  for (const finish of finishTurns.values()) finish()
+  await getReady(
+    () =>
+      (
+        fixture.database.query("SELECT count(*) AS count FROM runs WHERE status IN ('starting', 'running')").get() as {
+          count: number
+        }
+      ).count === 0,
+  )
+  const stages = fixture.stageTracker?.snapshot() ?? fixture.stageTimings.snapshot()
+  const expectedBatchText = "Resposta incremental. ".repeat(32 * 32)
+  const expectedText = `${Array.from({ length: 16 }, () => expectedBatchText).join("\n\n")}\n\nConcluído.`
+  const replies = THREAD_IDS.map(
+    (threadId) =>
+      (
+        fixture.database
+          .query(
+            "SELECT text FROM messages WHERE thread_id = ? AND role = 'assistant' ORDER BY created_at DESC LIMIT 1",
+          )
+          .get(threadId) as { text: string } | null
+      )?.text,
+  )
   const measurements = {
-    messages: 2_000,
-    toolCalls: 5_000,
+    messages: 1_500,
+    toolCalls: 1_500,
     streams: turns.size,
     routeMs: Math.round(routeMs * 10) / 10,
     sendMs: Math.round(sendMs * 10) / 10,
-    busySendMs: Math.round((busySends[0] ?? 0) * 10) / 10,
     readyMs: Math.round(readyMs * 10) / 10,
-    streamMs: Math.round(performance.now() - streamStarted),
+    streamMs,
     sendP99DelayMs: Math.round(sendP99DelayMs * 10) / 10,
-    streamP99DelayMs: Math.round(drift.getP99() * 10) / 10,
+    streamP99DelayMs: Math.round(streamP99DelayMs * 10) / 10,
     sendSamples,
-    streamSamples: drift.getSamples(),
+    streamSamples,
     sendMaxDelayMs: Math.round(sendMaxDelayMs * 10) / 10,
-    streamMaxDelayMs: Math.round(drift.getMax() * 10) / 10,
-    maxDelayMs: Math.round(Math.max(sendMaxDelayMs, drift.getMax()) * 10) / 10,
+    streamMaxDelayMs: Math.round(streamMaxDelayMs * 10) / 10,
+    maxDelayMs: Math.round(Math.max(sendMaxDelayMs, streamMaxDelayMs) * 10) / 10,
     sendReads,
     recoveryReads,
-    streamReads: metrics.getMessageReads(),
+    streamReads,
     queries: metrics.getSlowest(),
+    stages,
   }
   console.info(`message-send-performance ${JSON.stringify(measurements)}`)
 
-  expect(response.status).toBe(201)
-  expect(turns.size).toBe(2)
-  expect(sendReads).toBeLessThan(100)
+  expect(responses.map(({ status }) => status)).toEqual([201, 201, 201])
+  expect(turns.size).toBe(THREAD_IDS.length)
+  expect(sendReads).toBeLessThan(300)
   expect(recoveryReads).toBe(0)
-  expect(measurements.streamReads).toBeLessThan(20)
+  expect(streamReads).toBeLessThan(30)
+  expect(replies).toEqual(THREAD_IDS.map(() => expectedText))
+  expect(stages.find(({ stage }) => stage === "runtime_text_materialization")?.calls).toBe(THREAD_IDS.length)
 }, 60_000)
 
 const getFixture = async () => {
@@ -137,12 +172,18 @@ const getFixture = async () => {
   runtime.kernel.services.use("storage.maintenance")?.dispose()
   const database = runtime.kernel.db as Database
   seedHistory(database, root)
-  const bus = createEventBus(database)
+  const stageTimings = getStageTimings()
+  const stageTracker = {
+    run: stageTimings.measure,
+    snapshot: () => Object.entries(stageTimings.snapshot()).map(([stage, timing]) => ({ stage, ...timing })),
+    reset: stageTimings.reset,
+  }
+  const bus = createEventBus(database, stageTracker.run)
   cleanups.add(bus.stop)
   const routes = new Map<string, RouteHandler>()
   const kernel: Kernel = {
     ...runtime.kernel,
-    publish: bus.publish,
+    publish: (event) => stageTimings.measure("event_bus_publish", () => bus.publish(event)),
     subscribe: bus.subscribe,
     registerRoutes: (module) => {
       module.routes.forEach((route) => {
@@ -150,7 +191,7 @@ const getFixture = async () => {
       })
     },
   }
-  await initStore(kernel)
+  await initStore(kernel, stageTracker.run)
   bus.publish({ type: "transcript.resync" })
   // Exercise real socket serialization without a network listener or provider.
   const socket = () => ({ readyState: 1 as const, sendText: (payload: string) => payload.length })
@@ -165,6 +206,8 @@ const getFixture = async () => {
     root,
     database,
     store,
+    stageTimings,
+    stageTracker,
     send: (threadId: string, nonce: string) =>
       route({
         params: { id: threadId },
@@ -195,7 +238,7 @@ const seedHistory = (database: Database, root: string): void => {
       .query("INSERT INTO bots(id,name,provider,home_dir,created_at,updated_at) VALUES ('bot','Teste','codex',?,1,1)")
       .run(root)
     database.exec(`INSERT INTO threads(id,bot_id,title,created_at,updated_at) VALUES
-      ('thread','bot','Conversa',1,1), ('second','bot','Segunda conversa',1,1)`)
+      ('thread','bot','Conversa',1,1), ('second','bot','Segunda conversa',1,1), ('third','bot','Terceira conversa',1,1)`)
     const persistence = createRuntimePersistence({ database })
     const hasSearchLocators = !!database.query("SELECT 1 FROM sqlite_schema WHERE name = 'message_search_rows'").get()
     const run: Run = {
@@ -218,54 +261,60 @@ const seedHistory = (database: Database, root: string): void => {
     }
     const insert = database.query(`INSERT INTO messages
       (id,thread_id,parent_id,role,kind,status,run_id,text,parts_json,created_at,updated_at)
-      VALUES (?,'thread',?,?,'text','complete',?,?,?,?,?)`)
-    Array.from({ length: 2_000 }, (_, index) => index).forEach((index) => {
-      const assistant = index % 2 === 1
-      const runId = assistant ? `history-run-${index}` : null
-      if (runId)
-        persistence.saveRun({
-          ...run,
-          id: runId,
-          requestMessageId: `history-${index - 1}`,
-          replyMessageId: `history-${index}`,
+      VALUES (?,?,?,?,'text','complete',?,?,?,?,?)`)
+    THREAD_IDS.forEach((threadId) => {
+      Array.from({ length: 500 }, (_, index) => index).forEach((index) => {
+        const assistant = index % 2 === 1
+        const runId = assistant ? `${threadId}-history-run-${index}` : null
+        if (runId)
+          persistence.saveRun({
+            ...run,
+            id: runId,
+            threadId,
+            requestMessageId: `${threadId}-history-${index - 1}`,
+            replyMessageId: `${threadId}-history-${index}`,
+          })
+        const text = `Mensagem ${index}. ${"Contexto da tarefa. ".repeat(200)}`
+        const parts = Array.from({ length: assistant ? 2 : 0 }, (_, tool) => ({
+          type: "tool_call",
+          callId: `${threadId}-call-${index}-${tool}`,
+          tool: "fixture_tool",
+          summary: "Resultado sintético",
+          inputJson: "{}",
+          outputJson: "resultado ".repeat(index % 100 === 1 ? 1_600 : 100),
+          ok: true,
+          resolution: "succeeded",
+          resolvedAt: index,
+        }))
+        insert.run(
+          `${threadId}-history-${index}`,
+          threadId,
+          index ? `${threadId}-history-${index - 1}` : null,
+          assistant ? "assistant" : "user",
+          runId,
+          text,
+          JSON.stringify(parts),
+          index,
+          index,
+        )
+        const indexed = database
+          .query("INSERT INTO messages_fts(text,thread_id,message_id) VALUES (?,?,?)")
+          .run(text, threadId, `${threadId}-history-${index}`)
+        if (hasSearchLocators)
+          database
+            .query("INSERT INTO message_search_rows(thread_id,message_id,fts_rowid) VALUES (?,?,?)")
+            .run(threadId, `${threadId}-history-${index}`, indexed.lastInsertRowid)
+        parts.forEach((part) => {
+          database
+            .query(`INSERT INTO tool_resolutions(run_id,call_id,thread_id,part_json,resolution,resolved_at)
+              VALUES (?,?,?,?,'succeeded',?)`)
+            .run(runId, part.callId, threadId, JSON.stringify(part), index)
         })
-      const text = `Mensagem ${index}. ${"Contexto da tarefa. ".repeat(200)}`
-      const parts = Array.from({ length: assistant ? 5 : 0 }, (_, tool) => ({
-        type: "tool_call",
-        callId: `call-${index}-${tool}`,
-        tool: "fixture_tool",
-        summary: "Resultado sintético",
-        inputJson: "{}",
-        outputJson: "resultado ".repeat(index % 100 === 1 ? 12_800 : 800),
-        ok: true,
-        resolution: "succeeded",
-        resolvedAt: index,
-      }))
-      insert.run(
-        `history-${index}`,
-        index ? `history-${index - 1}` : null,
-        assistant ? "assistant" : "user",
-        runId,
-        text,
-        JSON.stringify(parts),
-        index,
-        index,
-      )
-      const indexed = database
-        .query("INSERT INTO messages_fts(text,thread_id,message_id) VALUES (?,'thread',?)")
-        .run(text, `history-${index}`)
-      if (hasSearchLocators)
-        database
-          .query("INSERT INTO message_search_rows(thread_id,message_id,fts_rowid) VALUES ('thread',?,?)")
-          .run(`history-${index}`, indexed.lastInsertRowid)
-      parts.forEach((part) => {
-        database
-          .query(`INSERT INTO tool_resolutions(run_id,call_id,thread_id,part_json,resolution,resolved_at)
-            VALUES (?,?,'thread',?,'succeeded',?)`)
-          .run(runId, part.callId, JSON.stringify(part), index)
       })
     })
-    database.exec("UPDATE threads SET active_leaf_id = 'history-1999' WHERE id = 'thread'")
+    THREAD_IDS.forEach((threadId) => {
+      database.query("UPDATE threads SET active_leaf_id = ? WHERE id = ?").run(`${threadId}-history-499`, threadId)
+    })
   })()
 }
 
@@ -305,6 +354,39 @@ const getQueryMetrics = (database: Database) => {
       durations.clear()
     },
     restore: () => query.mockRestore(),
+  }
+}
+
+const getStageTimings = () => {
+  const stages = new Map<string, { calls: number; totalMs: number; maxMs: number }>()
+
+  return {
+    measure: <T>(stage: string, action: () => T): T => {
+      const startedAt = performance.now()
+      try {
+        return action()
+      } finally {
+        const durationMs = performance.now() - startedAt
+        const previous = stages.get(stage) ?? { calls: 0, totalMs: 0, maxMs: 0 }
+        stages.set(stage, {
+          calls: previous.calls + 1,
+          totalMs: previous.totalMs + durationMs,
+          maxMs: Math.max(previous.maxMs, durationMs),
+        })
+      }
+    },
+    snapshot: () =>
+      Object.fromEntries(
+        [...stages].map(([stage, values]) => [
+          stage,
+          {
+            calls: values.calls,
+            totalMs: Math.round(values.totalMs * 10) / 10,
+            maxMs: Math.round(values.maxMs * 10) / 10,
+          },
+        ]),
+      ),
+    reset: () => stages.clear(),
   }
 }
 

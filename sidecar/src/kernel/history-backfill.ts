@@ -4,6 +4,7 @@ import { TRANSCRIPT_RETENTION } from "./transcript-storage"
 
 type Progress = NonNullable<ApiRoutes["GET /health"]["res"]["historyMigration"]>
 type ThreadProgress = { threadId: string; done: number; total: number }
+type StageRunner = <Value>(stage: string, action: () => Value) => Value
 const prefix = "transcript.backfill.7.thread."
 
 // Reserve each thread's historical sequence range before allowing live writers.
@@ -165,13 +166,19 @@ export const backfillHistoryBatch = (database: Database, limit = 500): Progress 
   return historyMigrationStatus(database)
 }
 
-export const startHistoryBackfill = (database: Database, onError: (error: unknown) => void): (() => void) => {
+export const startHistoryBackfill = (
+  database: Database,
+  onError: (error: unknown) => void,
+  runStage?: StageRunner,
+): (() => void) => {
   let stopped = false
   let timer: ReturnType<typeof setTimeout> | undefined
   const step = (): void => {
     if (stopped) return
     try {
-      const progress = backfillHistoryBatch(database)
+      const progress = runStage
+        ? runStage("history_backfill_batch", () => backfillHistoryBatch(database))
+        : backfillHistoryBatch(database)
       if (progress.running) timer = setTimeout(step, 10)
     } catch (error) {
       onError(error)
