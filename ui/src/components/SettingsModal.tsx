@@ -320,12 +320,21 @@ export const SettingsModal = ({
               />
             </label>
             <NotificationDeliverySettings enabled={native} />
-            <NotificationPreferencesSettings
-              value={notificationPreferences}
-              onChange={setNotificationPreferences}
-              api={api}
-            />
           </SettingsGroup>
+          <SettingsDisclosure
+            title={t("Escolher avisos e horário silencioso")}
+            description={t("Filtre por bot e tipo, incluindo resultados concluídos.")}
+          >
+            {(open) =>
+              open && (
+                <NotificationPreferencesSettings
+                  value={notificationPreferences}
+                  onChange={setNotificationPreferences}
+                  api={api}
+                />
+              )
+            }
+          </SettingsDisclosure>
         </SettingsPane>
         <SettingsPane {...pane("diagnostics")}>
           <SettingsDisclosure

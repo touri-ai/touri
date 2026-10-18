@@ -13,6 +13,7 @@ for (const viewport of [
     await page.getByRole("button", { name: /Você Local/ }).click()
     const dialog = page.getByRole("dialog", { name: "Configurações", exact: true })
     await dialog.getByRole("tab", { name: "Notificações", exact: true }).click()
+    await dialog.getByText("Escolher avisos e horário silencioso", { exact: true }).click()
 
     await expect(dialog).toContainText("Com a página fechada, não há som nem avisos em segundo plano.")
     await dialog.getByLabel("Avisar sobre", { exact: true }).selectOption("all")
@@ -27,6 +28,7 @@ for (const viewport of [
     if (viewport.width < 500) await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
     await page.getByRole("button", { name: /Você Local/ }).click()
     await dialog.getByRole("tab", { name: "Notificações", exact: true }).click()
+    await dialog.getByText("Escolher avisos e horário silencioso", { exact: true }).click()
     await expect(dialog.getByLabel("Avisar sobre", { exact: true })).toHaveValue("all")
     await expect(dialog.getByLabel("Aprovação", { exact: true })).toHaveValue("off")
     await dialog.getByLabel("Aplicar a", { exact: true }).selectOption("bot-mark")

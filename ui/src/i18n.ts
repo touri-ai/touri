@@ -3,6 +3,8 @@ import { userFacingError } from "./errors"
 /** All UI copy lives here. pt-BR is the default; English is available for a future locale picker. */
 export type Locale = "pt-BR" | "en"
 export const ptBR = {
+  "Escolher avisos e horário silencioso": "Escolher avisos e horário silencioso",
+  "Filtre por bot e tipo, incluindo resultados concluídos.": "Filtre por bot e tipo, incluindo resultados concluídos.",
   "Save a result notification for the user. Alerts follow their type, bot and quiet-hour preferences. Limited to one notification per bot every 30 seconds; a rate-limit error means no notification was saved.":
     "Guarde um aviso de resultado para o usuário. Os alertas seguem as preferências de tipo, bot e horário silencioso. Limite de um aviso por bot a cada 30 segundos; um erro de limite significa que nenhum aviso foi guardado.",
   "Usar padrão herda os filtros globais e a preferência atual do bot.":
@@ -2203,6 +2205,8 @@ export const ptBR = {
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  "Escolher avisos e horário silencioso": "Choose alerts and quiet hours",
+  "Filtre por bot e tipo, incluindo resultados concluídos.": "Filter by bot and type, including completed results.",
   "Save a result notification for the user. Alerts follow their type, bot and quiet-hour preferences. Limited to one notification per bot every 30 seconds; a rate-limit error means no notification was saved.":
     "Save a result notification for the user. Alerts follow their type, bot and quiet-hour preferences. Limited to one notification per bot every 30 seconds; a rate-limit error means no notification was saved.",
   "Usar padrão herda os filtros globais e a preferência atual do bot.":

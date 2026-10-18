@@ -20,6 +20,7 @@ it("saves global, per-bot, per-type and quiet-hour preferences from web settings
       api={api}
     />,
   )
+  fireEvent.click(screen.getByText("Escolher avisos e horário silencioso"))
   await screen.findByRole("option", { name: "mark" })
 
   fireEvent.change(screen.getByLabelText("Avisar sobre"), { target: { value: "all" } })
