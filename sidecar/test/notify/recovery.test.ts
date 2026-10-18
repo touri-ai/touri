@@ -21,13 +21,14 @@ afterEach(() => {
 const getFixture = async () => {
   const root = mkdtempSync(join(tmpdir(), "touri-recovery-center-"))
   const runtime = createKernel({ appData: root })
+  const database = runtime.kernel.db as Database
+  database.query("INSERT INTO settings (key, value_json, updated_at) VALUES ('nativeNotifications', 'false', 0)").run()
   cleanups.add(() => {
     runtime.stop()
     rmSync(root, { recursive: true, force: true })
   })
   await initStore(runtime.kernel)
   await initNotify(runtime.kernel)
-  const database = runtime.kernel.db as Database
   database.exec(`INSERT INTO bots(id,name,provider,home_dir,created_at,updated_at) VALUES
     ('bot-a','Equipe A','codex','/tmp',1,1), ('bot-b','Equipe B','codex','/tmp',1,1);
     INSERT INTO threads(id,bot_id,title,created_at,updated_at) VALUES
