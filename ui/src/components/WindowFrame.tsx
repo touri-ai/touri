@@ -3,7 +3,8 @@ import { isNativeDesktop } from "../features/server/serverMode"
 import "./window-frame.css"
 
 export const WindowFrame = ({ children }: { children: ReactNode }) => {
-  const overlay = isNativeDesktop() && /Macintosh|Mac OS X/i.test(navigator.userAgent)
+  const computerWindow = new URLSearchParams(window.location.search).has("computer")
+  const overlay = isNativeDesktop() && /Macintosh|Mac OS X/i.test(navigator.userAgent) && !computerWindow
 
   return (
     <div className={`window-frame${overlay ? " window-frame-overlay" : ""}`}>

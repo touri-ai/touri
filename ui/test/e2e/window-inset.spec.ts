@@ -7,8 +7,12 @@ const sizes = [
 ]
 const userAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15"
 
-for (const theme of ["light", "dark"]) {
-  for (const viewport of sizes) {
+test.use({ userAgent })
+
+const themes = ["light", "dark"]
+
+themes.forEach((theme) => {
+  sizes.forEach((viewport) => {
     test.describe(`window inset · ${theme} · ${viewport.width}`, () => {
       test.use({ viewport, userAgent, reducedMotion: "reduce" })
 
@@ -67,8 +71,8 @@ for (const theme of ["light", "dark"]) {
         await checkBelowTitlebar(page.locator(".onboarding-card"))
       })
     })
-  }
-}
+  })
+})
 
 test("window inset does not reserve native chrome in the browser", async ({ page }) => {
   await page.goto("/")
@@ -76,6 +80,14 @@ test("window inset does not reserve native chrome in the browser", async ({ page
 
   await expect(page.locator(".window-titlebar")).toHaveCount(0)
   expect((await page.locator(".app-shell").boundingBox())?.y).toBe(0)
+})
+
+test("window inset leaves decorated computer popups to the system titlebar", async ({ page }) => {
+  await page.goto("/test/e2e/window-inset-harness.html?computer=bot-mark")
+  await expect(page.locator(".computer-window")).toBeVisible()
+
+  await expect(page.locator(".window-titlebar")).toHaveCount(0)
+  expect((await page.locator(".computer-window").boundingBox())?.y).toBe(0)
 })
 
 const checkTitlebar = async (page: Page) => {
