@@ -34,6 +34,7 @@ import streamWriterSql from "../../src/kernel/migrations/0023.sql" with { type: 
 import groupRoutinesSql from "../../src/kernel/migrations/0024.sql" with { type: "text" }
 import goalsSql from "../../src/kernel/migrations/0025.sql" with { type: "text" }
 import recoveryCenterSql from "../../src/kernel/migrations/0026.sql" with { type: "text" }
+import messageSearchSql from "../../src/kernel/migrations/0027.sql" with { type: "text" }
 import { TRANSCRIPT_RETENTION } from "../../src/kernel/transcript-storage"
 import { init as initStore } from "../../src/store"
 
@@ -216,6 +217,7 @@ test("interrupted batches resume idempotently and match the shipped synchronous 
     synchronous.exec(groupRoutinesSql)
     synchronous.exec(goalsSql)
     synchronous.exec(recoveryCenterSql)
+    synchronous.exec(messageSearchSql)
     database = openDatabase({ filename })
     expect(database.query("SELECT type, name, sql FROM sqlite_master ORDER BY name").all()).toEqual(
       synchronous.query("SELECT type, name, sql FROM sqlite_master ORDER BY name").all(),

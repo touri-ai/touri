@@ -130,7 +130,8 @@ describe("P1-1 native preview ownership", () => {
     await waitFor(() =>
       expect(vi.mocked(invoke).mock.calls.filter(([command]) => command === "preview_show")).toHaveLength(5),
     )
-    fireEvent.click(screen.getByRole("button", { name: /^Tarefas interrompidas/ }))
+    fireEvent.click(screen.getByRole("button", { name: "Notificações", exact: true }))
+    fireEvent.click(screen.getByRole("button", { name: "Tarefas interrompidas", exact: true }))
     await screen.findByRole("dialog", { name: "Tarefas interrompidas", exact: true })
     await waitFor(() =>
       expect(vi.mocked(invoke).mock.calls.filter(([command]) => command === "preview_hide")).toHaveLength(5),

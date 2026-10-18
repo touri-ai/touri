@@ -406,6 +406,8 @@ test.each(["SIGTERM", "SIGTERM with stale parent", "shell crash", "orphan takeov
   "desktop %s preserves a recoverable app_restart and partial transcript",
   async (mode) => {
     const f = await fixture()
+    // Only the launched sidecar owns maintenance; the seed fixture observes its database.
+    f.runtime.kernel.services.use("storage.maintenance")?.dispose()
     const direct = mode.startsWith("SIGTERM")
     const environment = (inherited: NodeJS.ProcessEnv = process.env) => ({
       ...inherited,

@@ -1,6 +1,7 @@
 /** Account-free compiled-binary onboarding, shared by Linux and Windows CI. */
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
 import { join, resolve } from "node:path"
+import { removeSmokeDirectory } from "./smoke-cleanup"
 
 const windows = process.platform === "win32"
 const target = windows
@@ -124,5 +125,5 @@ try {
     console.error(`Compiled sidecar shutdown exited with code ${child.exitCode}`)
     process.exitCode = 1
   }
-  rmSync(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 })
+  await removeSmokeDirectory(root)
 }

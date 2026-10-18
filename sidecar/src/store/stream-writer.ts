@@ -58,6 +58,12 @@ export const createStreamWriter = ({
   const outside = new WeakSet<StreamEvent>()
   let unsettled: Array<{ event: StreamEvent; raw: string | null; seq: number }> = []
   const keyOf = (threadId: string, messageId: string): string => JSON.stringify([threadId, messageId])
+  const getSnapshotSeq = (threadId: string, messageId: string): number | undefined =>
+    (
+      database.query("SELECT updated_seq FROM messages WHERE thread_id = ? AND id = ?").get(threadId, messageId) as {
+        updated_seq: number
+      } | null
+    )?.updated_seq
 
   const tailSeq = (threadId: string, messageId: string): number =>
     (
@@ -124,10 +130,10 @@ export const createStreamWriter = ({
           const key = keyOf(event.threadId, event.messageId)
           if (rebased.has(key)) continue
           const cached = projections.get(key)
-          const head = getMessage({ threadId: event.threadId, messageId: event.messageId })
+          const headSeq = getSnapshotSeq(event.threadId, event.messageId)
           if (
             !cached ||
-            head?.updatedSeq !== cached.baseSeq ||
+            headSeq !== cached.baseSeq ||
             tailSeq(event.threadId, event.messageId) > (cached.message.updatedSeq ?? 0)
           ) {
             materializeTranscript(database)
@@ -235,7 +241,7 @@ export const createStreamWriter = ({
           if (rebasedMessage)
             projections.set(key, {
               message: rebasedMessage,
-              baseSeq: getMessage({ threadId: event.threadId, messageId: event.messageId })?.updatedSeq ?? 0,
+              baseSeq: getSnapshotSeq(event.threadId, event.messageId) ?? 0,
               lastEvent: null,
             })
           const projection = projections.get(key)

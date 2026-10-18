@@ -394,6 +394,29 @@ it.each(["failed", "succeeded"] as const)("clears failure attention during a ret
   }
 })
 
+it("shows interrupted tasks only while pending and leaves the count on the notification bell", () => {
+  const { bots, threads } = fixture()
+  const api = createMockApi()
+  const failure = api.notify({
+    kind: "turn-failed",
+    botId: "bot-alfa",
+    threadId: "thread-alfa",
+    title: "Tarefa interrompida",
+    body: "A resposta foi interrompida.",
+  })
+  const view = renderSidebar({ bots, threads, onRecovery: vi.fn(), recoveryCount: 0 })
+
+  expect(screen.queryByRole("button", { name: /Tarefas interrompidas/ })).toBeNull()
+
+  view.update({ recoveryCount: 1, notifications: [failure] })
+
+  const recovery = screen.getByRole("button", { name: "Tarefas interrompidas", exact: true })
+  expect(recovery.querySelector("svg")).not.toBeNull()
+  expect(recovery).not.toHaveTextContent(/\d/)
+  expect(screen.getByRole("button", { name: "Notificações, 1 precisa de atenção" })).toBeVisible()
+  expect(screen.getAllByText("1", { selector: ".notification-badge" })).toHaveLength(1)
+})
+
 it("lets the bell open an approval that arrived before its notification", () => {
   const { bots, threads, messageBase } = fixture()
   const onReviewApproval = vi.fn()

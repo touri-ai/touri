@@ -88,7 +88,7 @@ const fixture = async () => {
   vi.spyOn(HTMLElement.prototype, "scrollIntoView").mockImplementation(reveal)
   render(<App kernel={{ services: { api } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
-  // Opening this conversation reloads its durable history, as the real server does.
+  // Real events follow a durable write; opening the conversation reloads that history.
   api.getState().threads.push(thread)
   api.getState().messages.push(reply)
   act(() => {
@@ -150,7 +150,7 @@ it("a routine waits for its own pending approval, then resumes and finishes", as
   fireEvent.click(threadButton)
   await screen.findByRole("textbox", { name: "Mensagem para onb" })
   const card = document.querySelector(".run-card")
-  expect(card).toHaveTextContent("Aguardando aprovação")
+  await waitFor(() => expect(card).toHaveTextContent("Aguardando aprovação"))
   expect(card).not.toHaveTextContent("Em execução")
   expect(card?.querySelector(".tb-typing")).toBeNull()
   act(() =>

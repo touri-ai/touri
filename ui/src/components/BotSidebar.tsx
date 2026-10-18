@@ -282,13 +282,13 @@ export const Sidebar = (props: SidebarProps) => {
           onNewThread={(g) => navigate(() => props.onNewGroupThread?.(g))}
         />
       )}
-      {props.onRecovery && (
-        <button
-          type="button"
-          className="text-button sidebar-recovery"
-          onClick={() => navigate(() => props.onRecovery?.())}
-        >
-          {t("Interrupted tasks")} {props.recoveryCount ? `(${props.recoveryCount})` : ""}
+      {props.onRecovery && (props.recoveryCount ?? 0) > 0 && (
+        <button type="button" className="sidebar-recovery" onClick={() => navigate(() => props.onRecovery?.())}>
+          <SidebarIcon>
+            <circle cx="12" cy="12" r="9" />
+            <path d="M12 7v5l3 2" />
+          </SidebarIcon>
+          <span>{t("Interrupted tasks")}</span>
         </button>
       )}
       <div className="sidebar-footer">
