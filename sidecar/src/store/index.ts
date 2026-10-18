@@ -1276,7 +1276,6 @@ export const init = async (kernel: Kernel, runStage?: PerformanceStageRunner): P
             ok: true,
             version: touriVersion,
             schemaVersion: SCHEMA_VERSION,
-            draining: kernel.services.use("runtime.isDraining")?.() ?? false,
             ...getHostIdentity(),
           }),
       },
