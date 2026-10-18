@@ -533,13 +533,16 @@ export const createKernel = ({ appData, web }: { appData?: string; web?: WebMode
     database,
     appData: paths.appData,
     publishResync: () => kernel.publish({ type: "transcript.resync" }),
-    retryDeletedBrowserSessionKeys: () =>
-      retryDeletedBrowserSessionKeys({
-        db: database,
-        callHost: kernel.callHost,
-        log: kernel.log,
-        redact: kernel.redact,
-      }),
+    retryDeletedBrowserSessionKeys: (signal) =>
+      retryDeletedBrowserSessionKeys(
+        {
+          db: database,
+          callHost: kernel.callHost,
+          log: kernel.log,
+          redact: kernel.redact,
+        },
+        signal,
+      ),
     onError: () =>
       kernel.log({ level: "error", module: "store", msg: "Compactação adiada; será retomada automaticamente" }),
   })

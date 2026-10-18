@@ -52,7 +52,7 @@ export const deleteBotRoute = (kernel: Kernel, runtime: VmRuntime): RouteModule[
           db.query("DELETE FROM settings WHERE key = ?").run(deletedBrowserSessionKey(botId))
         } catch (error) {
           kernel.log({ level: "warn", module: "vm", msg: kernel.redact(String(error)) })
-          kernel.services.use("storage.maintenance")?.start()
+          kernel.services.use("storage.maintenance")?.scheduleSessionKeyRetry()
         }
         publishBotDeletion(kernel, botId, groups, groupIds)
         await collectDeletedBotBlobs(kernel, attachments)

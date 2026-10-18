@@ -1323,7 +1323,7 @@ export type ServiceMap = {
   'approvals.approve': (input: { approvalId: Id; decision: 'approved' | 'denied'; standing?: boolean; message?: string }) => Promise<Result<{}, 'NOT_FOUND'>>
   'approvals.settle': (input: { approvalId: Id; decision: 'denied' | 'expired' }) => void
   'doctor': { start: () => void; dispose: () => void; snapshot: (refresh?: boolean) => DoctorReport; settled: () => Promise<void> }
-  'storage.maintenance': { start: (vacuum?: boolean) => boolean; snapshot: () => StorageMaintenanceStatus; dispose: () => void }
+  'storage.maintenance': { scheduleSessionKeyRetry: () => void; start: (vacuum?: boolean) => boolean; snapshot: () => StorageMaintenanceStatus; dispose: () => void }
   'mcp.botTools': (bot: Bot) => Array<string>
 
   'cloud.settingsChanged': () => void

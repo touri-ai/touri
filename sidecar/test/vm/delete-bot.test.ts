@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite"
-import { afterEach, expect, test } from "bun:test"
+import { afterEach, expect, mock, test } from "bun:test"
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -572,6 +572,12 @@ test("a failed browser session key deletion keeps the bot deletion successful an
     if (event.type === "transcript.resync") events.add("transcript.resync")
   })
 
+  const maintenance = workspace.runtime.kernel.services.use("storage.maintenance")
+  if (!maintenance) throw new Error("Storage maintenance missing")
+  await until(() => !maintenance.snapshot().running)
+  const start = mock(maintenance.start)
+  workspace.runtime.kernel.services.provide("storage.maintenance", { ...maintenance, start })
+
   const response = await workspace.request(`/bots/${bot.id}`, { name: bot.name }, "DELETE")
   unsubscribe()
 
@@ -584,22 +590,15 @@ test("a failed browser session key deletion keeps the bot deletion successful an
     key: deletedBrowserSessionKey(bot.id),
   })
 
-  const maintenance = workspace.runtime.kernel.services.use("storage.maintenance")
-  await until(() => !maintenance?.snapshot().running)
-  expect(maintenance?.start()).toBe(true)
-  await until(() => !maintenance?.snapshot().running)
-  expect(hostState.browserKeyDeleteCalls).toBeGreaterThanOrEqual(2)
+  await until(() => hostState.browserKeyDeleteCalls >= 2)
+  expect(start).not.toHaveBeenCalled()
   expect(
     workspace.db.query("SELECT key FROM settings WHERE key = ?").get(deletedBrowserSessionKey(bot.id)),
   ).not.toBeNull()
 
   hostState.failBrowserKeyDelete = false
-  expect(maintenance?.start()).toBe(true)
-  await until(
-    () =>
-      !maintenance?.snapshot().running &&
-      !workspace.db.query("SELECT key FROM settings WHERE key = ?").get(deletedBrowserSessionKey(bot.id)),
-  )
+  maintenance.scheduleSessionKeyRetry()
+  await until(() => !workspace.db.query("SELECT key FROM settings WHERE key = ?").get(deletedBrowserSessionKey(bot.id)))
 
   expect(hostState.browserKey).toBeNull()
   expect(workspace.db.query("SELECT key FROM settings WHERE key = ?").get(deletedBrowserSessionKey(bot.id))).toBeNull()
