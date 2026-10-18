@@ -6,7 +6,7 @@ export const BotAccessSummary = ({
   machine,
   access,
   approvals,
-  anyFolderAccess,
+  anyFolderAccess = false,
   folders = [],
   host = "computer",
 }: Pick<Bot, "machine" | "access" | "approvals" | "anyFolderAccess" | "folders"> & { host?: HostKind }) => {
@@ -19,7 +19,7 @@ export const BotAccessSummary = ({
 }
 
 const getAccessBoundary = (
-  { machine, access, anyFolderAccess, folders }: Pick<Bot, "machine" | "access" | "anyFolderAccess" | "folders">,
+  { machine, access, anyFolderAccess, folders = [] }: Pick<Bot, "machine" | "access" | "anyFolderAccess" | "folders">,
   host: HostKind,
   serverMode: boolean,
 ) => {
