@@ -1317,13 +1317,17 @@ test("group routines validate membership and destination, and agents cannot move
     patch: { groupId: f.group.id, resultsThreadId: f.thread.id, enabled: true },
     fromTool: false,
   })
-  expect(moved).toMatchObject({ success: true, routine: { groupId: f.group.id, enabled: true } })
+  if (!moved.success) throw new Error(moved.error)
+  expect(moved.routine).toMatchObject({ groupId: f.group.id, enabled: true })
   const retargeted = engine.updateRoutine({
     routineId: own.routine.id,
     patch: { resultsThreadId: null },
     fromTool: false,
   })
-  expect(retargeted).toMatchObject({ success: true, routine: { enabled: false } })
+  expect(retargeted).toMatchObject({
+    success: true,
+    routine: { enabled: true, resultsThreadId: null, nextRunAt: moved.routine.nextRunAt },
+  })
 })
 
 test("a member removed from the group cannot run its group routine and leaves no stuck slot", async () => {
