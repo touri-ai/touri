@@ -172,7 +172,10 @@ type RuntimeEngine = {
     routineId: Id
     triggerSource: RoutineRun["triggerSource"]
     scheduledFor?: number
-  }) => Result<{ routineRun: RoutineRun }, "NOT_FOUND" | "INVALID_ARGS" | "THREAD_NOT_FOUND" | "BOT_PAUSED">
+  }) => Result<
+    { routineRun: RoutineRun },
+    "NOT_FOUND" | "INVALID_ARGS" | "THREAD_NOT_FOUND" | "BOT_PAUSED" | "DELEGATION_LIMIT"
+  >
   tick: (now?: number) => Promise<void>
   shutdown: () => Promise<void>
 }
@@ -2088,7 +2091,10 @@ export const createRuntimeEngine = ({
     routineId: Id
     triggerSource: RoutineRun["triggerSource"]
     scheduledFor?: number
-  }): Result<{ routineRun: RoutineRun }, "NOT_FOUND" | "INVALID_ARGS" | "THREAD_NOT_FOUND" | "BOT_PAUSED"> => {
+  }): Result<
+    { routineRun: RoutineRun },
+    "NOT_FOUND" | "INVALID_ARGS" | "THREAD_NOT_FOUND" | "BOT_PAUSED" | "DELEGATION_LIMIT"
+  > => {
     const routine = persistence.getRoutine(routineId)
     const store = kernel.services.use("store.api")
     if (!routine || !store) return { success: false, errorCode: "NOT_FOUND", error: "Routine not found" }

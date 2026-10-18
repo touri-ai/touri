@@ -1366,3 +1366,292 @@ test("restart cancels a group routine run instead of leaving it running", async 
     summary: "Interrupted because touri restarted",
   })
 })
+
+test("ask_all starts every peer before either finishes and preserves final authorship on reload", async () => {
+  const peers = Promise.withResolvers<void>()
+  const answer = Promise.withResolvers<unknown>()
+  const scenario = await fixture(async (ctx, complete) => {
+    if (ctx.botId === scenario.bots[0]?.id) {
+      answer.resolve(await scenario.runtime.askAll(ctx, { message: "Revise o plano" }))
+      complete("Resumo pronto")
+      return
+    }
+    await peers.promise
+    complete(`${scenario.store.getBot({ botId: ctx.botId })?.name}: revisão concluída`)
+  })
+  scenario.data.save({ ...scenario.input, coordinatorBotId: scenario.bots[0]?.id ?? null }, scenario.group)
+
+  const turn = scenario.send("Revise em equipe")
+  await until(() => scenario.order.length === 3)
+
+  expect(scenario.persistence.getRun(turn.id)?.status).toBe("running")
+  peers.resolve()
+  expect(await answer.promise).toMatchObject({
+    success: true,
+    structured: {
+      results: [
+        { bot: scenario.bots[1]?.id, name: "dev", success: true, structured: { answer: "dev: revisão concluída" } },
+        { bot: scenario.bots[2]?.id, name: "qa", success: true, structured: { answer: "qa: revisão concluída" } },
+      ],
+    },
+  })
+  await until(() => scenario.persistence.getRun(turn.id)?.status === "succeeded")
+  const members = scenario.runtime.listRuns(scenario.thread.id).filter((run) => run.groupTurnId === turn.id)
+  expect(members).toHaveLength(3)
+  expect(
+    members.every((run) =>
+      scenario.store
+        .activePath({ threadId: scenario.thread.id })
+        .some((message) => message.id === run.replyMessageId && message.sender?.id === run.botId),
+    ),
+  ).toBe(true)
+})
+
+test("ask_all reserves batches atomically within the six-call budget", async () => {
+  const done = Promise.withResolvers<void>()
+  const scenario = await fixture(async (ctx, complete) => {
+    if (ctx.botId !== scenario.bots[0]?.id) {
+      complete("feito")
+      return
+    }
+    expect(await scenario.runtime.askAll(ctx, { message: "" })).toMatchObject({ errorCode: "INVALID_ARGS" })
+    expect(await scenario.runtime.askBot(ctx, { bot: "dev", message: "primeira" })).toMatchObject({ success: true })
+    expect(await scenario.runtime.askAll(ctx, { message: "segunda" })).toMatchObject({ success: true })
+    expect(await scenario.runtime.askAll(ctx, { message: "terceira" })).toMatchObject({ success: true })
+    expect(await scenario.runtime.askAll(ctx, { message: "excede" })).toMatchObject({ errorCode: "DELEGATION_LIMIT" })
+    expect(await scenario.runtime.askBot(ctx, { bot: "dev", message: "sexta" })).toMatchObject({ success: true })
+    done.resolve()
+    complete("feito")
+  })
+  scenario.data.save({ ...scenario.input, coordinatorBotId: scenario.bots[0]?.id ?? null }, scenario.group)
+
+  const turn = scenario.send("Coordene")
+  await done.promise
+  await until(() => scenario.persistence.getRun(turn.id)?.status === "succeeded")
+
+  expect(
+    scenario.db.query("SELECT COUNT(*) AS count FROM group_run_links WHERE turn_id=? AND depth>0").get(turn.id),
+  ).toEqual({
+    count: 6,
+  })
+  expect(scenario.order).not.toContain(scenario.bots[3]?.id)
+})
+
+test("ask_all keeps a boundary approval pending without holding up another member and denial never starts its target", async () => {
+  const consent = Promise.withResolvers<{ success: true; behavior: "deny" }>()
+  const answer = Promise.withResolvers<unknown>()
+  const scenario = await fixture(async (ctx, complete) => {
+    if (ctx.botId === scenario.bots[0]?.id) {
+      answer.resolve(await scenario.runtime.askAll(ctx, { message: "leia o plano" }))
+      complete("Concluído")
+      return
+    }
+    const target = scenario.store.getBot({ botId: ctx.botId })
+    expect(target && delegatedBot(scenario.host.kernel, ctx.threadId, target).access).toBe("read-only")
+    complete("Revisão confirmada")
+  })
+  scenario.db
+    .query("UPDATE bots SET access='read-only' WHERE id IN (?,?)")
+    .run(scenario.bots[0]?.id ?? "", scenario.bots[2]?.id ?? "")
+  scenario.db.query("UPDATE bots SET access='full' WHERE id=?").run(scenario.bots[1]?.id ?? "")
+  scenario.data.save({ ...scenario.input, coordinatorBotId: scenario.bots[0]?.id ?? null }, scenario.group)
+  scenario.host.kernel.services.provide("approvals.present", (input) => {
+    expect(input.groupMemberId).toBe(scenario.bots[1]?.id)
+    return consent.promise
+  })
+
+  const turn = scenario.send("Coordene")
+  await until(() => scenario.order.includes(scenario.bots[2]?.id ?? ""))
+
+  expect(scenario.order).not.toContain(scenario.bots[1]?.id)
+  expect(scenario.persistence.getRun(turn.id)?.status).toBe("running")
+  consent.resolve({ success: true, behavior: "deny" })
+  expect(await answer.promise).toMatchObject({
+    structured: {
+      results: [
+        { bot: scenario.bots[1]?.id, success: false, errorCode: "DELEGATION_DENIED" },
+        { bot: scenario.bots[2]?.id, success: true },
+      ],
+    },
+  })
+  await until(() => scenario.persistence.getRun(turn.id)?.status === "succeeded")
+  expect(scenario.order).not.toContain(scenario.bots[1]?.id)
+})
+
+test("group conversation actions persist routing, broadcast past the coordinator and summarize confirmed results only", async () => {
+  const scenario = await fixture()
+  scenario.data.save({ ...scenario.input, coordinatorBotId: scenario.bots[0]?.id ?? null }, scenario.group)
+  const post = async (groupAction: "ask_all" | "summarize", clientNonce: string) => {
+    const response = await scenario.request(`/threads/${scenario.thread.id}/messages`, {
+      text: "Revise",
+      parentId: null,
+      attachmentIds: [],
+      groupAction,
+      clientNonce,
+    })
+    expect(response.status).toBe(201)
+    return (await response.json()) as { run: Run }
+  }
+
+  const broadcast = await post("ask_all", "broadcast")
+  await until(() => scenario.persistence.getRun(broadcast.run.id)?.status === "succeeded")
+  const summary = await post("summarize", "summary")
+  await until(() => scenario.persistence.getRun(summary.run.id)?.status === "succeeded")
+
+  expect(scenario.order).toEqual([...scenario.group.memberIds, scenario.bots[0]?.id ?? ""])
+  const participant = scenario.data.participant(scenario.group, scenario.thread.id, scenario.bots[0]?.id ?? "")
+  const summaryRequest = scenario.store
+    .activePath({ threadId: participant.id })
+    .filter((message) => message.role === "user")
+    .at(-1)?.text
+  expect(summaryRequest).toContain("dev respondeu")
+  expect(summaryRequest).toContain("qa respondeu")
+  const conflict = await scenario.request(`/threads/${scenario.thread.id}/messages`, {
+    text: "Revise",
+    parentId: null,
+    attachmentIds: [],
+    groupAction: "summarize",
+    clientNonce: "broadcast",
+  })
+  expect(conflict.status).toBe(409)
+  const invalid = await scenario.request(`/threads/${scenario.thread.id}/messages`, {
+    text: "Revise",
+    parentId: null,
+    attachmentIds: [],
+    groupAction: ["ask_all"],
+  })
+  expect(invalid.status).toBe(400)
+})
+
+test("ask_all cancellation stops every running peer and rejects late replies", async () => {
+  const blocked = Promise.withResolvers<void>()
+  const scenario = await fixture(async (ctx, complete) => {
+    if (ctx.botId === scenario.bots[0]?.id) {
+      await scenario.runtime.askAll(ctx, { message: "Revise" })
+      complete("Resumo")
+      return
+    }
+    await blocked.promise
+    complete("Resposta tardia")
+  })
+  scenario.data.save({ ...scenario.input, coordinatorBotId: scenario.bots[0]?.id ?? null }, scenario.group)
+
+  const turn = scenario.send("Coordene")
+  await until(() => scenario.order.length === 3)
+  scenario.runtime.cancel(turn.id)
+  await until(() => scenario.persistence.getRun(turn.id)?.status === "canceled")
+  blocked.resolve()
+
+  expect(
+    scenario.runtime
+      .listRuns(scenario.thread.id)
+      .filter((run) => run.groupTurnId === turn.id)
+      .every((run) => run.status === "canceled"),
+  ).toBe(true)
+  expect(
+    scenario.store.activePath({ threadId: scenario.thread.id }).some((message) => message.text === "Resposta tardia"),
+  ).toBe(false)
+})
+
+test("ask_all gives every peer the remaining turn deadline and cancels the entire stalled set", async () => {
+  const finish = Promise.withResolvers<void>()
+  const scenario = await fixture(async (ctx, complete) => {
+    if (ctx.botId === scenario.bots[0]?.id) {
+      await Bun.sleep(70)
+      await scenario.runtime.askAll(ctx, { message: "Revise" })
+      complete("Resumo")
+      return
+    }
+    await finish.promise
+    complete("Tarde demais")
+  }, 140)
+  scenario.data.save({ ...scenario.input, coordinatorBotId: scenario.bots[0]?.id ?? null }, scenario.group)
+
+  const turn = scenario.send("Coordene")
+  await until(() => ["failed", "canceled"].includes(scenario.persistence.getRun(turn.id)?.status ?? ""))
+
+  const children = scenario.runtime.listRuns(scenario.thread.id).filter((run) => run.groupTurnId === turn.id)
+  expect(children).toHaveLength(3)
+  expect(children.every((run) => run.status === "canceled")).toBe(true)
+  finish.resolve()
+})
+
+test("ask_all remains hidden outside groups and asks for explicit consent even for a read-only coordinator", async () => {
+  const answer = Promise.withResolvers<unknown>()
+  const cards = new Set<string>()
+  const scenario = await fixture(async (ctx, complete) => {
+    if (ctx.botId !== scenario.bots[0]?.id) {
+      complete("Revisado")
+      return
+    }
+    const caller = {
+      botId: ctx.botId,
+      threadId: ctx.threadId,
+      projectId: null,
+      cwd: scenario.root,
+      provider: scenario.bots[0]?.provider ?? "codex",
+      browserEnabled: false,
+      computerUse: false,
+    }
+    const router = createToolRouter({
+      kernel: scenario.host.kernel,
+      registrations: new Map([
+        ["ask_all", { name: "ask_all", group: "core", handler: ({ ctx, args }) => scenario.runtime.askAll(ctx, args) }],
+      ]),
+    })
+    expect(router.list({ caller }).some((tool) => tool.name === "ask_all")).toBe(true)
+    const outside = { ...caller, threadId: scenario.bots[0]?.mainThreadId ?? "private" }
+    expect(router.list({ caller: outside }).some((tool) => tool.name === "ask_all")).toBe(false)
+    answer.resolve(await router.call({ id: 1, name: "ask_all", args: { message: "leia" }, caller, signal: ctx.signal }))
+    complete("Resumo")
+  })
+  scenario.db.query("UPDATE bots SET access='read-only', approvals='never'").run()
+  scenario.data.save({ ...scenario.input, coordinatorBotId: scenario.bots[0]?.id ?? null }, scenario.group)
+  scenario.host.kernel.services.provide("approvals.present", async (input) => {
+    cards.add(input.scope.tool)
+    return { success: true, behavior: "allow" }
+  })
+
+  const turn = scenario.send("Coordene")
+  expect(await answer.promise).toMatchObject({ success: true })
+  await until(() => scenario.persistence.getRun(turn.id)?.status === "succeeded")
+
+  expect(cards.has("ask_all")).toBe(true)
+  expect(scenario.order).toEqual(scenario.group.memberIds)
+})
+
+test("a failed coordinator cancels parallel peers instead of leaving them without a stoppable turn", async () => {
+  const finish = Promise.withResolvers<void>()
+  const scenario = await fixture(async (ctx, complete) => {
+    if (ctx.botId === scenario.bots[0]?.id) {
+      await scenario.runtime.askAll(ctx, { message: "Revise" })
+      complete("Resumo")
+      return
+    }
+    await finish.promise
+    complete("Resposta tardia")
+  })
+  scenario.data.save({ ...scenario.input, coordinatorBotId: scenario.bots[0]?.id ?? null }, scenario.group)
+  const turn = scenario.send("Coordene")
+  await until(() => scenario.order.length === 3)
+  const coordinator = [...scenario.running.values()].find(({ run }) => run.botId === scenario.bots[0]?.id)?.run
+  if (!coordinator) throw new Error("Missing coordinator")
+  const failed: Run = {
+    ...coordinator,
+    status: "failed",
+    errorClass: "unknown",
+    errorMessage: "Falha simulada",
+    finishedAt: Date.now(),
+  }
+
+  scenario.persistence.saveRun(failed)
+  scenario.host.kernel.publish({ type: "run.updated", run: failed })
+  await until(() => scenario.persistence.getRun(turn.id)?.status === "failed")
+
+  const peers = scenario.runtime
+    .listRuns(scenario.thread.id)
+    .filter((run) => run.groupTurnId === turn.id && run.botId !== failed.botId)
+  expect(peers).toHaveLength(2)
+  expect(peers.every((run) => run.status === "canceled")).toBe(true)
+  finish.resolve()
+})

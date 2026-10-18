@@ -3,6 +3,28 @@ import { userFacingError } from "./errors"
 /** All UI copy lives here. pt-BR is the default; English is available for a future locale picker. */
 export type Locale = "pt-BR" | "en"
 export const ptBR = {
+  "Send the same task to all other members of this touri group in parallel and gather final answers with authorship. Each recipient counts toward the shared six-call budget. Same depth 2, cycle, access, secrecy and approval fences as ask_bot. The whole set shares the group turn deadline (120s for chat); pending approval on one member does not hold up others. Only available in group participant sessions.":
+    "Envia a mesma tarefa aos outros membros do grupo em paralelo e reúne as respostas finais com autoria. Cada membro conta no limite compartilhado de seis chamadas. Mantém os limites de profundidade 2, ciclos, acesso, segredos e aprovações da delegação individual. Todos compartilham o prazo do turno (120 segundos no chat); uma aprovação pendente não impede os outros de trabalhar. Disponível apenas nas sessões de membros do grupo.",
+  "Escreva uma tarefa de até 8.000 caracteres.": "Escreva uma tarefa de até 8.000 caracteres.",
+  "Enviar esta tarefa aos outros membros do grupo: {message}":
+    "Enviar esta tarefa aos outros membros do grupo: {message}",
+  "Ação do grupo inválida.": "Ação do grupo inválida.",
+  "Esta ação exige uma conversa de grupo.": "Esta ação exige uma conversa de grupo.",
+  "Pergunte a no máximo 6 membros por turno.": "Pergunte a no máximo 6 membros por turno.",
+  "Perguntar a todos": "Perguntar a todos",
+  "Pedir resumo do time": "Pedir resumo do time",
+  "Ações do grupo": "Ações do grupo",
+  "Resuma os resultados confirmados do último turno, com a autoria de cada membro.":
+    "Resuma os resultados confirmados do último turno, com a autoria de cada membro.",
+  Membro: "Membro",
+  Disponível: "Disponível",
+  Trabalhando: "Trabalhando",
+  "Aguardando você": "Aguardando você",
+  "Sem resultado confirmado.": "Sem resultado confirmado.",
+  "Resultados do turno": "Resultados do turno",
+  "Somente respostas finais confirmadas. Este quadro é apenas para leitura.":
+    "Somente respostas finais confirmadas. Este quadro é apenas para leitura.",
+  "Sem resultados confirmados neste turno.": "Sem resultados confirmados neste turno.",
   "Salve o token do bot do Telegram.": "Salve o token do bot do Telegram.",
   "Token inválido ou revogado.": "Token inválido ou revogado.",
   "Não foi possível conectar ao Telegram. Confira sua conexão e tente novamente.":
@@ -2178,6 +2200,25 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Rotina “{name}” não executada: o atraso ultrapassou a janela de recuperação.":
     "Routine “{name}” did not run: the delay exceeded the catch-up window.",
   "Execução de recuperação": "Catch-up run",
+  "Escreva uma tarefa de até 8.000 caracteres.": "Write a task of up to 8,000 characters.",
+  "Enviar esta tarefa aos outros membros do grupo: {message}": "Send this task to the other group members: {message}",
+  "Ação do grupo inválida.": "Invalid group action.",
+  "Esta ação exige uma conversa de grupo.": "This action requires a group conversation.",
+  "Pergunte a no máximo 6 membros por turno.": "Ask at most 6 members per turn.",
+  "Perguntar a todos": "Ask everyone",
+  "Pedir resumo do time": "Request team summary",
+  "Ações do grupo": "Group actions",
+  "Resuma os resultados confirmados do último turno, com a autoria de cada membro.":
+    "Summarize the confirmed results of the last turn, with authorship for each member.",
+  Membro: "Member",
+  Disponível: "Idle",
+  Trabalhando: "Working",
+  "Aguardando você": "Waiting for you",
+  "Sem resultado confirmado.": "No confirmed result yet.",
+  "Resultados do turno": "Turn results",
+  "Somente respostas finais confirmadas. Este quadro é apenas para leitura.":
+    "Only confirmed final answers. This board is read-only.",
+  "Sem resultados confirmados neste turno.": "No confirmed results in this turn yet.",
   "Salve o token do bot do Telegram.": "Save the Telegram bot token.",
   "Token inválido ou revogado.": "Invalid or revoked token.",
   "Não foi possível conectar ao Telegram. Confira sua conexão e tente novamente.":

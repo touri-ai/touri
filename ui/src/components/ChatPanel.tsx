@@ -1,6 +1,7 @@
 import type {
   Bot,
   BotGroup,
+  GroupAction,
   Id,
   MachineState,
   Message,
@@ -80,7 +81,7 @@ type ChatPanelProps = {
   machine?: MachineState | undefined
   messages: Array<Message>
   runs: Array<Run>
-  onSend: (text: string, parentId?: Id | null, attachmentIds?: Array<Id>) => Promise<void>
+  onSend: (text: string, parentId?: Id | null, attachmentIds?: Array<Id>, groupAction?: GroupAction) => Promise<void>
   onRetry: (runId: Id) => Promise<void>
   onCancel: (runId: Id) => Promise<void>
   onSwitchBranch: (threadId: Id, leafId: Id) => Promise<void>

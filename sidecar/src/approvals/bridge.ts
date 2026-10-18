@@ -125,6 +125,7 @@ export const createApprovalBridge = ({
       createdAt: Date.now(),
       approvalId,
       botId: input.ctx.botId,
+      ...(input.groupMemberId ? { groupMemberId: input.groupMemberId } : {}),
       request: nativeReview ? claudeApprovalKind(input.toolName) : "permission",
       scope: input.scope,
       allowStanding,

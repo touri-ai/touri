@@ -341,6 +341,7 @@ export const init = async (kernel: Kernel): Promise<void> => {
   const registration = kernel.registerTools({
     tools: [
       { name: "coordinate_bots", group: "core", handler: ({ ctx, args }) => groups.askBot(ctx, args) },
+      { name: "ask_all", group: "core", handler: ({ ctx, args }) => groups.askAll(ctx, args) },
       { name: "ask_bot", group: "core", handler: ({ ctx, args }) => groups.askBot(ctx, args) },
       { name: "routine_list", group: "core", handler: routineList },
       { name: "routine_create", group: "core", handler: routineCreate },
