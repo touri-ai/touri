@@ -101,7 +101,10 @@ export type WorkspaceActions = {
   updateBot: (botId: Id, patch: Partial<ApiRoutes["PATCH /bots/:id"]["req"]>) => Promise<void>
   deleteBot: (botId: Id, name: string, deleteVolumes: boolean) => Promise<void>
   machineAction: (botId: Id, reset: boolean, projectId?: Id | null, stopTurns?: boolean) => Promise<void>
-  createBot: (input: ApiRoutes["POST /bots"]["req"], loginDraftId?: string) => Promise<{ loginReady: boolean }>
+  createBot: (
+    input: ApiRoutes["POST /bots"]["req"],
+    loginDraftId?: string,
+  ) => Promise<{ loginReady: boolean; bot: Bot }>
   toggleRoutine: (routine: Routine) => Promise<void>
   runRoutine: (routineId: Id) => Promise<void>
   createRoutine: (input: ApiRoutes["POST /routines"]["req"]) => Promise<Routine>
@@ -629,6 +632,8 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
           )
         const threadCreation = current.threadCreation?.thread.botId === selectedBot?.id ? current.threadCreation : null
         const selectedThreadId = threadCreation ? current.selectedThreadId : (selectedThread?.id ?? null)
+        const notifications = current.notifications.reduce(upsertNotification, notificationsResponse.notifications)
+        const pendingRequests = countPendingRequests(notifications, activityResponse.messages)
         return {
           ...current,
           groups: groupResponse?.groups ?? [],
@@ -645,7 +650,8 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
           routines: uniqueById(routinesResponse.routines),
           routineRuns: uniqueById(routineRunsResponse.routineRuns),
           settings: settingsResponse.settings,
-          notifications: current.notifications.reduce(upsertNotification, notificationsResponse.notifications),
+          notifications,
+          pendingRequestsOnReturn: pendingRequests || null,
           selectedBotId: selectedBot?.id ?? null,
           selectedThreadId,
           threadCreation,
@@ -1216,7 +1222,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
           processes: [],
         }
       })
-      return { loginReady }
+      return { loginReady, bot: refreshedBot ?? response.bot }
     },
     [api, setData],
   )

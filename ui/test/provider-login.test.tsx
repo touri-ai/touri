@@ -495,7 +495,10 @@ it("opens the created bot when adoption succeeded but its response was lost", as
   const { result } = renderHook(() => useWorkspace(api, false))
   const input = { provider: "codex" as const, name: "Pesquisa" }
   await act(async () => {
-    await expect(result.current.actions.createBot(input, "draft-test")).resolves.toEqual({ loginReady: true })
+    await expect(result.current.actions.createBot(input, "draft-test")).resolves.toMatchObject({
+      loginReady: true,
+      bot: { name: "Pesquisa" },
+    })
   })
   expect(request.mock.calls.filter(([route]) => route === "POST /bots")).toHaveLength(1)
   expect(request).toHaveBeenCalledWith(
