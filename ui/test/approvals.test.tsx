@@ -165,7 +165,7 @@ it("MCP policy changes refresh standing grants in the permissions modal", async 
   fireEvent.click(screen.getByRole("tab", { name: "Permissões" }))
   await screen.findByText("docs · save")
   fireEvent.click(screen.getByRole("tab", { name: "Ferramentas" }))
-  fireEvent.click(screen.getByRole("button", { name: "Configuração técnica (MCP)" }))
+  fireEvent.click(await screen.findByRole("button", { name: "Configuração técnica (MCP)" }))
   fireEvent.change(await screen.findByRole("combobox", { name: "Política · save" }), { target: { value: "blocked" } })
   fireEvent.click(screen.getByRole("tab", { name: "Permissões" }))
   await screen.findByText("Nenhuma permissão permanente concedida.")
