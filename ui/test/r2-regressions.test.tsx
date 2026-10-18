@@ -269,6 +269,8 @@ describe("r2 regressions", () => {
     if (!screen.queryByRole("button", { name: "Preview do projeto" }))
       fireEvent.click(screen.getByRole("button", { name: "Painel do bot" }))
     fireEvent.click(screen.getByRole("button", { name: "Preview do projeto" }))
+    await screen.findByRole("heading", { name: "Preview", exact: true })
+
     expect(screen.getAllByText("Nenhum projeto para mark").length).toBeGreaterThan(0)
     expect(document.body.textContent).not.toMatch(
       /sim, nesse ambiente|Subi os processos|\[PORTA\]|\[Cartão\]|\[Tabela|Admin demo/,

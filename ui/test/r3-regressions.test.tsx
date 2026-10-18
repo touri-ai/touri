@@ -454,6 +454,8 @@ describe("r3 P3 integrity", () => {
     if (!screen.queryByRole("button", { name: "Preview do projeto" }))
       fireEvent.click(screen.getByRole("button", { name: "Painel do bot" }))
     fireEvent.click(screen.getByRole("button", { name: "Preview do projeto" }))
+    await screen.findByRole("heading", { name: "Preview", exact: true })
+
     for (const button of screen.getAllByRole("button", { name: "Parar" })) expect(button).toBeDisabled()
   })
 
