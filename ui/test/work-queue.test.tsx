@@ -84,7 +84,8 @@ it("keeps an admitted turn out of the queue when its acceptance arrives after a 
       message: { ...message, id: "accepted-message", role: "user" },
     } as ApiRoutes[typeof route]["res"]
   }
-  const hook = renderHook(() => useWorkspace({ ...api, request }))
+  const client = { ...api, request }
+  const hook = renderHook(() => useWorkspace(client))
   await waitFor(() => expect(hook.result.current.data.loading).toBe(false))
 
   await act(async () => {
@@ -113,7 +114,8 @@ it("keeps the latest queue position when an opened conversation loads an older s
     }
     return response
   }
-  const hook = renderHook(() => useWorkspace({ ...api, request }))
+  const client = { ...api, request }
+  const hook = renderHook(() => useWorkspace(client))
   await waitFor(() => expect(hook.result.current.data.loading).toBe(false))
   act(() => {
     hook.result.current.actions.selectThread("work-thread-4")
