@@ -20,7 +20,6 @@ import { getHostLabel, t } from "../i18n"
 import { hostComputerSupported } from "../platform"
 import { useHost } from "../useHost"
 import { Modal } from "./Modal"
-import { NotificationPreferencesSettings } from "./NotificationPreferencesSettings"
 import {
   SettingsDisclosure,
   SettingsGroup,
@@ -30,6 +29,9 @@ import {
   SettingsSwitch,
 } from "./SettingsLayout"
 
+const NotificationPreferencesSettings = lazy(() =>
+  import("./NotificationPreferencesSettings").then((module) => ({ default: module.NotificationPreferencesSettings })),
+)
 const ApiModelsSettings = lazy(() =>
   import("./ApiModelsSettings").then((module) => ({ default: module.ApiModelsSettings })),
 )
@@ -344,11 +346,13 @@ export const SettingsModal = ({
           >
             {(open) =>
               open && (
-                <NotificationPreferencesSettings
-                  value={notificationPreferences}
-                  onChange={setNotificationPreferences}
-                  api={api}
-                />
+                <Suspense fallback={<SettingsPaneLoading />}>
+                  <NotificationPreferencesSettings
+                    value={notificationPreferences}
+                    onChange={setNotificationPreferences}
+                    api={api}
+                  />
+                </Suspense>
               )
             }
           </SettingsDisclosure>

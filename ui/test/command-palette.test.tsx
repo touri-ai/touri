@@ -1,13 +1,17 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import type { ApprovalPart } from "@touri/contracts"
-import { afterEach, expect, it } from "vitest"
+import { afterEach, expect, it, vi } from "vitest"
 import App from "../src/App"
 import { createMockApi } from "../src/api/mock"
 import { matchScore, normalizeSearch, queryTokens } from "../src/features/commandPalette/fuzzy"
+import * as paletteItems from "../src/features/commandPalette/paletteItems"
 import { buildPaletteIndex, searchPalette } from "../src/features/commandPalette/paletteItems"
 import { SETTINGS, settingsIndex } from "../src/features/commandPalette/settingsRegistry"
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  vi.restoreAllMocks()
+})
 
 const DIALOG = "Paleta de comandos"
 const INPUT = "Buscar bots, conversas e configurações"
@@ -18,13 +22,13 @@ const start = async (api = createMockApi()) => {
   return { api, composer }
 }
 
-const openPalette = (): HTMLElement => {
+const openPalette = async (): Promise<HTMLElement> => {
   fireEvent.keyDown(window, { key: "k", metaKey: true })
-  return screen.getByRole("combobox", { name: INPUT })
+  return screen.findByRole("combobox", { name: INPUT })
 }
 
-const search = (query: string): HTMLElement => {
-  const input = openPalette()
+const search = async (query: string): Promise<HTMLElement> => {
+  const input = await openPalette()
   fireEvent.change(input, { target: { value: query } })
   return input
 }
@@ -59,7 +63,7 @@ it("⌘K and Ctrl+K open, ⌘K toggles closed, and plain typing in the composer 
   const { composer } = await start()
   fireEvent.keyDown(composer, { key: "k" })
   expect(screen.queryByRole("dialog", { name: DIALOG })).toBeNull()
-  const input = openPalette()
+  const input = await openPalette()
   expect(screen.getByRole("dialog", { name: DIALOG })).toBeVisible()
   expect(input).toHaveFocus()
   expect(input).toHaveAttribute("aria-expanded", "true")
@@ -73,7 +77,7 @@ it("⌘K and Ctrl+K open, ⌘K toggles closed, and plain typing in the composer 
 it("Esc closes the palette and returns focus to where it was", async () => {
   const { composer } = await start()
   act(() => composer.focus())
-  const input = openPalette()
+  const input = await openPalette()
   expect(input).toHaveFocus()
   fireEvent.keyDown(input, { key: "Escape" })
   await closed()
@@ -82,7 +86,7 @@ it("Esc closes the palette and returns focus to where it was", async () => {
 
 it("shows recent conversations and actions with an empty query, then remembers what was opened", async () => {
   await start()
-  openPalette()
+  await openPalette()
   const dialog = screen.getByRole("dialog", { name: DIALOG })
   expect(within(dialog).getByRole("group", { name: "Conversas recentes" })).toBeVisible()
   expect(within(dialog).getByRole("option", { name: /Novo bot/ })).toBeVisible()
@@ -91,14 +95,14 @@ it("shows recent conversations and actions with an empty query, then remembers w
   fireEvent.change(input, { target: { value: "panko" } })
   fireEvent.keyDown(input, { key: "Enter" })
   await closed()
-  openPalette()
+  await openPalette()
   const recent = screen.getByRole("group", { name: "Recentes" })
   expect(within(recent).getByRole("option", { name: /Panko/ })).toBeVisible()
 })
 
 it("arrow keys move the highlighted option, wrap, announce counts, and Enter opens a bot", async () => {
   await start()
-  const input = search("o")
+  const input = await search("o")
   const options = screen.getAllByRole("option")
   expect(options.length).toBeGreaterThan(2)
   expect(screen.getByRole("status")).toHaveTextContent(`${options.length} resultados`)
@@ -123,7 +127,7 @@ it("arrow keys move the highlighted option, wrap, announce counts, and Enter ope
 
 it("Tab stays inside the palette", async () => {
   await start()
-  const input = openPalette()
+  const input = await openPalette()
   fireEvent.keyDown(input, { key: "Tab" })
   fireEvent.keyDown(input, { key: "Tab", shiftKey: true })
   expect(screen.getByRole("dialog", { name: DIALOG })).toContainElement(document.activeElement as HTMLElement)
@@ -131,7 +135,7 @@ it("Tab stays inside the palette", async () => {
 
 it("opens a conversation by its title and clicking a result works", async () => {
   await start()
-  search("welcome")
+  await search("welcome")
   const option = within(screen.getByRole("group", { name: "Conversas" })).getByRole("option", { name: /Welcome/ })
   fireEvent.click(option)
   await closed()
@@ -140,7 +144,7 @@ it("opens a conversation by its title and clicking a result works", async () => 
 
 it("opens a specific setting, focusing and highlighting it on the right tab", async () => {
   await start()
-  const input = search("memoria vm")
+  const input = await search("memoria vm")
   expect(activeOption(input)).toHaveTextContent(SETTINGS.vmMemory.label)
   fireEvent.keyDown(input, { key: "Enter" })
   const dialog = await screen.findByRole("dialog", { name: "Configurações" })
@@ -152,7 +156,7 @@ it("opens a specific setting, focusing and highlighting it on the right tab", as
 
 it("finds the sidebar ordering preference without the accent and lands on its switch", async () => {
   await start()
-  const input = search("mover bots novidades")
+  const input = await search("mover bots novidades")
   expect(activeOption(input)).toHaveTextContent("Mover bots com novidades para o topo")
   fireEvent.keyDown(input, { key: "Enter" })
   const dialog = await screen.findByRole("dialog", { name: "Configurações" })
@@ -164,9 +168,9 @@ it("finds the sidebar ordering preference without the accent and lands on its sw
 
 it("navigates to pages and runs creation actions", async () => {
   await start()
-  fireEvent.keyDown(search("integracoes"), { key: "Enter" })
+  fireEvent.keyDown(await search("integracoes"), { key: "Enter" })
   expect(await screen.findByRole("heading", { name: "Integrações" })).toBeVisible()
-  fireEvent.keyDown(search("novo grupo"), { key: "Enter" })
+  fireEvent.keyDown(await search("novo grupo"), { key: "Enter" })
   expect(await screen.findByRole("dialog", { name: /grupo/i })).toBeVisible()
 })
 
@@ -188,14 +192,14 @@ it("never approves: approval cards are not palette results and Enter in the pale
   const approve = await screen.findByRole("button", { name: "Aprovar" })
   act(() => approve.focus())
   for (const query of ["aprovar", "Executar comando", "sempre neste bot"]) {
-    search(query)
+    await search(query)
     const labels = screen.queryAllByRole("option").map((option) => option.textContent ?? "")
     expect(labels.some((label) => /^Aprovar|Executar comando|Sempre neste bot/.test(label))).toBe(false)
     fireEvent.keyDown(window, { key: "Escape" })
     await closed()
     expect(approve).toHaveFocus()
   }
-  fireEvent.keyDown(search("mark"), { key: "Enter" })
+  fireEvent.keyDown(await search("mark"), { key: "Enter" })
   await closed()
   expect(api.calls.some((call) => call.route.startsWith("POST /approvals"))).toBe(false)
   expect(screen.getByRole("button", { name: "Aprovar" })).toBeVisible()
@@ -211,7 +215,7 @@ it("does not open over another dialog", async () => {
 
 it("opens provider login in the bot’s Access section", async () => {
   await start()
-  const input = search("login do provedor")
+  const input = await search("login do provedor")
   expect(activeOption(input)).toHaveTextContent(SETTINGS.providerLogin.label)
   fireEvent.keyDown(input, { key: "Enter" })
   const dialog = await screen.findByRole("dialog", { name: "Configurações de mark" })
@@ -263,4 +267,18 @@ it("R13-05 ranks an exact action or setting above older message matches, message
   expect(memoria.at(-1)?.id).toBe("messages")
   const only = searchPalette({ index, query: "vendas", messages, recentIds: [] })
   expect(only.map((group) => group.id)).toEqual(["messages"])
+})
+
+it("leaves search indexing idle while the palette is closed", async () => {
+  const index = vi.spyOn(paletteItems, "buildPaletteIndex")
+  const { composer } = await start()
+
+  fireEvent.change(composer, { target: { value: "Organize minhas notas." } })
+
+  expect(index).not.toHaveBeenCalled()
+
+  const input = await openPalette()
+
+  expect(input).toHaveFocus()
+  expect(index).toHaveBeenCalled()
 })

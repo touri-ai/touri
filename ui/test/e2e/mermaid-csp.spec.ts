@@ -53,6 +53,11 @@ test.describe("mermaid production and desktop CSP", () => {
       "src/components/NotificationDeliverySettings.tsx",
       "src/features/cloud/CloudPreferences.tsx",
       "src/features/server/ServerModeSettings.tsx",
+      "src/components/BotMcpSettings.tsx",
+      "src/components/BotNetworkSettings.tsx",
+      "src/components/BotStandingGrants.tsx",
+      "src/components/NotificationPreferencesSettings.tsx",
+      "src/features/commandPalette/CommandPalette.tsx",
     ].map((key) => manifest[key])
     expect(optionalSettings.every((chunk) => chunk?.isDynamicEntry && !initialFiles.has(chunk.file))).toBe(true)
     // Rollup may merge the renderer and its vendor modules into a named shared chunk.

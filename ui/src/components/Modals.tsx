@@ -14,7 +14,7 @@ import type {
 } from "@touri/contracts"
 import { normalizeBotName } from "@touri/contracts"
 import { avatarProfileFor } from "@touri/contracts/avatar"
-import { useCallback, useEffect, useRef, useState } from "react"
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react"
 import type { TauriInvoke, UiApi } from "../api/client"
 import { userFacingError } from "../errors"
 import { CREATE_PROVIDERS, useCreateProvider } from "../features/bots/useCreateProvider"
@@ -36,9 +36,6 @@ import { BotAccessSummary } from "./BotAccessSummary"
 import { BotAvatar } from "./BotAvatar"
 import { BotBrowserPicker } from "./BotBrowserPicker"
 import { BotFolderSettings } from "./BotFolderSettings"
-import { BotMcpSettings } from "./BotMcpSettings"
-import { BotNetworkSettings } from "./BotNetworkSettings"
-import { BotStandingGrants } from "./BotStandingGrants"
 import { DeleteBotDialog } from "./DeleteBotDialog"
 import { DeleteRoutineDialog } from "./DeleteRoutineDialog"
 import { DiscoveredProjects } from "./DiscoveredProjects"
@@ -57,6 +54,16 @@ import "./settings.css"
 
 export { Modal } from "./Modal"
 export { SettingsModal } from "./SettingsModal"
+
+const BotMcpSettings = lazy(() => import("./BotMcpSettings").then((module) => ({ default: module.BotMcpSettings })))
+
+const BotNetworkSettings = lazy(() =>
+  import("./BotNetworkSettings").then((module) => ({ default: module.BotNetworkSettings })),
+)
+
+const BotStandingGrants = lazy(() =>
+  import("./BotStandingGrants").then((module) => ({ default: module.BotStandingGrants })),
+)
 
 type DoctorModalProps = {
   api: UiApi
@@ -1432,7 +1439,11 @@ export const BotSettingsModal = ({
                     : {})}
                 />
 
-                {api && bot.machine === "vm" && <BotNetworkSettings api={api} botId={bot.id} />}
+                {api && bot.machine === "vm" && (
+                  <Suspense fallback={<BotSettingsLoading />}>
+                    <BotNetworkSettings api={api} botId={bot.id} />
+                  </Suspense>
+                )}
               </SettingsGroup>
               {((hostComputerSupported && !serverMode) || machine.machine === "vm") && (
                 <SettingsGroup title={t("Controle do computador")}>
@@ -1629,7 +1640,11 @@ export const BotSettingsModal = ({
               {secretNotice && <p role="status">{secretNotice}</p>}
             </SettingsPane>
             <SettingsPane {...botPane("permissions")}>
-              {api && <BotStandingGrants key={grantsRevision} api={api} botId={bot.id} />}
+              {api && (
+                <Suspense fallback={<BotSettingsLoading />}>
+                  <BotStandingGrants key={grantsRevision} api={api} botId={bot.id} />
+                </Suspense>
+              )}
               <p className="field-help">
                 {bot.machine === "vm"
                   ? t("Assumir controle não autoriza ações automáticas do bot. Revise essas ações no chat.")
@@ -1648,19 +1663,21 @@ export const BotSettingsModal = ({
             </SettingsPane>
             <SettingsPane {...botPane("tools")}>
               {api && (
-                <BotMcpSettings
-                  api={api}
-                  botId={bot.id}
-                  botName={bot.name}
-                  onContinue={onClose}
-                  onAttach={onAttachFile}
-                  onFolder={() => setSection("access")}
-                  machine={bot.machine}
-                  invokeCommand={invokeCommand}
-                  onPermissionsChange={() => setGrantsRevision((revision) => revision + 1)}
-                  focusOnOpen={focusMcp}
-                  {...(onOpenIntegrations ? { onOpenIntegrations } : {})}
-                />
+                <Suspense fallback={<BotSettingsLoading />}>
+                  <BotMcpSettings
+                    api={api}
+                    botId={bot.id}
+                    botName={bot.name}
+                    onContinue={onClose}
+                    onAttach={onAttachFile}
+                    onFolder={() => setSection("access")}
+                    machine={bot.machine}
+                    invokeCommand={invokeCommand}
+                    onPermissionsChange={() => setGrantsRevision((revision) => revision + 1)}
+                    focusOnOpen={focusMcp}
+                    {...(onOpenIntegrations ? { onOpenIntegrations } : {})}
+                  />
+                </Suspense>
               )}
             </SettingsPane>
             <SettingsPane {...botPane("routines")}>
@@ -2416,3 +2433,5 @@ export const ProjectModal = ({
     </Modal>
   )
 }
+
+const BotSettingsLoading = () => <p role="status">{t("Loading")}</p>

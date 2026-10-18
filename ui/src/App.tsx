@@ -1,7 +1,7 @@
 import { listen } from "@tauri-apps/api/event"
 import type { BotGroup, GroupInput, HostKind, Id, NotificationRecord, RecoveryTask } from "@touri/contracts"
 import type { FailureAction } from "@touri/contracts/run-failure"
-import { type SetStateAction, useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { lazy, type SetStateAction, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   createApiClient,
   createTauriInvoke,
@@ -46,7 +46,6 @@ import { type DeepLink, parseDeepLink } from "./deepLink"
 import { navigatePage } from "./design/navigation"
 import { errorRecovery, type RecoveryAction } from "./errorRecovery"
 import { ApiError, userFacingError } from "./errors"
-import { CommandPalette } from "./features/commandPalette/CommandPalette"
 import type { PaletteActionId, PaletteCommand } from "./features/commandPalette/paletteItems"
 import {
   type BotSettingsSectionId,
@@ -80,6 +79,10 @@ import { RecoveryTasksContext, useRecoveryTasks } from "./useRecoveryTasks"
 import { useWebNavigation } from "./useWebNavigation"
 import { useWorkspace } from "./useWorkspace"
 import { type AppRoute, readWorkspaceState, saveWorkspaceState } from "./workspaceState"
+
+const CommandPalette = lazy(() =>
+  import("./features/commandPalette/CommandPalette").then((module) => ({ default: module.CommandPalette })),
+)
 
 export type UiKernel = { services?: { api?: UiApi | null; invoke?: TauriInvoke | null } }
 
@@ -1239,17 +1242,21 @@ const AppContent = ({ kernel }: AppProps) => {
         </div>
         {/* r8 motion: central overlay presence (settings content stays owned by its package) */}
         <ErrorBoundary area="a busca" dialog api={api} onClose={() => setSearchOpen(false)}>
-          <CommandPalette
-            api={api}
-            open={searchOpen}
-            bots={data.bots}
-            threads={data.threads}
-            messages={data.messages}
-            settings={paletteSettings}
-            hasBot={Boolean(selectedBot)}
-            onClose={() => setSearchOpen(false)}
-            onRun={runPaletteCommand}
-          />
+          {searchOpen && (
+            <Suspense fallback={<p role="status">{t("Loading")}</p>}>
+              <CommandPalette
+                api={api}
+                open={searchOpen}
+                bots={data.bots}
+                threads={data.threads}
+                messages={data.messages}
+                settings={paletteSettings}
+                hasBot={Boolean(selectedBot)}
+                onClose={() => setSearchOpen(false)}
+                onRun={runPaletteCommand}
+              />
+            </Suspense>
+          )}
         </ErrorBoundary>
         <MotionPresence show={modal !== null && modal !== "bot"} kind="modal">
           <ErrorBoundary key={modal} area="o diálogo" dialog api={api} onClose={closeModal}>
