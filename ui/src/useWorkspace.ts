@@ -38,6 +38,7 @@ import { localizeNotice, t } from "./i18n"
 import { localResponseTimings } from "./localResponseTimings"
 import { useMachineParking } from "./machineIntents"
 import { reconcileFailureNotifications } from "./sidebarAttention"
+import { activitySummary, retainActivity, retainRuns, TranscriptBuffer, updateActivityStream } from "./workspaceMemory"
 import { readWorkspaceState, saveWorkspaceState } from "./workspaceState"
 
 type ProcessEntry = { spec: ProcessSpec; run: ProcessRunState | null }
@@ -385,7 +386,23 @@ const lastActiveThread = (threads: Thread[], runs: Run[], botId: Id, rememberedI
 
 export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
   const diagnosis = useDoctorReport(api, enabled)
-  const [data, setData] = useState<WorkspaceData>(emptyState)
+  const [data, setWorkspaceData] = useState<WorkspaceData>(emptyState)
+  const setData = useCallback((update: (current: WorkspaceData) => WorkspaceData): void => {
+    setWorkspaceData((current) => {
+      const next = update(current)
+      if (next === current) return current
+      const evicted = next.messages.filter((message) => message.threadId !== next.selectedThreadId)
+      return {
+        ...next,
+        messages: next.messages.filter((message) => message.threadId === next.selectedThreadId),
+        activityMessages: retainActivity(
+          evicted.map(activitySummary).reduce(updateMessage, next.activityMessages),
+          next.notifications,
+        ),
+        runs: retainRuns(next.runs, next.selectedThreadId),
+      }
+    })
+  }, [])
   const currentData = useRef(data)
   currentData.current = data
   useMachineParking(api, data.bots, enabled && !data.loading)
@@ -401,7 +418,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
       {
         attempt: number
         promise: Promise<void>
-        deltas: Array<MessageStreamEvent>
+        deltas: TranscriptBuffer
       }
     >(),
   )
@@ -441,7 +458,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
         )
       }
     },
-    [api],
+    [api, setData],
   )
 
   const loadThread = useCallback(
@@ -450,19 +467,30 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
       const pending = threadLoads.current.get(threadId)
       if (pending?.attempt === attempt) return pending.promise
       if (!force && loadedThreads.current.get(threadId) === attempt) return Promise.resolve()
-      const deltas: Array<MessageStreamEvent> = []
+      const deltas = new TranscriptBuffer()
+      let retry = false
       const promise = Promise.all([
         api.request("GET /threads/:id/messages", { all: true }, { id: threadId }),
         api.request("GET /threads/:id/runs", { all: true }, { id: threadId }),
       ])
         .then(([messages, runs]) => {
           if (attempt !== generation.current) return
-          loadedThreads.current.set(threadId, attempt)
-          setData((current) => ({
-            ...current,
-            messages: deltas.reduce(applyStreamEvent, messages.messages).reduce(updateMessage, current.messages),
-            runs: mergeRunRows(current.runs, runs.runs),
-          }))
+          retry = deltas.overflow
+          if (currentData.current.selectedThreadId === threadId) {
+            loadedThreads.current.clear()
+            if (!deltas.overflow) loadedThreads.current.set(threadId, attempt)
+          }
+          setData((current) => {
+            // A response for the conversation we just left must never restore its transcript.
+            if (current.selectedThreadId !== threadId) return current
+            return {
+              ...current,
+              messages: deltas.events
+                .reduce(applyStreamEvent, messages.messages)
+                .reduce(updateMessage, current.messages),
+              runs: mergeRunRows(current.runs, runs.runs),
+            }
+          })
         })
         .catch((error: unknown) => {
           if (attempt === generation.current)
@@ -470,11 +498,13 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
         })
         .finally(() => {
           if (threadLoads.current.get(threadId)?.promise === promise) threadLoads.current.delete(threadId)
+          if (retry && attempt === generation.current && currentData.current.selectedThreadId === threadId)
+            void loadThread(threadId, true)
         })
       threadLoads.current.set(threadId, { attempt, promise, deltas })
       return promise
     },
-    [api],
+    [api, setData],
   )
 
   const load = useCallback(async (): Promise<void> => {
@@ -587,7 +617,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
           : t("Service request failed", { error: errorMessage(error) }),
       }))
     }
-  }, [api, enabled, loadThread])
+  }, [api, enabled, loadThread, setData])
 
   useEffect(() => {
     if (!enabled) return
@@ -624,7 +654,11 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
       }
       if (event.type === "message.delta" || event.type === "message.parts")
         threadLoads.current.get(event.threadId)?.deltas.push(event)
-      if (event.type === "run.updated") liveRuns.current.set(event.run.id, ++runRevision.current)
+      if (event.type === "run.updated") {
+        if (["queued", "starting", "running"].includes(event.run.status))
+          liveRuns.current.set(event.run.id, ++runRevision.current)
+        else liveRuns.current.delete(event.run.id)
+      }
       setData((current) => {
         if (event.type === "machine.updated")
           return {
@@ -658,7 +692,14 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
         if (event.type === "message.created" || event.type === "message.updated")
           return {
             ...current,
-            messages: updateMessage(current.messages, event.message),
+            messages:
+              event.message.threadId === current.selectedThreadId
+                ? updateMessage(current.messages, event.message)
+                : current.messages,
+            activityMessages:
+              event.message.threadId === current.selectedThreadId
+                ? current.activityMessages
+                : updateMessage(current.activityMessages, activitySummary(event.message)),
             threads:
               event.message.delivery && event.message.delivery.status !== "acked" && event.type === "message.created"
                 ? current.threads.map((thread) =>
@@ -667,6 +708,8 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
                 : current.threads,
           }
         if (event.type === "message.delta" || event.type === "message.parts") {
+          if (event.threadId !== current.selectedThreadId)
+            return { ...current, activityMessages: updateActivityStream(current.activityMessages, event) }
           const message = current.messages.find((row) => row.id === event.messageId && row.threadId === event.threadId)
           const part = event.type === "message.delta" ? message?.parts[event.partIndex] : undefined
           const length = part?.type === "text" || part?.type === "reasoning" ? part.text.length : 0
@@ -809,7 +852,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
       document.removeEventListener("visibilitychange", visibility)
       window.removeEventListener("online", refreshAttention)
     }
-  }, [api, enabled, load, loadThread])
+  }, [api, enabled, load, loadThread, setData])
 
   const selectedBot = useMemo(
     () => data.bots.find((bot) => bot.id === data.selectedBotId) ?? null,
@@ -822,6 +865,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: refresh and reconnect also refresh the selected transcript
   useEffect(() => {
+    for (const id of loadedThreads.current.keys()) if (id !== data.selectedThreadId) loadedThreads.current.delete(id)
     if (enabled && !data.loading && data.selectedThreadId) void loadThread(data.selectedThreadId)
   }, [enabled, data.loading, data.selectedThreadId, projectRevision, loadThread])
 
@@ -842,7 +886,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
     return () => {
       active = false
     }
-  }, [api, enabled, missingProjectIds])
+  }, [api, enabled, missingProjectIds, setData])
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: each REST reload must refresh processes, even when project ID is unchanged
   useEffect(() => {
@@ -855,32 +899,38 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
       const projectId = selectedBot?.projectId ?? null
       return current.activeProjectId === projectId ? current : { ...current, activeProjectId: projectId, processes: [] }
     })
-  }, [selectedBot?.projectId])
+  }, [selectedBot?.projectId, setData])
 
-  const selectBot = useCallback((botId: Id): void => {
-    setData((current) => {
-      if (current.selectedBotId && current.selectedThreadId)
-        threadsByBot.current[current.selectedBotId] = current.selectedThreadId
-      const thread = lastActiveThread(current.threads, current.runs, botId, threadsByBot.current[botId])
-      const bot = current.bots.find((candidate) => candidate.id === botId)
-      return {
+  const selectBot = useCallback(
+    (botId: Id): void => {
+      setData((current) => {
+        if (current.selectedBotId && current.selectedThreadId)
+          threadsByBot.current[current.selectedBotId] = current.selectedThreadId
+        const thread = lastActiveThread(current.threads, current.runs, botId, threadsByBot.current[botId])
+        const bot = current.bots.find((candidate) => candidate.id === botId)
+        return {
+          ...current,
+          selectedBotId: botId,
+          selectedThreadId: thread?.id ?? null,
+          activeProjectId: bot?.projectId ?? null,
+          processes: [],
+        }
+      })
+    },
+    [setData],
+  )
+
+  const selectThread = useCallback(
+    (threadId: Id): void => {
+      setData((current) => ({
         ...current,
-        selectedBotId: botId,
-        selectedThreadId: thread?.id ?? null,
-        activeProjectId: bot?.projectId ?? null,
-        processes: [],
-      }
-    })
-  }, [])
-
-  const selectThread = useCallback((threadId: Id): void => {
-    setData((current) => ({
-      ...current,
-      selectedBotId: current.threads.find((thread) => thread.id === threadId)?.botId ?? current.selectedBotId,
-      selectedThreadId: threadId,
-      threads: current.threads.map((thread) => (thread.id === threadId ? { ...thread, unread: 0 } : thread)),
-    }))
-  }, [])
+        selectedBotId: current.threads.find((thread) => thread.id === threadId)?.botId ?? current.selectedBotId,
+        selectedThreadId: threadId,
+        threads: current.threads.map((thread) => (thread.id === threadId ? { ...thread, unread: 0 } : thread)),
+      }))
+    },
+    [setData],
+  )
 
   const createGroup = useCallback(
     async (input: GroupInput, id?: string) => {
@@ -898,7 +948,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
         }))
       }
     },
-    [api],
+    [api, setData],
   )
   const createGroupThread = useCallback(
     async (id: string) => {
@@ -910,7 +960,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
         selectedBotId: response.thread.botId,
       }))
     },
-    [api],
+    [api, setData],
   )
   const createThread = useCallback(async (): Promise<void> => {
     if (selectedThread?.groupId) {
@@ -924,7 +974,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
       threads: uniqueById([...current.threads, response.thread]),
       selectedThreadId: response.thread.id,
     }))
-  }, [api, selectedBot, selectedThread, createGroupThread])
+  }, [api, selectedBot, selectedThread, createGroupThread, setData])
 
   const sendMessage = useCallback(
     async (text: string, parentId?: Id | null, attachmentIds: Array<Id> = []): Promise<void> => {
@@ -952,7 +1002,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
         runs: response.run ? mergeRunRows(current.runs, [response.run]) : current.runs,
       }))
     },
-    [api, selectedThread],
+    [api, selectedThread, setData],
   )
 
   const retryRun = useCallback(
@@ -960,7 +1010,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
       const response = await api.request("POST /runs/:id/retry", {}, { id: runId })
       setData((current) => ({ ...current, runs: mergeRunRows(current.runs, [response.run]) }))
     },
-    [api],
+    [api, setData],
   )
 
   const cancelRun = useCallback(
@@ -968,7 +1018,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
       const response = await api.request("POST /runs/:id/cancel", {}, { id: runId })
       setData((current) => ({ ...current, runs: mergeRunRows(current.runs, [response.run]) }))
     },
-    [api],
+    [api, setData],
   )
 
   const switchBranch = useCallback(
@@ -976,7 +1026,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
       const response = await api.request("PATCH /threads/:id", { activeLeafId: leafId }, { id: threadId })
       setData((current) => ({ ...current, threads: uniqueById([...current.threads, response.thread]) }))
     },
-    [api],
+    [api, setData],
   )
 
   const updateBot = useCallback(
@@ -984,7 +1034,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
       const response = await api.request("PATCH /bots/:id", patch, { id: botId })
       setData((current) => ({ ...current, bots: uniqueById([...current.bots, response.bot]) }))
     },
-    [api],
+    [api, setData],
   )
 
   const machineAction = useCallback(
@@ -1001,7 +1051,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
         machines: [...current.machines.filter((state) => state.botId !== botId), response.machine],
       }))
     },
-    [api],
+    [api, setData],
   )
 
   const createBot = useCallback(
@@ -1037,7 +1087,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
       })
       return { loginReady }
     },
-    [api],
+    [api, setData],
   )
 
   const toggleRoutine = useCallback(
@@ -1048,7 +1098,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
         routines: current.routines.map((candidate) => (candidate.id === routine.id ? response.routine : candidate)),
       }))
     },
-    [api],
+    [api, setData],
   )
 
   const runRoutine = useCallback(
@@ -1059,7 +1109,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
         routineRuns: mergeRunRows(current.routineRuns, [response.routineRun]),
       }))
     },
-    [api],
+    [api, setData],
   )
 
   const createRoutine = useCallback(
@@ -1068,7 +1118,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
       setData((current) => ({ ...current, routines: uniqueById([...current.routines, response.routine]) }))
       return response.routine
     },
-    [api],
+    [api, setData],
   )
 
   const deleteRoutine = useCallback(
@@ -1076,7 +1126,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
       await api.request("DELETE /routines/:id", {}, { id: routineId })
       setData((current) => ({ ...current, routines: current.routines.filter((routine) => routine.id !== routineId) }))
     },
-    [api],
+    [api, setData],
   )
 
   const updateRoutine = useCallback(
@@ -1088,7 +1138,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
       }))
       return response.routine
     },
-    [api],
+    [api, setData],
   )
 
   const createProject = useCallback(
@@ -1101,7 +1151,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
       }))
       return response.project
     },
-    [api],
+    [api, setData],
   )
 
   const createProcess = useCallback(
@@ -1120,7 +1170,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
         processes: response.processes,
       }))
     },
-    [api, data.bots, data.selectedBotId],
+    [api, data.bots, data.selectedBotId, setData],
   )
 
   const startProcess = useCallback(
@@ -1135,7 +1185,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
       const previews = await api.request("GET /previews", {})
       setData((current) => ({ ...current, previews: previews.previews }))
     },
-    [api],
+    [api, setData],
   )
 
   const stopProcess = useCallback(
@@ -1148,7 +1198,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
         ),
       }))
     },
-    [api],
+    [api, setData],
   )
 
   const restartProcess = useCallback(
@@ -1163,35 +1213,38 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
       const previews = await api.request("GET /previews", {})
       setData((current) => ({ ...current, previews: previews.previews }))
     },
-    [api],
+    [api, setData],
   )
 
   const refreshProject = useCallback(async (): Promise<void> => {
     await loadProject(data.activeProjectId, selectedBot?.machine === "vm" ? selectedBot.id : undefined)
     const previews = await api.request("GET /previews", {})
     setData((current) => ({ ...current, previews: previews.previews }))
-  }, [api, data.activeProjectId, loadProject, selectedBot])
+  }, [api, data.activeProjectId, loadProject, selectedBot, setData])
 
-  const selectLocation = useCallback(({ bot, thread }: { bot: Id | null; thread: Id | null }): void => {
-    setData((current) => {
-      const target = thread ? current.threads.find((candidate) => candidate.id === thread) : undefined
-      const botId = target?.botId ?? bot
-      if (!botId || !current.bots.some((candidate) => candidate.id === botId)) return current
-      if (current.selectedBotId && current.selectedThreadId)
-        threadsByBot.current[current.selectedBotId] = current.selectedThreadId
-      const fallback = lastActiveThread(current.threads, current.runs, botId, threadsByBot.current[botId])
-      return {
-        ...current,
-        selectedBotId: botId,
-        activeProjectId: current.bots.find((candidate) => candidate.id === botId)?.projectId ?? null,
-        processes: [],
-        selectedThreadId: target?.id ?? fallback?.id ?? null,
-        threads: current.threads.map((candidate) =>
-          candidate.id === target?.id ? { ...candidate, unread: 0 } : candidate,
-        ),
-      }
-    })
-  }, [])
+  const selectLocation = useCallback(
+    ({ bot, thread }: { bot: Id | null; thread: Id | null }): void => {
+      setData((current) => {
+        const target = thread ? current.threads.find((candidate) => candidate.id === thread) : undefined
+        const botId = target?.botId ?? bot
+        if (!botId || !current.bots.some((candidate) => candidate.id === botId)) return current
+        if (current.selectedBotId && current.selectedThreadId)
+          threadsByBot.current[current.selectedBotId] = current.selectedThreadId
+        const fallback = lastActiveThread(current.threads, current.runs, botId, threadsByBot.current[botId])
+        return {
+          ...current,
+          selectedBotId: botId,
+          activeProjectId: current.bots.find((candidate) => candidate.id === botId)?.projectId ?? null,
+          processes: [],
+          selectedThreadId: target?.id ?? fallback?.id ?? null,
+          threads: current.threads.map((candidate) =>
+            candidate.id === target?.id ? { ...candidate, unread: 0 } : candidate,
+          ),
+        }
+      })
+    },
+    [setData],
+  )
 
   const dismissNotification = useCallback(
     async (id: number): Promise<void> => {
@@ -1201,14 +1254,14 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
         notifications: upsertNotification(current.notifications, response.notification),
       }))
     },
-    [api],
+    [api, setData],
   )
 
   const dismissAllNotifications = useCallback(async (): Promise<void> => {
     await api.request("POST /notifications/dismiss-all", {})
     const response = await api.request("GET /notifications", {})
     setData((current) => ({ ...current, notifications: response.notifications }))
-  }, [api])
+  }, [api, setData])
 
   const respondNotification = useCallback(
     async ({
@@ -1264,7 +1317,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
       const response = await api.request("PATCH /settings", patch)
       setData((current) => ({ ...current, settings: response.settings }))
     },
-    [api],
+    [api, setData],
   )
 
   const activityMessages = useMemo(() => {

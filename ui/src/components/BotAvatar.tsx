@@ -6,7 +6,6 @@ import {
   type AvatarMood,
   type AvatarMotion,
   avatarExpressionFor,
-  avatarFrameMarkup,
   avatarHasClock,
   avatarPresentation,
   avatarProfileFor,
@@ -16,7 +15,7 @@ import {
 import { type CSSProperties, useEffect, useId, useRef, useState } from "react"
 import { t } from "../i18n"
 import { useAvatarMood, useMascotSnapshot } from "./AvatarRuntime"
-import { AvatarGaze, AvatarPlayback, attachAvatarGaze } from "./avatarMotion"
+import { AvatarGaze, AvatarPlayback, attachAvatarGaze, paintAvatarFrame } from "./avatarMotion"
 import { MascotChoreography } from "./mascotMotion"
 import { type MascotState, mascotLabelFor, mascotMoodFor, mascotPhaseFor } from "./mascotState"
 import { useReducedMotion } from "./useReducedMotion"
@@ -154,7 +153,7 @@ export const BotAvatar = ({
         animated && player
           ? player.engine.sample(player.time)
           : createAvatarEngine(profileNow, mood).sample(POSES[presentation.state])
-      body.current.innerHTML = avatarFrameMarkup(frame, profile.color, id)
+      paintAvatarFrame(body.current, frame, profile.color, id)
       contour.current?.setAttribute("d", frame.bodyPath)
       element.dataset.avatarState = animated && player ? player.engine.state : presentation.state
     }

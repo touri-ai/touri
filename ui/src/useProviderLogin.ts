@@ -6,6 +6,7 @@ import { openCloudLink } from "./features/cloud/CloudLink"
 import { t } from "./i18n"
 
 const openedPages = new WeakMap<UiApi, Set<string>>()
+const loginPending = (flow: ProviderLoginFlow | null): boolean => flow?.state === "waiting"
 
 export const useProviderLogin = (
   api: UiApi,
@@ -70,7 +71,7 @@ export const useProviderLogin = (
     setError(null)
     try {
       const result = await api.request("GET /bots/:id/provider-login/flow", { provider }, { id: botId })
-      if (active()) setFlow(result)
+      if (active()) setFlow({ ...result })
       return result
     } catch {
       if (active()) setError(t("Não foi possível verificar o login salvo. Verifique de novo."))
@@ -86,9 +87,7 @@ export const useProviderLogin = (
     setError(null)
     setBusy(false)
     if (!enabled) return
-    let timer: ReturnType<typeof setTimeout>
-    let initialized = false
-    const poll = async () => {
+    const read = async () => {
       const requestedRevision = revision.current
       try {
         const result = await api.request("GET /bots/:id/provider-login/flow", { provider }, { id: botId })
@@ -96,24 +95,58 @@ export const useProviderLogin = (
         if (requestedRevision === revision.current) {
           setFlow(result)
           setError(null)
-          if (autoStart && !initialized && result.state === "idle" && result.executable !== "missing") {
-            initialized = true
-            await act("start")
-          }
+          if (autoStart && result.state === "idle" && result.executable !== "missing") await act("start")
         }
-        initialized = true
       } catch {
         if (current === generation.current && requestedRevision === revision.current)
           setError(t("Não foi possível verificar o login salvo. Verifique de novo."))
       }
-      if (current === generation.current) timer = setTimeout(() => void poll(), 1000)
     }
-    void poll()
+    void read()
     return () => {
       generation.current++
-      clearTimeout(timer)
     }
   }, [api, botId, provider, enabled, autoStart, act])
+  const pending = matches && enabled && loginPending(flow) ? flow : null
+  useEffect(() => {
+    if (!pending) return
+    const current = generation.current
+    let active = true
+    let timer: ReturnType<typeof setTimeout>
+    const poll = async () => {
+      const requestedRevision = revision.current
+      try {
+        const result = await api.request("GET /bots/:id/provider-login/flow", { provider }, { id: botId })
+        if (!active || current !== generation.current) return
+        if (requestedRevision === revision.current) {
+          setFlow(result)
+          setError(null)
+          if (!loginPending(result)) return
+        }
+        timer = setTimeout(() => void poll(), 1000)
+      } catch {
+        if (active && current === generation.current && requestedRevision === revision.current)
+          setError(t("Não foi possível verificar o login salvo. Verifique de novo."))
+      }
+    }
+    timer = setTimeout(() => void poll(), 1000)
+    return () => {
+      active = false
+      clearTimeout(timer)
+    }
+  }, [api, botId, provider, pending])
+  useEffect(() => {
+    if (!enabled) return
+    const refresh = () => {
+      void recheck()
+    }
+    window.addEventListener("focus", refresh)
+    window.addEventListener("online", refresh)
+    return () => {
+      window.removeEventListener("focus", refresh)
+      window.removeEventListener("online", refresh)
+    }
+  }, [enabled, recheck])
   useEffect(() => {
     if (
       !matches ||

@@ -1,0 +1,66 @@
+{
+  "duration": 300000,
+  "interval": 1000,
+  "samples": [
+    {
+      "elapsedMs": 11,
+      "usedBytes": 5196648,
+      "nodes": 917
+    },
+    {
+      "elapsedMs": 30026,
+      "usedBytes": 6847644,
+      "nodes": 948
+    },
+    {
+      "elapsedMs": 60079,
+      "usedBytes": 7527956,
+      "nodes": 948
+    },
+    {
+      "elapsedMs": 90137,
+      "usedBytes": 7521172,
+      "nodes": 948
+    },
+    {
+      "elapsedMs": 120208,
+      "usedBytes": 7688612,
+      "nodes": 948
+    },
+    {
+      "elapsedMs": 150244,
+      "usedBytes": 7934848,
+      "nodes": 948
+    },
+    {
+      "elapsedMs": 180279,
+      "usedBytes": 7955736,
+      "nodes": 948
+    },
+    {
+      "elapsedMs": 210322,
+      "usedBytes": 8234060,
+      "nodes": 948
+    },
+    {
+      "elapsedMs": 240339,
+      "usedBytes": 7811700,
+      "nodes": 948
+    },
+    {
+      "elapsedMs": 270369,
+      "usedBytes": 8952192,
+      "nodes": 948
+    },
+    {
+      "elapsedMs": 300017,
+      "usedBytes": 7663068,
+      "nodes": 948
+    }
+  ],
+  "backgroundHistoryMessages": 21,
+  "loginReads": 1,
+  "historyReads": {
+    "/api/v1/threads/memory-thread-0/messages": 1
+  }
+}

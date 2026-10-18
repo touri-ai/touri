@@ -1,0 +1,19 @@
+{
+  "duration": 15000,
+  "interval": 30,
+  "replies": 1800,
+  "samples": [
+    {
+      "elapsedMs": 45,
+      "usedBytes": 6453064,
+      "nodes": 924
+    },
+    {
+      "elapsedMs": 15069,
+      "usedBytes": 8029636,
+      "nodes": 948
+    }
+  ],
+  "backgroundHistoryMessages": 33,
+  "loginReads": 1
+}

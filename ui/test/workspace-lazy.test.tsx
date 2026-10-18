@@ -7,6 +7,7 @@ import { createMockApi } from "../src/api/mock"
 import { pendingApprovalTargets } from "../src/approvalNavigation"
 import { latestPreview } from "../src/botPreview"
 import { useWorkspace } from "../src/useWorkspace"
+import { TranscriptBuffer } from "../src/workspaceMemory"
 
 afterEach(cleanup)
 
@@ -75,7 +76,7 @@ test("134 threads across 15 bots request only the selected history and render be
   await act(async () => barrier.resolve())
 })
 
-test("selection loads a thread while preserving visited histories and background live events", async () => {
+test("selection evicts visited histories and reloads them on return", async () => {
   const api = createMockApi()
   offscreenMessage(api)
   const hook = renderHook(() => useWorkspace(api))
@@ -85,10 +86,12 @@ test("selection loads a thread while preserving visited histories and background
   expect(hook.result.current.data.messages.some((message) => message.threadId === "thread-onb")).toBe(false)
   const original = hook.result.current.data.messages[0]
   if (!original) throw new Error("Missing message fixture")
+  const reply = { ...original, id: "live-reply", threadId: "thread-onb", text: "Live reply", updatedSeq: 100 }
+  api.getState().messages.push(reply)
   act(() => {
     api.emit({
       type: "message.created",
-      message: { ...original, id: "live-reply", threadId: "thread-onb", text: "Live reply", updatedSeq: 100 },
+      message: reply,
     })
     hook.result.current.actions.selectLocation({ bot: "bot-onb", thread: "thread-onb" })
   })
@@ -99,8 +102,134 @@ test("selection loads a thread while preserving visited histories and background
       ),
     ).toBe(true),
   )
-  expect(hook.result.current.data.messages).toContainEqual(original)
+  expect(hook.result.current.data.messages).not.toContainEqual(original)
   expect(hook.result.current.data.messages.find((message) => message.id === "live-reply")?.text).toBe("Live reply")
+  act(() => hook.result.current.actions.selectBot("bot-mark"))
+  await waitFor(() => expect(hook.result.current.data.messages).toContainEqual(original))
+  expect(hook.result.current.data.messages.every((message) => message.threadId === "thread-mark")).toBe(true)
+  expect(
+    api.calls.filter((call) => call.route === "GET /threads/:id/messages" && call.pathValues.id === "thread-mark"),
+  ).toHaveLength(2)
+})
+
+test("a thousand background replies retain only small activity summaries", async () => {
+  const api = createMockApi()
+  const hook = renderHook(() => useWorkspace(api))
+  await waitFor(() => expect(hook.result.current.data.messages.length).toBeGreaterThan(0))
+  const original = api.getState().messages[0]
+  if (!original) throw new Error("Missing message fixture")
+  for (let batch = 0; batch < 10; batch++) {
+    act(() => {
+      for (let n = batch * 100; n < (batch + 1) * 100; n++) {
+        const text = `${n}: ${"background output ".repeat(4000)}`
+        api.emit({
+          type: "message.created",
+          message: {
+            ...original,
+            id: `background-${n}`,
+            threadId: "thread-onb",
+            role: "assistant",
+            text,
+            parts: [{ type: "text", text }],
+            createdAt: n + 1,
+            updatedAt: n + 1,
+          },
+        })
+      }
+    })
+  }
+  expect(hook.result.current.data.messages.every((message) => message.threadId === "thread-mark")).toBe(true)
+  const summaries = hook.result.current.data.activityMessages.filter((message) => message.threadId === "thread-onb")
+  expect(summaries.length).toBeLessThanOrEqual(5)
+  expect(JSON.stringify(summaries).length).toBeLessThan(10_000)
+  expect(summaries.some((message) => message.id === "background-999")).toBe(true)
+})
+
+test("a slow offscreen history response cannot restore an evicted transcript", async () => {
+  const api = createMockApi()
+  offscreenMessage(api)
+  const barrier = deferred()
+  const request: ApiRequest = async (route, input, path) => {
+    const response = await api.request(route, input, path)
+    if (route === "GET /threads/:id/messages" && path?.id === "thread-mark") await barrier.promise
+    return response
+  }
+  const client = { ...api, request }
+  const hook = renderHook(() => useWorkspace(client))
+  await waitFor(() => expect(api.calls.some((call) => call.route === "GET /threads/:id/messages")).toBe(true))
+  act(() => hook.result.current.actions.selectBot("bot-onb"))
+  await waitFor(() =>
+    expect(hook.result.current.data.messages.some((message) => message.threadId === "thread-onb")).toBe(true),
+  )
+  await act(async () => barrier.resolve())
+  expect(hook.result.current.data.messages.every((message) => message.threadId === "thread-onb")).toBe(true)
+})
+
+test("snapshot overlap buffers discard overflow and require a fresh snapshot", () => {
+  const buffer = new TranscriptBuffer()
+  for (let n = 0; n < 10_000; n++)
+    buffer.push({
+      type: "message.delta",
+      threadId: "thread",
+      messageId: "message",
+      partIndex: 0,
+      delta: "output ".repeat(100),
+    })
+  expect(buffer.overflow).toBe(true)
+  expect(buffer.events).toHaveLength(0)
+  const oversized = new TranscriptBuffer()
+  oversized.push({
+    type: "message.delta",
+    threadId: "thread",
+    messageId: "message",
+    partIndex: 0,
+    delta: "x".repeat(2 * 1024 * 1024),
+  })
+  expect(oversized.overflow).toBe(true)
+  expect(oversized.events).toHaveLength(0)
+})
+
+test("overflow during a slow selected snapshot reloads the current server revision", async () => {
+  const api = createMockApi()
+  const stored = api
+    .getState()
+    .messages.find((message) => message.role === "assistant" && message.threadId === "thread-mark")
+  if (!stored) throw new Error("Missing message fixture")
+  Object.assign(stored, { status: "streaming", text: "", parts: [{ type: "text", text: "" }], updatedSeq: 1 })
+  const barrier = deferred()
+  let reads = 0
+  const request: ApiRequest = async (route, input, path) => {
+    const response = structuredClone(await api.request(route, input, path))
+    if (route === "GET /threads/:id/messages" && ++reads === 1) await barrier.promise
+    return response
+  }
+  const client = { ...api, request }
+  const hook = renderHook(() => useWorkspace(client))
+  await waitFor(() => expect(reads).toBe(1))
+  act(() => {
+    for (let n = 0; n < 600; n++)
+      api.emit({
+        type: "message.delta",
+        threadId: stored.threadId,
+        messageId: stored.id,
+        partIndex: 0,
+        offset: n,
+        delta: "x",
+        updatedSeq: n + 2,
+      })
+  })
+  Object.assign(stored, {
+    text: "Current server revision",
+    parts: [{ type: "text", text: "Current server revision" }],
+    updatedSeq: 1000,
+  })
+  await act(async () => barrier.resolve())
+  await waitFor(() => expect(reads).toBe(2))
+  await waitFor(() =>
+    expect(hook.result.current.data.messages.find((message) => message.id === stored.id)?.text).toBe(
+      "Current server revision",
+    ),
+  )
 })
 
 test("an invalid saved selection never downloads another bot's history", async () => {
