@@ -3,7 +3,7 @@ import { useEffect, useId, useState } from "react"
 import type { UiApi } from "../api/client"
 import { useApiModels } from "../features/bots/apiModels"
 import { t } from "../i18n"
-import { providerName } from "./ProviderMark"
+import { getBotModelName, providerName } from "./ProviderMark"
 
 export const ProviderModelField = ({
   id,
@@ -101,7 +101,7 @@ export const ProviderModelField = ({
       controller.abort()
     }
   }, [api, provider, botId, picker, apiSelection])
-  const showSelect = (picker || apiSelection) && options.length > 0
+  const showSelect = apiSelection || (picker && options.length > 0)
   return (
     <>
       {showSelect ? (
@@ -116,7 +116,7 @@ export const ProviderModelField = ({
             {t("Padrão do provedor")}
             {defaultModel ? ` · ${defaultModel}` : ""}
           </option>
-          {value && !options.includes(value) && <option value={value}>{value}</option>}
+          {value && !options.includes(value) && <option value={value}>{getBotModelName({ model: value })}</option>}
           {options.map((model) => (
             <option key={model} value={model}>
               {getLabel(model)}
