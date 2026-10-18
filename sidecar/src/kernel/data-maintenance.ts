@@ -1,12 +1,13 @@
 import type { Database } from "bun:sqlite"
 import { existsSync, lstatSync, readdirSync, statSync } from "node:fs"
 import { join } from "node:path"
-import type { MessagePart, StorageMaintenanceStatus, StorageStats } from "@touri/contracts"
+import type { Kernel, MessagePart, StorageMaintenanceStatus, StorageStats } from "@touri/contracts"
 import { removePrivateFile } from "./files"
 import { historyMigrationStatus } from "./history-backfill"
 import { attachmentReferences, externalizeMessageParts, OUTPUT_BLOB_ORIGIN } from "./output-blobs"
 import { createStorageUpgrade, maintainDatabasePages } from "./storage-upgrade"
 import { compactTranscript } from "./transcript-storage"
+import { createWalCheckpointer } from "./wal-checkpointer"
 
 export const DEFAULT_DATA_RETENTION_DAYS = 30
 const DAY = 24 * 60 * 60 * 1000
@@ -261,6 +262,7 @@ export const createStorageMaintenance = ({
   publishResync,
   retryDeletedBrowserSessionKeys,
   onError,
+  log,
   runStage,
 }: {
   database: Database
@@ -268,6 +270,7 @@ export const createStorageMaintenance = ({
   publishResync: () => void
   retryDeletedBrowserSessionKeys: (signal: AbortSignal) => Promise<void>
   onError: () => void
+  log?: Kernel["log"]
   runStage?: StageRunner
 }) => {
   const stored = database.query("SELECT value_json FROM settings WHERE key = ?").get(progressKey) as {
@@ -295,7 +298,16 @@ export const createStorageMaintenance = ({
     total: progress.total,
   }
   let stopped = false
-  // Reclaim only a few pages per turn. PASSIVE checkpoints never wait for readers.
+  const walCheckpointer = createWalCheckpointer({
+    database,
+    onReady: () => log?.({ level: "info", module: "store", msg: "WAL checkpoint worker started" }),
+    onError: () => {
+      if (!log) return onError()
+
+      log({ level: "warn", module: "store", msg: "WAL checkpoint worker failed; SQLite auto-checkpointing restored" })
+    },
+  })
+  // WAL checkpoints run off-thread; keep page reclamation to a small batch here.
   const pageTimer = setInterval(() => {
     if (stopped || upgrade.snapshot()) return
     try {
@@ -435,8 +447,9 @@ export const createStorageMaintenance = ({
       return true
     },
     snapshot: (): StorageMaintenanceStatus => ({ ...status }),
-    dispose: () => {
+    dispose: ({ closing = false }: { closing?: boolean } = {}) => {
       stopped = true
+      walCheckpointer.dispose({ closing })
       retryController.abort()
       clearTimeout(retryTimer)
       clearInterval(dailyRetryTimer)

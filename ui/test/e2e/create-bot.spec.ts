@@ -1,5 +1,5 @@
 import AxeBuilder from "@axe-core/playwright"
-import { expect, test } from "@playwright/test"
+import { expect, type Locator, test } from "@playwright/test"
 
 test.use({ viewport: { width: 1440, height: 900 }, reducedMotion: "reduce" })
 
@@ -20,6 +20,67 @@ test("only a name takes two clicks from the landing to chat", async ({ page }) =
   await expect(dialog).toHaveCount(0)
   expect(clicks).toBe(2)
 })
+
+for (const first of [true, false]) {
+  test(`project and folder controls stay in Advanced with a visible footer (first=${first})`, async ({ page }) => {
+    await page.goto("/test/e2e/create-bot-harness.html")
+    await page.getByRole("button", { name: "Criar meu primeiro bot" }).click()
+    if (!first) {
+      await page.getByLabel("Nome", { exact: true }).fill("Colega")
+      await expect(page.getByText(/Usa o Codex/)).toBeVisible()
+      await page.getByRole("dialog").getByRole("button", { name: "Criar bot", exact: true }).click()
+      await expect(page.getByRole("textbox", { name: "Mensagem para Colega" })).toBeVisible()
+      await expect(page.getByRole("dialog")).toHaveCount(0)
+      await page.getByRole("button", { name: "Criar bot", exact: true }).click()
+    }
+    const dialog = page.getByRole("dialog", { name: "Criar um bot" })
+    const advanced = dialog.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ })
+    const primary = dialog.getByRole("button", { name: "Criar bot", exact: true })
+
+    await dialog.getByLabel("Nome", { exact: true }).fill("Clara")
+    await expect(dialog.getByText(/Usa o Codex/)).toBeVisible()
+
+    await expect(advanced).toHaveAttribute("aria-expanded", "false")
+    await expect(dialog.locator("#create-project, .bot-folder-settings")).toHaveCount(0)
+    await expect(dialog.getByRole("button", { name: /Usar uma pasta|Adicionar pasta/ })).toHaveCount(0)
+    await expect(primary).toBeInViewport({ ratio: 1 })
+    const initial = await getCreationLayout(dialog)
+    expect(initial.nestedScroll).toBe(false)
+    expect(initial.contentBottom).toBeLessThanOrEqual(initial.footerTop + 1)
+    expect(initial.footerBottom).toBeLessThanOrEqual(initial.dialogBottom)
+    expect(initial.footerBottom).toBeLessThanOrEqual(initial.viewportHeight)
+
+    await advanced.click()
+
+    await expect(advanced).toHaveAttribute("aria-expanded", "true")
+    const settings = dialog.locator("#bot-create-advanced")
+    await expect(settings.getByLabel("Projeto", { exact: true })).toHaveValue("")
+    await expect(settings.getByRole("button", { name: "Adicionar pasta…", exact: true })).toBeVisible()
+    await expect(settings.getByRole("switch", { name: /Acesso a qualquer pasta/ })).not.toBeChecked()
+    const lastNote = settings.locator(":scope > p").last()
+
+    await lastNote.scrollIntoViewIfNeeded()
+
+    await expect(lastNote).toBeInViewport({ ratio: 1 })
+    await expect(primary).toBeInViewport({ ratio: 1 })
+    const expanded = await getCreationLayout(dialog)
+    const noteBox = await lastNote.boundingBox()
+    if (!noteBox) throw new Error("Missing advanced note geometry")
+    expect(expanded.nestedScroll).toBe(false)
+    expect(expanded.contentBottom).toBeLessThanOrEqual(expanded.footerTop + 1)
+    expect(expanded.footerTop).toBeCloseTo(initial.footerTop, 0)
+    expect(noteBox.y + noteBox.height).toBeLessThanOrEqual(expanded.footerTop + 1)
+
+    await advanced.click()
+
+    await expect(dialog.locator("#create-project, .bot-folder-settings")).toHaveCount(0)
+    await expect(dialog.getByLabel("Nome", { exact: true })).toHaveValue("Clara")
+
+    await primary.click()
+
+    await expect(page.getByRole("textbox", { name: "Mensagem para Clara" })).toBeVisible()
+  })
+}
 
 test("a job can be searched and chosen by keyboard, with advanced edits preserved", async ({ page }) => {
   await page.goto("/test/e2e/create-bot-harness.html")
@@ -109,7 +170,9 @@ for (const viewport of [
     await page.goto("/test/e2e/create-bot-harness.html")
     await page.getByRole("button", { name: "Criar meu primeiro bot" }).click()
     const dialog = page.getByRole("dialog", { name: "Criar um bot" })
-    const action = dialog.getByRole("button", { name: "Usar uma pasta", exact: true })
+
+    await dialog.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }).click()
+    const action = dialog.getByRole("button", { name: "Adicionar pasta…", exact: true })
 
     await expect(action).toBeVisible()
     await action.scrollIntoViewIfNeeded()
@@ -132,3 +195,23 @@ for (const viewport of [
     await expect(page.getByRole("dialog", { name: "Pastas no servidor" })).toBeVisible()
   })
 }
+
+const getCreationLayout = (dialog: Locator) =>
+  dialog.evaluate((element) => {
+    const form = element.querySelector(".bot-create-form")
+    const content = element.querySelector(".bot-create-content")
+    const jobs = element.querySelector(".job-options")
+    const footer = element.querySelector(".bot-create-form > .modal-actions")
+    if (!form || !content || !jobs || !footer) throw new Error("Missing creation layout")
+    const getIsScrollable = (target: Element) =>
+      ["auto", "scroll"].includes(getComputedStyle(target).overflowY) && target.scrollHeight > target.clientHeight + 1
+
+    return {
+      nestedScroll: [element, form, jobs].some(getIsScrollable),
+      contentBottom: content.getBoundingClientRect().bottom,
+      footerTop: footer.getBoundingClientRect().top,
+      footerBottom: footer.getBoundingClientRect().bottom,
+      dialogBottom: element.getBoundingClientRect().bottom,
+      viewportHeight: innerHeight,
+    }
+  })

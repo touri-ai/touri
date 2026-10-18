@@ -552,6 +552,7 @@ export const createKernel = ({ appData, web }: { appData?: string; web?: WebMode
       ),
     onError: () =>
       kernel.log({ level: "error", module: "store", msg: "Compactação adiada; será retomada automaticamente" }),
+    log: kernel.log,
     runStage: stageTracker.run,
   })
   services.provide("storage.maintenance", storageMaintenance)
@@ -565,13 +566,13 @@ export const createKernel = ({ appData, web }: { appData?: string; web?: WebMode
 
   const stop = (): void => {
     diagnostics.stop()
-    services.use("store.api")?.flushWrites?.()
+    services.use("store.api")?.flushWrites?.({ stopping: true })
     clearInterval(revocationTimer)
     for (const controller of pendingRequests) controller.abort()
     for (const socket of liveSockets) socket.close(1001, "Servidor encerrado")
     liveSockets.clear()
     stopHistoryBackfill()
-    storageMaintenance.dispose()
+    storageMaintenance.dispose({ closing: true })
     services.use("vm.desktop")?.dispose()
     services.use("doctor")?.dispose()
     removePrivateFile({ root: paths.appData, path: handshakePath })

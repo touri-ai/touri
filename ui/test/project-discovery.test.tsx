@@ -82,7 +82,8 @@ it("creation persists folder permissions, broad access and a discovered project 
   expect(screen.getByRole("option", { name: "Hodler" })).toBeInTheDocument()
   fireEvent.click(screen.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
   fireEvent.click(screen.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
-  expect(screen.getByRole("switch", { name: /Acesso a qualquer pasta deste servidor/ })).toBeChecked()
+
+  expect(await screen.findByRole("switch", { name: /Acesso a qualquer pasta deste servidor/ })).toBeChecked()
   expect(screen.getByLabelText("Acesso à pasta /workspace/reference")).toHaveValue("read-write")
   fireEvent.click(screen.getByRole("button", { name: "Criar bot" }))
   await waitFor(() =>
