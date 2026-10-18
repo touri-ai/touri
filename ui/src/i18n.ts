@@ -1,4 +1,4 @@
-import type { Bot } from "@touri/contracts"
+import { type Bot, getHostNoun, type HostKind } from "@touri/contracts"
 import { userFacingError } from "./errors"
 /** All UI copy lives here. pt-BR is the default; English is available for a future locale picker. */
 export type Locale = "pt-BR" | "en"
@@ -12,6 +12,55 @@ export const ptBR = {
   "Review today's tasks and suggest next steps.": "Revise as tarefas de hoje e sugira os próximos passos.",
   "Dismiss next step": "Dispensar próximo passo",
   "Team with {name}": "Equipe com {name}",
+  "Meu Chrome só funciona em bots no computador onde o touri está rodando. Uma máquina remota não pode acessar esse navegador.":
+    "Meu Chrome só funciona em bots no computador onde o touri está rodando. Uma máquina remota não pode acessar esse navegador.",
+  "OpenCode está disponível no computador local e na máquina Linux. O runtime da nuvem ainda não oferece este provedor.":
+    "OpenCode está disponível no computador local e na máquina Linux. O runtime da nuvem ainda não oferece este provedor.",
+  "Sign in to {provider} for this {host}: open this link on this device":
+    "Entre no {provider} para este {host}: abra este link neste aparelho",
+  "Preparing {provider} sign-in for this {host}…": "Preparando o login do {provider} para este {host}…",
+  "Verifique a data do sistema, certificados e proxy da rede.":
+    "Verifique a data do sistema, certificados e proxy da rede.",
+  "Meu Chrome só funciona em bots no computador onde o touri está rodando. Uma máquina remota não pode acessar esse navegador. Escolha Chrome da máquina para um bot na máquina Linux.":
+    "Meu Chrome só funciona em bots no computador onde o touri está rodando. Uma máquina remota não pode acessar esse navegador. Escolha Chrome da máquina para um bot na máquina Linux.",
+  "Login deste computador indisponível.": "Login deste computador indisponível.",
+  "Login deste servidor indisponível.": "Login deste servidor indisponível.",
+  "trabalha no servidor escolhido; não pode acessar os arquivos deste aparelho.":
+    "trabalha no servidor escolhido; não pode acessar os arquivos deste aparelho.",
+  "O runtime inteiro roda na nuvem, com sua chave API e sem depender deste computador.":
+    "O runtime inteiro roda na nuvem, com sua chave API e sem depender deste computador.",
+  "Runtime inteiro na nuvem · chave API própria · sem acesso ao computador local.":
+    "Runtime inteiro na nuvem · chave API própria · sem acesso ao computador local.",
+  "Seu bot e suas rotinas trabalham mesmo com o computador local desligado.":
+    "Seu bot e suas rotinas trabalham mesmo com o computador local desligado.",
+  "Este bot trabalha no computador local. O controle depende das permissões do sistema e de uma autorização temporária.":
+    "Este bot trabalha no computador local. O controle depende das permissões do sistema e de uma autorização temporária.",
+  "Informe o caminho absoluto de uma pasta deste computador.":
+    "Informe o caminho absoluto de uma pasta deste computador.",
+  "O acesso a qualquer pasta deste computador é exclusivo dos ajustes.":
+    "O acesso a qualquer pasta deste computador é exclusivo dos ajustes.",
+  "Pastas deste computador não estão disponíveis na nuvem.": "Pastas deste computador não estão disponíveis na nuvem.",
+  "A configuração foi salva neste computador. Vale a partir da próxima mensagem.":
+    "A configuração foi salva neste computador. Vale a partir da próxima mensagem.",
+  "Informe o caminho absoluto de uma pasta deste servidor.": "Informe o caminho absoluto de uma pasta deste servidor.",
+  "O acesso a qualquer pasta deste servidor é exclusivo dos ajustes.":
+    "O acesso a qualquer pasta deste servidor é exclusivo dos ajustes.",
+  "Pastas deste servidor não estão disponíveis na nuvem.": "Pastas deste servidor não estão disponíveis na nuvem.",
+  "A configuração foi salva neste servidor. Vale a partir da próxima mensagem.":
+    "A configuração foi salva neste servidor. Vale a partir da próxima mensagem.",
+  "Default login on this {host}": "Login padrão deste {host}",
+  "Check this {host}": "Verificar este {host}",
+  "Works on this {host}.": "Trabalha neste {host}.",
+  "Runs while touri is running on this {host}.": "Funciona enquanto o touri estiver em execução neste {host}.",
+  "Your data stays on this {host}. External connections are optional.":
+    "Seus dados ficam neste {host}. Conexões externas são opcionais.",
+  "A login is available on this {host}.": "Há um login disponível neste {host}.",
+  "Use this {host}'s login": "Usar login deste {host}",
+  "can read files on this {host} without changing them.": "pode ler arquivos no {host}, sem alterá-los.",
+  "can access files across this {host}; sensitive folder exclusions still apply.":
+    "pode acessar arquivos em todo o {host}; as exclusões de pastas sensíveis continuam valendo.",
+  "Any folder on this {host}": "Qualquer pasta deste {host}",
+  "Access to any folder on this {host}": "Acesso a qualquer pasta deste {host}",
   "Salve o token do bot do Telegram.": "Salve o token do bot do Telegram.",
   "Token inválido ou revogado.": "Token inválido ou revogado.",
   "Não foi possível conectar ao Telegram. Confira sua conexão e tente novamente.":
@@ -107,13 +156,18 @@ export const ptBR = {
     "Para usar processos supervisionados e o Preview, vincule o projeto nas configurações do bot.",
   "Agendar esta tarefa": "Agendar esta tarefa",
   "Aprendizado contínuo": "Aprendizado contínuo",
-  "O bot guarda fatos que valem em toda conversa e registra procedimentos que se repetem como skills. As revisões automáticas rodam como turnos extras e usam a conta do provedor do bot.":
-    "O bot guarda fatos que valem em toda conversa e registra procedimentos que se repetem como skills. As revisões automáticas rodam como turnos extras e usam a conta do provedor do bot.",
+  "Carregando aprendizado…": "Carregando aprendizado…",
+  "O bot guarda fatos que valem em toda conversa e registra procedimentos que se repetem como skills. As revisões automáticas rodam como turnos extras e usam a conta e as permissões atuais do bot.":
+    "O bot guarda fatos que valem em toda conversa e registra procedimentos que se repetem como skills. As revisões automáticas rodam como turnos extras e usam a conta e as permissões atuais do bot.",
   "Não foi possível carregar ou salvar o aprendizado. Tente novamente.":
     "Não foi possível carregar ou salvar o aprendizado. Tente novamente.",
+  "{file} está indisponível porque não é um arquivo local seguro. Substitua os links por um arquivo comum. Você ainda pode desligar o aprendizado.":
+    "{file} está indisponível porque não é um arquivo local seguro. Substitua os links por um arquivo comum. Você ainda pode desligar o aprendizado.",
+  "Não foi possível ler {file}. Verifique as permissões do arquivo. Você ainda pode desligar o aprendizado.":
+    "Não foi possível ler {file}. Verifique as permissões do arquivo. Você ainda pode desligar o aprendizado.",
   "Memória automática": "Memória automática",
-  "A cada {count} conversas, revisa o que aprendeu sobre você e o ambiente. MEMORY.md: {memory} · USER.md: {user} caracteres.":
-    "A cada {count} conversas, revisa o que aprendeu sobre você e o ambiente. MEMORY.md: {memory} · USER.md: {user} caracteres.",
+  "A cada {count} respostas concluídas, revisa o que aprendeu sobre você e o ambiente. MEMORY.md: {memory} · USER.md: {user} caracteres.":
+    "A cada {count} respostas concluídas, revisa o que aprendeu sobre você e o ambiente. MEMORY.md: {memory} · USER.md: {user} caracteres.",
   "Skills automáticas": "Skills automáticas",
   "Depois de {count} chamadas de ferramenta, propõe skills novas ou correções. {skills} skills salvas.":
     "Depois de {count} chamadas de ferramenta, propõe skills novas ou correções. {skills} skills salvas.",
@@ -146,8 +200,8 @@ export const ptBR = {
   "Muitas tentativas de pareamento. Aguarde alguns minutos e gere outro código no servidor.":
     "Muitas tentativas de pareamento. Aguarde alguns minutos e gere outro código no servidor.",
   "Usar um servidor touri": "Usar um servidor touri",
-  "Escolha se os bots trabalham neste Mac ou em um servidor touri.":
-    "Escolha se os bots trabalham neste Mac ou em um servidor touri.",
+  "Escolha se os bots trabalham neste computador ou em um servidor touri.":
+    "Escolha se os bots trabalham neste computador ou em um servidor touri.",
   "Não foi possível acessar o cofre do sistema. Desbloqueie-o e tente novamente ou volte ao modo local.":
     "Não foi possível acessar o cofre do sistema. Desbloqueie-o e tente novamente ou volte ao modo local.",
   "Use um endereço HTTPS do seu servidor touri. HTTP só é permitido neste computador.":
@@ -156,10 +210,10 @@ export const ptBR = {
     "Não foi possível parear este aplicativo. Gere outro código no servidor e tente novamente.",
   "Não foi possível conectar ao servidor. Confira o endereço e a rede e tente novamente.":
     "Não foi possível conectar ao servidor. Confira o endereço e a rede e tente novamente.",
-  "Seus bots, conversas, arquivos e logins ficam no servidor escolhido. Este Mac mostra a interface, sem iniciar bots locais.":
-    "Seus bots, conversas, arquivos e logins ficam no servidor escolhido. Este Mac mostra a interface, sem iniciar bots locais.",
-  "As pastas, a tela e o navegador pessoal deste Mac não ficam disponíveis para os bots do servidor.":
-    "As pastas, a tela e o navegador pessoal deste Mac não ficam disponíveis para os bots do servidor.",
+  "Seus bots, conversas, arquivos e logins ficam no servidor escolhido. Este aparelho mostra a interface, sem iniciar bots locais.":
+    "Seus bots, conversas, arquivos e logins ficam no servidor escolhido. Este aparelho mostra a interface, sem iniciar bots locais.",
+  "As pastas, a tela e o navegador pessoal deste aparelho não ficam disponíveis para os bots do servidor.":
+    "As pastas, a tela e o navegador pessoal deste aparelho não ficam disponíveis para os bots do servidor.",
   "Modo servidor ativo": "Modo servidor ativo",
   "Modo local ativo": "Modo local ativo",
   "Verificando modo do aplicativo…": "Verificando modo do aplicativo…",
@@ -177,8 +231,8 @@ export const ptBR = {
   "O touri vai reiniciar no modo local.": "O touri vai reiniciar no modo local.",
   "Seus dados e os logins dos bots ficam no servidor escolhido.":
     "Seus dados e os logins dos bots ficam no servidor escolhido.",
-  "As pastas abaixo pertencem ao servidor. Pastas deste Mac não são compartilhadas.":
-    "As pastas abaixo pertencem ao servidor. Pastas deste Mac não são compartilhadas.",
+  "As pastas abaixo pertencem ao servidor. Pastas deste aparelho não são compartilhadas.":
+    "As pastas abaixo pertencem ao servidor. Pastas deste aparelho não são compartilhadas.",
   "Acesso a qualquer pasta do servidor": "Acesso a qualquer pasta do servidor",
   "As permissões e o isolamento são aplicados pelo servidor. Revise o acesso antes de salvar.":
     "As permissões e o isolamento são aplicados pelo servidor. Revise o acesso antes de salvar.",
@@ -186,8 +240,8 @@ export const ptBR = {
     "Este bot poderá ler arquivos de todo o servidor e, conforme o nível de acesso, alterá-los ou apagá-los. Conceda este acesso apenas a bots em que confia.",
   "Seu navegador pessoal fica indisponível no modo servidor. Use o navegador do servidor ou do computador isolado.":
     "Seu navegador pessoal fica indisponível no modo servidor. Use o navegador do servidor ou do computador isolado.",
-  "O bot trabalha no servidor escolhido, sem acessar este Mac.":
-    "O bot trabalha no servidor escolhido, sem acessar este Mac.",
+  "O bot trabalha no servidor escolhido, sem acessar este aparelho.":
+    "O bot trabalha no servidor escolhido, sem acessar este aparelho.",
   "Neste servidor": "Neste servidor",
   "Modo servidor": "Modo servidor",
   "Servidor offline. Tentando reconectar…": "Servidor offline. Tentando reconectar…",
@@ -198,8 +252,6 @@ export const ptBR = {
   "Um bot precisa da sua atenção.": "Um bot precisa da sua atenção.",
   "Esta opção está disponível apenas no aplicativo para computador.":
     "Esta opção está disponível apenas no aplicativo para computador.",
-  "trabalha no servidor escolhido; não pode acessar os arquivos deste Mac.":
-    "trabalha no servidor escolhido; não pode acessar os arquivos deste Mac.",
   Atividade: "Atividade",
   "Mostrar mais": "Mostrar mais",
   "Mostrar menos": "Mostrar menos",
@@ -394,6 +446,10 @@ export const ptBR = {
   "URL do servidor": "URL do servidor",
   "Chave da API": "Chave da API",
   "Chave salva. Digite outra para trocar.": "Chave salva. Digite outra para trocar.",
+  "A chave salva não tem um destino confirmado. Digite e salve a chave deste servidor antes de conectar.":
+    "A chave salva não tem um destino confirmado. Digite e salve a chave deste servidor antes de conectar.",
+  "Ao mudar o destino, a chave anterior é removida. Digite a nova chave antes de salvar.":
+    "Ao mudar o destino, a chave anterior é removida. Digite a nova chave antes de salvar.",
   "Remover chave": "Remover chave",
   Alcance: "Alcance",
   "Memórias sobre você, compartilhadas entre bots": "Memórias sobre você, compartilhadas entre bots",
@@ -538,7 +594,7 @@ export const ptBR = {
     "Há mais pastas. Use Digitar caminho para abrir uma que não aparece.",
   "Digitar caminho": "Digitar caminho",
   "Abrir pasta": "Abrir pasta",
-  "Escolher no Mac…": "Escolher no Mac…",
+  "Escolher no computador…": "Escolher no computador…",
   "Nova pasta": "Nova pasta",
   "Nome da nova pasta": "Nome da nova pasta",
   "Criar pasta?": "Criar pasta?",
@@ -552,15 +608,15 @@ export const ptBR = {
   "Escolha uma pasta navegando pelas pastas deste computador.":
     "Escolha uma pasta navegando pelas pastas deste computador.",
   "Bot browser": "Navegador do bot",
-  "My Chrome is available only for bots on this Mac. A remote machine cannot reach your Mac's Chrome. Choose Machine Chrome for a bot on the Linux machine.":
-    "Meu Chrome só funciona em bots neste Mac. A máquina remota não pode acessar o Chrome do Mac. Escolha Chrome da máquina para um bot na máquina Linux.",
+  "My Chrome is available only for bots on the computer running touri. A remote machine cannot reach that browser. Choose Machine Chrome for a bot on the Linux machine.":
+    "Meu Chrome só funciona em bots no computador onde o touri está rodando. Uma máquina remota não pode acessar esse navegador. Escolha Chrome da máquina para um bot na máquina Linux.",
   "touri Chrome": "Chrome do touri",
   "My Chrome": "Meu Chrome",
   "Machine Chrome": "Chrome da máquina",
   "Machine Chrome requires a bot on the Linux machine.":
     "O navegador do computador separado requer que o bot trabalhe nele.",
-  "My Chrome is available only for bots on this Mac. A remote machine cannot reach your Mac's Chrome.":
-    "Meu Chrome só funciona em bots neste Mac. A máquina remota não pode acessar o Chrome do Mac.",
+  "My Chrome is available only for bots on the computer running touri. A remote machine cannot reach that browser.":
+    "Meu Chrome só funciona em bots no computador onde o touri está rodando. Uma máquina remota não pode acessar esse navegador.",
   "The bot will act inside your signed-in sessions in a separate Chrome window. You can close that window or press Stop at any time.":
     "O bot vai agir nas suas sessões já conectadas, em uma janela separada do Chrome. Você pode fechar essa janela ou apertar Parar a qualquer momento.",
   "Got it": "Entendi",
@@ -590,8 +646,8 @@ export const ptBR = {
     "Uma pasta permitida na máquina do bot e Node.js. Não precisa de conta ou senha.",
   "Configuração técnica (MCP)": "Configuração técnica (MCP)",
   "Preparar {name}": "Preparar {name}",
-  "Faça a preparação na máquina em que o bot trabalha. Na VM, o login do Mac não é copiado.":
-    "Faça a preparação na máquina em que o bot trabalha. Na VM, o login do Mac não é copiado.",
+  "Faça a preparação na máquina em que o bot trabalha. Na VM, o login do computador local não é copiado.":
+    "Faça a preparação na máquina em que o bot trabalha. Na VM, o login do computador local não é copiado.",
   "Verificando a preparação…": "Verificando a preparação…",
   "Não foi possível verificar a preparação. Tente novamente.":
     "Não foi possível verificar a preparação. Tente novamente.",
@@ -902,11 +958,10 @@ export const ptBR = {
   "About the bot": "Sobre o bot",
   "No job yet": "Ainda sem função",
   "What it can access": "O que ele pode acessar",
-  "Works on this Mac.": "Trabalha neste Mac.",
   "Works on its own computer.": "Trabalha no próprio computador.",
   "Works on the cloud computer you connected.": "Trabalha no computador na nuvem que você conectou.",
   "Access only to allowed folders": "só nas pastas que você liberar",
-  "Access to any folder you allowed": "em qualquer pasta do Mac que você liberou",
+  "Access to any folder you allowed": "em qualquer pasta do computador que você liberou",
   "Reads files without changing them": "Lê arquivos sem alterá-los",
   "Can change files without asking": "Pode mudar arquivos sem pedir permissão",
   "Asks before changing files": "Pede permissão antes de mudar arquivos",
@@ -1348,8 +1403,8 @@ export const ptBR = {
   "Ao salvar, as pastas valerão a partir da próxima mensagem, quando a máquina será recriada. Os arquivos da máquina serão preservados.":
     "Ao salvar, as pastas valerão a partir da próxima mensagem, quando a máquina será recriada. Os arquivos da máquina serão preservados.",
   "Permitir acesso a qualquer pasta?": "Permitir acesso a qualquer pasta?",
-  "Este bot poderá ler arquivos pessoais de todo o Mac e, conforme o nível de acesso, alterá-los ou apagá-los. Na VM, sua pasta pessoal será montada em /host/home. Conceda este acesso apenas a bots em que confia.":
-    "Este bot poderá ler arquivos pessoais de todo o Mac e, conforme o nível de acesso, alterá-los ou apagá-los. Na VM, sua pasta pessoal será montada em /host/home. Conceda este acesso apenas a bots em que confia.",
+  "Este bot poderá ler arquivos pessoais de todo o computador e, conforme o nível de acesso, alterá-los ou apagá-los. Na VM, sua pasta pessoal será montada em /host/home. Conceda este acesso apenas a bots em que confia.":
+    "Este bot poderá ler arquivos pessoais de todo o computador e, conforme o nível de acesso, alterá-los ou apagá-los. Na VM, sua pasta pessoal será montada em /host/home. Conceda este acesso apenas a bots em que confia.",
   "As exclusões de pastas sensíveis, o nível de acesso e as aprovações continuam valendo.":
     "As exclusões de pastas sensíveis, o nível de acesso e as aprovações continuam valendo.",
   "Permitir acesso": "Permitir acesso",
@@ -1458,8 +1513,8 @@ export const ptBR = {
   "Verificando ferramentas…": "Verificando ferramentas…",
   "Conectar servidor MCP": "Conectar servidor MCP",
   "Entrar no provedor nesta máquina": "Entrar no {provider} nesta máquina",
-  "No Terminal deste Mac, execute claude setup-token e cole o token OAuth abaixo. Ele será usado somente por este bot, na máquina escolhida para ele.":
-    "No Terminal deste Mac, execute claude setup-token e cole o token OAuth abaixo. Ele será usado somente por este bot, na máquina escolhida para ele.",
+  "No terminal da máquina escolhida para o bot, execute claude setup-token e cole o token OAuth abaixo. Ele será usado somente por este bot, na máquina escolhida para ele.":
+    "No terminal da máquina escolhida para o bot, execute claude setup-token e cole o token OAuth abaixo. Ele será usado somente por este bot, na máquina escolhida para ele.",
   "Para usar o Preview, conecte a pasta do aplicativo como projeto e inicie um processo HTTP deste bot. Você pode pedir ao bot para preparar isso; a conexão exige sua aprovação.":
     "Para usar o Preview, conecte a pasta do aplicativo como projeto e inicie um processo HTTP deste bot. Você pode pedir ao bot para preparar isso; a conexão exige sua aprovação.",
   'Execute codex -c cli_auth_credentials_store="file" login --device-auth no terminal e cole o conteúdo de ~/.codex/auth.json abaixo.':
@@ -1607,7 +1662,7 @@ export const ptBR = {
   "Use provider login in VM": "Usar meu login do {provider} no computador separado",
   "VM provider login help":
     "O login fica disponível apenas nas execuções deste bot. Para Claude no macOS, salve um token gerado por claude setup-token no cofre de segredos abaixo.",
-  "Allow host computer use": "Permitir controle do computador na tela deste Mac",
+  "Allow host computer use": "Permitir controle da tela deste computador",
   "Host computer use help":
     "Permite ao bot usar sua tela, teclado e mouse com uma autorização temporária. Desligado, ele controla apenas a tela do computador separado.",
   "Restart machine": "Reiniciar máquina",
@@ -1747,8 +1802,8 @@ export const ptBR = {
   "Close dialog": "Fechar diálogo",
   Doctor: "Diagnóstico",
   "onboarding / environment": "primeiros passos / ambiente",
-  "touri runs on the CLIs already logged in on this Mac. Nothing here reads their credential files.":
-    "O touri usa os programas dos provedores já autenticados neste Mac.",
+  "touri runs on the CLIs already logged in on this computer. Nothing here reads their credential files.":
+    "O touri usa os programas dos provedores já autenticados neste computador.",
   "Checking your local environment…": "Verificando o ambiente local…",
   "Launch touri at login": "Iniciar touri ao entrar",
   "Keep routines and supervised processes available while the window is closed.":
@@ -1845,7 +1900,6 @@ export const ptBR = {
   "Touri is unavailable until the local service reconnects.":
     "O serviço local parou ou não conseguiu iniciar. Reconecte para continuar usando o touri.",
   "The app will not replace your workspace with demo data.": "Seu espaço de trabalho será retomado após a conexão.",
-  "Check this Mac": "Verificar este Mac",
   "Process ready · preview opened": "Processo pronto · preview aberto",
   "Unknown connection error": "Erro de conexão desconhecido",
   "The sidecar connection is not available.": "A conexão com o serviço local está indisponível.",
@@ -1954,7 +2008,7 @@ export const ptBR = {
   "Not granted": "Não permitido",
   "Permission status is unavailable": "Estado das permissões indisponível",
   "Could not request permission": "Não foi possível solicitar a permissão",
-  "Let a bot control the Mac": "Permitir que um bot controle o Mac",
+  "Let a bot control this computer": "Permitir que um bot controle este computador",
   "Access is off by default. Grants are time-boxed, visible in the HUD, and can be stopped with ⌃⌥⌘.":
     "Desligado por padrão. As autorizações têm prazo, aparecem na tela e podem ser interrompidas com ⌃⌥⌘.",
   "time-boxed": "com prazo",
@@ -1987,7 +2041,7 @@ export const ptBR = {
   "Avatar shape": "Forma {shape}",
   "Avatar color": "Cor {color}",
   "Granted until": "Permitido até {time}",
-  "Computer permission waiting": "{name} está aguardando permissão para controlar seu Mac.",
+  "Computer permission waiting": "{name} está aguardando permissão para controlar seu computador.",
   Minutes: "{count} minutos",
   "Notifications need attention": "Notificações, {count} precisam de atenção",
   "Service request failed": "Falha no serviço local: {error}",
@@ -2182,6 +2236,56 @@ export const ptBR = {
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  "Sign in to {provider} for this {host}: open this link on this device":
+    "Sign in to {provider} for {host}: open this link on this device",
+  "Preparing {provider} sign-in for this {host}…": "Preparing {provider} sign-in for {host}…",
+  "Default login on this {host}": "Default login on {host}",
+  "Check this {host}": "Check {host}",
+  "Works on this {host}.": "Works on {host}.",
+  "Runs while touri is running on this {host}.": "Runs while touri is running on {host}.",
+  "Your data stays on this {host}. External connections are optional.":
+    "Your data stays on {host}. External connections are optional.",
+  "A login is available on this {host}.": "A login is available on {host}.",
+  "Use this {host}'s login": "Use {host}'s login",
+  "can read files on this {host} without changing them.": "can read files on {host} without changing them.",
+  "can access files across this {host}; sensitive folder exclusions still apply.":
+    "can access files across {host}; sensitive folder exclusions still apply.",
+  "Any folder on this {host}": "Any folder on {host}",
+  "Access to any folder on this {host}": "Access to any folder on {host}",
+  "Meu Chrome só funciona em bots no computador onde o touri está rodando. Uma máquina remota não pode acessar esse navegador.":
+    "My Chrome is available only for bots on the computer running touri. A remote machine cannot reach that browser.",
+  "OpenCode está disponível no computador local e na máquina Linux. O runtime da nuvem ainda não oferece este provedor.":
+    "OpenCode is available on the local computer and the Linux machine. The cloud runtime does not support this provider yet.",
+  "Verifique a data do sistema, certificados e proxy da rede.":
+    "Check the system date, certificates and network proxy.",
+  "Meu Chrome só funciona em bots no computador onde o touri está rodando. Uma máquina remota não pode acessar esse navegador. Escolha Chrome da máquina para um bot na máquina Linux.":
+    "My Chrome is available only for bots on the computer running touri. A remote machine cannot reach that browser. Choose Machine Chrome for a bot on the Linux machine.",
+  "Login deste computador indisponível.": "Login on this computer is unavailable.",
+  "Login deste servidor indisponível.": "Login on this server is unavailable.",
+  "trabalha no servidor escolhido; não pode acessar os arquivos deste aparelho.":
+    "works on the selected server; cannot access this device’s files.",
+  "O runtime inteiro roda na nuvem, com sua chave API e sem depender deste computador.":
+    "The entire runtime runs in the cloud, with your API key and without depending on this computer.",
+  "Runtime inteiro na nuvem · chave API própria · sem acesso ao computador local.":
+    "Entire runtime in the cloud · your API key · no access to the local computer.",
+  "Seu bot e suas rotinas trabalham mesmo com o computador local desligado.":
+    "Your bot and routines work even when the local computer is turned off.",
+  "Este bot trabalha no computador local. O controle depende das permissões do sistema e de uma autorização temporária.":
+    "This bot works on the local computer. Control depends on system permissions and temporary authorization.",
+  "Informe o caminho absoluto de uma pasta deste computador.": "Enter the absolute path of a folder on this computer.",
+  "O acesso a qualquer pasta deste computador é exclusivo dos ajustes.":
+    "Access to any folder on this computer can only be enabled in settings.",
+  "Pastas deste computador não estão disponíveis na nuvem.": "Folders on this computer are unavailable in the cloud.",
+  "A configuração foi salva neste computador. Vale a partir da próxima mensagem.":
+    "The configuration was saved on this computer. Takes effect from the next message.",
+  "Informe o caminho absoluto de uma pasta deste servidor.": "Enter the absolute path of a folder on this server.",
+  "O acesso a qualquer pasta deste servidor é exclusivo dos ajustes.":
+    "Access to any folder on this server can only be enabled in settings.",
+  "Pastas deste servidor não estão disponíveis na nuvem.": "Folders on this server are unavailable in the cloud.",
+  "A configuração foi salva neste servidor. Vale a partir da próxima mensagem.":
+    "The configuration was saved on this server. Takes effect from the next message.",
+  "Este bot poderá ler arquivos pessoais de todo o computador e, conforme o nível de acesso, alterá-los ou apagá-los. Na VM, sua pasta pessoal será montada em /host/home. Conceda este acesso apenas a bots em que confia.":
+    "This bot can read personal files across the computer and, depending on its access level, change or delete them. In a VM, your home folder is mounted at /host/home. Grant this access only to bots you trust.",
   "Rotina “{name}” não executada: o touri não estava em execução no horário agendado.":
     "Routine “{name}” did not run: touri was not running at the scheduled time.",
   "Rotina “{name}” não executada: o atraso ultrapassou a janela de recuperação.":
@@ -2247,13 +2351,18 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Tentar de novo": "Try again",
   "Agendar esta tarefa": "Schedule this task",
   "Aprendizado contínuo": "Continuous learning",
+  "Carregando aprendizado…": "Loading learning settings…",
   Desligado: "Off",
-  "O bot guarda fatos que valem em toda conversa e registra procedimentos que se repetem como skills. As revisões automáticas rodam como turnos extras e usam a conta do provedor do bot.":
-    "The bot keeps facts that hold in every conversation and records repeating procedures as skills. Automatic reviews run as extra turns and use the bot's provider account.",
+  "O bot guarda fatos que valem em toda conversa e registra procedimentos que se repetem como skills. As revisões automáticas rodam como turnos extras e usam a conta e as permissões atuais do bot.":
+    "The bot keeps facts that hold in every conversation and records repeating procedures as skills. Automatic reviews run as extra turns and use the bot's provider account and current permissions.",
   "Não foi possível carregar ou salvar o aprendizado. Tente novamente.": "Couldn't load or save learning. Try again.",
+  "{file} está indisponível porque não é um arquivo local seguro. Substitua os links por um arquivo comum. Você ainda pode desligar o aprendizado.":
+    "{file} is unavailable because it is not a safe local file. Replace links with a regular file. You can still turn learning off.",
+  "Não foi possível ler {file}. Verifique as permissões do arquivo. Você ainda pode desligar o aprendizado.":
+    "Could not read {file}. Check the file permissions. You can still turn learning off.",
   "Memória automática": "Automatic memory",
-  "A cada {count} conversas, revisa o que aprendeu sobre você e o ambiente. MEMORY.md: {memory} · USER.md: {user} caracteres.":
-    "Every {count} conversations, reviews what it learned about you and the environment. MEMORY.md: {memory} · USER.md: {user} characters.",
+  "A cada {count} respostas concluídas, revisa o que aprendeu sobre você e o ambiente. MEMORY.md: {memory} · USER.md: {user} caracteres.":
+    "Every {count} completed replies, reviews what it learned about you and the environment. MEMORY.md: {memory} · USER.md: {user} characters.",
   "Skills automáticas": "Automatic skills",
   "Depois de {count} chamadas de ferramenta, propõe skills novas ou correções. {skills} skills salvas.":
     "After {count} tool calls, proposes new skills or fixes. {skills} skills saved.",
@@ -2303,8 +2412,8 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Conectando ao servidor…": "Connecting to the server…",
   // Optional native server mode.
   "Usar um servidor touri": "Use a touri server",
-  "Escolha se os bots trabalham neste Mac ou em um servidor touri.":
-    "Choose whether bots work on this Mac or on a touri server.",
+  "Escolha se os bots trabalham neste computador ou em um servidor touri.":
+    "Choose whether bots work on this computer or on a touri server.",
   "Não foi possível acessar o cofre do sistema. Desbloqueie-o e tente novamente ou volte ao modo local.":
     "Could not access the system vault. Unlock it and try again, or return to local mode.",
   "Use um endereço HTTPS do seu servidor touri. HTTP só é permitido neste computador.":
@@ -2313,10 +2422,10 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
     "Could not pair this app. Generate another code on the server and try again.",
   "Não foi possível conectar ao servidor. Confira o endereço e a rede e tente novamente.":
     "Could not connect to the server. Check the address and network, then try again.",
-  "Seus bots, conversas, arquivos e logins ficam no servidor escolhido. Este Mac mostra a interface, sem iniciar bots locais.":
-    "Your bots, conversations, files and sign-ins stay on the selected server. This Mac shows the interface without starting local bots.",
-  "As pastas, a tela e o navegador pessoal deste Mac não ficam disponíveis para os bots do servidor.":
-    "This Mac’s folders, screen and personal browser are unavailable to the server’s bots.",
+  "Seus bots, conversas, arquivos e logins ficam no servidor escolhido. Este aparelho mostra a interface, sem iniciar bots locais.":
+    "Your bots, conversations, files and sign-ins stay on the selected server. This device shows the interface without starting local bots.",
+  "As pastas, a tela e o navegador pessoal deste aparelho não ficam disponíveis para os bots do servidor.":
+    "This device’s folders, screen and personal browser are unavailable to the server’s bots.",
   "Modo servidor ativo": "Server mode active",
   "Modo local ativo": "Local mode active",
   "Verificando modo do aplicativo…": "Checking app mode…",
@@ -2334,8 +2443,8 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "O touri vai reiniciar no modo local.": "touri will restart in local mode.",
   "Seus dados e os logins dos bots ficam no servidor escolhido.":
     "Your data and bot sign-ins stay on the selected server.",
-  "As pastas abaixo pertencem ao servidor. Pastas deste Mac não são compartilhadas.":
-    "The folders below belong to the server. This Mac’s folders are not shared.",
+  "As pastas abaixo pertencem ao servidor. Pastas deste aparelho não são compartilhadas.":
+    "The folders below belong to the server. This device’s folders are not shared.",
   "Acesso a qualquer pasta do servidor": "Access any folder on the server",
   "As permissões e o isolamento são aplicados pelo servidor. Revise o acesso antes de salvar.":
     "The server applies permissions and isolation. Review access before saving.",
@@ -2343,8 +2452,8 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
     "This bot can read files across the server and, depending on its access level, change or delete them. Grant this access only to bots you trust.",
   "Seu navegador pessoal fica indisponível no modo servidor. Use o navegador do servidor ou do computador isolado.":
     "Your personal browser is unavailable in server mode. Use the server’s browser or the isolated computer’s browser.",
-  "O bot trabalha no servidor escolhido, sem acessar este Mac.":
-    "The bot works on the selected server without accessing this Mac.",
+  "O bot trabalha no servidor escolhido, sem acessar este aparelho.":
+    "The bot works on the selected server without accessing this device.",
   "Neste servidor": "On this server",
   "Modo servidor": "Server mode",
   "Servidor offline. Tentando reconectar…": "Server offline. Trying to reconnect…",
@@ -2355,8 +2464,6 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Um bot precisa da sua atenção.": "A bot needs your attention.",
   "Esta opção está disponível apenas no aplicativo para computador.":
     "This option is available only in the desktop app.",
-  "trabalha no servidor escolhido; não pode acessar os arquivos deste Mac.":
-    "works on the selected server; cannot access this Mac’s files.",
   Atividade: "Activity",
   "Mostrar mais": "Show more",
   "Mostrar menos": "Show less",
@@ -2562,6 +2669,10 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "URL do servidor": "Server URL",
   "Chave da API": "API key",
   "Chave salva. Digite outra para trocar.": "Key saved. Type another one to replace it.",
+  "A chave salva não tem um destino confirmado. Digite e salve a chave deste servidor antes de conectar.":
+    "The saved key has no confirmed destination. Enter and save the key for this server before connecting.",
+  "Ao mudar o destino, a chave anterior é removida. Digite a nova chave antes de salvar.":
+    "Changing the destination removes the previous key. Enter the new key before saving.",
   "Remover chave": "Remove key",
   Alcance: "Scope",
   "Memórias sobre você, compartilhadas entre bots": "Memories about you, shared across bots",
@@ -2705,7 +2816,7 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
     "There are more folders. Use Type a path to open one that is not shown.",
   "Digitar caminho": "Type a path",
   "Abrir pasta": "Open folder",
-  "Escolher no Mac…": "Choose on Mac…",
+  "Escolher no computador…": "Choose on computer…",
   "Nova pasta": "New folder",
   "Nome da nova pasta": "New folder name",
   "Criar pasta?": "Create folder?",
@@ -2735,8 +2846,8 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
     "An allowed folder on the bot’s machine and Node.js. No account or password needed.",
   "Configuração técnica (MCP)": "Technical configuration (MCP)",
   "Preparar {name}": "Prepare {name}",
-  "Faça a preparação na máquina em que o bot trabalha. Na VM, o login do Mac não é copiado.":
-    "Prepare the connection on the machine where the bot works. Your Mac login is not copied into a VM.",
+  "Faça a preparação na máquina em que o bot trabalha. Na VM, o login do computador local não é copiado.":
+    "Prepare the connection on the machine where the bot works. Your local computer login is not copied into a VM.",
   "Verificando a preparação…": "Checking preparation…",
   "Não foi possível verificar o login salvo. Verifique de novo.": "Could not check the saved login. Check again.",
   "Não foi possível concluir o login. Verifique de novo ou use outra conta.":
@@ -2806,10 +2917,10 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   // First conversation and host transparency.
   "onboarding.server": "server",
   "onboarding.privacy":
-    "History stays on this {host}. Your AI receives the content needed to respond. touri collects no telemetry.",
-  "onboarding.uses": "Uses {provider}, signed in on this {host}.",
-  "onboarding.checking": "Checking installation and login on this {host}…",
-  "onboarding.missing": "{provider} is not installed on this {host} yet.",
+    "History stays on {host}. Your AI receives the content needed to respond. touri collects no telemetry.",
+  "onboarding.uses": "Uses {provider}, signed in on {host}.",
+  "onboarding.checking": "Checking installation and login on {host}…",
+  "onboarding.missing": "{provider} is not installed on {host} yet.",
   "onboarding.install": "See how to install",
   "onboarding.installLinkError": "Could not open the browser. Copy the link address to see how to install.",
   "onboarding.recheck": "Check again",
@@ -2950,8 +3061,8 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
     "Projects and repositories in folders already granted to this bot.",
   "List projects and Git repositories only in this bot's already granted folders and connected project. Never searches the home directory on its own. Read-only; no approval required. Ask the user for a path when nothing is available.":
     "List projects and Git repositories only in this bot's already granted folders and connected project. Never searches the home directory on its own. Read-only; no approval required. Ask the user for a path when nothing is available.",
-  "No Terminal deste Mac, execute claude setup-token e cole o token OAuth abaixo. Ele será usado somente por este bot, na máquina escolhida para ele.":
-    "In Terminal on this Mac, run claude setup-token and paste the OAuth token below. Only this bot will use it, on its selected machine.",
+  "No terminal da máquina escolhida para o bot, execute claude setup-token e cole o token OAuth abaixo. Ele será usado somente por este bot, na máquina escolhida para ele.":
+    "In the terminal on the bot’s selected machine, run claude setup-token and paste the OAuth token below. Only this bot will use it, on its selected machine.",
   "Para usar o Preview, conecte a pasta do aplicativo como projeto e inicie um processo HTTP deste bot. Você pode pedir ao bot para preparar isso; a conexão exige sua aprovação.":
     "To use Preview, link the app folder as a project and start an HTTP process for this bot. You can ask the bot to set this up; linking requires your approval.",
   "Detalhes indisponíveis": "Details unavailable",
@@ -3084,11 +3195,10 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "About the bot": "About the bot",
   "No job yet": "No job yet",
   "What it can access": "What it can access",
-  "Works on this Mac.": "Works on this Mac.",
   "Works on its own computer.": "Works on its own computer.",
   "Works on the cloud computer you connected.": "Works on the cloud computer you connected.",
   "Access only to allowed folders": "only in folders you allow",
-  "Access to any folder you allowed": "in any Mac folder you allowed",
+  "Access to any folder you allowed": "in any computer folder you allowed",
   "Reads files without changing them": "Reads files without changing them",
   "Can change files without asking": "Can change files without asking",
   "Asks before changing files": "Asks before changing files",
@@ -3565,7 +3675,7 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Avatar shape": "Shape {shape}",
   "Avatar color": "Color {color}",
   "Granted until": "Granted until {time}",
-  "Computer permission waiting": "{name} is waiting for permission to control your Mac.",
+  "Computer permission waiting": "{name} is waiting for permission to control your computer.",
   Minutes: "{count} minutes",
   "Notifications need attention": "Notifications, {count} need attention",
   "Service request failed": "Local service request failed: {error}",
@@ -3782,6 +3892,12 @@ export const t = (
         }
       : params
   return template.replace(/\{(\w+)\}/g, (_, name: string) => String(values[name] ?? `{${name}}`))
+}
+
+export const getHostLabel = (host: HostKind, locale: Locale = "pt-BR"): string => {
+  const noun = getHostNoun(host, locale)
+
+  return locale === "en" ? `this ${noun}` : noun
 }
 
 /** Localize auto-generated imported date titles; preserve arbitrary user titles. */

@@ -176,7 +176,7 @@ it("stops retrying a temporary login failure after its view closes", async () =>
     return original(route, input, path)
   }) as ApiRequest
   const view = render(<ProviderLogin api={f.api} botId="bot" provider="codex" onConfigured={vi.fn()} />)
-  const button = await screen.findByRole("button", { name: "Usar login deste servidor" })
+  const button = await screen.findByRole("button", { name: "Usar login deste computador" })
   vi.useFakeTimers()
   await act(async () => fireEvent.click(button))
   expect(attempts).toBe(1)
@@ -187,29 +187,32 @@ it("stops retrying a temporary login failure after its view closes", async () =>
   expect(attempts).toBe(1)
 })
 
-it.each(["mac", "server"] as const)("offers the %s host login first and connects with one click", async (host) => {
-  const f = fixture("host-available")
-  f.setFlow({ provider: "codex", state: "host-available", host })
-  const location = host === "mac" ? "Mac" : "servidor"
-  const configured = vi.fn()
-  render(<ProviderLogin api={f.api} botId="bot" provider="codex" onConfigured={configured} />)
-  await screen.findByRole("button", { name: `Usar login deste ${location}` })
-  expect(screen.getByText(`Há um login disponível neste ${location}.`)).toBeVisible()
-  expect(f.request.mock.calls.some(([, input]) => input.action === "start")).toBe(false)
-  expect(f.request.mock.calls.some(([route]) => route === "GET /bots/:id/provider-login")).toBe(false)
-  fireEvent.click(screen.getByRole("button", { name: `Usar login deste ${location}` }))
-  await waitFor(() => expect(configured).toHaveBeenCalledOnce())
-  expect(f.request).toHaveBeenCalledWith(
-    "POST /bots/:id/provider-login/flow",
-    { provider: "codex", action: "use-host" },
-    { id: "bot" },
-  )
-})
+it.each(["mac", "computer", "server"] as const)(
+  "offers the %s host login first and connects with one click",
+  async (host) => {
+    const f = fixture("host-available")
+    f.setFlow({ provider: "codex", state: "host-available", host: host === "mac" ? "mac" : "server", hostKind: host })
+    const location = { mac: "Mac", computer: "computador", server: "servidor" }[host]
+    const configured = vi.fn()
+    render(<ProviderLogin api={f.api} botId="bot" provider="codex" onConfigured={configured} />)
+    await screen.findByRole("button", { name: `Usar login deste ${location}` })
+    expect(screen.getByText(`Há um login disponível neste ${location}.`)).toBeVisible()
+    expect(f.request.mock.calls.some(([, input]) => input.action === "start")).toBe(false)
+    expect(f.request.mock.calls.some(([route]) => route === "GET /bots/:id/provider-login")).toBe(false)
+    fireEvent.click(screen.getByRole("button", { name: `Usar login deste ${location}` }))
+    await waitFor(() => expect(configured).toHaveBeenCalledOnce())
+    expect(f.request).toHaveBeenCalledWith(
+      "POST /bots/:id/provider-login/flow",
+      { provider: "codex", action: "use-host" },
+      { id: "bot" },
+    )
+  },
+)
 
-it("uses server copy when an older sidecar omits the host context", async () => {
+it("uses computer copy when an older sidecar omits the host context", async () => {
   const f = fixture("host-available")
   render(<ProviderLogin api={f.api} botId="bot" provider="codex" onConfigured={vi.fn()} />)
-  await screen.findByRole("button", { name: "Usar login deste servidor" })
+  await screen.findByRole("button", { name: "Usar login deste computador" })
 })
 
 it.each(["idle", "waiting", "cancelled", "error", "ready"] as const)(
@@ -324,8 +327,13 @@ it.each(["mac", "server"] as const)("composer identifies the %s host and waits f
   const f = fixture("host-available")
   const bot = f.api.getState().bots[0]
   if (!bot) throw new Error("Missing fixture")
-  f.setFlow({ provider: bot.provider, state: "host-available", host })
-  const location = host === "mac" ? "Mac" : "servidor"
+  f.setFlow({
+    provider: bot.provider,
+    state: "host-available",
+    host: host === "mac" ? "mac" : "server",
+    hostKind: host,
+  })
+  const location = { mac: "Mac", computer: "computador", server: "servidor" }[host]
   const send = vi.fn().mockResolvedValue(undefined)
   render(
     <Composer
@@ -444,7 +452,7 @@ it("creation starts the selected provider before creating a bot and cancels on c
   )
   expect(create).not.toHaveBeenCalled()
   fireEvent.click(screen.getByRole("button", { name: "Colar token manualmente" }))
-  expect(screen.getByText(/No Terminal deste Mac, execute claude setup-token/)).toHaveTextContent(
+  expect(screen.getByText(/No terminal da máquina escolhida para o bot, execute claude setup-token/)).toHaveTextContent(
     "somente por este bot, na máquina escolhida para ele",
   )
   expect(screen.queryByText(/execuções deste bot na VM/)).not.toBeInTheDocument()
@@ -730,6 +738,33 @@ it.each([
   expect(t("Entrar no {provider}", { provider: "Claude" }, "en")).toBe("Sign in to Claude")
 })
 
+it.each([
+  { hostKind: "computer", noun: "computador", hasLink: false },
+  { hostKind: "computer", noun: "computador", hasLink: true },
+  { hostKind: "server", noun: "servidor", hasLink: false },
+  { hostKind: "server", noun: "servidor", hasLink: true },
+] as const)(
+  "waiting $hostKind login with link=$hasLink describes its reported host",
+  async ({ hostKind, noun, hasLink }) => {
+    const f = fixture("waiting")
+    f.setFlow({
+      provider: "codex",
+      state: "waiting",
+      host: "server",
+      hostKind,
+      ...(hasLink ? { verificationUrl: "https://example.test/login" } : {}),
+    })
+
+    render(<ProviderLogin api={f.api} botId="draft-test" provider="codex" onConfigured={vi.fn()} />)
+
+    const message = hasLink
+      ? `Entre no Codex para este ${noun}: abra este link neste aparelho`
+      : `Preparando o login do Codex para este ${noun}…`
+    expect(await screen.findByText(message)).toBeVisible()
+    expect(screen.queryByRole("link", { name: "Abrir página de login" }) !== null).toBe(hasLink)
+  },
+)
+
 it.each(["codex", "claude", "opencode"] as const)(
   "%s server login offers a device link and copyable code without opening a desktop",
   async (provider) => {
@@ -740,7 +775,7 @@ it.each(["codex", "claude", "opencode"] as const)(
     const url = "https://opencode.ai/auth?state=synthetic-state"
     f.setFlow({ provider, state: "waiting", host: "server", deviceCode: "1234-5678", verificationUrl: url })
     render(<ProviderLogin api={f.api} botId="draft-test" provider={provider} onConfigured={vi.fn()} />)
-    await screen.findByText(/para o servidor: abra este link neste aparelho/)
+    await screen.findByText(/para este servidor: abra este link neste aparelho/)
     expect(screen.getByText(/O login expira em até 10 minutos/)).toBeVisible()
     expect(screen.getByRole("link", { name: "Abrir página de login" })).toHaveAttribute("href", url)
     expect(screen.getByRole("textbox", { name: "Código de login" })).toHaveValue("1234-5678")

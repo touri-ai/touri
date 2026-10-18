@@ -5,6 +5,7 @@ import type {
   BrowserTabInfo,
   DoctorReport,
   GroupInput,
+  HostKind,
   Id,
   MachineCapability,
   MachineState,
@@ -57,7 +58,7 @@ export type WorkspaceData = {
   processes: Array<ProcessEntry>
   previews: Array<PreviewTarget>
   browserTabs: Array<BrowserTabInfo & { ownerBotId: Id | null }>
-  routineHost: "mac" | "server"
+  routineHost: HostKind
   routines: Array<Routine>
   routineRuns: Array<RoutineRun>
   doctor: DoctorReport | null
@@ -142,7 +143,7 @@ const emptyState = (): WorkspaceData => ({
   processes: [],
   previews: [],
   browserTabs: [],
-  routineHost: "server",
+  routineHost: "computer",
   routines: [],
   routineRuns: [],
   doctor: null,
@@ -624,7 +625,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
           projects: projectResponse.projects,
           previews: previewResponse.previews,
           browserTabs: browserResponse.tabs,
-          routineHost: routinesResponse.host ?? "server",
+          routineHost: routinesResponse.hostKind ?? routinesResponse.host ?? "computer",
           routines: uniqueById(routinesResponse.routines),
           routineRuns: uniqueById(routineRunsResponse.routineRuns),
           settings: settingsResponse.settings,

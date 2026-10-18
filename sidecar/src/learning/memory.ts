@@ -1,5 +1,6 @@
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs"
-import { dirname, join } from "node:path"
+import { readFileSync } from "node:fs"
+import { join } from "node:path"
+import { linkFree, writeAtomically } from "./paths"
 import { findThreat } from "./threats"
 
 export type MemoryTarget = "memory" | "user"
@@ -8,13 +9,16 @@ export type MemoryOperation = { action: "add" | "patch" | "remove"; content?: st
 /** Entries are separated by a line holding only §, so one entry can span several lines. */
 export const ENTRY_DELIMITER = "\n§\n"
 export const MEMORY_LIMITS: Record<MemoryTarget, number> = { memory: 3_000, user: 1_500 }
-export const memoryFile = (homeDir: string, target: MemoryTarget): string =>
-  join(homeDir, target === "memory" ? "MEMORY.md" : "USER.md")
+export const memoryFile = (homeDir: string, target: MemoryTarget): string => {
+  const path = join(homeDir, target === "memory" ? "MEMORY.md" : "USER.md")
+  if (!linkFree(homeDir, path, "file")) throw new Error("INVALID_PATH")
+  return path
+}
 
 export const parseEntries = (text: string): string[] => {
   const seen = new Set<string>()
   return text
-    .split(/\n§\n/)
+    .split(/\r?\n§\r?\n/)
     .map((entry) => entry.trim())
     .filter((entry) => entry && !seen.has(entry) && seen.add(entry))
 }
@@ -24,17 +28,15 @@ export const renderEntries = (entries: string[]): string => entries.join(ENTRY_D
 export const readEntries = (homeDir: string, target: MemoryTarget): string[] => {
   try {
     return parseEntries(readFileSync(memoryFile(homeDir, target), "utf8"))
-  } catch {
-    return []
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return []
+    throw error
   }
 }
 
 export const writeEntries = (homeDir: string, target: MemoryTarget, entries: string[]): void => {
   const path = memoryFile(homeDir, target)
-  mkdirSync(dirname(path), { recursive: true })
-  const temporary = `${path}.${process.pid}.${Date.now()}.tmp`
-  writeFileSync(temporary, entries.length ? `${renderEntries(entries)}\n` : "", { mode: 0o600 })
-  renameSync(temporary, path)
+  writeAtomically(path, entries.length ? `${renderEntries(entries)}\n` : "")
 }
 
 export type MemoryResult =
@@ -64,7 +66,7 @@ export const applyMemoryOperations = ({
       if (!content) return failure("INVALID_ARGS", `${label}: informe content.`)
       const threat = findThreat(content, "memory")
       if (threat) return failure("UNSAFE_CONTENT", `${label} recusada: ${threat}.`)
-      if (content.includes("\n§\n") || content === "§")
+      if (/^§\r?$/m.test(content))
         return failure("INVALID_ARGS", `${label}: o separador § não pode aparecer sozinho numa linha.`)
     }
     if (operation.action === "add") {
@@ -79,7 +81,10 @@ export const applyMemoryOperations = ({
     const index = found[0] as number
     if (operation.action === "remove") next.splice(index, 1)
     else {
-      const replaced = (next[index] as string).replace(oldText, content).trim()
+      const replaced = (next[index] as string).replace(oldText, () => content).trim()
+      const threat = findThreat(replaced, "memory")
+      if (threat) return failure("UNSAFE_CONTENT", `${label} recusada: ${threat}.`)
+      if (/^§\r?$/m.test(replaced)) return failure("INVALID_ARGS", `${label}: separador inválido.`)
       if (next.some((entry, other) => other !== index && entry === replaced)) next.splice(index, 1)
       else next[index] = replaced
     }
