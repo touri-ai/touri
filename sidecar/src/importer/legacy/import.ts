@@ -18,6 +18,7 @@ import type {
   ThreadUsage,
 } from "@touri/contracts"
 import { atomicWriteFile, attachmentMime } from "../../kernel/files"
+import { refreshMessageSearch } from "../../kernel/message-search"
 import { DEPRECATED_IMPORT_ALIAS } from "../deprecatedAliases"
 import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, rmSync, statSync } from "./fs"
 import { assertImportOwner, importIdentity, legacySourceOrigin, sourceOrigin } from "./identity"
@@ -1241,11 +1242,11 @@ const upsertMessages = ({
           message.source.at,
           message.source.at,
         )
-      database.query("DELETE FROM messages_fts WHERE thread_id = ? AND message_id = ?").run(plan.id, message.source.id)
-      if (message.text.length > 0)
-        database
-          .query("INSERT INTO messages_fts (text, thread_id, message_id) VALUES (?, ?, ?)")
-          .run(message.text, plan.id, message.source.id)
+      refreshMessageSearch(
+        database,
+        { threadId: plan.id, id: message.source.id, text: message.text },
+        { indexEmpty: false },
+      )
       recordImport({
         database,
         kind: "message",

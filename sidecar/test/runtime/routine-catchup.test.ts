@@ -29,7 +29,7 @@ test.each([0, 1, 30_000, 120_000])("zero catch-up runs a live slot %i ms late ex
     expect.objectContaining({ scheduledFor: due, status: "running", triggerSource: "cron" }),
   ])
   expect(fixture.engine.listRuns(fixture.bot.mainThreadId ?? "")).toEqual([
-    expect.objectContaining({ status: "starting", trigger: "routine" }),
+    expect.objectContaining({ status: "queued", trigger: "routine" }),
   ])
   expect(fixture.engine.listRoutines()[0]?.nextRunAt).toBe(due + 15 * 60_000)
 })
