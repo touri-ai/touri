@@ -7,6 +7,7 @@ import {
   checkReleaseBinaries,
   configureReleasePaths,
   getReleaseNotes,
+  getReleaseVersion,
   prepareRelease,
 } from "../../../scripts/release-artifacts.mjs"
 
@@ -23,6 +24,17 @@ afterEach(async () => {
   await Promise.all((await readdir(fixtures)).map((name) => rm(join(fixtures, name), { recursive: true, force: true })))
 })
 afterAll(() => rm(fixtures, { recursive: true, force: true }))
+
+test.each(["v0.3.0", "v12.34.567"])("accepts numeric release tags: %s", (tag) => {
+  expect(getReleaseVersion(tag)).toBe(tag.slice(1))
+})
+
+test.each(["v1.2.3-rc.1", "v1.2.3+build.1", "v1.2", "v1.2.3.4", "vX.Y.Z", "v1.2.3\n", "1.2.3"])(
+  "rejects tags incompatible with the numeric release contract: %s",
+  (tag) => {
+    expect(() => getReleaseVersion(tag)).toThrow("numeric vX.Y.Z")
+  },
+)
 
 test("only the tagged changelog section becomes release notes", () => {
   const changelog =

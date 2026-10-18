@@ -112,18 +112,25 @@ git tag vX.Y.Z
 git push origin vX.Y.Z
 ```
 
-Every `v*` tag push starts `.github/workflows/release.yml`; publication requires a version tag
-such as `v0.3.0` and a nonempty changelog section matching the version without `v`.
+Only numeric `vX.Y.Z` tag pushes (filter `v[0-9]+.[0-9]+.[0-9]+`) start
+`.github/workflows/release.yml`, for example `v0.3.0` or `v12.34.567`. Suffixes such as `-rc.1`
+and build metadata such as `+build.1` are excluded because the Windows MSI version must be numeric.
+The `validate` job enforces the same contract before any platform build; publication also requires
+a nonempty changelog section matching the version without `v`.
 
 | Job | Runner | Build and uploaded artifact |
 | --- | --- | --- |
+| `validate` | `ubuntu-latest` | Rejects nonnumeric version tags before the three builds |
 | `macos` | `macos-26` | Apple Silicon sidecar, `.app` and `.dmg`; uploads the DMG as `touri-<tag>-macos-arm64` (the app is inside the DMG) |
 | `linux` | `ubuntu-latest` | x64 sidecar, AppImage and `.deb`, with CI's native Linux dependencies; uploads installers as `touri-<tag>-linux-x64` |
 | `windows` | `windows-latest` | MSVC x64 sidecar, MSI and NSIS `.exe`; uploads installers as `touri-<tag>-windows-x64` |
-| `publish` | `ubuntu-latest` | Waits for all three builds, downloads their artifact IDs from this run, requires all five versioned installers, flattens filenames and generates `SHA256SUMS`; creates or updates the tag's GitHub pre-release with those assets |
+| `publish` | `ubuntu-latest` | Waits for all three builds, downloads their artifact IDs from this run, requires all five versioned installers and flattens filenames; creates a pre-release only if absent, uploads missing assets and publishes `SHA256SUMS` last |
 
 The builds have `contents: read`; only `publish` has `contents: write`, with `GH_TOKEN` explicitly
 passed only to the GitHub CLI publication step. All external actions are pinned to full commit SHAs.
+Each platform explicitly installs stable Rust with the SHA-pinned `dtolnay/rust-toolchain` action
+(including the Apple Silicon target on macOS), rather than relying on the runner's preinstalled Rust.
+The action revision is fixed; the stable compiler channel can advance between runs.
 The publish job installs no dependencies and never executes downloaded artifacts. Notes contain
 only the matching changelog section, ending before the next version heading. Missing or duplicate
 installers, unexpected assets and missing/empty notes fail before any release write.
@@ -135,9 +142,21 @@ and fails before uploading if a home path remains. SHA256SUMS hashes the final d
 verify locally with `sha256sum --check SHA256SUMS` after downloading all assets.
 
 Signing, notarization and updater switches remain `false`; these installers are unsigned.
-After a failure, rerun the failed jobs in the tag's Actions run. Successful publication reruns
-replace matching assets with `--clobber`, refresh the changelog notes and retain pre-release status;
-they do not move the tag. Runs for the same tag are serialized to prevent competing uploads.
+After a failure, rerun the failed jobs in the tag's Actions run. Existing asset names, including
+`SHA256SUMS`, are skipped and logged; uploads never replace or delete published bytes. An existing
+release's title, notes, draft/pre-release status and latest designation remain unchanged, including
+after promotion. Only a new release gets the tag title, changelog notes, pre-release status and
+`latest=false`. Lookup errors other than HTTP 404 stop publication without attempting creation.
+
+Installers are not reproducible across builds. If `SHA256SUMS` is absent, publication downloads
+and hashes preserved assets, combines those hashes with the missing local installers, then uploads
+the manifest only after all installer uploads succeed. A failed upload leaves existing assets intact
+and no premature manifest; rerunning completes the missing uploads. If a manifest already exists,
+each missing local asset must match its published checksum before any upload is attempted. A
+mismatch stops publication: rerun using the original successful build artifacts (rerun only the
+publish job), or ship a new version/tag; never overwrite an installer or checksum to repair it.
+Runs for the same tag are serialized. A concurrent external upload fails on duplicate names without
+overwriting them; retry to refresh the asset list. Reruns never move the tag.
 
 ## Validation without provider accounts
 

@@ -2,7 +2,7 @@ name: Release
 
 on:
   push:
-    tags: ["v*"]
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
 
 permissions:
   contents: read
@@ -22,7 +22,20 @@ env:
   CARGO_PROFILE_RELEASE_DEBUG: "0"
 
 jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Require a numeric version compatible with Windows MSI
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: node scripts/release-artifacts.mjs validate
+
   macos:
+    needs: [validate]
     # Match CI's Apple Metal SDK while retaining the app's macOS 14 minimum.
     runs-on: macos-26
     timeout-minutes: 60
@@ -34,6 +47,10 @@ jobs:
           persist-credentials: false
       - name: Remap release source paths
         run: node scripts/release-artifacts.mjs configure
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: stable
+          targets: aarch64-apple-darwin
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.4.3
@@ -80,6 +97,7 @@ jobs:
             src-tauri/target/**/bundle/macos/latest.json
 
   linux:
+    needs: [validate]
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
@@ -92,6 +110,9 @@ jobs:
           persist-credentials: false
       - name: Remap release source paths
         run: node scripts/release-artifacts.mjs configure
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: stable
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.4.3
@@ -115,6 +136,7 @@ jobs:
             src-tauri/target/release/bundle/deb/*.deb
 
   windows:
+    needs: [validate]
     runs-on: windows-latest
     timeout-minutes: 60
     outputs:
@@ -125,6 +147,9 @@ jobs:
           persist-credentials: false
       - name: Remap release source paths
         run: node scripts/release-artifacts.mjs configure
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: stable
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.4.3
@@ -174,15 +199,9 @@ jobs:
         env:
           RELEASE_TAG: ${{ github.ref_name }}
         run: node scripts/release-artifacts.mjs prepare
-      - name: Create or update the pre-release
+      - name: Create the pre-release or upload only missing assets
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ github.ref_name }}
-        run: |
-          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            gh release upload "$RELEASE_TAG" release-assets/* --clobber
-            gh release edit "$RELEASE_TAG" --prerelease --latest=false --title "$RELEASE_TAG" --notes-file release-notes.md
-          else
-            gh release create "$RELEASE_TAG" release-assets/* --verify-tag --prerelease --latest=false --title "$RELEASE_TAG" --notes-file release-notes.md
-          fi
+        run: node scripts/publish-release.mjs

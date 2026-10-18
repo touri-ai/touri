@@ -66,9 +66,9 @@ export function getReleaseNotes(changelog, tag) {
   return `${notes}\n`
 }
 
-function getReleaseVersion(tag) {
-  if (!/^v\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(tag ?? "")) {
-    throw new Error("Release tag must be v followed by a version")
+export function getReleaseVersion(tag) {
+  if (!/^v[0-9]+\.[0-9]+\.[0-9]+$/.test(tag ?? "") || tag !== tag.trim()) {
+    throw new Error("Release tag must be numeric vX.Y.Z (no suffix or build metadata)")
   }
   return tag.slice(1)
 }
@@ -129,5 +129,6 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
   if (command === "configure") await configureReleasePaths(process.env)
   else if (command === "check") await checkReleaseBinaries(paths, process.env)
   else if (command === "prepare") await prepareRelease(process.cwd(), process.env.RELEASE_TAG)
-  else throw new Error("Expected configure, check or prepare")
+  else if (command === "validate") getReleaseVersion(process.env.RELEASE_TAG)
+  else throw new Error("Expected configure, check, prepare or validate")
 }
