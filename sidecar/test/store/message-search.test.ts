@@ -14,6 +14,53 @@ afterEach(() => {
   fixtures.clear()
 })
 
+test("schema 27 gains deletion indexes while retaining search and recovery objects on repeated opens", () => {
+  const fixture = getFixture()
+  fixtures.add(fixture)
+  const { database } = fixture
+  refreshMessageSearch(database, { threadId: "thread", id: "first", text: "primeiro" })
+  database.exec(`DROP INDEX group_members_bot;
+    DROP INDEX group_turns_group;
+    DROP INDEX routines_group;
+    UPDATE schema_meta SET value = '27' WHERE key = 'schema_version';`)
+  const objects = database.query("SELECT type, name, sql FROM sqlite_master ORDER BY name").all()
+  const messages = database.query("SELECT * FROM messages ORDER BY id").all()
+  const searchRows = database.query("SELECT * FROM message_search_rows ORDER BY fts_rowid").all()
+
+  const upgraded = fixture.reopen()
+
+  expect(upgraded.query("SELECT value FROM schema_meta WHERE key = 'schema_version'").get()).toEqual({
+    value: "28",
+  })
+
+  const reopened = fixture.reopen()
+
+  expect(reopened.query("SELECT value FROM schema_meta WHERE key = 'schema_version'").get()).toEqual({
+    value: "28",
+  })
+  expect(
+    reopened
+      .query(
+        "SELECT type, name, sql FROM sqlite_master WHERE name NOT IN ('group_members_bot', 'group_turns_group', 'routines_group') ORDER BY name",
+      )
+      .all(),
+  ).toEqual(objects)
+  const indexes = [
+    { table: "group_members", column: "bot_id", index: "group_members_bot" },
+    { table: "group_turns", column: "group_id", index: "group_turns_group" },
+    { table: "routines", column: "group_id", index: "routines_group" },
+  ]
+  indexes.forEach(({ table, column, index }) => {
+    const plan = reopened.query(`EXPLAIN QUERY PLAN SELECT * FROM ${table} WHERE ${column} = ?`).all("group")
+
+    expect(plan).toEqual(expect.arrayContaining([expect.objectContaining({ detail: expect.stringContaining(index) })]))
+  })
+  expect(reopened.query("SELECT * FROM messages ORDER BY id").all()).toEqual(messages)
+  expect(reopened.query("SELECT * FROM message_search_rows ORDER BY fts_rowid").all()).toEqual(searchRows)
+  expect(fixture.getHits("primeiro")).toEqual(["first"])
+  expect(reopened.query("PRAGMA foreign_key_check").all()).toEqual([])
+})
+
 test("search updates seek indexed rowids and preserve other messages", () => {
   const fixture = getFixture()
   fixtures.add(fixture)

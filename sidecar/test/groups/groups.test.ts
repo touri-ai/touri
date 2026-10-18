@@ -1825,6 +1825,46 @@ test("deleting a shared conversation cancels its ask-all members and never recre
   expect(scenario.db.query("SELECT id FROM messages WHERE thread_id=?").all(scenario.thread.id)).toEqual([])
 })
 
+test("deleting a group cancels running ask-all members and queued turns without restoring deleted history", async () => {
+  const finish = Promise.withResolvers<void>()
+  // The asynchronous fixture callbacks record completion in this test-local set.
+  const settled = new Set<string>()
+  const scenario = await fixture(async (ctx, complete) => {
+    await finish.promise
+    complete("Resposta tardia")
+    settled.add(ctx.botId)
+  })
+  const turn = await sendAskAll(scenario)
+  await until(() => scenario.order.length === 3)
+  const members = [...scenario.running.values()]
+  const secondThread = scenario.data.createThread(scenario.group, "Outra conversa")
+  const queued = scenario.send("Pedido pendente", secondThread.id)
+  const otherGroup = scenario.data.save({ ...scenario.input, name: "Outro grupo" })
+  const otherThread = scenario.data.createThread(otherGroup)
+
+  const response = await scenario.request(`/groups/${scenario.group.id}`, undefined, "DELETE")
+
+  expect(response.status).toBe(200)
+  expect(members).toHaveLength(3)
+  expect(members.every(({ ctx }) => ctx.signal.aborted)).toBe(true)
+  finish.resolve()
+  await until(() => settled.size === 3)
+  await Bun.sleep(0)
+
+  expect(scenario.data.get(scenario.group.id)).toBeNull()
+  expect(scenario.persistence.getRun(turn.id)).toBeNull()
+  expect(scenario.persistence.getRun(queued.id)).toBeNull()
+  members.forEach(({ run }) => {
+    expect(scenario.persistence.getRun(run.id)).toBeNull()
+    expect(scenario.store.getThread({ threadId: run.threadId })).toBeNull()
+  })
+  expect(scenario.db.query("SELECT id FROM threads WHERE group_id=?").all(scenario.group.id)).toEqual([])
+  expect(scenario.db.query("SELECT id FROM messages WHERE thread_id=?").all(scenario.thread.id)).toEqual([])
+  expect(scenario.db.query("SELECT id FROM messages WHERE text='Resposta tardia'").all()).toEqual([])
+  expect(scenario.store.getThread({ threadId: otherThread.id })).not.toBeNull()
+  expect(scenario.db.query("PRAGMA foreign_key_check").all()).toEqual([])
+})
+
 test("canceling a member for deletion preserves ask-all peers and unrelated queued turns", async () => {
   const finish = Promise.withResolvers<void>()
   const scenario = await fixture(async (_ctx, complete) => {

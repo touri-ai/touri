@@ -3,6 +3,17 @@ import { userFacingError } from "./errors"
 /** All UI copy lives here. pt-BR is the default; English is available for a future locale picker. */
 export type Locale = "pt-BR" | "en"
 export const ptBR = {
+  "Aguarde as respostas terminarem ou cancele os turnos antes de apagar o grupo.":
+    "Aguarde as respostas terminarem ou cancele os turnos antes de apagar o grupo.",
+  "Criar grupo": "Criar grupo",
+  "Reúna seus bots em uma conversa.": "Reúna seus bots em uma conversa.",
+  "Ações do grupo {name}": "Ações do grupo {name}",
+  "Apagar grupo": "Apagar grupo",
+  "Apagando grupo…": "Apagando grupo…",
+  "Apagar {name} remove todas as conversas, mensagens e rotinas do grupo. Esta ação não pode ser desfeita.":
+    "Apagar {name} remove todas as conversas, mensagens e rotinas do grupo. Esta ação não pode ser desfeita.",
+  "Os bots e suas conversas individuais são preservados.": "Os bots e suas conversas individuais são preservados.",
+  "Digite o nome do grupo: {name}": "Digite o nome do grupo: {name}",
   "Aviso do bot": "Aviso do bot",
   "Sempre avisar": "Sempre avisar",
   "Aprovações, perguntas e pedidos para você assumir continuam alertando durante o horário silencioso.":
@@ -2426,6 +2437,17 @@ export const ptBR = {
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  "Aguarde as respostas terminarem ou cancele os turnos antes de apagar o grupo.":
+    "Wait for replies to finish or cancel the turns before deleting the group.",
+  "Criar grupo": "Create group",
+  "Reúna seus bots em uma conversa.": "Bring your bots together in one conversation.",
+  "Ações do grupo {name}": "Actions for group {name}",
+  "Apagar grupo": "Delete group",
+  "Apagando grupo…": "Deleting group…",
+  "Apagar {name} remove todas as conversas, mensagens e rotinas do grupo. Esta ação não pode ser desfeita.":
+    "Deleting {name} removes all conversations, messages and routines in the group. This action cannot be undone.",
+  "Os bots e suas conversas individuais são preservados.": "Bots and their individual conversations are kept.",
+  "Digite o nome do grupo: {name}": "Type the group name: {name}",
   "Aviso do bot": "Bot notice",
   "Sempre avisar": "Always alert",
   "Aprovações, perguntas e pedidos para você assumir continuam alertando durante o horário silencioso.":

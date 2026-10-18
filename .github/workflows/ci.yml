@@ -285,6 +285,17 @@ jobs:
           path: ui/test-results/**/group-partial-success-*.png
           if-no-files-found: ignore
           retention-days: 7
+      - name: Check confirmed group deletion
+        working-directory: ui
+        run: bunx playwright test test/e2e/group-delete.spec.ts --workers=1
+      - name: Keep synthetic group deletion evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: group-deletion
+          path: ui/test-results/**/group-delete-*.png
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Install pinned API executor
         shell: bash
         run: |

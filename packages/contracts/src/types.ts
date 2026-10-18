@@ -844,6 +844,7 @@ export type ApiRoutes = {
   'GET /groups': { req: {}; res: { groups: Array<BotGroup> } }
   'POST /groups': { req: GroupInput; res: { group: BotGroup; thread: Thread } }
   'PATCH /groups/:id': { req: GroupInput; res: { group: BotGroup } }
+  'DELETE /groups/:id': { req: {}; res: {} }
   'GET /groups/:id/threads': { req: {}; res: { threads: Array<Thread> } }
   'POST /groups/:id/threads': { req: { title: string }; res: { thread: Thread } }
   'GET /cloud/account': { req: {}; res: import('./cloud').CloudAccountState }
@@ -1055,6 +1056,7 @@ export type StorageMaintenanceStatus = { running: boolean; processed: number; to
 /** Server → UI push events on the WebSocket. Each carries a monotonically increasing `seq`. */
 export type UiEvent =
   | { type: 'group.updated'; group: BotGroup }
+  | { type: 'group.deleted'; groupId: Id }
   | { type: 'machine.updated'; machine: MachineState }
   | { type: 'bot.updated'; bot: Bot }
   | { type: 'bot.deleted'; botId: Id }
@@ -1304,6 +1306,7 @@ export type ServiceMap = {
   'groups.runtime': {
     enqueue: (args: { threadId: Id; requestMessageId: Id; trigger: RunTrigger; routineRunId?: Id }) => Result<{ run: Run }, 'THREAD_NOT_FOUND' | 'BOT_PAUSED' | 'DELEGATION_LIMIT'>
     cancel: (id: Id) => boolean
+    cancelGroupTurns: (args: { groupId: Id }) => Promise<void>
     retry: (id: Id) => Result<{ run: Run }, 'THREAD_NOT_FOUND' | 'BOT_PAUSED' | 'DELEGATION_LIMIT' | 'CONFLICT'> | null
     listRuns: (threadId: Id) => Array<Run>
     shutdown: () => void

@@ -46,6 +46,7 @@ type SidebarProps = {
   groups?: BotGroup[]
   onNewGroup?: () => void
   onEditGroup?: (group: BotGroup) => void
+  onDeleteGroup?: (groupId: string) => Promise<void>
   onNewGroupThread?: (group: BotGroup) => void
   showFakeTrafficLights: boolean
   bots: Array<Bot>
@@ -279,6 +280,7 @@ export const Sidebar = (props: SidebarProps) => {
           onSelect={selectThread}
           onCreate={() => navigate(() => props.onNewGroup?.())}
           onEdit={(g) => navigate(() => props.onEditGroup?.(g))}
+          onDelete={props.onDeleteGroup}
           onNewThread={(g) => navigate(() => props.onNewGroupThread?.(g))}
         />
       )}

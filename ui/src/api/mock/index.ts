@@ -29,6 +29,7 @@ import { toolCatalog } from "@touri/contracts"
 import { avatarColorFor, avatarShapeFor } from "@touri/contracts/avatar"
 import rootPackage from "../../../../package.json"
 import seedJson from "../../../../sidecar/test/fixtures/ui-seed.json"
+import { ApiError } from "../../errors"
 import type { ApiRequest, UiApi } from "../client"
 
 type Seed = {
@@ -473,14 +474,15 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
   const interruptedFixture = scenario === "interrupted-tasks" ? getInterruptedTaskFixture() : null
   const project = createProject()
   const projects: Array<Project> = [project]
-  const bots = seed.bots.map((bot, index) => createBot(bot, index, project.id))
-  const threads = seed.threads.map((thread) => {
+  // These local collections model server storage; deletion handlers replace them with the retained rows.
+  let bots = seed.bots.map((bot, index) => createBot(bot, index, project.id))
+  let threads = seed.threads.map((thread) => {
     if (thread.id === routineFixture?.thread.id) return routineFixture.thread
     const saved = createThread(thread)
     if (thread.id !== "thread-mark" || !interruptedFixture) return saved
     return { ...saved, activeLeafId: interruptedFixture.messages.at(-1)?.id ?? saved.activeLeafId }
   })
-  const messages = [
+  let messages = [
     ...seed.messages
       .filter((message) => message.threadId !== routineFixture?.thread.id)
       .map((message) => createMessage(message)),
@@ -493,7 +495,7 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
   const machines = new Map<string, import("@touri/contracts").MachineState>()
   const networkPolicies = new Map<string, Record<string, unknown>>()
   const initialRuns = [...(routineFixture ? [routineFixture.run] : []), ...(interruptedFixture?.runs ?? [])]
-  const runs = new Map<string, Run>(initialRuns.map((run) => [run.id, run]))
+  let runs = new Map<string, Run>(initialRuns.map((run) => [run.id, run]))
   if (scenario === "resumed-turn") {
     const fixture = resumedTurnFixture()
     messages.push(...fixture.messages)
@@ -506,8 +508,8 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
     runs.set(run.id, run)
   }
   const processesByProject = new Map<string, Array<ProcessEntry>>([[project.id, createProcesses(project)]])
-  const routines = [routineFixture?.routine ?? createRoutine("bot-mark")]
-  const routineRuns: Array<RoutineRun> = [
+  let routines = [routineFixture?.routine ?? createRoutine("bot-mark")]
+  let routineRuns: Array<RoutineRun> = [
     routineFixture?.routineRun ?? {
       id: "routine-run-demo",
       routineId: "routine-daily",
@@ -540,7 +542,7 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
     resumeInterruptedTurns: true,
   }
 
-  const notifications: Array<NotificationRecord> = []
+  let notifications: Array<NotificationRecord> = []
 
   const resolveNotification = ({
     id,
@@ -654,7 +656,7 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
   const findProcess = (id: string): ProcessEntry | undefined => allProcesses().find((entry) => entry.spec.id === id)
 
   const apiModels = new Map<string, ApiModel>()
-  const groups: BotGroup[] = []
+  let groups: BotGroup[] = []
   const telegram = new Map<string, TelegramIntegration>()
   const request: ApiRequest = async (route, input, pathValues = {}) => {
     const recordedInput =
@@ -670,11 +672,25 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
       if (!bot || (input as ApiRoutes["DELETE /bots/:id"]["req"]).name !== bot.name)
         throw new Error("Digite o nome do bot para excluir.")
       const ownedThreads = new Set(threads.filter((thread) => thread.botId === bot.id).map((thread) => thread.id))
-      for (let i = messages.length - 1; i >= 0; i--)
-        if (ownedThreads.has(messages[i]?.threadId ?? "")) messages.splice(i, 1)
-      for (let i = threads.length - 1; i >= 0; i--) if (threads[i]?.botId === bot.id) threads.splice(i, 1)
-      for (let i = routines.length - 1; i >= 0; i--) if (routines[i]?.botId === bot.id) routines.splice(i, 1)
-      bots.splice(bots.indexOf(bot), 1)
+      messages = messages.filter((message) => !ownedThreads.has(message.threadId))
+      threads = threads.filter((thread) => !ownedThreads.has(thread.id))
+      runs = new Map([...runs].filter(([, run]) => !ownedThreads.has(run.threadId)))
+      notifications = notifications.filter((item) => item.botId !== bot.id && !ownedThreads.has(item.threadId ?? ""))
+      routines = routines.filter((routine) => routine.botId !== bot.id)
+      bots = bots.filter((candidate) => candidate.id !== bot.id)
+      const affectedGroups = groups.filter(
+        (group) => group.memberIds.includes(bot.id) || group.coordinatorBotId === bot.id,
+      )
+      groups = groups.map((group) => ({
+        ...group,
+        memberIds: group.memberIds.filter((id) => id !== bot.id),
+        coordinatorBotId: group.coordinatorBotId === bot.id ? null : group.coordinatorBotId,
+      }))
+      groups
+        .filter((group) => affectedGroups.some((previous) => previous.id === group.id))
+        .forEach((group) => {
+          emit({ type: "group.updated", group })
+        })
       emit({ type: "bot.deleted", botId: bot.id })
       return {} as ApiRoutes[typeof route]["res"]
     }
@@ -963,6 +979,28 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
         maintenance: { running: false, processed: 0, total: 0 },
       } as ApiRoutes[typeof route]["res"]
     if (key === "GET /groups") return { groups } as ApiRoutes[typeof route]["res"]
+    if (key === "DELETE /groups/:id") {
+      const group = groups.find((group) => group.id === pathValues.id)
+      if (!group) throw new ApiError(404, "", "NOT_FOUND", "TOURI-E1002")
+      const threadIds = new Set(threads.filter((thread) => thread.groupId === group.id).map((thread) => thread.id))
+      const isBusy = [...runs.values()].some(
+        (run) => threadIds.has(run.threadId) && ["queued", "starting", "running"].includes(run.status),
+      )
+      if (isBusy) throw new ApiError(409, "", "GROUP_BUSY")
+
+      const routineIds = new Set(
+        routines.filter((routine) => routine.groupId === group.id).map((routine) => routine.id),
+      )
+      groups = groups.filter((candidate) => candidate.id !== group.id)
+      routines = routines.filter((routine) => !routineIds.has(routine.id))
+      routineRuns = routineRuns.filter((run) => !routineIds.has(run.routineId))
+      threads = threads.filter((thread) => !threadIds.has(thread.id))
+      messages = messages.filter((message) => !threadIds.has(message.threadId))
+      runs = new Map([...runs].filter(([, run]) => !threadIds.has(run.threadId)))
+      notifications = notifications.filter((item) => !threadIds.has(item.threadId ?? ""))
+      emit({ type: "group.deleted", groupId: group.id })
+      return {} as ApiRoutes[typeof route]["res"]
+    }
     if (key === "GET /groups/:id/threads")
       return {
         threads: threads.filter((t) => t.groupId === pathValues.id && !t.groupThreadId),

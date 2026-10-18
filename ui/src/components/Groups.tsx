@@ -4,7 +4,9 @@ import { userFacingError } from "../errors"
 import { type Locale, t } from "../i18n"
 import { AvatarPicker } from "./AvatarPicker"
 import { BotAvatar } from "./BotAvatar"
+import { DeleteGroupDialog } from "./DeleteGroupDialog"
 import { getGroupProjection, getIdleMemberState } from "./groupProjection"
+import { SidebarActionsMenu } from "./SidebarActionsMenu"
 import "./groups.css"
 
 export const MemberMascots = ({ bots, locale = "pt-BR" }: { bots: Bot[]; locale?: Locale }) => (
@@ -34,6 +36,8 @@ export const GroupSidebar = ({
   onCreate,
   onEdit,
   onNewThread,
+  onDelete,
+  locale = "pt-BR",
 }: {
   groups: BotGroup[]
   bots: Bot[]
@@ -43,67 +47,122 @@ export const GroupSidebar = ({
   onCreate: () => void
   onEdit: (group: BotGroup) => void
   onNewThread: (group: BotGroup) => void
+  onDelete?: ((groupId: string) => Promise<void>) | undefined
+  locale?: Locale
 }) => (
-  <section className="group-sidebar" aria-label="Grupos">
+  <section className="group-sidebar" aria-label={t("Bot groups", {}, locale)}>
     <div className="group-sidebar-heading">
       <span>
-        Grupos <small>{groups.length}</small>
+        {t("Bot groups", {}, locale)} <small>{groups.length}</small>
       </span>
-      <button type="button" aria-label="Criar grupo" onClick={onCreate}>
+      <button type="button" aria-label={t("Criar grupo", {}, locale)} onClick={onCreate}>
         +
       </button>
     </div>
-    {groups.length === 0 && <p className="group-empty">Reúna seus bots em uma conversa.</p>}
-    {groups.map((group) => {
-      const own = threads.filter((t) => t.groupId === group.id && !t.groupThreadId)
-      const selected = own.some((t) => t.id === selectedThreadId)
-      return (
-        <div key={group.id} className={`group-sidebar-item ${selected ? "selected" : ""}`}>
-          <div className="group-sidebar-row">
-            <button
-              type="button"
-              className="group-select"
-              aria-label={group.name}
-              onClick={() => {
-                if (own[0]) onSelect(own[0].id)
-                else onNewThread(group)
-              }}
-              aria-current={selected ? "page" : undefined}
-            >
-              <MemberMascots
-                bots={group.memberIds.flatMap((id) => {
-                  const b = bots.find((b) => b.id === id)
-                  return b ? [b] : []
-                })}
-              />
-              <span>{group.name}</span>
-            </button>
-            <button type="button" aria-label={`Editar grupo ${group.name}`} onClick={() => onEdit(group)}>
-              ⋯
-            </button>
-          </div>
-          {selected && (
-            <div className="group-thread-list">
-              {own.map((thread) => (
-                <button
-                  type="button"
-                  key={thread.id}
-                  aria-current={thread.id === selectedThreadId ? "page" : undefined}
-                  onClick={() => onSelect(thread.id)}
-                >
-                  {thread.title}
-                </button>
-              ))}
-              <button type="button" onClick={() => onNewThread(group)}>
-                + Nova conversa
-              </button>
-            </div>
-          )}
-        </div>
-      )
-    })}
+    {groups.length === 0 && <p className="group-empty">{t("Reúna seus bots em uma conversa.", {}, locale)}</p>}
+    {groups.map((group) => (
+      <GroupSidebarEntry
+        key={group.id}
+        group={group}
+        bots={bots}
+        threads={threads.filter((thread) => thread.groupId === group.id && !thread.groupThreadId)}
+        selectedThreadId={selectedThreadId}
+        onSelect={onSelect}
+        onEdit={() => onEdit(group)}
+        onNewThread={() => onNewThread(group)}
+        onDelete={onDelete}
+        locale={locale}
+      />
+    ))}
   </section>
 )
+
+const GroupSidebarEntry = ({
+  group,
+  bots,
+  threads,
+  selectedThreadId,
+  onSelect,
+  onEdit,
+  onNewThread,
+  onDelete,
+  locale,
+}: {
+  group: BotGroup
+  bots: Bot[]
+  threads: Thread[]
+  selectedThreadId: string | null
+  onSelect: (id: string) => void
+  onEdit: () => void
+  onNewThread: () => void
+  onDelete?: ((groupId: string) => Promise<void>) | undefined
+  locale: Locale
+}) => {
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const selected = threads.some((thread) => thread.id === selectedThreadId)
+  // biome-ignore lint/correctness/useExhaustiveDependencies: navigating away dismisses the group's actions
+  useEffect(() => setMenuOpen(false), [selectedThreadId])
+
+  return (
+    <div className={`group-sidebar-item ${selected ? "selected" : ""}`}>
+      <div className="group-sidebar-row">
+        <button
+          type="button"
+          className="group-select"
+          aria-label={group.name}
+          onClick={() => {
+            const thread = threads[0]
+            if (!thread) return onNewThread()
+
+            onSelect(thread.id)
+          }}
+          aria-current={selected ? "page" : undefined}
+        >
+          <MemberMascots
+            bots={group.memberIds.flatMap((id) => {
+              const bot = bots.find((bot) => bot.id === id)
+              return bot ? [bot] : []
+            })}
+            locale={locale}
+          />
+          <span>{group.name}</span>
+        </button>
+        <SidebarActionsMenu
+          label={t("Ações do grupo {name}", { name: group.name }, locale)}
+          open={menuOpen}
+          onOpenChange={setMenuOpen}
+          actions={[
+            { label: t("Editar grupo", {}, locale), onSelect: onEdit },
+            ...(onDelete
+              ? [{ label: t("Apagar grupo", {}, locale), onSelect: () => setDeleting(true), destructive: true }]
+              : []),
+          ]}
+        />
+      </div>
+      {deleting && onDelete && (
+        <DeleteGroupDialog group={group} onDelete={onDelete} onClose={() => setDeleting(false)} locale={locale} />
+      )}
+      {selected && (
+        <div className="group-thread-list">
+          {threads.map((thread) => (
+            <button
+              type="button"
+              key={thread.id}
+              aria-current={thread.id === selectedThreadId ? "page" : undefined}
+              onClick={() => onSelect(thread.id)}
+            >
+              {thread.title}
+            </button>
+          ))}
+          <button type="button" onClick={onNewThread}>
+            + {t("New conversation", {}, locale)}
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
 
 export const GroupRoutingNote = ({ group, bots }: { group: BotGroup; bots: Bot[] }) => {
   const coordinator = bots.find((bot) => bot.id === group.coordinatorBotId)

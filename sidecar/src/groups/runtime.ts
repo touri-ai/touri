@@ -614,6 +614,14 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
     await engine.cancelBotTurns?.({ botId })
     await Promise.all(affected.map((turn) => turn.completion.promise))
   }
+  const cancelGroupTurns = async ({ groupId }: { groupId: string }): Promise<void> => {
+    const affected = [...turns.values()].filter((turn) => turn.group.id === groupId)
+    affected.forEach((turn) => {
+      cancelDeletedTurn(turn)
+      save(turn, { status: "canceled", errorClass: "canceled", finishedAt: Date.now() })
+    })
+    await engine.cancelRuns?.(affected.flatMap((turn) => [...turn.children]))
+  }
   const listRuns = (threadId: string, options?: { all?: boolean }): Run[] => {
     const roots = persistence.listRuns(threadId, options)
     const children = db
@@ -796,7 +804,7 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
     for (const turn of turns.values()) cancel(turn.run.id)
     if (busy.size === 0) unsubscribe()
   }
-  return { enqueue, cancel, cancelBotTurns, retry, listRuns, shutdown, canCoordinate, askBot, askAll }
+  return { enqueue, cancel, cancelBotTurns, cancelGroupTurns, retry, listRuns, shutdown, canCoordinate, askBot, askAll }
 }
 
 const getRecipients = (group: BotGroup, bots: Bot[], text: string, action: string | undefined) => {

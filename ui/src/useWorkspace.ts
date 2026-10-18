@@ -91,6 +91,7 @@ export type WorkspaceActions = {
   selectThread: (threadId: Id, options?: { readRoutineGroup: boolean }) => void
   createGroup: (input: GroupInput, id?: string) => Promise<void>
   createGroupThread: (id: string) => Promise<void>
+  deleteGroup: (id: string) => Promise<void>
   createThread: () => Promise<void>
   sendMessage: (
     text: string,
@@ -379,6 +380,37 @@ const bufferStreamEvent = (load: ThreadLoad | undefined, event: MessageStreamEve
   } else load.deltas.push(event)
 }
 
+const getWorkspaceWithoutGroup = (data: WorkspaceData, groupId: Id): WorkspaceData => {
+  const threadIds = new Set(data.threads.filter((thread) => thread.groupId === groupId).map((thread) => thread.id))
+  const threads = data.threads.filter((thread) => !threadIds.has(thread.id))
+  const routineIds = new Set(
+    data.routines.filter((routine) => routine.groupId === groupId).map((routine) => routine.id),
+  )
+  const isSelected = threadIds.has(data.selectedThreadId ?? "") || data.threadCreation?.thread.groupId === groupId
+  const selectedBotId = data.bots.some((bot) => bot.id === data.selectedBotId)
+    ? data.selectedBotId
+    : (data.bots[0]?.id ?? null)
+  const fallbackThread = threads.find((thread) => thread.botId === selectedBotId && !thread.groupId)
+
+  return {
+    ...data,
+    groups: data.groups.filter((group) => group.id !== groupId),
+    routines: data.routines.filter((routine) => !routineIds.has(routine.id)),
+    routineRuns: data.routineRuns.filter((run) => !routineIds.has(run.routineId)),
+    threads,
+    messages: data.messages.filter((message) => !threadIds.has(message.threadId)),
+    activityMessages: data.activityMessages.filter((message) => !threadIds.has(message.threadId)),
+    runs: data.runs.filter((run) => !threadIds.has(run.threadId)),
+    workRuns: data.workRuns.filter((run) => !threadIds.has(run.threadId)),
+    notifications: data.notifications.filter((item) => !threadIds.has(item.threadId ?? "")),
+    selectedBotId: isSelected ? selectedBotId : data.selectedBotId,
+    selectedThreadId: isSelected ? (fallbackThread?.id ?? null) : data.selectedThreadId,
+    threadCreation: data.threadCreation?.thread.groupId === groupId ? null : data.threadCreation,
+    composerKey: isSelected ? null : data.composerKey,
+    computerGrantRequest: threadIds.has(data.computerGrantRequest?.threadId ?? "") ? null : data.computerGrantRequest,
+  }
+}
+
 const withoutBot = (data: WorkspaceData, botId: Id): WorkspaceData => {
   const threadIds = new Set(data.threads.filter((thread) => thread.botId === botId).map((thread) => thread.id))
   const routineIds = new Set(data.routines.filter((routine) => routine.botId === botId).map((routine) => routine.id))
@@ -464,6 +496,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
   currentData.current = data
   useMachineParking(api, data.bots, enabled && !data.loading)
   const privateThreads = useRef(new Set<string>())
+  const deletedGroups = useRef(new Set<Id>())
   const threadsByBot = useRef(readWorkspaceState().threadsByBot ?? {})
   const generation = useRef(0)
   const runRevision = useRef(0)
@@ -520,6 +553,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
   const loadThread = useCallback(
     function loadThread(threadId: Id, force = false): Promise<void> {
       const attempt = generation.current
+      const groupId = currentData.current.threads.find((thread) => thread.id === threadId)?.groupId
       const pending = threadLoads.current.get(threadId)
       if (pending?.attempt === attempt) return pending.promise
       if (!force && loadedThreads.current.get(threadId) === attempt) return Promise.resolve()
@@ -540,24 +574,25 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
           loadedThreads.current.clear()
           if (load.overflow) return
           loadedThreads.current.set(threadId, attempt)
-          setData((current) =>
-            current.selectedThreadId !== threadId
-              ? current
-              : {
-                  ...current,
-                  messages: (api.pendingMessages?.() ?? [])
-                    .filter((message) => message.threadId === threadId)
-                    .reduce(
-                      updateMessage,
-                      deltas.reduce(applyStreamEvent, messages.messages).reduce(updateMessage, current.messages),
-                    ),
-                  runs: mergeRunRows(
-                    current.runs,
-                    runs.runs.filter((run) => (liveRuns.current.get(run.id) ?? 0) <= runsAtStart),
-                  ),
-                  notice: current.notice === serviceNotice.current ? null : current.notice,
-                },
-          )
+          setData((current) => {
+            if (groupId && !current.groups.some((group) => group.id === groupId)) return current
+            if (current.selectedThreadId !== threadId) return current
+
+            return {
+              ...current,
+              messages: (api.pendingMessages?.() ?? [])
+                .filter((message) => message.threadId === threadId)
+                .reduce(
+                  updateMessage,
+                  deltas.reduce(applyStreamEvent, messages.messages).reduce(updateMessage, current.messages),
+                ),
+              runs: mergeRunRows(
+                current.runs,
+                runs.runs.filter((run) => (liveRuns.current.get(run.id) ?? 0) <= runsAtStart),
+              ),
+              notice: current.notice === serviceNotice.current ? null : current.notice,
+            }
+          })
         })
         .catch((error: unknown) => {
           if (attempt !== generation.current || threadLoads.current.get(threadId)?.promise !== promise) return
@@ -737,6 +772,18 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
     }
   }, [api, enabled, loadThread])
 
+  const removeGroup = useCallback(
+    (groupId: Id): void => {
+      setData((current) => getWorkspaceWithoutGroup(current, groupId))
+      if (deletedGroups.current.has(groupId)) return
+
+      deletedGroups.current.add(groupId)
+      // Deletion must replace a snapshot already in flight, including an existing resync.
+      void load()
+    },
+    [load],
+  )
+
   useEffect(() => {
     if (!enabled) return
     let active = true
@@ -768,6 +815,10 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
         return
       if (event.type === "transcript.resync") {
         resync()
+        return
+      }
+      if (event.type === "group.deleted") {
+        removeGroup(event.groupId)
         return
       }
       if (event.type === "message.delta" || event.type === "message.parts")
@@ -932,9 +983,10 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
     let refreshing: Promise<void> | null = null
     const refreshAttention = (): void => {
       if (refreshing || currentData.current.loading) return
+      const attempt = generation.current
       refreshing = Promise.all([api.request("GET /notifications", {}), api.request("GET /workspace/activity", {})])
         .then(async ([snapshot, activity]) => {
-          if (!active) return
+          if (!active || attempt !== generation.current) return
           setData((current) => {
             const notifications = current.notifications.reduce(upsertNotification, snapshot.notifications)
             const messages = reconcileApprovalMessages([...activity.messages, ...current.messages], notifications)
@@ -992,7 +1044,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
       document.removeEventListener("visibilitychange", visibility)
       window.removeEventListener("online", refreshAttention)
     }
-  }, [api, enabled, load, loadThread])
+  }, [api, enabled, load, loadThread, removeGroup])
 
   const selectedBot = useMemo(
     () => data.bots.find((bot) => bot.id === data.selectedBotId) ?? null,
@@ -1580,6 +1632,10 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
       selectThread,
       createGroup,
       createGroupThread,
+      deleteGroup: async (id) => {
+        await api.request("DELETE /groups/:id", {}, { id })
+        removeGroup(id)
+      },
       createThread,
       sendMessage,
       retryRun,
