@@ -214,6 +214,7 @@ test("refresh clears cached active runs that completed while disconnected", asyn
   let disconnected = false
   const request: ApiRequest = async (route, input, path) => {
     if (route === "GET /workspace/activity" && disconnected) return { messages: [], runs: [] } as never
+    if (route === "GET /runs" && disconnected) return { runs: [] } as never
     return api.request(route, input, path)
   }
   const client = { ...api, request }
