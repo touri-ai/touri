@@ -258,11 +258,13 @@ export const createStorageMaintenance = ({
   database,
   appData,
   publishResync,
+  retryDeletedBrowserSessionKeys,
   onError,
 }: {
   database: Database
   appData: string
   publishResync: () => void
+  retryDeletedBrowserSessionKeys: () => Promise<void>
   onError: () => void
 }) => {
   const stored = database.query("SELECT value_json FROM settings WHERE key = ?").get(progressKey) as {
@@ -314,6 +316,8 @@ export const createStorageMaintenance = ({
       return
     }
     try {
+      await retryDeletedBrowserSessionKeys()
+      if (stopped) return
       if (upgrade.snapshot()) {
         status = upgrade.snapshot() ?? status
         const pending = await upgrade.step()

@@ -3,7 +3,7 @@ import type { Database } from "bun:sqlite"
 import { closeSync, constants, fsyncSync } from "node:fs"
 import { join, relative } from "node:path"
 import type { Kernel, RegisteredErrorCode, RouteModule, VmRuntime } from "@touri/contracts"
-import { removeBotSession } from "../browser/sessionVault"
+import { deletedBrowserSessionKey, removeBotSessionFile, removeBotSessionKey } from "../browser/sessionVault"
 import { createGroupStore } from "../groups/store"
 import { collectUnusedOutputBlobs } from "../kernel/data-maintenance"
 import { errorResponse, TouriError } from "../kernel/errors"
@@ -43,7 +43,17 @@ export const deleteBotRoute = (kernel: Kernel, runtime: VmRuntime): RouteModule[
           .filter((group) => group.memberIds.includes(botId))
           .map((group) => group.id)
         const attachments = await performDeletionStep("TOURI-E2014", () => deleteBotData(kernel, botId))
-        await removeBotSession(kernel, botId)
+        removeBotSessionFile(kernel, botId)
+        db.query(
+          "INSERT INTO settings(key,value_json,updated_at) VALUES (?,?,?) ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json,updated_at=excluded.updated_at",
+        ).run(deletedBrowserSessionKey(botId), "true", Date.now())
+        try {
+          await removeBotSessionKey(kernel, botId)
+          db.query("DELETE FROM settings WHERE key = ?").run(deletedBrowserSessionKey(botId))
+        } catch (error) {
+          kernel.log({ level: "warn", module: "vm", msg: kernel.redact(String(error)) })
+          kernel.services.use("storage.maintenance")?.start()
+        }
         publishBotDeletion(kernel, botId, groups, groupIds)
         await collectDeletedBotBlobs(kernel, attachments)
         return { status: 200, json: {} }

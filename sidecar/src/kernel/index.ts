@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto"
 import { join } from "node:path"
 import type { HostNotification, Kernel, RouteModule, SidecarHandshake, UiEvent } from "@touri/contracts"
 import type { ServerWebSocket } from "bun"
+import { retryDeletedBrowserSessionKeys } from "../browser/sessionVault"
 import { compressBufferedResponse } from "../cli/web/compression"
 import { getHostIdentity } from "../platform/host"
 import { touriVersion } from "../version"
@@ -510,6 +511,8 @@ export const createKernel = ({ appData, web }: { appData?: string; web?: WebMode
     database,
     appData: paths.appData,
     publishResync: () => bus.publish({ type: "transcript.resync" }),
+    retryDeletedBrowserSessionKeys: () =>
+      retryDeletedBrowserSessionKeys({ db: database, callHost: host.callHost, log, redact: redactor.redact }),
     onError: () => log({ level: "error", module: "store", msg: "Compactação adiada; será retomada automaticamente" }),
   })
   services.provide("storage.maintenance", storageMaintenance)

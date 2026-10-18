@@ -1,3 +1,4 @@
+import type { Database } from "bun:sqlite"
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto"
 import { join } from "node:path"
 import type { Kernel } from "@touri/contracts"
@@ -19,10 +20,13 @@ const MAX_SESSION_BYTES = 2 * 1024 * 1024
 const KEY_BYTES = 32
 const IV_BYTES = 12
 const SAFE_BOT_ID = /^[A-Za-z0-9_-]+$/
+const DELETED_SESSION_KEY_PREFIX = "storage.deleted-browser-session-keys:"
 
 export const emptySession = (): SavedSession => ({ cookies: [], storage: {} })
 
 export const browserSessionKeyAccount = (botId: string): string => `browser-session-key:${botId}`
+
+export const deletedBrowserSessionKey = (botId: string): string => `${DELETED_SESSION_KEY_PREFIX}${botId}`
 
 export class SessionVaultError extends Error {
   constructor(readonly errorCode = "SESSION_UNREADABLE") {
@@ -176,11 +180,49 @@ export const saveBotSession = async ({
   return true
 }
 
-export const removeBotSession = async (kernel: Kernel, botId: string): Promise<void> => {
+export const removeBotSessionFile = (kernel: Kernel, botId: string): void => {
   if (!SAFE_BOT_ID.test(botId)) return
   removePrivateFile({ root: kernel.paths.appData, path: sessionPath(kernel, botId) })
+}
+
+export const removeBotSessionKey = async (kernel: Kernel, botId: string): Promise<void> => {
+  if (!SAFE_BOT_ID.test(botId)) return
   const result = await kernel.callHost("keychain.delete", { account: browserSessionKeyAccount(botId) })
   if (!result.success) throw new Error("Não foi possível apagar a chave da sessão do navegador do bot.")
+}
+
+export const removeBotSession = async (kernel: Kernel, botId: string): Promise<void> => {
+  removeBotSessionFile(kernel, botId)
+  await removeBotSessionKey(kernel, botId)
+}
+
+export const retryDeletedBrowserSessionKeys = async (
+  kernel: Pick<Kernel, "db" | "callHost" | "log" | "redact">,
+): Promise<void> => {
+  const database = kernel.db as Database
+  const pending = database
+    .query("SELECT key FROM settings WHERE key >= ? AND key < ? LIMIT 10")
+    .all(DELETED_SESSION_KEY_PREFIX, `${DELETED_SESSION_KEY_PREFIX}\uffff`) as Array<{ key: string }>
+  const completed = (
+    await Promise.all(
+      pending.map(async ({ key }) => {
+        const botId = key.slice(DELETED_SESSION_KEY_PREFIX.length)
+        if (!SAFE_BOT_ID.test(botId)) return null
+        try {
+          const result = await kernel.callHost("keychain.delete", { account: browserSessionKeyAccount(botId) })
+          return result.success ? key : null
+        } catch (error) {
+          kernel.log({ level: "warn", module: "vm", msg: kernel.redact(String(error)) })
+          return null
+        }
+      }),
+    )
+  ).filter((key): key is string => key !== null)
+  database.transaction(() => {
+    completed.forEach((key) => {
+      database.query("DELETE FROM settings WHERE key = ?").run(key)
+    })
+  })()
 }
 
 export const botSessionPath = sessionPath
