@@ -1,3 +1,4 @@
+import type { Database } from "bun:sqlite"
 import { afterEach, expect, test } from "bun:test"
 import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -12,6 +13,9 @@ import { recallBlock, stripRecall, trivialQuery, truncateAtSentence } from "../.
 import { createMem0, init as initMem0, MEM0_INSTRUCTIONS } from "../../src/mem0/index"
 import { composeDeveloperInstructions } from "../../src/runtime/instructions"
 import { init as initStore } from "../../src/store"
+import { deleteBotRoute } from "../../src/vm/delete-bot"
+import { createVmRuntime } from "../../src/vm/runtime"
+import { fakeVmProvider } from "../vm/fake-provider"
 
 const cleanups: Array<() => void | Promise<void>> = []
 afterEach(async () => {
@@ -47,16 +51,20 @@ const fakeMem0 = (respond: Responder) => {
 const memories = (rows: Array<{ id: string; memory: string; user_id?: string; agent_id?: string }>) =>
   Response.json({ results: rows.map((row) => ({ score: 0.9, ...row })) })
 
-const fixture = async (respond: Responder = () => memories([])) => {
+const fixture = async (
+  respond: Responder = () => memories([]),
+  getCallHost = (callHost: Kernel["callHost"]): Kernel["callHost"] => callHost,
+) => {
   const root = mkdtempSync(join(tmpdir(), "touri-mem0-"))
   const runtime = createKernel({ appData: root })
   const vault = new Map<string, string>()
-  runtime.kernel.callHost = (async (method: string, params: { account: string; value?: string }) => {
+  const callHost = (async (method: string, params: { account: string; value?: string }) => {
     if (method === "keychain.set") vault.set(params.account, params.value ?? "")
     else if (method === "keychain.delete") vault.delete(params.account)
     else if (method === "keychain.get") return { success: true, value: { value: vault.get(params.account) ?? null } }
     return { success: true, value: {} }
   }) as Kernel["callHost"]
+  runtime.kernel.callHost = getCallHost(callHost)
   const logs: string[] = []
   const log = runtime.kernel.log
   runtime.kernel.log = (entry) => {
@@ -121,6 +129,14 @@ const until = async (check: () => boolean, timeout = 2_000) => {
     if (Date.now() - started > timeout) throw new Error("Timed out")
     await Bun.sleep(5)
   }
+}
+
+const getDeferred = () => {
+  let resolve = () => {}
+  const promise = new Promise<void>((done) => {
+    resolve = done
+  })
+  return { promise, resolve }
 }
 
 test("Mem0 is off by default and makes no request at all until enabled", async () => {
@@ -502,35 +518,42 @@ test("recall also redacts a saved key first loaded during the lookup", async () 
 })
 
 test("a delayed settings save cannot recreate credentials after bot deletion", async () => {
-  const f = await fixture()
-  const host = f.kernel.callHost
-  let saving = false
-  let release = () => {}
-  const pending = new Promise<void>((resolve) => {
-    release = resolve
-  })
-  f.kernel.callHost = (async (method, params) => {
-    if (method === "keychain.set") {
-      saving = true
-      await pending
-    }
+  const saving = getDeferred()
+  const pending = getDeferred()
+  const memory = await fixture(undefined, (host) => async (method, params) => {
+    if (method !== "keychain.set") return host(method, params)
+
+    saving.resolve()
+    await pending.promise
     return host(method, params)
-  }) as Kernel["callHost"]
-  const saved = f.configure({ enabled: true, apiKey: "m0-deleted-bot" })
-  try {
-    await until(() => saving)
-    const deleted = await f.api(`/bots/${f.bot.id}`, { name: f.bot.name }, "DELETE")
-    expect(deleted.ok).toBe(true)
-    await f.mem0.forget(f.bot.id)
-  } finally {
-    release()
+  })
+  const botId = memory.bot.id
+  const vm = createVmRuntime({
+    kernel: memory.kernel,
+    provider: fakeVmProvider().provider,
+    capability: { available: true, reason: null, provider: "fake" },
+    hostHome: memory.kernel.paths.appData,
+  })
+  cleanups.push(() => vm.dispose())
+  memory.kernel.registerRoutes({ name: "delete-test", routes: [deleteBotRoute(memory.kernel, vm.service)] })
+  const saved = memory.configure({ enabled: true, apiKey: "m0-deleted-bot" })
+  cleanups.push(async () => {
+    pending.resolve()
     await saved
-  }
-  expect((await saved).status).toBe(404)
-  expect(f.vault.size).toBe(0)
-  const rows = (f.kernel.db as import("bun:sqlite").Database)
-    .query("SELECT key FROM settings WHERE key IN (?, ?)")
-    .all(`mem0:${f.bot.id}`, `mem0-key:${f.bot.id}`)
+  })
+
+  await saving.promise
+  const deleted = await memory.api(`/bots/${botId}`, { name: memory.bot.name }, "DELETE")
+  expect(deleted.status).toBe(200)
+  expect(memory.store.getBot({ botId })).toBeNull()
+  await memory.mem0.forget(botId)
+  pending.resolve()
+  const result = await saved
+  const db = memory.kernel.db as Database
+  const rows = db.query("SELECT key FROM settings WHERE key IN (?, ?)").all(`mem0:${botId}`, `mem0-key:${botId}`)
+
+  expect(result.status).toBe(404)
+  expect(memory.vault.size).toBe(0)
   expect(rows).toEqual([])
 })
 

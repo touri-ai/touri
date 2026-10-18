@@ -19,8 +19,9 @@ and report back. They want more done, not another dashboard to babysit.
    No touri account, no telemetry, no server between the user and their agents. Anything remote is
    opt-in and says so on screen.
 2. **Your own agents, your own keys.** touri runs the CLIs the user already has, signed in with the
-   user's own account. touri never reads, stores or proxies model credentials, and never resells
-   model access.
+   user's own account, or connects to an API model the user explicitly chooses. API keys live only
+   in the system secret store (the encrypted secret store on a headless server), and model requests
+   go directly to the chosen provider. touri never resells model access.
 3. **Nothing is lost.** Every message, failed turn, canceled run and tool result stays in history.
    Native sessions resume. The user's words always reach the next turn.
 4. **The user is in charge.** Risky actions ask first. Approvals are explicit clicks, never a stray
