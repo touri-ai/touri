@@ -96,7 +96,7 @@ export const errorRecovery = (error: unknown, context: RecoveryContext = {}): Er
       [action("review", "Ver tarefa")],
     )
   }
-  if (isServiceUnavailable(error) || /TOURI-E1009|SERVER_CONNECTION_FAILED/i.test(text))
+  if (isServiceUnavailable(error) || /SERVER_CONNECTION_FAILED/i.test(text))
     return view(tr("O serviço do touri está indisponível. Verifique a conexão e tente novamente."), [
       action("retry", "Tentar novamente"),
     ])

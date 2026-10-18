@@ -14,7 +14,12 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-test.each(["network", "service", "relay"])("a failed %s read replaces a socket that never closed", async (failure) => {
+test.each([
+  ["network", 0, undefined],
+  ["gateway", 502, undefined],
+  ["timeout", 504, undefined],
+  ["server", 503, "SERVER_CONNECTION_FAILED"],
+] as const)("a failed %s read replaces a socket that never closed", async (failure, status, errorCode) => {
   vi.useFakeTimers()
   const sockets = makeSockets()
   const fetchImpl = vi.fn(async () => Response.json({ ticket: "test-ticket", ok: true }))
@@ -32,11 +37,7 @@ test.each(["network", "service", "relay"])("a failed %s read replaces a socket t
     fetchImpl.mockRejectedValueOnce(new TypeError("Failed to fetch"))
   }
   if (failure !== "network")
-    fetchImpl.mockResolvedValueOnce(
-      Response.json(failure === "service" ? { code: "TOURI-E1009" } : { errorCode: "SERVER_CONNECTION_FAILED" }, {
-        status: failure === "service" ? 503 : 502,
-      }),
-    )
+    fetchImpl.mockResolvedValueOnce(Response.json({ code: "TOURI-E1009", errorCode }, { status }))
 
   await expect(api.request("GET /health", {})).rejects.toBeInstanceOf(ApiError)
   await vi.advanceTimersByTimeAsync(250)
@@ -44,6 +45,58 @@ test.each(["network", "service", "relay"])("a failed %s read replaces a socket t
 
   expect(sockets.getSocket(0).close).toHaveBeenCalledOnce()
   expect(connection.mock.calls).toEqual([[false], [true]])
+})
+
+test.each([
+  ["STORE_UNAVAILABLE", "TOURI-E1009"],
+  ["HOST_UNAVAILABLE", "TOURI-E1009"],
+  ["COMPUTER_UNAVAILABLE", "TOURI-E1009"],
+  [undefined, "TOURI-E1009"],
+  [undefined, undefined],
+] as const)("a 503 %s/%s read preserves the event connection and message delivery", async (errorCode, code) => {
+  vi.useFakeTimers()
+  const sockets = makeSockets()
+  const fetchImpl = vi.fn(async () => Response.json({ ticket: "test-ticket", ok: true }))
+  const api = createApiClient({
+    endpoint: { baseUrl: "https://server.example", wsUrl: "wss://server.example/api/v1/events", token: "test" },
+    fetchImpl,
+  })
+  const events = vi.fn()
+  const connection = vi.fn()
+  api.subscribeConnection?.(connection)
+  onTestFinished(api.subscribe(events))
+  await vi.advanceTimersByTimeAsync(0)
+  sockets.getSocket(0).dispatchEvent(new Event("open"))
+  fetchImpl.mockResolvedValueOnce(Response.json({ code, errorCode }, { status: 503 }))
+
+  await expect(api.request("GET /health", {})).rejects.toMatchObject({ status: 503, code })
+  sockets.getSocket(0).dispatchEvent(
+    new MessageEvent("message", {
+      data: JSON.stringify({ seq: 1, at: 1, event: { type: "transcript.resync" } }),
+    }),
+  )
+  fetchImpl.mockImplementationOnce(async () => Response.json({ message: api.pendingMessages?.()[0], run: null }))
+  await api.sendMessage?.({ threadId: "thread", parentId: null, text: "Mensagem de teste", attachmentIds: [] })
+  await vi.advanceTimersByTimeAsync(0)
+
+  expect(sockets.getSocket(0).close).not.toHaveBeenCalled()
+  expect(connection).not.toHaveBeenCalled()
+  expect(events).toHaveBeenCalledWith(expect.objectContaining({ seq: 1 }))
+  expect(fetchImpl).toHaveBeenCalledTimes(3)
+  expect(api.pendingMessages?.()).toEqual([])
+})
+
+test.each([
+  new ApiError(503, "Store unavailable", "STORE_UNAVAILABLE", "TOURI-E1009"),
+  new ApiError(503, "Host unavailable", "HOST_UNAVAILABLE", "TOURI-E1009"),
+  new ApiError(503, "Computer unavailable", "COMPUTER_UNAVAILABLE", "TOURI-E1009"),
+  new ApiError(503, "Service unavailable", undefined, "TOURI-E1009"),
+  new ApiError(503, "Service unavailable"),
+  new Error("TOURI-E1009"),
+])("a non-connection error does not claim touri is unreachable: %s", (error) => {
+  const recovery = errorRecovery(error)
+
+  expect(recovery.message).not.toBe(t("O serviço do touri está indisponível. Verifique a conexão e tente novamente."))
 })
 
 test("a failed write is not replayed and does not replace the event connection", async () => {
@@ -76,6 +129,7 @@ test("reconnection reloads a snapshot that failed before the bot list arrived", 
   const client = makeConnectionClient({ ...mock, request, isMock: false })
   const hook = renderHook(() => useWorkspace(client.api))
   await waitFor(() => expect(hook.result.current.data.notice).toContain("TOURI-E1009"))
+  expect(errorRecovery(hook.result.current.data.notice).message).toContain("O serviço do touri está indisponível")
 
   act(client.reconnect)
 
@@ -94,6 +148,7 @@ test("reconnection clears the selected history's service error without a new ser
   const client = makeConnectionClient({ ...mock, request, isMock: false })
   const hook = renderHook(() => useWorkspace(client.api))
   await waitFor(() => expect(hook.result.current.data.notice).toContain("TOURI-E1009"))
+  expect(errorRecovery(hook.result.current.data.notice).message).toContain("O serviço do touri está indisponível")
 
   act(client.reconnect)
 
@@ -102,15 +157,23 @@ test("reconnection clears the selected history's service error without a new ser
 })
 
 test.each(["pt-BR", "en"] as const)("service errors identify touri instead of the AI in %s", (locale) => {
-  const error = new ApiError(0, "", undefined, "TOURI-E1009")
+  const failures = [
+    new ApiError(0, "", undefined, "TOURI-E1009"),
+    new ApiError(502, "", undefined, "TOURI-E1009"),
+    new ApiError(504, "", undefined, "TOURI-E1009"),
+    new ApiError(503, "", "SERVER_CONNECTION_FAILED", "TOURI-E1009"),
+    new Error("SERVER_CONNECTION_FAILED"),
+  ]
 
-  const recovery = errorRecovery(error, { locale })
-  const detail = t("Service request failed", { error: error.message }, locale)
+  failures.forEach((error) => {
+    const recovery = errorRecovery(error, { locale })
+    const detail = t("Service request failed", { error: error.message }, locale)
 
-  expect(recovery.message).toContain("touri")
-  expect(recovery.message).toContain(locale === "pt-BR" ? "serviço" : "service")
-  expect(recovery.actions.map((action) => action.kind)).toEqual(["retry"])
-  expect(detail).not.toMatch(/local/i)
+    expect(recovery.message).toContain("touri")
+    expect(recovery.message).toContain(locale === "pt-BR" ? "serviço" : "service")
+    expect(recovery.actions.map((action) => action.kind)).toEqual(["retry"])
+    expect(detail).not.toMatch(/local/i)
+  })
 })
 
 const makeConnectionClient = (api: UiApi) => {

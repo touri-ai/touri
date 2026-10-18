@@ -22,7 +22,7 @@ test("server mode recovers a failed history read without another server event", 
   await expect(page.getByRole("textbox", { name: "Mensagem para Assistente de teste" })).toBeVisible()
   const historyRoute = "**/api/v1/threads/*/messages**"
   await page.route(historyRoute, (route) =>
-    route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ code: "TOURI-E1009" }) }),
+    route.fulfill({ status: 502, contentType: "application/json", body: JSON.stringify({ code: "TOURI-E1009" }) }),
   )
 
   await page.evaluate(() => window.dispatchEvent(new Event("online")))

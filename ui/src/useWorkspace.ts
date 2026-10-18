@@ -376,7 +376,13 @@ const upsertNotification = (list: Array<NotificationRecord>, next: NotificationR
   return merged.sort((a, b) => b.id - a.id).slice(0, MAX_NOTIFICATIONS)
 }
 
-const errorMessage = userFacingError
+const getServiceErrorMessage = (error: unknown): string => {
+  const message = userFacingError(error)
+  if (!isServiceUnavailable(error)) return message
+
+  // Notices retain text only, so preserve the connection classification without relying on E1009.
+  return `SERVER_CONNECTION_FAILED: ${message}`
+}
 
 const lastActiveThread = (threads: Thread[], runs: Run[], botId: Id, rememberedId?: Id): Thread | undefined => {
   const candidates = threads.filter((thread) => thread.botId === botId && !thread.groupId)
@@ -480,7 +486,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
         })
         .catch((error: unknown) => {
           if (attempt !== generation.current) return
-          const notice = t("Service request failed", { error: errorMessage(error) })
+          const notice = t("Service request failed", { error: getServiceErrorMessage(error) })
           if (isServiceUnavailable(error)) serviceNotice.current = notice
           setData((current) => ({ ...current, notice }))
         })
@@ -622,7 +628,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
         loading: false,
         notice: api.isMock
           ? "Demo data · sidecar services are optional"
-          : t("Service request failed", { error: errorMessage(error) }),
+          : t("Service request failed", { error: getServiceErrorMessage(error) }),
       }))
     }
   }, [api, enabled, loadThread])

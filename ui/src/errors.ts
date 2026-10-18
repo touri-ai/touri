@@ -42,6 +42,8 @@ export class ApiError extends Error {
 
 export const isServiceUnavailable = (error: unknown): boolean =>
   error instanceof ApiError &&
-  (error.code === "TOURI-E1009" ||
+  // E1009 also covers storage and execution failures on an otherwise reachable server.
+  ((error.status === 0 && error.code === "TOURI-E1009") ||
     error.errorCode === "SERVER_CONNECTION_FAILED" ||
-    (!error.code && [502, 503, 504].includes(error.status)))
+    error.status === 502 ||
+    error.status === 504)
