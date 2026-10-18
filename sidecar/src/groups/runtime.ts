@@ -140,7 +140,7 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
         const run = readRun(id)
         if (!run) {
           cleanup()
-          reject(new Error("Turno removido"))
+          reject(new Error("A conversa foi removida."))
           return
         }
         if (terminal(run)) {
@@ -171,7 +171,7 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
     secrets = true,
   ): Promise<string> => {
     turn.controller.signal.throwIfAborted()
-    if (!isCurrentTurn(turn)) throw new Error("Turno removido")
+    if (!isCurrentTurn(turn)) throw new Error("A conversa foi removida.")
     if (!turn.group.memberIds.includes(botId)) throw new Error("Bot não pertence ao grupo")
     const bot = withServers(store.getBot({ botId }))
     if (!bot || bot.archivedAt || bot.paused) throw new Error("Bot indisponível ou pausado")

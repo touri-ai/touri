@@ -183,6 +183,7 @@ describe("group coordination", () => {
     expect(t("Pedir resumo do time", {}, "en")).toBe("Request team summary")
     expect(t("Aguardando você", {}, "en")).toBe("Waiting for you")
     expect(t("Resultados do turno", {}, "en")).toBe("Turn results")
+    expect(t("A conversa foi removida.", {}, "en")).toBe("The conversation was removed.")
   })
 })
 
