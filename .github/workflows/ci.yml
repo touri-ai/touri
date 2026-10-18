@@ -213,6 +213,17 @@ jobs:
       - name: Check API model setup and bot selection
         working-directory: ui
         run: bunx playwright test test/e2e/api-models.spec.ts --workers=1
+      - name: Check group coordination on desktop and phone
+        working-directory: ui
+        run: bunx playwright test test/e2e/group-coordination.spec.ts --workers=1
+      - name: Keep synthetic group evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: group-coordination
+          path: ui/test-results/**/group-partial-success-*.png
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Install pinned API executor
         shell: bash
         run: |
