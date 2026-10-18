@@ -299,6 +299,12 @@ const AppContent = ({ kernel }: AppProps) => {
       // A late endpoint/health response must not dismiss the recovery screen.
       generation += 1
       fail(startupTimeoutMessage())
+      if (serverMode) {
+        // Give the next server attempt a fresh startup deadline, even if this request never settles.
+        retryTimer = setTimeout(() => {
+          if (active) setConnectionAttempt((attempt) => attempt + 1)
+        }, 2000)
+      }
     }, STARTUP_TIMEOUT_MS)
     void start()
     return () => {

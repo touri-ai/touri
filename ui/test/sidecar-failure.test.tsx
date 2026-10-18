@@ -94,6 +94,42 @@ describe("sidecar failure blocking state", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument()
   })
 
+  it("retries server startup automatically after the health deadline and ignores the late response", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] })
+    let finish: (() => void) | undefined
+    const pending = new Promise<void>((resolve) => {
+      finish = resolve
+    })
+    const api = vi.mocked(createApiClient)({ endpoint })
+    const request = api.request
+    let healthChecks = 0
+    api.request = (async (...args) => {
+      if (args[0] === "GET /health" && ++healthChecks === 1) await pending
+      return request(...args)
+    }) as ApiRequest
+    const invoke = vi.fn(async (command: string) => {
+      if (command === "server_mode_status") return { mode: "server", url: "https://touri.example" }
+      if (command === "sidecar_endpoint") return endpoint
+      return null
+    })
+    let view: ReturnType<typeof render> | undefined
+    await act(async () => {
+      view = render(<App kernel={{ services: { invoke: invoke as TauriInvoke } }} />)
+    })
+    expect(healthChecks).toBe(1)
+    await act(async () => vi.advanceTimersByTimeAsync(20_000))
+    expect(screen.getByText("Servidor offline. Tentando reconectar…")).toBeVisible()
+    await act(async () => finish?.())
+    expect(screen.getByText("Servidor offline. Tentando reconectar…")).toBeVisible()
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument()
+    await act(async () => vi.advanceTimersByTimeAsync(2000))
+    expect(screen.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
+    expect(screen.queryByText("Servidor offline. Tentando reconectar…")).not.toBeInTheDocument()
+    expect(invoke.mock.calls.filter(([command]) => command === "sidecar_endpoint")).toHaveLength(2)
+    expect(invoke).not.toHaveBeenCalledWith("sidecar_restart", {})
+    view?.unmount()
+  })
+
   it("enables recovery again when the shell never acknowledges a restart", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] })
     const invoke = localInvoke(async (command: string) => {
