@@ -192,6 +192,33 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+  api-models:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-bun
+        with:
+          bun-version: 1.4.3
+      - name: Install browser for API model setup
+        working-directory: ui
+        run: bunx playwright install --with-deps chromium
+      - name: Check API model setup and bot selection
+        working-directory: ui
+        run: bunx playwright test test/e2e/api-models.spec.ts --workers=1
+      - name: Install pinned API executor
+        shell: bash
+        run: |
+          executor_dir="$RUNNER_TEMP/touri-api-executor"
+          mkdir -p "$executor_dir"
+          curl -fsSL --retry 3 https://github.com/anomalyco/opencode/releases/download/v1.18.13/opencode-linux-x64.tar.gz -o "$executor_dir/opencode.tar.gz"
+          printf '%s  %s\n' '8d500b20fed2d26e537e221895b1a575476571b4f0089bb29fb13eeb8eb9e937' "$executor_dir/opencode.tar.gz" | sha256sum --check
+          tar -xzf "$executor_dir/opencode.tar.gz" -C "$executor_dir"
+          "$executor_dir/opencode" --version
+          echo "TOURI_OPENCODE_BIN=$executor_dir/opencode" >> "$GITHUB_ENV"
+      - name: Check API configuration, turns and credential isolation
+        run: bun test sidecar/test/api-models sidecar/test/runtime/opencode.test.ts
+
   license-check:
     runs-on: macos-14
     steps:
