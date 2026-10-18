@@ -16,15 +16,19 @@ type ModuleLoader = { path: string; load: () => Promise<unknown> }
 
 const moduleLoaders: Array<ModuleLoader> = [
   { path: "./store/index.ts", load: () => import("./store/index.js") },
+  { path: "./api-models/index.ts", load: () => import("./api-models/index.js") },
   { path: "./reports/index.ts", load: () => import("./reports/index.js") },
   { path: "./groups/index.ts", load: () => import("./groups/index.js") },
   { path: "./notify/index.ts", load: () => import("./notify/index.js") },
   { path: "./vm/module.ts", load: () => import("./vm/module.js") },
   { path: "./mcp/index.ts", load: () => import("./mcp/index.js") },
   { path: "./projects/index.ts", load: () => import("./projects/index.js") },
+  { path: "./mem0/index.ts", load: () => import("./mem0/index.js") },
   { path: "./browser/index.ts", load: () => import("./browser/index.js") },
   { path: "./computer/index.ts", load: () => import("./computer/index.js") },
   { path: "./runtime/index.ts", load: () => import("./runtime/index.js") },
+  { path: "./integrations/telegram/index.ts", load: () => import("./integrations/telegram/index.js") },
+  { path: "./learning/index.ts", load: () => import("./learning/index.js") },
   { path: "./importer/index.ts", load: () => import("./importer/index.js") },
 ]
 

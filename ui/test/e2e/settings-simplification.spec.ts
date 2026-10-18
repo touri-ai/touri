@@ -4,6 +4,8 @@ import { showBotAdvanced } from "./home-navigation"
 
 test.use({ viewport: { width: 1440, height: 900 }, reducedMotion: "reduce" })
 
+const nativePreferencesTabs = ["Aparência", "Privacidade", "Atualizações", "Notificações", "Diagnóstico", "Avançado"]
+
 test("bot identity stays simple and every advanced section remains reachable", async ({ page }) => {
   await page.goto("/test/e2e/r8-settings-harness.html")
   const trigger = page.getByRole("button", { name: "Ações de mark", exact: true })
@@ -49,18 +51,17 @@ test("bot identity stays simple and every advanced section remains reachable", a
   await expect(page.getByRole("region", { name: "Rotinas", exact: true })).toBeFocused()
 })
 
+test("native preferences list the core tabs and advanced server settings", async ({ page }) => {
+  await page.goto("/test/e2e/r8-settings-harness.html")
+  await page.getByRole("button", { name: /Você Local/ }).click()
+  await expect(page.getByRole("dialog").getByRole("tab")).toHaveText(nativePreferencesTabs)
+})
+
 test("app preferences disclose technical controls and preserve edits between sections", async ({ page }) => {
   await page.goto("/test/e2e/r8-settings-harness.html")
   await page.getByRole("button", { name: /Você Local/ }).click()
   const dialog = page.getByRole("dialog")
-  await expect(dialog.getByRole("tab")).toHaveText([
-    "Aparência",
-    "Privacidade",
-    "Atualizações",
-    "Notificações",
-    "Diagnóstico",
-    "Avançado",
-  ])
+  await expect(dialog.getByRole("tab")).toHaveText(nativePreferencesTabs)
   await expect(dialog.getByRole("switch")).toHaveCount(0)
   await dialog.getByRole("combobox", { name: "Tema", exact: true }).focus()
   await page.keyboard.press("Tab")

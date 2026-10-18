@@ -30,6 +30,7 @@ import { accessLabel, fullAccessDescription, plural, statusLabel, t } from "../i
 import { hostComputerSupported } from "../platform"
 import { useHost } from "../useHost"
 import type { WorkspaceActions } from "../useWorkspace"
+import { ApiModelPicker } from "./ApiModelPicker"
 import { type AvatarChoice, AvatarPicker } from "./AvatarPicker"
 import { BotAccessSummary } from "./BotAccessSummary"
 import { BotAvatar } from "./BotAvatar"
@@ -46,7 +47,7 @@ import { MachineFields } from "./MachineFields"
 import { Modal } from "./Modal"
 import { ProviderInstallation } from "./ProviderInstallation"
 import { ProviderLogin } from "./ProviderLogin"
-import { ProviderMark, providerName } from "./ProviderMark"
+import { getBotProviderName, ProviderMark, providerName } from "./ProviderMark"
 import { ProviderModelField } from "./ProviderModelField"
 import { ProviderProfileFields } from "./ProviderProfileFields"
 import { SecretsPanel } from "./RightPanels"
@@ -362,7 +363,7 @@ export const BotModelModal = ({
     if (!saving) onClose()
   }
   return (
-    <Modal onClose={close} title={t("Choose model")} eyebrow={providerName(bot.provider)}>
+    <Modal onClose={close} title={t("Choose model")} eyebrow={getBotProviderName(bot)}>
       <form
         className="modal-form"
         onSubmit={async (event) => {
@@ -451,7 +452,8 @@ export const BotCreateModal = ({
   const fallbackHost = useHost(api)
   const login = useCreateProvider(api, loginDraftId)
   const host = login.flow?.host ?? fallbackHost
-  const { provider } = login
+  const [apiModel, setApiModel] = useState("")
+  const provider = apiModel ? "opencode" : login.provider
   const [jobId, setJobId] = useState(NOT_SURE_JOB_ID)
   const [advanced, setAdvanced] = useState(false)
   const [instructions, setInstructions] = useState("")
@@ -485,6 +487,7 @@ export const BotCreateModal = ({
   }
   const chooseProvider = (next: Bot["provider"]): void => {
     setError(null)
+    setApiModel("")
     setModel("")
     setEffort(null)
     setMachine((current) => ({ ...current, vmProviderLogin: false }))
@@ -498,7 +501,7 @@ export const BotCreateModal = ({
       setError(t("Use de 1 a 80 caracteres, sem quebras de linha ou caracteres de controle."))
       return
     }
-    if (api && machine.machine !== "cloud" && (!login.ready || login.checking)) {
+    if (api && !apiModel && machine.machine !== "cloud" && (!login.ready || login.checking)) {
       setError(
         t(login.flow?.executable === "missing" ? "onboarding.installFirst" : "Sign in above before creating your bot."),
       )
@@ -524,7 +527,7 @@ export const BotCreateModal = ({
         title: title.trim() || null,
         provider,
         instructions,
-        model: model.trim() || null,
+        model: apiModel || model.trim() || null,
         reasoningEffort: effort,
         projectId: machine.machine === "cloud" ? null : projectId || null,
         folders: machine.machine === "cloud" ? [] : folders,
@@ -541,7 +544,7 @@ export const BotCreateModal = ({
         ...machine,
         ...(machine.machine === "cloud" ? { cloudApiKey } : {}),
       }
-      if (api && machine.machine !== "cloud") await onCreate(input, loginDraftId)
+      if (api && !apiModel && machine.machine !== "cloud") await onCreate(input, loginDraftId)
       else await onCreate(input)
       onClose()
     } catch (error) {
@@ -613,7 +616,8 @@ export const BotCreateModal = ({
               />
             </div>
             <div className="bot-create-defaults" aria-live="polite">
-              {machine.machine !== "cloud" &&
+              {!apiModel &&
+                machine.machine !== "cloud" &&
                 (login.checking ? (
                   <p>{t("onboarding.checking", { host: host === "mac" ? "Mac" : t("onboarding.server") })}</p>
                 ) : (
@@ -643,56 +647,73 @@ export const BotCreateModal = ({
                 anyFolderAccess={anyFolderAccess}
               />
             </div>
-            {api && machine.machine !== "cloud" && (choosingAccount || (!login.checking && !login.ready)) && (
-              <section ref={signInRef} tabIndex={-1} className="bot-create-login" aria-label={t("Choose an account")}>
-                <p>
-                  {t(
-                    login.checking || login.ready
-                      ? "Choose the account this bot will use."
-                      : login.flow?.executable === "missing"
-                        ? "onboarding.installFirst"
-                        : "Sign in to an account to create your bot.",
-                  )}
-                </p>
-                <div className="bot-create-accounts">
-                  {CREATE_PROVIDERS.map((candidate) => (
-                    <button
-                      type="button"
-                      key={candidate}
-                      className="button button-quiet"
-                      aria-pressed={provider === candidate}
-                      onClick={() => chooseProvider(candidate)}
-                    >
-                      {providerName(candidate)}
-                    </button>
-                  ))}
-                </div>
-                {login.checking || login.ready ? null : login.flow?.executable === "missing" ? (
-                  <ProviderInstallation
-                    provider={provider}
-                    host={host}
-                    busy={login.checking}
-                    onRecheck={() => {
-                      setError(null)
-                      void login.selectProvider(provider).then(() => document.getElementById("bot-name")?.focus())
-                    }}
-                  />
-                ) : !login.error ? (
-                  <ProviderLogin
-                    key={provider}
-                    api={api}
-                    botId={loginDraftId}
-                    provider={provider}
-                    onConfigured={() => {}}
-                    onReadyChange={(ready) => {
-                      login.setReady(ready)
-                      if (ready) setError(null)
-                    }}
-                  />
-                ) : null}
-              </section>
+            {machine.machine !== "cloud" && (
+              <ApiModelPicker
+                api={api}
+                id="create-api-model"
+                value={apiModel}
+                disabled={saving}
+                onChange={(value) => {
+                  setApiModel(value)
+                  setModel("")
+                  setEffort(null)
+                  setError(null)
+                }}
+              />
             )}
-            {login.error && !login.checking && machine.machine !== "cloud" && !login.ready && (
+            {api &&
+              !apiModel &&
+              machine.machine !== "cloud" &&
+              (choosingAccount || (!login.checking && !login.ready)) && (
+                <section ref={signInRef} tabIndex={-1} className="bot-create-login" aria-label={t("Choose an account")}>
+                  <p>
+                    {t(
+                      login.checking || login.ready
+                        ? "Choose the account this bot will use."
+                        : login.flow?.executable === "missing"
+                          ? "onboarding.installFirst"
+                          : "Sign in to an account to create your bot.",
+                    )}
+                  </p>
+                  <div className="bot-create-accounts">
+                    {CREATE_PROVIDERS.map((candidate) => (
+                      <button
+                        type="button"
+                        key={candidate}
+                        className="button button-quiet"
+                        aria-pressed={provider === candidate}
+                        onClick={() => chooseProvider(candidate)}
+                      >
+                        {providerName(candidate)}
+                      </button>
+                    ))}
+                  </div>
+                  {login.checking || login.ready ? null : login.flow?.executable === "missing" ? (
+                    <ProviderInstallation
+                      provider={provider}
+                      host={host}
+                      busy={login.checking}
+                      onRecheck={() => {
+                        setError(null)
+                        void login.selectProvider(provider).then(() => document.getElementById("bot-name")?.focus())
+                      }}
+                    />
+                  ) : !login.error ? (
+                    <ProviderLogin
+                      key={provider}
+                      api={api}
+                      botId={loginDraftId}
+                      provider={provider}
+                      onConfigured={() => {}}
+                      onReadyChange={(ready) => {
+                        login.setReady(ready)
+                        if (ready) setError(null)
+                      }}
+                    />
+                  ) : null}
+                </section>
+              )}
+            {!apiModel && login.error && !login.checking && machine.machine !== "cloud" && !login.ready && (
               <div className="warning-callout">
                 <p role="alert">{login.error}</p>
                 <button
@@ -808,31 +829,41 @@ export const BotCreateModal = ({
                 <small id="create-instructions-help" className="field-help">
                   {t("Detailed guidance for the bot. Saved as SOUL.md in the bot’s folder.")}
                 </small>
-                <label htmlFor="bot-provider">{t("Provider")}</label>
-                <select
-                  id="bot-provider"
-                  value={provider}
-                  onChange={(event) => chooseProvider(event.target.value as Bot["provider"])}
-                >
-                  <option value="codex">Codex</option>
-                  <option value="claude">Claude Code</option>
-                  <option value="opencode">OpenCode</option>
-                </select>
-                <label htmlFor="create-model">{t("Model")}</label>
-                <ProviderMark provider={provider} />
-                <ProviderModelField id="create-model" api={api} provider={provider} value={model} onChange={setModel} />
-                <label htmlFor="create-effort">{t("Reasoning")}</label>
-                <select
-                  id="create-effort"
-                  value={effort ?? ""}
-                  onChange={(event) => setEffort((event.target.value || null) as Bot["reasoningEffort"])}
-                >
-                  <option value="">{t("Padrão do provedor")}</option>
-                  <option value="low">{t("Low")}</option>
-                  <option value="medium">{t("Medium")}</option>
-                  <option value="high">{t("High")}</option>
-                  <option value="xhigh">{t("Extra high")}</option>
-                </select>
+                {!apiModel && (
+                  <>
+                    <label htmlFor="bot-provider">{t("Provider")}</label>
+                    <select
+                      id="bot-provider"
+                      value={provider}
+                      onChange={(event) => chooseProvider(event.target.value as Bot["provider"])}
+                    >
+                      <option value="codex">Codex</option>
+                      <option value="claude">Claude Code</option>
+                      <option value="opencode">OpenCode</option>
+                    </select>
+                    <label htmlFor="create-model">{t("Model")}</label>
+                    <ProviderMark provider={provider} />
+                    <ProviderModelField
+                      id="create-model"
+                      api={api}
+                      provider={provider}
+                      value={model}
+                      onChange={setModel}
+                    />
+                    <label htmlFor="create-effort">{t("Reasoning")}</label>
+                    <select
+                      id="create-effort"
+                      value={effort ?? ""}
+                      onChange={(event) => setEffort((event.target.value || null) as Bot["reasoningEffort"])}
+                    >
+                      <option value="">{t("Padrão do provedor")}</option>
+                      <option value="low">{t("Low")}</option>
+                      <option value="medium">{t("Medium")}</option>
+                      <option value="high">{t("High")}</option>
+                      <option value="xhigh">{t("Extra high")}</option>
+                    </select>
+                  </>
+                )}
                 <label htmlFor="bot-access">{t("Access")}</label>
                 <select
                   id="bot-access"
@@ -871,7 +902,10 @@ export const BotCreateModal = ({
                   {...(capability ? { capability } : {})}
                   onChange={(patch) => {
                     setMachine((current) => ({ ...current, ...patch }))
-                    if (patch.machine === "cloud") setProjectId("")
+                    if (patch.machine === "cloud") {
+                      setProjectId("")
+                      setApiModel("")
+                    }
                     if (patch.machine)
                       setBrowser((current) =>
                         patch.machine === "vm"
@@ -931,7 +965,7 @@ export const BotCreateModal = ({
               projectBusy ||
               invalidMachine ||
               (machine.machine === "cloud" && !cloudApiKey.trim()) ||
-              (machine.machine !== "cloud" && login.checking)
+              (!apiModel && machine.machine !== "cloud" && login.checking)
             }
           >
             {saving ? t("Creating…") : t("Create teammate")}
@@ -1182,6 +1216,19 @@ export const BotSettingsModal = ({
           anyFolderAccess={anyFolderAccess}
         />
       </div>
+      {machine.machine !== "cloud" && (
+        <ApiModelPicker
+          api={api}
+          id="settings-api-model"
+          value={provider === "opencode" && model.startsWith("touri-api-") ? model : ""}
+          disabled={saving || updating}
+          onChange={(value) => {
+            setModel(value)
+            setEffort(null)
+            if (value) setProvider("opencode")
+          }}
+        />
+      )}
       <div className="settings-advanced-bar">
         <button
           type="button"
@@ -1522,7 +1569,7 @@ export const BotSettingsModal = ({
                   )}
                 </div>
               </SettingsGroup>
-              {api && machine.machine !== "cloud" && (
+              {api && !model.startsWith("touri-api-") && machine.machine !== "cloud" && (
                 <ProviderLogin
                   key={provider}
                   api={api}

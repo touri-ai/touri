@@ -213,6 +213,16 @@ const AppContent = ({ kernel }: AppProps) => {
       setConnectionErrorCode(serverModeErrorCode(reason))
       setRetryingConnection(false)
     }
+    const scheduleRetry = (): void => {
+      clearTimeout(retryTimer)
+      retryTimer = setTimeout(() => {
+        if (!active) return
+
+        // A new effect gives every server attempt its own startup deadline.
+        if (serverMode) setConnectionAttempt((attempt) => attempt + 1)
+        else void connect()
+      }, 2000)
+    }
     const connect = async (): Promise<void> => {
       const attempt = ++generation
       try {
@@ -220,7 +230,11 @@ const AppContent = ({ kernel }: AppProps) => {
           const { createMockApi } = await import("./api/mock")
           if (!active || attempt !== generation) return
           const scenario = new URLSearchParams(window.location.search).get("mockScenario")
-          setApi(createMockApi({ scenario: scenario === "resumed-turn" ? scenario : null }))
+          setApi(
+            createMockApi({
+              scenario: scenario === "resumed-turn" || scenario === "routine-conversation" ? scenario : null,
+            }),
+          )
           clearTimeout(startupTimer)
           setConnectionState("ready")
           return
@@ -245,6 +259,7 @@ const AppContent = ({ kernel }: AppProps) => {
         await resolved.request("GET /health", {})
         if (!active || attempt !== generation) return
         clearTimeout(startupTimer)
+        clearTimeout(retryTimer)
         setApi(resolved)
         setConnectionState("ready")
         setConnectionError(null)
@@ -257,11 +272,7 @@ const AppContent = ({ kernel }: AppProps) => {
           return
         }
         fail(errorMessage(error))
-        if (!isTauriRuntime() || serverMode) {
-          retryTimer = setTimeout(() => {
-            if (active) void connect()
-          }, 2000)
-        }
+        if (!isTauriRuntime() || serverMode) scheduleRetry()
       }
     }
     const start = async (): Promise<void> => {
@@ -299,6 +310,7 @@ const AppContent = ({ kernel }: AppProps) => {
       // A late endpoint/health response must not dismiss the recovery screen.
       generation += 1
       fail(startupTimeoutMessage())
+      if (serverMode) scheduleRetry()
     }, STARTUP_TIMEOUT_MS)
     void start()
     return () => {

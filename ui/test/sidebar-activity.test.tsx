@@ -148,6 +148,31 @@ const entry = (botId: string): HTMLElement => {
   return element
 }
 
+it.each([
+  { kind: "routine" as const, title: "Novas mensagens · 10/12/20, 7:04 PM" },
+  { kind: "chat" as const, title: "Novas mensagens · 12 de out., 19:00" },
+])("shows the date once in a $kind row with a generated title", ({ kind, title }) => {
+  const { bots, threads } = fixture()
+  const bot = bots[0]
+  const baseThread = threads[0]
+  if (!bot || !baseThread) throw new Error("Fixture indisponível")
+  const timestamp = new Date(2020, 9, 12, 19, 4).getTime()
+  const thread = makeThread(baseThread, "thread-dated", bot.id, {
+    kind,
+    title,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  })
+
+  renderSidebar({ bots: [bot], threads: [thread], selectedBotId: bot.id })
+
+  const row = screen.getByRole("button", { name: /Novas mensagens/ })
+  expect(row.querySelector("strong")).toHaveTextContent(/^Novas mensagens$/)
+  expect(row.querySelector("strong")).toHaveAttribute("title", "Novas mensagens")
+  expect(row.querySelector("small")).toHaveTextContent(/12 de out\./)
+  expect(thread.title).toBe(title)
+})
+
 it("orders needs-you, then working, then unread, then the manual order, newest first inside a tier", () => {
   const { bots, threads, messageBase } = fixture()
   const unreadThreads = threads.map((thread) =>

@@ -763,3 +763,82 @@
   }
 }
 /* End r8 screens. */
+
+.telegram-card fieldset {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.telegram-card form {
+  display: grid;
+  gap: 8px;
+}
+
+.telegram-card label {
+  display: grid;
+  gap: 4px;
+}
+
+.telegram-card label:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.telegram-card form > button,
+.telegram-rejected button {
+  justify-self: start;
+}
+
+.telegram-integration {
+  margin-top: 16px;
+}
+.mem0-form fieldset {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.mem0-form label {
+  display: grid;
+  gap: 4px;
+}
+
+.mem0-form .mem0-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mem0-form input:not([type="checkbox"]),
+.mem0-form select {
+  width: 100%;
+  min-width: 0;
+}
+
+.learning-grid {
+  margin-top: 16px;
+}
+
+.learning-switches {
+  display: grid;
+  gap: 12px;
+}
+
+.learning-switches label {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.learning-switches label span {
+  display: grid;
+  gap: 2px;
+}
