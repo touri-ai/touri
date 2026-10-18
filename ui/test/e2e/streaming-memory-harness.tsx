@@ -49,7 +49,9 @@ const startStreamingFixture = () => {
   window.addEventListener(
     "start-streaming-fixture",
     () => {
-      bots.forEach((_, index) => mock.emit({ type: "message.created", message: getMessage(message, index) }))
+      bots.forEach((_, index) => {
+        mock.emit({ type: "message.created", message: getMessage(message, index) })
+      })
       // The fixture models eight independent event streams at 50 updates/second each.
       let offset = 0
       const timer = setInterval(() => {
@@ -69,9 +71,9 @@ const startStreamingFixture = () => {
         if (offset < source.length) return
 
         clearInterval(timer)
-        bots.forEach((_, index) =>
-          mock.emit({ type: "message.updated", message: getMessage(message, index, false, true) }),
-        )
+        bots.forEach((_, index) => {
+          mock.emit({ type: "message.updated", message: getMessage(message, index, false, true) })
+        })
         document.documentElement.dataset.streamingDone = "true"
       }, 20)
       window.addEventListener("pagehide", () => clearInterval(timer), { once: true })

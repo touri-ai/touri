@@ -1,10 +1,14 @@
+import { execFile } from "node:child_process"
 import { writeFile } from "node:fs/promises"
+import { resolve } from "node:path"
+import { promisify } from "node:util"
 import { expect, test } from "@playwright/test"
 
 test.use({ channel: "chromium", trace: "off", viewport: { width: 1440, height: 900 } })
 
 test("streaming eight long replies keeps allocation work bounded", async ({ page, context }, testInfo) => {
   test.setTimeout(90_000)
+  await promisify(execFile)("bun", ["--cwd", "ui", "build"], { cwd: resolve(import.meta.dirname, "../../..") })
   await page.emulateMedia({ reducedMotion: "reduce" })
   await page.goto("/test/e2e/streaming-memory-harness.html")
   await expect(page.locator(".composer-island textarea")).toBeVisible({ timeout: 30_000 })
