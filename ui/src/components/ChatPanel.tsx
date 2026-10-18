@@ -861,7 +861,7 @@ const MessageBubble = ({
             onClick={() => setFailureExpanded((expanded) => !expanded)}
           >
             {runError.title} · {failureTime} · {recovered && `${t("A reply followed this error")} · `}
-            {failureExpanded ? t("Hide error") : t("View error")}
+            {failureExpanded ? t("Hide error") : t(resolvedInterruption ? "Ver erro" : "View error")}
           </button>
           {failureExpanded && failureContent}
         </div>

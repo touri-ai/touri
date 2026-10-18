@@ -94,6 +94,7 @@ it("marks only the resolved run in chat and leaves unrelated messages intact", a
 
   expect(disclosure).toHaveAttribute("aria-expanded", "true")
   expect(screen.getByRole("alert")).toBeVisible()
+  expect(dictionaries.en["Ver erro"]).toBe("View error")
 })
 
 it("requires a new acknowledgement when the recorded effects change", async () => {

@@ -3,6 +3,7 @@ import { userFacingError } from "./errors"
 /** All UI copy lives here. pt-BR is the default; English is available for a future locale picker. */
 export type Locale = "pt-BR" | "en"
 export const ptBR = {
+  "Ver erro": "Ver erro",
   "Notificações que precisam de revisão em Tarefas interrompidas: {count}.":
     "Notificações que precisam de revisão em Tarefas interrompidas: {count}.",
   "Tarefas interrompidas": "Tarefas interrompidas",
@@ -2196,6 +2197,7 @@ export const ptBR = {
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  "Ver erro": "View error",
   "Notificações que precisam de revisão em Tarefas interrompidas: {count}.":
     "Notifications awaiting review in Interrupted tasks: {count}.",
   "Tarefas interrompidas": "Interrupted tasks",
