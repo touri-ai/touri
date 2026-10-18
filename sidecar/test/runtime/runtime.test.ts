@@ -2535,7 +2535,7 @@ test.serial("server routines run without browser clients and persist late-slot a
       forceDisabled: false,
     })
     if (!created.success) throw new Error(created.error)
-    const due = Date.parse("2026-10-19T12:00:00Z")
+    const due = Date.now() + 24 * 60 * 60_000
     value.engine.updateRoutine({ routineId: created.routine.id, patch: { nextRunAt: due }, fromTool: false })
     // No browser or UI is connected to this host. Its scheduler still executes.
     const scheduler = createRoutineScheduler({ kernel: value.runtime.kernel, engine: value.engine, intervalMs: 10 })
