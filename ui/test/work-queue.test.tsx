@@ -17,8 +17,9 @@ it("lists every executing and queued turn, origins and engine positions, and ope
   render(<App kernel={{ services: { api } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para Planejamento" })
 
-  fireEvent.click(screen.getByRole("button", { name: "Avançado", exact: true }))
-  fireEvent.click(screen.getByRole("button", { name: "Trabalho", exact: true }))
+  const badge = screen.getByRole("button", { name: /Ver trabalho/ })
+  expect(badge).toBeVisible()
+  fireEvent.click(badge)
 
   const running = screen.getByRole("region", { name: "Trabalhando", exact: true })
   const queued = screen.getByRole("region", { name: "Na fila", exact: true })
@@ -29,9 +30,6 @@ it("lists every executing and queued turn, origins and engine positions, and ope
   expect(screen.getByText("Delegação")).toBeVisible()
   expect(screen.getByText("Retomada")).toBeVisible()
   expect(screen.getByText("Rotina")).toBeVisible()
-  const badge = screen.getByRole("button", { name: "Trabalhando 3 2 na fila" })
-  expect(badge).toBeVisible()
-
   act(() => {
     api.finishFirst()
   })

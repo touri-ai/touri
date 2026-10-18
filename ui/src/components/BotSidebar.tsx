@@ -106,6 +106,10 @@ export const Sidebar = (props: SidebarProps) => {
     () => getSidebarDataByBot(props.threads, props.routineRuns ?? []),
     [props.threads, props.routineRuns],
   )
+  const workRuns = props.workRuns ?? []
+  const runningWorkCount = workRuns.filter((run) => run.status !== "queued").length
+  const queuedWorkCount = workRuns.filter((run) => run.status === "queued").length
+  const hasWork = runningWorkCount + queuedWorkCount > 0
   const routineIds = useMemo(
     () => props.routines && new Set(props.routines.map((routine) => routine.id)),
     [props.routines],
@@ -201,14 +205,21 @@ export const Sidebar = (props: SidebarProps) => {
           {t("Bots")} <span>{props.bots.length}</span>
         </button>
       </div>
-      <button type="button" className="sidebar-work-badge" onClick={() => navigate(() => props.onAdvancedPage("work"))}>
-        <span>
-          {t("Working")} <strong>{(props.workRuns ?? []).filter((run) => run.status !== "queued").length}</strong>
-        </span>
-        <span>
-          {t("Work queued count", { count: (props.workRuns ?? []).filter((run) => run.status === "queued").length })}
-        </span>
-      </button>
+      {hasWork && (
+        <button
+          type="button"
+          className="sidebar-work-badge"
+          onClick={() => navigate(() => props.onAdvancedPage("work"))}
+        >
+          <span>
+            {t("Working")} <strong>{runningWorkCount}</strong>
+          </span>
+          <span>{t("Work queued count", { count: queuedWorkCount })}</span>
+          <span className="sidebar-work-action">
+            {t("View work")} <span aria-hidden="true">›</span>
+          </span>
+        </button>
+      )}
       <div className="bot-groups">
         <div className="bot-list" ref={ordered.listRef}>
           {ordered.bots.map((bot, index) => {
