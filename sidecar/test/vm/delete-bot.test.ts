@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, 
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { Bot, Kernel, Run } from "@touri/contracts"
-import { botSessionPath, saveBotSession } from "../../src/browser/sessionVault"
+import { botSessionPath, loadBotSession, saveBotSession } from "../../src/browser/sessionVault"
 import { createGroupRuntime } from "../../src/groups/runtime"
 import { createGroupStore } from "../../src/groups/store"
 import { createKernel } from "../../src/kernel"
@@ -669,6 +669,31 @@ test("a volume mounted by another bot is never removed", async () => {
   expect((await f.request(`/bots/${bot.id}`, { name: bot.name, deleteVolumes: true }, "DELETE")).status).toBe(200)
   expect(f.fake.calls.filter((call) => call.action === "deleteVolume")).toHaveLength(0)
 })
+
+test.each(["machine", "history"] as const)(
+  "a failed %s deletion preserves the saved browser session and encryption key",
+  async (step) => {
+    const f = await fixture()
+    const bot = await f.create("Session retry", step === "machine" ? "vm" : "local")
+    const session = { cookies: [{ name: "sid", value: "fake", domain: "example.com", path: "/" }], storage: {} }
+    expect(await saveBotSession({ kernel: f.runtime.kernel, botId: bot.id, session })).toBe(true)
+    const file = botSessionPath(f.runtime.kernel, bot.id)
+    const encrypted = readFileSync(file, "utf8")
+    const release = step === "machine" ? await f.vm.service.acquire({ botId: bot.id }) : async () => {}
+    if (step === "history")
+      f.db
+        .query("CREATE TRIGGER block_bot_deletion BEFORE DELETE ON bots BEGIN SELECT RAISE(ABORT, 'blocked'); END")
+        .run()
+
+    const response = await f.request(`/bots/${bot.id}`, { name: bot.name }, "DELETE")
+    await release()
+
+    expect(response.status).toBe(409)
+    expect(f.db.query("SELECT id FROM bots WHERE id = ?").get(bot.id)).toEqual({ id: bot.id })
+    expect(readFileSync(file, "utf8")).toBe(encrypted)
+    expect(await loadBotSession(f.runtime.kernel, bot.id)).toEqual(session)
+  },
+)
 
 test("R13-B03 deleting a bot removes its private browser session file", async () => {
   const f = await fixture()

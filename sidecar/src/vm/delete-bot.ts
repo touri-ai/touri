@@ -43,6 +43,7 @@ export const deleteBotRoute = (kernel: Kernel, runtime: VmRuntime): RouteModule[
           .filter((group) => group.memberIds.includes(botId))
           .map((group) => group.id)
         const attachments = await performDeletionStep("TOURI-E2014", () => deleteBotData(kernel, botId))
+        await removeBotSession(kernel, botId)
         publishBotDeletion(kernel, botId, groups, groupIds)
         await collectDeletedBotBlobs(kernel, attachments)
         return { status: 200, json: {} }
@@ -151,7 +152,6 @@ const deleteBotLogins = async (kernel: Kernel, botId: string) => {
     const result = await kernel.callHost("keychain.delete", { account: providerLoginAccount(botId, provider) })
     if (!result.success) throw new TouriError("TOURI-E1016")
   }
-  await removeBotSession(kernel, botId)
 }
 
 const deleteBotData = (kernel: Kernel, botId: string) => {
