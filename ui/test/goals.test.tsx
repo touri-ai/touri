@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react"
-import { expect, test } from "vitest"
+import { expect, test, vi } from "vitest"
 import { createMockApi } from "../src/api/mock"
 import { GoalPanel } from "../src/components/GoalPanel"
 import { localizeToolText, t } from "../src/i18n"
@@ -135,4 +135,18 @@ test("goal checkpoint failures use plain language", () => {
 
   expect(localizeToolText(failure)).toBe("Não há um objetivo ativo para este turno.")
   expect(t(failure, {}, "en")).toBe("There is no active goal for this turn.")
+})
+
+test("a temporary checkpoint loading error clears after reconnecting", async () => {
+  const base = createMockApi()
+  const bot = base.getState().bots[0]
+  const request = base.getState().messages.find((message) => message.role === "user")
+  if (!bot || !request) throw new Error("Missing mock conversation")
+  const api = { ...base, request: vi.fn(base.request).mockRejectedValueOnce(new Error("offline")) }
+
+  render(<GoalPanel api={api} threadId={request.threadId} bot={bot} request={request} busy={false} />)
+  await screen.findByRole("alert")
+  await waitFor(() => expect(screen.queryByRole("alert")).toBeNull(), { timeout: 4000 })
+
+  expect(api.request).toHaveBeenCalledTimes(2)
 })

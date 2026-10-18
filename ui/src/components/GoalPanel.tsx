@@ -22,6 +22,7 @@ export const GoalPanel = ({
   const [loaded, setLoaded] = useState(false)
   const [pending, setPending] = useState(false)
   const [failed, setFailed] = useState(false)
+  const [loadFailed, setLoadFailed] = useState(false)
   const [editing, setEditing] = useState(false)
   const [advanced, setAdvanced] = useState(false)
   const [criterion, setCriterion] = useState("")
@@ -41,9 +42,10 @@ export const GoalPanel = ({
           current && response.goal && current.updatedAt > response.goal.updatedAt ? current : response.goal,
         )
         setLoaded(true)
+        setLoadFailed(false)
         setNow(Date.now())
       } catch {
-        if (alive) setFailed(true)
+        if (alive) setLoadFailed(true)
       }
     }
     void refresh()
@@ -214,7 +216,7 @@ export const GoalPanel = ({
           )}
         </ChatDisclosure>
       )}
-      {failed && <p role="alert">{t("Goal request failed")}</p>}
+      {(failed || loadFailed) && <p role="alert">{t("Goal request failed")}</p>}
     </section>
   )
 }

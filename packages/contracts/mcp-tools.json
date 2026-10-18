@@ -28,13 +28,6 @@
   },
   "tools": [
     {
-      "name": "goal_checkpoint",
-      "description": "Record an observed step for the user-authorized goal in this turn. Set completed=true only after verifying its agreed completion criterion. Never treats the end of a turn as completion. Cannot create goals, change budgets or grant access.",
-      "inputSchema": { "type": "object", "required": ["step", "completed"], "additionalProperties": false,
-        "properties": { "step": { "type": "string", "minLength": 1, "maxLength": 1000 }, "completed": { "type": "boolean" } } },
-      "x-touri": { "group": "core", "mvp": true, "mutates": true }
-    },
-    {
       "name": "history_search",
       "description": "Full-text search over this bot's past chats (all threads, including failed turns). Use when the user refers to something you do not see in context.",
       "inputSchema": { "type": "object", "required": ["query"], "additionalProperties": false,
@@ -488,6 +481,13 @@
         "properties": { "bot": { "type": "string", "description": "Exact member name or ID" },
           "message": { "type": "string", "minLength": 1, "maxLength": 8000 } } },
       "x-touri": { "group": "core", "mvp": true, "mutates": true, "deadlineMs": 125000 }
+    },
+    {
+      "name": "goal_checkpoint",
+      "description": "Record an observed step for the user-authorized goal in this turn. Set completed=true only after verifying its agreed completion criterion. Never treats the end of a turn as completion. Cannot create goals, change budgets or grant access.",
+      "inputSchema": { "type": "object", "required": ["step", "completed"], "additionalProperties": false,
+        "properties": { "step": { "type": "string", "minLength": 1, "maxLength": 1000 }, "completed": { "type": "boolean" } } },
+      "x-touri": { "group": "core", "mvp": true, "mutates": true }
     }
   ]
 }
