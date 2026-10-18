@@ -7,6 +7,7 @@ import type { Bot, Kernel, NotificationRecord, Routine, RoutineRun, Run, Telegra
 import { createFakeTelegram } from "../../../test/fakes/fake-telegram"
 import { createTelegramIntegrations } from "../../src/integrations/telegram"
 import { createTelegramApi } from "../../src/integrations/telegram/api"
+import { createTelegramBridge } from "../../src/integrations/telegram/bridge"
 import { createTelegramStore, tokenAccount } from "../../src/integrations/telegram/store"
 import { splitMessage } from "../../src/integrations/telegram/text"
 import { createKernel } from "../../src/kernel"
@@ -410,7 +411,13 @@ test("changing the token resets the account offset and chat links; saving the sa
   await f.configure({ token: TOKEN })
   expect(store.state(f.bot.id)).toEqual(before)
   await f.configure({ token: "987654321:AAAnotherTokenForTouriTests_123456" })
-  expect(store.state(f.bot.id)).toEqual({ offset: 0, chats: {}, lastRejected: null, routineRunIds: [] })
+  expect(store.state(f.bot.id)).toEqual({
+    accountId: expect.any(String),
+    offset: 0,
+    chats: {},
+    lastRejected: null,
+    routineRunIds: [],
+  })
   const sent = f.fake.sent().length
   f.finish(f.runs[0] as Run, "Não encaminhar para outra conta")
   await Bun.sleep(30)
@@ -605,4 +612,68 @@ test("long approval requests require the complete context in the app instead of 
   await until(() => f.fake.sent().length === 1)
   expect(f.fake.sent()[0]?.params.text).toBe("Este pedido é longo. Abra o touri para conferir e responder.")
   expect(f.fake.sent()[0]?.params.reply_markup).toBeUndefined()
+})
+
+test("/new clears typing from the previous conversation while the new conversation is idle", async () => {
+  const f = await fixture()
+  const store = createTelegramStore(f.kernel)
+  store.saveConfig(f.bot.id, { enabled: true, allowedUserIds: ["42"], homeChatId: null, forwardRoutines: false })
+  const bridge = createTelegramBridge({
+    kernel: f.kernel,
+    botId: f.bot.id,
+    token: TOKEN,
+    store,
+    apiBase: f.fake.url,
+    pollTimeoutSec: 0,
+    typingIntervalMs: 10,
+    onStatus: () => undefined,
+  })
+  cleanup.push(() => bridge.stop())
+  bridge.start()
+  f.fake.message({ text: "Comece um trabalho" })
+  await until(() => f.runs.length === 1 && f.fake.sent("sendChatAction").length > 0)
+
+  f.fake.message({ text: "/new" })
+  await until(() => f.fake.sent().some((call) => String(call.params.text).startsWith("Nova conversa:")))
+  f.fake.message({ text: "/status" })
+  await until(() => f.fake.sent().some((call) => String(call.params.text).includes("Nada em andamento.")))
+  await Bun.sleep(30)
+  const typing = f.fake.sent("sendChatAction").length
+  await Bun.sleep(40)
+
+  expect(f.runs[0]?.status).toBe("running")
+  expect(f.fake.sent("sendChatAction")).toHaveLength(typing)
+})
+
+test("restart scopes saved chat links and offsets to the credential account before polling", async () => {
+  const f = await fixture()
+  await f.configure({ token: TOKEN, enabled: true, allowedUserIds: ["42"] })
+  f.fake.message({ text: "Conversa da conta anterior" })
+  await until(() => f.runs.length === 1)
+  const store = createTelegramStore(f.kernel)
+  await until(() => store.state(f.bot.id).offset === 2)
+  await f.configure({ enabled: false })
+  const nextToken = "987654321:AAAnotherTokenForTouriTests_123456"
+  const nextAccount = createFakeTelegram({ token: nextToken })
+  cleanup.push(() => {
+    nextAccount.stop()
+  })
+  // A process can stop after storing a replacement credential but before clearing the settings row.
+  f.vault.set(tokenAccount(f.bot.id), nextToken)
+  store.saveConfig(f.bot.id, { ...store.config(f.bot.id), enabled: true })
+  const restarted = createTelegramIntegrations({ kernel: f.kernel, apiBase: nextAccount.url, pollTimeoutSec: 0 })
+  cleanup.push(() => restarted.stopAll())
+
+  await restarted.start()
+  await until(() => nextAccount.sent("getUpdates").length > 0)
+  f.finish(f.runs[0] as Run, "Resultado da conta anterior")
+  await Bun.sleep(20)
+
+  expect(nextAccount.sent("getUpdates")[0]?.params.offset).toBe(0)
+  expect(store.state(f.bot.id).chats).toEqual({})
+  expect(nextAccount.sent()).toEqual([])
+
+  nextAccount.message({ text: "Conversa da nova conta" })
+  await until(() => f.runs.length === 2)
+  expect(f.runs[1]?.threadId).not.toBe(f.runs[0]?.threadId)
 })

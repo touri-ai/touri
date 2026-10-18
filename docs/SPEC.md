@@ -434,7 +434,10 @@ revoked token stops polling with an error status. Deleting the bot removes its c
 token. Replacing the token clears the old account's polling offset and chat links. A saved receipt
 prevents recent routine results from being forwarded again after reconnecting. Replies stop when a
 user is removed from the allowlist. Approval buttons are bound to a unique request and its private
-Telegram message, so reconnecting never reuses an old button for a different request.
+Telegram message, so reconnecting never reuses an old button for a different request. The saved
+bridge state also carries an account fingerprint, so recovery after a credential change starts
+with fresh chat links and offsets. `/new` clears typing from the previous conversation while its
+work and history remain available in touri.
 
 ## 4. Projects, processes, secrets, preview (WP5; Preview pane UI in WP9, webview in WP1)
 

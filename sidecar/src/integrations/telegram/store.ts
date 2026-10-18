@@ -6,6 +6,8 @@ import type { Id, Kernel, TelegramIntegration, TelegramIntegrationConfig } from 
  * so the feature needs no migration. The bot token is a secret and lives in the keychain.
  */
 export type TelegramState = {
+  /** Token fingerprint that scopes chat links and polling offsets to one account. */
+  accountId: string | null
   /** Next getUpdates offset; persisted so a restart neither replays nor drops messages. */
   offset: number
   /** Telegram chat ID to touri thread ID. */
@@ -20,7 +22,7 @@ export const DEFAULT_CONFIG: TelegramIntegrationConfig = {
   homeChatId: null,
   forwardRoutines: false,
 }
-const DEFAULT_STATE: TelegramState = { offset: 0, chats: {}, lastRejected: null, routineRunIds: [] }
+const DEFAULT_STATE: TelegramState = { accountId: null, offset: 0, chats: {}, lastRejected: null, routineRunIds: [] }
 
 const configKey = (botId: Id) => `telegram:${botId}`
 const stateKey = (botId: Id) => `telegram-state:${botId}`
@@ -70,6 +72,7 @@ export const createTelegramStore = (kernel: Kernel) => {
     const chats = record(value.chats)
     const rejected = record(value.lastRejected)
     return {
+      accountId: typeof value.accountId === "string" ? value.accountId : null,
       routineRunIds: Array.isArray(value.routineRunIds)
         ? value.routineRunIds.filter((id): id is string => typeof id === "string").slice(-200)
         : [],
@@ -92,6 +95,11 @@ export const createTelegramStore = (kernel: Kernel) => {
     saveConfig: (botId: Id, value: TelegramIntegrationConfig) => write(configKey(botId), value),
     state,
     saveState: (botId: Id, value: TelegramState) => write(stateKey(botId), value),
+    setAccount: (botId: Id, accountId: string) => {
+      if (state(botId).accountId === accountId) return
+
+      write(stateKey(botId), { ...DEFAULT_STATE, accountId })
+    },
     configuredBots,
     resetState: (botId: Id) => db.query("DELETE FROM settings WHERE key = ?").run(stateKey(botId)),
     remove: (botId: Id) => {

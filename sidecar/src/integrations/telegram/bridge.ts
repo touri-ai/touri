@@ -51,6 +51,7 @@ export const createTelegramBridge = ({
   store,
   apiBase,
   pollTimeoutSec = 25,
+  typingIntervalMs = TYPING_EVERY_MS,
   onStatus,
 }: {
   kernel: Kernel
@@ -59,6 +60,7 @@ export const createTelegramBridge = ({
   store: TelegramStore
   apiBase?: string
   pollTimeoutSec?: number
+  typingIntervalMs?: number
   onStatus: (status: TelegramIntegrationStatus) => void
 }) => {
   const controller = new AbortController()
@@ -68,6 +70,7 @@ export const createTelegramBridge = ({
     ...(apiBase ? { base: apiBase } : {}),
   })
   const accountId = createHash("sha256").update(token).digest("hex").slice(0, 16)
+  store.setAccount(botId, accountId)
   const typing = new Map<string, { timer: ReturnType<typeof setInterval>; started: number }>()
   const forwarded = new Set<Id>()
   const routinesSent = new Set<Id>(store.state(botId).routineRunIds)
@@ -122,7 +125,7 @@ export const createTelegramBridge = ({
       }
       void api.sendChatAction({ chat_id: chatId, action: "typing" }).catch(() => undefined)
     }
-    typing.set(chatId, { timer: setInterval(tick, TYPING_EVERY_MS), started: Date.now() })
+    typing.set(chatId, { timer: setInterval(tick, typingIntervalMs), started: Date.now() })
     tick()
   }
 
@@ -152,6 +155,7 @@ export const createTelegramBridge = ({
     }
     if (name === "/new") {
       const thread = newThread(message)
+      if (thread) stopTyping(chatId)
       await send(chatId, thread ? `Nova conversa: ${thread.title}` : "Não consegui criar uma conversa.")
       return true
     }
