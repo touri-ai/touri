@@ -1251,16 +1251,20 @@ export const BotSettingsModal = ({
         />
       )}
       <div className="settings-advanced-bar">
+        <span id="settings-advanced-context" className="settings-advanced-context">
+          {t("Ajustes deste bot")}
+        </span>
         <button
           type="button"
           className="button button-quiet"
+          aria-labelledby="settings-advanced-label settings-advanced-context"
           aria-expanded={advanced}
           aria-controls="bot-advanced-settings"
           onClick={() => setAdvanced((current) => !current)}
         >
-          {t("Avançado")}
+          <span id="settings-advanced-label">{t("Avançado")}</span>
+          <span aria-hidden="true">{advanced ? "−" : "+"}</span>
         </button>
-        {advanced && <span>{t("Ajustes deste bot")}</span>}
       </div>
       {/* Unmounted while collapsed: WebKit drops every later sibling from the macOS accessibility tree when a display:none subtree holds a <select>. */}
       {advanced && (

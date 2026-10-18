@@ -190,7 +190,7 @@ for (const size of [
 
     test("other sidebar and chat popovers remain reachable", async ({ page }) => {
       await openWorkspace(page)
-      await page.getByRole("button", { name: "Avançado", exact: true }).click()
+      await page.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }).click()
       await exposed(page, page.getByRole("navigation", { name: "Opções avançadas" }))
       await page.keyboard.press("Escape")
       await page.getByRole("button", { name: /^Notificações/ }).click()

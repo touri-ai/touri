@@ -46,7 +46,7 @@ it("explains machine choices without jargon and keeps diagnostics in closed deta
 
 it("keeps creation choices and bot computer settings free of jargon until technical details open", async () => {
   const create = render(<BotCreateModal onClose={vi.fn()} onCreate={vi.fn()} />)
-  fireEvent.click(screen.getByRole("button", { name: "Avançado" }))
+  fireEvent.click(screen.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
   expect(screen.getByRole("option", { name: "Neste computador" })).toBeInTheDocument()
   expect(screen.getByRole("option", { name: /Separado só para o bot/ })).toBeInTheDocument()
   create.unmount()
@@ -64,7 +64,7 @@ it("keeps creation choices and bot computer settings free of jargon until techni
       onClose={vi.fn()}
     />,
   )
-  fireEvent.click(screen.getByRole("button", { name: "Avançado" }))
+  fireEvent.click(screen.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
   fireEvent.click(screen.getByRole("tab", { name: "Computador" }))
   const memory = screen.getByLabelText("Memória por computador do bot (MiB)")
   expect(memory).not.toBeVisible()

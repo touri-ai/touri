@@ -56,7 +56,7 @@ it("preserves advanced drafts while keeping creation on one screen", async () =>
   expect(screen.getByLabelText("Nome")).toHaveFocus()
   fireEvent.change(screen.getByLabelText("Nome"), { target: { value: " Clara " } })
   fireEvent.click(screen.getByRole("button", { name: "Forma Nuvem" }))
-  fireEvent.click(screen.getByRole("button", { name: "Avançado" }))
+  fireEvent.click(screen.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
   expect(screen.getByLabelText("Função")).toHaveAccessibleDescription(
     "Resumo do trabalho do bot na equipe, por exemplo: pesquisar e comparar fontes.",
   )
@@ -69,9 +69,9 @@ it("preserves advanced drafts while keeping creation on one screen", async () =>
   fireEvent.change(screen.getByLabelText("Função"), { target: { value: "Pesquisa" } })
   fireEvent.change(screen.getByLabelText("Instruções do bot"), { target: { value: "Responda em português." } })
   fireEvent.change(screen.getByLabelText("Modelo"), { target: { value: "gpt-6.1-sol" } })
-  fireEvent.click(screen.getByRole("button", { name: "Avançado" }))
+  fireEvent.click(screen.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
   expect(screen.queryByLabelText("Instruções do bot")).toBeNull()
-  fireEvent.click(screen.getByRole("button", { name: "Avançado" }))
+  fireEvent.click(screen.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
   expect(screen.getByLabelText("Instruções do bot")).toHaveValue("Responda em português.")
   expect(screen.getByLabelText("Modelo")).toHaveValue("gpt-6.1-sol")
   const browser = screen.getByRole("switch", { name: "Navegador habilitado" })
@@ -137,7 +137,7 @@ it("keeps machine switch drafts until saving and sends the existing computer-use
       onClose={vi.fn()}
     />,
   )
-  await user.click(screen.getByRole("button", { name: "Avançado" }))
+  await user.click(screen.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
   await user.click(screen.getByRole("tab", { name: "Computador" }))
   const login = screen.getByRole("switch", { name: /Usar meu login/ })
   login.focus()
@@ -169,7 +169,7 @@ it("validates idle time and keeps the draft available after a failed creation", 
     />,
   )
   fireEvent.change(screen.getByLabelText("Nome"), { target: { value: "Clara" } })
-  fireEvent.click(screen.getByRole("button", { name: "Avançado" }))
+  fireEvent.click(screen.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
   fireEvent.change(screen.getByLabelText("Máquina"), { target: { value: "vm" } })
   fireEvent.change(screen.getByLabelText("Parar após minutos sem atividade"), { target: { value: "0" } })
   expect(screen.getByRole("button", { name: "Criar bot" })).toBeDisabled()
@@ -198,14 +198,14 @@ it("keeps drafts across settings panes and links each navigation tab to its pane
     />,
   )
   fireEvent.change(screen.getByLabelText("O que ele faz"), { target: { value: "Pesquisa" } })
-  fireEvent.click(screen.getByRole("button", { name: "Avançado" }))
+  fireEvent.click(screen.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
   fireEvent.click(screen.getByRole("tab", { name: "Computador" }))
   expect(screen.queryByRole("textbox", { name: "O que ele faz" })).toBeNull()
   const tab = screen.getByRole("tab", { name: "Computador" })
   expect(document.getElementById(tab.getAttribute("aria-controls") ?? "")).toBe(
     screen.getByRole("tabpanel", { name: "Computador" }),
   )
-  fireEvent.click(screen.getByRole("button", { name: "Avançado" }))
+  fireEvent.click(screen.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
   expect(screen.getByLabelText("O que ele faz")).toHaveValue("Pesquisa")
   fireEvent.click(screen.getByRole("button", { name: "Salvar configurações" }))
   await waitFor(() =>
@@ -265,7 +265,7 @@ it("Escape cancels a machine reset before closing settings and returns focus to 
       onClose={close}
     />,
   )
-  fireEvent.click(screen.getByRole("button", { name: "Avançado" }))
+  fireEvent.click(screen.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
   fireEvent.click(screen.getByRole("tab", { name: "Computador" }))
   fireEvent.click(screen.getByRole("button", { name: "Redefinir" }))
   const confirmation = screen.getByRole("alertdialog")
@@ -359,17 +359,20 @@ it("revalidates a hidden advanced machine setting on form submit", () => {
     />,
   )
   fireEvent.change(screen.getByLabelText("Nome"), { target: { value: "Clara" } })
-  fireEvent.click(screen.getByRole("button", { name: "Avançado" }))
+  fireEvent.click(screen.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
   fireEvent.change(screen.getByLabelText("Máquina"), { target: { value: "vm" } })
   fireEvent.change(screen.getByLabelText("Parar após minutos sem atividade"), { target: { value: "0" } })
   expect(screen.getByRole("button", { name: "Criar bot" })).toBeDisabled()
-  fireEvent.click(screen.getByRole("button", { name: "Avançado" }))
+  fireEvent.click(screen.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
   const form = document.querySelector(".bot-create-form")
   if (!form) throw new Error("Missing creation form")
   fireEvent.submit(form)
   expect(create).not.toHaveBeenCalled()
   expect(screen.getByLabelText("Parar após minutos sem atividade")).toHaveValue(0)
-  expect(screen.getByRole("button", { name: "Avançado" })).toHaveAttribute("aria-expanded", "true")
+  expect(screen.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ })).toHaveAttribute(
+    "aria-expanded",
+    "true",
+  )
 })
 
 it("reports immediate permission failures and lets the user retry without losing drafts", async () => {
@@ -386,7 +389,7 @@ it("reports immediate permission failures and lets the user retry without losing
     />,
   )
   fireEvent.change(screen.getByLabelText("O que ele faz"), { target: { value: "Pesquisa" } })
-  fireEvent.click(screen.getByRole("button", { name: "Avançado" }))
+  fireEvent.click(screen.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
   fireEvent.click(screen.getByRole("tab", { name: "Computador" }))
   const control = screen.getByRole("switch", { name: /Controle do computador/ })
   fireEvent.click(control)
@@ -396,6 +399,6 @@ it("reports immediate permission failures and lets the user retry without losing
   fireEvent.click(control)
   await waitFor(() => expect(updateBot).toHaveBeenCalledTimes(2))
   await waitFor(() => expect(screen.queryByRole("alert")).toBeNull())
-  fireEvent.click(screen.getByRole("button", { name: "Avançado" }))
+  fireEvent.click(screen.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
   expect(screen.getByLabelText("O que ele faz")).toHaveValue("Pesquisa")
 })

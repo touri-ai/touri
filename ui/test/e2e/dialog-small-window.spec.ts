@@ -127,7 +127,7 @@ for (const size of sizes) {
       await botMenu(page, "Avançado")
       const settings = page.getByRole("dialog")
       await checkLayer(page, settings)
-      await settings.getByRole("button", { name: "Avançado", exact: true }).click()
+      await settings.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }).click()
       // The last navigation item must remain clickable above the footer, even when it opens another page.
       await settings.getByRole("tab", { name: "Rotinas", exact: true }).click({ trial: true })
       await settings.getByRole("tab", { name: "Computador", exact: true }).click()
@@ -146,7 +146,7 @@ for (const size of sizes) {
       const create = page.getByRole("dialog")
       await checkLayer(page, create)
       await create.getByLabel("Nome", { exact: true }).fill("Clara")
-      await create.getByRole("button", { name: "Avançado", exact: true }).click()
+      await create.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }).click()
       await checkReachable(
         create,
         create

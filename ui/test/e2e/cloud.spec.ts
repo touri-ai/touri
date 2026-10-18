@@ -72,7 +72,7 @@ for (const theme of ["light", "dark"] as const) {
     await expect(page.getByRole("status")).toHaveText("Hibernado")
     await page.getByRole("button", { name: "Novo bot" }).click()
     await page.getByLabel("Nome", { exact: true }).fill("Pedro")
-    await page.getByRole("button", { name: "Avançado", exact: true }).click()
+    await page.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }).click()
     await expect(page.getByRole("option", { name: "Na nuvem" })).toBeAttached()
     await page.getByLabel("Máquina", { exact: true }).selectOption("cloud")
     await page.getByLabel("Chave API do OpenAI").fill("qa-api-key")

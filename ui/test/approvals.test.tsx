@@ -161,7 +161,7 @@ it("MCP policy changes refresh standing grants in the permissions modal", async 
       onClose={vi.fn()}
     />,
   )
-  fireEvent.click(screen.getByRole("button", { name: "Avançado" }))
+  fireEvent.click(screen.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
   fireEvent.click(screen.getByRole("tab", { name: "Permissões" }))
   await screen.findByText("docs · save")
   fireEvent.click(screen.getByRole("tab", { name: "Ferramentas" }))
@@ -175,7 +175,7 @@ it("MCP policy changes refresh standing grants in the permissions modal", async 
 it("Codex creation hides full access with approval and explains sandbox behavior", () => {
   render(<BotCreateModal onClose={vi.fn()} onCreate={vi.fn()} />)
   fireEvent.change(screen.getByLabelText("Nome"), { target: { value: "Teste" } })
-  fireEvent.click(screen.getByRole("button", { name: "Avançado" }))
+  fireEvent.click(screen.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
   expect(screen.queryByRole("option", { name: "Acesso total com aprovação" })).toBeNull()
   fireEvent.change(screen.getByLabelText("Acesso", { selector: "select" }), { target: { value: "full" } })
   const warning = screen.getByText(/O acesso total permite ler, criar, alterar e apagar arquivos/)
@@ -199,7 +199,7 @@ it("switching a Claude bot with full approved access to Codex saves full access 
       onClose={vi.fn()}
     />,
   )
-  fireEvent.click(screen.getByRole("button", { name: "Avançado" }))
+  fireEvent.click(screen.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
   fireEvent.click(screen.getByRole("tab", { name: "Acesso" }))
   expect(screen.getByRole("option", { name: "Acesso total com aprovação" })).toBeVisible()
   fireEvent.click(screen.getByRole("tab", { name: "Modelo" }))

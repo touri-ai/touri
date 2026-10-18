@@ -50,7 +50,7 @@ it("opens bot settings with identity, mascot and one access sentence, then revea
     expect(screen.queryByRole("textbox", { name })).toBeNull()
   }
   fireEvent.change(screen.getByRole("textbox", { name: "Nome" }), { target: { value: "Clara" } })
-  fireEvent.click(screen.getByRole("button", { name: "Avançado" }))
+  fireEvent.click(screen.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
   expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
     "Modelo",
     "Acesso",
@@ -60,7 +60,7 @@ it("opens bot settings with identity, mascot and one access sentence, then revea
     "Permissões",
     "Rotinas",
   ])
-  fireEvent.click(screen.getByRole("button", { name: "Avançado" }))
+  fireEvent.click(screen.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
   expect(screen.getByRole("textbox", { name: "Nome" })).toHaveValue("Clara")
   fireEvent.click(screen.getByRole("button", { name: "Salvar configurações" }))
   await waitFor(() =>
@@ -134,16 +134,16 @@ it("keeps common bot settings nearby and technical settings behind a disclosure"
     },
   }
   for (const [name, check] of Object.entries(checks)) {
-    fireEvent.click(screen.getByRole("button", { name: "Avançado" }))
+    fireEvent.click(screen.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
     fireEvent.click(screen.getByRole("tab", { name }))
     await check()
-    fireEvent.click(screen.getByRole("button", { name: "Avançado" }))
+    fireEvent.click(screen.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
   }
 })
 
 it("keeps local provider accounts and connectors in Access within two clicks", async () => {
   await botSettings({ provider: "claude", machine: "local" })
-  fireEvent.click(screen.getByRole("button", { name: "Avançado" }))
+  fireEvent.click(screen.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
   fireEvent.click(screen.getByRole("tab", { name: "Acesso" }))
   expect(screen.getByRole("combobox", { name: "Conta do provedor" })).toBeVisible()
   expect(screen.getByRole("switch", { name: /Conectores do claude.ai/ })).toBeVisible()
@@ -252,7 +252,7 @@ it.each([
   panel.unmount()
   await botSettings({ provider: "claude", access, approvals })
   expect(document.querySelector(".bot-settings-overview > .field-help")).toHaveTextContent(`${label};`)
-  fireEvent.click(screen.getByRole("button", { name: "Avançado" }))
+  fireEvent.click(screen.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
   fireEvent.click(screen.getByRole("tab", { name: "Acesso" }))
   const selected = screen.getByRole("combobox", { name: "Acesso" }) as HTMLSelectElement
   expect(selected.selectedOptions[0]?.textContent).toBe(label)

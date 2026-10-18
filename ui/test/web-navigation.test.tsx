@@ -81,7 +81,7 @@ it("restores back/forward without creating entries, including when leaving a glo
   await locationIs("bot-mark", "thread-mark")
   selectBot("bot-onb")
   await locationIs("bot-onb", "thread-onb")
-  fireEvent.click(screen.getByRole("button", { name: "Avançado", exact: true }))
+  fireEvent.click(screen.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
   fireEvent.click(screen.getByRole("button", { name: "Integrações", exact: true }))
   await screen.findByRole("heading", { name: "Integrações", exact: true })
   push.mockClear()
@@ -117,7 +117,7 @@ it("browser traversal supersedes a pending animated page navigation", async () =
       return { ready: Promise.resolve(), finished, skipTransition: skip }
     },
   })
-  fireEvent.click(screen.getByRole("button", { name: "Avançado", exact: true }))
+  fireEvent.click(screen.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
   fireEvent.click(screen.getByRole("button", { name: "Integrações", exact: true }))
   expect(snapshot).toBeDefined()
   act(() => window.history.back())

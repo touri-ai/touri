@@ -11,7 +11,10 @@ test.beforeEach(async ({ page }) => {
 })
 
 test("creation shows its access boundary before opening Advanced", async ({ page }) => {
-  await expect(page.getByRole("button", { name: "Avançado" })).toHaveAttribute("aria-expanded", "false")
+  await expect(page.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ })).toHaveAttribute(
+    "aria-expanded",
+    "false",
+  )
   await expect(
     page.getByText(
       "Pede permissão antes de mudar arquivos; alterações ficam na pasta do bot, no projeto e nas pastas liberadas.",
@@ -20,14 +23,14 @@ test("creation shows its access boundary before opening Advanced", async ({ page
 })
 
 test("read-only access remains visible after closing Advanced", async ({ page }) => {
-  await page.getByRole("button", { name: "Avançado" }).click()
+  await page.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }).click()
   await page.getByLabel("Acesso", { exact: true }).selectOption("read-only")
-  await page.getByRole("button", { name: "Avançado" }).click()
+  await page.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }).click()
   await expect(page.getByText("Somente leitura; pode ler arquivos no Mac, sem alterá-los.")).toBeVisible()
 })
 
 test("switching approved full access to Codex describes the saved approval mode", async ({ page }) => {
-  await page.getByRole("button", { name: "Avançado" }).click()
+  await page.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }).click()
   await page.getByLabel("Provedor", { exact: true }).selectOption("claude")
   await page.getByLabel("Acesso", { exact: true }).selectOption("full-approved")
   await expect(page.getByText(/^Acesso total com aprovação;/)).toBeVisible()
@@ -35,7 +38,7 @@ test("switching approved full access to Codex describes the saved approval mode"
   await expect(page.getByLabel("Acesso", { exact: true })).toHaveValue("full")
   await expect(page.getByText(/^Acesso total com aprovação;/)).toHaveCount(0)
   await expect(page.getByText(/^Acesso total;/)).toBeVisible()
-  await page.getByRole("button", { name: "Avançado" }).click()
+  await page.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }).click()
   await page.getByRole("button", { name: "Criar bot", exact: true }).click()
   await expect(page.getByRole("textbox", { name: "Mensagem para Pesquisa" })).toBeVisible()
   const policy = await page.evaluate(() => {

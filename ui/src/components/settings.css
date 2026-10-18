@@ -991,7 +991,7 @@
   padding: var(--space-24) var(--space-32);
 }
 .bot-settings-overview .settings-avatar-field {
-  padding: 0;
+  padding: 0 0 var(--space-20);
 }
 .bot-settings-overview .avatar-picker > legend {
   margin: 0 0 var(--space-12);
@@ -1005,6 +1005,10 @@
   gap: var(--space-12);
   padding: var(--space-12) var(--space-28);
   border-top: 1px solid var(--border-divider);
+  color: var(--text-secondary);
+  font-size: var(--type-12);
+}
+.settings-advanced-context {
   color: var(--text-secondary);
   font-size: var(--type-12);
 }

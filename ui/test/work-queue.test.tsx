@@ -22,7 +22,7 @@ it("lists every executing and queued turn, origins and engine positions, and ope
   expect(badge).toHaveTextContent("Trabalhando 3")
   expect(badge).toHaveTextContent("2 na fila")
 
-  fireEvent.click(screen.getByRole("button", { name: "Avançado", exact: true }))
+  fireEvent.click(screen.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
   fireEvent.click(screen.getByRole("button", { name: "Trabalho", exact: true }))
 
   const running = await screen.findByRole("region", { name: "Trabalhando", exact: true })
@@ -86,7 +86,7 @@ it("keeps completion events newer than an in-flight global snapshot", async () =
     release()
   })
   await screen.findByRole("textbox", { name: "Mensagem para Planejamento" })
-  fireEvent.click(screen.getByRole("button", { name: "Avançado", exact: true }))
+  fireEvent.click(screen.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
   fireEvent.click(screen.getByRole("button", { name: "Trabalho", exact: true }))
 
   await waitFor(() => expect(screen.getAllByRole("article")).toHaveLength(4))
@@ -179,7 +179,7 @@ it("saves the concurrency limit through Advanced and restores its saved value", 
   render(<App kernel={{ services: { api } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para Planejamento" })
 
-  fireEvent.click(screen.getByRole("button", { name: "Avançado", exact: true }))
+  fireEvent.click(screen.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
   fireEvent.click(screen.getByRole("button", { name: "Desempenho", exact: true }))
   const input = await screen.findByRole("spinbutton", { name: "Tarefas ao mesmo tempo" })
   expect(input).toHaveValue(3)
@@ -190,10 +190,10 @@ it("saves the concurrency limit through Advanced and restores its saved value", 
   expect(api.calls).toContainEqual({ route: "PATCH /settings", input: { maxConcurrentRuns: 4 }, pathValues: {} })
   expect((await api.request("GET /settings", {})).settings.maxConcurrentRuns).toBe(4)
 
-  fireEvent.click(screen.getByRole("button", { name: "Avançado", exact: true }))
+  fireEvent.click(screen.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
   fireEvent.click(screen.getByRole("button", { name: "Trabalho", exact: true }))
   expect(await screen.findByRole("heading", { name: "Trabalho", exact: true })).toBeVisible()
-  fireEvent.click(screen.getByRole("button", { name: "Avançado", exact: true }))
+  fireEvent.click(screen.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
   fireEvent.click(screen.getByRole("button", { name: "Desempenho", exact: true }))
   expect(await screen.findByRole("spinbutton", { name: "Tarefas ao mesmo tempo" })).toHaveValue(4)
 })

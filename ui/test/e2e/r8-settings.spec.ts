@@ -32,7 +32,10 @@ for (const width of [1440, 1100]) {
       await showBotAdvanced(page)
       await shot("bot-general")
       if (phase === "after") {
-        await page.getByRole("dialog").getByRole("button", { name: "Avançado", exact: true }).click()
+        await page
+          .getByRole("dialog")
+          .getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ })
+          .click()
         await page.getByRole("dialog").getByRole("tab", { name: "Computador", exact: true }).click()
       } else await page.getByLabel("Máquina", { exact: true }).scrollIntoViewIfNeeded()
       await shot("bot-computer")
@@ -75,7 +78,10 @@ for (const width of [1440, 1100]) {
       await shot("new-bot")
       if (phase === "after") {
         await page.getByLabel("Nome", { exact: true }).fill("Clara")
-        await page.getByRole("dialog").getByRole("button", { name: "Avançado", exact: true }).click()
+        await page
+          .getByRole("dialog")
+          .getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ })
+          .click()
         await page.getByLabel("Função", { exact: true }).fill("Pesquisa e planejamento")
         await page.getByLabel("Instruções do bot").fill("Pesquise com cuidado e apresente fontes em português.")
         await shot("new-bot-role")

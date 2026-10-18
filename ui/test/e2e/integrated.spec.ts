@@ -123,7 +123,7 @@ for (const width of [1440, 1100]) {
         "Pesquisa e planejamento",
       )
       await shot("bot-settings")
-      await dialog.getByRole("button", { name: "Avançado", exact: true }).click()
+      await dialog.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }).click()
       for (const [tab, view] of [
         ["Modelo", "bot-settings-model"],
         ["Acesso", "bot-settings-access"],
@@ -167,7 +167,7 @@ for (const width of [1440, 1100]) {
       await page.getByRole("button", { name: "Criar bot", exact: true }).click()
       await page.getByLabel("Nome", { exact: true }).fill("Clara")
       await shot("new-bot-name")
-      await dialog.getByRole("button", { name: "Avançado", exact: true }).click()
+      await dialog.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }).click()
       await page.getByLabel("Função", { exact: true }).fill("Pesquisa e planejamento")
       await page.getByLabel("Instruções do bot").fill("Pesquise com cuidado e apresente fontes em português.")
       await shot("new-bot-role")

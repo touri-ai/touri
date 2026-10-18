@@ -80,7 +80,7 @@ for (const width of [1440, 390]) {
     if (width === 390) await page.getByRole("button", { name: "Abrir menu" }).click()
     await showBotAdvanced(page)
     const settings = page.getByRole("dialog")
-    await settings.getByRole("button", { name: "Avançado", exact: true }).click()
+    await settings.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }).click()
     await settings.getByRole("tab", { name: "Rotinas", exact: true }).click()
     await expect(settings).toHaveCount(0)
     const routines = page.getByRole("region", { name: "Rotinas", exact: true })

@@ -32,14 +32,14 @@ test("a job can be searched and chosen by keyboard, with advanced edits preserve
   await page.keyboard.press("ArrowDown")
   await expect(dialog.getByRole("radio", { name: "Mapa do repositório" })).toBeChecked()
   await expect(dialog.getByRole("radio", { name: "Mapa do repositório" })).toBeFocused()
-  await dialog.getByRole("button", { name: "Avançado" }).click()
+  await dialog.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }).click()
   await expect(dialog.getByLabel("Função", { exact: true })).toHaveValue(/estrutura/)
   await expect(dialog.getByLabel("Instruções do bot", { exact: true })).toHaveValue(
     /Peça permissão antes de mudar arquivos/,
   )
   await dialog.getByLabel("Modelo", { exact: true }).fill("custom-model")
-  await dialog.getByRole("button", { name: "Avançado" }).click()
-  await dialog.getByRole("button", { name: "Avançado" }).click()
+  await dialog.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }).click()
+  await dialog.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }).click()
   await expect(dialog.getByLabel("Modelo", { exact: true })).toHaveValue("custom-model")
   await dialog.getByRole("button", { name: "Criar bot", exact: true }).click()
   await expect(page.getByRole("textbox", { name: "Mensagem para Clara" })).toBeVisible()
@@ -70,7 +70,7 @@ test("create and advanced have no serious accessibility violations and restore f
   const trigger = page.getByRole("button", { name: "Criar meu primeiro bot" })
   await trigger.click()
   for (const advanced of [false, true]) {
-    if (advanced) await page.getByRole("button", { name: "Avançado" }).click()
+    if (advanced) await page.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }).click()
     const result = await new AxeBuilder({ page }).include('[role="dialog"]').analyze()
     expect(result.violations.filter((violation) => ["serious", "critical"].includes(violation.impact ?? ""))).toEqual(
       [],

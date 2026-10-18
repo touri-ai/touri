@@ -15,7 +15,10 @@ it("offers folders and projects before Advanced and saves the chosen folder acce
   const create = vi.fn()
   const prompt = vi.spyOn(window, "prompt")
   render(<BotCreateModal api={api} invokeCommand={createWebInvoke()} onCreate={create} onClose={vi.fn()} />)
-  expect(screen.getByRole("button", { name: "Avançado" })).toHaveAttribute("aria-expanded", "false")
+  expect(screen.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ })).toHaveAttribute(
+    "aria-expanded",
+    "false",
+  )
   expect(screen.getByLabelText("Projeto", { selector: "select" })).toBeVisible()
   fireEvent.click(screen.getByRole("button", { name: "Usar uma pasta" }))
   const picker = screen.getByRole("dialog", { name: "Pastas no servidor" })

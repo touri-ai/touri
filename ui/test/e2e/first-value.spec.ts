@@ -18,7 +18,10 @@ for (const [device, width, height] of [
       const dialog = page.getByRole("dialog")
       await dialog.getByLabel("Nome", { exact: true }).fill("Clara")
       await expect(dialog.getByText("Usa o Codex, conectado neste servidor.")).toBeVisible()
-      await expect(dialog.getByRole("button", { name: "Avançado" })).toHaveAttribute("aria-expanded", "false")
+      await expect(dialog.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ })).toHaveAttribute(
+        "aria-expanded",
+        "false",
+      )
       await dialog.getByRole("button", { name: "Criar bot", exact: true }).click()
       const composer = page.getByRole("textbox", { name: "Mensagem para Clara" })
       await expect(composer).toBeVisible()

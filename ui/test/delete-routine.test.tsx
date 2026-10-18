@@ -74,7 +74,7 @@ it("deletes from the routines list reached directly through Advanced → Routine
   const { api, routine } = await fixture()
   showBotSettings()
   const settings = screen.getByRole("dialog")
-  fireEvent.click(within(settings).getByRole("button", { name: "Avançado", exact: true }))
+  fireEvent.click(within(settings).getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
   fireEvent.click(within(settings).getByRole("tab", { name: "Rotinas" }))
   await waitFor(() => expect(settings).not.toBeInTheDocument())
   fireEvent.click(
