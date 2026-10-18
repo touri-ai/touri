@@ -1,7 +1,7 @@
 :root {
   --window-inset-top: 0px;
 }
-:root:has(.window-frame-overlay) {
+:root[data-window-overlay="true"] {
   --window-inset-top: 44px;
 }
 .window-frame {
@@ -20,17 +20,14 @@
   min-height: 0;
   overflow: auto;
 }
-:root:has(.window-frame-overlay)
+:root[data-window-overlay="true"]
   :is(.modal-backdrop, .routine-modal-backdrop, .search-backdrop, .group-modal-backdrop) {
   padding-top: calc(var(--space-20) + var(--window-inset-top));
 }
-:root:has(.window-frame-overlay) :is(.modal-card, .search-modal) {
+:root[data-window-overlay="true"] :is(.modal-card, .search-modal) {
   max-height: calc(100dvh - 40px - var(--window-inset-top));
 }
-:root:has(.window-frame-overlay) .sidebar-drawer {
+:root[data-window-overlay="true"] .sidebar-drawer {
   top: var(--window-inset-top);
   height: calc(100% - var(--window-inset-top));
-}
-.window-frame-overlay .computer-window {
-  height: 100%;
 }

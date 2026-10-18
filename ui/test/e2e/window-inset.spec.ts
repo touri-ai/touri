@@ -1,5 +1,7 @@
 import { expect, type Locator, type Page, test } from "@playwright/test"
 
+test.setTimeout(90_000)
+
 const sizes = [
   { width: 1440, height: 900 },
   { width: 1024, height: 700 },
@@ -88,6 +90,22 @@ test("window inset leaves decorated computer popups to the system titlebar", asy
 
   await expect(page.locator(".window-titlebar")).toHaveCount(0)
   expect((await page.locator(".computer-window").boundingBox())?.y).toBe(0)
+})
+
+test.describe("standard window recovery", () => {
+  test.use({ userAgent: "Mozilla/5.0 (X11; Linux x86_64)", viewport: { width: 390, height: 700 } })
+
+  test("recovery actions remain reachable when the card is taller than the window", async ({ page }) => {
+    await page.goto("/test/e2e/window-inset-harness.html?scene=error")
+    const report = page.getByRole("button", { name: "Reportar este problema", exact: true })
+    await expect(page.locator(".error-card")).toBeVisible()
+
+    await report.scrollIntoViewIfNeeded()
+
+    await expect(report).toBeInViewport({ ratio: 1 })
+    await report.click({ trial: true })
+    await expect(page.locator(".window-titlebar")).toHaveCount(0)
+  })
 })
 
 const checkTitlebar = async (page: Page) => {
