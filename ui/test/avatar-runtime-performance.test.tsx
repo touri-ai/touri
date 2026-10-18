@@ -1,6 +1,8 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import type { Run } from "@touri/contracts"
 import { afterEach, expect, test, vi } from "vitest"
+import type * as MarkdownContentModule from "../src/components/MarkdownContent"
+import type * as ToolCallListModule from "../src/components/ToolCallList"
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn(), convertFileSrc: (path: string) => path }))
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn().mockResolvedValue(vi.fn()) }))
@@ -8,11 +10,11 @@ vi.mock("@tauri-apps/api/webview", () => ({
   getCurrentWebview: () => ({ onDragDropEvent: vi.fn().mockResolvedValue(vi.fn()) }),
 }))
 vi.mock("../src/components/MarkdownContent", async (importOriginal) => {
-  const original = await importOriginal<typeof import("../src/components/MarkdownContent")>()
+  const original = await importOriginal<typeof MarkdownContentModule>()
   return { ...original, MarkdownContent: vi.fn(original.MarkdownContent) }
 })
 vi.mock("../src/components/ToolCallList", async (importOriginal) => {
-  const original = await importOriginal<typeof import("../src/components/ToolCallList")>()
+  const original = await importOriginal<typeof ToolCallListModule>()
   return { ...original, ToolCallList: vi.fn(original.ToolCallList) }
 })
 
@@ -31,7 +33,7 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
-test("a bot completion expires during typing without rendering the unchanged conversation", () => {
+test("a bot completion expires during typing without rendering the unchanged conversation", async () => {
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] })
   const matchMedia = window.matchMedia.bind(window)
   vi.spyOn(window, "matchMedia").mockImplementation((query) => ({ ...matchMedia(query), matches: true }))
@@ -97,7 +99,9 @@ test("a bot completion expires during typing without rendering the unchanged con
   const input = screen.getByRole("textbox", { name: "Mensagem para mark" })
   const backgroundMascot = view.container.querySelector(".background-mascot")
   const conversationMascot = view.container.querySelector(".chat-bot-chip .tb-avatar")
-  fireEvent.focus(input)
+  await act(async () => {
+    fireEvent.focus(input)
+  })
   expect(backgroundMascot).toHaveAttribute("data-mascot-state", "done")
   expect(conversationMascot).toHaveAttribute("data-mascot-state", "listening")
   expect(MarkdownContent).toHaveBeenCalled()
