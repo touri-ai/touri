@@ -6,6 +6,7 @@ import { createMockApi } from "../src/api/mock"
 import { pendingApprovalTargets } from "../src/approvalNavigation"
 import { computeBotActivity } from "../src/botActivity"
 import { useWorkspace } from "../src/useWorkspace"
+import { retainWorkspace } from "../src/workspaceRetention"
 import { createRetentionWorkload, retainedStateBudget, retentionBotCount } from "./fixtures/retentionWorkload"
 
 afterEach(cleanup)
@@ -17,6 +18,53 @@ const deferred = () => {
   })
   return { promise, resolve }
 }
+
+test("open conversation tokens preserve unchanged background messages and runs", async () => {
+  const workload = createRetentionWorkload()
+  const hook = renderHook(() => useWorkspace(workload.api))
+  await waitFor(() => expect(hook.result.current.data.messages).toHaveLength(1))
+  await act(async () => workload.round())
+  const message = { ...workload.message(0, 0), status: "streaming" as const, updatedSeq: 100 }
+  act(() => workload.api.emit({ type: "message.updated", message }))
+  const before = hook.result.current.data
+  const background = before.activityMessages.filter((row) => row.threadId !== message.threadId)
+
+  Array.from({ length: 20 }).forEach((_, index) => {
+    act(() =>
+      workload.api.emit({
+        type: "message.delta",
+        threadId: message.threadId,
+        messageId: message.id,
+        partIndex: 2,
+        offset: message.text.length + index,
+        delta: ".",
+        updatedSeq: index + 101,
+      }),
+    )
+    const after = hook.result.current.data
+    const unchanged = after.activityMessages.filter((row) => row.threadId !== message.threadId)
+
+    unchanged.forEach((row, index) => {
+      expect(row).toBe(background[index])
+    })
+    expect(after.runs).toBe(before.runs)
+  })
+  expect(hook.result.current.data.messages[0]?.text).toBe(message.text + ".".repeat(20))
+})
+
+test("retaining an already bounded workspace preserves collection identity", async () => {
+  const workload = createRetentionWorkload()
+  const hook = renderHook(() => useWorkspace(workload.api))
+  await waitFor(() => expect(hook.result.current.data.messages).toHaveLength(1))
+  await act(async () => workload.round())
+  const before = hook.result.current.data
+
+  const retained = retainWorkspace(before)
+
+  expect(retained).toBe(before)
+  expect(retained.activityMessages).toBe(before.activityMessages)
+  expect(retained.runs).toBe(before.runs)
+})
 
 test("30 bots stay within a 1 MiB retained-state budget across background waves and visited histories", async () => {
   const workload = createRetentionWorkload()

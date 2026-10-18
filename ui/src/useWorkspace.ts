@@ -419,7 +419,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
   const [data, setData] = useReducer(
     (current: WorkspaceData, update: (current: WorkspaceData) => WorkspaceData) => {
       const next = update(current)
-      return next === current ? current : retainWorkspace(next)
+      return next === current ? current : retainWorkspace(next, current)
     },
     undefined,
     emptyState,
@@ -476,7 +476,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
         )
       }
     },
-    [api, setData],
+    [api],
   )
 
   const loadThread = useCallback(
@@ -529,7 +529,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
       threadLoads.current.set(threadId, { attempt, promise, deltas, bytes: 0, overflow: false })
       return promise
     },
-    [api, setData],
+    [api],
   )
 
   const load = useCallback(async (): Promise<void> => {
@@ -674,7 +674,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
     } finally {
       if (attempt === generation.current) completedDuringLoad.current = null
     }
-  }, [api, enabled, loadThread, setData])
+  }, [api, enabled, loadThread])
 
   useEffect(() => {
     if (!enabled) return
@@ -918,7 +918,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
       document.removeEventListener("visibilitychange", visibility)
       window.removeEventListener("online", refreshAttention)
     }
-  }, [api, enabled, load, loadThread, setData])
+  }, [api, enabled, load, loadThread])
 
   const selectedBot = useMemo(
     () => data.bots.find((bot) => bot.id === data.selectedBotId) ?? null,
@@ -958,7 +958,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
     return () => {
       active = false
     }
-  }, [api, enabled, missingProjectIds, setData])
+  }, [api, enabled, missingProjectIds])
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: each REST reload must refresh processes, even when project ID is unchanged
   useEffect(() => {
@@ -971,42 +971,36 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
       const projectId = selectedBot?.projectId ?? null
       return current.activeProjectId === projectId ? current : { ...current, activeProjectId: projectId, processes: [] }
     })
-  }, [selectedBot?.projectId, setData])
+  }, [selectedBot?.projectId])
 
-  const selectBot = useCallback(
-    (botId: Id): void => {
-      setData((current) => {
-        if (current.selectedBotId && current.selectedThreadId && !current.threadCreation)
-          threadsByBot.current[current.selectedBotId] = current.selectedThreadId
-        const thread = lastActiveThread(current.threads, current.runs, botId, threadsByBot.current[botId])
-        const bot = current.bots.find((candidate) => candidate.id === botId)
-        return {
-          ...current,
-          selectedBotId: botId,
-          threadCreation: null,
-          composerKey: null,
-          selectedThreadId: thread?.id ?? null,
-          activeProjectId: bot?.projectId ?? null,
-          processes: [],
-        }
-      })
-    },
-    [setData],
-  )
-
-  const selectThread = useCallback(
-    (threadId: Id): void => {
-      setData((current) => ({
+  const selectBot = useCallback((botId: Id): void => {
+    setData((current) => {
+      if (current.selectedBotId && current.selectedThreadId && !current.threadCreation)
+        threadsByBot.current[current.selectedBotId] = current.selectedThreadId
+      const thread = lastActiveThread(current.threads, current.runs, botId, threadsByBot.current[botId])
+      const bot = current.bots.find((candidate) => candidate.id === botId)
+      return {
         ...current,
-        selectedBotId: current.threads.find((thread) => thread.id === threadId)?.botId ?? current.selectedBotId,
-        selectedThreadId: threadId,
+        selectedBotId: botId,
         threadCreation: null,
         composerKey: null,
-        threads: current.threads.map((thread) => (thread.id === threadId ? { ...thread, unread: 0 } : thread)),
-      }))
-    },
-    [setData],
-  )
+        selectedThreadId: thread?.id ?? null,
+        activeProjectId: bot?.projectId ?? null,
+        processes: [],
+      }
+    })
+  }, [])
+
+  const selectThread = useCallback((threadId: Id): void => {
+    setData((current) => ({
+      ...current,
+      selectedBotId: current.threads.find((thread) => thread.id === threadId)?.botId ?? current.selectedBotId,
+      selectedThreadId: threadId,
+      threadCreation: null,
+      composerKey: null,
+      threads: current.threads.map((thread) => (thread.id === threadId ? { ...thread, unread: 0 } : thread)),
+    }))
+  }, [])
 
   const createGroup = useCallback(
     async (input: GroupInput, id?: string) => {
@@ -1026,7 +1020,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
         }))
       }
     },
-    [api, setData],
+    [api],
   )
   const startThread = useCallback(
     async (groupId?: Id): Promise<void> => {
@@ -1087,7 +1081,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
         creatingThread.current = false
       }
     },
-    [api, selectedBot, data.threadCreation, data.composerKey, setData],
+    [api, selectedBot, data.threadCreation, data.composerKey],
   )
   const createGroupThread = useCallback((id: string) => startThread(id), [startThread])
   const createThread = useCallback(
@@ -1123,7 +1117,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
         runs: response.run ? mergeRunRows(current.runs, [response.run]) : current.runs,
       }))
     },
-    [api, selectedThread, data.threadCreation, setData],
+    [api, selectedThread, data.threadCreation],
   )
 
   const retryRun = useCallback(
@@ -1131,7 +1125,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
       const response = await api.request("POST /runs/:id/retry", {}, { id: runId })
       setData((current) => ({ ...current, runs: mergeRunRows(current.runs, [response.run]) }))
     },
-    [api, setData],
+    [api],
   )
 
   const cancelRun = useCallback(
@@ -1139,7 +1133,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
       const response = await api.request("POST /runs/:id/cancel", {}, { id: runId })
       setData((current) => ({ ...current, runs: mergeRunRows(current.runs, [response.run]) }))
     },
-    [api, setData],
+    [api],
   )
 
   const switchBranch = useCallback(
@@ -1147,7 +1141,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
       const response = await api.request("PATCH /threads/:id", { activeLeafId: leafId }, { id: threadId })
       setData((current) => ({ ...current, threads: uniqueById([...current.threads, response.thread]) }))
     },
-    [api, setData],
+    [api],
   )
 
   const updateBot = useCallback(
@@ -1155,7 +1149,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
       const response = await api.request("PATCH /bots/:id", patch, { id: botId })
       setData((current) => ({ ...current, bots: uniqueById([...current.bots, response.bot]) }))
     },
-    [api, setData],
+    [api],
   )
 
   const machineAction = useCallback(
@@ -1172,7 +1166,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
         machines: [...current.machines.filter((state) => state.botId !== botId), response.machine],
       }))
     },
-    [api, setData],
+    [api],
   )
 
   const createBot = useCallback(
@@ -1210,7 +1204,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
       })
       return { loginReady }
     },
-    [api, setData],
+    [api],
   )
 
   const toggleRoutine = useCallback(
@@ -1221,7 +1215,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
         routines: current.routines.map((candidate) => (candidate.id === routine.id ? response.routine : candidate)),
       }))
     },
-    [api, setData],
+    [api],
   )
 
   const runRoutine = useCallback(
@@ -1232,7 +1226,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
         routineRuns: mergeRunRows(current.routineRuns, [response.routineRun]),
       }))
     },
-    [api, setData],
+    [api],
   )
 
   const createRoutine = useCallback(
@@ -1241,7 +1235,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
       setData((current) => ({ ...current, routines: uniqueById([...current.routines, response.routine]) }))
       return response.routine
     },
-    [api, setData],
+    [api],
   )
 
   const deleteRoutine = useCallback(
@@ -1249,7 +1243,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
       await api.request("DELETE /routines/:id", {}, { id: routineId })
       setData((current) => ({ ...current, routines: current.routines.filter((routine) => routine.id !== routineId) }))
     },
-    [api, setData],
+    [api],
   )
 
   const updateRoutine = useCallback(
@@ -1261,7 +1255,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
       }))
       return response.routine
     },
-    [api, setData],
+    [api],
   )
 
   const createProject = useCallback(
@@ -1274,7 +1268,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
       }))
       return response.project
     },
-    [api, setData],
+    [api],
   )
 
   const createProcess = useCallback(
@@ -1293,7 +1287,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
         processes: response.processes,
       }))
     },
-    [api, data.bots, data.selectedBotId, setData],
+    [api, data.bots, data.selectedBotId],
   )
 
   const startProcess = useCallback(
@@ -1308,7 +1302,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
       const previews = await api.request("GET /previews", {})
       setData((current) => ({ ...current, previews: previews.previews }))
     },
-    [api, setData],
+    [api],
   )
 
   const stopProcess = useCallback(
@@ -1321,7 +1315,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
         ),
       }))
     },
-    [api, setData],
+    [api],
   )
 
   const restartProcess = useCallback(
@@ -1336,40 +1330,37 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
       const previews = await api.request("GET /previews", {})
       setData((current) => ({ ...current, previews: previews.previews }))
     },
-    [api, setData],
+    [api],
   )
 
   const refreshProject = useCallback(async (): Promise<void> => {
     await loadProject(data.activeProjectId, selectedBot?.machine === "vm" ? selectedBot.id : undefined)
     const previews = await api.request("GET /previews", {})
     setData((current) => ({ ...current, previews: previews.previews }))
-  }, [api, data.activeProjectId, loadProject, selectedBot, setData])
+  }, [api, data.activeProjectId, loadProject, selectedBot])
 
-  const selectLocation = useCallback(
-    ({ bot, thread }: { bot: Id | null; thread: Id | null }): void => {
-      setData((current) => {
-        const target = thread ? current.threads.find((candidate) => candidate.id === thread) : undefined
-        const botId = target?.botId ?? bot
-        if (!botId || !current.bots.some((candidate) => candidate.id === botId)) return current
-        if (current.selectedBotId && current.selectedThreadId && !current.threadCreation)
-          threadsByBot.current[current.selectedBotId] = current.selectedThreadId
-        const fallback = lastActiveThread(current.threads, current.runs, botId, threadsByBot.current[botId])
-        return {
-          ...current,
-          selectedBotId: botId,
-          threadCreation: null,
-          composerKey: null,
-          activeProjectId: current.bots.find((candidate) => candidate.id === botId)?.projectId ?? null,
-          processes: [],
-          selectedThreadId: target?.id ?? fallback?.id ?? null,
-          threads: current.threads.map((candidate) =>
-            candidate.id === target?.id ? { ...candidate, unread: 0 } : candidate,
-          ),
-        }
-      })
-    },
-    [setData],
-  )
+  const selectLocation = useCallback(({ bot, thread }: { bot: Id | null; thread: Id | null }): void => {
+    setData((current) => {
+      const target = thread ? current.threads.find((candidate) => candidate.id === thread) : undefined
+      const botId = target?.botId ?? bot
+      if (!botId || !current.bots.some((candidate) => candidate.id === botId)) return current
+      if (current.selectedBotId && current.selectedThreadId && !current.threadCreation)
+        threadsByBot.current[current.selectedBotId] = current.selectedThreadId
+      const fallback = lastActiveThread(current.threads, current.runs, botId, threadsByBot.current[botId])
+      return {
+        ...current,
+        selectedBotId: botId,
+        threadCreation: null,
+        composerKey: null,
+        activeProjectId: current.bots.find((candidate) => candidate.id === botId)?.projectId ?? null,
+        processes: [],
+        selectedThreadId: target?.id ?? fallback?.id ?? null,
+        threads: current.threads.map((candidate) =>
+          candidate.id === target?.id ? { ...candidate, unread: 0 } : candidate,
+        ),
+      }
+    })
+  }, [])
 
   const dismissNotification = useCallback(
     async (id: number): Promise<void> => {
@@ -1379,14 +1370,14 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
         notifications: upsertNotification(current.notifications, response.notification),
       }))
     },
-    [api, setData],
+    [api],
   )
 
   const dismissAllNotifications = useCallback(async (): Promise<void> => {
     await api.request("POST /notifications/dismiss-all", {})
     const response = await api.request("GET /notifications", {})
     setData((current) => ({ ...current, notifications: response.notifications }))
-  }, [api, setData])
+  }, [api])
 
   const respondNotification = useCallback(
     async ({
@@ -1442,7 +1433,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
       const response = await api.request("PATCH /settings", patch)
       setData((current) => ({ ...current, settings: response.settings }))
     },
-    [api, setData],
+    [api],
   )
 
   const activityMessages = useMemo(() => {

@@ -1,56 +1,41 @@
-# Server-mode client retention (#246)
+# Workspace retention
 
-The regression workload seeds 30 generated bots in a mock API, opens bot 0's completed conversation,
-then delivers 40 turns from each of the other 29 bots in two waves. Each turn carries
-streaming prose, reasoning, a tool result, run state, and unread metadata. Histories are
-reconstructed on request so the fixture does not retain the event payloads being measured.
+The open conversation keeps its complete transcript and run history. Other conversations keep
+compact sidebar summaries: at most five recent message slots per thread, plus outstanding
+approvals, pending deliveries and active streams. Completed background runs keep their latest
+row; active runs remain available regardless of which conversation is open.
 
-- `ui/test/workspace-retention.test.tsx` requires serialized retained workspace state below
-  1 MiB after each wave and after visiting every bot and returning to bot 0. It also checks
-  history reload, failed/canceled turns, full tool results, pending approvals, active streams,
-  late responses, pending-send restoration, stream-buffer overflow, and group sender identity.
-- `ui/test/e2e/workspace-retention.spec.ts` drives the real app, collects Chromium garbage
-  before sampling heap, and limits growth above the loaded-app baseline to 8 MiB. It attaches
-  numeric measurements and checks that reopening a visited bot fetches history again.
+Eviction changes only client memory. Messages, branches, failed and canceled turns and tool
+results remain durable on the server. Opening a conversation requests its full history again,
+including pending sends from the durable client journal. Leaving a conversation discards its
+pending replay buffer. A selected history request buffers at most 256 KiB of serialized stream
+events, estimated as UTF-16; overflow triggers a fresh snapshot.
 
-Run these through the authorized serialized test gate. On 2026-10-18, all seven new unit regressions
-failed with `origin/main` workspace code and passed with this fix. The complete affected Vitest
-selection passed all 87 files (1,068 tests), along with typecheck and Biome. No sidecar files were
-selected. The UI production build passed inside the browser gate.
+Retention is checked when conversations switch or background collections change. Streaming
+updates in the open conversation reuse unchanged background summaries and run collections.
+Pruning runs only when a collection exceeds its retention slots or outstanding work changes.
+Messages and arrays retain their identity whenever their contents already meet the limits.
 
-Chromium retained heap after garbage collection, measured in bytes with the same generated workload:
+## Reproducible workload
 
-| Workspace code | Loaded app | After 20 background turns per bot | After 40 background turns per bot |
-| --- | ---: | ---: | ---: |
-| `origin/main` | 14,083,108 | 28,102,232 | 39,621,928 |
-| Fix | 16,115,204 | 16,989,280 | 17,166,176 |
+The synthetic fixture creates 30 bots, opens bot 0, and delivers 40 turns from each of the other
+29 bots. Each turn includes prose, reasoning, a tool result, run state and unread metadata.
+Histories are reconstructed on request so the fixture does not retain the payloads being measured.
 
-Growth after 1,160 background turns fell from 24.4 MiB to 1.0 MiB, below the 8 MiB budget. The
-browser test also passed its history-reopen checks. These are synthetic Chromium measurements;
-they do not measure native RSS or real network transport.
+- `ui/test/workspace-retention.test.tsx` requires retained workspace state below 1 MiB after each
+  wave and after visiting every bot. It covers history restoration, pending requests, active
+  streams, delayed responses, group sender identity and identity preservation during streaming.
+- `ui/test/e2e/workspace-retention.spec.ts` drives the app with mock data, collects browser garbage
+  before sampling heap, and limits growth above the loaded-app baseline to 8 MiB. Reopening an
+  evicted conversation must request and restore its complete history.
 
-The full browser selection ran 287 tests: 266 passed and 21 failed across nine existing files.
-Running those nine files against `origin/main` reproduced all 21 failures (24 passed, 21 failed).
-The failing test names matched exactly; this change introduced no browser failures.
+These budgets measure serialized client state and browser heap. They do not establish native
+process RSS, transport memory, or the cost of a large open transcript. Outstanding work, routine
+history and native allocations remain outside the fixed background-transcript budget.
 
-Only the selected transcript keeps full content. Background activity keeps five recent message
-slots per conversation plus outstanding approvals, deliveries, and streams. Completed run
-history is retained for the selected conversation; other conversations retain active runs and
-their latest run. Pending requests and live work are intentional exceptions to fixed counts.
-History remains durable on the server, including branches, tool results, failed and canceled
-turns. Reopening requests all messages and runs. A slow selected-history request buffers at
-most 256 KiB of serialized stream events (estimated as UTF-16); overflow discards that buffer
-and requests a fresh snapshot. Closing that conversation discards the buffer immediately.
+## Native verification
 
-Inspection found no TypeScript socket replay queue: it keeps a sequence cursor and dispatches
-events to subscribers. Existing notification deduplication and response timing caches have
-limits. Avatars already stop their frame loops when the page is hidden or the avatar is
-offscreen. Native relay inspection showed streamed HTTP responses and awaited socket sends
-with size/time limits. No Rust or macOS-only code was changed.
-
-Linux cannot measure the macOS WebContent, Networking, or GPU services. The 150 MB total native
-idle RSS target remains unverified. On macOS, use a disposable desktop instance paired to a
-30-bot test server, finish one visible reply, run background events, and sample the shell and
-its associated services every 30 seconds using the same workload and build settings before
-and after. Large open transcripts, outstanding work, routine history, and native allocation
-remain outside the fixed background-transcript budget.
+The 150 MB total idle RSS target requires measurement on macOS. Use a disposable desktop paired
+to a 30-bot test server, finish one visible reply, deliver background events, and sample the shell
+and its associated services every 30 seconds. Use the same workload and build settings before
+and after. Include WebContent, Networking and GPU services in the total.
