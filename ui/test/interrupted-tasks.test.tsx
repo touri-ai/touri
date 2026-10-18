@@ -1,4 +1,5 @@
 import { act, cleanup, fireEvent, render, renderHook, screen, waitFor, within } from "@testing-library/react"
+import { memo, useContext } from "react"
 import { afterEach, expect, it, vi } from "vitest"
 import { createMockApi } from "../src/api/mock"
 import { VirtualMessageList } from "../src/components/ChatPanel"
@@ -7,7 +8,10 @@ import { dictionaries } from "../src/i18n"
 import { pendingNotifications } from "../src/sidebarAttention"
 import { RecoveryTasksContext, useRecoveryTasks } from "../src/useRecoveryTasks"
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  vi.useRealTimers()
+})
 
 it("groups pending work by bot, reviews recorded actions and requires acknowledgement before dismissal", async () => {
   const api = createMockApi({ scenario: "interrupted-tasks" })
@@ -83,6 +87,13 @@ it("marks only the resolved run in chat and leaves unrelated messages intact", a
 
   expect(screen.getAllByText("Interrupção anterior · resolvida")).toHaveLength(1)
   expect(screen.queryByRole("button", { name: "Retomar tarefa" })).not.toBeInTheDocument()
+  const disclosure = screen.getByRole("button", { name: /Ver erro/ })
+  expect(disclosure).toHaveAttribute("aria-expanded", "false")
+
+  fireEvent.click(disclosure)
+
+  expect(disclosure).toHaveAttribute("aria-expanded", "true")
+  expect(screen.getByRole("alert")).toBeVisible()
 })
 
 it("requires a new acknowledgement when the recorded effects change", async () => {
@@ -110,4 +121,41 @@ it("requires a new acknowledgement when the recorded effects change", async () =
 
   expect(screen.getByRole("checkbox")).not.toBeChecked()
   expect(screen.getByRole("button", { name: "Descartar" })).toBeDisabled()
+})
+
+it("coalesces event bursts and does not render context consumers for an unchanged snapshot", async () => {
+  const api = createMockApi({ scenario: "interrupted-tasks" })
+  const renderConsumer = vi.fn()
+  const Consumer = memo(() => {
+    renderConsumer(useContext(RecoveryTasksContext))
+    return null
+  })
+  const Wrapper = () => {
+    const { tasks } = useRecoveryTasks(api)
+    return (
+      <RecoveryTasksContext.Provider value={tasks}>
+        <Consumer />
+      </RecoveryTasksContext.Provider>
+    )
+  }
+  render(<Wrapper />)
+  await waitFor(() => expect(renderConsumer).toHaveBeenLastCalledWith(expect.any(Array)))
+  await waitFor(() => expect(renderConsumer.mock.lastCall?.[0]).toHaveLength(3))
+  const previous = renderConsumer.mock.lastCall?.[0]
+  const calls = renderConsumer.mock.calls.length
+  const requestCount = api.calls.filter((call) => call.route === "GET /recovery").length
+  const { tasks } = await api.request("GET /recovery", {})
+  const notification = tasks[0]?.notification
+  if (!notification) throw new Error("Expected recovery notification")
+  vi.useFakeTimers()
+
+  act(() => {
+    Array.from({ length: 30 }, () => api.emit({ type: "notification.created", notification: { ...notification } }))
+  })
+  expect(api.calls.filter((call) => call.route === "GET /recovery")).toHaveLength(requestCount + 1)
+  await act(async () => vi.advanceTimersByTimeAsync(200))
+
+  expect(api.calls.filter((call) => call.route === "GET /recovery")).toHaveLength(requestCount + 2)
+  expect(renderConsumer).toHaveBeenCalledTimes(calls)
+  expect(renderConsumer.mock.lastCall?.[0]).toBe(previous)
 })

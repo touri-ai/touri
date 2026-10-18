@@ -20,12 +20,13 @@ export const useRecoveryTasks = (api: UiApi | null) => {
     }
     let active = true
     let revision = 0
+    let refreshTimer: ReturnType<typeof setTimeout> | undefined
     const refresh = async () => {
       const attempt = ++revision
       try {
         const response = await api.request("GET /recovery", {})
         if (!active || attempt !== revision) return
-        setTasks(response.tasks)
+        setTasks((current) => getTasksSnapshot(current, response.tasks))
         setError(null)
       } catch (reason) {
         if (active && attempt === revision) setError(reason)
@@ -33,11 +34,22 @@ export const useRecoveryTasks = (api: UiApi | null) => {
         if (active && attempt === revision) setLoading(false)
       }
     }
+    const scheduleRefresh = () => {
+      revision += 1
+      if (refreshTimer !== undefined) return
+      refreshTimer = setTimeout(() => {
+        refreshTimer = undefined
+        void refresh()
+      }, 200)
+    }
     const unsubscribe = api.subscribe(({ event }) => {
       if (event.type === "notification.resolved")
         setTasks((current) =>
-          current.map((task) =>
-            task.notification.id === event.notification.id ? { ...task, notification: event.notification } : task,
+          getTasksSnapshot(
+            current,
+            current.map((task) =>
+              task.notification.id === event.notification.id ? { ...task, notification: event.notification } : task,
+            ),
           ),
         )
       if (
@@ -47,11 +59,12 @@ export const useRecoveryTasks = (api: UiApi | null) => {
         event.type === "process.updated" ||
         (event.type === "run.updated" && ["failed", "interrupted", "succeeded", "queued"].includes(event.run.status))
       )
-        void refresh()
+        scheduleRefresh()
     })
     void refresh()
     return () => {
       active = false
+      clearTimeout(refreshTimer)
       unsubscribe()
     }
   }, [api, refreshRequest])
@@ -60,10 +73,19 @@ export const useRecoveryTasks = (api: UiApi | null) => {
     async (task: RecoveryTask, acknowledgeKeys: string[]) => {
       if (!api) return
       const response = await api.request("POST /recovery/:id/dismiss", { acknowledgeKeys }, { id: task.id })
-      setTasks(response.tasks)
+      setTasks((current) => getTasksSnapshot(current, response.tasks))
     },
     [api],
   )
 
   return { tasks, error, loading, dismiss, reload }
+}
+
+const getTasksSnapshot = (current: RecoveryTask[], incoming: RecoveryTask[]): RecoveryTask[] => {
+  const previous = new Map(current.map((task) => [task.id, task]))
+  const next = incoming.map((task) => {
+    const existing = previous.get(task.id)
+    return existing && JSON.stringify(existing) === JSON.stringify(task) ? existing : task
+  })
+  return current.length === next.length && next.every((task, index) => task === current[index]) ? current : next
 }

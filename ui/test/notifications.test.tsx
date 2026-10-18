@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, expect, it, vi } from "vitest"
 import App from "../src/App"
 import type { TauriInvoke } from "../src/api/client"
@@ -143,4 +143,22 @@ it("opens a native touri:// deep link from the touri tab", async () => {
   await screen.findByRole("textbox", { name: "Mensagem para onb" })
   expect(screen.getByRole("button", { name: /^Bots/ })).toHaveAttribute("aria-current", "page")
   expect(screen.getByRole("button", { name: /Native link target/ })).toHaveClass("selected")
+})
+
+it("clears ordinary notifications while guiding uncertain work to the recovery center", async () => {
+  const api = createMockApi({ scenario: "interrupted-tasks" })
+  render(<App kernel={{ services: { api } }} />)
+  await screen.findByRole("textbox", { name: "Mensagem para mark" })
+  fireEvent.click(screen.getByRole("button", { name: /Notificações,/ }))
+  const bell = screen.getByRole("region", { name: "Central de notificações" })
+
+  fireEvent.click(within(bell).getByRole("button", { name: "Limpar", exact: true }))
+
+  expect(await within(bell).findByRole("status")).toHaveTextContent(
+    "Notificações que precisam de revisão em Tarefas interrompidas: 1.",
+  )
+  expect(within(bell).queryByRole("alert")).not.toBeInTheDocument()
+  fireEvent.click(within(bell).getByRole("button", { name: "Tarefas interrompidas" }))
+  const center = await screen.findByRole("dialog", { name: "Tarefas interrompidas", exact: true })
+  expect(within(center).getByRole("checkbox")).toBeVisible()
 })

@@ -39,7 +39,7 @@ export const createNotifier = ({ kernel, store, hub }: { kernel: Kernel; store: 
     })
   }
 
-  const emit = (input: NotifyInput): NotificationRecord => {
+  const emit = (input: NotifyInput, options: { silent?: boolean } = {}): NotificationRecord => {
     const threadId = input.threadId
       ? (kernel.services.use("store.api")?.getThread({ threadId: input.threadId })?.groupThreadId ?? input.threadId)
       : null
@@ -53,7 +53,7 @@ export const createNotifier = ({ kernel, store, hub }: { kernel: Kernel; store: 
     })
     kernel.publish({ type: "notification.created", notification })
     hub.broadcast({ seq, type: "notify", notification })
-    sendNative(notification)
+    if (!options.silent) sendNative(notification)
     return notification
   }
 

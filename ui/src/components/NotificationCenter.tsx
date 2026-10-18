@@ -63,7 +63,7 @@ export type NotificationActions = {
   open: (item: NotificationRecord) => void
   openRecovery?: () => void
   dismiss: (id: number) => Promise<void>
-  dismissAll: () => Promise<void>
+  dismissAll: () => Promise<{ skipped: number } | undefined>
   respond: (args: { notification: NotificationRecord; behavior: RespondBehavior; message?: string }) => Promise<void>
   reply: (args: { notification: NotificationRecord; text: string }) => Promise<void>
   recover?: (item: NotificationRecord, action: RecoveryAction) => Promise<void>
@@ -285,6 +285,7 @@ export const NotificationBell = ({
   const [clearedIds, setClearedIds] = useState(() => readCleared(clearedStorageKey))
   const [clearing, setClearing] = useState(false)
   const [clearError, setClearError] = useState(false)
+  const [skippedCount, setSkippedCount] = useState(0)
   useEffect(() => {
     onOpenChange?.(open)
     return () => onOpenChange?.(false)
@@ -331,7 +332,10 @@ export const NotificationBell = ({
     setClearing(true)
     setClearError(false)
     try {
-      await actions.dismissAll()
+      const result = await actions.dismissAll()
+      setSkippedCount(result?.skipped ?? 0)
+      if (result?.skipped) return
+
       const next = new Set([...clearedIds, ...ids].slice(-1000))
       setClearedIds(next)
       try {
@@ -434,6 +438,13 @@ export const NotificationBell = ({
               >
                 {t("Interrupted tasks")}
               </button>
+            )}
+            {skippedCount > 0 && (
+              <p role="status">
+                {t("Notificações que precisam de revisão em Tarefas interrompidas: {count}.", {
+                  count: skippedCount,
+                })}
+              </p>
             )}
             {clearError && (
               <p className="screen-inline-error" role="alert">

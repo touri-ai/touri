@@ -1484,14 +1484,20 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
       return { notification: resolved } as ApiRoutes[typeof route]["res"]
     }
     if (key === "POST /notifications/dismiss-all") {
-      const hasProtectedTask = getRecoveryTasks().some(
-        (task) =>
-          task.notification.resolvedAt === null && task.effects.some((effect) => effect.acknowledgeKey !== null),
+      const protectedIds = new Set(
+        getRecoveryTasks()
+          .filter((task) => task.effects.some((effect) => effect.acknowledgeKey !== null))
+          .map((task) => task.notification.id),
       )
-      if (hasProtectedTask) throw new Error("Revise os efeitos incertos no centro de tarefas interrompidas.")
       const open = notifications.filter((item) => item.resolvedAt === null)
-      for (const item of open) resolveNotification({ id: item.id, resolution: "dismissed" })
-      return { dismissed: open.length } as ApiRoutes[typeof route]["res"]
+      const dismissible = open.filter((item) => !protectedIds.has(item.id))
+      dismissible.forEach((item) => {
+        resolveNotification({ id: item.id, resolution: "dismissed" })
+      })
+      return {
+        dismissed: dismissible.length,
+        skipped: open.length - dismissible.length,
+      } as ApiRoutes[typeof route]["res"]
     }
     if (key === "POST /threads/:id/respond") {
       const body = input as ApiRoutes["POST /threads/:id/respond"]["req"]

@@ -1,11 +1,15 @@
 import type { Database } from "bun:sqlite"
-import { afterEach, expect, test } from "bun:test"
+import { afterEach, expect, mock, test } from "bun:test"
 import { mkdtempSync, readFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { MessagePart, RecoveryTask, Run } from "@touri/contracts"
 import { createKernel } from "../../src/kernel"
 import { init as initNotify } from "../../src/notify"
+import { createNotifier } from "../../src/notify/notifier"
+import { createRecoverySync } from "../../src/notify/recovery"
+import { createSseHub } from "../../src/notify/sse"
+import { createNotificationStore } from "../../src/notify/store"
 import { createWorkState } from "../../src/runtime/work-state"
 import { init as initStore } from "../../src/store"
 
@@ -18,7 +22,7 @@ afterEach(() => {
   cleanups.clear()
 })
 
-const getFixture = async () => {
+const getFixture = async (options: { beforeNotify?: (database: Database) => void; native?: boolean } = {}) => {
   const root = mkdtempSync(join(tmpdir(), "touri-recovery-center-"))
   const runtime = createKernel({ appData: root })
   const database = runtime.kernel.db as Database
@@ -28,11 +32,15 @@ const getFixture = async () => {
     rmSync(root, { recursive: true, force: true })
   })
   await initStore(runtime.kernel)
-  await initNotify(runtime.kernel)
   database.exec(`INSERT INTO bots(id,name,provider,home_dir,created_at,updated_at) VALUES
     ('bot-a','Equipe A','codex','/tmp',1,1), ('bot-b','Equipe B','codex','/tmp',1,1);
     INSERT INTO threads(id,bot_id,title,created_at,updated_at) VALUES
     ('thread-a','bot-a','Notas',1,1), ('thread-b','bot-b','Revisão',1,1);`)
+  options.beforeNotify?.(database)
+  if (options.native) database.query("DELETE FROM settings WHERE key = 'nativeNotifications'").run()
+  const hostCalls = mock(runtime.kernel.callHost)
+  await initNotify({ ...runtime.kernel, callHost: hostCalls })
+
   const { token } = JSON.parse(readFileSync(join(root, "run", "handshake.json"), "utf8")) as { token: string }
   const request = (path: string, body?: object) =>
     fetch(`http://127.0.0.1:${runtime.handshake.port}/api/v1${path}`, {
@@ -47,7 +55,7 @@ const getFixture = async () => {
     const snapshot: { tasks: RecoveryTask[] } = await response.json()
     return snapshot.tasks
   }
-  return { runtime, database, request, getTasks, work: createWorkState({ database, now: () => 100 }) }
+  return { runtime, database, request, getTasks, hostCalls, work: createWorkState({ database, now: () => 100 }) }
 }
 
 const saveRun = (database: Database, id: string, status = "interrupted", parts: MessagePart[] = []) => {
@@ -110,7 +118,8 @@ test("uncertain effects require their existing journal key on every dismissal su
   const bell = await h.request(`/notifications/${task.notification.id}/dismiss`, {})
   const clearAll = await h.request("/notifications/dismiss-all", {})
 
-  expect([missingKey.status, wrongKey.status, bell.status, clearAll.status]).toEqual([409, 409, 409, 409])
+  expect([missingKey.status, wrongKey.status, bell.status, clearAll.status]).toEqual([409, 409, 409, 200])
+  expect(await clearAll.json()).toEqual({ dismissed: 0, skipped: 1 })
   expect(h.work.isBlocked({ key: "preview-key" })).toBe(true)
   expect((await h.getTasks())[0]?.notification.resolvedAt).toBeNull()
 
@@ -223,4 +232,89 @@ test("newly discovered uncertainty requires another review without erasing an ea
     resolution: "dismissed",
   })
   expect(h.work.isBlocked({ key: "preview-key" })).toBe(true)
+})
+
+test("clearing the bell dismisses ordinary items and keeps uncertain work available for review", async () => {
+  const h = await getFixture()
+  saveRun(h.database, "ordinary")
+  saveRun(h.database, "uncertain")
+  saveUncertainEffect(h.work, "uncertain")
+  await h.getTasks()
+
+  const response = await h.request("/notifications/dismiss-all", {})
+  const tasks = await h.getTasks()
+
+  expect(response.status).toBe(200)
+  expect(await response.json()).toEqual({ dismissed: 1, skipped: 1 })
+  expect(tasks.find((task) => task.runId === "ordinary")?.notification.resolution).toBe("dismissed")
+  expect(tasks.find((task) => task.runId === "uncertain")?.notification.resolvedAt).toBeNull()
+  expect(h.work.isBlocked({ key: "preview-key" })).toBe(true)
+})
+
+test("bounds history discovery and reuses the snapshot until the database changes", async () => {
+  const h = await getFixture()
+  saveRun(h.database, "pending")
+  const pending = (await h.getTasks())[0]
+  if (!pending) throw new Error("Expected pending interruption")
+  Array.from({ length: 300 }, (_, index) => saveRun(h.database, `history-${index}`, "failed"))
+  // An old transcript must never be decoded by the bounded discovery window.
+  h.database.query("UPDATE messages SET parts_json = 'invalid' WHERE run_id = 'history-0'").run()
+  const store = createNotificationStore({ db: h.database })
+  const hub = createSseHub({ store })
+  const notifier = createNotifier({ kernel: h.runtime.kernel, store, hub })
+  const sync = createRecoverySync(h.runtime.kernel, store, notifier)
+
+  const tasks = sync()
+  const repeated = sync()
+  h.database.query("UPDATE messages SET parts_json = 'invalid' WHERE run_id = 'history-299'").run()
+  const afterUnrelatedWrite = sync()
+  saveRun(h.database, "new-interruption")
+  const updated = sync()
+
+  expect(tasks.map((task) => task.id)).toEqual([pending.id])
+  expect(repeated).toBe(tasks)
+  expect(afterUnrelatedWrite).toEqual(tasks)
+  expect(updated.map((task) => task.id)).toContain("run:new-interruption")
+  expect(updated.map((task) => task.id)).toContain("run:pending")
+})
+
+test("startup backfills old interrupted work without native notifications", async () => {
+  const h = await getFixture({ native: true, beforeNotify: (database) => saveRun(database, "old-interruption") })
+
+  const tasks = await h.getTasks()
+
+  expect(tasks.map((task) => task.id)).toEqual(["run:old-interruption"])
+  expect(tasks[0]?.notification.resolvedAt).toBeNull()
+  expect(h.hostCalls).not.toHaveBeenCalled()
+})
+
+test("a terminal event discovers a run queued before the recent history window", async () => {
+  const h = await getFixture()
+  saveRun(h.database, "long-running", "running")
+  Array.from({ length: 150 }, (_, index) => saveRun(h.database, `later-${index}`, "succeeded"))
+  expect(await h.getTasks()).toHaveLength(0)
+  h.database.query("UPDATE runs SET status = 'interrupted' WHERE id = 'long-running'").run()
+  const run: Run = {
+    id: "long-running",
+    botId: "bot-a",
+    threadId: "thread-a",
+    provider: "codex",
+    trigger: "user",
+    status: "interrupted",
+    routineRunId: null,
+    requestMessageId: null,
+    replyMessageId: null,
+    externalTurnId: null,
+    errorClass: "app_restart",
+    errorMessage: null,
+    usage: null,
+    queuedAt: 100,
+    startedAt: null,
+    finishedAt: 200,
+  }
+
+  h.runtime.kernel.publish({ type: "run.updated", run })
+  const tasks = await h.getTasks()
+
+  expect(tasks.map((task) => task.id)).toEqual(["run:long-running"])
 })

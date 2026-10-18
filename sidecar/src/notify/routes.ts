@@ -2,7 +2,7 @@ import type { Database } from "bun:sqlite"
 import type { Kernel, RouteModule, RouteResponse } from "@touri/contracts"
 import { createWorkState } from "../runtime/work-state"
 import type { Notifier } from "./notifier"
-import { getRecoveryAcknowledgementKeys, syncRecoveryTasks } from "./recovery"
+import { createRecoverySync, getRecoveryAcknowledgementKeys } from "./recovery"
 import { parseSince, type SseHub } from "./sse"
 import type { NotificationStore } from "./store"
 
@@ -42,11 +42,13 @@ export const createNotifyRoutes = ({
   store,
   notifier,
   hub,
+  syncRecoveryTasks = createRecoverySync(kernel, store, notifier),
 }: {
   kernel: Kernel
   store: NotificationStore
   notifier: Notifier
   hub: SseHub
+  syncRecoveryTasks?: ReturnType<typeof createRecoverySync>
 }): RouteModule => {
   const respond = async ({ threadId, body }: { threadId: string; body: unknown }): Promise<RouteResponse> => {
     const parsed = parseRespond(body)
@@ -106,13 +108,13 @@ export const createNotifyRoutes = ({
       {
         method: "GET",
         path: "/recovery",
-        handler: async () => ({ status: 200, json: { tasks: syncRecoveryTasks(kernel, store, notifier) } }),
+        handler: async () => ({ status: 200, json: { tasks: syncRecoveryTasks() } }),
       },
       {
         method: "POST",
         path: "/recovery/:id/dismiss",
         handler: async ({ params, body }) => {
-          const tasks = syncRecoveryTasks(kernel, store, notifier)
+          const tasks = syncRecoveryTasks()
           const task = tasks.find((item) => item.id === params.id)
           if (!task) return fail(404, "NOT_FOUND", "Tarefa interrompida não encontrada.")
           const database = kernel.db as Database
@@ -130,7 +132,7 @@ export const createNotifyRoutes = ({
           if (results.some((result) => !result.success))
             return fail(500, "STORE_ERROR", "Não foi possível salvar a confirmação. Tente novamente.")
           notifier.finish({ id: task.notification.id, resolution: "dismissed" })
-          return { status: 200, json: { tasks: syncRecoveryTasks(kernel, store, notifier) } }
+          return { status: 200, json: { tasks: syncRecoveryTasks() } }
         },
       },
       {
@@ -166,23 +168,22 @@ export const createNotifyRoutes = ({
         method: "POST",
         path: "/notifications/dismiss-all",
         handler: async () => {
-          syncRecoveryTasks(kernel, store, notifier)
+          syncRecoveryTasks()
           const open = store.pending()
-          if (open.some((item) => getRecoveryAcknowledgementKeys(kernel.db as Database, item.id).length > 0))
-            return fail(
-              409,
-              "ACKNOWLEDGEMENT_REQUIRED",
-              "Revise os efeitos incertos no centro de tarefas interrompidas.",
-            )
-          for (const item of open) notifier.finish({ id: item.id, resolution: "dismissed" })
-          return { status: 200, json: { dismissed: open.length } }
+          const dismissible = open.filter(
+            (item) => getRecoveryAcknowledgementKeys(kernel.db as Database, item.id).length === 0,
+          )
+          dismissible.forEach((item) => {
+            notifier.finish({ id: item.id, resolution: "dismissed" })
+          })
+          return { status: 200, json: { dismissed: dismissible.length, skipped: open.length - dismissible.length } }
         },
       },
       {
         method: "POST",
         path: "/notifications/:id/dismiss",
         handler: async ({ params }) => {
-          syncRecoveryTasks(kernel, store, notifier)
+          syncRecoveryTasks()
           const id = Number(params.id)
           const found = Number.isInteger(id) ? store.get(id) : null
           if (!found) return fail(404, "NOT_FOUND", "Notification not found")

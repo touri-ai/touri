@@ -3,6 +3,8 @@ import { userFacingError } from "./errors"
 /** All UI copy lives here. pt-BR is the default; English is available for a future locale picker. */
 export type Locale = "pt-BR" | "en"
 export const ptBR = {
+  "Notificações que precisam de revisão em Tarefas interrompidas: {count}.":
+    "Notificações que precisam de revisão em Tarefas interrompidas: {count}.",
   "Tarefas interrompidas": "Tarefas interrompidas",
   "Tarefa interrompida não encontrada.": "Tarefa interrompida não encontrada.",
   "Não foi possível salvar a confirmação. Tente novamente.": "Não foi possível salvar a confirmação. Tente novamente.",
@@ -2194,6 +2196,8 @@ export const ptBR = {
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  "Notificações que precisam de revisão em Tarefas interrompidas: {count}.":
+    "Notifications awaiting review in Interrupted tasks: {count}.",
   "Tarefas interrompidas": "Interrupted tasks",
   "Tarefa interrompida não encontrada.": "Interrupted task not found.",
   "Não foi possível salvar a confirmação. Tente novamente.": "Could not save the acknowledgement. Try again.",

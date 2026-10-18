@@ -852,23 +852,22 @@ const MessageBubble = ({
           {t("Interrupção anterior · resolvida")}
         </p>
       )}
-      {!resolvedInterruption &&
-        (runError && recovered ? (
-          <div className="message-error-history">
-            <button
-              type="button"
-              className="text-button"
-              aria-expanded={failureExpanded}
-              onClick={() => setFailureExpanded((expanded) => !expanded)}
-            >
-              {runError.title} · {failureTime} · {t("A reply followed this error")} ·{" "}
-              {failureExpanded ? t("Hide error") : t("View error")}
-            </button>
-            {failureExpanded && failureContent}
-          </div>
-        ) : (
-          failureContent
-        ))}
+      {runError && (recovered || resolvedInterruption) ? (
+        <div className="message-error-history">
+          <button
+            type="button"
+            className="text-button"
+            aria-expanded={failureExpanded}
+            onClick={() => setFailureExpanded((expanded) => !expanded)}
+          >
+            {runError.title} · {failureTime} · {recovered && `${t("A reply followed this error")} · `}
+            {failureExpanded ? t("Hide error") : t("View error")}
+          </button>
+          {failureExpanded && failureContent}
+        </div>
+      ) : (
+        failureContent
+      )}
     </article>
   )
 }

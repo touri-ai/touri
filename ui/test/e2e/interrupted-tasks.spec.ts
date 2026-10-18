@@ -24,10 +24,37 @@ for (const viewport of [
     expect(bounds?.width).toBeLessThanOrEqual(viewport.width)
     await center.getByText("Interrupções resolvidas", { exact: false }).click()
     await expect(center.getByText("Interrupção anterior · resolvida")).toBeVisible()
+    if (process.env.TOURI_SCREENSHOT_DIR)
+      await page.screenshot({ path: `${process.env.TOURI_SCREENSHOT_DIR}/recovery-center-${viewport.width}.png` })
     await center.getByRole("button", { name: "Retomar tarefa" }).first().click()
     await expect(center).toHaveCount(0)
     await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toHaveValue(
       "Conferi as ações registradas. Quero continuar a tarefa a partir do estado atual, sem repetir ações já concluídas.",
     )
+  })
+}
+
+for (const width of [1440, 390]) {
+  test(`bell preserves uncertain work and chat keeps resolved errors at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 900 })
+    await page.goto("/?mockScenario=interrupted-tasks")
+    if (width === 390) await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
+    await page.getByRole("button", { name: /Notificações,/ }).click()
+    const bell = page.getByRole("region", { name: "Central de notificações" })
+
+    await bell.getByRole("button", { name: "Limpar", exact: true }).click()
+
+    await expect(bell.getByRole("status")).toContainText(
+      "Notificações que precisam de revisão em Tarefas interrompidas: 1.",
+    )
+    if (process.env.TOURI_SCREENSHOT_DIR)
+      await page.screenshot({ path: `${process.env.TOURI_SCREENSHOT_DIR}/recovery-bell-${width}.png` })
+    await bell.getByRole("button", { name: "Fechar notificações" }).click()
+    if (width === 390) await page.getByRole("button", { name: "Fechar menu", exact: true }).click()
+    await expect(page.getByText("Interrupção anterior · resolvida", { exact: true })).toBeVisible()
+    await page.getByRole("button", { name: /Ver erro/ }).click()
+    await expect(page.locator(".message-error-history [role=alert]")).toBeVisible()
+    if (process.env.TOURI_SCREENSHOT_DIR)
+      await page.screenshot({ path: `${process.env.TOURI_SCREENSHOT_DIR}/recovery-error-${width}.png` })
   })
 }

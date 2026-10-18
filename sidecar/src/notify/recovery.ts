@@ -23,12 +23,67 @@ type RunRow = {
   occurred_at: number
 }
 
-export const syncRecoveryTasks = (kernel: Kernel, store: NotificationStore, notifier: Notifier): RecoveryTask[] => {
+const RECENT_TASK_LIMIT = 100
+
+export const createRecoverySync = (kernel: Kernel, store: NotificationStore, notifier: Notifier) => {
+  const database = kernel.db as Database
+  // This connection owns writes; the counter also catches journal changes without a runtime event.
+  let snapshot: { changes: number; tasks: RecoveryTask[]; runRowid: number; routineRowid: number } | null = null
+  let changedRunIds: string[] = []
+  kernel.subscribe(({ event }) => {
+    if (event.type !== "run.updated" || !["failed", "interrupted"].includes(event.run.status)) return
+    changedRunIds = [...new Set([...changedRunIds, event.run.id])]
+  })
+  const getChanges = () => (database.query("SELECT total_changes() AS count").get() as { count: number }).count
+
+  return (options: { silent?: boolean } = {}): RecoveryTask[] => {
+    const changes = getChanges()
+    if (snapshot?.changes === changes && changedRunIds.length === 0) return snapshot.tasks
+
+    const runRowid = getLastRowid(database, "runs")
+    const routineRowid = getLastRowid(database, "routine_runs")
+    const pending = (snapshot?.tasks ?? []).filter((task) => task.notification.resolvedAt === null)
+    const pendingRunIds = pending.flatMap((task) => (task.runId ? [task.runId] : []))
+    const pendingRoutineIds = pending.filter((task) => task.id.startsWith("routine:")).map((task) => task.id.slice(8))
+    const current = syncRecoveryTasks(kernel, store, notifier, options.silent ?? false, {
+      runIds: [...new Set([...changedRunIds, ...pendingRunIds])],
+      routineIds: pendingRoutineIds,
+      runRowid: snapshot?.runRowid ?? Math.max(0, runRowid - RECENT_TASK_LIMIT),
+      routineRowid: snapshot?.routineRowid ?? Math.max(0, routineRowid - RECENT_TASK_LIMIT),
+    })
+    const currentIds = new Set(current.map((task) => task.id))
+    const history = (snapshot?.tasks ?? [])
+      .filter((task) => task.notification.resolvedAt !== null && !currentIds.has(task.id))
+      .slice(0, RECENT_TASK_LIMIT)
+    // Sort only the newly assembled snapshot; previously published arrays keep their order.
+    const tasks = [...current, ...history].sort(
+      (left, right) => right.occurredAt - left.occurredAt || left.id.localeCompare(right.id),
+    )
+    changedRunIds = []
+    snapshot = { changes: getChanges(), tasks, runRowid, routineRowid }
+    return tasks
+  }
+}
+
+const getLastRowid = (database: Database, table: "runs" | "routine_runs"): number =>
+  (database.query(`SELECT COALESCE(MAX(rowid), 0) AS rowid FROM ${table}`).get() as { rowid: number }).rowid
+
+const syncRecoveryTasks = (
+  kernel: Kernel,
+  store: NotificationStore,
+  notifier: Notifier,
+  silent: boolean,
+  cursor: { runRowid: number; routineRowid: number; runIds: string[]; routineIds: string[] },
+): RecoveryTask[] => {
   const database = kernel.db as Database
   const work = createWorkState({ database })
-  const runs = getRunCandidates(database)
+  const runs = getRunCandidates(database, cursor.runIds, cursor.runRowid)
   const journal = getJournalCandidates(kernel, runs)
-  const candidates = [...runs, ...journal, ...getRoutineCandidates(database, runs)]
+  const candidates = [
+    ...runs,
+    ...journal,
+    ...getRoutineCandidates(database, runs, cursor.routineRowid, cursor.routineIds),
+  ]
 
   const visible = candidates.filter((candidate) => {
     const isRecorded = database.query("SELECT 1 FROM recovery_tasks WHERE id = ?").get(candidate.id) !== null
@@ -40,7 +95,7 @@ export const syncRecoveryTasks = (kernel: Kernel, store: NotificationStore, noti
   })
 
   return visible.map((candidate) => {
-    const notification = saveTaskNotification(kernel, store, notifier, candidate)
+    const notification = saveTaskNotification(kernel, store, notifier, candidate, silent)
     const effects = candidate.turnId ? work.rebuild({ turnId: candidate.turnId }) : []
     const hasUncertain = getRecoveryAcknowledgementKeys(database, notification.id).length > 0
     const hasLater = hasLaterRun(database, candidate)
@@ -74,15 +129,20 @@ export const getRecoveryAcknowledgementKeys = (database: Database, notificationI
   )
 }
 
-const getRunCandidates = (database: Database): Candidate[] => {
+const getRunCandidates = (database: Database, changedRunIds: string[], sinceRowid: number): Candidate[] => {
   const rows = database
     .query(`SELECT r.id, r.bot_id, COALESCE(t.group_thread_id, r.thread_id) AS thread_id, r.status, r.error_class, r.error_message, rr.routine_id,
       COALESCE(r.finished_at, r.started_at, r.queued_at) AS occurred_at
       FROM runs r JOIN bots b ON b.id = r.bot_id JOIN threads t ON t.id = r.thread_id
       LEFT JOIN routine_runs rr ON rr.id = r.routine_run_id
-      WHERE r.status IN ('failed', 'interrupted') AND b.archived_at IS NULL AND t.archived_at IS NULL
-      ORDER BY occurred_at DESC`)
-    .all() as RunRow[]
+      WHERE r.id IN (
+        SELECT id FROM (SELECT id FROM runs WHERE rowid > ? ORDER BY rowid DESC LIMIT ?)
+        UNION SELECT value FROM json_each(?)
+        UNION SELECT rt.turn_id FROM recovery_tasks rt JOIN notifications n ON n.id = rt.notification_id
+          WHERE n.resolved_at IS NULL AND rt.turn_id IS NOT NULL
+      ) AND r.status IN ('failed', 'interrupted') AND b.archived_at IS NULL AND t.archived_at IS NULL
+      ORDER BY occurred_at DESC, r.id`)
+    .all(sinceRowid, RECENT_TASK_LIMIT, JSON.stringify(changedRunIds)) as RunRow[]
   const work = createWorkState({ database })
 
   return rows.flatMap((row) => {
@@ -144,9 +204,16 @@ const getJournalEffects = (
 const getJournalCandidates = (kernel: Kernel, runs: Candidate[]): Candidate[] => {
   const database = kernel.db as Database
   const work = createWorkState({ database })
-  const turns = database.query("SELECT DISTINCT turn_id FROM work_journal WHERE kind = 'uncertain'").all() as Array<{
-    turn_id: string
-  }>
+  const turns = database
+    .query(`SELECT DISTINCT j.turn_id FROM work_journal j WHERE j.kind = 'uncertain'
+      AND NOT EXISTS (SELECT 1 FROM work_journal later WHERE later.turn_id = j.turn_id
+        AND later.effect_id = j.effect_id AND later.seq > j.seq
+        AND later.kind IN ('result', 'acknowledged', 'uncertain'))
+      UNION SELECT rt.turn_id FROM recovery_tasks rt JOIN notifications n ON n.id = rt.notification_id
+        WHERE rt.id LIKE 'journal:%' AND rt.turn_id IS NOT NULL
+        AND (n.resolved_at IS NULL OR rt.notification_id IN (
+          SELECT notification_id FROM recovery_tasks ORDER BY notification_id DESC LIMIT ?))`)
+    .all(RECENT_TASK_LIMIT) as Array<{ turn_id: string }>
 
   return turns.flatMap(({ turn_id: turnId }) => {
     if (runs.some((run) => run.turnId === turnId)) return []
@@ -174,13 +241,23 @@ const getJournalCandidates = (kernel: Kernel, runs: Candidate[]): Candidate[] =>
   })
 }
 
-const getRoutineCandidates = (database: Database, runs: Candidate[]): Candidate[] => {
+const getRoutineCandidates = (
+  database: Database,
+  runs: Candidate[],
+  sinceRowid: number,
+  pendingIds: string[],
+): Candidate[] => {
   const rows = database
     .query(`SELECT rr.id, rr.run_id, rr.routine_id, rr.thread_id, rr.summary, r.bot_id,
     COALESCE(rr.finished_at, rr.started_at, rr.scheduled_for) AS occurred_at
     FROM routine_runs rr JOIN routines r ON r.id = rr.routine_id JOIN bots b ON b.id = r.bot_id
-    WHERE rr.status = 'failed' AND b.archived_at IS NULL`)
-    .all() as Array<{
+    WHERE rr.id IN (
+      SELECT id FROM (SELECT id FROM routine_runs WHERE rowid > ? ORDER BY rowid DESC LIMIT ?)
+      UNION SELECT value FROM json_each(?)
+      UNION SELECT SUBSTR(rt.id, 9) FROM recovery_tasks rt JOIN notifications n ON n.id = rt.notification_id
+        WHERE rt.id LIKE 'routine:%' AND n.resolved_at IS NULL
+    ) AND rr.status = 'failed' AND b.archived_at IS NULL ORDER BY occurred_at DESC, rr.id`)
+    .all(sinceRowid, RECENT_TASK_LIMIT, JSON.stringify(pendingIds)) as Array<{
     id: string
     run_id: string | null
     summary: string | null
@@ -207,7 +284,13 @@ const getRoutineCandidates = (database: Database, runs: Candidate[]): Candidate[
     }))
 }
 
-const saveTaskNotification = (kernel: Kernel, store: NotificationStore, notifier: Notifier, candidate: Candidate) => {
+const saveTaskNotification = (
+  kernel: Kernel,
+  store: NotificationStore,
+  notifier: Notifier,
+  candidate: Candidate,
+  silent: boolean,
+) => {
   const database = kernel.db as Database
   const linked = database.query("SELECT notification_id FROM recovery_tasks WHERE id = ?").get(candidate.id) as {
     notification_id: number
@@ -230,14 +313,17 @@ const saveTaskNotification = (kernel: Kernel, store: NotificationStore, notifier
     : `recovery:${candidate.id}`
   const notification =
     reusable ??
-    notifier.emit({
-      kind: candidate.routineId ? "routine-failed" : "turn-failed",
-      botId: candidate.botId,
-      threadId: candidate.threadId,
-      requestId,
-      title: "Tarefas interrompidas",
-      body: safeRunFailure(candidate.cause, candidate.reason).detail,
-    })
+    notifier.emit(
+      {
+        kind: candidate.routineId ? "routine-failed" : "turn-failed",
+        botId: candidate.botId,
+        threadId: candidate.threadId,
+        requestId,
+        title: "Tarefas interrompidas",
+        body: safeRunFailure(candidate.cause, candidate.reason).detail,
+      },
+      { silent },
+    )
   database
     .query(`INSERT INTO recovery_tasks (id, notification_id, turn_id) VALUES (?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET notification_id = excluded.notification_id, turn_id = excluded.turn_id`)
