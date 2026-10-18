@@ -3,7 +3,7 @@ import { afterEach, expect, test } from "bun:test"
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { homedir, tmpdir } from "node:os"
 import { join } from "node:path"
-import type { Bot } from "@touri/contracts"
+import { type Bot, getHostKind, type HostKind } from "@touri/contracts"
 import { createKernel } from "../../src/kernel"
 import { applyUpgradeBaselines } from "../../src/kernel/upgradeBaselines"
 import { composeDeveloperInstructions } from "../../src/runtime/instructions"
@@ -39,12 +39,13 @@ const fixture = async ({
   const thread = store?.getThread({ threadId: bot.mainThreadId ?? "" })
   if (!store || !thread) throw new Error("Missing bot thread")
   const db = runtime.kernel.db as Database
-  const compose = (patch: Partial<Bot> = {}) =>
+  const compose = (patch: Partial<Bot> = {}, host?: HostKind) =>
     composeDeveloperInstructions({
       kernel: runtime.kernel,
       bot: { ...(store.getBot({ botId: bot.id }) ?? bot), ...patch },
       thread,
       cwd: bot.homeDir,
+      ...(host ? { host } : {}),
     })
   return { runtime, bot, store, thread, db, compose }
 }
@@ -408,3 +409,18 @@ for (const provider of ["codex", "claude", "opencode"] as const) {
     }
   })
 }
+
+test.each([
+  ["linux", false, "computer"],
+  ["linux", true, "server"],
+  ["darwin", false, "Mac"],
+] as const)("%s headless=%s model instructions identify the host", async (platform, headless, noun) => {
+  const f = await fixture()
+  const host = getHostKind(platform, headless)
+
+  const instructions = await f.compose({ machine: "local", access: "full", anyFolderAccess: true }, host)
+
+  expect(instructions).toContain(`You run on this ${noun}.`)
+  expect(instructions).toContain(`This ${noun}: /`)
+  expect(instructions.includes("this Mac")).toBe(noun === "Mac")
+})

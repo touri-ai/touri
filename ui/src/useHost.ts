@@ -1,23 +1,27 @@
+import type { HostKind } from "@touri/contracts"
 import { useEffect, useState } from "react"
 import type { UiApi } from "./api/client"
 import { useServerMode } from "./features/server/serverMode"
 
 /** Host identity comes from the sidecar, never from the browser's OS. */
-export const useHost = (api?: UiApi | null) => {
+export const useHost = (api?: UiApi | null): HostKind => {
   const { status } = useServerMode()
-  const [host, setHost] = useState<"mac" | "server">("__TAURI_INTERNALS__" in window ? "mac" : "server")
+  const [snapshot, setSnapshot] = useState<{ api: UiApi; host: HostKind } | null>(null)
   useEffect(() => {
     let active = true
     if (api)
       void api
         .request("GET /health", {})
         .then((health) => {
-          if (active && health.host) setHost(health.host)
+          if (active && health.host) setSnapshot({ api, host: health.host })
         })
         .catch(() => {})
     return () => {
       active = false
     }
   }, [api])
-  return status?.mode === "server" ? "server" : host
+  if (status?.mode === "server") return "server"
+  if (snapshot?.api !== api) return "computer"
+
+  return snapshot?.host ?? "computer"
 }

@@ -53,7 +53,9 @@ export const BotBrowserPicker = ({
             )
           : machine === "local"
             ? t("Machine Chrome requires a bot on the Linux machine.")
-            : t("My Chrome is available only for bots on this Mac. A remote machine cannot reach your Mac's Chrome.")}
+            : t(
+                "My Chrome is available only for bots on this computer. A remote machine cannot reach your computer's Chrome.",
+              )}
       </p>
       {!serverMode && value === "local" && machine === "local" && (
         <>

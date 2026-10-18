@@ -18,7 +18,7 @@ import { DoctorChecks } from "../features/doctor/DoctorChecks"
 import { ReportProblem } from "../features/reports/ReportProblem"
 import { ServerModeSettings } from "../features/server/ServerModeSettings"
 import { isNativeDesktop, useIsServerMode } from "../features/server/serverMode"
-import { t } from "../i18n"
+import { getHostLabel, t } from "../i18n"
 import { hostComputerSupported } from "../platform"
 import { useHost } from "../useHost"
 import { ApiModelsSettings } from "./ApiModelsSettings"
@@ -220,7 +220,7 @@ export const SettingsModal = ({
           <p className="field-help">
             {host === "server"
               ? t("Seus dados e os logins dos bots ficam no servidor escolhido.")
-              : t("Seus dados ficam neste Mac. Conexões externas são opcionais.")}
+              : t("Your data stays on this {host}. External connections are optional.", { host: getHostLabel(host) })}
           </p>
           <SettingsDisclosure
             title={t("Dados, permissões e conexões")}

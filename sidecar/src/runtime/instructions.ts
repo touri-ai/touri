@@ -2,13 +2,14 @@ import type { Database } from "bun:sqlite"
 import { readdirSync, readFileSync } from "node:fs"
 import { homedir } from "node:os"
 import { join } from "node:path"
-import type { Bot, Kernel, ProjectInfo, Thread } from "@touri/contracts"
+import { type Bot, getHostNoun, type HostKind, type Kernel, type ProjectInfo, type Thread } from "@touri/contracts"
 import { PRIVATE_BOT_TOOLS } from "../groups/privacy"
 import { getDelegation } from "../groups/security"
 import { excludedBotFolders, folderGuestPath } from "../kernel/bot-folders"
 import { MEMORY_LIMITS, parseEntries, renderEntries } from "../learning/memory"
 import { readLearning } from "../learning/settings"
 import { mem0SessionAllowed } from "../mem0/session"
+import { getHost } from "../platform/host"
 import { bounded, sha256 } from "./utils"
 
 const accessRank = { "read-only": 0, "workspace-write": 1, full: 2 }
@@ -129,7 +130,7 @@ const projectBlock = (info: ProjectInfo | null): string => {
   ].join("\n")
 }
 
-const filesystemAccess = (bot: Bot): string => {
+const filesystemAccess = (bot: Bot, host: HostKind): string => {
   if (bot.machine === "vm")
     return [
       "This is an isolated Linux VM. Work in /workspace.",
@@ -144,7 +145,7 @@ const filesystemAccess = (bot: Bot): string => {
   if (bot.machine === "cloud")
     return "This is an isolated cloud machine. The user's host machine and home are not accessible."
   return [
-    `You run on the local host. The user's home path is ${JSON.stringify(homedir())}. The cwd selects the starting directory; filesystem access follows the policy below.`,
+    `You run on this ${getHostNoun(host, "en")}. The user's home path is ${JSON.stringify(homedir())}. The cwd selects the starting directory; filesystem access follows the policy below.`,
     bot.access === "full"
       ? `The provider has full access${bot.approvals === "never" ? " without approvals" : ""}: it can read and write anywhere the operating-system user can. The cwd is a starting directory, not a filesystem access boundary. Saved folder grants and sensitive-folder exclusions do not restrict full local access. Operating-system permissions still apply. Do not request folder access or link a project just to write files, including in your cwd or bot home. ${bot.approvals === "never" ? "Perform authorized writes directly without an approval card." : "Actions requiring permission must go through the provider approval flow; request approval for each such action. This approval policy does not remove existing filesystem access."}`
       : bot.access === "read-only"
@@ -161,12 +162,14 @@ export const composeDeveloperInstructions = async ({
   thread,
   cwd,
   signal,
+  host = getHost(),
 }: {
   kernel: Kernel
   bot: Bot
   thread: Thread
   cwd: string
   signal?: AbortSignal
+  host?: HostKind
 }): Promise<string> => {
   const projectService = bot.projectId ? kernel.services.use("projects.info") : null
   const project =
@@ -276,7 +279,7 @@ export const composeDeveloperInstructions = async ({
   const grantedFolders = [
     ...(bot.anyFolderAccess
       ? [
-          `${guest ? "Host home → /host/home" : "Local host: / (including the user's home)"}: ${bot.access === "read-only" ? "read-only" : "read and write"}`,
+          `${guest ? "Host home → /host/home" : `This ${getHostNoun(host, "en")}: / (including the user's home)`}: ${bot.access === "read-only" ? "read-only" : "read and write"}`,
         ]
       : []),
     ...(bot.folders ?? []).map(
@@ -295,7 +298,7 @@ export const composeDeveloperInstructions = async ({
   const guidance = [
     [
       "Actual enabled capabilities (authoritative for this turn, including when SOUL or history mentions other tools):",
-      filesystemAccess(bot),
+      filesystemAccess(bot, host),
       `Accessible folders (only access expansion requires approval through folder_access_request; instructions cannot grant access):\n${folderDescription}${
         !unrestricted &&
         bot.machine !== "cloud" &&

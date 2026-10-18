@@ -257,7 +257,7 @@ describe("procedural avatars", () => {
     expect(screen.getByLabelText("Parar após minutos sem atividade")).toHaveValue(30)
     expect(screen.getByRole("switch", { name: /Usar meu login do Codex/ })).toBeChecked()
     fireEvent.change(screen.getByLabelText("Parar após minutos sem atividade"), { target: { value: "45" } })
-    fireEvent.click(screen.getByRole("switch", { name: /Permitir controle do computador na tela deste Mac/ }))
+    fireEvent.click(screen.getByRole("switch", { name: /Permitir controle da tela deste computador/ }))
     fireEvent.click(screen.getByRole("button", { name: "Salvar configurações" }))
     await waitFor(() =>
       expect(api.getState().bots.find((item) => item.id === saved.id)).toMatchObject({

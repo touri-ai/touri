@@ -42,7 +42,7 @@ it("disables host browsers for VM bots and explains why Meu Chrome cannot be use
   expect(screen.getByRole("combobox")).toHaveValue("machine")
   expect(screen.getByRole("option", { name: "Meu Chrome" })).toBeDisabled()
   expect(screen.getByRole("option", { name: "Chrome do touri" })).toBeDisabled()
-  expect(screen.getByText(/máquina remota não pode acessar o Chrome do Mac/)).toBeVisible()
+  expect(screen.getByText(/máquina remota não pode acessar o Chrome do computador/)).toBeVisible()
 })
 
 it("provides English labels and a localized public error", () => {

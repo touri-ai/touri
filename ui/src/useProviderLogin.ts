@@ -143,6 +143,7 @@ export const useProviderLogin = (
       !enabled ||
       provider === "claude" ||
       flow?.host === "server" ||
+      flow?.host === "computer" ||
       flow?.state !== "waiting" ||
       !flow.verificationUrl
     )

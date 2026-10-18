@@ -6,6 +6,7 @@ import { join } from "node:path"
 import type { Bot, Kernel, ProviderLoginFlow, UiEvent } from "@touri/contracts"
 import { createRedactor } from "../../src/kernel/redact"
 import { spawnTree } from "../../src/kernel/spawn"
+import { getHost } from "../../src/platform/host"
 import { prepareLocalProviderLogin } from "../../src/vm/local-provider-login"
 import { providerLoginAccount, storedProviderLoginSource } from "../../src/vm/provider-login"
 import { createProviderLoginFlow, type LoginInvocation, validLogin } from "../../src/vm/provider-login-flow"
@@ -238,7 +239,7 @@ test("poll exposes only device challenge, cancel kills CLI and never saves crede
   expect(await f.flow.status(f.bot)).toEqual({
     provider: "codex",
     state: "waiting",
-    host: process.platform === "darwin" && process.env.TOURI_HEADLESS !== "1" ? "mac" : "server",
+    host: getHost(),
     deviceCode: "ABCD-EFGH",
     verificationUrl: "https://auth.openai.com/codex/device",
   })
@@ -268,7 +269,7 @@ for (const [platform, headless, host] of [
   ["darwin", false, "mac"],
   ["darwin", true, "server"],
   ["linux", true, "server"],
-  ["linux", false, "server"],
+  ["linux", false, "computer"],
 ] as const)
   for (const provider of ["claude", "codex"] as const) {
     const directory = provider === "claude" ? ".claude" : ".codex"
@@ -466,7 +467,7 @@ for (const mode of ["code-bel", "code-st"])
     expect(await waitView(f, (view) => !!view.needsCode)).toEqual({
       provider: "claude",
       state: "waiting",
-      host: process.platform === "darwin" && process.env.TOURI_HEADLESS !== "1" ? "mac" : "server",
+      host: getHost(),
       needsCode: true,
       verificationUrl: authorizeUrl,
     })

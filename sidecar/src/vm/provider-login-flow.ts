@@ -3,7 +3,14 @@ import { chmodSync, mkdirSync, mkdtempSync, rmSync } from "node:fs"
 import { homedir } from "node:os"
 import { delimiter, join } from "node:path"
 import { stripVTControlCharacters } from "node:util"
-import type { Bot, Kernel, ProviderLoginFlow, RouteModule } from "@touri/contracts"
+import {
+  type Bot,
+  getHostKind,
+  getHostNoun,
+  type Kernel,
+  type ProviderLoginFlow,
+  type RouteModule,
+} from "@touri/contracts"
 import { withDeadline } from "../kernel/policy"
 import { providerProfileEnv } from "../kernel/provider-profiles"
 import { buildChildEnv } from "../kernel/shell-env"
@@ -115,8 +122,8 @@ export const createProviderLoginFlow = ({
   invoke?: (input: LoginInvocation) => ReturnType<Kernel["spawnTree"]>
   profileStatus?: typeof providerProfileStatus
 }) => {
-  const host = platform === "darwin" && !headless ? "mac" : "server"
-  const hostUnavailable = host === "mac" ? "Login deste Mac indisponível." : "Login deste servidor indisponível."
+  const host = getHostKind(platform, headless)
+  const hostUnavailable = `Login deste ${getHostNoun(host)} indisponível.`
   const sessions = new Map<string, Session>()
   const starts = new Map<string, Promise<ProviderLoginFlow>>()
   const writes = new Map<string, Promise<void>>()
@@ -252,7 +259,7 @@ export const createProviderLoginFlow = ({
       try {
         value = await readVault(kernel, target, loginTarget(target.provider), {})
       } catch (error) {
-        if (host === "server" && error instanceof ProviderLoginError)
+        if (host !== "mac" && error instanceof ProviderLoginError)
           return {
             provider: target.provider,
             state: "error",
@@ -317,7 +324,7 @@ export const createProviderLoginFlow = ({
           "BUN_OPTIONS",
         ])
           delete (env as Record<string, string>)[name]
-        if (host === "server") {
+        if (host !== "mac") {
           env.BROWSER = "echo"
           delete env.DISPLAY
           delete env.WAYLAND_DISPLAY
@@ -503,7 +510,7 @@ export const createProviderLoginFlow = ({
       if (target.provider !== "opencode" || !bytes || !session?.child || !session.view.prompt)
         throw new Error("Seleção indisponível.")
       if (
-        host === "server" &&
+        host !== "mac" &&
         input.input === "enter" &&
         session.view.prompt?.kind === "method" &&
         /\bbrowser\b/i.test(session.view.prompt.choice) &&

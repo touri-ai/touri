@@ -8,6 +8,7 @@ import { toolPresentation } from "../../../ui/src/components/toolPresentation"
 import { createStandingGrantStore } from "../../src/approvals/grants"
 import { createKernel } from "../../src/kernel"
 import { createToolRouter } from "../../src/mcp/router"
+import { getHost } from "../../src/platform/host"
 import { init as initRuntime } from "../../src/runtime"
 import { createRuntimePersistence } from "../../src/runtime/persistence"
 import { init as initStore } from "../../src/store"
@@ -285,7 +286,7 @@ test("the gateway still denies routine creation for read-only bots", async () =>
 test("the routine editor preserves its reviewed destination, recovery window and scheduler host", async () => {
   const f = await fixture()
   const listing = (await (await f.request("GET", "/routines")).json()) as { host: string }
-  expect(listing.host).toBe(process.platform === "darwin" ? "mac" : "server")
+  expect(listing.host).toBe(getHost())
   const response = await f.request("POST", "/routines", {
     botId: f.bot.id,
     name: "Organizar notas",

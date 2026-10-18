@@ -87,7 +87,7 @@ it("keeps common bot settings nearby and technical settings behind a disclosure"
     },
     Acesso: () => {
       expect(screen.getByRole("combobox", { name: "Acesso" })).toBeVisible()
-      expect(screen.getByLabelText("Acesso a qualquer pasta deste Mac", { exact: false })).toBeVisible()
+      expect(screen.getByLabelText("Acesso a qualquer pasta deste servidor", { exact: false })).toBeVisible()
       expect(screen.getByRole("button", { name: "Adicionar pasta…" })).toBeVisible()
       expect(screen.getByRole("region", { name: "Login do provedor nesta máquina" })).toBeVisible()
       expect(screen.getByRole("heading", { name: "Segredos" })).toBeVisible()
@@ -206,7 +206,7 @@ it("keeps app sections short and technical settings within their disclosure", as
           "Este servidor não tem uma área de trabalho para controlar. Você pode conversar e trabalhar com arquivos.",
         ),
       ).toBeVisible()
-    expect(screen.queryByRole("heading", { name: "Permitir que um bot controle o Mac" })).toBeNull()
+    expect(screen.queryByRole("heading", { name: "Permitir que um bot controle este computador" })).toBeNull()
     if (section.id === "diagnostics") {
       expect(screen.getByRole("button", { name: "Verificar novamente" })).toBeVisible()
       expect(screen.getByRole("region", { name: "Armazenamento" })).toBeVisible()

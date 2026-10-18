@@ -8,11 +8,11 @@ import { ConversationStart } from "../src/components/ConversationStart"
 import { BotCreateModal } from "../src/components/Modals"
 import { adoptProviderLogin } from "../src/features/bots/providerLogin"
 import { getJobTemplates } from "../src/features/jobs/catalog"
-import { dictionaries, t } from "../src/i18n"
+import { dictionaries, getHostLabel, t } from "../src/i18n"
 
 afterEach(cleanup)
 
-it.each(["mac", "server"] as const)(
+it.each(["mac", "computer", "server"] as const)(
   "describes local history and necessary AI disclosure for the real %s host",
   async (host) => {
     const api = createMockApi()
@@ -23,14 +23,14 @@ it.each(["mac", "server"] as const)(
         ? { ok: true, version: "test", schemaVersion: 1, host }
         : original(route, input, path)) as ApiRequest
     render(<App kernel={{ services: { api } }} />)
-    const privacy = await screen.findByText(t("onboarding.privacy", { host: host === "mac" ? "Mac" : "servidor" }))
+    const privacy = await screen.findByText(t("onboarding.privacy", { host: getHostLabel(host) }))
     expect(privacy).toHaveTextContent("Sua IA recebe o conteúdo necessário")
     expect(document.body.textContent).not.toMatch(/Nada sai daqui|Nothing leaves/)
-    if (host === "server") expect(document.body.textContent).not.toContain("Mac")
+    if (host !== "mac") expect(document.body.textContent).not.toContain("Mac")
   },
 )
 
-it.each(["mac", "server"] as const)(
+it.each(["mac", "computer", "server"] as const)(
   "shows installation before readiness on %s and keeps the whole draft across recheck",
   async (host) => {
     const api = createMockApi()
@@ -51,7 +51,7 @@ it.each(["mac", "server"] as const)(
     api.request = request as ApiRequest
     const create = vi.fn(async () => {})
     render(<BotCreateModal api={api} onClose={vi.fn()} onCreate={create} />)
-    await screen.findByText(`O Codex ainda não está instalado neste ${host === "mac" ? "Mac" : "servidor"}.`)
+    await screen.findByText(`O Codex ainda não está instalado neste ${getHostLabel(host)}.`)
     fireEvent.change(screen.getByLabelText("Nome"), { target: { value: "Clara" } })
     fireEvent.click(screen.getByRole("radio", { name: "Caderno em ordem" }))
     fireEvent.click(screen.getByRole("button", { name: "Forma Hexágono" }))
@@ -63,7 +63,7 @@ it.each(["mac", "server"] as const)(
     expect(screen.getByRole("link", { name: "Ver como instalar" })).toHaveAttribute("target", "_blank")
     installed = true
     fireEvent.click(screen.getByRole("button", { name: "Verificar novamente" }))
-    await screen.findByText(`Usa o Codex, conectado neste ${host === "mac" ? "Mac" : "servidor"}.`)
+    await screen.findByText(`Usa o Codex, conectado neste ${getHostLabel(host)}.`)
     expect(screen.getByLabelText("Nome")).toHaveValue("Clara")
     expect(screen.getByRole("radio", { name: "Caderno em ordem" })).toBeChecked()
     expect(document.querySelector(".avatar-picker-preview .tb-avatar")?.getAttribute("data-bot-id")).toBe(avatar)

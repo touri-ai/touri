@@ -1,5 +1,5 @@
 import { listen } from "@tauri-apps/api/event"
-import type { BotGroup, Id, NotificationRecord } from "@touri/contracts"
+import type { BotGroup, HostKind, Id, NotificationRecord } from "@touri/contracts"
 import type { FailureAction } from "@touri/contracts/run-failure"
 import { type SetStateAction, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
@@ -64,7 +64,7 @@ import {
   serverModeErrorCode,
   useServerMode,
 } from "./features/server/serverMode"
-import { localizeNotice, t } from "./i18n"
+import { getHostLabel, localizeNotice, t } from "./i18n"
 import { type DeepLinkRequest, installNativeDeepLinks } from "./nativeDeepLinks"
 import { requestTaskResume, requestTaskReview } from "./recoveryEvents"
 import type { RoutineDraft } from "./routineDraft"
@@ -1277,7 +1277,7 @@ const OnboardingLanding = ({
   onImport,
   onSettings,
 }: {
-  host: "mac" | "server"
+  host: HostKind
   onCreateBot: () => void
   onDoctor: () => void
   onImport: () => void
@@ -1289,7 +1289,7 @@ const OnboardingLanding = ({
         <img className="brand-bull" src="/touri-bull.png" alt="" />
         <span className="brand-name">touri</span>
       </h1>
-      <p>{t("onboarding.privacy", { host: host === "mac" ? "Mac" : t("onboarding.server") })}</p>
+      <p>{t("onboarding.privacy", { host: getHostLabel(host) })}</p>
       <div className="onboarding-actions">
         <button type="button" className="button button-brand" onClick={onCreateBot}>
           {t("Create my first bot")}
@@ -1309,7 +1309,7 @@ const OnboardingLanding = ({
           </button>
         </span>
         <button type="button" className="text-button" onClick={onDoctor}>
-          {t(host === "mac" ? "Check this Mac" : "onboarding.checkServer")}
+          {t("Check this {host}", { host: getHostLabel(host) })}
         </button>
       </div>
     </div>

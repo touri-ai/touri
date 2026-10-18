@@ -1,7 +1,7 @@
-import type { Bot } from "@touri/contracts"
+import type { Bot, HostKind } from "@touri/contracts"
 import { useState } from "react"
 import { CloudLink } from "../features/cloud/CloudLink"
-import { t } from "../i18n"
+import { getHostLabel, t } from "../i18n"
 import { providerName } from "./ProviderMark"
 
 const installationGuides = {
@@ -17,7 +17,7 @@ export const ProviderInstallation = ({
   onRecheck,
 }: {
   provider: Bot["provider"]
-  host: "mac" | "server"
+  host: HostKind
   busy: boolean
   onRecheck: () => void
 }) => {
@@ -27,7 +27,7 @@ export const ProviderInstallation = ({
       <p>
         {t("onboarding.missing", {
           provider: providerName(provider),
-          host: host === "mac" ? "Mac" : t("onboarding.server"),
+          host: getHostLabel(host),
         })}
       </p>
       <CloudLink href={installationGuides[provider]} className="" onError={() => setError(true)}>

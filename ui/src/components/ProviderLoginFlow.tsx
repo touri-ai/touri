@@ -1,5 +1,5 @@
 import { useEffect, useId, useState } from "react"
-import { localizeNotice, t } from "../i18n"
+import { getHostLabel, localizeNotice, t } from "../i18n"
 import type { useProviderLogin } from "../useProviderLogin"
 import { ProviderInstallation } from "./ProviderInstallation"
 import { VaultAccessButton } from "./VaultAccessButton"
@@ -14,8 +14,8 @@ export const ProviderLoginFlow = ({
 }) => {
   const { flow, error, busy, act, recheck } = login
   const provider = login.provider === "claude" ? "Claude" : login.provider === "codex" ? "Codex" : "OpenCode"
-  const hostIsMac = flow?.host === "mac"
-  const serverLogin = flow?.host === "server"
+  const host = getHostLabel(flow?.host ?? "computer")
+  const serverLogin = flow?.host === "server" || flow?.host === "computer"
   const desktopMethod =
     serverLogin &&
     flow?.prompt?.kind === "method" &&
@@ -45,7 +45,7 @@ export const ProviderLoginFlow = ({
     return (
       <ProviderInstallation
         provider={flow.provider}
-        host={flow.host ?? "server"}
+        host={flow.host ?? "computer"}
         busy={busy}
         onRecheck={() => void login.recheck()}
       />
@@ -66,7 +66,7 @@ export const ProviderLoginFlow = ({
               : flow.state === "ready"
                 ? t("Login disponível para este bot.")
                 : flow.state === "host-available"
-                  ? t(hostIsMac ? "Há um login disponível neste Mac." : "Há um login disponível neste servidor.")
+                  ? t("A login is available on this {host}.", { host })
                   : flow.state === "vault-locked"
                     ? t("Permita o acesso ao cofre para usar o login salvo.")
                     : flow.state === "cancelled"
@@ -198,7 +198,7 @@ export const ProviderLoginFlow = ({
       )}
       {flow?.state === "host-available" && (
         <button type="button" className="button button-brand" disabled={busy} onClick={() => void act("use-host")}>
-          {t(hostIsMac ? "Usar login deste Mac" : "Usar login deste servidor")}
+          {t("Use this {host}'s login", { host })}
         </button>
       )}
       {flow &&

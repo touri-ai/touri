@@ -1,4 +1,4 @@
-import type { ApiRoutes, Message, Run } from "@touri/contracts"
+import type { ApiRoutes, HostKind, Message, Run } from "@touri/contracts"
 import { createRoot } from "react-dom/client"
 import App from "../../src/App"
 import type { ApiRequest } from "../../src/api/client"
@@ -18,6 +18,8 @@ bot.model = "gpt-6.1-sol"
 thread.title = "Planejar a próxima semana"
 state.messages.splice(0, state.messages.length)
 const view = new URLSearchParams(location.search).get("view")
+const requestedHost = new URLSearchParams(location.search).get("host")
+const host: HostKind = requestedHost === "mac" || requestedHost === "computer" ? requestedHost : "server"
 const notice =
   view === "auth"
     ? "cli_auth: Entre no provedor para continuar."
@@ -67,6 +69,13 @@ const fixtureRun: Run | null = ["running", "queued"].includes(view ?? "")
   : null
 const request = api.request
 const fixtureRequest: ApiRequest = async (route, input, pathValues) => {
+  if (route === "GET /health")
+    return { ok: true, version: "test", schemaVersion: 1, host } as ApiRoutes[typeof route]["res"]
+  if (route === "GET /routines") {
+    const response = await request(route, input, pathValues)
+
+    return { ...response, host } as ApiRoutes[typeof route]["res"]
+  }
   if (route === "GET /threads/:id/runs" && pathValues?.id === thread.id && fixtureRun)
     return { runs: [fixtureRun] } as ApiRoutes[typeof route]["res"]
   return request(route, input, pathValues)

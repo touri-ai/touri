@@ -7,6 +7,7 @@ import type { Bot, Message, Run, StoreApi } from "@touri/contracts"
 import { createKernel } from "../../src/kernel"
 import { openDatabase } from "../../src/kernel/db"
 import { createNotificationStore } from "../../src/notify/store"
+import { getHost } from "../../src/platform/host"
 import { createRuntimePersistence } from "../../src/runtime/persistence"
 import { init } from "../../src/store"
 
@@ -365,7 +366,10 @@ test("all WP2 HTTP routes respond with contract-shaped payloads", async () => {
   try {
     const base = `http://127.0.0.1:${context.runtime.handshake.port}/api/v1`
     const get = (path: string): Promise<Response> => fetch(`${base}${path}`, { headers })
-    expect((await get("/health")).status).toBe(200)
+    const health = await get("/health")
+
+    expect(health.status).toBe(200)
+    expect(await health.json()).toMatchObject({ host: getHost() })
     expect((await get("/doctor")).status).toBe(200)
     expect((await get("/bots")).status).toBe(200)
     expect((await get(`/bots/${context.bot.id}/threads`)).status).toBe(200)

@@ -1,17 +1,19 @@
-import type { Bot } from "@touri/contracts"
+import type { Bot, HostKind } from "@touri/contracts"
 import type { ReactNode } from "react"
-import { t } from "../i18n"
+import { getHostLabel, t } from "../i18n"
 import { BotAccessSummary } from "./BotAccessSummary"
 import { getBotModelName, getBotProviderName } from "./ProviderMark"
 
 export const BotDetails = ({
   bot,
+  host,
   onSettings,
   onModel,
   onPermissions,
   children,
 }: {
   bot: Bot
+  host: HostKind
   onSettings: () => void
   onModel?: (() => void) | undefined
   onPermissions: () => void
@@ -31,10 +33,10 @@ export const BotDetails = ({
       </section>
       <section className="bot-details-section" aria-labelledby={`bot-access-${bot.id}`}>
         <h3 id={`bot-access-${bot.id}`}>{t("What it can access")}</h3>
-        <BotAccessSummary {...bot} />
+        <BotAccessSummary {...bot} host={host} />
         <p className="muted-copy">
           {bot.machine === "local"
-            ? t("Works on this Mac.")
+            ? t("Works on this {host}.", { host: getHostLabel(host) })
             : bot.machine === "vm"
               ? t("Works on its own computer.")
               : t("Works on the cloud computer you connected.")}

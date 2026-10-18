@@ -394,11 +394,11 @@ it("shows the broad-access badge in the bot header and removes it when access is
   if (!bot) throw new Error("Missing bot")
   bot.anyFolderAccess = true
   render(<App kernel={{ services: { api } }} />)
-  expect(await screen.findByText("Qualquer pasta do Mac")).toBeVisible()
+  expect(await screen.findByText("Qualquer pasta deste servidor")).toBeVisible()
   await act(async () => {
     await api.request("PATCH /bots/:id", { anyFolderAccess: false }, { id: bot.id })
   })
-  expect(screen.queryByText("Qualquer pasta do Mac")).not.toBeInTheDocument()
+  expect(screen.queryByText("Qualquer pasta deste servidor")).not.toBeInTheDocument()
 })
 
 it("saving folder access preserves the bot's existing approvals", async () => {

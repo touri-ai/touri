@@ -172,7 +172,7 @@ it("hides the Mac folder chooser and disables the personal browser in server mod
     </ServerModeProvider>,
   )
   await screen.findByRole("dialog", { name: "Pastas no servidor" })
-  expect(screen.queryByRole("button", { name: "Escolher no Mac…" })).not.toBeInTheDocument()
+  expect(screen.queryByRole("button", { name: "Escolher no computador…" })).not.toBeInTheDocument()
   expect(screen.getByRole("combobox", { name: t("Bot browser") }).querySelector('option[value="local"]')).toBeDisabled()
   await waitFor(() => expect(screen.getByText(/Seu navegador pessoal fica indisponível/)).toBeVisible())
 })
