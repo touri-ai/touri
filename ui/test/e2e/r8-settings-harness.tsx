@@ -78,8 +78,11 @@ api.request = (async (route, input, path) => {
 Object.assign(window, {
   r8SettingsApi: api,
   __TAURI_INTERNALS__: {
-    invoke: async (command: string) =>
-      command === "permissions_status" ? { accessibility: "denied", "screen-recording": "denied" } : 1,
+    invoke: async (command: string) => {
+      if (command === "server_mode_status") return { mode: "local", url: null }
+      if (command === "permissions_status") return { accessibility: "denied", "screen-recording": "denied" }
+      return 1
+    },
     transformCallback: () => 1,
     unregisterCallback: () => undefined,
   },

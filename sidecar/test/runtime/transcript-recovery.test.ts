@@ -493,6 +493,16 @@ test.each(["SIGTERM", "shell crash", "orphan takeover"] as const)(
       const reply = f.store.activePath({ threadId: "t" }).find((message) => message.role === "assistant")
       expect(reply).toMatchObject({ status: "failed", text: "INÍCIO" })
       expect(reply?.parts).toContainEqual(expect.objectContaining({ type: "notice", code: "app_restart" }))
+      // Transcript recovery can be visible before asynchronous startup cleanup finishes.
+      await waitFor(() => {
+        try {
+          process.kill(providerPid as number, 0)
+          return false
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error
+          return true
+        }
+      })
       expect(() => process.kill(providerPid as number, 0)).toThrow()
       await Bun.sleep(600)
       expect(f.store.activePath({ threadId: "t" }).find((message) => message.id === reply?.id)).toEqual(reply)

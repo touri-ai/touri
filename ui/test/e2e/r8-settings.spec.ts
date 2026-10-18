@@ -14,6 +14,7 @@ for (const width of [1440, 1100]) {
       await page.addInitScript((theme) => localStorage.setItem("touri.appearance.v1", theme), theme)
       await page.goto("/test/e2e/r8-settings-harness.html")
       await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
+      await expect(page.getByRole("button", { name: "Você Local · grátis", exact: true })).toBeVisible()
       const shot = async (view: string) => {
         await page.screenshot({ path: `${evidence}/${phase}-${view}${width === 1100 ? "-narrow" : ""}-${theme}.png` })
         if (phase === "after") {

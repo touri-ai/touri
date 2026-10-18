@@ -89,7 +89,7 @@ it("prioritizes approval over delay and resets after resolution and completion",
 it("distinguishes environment preparation, active tools and a silent provider", () => {
   const view = render(<ActivityMark state="thinking" run={{ ...run, providerStartedAt: null }} preparingEnvironment />)
   advance(10_000)
-  expect(screen.getByRole("status")).toHaveTextContent("Preparando o ambiente…")
+  expect(screen.getByRole("status")).toHaveTextContent("Ligando o computador do bot…")
   view.rerender(
     <ActivityMark
       state="working-tool"
@@ -134,4 +134,28 @@ it("localizes long waits and their actions in English", () => {
   expect(screen.getAllByRole("status")).toHaveLength(1)
   expect(screen.getByRole("button", { name: "Check connection" })).toBeVisible()
   expect(screen.getByRole("button", { name: "Stop", exact: true })).toBeVisible()
+})
+
+it.each([
+  ["pt-BR", "Ligando o computador do bot…"],
+  ["en", "Starting the bot’s computer…"],
+] as const)("keeps %s computer preparation accurate beyond the reply delay threshold", (locale, label) => {
+  const view = render(
+    <ActivityMark state="thinking" locale={locale} run={{ ...run, providerStartedAt: null }} preparingEnvironment />,
+  )
+  expect(screen.getByRole("status")).toHaveTextContent(label)
+  advance(45_000)
+  expect(screen.getByRole("status")).toHaveTextContent(label)
+  expect(screen.queryByRole("button", { name: /Verificar conexão|Check connection/ })).toBeNull()
+  const started = { ...run, providerStartedAt: Date.now() }
+  view.rerender(<ActivityMark state="thinking" locale={locale} run={started} preparingEnvironment />)
+  expect(screen.queryByText(label)).toBeNull()
+  advance(10_000)
+  expect(screen.getByRole("status")).toHaveTextContent(
+    locale === "en" ? "Still waiting for the AI to respond." : "Ainda aguardando a IA responder.",
+  )
+  advance(20_000)
+  expect(screen.getByRole("status")).toHaveTextContent(
+    locale === "en" ? "The reply is taking longer." : "A resposta está demorando.",
+  )
 })

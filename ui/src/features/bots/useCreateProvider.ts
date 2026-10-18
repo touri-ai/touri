@@ -52,7 +52,10 @@ export const useCreateProvider = (api: UiApi | undefined, draftId: string) => {
       try {
         const results = await Promise.allSettled(
           CREATE_PROVIDERS.map((candidate) =>
-            api.request("GET /bots/:id/provider-login/flow", { provider: candidate }, { id: draftId }),
+            retryProviderLogin(
+              () => api.request("GET /bots/:id/provider-login/flow", { provider: candidate }, { id: draftId }),
+              () => generation.current === current,
+            ),
           ),
         )
         if (generation.current !== current) return
@@ -67,7 +70,7 @@ export const useCreateProvider = (api: UiApi | undefined, draftId: string) => {
         const result = results[selected]
         setProvider(next)
         if (result?.status === "fulfilled") await prepare(next, result.value, current)
-        if (results.some((result) => result.status === "rejected"))
+        if (generation.current === current && result?.status === "rejected")
           setError(t("Could not check accounts. Choose an account and try again."))
       } catch {
         if (generation.current === current) setError(t("Could not check accounts. Choose an account and try again."))
