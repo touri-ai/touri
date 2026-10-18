@@ -1,5 +1,6 @@
 import type { Database } from "bun:sqlite"
 import type { MessagePart, UiEvent } from "@touri/contracts"
+import { refreshMessageSearch } from "./message-search"
 
 type Delta = Extract<UiEvent, { type: "message.delta" }>
 type StreamEvent = Delta | Extract<UiEvent, { type: "message.parts" }>
@@ -95,12 +96,7 @@ export const materializeTranscript = (database: Database): void => {
           projection.thread_id,
           projection.id,
         )
-      database
-        .query("DELETE FROM messages_fts WHERE thread_id = ? AND message_id = ?")
-        .run(projection.thread_id, projection.id)
-      database
-        .query("INSERT INTO messages_fts(text, thread_id, message_id) VALUES (?, ?, ?)")
-        .run(projection.text, projection.thread_id, projection.id)
+      refreshMessageSearch(database, { threadId: projection.thread_id, id: projection.id, text: projection.text })
     }
     database.exec("UPDATE transcript_maintenance SET projection_write = 0 WHERE id = 1")
     database.exec("DELETE FROM transcript_pending_deltas")

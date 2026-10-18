@@ -4,6 +4,11 @@ import { externalizeMessageParts } from "../kernel/output-blobs"
 import { summarizeToolResolutions } from "./tool-resolution-summary"
 
 type ToolPart = Extract<MessagePart, { callId: string }>
+type RecoveryRun = { id: string; thread_id: string; status: Run["status"]; reply_message_id: string | null }
+
+export const PENDING_TOOL_RECOVERY_SQL = `SELECT r.id, r.thread_id, r.status, r.reply_message_id
+  FROM tool_recovery_pending p CROSS JOIN runs r
+  WHERE r.id = p.run_id AND r.status IN ('succeeded','failed','canceled','interrupted')`
 const isTool = (part: MessagePart): part is ToolPart => "callId" in part
 const outcome = (part: ToolPart): ToolResolution => {
   if (part.resolution === "completed_unobserved") return "completed_unobserved"
@@ -105,19 +110,20 @@ export const createToolResolutions = (kernel: Kernel) => {
       .run(reason.toUpperCase(), Date.now(), run.id)
     return result
   }
-  const reconcile = (store: StoreApi, threadId?: string): void => {
+  const clearPending = (runId: string): void => {
+    database?.query("DELETE FROM tool_recovery_pending WHERE run_id = ?").run(runId)
+  }
+  const getPendingRuns = (threadId?: string): RecoveryRun[] =>
+    (database
+      ?.query(`${PENDING_TOOL_RECOVERY_SQL} ${threadId ? "AND p.thread_id = ?" : ""} ORDER BY r.queued_at, r.id`)
+      .all(...(threadId ? [threadId] : [])) ?? []) as RecoveryRun[]
+
+  const reconcileRun = (store: StoreApi, runId: string): void => {
     if (!database) return
-    const terminalRuns = database
-      .query(`SELECT id, thread_id, status, reply_message_id FROM runs WHERE status IN ('succeeded','failed','canceled','interrupted')
-      ${threadId ? "AND thread_id = ?" : ""}`)
-      .all(...(threadId ? [threadId] : [])) as Array<{
-      id: string
-      thread_id: string
-      status: Run["status"]
-      reply_message_id: string | null
-    }>
-    // Calls can be persisted before the first assistant message is written.
-    for (const row of terminalRuns) {
+    database.transaction(() => {
+      const row = database.query(`${PENDING_TOOL_RECOVERY_SQL} AND p.run_id = ?`).get(runId) as RecoveryRun | null
+      if (!row) return
+      // Calls can be persisted before the first assistant message is written.
       const message = database
         .query(`SELECT id, parts_json, status FROM messages
         WHERE thread_id = ? AND run_id = ? AND role = 'assistant' AND kind = 'text'
@@ -131,8 +137,8 @@ export const createToolResolutions = (kernel: Kernel) => {
       const reason = terminalReason(row.status)
       const run = { id: row.id, threadId: row.thread_id } as Run
       const next = finish(run, parts, reason)
-      if (message && (JSON.stringify(parts) !== JSON.stringify(next) || message.status === "streaming"))
-        store.updateMessage({
+      if (message && (JSON.stringify(parts) !== JSON.stringify(next) || message.status === "streaming")) {
+        const updated = store.updateMessage({
           threadId: run.threadId,
           messageId: message.id,
           patch: {
@@ -140,12 +146,31 @@ export const createToolResolutions = (kernel: Kernel) => {
             status: row.status === "succeeded" ? "complete" : row.status === "canceled" ? "canceled" : "failed",
           },
         })
+        if (!updated.success) throw new Error(updated.error)
+      }
+      clearPending(row.id)
+    })()
+  }
+  const reconcile = (store: StoreApi, threadId?: string): void => {
+    database?.transaction(() =>
+      getPendingRuns(threadId).forEach((row) => {
+        reconcileRun(store, row.id)
+      }),
+    )()
+  }
+  const reconcilePending = async (store: StoreApi, threadId: string): Promise<void> => {
+    for (const row of getPendingRuns(threadId)) {
+      reconcileRun(store, row.id)
+      // Live imports may introduce many completed turns; let other clients run between them.
+      await new Promise<void>((resolve) => setImmediate(resolve))
     }
   }
   return {
     record,
     finish,
     reconcile,
+    reconcilePending,
+    clearPending,
     summary: (store: StoreApi, threadId: string, leafId?: string) => {
       const summary = database ? summarizeToolResolutions(database, store, threadId, leafId) : null
       return summary ? kernel.redact(summary) : null

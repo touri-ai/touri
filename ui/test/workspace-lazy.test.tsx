@@ -76,7 +76,7 @@ test("134 threads across 15 bots request only the selected history and render be
   await act(async () => barrier.resolve())
 })
 
-test("selection evicts visited histories and reloads them on return", async () => {
+test("selection evicts the visited transcript and reloads background events from durable history", async () => {
   const api = createMockApi()
   offscreenMessage(api)
   const hook = renderHook(() => useWorkspace(api))
