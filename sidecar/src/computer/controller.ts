@@ -1,5 +1,6 @@
 import type { Bot, HostMethods, Id, Kernel, ToolContext, ToolErr, ToolOk, ToolResult } from "@touri/contracts"
 import { withApprovalOutcome } from "../approvals/outcome"
+import type { PerformanceStageRunner } from "../kernel/performance"
 import { type ComputerGrant, createGrantStore, type GrantStore } from "./grants"
 import { type ComputerLock, createComputerLock } from "./lock"
 import { type InputTarget, protectedPoint, protectedTarget, sameTarget, terminalTarget } from "./targets"
@@ -46,6 +47,7 @@ export type ComputerController = {
 }
 
 type ControllerOptions = {
+  runStage?: PerformanceStageRunner
   now?: () => number
   grantWaitMs?: number
   sleep?: (milliseconds: number) => Promise<void>
@@ -151,7 +153,8 @@ export const createComputerController = (kernel: Kernel, options: ControllerOpti
   }
 
   const expiredGrant = (): number => {
-    const expired = grants.expire({ at: now() })
+    const expire = () => grants.expire({ at: now() })
+    const expired = options.runStage ? options.runStage("computer_grant_expiry", expire) : expire()
     const owner = lock.owner()
     if (
       expired > 0 &&

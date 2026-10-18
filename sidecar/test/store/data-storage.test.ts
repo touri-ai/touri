@@ -1,6 +1,6 @@
-import type { Database } from "bun:sqlite"
-import { expect, test } from "bun:test"
-import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs"
+import { Database } from "bun:sqlite"
+import { afterEach, expect, test } from "bun:test"
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { MessagePart, Run, StorageMaintenanceStatus, ToolCallPart } from "@touri/contracts"
@@ -8,6 +8,7 @@ import { createKernel } from "../../src/kernel"
 import {
   collectUnusedOutputBlobs,
   compactMessageBatch,
+  createStorageMaintenance,
   dataRetentionDays,
   storageStats,
 } from "../../src/kernel/data-maintenance"
@@ -22,6 +23,7 @@ import {
   OUTPUT_BLOB_THRESHOLD,
   OUTPUT_INLINE_BUDGET_BYTES,
 } from "../../src/kernel/output-blobs"
+import { createPerformanceStageTracker, type PerformanceStageRunner } from "../../src/kernel/performance"
 import { compactTranscript } from "../../src/kernel/transcript-storage"
 import { createToolResolutions } from "../../src/runtime/tool-resolutions"
 import { init as initStore } from "../../src/store"
@@ -38,7 +40,8 @@ const seed = (database: Database) =>
 const fixture = async (automatic = false) => {
   const root = mkdtempSync(join(tmpdir(), "touri-storage-"))
   const runtime = createKernel({ appData: root })
-  await initStore(runtime.kernel)
+  const stages = createPerformanceStageTracker(() => 0)
+  await initStore(runtime.kernel, stages.run)
   if (!automatic) runtime.kernel.services.use("storage.maintenance")?.dispose()
   const database = runtime.kernel.db as Database
   seed(database)
@@ -48,6 +51,7 @@ const fixture = async (automatic = false) => {
     root,
     runtime,
     database,
+    stages,
     store,
     close: () => {
       runtime.stop()
@@ -86,6 +90,15 @@ const insert = (
       source: "local",
     },
   })
+
+test("startup transcript recovery is included in performance diagnostics", async () => {
+  const f = await fixture()
+  try {
+    expect(f.stages.snapshot().map((timing) => timing.stage)).toContain("store_transcript_startup_recovery")
+  } finally {
+    f.close()
+  }
+})
 
 for (const kind of ["text", "tool", "screenshot"] as const) {
   test(`bytes per turn: ${kind} attributes snapshot/event/blob growth and bounds DB duplication`, async () => {
@@ -616,6 +629,38 @@ test("garbage collection yields and defers deletion if a live writer introduces 
   }
 })
 
+test("orphan attachment scanning yields after bounded directory batches and reports its stage", async () => {
+  const f = await fixture()
+  try {
+    const directory = join(f.root, "attachments", "aa")
+    mkdirSync(directory, { recursive: true })
+    Array.from({ length: 150 }, (_, index) => index).forEach((index) => {
+      const id = `aa${index.toString(16).padStart(62, "0")}`
+      writeFileSync(join(directory, `${id}.tool-output.txt`), "synthetic")
+    })
+    let yields = 0
+    const stages = createPerformanceStageTracker(() => 0)
+
+    const removed = await collectUnusedOutputBlobs(
+      f.database,
+      f.root,
+      Date.now(),
+      async () => {
+        yields += 1
+      },
+      new Set(),
+      stages.run,
+    )
+
+    expect(removed).toBe(0)
+    expect(yields).toBe(3)
+    expect(stages.snapshot().map((timing) => timing.stage)).toContain("storage_attachment_orphan_scan")
+    expect(f.database.query("SELECT COUNT(*) AS n FROM attachments").get()).toEqual({ n: 0 })
+  } finally {
+    f.close()
+  }
+})
+
 test("a user upload sharing a tool-output hash remains after tool retention removes all references", async () => {
   const f = await fixture()
   try {
@@ -818,4 +863,288 @@ test("process replay keeps a bounded UTF-8 tail of the file-backed log", () => {
   expect(bounded.lines.at(-1)).toBe(tail)
   expect(bounded.lines.join("\n")).not.toContain("�")
   expect(event.lines[0]?.length).toBe(100_000)
+})
+
+const scanCleanups = new Set<() => void>()
+afterEach(() => {
+  // Reverse only the fresh snapshot so dependent connections close first.
+  Array.from(scanCleanups)
+    .reverse()
+    .forEach((cleanup) => {
+      cleanup()
+    })
+  scanCleanups.clear()
+})
+
+const makeScanFixture = async () => {
+  const scan = await fixture()
+  scanCleanups.add(scan.close)
+
+  return scan
+}
+
+const makeOutputCandidates = (scan: Awaited<ReturnType<typeof fixture>>, count: number) => {
+  const directory = join(scan.root, "attachments", "ab")
+  mkdirSync(directory, { recursive: true })
+
+  return Array.from({ length: count }, (_, index) => {
+    const id = `ab${index.toString(16).padStart(62, "0")}`
+    const path = join(directory, `${id}.tool-output.txt`)
+    writeFileSync(path, "synthetic output")
+    scan.database
+      .query(`INSERT INTO attachments(id,mime,bytes,path,origin_path,created_at)
+      VALUES (?,'text/plain',16,?,'touri:tool-output',1)`)
+      .run(id, path)
+
+    return { id, path }
+  })
+}
+
+test("old orphan files are removed across multiple yielded partitions while recent files remain", async () => {
+  const scan = await makeScanFixture()
+  const candidates = makeOutputCandidates(scan, 125)
+  scan.database.exec("DELETE FROM attachments")
+  const recent = candidates.at(-1)
+  const old = candidates.filter((candidate) => candidate !== recent)
+  old.forEach((candidate) => {
+    utimesSync(candidate.path, 1, 1)
+  })
+  let yields = 0
+
+  const removed = await collectUnusedOutputBlobs(scan.database, scan.root, Date.now(), async () => {
+    yields += 1
+  })
+
+  expect(removed).toBe(124)
+  expect(yields).toBeGreaterThanOrEqual(2)
+  expect(old.every((candidate) => !existsSync(candidate.path))).toBe(true)
+  expect(recent && existsSync(recent.path)).toBe(true)
+})
+
+test("attachment candidates use bounded rowid pages and never materialize an eligible-ID SQL list", async () => {
+  const scan = await makeScanFixture()
+  makeOutputCandidates(scan, 125)
+  const queries: string[] = []
+  const pageSizes: number[] = []
+  // The recorder wraps only this fixture's connection, preserving native receivers.
+  const database = new Proxy(scan.database, {
+    get(target, key) {
+      if (key !== "query") {
+        const value = Reflect.get(target, key, target)
+        return typeof value === "function" ? value.bind(target) : value
+      }
+      return (sql: string) => {
+        queries.push(sql)
+        const statement = target.query(sql)
+        if (!sql.includes("FROM attachments")) return statement
+
+        return new Proxy(statement, {
+          get(statement, key) {
+            if (key === "all")
+              return (...args: Array<string | number>) => {
+                const rows = statement.all(...args)
+                pageSizes.push(rows.length)
+
+                return rows
+              }
+            const value = Reflect.get(statement, key, statement)
+            return typeof value === "function" ? value.bind(statement) : value
+          },
+        })
+      }
+    },
+  })
+  let yields = 0
+
+  const removed = await collectUnusedOutputBlobs(database, scan.root, Date.now(), async () => {
+    yields += 1
+  })
+
+  expect(removed).toBe(125)
+  expect(yields).toBeGreaterThanOrEqual(3)
+  expect(Math.max(...pageSizes)).toBeLessThanOrEqual(50)
+  expect(queries.some((query) => query.includes("json_each"))).toBe(false)
+})
+
+test("a writer invalidates collection and the next pass fully rescans earlier candidates", async () => {
+  const scan = await makeScanFixture()
+  const [shared, orphan] = makeOutputCandidates(scan, 2)
+  if (!shared || !orphan) throw new Error("Missing synthetic candidates")
+  let deferred = 0
+
+  const first = await collectUnusedOutputBlobs(
+    scan.database,
+    scan.root,
+    Date.now(),
+    async () => {
+      insert(scan, "late-reference", [{ ...tool(""), outputJson: null, outputAttachmentId: shared.id }])
+    },
+    new Set(),
+    undefined,
+    () => {
+      deferred += 1
+    },
+  )
+  const second = await collectUnusedOutputBlobs(scan.database, scan.root)
+
+  expect(first).toBe(0)
+  expect(deferred).toBe(1)
+  expect(second).toBe(1)
+  expect(existsSync(shared.path)).toBe(true)
+  expect(existsSync(orphan.path)).toBe(false)
+  expect(scan.database.query("SELECT id FROM attachments").all()).toEqual([{ id: shared.id }])
+})
+
+test("commits on a second SQLite connection also invalidate a collection pass", async () => {
+  const scan = await makeScanFixture()
+  const [shared, orphan] = makeOutputCandidates(scan, 2)
+  if (!shared || !orphan) throw new Error("Missing synthetic candidates")
+  const writer = new Database(scan.database.filename)
+  scanCleanups.add(() => {
+    writer.close()
+  })
+
+  const first = await collectUnusedOutputBlobs(scan.database, scan.root, Date.now(), async () => {
+    writer
+      .query(`INSERT INTO messages(id,thread_id,role,kind,text,parts_json,created_at,updated_at)
+      VALUES ('external-reference','t','assistant','text','Synthetic',?,1,1)`)
+      .run(JSON.stringify([{ ...tool(""), outputJson: null, outputAttachmentId: shared.id }]))
+  })
+  const second = await collectUnusedOutputBlobs(scan.database, scan.root)
+
+  expect(first).toBe(0)
+  expect(second).toBe(1)
+  expect(existsSync(shared.path)).toBe(true)
+  expect(existsSync(orphan.path)).toBe(false)
+})
+
+const makeScheduledMaintenance = (
+  scan: Awaited<ReturnType<typeof makeScanFixture>>,
+  yieldBatch: () => Promise<void>,
+  runStage: PerformanceStageRunner,
+) => {
+  // Only this fixture owns the next callback; tests advance it without waiting a day.
+  let scheduled: { action: () => Promise<void>; delay: number; timer: ReturnType<typeof setTimeout> } | undefined
+  let errors = 0
+  const maintenance = createStorageMaintenance({
+    database: scan.database,
+    appData: scan.root,
+    publishResync: () => {},
+    retryDeletedBrowserSessionKeys: async () => {},
+    onError: () => {
+      errors += 1
+    },
+    yieldBatch,
+    runStage,
+    schedule: (action, delay) => {
+      const timer = setTimeout(() => {}, 86400_000)
+      timer.unref()
+      scheduled = { action, delay, timer }
+      return timer
+    },
+  })
+  scanCleanups.add(maintenance.dispose)
+  const getNextDelay = () => scheduled?.delay
+
+  return {
+    maintenance,
+    getErrors: () => errors,
+    getNextDelay,
+    runNext: async () => {
+      // Compaction and retention can require several short preparation ticks.
+      for (let pass = 0; pass < 100; pass++) {
+        const next = scheduled
+        if (!next) throw new Error("Missing maintenance callback")
+        clearTimeout(next.timer)
+        scheduled = undefined
+        await next.action()
+        if ((getNextDelay() ?? 0) >= 1000) return
+      }
+      throw new Error("Maintenance did not finish its bounded preparation")
+    },
+  }
+}
+
+test("a commit after the reference worker reads a batch defers without an error and rescans safely", async () => {
+  const scan = await makeScanFixture()
+  const [shared, orphan] = makeOutputCandidates(scan, 2)
+  if (!shared || !orphan) throw new Error("Missing synthetic candidates")
+  insert(scan, "seed", [])
+  const writer = new Database(scan.database.filename)
+  scanCleanups.add(() => {
+    writer.close()
+  })
+  let scanning = false
+  let commits = 0
+  const scheduled = makeScheduledMaintenance(
+    scan,
+    async () => {
+      if (!scanning || commits) return
+      writer
+        .query(`INSERT INTO messages(id,thread_id,role,kind,text,parts_json,created_at,updated_at)
+        VALUES ('worker-reference','t','assistant','text','Synthetic',?,?,?)`)
+        .run(JSON.stringify([{ ...tool(""), outputJson: null, outputAttachmentId: shared.id }]), Date.now(), Date.now())
+      commits += 1
+    },
+    (stage, action, input) => {
+      if (stage === "storage_attachment_reference_scan") scanning = true
+      return scan.stages.run(stage, action, input)
+    },
+  )
+
+  await scheduled.runNext()
+
+  expect(commits).toBe(1)
+  expect(scheduled.getNextDelay()).toBe(1000)
+  expect(scheduled.getErrors()).toBe(0)
+  expect(scheduled.maintenance.snapshot().error).toBeUndefined()
+  expect(existsSync(shared.path)).toBe(true)
+  expect(existsSync(orphan.path)).toBe(true)
+
+  await scheduled.runNext()
+
+  expect(scheduled.getErrors()).toBe(0)
+  expect(scheduled.maintenance.snapshot()).toMatchObject({ running: false })
+  expect(scheduled.maintenance.snapshot().error).toBeUndefined()
+  expect(scan.database.query("SELECT id FROM attachments").all()).toEqual([{ id: shared.id }])
+  expect(existsSync(shared.path)).toBe(true)
+  expect(existsSync(orphan.path)).toBe(false)
+})
+
+test("repeated worker deferrals back off to a cap and return to the daily schedule", async () => {
+  const scan = await makeScanFixture()
+  makeOutputCandidates(scan, 1)
+  insert(scan, "seed", [])
+  const writer = new Database(scan.database.filename)
+  scanCleanups.add(() => {
+    writer.close()
+  })
+  let scanning = false
+  const scheduled = makeScheduledMaintenance(
+    scan,
+    async () => {
+      if (!scanning) return
+      writer.query("UPDATE messages SET text = text || '.' WHERE id = 'seed'").run()
+    },
+    (stage, action, input) => {
+      if (stage === "storage_message_compaction_batch") scanning = false
+      if (stage === "storage_attachment_reference_scan") scanning = true
+      return scan.stages.run(stage, action, input)
+    },
+  )
+
+  for (const delay of [1000, 2000, 4000, 8000, 16_000, 32_000, 60_000, 86400_000]) {
+    await scheduled.runNext()
+
+    expect(scheduled.getNextDelay()).toBe(delay)
+    expect(scheduled.getErrors()).toBe(0)
+    expect(scheduled.maintenance.snapshot().error).toBeUndefined()
+  }
+
+  expect(scheduled.maintenance.snapshot().running).toBe(false)
+  expect(scan.database.query("SELECT COUNT(*) AS n FROM attachments").get()).toEqual({ n: 1 })
+
+  await scheduled.runNext()
+
+  expect(scheduled.getNextDelay()).toBe(1000)
 })

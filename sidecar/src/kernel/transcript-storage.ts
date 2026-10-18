@@ -18,6 +18,84 @@ type ProjectionTarget = { threadId: string; messageId: string }
 
 // Snapshots are mutable projections. The small, durable entries remain the source of
 // uncheckpointed text, including after a crash. Publishing a projection adds no event.
+export const materializeTranscriptBatch = (database: Database, threadId?: string): boolean =>
+  database.transaction(() => {
+    const filter = threadId ? "WHERE thread_id=?" : ""
+    const statement = database.query(`SELECT thread_id,message_id FROM transcript_pending_deltas
+      ${filter} ORDER BY thread_id,message_id LIMIT 1`)
+    const pending = (threadId ? statement.get(threadId) : statement.get()) as {
+      thread_id: string
+      message_id: string
+    } | null
+    if (!pending) return false
+
+    const target = { threadId: pending.thread_id, messageId: pending.message_id }
+    const snapshot = database
+      .query("SELECT updated_seq FROM messages WHERE thread_id=? AND id=?")
+      .get(target.threadId, target.messageId) as { updated_seq: number } | null
+    if (!snapshot) {
+      clearPendingProjection(database, target)
+      return true
+    }
+    const delta = database
+      .query(`SELECT seq FROM transcript_entries INDEXED BY transcript_delta_message
+      WHERE thread_id=? AND json_extract(event_json,'$.messageId')=?
+        AND json_extract(event_json,'$.type')='message.delta' ORDER BY seq DESC LIMIT 1`)
+      .get(target.threadId, target.messageId) as { seq: number } | null
+    const part = database
+      .query(`SELECT e.seq FROM transcript_part_entries part INDEXED BY transcript_part_message
+      CROSS JOIN transcript_entries e WHERE part.thread_id=? AND part.message_id=?
+        AND e.id=part.entry_id ORDER BY part.entry_id DESC LIMIT 1`)
+      .get(target.threadId, target.messageId) as { seq: number } | null
+    const head = Math.max(delta?.seq ?? 0, part?.seq ?? 0)
+    if (head <= snapshot.updated_seq) {
+      clearPendingProjection(database, target)
+      return true
+    }
+    database.exec(`CREATE TEMP TABLE IF NOT EXISTS transcript_recovery_scan (
+      thread_id TEXT NOT NULL,message_id TEXT NOT NULL,cursor INTEGER NOT NULL,
+      PRIMARY KEY(thread_id,message_id)
+    )`)
+    const saved = database
+      .query("SELECT cursor FROM transcript_recovery_scan WHERE thread_id=? AND message_id=?")
+      .get(target.threadId, target.messageId) as { cursor: number } | null
+    const cursor = Math.max(saved?.cursor ?? 0, snapshot.updated_seq)
+    // Bound rows BEFORE JSON extraction/filtering or ordering. A LIMIT after
+    // sorting both entire per-message streams would still read their full history.
+    const rows = database
+      .query(`SELECT id AS entry_id,seq AS delta_seq,at,? AS id,thread_id
+      FROM transcript_entries WHERE thread_id=? AND seq>? AND seq<=? ORDER BY seq LIMIT 128`)
+      .all(target.messageId, target.threadId, cursor, head) as Array<Omit<ProjectionEntry, "event_json">>
+    // Local replay/cursor accumulators avoid materializing a window of legacy
+    // full snapshots; one large historical body is fetched and released at a time.
+    const relevant: ProjectionEntry[] = []
+    const started = performance.now()
+    let next = rows.length ? cursor : head
+    for (const row of rows) {
+      if (next !== cursor && performance.now() - started >= 8) break
+
+      const body = database.query("SELECT event_json FROM transcript_entries WHERE id=?").get(row.entry_id) as {
+        event_json: string
+      }
+      const event = JSON.parse(body.event_json) as { type: string; messageId?: string }
+      next = row.delta_seq
+      if (event.messageId !== target.messageId || (event.type !== "message.delta" && event.type !== "message.parts"))
+        continue
+
+      relevant.push({ ...row, event_json: body.event_json })
+    }
+    applyTranscriptEntries(database, relevant, target, next >= head)
+    database
+      .query(`INSERT INTO transcript_recovery_scan(thread_id,message_id,cursor) VALUES (?,?,?)
+      ON CONFLICT(thread_id,message_id) DO UPDATE SET cursor=excluded.cursor`)
+      .run(target.threadId, target.messageId, next)
+    if (next >= head)
+      database
+        .query("DELETE FROM transcript_recovery_scan WHERE thread_id=? AND message_id=?")
+        .run(target.threadId, target.messageId)
+    return true
+  })()
+
 export const materializeTranscript = (database: Database, target?: ProjectionTarget): void => {
   if (!database.query("SELECT 1 FROM transcript_pending_deltas LIMIT 1").get()) return
   database.transaction(() => {
@@ -46,67 +124,87 @@ export const materializeTranscript = (database: Database, target?: ProjectionTar
     )
     const rows = (
       target ? statement.all(target.threadId, target.messageId, target.threadId, target.messageId) : statement.all()
-    ) as Array<{ id: string; thread_id: string; delta_seq: number; at: number; event_json: string }>
-    const projections = new Map<string, Projection & { parts: MessagePart[] }>()
-    for (const row of rows) {
-      const key = JSON.stringify([row.thread_id, row.id])
-      let projection = projections.get(key)
-      if (!projection) {
-        const snapshot = database
-          .query("SELECT * FROM messages WHERE thread_id = ? AND id = ?")
-          .get(row.thread_id, row.id) as Projection
-        projection = { ...snapshot, parts: JSON.parse(snapshot.parts_json) as MessagePart[] }
-      }
-      const event = JSON.parse(row.event_json) as StreamEvent
-      if (event.type === "message.parts") {
-        for (const patch of event.parts) {
-          if (patch.partIndex > projection.parts.length) throw new Error("Transcript part has a gap")
-          projection.parts[patch.partIndex] = patch.part
-        }
-        projection.text = projection.parts.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("")
-      } else {
-        const part = projection.parts[event.partIndex]
-        const text = part?.type === "text" || part?.type === "reasoning" ? part.text : ""
-        if (event.offset === undefined || event.offset > text.length) throw new Error("Transcript delta has a gap")
-        const suffix = event.delta.slice(Math.max(0, text.length - event.offset))
-        const partType = event.partType ?? (part?.type === "reasoning" ? "reasoning" : "text")
-        projection.parts[event.partIndex] = {
-          ...(part?.type === partType ? part : {}),
-          type: partType,
-          text: text + suffix,
-        }
-        if (partType === "text") projection.text += suffix
-      }
-      projection.updated_seq = row.delta_seq
-      projection.generation = event.generation ?? projection.generation
-      projection.updated_at = row.at
-      projections.set(key, projection)
-    }
-    if (!projections.size) {
-      clearPendingProjection(database, target)
-      return
-    }
-    database.exec("UPDATE transcript_maintenance SET projection_write = 1 WHERE id = 1")
-    for (const projection of projections.values()) {
-      database
-        .query(
-          `UPDATE messages SET text = ?, parts_json = ?, updated_seq = ?, generation = ?, updated_at = ?
-           WHERE thread_id = ? AND id = ?`,
-        )
-        .run(
-          projection.text,
-          JSON.stringify(projection.parts),
-          projection.updated_seq,
-          projection.generation,
-          projection.updated_at,
-          projection.thread_id,
-          projection.id,
-        )
-      refreshMessageSearch(database, { threadId: projection.thread_id, id: projection.id, text: projection.text })
-    }
-    database.exec("UPDATE transcript_maintenance SET projection_write = 0 WHERE id = 1")
-    clearPendingProjection(database, target)
+    ) as ProjectionEntry[]
+    applyTranscriptEntries(database, rows, target)
   })()
+}
+
+type ProjectionEntry = {
+  entry_id: number
+  id: string
+  thread_id: string
+  delta_seq: number
+  at: number
+  event_json: string
+}
+
+const applyTranscriptEntries = (
+  database: Database,
+  rows: ProjectionEntry[],
+  target?: ProjectionTarget,
+  complete = true,
+): void => {
+  // Only private projection copies and the local accumulator change in this
+  // replay loop; copying the growing text/parts for each delta would be quadratic.
+  const projections = new Map<string, Projection & { parts: MessagePart[] }>()
+  for (const row of rows) {
+    const key = JSON.stringify([row.thread_id, row.id])
+    let projection = projections.get(key)
+    if (!projection) {
+      const snapshot = database
+        .query("SELECT * FROM messages WHERE thread_id = ? AND id = ?")
+        .get(row.thread_id, row.id) as Projection
+      projection = { ...snapshot, parts: JSON.parse(snapshot.parts_json) as MessagePart[] }
+    }
+    const event = JSON.parse(row.event_json) as StreamEvent
+    if (event.type === "message.parts") {
+      for (const patch of event.parts) {
+        if (patch.partIndex > projection.parts.length) throw new Error("Transcript part has a gap")
+        projection.parts[patch.partIndex] = patch.part
+      }
+      projection.text = projection.parts.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("")
+    } else {
+      const part = projection.parts[event.partIndex]
+      const text = part?.type === "text" || part?.type === "reasoning" ? part.text : ""
+      if (event.offset === undefined || event.offset > text.length) throw new Error("Transcript delta has a gap")
+      const suffix = event.delta.slice(Math.max(0, text.length - event.offset))
+      const partType = event.partType ?? (part?.type === "reasoning" ? "reasoning" : "text")
+      projection.parts[event.partIndex] = {
+        ...(part?.type === partType ? part : {}),
+        type: partType,
+        text: text + suffix,
+      }
+      if (partType === "text") projection.text += suffix
+    }
+    projection.updated_seq = row.delta_seq
+    projection.generation = event.generation ?? projection.generation
+    projection.updated_at = row.at
+    projections.set(key, projection)
+  }
+  if (!projections.size) {
+    if (complete) clearPendingProjection(database, target)
+    return
+  }
+  database.exec("UPDATE transcript_maintenance SET projection_write = 1 WHERE id = 1")
+  for (const projection of projections.values()) {
+    database
+      .query(
+        `UPDATE messages SET text = ?, parts_json = ?, updated_seq = ?, generation = ?, updated_at = ?
+           WHERE thread_id = ? AND id = ?`,
+      )
+      .run(
+        projection.text,
+        JSON.stringify(projection.parts),
+        projection.updated_seq,
+        projection.generation,
+        projection.updated_at,
+        projection.thread_id,
+        projection.id,
+      )
+    refreshMessageSearch(database, { threadId: projection.thread_id, id: projection.id, text: projection.text })
+  }
+  database.exec("UPDATE transcript_maintenance SET projection_write = 0 WHERE id = 1")
+  if (complete) clearPendingProjection(database, target)
 }
 
 const clearPendingProjection = (database: Database, target?: ProjectionTarget): void => {
@@ -215,10 +313,24 @@ export const compactTranscript = ({
     const cutoffs = new Map<string, number>()
     for (const row of aged)
       if (row.id <= checkpoint) cutoffs.set(row.thread_id, Math.max(cutoffs.get(row.thread_id) ?? 0, row.seq))
-    const threads = database.query("SELECT id FROM threads WHERE updated_seq > ?").all(entriesPerThread) as {
+    database.exec(`CREATE TEMP TABLE IF NOT EXISTS transcript_retention_cursor (
+      id INTEGER PRIMARY KEY, cursor INTEGER NOT NULL
+    ); INSERT OR IGNORE INTO transcript_retention_cursor VALUES (1,0)`)
+    const cursor = (
+      database.query("SELECT cursor FROM transcript_retention_cursor WHERE id=1").get() as { cursor: number }
+    ).cursor
+    // One reverse-history seek per pass: gathering cutoffs for hundreds of
+    // threads before the deletion budget would still monopolize a cold store.
+    const threadLimit = 1
+    const threads = database
+      .query(`SELECT rowid AS cursor,id,updated_seq FROM threads
+      WHERE rowid > ? ORDER BY rowid LIMIT ?`)
+      .all(cursor, threadLimit) as Array<{
+      cursor: number
       id: string
-    }[]
-    for (const thread of threads) {
+      updated_seq: number
+    }>
+    for (const thread of threads.filter((thread) => thread.updated_seq > entriesPerThread)) {
       // A bounded reverse seek replaces ranking every retained historical row.
       const excess = database
         .query(`SELECT seq, id FROM transcript_entries
@@ -227,8 +339,16 @@ export const compactTranscript = ({
       if (excess && excess.id <= checkpoint) cutoffs.set(thread.id, Math.max(cutoffs.get(thread.id) ?? 0, excess.seq))
     }
     // Old history must not checkpoint unrelated growing replies on every retention batch.
-    if (Array.from(cutoffs).some(([threadId, cutoff]) => hasPendingRetentionProjection(database, threadId, cutoff)))
-      materializeTranscript(database)
+    const pendingThread = Array.from(cutoffs).find(([threadId, cutoff]) =>
+      hasPendingRetentionProjection(database, threadId, cutoff),
+    )
+    if (pendingThread) {
+      materializeTranscriptBatch(database, pendingThread[0])
+      const needsAnotherCheckpoint = Array.from(cutoffs).some(([threadId, cutoff]) =>
+        hasPendingRetentionProjection(database, threadId, cutoff),
+      )
+      if (needsAnotherCheckpoint) return true
+    }
     let removed = 0
     let more = false
     const started = performance.now()
@@ -296,6 +416,10 @@ export const compactTranscript = ({
       if (rows.length >= limit) more = true
     }
     database.exec("UPDATE transcript_maintenance SET delete_before_id = 0, ui_delete_before_seq = 0 WHERE id = 1")
-    return more
+    if (!more)
+      database
+        .query("UPDATE transcript_retention_cursor SET cursor=? WHERE id=1")
+        .run(threads.length === threadLimit ? (threads.at(-1)?.cursor ?? cursor) : 0)
+    return more || threads.length === threadLimit
   })()
 }

@@ -1,7 +1,9 @@
 import { randomBytes } from "node:crypto"
 import { createConnection, type Socket } from "node:net"
 import type { DesktopSocket, Kernel, RouteModule, VmDesktop, VmRuntime } from "@touri/contracts"
+import { createBackgroundTask, getMeasuredStage, yieldBackground } from "../kernel/background-task"
 import { type DeviceSession, deviceSession, socketDeviceContext } from "../kernel/device-session"
+import type { PerformanceStageRunner } from "../kernel/performance"
 import clipboard from "./clipboard.py" with { type: "text" }
 import { DesktopInputGate } from "./desktop-protocol"
 import { VncAuthenticator } from "./vnc-auth"
@@ -33,6 +35,7 @@ export const createDesktopGateway = (
   kernel: Kernel,
   vm: VmRuntime,
   paste?: (input: { botId: string; text: string; signal: AbortSignal }) => Promise<void>,
+  runStage?: PerformanceStageRunner,
 ) => {
   const sessions = new Map<string, Session>()
   const closing = new Map<string, { botId: string; settled: Promise<void> }>()
@@ -47,9 +50,25 @@ export const createDesktopGateway = (
   }
   let epoch = 0
   let disposed = false
+  const revocation = createBackgroundTask(
+    "desktop_revocation",
+    async () => {
+      const measure = getMeasuredStage("desktop_revocation", runStage)
+      let scanned = 0
+      for (const [id, session] of sessions) {
+        if (disposed) return
+
+        measure(() => {
+          if (session.device && !session.device.active()) void close(id, "device revoked")
+        })
+        scanned += 1
+        if (scanned % 50 === 0) await yieldBackground()
+      }
+    },
+    runStage,
+  )
   const revocationTimer = setInterval(() => {
-    for (const [id, session] of sessions)
-      if (session.device && !session.device.active()) void close(id, "device revoked")
+    void revocation.run().catch(() => undefined)
   }, 250)
   revocationTimer.unref()
   const botFor = (botId: string) => kernel.services.use("store.api")?.getBot({ botId })
@@ -219,6 +238,7 @@ export const createDesktopGateway = (
     revokeControl,
     dispose: () => {
       clearInterval(revocationTimer)
+      revocation.dispose()
       if (disposed) return
       disposed = true
       epoch += 1

@@ -1,6 +1,7 @@
 import { Database } from "bun:sqlite"
 import { createHash } from "node:crypto"
 import { mkdtempSync } from "node:fs"
+import { rm } from "node:fs/promises"
 import { homedir, tmpdir } from "node:os"
 import { basename, isAbsolute, join, relative, resolve } from "node:path"
 import type {
@@ -17,8 +18,10 @@ import type {
   Provider,
   ThreadUsage,
 } from "@touri/contracts"
+import { getMeasuredStage } from "../../kernel/background-task"
 import { atomicWriteFile, attachmentMime } from "../../kernel/files"
 import { refreshMessageSearch } from "../../kernel/message-search"
+import type { PerformanceStageRunner } from "../../kernel/performance"
 import { DEPRECATED_IMPORT_ALIAS } from "../deprecatedAliases"
 import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, rmSync, statSync } from "./fs"
 import { assertImportOwner, importIdentity, legacySourceOrigin, sourceOrigin } from "./identity"
@@ -1512,15 +1515,18 @@ const safeStagingPath = ({ stagingRoot, path }: { stagingRoot: string; path: str
   return suffix.length > 0 && !suffix.startsWith("..") && !suffix.startsWith("/")
 }
 
-export const cleanupExpiredLegacyStaging = ({
+export const cleanupExpiredLegacyStaging = async ({
   kernel,
   now = Date.now(),
   maxEntries = 32,
+  runStage,
 }: {
   kernel: Kernel
   now?: number
   maxEntries?: number
-}): number => {
+  runStage?: PerformanceStageRunner | undefined
+}): Promise<number> => {
+  const measure = getMeasuredStage("import_staging_expiry", runStage)
   const stagingRoots = [join(kernel.paths.importsDir, "legacy"), join(kernel.paths.importsDir, DEPRECATED_IMPORT_ALIAS)]
   const database = kernel.db as Database
   const cursorKey = "imports.legacy.expiry.cursor"
@@ -1534,17 +1540,28 @@ export const cleanupExpiredLegacyStaging = ({
     /* restart an invalid cursor */
   }
   if (!Number.isSafeInteger(cursor) || cursor < 0) cursor = 0
-  const rows = database
-    .query(
-      "SELECT rowid AS cursor, id, report_json FROM imports WHERE rowid > ? AND status = 'failed' AND json_valid(report_json) AND json_type(report_json,'$.staging') = 'object' ORDER BY rowid LIMIT ?",
-    )
-    .all(cursor, maxEntries) as Array<{ cursor: number; id: string; report_json: string }>
+  const rows = measure(() =>
+    database
+      .query("SELECT rowid AS cursor,id,status FROM imports WHERE rowid > ? ORDER BY rowid LIMIT ?")
+      .all(cursor, maxEntries),
+  ) as Array<{ cursor: number; id: string; status: string }>
   let removed = 0
   for (const row of rows) {
+    await Bun.sleep(0)
     cursor = row.cursor
+    if (row.status !== "failed") continue
+
+    const storedReport = measure(() =>
+      database.query("SELECT report_json FROM imports WHERE id=? AND status='failed'").get(row.id),
+    ) as { report_json: string | null } | null
+    if (!storedReport?.report_json) continue
+
     let report: StoredImportReport
     try {
-      report = JSON.parse(row.report_json) as StoredImportReport
+      const parsed: unknown = measure(() => JSON.parse(storedReport.report_json ?? "null"))
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) continue
+
+      report = parsed as StoredImportReport
     } catch {
       continue
     }
@@ -1560,12 +1577,18 @@ export const cleanupExpiredLegacyStaging = ({
     const stagingRoot = stagingRoots.find((root) => safeStagingPath({ stagingRoot: root, path: staging.path }))
     if (!stagingRoot) continue
     try {
-      for (const path of stagingPaths({ stagingRoot, importId: row.id })) rmSync(path, { recursive: true, force: true })
+      for (const path of stagingPaths({ stagingRoot, importId: row.id }))
+        await rm(path, { recursive: true, force: true })
     } catch {
       continue
     } // Retry next traversal; never claim removal on a filesystem failure.
-    delete report.staging
-    database.query("UPDATE imports SET report_json = ? WHERE id = ?").run(JSON.stringify(report), row.id)
+    const { staging: _staging, ...retained } = report
+    // A concurrent retry owns its fresh report and staging; do not overwrite it.
+    measure(() =>
+      database
+        .query("UPDATE imports SET report_json = ? WHERE id = ? AND status='failed' AND report_json=?")
+        .run(JSON.stringify(retained), row.id, storedReport.report_json),
+    )
     removed += 1
   }
   database
@@ -1639,7 +1662,7 @@ const executeLegacyImport = async ({ kernel, importId, options }: ImportArgs): P
   }
   let staged!: StagedSource
   let succeeded = false
-  if (!options.dryRun) cleanupExpiredLegacyStaging({ kernel })
+  if (!options.dryRun) await cleanupExpiredLegacyStaging({ kernel })
   database
     .query(
       "INSERT INTO imports (id, source, origin, status, report_json, started_at, finished_at) VALUES (?, 'legacy', ?, 'running', NULL, ?, NULL)",

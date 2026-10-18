@@ -16,7 +16,9 @@ import type {
 import { approvalDestination } from "../approvals/grants"
 import { delegatedBot } from "../groups/security"
 import { buildChildEnv } from "../kernel"
+import { createBackgroundTask, getMeasuredStage, yieldBackground } from "../kernel/background-task"
 import { atomicAppendFile, atomicWriteFile, ensurePrivateDirectory, removePrivateFile } from "../kernel/files"
+import type { PerformanceStageRunner } from "../kernel/performance"
 import { backoffDelay, debounce, sleep } from "../kernel/policy"
 import { linuxRuntimeEnvironment } from "../platform/linux-environment"
 import { projectSandboxCommand } from "../platform/project-sandbox"
@@ -174,11 +176,13 @@ export const createSupervisor = ({
   store,
   workState,
   recoverBefore,
+  runStage,
 }: {
   kernel: Kernel
   store: ProjectStore
   workState?: WorkState
   recoverBefore?: number
+  runStage?: PerformanceStageRunner
 }): Supervisor => {
   const work: WorkState = workState ?? createWorkState({ database: kernel.db as Database })
   const managed = new Map<string, ManagedProcess>()
@@ -480,15 +484,18 @@ export const createSupervisor = ({
       const delay = backoffDelay({ attempt: history.length, initialMs: baseDelay, maxMs: 60_000 })
       const restartTimer = setTimeout(() => {
         restartTimers.delete(process.spec.id)
-        const current = store.getProcessSpec({ processId: process.spec.id })
+        const measure = getMeasuredStage("project_supervisor_restart", runStage)
+        const current = measure(() => store.getProcessSpec({ processId: process.spec.id }))
         if (!current || shuttingDown) return
-        void start({
-          project,
-          spec: current,
-          waitMs: 0,
-          scope: { turnId: process.effect?.turnId ?? null, threadId: null, automatic: true },
-          ...(process.confine ? { confine: process.confine } : {}),
-        })
+        void measure(() =>
+          start({
+            project,
+            spec: current,
+            waitMs: 0,
+            scope: { turnId: process.effect?.turnId ?? null, threadId: null, automatic: true },
+            ...(process.confine ? { confine: process.confine } : {}),
+          }),
+        )
       }, delay)
       restartTimers.set(process.spec.id, restartTimer)
     })
@@ -889,12 +896,23 @@ export const createSupervisor = ({
       await child.exited
       return errorResult("DENIED", "A autorização mudou antes da execução.")
     }
+    const portTask = createBackgroundTask(
+      "project_supervisor_ports",
+      async () => {
+        const ports = await detectPorts({ project, process })
+        for (const port of ports) {
+          if (shuttingDown || process.stopped) return
+
+          await yieldBackground()
+          await emitPreview({ project, process, port: port.port })
+        }
+      },
+      runStage,
+    )
     portTimers.set(
       spec.id,
       setInterval(() => {
-        void detectPorts({ project, process }).then((ports) => {
-          for (const port of ports) void emitPreview({ project, process, port: port.port })
-        })
+        void portTask.run().catch(() => undefined)
       }, 2000),
     )
     publish(spec.id)

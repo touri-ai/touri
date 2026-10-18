@@ -14,9 +14,11 @@ import type {
   VmRuntime,
 } from "@touri/contracts"
 import { getApiRequiredHosts } from "../api-models/runtime"
+import { createBackgroundTask, getMeasuredStage, yieldBackground } from "../kernel/background-task"
 import { botFolderFingerprint } from "../kernel/bot-folders"
 import { TouriError } from "../kernel/errors"
 import { atomicWriteFile, ensurePrivateDirectory, removePrivateFile } from "../kernel/files"
+import type { PerformanceStageRunner } from "../kernel/performance"
 import { isIdle } from "../kernel/policy"
 import { safeThreadId } from "../mcp/auth"
 import { createRunMcpToken } from "../mcp/run-token"
@@ -113,6 +115,7 @@ export const createVmRuntime = ({
   hostHome = homedir(),
   timeouts = {},
   connectionKeys = memoryConnectionKeys(kernel),
+  runStage,
 }: {
   kernel: Kernel
   provider: VmProvider
@@ -120,6 +123,7 @@ export const createVmRuntime = ({
   now?: () => number
   hostHome?: string
   timeouts?: Partial<{ boot: number; ready: number; auth: number; exec: number; service: number }>
+  runStage?: PerformanceStageRunner
   connectionKeys?: ConnectionKeys
 }) => {
   const limits = { boot: 600_000, ready: 90_000, auth: 15_000, exec: 30_000, ...timeouts }
@@ -1287,9 +1291,29 @@ export const createVmRuntime = ({
     return started
   }
   let disposing: Promise<void> | null = null
-  const sweep = async () => {
+  const getMachines = async function* (stage: "vm_idle_sweep" | "vm_orphan_sweep") {
+    const measure = getMeasuredStage(stage, runStage)
+    let cursor = 0
+    const upper = measure(() => db.query("SELECT COALESCE(MAX(rowid),0) AS cursor FROM bot_machines").get()) as {
+      cursor: number
+    }
+    while (!disposing) {
+      const rows = measure(() =>
+        db
+          .query(`SELECT rowid AS scan_cursor,* FROM bot_machines
+        WHERE rowid>? AND rowid<=? ORDER BY rowid LIMIT 50`)
+          .all(cursor, upper.cursor),
+      ) as Array<Metadata & { scan_cursor: number }>
+      if (!rows.length) return
+
+      yield* rows
+      cursor = rows.at(-1)?.scan_cursor ?? cursor
+      await yieldBackground()
+    }
+  }
+  const sweepIdle = async () => {
     if (disposing) return
-    for (const row of db.query("SELECT * FROM bot_machines").all() as Array<Metadata>)
+    for await (const row of getMachines("vm_idle_sweep"))
       await serial(row.bot_id, async () => {
         const bot = kernel.services.use("store.api")?.getBot({ botId: row.bot_id })
         if (disposing || leased(row.bot_id) || !bot) return
@@ -1305,6 +1329,8 @@ export const createVmRuntime = ({
         await park(row.bot_id)
       })
   }
+  const idleTask = createBackgroundTask("vm_idle_sweep", sweepIdle, runStage)
+  const sweep = idleTask.run
   const browserEndpoint: VmRuntime["browserEndpoint"] = ({ botId, runningOnly = false, signal }) =>
     vmStage({
       kernel,
@@ -1540,21 +1566,48 @@ export const createVmRuntime = ({
     void sweep().catch((error) => kernel.log({ level: "warn", module: "vm", msg: kernel.redact(String(error)) }))
   }, 30_000)
   timer.unref()
-  const sweepOrphans = () =>
-    provider.sweepOrphans?.({
-      protectedVolumes: [
-        ...(db.query("SELECT * FROM bot_machines").all() as Array<Metadata>).flatMap((meta) =>
-          persistentMounts(meta)
+  const orphanTask = createBackgroundTask(
+    "vm_orphan_sweep",
+    async () => {
+      if (!provider.sweepOrphans) return
+
+      // Only local accumulators change while yielding; the provider needs the
+      // complete protected-volume set before it can decide which volumes to remove.
+      const protectedVolumes: string[] = []
+      for await (const meta of getMachines("vm_orphan_sweep")) {
+        protectedVolumes.push(
+          ...persistentMounts(meta)
             .filter((mount) => mount.type === "volume")
             .map((mount) => mount.source),
-        ),
-        ...(
-          db.query("SELECT value_json FROM settings WHERE key LIKE 'retained-vm-volumes:%'").all() as Array<{
-            value_json: string
-          }>
-        ).flatMap((row) => JSON.parse(row.value_json) as string[]),
-      ],
-    }) ?? Promise.resolve()
+        )
+      }
+      let cursor = "retained-vm-volumes:"
+      const measure = getMeasuredStage("vm_orphan_sweep", runStage)
+      while (!disposing) {
+        const rows = measure(() =>
+          db
+            .query(`SELECT key,value_json FROM settings
+        WHERE key>? AND key<'retained-vm-volumes;' ORDER BY key LIMIT 50`)
+            .all(cursor),
+        ) as Array<{
+          key: string
+          value_json: string
+        }>
+        if (!rows.length) break
+
+        rows.forEach((row) => {
+          protectedVolumes.push(...(JSON.parse(row.value_json) as string[]))
+        })
+        cursor = rows.at(-1)?.key ?? cursor
+        await yieldBackground()
+      }
+      if (disposing) return
+
+      await provider.sweepOrphans({ protectedVolumes })
+    },
+    runStage,
+  )
+  const sweepOrphans = orphanTask.run
   const orphanTimer = setInterval(() => {
     if (!capability.available) return
     void sweepOrphans().catch((error) =>
@@ -1573,6 +1626,8 @@ export const createVmRuntime = ({
       unsubscribe()
       clearInterval(timer)
       clearInterval(orphanTimer)
+      idleTask.dispose()
+      orphanTask.dispose()
       await Promise.allSettled(locks.values())
       for (const row of db.query("SELECT * FROM bot_machines").all() as Array<Metadata>) {
         await stopResources(row.bot_id)

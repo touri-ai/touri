@@ -96,7 +96,7 @@ test("A18 expiry progresses beyond 32 records and clears persisted staging marke
         )
         .run(id, JSON.stringify({ staging: { path, expiresAt: 1 } }), index)
     }
-    for (let pass = 0; pass < 4; pass++) cleanupExpiredLegacyStaging({ kernel, now: 2 })
+    for (let pass = 0; pass < 4; pass++) await cleanupExpiredLegacyStaging({ kernel, now: 2 })
     expect(
       database.query("SELECT count(*) AS n FROM imports WHERE json_extract(report_json,'$.staging') IS NOT NULL").get(),
     ).toEqual({ n: 0 })
@@ -113,7 +113,7 @@ test("expiry also removes failed staging left under the deprecated staging direc
         "INSERT INTO imports(id,source,origin,status,report_json,started_at) VALUES ('old-staging','legacy','fixture','failed',?,1)",
       )
       .run(JSON.stringify({ staging: { path, expiresAt: 1 } }))
-    expect(cleanupExpiredLegacyStaging({ kernel, now: 2 })).toBe(1)
+    expect(await cleanupExpiredLegacyStaging({ kernel, now: 2 })).toBe(1)
     expect(existsSync(path)).toBe(false)
   })
 })
@@ -130,7 +130,7 @@ test("A18 scheduled expiry runs while idle and resumes the persisted cursor", as
         )
         .run(id, JSON.stringify({ staging: { path, expiresAt: 1 } }))
     }
-    expect(cleanupExpiredLegacyStaging({ kernel })).toBe(32)
+    expect(await cleanupExpiredLegacyStaging({ kernel })).toBe(32)
     const stop = scheduleLegacyExpiry({ ...kernel }, 10)
     try {
       for (let attempt = 0; attempt < 100; attempt++) {
@@ -669,7 +669,7 @@ test("failed staging is retained with seven-day metadata and bounded expiry clea
     expect(existsSync(report.staging.path)).toBe(true)
     expect(statSync(report.staging.path).mode & 0o777).toBe(0o700)
     expect(report.warnings.some((warning) => warning.includes(report.staging.path))).toBe(true)
-    expect(cleanupExpiredLegacyStaging({ kernel, now: report.staging.expiresAt + 1 })).toBe(1)
+    expect(await cleanupExpiredLegacyStaging({ kernel, now: report.staging.expiresAt + 1 })).toBe(1)
     expect(existsSync(report.staging.path)).toBe(false)
   })
 })
@@ -810,5 +810,29 @@ test("absolute attachment paths under <root>/attachments are accepted by basenam
     const result = await run()
     expect(result.report.warnings.filter((warning) => warning.includes("source/attachments/valid.png"))).toEqual([])
     expect(database.query("SELECT count(*) AS count FROM attachments").get()).toEqual({ count: 1 })
+  })
+})
+
+test("expiry advances bounded rowid windows past malformed and non-object reports", async () => {
+  await withImport(async ({ database, kernel }) => {
+    const insert = database.query(`INSERT INTO imports(id,source,origin,status,report_json,started_at)
+      VALUES (?,'legacy','fixture','failed',?,1)`)
+    const invalidReports = ["null", "[]", '"text"', "{}", "{"]
+    invalidReports.forEach((report, index) => {
+      insert.run(`invalid-${index}`, report)
+    })
+    const path = join(kernel.paths.importsDir, "legacy", "expired-valid")
+    mkdirSync(path, { recursive: true })
+    insert.run("expired-valid", JSON.stringify({ staging: { path, expiresAt: 1 } }))
+
+    const first = await cleanupExpiredLegacyStaging({ kernel, now: 2, maxEntries: 2 })
+    const second = await cleanupExpiredLegacyStaging({ kernel, now: 2, maxEntries: 2 })
+    const third = await cleanupExpiredLegacyStaging({ kernel, now: 2, maxEntries: 2 })
+
+    expect([first, second, third]).toEqual([0, 0, 1])
+    expect(existsSync(path)).toBe(false)
+    expect(database.query("SELECT report_json FROM imports WHERE id='expired-valid'").get()).toEqual({
+      report_json: "{}",
+    })
   })
 })

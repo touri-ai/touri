@@ -1,4 +1,5 @@
 import type { Kernel } from "@touri/contracts"
+import type { PerformanceStageRunner } from "../kernel/performance"
 import { createFolderRoutes } from "./folders"
 import { createProjectStore } from "./repository"
 import { createProjectInfo, createProjectRoutes } from "./routes"
@@ -7,9 +8,9 @@ import { createProjectTools } from "./tools"
 
 export const name = "projects"
 
-export const init = async (kernel: Kernel): Promise<void> => {
+export const init = async (kernel: Kernel, runStage?: PerformanceStageRunner): Promise<void> => {
   const store = createProjectStore({ kernel })
-  const supervisor = createSupervisor({ kernel, store })
+  const supervisor = createSupervisor({ kernel, store, ...(runStage ? { runStage } : {}) })
   const projectInfo = createProjectInfo({ kernel, store, supervisor })
   kernel.services.provide("projects.info", projectInfo)
   kernel.registerRoutes(createFolderRoutes({ appData: kernel.paths.appData }))

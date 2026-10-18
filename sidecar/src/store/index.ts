@@ -44,7 +44,7 @@ import { refreshMessageSearch } from "../kernel/message-search"
 import { externalizeMessageParts, OUTPUT_BLOB_ORIGIN, readOutputAttachment } from "../kernel/output-blobs"
 import type { PerformanceStageRunner } from "../kernel/performance"
 import { isProfileProvider, validProviderProfileName } from "../kernel/provider-profiles"
-import { materializeTranscript } from "../kernel/transcript-storage"
+import { materializeTranscriptBatch } from "../kernel/transcript-storage"
 import { getLocalNotificationPreferences } from "../notify/preferences"
 import { hostComputerSupported } from "../platform"
 import { getHostIdentity } from "../platform/host"
@@ -447,7 +447,10 @@ export const init = async (kernel: Kernel, runStage?: PerformanceStageRunner): P
   await refreshHostFolderAccess()
   installDoctor(kernel)
   const database = kernel.db as Database
-  materializeTranscript(database)
+  const recoverTranscript = () => materializeTranscriptBatch(database)
+  while (runStage ? runStage("store_transcript_startup_recovery", recoverTranscript) : recoverTranscript()) {
+    await new Promise<void>((resolve) => setImmediate(resolve))
+  }
 
   const getBot = ({ botId }: { botId: string }): Bot | null => {
     const row = database.query("SELECT * FROM bots WHERE id = ? AND archived_at IS NULL").get(botId) as RawBot | null
@@ -472,7 +475,8 @@ export const init = async (kernel: Kernel, runStage?: PerformanceStageRunner): P
     !!database.query("SELECT 1 FROM messages WHERE thread_id = ? AND id = ?").get(threadId, messageId)
 
   const refreshFts = ({ message }: { message: Message }): void => {
-    refreshMessageSearch(database, message)
+    if (runStage) runStage("message_search_index", () => refreshMessageSearch(database, message))
+    else refreshMessageSearch(database, message)
   }
 
   const streamWriter = createStreamWriter({

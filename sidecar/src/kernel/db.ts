@@ -31,10 +31,11 @@ import goalsSql from "./migrations/0025.sql" with { type: "text" }
 import recoveryCenterSql from "./migrations/0026.sql" with { type: "text" }
 import messageSearchSql from "./migrations/0027.sql" with { type: "text" }
 import groupDeletionSql from "./migrations/0028.sql" with { type: "text" }
+import computerGrantExpirySql from "./migrations/0029.sql" with { type: "text" }
 import { withSuspendedSchemaObjects } from "./schema-rebuild"
 import { applyUpgradeBaselines } from "./upgradeBaselines"
 
-export const SCHEMA_VERSION = 28
+export const SCHEMA_VERSION = 29
 
 const FREE_PAGE_RATIO_LIMIT = 0.2
 
@@ -121,7 +122,10 @@ export const openDatabase = ({ filename }: { filename: string }): Database => {
       const result = legacySourceRebuild({ database })
       if (!result.success) throw new Error(`Legacy source migration: ${result.error}`)
       rebuilt = result.rebuilt
-      if (!database.query("SELECT value FROM schema_meta WHERE key = 'opencode_provider_version'").get()) {
+      const needsSessionRebuild = !database
+        .query("SELECT value FROM schema_meta WHERE key = 'opencode_provider_version'")
+        .get()
+      if (needsSessionRebuild) {
         const objects = database
           .query(
             "SELECT name, sql FROM sqlite_schema WHERE tbl_name IN ('bots','provider_sessions') AND type IN ('index','trigger') AND sql IS NOT NULL",
@@ -139,7 +143,9 @@ export const openDatabase = ({ filename }: { filename: string }): Database => {
           if (!database.query("SELECT 1 FROM sqlite_schema WHERE name = ?").get(object.name)) database.exec(object.sql)
         }
       }
-      if (database.query("PRAGMA foreign_key_check").all().length)
+      // This audit walks every FK-bearing table, including large histories. A
+      // normal restart has not rebuilt anything and must not reread the store.
+      if ((rebuilt.length || needsSessionRebuild) && database.query("PRAGMA foreign_key_check").all().length)
         throw new Error("Database rebuild: invalid foreign keys")
       database.exec("UPDATE schema_meta SET value = '12' WHERE key = 'schema_version'")
     })()
@@ -198,5 +204,6 @@ export const openDatabase = ({ filename }: { filename: string }): Database => {
     database.exec("UPDATE schema_meta SET value = '27' WHERE key = 'schema_version'")
   })()
   database.transaction(() => database.exec(groupDeletionSql))()
+  database.transaction(() => database.exec(computerGrantExpirySql))()
   return database
 }

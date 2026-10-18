@@ -2,8 +2,10 @@ import type { Database } from "bun:sqlite"
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto"
 import { join } from "node:path"
 import type { Kernel } from "@touri/contracts"
+import { getMeasuredStage } from "../kernel/background-task"
 import { TouriError } from "../kernel/errors"
 import { atomicWriteFile, ensurePrivateDirectory, readPrivateFile, removePrivateFile } from "../kernel/files"
+import type { PerformanceStageRunner } from "../kernel/performance"
 import { withDeadline } from "../kernel/policy"
 
 export type SavedCookie = Record<string, unknown>
@@ -145,13 +147,16 @@ export const saveBotSession = async ({
   kernel,
   botId,
   session,
+  runStage,
 }: {
   kernel: Kernel
   botId: string
   session: SavedSession
+  runStage?: PerformanceStageRunner
 }): Promise<boolean> => {
   if (!SAFE_BOT_ID.test(botId)) return false
-  const plain = JSON.stringify(session)
+  const measure = getMeasuredStage("browser_session_save", runStage)
+  const plain = measure(() => JSON.stringify(session))
   if (plain.length > MAX_SESSION_BYTES) return false
   let key: Buffer
   try {
@@ -172,12 +177,14 @@ export const saveBotSession = async ({
     return false
   }
   ensurePrivateDirectory({ root: kernel.paths.appData, path: sessionsDir(kernel) })
-  atomicWriteFile({
-    root: kernel.paths.appData,
-    path: sessionPath(kernel, botId),
-    content: JSON.stringify(seal(plain, key)),
-    mode: 0o600,
-  })
+  measure(() =>
+    atomicWriteFile({
+      root: kernel.paths.appData,
+      path: sessionPath(kernel, botId),
+      content: JSON.stringify(seal(plain, key)),
+      mode: 0o600,
+    }),
+  )
   return true
 }
 

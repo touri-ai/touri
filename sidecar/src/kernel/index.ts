@@ -6,6 +6,7 @@ import { retryDeletedBrowserSessionKeys } from "../browser/sessionVault"
 import { compressBufferedResponse } from "../cli/web/compression"
 import { getHostIdentity } from "../platform/host"
 import { touriVersion } from "../version"
+import { createBackgroundTask, getMeasuredStage, yieldBackground } from "./background-task"
 import { createStorageMaintenance } from "./data-maintenance"
 import { openDatabase, SCHEMA_VERSION } from "./db"
 import { bindDeviceSession, type DeviceSession, deviceSession, socketDeviceContext } from "./device-session"
@@ -277,18 +278,38 @@ export const createKernel = ({
 
     return routes.getTemplate(request.method, pathname.slice(prefix.length)) ?? "unmatched"
   }
-  const revocationTimer = setInterval(() => {
-    for (const socket of liveSockets)
-      if (socket.data.session && !socket.data.session.active()) {
-        if (socket.data.channel === "machine-presence") socket.data.release()
-        if (socket.data.channel === "desktop") services.use("vm.desktop")?.close(socket.data.id)
-        socket.close(4003, "Acesso do dispositivo encerrado")
-        liveSockets.delete(socket)
+  const revocationTask = createBackgroundTask(
+    "device_revocation",
+    async () => {
+      const measure = getMeasuredStage("device_revocation", stageTracker.run)
+      let scanned = 0
+      for (const socket of liveSockets) {
+        measure(() => {
+          if (!socket.data.session || socket.data.session.active()) return
+
+          if (socket.data.channel === "machine-presence") socket.data.release()
+          if (socket.data.channel === "desktop") services.use("vm.desktop")?.close(socket.data.id)
+          socket.close(4003, "Acesso do dispositivo encerrado")
+          liveSockets.delete(socket)
+        })
+        scanned += 1
+        if (scanned % 50 === 0) await yieldBackground()
+        if (revocationTask.isStopped()) return
       }
-    for (const controller of pendingRequests) {
-      const session = deviceSession(controller.signal)
-      if (session && !session.active()) controller.abort()
-    }
+      for (const controller of pendingRequests) {
+        measure(() => {
+          const session = deviceSession(controller.signal)
+          if (session && !session.active()) controller.abort()
+        })
+        scanned += 1
+        if (scanned % 50 === 0) await yieldBackground()
+        if (revocationTask.isStopped()) return
+      }
+    },
+    stageTracker.run,
+  )
+  const revocationTimer = setInterval(() => {
+    void revocationTask.run().catch(() => undefined)
   }, 250)
   revocationTimer.unref()
   const uiToken = process.env.TOURI_UI_TOKEN || developmentUiToken()
@@ -581,6 +602,7 @@ export const createKernel = ({
     diagnostics.stop()
     services.use("store.api")?.flushWrites?.({ stopping: true })
     clearInterval(revocationTimer)
+    revocationTask.dispose()
     for (const controller of pendingRequests) controller.abort()
     for (const socket of liveSockets) socket.close(1001, "Servidor encerrado")
     liveSockets.clear()

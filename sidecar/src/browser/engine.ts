@@ -13,6 +13,8 @@ import type {
   ToolResult,
 } from "@touri/contracts"
 import { approveSecretRelease } from "../approvals/secrets"
+import { createBackgroundTask, getMeasuredStage, yieldBackground } from "../kernel/background-task"
+import type { PerformanceStageRunner } from "../kernel/performance"
 import { hostPlatform } from "../platform"
 import * as macos from "../platform/macos"
 import { CHALLENGE_ELEMENT_IDS, classifyBlockedPage, describeBlockedPage } from "./blockedPage"
@@ -1279,6 +1281,7 @@ export const createBrowserEngine = ({
   profile,
   discoverBotId,
   localBrowser = false,
+  runStage,
 }: {
   kernel: Kernel
   mode?: "system-chrome" | "chrome-for-testing"
@@ -1286,6 +1289,7 @@ export const createBrowserEngine = ({
   profile?: string
   discoverBotId?: string
   localBrowser?: boolean
+  runStage?: PerformanceStageRunner
 }): BrowserEngine => {
   const refHistory = new WeakMap<TabState, Map<string, { node: NodeRef; url: string }>>()
   const rememberRefs = (tab: TabState) => {
@@ -1832,7 +1836,15 @@ export const createBrowserEngine = ({
 
   const startSessionTimer = (): void => {
     if (sessionTimer || discoverBotId || localBrowser) return
-    sessionTimer = setInterval(() => void saveSessions().catch(() => undefined), SESSION_SAVE_INTERVAL_MS)
+    const task = createBackgroundTask(
+      "browser_session_save",
+      async () => {
+        if (retired) return
+        await saveSessions()
+      },
+      runStage,
+    )
+    sessionTimer = setInterval(() => void task.run().catch(() => undefined), SESSION_SAVE_INTERVAL_MS)
     sessionTimer.unref?.()
   }
 
@@ -1897,11 +1909,21 @@ export const createBrowserEngine = ({
     )
     const session: SavedSession = { cookies: cookiesOf(listing), storage }
     savedSessions.set(botId, session)
-    await saveBotSession({ kernel, botId, session }).catch(() => false)
+    await saveBotSession({ kernel, botId, session, ...(runStage ? { runStage } : {}) }).catch(() => false)
   }
 
   const saveSessions = async (): Promise<void> => {
-    for (const [botId, contextId] of [...contextOwners]) await saveOneSession({ botId, contextId })
+    const measure = getMeasuredStage("browser_session_save", runStage)
+    const limit = contextOwners.size
+    let saved = 0
+    for (const [botId, contextId] of contextOwners) {
+      if (saved >= limit) return
+
+      saved += 1
+
+      await yieldBackground()
+      await measure(() => saveOneSession({ botId, contextId }))
+    }
   }
 
   const disposeBotContext = async (botId: string): Promise<void> => {

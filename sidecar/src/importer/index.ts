@@ -1,5 +1,7 @@
 import type { Database } from "bun:sqlite"
 import type { ImportReport, Kernel, LegacyImportOptions, RouteResponse } from "@touri/contracts"
+import { createBackgroundTask } from "../kernel/background-task"
+import type { PerformanceStageRunner } from "../kernel/performance"
 import { DEPRECATED_IMPORT_ALIAS } from "./deprecatedAliases"
 import { cleanupExpiredLegacyStaging, runLegacyImport } from "./legacy/import"
 
@@ -119,25 +121,39 @@ const readStoredJob = ({ kernel, importId }: { kernel: Kernel; importId: string 
   return { status: row.status, report: row.report_json ? (JSON.parse(row.report_json) as ImportReport) : null }
 }
 
-export const scheduleLegacyExpiry = (kernel: Kernel, intervalMs = 60_000): (() => void) => {
+export const scheduleLegacyExpiry = (
+  kernel: Kernel,
+  intervalMs = 60_000,
+  runStage?: PerformanceStageRunner,
+): (() => void) => {
+  const task = createBackgroundTask(
+    "import_staging_expiry",
+    async () => {
+      await cleanupExpiredLegacyStaging({ kernel, runStage })
+    },
+    runStage,
+  )
   const timer = setInterval(() => {
-    try {
-      cleanupExpiredLegacyStaging({ kernel })
-    } catch {
+    void task.run().catch(() => {
+      const database = kernel.db as Database
       try {
-        ;(kernel.db as Database).query("SELECT 1").get()
+        database.query("SELECT 1").get()
       } catch {
         clearInterval(timer)
+        task.dispose()
         return
       }
       kernel.log({ level: "error", module: "importer", msg: "Failed to expire import snapshots; cleanup will retry" })
-    }
+    })
   }, intervalMs)
   timer.unref()
-  return () => clearInterval(timer)
+  return () => {
+    clearInterval(timer)
+    task.dispose()
+  }
 }
 
-export const init = async (kernel: Kernel): Promise<void> => {
+export const init = async (kernel: Kernel, runStage?: PerformanceStageRunner): Promise<void> => {
   const startImport = async ({ body }: { body: unknown }): Promise<RouteResponse> => {
     const options = parseOptions(body)
     if (!options)
@@ -148,8 +164,11 @@ export const init = async (kernel: Kernel): Promise<void> => {
     startJob({ kernel, importId, options })
     return { status: 202, json: { importId } }
   }
-  cleanupExpiredLegacyStaging({ kernel })
-  scheduleLegacyExpiry(kernel)
+  await cleanupExpiredLegacyStaging({ kernel, runStage })
+  const stopExpiry = scheduleLegacyExpiry(kernel, 60_000, runStage)
+  kernel.onHostNotification((notification) => {
+    if (notification.method === "app.willQuit") stopExpiry()
+  })
   kernel.registerRoutes({
     name: "importer",
     routes: [

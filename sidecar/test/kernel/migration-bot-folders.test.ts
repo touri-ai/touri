@@ -20,7 +20,7 @@ test("schema 15 upgrades grants off by default and preserves them across reopens
       INSERT INTO bot_machines(bot_id,vm_id,volume) VALUES ('bot','machine','workspace');`)
     database.close()
     database = openDatabase({ filename })
-    expect(SCHEMA_VERSION).toBe(28)
+    expect(SCHEMA_VERSION).toBe(29)
     expect(database.query("SELECT name,folders_json,any_folder_access FROM bots").get()).toEqual({
       name: "Keep",
       folders_json: "[]",

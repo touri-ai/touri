@@ -1,5 +1,6 @@
 import type { Database } from "bun:sqlite"
 import type { Kernel, NotifyKind } from "@touri/contracts"
+import type { PerformanceStageRunner } from "../kernel/performance"
 import { createNotifier } from "./notifier"
 import { createRecoverySync } from "./recovery"
 import { createNotifyRoutes } from "./routes"
@@ -11,7 +12,7 @@ export const name = "notify"
 const RESOLVED_BY_USER_REPLY: ReadonlyArray<NotifyKind> = ["question", "turn-failed", "routine-failed"]
 const RESOLVED_BY_NEW_RUN: ReadonlyArray<NotifyKind> = ["turn-failed", "routine-failed", "routine-deferred"]
 
-export const init = async (kernel: Kernel): Promise<void> => {
+export const init = async (kernel: Kernel, runStage?: PerformanceStageRunner): Promise<void> => {
   const store = createNotificationStore({ db: kernel.db as Database })
   const hub = createSseHub({ store })
   const notifier = createNotifier({ kernel, store, hub })
@@ -21,19 +22,25 @@ export const init = async (kernel: Kernel): Promise<void> => {
     notifier.resolveRequest({ requestId, resolution })
   })
 
-  const syncRecoveryTasks = createRecoverySync(kernel, store, notifier)
+  const syncRecoveryTasks = createRecoverySync(kernel, store, notifier, runStage)
   syncRecoveryTasks({ silent: true })
 
   // Heal history written by an older runtime or a completion missed while restarting.
-  const historical = (kernel.db as Database)
-    .query(`SELECT DISTINCT n.id FROM notifications n
-      JOIN runs r ON r.bot_id = n.bot_id
-      JOIN threads t ON t.id = r.thread_id
-      WHERE n.resolved_at IS NULL AND n.kind IN ('turn-failed', 'routine-failed', 'routine-deferred')
-        AND n.thread_id = COALESCE(t.group_thread_id, r.thread_id)
-        AND r.status = 'succeeded' AND r.finished_at > n.created_at`)
-    .all() as Array<{ id: number }>
-  for (const item of historical) notifier.finish({ id: item.id, resolution: "expired" })
+  const reconcileHistory = (): void => {
+    const historical = (kernel.db as Database)
+      .query(`SELECT DISTINCT n.id FROM notifications n
+        JOIN runs r ON r.bot_id = n.bot_id
+        JOIN threads t ON t.id = r.thread_id
+        WHERE n.resolved_at IS NULL AND n.kind IN ('turn-failed', 'routine-failed', 'routine-deferred')
+          AND n.thread_id = COALESCE(t.group_thread_id, r.thread_id)
+          AND r.status = 'succeeded' AND r.finished_at > n.created_at`)
+      .all() as Array<{ id: number }>
+    historical.forEach((item) => {
+      notifier.finish({ id: item.id, resolution: "expired" })
+    })
+  }
+  if (runStage) runStage("notification_history_reconcile", reconcileHistory)
+  else reconcileHistory()
 
   kernel.subscribe(({ event }) => {
     if (event.type === "run.updated" && ["queued", "starting", "running", "succeeded"].includes(event.run.status)) {

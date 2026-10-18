@@ -3,6 +3,7 @@ import { homedir } from "node:os"
 import type { Kernel } from "@touri/contracts"
 import { initCloud } from "../cloud/module"
 import { routeVmRuntime } from "../cloud/runtime"
+import type { PerformanceStageRunner } from "../kernel/performance"
 import { machineCapability, ociEngine } from "../platform"
 import { createOciProvider } from "../platform/oci-provider"
 import { createAppleContainerProvider } from "./apple-container"
@@ -22,7 +23,7 @@ import { createVmRuntime } from "./runtime"
 import { botWorkspaceRoutes } from "./workspace-routes"
 
 export const name = "vm"
-export const init = async (kernel: Kernel): Promise<void> => {
+export const init = async (kernel: Kernel, runStage?: PerformanceStageRunner): Promise<void> => {
   const loginFlow = createProviderLoginFlow({ kernel })
   kernel.registerRoutes({ name: "provider-login-flow", routes: loginFlow.routes })
   kernel.onHostNotification((notification) => {
@@ -38,12 +39,12 @@ export const init = async (kernel: Kernel): Promise<void> => {
             kernel.log({ level: "warn", module: "vm", msg: code, data: { detail: kernel.redact(detail) } }),
         })
   const capability = machineCapability()
-  const runtime = createVmRuntime({ kernel, provider, capability })
+  const runtime = createVmRuntime({ kernel, provider, capability, ...(runStage ? { runStage } : {}) })
   const cloud = initCloud(kernel)
   const service = routeVmRuntime(kernel, runtime.service, cloud.runtime)
   kernel.services.provide("vm.runtime", service)
   kernel.services.provide("vm.shutdown", runtime.dispose)
-  const desktop = createDesktopGateway(kernel, service, runtime.paste)
+  const desktop = createDesktopGateway(kernel, service, runtime.paste, runStage)
   kernel.services.provide("vm.desktop", desktop.service)
   kernel.registerRoutes(desktop.routes)
   if (runtime.service.capability.available) {

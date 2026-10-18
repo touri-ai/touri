@@ -1,10 +1,12 @@
 import type { Database } from "bun:sqlite"
-import { existsSync, lstatSync, readdirSync, statSync } from "node:fs"
+import { existsSync, statSync } from "node:fs"
+import { lstat, opendir } from "node:fs/promises"
 import { join } from "node:path"
 import type { Kernel, MessagePart, StorageMaintenanceStatus, StorageStats } from "@touri/contracts"
+import { AttachmentReferenceScanDeferred, createAttachmentReferenceScan } from "./attachment-reference-scan"
 import { removePrivateFile } from "./files"
 import { historyMigrationStatus } from "./history-backfill"
-import { attachmentReferences, externalizeMessageParts, OUTPUT_BLOB_ORIGIN } from "./output-blobs"
+import { externalizeMessageParts, OUTPUT_BLOB_ORIGIN } from "./output-blobs"
 import type { PerformanceStageRunner } from "./performance"
 import { createStorageUpgrade, maintainDatabasePages } from "./storage-upgrade"
 import { compactTranscript } from "./transcript-storage"
@@ -14,6 +16,12 @@ export const DEFAULT_DATA_RETENTION_DAYS = 30
 const DAY = 24 * 60 * 60 * 1000
 const progressKey = "storage.maintenance.progress"
 type Cursor = { cursor: number; total: number; completedAt: number; changed?: boolean }
+
+export const getStorageCollectionRetryDelay = (deferrals: number): number => {
+  if (deferrals >= 8) return DAY
+
+  return Math.min(60_000, 1000 * 2 ** (deferrals - 1))
+}
 
 export const validDataRetentionDays = (days: unknown): days is number =>
   Number.isInteger(days) && Number(days) >= 0 && Number(days) <= 3650
@@ -155,84 +163,140 @@ export const collectUnusedOutputBlobs = async (
   now = Date.now(),
   yieldBatch: (() => Promise<void>) | null = () => Bun.sleep(0),
   deletedBotAttachments = new Set<string>(),
+  runStage?: PerformanceStageRunner,
+  onDeferred: () => void = () => {},
+  signal?: AbortSignal,
 ): Promise<number> => {
+  const measure = <Value>(stage: Parameters<PerformanceStageRunner>[0], action: () => Value): Value =>
+    runStage ? runStage(stage, action) : action()
+
   // Bot deletion can request collection while the backup worker is reading.
   // Keep its referenced files intact until their backup pins are committed.
   if (database.query("SELECT 1 FROM schema_meta WHERE key = 'storage_upgrade_22' AND value <> 'done'").get()) return 0
   // Include replay/recovery references, so retention never deletes a file still
   // needed by an unpublished entry or a reconnecting client. User uploads stay.
-  const pending = database
-    .query("SELECT key,value_json FROM settings WHERE key LIKE 'storage.deleted-attachments:%'")
-    .all() as { key: string; value_json: string }[]
-  const eligible = new Set(deletedBotAttachments)
-  for (const row of pending) {
-    const ids: unknown = JSON.parse(row.value_json)
-    if (Array.isArray(ids)) for (const id of ids) if (typeof id === "string") eligible.add(id)
+  const defer = (removed: number) => {
+    onDeferred()
+    return removed
   }
-  const candidates = database
-    .query(`SELECT id,path FROM attachments
-      WHERE (origin_path=? OR id IN (SELECT value FROM json_each(?)))
-        AND NOT EXISTS (SELECT 1 FROM storage_backup_attachments b WHERE b.attachment_id = attachments.id)`)
-    .all(OUTPUT_BLOB_ORIGIN, JSON.stringify([...eligible])) as Array<{ id: string; path: string }>
-  const changes = () => Number((database.query("SELECT total_changes() AS n").get() as { n: number }).n)
+  const changes = () => {
+    const own = (database.query("SELECT total_changes() AS n").get() as { n: number }).n
+    const external = (database.query("PRAGMA data_version").get() as { data_version: number }).data_version
+    return `${own}:${external}`
+  }
   let observed = changes()
-  const referenced = new Set<string>()
-  if (candidates.length)
-    for (const [table, key, column] of [
-      ["messages", "rowid", "parts_json"],
-      ["tool_resolutions", "rowid", "part_json"],
-      ["transcript_entries", "id", "event_json"],
-      ["ui_event_log", "seq", "event_json"],
-      ["send_journal", "rowid", "request_json"],
-    ]) {
-      let cursor = 0
-      while (true) {
-        const rows = database
-          .query(`SELECT ${key} AS cursor, ${column} AS json FROM ${table} WHERE ${key} > ? ORDER BY ${key} LIMIT 50`)
-          .all(cursor) as Array<{ cursor: number; json: string }>
-        for (const row of rows) {
-          attachmentReferences(JSON.parse(row.json), referenced)
-          cursor = row.cursor
-        }
-        if (rows.length < 50) break
-        if (yieldBatch) await yieldBatch()
-        // A writer can introduce a new reference while we yield. Defer collection
-        // rather than deleting against an incomplete view of live/recovery data.
-        if (changes() !== observed) return 0
-      }
-    }
+  const eligible = new Set(deletedBotAttachments)
+  const pending: Array<{ key: string; value_json: string }> = []
+  let pendingCursor = "storage.deleted-attachments:"
+  while (true) {
+    const rows = measure("storage_attachment_candidate_scan", () =>
+      database
+        .query(`SELECT key,value_json FROM settings WHERE key > ?
+        AND key < 'storage.deleted-attachments;'
+        ORDER BY key LIMIT 50`)
+        .all(pendingCursor),
+    ) as Array<{ key: string; value_json: string }>
+    if (!rows.length) break
+
+    // Only this pass's local accumulator changes; durable markers survive an interruption.
+    pending.push(...rows)
+    rows.forEach((row) => {
+      const ids: unknown = JSON.parse(row.value_json)
+      if (Array.isArray(ids))
+        ids.forEach((id) => {
+          if (typeof id === "string") eligible.add(id)
+        })
+    })
+    pendingCursor = rows.at(-1)?.key ?? pendingCursor
+    if (yieldBatch) await yieldBatch()
+    if (changes() !== observed) return defer(0)
+  }
   let removed = 0
-  for (const blob of candidates) {
-    if (referenced.has(blob.id)) continue
-    removePrivateFile({ root: appData, path: blob.path })
-    database.query("DELETE FROM attachments WHERE id = ?").run(blob.id)
-    removed += 1
-    observed = changes()
-    if (removed % 25 === 0) {
+  let cursor = 0
+  const references = createAttachmentReferenceScan(database, runStage, signal, yieldBatch ?? undefined)
+  try {
+    // Start the expensive read only if a bounded candidate window needs it.
+    let started = false
+    while (true) {
+      const rows = measure("storage_attachment_candidate_scan", () =>
+        database
+          .query(`SELECT a.rowid AS cursor,a.id,a.path,a.origin_path,
+          EXISTS(SELECT 1 FROM storage_backup_attachments b WHERE b.attachment_id=a.id) AS pinned
+          FROM attachments a WHERE a.rowid > ? ORDER BY a.rowid LIMIT 50`)
+          .all(cursor),
+      ) as Array<{ cursor: number; id: string; path: string; origin_path: string; pinned: number }>
+      if (!rows.length) break
+
+      cursor = rows.at(-1)?.cursor ?? cursor
+      const candidates = rows.filter(
+        (row) => !row.pinned && (row.origin_path === OUTPUT_BLOB_ORIGIN || eligible.has(row.id)),
+      )
+      if (candidates.length && !started) {
+        if (yieldBatch) await yieldBatch()
+        if (changes() !== observed) return defer(removed)
+
+        await references.start()
+        started = true
+      }
+      const unreferenced = candidates.length
+        ? await references.getUnreferenced(candidates.map((row) => row.id))
+        : new Set<string>()
+      // Includes commits on other connections; a new pass always restarts at zero.
+      if (changes() !== observed) return defer(removed)
+
+      for (const blob of candidates.filter((blob) => unreferenced.has(blob.id))) {
+        measure("storage_attachment_orphan_scan", () => {
+          removePrivateFile({ root: appData, path: blob.path })
+          database.query("DELETE FROM attachments WHERE id=?").run(blob.id)
+        })
+        removed += 1
+        observed = changes()
+        if (yieldBatch) await yieldBatch()
+        if (changes() !== observed) return defer(removed)
+      }
+      observed = changes()
       if (yieldBatch) await yieldBatch()
-      if (changes() !== observed) return removed
+      if (changes() !== observed) return defer(removed)
     }
+  } catch (error) {
+    if (error instanceof AttachmentReferenceScanDeferred) return defer(removed)
+    throw error
+  } finally {
+    references.dispose()
   }
   // A crash/rollback can lose attachment metadata after the file was committed.
   // Only our dedicated suffix is eligible; uploads and recent writes stay intact.
-  const known = new Set(
-    (database.query("SELECT id FROM attachments").all() as Array<{ id: string }>).map((row) => row.id),
-  )
   const attachmentsDir = join(appData, "attachments")
-  if (existsSync(attachmentsDir))
-    for (const directory of readdirSync(attachmentsDir, { withFileTypes: true })) {
+  const attachmentExists = database.query("SELECT 1 FROM attachments WHERE id = ?")
+  let scanned = 0
+  const partitions = await opendir(attachmentsDir).catch((error: NodeJS.ErrnoException) => {
+    if (error.code === "ENOENT") return null
+    throw error
+  })
+  if (partitions)
+    for await (const directory of partitions) {
       if (!directory.isDirectory() || !/^[a-f0-9]{2}$/.test(directory.name)) continue
-      for (const file of readdirSync(join(attachmentsDir, directory.name), { withFileTypes: true })) {
+
+      const directoryPath = join(attachmentsDir, directory.name)
+      const files = await opendir(directoryPath)
+      for await (const file of files) {
+        scanned += 1
         const match = /^([a-f0-9]{64})\.tool-output\.txt$/.exec(file.name)
-        if (!file.isFile() || !match?.[1] || known.has(match[1])) continue
-        const path = join(attachmentsDir, directory.name, file.name)
-        if (lstatSync(path).mtimeMs > now - DAY) continue
-        removePrivateFile({ root: appData, path })
-        removed += 1
-        if (removed % 25 === 0) {
-          if (yieldBatch) await yieldBatch()
-          if (changes() !== observed) return removed
-        }
+        const id = match?.[1]
+        const path = join(directoryPath, file.name)
+        const stat = file.isFile() && id ? await lstat(path) : null
+        // lstat can yield to a writer; recheck metadata and the generation before deletion.
+        if (changes() !== observed) return defer(removed)
+        measure("storage_attachment_orphan_scan", () => {
+          if (!stat?.isFile() || !id || stat.mtimeMs > now - DAY || attachmentExists.get(id)) return
+
+          removePrivateFile({ root: appData, path })
+          removed += 1
+        })
+        if (scanned % 50 !== 0) continue
+
+        if (yieldBatch) await yieldBatch()
+        if (changes() !== observed) return defer(removed)
       }
     }
   for (const row of pending) database.query("DELETE FROM settings WHERE key=?").run(row.key)
@@ -264,6 +328,8 @@ export const createStorageMaintenance = ({
   onError,
   log,
   runStage,
+  yieldBatch = () => Bun.sleep(0),
+  schedule = setTimeout,
 }: {
   database: Database
   appData: string
@@ -272,6 +338,8 @@ export const createStorageMaintenance = ({
   onError: () => void
   log?: Kernel["log"]
   runStage?: PerformanceStageRunner
+  yieldBatch?: () => Promise<void>
+  schedule?: (action: () => Promise<void>, delay: number) => ReturnType<typeof setTimeout>
 }) => {
   const stored = database.query("SELECT value_json FROM settings WHERE key = ?").get(progressKey) as {
     value_json: string
@@ -319,6 +387,7 @@ export const createStorageMaintenance = ({
   }, 60_000)
   let manual = false
   let vacuum = false
+  let collectionDeferrals = 0
   let timer: ReturnType<typeof setTimeout> | undefined
   const save = (value = progress) =>
     database
@@ -336,7 +405,9 @@ export const createStorageMaintenance = ({
       retryTimer = undefined
       retryRunning = true
       try {
-        await retryDeletedBrowserSessionKeys(retryController.signal)
+        if (runStage)
+          await runStage("browser_session_key_retry", () => retryDeletedBrowserSessionKeys(retryController.signal))
+        else await retryDeletedBrowserSessionKeys(retryController.signal)
       } catch {
         if (!stopped) onError()
       } finally {
@@ -347,17 +418,17 @@ export const createStorageMaintenance = ({
   const step = async () => {
     if (stopped) return
     if (historyMigrationStatus(database).running) {
-      timer = setTimeout(step, 100)
+      timer = schedule(step, 100)
       return
     }
     try {
       if (upgrade.snapshot()) {
         status = upgrade.snapshot() ?? status
-        const pending = await upgrade.step()
+        const pending = runStage ? await runStage("storage_upgrade_batch", upgrade.step) : await upgrade.step()
         if (stopped) return
         status = upgrade.snapshot() ?? status
         if (pending) {
-          timer = setTimeout(step, 10)
+          timer = schedule(step, 10)
           return
         }
         publishResync()
@@ -366,7 +437,7 @@ export const createStorageMaintenance = ({
       }
       if (!status.running) {
         if (progress.completedAt > Date.now() - DAY) {
-          timer = setTimeout(step, DAY)
+          timer = schedule(step, DAY)
           return
         }
         status = { running: true, processed: progress.cursor, total: progress.total }
@@ -390,7 +461,7 @@ export const createStorageMaintenance = ({
       })()
       status = { running: true, processed: progress.cursor, total: progress.total }
       if (progress.cursor < progress.total) {
-        timer = setTimeout(step, 10)
+        timer = schedule(step, 10)
         return
       }
       // Capture the recovery tail before pruning. Snapshots/files retain detail;
@@ -399,14 +470,37 @@ export const createStorageMaintenance = ({
       const compact = () =>
         compactTranscript(manual ? { database, events: 0, entriesPerThread: 0, maxAgeMs: 0 } : { database })
       if (runStage ? runStage("transcript_retention", compact) : compact()) {
-        timer = setTimeout(step, 10)
+        timer = schedule(step, 10)
         return
       }
-      await collectUnusedOutputBlobs(database, appData, Date.now(), async () => {
-        await Bun.sleep(0)
-        if (stopped) throw new Error("Manutenção encerrada")
-      })
+      let deferred = false
+      await collectUnusedOutputBlobs(
+        database,
+        appData,
+        Date.now(),
+        async () => {
+          await yieldBatch()
+          if (stopped) throw new Error("Manutenção encerrada")
+        },
+        undefined,
+        runStage,
+        () => {
+          deferred = true
+        },
+        retryController.signal,
+      )
       if (stopped) return
+      if (deferred) {
+        collectionDeferrals += 1
+        const delay = getStorageCollectionRetryDelay(collectionDeferrals)
+        if (delay === DAY) {
+          collectionDeferrals = 0
+          status = { running: false, processed: progress.cursor, total: progress.total }
+        }
+        timer = schedule(step, delay)
+        return
+      }
+      collectionDeferrals = 0
       if (vacuum) {
         const vacuumDatabase = (): void => {
           database.exec("PRAGMA wal_checkpoint(TRUNCATE)")
@@ -420,18 +514,18 @@ export const createStorageMaintenance = ({
       if (progress.changed || manual) publishResync()
       manual = false
       vacuum = false
-      progress.completedAt = Date.now()
+      progress = { ...progress, completedAt: Date.now() }
       save()
       status = { running: false, processed: progress.cursor, total: progress.total }
-      timer = setTimeout(step, DAY)
+      timer = schedule(step, DAY)
     } catch {
       if (stopped) return
       onError()
       status = { ...status, running: false, error: "Não foi possível compactar os dados. Tente novamente." }
-      timer = setTimeout(step, 1000)
+      timer = schedule(step, 1000)
     }
   }
-  timer = setTimeout(step, 100)
+  timer = schedule(step, 100)
   scheduleSessionKeyRetry()
   const dailyRetryTimer = setInterval(scheduleSessionKeyRetry, DAY)
   return {
@@ -441,9 +535,10 @@ export const createStorageMaintenance = ({
       clearTimeout(timer)
       progress = { cursor: 0, total: 0, completedAt: 0 }
       status = { running: true, processed: 0, total: 0 }
+      collectionDeferrals = 0
       manual = true
       vacuum = withVacuum
-      timer = setTimeout(step, 0)
+      timer = schedule(step, 0)
       return true
     },
     snapshot: (): StorageMaintenanceStatus => ({ ...status }),
