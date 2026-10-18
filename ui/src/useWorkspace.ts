@@ -571,6 +571,8 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
           )
         const threadCreation = current.threadCreation?.thread.botId === selectedBot?.id ? current.threadCreation : null
         const selectedThreadId = threadCreation ? current.selectedThreadId : (selectedThread?.id ?? null)
+        const notifications = current.notifications.reduce(upsertNotification, notificationsResponse.notifications)
+        const pendingRequests = countPendingRequests(notifications, activityResponse.messages)
         return {
           ...current,
           groups: groupResponse?.groups ?? [],
@@ -587,11 +589,8 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
           routines: uniqueById(routinesResponse.routines),
           routineRuns: uniqueById(routineRunsResponse.routineRuns),
           settings: settingsResponse.settings,
-          notifications: current.notifications.reduce(upsertNotification, notificationsResponse.notifications),
-          pendingRequestsOnReturn: countPendingRequests(
-            current.notifications.reduce(upsertNotification, notificationsResponse.notifications),
-            activityResponse.messages,
-          ),
+          notifications,
+          pendingRequestsOnReturn: pendingRequests || null,
           selectedBotId: selectedBot?.id ?? null,
           selectedThreadId,
           threadCreation,

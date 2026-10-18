@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, expect, it, vi } from "vitest"
 import App from "../src/App"
 import { createMockApi } from "../src/api/mock"
@@ -71,6 +71,25 @@ it("summarizes requests waiting when the page opens and lists them in the notifi
   expect(summary).toBeVisible()
   expect(screen.getByRole("region", { name: "Central de notificações" })).toHaveTextContent("Qual pasta usar?")
   expect(screen.getByRole("button", { name: "Aprovar", exact: true })).toBeVisible()
+})
+
+it("keeps the return summary hidden when the page opened without pending requests", async () => {
+  const api = createMockApi()
+  render(<App kernel={{ services: { api } }} />)
+  await screen.findByRole("textbox", { name: "Mensagem para mark" })
+
+  act(() => {
+    api.notify({
+      kind: "question",
+      botId: "bot-mark",
+      title: "Question",
+      body: "Qual pasta usar?",
+      requestId: "live-question",
+    })
+  })
+
+  expect(screen.queryByText(/Você tem .* solicitaç/)).toBeNull()
+  expect(screen.getByRole("button", { name: "Notificações, 1 precisa de atenção" })).toBeVisible()
 })
 
 it("shows a plain no-news result for historical notification bodies", async () => {
