@@ -1,4 +1,5 @@
 import { afterEach, expect, test } from "bun:test"
+import { execFileSync } from "node:child_process"
 import {
   chmodSync,
   existsSync,
@@ -11,7 +12,7 @@ import {
   writeFileSync,
 } from "node:fs"
 import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { dirname, join } from "node:path"
 import type { ApprovalInput, ApprovalResult, Bot, Run, ToolContext, ToolResult } from "@touri/contracts"
 import { hiddenInGroupSession } from "../../src/groups/privacy"
 import { createGroupStore } from "../../src/groups/store"
@@ -25,7 +26,7 @@ import {
   writeLearning,
   writeLearningState,
 } from "../../src/learning/settings"
-import { archiveSkill, createSkill, patchSkill } from "../../src/learning/skills"
+import { archiveSkill, createSkill, patchSkill, planSkillPatch } from "../../src/learning/skills"
 import { findThreat } from "../../src/learning/threats"
 import { createMemoryWriteHandler, createSkillCreateHandler, createSkillPatchHandler } from "../../src/learning/tools"
 import { createToolRouter } from "../../src/mcp/router"
@@ -805,3 +806,49 @@ test.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
     }
   },
 )
+
+const makeSkillPipe = (file: "SKILL.md" | "references/notes.md") => {
+  const base = { homeDir: tempHome(), origin: "chat" as const, threadId: "test-thread", name: "report" }
+  const created = createSkill({ ...base, description: "Use when reporting", body: "Original notes" })
+  if (!created.success) throw new Error("Unable to create the skill fixture")
+  const path = join(base.homeDir, "skills", base.name, file)
+  mkdirSync(dirname(path), { recursive: true })
+  rmSync(path, { force: true })
+  execFileSync("mkfifo", [path])
+
+  // Supply EOF so the unsafe implementation fails an assertion instead of hanging the test.
+  const writer = Bun.spawn(["sh", "-c", 'printf "Original notes" > "$1"', "--", path], {
+    stdin: "ignore",
+    stdout: "ignore",
+    stderr: "ignore",
+  })
+  cleanup.push(() => {
+    if (writer.exitCode === null) writer.kill()
+  })
+  return base
+}
+
+test.skipIf(process.platform === "win32")("skill patches reject pipes before reading a support file", () => {
+  const base = makeSkillPipe("references/notes.md")
+
+  const result = planSkillPatch({
+    homeDir: base.homeDir,
+    patch: {
+      name: base.name,
+      file_path: "references/notes.md",
+      old_string: "Original notes",
+      new_string: "Updated notes",
+    },
+  })
+
+  expect(result).toMatchObject({ success: false, errorCode: "INVALID_PATH" })
+})
+
+test.skipIf(process.platform === "win32")("archiving rejects a pipe in place of the skill document", () => {
+  const base = makeSkillPipe("SKILL.md")
+
+  const result = archiveSkill(base)
+
+  expect(result).toMatchObject({ success: false, errorCode: "INVALID_PATH" })
+  expect(existsSync(join(base.homeDir, "skills", base.name))).toBe(true)
+})

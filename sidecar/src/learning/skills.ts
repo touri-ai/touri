@@ -162,7 +162,7 @@ export const planSkillPatch = ({
   if (file !== "SKILL.md" && !SUPPORT_PATH.test(file))
     return fail("INVALID_PATH", "Arquivos de apoio ficam em references/, templates/, scripts/ ou assets/.")
   const path = join(dir, file)
-  if (!linkFree(homeDir, path) || !linkFree(homeDir, join(dir, "SKILL.md")) || !writableLedger(homeDir))
+  if (!linkFree(homeDir, path, "file") || !linkFree(homeDir, join(dir, "SKILL.md"), "file") || !writableLedger(homeDir))
     return fail("INVALID_PATH", "O caminho do arquivo não é permitido.")
   const before = getSkillText(path)
   let after: string
@@ -243,7 +243,11 @@ export const planSkillArchive = ({
   const root = skillsRoot(homeDir)
   const dir = join(root, name)
   const archive = join(root, ".archive")
-  if (!linkFree(homeDir, join(dir, "SKILL.md")) || !linkFree(homeDir, archive, "directory") || !writableLedger(homeDir))
+  if (
+    !linkFree(homeDir, join(dir, "SKILL.md"), "file") ||
+    !linkFree(homeDir, archive, "directory") ||
+    !writableLedger(homeDir)
+  )
     return { success: false, errorCode: "INVALID_PATH", error: "O caminho do arquivo não é permitido." }
   if (!existsSync(join(dir, "SKILL.md")))
     return { success: false, errorCode: "NOT_FOUND", error: `A skill ${name} não existe.` }
