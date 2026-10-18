@@ -10,6 +10,7 @@ import {
   type Bot,
   getApiModelReference,
   type Kernel,
+  type ProviderEvent,
 } from "@touri/contracts"
 import { getApiError } from "../../src/api-models/client"
 import { getApiBaseUrl, getApiModelAccount, getApiModels } from "../../src/api-models/config"
@@ -18,6 +19,7 @@ import { getApiModelEnv, getApiOpenCodeConfig, getApiRequiredHosts, getApiRunErr
 import { createHeadlessHost } from "../../src/cli/host/headlessHost"
 import { createSecretStore } from "../../src/cli/host/secretStore"
 import { createKernel } from "../../src/kernel"
+import { openCodeEvents } from "../../src/runtime/opencode/events"
 import { init as initStore } from "../../src/store"
 
 const cleanups = new Set<() => void>()
@@ -129,7 +131,7 @@ test("model discovery filters malformed IDs and any echoed key and does not pers
     }),
   )
   expect(await (await f.api("/api-models/models", { preset: "openrouter", apiKey: key })).json()).toEqual({
-    models: ["model-a", "model-b"],
+    models: ["model-b", "model-a"],
   })
   expect(getApiModels(f.kernel)).toEqual([])
 })
@@ -179,6 +181,8 @@ test.each([
   [400, "1113", "no_credit"],
   [404, "not found", "model_not_found"],
   [400, "model_not_found", "model_not_found"],
+  [400, "model does not exist", "model_not_found"],
+  [400, "1211", "model_not_found"],
   [429, "too many requests", "rate_limit"],
   [500, "internal error", "unavailable"],
 ] as const)("API HTTP %i maps %s to %s without exposing response bodies", async (status, detail, reason) => {
@@ -216,4 +220,35 @@ test("provider presets and custom URLs cannot embed credentials or config substi
     ).toBe(400)
   }
   expect(getApiModels(f.kernel)).toEqual([])
+})
+
+test.each([
+  [401, "invalid_key"],
+  [402, "no_credit"],
+  [404, "model_not_found"],
+  [429, "rate_limit"],
+] as const)("runtime API HTTP %i emits a safe %s notice", (status, reason) => {
+  const events = new Set<ProviderEvent>()
+  const translate = openCodeEvents(
+    "api-session",
+    (event) => {
+      events.add(event)
+    },
+    undefined,
+    getApiRunError,
+  )
+
+  const result = translate({
+    type: "session.error",
+    properties: {
+      sessionID: "api-session",
+      error: { name: "APIError", data: { statusCode: status, message: `upstream echoed ${key}` } },
+    },
+  })
+
+  expect(result.error).toBe(apiModelErrors[reason])
+  expect(JSON.stringify(Array.from(events))).not.toContain(key)
+  expect(Array.from(events)).toContainEqual(
+    expect.objectContaining({ type: "turn_completed", status: "failed", errorMessage: apiModelErrors[reason] }),
+  )
 })

@@ -1,6 +1,7 @@
 import type {
   Bot,
   BotGroup,
+  GroupAction,
   Id,
   MachineState,
   Message,
@@ -18,7 +19,8 @@ import { userFacingRunError } from "../errors"
 import { ComputerGrantCard } from "../features/computer"
 import { InlineLivePreview, InlinePreviewContext, screenTool } from "../features/desktop/InlineLivePreview"
 import { useIsServerMode } from "../features/server/serverMode"
-import { localizeNotice, t } from "../i18n"
+import { getQueueLabel } from "../features/work/presentation"
+import { getHostLabel, localizeNotice, t } from "../i18n"
 import { machineStateForDisplay } from "../machineState"
 import { messageMarkdown } from "../messageMarkdown"
 import { consumeTaskReview, requestTaskResume, reviewTaskEvent } from "../recoveryEvents"
@@ -26,6 +28,8 @@ import { getRoutineReplyRun, isRoutineEmptyResult, isRoutineRun } from "../routi
 import { type RoutineDraft, repeatTaskDraft, suggestedRoutineDraft } from "../routineDraft"
 import { failureTimeLabel, runErrorFor } from "../runError"
 import { getSidebarThreadTitle } from "../sidebarThreadTitle"
+import { useHost } from "../useHost"
+import { RecoveryTasksContext } from "../useRecoveryTasks"
 import { ActivityMark } from "./ActivityMark"
 import { ApprovalCard } from "./ApprovalCard"
 import { useAvatarBot, useMascotSnapshot, useMessageMascotState, useThreadBot } from "./AvatarRuntime"
@@ -39,6 +43,7 @@ import { ErrorDetails, ErrorText } from "./ErrorDetails"
 import { ErrorNotice } from "./ErrorNotice"
 import { EvidenceContext } from "./EvidenceGallery"
 import { FailureActionContext } from "./FailureActionContext"
+import { GoalPanel } from "./GoalPanel"
 import { GroupConversationStart, GroupHeader } from "./Groups"
 import { MachineServiceButton } from "./MachineServiceButton"
 import { MachineStatus } from "./MachineStatus"
@@ -80,7 +85,7 @@ type ChatPanelProps = {
   machine?: MachineState | undefined
   messages: Array<Message>
   runs: Array<Run>
-  onSend: (text: string, parentId?: Id | null, attachmentIds?: Array<Id>) => Promise<void>
+  onSend: (text: string, parentId?: Id | null, attachmentIds?: Array<Id>, groupAction?: GroupAction) => Promise<void>
   onRetry: (runId: Id) => Promise<void>
   onCancel: (runId: Id) => Promise<void>
   onSwitchBranch: (threadId: Id, leafId: Id) => Promise<void>
@@ -575,6 +580,10 @@ const MessageBubble = ({
     (failure?.code === "TOURI-E8001" || failure?.code === "TOURI-E8002")
       ? null
       : failure
+  const recoveryTasks = useContext(RecoveryTasksContext)
+  const resolvedInterruption = recoveryTasks.some(
+    (task) => message.runId !== null && task.runId === message.runId && task.notification.resolvedAt !== null,
+  )
   const [failureExpanded, setFailureExpanded] = useState(false)
   const [reviewingActions, setReviewingActions] = useState(false)
   useEffect(() => {
@@ -842,7 +851,12 @@ const MessageBubble = ({
           </button>
         </fieldset>
       )}
-      {runError && recovered ? (
+      {resolvedInterruption && (
+        <p className="run-resumed-marker" role="note">
+          {t("Interrupção anterior · resolvida")}
+        </p>
+      )}
+      {runError && (recovered || resolvedInterruption) ? (
         <div className="message-error-history">
           <button
             type="button"
@@ -850,9 +864,18 @@ const MessageBubble = ({
             aria-expanded={failureExpanded}
             onClick={() => setFailureExpanded((expanded) => !expanded)}
           >
-            {runError.title} · {failureTime} · {t("A reply followed this error")} ·{" "}
-            {failureExpanded ? t("Hide error") : t("View error")}
+            {!resolvedInterruption && (
+              <>
+                {runError.title} · {failureTime} · {recovered && `${t("A reply followed this error")} · `}
+              </>
+            )}
+            {failureExpanded ? t("Hide error") : t(resolvedInterruption ? "Ver erro" : "View error")}
           </button>
+          {failureExpanded && resolvedInterruption && (
+            <p className="message-error-meta">
+              {runError.title} · {failureTime}
+            </p>
+          )}
           {failureExpanded && failureContent}
         </div>
       ) : (
@@ -898,7 +921,8 @@ export const ChatPanel = ({
   routines = [],
   routineRuns = [],
 }: ChatPanelProps) => {
-  const serverMode = useIsServerMode()
+  const host = useHost(api)
+  const serverMode = useIsServerMode() || host === "server"
   const machine = machineStateForDisplay(rawMachine)
   const mascotSnapshot = useMascotSnapshot({ id: bot?.id ?? "", color: bot?.color ?? null }, thread?.id)
   const composerRef = useRef<HTMLTextAreaElement>(null)
@@ -933,9 +957,7 @@ export const ChatPanel = ({
             {bot && <BotAvatar bot={bot} size={18} />}
             <h1 className="chat-page-heading">{bot?.name ?? "touri"}</h1>
             {bot?.anyFolderAccess && (
-              <span className="any-folder-badge">
-                {t(serverMode ? "Qualquer pasta do servidor" : "Qualquer pasta do Mac")}
-              </span>
+              <span className="any-folder-badge">{t("Any folder on this {host}", { host: getHostLabel(host) })}</span>
             )}
           </div>
           <div className="chat-toolbar">
@@ -1047,9 +1069,7 @@ export const ChatPanel = ({
             )}
             <h1 className="chat-page-heading">{bot?.name ?? "touri"}</h1>
             {bot?.anyFolderAccess && (
-              <span className="any-folder-badge">
-                {t(serverMode ? "Qualquer pasta do servidor" : "Qualquer pasta do Mac")}
-              </span>
+              <span className="any-folder-badge">{t("Any folder on this {host}", { host: getHostLabel(host) })}</span>
             )}
           </div>
           <div className="chat-toolbar">
@@ -1068,6 +1088,20 @@ export const ChatPanel = ({
             )}
           </div>
         </header>
+      )}
+      {!group && bot && !routineConversation && (
+        <GoalPanel
+          key={thread.id}
+          api={api}
+          threadId={thread.id}
+          bot={bot}
+          request={activeMessagePath(messages, thread.activeLeafId)
+            .filter((message) => message.role === "user")
+            .at(-1)}
+          busy={runs.some(
+            (run) => run.threadId === thread.id && ["queued", "starting", "running"].includes(run.status),
+          )}
+        />
       )}
       {!group && bot?.machine === "vm" && machine && (activeRun || machine.status === "starting") && (
         <MachineStatus
@@ -1307,6 +1341,7 @@ const getRoutineRunPresentation = (run: Run, waitingApproval: boolean) => {
       className: "status-waiting-approval",
       summary: t("Review the approval card to continue the routine."),
     }
+  if (run.status === "queued") return { label: getQueueLabel(run), className: "status-queued" }
   if (running) return { label: t("Em execução"), className: "status-running" }
   if (run.status === "canceled") return { label: t("Cancelado por você"), className: "status-canceled" }
   if (["failed", "interrupted"].includes(run.status))

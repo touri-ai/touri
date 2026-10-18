@@ -4,6 +4,7 @@ import { apiRouteKeys, createApiClient, resolveSidecarEndpoint, type TauriInvoke
 
 const contractRouteKeys: Array<keyof ApiRoutes> = [
   "GET /workspace/activity",
+  "GET /runs",
   "GET /groups",
   "POST /groups",
   "PATCH /groups/:id",
@@ -64,6 +65,9 @@ const contractRouteKeys: Array<keyof ApiRoutes> = [
   "PATCH /threads/:id",
   "GET /threads/:id/transcript",
   "GET /threads/:id/messages",
+  "GET /threads/:id/goal",
+  "POST /threads/:id/goal",
+  "PATCH /threads/:id/goal",
   "POST /threads/:id/messages",
   "POST /runs/:id/cancel",
   "POST /runs/:id/retry",
@@ -103,6 +107,8 @@ const contractRouteKeys: Array<keyof ApiRoutes> = [
   "POST /computer/kill",
   "POST /imports/legacy",
   "GET /imports/:id",
+  "GET /recovery",
+  "POST /recovery/:id/dismiss",
   "GET /notifications",
   "GET /notifications/pending",
   "POST /notifications/:id/dismiss",

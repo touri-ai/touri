@@ -110,16 +110,14 @@ const getGroupRoutineFixture = () => {
   }
 }
 
-it("collapses only routine instructions and keeps the complete original available for editing", () => {
+it("collapses only routine instructions and keeps the complete original available for editing", async () => {
   const { props, prompt } = getFixture()
   render(<ChatPanel {...props} />)
 
   const toggle = screen.getByRole("button", { name: "Instruções da rotina" })
   expect(toggle).toHaveAttribute("aria-expanded", "false")
-  expect(screen.getByText("Leia as mensagens novas.").closest(".disclosure-reveal")).toHaveAttribute(
-    "aria-hidden",
-    "true",
-  )
+  const instructions = await screen.findByText("Leia as mensagens novas.")
+  expect(instructions.closest(".disclosure-reveal")).toHaveAttribute("aria-hidden", "true")
   expect(screen.getByRole("button", { name: "Editar", exact: true })).toBeVisible()
 
   fireEvent.click(toggle)
@@ -273,14 +271,14 @@ it("does not mask a complete reply from an unsuccessful run", () => {
   expect(screen.queryByText("Sem novidades nesta execução")).toBeNull()
 })
 
-it("leaves ordinary conversations expanded and still offers scheduling", () => {
+it("leaves ordinary conversations expanded and still offers scheduling", async () => {
   const { props, run } = getFixture()
   const ordinaryRun: Run = { ...run, trigger: "user", routineRunId: null }
 
   render(<ChatPanel {...props} runs={[ordinaryRun]} />)
 
   expect(screen.queryByRole("button", { name: "Instruções da rotina" })).toBeNull()
-  expect(screen.getByText("Leia as mensagens novas.")).toBeVisible()
+  expect(await screen.findByText("Leia as mensagens novas.")).toBeVisible()
   expect(screen.getByText("NO_NOTIFICATION")).toBeVisible()
   expect(screen.getByRole("button", { name: "Agendar esta tarefa" })).toBeVisible()
 })
@@ -292,6 +290,7 @@ it("hides the schedule suggestion for an existing routine execution", () => {
 
   expect(screen.getByText("Resumo pronto.")).toBeVisible()
   expect(screen.queryByRole("button", { name: "Agendar esta tarefa" })).toBeNull()
+  expect(screen.queryByRole("region", { name: "Continuar até concluir" })).toBeNull()
   expect(screen.getByText("Concluído")).toBeVisible()
   expect(screen.queryByText("A rotina terminou e deixou o resultado nesta conversa.")).toBeNull()
 })
@@ -302,6 +301,7 @@ it("recognizes routine threads before run history loads", () => {
   render(<ChatPanel {...props} thread={{ ...props.thread, kind: "routine", routineRunId: "routine-slot" }} runs={[]} />)
 
   expect(screen.queryByRole("button", { name: "Agendar esta tarefa" })).toBeNull()
+  expect(screen.queryByRole("region", { name: "Continuar até concluir" })).toBeNull()
 })
 
 it("does not collapse a later human follow-up in a routine thread", () => {

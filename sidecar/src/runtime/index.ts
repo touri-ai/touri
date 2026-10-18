@@ -1,6 +1,8 @@
 import type { Database } from "bun:sqlite"
 import {
   describeRoutineSchedule,
+  type GoalControl,
+  type GoalStart,
   type Id,
   type Kernel,
   type RouteModule,
@@ -10,6 +12,7 @@ import {
 } from "@touri/contracts"
 import { createGroupRuntime } from "../groups/runtime"
 import { buildChildEnv } from "../kernel/shell-env"
+import { getHostIdentity } from "../platform/host"
 import { createRuntimeEngine } from "./engine"
 import { listOpenCodeModels } from "./opencode/models"
 import { listProviderProfiles } from "./provider-profiles"
@@ -76,21 +79,25 @@ const routineInput = ({
 
 export const init = async (kernel: Kernel): Promise<void> => {
   const engine = createRuntimeEngine({ kernel })
+  kernel.services.provide("runtime.settingsChanged", engine.settingsChanged)
   await engine.ready
   const groups = createGroupRuntime(kernel, engine)
   kernel.services.provide("groups.runtime", groups)
   const scheduler = createRoutineScheduler({ kernel, engine })
 
-  kernel.services.provide("runtime.enqueue", ({ threadId, requestMessageId, trigger }) =>
-    groups.enqueue({ threadId, requestMessageId, trigger }),
-  )
+  kernel.services.provide("runtime.enqueue", ({ threadId, requestMessageId, trigger }) => {
+    const result = groups.enqueue({ threadId, requestMessageId, trigger })
+    if (!result.success) return result
+
+    return { success: true, run: engine.getRunSnapshot(result.run) }
+  })
   kernel.services.provide("runtime.answerApproval", (args) => engine.answerApproval(args))
   kernel.services.provide("approvals.present", engine.approvalBridge.present)
   kernel.services.provide("approvals.approve", engine.approvalBridge.approve)
   kernel.services.provide("approvals.settle", engine.approvalBridge.settle)
   kernel.services.provide("runtime.activeRun", ({ threadId }) => engine.activeRun({ threadId }))
   kernel.services.provide("runtime.continueAfterApproval", engine.continueAfterApproval)
-  kernel.services.provide("runtime.cancelBotTurns", engine.cancelBotTurns)
+  kernel.services.provide("runtime.cancelBotTurns", groups.cancelBotTurns)
   kernel.services.provide("runtime.cancelRun", ({ runId }) => {
     const grouped = groups.cancel(runId)
     return engine.cancel(runId).success || grouped
@@ -129,6 +136,36 @@ export const init = async (kernel: Kernel): Promise<void> => {
       },
       {
         method: "GET",
+        path: "/runs",
+        handler: async () => ({ status: 200, json: { runs: engine.getWorkRuns() } }),
+      },
+      {
+        method: "GET",
+        path: "/threads/:id/goal",
+        handler: async ({ params }) => ({ status: 200, json: { goal: engine.goals.getGoal(params.id ?? "") } }),
+      },
+      {
+        method: "POST",
+        path: "/threads/:id/goal",
+        handler: async ({ params, body }) => {
+          const result = engine.goals.startGoal(params.id ?? "", bodyRecord(body) as GoalStart)
+          return result.success
+            ? { status: 201, json: { goal: result.goal } }
+            : routeError(result.errorCode, result.error)
+        },
+      },
+      {
+        method: "PATCH",
+        path: "/threads/:id/goal",
+        handler: async ({ params, body }) => {
+          const result = engine.goals.controlGoal(params.id ?? "", bodyRecord(body) as GoalControl)
+          return result.success
+            ? { status: 200, json: { goal: result.goal } }
+            : routeError(result.errorCode, result.error)
+        },
+      },
+      {
+        method: "GET",
         path: "/threads/:id/runs",
         handler: async ({ params, query }) => {
           const thread = kernel.services.use("store.api")?.getThread({ threadId: params.id ?? "" })
@@ -143,7 +180,10 @@ export const init = async (kernel: Kernel): Promise<void> => {
               ),
             }
           }
-          return { status: 200, json: { runs: groups.listRuns(params.id ?? "", { all: query.all === "true" }) } }
+          return {
+            status: 200,
+            json: { runs: groups.listRuns(params.id ?? "", { all: query.all === "true" }).map(engine.getRunSnapshot) },
+          }
         },
       },
       {
@@ -164,7 +204,7 @@ export const init = async (kernel: Kernel): Promise<void> => {
           groups.cancel(params.id ?? "")
           const result = engine.cancel(params.id ?? "")
           return result.success
-            ? { status: 200, json: { run: result.run } }
+            ? { status: 200, json: { run: engine.getRunSnapshot(result.run) } }
             : routeError(result.errorCode, result.error)
         },
       },
@@ -174,7 +214,7 @@ export const init = async (kernel: Kernel): Promise<void> => {
         handler: async ({ params }) => {
           const result = groups.retry(params.id ?? "") ?? engine.retry(params.id ?? "")
           return result.success
-            ? { status: 200, json: { run: result.run } }
+            ? { status: 200, json: { run: engine.getRunSnapshot(result.run) } }
             : routeError(result.errorCode, result.error)
         },
       },
@@ -198,7 +238,7 @@ export const init = async (kernel: Kernel): Promise<void> => {
         path: "/routines",
         handler: async ({ query }) => ({
           status: 200,
-          json: { routines: engine.listRoutines(query.botId), host: process.platform === "darwin" ? "mac" : "server" },
+          json: { routines: engine.listRoutines(query.botId), ...getHostIdentity() },
         }),
       },
       {
@@ -341,7 +381,9 @@ export const init = async (kernel: Kernel): Promise<void> => {
   const registration = kernel.registerTools({
     tools: [
       { name: "coordinate_bots", group: "core", handler: ({ ctx, args }) => groups.askBot(ctx, args) },
+      { name: "ask_all", group: "core", handler: ({ ctx, args }) => groups.askAll(ctx, args) },
       { name: "ask_bot", group: "core", handler: ({ ctx, args }) => groups.askBot(ctx, args) },
+      { name: "goal_checkpoint", group: "core", handler: createGoalCheckpointHandler(engine) },
       { name: "routine_list", group: "core", handler: routineList },
       { name: "routine_create", group: "core", handler: routineCreate },
       { name: "routine_update", group: "core", handler: routineUpdate },
@@ -415,4 +457,26 @@ export const createApprovalContextHandler =
           : {},
       ),
     )
+  }
+
+export const createGoalCheckpointHandler =
+  (engine: Pick<ReturnType<typeof createRuntimeEngine>, "goals" | "activeRun">): ToolHandler =>
+  async ({ ctx, args }) => {
+    const run = engine.activeRun({ threadId: ctx.threadId })
+    if (ctx.signal.aborted || !ctx.runId || run?.id !== ctx.runId || run.botId !== ctx.botId)
+      return toolError("NOT_FOUND", "Não há um objetivo ativo para este turno.")
+    const values = bodyRecord(args)
+    if (typeof values.completed !== "boolean")
+      return toolError("INVALID_ARGS", "Não foi possível registrar a conclusão do objetivo.")
+    const result = engine.goals.recordCheckpoint({
+      runId: ctx.runId,
+      botId: ctx.botId,
+      threadId: ctx.threadId,
+      step: stringField(values, "step"),
+      completed: values.completed,
+    })
+
+    return result.success
+      ? textResult(JSON.stringify(result.goal), result.goal)
+      : toolError(result.errorCode, result.error)
   }

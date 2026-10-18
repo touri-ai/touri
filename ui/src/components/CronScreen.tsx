@@ -1,11 +1,12 @@
-import type { Bot, Id, Message, Routine, RoutineRun } from "@touri/contracts"
+import type { Bot, HostKind, Id, Message, Routine, RoutineRun } from "@touri/contracts"
 import { AVATAR_COLOR_CHOICES, avatarColorFor } from "@touri/contracts/avatar"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { type ApprovalTarget, pendingApprovalTargets } from "../approvalNavigation"
 import { userFacingError } from "../errors"
-import { t } from "../i18n"
+import { getRoutineSkipSummary, t } from "../i18n"
 import { draftFromRoutine, newRoutineDraft } from "../routineDraft"
 import type { WorkspaceActions } from "../useWorkspace"
+import type { RoutineHistoryTarget } from "../workspaceState"
 import { BotAvatar } from "./BotAvatar"
 import { DeleteRoutineDialog } from "./DeleteRoutineDialog"
 import { RoutineEditor, routineHostNotice } from "./RoutineEditor"
@@ -14,8 +15,9 @@ import { ScreenHeader, ScreenState } from "./ScreenPrimitives"
 import "./screens.css"
 
 type CronScreenProps = {
-  host?: "mac" | "server"
+  host?: HostKind
   initialBotFilter?: Id | undefined
+  history?: RoutineHistoryTarget | undefined
   loading?: boolean
   loadError?: string | null
   selectedBotId: Id | null
@@ -26,9 +28,11 @@ type CronScreenProps = {
   actions: WorkspaceActions
   onReviewApprovals: (target: ApprovalTarget) => void
   onNotice: (message: string) => void
+  onOpenThread?: (threadId: Id) => void
 }
 
 type RoutineEditorState = { routine: Routine | null; botId: Id; isNew: boolean } | null
+const HISTORY_PAGE_SIZE = 50
 
 export const calendarBotColors = (bots: Array<Bot>): Map<Id, string> => {
   const used = new Set<string>()
@@ -46,8 +50,9 @@ export const calendarBotColors = (bots: Array<Bot>): Map<Id, string> => {
 
 const CronScreen = ({
   bots,
-  host = "server",
+  host = "computer",
   initialBotFilter,
+  history,
   loading = false,
   loadError = null,
   selectedBotId,
@@ -57,8 +62,11 @@ const CronScreen = ({
   actions,
   onReviewApprovals,
   onNotice,
+  onOpenThread,
 }: CronScreenProps) => {
   const listRef = useRef<HTMLElement>(null)
+  const historyDetails = useRef<HTMLDetailsElement>(null)
+  const historyStatus = useRef<HTMLParagraphElement>(null)
   useEffect(() => {
     const focusList = () => {
       if (document.querySelector(".modal-card")) return false
@@ -88,10 +96,42 @@ const CronScreen = ({
       setStarting(new Set(startingRef.current))
     }
   }
-  const [botFilter, setBotFilter] = useState<Id | "all">(() =>
-    bots.some((bot) => bot.id === initialBotFilter) ? (initialBotFilter ?? "all") : "all",
+  const historyBotFilter = bots.some((bot) => bot.id === initialBotFilter) ? (initialBotFilter ?? "all") : "all"
+  const historyRoutineFilter = routines.some(
+    (routine) =>
+      routine.id === history?.routineId && (historyBotFilter === "all" || routine.botId === historyBotFilter),
   )
+    ? (history?.routineId ?? "all")
+    : "all"
+  const [botFilter, setBotFilter] = useState<Id | "all">(historyBotFilter)
   const [stateFilter, setStateFilter] = useState<"all" | "active" | "paused">("all")
+  const [routineFilter, setRoutineFilter] = useState<Id | "all">(historyRoutineFilter)
+  const [historyPage, setHistoryPage] = useState(0)
+  useEffect(() => {
+    if (!history) return
+
+    setBotFilter(historyBotFilter)
+    setRoutineFilter(historyRoutineFilter)
+    // Native toggles stay with the browser; a history destination explicitly opens the disclosure.
+    historyDetails.current?.setAttribute("open", "")
+    historyStatus.current?.focus()
+    setHistoryPage(0)
+  }, [history, historyBotFilter, historyRoutineFilter])
+
+  const selectBotFilter = (botId: Id | "all") => {
+    setBotFilter(botId)
+    setRoutineFilter("all")
+    setHistoryPage(0)
+  }
+  const selectStateFilter = (state: "all" | "active" | "paused") => {
+    setStateFilter(state)
+    setRoutineFilter("all")
+    setHistoryPage(0)
+  }
+  const showHistoryPage = (page: number) => {
+    setHistoryPage(page)
+    historyStatus.current?.focus()
+  }
   const [month, setMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1))
   const [deleting, setDeleting] = useState<Routine | null>(null)
   const [editor, setEditor] = useState<RoutineEditorState>(null)
@@ -101,6 +141,17 @@ const CronScreen = ({
       (botFilter === "all" || routine.botId === botFilter) &&
       (stateFilter === "all" || (stateFilter === "active" ? routine.enabled : !routine.enabled)),
   )
+  const visibleRoutineIds = new Set(visibleRoutines.map((routine) => routine.id))
+  const historyRuns = routineRuns
+    .filter(
+      (run) => (routineFilter === "all" || run.routineId === routineFilter) && visibleRoutineIds.has(run.routineId),
+    )
+    // Only this filtered copy is sorted; the workspace history is shared with the sidebar.
+    .sort((left, right) => right.scheduledFor - left.scheduledFor || right.id.localeCompare(left.id))
+  const lastHistoryPage = Math.max(0, Math.ceil(historyRuns.length / HISTORY_PAGE_SIZE) - 1)
+  const currentHistoryPage = Math.min(historyPage, lastHistoryPage)
+  const historyOffset = currentHistoryPage * HISTORY_PAGE_SIZE
+  const visibleHistoryRuns = historyRuns.slice(historyOffset, historyOffset + HISTORY_PAGE_SIZE)
   const calendar = useMemo(() => buildCalendar(month), [month])
   const calendarRuns = routineRuns.filter((routineRun) => {
     if (!visibleRoutines.some((routine) => routine.id === routineRun.routineId)) return false
@@ -160,18 +211,18 @@ const CronScreen = ({
       <fieldset className="cron-filters">
         <legend className="visually-hidden">{t("Filtros de cron")}</legend>
         <span className="filter-label">Bot</span>
-        <FilterButton active={botFilter === "all"} onClick={() => setBotFilter("all")}>
+        <FilterButton active={botFilter === "all"} onClick={() => selectBotFilter("all")}>
           {t("Todos os bots")}
         </FilterButton>
         {bots.map((bot) => (
-          <FilterButton key={bot.id} active={botFilter === bot.id} onClick={() => setBotFilter(bot.id)}>
+          <FilterButton key={bot.id} active={botFilter === bot.id} onClick={() => selectBotFilter(bot.id)}>
             {bot.name}
           </FilterButton>
         ))}
         <span className="filter-divider" />
         <span className="filter-label">{t("estado")}</span>
         {(["all", "active", "paused"] as const).map((state) => (
-          <FilterButton key={state} active={stateFilter === state} onClick={() => setStateFilter(state)}>
+          <FilterButton key={state} active={stateFilter === state} onClick={() => selectStateFilter(state)}>
             {state === "all" ? t("Todos") : state === "active" ? "Ativas" : "Pausadas"}
           </FilterButton>
         ))}
@@ -319,28 +370,78 @@ const CronScreen = ({
                 />
               )}
             </div>
-            <details className="routine-run-history">
+            <details className="routine-run-history" ref={historyDetails}>
               <summary>{t("Histórico de execuções")}</summary>
+              <label className="routine-history-filter">
+                {t("Routine history filter")}
+                <select
+                  value={routineFilter}
+                  onChange={(event) => {
+                    setRoutineFilter(event.currentTarget.value)
+                    setHistoryPage(0)
+                  }}
+                >
+                  <option value="all">{t("All routines")}</option>
+                  {visibleRoutines.map((routine) => (
+                    <option key={routine.id} value={routine.id}>
+                      {botById.get(routine.botId)?.name} · {routine.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <p role="status" ref={historyStatus} tabIndex={-1}>
+                {t("Routine history range", {
+                  from: historyRuns.length ? historyOffset + 1 : 0,
+                  to: historyOffset + visibleHistoryRuns.length,
+                  total: historyRuns.length,
+                })}
+              </p>
               <ul>
-                {[...routineRuns]
-                  .filter((run) => visibleRoutines.some((routine) => routine.id === run.routineId))
-                  .sort((a, b) => b.scheduledFor - a.scheduledFor)
-                  .slice(0, 50)
-                  .map((run) => {
-                    const routine = routines.find((routine) => routine.id === run.routineId)
-                    return (
-                      <li key={run.id}>
-                        <strong>{routine?.name}</strong> ·{" "}
-                        {new Date(run.scheduledFor).toLocaleString("pt-BR", { timeZone: routine?.timezone ?? "UTC" })} ·{" "}
-                        {routine?.timezone} · {t(run.status)}
-                        {run.status === "skipped" && (
-                          <p>{t("Disparo não executado: touri indisponível ou execução anterior em andamento.")}</p>
-                        )}
-                        {run.triggerSource === "catch-up" && <p>{t("Recuperação após indisponibilidade")}</p>}
-                      </li>
-                    )
-                  })}
+                {visibleHistoryRuns.map((run) => {
+                  const routine = routines.find((routine) => routine.id === run.routineId)
+                  const threadId = run.threadId
+
+                  return (
+                    <li key={run.id}>
+                      <strong>{routine?.name}</strong> ·{" "}
+                      {new Date(run.scheduledFor).toLocaleString("pt-BR", { timeZone: routine?.timezone ?? "UTC" })} ·{" "}
+                      {routine?.timezone} · {t(run.status)}
+                      {run.status === "skipped" && (
+                        <p>
+                          {getRoutineSkipSummary(run.summary ?? "") ??
+                            t("Disparo não executado: touri indisponível ou execução anterior em andamento.")}
+                        </p>
+                      )}
+                      {run.triggerSource === "catch-up" && <p>{t("Execução de recuperação")}</p>}
+                      {threadId && onOpenThread && (
+                        <button type="button" className="outline-button" onClick={() => onOpenThread(threadId)}>
+                          {t("Open routine conversation")}
+                        </button>
+                      )}
+                    </li>
+                  )
+                })}
               </ul>
+              <div className="routine-history-actions">
+                {currentHistoryPage > 0 && (
+                  <button
+                    type="button"
+                    className="outline-button"
+                    onClick={() => showHistoryPage(currentHistoryPage - 1)}
+                  >
+                    {t("Previous routine runs page")}
+                  </button>
+                )}
+                {currentHistoryPage < lastHistoryPage && (
+                  <button
+                    type="button"
+                    className="outline-button"
+                    onClick={() => showHistoryPage(currentHistoryPage + 1)}
+                  >
+                    {t("Next routine runs page")}
+                  </button>
+                )}
+              </div>
             </details>
           </section>
         </div>

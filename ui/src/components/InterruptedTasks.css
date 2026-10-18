@@ -1,0 +1,92 @@
+.interrupted-tasks {
+  width: min(720px, calc(100vw - 24px));
+}
+
+.interrupted-content {
+  padding: 18px 24px 24px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.interrupted-content > p {
+  margin: 0 0 20px;
+  color: var(--text-secondary);
+}
+
+.interrupted-content h3 {
+  margin: 18px 0 10px;
+  font-size: 14px;
+}
+
+.interrupted-task > .text-button {
+  justify-self: start;
+}
+
+.interrupted-task-list {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+}
+
+.interrupted-task {
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  padding: 16px;
+  display: grid;
+  gap: 10px;
+  overflow-wrap: anywhere;
+}
+
+.interrupted-task p {
+  margin: 0;
+}
+
+.interrupted-task time,
+.interrupted-task section li span {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.interrupted-task section ul {
+  padding-left: 20px;
+}
+
+.interrupted-task section li span {
+  display: block;
+}
+
+.interrupted-acknowledgement {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.interrupted-tasks .interrupted-acknowledgement input {
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  flex: none;
+  margin-top: 3px;
+}
+
+.interrupted-acknowledgement span {
+  min-width: 0;
+}
+
+.interrupted-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.interrupted-history {
+  margin-top: 20px;
+}
+
+.sidebar-recovery {
+  margin: 4px 12px 8px;
+  padding: 8px;
+  text-align: left;
+}

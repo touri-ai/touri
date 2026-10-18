@@ -46,6 +46,7 @@ import { VmStageError, vmStage } from "../vm/stage"
 import { createClaudeAdapter } from "./claude/adapter"
 import { createCodexAdapter } from "./codex/adapter"
 import { COMMAND_OUTPUT_INTERVAL_MS, commandOutputTail } from "./command-output"
+import { getDefaultMaxConcurrentRuns } from "./concurrency"
 import {
   CONTINUATION_WINDOW_MS,
   type ContinuationReason,
@@ -59,6 +60,8 @@ import {
   MAX_CRASH_CONTINUATIONS,
 } from "./continuations"
 import { csvInput } from "./csv-input"
+import { type GoalDeadlineClock, startGoalDeadline } from "./goal-deadline"
+import { createGoalRuntime, getGoalPrompt } from "./goals"
 import { buildHandoffPacket } from "./handoff"
 import { composeDeveloperInstructions } from "./instructions"
 import { isMcpStartupError } from "./mcp-startup"
@@ -101,6 +104,8 @@ type ContinuationPlan = { reason: ContinuationReason; originalRunId: Id }
 
 type PendingApproval = { runId: Id; provider: ProviderAdapter; providerApprovalId: Id }
 
+const ROUTINE_TICK_GRACE_MS = 2 * 60_000
+
 type RoutineCreate = {
   botId: Id
   name: string
@@ -125,6 +130,7 @@ type RoutineUpdate = {
 
 type RuntimeEngine = {
   ready: Promise<void>
+  goals: ReturnType<typeof createGoalRuntime>
   enqueue: (args: {
     threadId: Id
     requestMessageId: Id
@@ -132,10 +138,14 @@ type RuntimeEngine = {
     routineRunId?: Id
     delegated?: boolean
   }) => Result<{ run: Run }, "THREAD_NOT_FOUND" | "BOT_PAUSED">
+  getRunSnapshot: (run: Run) => Run
+  getWorkRuns: () => Array<Run>
+  settingsChanged: () => void
   listRuns: (threadId: Id, options?: { all?: boolean }) => Array<Run>
   activeRun: (args: { threadId: Id }) => Run | null
   continueAfterApproval: ServiceMap["runtime.continueAfterApproval"]
   cancel: (id: Id) => Result<{ run: Run }, "NOT_FOUND">
+  cancelRuns: (runIds: Id[]) => Promise<void>
   cancelBotTurns: (args: { botId: Id }) => Promise<void>
   retry: (id: Id) => Result<{ run: Run }, "NOT_FOUND" | "THREAD_NOT_FOUND" | "BOT_PAUSED" | "CONFLICT">
   answerApproval: (args: {
@@ -170,7 +180,10 @@ type RuntimeEngine = {
     routineId: Id
     triggerSource: RoutineRun["triggerSource"]
     scheduledFor?: number
-  }) => Result<{ routineRun: RoutineRun }, "NOT_FOUND" | "INVALID_ARGS" | "THREAD_NOT_FOUND" | "BOT_PAUSED">
+  }) => Result<
+    { routineRun: RoutineRun },
+    "NOT_FOUND" | "INVALID_ARGS" | "THREAD_NOT_FOUND" | "BOT_PAUSED" | "DELEGATION_LIMIT"
+  >
   tick: (now?: number) => Promise<void>
   shutdown: () => Promise<void>
 }
@@ -223,6 +236,8 @@ export const createRuntimeEngine = ({
   routineTimeoutMs,
   resumeBackoffMs = CRASH_RESUME_BACKOFF_MS,
   providerAdapters,
+  getNow = Date.now,
+  goalDeadlineClock,
 }: {
   kernel: Kernel
   codexCommand?: string
@@ -234,7 +249,10 @@ export const createRuntimeEngine = ({
   routineTimeoutMs?: (routine: Routine) => number
   resumeBackoffMs?: number
   providerAdapters?: Partial<Record<Bot["provider"], ProviderAdapter>>
+  getNow?: () => number
+  goalDeadlineClock?: GoalDeadlineClock
 }): RuntimeEngine => {
+  const runtimeStartedAt = getNow()
   const persistence: RuntimePersistence = createRuntimePersistence({ database: kernel.db })
   const ownerPath = `${kernel.paths.runDir}/runtime-owner`
   const owner = randomHexToken()
@@ -246,7 +264,7 @@ export const createRuntimeEngine = ({
       return false
     }
   }
-  const queued: Array<Id> = persistence.listQueuedRuns().map((run) => run.id)
+  let queued: Array<Id> = persistence.listQueuedRuns().map((run) => run.id)
   let shuttingDown = false
   let shutdownPromise: Promise<void> | null = null
   const tools = createToolResolutions(kernel)
@@ -276,20 +294,117 @@ export const createRuntimeEngine = ({
     }),
     ...providerAdapters,
   }
-  const maxConcurrentRuns = Math.max(
-    1,
-    configuredMaxConcurrentRuns ?? Number(process.env.TOURI_MAX_CONCURRENT_RUNS ?? 3),
-  )
+  const getMaxConcurrentRuns = (): number =>
+    Math.max(
+      1,
+      configuredMaxConcurrentRuns ??
+        kernel.services.use("store.settings")?.().maxConcurrentRuns ??
+        getDefaultMaxConcurrentRuns(environment ?? process.env),
+    )
   const routineTimeout = routineTimeoutMs ?? ((routine: Routine): number => routine.timeoutMinutes * 60_000)
 
   const notices = createRuntimeNotices({ kernel })
   const work: WorkState = createWorkState({ database: kernel.db as Database })
   const continuations = createRunContinuations({ database: kernel.db })
   const pendingContinuations = new Map<Id, { timer: ReturnType<typeof setTimeout>; run: Run }>()
+  const goalDeadlines = new Map<Id, ReturnType<typeof startGoalDeadline>>()
+  const getGoalNow = goalDeadlineClock?.now ?? Date.now
+  const goals = createGoalRuntime(
+    kernel,
+    {
+      enqueue: (threadId, requestMessageId) => {
+        const result = enqueue({ threadId, requestMessageId, trigger: "retry" })
+        return result.success ? result.run : null
+      },
+      cancel: (runId) => {
+        cancel(runId)
+      },
+      getRuns: persistence.listRuns,
+      isStopping: () => shuttingDown,
+      onSaved: (goal) => {
+        if (goal.runId) goalDeadlines.get(goal.runId)?.setDeadline(goal.deadlineAt)
+      },
+    },
+    getGoalNow,
+  )
 
-  const publishRun = (run: Run): void => kernel.publish({ type: "run.updated", run: cloneRun(run) })
+  const getQueuedRuns = (): Run[] => {
+    const snapshots = new Map(persistence.getRunSnapshots(queued).map((run) => [run.id, run]))
+    return queued.flatMap((id) => {
+      const run = snapshots.get(id)
+      return run?.status === "queued" && active.get(run.threadId)?.id !== id ? [run] : []
+    })
+  }
+
+  const getQueueSnapshot = () => {
+    const waiting = getQueuedRuns()
+    return { waiting, positions: new Map(waiting.map((run, index) => [run.id, index + 1])) }
+  }
+
+  const getRunOrigin = (run: Run): NonNullable<Run["origin"]> => {
+    if (run.origin) return run.origin
+    if (continuations.link(run.id)) return "resume"
+    if (!run.requestMessageId) return run.trigger === "routine" ? "routine" : "message"
+    const stored =
+      kernel.db instanceof Database
+        ? (kernel.db
+            .query(`
+      SELECT sender_json IS NOT NULL AS delegated,
+        EXISTS(SELECT 1 FROM json_each(parts_json)
+          WHERE json_extract(value, '$.type') = 'notice'
+            AND json_extract(value, '$.code') = 'run_resumed') AS resumed
+      FROM messages WHERE id = ? AND thread_id = ?
+    `)
+            .get(run.requestMessageId, run.threadId) as { delegated: number; resumed: number } | null)
+        : null
+    if (stored?.resumed) return "resume"
+    if (stored?.delegated) return "delegation"
+    if (stored) return run.trigger === "routine" ? "routine" : "message"
+    const request = kernel.services
+      .use("store.api")
+      ?.activePath({
+        threadId: run.threadId,
+        ...(run.requestMessageId ? { leafId: run.requestMessageId } : {}),
+      })
+      .find((message) => message.id === run.requestMessageId)
+    if (request?.parts.some((part) => part.type === "notice" && part.code === "run_resumed")) return "resume"
+    if (request?.sender) return "delegation"
+    if (run.trigger === "routine") return "routine"
+    return "message"
+  }
+
+  const getSnapshot = (run: Run, queue: ReturnType<typeof getQueueSnapshot>): Run => {
+    const metadata =
+      run.origin && run.groupThreadId !== undefined ? run : (persistence.getRunSnapshots([run.id])[0] ?? run)
+    const groupThreadId =
+      metadata.groupThreadId === undefined
+        ? (kernel.services.use("store.api")?.getThread({ threadId: run.threadId })?.groupThreadId ?? null)
+        : metadata.groupThreadId
+    const position = run.status === "queued" ? queue.positions.get(run.id) : undefined
+
+    return {
+      ...cloneRun(run),
+      groupThreadId,
+      origin: getRunOrigin(metadata),
+      queuePosition: position ?? null,
+      queueTotal: position === undefined ? null : queue.waiting.length,
+    }
+  }
+  const getRunSnapshot = (run: Run): Run => getSnapshot(run, getQueueSnapshot())
+  const publishRun = (run: Run): void => kernel.publish({ type: "run.updated", run: getRunSnapshot(run) })
+  const publishQueue = (): void => {
+    const queue = getQueueSnapshot()
+    queue.waiting.forEach((run) => {
+      kernel.publish({ type: "run.updated", run: getSnapshot(run, queue) })
+    })
+  }
+  const getWorkRuns = (): Run[] => {
+    const queue = getQueueSnapshot()
+    return persistence.listWorkRuns().map((run) => getSnapshot(run, queue))
+  }
 
   const updateRun = (run: Run, patch: Partial<Run>): Run => {
+    const leftQueue = run.status === "queued" && patch.status !== undefined && patch.status !== "queued"
     const next = { ...run, ...patch }
     if (!persistence.saveRun(next)) {
       const stored = persistence.getRun(run.id)
@@ -298,6 +413,7 @@ export const createRuntimeEngine = ({
     }
     Object.assign(run, next)
     publishRun(run)
+    if (leftQueue) publishQueue()
     return run
   }
 
@@ -942,10 +1058,16 @@ export const createRuntimeEngine = ({
         controllers.delete(run.id)
       }
     }
-    const inputText = [recalled, carryover, toolSummary, requestText].filter(Boolean).join("\n\n")
+    const goal = goals.getForRun(run.id)
+    const inputText = [recalled, carryover, toolSummary, requestText, goal ? getGoalPrompt(goal) : null]
+      .filter(Boolean)
+      .join("\n\n")
+    const goalRequest = goal
+      ? store.activePath({ threadId: thread.id }).find((message) => message.id === goal.requestMessageId)
+      : null
     const requestParts = unacceptedRequest
       ? [...unacceptedRequest.parts, ...(request?.parts ?? [])]
-      : ((originalRequest ?? request)?.parts ?? [])
+      : ((goalRequest ?? originalRequest ?? request)?.parts ?? [])
     const input: Array<TextPart | Extract<MessagePart, { type: "image" }>> = request
       ? [
           { type: "text", text: inputText },
@@ -1065,7 +1187,7 @@ export const createRuntimeEngine = ({
       if (!shuttingDown) void drain()
       return
     }
-    updateRun(run, { status: "starting", startedAt: Date.now() })
+    updateRun(run, { status: "starting", startedAt: run.startedAt ?? Date.now() })
     state.generation = store.getThread({ threadId: thread.id })?.generation ?? null
     state.fingerprint = mcpFingerprint.hash
     const controller = new AbortController()
@@ -1162,6 +1284,9 @@ export const createRuntimeEngine = ({
           ? (args) => startVmTurn({ kernel, provider, args })
           : provider.startTurn
         const invoke = (): ReturnType<typeof startTurn> => {
+          // Completion diagnostics belong to one attempt; cancellation keeps its own cause.
+          if (!controller.signal.aborted) state.completionError = null
+
           // Publish before invocation: startup and a silent provider are different waits.
           if (!run.providerStartedAt) updateRun(run, { providerStartedAt: Date.now() })
           return startTurn({
@@ -1183,8 +1308,14 @@ export const createRuntimeEngine = ({
         const invokeWithRetry = (): ReturnType<typeof startTurn> =>
           retryTransient({
             run: invoke,
-            failureOf: (outcome) => (outcome.success ? null : outcome.error),
-            canRetry: () => !state.turnStarted,
+            failureOf: (outcome) => {
+              if (!outcome.success) return outcome.error
+              if (outcome.status !== "failed") return null
+
+              // A processed completion frame can still report a failed provider turn.
+              return state.completionError?.errorMessage ?? null
+            },
+            canRetry: () => !state.turnStarted && state.parts.length === 0,
             signal: controller.signal,
           })
         let providerResult = await invokeWithRetry()
@@ -1297,7 +1428,13 @@ export const createRuntimeEngine = ({
             if (remembers && request)
               mem0?.sync({ botId: bot.id, threadId: thread.id, userText: request.text, assistantText: state.text })
             finishRoutineRun({ run, state, status: "succeeded" })
-            notices.done({ botId: run.botId, threadId: run.threadId, summary: state.text })
+            if (goals.getForRun(run.id)?.status !== "active")
+              notices.done({
+                botId: run.botId,
+                threadId: run.threadId,
+                summary: state.text,
+                routine: run.trigger === "routine" || run.routineRunId !== null,
+              })
           }
         })
       } else {
@@ -1518,6 +1655,8 @@ export const createRuntimeEngine = ({
 
   const startContinuation = ({ run, plan }: { run: Run; plan: ContinuationPlan }): boolean => {
     if (!routineAllowsContinuation(run)) return false
+    const goal = goals.getForRun(run.id)
+    if (goal && !goals.prepareContinuation(goal)) return false
     const store = kernel.services.use("store.api")
     const thread = store?.getThread({ threadId: run.threadId })
     if (!store || !thread) return false
@@ -1551,6 +1690,10 @@ export const createRuntimeEngine = ({
       ...(run.routineRunId ? { routineRunId: run.routineRunId } : {}),
     })
     if (!next.success) return false
+    if (!goals.attachRun(run.id, next.run.id)) {
+      cancel(next.run.id)
+      return false
+    }
     continuations.record({
       runId: next.run.id,
       originalRunId: plan.originalRunId,
@@ -1587,8 +1730,11 @@ export const createRuntimeEngine = ({
   }
 
   // A routine run kept open for a continuation that did not start still needs its final state.
-  const abandonContinuation = ({ run, status }: { run: Run; status: RoutineRun["status"] }): void =>
+  const abandonContinuation = ({ run, status }: { run: Run; status: RoutineRun["status"] }): void => {
+    const goal = goals.getForRun(run.id)
+    if (!shuttingDown && goal?.status === "active") goals.saveGoal({ ...goal, status: "paused" })
     finishRoutineRun({ run, state: getState(run.id), status, summary: getState(run.id).text || "Turno interrompido" })
+  }
 
   const scheduleContinuation = ({ run, plan }: { run: Run; plan: ContinuationPlan }): void => {
     const timer = setTimeout(
@@ -1628,21 +1774,49 @@ export const createRuntimeEngine = ({
     if (plan) scheduleContinuation({ run, plan })
   }
 
+  const executeGoalTurn = async (run: Run): Promise<void> => {
+    const goal = goals.getForRun(run.id)
+    if (!goal) return execute(run)
+    if (goal.status !== "active" || getGoalNow() >= goal.deadlineAt) {
+      goals.expireRun(run.id)
+      cancel(run.id)
+      active.delete(run.threadId)
+      void drain()
+      return
+    }
+    const budgetTimer = startGoalDeadline(goal.deadlineAt, () => goals.expireRun(run.id), goalDeadlineClock)
+    goalDeadlines.set(run.id, budgetTimer)
+    try {
+      await execute(run)
+      const finished = persistence.getRun(run.id)
+      if (!finished) return
+      const state = getState(run.id)
+      const needsReview =
+        hasUncertainWork(run.id) || state.parts.some((part) => part.type === "approval" && part.decision !== "approved")
+      goals.finishTurn(finished, state.text, pendingContinuations.has(run.id), needsReview)
+    } finally {
+      goalDeadlines.delete(run.id)
+      budgetTimer.stop()
+    }
+  }
+
   const drain = async (): Promise<void> => {
     // A recovered turn must not run alongside the previous provider process.
     await startupCleanup
-    while (!shuttingDown && ownsRuntime() && active.size < maxConcurrentRuns) {
+    while (!shuttingDown && ownsRuntime() && active.size < getMaxConcurrentRuns()) {
       const nextIndex = queued.findIndex((runId) => {
         const run = persistence.getRun(runId)
         return run !== null && !active.has(run.threadId)
       })
       if (nextIndex < 0) return
-      const [runId] = queued.splice(nextIndex, 1)
+      const runId = queued[nextIndex]
+      queued = queued.filter((_, index) => index !== nextIndex)
       if (!runId) return
       const run = persistence.getRun(runId)
       if (run?.status !== "queued") continue
       active.set(run.threadId, run)
-      const execution = execute(run)
+      updateRun(run, { status: "starting", startedAt: Date.now() })
+      const execution = executeGoalTurn(run)
       executions.set(run.id, execution)
       void execution.finally(() => executions.delete(run.id)).catch(() => {})
     }
@@ -1671,6 +1845,7 @@ export const createRuntimeEngine = ({
         errorCode: "BOT_PAUSED",
         error: bot.machine === "cloud" ? "Este bot usa o runtime remoto." : "Bot is paused",
       }
+    if (trigger === "user") goals.pauseForUser(threadId)
     const run: Run = {
       id: kernel.newId(),
       threadId,
@@ -1690,8 +1865,8 @@ export const createRuntimeEngine = ({
       finishedAt: null,
     }
     persistence.saveRun(run)
-    publishRun(run)
     if (delegated) {
+      publishRun(run)
       // A synchronous peer request cannot wait behind its caller's occupied slot.
       // Only group runtime uses this path; depth/call/cycle limits bound extra work.
       queueMicrotask(() => {
@@ -1700,12 +1875,13 @@ export const createRuntimeEngine = ({
           return
         }
         active.set(threadId, run)
-        const execution = execute(run)
+        const execution = executeGoalTurn(run)
         executions.set(run.id, execution)
         void execution.finally(() => executions.delete(run.id)).catch(() => {})
       })
     } else {
-      queued.push(run.id)
+      queued = [...queued, run.id]
+      publishQueue()
       queueMicrotask(() => void drain())
     }
     return { success: true, run }
@@ -1732,7 +1908,7 @@ export const createRuntimeEngine = ({
     const run = persistence.getRun(id)
     if (!run) return { success: false, errorCode: "NOT_FOUND", error: "Run not found" }
     if (!["queued", "starting", "running"].includes(run.status)) return { success: true, run }
-    if (run.status === "queued") {
+    if (run.status === "queued" || (run.status === "starting" && run.providerStartedAt == null)) {
       controllers.get(id)?.abort()
       const store = kernel.services.use("store.api")
       const thread = store?.getThread({ threadId: run.threadId })
@@ -1770,8 +1946,14 @@ export const createRuntimeEngine = ({
     const runs = [...persistence.listActiveRuns(), ...queued.map((id) => persistence.getRun(id))].filter(
       (run): run is Run => !!run && run.botId === botId && ["queued", "starting", "running"].includes(run.status),
     )
-    for (const run of runs) cancel(run.id)
-    await Promise.all(runs.map((run) => executions.get(run.id)))
+    await cancelRuns(runs.map((run) => run.id))
+  }
+
+  const cancelRuns = async (runIds: Id[]): Promise<void> => {
+    runIds.forEach((runId) => {
+      cancel(runId)
+    })
+    await Promise.all(runIds.map((runId) => executions.get(runId)))
   }
 
   const retry = (id: Id): Result<{ run: Run }, "NOT_FOUND" | "THREAD_NOT_FOUND" | "BOT_PAUSED" | "CONFLICT"> => {
@@ -1943,7 +2125,7 @@ export const createRuntimeEngine = ({
       return { success: false, errorCode: "BOT_NOT_FOUND", error: "Bot not found" }
     const validation = routineError(input) ?? routineTargetError(input)
     if (validation) return { success: false, errorCode: "INVALID_ARGS", error: validation }
-    const now = Date.now()
+    const now = getNow()
     const routine: Routine = {
       id: kernel.newId(),
       botId: input.botId,
@@ -1987,8 +2169,7 @@ export const createRuntimeEngine = ({
       return { success: false, errorCode: "INVALID_ARGS", error: "Agents cannot enable routines" }
     if (fromTool && patch.groupId !== undefined && patch.groupId !== routine.groupId)
       return { success: false, errorCode: "INVALID_ARGS", error: "Agents cannot change a routine's group" }
-    const next = { ...routine, ...patch, id: routine.id, botId: routine.botId, updatedAt: Date.now() }
-    // A changed task or destination needs a new explicit human activation.
+    // Agent edits need a new human activation; HTTP edits preserve omitted fields.
     const reviewedFields = [
       "prompt",
       "cron",
@@ -2000,30 +2181,17 @@ export const createRuntimeEngine = ({
       "catchUpMinutes",
       "overlap",
     ] as const
-    if (patch.enabled !== true && reviewedFields.some((field) => next[field] !== routine[field])) next.enabled = false
+    const needsReview = fromTool && reviewedFields.some((field) => field in patch && patch[field] !== routine[field])
+    const updated = Object.assign({}, routine, patch, {
+      id: routine.id,
+      botId: routine.botId,
+      enabled: needsReview ? false : (patch.enabled ?? routine.enabled),
+      updatedAt: getNow(),
+    })
 
-    const candidate: RoutineCreate = {
-      botId: next.botId,
-      name: next.name,
-      prompt: next.prompt,
-      cron: next.cron,
-      timezone: next.timezone,
-      enabled: next.enabled,
-      continuity: next.continuity,
-      resultsThreadId: next.resultsThreadId,
-      groupId: next.groupId,
-      timeoutMinutes: next.timeoutMinutes,
-      overlap: next.overlap,
-      catchUpMinutes: next.catchUpMinutes,
-    }
-    const validation = routineError(candidate) ?? routineTargetError(candidate)
+    const validation = routineError(updated) ?? routineTargetError(updated)
     if (validation) return { success: false, errorCode: "INVALID_ARGS", error: validation }
-    if (!next.enabled) next.nextRunAt = null
-    else if (!routine.enabled || next.cron !== routine.cron || next.timezone !== routine.timezone) {
-      const parsed = parseCron(next.cron)
-      if (parsed.success)
-        next.nextRunAt = nextCronSlot({ cron: parsed.cron, timezone: next.timezone, at: Date.now() + 1 })
-    }
+    const next = Object.assign({}, updated, { nextRunAt: getRoutineNextRunAt(routine, updated, getNow()) })
     persistence.updateRoutine(next)
     kernel.publish({ type: "routine.updated", routine: next, lastRun: persistence.listRoutineRuns(next.id)[0] ?? null })
     return { success: true, routine: next }
@@ -2047,11 +2215,17 @@ export const createRuntimeEngine = ({
     routine,
     scheduledFor,
     triggerSource,
+    wasOffline,
   }: {
     routine: Routine
     scheduledFor: number
     triggerSource: RoutineRun["triggerSource"]
+    wasOffline: boolean
   }): void => {
+    const reason = wasOffline
+      ? "o touri não estava em execução no horário agendado."
+      : "o atraso ultrapassou a janela de recuperação."
+    const summary = `Rotina “${routine.name}” não executada: ${reason}`
     const inserted = persistence.insertRoutineRun({
       id: kernel.newId(),
       routineId: routine.id,
@@ -2060,9 +2234,9 @@ export const createRuntimeEngine = ({
       threadId: null,
       runId: null,
       triggerSource,
-      summary: `Rotina “${routine.name}” adiada: o touri estava fechado no horário agendado.`,
+      summary,
       startedAt: null,
-      finishedAt: Date.now(),
+      finishedAt: getNow(),
     })
     if (!inserted.success) return
     kernel.publish({ type: "routine.updated", routine, lastRun: inserted.routineRun })
@@ -2070,7 +2244,7 @@ export const createRuntimeEngine = ({
       botId: routine.botId,
       threadId: null,
       routineName: routine.name,
-      reason: `A rotina “${routine.name}” não foi executada porque o touri estava fechado no horário agendado.`,
+      reason: summary,
     })
   }
 
@@ -2082,7 +2256,10 @@ export const createRuntimeEngine = ({
     routineId: Id
     triggerSource: RoutineRun["triggerSource"]
     scheduledFor?: number
-  }): Result<{ routineRun: RoutineRun }, "NOT_FOUND" | "INVALID_ARGS" | "THREAD_NOT_FOUND" | "BOT_PAUSED"> => {
+  }): Result<
+    { routineRun: RoutineRun },
+    "NOT_FOUND" | "INVALID_ARGS" | "THREAD_NOT_FOUND" | "BOT_PAUSED" | "DELEGATION_LIMIT"
+  > => {
     const routine = persistence.getRoutine(routineId)
     const store = kernel.services.use("store.api")
     if (!routine || !store) return { success: false, errorCode: "NOT_FOUND", error: "Routine not found" }
@@ -2224,7 +2401,7 @@ export const createRuntimeEngine = ({
     return { success: true, routineRun: running }
   }
 
-  const tick = async (now = Date.now()): Promise<void> => {
+  const tick = async (now = getNow()): Promise<void> => {
     if (shuttingDown || !ownsRuntime()) return
     const updateNextRun = ({ routineId, nextRunAt }: { routineId: Id; nextRunAt: number | null }): void => {
       const latest = persistence.getRoutine(routineId)
@@ -2237,20 +2414,26 @@ export const createRuntimeEngine = ({
       let due = routine.nextRunAt
       if (due === null) {
         const previous = previousCronSlot({ cron: parsed.cron, timezone: routine.timezone, at: now })
-        if (previous !== null && now - previous <= routine.catchUpMinutes * 60_000)
+        if (previous !== null && canRunRoutineSlot(routine, previous, now, runtimeStartedAt))
           void runRoutine({ routineId: routine.id, triggerSource: "catch-up", scheduledFor: previous })
-        else if (previous !== null) recordSkipped({ routine, scheduledFor: previous, triggerSource: "catch-up" })
+        else if (previous !== null)
+          recordSkipped({
+            routine,
+            scheduledFor: previous,
+            triggerSource: "catch-up",
+            wasOffline: previous < runtimeStartedAt,
+          })
         due = nextCronSlot({ cron: parsed.cron, timezone: routine.timezone, at: now + 60_000 })
         updateNextRun({ routineId: routine.id, nextRunAt: due })
         continue
       }
       if (due <= now) {
-        if (now - due > routine.catchUpMinutes * 60_000)
-          recordSkipped({ routine, scheduledFor: due, triggerSource: "catch-up" })
+        if (!canRunRoutineSlot(routine, due, now, runtimeStartedAt))
+          recordSkipped({ routine, scheduledFor: due, triggerSource: "catch-up", wasOffline: due < runtimeStartedAt })
         else
           void runRoutine({
             routineId: routine.id,
-            triggerSource: now - due >= 60_000 ? "catch-up" : "cron",
+            triggerSource: due < runtimeStartedAt || now - due > ROUTINE_TICK_GRACE_MS ? "catch-up" : "cron",
             scheduledFor: due,
           })
         const next = nextCronSlot({ cron: parsed.cron, timezone: routine.timezone, at: due + 60_000 })
@@ -2358,18 +2541,39 @@ export const createRuntimeEngine = ({
     if (plan) startContinuation({ run, plan })
   }
 
+  goals.getActive().forEach((goal) => {
+    const run = goal.runId ? persistence.getRun(goal.runId) : null
+    if (run && ["queued", "starting", "running"].includes(run.status)) return
+    if (!goals.prepareContinuation(goal)) return
+    const isLatest = run && persistence.listRuns(goal.threadId)[0]?.id === run.id
+    const plan = isLatest
+      ? planContinuation({ run, reason: "app_restart", lastActivityAt: run.finishedAt ?? run.queuedAt })
+      : null
+    if (run && plan && startContinuation({ run, plan })) return
+
+    const current = goals.getGoal(goal.threadId)
+    if (current?.status === "active") goals.saveGoal({ ...current, status: "paused" })
+  })
+
   const recoveryStore = kernel.services.use("store.api")
   if (recoveryStore) tools.reconcile(recoveryStore)
   queueMicrotask(() => void drain())
 
   return {
     ready: startupCleanup,
+    goals,
     enqueue,
     activeRun,
     continueAfterApproval,
+    getRunSnapshot,
+    getWorkRuns,
+    settingsChanged: () => {
+      void drain()
+    },
     listRuns: persistence.listRuns,
     cancel,
     cancelBotTurns,
+    cancelRuns,
     retry,
     answerApproval,
     approvalBridge,
@@ -2383,4 +2587,21 @@ export const createRuntimeEngine = ({
     tick,
     shutdown,
   }
+}
+
+const getRoutineNextRunAt = (previous: Routine, next: Routine, now: number): number | null => {
+  if (!next.enabled) return null
+  if (previous.enabled && next.cron === previous.cron && next.timezone === previous.timezone) return next.nextRunAt
+
+  const parsed = parseCron(next.cron)
+  if (!parsed.success) return null
+
+  return nextCronSlot({ cron: parsed.cron, timezone: next.timezone, at: now + 1 })
+}
+
+const canRunRoutineSlot = (routine: Routine, scheduledFor: number, now: number, runtimeStartedAt: number): boolean => {
+  if (routine.catchUpMinutes === 0 && scheduledFor < runtimeStartedAt) return false
+
+  const catchUpWindowMs = routine.catchUpMinutes * 60_000 + ROUTINE_TICK_GRACE_MS
+  return now - scheduledFor <= catchUpWindowMs
 }

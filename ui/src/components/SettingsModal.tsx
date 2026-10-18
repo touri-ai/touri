@@ -1,4 +1,4 @@
-import type { ApiRoutes, DoctorReport } from "@touri/contracts"
+import type { ApiRoutes, DoctorReport, NotificationPreferences } from "@touri/contracts"
 import { useState } from "react"
 import type { TauriInvoke, UiApi } from "../api/client"
 import { readTheme, setTheme, type ThemePreference } from "../design/theme"
@@ -18,12 +18,13 @@ import { DoctorChecks } from "../features/doctor/DoctorChecks"
 import { ReportProblem } from "../features/reports/ReportProblem"
 import { ServerModeSettings } from "../features/server/ServerModeSettings"
 import { isNativeDesktop, useIsServerMode } from "../features/server/serverMode"
-import { t } from "../i18n"
+import { getHostLabel, t } from "../i18n"
 import { hostComputerSupported } from "../platform"
 import { useHost } from "../useHost"
 import { ApiModelsSettings } from "./ApiModelsSettings"
 import { Modal } from "./Modal"
 import { NotificationDeliverySettings } from "./NotificationDeliverySettings"
+import { NotificationPreferencesSettings } from "./NotificationPreferencesSettings"
 import {
   SettingsDisclosure,
   SettingsGroup,
@@ -84,6 +85,9 @@ export const SettingsModal = ({
   const [updates, setUpdates] = useState(settings?.checkForUpdates ?? false)
   const [launchAtLogin, setLaunchAtLogin] = useState(settings?.launchAtLogin ?? false)
   const [tray, setTray] = useState(settings?.keepRunningInTray ?? true)
+  const [notificationPreferences, setNotificationPreferences] = useState<NotificationPreferences>(
+    settings?.notificationPreferences ?? {},
+  )
   const [native, setNative] = useState(settings?.nativeNotifications ?? true)
   const [floatUpdates, setFloatUpdates] = useState(settings?.sidebarFloatUpdates ?? true)
   const [resumeTurns, setResumeTurns] = useState(settings?.resumeInterruptedTurns ?? true)
@@ -112,6 +116,7 @@ export const SettingsModal = ({
         checkForUpdates: updates,
         keepRunningInTray: tray,
         nativeNotifications: native,
+        notificationPreferences,
         sidebarFloatUpdates: floatUpdates,
         resumeInterruptedTurns: resumeTurns,
         botVmMemoryMb: vmMemory,
@@ -220,7 +225,7 @@ export const SettingsModal = ({
           <p className="field-help">
             {host === "server"
               ? t("Seus dados e os logins dos bots ficam no servidor escolhido.")
-              : t("Seus dados ficam neste Mac. Conexões externas são opcionais.")}
+              : t("Your data stays on this {host}. External connections are optional.", { host: getHostLabel(host) })}
           </p>
           <SettingsDisclosure
             title={t("Dados, permissões e conexões")}
@@ -316,6 +321,20 @@ export const SettingsModal = ({
             </label>
             <NotificationDeliverySettings enabled={native} />
           </SettingsGroup>
+          <SettingsDisclosure
+            title={t("Escolher avisos e horário silencioso")}
+            description={t("Filtre por bot e tipo, incluindo resultados concluídos.")}
+          >
+            {(open) =>
+              open && (
+                <NotificationPreferencesSettings
+                  value={notificationPreferences}
+                  onChange={setNotificationPreferences}
+                  api={api}
+                />
+              )
+            }
+          </SettingsDisclosure>
         </SettingsPane>
         <SettingsPane {...pane("diagnostics")}>
           <SettingsDisclosure

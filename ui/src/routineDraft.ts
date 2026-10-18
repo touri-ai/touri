@@ -1,9 +1,21 @@
 import type { ApiRoutes, Bot, BotGroup, Message, Routine, Thread } from "@touri/contracts"
 import { getJobTemplates } from "./features/jobs/catalog"
-import { t } from "./i18n"
+import { type Locale, t } from "./i18n"
 import { messageMarkdown } from "./messageMarkdown"
 
 export type RoutineDraft = ApiRoutes["POST /routines"]["req"]
+
+export const getTeamRoutineDraft = (bot: Bot, locale: Locale = "pt-BR"): RoutineDraft => {
+  const suggested = suggestedRoutineDraft(bot, locale)
+  if (suggested) return suggested
+
+  return {
+    ...newRoutineDraft(bot.id),
+    name: t("Routine with {name}", { name: bot.name }, locale).slice(0, 80),
+    prompt:
+      bot.instructions?.trim() || bot.roleLine?.trim() || t("Review today's tasks and suggest next steps.", {}, locale),
+  }
+}
 
 export const newRoutineDraft = (botId: string): RoutineDraft => ({
   botId,
@@ -56,8 +68,8 @@ export const draftFromRoutine = (routine: Routine): RoutineDraft => {
 }
 
 /** A template suggests a schedule only; choosing a job never persists a routine. */
-export const suggestedRoutineDraft = (bot: Bot): RoutineDraft | null => {
-  const template = getJobTemplates().find(
+export const suggestedRoutineDraft = (bot: Bot, locale: Locale = "pt-BR"): RoutineDraft | null => {
+  const template = getJobTemplates(locale).find(
     (job) => job.suggestedCron && job.roleLine === bot.roleLine && job.instructions === bot.instructions,
   )
   return template?.suggestedCron

@@ -1,5 +1,7 @@
-import { expect, test } from "bun:test"
-import { readFileSync } from "node:fs"
+import { afterEach, beforeEach, describe, expect, test } from "bun:test"
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { linuxTests, needsNative, sidecarShard, testFiles } from "../../../.github/ci/selection"
 
 const workflow = readFileSync(new URL("../../../.github/workflows/ci.yml", import.meta.url), "utf8")
@@ -52,6 +54,23 @@ test("installers and artifact uploads run on main/manual runs, with full Linux c
   expect(workflow).toMatch(/cancel-in-progress: \$\{\{ github.event_name == 'pull_request' \}\}/)
 })
 
+test("verified downloads are saved before later checks can fail", () => {
+  const composer = jobs.get("composer-performance") ?? ""
+  const workspace = readFileSync(new URL("../../../.github/actions/setup-bun/action.yml", import.meta.url), "utf8")
+
+  const browserSave = composer.indexOf("name: Save verified browser downloads")
+  const browserCheck = composer.indexOf("name: Check long-conversation typing")
+  const workspaceInstall = workspace.indexOf("run: bun install --frozen-lockfile")
+  const workspaceSave = workspace.indexOf("name: Save verified workspace dependencies")
+
+  expect(browserSave).toBeGreaterThan(0)
+  expect(browserCheck).toBeGreaterThan(browserSave)
+  expect(workspaceInstall).toBeGreaterThan(0)
+  expect(workspaceSave).toBeGreaterThan(workspaceInstall)
+  expect(composer).toContain("uses: actions/cache/save@")
+  expect(workspace).toContain("uses: actions/cache/save@")
+})
+
 test("UI and documentation PRs skip native work; native, policy and workflow PRs run it", () => {
   expect(needsNative("pull_request", ["ui/src/App.tsx", "README.md"])).toBe(false)
   for (const path of [
@@ -83,6 +102,32 @@ test("every current and future sidecar test belongs to exactly one nonempty shar
   expect(shards.every((shard) => shard.length > 0)).toBe(true)
   expect(shards.flat().sort()).toEqual([...files, ...future].sort())
   expect(sidecarShard("runtime/runtime.test.ts")).not.toBe(sidecarShard("vm/runtime.test.ts"))
+})
+
+describe("test file discovery", () => {
+  let root = ""
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), "touri-ci-selection-"))
+  })
+  afterEach(() => rmSync(root, { recursive: true, force: true }))
+
+  test("keeps every supported suffix and extension, including new directories", () => {
+    mkdirSync(join(root, "future/nested"), { recursive: true })
+    const expected = [".test", "_test", ".spec", "_spec"].flatMap((suffix) =>
+      ["js", "jsx", "ts", "tsx", "mjs", "cjs", "mts", "cts"].map(
+        (extension) => `future/nested/example${suffix}.${extension}`,
+      ),
+    )
+    const fixtures = [...expected, "helper.ts", "example.test.json"]
+    fixtures.forEach((file) => {
+      writeFileSync(join(root, file), "")
+    })
+
+    const found = testFiles(root)
+
+    expect(new Set(found)).toEqual(new Set(expected))
+    expect(found).toHaveLength(expected.length)
+  })
 })
 
 test("Linux PRs include platform, Linux and confinement tests without the full Unix suite", () => {

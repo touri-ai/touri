@@ -1,17 +1,18 @@
+import type { HostKind } from "@touri/contracts"
 import { useEffect, useRef, useState } from "react"
-import { t } from "../i18n"
+import { getHostLabel, t } from "../i18n"
 
 type GlobalAdvancedMenuProps = {
-  host?: "mac" | "server" | undefined
-  page: "cron" | "integracoes" | "mcp" | null
-  onPage: (page: "integracoes" | "mcp") => void
+  host?: HostKind | undefined
+  page: "cron" | "integracoes" | "mcp" | "work" | "performance" | null
+  onPage: (page: "integracoes" | "mcp" | "work" | "performance") => void
   onProject: () => void
   onDoctor: () => void
   onImport: () => void
 }
 
 export const GlobalAdvancedMenu = ({
-  host = "mac",
+  host = "computer",
   page,
   onPage,
   onProject,
@@ -61,6 +62,17 @@ export const GlobalAdvancedMenu = ({
       </button>
       {open && (
         <nav id="sidebar-advanced-pages" className="sidebar-advanced-pages" aria-label={t("Advanced pages")}>
+          {(["work", "performance"] as const).map((destination) => (
+            <button
+              key={destination}
+              type="button"
+              className="sidebar-nav-item"
+              aria-current={page === destination ? "page" : undefined}
+              onClick={() => launch(() => onPage(destination))}
+            >
+              {t(destination === "work" ? "Work" : "Performance")}
+            </button>
+          ))}
           <button
             type="button"
             className="sidebar-nav-item"
@@ -81,7 +93,7 @@ export const GlobalAdvancedMenu = ({
             {t("Projects")}
           </button>
           <button type="button" className="sidebar-nav-item" onClick={() => launch(onDoctor)}>
-            {t(host === "mac" ? "Check this Mac" : "onboarding.checkServer")}
+            {t("Check this {host}", { host: getHostLabel(host) })}
           </button>
           <button type="button" className="sidebar-nav-item" onClick={() => launch(onImport)}>
             {t("Import")}

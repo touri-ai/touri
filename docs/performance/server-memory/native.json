@@ -1,0 +1,235 @@
+{
+  "baselineHidden": [
+    {
+      "elapsedSeconds": 0,
+      "componentsMB": {
+        "WebContent": 69.5992,
+        "Networking": 17.7439,
+        "GPU": 30.4742,
+        "shell": 65.2575
+      },
+      "totalMB": 183.0748
+    },
+    {
+      "elapsedSeconds": 30,
+      "componentsMB": {
+        "WebContent": 23.7568,
+        "Networking": 14.3524,
+        "GPU": 18.219,
+        "shell": 41.9267
+      },
+      "totalMB": 98.2548
+    },
+    {
+      "elapsedSeconds": 60,
+      "componentsMB": {
+        "WebContent": 20.1359,
+        "Networking": 14.2541,
+        "GPU": 17.8258,
+        "shell": 43.221
+      },
+      "totalMB": 95.4368
+    },
+    {
+      "elapsedSeconds": 90,
+      "componentsMB": {
+        "WebContent": 22.4133,
+        "Networking": 14.2868,
+        "GPU": 17.7439,
+        "shell": 43.2374
+      },
+      "totalMB": 97.6814
+    },
+    {
+      "elapsedSeconds": 120,
+      "componentsMB": {
+        "WebContent": 21.2173,
+        "Networking": 13.9428,
+        "GPU": 12.3044,
+        "shell": 42.9916
+      },
+      "totalMB": 90.4561
+    },
+    {
+      "elapsedSeconds": 150,
+      "componentsMB": {
+        "WebContent": 20.1359,
+        "Networking": 14.1394,
+        "GPU": 13.5496,
+        "shell": 42.8605
+      },
+      "totalMB": 90.6854
+    },
+    {
+      "elapsedSeconds": 180,
+      "componentsMB": {
+        "WebContent": 20.7258,
+        "Networking": 14.123,
+        "GPU": 13.4185,
+        "shell": 43.0735
+      },
+      "totalMB": 91.3408
+    },
+    {
+      "elapsedSeconds": 210,
+      "componentsMB": {
+        "WebContent": 22.6099,
+        "Networking": 13.8772,
+        "GPU": 12.1078,
+        "shell": 41.7956
+      },
+      "totalMB": 90.3905
+    },
+    {
+      "elapsedSeconds": 240,
+      "componentsMB": {
+        "WebContent": 18.0224,
+        "Networking": 14.2213,
+        "GPU": 12.2716,
+        "shell": 45.3837
+      },
+      "totalMB": 89.899
+    },
+    {
+      "elapsedSeconds": 270,
+      "componentsMB": {
+        "WebContent": 17.8913,
+        "Networking": 13.4349,
+        "GPU": 10.8954,
+        "shell": 40.6487
+      },
+      "totalMB": 82.8703
+    },
+    {
+      "elapsedSeconds": 300,
+      "componentsMB": {
+        "WebContent": 17.0557,
+        "Networking": 13.271,
+        "GPU": 10.6496,
+        "shell": 44.0074
+      },
+      "totalMB": 84.9838
+    }
+  ],
+  "memoryFixHidden": [
+    {
+      "elapsedSeconds": 0,
+      "componentsMB": {
+        "shell": 109.6909,
+        "GPU": 36.3397,
+        "Networking": 19.3167,
+        "WebContent": 92.3238
+      },
+      "totalMB": 257.6712
+    },
+    {
+      "elapsedSeconds": 30,
+      "componentsMB": {
+        "shell": 89.1781,
+        "GPU": 21.332,
+        "Networking": 15.0569,
+        "WebContent": 32.8827
+      },
+      "totalMB": 158.4497
+    },
+    {
+      "elapsedSeconds": 60,
+      "componentsMB": {
+        "shell": 89.5222,
+        "GPU": 20.48,
+        "Networking": 15.0897,
+        "WebContent": 31.9652
+      },
+      "totalMB": 157.057
+    },
+    {
+      "elapsedSeconds": 90,
+      "componentsMB": {
+        "shell": 90.3414,
+        "GPU": 20.1359,
+        "Networking": 14.7128,
+        "WebContent": 36.8804
+      },
+      "totalMB": 162.0705
+    },
+    {
+      "elapsedSeconds": 120,
+      "componentsMB": {
+        "shell": 88.6374,
+        "GPU": 20.1687,
+        "Networking": 14.9586,
+        "WebContent": 37.3555
+      },
+      "totalMB": 161.1203
+    },
+    {
+      "elapsedSeconds": 150,
+      "componentsMB": {
+        "shell": 87.4742,
+        "GPU": 20.1359,
+        "Networking": 14.975,
+        "WebContent": 31.146
+      },
+      "totalMB": 153.7311
+    },
+    {
+      "elapsedSeconds": 180,
+      "componentsMB": {
+        "shell": 88.4408,
+        "GPU": 20.4964,
+        "Networking": 14.6964,
+        "WebContent": 35.8318
+      },
+      "totalMB": 159.4655
+    },
+    {
+      "elapsedSeconds": 210,
+      "componentsMB": {
+        "shell": 88.2442,
+        "GPU": 20.1359,
+        "Networking": 14.975,
+        "WebContent": 37.4866
+      },
+      "totalMB": 160.8417
+    },
+    {
+      "elapsedSeconds": 240,
+      "componentsMB": {
+        "shell": 88.1132,
+        "GPU": 19.497,
+        "Networking": 14.8603,
+        "WebContent": 36.7657
+      },
+      "totalMB": 159.2361
+    },
+    {
+      "elapsedSeconds": 270,
+      "componentsMB": {
+        "shell": 82.7228,
+        "GPU": 19.2676,
+        "Networking": 14.762,
+        "WebContent": 29.9336
+      },
+      "totalMB": 146.686
+    },
+    {
+      "elapsedSeconds": 300,
+      "componentsMB": {
+        "shell": 83.0505,
+        "GPU": 20.48,
+        "Networking": 14.3852,
+        "WebContent": 30.5398
+      },
+      "totalMB": 148.4554
+    }
+  ],
+  "units": "decimal MB from ps RSS KiB * 1024 / 1000000",
+  "runtimeSchema": 23,
+  "currentMainSchema": 24,
+  "pairedServerSchema": 23,
+  "limitations": [
+    "Hidden windows; shared server and other work on the Mac; RSS affected by compression and shared pages.",
+    "Compatible pre-rebase builds only. Current main correctly refuses the older server; its blocked page is excluded.",
+    "The 150 MB target has not been established for a visible current desktop."
+  ]
+}

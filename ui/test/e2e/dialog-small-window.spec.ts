@@ -172,7 +172,7 @@ for (const size of sizes) {
       await page.screenshot({ path: info.outputPath("folder-picker.png") })
       await picker.getByRole("button", { name: "Cancelar", exact: true }).click()
       await expect(settings.getByRole("button", { name: "Adicionar pasta…" })).toBeFocused()
-      await settings.getByRole("switch", { name: /Acesso a qualquer pasta deste Mac/ }).click()
+      await settings.getByRole("switch", { name: /Acesso a qualquer pasta deste servidor/ }).click()
       const approval = page.getByRole("dialog", { name: "Permitir acesso a qualquer pasta?" })
       await checkLayer(page, approval)
       await checkReachable(approval, approval.locator("p").last())

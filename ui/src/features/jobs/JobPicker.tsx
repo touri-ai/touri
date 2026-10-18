@@ -12,10 +12,12 @@ const searchable = (text: string): string =>
 export const JobPicker = ({
   value,
   onChange,
+  coveredJobIds = [],
   locale = "pt-BR",
 }: {
   value: string
   onChange: (job: JobTemplate | null) => void
+  coveredJobIds?: string[]
   locale?: Locale
 }) => {
   const id = useId()
@@ -27,6 +29,8 @@ export const JobPicker = ({
   const options = [null, ...filtered]
   const option = (job: JobTemplate | null) => {
     const optionId = job?.id ?? NOT_SURE_JOB_ID
+    const isCovered = coveredJobIds.includes(optionId)
+
     return (
       <label key={optionId} className="job-option">
         <input
@@ -35,7 +39,7 @@ export const JobPicker = ({
           value={optionId}
           checked={value === optionId}
           aria-labelledby={`${id}-${optionId}-name`}
-          aria-describedby={`${id}-${optionId}-description`}
+          aria-describedby={`${id}-${optionId}-description${isCovered ? ` ${id}-${optionId}-covered` : ""}`}
           onChange={() => onChange(job)}
           onKeyDown={(event) => {
             const index = options.findIndex((item) => (item?.id ?? NOT_SURE_JOB_ID) === optionId)
@@ -65,6 +69,11 @@ export const JobPicker = ({
           <small id={`${id}-${optionId}-description`}>
             {job?.description ?? t("Choose a job later in the bot settings.", {}, locale)}
           </small>
+          {isCovered && (
+            <small id={`${id}-${optionId}-covered`}>
+              {t("You already have a bot taking care of this.", {}, locale)}
+            </small>
+          )}
         </span>
       </label>
     )

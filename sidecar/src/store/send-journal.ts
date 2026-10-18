@@ -102,7 +102,13 @@ export const createSendJournal = ({
     const deadline = input.deadline ?? Date.now() + 24 * 60 * 60_000
     if (typeof nonce !== "string" || !/^[a-zA-Z0-9_-]{1,128}$/.test(nonce) || !Number.isSafeInteger(deadline))
       return { status: 400, json: { errorCode: "INVALID_ARGS", error: "Identificador ou prazo de envio inválido." } }
+    if (input.groupAction) {
+      const thread = store.getThread({ threadId: input.threadId })
+      if (!["ask_all", "summarize"].includes(input.groupAction) || !thread?.groupId || thread.groupThreadId)
+        return { status: 400, json: { errorCode: "INVALID_ARGS", error: "Esta ação exige uma conversa de grupo." } }
+    }
     const requestJson = JSON.stringify({
+      ...(input.groupAction ? { groupAction: input.groupAction } : {}),
       parentId: input.parentId,
       text: input.text,
       attachmentIds: input.attachmentIds,
@@ -114,7 +120,19 @@ export const createSendJournal = ({
       dispatch(previous)
       return reply(find(input.threadId, nonce) ?? previous)
     }
-    const parts: Array<MessagePart> = [{ type: "text", text: input.text }]
+    const parts: Array<MessagePart> = [
+      { type: "text", text: input.text },
+      ...(input.groupAction
+        ? [
+            {
+              type: "notice" as const,
+              level: "info" as const,
+              code: input.groupAction === "ask_all" ? ("group_ask_all" as const) : ("group_summary" as const),
+              text: input.groupAction === "ask_all" ? "Perguntar a todos" : "Pedir resumo do time",
+            },
+          ]
+        : []),
+    ]
     for (const attachmentId of input.attachmentIds) {
       const attachment = database
         .query("SELECT mime, path, origin_path FROM attachments WHERE id = ?")

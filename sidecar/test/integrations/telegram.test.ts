@@ -11,6 +11,7 @@ import { createTelegramBridge } from "../../src/integrations/telegram/bridge"
 import { createTelegramStore, tokenAccount } from "../../src/integrations/telegram/store"
 import { splitMessage } from "../../src/integrations/telegram/text"
 import { createKernel } from "../../src/kernel"
+import { createRuntimeEngine } from "../../src/runtime/engine"
 import { createRuntimePersistence } from "../../src/runtime/persistence"
 import { init as initStore } from "../../src/store"
 
@@ -125,7 +126,7 @@ const fixture = async ({ token = TOKEN }: { token?: string } = {}) => {
     if (response.status !== 200) throw new Error(JSON.stringify(response.body))
     return (response.body as { telegram: TelegramIntegration }).telegram
   }
-  const finish = (run: Run, text: string) => {
+  const finish = (run: Run, text: string, getSnapshot: (run: Run) => Run = (run) => ({ ...run })) => {
     const reply = store.insertMessage({
       message: {
         id: kernel.newId(),
@@ -144,7 +145,7 @@ const fixture = async ({ token = TOKEN }: { token?: string } = {}) => {
     if (!reply.success) throw new Error(reply.error)
     Object.assign(run, { status: "succeeded", replyMessageId: reply.message.id, finishedAt: Date.now() })
     persistence.saveRun(run)
-    kernel.publish({ type: "run.updated", run: { ...run } })
+    kernel.publish({ type: "run.updated", run: getSnapshot(run) })
   }
   return {
     kernel,
@@ -203,6 +204,26 @@ test("Telegram is off by default, keeps the token secret and ignores senders out
   expect(
     (f.kernel.db as Database).query("SELECT COUNT(*) AS n FROM threads WHERE title LIKE 'Telegram%'").get(),
   ).toEqual({ n: 0 })
+})
+
+test("engine snapshots keep the Telegram delivery thread when work has a separate group destination", async () => {
+  const f = await fixture()
+  const engine = createRuntimeEngine({ kernel: f.kernel })
+  cleanup.push(() => engine.shutdown())
+  await f.configure({ token: TOKEN, enabled: true, allowedUserIds: ["42"] })
+  f.fake.message({ text: "Revisar o relatório" })
+  await until(() => f.runs.length === 1, "run")
+  const run = f.runs[0]
+  const visible = f.store.createThread({ botId: f.bot.id, kind: "chat", title: "Equipe de demonstração" })
+  if (!run || !visible.success) throw new Error("Missing conversation fixture")
+  const database = f.kernel.db as Database
+  database.query("UPDATE threads SET group_thread_id = ? WHERE id = ?").run(visible.thread.id, run.threadId)
+
+  f.finish(run, "Relatório revisado.", engine.getRunSnapshot)
+  await until(() => f.fake.sent().some((call) => call.params.text === "Relatório revisado."), "reply")
+
+  expect(engine.getRunSnapshot(run)).toMatchObject({ threadId: run.threadId, groupThreadId: visible.thread.id })
+  expect(f.fake.sent().filter((call) => call.params.text === "Relatório revisado.")).toHaveLength(1)
 })
 
 test("an allowed private chat maps to one thread, gets typing and receives the reply split under the limit", async () => {

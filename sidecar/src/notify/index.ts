@@ -1,6 +1,7 @@
 import type { Database } from "bun:sqlite"
 import type { Kernel, NotifyKind } from "@touri/contracts"
 import { createNotifier } from "./notifier"
+import { createRecoverySync } from "./recovery"
 import { createNotifyRoutes } from "./routes"
 import { createSseHub } from "./sse"
 import { createNotificationStore } from "./store"
@@ -19,6 +20,9 @@ export const init = async (kernel: Kernel): Promise<void> => {
   kernel.services.provide("notify.resolve", ({ requestId, resolution }) => {
     notifier.resolveRequest({ requestId, resolution })
   })
+
+  const syncRecoveryTasks = createRecoverySync(kernel, store, notifier)
+  syncRecoveryTasks({ silent: true })
 
   // Heal history written by an older runtime or a completion missed while restarting.
   const historical = (kernel.db as Database)
@@ -46,5 +50,5 @@ export const init = async (kernel: Kernel): Promise<void> => {
       notifier.finish({ id: item.id, resolution: "replied" })
   })
 
-  kernel.registerRoutes(createNotifyRoutes({ kernel, store, notifier, hub }))
+  kernel.registerRoutes(createNotifyRoutes({ kernel, store, notifier, hub, syncRecoveryTasks }))
 }

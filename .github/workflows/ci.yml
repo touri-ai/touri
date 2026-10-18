@@ -36,8 +36,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-bun
         with:
-          bun-version: 1.2.21
+          bun-version: 1.4.3
       - run: bun run typecheck --incremental --tsBuildInfoFile node_modules/.cache/ci.tsbuildinfo
+      - name: Verify confinement test compatibility with the minimum runtime
+        run: bun test sidecar/test/platform/linux-ci-sandbox.test.ts sidecar/test/runtime/linux-folder-sandbox.test.ts
       - run: bun packages/contracts/src/validate-catalog.ts
       - run: bun test sidecar/test/kernel/catalog-validation.test.ts
       - run: bun test sidecar/test/kernel/schema-contract.test.ts
@@ -131,7 +133,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-bun
         with:
-          bun-version: 1.2.21
+          bun-version: 1.4.3
       - run: bunx tsc --noEmit -p tsconfig.base.json --incremental --tsBuildInfoFile node_modules/.cache/ci.tsbuildinfo
       - run: bun --cwd ui build
 
@@ -157,7 +159,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-bun
         with:
-          bun-version: 1.2.21
+          bun-version: 1.4.3
       - name: Resolve browser cache version
         id: playwright
         working-directory: ui
@@ -165,7 +167,7 @@ jobs:
         run: echo "version=$(bun -e 'console.log(require("@playwright/test/package.json").version)')" >> "$GITHUB_OUTPUT"
       - name: Cache Playwright browsers
         id: browsers
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.cache/ms-playwright
           key: playwright-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright.outputs.version }}
@@ -173,6 +175,13 @@ jobs:
         if: steps.browsers.outputs.cache-hit != 'true'
         working-directory: ui
         run: bunx playwright install --with-deps chromium
+      # These verified downloads remain useful even if the performance assertion fails.
+      - name: Save verified browser downloads
+        if: steps.browsers.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ steps.browsers.outputs.cache-primary-key }}
       - name: Report browser cache
         env:
           BROWSER_HIT: ${{ steps.browsers.outputs.cache-hit == 'true' }}
@@ -192,13 +201,96 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+  api-models:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-bun
+        with:
+          bun-version: 1.4.3
+      - name: Install browser for API model setup
+        working-directory: ui
+        run: bunx playwright install --with-deps chromium
+      # Optimization during the flow would reload and reset the in-memory mock service.
+      - name: Prepare development dependencies before stateful browser checks
+        working-directory: ui
+        env:
+          VITE_ENABLE_MOCK: "true"
+        run: bunx vite optimize --force
+      - name: Check work queue and concurrency settings on desktop and phone
+        working-directory: ui
+        env:
+          TOURI_SCREENSHOT_DIR: ${{ runner.temp }}/touri-work-evidence
+        run: |
+          mkdir -p "$TOURI_SCREENSHOT_DIR"
+          bunx playwright test test/e2e/work-queue.spec.ts --workers=1
+      - name: Keep synthetic work evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: work-queue
+          path: ${{ runner.temp }}/touri-work-evidence/*.png
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Keep work navigation diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: work-queue-diagnostics
+          path: |
+            ui/test-results/**/trace.zip
+            ui/test-results/**/error-context.md
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Check API model setup and bot selection
+        working-directory: ui
+        run: bunx playwright test test/e2e/api-models.spec.ts --workers=1
+      - name: Check group coordination on desktop and phone
+        working-directory: ui
+        run: bunx playwright test test/e2e/group-coordination.spec.ts --workers=1
+      - name: Check routine history on desktop and phone
+        working-directory: ui
+        run: bunx playwright test test/e2e/routine-sidebar.spec.ts --workers=1
+      - name: Check notification preferences on desktop and phone
+        working-directory: ui
+        run: bunx playwright test test/e2e/notification-preferences.spec.ts --workers=1 --output test-results/notification-preferences
+      - name: Keep synthetic notification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: notification-preferences
+          path: ui/test-results/**/notification-preferences-*.png
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Keep synthetic group evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: group-coordination
+          path: ui/test-results/**/group-partial-success-*.png
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Install pinned API executor
+        shell: bash
+        run: |
+          executor_dir="$RUNNER_TEMP/touri-api-executor"
+          mkdir -p "$executor_dir"
+          curl -fsSL --retry 3 https://github.com/anomalyco/opencode/releases/download/v1.18.13/opencode-linux-x64.tar.gz -o "$executor_dir/opencode.tar.gz"
+          printf '%s  %s\n' '8d500b20fed2d26e537e221895b1a575476571b4f0089bb29fb13eeb8eb9e937' "$executor_dir/opencode.tar.gz" | sha256sum --check
+          tar -xzf "$executor_dir/opencode.tar.gz" -C "$executor_dir"
+          "$executor_dir/opencode" --version
+          echo "TOURI_OPENCODE_BIN=$executor_dir/opencode" >> "$GITHUB_ENV"
+      - name: Check API configuration, turns and credential isolation
+        run: bun test sidecar/test/api-models sidecar/test/runtime/opencode.test.ts
+
   license-check:
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-bun
         with:
-          bun-version: 1.2.21
+          bun-version: 1.4.3
       - run: bunx license-checker --production --summary
 
   linux:
@@ -254,7 +346,7 @@ jobs:
       - name: Verify Linux folder confinement
         run: |
           # Permit test namespaces on this disposable runner; production policy is unchanged.
-          if [ -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
+          if sysctl kernel.apparmor_restrict_unprivileged_userns >/dev/null 2>&1; then
             sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           fi
           bun -e '

@@ -1,7 +1,7 @@
 import { apiModelErrors, errorRegistry, type MessagePart, type Provider, publicError } from "@touri/contracts"
 import { hasRecordedActions, safeRunFailure, sanitizeDiagnostic } from "@touri/contracts/run-failure"
 import { providerName } from "./components/ProviderMark"
-import { ApiError } from "./errors"
+import { ApiError, isServiceUnavailable } from "./errors"
 import { type Locale, t } from "./i18n"
 
 export type RecoveryAction = "retry" | "login" | "storage" | "review" | "resume" | "doctor"
@@ -96,8 +96,12 @@ export const errorRecovery = (error: unknown, context: RecoveryContext = {}): Er
       [action("review", "Ver tarefa")],
     )
   }
+  if (isServiceUnavailable(error) || /SERVER_CONNECTION_FAILED/i.test(text))
+    return view(tr("O serviço do touri está indisponível. Verifique a conexão e tente novamente."), [
+      action("retry", "Tentar novamente"),
+    ])
   if (
-    /network|fetch failed|failed to fetch|ECONN|ENET|EHOST|TOURI-E1009|sem conexão|não.*conectar|conexão.*(?:encerrada|interrompida)/i.test(
+    /network|fetch failed|failed to fetch|ECONN|ENET|EHOST|sem conexão|não.*conectar|conexão.*(?:encerrada|interrompida)/i.test(
       text,
     )
   )

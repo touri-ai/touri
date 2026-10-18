@@ -72,6 +72,27 @@ export const errorRegistry = {
     "Não foi possível conectar ao servidor MCP. Confira o comando, os argumentos ou a URL e se o servidor está disponível na máquina deste bot.",
     400,
   ),
+  "TOURI-E1014": entry(
+    "kernel",
+    "bot-deletion",
+    true,
+    "A exclusão deste bot já está em andamento. Aguarde a conclusão.",
+    409,
+  ),
+  "TOURI-E1015": entry(
+    "kernel",
+    "bot-stop",
+    true,
+    "Não foi possível encerrar as tarefas ou fechar a tela do bot. Pare as tarefas e tente excluir novamente.",
+    409,
+  ),
+  "TOURI-E1016": entry(
+    "kernel",
+    "bot-credentials",
+    true,
+    "Não foi possível apagar os logins do bot. Desbloqueie o cofre do sistema e tente excluir novamente.",
+    409,
+  ),
   "TOURI-E1003": entry("kernel", "authentication", false, "Conecte este dispositivo ao touri novamente.", 401),
   "TOURI-E1004": entry("kernel", "authorization", false, "Esta ação não está autorizada.", 403),
   "TOURI-E1005": entry(
@@ -118,6 +139,20 @@ export const errorRegistry = {
     400,
   ),
   "TOURI-E2012": entry("storage", "folder-protected", false, "Esta pasta é protegida. Escolha outra pasta.", 400),
+  "TOURI-E2013": entry(
+    "storage",
+    "bot-files",
+    true,
+    "Não foi possível apagar os arquivos do bot. Confira as permissões da pasta de dados e tente excluir novamente.",
+    409,
+  ),
+  "TOURI-E2014": entry(
+    "storage",
+    "bot-history",
+    true,
+    "Não foi possível remover o histórico e os vínculos do bot. Tente excluir novamente; se persistir, envie um relato do problema.",
+    409,
+  ),
   "TOURI-E3000": entry(
     "provider",
     "cli",
@@ -152,7 +187,7 @@ export const errorRegistry = {
     "browser",
     "configuration",
     false,
-    "Meu Chrome só funciona em bots neste Mac. A máquina remota não pode acessar o Chrome do Mac. Escolha Chrome da máquina para um bot na máquina Linux.",
+    "Meu Chrome só funciona em bots no computador onde o touri está rodando. Uma máquina remota não pode acessar esse navegador. Escolha Chrome da máquina para um bot na máquina Linux.",
     400,
   ),
   "TOURI-E5000": entry("computer", "permission", false, "Autorize o acesso ao computador para continuar.", 403),
@@ -219,6 +254,20 @@ export const errorRegistry = {
     true,
     "Não foi possível iniciar o serviço de máquinas do macOS. Tente novamente.",
     503,
+  ),
+  "TOURI-E8003": entry(
+    "machine",
+    "bot-deletion",
+    true,
+    "Não foi possível remover o computador ou os volumes do bot. Confira o serviço de máquinas e tente excluir novamente.",
+    409,
+  ),
+  "TOURI-E8004": entry(
+    "machine",
+    "bot-usage",
+    true,
+    "O computador do bot ainda está em uso. Pare as tarefas e tente excluir novamente.",
+    409,
   ),
 } as const satisfies Record<TouriErrorCode, ErrorDefinition>
 
