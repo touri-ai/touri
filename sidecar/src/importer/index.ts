@@ -135,6 +135,14 @@ export const scheduleLegacyExpiry = (
   )
   const timer = setInterval(() => {
     void task.run().catch(() => {
+      const database = kernel.db as Database
+      try {
+        database.query("SELECT 1").get()
+      } catch {
+        clearInterval(timer)
+        task.dispose()
+        return
+      }
       kernel.log({ level: "error", module: "importer", msg: "Failed to expire import snapshots; cleanup will retry" })
     })
   }, intervalMs)

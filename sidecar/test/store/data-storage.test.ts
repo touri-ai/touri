@@ -1,4 +1,4 @@
-import type { Database } from "bun:sqlite"
+import { Database } from "bun:sqlite"
 import { afterEach, expect, test } from "bun:test"
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -866,9 +866,12 @@ test("process replay keeps a bounded UTF-8 tail of the file-backed log", () => {
 
 const scanCleanups = new Set<() => void>()
 afterEach(() => {
-  scanCleanups.forEach((cleanup) => {
-    cleanup()
-  })
+  // Reverse only the fresh snapshot so dependent connections close first.
+  Array.from(scanCleanups)
+    .reverse()
+    .forEach((cleanup) => {
+      cleanup()
+    })
   scanCleanups.clear()
 })
 
@@ -989,4 +992,27 @@ test("a writer invalidates collection and the next pass fully rescans earlier ca
   expect(existsSync(shared.path)).toBe(true)
   expect(existsSync(orphan.path)).toBe(false)
   expect(scan.database.query("SELECT id FROM attachments").all()).toEqual([{ id: shared.id }])
+})
+
+test("commits on a second SQLite connection also invalidate a collection pass", async () => {
+  const scan = await makeScanFixture()
+  const [shared, orphan] = makeOutputCandidates(scan, 2)
+  if (!shared || !orphan) throw new Error("Missing synthetic candidates")
+  const writer = new Database(scan.database.filename)
+  scanCleanups.add(() => {
+    writer.close()
+  })
+
+  const first = await collectUnusedOutputBlobs(scan.database, scan.root, Date.now(), async () => {
+    writer
+      .query(`INSERT INTO messages(id,thread_id,role,kind,text,parts_json,created_at,updated_at)
+      VALUES ('external-reference','t','assistant','text','Synthetic',?,1,1)`)
+      .run(JSON.stringify([{ ...tool(""), outputJson: null, outputAttachmentId: shared.id }]))
+  })
+  const second = await collectUnusedOutputBlobs(scan.database, scan.root)
+
+  expect(first).toBe(0)
+  expect(second).toBe(1)
+  expect(existsSync(shared.path)).toBe(true)
+  expect(existsSync(orphan.path)).toBe(false)
 })

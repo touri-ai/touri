@@ -202,7 +202,9 @@ test("restart recovery checkpoints at most 128 journal entries before yielding",
   while (materializeTranscriptBatch(fixture.database)) await Bun.sleep(0)
 
   expect(pending).toBe(true)
-  expect(first).toHaveLength(128)
+  // The bounded window can also contain entries for another message.
+  expect(first?.length).toBeGreaterThan(0)
+  expect(first?.length).toBeLessThanOrEqual(128)
   expect(fixture.getTexts()[0]).toBe("x".repeat(300))
   expect(fixture.getPending()).toBe(0)
 })

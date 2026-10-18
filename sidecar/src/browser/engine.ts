@@ -1907,8 +1907,12 @@ export const createBrowserEngine = ({
 
   const saveSessions = async (): Promise<void> => {
     const measure = getMeasuredStage("browser_session_save", runStage)
+    const limit = contextOwners.size
+    let saved = 0
     for (const [botId, contextId] of contextOwners) {
-      if (retired) return
+      if (retired || saved >= limit) return
+
+      saved += 1
 
       await yieldBackground()
       await measure(() => saveOneSession({ botId, contextId }))

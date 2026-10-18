@@ -1294,12 +1294,15 @@ export const createVmRuntime = ({
   const getMachines = async function* (stage: "vm_idle_sweep" | "vm_orphan_sweep") {
     const measure = getMeasuredStage(stage, runStage)
     let cursor = 0
+    const upper = measure(() => db.query("SELECT COALESCE(MAX(rowid),0) AS cursor FROM bot_machines").get()) as {
+      cursor: number
+    }
     while (!disposing) {
       const rows = measure(() =>
         db
           .query(`SELECT rowid AS scan_cursor,* FROM bot_machines
-        WHERE rowid>? ORDER BY rowid LIMIT 50`)
-          .all(cursor),
+        WHERE rowid>? AND rowid<=? ORDER BY rowid LIMIT 50`)
+          .all(cursor, upper.cursor),
       ) as Array<Metadata & { scan_cursor: number }>
       if (!rows.length) return
 
