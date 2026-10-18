@@ -18,7 +18,6 @@ import { BotAvatar } from "./components/BotAvatar"
 import { BotComputer } from "./components/BotComputer"
 import { BotPanel } from "./components/BotPanel"
 import { ChatPanel } from "./components/ChatPanel"
-import CronScreen from "./components/CronScreen"
 import { ErrorBoundary } from "./components/ErrorBoundary"
 import { ErrorNotice } from "./components/ErrorNotice"
 import { EvidenceContext } from "./components/EvidenceGallery"
@@ -69,7 +68,6 @@ import {
   serverModeErrorCode,
   useServerMode,
 } from "./features/server/serverMode"
-import { PerformanceScreen, WorkScreen } from "./features/work/WorkScreen"
 import { getHostLabel, localizeNotice, t } from "./i18n"
 import { type DeepLinkRequest, installNativeDeepLinks } from "./nativeDeepLinks"
 import { requestTaskResume, requestTaskReview } from "./recoveryEvents"
@@ -83,6 +81,11 @@ import { type AppRoute, type RoutineHistoryTarget, readWorkspaceState, saveWorks
 
 const CommandPalette = lazy(() =>
   import("./features/commandPalette/CommandPalette").then((module) => ({ default: module.CommandPalette })),
+)
+const CronScreen = lazy(() => import("./components/CronScreen"))
+const WorkScreen = lazy(() => import("./features/work/WorkScreen").then((module) => ({ default: module.WorkScreen })))
+const PerformanceScreen = lazy(() =>
+  import("./features/work/WorkScreen").then((module) => ({ default: module.PerformanceScreen })),
 )
 
 export type UiKernel = { services?: { api?: UiApi | null; invoke?: TauriInvoke | null } }
@@ -1009,251 +1012,257 @@ const AppContent = ({ kernel }: AppProps) => {
             notificationActions={notificationActions}
             onNotificationsOpen={setNotificationsOpen}
           />
-          <PageTransition route={route}>
-            {section === "bots" && screen === "chat" && !selectedGroup && (
-              <TeamNextStep
-                bots={data.bots}
-                selectedBotId={data.selectedBotId}
-                followup={teamFollowup}
-                onChooseJob={(job) => {
-                  openModal("bot")
-                  setInitialJob(job)
-                }}
-                onGroup={(bot, partner) => {
-                  setEditingGroup(null)
-                  openModal("group")
-                  setGroupDraft({
-                    name: t("Team with {name}", { name: partner.name }).slice(0, 80),
-                    memberIds: [partner.id, bot.id],
-                  })
-                }}
-                onRoutine={(bot) => setRoutineDraft(getTeamRoutineDraft(bot))}
-                onDismissFollowup={() => setTeamFollowup(null)}
-              />
-            )}
-            {screen === "preview" ? (
-              <PreviewScreen
-                threadCreation={data.threadCreation ? (data.threadCreation.pending ? "pending" : "failed") : undefined}
-                onRetryCreateThread={() => void actions.createThread()}
-                project={selectedProject}
-                processes={data.processes.filter((entry) => entry.spec.projectId === selectedProject?.id)}
-                preview={selectedPreview}
-                modalOpen={modal !== null || searchOpen || notificationsOpen || recoveryOpen}
-                browserTabs={data.browserTabs}
-                selectedBot={selectedBot}
-                selectedThread={selectedThread}
-                selectedMessages={selectedMessages}
-                api={api}
-                invokeCommand={invokeCommand}
-                onStart={startProcess}
-                onStop={actions.stopProcess}
-                onRestart={actions.restartProcess}
-                onSend={actions.sendMessage}
-                onBack={() => setScreen("chat")}
-                onReviewApprovals={reviewApproval}
-                onConnectProject={() => openModal("project")}
-                onNotice={showNotice}
-              />
-            ) : section === "advanced" && advancedPage === "work" ? (
-              <WorkScreen
-                runs={data.workRuns}
-                bots={data.bots}
-                threads={data.threads}
-                loading={data.loading}
-                onThread={(id) => {
-                  actions.selectThread(id)
-                  setRoute({ section: "bots", screen: "chat" })
-                }}
-              />
-            ) : section === "advanced" && advancedPage === "performance" ? (
-              <PerformanceScreen settings={data.settings} onSave={actions.updateSettings} />
-            ) : section === "advanced" && advancedPage === "cron" ? (
-              <CronScreen
-                host={data.routineHost}
-                key={route.section === "advanced" ? (route.botId ?? "all") : "all"}
-                initialBotFilter={route.section === "advanced" ? route.botId : undefined}
-                history={route.section === "advanced" ? route.history : undefined}
-                loading={data.loading}
-                loadError={data.bots.length === 0 ? data.notice : null}
-                bots={data.bots}
-                selectedBotId={data.selectedBotId}
-                routines={data.routines}
-                routineRuns={data.routineRuns}
-                messages={data.activityMessages}
-                actions={actions}
-                onReviewApprovals={reviewApproval}
-                onNotice={showNotice}
-                onOpenThread={(threadId) => {
-                  actions.selectThread(threadId)
-                  setRoute({ section: "bots", screen: "chat" })
-                }}
-              />
-            ) : section === "advanced" && advancedPage === "integracoes" ? (
-              <IntegrationsScreen
-                api={api}
-                botId={selectedBot?.id ?? null}
-                botName={selectedBot?.name ?? null}
-                modalOpen={modal !== null || recoveryOpen}
-                onConfigure={() => openModal("bot-mcp")}
-              />
-            ) : section === "advanced" && advancedPage === "mcp" ? (
-              <McpScreen
-                api={api}
-                botId={selectedBot?.id ?? null}
-                botName={selectedBot?.name ?? null}
-                modalOpen={modal !== null || recoveryOpen}
-                onConfigure={() => openModal("bot-mcp")}
-              />
-            ) : (
-              <FailureActionContext.Provider value={runFailureAction}>
-                <EvidenceContext.Provider value={evidenceContext}>
-                  <div
-                    className={`bot-workspace motion-workspace ${panelOpen ? "has-bot-panel" : ""} ${!selectedGroup && expandedBot === selectedBot?.id ? "computer-expanded" : ""}`}
-                    data-motion-panel-open={panelOpen}
-                  >
-                    <ErrorBoundary
-                      key={data.composerKey ?? selectedThread?.id ?? selectedBot?.id ?? "chat"}
-                      area="a conversa"
-                      api={api}
+          <Suspense fallback={<PageLoading />}>
+            <PageTransition route={route}>
+              {section === "bots" && screen === "chat" && !selectedGroup && (
+                <TeamNextStep
+                  bots={data.bots}
+                  selectedBotId={data.selectedBotId}
+                  followup={teamFollowup}
+                  onChooseJob={(job) => {
+                    openModal("bot")
+                    setInitialJob(job)
+                  }}
+                  onGroup={(bot, partner) => {
+                    setEditingGroup(null)
+                    openModal("group")
+                    setGroupDraft({
+                      name: t("Team with {name}", { name: partner.name }).slice(0, 80),
+                      memberIds: [partner.id, bot.id],
+                    })
+                  }}
+                  onRoutine={(bot) => setRoutineDraft(getTeamRoutineDraft(bot))}
+                  onDismissFollowup={() => setTeamFollowup(null)}
+                />
+              )}
+              {screen === "preview" ? (
+                <PreviewScreen
+                  threadCreation={
+                    data.threadCreation ? (data.threadCreation.pending ? "pending" : "failed") : undefined
+                  }
+                  onRetryCreateThread={() => void actions.createThread()}
+                  project={selectedProject}
+                  processes={data.processes.filter((entry) => entry.spec.projectId === selectedProject?.id)}
+                  preview={selectedPreview}
+                  modalOpen={modal !== null || searchOpen || notificationsOpen || recoveryOpen}
+                  browserTabs={data.browserTabs}
+                  selectedBot={selectedBot}
+                  selectedThread={selectedThread}
+                  selectedMessages={selectedMessages}
+                  api={api}
+                  invokeCommand={invokeCommand}
+                  onStart={startProcess}
+                  onStop={actions.stopProcess}
+                  onRestart={actions.restartProcess}
+                  onSend={actions.sendMessage}
+                  onBack={() => setScreen("chat")}
+                  onReviewApprovals={reviewApproval}
+                  onConnectProject={() => openModal("project")}
+                  onNotice={showNotice}
+                />
+              ) : section === "advanced" && advancedPage === "work" ? (
+                <WorkScreen
+                  runs={data.workRuns}
+                  bots={data.bots}
+                  threads={data.threads}
+                  loading={data.loading}
+                  onThread={(id) => {
+                    actions.selectThread(id)
+                    setRoute({ section: "bots", screen: "chat" })
+                  }}
+                />
+              ) : section === "advanced" && advancedPage === "performance" ? (
+                <PerformanceScreen settings={data.settings} onSave={actions.updateSettings} />
+              ) : section === "advanced" && advancedPage === "cron" ? (
+                <CronScreen
+                  host={data.routineHost}
+                  key={route.section === "advanced" ? (route.botId ?? "all") : "all"}
+                  initialBotFilter={route.section === "advanced" ? route.botId : undefined}
+                  history={route.section === "advanced" ? route.history : undefined}
+                  loading={data.loading}
+                  loadError={data.bots.length === 0 ? data.notice : null}
+                  bots={data.bots}
+                  selectedBotId={data.selectedBotId}
+                  routines={data.routines}
+                  routineRuns={data.routineRuns}
+                  messages={data.activityMessages}
+                  actions={actions}
+                  onReviewApprovals={reviewApproval}
+                  onNotice={showNotice}
+                  onOpenThread={(threadId) => {
+                    actions.selectThread(threadId)
+                    setRoute({ section: "bots", screen: "chat" })
+                  }}
+                />
+              ) : section === "advanced" && advancedPage === "integracoes" ? (
+                <IntegrationsScreen
+                  api={api}
+                  botId={selectedBot?.id ?? null}
+                  botName={selectedBot?.name ?? null}
+                  modalOpen={modal !== null || recoveryOpen}
+                  onConfigure={() => openModal("bot-mcp")}
+                />
+              ) : section === "advanced" && advancedPage === "mcp" ? (
+                <McpScreen
+                  api={api}
+                  botId={selectedBot?.id ?? null}
+                  botName={selectedBot?.name ?? null}
+                  modalOpen={modal !== null || recoveryOpen}
+                  onConfigure={() => openModal("bot-mcp")}
+                />
+              ) : (
+                <FailureActionContext.Provider value={runFailureAction}>
+                  <EvidenceContext.Provider value={evidenceContext}>
+                    <div
+                      className={`bot-workspace motion-workspace ${panelOpen ? "has-bot-panel" : ""} ${!selectedGroup && expandedBot === selectedBot?.id ? "computer-expanded" : ""}`}
+                      data-motion-panel-open={panelOpen}
                     >
-                      <RecoveryTasksContext.Provider value={interruptedWork.tasks}>
-                        <ChatPanel
-                          onRepeatTask={setRoutineDraft}
-                          group={selectedGroup}
-                          groupMembers={groupMembers}
-                          onEditGroup={() => {
-                            setEditingGroup(selectedGroup)
-                            openModal("group")
-                          }}
-                          focusApproval={
-                            approvalFocus?.threadId === selectedThread?.id ? (approvalFocus ?? undefined) : undefined
-                          }
-                          panelOpen={panelOpen}
-                          onTogglePanel={() => setPanelOpen(!panelOpen)}
-                          machine={data.machines.find((state) => state.botId === selectedBot?.id)}
-                          thread={selectedThread}
-                          composerKey={data.composerKey ?? undefined}
-                          threadCreation={
-                            data.threadCreation ? (data.threadCreation.pending ? "pending" : "failed") : undefined
-                          }
-                          onRetryCreateThread={() => void actions.createThread()}
-                          bot={selectedBot}
-                          messages={selectedMessages}
-                          runs={data.runs}
-                          projects={data.projects}
-                          onOpenModel={() => openModal("bot-model")}
-                          onSelectProject={async (projectId) => {
-                            if (selectedBot) await actions.updateBot(selectedBot.id, { projectId })
-                          }}
-                          onAddProject={() => {
-                            openModal("project")
-                            setProjectLinkBotId(selectedBot?.id ?? null)
-                          }}
-                          routines={data.routines}
-                          routineRuns={data.routineRuns}
-                          onSend={actions.sendMessage}
-                          onRetry={actions.retryRun}
-                          onCancel={actions.cancelRun}
-                          onSwitchBranch={actions.switchBranch}
-                          api={api}
-                          computerGrant={
-                            data.computerGrantRequest?.threadId === selectedThread?.id && selectedBot && selectedThread
-                              ? { botId: selectedBot.id, threadId: selectedThread.id, botName: selectedBot.name }
-                              : null
-                          }
-                          onComputerGrant={actions.dismissComputerGrant}
-                          onOpenTools={() => setScreen("preview")}
-                          onOpenComputer={() => {
-                            setPanelOpen(true)
-                            if (selectedBot)
-                              setComputerTabRequest((value) => ({
-                                botId: selectedBot.id,
-                                request: (value?.request ?? 0) + 1,
-                              }))
-                          }}
-                          attachmentButtonRef={attachmentButtonRef}
-                          onOpenPermissions={() => openModal("bot-permissions")}
-                          onOpenToolCatalog={() => openModal("bot-mcp")}
-                          onOpenProviderLogin={() => {
-                            setSettingFocus(SETTINGS.providerLogin.id)
-                            setBotSettingsSection(SETTINGS.providerLogin.section)
-                            setModal("bot-settings")
-                          }}
-                        />
-                      </RecoveryTasksContext.Provider>
-                    </ErrorBoundary>
-                    {/* r8 motion: preserve the panel during its inert exit */}
-                    <MotionPresence show={panelOpen && Boolean(selectedGroup || selectedBot)} kind="panel">
-                      {selectedGroup ? (
-                        <GroupPanel
-                          key={selectedGroup.id}
-                          group={selectedGroup}
-                          bots={groupMembers}
-                          threadId={selectedThread?.id}
-                          messages={selectedMessages}
-                          runs={data.runs}
-                          onEdit={() => {
-                            setEditingGroup(selectedGroup)
-                            openModal("group")
-                          }}
-                          onClose={() => {
-                            setPanelOpen(false)
-                            window.requestAnimationFrame(() =>
-                              document.querySelector<HTMLButtonElement>(".bot-panel-toggle")?.focus(),
-                            )
-                          }}
-                        />
-                      ) : (
-                        selectedBot && (
-                          <ErrorBoundary key={selectedBot.id} area="o painel do bot" api={api}>
-                            <BotPanel
-                              libraryRequest={
-                                libraryRequest?.botId === selectedBot.id ? (libraryRequest ?? undefined) : undefined
-                              }
-                              computerTabRequest={
-                                computerTabRequest?.botId === selectedBot.id ? computerTabRequest.request : 0
-                              }
-                              key={selectedBot.id}
-                              api={api}
-                              groups={data.groups.filter((g) => g.memberIds.includes(selectedBot.id))}
-                              onGroup={(g) => {
-                                const thread = data.threads.find((t) => t.groupId === g.id && !t.groupThreadId)
-                                if (thread) actions.selectThread(thread.id)
-                              }}
-                              bot={selectedBot}
-                              machine={data.machines.find((state) => state.botId === selectedBot.id)}
-                              routines={botRoutines}
-                              activeTurns={data.runs.some(
-                                (run) =>
-                                  run.botId === selectedBot.id &&
-                                  ["queued", "starting", "running"].includes(run.status),
-                              )}
-                              paused={modal !== null || searchOpen || notificationsOpen || recoveryOpen}
-                              expanded={expandedBot === selectedBot.id}
-                              onExpand={() => setExpandedBot((id) => (id === selectedBot.id ? null : selectedBot.id))}
-                              onWindow={() => openComputerWindow(selectedBot.id)}
-                              onClose={() => {
-                                setPanelOpen(false)
-                                window.requestAnimationFrame(() =>
-                                  document.querySelector<HTMLButtonElement>(".bot-panel-toggle")?.focus(),
-                                )
-                              }}
-                              onSettings={() => openModal("bot-settings")}
-                              onRoutines={() => openBotRoutines(selectedBot.id)}
-                              onModel={() => openModal("bot-model")}
-                              onPermissions={() => openModal("bot-permissions")}
-                              onPreview={() => setScreen("preview")}
-                              onRole={(roleLine) => actions.updateBot(selectedBot.id, { roleLine })}
-                            />
-                          </ErrorBoundary>
-                        )
-                      )}
-                    </MotionPresence>
-                  </div>
-                </EvidenceContext.Provider>
-              </FailureActionContext.Provider>
-            )}
-          </PageTransition>
+                      <ErrorBoundary
+                        key={data.composerKey ?? selectedThread?.id ?? selectedBot?.id ?? "chat"}
+                        area="a conversa"
+                        api={api}
+                      >
+                        <RecoveryTasksContext.Provider value={interruptedWork.tasks}>
+                          <ChatPanel
+                            onRepeatTask={setRoutineDraft}
+                            group={selectedGroup}
+                            groupMembers={groupMembers}
+                            onEditGroup={() => {
+                              setEditingGroup(selectedGroup)
+                              openModal("group")
+                            }}
+                            focusApproval={
+                              approvalFocus?.threadId === selectedThread?.id ? (approvalFocus ?? undefined) : undefined
+                            }
+                            panelOpen={panelOpen}
+                            onTogglePanel={() => setPanelOpen(!panelOpen)}
+                            machine={data.machines.find((state) => state.botId === selectedBot?.id)}
+                            thread={selectedThread}
+                            composerKey={data.composerKey ?? undefined}
+                            threadCreation={
+                              data.threadCreation ? (data.threadCreation.pending ? "pending" : "failed") : undefined
+                            }
+                            onRetryCreateThread={() => void actions.createThread()}
+                            bot={selectedBot}
+                            messages={selectedMessages}
+                            runs={data.runs}
+                            projects={data.projects}
+                            onOpenModel={() => openModal("bot-model")}
+                            onSelectProject={async (projectId) => {
+                              if (selectedBot) await actions.updateBot(selectedBot.id, { projectId })
+                            }}
+                            onAddProject={() => {
+                              openModal("project")
+                              setProjectLinkBotId(selectedBot?.id ?? null)
+                            }}
+                            routines={data.routines}
+                            routineRuns={data.routineRuns}
+                            onSend={actions.sendMessage}
+                            onRetry={actions.retryRun}
+                            onCancel={actions.cancelRun}
+                            onSwitchBranch={actions.switchBranch}
+                            api={api}
+                            computerGrant={
+                              data.computerGrantRequest?.threadId === selectedThread?.id &&
+                              selectedBot &&
+                              selectedThread
+                                ? { botId: selectedBot.id, threadId: selectedThread.id, botName: selectedBot.name }
+                                : null
+                            }
+                            onComputerGrant={actions.dismissComputerGrant}
+                            onOpenTools={() => setScreen("preview")}
+                            onOpenComputer={() => {
+                              setPanelOpen(true)
+                              if (selectedBot)
+                                setComputerTabRequest((value) => ({
+                                  botId: selectedBot.id,
+                                  request: (value?.request ?? 0) + 1,
+                                }))
+                            }}
+                            attachmentButtonRef={attachmentButtonRef}
+                            onOpenPermissions={() => openModal("bot-permissions")}
+                            onOpenToolCatalog={() => openModal("bot-mcp")}
+                            onOpenProviderLogin={() => {
+                              setSettingFocus(SETTINGS.providerLogin.id)
+                              setBotSettingsSection(SETTINGS.providerLogin.section)
+                              setModal("bot-settings")
+                            }}
+                          />
+                        </RecoveryTasksContext.Provider>
+                      </ErrorBoundary>
+                      {/* r8 motion: preserve the panel during its inert exit */}
+                      <MotionPresence show={panelOpen && Boolean(selectedGroup || selectedBot)} kind="panel">
+                        {selectedGroup ? (
+                          <GroupPanel
+                            key={selectedGroup.id}
+                            group={selectedGroup}
+                            bots={groupMembers}
+                            threadId={selectedThread?.id}
+                            messages={selectedMessages}
+                            runs={data.runs}
+                            onEdit={() => {
+                              setEditingGroup(selectedGroup)
+                              openModal("group")
+                            }}
+                            onClose={() => {
+                              setPanelOpen(false)
+                              window.requestAnimationFrame(() =>
+                                document.querySelector<HTMLButtonElement>(".bot-panel-toggle")?.focus(),
+                              )
+                            }}
+                          />
+                        ) : (
+                          selectedBot && (
+                            <ErrorBoundary key={selectedBot.id} area="o painel do bot" api={api}>
+                              <BotPanel
+                                libraryRequest={
+                                  libraryRequest?.botId === selectedBot.id ? (libraryRequest ?? undefined) : undefined
+                                }
+                                computerTabRequest={
+                                  computerTabRequest?.botId === selectedBot.id ? computerTabRequest.request : 0
+                                }
+                                key={selectedBot.id}
+                                api={api}
+                                groups={data.groups.filter((g) => g.memberIds.includes(selectedBot.id))}
+                                onGroup={(g) => {
+                                  const thread = data.threads.find((t) => t.groupId === g.id && !t.groupThreadId)
+                                  if (thread) actions.selectThread(thread.id)
+                                }}
+                                bot={selectedBot}
+                                machine={data.machines.find((state) => state.botId === selectedBot.id)}
+                                routines={botRoutines}
+                                activeTurns={data.runs.some(
+                                  (run) =>
+                                    run.botId === selectedBot.id &&
+                                    ["queued", "starting", "running"].includes(run.status),
+                                )}
+                                paused={modal !== null || searchOpen || notificationsOpen || recoveryOpen}
+                                expanded={expandedBot === selectedBot.id}
+                                onExpand={() => setExpandedBot((id) => (id === selectedBot.id ? null : selectedBot.id))}
+                                onWindow={() => openComputerWindow(selectedBot.id)}
+                                onClose={() => {
+                                  setPanelOpen(false)
+                                  window.requestAnimationFrame(() =>
+                                    document.querySelector<HTMLButtonElement>(".bot-panel-toggle")?.focus(),
+                                  )
+                                }}
+                                onSettings={() => openModal("bot-settings")}
+                                onRoutines={() => openBotRoutines(selectedBot.id)}
+                                onModel={() => openModal("bot-model")}
+                                onPermissions={() => openModal("bot-permissions")}
+                                onPreview={() => setScreen("preview")}
+                                onRole={(roleLine) => actions.updateBot(selectedBot.id, { roleLine })}
+                              />
+                            </ErrorBoundary>
+                          )
+                        )}
+                      </MotionPresence>
+                    </div>
+                  </EvidenceContext.Provider>
+                </FailureActionContext.Provider>
+              )}
+            </PageTransition>
+          </Suspense>
         </div>
         {/* r8 motion: central overlay presence (settings content stays owned by its package) */}
         <ErrorBoundary area="a busca" dialog api={api} onClose={() => setSearchOpen(false)}>
@@ -1332,6 +1341,12 @@ const AppContent = ({ kernel }: AppProps) => {
     </AvatarRuntimeProvider>
   )
 }
+
+const PageLoading = () => (
+  <div className="workspace-page" aria-busy="true">
+    <p role="status">{t("Loading")}</p>
+  </div>
+)
 
 const SearchLoading = ({ onClose }: { onClose: () => void }) => (
   <Modal title={t("Buscar")} onClose={onClose}>
