@@ -52,8 +52,12 @@ export const openDatabase = ({ filename }: { filename: string }): Database => {
   )
   // Before the first table is created, new stores can opt into bounded page
   // reclamation without a full rewrite. Existing stores reuse their free pages.
+  // WAL with synchronous=NORMAL (SQLite's recommended pairing) keeps commits atomic and the store
+  // safe from application crashes without an fsync on every commit; only the newest transactions
+  // can be lost on an OS crash or power loss. FULL made each commit wait on the disk on the main
+  // thread, freezing the server for seconds whenever the disk was busy (#454).
   database.exec(
-    "PRAGMA busy_timeout = 5000; PRAGMA auto_vacuum = INCREMENTAL; PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA journal_size_limit = 8388608; PRAGMA synchronous = FULL;",
+    "PRAGMA busy_timeout = 5000; PRAGMA auto_vacuum = INCREMENTAL; PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA journal_size_limit = 8388608; PRAGMA synchronous = NORMAL;",
   )
   database.exec(migrationSql)
   database.exec(notificationsSql)
