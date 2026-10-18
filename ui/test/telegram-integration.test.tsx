@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import type { TelegramIntegration } from "@touri/contracts"
 import { describe, expect, it, vi } from "vitest"
 import type { UiApi } from "../src/api/client"
@@ -97,7 +97,9 @@ describe("Telegram integration card", () => {
     rerender(<TelegramIntegrationCard api={api} botId="bot-b" />)
     await screen.findByLabelText("IDs de usuário permitidos")
     expect(screen.getByLabelText("IDs de usuário permitidos")).toHaveValue("77")
-    release({ telegram: { ...telegram, config: { ...telegram.config, allowedUserIds: ["42"] } } })
+    await act(async () => {
+      release({ telegram: { ...telegram, config: { ...telegram.config, allowedUserIds: ["42"] } } })
+    })
     await waitFor(() => expect(screen.getByLabelText("IDs de usuário permitidos")).toHaveValue("77"))
   })
 

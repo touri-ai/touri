@@ -504,7 +504,7 @@ test("message splitting handles large fences, closing markers and Unicode bounda
   for (const text of [
     `antes\n${"`".repeat(501)}\nfim`,
     `${"x".repeat(490)}\n\`\`\`ts\nconteúdo\n\`\`\``,
-    `\`\`\`ts\n${"x".repeat(480)}\n${"`".repeat(10)}`,
+    `\`\`\`ts\n${"x".repeat(490)}\n${"`".repeat(10)}`,
     `\`\`\`ts\n${"😀".repeat(700)}\n\`\`\``,
     `${"x".repeat(499)}😀${"y".repeat(600)}`,
   ]) {
