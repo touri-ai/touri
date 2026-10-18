@@ -17,6 +17,38 @@ test("A04 oversized snapshots are rejected before SQLite opens them", () => {
   }
 })
 
+test("legacy snapshots preserve empty TEXT, NULL, UTF-8 and embedded NUL", () => {
+  const root = mkdtempSync(join(tmpdir(), "touri-snapshot-text-"))
+  const path = join(root, "source.db")
+  try {
+    const db = new Database(path)
+    try {
+      db.exec("CREATE TABLE messages(id INTEGER PRIMARY KEY, text TEXT)")
+      const insert = db.query("INSERT INTO messages(id, text) VALUES (?, ?)")
+      insert.run(1, "")
+      insert.run(2, null)
+      insert.run(3, "Olá, 世界 🌍")
+      insert.run(4, "início\0fim")
+    } finally {
+      db.close()
+    }
+    const snapshot = openLegacySnapshot(path)
+    try {
+      // Bun 1.4.3 rejects CString(ptr, 0, 0); embedded NULs still require byte-length reads.
+      expect(snapshot.query("SELECT text FROM messages ORDER BY id").all()).toEqual([
+        { text: "" },
+        { text: null },
+        { text: "Olá, 世界 🌍" },
+        { text: "início\0fim" },
+      ])
+    } finally {
+      snapshot.close()
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
 test("A04 source authorizer denies ATTACH, VACUUM INTO, writes and hostile views", () => {
   const root = mkdtempSync(join(tmpdir(), "touri-snapshot-"))
   const path = join(root, "source.db")

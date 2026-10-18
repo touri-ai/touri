@@ -102,7 +102,7 @@ onboarding could not be verified on the build host because it denies user namesp
 
 - macOS 14 or newer on Apple Silicon. The optional bot-machine feature needs macOS 26 and Apple `container` >= 1.5.0;
   on older systems local bots keep working and the machine feature reports itself as unavailable.
-- Bun 1.2.21 or newer on macOS; Bun 1.4.3 or newer on Linux
+- Bun 1.4.3 or newer
 - Rust 1.90 or newer with the `aarch64-apple-darwin` target
 - A Codex or Claude Code CLI signed in on your Mac
 
