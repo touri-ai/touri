@@ -77,41 +77,48 @@ test("Linux CI verifies confinement before both suite selections and preserves n
   expect(artifact.with?.path).toContain("src-tauri/target/release/bundle/deb/*.deb")
 })
 
-test.skipIf(process.platform === "win32").each([
+const namespaceCases = [
   { name: "restricted AppArmor", available: 0, writeExit: 0, exit: 0, writes: true },
   { name: "no AppArmor sysctl", available: 1, writeExit: 0, exit: 0, writes: false },
   { name: "permission change denied", available: 0, writeExit: 1, exit: 1, writes: true },
-])("CI namespace setup handles $name without hiding failures", ({ available, writeExit, exit, writes }) => {
-  const log = makeNamespaceFixture()
+]
 
-  const result = Bun.spawnSync({
-    cmd: ["/bin/bash", "-e", "-o", "pipefail", "-c", getConfinementScripts().setup],
-    env: {
-      PATH: `${fixtureRoot}:/usr/bin:/bin`,
-      TOURI_CI_LOG: log,
-      TOURI_CI_SYSCTL_EXIT: String(available),
-      TOURI_CI_WRITE_EXIT: String(writeExit),
-    },
-  })
-
-  expect(result.exitCode).toBe(exit)
-  const expected = ["kernel.apparmor_restrict_unprivileged_userns"].concat(
-    writes ? ["-w kernel.apparmor_restrict_unprivileged_userns=0"] : [],
-  )
-  expect(readFileSync(log, "utf8").trim().split("\n")).toEqual(expected)
-})
-
-test.skipIf(process.platform !== "linux").each([0, 1])(
-  "CI uses the production capability probe and propagates namespace exit %i",
-  (probeExit) => {
-    const probe = getConfinementScripts().probe
-    expect(probe).toContain('from "./sidecar/src/kernel/folder-capability.ts"')
+namespaceCases.forEach(({ name, available, writeExit, exit, writes }) => {
+  test.skipIf(process.platform === "win32")(`CI namespace setup handles ${name} without hiding failures`, () => {
+    const log = makeNamespaceFixture()
 
     const result = Bun.spawnSync({
-      cmd: [
-        process.execPath,
-        "-e",
-        `Bun.which = () => "/usr/bin/bwrap";
+      cmd: ["/bin/bash", "-e", "-o", "pipefail", "-c", getConfinementScripts().setup],
+      env: {
+        PATH: `${fixtureRoot}:/usr/bin:/bin`,
+        TOURI_CI_LOG: log,
+        TOURI_CI_SYSCTL_EXIT: String(available),
+        TOURI_CI_WRITE_EXIT: String(writeExit),
+      },
+    })
+
+    expect(result.exitCode).toBe(exit)
+    const expected = ["kernel.apparmor_restrict_unprivileged_userns"].concat(
+      writes ? ["-w kernel.apparmor_restrict_unprivileged_userns=0"] : [],
+    )
+    expect(readFileSync(log, "utf8").trim().split("\n")).toEqual(expected)
+  })
+})
+
+const namespaceExitCodes = [0, 1]
+
+namespaceExitCodes.forEach((probeExit) => {
+  test.skipIf(process.platform !== "linux")(
+    `CI uses the production capability probe and propagates namespace exit ${probeExit}`,
+    () => {
+      const probe = getConfinementScripts().probe
+      expect(probe).toContain('from "./sidecar/src/kernel/folder-capability.ts"')
+
+      const result = Bun.spawnSync({
+        cmd: [
+          process.execPath,
+          "-e",
+          `Bun.which = () => "/usr/bin/bwrap";
          Bun.spawn = (input) => {
            if (!input.cmd.includes("--unshare-user") || !input.cmd.includes("--unshare-pid")) {
              throw new Error("The capability probe must exercise user and PID namespaces");
@@ -119,15 +126,16 @@ test.skipIf(process.platform !== "linux").each([0, 1])(
            return { exited: Promise.resolve(${probeExit}), kill() {} };
          };
          ${probe}`,
-      ],
-      cwd: root,
-    })
+        ],
+        cwd: root,
+      })
 
-    expect(result.exitCode).toBe(probeExit)
-    if (probeExit !== 0) expect(result.stderr.toString()).toContain("Linux folder confinement is unavailable")
-  },
-  30_000,
-)
+      expect(result.exitCode).toBe(probeExit)
+      if (probeExit !== 0) expect(result.stderr.toString()).toContain("Linux folder confinement is unavailable")
+    },
+    30_000,
+  )
+})
 
 const getRequiredStep = (matches: (step: Step) => boolean): Step => {
   const step = steps.find(matches)

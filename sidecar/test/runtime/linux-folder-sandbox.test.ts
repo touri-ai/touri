@@ -166,25 +166,29 @@ for (const provider of ["codex", "claude", "opencode"] as const)
     expect(f.shell('printf saved > "$1/saved"', f.rw).exitCode).toBe(0)
   })
 
-test.skipIf(!available).each(["on-request", "never"] as const)(
-  "Linux bounded providers enforce read-only grants with %s shell approvals",
-  async (approvals) => {
-    const f = fixture({ approvals })
+const shellApprovalPolicies = ["on-request", "never"] as const
 
-    expect(await runProviderShell(f, 'cat "$1"', join(f.ro, "reference.txt"))).toMatchObject({
-      code: 0,
-      stdout: "reference",
-    })
-    const denied = await runProviderShell(f, 'printf changed > "$1"', join(f.ro, "reference.txt"))
-    expect(denied.code).not.toBe(0)
-    expect(readFileSync(join(f.ro, "reference.txt"), "utf8")).toBe("reference")
-    expect(await runProviderShell(f, 'printf saved > "$1"', join(f.rw, "saved.txt"))).toMatchObject({ code: 0 })
-    expect(readFileSync(join(f.rw, "saved.txt"), "utf8")).toBe("saved")
-    const outside = await runProviderShell(f, 'cat "$1"', join(f.home, "ungranted/marker"))
-    expect(outside.code).not.toBe(0)
-    expect(outside.stdout).toBe("")
-  },
-)
+shellApprovalPolicies.forEach((approvals) => {
+  test.skipIf(!available)(
+    `Linux bounded providers enforce read-only grants with ${approvals} shell approvals`,
+    async () => {
+      const f = fixture({ approvals })
+
+      expect(await runProviderShell(f, 'cat "$1"', join(f.ro, "reference.txt"))).toMatchObject({
+        code: 0,
+        stdout: "reference",
+      })
+      const denied = await runProviderShell(f, 'printf changed > "$1"', join(f.ro, "reference.txt"))
+      expect(denied.code).not.toBe(0)
+      expect(readFileSync(join(f.ro, "reference.txt"), "utf8")).toBe("reference")
+      expect(await runProviderShell(f, 'printf saved > "$1"', join(f.rw, "saved.txt"))).toMatchObject({ code: 0 })
+      expect(readFileSync(join(f.rw, "saved.txt"), "utf8")).toBe("saved")
+      const outside = await runProviderShell(f, 'cat "$1"', join(f.home, "ungranted/marker"))
+      expect(outside.code).not.toBe(0)
+      expect(outside.stdout).toBe("")
+    },
+  )
+})
 
 test.skipIf(!available)("Linux full-access providers retain host access with saved RO grants", async () => {
   const f = fixture({ access: "full" })
