@@ -40,7 +40,9 @@ export const GoalPanel = ({
       try {
         const response = await api.request("GET /threads/:id/goal", {}, { id: threadId })
         if (!alive) return
-        setGoal((current) => getRefreshedGoal(current, response.goal, advanced))
+        setGoal((current) =>
+          current && response.goal && current.updatedAt > response.goal.updatedAt ? current : response.goal,
+        )
         setLoaded(true)
         setLoadFailed(false)
         setNow(Date.now())
@@ -65,7 +67,7 @@ export const GoalPanel = ({
       unsubscribeConnection?.()
       refreshGoal.current = () => {}
     }
-  }, [api, threadId, advanced])
+  }, [api, threadId])
 
   useEffect(() => {
     if (goal?.status !== "active") return
@@ -75,10 +77,10 @@ export const GoalPanel = ({
   }, [goal?.status])
 
   useEffect(() => {
-    if (goal || !advanced) return
+    if (!advanced) return
 
     criterionInput.current?.focus()
-  }, [goal, advanced])
+  }, [advanced])
 
   const control = async (input: GoalControl) => {
     setPending(true)
@@ -146,19 +148,13 @@ export const GoalPanel = ({
     </div>
   )
 
-  const openNewGoal = () => {
-    setGoal(null)
-    setEditing(false)
-    setAdvanced(true)
-  }
-
   const isBudgetExhausted = goal?.status === "budget_exhausted"
   const lastStep = goal?.steps.at(-1)?.text ?? (isBudgetExhausted ? null : t("Goal waiting for checkpoint"))
 
   return (
     <section className="goal-panel" aria-label={t("Continue until done")}>
       {goal && (
-        <GoalCheckpoint status={goal.status} onNewGoal={openNewGoal}>
+        <GoalCheckpoint status={goal.status}>
           <div className="goal-heading">
             <strong>{t("Continue until done")}</strong>
             <span role="status">{t(getStatusKey(goal.status))}</span>
@@ -223,8 +219,12 @@ export const GoalPanel = ({
           )}
         </GoalCheckpoint>
       )}
-      {!goal && (
-        <ChatDisclosure label={t("Goal advanced")} expanded={advanced} onExpandedChange={setAdvanced}>
+      {(!goal || goal.status === "completed") && (
+        <ChatDisclosure
+          label={t(goal ? "Goal new" : "Goal advanced")}
+          expanded={advanced}
+          onExpandedChange={setAdvanced}
+        >
           {advanced && (
             <>
               <p>{t("Goal mode help")}</p>
@@ -258,25 +258,8 @@ export const GoalPanel = ({
   )
 }
 
-const GoalCheckpoint = ({
-  status,
-  onNewGoal,
-  children,
-}: {
-  status: Goal["status"]
-  onNewGoal: () => void
-  children: ReactNode
-}) => {
-  if (status === "completed") {
-    return (
-      <div className="goal-summary">
-        <span role="status">{t("Goal completed summary")}</span>
-        <button className="button button-quiet" type="button" onClick={onNewGoal}>
-          {t("Goal new")}
-        </button>
-      </div>
-    )
-  }
+const GoalCheckpoint = ({ status, children }: { status: Goal["status"]; children: ReactNode }) => {
+  if (status === "completed") return <span role="status">{t("Goal completed summary")}</span>
 
   const checkpoint = <div className="goal-checkpoint">{children}</div>
   if (status === "budget_exhausted") {
@@ -294,11 +277,4 @@ const getStatusKey = (status: Goal["status"]): TranslationKey => {
     completed: "Goal completed",
   }
   return labels[status]
-}
-
-const getRefreshedGoal = (current: Goal | null, received: Goal | null, isFormOpen: boolean): Goal | null => {
-  if (!current && isFormOpen && received?.status === "completed") return null
-  if (current && received && current.updatedAt > received.updatedAt) return current
-
-  return received
 }

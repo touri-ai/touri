@@ -96,7 +96,7 @@ test("completing a goal keeps the next goal form closed when the conversation is
 
   const panel = screen.getByRole("region", { name: "Continuar até concluir" })
   expect(panel).toHaveTextContent(/^Objetivo concluídoNovo objetivo$/)
-  expect(screen.getByRole("button", { name: "Novo objetivo" })).toBeVisible()
+  expect(screen.getByRole("button", { name: "Novo objetivo" })).toHaveAttribute("aria-expanded", "false")
   expect(screen.queryByRole("spinbutton")).toBeNull()
   expect(screen.queryByRole("textbox")).toBeNull()
 
@@ -104,12 +104,12 @@ test("completing a goal keeps the next goal form closed when the conversation is
   makeFixture(true, api)
 
   await screen.findByText("Objetivo concluído")
-  expect(screen.getByRole("button", { name: "Novo objetivo" })).toBeVisible()
+  expect(screen.getByRole("button", { name: "Novo objetivo" })).toHaveAttribute("aria-expanded", "false")
   expect(screen.queryByRole("textbox")).toBeNull()
   expect(screen.queryByText("Avançado · Continuar até concluir")).toBeNull()
 })
 
-test("a new goal draft replaces completion, survives updates and starts the next goal", async () => {
+test("a new goal draft stays below completion, survives updates and starts the next goal", async () => {
   const { api, request } = makeFixture()
   const thread = api.getState().threads.find((candidate) => candidate.id === request.threadId)
   if (!thread) throw new Error("Missing mock conversation")
@@ -124,7 +124,8 @@ test("a new goal draft replaces completion, survives updates and starts the next
   })
   await act(async () => api.emit({ type: "thread.updated", thread }))
 
-  expect(screen.queryByText("Objetivo concluído")).toBeNull()
+  expect(screen.getByText("Objetivo concluído")).toBeVisible()
+  expect(screen.getByRole("button", { name: "Novo objetivo" })).toHaveAttribute("aria-expanded", "true")
   expect(criterion).toHaveFocus()
   expect(criterion).toBeVisible()
   expect(criterion).toHaveValue("Resumo revisado com fontes.")
