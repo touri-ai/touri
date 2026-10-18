@@ -25,7 +25,7 @@ export const getApiModelEnv = async (
 }
 
 /** The private config contains an environment reference, never the key or a credential file. */
-export const getApiOpenCodeConfig = (model: ApiModel | null) => {
+export const getApiOpenCodeConfig = (model: ApiModel | null, baseUrl = model?.baseUrl) => {
   if (!model) return {}
   const providerId = `touri-api-${model.id}`
   return {
@@ -36,7 +36,7 @@ export const getApiOpenCodeConfig = (model: ApiModel | null) => {
       [providerId]: {
         npm: "@ai-sdk/openai-compatible",
         name: model.name,
-        options: { baseURL: model.baseUrl, apiKey: "{env:TOURI_MODEL_API_KEY}" },
+        options: { baseURL: baseUrl, apiKey: "{env:TOURI_MODEL_API_KEY}" },
         models: { [model.modelId]: { name: model.modelId, tool_call: true, limit: { context: 32768, output: 4096 } } },
       },
     },
