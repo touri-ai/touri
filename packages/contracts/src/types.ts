@@ -952,6 +952,8 @@ export type AppSettings = {
   computerUseHotkey: string
   browserExecutable: 'system-chrome' | 'chrome-for-testing'
   nativeNotifications: boolean
+  /** Optional JSON setting; absent on existing installations, retaining legacy bot preferences. */
+  notificationPreferences?: NotificationPreferences
   /** Float bots that need the user, are working or have unread results to the top of the sidebar. Default: true. */
   sidebarFloatUpdates?: boolean
   /** Continue a turn cut off by a restart, a provider crash or a stopped bot computer. Default: true. */
@@ -1030,6 +1032,18 @@ export type NotifyKind =
   | 'incident'
   | 'done'
   | 'delegation-settled'
+
+export type NotificationScopePreferences = {
+  enabled?: boolean
+  digest?: 'attention' | 'all'
+  types?: Partial<Record<NotifyKind, boolean>>
+}
+
+export type NotificationPreferences = NotificationScopePreferences & {
+  bots?: Record<Id, NotificationScopePreferences>
+  /** Times use the local clock; an equal start and end silences the entire day. */
+  quietHours?: { enabled: boolean; start: string; end: string }
+}
 
 export type NotifyResolution = 'allow' | 'deny' | 'answer' | 'replied' | 'dismissed' | 'expired' | 'canceled'
 export type AvatarShape = import('@norbert_bodziony/bloub').ShapeId
