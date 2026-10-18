@@ -24,8 +24,9 @@ const fixture = async (callerMachine: "local" | "vm") => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "touri-delegation-sinks-")))
   const outside = realpathSync(mkdtempSync(join(tmpdir(), "touri-fake-home-")))
   const runtime = createKernel({ appData: join(root, "app") })
+  const dataDir = join(runtime.kernel.paths.projectsDir, "p")
   mkdirSync(join(root, "project"), { recursive: true })
-  mkdirSync(join(root, "data"), { recursive: true })
+  mkdirSync(dataDir, { recursive: true })
   mkdirSync(join(root, "home"), { recursive: true })
   cleanup.push(() => {
     runtime.stop()
@@ -36,7 +37,7 @@ const fixture = async (callerMachine: "local" | "vm") => {
   const db = runtime.kernel.db as Database
   db.query("INSERT INTO projects(id,name,path,data_dir,created_at,updated_at) VALUES ('p','t',?,?,1,1)").run(
     join(root, "project"),
-    join(root, "data"),
+    dataDir,
   )
   const insert = db.query(
     "INSERT INTO bots(id,name,provider,machine,access,approvals,project_id,home_dir,created_at,updated_at) VALUES (?,?,'codex',?,?,?,'p',?,1,1)",
@@ -124,10 +125,14 @@ const fixture = async (callerMachine: "local" | "vm") => {
 
 const runEscape = async (f: Awaited<ReturnType<typeof fixture>>, file: string): Promise<boolean> => {
   const completed = join(f.root, "project", file)
-  const command = `touch ${join(f.outside, file)}; touch ${completed}`
-  expect((await f.call("process_define", { name: file, command, restart: "never" })).success).toBe(true)
-  await f.call("process_start", { name: file, waitMs: 1500 })
-  for (let i = 0; i < 300 && !existsSync(completed); i++) await Bun.sleep(10)
+  const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`
+  const command = `touch ${quote(join(f.outside, file))}; touch ${quote(completed)} && echo COMPLETED; sleep 60`
+  expect(
+    await f.call("process_define", { name: file, command, restart: "never", ready: { logRegex: "COMPLETED" } }),
+  ).toMatchObject({ success: true })
+  const started = await f.call("process_start", { name: file, waitMs: 5000 })
+  const logs = await f.call("process_logs", { name: file })
+  expect({ started, logs }).toMatchObject({ started: { success: true }, logs: { success: true } })
   expect(existsSync(completed)).toBe(true)
   return existsSync(join(f.outside, file))
 }

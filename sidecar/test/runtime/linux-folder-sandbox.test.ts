@@ -5,6 +5,7 @@ import { join } from "node:path"
 import type { Kernel, StartTurnArgs } from "@touri/contracts"
 import { folderGrantProblem, refreshHostFolderAccess } from "../../src/kernel/folder-capability"
 import { spawnTree } from "../../src/kernel/spawn"
+import { codexAccessParams } from "../../src/runtime/codex/config"
 import { spawnFolderProvider } from "../../src/runtime/folder-access"
 import { linuxFolderEnvironment, linuxFolderSandbox } from "../../src/runtime/linux-folder-sandbox"
 
@@ -53,13 +54,14 @@ const fixture = () => {
   writeFileSync(join(home, ".codex/sessions/private"), "private-history")
   writeFileSync(join(appData, "provider/other/auth.json"), "other-bot-login")
   symlinkSync(join(home, ".codex/auth.json"), join(providerHome, "auth.json"))
-  const kernel = { paths: { appData, runDir } } as Kernel
+  const kernel = { paths: { appData, runDir }, spawnTree } as Kernel
   const args = {
     bot: {
       provider: "codex",
       machine: "local",
       homeDir: workspace,
       access: "workspace-write",
+      approvals: "on-request",
       folders: [
         { path: ro, access: "read-only" },
         { path: rw, access: "read-write" },
@@ -86,6 +88,22 @@ const fixture = () => {
       timeout: 10_000,
     })
   return { root, home, appData, workspace, ro, rw, kernel, args, shell }
+}
+
+const providerShell = async (f: ReturnType<typeof fixture>, script: string, ...values: string[]) => {
+  const child = spawnFolderProvider(f.kernel, f.args, {
+    cmd: "/bin/sh",
+    args: ["-c", script, "test", ...values],
+    cwd: f.workspace,
+    env: f.args.env,
+  })
+  if (!child.success) throw new Error(child.error)
+  const [stdout, stderr, result] = await Promise.all([
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+    child.exited,
+  ])
+  return { stdout, stderr, code: result.code }
 }
 
 for (const provider of ["codex", "claude", "opencode"] as const)
@@ -128,20 +146,39 @@ for (const provider of ["codex", "claude", "opencode"] as const)
   })
 
 test.skipIf(!available)(
-  "Linux permits granted reads and writes but RO wins over full access and shell approvals",
-  () => {
+  "Linux bounded providers permit granted reads and writes while enforcing RO grants",
+  async () => {
     const f = fixture()
-    for (const access of ["workspace-write", "full"] as const) {
-      f.args.bot.access = access
-      expect(f.shell('cat "$1"', join(f.ro, "reference.txt")).stdout.toString()).toBe("reference")
-      const denied = f.shell('printf changed > "$1"', join(f.ro, "reference.txt"))
-      expect(denied.exitCode).not.toBe(0)
-      expect(readFileSync(join(f.ro, "reference.txt"), "utf8")).toBe("reference")
-      expect(f.shell('printf saved > "$1"', join(f.rw, "saved.txt")).exitCode).toBe(0)
-      expect(readFileSync(join(f.rw, "saved.txt"), "utf8")).toBe("saved")
-    }
+    expect(await providerShell(f, 'cat "$1"', join(f.ro, "reference.txt"))).toMatchObject({
+      code: 0,
+      stdout: "reference",
+    })
+    const denied = await providerShell(f, 'printf changed > "$1"', join(f.ro, "reference.txt"))
+    expect(denied.code).not.toBe(0)
+    expect(readFileSync(join(f.ro, "reference.txt"), "utf8")).toBe("reference")
+    expect(await providerShell(f, 'printf saved > "$1"', join(f.rw, "saved.txt"))).toMatchObject({ code: 0 })
+    expect(readFileSync(join(f.rw, "saved.txt"), "utf8")).toBe("saved")
+    const outside = await providerShell(f, 'cat "$1"', join(f.home, "ungranted/marker"))
+    expect(outside.code).not.toBe(0)
+    expect(outside.stdout).toBe("")
   },
 )
+
+test.skipIf(!available)("Linux full-access providers retain host access with saved RO grants", async () => {
+  const f = fixture()
+  f.args.bot.access = "full"
+  expect(
+    await providerShell(
+      f,
+      'cat "$1"; cat "$2"; printf changed > "$1"; printf saved > "$3"',
+      join(f.ro, "reference.txt"),
+      join(f.home, "ungranted/marker"),
+      join(f.home, "ungranted/saved"),
+    ),
+  ).toMatchObject({ code: 0, stdout: "referenceungranted-secret" })
+  expect(readFileSync(join(f.ro, "reference.txt"), "utf8")).toBe("changed")
+  expect(readFileSync(join(f.home, "ungranted/saved"), "utf8")).toBe("saved")
+})
 
 test.skipIf(!available)(
   "Linux hides API credentials and other bots while this bot and its runtime remain usable",
@@ -300,22 +337,37 @@ test.skipIf(!available)("noncanonical saved grants and a root workspace cannot w
   expect(() => linuxFolderSandbox(f.kernel, f.args, f.args.env, f.home)).toThrow()
 })
 
-test.skipIf(!available)("a provider with no extra grants cannot read ungranted host files", async () => {
+test.skipIf(!available)("a grant-free provider launches directly with provider-owned sandbox policy", async () => {
   const f = fixture()
   f.args.bot.folders = []
-  rmSync(join(f.args.env.CODEX_HOME ?? "", "auth.json"))
-  f.kernel.spawnTree = spawnTree
-  const child = spawnFolderProvider(f.kernel, f.args, {
+  const launches: Array<Parameters<Kernel["spawnTree"]>[0]> = []
+  f.kernel.spawnTree = (input) => {
+    launches.push(input)
+    return spawnTree(input)
+  }
+  const input = {
     cmd: "/bin/sh",
     args: ["-c", 'cat "$1"', "test", join(f.home, "ungranted/marker")],
     cwd: f.workspace,
     env: f.args.env,
-  })
+  }
+  const child = spawnFolderProvider(f.kernel, f.args, input)
   expect(child.success).toBe(true)
-  if (!child.success) return
-  const [output, result] = await Promise.all([new Response(child.stdout).text(), child.exited])
-  expect(result.code).not.toBe(0)
-  expect(output).toBe("")
+  if (!child.success) throw new Error(child.error)
+  expect(launches).toEqual([input])
+  // This shell probes the launcher. Codex receives its own sandbox policy;
+  // settings-isolation also asserts that policy at the adapter protocol boundary.
+  const [output, stderr, result] = await Promise.all([
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+    child.exited,
+  ])
+  expect({ code: result.code, output, stderr }).toEqual({ code: 0, output: "ungranted-secret", stderr: "" })
+  expect(codexAccessParams(f.args)).toMatchObject({
+    sandbox: "workspace-write",
+    approvalPolicy: "on-request",
+    config: { sandbox_workspace_write: { writable_roots: expect.arrayContaining([f.workspace]) } },
+  })
 })
 
 test.skipIf(!available)("the actual provider spawn drops unrelated credentials before entering bwrap", async () => {

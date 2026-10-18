@@ -266,21 +266,25 @@ for (const vm of [false, true]) {
       for (const resumed of [false, true]) {
         test(`Codex explicitly sets ${vm ? "VM" : "host"} ${access}/${approvals} ${resumed ? "resume" : "new"} policy`, async () => {
           const f = fixture(vm, "codex")
-          const outer =
-            !vm &&
-            (process.platform === "darwin" || (process.platform === "linux" && (await refreshHostFolderAccess())))
           f.args.bot.access = access
           f.args.bot.approvals = approvals
           if (resumed) f.args.session = { externalSessionId: "old-session", rolloutPath: null } as ProviderSession
           const requestLogPath = join(f.root, "requests.jsonl")
           writeFileSync(f.scenario, JSON.stringify({ events: [{ type: "complete" }], requestLogPath }))
           expect((await f.adapter.startTurn(f.args)).success).toBe(true)
-          expect(f.calls[0]?.args).toContain('approvals_reviewer="user"')
+          const call = f.calls[0]
+          if (!call) throw new Error("Missing spawn")
+          // These bots have no extra grants. Linux keeps the provider's boundary;
+          // bounded macOS turns inherit Seatbelt, and full access launches directly.
+          const inherited = !vm && access !== "full" && process.platform === "darwin"
+          expect(call.cmd).toBe(inherited ? "/usr/bin/sandbox-exec" : vm ? "codex" : process.execPath)
+          const outer = call.cmd === "/usr/bin/sandbox-exec" || /\/bwrap$/.test(call.cmd)
+          expect(call.args).toContain('approvals_reviewer="user"')
           if (access === "full") {
-            expect(f.calls[0]?.args).toContain('sandbox_mode="danger-full-access"')
-            expect(f.calls[0]?.args).toContain(`approval_policy=${JSON.stringify(approvals)}`)
+            expect(call.args).toContain('sandbox_mode="danger-full-access"')
+            expect(call.args).toContain(`approval_policy=${JSON.stringify(approvals)}`)
           } else if (access === "read-only")
-            expect(f.calls[0]?.args).toContain(outer ? 'sandbox_mode="danger-full-access"' : 'sandbox_mode="read-only"')
+            expect(call.args).toContain(outer ? 'sandbox_mode="danger-full-access"' : 'sandbox_mode="read-only"')
           const requests = readFileSync(requestLogPath, "utf8")
             .trim()
             .split("\n")

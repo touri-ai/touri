@@ -9,7 +9,6 @@ import { createStandingGrantStore } from "../../src/approvals/grants"
 import { mcpStartupChecks } from "../../src/doctor/mcp"
 import { createKernel } from "../../src/kernel"
 import { openDatabase } from "../../src/kernel/db"
-import { hostFolderAccessAvailable } from "../../src/kernel/folder-capability"
 import { init as initNotify } from "../../src/notify"
 import { createCodexAdapter } from "../../src/runtime/codex/adapter"
 import { createRuntimeEngine } from "../../src/runtime/engine"
@@ -2421,9 +2420,15 @@ test.serial("transcript: cancellation during environment loading never launches 
   }
 })
 
-test.serial("a local bot uses its selected provider profile for authentication and isolated bookkeeping", async () => {
+test.serial("local Claude profiles follow grant-free and full-access bookkeeping policy", async () => {
   const value = await fixture({ provider: "claude" })
   try {
+    const launches: string[] = []
+    const spawn = value.runtime.kernel.spawnTree
+    value.runtime.kernel.spawnTree = (input) => {
+      if (input.args.includes("--settings")) launches.push(input.cmd)
+      return spawn(input)
+    }
     const envLog = join(value.assets, "claude-home.log")
     const fakeSource = readFileSync(value.fakePath, "utf8")
     writeFileSync(
@@ -2444,16 +2449,18 @@ test.serial("a local bot uses its selected provider profile for authentication a
     await run("default home")
     const bot = value.store.bots.get(value.bot.id)
     if (!bot) throw new Error("Fixture bot missing")
-    const profile = join(value.runtime.kernel.paths.appData, "provider-profiles", "clav", "claude")
+    const profile = join(value.runtime.kernel.paths.appData, "provider-profiles", "selected", "claude")
     mkdirSync(profile, { recursive: true })
     writeFileSync(join(profile, "settings.json"), JSON.stringify({ forceLoginOrgUUID: "selected-profile" }))
-    bot.providerProfile = "clav"
+    bot.providerProfile = "selected"
     await run("profile home")
+    bot.access = "full"
+    await run("full-access profile home")
     const homes = readFileSync(envLog, "utf8").trim().split("\n")
     expect(homes[0]).not.toContain("provider-profiles")
-    expect(homes.at(-1)).toBe(
-      process.platform === "linux" && hostFolderAccessAvailable() ? join(bot.homeDir, ".touri-claude") : profile,
-    )
+    const boundedCommand = process.platform === "darwin" ? "/usr/bin/sandbox-exec" : value.fakePath
+    expect(launches).toEqual([boundedCommand, boundedCommand, value.fakePath])
+    expect(homes.slice(1)).toEqual([profile, profile])
     expect(
       JSON.parse(
         readFileSync(join(value.runtime.kernel.paths.runDir, "claude", `${value.thread.id}.settings.json`), "utf8"),
