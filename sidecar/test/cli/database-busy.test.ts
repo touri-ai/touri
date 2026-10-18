@@ -3,7 +3,8 @@ import { afterEach, expect, spyOn, test } from "bun:test"
 import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { openAuthStore } from "../../src/cli/auth/store"
+import { openAuthDatabase, openAuthStore } from "../../src/cli/auth/store"
+import { prepareDatabaseFile } from "../../src/kernel/files"
 
 const cleanups: Array<() => void | Promise<void>> = []
 afterEach(async () => {
@@ -56,6 +57,18 @@ const start = (args: Array<string>) => {
 
 const cli = (root: string, ...args: Array<string>) =>
   start([join(import.meta.dir, "../../src/cli/main.ts"), ...args, "--data-dir", root])
+
+test("the authentication database retains FULL commit durability", () => {
+  const root = mkdtempSync(join(tmpdir(), "touri-auth-durability-"))
+  cleanups.push(() => rmSync(root, { recursive: true, force: true }))
+  const filename = join(root, "auth.db")
+  const databasePath = prepareDatabaseFile({ root, path: filename })
+  const database = openAuthDatabase(databasePath)
+  cleanups.push(() => database.close())
+
+  expect(database.query("PRAGMA journal_mode").get()).toEqual({ journal_mode: "wal" })
+  expect(database.query("PRAGMA synchronous").get()).toEqual({ synchronous: 2 })
+})
 
 for (const mode of ["exclusive", "reserved"] as const) {
   test(`status waits for the ${mode} startup lock and reads auth counts after it is released`, async () => {

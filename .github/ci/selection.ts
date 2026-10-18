@@ -34,6 +34,9 @@ export function sidecarShard(path: string): number {
 
 export function linuxTests(paths: string[]): string[] {
   return paths.filter(
-    (path) => path.startsWith("platform/") || /(?:^|\/)(?:linux-|[^/]*(?:sandbox|confinement))/.test(path),
+    (path) =>
+      path === "kernel/sqlite-sync-benchmark.test.ts" ||
+      path.startsWith("platform/") ||
+      /(?:^|\/)(?:linux-|[^/]*(?:sandbox|confinement))/.test(path),
   )
 }

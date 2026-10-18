@@ -92,7 +92,7 @@ CREATE TABLE IF NOT EXISTS devices (
 export const isDatabaseBusy = (error: unknown): boolean =>
   error instanceof SQLiteError && (error.code === "SQLITE_BUSY" || error.code?.startsWith("SQLITE_BUSY_") === true)
 
-const openAuthDatabase = (filename: string): Database => {
+export const openAuthDatabase = (filename: string): Database => {
   const deadline = performance.now() + busyTimeoutMs
   while (true) {
     let database: Database | undefined
@@ -101,7 +101,7 @@ const openAuthDatabase = (filename: string): Database => {
         filename,
         sqliteFlags.SQLITE_OPEN_READWRITE | sqliteFlags.SQLITE_OPEN_CREATE | sqliteFlags.SQLITE_OPEN_NOFOLLOW,
       )
-      for (const statement of ["PRAGMA journal_mode = WAL", schema]) {
+      for (const statement of ["PRAGMA journal_mode = WAL", "PRAGMA synchronous = FULL", schema]) {
         const remainingMs = Math.max(1, Math.ceil(deadline - performance.now()))
         database.exec(`PRAGMA busy_timeout = ${remainingMs}`)
         database.exec(statement)
