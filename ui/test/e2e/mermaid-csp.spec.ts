@@ -60,6 +60,7 @@ test.describe("mermaid production and desktop CSP", () => {
       "src/features/commandPalette/CommandPalette.tsx",
       "src/components/CronScreen.tsx",
       "src/features/work/WorkScreen.tsx",
+      "src/components/WorkspaceScreens.tsx",
     ].map((key) => manifest[key])
     expect(optionalModules.every((chunk) => chunk?.isDynamicEntry && !initialFiles.has(chunk.file))).toBe(true)
     // Rollup may merge the renderer and its vendor modules into a named shared chunk.

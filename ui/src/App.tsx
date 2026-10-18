@@ -39,7 +39,6 @@ import { PageTransition } from "./components/PageTransition"
 import { RoutineEditor } from "./components/RoutineEditor"
 import { SidebarDrawer } from "./components/SidebarDrawer"
 import { getWindowChrome, WindowFrame } from "./components/WindowFrame"
-import { IntegrationsScreen, McpScreen, PreviewScreen } from "./components/WorkspaceScreens"
 import { installComputerKillSwitch } from "./computerKillSwitch"
 import { openComputerWindow } from "./computerWindow"
 import { type DeepLink, parseDeepLink } from "./deepLink"
@@ -86,6 +85,15 @@ const CronScreen = lazy(() => import("./components/CronScreen"))
 const WorkScreen = lazy(() => import("./features/work/WorkScreen").then((module) => ({ default: module.WorkScreen })))
 const PerformanceScreen = lazy(() =>
   import("./features/work/WorkScreen").then((module) => ({ default: module.PerformanceScreen })),
+)
+const IntegrationsScreen = lazy(() =>
+  import("./components/WorkspaceScreens").then((module) => ({ default: module.IntegrationsScreen })),
+)
+const McpScreen = lazy(() =>
+  import("./components/WorkspaceScreens").then((module) => ({ default: module.McpScreen })),
+)
+const PreviewScreen = lazy(() =>
+  import("./components/WorkspaceScreens").then((module) => ({ default: module.PreviewScreen })),
 )
 
 export type UiKernel = { services?: { api?: UiApi | null; invoke?: TauriInvoke | null } }
