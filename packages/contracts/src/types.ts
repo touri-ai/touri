@@ -289,6 +289,8 @@ export type Run = {
   groupTurnId?: Id
   id: Id
   threadId: Id
+  /** Visible group conversation; threadId always identifies the actual execution thread. */
+  groupThreadId?: Id | null
   botId: Id
   provider: Provider
   trigger: RunTrigger
