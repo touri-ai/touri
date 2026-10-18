@@ -63,7 +63,8 @@ for (const [name, width, height] of [
     await expect(page.locator(".message-assistant")).toContainText("Resumo pronto para conferir.")
     if (name === "phone") await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
 
-    await toggle.click()
+    if ((await toggle.getAttribute("aria-expanded")) === "true") await toggle.click()
+    await expect(toggle).toHaveAttribute("aria-expanded", "false")
     await expect(conversations.locator(".thread-row")).toHaveCount(2)
     await expect(page.locator(".thread-row.selected")).toContainText("08:00")
     const directory = process.env.TOURI_ROUTINE_SIDEBAR_SHOTS_DIR
