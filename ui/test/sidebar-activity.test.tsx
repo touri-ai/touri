@@ -158,10 +158,12 @@ it("shows active work as a clear navigation action in both languages", () => {
 
   renderSidebar({ bots, threads, workRuns: [running, queued] })
 
-  expect(screen.getByRole("button", { name: /Ver trabalho/ })).toHaveTextContent("Trabalhando 1")
-  expect(screen.getByRole("button", { name: /Ver trabalho/ })).toHaveTextContent("1 na fila")
-  expect(t("View work", {}, "pt-BR")).toBe("Ver trabalho")
+  const badge = screen.getByRole("button", { name: "Ver trabalho: 1 em execução, 1 na fila", exact: true })
+  expect(badge).toHaveTextContent("Trabalhando 1")
+  expect(badge).toHaveTextContent("1 na fila")
+  expect(badge).toHaveTextContent("Ver trabalho")
   expect(t("View work", {}, "en")).toBe("View work")
+  expect(t("View work summary", { running: 1, queued: 1 }, "en")).toBe("View work: 1 running, 1 queued")
 })
 
 const entry = (botId: string): HTMLElement => {
