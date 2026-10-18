@@ -102,6 +102,7 @@ const TelegramCard = ({ api, botId }: { api: UiApi; botId: string }) => {
       />
     )
   if (!telegram) return <ScreenState kind="loading" />
+  const tokenHelpId = telegram.tokenSaved ? undefined : `telegram-token-help-${botId}`
   const rejected =
     telegram.lastRejected && !telegram.config.allowedUserIds.includes(telegram.lastRejected.userId)
       ? telegram.lastRejected
@@ -123,7 +124,9 @@ const TelegramCard = ({ api, botId }: { api: UiApi; botId: string }) => {
         <label>
           <input
             type="checkbox"
-            checked={telegram.config.enabled}
+            checked={telegram.tokenSaved && telegram.config.enabled}
+            disabled={!telegram.tokenSaved}
+            aria-describedby={tokenHelpId}
             onChange={(event) => void save({ enabled: event.target.checked })}
           />{" "}
           {t("Ativar Telegram")}
@@ -138,12 +141,14 @@ const TelegramCard = ({ api, botId }: { api: UiApi; botId: string }) => {
             {t("Token do bot")}
             <input
               type="password"
+              aria-describedby={tokenHelpId}
               autoComplete="off"
               value={token}
               placeholder={telegram.tokenSaved ? t("Token salvo") : t("Cole o token do @BotFather")}
               onChange={(event) => setToken(event.target.value)}
             />
           </label>
+          {!telegram.tokenSaved && <small id={tokenHelpId}>{t("Salve o token do bot para ativar o Telegram.")}</small>}
           <button type="submit" className="outline-button" disabled={!token.trim()}>
             {t("Salvar token")}
           </button>

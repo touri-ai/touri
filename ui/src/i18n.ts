@@ -2143,6 +2143,7 @@ export const ptBR = {
   "Converse com este bot pelo Telegram. Só as pessoas permitidas abaixo conseguem falar com ele.":
     "Converse com este bot pelo Telegram. Só as pessoas permitidas abaixo conseguem falar com ele.",
   "Ativar Telegram": "Ativar Telegram",
+  "Salve o token do bot para ativar o Telegram.": "Salve o token do bot para ativar o Telegram.",
   Desligado: "Desligado",
   "Conectado como @{username}": "Conectado como @{username}",
   Conectado: "Conectado",
@@ -2175,6 +2176,7 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Converse com este bot pelo Telegram. Só as pessoas permitidas abaixo conseguem falar com ele.":
     "Talk to this bot on Telegram. Only the people allowed below can reach it.",
   "Ativar Telegram": "Enable Telegram",
+  "Salve o token do bot para ativar o Telegram.": "Save the bot token to enable Telegram.",
   "Conectado como @{username}": "Connected as @{username}",
   Conectado: "Connected",
   "Token do bot": "Bot token",

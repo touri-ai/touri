@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
 import type { TelegramIntegration } from "@touri/contracts"
 import { describe, expect, it, vi } from "vitest"
 import type { UiApi } from "../src/api/client"
@@ -9,6 +10,52 @@ import { t } from "../src/i18n"
 const TOKEN = "123456789:AAExampleTokenForTouriTests_123456"
 
 describe("Telegram integration card", () => {
+  it("requires a saved token before enabling and explains the next step beside the token field", async () => {
+    const api = createMockApi()
+    const user = userEvent.setup()
+    render(<TelegramIntegrationCard api={api} botId="bot-a" />)
+    const toggle = await screen.findByRole("checkbox", { name: "Ativar Telegram" })
+    const token = screen.getByLabelText("Token do bot")
+    const guidance = "Salve o token do bot para ativar o Telegram."
+
+    await user.click(toggle)
+    fireEvent.change(token, { target: { value: TOKEN } })
+
+    expect(toggle).toBeDisabled()
+    expect(toggle).not.toBeChecked()
+    expect(toggle).toHaveAccessibleDescription(guidance)
+    expect(token).toHaveAccessibleDescription(guidance)
+    expect(screen.getByText(guidance)).toBeVisible()
+    expect(screen.getByRole("status")).toHaveTextContent("Desligado")
+    expect(api.calls.some((call) => call.route === "PUT /bots/:id/integrations/telegram")).toBe(false)
+  })
+
+  it("shows off when an earlier configuration enabled the integration without a saved token", async () => {
+    const api = createMockApi()
+    await api.request("PUT /bots/:id/integrations/telegram", { enabled: true }, { id: "bot-a" })
+    render(<TelegramIntegrationCard api={api} botId="bot-a" />)
+
+    const toggle = await screen.findByRole("checkbox", { name: "Ativar Telegram" })
+
+    expect(toggle).toBeDisabled()
+    expect(toggle).not.toBeChecked()
+    expect(screen.getByRole("status")).toHaveTextContent("Desligado")
+  })
+
+  it("requires a new saved token after removing the current token", async () => {
+    const api = createMockApi()
+    await api.request("PUT /bots/:id/integrations/telegram", { token: TOKEN, enabled: true }, { id: "bot-a" })
+    render(<TelegramIntegrationCard api={api} botId="bot-a" />)
+    const remove = await screen.findByRole("button", { name: "Remover token" })
+
+    fireEvent.click(remove)
+
+    await waitFor(() => expect(screen.getByRole("checkbox", { name: "Ativar Telegram" })).toBeDisabled())
+    expect(screen.getByRole("checkbox", { name: "Ativar Telegram" })).not.toBeChecked()
+    expect(screen.getByRole("status")).toHaveTextContent("Desligado")
+    expect(screen.getByText("Salve o token do bot para ativar o Telegram.")).toBeVisible()
+  })
+
   it("starts off, saves the token write-only and enables the bridge only on request", async () => {
     const api = createMockApi()
     const botId = api.getState().bots[0]?.id ?? ""
@@ -103,7 +150,9 @@ describe("Telegram integration card", () => {
     await waitFor(() => expect(screen.getByLabelText("IDs de usuário permitidos")).toHaveValue("77"))
   })
 
-  it("provides Portuguese and English for connection status errors", () => {
+  it("provides Portuguese and English for token guidance and connection status errors", () => {
+    expect(t("Salve o token do bot para ativar o Telegram.")).toBe("Salve o token do bot para ativar o Telegram.")
+    expect(t("Salve o token do bot para ativar o Telegram.", {}, "en")).toBe("Save the bot token to enable Telegram.")
     expect(t("Salve o token do bot do Telegram.", {}, "en")).toBe("Save the Telegram bot token.")
     expect(t("Token inválido ou revogado.", {}, "en")).toBe("Invalid or revoked token.")
     expect(t("Não foi possível conectar ao Telegram. Confira sua conexão e tente novamente.", {}, "en")).toBe(
