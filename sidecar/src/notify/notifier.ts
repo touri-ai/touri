@@ -1,6 +1,14 @@
 import type { Database } from "bun:sqlite"
-import type { Kernel, NotificationRecord, NotifyInput, NotifyResolution } from "@touri/contracts"
-import { buildDeepLink, nativeNotificationTitle, shouldNotifyNative } from "./native"
+import {
+  canDeliverNotification,
+  getNotificationBody,
+  type Kernel,
+  type NotificationRecord,
+  type NotifyInput,
+  type NotifyResolution,
+} from "@touri/contracts"
+import { buildDeepLink, getNativeNotificationBody, nativeNotificationTitle } from "./native"
+import { getNotificationSettings } from "./preferences"
 import { getRecoveryAcknowledgementKeys } from "./recovery"
 import type { SseHub } from "./sse"
 import type { NotificationStore } from "./store"
@@ -11,25 +19,16 @@ const MAX_BODY = 2000
 const clip = ({ value, max }: { value: string; max: number }): string =>
   value.length <= max ? value : `${value.slice(0, max - 1)}…`
 
-const nativeEnabled = (kernel: Kernel): boolean => {
-  const row = (kernel.db as Database)
-    .query("SELECT value_json FROM settings WHERE key = 'nativeNotifications'")
-    .get() as {
-    value_json: string
-  } | null
-  return row === null || row.value_json !== "false"
-}
-
 export const createNotifier = ({ kernel, store, hub }: { kernel: Kernel; store: NotificationStore; hub: SseHub }) => {
   const sendNative = (notification: NotificationRecord): void => {
-    if (!nativeEnabled(kernel)) return
     const bot = notification.botId
       ? (kernel.services.use("store.api")?.getBot({ botId: notification.botId }) ?? null)
       : null
-    if (!shouldNotifyNative({ notification, preference: bot?.notifications ?? null })) return
+    const settings = getNotificationSettings(kernel.db as Database)
+    if (!canDeliverNotification({ notification, botPreference: bot?.notifications ?? null, ...settings })) return
     void kernel.callHost("notify", {
       title: clip({ value: nativeNotificationTitle(notification), max: MAX_TITLE }),
-      body: notification.body,
+      body: getNativeNotificationBody(notification),
       threadId: notification.threadId,
       requestId: notification.requestId,
       notificationId: notification.id,
@@ -49,7 +48,10 @@ export const createNotifier = ({ kernel, store, hub }: { kernel: Kernel; store: 
       ...input,
       threadId,
       title: clip({ value: kernel.redact(input.title), max: MAX_TITLE }),
-      body: clip({ value: kernel.redact(input.body), max: MAX_BODY }),
+      body: clip({
+        value: kernel.redact(getNotificationBody(input)),
+        max: MAX_BODY,
+      }),
     })
     kernel.publish({ type: "notification.created", notification })
     hub.broadcast({ seq, type: "notify", notification })

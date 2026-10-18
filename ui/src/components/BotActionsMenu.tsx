@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef } from "react"
 import { createPortal } from "react-dom"
 import { t } from "../i18n"
+import { PanelIcon } from "./PanelIcon"
 import { useAnchoredPopover } from "./useAnchoredPopover"
 
 export const BotActionsMenu = ({
@@ -113,15 +114,21 @@ export const BotActionsMenu = ({
             }}
           >
             <button type="button" role="menuitem" onClick={() => launch(onSettings)}>
-              {t("Advanced")}
+              <PanelIcon name="settings" />
+              <span>{t("Advanced")}</span>
             </button>
             <button type="button" role="menuitem" onClick={() => launch(onRoutines)}>
-              {t("Routines")}
+              <PanelIcon name="clock" />
+              <span>{t("Routines")}</span>
             </button>
             {onDelete && (
-              <button type="button" role="menuitem" className="tool-action-deny" onClick={() => launch(onDelete)}>
-                {t("Delete bot")}
-              </button>
+              <>
+                <hr className="menu-separator" />
+                <button type="button" role="menuitem" className="tool-action-deny" onClick={() => launch(onDelete)}>
+                  <PanelIcon name="trash" />
+                  <span>{t("Delete bot")}</span>
+                </button>
+              </>
             )}
           </div>,
           portalRoot,
