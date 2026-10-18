@@ -9,6 +9,14 @@ const api = createMockApi()
 Object.assign(window, { workspaceQa: { api } })
 const state = api.getState()
 const scenario = new URLSearchParams(location.search).get("scenario")
+if (scenario === "long-composer") {
+  const bot = state.bots.find((item) => item.id === "bot-mark")
+  const { projects } = await api.request("GET /projects", {})
+  const project = projects.find((item) => item.id === bot?.projectId)
+  if (!bot || !project) throw new Error("Missing synthetic composer fixture")
+  bot.model = "atlas-planning-experimental-2026-10"
+  project.name = "Projeto fictício de planejamento e acessibilidade"
+}
 if (scenario === "empty") state.bots.splice(0)
 else if (scenario === "failed") {
   const previous = state.messages.find((message) => message.role === "assistant")

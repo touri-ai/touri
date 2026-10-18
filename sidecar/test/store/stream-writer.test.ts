@@ -1,6 +1,6 @@
-import type { Database } from "bun:sqlite"
+import { type Database, Database as SqliteDatabase } from "bun:sqlite"
 import { afterEach, expect, spyOn, test } from "bun:test"
-import { mkdtempSync, rmSync } from "node:fs"
+import { mkdtempSync, rmSync, statSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { UiEventEnvelope } from "@touri/contracts"
@@ -8,16 +8,19 @@ import { createKernel } from "../../src/kernel"
 import { openDatabase } from "../../src/kernel/db"
 import { createEventBus } from "../../src/kernel/event-bus"
 import { OUTPUT_INLINE_BUDGET_BYTES } from "../../src/kernel/output-blobs"
+import type { PerformanceStageRunner } from "../../src/kernel/performance"
 import { profileProviders } from "../../src/kernel/provider-profiles"
 import { compactTranscript, materializeTranscript } from "../../src/kernel/transcript-storage"
 import { init as initStore } from "../../src/store"
 import { STREAM_WRITE_LIMITS } from "../../src/store/stream-writer"
 import { readWorkspaceActivity } from "../../src/store/workspace-activity"
 
-const fixture = async () => {
+const MAX_STREAM_EVENTS_PER_WRITE = STREAM_WRITE_LIMITS.batchEvents
+
+const fixture = async (runStage?: PerformanceStageRunner) => {
   const root = mkdtempSync(join(tmpdir(), "touri-stream-writer-"))
   const runtime = createKernel({ appData: root })
-  await initStore(runtime.kernel)
+  await initStore(runtime.kernel, runStage)
   const database = runtime.kernel.db as Database
   database
     .query("INSERT INTO bots(id,name,provider,home_dir,created_at,updated_at) VALUES ('b','Teste',?,'/tmp',1,1)")
@@ -376,13 +379,12 @@ test("an indivisible large live tail flushes immediately without truncating prog
   }
 })
 
-test("a periodic checkpoint inside a large frame preserves subsequent chunk and frame offsets", async () => {
+test("a durable projection checkpoint preserves subsequent chunk and frame offsets", async () => {
   const f = await fixture()
-  const now = Date.now()
-  const clock = spyOn(Date, "now").mockReturnValue(now + STREAM_WRITE_LIMITS.checkpointMs + 1)
   try {
     const text = "界".repeat(7_000)
     f.store.appendDelta({ threadId: "t", messageId: "a", partIndex: 0, delta: text })
+    f.store.activePath({ threadId: "t", leafId: "a" })
     f.store.appendDelta({ threadId: "t", messageId: "a", partIndex: 0, delta: "fim" })
     f.store.flushWrites?.()
     materializeTranscript(f.database)
@@ -395,7 +397,6 @@ test("a periodic checkpoint inside a large frame preserves subsequent chunk and 
     }
     expect(deltas.map((event) => event.delta).join("")).toBe(`${text}fim`)
   } finally {
-    clock.mockRestore()
     f.close()
   }
 })
@@ -501,6 +502,77 @@ test("a background transaction failure retries the accepted batch without duplic
   }
 })
 
+test("stream writes retry a busy database without waiting on the main loop", async () => {
+  let observedDatabase: Database | null = null
+  const timeouts: number[] = []
+  const runStage: PerformanceStageRunner = <Value, Input = undefined>(
+    stage: string,
+    action: (input: Input) => Value,
+    input?: Input,
+  ): Value => {
+    if (stage !== "stream_journal_write" || !observedDatabase) return action(input as Input)
+    timeouts.push((observedDatabase.query("PRAGMA busy_timeout").get() as { timeout: number }).timeout)
+    return action(input as Input)
+  }
+  const f = await fixture(runStage)
+  cleanups.add(f.close)
+  observedDatabase = f.database
+  const blocker = new SqliteDatabase(join(f.root, "touri.db"))
+  cleanups.add(() => blocker.close())
+  blocker.exec("BEGIN IMMEDIATE")
+  const log = spyOn(f.runtime.kernel, "log")
+  cleanups.add(() => log.mockRestore())
+
+  expect(() =>
+    f.store.appendDelta({
+      threadId: "t",
+      messageId: "a",
+      partIndex: 0,
+      delta: "x".repeat(STREAM_WRITE_LIMITS.bytes),
+    }),
+  ).not.toThrow()
+  expect(timeouts).toEqual([0])
+  expect((f.database.query("PRAGMA busy_timeout").get() as { timeout: number }).timeout).toBe(5_000)
+  expect(f.events.filter(({ event }) => event.type === "message.delta")).toHaveLength(0)
+
+  f.store.flushWrites?.()
+  f.store.flushWrites?.()
+  expect(
+    log.mock.calls.filter(([entry]) => entry.msg === "Stream database busy; retrying buffered writes"),
+  ).toHaveLength(1)
+
+  blocker.exec("ROLLBACK")
+  f.store.flushWrites?.()
+
+  expect(timeouts).toEqual([0, 0, 0, 0])
+  expect(f.events.filter(({ event }) => event.type === "message.delta")).toHaveLength(1)
+  expect(f.store.activePath({ threadId: "t", leafId: "a" })[0]?.text).toBe("x".repeat(STREAM_WRITE_LIMITS.bytes))
+})
+
+test("shutdown warns about busy buffered writes and cancels retries before closing the database", async () => {
+  const f = await fixture()
+  cleanups.add(f.close)
+  f.runtime.kernel.services.use("storage.maintenance")?.dispose()
+  f.store.appendDelta({ threadId: "t", messageId: "a", partIndex: 0, delta: "Preservar" })
+  const blocker = new SqliteDatabase(join(f.root, "touri.db"))
+  cleanups.add(() => blocker.close())
+  blocker.exec("BEGIN IMMEDIATE")
+  const log = spyOn(f.runtime.kernel, "log")
+  cleanups.add(() => log.mockRestore())
+
+  expect(() => f.runtime.stop()).not.toThrow()
+  expect(() => f.runtime.stop()).not.toThrow()
+  expect(() => f.store.flushWrites?.()).not.toThrow()
+
+  expect(log.mock.calls.map(([entry]) => entry)).toContainEqual({
+    level: "warn",
+    module: "store",
+    msg: "Shutdown could not persist buffered stream writes; database remains busy",
+    data: { events: 1, bytes: Buffer.byteLength("Preservar") },
+  })
+  expect(f.events.filter(({ event }) => event.type === "message.delta")).toHaveLength(0)
+})
+
 test("an explicit flush also drains parts mirrored reentrantly during committed event publication", async () => {
   const f = await fixture()
   const unsubscribe = f.runtime.kernel.subscribe(({ event }) => {
@@ -543,4 +615,109 @@ test("retention of a referenced patch requests resync rather than silently dropp
   } finally {
     f.close()
   }
+})
+
+test("large WAL stream writes keep autocheckpointing disabled and cap journal rows per transaction", async () => {
+  let observedDatabase: Database | null = null
+  const writerRows: number[] = []
+  const writerDurations: number[] = []
+  const stages: string[] = []
+  const getLastSeq = (database: Database): number =>
+    (
+      database.query("SELECT MAX(seq) AS seq FROM transcript_entries WHERE thread_id = 't'").get() as {
+        seq: number | null
+      }
+    ).seq ?? 0
+  const runStage: PerformanceStageRunner = <Value, Input = undefined>(
+    stage: string,
+    action: (input: Input) => Value,
+    input?: Input,
+  ): Value => {
+    stages.push(stage)
+    if (stage !== "stream_journal_write" || !observedDatabase) return action(input as Input)
+    const before = getLastSeq(observedDatabase)
+    const startedAt = performance.now()
+    const result = action(input as Input)
+    writerDurations.push(performance.now() - startedAt)
+    writerRows.push(getLastSeq(observedDatabase) - before)
+    return result
+  }
+  const f = await fixture(runStage)
+  cleanups.add(f.close)
+  observedDatabase = f.database
+
+  f.runtime.kernel.services.use("storage.maintenance")?.dispose()
+  f.database.exec("PRAGMA wal_autocheckpoint = 0")
+  for (let index = 0; index < MAX_STREAM_EVENTS_PER_WRITE + 36; index++) {
+    const result = f.store.insertMessage({
+      message: {
+        id: `stream-${index}`,
+        threadId: "t",
+        parentId: null,
+        role: "assistant",
+        kind: "text",
+        status: "streaming",
+        runId: null,
+        text: "",
+        parts: [{ type: "text", text: "" }],
+        sender: null,
+        source: "local",
+      },
+    })
+    expect(result.success).toBe(true)
+  }
+
+  const previousAutocheckpoint = (
+    f.database.query("PRAGMA wal_autocheckpoint").get() as {
+      wal_autocheckpoint: number
+    }
+  ).wal_autocheckpoint
+  f.database.exec("PRAGMA wal_checkpoint(TRUNCATE); PRAGMA wal_autocheckpoint = 0")
+  const firstSyntheticSeq =
+    (
+      f.database.query("SELECT updated_seq FROM threads WHERE id = 't'").get() as {
+        updated_seq: number
+      }
+    ).updated_seq + 1
+  const history = JSON.stringify({ type: "legacy", legacy: true, payload: "x".repeat(1_024) })
+  const insertHistory = f.database.query(
+    "INSERT INTO transcript_entries(thread_id, seq, generation, event_json, at) VALUES ('t', ?, 1, ?, ?)",
+  )
+  const historyRows = 20_000
+  f.database.transaction(() => {
+    for (let index = 0; index < historyRows; index++) insertHistory.run(firstSyntheticSeq + index, history, index)
+  })()
+  const finalSyntheticSeq = firstSyntheticSeq + historyRows - 1
+  const lastEntryId = (f.database.query("SELECT MAX(id) AS id FROM transcript_entries").get() as { id: number }).id
+  f.database.query("UPDATE threads SET updated_seq = ? WHERE id = 't'").run(finalSyntheticSeq)
+  f.database
+    .query("UPDATE schema_meta SET value = ? WHERE key = 'transcript_event_checkpoint'")
+    .run(String(lastEntryId))
+  f.database.exec(`PRAGMA wal_autocheckpoint = ${previousAutocheckpoint}`)
+
+  const walBytes = statSync(join(f.root, "touri.db-wal")).size
+  const clock = spyOn(Date, "now").mockReturnValue(Date.now() + 10_000)
+  cleanups.add(() => clock.mockRestore())
+  const delivered = Promise.withResolvers<void>()
+  const unsubscribe = f.runtime.kernel.subscribe(({ event }) => {
+    if (event.type === "message.delta" && event.messageId === "stream-99") delivered.resolve()
+  })
+  cleanups.add(unsubscribe)
+  const firstDeltaEvent = f.events.length
+
+  for (let index = 0; index < MAX_STREAM_EVENTS_PER_WRITE + 36; index++)
+    f.store.appendDelta({ threadId: "t", messageId: `stream-${index}`, partIndex: 0, delta: "x" })
+  f.store.flushWrites?.()
+  await delivered.promise
+
+  const elapsedMs = Math.round(writerDurations.reduce((total, duration) => total + duration, 0))
+  console.info(`stream-write-large-wal ${JSON.stringify({ historyRows, walBytes, writerRows, writerMs: elapsedMs })}`)
+  expect(walBytes).toBeGreaterThan(16 * 1024 * 1024)
+  expect(writerRows.length).toBe(2)
+  expect(writerRows.every((rows) => rows > 0 && rows <= MAX_STREAM_EVENTS_PER_WRITE)).toBe(true)
+  expect(f.events.slice(firstDeltaEvent).filter(({ event }) => event.type === "message.delta")).toHaveLength(100)
+  expect(
+    (f.database.query("PRAGMA wal_autocheckpoint").get() as { wal_autocheckpoint: number }).wal_autocheckpoint,
+  ).toBe(0)
+  expect(stages.filter((stage) => stage === "transcript_projection_checkpoint").length).toBeLessThanOrEqual(1)
 })

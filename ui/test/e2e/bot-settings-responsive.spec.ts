@@ -67,3 +67,44 @@ const getRowLayout = (row: Element) => {
     overflow: row.scrollWidth - row.clientWidth,
   }
 }
+
+test.describe("phone bot settings overview", () => {
+  test.use({ viewport: { width: 390, height: 844 }, locale: "pt-BR", reducedMotion: "reduce" })
+
+  test("labels advanced settings and keeps them clear of the mascot colors", async ({ page }) => {
+    await page.goto("/test/e2e/home-harness.html")
+    await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
+    await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
+
+    const sidebar = page.getByRole("dialog", { name: "Barra lateral", exact: true })
+    await sidebar.getByRole("button", { name: "Ações de mark", exact: true }).click()
+    await sidebar.getByRole("menuitem", { name: "Avançado", exact: true }).click()
+
+    const dialog = page.getByRole("dialog", { name: "Configurações de mark", exact: true })
+    const advanced = dialog.getByRole("button", { name: "Avançado Ajustes deste bot", exact: true })
+    await expect(advanced).toBeVisible()
+    await expect(dialog.getByText("Ajustes deste bot", { exact: true })).toBeVisible()
+
+    const overview = dialog.locator(".bot-settings-overview")
+    await overview.evaluate((element) => {
+      element.scrollTop = element.scrollHeight
+    })
+    const colors = dialog.locator(".avatar-colors")
+    await expect(colors).toBeInViewport()
+    const spacing = await dialog.evaluate((element) => {
+      const colorRow = element.querySelector(".avatar-colors")
+      const advancedBar = element.querySelector(".settings-advanced-bar")
+      if (!colorRow || !advancedBar) throw new Error("Expected mascot colors and advanced settings")
+
+      return {
+        gap: advancedBar.getBoundingClientRect().top - colorRow.getBoundingClientRect().bottom,
+        overflow: element.scrollWidth - element.clientWidth,
+        pageOverflow: document.documentElement.scrollWidth - window.innerWidth,
+      }
+    })
+
+    expect(spacing.gap).toBeGreaterThanOrEqual(12)
+    expect(spacing.overflow).toBe(0)
+    expect(spacing.pageOverflow).toBe(0)
+  })
+})

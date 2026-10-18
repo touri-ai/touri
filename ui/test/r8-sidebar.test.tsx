@@ -71,7 +71,7 @@ it("keeps bots reachable beside global screens, footer integrations and creation
   expect(sidebar.querySelectorAll(".bot-entry")).toHaveLength(api.getState().bots.length)
   fireEvent.click(sidebar.querySelector('[data-bot-id="bot-onb"]')?.closest("button") as HTMLElement)
   expect(await screen.findByRole("textbox", { name: "Mensagem para onb" })).toBeVisible()
-  fireEvent.click(within(sidebar).getByRole("button", { name: "Avançado", exact: true }))
+  fireEvent.click(within(sidebar).getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
   fireEvent.click(within(sidebar).getByRole("button", { name: "Integrações", exact: true }))
   expect(await screen.findByRole("heading", { name: "Integrações" })).toBeVisible()
   fireEvent.click(within(sidebar).getByRole("button", { name: "Criar bot" }))

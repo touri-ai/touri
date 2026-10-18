@@ -220,7 +220,8 @@ it("keeps Cancel and Save in the dialog's accessible tree after expanding and co
   const user = userEvent.setup()
   const { bot, actions, onClose } = await botSettings()
   const dialog = screen.getByRole("dialog")
-  const advanced = within(dialog).getByRole("button", { name: "Avançado" })
+  const advanced = within(dialog).getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ })
+  expect(advanced).toHaveAccessibleName("Avançado Ajustes deste bot")
   for (const expanded of [true, false, true, false]) {
     await user.click(advanced)
     expect(advanced).toHaveAttribute("aria-expanded", String(expanded))
@@ -242,7 +243,7 @@ it("keeps Cancel and Save in the dialog's accessible tree after expanding and co
 it("opens the bot routines list directly from the tab by pointer or keyboard", async () => {
   const user = userEvent.setup()
   const { onOpenRoutines } = await botSettings()
-  await user.click(screen.getByRole("button", { name: "Avançado" }))
+  await user.click(screen.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
   const tab = screen.getByRole("tab", { name: "Rotinas" })
   await user.click(tab)
   expect(onOpenRoutines).toHaveBeenCalledOnce()

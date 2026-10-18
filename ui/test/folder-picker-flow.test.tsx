@@ -10,14 +10,22 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-it("offers folders and projects before Advanced and saves the chosen folder access in the web UI", async () => {
+it("offers folders and projects in Advanced and saves the chosen folder access in the web UI", async () => {
   const api = createMockApi()
   const create = vi.fn()
   const prompt = vi.spyOn(window, "prompt")
   render(<BotCreateModal api={api} invokeCommand={createWebInvoke()} onCreate={create} onClose={vi.fn()} />)
-  expect(screen.getByRole("button", { name: "Avançado" })).toHaveAttribute("aria-expanded", "false")
+  const advanced = screen.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ })
+
+  expect(advanced).toHaveAttribute("aria-expanded", "false")
+  expect(screen.queryByLabelText("Projeto", { selector: "select" })).toBeNull()
+
+  fireEvent.click(advanced)
+
   expect(screen.getByLabelText("Projeto", { selector: "select" })).toBeVisible()
-  fireEvent.click(screen.getByRole("button", { name: "Usar uma pasta" }))
+
+  fireEvent.click(screen.getByRole("button", { name: "Adicionar pasta…" }))
+
   const picker = screen.getByRole("dialog", { name: "Pastas no servidor" })
   await waitFor(() => expect(within(picker).getByRole("button", { name: "Usar esta pasta" })).toBeEnabled())
   expect(within(picker).getByRole("radio", { name: "Somente leitura", exact: true })).toBeChecked()

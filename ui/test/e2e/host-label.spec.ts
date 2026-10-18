@@ -21,12 +21,18 @@ hosts.forEach(({ host, noun, platform }) => {
     if (host !== "mac") await expect(panel).not.toContainText("Mac")
     expect(await page.evaluate(() => navigator.platform)).toBe(platform)
 
-    await page.locator(".sidebar-advanced").getByRole("button", { name: "Avançado", exact: true }).click()
+    await page
+      .locator(".sidebar-advanced")
+      .getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ })
+      .click()
 
     await expect(page.getByRole("button", { name: `Verificar este ${noun}`, exact: true })).toBeVisible()
     await captureHostLabel(page, `${host}-details.png`)
 
-    await page.locator(".sidebar-advanced").getByRole("button", { name: "Avançado", exact: true }).click()
+    await page
+      .locator(".sidebar-advanced")
+      .getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ })
+      .click()
     await panel.getByRole("button", { name: "Ajustar permissões", exact: true }).click()
 
     const permissions = page.getByRole("dialog", { name: "Permissões do bot", exact: true })

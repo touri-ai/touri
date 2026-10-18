@@ -254,11 +254,23 @@ fn display_frames<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Vec<DisplayFr
         .collect())
 }
 
+/// The OS owns the frame of a fullscreen, maximized or minimized window. Windows
+/// draws a maximized frame past the work area by its border width and parks a
+/// minimized one at -32000, so clamping either one resizes the window, fires
+/// another Moved/Resized event and repairs it again, forever.
+fn is_frame_owned_by_os(fullscreen: bool, maximized: bool, minimized: bool) -> bool {
+    fullscreen || maximized || minimized
+}
+
 fn place_window<R: Runtime>(
     window: &Window<R>,
     initial: Option<WindowPlacement>,
 ) -> tauri::Result<()> {
-    if window.is_fullscreen()? {
+    if is_frame_owned_by_os(
+        window.is_fullscreen()?,
+        window.is_maximized()?,
+        window.is_minimized()?,
+    ) {
         return Ok(());
     }
     let scale = window.scale_factor()?;
@@ -557,5 +569,29 @@ mod tests {
             ),
             Some(frame(-1680.0, -148.5, 1440.0, 900.0))
         );
+    }
+
+    #[test]
+    fn maximized_and_minimized_frames_are_left_to_the_os() {
+        // Windows at 125%: a maximized frame overhangs the 1536x816 work area by its border,
+        // so clamping it would always produce a different frame and resize the window.
+        let display = [DisplayFrame {
+            bounds: frame(0.0, 0.0, 1536.0, 864.0),
+            visible: frame(0.0, 0.0, 1536.0, 816.0),
+            primary: true,
+        }];
+        let maximized = frame(-8.0, -8.0, 1552.0, 832.0);
+
+        let clamped = clamp_placement(
+            Some((maximized.x, maximized.y)),
+            (maximized.width, maximized.height),
+            &display,
+        );
+
+        assert_ne!(clamped, Some(maximized));
+        assert!(is_frame_owned_by_os(false, true, false));
+        assert!(is_frame_owned_by_os(false, false, true));
+        assert!(is_frame_owned_by_os(true, false, false));
+        assert!(!is_frame_owned_by_os(false, false, false));
     }
 }

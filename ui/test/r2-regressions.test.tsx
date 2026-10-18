@@ -335,7 +335,7 @@ describe("r2 regressions", () => {
     const onCreate = vi.fn(async (_input: ApiRoutes["POST /bots"]["req"]) => undefined)
     const modal = render(<BotCreateModal onCreate={onCreate} onClose={() => undefined} />)
     fireEvent.change(screen.getByLabelText("Nome"), { target: { value: "seo" } })
-    fireEvent.click(screen.getByRole("button", { name: "Avançado" }))
+    fireEvent.click(screen.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
     fireEvent.change(screen.getByLabelText("Função"), { target: { value: "SEO do site" } })
     fireEvent.change(screen.getByLabelText("Título (opcional)"), { target: { value: "Analista" } })
     fireEvent.click(screen.getByRole("button", { name: "Criar bot" }))

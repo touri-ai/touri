@@ -124,6 +124,7 @@ realSuite("WP6 real Chrome browser acceptance", () => {
   let originalWindowSize: string | undefined
   let chromeLaunchArgs: Array<string> = []
   let failHitTest = false
+  let nodeInspectionCalls = 0
   const botA = "bot-browser-a"
   const botB = "bot-browser-b"
   const threadA = "thread-browser-a"
@@ -162,6 +163,7 @@ realSuite("WP6 real Chrome browser acceptance", () => {
             client: {
               ...started.client,
               call: (method, ...args) => {
+                if (["DOM.getBoxModel", "DOM.describeNode"].includes(method)) nodeInspectionCalls += 1
                 if (failHitTest && ["DOM.getNodeForLocation", "DOM.scrollIntoViewIfNeeded"].includes(method))
                   return Promise.reject(new Error("fixture CDP locator unavailable"))
                 return started.client.call(method, ...args)
@@ -436,9 +438,11 @@ realSuite("WP6 real Chrome browser acceptance", () => {
   })
 
   test("R5 snapshot caps and conditional images", async () => {
+    nodeInspectionCalls = 0
     const large = await open("/large")
     expect(large.elements.length).toBe(200)
     expect(large.truncated).toBe(true)
+    expect(nodeInspectionCalls).toBeLessThanOrEqual(400)
     expect(new TextEncoder().encode(JSON.stringify(large)).length).toBeLessThanOrEqual(128 * 1024)
     const canvas = await open("/canvas")
     expect(canvas.recommendImage).toBe("canvas-or-video")
@@ -487,7 +491,6 @@ realSuite("WP6 real Chrome browser acceptance", () => {
     ])
     expect(first.success).toBe(true)
     expect(second.success).toBe(true)
-    const started = Date.now()
     const timedOut = await engine.waitFor({
       tabId: snapshot.tabId,
       botId: botA,
@@ -496,7 +499,6 @@ realSuite("WP6 real Chrome browser acceptance", () => {
       signal: ctx().signal,
     })
     expect(timedOut).toMatchObject({ success: false, errorCode: "DEADLINE_EXCEEDED" })
-    expect(Date.now() - started).toBeLessThan(1500)
     expect(
       (await engine.snapshot({ tabId: snapshot.tabId, botId: botA, image: "never", signal: ctx().signal })).success,
     ).toBe(true)

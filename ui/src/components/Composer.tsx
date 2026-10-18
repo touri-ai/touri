@@ -8,8 +8,9 @@ import { userFacingError } from "../errors"
 import { useCloudAccount } from "../features/cloud/useCloudAccount"
 import { useIsServerMode } from "../features/server/serverMode"
 import { dropRejectionMessage, type FileDrop, listenForFileDrops } from "../fileDrops"
-import { t } from "../i18n"
+import { type Locale, t } from "../i18n"
 import { useComposerMachineIntent } from "../machineIntents"
+import { getDraftWithTranscript } from "../speechRecognition"
 import { useProviderLogin } from "../useProviderLogin"
 import { useMascotComposer } from "./AvatarRuntime"
 import { BotAvatar } from "./BotAvatar"
@@ -19,10 +20,12 @@ import { ErrorText } from "./ErrorDetails"
 import { ProviderLoginFlow } from "./ProviderLoginFlow"
 import { getBotModelName, getBotProviderName } from "./ProviderMark"
 import { useReveal } from "./Reveal"
+import { VoiceInput } from "./VoiceInput"
 import "./Composer.css"
 
 type AttachedFile = { key: string; name: string; id: Id | null; status: "loading" | "ready" | "failed" }
 type ComposerProps = {
+  locale?: Locale
   threadCreation?: "pending" | "failed" | undefined
   onRetryCreateThread?: (() => void) | undefined
   mentionBots?: Bot[]
@@ -80,6 +83,7 @@ const Icon = ({ kind }: { kind: "attach" | "send" | "stop" | "queue" | "file" })
 )
 
 export const Composer = ({
+  locale = "pt-BR",
   threadCreation,
   onRetryCreateThread,
   mentionBots = [],
@@ -140,6 +144,7 @@ export const Composer = ({
   const [files, setFiles] = useState<Array<AttachedFile>>([])
   const [error, setError] = useState<string | null>(null)
   const [sending, setSending] = useState(false)
+  const [dictating, setDictating] = useState(false)
   const [stoppingRunId, setStoppingRunId] = useState<string | null>(null)
   const [picking, setPicking] = useState(false)
   const [dragging, setDragging] = useState(false)
@@ -264,6 +269,7 @@ export const Composer = ({
   const chooseFiles = () => fileInput.current?.click()
   const uploading = files.some((file) => file.status === "loading")
   const blocked =
+    dictating ||
     Boolean(threadCreation) ||
     cloudUnavailable ||
     sending ||
@@ -271,6 +277,7 @@ export const Composer = ({
     files.some((file) => file.status === "failed") ||
     (!draft.trim() && files.length === 0)
   const submit = async (groupAction?: GroupAction) => {
+    if (dictating) return
     const summary = groupAction === "summarize"
     if (sendingRef.current || (summary ? sending || Boolean(activeRun) || Boolean(threadCreation) : blocked)) return
     if (login.blocked) {
@@ -588,6 +595,13 @@ export const Composer = ({
           )}
         </div>
         <div className="composer-actions">
+          <VoiceInput
+            contextKey={`${bot?.id ?? "group"}:${threadId}`}
+            disabled={cloudUnavailable || sending || Boolean(threadCreation)}
+            locale={locale}
+            onActiveChange={setDictating}
+            onTranscript={(text) => onDraft(getDraftWithTranscript(draftRef.current, text))}
+          />
           {activeRun && !showStop && (
             <button
               type="button"

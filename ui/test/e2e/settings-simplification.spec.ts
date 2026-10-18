@@ -26,7 +26,7 @@ test("bot identity stays simple and every advanced section remains reachable", a
   await expect(dialog.locator(".bot-settings-overview")).toContainText("Pede permissão antes de mudar arquivos;")
   const simple = await new AxeBuilder({ page }).include(".modal-card").analyze()
   expect(simple.violations.filter((violation) => ["serious", "critical"].includes(violation.impact ?? ""))).toEqual([])
-  await dialog.getByRole("button", { name: "Avançado", exact: true }).click()
+  await dialog.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }).click()
   await expect(dialog.getByRole("tab")).toHaveText([
     "Modelo",
     "Acesso",
@@ -53,7 +53,7 @@ test("bot identity stays simple and every advanced section remains reachable", a
   await expect(dialog).toHaveCount(0)
   await expect(trigger).toBeFocused()
   await showBotAdvanced(page)
-  await dialog.getByRole("button", { name: "Avançado", exact: true }).click()
+  await dialog.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }).click()
   await dialog.getByRole("tab", { name: "Rotinas", exact: true }).click()
   await expect(dialog).toHaveCount(0)
   await expect(page.getByRole("region", { name: "Rotinas", exact: true })).toBeFocused()

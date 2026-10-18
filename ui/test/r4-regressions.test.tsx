@@ -252,7 +252,7 @@ describe("r4 workflow polish", () => {
       />,
     )
     fireEvent.change(screen.getByLabelText("Nome"), { target: { value: "qa" } })
-    fireEvent.click(screen.getByRole("button", { name: "Avançado" }))
+    fireEvent.click(screen.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
     fireEvent.change(screen.getByLabelText("Instruções do bot"), { target: { value: "Leia o projeto." } })
     fireEvent.change(screen.getByLabelText("Modelo", { selector: "input" }), { target: { value: "gpt-6.1-sol" } })
     fireEvent.change(screen.getByLabelText("Raciocínio"), { target: { value: "high" } })
@@ -299,7 +299,7 @@ describe("r4 workflow polish", () => {
         onClose={vi.fn()}
       />,
     )
-    fireEvent.click(screen.getByRole("button", { name: "Avançado" }))
+    fireEvent.click(screen.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
     fireEvent.click(screen.getByRole("tab", { name: "Acesso" }))
     await screen.findByText("Aguardando login no navegador…")
     fireEvent.click(screen.getByRole("tab", { name: "Modelo" }))

@@ -17,7 +17,7 @@ import { createPerformanceStageTracker, type PerformanceStageRunner } from "../.
 import { createRuntimeEngine } from "../../src/runtime/engine"
 import { init as initStore } from "../../src/store"
 
-// Keep the six-second streaming window opt-in; the parent runs it through the serial evidence gate.
+// Keep the six-second streaming window opt-in for focused performance measurements.
 const HISTORY_MESSAGES = 2_000
 const LIVE_TOOL_PARTS = 1_024
 const BATCHES = 128

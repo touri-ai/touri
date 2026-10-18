@@ -69,3 +69,12 @@ test("ask_all validates a bounded task without accepting extra recipients", () =
   expect(valid).toEqual({ success: true, args: { message } })
   expect(invalid.every((result) => !result.success && result.errorCode === "INVALID_ARGS")).toBe(true)
 })
+
+test("ask_all documents each member's execution budget from its start time", () => {
+  const description = toolCatalog.tools.find((tool) => tool.name === "ask_all")?.description ?? ""
+
+  expect(description).toContain("Each member has its own 120-second execution budget")
+  expect(description).toContain("starting when that member's run starts")
+  expect(description).toContain("time waiting in the queue does not count")
+  expect(description).not.toContain("shares the group turn deadline")
+})

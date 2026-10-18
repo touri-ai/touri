@@ -289,6 +289,35 @@
   }
 }
 @media (max-width: 620px) {
+  .composer-island .composer-footer {
+    align-items: flex-end;
+  }
+  .composer-island .composer-tools-left {
+    display: grid;
+    grid-template-columns: 34px minmax(0, 1fr);
+    align-items: start;
+  }
+  .composer-island .composer-model,
+  .composer-island .composer-project {
+    grid-column: 2;
+    width: 100%;
+    max-width: none;
+  }
+  .composer-island .composer-model {
+    height: auto;
+    min-height: 34px;
+    text-align: left;
+  }
+  .composer-island .composer-model-name {
+    overflow: visible;
+    overflow-wrap: anywhere;
+    text-overflow: clip;
+    white-space: normal;
+  }
+  .composer-island .composer-model > [aria-hidden="true"] {
+    flex-shrink: 0;
+    margin-left: auto;
+  }
   .composer-notice {
     flex-direction: column;
     align-items: stretch;

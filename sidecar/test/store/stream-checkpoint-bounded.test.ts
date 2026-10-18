@@ -1,4 +1,4 @@
-import type { Database } from "bun:sqlite"
+import { Database } from "bun:sqlite"
 import { afterEach, expect, spyOn, test } from "bun:test"
 import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
@@ -29,6 +29,53 @@ test("a periodic checkpoint materializes only one concurrent reply", async () =>
   expect(fixture.getPending()).toBe(1)
   expect(fixture.getTexts()).toEqual(["first", ""])
   expect(deltas).toEqual({ n: 2 })
+})
+
+test("periodic checkpoints rotate replies and preserve subsequent delta offsets", async () => {
+  const fixture = await getFixture()
+  fixture.writer.appendDelta({ threadId: "thread", messageId: "first", partIndex: 0, delta: "first" })
+  fixture.writer.appendDelta({ threadId: "thread", messageId: "second", partIndex: 0, delta: "second" })
+  fixture.advance()
+  fixture.writer.flush()
+
+  fixture.writer.appendDelta({ threadId: "thread", messageId: "first", partIndex: 0, delta: " more" })
+  fixture.writer.appendDelta({ threadId: "thread", messageId: "second", partIndex: 0, delta: " more" })
+  fixture.advance()
+  fixture.writer.flush()
+
+  expect(fixture.getPending()).toBe(1)
+  expect(fixture.getTexts()).toEqual(["first", "second more"])
+
+  fixture.writer.checkpoint()
+
+  expect(fixture.getPending()).toBe(0)
+  expect(fixture.getTexts()).toEqual(["first more", "second more"])
+})
+
+test("a busy periodic checkpoint retries without losing either reply", async () => {
+  const fixture = await getFixture()
+  fixture.writer.appendDelta({ threadId: "thread", messageId: "first", partIndex: 0, delta: "first" })
+  fixture.writer.appendDelta({ threadId: "thread", messageId: "second", partIndex: 0, delta: "second" })
+  const blocker = new Database(fixture.database.filename)
+  cleanups.add(() => blocker.close())
+  blocker.exec("BEGIN IMMEDIATE")
+  fixture.advance()
+
+  fixture.writer.flush()
+
+  expect(fixture.getPending()).toBe(0)
+  expect(fixture.getTexts()).toEqual(["", ""])
+
+  blocker.exec("ROLLBACK")
+  fixture.writer.flush()
+
+  expect(fixture.getPending()).toBe(1)
+  expect(fixture.getTexts()).toEqual(["first", ""])
+
+  fixture.writer.checkpoint()
+
+  expect(fixture.getPending()).toBe(0)
+  expect(fixture.getTexts()).toEqual(["first", "second"])
 })
 
 test("retaining old history does not materialize unrelated live replies", async () => {

@@ -28,11 +28,11 @@ export const startBrowserFixtureServer = (): Server<undefined> =>
           '<button id="partial-target">Partially covered</button><div id="partial-overlay">Overlay</div>',
           "document.querySelector('#partial-target').style.cssText='width:240px;height:80px;position:relative;z-index:1';document.querySelector('#partial-overlay').style.cssText='position:absolute;left:144px;top:24px;width:140px;height:80px;z-index:2;background:#f00'",
         )
-      // One element past the snapshot cap exercises truncation without thousands of sequential CDP calls.
+      // A large actionable page exercises the snapshot inspection cap.
       if (pathname === "/large")
         return page(
           '<div id="buttons">' +
-            Array.from({ length: 201 }, (_, index) => `<button>Button ${index}</button>`).join("") +
+            Array.from({ length: 1000 }, (_, index) => `<button>Button ${index}</button>`).join("") +
             "</div>",
         )
       if (pathname === "/huge")

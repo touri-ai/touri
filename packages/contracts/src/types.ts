@@ -1285,7 +1285,7 @@ export type StoreApi = {
   insertMessage: (args: { message: Omit<Message, 'createdAt' | 'updatedAt'> }) => Result<{ message: Message }, 'THREAD_NOT_FOUND' | 'PARENT_NOT_FOUND'>
   appendDelta: (args: TranscriptAppend) => void
   appendParts?: (args: { threadId: Id; messageId: Id; parts: Array<{ partIndex: number; part: MessagePart }>; generation?: number }) => void
-  flushWrites?: () => void
+  flushWrites?: (options?: { stopping?: boolean }) => void
   updateMessage: (args: { threadId: Id; messageId: Id; patch: Partial<Pick<Message, 'status' | 'parts' | 'text' | 'runId'>> }) => Result<{ message: Message }, 'NOT_FOUND'>
   /** Select before hydrating bodies; fromRoot selects the oldest prefix instead of the recent tail. */
   activePath: (args: { threadId: Id; leafId?: Id; limit?: number; fromRoot?: boolean }) => Array<Message>
@@ -1326,7 +1326,7 @@ export type ServiceMap = {
   'approvals.approve': (input: { approvalId: Id; decision: 'approved' | 'denied'; standing?: boolean; message?: string }) => Promise<Result<{}, 'NOT_FOUND'>>
   'approvals.settle': (input: { approvalId: Id; decision: 'denied' | 'expired' }) => void
   'doctor': { start: () => void; dispose: () => void; snapshot: (refresh?: boolean) => DoctorReport; settled: () => Promise<void> }
-  'storage.maintenance': { scheduleSessionKeyRetry: () => void; start: (vacuum?: boolean) => boolean; snapshot: () => StorageMaintenanceStatus; dispose: () => void }
+  'storage.maintenance': { scheduleSessionKeyRetry: () => void; start: (vacuum?: boolean) => boolean; snapshot: () => StorageMaintenanceStatus; dispose: (options?: { closing?: boolean }) => void }
   'mcp.botTools': (bot: Bot) => Array<string>
 
   'cloud.settingsChanged': () => void

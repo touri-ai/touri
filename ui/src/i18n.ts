@@ -3,6 +3,23 @@ import { userFacingError } from "./errors"
 /** All UI copy lives here. pt-BR is the default; English is available for a future locale picker. */
 export type Locale = "pt-BR" | "en"
 export const ptBR = {
+  "Dictate message": "Ditar mensagem",
+  "Start dictation": "Iniciar ditado",
+  "Stop dictation": "Gravando… Parar ditado",
+  "Dictation stop short": "Parar",
+  "Dictation recording": "Gravando. A transcrição ficará no rascunho para revisão.",
+  "Dictation stopping": "Encerrando o ditado…",
+  "Dictation waiting": "Aguardando microfone… Cancelar ditado",
+  "Dictation privacy":
+    "Seu navegador pedirá acesso ao microfone e pode enviar o áudio para o serviço online de reconhecimento de fala do fornecedor do navegador (na nuvem). O touri não processa, grava nem armazena áudio. A transcrição entra apenas no rascunho: revise e clique em Enviar quando quiser.",
+  "Dictation unavailable": "Ditado indisponível",
+  "Dictation permission denied":
+    "O acesso ao microfone foi negado. Permita o microfone nas configurações deste site ou aplicativo e tente novamente. Você pode continuar digitando.",
+  "Dictation no speech": "Nenhuma fala foi reconhecida. Tente novamente e fale perto do microfone.",
+  "Dictation no microphone":
+    "Não foi possível acessar um microfone. Confira se ele está conectado e disponível e tente novamente.",
+  "Dictation failed":
+    "Não foi possível concluir o ditado. Confira a conexão e o suporte do navegador ao idioma e tente novamente. Seu rascunho foi preservado.",
   "Aguarde as respostas terminarem ou cancele os turnos antes de apagar o grupo.":
     "Aguarde as respostas terminarem ou cancele os turnos antes de apagar o grupo.",
   "Criar grupo": "Criar grupo",
@@ -109,8 +126,8 @@ export const ptBR = {
   "Goal new": "Novo objetivo",
   "Goal budget exhausted summary": "Objetivo parado · limite atingido",
   "Continuação do objetivo": "Continuação do objetivo",
-  "Send the same task to all other members of this touri group in parallel and gather final answers with authorship. Each recipient counts toward the shared six-call budget. Same depth 2, cycle, access, secrecy and approval fences as ask_bot. The whole set shares the group turn deadline (120s for chat); pending approval on one member does not hold up others. Only available in group participant sessions.":
-    "Envia a mesma tarefa aos outros membros do grupo em paralelo e reúne as respostas finais com autoria. Cada membro conta no limite compartilhado de seis chamadas. Mantém os limites de profundidade 2, ciclos, acesso, segredos e aprovações da delegação individual. Todos compartilham o prazo do turno (120 segundos no chat); uma aprovação pendente não impede os outros de trabalhar. Disponível apenas nas sessões de membros do grupo.",
+  "Send the same task to all other members of this touri group in parallel and gather final answers with authorship. Each recipient counts toward the shared six-call budget. Each member has its own 120-second execution budget, starting when that member's run starts; time waiting in the queue does not count. Same depth 2, cycle, access, secrecy and approval fences as ask_bot. A pending approval for one member does not hold up others. Only available in group participant sessions.":
+    "Envia a mesma tarefa aos outros membros do grupo em paralelo e reúne as respostas finais com autoria. Cada membro conta no limite compartilhado de seis chamadas e tem seu próprio prazo de execução de 120 segundos, contado a partir do início da execução do membro; o tempo na fila não conta. Mantém os limites de profundidade 2, ciclos, acesso, segredos e aprovações da delegação individual. Uma aprovação pendente para um membro não impede os outros de trabalhar. Disponível apenas nas sessões de membros do grupo.",
   "Escreva uma tarefa de até 8.000 caracteres.": "Escreva uma tarefa de até 8.000 caracteres.",
   "Enviar esta tarefa aos outros membros do grupo: {message}":
     "Enviar esta tarefa aos outros membros do grupo: {message}",
@@ -2443,6 +2460,22 @@ export const ptBR = {
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  "Dictate message": "Dictate message",
+  "Start dictation": "Start dictation",
+  "Stop dictation": "Recording… Stop dictation",
+  "Dictation stop short": "Stop",
+  "Dictation recording": "Recording. The transcript will stay in the draft for review.",
+  "Dictation stopping": "Stopping dictation…",
+  "Dictation waiting": "Waiting for microphone… Cancel dictation",
+  "Dictation privacy":
+    "Your browser will request microphone access and may send the audio to the browser vendor's online speech recognition service (in the cloud). touri does not process, record or store audio. The transcript goes only into your draft: review it and click Send when ready.",
+  "Dictation unavailable": "Dictation unavailable",
+  "Dictation permission denied":
+    "Microphone access was denied. Allow the microphone in this site or app settings and try again. You can keep typing.",
+  "Dictation no speech": "No speech was recognized. Try again and speak close to the microphone.",
+  "Dictation no microphone": "Could not access a microphone. Check that it is connected and available, then try again.",
+  "Dictation failed":
+    "Could not finish dictation. Check your connection and browser support for this language, then try again. Your draft was preserved.",
   "Aguarde as respostas terminarem ou cancele os turnos antes de apagar o grupo.":
     "Wait for replies to finish or cancel the turns before deleting the group.",
   "Criar grupo": "Create group",

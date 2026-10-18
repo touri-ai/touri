@@ -1,0 +1,2 @@
+"NSMicrophoneUsageDescription" = "touri uses the microphone only when you start dictating a message.";
+"NSSpeechRecognitionUsageDescription" = "touri uses speech recognition only when you start dictating a message.";

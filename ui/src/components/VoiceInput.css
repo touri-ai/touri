@@ -1,0 +1,15 @@
+.composer-island .composer-dictation[aria-pressed="true"] {
+  color: var(--text-danger);
+  border-color: var(--border-error);
+}
+.composer-dictation svg {
+  flex-shrink: 0;
+}
+.dictation-dialog .dictation-copy {
+  margin: 0;
+  padding: var(--space-20) var(--space-24);
+  color: var(--text-secondary);
+  font-size: var(--type-14);
+  line-height: var(--leading-body);
+  overflow-wrap: anywhere;
+}

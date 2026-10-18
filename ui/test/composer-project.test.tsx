@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises"
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import type { Bot, Run } from "@touri/contracts"
@@ -65,6 +66,55 @@ const activeRun = (bot: Bot): Run => ({
 })
 
 describe("composer project picker", () => {
+  it("keeps selected names wrapping in the phone grid with separate send controls", async () => {
+    await setup()
+    const composerStyles = await readFile("src/components/Composer.css", "utf8")
+    const { container } = render(<style>{composerStyles}</style>)
+    const sheet = container.querySelector("style")?.sheet
+    const phone = Array.from(sheet?.cssRules ?? [])
+      .filter((rule): rule is CSSMediaRule => rule.type === CSSRule.MEDIA_RULE)
+      .find((rule) => rule.media.mediaText === "(max-width: 620px)")
+    const getStyle = (...selectors: string[]) =>
+      Array.from(phone?.cssRules ?? []).find(
+        (rule): rule is CSSStyleRule =>
+          "selectorText" in rule &&
+          rule.selectorText
+            .split(",")
+            .map((selector) => selector.trim())
+            .join(", ") === selectors.join(", "),
+      )?.style
+    const composer = screen.getByRole("form", { name: "Compor mensagem" })
+    const tools = composer.querySelector(".composer-tools-left")
+    const modelButton = model()
+    const projectButton = chip()
+    const sendButton = within(composer).getByRole("button", { name: "Enviar", exact: true })
+
+    const grid = getStyle(".composer-island .composer-tools-left")
+    const selection = getStyle(".composer-island .composer-model", ".composer-island .composer-project")
+    const control = getStyle(".composer-island .composer-model")
+    const label = getStyle(".composer-island .composer-model-name")
+
+    expect(tools).toContainElement(modelButton)
+    expect(modelButton.parentElement).toBe(tools)
+    expect(projectButton.closest(".composer-project")?.parentElement).toBe(tools)
+    expect(projectButton).toHaveClass("composer-model", "composer-project-chip")
+    expect(modelButton.querySelector(".composer-model-name")).not.toBeNull()
+    expect(projectButton.querySelector(".composer-model-name")).not.toBeNull()
+    expect(sendButton.closest(".composer-actions")?.parentElement).toBe(tools?.parentElement)
+    expect(tools).not.toContainElement(sendButton)
+    expect(grid?.display).toBe("grid")
+    expect(grid?.getPropertyValue("grid-template-columns")).toBe("34px minmax(0, 1fr)")
+    expect(selection?.getPropertyValue("grid-column")).toBe("2")
+    expect(selection?.width).toBe("100%")
+    expect(selection?.getPropertyValue("max-width")).toBe("none")
+    expect(control?.height).toBe("auto")
+    expect(control?.getPropertyValue("min-height")).toBe("34px")
+    expect(label?.overflow).toBe("visible")
+    expect(label?.getPropertyValue("overflow-wrap")).toBe("anywhere")
+    expect(label?.getPropertyValue("text-overflow")).toBe("clip")
+    expect(label?.getPropertyValue("white-space")).toBe("normal")
+  })
+
   it("shows the project beside the provider/model in the composer with the bot panel closed", async () => {
     const user = userEvent.setup()
     const { bot, current } = await setup()

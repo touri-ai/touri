@@ -13,7 +13,6 @@ type Progress = { cursor: number; total: number; backup: boolean }
 export const maintainDatabasePages = (database: Database): void => {
   database.exec("PRAGMA busy_timeout = 0")
   try {
-    database.exec("PRAGMA wal_checkpoint(PASSIVE)")
     if ((database.query("PRAGMA auto_vacuum").get() as { auto_vacuum: number }).auto_vacuum === 2)
       database.exec("PRAGMA incremental_vacuum(32)")
   } finally {

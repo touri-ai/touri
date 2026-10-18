@@ -59,7 +59,7 @@ const renderBotSettings = async (machine: Bot["machine"]) => {
 test.each(["local", "vm"] as const)("Linux %s bot settings gate only host computer use", async (machine) => {
   await renderBotSettings(machine)
   const dialog = screen.getByRole("dialog")
-  fireEvent.click(screen.getByRole("button", { name: "Avançado" }))
+  fireEvent.click(screen.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
   fireEvent.click(screen.getByRole("tab", { name: "Computador", exact: true }))
   expect(dialog.querySelector("#settings-computer-use") !== null).toBe(machine === "vm")
   expect(dialog.querySelector("#machine-host-control")).toBeNull()

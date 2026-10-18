@@ -42,7 +42,8 @@ export const buildHandoffPacket = ({
     recent.unshift(line)
     recentCharacters += line.length
   }
-  const recentIds = new Set(messages.slice(-recent.length).map((message) => message.id))
+  const recentMessages = recent.length === 0 ? [] : messages.slice(-recent.length)
+  const recentIds = new Set(recentMessages.map((message) => message.id))
   const older = store
     .activePath({ threadId: thread.id, limit: 24, fromRoot: true })
     .filter((message) => !recentIds.has(message.id))

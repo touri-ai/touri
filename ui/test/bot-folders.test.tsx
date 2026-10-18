@@ -158,7 +158,7 @@ it.each(["codex", "claude", "opencode"] as const)(
   (provider) => {
     render(<BotCreateModal onClose={vi.fn()} onCreate={vi.fn()} />)
     fireEvent.change(screen.getByLabelText("Nome"), { target: { value: "Pesquisa" } })
-    fireEvent.click(screen.getByRole("button", { name: "Avançado" }))
+    fireEvent.click(screen.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
     fireEvent.change(screen.getByLabelText("Provedor"), { target: { value: provider } })
     fireEvent.change(screen.getByLabelText("Acesso"), { target: { value: "full" } })
     expect(screen.getByText(/O acesso total permite ler/)).toHaveTextContent(
@@ -333,7 +333,7 @@ it.each(["read-only", "read-write"] as const)(
       />,
     )
     fireEvent.change(screen.getByLabelText("Nome"), { target: { value: "Pesquisa" } })
-    fireEvent.click(screen.getByRole("button", { name: "Avançado" }))
+    fireEvent.click(screen.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
     fireEvent.change(screen.getByLabelText("Máquina"), { target: { value: "vm" } })
     fireEvent.change(screen.getByLabelText("Projeto", { selector: "select" }), {
       target: { value: "__add_project__" },

@@ -476,7 +476,7 @@
     },
     {
       "name": "ask_all",
-      "description": "Send the same task to all other members of this touri group in parallel and gather final answers with authorship. Each recipient counts toward the shared six-call budget. Same depth 2, cycle, access, secrecy and approval fences as ask_bot. The whole set shares the group turn deadline (120s for chat); pending approval on one member does not hold up others. Only available in group participant sessions.",
+      "description": "Send the same task to all other members of this touri group in parallel and gather final answers with authorship. Each recipient counts toward the shared six-call budget. Each member has its own 120-second execution budget, starting when that member's run starts; time waiting in the queue does not count. Same depth 2, cycle, access, secrecy and approval fences as ask_bot. A pending approval for one member does not hold up others. Only available in group participant sessions.",
       "inputSchema": { "type": "object", "required": ["message"], "additionalProperties": false,
         "properties": { "message": { "type": "string", "minLength": 1, "maxLength": 8000 } } },
       "x-touri": { "group": "core", "mvp": true, "mutates": true, "deadlineMs": 125000 }

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import type { Message } from "@touri/contracts"
 import { describe, expect, it } from "vitest"
 import App from "../src/App"
@@ -128,6 +128,22 @@ describe("composer keyboard", () => {
     fireEvent.keyDown(box, { key: "Enter", metaKey: true })
     await waitFor(() => expect((box as HTMLTextAreaElement).value).toBe(""))
   })
+})
+
+it("shows the active bot name once while keeping bot navigation visible", async () => {
+  render(<App kernel={{ services: { api: createMockApi() } }} />)
+  await screen.findByRole("textbox", { name: "Mensagem para mark" })
+
+  const heading = screen.getByRole("heading", { level: 1, name: "mark" })
+  const header = heading.closest("header")
+  if (!header) throw new Error("Missing chat header")
+  const botName = heading.textContent ?? ""
+  const botNameAppearances = botName ? (header.textContent?.split(botName).length ?? 1) - 1 : 0
+
+  expect(botNameAppearances).toBe(1)
+  expect(within(header).getByText("Bots")).toBeVisible()
+  const sidebar = screen.getByRole("navigation", { name: "Barra lateral" })
+  expect(within(sidebar).getByRole("button", { name: /Bots/ })).toBeVisible()
 })
 
 describe("bot preview", () => {

@@ -12,7 +12,7 @@ it("creates an OpenCode bot with a provider/model ID and approval mode in Portug
   const create = vi.fn(async () => undefined)
   render(<BotCreateModal api={mock} onClose={vi.fn()} onCreate={create} />)
   fireEvent.change(screen.getByLabelText("Nome"), { target: { value: "Pesquisa" } })
-  fireEvent.click(screen.getByRole("button", { name: "Avançado" }))
+  fireEvent.click(screen.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
   await screen.findByText(/Usa o Codex/)
   fireEvent.change(screen.getByLabelText("Provedor"), { target: { value: "opencode" } })
   await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("openrouter/deepseek/deepseek-v3.2"))
@@ -50,7 +50,7 @@ it("bot settings preserve OpenCode and save a different model", async () => {
       onClose={vi.fn()}
     />,
   )
-  fireEvent.click(screen.getByRole("button", { name: "Avançado" }))
+  fireEvent.click(screen.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
   expect(screen.getByLabelText("Provedor")).toHaveValue("opencode")
   fireEvent.change(screen.getByLabelText("Modelo", { selector: "input" }), {
     target: { value: "openrouter/deepseek/deepseek-r1" },

@@ -88,7 +88,7 @@ test("computer settings explain the choice before showing implementation details
   await page.goto("/test/e2e/fixtures/bot-panel.html")
   await showBotAdvanced(page)
   const dialog = page.getByRole("dialog")
-  await dialog.getByRole("button", { name: "Avançado", exact: true }).click()
+  await dialog.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }).click()
   await dialog.getByRole("tab", { name: "Computador", exact: true }).click()
   await expect(dialog.getByRole("option", { name: /Separado só para o bot/ })).toBeAttached()
   const memory = dialog.getByLabel("Memória por computador do bot (MiB)")

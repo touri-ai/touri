@@ -358,6 +358,9 @@ test("coordinator receives requests; real MCP router returns peer answer and gro
         cwd: f.root,
       })
       expect(instructions).toContain("with the coordinator role")
+      expect(instructions).toContain(
+        "each member has its own 120-second execution budget, starting when that member's run starts, and time waiting in the queue does not count",
+      )
       answer = await router.call({
         id: 1,
         name: "ask_bot",

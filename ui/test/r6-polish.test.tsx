@@ -362,7 +362,9 @@ describe("R6: cancelamento e confirmação", () => {
     const header = document.querySelector(".machine-turn-status")
     expect(header).toBeNull()
     showBotSettings()
-    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Avançado" }))
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }),
+    )
     fireEvent.click(within(screen.getByRole("dialog")).getByRole("tab", { name: "Computador" }))
     const settings = screen.getByRole("region", { name: "Computador" })
     expect(settings).toHaveTextContent("O computador está parado")
@@ -429,7 +431,7 @@ describe("R6: integrações e Preview/Logs", () => {
     localStorage.setItem("touri.workspace.v1", JSON.stringify({ botId }))
     render(<App kernel={{ services: { api } }} />)
     await screen.findByRole("textbox", { name: `Mensagem para ${name}` })
-    fireEvent.click(screen.getByRole("button", { name: "Avançado", exact: true }))
+    fireEvent.click(screen.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
     fireEvent.click(screen.getByRole("button", { name: /Integrações/ }))
     const configureMcp = await screen.findByRole("button", { name: `Configurar MCP de ${name}` })
 

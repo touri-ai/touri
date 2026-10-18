@@ -45,7 +45,7 @@ const creation = async () => {
     />,
   )
   fireEvent.change(screen.getByLabelText("Nome"), { target: { value: "Pesquisa" } })
-  fireEvent.click(screen.getByRole("button", { name: "Avançado" }))
+  fireEvent.click(screen.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
   await screen.findByText(/Usa o Codex/)
   return { api, create, createProject, invoke }
 }
@@ -80,9 +80,10 @@ it("creation persists folder permissions, broad access and a discovered project 
   )
   expect(project).toBeDefined()
   expect(screen.getByRole("option", { name: "Hodler" })).toBeInTheDocument()
-  fireEvent.click(screen.getByRole("button", { name: "Avançado" }))
-  fireEvent.click(screen.getByRole("button", { name: "Avançado" }))
-  expect(screen.getByRole("switch", { name: /Acesso a qualquer pasta deste servidor/ })).toBeChecked()
+  fireEvent.click(screen.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
+  fireEvent.click(screen.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
+
+  expect(await screen.findByRole("switch", { name: /Acesso a qualquer pasta deste servidor/ })).toBeChecked()
   expect(screen.getByLabelText("Acesso à pasta /workspace/reference")).toHaveValue("read-write")
   fireEvent.click(screen.getByRole("button", { name: "Criar bot" }))
   await waitFor(() =>
@@ -126,8 +127,8 @@ it("creation access summary follows VM mounts and read-only access", async () =>
   expect(
     screen.getByText("Pede permissão antes de mudar arquivos; só no computador isolado e nas pastas compartilhadas."),
   ).toBeVisible()
-  fireEvent.click(screen.getByRole("button", { name: "Avançado" }))
-  fireEvent.click(screen.getByRole("button", { name: "Avançado" }))
+  fireEvent.click(screen.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
+  fireEvent.click(screen.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
   fireEvent.change(screen.getByLabelText("Acesso", { selector: "select" }), { target: { value: "read-only" } })
   expect(screen.getByText("Somente leitura; só no computador isolado e nas pastas compartilhadas.")).toBeVisible()
   fireEvent.click(screen.getByRole("button", { name: "Criar bot" }))
@@ -155,8 +156,11 @@ it.each([
   await creation()
   fireEvent.change(screen.getByLabelText("Máquina"), { target: { value: machine } })
   fireEvent.change(screen.getByLabelText("Acesso", { selector: "select" }), { target: { value: access } })
-  fireEvent.click(screen.getByRole("button", { name: "Avançado" }))
-  expect(screen.getByRole("button", { name: "Avançado" })).toHaveAttribute("aria-expanded", "false")
+  fireEvent.click(screen.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
+  expect(screen.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ })).toHaveAttribute(
+    "aria-expanded",
+    "false",
+  )
   expect(screen.getByText(summary)).toBeVisible()
 })
 

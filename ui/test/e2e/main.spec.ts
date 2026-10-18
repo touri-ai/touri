@@ -206,7 +206,10 @@ test("r2 creates one bot/conversation/cron and refreshes Cron without changing s
   await page.goto("/")
   await page.getByRole("button", { name: "Criar bot" }).click()
   await page.getByLabel("Nome", { exact: true }).fill("seo-r2")
-  await page.getByRole("dialog").getByRole("button", { name: "Avançado", exact: true }).click()
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ })
+    .click()
   await page.getByLabel("Função", { exact: true }).fill("SEO do site")
   await page.getByLabel("Título (opcional)").fill("Analista")
   await page.getByRole("dialog").getByRole("button", { name: "Criar bot", exact: true }).click()

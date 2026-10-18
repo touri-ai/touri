@@ -54,7 +54,7 @@ it("limits primary navigation to the bot list and Advanced, with chat and compos
   for (const name of ["Cron", "MCP", "Integrações", "Projetos", "Importar", "Verificar este servidor", "Rotinas"])
     expect(within(sidebar).queryByRole("button", { name, exact: true })).toBeNull()
   expect(sidebar.querySelectorAll("[data-bot-entry]")).toHaveLength(3)
-  const advanced = within(sidebar).getByRole("button", { name: "Avançado", exact: true })
+  const advanced = within(sidebar).getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ })
   fireEvent.click(advanced)
   expect(
     within(screen.getByRole("navigation", { name: "Opções avançadas" }))
@@ -105,7 +105,7 @@ it("opens the full routines screen from the bot's Advanced settings", async () =
   render(<App kernel={{ services: { api: createMockApi() } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
   showBotSettings()
-  fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Avançado" }))
+  fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
   fireEvent.click(within(screen.getByRole("dialog")).getByRole("tab", { name: "Rotinas" }))
   expect(await screen.findByRole("heading", { name: "Rotinas" })).toBeVisible()
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
@@ -149,7 +149,7 @@ it("names the server diagnostics consistently after onboarding and opens it", as
       : request(route, input, path)) as ApiRequest
   render(<App kernel={{ services: { api } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
-  fireEvent.click(screen.getByRole("button", { name: "Avançado", exact: true }))
+  fireEvent.click(screen.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
   const menu = screen.getByRole("navigation", { name: "Opções avançadas" })
   const action = within(menu).getByRole("button", { name: "Verificar este servidor", exact: true })
   expect(within(menu).queryByRole("button", { name: "Verificar este Mac" })).toBeNull()

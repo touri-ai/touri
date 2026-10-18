@@ -6,6 +6,10 @@
   <string>pt-BR</string>
   <key>CFBundleLocalizations</key>
   <array><string>pt-BR</string><string>en</string></array>
+  <key>NSMicrophoneUsageDescription</key>
+  <string>O touri usa o microfone somente quando você inicia o ditado de uma mensagem.</string>
+  <key>NSSpeechRecognitionUsageDescription</key>
+  <string>O touri usa o reconhecimento de fala somente quando você inicia o ditado de uma mensagem.</string>
   <key>CFBundleURLTypes</key>
   <array>
     <dict>

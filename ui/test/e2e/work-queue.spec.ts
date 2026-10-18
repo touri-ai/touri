@@ -17,7 +17,7 @@ for (const viewport of [
     const startedDocument = await page.evaluate(() => performance.timeOrigin)
     const openAdvanced = async () => {
       if (viewport.width === 390) await page.getByRole("button", { name: "Abrir menu" }).click()
-      await page.getByRole("button", { name: "Avançado", exact: true }).click()
+      await page.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }).click()
     }
 
     await openAdvanced()
