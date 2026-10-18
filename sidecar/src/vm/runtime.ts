@@ -13,6 +13,7 @@ import type {
   ToolResult,
   VmRuntime,
 } from "@touri/contracts"
+import { getApiRequiredHosts } from "../api-models/runtime"
 import { botFolderFingerprint } from "../kernel/bot-folders"
 import { atomicWriteFile, ensurePrivateDirectory, removePrivateFile } from "../kernel/files"
 import { isIdle } from "../kernel/policy"
@@ -599,7 +600,13 @@ export const createVmRuntime = ({
         status === "running"
           ? tightenEgressPolicy(readEgressPolicy(kernel, botId, true), requestedPolicy)
           : requestedPolicy
-      await installEgressPolicy(provider, meta.vm_id, activePolicy, signal, providerHosts(botFor(botId)))
+      await installEgressPolicy(
+        provider,
+        meta.vm_id,
+        activePolicy,
+        signal,
+        providerHosts(botFor(botId)).concat(getApiRequiredHosts(kernel, botFor(botId).model)),
+      )
       saveEgressPolicy(kernel, botId, activePolicy, true)
       if (!liveStaging.has(botId)) await clearStagedCredentials(botId)
       signal?.throwIfAborted()
@@ -831,6 +838,7 @@ export const createVmRuntime = ({
     signal: AbortSignal,
   ): Promise<{ secrets: string[]; env: Record<string, string>; file?: string; selection?: string }> => {
     if (!liveStaging.has(bot.id)) await clearStagedCredentials(bot.id)
+    if (bot.provider === "opencode" && bot.model?.startsWith("touri-api-")) return { secrets: [], env: {} }
     if (!bot.vmProviderLogin) return { secrets: [] as string[], env: {} as Record<string, string> }
     const login = await readProviderLogin(kernel, bot, hostHome, {
       signal,
@@ -905,7 +913,7 @@ export const createVmRuntime = ({
         action: async (signal) => {
           const credential = await stageCredential(bot, signal)
           const authPath = guestAuthPath(bot.provider)
-          if (bot.vmProviderLogin && !credential.env.CLAUDE_CODE_OAUTH_TOKEN) {
+          if (bot.vmProviderLogin && !bot.model?.startsWith("touri-api-") && !credential.env.CLAUDE_CODE_OAUTH_TOKEN) {
             if (!credential.file) throw new ProviderLoginError("Login de arquivo ausente")
             if (credential.selection !== providerLoginSource(kernel, bot))
               throw new ProviderLoginError("A fonte de login mudou. Tente novamente.")
@@ -1586,7 +1594,13 @@ export const createVmRuntime = ({
       if (!meta || stateFor(botId).status !== "running") return
       const policy = tightenEgressPolicy(readEgressPolicy(kernel, botId, true), readEgressPolicy(kernel, botId))
       try {
-        await installEgressPolicy(provider, meta.vm_id, policy, undefined, providerHosts(botFor(botId)))
+        await installEgressPolicy(
+          provider,
+          meta.vm_id,
+          policy,
+          undefined,
+          providerHosts(botFor(botId)).concat(getApiRequiredHosts(kernel, botFor(botId).model)),
+        )
         saveEgressPolicy(kernel, botId, policy, true)
       } catch (error) {
         await stopResources(botId)

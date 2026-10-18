@@ -21,6 +21,7 @@ import { mcpPresets } from "./McpCatalog"
 import { Mem0Card } from "./Mem0Card"
 import { ScreenServerPolicies, useScreenConnections } from "./ScreenConnections"
 import { ScreenHeader, ScreenState } from "./ScreenPrimitives"
+import { TelegramIntegrationCard } from "./TelegramIntegrationCard"
 import "./screens.css"
 import { PreviewPane } from "./PreviewPane"
 import { BrowserPanel } from "./RightPanels"
@@ -135,6 +136,11 @@ export const IntegrationsScreen = ({ api, botId, botName, onConfigure, modalOpen
               />
             )}
           </>
+        )}
+        {botId && (
+          <div className="screen-provider-grid telegram-integration">
+            <TelegramIntegrationCard api={api} botId={botId} />
+          </div>
         )}
         {botId && (
           <div className="screen-provider-grid">

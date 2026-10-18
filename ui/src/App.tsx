@@ -220,7 +220,11 @@ const AppContent = ({ kernel }: AppProps) => {
           const { createMockApi } = await import("./api/mock")
           if (!active || attempt !== generation) return
           const scenario = new URLSearchParams(window.location.search).get("mockScenario")
-          setApi(createMockApi({ scenario: scenario === "resumed-turn" ? scenario : null }))
+          setApi(
+            createMockApi({
+              scenario: scenario === "resumed-turn" || scenario === "routine-conversation" ? scenario : null,
+            }),
+          )
           clearTimeout(startupTimer)
           setConnectionState("ready")
           return

@@ -1,4 +1,4 @@
-import { errorRegistry, type MessagePart, type Provider, publicError } from "@touri/contracts"
+import { apiModelErrors, errorRegistry, type MessagePart, type Provider, publicError } from "@touri/contracts"
 import { hasRecordedActions, safeRunFailure, sanitizeDiagnostic } from "@touri/contracts/run-failure"
 import { providerName } from "./components/ProviderMark"
 import { ApiError } from "./errors"
@@ -56,6 +56,8 @@ export const errorRecovery = (error: unknown, context: RecoveryContext = {}): Er
     return view(tr("Não há espaço para salvar {arquivo}.", { arquivo: context.file ?? tr("o arquivo") }), [
       action("storage", "Verificar armazenamento"),
     ])
+  const apiMessage = Object.values(apiModelErrors).find((message) => raw.includes(message))
+  if (apiMessage) return view(tr(apiMessage), [action("retry", "Tentar novamente")])
   if (
     (error instanceof ApiError && error.status === 401) ||
     /\b401\b|unauthori[sz]ed|cli_auth|TOURI-E3001|sessão expir|entre na.*conta.*provedor/i.test(text)
