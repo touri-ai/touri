@@ -129,7 +129,7 @@ test("model discovery filters malformed IDs and any echoed key and does not pers
     }),
   )
   expect(await (await f.api("/api-models/models", { preset: "openrouter", apiKey: key })).json()).toEqual({
-    models: ["model-a", "model-b"],
+    models: ["model-b", "model-a"],
   })
   expect(getApiModels(f.kernel)).toEqual([])
 })

@@ -1130,3 +1130,8 @@
 .api-model-empty {
   padding: 16px;
 }
+
+.settings-modal > .api-model-picker {
+  flex: none;
+  margin: 0 var(--space-32) var(--space-16);
+}
