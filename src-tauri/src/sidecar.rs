@@ -596,14 +596,48 @@ fn spawn_sidecar<R: Runtime>(
 fn log_sidecar_stderr(stderr: impl std::io::Read, filename: PathBuf) {
     let mut reader = BufReader::new(stderr);
     let mut line = String::new();
+    let mut scheduling_denial_logged = false;
     while reader.read_line(&mut line).is_ok() && !line.is_empty() {
+        let diagnostic = line.trim_end_matches(['\r', '\n']);
+        if !is_optional_thread_scheduling_denial(diagnostic) {
+            append_sidecar_log_line(
+                &filename,
+                &sanitize_sidecar_diagnostic(diagnostic),
+                "sidecar stderr",
+            );
+            line.clear();
+            continue;
+        }
+        line.clear();
+
+        if scheduling_denial_logged {
+            continue;
+        }
+
+        // Permission denial leaves the runtime on its existing scheduling policy.
         append_sidecar_log_line(
             &filename,
-            &sanitize_sidecar_diagnostic(line.trim_end_matches(['\r', '\n'])),
-            "sidecar stderr",
+            "Optional scheduling adjustment was denied; continuing with the existing thread policy.",
+            "sidecar stderr warning",
         );
-        line.clear();
+        scheduling_denial_logged = true;
     }
+}
+
+fn is_optional_thread_scheduling_denial(line: &str) -> bool {
+    const PREFIX: &str = "Failed to apply scheduling attributes to thread ";
+    const SUFFIX: &str = ": Operation not permitted";
+    let Some(thread_id) = line
+        .strip_prefix(PREFIX)
+        .and_then(|line| line.strip_suffix(SUFFIX))
+    else {
+        return false;
+    };
+
+    !thread_id.is_empty()
+        && thread_id
+            .chars()
+            .all(|character| character.is_ascii_digit())
 }
 
 fn append_shell_log_line(logs_dir: &Path, line: &str) {
@@ -949,6 +983,36 @@ mod tests {
         assert!(!log.contains("synthetic-prefixed-credential"));
         std::fs::remove_dir_all(dir).unwrap();
     }
+
+    #[test]
+    fn stderr_ingestion_compacts_optional_scheduling_denials_and_keeps_reading() {
+        let dir =
+            std::env::temp_dir().join(format!("touri-scheduler-stderr-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("stderr.log");
+        let input = concat!(
+            "Failed to apply scheduling attributes to thread 101: Operation not permitted\n",
+            "Failed to apply scheduling attributes to thread 102: Operation not permitted\n",
+            "Failed to apply scheduling attributes to thread 103: Permission denied\n",
+            "sidecar ready after scheduling denial\n"
+        );
+
+        super::log_sidecar_stderr(std::io::Cursor::new(input.as_bytes()), path.clone());
+
+        let log = std::fs::read_to_string(path).unwrap();
+        assert_eq!(
+            log.matches("Optional scheduling adjustment was denied")
+                .count(),
+            1
+        );
+        assert!(log.contains("[sidecar stderr warning]"));
+        assert!(!log.contains("thread 101"));
+        assert!(!log.contains("thread 102"));
+        assert!(log.contains("thread 103: Permission denied"));
+        assert!(log.contains("sidecar ready after scheduling denial"));
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
     use super::{
         is_internal_auth_environment, next_backoff, parse_handshake, HandshakeRetryPolicy,
         SpawnFailure, MAX_IDENTICAL_HANDSHAKE_FAILURES, SIDECAR_SCHEMA_VERSION,
