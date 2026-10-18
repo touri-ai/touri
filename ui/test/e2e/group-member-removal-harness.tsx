@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client"
 import { createMockApi } from "../../src/api/mock"
 import { GroupPanel } from "../../src/components/Groups"
 import "../../src/styles.css"
+import "../../src/components/bot-panel.css"
 
 const bot = createMockApi().getState().bots[0]
 const root = document.getElementById("root")
@@ -63,13 +64,15 @@ const removed: Message = {
   parts: [{ type: "notice", code: "group_member_removed", level: "warning", text: "O membro foi removido do grupo." }],
 }
 createRoot(root).render(
-  <GroupPanel
-    group={group}
-    bots={[bot]}
-    threadId="shared"
-    messages={[result, removed]}
-    runs={[turn, { ...turn, id: "member", groupTurnId: turn.id, replyMessageId: result.id }]}
-    onClose={() => {}}
-    onEdit={() => {}}
-  />,
+  <main style={{ display: "grid", height: "100dvh", maxWidth: 440, margin: "0 auto" }}>
+    <GroupPanel
+      group={group}
+      bots={[bot]}
+      threadId="shared"
+      messages={[result, removed]}
+      runs={[turn, { ...turn, id: "member", groupTurnId: turn.id, replyMessageId: result.id }]}
+      onClose={() => {}}
+      onEdit={() => {}}
+    />
+  </main>,
 )
