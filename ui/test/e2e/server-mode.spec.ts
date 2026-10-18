@@ -55,10 +55,50 @@ test("desktop server mode pairs with a real isolated server and resyncs after a 
     })
     expect(spent.status).toBe(401)
 
-    // The native shell restarts after saving the secure credential; reload models that boundary.
-    await page.reload()
+    // Model a stalled first server request after the native shell restarts.
+    let healthRequests = 0
+    let releaseHealth: (() => void) | undefined
+    let releaseRetries: (() => void) | undefined
+    let lateHealthReleased = false
+    const pendingHealth = new Promise<void>((resolve) => {
+      releaseHealth = resolve
+    })
+    const pendingRetries = new Promise<void>((resolve) => {
+      releaseRetries = resolve
+    })
+    await page.route("**/api/v1/health", async (route) => {
+      if (++healthRequests !== 1) {
+        await pendingRetries
+        await route.continue()
+        return
+      }
+      const response = await route.fetch()
+      await pendingHealth
+      await route.fulfill({ response })
+      lateHealthReleased = true
+    })
+    await page.reload({ waitUntil: "domcontentloaded" })
+    await expect.poll(() => healthRequests).toBe(1)
+    await expect(page.getByText("Servidor offline. Tentando reconectar…")).toBeVisible({ timeout: 30_000 })
+    await testInfo.attach("server-startup-offline", {
+      body: await page.screenshot({ path: `${evidence}/server-startup-offline.png` }),
+      contentType: "image/png",
+    })
+    releaseHealth?.()
+    await expect.poll(() => lateHealthReleased).toBe(true)
+    await expect(page.getByText("Servidor offline. Tentando reconectar…")).toBeVisible()
+    releaseRetries?.()
     await expect(page.locator(".user-chip")).toContainText("Modo servidor")
-    await expect(page.getByRole("textbox", { name: "Mensagem para Servidor de teste" })).toBeVisible()
+    await expect(page.getByRole("textbox", { name: "Mensagem para Servidor de teste" })).toBeVisible({
+      timeout: 10_000,
+    })
+    expect(healthRequests).toBeGreaterThan(1)
+    expect(server.commands).not.toContain("sidecar_restart")
+    await testInfo.attach("server-startup-recovered", {
+      body: await page.screenshot({ path: `${evidence}/server-startup-recovered.png` }),
+      contentType: "image/png",
+    })
+    await page.unroute("**/api/v1/health")
     await page.locator(".user-chip").click()
     await dialog.getByRole("tab", { name: "Avançado", exact: true }).click()
     await expect(dialog.getByRole("button", { name: "Voltar ao modo local", exact: true })).toBeVisible()
