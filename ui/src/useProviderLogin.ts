@@ -123,11 +123,11 @@ export const useProviderLogin = (
           setError(null)
           if (!loginPending(result)) return
         }
-        timer = setTimeout(() => void poll(), 1000)
       } catch {
         if (active && current === generation.current && requestedRevision === revision.current)
           setError(t("Não foi possível verificar o login salvo. Verifique de novo."))
       }
+      if (active && current === generation.current) timer = setTimeout(() => void poll(), 1000)
     }
     timer = setTimeout(() => void poll(), 1000)
     return () => {

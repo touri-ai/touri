@@ -63,6 +63,32 @@ it.each(["ready", "idle", "host-available", "cancelled", "error", "vault-locked"
   },
 )
 
+it("recovers a waiting login after a temporary polling failure without a focus event", async () => {
+  vi.useFakeTimers()
+  const f = fixture("waiting")
+  const provider = f.api.getState().bots[0]?.provider
+  if (!provider) throw new Error("Missing provider fixture")
+  const hook = renderHook(() => useProviderLogin(f.api, "bot", provider, true, false))
+  await act(async () => {})
+  f.request.mockRejectedValueOnce(new Error("Temporary connection failure"))
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(1000)
+  })
+  expect(hook.result.current.error).toBeTruthy()
+  f.setFlow({ provider, state: "ready" })
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(1000)
+  })
+  expect(hook.result.current.flow?.state).toBe("ready")
+  expect(hook.result.current.error).toBeNull()
+  const reads = f.request.mock.calls.length
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(60_000)
+  })
+  expect(f.request).toHaveBeenCalledTimes(reads)
+  hook.unmount()
+})
+
 it("starts OAuth automatically, polls the device code and cancels without restarting", async () => {
   const f = fixture()
   render(<ProviderLogin api={f.api} botId="bot" provider="codex" onConfigured={vi.fn()} />)
