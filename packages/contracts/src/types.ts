@@ -402,6 +402,7 @@ export type NoticePart = {
   code:
     | 'group_ask_all'
     | 'group_summary'
+    | 'group_member_removed'
     | 'run_failed'
     | 'run_canceled'
     | 'session_replaced'

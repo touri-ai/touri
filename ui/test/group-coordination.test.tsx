@@ -128,6 +128,44 @@ describe("group coordination", () => {
     expect(scans).not.toHaveBeenCalled()
   })
 
+  it("keeps a removed member visible on the current board beside the surviving answers", () => {
+    const bots = createMockApi().getState().bots.slice(0, 1)
+    const first = bots[0]?.id ?? ""
+    const removed: Message = {
+      ...getMessage("removed", "removed-notice"),
+      role: "system",
+      kind: "notice",
+      runId: "turn",
+      text: "O membro foi removido do grupo.",
+      sender: { id: "removed", name: "Revisor removido" },
+      parts: [
+        { type: "notice", code: "group_member_removed", level: "warning", text: "O membro foi removido do grupo." },
+      ],
+    }
+    const props = {
+      group: getGroup([first]),
+      bots,
+      threadId: "shared",
+      messages: [getMessage(first), removed],
+      runs: [getRun("turn", first), getRun("result", first)],
+      onClose: () => {},
+      onEdit: () => {},
+    }
+
+    const view = render(<GroupPanel {...props} />)
+
+    const board = screen.getByRole("region", { name: "Resultados do turno" })
+    expect(within(board).getByText("Plano revisado")).toBeVisible()
+    expect(within(board).getByText("Revisor removido")).toBeVisible()
+    expect(within(board).getByText("O membro foi removido do grupo.")).toBeVisible()
+    expect(t("O membro foi removido do grupo.", {}, "en")).toBe("This member was removed from the group.")
+
+    view.rerender(<GroupPanel {...props} runs={[...props.runs, { ...getRun("next", first), queuedAt: 20 }]} />)
+
+    expect(within(board).queryByText("Revisor removido")).toBeNull()
+    expect(within(board).getByText("Sem resultados confirmados neste turno.")).toBeVisible()
+  })
+
   it("clears a member's failure after a later attempt in the same turn succeeds", () => {
     const messages = [getMessage("reviewer")]
     const failed = getRun("pending", "reviewer", "failed")
