@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test"
+import { afterEach, describe, expect, test } from "bun:test"
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -87,20 +87,25 @@ test("every current and future sidecar test belongs to exactly one nonempty shar
   expect(sidecarShard("runtime/runtime.test.ts")).not.toBe(sidecarShard("vm/runtime.test.ts"))
 })
 
-test("discovery keeps every test suffix supported by the runner, including new directories", () => {
+describe("test file discovery", () => {
   const root = mkdtempSync(join(tmpdir(), "touri-ci-selection-"))
-  try {
+  afterEach(() => rmSync(root, { recursive: true, force: true }))
+
+  test("keeps every supported suffix and extension, including new directories", () => {
     mkdirSync(join(root, "future/nested"), { recursive: true })
     const expected = [".test", "_test", ".spec", "_spec"].flatMap((suffix) =>
       ["js", "jsx", "ts", "tsx", "mjs", "cjs", "mts", "cts"].map(
         (extension) => `future/nested/example${suffix}.${extension}`,
       ),
     )
-    for (const file of [...expected, "helper.ts", "example.test.json"]) writeFileSync(join(root, file), "")
-    expect(testFiles(root)).toEqual(expected.sort())
-  } finally {
-    rmSync(root, { recursive: true, force: true })
-  }
+    const fixtures = [...expected, "helper.ts", "example.test.json"]
+    fixtures.forEach((file) => writeFileSync(join(root, file), ""))
+
+    const found = testFiles(root)
+
+    expect(new Set(found)).toEqual(new Set(expected))
+    expect(found).toHaveLength(expected.length)
+  })
 })
 
 test("Linux PRs include platform, Linux and confinement tests without the full Unix suite", () => {
