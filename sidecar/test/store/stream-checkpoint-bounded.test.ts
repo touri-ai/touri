@@ -5,7 +5,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { Message } from "@touri/contracts"
 import { createKernel } from "../../src/kernel"
-import { compactTranscript } from "../../src/kernel/transcript-storage"
+import { compactTranscript, materializeTranscriptBatch } from "../../src/kernel/transcript-storage"
 import { init as initStore } from "../../src/store"
 import { createStreamWriter, STREAM_WRITE_LIMITS } from "../../src/store/stream-writer"
 
@@ -172,4 +172,37 @@ const getMessage = (id: string): Omit<Message, "createdAt" | "updatedAt"> => ({
   parts: [{ type: "text", text: "" }],
   sender: null,
   source: "local",
+})
+
+test("restart recovery checkpoints at most 128 journal entries before yielding", async () => {
+  const fixture = await getFixture()
+  const insert = fixture.database.query(`INSERT INTO transcript_entries(thread_id,seq,generation,event_json,at)
+    VALUES ('thread',?,1,?,1)`)
+  fixture.database.transaction(() => {
+    Array.from({ length: 300 }, (_, index) => index).forEach((index) => {
+      insert.run(
+        1000 + index,
+        JSON.stringify({
+          type: "message.delta",
+          threadId: "thread",
+          messageId: "first",
+          partIndex: 0,
+          offset: index,
+          delta: "x",
+        }),
+      )
+    })
+    fixture.database.exec(
+      "INSERT OR IGNORE INTO transcript_pending_deltas(thread_id,message_id) VALUES ('thread','first')",
+    )
+  })()
+
+  const pending = materializeTranscriptBatch(fixture.database)
+  const first = fixture.getTexts()[0]
+  while (materializeTranscriptBatch(fixture.database)) await Bun.sleep(0)
+
+  expect(pending).toBe(true)
+  expect(first).toHaveLength(128)
+  expect(fixture.getTexts()[0]).toBe("x".repeat(300))
+  expect(fixture.getPending()).toBe(0)
 })

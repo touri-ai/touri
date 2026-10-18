@@ -4,7 +4,7 @@ import type { PerformanceStageRunner } from "./performance"
 import { TRANSCRIPT_RETENTION } from "./transcript-storage"
 
 type Progress = NonNullable<ApiRoutes["GET /health"]["res"]["historyMigration"]>
-type ThreadProgress = { threadId: string; done: number; total: number }
+type ThreadProgress = { threadId: string; done: number; total: number; retentionCursor?: number }
 const prefix = "transcript.backfill.7.thread."
 
 // Reserve each thread's historical sequence range before allowing live writers.
@@ -74,31 +74,54 @@ export const backfillHistoryBatch = (database: Database, limit = 500): Progress 
     })
     if (!row) return
     const progress = JSON.parse(row.value_json) as ThreadProgress
-    // Cache only IDs/order for the active thread. Re-sorting and filtering its
-    // large message bodies for every batch would make the backfill quadratic.
-    // This temporary table is rebuilt from the durable marker after a restart.
+    // Build the temporary ordering index incrementally. Scanning a fixed rowid
+    // window also bounds work when most rows belong to other threads.
     database.exec(`CREATE TEMP TABLE IF NOT EXISTS history_backfill_order (
-      seq INTEGER PRIMARY KEY, thread_id TEXT NOT NULL, message_id TEXT NOT NULL
+      row_id INTEGER PRIMARY KEY, thread_id TEXT NOT NULL, created_at INTEGER NOT NULL, message_id TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS temp.history_backfill_created ON history_backfill_order(thread_id, created_at, row_id);
+    CREATE TEMP TABLE IF NOT EXISTS history_backfill_scan (
+      id INTEGER PRIMARY KEY, cursor INTEGER NOT NULL, total INTEGER NOT NULL
     )`)
-    const cached = database.query("SELECT thread_id FROM history_backfill_order LIMIT 1").get() as {
-      thread_id: string
+    const cached = database.query("SELECT cursor,total FROM history_backfill_scan WHERE id=1").get() as {
+      cursor: number
+      total: number
     } | null
-    if (cached?.thread_id !== progress.threadId) {
-      database.exec("DELETE FROM history_backfill_order")
+    if (!cached) {
+      database.exec("DELETE FROM history_backfill_order; DELETE FROM history_backfill_scan")
       database
-        .query(`INSERT INTO history_backfill_order(seq, thread_id, message_id)
-          SELECT ? + ROW_NUMBER() OVER (ORDER BY created_at, rowid), thread_id, id
-          FROM messages WHERE thread_id = ? AND seq = 0`)
-        .run(progress.done, progress.threadId)
+        .query(`INSERT INTO history_backfill_scan(id,cursor,total)
+        SELECT 1,0,COALESCE(MAX(rowid),0) FROM messages`)
+        .run()
+      return
+    }
+    if (cached.cursor < cached.total) {
+      const window = database
+        .query(`SELECT rowid AS row_id,thread_id,id,created_at,seq
+        FROM messages WHERE rowid > ? AND rowid <= ? ORDER BY rowid LIMIT ?`)
+        .all(cached.cursor, cached.total, Math.min(limit, 50)) as Array<{
+        row_id: number
+        thread_id: string
+        id: string
+        created_at: number
+        seq: number
+      }>
+      window
+        .filter((message) => message.seq === 0)
+        .forEach((message) => {
+          database
+            .query("INSERT INTO history_backfill_order(row_id,thread_id,created_at,message_id) VALUES (?,?,?,?)")
+            .run(message.row_id, message.thread_id, message.created_at, message.id)
+        })
+      database.query("UPDATE history_backfill_scan SET cursor=? WHERE id=1").run(window.at(-1)?.row_id ?? cached.total)
+      return
     }
     const messages = database
-      .query(
-        `SELECT o.seq, m.id, m.generation, m.updated_at FROM history_backfill_order o
-         JOIN messages m ON m.thread_id = o.thread_id AND m.id = o.message_id
-         WHERE o.seq > ? ORDER BY o.seq LIMIT ?`,
-      )
-      .all(progress.done, limit) as Array<{
-      seq: number
+      .query(`SELECT o.row_id, m.id, m.generation, m.updated_at
+      FROM history_backfill_order o CROSS JOIN messages m
+      WHERE o.thread_id = ? AND m.thread_id = o.thread_id AND m.id = o.message_id ORDER BY o.created_at,o.row_id LIMIT ?`)
+      .all(progress.threadId, limit) as Array<{
+      row_id: number
       id: string
       generation: number
       updated_at: number
@@ -112,7 +135,8 @@ export const backfillHistoryBatch = (database: Database, limit = 500): Progress 
     let processed = 0
     for (const message of messages) {
       if (processed && performance.now() - batchStarted >= 8) break
-      const seq = message.seq
+      const seq = progress.done + 1
+      database.query("DELETE FROM history_backfill_order WHERE row_id=?").run(message.row_id)
       progress.done = seq
       processed += 1
       database
@@ -140,24 +164,29 @@ export const backfillHistoryBatch = (database: Database, limit = 500): Progress 
     // A deleted legacy thread/message cannot leave the worker permanently pending.
     if (processed === messages.length && messages.length < limit) progress.done = progress.total
     if (progress.done === progress.total) {
-      // Live revisions may have advanced since earlier batches. Remove only
-      // historical references; unpublished live entries still need recovery.
-      const cutoff = database
-        .query(`SELECT MAX(id) AS id, MAX(seq) AS seq FROM transcript_entries
-          WHERE thread_id = ? AND seq <= ? AND json_extract(event_json, '$.legacy') = 1`)
-        .get(progress.threadId, retainAfter) as { id: number | null; seq: number | null }
-      if (cutoff.id !== null && cutoff.seq !== null) {
-        database.query("UPDATE transcript_maintenance SET delete_before_id = ? WHERE id = 1").run(cutoff.id)
-        database
-          .query(`DELETE FROM transcript_entries
-            WHERE thread_id = ? AND seq <= ? AND json_extract(event_json, '$.legacy') = 1`)
-          .run(progress.threadId, retainAfter)
-        database
-          .query(`INSERT INTO transcript_retention(thread_id, through_seq) VALUES (?, ?)
-            ON CONFLICT(thread_id) DO UPDATE SET through_seq = MAX(through_seq, excluded.through_seq)`)
-          .run(progress.threadId, cutoff.seq)
-        database.exec("UPDATE transcript_maintenance SET delete_before_id = 0 WHERE id = 1")
-      }
+      const historical = database
+        .query(`SELECT id,seq,event_json FROM transcript_entries
+        WHERE thread_id=? AND seq>? AND seq<=? ORDER BY seq LIMIT ?`)
+        .all(progress.threadId, progress.retentionCursor ?? 0, retainAfter, limit) as Array<{
+        id: number
+        seq: number
+        event_json: string
+      }>
+      historical
+        .filter((entry) => (JSON.parse(entry.event_json) as { legacy?: boolean }).legacy)
+        .forEach((entry) => {
+          database.query("UPDATE transcript_maintenance SET delete_before_id=? WHERE id=1").run(entry.id)
+          database.query("DELETE FROM transcript_entries WHERE id=?").run(entry.id)
+          database
+            .query(`INSERT INTO transcript_retention(thread_id,through_seq) VALUES (?,?)
+          ON CONFLICT(thread_id) DO UPDATE SET through_seq=MAX(through_seq,excluded.through_seq)`)
+            .run(progress.threadId, entry.seq)
+        })
+      database.exec("UPDATE transcript_maintenance SET delete_before_id=0 WHERE id=1")
+      const retainedThrough = historical.at(-1)?.seq
+      if (retainedThrough !== undefined) progress.retentionCursor = retainedThrough
+      // Keep the durable marker pending until the bounded cleanup traversal ends.
+      if (historical.length === limit) progress.done = Math.max(0, progress.total - 1)
     }
     database
       .query("UPDATE settings SET value_json = ?, updated_at = ? WHERE key = ?")
@@ -176,10 +205,11 @@ export const startHistoryBackfill = (
   const step = (): void => {
     if (stopped) return
     try {
+      const before = historyMigrationStatus(database)
       const progress = runStage
         ? runStage("history_backfill_batch", () => backfillHistoryBatch(database))
         : backfillHistoryBatch(database)
-      if (progress.running) timer = setTimeout(step, 10)
+      if (progress.running) timer = setTimeout(step, progress.done === before.done ? 0 : 10)
     } catch (error) {
       onError(error)
       // Keep the committed marker and retry without making startup fail.

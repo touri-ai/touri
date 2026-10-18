@@ -1,5 +1,6 @@
 import type { Database } from "bun:sqlite"
 import type { Kernel, MachineState, ToolResult } from "@touri/contracts"
+import type { PerformanceStageRunner } from "../kernel/performance"
 import { abortVmWait } from "../vm/stage"
 import { connectCdpWebSocket } from "./cdp"
 import { createBrowserEngine } from "./engine"
@@ -18,14 +19,22 @@ export const createRoutedBrowserEngine = (
     guestTimeoutMs = 30_000,
     connect = connectCdpWebSocket,
     localLauncher = attachLocalChrome(),
+    runStage,
   }: {
     guestTimeoutMs?: number
     connect?: typeof connectCdpWebSocket
+    runStage?: PerformanceStageRunner
     localLauncher?: ChromeLauncher
   } = {},
 ): BrowserEngine => {
-  const local = createBrowserEngine({ kernel, mode })
-  const attached = createBrowserEngine({ kernel, profile: "local", localBrowser: true, launcher: localLauncher })
+  const local = createBrowserEngine({ kernel, mode, ...(runStage ? { runStage } : {}) })
+  const attached = createBrowserEngine({
+    kernel,
+    profile: "local",
+    localBrowser: true,
+    launcher: localLauncher,
+    ...(runStage ? { runStage } : {}),
+  })
   const hostForBot = (botId: string | null) =>
     botId && kernel.services.use("store.api")?.getBot({ botId })?.browser === "local" ? attached : local
   type Guest = {
@@ -65,6 +74,7 @@ export const createRoutedBrowserEngine = (
     let launchFailure: string | null = null
     const engine = createBrowserEngine({
       kernel,
+      ...(runStage ? { runStage } : {}),
       profile: `vm:${botId}`,
       discoverBotId: botId,
       launcher: {

@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite"
-import { expect, test } from "bun:test"
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs"
+import { afterEach, expect, test } from "bun:test"
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { MessagePart, Run, StorageMaintenanceStatus, ToolCallPart } from "@touri/contracts"
@@ -862,4 +862,131 @@ test("process replay keeps a bounded UTF-8 tail of the file-backed log", () => {
   expect(bounded.lines.at(-1)).toBe(tail)
   expect(bounded.lines.join("\n")).not.toContain("�")
   expect(event.lines[0]?.length).toBe(100_000)
+})
+
+const scanCleanups = new Set<() => void>()
+afterEach(() => {
+  scanCleanups.forEach((cleanup) => {
+    cleanup()
+  })
+  scanCleanups.clear()
+})
+
+const makeScanFixture = async () => {
+  const scan = await fixture()
+  scanCleanups.add(scan.close)
+
+  return scan
+}
+
+const makeOutputCandidates = (scan: Awaited<ReturnType<typeof fixture>>, count: number) => {
+  const directory = join(scan.root, "attachments", "ab")
+  mkdirSync(directory, { recursive: true })
+
+  return Array.from({ length: count }, (_, index) => {
+    const id = `ab${index.toString(16).padStart(62, "0")}`
+    const path = join(directory, `${id}.tool-output.txt`)
+    writeFileSync(path, "synthetic output")
+    scan.database
+      .query(`INSERT INTO attachments(id,mime,bytes,path,origin_path,created_at)
+      VALUES (?,'text/plain',16,?,'touri:tool-output',1)`)
+      .run(id, path)
+
+    return { id, path }
+  })
+}
+
+test("old orphan files are removed across multiple yielded partitions while recent files remain", async () => {
+  const scan = await makeScanFixture()
+  const candidates = makeOutputCandidates(scan, 125)
+  scan.database.exec("DELETE FROM attachments")
+  const recent = candidates.at(-1)
+  const old = candidates.filter((candidate) => candidate !== recent)
+  old.forEach((candidate) => {
+    utimesSync(candidate.path, 1, 1)
+  })
+  let yields = 0
+
+  const removed = await collectUnusedOutputBlobs(scan.database, scan.root, Date.now(), async () => {
+    yields += 1
+  })
+
+  expect(removed).toBe(124)
+  expect(yields).toBeGreaterThanOrEqual(2)
+  expect(old.every((candidate) => !existsSync(candidate.path))).toBe(true)
+  expect(recent && existsSync(recent.path)).toBe(true)
+})
+
+test("attachment candidates use bounded rowid pages and never materialize an eligible-ID SQL list", async () => {
+  const scan = await makeScanFixture()
+  makeOutputCandidates(scan, 125)
+  const queries: string[] = []
+  const pageSizes: number[] = []
+  // The recorder wraps only this fixture's connection, preserving native receivers.
+  const database = new Proxy(scan.database, {
+    get(target, key) {
+      if (key !== "query") {
+        const value = Reflect.get(target, key, target)
+        return typeof value === "function" ? value.bind(target) : value
+      }
+      return (sql: string) => {
+        queries.push(sql)
+        const statement = target.query(sql)
+        if (!sql.includes("FROM attachments")) return statement
+
+        return new Proxy(statement, {
+          get(statement, key) {
+            if (key === "all")
+              return (...args: Array<string | number>) => {
+                const rows = statement.all(...args)
+                pageSizes.push(rows.length)
+
+                return rows
+              }
+            const value = Reflect.get(statement, key, statement)
+            return typeof value === "function" ? value.bind(statement) : value
+          },
+        })
+      }
+    },
+  })
+  let yields = 0
+
+  const removed = await collectUnusedOutputBlobs(database, scan.root, Date.now(), async () => {
+    yields += 1
+  })
+
+  expect(removed).toBe(125)
+  expect(yields).toBeGreaterThanOrEqual(3)
+  expect(Math.max(...pageSizes)).toBeLessThanOrEqual(50)
+  expect(queries.some((query) => query.includes("json_each"))).toBe(false)
+})
+
+test("a writer invalidates collection and the next pass fully rescans earlier candidates", async () => {
+  const scan = await makeScanFixture()
+  const [shared, orphan] = makeOutputCandidates(scan, 2)
+  if (!shared || !orphan) throw new Error("Missing synthetic candidates")
+  let deferred = 0
+
+  const first = await collectUnusedOutputBlobs(
+    scan.database,
+    scan.root,
+    Date.now(),
+    async () => {
+      insert(scan, "late-reference", [{ ...tool(""), outputJson: null, outputAttachmentId: shared.id }])
+    },
+    new Set(),
+    undefined,
+    () => {
+      deferred += 1
+    },
+  )
+  const second = await collectUnusedOutputBlobs(scan.database, scan.root)
+
+  expect(first).toBe(0)
+  expect(deferred).toBe(1)
+  expect(second).toBe(1)
+  expect(existsSync(shared.path)).toBe(true)
+  expect(existsSync(orphan.path)).toBe(false)
+  expect(scan.database.query("SELECT id FROM attachments").all()).toEqual([{ id: shared.id }])
 })

@@ -8,6 +8,7 @@ import type {
   ToolRegistration,
   ToolResult,
 } from "@touri/contracts"
+import type { PerformanceStageRunner } from "../kernel/performance"
 import { asArray, asBoolean, asNumber, asRecord, asString } from "./utils"
 import { createRoutedBrowserEngine } from "./vm-router"
 
@@ -80,9 +81,9 @@ const fields = (value: unknown): Array<{ kind: "username" | "password" | "otp"; 
     return { kind: asString(field.kind) as "username" | "password" | "otp", target: target(field.target) }
   })
 
-export const init = async (kernel: Kernel): Promise<void> => {
+export const init = async (kernel: Kernel, runStage?: PerformanceStageRunner): Promise<void> => {
   const mode = process.env.TOURI_BROWSER_EXECUTABLE === "chrome-for-testing" ? "chrome-for-testing" : "system-chrome"
-  const engine = createRoutedBrowserEngine(kernel, mode)
+  const engine = createRoutedBrowserEngine(kernel, mode, runStage ? { runStage } : {})
   const failures = new Map<string, BrowserFailureInfo>()
   // The screen viewers show the real cause when a page never reached the display.
   const tool = (name: string, handler: ToolHandler): ToolRegistration => ({

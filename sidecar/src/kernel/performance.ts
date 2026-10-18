@@ -34,10 +34,30 @@ const STAGES = [
   "notification_recovery_reconcile",
   "notification_history_reconcile",
   "history_backfill_batch",
+  "import_staging_expiry",
+  "project_supervisor_ports",
+  "project_supervisor_restart",
+  "vm_idle_sweep",
+  "vm_orphan_sweep",
+  "device_revocation",
+  "desktop_revocation",
+  "browser_session_save",
+  "browser_session_key_retry",
+  "message_search_index",
+  "storage_upgrade_batch",
 ] as const
 
 export type PerformanceStage = (typeof STAGES)[number]
-type StageTiming = { stage: PerformanceStage; calls: number; totalMs: number; maxMs: number }
+type StageTiming = {
+  stage: PerformanceStage
+  calls: number
+  totalMs: number
+  maxMs: number
+  asyncCalls?: number
+  asyncMaxMs?: number
+  pending?: number
+  pendingMs?: number
+}
 
 export type PerformanceStageTracker = {
   run: PerformanceStageRunner
@@ -72,7 +92,7 @@ export const createPerformanceStageTracker = (now = performance.now.bind(perform
     snapshot: () =>
       Object.values(counters)
         .map((counter) => counter.getTiming())
-        .filter((timing) => timing.calls > 0)
+        .filter((timing) => timing.calls > 0 || timing.asyncCalls || timing.pending)
         .reduce(getRankedTimings, [] as Array<StageTiming>),
     reset: () =>
       Object.values(counters).forEach((counter) => {
@@ -82,14 +102,33 @@ export const createPerformanceStageTracker = (now = performance.now.bind(perform
 }
 
 const createStageCounter = (stage: PerformanceStage, now: () => number) => {
-  // Only numeric, closure-local counters change on the hot path; no per-call timing record is allocated.
+  // Synchronous calls update numeric counters; asynchronous passes keep local lifetime markers.
   let calls = 0
   let totalMs = 0
   let maxMs = 0
+  let asyncCalls = 0
+  let asyncMaxMs = 0
+  const pending = new Set<{ startedAt: number }>()
+  const observeAsync = (result: unknown, startedAt: number): void => {
+    if (!(result instanceof Promise)) return
+
+    const operation = { startedAt }
+    pending.add(operation)
+    const finish = () => {
+      pending.delete(operation)
+      asyncCalls += 1
+      asyncMaxMs = Math.max(asyncMaxMs, now() - startedAt)
+    }
+    // Async wall time includes I/O. Keep it separate from synchronous timings,
+    // and retain completion after a sampler reset so continuations stay visible.
+    void result.then(finish, finish)
+  }
   const run = <Value, Input = undefined>(action: (input: Input) => Value, input?: Input): Value => {
     const startedAt = now()
     try {
-      return action(input as Input)
+      const result = action(input as Input)
+      observeAsync(result, startedAt)
+      return result
     } finally {
       const durationMs = now() - startedAt
       calls += 1
@@ -105,23 +144,35 @@ const createStageCounter = (stage: PerformanceStage, now: () => number) => {
       calls,
       totalMs: getMilliseconds(totalMs),
       maxMs: getMilliseconds(maxMs),
+      ...(asyncCalls ? { asyncCalls, asyncMaxMs: getMilliseconds(asyncMaxMs) } : {}),
+      ...(pending.size
+        ? {
+            pending: pending.size,
+            pendingMs: getMilliseconds(
+              now() - Array.from(pending).reduce((oldest, operation) => Math.min(oldest, operation.startedAt), now()),
+            ),
+          }
+        : {}),
     }),
     reset: () => {
       calls = 0
       totalMs = 0
       maxMs = 0
+      asyncCalls = 0
+      asyncMaxMs = 0
     },
   }
 }
 
 const getRankedTimings = (ranked: Array<StageTiming>, timing: StageTiming): Array<StageTiming> => {
-  const index = ranked.findIndex(
-    (entry) => timing.totalMs > entry.totalMs || (timing.totalMs === entry.totalMs && timing.maxMs > entry.maxMs),
-  )
+  const index = ranked.findIndex((entry) => getStageRank(timing) > getStageRank(entry))
   if (index < 0) return ranked.concat(timing).slice(0, 8)
 
   return ranked.slice(0, index).concat(timing, ranked.slice(index)).slice(0, 8)
 }
+
+const getStageRank = (timing: StageTiming): number =>
+  Math.max(timing.totalMs, timing.asyncMaxMs ?? 0, timing.pendingMs ?? 0)
 
 export const createPerformanceDiagnostics = ({
   log,

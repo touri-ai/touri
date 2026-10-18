@@ -1,11 +1,12 @@
 import type { Database } from "bun:sqlite"
-import { existsSync, lstatSync, readdirSync, statSync } from "node:fs"
-import { opendir } from "node:fs/promises"
+import { existsSync, statSync } from "node:fs"
+import { lstat, opendir } from "node:fs/promises"
 import { join } from "node:path"
 import type { Kernel, MessagePart, StorageMaintenanceStatus, StorageStats } from "@touri/contracts"
+import { createAttachmentReferenceScan } from "./attachment-reference-scan"
 import { removePrivateFile } from "./files"
 import { historyMigrationStatus } from "./history-backfill"
-import { attachmentReferences, externalizeMessageParts, OUTPUT_BLOB_ORIGIN } from "./output-blobs"
+import { externalizeMessageParts, OUTPUT_BLOB_ORIGIN } from "./output-blobs"
 import type { PerformanceStageRunner } from "./performance"
 import { createStorageUpgrade, maintainDatabasePages } from "./storage-upgrade"
 import { compactTranscript } from "./transcript-storage"
@@ -157,6 +158,8 @@ export const collectUnusedOutputBlobs = async (
   yieldBatch: (() => Promise<void>) | null = () => Bun.sleep(0),
   deletedBotAttachments = new Set<string>(),
   runStage?: PerformanceStageRunner,
+  onDeferred: () => void = () => {},
+  signal?: AbortSignal,
 ): Promise<number> => {
   const measure = <Value>(stage: Parameters<PerformanceStageRunner>[0], action: () => Value): Value =>
     runStage ? runStage(stage, action) : action()
@@ -166,89 +169,125 @@ export const collectUnusedOutputBlobs = async (
   if (database.query("SELECT 1 FROM schema_meta WHERE key = 'storage_upgrade_22' AND value <> 'done'").get()) return 0
   // Include replay/recovery references, so retention never deletes a file still
   // needed by an unpublished entry or a reconnecting client. User uploads stay.
-  const pending = measure("storage_attachment_candidate_scan", () =>
-    database.query("SELECT key,value_json FROM settings WHERE key LIKE 'storage.deleted-attachments:%'").all(),
-  ) as { key: string; value_json: string }[]
-  const eligible = new Set(deletedBotAttachments)
-  for (const row of pending) {
-    const ids: unknown = JSON.parse(row.value_json)
-    if (Array.isArray(ids)) for (const id of ids) if (typeof id === "string") eligible.add(id)
+  const defer = (removed: number) => {
+    onDeferred()
+    return removed
   }
-  const candidates = measure("storage_attachment_candidate_scan", () =>
-    database
-      .query(`SELECT id,path FROM attachments
-        WHERE (origin_path=? OR id IN (SELECT value FROM json_each(?)))
-          AND NOT EXISTS (SELECT 1 FROM storage_backup_attachments b WHERE b.attachment_id = attachments.id)`)
-      .all(OUTPUT_BLOB_ORIGIN, JSON.stringify([...eligible])),
-  ) as Array<{ id: string; path: string }>
-  const changes = () => Number((database.query("SELECT total_changes() AS n").get() as { n: number }).n)
+  const changes = () => {
+    const own = (database.query("SELECT total_changes() AS n").get() as { n: number }).n
+    const external = (database.query("PRAGMA data_version").get() as { data_version: number }).data_version
+    return `${own}:${external}`
+  }
   let observed = changes()
-  const referenced = new Set<string>()
-  if (candidates.length)
-    for (const [table, key, column] of [
-      ["messages", "rowid", "parts_json"],
-      ["tool_resolutions", "rowid", "part_json"],
-      ["transcript_entries", "id", "event_json"],
-      ["ui_event_log", "seq", "event_json"],
-      ["send_journal", "rowid", "request_json"],
-    ]) {
-      let cursor = 0
-      while (true) {
-        const rows = measure("storage_attachment_reference_scan", () =>
-          database
-            .query(`SELECT ${key} AS cursor, ${column} AS json FROM ${table} WHERE ${key} > ? ORDER BY ${key} LIMIT 50`)
-            .all(cursor),
-        ) as Array<{ cursor: number; json: string }>
-        measure("storage_attachment_reference_scan", () =>
-          rows.forEach((row) => {
-            attachmentReferences(JSON.parse(row.json), referenced)
-            cursor = row.cursor
-          }),
-        )
-        if (rows.length < 50) break
-        if (yieldBatch) await yieldBatch()
-        // A writer can introduce a new reference while we yield. Defer collection
-        // rather than deleting against an incomplete view of live/recovery data.
-        if (changes() !== observed) return 0
-      }
-    }
+  const eligible = new Set(deletedBotAttachments)
+  const pending: Array<{ key: string; value_json: string }> = []
+  let pendingCursor = "storage.deleted-attachments:"
+  while (true) {
+    const rows = measure("storage_attachment_candidate_scan", () =>
+      database
+        .query(`SELECT key,value_json FROM settings WHERE key > ?
+        AND key < 'storage.deleted-attachments;'
+        ORDER BY key LIMIT 50`)
+        .all(pendingCursor),
+    ) as Array<{ key: string; value_json: string }>
+    if (!rows.length) break
+
+    // Only this pass's local accumulator changes; durable markers survive an interruption.
+    pending.push(...rows)
+    rows.forEach((row) => {
+      const ids: unknown = JSON.parse(row.value_json)
+      if (Array.isArray(ids))
+        ids.forEach((id) => {
+          if (typeof id === "string") eligible.add(id)
+        })
+    })
+    pendingCursor = rows.at(-1)?.key ?? pendingCursor
+    if (yieldBatch) await yieldBatch()
+    if (changes() !== observed) return defer(0)
+  }
   let removed = 0
-  for (const blob of candidates) {
-    if (referenced.has(blob.id)) continue
-    removePrivateFile({ root: appData, path: blob.path })
-    database.query("DELETE FROM attachments WHERE id = ?").run(blob.id)
-    removed += 1
-    observed = changes()
-    if (removed % 25 === 0) {
+  let cursor = 0
+  const references = createAttachmentReferenceScan(database, runStage, signal)
+  try {
+    // Start the expensive read only if a bounded candidate window needs it.
+    let started = false
+    while (true) {
+      const rows = measure("storage_attachment_candidate_scan", () =>
+        database
+          .query(`SELECT a.rowid AS cursor,a.id,a.path,a.origin_path,
+          EXISTS(SELECT 1 FROM storage_backup_attachments b WHERE b.attachment_id=a.id) AS pinned
+          FROM attachments a WHERE a.rowid > ? ORDER BY a.rowid LIMIT 50`)
+          .all(cursor),
+      ) as Array<{ cursor: number; id: string; path: string; origin_path: string; pinned: number }>
+      if (!rows.length) break
+
+      cursor = rows.at(-1)?.cursor ?? cursor
+      const candidates = rows.filter(
+        (row) => !row.pinned && (row.origin_path === OUTPUT_BLOB_ORIGIN || eligible.has(row.id)),
+      )
+      if (candidates.length && !started) {
+        if (yieldBatch) await yieldBatch()
+        if (changes() !== observed) return defer(removed)
+
+        await references.start()
+        started = true
+      }
+      const unreferenced = candidates.length
+        ? await references.getUnreferenced(candidates.map((row) => row.id))
+        : new Set<string>()
+      // Includes commits on other connections; a new pass always restarts at zero.
+      if (changes() !== observed) return defer(removed)
+
+      for (const blob of candidates.filter((blob) => unreferenced.has(blob.id))) {
+        measure("storage_attachment_orphan_scan", () => {
+          removePrivateFile({ root: appData, path: blob.path })
+          database.query("DELETE FROM attachments WHERE id=?").run(blob.id)
+        })
+        removed += 1
+        observed = changes()
+        if (yieldBatch) await yieldBatch()
+        if (changes() !== observed) return defer(removed)
+      }
+      observed = changes()
       if (yieldBatch) await yieldBatch()
-      if (changes() !== observed) return removed
+      if (changes() !== observed) return defer(removed)
     }
+  } finally {
+    references.dispose()
   }
   // A crash/rollback can lose attachment metadata after the file was committed.
   // Only our dedicated suffix is eligible; uploads and recent writes stay intact.
   const attachmentsDir = join(appData, "attachments")
   const attachmentExists = database.query("SELECT 1 FROM attachments WHERE id = ?")
   let scanned = 0
-  if (existsSync(attachmentsDir))
-    for (const directory of readdirSync(attachmentsDir, { withFileTypes: true })) {
+  const partitions = await opendir(attachmentsDir).catch((error: NodeJS.ErrnoException) => {
+    if (error.code === "ENOENT") return null
+    throw error
+  })
+  if (partitions)
+    for await (const directory of partitions) {
       if (!directory.isDirectory() || !/^[a-f0-9]{2}$/.test(directory.name)) continue
+
       const directoryPath = join(attachmentsDir, directory.name)
       const files = await opendir(directoryPath)
       for await (const file of files) {
         scanned += 1
+        const match = /^([a-f0-9]{64})\.tool-output\.txt$/.exec(file.name)
+        const id = match?.[1]
+        const path = join(directoryPath, file.name)
+        const stat = file.isFile() && id ? await lstat(path) : null
+        // lstat can yield to a writer; recheck metadata and the generation before deletion.
+        if (changes() !== observed) return defer(removed)
         measure("storage_attachment_orphan_scan", () => {
-          const match = /^([a-f0-9]{64})\.tool-output\.txt$/.exec(file.name)
-          const id = match?.[1]
-          if (!file.isFile() || !id || attachmentExists.get(id)) return
-          const path = join(directoryPath, file.name)
-          if (lstatSync(path).mtimeMs > now - DAY) return
+          if (!stat?.isFile() || !id || stat.mtimeMs > now - DAY || attachmentExists.get(id)) return
+
           removePrivateFile({ root: appData, path })
           removed += 1
         })
-        // Directory entries are streamed so even a partition with many files yields regularly.
         if (scanned % 50 !== 0) continue
+
         if (yieldBatch) await yieldBatch()
-        if (changes() !== observed) return removed
+        if (changes() !== observed) return defer(removed)
       }
     }
   for (const row of pending) database.query("DELETE FROM settings WHERE key=?").run(row.key)
@@ -352,7 +391,9 @@ export const createStorageMaintenance = ({
       retryTimer = undefined
       retryRunning = true
       try {
-        await retryDeletedBrowserSessionKeys(retryController.signal)
+        if (runStage)
+          await runStage("browser_session_key_retry", () => retryDeletedBrowserSessionKeys(retryController.signal))
+        else await retryDeletedBrowserSessionKeys(retryController.signal)
       } catch {
         if (!stopped) onError()
       } finally {
@@ -369,7 +410,7 @@ export const createStorageMaintenance = ({
     try {
       if (upgrade.snapshot()) {
         status = upgrade.snapshot() ?? status
-        const pending = await upgrade.step()
+        const pending = runStage ? await runStage("storage_upgrade_batch", upgrade.step) : await upgrade.step()
         if (stopped) return
         status = upgrade.snapshot() ?? status
         if (pending) {
@@ -418,6 +459,7 @@ export const createStorageMaintenance = ({
         timer = setTimeout(step, 10)
         return
       }
+      let deferred = false
       await collectUnusedOutputBlobs(
         database,
         appData,
@@ -428,8 +470,16 @@ export const createStorageMaintenance = ({
         },
         undefined,
         runStage,
+        () => {
+          deferred = true
+        },
+        retryController.signal,
       )
       if (stopped) return
+      if (deferred) {
+        timer = setTimeout(step, 1000)
+        return
+      }
       if (vacuum) {
         const vacuumDatabase = (): void => {
           database.exec("PRAGMA wal_checkpoint(TRUNCATE)")
@@ -443,7 +493,7 @@ export const createStorageMaintenance = ({
       if (progress.changed || manual) publishResync()
       manual = false
       vacuum = false
-      progress.completedAt = Date.now()
+      progress = { ...progress, completedAt: Date.now() }
       save()
       status = { running: false, processed: progress.cursor, total: progress.total }
       timer = setTimeout(step, DAY)

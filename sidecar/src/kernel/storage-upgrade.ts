@@ -3,7 +3,7 @@ import { randomBytes } from "node:crypto"
 import { existsSync } from "node:fs"
 import { join } from "node:path"
 import { atomicWriteFile, movePrivateFile, prepareDatabaseFile, removePrivateFile } from "./files"
-import { materializeTranscript } from "./transcript-storage"
+import { materializeTranscriptBatch } from "./transcript-storage"
 
 const progressKey = "storage.upgrade.22"
 const marker = "storage_upgrade_22"
@@ -216,7 +216,7 @@ export const createStorageUpgrade = ({
       }
       // Apply every durable delta before discarding its replay representation.
       // The projection, tool resolutions and output files keep the actual history.
-      materializeTranscript(database)
+      if (materializeTranscriptBatch(database)) return true
       const checkpoint = Number(
         (
           database.query("SELECT value FROM schema_meta WHERE key = 'transcript_event_checkpoint'").get() as {
