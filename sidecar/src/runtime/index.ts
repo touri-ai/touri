@@ -1,6 +1,8 @@
 import type { Database } from "bun:sqlite"
 import {
   describeRoutineSchedule,
+  type GoalControl,
+  type GoalStart,
   type Id,
   type Kernel,
   type RouteModule,
@@ -126,6 +128,31 @@ export const init = async (kernel: Kernel): Promise<void> => {
             }),
           },
         }),
+      },
+      {
+        method: "GET",
+        path: "/threads/:id/goal",
+        handler: async ({ params }) => ({ status: 200, json: { goal: engine.goals.getGoal(params.id ?? "") } }),
+      },
+      {
+        method: "POST",
+        path: "/threads/:id/goal",
+        handler: async ({ params, body }) => {
+          const result = engine.goals.startGoal(params.id ?? "", bodyRecord(body) as GoalStart)
+          return result.success
+            ? { status: 201, json: { goal: result.goal } }
+            : routeError(result.errorCode, result.error)
+        },
+      },
+      {
+        method: "PATCH",
+        path: "/threads/:id/goal",
+        handler: async ({ params, body }) => {
+          const result = engine.goals.controlGoal(params.id ?? "", bodyRecord(body) as GoalControl)
+          return result.success
+            ? { status: 200, json: { goal: result.goal } }
+            : routeError(result.errorCode, result.error)
+        },
       },
       {
         method: "GET",
@@ -342,6 +369,7 @@ export const init = async (kernel: Kernel): Promise<void> => {
     tools: [
       { name: "coordinate_bots", group: "core", handler: ({ ctx, args }) => groups.askBot(ctx, args) },
       { name: "ask_bot", group: "core", handler: ({ ctx, args }) => groups.askBot(ctx, args) },
+      { name: "goal_checkpoint", group: "core", handler: createGoalCheckpointHandler(engine) },
       { name: "routine_list", group: "core", handler: routineList },
       { name: "routine_create", group: "core", handler: routineCreate },
       { name: "routine_update", group: "core", handler: routineUpdate },
@@ -415,4 +443,25 @@ export const createApprovalContextHandler =
           : {},
       ),
     )
+  }
+
+export const createGoalCheckpointHandler =
+  (engine: Pick<ReturnType<typeof createRuntimeEngine>, "goals" | "activeRun">): ToolHandler =>
+  async ({ ctx, args }) => {
+    const run = engine.activeRun({ threadId: ctx.threadId })
+    if (ctx.signal.aborted || !ctx.runId || run?.id !== ctx.runId || run.botId !== ctx.botId)
+      return toolError("NOT_FOUND", "No active goal for this turn")
+    const values = bodyRecord(args)
+    if (typeof values.completed !== "boolean") return toolError("INVALID_ARGS", "completed must be a boolean")
+    const result = engine.goals.recordCheckpoint({
+      runId: ctx.runId,
+      botId: ctx.botId,
+      threadId: ctx.threadId,
+      step: stringField(values, "step"),
+      completed: values.completed,
+    })
+
+    return result.success
+      ? textResult(JSON.stringify(result.goal), result.goal)
+      : toolError(result.errorCode, result.error)
   }

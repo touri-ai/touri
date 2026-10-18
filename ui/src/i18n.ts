@@ -3,6 +3,35 @@ import { userFacingError } from "./errors"
 /** All UI copy lives here. pt-BR is the default; English is available for a future locale picker. */
 export type Locale = "pt-BR" | "en"
 export const ptBR = {
+  "Goal local only": "A continuação automática está disponível para bots locais. Este bot continua um turno por vez.",
+  "Goal pause": "Pausar",
+  "Goal resume": "Retomar",
+  "Continue until done": "Continuar até concluir",
+  "Goal advanced": "Avançado · Continuar até concluir",
+  "Goal mode help":
+    "Continua a última solicitação entre turnos, dentro dos limites abaixo. As aprovações continuam obrigatórias. Disponível para bots locais.",
+  "Goal folder required":
+    "Vincule um projeto ou autorize uma pasta para continuar automaticamente. Por enquanto, a conversa segue um turno por vez.",
+  "Goal completion criterion": "O que precisa estar pronto para concluir?",
+  "Goal turn limit": "Limite de turnos",
+  "Goal minutes": "Tempo disponível (min)",
+  "Goal remaining": "{turns} turnos seguintes · {minutes} min restantes",
+  "Goal waiting for checkpoint": "Aguardando o primeiro passo registrado.",
+  "Goal budget exhausted help":
+    "O limite foi atingido e o bot parou. Altere o orçamento e escolha Retomar para continuar.",
+  "Complete goal now": "Concluir agora",
+  "Change goal budget": "Alterar orçamento",
+  "Save goal budget": "Salvar orçamento",
+  "Goal budget edit help":
+    "O limite de turnos é o total, incluindo os já usados. O tempo conta a partir de agora. Salvar não retoma o trabalho.",
+  "Goal wait for turn": "Aguarde o turno atual terminar para ativar.",
+  "Goal request failed":
+    "Não foi possível carregar ou alterar o objetivo. Confira a conexão, as pastas autorizadas e os limites e tente novamente.",
+  "Goal active": "Em andamento",
+  "Goal paused": "Pausado",
+  "Goal budget exhausted": "Limite atingido",
+  "Goal completed": "Concluído",
+  "Continuação do objetivo": "Continuação do objetivo",
   "Salve o token do bot do Telegram.": "Salve o token do bot do Telegram.",
   "Token inválido ou revogado.": "Token inválido ou revogado.",
   "Não foi possível conectar ao Telegram. Confira sua conexão e tente novamente.":
@@ -2168,6 +2197,35 @@ export const ptBR = {
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  "Goal local only": "Automatic continuation is available for local bots. This bot continues one turn at a time.",
+  "Goal pause": "Pause",
+  "Goal resume": "Resume",
+  "Continue until done": "Continue until done",
+  "Goal advanced": "Advanced · Continue until done",
+  "Goal mode help":
+    "Continue the latest request across turns within these limits. Approvals remain mandatory. Available for local bots.",
+  "Goal folder required":
+    "Link a project or authorize a folder to continue automatically. For now, the conversation continues one turn at a time.",
+  "Goal completion criterion": "What must be ready to finish?",
+  "Goal turn limit": "Turn limit",
+  "Goal minutes": "Time available (min)",
+  "Goal remaining": "{turns} further turns · {minutes} min remaining",
+  "Goal waiting for checkpoint": "Waiting for the first recorded step.",
+  "Goal budget exhausted help":
+    "The limit was reached and the bot stopped. Change the budget and choose Resume to continue.",
+  "Complete goal now": "Complete now",
+  "Change goal budget": "Change budget",
+  "Save goal budget": "Save budget",
+  "Goal budget edit help":
+    "The turn limit includes turns already used. Time starts from now. Saving does not resume work.",
+  "Goal wait for turn": "Wait for the current turn to finish before enabling.",
+  "Goal request failed":
+    "Could not load or change the goal. Check the connection, authorized folders and limits, then try again.",
+  "Goal active": "In progress",
+  "Goal paused": "Paused",
+  "Goal budget exhausted": "Limit reached",
+  "Goal completed": "Completed",
+  "Continuação do objetivo": "Goal continuation",
   "Salve o token do bot do Telegram.": "Save the Telegram bot token.",
   "Token inválido ou revogado.": "Invalid or revoked token.",
   "Não foi possível conectar ao Telegram. Confira sua conexão e tente novamente.":

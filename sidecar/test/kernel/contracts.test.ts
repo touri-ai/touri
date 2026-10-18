@@ -3,7 +3,7 @@ import { toolCatalog, validateToolArgs } from "@touri/contracts"
 import { target } from "../../src/browser"
 
 test("compiled tool validators accept valid args and report the schema path", () => {
-  expect(toolCatalog.tools).toHaveLength(60)
+  expect(toolCatalog.tools).toHaveLength(61)
   expect(validateToolArgs({ name: "history_search", args: { query: "accentuação" } })).toEqual({
     success: true,
     args: { query: "accentuação", limit: 10 },
@@ -45,4 +45,16 @@ test("browser timeoutMs sent as a string or out of range is normalized instead o
   })
   expect(validateToolArgs({ name: "browser_list_tabs", args: { timeoutMs: 1500 } }).success).toBe(true)
   expect(validateToolArgs({ name: "browser_snapshot", args: { tabId, timeoutMs: "soon" } }).success).toBe(false)
+})
+
+test("goal checkpoints accept progress but cannot carry budget or caller changes", () => {
+  const progress = { step: "Tabela verificada.", completed: true }
+
+  const accepted = validateToolArgs({ name: "goal_checkpoint", args: progress })
+  const budgetChange = validateToolArgs({ name: "goal_checkpoint", args: { ...progress, maxTurns: 20 } })
+  const callerChange = validateToolArgs({ name: "goal_checkpoint", args: { ...progress, runId: "another-turn" } })
+
+  expect(accepted.success).toBe(true)
+  expect(budgetChange.success).toBe(false)
+  expect(callerChange.success).toBe(false)
 })
