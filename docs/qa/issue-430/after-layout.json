@@ -1,0 +1,82 @@
+[
+  {
+    "width": 1440,
+    "theme": "light",
+    "overflow": 0,
+    "labels": [
+      {
+        "text": "Codex · atlas-planning-experimental-2026-10",
+        "width": 166,
+        "scroll": 241,
+        "whiteSpace": "nowrap"
+      },
+      {
+        "text": "Projeto fictício de planejamento e acessibilidade",
+        "width": 144,
+        "scroll": 256,
+        "whiteSpace": "nowrap"
+      }
+    ],
+    "header": "Bots / mark\nmark\n◧"
+  },
+  {
+    "width": 1440,
+    "theme": "dark",
+    "overflow": 0,
+    "labels": [
+      {
+        "text": "Codex · atlas-planning-experimental-2026-10",
+        "width": 166,
+        "scroll": 241,
+        "whiteSpace": "nowrap"
+      },
+      {
+        "text": "Projeto fictício de planejamento e acessibilidade",
+        "width": 144,
+        "scroll": 256,
+        "whiteSpace": "nowrap"
+      }
+    ],
+    "header": "Bots / mark\nmark\n◧"
+  },
+  {
+    "width": 390,
+    "theme": "light",
+    "overflow": 0,
+    "labels": [
+      {
+        "text": "Codex · atlas-planning-experimental-2026-10",
+        "width": 222,
+        "scroll": 222,
+        "whiteSpace": "normal"
+      },
+      {
+        "text": "Projeto fictício de planejamento e acessibilidade",
+        "width": 200,
+        "scroll": 200,
+        "whiteSpace": "normal"
+      }
+    ],
+    "header": "mark\n◧"
+  },
+  {
+    "width": 390,
+    "theme": "dark",
+    "overflow": 0,
+    "labels": [
+      {
+        "text": "Codex · atlas-planning-experimental-2026-10",
+        "width": 222,
+        "scroll": 222,
+        "whiteSpace": "normal"
+      },
+      {
+        "text": "Projeto fictício de planejamento e acessibilidade",
+        "width": 200,
+        "scroll": 200,
+        "whiteSpace": "normal"
+      }
+    ],
+    "header": "mark\n◧"
+  }
+]
