@@ -1,42 +1,49 @@
-import { Database, constants as sqliteFlags } from "bun:sqlite"
+// Embed first-party source so compiled releases do not need a separate worker file.
+export const walCheckpointSource = `import { Database, constants as sqliteFlags } from "bun:sqlite";
 
-type Start = { type: "start"; filename: string; intervalMs: number }
-type Stop = { type: "stop" }
-type Message = Start | Stop
+// Connection and timer ownership stay local to this worker's lifetime.
+let database;
+let timer;
 
-let database: Database | undefined
-let timer: ReturnType<typeof setInterval> | undefined
+const stop = () => {
+  clearInterval(timer);
+  database?.close();
+  database = undefined;
+};
 
-const isBusyError = (error: unknown): boolean =>
-  typeof error === "object" &&
-  error !== null &&
-  "code" in error &&
-  typeof error.code === "string" &&
-  error.code.startsWith("SQLITE_BUSY")
+const fail = () => {
+  stop();
+  self.postMessage({ type: "error" });
+  self.close();
+};
 
-const checkpoint = (): void => {
-  if (!database) return
+const checkpoint = () => {
+  if (!database) return;
   try {
-    database.query("PRAGMA wal_checkpoint(PASSIVE)").get()
+    const result = database.query("PRAGMA wal_checkpoint(PASSIVE)").get();
+    self.postMessage({ type: "checkpoint", log: result.log, checkpointed: result.checkpointed });
   } catch (error) {
-    if (!isBusyError(error)) self.postMessage({ type: "error" })
+    if (typeof error?.code === "string" && error.code.startsWith("SQLITE_BUSY")) return;
+    fail();
   }
-}
+};
 
-self.onmessage = ({ data }: MessageEvent<Message>): void => {
+self.onmessage = ({ data }) => {
   if (data.type === "stop") {
-    clearInterval(timer)
-    database?.close()
-    database = undefined
-    self.postMessage({ type: "stopped" })
-    return
+    stop();
+    self.postMessage({ type: "stopped" });
+    self.close();
+    return;
   }
 
   try {
-    database = new Database(data.filename, sqliteFlags.SQLITE_OPEN_READWRITE | sqliteFlags.SQLITE_OPEN_NOFOLLOW)
-    database.exec("PRAGMA busy_timeout = 0; PRAGMA wal_autocheckpoint = 0")
-    timer = setInterval(checkpoint, data.intervalMs)
+    database = new Database(data.filename, sqliteFlags.SQLITE_OPEN_READWRITE | sqliteFlags.SQLITE_OPEN_NOFOLLOW);
+    database.exec("PRAGMA busy_timeout = 0; PRAGMA wal_autocheckpoint = 0");
+    checkpoint();
+    if (!database) return;
+    timer = setInterval(checkpoint, data.intervalMs);
+    self.postMessage({ type: "ready" });
   } catch {
-    self.postMessage({ type: "error" })
+    fail();
   }
-}
+};`

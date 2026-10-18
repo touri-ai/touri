@@ -1,7 +1,7 @@
 import type { Database } from "bun:sqlite"
 import { existsSync, lstatSync, readdirSync, statSync } from "node:fs"
 import { join } from "node:path"
-import type { MessagePart, StorageMaintenanceStatus, StorageStats } from "@touri/contracts"
+import type { Kernel, MessagePart, StorageMaintenanceStatus, StorageStats } from "@touri/contracts"
 import { removePrivateFile } from "./files"
 import { historyMigrationStatus } from "./history-backfill"
 import { attachmentReferences, externalizeMessageParts, OUTPUT_BLOB_ORIGIN } from "./output-blobs"
@@ -262,6 +262,7 @@ export const createStorageMaintenance = ({
   publishResync,
   retryDeletedBrowserSessionKeys,
   onError,
+  log,
   runStage,
 }: {
   database: Database
@@ -269,6 +270,7 @@ export const createStorageMaintenance = ({
   publishResync: () => void
   retryDeletedBrowserSessionKeys: (signal: AbortSignal) => Promise<void>
   onError: () => void
+  log?: Kernel["log"]
   runStage?: StageRunner
 }) => {
   const stored = database.query("SELECT value_json FROM settings WHERE key = ?").get(progressKey) as {
@@ -296,7 +298,15 @@ export const createStorageMaintenance = ({
     total: progress.total,
   }
   let stopped = false
-  const walCheckpointer = createWalCheckpointer({ filename: database.filename, onError })
+  const walCheckpointer = createWalCheckpointer({
+    database,
+    onReady: () => log?.({ level: "info", module: "store", msg: "WAL checkpoint worker started" }),
+    onError: () => {
+      if (!log) return onError()
+
+      log({ level: "warn", module: "store", msg: "WAL checkpoint worker failed; SQLite auto-checkpointing restored" })
+    },
+  })
   // WAL checkpoints run off-thread; keep page reclamation to a small batch here.
   const pageTimer = setInterval(() => {
     if (stopped || upgrade.snapshot()) return

@@ -7,6 +7,7 @@ import { materializeTranscript } from "../kernel/transcript-storage"
 import { appendRejection, recordTranscriptRejection } from "./transcript-rejections"
 
 export const STREAM_WRITE_LIMITS = { delayMs: 100, bytes: 8 * 1024, batchBytes: 64 * 1024, batchEvents: 64 }
+const BUSY_WARNING_INTERVAL_MS = 60_000
 type Delta = Extract<UiEvent, { type: "message.delta" }>
 type Parts = Extract<UiEvent, { type: "message.parts" }>
 type StreamEvent = Delta | Parts
@@ -77,9 +78,25 @@ export const createStreamWriter = ({
   const lastByMessage = new Map<string, StreamEvent>()
   let timer: ReturnType<typeof setTimeout> | null = null
   let flushing = false
+  let stopped = false
+  let lastBusyWarningAt = Number.NEGATIVE_INFINITY
   let batchesWritten = 0
   const outside = new WeakSet<StreamEvent>()
   let unsettled: Array<{ event: StreamEvent; raw: string | null; seq: number }> = []
+  const warnBufferedWrites = (msg: string): void => {
+    try {
+      kernel.log({ level: "warn", module: "store", msg, data: { events: pending.length, bytes: pendingBytes } })
+    } catch {
+      // Storage failure can also prevent writing diagnostics; retain the accepted batch.
+    }
+  }
+  const warnBusyRetry = (): void => {
+    const now = Date.now()
+    if (now - lastBusyWarningAt < BUSY_WARNING_INTERVAL_MS) return
+
+    lastBusyWarningAt = now
+    warnBufferedWrites("Stream database busy; retrying buffered writes")
+  }
   const keyOf = (threadId: string, messageId: string): string => JSON.stringify([threadId, messageId])
   const createProjection = (message: Message, baseSeq: number, lastEvent: string | null = null): Projection => ({
     message,
@@ -172,7 +189,7 @@ export const createStreamWriter = ({
   }
 
   const flush = (): void => {
-    if (flushing) return
+    if (stopped || flushing) return
     settle()
     if (timer) clearTimeout(timer)
     timer = null
@@ -344,7 +361,10 @@ export const createStreamWriter = ({
       for (const event of batch) projections.delete(keyOf(event.threadId, event.messageId))
       pending = [...batch, ...pending]
       rebuildQueueState()
-      if (isBusyError(error)) return
+      if (isBusyError(error)) {
+        warnBusyRetry()
+        return
+      }
       throw error
     } finally {
       flushing = false
@@ -610,16 +630,22 @@ export const createStreamWriter = ({
     if (parts.some(({ part }) => "callId" in part && resolutionOf(part) !== "running")) flush()
   }
 
-  const drain = (): void => {
-    if (flushing) return
+  const drain = ({ stopping = false }: { stopping?: boolean } = {}): void => {
+    if (stopped || flushing) return
     settle()
     // Subscribers can enqueue group mirrors during publication. Lifecycle/read
     // boundaries must include that work before closing or taking a snapshot.
     while (pending.length) {
       const previousBatches = batchesWritten
       flush()
-      if (batchesWritten === previousBatches) return
+      if (batchesWritten === previousBatches) break
     }
+    if (!stopping) return
+
+    stopped = true
+    if (timer) clearTimeout(timer)
+    timer = null
+    if (pending.length) warnBufferedWrites("Shutdown could not persist buffered stream writes; database remains busy")
   }
 
   return {

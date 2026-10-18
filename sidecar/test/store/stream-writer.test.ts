@@ -520,6 +520,8 @@ test("stream writes retry a busy database without waiting on the main loop", asy
   const blocker = new SqliteDatabase(join(f.root, "touri.db"))
   cleanups.add(() => blocker.close())
   blocker.exec("BEGIN IMMEDIATE")
+  const log = spyOn(f.runtime.kernel, "log")
+  cleanups.add(() => log.mockRestore())
 
   expect(() =>
     f.store.appendDelta({
@@ -533,10 +535,42 @@ test("stream writes retry a busy database without waiting on the main loop", asy
   expect((f.database.query("PRAGMA busy_timeout").get() as { timeout: number }).timeout).toBe(5_000)
   expect(f.events.filter(({ event }) => event.type === "message.delta")).toHaveLength(0)
 
+  f.store.flushWrites?.()
+  f.store.flushWrites?.()
+  expect(
+    log.mock.calls.filter(([entry]) => entry.msg === "Stream database busy; retrying buffered writes"),
+  ).toHaveLength(1)
+
   blocker.exec("ROLLBACK")
-  await Bun.sleep(STREAM_WRITE_LIMITS.delayMs + 30)
+  f.store.flushWrites?.()
+
+  expect(timeouts).toEqual([0, 0, 0, 0])
   expect(f.events.filter(({ event }) => event.type === "message.delta")).toHaveLength(1)
   expect(f.store.activePath({ threadId: "t", leafId: "a" })[0]?.text).toBe("x".repeat(STREAM_WRITE_LIMITS.bytes))
+})
+
+test("shutdown warns about busy buffered writes and cancels retries before closing the database", async () => {
+  const f = await fixture()
+  cleanups.add(f.close)
+  f.runtime.kernel.services.use("storage.maintenance")?.dispose()
+  f.store.appendDelta({ threadId: "t", messageId: "a", partIndex: 0, delta: "Preservar" })
+  const blocker = new SqliteDatabase(join(f.root, "touri.db"))
+  cleanups.add(() => blocker.close())
+  blocker.exec("BEGIN IMMEDIATE")
+  const log = spyOn(f.runtime.kernel, "log")
+  cleanups.add(() => log.mockRestore())
+
+  expect(() => f.runtime.stop()).not.toThrow()
+  expect(() => f.runtime.stop()).not.toThrow()
+  expect(() => f.store.flushWrites?.()).not.toThrow()
+
+  expect(log.mock.calls.map(([entry]) => entry)).toContainEqual({
+    level: "warn",
+    module: "store",
+    msg: "Shutdown could not persist buffered stream writes; database remains busy",
+    data: { events: 1, bytes: Buffer.byteLength("Preservar") },
+  })
+  expect(f.events.filter(({ event }) => event.type === "message.delta")).toHaveLength(0)
 })
 
 test("an explicit flush also drains parts mirrored reentrantly during committed event publication", async () => {
@@ -611,8 +645,9 @@ test("large WAL stream writes avoid checkpoints and cap journal rows per transac
   const f = await fixture(runStage)
   cleanups.add(f.close)
   observedDatabase = f.database
-  f.runtime.kernel.services.use("storage.maintenance")?.dispose()
 
+  f.runtime.kernel.services.use("storage.maintenance")?.dispose()
+  f.database.exec("PRAGMA wal_autocheckpoint = 0")
   for (let index = 0; index < MAX_STREAM_EVENTS_PER_WRITE + 36; index++) {
     const result = f.store.insertMessage({
       message: {

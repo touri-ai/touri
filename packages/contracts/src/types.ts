@@ -1285,7 +1285,7 @@ export type StoreApi = {
   insertMessage: (args: { message: Omit<Message, 'createdAt' | 'updatedAt'> }) => Result<{ message: Message }, 'THREAD_NOT_FOUND' | 'PARENT_NOT_FOUND'>
   appendDelta: (args: TranscriptAppend) => void
   appendParts?: (args: { threadId: Id; messageId: Id; parts: Array<{ partIndex: number; part: MessagePart }>; generation?: number }) => void
-  flushWrites?: () => void
+  flushWrites?: (options?: { stopping?: boolean }) => void
   updateMessage: (args: { threadId: Id; messageId: Id; patch: Partial<Pick<Message, 'status' | 'parts' | 'text' | 'runId'>> }) => Result<{ message: Message }, 'NOT_FOUND'>
   /** Select before hydrating bodies; fromRoot selects the oldest prefix instead of the recent tail. */
   activePath: (args: { threadId: Id; leafId?: Id; limit?: number; fromRoot?: boolean }) => Array<Message>
