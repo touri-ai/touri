@@ -3,6 +3,7 @@ import { userFacingError } from "./errors"
 /** All UI copy lives here. pt-BR is the default; English is available for a future locale picker. */
 export type Locale = "pt-BR" | "en"
 export const ptBR = {
+  "Tarefas interrompidas": "Tarefas interrompidas",
   "Tarefa interrompida não encontrada.": "Tarefa interrompida não encontrada.",
   "Não foi possível salvar a confirmação. Tente novamente.": "Não foi possível salvar a confirmação. Tente novamente.",
   "O touri foi reiniciado.": "O touri foi reiniciado.",
@@ -2188,6 +2189,7 @@ export const ptBR = {
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  "Tarefas interrompidas": "Interrupted tasks",
   "Tarefa interrompida não encontrada.": "Interrupted task not found.",
   "Não foi possível salvar a confirmação. Tente novamente.": "Could not save the acknowledgement. Try again.",
   "O touri foi reiniciado.": "touri restarted.",

@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite"
 import type { Kernel, MessagePart, RecoveryTask, RunErrorClass } from "@touri/contracts"
-import { hasRecordedActions, sanitizeDiagnostic } from "@touri/contracts/run-failure"
+import { hasRecordedActions, safeRunFailure, sanitizeDiagnostic } from "@touri/contracts/run-failure"
 import { createWorkState } from "../runtime/work-state"
 import type { Notifier } from "./notifier"
 import type { NotificationStore } from "./store"
@@ -231,9 +231,8 @@ const saveTaskNotification = (kernel: Kernel, store: NotificationStore, notifier
       botId: candidate.botId,
       threadId: candidate.threadId,
       requestId: `recovery:${candidate.id}`,
-      title: "Interrupted tasks",
-      body:
-        sanitizeDiagnostic(candidate.reason) || "A resposta foi interrompida. Algumas ações podem ter sido concluídas.",
+      title: "Tarefas interrompidas",
+      body: safeRunFailure(candidate.cause, candidate.reason).detail,
     })
   database
     .query("INSERT INTO recovery_tasks (id, notification_id, turn_id) VALUES (?, ?, ?)")

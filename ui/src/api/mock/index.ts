@@ -601,7 +601,7 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
               kind: "turn-failed",
               botId: "bot-mark",
               threadId: "thread-mark",
-              title: "Interrupted tasks",
+              title: "Tarefas interrompidas",
               body: "A resposta foi interrompida. Algumas ações podem ter sido concluídas.",
               requestId: "recovery:run:run-interrupted",
             }),
@@ -616,7 +616,7 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
             notification: notify({
               kind: "turn-failed",
               botId: bots[1]?.id ?? null,
-              title: "Interrupted tasks",
+              title: "Tarefas interrompidas",
               body: "A resposta foi interrompida. Algumas ações podem ter sido concluídas.",
               requestId: "recovery:journal:process-demo",
             }),

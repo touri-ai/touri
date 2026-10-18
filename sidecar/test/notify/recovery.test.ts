@@ -85,6 +85,8 @@ test("aggregates interrupted turns, failed turns with effects, orphan journal wo
   expect(tasks.find((task) => task.id === "run:failed")?.effects[0]?.description).toBe("notas.md")
   expect(tasks.find((task) => task.id === "journal:orphan-turn")?.effects[0]?.acknowledgeKey).toBe("preview-key")
   expect(tasks.find((task) => task.routineId)?.notification.botName).toBe("Equipe B")
+  expect(tasks.find((task) => task.id === "journal:orphan-turn")?.notification.title).toBe("Tarefas interrompidas")
+  expect(tasks.find((task) => task.id === "journal:orphan-turn")?.notification.body).not.toContain("app_restart")
   expect(repeated.map((task) => task.notification.id)).toEqual(tasks.map((task) => task.notification.id))
 })
 
