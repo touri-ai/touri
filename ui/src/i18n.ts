@@ -3,6 +3,48 @@ import { userFacingError } from "./errors"
 /** All UI copy lives here. pt-BR is the default; English is available for a future locale picker. */
 export type Locale = "pt-BR" | "en"
 export const ptBR = {
+  "Confira os dados e os limites do objetivo.": "Confira os dados e os limites do objetivo.",
+  "ERROR INVALID_ARGS: Confira os dados e os limites do objetivo.": "Confira os dados e os limites do objetivo.",
+  "Aguarde o turno atual terminar ou conclua o objetivo anterior.":
+    "Aguarde o turno atual terminar ou conclua o objetivo anterior.",
+  "ERROR CONFLICT: Aguarde o turno atual terminar ou conclua o objetivo anterior.":
+    "Aguarde o turno atual terminar ou conclua o objetivo anterior.",
+  "Não há um objetivo ativo para este turno.": "Não há um objetivo ativo para este turno.",
+  "ERROR NOT_FOUND: Não há um objetivo ativo para este turno.": "Não há um objetivo ativo para este turno.",
+  "Não foi possível registrar a conclusão do objetivo.": "Não foi possível registrar a conclusão do objetivo.",
+  "ERROR INVALID_ARGS: Não foi possível registrar a conclusão do objetivo.":
+    "Não foi possível registrar a conclusão do objetivo.",
+  "Record an observed step for the user-authorized goal in this turn. Set completed=true only after verifying its agreed completion criterion. Never treats the end of a turn as completion. Cannot create goals, change budgets or grant access.":
+    "Registra um passo observado do objetivo autorizado neste turno. Só marca a conclusão depois de verificar o critério combinado. Encerrar um turno não conclui o objetivo. Não cria objetivos, altera orçamentos nem concede acesso.",
+  "Goal local only": "A continuação automática está disponível para bots locais. Este bot continua um turno por vez.",
+  "Goal pause": "Pausar",
+  "Goal resume": "Retomar",
+  "Continue until done": "Continuar até concluir",
+  "Goal advanced": "Avançado · Continuar até concluir",
+  "Goal mode help":
+    "Continua a última solicitação entre turnos, dentro dos limites abaixo. As aprovações continuam obrigatórias. Disponível para bots locais.",
+  "Goal folder required":
+    "Vincule um projeto ou autorize uma pasta para continuar automaticamente. Por enquanto, a conversa segue um turno por vez.",
+  "Goal completion criterion": "O que precisa estar pronto para concluir?",
+  "Goal turn limit": "Limite de turnos",
+  "Goal minutes": "Tempo disponível (min)",
+  "Goal remaining": "{turns} turnos seguintes · {minutes} min restantes",
+  "Goal waiting for checkpoint": "Aguardando o primeiro passo registrado.",
+  "Goal budget exhausted help":
+    "O limite foi atingido e o bot parou. Altere o orçamento e escolha Retomar para continuar.",
+  "Complete goal now": "Concluir agora",
+  "Change goal budget": "Alterar orçamento",
+  "Save goal budget": "Salvar orçamento",
+  "Goal budget edit help":
+    "O limite de turnos é o total, incluindo os já usados. O tempo conta a partir de agora. Salvar não retoma o trabalho.",
+  "Goal wait for turn": "Aguarde o turno atual terminar para ativar.",
+  "Goal request failed":
+    "Não foi possível carregar ou alterar o objetivo. Confira a conexão, as pastas autorizadas e os limites e tente novamente.",
+  "Goal active": "Em andamento",
+  "Goal paused": "Pausado",
+  "Goal budget exhausted": "Limite atingido",
+  "Goal completed": "Concluído",
+  "Continuação do objetivo": "Continuação do objetivo",
   "Send the same task to all other members of this touri group in parallel and gather final answers with authorship. Each recipient counts toward the shared six-call budget. Same depth 2, cycle, access, secrecy and approval fences as ask_bot. The whole set shares the group turn deadline (120s for chat); pending approval on one member does not hold up others. Only available in group participant sessions.":
     "Envia a mesma tarefa aos outros membros do grupo em paralelo e reúne as respostas finais com autoria. Cada membro conta no limite compartilhado de seis chamadas. Mantém os limites de profundidade 2, ciclos, acesso, segredos e aprovações da delegação individual. Todos compartilham o prazo do turno (120 segundos no chat); uma aprovação pendente não impede os outros de trabalhar. Disponível apenas nas sessões de membros do grupo.",
   "Escreva uma tarefa de até 8.000 caracteres.": "Escreva uma tarefa de até 8.000 caracteres.",
@@ -2274,6 +2316,47 @@ export const ptBR = {
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  "Confira os dados e os limites do objetivo.": "Check the goal details and limits.",
+  "ERROR INVALID_ARGS: Confira os dados e os limites do objetivo.": "Check the goal details and limits.",
+  "Aguarde o turno atual terminar ou conclua o objetivo anterior.":
+    "Wait for the current turn to finish or complete the previous goal.",
+  "ERROR CONFLICT: Aguarde o turno atual terminar ou conclua o objetivo anterior.":
+    "Wait for the current turn to finish or complete the previous goal.",
+  "Não há um objetivo ativo para este turno.": "There is no active goal for this turn.",
+  "ERROR NOT_FOUND: Não há um objetivo ativo para este turno.": "There is no active goal for this turn.",
+  "Não foi possível registrar a conclusão do objetivo.": "Could not record the goal completion.",
+  "ERROR INVALID_ARGS: Não foi possível registrar a conclusão do objetivo.": "Could not record the goal completion.",
+  "Record an observed step for the user-authorized goal in this turn. Set completed=true only after verifying its agreed completion criterion. Never treats the end of a turn as completion. Cannot create goals, change budgets or grant access.":
+    "Record an observed step for the user-authorized goal in this turn. Set completed=true only after verifying its agreed completion criterion. Never treats the end of a turn as completion. Cannot create goals, change budgets or grant access.",
+  "Goal local only": "Automatic continuation is available for local bots. This bot continues one turn at a time.",
+  "Goal pause": "Pause",
+  "Goal resume": "Resume",
+  "Continue until done": "Continue until done",
+  "Goal advanced": "Advanced · Continue until done",
+  "Goal mode help":
+    "Continue the latest request across turns within these limits. Approvals remain mandatory. Available for local bots.",
+  "Goal folder required":
+    "Link a project or authorize a folder to continue automatically. For now, the conversation continues one turn at a time.",
+  "Goal completion criterion": "What must be ready to finish?",
+  "Goal turn limit": "Turn limit",
+  "Goal minutes": "Time available (min)",
+  "Goal remaining": "{turns} further turns · {minutes} min remaining",
+  "Goal waiting for checkpoint": "Waiting for the first recorded step.",
+  "Goal budget exhausted help":
+    "The limit was reached and the bot stopped. Change the budget and choose Resume to continue.",
+  "Complete goal now": "Complete now",
+  "Change goal budget": "Change budget",
+  "Save goal budget": "Save budget",
+  "Goal budget edit help":
+    "The turn limit includes turns already used. Time starts from now. Saving does not resume work.",
+  "Goal wait for turn": "Wait for the current turn to finish before enabling.",
+  "Goal request failed":
+    "Could not load or change the goal. Check the connection, authorized folders and limits, then try again.",
+  "Goal active": "In progress",
+  "Goal paused": "Paused",
+  "Goal budget exhausted": "Limit reached",
+  "Goal completed": "Completed",
+  "Continuação do objetivo": "Goal continuation",
   "Sign in to {provider} for this {host}: open this link on this device":
     "Sign in to {provider} for {host}: open this link on this device",
   "Preparing {provider} sign-in for this {host}…": "Preparing {provider} sign-in for {host}…",

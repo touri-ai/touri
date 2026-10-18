@@ -1,6 +1,6 @@
 import { Database } from "bun:sqlite"
 import { afterEach, expect, test } from "bun:test"
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { Bot, GroupInput, Kernel, ProviderAdapter, Run, ToolContext } from "@touri/contracts"
@@ -960,28 +960,35 @@ test("B05: the real engine starts a delegated provider turn under the ceiling, a
       await Bun.sleep(20)
     setDelegation(f.host.kernel, participant.id, null)
     await engine.shutdown()
+    expect(f.persistence.getRun(id)?.status).toBe("succeeded")
     return { argv: readFileSync(argvLog, "utf8"), launch }
   }
   const equal = await runDelegated(f.store.getBot({ botId: pm.id }) as Bot)
-  expect(equal.argv).toContain("danger-full-access")
+  expect(equal.launch?.cmd).toBe(command)
+  expect(equal.argv).toContain('sandbox_mode="danger-full-access"')
   const reduced = await runDelegated({ ...(f.store.getBot({ botId: pm.id }) as Bot), access: "read-only" })
-  if (/\/bwrap$/.test(reduced.launch?.cmd ?? "")) {
+  expect(reduced.argv).toContain('approval_policy="never"')
+  if (process.platform === "darwin") {
+    expect(reduced.launch?.cmd).toBe("/usr/bin/sandbox-exec")
+    expect(reduced.launch?.args[0]).toBe("-p")
+    expect(reduced.launch?.args[2]).toBe(command)
+    const profile = reduced.launch?.args[1] ?? ""
+    expect(profile).toContain("(deny file-write*)")
+    const writes = profile.split("\n").find((line) => line.startsWith("(allow file-write* "))
+    expect(writes).toBeDefined()
+    expect(writes).not.toContain(`(subpath ${JSON.stringify(realpathSync(reduced.launch?.cwd ?? ""))})`)
+    expect(reduced.argv).toContain('sandbox_mode="danger-full-access"')
+  } else if (/\/bwrap$/.test(reduced.launch?.cmd ?? "")) {
     expect(
       reduced.launch?.args.some(
         (arg, index, args) =>
           arg === "--ro-bind" && args[index + 1] === reduced.launch?.cwd && args[index + 2] === reduced.launch?.cwd,
       ),
     ).toBe(true)
-    expect(reduced.argv).toContain('approval_policy="never"')
-  } else if (reduced.launch?.cmd === "/usr/bin/sandbox-exec") {
-    expect(reduced.launch.args[0]).toBe("-p")
-    expect(reduced.launch.args[1]).toContain("(deny file-write*)")
-    // The inherited policy enforces read-only access without a nested provider sandbox.
     expect(reduced.argv).toContain('sandbox_mode="danger-full-access"')
-    expect(reduced.argv).toContain('approval_policy="never"')
   } else {
-    expect(reduced.argv).not.toContain("danger-full-access")
-    expect(reduced.argv).toContain("read-only")
+    expect(reduced.launch?.cmd).toBe(command)
+    expect(reduced.argv).toContain('sandbox_mode="read-only"')
   }
   const guest = await runDelegated({ ...(f.store.getBot({ botId: pm.id }) as Bot), machine: "vm" })
   expect(guest.argv).not.toContain("danger-full-access")

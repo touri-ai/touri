@@ -38,6 +38,8 @@ jobs:
         with:
           bun-version: 1.4.3
       - run: bun run typecheck --incremental --tsBuildInfoFile node_modules/.cache/ci.tsbuildinfo
+      - name: Verify confinement test compatibility with the minimum runtime
+        run: bun test sidecar/test/platform/linux-ci-sandbox.test.ts sidecar/test/runtime/linux-folder-sandbox.test.ts
       - run: bun packages/contracts/src/validate-catalog.ts
       - run: bun test sidecar/test/kernel/catalog-validation.test.ts
       - run: bun test sidecar/test/kernel/schema-contract.test.ts
@@ -299,7 +301,7 @@ jobs:
       - name: Verify Linux folder confinement
         run: |
           # Permit test namespaces on this disposable runner; production policy is unchanged.
-          if [ -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
+          if sysctl kernel.apparmor_restrict_unprivileged_userns >/dev/null 2>&1; then
             sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           fi
           bun -e '

@@ -1,8 +1,8 @@
--- Resolution stays in notifications so every surface observes the same history.
-CREATE TABLE IF NOT EXISTS recovery_tasks (
-  id TEXT PRIMARY KEY,
-  notification_id INTEGER NOT NULL REFERENCES notifications(id) ON DELETE CASCADE,
-  turn_id TEXT
+-- One durable checkpoint per conversation; completed goals remain until explicitly replaced.
+CREATE TABLE IF NOT EXISTS goals (
+  thread_id TEXT PRIMARY KEY REFERENCES threads(id) ON DELETE CASCADE,
+  run_id TEXT,
+  checkpoint_json TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS recovery_tasks_notification ON recovery_tasks(notification_id);
+CREATE INDEX IF NOT EXISTS goals_run_id ON goals(run_id);
 UPDATE schema_meta SET value = '25' WHERE key = 'schema_version';

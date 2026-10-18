@@ -27,11 +27,12 @@ import workspaceActivitySql from "./migrations/0021.sql" with { type: "text" }
 import transcriptReferencesSql from "./migrations/0022.sql" with { type: "text" }
 import streamWriterSql from "./migrations/0023.sql" with { type: "text" }
 import groupRoutinesSql from "./migrations/0024.sql" with { type: "text" }
-import recoveryCenterSql from "./migrations/0025.sql" with { type: "text" }
+import goalsSql from "./migrations/0025.sql" with { type: "text" }
+import recoveryCenterSql from "./migrations/0026.sql" with { type: "text" }
 import { withSuspendedSchemaObjects } from "./schema-rebuild"
 import { applyUpgradeBaselines } from "./upgradeBaselines"
 
-export const SCHEMA_VERSION = 25
+export const SCHEMA_VERSION = 26
 
 const FREE_PAGE_RATIO_LIMIT = 0.2
 
@@ -183,6 +184,7 @@ export const openDatabase = ({ filename }: { filename: string }): Database => {
     if (!columns.some((column) => column.name === "group_id")) database.exec(groupRoutinesSql)
     database.exec("UPDATE schema_meta SET value = '24' WHERE key = 'schema_version'")
   })()
+  database.transaction(() => database.exec(goalsSql))()
   database.transaction(() => database.exec(recoveryCenterSql))()
   return database
 }
