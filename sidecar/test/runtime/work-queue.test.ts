@@ -41,7 +41,9 @@ test("five bots expose three executing turns and a live FIFO queue, then promote
     [turns[3]?.id, 1, 2],
     [turns[4]?.id, 2, 2],
   ])
-  expect(fixture.engine.listRuns("thread-4")[0]?.queuePosition).toBe(2)
+  const stored = fixture.engine.listRuns("thread-4")[0]
+  if (!stored) throw new Error("Missing queued turn snapshot")
+  expect(fixture.engine.getRunSnapshot(stored).queuePosition).toBe(2)
   const started = Date.now()
   fixture.finish("thread-0")
   await waitFor(() => fixture.getRunning().some((run) => run.id === turns[3]?.id), 1000)
@@ -82,6 +84,35 @@ test("canceling a waiting turn republishes the remaining positions without start
       .filter((run) => run.id === turns[4]?.id)
       .at(-1),
   ).toMatchObject({ queuePosition: 1, queueTotal: 1 })
+})
+
+test("canceling during preparation ends the turn before the provider can start", async () => {
+  const fixture = await getFixture()
+  let recalling = false
+  fixture.runtime.kernel.services.provide("mem0.api", {
+    enabled: () => true,
+    instructions: () => null,
+    sync: () => {},
+    recall: ({ signal }) =>
+      new Promise<null>((resolve) => {
+        recalling = true
+        signal?.addEventListener(
+          "abort",
+          () => {
+            resolve(null)
+          },
+          { once: true },
+        )
+      }),
+  })
+  const run = fixture.send("thread-0")
+  await waitFor(() => recalling)
+
+  fixture.engine.cancel(run.id)
+  await waitFor(() => fixture.engine.listRuns(run.threadId)[0]?.status === "canceled")
+
+  expect(fixture.getProviderStarts()).toBe(0)
+  expect(fixture.engine.getWorkRuns()).toEqual([])
 })
 
 test("saving concurrency drains immediately, lowering it lets current work finish, and the value survives replacement", async () => {
@@ -260,6 +291,7 @@ const getFixture = async () => {
     sendFive: () => Array.from({ length: 5 }, (_, index) => send(`thread-${index}`, index)),
     getRunning: () => engine.getWorkRuns().filter((run) => run.status === "running"),
     getEvents: () => events,
+    getProviderStarts: () => completions.size,
     getEvent: (id: string | undefined) => events.filter((run) => run.id === id).at(-1),
     finish: (threadId: string) => completions.get(threadId)?.(),
     addCleanup: (close: () => Promise<void>) => {

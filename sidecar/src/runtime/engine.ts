@@ -1797,7 +1797,7 @@ export const createRuntimeEngine = ({
     const run = persistence.getRun(id)
     if (!run) return { success: false, errorCode: "NOT_FOUND", error: "Run not found" }
     if (!["queued", "starting", "running"].includes(run.status)) return { success: true, run }
-    if (run.status === "queued" || (run.status === "starting" && !controllers.has(id))) {
+    if (run.status === "queued" || (run.status === "starting" && run.providerStartedAt == null)) {
       controllers.get(id)?.abort()
       const store = kernel.services.use("store.api")
       const thread = store?.getThread({ threadId: run.threadId })
@@ -2437,7 +2437,7 @@ export const createRuntimeEngine = ({
     settingsChanged: () => {
       void drain()
     },
-    listRuns: (threadId, options) => persistence.listRuns(threadId, options).map(getRunSnapshot),
+    listRuns: persistence.listRuns,
     cancel,
     cancelBotTurns,
     retry,
