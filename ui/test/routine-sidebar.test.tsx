@@ -1,7 +1,8 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, expect, it } from "vitest"
 import App from "../src/App"
-import { getRoutineRunDateLabel, t } from "../src/i18n"
+import { createMockApi } from "../src/api/mock"
+import { getRoutineRunDateLabel, getRoutineRunSidebarDateLabel, getRoutineRunTimeLabel, t } from "../src/i18n"
 import { getSidebarDataByBot, getSidebarReadThreadIds, getSidebarThreads } from "../src/sidebarThreads"
 import { getRoutineSidebarFixture } from "./routine-sidebar-fixture"
 
@@ -25,7 +26,7 @@ it("clears every unread run when opening its routine group and leaves another ro
   fireEvent.click(routine)
 
   expect(routine.querySelector(".sidebar-unread")).toBeNull()
-  expect(document.querySelector(".thread-row.selected")).toHaveTextContent("09:45")
+  expect(document.querySelector(".thread-row.selected")).toHaveTextContent("06:45")
 })
 
 it("groups 128 deleted routine conversations and keeps every result reachable in bounded pages", async () => {
@@ -85,7 +86,7 @@ it("groups 28 routine executions without burying ordinary conversations and open
   expect(rows).toHaveLength(2)
   expect(rows[0]).toHaveTextContent("Planejamento da semana")
   expect(rows[1]).toHaveTextContent("Resumo diário")
-  expect(rows[1]).toHaveTextContent("14:45")
+  expect(rows[1]).toHaveTextContent("11:45")
 
   fireEvent.click(screen.getByRole("button", { name: /^Trabalhando \d/ }))
   await screen.findByRole("heading", { name: "Trabalho", exact: true })
@@ -107,7 +108,7 @@ it("groups 28 routine executions without burying ordinary conversations and open
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
 
   const selected = document.querySelector(".thread-row.selected")
-  expect(selected).toHaveTextContent("08:00")
+  expect(selected).toHaveTextContent("05:00")
   expect(document.querySelectorAll('[data-bot-entry="bot-mark"] .thread-row')).toHaveLength(2)
   expect(await screen.findByText("Resumo pronto para conferir.", { selector: "p" })).toBeVisible()
 })
@@ -134,7 +135,7 @@ it("keeps routine conversations older than the first history page reachable", as
   fireEvent.click(oldest)
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
 
-  expect(document.querySelector(".thread-row.selected")).toHaveTextContent("08:00")
+  expect(document.querySelector(".thread-row.selected")).toHaveTextContent("05:00")
   expect(await screen.findByText("Resumo pronto para conferir.", { selector: "p" })).toBeVisible()
 })
 
@@ -201,7 +202,7 @@ it("opens selected routine history across three bounded pages despite newer runs
   fireEvent.click(oldest)
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
 
-  expect(document.querySelector(".thread-row.selected")).toHaveTextContent("08:00")
+  expect(document.querySelector(".thread-row.selected")).toHaveTextContent("05:00")
   expect(await screen.findByText("Resumo pronto para conferir.", { selector: "p" })).toBeVisible()
 })
 
@@ -300,6 +301,26 @@ it("keeps results grouped immediately after deletion while old run metadata is s
   expect(rows[1]?.thread.id).toBe("sidebar-thread-7")
 })
 
+it("shows routine run time in the routine timezone in the sidebar", async () => {
+  const api = createMockApi({ scenario: "routine-conversation" })
+
+  render(<App kernel={{ services: { api } }} />)
+  await screen.findByRole("textbox", { name: "Mensagem para mark" })
+  const row = document.querySelector(".thread-row.selected")
+
+  expect(row).toHaveTextContent("16:04")
+  expect(row?.querySelector(".thread-copy strong")?.getAttribute("title")).toContain("16:04")
+  expect(document.querySelector(".routine-run-marker time")).toHaveTextContent("16:04")
+  expect(document.querySelector(".routine-run-marker time")?.getAttribute("title")).toContain("16:04")
+
+  const conversations = screen.getByRole("region", { name: "Conversas de mark" })
+  fireEvent.click(within(conversations).getByRole("button", { name: "Histórico de rotinas" }))
+  await screen.findByRole("heading", { name: "Rotinas" })
+  const history = document.querySelector(".routine-run-history")
+
+  expect(history).toHaveTextContent("17/10/2026, 16:04:00")
+})
+
 it("excludes archived and group threads, preserves missing metadata and leaves main-thread continuity alone", async () => {
   const { threads, routineRuns } = await getRoutineSidebarFixture()
   const routineThread = threads[1]
@@ -321,9 +342,21 @@ it("excludes archived and group threads, preserves missing metadata and leaves m
 
 it("labels routine times and navigation in Portuguese and English", () => {
   const timestamp = new Date(2026, 9, 18, 14, 45).getTime()
+  const scheduledFor = Date.UTC(2026, 9, 17, 19, 4)
+  const now = Date.UTC(2026, 9, 18, 12)
+  const routineTimeZone = "America/Sao_Paulo"
 
   expect(getRoutineRunDateLabel(timestamp, "pt-BR")).toBe("18/10/2026, 14:45")
   expect(getRoutineRunDateLabel(timestamp, "en")).toBe("10/18/26, 2:45 PM")
+  expect(getRoutineRunDateLabel(scheduledFor, "pt-BR", routineTimeZone)).toBe("17/10/2026, 16:04")
+  expect(getRoutineRunDateLabel(scheduledFor, "en", routineTimeZone)).toBe("10/17/26, 4:04 PM")
+  expect(getRoutineRunTimeLabel(scheduledFor, "pt-BR", routineTimeZone)).toBe("16:04")
+  expect(getRoutineRunTimeLabel(scheduledFor, "en", routineTimeZone)).toBe("4:04 PM")
+  expect(getRoutineRunSidebarDateLabel(scheduledFor, "pt-BR", routineTimeZone, now)).toBe("ontem · 16:04")
+  expect(getRoutineRunSidebarDateLabel(scheduledFor, "en", routineTimeZone, now)).toBe("yesterday · 4:04 PM")
+  expect(
+    getRoutineRunSidebarDateLabel(Date.UTC(2026, 9, 18, 2, 30), "pt-BR", routineTimeZone, Date.UTC(2026, 9, 18, 23)),
+  ).toBe("ontem · 23:30")
   expect(t("Routine run history", {}, "pt-BR")).toBe("Histórico de rotinas")
   expect(t("Routine run history", {}, "en")).toBe("Routine run history")
   expect(t("Open routine conversation", {}, "en")).toBe("Open conversation")

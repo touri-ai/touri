@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test"
 
-test.use({ channel: "chromium" })
+test.use({ channel: "chromium", timezoneId: "UTC" })
 test.setTimeout(60_000)
 
 const appearances = ["dark", "light", "mobile", "expanded"]
@@ -31,6 +31,7 @@ for (const appearance of appearances) {
     await expect(schedule).toHaveCount(0)
     await expect(page.locator(".routine-run-marker")).toContainText("Resumo da caixa de entrada")
     await expect(page.locator(".routine-run-marker")).toContainText("Concluído")
+    await expect(page.locator(".routine-run-marker time")).toHaveText("16:04")
     if (!mobile) await expect(page.locator(".thread-row.selected strong")).toHaveText("Resumo da caixa de entrada")
 
     const marker = await page.locator(".routine-run-marker").boundingBox()

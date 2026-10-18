@@ -4294,8 +4294,57 @@ export const getHostLabel = (host: HostKind, locale: Locale = "pt-BR"): string =
   return locale === "en" ? `this ${noun}` : noun
 }
 
-export const getRoutineRunDateLabel = (timestamp: number, locale: Locale = "pt-BR"): string =>
-  new Intl.DateTimeFormat(locale, { dateStyle: "short", timeStyle: "short" }).format(timestamp)
+export const getRoutineRunDateLabel = (timestamp: number, locale: Locale = "pt-BR", timeZone?: string): string =>
+  new Intl.DateTimeFormat(locale, {
+    dateStyle: "short",
+    timeStyle: "short",
+    ...(timeZone ? { timeZone } : {}),
+  }).format(timestamp)
+
+export const getRoutineRunTimeLabel = (timestamp: number, locale: Locale = "pt-BR", timeZone?: string): string =>
+  new Intl.DateTimeFormat(locale, { timeStyle: "short", ...(timeZone ? { timeZone } : {}) }).format(timestamp)
+
+export const getRoutineRunSidebarDateLabel = (
+  timestamp: number,
+  locale: Locale = "pt-BR",
+  timeZone?: string,
+  now = Date.now(),
+): string => {
+  const day = getRoutineRunRelativeDay(timestamp, now, timeZone)
+  if (!day) return getRoutineRunDateLabel(timestamp, locale, timeZone)
+
+  const relative = t(day, {}, locale).toLocaleLowerCase(locale)
+  const time = getRoutineRunTimeLabel(timestamp, locale, timeZone)
+  return `${relative} · ${time}`
+}
+
+const getRoutineRunRelativeDay = (timestamp: number, now: number, timeZone?: string): "Hoje" | "Ontem" | null => {
+  const date = getCalendarDateParts(timestamp, timeZone)
+  const today = getCalendarDateParts(now, timeZone)
+  if (isSameCalendarDate(date, today)) return "Hoje"
+
+  const yesterdayTimestamp = Date.UTC(today.year, today.month - 1, today.day - 1)
+  const yesterday = getCalendarDateParts(yesterdayTimestamp, "UTC")
+  return isSameCalendarDate(date, yesterday) ? "Ontem" : null
+}
+
+const getCalendarDateParts = (timestamp: number, timeZone?: string) => {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    ...(timeZone ? { timeZone } : {}),
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+  }).formatToParts(timestamp)
+  const getNumber = (type: "year" | "month" | "day"): number =>
+    Number(parts.find((part) => part.type === type)?.value ?? "0")
+
+  return { year: getNumber("year"), month: getNumber("month"), day: getNumber("day") }
+}
+
+const isSameCalendarDate = (
+  left: ReturnType<typeof getCalendarDateParts>,
+  right: ReturnType<typeof getCalendarDateParts>,
+): boolean => left.year === right.year && left.month === right.month && left.day === right.day
 
 /** Localize auto-generated imported date titles; preserve arbitrary user titles. */
 export const threadTitle = (title: string, createdAt: number): string => {

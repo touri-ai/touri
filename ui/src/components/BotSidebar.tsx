@@ -16,7 +16,7 @@ import { reconcileApprovalMessages } from "../approvalState"
 import { BOT_ACTIVITY_LABELS, type BotActivity } from "../botActivity"
 import { latestPreview } from "../botPreview"
 import { paletteShortcutLabel } from "../features/commandPalette/shortcut"
-import { getRoutineRunDateLabel, t } from "../i18n"
+import { getRoutineRunDateLabel, getRoutineRunSidebarDateLabel, t } from "../i18n"
 import {
   isFailureNotice,
   pendingNotifications,
@@ -108,6 +108,10 @@ export const Sidebar = (props: SidebarProps) => {
   )
   const routineIds = useMemo(
     () => props.routines && new Set(props.routines.map((routine) => routine.id)),
+    [props.routines],
+  )
+  const routinesById = useMemo(
+    () => new Map((props.routines ?? []).map((routine) => [routine.id, routine])),
     [props.routines],
   )
   const openRoutineHistory = props.onRoutineHistory ?? props.onRoutines
@@ -234,6 +238,7 @@ export const Sidebar = (props: SidebarProps) => {
                   threads={sidebarDataByBot.get(bot.id)?.threads ?? []}
                   routineRuns={sidebarDataByBot.get(bot.id)?.routineRuns ?? []}
                   routineIds={routineIds}
+                  routinesById={routinesById}
                   messages={messages}
                   attention={attention.filter((item) => item.botId === bot.id)}
                   notifications={notifications}
@@ -340,6 +345,7 @@ const BotEntry = ({
   threads,
   routineRuns,
   routineIds,
+  routinesById,
   messages,
   attention,
   notifications,
@@ -364,6 +370,7 @@ const BotEntry = ({
   threads: Array<Thread>
   routineRuns: Array<RoutineRun>
   routineIds: ReadonlySet<string> | undefined
+  routinesById: ReadonlyMap<string, Routine>
   messages: Array<Message>
   attention: Array<NotificationRecord>
   notifications: Array<NotificationRecord>
@@ -574,23 +581,31 @@ const BotEntry = ({
       {deleting && onDelete && <DeleteBotDialog bot={bot} onDelete={onDelete} onClose={() => setDeleting(false)} />}
       {expanded && (
         <section className="bot-thread-tree" aria-label={t("Conversations for {name}", { name: bot.name })}>
-          {sidebarThreads.map(({ thread, routineRun, running, unread, deletedRoutine }) => (
-            <ThreadRow
-              key={thread.id}
-              inserted={insertedThreads.has(thread.id)}
-              thread={thread}
-              deletedRoutine={deletedRoutine}
-              dateLabel={
-                thread.kind === "routine"
-                  ? getRoutineRunDateLabel(routineRun?.scheduledFor ?? thread.createdAt)
-                  : relativeThreadDate(thread.updatedAt)
-              }
-              unread={unread}
-              selected={thread.id === selectedThreadId}
-              running={running}
-              onClick={() => onSelectThread(thread.id)}
-            />
-          ))}
+          {sidebarThreads.map(({ thread, routineRun, running, unread, deletedRoutine }) => {
+            const timestamp = routineRun?.scheduledFor ?? thread.createdAt
+            const timeZone = routineRun ? routinesById.get(routineRun.routineId)?.timezone : undefined
+            const dateLabel =
+              thread.kind === "routine"
+                ? getRoutineRunSidebarDateLabel(timestamp, "pt-BR", timeZone)
+                : relativeThreadDate(thread.updatedAt)
+            const dateTitle =
+              thread.kind === "routine" ? getRoutineRunDateLabel(timestamp, "pt-BR", timeZone) : undefined
+
+            return (
+              <ThreadRow
+                key={thread.id}
+                inserted={insertedThreads.has(thread.id)}
+                thread={thread}
+                deletedRoutine={deletedRoutine}
+                dateLabel={dateLabel}
+                dateTitle={dateTitle}
+                unread={unread}
+                selected={thread.id === selectedThreadId}
+                running={running}
+                onClick={() => onSelectThread(thread.id)}
+              />
+            )
+          })}
           {visibleRoutineIds.length > 0 && (
             <button type="button" className="new-thread-row" onClick={() => onRoutineHistory(historyRoutineId)}>
               {t("Routine run history")}
@@ -623,6 +638,7 @@ const ThreadRow = ({
   thread,
   deletedRoutine,
   dateLabel,
+  dateTitle,
   unread,
   selected,
   running,
@@ -631,6 +647,7 @@ const ThreadRow = ({
   thread: Thread
   deletedRoutine: boolean
   dateLabel: string
+  dateTitle: string | undefined
   unread: number
   inserted: boolean
   selected: boolean
@@ -660,7 +677,7 @@ const ThreadRow = ({
         )}
       </span>
       <span className="thread-copy">
-        <strong title={thread.kind === "routine" ? `${title} · ${dateLabel}` : title}>{title}</strong>
+        <strong title={thread.kind === "routine" ? `${title} · ${dateTitle ?? dateLabel}` : title}>{title}</strong>
         <small>{dateLabel}</small>
       </span>
       {running ? (
