@@ -31,6 +31,7 @@ import {
   BotSettingsModal,
   DoctorModal,
   ImportWizard,
+  Modal,
   ProjectModal,
   SettingsModal,
 } from "./components/Modals"
@@ -395,8 +396,8 @@ const AppContent = ({ kernel }: AppProps) => {
       if (!isPaletteShortcut(event) || event.repeat) return
       event.preventDefault()
       // Dialogs (including approval confirmations) own the keyboard; the palette never opens over them.
-      if (document.querySelector(".modal-card, [role='alertdialog']")) return
-      setSearchOpen((current) => !current)
+      const hasDialog = Boolean(document.querySelector(".modal-card, [role='alertdialog']"))
+      setSearchOpen((current) => !current && !hasDialog)
     }
     window.addEventListener("keydown", handler)
     return () => window.removeEventListener("keydown", handler)
@@ -1248,7 +1249,7 @@ const AppContent = ({ kernel }: AppProps) => {
         {/* r8 motion: central overlay presence (settings content stays owned by its package) */}
         <ErrorBoundary area="a busca" dialog api={api} onClose={() => setSearchOpen(false)}>
           {searchOpen && (
-            <Suspense fallback={<p role="status">{t("Loading")}</p>}>
+            <Suspense fallback={<SearchLoading onClose={() => setSearchOpen(false)} />}>
               <CommandPalette
                 api={api}
                 open={searchOpen}
@@ -1322,6 +1323,14 @@ const AppContent = ({ kernel }: AppProps) => {
     </AvatarRuntimeProvider>
   )
 }
+
+const SearchLoading = ({ onClose }: { onClose: () => void }) => (
+  <Modal title={t("Buscar")} onClose={onClose}>
+    <p className="modal-intro" role="status">
+      {t("Loading")}
+    </p>
+  </Modal>
+)
 
 const LoadingScreen = ({
   serverMode = false,
