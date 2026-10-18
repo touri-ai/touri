@@ -108,10 +108,43 @@ test("a job can be searched and chosen by keyboard, with advanced edits preserve
 })
 
 test("a missing account is explained inline and creating succeeds after sign-in", async ({ page }) => {
-  await page.goto("/test/e2e/create-bot-harness.html?signed-out")
-  await page.getByRole("button", { name: "Criar meu primeiro bot" }).click()
+  let releaseWindowLoad: () => void = () => {}
+  const windowLoadBlocked = new Promise<void>((resolve) => {
+    releaseWindowLoad = resolve
+  })
+  await page.route("**/__test__/hold-window-load", async (route) => {
+    await windowLoadBlocked
+    await route.fulfill({
+      status: 200,
+      contentType: "image/svg+xml",
+      body: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"></svg>',
+    })
+  })
+  await page.addInitScript(() => {
+    document.addEventListener(
+      "DOMContentLoaded",
+      () => {
+        const image = document.createElement("img")
+        image.src = "/__test__/hold-window-load"
+        image.width = 1
+        image.height = 1
+        image.style.position = "fixed"
+        image.style.opacity = "0"
+        document.body.append(image)
+      },
+      { once: true },
+    )
+  })
+  await page.goto("/test/e2e/create-bot-harness.html?signed-out", { waitUntil: "commit" })
+  const openCreate = page.getByRole("button", { name: "Criar meu primeiro bot" })
+
+  await expect(openCreate).toBeVisible()
+  expect(await page.evaluate(() => document.readyState)).toBe("interactive")
+  await openCreate.click()
   const dialog = page.getByRole("dialog")
   await expect(dialog.getByRole("region", { name: "Escolha uma conta" })).toBeVisible()
+  releaseWindowLoad()
+  await page.waitForLoadState("load")
   await dialog.getByLabel("Nome", { exact: true }).fill("Clara")
   await dialog.getByRole("button", { name: "Criar bot", exact: true }).click()
   await expect(dialog.getByRole("alert")).toContainText("Entre em uma conta acima")
