@@ -97,6 +97,9 @@ export const ptBR = {
   "Goal paused": "Pausado",
   "Goal budget exhausted": "Limite atingido",
   "Goal completed": "Concluído",
+  "Goal completed summary": "Objetivo concluído",
+  "Goal new": "Novo objetivo",
+  "Goal budget exhausted summary": "Objetivo parado · limite atingido",
   "Continuação do objetivo": "Continuação do objetivo",
   "Send the same task to all other members of this touri group in parallel and gather final answers with authorship. Each recipient counts toward the shared six-call budget. Same depth 2, cycle, access, secrecy and approval fences as ask_bot. The whole set shares the group turn deadline (120s for chat); pending approval on one member does not hold up others. Only available in group participant sessions.":
     "Envia a mesma tarefa aos outros membros do grupo em paralelo e reúne as respostas finais com autoria. Cada membro conta no limite compartilhado de seis chamadas. Mantém os limites de profundidade 2, ciclos, acesso, segredos e aprovações da delegação individual. Todos compartilham o prazo do turno (120 segundos no chat); uma aprovação pendente não impede os outros de trabalhar. Disponível apenas nas sessões de membros do grupo.",
@@ -121,6 +124,7 @@ export const ptBR = {
   "Somente respostas finais confirmadas. Este quadro é apenas para leitura.":
     "Somente respostas finais confirmadas. Este quadro é apenas para leitura.",
   "Sem resultados confirmados neste turno.": "Sem resultados confirmados neste turno.",
+  "O membro foi removido do grupo.": "O membro foi removido do grupo.",
   "Meu Chrome só funciona em bots no computador onde o touri está rodando. Uma máquina remota não pode acessar esse navegador.":
     "Meu Chrome só funciona em bots no computador onde o touri está rodando. Uma máquina remota não pode acessar esse navegador.",
   "OpenCode está disponível no computador local e na máquina Linux. O runtime da nuvem ainda não oferece este provedor.":
@@ -478,6 +482,20 @@ export const ptBR = {
   "Excluir a rotina {name}?": "Excluir a rotina {name}?",
   "Ela não vai mais rodar. O histórico de execuções continua nas conversas.":
     "Ela não vai mais rodar. O histórico de execuções continua nas conversas.",
+  "A exclusão deste bot já está em andamento. Aguarde a conclusão.":
+    "A exclusão deste bot já está em andamento. Aguarde a conclusão.",
+  "Não foi possível encerrar as tarefas ou fechar a tela do bot. Pare as tarefas e tente excluir novamente.":
+    "Não foi possível encerrar as tarefas ou fechar a tela do bot. Pare as tarefas e tente excluir novamente.",
+  "Não foi possível apagar os logins do bot. Desbloqueie o cofre do sistema e tente excluir novamente.":
+    "Não foi possível apagar os logins do bot. Desbloqueie o cofre do sistema e tente excluir novamente.",
+  "Não foi possível remover o computador ou os volumes do bot. Confira o serviço de máquinas e tente excluir novamente.":
+    "Não foi possível remover o computador ou os volumes do bot. Confira o serviço de máquinas e tente excluir novamente.",
+  "O computador do bot ainda está em uso. Pare as tarefas e tente excluir novamente.":
+    "O computador do bot ainda está em uso. Pare as tarefas e tente excluir novamente.",
+  "Não foi possível apagar os arquivos do bot. Confira as permissões da pasta de dados e tente excluir novamente.":
+    "Não foi possível apagar os arquivos do bot. Confira as permissões da pasta de dados e tente excluir novamente.",
+  "Não foi possível remover o histórico e os vínculos do bot. Tente excluir novamente; se persistir, envie um relato do problema.":
+    "Não foi possível remover o histórico e os vínculos do bot. Tente excluir novamente; se persistir, envie um relato do problema.",
   "Não foi possível excluir a rotina. Tente novamente.": "Não foi possível excluir a rotina. Tente novamente.",
   "Excluindo…": "Excluindo…",
   Excluir: "Excluir",
@@ -2354,6 +2372,37 @@ export const ptBR = {
   "Atualizar status": "Atualizar status",
   "Crie um bot com o @BotFather e cole o token. Quando alguém mandar a primeira mensagem, o ID aparece aqui para você permitir.":
     "Crie um bot com o @BotFather e cole o token. Quando alguém mandar a primeira mensagem, o ID aparece aqui para você permitir.",
+  Work: "Trabalho",
+  Performance: "Desempenho",
+  "Work description": "Veja o que cada bot está fazendo e o que aguarda uma vaga.",
+  "Work loading": "Carregando tarefas…",
+  "Work empty": "Nenhuma tarefa em execução ou na fila. Envie uma mensagem para começar.",
+  "Work queued": "Na fila",
+  "Work queued count": "{count} na fila",
+  "Work queue position": "Na fila · {position}º de {total}",
+  "Work waiting for slot": "Na fila · aguardando uma vaga",
+  "Work preparing": "Preparando",
+  "Work conversation unavailable": "Conversa indisponível",
+  "Work origin": "Origem",
+  "Work state": "Estado",
+  "Work waiting time": "Esperando há",
+  "Work elapsed time": "Em execução há",
+  "Work message": "Mensagem",
+  "Work routine": "Rotina",
+  "Work delegation": "Delegação",
+  "Work resume": "Retomada",
+  "Work seconds": "{count} s",
+  "Work minutes": "{count} min {seconds} s",
+  "Work performance description": "Escolha quantas tarefas podem executar ao mesmo tempo.",
+  "Work concurrency": "Tarefas ao mesmo tempo",
+  "Work concurrency help":
+    "O padrão é 3. Mais tarefas usam mais memória e podem deixar o computador lento. As demais aguardam na fila. Escolha de 1 a 32.",
+  "Work concurrency changes":
+    "A mudança vale imediatamente. Reduzir o limite não interrompe tarefas em andamento. Delegações entre bots podem usar uma vaga extra para concluir a tarefa de quem chamou.",
+  "Work save": "Salvar limite",
+  "Work saving": "Salvando…",
+  "Work settings saved": "Limite salvo.",
+  "Work settings error": "Não foi possível salvar. Confira a conexão e tente novamente.",
   "Ver erro": "Ver erro",
   "Notificações que precisam de revisão em Tarefas interrompidas: {count}.":
     "Notificações que precisam de revisão em Tarefas interrompidas: {count}.",
@@ -2472,6 +2521,9 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Goal paused": "Paused",
   "Goal budget exhausted": "Limit reached",
   "Goal completed": "Completed",
+  "Goal completed summary": "Goal completed",
+  "Goal new": "New goal",
+  "Goal budget exhausted summary": "Goal stopped · limit reached",
   "Continuação do objetivo": "Goal continuation",
   "Sign in to {provider} for this {host}: open this link on this device":
     "Sign in to {provider} for {host}: open this link on this device",
@@ -2548,6 +2600,7 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Somente respostas finais confirmadas. Este quadro é apenas para leitura.":
     "Only confirmed final answers. This board is read-only.",
   "Sem resultados confirmados neste turno.": "No confirmed results in this turn yet.",
+  "O membro foi removido do grupo.": "This member was removed from the group.",
   "Salve o token do bot do Telegram.": "Save the Telegram bot token.",
   "Token inválido ou revogado.": "Invalid or revoked token.",
   "Não foi possível conectar ao Telegram. Confira sua conexão e tente novamente.":
@@ -2850,6 +2903,20 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Excluir a rotina {name}?": "Delete routine {name}?",
   "Ela não vai mais rodar. O histórico de execuções continua nas conversas.":
     "It will no longer run. Execution history remains in conversations.",
+  "A exclusão deste bot já está em andamento. Aguarde a conclusão.":
+    "This bot is already being deleted. Wait for deletion to finish.",
+  "Não foi possível encerrar as tarefas ou fechar a tela do bot. Pare as tarefas e tente excluir novamente.":
+    "Could not stop the bot's tasks or close its screen. Stop the tasks and try deleting again.",
+  "Não foi possível apagar os logins do bot. Desbloqueie o cofre do sistema e tente excluir novamente.":
+    "Could not delete the bot's sign-ins. Unlock the system keychain and try deleting again.",
+  "Não foi possível remover o computador ou os volumes do bot. Confira o serviço de máquinas e tente excluir novamente.":
+    "Could not remove the bot's computer or volumes. Check the machine service and try deleting again.",
+  "O computador do bot ainda está em uso. Pare as tarefas e tente excluir novamente.":
+    "The bot's computer is still in use. Stop the tasks and try deleting again.",
+  "Não foi possível apagar os arquivos do bot. Confira as permissões da pasta de dados e tente excluir novamente.":
+    "Could not delete the bot's files. Check the data folder permissions and try deleting again.",
+  "Não foi possível remover o histórico e os vínculos do bot. Tente excluir novamente; se persistir, envie um relato do problema.":
+    "Could not remove the bot's history and links. Try deleting again; if the problem persists, send a problem report.",
   "Não foi possível excluir a rotina. Tente novamente.": "Could not delete the routine. Try again.",
   "Excluindo…": "Deleting…",
   Excluir: "Delete",
@@ -4081,6 +4148,37 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "As permissões de pastas salvas não funcionam neste computador. Você pode conversar sem ferramentas. Remova essas permissões nas configurações do bot para continuar com tarefas.":
     "Saved folder permissions do not work on this computer. You can chat without tools. Remove these permissions in the bot settings to continue with tasks.",
   "Remover permissões antigas": "Remove old permissions",
+  Work: "Work",
+  Performance: "Performance",
+  "Work description": "See what each bot is doing and what is waiting for a slot.",
+  "Work loading": "Loading tasks…",
+  "Work empty": "No running or queued tasks. Send a message to get started.",
+  "Work queued": "Queued",
+  "Work queued count": "{count} queued",
+  "Work queue position": "Queued · {position} of {total}",
+  "Work waiting for slot": "Queued · waiting for a slot",
+  "Work preparing": "Preparing",
+  "Work conversation unavailable": "Conversation unavailable",
+  "Work origin": "Origin",
+  "Work state": "State",
+  "Work waiting time": "Waiting for",
+  "Work elapsed time": "Running for",
+  "Work message": "Message",
+  "Work routine": "Routine",
+  "Work delegation": "Delegation",
+  "Work resume": "Resume",
+  "Work seconds": "{count} s",
+  "Work minutes": "{count} min {seconds} s",
+  "Work performance description": "Choose how many tasks can run at the same time.",
+  "Work concurrency": "Simultaneous tasks",
+  "Work concurrency help":
+    "The default is 3. More tasks use more memory and may slow down your computer. Other tasks wait in the queue. Choose from 1 to 32.",
+  "Work concurrency changes":
+    "Changes apply immediately. Lowering the limit does not interrupt running tasks. Delegations between bots may use an extra slot to finish the calling task.",
+  "Work save": "Save limit",
+  "Work saving": "Saving…",
+  "Work settings saved": "Limit saved.",
+  "Work settings error": "Could not save. Check your connection and try again.",
   "Ver erro": "View error",
   "Notificações que precisam de revisão em Tarefas interrompidas: {count}.":
     "Notifications awaiting review in Interrupted tasks: {count}.",

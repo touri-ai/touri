@@ -60,7 +60,16 @@ it("limits primary navigation to the bot list and Advanced, with chat and compos
     within(screen.getByRole("navigation", { name: "Opções avançadas" }))
       .getAllByRole("button")
       .map((button) => button.textContent),
-  ).toEqual(["MCP", "Integrações", "Projetos", "Verificar este Mac", "Importar", "Reportar problema"])
+  ).toEqual([
+    "Trabalho",
+    "Desempenho",
+    "MCP",
+    "Integrações",
+    "Projetos",
+    "Verificar este Mac",
+    "Importar",
+    "Reportar problema",
+  ])
   fireEvent.keyDown(window, { key: "Escape" })
   expect(advanced).toHaveFocus()
   expect(screen.queryByRole("navigation", { name: "Opções avançadas" })).toBeNull()

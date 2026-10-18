@@ -18,6 +18,7 @@ type Turn = {
   reservations: Set<string>
   action?: "ask_all" | "summarize"
   children: Set<string>
+  completion: ReturnType<typeof Promise.withResolvers<void>>
   tail: string | null
   /** Routine turns share the routine's timeout instead of the per-bot chat limit. */
   deadline: number | null
@@ -113,6 +114,24 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
       engine.cancel(child)
     })
   }
+  const cancelTurn = (turn: Turn): void => {
+    turn.controller.abort()
+    cancelChildren(turn)
+    if (turn.run.status !== "queued") return
+
+    save(turn, { status: "canceled", errorClass: "canceled", finishedAt: Date.now() })
+    turn.completion.resolve()
+  }
+  const isBotTurn = (turn: Turn, botId: string): boolean => {
+    const thread = store.getThread({ threadId: turn.run.threadId })
+    const remaining = groups.get(turn.group.id)?.memberIds.some((id) => id !== botId)
+    if (thread?.botId === botId && !remaining) return true
+    if (turn.action === "ask_all") return false
+
+    return turn.run.botId === botId || turn.recipients.includes(botId)
+  }
+  const getMemberRuns = (turn: Turn, botId: string): string[] =>
+    [...turn.children].filter((id) => readRun(id)?.botId === botId)
   const cancelDeletedTurn = (turn: Turn): void => {
     frames.forEach((frame, threadId) => {
       if (frame.turn !== turn) return
@@ -154,7 +173,12 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
         timer = setTimeout(abort, Math.max(1, expiresAt - Date.now()))
       }
       dispose = kernel.subscribe(({ event }) => {
-        if (event.type === "run.updated" && event.run.id === id) check()
+        if (
+          (event.type === "run.updated" && event.run.id === id) ||
+          event.type === "transcript.resync" ||
+          event.type === "bot.deleted"
+        )
+          check()
       })
       signal.addEventListener("abort", abort, { once: true })
       if (signal.aborted) abort()
@@ -291,9 +315,17 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
   const unsubscribe = kernel.subscribe(({ event }) => {
     if (event.type === "transcript.resync" || event.type === "bot.deleted") {
       turns.forEach((turn) => {
-        if (isCurrentTurn(turn) && (event.type !== "bot.deleted" || !turn.group.memberIds.includes(event.botId))) return
+        if (!isCurrentTurn(turn)) {
+          cancelDeletedTurn(turn)
+          return
+        }
+        if (event.type !== "bot.deleted") return
 
-        cancelDeletedTurn(turn)
+        if (isBotTurn(turn, event.botId)) cancelTurn(turn)
+        else
+          getMemberRuns(turn, event.botId).forEach((id) => {
+            engine.cancel(id)
+          })
       })
       return
     }
@@ -326,6 +358,11 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
       event.type !== "message.parts"
     )
       return
+    if (event.type === "message.created" && event.message.role === "system") {
+      const turn = turns.get(event.message.runId ?? "")
+      if (turn && event.message.parts.some((part) => part.type === "notice" && part.code === "group_member_removed"))
+        turn.tail = event.message.id
+    }
     const sourceThread =
       event.type === "message.delta" || event.type === "message.parts" ? event.threadId : event.message.threadId
     const frame = frames.get(sourceThread)
@@ -439,6 +476,7 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
         if (!turn) break
         if (terminal(turn.run)) {
           turns.delete(turn.run.id)
+          turn.completion.resolve()
           continue
         }
         save(turn, { status: "running", startedAt: Date.now() })
@@ -464,6 +502,7 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
           })
         }
         turns.delete(turn.run.id)
+        turn.completion.resolve()
       }
     } finally {
       busy.delete(groupId)
@@ -531,6 +570,7 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
       ...(action === "group_ask_all" ? { action: "ask_all" as const } : {}),
       ...(action === "group_summary" ? { action: "summarize" as const } : {}),
       children: new Set(),
+      completion: Promise.withResolvers<void>(),
       tail: args.requestMessageId,
       deadline: budget ? Date.now() + budget.timeout_minutes * 60_000 : null,
     }
@@ -548,20 +588,31 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
     // Parar ends the active turn and pending messages for this group, across all its conversations.
     for (const candidate of turns.values())
       if (candidate.group.id === turn.group.id) {
-        candidate.controller.abort()
-        for (const child of candidate.children) engine.cancel(child)
-        if (candidate.run.status === "queued")
-          save(candidate, { status: "canceled", errorClass: "canceled", finishedAt: Date.now() })
+        cancelTurn(candidate)
       }
     return true
   }
   const cancelBotTurns = async ({ botId }: { botId: string }): Promise<void> => {
-    const affected = [...turns.values()].filter((turn) => turn.group.memberIds.includes(botId))
-    affected.forEach((turn) => {
-      cancel(turn.run.id)
+    const affected = [...turns.values()].filter((turn) => isBotTurn(turn, botId))
+    // An ask-all aggregate belongs to the surviving team, including when its first recipient is removed.
+    turns.forEach((turn) => {
+      if (turn.action !== "ask_all" || affected.includes(turn) || turn.run.botId !== botId) return
+      const successorId = groups.get(turn.group.id)?.memberIds.find((id) => id !== botId)
+      const successor = successorId ? store.getBot({ botId: successorId }) : null
+      if (successor) save(turn, { botId: successor.id, provider: successor.provider })
     })
-    await engine.cancelRuns?.(affected.flatMap((turn) => [...turn.children]))
+    const runIds = [...turns.values()].flatMap((turn) =>
+      affected.includes(turn) ? [...turn.children] : getMemberRuns(turn, botId),
+    )
+    affected.forEach((turn) => {
+      cancelTurn(turn)
+    })
+    runIds.forEach((id) => {
+      engine.cancel(id)
+    })
+    await engine.cancelRuns?.(runIds)
     await engine.cancelBotTurns?.({ botId })
+    await Promise.all(affected.map((turn) => turn.completion.promise))
   }
   const cancelGroupTurns = async ({ groupId }: { groupId: string }): Promise<void> => {
     const affected = [...turns.values()].filter((turn) => turn.group.id === groupId)

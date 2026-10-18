@@ -89,6 +89,7 @@ export type WorkspaceActions = {
   selectThread: (threadId: Id) => void
   createGroup: (input: GroupInput, id?: string) => Promise<void>
   createGroupThread: (id: string) => Promise<void>
+  deleteGroup: (id: string) => Promise<void>
   createThread: () => Promise<void>
   sendMessage: (
     text: string,
