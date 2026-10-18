@@ -4,6 +4,7 @@ import { useApiModels } from "../features/bots/apiModels"
 import { t } from "../i18n"
 import { useHost } from "../useHost"
 import { ProviderInstallation } from "./ProviderInstallation"
+import { getBotModelName } from "./ProviderMark"
 
 export const ApiModelPicker = ({
   api,
@@ -34,7 +35,7 @@ export const ApiModelPicker = ({
       >
         <option value="">{t("Use a connected account")}</option>
         {value && !models.some((model) => getApiModelReference(model) === value) && (
-          <option value={value}>{value}</option>
+          <option value={value}>{getBotModelName({ model: value })}</option>
         )}
         {models.map((model) => (
           <option key={model.id} value={getApiModelReference(model)}>

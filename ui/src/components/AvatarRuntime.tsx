@@ -7,8 +7,10 @@ import {
   useContext,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react"
 import type { WorkspaceData } from "../useWorkspace"
 import { MascotMachine, type MascotSnapshot, type MascotState, mascotMoodFor, mascotSignalFor } from "./mascotState"
@@ -20,13 +22,13 @@ export type AvatarRuntime = Pick<
   Partial<Pick<WorkspaceData, "computerGrantRequest" | "machines">>
 type ComposerEvent = { botId: string; threadId: string; focused: boolean; typing: boolean }
 type RuntimeValue = AvatarRuntime & {
-  snapshots: ReadonlyMap<string, MascotSnapshot>
+  snapshots: ReturnType<typeof createSnapshotStore>
   composer: (event: ComposerEvent) => void
 }
 type MachineView = { snapshots: ReadonlyMap<string, MascotSnapshot>; deadline: number | null }
 const RuntimeContext = createContext<RuntimeValue | null>(null)
 const scopeKey = (botId: string, threadId?: string): string => JSON.stringify([botId, threadId ?? null])
-const machineView = (machines: ReadonlyMap<string, MascotMachine>): MachineView => {
+const getMachineView = (machines: ReadonlyMap<string, MascotMachine>): MachineView => {
   const deadlines = [...machines.values()].flatMap((machine) => (machine.deadline === null ? [] : [machine.deadline]))
   return {
     snapshots: new Map([...machines].map(([key, machine]) => [key, machine.snapshot])),
@@ -93,17 +95,13 @@ export const AvatarRuntimeProvider = ({ value, children }: { value: AvatarRuntim
     const now = performance.now()
     return new Map([...runtimeSignals(value, new Set())].map(([key, signal]) => [key, new MascotMachine(signal, now)]))
   })
-  const [{ snapshots, deadline }, setView] = useState(() => machineView(machines))
+  const [snapshots] = useState(() => createSnapshotStore(getMachineView(machines).snapshots))
+  const [deadline, setDeadline] = useState(() => getMachineView(machines).deadline)
   const publish = useCallback(() => {
-    setView((current) => {
-      const next = machineView(machines)
-      return current.deadline === next.deadline &&
-        current.snapshots.size === next.snapshots.size &&
-        [...next.snapshots].every(([key, snapshot]) => current.snapshots.get(key) === snapshot)
-        ? current
-        : next
-    })
-  }, [machines])
+    const next = getMachineView(machines)
+    snapshots.publish(next.snapshots)
+    setDeadline(next.deadline)
+  }, [machines, snapshots])
 
   useEffect(() => {
     const current = completionStamps(value)
@@ -162,7 +160,9 @@ export const AvatarRuntimeProvider = ({ value, children }: { value: AvatarRuntim
     },
     [machines, publish],
   )
-  return <RuntimeContext.Provider value={{ ...value, snapshots, composer }}>{children}</RuntimeContext.Provider>
+  const runtime = useMemo(() => ({ ...value, snapshots, composer }), [value, snapshots, composer])
+
+  return <RuntimeContext.Provider value={runtime}>{children}</RuntimeContext.Provider>
 }
 
 export const useAvatarBot = (id: string | null): Bot | undefined =>
@@ -181,7 +181,7 @@ export const useMascotSnapshot = (
   threadId?: string,
 ): MascotSnapshot => {
   const runtime = useContext(RuntimeContext)
-  const snapshot = runtime?.snapshots.get(scopeKey(identity.id, threadId))
+  const snapshot = useRuntimeSnapshot(runtime, identity.id, threadId)
   return identity.paused
     ? { state: "sleeping", phase: "asleep", since: 0, revision: 0 }
     : (snapshot ?? { state: "idle", phase: "idle", since: 0, revision: 0 })
@@ -196,7 +196,7 @@ export const useAvatarMood = (identity: AvatarIdentity & { paused?: boolean }, o
 export const useMessageMascotState = (message: Message, run?: Run): MascotState => {
   const runtime = useContext(RuntimeContext)
   const botId = run?.botId ?? runtime?.threads.find((thread) => thread.id === message.threadId)?.botId ?? ""
-  const snapshot = runtime?.snapshots.get(scopeKey(botId, message.threadId))
+  const snapshot = useRuntimeSnapshot(runtime, botId, message.threadId)
   if (snapshot) return snapshot.state
   return mascotSignalFor({
     botId,
@@ -205,4 +205,37 @@ export const useMessageMascotState = (message: Message, run?: Run): MascotState 
     notifications: runtime?.notifications.filter((item) => item.threadId === message.threadId) ?? [],
     waiting: runtime?.computerGrantRequest?.threadId === message.threadId,
   }).state
+}
+
+const createSnapshotStore = (initial: ReadonlyMap<string, MascotSnapshot>) => {
+  // React's external store API needs synchronous snapshots and subscription lifetimes.
+  let snapshots = initial
+  const listeners = new Set<() => void>()
+
+  return {
+    getSnapshot: (key: string) => snapshots.get(key),
+    subscribe: (listener: () => void) => {
+      listeners.add(listener)
+      return () => {
+        listeners.delete(listener)
+      }
+    },
+    publish: (next: ReadonlyMap<string, MascotSnapshot>) => {
+      if (snapshots.size === next.size && Array.from(next).every(([key, snapshot]) => snapshots.get(key) === snapshot))
+        return
+
+      snapshots = next
+      listeners.forEach((listener) => {
+        listener()
+      })
+    },
+  }
+}
+
+const subscribeWithoutRuntime = () => () => {}
+const useRuntimeSnapshot = (runtime: RuntimeValue | null, botId: string, threadId?: string) => {
+  const key = scopeKey(botId, threadId)
+  const getSnapshot = () => runtime?.snapshots.getSnapshot(key)
+
+  return useSyncExternalStore(runtime?.snapshots.subscribe ?? subscribeWithoutRuntime, getSnapshot)
 }
