@@ -35,6 +35,7 @@ test("a plain explanation needs no diagnostic disclosure", () => {
 
 test("long diagnostics preserve every reference code within the size limit", () => {
   const text = `network error: ECONNRESET ${"Conexão de demonstração interrompida. ".repeat(30)} [TOURI-E1009]`
+
   const { container } = render(<ErrorText text={text} code="TOURI-E8001" />)
   const diagnostic = container.querySelector("code")?.textContent ?? ""
 
