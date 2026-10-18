@@ -23,7 +23,7 @@ import type {
   UiEventEnvelope,
 } from "@touri/contracts"
 import { isApprovalNoticeTitle } from "@touri/contracts/approval-summary"
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react"
 import type { UiApi } from "./api/client"
 import {
   countPendingRequests,
@@ -39,6 +39,7 @@ import { localizeNotice, t } from "./i18n"
 import { localResponseTimings } from "./localResponseTimings"
 import { useMachineParking } from "./machineIntents"
 import { reconcileFailureNotifications } from "./sidebarAttention"
+import { activeRun, activityMessage, retainWorkspace } from "./workspaceRetention"
 import { readWorkspaceState, saveWorkspaceState } from "./workspaceState"
 
 type ProcessEntry = { spec: ProcessSpec; run: ProcessRunState | null }
@@ -331,6 +332,49 @@ const applyStreamEvent = (messages: Array<Message>, event: MessageStreamEvent): 
     : applyDelta(messages, event.messageId, event.delta, event.partIndex, event.offset, event)
 
 const MAX_NOTIFICATIONS = 200
+// A slow history request must not become an unbounded event cache. Overflow reloads a fresh snapshot.
+const MAX_STREAM_BUFFER_BYTES = 256 * 1024
+type ThreadLoad = {
+  attempt: number
+  promise: Promise<void>
+  deltas: Array<MessageStreamEvent>
+  bytes: number
+  overflow: boolean
+}
+const bufferStreamEvent = (load: ThreadLoad | undefined, event: MessageStreamEvent): void => {
+  if (!load || load.overflow) return
+  load.bytes += JSON.stringify(event).length * 2
+  if (load.bytes > MAX_STREAM_BUFFER_BYTES) {
+    load.overflow = true
+    load.deltas.length = 0
+  } else load.deltas.push(event)
+}
+
+const updateActivityParts = (messages: Message[], event: Extract<UiEvent, { type: "message.parts" }>): Message[] =>
+  messages.map((message) => {
+    if (message.id !== event.messageId || message.threadId !== event.threadId || message.status !== "streaming")
+      return message
+    if (event.updatedSeq !== undefined && event.updatedSeq <= (message.updatedSeq ?? 0)) return message
+    if (event.generation !== undefined && event.generation < (message.generation ?? 0)) return message
+    const parts = [...message.parts]
+    for (const { part } of event.parts) {
+      if (part.type !== "approval" && part.type !== "notice") continue
+      const index = parts.findIndex(
+        (previous) =>
+          previous.type === "approval" && part.type === "approval" && previous.approvalId === part.approvalId,
+      )
+      const previous = parts[index]
+      if (index < 0) parts.push(structuredClone(part))
+      else if (previous?.type === "approval" && previous.decision === "pending") parts[index] = structuredClone(part)
+    }
+    return {
+      ...message,
+      parts,
+      updatedAt: event.updatedAt ?? message.updatedAt,
+      ...(event.updatedSeq !== undefined ? { updatedSeq: event.updatedSeq } : {}),
+      ...(event.generation !== undefined ? { generation: event.generation } : {}),
+    }
+  })
 
 const withoutBot = (data: WorkspaceData, botId: Id): WorkspaceData => {
   const threadIds = new Set(data.threads.filter((thread) => thread.botId === botId).map((thread) => thread.id))
@@ -395,7 +439,14 @@ const lastActiveThread = (threads: Thread[], runs: Run[], botId: Id, rememberedI
 
 export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
   const diagnosis = useDoctorReport(api, enabled)
-  const [data, setData] = useState<WorkspaceData>(emptyState)
+  const [data, setData] = useReducer(
+    (current: WorkspaceData, update: (current: WorkspaceData) => WorkspaceData) => {
+      const next = update(current)
+      return next === current ? current : retainWorkspace(next)
+    },
+    undefined,
+    emptyState,
+  )
   const creatingThread = useRef(false)
   const currentData = useRef(data)
   currentData.current = data
@@ -406,18 +457,13 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
   const runRevision = useRef(0)
   const liveRuns = useRef(new Map<Id, number>())
   const loadedThreads = useRef(new Map<Id, number>())
-  const threadLoads = useRef(
-    new Map<
-      Id,
-      {
-        attempt: number
-        promise: Promise<void>
-        deltas: Array<MessageStreamEvent>
-      }
-    >(),
-  )
+  const threadLoads = useRef(new Map<Id, ThreadLoad>())
   const projectGeneration = useRef(0)
   const [projectRevision, setProjectRevision] = useState(0)
+  useEffect(() => {
+    const activeIds = new Set(data.runs.filter(activeRun).map((run) => run.id))
+    for (const id of liveRuns.current.keys()) if (!activeIds.has(id)) liveRuns.current.delete(id)
+  }, [data.runs])
   useEffect(() => {
     if (!data.loading && data.selectedBotId && !data.threadCreation) {
       if (data.selectedThreadId) threadsByBot.current[data.selectedBotId] = data.selectedThreadId
@@ -456,7 +502,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
   )
 
   const loadThread = useCallback(
-    (threadId: Id, force = false): Promise<void> => {
+    function loadThread(threadId: Id, force = false): Promise<void> {
       const attempt = generation.current
       const pending = threadLoads.current.get(threadId)
       if (pending?.attempt === attempt) return pending.promise
@@ -467,22 +513,42 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
         api.request("GET /threads/:id/runs", { all: true }, { id: threadId }),
       ])
         .then(([messages, runs]) => {
-          if (attempt !== generation.current) return
+          const load = threadLoads.current.get(threadId)
+          if (
+            attempt !== generation.current ||
+            load?.promise !== promise ||
+            currentData.current.selectedThreadId !== threadId
+          )
+            return
+          if (load.overflow) return
           loadedThreads.current.set(threadId, attempt)
-          setData((current) => ({
-            ...current,
-            messages: deltas.reduce(applyStreamEvent, messages.messages).reduce(updateMessage, current.messages),
-            runs: mergeRunRows(current.runs, runs.runs),
-          }))
+          setData((current) =>
+            current.selectedThreadId !== threadId
+              ? current
+              : {
+                  ...current,
+                  messages: (api.pendingMessages?.() ?? [])
+                    .filter((message) => message.threadId === threadId)
+                    .reduce(
+                      updateMessage,
+                      deltas.reduce(applyStreamEvent, messages.messages).reduce(updateMessage, current.messages),
+                    ),
+                  runs: mergeRunRows(current.runs, runs.runs),
+                },
+          )
         })
         .catch((error: unknown) => {
-          if (attempt === generation.current)
+          if (attempt === generation.current && threadLoads.current.get(threadId)?.promise === promise)
             setData((current) => ({ ...current, notice: t("Service request failed", { error: errorMessage(error) }) }))
         })
         .finally(() => {
-          if (threadLoads.current.get(threadId)?.promise === promise) threadLoads.current.delete(threadId)
+          const load = threadLoads.current.get(threadId)
+          if (load?.promise !== promise) return
+          threadLoads.current.delete(threadId)
+          if (load.overflow && attempt === generation.current && currentData.current.selectedThreadId === threadId)
+            void loadThread(threadId, true)
         })
-      threadLoads.current.set(threadId, { attempt, promise, deltas })
+      threadLoads.current.set(threadId, { attempt, promise, deltas, bytes: 0, overflow: false })
       return promise
     },
     [api],
@@ -491,6 +557,9 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
   const load = useCallback(async (): Promise<void> => {
     if (!enabled) return
     const attempt = ++generation.current
+    for (const load of threadLoads.current.values()) load.deltas.length = 0
+    threadLoads.current.clear()
+    loadedThreads.current.clear()
     const runsAtStart = runRevision.current
     try {
       const [
@@ -578,7 +647,10 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
           machines: machineResponse.machines,
           threads,
           messages: (api.pendingMessages?.() ?? []).reduce(updateMessage, current.messages),
-          activityMessages: activityResponse.messages,
+          activityMessages: current.activityMessages.reduce(
+            updateMessage,
+            activityResponse.messages.map(activityMessage),
+          ),
           runs,
           projects: projectResponse.projects,
           previews: previewResponse.previews,
@@ -654,8 +726,12 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
         return
       }
       if (event.type === "message.delta" || event.type === "message.parts")
-        threadLoads.current.get(event.threadId)?.deltas.push(event)
-      if (event.type === "run.updated") liveRuns.current.set(event.run.id, ++runRevision.current)
+        bufferStreamEvent(threadLoads.current.get(event.threadId), event)
+      if (event.type === "run.updated") {
+        const revision = ++runRevision.current
+        if (activeRun(event.run)) liveRuns.current.set(event.run.id, revision)
+        else liveRuns.current.delete(event.run.id)
+      }
       setData((current) => {
         if (event.type === "machine.updated")
           return {
@@ -689,7 +765,11 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
         if (event.type === "message.created" || event.type === "message.updated")
           return {
             ...current,
-            messages: updateMessage(current.messages, event.message),
+            messages:
+              event.message.threadId === current.selectedThreadId
+                ? updateMessage(current.messages, event.message)
+                : current.messages,
+            activityMessages: updateMessage(current.activityMessages, activityMessage(event.message)),
             threads:
               event.message.delivery && event.message.delivery.status !== "acked" && event.type === "message.created"
                 ? current.threads.map((thread) =>
@@ -698,6 +778,14 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
                 : current.threads,
           }
         if (event.type === "message.delta" || event.type === "message.parts") {
+          if (event.threadId !== current.selectedThreadId) {
+            if (event.type === "message.delta") return current
+            // Summary rows have no transcript part indices. Merge attention patches by request identity.
+            return {
+              ...current,
+              activityMessages: updateActivityParts(current.activityMessages, event),
+            }
+          }
           const message = current.messages.find((row) => row.id === event.messageId && row.threadId === event.threadId)
           const part = event.type === "message.delta" ? message?.parts[event.partIndex] : undefined
           const length = part?.type === "text" || part?.type === "reasoning" ? part.text.length : 0
@@ -709,8 +797,9 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
             // Unopened threads have no snapshot to repair; selection fetches their current history.
             if (event.threadId === current.selectedThreadId && !threadLoads.current.has(event.threadId))
               queueMicrotask(() => {
+                if (currentData.current.selectedThreadId !== event.threadId) return
                 void loadThread(event.threadId, true)
-                threadLoads.current.get(event.threadId)?.deltas.push(event)
+                bufferStreamEvent(threadLoads.current.get(event.threadId), event)
               })
           }
           return {
@@ -801,7 +890,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
               ...current,
               notifications,
               messages: reconcileApprovalMessages(current.messages, notifications, activity.messages),
-              activityMessages: activity.messages,
+              activityMessages: current.activityMessages.reduce(updateMessage, activity.messages.map(activityMessage)),
               pendingRequestsOnReturn: countPendingRequests(notifications, messages),
             }
           })
@@ -835,6 +924,10 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
     return () => {
       active = false
       generation.current += 1
+      for (const load of threadLoads.current.values()) load.deltas.length = 0
+      threadLoads.current.clear()
+      loadedThreads.current.clear()
+      liveRuns.current.clear()
       unsubscribe()
       unsubscribeConnection?.()
       document.removeEventListener("visibilitychange", visibility)
@@ -853,6 +946,12 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: refresh and reconnect also refresh the selected transcript
   useEffect(() => {
+    for (const id of loadedThreads.current.keys()) if (id !== data.selectedThreadId) loadedThreads.current.delete(id)
+    for (const [id, load] of threadLoads.current) {
+      if (id === data.selectedThreadId) continue
+      load.deltas.length = 0
+      threadLoads.current.delete(id)
+    }
     if (enabled && !data.loading && data.selectedThreadId && !data.threadCreation)
       void loadThread(data.selectedThreadId)
   }, [enabled, data.loading, data.selectedThreadId, data.threadCreation, projectRevision, loadThread])

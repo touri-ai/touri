@@ -75,7 +75,7 @@ test("134 threads across 15 bots request only the selected history and render be
   await act(async () => barrier.resolve())
 })
 
-test("selection loads a thread while preserving visited histories and background live events", async () => {
+test("selection evicts the visited transcript and reloads background events from durable history", async () => {
   const api = createMockApi()
   offscreenMessage(api)
   const hook = renderHook(() => useWorkspace(api))
@@ -85,10 +85,12 @@ test("selection loads a thread while preserving visited histories and background
   expect(hook.result.current.data.messages.some((message) => message.threadId === "thread-onb")).toBe(false)
   const original = hook.result.current.data.messages[0]
   if (!original) throw new Error("Missing message fixture")
+  const reply = { ...original, id: "live-reply", threadId: "thread-onb", text: "Live reply", updatedSeq: 100 }
+  api.getState().messages.push(reply)
   act(() => {
     api.emit({
       type: "message.created",
-      message: { ...original, id: "live-reply", threadId: "thread-onb", text: "Live reply", updatedSeq: 100 },
+      message: reply,
     })
     hook.result.current.actions.selectLocation({ bot: "bot-onb", thread: "thread-onb" })
   })
@@ -99,7 +101,7 @@ test("selection loads a thread while preserving visited histories and background
       ),
     ).toBe(true),
   )
-  expect(hook.result.current.data.messages).toContainEqual(original)
+  expect(hook.result.current.data.messages).not.toContainEqual(original)
   expect(hook.result.current.data.messages.find((message) => message.id === "live-reply")?.text).toBe("Live reply")
 })
 
