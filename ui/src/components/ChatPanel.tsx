@@ -26,6 +26,7 @@ import { getRoutineReplyRun, isRoutineEmptyResult, isRoutineRun } from "../routi
 import { type RoutineDraft, repeatTaskDraft, suggestedRoutineDraft } from "../routineDraft"
 import { failureTimeLabel, runErrorFor } from "../runError"
 import { getSidebarThreadTitle } from "../sidebarThreadTitle"
+import { RecoveryTasksContext } from "../useRecoveryTasks"
 import { ActivityMark } from "./ActivityMark"
 import { ApprovalCard } from "./ApprovalCard"
 import { useAvatarBot, useMascotSnapshot, useMessageMascotState, useThreadBot } from "./AvatarRuntime"
@@ -575,6 +576,10 @@ const MessageBubble = ({
     (failure?.code === "TOURI-E8001" || failure?.code === "TOURI-E8002")
       ? null
       : failure
+  const recoveryTasks = useContext(RecoveryTasksContext)
+  const resolvedInterruption = recoveryTasks.some(
+    (task) => message.runId !== null && task.runId === message.runId && task.notification.resolvedAt !== null,
+  )
   const [failureExpanded, setFailureExpanded] = useState(false)
   const [reviewingActions, setReviewingActions] = useState(false)
   useEffect(() => {
@@ -842,7 +847,12 @@ const MessageBubble = ({
           </button>
         </fieldset>
       )}
-      {runError && recovered ? (
+      {resolvedInterruption && (
+        <p className="run-resumed-marker" role="note">
+          {t("Interrupção anterior · resolvida")}
+        </p>
+      )}
+      {resolvedInterruption ? null : runError && recovered ? (
         <div className="message-error-history">
           <button
             type="button"

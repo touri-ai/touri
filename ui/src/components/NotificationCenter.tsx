@@ -61,6 +61,7 @@ const age = (createdAt: number, now: number): string => {
 
 export type NotificationActions = {
   open: (item: NotificationRecord) => void
+  openRecovery?: () => void
   dismiss: (id: number) => Promise<void>
   dismissAll: () => Promise<void>
   respond: (args: { notification: NotificationRecord; behavior: RespondBehavior; message?: string }) => Promise<void>
@@ -151,7 +152,7 @@ const NotificationRow = ({
         <div className="notification-head">
           <strong>{item.botName ?? "touri"}</strong>
           <span className={`notification-kind kind-${item.level}`}>{t(KIND_KEY[item.kind])}</span>
-          {resolved && isFailureNotice(item) && <span>{t("Resolvido")}</span>}
+          {resolved && isFailureNotice(item) && <span>{t("Interrupção anterior · resolvida")}</span>}
           <time
             dateTime={new Date(item.createdAt).toISOString()}
             title={new Date(item.createdAt).toLocaleString("pt-BR")}
@@ -171,6 +172,7 @@ const NotificationRow = ({
         {failed ? (
           <ErrorNotice
             error={failedRun?.errorMessage ?? item.body}
+            showActions={!resolved}
             context={{
               provider: failedRun?.provider,
               errorClass: failedRun?.errorClass,
@@ -421,6 +423,18 @@ export const NotificationBell = ({
                 </button>
               </div>
             </header>
+            {actions.openRecovery && (
+              <button
+                type="button"
+                className="text-button"
+                onClick={() => {
+                  setOpen(false)
+                  actions.openRecovery?.()
+                }}
+              >
+                {t("Interrupted tasks")}
+              </button>
+            )}
             {clearError && (
               <p className="screen-inline-error" role="alert">
                 Não foi possível limpar as notificações. Tente novamente.

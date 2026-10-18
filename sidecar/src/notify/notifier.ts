@@ -1,6 +1,7 @@
 import type { Database } from "bun:sqlite"
 import type { Kernel, NotificationRecord, NotifyInput, NotifyResolution } from "@touri/contracts"
 import { buildDeepLink, nativeNotificationTitle, shouldNotifyNative } from "./native"
+import { getRecoveryAcknowledgementKeys } from "./recovery"
 import type { SseHub } from "./sse"
 import type { NotificationStore } from "./store"
 
@@ -57,6 +58,7 @@ export const createNotifier = ({ kernel, store, hub }: { kernel: Kernel; store: 
   }
 
   const finish = ({ id, resolution }: { id: number; resolution: NotifyResolution }): NotificationRecord | null => {
+    if (getRecoveryAcknowledgementKeys(kernel.db as Database, id).length > 0) return null
     const resolved = store.resolve({ id, resolution })
     if (!resolved) return null
     kernel.publish({ type: "notification.resolved", notification: resolved.notification })

@@ -1,5 +1,5 @@
 import { listen } from "@tauri-apps/api/event"
-import type { BotGroup, Id, NotificationRecord } from "@touri/contracts"
+import type { BotGroup, Id, NotificationRecord, RecoveryTask } from "@touri/contracts"
 import type { FailureAction } from "@touri/contracts/run-failure"
 import { type SetStateAction, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
@@ -23,6 +23,7 @@ import { ErrorNotice } from "./components/ErrorNotice"
 import { EvidenceContext } from "./components/EvidenceGallery"
 import { FailureActionContext } from "./components/FailureActionContext"
 import { GroupModal, GroupPanel } from "./components/Groups"
+import { InterruptedTasks } from "./components/InterruptedTasks"
 import {
   BotCreateModal,
   BotModelModal,
@@ -70,6 +71,7 @@ import { requestTaskResume, requestTaskReview } from "./recoveryEvents"
 import type { RoutineDraft } from "./routineDraft"
 import { isFailureNotice } from "./sidebarAttention"
 import { useHost } from "./useHost"
+import { RecoveryTasksContext, useRecoveryTasks } from "./useRecoveryTasks"
 import { useWebNavigation } from "./useWebNavigation"
 import { useWorkspace } from "./useWorkspace"
 import { type AppRoute, readWorkspaceState, saveWorkspaceState } from "./workspaceState"
@@ -185,6 +187,21 @@ const AppContent = ({ kernel }: AppProps) => {
   useEffect(() => installComputerKillSwitch(activeApi, invokeCommand, setLocalNotice), [activeApi, invokeCommand])
   const workspace = useWorkspace(activeApi, api !== null)
   const { data, actions } = workspace
+  const interruptedWork = useRecoveryTasks(api)
+  const [recoveryOpen, setRecoveryOpen] = useState(false)
+  const openRecovery = () => setRecoveryOpen(true)
+  const reviewRecoveryTask = (task: RecoveryTask, resume = false) => {
+    if (!task.notification.threadId && task.routineId && task.notification.botId) {
+      openBotRoutines(task.notification.botId)
+      setRecoveryOpen(false)
+      return
+    }
+    actions.selectLocation({ bot: task.notification.botId, thread: task.notification.threadId })
+    setRoute({ section: "bots", screen: "chat" })
+    if (task.runId) requestTaskReview(task.runId)
+    if (resume && task.notification.threadId) requestTaskResume(task.notification.threadId)
+    setRecoveryOpen(false)
+  }
   useServerAttention({ api, invoke: invokeCommand, enabled: isNativeDesktop() && serverMode, data })
   const section = route.section
   const advancedPage = route.section === "advanced" ? route.page : null
@@ -222,7 +239,10 @@ const AppContent = ({ kernel }: AppProps) => {
           const scenario = new URLSearchParams(window.location.search).get("mockScenario")
           setApi(
             createMockApi({
-              scenario: scenario === "resumed-turn" || scenario === "routine-conversation" ? scenario : null,
+              scenario:
+                scenario === "resumed-turn" || scenario === "routine-conversation" || scenario === "interrupted-tasks"
+                  ? scenario
+                  : null,
             }),
           )
           clearTimeout(startupTimer)
@@ -455,6 +475,7 @@ const AppContent = ({ kernel }: AppProps) => {
       actions.selectLocation({ bot: item.botId, thread: item.threadId })
       setRoute({ section: "bots", screen: "chat" })
     },
+    openRecovery,
     dismiss: actions.dismissNotification,
     dismissAll: actions.dismissAllNotifications,
     respond: actions.respondNotification,
@@ -809,6 +830,15 @@ const AppContent = ({ kernel }: AppProps) => {
 
   return (
     <AvatarRuntimeProvider value={{ ...data, messages: data.activityMessages }}>
+      {recoveryOpen && (
+        <InterruptedTasks
+          {...interruptedWork}
+          onClose={() => setRecoveryOpen(false)}
+          onReview={reviewRecoveryTask}
+          onResume={(task) => reviewRecoveryTask(task, true)}
+          onDismiss={interruptedWork.dismiss}
+        />
+      )}
       {botModal}
       <main className="app-shell">
         <HistoryMigrationStatus api={api} />
@@ -928,6 +958,8 @@ const AppContent = ({ kernel }: AppProps) => {
             }}
             onDoctor={() => openModal("doctor")}
             onSearch={() => setSearchOpen(true)}
+            onRecovery={openRecovery}
+            recoveryCount={interruptedWork.tasks.filter((task) => task.notification.resolvedAt === null).length}
             notifications={data.notifications}
             notificationActions={notificationActions}
             onNotificationsOpen={setNotificationsOpen}
@@ -1000,69 +1032,71 @@ const AppContent = ({ kernel }: AppProps) => {
                       area="a conversa"
                       api={api}
                     >
-                      <ChatPanel
-                        onRepeatTask={setRoutineDraft}
-                        group={selectedGroup}
-                        groupMembers={groupMembers}
-                        onEditGroup={() => {
-                          setEditingGroup(selectedGroup)
-                          openModal("group")
-                        }}
-                        focusApproval={
-                          approvalFocus?.threadId === selectedThread?.id ? (approvalFocus ?? undefined) : undefined
-                        }
-                        panelOpen={panelOpen}
-                        onTogglePanel={() => setPanelOpen(!panelOpen)}
-                        machine={data.machines.find((state) => state.botId === selectedBot?.id)}
-                        thread={selectedThread}
-                        composerKey={data.composerKey ?? undefined}
-                        threadCreation={
-                          data.threadCreation ? (data.threadCreation.pending ? "pending" : "failed") : undefined
-                        }
-                        onRetryCreateThread={() => void actions.createThread()}
-                        bot={selectedBot}
-                        messages={selectedMessages}
-                        runs={data.runs}
-                        projects={data.projects}
-                        onOpenModel={() => openModal("bot-model")}
-                        onSelectProject={async (projectId) => {
-                          if (selectedBot) await actions.updateBot(selectedBot.id, { projectId })
-                        }}
-                        onAddProject={() => {
-                          openModal("project")
-                          setProjectLinkBotId(selectedBot?.id ?? null)
-                        }}
-                        routines={data.routines}
-                        routineRuns={data.routineRuns}
-                        onSend={actions.sendMessage}
-                        onRetry={actions.retryRun}
-                        onCancel={actions.cancelRun}
-                        onSwitchBranch={actions.switchBranch}
-                        api={api}
-                        computerGrant={
-                          data.computerGrantRequest?.threadId === selectedThread?.id && selectedBot && selectedThread
-                            ? { botId: selectedBot.id, threadId: selectedThread.id, botName: selectedBot.name }
-                            : null
-                        }
-                        onComputerGrant={actions.dismissComputerGrant}
-                        onOpenTools={() => setScreen("preview")}
-                        onOpenComputer={() => {
-                          setPanelOpen(true)
-                          if (selectedBot)
-                            setComputerTabRequest((value) => ({
-                              botId: selectedBot.id,
-                              request: (value?.request ?? 0) + 1,
-                            }))
-                        }}
-                        attachmentButtonRef={attachmentButtonRef}
-                        onOpenPermissions={() => openModal("bot-permissions")}
-                        onOpenToolCatalog={() => openModal("bot-mcp")}
-                        onOpenProviderLogin={() => {
-                          setSettingFocus(SETTINGS.providerLogin.id)
-                          setBotSettingsSection(SETTINGS.providerLogin.section)
-                          setModal("bot-settings")
-                        }}
-                      />
+                      <RecoveryTasksContext.Provider value={interruptedWork.tasks}>
+                        <ChatPanel
+                          onRepeatTask={setRoutineDraft}
+                          group={selectedGroup}
+                          groupMembers={groupMembers}
+                          onEditGroup={() => {
+                            setEditingGroup(selectedGroup)
+                            openModal("group")
+                          }}
+                          focusApproval={
+                            approvalFocus?.threadId === selectedThread?.id ? (approvalFocus ?? undefined) : undefined
+                          }
+                          panelOpen={panelOpen}
+                          onTogglePanel={() => setPanelOpen(!panelOpen)}
+                          machine={data.machines.find((state) => state.botId === selectedBot?.id)}
+                          thread={selectedThread}
+                          composerKey={data.composerKey ?? undefined}
+                          threadCreation={
+                            data.threadCreation ? (data.threadCreation.pending ? "pending" : "failed") : undefined
+                          }
+                          onRetryCreateThread={() => void actions.createThread()}
+                          bot={selectedBot}
+                          messages={selectedMessages}
+                          runs={data.runs}
+                          projects={data.projects}
+                          onOpenModel={() => openModal("bot-model")}
+                          onSelectProject={async (projectId) => {
+                            if (selectedBot) await actions.updateBot(selectedBot.id, { projectId })
+                          }}
+                          onAddProject={() => {
+                            openModal("project")
+                            setProjectLinkBotId(selectedBot?.id ?? null)
+                          }}
+                          routines={data.routines}
+                          routineRuns={data.routineRuns}
+                          onSend={actions.sendMessage}
+                          onRetry={actions.retryRun}
+                          onCancel={actions.cancelRun}
+                          onSwitchBranch={actions.switchBranch}
+                          api={api}
+                          computerGrant={
+                            data.computerGrantRequest?.threadId === selectedThread?.id && selectedBot && selectedThread
+                              ? { botId: selectedBot.id, threadId: selectedThread.id, botName: selectedBot.name }
+                              : null
+                          }
+                          onComputerGrant={actions.dismissComputerGrant}
+                          onOpenTools={() => setScreen("preview")}
+                          onOpenComputer={() => {
+                            setPanelOpen(true)
+                            if (selectedBot)
+                              setComputerTabRequest((value) => ({
+                                botId: selectedBot.id,
+                                request: (value?.request ?? 0) + 1,
+                              }))
+                          }}
+                          attachmentButtonRef={attachmentButtonRef}
+                          onOpenPermissions={() => openModal("bot-permissions")}
+                          onOpenToolCatalog={() => openModal("bot-mcp")}
+                          onOpenProviderLogin={() => {
+                            setSettingFocus(SETTINGS.providerLogin.id)
+                            setBotSettingsSection(SETTINGS.providerLogin.section)
+                            setModal("bot-settings")
+                          }}
+                        />
+                      </RecoveryTasksContext.Provider>
                     </ErrorBoundary>
                     {/* r8 motion: preserve the panel during its inert exit */}
                     <MotionPresence show={panelOpen && Boolean(selectedGroup || selectedBot)} kind="panel">

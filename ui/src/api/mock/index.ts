@@ -15,6 +15,7 @@ import type {
   ProcessRunState,
   ProcessSpec,
   Project,
+  RecoveryTask,
   Routine,
   RoutineRun,
   Run,
@@ -266,7 +267,7 @@ const defaultDoctor: DoctorReport = {
 }
 
 /** Optional demo states for screenshots and manual review, selected with `?mockScenario=` in the mock UI. */
-export type MockScenario = "resumed-turn" | "routine-conversation"
+export type MockScenario = "resumed-turn" | "routine-conversation" | "interrupted-tasks"
 
 export const getRoutineConversationFixture = (): {
   thread: Thread
@@ -428,6 +429,28 @@ const resumedTurnFixture = (): { messages: Array<Message>; runs: Array<Run> } =>
   return { messages: [request, partial, marker, resumed], runs: [interrupted, continued] }
 }
 
+const getInterruptedTaskFixture = (): { messages: Message[]; runs: Run[] } => {
+  const fixture = resumedTurnFixture()
+  return {
+    runs: fixture.runs.slice(0, 1),
+    messages: fixture.messages.slice(0, 2).map((message) => {
+      if (message.status !== "failed") return message
+      return {
+        ...message,
+        parts: [
+          ...message.parts,
+          {
+            type: "file_change",
+            callId: "write-notes",
+            paths: ["notas-da-equipe.md"],
+            diff: null,
+          },
+        ],
+      }
+    }),
+  }
+}
+
 const importReport: ImportReport = {
   importId: "import-demo",
   origin: "/Users/demo/.legacy-app",
@@ -445,23 +468,29 @@ const importReport: ImportReport = {
 
 export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } = {}): MockApi => {
   const routineFixture = scenario === "routine-conversation" ? getRoutineConversationFixture() : null
+  const interruptedFixture = scenario === "interrupted-tasks" ? getInterruptedTaskFixture() : null
   const project = createProject()
   const projects: Array<Project> = [project]
   const bots = seed.bots.map((bot, index) => createBot(bot, index, project.id))
-  const threads = seed.threads.map((thread) =>
-    thread.id === routineFixture?.thread.id ? routineFixture.thread : createThread(thread),
-  )
+  const threads = seed.threads.map((thread) => {
+    if (thread.id === routineFixture?.thread.id) return routineFixture.thread
+    const saved = createThread(thread)
+    if (thread.id !== "thread-mark" || !interruptedFixture) return saved
+    return { ...saved, activeLeafId: interruptedFixture.messages.at(-1)?.id ?? saved.activeLeafId }
+  })
   const messages = [
     ...seed.messages
       .filter((message) => message.threadId !== routineFixture?.thread.id)
       .map((message) => createMessage(message)),
     ...(routineFixture?.messages ?? []),
+    ...(interruptedFixture?.messages ?? []),
   ]
   const mem0Settings = new Map<string, import("@touri/contracts").Mem0Settings>()
   const learning = new Map<string, BotLearning>()
   const machines = new Map<string, import("@touri/contracts").MachineState>()
   const networkPolicies = new Map<string, Record<string, unknown>>()
-  const runs = new Map<string, Run>(routineFixture ? [[routineFixture.run.id, routineFixture.run]] : [])
+  const initialRuns = [...(routineFixture ? [routineFixture.run] : []), ...(interruptedFixture?.runs ?? [])]
+  const runs = new Map<string, Run>(initialRuns.map((run) => [run.id, run]))
   if (scenario === "resumed-turn") {
     const fixture = resumedTurnFixture()
     messages.push(...fixture.messages)
@@ -557,6 +586,64 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
       listener(envelope)
     })
   }
+
+  const recoveryTasks = new Map<string, RecoveryTask>(
+    scenario === "interrupted-tasks"
+      ? [
+          {
+            id: "run:run-interrupted",
+            runId: "run-interrupted",
+            routineId: null,
+            cause: "app_restart",
+            occurredAt: now() - 120000,
+            effects: [{ description: "notas-da-equipe.md", uncertain: true, acknowledgeKey: null }],
+            notification: notify({
+              kind: "turn-failed",
+              botId: "bot-mark",
+              threadId: "thread-mark",
+              title: "Interrupted tasks",
+              body: "A resposta foi interrompida. Algumas ações podem ter sido concluídas.",
+              requestId: "recovery:run:run-interrupted",
+            }),
+          },
+          {
+            id: "journal:process-demo",
+            runId: null,
+            routineId: null,
+            cause: "app_restart",
+            occurredAt: now() - 90000,
+            effects: [{ description: "Prévia do projeto", uncertain: true, acknowledgeKey: "process-preview" }],
+            notification: notify({
+              kind: "turn-failed",
+              botId: bots[1]?.id ?? null,
+              title: "Interrupted tasks",
+              body: "A resposta foi interrompida. Algumas ações podem ter sido concluídas.",
+              requestId: "recovery:journal:process-demo",
+            }),
+          },
+          {
+            id: "routine:routine-demo",
+            runId: null,
+            routineId: "routine-daily",
+            cause: "timeout",
+            occurredAt: now() - 60000,
+            effects: [],
+            notification: notify({
+              kind: "routine-failed",
+              botId: bots[2]?.id ?? null,
+              title: "Routine failed",
+              body: "Não foi possível concluir esta ação. Confira os detalhes do erro.",
+              requestId: "recovery:routine:routine-demo",
+            }),
+          },
+        ].map((task): [string, RecoveryTask] => [task.id, task as RecoveryTask])
+      : [],
+  )
+  const getRecoveryTasks = () =>
+    [...recoveryTasks.values()].map((task) => ({
+      ...task,
+      notification: notifications.find((item) => item.id === task.notification.id) ?? task.notification,
+    }))
 
   const findThread = (id: string): Thread | undefined => threads.find((thread) => thread.id === id)
   const findRun = (id: string): Run | undefined => runs.get(id)
@@ -1364,6 +1451,20 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
         status: importStatus,
         report: importStatus === "succeeded" ? importReport : null,
       } as ApiRoutes[typeof route]["res"]
+    if (key === "GET /recovery") return { tasks: getRecoveryTasks() } as ApiRoutes[typeof route]["res"]
+    if (key === "POST /recovery/:id/dismiss") {
+      const task = recoveryTasks.get(pathValues.id ?? "")
+      if (!task) throw new Error("Tarefa interrompida não encontrada.")
+      const { acknowledgeKeys } = input as ApiRoutes["POST /recovery/:id/dismiss"]["req"]
+      const keys = task.effects.flatMap((effect) => (effect.acknowledgeKey ? [effect.acknowledgeKey] : []))
+      if (keys.some((key) => !acknowledgeKeys.includes(key))) throw new Error("ACKNOWLEDGEMENT_REQUIRED")
+      recoveryTasks.set(task.id, {
+        ...task,
+        effects: task.effects.map((effect) => ({ ...effect, acknowledgeKey: null })),
+      })
+      resolveNotification({ id: task.notification.id, resolution: "dismissed" })
+      return { tasks: getRecoveryTasks() } as ApiRoutes[typeof route]["res"]
+    }
     if (key === "GET /notifications")
       return { notifications: [...notifications].reverse() } as ApiRoutes[typeof route]["res"]
     if (key === "GET /notifications/pending")
@@ -1372,11 +1473,22 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
         lastSeq: notifications.length,
       } as ApiRoutes[typeof route]["res"]
     if (key === "POST /notifications/:id/dismiss") {
+      const protectedTask = getRecoveryTasks().some(
+        (task) =>
+          task.notification.id === Number(pathValues.id) &&
+          task.effects.some((effect) => effect.acknowledgeKey !== null),
+      )
+      if (protectedTask) throw new Error("Revise os efeitos incertos no centro de tarefas interrompidas.")
       const resolved = resolveNotification({ id: Number(pathValues.id), resolution: "dismissed" })
       if (!resolved) throw new Error("notification not found")
       return { notification: resolved } as ApiRoutes[typeof route]["res"]
     }
     if (key === "POST /notifications/dismiss-all") {
+      const protectedTask = getRecoveryTasks().some(
+        (task) =>
+          task.notification.resolvedAt === null && task.effects.some((effect) => effect.acknowledgeKey !== null),
+      )
+      if (protectedTask) throw new Error("Revise os efeitos incertos no centro de tarefas interrompidas.")
       const open = notifications.filter((item) => item.resolvedAt === null)
       for (const item of open) resolveNotification({ id: item.id, resolution: "dismissed" })
       return { dismissed: open.length } as ApiRoutes[typeof route]["res"]
