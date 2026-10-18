@@ -1929,10 +1929,10 @@ a {
   right: 0;
   min-width: 170px;
   padding: var(--space-5);
-  border: 1px solid var(--surface-control-raised);
+  border: 1px solid var(--border-default);
   border-radius: var(--radius-8);
   background: var(--surface-panel);
-  box-shadow: var(--elevation-popover);
+  box-shadow: var(--elevation-menu);
 }
 /* Portaled menus need their own button reset outside the sidebar and bot panel. */
 .project-menu button,
@@ -3751,18 +3751,33 @@ a {
 .bot-context-menu {
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
-  padding: var(--menu-padding);
+  gap: var(--space-2);
+  min-width: 200px;
+  padding: var(--space-6);
   border: 1px solid var(--border-default);
-  border-radius: var(--menu-corner);
-  box-shadow: var(--elevation-popover);
+  border-radius: var(--radius-8);
+  box-shadow: var(--elevation-menu);
   background: var(--surface-panel);
 }
 .bot-context-menu button {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-10);
   min-height: var(--menu-row-height);
   border-radius: var(--menu-corner);
-  padding: var(--space-8);
+  padding: var(--space-8) var(--space-10);
   text-align: start;
+}
+.bot-context-menu .panel-icon {
+  width: 16px;
+  height: 16px;
+}
+.menu-separator {
+  height: 1px;
+  border: 0;
+  margin: var(--space-4) var(--space-8);
+  background: var(--border-subtle);
 }
 .bot-context-menu .tool-action-deny {
   color: var(--text-danger);

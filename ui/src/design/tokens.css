@@ -334,6 +334,7 @@
   /* Each elevation composes a diffuse ambient shadow, a directional key and an edge ring. */
   --elevation-control: 0 2px 4px var(--shadow-card), 0 1px 1px var(--shadow-chip), 0 0 0 1px var(--border-subtle);
   --elevation-inline: 0 6px 20px var(--shadow-card), 0 2px 5px var(--shadow-composer), 0 0 0 1px var(--border-subtle);
+  --elevation-menu: 0 6px 18px var(--shadow-card), 0 2px 5px var(--shadow-chip);
   --elevation-popover: 0 12px 28px var(--shadow-popover), 0 3px 8px var(--shadow-chip), 0 0 0 1px var(--border-default);
   --elevation-modal: 0 22px 64px var(--shadow-dialog), 0 6px 18px var(--shadow-chip), 0 0 0 1px var(--border-dialog);
   --elevation-window:
