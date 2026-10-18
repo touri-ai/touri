@@ -345,7 +345,7 @@ const CronScreen = ({
                       )}
                       {run.triggerSource === "catch-up" && <p>{t("Execução de recuperação")}</p>}
                       {threadId && onOpenThread && (
-                        <button type="button" onClick={() => onOpenThread(threadId)}>
+                        <button type="button" className="outline-button" onClick={() => onOpenThread(threadId)}>
                           {t("Open routine conversation")}
                         </button>
                       )}
@@ -354,7 +354,7 @@ const CronScreen = ({
                 })}
               </ul>
               {historyRuns.length > historyLimit && (
-                <button type="button" onClick={() => setHistoryLimit((limit) => limit + 50)}>
+                <button type="button" className="outline-button" onClick={() => setHistoryLimit((limit) => limit + 50)}>
                   {t("Show more routine runs")}
                 </button>
               )}
