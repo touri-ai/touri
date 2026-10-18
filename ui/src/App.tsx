@@ -89,9 +89,7 @@ const PerformanceScreen = lazy(() =>
 const IntegrationsScreen = lazy(() =>
   import("./components/WorkspaceScreens").then((module) => ({ default: module.IntegrationsScreen })),
 )
-const McpScreen = lazy(() =>
-  import("./components/WorkspaceScreens").then((module) => ({ default: module.McpScreen })),
-)
+const McpScreen = lazy(() => import("./components/WorkspaceScreens").then((module) => ({ default: module.McpScreen })))
 const PreviewScreen = lazy(() =>
   import("./components/WorkspaceScreens").then((module) => ({ default: module.PreviewScreen })),
 )
