@@ -30,15 +30,19 @@ export const createRecoverySync = (kernel: Kernel, store: NotificationStore, not
   // This connection owns writes; the counter also catches journal changes without a runtime event.
   let snapshot: { changes: number; tasks: RecoveryTask[]; runRowid: number; routineRowid: number } | null = null
   let changedRunIds: string[] = []
+  let changedRoutineIds: string[] = []
   kernel.subscribe(({ event }) => {
-    if (event.type !== "run.updated" || !["failed", "interrupted"].includes(event.run.status)) return
-    changedRunIds = [...new Set([...changedRunIds, event.run.id])]
+    if (event.type === "routine.updated" && event.lastRun?.status === "failed")
+      changedRoutineIds = [...new Set([...changedRoutineIds, event.lastRun.id])]
+    if (event.type === "run.updated" && ["failed", "interrupted"].includes(event.run.status))
+      changedRunIds = [...new Set([...changedRunIds, event.run.id])]
   })
   const getChanges = () => (database.query("SELECT total_changes() AS count").get() as { count: number }).count
 
   return (options: { silent?: boolean } = {}): RecoveryTask[] => {
     const changes = getChanges()
-    if (snapshot?.changes === changes && changedRunIds.length === 0) return snapshot.tasks
+    if (snapshot?.changes === changes && changedRunIds.length === 0 && changedRoutineIds.length === 0)
+      return snapshot.tasks
 
     const runRowid = getLastRowid(database, "runs")
     const routineRowid = getLastRowid(database, "routine_runs")
@@ -47,7 +51,7 @@ export const createRecoverySync = (kernel: Kernel, store: NotificationStore, not
     const pendingRoutineIds = pending.filter((task) => task.id.startsWith("routine:")).map((task) => task.id.slice(8))
     const current = syncRecoveryTasks(kernel, store, notifier, options.silent ?? false, {
       runIds: [...new Set([...changedRunIds, ...pendingRunIds])],
-      routineIds: pendingRoutineIds,
+      routineIds: [...new Set([...changedRoutineIds, ...pendingRoutineIds])],
       runRowid: snapshot?.runRowid ?? Math.max(0, runRowid - RECENT_TASK_LIMIT),
       routineRowid: snapshot?.routineRowid ?? Math.max(0, routineRowid - RECENT_TASK_LIMIT),
     })
@@ -60,6 +64,7 @@ export const createRecoverySync = (kernel: Kernel, store: NotificationStore, not
       (left, right) => right.occurredAt - left.occurredAt || left.id.localeCompare(right.id),
     )
     changedRunIds = []
+    changedRoutineIds = []
     snapshot = { changes: getChanges(), tasks, runRowid, routineRowid }
     return tasks
   }
