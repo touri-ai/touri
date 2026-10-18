@@ -744,67 +744,6 @@ export const BotCreateModal = ({
                 </button>
               </div>
             )}
-            {machine.machine !== "cloud" && (
-              <div className="bot-create-fields">
-                <label htmlFor="create-project">{t("Projeto")}</label>
-                <select
-                  id="create-project"
-                  disabled={projectBusy}
-                  value={projectId}
-                  onChange={(event) => {
-                    if (event.target.value === "__add_project__") setAddingProject(true)
-                    else {
-                      setProjectId(event.target.value)
-                      setAddingProject(false)
-                    }
-                  }}
-                >
-                  <option value="">{t("Nenhum projeto (começa na pasta do bot)")}</option>
-                  {availableProjects.map((project) => (
-                    <option key={project.id} value={project.id}>
-                      {project.name}
-                    </option>
-                  ))}
-                  <option value="__add_project__" disabled={!api}>
-                    {t("Adicionar projeto…")}
-                  </option>
-                </select>
-                {addingProject && api && (
-                  <DiscoveredProjects
-                    api={api}
-                    disabled={saving}
-                    onSelect={(repository) => addProject({ path: repository.path, name: repository.name })}
-                    onChooseFolder={async () => setPickingProject(true)}
-                  />
-                )}
-              </div>
-            )}
-            {machine.machine !== "cloud" && (
-              <BotFolderSettings
-                api={api}
-                simple={!advanced}
-                readOnly={access === "read-only"}
-                fullAccess={access === "full" || access === "full-approved"}
-                folders={folders}
-                anyFolderAccess={anyFolderAccess}
-                machine={machine.machine}
-                disabled={saving}
-                invokeCommand={invokeCommand}
-                onFolders={setFolders}
-                onAnyFolderAccess={setAnyFolderAccess}
-              />
-            )}
-            {pickingProject && api && (
-              <FolderPicker
-                api={api}
-                invokeCommand={invokeCommand}
-                onClose={() => setPickingProject(false)}
-                onSelect={async (folder) => {
-                  await addProject({ path: folder.path }, folder)
-                  setPickingProject(false)
-                }}
-              />
-            )}
             <button
               type="button"
               className="text-button bot-create-advanced-toggle"
@@ -816,6 +755,66 @@ export const BotCreateModal = ({
             </button>
             {advanced && (
               <div id="bot-create-advanced" className="bot-create-fields bot-create-advanced">
+                {machine.machine !== "cloud" && (
+                  <>
+                    <label htmlFor="create-project">{t("Projeto")}</label>
+                    <select
+                      id="create-project"
+                      disabled={projectBusy}
+                      value={projectId}
+                      onChange={(event) => {
+                        if (event.target.value === "__add_project__") {
+                          setAddingProject(true)
+                          return
+                        }
+
+                        setProjectId(event.target.value)
+                        setAddingProject(false)
+                      }}
+                    >
+                      <option value="">{t("Nenhum projeto (começa na pasta do bot)")}</option>
+                      {availableProjects.map((project) => (
+                        <option key={project.id} value={project.id}>
+                          {project.name}
+                        </option>
+                      ))}
+                      <option value="__add_project__" disabled={!api}>
+                        {t("Adicionar projeto…")}
+                      </option>
+                    </select>
+                    {addingProject && api && (
+                      <DiscoveredProjects
+                        api={api}
+                        disabled={saving}
+                        onSelect={(repository) => addProject({ path: repository.path, name: repository.name })}
+                        onChooseFolder={async () => setPickingProject(true)}
+                      />
+                    )}
+                    <BotFolderSettings
+                      api={api}
+                      readOnly={access === "read-only"}
+                      fullAccess={access === "full" || access === "full-approved"}
+                      folders={folders}
+                      anyFolderAccess={anyFolderAccess}
+                      machine={machine.machine}
+                      disabled={saving}
+                      invokeCommand={invokeCommand}
+                      onFolders={setFolders}
+                      onAnyFolderAccess={setAnyFolderAccess}
+                    />
+                    {pickingProject && api && (
+                      <FolderPicker
+                        api={api}
+                        invokeCommand={invokeCommand}
+                        onClose={() => setPickingProject(false)}
+                        onSelect={async (folder) => {
+                          await addProject({ path: folder.path }, folder)
+                          setPickingProject(false)
+                        }}
+                      />
+                    )}
+                  </>
+                )}
                 <label htmlFor="bot-role">{t("Função")}</label>
                 <input
                   id="bot-role"

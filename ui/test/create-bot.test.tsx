@@ -8,6 +8,7 @@ import { BotCreateModal } from "../src/components/Modals"
 import { ApiError } from "../src/errors"
 import { getJobTemplates } from "../src/features/jobs/catalog"
 import { t } from "../src/i18n"
+import { selectFolder } from "./folder-picker-helpers"
 
 afterEach(() => {
   cleanup()
@@ -186,6 +187,8 @@ it("creates from the landing with only a name in two clicks and no technical fie
     machine: "local",
     browserEnabled: true,
     projectId: null,
+    folders: [],
+    anyFolderAccess: false,
     roleLine: null,
     instructions: "",
     vmProviderLogin: false,
@@ -193,6 +196,58 @@ it("creates from the landing with only a name in two clicks and no technical fie
     color: expect.stringMatching(/^#/),
     avatarShape: expect.any(String),
   })
+})
+
+it.each([true, false])("renders project and folder controls only inside Advanced (first=%s)", async (first) => {
+  const api = createMockApi()
+  const { project } = await api.request("POST /projects", { path: "/workspace/example", name: "Projeto de exemplo" })
+  const request = (async (route, input, path) => {
+    if (first && route === "GET /bots") return { bots: [] }
+    if (route === "GET /projects") return { projects: [project] }
+
+    return api.request(route, input, path)
+  }) as ApiRequest
+  render(<App kernel={{ services: { api: { request, subscribe: api.subscribe, isMock: true } } }} />)
+
+  fireEvent.click(await screen.findByRole("button", { name: first ? "Criar meu primeiro bot" : "Criar bot" }))
+  const dialog = screen.getByRole("dialog")
+  const advanced = within(dialog).getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ })
+  await within(dialog).findByText(/Usa o Codex/)
+
+  expect(advanced).toHaveAttribute("aria-expanded", "false")
+  expect(within(dialog).getByLabelText("Nome")).toHaveFocus()
+  expect(within(dialog).getByRole("radiogroup", { name: "O que ele faz?" })).toBeInTheDocument()
+  expect(within(dialog).getByRole("group", { name: "Mascote" })).toBeInTheDocument()
+  expect(within(dialog).queryByLabelText("Projeto")).not.toBeInTheDocument()
+  expect(within(dialog).queryByText(project.name)).not.toBeInTheDocument()
+  expect(dialog.querySelector(".bot-folder-settings")).toBeNull()
+  expect(within(dialog).queryByRole("button", { name: /Usar uma pasta|Adicionar pasta/ })).not.toBeInTheDocument()
+
+  fireEvent.click(advanced)
+
+  expect(advanced).toHaveAttribute("aria-expanded", "true")
+  const section = dialog.querySelector<HTMLElement>("#bot-create-advanced")
+  if (!section) throw new Error("Missing advanced settings")
+  const settings = within(section)
+  expect(settings.getByLabelText("Projeto")).toHaveValue("")
+  expect(settings.getByRole("option", { name: project.name })).toBeInTheDocument()
+  expect(settings.getByText("Nenhuma pasta adicional.")).toBeInTheDocument()
+  expect(settings.getByRole("switch", { name: /Acesso a qualquer pasta/ })).not.toBeChecked()
+
+  fireEvent.change(settings.getByLabelText("Projeto"), { target: { value: project.id } })
+  fireEvent.click(settings.getByRole("button", { name: "Adicionar pasta…" }))
+  await selectFolder("/workspace/reference", "read-only")
+  fireEvent.click(advanced)
+
+  expect(within(dialog).queryByLabelText("Projeto")).not.toBeInTheDocument()
+  expect(dialog.querySelector(".bot-folder-settings")).toBeNull()
+  expect(within(dialog).queryByText("/workspace/reference")).not.toBeInTheDocument()
+
+  fireEvent.click(advanced)
+
+  expect(within(dialog).getByLabelText("Projeto")).toHaveValue(project.id)
+  expect(within(dialog).getByLabelText("Acesso à pasta /workspace/reference")).toHaveValue("read-only")
+  expect(within(dialog).getByRole("switch", { name: /Acesso a qualquer pasta/ })).not.toBeChecked()
 })
 
 it.each([
