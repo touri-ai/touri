@@ -1076,7 +1076,9 @@ export const ChatPanel = ({
           api={api}
           threadId={thread.id}
           bot={bot}
-          request={messages.filter((message) => message.role === "user").at(-1)}
+          request={activeMessagePath(messages, thread.activeLeafId)
+            .filter((message) => message.role === "user")
+            .at(-1)}
           busy={runs.some(
             (run) => run.threadId === thread.id && ["queued", "starting", "running"].includes(run.status),
           )}

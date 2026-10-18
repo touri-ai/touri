@@ -1,6 +1,8 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import type { Message } from "@touri/contracts"
 import { expect, test, vi } from "vitest"
 import { createMockApi } from "../src/api/mock"
+import { ChatPanel } from "../src/components/ChatPanel"
 import { GoalPanel } from "../src/components/GoalPanel"
 import { localizeToolText, t } from "../src/i18n"
 
@@ -149,4 +151,47 @@ test("a temporary checkpoint loading error clears after reconnecting", async () 
   await waitFor(() => expect(screen.queryByRole("alert")).toBeNull(), { timeout: 4000 })
 
   expect(api.request).toHaveBeenCalledTimes(2)
+})
+
+test("starting a goal uses the request on the visible branch", async () => {
+  const api = createMockApi()
+  const bot = api.getState().bots[0]
+  const thread = api.getState().threads.find((candidate) => candidate.botId === bot?.id)
+  const request = api.getState().messages.find((message) => message.threadId === thread?.id && message.role === "user")
+  const reply = api
+    .getState()
+    .messages.find((message) => message.threadId === thread?.id && message.role === "assistant")
+  if (!bot || !thread || !request || !reply) throw new Error("Missing mock conversation")
+  const sibling: Message = {
+    ...request,
+    id: "other-branch-request",
+    parentId: null,
+    text: "Outro pedido em outra ramificação.",
+    parts: [{ type: "text", text: "Outro pedido em outra ramificação." }],
+  }
+
+  render(
+    <ChatPanel
+      api={api}
+      bot={bot}
+      thread={{ ...thread, activeLeafId: reply.id }}
+      messages={[request, { ...reply, parentId: request.id }, sibling]}
+      runs={[]}
+      onSend={vi.fn(async () => {})}
+      onRetry={vi.fn(async () => {})}
+      onCancel={vi.fn(async () => {})}
+      onSwitchBranch={vi.fn(async () => {})}
+      computerGrant={null}
+      onComputerGrant={vi.fn()}
+      onOpenTools={vi.fn()}
+    />,
+  )
+  await startGoal()
+
+  expect(api.calls).toContainEqual(
+    expect.objectContaining({
+      route: "POST /threads/:id/goal",
+      input: expect.objectContaining({ requestMessageId: request.id }),
+    }),
+  )
 })
