@@ -181,6 +181,8 @@ test.each([
   [400, "1113", "no_credit"],
   [404, "not found", "model_not_found"],
   [400, "model_not_found", "model_not_found"],
+  [400, "model does not exist", "model_not_found"],
+  [400, "1211", "model_not_found"],
   [429, "too many requests", "rate_limit"],
   [500, "internal error", "unavailable"],
 ] as const)("API HTTP %i maps %s to %s without exposing response bodies", async (status, detail, reason) => {

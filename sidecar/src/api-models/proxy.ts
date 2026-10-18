@@ -105,11 +105,10 @@ export const forwardApiRequest = async (request: Request, options: ProxyOptions)
     const response = await (options.fetchImpl ?? fetch)(`${options.baseUrl}/chat/completions`, {
       method: "POST",
       headers: { Authorization: `Bearer ${options.key}`, "Content-Type": "application/json" },
-      body: request.body,
+      body: await request.text(),
       redirect: "error",
       signal: AbortSignal.any([request.signal, AbortSignal.timeout(300_000)]),
-      duplex: "half",
-    } as RequestInit)
+    })
     if (!response.ok) {
       const reason = options.mapError(response.status, (await response.text()).slice(0, 65_536))
       return Response.json({ error: { message: reason } }, { status: response.status })
@@ -161,11 +160,15 @@ const options = {
 }
 const server = createServer(async (request, response) => {
   try {
+    const controller = new AbortController()
+    request.on("aborted", () => controller.abort())
+    response.on("close", () => controller.abort())
     const input = new Request("http://127.0.0.1" + request.url, {
       method: request.method,
       headers: request.headers,
       body: request.method === "POST" ? Readable.toWeb(request) : undefined,
       duplex: "half",
+      signal: controller.signal,
     })
     const result = await handle(input, options)
     response.writeHead(result.status, Object.fromEntries(result.headers))

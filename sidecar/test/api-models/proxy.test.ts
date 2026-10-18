@@ -20,6 +20,7 @@ for (const [status, reason] of [
     const fetchImpl: ApiProxyFetch = async (_url, input) => {
       expect(new Headers(input?.headers).get("Authorization")).toBe(`Bearer ${key}`)
       expect(input?.redirect).toBe("error")
+      expect(typeof input?.body).toBe("string")
       return Response.json({ error: { message: `Rejected credential ${key}` } }, { status })
     }
 
