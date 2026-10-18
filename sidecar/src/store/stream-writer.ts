@@ -6,7 +6,7 @@ import { captureTranscript } from "../kernel/transcript-events"
 import { materializeTranscript } from "../kernel/transcript-storage"
 import { appendRejection, recordTranscriptRejection } from "./transcript-rejections"
 
-export const STREAM_WRITE_LIMITS = { delayMs: 100, bytes: 8 * 1024, checkpointMs: 5_000 }
+export const STREAM_WRITE_LIMITS = { delayMs: 100, bytes: 8 * 1024, batchBytes: 64 * 1024, batchEvents: 64 }
 type Delta = Extract<UiEvent, { type: "message.delta" }>
 type Parts = Extract<UiEvent, { type: "message.parts" }>
 type StreamEvent = Delta | Parts
@@ -17,6 +17,16 @@ type Projection = {
   textDeltas: Map<number, Array<string>>
   textLengths: Map<number, number>
 }
+const eventBytes = (event: StreamEvent): number =>
+  event.type === "message.delta" ? Buffer.byteLength(event.delta) : Buffer.byteLength(JSON.stringify(event.parts))
+
+const isBusyError = (error: unknown): boolean =>
+  typeof error === "object" &&
+  error !== null &&
+  "code" in error &&
+  typeof error.code === "string" &&
+  error.code.startsWith("SQLITE_BUSY")
+
 const isSnapshotCovered = (projection: Projection, seq: number | undefined): boolean =>
   seq !== undefined && seq >= projection.baseSeq && seq <= (projection.message.updatedSeq ?? 0)
 
@@ -61,12 +71,13 @@ export const createStreamWriter = ({
   runStage?: PerformanceStageRunner
 }) => {
   let pending: StreamEvent[] = []
+  let pendingBytes = 0
   const projections = new Map<string, Projection>()
   const runBytes = new Map<string, number>()
   const lastByMessage = new Map<string, StreamEvent>()
   let timer: ReturnType<typeof setTimeout> | null = null
-  let checkpointAt = Date.now()
   let flushing = false
+  let batchesWritten = 0
   const outside = new WeakSet<StreamEvent>()
   let unsettled: Array<{ event: StreamEvent; raw: string | null; seq: number }> = []
   const keyOf = (threadId: string, messageId: string): string => JSON.stringify([threadId, messageId])
@@ -119,6 +130,19 @@ export const createStreamWriter = ({
         .get(threadId, messageId, threadId, messageId) as { seq: number | null }
     ).seq ?? 0
 
+  const rebuildQueueState = (): void => {
+    runBytes.clear()
+    lastByMessage.clear()
+    pendingBytes = 0
+    for (const event of pending) {
+      const key = keyOf(event.threadId, event.messageId)
+      const bytes = eventBytes(event)
+      pendingBytes += bytes
+      runBytes.set(key, (runBytes.get(key) ?? 0) + bytes)
+      lastByMessage.set(key, event)
+    }
+  }
+
   const settle = (): void => {
     if (!unsettled.length || database.inTransaction) return
     const lost = unsettled.filter(({ event, raw, seq }) => {
@@ -144,8 +168,7 @@ export const createStreamWriter = ({
       outside.add(restored)
       pending.push(restored)
     }
-    runBytes.clear()
-    lastByMessage.clear()
+    rebuildQueueState()
   }
 
   const flush = (): void => {
@@ -158,10 +181,23 @@ export const createStreamWriter = ({
       return
     }
     flushing = true
-    const batch = pending
+    let batchBytes = 0
+    let batchCount = 0
+    for (const event of pending) {
+      if (batchCount >= STREAM_WRITE_LIMITS.batchEvents) break
+      const bytes = eventBytes(event)
+      if (batchCount > 0 && batchBytes + bytes > STREAM_WRITE_LIMITS.batchBytes) break
+      batchBytes += bytes
+      batchCount++
+      if (batchBytes >= STREAM_WRITE_LIMITS.batchBytes) break
+    }
+    const batch = pending.slice(0, batchCount)
+    pending = pending.slice(batchCount)
+    rebuildQueueState()
     const committed: StreamEvent[] = []
     const outerTransaction = database.inTransaction
     const awaitingCommit: typeof unsettled = []
+    const previousBusyTimeout = (database.query("PRAGMA busy_timeout").get() as { timeout: number }).timeout
     try {
       const writeBatch = database.transaction(() => {
         const rebased = new Map<string, Message>()
@@ -290,29 +326,25 @@ export const createStreamWriter = ({
         }
         if (runStage) runStage("transcript_journal_capture", captureTranscript, database)
         else captureTranscript(database)
-        if (Date.now() - checkpointAt >= STREAM_WRITE_LIMITS.checkpointMs) {
-          if (runStage) runStage("transcript_projection_checkpoint", materializeTranscript, database)
-          else materializeTranscript(database)
-          for (const projection of projections.values()) {
-            materializeProjectionText(projection)
-            projection.baseSeq = projection.message.updatedSeq ?? projection.baseSeq
-            projection.lastEvent = null
-          }
-          checkpointAt = Date.now()
-        }
       })
-      if (runStage) runStage("stream_journal_write", writeBatch)
-      else writeBatch()
+      database.exec("PRAGMA busy_timeout = 0")
+      try {
+        if (runStage) runStage("stream_journal_write", writeBatch)
+        else writeBatch()
+      } finally {
+        database.exec(`PRAGMA busy_timeout = ${previousBusyTimeout}`)
+      }
       unsettled.push(...awaitingCommit)
-      pending = []
-      runBytes.clear()
-      lastByMessage.clear()
+      batchesWritten++
       // Publication sees only committed journal entries (or waits for an outer transaction).
       for (const event of committed) kernel.publish(event)
     } catch (error) {
       // A failed transaction can leave an in-memory rebase only partly applied.
       // Retry the complete batch against durable state, including all offsets.
       for (const event of batch) projections.delete(keyOf(event.threadId, event.messageId))
+      pending = [...batch, ...pending]
+      rebuildQueueState()
+      if (isBusyError(error)) return
       throw error
     } finally {
       flushing = false
@@ -420,7 +452,14 @@ export const createStreamWriter = ({
     const key = keyOf(event.threadId, event.messageId)
     const size = (runBytes.get(key) ?? 0) + bytes
     runBytes.set(key, size)
-    if (size >= STREAM_WRITE_LIMITS.bytes || database.inTransaction) flush()
+    pendingBytes += bytes
+    if (
+      size >= STREAM_WRITE_LIMITS.bytes ||
+      pending.length >= STREAM_WRITE_LIMITS.batchEvents ||
+      pendingBytes >= STREAM_WRITE_LIMITS.batchBytes ||
+      database.inTransaction
+    )
+      flush()
     else if (!timer) timer = setTimeout(flushLater, STREAM_WRITE_LIMITS.delayMs)
   }
 
@@ -576,7 +615,11 @@ export const createStreamWriter = ({
     settle()
     // Subscribers can enqueue group mirrors during publication. Lifecycle/read
     // boundaries must include that work before closing or taking a snapshot.
-    while (pending.length) flush()
+    while (pending.length) {
+      const previousBatches = batchesWritten
+      flush()
+      if (batchesWritten === previousBatches) return
+    }
   }
 
   return {
@@ -589,9 +632,12 @@ export const createStreamWriter = ({
     },
     checkpoint: (): void => {
       drain()
-      materializeTranscript(database)
+      // A busy writer keeps its accepted batch for the timer retry; reads use the last committed snapshot.
+      if (pending.length) return
+      const materialize = (): void => materializeTranscript(database)
+      if (runStage) runStage("transcript_projection_checkpoint", materialize)
+      else materialize()
       projections.clear()
-      checkpointAt = Date.now()
     },
   }
 }

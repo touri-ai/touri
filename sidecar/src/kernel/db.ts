@@ -194,5 +194,7 @@ export const openDatabase = ({ filename }: { filename: string }): Database => {
     database.exec("UPDATE schema_meta SET value = '27' WHERE key = 'schema_version'")
   })()
   database.transaction(() => database.exec(groupDeletionSql))()
+  // WAL checkpoints run on a dedicated worker so a commit cannot checkpoint a large WAL on the server loop.
+  database.exec("PRAGMA wal_autocheckpoint = 0")
   return database
 }

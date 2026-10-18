@@ -7,6 +7,7 @@ import { historyMigrationStatus } from "./history-backfill"
 import { attachmentReferences, externalizeMessageParts, OUTPUT_BLOB_ORIGIN } from "./output-blobs"
 import { createStorageUpgrade, maintainDatabasePages } from "./storage-upgrade"
 import { compactTranscript } from "./transcript-storage"
+import { createWalCheckpointer } from "./wal-checkpointer"
 
 export const DEFAULT_DATA_RETENTION_DAYS = 30
 const DAY = 24 * 60 * 60 * 1000
@@ -295,7 +296,8 @@ export const createStorageMaintenance = ({
     total: progress.total,
   }
   let stopped = false
-  // Reclaim only a few pages per turn. PASSIVE checkpoints never wait for readers.
+  const walCheckpointer = createWalCheckpointer({ filename: database.filename, onError })
+  // WAL checkpoints run off-thread; keep page reclamation to a small batch here.
   const pageTimer = setInterval(() => {
     if (stopped || upgrade.snapshot()) return
     try {
@@ -437,6 +439,7 @@ export const createStorageMaintenance = ({
     snapshot: (): StorageMaintenanceStatus => ({ ...status }),
     dispose: () => {
       stopped = true
+      walCheckpointer.dispose()
       retryController.abort()
       clearTimeout(retryTimer)
       clearInterval(dailyRetryTimer)
