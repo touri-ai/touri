@@ -22,6 +22,7 @@ export const GoalPanel = ({
   const [pending, setPending] = useState(false)
   const [failed, setFailed] = useState(false)
   const [editing, setEditing] = useState(false)
+  const [advanced, setAdvanced] = useState(false)
   const [criterion, setCriterion] = useState("")
   const [turns, setTurns] = useState(4)
   const [minutes, setMinutes] = useState(15)
@@ -184,29 +185,40 @@ export const GoalPanel = ({
         </div>
       )}
       {(!goal || goal.status === "completed") && (
-        <details>
-          <summary>{t("Goal advanced")}</summary>
-          <p>{t("Goal mode help")}</p>
-          {!hasScope && <p>{t(bot.machine === "local" ? "Goal folder required" : "Goal local only")}</p>}
-          <form onSubmit={(event) => void start(event)}>
-            <label htmlFor={`${id}-criterion`}>{t("Goal completion criterion")}</label>
-            <textarea
-              id={`${id}-criterion`}
-              required
-              maxLength={2000}
-              value={criterion}
-              onChange={(event) => setCriterion(event.target.value)}
-            />
-            {budgetFields}
-            <button
-              className="button button-quiet"
-              type="submit"
-              disabled={!loaded || pending || !hasScope || !request || busy}
-            >
-              {t("Continue until done")}
-            </button>
-            {busy && <p>{t("Goal wait for turn")}</p>}
-          </form>
+        <details open={advanced}>
+          <summary
+            onClick={(event) => {
+              event.preventDefault()
+              setAdvanced(!advanced)
+            }}
+          >
+            {t("Goal advanced")}
+          </summary>
+          {advanced && (
+            <>
+              <p>{t("Goal mode help")}</p>
+              {!hasScope && <p>{t(bot.machine === "local" ? "Goal folder required" : "Goal local only")}</p>}
+              <form onSubmit={(event) => void start(event)}>
+                <label htmlFor={`${id}-criterion`}>{t("Goal completion criterion")}</label>
+                <textarea
+                  id={`${id}-criterion`}
+                  required
+                  maxLength={2000}
+                  value={criterion}
+                  onChange={(event) => setCriterion(event.target.value)}
+                />
+                {budgetFields}
+                <button
+                  className="button button-quiet"
+                  type="submit"
+                  disabled={!loaded || pending || !hasScope || !request || busy}
+                >
+                  {t("Continue until done")}
+                </button>
+                {busy && <p>{t("Goal wait for turn")}</p>}
+              </form>
+            </>
+          )}
         </details>
       )}
       {failed && <p role="alert">{t("Goal request failed")}</p>}

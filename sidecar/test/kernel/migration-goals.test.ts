@@ -8,8 +8,12 @@ import { openDatabase } from "../../src/kernel/db"
 const databases = new Set<Database>()
 const roots = new Set<string>()
 afterEach(() => {
-  databases.forEach((database) => database.close())
-  roots.forEach((root) => rmSync(root, { recursive: true, force: true }))
+  databases.forEach((database) => {
+    database.close()
+  })
+  roots.forEach((root) => {
+    rmSync(root, { recursive: true, force: true })
+  })
   databases.clear()
   roots.clear()
 })

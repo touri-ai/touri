@@ -3,6 +3,8 @@ import { userFacingError } from "./errors"
 /** All UI copy lives here. pt-BR is the default; English is available for a future locale picker. */
 export type Locale = "pt-BR" | "en"
 export const ptBR = {
+  "Record an observed step for the user-authorized goal in this turn. Set completed=true only after verifying its agreed completion criterion. Never treats the end of a turn as completion. Cannot create goals, change budgets or grant access.":
+    "Registra um passo observado do objetivo autorizado neste turno. Só marca a conclusão depois de verificar o critério combinado. Encerrar um turno não conclui o objetivo. Não cria objetivos, altera orçamentos nem concede acesso.",
   "Goal local only": "A continuação automática está disponível para bots locais. Este bot continua um turno por vez.",
   "Goal pause": "Pausar",
   "Goal resume": "Retomar",
@@ -2197,6 +2199,8 @@ export const ptBR = {
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  "Record an observed step for the user-authorized goal in this turn. Set completed=true only after verifying its agreed completion criterion. Never treats the end of a turn as completion. Cannot create goals, change budgets or grant access.":
+    "Record an observed step for the user-authorized goal in this turn. Set completed=true only after verifying its agreed completion criterion. Never treats the end of a turn as completion. Cannot create goals, change budgets or grant access.",
   "Goal local only": "Automatic continuation is available for local bots. This bot continues one turn at a time.",
   "Goal pause": "Pause",
   "Goal resume": "Resume",
