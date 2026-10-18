@@ -16,7 +16,7 @@ import { fakeVmProvider } from "../vm/fake-provider"
 // Bun's lifecycle hooks need a mutable registry for each test's temporary resources.
 const cleanups: Array<() => Promise<void>> = []
 afterEach(async () => {
-  for (const cleanup of cleanups.splice(0).toReversed()) await cleanup()
+  for (const cleanup of cleanups.splice(0)) await cleanup()
 })
 
 test("DELETE /groups/:id removes shared, participant and archived history while keeping other conversations", async () => {
@@ -51,8 +51,12 @@ test("DELETE /groups/:id removes shared, participant and archived history while 
   expect(fixture.db.query("SELECT * FROM group_message_links WHERE source_thread_id = ?").all(participant.id)).toEqual(
     [],
   )
-  deletedThreads.forEach((thread) => expectDeletedThread(fixture, thread.id))
-  histories.forEach(({ runId }) => expect(fixture.db.query("SELECT id FROM runs WHERE id = ?").get(runId)).toBeNull())
+  deletedThreads.forEach((thread) => {
+    expectDeletedThread(fixture, thread.id)
+  })
+  histories.forEach(({ runId }) => {
+    expect(fixture.db.query("SELECT id FROM runs WHERE id = ?").get(runId)).toBeNull()
+  })
   expect(fixture.db.query("SELECT id FROM routines WHERE id = 'group-routine'").get()).toBeNull()
   expect(fixture.db.query("SELECT id FROM routine_runs WHERE routine_id = 'group-routine'").get()).toBeNull()
   expect(fixture.db.query("SELECT id FROM routines WHERE id = 'private-routine'").get()).not.toBeNull()
@@ -191,8 +195,12 @@ test("group deletion removes its unused attachments and session artifacts while 
   expect(existsSync(sharedAttachment)).toBe(true)
   expect(fixture.db.query("SELECT id FROM attachments WHERE id = 'shared'").get()).not.toBeNull()
   expect(existsSync(unattachedUpload)).toBe(true)
-  groupArtifacts.forEach((path) => expect(existsSync(path)).toBe(false))
-  privateArtifacts.forEach((path) => expect(existsSync(path)).toBe(true))
+  groupArtifacts.forEach((path) => {
+    expect(existsSync(path)).toBe(false)
+  })
+  privateArtifacts.forEach((path) => {
+    expect(existsSync(path)).toBe(true)
+  })
 })
 
 test("deleting a bot refreshes every affected group and clears only that bot's membership and coordinator roles", async () => {
@@ -260,7 +268,7 @@ const getFixture = async () => {
         "x-touri-client": "group-delete-test",
         "Content-Type": "application/json",
       },
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: body === undefined ? null : JSON.stringify(body),
     })
   const createBot = async (name: string): Promise<Bot> => {
     const response = await request("/bots", { name, provider: "codex", machine: "local" })
@@ -407,9 +415,9 @@ const expectDeletedThread = (fixture: Fixture, threadId: string) => {
     "notifications",
     "workspace_message_attention",
   ]
-  tables.forEach((table) =>
-    expect(fixture.db.query(`SELECT * FROM ${table} WHERE thread_id = ?`).all(threadId)).toEqual([]),
-  )
+  tables.forEach((table) => {
+    expect(fixture.db.query(`SELECT * FROM ${table} WHERE thread_id = ?`).all(threadId)).toEqual([])
+  })
   expect(
     fixture.db
       .query("SELECT * FROM notification_log WHERE notification_id NOT IN (SELECT id FROM notifications)")
@@ -419,7 +427,9 @@ const expectDeletedThread = (fixture: Fixture, threadId: string) => {
 
 const expectRetainedHistory = (fixture: Fixture, threadId: string, history: { runId: string; messageId: string }) => {
   expect(fixture.store.getThread({ threadId })).not.toBeNull()
-  expect(fixture.store.getMessage({ threadId, messageId: history.messageId })).not.toBeNull()
+  expect(
+    fixture.db.query("SELECT id FROM messages WHERE thread_id = ? AND id = ?").get(threadId, history.messageId),
+  ).not.toBeNull()
   expect(fixture.db.query("SELECT id FROM runs WHERE id = ?").get(history.runId)).not.toBeNull()
   expect(fixture.db.query("SELECT message_id FROM messages_fts WHERE thread_id = ?").all(threadId)).toHaveLength(1)
   expect(
@@ -449,7 +459,9 @@ const saveThreadArtifacts = (fixture: Fixture, thread: Thread) => {
   const files = ["mcp.json", "settings.json", "system.md"].map((suffix) => join(runDirectory, `${thread.id}.${suffix}`))
   const rollout = join(fixture.host.kernel.paths.sessionsDir, `${thread.id}.jsonl`)
   const paths = files.concat(rollout)
-  paths.forEach((path) => writeFileSync(path, "fake session"))
+  paths.forEach((path) => {
+    writeFileSync(path, "fake session")
+  })
   fixture.db
     .query(
       "INSERT INTO provider_sessions(id, thread_id, provider, external_session_id, rollout_path, fingerprint, state, created_at, last_used_at) VALUES (?, ?, 'codex', 'fake-session', ?, 'fake-fingerprint', 'active', 1, 1)",
