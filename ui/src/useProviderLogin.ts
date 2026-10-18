@@ -19,9 +19,11 @@ export const useProviderLogin = (
   const [busy, setBusy] = useState(false)
   const generation = useRef(0)
   const revision = useRef(0)
+  const initialized = useRef(false)
   const identity = useRef({ api, botId, provider })
   const matches =
     identity.current.api === api && identity.current.botId === botId && identity.current.provider === provider
+  const shouldPoll = !matches || flow === null || flow.state === "waiting"
   const openPage = useCallback(async (url: string) => {
     try {
       await openCloudLink(url)
@@ -81,39 +83,60 @@ export const useProviderLogin = (
   }, [api, botId, provider])
   useEffect(() => {
     identity.current = { api, botId, provider }
-    const current = ++generation.current
+    generation.current++
+    initialized.current = false
     setFlow(null)
     setError(null)
     setBusy(false)
     if (!enabled) return
+    return () => {
+      generation.current++
+    }
+  }, [api, botId, provider, enabled])
+  useEffect(() => {
+    if (!enabled || !shouldPoll) return
+    const current = generation.current
     let timer: ReturnType<typeof setTimeout>
-    let initialized = false
+    let stopped = false
     const poll = async () => {
       const requestedRevision = revision.current
       try {
         const result = await api.request("GET /bots/:id/provider-login/flow", { provider }, { id: botId })
-        if (current !== generation.current) return
+        if (stopped || current !== generation.current) return
         if (requestedRevision === revision.current) {
           setFlow(result)
           setError(null)
-          if (autoStart && !initialized && result.state === "idle" && result.executable !== "missing") {
-            initialized = true
+          if (autoStart && !initialized.current && result.state === "idle" && result.executable !== "missing") {
+            initialized.current = true
             await act("start")
           }
         }
-        initialized = true
+        if (current === generation.current) initialized.current = true
       } catch {
-        if (current === generation.current && requestedRevision === revision.current)
+        if (!stopped && current === generation.current && requestedRevision === revision.current)
           setError(t("Não foi possível verificar o login salvo. Verifique de novo."))
       }
-      if (current === generation.current) timer = setTimeout(() => void poll(), 1000)
+      // A rejected read keeps the last known waiting state and its next poll.
+      if (!stopped && current === generation.current) timer = setTimeout(() => void poll(), 1000)
     }
     void poll()
     return () => {
-      generation.current++
+      stopped = true
       clearTimeout(timer)
     }
-  }, [api, botId, provider, enabled, autoStart, act])
+  }, [api, botId, provider, enabled, autoStart, act, shouldPoll])
+  useEffect(() => {
+    if (!enabled) return
+    const refresh = () => {
+      void recheck()
+    }
+    window.addEventListener("focus", refresh)
+    window.addEventListener("online", refresh)
+    return () => {
+      window.removeEventListener("focus", refresh)
+      window.removeEventListener("online", refresh)
+    }
+  }, [enabled, recheck])
   useEffect(() => {
     if (
       !matches ||

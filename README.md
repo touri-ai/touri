@@ -24,6 +24,23 @@ Built with Tauri v2 (Rust shell), a Bun sidecar and a React UI.
 - MCP gateway with per-thread tokens and approval prompts.
 - Bot machines: Apple `container` on macOS; rootless Podman or Docker containers on Linux.
 - Importer for data exported by an earlier setup (see below).
+- API models with your own key, model discovery and a connection test in Settings.
+
+### Your own API key
+
+Open **Settings → API models** (**Configurações → Modelos por API**), choose a provider, paste its API key,
+and load the model list or enter a model ID. **Test connection** sends a short real message and may use a
+small amount of provider credit. Save the model, then select it when creating a bot or in the bot settings.
+
+Presets cover OpenRouter, DeepSeek, Z.ai/GLM, Moonshot/Kimi and Groq. A custom compatible API needs its
+base URL, including its API version path. Use HTTPS; HTTP is accepted only for loopback servers.
+Choose a chat model that supports tools. API models run through OpenCode with the same folder permissions,
+tools and approval bridge, locally or in a bot's isolated machine; the cloud runtime does not support them.
+If the executor is missing, the setup screen links to installation instructions and offers a recheck.
+
+The selected provider bills usage directly. Keys use the existing system secret store, or the encrypted
+secret store in headless Linux server mode. Only model metadata enters SQLite. Removing a saved model
+deletes its key; bots using it ask you to choose another model instead of falling back to another account.
 
 ## Privacy
 

@@ -1,6 +1,7 @@
-import type { Provider } from "@touri/contracts"
+import { getApiModelReference, type Provider } from "@touri/contracts"
 import { useEffect, useId, useState } from "react"
 import type { UiApi } from "../api/client"
+import { useApiModels } from "../features/bots/apiModels"
 import { t } from "../i18n"
 import { providerName } from "./ProviderMark"
 
@@ -27,8 +28,16 @@ export const ProviderModelField = ({
   const [models, setModels] = useState<string[]>([])
   const [defaultModel, setDefaultModel] = useState<string | null>(null)
   const [status, setStatus] = useState("")
+  const apiSelection = value.startsWith("touri-api-")
+  const [apiLabels, setApiLabels] = useState<Record<string, string>>({})
+  const saved = useApiModels(provider === "opencode" ? api : undefined)
+  const options = models.concat(saved.models.map(getApiModelReference).filter((model) => !models.includes(model)))
+  const getLabel = (reference: string) => {
+    const model = saved.models.find((candidate) => getApiModelReference(candidate) === reference)
+    return model ? `${model.name} · ${model.modelId}` : (apiLabels[reference] ?? reference)
+  }
   useEffect(() => {
-    let current = true
+    const controller = new AbortController()
     setModels([])
     setDefaultModel(null)
     setStatus("")
@@ -48,10 +57,30 @@ export const ProviderModelField = ({
       return
     }
     setStatus(t("Loading OpenCode models…"))
+    if (apiSelection) {
+      void api
+        .request("GET /api-models", {})
+        .then((result) => {
+          if (controller.signal.aborted) return
+          setModels(result.models.map(getApiModelReference))
+          setApiLabels(
+            Object.fromEntries(
+              result.models.map((model) => [getApiModelReference(model), `${model.name} · ${model.modelId}`]),
+            ),
+          )
+          setStatus(t("Add API models in Settings → API models. Your provider bills API usage directly."))
+        })
+        .catch(() => {
+          if (!controller.signal.aborted) setStatus(t("Could not load API models. Reopen this screen to try again."))
+        })
+      return () => {
+        controller.abort()
+      }
+    }
     void api
       .request("GET /providers/opencode/models", botId ? { botId } : {})
       .then((result) => {
-        if (!current) return
+        if (controller.signal.aborted) return
         setModels(result.models)
         setDefaultModel(result.defaultModel)
         setStatus(
@@ -65,13 +94,14 @@ export const ProviderModelField = ({
         )
       })
       .catch(() => {
-        if (current) setStatus(t("Could not list models. Use the default or enter a provider/model ID manually."))
+        if (!controller.signal.aborted)
+          setStatus(t("Could not list models. Use the default or enter a provider/model ID manually."))
       })
     return () => {
-      current = false
+      controller.abort()
     }
-  }, [api, provider, botId, picker])
-  const showSelect = picker && models.length > 0
+  }, [api, provider, botId, picker, apiSelection])
+  const showSelect = (picker || apiSelection) && options.length > 0
   return (
     <>
       {showSelect ? (
@@ -86,10 +116,10 @@ export const ProviderModelField = ({
             {t("Padrão do provedor")}
             {defaultModel ? ` · ${defaultModel}` : ""}
           </option>
-          {value && !models.includes(value) && <option value={value}>{value}</option>}
-          {models.map((model) => (
+          {value && !options.includes(value) && <option value={value}>{value}</option>}
+          {options.map((model) => (
             <option key={model} value={model}>
-              {model}
+              {getLabel(model)}
             </option>
           ))}
         </select>

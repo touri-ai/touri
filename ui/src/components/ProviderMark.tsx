@@ -1,4 +1,16 @@
-import type { Provider } from "@touri/contracts"
+import { type Bot, getApiModelProviderId, type Provider } from "@touri/contracts"
+import { t } from "../i18n"
+
+export const getBotProviderName = (bot: Pick<Bot, "provider" | "model">): string => {
+  if (bot.provider === "opencode" && getApiModelProviderId(bot.model)) return t("API models")
+  return providerName(bot.provider)
+}
+
+export const getBotModelName = (bot: Pick<Bot, "model">): string => {
+  if (!bot.model) return t("Padrão do provedor")
+  if (getApiModelProviderId(bot.model)) return bot.model.slice(bot.model.indexOf("/") + 1)
+  return bot.model
+}
 
 export const providerName = (provider: Provider): string =>
   ({ codex: "Codex", claude: "Claude Code", opencode: "OpenCode" })[provider]
