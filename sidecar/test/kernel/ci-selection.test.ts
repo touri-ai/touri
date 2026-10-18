@@ -4,7 +4,7 @@ import { linuxTests, needsNative, sidecarShard, testFiles } from "../../../.gith
 
 const workflow = readFileSync(new URL("../../../.github/workflows/ci.yml", import.meta.url), "utf8")
 const jobs = new Map(
-  [...workflow.matchAll(/^  ([\w-]+):\n([\s\S]*?)(?=^  [\w-]+:|$(?![\s\S]))/gm)].map((match) => [
+  [...workflow.matchAll(/^ {2}([\w-]+):\n([\s\S]*?)(?=^ {2}[\w-]+:|$(?![\s\S]))/gm)].map((match) => [
     match[1],
     match[2] ?? "",
   ]),
@@ -25,17 +25,19 @@ test("required checks remain jobs; every shard must pass the sidecar gate", () =
     expect(jobs.has(name)).toBe(true)
   }
   for (const name of ["rust", "linux", "windows"]) {
-    expect(jobs.get(name)).not.toMatch(/^    if:/m)
+    expect(jobs.get(name)).not.toMatch(/^ {4}if:/m)
     expect(jobs.get(name)).toContain("if: needs.changes.outputs.native == 'true'")
   }
   expect(jobs.get("sidecar")).toContain("needs: sidecar-tests")
   expect(jobs.get("sidecar")).toContain("if: always()")
   expect(jobs.get("sidecar")).toContain('test "$RESULT" = success')
+  expect(jobs.get("sidecar-tests")).toMatch(/shard: \[1, 2, 3\]/)
+  expect(jobs.get("sidecar-tests")).toMatch(/run: bun \.github\/ci\/sidecar-tests\.ts \$\{\{ matrix.shard \}\}/)
 })
 
 test("installers and artifact uploads run on main/manual runs, with full Linux coverage", () => {
   for (const name of ["linux", "windows"]) {
-    for (const step of jobs.get(name)?.split(/^      - /m) ?? []) {
+    for (const step of jobs.get(name)?.split(/^ {6}- /m) ?? []) {
       if (step.includes("--bundles") || step.includes("actions/upload-artifact")) {
         expect(step).toContain("if: github.event_name != 'pull_request'")
       }
@@ -47,7 +49,7 @@ test("installers and artifact uploads run on main/manual runs, with full Linux c
   expect(jobs.get("linux")).toContain(
     "if: github.event_name == 'pull_request'\n        run: bun .github/ci/sidecar-tests.ts linux",
   )
-  expect(workflow).toContain("cancel-in-progress: ${{ github.event_name == 'pull_request' }}")
+  expect(workflow).toMatch(/cancel-in-progress: \$\{\{ github.event_name == 'pull_request' \}\}/)
 })
 
 test("UI and documentation PRs skip native work; native, policy and workflow PRs run it", () => {
