@@ -18,12 +18,14 @@ import { userFacingRunError } from "../errors"
 import { ComputerGrantCard } from "../features/computer"
 import { InlineLivePreview, InlinePreviewContext, screenTool } from "../features/desktop/InlineLivePreview"
 import { useIsServerMode } from "../features/server/serverMode"
-import { localizeNotice, t, threadTitle } from "../i18n"
+import { localizeNotice, t } from "../i18n"
 import { machineStateForDisplay } from "../machineState"
 import { messageMarkdown } from "../messageMarkdown"
 import { consumeTaskReview, requestTaskResume, reviewTaskEvent } from "../recoveryEvents"
+import { getRoutineReplyRun, isRoutineEmptyResult, isRoutineRun } from "../routineConversation"
 import { type RoutineDraft, repeatTaskDraft, suggestedRoutineDraft } from "../routineDraft"
 import { failureTimeLabel, runErrorFor } from "../runError"
+import { getSidebarThreadTitle } from "../sidebarThreadTitle"
 import { ActivityMark } from "./ActivityMark"
 import { ApprovalCard } from "./ApprovalCard"
 import { useAvatarBot, useMascotSnapshot, useMessageMascotState, useThreadBot } from "./AvatarRuntime"
@@ -370,6 +372,11 @@ export const VirtualMessageList = ({
                     machine={machine}
                     message={message}
                     run={run}
+                    routineReply={getRoutineReplyRun(message, runs, allMessages) !== undefined}
+                    routinePrompt={
+                      message.role === "user" &&
+                      runs.some((candidate) => isRoutineRun(candidate) && candidate.requestMessageId === message.id)
+                    }
                     recovered={
                       runs.some(
                         (later) =>
@@ -473,6 +480,8 @@ const MessageBubble = ({
   recovered,
   message,
   run,
+  routineReply,
+  routinePrompt,
   api,
   siblings,
   branchIndex,
@@ -488,6 +497,8 @@ const MessageBubble = ({
   recovered: boolean
   message: Message
   run?: Run | undefined
+  routineReply: boolean
+  routinePrompt: boolean
   api?: UiApi
   siblings: Array<Message>
   branchIndex: number
@@ -532,12 +543,17 @@ const MessageBubble = ({
   }, [answeredId])
   const markdown = messageMarkdown(message)
   const text = message.role === "assistant" ? markdown.replace(connectDataMarker, "") : markdown
+  const segments = message.role === "assistant" ? assistantSegments({ ...message, parts }) : []
+  const finalText = segments.filter((segment) => segment.type === "text").at(-1)
   const technicalNotice =
     message.role === "system" &&
     message.parts.some((part) => part.type === "notice" && part.code === "session_replaced")
-  const renderAnswer = (content: string) => {
+  const renderAnswer = (content: string, final: boolean) => {
     const answer = content.replace(connectDataMarker, "")
     if (!answer.trim()) return null
+    if (final && message.status === "complete" && routineReply && isRoutineEmptyResult(answer))
+      return <p className="routine-empty-result">{t("Sem novidades nesta execução")}</p>
+
     return message.status !== "streaming" && (answer.length > 4000 || answer.split("\n").length > 40) ? (
       <ChatDisclosure
         className="chat-long-content"
@@ -680,49 +696,52 @@ const MessageBubble = ({
   return (
     <article
       ref={root}
-      className={`message-bubble ${message.role === "user" ? "message-user" : "message-assistant"}`}
+      className={`message-bubble ${message.role === "user" ? "message-user" : "message-assistant"}${routinePrompt ? " message-routine-prompt" : ""}`}
       data-message-id={message.id}
       data-motion-insert={inserted}
     >
-      <div className="message-meta">
-        {message.role === "assistant" &&
-          message.sender &&
-          (senderBot ? (
-            <BotAvatar bot={senderBot} size={22} state={mascotState} />
-          ) : (
-            <span role="img" aria-label={t("Membro excluído: {name}", { name: message.sender.name })}>
-              <BotAvatar
-                bot={{ id: message.sender.id, color: "#6b7280", avatarShape: "cercle" }}
-                size={22}
-                state="idle"
-                still
-              />
+      {!routinePrompt && (
+        <div className="message-meta">
+          {message.role === "assistant" &&
+            message.sender &&
+            (senderBot ? (
+              <BotAvatar bot={senderBot} size={22} state={mascotState} />
+            ) : (
+              <span role="img" aria-label={t("Membro excluído: {name}", { name: message.sender.name })}>
+                <BotAvatar
+                  bot={{ id: message.sender.id, color: "#6b7280", avatarShape: "cercle" }}
+                  size={22}
+                  state="idle"
+                  still
+                />
+              </span>
+            ))}
+          <span className="message-role">
+            {message.role === "user"
+              ? t("Você")
+              : message.role === "assistant"
+                ? (message.sender?.name ?? bot?.name ?? "touri")
+                : t(message.role)}
+          </span>
+          <time dateTime={new Date(message.createdAt).toISOString()}>
+            {new Date(message.createdAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+          </time>
+          {message.role === "user" && message.delivery && (
+            <span className="delivery-state" role="status">
+              {deliveryLabels[message.delivery.status]}
             </span>
-          ))}
-        <span className="message-role">
-          {message.role === "user"
-            ? t("Você")
-            : message.role === "assistant"
-              ? (message.sender?.name ?? bot?.name ?? "touri")
-              : t(message.role)}
-        </span>
-        <time dateTime={new Date(message.createdAt).toISOString()}>
-          {new Date(message.createdAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
-        </time>
-        {message.role === "user" && message.delivery && (
-          <span className="delivery-state" role="status">
-            {deliveryLabels[message.delivery.status]}
-          </span>
-        )}
-        {message.status === "canceled" && (
-          <span className="run-status chat-terminal-status" role="status">
-            {t("Cancelado por você")}
-          </span>
-        )}
-      </div>
+          )}
+          {message.status === "canceled" && (
+            <span className="run-status chat-terminal-status" role="status">
+              {t("Cancelado por você")}
+            </span>
+          )}
+        </div>
+      )}
       {message.role === "assistant" ? (
-        assistantSegments({ ...message, parts }).map((segment) => {
-          if (segment.type === "text") return <Fragment key={segment.key}>{renderAnswer(segment.text)}</Fragment>
+        segments.map((segment) => {
+          if (segment.type === "text")
+            return <Fragment key={segment.key}>{renderAnswer(segment.text, segment === finalText)}</Fragment>
           if (segment.type === "approval")
             return (
               <ApprovalCard
@@ -759,6 +778,11 @@ const MessageBubble = ({
             />
           )
         })
+      ) : routinePrompt ? (
+        <ChatDisclosure label={t("Instruções da rotina")}>
+          <MarkdownContent content={text} />
+          <MessageAttachments parts={parts.filter((part) => part.type === "image" || part.type === "file")} api={api} />
+        </ChatDisclosure>
       ) : text ? (
         technicalNotice ? (
           <ChatDisclosure label={t("Detalhes técnicos")}>
@@ -770,7 +794,7 @@ const MessageBubble = ({
           <MarkdownContent content={message.role === "system" ? localizeNotice(text) : text} />
         )
       ) : null}
-      {message.role !== "assistant" && (
+      {message.role !== "assistant" && !routinePrompt && (
         <MessageAttachments parts={parts.filter((part) => part.type === "image" || part.type === "file")} api={api} />
       )}
       {message.role === "user" && onEdit && (
@@ -894,7 +918,7 @@ export const ChatPanel = ({
       runs.filter(
         (run) =>
           run.threadId === thread?.id &&
-          (run.trigger === "routine" || run.routineRunId !== null) &&
+          isRoutineRun(run) &&
           !(serviceRecovered && /^machine_service_(?:unavailable|start_failed)$/.test(run.errorClass ?? "")),
       ),
     [runs, thread?.id, serviceRecovered],
@@ -953,8 +977,14 @@ export const ChatPanel = ({
     )
       visibleMessages.push(message)
   }
+  const routineConversation =
+    thread.kind === "routine" ||
+    thread.routineRunId != null ||
+    runs.some((run) => run.threadId === thread.id && isRoutineRun(run)) ||
+    routineRuns.some((run) => run.threadId === thread.id && run.runId !== null) ||
+    routines.some((routine) => routine.resultsThreadId === thread.id)
   const repeatDraft =
-    bot && !activeRun
+    bot && !activeRun && !routineConversation
       ? group
         ? repeatTaskDraft(bot, thread, visibleMessages, group)
         : (repeatTaskDraft(bot, thread, visibleMessages) ??
@@ -1241,63 +1271,46 @@ const RunCard = ({
   thread: Thread
   onRetry: (runId: Id) => Promise<void>
 }) => {
-  const failed = ["failed", "interrupted"].includes(run.status)
-  const running = ["queued", "starting", "running"].includes(run.status)
-  const status = running
-    ? waitingApproval
-      ? t("Waiting for approval")
-      : t("Em execução")
-    : run.status === "canceled"
-      ? t("Cancelado por você")
-      : failed
-        ? t("Falhou")
-        : t("Concluído")
-  const summary =
-    run.status === "canceled"
-      ? t("Cancelado por você")
-      : failed
-        ? userFacingRunError(run)
-        : running
-          ? waitingApproval
-            ? t("Review the approval card to continue the routine.")
-            : t("A rotina está trabalhando em segundo plano.")
-          : t("A rotina terminou e deixou o resultado nesta conversa.")
+  const presentation = getRoutineRunPresentation(run, waitingApproval)
+  const timestamp = run.finishedAt ?? run.startedAt ?? run.queuedAt
+  const date = new Date(timestamp)
+
   return (
-    <article className={`run-card ${failed ? "run-failed" : ""}`}>
+    <article className={`run-card routine-run-marker ${presentation.failed ? "run-failed" : ""}`}>
       <div className="run-card-heading">
-        <div>
-          {bot && <BotAvatar bot={bot} size={28} />}
-          <strong>{routineName ?? threadTitle(thread.title, thread.createdAt)}</strong>
-          <span
-            className={`run-status ${running ? (waitingApproval ? "status-waiting-approval" : "status-running") : failed ? "status-failed" : run.status === "canceled" ? "status-canceled" : "status-complete"}`}
-          >
-            {status}
-          </span>
-          {running && !waitingApproval && (
-            <span className="tb-typing" aria-hidden="true">
-              <span />
-              <span />
-              <span />
-            </span>
-          )}
-        </div>
-        {failed && (
+        {bot && <BotAvatar bot={bot} size={20} />}
+        <strong>{routineName ?? getSidebarThreadTitle(thread)}</strong>
+        <span className={`run-status ${presentation.className}`}>{presentation.label}</span>
+        <time dateTime={date.toISOString()} title={date.toLocaleString("pt-BR")}>
+          {date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+        </time>
+        {presentation.failed && (
           <button type="button" className="open-run-link" onClick={() => void onRetry(run.id)}>
             {t("Tentar de novo")}
           </button>
         )}
       </div>
-      <time>
-        {new Date(run.finishedAt ?? run.startedAt ?? run.queuedAt).toLocaleDateString("pt-BR", {
-          day: "numeric",
-          month: "short",
-          hour: "2-digit",
-          minute: "2-digit",
-        })}
-      </time>
-      <div className="run-card-summary">
-        <ErrorText text={summary} />
-      </div>
+      {presentation.summary && (
+        <div className="run-card-summary">
+          <ErrorText text={presentation.summary} />
+        </div>
+      )}
     </article>
   )
+}
+
+const getRoutineRunPresentation = (run: Run, waitingApproval: boolean) => {
+  const running = ["queued", "starting", "running"].includes(run.status)
+  if (running && waitingApproval)
+    return {
+      label: t("Waiting for approval"),
+      className: "status-waiting-approval",
+      summary: t("Review the approval card to continue the routine."),
+    }
+  if (running) return { label: t("Em execução"), className: "status-running" }
+  if (run.status === "canceled") return { label: t("Cancelado por você"), className: "status-canceled" }
+  if (["failed", "interrupted"].includes(run.status))
+    return { label: t("Falhou"), className: "status-failed", summary: userFacingRunError(run), failed: true }
+
+  return { label: t("Concluído"), className: "status-complete" }
 }

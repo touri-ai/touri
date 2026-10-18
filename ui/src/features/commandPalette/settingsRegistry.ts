@@ -5,7 +5,14 @@ import { t } from "../../i18n"
  * Single source for settings labels. The settings dialogs render these sections and rows,
  * and the command palette indexes the same records, so a label can never drift between them.
  */
-export type AppSettingsSectionId = "appearance" | "privacy" | "updates" | "notifications" | "diagnostics" | "advanced"
+export type AppSettingsSectionId =
+  | "appearance"
+  | "privacy"
+  | "updates"
+  | "notifications"
+  | "diagnostics"
+  | "advanced"
+  | "api-models"
 export type BotSettingsSectionId = "model" | "access" | "computer" | "project" | "tools" | "permissions" | "routines"
 export type TouriPage = "cron" | "integracoes" | "mcp"
 
@@ -18,6 +25,13 @@ export type SectionDefinition<Id extends string> = {
 }
 
 export const APP_SETTINGS_SECTIONS: ReadonlyArray<SectionDefinition<AppSettingsSectionId>> = [
+  {
+    id: "api-models",
+    label: t("API models"),
+    description: t("Choose a provider and use your own API key."),
+    icon: "general",
+    keywords: ["api", "modelos", "chave", "deepseek", "glm", "openrouter"],
+  },
   {
     id: "appearance",
     label: t("Aparência"),
