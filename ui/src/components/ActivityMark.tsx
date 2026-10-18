@@ -77,13 +77,14 @@ export const ActivityMark = ({
   const pending = parts.find((part) => part.type === "approval" && part.decision === "pending")
   const approvalId = pending?.type === "approval" ? pending.approvalId : undefined
   const quietMs = Math.max(0, now - since)
-  const slow = !waiting && quietMs >= 30_000
+  const preparingComputer = preparingEnvironment && !providerAt
+  const slow = !waiting && !preparingComputer && quietMs >= 30_000
   const label = waiting
     ? activityLabelFor(state, parts, locale)
     : slow
       ? t("A resposta está demorando. Você pode continuar esperando ou verificar a conexão.", {}, locale)
-      : preparingEnvironment && !providerAt
-        ? t("Preparando o ambiente…", {}, locale)
+      : preparingComputer
+        ? t("Ligando o computador do bot…", {}, locale)
         : quietMs >= 10_000 && activeToolFor(parts)
           ? t("A tarefa continua em execução.", {}, locale)
           : quietMs >= 10_000 && providerAt

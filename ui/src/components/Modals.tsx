@@ -662,7 +662,7 @@ export const BotCreateModal = ({
                       void login.selectProvider(provider).then(() => document.getElementById("bot-name")?.focus())
                     }}
                   />
-                ) : (
+                ) : !login.error ? (
                   <ProviderLogin
                     key={provider}
                     api={api}
@@ -674,13 +674,20 @@ export const BotCreateModal = ({
                       if (ready) setError(null)
                     }}
                   />
-                )}
+                ) : null}
               </section>
             )}
-            {login.error && machine.machine !== "cloud" && !login.ready && (
-              <p role="alert" className="warning-callout">
-                {login.error}
-              </p>
+            {login.error && !login.checking && machine.machine !== "cloud" && !login.ready && (
+              <div className="warning-callout">
+                <p role="alert">{login.error}</p>
+                <button
+                  type="button"
+                  className="button button-quiet"
+                  onClick={() => void login.selectProvider(provider)}
+                >
+                  {t("onboarding.recheck")}
+                </button>
+              </div>
             )}
             {machine.machine !== "cloud" && (
               <div className="bot-create-fields">

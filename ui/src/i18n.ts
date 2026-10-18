@@ -503,6 +503,7 @@ export const ptBR = {
   // Response feedback: keep this block together for parallel UI changes.
   "Preparando a resposta…": "Preparando a resposta…",
   "Preparando o ambiente…": "Preparando o ambiente…",
+  "Ligando o computador do bot…": "Ligando o computador do bot…",
   "Lendo {arquivo}…": "Lendo {arquivo}…",
   "Preciso da sua autorização.": "Preciso da sua autorização.",
   "Ainda aguardando a IA responder.": "Ainda aguardando a IA responder.",
@@ -2507,6 +2508,7 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   // Response feedback: keep this block together for parallel UI changes.
   "Preparando a resposta…": "Preparing a reply…",
   "Preparando o ambiente…": "Preparing the environment…",
+  "Ligando o computador do bot…": "Starting the bot’s computer…",
   "Lendo {arquivo}…": "Reading {arquivo}…",
   "Preciso da sua autorização.": "I need your permission.",
   "Ainda aguardando a IA responder.": "Still waiting for the AI to respond.",
