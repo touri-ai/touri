@@ -28,21 +28,28 @@ it("clears every unread run when opening its routine group and leaves another ro
   expect(document.querySelector(".thread-row.selected")).toHaveTextContent("09:45")
 })
 
-it("keeps deleted routine conversations in one labeled row after their run metadata is removed", async () => {
+it("keeps every deleted routine conversation reachable after its run metadata is removed", async () => {
   const { api } = await getRoutineSidebarFixture(28, { withoutRoutineMetadata: true, unreadRuns: 8 })
 
   render(<App kernel={{ services: { api } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
   const conversations = screen.getByRole("region", { name: "Conversas de mark" })
-  const routine = within(conversations).getByRole("button", { name: /Rotina excluída/ })
+  const routineRows = within(conversations).getAllByRole("button", { name: /Rotina excluída/ })
+  const oldest = routineRows.at(-1)
+  const nextOldest = routineRows.at(-2)
+  if (!oldest || !nextOldest) throw new Error("Missing deleted routine results")
 
-  expect(conversations.querySelectorAll(".thread-row")).toHaveLength(2)
-  expect(routine.querySelector(".sidebar-unread")).toHaveTextContent("8")
-  fireEvent.click(routine)
+  expect(conversations.querySelectorAll(".thread-row")).toHaveLength(29)
+  expect(routineRows).toHaveLength(28)
+  expect(within(conversations).queryByRole("button", { name: "Histórico de rotinas" })).toBeNull()
+  expect(oldest.querySelector(".sidebar-unread")).toHaveTextContent("1")
+
+  fireEvent.click(oldest)
   await screen.findByText("Resumo pronto para conferir.", { selector: "p" })
 
-  await waitFor(() => expect(routine.querySelector(".sidebar-unread")).toBeNull())
-  expect(document.querySelector(".thread-row.selected")).toHaveTextContent("14:45")
+  await waitFor(() => expect(oldest.querySelector(".sidebar-unread")).toBeNull())
+  expect(nextOldest.querySelector(".sidebar-unread")).toHaveTextContent("1")
+  expect(document.querySelector(".thread-row.selected")).toHaveTextContent("08:00")
 })
 
 it("groups 28 routine executions without burying ordinary conversations and opens older results from history", async () => {
@@ -258,17 +265,17 @@ it("marks only visible runs of the opened group, including a selected older resu
   expect([...ordinaryReadIds]).toEqual(["thread-mark"])
 })
 
-it("keeps conversations grouped immediately after deletion while old run metadata is still loaded", async () => {
+it("keeps every result reachable immediately after deletion while old run metadata is still loaded", async () => {
   const { threads, routineRuns } = await getRoutineSidebarFixture(8)
 
   const rows = getSidebarThreads(threads, routineRuns, null, new Set(), new Set())
 
-  expect(rows).toHaveLength(2)
+  expect(rows).toHaveLength(9)
   expect(rows[1]?.deletedRoutine).toBe(true)
   expect(rows[1]?.thread.id).toBe("sidebar-thread-7")
 })
 
-it("excludes archived and group threads, groups missing metadata and leaves main-thread continuity alone", async () => {
+it("excludes archived and group threads, preserves missing metadata and leaves main-thread continuity alone", async () => {
   const { threads, routineRuns } = await getRoutineSidebarFixture()
   const routineThread = threads[1]
   const mainThread = threads[0]
@@ -281,10 +288,10 @@ it("excludes archived and group threads, groups missing metadata and leaves main
 
   const rows = getSidebarThreads([mainThread, routineThread, orphan, archived, grouped], [mainRun], null)
 
-  expect(rows).toHaveLength(2)
-  expect(rows.map((row) => row.thread.id)).toEqual([mainThread.id, routineThread.id])
+  expect(rows).toHaveLength(3)
+  expect(rows.map((row) => row.thread.id)).toEqual(expect.arrayContaining([mainThread.id, routineThread.id, orphan.id]))
   expect(rows[0]?.routineRun).toBeUndefined()
-  expect(getSidebarThreads([routineThread, orphan], [], null)).toHaveLength(1)
+  expect(getSidebarThreads([routineThread, orphan], [], null)).toHaveLength(2)
 })
 
 it("labels routine times and navigation in Portuguese and English", () => {

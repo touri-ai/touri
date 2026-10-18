@@ -95,8 +95,7 @@ export const getSidebarDataByBot = (threads: readonly Thread[], routineRuns: rea
 
 const getSidebarGroupKey = (thread: Thread, routineRun: RoutineRun | undefined, routineIds?: ReadonlySet<string>) => {
   if (thread.kind !== "routine") return `thread:${thread.id}`
-  if (!routineRun || (routineIds !== undefined && !routineIds.has(routineRun.routineId)))
-    return `deleted:${thread.botId}`
+  if (!routineRun || (routineIds !== undefined && !routineIds.has(routineRun.routineId))) return `thread:${thread.id}`
 
   return `routine:${routineRun.routineId}`
 }

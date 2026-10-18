@@ -456,7 +456,9 @@ const BotEntry = ({
     () => (expanded ? getSidebarThreads(threads, routineRuns, selectedThreadId, runningThreadIds, routineIds) : []),
     [expanded, threads, routineRuns, selectedThreadId, runningThreadIds, routineIds],
   )
-  const visibleRoutineIds = sidebarThreads.flatMap(({ routineRun }) => (routineRun ? [routineRun.routineId] : []))
+  const visibleRoutineIds = sidebarThreads.flatMap(({ routineRun, deletedRoutine }) =>
+    routineRun && !deletedRoutine ? [routineRun.routineId] : [],
+  )
   const selectedRoutineId = sidebarThreads.find(({ thread }) => thread.id === selectedThreadId)?.routineRun?.routineId
   const historyRoutineId = selectedRoutineId ?? (visibleRoutineIds.length === 1 ? visibleRoutineIds[0] : undefined)
   return (
@@ -576,7 +578,7 @@ const BotEntry = ({
               onClick={() => onSelectThread(thread.id)}
             />
           ))}
-          {sidebarThreads.some(({ thread }) => thread.kind === "routine") && (
+          {visibleRoutineIds.length > 0 && (
             <button type="button" className="new-thread-row" onClick={() => onRoutineHistory(historyRoutineId)}>
               {t("Routine run history")}
             </button>

@@ -27,22 +27,27 @@ for (const [name, width, height] of [
     if (directory) await page.screenshot({ path: `${directory}/read-group-${name}.png`, animations: "disabled" })
   })
 
-  test(`routine sidebar: ${name} keeps deleted routine conversations grouped`, async ({ page }) => {
+  test(`routine sidebar: ${name} keeps every deleted routine conversation reachable`, async ({ page }) => {
     await page.setViewportSize({ width, height })
     await page.emulateMedia({ reducedMotion: "reduce" })
     await page.goto("/test/e2e/routine-sidebar-harness.html?deleted&unread")
     await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
     if (name === "phone") await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
     const conversations = page.getByRole("region", { name: "Conversas de mark" })
-    const routine = conversations.getByRole("button", { name: /Rotina excluída/ })
+    const routines = conversations.getByRole("button", { name: /Rotina excluída/ })
+    const oldest = routines.last()
 
-    await expect(conversations.locator(".thread-row")).toHaveCount(2)
-    await expect(routine.locator(".sidebar-unread")).toHaveText("8")
-    await routine.click()
+    await expect(conversations.locator(".thread-row")).toHaveCount(29)
+    await expect(routines).toHaveCount(28)
+    await expect(conversations.getByRole("button", { name: "Histórico de rotinas" })).toHaveCount(0)
+    await expect(oldest.locator(".sidebar-unread")).toHaveText("1")
+    await oldest.click()
     await expect(page.locator(".message-assistant")).toContainText("Resumo pronto para conferir.")
     if (name === "phone") await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
 
-    await expect(routine.locator(".sidebar-unread")).toHaveCount(0)
+    await expect(oldest.locator(".sidebar-unread")).toHaveCount(0)
+    await expect(routines.locator(".sidebar-unread")).toHaveCount(7)
+    await expect(page.locator(".thread-row.selected")).toContainText("08:00")
     const directory = process.env.TOURI_ROUTINE_SIDEBAR_SHOTS_DIR
     if (directory) await page.screenshot({ path: `${directory}/deleted-group-${name}.png`, animations: "disabled" })
   })
