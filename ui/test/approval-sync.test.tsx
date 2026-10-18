@@ -179,9 +179,11 @@ it("refreshes decisions and a unique pending count after two minutes hidden, eve
     window.dispatchEvent(new Event("online"))
   })
   await waitFor(() => expect(hook.result.current.data.pendingRequestsOnReturn).toBe(1))
-  expect(hook.result.current.data.messages.find((item) => item.id === "review-message")?.parts[0]).toMatchObject({
-    decision: "approved",
-  })
+  await waitFor(() =>
+    expect(hook.result.current.data.messages.find((item) => item.id === "review-message")?.parts[0]).toMatchObject({
+      decision: "approved",
+    }),
+  )
   expect(api.calls.filter((call) => !call.route.startsWith("GET"))).toHaveLength(callsBefore)
   act(() =>
     api.emit({ type: "notification.resolved", notification: { ...allowed, id: 902, requestId: "still-pending" } }),

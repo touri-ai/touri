@@ -375,21 +375,24 @@
   border: 1px solid var(--border-default);
   border-radius: var(--radius-8);
   background: var(--surface-panel);
-  box-shadow: var(--elevation-dialog-soft);
+  box-shadow: var(--elevation-menu);
 }
 .sidebar-advanced-pages button {
+  min-height: var(--menu-row-height);
+  padding: var(--space-8) var(--space-10);
+  border: 0;
+  border-radius: var(--menu-corner);
+  background: transparent;
+  color: var(--text-primary);
   text-align: start;
 }
-.sidebar-advanced-pages button:hover {
+.sidebar-advanced-pages button:hover,
+.sidebar-advanced-pages button:focus-visible {
   background: var(--surface-control);
 }
 
 .bot-actions-menu {
   position: relative;
-}
-
-.bot-context-menu {
-  min-width: 168px;
 }
 
 .sidebar-work-badge {

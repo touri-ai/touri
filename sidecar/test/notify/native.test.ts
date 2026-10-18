@@ -1,6 +1,11 @@
 import { expect, test } from "bun:test"
 import type { NotificationRecord } from "@touri/contracts"
-import { buildDeepLink, nativeNotificationTitle, shouldNotifyNative } from "../../src/notify/native"
+import {
+  buildDeepLink,
+  getNativeNotificationBody,
+  nativeNotificationTitle,
+  shouldNotifyNative,
+} from "../../src/notify/native"
 
 const record = (kind: NotificationRecord["kind"]): NotificationRecord => ({
   id: 1,
@@ -38,4 +43,16 @@ test("approval titles name the bot and action, without changing informational ti
     nativeNotificationTitle({ ...record("approval"), botName: "Café Ideias", body: "Executar comando no terminal." }),
   ).toBe("Café Ideias precisa de você: autorizar executar comando no terminal.")
   expect(nativeNotificationTitle({ ...record("done"), title: "Concluído" })).toBe("Bot: Concluído")
+})
+
+test.each([
+  ["pt-BR", "Rotina concluída sem novidades."],
+  ["en", "Routine finished with no news."],
+])("native no-news bodies translate the stored key for %s", (locale, expected) => {
+  const notification = { ...record("done"), body: "Routine finished with no news." }
+
+  const body = getNativeNotificationBody(notification, locale)
+
+  expect(body).toBe(expected)
+  expect(getNativeNotificationBody({ ...notification, body: "Relatório pronto" }, locale)).toBe("Relatório pronto")
 })
