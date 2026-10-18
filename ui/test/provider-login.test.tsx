@@ -550,7 +550,10 @@ it("saving unrelated VM settings does not send a stale login flag after a bot up
   expect(screen.getByRole("switch", { name: /Usar meu login do Codex/ })).toBeChecked()
   fireEvent.click(screen.getByRole("switch", { name: /Navegador habilitado/ }))
   await waitFor(() => expect(updateBot).toHaveBeenCalledWith(initial.id, { browserEnabled: false }))
-  fireEvent.click(screen.getByRole("button", { name: "Salvar configurações" }))
+  const saveButton = screen.getByRole("button", { name: "Salvar configurações" })
+  await waitFor(() => expect(saveButton).toBeEnabled())
+
+  fireEvent.click(saveButton)
   await waitFor(() => expect(props.onClose).toHaveBeenCalled())
   expect(updateBot.mock.calls.at(-1)?.[1]).not.toHaveProperty("vmProviderLogin")
 })
