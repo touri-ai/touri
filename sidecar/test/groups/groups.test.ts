@@ -70,6 +70,7 @@ const fixture = async (
   const thread = data.createThread(group)
   const persistence = createRuntimePersistence({ database: db })
   const running = new Map<string, { run: Run; ctx: ToolContext }>()
+  const controllers = new Map<string, AbortController>()
   const order: string[] = []
   const canceledBots = new Set<string>()
   const engine = {
@@ -94,13 +95,15 @@ const fixture = async (
         finishedAt: null,
       }
       persistence.saveRun(run)
+      const controller = new AbortController()
+      controllers.set(run.id, controller)
       const ctx: ToolContext = {
         botId,
         threadId,
         runId: run.id,
         projectId: null,
         cwd: root,
-        signal: new AbortController().signal,
+        signal: controller.signal,
       }
       queueMicrotask(async () => {
         await Bun.sleep(getStartDelay(botId))
@@ -111,6 +114,7 @@ const fixture = async (
         running.set(run.id, { run, ctx })
         order.push(botId)
         const complete = (text: string) => {
+          if (ctx.signal.aborted) return
           if (persistence.getRun(run.id)?.status !== "running") return
           const message = store.insertMessage({
             message: {
@@ -146,6 +150,7 @@ const fixture = async (
       if (["running", "queued"].includes(run.status)) {
         Object.assign(run, { status: "canceled", finishedAt: Date.now() })
         persistence.saveRun(run)
+        controllers.get(id)?.abort()
         host.kernel.publish({ type: "run.updated", run })
       }
       return { success: true as const, run }
@@ -185,8 +190,17 @@ const fixture = async (
     if (!r.success) throw new Error(r.error)
     return r.run
   }
-  cleanups.push(() => {
+  cleanups.push(async () => {
     runtime.shutdown()
+    await until(
+      () =>
+        !db
+          .query(
+            "SELECT 1 FROM runs r JOIN group_turns t ON t.run_id=r.id WHERE r.status IN ('queued','starting','running') LIMIT 1",
+          )
+          .get(),
+    )
+    await Bun.sleep(0)
     host.stop()
     rmSync(root, { recursive: true, force: true })
   })
@@ -1774,6 +1788,7 @@ test("deleting a shared conversation cancels its ask-all members and never recre
     .query("DELETE FROM group_message_links WHERE visible_message_id IN (SELECT id FROM messages WHERE thread_id=?)")
     .run(scenario.thread.id)
   scenario.db.query("UPDATE threads SET group_thread_id=NULL WHERE group_thread_id=?").run(scenario.thread.id)
+  scenario.db.query("DELETE FROM send_journal WHERE thread_id=?").run(scenario.thread.id)
   scenario.db.query("DELETE FROM threads WHERE id=?").run(scenario.thread.id)
 
   scenario.host.kernel.publish({ type: "transcript.resync" })
