@@ -29,6 +29,7 @@ export const openCodePermissions = (bot: Pick<Bot, "access" | "approvals">): Rec
       "history_read",
       "project_info",
       "routine_list",
+      "mem0_search",
       "process_list",
       "process_logs",
       "secret_list",

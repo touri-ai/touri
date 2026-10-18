@@ -1,0 +1,255 @@
+import {
+  appendFileSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  writeFileSync,
+} from "node:fs"
+import { dirname, join, relative, sep } from "node:path"
+import { sha256 } from "../runtime/utils"
+import { findThreat } from "./threats"
+
+export const SKILL_NAME = /^[a-z0-9][a-z0-9_-]{0,63}$/
+const SUPPORT_PATH = /^(references|templates|scripts|assets)(\/[A-Za-z0-9][A-Za-z0-9._-]{0,99}){1,4}$/
+const SKILL_TRIGGER = /^(use when|use quando|usar quando)\b/i
+export const SKILL_LIMITS = { description: 1_024, body: 100_000, supportFile: 1_048_576 } as const
+
+export type SkillOrigin = "chat" | "review"
+export type SkillResult = { success: true; message: string } | { success: false; errorCode: string; error: string }
+
+const failure = (errorCode: string, error: string): SkillResult => ({ success: false, errorCode, error })
+
+export const skillsRoot = (homeDir: string): string => join(homeDir, "skills")
+
+export const countSkills = (homeDir: string): number => {
+  try {
+    return readdirSync(skillsRoot(homeDir), { withFileTypes: true }).filter(
+      (entry) => entry.isDirectory() && !entry.name.startsWith("."),
+    ).length
+  } catch {
+    return 0
+  }
+}
+
+/** Every existing component between the skills root and the target must be a real directory or file, never a link. */
+const linkFree = (root: string, target: string): boolean => {
+  const path = relative(root, target)
+  if (path.startsWith("..") || path.split(sep).includes("..")) return false
+  let current = root
+  for (const part of ["", ...path.split(sep).filter(Boolean)]) {
+    current = part ? join(current, part) : current
+    if (!existsSync(current)) return true
+    if (lstatSync(current).isSymbolicLink()) return false
+  }
+  return true
+}
+
+const writeAtomically = (path: string, content: string): void => {
+  mkdirSync(dirname(path), { recursive: true })
+  const temporary = `${path}.${process.pid}.${Date.now()}.tmp`
+  writeFileSync(temporary, content, { mode: 0o600 })
+  renameSync(temporary, path)
+}
+
+const readText = (path: string): string | null => {
+  try {
+    return readFileSync(path, "utf8")
+  } catch {
+    return null
+  }
+}
+
+/** Append-only record of every change, so the user can see what was learned and from where. */
+const record = ({
+  homeDir,
+  entry,
+}: {
+  homeDir: string
+  entry: {
+    action: string
+    skill: string
+    file: string
+    origin: SkillOrigin
+    threadId: string
+    before: string | null
+    after: string | null
+  }
+}): void => {
+  mkdirSync(skillsRoot(homeDir), { recursive: true })
+  appendFileSync(
+    join(skillsRoot(homeDir), ".ledger.jsonl"),
+    `${JSON.stringify({
+      at: new Date().toISOString(),
+      action: entry.action,
+      skill: entry.skill,
+      file: entry.file,
+      origin: entry.origin,
+      threadId: entry.threadId,
+      before: entry.before === null ? null : sha256(entry.before),
+      after: entry.after === null ? null : sha256(entry.after),
+    })}\n`,
+    { mode: 0o600 },
+  )
+}
+
+export const renderSkill = ({ name, description, body }: { name: string; description: string; body: string }) =>
+  `---\nname: ${name}\ndescription: ${description}\n---\n\n${body.trim()}\n`
+
+export const validateNewSkill = ({
+  homeDir,
+  name,
+  description,
+  body,
+}: {
+  homeDir: string
+  name: string
+  description: string
+  body: string
+}): SkillResult | null => {
+  if (!SKILL_NAME.test(name)) return failure("INVALID_ARGS", "Use letras minúsculas, dígitos, '-' ou '_' no nome.")
+  const trigger = description.trim()
+  if (!trigger || trigger.length > SKILL_LIMITS.description || /[\r\n]/.test(trigger))
+    return failure("INVALID_ARGS", "A descrição deve ter uma linha de até 1024 caracteres.")
+  if (!SKILL_TRIGGER.test(trigger))
+    return failure("INVALID_ARGS", "Comece a descrição com 'Use when' dizendo quando carregar a skill.")
+  if (!body.trim() || body.length > SKILL_LIMITS.body)
+    return failure("INVALID_ARGS", "O corpo deve ter até 100 mil caracteres.")
+  const threat = findThreat(`${trigger}\n${body}`, "skill")
+  if (threat) return failure("UNSAFE_CONTENT", `Skill recusada: ${threat}.`)
+  const root = skillsRoot(homeDir)
+  const dir = join(root, name)
+  if (!linkFree(root, dir)) return failure("INVALID_PATH", "O caminho da skill não é permitido.")
+  if (existsSync(dir)) return failure("EXISTS", `A skill ${name} já existe; use skill_patch.`)
+  return null
+}
+
+export const createSkill = ({
+  homeDir,
+  name,
+  description,
+  body,
+  origin,
+  threadId,
+}: {
+  homeDir: string
+  name: string
+  description: string
+  body: string
+  origin: SkillOrigin
+  threadId: string
+}): SkillResult => {
+  const invalid = validateNewSkill({ homeDir, name, description, body })
+  if (invalid) return invalid
+  const content = renderSkill({ name, description: description.trim(), body })
+  writeAtomically(join(skillsRoot(homeDir), name, "SKILL.md"), content)
+  record({
+    homeDir,
+    entry: { action: "create", skill: name, file: "SKILL.md", origin, threadId, before: null, after: content },
+  })
+  return { success: true, message: `Skill ${name} criada. Esta alteração está concluída; não repita.` }
+}
+
+export type SkillPatch = { name: string; old_string: string; new_string: string; file_path?: string }
+
+/** Validates a patch and returns the file it would write, without writing it. */
+export const planSkillPatch = ({
+  homeDir,
+  patch,
+}: {
+  homeDir: string
+  patch: SkillPatch
+}):
+  | { success: true; path: string; file: string; before: string | null; after: string }
+  | (SkillResult & { success: false }) => {
+  const fail = (errorCode: string, error: string) => ({ success: false as const, errorCode, error })
+  if (!SKILL_NAME.test(patch.name)) return fail("INVALID_ARGS", "Nome de skill inválido.")
+  const root = skillsRoot(homeDir)
+  const dir = join(root, patch.name)
+  if (!linkFree(root, dir) || !existsSync(join(dir, "SKILL.md")))
+    return fail("NOT_FOUND", `A skill ${patch.name} não existe.`)
+  const file = patch.file_path?.trim() || "SKILL.md"
+  if (file !== "SKILL.md" && !SUPPORT_PATH.test(file))
+    return fail("INVALID_PATH", "Arquivos de apoio ficam em references/, templates/, scripts/ ou assets/.")
+  const path = join(dir, file)
+  if (!linkFree(root, path)) return fail("INVALID_PATH", "O caminho do arquivo não é permitido.")
+  const before = readText(path)
+  let after: string
+  if (before === null) {
+    if (file === "SKILL.md" || patch.old_string !== "") return fail("NOT_FOUND", `O arquivo ${file} não existe.`)
+    after = patch.new_string
+  } else {
+    if (!patch.old_string) return fail("INVALID_ARGS", "Informe old_string com um trecho do arquivo.")
+    const count = before.split(patch.old_string).length - 1
+    if (count === 0) return fail("NO_MATCH", "old_string não aparece no arquivo.")
+    if (count > 1) return fail("AMBIGUOUS_MATCH", `old_string aparece ${count} vezes; use um trecho mais longo.`)
+    after = before.replace(patch.old_string, () => patch.new_string)
+  }
+  const limit = file === "SKILL.md" ? SKILL_LIMITS.body : SKILL_LIMITS.supportFile
+  if (after.length > limit) return fail("TOO_LARGE", `O arquivo passaria do limite de ${limit} caracteres.`)
+  if (file === "SKILL.md" && !after.startsWith(`---\nname: ${patch.name}\n`))
+    return fail("INVALID_ARGS", "Mantenha o cabeçalho name/description no início do SKILL.md.")
+  if (file === "SKILL.md" && !/^description:\s*\S/m.test(after))
+    return fail("INVALID_ARGS", "O SKILL.md precisa de uma linha description.")
+  const threat = findThreat(patch.new_string, "skill")
+  if (threat) return fail("UNSAFE_CONTENT", `Alteração recusada: ${threat}.`)
+  return { success: true, path, file, before, after }
+}
+
+export const patchSkill = ({
+  homeDir,
+  patch,
+  origin,
+  threadId,
+}: {
+  homeDir: string
+  patch: SkillPatch
+  origin: SkillOrigin
+  threadId: string
+}): SkillResult => {
+  const plan = planSkillPatch({ homeDir, patch })
+  if (!plan.success) return plan
+  writeAtomically(plan.path, plan.after)
+  record({
+    homeDir,
+    entry: {
+      action: "patch",
+      skill: patch.name,
+      file: plan.file,
+      origin,
+      threadId,
+      before: plan.before,
+      after: plan.after,
+    },
+  })
+  return { success: true, message: `Skill ${patch.name} atualizada. Esta alteração está concluída; não repita.` }
+}
+
+export const archiveSkill = ({
+  homeDir,
+  name,
+  origin,
+  threadId,
+}: {
+  homeDir: string
+  name: string
+  origin: SkillOrigin
+  threadId: string
+}): SkillResult => {
+  if (!SKILL_NAME.test(name)) return failure("INVALID_ARGS", "Nome de skill inválido.")
+  const root = skillsRoot(homeDir)
+  const dir = join(root, name)
+  if (!linkFree(root, dir) || !existsSync(join(dir, "SKILL.md")))
+    return failure("NOT_FOUND", `A skill ${name} não existe.`)
+  const before = readText(join(dir, "SKILL.md"))
+  const archive = join(root, ".archive")
+  mkdirSync(archive, { recursive: true })
+  renameSync(dir, join(archive, `${name}-${Date.now()}`))
+  record({
+    homeDir,
+    entry: { action: "archive", skill: name, file: "SKILL.md", origin, threadId, before, after: null },
+  })
+  return { success: true, message: `Skill ${name} arquivada em skills/.archive.` }
+}
