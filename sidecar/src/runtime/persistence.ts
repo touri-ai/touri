@@ -84,7 +84,7 @@ export const toRun = (value: unknown): Run | null => {
     ...(row.provider_started_at == null ? {} : { providerStartedAt: integer(row, "provider_started_at") }),
     finishedAt: nullableInteger(row, "finished_at"),
     ...("group_thread_id" in row ? { groupThreadId: nullableText(row, "group_thread_id") } : {}),
-    ...("origin" in row ? { origin: text(row, "origin") as Run["origin"] } : {}),
+    ...("origin" in row ? { origin: text(row, "origin") as NonNullable<Run["origin"]> } : {}),
   }
 }
 
