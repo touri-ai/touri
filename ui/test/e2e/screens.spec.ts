@@ -94,7 +94,7 @@ for (const theme of ["light", "dark"] as const) {
         await expect(center.getByRole("heading", { name: "Anteriores" })).toBeVisible()
         await expect(center.locator(".notification-row").first()).toContainText("Revisão concluída")
         await center.getByRole("button", { name: "Marcar como lida" }).first().click()
-        await expect(center.getByRole("button", { name: "Marcar como lida" })).toHaveCount(2)
+        await expect(center.getByRole("button", { name: "Marcar como lida" })).toHaveCount(1)
         await center.getByRole("button", { name: "Limpar", exact: true }).click()
         await expect(center.locator(".notification-row")).toHaveCount(0)
         await center.getByRole("button", { name: "Fechar notificações" }).click()
