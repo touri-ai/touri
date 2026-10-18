@@ -19,7 +19,7 @@ afterEach(async () => {
   cleanups.clear()
 })
 
-test.each(process.env.TOURI_MESSAGE_STRESS === "1" ? [1] : [1, 3])(
+test.each(process.env.TOURI_MESSAGE_STRESS === "1" ? [1] : [1, 2, 3])(
   "%i active streams on large threads keep historical reads and streaming work bounded",
   async (streams) => {
     const threadIds = THREAD_IDS.slice(0, streams)
