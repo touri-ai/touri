@@ -861,9 +861,18 @@ const MessageBubble = ({
             aria-expanded={failureExpanded}
             onClick={() => setFailureExpanded((expanded) => !expanded)}
           >
-            {runError.title} · {failureTime} · {recovered && `${t("A reply followed this error")} · `}
+            {!resolvedInterruption && (
+              <>
+                {runError.title} · {failureTime} · {recovered && `${t("A reply followed this error")} · `}
+              </>
+            )}
             {failureExpanded ? t("Hide error") : t(resolvedInterruption ? "Ver erro" : "View error")}
           </button>
+          {failureExpanded && resolvedInterruption && (
+            <p className="message-error-meta">
+              {runError.title} · {failureTime}
+            </p>
+          )}
           {failureExpanded && failureContent}
         </div>
       ) : (

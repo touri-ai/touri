@@ -87,7 +87,7 @@ it("marks only the resolved run in chat and leaves unrelated messages intact", a
 
   expect(screen.getAllByText("Interrupção anterior · resolvida")).toHaveLength(1)
   expect(screen.queryByRole("button", { name: "Retomar tarefa" })).not.toBeInTheDocument()
-  const disclosure = screen.getByRole("button", { name: /Ver erro/ })
+  const disclosure = screen.getByRole("button", { name: "Ver erro", exact: true })
   expect(disclosure).toHaveAttribute("aria-expanded", "false")
 
   fireEvent.click(disclosure)

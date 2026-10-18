@@ -53,7 +53,7 @@ for (const width of [1440, 390]) {
     if (width === 390) await page.getByRole("button", { name: "Fechar menu", exact: true }).click()
     const chat = page.getByTestId("virtual-message-list")
     await expect(chat.getByText("Interrupção anterior · resolvida", { exact: true })).toBeVisible()
-    await chat.getByRole("button", { name: /Ver erro/ }).click()
+    await chat.getByRole("button", { name: "Ver erro", exact: true }).click()
     await expect(chat.locator(".message-error-history [role=alert]")).toBeVisible()
     if (process.env.TOURI_SCREENSHOT_DIR)
       await page.screenshot({ path: `${process.env.TOURI_SCREENSHOT_DIR}/recovery-error-${width}.png` })
