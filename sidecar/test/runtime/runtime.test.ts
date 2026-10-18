@@ -9,7 +9,6 @@ import { createStandingGrantStore } from "../../src/approvals/grants"
 import { mcpStartupChecks } from "../../src/doctor/mcp"
 import { createKernel } from "../../src/kernel"
 import { openDatabase } from "../../src/kernel/db"
-import { hostFolderAccessAvailable } from "../../src/kernel/folder-capability"
 import { init as initNotify } from "../../src/notify"
 import { createCodexAdapter } from "../../src/runtime/codex/adapter"
 import { createRuntimeEngine } from "../../src/runtime/engine"
@@ -2451,9 +2450,8 @@ test.serial("a local bot uses its selected provider profile for authentication a
     await run("profile home")
     const homes = readFileSync(envLog, "utf8").trim().split("\n")
     expect(homes[0]).not.toContain("provider-profiles")
-    expect(homes.at(-1)).toBe(
-      process.platform === "linux" && hostFolderAccessAvailable() ? join(bot.homeDir, ".touri-claude") : profile,
-    )
+    // No folder grants: the provider uses the selected profile directly on every host.
+    expect(homes.at(-1)).toBe(profile)
     expect(
       JSON.parse(
         readFileSync(join(value.runtime.kernel.paths.runDir, "claude", `${value.thread.id}.settings.json`), "utf8"),
