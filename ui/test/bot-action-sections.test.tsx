@@ -37,15 +37,7 @@ test("bot actions distinguish deletion from navigation while retaining keyboard 
 })
 
 test("read-only action menus do not show a destructive section", () => {
-  render(
-    <BotActionsMenu
-      name="Aurora"
-      open
-      onOpenChange={vi.fn()}
-      onSettings={vi.fn()}
-      onRoutines={vi.fn()}
-    />,
-  )
+  render(<BotActionsMenu name="Aurora" open onOpenChange={vi.fn()} onSettings={vi.fn()} onRoutines={vi.fn()} />)
   const menu = screen.getByRole("menu", { name: "Ações de Aurora" })
 
   expect(within(menu).queryByRole("separator")).toBeNull()
