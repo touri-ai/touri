@@ -29,11 +29,12 @@ export const countSkills = (homeDir: string): number => {
 const writableLedger = (homeDir: string): boolean =>
   linkFree(homeDir, join(skillsRoot(homeDir), ".ledger.jsonl"), "file")
 
-const readText = (path: string): string | null => {
+const getSkillText = (path: string): string | null => {
   try {
     return readFileSync(path, "utf8")
-  } catch {
-    return null
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null
+    throw error
   }
 }
 
@@ -163,7 +164,7 @@ export const planSkillPatch = ({
   const path = join(dir, file)
   if (!linkFree(homeDir, path) || !linkFree(homeDir, join(dir, "SKILL.md")) || !writableLedger(homeDir))
     return fail("INVALID_PATH", "O caminho do arquivo não é permitido.")
-  const before = readText(path)
+  const before = getSkillText(path)
   let after: string
   if (before === null) {
     if (file === "SKILL.md" || patch.old_string !== "") return fail("NOT_FOUND", `O arquivo ${file} não existe.`)
@@ -246,7 +247,7 @@ export const planSkillArchive = ({
     return { success: false, errorCode: "INVALID_PATH", error: "O caminho do arquivo não é permitido." }
   if (!existsSync(join(dir, "SKILL.md")))
     return { success: false, errorCode: "NOT_FOUND", error: `A skill ${name} não existe.` }
-  return { success: true, dir, archive, before: readText(join(dir, "SKILL.md")) }
+  return { success: true, dir, archive, before: getSkillText(join(dir, "SKILL.md")) }
 }
 
 export const archiveSkill = ({

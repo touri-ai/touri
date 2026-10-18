@@ -1,5 +1,6 @@
 import { afterEach, expect, test } from "bun:test"
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -725,3 +726,33 @@ test("queued reviews remain single across scheduler delays and reviewer restarts
   finish()
   expect(f.enqueued).toHaveLength(2)
 })
+
+test.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
+  "unreadable support files cannot be mistaken for missing files and overwritten",
+  async () => {
+    const context = await fixture()
+    writeLearning(context.kernel, context.bot.id, { skills: true })
+    createSkill({
+      homeDir: context.bot.homeDir,
+      origin: "chat",
+      threadId: context.bot.mainThreadId ?? "",
+      name: "report",
+      description: "Use when reporting",
+      body: "Read the report",
+    })
+    const references = join(context.bot.homeDir, "skills", "report", "references")
+    mkdirSync(references)
+    const file = join(references, "notes.md")
+    writeFileSync(file, "Original notes")
+    chmodSync(file, 0o000)
+
+    const result = await createSkillPatchHandler({ kernel: context.kernel })({
+      ctx: context.ctx(),
+      args: { name: "report", file_path: "references/notes.md", old_string: "", new_string: "Replacement" },
+    })
+
+    chmodSync(file, 0o600)
+    expect(result).toMatchObject({ success: false, errorCode: "WRITE_FAILED" })
+    expect(readFileSync(file, "utf8")).toBe("Original notes")
+  },
+)
