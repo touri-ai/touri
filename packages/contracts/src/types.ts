@@ -301,6 +301,17 @@ export type Run = {
   finishedAt: EpochMs | null
 }
 
+/** A persisted interruption, shared by chat, notifications and the recovery center. */
+export type RecoveryTask = {
+  id: string
+  notification: NotificationRecord
+  runId: Id | null
+  routineId: Id | null
+  cause: RunErrorClass | null
+  occurredAt: EpochMs
+  effects: Array<{ description: string; uncertain: boolean; acknowledgeKey: string | null }>
+}
+
 export type MessageRole = 'user' | 'assistant' | 'system' | 'tool'
 export type MessageKind = 'text' | 'tool' | 'notice' | 'approval'
 export type MessageStatus = 'streaming' | 'complete' | 'failed' | 'canceled'
@@ -921,6 +932,8 @@ export type ApiRoutes = {
   'POST /computer/kill': { req: {}; res: { revoked: number } }
   'POST /imports/legacy': { req: LegacyImportOptions; res: { importId: Id } }
   'GET /imports/:id': { req: {}; res: { status: 'running' | 'succeeded' | 'failed'; report: ImportReport | null } }
+  'GET /recovery': { req: {}; res: { tasks: Array<RecoveryTask> } }
+  'POST /recovery/:id/dismiss': { req: { acknowledgeKeys: Array<string> }; res: { tasks: Array<RecoveryTask> } }
   'GET /notifications': { req: { limit?: number }; res: { notifications: Array<NotificationRecord> } }
   'GET /notifications/pending': { req: {}; res: { notifications: Array<NotificationRecord>; lastSeq: number } }
   'POST /notifications/:id/dismiss': { req: {}; res: { notification: NotificationRecord } }
