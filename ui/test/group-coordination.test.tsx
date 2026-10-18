@@ -11,7 +11,13 @@ import { t } from "../src/i18n"
 describe("group coordination", () => {
   it("projects member states and only the current turn's confirmed final text, without reasoning", () => {
     const api = createMockApi()
-    const bots = api.getState().bots.slice(0, 3)
+    const bots = api
+      .getState()
+      .bots.slice(0, 3)
+      .map((bot, index) => ({
+        ...bot,
+        roleLine: index === 0 ? "Revisa os planos" : bot.roleLine,
+      }))
     const group = getGroup(bots.map((bot) => bot.id))
     const first = bots[0]?.id ?? ""
     const second = bots[1]?.id ?? ""
@@ -34,6 +40,7 @@ describe("group coordination", () => {
     expect(within(members).getAllByText("Disponível")).toHaveLength(2)
     expect(within(members).getByText("Aguardando você")).toBeVisible()
     expect(within(members).getByText("Coordenador")).toBeVisible()
+    expect(within(members).getByText("Revisa os planos")).toBeVisible()
     expect(within(members).getAllByText("Membro")).toHaveLength(2)
     const board = screen.getByRole("region", { name: "Resultados do turno" })
     expect(within(board).getByText("Plano revisado")).toBeVisible()

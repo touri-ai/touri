@@ -192,6 +192,7 @@ export const GroupPanel = ({
               <div>
                 <strong>{bot.name}</strong>
                 <small>{t(bot.id === group.coordinatorBotId ? "Coordenador" : "Membro")}</small>
+                {bot.roleLine && <small>{bot.roleLine}</small>}
                 <span className={`group-member-state group-member-state-${member.state}`}>{t(member.label)}</span>
                 <p className="group-member-result">{member.result || t("Sem resultado confirmado.")}</p>
               </div>
