@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test"
+import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -105,7 +105,10 @@ test("every current and future sidecar test belongs to exactly one nonempty shar
 })
 
 describe("test file discovery", () => {
-  const root = mkdtempSync(join(tmpdir(), "touri-ci-selection-"))
+  let root = ""
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), "touri-ci-selection-"))
+  })
   afterEach(() => rmSync(root, { recursive: true, force: true }))
 
   test("keeps every supported suffix and extension, including new directories", () => {
