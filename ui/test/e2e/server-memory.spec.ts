@@ -51,11 +51,12 @@ for (const scenario of ["regular", "large replies"] as const) {
           cwd: repository,
           env: {
             ...process.env,
+            TOURI_DOCTOR_SKIP_PROVIDER_PROBES: "1",
             TOURI_MEMORY_EVENT_INTERVAL_MS: String(interval),
             TOURI_MEMORY_DURATION_MS: String(duration),
             TOURI_MEMORY_REPLY_REPEATS: String(repeats),
           },
-          stdio: ["ignore", "pipe", "pipe"],
+          stdio: ["pipe", "pipe", "pipe"],
         },
       )
       let output = ""
@@ -85,9 +86,11 @@ for (const scenario of ["regular", "large replies"] as const) {
       const requests: Record<string, number> = {}
       const replyIds = new Set<string>()
       let events = 0
+      let eventStreamReady = false
       page.on("websocket", (socket) =>
         socket.on("framereceived", ({ payload }) => {
           if (typeof payload !== "string") return
+          eventStreamReady = true
           const { event } = JSON.parse(payload) as { event?: { type?: string; message?: { id?: string } } }
           if (event?.type?.startsWith("message.")) events++
           if (event?.type === "message.created" && event.message?.id) replyIds.add(event.message.id)
@@ -99,6 +102,7 @@ for (const scenario of ["regular", "large replies"] as const) {
       })
       await page.goto(origin)
       await expect(page.locator(".composer-island textarea")).toBeVisible({ timeout: 30_000 })
+      await expect.poll(() => eventStreamReady).toBe(true)
       const cdp = await context.newCDPSession(page)
       await cdp.send("HeapProfiler.enable")
       const samples: Array<{ elapsedMs: number; usedBytes: number; nodes: number }> = []
@@ -110,10 +114,21 @@ for (const scenario of ["regular", "large replies"] as const) {
         samples.push({ elapsedMs: Date.now() - started, usedBytes: heap.usedSize, nodes: dom.nodes })
       }
       await sample()
+      const commands = server.stdin
+      if (!commands) throw new Error("Memory fixture control pipe is unavailable")
+
+      commands.write("memory-fixture-start\n")
+      await expect.poll(() => output.includes("Memory workload started")).toBe(true)
+      expect(server.exitCode, output).toBeNull()
       while (Date.now() - started < duration) {
         await page.waitForTimeout(Math.min(30_000, duration - (Date.now() - started)))
         await sample()
       }
+      expect(server.exitCode, output).toBeNull()
+      // Duration is a minimum observation window; timer scheduling is not a throughput guarantee.
+      const minimumReplies = Math.floor(duration / interval)
+      await expect.poll(() => replyIds.size, { timeout: 30_000 }).toBeGreaterThanOrEqual(minimumReplies)
+      await sample()
       const countResponse = await context.request.get(`${origin}/api/v1/threads/memory-thread-2/messages?all=true`)
       const history = (await countResponse.json()) as { messages: unknown[] }
       const result = {
@@ -134,7 +149,7 @@ for (const scenario of ["regular", "large replies"] as const) {
         .screenshot({ path: testInfo.outputPath("memory.png") })
       console.log(JSON.stringify(result))
       expect(history.messages.length).toBeGreaterThan(1)
-      expect(replyIds.size).toBeGreaterThanOrEqual(Math.floor(duration / interval))
+      expect(result.replies).toBeGreaterThanOrEqual(minimumReplies)
       expect(samples.at(-1)?.usedBytes ?? Infinity).toBeLessThan(24 * 1024 * 1024)
       expect((samples.at(-1)?.usedBytes ?? Infinity) - (samples[0]?.usedBytes ?? 0)).toBeLessThan(8 * 1024 * 1024)
       expect(Object.keys(requests).filter((path) => /\/threads\/.*\/messages/.test(path))).toEqual([

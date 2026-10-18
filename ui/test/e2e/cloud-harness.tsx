@@ -10,7 +10,8 @@ import "../../src/styles.css"
 import "../../src/components/bot-panel.css"
 
 const params = new URLSearchParams(location.search)
-const fixture = (await fetch(`http://127.0.0.1:1480/fixture?connected=${params.get("connected") ?? "true"}`).then(
+const fixtureOrigin = params.get("fixture") ?? "http://127.0.0.1:1480"
+const fixture = (await fetch(`${fixtureOrigin}/fixture?connected=${params.get("connected") ?? "true"}`).then(
   (response) => response.json(),
 )) as { endpoint: Endpoint; settings: AppSettings; bot: Bot; machine: MachineState }
 const api = createApiClient({ endpoint: fixture.endpoint })

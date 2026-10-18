@@ -9,16 +9,17 @@ import { createFakeCloud } from "./fake-cloud"
 
 // Dedicated source-only QA processes. Never loads Apple Container or the installed app.
 process.env.TOURI_UI_TOKEN ||= "dev-ui-token"
-allowedOrigins.add("http://127.0.0.1:1479")
+const uiOrigin = process.env.TOURI_CLOUD_QA_UI_ORIGIN ?? "http://127.0.0.1:1479"
+allowedOrigins.add(uiOrigin)
 let cleanup = () => {}
 let fake: ReturnType<typeof createFakeCloud> | undefined
 const server = Bun.serve({
   hostname: "127.0.0.1",
-  port: 1480,
+  port: Number(process.env.TOURI_CLOUD_QA_PORT ?? 1480),
   async fetch(request) {
     const url = new URL(request.url)
     const headers = {
-      "Access-Control-Allow-Origin": "http://127.0.0.1:1479",
+      "Access-Control-Allow-Origin": uiOrigin,
       "Access-Control-Allow-Headers": "Content-Type",
       "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
     }
@@ -94,6 +95,7 @@ const server = Bun.serve({
     )
   },
 })
+console.log(`Cloud QA ready: ${server.url.origin}`)
 process.once("SIGTERM", () => {
   cleanup()
   server.stop(true)

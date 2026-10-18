@@ -90,7 +90,7 @@ test("first run has one primary action, secondary links and no diagnostic counts
     "O histórico fica neste servidor. Sua IA recebe o conteúdo necessário para responder. O touri não coleta telemetria.",
   )
   await expect(page.getByRole("main")).not.toContainText(/Prontas|Avisos|Falhas|\d/)
-  await page.getByRole("button", { name: "Verificar servidor" }).click()
+  await page.getByRole("button", { name: "Verificar este servidor", exact: true }).click()
   await expect(page.getByRole("dialog", { name: "Diagnóstico" })).toBeVisible()
   await page.getByRole("button", { name: "Fechar diálogo" }).click()
   await page.getByRole("button", { name: "Importar", exact: true }).click()
