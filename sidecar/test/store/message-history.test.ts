@@ -96,6 +96,43 @@ test("reconciliation selects the latest thirty tools on the requested branch wit
   expect(summary?.match(/fixture_tool/g)).toHaveLength(30)
 })
 
+test("mirroring a settled reply does not requeue its tools", async () => {
+  const fixture = await getFixture()
+  fixtures.add(fixture)
+  const { database, store, kernel } = fixture
+  const tools = createToolResolutions(kernel)
+  tools.reconcile(store)
+  database.exec(`INSERT INTO threads(id,bot_id,title,created_at,updated_at) VALUES ('shared','bot','Grupo',1,1);
+    INSERT INTO messages(id,thread_id,role,kind,status,run_id,text,created_at,updated_at)
+      VALUES ('mirror','shared','assistant','text','complete','run-a','Resposta A',1,1);
+    UPDATE messages SET parts_json = '[{"type":"text","text":"Resposta A"}]' WHERE id = 'mirror';`)
+
+  expect(database.query("SELECT run_id FROM tool_recovery_pending").all()).toEqual([])
+
+  database
+    .query("UPDATE messages SET parts_json = ? WHERE thread_id = 'thread' AND id = 'reply-a'")
+    .run(
+      JSON.stringify([
+        {
+          type: "tool_call",
+          callId: "imported",
+          tool: "fixture_tool",
+          summary: "Resultado importado",
+          inputJson: "{}",
+          outputJson: "preservado",
+          ok: true,
+        },
+      ]),
+    )
+  expect(database.query("SELECT run_id,thread_id FROM tool_recovery_pending").all()).toEqual([
+    { run_id: "run-a", thread_id: "thread" },
+  ])
+
+  await tools.reconcilePending(store, "thread")
+
+  expect(database.query("SELECT run_id FROM tool_recovery_pending").all()).toEqual([])
+})
+
 test("late imported results enter an indexed recovery queue and remain pending after a failed repair", async () => {
   const fixture = await getFixture()
   fixtures.add(fixture)
