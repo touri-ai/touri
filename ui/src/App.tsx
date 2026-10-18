@@ -1117,6 +1117,9 @@ const AppContent = ({ kernel }: AppProps) => {
                           key={selectedGroup.id}
                           group={selectedGroup}
                           bots={groupMembers}
+                          threadId={selectedThread?.id}
+                          messages={selectedMessages}
+                          runs={data.runs}
                           onEdit={() => {
                             setEditingGroup(selectedGroup)
                             openModal("group")

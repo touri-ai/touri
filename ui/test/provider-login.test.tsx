@@ -580,7 +580,11 @@ it("saving an explicit VM login opt-out still sends false", async () => {
   )
 })
 
-const recoveringComposer = (f: ReturnType<typeof fixture>, onSend = vi.fn().mockResolvedValue(undefined)) => {
+const recoveringComposer = (
+  f: ReturnType<typeof fixture>,
+  onSend = vi.fn().mockResolvedValue(undefined),
+  groupName?: string,
+) => {
   const bot = f.api.getState().bots[0]
   if (!bot) throw new Error("Missing fixture")
   const Harness = ({ threadId = "first-thread" }: { threadId?: string }) => {
@@ -589,6 +593,7 @@ const recoveringComposer = (f: ReturnType<typeof fixture>, onSend = vi.fn().mock
       <Composer
         api={f.api}
         bot={{ ...bot, machine: "vm" }}
+        groupName={groupName}
         threadId={threadId}
         parentId={null}
         draft={draft}
@@ -603,6 +608,37 @@ const recoveringComposer = (f: ReturnType<typeof fixture>, onSend = vi.fn().mock
   }
   return { bot, Harness, send: onSend }
 }
+
+it.each([
+  ["ask_all", "Perguntar a todos", "Oi! Em uma linha, o que você faz?", ""],
+  [
+    "summarize",
+    "Pedir resumo do time",
+    "Resuma os resultados confirmados do último turno, com a autoria de cada membro.",
+    "Oi! Em uma linha, o que você faz?",
+  ],
+] as const)("resumes the %s group action exactly once after login", async (action, label, prompt, remainingDraft) => {
+  vi.useFakeTimers()
+  const f = fixture("waiting")
+  const { bot, Harness, send } = recoveringComposer(f, vi.fn().mockResolvedValue(undefined), "Equipe")
+  render(<Harness />)
+  await act(async () => {})
+
+  fireEvent.click(screen.getByRole("button", { name: label, exact: true }))
+  await act(async () => {})
+  expect(send).not.toHaveBeenCalled()
+  f.setFlow({ provider: bot.provider, state: "ready" })
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(1000)
+  })
+
+  expect(send).toHaveBeenCalledExactlyOnceWith(prompt, null, [], action)
+  expect(screen.getByRole("textbox")).toHaveValue(remainingDraft)
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(2000)
+  })
+  expect(send).toHaveBeenCalledOnce()
+})
 
 it.each(["idle", "waiting", "cancelled", "error"] as const)(
   "%s: a VM draft remains editable and an attempted send resumes exactly once when login recovers",
