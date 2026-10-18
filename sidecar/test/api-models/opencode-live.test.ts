@@ -50,6 +50,11 @@ test.skipIf(!binary.success)(
         if (!new URL(request.url).pathname.endsWith("/chat/completions")) return new Response(null, { status: 404 })
         const body = (await request.json()) as { model: string; stream?: boolean }
         expect(body.model).toBe("test-model")
+        if (JSON.stringify(body).includes("fixture-reject-key"))
+          return Response.json(
+            { error: { message: `Invalid API key: ${key}`, code: "invalid_api_key" } },
+            { status: 401 },
+          )
         if (!body.stream)
           return Response.json({
             id: "completion-test",
@@ -140,6 +145,13 @@ test.skipIf(!binary.success)(
     const resumed = await adapter.startTurn(Object.assign({}, args, { session }))
 
     expect(resumed).toMatchObject({ success: true, status: "succeeded", externalSessionId: result.externalSessionId })
+
+    const rejected = await adapter.startTurn(
+      Object.assign({}, args, { session, input: [{ type: "text", text: "fixture-reject-key" }] }),
+    )
+
+    expect(rejected).toMatchObject({ success: false, errorCode: "cli_auth" })
+    expect(JSON.stringify(rejected)).not.toContain(key)
     await adapter.shutdown()
     const leaked = getFiles(root).filter((file) => readFileSync(file).includes(Buffer.from(key)))
     expect(leaked.map((file) => file.slice(root.length))).toEqual([])
