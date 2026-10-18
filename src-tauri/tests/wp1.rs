@@ -123,7 +123,7 @@ fn wp1_preview_guard_matches_acceptance_urls() {
 #[test]
 fn wp1_sidecar_handshake_and_bounded_restart_policy_are_automated() {
     let handshake = parse_handshake(&format!(
-        r#"{{"type":"touri-sidecar-ready","port":43123,"pid":99,"version":"0.2.0","schemaVersion":{}}}"#,
+        r#"{{"type":"touri-sidecar-ready","port":43123,"pid":99,"version":"0.3.0","schemaVersion":{}}}"#,
         touri_lib::sidecar::SIDECAR_SCHEMA_VERSION
     ))
     .expect("valid sidecar handshake");
@@ -146,7 +146,7 @@ fn wp1_sidecar_restarts_after_kill_and_stops_on_quit() {
     std::fs::write(
         &script,
         format!(
-            "#!/bin/sh\nprintf '%s\\n' '{{\"type\":\"touri-sidecar-ready\",\"port\":43123,\"pid\":'\"$$\"',\"version\":\"0.2.0\",\"schemaVersion\":{}}}'\nwhile :; do sleep 1; done\n",
+            "#!/bin/sh\nprintf '%s\\n' '{{\"type\":\"touri-sidecar-ready\",\"port\":43123,\"pid\":'\"$$\"',\"version\":\"0.3.0\",\"schemaVersion\":{}}}'\nwhile :; do sleep 1; done\n",
             touri_lib::sidecar::SIDECAR_SCHEMA_VERSION
         ),
     )

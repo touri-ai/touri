@@ -4,6 +4,9 @@ on:
   push:
     tags: ["v*"]
 
+permissions:
+  contents: read
+
 # The switches are deliberately false until the project has an Apple team, a
 # GitHub repository, and a Tauri signing key. The guarded steps document the
 # release path without making unsigned local/tag builds depend on unavailable
@@ -17,15 +20,15 @@ jobs:
   build:
     runs-on: macos-14
     steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version: 1.4.3
       - run: bun install --frozen-lockfile
       - run: bun run build:sidecar:macos
       - name: Build unsigned arm64 app
         if: env.TOURI_ENABLE_SIGNING != 'true'
-        run: bunx tauri build --target aarch64-apple-darwin
+        run: bunx tauri build --target aarch64-apple-darwin --bundles app,dmg
       - name: Build signed and notarized arm64 app
         if: env.TOURI_ENABLE_SIGNING == 'true'
         env:
@@ -35,7 +38,7 @@ jobs:
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
           APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
           APPLE_API_KEY_PATH: ${{ secrets.APPLE_API_KEY_PATH }}
-        run: bunx tauri build --target aarch64-apple-darwin
+        run: bunx tauri build --target aarch64-apple-darwin --bundles app,dmg
       - name: Verify notarization and staple
         if: env.TOURI_ENABLE_NOTARIZATION == 'true'
         run: |
@@ -50,9 +53,10 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: bunx tauri signer sign --private-key "$TAURI_SIGNING_PRIVATE_KEY" --password "$TAURI_SIGNING_PRIVATE_KEY_PASSWORD" src-tauri/target/aarch64-apple-darwin/release/bundle/macos/touri.app.tar.gz
       - name: Upload release artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: touri-${{ github.ref_name }}-arm64
+          if-no-files-found: error
           path: |
             src-tauri/target/**/bundle/dmg/*.dmg
             src-tauri/target/**/bundle/macos/*.app.tar.gz

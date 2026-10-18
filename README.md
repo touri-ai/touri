@@ -4,7 +4,7 @@
 
 # touri desktop
 
-touri is a local-first desktop app for macOS and Linux for running persistent AI teammates ("bots") on your own
+touri is a local-first desktop app for macOS, Linux and Windows for running persistent AI teammates ("bots") on your own
 Codex, Claude Code or OpenCode CLI. Everything runs on your computer: your conversations, memory, routines
 and secrets never leave the machine unless you explicitly configure a remote.
 
@@ -46,20 +46,32 @@ deletes its key; bots using it ask you to choose another model instead of fallin
 
 - Local-first: data lives in SQLite in the OS application data directory.
 - No telemetry and no account required.
-- Desktop credentials use macOS Keychain or Linux Secret Service, never the database, logs or exports.
+- Desktop credentials use macOS Keychain, Linux Secret Service or Windows Credential Manager, never the database, logs or exports.
 - Optional cloud hosting is a separate, opt-in protocol (`docs/protocol/cloud-v1.md`).
 
 ## Platforms
 
-- macOS (Apple Silicon): supported, macOS 14 or newer.
+- macOS (Apple Silicon): pre-release, macOS 14 or newer.
 - Linux (x86_64/arm64): supported. Packages and desktop onboarding have been tested on x86_64;
   the arm64 sidecar is cross-built, with native arm64 packaging/runtime validation still pending.
-- Windows: port in progress; see the [platform runbook](docs/runbooks/platforms.md).
+- Windows (x64): unsigned MSI and EXE installers; see the [platform runbook](docs/runbooks/platforms.md) for remaining limitations.
 
 ## Install (GitHub Releases)
 
-For macOS, download the [v0.1.0 disk image](https://github.com/touri-ai/touri/releases/download/v0.1.0/touri_0.1.0_aarch64.dmg) and drag `touri.app` to `/Applications`.
-The v0.2.0 prerelease provides Linux packages; the macOS download remains v0.1.0.
+Release v0.3.0 provides packages for all three platforms. See the [release notes in Portuguese and English](CHANGELOG.md).
+The links below target the v0.3.0 assets and become available when that release is published.
+
+| Platform | Download |
+| --- | --- |
+| macOS · Apple Silicon · pre-release | [touri_0.3.0_aarch64.dmg](https://github.com/touri-ai/touri/releases/download/v0.3.0/touri_0.3.0_aarch64.dmg) |
+| Linux · x86_64 · AppImage | [touri_0.3.0_amd64.AppImage](https://github.com/touri-ai/touri/releases/download/v0.3.0/touri_0.3.0_amd64.AppImage) |
+| Linux · x86_64 · Debian package | [touri_0.3.0_amd64.deb](https://github.com/touri-ai/touri/releases/download/v0.3.0/touri_0.3.0_amd64.deb) |
+| Windows · x64 · MSI | [touri_0.3.0_x64_en-US.msi](https://github.com/touri-ai/touri/releases/download/v0.3.0/touri_0.3.0_x64_en-US.msi) |
+| Windows · x64 · EXE installer | [touri_0.3.0_x64-setup.exe](https://github.com/touri-ai/touri/releases/download/v0.3.0/touri_0.3.0_x64-setup.exe) |
+
+### macOS install (pre-release)
+
+Download the disk image above and drag `touri.app` to `/Applications`.
 Release builds are currently unsigned and not notarized, so macOS Gatekeeper blocks the first launch:
 
 1. Open `touri.app`. macOS shows a warning and refuses to open it.
@@ -76,28 +88,21 @@ xattr -dr com.apple.quarantine /Applications/touri.app
 
 ### Linux install
 
-Download the [Linux x86_64 AppImage](https://github.com/touri-ai/touri/releases/download/v0.2.0/touri_0.2.0_amd64.AppImage) or use the Debian package below. With the AppImage:
+Download the Linux x86_64 AppImage or Debian package from the table above. With the AppImage:
 
 ```sh
-chmod +x touri_0.2.0_amd64.AppImage
-./touri_0.2.0_amd64.AppImage
+chmod +x touri_0.3.0_amd64.AppImage
+./touri_0.3.0_amd64.AppImage
 ```
 
-On Debian 13 x86_64 (or a compatible desktop with glibc 2.39 or newer), download [touri 0.2.0 (.deb)](https://github.com/touri-ai/touri/releases/download/v0.2.0/touri_0.2.0_amd64.deb),
-then run this command in the download folder:
+On a compatible Debian/Ubuntu desktop, run this command in the download folder:
 
 ```sh
-sudo apt install ./touri_0.2.0_amd64.deb
+sudo apt install ./touri_0.3.0_amd64.deb
 ```
 
-SHA-256 for `touri_0.2.0_amd64.deb`:
-
-```text
-2db31d0292ea0aee052fe988cda9a5313b3621731089807dbf70956a1bd53005
-```
-
-This package was built on Debian 13 x86_64. Checksums for all Linux assets are also in
-[SHA256SUMS](https://github.com/touri-ai/touri/releases/download/v0.2.0/SHA256SUMS).
+Runtime library requirements depend on the release build environment; the package manager
+checks the Debian package's declared dependencies before installation.
 
 Linux needs WebKitGTK 4.1, SQLite, xdg-utils, and a session D-Bus with libsecret and an
 unlocked Secret Service keyring, such as GNOME Keyring or KWallet with its Secret Service
@@ -115,15 +120,26 @@ Chromium/Chrome or `TOURI_CHROME_BIN`. Interactive provider onboarding currently
 credential import. Linux OCI lifecycle/isolation contracts are tested, but live container
 onboarding could not be verified on the build host because it denies user namespaces.
 
+### Windows install
+
+Use Windows x64 with WebView2 installed. Download either the `.msi` package or the `-setup.exe`
+installer from the table above and run it. Both installers are currently unsigned.
+SmartScreen may warn: choose **More info → Run anyway** only if you trust the downloaded release.
+Em português: **Mais informações → Executar assim mesmo**.
+
+Desktop data lives in `%APPDATA%\touri`; credentials use Windows Credential Manager.
+Host computer control is unavailable on Windows. See the [platform runbook](docs/runbooks/platforms.md)
+for browser, isolation and other platform limitations.
+
 ## Requirements
 
 - macOS 14 or newer on Apple Silicon. The optional bot-machine feature needs macOS 26 and Apple `container` >= 1.5.0;
   on older systems local bots keep working and the machine feature reports itself as unavailable.
 - Bun 1.4.3 or newer
 - Rust 1.90 or newer with the `aarch64-apple-darwin` target
-- A Codex or Claude Code CLI signed in on your Mac
+- A Codex or Claude Code CLI signed in on the computer running touri
 
-Linux build instructions and the Windows port status: [platform runbook](docs/runbooks/platforms.md).
+Linux and Windows build instructions and remaining platform limitations: [platform runbook](docs/runbooks/platforms.md).
 
 ## Build from source
 

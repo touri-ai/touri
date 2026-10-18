@@ -17,7 +17,7 @@ it("shows non-blocking pt-BR history progress and removes the indicator after co
     route === "GET /health"
       ? ({
           ok: true,
-          version: "0.2.0",
+          version: "0.3.0",
           schemaVersion: 7,
           historyMigration: { running: done < 100, done, total: 100 },
         } as never)
