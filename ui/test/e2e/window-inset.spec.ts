@@ -86,7 +86,7 @@ themes.forEach((theme) => {
         await expect(sidebar.locator(".traffic-light-spacer")).toBeHidden()
         await search.click({ trial: true })
         await create.click()
-        await expect(page.getByRole("dialog", { name: "Criar bot", exact: true })).toBeVisible()
+        await expect(page.getByRole("dialog", { name: "Criar um bot", exact: true })).toBeVisible()
       })
 
       test("loading and onboarding retain a drag region", async ({ page }) => {
