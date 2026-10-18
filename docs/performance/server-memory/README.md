@@ -9,6 +9,7 @@ categories as the server projection, plus outstanding approvals. Completed backg
 the latest run per conversation; active runs remain visible. Changing conversations evicts the old
 transcript and reloads durable history on return. Late responses cannot restore an evicted transcript.
 A history overlap buffer stops at 512 events or 2 MiB and recovers through a fresh snapshot on overflow.
+Approval decisions are persisted before notification rotation, so resolved requests can be evicted.
 Durable messages and tool output remain on the server.
 
 Animated avatars reuse their SVG masks and paths instead of rebuilding the resource tree each frame.
@@ -19,7 +20,8 @@ backpressure and bounded request bodies/frames and streamed responses; this patc
 
 The headless reproduction launches the real `touri serve` CLI with a test-only preload. It creates a
 fresh disposable database with 30 synthetic bots and injects two distinct background replies per second,
-each with approximately 67.5 kB of prose and a superseding revision. The selected conversation remains
+each with approximately 67.5 kB of prose. It injects created and updated frames alongside the stored
+projection events; counters distinguish unique reply IDs from deliveries. The selected conversation remains
 quiet. No model turn is launched. The preload and workload are outside the production entry points.
 The runner pairs the browser, uses the production UI and real HTTP/event client, forces GC and samples
 retained heap and DOM nodes every 30 seconds for five minutes. It deletes its server and data afterward.
@@ -33,10 +35,11 @@ retained heap and DOM nodes every 30 seconds for five minutes. It deletes its se
 | Login status reads | 298 | 1 |
 | Conversation histories downloaded | 1 | 1 |
 
-The final retained heap is 86% lower. The regression budget is **less than 8 MiB of retained growth**;
+The final retained heap is 86% lower. The regression budgets are **less than 8 MiB of retained growth and 24 MiB final heap**;
 it fails on the original implementation. Numeric evidence: [before](before.json), [after](after.json).
-The five-minute workload covers roughly 600 replies / 1,200 message events. A faster default regression
-uses the same workload at a 30 ms interval for 15 seconds and asserts the delivered reply count.
+The five-minute workload covers 600 unique replies / 1,800 message events. A faster default regression
+uses the same workload at a 30 ms interval for 15 seconds and asserts the unique reply count. A
+second scenario uses approximately 2 MB replies at a 500 ms interval for 15 seconds.
 
 Run from a worktree with dependencies installed:
 
@@ -49,13 +52,13 @@ TOURI_MEMORY_DURATION_MS=300000 TOURI_MEMORY_EVENT_INTERVAL_MS=1000 \
 The case builds the production UI itself. The default duration is suitable for routine regression runs.
 Unit coverage also checks eviction/reopening, a slow offscreen response, snapshot-buffer overflow and
 recovery, pending approval navigation, stable avatar nodes across 1,000 frames and settled login states.
-Eleven new regression cases fail against the original implementation, including recovery after
-overflow of a slow selected snapshot.
+Twelve new regression cases fail against the original implementation, including recovery after
+overflow of a slow selected snapshot and a storm of 240 resolved approvals.
 
-The final tree, rebased onto `2ec1a47`, also passed the fast regression with **1,800 delivered replies**:
-6.45 → 8.03 MB retained heap (1.58 MB growth), one login read. [Final samples](final.json).
-The long before/after comparison predates that rebase; the memory retention changes are the same.
-
+The long after-run includes approval-resolution hardening on the `2ec1a47` base. The final branch
+also incorporates `73cc491`, including its new-conversation and early bot-list initialization fixes.
+The 2 MB scenario passed on that final base with **62 unique replies / 186 events** and
+**6.57 → 7.47 MB retained heap** (0.90 MB growth). [Large-reply samples](final.json).
 ![Synthetic 30-bot sidebar after the final memory regression](sidebar.png)
 
 Native evidence was collected without screen interaction, using an independent bundle identifier,
@@ -79,21 +82,20 @@ acceptance remains outstanding.** [Sanitized component samples](native.json).
 
 The original compatible native builds require schema 23. While this work ran, current main added
 schema 24; the shared server still reports 23. A fresh isolated build of current main correctly blocks
-that connection. Its probe reported no loaded bots, so its low RSS is excluded. The server was neither
-updated nor revoked, and the production compatibility check was preserved. A matching server and
+that connection. Its probe reported no loaded bots, so its low RSS is excluded. The server was not
+updated, no device was revoked, and the production compatibility check was preserved. A matching server and
 visible-window measurement are still needed for final native acceptance. Native streaming replies
 were not measured; no message was sent remotely.
 The test pairing remains registered on the server; local QA credentials and data were removed.
 
-The shell allocation summary reported `31.1M` physical footprint and `16.9M` allocated heap, as reported while
+The shell allocation summary reported `31.1M` physical footprint and `16.9M` allocated heap while
 RSS was about 88 MB. That supports further work on native/framework overhead; it does not establish
 an unbounded relay cache or satisfy the requested total-RSS ceiling. No speculative Rust change ships.
 
-Verification: `bunx biome check .`, `bun run typecheck`, **1,502 UI tests**, production UI build,
-headless five-minute comparison and final fast regression passed. The relevant sidecar folders
-(`store`, `kernel`, `cli`) produced **375 passes and one failure**: “checkpointed transcript reads never
-revisit historical delta bodies”. That same failure was reproduced independently on `origin/main`
-(`2ec1a47`). An exploratory runtime-folder run was stopped after unrelated timeouts; runtime code is
-unchanged by this patch. The isolated native release build completed; no native artifact is published.
+Verification: `bunx biome check .`, `bun run typecheck`, **1,525 UI tests**, production UI build,
+headless five-minute comparison and the 2 MB scenario passed. The final relevant sidecar folders
+(`store`, `kernel`, `cli`) produced **377 passes, zero failures**. Earlier on `2ec1a47`, one checkpoint
+case also failed on main; the later upstream test fix resolved it before final verification. The isolated
+native release build completed; no native artifact is published.
 
 These changes serve VISION **7 — Calm, clear, native**, while preserving **3 — Nothing is lost**.

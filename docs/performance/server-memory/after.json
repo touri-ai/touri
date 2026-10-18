@@ -1,64 +1,68 @@
 {
+  "scenario": "regular",
   "duration": 300000,
   "interval": 1000,
+  "replies": 600,
+  "events": 1800,
   "samples": [
     {
-      "elapsedMs": 11,
-      "usedBytes": 5196648,
+      "elapsedMs": 14,
+      "usedBytes": 5198960,
       "nodes": 917
     },
     {
-      "elapsedMs": 30026,
-      "usedBytes": 6847644,
+      "elapsedMs": 30027,
+      "usedBytes": 6958212,
       "nodes": 948
     },
     {
-      "elapsedMs": 60079,
-      "usedBytes": 7527956,
+      "elapsedMs": 60048,
+      "usedBytes": 7279836,
       "nodes": 948
     },
     {
-      "elapsedMs": 90137,
-      "usedBytes": 7521172,
+      "elapsedMs": 90060,
+      "usedBytes": 7260440,
       "nodes": 948
     },
     {
-      "elapsedMs": 120208,
-      "usedBytes": 7688612,
+      "elapsedMs": 120084,
+      "usedBytes": 7756136,
       "nodes": 948
     },
     {
-      "elapsedMs": 150244,
-      "usedBytes": 7934848,
+      "elapsedMs": 150107,
+      "usedBytes": 7714452,
       "nodes": 948
     },
     {
-      "elapsedMs": 180279,
-      "usedBytes": 7955736,
+      "elapsedMs": 180130,
+      "usedBytes": 7885812,
       "nodes": 948
     },
     {
-      "elapsedMs": 210322,
-      "usedBytes": 8234060,
+      "elapsedMs": 210145,
+      "usedBytes": 7736660,
       "nodes": 948
     },
     {
-      "elapsedMs": 240339,
-      "usedBytes": 7811700,
+      "elapsedMs": 240157,
+      "usedBytes": 7577688,
       "nodes": 948
     },
     {
-      "elapsedMs": 270369,
-      "usedBytes": 8952192,
+      "elapsedMs": 270190,
+      "usedBytes": 7658164,
       "nodes": 948
     },
     {
-      "elapsedMs": 300017,
-      "usedBytes": 7663068,
+      "elapsedMs": 300027,
+      "usedBytes": 7663172,
       "nodes": 948
     }
   ],
   "backgroundHistoryMessages": 21,
+  "sourceBase": "2ec1a47",
   "loginReads": 1,
   "historyReads": {
     "/api/v1/threads/memory-thread-0/messages": 1
