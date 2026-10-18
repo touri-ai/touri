@@ -4128,6 +4128,73 @@ a {
 .chat-message-list .message-assistant {
   padding: 0;
 }
+.chat-message-list .routine-run-marker {
+  width: min(var(--chat-column-width), 100%);
+  margin: 0 auto var(--space-16);
+  padding: var(--space-8) 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.routine-run-marker .run-card-heading {
+  justify-content: flex-start;
+  gap: var(--space-8);
+}
+.routine-run-marker .run-card-heading > :not(strong) {
+  flex-shrink: 0;
+}
+.routine-run-marker strong {
+  min-width: 0;
+  font-size: var(--type-13);
+  font-weight: var(--weight-medium);
+}
+.routine-run-marker time {
+  color: var(--text-secondary);
+  font-size: var(--type-11);
+  font-variant-numeric: tabular-nums;
+}
+.routine-run-marker .run-card-summary {
+  margin-top: var(--space-8);
+  color: var(--text-secondary);
+  font-size: var(--type-12);
+}
+.routine-run-marker .open-run-link {
+  font-size: var(--type-12);
+}
+.chat-message-list .message-routine-prompt {
+  position: relative;
+  width: min(var(--chat-column-width), 100%);
+  max-width: 100%;
+  margin-inline: auto;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+}
+.message-routine-prompt .chat-disclosure {
+  margin: 0;
+}
+.message-routine-prompt .chat-disclosure-toggle {
+  padding-right: calc(var(--space-24) * 2);
+}
+.message-routine-prompt .disclosure-content {
+  padding-block: var(--space-8);
+  color: var(--text-secondary);
+  font-size: var(--type-13);
+}
+.message-routine-prompt .user-message-actions {
+  margin: 0;
+}
+.message-routine-prompt .user-message-actions > button {
+  position: absolute;
+  top: 0;
+  right: 0;
+  min-height: 30px;
+}
+.routine-empty-result {
+  color: var(--text-secondary);
+  font-size: var(--type-13);
+}
 .chat-message-list .message-meta {
   gap: var(--space-8);
   flex-wrap: wrap;
@@ -4440,7 +4507,7 @@ a {
   .chat-panel .chat-bot-chip {
     max-width: 40%;
   }
-  .chat-message-list .message-user {
+  .chat-message-list .message-user:not(.message-routine-prompt) {
     max-width: 92%;
   }
 }

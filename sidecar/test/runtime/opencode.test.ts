@@ -2,7 +2,17 @@ import { afterEach, expect, test } from "bun:test"
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import type { Bot, Kernel, ProviderEvent, ProviderSession, StartTurnArgs, Thread } from "@touri/contracts"
+import {
+  type ApiModel,
+  type Bot,
+  getApiModelReference,
+  type Kernel,
+  type ProviderEvent,
+  type ProviderSession,
+  type StartTurnArgs,
+  type Thread,
+} from "@touri/contracts"
+import { saveApiModel } from "../../src/api-models/config"
 import { createKernel } from "../../src/kernel"
 import { folderGuestPath } from "../../src/kernel/bot-folders"
 import { folderAccessUnavailable, refreshHostFolderAccess } from "../../src/kernel/folder-capability"
@@ -15,7 +25,7 @@ const cleanups: Array<() => Promise<void>> = []
 afterEach(async () => {
   for (const cleanup of cleanups.splice(0)) await cleanup()
 })
-const fixture = (scenario: Record<string, unknown> = {}, vm = false) => {
+const fixture = (scenario: Record<string, unknown> = {}, vm = false, apiKey?: string) => {
   const root = mkdtempSync(join(tmpdir(), "touri-opencode-test-"))
   const runtime = createKernel({ appData: join(root, "data") })
   const home = join(root, "user")
@@ -27,6 +37,8 @@ const fixture = (scenario: Record<string, unknown> = {}, vm = false) => {
   const spawn: Kernel["spawnTree"] = (input) => {
     calls.push(input)
     if (input.cmd === "cat") return runtime.kernel.spawnTree({ ...input, cmd: "/bin/cat" })
+    if (input.args[0]?.endsWith("/api-proxy.cjs"))
+      return runtime.kernel.spawnTree(Object.assign({}, input, { cmd: process.execPath }))
     return runtime.kernel.spawnTree({
       ...input,
       cmd: process.execPath,
@@ -42,7 +54,16 @@ const fixture = (scenario: Record<string, unknown> = {}, vm = false) => {
       ],
     })
   }
-  const kernel = { ...runtime.kernel, spawnTree: spawn }
+  const kernel = Object.assign(
+    {},
+    runtime.kernel,
+    { spawnTree: spawn },
+    apiKey
+      ? {
+          callHost: (async () => ({ success: true, value: { value: apiKey } })) as Kernel["callHost"],
+        }
+      : {},
+  )
   const adapter = createOpenCodeAdapter({ kernel, command: process.execPath, startupMs: 2000, interruptGraceMs: 50 })
   const events: ProviderEvent[] = []
   const controller = new AbortController()
@@ -85,6 +106,7 @@ const fixture = (scenario: Record<string, unknown> = {}, vm = false) => {
   return {
     root,
     runtime,
+    kernel,
     adapter,
     args,
     events,
@@ -371,4 +393,38 @@ for (const vm of [false, true])
     })
     expect(config.permission.edit).toMatchObject({ [`${granted}/**`]: "deny" })
     expect(f.calls.some((call) => call.cmd === "/usr/bin/sandbox-exec" || /\/bwrap$/.test(call.cmd))).toBe(!vm)
+  })
+
+for (const vm of [false, true])
+  test(`API models use a transient key and preserve permissions on ${vm ? "the isolated machine" : "the host"}`, async () => {
+    const key = "fixture-bot-api-key"
+    const fixtureState = fixture({}, vm, key)
+    const model: ApiModel = {
+      id: "api-fixture",
+      preset: "deepseek",
+      name: "Pesquisa",
+      modelId: "test-model",
+      baseUrl: "https://api.deepseek.com/v1",
+    }
+    saveApiModel(fixtureState.kernel, model)
+    const args = Object.assign({}, fixtureState.args, {
+      bot: Object.assign({}, fixtureState.args.bot, { model: getApiModelReference(model) }),
+    })
+
+    const result = await fixtureState.adapter.startTurn(args)
+
+    expect(result).toMatchObject({ success: true, status: "succeeded" })
+    const spawned = fixtureState.records().find((entry) => entry.type === "spawn")
+    expect(spawned.config.permission["*"]).toBe("ask")
+    expect(spawned.config.mcp.touri.enabled).toBe(true)
+    expect(JSON.stringify(spawned)).not.toContain(key)
+    expect(fixtureState.calls.every((call) => call.env.TOURI_MODEL_API_KEY !== key)).toBe(true)
+    expect(fixtureState.calls.some((call) => call.env.TOURI_API_SECRET === key)).toBe(vm)
+    expect(spawned.config.provider["touri-api-api-fixture"].options.baseURL).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/v1$/)
+    expect(fixtureState.calls.some((call) => call.cmd === "cat")).toBe(false)
+    expect(readFileSync(join(args.bot.homeDir, ".touri-opencode/thread/data/opencode/auth.json"), "utf8")).toBe("{}")
+    expect(fixtureState.records().find((entry) => entry.path?.endsWith("/prompt_async")).body.model).toEqual({
+      providerID: "touri-api-api-fixture",
+      modelID: "test-model",
+    })
   })

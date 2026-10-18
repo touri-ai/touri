@@ -1,4 +1,5 @@
 import type {
+  ApiModel,
   ApiRoutes,
   Bot,
   BotGroup,
@@ -17,6 +18,7 @@ import type {
   Routine,
   RoutineRun,
   Run,
+  TelegramIntegration,
   Thread,
   UiEvent,
   UiEventEnvelope,
@@ -264,7 +266,106 @@ const defaultDoctor: DoctorReport = {
 }
 
 /** Optional demo states for screenshots and manual review, selected with `?mockScenario=` in the mock UI. */
-export type MockScenario = "resumed-turn"
+export type MockScenario = "resumed-turn" | "routine-conversation"
+
+export const getRoutineConversationFixture = (): {
+  thread: Thread
+  messages: Array<Message>
+  run: Run
+  routine: Routine
+  routineRun: RoutineRun
+} => {
+  const startedAt = Date.UTC(2026, 9, 17, 19, 4)
+  const finishedAt = startedAt + 35_000
+  const prompt = [
+    "Confira as mensagens recebidas desde a última execução e procure apenas assuntos que precisam de atenção hoje.",
+    "Ignore recibos automáticos, anúncios e mensagens já resolvidas. Não envie respostas nem altere a caixa de entrada.",
+    "Se houver algo importante, traga um resumo curto e indique o próximo passo. Se não houver novidades, responda apenas NO_NOTIFICATION.",
+  ].join("\n\n")
+  const request: Message = {
+    ...createMessage({ id: "m-routine-request", threadId: "thread-mark", role: "user", text: prompt }),
+    createdAt: startedAt,
+    updatedAt: startedAt,
+  }
+  const commentary = "Vou conferir as mensagens recentes e separar o que precisa de atenção."
+  const reply: Message = {
+    ...createMessage({
+      id: "m-routine-reply",
+      threadId: request.threadId,
+      role: "assistant",
+      text: `${commentary}\n\nNO_NOTIFICATION`,
+      parentId: request.id,
+      runId: "run-inbox-summary",
+    }),
+    parts: [
+      { type: "text", text: commentary },
+      {
+        type: "tool_call",
+        callId: "call-inbox-summary",
+        tool: "inbox.read",
+        summary: "Conferir mensagens recentes",
+        inputJson: '{"folder":"inbox","unreadOnly":true}',
+        outputJson: '{"checked":12,"needsAttention":0}',
+        ok: true,
+        resolution: "succeeded",
+        startedAt: startedAt + 5_000,
+        resolvedAt: finishedAt - 5_000,
+      },
+      { type: "text", text: "NO_NOTIFICATION" },
+    ],
+    createdAt: startedAt + 1_000,
+    updatedAt: finishedAt,
+  }
+  const routine: Routine = {
+    ...createRoutine("bot-mark"),
+    id: "routine-inbox-summary",
+    name: "Resumo da caixa de entrada",
+    prompt,
+    cron: "0 9,14,19 * * *",
+    enabled: true,
+    continuity: "new-thread",
+    createdAt: startedAt - 5 * 86_400_000,
+    updatedAt: startedAt,
+  }
+  const routineRun: RoutineRun = {
+    id: "routine-run-inbox-summary",
+    routineId: routine.id,
+    scheduledFor: startedAt,
+    status: "succeeded",
+    threadId: request.threadId,
+    runId: reply.runId,
+    triggerSource: "cron",
+    summary: "NO_NOTIFICATION",
+    startedAt,
+    finishedAt,
+  }
+  const run: Run = {
+    ...createRun({ id: "run-inbox-summary", threadId: request.threadId, botId: routine.botId }),
+    trigger: "routine",
+    requestMessageId: request.id,
+    replyMessageId: reply.id,
+    routineRunId: routineRun.id,
+    queuedAt: startedAt,
+    startedAt,
+    finishedAt,
+  }
+  const thread: Thread = {
+    ...createThread({
+      id: request.threadId,
+      botId: routine.botId,
+      title: `${routine.name} · 10/17/26, 7:04 PM`,
+      running: false,
+    }),
+    kind: "routine",
+    activeLeafId: reply.id,
+    routineRunId: routineRun.id,
+    unread: 0,
+    createdAt: routine.createdAt,
+    updatedAt: finishedAt,
+  }
+
+  return { thread, messages: [request, reply], run, routine, routineRun }
+}
 
 const resumedTurnFixture = (): { messages: Array<Message>; runs: Array<Run> } => {
   const request = createMessage({
@@ -343,16 +444,24 @@ const importReport: ImportReport = {
 }
 
 export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } = {}): MockApi => {
+  const routineFixture = scenario === "routine-conversation" ? getRoutineConversationFixture() : null
   const project = createProject()
   const projects: Array<Project> = [project]
   const bots = seed.bots.map((bot, index) => createBot(bot, index, project.id))
-  const threads = seed.threads.map(createThread)
-  const messages = seed.messages.map((message) => createMessage(message))
+  const threads = seed.threads.map((thread) =>
+    thread.id === routineFixture?.thread.id ? routineFixture.thread : createThread(thread),
+  )
+  const messages = [
+    ...seed.messages
+      .filter((message) => message.threadId !== routineFixture?.thread.id)
+      .map((message) => createMessage(message)),
+    ...(routineFixture?.messages ?? []),
+  ]
   const mem0Settings = new Map<string, import("@touri/contracts").Mem0Settings>()
   const learning = new Map<string, BotLearning>()
   const machines = new Map<string, import("@touri/contracts").MachineState>()
   const networkPolicies = new Map<string, Record<string, unknown>>()
-  const runs = new Map<string, Run>()
+  const runs = new Map<string, Run>(routineFixture ? [[routineFixture.run.id, routineFixture.run]] : [])
   if (scenario === "resumed-turn") {
     const fixture = resumedTurnFixture()
     messages.push(...fixture.messages)
@@ -365,9 +474,9 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
     runs.set(run.id, run)
   }
   const processesByProject = new Map<string, Array<ProcessEntry>>([[project.id, createProcesses(project)]])
-  const routines = [createRoutine("bot-mark")]
+  const routines = [routineFixture?.routine ?? createRoutine("bot-mark")]
   const routineRuns: Array<RoutineRun> = [
-    {
+    routineFixture?.routineRun ?? {
       id: "routine-run-demo",
       routineId: "routine-daily",
       scheduledFor: new Date(2026, 9, 12, 10, 0).getTime(),
@@ -454,9 +563,17 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
   const allProcesses = (): Array<ProcessEntry> => [...processesByProject.values()].flat()
   const findProcess = (id: string): ProcessEntry | undefined => allProcesses().find((entry) => entry.spec.id === id)
 
+  const apiModels = new Map<string, ApiModel>()
   const groups: BotGroup[] = []
+  const telegram = new Map<string, TelegramIntegration>()
   const request: ApiRequest = async (route, input, pathValues = {}) => {
-    calls.push({ route: String(route), input, pathValues })
+    const recordedInput =
+      String(route).includes("/api-models") && input && typeof input === "object"
+        ? Object.fromEntries(
+            Object.entries(input).map(([name, value]) => [name, name === "apiKey" ? "[REDACTED]" : value]),
+          )
+        : input
+    calls.push({ route: String(route), input: recordedInput, pathValues })
     const key = String(route)
     if (key === "DELETE /bots/:id") {
       const bot = bots.find((bot) => bot.id === pathValues.id)
@@ -508,6 +625,27 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
     }
     if (key === "POST /bots/:id/mem0/test") return { ok: true } as ApiRoutes[typeof route]["res"]
     if (key === "GET /bots/:id/mcp") return { servers: [] } as ApiRoutes[typeof route]["res"]
+    if (key === "GET /bots/:id/integrations/telegram" || key === "PUT /bots/:id/integrations/telegram") {
+      const botId = pathValues.id ?? ""
+      const current = telegram.get(botId) ?? {
+        config: { enabled: false, allowedUserIds: [], homeChatId: null, forwardRoutines: false },
+        tokenSaved: false,
+        status: { state: "off" as const, username: null, error: null },
+        lastRejected: null,
+      }
+      if (key === "PUT /bots/:id/integrations/telegram") {
+        const { token, ...config } = input as ApiRoutes["PUT /bots/:id/integrations/telegram"]["req"]
+        const next = { ...current, config: { ...current.config, ...config } }
+        if (token !== undefined) next.tokenSaved = token !== null
+        next.status =
+          next.config.enabled && next.tokenSaved
+            ? { state: "connected", username: "touri_mock_bot", error: null }
+            : { state: "off", username: null, error: null }
+        telegram.set(botId, next)
+        return { telegram: next } as ApiRoutes[typeof route]["res"]
+      }
+      return { telegram: current } as ApiRoutes[typeof route]["res"]
+    }
     if (key === "GET /bots/:id/learning" || key === "PUT /bots/:id/learning") {
       const id = pathValues.id ?? ""
       const current = learning.get(id) ?? {
@@ -534,6 +672,25 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
       return {
         server: { ...(input as McpServer), tools: [{ name: "sample_tool", description: "Ferramenta de exemplo" }] },
       } as ApiRoutes[typeof route]["res"]
+    if (key === "GET /api-models") return { models: Array.from(apiModels.values()) } as never
+    if (key === "POST /api-models") {
+      const config = input as ApiRoutes["POST /api-models"]["req"]
+      const model: ApiModel = {
+        id: crypto.randomUUID(),
+        preset: config.preset,
+        name: config.name || "API",
+        baseUrl: config.baseUrl || "https://api.example.com/v1",
+        modelId: config.modelId,
+      }
+      apiModels.set(model.id, model)
+      return { model } as never
+    }
+    if (key === "DELETE /api-models/:id") {
+      apiModels.delete(pathValues.id || "")
+      return {} as never
+    }
+    if (key === "POST /api-models/models") return { models: ["demo-model", "demo-reasoning"] } as never
+    if (key === "POST /api-models/test" || key === "POST /api-models/:id/test") return { ok: true } as never
     if (key === "GET /provider-profiles") return { profiles: [] } as ApiRoutes[typeof route]["res"]
     if (key === "GET /providers/opencode/models")
       return {

@@ -1,5 +1,5 @@
 import type { Message, Run } from "@touri/contracts"
-import { errorRegistry, publicError } from "@touri/contracts"
+import { apiModelErrors, errorRegistry, publicError } from "@touri/contracts"
 import {
   type FailureAction,
   failureRetryHint,
@@ -76,9 +76,11 @@ export const runErrorFor = (message: Message, candidate?: Run, machineReady = fa
   const failure =
     (stored && trustedFailure(errorClass, stored)) ?? fromRun ?? safeRunFailure(errorClass, legacyDiagnostic(raw))
   const { hint, ...rest } = failure
+  const apiMessage = Object.values(apiModelErrors).find((text) => (run?.errorMessage ?? raw).includes(text))
   return {
     title: TITLES[errorClass] ?? FALLBACK_TITLE,
     ...rest,
+    detail: apiMessage ? t(apiMessage) : rest.detail,
     code: publicError(errorClass).code,
     stageLabel: failureStageLabel(failure.stage),
     hint:

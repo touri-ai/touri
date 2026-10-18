@@ -1,4 +1,4 @@
-import type { ProviderEvent, RunUsage } from "@touri/contracts"
+import type { ProviderEvent, RunErrorClass, RunUsage } from "@touri/contracts"
 import { asRecord, classifyProviderError, numberValue, stringValue } from "../utils"
 
 export type OpenCodePermission = {
@@ -10,7 +10,12 @@ export type OpenCodePermission = {
 }
 
 /** Translate both the stable part events and the newer session.next stream. */
-export const openCodeEvents = (sessionID: string, emit: (event: ProviderEvent) => void, userMessageID?: string) => {
+export const openCodeEvents = (
+  sessionID: string,
+  emit: (event: ProviderEvent) => void,
+  userMessageID?: string,
+  mapError?: (detail: string) => { message: string; errorClass: RunErrorClass },
+) => {
   const parts = new Map<string, { type: string; text: string }>()
   const seenSteps = new Set<string>()
   const userMessages = new Set<string>(userMessageID ? [userMessageID] : [])
@@ -40,10 +45,12 @@ export const openCodeEvents = (sessionID: string, emit: (event: ProviderEvent) =
       return { idle: true }
     if (type === "session.error" || type === "session.next.step.failed") {
       const error = props.error ?? props
-      const detail = JSON.stringify(error)
+      const mapped = mapError?.(JSON.stringify(error))
+      const detail = mapped?.message ?? JSON.stringify(error)
       const name = asRecord(error)?.name ?? asRecord(error)?._tag
-      const code =
-        name === "ProviderAuthError"
+      const code = mapped
+        ? mapped.errorClass
+        : name === "ProviderAuthError"
           ? "cli_auth"
           : name === "ContextOverflowError"
             ? "context_overflow"
