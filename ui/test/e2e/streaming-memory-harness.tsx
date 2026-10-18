@@ -7,6 +7,7 @@ import { installMotionTokens } from "../../src/design/spring"
 import "../../src/styles.css"
 
 const startStreamingFixture = () => {
+  document.documentElement.dataset.streamingOutputBytes = String(new TextEncoder().encode(source).byteLength * 8)
   const mock = createMockApi()
   const template = mock.getState()
   const bot = template.bots[0]
@@ -68,6 +69,7 @@ const startStreamingFixture = () => {
           })
         })
         offset += delta.length
+        document.documentElement.dataset.streamingProgress = String(offset / source.length)
         if (offset < source.length) return
 
         clearInterval(timer)

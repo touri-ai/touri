@@ -189,7 +189,7 @@ jobs:
           echo "Playwright exact hit: $BROWSER_HIT" | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Check long-conversation typing
         working-directory: ui
-        run: bunx playwright test test/e2e/composer-performance.spec.ts --workers=1
+        run: bunx playwright test test/e2e/composer-performance.spec.ts test/e2e/streaming-memory.spec.ts --workers=1
       - name: Keep synthetic performance evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -198,6 +198,9 @@ jobs:
           path: |
             ui/test-results/**/composer-performance.json
             ui/test-results/**/composer-performance.png
+            ui/test-results/**/streaming-memory.json
+            ui/test-results/**/after-streaming.png
+            ui/test-results/**/after-completed.png
           if-no-files-found: ignore
           retention-days: 7
 

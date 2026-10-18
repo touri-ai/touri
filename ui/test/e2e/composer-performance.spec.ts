@@ -120,9 +120,6 @@ test("long history keeps typing independent of transcript work", async ({ page, 
   const uiDir = join(temporary, "ui")
   let server: ChildProcess | undefined
   try {
-    // Keep the regular production build covered by the same serialized browser gate.
-    await run("bun", ["--cwd", "ui", "build"], { cwd: repository })
-    console.log("UI production build: passed")
     await build({
       root: join(repository, "ui"),
       configFile: join(repository, "ui/vite.config.ts"),

@@ -5,6 +5,7 @@ const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? `http://127.0.0.1:${port}`
 
 export default defineConfig({
   testDir: "./test/e2e",
+  globalSetup: "./test/e2e/global-setup.ts",
   timeout: 20_000,
   // Keep repeatable before/after transcript evidence in the serialized test gate.
   ...(process.env.TOURI_E2E_GREP || process.env.CHAT_TRANSCRIPT_PHASE
