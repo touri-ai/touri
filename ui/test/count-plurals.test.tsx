@@ -120,7 +120,7 @@ it.each(counts)("renders routine agreement for %i routines", async (count) => {
   )
   expect(
     screen.getByText(
-      `${count} ${count === 1 ? "rotina" : "rotinas"} · Funciona enquanto o touri estiver em execução neste servidor. Você pode fechar esta página.`,
+      `${count} ${count === 1 ? "rotina" : "rotinas"} · Funciona enquanto o touri estiver em execução no servidor. Você pode fechar esta página.`,
     ),
   ).toBeVisible()
 })
