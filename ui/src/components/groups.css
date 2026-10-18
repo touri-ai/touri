@@ -13,6 +13,18 @@
   border-top: 1px solid var(--border-subtle);
   padding: 14px 10px;
 }
+.modal-card.delete-group-dialog {
+  width: min(520px, 100%);
+  overflow-wrap: anywhere;
+}
+.delete-group-dialog .modal-form {
+  gap: var(--space-12);
+  font-size: var(--type-14);
+}
+.delete-group-dialog .modal-form p {
+  margin: 0;
+  line-height: 1.5;
+}
 .group-sidebar-heading {
   display: flex;
   justify-content: space-between;
@@ -40,6 +52,9 @@
 .group-sidebar-row {
   display: flex;
   align-items: center;
+}
+.group-sidebar .bot-settings {
+  opacity: 1;
 }
 .group-select {
   display: flex;

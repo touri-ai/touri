@@ -16,10 +16,11 @@ export const reconcileApprovalMessages = (
   messages: Message[],
   notifications: NotificationRecord[],
   snapshot: Message[] = messages,
-): Message[] =>
-  messages.map((message) => ({
-    ...message,
-    parts: message.parts.map((part) => {
+): Message[] => {
+  const reconciled = messages.map((message) => {
+    if (!message.parts.some((part) => part.type === "approval")) return message
+
+    const parts = message.parts.map((part) => {
       if (part.type !== "approval") return part
       const notice = notifications.find(
         (item) =>
@@ -35,7 +36,7 @@ export const reconcileApprovalMessages = (
           (other) => other.type === "approval" && other.approvalId === part.approvalId && other.decision !== "pending",
         )
       if (!notice && peer?.type !== "approval") return part
-      return {
+      const resolved = {
         ...part,
         decision:
           part.decision !== "pending"
@@ -54,8 +55,12 @@ export const reconcileApprovalMessages = (
             }
           : {}),
       } as ApprovalPart
-    }),
-  }))
+      return resolved.decision === part.decision && resolved.resolvedAt === part.resolvedAt ? part : resolved
+    })
+    return parts.every((part, index) => part === message.parts[index]) ? message : { ...message, parts }
+  })
+  return reconciled.every((message, index) => message === messages[index]) ? messages : reconciled
+}
 
 export const reconcileApprovalNotifications = (
   items: NotificationRecord[],

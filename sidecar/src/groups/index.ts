@@ -1,4 +1,5 @@
 import type { Kernel } from "@touri/contracts"
+import { deleteGroupRoute } from "./delete-group"
 import { createGroupStore } from "./store"
 export const name = "groups"
 export const init = async (kernel: Kernel): Promise<void> => {
@@ -14,6 +15,7 @@ export const init = async (kernel: Kernel): Promise<void> => {
   kernel.registerRoutes({
     name,
     routes: [
+      deleteGroupRoute(kernel),
       { method: "GET", path: "/groups", handler: async () => ({ status: 200, json: { groups: groups.list() } }) },
       {
         method: "POST",

@@ -149,9 +149,19 @@ const entry = (botId: string): HTMLElement => {
 }
 
 it.each([
-  { kind: "routine" as const, title: "Novas mensagens · 10/12/20, 7:04 PM" },
-  { kind: "chat" as const, title: "Novas mensagens · 12 de out., 19:00" },
-])("shows the date once in a $kind row with a generated title", ({ kind, title }) => {
+  {
+    kind: "routine" as const,
+    title: "Novas mensagens · 10/12/20, 7:04 PM",
+    tooltip: "Novas mensagens · 12/10/2020, 19:04",
+    dateLabel: /12\/10\/2020, 19:04/,
+  },
+  {
+    kind: "chat" as const,
+    title: "Novas mensagens · 12 de out., 19:00",
+    tooltip: "Novas mensagens",
+    dateLabel: /12 de out\./,
+  },
+])("keeps the generated $kind title concise and localizes its date label", ({ kind, title, tooltip, dateLabel }) => {
   const { bots, threads } = fixture()
   const bot = bots[0]
   const baseThread = threads[0]
@@ -164,12 +174,33 @@ it.each([
     updatedAt: timestamp,
   })
 
-  renderSidebar({ bots: [bot], threads: [thread], selectedBotId: bot.id })
+  renderSidebar({
+    bots: [bot],
+    threads: [thread],
+    selectedBotId: bot.id,
+    routineRuns:
+      kind === "routine"
+        ? [
+            {
+              id: "sidebar-routine-run",
+              routineId: "sidebar-routine",
+              threadId: thread.id,
+              scheduledFor: timestamp,
+              status: "succeeded",
+              runId: null,
+              triggerSource: "cron",
+              summary: null,
+              startedAt: timestamp,
+              finishedAt: timestamp,
+            },
+          ]
+        : [],
+  })
 
   const row = screen.getByRole("button", { name: /Novas mensagens/ })
   expect(row.querySelector("strong")).toHaveTextContent(/^Novas mensagens$/)
-  expect(row.querySelector("strong")).toHaveAttribute("title", "Novas mensagens")
-  expect(row.querySelector("small")).toHaveTextContent(/12 de out\./)
+  expect(row.querySelector("strong")).toHaveAttribute("title", tooltip)
+  expect(row.querySelector("small")).toHaveTextContent(dateLabel)
   expect(thread.title).toBe(title)
 })
 
@@ -361,6 +392,29 @@ it.each(["failed", "succeeded"] as const)("clears failure attention during a ret
     expect(within(entry("bot-beta")).queryByText(/Aguardando você:|Resposta interrompida/)).toBeNull()
     expect(screen.getByRole("button", { name: "Notificações", exact: true })).toBeVisible()
   }
+})
+
+it("shows interrupted tasks only while pending and leaves the count on the notification bell", () => {
+  const { bots, threads } = fixture()
+  const api = createMockApi()
+  const failure = api.notify({
+    kind: "turn-failed",
+    botId: "bot-alfa",
+    threadId: "thread-alfa",
+    title: "Tarefa interrompida",
+    body: "A resposta foi interrompida.",
+  })
+  const view = renderSidebar({ bots, threads, onRecovery: vi.fn(), recoveryCount: 0 })
+
+  expect(screen.queryByRole("button", { name: /Tarefas interrompidas/ })).toBeNull()
+
+  view.update({ recoveryCount: 1, notifications: [failure] })
+
+  const recovery = screen.getByRole("button", { name: "Tarefas interrompidas", exact: true })
+  expect(recovery.querySelector("svg")).not.toBeNull()
+  expect(recovery).not.toHaveTextContent(/\d/)
+  expect(screen.getByRole("button", { name: "Notificações, 1 precisa de atenção" })).toBeVisible()
+  expect(screen.getAllByText("1", { selector: ".notification-badge" })).toHaveLength(1)
 })
 
 it("lets the bell open an approval that arrived before its notification", () => {

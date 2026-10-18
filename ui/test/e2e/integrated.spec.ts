@@ -1,11 +1,24 @@
 import { readFileSync } from "node:fs"
 import { mkdir } from "node:fs/promises"
 import { resolve } from "node:path"
-import { expect, type Page, test } from "@playwright/test"
+import { test as base, expect, type Page } from "@playwright/test"
 import { openGlobalPage, showBotAdvanced, showBotPanel, showBotRoutines } from "./home-navigation"
 
 const evidence = resolve(import.meta.dirname, "../../../docs/qa/r8/integrated")
 const framebuffer = readFileSync(resolve(import.meta.dirname, "fixtures/r8-desktop.js"), "utf8")
+const test = base.extend<object, { preparedHarness: undefined }>({
+  preparedHarness: [
+    async ({ browser }, use, workerInfo) => {
+      const page = await browser.newPage({ baseURL: workerInfo.project.use.baseURL })
+
+      // Cold development-server compilation must finish before the timed screenshot cases.
+      await prepare(page, "light", 1440)
+      await page.close()
+      await use(undefined)
+    },
+    { scope: "worker", auto: true },
+  ],
+})
 
 const prepare = async (page: Page, theme: "light" | "dark", width: number) => {
   await mkdir(evidence, { recursive: true })

@@ -1,5 +1,6 @@
 import type { Database } from "bun:sqlite"
 import type { MessagePart, UiEvent } from "@touri/contracts"
+import { refreshMessageSearch } from "./message-search"
 
 type Delta = Extract<UiEvent, { type: "message.delta" }>
 type StreamEvent = Delta | Extract<UiEvent, { type: "message.parts" }>
@@ -95,12 +96,7 @@ export const materializeTranscript = (database: Database): void => {
           projection.thread_id,
           projection.id,
         )
-      database
-        .query("DELETE FROM messages_fts WHERE thread_id = ? AND message_id = ?")
-        .run(projection.thread_id, projection.id)
-      database
-        .query("INSERT INTO messages_fts(text, thread_id, message_id) VALUES (?, ?, ?)")
-        .run(projection.text, projection.thread_id, projection.id)
+      refreshMessageSearch(database, { threadId: projection.thread_id, id: projection.id, text: projection.text })
     }
     database.exec("UPDATE transcript_maintenance SET projection_write = 0 WHERE id = 1")
     database.exec("DELETE FROM transcript_pending_deltas")
@@ -125,11 +121,17 @@ export const botReplayRows = (database: Database, botId: string): Array<{ seq: n
 
 /** Called before removing the bot's thread rows, within the deletion transaction. */
 export const purgeBotReplay = (database: Database, botId: string): void => {
-  const rows = botReplayRows(database, botId)
+  purgeReplayRows(database, botReplayRows(database, botId))
+}
+
+/** Called before removing owned rows, within the deletion transaction. */
+export const purgeReplayRows = (database: Database, rows: Array<{ seq: number }>): void => {
   const floor = rows.reduce((maximum, row) => Math.max(maximum, row.seq), 0)
   if (!floor) return
   database.query("UPDATE transcript_maintenance SET ui_delete_before_seq=? WHERE id=1").run(floor)
-  for (const row of rows) database.query("DELETE FROM ui_event_log WHERE seq=?").run(row.seq)
+  rows.forEach((row) => {
+    database.query("DELETE FROM ui_event_log WHERE seq=?").run(row.seq)
+  })
   database
     .query("UPDATE schema_meta SET value=CAST(MAX(CAST(value AS INTEGER),?) AS TEXT) WHERE key='ui_event_floor_seq'")
     .run(floor)

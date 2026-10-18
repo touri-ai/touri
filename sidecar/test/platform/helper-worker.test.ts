@@ -71,14 +71,31 @@ if(process.argv.includes("--child")){process.stdout.write(await Bun.stdin.text()
 const result=runHelperBlocking({command:[process.execPath,"--child"],input:"compiled-worker-ok",env:buildChildEnv()});
 stopHelperWorker();if(result.exitCode!==0||result.stdout!=="compiled-worker-ok")process.exit(1);console.log(result.stdout);`,
     )
-    await Bun.build({
-      entrypoints: [entry],
-      compile: {
-        outfile: binary,
-        ...(process.platform === "linux" && process.arch === "x64"
-          ? { target: "bun-linux-x64-baseline" as const }
-          : {}),
-      },
+    // Bun stages the executable in cwd; keep its final rename on the fixture filesystem.
+    const build = Bun.spawn({
+      cmd: [
+        process.execPath,
+        "build",
+        entry,
+        "--compile",
+        "--outfile",
+        binary,
+        ...(process.platform === "linux" && process.arch === "x64" ? ["--target=bun-linux-x64-baseline"] : []),
+      ],
+      cwd: root,
+      stdout: "pipe",
+      stderr: "pipe",
+      timeout: 30_000,
+      killSignal: "SIGKILL",
+    })
+    const [buildOutput, buildErrors, buildCode] = await Promise.all([
+      new Response(build.stdout).text(),
+      new Response(build.stderr).text(),
+      build.exited,
+    ])
+    expect({ code: buildCode, errors: buildCode === 0 ? "" : `${buildOutput}\n${buildErrors}` }).toEqual({
+      code: 0,
+      errors: "",
     })
     chmodSync(binary, 0o700)
     const child = Bun.spawn([binary], { stdout: "pipe", stderr: "pipe", env })

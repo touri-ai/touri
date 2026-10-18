@@ -20,7 +20,7 @@ viewports.forEach((viewport) => {
     await expect(page.locator(".markdown-highlight .shiki")).toHaveCount(30, { timeout: 30_000 })
     await expect(page.locator('.markdown-highlight span[style*="--syntax-"]')).not.toHaveCount(0)
     const block = page.locator(".markdown-code").last()
-    const source = await block.locator("code").innerText()
+    const source = (await block.locator(".markdown-highlight .shiki code").textContent()) ?? ""
     await block.getByRole("button", { name: "Copiar código" }).click()
     expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(source)
     await expect(block.getByRole("status")).toHaveText("Código copiado")

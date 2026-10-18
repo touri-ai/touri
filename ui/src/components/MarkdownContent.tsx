@@ -1,23 +1,41 @@
 import { invoke } from "@tauri-apps/api/core"
-import { isValidElement, lazy, type ReactNode, Suspense, useContext, useEffect, useMemo, useRef, useState } from "react"
+import {
+  createContext,
+  isValidElement,
+  lazy,
+  memo,
+  type ReactNode,
+  Suspense,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react"
 import type { Components } from "react-markdown"
 import { userFacingError } from "../errors"
 import { localFileLinks, localFilePath } from "../messageMarkdown"
 import { useSaveNotice } from "../useSaveNotice"
 import { protectDiffFences } from "./codeFence"
+import { observeCodeVisibility } from "./codeVisibility"
 import { DiffOutput } from "./DiffOutput"
 import { EvidenceContext, type EvidenceContextValue, EvidenceGallery, readImage } from "./EvidenceGallery"
 import { decodedEvidencePath, type EvidenceNode, evidenceImages, evidencePath } from "./evidenceMarkdown"
 import { LocalFileLink } from "./LocalFileLink"
 import { MermaidDiagram } from "./MermaidDiagram"
 import { getMarkdownCodeHtml } from "./markdownHighlight"
+import { useStreamingContent } from "./useStreamingContent"
 
 type MarkdownRendererProps = {
   content: string
   compact?: boolean
   preview?: boolean
+  streaming?: boolean
   evidence?: EvidenceContextValue | undefined
 }
+
+const CodeVisibilityContext = createContext(false)
+const StreamingContext = createContext(false)
 
 type PreviewNode = { type: string; value?: string; children?: PreviewNode[] }
 
@@ -99,6 +117,25 @@ const chatPreview = () => (tree: PreviewNode) => {
   trim(tree)
 }
 
+const MarkdownCodeBlock = ({ children, preview }: { children: ReactNode; preview: boolean }) => {
+  const streaming = useContext(StreamingContext)
+  if (!isValidElement<{ className?: string; children?: ReactNode }>(children)) return <pre>{children}</pre>
+
+  const language = children.props.className?.replace(/^language-/, "") ?? "text"
+  if (language.toLowerCase() === "mermaid" && !preview && !streaming)
+    return <MermaidDiagram source={String(children.props.children ?? "").replace(/\n$/, "")} />
+  if (language === "diff") return <DiffOutput source={String(children.props.children ?? "").replace(/\n$/, "")} />
+
+  return (
+    <ShikiCode
+      language={language}
+      source={String(children.props.children ?? "").replace(/\n$/, "")}
+      copyable={!preview}
+      highlight={!streaming}
+    />
+  )
+}
+
 const LazyMarkdown = lazy(async () => {
   const [
     { default: ReactMarkdown, defaultUrlTransform },
@@ -109,20 +146,7 @@ const LazyMarkdown = lazy(async () => {
   const buildComponents = (preview: boolean): Components => ({
     img: ({ alt }) => <span>{alt}</span>,
     a: ({ href, children }) => <MarkdownLink href={href}>{children}</MarkdownLink>,
-    pre: ({ children }) => {
-      if (!isValidElement<{ className?: string; children?: ReactNode }>(children)) return <pre>{children}</pre>
-      const language = children.props.className?.replace(/^language-/, "") ?? "text"
-      if (language.toLowerCase() === "mermaid" && !preview)
-        return <MermaidDiagram source={String(children.props.children ?? "").replace(/\n$/, "")} />
-      if (language === "diff") return <DiffOutput source={String(children.props.children ?? "").replace(/\n$/, "")} />
-      return (
-        <ShikiCode
-          language={language}
-          source={String(children.props.children ?? "").replace(/\n$/, "")}
-          copyable={!preview}
-        />
-      )
-    },
+    pre: ({ children }) => <MarkdownCodeBlock preview={preview}>{children}</MarkdownCodeBlock>,
     table: ({ children }) => (
       // biome-ignore lint/a11y/noNoninteractiveTabindex: horizontal tables must be keyboard-scrollable.
       <section className="markdown-table" tabIndex={0} aria-label="Tabela da mensagem">
@@ -156,11 +180,24 @@ const LazyMarkdown = lazy(async () => {
       </>
     )
   }
-  return { default: Markdown }
+  return { default: memo(Markdown) }
 })
 
-const ShikiCode = ({ language, source, copyable = true }: { language: string; source: string; copyable?: boolean }) => {
+const ShikiCode = ({
+  language,
+  source,
+  copyable = true,
+  highlight = true,
+}: {
+  language: string
+  source: string
+  copyable?: boolean
+  highlight?: boolean
+}) => {
   const [html, setHtml] = useState<string | null>(null)
+  const [visible, setVisible] = useState(false)
+  const root = useRef<HTMLDivElement>(null)
+  const visibleOnly = useContext(CodeVisibilityContext)
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle")
   const resetRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(
@@ -181,6 +218,13 @@ const ShikiCode = ({ language, source, copyable = true }: { language: string; so
   }
 
   useEffect(() => {
+    if (!highlight || !visibleOnly) return
+
+    return observeCodeVisibility(root.current, () => setVisible(true))
+  }, [highlight, visibleOnly])
+  useEffect(() => {
+    if (!highlight || (visibleOnly && !visible)) return
+
     let active = true
     void getMarkdownCodeHtml(source, language)
       .then((rendered) => {
@@ -190,10 +234,12 @@ const ShikiCode = ({ language, source, copyable = true }: { language: string; so
     return () => {
       active = false
     }
-  }, [language, source])
+  }, [language, source, highlight, visibleOnly, visible])
+
+  const highlighted = html !== null && highlight
 
   return (
-    <div className="markdown-code">
+    <div className="markdown-code" ref={root}>
       <div className="markdown-code-header">
         <span>{language === "text" ? "Texto" : language}</span>
         {copyable ? (
@@ -207,28 +253,44 @@ const ShikiCode = ({ language, source, copyable = true }: { language: string; so
           {copyState === "copied" ? "Código copiado" : copyState === "failed" ? "Não foi possível copiar o código" : ""}
         </span>
       </div>
-      {html ? (
-        // biome-ignore lint/security/noDangerouslySetInnerHtml: Shiki generates this markup from a code block, not user HTML.
-        <div className="markdown-highlight" dangerouslySetInnerHTML={{ __html: html }} />
-      ) : (
-        <pre>
+      <div className="markdown-code-body">
+        <pre aria-hidden={highlighted || undefined}>
           <code>{source}</code>
         </pre>
-      )}
+        {highlighted && (
+          // biome-ignore lint/security/noDangerouslySetInnerHtml: Shiki generates this markup from a code block, not user HTML.
+          <div className="markdown-highlight" dangerouslySetInnerHTML={{ __html: html }} />
+        )}
+      </div>
     </div>
   )
 }
 
-export const MarkdownContent = ({ content, compact = false, preview = false, evidence }: MarkdownRendererProps) => (
-  <div className={`markdown-content${compact ? " markdown-compact" : ""}`}>
-    <Suspense fallback={<p className="whitespace-pre-wrap">{preview ? content.slice(0, 600) : content}</p>}>
-      {evidence ? (
-        <EvidenceContext.Provider value={evidence}>
-          <LazyMarkdown content={content} preview={preview} />
-        </EvidenceContext.Provider>
-      ) : (
-        <LazyMarkdown content={content} preview={preview} />
-      )}
-    </Suspense>
-  </div>
-)
+export const MarkdownContent = ({
+  content,
+  compact = false,
+  preview = false,
+  streaming = false,
+  evidence,
+}: MarkdownRendererProps) => {
+  const displayed = useStreamingContent(content, streaming)
+  const visibleOnly = !streaming && (content.length > 4000 || content.split("\n").length > 40)
+
+  return (
+    <StreamingContext.Provider value={streaming}>
+      <CodeVisibilityContext.Provider value={visibleOnly}>
+        <div className={`markdown-content${compact ? " markdown-compact" : ""}`}>
+          <Suspense fallback={<p className="whitespace-pre-wrap">{preview ? displayed.slice(0, 600) : displayed}</p>}>
+            {evidence ? (
+              <EvidenceContext.Provider value={evidence}>
+                <LazyMarkdown content={displayed} preview={preview} streaming={streaming} />
+              </EvidenceContext.Provider>
+            ) : (
+              <LazyMarkdown content={displayed} preview={preview} streaming={streaming} />
+            )}
+          </Suspense>
+        </div>
+      </CodeVisibilityContext.Provider>
+    </StreamingContext.Provider>
+  )
+}

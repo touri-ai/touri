@@ -8,6 +8,7 @@ const contractRouteKeys: Array<keyof ApiRoutes> = [
   "GET /groups",
   "POST /groups",
   "PATCH /groups/:id",
+  "DELETE /groups/:id",
   "GET /groups/:id/threads",
   "POST /groups/:id/threads",
   "GET /cloud/account",

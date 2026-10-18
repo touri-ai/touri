@@ -5,6 +5,7 @@ const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? `http://127.0.0.1:${port}`
 
 export default defineConfig({
   testDir: "./test/e2e",
+  globalSetup: "./test/e2e/global-setup.ts",
   timeout: 20_000,
   // Production builds and CPU/heap budgets share the host; simultaneous specs distort their measurements.
   projects: [{ workers: 1 }],

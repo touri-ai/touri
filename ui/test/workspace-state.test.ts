@@ -30,6 +30,14 @@ it("restores a bot-scoped routines route", () => {
   expect(readWorkspaceState().route).toEqual(route)
 })
 
+it("restores an expanded history route with its bot and routine filters", () => {
+  const route = { section: "advanced", page: "cron", botId: "bot-a", history: { routineId: "routine-a" } } as const
+
+  saveWorkspaceState({ route })
+
+  expect(readWorkspaceState().route).toEqual(route)
+})
+
 it.each([null, [], {}, { section: "touri", page: "missing" }, { section: "bots", screen: null }])(
   "ignores malformed saved routes: %j",
   (route) => {

@@ -569,7 +569,7 @@ const MessageBubble = ({
         <MarkdownContent content={answer} evidence={evidence} />
       </ChatDisclosure>
     ) : (
-      <MarkdownContent content={answer} evidence={evidence} />
+      <MarkdownContent content={answer} evidence={evidence} streaming={message.status === "streaming"} />
     )
   }
   const matchedApprovals = approvalTools(parts)

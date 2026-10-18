@@ -6,6 +6,14 @@ import type { PreviewTarget, Project } from "@touri/contracts"
 import { saveProcessOwner } from "../../src/projects/ownership"
 import { createHarness, createServerFixture } from "./harness"
 
+const waitForPreview = async (previews: PreviewTarget[]): Promise<void> => {
+  const deadline = Date.now() + 5000
+  while (previews.length === 0) {
+    if (Date.now() >= deadline) throw new Error("Timed out waiting for an HTTP-confirmed Preview")
+    await Bun.sleep(10)
+  }
+}
+
 test("an unlinked bot receives the exact approval and process steps instead of Preview success", async () => {
   const harness = await createHarness()
   try {
@@ -50,13 +58,15 @@ test("Preview success returns a published HTTP target owned by this bot; foreign
         project.id,
       ),
     ).toMatchObject({ success: true })
-    expect(await harness.tool("process_start", { name: "web", waitMs: 10_000 }, project.id)).toMatchObject({
-      success: true,
-    })
     const published: PreviewTarget[] = []
     const unsubscribe = harness.runtime.kernel.subscribe(({ event }) => {
       if (event.type === "preview.available") published.push(event.preview)
     })
+    expect(await harness.tool("process_start", { name: "web", waitMs: 10_000 }, project.id)).toMatchObject({
+      success: true,
+    })
+    // Log readiness precedes the asynchronous HTTP probe that publishes the target.
+    await waitForPreview(published)
     const opened = await harness.tool("preview_open", { process: "web", path: "/hello" }, project.id)
     expect(opened.success).toBe(true)
     if (!opened.success) throw new Error(opened.error)

@@ -262,6 +262,15 @@
 .r8-sidebar .new-thread-row:hover {
   background: var(--surface-control);
 }
+.deleted-routine-history {
+  padding-left: var(--space-8);
+  border-left: 1px solid var(--border-subtle);
+}
+.deleted-routine-history > p {
+  padding: var(--space-4) var(--space-8);
+  color: var(--text-tertiary);
+  font-size: var(--type-10);
+}
 .r8-sidebar .sidebar-footer {
   display: flex;
   flex-direction: column;
@@ -314,6 +323,28 @@
 .sidebar-connect[aria-current="page"] {
   background: var(--surface-control);
   color: var(--text-primary);
+}
+.sidebar-recovery {
+  display: flex;
+  align-items: center;
+  gap: var(--space-12);
+  width: calc(100% - 24px);
+  min-height: var(--menu-row-height);
+  margin: var(--space-4) var(--space-12) var(--space-8);
+  padding: var(--space-8) var(--space-10);
+  border: 0;
+  border-radius: var(--menu-corner);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--type-13);
+  text-align: start;
+}
+.sidebar-recovery:hover {
+  background: var(--surface-control);
+  color: var(--text-primary);
+}
+.sidebar-recovery > span {
+  flex: 1;
 }
 /* Activity marker on the avatar corner: needs you, working, or unread results. */
 .r8-sidebar .bot-row {

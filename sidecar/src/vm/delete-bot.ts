@@ -113,6 +113,7 @@ const deleteBotData = (kernel: Kernel, botId: string) => {
   return db.transaction(() => {
     detachBotGroupThreads(db, botId)
     saveRemovedGroupMembers(kernel, botId)
+    createGroupStore(kernel).removeBot(botId)
     const attachments = getBotAttachments(db, botId)
     const files = getBotFilePaths(kernel, botId)
     db.query(

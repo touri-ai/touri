@@ -79,7 +79,7 @@ import { useHost } from "./useHost"
 import { RecoveryTasksContext, useRecoveryTasks } from "./useRecoveryTasks"
 import { useWebNavigation } from "./useWebNavigation"
 import { useWorkspace } from "./useWorkspace"
-import { type AppRoute, readWorkspaceState, saveWorkspaceState } from "./workspaceState"
+import { type AppRoute, type RoutineHistoryTarget, readWorkspaceState, saveWorkspaceState } from "./workspaceState"
 
 const CommandPalette = lazy(() =>
   import("./features/commandPalette/CommandPalette").then((module) => ({ default: module.CommandPalette })),
@@ -638,10 +638,10 @@ const AppContent = ({ kernel }: AppProps) => {
     }
     openDestination(command.destination)
   }
-  const openBotRoutines = (botId: Id): void => {
+  const openBotRoutines = (botId: Id, history?: RoutineHistoryTarget): void => {
     closeModal()
     if (botId !== data.selectedBotId) actions.selectBot(botId)
-    setRoute({ section: "advanced", page: "cron", botId })
+    setRoute({ section: "advanced", page: "cron", botId, ...(history ? { history } : {}) })
   }
   const openDestination = (destination: PaletteDestination): void => {
     if (destination.kind === "page") {
@@ -973,9 +973,12 @@ const AppContent = ({ kernel }: AppProps) => {
             showFakeTrafficLights={api.isMock && !isNativeDesktop()}
             bots={data.bots}
             onDeleteBot={actions.deleteBot}
+            onDeleteGroup={actions.deleteGroup}
             threads={data.threads}
             messages={data.activityMessages}
             runs={data.runs}
+            routineRuns={data.routineRuns}
+            routines={data.routines}
             workRuns={data.workRuns}
             floatUpdates={data.settings?.sidebarFloatUpdates ?? true}
             selectedBotId={selectedBot?.id ?? null}
@@ -985,10 +988,11 @@ const AppContent = ({ kernel }: AppProps) => {
             onChat={() => setRoute({ section: "bots", screen: "chat" })}
             onAdvancedPage={(page) => setRoute({ section: "advanced", page })}
             onRoutines={openBotRoutines}
+            onRoutineHistory={(botId, routineId) => openBotRoutines(botId, routineId ? { routineId } : {})}
             onProject={() => openModal("project")}
             onImport={() => openModal("import")}
             onSelect={actions.selectBot}
-            onSelectThread={actions.selectThread}
+            onSelectThread={(threadId) => actions.selectThread(threadId, { readRoutineGroup: true })}
             onReviewApproval={reviewApproval}
             onNewThread={() => void actions.createThread()}
             onNewBot={() => openModal("bot")}
@@ -1068,6 +1072,7 @@ const AppContent = ({ kernel }: AppProps) => {
                 host={data.routineHost}
                 key={route.section === "advanced" ? (route.botId ?? "all") : "all"}
                 initialBotFilter={route.section === "advanced" ? route.botId : undefined}
+                history={route.section === "advanced" ? route.history : undefined}
                 loading={data.loading}
                 loadError={data.bots.length === 0 ? data.notice : null}
                 bots={data.bots}
@@ -1078,6 +1083,10 @@ const AppContent = ({ kernel }: AppProps) => {
                 actions={actions}
                 onReviewApprovals={reviewApproval}
                 onNotice={showNotice}
+                onOpenThread={(threadId) => {
+                  actions.selectThread(threadId)
+                  setRoute({ section: "bots", screen: "chat" })
+                }}
               />
             ) : section === "advanced" && advancedPage === "integracoes" ? (
               <IntegrationsScreen
