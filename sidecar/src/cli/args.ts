@@ -5,10 +5,12 @@ import { validProviderProfileName } from "../kernel/provider-profiles"
 
 export const defaultPort = 8795
 export const defaultHost = "127.0.0.1"
+export const defaultDrainTimeoutMs = 60_000
 export const tailscaleHttpsPort = 8445
 
 export type ServeOptions = {
   port: number
+  drainTimeoutMs: number
   host: string
   dataDir: string
   tailscale: boolean
@@ -46,6 +48,7 @@ type FlagKind = "boolean" | "value"
 
 const flagKinds: Record<string, FlagKind> = {
   "--port": "value",
+  "--drain-timeout": "value",
   "--host": "value",
   "--data-dir": "value",
   "--ui-dir": "value",
@@ -113,12 +116,24 @@ const parsePort = (raw: string | undefined): { success: true; port: number } | P
   return { success: true, port }
 }
 
+const parseDrainTimeout = (raw: string | undefined): { success: true; timeoutMs: number } | ParseCliError => {
+  if (raw === undefined) return { success: true, timeoutMs: defaultDrainTimeoutMs }
+  if (!/^\d+$/.test(raw)) return { success: false, error: "Invalid drain timeout; use 1-600 seconds" }
+  const seconds = Number(raw)
+  if (!Number.isInteger(seconds) || seconds < 1 || seconds > 600)
+    return { success: false, error: "Invalid drain timeout; use 1-600 seconds" }
+
+  return { success: true, timeoutMs: seconds * 1000 }
+}
+
 // Absolute, so the TOURI_APP_DATA that `serve` exports still resolves from the bots' workspace cwd.
 const dataDirOf = (flags: Flags): string => resolve(expandHome(flags.values["--data-dir"] ?? "~/.touri"))
 
 const buildServe = (flags: Flags): ParseCliResult => {
   const port = parsePort(flags.values["--port"])
   if (!port.success) return port
+  const drainTimeout = parseDrainTimeout(flags.values["--drain-timeout"])
+  if (!drainTimeout.success) return drainTimeout
   const uiDir = flags.values["--ui-dir"]
   return {
     success: true,
@@ -126,6 +141,7 @@ const buildServe = (flags: Flags): ParseCliResult => {
       name: "serve",
       options: {
         port: port.port,
+        drainTimeoutMs: drainTimeout.timeoutMs,
         host: flags.values["--host"] ?? defaultHost,
         dataDir: dataDirOf(flags),
         tailscale: flags.switches.has("--tailscale"),
@@ -238,7 +254,7 @@ export const parseCli = (
 export const usageText = `touri - run your touri bots headless
 
 Usage:
-  touri serve [--port 8795] [--host 127.0.0.1] [--data-dir ~/.touri] [--tailscale | --trust-proxy] [--no-pair] [--ui-dir <dir>]
+  touri serve [--port 8795] [--host 127.0.0.1] [--data-dir ~/.touri] [--drain-timeout 60] [--tailscale | --trust-proxy] [--no-pair] [--ui-dir <dir>]
   touri pair [--data-dir <dir>]                     print a one-time pairing code (valid 5 minutes)
   touri pair --client [--url <url>] [--code <code>] [--print-token]
                                                   pair this CLI; optionally print only the device token

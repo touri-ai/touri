@@ -24,6 +24,7 @@ type Turn = {
   deadline: number | null
 }
 type Frame = { turn: Turn; stack: string[]; depth: number; bot: Bot; configuration: string; secrets: boolean }
+const RESTART_ABORT_REASON = "app_restart"
 const configuration = (bot: Bot) =>
   JSON.stringify([
     bot.access,
@@ -51,6 +52,8 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
   const frames = new Map<string, Frame>()
   const queues = new Map<string, Turn[]>()
   const busy = new Set<string>()
+  let idleCompletion: ReturnType<typeof Promise.withResolvers<void>> | null = null
+  let draining = false
   let stopped = false
   const isCurrentTurn = (turn: Turn) =>
     !!groups.get(turn.group.id) &&
@@ -116,10 +119,16 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
   }
   const cancelTurn = (turn: Turn): void => {
     turn.controller.abort()
-    cancelChildren(turn)
+    const interrupted = turn.controller.signal.reason === RESTART_ABORT_REASON
+    if (!interrupted) cancelChildren(turn)
     if (turn.run.status !== "queued") return
 
-    save(turn, { status: "canceled", errorClass: "canceled", finishedAt: Date.now() })
+    save(
+      turn,
+      interrupted
+        ? { status: "interrupted", errorClass: "app_restart", errorMessage: "touri restarted", finishedAt: Date.now() }
+        : { status: "canceled", errorClass: "canceled", finishedAt: Date.now() },
+    )
     turn.completion.resolve()
   }
   const isBotTurn = (turn: Turn, botId: string): boolean => {
@@ -152,7 +161,7 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
         signal.removeEventListener("abort", abort)
       }
       const abort = () => {
-        engine.cancel(id)
+        if (signal.reason !== RESTART_ABORT_REASON) engine.cancel(id)
         check()
       }
       const check = () => {
@@ -468,10 +477,10 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
     if (failure?.status === "rejected") throw failure.reason
   }
   const drain = async (groupId: string): Promise<void> => {
-    if (busy.has(groupId) || stopped) return
+    if (busy.has(groupId) || stopped || draining) return
     busy.add(groupId)
     try {
-      while (!stopped) {
+      while (!stopped && !draining) {
         const turn = queues.get(groupId)?.shift()
         if (!turn) break
         if (terminal(turn.run)) {
@@ -490,26 +499,40 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
           await runRecipients(turn, request?.text ?? "")
           save(turn, { status: "succeeded", finishedAt: Date.now() })
         } catch (error) {
-          const canceled = turn.controller.signal.aborted
+          const interrupted = turn.controller.signal.reason === RESTART_ABORT_REASON
+          const canceled = turn.controller.signal.aborted && !interrupted
           // A failed coordinator must not leave delegated members running without a stoppable turn.
           turn.controller.abort()
-          cancelChildren(turn)
-          save(turn, {
-            status: canceled ? "canceled" : "failed",
-            errorClass: canceled ? "canceled" : "unknown",
-            errorMessage: kernel.redact(String(error)),
-            finishedAt: Date.now(),
-          })
+          if (!interrupted) cancelChildren(turn)
+          save(
+            turn,
+            interrupted
+              ? {
+                  status: "interrupted",
+                  errorClass: "app_restart",
+                  errorMessage: "touri restarted",
+                  finishedAt: Date.now(),
+                }
+              : {
+                  status: canceled ? "canceled" : "failed",
+                  errorClass: canceled ? "canceled" : "unknown",
+                  errorMessage: kernel.redact(String(error)),
+                  finishedAt: Date.now(),
+                },
+          )
         }
         turns.delete(turn.run.id)
         turn.completion.resolve()
       }
     } finally {
       busy.delete(groupId)
+      if (busy.size === 0) idleCompletion?.resolve()
       if (stopped && busy.size === 0) unsubscribe()
     }
   }
   const enqueue: ServiceMap["groups.runtime"]["enqueue"] = (args) => {
+    if (draining) return { success: false, errorCode: "RUNTIME_DRAINING", error: "O servidor está encerrando." }
+
     const thread = store.getThread({ threadId: args.threadId })
     if (!thread?.groupId || thread.groupThreadId) return engine.enqueue(args)
     const group = groups.get(thread.groupId)
@@ -799,12 +822,40 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
       ? enqueue({ threadId: run.threadId, requestMessageId: run.requestMessageId, trigger: "retry" })
       : null
   }
-  const shutdown = () => {
+  const shutdown: ServiceMap["groups.runtime"]["shutdown"] = ({ appRestart = false } = {}) => {
     stopped = true
-    for (const turn of turns.values()) cancel(turn.run.id)
+    for (const turn of turns.values()) {
+      if (appRestart) {
+        turn.controller.abort(RESTART_ABORT_REASON)
+        if (turn.run.status === "queued") cancelTurn(turn)
+        continue
+      }
+      cancel(turn.run.id)
+    }
     if (busy.size === 0) unsubscribe()
   }
-  return { enqueue, cancel, cancelBotTurns, cancelGroupTurns, retry, listRuns, shutdown, canCoordinate, askBot, askAll }
+  const beginDrain = (): void => {
+    draining = true
+  }
+  const waitForDrain = async (): Promise<void> => {
+    if (busy.size === 0) return
+    idleCompletion ??= Promise.withResolvers<void>()
+    await idleCompletion.promise
+  }
+  return {
+    enqueue,
+    cancel,
+    cancelBotTurns,
+    cancelGroupTurns,
+    retry,
+    listRuns,
+    beginDrain,
+    waitForDrain,
+    shutdown,
+    canCoordinate,
+    askBot,
+    askAll,
+  }
 }
 
 const getRecipients = (group: BotGroup, bots: Bot[], text: string, action: string | undefined) => {

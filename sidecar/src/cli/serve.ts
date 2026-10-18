@@ -92,18 +92,38 @@ const startServer = async (options: ServeOptions, stopStderr: () => Promise<void
   const shutdown = (): void => {
     if (stopping) return
     stopping = true
-    const deadline = setTimeout(() => process.exit(1), 10_000)
-    deadline.unref()
+    let deadlineTimer: ReturnType<typeof setTimeout> | undefined
+    const drainDeadline = new Promise<"deadline">((resolve) => {
+      deadlineTimer = setTimeout(() => resolve("deadline"), options.drainTimeoutMs)
+    })
+    const hardDeadline = setTimeout(() => process.exit(1), options.drainTimeoutMs + 20_000)
+    hardDeadline.unref()
     void (async () => {
-      await runtime.kernel.services.use("runtime.shutdown")?.()
+      const beginDrain = runtime.kernel.services.use("runtime.beginDrain")
+      const drainPromise = Promise.resolve(beginDrain?.()).then(
+        () => "drained" as const,
+        (error: unknown) => {
+          runtime.kernel.log({
+            level: "error",
+            module: "cli",
+            msg: "O encerramento gradual falhou; interrompendo o runtime.",
+            data: { error: runtime.kernel.redact(error instanceof Error ? error.message : String(error)) },
+          })
+          return "failed" as const
+        },
+      )
+      const drainResult = await Promise.race([drainPromise, drainDeadline])
+      if (deadlineTimer) clearTimeout(deadlineTimer)
+      await runtime.kernel.services.use("runtime.shutdown")?.({ appRestart: drainResult !== "drained" })
       runtime.emitHostNotification({ method: "app.willQuit", params: {} })
       await runtime.kernel.services.use("vm.shutdown")?.()
       clearServeInfo(options.dataDir)
-      runtime.stop()
+      await runtime.stop()
       store.close()
       lease.release()
       await stopStderr()
-      process.exit(0)
+      clearTimeout(hardDeadline)
+      process.exit(drainResult === "failed" ? 1 : 0)
     })().catch(() => process.exit(1))
   }
   process.once("SIGTERM", shutdown)

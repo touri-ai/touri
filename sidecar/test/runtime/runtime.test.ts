@@ -194,7 +194,7 @@ const fixture = async ({
 
 const closeFixture = async (value: Fixture): Promise<void> => {
   await value.engine.shutdown()
-  value.runtime.stop()
+  await value.runtime.stop()
   rmSync(value.root, { recursive: true, force: true })
   rmSync(value.assets, { recursive: true, force: true })
 }
@@ -947,6 +947,49 @@ test.serial("slow turns receive provider interrupt and become canceled", async (
     expect(
       value.store.activePath({ threadId: value.thread.id }).find((message) => message.runId === run.run.id)?.parts,
     ).toContainEqual({ type: "notice", code: "run_canceled", level: "info", text: "Cancelado por você" })
+  } finally {
+    await closeFixture(value)
+  }
+})
+
+test.serial("draining finishes active turns, keeps queued turns for restart and yields to timers", async () => {
+  const value = await fixture({
+    maxConcurrentRuns: 1,
+    scenario: { slowMs: 100, deltas: ["active reply"] },
+  })
+  try {
+    const activeRequest = addUser(value.store, value.thread, "finish this turn")
+    const active = value.engine.enqueue({
+      threadId: value.thread.id,
+      requestMessageId: activeRequest.id,
+      trigger: "user",
+    })
+    const queuedRequest = addUser(value.store, value.thread, "keep this turn queued")
+    const queued = value.engine.enqueue({
+      threadId: value.thread.id,
+      requestMessageId: queuedRequest.id,
+      trigger: "user",
+    })
+    if (!active.success || !queued.success) throw new Error("Unable to queue fixture turns")
+    await waitFor(() => active.run.status === "running")
+
+    value.engine.beginDrain()
+    let timerFired = false
+    setTimeout(() => {
+      timerFired = true
+    }, 0)
+    const rejected = value.engine.enqueue({
+      threadId: value.thread.id,
+      requestMessageId: queuedRequest.id,
+      trigger: "user",
+    })
+    const drain = value.engine.waitForDrain()
+    await waitFor(() => timerFired, 100)
+    await drain
+
+    expect(active.run.status).toBe("succeeded")
+    expect(queued.run.status).toBe("queued")
+    expect(rejected).toMatchObject({ success: false, errorCode: "BOT_PAUSED" })
   } finally {
     await closeFixture(value)
   }

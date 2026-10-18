@@ -51,6 +51,7 @@ export const createSendJournal = ({
 
   const dispatch = (entry: Entry): void => {
     if (entry.status === "acked" || entry.status === "failed") return
+    if (kernel.services.use("runtime.isDraining")?.()) return
     const enqueue = kernel.services.use("runtime.enqueue")
     if (entry.deadline <= Date.now()) {
       database.transaction(() => setStatus(entry, "failed", null, "DEADLINE_EXCEEDED"))()

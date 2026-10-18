@@ -622,6 +622,7 @@ export const ptBR = {
   "O Mem0 não respondeu a tempo. Tente de novo.": "O Mem0 não respondeu a tempo. Tente de novo.",
   "O servidor retornou uma resposta inválida. Confira a URL do Mem0.":
     "O servidor retornou uma resposta inválida. Confira a URL do Mem0.",
+  "O servidor está encerrando.": "O servidor está encerrando.",
   "Não foi possível conectar ao Mem0. Confira a conexão e a URL e tente de novo.":
     "Não foi possível conectar ao Mem0. Confira a conexão e a URL e tente de novo.",
   "Não foi possível carregar o Mem0.": "Não foi possível carregar o Mem0.",
@@ -3074,6 +3075,7 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "O Mem0 não respondeu a tempo. Tente de novo.": "Mem0 did not respond in time. Try again.",
   "O servidor retornou uma resposta inválida. Confira a URL do Mem0.":
     "The server returned an invalid response. Check the Mem0 URL.",
+  "O servidor está encerrando.": "The server is shutting down.",
   "Não foi possível conectar ao Mem0. Confira a conexão e a URL e tente de novo.":
     "Could not connect to Mem0. Check your connection and the URL, then try again.",
   "Não foi possível carregar o Mem0.": "Could not load Mem0.",

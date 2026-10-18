@@ -545,6 +545,41 @@ test("send journal is durable and one nonce produces exactly one message and run
   }
 })
 
+test("send journal preserves FIFO messages while the runtime drains", async () => {
+  const f = await fixture()
+  let draining = true
+  f.runtime.kernel.services.provide("runtime.isDraining", () => draining)
+  try {
+    const first = f.store.sendMessage?.(input("first"))
+    const second = f.store.sendMessage?.({ ...input("second"), text: "Segunda mensagem" })
+
+    expect(first?.status).toBe(503)
+    expect(second?.status).toBe(503)
+    expect(f.calls).toEqual([])
+    expect(f.db.query("SELECT status FROM send_journal ORDER BY rowid").all()).toEqual([
+      { status: "queued" },
+      { status: "queued" },
+    ])
+    const reopened = openDatabase({ filename: f.runtime.kernel.paths.db })
+    expect(reopened.query("SELECT status, client_nonce FROM send_journal ORDER BY rowid").all()).toEqual([
+      { status: "queued", client_nonce: "first" },
+      { status: "queued", client_nonce: "second" },
+    ])
+    reopened.close()
+
+    draining = false
+    f.store.drainSendQueue?.()
+
+    expect(f.calls).toEqual(["send:first", "send:second"])
+    expect(f.db.query("SELECT status FROM send_journal ORDER BY rowid").all()).toEqual([
+      { status: "acked" },
+      { status: "acked" },
+    ])
+  } finally {
+    f.close()
+  }
+})
+
 test("expired and paused sends keep a failed delivery and create no run", async () => {
   const f = await fixture()
   try {

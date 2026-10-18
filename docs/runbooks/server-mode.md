@@ -16,6 +16,30 @@ A ponte verifica a conexão WebSocket remota a cada 15 segundos. Se não receber
 
 Uma configuração inválida, um cofre bloqueado ou um servidor indisponível não inicia o ambiente local silenciosamente. A recuperação oferece tentar novamente, novo pareamento ou retorno explícito ao modo local. O código de pareamento é apagado do formulário após a tentativa. Para invalidar definitivamente um desktop, revogue seu dispositivo no servidor; trocar o modo do aplicativo não equivale a revogar o dispositivo.
 
+## Encerramento gradual de `touri serve`
+
+Ao receber SIGTERM ou SIGINT, `touri serve` para de iniciar turnos, mantém os turnos ativos em execução até o prazo configurado e deixa novas mensagens na fila durável para o próximo início. O prazo padrão é 60 segundos; configure outro valor entre 1 e 600 com `--drain-timeout <segundos>`. Após o prazo, os turnos ainda ativos são persistidos como interrompidos e seguem as regras existentes de recuperação segura.
+
+Para systemd, `TimeoutStopSec` deve superar o prazo de encerramento em pelo menos 30 segundos. Use `KillMode=mixed`: o systemd sinaliza primeiro apenas o processo principal, permitindo que touri finalize seus provedores; se o limite do systemd expirar, ele encerra o grupo de processos.
+
+```ini
+ExecStart=/usr/local/bin/touri serve --drain-timeout 60
+KillMode=mixed
+TimeoutStopSec=90
+```
+
+## Graceful shutdown for `touri serve`
+
+On SIGTERM or SIGINT, `touri serve` stops starting turns, lets active turns run until the configured deadline, and leaves new messages in the durable queue for the next start. The default deadline is 60 seconds; set a value from 1 to 600 with `--drain-timeout <seconds>`. At the deadline, remaining active turns are persisted as interrupted and use the existing safe recovery rules.
+
+For systemd, set `TimeoutStopSec` to at least 30 seconds beyond the drain deadline. Use `KillMode=mixed`: systemd first signals only the main process so touri can finish its providers; if the systemd timeout expires, it terminates the process group.
+
+```ini
+ExecStart=/usr/local/bin/touri serve --drain-timeout 60
+KillMode=mixed
+TimeoutStopSec=90
+```
+
 ## Verificação automatizada
 
 Execute os checks somente pelo gate de evidências da instalação de desenvolvimento. A suíte `e2e` inclui `ui/test/e2e/server-mode.spec.ts`; o próprio fixture constrói a interface dentro da execução serializada do gate.

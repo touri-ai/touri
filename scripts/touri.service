@@ -11,7 +11,8 @@ Environment=PATH=/home/touri/.local/bin:/usr/local/bin:/usr/bin:/bin
 ExecStart=/home/touri/.local/bin/touri serve --tailscale --data-dir /home/touri/.touri-desktop
 Restart=always
 RestartSec=5
-TimeoutStopSec=15
+KillMode=mixed
+TimeoutStopSec=90
 
 [Install]
 WantedBy=multi-user.target

@@ -13,6 +13,7 @@ test("serve defaults to loopback 8795 with ~/.touri and pairing on", () => {
       name: "serve",
       options: {
         port: 8795,
+        drainTimeoutMs: 60_000,
         host: "127.0.0.1",
         dataDir: join(homedir(), ".touri"),
         tailscale: false,
@@ -28,6 +29,7 @@ test("serve accepts every flag, both as separate values and key=value", () => {
     "serve",
     "--port",
     "9000",
+    "--drain-timeout=45",
     "--host=0.0.0.0",
     "--data-dir",
     "/srv/t",
@@ -36,6 +38,7 @@ test("serve accepts every flag, both as separate values and key=value", () => {
   ])
   expect(parsed.success && parsed.command.name === "serve" && parsed.command.options).toEqual({
     port: 9000,
+    drainTimeoutMs: 45_000,
     host: "0.0.0.0",
     dataDir: "/srv/t",
     tailscale: true,
@@ -47,6 +50,9 @@ test("serve accepts every flag, both as separate values and key=value", () => {
 test("rejects bad ports, unknown options and missing values", () => {
   expect(parseCli(["serve", "--port", "70000"]).success).toBe(false)
   expect(parseCli(["serve", "--port", "abc"]).success).toBe(false)
+  expect(parseCli(["serve", "--drain-timeout", "0"]).success).toBe(false)
+  expect(parseCli(["serve", "--drain-timeout", "601"]).success).toBe(false)
+  expect(parseCli(["serve", "--drain-timeout", "1.5"]).success).toBe(false)
   expect(parseCli(["serve", "--bogus"])).toEqual({ success: false, error: "Unknown option --bogus" })
   expect(parseCli(["serve", "--port"])).toEqual({ success: false, error: "Option --port needs a value" })
   expect(parseCli(["nope"])).toEqual({ success: false, error: "Unknown command nope" })

@@ -330,6 +330,31 @@ test("queue serializes turns across group conversations; Parar cancels active an
   expect(f.order).toHaveLength(1)
 })
 
+test("draining a group finishes its active member and interrupts queued turns for restart", async () => {
+  let release: (() => void) | undefined
+  const f = await fixture(async (_ctx, complete) => {
+    await new Promise<void>((resolve) => {
+      release = () => {
+        complete("resposta concluída")
+        resolve()
+      }
+    })
+  })
+  const active = f.send("turno ativo")
+  const queued = f.send("turno na fila")
+  await until(() => f.order.length === 1)
+
+  f.runtime.beginDrain()
+  f.runtime.shutdown({ appRestart: true })
+  expect(f.persistence.getRun(queued.id)).toMatchObject({ status: "interrupted", errorClass: "app_restart" })
+
+  release?.()
+  await f.runtime.waitForDrain()
+  expect(f.persistence.getRun(active.id)).toMatchObject({ status: "interrupted", errorClass: "app_restart" })
+  expect(f.persistence.getRun(queued.id)).toMatchObject({ status: "interrupted", errorClass: "app_restart" })
+  expect(f.order).toHaveLength(1)
+})
+
 test("coordinator receives requests; real MCP router returns peer answer and group capabilities", async () => {
   let f: Awaited<ReturnType<typeof fixture>>
   let answer: unknown

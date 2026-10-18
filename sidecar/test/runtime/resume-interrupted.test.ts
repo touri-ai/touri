@@ -167,7 +167,7 @@ exec '${process.execPath}' '${fake}' "$@"
     release: () => writeFileSync(join(assets, "release"), ""),
     close: async () => {
       for (const engine of engines.reverse()) await engine.shutdown()
-      for (const runtime of kernels.reverse()) runtime.stop()
+      for (const runtime of kernels.reverse()) await runtime.stop()
       rmSync(root, { recursive: true, force: true })
       rmSync(assets, { recursive: true, force: true })
     },
@@ -469,6 +469,7 @@ test("a turn interrupted by quitting touri is continued when it reopens", async 
   try {
     const original = f.send(f.first.engine)
     await waitFor(f.streamed("INÍCIO"))
+    f.first.engine.beginDrain()
     await f.first.engine.shutdown()
     expect(f.runs()[0]).toMatchObject({ status: "interrupted", error_class: "app_restart" })
     f.writeScenario({ deltas: ["Retomei."] })
@@ -541,6 +542,8 @@ test("uncertain work effects block the automatic continuation", async () => {
     const work = createWorkState({ database: f.first.db })
     work.beginEffect({ turnId: run.id, threadId: "t", key: "process:web", description: "web", effectId: "effect-1" })
     work.recover({ observe: () => ({ kind: "unobservable", reason: "exit not observed before restart" }) })
+    f.first.engine.beginDrain()
+    await f.first.engine.shutdown()
     await f.open()
     await Bun.sleep(300)
     expect(f.runs()).toEqual([expect.objectContaining({ id: run.id, status: "interrupted" })])
