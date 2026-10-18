@@ -410,7 +410,7 @@ test("denied folder access does not continue or widen permissions", async () => 
   }
 })
 
-test("reapproving the same scope in the continuation cannot loop", async () => {
+test("an existing grant in the continuation needs no approval and cannot loop", async () => {
   const f = await fixture()
   try {
     const first = f.call()
@@ -418,9 +418,13 @@ test("reapproving the same scope in the continuation cannot loop", async () => {
     await first
     await f.finish(0)
     await waitFor(() => f.turns.length === 2)
-    const repeated = f.call()
-    await f.answer()
-    expect(await repeated).toMatchObject({ success: true, structured: { automaticContinuation: false } })
+    const cards = f.cards().length
+    expect(await f.call()).toMatchObject({
+      success: true,
+      structured: { unchanged: true, automaticContinuation: false, effective: "current-turn" },
+    })
+    expect(f.cards()).toHaveLength(cards)
+    expect(f.cards().some((part) => part.decision === "pending")).toBe(false)
     await f.finish(1)
     expect(f.turns).toHaveLength(2)
     expect(f.engine.listRuns("t", { all: true })).toHaveLength(2)

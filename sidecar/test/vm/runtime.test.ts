@@ -2577,3 +2577,45 @@ test("queued VM input rechecks read-only access before guest injection", async (
     f.fake.calls.filter((call) => call.action === "spawn" && JSON.stringify(call.input).includes("computer.py")),
   ).toHaveLength(0)
 })
+
+test("turn setup writes its token and instructions concurrently before starting the provider", async () => {
+  const f = await fixture(true, { exec: 500 })
+  const bot = await f.bot({ vmProviderLogin: true })
+  const spawn = f.fake.provider.spawn
+  const writes: string[] = []
+  const bothStarted = deferred()
+  let bridgeStarted = false
+  const forward = f.fake.provider.forwardPort
+  f.fake.provider.forwardPort = async (input) => {
+    bridgeStarted = true
+    if (writes.length === 2) bothStarted.resolve()
+    return forward(input)
+  }
+  f.fake.provider.spawn = (input) => {
+    const child = spawn(input)
+    const path = input.args?.at(-1) ?? ""
+    if (!child.success || (!path.endsWith(".token") && path !== "/workspace/.home/SOUL.md")) return child
+    writes.push(path)
+    if (writes.length === 2 && bridgeStarted) bothStarted.resolve()
+    return {
+      ...child,
+      exited: child.exited.then(async (outcome) => {
+        await bothStarted.promise
+        return outcome
+      }),
+    }
+  }
+  try {
+    const turn = await f.vm.service.prepareTurn({
+      botId: bot.id,
+      threadId: bot.mainThreadId ?? "thread",
+      token: "parallel-token",
+    })
+    expect(writes).toHaveLength(2)
+    expect(bridgeStarted).toBe(true)
+    expect(f.fake.files.get("/workspace/.home/SOUL.md")).toBe(bot.instructions)
+    await turn.release()
+  } finally {
+    bothStarted.resolve()
+  }
+})

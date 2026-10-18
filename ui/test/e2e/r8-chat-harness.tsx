@@ -104,6 +104,17 @@ if (view === "conversation") {
       },
     ],
   })
+} else if (view === "recovery") {
+  bot.machine = "local"
+  add("user", "Prepare o relatório mensal e confira os totais.")
+  add("assistant", "Iniciei a conferência dos totais.", { status: "canceled" })
+  add("user", "Continue de onde parou.")
+  const text = "O contexto da conversa foi recuperado do histórico salvo."
+  add("system", text, {
+    kind: "notice",
+    parts: [{ type: "notice", level: "info", code: "context_restored", text }],
+  })
+  add("assistant", "Retomei a conferência. O relatório mensal está concluído e os totais foram verificados.")
 } else if (view === "thinking") {
   bot.machine = "local"
   add("user", "Confira o lock do payout antes de continuar.")

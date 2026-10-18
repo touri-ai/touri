@@ -34,7 +34,12 @@ const fixture = () => {
   mkdirSync(join(appData, "run"), { recursive: true })
   const auth = join(host, ".codex/auth.json")
   writeFileSync(auth, '{"tokens":{"access_token":"synthetic-access"}}')
-  const kernel = { db, paths: { appData, runDir: join(appData, "run") } } as Kernel
+  const kernel = {
+    db,
+    paths: { appData, runDir: join(appData, "run") },
+    callHost: async () => ({ success: true, value: { value: '{"tokens":{"access_token":"synthetic-vault"}}' } }),
+    addRedactionValue: () => {},
+  } as unknown as Kernel
   const prepare = () => prepareLocalProviderLogin(kernel, bot, new AbortController().signal, host)
   cleanups.push(() => {
     db.close()
@@ -42,6 +47,69 @@ const fixture = () => {
   })
   return { root, host, appData, bot, db, kernel, auth, prepare }
 }
+
+test("local Codex vault login preserves its home and rollouts after releasing credentials", async () => {
+  const f = fixture()
+  f.db.query("INSERT INTO settings VALUES (?, ?, 1)").run(providerLoginSourceKey(f.bot), '"vault"')
+  const prepared = await f.prepare()
+  cleanups.unshift(prepared.release)
+  const home = prepared.env.CODEX_HOME ?? ""
+  const auth = join(home, "auth.json")
+  expect(home).toBe(join(f.appData, "provider-homes/codex-vault", f.bot.id))
+  expect(lstatSync(auth).isSymbolicLink()).toBe(false)
+  expect(statSync(auth).mode & 0o777).toBe(0o600)
+  expect(statSync(home).mode & 0o777).toBe(0o700)
+  expect(Bun.TOML.parse(readFileSync(join(home, "config.toml"), "utf8"))).toEqual({
+    cli_auth_credentials_store: "file",
+  })
+  mkdirSync(join(home, "sessions"))
+  const rollout = join(home, "sessions/turn.jsonl")
+  writeFileSync(rollout, "synthetic session")
+  // Native session indexes belong to the durable home as well as the rollout files.
+  writeFileSync(join(home, "session-index.sqlite"), "synthetic index")
+  prepared.release()
+  expect(existsSync(auth)).toBe(false)
+  expect(readFileSync(rollout, "utf8")).toBe("synthetic session")
+
+  const restarted = await prepareLocalProviderLogin({ ...f.kernel }, f.bot, new AbortController().signal, f.host)
+  cleanups.unshift(restarted.release)
+  expect(restarted.env.CODEX_HOME).toBe(home)
+  expect(readFileSync(rollout, "utf8")).toBe("synthetic session")
+  expect(readFileSync(join(home, "session-index.sqlite"), "utf8")).toBe("synthetic index")
+  expect(readFileSync(auth, "utf8")).toContain("synthetic-vault")
+  restarted.release()
+  expect(existsSync(auth)).toBe(false)
+})
+
+test("overlapping local Codex turns keep vault credentials until the final release", async () => {
+  const f = fixture()
+  f.db.query("INSERT INTO settings VALUES (?, ?, 1)").run(providerLoginSourceKey(f.bot), '"vault"')
+  const [first, second] = await Promise.all([f.prepare(), f.prepare()])
+  cleanups.unshift(first.release, second.release)
+  const auth = join(first.env.CODEX_HOME ?? "", "auth.json")
+  expect(second.env.CODEX_HOME).toBe(first.env.CODEX_HOME)
+  first.release()
+  first.release()
+  expect(readFileSync(auth, "utf8")).toContain("synthetic-vault")
+  second.release()
+  expect(existsSync(auth)).toBe(false)
+})
+
+test("switching local Codex to vault login leaves the host authentication link untouched", async () => {
+  const f = fixture()
+  const host = await f.prepare()
+  const hostAuth = join(host.env.CODEX_HOME ?? "", "auth.json")
+  f.db.query("INSERT INTO settings VALUES (?, ?, 1)").run(providerLoginSourceKey(f.bot), '"vault"')
+  const vault = await f.prepare()
+  cleanups.unshift(vault.release)
+  expect(vault.env.CODEX_HOME).not.toBe(host.env.CODEX_HOME)
+  expect(readlinkSync(hostAuth)).toBe(f.auth)
+  expect(readFileSync(f.auth, "utf8")).toContain("synthetic-access")
+  expect(readFileSync(join(vault.env.CODEX_HOME ?? "", "auth.json"), "utf8")).toContain("synthetic-vault")
+  vault.release()
+  expect(readlinkSync(hostAuth)).toBe(f.auth)
+  expect(readFileSync(hostAuth, "utf8")).toContain("synthetic-access")
+})
 
 for (const selected of [false, true])
   test(`local Codex isolates ${selected ? "selected" : "legacy"} host login and shares refreshes`, async () => {

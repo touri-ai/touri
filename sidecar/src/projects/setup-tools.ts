@@ -295,7 +295,7 @@ export const createSetupTools = ({
           if (bot.machine === "local" && bot.access === "full") return unchangedAccess(bot, absolutePath(source), true)
           const path = hostPath(source)
           const project = registered ?? store.getProjectByPath(path)
-          if (project && bot.projectId === project.id) return unchangedAccess(bot, path, true)
+          if (project && bot.projectId === project.id && project.path === path) return unchangedAccess(bot, path)
           if (alreadyWritable(bot, ctx, path)) return unchangedAccess(bot, path, true)
           const name = project?.name ?? basename(path)
           const previous = bot.projectId ? store.getProject(bot.projectId) : null

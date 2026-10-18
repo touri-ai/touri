@@ -705,6 +705,78 @@ test("projectId and registered paths reuse a project and unlink is visible witho
   )
 })
 
+const linkedReadOnlyFixture = async () => {
+  const f = await fixture({ access: "read-only", approvals: "on-request" }, "linked-project")
+  expect(
+    f.store.createProject({
+      id: "linked",
+      name: "Linked project",
+      path: f.path,
+      gitRemote: null,
+      defaultBranch: null,
+      dataDir: join(f.root, "linked-data"),
+      now: 1,
+    }).success,
+  ).toBe(true)
+  f.db.query("UPDATE bots SET project_id = ? WHERE id = ?").run("linked", f.bot.id)
+  return f
+}
+
+for (const selector of ["id", "path"] as const) {
+  test(`already-linked read-only project is unchanged by ${selector} without another approval`, async () => {
+    const f = await linkedReadOnlyFixture()
+    const before = f.currentBot()
+    const events = f.events.length
+    const result = await f.call("project_link", selector === "id" ? { projectId: "linked" } : { path: f.path })
+    expect(result).toMatchObject({
+      success: true,
+      structured: {
+        projectId: "linked",
+        alreadyAccessible: true,
+        unchanged: true,
+        automaticContinuation: false,
+        effective: "current-turn",
+      },
+    })
+    expect(f.currentBot()).toEqual(before)
+    expect(f.cards).toEqual([])
+    expect(f.events).toHaveLength(events)
+    expect(f.store.listProjects()).toHaveLength(1)
+  })
+}
+
+for (const target of ["different project", "retargeted path"] as const) {
+  test(`read-only project selection still requires consent for a ${target}`, async () => {
+    const f = await linkedReadOnlyFixture()
+    const otherPath = join(f.home, "other-project")
+    mkdirSync(otherPath)
+    if (target === "different project") {
+      expect(
+        f.store.createProject({
+          id: "other",
+          name: "Other project",
+          path: otherPath,
+          gitRemote: null,
+          defaultBranch: null,
+          dataDir: join(f.root, "other-data"),
+          now: 1,
+        }).success,
+      ).toBe(true)
+    } else {
+      rmSync(f.path, { recursive: true })
+      symlinkSync(otherPath, f.path, process.platform === "win32" ? "junction" : "dir")
+    }
+    const call = f.call("project_link", { projectId: target === "different project" ? "other" : "linked" })
+    const card = await f.pending()
+    expect(card.detail).toContain(otherPath)
+    expect(f.currentBot()?.projectId).toBe("linked")
+    expect((await f.answer("deny")).status).toBe(200)
+    expect(await call).toMatchObject({ success: false, errorCode: "DENIED" })
+    expect(f.currentBot()?.projectId).toBe("linked")
+    expect(f.cards).toHaveLength(1)
+  })
+}
+
 for (const [mode, access] of [
   ["read", "read-only"],
   ["read-write", "read-write"],
