@@ -17,7 +17,7 @@ import { AvatarRuntimeProvider } from "./components/AvatarRuntime"
 import { BotAvatar } from "./components/BotAvatar"
 import { BotComputer } from "./components/BotComputer"
 import { BotPanel } from "./components/BotPanel"
-import { ChatPanel } from "./components/ChatPanel"
+import { activeMessagePath, ChatPanel } from "./components/ChatPanel"
 import { ErrorBoundary } from "./components/ErrorBoundary"
 import { ErrorNotice } from "./components/ErrorNotice"
 import { EvidenceContext } from "./components/EvidenceGallery"
@@ -70,6 +70,7 @@ import {
 import { getHostLabel, localizeNotice, t } from "./i18n"
 import { type DeepLinkRequest, installNativeDeepLinks } from "./nativeDeepLinks"
 import { requestTaskResume, requestTaskReview } from "./recoveryEvents"
+import { isRoutineConversation } from "./routineConversation"
 import { getTeamRoutineDraft, type RoutineDraft } from "./routineDraft"
 import { isFailureNotice } from "./sidebarAttention"
 import { useHost } from "./useHost"
@@ -157,6 +158,8 @@ const AppContent = ({ kernel }: AppProps) => {
   const [connectionAttempt, setConnectionAttempt] = useState(0)
   const [retryingConnection, setRetryingConnection] = useState(false)
   const [panelsByBot, setPanelsByBot] = useState<Record<string, boolean>>(() => readWorkspaceState().panelsByBot ?? {})
+  const [goalRefreshRequest, setGoalRefreshRequest] = useState(0)
+  const notifyGoalChange = useCallback(() => setGoalRefreshRequest((request) => request + 1), [])
   const [expandedBot, setExpandedBot] = useState<string | null>(null)
   const [libraryRequest, setLibraryRequest] = useState<{ botId: string; path: string; request: number } | null>(null)
   const [computerTabRequest, setComputerTabRequest] = useState<{ botId: string; request: number } | null>(null)
@@ -528,6 +531,26 @@ const AppContent = ({ kernel }: AppProps) => {
     }) ?? []
   const selectedProject = data.projects.find((project) => project.id === selectedBot?.projectId) ?? null
   const selectedMessages = data.messages.filter((message) => message.threadId === selectedThread?.id)
+  const activePath =
+    selectedThread && !selectedGroup
+      ? activeMessagePath(selectedMessages, selectedThread.activeLeafId)
+      : selectedMessages
+  const goalCandidate =
+    selectedBot && selectedThread?.botId === selectedBot.id && !selectedGroup ? selectedThread : null
+  const goalThread =
+    goalCandidate &&
+    !isRoutineConversation({
+      thread: goalCandidate,
+      runs: data.runs,
+      routineRuns: data.routineRuns,
+      routines: data.routines,
+    })
+      ? goalCandidate
+      : null
+  const goalRequest = goalThread ? activePath.filter((message) => message.role === "user").at(-1) : undefined
+  const goalBusy =
+    goalThread !== null &&
+    data.runs.some((run) => run.threadId === goalThread.id && ["queued", "starting", "running"].includes(run.status))
   const selectedPreview =
     data.previews.find(
       (preview) =>
@@ -1144,6 +1167,9 @@ const AppContent = ({ kernel }: AppProps) => {
                             onTogglePanel={() => setPanelOpen(!panelOpen)}
                             machine={data.machines.find((state) => state.botId === selectedBot?.id)}
                             thread={selectedThread}
+                            activePath={activePath}
+                            goalRefreshRequest={goalRefreshRequest}
+                            onGoalChange={notifyGoalChange}
                             composerKey={data.composerKey ?? undefined}
                             threadCreation={
                               data.threadCreation ? (data.threadCreation.pending ? "pending" : "failed") : undefined
@@ -1229,6 +1255,11 @@ const AppContent = ({ kernel }: AppProps) => {
                                 }
                                 key={selectedBot.id}
                                 api={api}
+                                goalThreadId={goalThread?.id}
+                                goalRequest={goalRequest}
+                                goalBusy={goalBusy}
+                                goalRefreshRequest={goalRefreshRequest}
+                                onGoalChange={notifyGoalChange}
                                 groups={data.groups.filter((g) => g.memberIds.includes(selectedBot.id))}
                                 onGroup={(g) => {
                                   const thread = data.threads.find((t) => t.groupId === g.id && !t.groupThreadId)

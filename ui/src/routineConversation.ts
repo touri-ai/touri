@@ -1,4 +1,23 @@
-import type { Message, Run } from "@touri/contracts"
+import type { Message, Routine, RoutineRun, Run, Thread } from "@touri/contracts"
+
+export const isRoutineConversation = ({
+  thread,
+  runs,
+  routineRuns,
+  routines,
+}: {
+  thread: Thread
+  runs: readonly Run[]
+  routineRuns: readonly RoutineRun[]
+  routines: readonly Routine[]
+}): boolean => {
+  if (thread.kind === "routine") return true
+  if (thread.routineRunId !== null && thread.routineRunId !== undefined) return true
+  if (runs.some((run) => run.threadId === thread.id && isRoutineRun(run))) return true
+  if (routineRuns.some((run) => run.threadId === thread.id && run.runId !== null)) return true
+
+  return routines.some((routine) => routine.resultsThreadId === thread.id)
+}
 
 export const getRoutineReplyRun = (
   message: Message,

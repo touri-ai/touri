@@ -24,7 +24,7 @@ import { getHostLabel, getRoutineRunDateLabel, getRoutineRunTimeLabel, localizeN
 import { machineStateForDisplay } from "../machineState"
 import { messageMarkdown } from "../messageMarkdown"
 import { consumeTaskReview, requestTaskResume, reviewTaskEvent } from "../recoveryEvents"
-import { getRoutineReplyRun, isRoutineEmptyResult, isRoutineRun } from "../routineConversation"
+import { getRoutineReplyRun, isRoutineConversation, isRoutineEmptyResult, isRoutineRun } from "../routineConversation"
 import { type RoutineDraft, repeatTaskDraft, suggestedRoutineDraft } from "../routineDraft"
 import { failureTimeLabel, runErrorFor } from "../runError"
 import { getSidebarThreadTitle } from "../sidebarThreadTitle"
@@ -80,6 +80,9 @@ type ChatPanelProps = {
   onOpenModel?: () => void
   onSelectProject?: (projectId: Id | null) => Promise<void>
   onAddProject?: () => void
+  activePath?: Array<Message> | undefined
+  goalRefreshRequest?: number
+  onGoalChange?: () => void
   thread: Thread | null
   bot: Bot | null
   machine?: MachineState | undefined
@@ -895,6 +898,9 @@ export const ChatPanel = ({
   onEditGroup = () => {},
   focusApproval,
   thread,
+  activePath,
+  goalRefreshRequest = 0,
+  onGoalChange,
   bot,
   panelOpen = false,
   onTogglePanel,
@@ -984,27 +990,23 @@ export const ChatPanel = ({
       </section>
     )
 
-  const visibleMessages = group
+  const messagePath = group
     ? messages.filter((message) => message.threadId === thread.id)
-    : activeMessagePath(
+    : (activePath ??
+      activeMessagePath(
         messages.filter((message) => message.threadId === thread.id),
         thread.activeLeafId,
-      )
-  for (const message of messages) {
-    if (
+      ))
+  const visibleMessageIds = new Set(messagePath.map((message) => message.id))
+  const pendingMessages = messages.filter(
+    (message) =>
       message.threadId === thread.id &&
       ((message.delivery && message.delivery.status !== "acked") ||
         message.parts.some((part) => part.type === "approval" && part.decision === "pending")) &&
-      !visibleMessages.some((visible) => visible.id === message.id)
-    )
-      visibleMessages.push(message)
-  }
-  const routineConversation =
-    thread.kind === "routine" ||
-    thread.routineRunId != null ||
-    runs.some((run) => run.threadId === thread.id && isRoutineRun(run)) ||
-    routineRuns.some((run) => run.threadId === thread.id && run.runId !== null) ||
-    routines.some((routine) => routine.resultsThreadId === thread.id)
+      !visibleMessageIds.has(message.id),
+  )
+  const visibleMessages = [...messagePath, ...pendingMessages]
+  const routineConversation = isRoutineConversation({ thread, runs, routineRuns, routines })
   const repeatDraft =
     bot && !activeRun && !routineConversation
       ? group
@@ -1095,9 +1097,10 @@ export const ChatPanel = ({
           api={api}
           threadId={thread.id}
           bot={bot}
-          request={activeMessagePath(messages, thread.activeLeafId)
-            .filter((message) => message.role === "user")
-            .at(-1)}
+          surface="chat"
+          request={activePath?.filter((message) => message.role === "user").at(-1)}
+          refreshRequest={goalRefreshRequest}
+          onChange={onGoalChange}
           busy={runs.some(
             (run) => run.threadId === thread.id && ["queued", "starting", "running"].includes(run.status),
           )}

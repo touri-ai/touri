@@ -1,4 +1,4 @@
-import type { Bot, BotGroup, MachineState, Routine } from "@touri/contracts"
+import type { Bot, BotGroup, Id, MachineState, Message, Routine } from "@touri/contracts"
 import { useCallback, useEffect, useRef, useState } from "react"
 import type { UiApi } from "../api/client"
 import { userFacingError } from "../errors"
@@ -10,6 +10,7 @@ import { BotComputer } from "./BotComputer"
 import { BotDetails } from "./BotDetails"
 import { BotLibrary } from "./BotLibrary"
 import { ErrorText } from "./ErrorDetails"
+import { GoalPanel } from "./GoalPanel"
 import { useSegmentedControl } from "./Motion"
 import { PanelIcon } from "./PanelIcon"
 import "./bot-panel.css"
@@ -37,6 +38,11 @@ export const BotPanel = ({
   onPreview,
   libraryRequest,
   computerTabRequest = 0,
+  goalThreadId,
+  goalRequest,
+  goalBusy = false,
+  goalRefreshRequest = 0,
+  onGoalChange,
 }: {
   api: UiApi
   onPreview?: () => void
@@ -58,6 +64,11 @@ export const BotPanel = ({
   onRole: (roleLine: string | null) => Promise<void>
   libraryRequest?: { path: string; request: number } | undefined
   computerTabRequest?: number
+  goalThreadId?: Id | undefined
+  goalRequest?: Message | undefined
+  goalBusy?: boolean
+  goalRefreshRequest?: number
+  onGoalChange?: () => void
 }) => {
   const host = useHost(api)
   const [tab, setTab] = useState<(typeof tabs)[number]>("details")
@@ -196,6 +207,19 @@ export const BotPanel = ({
                 </button>
               )}
             </BotDetails>
+            {goalThreadId && (
+              <GoalPanel
+                key={goalThreadId}
+                api={api}
+                threadId={goalThreadId}
+                bot={bot}
+                request={goalRequest}
+                busy={goalBusy}
+                surface="entry"
+                refreshRequest={goalRefreshRequest}
+                onChange={onGoalChange}
+              />
+            )}
             <section className="bot-details-section">
               <h3>{t("Bot groups")}</h3>
               {groups.length ? (
