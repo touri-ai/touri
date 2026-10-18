@@ -15,7 +15,7 @@ export function needsNative(event: string, paths: string[]): boolean {
 export function testFiles(root = "sidecar/test"): string[] {
   return readdirSync(root, { recursive: true, encoding: "utf8" })
     .map((path) => path.replaceAll("\\", "/"))
-    .filter((path) => /\.(?:test|spec)\.[cm]?[jt]sx?$/.test(path))
+    .filter((path) => /[._](?:test|spec)\.(?:[jt]sx?|[cm][jt]s)$/.test(path))
     .sort()
 }
 

@@ -60,11 +60,11 @@ export const ServerModeSettings = ({
       <h3>{t("Usar um servidor touri")}</h3>
       <p className="field-help">
         {t(
-          "Seus bots, conversas, arquivos e logins ficam no servidor escolhido. Este Mac mostra a interface, sem iniciar bots locais.",
+          "Seus bots, conversas, arquivos e logins ficam no servidor escolhido. Este aparelho mostra a interface, sem iniciar bots locais.",
         )}
       </p>
       <p className="field-help">
-        {t("As pastas, a tela e o navegador pessoal deste Mac não ficam disponíveis para os bots do servidor.")}
+        {t("As pastas, a tela e o navegador pessoal deste aparelho não ficam disponíveis para os bots do servidor.")}
       </p>
       {status && (
         <p role="status">

@@ -9,9 +9,14 @@ for (const theme of ["light", "dark"]) {
     await page.goto(`/test/e2e/mem0-harness.html?theme=${theme}`)
     const card = page.getByRole("article", { name: "Memória Mem0" })
     await expect(card.getByRole("switch", { name: "Ativar Mem0 para este bot" })).not.toBeChecked()
+    await card.getByLabel("Chave da API").fill("synthetic-cloud-key")
+    await card.getByRole("button", { name: "Salvar Mem0" }).click()
+    await expect(card.getByText("Salvo.", { exact: true })).toBeVisible()
     await card.getByLabel("Onde ficam as memórias").selectOption("server")
     await card.getByLabel("URL do servidor").fill("http://localhost:8888")
-    await card.getByLabel("Chave da API").fill("synthetic-memory-key")
+    await expect(
+      card.getByText("Ao mudar o destino, a chave anterior é removida. Digite a nova chave antes de salvar."),
+    ).toBeVisible()
     await expect(card.getByRole("button", { name: "Testar conexão" })).toBeDisabled()
     await expect(card.getByText("Salve as alterações antes de testar a conexão.")).toBeVisible()
     await expect(card.getByText(/vai para o seu servidor Mem0/)).toBeVisible()
@@ -23,6 +28,7 @@ for (const theme of ["light", "dark"]) {
     const path = `${directory}/memory-${theme}.png`
     await card.screenshot({ path, animations: "disabled" })
     await info.attach("Optional memory settings", { path, contentType: "image/png" })
+    await card.getByLabel("Chave da API").fill("synthetic-server-key")
     await card.getByRole("button", { name: "Salvar Mem0" }).click()
     await expect(card.getByText("Salvo.", { exact: true })).toBeVisible()
     await expect(card.getByLabel("Chave da API")).toHaveValue("")

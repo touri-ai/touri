@@ -208,7 +208,7 @@ it("keeps VM environment, host access and browser controls named and exposed", a
   const panel = screen.getByRole("tabpanel", { name: "Computador" })
   expect(within(panel).getByRole("spinbutton", { name: "Parar após minutos sem atividade" })).toBeVisible()
   expect(within(panel).getByRole("switch", { name: /Usar meu login/ })).toBeVisible()
-  expect(within(panel).getByRole("switch", { name: /Permitir controle do computador na tela/ })).toBeVisible()
+  expect(within(panel).getByRole("switch", { name: /Permitir controle da tela deste computador/ })).toBeVisible()
   expect(within(panel).getByRole("combobox", { name: "Navegador do bot" })).toHaveValue("machine")
   expectNamedControls(panel)
   fireEvent.click(within(panel).getByText("Detalhes técnicos"))
