@@ -351,7 +351,7 @@ const BotEntry = ({
   insertedThreads: ReadonlySet<string>
   threads: Array<Thread>
   routineRuns: Array<RoutineRun>
-  routineIds?: ReadonlySet<string>
+  routineIds: ReadonlySet<string> | undefined
   messages: Array<Message>
   attention: Array<NotificationRecord>
   notifications: Array<NotificationRecord>

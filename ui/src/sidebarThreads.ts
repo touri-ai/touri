@@ -39,7 +39,8 @@ export const getSidebarThreads = (
     })
   }, new Map<string, SidebarThread>())
 
-  return [...groups.values()].toSorted((left, right) => {
+  // Only the materialized group rows are sorted; shared threads and run history keep their order.
+  return [...groups.values()].sort((left, right) => {
     const kindOrder = Number(left.thread.kind === "routine") - Number(right.thread.kind === "routine")
     if (kindOrder) return kindOrder
 
@@ -57,7 +58,7 @@ export const getSidebarReadThreadIds = (
   routineIds: ReadonlySet<string>,
 ): ReadonlySet<string> => {
   const selected = threads.find((thread) => thread.id === threadId)
-  if (!selected || selected.kind !== "routine" || selected.groupId) return new Set([threadId])
+  if (selected?.kind !== "routine" || selected.groupId) return new Set([threadId])
 
   const getRoutineRun = getRoutineRunLookup(routineRuns)
   const key = getSidebarGroupKey(selected, getRoutineRun(selected), routineIds)
