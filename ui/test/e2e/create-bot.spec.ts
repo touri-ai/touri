@@ -99,3 +99,36 @@ for (const viewport of [
     expect(result.violations.filter((violation) => violation.id === "heading-order")).toEqual([])
   })
 }
+
+for (const viewport of [
+  { width: 1440, height: 900 },
+  { width: 390, height: 844 },
+]) {
+  test(`folder access action reads like a button at ${viewport.width}px`, async ({ page }) => {
+    await page.setViewportSize(viewport)
+    await page.goto("/test/e2e/create-bot-harness.html")
+    await page.getByRole("button", { name: "Criar meu primeiro bot" }).click()
+    const dialog = page.getByRole("dialog", { name: "Criar um bot" })
+    const action = dialog.getByRole("button", { name: "Usar uma pasta", exact: true })
+
+    await expect(action).toBeVisible()
+    await action.scrollIntoViewIfNeeded()
+    const geometry = await action.evaluate((button) => {
+      const rect = button.getBoundingClientRect()
+      const dialogWidth = button.closest('[role="dialog"]')?.getBoundingClientRect().width ?? 0
+      return {
+        width: rect.width,
+        height: rect.height,
+        dialogWidth,
+        radius: Number.parseFloat(getComputedStyle(button).borderRadius),
+      }
+    })
+
+    expect(geometry.height).toBeGreaterThanOrEqual(32)
+    expect(geometry.radius).toBeGreaterThan(0)
+    expect(geometry.width).toBeLessThan(geometry.dialogWidth / 2)
+
+    await action.click()
+    await expect(page.getByRole("dialog", { name: "Pastas no servidor" })).toBeVisible()
+  })
+}
