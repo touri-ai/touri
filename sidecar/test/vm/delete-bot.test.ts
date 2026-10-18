@@ -109,9 +109,20 @@ const makeGroupHistory = async (f: Awaited<ReturnType<typeof fixture>>) => {
     .run(thread.id)
   f.db
     .query(
-      "INSERT INTO tool_resolutions(run_id,call_id,thread_id,part_json,resolution) VALUES ('group-turn','group-call',?,'{}','succeeded')",
+      "INSERT INTO tool_resolutions(run_id,call_id,thread_id,part_json,resolution) VALUES ('group-turn','group-call',?,?,'succeeded')",
     )
-    .run(thread.id)
+    .run(
+      thread.id,
+      JSON.stringify({
+        type: "tool_call",
+        callId: "group-call",
+        tool: "history_read",
+        summary: "Shared history",
+        inputJson: "{}",
+        outputJson: "{}",
+        ok: true,
+      }),
+    )
   f.db
     .query(
       "INSERT INTO messages(id,thread_id,role,kind,run_id,text,created_at,updated_at) VALUES ('group-message',?,'user','text','group-turn','Shared conversation',1,1)",
