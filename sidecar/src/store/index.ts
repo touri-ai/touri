@@ -22,7 +22,7 @@ import type {
   ThreadKind,
   ThreadUsage,
 } from "@touri/contracts"
-import { apiModelErrors, normalizeBotName } from "@touri/contracts"
+import { apiModelErrors, isNotificationPreferences, normalizeBotName } from "@touri/contracts"
 import { validAvatarColor, validAvatarShape } from "@touri/contracts/avatar"
 import { getApiModel } from "../api-models/config"
 import { installDoctor } from "../doctor"
@@ -42,8 +42,10 @@ import { historyThreadPending, hydrateHistoryEvent } from "../kernel/history-bac
 import { externalizeMessageParts, OUTPUT_BLOB_ORIGIN, readOutputAttachment } from "../kernel/output-blobs"
 import { isProfileProvider, validProviderProfileName } from "../kernel/provider-profiles"
 import { materializeTranscript } from "../kernel/transcript-storage"
+import { getLocalNotificationPreferences } from "../notify/preferences"
 import { hostComputerSupported } from "../platform"
 import { getHostIdentity } from "../platform/host"
+import { getDefaultMaxConcurrentRuns } from "../runtime/concurrency"
 import { touriVersion } from "../version"
 import { DEFAULT_BOT_VM_MEMORY_MB, DEFAULT_MACHINE_IDLE_MINUTES, validBotVmMemory } from "../vm/resources"
 import { redeemFileGrant } from "./redeemFileGrant"
@@ -301,7 +303,7 @@ const settingsDefaults = (): AppSettings => ({
   cloud: process.env.TOURI_CLOUD_ENABLED === "1",
   cloudBaseUrl: process.env.TOURI_CLOUD_BASE_URL ?? "",
   cloudWebOrigin: process.env.TOURI_CLOUD_WEB_ORIGIN ?? "https://staging.touri.ai",
-  maxConcurrentRuns: 3,
+  maxConcurrentRuns: getDefaultMaxConcurrentRuns(process.env),
   defaultProvider: "codex",
   cloneRoot: join(homedir(), "touri-projects"),
   cliTelemetry: "off",
@@ -311,6 +313,7 @@ const settingsDefaults = (): AppSettings => ({
   computerUseHotkey: "ctrl+alt+cmd+.",
   browserExecutable: "system-chrome",
   nativeNotifications: true,
+  notificationPreferences: {},
   sidebarFloatUpdates: true,
   resumeInterruptedTurns: true,
 })
@@ -331,6 +334,7 @@ const settingsKeys: Array<keyof AppSettings> = [
   "computerUseHotkey",
   "browserExecutable",
   "nativeNotifications",
+  "notificationPreferences",
   "sidebarFloatUpdates",
   "resumeInterruptedTurns",
 ]
@@ -339,6 +343,8 @@ const validSettingsPatch = (patch: Record<string, unknown>): string | null => {
   for (const key of Object.keys(patch)) {
     if (!settingsKeys.includes(key as keyof AppSettings)) return `Unknown setting ${key}`
   }
+  if (patch.notificationPreferences !== undefined && !isNotificationPreferences(patch.notificationPreferences))
+    return "Invalid notification preferences"
   if (patch.dataRetentionDays !== undefined && !validDataRetentionDays(patch.dataRetentionDays))
     return "dataRetentionDays must be an integer between 0 and 3650"
   if (patch.botVmMemoryMb !== undefined && !validBotVmMemory(patch.botVmMemoryMb))
@@ -415,7 +421,12 @@ const readSettings = ({ database }: { database: Database }): AppSettings => {
     if (key === "browserExecutable" && (value === "system-chrome" || value === "chrome-for-testing"))
       settings[key] = value
   }
-  return settings
+  const savedPreferences = rows.find((row) => row.key === "notificationPreferences")
+  const preferences = parseJson<unknown>(savedPreferences?.value_json ?? "{}", {})
+  return {
+    ...settings,
+    notificationPreferences: getLocalNotificationPreferences(isNotificationPreferences(preferences) ? preferences : {}),
+  }
 }
 
 const writeSettings = ({ database, settings }: { database: Database; settings: AppSettings }): void => {
@@ -1568,6 +1579,7 @@ export const init = async (kernel: Kernel): Promise<void> => {
           if (validationError) return errorResponse(400, "INVALID_ARGS", validationError)
           const settings = { ...readSettings({ database }), ...record } as AppSettings
           writeSettings({ database, settings })
+          if (Object.hasOwn(record, "maxConcurrentRuns")) kernel.services.use("runtime.settingsChanged")?.()
           if (
             Object.hasOwn(record, "cloud") ||
             Object.hasOwn(record, "cloudBaseUrl") ||

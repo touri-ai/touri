@@ -917,3 +917,20 @@
   cursor: wait;
   opacity: var(--opacity-disabled);
 }
+.routine-history-filter,
+.routine-history-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0;
+}
+.routine-history-filter select {
+  max-width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-8);
+  background: var(--surface-panel);
+  color: var(--text-primary);
+  font: inherit;
+}

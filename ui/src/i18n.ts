@@ -3,6 +3,56 @@ import { userFacingError } from "./errors"
 /** All UI copy lives here. pt-BR is the default; English is available for a future locale picker. */
 export type Locale = "pt-BR" | "en"
 export const ptBR = {
+  "Aviso do bot": "Aviso do bot",
+  "Sempre avisar": "Sempre avisar",
+  "Aprovações, perguntas e pedidos para você assumir continuam alertando durante o horário silencioso.":
+    "Aprovações, perguntas e pedidos para você assumir continuam alertando durante o horário silencioso.",
+  "Routine finished with no news.": "Rotina concluída sem novidades.",
+  "Escolher avisos e horário silencioso": "Escolher avisos e horário silencioso",
+  "Filtre por bot e tipo, incluindo resultados concluídos.": "Filtre por bot e tipo, incluindo resultados concluídos.",
+  "Save a result notification for the user. Alerts follow their type, bot and quiet-hour preferences. Limited to one notification per bot every 30 seconds; a rate-limit error means no notification was saved.":
+    "Guarde um aviso de resultado para o usuário. Os alertas seguem as preferências de tipo, bot e horário silencioso. Limite de um aviso por bot a cada 30 segundos; um erro de limite significa que nenhum aviso foi guardado.",
+  "Usar padrão herda os filtros globais e a preferência atual do bot.":
+    "Usar padrão herda os filtros globais e a preferência atual do bot.",
+  "Usar padrão mantém a preferência atual de cada bot.": "Usar padrão mantém a preferência atual de cada bot.",
+  "Aplicar a": "Aplicar a",
+  "Não foi possível carregar os bots. Reabra as preferências.":
+    "Não foi possível carregar os bots. Reabra as preferências.",
+  "Receber avisos deste bot": "Receber avisos deste bot",
+  "Avisar sobre": "Avisar sobre",
+  "Usar padrão": "Usar padrão",
+  "Somente o que precisa de mim": "Somente o que precisa de mim",
+  "Também resultados concluídos": "Também resultados concluídos",
+  "Tipos de aviso": "Tipos de aviso",
+  Avisar: "Avisar",
+  Silenciar: "Silenciar",
+  "Horário silencioso": "Horário silencioso",
+  "Ativar horário silencioso": "Ativar horário silencioso",
+  Das: "Das",
+  Até: "Até",
+  "Vale para todos os bots, no horário local do computador que executa o touri. Os outros avisos ficam guardados e contados, sem alertas nem som. Horários iguais silenciam esses avisos o dia todo.":
+    "Vale para todos os bots, no horário local do computador que executa o touri. Os outros avisos ficam guardados e contados, sem alertas nem som. Horários iguais silenciam esses avisos o dia todo.",
+  "Os filtros controlam os alertas. Todos os avisos continuam na central de notificações.":
+    "Os filtros controlam os alertas. Todos os avisos continuam na central de notificações.",
+  "Com a página fechada, não há som nem avisos em segundo plano. Ao voltar, você vê as solicitações pendentes.":
+    "Com a página fechada, não há som nem avisos em segundo plano. Ao voltar, você vê as solicitações pendentes.",
+  "Rotina concluída sem novidades.": "Rotina concluída sem novidades.",
+  "Notifications are limited to one every 30 seconds. Wait before trying again.":
+    "Os avisos são limitados a um a cada 30 segundos. Aguarde antes de tentar novamente.",
+  "Notifications are unavailable. Try again later.": "Os avisos estão indisponíveis. Tente novamente mais tarde.",
+  "Notification saved. Alerts follow your notification preferences.":
+    "Aviso guardado. Os alertas seguem suas preferências de notificação.",
+  "Invalid notification preferences": "Preferências de notificação inválidas",
+  "Há um novo aviso na central de notificações.": "Há um novo aviso na central de notificações.",
+  "Routine run history": "Histórico de rotinas",
+  "Deleted routine": "Rotina excluída",
+  "Deleted routine conversations": "Conversas de rotinas excluídas",
+  "Open routine conversation": "Abrir conversa",
+  "Next routine runs page": "Próxima página",
+  "Previous routine runs page": "Página anterior",
+  "Routine history filter": "Filtrar histórico por rotina",
+  "All routines": "Todas as rotinas",
+  "Routine history range": "Execuções {from}–{to} de {total}",
   "Confira os dados e os limites do objetivo.": "Confira os dados e os limites do objetivo.",
   "ERROR INVALID_ARGS: Confira os dados e os limites do objetivo.": "Confira os dados e os limites do objetivo.",
   "Aguarde o turno atual terminar ou conclua o objetivo anterior.":
@@ -44,6 +94,9 @@ export const ptBR = {
   "Goal paused": "Pausado",
   "Goal budget exhausted": "Limite atingido",
   "Goal completed": "Concluído",
+  "Goal completed summary": "Objetivo concluído",
+  "Goal new": "Novo objetivo",
+  "Goal budget exhausted summary": "Objetivo parado · limite atingido",
   "Continuação do objetivo": "Continuação do objetivo",
   "Send the same task to all other members of this touri group in parallel and gather final answers with authorship. Each recipient counts toward the shared six-call budget. Same depth 2, cycle, access, secrecy and approval fences as ask_bot. The whole set shares the group turn deadline (120s for chat); pending approval on one member does not hold up others. Only available in group participant sessions.":
     "Envia a mesma tarefa aos outros membros do grupo em paralelo e reúne as respostas finais com autoria. Cada membro conta no limite compartilhado de seis chamadas. Mantém os limites de profundidade 2, ciclos, acesso, segredos e aprovações da delegação individual. Todos compartilham o prazo do turno (120 segundos no chat); uma aprovação pendente não impede os outros de trabalhar. Disponível apenas nas sessões de membros do grupo.",
@@ -68,6 +121,7 @@ export const ptBR = {
   "Somente respostas finais confirmadas. Este quadro é apenas para leitura.":
     "Somente respostas finais confirmadas. Este quadro é apenas para leitura.",
   "Sem resultados confirmados neste turno.": "Sem resultados confirmados neste turno.",
+  "O membro foi removido do grupo.": "O membro foi removido do grupo.",
   "Meu Chrome só funciona em bots no computador onde o touri está rodando. Uma máquina remota não pode acessar esse navegador.":
     "Meu Chrome só funciona em bots no computador onde o touri está rodando. Uma máquina remota não pode acessar esse navegador.",
   "OpenCode está disponível no computador local e na máquina Linux. O runtime da nuvem ainda não oferece este provedor.":
@@ -425,6 +479,20 @@ export const ptBR = {
   "Excluir a rotina {name}?": "Excluir a rotina {name}?",
   "Ela não vai mais rodar. O histórico de execuções continua nas conversas.":
     "Ela não vai mais rodar. O histórico de execuções continua nas conversas.",
+  "A exclusão deste bot já está em andamento. Aguarde a conclusão.":
+    "A exclusão deste bot já está em andamento. Aguarde a conclusão.",
+  "Não foi possível encerrar as tarefas ou fechar a tela do bot. Pare as tarefas e tente excluir novamente.":
+    "Não foi possível encerrar as tarefas ou fechar a tela do bot. Pare as tarefas e tente excluir novamente.",
+  "Não foi possível apagar os logins do bot. Desbloqueie o cofre do sistema e tente excluir novamente.":
+    "Não foi possível apagar os logins do bot. Desbloqueie o cofre do sistema e tente excluir novamente.",
+  "Não foi possível remover o computador ou os volumes do bot. Confira o serviço de máquinas e tente excluir novamente.":
+    "Não foi possível remover o computador ou os volumes do bot. Confira o serviço de máquinas e tente excluir novamente.",
+  "O computador do bot ainda está em uso. Pare as tarefas e tente excluir novamente.":
+    "O computador do bot ainda está em uso. Pare as tarefas e tente excluir novamente.",
+  "Não foi possível apagar os arquivos do bot. Confira as permissões da pasta de dados e tente excluir novamente.":
+    "Não foi possível apagar os arquivos do bot. Confira as permissões da pasta de dados e tente excluir novamente.",
+  "Não foi possível remover o histórico e os vínculos do bot. Tente excluir novamente; se persistir, envie um relato do problema.":
+    "Não foi possível remover o histórico e os vínculos do bot. Tente excluir novamente; se persistir, envie um relato do problema.",
   "Não foi possível excluir a rotina. Tente novamente.": "Não foi possível excluir a rotina. Tente novamente.",
   "Excluindo…": "Excluindo…",
   Excluir: "Excluir",
@@ -2301,9 +2369,112 @@ export const ptBR = {
   "Atualizar status": "Atualizar status",
   "Crie um bot com o @BotFather e cole o token. Quando alguém mandar a primeira mensagem, o ID aparece aqui para você permitir.":
     "Crie um bot com o @BotFather e cole o token. Quando alguém mandar a primeira mensagem, o ID aparece aqui para você permitir.",
+  Work: "Trabalho",
+  Performance: "Desempenho",
+  "Work description": "Veja o que cada bot está fazendo e o que aguarda uma vaga.",
+  "Work loading": "Carregando tarefas…",
+  "Work empty": "Nenhuma tarefa em execução ou na fila. Envie uma mensagem para começar.",
+  "Work queued": "Na fila",
+  "Work queued count": "{count} na fila",
+  "Work queue position": "Na fila · {position}º de {total}",
+  "Work waiting for slot": "Na fila · aguardando uma vaga",
+  "Work preparing": "Preparando",
+  "Work conversation unavailable": "Conversa indisponível",
+  "Work origin": "Origem",
+  "Work state": "Estado",
+  "Work waiting time": "Esperando há",
+  "Work elapsed time": "Em execução há",
+  "Work message": "Mensagem",
+  "Work routine": "Rotina",
+  "Work delegation": "Delegação",
+  "Work resume": "Retomada",
+  "Work seconds": "{count} s",
+  "Work minutes": "{count} min {seconds} s",
+  "Work performance description": "Escolha quantas tarefas podem executar ao mesmo tempo.",
+  "Work concurrency": "Tarefas ao mesmo tempo",
+  "Work concurrency help":
+    "O padrão é 3. Mais tarefas usam mais memória e podem deixar o computador lento. As demais aguardam na fila. Escolha de 1 a 32.",
+  "Work concurrency changes":
+    "A mudança vale imediatamente. Reduzir o limite não interrompe tarefas em andamento. Delegações entre bots podem usar uma vaga extra para concluir a tarefa de quem chamou.",
+  "Work save": "Salvar limite",
+  "Work saving": "Salvando…",
+  "Work settings saved": "Limite salvo.",
+  "Work settings error": "Não foi possível salvar. Confira a conexão e tente novamente.",
+  "Ver erro": "Ver erro",
+  "Notificações que precisam de revisão em Tarefas interrompidas: {count}.":
+    "Notificações que precisam de revisão em Tarefas interrompidas: {count}.",
+  "Tarefas interrompidas": "Tarefas interrompidas",
+  "Tarefa interrompida não encontrada.": "Tarefa interrompida não encontrada.",
+  "Não foi possível salvar a confirmação. Tente novamente.": "Não foi possível salvar a confirmação. Tente novamente.",
+  "O touri foi reiniciado.": "O touri foi reiniciado.",
+  "Interrupted tasks": "Tarefas interrompidas",
+  "Interrupted task": "Tarefa interrompida",
+  Loading: "Carregando…",
+  "Open conversation": "Abrir conversa",
+  "Revise o que ficou pendente antes de continuar. O histórico será preservado.":
+    "Revise o que ficou pendente antes de continuar. O histórico será preservado.",
+  "Nenhuma tarefa interrompida pendente.": "Nenhuma tarefa interrompida pendente.",
+  "Interrupções resolvidas": "Interrupções resolvidas",
+  "Interrupção anterior · resolvida": "Interrupção anterior · resolvida",
+  "Resultado incerto": "Resultado incerto",
+  "Ação registrada": "Ação registrada",
+  Descartar: "Descartar",
+  "Revisei os efeitos incertos e entendo que descartar não desfaz as ações.":
+    "Revisei os efeitos incertos e entendo que descartar não desfaz as ações.",
+  "Revise os efeitos incertos no centro de tarefas interrompidas.":
+    "Revise os efeitos incertos no centro de tarefas interrompidas.",
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  "Aviso do bot": "Bot notice",
+  "Sempre avisar": "Always alert",
+  "Aprovações, perguntas e pedidos para você assumir continuam alertando durante o horário silencioso.":
+    "Approvals, questions and requests for you to take over still alert during quiet hours.",
+  "Routine finished with no news.": "Routine finished with no news.",
+  "Escolher avisos e horário silencioso": "Choose alerts and quiet hours",
+  "Filtre por bot e tipo, incluindo resultados concluídos.": "Filter by bot and type, including completed results.",
+  "Save a result notification for the user. Alerts follow their type, bot and quiet-hour preferences. Limited to one notification per bot every 30 seconds; a rate-limit error means no notification was saved.":
+    "Save a result notification for the user. Alerts follow their type, bot and quiet-hour preferences. Limited to one notification per bot every 30 seconds; a rate-limit error means no notification was saved.",
+  "Usar padrão herda os filtros globais e a preferência atual do bot.":
+    "Use default inherits global filters and the bot’s current preference.",
+  "Usar padrão mantém a preferência atual de cada bot.": "Use default keeps each bot’s current preference.",
+  "Aplicar a": "Apply to",
+  "Não foi possível carregar os bots. Reabra as preferências.": "Could not load bots. Reopen preferences.",
+  "Receber avisos deste bot": "Receive alerts from this bot",
+  "Avisar sobre": "Notify me about",
+  "Usar padrão": "Use default",
+  "Somente o que precisa de mim": "Only what needs me",
+  "Também resultados concluídos": "Also completed results",
+  "Tipos de aviso": "Notification types",
+  Avisar: "Alert",
+  Silenciar: "Mute",
+  "Horário silencioso": "Quiet hours",
+  "Ativar horário silencioso": "Enable quiet hours",
+  Das: "From",
+  Até: "Until",
+  "Vale para todos os bots, no horário local do computador que executa o touri. Os outros avisos ficam guardados e contados, sem alertas nem som. Horários iguais silenciam esses avisos o dia todo.":
+    "Applies to all bots, using the local time of the computer running touri. Other notifications are saved and counted, without alerts or sound. Equal times silence those notifications all day.",
+  "Os filtros controlam os alertas. Todos os avisos continuam na central de notificações.":
+    "Filters control alerts. All notifications remain in the notification center.",
+  "Com a página fechada, não há som nem avisos em segundo plano. Ao voltar, você vê as solicitações pendentes.":
+    "A closed page makes no sound and sends no background alerts. When you return, you see pending requests.",
+  "Rotina concluída sem novidades.": "Routine finished with no news.",
+  "Notifications are limited to one every 30 seconds. Wait before trying again.":
+    "Notifications are limited to one every 30 seconds. Wait before trying again.",
+  "Notifications are unavailable. Try again later.": "Notifications are unavailable. Try again later.",
+  "Notification saved. Alerts follow your notification preferences.":
+    "Notification saved. Alerts follow your notification preferences.",
+  "Invalid notification preferences": "Invalid notification preferences",
+  "Há um novo aviso na central de notificações.": "There is a new notification in the notification center.",
+  "Routine run history": "Routine run history",
+  "Deleted routine": "Deleted routine",
+  "Deleted routine conversations": "Deleted routine conversations",
+  "Open routine conversation": "Open conversation",
+  "Next routine runs page": "Next page",
+  "Previous routine runs page": "Previous page",
+  "Routine history filter": "Filter history by routine",
+  "All routines": "All routines",
+  "Routine history range": "Runs {from}–{to} of {total}",
   "Confira os dados e os limites do objetivo.": "Check the goal details and limits.",
   "ERROR INVALID_ARGS: Confira os dados e os limites do objetivo.": "Check the goal details and limits.",
   "Aguarde o turno atual terminar ou conclua o objetivo anterior.":
@@ -2344,6 +2515,9 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Goal paused": "Paused",
   "Goal budget exhausted": "Limit reached",
   "Goal completed": "Completed",
+  "Goal completed summary": "Goal completed",
+  "Goal new": "New goal",
+  "Goal budget exhausted summary": "Goal stopped · limit reached",
   "Continuação do objetivo": "Goal continuation",
   "Sign in to {provider} for this {host}: open this link on this device":
     "Sign in to {provider} for {host}: open this link on this device",
@@ -2420,6 +2594,7 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Somente respostas finais confirmadas. Este quadro é apenas para leitura.":
     "Only confirmed final answers. This board is read-only.",
   "Sem resultados confirmados neste turno.": "No confirmed results in this turn yet.",
+  "O membro foi removido do grupo.": "This member was removed from the group.",
   "Salve o token do bot do Telegram.": "Save the Telegram bot token.",
   "Token inválido ou revogado.": "Invalid or revoked token.",
   "Não foi possível conectar ao Telegram. Confira sua conexão e tente novamente.":
@@ -2722,6 +2897,20 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Excluir a rotina {name}?": "Delete routine {name}?",
   "Ela não vai mais rodar. O histórico de execuções continua nas conversas.":
     "It will no longer run. Execution history remains in conversations.",
+  "A exclusão deste bot já está em andamento. Aguarde a conclusão.":
+    "This bot is already being deleted. Wait for deletion to finish.",
+  "Não foi possível encerrar as tarefas ou fechar a tela do bot. Pare as tarefas e tente excluir novamente.":
+    "Could not stop the bot's tasks or close its screen. Stop the tasks and try deleting again.",
+  "Não foi possível apagar os logins do bot. Desbloqueie o cofre do sistema e tente excluir novamente.":
+    "Could not delete the bot's sign-ins. Unlock the system keychain and try deleting again.",
+  "Não foi possível remover o computador ou os volumes do bot. Confira o serviço de máquinas e tente excluir novamente.":
+    "Could not remove the bot's computer or volumes. Check the machine service and try deleting again.",
+  "O computador do bot ainda está em uso. Pare as tarefas e tente excluir novamente.":
+    "The bot's computer is still in use. Stop the tasks and try deleting again.",
+  "Não foi possível apagar os arquivos do bot. Confira as permissões da pasta de dados e tente excluir novamente.":
+    "Could not delete the bot's files. Check the data folder permissions and try deleting again.",
+  "Não foi possível remover o histórico e os vínculos do bot. Tente excluir novamente; se persistir, envie um relato do problema.":
+    "Could not remove the bot's history and links. Try deleting again; if the problem persists, send a problem report.",
   "Não foi possível excluir a rotina. Tente novamente.": "Could not delete the routine. Try again.",
   "Excluindo…": "Deleting…",
   Excluir: "Delete",
@@ -3953,6 +4142,56 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "As permissões de pastas salvas não funcionam neste computador. Você pode conversar sem ferramentas. Remova essas permissões nas configurações do bot para continuar com tarefas.":
     "Saved folder permissions do not work on this computer. You can chat without tools. Remove these permissions in the bot settings to continue with tasks.",
   "Remover permissões antigas": "Remove old permissions",
+  Work: "Work",
+  Performance: "Performance",
+  "Work description": "See what each bot is doing and what is waiting for a slot.",
+  "Work loading": "Loading tasks…",
+  "Work empty": "No running or queued tasks. Send a message to get started.",
+  "Work queued": "Queued",
+  "Work queued count": "{count} queued",
+  "Work queue position": "Queued · {position} of {total}",
+  "Work waiting for slot": "Queued · waiting for a slot",
+  "Work preparing": "Preparing",
+  "Work conversation unavailable": "Conversation unavailable",
+  "Work origin": "Origin",
+  "Work state": "State",
+  "Work waiting time": "Waiting for",
+  "Work elapsed time": "Running for",
+  "Work message": "Message",
+  "Work routine": "Routine",
+  "Work delegation": "Delegation",
+  "Work resume": "Resume",
+  "Work seconds": "{count} s",
+  "Work minutes": "{count} min {seconds} s",
+  "Work performance description": "Choose how many tasks can run at the same time.",
+  "Work concurrency": "Simultaneous tasks",
+  "Work concurrency help":
+    "The default is 3. More tasks use more memory and may slow down your computer. Other tasks wait in the queue. Choose from 1 to 32.",
+  "Work concurrency changes":
+    "Changes apply immediately. Lowering the limit does not interrupt running tasks. Delegations between bots may use an extra slot to finish the calling task.",
+  "Work save": "Save limit",
+  "Work saving": "Saving…",
+  "Work settings saved": "Limit saved.",
+  "Work settings error": "Could not save. Check your connection and try again.",
+  "Ver erro": "View error",
+  "Notificações que precisam de revisão em Tarefas interrompidas: {count}.":
+    "Notifications awaiting review in Interrupted tasks: {count}.",
+  "Tarefas interrompidas": "Interrupted tasks",
+  "Tarefa interrompida não encontrada.": "Interrupted task not found.",
+  "Não foi possível salvar a confirmação. Tente novamente.": "Could not save the acknowledgement. Try again.",
+  "O touri foi reiniciado.": "touri restarted.",
+  "Revise o que ficou pendente antes de continuar. O histórico será preservado.":
+    "Review unfinished work before continuing. History will be preserved.",
+  "Nenhuma tarefa interrompida pendente.": "No interrupted tasks need review.",
+  "Interrupções resolvidas": "Resolved interruptions",
+  "Interrupção anterior · resolvida": "Previous interruption · resolved",
+  "Resultado incerto": "Uncertain outcome",
+  "Ação registrada": "Recorded action",
+  Descartar: "Dismiss",
+  "Revisei os efeitos incertos e entendo que descartar não desfaz as ações.":
+    "I reviewed the uncertain effects and understand that dismissing does not undo actions.",
+  "Revise os efeitos incertos no centro de tarefas interrompidas.":
+    "Review uncertain effects in the interrupted tasks center.",
 }
 export const dictionaries = {
   "pt-BR": ptBR,
@@ -3992,6 +4231,7 @@ const singular: Partial<Record<TranslationKey, [string, string]>> = {
   ],
   "Tool count": ["{count} chamada de ferramenta", "{count} tool call"],
   "Tool group count": ["{count} ferramenta", "{count} tool"],
+  "Você tem {n} solicitações pendentes.": ["Você tem {n} solicitação pendente.", "You have {n} pending request."],
   "Notifications need attention": [
     "Notificações, {count} precisa de atenção",
     "Notifications, {count} needs attention",
@@ -4013,7 +4253,7 @@ export const t = (
 ): string => {
   let template = dictionaries[locale][key]
   const one = singular[key]?.[locale === "pt-BR" ? 0 : 1]
-  const count = key === "A cada hora, aos {minute} minutos" ? params.minute : params.count
+  const count = key === "A cada hora, aos {minute} minutos" ? params.minute : (params.count ?? params.n)
   if (one && typeof count === "number") template = plural(count, one, template, locale)
   const values =
     key === "Import counts"
@@ -4031,6 +4271,9 @@ export const getHostLabel = (host: HostKind, locale: Locale = "pt-BR"): string =
 
   return locale === "en" ? `this ${noun}` : noun
 }
+
+export const getRoutineRunDateLabel = (timestamp: number, locale: Locale = "pt-BR"): string =>
+  new Intl.DateTimeFormat(locale, { dateStyle: "short", timeStyle: "short" }).format(timestamp)
 
 /** Localize auto-generated imported date titles; preserve arbitrary user titles. */
 export const threadTitle = (title: string, createdAt: number): string => {

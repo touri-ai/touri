@@ -22,6 +22,7 @@ export const reconcileFailureNotifications = (
 ): Array<NotificationRecord> =>
   items.map((item) => {
     if (isResolvedNotification(item) || !isFailureNotice(item) || item.threadId === null) return item
+    if (item.requestId?.startsWith("recovery:")) return item
     const later = runs.find(
       (run) =>
         run.botId === item.botId &&
@@ -54,7 +55,7 @@ export const pendingNotifications = (
   reconcileFailureNotifications(reconcileApprovalNotifications([...items], [...messages]), runs)
     .filter((item) => {
       if (isResolvedNotification(item) || !isAttention(item)) return false
-      if (!isFailureNotice(item)) return true
+      if (!isFailureNotice(item) || item.requestId?.startsWith("recovery:")) return true
       const completedLater = items.some(
         (next) =>
           next.kind === "done" &&

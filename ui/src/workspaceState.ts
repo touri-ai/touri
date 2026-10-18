@@ -1,8 +1,15 @@
 import { scopedStorageKey } from "./storageScope"
 
+export type RoutineHistoryTarget = { routineId?: string }
+
 export type AppRoute =
   | { section: "bots"; screen: "chat" | "preview" }
-  | { section: "advanced"; page: "cron" | "integracoes" | "mcp"; botId?: string }
+  | {
+      section: "advanced"
+      page: "cron" | "integracoes" | "mcp" | "work" | "performance"
+      botId?: string
+      history?: RoutineHistoryTarget
+    }
 type SavedWorkspace = {
   teamSuggestionDismissed?: boolean
   teamFollowupDismissed?: boolean
@@ -20,18 +27,31 @@ const KEY = "touri.workspace.v1"
 export const migrateRoute = (raw: unknown): AppRoute | undefined => {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined
   const route = raw as Record<string, unknown>
+  const history = route.page === "cron" ? getRoutineHistoryTarget(route.history) : undefined
   if (route.section === "bots" && (route.screen === "chat" || route.screen === "preview"))
     return { section: "bots", screen: route.screen }
   if (
     (route.section === "touri" || route.section === "advanced") &&
-    (route.page === "cron" || route.page === "integracoes" || route.page === "mcp")
+    (route.page === "cron" ||
+      route.page === "integracoes" ||
+      route.page === "mcp" ||
+      route.page === "work" ||
+      route.page === "performance")
   )
     return {
       section: "advanced",
       page: route.page,
       ...(typeof route.botId === "string" ? { botId: route.botId } : {}),
+      ...(history ? { history } : {}),
     }
   return undefined
+}
+
+const getRoutineHistoryTarget = (raw: unknown): RoutineHistoryTarget | undefined => {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined
+  const history = raw as Record<string, unknown>
+
+  return typeof history.routineId === "string" ? { routineId: history.routineId } : {}
 }
 
 export const readWorkspaceState = (): SavedWorkspace => {
