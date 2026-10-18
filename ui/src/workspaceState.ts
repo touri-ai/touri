@@ -2,7 +2,7 @@ import { scopedStorageKey } from "./storageScope"
 
 export type AppRoute =
   | { section: "bots"; screen: "chat" | "preview" }
-  | { section: "advanced"; page: "cron" | "integracoes" | "mcp"; botId?: string }
+  | { section: "advanced"; page: "cron" | "integracoes" | "mcp" | "work" | "performance"; botId?: string }
 type SavedWorkspace = {
   teamSuggestionDismissed?: boolean
   teamFollowupDismissed?: boolean
@@ -24,7 +24,11 @@ export const migrateRoute = (raw: unknown): AppRoute | undefined => {
     return { section: "bots", screen: route.screen }
   if (
     (route.section === "touri" || route.section === "advanced") &&
-    (route.page === "cron" || route.page === "integracoes" || route.page === "mcp")
+    (route.page === "cron" ||
+      route.page === "integracoes" ||
+      route.page === "mcp" ||
+      route.page === "work" ||
+      route.page === "performance")
   )
     return {
       section: "advanced",

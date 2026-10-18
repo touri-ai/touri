@@ -394,3 +394,21 @@
 .bot-actions-menu {
   position: relative;
 }
+
+.sidebar-work-badge {
+  background: var(--surface-control);
+  color: var(--text-primary);
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 10px;
+  margin: 0 16px 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-default);
+  border-radius: 10px;
+  font-size: 12px;
+  text-align: left;
+}
+.sidebar-work-badge strong {
+  margin-left: 4px;
+}

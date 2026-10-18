@@ -8,15 +8,16 @@ test("import wizard happy path against the mock adapter", async ({ page }) => {
   await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
   await openGlobalPage(page, "Verificar este Mac")
   await page.getByRole("button", { name: "Importar bots do app anterior" }).click()
-  await expect(page.getByRole("dialog", { name: "Importar seus bots" })).toBeVisible()
-  await page.getByLabel("Pasta do app anterior").fill("/tmp/legacy-fixture")
-  await page.getByRole("button", { name: /Continuar/ }).click()
-  await page.getByRole("button", { name: "Revisar importação" }).click()
-  await page.getByRole("button", { name: "Importar agora" }).click()
-  await expect(page.getByRole("heading", { name: "Importação concluída" })).toBeVisible()
-  await expect(
-    page.getByRole("dialog", { name: "Importar seus bots" }).getByText(/^\d+ mensage(?:m|ns) e \d+ conversa/),
-  ).toBeVisible()
+  const dialog = page.getByRole("dialog", { name: "Importar seus bots" })
+  await expect(dialog).toBeVisible()
+
+  await dialog.getByLabel("Pasta do app anterior").fill("/tmp/legacy-fixture")
+  await dialog.getByRole("button", { name: /Continuar/ }).click()
+  await dialog.getByRole("button", { name: "Revisar importação" }).click()
+  await dialog.getByRole("button", { name: "Importar agora" }).click()
+
+  await expect(dialog.getByRole("heading", { name: "Importação concluída" })).toBeVisible()
+  await expect(dialog.getByText(/^\d+ mensage(?:m|ns) e \d+ conversa/)).toBeVisible()
 })
 
 test("creates a bot in the workspace", async ({ page }) => {
@@ -86,9 +87,11 @@ test("avatar animations actually run when motion is allowed and stop when reduce
   await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
   const avatar = page.locator('.bot-sidebar .tb-avatar[data-bot-id="bot-onb"]')
   await expect(avatar).toHaveAttribute("data-avatar-mood", "working")
-  const body = avatar.locator("[data-avatar-body]")
-  const before = await body.getAttribute("d")
-  await expect.poll(() => body.getAttribute("d")).not.toBe(before)
+  await expect(avatar).toHaveAttribute("data-avatar-animated", "true")
+  const eye = avatar.locator("[data-avatar-eye]").first()
+  const before = await eye.getAttribute("transform")
+
+  await expect.poll(() => eye.getAttribute("transform")).not.toBe(before)
   await page.emulateMedia({ reducedMotion: "reduce" })
   await expect(avatar).toHaveAttribute("data-avatar-animated", "false")
   const still = await avatar.locator(".tb-avatar-body").innerHTML()
@@ -160,8 +163,15 @@ test("r2 creates one bot/conversation/cron and refreshes Cron without changing s
   await page.getByRole("button", { name: /Criar rotina/ }).click()
   await expect(page.getByRole("combobox", { name: "Bot", exact: true })).toHaveValue(botId ?? "missing")
   await page.getByLabel("Nome", { exact: true }).fill("SEO semanal r2")
-  await page.getByLabel("Prompt", { exact: true }).fill("Liste as rotas")
-  await page.getByRole("button", { name: "Salvar rotina" }).click()
+  await page.getByRole("textbox", { name: "Tarefa", exact: true }).fill("Liste as rotas")
+  await page.getByRole("button", { name: "Revisar rotina", exact: true }).click()
+  const review = page.getByRole("dialog", { name: "Revisar rotina", exact: true })
+
+  await expect(review.getByRole("region", { name: "Revisar rotina", exact: true })).toBeFocused()
+  await expect(review.getByText("Liste as rotas", { exact: true })).toBeVisible()
+  await review.getByRole("button", { name: "Ativar rotina", exact: true }).click()
+
+  await expect(review).toHaveCount(0)
   await expect(page.locator(".routine-item").filter({ hasText: "SEO semanal r2" })).toHaveCount(1)
   await page.getByRole("button", { name: "Atualizar", exact: true }).click()
   await expect(page.getByRole("heading", { name: "Rotinas" })).toBeVisible()

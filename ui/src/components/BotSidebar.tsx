@@ -38,15 +38,16 @@ type SidebarProps = {
   bots: Array<Bot>
   threads: Array<Thread>
   messages: Array<Message>
+  workRuns?: Array<Run>
   runs?: Array<Run>
   /** Float bots with updates to the top (settings: "Mover bots com novidades para o topo"). Default on. */
   floatUpdates?: boolean
   selectedBotId: Id | null
   selectedThreadId: Id | null
   section: "advanced" | "bots"
-  advancedPage: "cron" | "integracoes" | "mcp" | null
+  advancedPage: "cron" | "integracoes" | "mcp" | "work" | "performance" | null
   onChat: () => void
-  onAdvancedPage: (page: "integracoes" | "mcp") => void
+  onAdvancedPage: (page: "integracoes" | "mcp" | "work" | "performance") => void
   onRoutines: (botId: Id) => void
   onProject: () => void
   onImport: () => void
@@ -170,6 +171,14 @@ export const Sidebar = (props: SidebarProps) => {
           {t("Bots")} <span>{props.bots.length}</span>
         </button>
       </div>
+      <button type="button" className="sidebar-work-badge" onClick={() => navigate(() => props.onAdvancedPage("work"))}>
+        <span>
+          {t("Working")} <strong>{(props.workRuns ?? []).filter((run) => run.status !== "queued").length}</strong>
+        </span>
+        <span>
+          {t("Work queued count", { count: (props.workRuns ?? []).filter((run) => run.status === "queued").length })}
+        </span>
+      </button>
       <div className="bot-groups">
         <div className="bot-list" ref={ordered.listRef}>
           {ordered.bots.map((bot, index) => {

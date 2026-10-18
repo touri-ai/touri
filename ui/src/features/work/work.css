@@ -1,0 +1,79 @@
+.work-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+}
+.work-column h2 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 16px;
+  margin: 0 0 16px;
+}
+.work-column h2 span {
+  font: 12px var(--font-mono);
+  color: var(--text-secondary);
+}
+.work-card {
+  margin-bottom: 12px;
+  padding: var(--screen-card-padding);
+}
+.work-card-bot {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.work-thread {
+  display: block;
+  margin: 14px 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-link);
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  overflow-wrap: anywhere;
+}
+.work-card dl {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  font-size: 13px;
+}
+.work-card dl div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+.work-card dt {
+  color: var(--text-secondary);
+}
+.work-card dd {
+  margin: 0;
+  text-align: right;
+}
+.performance-form {
+  max-width: 620px;
+  padding: var(--screen-card-padding);
+}
+.performance-form p {
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.performance-form label {
+  display: block;
+  font-weight: 600;
+}
+.performance-form input {
+  width: 90px;
+  padding: 10px;
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+}
+@media (max-width: 700px) {
+  .work-columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

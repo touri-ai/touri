@@ -3,6 +3,10 @@
 These rules drive both Claude Code Review on pull requests and the touri review bot that triages
 pull requests and issues. CI and Biome already enforce formatting, lint and types: never report those.
 
+Before every review, read [EVENT_LOOP.md](EVENT_LOOP.md) and [SECURITY_REVIEW.md](SECURITY_REVIEW.md).
+Verify the event-loop checklist and every item in the PR's **Security review** table, including
+documentation-only PRs. Any unresolved high security risk blocks merge regardless of the tier below.
+
 ## Severity
 
 - 🔴 **Important**: the change breaks behaviour a user relies on, loses or leaks data, weakens a
@@ -36,4 +40,6 @@ behaviour (event handlers, data flow, conditions that hide or show controls, acc
 ## Do not report
 
 - Formatting, lint and type errors (CI enforces them).
-- Generated files, lockfiles, screenshots and baselines under `ui/test/e2e/`.
+- Formatting or generated-diff noise in generated files, lockfiles, screenshots and baselines under
+  `ui/test/e2e/`. These files still require every applicable security check in SECURITY_REVIEW.md;
+  report data leaks, secrets, executable changes and supply-chain risks normally.

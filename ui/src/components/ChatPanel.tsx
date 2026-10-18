@@ -19,6 +19,7 @@ import { userFacingRunError } from "../errors"
 import { ComputerGrantCard } from "../features/computer"
 import { InlineLivePreview, InlinePreviewContext, screenTool } from "../features/desktop/InlineLivePreview"
 import { useIsServerMode } from "../features/server/serverMode"
+import { getQueueLabel } from "../features/work/presentation"
 import { getHostLabel, localizeNotice, t } from "../i18n"
 import { machineStateForDisplay } from "../machineState"
 import { messageMarkdown } from "../messageMarkdown"
@@ -1340,6 +1341,7 @@ const getRoutineRunPresentation = (run: Run, waitingApproval: boolean) => {
       className: "status-waiting-approval",
       summary: t("Review the approval card to continue the routine."),
     }
+  if (run.status === "queued") return { label: getQueueLabel(run), className: "status-queued" }
   if (running) return { label: t("Em execução"), className: "status-running" }
   if (run.status === "canceled") return { label: t("Cancelado por você"), className: "status-canceled" }
   if (["failed", "interrupted"].includes(run.status))
