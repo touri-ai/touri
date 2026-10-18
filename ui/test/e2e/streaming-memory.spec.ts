@@ -3,6 +3,7 @@ import { readFile, writeFile } from "node:fs/promises"
 import { resolve } from "node:path"
 import { promisify } from "node:util"
 import { expect, test } from "@playwright/test"
+import type * as CodeVisibility from "../../src/components/codeVisibility"
 
 test.use({ channel: "chromium", trace: "off", viewport: { width: 1440, height: 900 } })
 
@@ -80,7 +81,36 @@ test("streaming eight long replies keeps allocation work bounded", async ({ page
   expect(result.completedAtMs).not.toBeNull()
   await page.getByRole("button", { name: "Mostrar mais", exact: true }).last().click()
   await expect(page.getByRole("heading", { name: "Etapa 90", exact: true })).toBeVisible()
+  await expect(page.locator(".chat-long-content .disclosure-content .markdown-highlight .shiki").first()).toBeVisible()
   expect(result.peakBytes).toBeLessThan(160 * 1024 * 1024)
+})
+
+test("code visibility resumes after an edge-only intersection", async ({ page }) => {
+  test.setTimeout(60_000)
+  await page.goto("/test/e2e/streaming-memory-harness.html")
+  await page.evaluate(async () => {
+    const source = "/src/components/codeVisibility.ts"
+    const visibility: typeof CodeVisibility = await import(source)
+    const probe = document.createElement("div")
+    probe.id = "code-visibility-probe"
+    probe.dataset.ready = "false"
+    probe.style.cssText = `position:fixed;left:0;top:${window.innerHeight + 160}px;width:100px;height:100px`
+    document.body.append(probe)
+    visibility.observeCodeVisibility(probe, () => {
+      probe.dataset.ready = "true"
+    })
+    await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
+  })
+
+  await expect(page.locator("#code-visibility-probe")).toHaveAttribute("data-ready", "false")
+  await page.evaluate(() => {
+    const probe = document.getElementById("code-visibility-probe")
+    if (!probe) return
+
+    probe.style.top = `${window.innerHeight + 159}px`
+  })
+
+  await expect(page.locator("#code-visibility-probe")).toHaveAttribute("data-ready", "true")
 })
 
 const getRendererResidentBytes = async (rendererIds: number[]): Promise<number | null> => {

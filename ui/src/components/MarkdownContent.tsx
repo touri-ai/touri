@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core"
 import {
+  createContext,
   isValidElement,
   lazy,
   memo,
@@ -16,6 +17,7 @@ import { userFacingError } from "../errors"
 import { localFileLinks, localFilePath } from "../messageMarkdown"
 import { useSaveNotice } from "../useSaveNotice"
 import { protectDiffFences } from "./codeFence"
+import { observeCodeVisibility } from "./codeVisibility"
 import { DiffOutput } from "./DiffOutput"
 import { EvidenceContext, type EvidenceContextValue, EvidenceGallery, readImage } from "./EvidenceGallery"
 import { decodedEvidencePath, type EvidenceNode, evidenceImages, evidencePath } from "./evidenceMarkdown"
@@ -31,6 +33,8 @@ type MarkdownRendererProps = {
   streaming?: boolean
   evidence?: EvidenceContextValue | undefined
 }
+
+const CodeVisibilityContext = createContext(false)
 
 type PreviewNode = { type: string; value?: string; children?: PreviewNode[] }
 
@@ -187,6 +191,9 @@ const ShikiCode = ({
   highlight?: boolean
 }) => {
   const [html, setHtml] = useState<string | null>(null)
+  const [visible, setVisible] = useState(false)
+  const root = useRef<HTMLDivElement>(null)
+  const visibleOnly = useContext(CodeVisibilityContext)
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle")
   const resetRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(
@@ -207,7 +214,12 @@ const ShikiCode = ({
   }
 
   useEffect(() => {
-    if (!highlight) return
+    if (!highlight || !visibleOnly) return
+
+    return observeCodeVisibility(root.current, () => setVisible(true))
+  }, [highlight, visibleOnly])
+  useEffect(() => {
+    if (!highlight || (visibleOnly && !visible)) return
 
     let active = true
     void getMarkdownCodeHtml(source, language)
@@ -218,10 +230,10 @@ const ShikiCode = ({
     return () => {
       active = false
     }
-  }, [language, source, highlight])
+  }, [language, source, highlight, visibleOnly, visible])
 
   return (
-    <div className="markdown-code">
+    <div className="markdown-code" ref={root}>
       <div className="markdown-code-header">
         <span>{language === "text" ? "Texto" : language}</span>
         {copyable ? (
@@ -255,18 +267,21 @@ export const MarkdownContent = ({
   evidence,
 }: MarkdownRendererProps) => {
   const displayed = useStreamingContent(content, streaming)
+  const visibleOnly = !streaming && (content.length > 4000 || content.split("\n").length > 40)
 
   return (
-    <div className={`markdown-content${compact ? " markdown-compact" : ""}`}>
-      <Suspense fallback={<p className="whitespace-pre-wrap">{preview ? displayed.slice(0, 600) : displayed}</p>}>
-        {evidence ? (
-          <EvidenceContext.Provider value={evidence}>
+    <CodeVisibilityContext.Provider value={visibleOnly}>
+      <div className={`markdown-content${compact ? " markdown-compact" : ""}`}>
+        <Suspense fallback={<p className="whitespace-pre-wrap">{preview ? displayed.slice(0, 600) : displayed}</p>}>
+          {evidence ? (
+            <EvidenceContext.Provider value={evidence}>
+              <LazyMarkdown content={displayed} preview={preview} streaming={streaming} />
+            </EvidenceContext.Provider>
+          ) : (
             <LazyMarkdown content={displayed} preview={preview} streaming={streaming} />
-          </EvidenceContext.Provider>
-        ) : (
-          <LazyMarkdown content={displayed} preview={preview} streaming={streaming} />
-        )}
-      </Suspense>
-    </div>
+          )}
+        </Suspense>
+      </div>
+    </CodeVisibilityContext.Provider>
   )
 }

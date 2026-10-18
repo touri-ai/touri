@@ -2,6 +2,7 @@ import { act, render, screen, waitFor } from "@testing-library/react"
 import { StrictMode } from "react"
 import remarkGfm from "remark-gfm"
 import { afterEach, describe, expect, it, vi } from "vitest"
+import { observeCodeVisibility } from "../src/components/codeVisibility"
 import { MarkdownContent } from "../src/components/MarkdownContent"
 import { getMarkdownCodeHtml } from "../src/components/markdownHighlight"
 import { useStreamingContent } from "../src/components/useStreamingContent"
@@ -11,6 +12,13 @@ vi.mock("remark-gfm", async (importOriginal) => {
 
   return { default: vi.fn(plugin.default) }
 })
+
+vi.mock("../src/components/codeVisibility", () => ({
+  observeCodeVisibility: vi.fn((_element: Element | null, show: () => void) => {
+    show()
+    return () => undefined
+  }),
+}))
 
 vi.mock("../src/components/markdownHighlight", () => ({
   getMarkdownCodeHtml: vi.fn(async () => '<pre class="shiki"><code>const total = 2</code></pre>'),
@@ -95,6 +103,26 @@ describe("streaming Markdown", () => {
 
     await waitFor(() => expect(getMarkdownCodeHtml).toHaveBeenCalledTimes(1))
     expect(view.container.querySelector(".shiki")).not.toBeNull()
+  })
+
+  it("keeps a long reply copyable without compiling hidden code until it becomes visible", async () => {
+    const stop = vi.fn()
+    vi.mocked(observeCodeVisibility).mockReturnValueOnce(stop)
+    const content = `Exemplo longo.\n\n${"Texto de exemplo. ".repeat(250)}\n\n\`\`\`typescript\nconst total = 2\n\`\`\``
+    const view = render(<MarkdownContent content={content} />)
+    await screen.findByRole("button", { name: "Copiar código" })
+    await waitFor(() => expect(observeCodeVisibility).toHaveBeenCalled())
+
+    expect(view.container.querySelector("code")).toHaveTextContent("const total = 2")
+    expect(getMarkdownCodeHtml).not.toHaveBeenCalled()
+
+    act(() => vi.mocked(observeCodeVisibility).mock.calls.at(-1)?.[1]())
+
+    await waitFor(() => expect(getMarkdownCodeHtml).toHaveBeenCalledTimes(1))
+
+    view.unmount()
+
+    expect(stop).toHaveBeenCalledOnce()
   })
 
   it("defers diagram rendering until the final source is available", async () => {
