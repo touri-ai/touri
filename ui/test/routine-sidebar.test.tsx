@@ -64,6 +64,7 @@ it("groups 28 routine executions without burying ordinary conversations and open
   if (!(history instanceof HTMLElement)) throw new Error("Missing run history")
 
   expect(history).toHaveAttribute("open")
+  expect(within(history).getByRole("status")).toHaveFocus()
   expect(within(history).getByRole("combobox", { name: "Filtrar histórico por rotina" })).not.toHaveValue("all")
   const openButtons = within(history).getAllByRole("button", { name: "Abrir conversa" })
   expect(openButtons).toHaveLength(28)
