@@ -68,7 +68,7 @@ const activeRun = (bot: Bot): Run => ({
 describe("composer project picker", () => {
   it("keeps selected names wrapping in the phone grid with separate send controls", async () => {
     await setup()
-    const composerStyles = await readFile(new URL("../src/components/Composer.css", import.meta.url), "utf8")
+    const composerStyles = await readFile("src/components/Composer.css", "utf8")
     const { container } = render(<style>{composerStyles}</style>)
     const sheet = container.querySelector("style")?.sheet
     const phone = Array.from(sheet?.cssRules ?? [])
