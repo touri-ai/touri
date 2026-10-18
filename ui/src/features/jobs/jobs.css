@@ -19,7 +19,7 @@
   overflow: auto;
   overscroll-behavior: contain;
 }
-.job-group h4 {
+.job-group h3 {
   margin: 0 0 var(--space-8);
   color: var(--text-secondary);
   font-size: var(--type-11);

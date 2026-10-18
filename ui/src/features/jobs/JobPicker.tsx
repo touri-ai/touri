@@ -97,7 +97,7 @@ export const JobPicker = ({
           const matches = filtered.filter((job) => job.group === group)
           return matches.length > 0 ? (
             <div className="job-group" key={group}>
-              <h4>{jobGroupName(group, locale)}</h4>
+              <h3>{jobGroupName(group, locale)}</h3>
               <div className="job-grid">{matches.map(option)}</div>
             </div>
           ) : null

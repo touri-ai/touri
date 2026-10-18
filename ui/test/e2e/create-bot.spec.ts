@@ -80,3 +80,22 @@ test("create and advanced have no serious accessibility violations and restore f
   await expect(page.getByRole("dialog")).toHaveCount(0)
   await expect(trigger).toBeFocused()
 })
+
+for (const viewport of [
+  { name: "desktop", width: 1440, height: 900 },
+  { name: "phone", width: 390, height: 844 },
+]) {
+  test(`create-bot headings follow a contiguous outline on ${viewport.name}`, async ({ page }) => {
+    await page.setViewportSize({ width: viewport.width, height: viewport.height })
+    await page.goto("/test/e2e/create-bot-harness.html")
+    await page.getByRole("button", { name: "Criar meu primeiro bot" }).click()
+    const dialog = page.getByRole("dialog", { name: "Criar um bot" })
+
+    await expect(dialog.getByRole("heading", { name: "Criar um bot", level: 2 })).toBeVisible()
+    await expect(dialog.locator(".job-group h3")).toHaveCount(6)
+    await expect(dialog.locator(".job-group h4")).toHaveCount(0)
+    const result = await new AxeBuilder({ page }).analyze()
+
+    expect(result.violations.filter((violation) => violation.id === "heading-order")).toEqual([])
+  })
+}
