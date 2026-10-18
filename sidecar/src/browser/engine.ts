@@ -1836,7 +1836,14 @@ export const createBrowserEngine = ({
 
   const startSessionTimer = (): void => {
     if (sessionTimer || discoverBotId || localBrowser) return
-    const task = createBackgroundTask("browser_session_save", saveSessions, runStage)
+    const task = createBackgroundTask(
+      "browser_session_save",
+      async () => {
+        if (retired) return
+        await saveSessions()
+      },
+      runStage,
+    )
     sessionTimer = setInterval(() => void task.run().catch(() => undefined), SESSION_SAVE_INTERVAL_MS)
     sessionTimer.unref?.()
   }
@@ -1910,7 +1917,7 @@ export const createBrowserEngine = ({
     const limit = contextOwners.size
     let saved = 0
     for (const [botId, contextId] of contextOwners) {
-      if (retired || saved >= limit) return
+      if (saved >= limit) return
 
       saved += 1
 
