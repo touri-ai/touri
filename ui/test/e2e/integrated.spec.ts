@@ -112,16 +112,28 @@ for (const width of [1440, 1100]) {
         ["Projeto", "bot-settings-project"],
         ["Permissões", "bot-settings-permissions"],
         ["Ferramentas", "bot-settings-mcp"],
-        ["Rotinas", "bot-settings-routines"],
       ] as const) {
         await dialog.getByRole("tab", { name: tab, exact: true }).click()
         await shot(view ?? "settings")
         if (tab === "Ferramentas") {
-          await dialog.getByRole("combobox", { name: "Classificação · read_file" }).scrollIntoViewIfNeeded()
+          await expect(dialog.getByRole("combobox", { name: "Classificação · read_file" })).toHaveCount(0)
+
+          await dialog.getByRole("button", { name: "Configuração técnica (MCP)", exact: true }).click()
+          const classification = dialog.getByRole("combobox", { name: "Classificação · read_file", exact: true })
+
+          await expect(classification).toHaveValue("reads")
+          await expect(dialog.getByRole("combobox", { name: "Política · read_file", exact: true })).toHaveValue(
+            "always_allow",
+          )
+          await classification.scrollIntoViewIfNeeded()
           await shot("bot-settings-mcp-policies")
         }
       }
-      await dialog.getByRole("button", { name: "Fechar diálogo" }).click()
+      await dialog.getByRole("tab", { name: "Rotinas", exact: true }).click()
+
+      await expect(dialog).toHaveCount(0)
+      await expect(page.getByRole("region", { name: "Rotinas", exact: true })).toBeFocused()
+      await shot("bot-settings-routines")
       await page.getByRole("button", { name: /Você Local/ }).click()
       await expect(dialog.getByText("preferências locais", { exact: true })).toBeVisible()
       await shot("preferences")
