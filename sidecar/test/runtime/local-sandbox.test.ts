@@ -54,6 +54,8 @@ const fixture = (provider: "codex" | "claude" = "codex", scenarios: Array<Record
         },
       })
       const emit = (frame: unknown) => output.enqueue(new TextEncoder().encode(`${JSON.stringify(frame)}\n`))
+      const emitBatch = (frames: unknown[]) =>
+        output.enqueue(new TextEncoder().encode(`${frames.map((frame) => JSON.stringify(frame)).join("\n")}\n`))
       if (typeof scenario.startupStderr === "string") {
         const diagnostic = scenario.startupStderr
         queueMicrotask(() => diagnostics.enqueue(new TextEncoder().encode(diagnostic)))
@@ -94,8 +96,11 @@ const fixture = (provider: "codex" | "claude" = "codex", scenarios: Array<Record
               emit({ type: "system", subtype: "init", session_id: "session-sandbox" })
               complete()
             } else if (frame.method === "initialize") emit({ id: frame.id, result: {} })
-            else if (frame.method === "thread/start" || frame.method === "thread/resume")
-              emit({ id: frame.id, result: { thread: { id: "session-sandbox" } } })
+            else if (frame.method === "thread/start" || frame.method === "thread/resume") {
+              const sessionFrames = Array.isArray(scenario.sessionFrames) ? scenario.sessionFrames : []
+              emitBatch([{ id: frame.id, result: { thread: { id: "session-sandbox" } } }, ...sessionFrames])
+            } else if (frame.method === "turn/start" && typeof scenario.turnStartError === "string")
+              emit({ method: "error", params: { message: scenario.turnStartError } })
             else if (frame.method === "turn/start") {
               emit({ id: frame.id, result: {} })
               emit({ method: "turn/started", params: { turnId: "turn-sandbox" } })
@@ -147,6 +152,107 @@ const fixture = (provider: "codex" | "claude" = "codex", scenarios: Array<Record
   })
   return { root, runDir, workspace, kernel, adapter, args, calls, events, requests }
 }
+
+const getHandshakeTimeout = () => ({
+  startupStderr: 'MCP server startup failed server_name="touri" error=handshake timed out',
+})
+
+const getRetrySession = (): ProviderSession => ({
+  id: "session-fixture",
+  threadId: "thread-sandbox",
+  provider: "codex",
+  externalSessionId: "existing-session",
+  rolloutPath: null,
+  fingerprint: "fixture-fingerprint",
+  state: "active",
+  model: null,
+  createdAt: 1,
+  lastUsedAt: 1,
+})
+
+test.each([
+  { resumed: false, access: "full", channel: "stderr" },
+  { resumed: true, access: "workspace-write", channel: "stderr" },
+  { resumed: false, access: "read-only", channel: "session" },
+  { resumed: true, access: "full", channel: "session" },
+] as const)(
+  "a pre-turn tools timeout retries once ($access, $channel, resumed: $resumed)",
+  async ({ resumed, access, channel }) => {
+    const timeout = getHandshakeTimeout()
+    const failure =
+      channel === "stderr"
+        ? timeout
+        : { sessionFrames: [{ method: "error", params: { message: timeout.startupStderr } }] }
+    const f = fixture("codex", [failure, {}])
+    const session = resumed ? getRetrySession() : null
+    const args: StartTurnArgs = { ...f.args, bot: { ...f.args.bot, access, approvals: "never" }, session }
+
+    const result = await f.adapter.startTurn(args)
+
+    expect(result).toMatchObject({ success: true, status: "succeeded" })
+    expect(f.calls).toHaveLength(2)
+    expect(f.requests.filter((request) => request.method === "turn/start")).toHaveLength(1)
+    const sessions = f.requests.filter((request) => request.method === (resumed ? "thread/resume" : "thread/start"))
+    expect(sessions.map((request) => request.params)).toMatchObject(
+      sessions.map(() => ({ approvalPolicy: "never", config: { mcp_servers: { touri: args.mcp } } })),
+    )
+    if (resumed)
+      expect(sessions.map((request) => request.params.threadId)).toEqual(sessions.map(() => "existing-session"))
+  },
+)
+
+test("a repeated pre-turn tools timeout stops after the second attempt", async () => {
+  const f = fixture("codex", [getHandshakeTimeout()])
+
+  const result = await f.adapter.startTurn(f.args)
+
+  expect(result).toMatchObject({ success: false, errorCode: "cli_protocol" })
+  expect(f.calls).toHaveLength(2)
+  expect(f.requests.filter((request) => request.method === "turn/start")).toHaveLength(0)
+})
+
+test("a tools timeout after turn submission never replays the user's task", async () => {
+  const f = fixture("codex", [{ turnStartError: getHandshakeTimeout().startupStderr }])
+
+  const result = await f.adapter.startTurn(f.args)
+
+  expect(result).toMatchObject({ success: false, errorCode: "cli_protocol" })
+  expect(f.calls).toHaveLength(1)
+  expect(f.requests.filter((request) => request.method === "turn/start")).toHaveLength(1)
+  expect(f.events.some((event) => event.type === "turn_started")).toBe(false)
+})
+
+test("a permanent tools startup failure never retries", async () => {
+  const f = fixture("codex", [{ startupStderr: "touri MCP startup failed: token_unavailable" }])
+
+  const result = await f.adapter.startTurn(f.args)
+
+  expect(result).toMatchObject({ success: false, errorCode: "cli_protocol" })
+  expect(f.calls).toHaveLength(1)
+})
+
+test("canceling a tools startup timeout prevents another attempt", async () => {
+  const f = fixture("codex", [getHandshakeTimeout(), {}])
+  const controller = new AbortController()
+  controller.abort()
+
+  await f.adapter.startTurn({ ...f.args, signal: controller.signal })
+
+  expect(f.calls).toHaveLength(1)
+  expect(f.requests.filter((request) => request.method === "turn/start")).toHaveLength(0)
+})
+
+test("a pre-turn tools retry keeps the guest execution boundary", async () => {
+  const f = fixture("codex", [getHandshakeTimeout(), {}])
+  const args = { ...f.args, execution: { spawn: f.kernel.spawnTree, writeFile: async () => {} } }
+
+  const result = await f.adapter.startTurn(args)
+
+  expect(result).toMatchObject({ success: true, status: "succeeded" })
+  expect(f.calls).toHaveLength(2)
+  expect(f.calls.map((call) => call.cmd)).toEqual(["codex", "codex"])
+  expect(f.requests.filter((request) => request.method === "turn/start")).toHaveLength(1)
+})
 
 for (const provider of ["codex", "claude"] as const) {
   for (const resumed of [false, true]) {
