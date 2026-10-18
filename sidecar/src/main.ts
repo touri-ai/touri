@@ -16,6 +16,7 @@ type ModuleLoader = { path: string; load: () => Promise<unknown> }
 
 const moduleLoaders: Array<ModuleLoader> = [
   { path: "./store/index.ts", load: () => import("./store/index.js") },
+  { path: "./api-models/index.ts", load: () => import("./api-models/index.js") },
   { path: "./reports/index.ts", load: () => import("./reports/index.js") },
   { path: "./groups/index.ts", load: () => import("./groups/index.js") },
   { path: "./notify/index.ts", load: () => import("./notify/index.js") },

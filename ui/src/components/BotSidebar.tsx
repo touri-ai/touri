@@ -5,14 +5,14 @@ import { reconcileApprovalMessages } from "../approvalState"
 import { BOT_ACTIVITY_LABELS, type BotActivity } from "../botActivity"
 import { latestPreview } from "../botPreview"
 import { paletteShortcutLabel } from "../features/commandPalette/shortcut"
-import { t, threadTitle } from "../i18n"
-import { markdownSummary } from "../markdownSummary"
+import { t } from "../i18n"
 import {
   isFailureNotice,
   pendingNotifications,
   reconcileFailureNotifications,
   relativeThreadDate,
 } from "../sidebarAttention"
+import { getSidebarThreadTitle } from "../sidebarThreadTitle"
 import { useMascotSnapshot } from "./AvatarRuntime"
 import { BotActionsMenu } from "./BotActionsMenu"
 import { BotAvatar } from "./BotAvatar"
@@ -537,36 +537,38 @@ const ThreadRow = ({
   selected: boolean
   running: boolean
   onClick: () => void
-}) => (
-  <button
-    type="button"
-    data-motion-insert={inserted}
-    className={`thread-row ${selected ? "selected" : ""}`}
-    onClick={onClick}
-    aria-current={selected ? "page" : undefined}
-  >
-    <span className="thread-icon" aria-hidden="true">
-      {thread.kind === "routine" ? (
-        <SidebarIcon>
-          <circle cx="12" cy="12" r="8" />
-          <path d="M12 7v5l3 2" />
-        </SidebarIcon>
-      ) : (
-        <SidebarIcon>
-          <path d="M5 5h14v10H9l-4 4Z" />
-        </SidebarIcon>
-      )}
-    </span>
-    <span className="thread-copy">
-      <strong title={markdownSummary(threadTitle(thread.title, thread.createdAt))}>
-        {markdownSummary(threadTitle(thread.title, thread.createdAt))}
-      </strong>
-      <small>{relativeThreadDate(thread.updatedAt)}</small>
-    </span>
-    {running ? (
-      <span className="sidebar-status-dot state-running" role="img" aria-label={t("Em execução")} />
-    ) : thread.unread > 0 ? (
-      <span className="sidebar-unread">{thread.unread > 99 ? "99+" : thread.unread}</span>
-    ) : null}
-  </button>
-)
+}) => {
+  const title = getSidebarThreadTitle(thread)
+
+  return (
+    <button
+      type="button"
+      data-motion-insert={inserted}
+      className={`thread-row ${selected ? "selected" : ""}`}
+      onClick={onClick}
+      aria-current={selected ? "page" : undefined}
+    >
+      <span className="thread-icon" aria-hidden="true">
+        {thread.kind === "routine" ? (
+          <SidebarIcon>
+            <circle cx="12" cy="12" r="8" />
+            <path d="M12 7v5l3 2" />
+          </SidebarIcon>
+        ) : (
+          <SidebarIcon>
+            <path d="M5 5h14v10H9l-4 4Z" />
+          </SidebarIcon>
+        )}
+      </span>
+      <span className="thread-copy">
+        <strong title={title}>{title}</strong>
+        <small>{relativeThreadDate(thread.updatedAt)}</small>
+      </span>
+      {running ? (
+        <span className="sidebar-status-dot state-running" role="img" aria-label={t("Em execução")} />
+      ) : thread.unread > 0 ? (
+        <span className="sidebar-unread">{thread.unread > 99 ? "99+" : thread.unread}</span>
+      ) : null}
+    </button>
+  )
+}

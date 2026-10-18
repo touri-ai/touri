@@ -1,3 +1,5 @@
+import type { ApiModel, ApiModelConnection, ApiModelError, ApiModelInput, ApiModelTest } from "./api-models"
+
 /**
  * touri desktop shared contracts, v0.
  *
@@ -827,6 +829,12 @@ export type ApiRoutes = {
   'GET /bots/:id/grants': { req: {}; res: { grants: Array<StandingGrant> } }
   'DELETE /bots/:id/grants/:grant': { req: {}; res: {} }
   'GET /providers/opencode/models': { req: { botId?: Id }; res: { models: Array<string>; defaultModel: string | null; available: boolean } }
+  'GET /api-models': { req: {}; res: { models: Array<ApiModel>; executorAvailable?: boolean } }
+  'POST /api-models': { req: ApiModelInput; res: { model: ApiModel } }
+  'POST /api-models/models': { req: ApiModelConnection; res: { models: Array<string>; reason?: ApiModelError } }
+  'POST /api-models/test': { req: ApiModelInput; res: ApiModelTest }
+  'POST /api-models/:id/test': { req: {}; res: ApiModelTest }
+  'DELETE /api-models/:id': { req: {}; res: {} }
   'GET /provider-profiles': { req: {}; res: { profiles: Array<ProviderProfile> } }
   'GET /bots/:id/provider-login': { req: {}; res: {
       provider: Provider

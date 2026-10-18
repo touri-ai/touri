@@ -46,6 +46,7 @@ export const prepareLocalProviderLogin = async (
   hostHome = homedir(),
 ): Promise<{ env: Record<string, string>; release: () => void }> => {
   signal.throwIfAborted()
+  if (bot.provider === "opencode" && bot.model?.startsWith("touri-api-")) return { env: {}, release: () => {} }
   if (storedProviderLoginSource(kernel, bot) !== "vault") {
     if (bot.provider === "codex" && bot.machine === "local" && !bot.providerProfile)
       return { env: { CODEX_HOME: prepareHostCodexHome(kernel.paths.appData, bot.id, hostHome) }, release: () => {} }

@@ -1066,3 +1066,67 @@
   min-width: 0;
   max-width: 100%;
 }
+
+.api-model-settings {
+  display: grid;
+  gap: 18px;
+}
+
+.api-model-form {
+  padding: 16px;
+}
+
+.api-model-form fieldset,
+.api-model-picker {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.api-model-picker {
+  margin-block: 16px;
+}
+
+.api-model-form input,
+.api-model-form select,
+.api-model-picker select {
+  width: 100%;
+  min-width: 0;
+}
+
+.api-model-form small,
+.api-model-picker small,
+.api-model-list small {
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.api-model-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.api-model-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.api-model-list li {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+}
+
+.api-model-list p {
+  overflow-wrap: anywhere;
+  margin-block: 6px;
+}
+
+.api-model-empty {
+  padding: 16px;
+}
