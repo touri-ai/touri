@@ -2423,12 +2423,6 @@ test.serial("transcript: cancellation during environment loading never launches 
 test.serial("local Claude profiles follow grant-free and full-access bookkeeping policy", async () => {
   const value = await fixture({ provider: "claude" })
   try {
-    const launches: string[] = []
-    const spawn = value.runtime.kernel.spawnTree
-    value.runtime.kernel.spawnTree = (input) => {
-      if (input.args.includes("--settings")) launches.push(input.cmd)
-      return spawn(input)
-    }
     const envLog = join(value.assets, "claude-home.log")
     const fakeSource = readFileSync(value.fakePath, "utf8")
     writeFileSync(
@@ -2452,14 +2446,12 @@ test.serial("local Claude profiles follow grant-free and full-access bookkeeping
     const profile = join(value.runtime.kernel.paths.appData, "provider-profiles", "selected", "claude")
     mkdirSync(profile, { recursive: true })
     writeFileSync(join(profile, "settings.json"), JSON.stringify({ forceLoginOrgUUID: "selected-profile" }))
-    bot.providerProfile = "selected"
+    value.store.bots.set(bot.id, Object.assign({}, bot, { providerProfile: "selected" }))
     await run("profile home")
-    bot.access = "full"
+    value.store.bots.set(bot.id, Object.assign({}, bot, { providerProfile: "selected", access: "full" as const }))
     await run("full-access profile home")
     const homes = readFileSync(envLog, "utf8").trim().split("\n")
     expect(homes[0]).not.toContain("provider-profiles")
-    const boundedCommand = process.platform === "darwin" ? "/usr/bin/sandbox-exec" : value.fakePath
-    expect(launches).toEqual([boundedCommand, boundedCommand, value.fakePath])
     expect(homes.slice(1)).toEqual([profile, profile])
     expect(
       JSON.parse(

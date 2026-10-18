@@ -91,6 +91,10 @@ export const init = async (kernel: Kernel): Promise<void> => {
   kernel.services.provide("runtime.activeRun", ({ threadId }) => engine.activeRun({ threadId }))
   kernel.services.provide("runtime.continueAfterApproval", engine.continueAfterApproval)
   kernel.services.provide("runtime.cancelBotTurns", engine.cancelBotTurns)
+  kernel.services.provide("runtime.cancelRun", ({ runId }) => {
+    const grouped = groups.cancel(runId)
+    return engine.cancel(runId).success || grouped
+  })
   kernel.services.provide("runtime.shutdown", async () => {
     scheduler.stop()
     groups.shutdown()

@@ -112,12 +112,11 @@ for (const mode of ["remove", "read-only"] as const)
         })
         const { project } = (await response.json()) as { project: { id: string } }
         const db = h.runtime.kernel.db as Database
-        db.query("UPDATE bots SET access = 'workspace-write' WHERE id = 'bot-test'").run()
         const patch = (folders: unknown[]) =>
           h.request("/bots/bot-test", {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ folders }),
+            body: JSON.stringify({ access: "workspace-write", folders }),
           })
         expect((await patch([{ path: root, access: "read-write" }])).status).toBe(200)
         const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`

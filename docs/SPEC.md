@@ -348,6 +348,18 @@ env: CLAUDE_CODE_ENABLE_TODO_TOOLS=1, CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
 - File-based, in the bot home. Bots edit MEMORY.md and `memory/log/<date>.md` with their normal file tools; the base instructions say when.
 - The app shows these files read/write in a "Memory" tab (later), and SOUL is editable in bot settings.
 - Skills: `skills/<name>/SKILL.md` (legacy app layout). The index goes into the instructions (3.2).
+- **Mem0 (optional, per bot, off by default).** Set in Integrações. It runs next to MEMORY.md, never instead of it: MEMORY.md holds local environment context the user can read and edit, Mem0 holds facts about the user.
+  - Modes: Mem0 Cloud (platform v3, `Authorization: Token`) or a self-hosted Mem0 server (`X-API-Key`), both through plain `fetch`. Non-secret settings live in the `mem0:<botId>` settings key; the API key goes to the keychain (`mem0/<botId>`), is registered for redaction and is never returned by the API (`hasApiKey` only). Deleting the bot forgets both.
+  - Identity: `user_id` is one generated id per install (`mem0-owner-id`), `agent_id` is the bot id. Scope `user` searches every memory about the owner; scope `bot` adds the `agent_id` filter.
+  - Recall: before a normal user turn (not group, delegated, routine, automatic review, retry or continuation turns; not trivial or slash messages) touri searches with the user's text and prepends a `<mem0-recall>` block to that turn's input only. The stored message is unchanged and the per-thread system prompt only gets a static paragraph, so the provider's prompt cache keeps working. The turn waits at most 3.5 s; on timeout or error it runs without recall.
+  - Sync: after the turn succeeds, the user and assistant text (fences stripped, each cut to about 2,000 characters at a sentence end) goes to Mem0 with `infer: true`, fire and forget, one in flight per bot. "Enviar cada conversa automaticamente" turns this off.
+  - Tools `mem0_search`, `mem0_add` (stored verbatim), `mem0_update` and `mem0_delete` are listed only when Mem0 is on for the bot in direct user conversations, never in group, routine, delegated or automatic review sessions. Update and delete first read the memory and refuse one that belongs to another user (or another bot in `bot` scope). Writes go through the normal mutation gate.
+  - Five consecutive failures pause calls for that bot for 2 minutes; not-found answers do not count, and saving the settings resets the pause.
+- **Continuous learning (optional, per bot, off by default).** The "Aprendizado contínuo" card in Integrações has two switches, stored in the settings row `learning:<botId>` with counters in `learning-state:<botId>` (no migration). It works for local bots; VM and cloud homes keep using file tools.
+  - **Memory.** With the memory switch on, the bot gets `memory_write({target, operations})`. `memory` is MEMORY.md (environment facts, conventions, tool quirks, 3,000 chars) and `user` is USER.md (who the user is, 1,500 chars). Entries are separated by a line holding only `§`. Operations `add`, `patch` and `remove` apply together; `patch`/`remove` must match exactly one entry; the limit is checked on the result, and a full memory returns the current entries so the bot can consolidate in one call. An exact duplicate is a no-op. Writes that look like prompt injection, hidden text, credential reads, outbound sends, SSH persistence, written secrets or invisible characters are refused. USER.md is injected next to MEMORY.md with a usage counter, under the same untrusted-reference, quarantine and group rules.
+  - **Skills.** With the skills switch on, the bot gets `skill_create`, `skill_patch` and `skill_archive`, which write `skills/<name>/SKILL.md` (touri writes the `name`/`description` frontmatter; the description starts with "Use when") and supporting files under `references/`, `templates/`, `scripts/` or `assets/`. Paths are checked for traversal and links, archived skills move to `skills/.archive`, and every change is appended to `skills/.ledger.jsonl` with its origin.
+  - **Reviews.** After a successful user turn in a direct chat (never routine, group, delegated or review turns), touri counts the turn and its tool calls. When a counter reaches its interval (10 turns for memory, 10 tool calls for skills, configurable through `PUT /bots/:id/learning`), it posts a review request with a bounded 16k excerpt of that conversation into the bot's "Aprendizado contínuo" conversation and runs it there, one review at a time. New memory facts from a review apply directly; a review's edits or removals of memory entries and every skill change wait for an approval card in that conversation. Reviews are ordinary turns on the bot's provider account. The CLI keeps its normal tools during a review; the prompt limits it to learning.
+  - The tools are hidden while their switch is off and private to direct chats (`PRIVATE_BOT_TOOLS`).
 
 ### 3.8 Routines (WP3)
 - **Scheduler.** Ticks every 30s and on `power.sleep {sleeping:false}`. Cron evaluation uses `croner` (MIT) in the routine's IANA timezone. The minimum interval is 5 min, enforced at create/update.
@@ -393,6 +405,36 @@ or the coordinator requires idle group conversations. Restart interrupts unfinis
 without replaying tasks. UI: Grupos in the sidebar, create/edit dialog, @mention completion,
 member header and memberships in each bot's Detalhes panel.
 
+
+### 3.10 Telegram (optional, per bot)
+
+Off by default. In Integrações each bot can get its own Telegram bot: the user pastes the BotFather
+token, switches it on and lists the Telegram user IDs allowed to talk to it. An empty list means
+nobody. The token goes to the keychain (account `touri.telegram.<botId>`, the headless secret store
+on `touri serve`) and is registered for redaction. The rest of the configuration and the bridge
+state live in the `settings` table under `telegram:<botId>` and `telegram-state:<botId>`, so the
+feature needs no migration.
+
+The sidecar module `integrations/telegram` long-polls `getUpdates` with plain `fetch` and persists
+the offset after processing each update. Retried messages use the durable send journal to avoid
+being enqueued twice. Only private chats
+from allowed users reach the bot. Each chat maps to one thread ("Telegram · <name>") and messages go
+through the same send path as `POST /bots/:id/messages`, with `tg-<botId>-<account fingerprint>-<update_id>` as the send
+nonce. A refused sender is ignored, and the last one is shown in the card so the user can allow
+them in one click. `/new` opens another thread, `/stop` cancels the active run, `/status` reports
+the thread and whether it is busy.
+
+While a run is active the bridge keeps the typing indicator alive. The final reply is sent split
+under 4096 UTF-16 units without breaking code fences; failures and cancellations get a short line.
+Approval and question notifications of a linked thread arrive with two inline buttons; a tap from
+an allowed user answers through `runtime.answerApproval` and resolves the notification, and later
+taps get "Pedido expirado". An answer given in the app edits the Telegram message. When "Enviar
+resultados das rotinas" is on, each finished routine run of the bot is sent to the home chat. A
+revoked token stops polling with an error status. Deleting the bot removes its configuration and
+token. Replacing the token clears the old account's polling offset and chat links. A saved receipt
+prevents recent routine results from being forwarded again after reconnecting. Replies stop when a
+user is removed from the allowlist. Approval buttons are bound to a unique request and its private
+Telegram message, so reconnecting never reuses an old button for a different request.
 
 ## 4. Projects, processes, secrets, preview (WP5; Preview pane UI in WP9, webview in WP1)
 

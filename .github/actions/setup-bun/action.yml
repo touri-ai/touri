@@ -1,0 +1,45 @@
+name: Cached Bun workspace
+description: Restore dependencies and compiler state, then verify the frozen workspace install.
+inputs:
+  bun-version:
+    description: Exact Bun version (also part of every cache key).
+    required: true
+runs:
+  using: composite
+  steps:
+    - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      with:
+        bun-version: ${{ inputs.bun-version }}
+    - name: Cache Bun packages and workspace dependencies
+      id: dependencies
+      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      with:
+        path: |
+          ~/.bun/install/cache
+          node_modules
+          ui/node_modules
+          sidecar/node_modules
+          packages/contracts/node_modules
+        key: bun-v1-${{ runner.os }}-${{ runner.arch }}-${{ inputs.bun-version }}-${{ hashFiles('bun.lock', 'package.json', 'ui/package.json', 'sidecar/package.json', 'packages/contracts/package.json') }}
+    # Always install: a cache hit must not conceal an invalid lockfile or workspace link.
+    - run: bun install --frozen-lockfile
+      shell: bash
+    - name: Cache Vite and incremental TypeScript state
+      id: compiler
+      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      with:
+        path: |
+          ui/node_modules/.vite
+          node_modules/.cache/ci.tsbuildinfo
+        key: compiler-v1-${{ runner.os }}-${{ runner.arch }}-${{ inputs.bun-version }}-${{ hashFiles('bun.lock', 'tsconfig*.json', 'ui/tsconfig*.json', 'ui/vite.config.ts', 'ui/vitest.config.ts') }}-${{ github.head_ref || github.ref_name }}-${{ github.sha }}
+        restore-keys: |
+          compiler-v1-${{ runner.os }}-${{ runner.arch }}-${{ inputs.bun-version }}-${{ hashFiles('bun.lock', 'tsconfig*.json', 'ui/tsconfig*.json', 'ui/vite.config.ts', 'ui/vitest.config.ts') }}-${{ github.head_ref || github.ref_name }}-
+          compiler-v1-${{ runner.os }}-${{ runner.arch }}-${{ inputs.bun-version }}-${{ hashFiles('bun.lock', 'tsconfig*.json', 'ui/tsconfig*.json', 'ui/vite.config.ts', 'ui/vitest.config.ts') }}-main-
+    - name: Report workspace caches
+      shell: bash
+      env:
+        DEPENDENCIES_HIT: ${{ steps.dependencies.outputs.cache-hit == 'true' }}
+        COMPILER_HIT: ${{ steps.compiler.outputs.cache-hit == 'true' }}
+      run: |
+        echo "Bun dependencies exact hit: $DEPENDENCIES_HIT" | tee -a "$GITHUB_STEP_SUMMARY"
+        echo "Compiler state exact hit: $COMPILER_HIT" | tee -a "$GITHUB_STEP_SUMMARY"

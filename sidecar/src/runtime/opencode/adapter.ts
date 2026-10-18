@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto"
 import type { Kernel, ProviderAdapter, StartTurnArgs, StartTurnResult } from "@touri/contracts"
+import { getApiModel } from "../../api-models/config"
+import { getApiModelEnv, getApiOpenCodeConfig, getApiRunError } from "../../api-models/runtime"
 import { getDelegation } from "../../groups/security"
 import { buildChildEnv } from "../../kernel"
 import { spawnFolderProvider } from "../folder-access"
@@ -67,15 +69,20 @@ export const createOpenCodeAdapter = ({
     let protocolError: Error | undefined
     try {
       args.signal.throwIfAborted()
+      const apiModel = getApiModel(kernel, args.bot.model)
+      const apiEnv = await getApiModelEnv(kernel, args.bot.model, signal)
       const base = args.execution ? { ...args.env } : buildChildEnv({ base: process.env, overrides: args.env })
       Object.assign(
         base,
-        await providerSecretEnv(
-          kernel,
-          args.bot,
-          args.signal,
-          getDelegation(kernel, args.thread.id)?.secrets !== false,
-        ),
+        apiModel
+          ? {}
+          : await providerSecretEnv(
+              kernel,
+              args.bot,
+              args.signal,
+              getDelegation(kernel, args.thread.id)?.secrets !== false,
+            ),
+        apiEnv,
       )
       for (const [key, value] of Object.entries(base))
         if (/API_KEY|TOKEN|SECRET|PASSWORD/.test(key)) kernel.addRedactionValue(value)
@@ -88,7 +95,7 @@ export const createOpenCodeAdapter = ({
       const root = `${base.TOURI_RUN_DIR ?? kernel.paths.runDir}/opencode/${randomUUID()}`
       const dataDir = `${args.bot.homeDir}/.touri-opencode/${args.thread.id}/data`
       const configPath = `${root}/opencode.json`
-      const config = openCodeConfig(args)
+      const config = Object.assign({}, openCodeConfig(args), getApiOpenCodeConfig(apiModel))
       const write =
         args.execution?.writeFile ??
         ((file: { path: string; content: string }) => writePrivateFile({ root: kernel.paths.appData, ...file }))
@@ -97,7 +104,7 @@ export const createOpenCodeAdapter = ({
       for (const dir of ["home", "config", "managed", "xdg-config"])
         await write({ path: `${root}/${dir}/.touri`, content: "" })
       let auth = "{}"
-      if (args.execution) {
+      if (!apiModel && args.execution) {
         const source = args.execution.spawn({
           cmd: "cat",
           args: [openCodeAuthPath(base.HOME ?? "/workspace/.home")],
@@ -112,7 +119,7 @@ export const createOpenCodeAdapter = ({
           ])
           if (exit.code === 0) auth = credentialAuth(content, kernel)
         }
-      } else auth = readOpenCodeAuth(kernel, base)
+      } else if (!apiModel) auth = readOpenCodeAuth(kernel, base)
       await write({ path: `${dataDir}/opencode/auth.json`, content: auth })
       cleanupAuth = async () => {
         await write({ path: `${dataDir}/opencode/auth.json`, content: "{}" })
@@ -253,7 +260,7 @@ export const createOpenCodeAdapter = ({
       let submitted = false
       // OpenCode IDs encode message ordering. Let the server assign them so
       // completion detection and resumed turns retain their native ordering.
-      const translate = openCodeEvents(sessionID, args.onEvent)
+      const translate = openCodeEvents(sessionID, args.onEvent, undefined, apiModel ? getApiRunError : undefined)
       const stream = readOpenCodeSse(events.body, (frame) => {
         const translated = translate(frame)
         if (translated.error)
@@ -363,6 +370,10 @@ export const createOpenCodeAdapter = ({
       if (args.signal.aborted)
         return { success: true, externalSessionId: sessionID, rolloutPath: null, status: "interrupted" }
       const message = kernel.redact(error instanceof Error ? error.message : String(error))
+      if (args.bot.model?.startsWith("touri-api-") && !protocolError && !shutdown.signal.aborted) {
+        const mapped = getApiRunError(message)
+        return { success: false, errorCode: mapped.errorClass, error: mapped.message }
+      }
       return {
         success: false,
         errorCode:

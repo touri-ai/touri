@@ -1,27 +1,55 @@
 name: CI
 
 on:
+  workflow_dispatch:
   pull_request:
   push:
     branches: [main]
 
+# Only superseded PR runs are canceled; main and manual builds finish.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      native: ${{ steps.paths.outputs.native }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/setup-bun
+        with:
+          bun-version: 1.4.3
+      - name: Select native coverage
+        id: paths
+        run: bun .github/ci/changes.ts
+
   contracts:
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
+      - uses: ./.github/actions/setup-bun
         with:
           bun-version: 1.2.21
-      - run: bun install --frozen-lockfile
-      - run: bun run typecheck
+      - run: bun run typecheck --incremental --tsBuildInfoFile node_modules/.cache/ci.tsbuildinfo
       - run: bun packages/contracts/src/validate-catalog.ts
       - run: bun test sidecar/test/kernel/catalog-validation.test.ts
       - run: bun test sidecar/test/kernel/schema-contract.test.ts
       - name: Apply the schema with bun:sqlite (FTS5)
         run: bun -e 'import { Database } from "bun:sqlite"; import { readFileSync } from "node:fs"; new Database(":memory:").exec(readFileSync("packages/contracts/schema.sql", "utf8"))'
 
-  sidecar:
+  sidecar-tests:
+    name: sidecar shard ${{ matrix.shard }}
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
     runs-on: macos-14
     env:
       TOURI_VM_INTEGRATION: "0"
@@ -30,42 +58,81 @@ jobs:
       TOURI_DOCTOR_SKIP_PROVIDER_PROBES: "1"
     steps:
       - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
+      - uses: ./.github/actions/setup-bun
         with:
           bun-version: 1.4.3
-      - run: bun install --frozen-lockfile
-      - run: bunx biome check .
-      - run: bun run typecheck
-      - run: bun test sidecar/test
+      - if: matrix.shard == 1
+        run: bunx biome check .
+      - if: matrix.shard == 1
+        run: bun run typecheck --incremental --tsBuildInfoFile node_modules/.cache/ci.tsbuildinfo
+      - run: bun .github/ci/sidecar-tests.ts ${{ matrix.shard }}
+
+  # Branch protection keeps the original required check name.
+  sidecar:
+    needs: sidecar-tests
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every sidecar shard
+        env:
+          RESULT: ${{ needs.sidecar-tests.result }}
+        run: test "$RESULT" = success
 
   rust:
+    needs: changes
     runs-on: macos-26
     defaults:
       run:
         working-directory: src-tauri
     steps:
       - uses: actions/checkout@v4
-      - run: cargo fmt --check
-      - run: cargo check
-      - run: cargo clippy -- -D warnings
-      - run: cargo test
+      - name: Cache Rust dependencies, targets and installed tools
+        if: needs.changes.outputs.native == 'true'
+        id: rust-cache
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: src-tauri
+          cache-bin: true
+      - if: needs.changes.outputs.native == 'true'
+        run: cargo fmt --check
+      - if: needs.changes.outputs.native == 'true'
+        run: cargo check
+      - if: needs.changes.outputs.native == 'true'
+        run: cargo clippy -- -D warnings
+      - if: needs.changes.outputs.native == 'true'
+        run: cargo test
+      - name: Check cached cargo-deny version
+        if: needs.changes.outputs.native == 'true'
+        id: deny
+        run: |
+          if [ "$(cargo deny --version 2>/dev/null || true)" = "cargo-deny 0.20.2" ]; then
+            echo "installed=true" >> "$GITHUB_OUTPUT"
+          fi
       - name: Install cargo-deny
+        if: needs.changes.outputs.native == 'true' && steps.deny.outputs.installed != 'true'
         uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
         with:
           tool: cargo-deny@0.20.2
       - name: Test dependency policy
+        if: needs.changes.outputs.native == 'true'
         run: python3 ../scripts/test-rust-policy.py
-      - run: cargo deny check
+      - if: needs.changes.outputs.native == 'true'
+        run: cargo deny check
+      - name: Report Rust cache
+        if: needs.changes.outputs.native == 'true'
+        env:
+          RUST_HIT: ${{ steps.rust-cache.outputs.cache-hit == 'true' }}
+        run: |
+          echo "Rust exact hit: $RUST_HIT" | tee -a "$GITHUB_STEP_SUMMARY"
 
   ui:
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
+      - uses: ./.github/actions/setup-bun
         with:
           bun-version: 1.2.21
-      - run: bun install --frozen-lockfile
-      - run: bunx tsc --noEmit -p tsconfig.base.json
+      - run: bunx tsc --noEmit -p tsconfig.base.json --incremental --tsBuildInfoFile node_modules/.cache/ci.tsbuildinfo
       - run: bun --cwd ui build
 
   # The UI suite runs once, here. Pull requests run only the tests that reach a changed file;
@@ -76,10 +143,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: oven-sh/setup-bun@v2
+      - uses: ./.github/actions/setup-bun
         with:
           bun-version: 1.4.3
-      - run: bun install --frozen-lockfile
       - run: bash scripts/test-ui-affected.sh ${{ github.event.pull_request.base.sha }}
 
   composer-performance:
@@ -89,13 +155,29 @@ jobs:
       TOURI_DOCTOR_SKIP_PROVIDER_PROBES: "1"
     steps:
       - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
+      - uses: ./.github/actions/setup-bun
         with:
           bun-version: 1.2.21
-      - run: bun install --frozen-lockfile
-      - name: Install browser
+      - name: Resolve browser cache version
+        id: playwright
+        working-directory: ui
+        shell: bash
+        run: echo "version=$(bun -e 'console.log(require("@playwright/test/package.json").version)')" >> "$GITHUB_OUTPUT"
+      - name: Cache Playwright browsers
+        id: browsers
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright.outputs.version }}
+      - name: Install browser and system dependencies
+        if: steps.browsers.outputs.cache-hit != 'true'
         working-directory: ui
         run: bunx playwright install --with-deps chromium
+      - name: Report browser cache
+        env:
+          BROWSER_HIT: ${{ steps.browsers.outputs.cache-hit == 'true' }}
+        run: |
+          echo "Playwright exact hit: $BROWSER_HIT" | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Check long-conversation typing
         working-directory: ui
         run: bunx playwright test test/e2e/composer-performance.spec.ts --workers=1
@@ -114,13 +196,13 @@ jobs:
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
+      - uses: ./.github/actions/setup-bun
         with:
           bun-version: 1.2.21
-      - run: bun install --frozen-lockfile
       - run: bunx license-checker --production --summary
 
   linux:
+    needs: changes
     runs-on: ubuntu-latest
     env:
       CARGO_INCREMENTAL: "0"
@@ -134,39 +216,85 @@ jobs:
       APPIMAGE_EXTRACT_AND_RUN: "1"
     steps:
       - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
+      - uses: ./.github/actions/setup-bun
         with:
           bun-version: 1.4.3
-      - uses: dtolnay/rust-toolchain@stable
+      - if: needs.changes.outputs.native == 'true'
+        uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
-      - name: Install Linux build dependencies
-        run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf libdbus-1-dev xdg-utils unzip gnome-keyring dbus bubblewrap
-      - name: Allow unprivileged namespaces for sandbox tests
+      - name: Cache Rust dependencies, targets and installed tools
+        if: needs.changes.outputs.native == 'true'
+        id: rust-cache
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: src-tauri
+          cache-bin: true
+      - name: Cache downloaded Linux packages
+        id: apt
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ${{ runner.temp }}/apt-archives/*.deb
+          key: apt-v1-${{ runner.os }}-${{ runner.arch }}-${{ needs.changes.outputs.native }}-${{ hashFiles('.github/workflows/ci.yml') }}
+      - name: Install Linux dependencies
+        shell: bash
+        env:
+          NATIVE: ${{ needs.changes.outputs.native }}
         run: |
-          # Ubuntu runners restrict user namespaces through AppArmor by default.
+          # Keep downloaded .debs; apt still resolves and validates current packages on every run.
+          mkdir -p "$RUNNER_TEMP/apt-archives/partial"
+          sudo apt-get update
+          packages=(bubblewrap)
+          if [ "$NATIVE" = true ]; then
+            packages+=(libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf libdbus-1-dev xdg-utils unzip gnome-keyring dbus)
+          fi
+          sudo apt-get -o Dir::Cache::archives="$RUNNER_TEMP/apt-archives" -o Binary::apt::APT::Keep-Downloaded-Packages=true install -y "${packages[@]}"
+      - run: bun run typecheck --incremental --tsBuildInfoFile node_modules/.cache/ci.tsbuildinfo
+      - run: bun run lint
+      - name: Verify Linux folder confinement
+        run: |
+          # Permit test namespaces on this disposable runner; production policy is unchanged.
           if sysctl kernel.apparmor_restrict_unprivileged_userns >/dev/null 2>&1; then
             sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           fi
-      - run: bun install --frozen-lockfile
-      - name: Require Linux folder sandbox
-        run: |
           bun -e '
-            import { refreshHostFolderAccess } from "./sidecar/src/kernel/folder-capability";
-            if (!(await refreshHostFolderAccess())) {
-              throw new Error("Linux CI requires working bubblewrap user and PID namespaces");
-            }
+            import { refreshHostFolderAccess } from "./sidecar/src/kernel/folder-capability.ts"
+            if (!(await refreshHostFolderAccess())) throw new Error("Linux folder confinement is unavailable")
           '
-      - run: bun run typecheck
-      - run: bun run lint
-      - run: bun test --timeout 30000 sidecar/test
-      - run: bun run build:sidecar:linux
-      - run: cargo fmt --manifest-path src-tauri/Cargo.toml --check
-      - run: cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
-      - run: dbus-run-session -- bash scripts/test-native-linux.sh
+      - name: Full Linux sidecar suite
+        if: github.event_name != 'pull_request'
+        run: bun test --timeout 30000 sidecar/test
+      - name: Linux platform and confinement tests
+        if: github.event_name == 'pull_request'
+        run: bun .github/ci/sidecar-tests.ts linux
+      - name: Cache compiled Linux sidecar
+        id: sidecar-binary
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: src-tauri/binaries/touri-sidecar-x86_64-unknown-linux-gnu
+          key: sidecar-v1-${{ runner.os }}-${{ runner.arch }}-1.4.3-${{ hashFiles('sidecar/src/**', 'packages/contracts/src/**', 'packages/contracts/*.json', 'packages/contracts/*.sql', 'bun.lock', 'package.json', 'sidecar/package.json', 'scripts/build-sidecar.ts', 'tsconfig*.json', 'bunfig.toml', 'sidecar/bunfig.toml', '.github/workflows/ci.yml') }}
+      - if: steps.sidecar-binary.outputs.cache-hit != 'true'
+        run: bun run build:sidecar:linux
+      - if: needs.changes.outputs.native == 'true'
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml --check
+      - if: needs.changes.outputs.native == 'true'
+        run: cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
+      - if: needs.changes.outputs.native == 'true'
+        run: dbus-run-session -- bash scripts/test-native-linux.sh
       - run: bun run test:sidecar:smoke
-      - run: bunx tauri build --bundles appimage,deb
-      - uses: actions/upload-artifact@v4
+      - name: Report Linux caches
+        env:
+          RUST_HIT: ${{ steps.rust-cache.outputs.cache-hit == 'true' }}
+          APT_HIT: ${{ steps.apt.outputs.cache-hit == 'true' }}
+          SIDECAR_HIT: ${{ steps.sidecar-binary.outputs.cache-hit == 'true' }}
+        run: |
+          echo "Rust exact hit: $RUST_HIT" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "APT exact hit: $APT_HIT" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "Compiled sidecar exact hit: $SIDECAR_HIT" | tee -a "$GITHUB_STEP_SUMMARY"
+      - if: github.event_name != 'pull_request'
+        run: bunx tauri build --bundles appimage,deb
+      - if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v4
         with:
           name: touri-linux-x64
           path: |
@@ -174,6 +302,7 @@ jobs:
             src-tauri/target/release/bundle/deb/*.deb
 
   windows:
+    needs: changes
     runs-on: windows-latest
     timeout-minutes: 45
     env:
@@ -187,22 +316,52 @@ jobs:
       TOURI_DOCTOR_SKIP_PROVIDER_PROBES: "1"
     steps:
       - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
+      - uses: ./.github/actions/setup-bun
         with:
           bun-version: 1.4.3
-      - uses: dtolnay/rust-toolchain@stable
+      - if: needs.changes.outputs.native == 'true'
+        uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
-      - run: bun install --frozen-lockfile
-      - run: bun run typecheck
+      - run: bun run typecheck --incremental --tsBuildInfoFile node_modules/.cache/ci.tsbuildinfo
       - run: bun run lint
-      - run: bun run build:sidecar:windows
-      - run: cargo fmt --manifest-path src-tauri/Cargo.toml --check
-      - run: cargo test --manifest-path src-tauri/Cargo.toml
-      - run: bun run test:sidecar:portable
-      - run: bun run test:sidecar:smoke
-      - run: bun run tauri build --bundles "msi,nsis"
-      - uses: actions/upload-artifact@v4
+      - name: Cache Rust dependencies, targets and installed tools
+        if: needs.changes.outputs.native == 'true'
+        id: rust-cache
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: src-tauri
+          cache-bin: true
+      - name: Cache compiled Windows sidecar
+        if: needs.changes.outputs.native == 'true'
+        id: sidecar-binary
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: src-tauri/binaries/touri-sidecar-x86_64-pc-windows-msvc.exe
+          key: sidecar-v1-${{ runner.os }}-${{ runner.arch }}-1.4.3-${{ hashFiles('sidecar/src/**', 'packages/contracts/src/**', 'packages/contracts/*.json', 'packages/contracts/*.sql', 'bun.lock', 'package.json', 'sidecar/package.json', 'scripts/build-sidecar.ts', 'tsconfig*.json', 'bunfig.toml', 'sidecar/bunfig.toml', '.github/workflows/ci.yml') }}
+      - if: needs.changes.outputs.native == 'true' && steps.sidecar-binary.outputs.cache-hit != 'true'
+        run: bun run build:sidecar:windows
+      - if: needs.changes.outputs.native == 'true'
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml --check
+      - if: needs.changes.outputs.native == 'true'
+        run: cargo test --manifest-path src-tauri/Cargo.toml
+      - if: needs.changes.outputs.native == 'true'
+        run: bun run test:sidecar:portable
+      - if: needs.changes.outputs.native == 'true'
+        run: bun run test:sidecar:smoke
+      - name: Report Windows caches
+        if: needs.changes.outputs.native == 'true'
+        shell: bash
+        env:
+          RUST_HIT: ${{ steps.rust-cache.outputs.cache-hit == 'true' }}
+          SIDECAR_HIT: ${{ steps.sidecar-binary.outputs.cache-hit == 'true' }}
+        run: |
+          echo "Rust exact hit: $RUST_HIT" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "Compiled sidecar exact hit: $SIDECAR_HIT" | tee -a "$GITHUB_STEP_SUMMARY"
+      - if: github.event_name != 'pull_request'
+        run: bun run tauri build --bundles "msi,nsis"
+      - if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v4
         with:
           name: touri-windows-x64
           if-no-files-found: error

@@ -18,7 +18,17 @@ afterEach(() => {
 })
 const available = process.platform === "linux" && (await refreshHostFolderAccess())
 
-const fixture = () => {
+const fixture = ({
+  approvals = "on-request",
+  access = "workspace-write",
+  grantFree = false,
+  spawn = spawnTree,
+}: {
+  approvals?: StartTurnArgs["bot"]["approvals"]
+  access?: StartTurnArgs["bot"]["access"]
+  grantFree?: boolean
+  spawn?: Kernel["spawnTree"]
+} = {}) => {
   // Outside /tmp: masking temporary files must not accidentally make these pass.
   const root = mkdtempSync(join(homedir(), "touri-linux-folders-"))
   cleanups.push(() => rmSync(root, { recursive: true, force: true }))
@@ -54,23 +64,25 @@ const fixture = () => {
   writeFileSync(join(home, ".codex/sessions/private"), "private-history")
   writeFileSync(join(appData, "provider/other/auth.json"), "other-bot-login")
   symlinkSync(join(home, ".codex/auth.json"), join(providerHome, "auth.json"))
-  const kernel = { paths: { appData, runDir }, spawnTree } as Kernel
+  const kernel = { paths: { appData, runDir }, spawnTree: spawn } as Kernel
   const args = {
     bot: {
       provider: "codex",
       machine: "local",
       homeDir: workspace,
-      access: "workspace-write",
-      approvals: "on-request",
-      folders: [
-        { path: ro, access: "read-only" },
-        { path: rw, access: "read-write" },
-      ],
+      access,
+      approvals,
+      folders: grantFree
+        ? []
+        : [
+            { path: ro, access: "read-only" },
+            { path: rw, access: "read-write" },
+          ],
     },
     thread: { id: "current-thread" },
     fingerprint: { cwd: workspace },
     env: { HOME: home, CODEX_HOME: providerHome, TMPDIR: join(runDir, "turn-temp") },
-  } as unknown as StartTurnArgs
+  } as StartTurnArgs
   const shell = (script: string, ...values: string[]) =>
     Bun.spawnSync({
       cmd: [
@@ -90,14 +102,15 @@ const fixture = () => {
   return { root, home, appData, workspace, ro, rw, kernel, args, shell }
 }
 
-const providerShell = async (f: ReturnType<typeof fixture>, script: string, ...values: string[]) => {
+const runProviderShell = async (f: ReturnType<typeof fixture>, script: string, ...values: string[]) => {
   const child = spawnFolderProvider(f.kernel, f.args, {
     cmd: "/bin/sh",
-    args: ["-c", script, "test", ...values],
+    args: ["-c", script, "test"].concat(values),
     cwd: f.workspace,
     env: f.args.env,
   })
   if (!child.success) throw new Error(child.error)
+
   const [stdout, stderr, result] = await Promise.all([
     new Response(child.stdout).text(),
     new Response(child.stderr).text(),
@@ -145,30 +158,31 @@ for (const provider of ["codex", "claude", "opencode"] as const)
     expect(f.shell('printf saved > "$1/saved"', f.rw).exitCode).toBe(0)
   })
 
-test.skipIf(!available)(
-  "Linux bounded providers permit granted reads and writes while enforcing RO grants",
-  async () => {
-    const f = fixture()
-    expect(await providerShell(f, 'cat "$1"', join(f.ro, "reference.txt"))).toMatchObject({
+test.skipIf(!available).each(["on-request", "never"] as const)(
+  "Linux bounded providers enforce read-only grants with %s shell approvals",
+  async (approvals) => {
+    const f = fixture({ approvals })
+
+    expect(await runProviderShell(f, 'cat "$1"', join(f.ro, "reference.txt"))).toMatchObject({
       code: 0,
       stdout: "reference",
     })
-    const denied = await providerShell(f, 'printf changed > "$1"', join(f.ro, "reference.txt"))
+    const denied = await runProviderShell(f, 'printf changed > "$1"', join(f.ro, "reference.txt"))
     expect(denied.code).not.toBe(0)
     expect(readFileSync(join(f.ro, "reference.txt"), "utf8")).toBe("reference")
-    expect(await providerShell(f, 'printf saved > "$1"', join(f.rw, "saved.txt"))).toMatchObject({ code: 0 })
+    expect(await runProviderShell(f, 'printf saved > "$1"', join(f.rw, "saved.txt"))).toMatchObject({ code: 0 })
     expect(readFileSync(join(f.rw, "saved.txt"), "utf8")).toBe("saved")
-    const outside = await providerShell(f, 'cat "$1"', join(f.home, "ungranted/marker"))
+    const outside = await runProviderShell(f, 'cat "$1"', join(f.home, "ungranted/marker"))
     expect(outside.code).not.toBe(0)
     expect(outside.stdout).toBe("")
   },
 )
 
 test.skipIf(!available)("Linux full-access providers retain host access with saved RO grants", async () => {
-  const f = fixture()
-  f.args.bot.access = "full"
+  const f = fixture({ access: "full" })
+
   expect(
-    await providerShell(
+    await runProviderShell(
       f,
       'cat "$1"; cat "$2"; printf changed > "$1"; printf saved > "$3"',
       join(f.ro, "reference.txt"),
@@ -337,24 +351,43 @@ test.skipIf(!available)("noncanonical saved grants and a root workspace cannot w
   expect(() => linuxFolderSandbox(f.kernel, f.args, f.args.env, f.home)).toThrow()
 })
 
-test.skipIf(!available)("a grant-free provider launches directly with provider-owned sandbox policy", async () => {
+test.skipIf(!available)("a provider with explicit folder grants cannot read ungranted host files", async () => {
   const f = fixture()
-  f.args.bot.folders = []
-  const launches: Array<Parameters<Kernel["spawnTree"]>[0]> = []
-  f.kernel.spawnTree = (input) => {
-    launches.push(input)
-    return spawnTree(input)
-  }
+  rmSync(join(f.args.env.CODEX_HOME ?? "", "auth.json"))
+  f.kernel.spawnTree = spawnTree
+  const child = spawnFolderProvider(f.kernel, f.args, {
+    cmd: "/bin/sh",
+    args: ["-c", 'cat "$1"', "test", join(f.home, "ungranted/marker")],
+    cwd: f.workspace,
+    env: f.args.env,
+  })
+  expect(child.success).toBe(true)
+  if (!child.success) return
+  const [output, result] = await Promise.all([new Response(child.stdout).text(), child.exited])
+  expect(result.code).not.toBe(0)
+  expect(output).toBe("")
+})
+
+test.skipIf(!available)("a grant-free provider launches directly with provider-owned sandbox policy", async () => {
+  const launch = Promise.withResolvers<Parameters<Kernel["spawnTree"]>[0]>()
+  const f = fixture({
+    grantFree: true,
+    spawn: (input) => {
+      launch.resolve(input)
+      return spawnTree(input)
+    },
+  })
   const input = {
     cmd: "/bin/sh",
     args: ["-c", 'cat "$1"', "test", join(f.home, "ungranted/marker")],
     cwd: f.workspace,
     env: f.args.env,
   }
+
   const child = spawnFolderProvider(f.kernel, f.args, input)
   expect(child.success).toBe(true)
   if (!child.success) throw new Error(child.error)
-  expect(launches).toEqual([input])
+  expect(await launch.promise).toEqual(input)
   // This shell probes the launcher. Codex receives its own sandbox policy;
   // settings-isolation also asserts that policy at the adapter protocol boundary.
   const [output, stderr, result] = await Promise.all([
