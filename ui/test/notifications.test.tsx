@@ -4,6 +4,7 @@ import App from "../src/App"
 import type { TauriInvoke } from "../src/api/client"
 import { createMockApi } from "../src/api/mock"
 import { type DeepLink, parseDeepLink } from "../src/deepLink"
+import { t } from "../src/i18n"
 
 const nativeLinks = vi.hoisted(() => ({ handler: null as ((event: { payload: DeepLink }) => void) | null }))
 vi.mock("@tauri-apps/api/event", () => ({
@@ -20,6 +21,28 @@ afterEach(() => {
   vi.restoreAllMocks()
   window.history.replaceState(null, "", "/")
   Reflect.deleteProperty(window, "__TAURI_INTERNALS__")
+})
+
+it("keeps the capped notification badge in the bell's accessible name", async () => {
+  const api = createMockApi()
+  render(<App kernel={{ services: { api } }} />)
+  await screen.findByRole("textbox", { name: "Mensagem para mark" })
+
+  act(() => {
+    Array.from({ length: 10 }, (_, index) =>
+      api.notify({
+        kind: "question",
+        title: "Question",
+        body: "Which option?",
+        requestId: `req-${index}`,
+        botId: "bot-mark",
+      }),
+    )
+  })
+
+  const bell = await screen.findByRole("button", { name: "Notificações, 9+ precisam de atenção" })
+  expect(bell).toHaveTextContent("9+")
+  expect(t("Notifications over nine need attention", {}, "en")).toBe("Notifications, 9+ need attention")
 })
 
 it("shows a badge for attention items and answers an approval from the bell", async () => {

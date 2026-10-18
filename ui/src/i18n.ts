@@ -1891,6 +1891,7 @@ export const ptBR = {
   Model: "Modelo",
   "CLI default": "Padrão do provedor",
   "Choose model": "Escolher modelo",
+  "Choose model with selection": "Escolher modelo: {selection}",
   "Save model": "Salvar modelo",
   "Choose the model for this bot’s next messages.": "Escolha o modelo para as próximas mensagens deste bot.",
   "{provider} does not expose a model list in touri. Use the provider default or enter a model name that {provider} accepts.":
@@ -2188,6 +2189,7 @@ export const ptBR = {
   "Computer permission waiting": "{name} está aguardando permissão para controlar seu computador.",
   Minutes: "{count} minutos",
   "Notifications need attention": "Notificações, {count} precisam de atenção",
+  "Notifications over nine need attention": "Notificações, 9+ precisam de atenção",
   "Service request failed": "Falha na conexão com o touri: {error}",
   "O serviço do touri está indisponível. Verifique a conexão e tente novamente.":
     "O serviço do touri está indisponível. Verifique a conexão e tente novamente.",
@@ -2267,6 +2269,7 @@ export const ptBR = {
   Processos: "Processos",
   "Nenhum projeto (começa na pasta do bot)": "Nenhum projeto (começa na pasta do bot)",
   "Projeto do bot": "Projeto do bot",
+  "Project selection label": "Projeto do bot: {name}",
   "Somente pasta do bot": "Somente pasta do bot",
   "Sem projeto": "Sem projeto",
   "Adicionar projeto…": "Adicionar projeto…",
@@ -3545,6 +3548,7 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Asks before changing files": "Asks before changing files",
   "Bot advanced": "Advanced",
   "Bot model sentence": "Model: {provider} · {model}",
+  "Choose model with selection": "Choose model: {selection}",
   "Bot access settings": "Adjust permissions",
   "Project preview": "Project preview",
   "Bot groups": "Groups",
@@ -4019,6 +4023,7 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Computer permission waiting": "{name} is waiting for permission to control your computer.",
   Minutes: "{count} minutes",
   "Notifications need attention": "Notifications, {count} need attention",
+  "Notifications over nine need attention": "Notifications, 9+ need attention",
   "Service request failed": "touri connection failed: {error}",
   "O serviço do touri está indisponível. Verifique a conexão e tente novamente.":
     "The touri service is unavailable. Check the connection and try again.",
@@ -4087,6 +4092,7 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   Processos: "Processes",
   "Nenhum projeto (começa na pasta do bot)": "No project (starts in the bot folder)",
   "Projeto do bot": "Bot project",
+  "Project selection label": "Bot project: {name}",
   "Somente pasta do bot": "Bot folder only",
   "Sem projeto": "No project",
   "Adicionar projeto…": "Add project…",
@@ -4294,8 +4300,57 @@ export const getHostLabel = (host: HostKind, locale: Locale = "pt-BR"): string =
   return locale === "en" ? `this ${noun}` : noun
 }
 
-export const getRoutineRunDateLabel = (timestamp: number, locale: Locale = "pt-BR"): string =>
-  new Intl.DateTimeFormat(locale, { dateStyle: "short", timeStyle: "short" }).format(timestamp)
+export const getRoutineRunDateLabel = (timestamp: number, locale: Locale = "pt-BR", timeZone?: string): string =>
+  new Intl.DateTimeFormat(locale, {
+    dateStyle: "short",
+    timeStyle: "short",
+    ...(timeZone ? { timeZone } : {}),
+  }).format(timestamp)
+
+export const getRoutineRunTimeLabel = (timestamp: number, locale: Locale = "pt-BR", timeZone?: string): string =>
+  new Intl.DateTimeFormat(locale, { timeStyle: "short", ...(timeZone ? { timeZone } : {}) }).format(timestamp)
+
+export const getRoutineRunSidebarDateLabel = (
+  timestamp: number,
+  locale: Locale = "pt-BR",
+  timeZone?: string,
+  now = Date.now(),
+): string => {
+  const day = getRoutineRunRelativeDay(timestamp, now, timeZone)
+  if (!day) return getRoutineRunDateLabel(timestamp, locale, timeZone)
+
+  const relative = t(day, {}, locale).toLocaleLowerCase(locale)
+  const time = getRoutineRunTimeLabel(timestamp, locale, timeZone)
+  return `${relative} · ${time}`
+}
+
+const getRoutineRunRelativeDay = (timestamp: number, now: number, timeZone?: string): "Hoje" | "Ontem" | null => {
+  const date = getCalendarDateParts(timestamp, timeZone)
+  const today = getCalendarDateParts(now, timeZone)
+  if (isSameCalendarDate(date, today)) return "Hoje"
+
+  const yesterdayTimestamp = Date.UTC(today.year, today.month - 1, today.day - 1)
+  const yesterday = getCalendarDateParts(yesterdayTimestamp, "UTC")
+  return isSameCalendarDate(date, yesterday) ? "Ontem" : null
+}
+
+const getCalendarDateParts = (timestamp: number, timeZone?: string) => {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    ...(timeZone ? { timeZone } : {}),
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+  }).formatToParts(timestamp)
+  const getNumber = (type: "year" | "month" | "day"): number =>
+    Number(parts.find((part) => part.type === type)?.value ?? "0")
+
+  return { year: getNumber("year"), month: getNumber("month"), day: getNumber("day") }
+}
+
+const isSameCalendarDate = (
+  left: ReturnType<typeof getCalendarDateParts>,
+  right: ReturnType<typeof getCalendarDateParts>,
+): boolean => left.year === right.year && left.month === right.month && left.day === right.day
 
 /** Localize auto-generated imported date titles; preserve arbitrary user titles. */
 export const threadTitle = (title: string, createdAt: number): string => {

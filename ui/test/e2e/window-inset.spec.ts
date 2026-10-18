@@ -32,7 +32,7 @@ themes.forEach((theme) => {
         await banner.getByRole("button", { name: "Dispensar aviso" }).click()
         await expect(banner).toHaveCount(0)
         await checkTitlebar(page)
-        await page.getByRole("button", { name: "Escolher modelo", exact: true }).click()
+        await page.getByRole("button", { name: /^Escolher modelo:/ }).click()
         await checkBelowTitlebar(page.getByRole("dialog"))
         await page.getByRole("button", { name: "Fechar diálogo", exact: true }).click()
 
@@ -50,7 +50,7 @@ themes.forEach((theme) => {
         await page.goto("/test/e2e/window-inset-harness.html?scene=menu")
         await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
 
-        await page.getByRole("button", { name: "Projeto do bot", exact: true }).click()
+        await page.getByRole("button", { name: /^Projeto do bot:/ }).click()
         const picker = page.locator(".composer-project-picker")
         await checkBelowTitlebar(picker)
         await expect(picker).toBeInViewport({ ratio: 1 })

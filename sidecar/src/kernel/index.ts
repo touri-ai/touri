@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto"
 import { join } from "node:path"
 import type { HostNotification, Kernel, RouteModule, SidecarHandshake, UiEvent } from "@touri/contracts"
 import type { ServerWebSocket } from "bun"
+import { retryDeletedBrowserSessionKeys } from "../browser/sessionVault"
 import { compressBufferedResponse } from "../cli/web/compression"
 import { getHostIdentity } from "../platform/host"
 import { touriVersion } from "../version"
@@ -506,13 +507,6 @@ export const createKernel = ({ appData, web }: { appData?: string; web?: WebMode
   const stopHistoryBackfill = startHistoryBackfill(database, () => {
     log({ level: "error", module: "store", msg: "Atualização do histórico adiada; será retomada automaticamente" })
   })
-  const storageMaintenance = createStorageMaintenance({
-    database,
-    appData: paths.appData,
-    publishResync: () => bus.publish({ type: "transcript.resync" }),
-    onError: () => log({ level: "error", module: "store", msg: "Compactação adiada; será retomada automaticamente" }),
-  })
-  services.provide("storage.maintenance", storageMaintenance)
 
   const kernel: Kernel = {
     paths,
@@ -534,6 +528,25 @@ export const createKernel = ({ appData, web }: { appData?: string; web?: WebMode
     newId,
     log,
   }
+
+  const storageMaintenance = createStorageMaintenance({
+    database,
+    appData: paths.appData,
+    publishResync: () => kernel.publish({ type: "transcript.resync" }),
+    retryDeletedBrowserSessionKeys: (signal) =>
+      retryDeletedBrowserSessionKeys(
+        {
+          db: database,
+          callHost: kernel.callHost,
+          log: kernel.log,
+          redact: kernel.redact,
+        },
+        signal,
+      ),
+    onError: () =>
+      kernel.log({ level: "error", module: "store", msg: "Compactação adiada; será retomada automaticamente" }),
+  })
+  services.provide("storage.maintenance", storageMaintenance)
 
   const handshakePath = join(paths.runDir, "handshake.json")
   atomicWriteFile({

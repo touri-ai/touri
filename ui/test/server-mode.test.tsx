@@ -1,5 +1,5 @@
 import { invoke as nativeInvoke } from "@tauri-apps/api/core"
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, expect, it, vi } from "vitest"
 import App from "../src/App"
 import type { ApiRequest, TauriInvoke } from "../src/api/client"
@@ -152,14 +152,33 @@ it("applies the pending cold-start target after server mode loads and acknowledg
 
 it("authorizes the saved server account through the native vault and tests the connection again", async () => {
   native()
+  let authorize: (() => void) | undefined
+  const authorization = new Promise<void>((resolve) => {
+    authorize = resolve
+  })
+  vi.mocked(nativeInvoke).mockReturnValueOnce(authorization)
   const invoke = vi.fn(async (command: string) => (command === "server_mode_status" ? server : { ok: true }))
-  render(
-    <ServerModeSettings invokeCommand={invoke as unknown as TauriInvoke} connectionErrorCode="VAULT_ACCESS_REQUIRED" />,
-  )
-  fireEvent.click(await screen.findByRole("button", { name: "Permitir acesso ao cofre" }))
-  await screen.findByText("Conexão com o servidor confirmada.")
-  expect(nativeInvoke).toHaveBeenCalledWith("vault_authorize", { account: `server-mode/${server.url}` })
-  expect(invoke).toHaveBeenCalledWith("server_mode_test", {})
+  // Flush the status response and the vault button's mount effect before authorizing.
+  await act(async () => {
+    render(
+      <ServerModeSettings
+        invokeCommand={invoke as unknown as TauriInvoke}
+        connectionErrorCode="VAULT_ACCESS_REQUIRED"
+      />,
+    )
+  })
+
+  fireEvent.click(screen.getByRole("button", { name: "Permitir acesso ao cofre" }))
+
+  expect(screen.getByRole("button", { name: "Aguardando permissão do macOS…" })).toBeDisabled()
+  expect(nativeInvoke).toHaveBeenCalledExactlyOnceWith("vault_authorize", {
+    account: `server-mode/${server.url}`,
+  })
+  expect(invoke).not.toHaveBeenCalledWith("server_mode_test", {})
+  await act(async () => authorize?.())
+
+  expect(screen.getByText("Conexão com o servidor confirmada.")).toBeVisible()
+  expect(invoke.mock.calls.filter(([command]) => command === "server_mode_test")).toEqual([["server_mode_test", {}]])
 })
 
 it("hides the Mac folder chooser and disables the personal browser in server mode", async () => {

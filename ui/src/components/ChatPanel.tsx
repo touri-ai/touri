@@ -20,7 +20,7 @@ import { ComputerGrantCard } from "../features/computer"
 import { InlineLivePreview, InlinePreviewContext, screenTool } from "../features/desktop/InlineLivePreview"
 import { useIsServerMode } from "../features/server/serverMode"
 import { getQueueLabel } from "../features/work/presentation"
-import { getHostLabel, localizeNotice, t } from "../i18n"
+import { getHostLabel, getRoutineRunDateLabel, getRoutineRunTimeLabel, localizeNotice, t } from "../i18n"
 import { machineStateForDisplay } from "../machineState"
 import { messageMarkdown } from "../messageMarkdown"
 import { consumeTaskReview, requestTaskResume, reviewTaskEvent } from "../recoveryEvents"
@@ -1225,28 +1225,30 @@ export const ChatPanel = ({
                   },
                 ]
               : []),
-            ...visibleRuns.map((run) => ({
-              id: `card-${run.id}`,
-              createdAt: run.queuedAt,
-              content: (
-                <RunCard
-                  bot={bot}
-                  run={run}
-                  thread={thread}
-                  onRetry={onRetry}
-                  routineName={
-                    routines.find(
-                      (routine) => routine.id === routineRuns.find((item) => item.id === run.routineRunId)?.routineId,
-                    )?.name
-                  }
-                  waitingApproval={messages.some(
-                    (message) =>
-                      message.runId === run.id &&
-                      message.parts.some((part) => part.type === "approval" && part.decision === "pending"),
-                  )}
-                />
-              ),
-            })),
+            ...visibleRuns.map((run) => {
+              const routineRun = routineRuns.find((item) => item.id === run.routineRunId)
+              const routine = routines.find((item) => item.id === routineRun?.routineId)
+
+              return {
+                id: `card-${run.id}`,
+                createdAt: run.queuedAt,
+                content: (
+                  <RunCard
+                    bot={bot}
+                    run={run}
+                    thread={thread}
+                    onRetry={onRetry}
+                    routineName={routine?.name}
+                    routineTimeZone={routine?.timezone}
+                    waitingApproval={messages.some(
+                      (message) =>
+                        message.runId === run.id &&
+                        message.parts.some((part) => part.type === "approval" && part.decision === "pending"),
+                    )}
+                  />
+                ),
+              }
+            }),
           ]}
         />
       </InlinePreviewContext.Provider>
@@ -1296,10 +1298,12 @@ const RunCard = ({
   thread,
   onRetry,
   routineName,
+  routineTimeZone,
   waitingApproval,
 }: {
   waitingApproval: boolean
   routineName?: string | undefined
+  routineTimeZone?: string | undefined
   bot: Bot | null
   run: Run
   thread: Thread
@@ -1315,8 +1319,8 @@ const RunCard = ({
         {bot && <BotAvatar bot={bot} size={20} />}
         <strong>{routineName ?? getSidebarThreadTitle(thread)}</strong>
         <span className={`run-status ${presentation.className}`}>{presentation.label}</span>
-        <time dateTime={date.toISOString()} title={date.toLocaleString("pt-BR")}>
-          {date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+        <time dateTime={date.toISOString()} title={getRoutineRunDateLabel(timestamp, "pt-BR", routineTimeZone)}>
+          {getRoutineRunTimeLabel(timestamp, "pt-BR", routineTimeZone)}
         </time>
         {presentation.failed && (
           <button type="button" className="open-run-link" onClick={() => void onRetry(run.id)}>

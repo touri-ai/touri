@@ -76,13 +76,14 @@ const TaskRow = ({ task, onReview, onResume, onDismiss }: Props & { task: Recove
   const [isBusy, setBusy] = useState(false)
   const [error, setError] = useState<unknown>(null)
   const keys = [...new Set(task.effects.flatMap((effect) => (effect.acknowledgeKey ? [effect.acknowledgeKey] : [])))]
+  const hasUncertainEffects = task.effects.some((effect) => effect.uncertain)
   const effectRevision = JSON.stringify(task.effects)
   const isAcknowledged = acknowledgedEffects === effectRevision
   const isResolved = task.notification.resolvedAt !== null
   const title = getTaskTitle(task)
   const cause = getTaskCause(task)
   const dismiss = async () => {
-    if (isBusy || (keys.length > 0 && !isAcknowledged)) return
+    if (isBusy || (hasUncertainEffects && !isAcknowledged)) return
     setBusy(true)
     setError(null)
     try {
@@ -131,7 +132,7 @@ const TaskRow = ({ task, onReview, onResume, onDismiss }: Props & { task: Recove
       )}
       {!isResolved && (
         <>
-          {keys.length > 0 && (
+          {hasUncertainEffects && (
             <label className="interrupted-acknowledgement">
               <input
                 type="checkbox"
@@ -154,7 +155,7 @@ const TaskRow = ({ task, onReview, onResume, onDismiss }: Props & { task: Recove
             <button
               type="button"
               className="button button-quiet"
-              disabled={isBusy || (keys.length > 0 && !isAcknowledged)}
+              disabled={isBusy || (hasUncertainEffects && !isAcknowledged)}
               onClick={() => void dismiss()}
             >
               {t("Descartar")}

@@ -6,7 +6,7 @@ for (const width of [420, 720]) {
     await page.emulateMedia({ reducedMotion: "reduce" })
     await page.goto("/test/e2e/r8-composer-harness.html")
     const composer = page.getByRole("form", { name: "Compor mensagem" })
-    const chip = composer.getByRole("button", { name: "Projeto do bot", exact: true })
+    const chip = composer.getByRole("button", { name: /^Projeto do bot:/ })
     await expect(chip).toBeVisible()
     await chip.focus()
     await page.keyboard.press("Enter")
