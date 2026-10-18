@@ -24,7 +24,12 @@ import { createHostClient } from "./host-client"
 import { newId } from "./ids"
 import { createLogger } from "./log"
 import { createAppPaths } from "./paths"
-import { createPerformanceDiagnostics, createPerformanceStageTracker, type PerformanceStageRunner } from "./performance"
+import {
+  createPerformanceDiagnostics,
+  createPerformanceStageTracker,
+  type PerformanceStageRunner,
+  type PerformanceStageTracker,
+} from "./performance"
 import { createRedactor } from "./redact"
 import { createRouteRegistry } from "./routes"
 import { createServices } from "./services"
@@ -141,7 +146,15 @@ const parseBody = async (request: Request): Promise<unknown> => {
   }
 }
 
-export const createKernel = ({ appData, web }: { appData?: string; web?: WebMode } = {}): KernelRuntime => {
+export const createKernel = ({
+  appData,
+  web,
+  stageTracker = createPerformanceStageTracker(),
+}: {
+  appData?: string
+  web?: WebMode
+  stageTracker?: PerformanceStageTracker
+} = {}): KernelRuntime => {
   const paths = appData === undefined ? createAppPaths() : createAppPaths({ appData })
   for (const directory of [
     paths.appData,
@@ -162,7 +175,6 @@ export const createKernel = ({ appData, web }: { appData?: string; web?: WebMode
   const log = createLogger({ paths, redact: redactor.redact })
   const database = openDatabase({ filename: paths.db })
   const services = createServices()
-  const stageTracker = createPerformanceStageTracker()
   const tools = createToolRegistry()
   const recentErrors: Array<{ code: string; at: number }> = []
   services.provide("diagnostics.errors", () =>

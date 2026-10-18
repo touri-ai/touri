@@ -90,10 +90,14 @@ export const externalizeMessageParts = ({
   database,
   appData,
   parts,
+  inlineBudgetBytes = OUTPUT_INLINE_BUDGET_BYTES,
+  reservedBytes = 0,
 }: {
   database: Database
   appData: string
   parts: MessagePart[]
+  inlineBudgetBytes?: number
+  reservedBytes?: number
 }): MessagePart[] => {
   // Reserve the shared inline budget for live progress. An indivisible live
   // frame remains inline even above the budget; the writer flushes it immediately.
@@ -103,7 +107,7 @@ export const externalizeMessageParts = ({
       const output = "callId" in part && !completed(part) ? partOutput(part) : null
       if (!output) return total
       return total + inlineOutputBytes(part, output)
-    }, 0),
+    }, reservedBytes),
   )
   let inlineBytes = 0
   return parts.map((part) => {
@@ -115,7 +119,7 @@ export const externalizeMessageParts = ({
     const bytes = inlineOutputBytes(part, output)
     if (
       bytes <= OUTPUT_BLOB_THRESHOLD &&
-      inlineBytes + bytes <= OUTPUT_INLINE_BUDGET_BYTES - reservedLiveBytes &&
+      inlineBytes + bytes <= inlineBudgetBytes - reservedLiveBytes &&
       !containsImage(output)
     ) {
       inlineBytes += bytes

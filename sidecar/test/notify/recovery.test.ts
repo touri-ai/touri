@@ -294,6 +294,11 @@ test("startup backfills old interrupted work without native notifications", asyn
 
 test("a terminal event discovers a run queued before the recent history window", async () => {
   const h = await getFixture()
+  const delivered = Promise.withResolvers<void>()
+  const unsubscribe = h.runtime.kernel.subscribe(({ event }) => {
+    if (event.type === "run.updated" && event.run.id === "long-running") delivered.resolve()
+  })
+  cleanups.add(unsubscribe)
   saveRun(h.database, "long-running", "running")
   Array.from({ length: 150 }, (_, index) => saveRun(h.database, `later-${index}`, "succeeded"))
   expect(await h.getTasks()).toHaveLength(0)
@@ -318,6 +323,8 @@ test("a terminal event discovers a run queued before the recent history window",
   }
 
   h.runtime.kernel.publish({ type: "run.updated", run })
+  // Large journal backlogs yield between delivery batches before this event reaches recovery.
+  await delivered.promise
   const tasks = await h.getTasks()
 
   expect(tasks.map((task) => task.id)).toEqual(["run:long-running"])

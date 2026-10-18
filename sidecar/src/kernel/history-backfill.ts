@@ -1,10 +1,10 @@
 import type { Database } from "bun:sqlite"
 import type { ApiRoutes, UiEvent } from "@touri/contracts"
+import type { PerformanceStageRunner } from "./performance"
 import { TRANSCRIPT_RETENTION } from "./transcript-storage"
 
 type Progress = NonNullable<ApiRoutes["GET /health"]["res"]["historyMigration"]>
 type ThreadProgress = { threadId: string; done: number; total: number }
-type StageRunner = <Value>(stage: string, action: () => Value) => Value
 const prefix = "transcript.backfill.7.thread."
 
 // Reserve each thread's historical sequence range before allowing live writers.
@@ -169,7 +169,7 @@ export const backfillHistoryBatch = (database: Database, limit = 500): Progress 
 export const startHistoryBackfill = (
   database: Database,
   onError: (error: unknown) => void,
-  runStage?: StageRunner,
+  runStage?: PerformanceStageRunner,
 ): (() => void) => {
   let stopped = false
   let timer: ReturnType<typeof setTimeout> | undefined

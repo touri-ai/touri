@@ -14,19 +14,22 @@ type Projection = {
   updated_at: number
 }
 
+type ProjectionTarget = { threadId: string; messageId: string }
+
 // Snapshots are mutable projections. The small, durable entries remain the source of
 // uncheckpointed text, including after a crash. Publishing a projection adds no event.
-export const materializeTranscript = (database: Database): void => {
+export const materializeTranscript = (database: Database, target?: ProjectionTarget): void => {
   if (!database.query("SELECT 1 FROM transcript_pending_deltas LIMIT 1").get()) return
   database.transaction(() => {
-    const rows = database
-      .query(
-        // Drive both indexed stream lookups from the small dirty-message queue.
-        `SELECT e.id AS entry_id, e.seq AS delta_seq, e.at, e.event_json, m.id, m.thread_id
+    const targetFilter = target ? "AND p.thread_id = ? AND p.message_id = ?" : ""
+    const statement = database.query(
+      // Drive both indexed stream lookups from the small dirty-message queue.
+      `SELECT e.id AS entry_id, e.seq AS delta_seq, e.at, e.event_json, m.id, m.thread_id
          FROM transcript_pending_deltas p
          CROSS JOIN messages m
          CROSS JOIN transcript_entries e INDEXED BY transcript_delta_message
          WHERE m.thread_id = p.thread_id AND m.id = p.message_id
+           ${targetFilter}
            AND e.thread_id = p.thread_id AND json_extract(e.event_json, '$.messageId') = p.message_id
            AND json_extract(e.event_json, '$.type') = 'message.delta' AND e.seq > m.updated_seq
          UNION ALL
@@ -36,11 +39,14 @@ export const materializeTranscript = (database: Database): void => {
          CROSS JOIN transcript_part_entries part INDEXED BY transcript_part_message
          CROSS JOIN transcript_entries e
          WHERE m.thread_id = p.thread_id AND m.id = p.message_id
+           ${targetFilter}
            AND part.thread_id = p.thread_id AND part.message_id = p.message_id
            AND e.id = part.entry_id AND e.seq > m.updated_seq
          ORDER BY entry_id`,
-      )
-      .all() as Array<{ id: string; thread_id: string; delta_seq: number; at: number; event_json: string }>
+    )
+    const rows = (
+      target ? statement.all(target.threadId, target.messageId, target.threadId, target.messageId) : statement.all()
+    ) as Array<{ id: string; thread_id: string; delta_seq: number; at: number; event_json: string }>
     const projections = new Map<string, Projection & { parts: MessagePart[] }>()
     for (const row of rows) {
       const key = JSON.stringify([row.thread_id, row.id])
@@ -77,7 +83,7 @@ export const materializeTranscript = (database: Database): void => {
       projections.set(key, projection)
     }
     if (!projections.size) {
-      database.exec("DELETE FROM transcript_pending_deltas")
+      clearPendingProjection(database, target)
       return
     }
     database.exec("UPDATE transcript_maintenance SET projection_write = 1 WHERE id = 1")
@@ -99,8 +105,42 @@ export const materializeTranscript = (database: Database): void => {
       refreshMessageSearch(database, { threadId: projection.thread_id, id: projection.id, text: projection.text })
     }
     database.exec("UPDATE transcript_maintenance SET projection_write = 0 WHERE id = 1")
-    database.exec("DELETE FROM transcript_pending_deltas")
+    clearPendingProjection(database, target)
   })()
+}
+
+const clearPendingProjection = (database: Database, target?: ProjectionTarget): void => {
+  if (!target) {
+    database.exec("DELETE FROM transcript_pending_deltas")
+    return
+  }
+
+  database
+    .query("DELETE FROM transcript_pending_deltas WHERE thread_id = ? AND message_id = ?")
+    .run(target.threadId, target.messageId)
+}
+
+const hasPendingRetentionProjection = (database: Database, threadId: string, cutoff: number): boolean => {
+  const delta = database
+    .query(`SELECT 1 FROM transcript_pending_deltas p
+    CROSS JOIN messages m CROSS JOIN transcript_entries e INDEXED BY transcript_delta_message
+    WHERE p.thread_id = ? AND m.thread_id = p.thread_id AND m.id = p.message_id AND m.updated_seq < ?
+      AND e.thread_id = p.thread_id AND json_extract(e.event_json, '$.messageId') = p.message_id
+      AND json_extract(e.event_json, '$.type') = 'message.delta'
+      AND e.seq > m.updated_seq AND e.seq <= ? LIMIT 1`)
+    .get(threadId, cutoff, cutoff)
+  if (delta) return true
+
+  return Boolean(
+    database
+      .query(`SELECT 1 FROM transcript_pending_deltas p
+    CROSS JOIN messages m CROSS JOIN transcript_part_entries part INDEXED BY transcript_part_message
+    CROSS JOIN transcript_entries e
+    WHERE p.thread_id = ? AND m.thread_id = p.thread_id AND m.id = p.message_id AND m.updated_seq < ?
+      AND part.thread_id = p.thread_id AND part.message_id = p.message_id AND e.id = part.entry_id
+      AND e.seq > m.updated_seq AND e.seq <= ? LIMIT 1`)
+      .get(threadId, cutoff, cutoff),
+  )
 }
 
 export const TRANSCRIPT_RETENTION = { events: 10_000, entriesPerThread: 2_000, maxAgeMs: 7 * 24 * 60 * 60 * 1000 }
@@ -186,7 +226,9 @@ export const compactTranscript = ({
         .get(thread.id, entriesPerThread) as { seq: number; id: number } | null
       if (excess && excess.id <= checkpoint) cutoffs.set(thread.id, Math.max(cutoffs.get(thread.id) ?? 0, excess.seq))
     }
-    if (cutoffs.size) materializeTranscript(database)
+    // Old history must not checkpoint unrelated growing replies on every retention batch.
+    if (Array.from(cutoffs).some(([threadId, cutoff]) => hasPendingRetentionProjection(database, threadId, cutoff)))
+      materializeTranscript(database)
     let removed = 0
     let more = false
     const started = performance.now()

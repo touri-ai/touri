@@ -5,62 +5,113 @@ type EventLoopStats = NonNullable<ApiRoutes["GET /health"]["res"]["eventLoop"]>
 type RequestTracker = { inFlight: Map<Request, number>; getRoute: (request: Request) => string }
 type Context = { activeRuns: number; sseClients: number; websocketClients: number }
 type FetchHandler<SocketData> = (request: Request, server: Server<SocketData>) => Promise<Response | undefined>
-type StageTiming = { calls: number; totalMs: number; maxMs: number }
-const MAX_TRACKED_STAGES = 16
+const STAGES = [
+  "runtime_provider_event",
+  "runtime_text_materialization",
+  "stream_batch",
+  "stream_journal_write",
+  "stream_part_preparation",
+  "stream_text_materialization",
+  "transcript_journal_capture",
+  "transcript_projection_checkpoint",
+  "transcript_event_replay",
+  "transcript_event_log_write",
+  "transcript_retention",
+  "workspace_snapshot",
+  "workspace_event_serialization",
+  "workspace_websocket_broadcast",
+  "routine_scheduler_dispatch",
+  "database_page_maintenance",
+  "storage_message_compaction_batch",
+  "storage_vacuum",
+  "history_backfill_batch",
+] as const
+
+export type PerformanceStage = (typeof STAGES)[number]
+type StageTiming = { stage: PerformanceStage; calls: number; totalMs: number; maxMs: number }
 
 export type PerformanceStageTracker = {
   run: PerformanceStageRunner
-  snapshot: () => Array<{ stage: string; calls: number; totalMs: number; maxMs: number }>
+  snapshot: () => Array<StageTiming>
   reset: () => void
 }
 
 export type PerformanceStageRunner = <Value, Input = undefined>(
-  stage: string,
+  stage: PerformanceStage,
   action: (input: Input) => Value,
   input?: Input,
 ) => Value
 
 export const createPerformanceStageTracker = (now = performance.now.bind(performance)): PerformanceStageTracker => {
-  // Reuse bounded counters across samples so hot callbacks allocate no timing records.
-  const timings = new Map<string, StageTiming>()
-  const run = <Value, Input = undefined>(stage: string, action: (input: Input) => Value, input?: Input): Value => {
-    const startedAt = now()
-    try {
-      return action(input as Input)
-    } finally {
-      const durationMs = now() - startedAt
-      const timing = timings.get(stage)
-      if (timing) {
-        timing.calls += 1
-        timing.totalMs += durationMs
-        timing.maxMs = Math.max(timing.maxMs, durationMs)
-      } else if (timings.size < MAX_TRACKED_STAGES)
-        timings.set(stage, { calls: 1, totalMs: durationMs, maxMs: durationMs })
-    }
+  const counters = Object.fromEntries(STAGES.map((stage) => [stage, createStageCounter(stage, now)] as const))
+  const run = <Value, Input = undefined>(
+    stage: PerformanceStage,
+    action: (input: Input) => Value,
+    input?: Input,
+  ): Value => {
+    // Validate at runtime too: diagnostics must never retain caller-controlled names or values.
+    if (!Object.hasOwn(counters, stage)) return action(input as Input)
+
+    const counter = counters[stage]
+    if (!counter) return action(input as Input)
+
+    return counter.run(action, input)
   }
 
   return {
     run,
     snapshot: () =>
-      [...timings]
-        .filter(([, timing]) => timing.calls > 0)
-        .map(([stage, timing]) => ({ stage, ...timing }))
-        .sort((left, right) => right.totalMs - left.totalMs || right.maxMs - left.maxMs)
-        .slice(0, 8)
-        .map(({ stage, calls, totalMs, maxMs }) => ({
-          stage,
-          calls,
-          totalMs: getMilliseconds(totalMs),
-          maxMs: getMilliseconds(maxMs),
-        })),
+      Object.values(counters)
+        .map((counter) => counter.getTiming())
+        .filter((timing) => timing.calls > 0)
+        .reduce(getRankedTimings, [] as Array<StageTiming>),
+    reset: () =>
+      Object.values(counters).forEach((counter) => {
+        counter.reset()
+      }),
+  }
+}
+
+const createStageCounter = (stage: PerformanceStage, now: () => number) => {
+  // Only numeric, closure-local counters change on the hot path; no per-call timing record is allocated.
+  let calls = 0
+  let totalMs = 0
+  let maxMs = 0
+  const run = <Value, Input = undefined>(action: (input: Input) => Value, input?: Input): Value => {
+    const startedAt = now()
+    try {
+      return action(input as Input)
+    } finally {
+      const durationMs = now() - startedAt
+      calls += 1
+      totalMs += durationMs
+      maxMs = Math.max(maxMs, durationMs)
+    }
+  }
+
+  return {
+    run,
+    getTiming: (): StageTiming => ({
+      stage,
+      calls,
+      totalMs: getMilliseconds(totalMs),
+      maxMs: getMilliseconds(maxMs),
+    }),
     reset: () => {
-      timings.forEach((timing) => {
-        timing.calls = 0
-        timing.totalMs = 0
-        timing.maxMs = 0
-      })
+      calls = 0
+      totalMs = 0
+      maxMs = 0
     },
   }
+}
+
+const getRankedTimings = (ranked: Array<StageTiming>, timing: StageTiming): Array<StageTiming> => {
+  const index = ranked.findIndex(
+    (entry) => timing.totalMs > entry.totalMs || (timing.totalMs === entry.totalMs && timing.maxMs > entry.maxMs),
+  )
+  if (index < 0) return ranked.concat(timing).slice(0, 8)
+
+  return ranked.slice(0, index).concat(timing, ranked.slice(index)).slice(0, 8)
 }
 
 export const createPerformanceDiagnostics = ({

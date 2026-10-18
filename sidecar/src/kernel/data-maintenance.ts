@@ -5,6 +5,7 @@ import type { MessagePart, StorageMaintenanceStatus, StorageStats } from "@touri
 import { removePrivateFile } from "./files"
 import { historyMigrationStatus } from "./history-backfill"
 import { attachmentReferences, externalizeMessageParts, OUTPUT_BLOB_ORIGIN } from "./output-blobs"
+import type { PerformanceStageRunner } from "./performance"
 import { createStorageUpgrade, maintainDatabasePages } from "./storage-upgrade"
 import { compactTranscript } from "./transcript-storage"
 
@@ -12,7 +13,6 @@ export const DEFAULT_DATA_RETENTION_DAYS = 30
 const DAY = 24 * 60 * 60 * 1000
 const progressKey = "storage.maintenance.progress"
 type Cursor = { cursor: number; total: number; completedAt: number; changed?: boolean }
-type StageRunner = <Value>(stage: string, action: () => Value) => Value
 
 export const validDataRetentionDays = (days: unknown): days is number =>
   Number.isInteger(days) && Number(days) >= 0 && Number(days) <= 3650
@@ -268,7 +268,7 @@ export const createStorageMaintenance = ({
   publishResync: () => void
   retryDeletedBrowserSessionKeys: (signal: AbortSignal) => Promise<void>
   onError: () => void
-  runStage?: StageRunner
+  runStage?: PerformanceStageRunner
 }) => {
   const stored = database.query("SELECT value_json FROM settings WHERE key = ?").get(progressKey) as {
     value_json: string
