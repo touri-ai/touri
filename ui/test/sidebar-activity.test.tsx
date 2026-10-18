@@ -5,6 +5,7 @@ import { createMockApi } from "../src/api/mock"
 import { computeBotActivity, holdBotPositions, orderBotsByActivity } from "../src/botActivity"
 import { Sidebar } from "../src/components/BotSidebar"
 import { SettingsModal } from "../src/components/Modals"
+import { t } from "../src/i18n"
 import { readWorkspaceState, saveWorkspaceState } from "../src/workspaceState"
 
 afterEach(() => {
@@ -141,6 +142,29 @@ const renderSidebar = (overrides: SidebarOverrides & { bots: Array<Bot>; threads
 
 const order = (): Array<string> =>
   Array.from(document.querySelectorAll<HTMLElement>("[data-bot-entry]")).map((entry) => entry.dataset.botEntry ?? "")
+
+it("hides the work summary when no runs are active or queued", () => {
+  const { bots, threads } = fixture()
+
+  renderSidebar({ bots, threads, workRuns: [] })
+
+  expect(document.querySelector(".sidebar-work-badge")).toBeNull()
+})
+
+it("shows active work as a clear navigation action in both languages", () => {
+  const { bots, threads } = fixture()
+  const running = run("run-active", "bot-alfa", "thread-alfa")
+  const queued = run("run-queued", "bot-beta", "thread-beta", "queued")
+
+  renderSidebar({ bots, threads, workRuns: [running, queued] })
+
+  const badge = screen.getByRole("button", { name: "Ver trabalho: 1 em execução, 1 na fila", exact: true })
+  expect(badge).toHaveTextContent("Trabalhando 1")
+  expect(badge).toHaveTextContent("1 na fila")
+  expect(badge).toHaveTextContent("Ver trabalho")
+  expect(t("View work", {}, "en")).toBe("View work")
+  expect(t("View work summary", { running: 1, queued: 1 }, "en")).toBe("View work: 1 running, 1 queued")
+})
 
 const entry = (botId: string): HTMLElement => {
   const element = document.querySelector<HTMLElement>(`[data-bot-entry="${botId}"]`)

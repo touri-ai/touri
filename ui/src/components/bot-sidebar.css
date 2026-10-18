@@ -440,6 +440,21 @@
   font-size: 12px;
   text-align: left;
 }
+.sidebar-work-badge:hover,
+.sidebar-work-badge:focus-visible {
+  background: var(--surface-control-raised);
+}
 .sidebar-work-badge strong {
   margin-left: 4px;
+}
+.sidebar-work-action {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-4);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.sidebar-work-badge:hover .sidebar-work-action,
+.sidebar-work-badge:focus-visible .sidebar-work-action {
+  color: var(--text-primary);
 }

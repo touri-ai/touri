@@ -4,7 +4,15 @@ import { showBotAdvanced } from "./home-navigation"
 
 test.use({ viewport: { width: 1440, height: 900 }, reducedMotion: "reduce" })
 
-const nativePreferencesTabs = ["Aparência", "Privacidade", "Atualizações", "Notificações", "Diagnóstico", "Avançado"]
+const nativePreferencesTabs = [
+  "Modelos por API",
+  "Aparência",
+  "Privacidade",
+  "Atualizações",
+  "Notificações",
+  "Diagnóstico",
+  "Avançado",
+]
 
 test("bot identity stays simple and every advanced section remains reachable", async ({ page }) => {
   await page.goto("/test/e2e/r8-settings-harness.html")
@@ -54,7 +62,15 @@ test("bot identity stays simple and every advanced section remains reachable", a
 test("native preferences list the core tabs and advanced server settings", async ({ page }) => {
   await page.goto("/test/e2e/r8-settings-harness.html")
   await page.getByRole("button", { name: /Você Local/ }).click()
-  await expect(page.getByRole("dialog").getByRole("tab")).toHaveText(nativePreferencesTabs)
+  const dialog = page.getByRole("dialog")
+  await expect(dialog.getByRole("tab")).toHaveText(nativePreferencesTabs)
+
+  await dialog.getByRole("tab", { name: "Modelos por API", exact: true }).click()
+  await expect(dialog.getByLabel("Provedor da API")).toBeVisible()
+  await expect(dialog.getByLabel("Chave de API", { exact: true })).toHaveAttribute("type", "password")
+  await dialog.getByRole("tab", { name: "Avançado", exact: true }).click()
+  await expect(dialog.getByRole("region", { name: "Usar um servidor touri", exact: true })).toBeVisible()
+  await expect(dialog.getByLabel("Endereço do servidor", { exact: true })).toBeVisible()
 })
 
 test("app preferences disclose technical controls and preserve edits between sections", async ({ page }) => {
@@ -86,6 +102,7 @@ test("app preferences disclose technical controls and preserve edits between sec
   await dialog.getByText("Reportar problema", { exact: true }).click()
   await expect(dialog.getByLabel("Título", { exact: true })).toBeVisible()
   await dialog.getByRole("tab", { name: "Aparência", exact: true }).click()
+  await dialog.getByText("Chat, barra lateral e atalhos", { exact: true }).click()
   await expect(
     dialog.getByRole("switch", { name: "Mover bots com novidades para o topo", exact: true }),
   ).not.toBeChecked()

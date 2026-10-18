@@ -1,6 +1,6 @@
-import { afterEach, expect, mock, test } from "bun:test"
+import { afterEach, expect, mock, spyOn, test } from "bun:test"
 import type { Kernel } from "@touri/contracts"
-import { createPerformanceDiagnostics } from "../../src/kernel/performance"
+import { createPerformanceDiagnostics, createPerformanceStageTracker } from "../../src/kernel/performance"
 import { createRouteRegistry } from "../../src/kernel/routes"
 
 const cleanups = new Set<() => void>()
@@ -48,6 +48,41 @@ test("the rolling window expires, recovers and permits a later warning", () => {
   expect(recovered).toEqual({ lagMs: 0, p99Ms: 600, maxMs: 600, samples: 2 })
   expect(probe.log).toHaveBeenCalledTimes(2)
   expect(probe.diagnostics.getSnapshot()).toEqual({ lagMs: 0, p99Ms: 59_000, maxMs: 59_000, samples: 2 })
+})
+
+test("lag warnings attribute completed synchronous stages with bounded timing", () => {
+  const probe = makeProbe()
+
+  probe.advance(1_000)
+  probe.diagnostics.runStage("workspace_websocket_broadcast", () => probe.advance(700))
+  probe.tick(0)
+
+  expect(probe.log.mock.calls[0]?.[0].data?.stages).toEqual([
+    { stage: "workspace_websocket_broadcast", calls: 1, totalMs: 700, maxMs: 700 },
+  ])
+})
+
+test("hot stage calls reuse counters across samples and preserve results and exceptions", () => {
+  const tracker = createPerformanceStageTracker(() => 10)
+  const identity = (value: number) => value
+  tracker.run("runtime_provider_event", identity, 0)
+  const writes = spyOn(Map.prototype, "set")
+  cleanups.add(() => writes.mockRestore())
+
+  tracker.reset()
+  const results = Array.from({ length: 1_000 }, (_, index) => tracker.run("runtime_provider_event", identity, index))
+  expect(() =>
+    tracker.run("runtime_provider_event", () => {
+      throw new Error("fixture")
+    }),
+  ).toThrow("fixture")
+  const snapshot = tracker.snapshot()
+  tracker.reset()
+
+  expect(results.at(-1)).toBe(999)
+  expect(writes).not.toHaveBeenCalled()
+  expect(snapshot).toEqual([{ stage: "runtime_provider_event", calls: 1_001, totalMs: 0, maxMs: 0 }])
+  expect(tracker.snapshot()).toEqual([])
 })
 
 test("normal sampling stays silent and stop disposes the timer", () => {

@@ -5,11 +5,69 @@ type EventLoopStats = NonNullable<ApiRoutes["GET /health"]["res"]["eventLoop"]>
 type RequestTracker = { inFlight: Map<Request, number>; getRoute: (request: Request) => string }
 type Context = { activeRuns: number; sseClients: number; websocketClients: number }
 type FetchHandler<SocketData> = (request: Request, server: Server<SocketData>) => Promise<Response | undefined>
+type StageTiming = { calls: number; totalMs: number; maxMs: number }
+const MAX_TRACKED_STAGES = 16
+
+export type PerformanceStageTracker = {
+  run: PerformanceStageRunner
+  snapshot: () => Array<{ stage: string; calls: number; totalMs: number; maxMs: number }>
+  reset: () => void
+}
+
+export type PerformanceStageRunner = <Value, Input = undefined>(
+  stage: string,
+  action: (input: Input) => Value,
+  input?: Input,
+) => Value
+
+export const createPerformanceStageTracker = (now = performance.now.bind(performance)): PerformanceStageTracker => {
+  // Reuse bounded counters across samples so hot callbacks allocate no timing records.
+  const timings = new Map<string, StageTiming>()
+  const run = <Value, Input = undefined>(stage: string, action: (input: Input) => Value, input?: Input): Value => {
+    const startedAt = now()
+    try {
+      return action(input as Input)
+    } finally {
+      const durationMs = now() - startedAt
+      const timing = timings.get(stage)
+      if (timing) {
+        timing.calls += 1
+        timing.totalMs += durationMs
+        timing.maxMs = Math.max(timing.maxMs, durationMs)
+      } else if (timings.size < MAX_TRACKED_STAGES)
+        timings.set(stage, { calls: 1, totalMs: durationMs, maxMs: durationMs })
+    }
+  }
+
+  return {
+    run,
+    snapshot: () =>
+      [...timings]
+        .filter(([, timing]) => timing.calls > 0)
+        .map(([stage, timing]) => ({ stage, ...timing }))
+        .sort((left, right) => right.totalMs - left.totalMs || right.maxMs - left.maxMs)
+        .slice(0, 8)
+        .map(({ stage, calls, totalMs, maxMs }) => ({
+          stage,
+          calls,
+          totalMs: getMilliseconds(totalMs),
+          maxMs: getMilliseconds(maxMs),
+        })),
+    reset: () => {
+      timings.forEach((timing) => {
+        timing.calls = 0
+        timing.totalMs = 0
+        timing.maxMs = 0
+      })
+    },
+  }
+}
 
 export const createPerformanceDiagnostics = ({
   log,
   getContext,
   now = performance.now.bind(performance),
+  stageTracker,
   sampleMs = 1_000,
   lagThresholdMs = 500,
   slowRequestMs = 2_000,
@@ -19,6 +77,7 @@ export const createPerformanceDiagnostics = ({
   log: Kernel["log"]
   getContext: () => Context
   now?: () => number
+  stageTracker?: PerformanceStageTracker
   sampleMs?: number
   lagThresholdMs?: number
   slowRequestMs?: number
@@ -27,6 +86,7 @@ export const createPerformanceDiagnostics = ({
 }) => {
   // Timer and request lifetimes keep local state; requests are only read when a warning is written.
   const trackers = new Set<RequestTracker>()
+  const stages = stageTracker ?? createPerformanceStageTracker(now)
   let samples: Array<{ at: number; lagMs: number }> = []
   let expectedAt = now() + sampleMs
   let lastLagWarningAt = Number.NEGATIVE_INFINITY
@@ -49,7 +109,10 @@ export const createPerformanceDiagnostics = ({
     const lagMs = Math.max(0, at - expectedAt)
     expectedAt = at + sampleMs
     samples = [...samples.filter((item) => at - item.at < 60_000).slice(-59), { at, lagMs }]
-    if (lagMs < lagThresholdMs || at - lastLagWarningAt < cooldownMs) return
+    const shouldWarn = lagMs >= lagThresholdMs && at - lastLagWarningAt >= cooldownMs
+    const stageTimings = shouldWarn ? stages.snapshot() : []
+    stages.reset()
+    if (!shouldWarn) return
 
     lastLagWarningAt = at
     logWarning(() => ({
@@ -59,6 +122,7 @@ export const createPerformanceDiagnostics = ({
       data: {
         eventLoop: getSnapshot(),
         ...getContext(),
+        stages: stageTimings,
         inFlight: getSlowestRequests(trackers, at),
       },
     }))
@@ -109,7 +173,7 @@ export const createPerformanceDiagnostics = ({
     })
   }
 
-  return { getSnapshot, observeFetch, stop }
+  return { getSnapshot, observeFetch, runStage: stages.run, stop }
 }
 
 const getEventLoopStats = (samples: Array<{ at: number; lagMs: number }>, at: number): EventLoopStats => {

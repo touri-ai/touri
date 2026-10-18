@@ -13,7 +13,13 @@ const repository = resolve(import.meta.dirname, "../../..")
 const phase = process.env.TOURI_COMPOSER_PERF_PHASE ?? "after"
 const cpuRate = Number(process.env.TOURI_COMPOSER_PERF_CPU_RATE ?? 4)
 
-type Keystroke = { start: number; handlerMs: number; frameMs: number; afterFrameMs: number }
+type Keystroke = {
+  start: number
+  keyToInputMs: number
+  handlerMs: number
+  frameMs: number
+  afterFrameMs: number
+}
 type Commit = { at: number; duration: number; renders: Record<string, number> }
 type Metrics = { enabled: boolean; samples: Keystroke[]; commits: Commit[] }
 
@@ -74,14 +80,32 @@ const installMeasurements = () => {
     },
     true,
   )
+  // Keep the browser's key-to-input work separate from the delegated input handler.
+  const inputStarts = new WeakMap<Event, number>()
+  document.addEventListener(
+    "input",
+    (event) => {
+      if (metrics.enabled && event.target instanceof HTMLTextAreaElement) inputStarts.set(event, performance.now())
+    },
+    true,
+  )
   // React's delegated handler runs on the root before this document bubble listener.
   document.addEventListener("input", (event) => {
     if (!metrics.enabled || !(event.target instanceof HTMLTextAreaElement) || !keydownAt) return
-    const sample: Keystroke = { start: keydownAt, handlerMs: 0, frameMs: 0, afterFrameMs: 0 }
+    const inputAt = inputStarts.get(event)
+    if (inputAt === undefined) return
+
+    const sample: Keystroke = {
+      start: keydownAt,
+      keyToInputMs: inputAt - keydownAt,
+      handlerMs: 0,
+      frameMs: 0,
+      afterFrameMs: 0,
+    }
     metrics.samples.push(sample)
     keydownAt = 0
     queueMicrotask(() => {
-      sample.handlerMs = performance.now() - sample.start
+      sample.handlerMs = performance.now() - inputAt
     })
     requestAnimationFrame(() => {
       sample.frameMs = performance.now() - sample.start
@@ -196,7 +220,9 @@ test("long history keeps typing independent of transcript work", async ({ page, 
     // Warm focus, mascot attention, and the first autosize before collecting steady-state typing.
     await input.press("w")
     await input.fill("")
-    await page.waitForTimeout(200)
+    await page.evaluate(
+      () => new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => done()))),
+    )
     const initialMetrics = await cdp.send("Performance.getMetrics")
     await page.evaluate(() => {
       const metrics = (window as unknown as { composerPerformance: Metrics }).composerPerformance
@@ -244,6 +270,10 @@ test("long history keeps typing independent of transcript work", async ({ page, 
       toolCalls: composerPerformanceToolCount,
       initialLoadMs,
       keypresses: metrics.samples.length,
+      p95KeyToInputMs: percentile(
+        metrics.samples.map((sample) => sample.keyToInputMs),
+        0.95,
+      ),
       p95HandlerMs: percentile(
         metrics.samples.map((sample) => sample.handlerMs),
         0.95,
@@ -285,6 +315,8 @@ test("long history keeps typing independent of transcript work", async ({ page, 
       expect(renders.VirtualMessageList ?? 0, "Typing must not render the transcript").toBe(0)
       expect(renders.MarkdownContent ?? 0, "Typing must not parse message markdown").toBe(0)
       expect(renders.ToolCallList ?? 0, "Typing must not render tool history").toBe(0)
+      // Native editing before input must fit the same frame budget as the delegated handler.
+      expect(report.p95KeyToInputMs).toBeLessThan(16)
       expect(report.p95HandlerMs).toBeLessThan(16)
       // rAF includes waiting for a display refresh; allow two missed frames under a throttled CI CPU.
       expect(report.p95NextFrameMs).toBeLessThan(50)

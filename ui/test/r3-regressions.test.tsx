@@ -144,7 +144,7 @@ describe("r3 P2 chat and navigation", () => {
     render(<App kernel={{ services: { api } }} />)
     await screen.findByRole("textbox", { name: "Mensagem para mark" })
     fireEvent.keyDown(window, { key: "k", metaKey: true })
-    const input = screen.getByRole("combobox", { name: "Buscar bots, conversas e configurações" })
+    const input = await screen.findByRole("combobox", { name: "Buscar bots, conversas e configurações" })
     expect(input).toHaveFocus()
     fireEvent.click(input)
     expect(input).toBeVisible()
@@ -454,6 +454,8 @@ describe("r3 P3 integrity", () => {
     if (!screen.queryByRole("button", { name: "Preview do projeto" }))
       fireEvent.click(screen.getByRole("button", { name: "Painel do bot" }))
     fireEvent.click(screen.getByRole("button", { name: "Preview do projeto" }))
+    await screen.findByRole("heading", { name: "Preview", exact: true })
+
     for (const button of screen.getAllByRole("button", { name: "Parar" })) expect(button).toBeDisabled()
   })
 

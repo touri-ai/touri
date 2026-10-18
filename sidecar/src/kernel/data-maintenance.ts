@@ -12,6 +12,7 @@ export const DEFAULT_DATA_RETENTION_DAYS = 30
 const DAY = 24 * 60 * 60 * 1000
 const progressKey = "storage.maintenance.progress"
 type Cursor = { cursor: number; total: number; completedAt: number; changed?: boolean }
+type StageRunner = <Value>(stage: string, action: () => Value) => Value
 
 export const validDataRetentionDays = (days: unknown): days is number =>
   Number.isInteger(days) && Number(days) >= 0 && Number(days) <= 3650
@@ -260,12 +261,14 @@ export const createStorageMaintenance = ({
   publishResync,
   retryDeletedBrowserSessionKeys,
   onError,
+  runStage,
 }: {
   database: Database
   appData: string
   publishResync: () => void
   retryDeletedBrowserSessionKeys: (signal: AbortSignal) => Promise<void>
   onError: () => void
+  runStage?: StageRunner
 }) => {
   const stored = database.query("SELECT value_json FROM settings WHERE key = ?").get(progressKey) as {
     value_json: string
@@ -296,7 +299,8 @@ export const createStorageMaintenance = ({
   const pageTimer = setInterval(() => {
     if (stopped || upgrade.snapshot()) return
     try {
-      maintainDatabasePages(database)
+      if (runStage) runStage("database_page_maintenance", () => maintainDatabasePages(database))
+      else maintainDatabasePages(database)
     } catch {
       onError()
     }
@@ -363,7 +367,11 @@ export const createStorageMaintenance = ({
         }
       }
       progress = database.transaction(() => {
-        const next = compactMessageBatch({ database, appData, cursor: progress.cursor, total: progress.total })
+        const next = runStage
+          ? runStage("storage_message_compaction_batch", () =>
+              compactMessageBatch({ database, appData, cursor: progress.cursor, total: progress.total }),
+            )
+          : compactMessageBatch({ database, appData, cursor: progress.cursor, total: progress.total })
         const committed = { ...progress, cursor: next.cursor, changed: progress.changed || next.changed }
         save(committed)
         return committed
@@ -376,7 +384,9 @@ export const createStorageMaintenance = ({
       // Capture the recovery tail before pruning. Snapshots/files retain detail;
       // removing replay entries causes clients to refresh from those snapshots.
       if (progress.changed || manual) publishResync()
-      if (compactTranscript(manual ? { database, events: 0, entriesPerThread: 0, maxAgeMs: 0 } : { database })) {
+      const compact = () =>
+        compactTranscript(manual ? { database, events: 0, entriesPerThread: 0, maxAgeMs: 0 } : { database })
+      if (runStage ? runStage("transcript_retention", compact) : compact()) {
         timer = setTimeout(step, 10)
         return
       }
@@ -386,10 +396,14 @@ export const createStorageMaintenance = ({
       })
       if (stopped) return
       if (vacuum) {
-        database.exec("PRAGMA wal_checkpoint(TRUNCATE)")
-        database.exec("PRAGMA auto_vacuum=INCREMENTAL")
-        database.exec("VACUUM")
-        database.exec("PRAGMA wal_checkpoint(TRUNCATE)")
+        const vacuumDatabase = (): void => {
+          database.exec("PRAGMA wal_checkpoint(TRUNCATE)")
+          database.exec("PRAGMA auto_vacuum=INCREMENTAL")
+          database.exec("VACUUM")
+          database.exec("PRAGMA wal_checkpoint(TRUNCATE)")
+        }
+        if (runStage) runStage("storage_vacuum", vacuumDatabase)
+        else vacuumDatabase()
       }
       if (progress.changed || manual) publishResync()
       manual = false

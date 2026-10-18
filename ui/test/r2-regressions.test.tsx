@@ -128,7 +128,7 @@ describe("r2 regressions", () => {
     fireEvent.click(screen.getByRole("button", { name: /onb.*Operations/ }))
     await screen.findByRole("textbox", { name: "Mensagem para onb" })
     openRoutines("onb")
-    fireEvent.click(screen.getByRole("button", { name: "Pausadas" }))
+    fireEvent.click(await screen.findByRole("button", { name: "Pausadas" }))
     const count = mock.calls.filter((call) => call.route === "GET /routines").length
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Atualizar" })))
     await waitFor(() => expect(mock.calls.filter((call) => call.route === "GET /routines").length).toBe(count + 1))
@@ -269,6 +269,8 @@ describe("r2 regressions", () => {
     if (!screen.queryByRole("button", { name: "Preview do projeto" }))
       fireEvent.click(screen.getByRole("button", { name: "Painel do bot" }))
     fireEvent.click(screen.getByRole("button", { name: "Preview do projeto" }))
+    await screen.findByRole("heading", { name: "Preview", exact: true })
+
     expect(screen.getAllByText("Nenhum projeto para mark").length).toBeGreaterThan(0)
     expect(document.body.textContent).not.toMatch(
       /sim, nesse ambiente|Subi os processos|\[PORTA\]|\[Cartão\]|\[Tabela|Admin demo/,

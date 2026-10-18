@@ -229,31 +229,56 @@ test("bot menu flips and shifts after resizing, tracks scrolling, and stays in t
   await page.setViewportSize({ width: 900, height: 600 })
   await page.emulateMedia({ reducedMotion: "reduce" })
   await openWorkspace(page)
-  // Without groups the last bot is close to the viewport bottom, so the menu must flip upward.
-  await page.locator(".group-sidebar").evaluate((element) => {
-    ;(element as HTMLElement).style.display = "none"
+
+  // Let the list reach the viewport edge so the trigger cannot fit a menu below it.
+  await page.addStyleTag({
+    content: ".group-sidebar, .sidebar-footer, .sidebar-recovery { display: none !important; }",
   })
-  const trigger = page.getByRole("button", { name: "Ações de release", exact: true })
+  // Activity groups determine the last row; the fixture's insertion order does not.
+  const trigger = page
+    .locator(".bot-sidebar .bot-row")
+    .last()
+    .getByRole("button", { name: /^Ações de / })
+  const menuName = await trigger.getAttribute("aria-label")
+  if (!menuName) throw new Error("Missing last bot menu label")
+
   await trigger.scrollIntoViewIfNeeded()
   await trigger.click()
-  const menu = page.getByRole("menu", { name: "Ações de release", exact: true })
+  const menu = page.getByRole("menu", { name: menuName, exact: true })
   await exposed(page, menu)
   const rect = await menu.boundingBox()
   const anchor = await trigger.boundingBox()
-  expect(rect && anchor && rect.y + rect.height <= anchor.y).toBe(true)
+  if (!rect || !anchor) throw new Error("Missing menu flip geometry")
+
+  expect(anchor.y + anchor.height).toBeGreaterThan(600 - rect.height)
+  expect(rect.y + rect.height).toBeLessThanOrEqual(anchor.y)
   await page.setViewportSize({ width: 700, height: 500 })
+  // Leave room for the next scroll so viewport clamping cannot mask anchor tracking.
+  await page.addStyleTag({ content: ".bot-groups { padding-bottom: 60px !important; }" })
+  await page.locator(".bot-groups").evaluate((element) => {
+    element.scrollTop = element.scrollHeight
+  })
+  await page.evaluate(
+    () => new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => done()))),
+  )
   await exposed(page, menu)
   const beforeScroll = await menu.boundingBox()
+  if (!beforeScroll) throw new Error("Missing menu before scrolling")
+
   await page.locator(".bot-groups").evaluate((element) => {
     element.scrollTop -= 20
   })
   await exposed(page, menu)
-  const afterScroll = await menu.boundingBox()
-  expect(beforeScroll && afterScroll && afterScroll.y - beforeScroll.y).toBeCloseTo(20, 0)
+  await expect
+    .poll(async () => {
+      const afterScroll = await menu.boundingBox()
+      return afterScroll ? afterScroll.y - beforeScroll.y : Number.NaN
+    })
+    .toBeCloseTo(20, 0)
   await page.keyboard.press("Escape")
   await page.setViewportSize({ width: 390, height: 600 })
   await page.getByRole("button", { name: "Abrir menu" }).click()
-  const mobileTrigger = page.getByRole("button", { name: "Ações de release", exact: true })
+  const mobileTrigger = page.getByRole("button", { name: menuName, exact: true })
   await mobileTrigger.scrollIntoViewIfNeeded()
   await mobileTrigger.click()
   await exposed(page, menu)

@@ -2,6 +2,7 @@ import type { Database } from "bun:sqlite"
 import type { UiEvent, UiEventEnvelope } from "@touri/contracts"
 import type { ServerWebSocket } from "bun"
 import { boundedProcessLog } from "./output-blobs"
+import type { PerformanceStageRunner } from "./performance"
 import { captureTranscript as captureEntries, type TranscriptRef } from "./transcript-events"
 import { compactTranscript, materializeTranscript } from "./transcript-storage"
 
@@ -20,8 +21,9 @@ const messageKey = (event: UiEvent): string | null =>
 
 type EventSocket = Pick<ServerWebSocket<unknown>, "readyState" | "sendText"> &
   Partial<Pick<ServerWebSocket<unknown>, "close">>
-
-export const createEventBus = (database?: Database) => {
+export const createEventBus = (database?: Database, runStage?: PerformanceStageRunner) => {
+  const measureStage = <Value, Input>(stage: string, action: (input: Input) => Value, input: Input): Value =>
+    runStage ? runStage(stage, action, input) : action(input)
   let sequence = 0
   const listeners = new Set<(envelope: UiEventEnvelope) => void>()
   const sockets = new Set<EventSocket>()
@@ -33,18 +35,12 @@ export const createEventBus = (database?: Database) => {
   let stopped = false
   let flushing = false
   let compactedAt = delivered
-  const payloadFor = (envelope: UiEventEnvelope): string =>
+  const serialize = (envelope: UiEventEnvelope): string =>
     JSON.stringify(envelope.event.type === "transcript.resync" ? { type: "resync", lastSeq: envelope.seq } : envelope)
+  const payloadFor = (envelope: UiEventEnvelope): string =>
+    measureStage("workspace_event_serialization", serialize, envelope)
 
-  const deliver = (envelope: UiEventEnvelope): void => {
-    const payload = payloadFor(envelope)
-    for (const listener of listeners) {
-      try {
-        listener(envelope)
-      } catch {
-        // A subscriber must not turn a committed write into a failed request.
-      }
-    }
+  const broadcast = (payload: string): void => {
     for (const socket of sockets) {
       try {
         if (socket.readyState !== 1 || socket.sendText(payload) === 0) {
@@ -59,9 +55,22 @@ export const createEventBus = (database?: Database) => {
     }
   }
 
+  const deliver = (envelope: UiEventEnvelope): void => {
+    const payload = payloadFor(envelope)
+    for (const listener of listeners) {
+      try {
+        listener(envelope)
+      } catch {
+        // A subscriber must not turn a committed write into a failed request.
+      }
+    }
+    measureStage("workspace_websocket_broadcast", broadcast, payload)
+  }
+
   // Also recovers a committed tail whose publisher stopped before delivery.
   const captureTranscript = (): void => {
-    if (database && !stopped) captureEntries(database)
+    if (!database || stopped) return
+    measureStage("transcript_journal_capture", captureEntries, database)
   }
 
   const hydrateRef = (event: MessageRef): UiEvent => {
@@ -183,7 +192,7 @@ export const createEventBus = (database?: Database) => {
     flushing = true
     try {
       while (!stopped) {
-        const pending = replay(delivered)
+        const pending = measureStage("transcript_event_replay", replay, delivered)
         if (!pending.length) break
         for (const envelope of pending) {
           delivered = envelope.seq
@@ -194,9 +203,14 @@ export const createEventBus = (database?: Database) => {
       flushing = false
     }
     if (delivered - compactedAt >= 256) {
-      compactTranscript({ database })
+      measureStage("transcript_retention", compactTranscript, { database })
       compactedAt = delivered
     }
+  }
+  const writeEvent = (event: UiEvent): void => {
+    database
+      ?.query("INSERT INTO ui_event_log(at, event_json) VALUES (?, ?)")
+      .run(Date.now(), JSON.stringify(event.type === "process.log" ? boundedProcessLog(event) : event))
   }
   const publish = (event: UiEvent): void => {
     if (stopped) return
@@ -213,9 +227,7 @@ export const createEventBus = (database?: Database) => {
       !((event.type === "message.delta" || event.type === "message.parts") && event.updatedSeq !== undefined) &&
       event.type !== "transcript.rejected"
     )
-      database
-        .query("INSERT INTO ui_event_log(at, event_json) VALUES (?, ?)")
-        .run(Date.now(), JSON.stringify(event.type === "process.log" ? boundedProcessLog(event) : event))
+      measureStage("transcript_event_log_write", writeEvent, event)
     if (database.inTransaction) {
       if (!scheduled) {
         scheduled = true
@@ -238,7 +250,7 @@ export const createEventBus = (database?: Database) => {
       captureTranscript()
       flush()
       if (database) {
-        compactTranscript({ database })
+        measureStage("transcript_retention", compactTranscript, { database })
         for (const envelope of catchUp(since)) {
           if (socket.sendText(payloadFor(envelope)) === 0) {
             socket.close?.(1013, "Tente reconectar")

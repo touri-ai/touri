@@ -11,6 +11,7 @@ import {
   type ToolResult,
 } from "@touri/contracts"
 import { createGroupRuntime } from "../groups/runtime"
+import type { PerformanceStageRunner } from "../kernel/performance"
 import { buildChildEnv } from "../kernel/shell-env"
 import { getHostIdentity } from "../platform/host"
 import { createRuntimeEngine } from "./engine"
@@ -77,13 +78,13 @@ const routineInput = ({
   catchUpMinutes: numberField(args, "catchUpMinutes", 30),
 })
 
-export const init = async (kernel: Kernel): Promise<void> => {
-  const engine = createRuntimeEngine({ kernel })
+export const init = async (kernel: Kernel, runStage?: PerformanceStageRunner): Promise<void> => {
+  const engine = createRuntimeEngine({ kernel, ...(runStage ? { runStage } : {}) })
   kernel.services.provide("runtime.settingsChanged", engine.settingsChanged)
   await engine.ready
   const groups = createGroupRuntime(kernel, engine)
   kernel.services.provide("groups.runtime", groups)
-  const scheduler = createRoutineScheduler({ kernel, engine })
+  const scheduler = createRoutineScheduler({ kernel, engine, ...(runStage ? { runStage } : {}) })
 
   kernel.services.provide("runtime.enqueue", ({ threadId, requestMessageId, trigger }) => {
     const result = groups.enqueue({ threadId, requestMessageId, trigger })

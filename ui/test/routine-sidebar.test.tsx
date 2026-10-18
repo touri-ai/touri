@@ -88,7 +88,7 @@ it("groups 28 routine executions without burying ordinary conversations and open
   expect(rows[1]).toHaveTextContent("Resumo diário")
   expect(rows[1]).toHaveTextContent("11:45")
 
-  fireEvent.click(screen.getByRole("button", { name: /^Trabalhando \d/ }))
+  fireEvent.click(screen.getByRole("button", { name: /^Ver trabalho: \d/ }))
   await screen.findByRole("heading", { name: "Trabalho", exact: true })
 
   fireEvent.click(within(conversations).getByRole("button", { name: "Histórico de rotinas" }))

@@ -1,6 +1,7 @@
 import type { Database } from "bun:sqlite"
 import type { Kernel, Message, MessagePart, StoreApi, Thread, UiEvent } from "@touri/contracts"
 import { externalizeMessageParts } from "../kernel/output-blobs"
+import type { PerformanceStageRunner } from "../kernel/performance"
 import { captureTranscript } from "../kernel/transcript-events"
 import { materializeTranscript } from "../kernel/transcript-storage"
 import { appendRejection, recordTranscriptRejection } from "./transcript-rejections"
@@ -9,7 +10,16 @@ export const STREAM_WRITE_LIMITS = { delayMs: 100, bytes: 8 * 1024, checkpointMs
 type Delta = Extract<UiEvent, { type: "message.delta" }>
 type Parts = Extract<UiEvent, { type: "message.parts" }>
 type StreamEvent = Delta | Parts
-type Projection = { message: Message; baseSeq: number; lastEvent: string | null }
+type Projection = {
+  message: Message
+  baseSeq: number
+  lastEvent: string | null
+  textDeltas: Map<number, Array<string>>
+  textLengths: Map<number, number>
+}
+const isSnapshotCovered = (projection: Projection, seq: number | undefined): boolean =>
+  seq !== undefined && seq >= projection.baseSeq && seq <= (projection.message.updatedSeq ?? 0)
+
 const resolutionOf = (part: Extract<MessagePart, { callId: string }>) => {
   if (part.resolution) return part.resolution
   if (part.type === "tool_call" && part.ok !== null) return part.ok ? "succeeded" : "failed"
@@ -42,11 +52,13 @@ export const createStreamWriter = ({
   database,
   getMessage,
   getThread,
+  runStage,
 }: {
   kernel: Kernel
   database: Database
   getMessage: (input: { threadId: string; messageId: string }) => Message | null
   getThread: (input: { threadId: string }) => Thread | null
+  runStage?: PerformanceStageRunner
 }) => {
   let pending: StreamEvent[] = []
   const projections = new Map<string, Projection>()
@@ -58,6 +70,33 @@ export const createStreamWriter = ({
   const outside = new WeakSet<StreamEvent>()
   let unsettled: Array<{ event: StreamEvent; raw: string | null; seq: number }> = []
   const keyOf = (threadId: string, messageId: string): string => JSON.stringify([threadId, messageId])
+  const createProjection = (message: Message, baseSeq: number, lastEvent: string | null = null): Projection => ({
+    message,
+    baseSeq,
+    lastEvent,
+    textDeltas: new Map(),
+    textLengths: new Map(
+      message.parts.flatMap((part, index) => ("text" in part ? [[index, part.text.length] as const] : [])),
+    ),
+  })
+  const materializeProjectionText = (projection: Projection): void => {
+    if (!projection.textDeltas.size) return
+    const materialize = (): void => {
+      for (const [partIndex, deltas] of projection.textDeltas) {
+        const part = projection.message.parts[partIndex]
+        if (!part || (part.type !== "text" && part.type !== "reasoning")) continue
+        const text = part.text + deltas.join("")
+        projection.message.parts[partIndex] = { ...part, text }
+        projection.textLengths.set(partIndex, text.length)
+      }
+      projection.textDeltas.clear()
+      projection.message.text = projection.message.parts
+        .flatMap((part) => (part.type === "text" ? [part.text] : []))
+        .join("")
+    }
+    if (runStage) runStage("stream_text_materialization", materialize)
+    else materialize()
+  }
   const getSnapshotSeq = (threadId: string, messageId: string): number | undefined =>
     (
       database.query("SELECT updated_seq FROM messages WHERE thread_id = ? AND id = ?").get(threadId, messageId) as {
@@ -124,16 +163,18 @@ export const createStreamWriter = ({
     const outerTransaction = database.inTransaction
     const awaitingCommit: typeof unsettled = []
     try {
-      database.transaction(() => {
+      const writeBatch = database.transaction(() => {
         const rebased = new Map<string, Message>()
+        const checked = new Set<string>()
         for (const event of batch) {
           const key = keyOf(event.threadId, event.messageId)
-          if (rebased.has(key)) continue
+          if (checked.has(key)) continue
+          checked.add(key)
           const cached = projections.get(key)
           const headSeq = getSnapshotSeq(event.threadId, event.messageId)
           if (
             !cached ||
-            headSeq !== cached.baseSeq ||
+            !isSnapshotCovered(cached, headSeq) ||
             tailSeq(event.threadId, event.messageId) > (cached.message.updatedSeq ?? 0)
           ) {
             materializeTranscript(database)
@@ -239,11 +280,7 @@ export const createStreamWriter = ({
           }
           const key = keyOf(event.threadId, event.messageId)
           if (rebasedMessage)
-            projections.set(key, {
-              message: rebasedMessage,
-              baseSeq: getSnapshotSeq(event.threadId, event.messageId) ?? 0,
-              lastEvent: null,
-            })
+            projections.set(key, createProjection(rebasedMessage, getSnapshotSeq(event.threadId, event.messageId) ?? 0))
           const projection = projections.get(key)
           if (projection) {
             projection.message.updatedSeq = seq
@@ -251,16 +288,21 @@ export const createStreamWriter = ({
           }
           committed.push(event)
         }
-        captureTranscript(database)
+        if (runStage) runStage("transcript_journal_capture", captureTranscript, database)
+        else captureTranscript(database)
         if (Date.now() - checkpointAt >= STREAM_WRITE_LIMITS.checkpointMs) {
-          materializeTranscript(database)
+          if (runStage) runStage("transcript_projection_checkpoint", materializeTranscript, database)
+          else materializeTranscript(database)
           for (const projection of projections.values()) {
+            materializeProjectionText(projection)
             projection.baseSeq = projection.message.updatedSeq ?? projection.baseSeq
             projection.lastEvent = null
           }
           checkpointAt = Date.now()
         }
-      })()
+      })
+      if (runStage) runStage("stream_journal_write", writeBatch)
+      else writeBatch()
       unsettled.push(...awaitingCommit)
       pending = []
       runBytes.clear()
@@ -299,6 +341,8 @@ export const createStreamWriter = ({
     const key = keyOf(threadId, messageId)
     const cached = projections.get(key)
     if (cached) {
+      // Validate once per byte-bounded batch; flush rechecks durable state and rebases all offsets atomically.
+      if (runBytes.has(key) && !database.inTransaction) return cached
       const head = database
         .query("SELECT updated_seq, generation, status FROM messages WHERE thread_id = ? AND id = ?")
         .get(threadId, messageId) as { updated_seq: number; generation: number; status: string } | null
@@ -308,7 +352,8 @@ export const createStreamWriter = ({
             .get(threadId, cached.message.updatedSeq ?? 0) as { event_json: string } | null)
         : null
       if (
-        head?.updated_seq === cached.baseSeq &&
+        head &&
+        isSnapshotCovered(cached, head.updated_seq) &&
         head.generation === cached.message.generation &&
         head.status === "streaming" &&
         (!cached.lastEvent || last?.event_json === cached.lastEvent) &&
@@ -340,7 +385,7 @@ export const createStreamWriter = ({
       message = getMessage({ threadId, messageId })
       if (!message) return null
     }
-    const next = { message, baseSeq: message.updatedSeq ?? 0, lastEvent: null }
+    const next = createProjection(message, message.updatedSeq ?? 0)
     projections.set(key, next)
     return next
   }
@@ -404,17 +449,18 @@ export const createStreamWriter = ({
     for (const delta of chunks(input.delta)) {
       const buffered = runBytes.get(keyOf(input.threadId, input.messageId)) ?? 0
       if (buffered && buffered + Buffer.byteLength(delta) > STREAM_WRITE_LIMITS.bytes) flush()
-      const target = projectionFor(input.threadId, input.messageId)?.message
-      if (!target) return reject("validation")
-      const previous = target.parts[input.partIndex]
+      const projection = projectionFor(input.threadId, input.messageId)
+      if (!projection) return reject("validation")
+      const previous = projection.message.parts[input.partIndex]
       const type = previous?.type === "reasoning" ? "reasoning" : "text"
-      const offset = previous?.type === "text" || previous?.type === "reasoning" ? previous.text.length : 0
-      target.parts[input.partIndex] = {
-        ...previous,
-        type,
-        text: (previous && "text" in previous ? previous.text : "") + delta,
-      } as MessagePart
-      if (type === "text") target.text += delta
+      const baseLength = previous && "text" in previous ? previous.text.length : 0
+      const offset = projection.textLengths.get(input.partIndex) ?? baseLength
+      const deltas = projection.textDeltas.get(input.partIndex) ?? []
+      // Keep provider chunks in a local append-only buffer; the growing message is joined only at checkpoints.
+      deltas.push(delta)
+      projection.textDeltas.set(input.partIndex, deltas)
+      projection.textLengths.set(input.partIndex, offset + delta.length)
+      if (!previous) projection.message.parts[input.partIndex] = { type, text: "" }
       queue(
         {
           type: "message.delta",
@@ -457,6 +503,16 @@ export const createStreamWriter = ({
     // externalize an earlier part. Prepare the whole event before applying it.
     validateIndices(current.message.parts.length)
     const prepared = input.parts.map(({ partIndex, part }) => ({ partIndex, part: structuredClone(part) }))
+    if (
+      prepared.some(
+        ({ partIndex, part }) =>
+          part.type === "text" ||
+          part.type === "reasoning" ||
+          current?.message.parts[partIndex]?.type === "text" ||
+          current?.message.parts[partIndex]?.type === "reasoning",
+      )
+    )
+      materializeProjectionText(current)
     const candidate = [...current.message.parts]
     for (const { partIndex, part } of prepared) candidate[partIndex] = part
     const externalized = externalizeMessageParts({ database, appData: kernel.paths.appData, parts: candidate })
@@ -492,10 +548,14 @@ export const createStreamWriter = ({
     }
     for (const [index, patch] of parts.entries()) {
       current.message.parts[patch.partIndex] = structuredClone(patch.part)
+      current.textDeltas.delete(patch.partIndex)
+      if ("text" in patch.part) current.textLengths.set(patch.partIndex, patch.part.text.length)
+      else current.textLengths.delete(patch.partIndex)
       const original = input.parts[index]
       if (original) original.part = structuredClone(patch.part)
     }
-    current.message.text = current.message.parts.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("")
+    if (!current.textDeltas.size)
+      current.message.text = current.message.parts.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("")
     queue(
       {
         type: "message.parts",

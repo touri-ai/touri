@@ -112,16 +112,16 @@ it("keeps common bot settings nearby and technical settings behind a disclosure"
       expect(screen.getByRole("combobox", { name: "Projeto" })).toBeVisible()
       expect(screen.getByText("Pasta de trabalho")).toBeVisible()
     },
-    Ferramentas: () => {
+    Ferramentas: async () => {
       // The raw MCP form now sits behind the technical option; friendly catalog cards come first.
-      fireEvent.click(screen.getByRole("button", { name: "Configuração técnica (MCP)" }))
+      fireEvent.click(await screen.findByRole("button", { name: "Configuração técnica (MCP)" }))
       for (const name of ["Nome do servidor MCP", "Transporte MCP", "Comando MCP", "Argumentos MCP (lista JSON)"]) {
         expect(screen.getByLabelText(name)).toBeVisible()
       }
       expect(screen.getByRole("button", { name: "Abrir Integrações" })).toBeVisible()
     },
-    Permissões: () => {
-      expect(screen.getByRole("heading", { name: "Permissões permanentes" })).toBeVisible()
+    Permissões: async () => {
+      expect(await screen.findByRole("heading", { name: "Permissões permanentes" })).toBeVisible()
       expect(screen.queryByRole("button", { name: "Permitir controle do computador" })).toBeNull()
       expect(
         screen.getByText("Assumir controle não autoriza ações automáticas do bot. Revise essas ações no chat."),
@@ -175,7 +175,7 @@ it("keeps app sections short and technical settings within their disclosure", as
     await user.click(screen.getByRole("tab", { name: section.label }))
     const panel = screen.getByRole("tabpanel", { name: section.label })
     if (section.id === "api-models") {
-      expect(within(panel).getByLabelText("Provedor da API")).toBeVisible()
+      expect(await within(panel).findByLabelText("Provedor da API")).toBeVisible()
       continue
     }
     expect(

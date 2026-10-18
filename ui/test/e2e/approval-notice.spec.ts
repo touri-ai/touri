@@ -3,10 +3,16 @@ import { expect, test } from "@playwright/test"
 test.use({ reducedMotion: "reduce" })
 
 for (const width of [1000, 760]) {
-  test(`approval reminder leaves header controls clickable at ${width}px`, async ({ page }) => {
+  test(`approval reminder leaves header controls clickable at ${width}px`, async ({ page }, info) => {
     await page.setViewportSize({ width, height: 900 })
     await page.goto(process.env.APPROVAL_NOTICE_URL ?? "/test/e2e/approval-notice-harness.html")
     const notice = page.locator(".approval-notice")
+    await expect(page.getByText(/^Café Ideias pede sua aprovação:/)).toBeVisible()
+    const screenshot = info.outputPath(`approval-reminder-${width}.png`)
+    await page.screenshot({ path: screenshot, animations: "disabled" })
+    await info.attach(`approval reminder ${width}`, { path: screenshot, contentType: "image/png" })
+
+    await expect(notice).toHaveCount(1)
     await expect(notice).toContainText("Café Ideias")
     await expect(notice).toContainText("Permitir Leitura e escrita em …/phase-a para este bot.")
     await expect(notice).not.toContainText(/folder_access_request|requestedPath|previousMode|nextTurn|[{}]/)

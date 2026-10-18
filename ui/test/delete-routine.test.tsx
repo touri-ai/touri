@@ -22,7 +22,7 @@ it("confirms card deletion, cancels without writing and removes the routine whil
   const { api, routine } = await fixture()
   const messages = api.getState().messages.map((message) => message.id)
   openRoutines()
-  const actions = screen.getByRole("group", { name: `Ações da rotina ${routine.name}` })
+  const actions = await screen.findByRole("group", { name: `Ações da rotina ${routine.name}` })
   const trigger = within(actions).getByRole("button", { name: "Excluir rotina" })
   trigger.focus()
   fireEvent.click(trigger)
@@ -47,7 +47,7 @@ it("confirms card deletion, cancels without writing and removes the routine whil
 it("deletes from the end of the editor and identifies the saved name even with unsaved edits", async () => {
   const { api, routine } = await fixture()
   openRoutines()
-  fireEvent.click(screen.getByRole("button", { name: `Editar ${routine.name}` }))
+  fireEvent.click(await screen.findByRole("button", { name: `Editar ${routine.name}` }))
   const editor = screen.getByRole("dialog", { name: "Quando?" })
   expect(within(editor).getAllByRole("button").at(-1)).toHaveTextContent("Excluir rotina")
   fireEvent.change(within(editor).getByRole("textbox", { name: "Nome", exact: true }), {
@@ -66,7 +66,7 @@ it("deletes from the end of the editor and identifies the saved name even with u
 it("does not offer deletion for an unsaved draft", async () => {
   await fixture()
   openRoutines()
-  fireEvent.click(screen.getByRole("button", { name: "Criar rotina", exact: true }))
+  fireEvent.click(await screen.findByRole("button", { name: "Criar rotina", exact: true }))
   expect(within(screen.getByRole("dialog")).queryByRole("button", { name: "Excluir rotina" })).toBeNull()
 })
 
@@ -78,7 +78,7 @@ it("deletes from the routines list reached directly through Advanced → Routine
   fireEvent.click(within(settings).getByRole("tab", { name: "Rotinas" }))
   await waitFor(() => expect(settings).not.toBeInTheDocument())
   fireEvent.click(
-    within(screen.getByRole("group", { name: `Ações da rotina ${routine.name}` })).getByRole("button", {
+    within(await screen.findByRole("group", { name: `Ações da rotina ${routine.name}` })).getByRole("button", {
       name: "Excluir rotina",
     }),
   )

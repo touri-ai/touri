@@ -2,6 +2,7 @@ import { mkdir } from "node:fs/promises"
 import { expect, test } from "@playwright/test"
 
 const fixture = "/test/e2e/fixtures/mascot-parity.html"
+type AvatarDrawWindow = Window & { avatarDraws: { body: number } }
 
 test("all seeds and moods render at the reference sizes and freeze under reduced motion", async ({ page }, info) => {
   expect(info.project.use.headless).toBe(true)
@@ -42,17 +43,18 @@ test("runtime moods keep identity, freeze under reduced motion, and produce head
   await page.emulateMedia({ reducedMotion: "no-preference" })
   await page.goto("/test/e2e/fixtures/avatars.html")
   const avatar = page.locator("#gallery .tb-avatar").first()
-  const body = avatar.locator("[data-avatar-body]")
+  const eye = avatar.locator("[data-avatar-eye]").first()
   const shape = await avatar.getAttribute("data-avatar-shape")
   let index = 0
   for (const mood of ["idle", "working", "waiting", "failed", "responded", "asleep", "connecting"]) {
     await page.getByLabel("Mood").selectOption(mood)
     await expect(avatar).toHaveAttribute("data-avatar-mood", mood)
     await expect(avatar).toHaveAttribute("data-avatar-shape", shape ?? "")
-    await page.waitForTimeout(600)
     if (mood === "working") {
-      const before = await body.getAttribute("d")
-      await expect.poll(() => body.getAttribute("d")).not.toBe(before)
+      await expect(eye).toHaveAttribute("transform", /matrix/)
+      const before = await eye.getAttribute("transform")
+
+      await expect.poll(() => eye.getAttribute("transform")).not.toBe(before)
     }
     if (captureEvidence)
       await page.locator("#gallery").screenshot({ path: `/tmp/touri-evidence/bloub-${mood}.png`, animations: "allow" })
@@ -118,14 +120,23 @@ test("active avatars cap DOM draws and pause their body offscreen", async ({ pag
   const avatar = page.locator('[data-seed="mark"][data-mood="working"] .tb-avatar').first()
   await page.clock.runFor(100)
   await avatar.evaluate((element) => {
+    const body = element.querySelector(".tb-avatar-body")
+    if (!body) throw new Error("Missing avatar body")
+
+    // The renderer reuses SVG nodes, so each draw updates attributes rather than children.
     const counts = { body: 0 }
-    ;(window as unknown as { avatarDraws: typeof counts }).avatarDraws = counts
-    new MutationObserver(() => counts.body++).observe(element.querySelector(".tb-avatar-body") as Node, {
-      childList: true,
+    const fixtureWindow = window as AvatarDrawWindow
+    fixtureWindow.avatarDraws = counts
+    new MutationObserver(() => counts.body++).observe(body, {
+      attributes: true,
+      subtree: true,
+      attributeFilter: ["d", "transform"],
     })
   })
+
   await page.clock.runFor(1000)
-  const counts = await page.evaluate(() => (window as unknown as { avatarDraws: { body: number } }).avatarDraws)
+
+  const counts = await page.evaluate(() => (window as AvatarDrawWindow).avatarDraws)
   expect(counts.body).toBeGreaterThan(15)
   expect(counts.body).toBeLessThanOrEqual(30)
   await expect(avatar.locator(".tb-avatar-rings")).toHaveCount(0)

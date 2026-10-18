@@ -1,5 +1,6 @@
 import type { Database } from "bun:sqlite"
-import type { Kernel, Message } from "@touri/contracts"
+import { createInterface } from "node:readline"
+import type { Kernel, Message, StoreApi } from "@touri/contracts"
 import seed from "../../../sidecar/test/fixtures/ui-seed.json"
 
 export const install = (kernel: Kernel): void => {
@@ -17,35 +18,31 @@ export const install = (kernel: Kernel): void => {
       `Memory conversation ${i}`,
     )
   }
+  const commands = createInterface({ input: process.stdin })
+  commands.once("line", (command) => {
+    commands.close()
+    if (command !== "memory-fixture-start") return
+
+    startMemoryWorkload(kernel)
+    console.log("Memory workload started")
+  })
+}
+
+const startMemoryWorkload = (kernel: Kernel): void => {
+  const store = kernel.services.use("store.api")
+  if (!store) throw new Error("Memory fixture requires the message store")
+
+  const repeats = Number(process.env.TOURI_MEMORY_REPLY_REPEATS ?? 2500)
+  // A local counter gives each timed reply a unique identity.
   let count = 0
-  // Continuously create distinct background replies, including a superseding revision.
-  // The selected conversation stays quiet, as it does when other devices work on the server.
+  const send = () => {
+    count += 1
+    saveBackgroundReply(store, getBackgroundMessage(count, repeats))
+  }
   const timer = setInterval(
     () => {
-      for (let j = 0; j < 2; j++) {
-        const n = ++count
-        const threadId = `memory-thread-${1 + (n % 29)}`
-        const text = `${n}: ${"Synthetic background reply. ".repeat(Number(process.env.TOURI_MEMORY_REPLY_REPEATS ?? 2500))}`
-        const at = Date.now()
-        db.query(`INSERT INTO messages(id,thread_id,role,kind,status,text,parts_json,created_at,updated_at)
-        VALUES (?,?,'assistant','text','complete',?,'[]',?,?)`).run(`memory-message-${n}`, threadId, text, at, at)
-        const message: Message = {
-          id: `memory-message-${n}`,
-          threadId,
-          parentId: null,
-          role: "assistant",
-          kind: "text",
-          status: "complete",
-          text,
-          parts: [{ type: "text", text }],
-          createdAt: at,
-          updatedAt: at,
-          source: "native",
-          runId: null,
-        }
-        kernel.publish({ type: "message.created", message: { ...message, status: "streaming" } })
-        kernel.publish({ type: "message.updated", message })
-      }
+      send()
+      send()
     },
     Number(process.env.TOURI_MEMORY_EVENT_INTERVAL_MS ?? 1000),
   )
@@ -55,4 +52,37 @@ export const install = (kernel: Kernel): void => {
     () => clearInterval(timer),
     Math.min(600_000, Number(process.env.TOURI_MEMORY_DURATION_MS ?? 15_000) + 60_000),
   ).unref()
+}
+
+const saveBackgroundReply = (store: StoreApi, message: Message): void => {
+  // Durable revisions exercise the same event delivery path as real replies.
+  const inserted = store.insertMessage({ message: { ...message, text: "", parts: [] } })
+  if (!inserted.success) throw new Error("Could not insert a background reply")
+
+  const updated = store.updateMessage({
+    threadId: message.threadId,
+    messageId: message.id,
+    patch: { status: "complete", text: message.text, parts: message.parts },
+  })
+  if (!updated.success) throw new Error("Could not complete a background reply")
+}
+
+const getBackgroundMessage = (index: number, repeats: number, now = Date.now()): Message => {
+  const text = `${index}: ${"Synthetic background reply. ".repeat(repeats)}`
+
+  return {
+    id: `memory-message-${index}`,
+    threadId: `memory-thread-${1 + (index % 29)}`,
+    parentId: null,
+    role: "assistant",
+    kind: "text",
+    status: "streaming",
+    text,
+    parts: [{ type: "text", text }],
+    sender: null,
+    createdAt: now,
+    updatedAt: now,
+    source: "local",
+    runId: null,
+  }
 }

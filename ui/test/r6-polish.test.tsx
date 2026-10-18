@@ -431,8 +431,10 @@ describe("R6: integrações e Preview/Logs", () => {
     await screen.findByRole("textbox", { name: `Mensagem para ${name}` })
     fireEvent.click(screen.getByRole("button", { name: "Avançado", exact: true }))
     fireEvent.click(screen.getByRole("button", { name: /Integrações/ }))
-    await act(async () => fireEvent.click(screen.getByRole("button", { name: `Configurar MCP de ${name}` })))
-    const mcp = screen.getByRole("region", { name: "Servidores MCP deste bot" })
+    const configureMcp = await screen.findByRole("button", { name: `Configurar MCP de ${name}` })
+
+    await act(async () => fireEvent.click(configureMcp))
+    const mcp = await screen.findByRole("region", { name: "Servidores MCP deste bot" })
     expect(reveal.mock.contexts).toContain(mcp)
     expect(mcp).toHaveFocus()
     expect(api.calls.some((call) => call.route === "GET /bots/:id/mcp" && call.pathValues.id === botId)).toBe(true)
@@ -445,6 +447,8 @@ describe("R6: integrações e Preview/Logs", () => {
     if (!screen.queryByRole("button", { name: "Preview do projeto" }))
       fireEvent.click(screen.getByRole("button", { name: "Painel do bot" }))
     fireEvent.click(screen.getByRole("button", { name: "Preview do projeto" }))
+    await screen.findByRole("heading", { name: "Preview", exact: true })
+
     const preview = document.querySelector(".preview-main-pane")
     expect(preview).not.toBeNull()
     expect(screen.getAllByText(/Inicie um processo.*HTTP/i)).toHaveLength(1)

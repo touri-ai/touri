@@ -90,6 +90,11 @@ if (phase === "after") {
     for (let conversation = 1; conversation <= 10; conversation++) {
       await page.goto(`${url}?conversation=${conversation}`)
       await page.getByRole("textbox", { name: "Mensagem para mark" }).fill("Organize minhas notas.")
+      await expect(page.getByRole("button", { name: "Enviar", exact: true })).toBeEnabled()
+      // Finish the draft commit and its layout before measuring the next user action.
+      await page.evaluate(
+        () => new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => done()))),
+      )
       const { confirmationMs, acceptedActivityMs } = await page.evaluate(
         () =>
           new Promise<{ confirmationMs: number; acceptedActivityMs: number }>((resolve) => {

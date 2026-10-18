@@ -254,6 +254,26 @@ test("a trailing reasoning segment or whitespace cannot substitute for closing t
   ).toBe("Done. Files changed: notas.md.")
 })
 
+test("buffered closing text after tool activity prevents a duplicate conclusion", () => {
+  expect(
+    turnConclusion({
+      parts: [changed, { type: "text", text: "" }],
+      requestText: "Implemente.",
+      pendingPartText: new Map([[1, { type: "text", chunks: ["Código entregue"] }]]),
+    }),
+  ).toBeNull()
+})
+
+test("buffered text before the latest tool activity still gets a conclusion", () => {
+  expect(
+    turnConclusion({
+      parts: [{ type: "text", text: "" }, changed],
+      requestText: "Crie notas.md.",
+      pendingPartText: new Map([[0, { type: "text", chunks: ["Implementei."] }]]),
+    }),
+  ).toBe("Concluído. Arquivos alterados: notas.md.")
+})
+
 test("buffered redaction tails stay before tools and before new text items", () => {
   const redactor = createRedactor()
   redactor.addRedactionValue("fixture-credential")

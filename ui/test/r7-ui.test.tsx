@@ -114,6 +114,8 @@ it("renders structured Markdown in the Preview mini-chat with the main chat rend
   if (!screen.queryByRole("button", { name: "Preview do projeto" }))
     fireEvent.click(screen.getByRole("button", { name: "Painel do bot" }))
   fireEvent.click(screen.getByRole("button", { name: "Preview do projeto" }))
+  await screen.findByRole("heading", { name: "Preview", exact: true })
+
   const feed = document.querySelector(".preview-chat-feed") as HTMLElement
   expect(await within(feed).findByRole("heading", { name: "Resultado" })).toBeVisible()
   expect(feed.querySelector("strong")).toHaveTextContent("Resumo")

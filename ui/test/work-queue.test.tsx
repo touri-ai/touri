@@ -17,10 +17,15 @@ it("lists every executing and queued turn, origins and engine positions, and ope
   render(<App kernel={{ services: { api } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para Planejamento" })
 
+  const badge = screen.getByRole("button", { name: "Ver trabalho: 3 em execução, 2 na fila", exact: true })
+  expect(badge).toBeVisible()
+  expect(badge).toHaveTextContent("Trabalhando 3")
+  expect(badge).toHaveTextContent("2 na fila")
+
   fireEvent.click(screen.getByRole("button", { name: "Avançado", exact: true }))
   fireEvent.click(screen.getByRole("button", { name: "Trabalho", exact: true }))
 
-  const running = screen.getByRole("region", { name: "Trabalhando", exact: true })
+  const running = await screen.findByRole("region", { name: "Trabalhando", exact: true })
   const queued = screen.getByRole("region", { name: "Na fila", exact: true })
   expect(within(running).getAllByRole("article")).toHaveLength(3)
   expect(within(queued).getAllByRole("article")).toHaveLength(2)
@@ -29,9 +34,6 @@ it("lists every executing and queued turn, origins and engine positions, and ope
   expect(screen.getByText("Delegação")).toBeVisible()
   expect(screen.getByText("Retomada")).toBeVisible()
   expect(screen.getByText("Rotina")).toBeVisible()
-  const badge = screen.getByRole("button", { name: "Trabalhando 3 2 na fila" })
-  expect(badge).toBeVisible()
-
   act(() => {
     api.finishFirst()
   })
@@ -179,7 +181,7 @@ it("saves the concurrency limit through Advanced and restores its saved value", 
 
   fireEvent.click(screen.getByRole("button", { name: "Avançado", exact: true }))
   fireEvent.click(screen.getByRole("button", { name: "Desempenho", exact: true }))
-  const input = screen.getByRole("spinbutton", { name: "Tarefas ao mesmo tempo" })
+  const input = await screen.findByRole("spinbutton", { name: "Tarefas ao mesmo tempo" })
   expect(input).toHaveValue(3)
   fireEvent.change(input, { target: { value: "4" } })
   fireEvent.click(screen.getByRole("button", { name: "Salvar limite" }))

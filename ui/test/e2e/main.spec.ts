@@ -2,6 +2,76 @@ import AxeBuilder from "@axe-core/playwright"
 import { expect, test } from "@playwright/test"
 import { openGlobalPage, showBotAdvanced, showBotRoutines } from "./home-navigation"
 
+test("cold search keeps keyboard focus inside its loading dialog", async ({ page }, info) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.emulateMedia({ reducedMotion: "reduce" })
+  await page.route("**/src/features/commandPalette/CommandPalette.tsx*", async (route) => {
+    await page.waitForFunction(() => Reflect.get(window, "searchModuleReleased") === true)
+    await route.continue()
+  })
+  await page.goto("/test/e2e/home-harness.html")
+  const composer = page.getByRole("textbox", { name: "Mensagem para mark", exact: true })
+  await composer.focus()
+
+  await page.keyboard.press("Control+k")
+
+  const loading = page.getByRole("dialog", { name: "Buscar", exact: true })
+  await expect(loading.getByRole("status")).toHaveText("Carregando…")
+  await expect(loading.getByRole("button", { name: "Fechar diálogo", exact: true })).toBeFocused()
+  const screenshot = info.outputPath("search-loading.png")
+  await page.screenshot({ path: screenshot, animations: "disabled" })
+  await info.attach("search loading", { path: screenshot, contentType: "image/png" })
+
+  await page.keyboard.press("Control+k")
+
+  await expect(loading).toHaveCount(0)
+  await expect(composer).toBeFocused()
+
+  await page.keyboard.press("Control+k")
+  await expect(loading).toBeVisible()
+  await page.keyboard.press("Escape")
+
+  await expect(loading).toHaveCount(0)
+  await expect(composer).toBeFocused()
+
+  await page.evaluate(() => Reflect.set(window, "searchModuleReleased", true))
+  await page.keyboard.press("Control+k")
+
+  await expect(page.getByRole("combobox", { name: "Buscar bots, conversas e configurações" })).toBeFocused()
+  await page.keyboard.press("Escape")
+  await expect(composer).toBeFocused()
+})
+
+test("cold routines keep navigation available and focus the loaded destination", async ({ page }, info) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.emulateMedia({ reducedMotion: "reduce" })
+  await page.route("**/src/components/CronScreen.tsx*", async (route) => {
+    await page.waitForFunction(() => Reflect.get(window, "routineModuleReleased") === true)
+    await route.continue()
+  })
+  await page.goto("/test/e2e/home-harness.html")
+  const composer = page.getByRole("textbox", { name: "Mensagem para mark", exact: true })
+  await expect(composer).toBeVisible()
+
+  await showBotRoutines(page)
+
+  const loading = page.locator(".workspace-page").getByRole("status")
+  await expect(loading).toHaveText("Carregando…")
+  const screenshot = info.outputPath("routines-loading.png")
+  await page.screenshot({ path: screenshot, animations: "disabled" })
+  await info.attach("routines loading", { path: screenshot, contentType: "image/png" })
+
+  await page.getByRole("button", { name: /^Bots/ }).click()
+
+  await expect(composer).toBeVisible()
+  await expect(loading).toHaveCount(0)
+  await page.evaluate(() => Reflect.set(window, "routineModuleReleased", true))
+  await showBotRoutines(page)
+
+  await expect(page.getByRole("region", { name: "Rotinas", exact: true })).toBeFocused()
+  await expect(page.getByRole("heading", { name: "Rotinas", exact: true })).toBeVisible()
+})
+
 test("import wizard happy path against the mock adapter", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" })
   await page.goto("/")

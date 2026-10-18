@@ -44,10 +44,15 @@ for (const viewport of [
   })
 }
 
-test("a reopened page summarizes pending requests and shows a plain no-news result", async ({ page }) => {
+test("a reopened page shows one actionable reminder and a plain no-news result", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto("/test/e2e/notification-preferences-harness.html")
-  await expect(page.getByText("Você tem 2 solicitações pendentes.")).toBeVisible()
+  const reminder = page.locator(".approval-notice")
+  await expect(reminder).toHaveCount(1)
+  await expect(reminder).toContainText("mark pede sua aprovação:")
+  await expect(reminder.getByRole("button", { name: "Revisar", exact: true })).toBeVisible()
+  await expect(page.getByText("Você tem 2 solicitações pendentes.")).toHaveCount(0)
+  await expect(page.getByRole("button", { name: "Notificações, 2 precisam de atenção", exact: true })).toBeVisible()
 
   await page.getByRole("button", { name: /^Notificações,/ }).click()
 

@@ -95,15 +95,15 @@ it("cleans bot, thread and search previews and opens search with either shortcut
   )
   expect(document.querySelector(".thread-copy strong")).toHaveTextContent("Teste de busca")
   fireEvent.keyDown(window, { key: "k", metaKey: true })
-  let dialog = screen.getByRole("dialog", { name: "Paleta de comandos" })
+  const dialog = await screen.findByRole("dialog", { name: "Paleta de comandos" })
   const search = within(dialog).getByRole("combobox", { name: "Buscar bots, conversas e configurações" })
   expect(search).toHaveFocus()
   fireEvent.change(search, { target: { value: "page.tsx" } })
   expect(within(dialog).getByText("21 arquivos page.tsx · Revisar busca")).toBeVisible()
   fireEvent.keyDown(window, { key: "Escape" })
   fireEvent.keyDown(window, { key: "k", ctrlKey: true })
-  dialog = screen.getByRole("dialog", { name: "Paleta de comandos" })
-  expect(within(dialog).getByRole("combobox")).toHaveFocus()
+  const reopened = await screen.findByRole("dialog", { name: "Paleta de comandos" })
+  expect(within(reopened).getByRole("combobox")).toHaveFocus()
 })
 
 it("opening a failure clears row and bell attention persistently, while keeping the history", async () => {

@@ -213,6 +213,8 @@ describe("r8 screens", () => {
     if (!screen.queryByRole("button", { name: "Preview do projeto" }))
       fireEvent.click(screen.getByRole("button", { name: "Painel do bot" }))
     fireEvent.click(screen.getByRole("button", { name: "Preview do projeto" }))
+    await screen.findByRole("heading", { name: "Preview", exact: true })
+
     const preview = document.querySelector(".preview-chat-sidebar") as HTMLElement
     await within(preview).findByText("Confira", { selector: "strong" })
     expect(within(preview).queryByRole("article", { name: "Aprovação de ferramenta" })).toBeNull()

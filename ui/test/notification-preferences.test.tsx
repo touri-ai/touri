@@ -57,11 +57,12 @@ it("saves global, per-bot, per-type and quiet-hour preferences from web settings
   ).toBeVisible()
 })
 
-it("summarizes requests waiting when the page opens and lists them in the notification center", async () => {
+it("summarizes requests without review context and lists them in the notification center", async () => {
   const api = createMockApi()
   api.notify({
     kind: "approval",
     botId: "bot-mark",
+    threadId: null,
     title: "Revisar arquivo",
     body: "Autorizar alteração",
     requestId: "request-demo",
@@ -100,6 +101,36 @@ it("keeps the return summary hidden when the page opened without pending request
 
   expect(screen.queryByText(/Você tem .* solicitaç/)).toBeNull()
   expect(screen.getByRole("button", { name: "Notificações, 1 precisa de atenção" })).toBeVisible()
+})
+
+it("keeps one actionable approval reminder and every pending request in the center", async () => {
+  const api = createMockApi()
+  api.notify({
+    kind: "approval",
+    botId: "bot-mark",
+    threadId: "thread-mark",
+    title: "Revisar arquivo",
+    body: "Autorizar alteração",
+    requestId: "request-demo",
+  })
+  api.notify({
+    kind: "question",
+    botId: "bot-mark",
+    title: "Question",
+    body: "Qual pasta usar?",
+    requestId: "question-demo",
+  })
+
+  const view = render(<App kernel={{ services: { api } }} />)
+  await screen.findByText(/mark pede sua aprovação:/)
+
+  expect(view.container.querySelectorAll(".approval-notice")).toHaveLength(1)
+  expect(screen.queryByText("Você tem 2 solicitações pendentes.")).toBeNull()
+
+  fireEvent.click(screen.getByRole("button", { name: "Notificações, 2 precisam de atenção" }))
+
+  expect(screen.getAllByTestId("notification-row")).toHaveLength(2)
+  expect(screen.getByRole("region", { name: "Central de notificações" })).toHaveTextContent("Qual pasta usar?")
 })
 
 it("shows a plain no-news result for historical notification bodies", async () => {

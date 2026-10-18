@@ -21,6 +21,7 @@ const test = base.extend<object, { preparedHarness: undefined }>({
 })
 
 const prepare = async (page: Page, theme: "light" | "dark", width: number) => {
+  await mkdir(evidence, { recursive: true })
   await page.setViewportSize({ width, height: 900 })
   await page.emulateMedia({ reducedMotion: "reduce" })
   await page.clock.setFixedTime(new Date("2026-10-13T18:30:00Z"))
@@ -50,18 +51,10 @@ const prepare = async (page: Page, theme: "light" | "dark", width: number) => {
 for (const width of [1440, 1100]) {
   for (const theme of ["light", "dark"] as const) {
     test(`integrated screens · ${theme} · ${width}`, async ({ page }) => {
-      await mkdir(evidence, { recursive: true })
       const errors: string[] = []
       page.on("pageerror", (error) => errors.push(error.message))
       await prepare(page, theme, width)
-      const shot = async (view: string) => {
-        expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0)
-        for (const modal of await page.getByRole("dialog").all()) {
-          expect(await modal.evaluate((element) => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1)
-          await expect(modal.getByRole("button", { name: "Fechar diálogo" })).toBeInViewport()
-        }
-        await page.screenshot({ path: `${evidence}/${view}-${width}-${theme}.png`, animations: "disabled" })
-      }
+      const shot = (view: string) => captureView(page, width, theme, view)
       await showBotPanel(page)
       const panel = page.getByRole("complementary", { name: "Painel de mark" })
       await expect(panel).toBeVisible()
@@ -114,6 +107,15 @@ for (const width of [1440, 1100]) {
       await shot("notifications")
       await center.getByRole("button", { name: "Fechar notificações" }).click()
       await page.getByRole("button", { name: "Voltar ao chat" }).click()
+      expect(errors).toEqual([])
+    })
+
+    test(`integrated settings and creation · ${theme} · ${width}`, async ({ page }) => {
+      const errors: string[] = []
+      page.on("pageerror", (error) => errors.push(error.message))
+      await prepare(page, theme, width)
+      const shot = (view: string) => captureView(page, width, theme, view)
+
       await showBotAdvanced(page)
       const dialog = page.getByRole("dialog")
 
@@ -175,4 +177,13 @@ for (const width of [1440, 1100]) {
       expect(errors).toEqual([])
     })
   }
+}
+
+const captureView = async (page: Page, width: number, theme: "light" | "dark", view: string): Promise<void> => {
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0)
+  for (const modal of await page.getByRole("dialog").all()) {
+    expect(await modal.evaluate((element) => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1)
+    await expect(modal.getByRole("button", { name: "Fechar diálogo" })).toBeInViewport()
+  }
+  await page.screenshot({ path: `${evidence}/${view}-${width}-${theme}.png`, animations: "disabled" })
 }

@@ -93,9 +93,70 @@ Linux and Windows do not currently have an equivalent outer sandbox for local pr
 
 Guest executions retain provider CLI folder rules and the guest's outer isolation, with read-only bind mounts and sensitive-path masking. Folder policy tests use inert provider fixtures for both local and guest execution; no real provider CLI or VM is needed.
 
-`.github/workflows/ci.yml` pins Bun 1.4.3 in every Bun job, as does the macOS release workflow. All pull requests run the three macOS sidecar shards, the Linux platform/confinement selection, UI tests with Vitest and the UI build. Native, policy and workflow changes also run the native Rust checks, the Windows portable sidecar suite and compiled smoke, and the Linux native integration checks. Main and manual runs keep the full Linux sidecar suite and Linux/Windows installer uploads. Rust builds on `macos-26` for the Apple Metal SDK.
+`.github/workflows/ci.yml` pins Bun 1.4.3 in every Bun job, as does the release workflow. All pull requests run the three macOS sidecar shards, the Linux platform/confinement selection, UI tests with Vitest and the UI build. Native, policy and workflow changes also run the native Rust checks, the Windows portable sidecar suite and compiled smoke, and the Linux native integration checks. Main and manual runs keep the full Linux sidecar suite and Linux/Windows installer uploads. Rust builds on `macos-26` for the Apple Metal SDK.
 
 The portable sidecar selection is explicit in `scripts/test-sidecar-portable.ts`; Unix permission/signal/FFI fixtures and opt-in integration suites remain in the full Linux/macOS runs. `scripts/smoke-sidecar.ts` compiles an inert Codex-protocol fixture, creates a local bot and checks its persisted first reply without a provider account. CI does not perform real provider logins or live VM onboarding.
+
+## Publish a release
+
+Merge the version bump and its `## X.Y.Z` section in `CHANGELOG.md` to main after CI and the
+platform review pass. Keep the package, Cargo and Tauri versions aligned. The Linux dependency
+audit tracked in [#154](https://github.com/touri-ai/touri/issues/154) and the manual platform checks
+above remain release review items; packaging does not establish that those checks passed.
+Create and push the matching tag from that commit (replace `X.Y.Z` with the version):
+
+```sh
+git switch main
+git pull --ff-only origin main
+git tag vX.Y.Z
+git push origin vX.Y.Z
+```
+
+Only numeric `vX.Y.Z` tag pushes (filter `v[0-9]+.[0-9]+.[0-9]+`) start
+`.github/workflows/release.yml`, for example `v0.3.0` or `v12.34.567`. Suffixes such as `-rc.1`
+and build metadata such as `+build.1` are excluded because the Windows MSI version must be numeric.
+The `validate` job enforces the same contract before any platform build; publication also requires
+a nonempty changelog section matching the version without `v`.
+
+| Job | Runner | Build and uploaded artifact |
+| --- | --- | --- |
+| `validate` | `ubuntu-latest` | Rejects nonnumeric version tags before the three builds |
+| `macos` | `macos-26` | Apple Silicon sidecar, `.app` and `.dmg`; uploads the DMG as `touri-<tag>-macos-arm64` (the app is inside the DMG) |
+| `linux` | `ubuntu-latest` | x64 sidecar, AppImage and `.deb`, with CI's native Linux dependencies; uploads installers as `touri-<tag>-linux-x64` |
+| `windows` | `windows-latest` | MSVC x64 sidecar, MSI and NSIS `.exe`; uploads installers as `touri-<tag>-windows-x64` |
+| `publish` | `ubuntu-latest` | Waits for all three builds, downloads their artifact IDs from this run, requires all five versioned installers and flattens filenames; creates a pre-release only if absent, uploads missing assets and publishes `SHA256SUMS` last |
+
+The builds have `contents: read`; only `publish` has `contents: write`, with `GH_TOKEN` explicitly
+passed only to the GitHub CLI publication step. All external actions are pinned to full commit SHAs.
+Each platform explicitly installs stable Rust with the SHA-pinned `dtolnay/rust-toolchain` action
+(including the Apple Silicon target on macOS), rather than relying on the runner's preinstalled Rust.
+The action revision is fixed; the stable compiler channel can advance between runs.
+The publish job installs no dependencies and never executes downloaded artifacts. Notes contain
+only the matching changelog section, ending before the next version heading. Missing or duplicate
+installers, unexpected assets and missing/empty notes fail before any release write.
+
+Release Rust builds remap runner home and workspace prefixes through `RUSTFLAGS` and
+`CARGO_ENCODED_RUSTFLAGS` (preserving Windows paths with spaces). Each build checks the shell
+and compiled sidecar for the runner home in UTF-8 and UTF-16LE, including Windows slash variants,
+and fails before uploading if a home path remains. SHA256SUMS hashes the final downloadable files;
+verify locally with `sha256sum --check SHA256SUMS` after downloading all assets.
+
+Signing, notarization and updater switches remain `false`; these installers are unsigned.
+After a failure, rerun the failed jobs in the tag's Actions run. Existing asset names, including
+`SHA256SUMS`, are skipped and logged; uploads never replace or delete published bytes. An existing
+release's title, notes, draft/pre-release status and latest designation remain unchanged, including
+after promotion. Only a new release gets the tag title, changelog notes, pre-release status and
+`latest=false`. Lookup errors other than HTTP 404 stop publication without attempting creation.
+
+Installers are not reproducible across builds. If `SHA256SUMS` is absent, publication downloads
+and hashes preserved assets, combines those hashes with the missing local installers, then uploads
+the manifest only after all installer uploads succeed. A failed upload leaves existing assets intact
+and no premature manifest; rerunning completes the missing uploads. If a manifest already exists,
+each missing local asset must match its published checksum before any upload is attempted. A
+mismatch stops publication: rerun using the original successful build artifacts (rerun only the
+publish job), or ship a new version/tag; never overwrite an installer or checksum to repair it.
+Runs for the same tag are serialized. A concurrent external upload fails on duplicate names without
+overwriting them; retry to refresh the asset list. Reruns never move the tag.
 
 ## Validation without provider accounts
 
@@ -112,4 +173,4 @@ dbus-run-session -- bash scripts/test-native-linux.sh
 
 Linux native integration tests require an unlocked Secret Service; `scripts/test-native-linux.sh` creates an isolated test keyring/session for them and also runs the dedicated round trip. The dedicated native secret round-trip test is ignored by default because it requires an unlocked desktop service. In an isolated session with such a service, run `cargo test --manifest-path src-tauri/Cargo.toml native_secret_round_trip -- --ignored`. It uses a dedicated test service/account and deletes its fixture. Fake provider fixtures can exercise the first-message protocol without launching any real provider CLI.
 
-Bun 1.2.21 aborted in native/JSC code during the full Linux suite on the port host, including in a JIT-disabled retry, and intermittently crashes in the macOS suite. All CI jobs that use Bun, and the macOS release job, pin [Bun 1.4.3](https://github.com/oven-sh/bun/releases/tag/bun-v1.4.3). Use the baseline Linux x64 Bun distribution on hosts without AVX.
+Bun 1.2.21 aborted in native/JSC code during the full Linux suite on the port host, including in a JIT-disabled retry, and intermittently crashes in the macOS suite. All CI and release jobs that use Bun pin [Bun 1.4.3](https://github.com/oven-sh/bun/releases/tag/bun-v1.4.3). Use the baseline Linux x64 Bun distribution on hosts without AVX.
