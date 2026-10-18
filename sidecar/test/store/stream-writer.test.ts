@@ -387,6 +387,7 @@ test("a durable projection checkpoint preserves subsequent chunk and frame offse
     f.store.activePath({ threadId: "t", leafId: "a" })
     f.store.appendDelta({ threadId: "t", messageId: "a", partIndex: 0, delta: "fim" })
     f.store.flushWrites?.()
+    materializeTranscript(f.database)
     expect(f.database.query("SELECT text FROM messages WHERE id = 'a'").get()).toEqual({ text: `${text}fim` })
     const deltas = f.events.flatMap(({ event }) => (event.type === "message.delta" ? [event] : []))
     let offset = 0
