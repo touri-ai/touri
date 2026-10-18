@@ -964,6 +964,15 @@ a {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+@media (max-width: 620px) {
+  .message-error-history > button {
+    display: block;
+    overflow: visible;
+    text-align: left;
+    text-overflow: clip;
+    white-space: normal;
+  }
+}
 .model-sep {
   color: var(--text-secondary);
 }

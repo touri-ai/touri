@@ -60,3 +60,32 @@ for (const width of [1440, 390]) {
       await page.screenshot({ path: `${process.env.TOURI_SCREENSHOT_DIR}/recovery-error-${width}.png` })
   })
 }
+
+for (const viewport of [
+  { width: 1440, height: 900 },
+  { width: 390, height: 844 },
+]) {
+  test(`recovered interruption details stay readable at ${viewport.width}px`, async ({ page }) => {
+    await page.setViewportSize(viewport)
+    await page.goto("/?mockScenario=interrupted-tasks")
+    const chat = page.getByTestId("virtual-message-list")
+    const status = chat.locator(".message-error-history > button")
+
+    await expect(status).toBeVisible()
+    await expect(status).toContainText("Ver detalhes")
+    const geometry = await status.evaluate((button) => {
+      const range = document.createRange()
+      range.selectNodeContents(button)
+      const lines = new Set([...range.getClientRects()].map((rect) => Math.round(rect.top)))
+      return { clientWidth: button.clientWidth, scrollWidth: button.scrollWidth, lines: lines.size }
+    })
+    expect(geometry.scrollWidth).toBeLessThanOrEqual(geometry.clientWidth)
+    if (viewport.width === 390) expect(geometry.lines).toBeGreaterThan(1)
+    else expect(geometry.lines).toBe(1)
+
+    await status.click()
+    await expect(chat.locator(".message-error-history [role=alert]")).toContainText(
+      "A resposta foi interrompida. Algumas ações podem ter sido concluídas.",
+    )
+  })
+}
