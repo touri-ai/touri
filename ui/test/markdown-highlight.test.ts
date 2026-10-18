@@ -37,7 +37,7 @@ describe("message code highlighting", () => {
     expect(() => highlighter?.getLoadedLanguages()).toThrow("disposed")
   })
 
-  it.each(["", "text", "plaintext", "unknown-fixture-language", "constructor", "__proto__"])(
+  it.each(["", "text", "plaintext"])(
     "renders %s as plain, escaped, copyable source",
     async (language) => {
       const source = '<script>alert("exemplo")</script>\n\n  & fim\n'
@@ -47,6 +47,18 @@ describe("message code highlighting", () => {
 
       expect(rendered.textContent).toBe(source)
       expect(rendered.querySelector("script")).toBeNull()
+    },
+  )
+
+  it.each(["unknown-fixture-language", "constructor", "__proto__"])(
+    "keeps the existing plain code fallback for %s without compiling a grammar",
+    async (language) => {
+      const { createHighlighterCore } = await import("shiki/core")
+
+      const html = await getMarkdownCodeHtml("conteúdo legível", language)
+
+      expect(html).toBeNull()
+      expect(createHighlighterCore).not.toHaveBeenCalled()
     },
   )
 
@@ -78,9 +90,9 @@ describe("message code highlighting", () => {
   })
 })
 
-const getRenderedCode = (html: string): HTMLElement => {
+const getRenderedCode = (html: string | null): HTMLElement => {
   const rendered = document.createElement("div")
-  rendered.innerHTML = html
+  rendered.innerHTML = html ?? ""
 
   return rendered
 }
