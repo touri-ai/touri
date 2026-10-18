@@ -1,5 +1,5 @@
 import { act, cleanup, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react"
-import type { Message } from "@touri/contracts"
+import type { Message, Run } from "@touri/contracts"
 import { afterEach, expect, test } from "vitest"
 import App from "../src/App"
 import type { ApiRequest } from "../src/api/client"
@@ -7,6 +7,7 @@ import { createMockApi } from "../src/api/mock"
 import { pendingApprovalTargets } from "../src/approvalNavigation"
 import { latestPreview } from "../src/botPreview"
 import { useWorkspace } from "../src/useWorkspace"
+import { TranscriptBuffer } from "../src/workspaceMemory"
 
 afterEach(cleanup)
 
@@ -75,7 +76,7 @@ test("134 threads across 15 bots request only the selected history and render be
   await act(async () => barrier.resolve())
 })
 
-test("selection loads a thread while preserving visited histories and background live events", async () => {
+test("selection evicts visited histories and reloads them on return", async () => {
   const api = createMockApi()
   offscreenMessage(api)
   const hook = renderHook(() => useWorkspace(api))
@@ -85,10 +86,12 @@ test("selection loads a thread while preserving visited histories and background
   expect(hook.result.current.data.messages.some((message) => message.threadId === "thread-onb")).toBe(false)
   const original = hook.result.current.data.messages[0]
   if (!original) throw new Error("Missing message fixture")
+  const reply = { ...original, id: "live-reply", threadId: "thread-onb", text: "Live reply", updatedSeq: 100 }
+  api.getState().messages.push(reply)
   act(() => {
     api.emit({
       type: "message.created",
-      message: { ...original, id: "live-reply", threadId: "thread-onb", text: "Live reply", updatedSeq: 100 },
+      message: reply,
     })
     hook.result.current.actions.selectLocation({ bot: "bot-onb", thread: "thread-onb" })
   })
@@ -99,8 +102,219 @@ test("selection loads a thread while preserving visited histories and background
       ),
     ).toBe(true),
   )
-  expect(hook.result.current.data.messages).toContainEqual(original)
+  expect(hook.result.current.data.messages).not.toContainEqual(original)
   expect(hook.result.current.data.messages.find((message) => message.id === "live-reply")?.text).toBe("Live reply")
+  act(() => hook.result.current.actions.selectBot("bot-mark"))
+  await waitFor(() => expect(hook.result.current.data.messages).toContainEqual(original))
+  expect(hook.result.current.data.messages.every((message) => message.threadId === "thread-mark")).toBe(true)
+  expect(
+    api.calls.filter((call) => call.route === "GET /threads/:id/messages" && call.pathValues.id === "thread-mark"),
+  ).toHaveLength(2)
+})
+
+test("a thousand background replies retain only small activity summaries", async () => {
+  const api = createMockApi()
+  const hook = renderHook(() => useWorkspace(api))
+  await waitFor(() => expect(hook.result.current.data.messages.length).toBeGreaterThan(0))
+  const original = api.getState().messages[0]
+  if (!original) throw new Error("Missing message fixture")
+  for (let batch = 0; batch < 10; batch++) {
+    act(() => {
+      for (let n = batch * 100; n < (batch + 1) * 100; n++) {
+        const text = `${n}: ${"background output ".repeat(4000)}`
+        api.emit({
+          type: "message.created",
+          message: {
+            ...original,
+            id: `background-${n}`,
+            threadId: "thread-onb",
+            role: "assistant",
+            text,
+            parts: [{ type: "text", text }],
+            createdAt: n + 1,
+            updatedAt: n + 1,
+          },
+        })
+      }
+    })
+  }
+  expect(hook.result.current.data.messages.every((message) => message.threadId === "thread-mark")).toBe(true)
+  const summaries = hook.result.current.data.activityMessages.filter((message) => message.threadId === "thread-onb")
+  expect(summaries.length).toBeLessThanOrEqual(5)
+  expect(JSON.stringify(summaries).length).toBeLessThan(10_000)
+  expect(summaries.some((message) => message.id === "background-999")).toBe(true)
+})
+
+test("background previews append new prose parts and ignore replayed revisions", async () => {
+  const api = createMockApi()
+  const reply = offscreenMessage(api)
+  Object.assign(reply, {
+    status: "streaming",
+    text: "Primeiro trecho. ",
+    parts: [
+      { type: "text", text: "Primeiro trecho. " },
+      { type: "command", callId: "preview-command", command: "pwd", cwd: "/project", outputTail: "", exitCode: 0 },
+    ],
+    updatedSeq: 1,
+  })
+  const hook = renderHook(() => useWorkspace(api))
+  await waitFor(() => expect(hook.result.current.data.loading).toBe(false))
+  const preview = () => hook.result.current.data.activityMessages.find((message) => message.id === reply.id)?.text
+  const delta = {
+    type: "message.delta" as const,
+    threadId: reply.threadId,
+    messageId: reply.id,
+    partIndex: 2,
+    offset: 0,
+    delta: "Continuação após a ferramenta.",
+    updatedSeq: 2,
+  }
+  act(() => api.emit(delta))
+  expect(preview()).toBe(`Primeiro trecho. ${delta.delta}`)
+  act(() => api.emit(delta))
+  expect(preview()).toBe(`Primeiro trecho. ${delta.delta}`)
+  act(() => api.emit({ ...delta, offset: delta.delta.length, delta: "x".repeat(1000), updatedSeq: 3 }))
+  expect(preview()).toHaveLength(512)
+  expect(hook.result.current.data.messages.some((message) => message.threadId === reply.threadId)).toBe(false)
+})
+
+test("resolved background approvals are evicted before their notifications rotate out", async () => {
+  const api = createMockApi()
+  const hook = renderHook(() => useWorkspace(api))
+  await waitFor(() => expect(hook.result.current.data.loading).toBe(false))
+  const original = api.getState().messages[0]
+  if (!original) throw new Error("Missing message fixture")
+  const started = Date.now()
+  for (let batch = 0; batch < 24; batch++)
+    act(() => {
+      for (let n = batch * 10; n < (batch + 1) * 10; n++) {
+        const requestId = `memory-approval-${n}`
+        api.emit({
+          type: "message.created",
+          message: {
+            ...original,
+            id: requestId,
+            threadId: "thread-onb",
+            role: "assistant",
+            status: "streaming",
+            text: "Approval",
+            createdAt: started + n,
+            updatedAt: started + n,
+            parts: [
+              { type: "approval", approvalId: requestId, request: "command", detail: "pwd", decision: "pending" },
+            ],
+          },
+        })
+        const notification = api.notify({
+          kind: "approval",
+          title: "Approval",
+          body: "Command",
+          botId: "bot-onb",
+          threadId: "thread-onb",
+          requestId,
+        })
+        api.emit({
+          type: "notification.resolved",
+          notification: {
+            ...notification,
+            resolvedAt: started + n,
+            resolution: "allow",
+          },
+        })
+      }
+    })
+  const summaries = hook.result.current.data.activityMessages.filter((message) =>
+    message.id.startsWith("memory-approval-"),
+  )
+  expect(summaries.length).toBeLessThanOrEqual(5)
+  expect(pendingApprovalTargets(summaries)).toHaveLength(0)
+})
+
+test("a slow offscreen history response cannot restore an evicted transcript", async () => {
+  const api = createMockApi()
+  offscreenMessage(api)
+  const barrier = deferred()
+  const request: ApiRequest = async (route, input, path) => {
+    const response = await api.request(route, input, path)
+    if (route === "GET /threads/:id/messages" && path?.id === "thread-mark") await barrier.promise
+    return response
+  }
+  const client = { ...api, request }
+  const hook = renderHook(() => useWorkspace(client))
+  await waitFor(() => expect(api.calls.some((call) => call.route === "GET /threads/:id/messages")).toBe(true))
+  act(() => hook.result.current.actions.selectBot("bot-onb"))
+  await waitFor(() =>
+    expect(hook.result.current.data.messages.some((message) => message.threadId === "thread-onb")).toBe(true),
+  )
+  await act(async () => barrier.resolve())
+  expect(hook.result.current.data.messages.every((message) => message.threadId === "thread-onb")).toBe(true)
+})
+
+test("snapshot overlap buffers discard overflow and require a fresh snapshot", () => {
+  const buffer = new TranscriptBuffer()
+  for (let n = 0; n < 10_000; n++)
+    buffer.push({
+      type: "message.delta",
+      threadId: "thread",
+      messageId: "message",
+      partIndex: 0,
+      delta: "output ".repeat(100),
+    })
+  expect(buffer.overflow).toBe(true)
+  expect(buffer.events).toHaveLength(0)
+  const oversized = new TranscriptBuffer()
+  oversized.push({
+    type: "message.delta",
+    threadId: "thread",
+    messageId: "message",
+    partIndex: 0,
+    delta: "x".repeat(2 * 1024 * 1024),
+  })
+  expect(oversized.overflow).toBe(true)
+  expect(oversized.events).toHaveLength(0)
+})
+
+test("overflow during a slow selected snapshot reloads the current server revision", async () => {
+  const api = createMockApi()
+  const stored = api
+    .getState()
+    .messages.find((message) => message.role === "assistant" && message.threadId === "thread-mark")
+  if (!stored) throw new Error("Missing message fixture")
+  Object.assign(stored, { status: "streaming", text: "", parts: [{ type: "text", text: "" }], updatedSeq: 1 })
+  const barrier = deferred()
+  let reads = 0
+  const request: ApiRequest = async (route, input, path) => {
+    const response = structuredClone(await api.request(route, input, path))
+    if (route === "GET /threads/:id/messages" && ++reads === 1) await barrier.promise
+    return response
+  }
+  const client = { ...api, request }
+  const hook = renderHook(() => useWorkspace(client))
+  await waitFor(() => expect(reads).toBe(1))
+  act(() => {
+    for (let n = 0; n < 600; n++)
+      api.emit({
+        type: "message.delta",
+        threadId: stored.threadId,
+        messageId: stored.id,
+        partIndex: 0,
+        offset: n,
+        delta: "x",
+        updatedSeq: n + 2,
+      })
+  })
+  Object.assign(stored, {
+    text: "Current server revision",
+    parts: [{ type: "text", text: "Current server revision" }],
+    updatedSeq: 1000,
+  })
+  await act(async () => barrier.resolve())
+  await waitFor(() => expect(reads).toBe(2))
+  await waitFor(() =>
+    expect(hook.result.current.data.messages.find((message) => message.id === stored.id)?.text).toBe(
+      "Current server revision",
+    ),
+  )
 })
 
 test("an invalid saved selection never downloads another bot's history", async () => {
@@ -227,6 +441,100 @@ test("refresh clears cached active runs that completed while disconnected", asyn
   expect(hook.result.current.data.runs.some((run) => run.threadId === "thread-onb" && run.status === "running")).toBe(
     false,
   )
+})
+
+test("a stale activity snapshot cannot revive a completed run evicted by a newer run", async () => {
+  const api = createMockApi()
+  const barrier = deferred()
+  let hold = false
+  let waiting = false
+  const request: ApiRequest = async (route, input, path) => {
+    const response = structuredClone(await api.request(route, input, path))
+    if (route === "GET /workspace/activity" && hold) {
+      waiting = true
+      await barrier.promise
+    }
+    return response
+  }
+  const client = { ...api, request }
+  const hook = renderHook(() => useWorkspace(client))
+  await waitFor(() => expect(hook.result.current.data.loading).toBe(false))
+  const active = hook.result.current.data.runs.find((run) => run.threadId === "thread-onb" && run.status === "running")
+  if (!active) throw new Error("Missing active run fixture")
+  hold = true
+  let refresh = Promise.resolve()
+  act(() => {
+    refresh = hook.result.current.actions.refresh()
+  })
+  await waitFor(() => expect(waiting).toBe(true))
+  act(() => {
+    api.emit({ type: "run.updated", run: { ...active, status: "succeeded", finishedAt: Date.now() } })
+    api.emit({
+      type: "run.updated",
+      run: {
+        ...active,
+        id: "newer-completed-run",
+        status: "succeeded",
+        queuedAt: active.queuedAt + 1,
+        finishedAt: Date.now(),
+      },
+    })
+  })
+  expect(hook.result.current.data.runs.some((run) => run.id === active.id)).toBe(false)
+  await act(async () => {
+    barrier.resolve()
+    await refresh
+  })
+  expect(hook.result.current.data.runs.some((run) => run.id === active.id && run.status === "running")).toBe(false)
+})
+
+test("returning during a history load keeps fresh messages and terminal runs after the old response", async () => {
+  const api = createMockApi()
+  const message = offscreenMessage(api)
+  const barrier = deferred()
+  let waiting = false
+  let reads = 0
+  let storedRuns: Run[] | null = null
+  const request: ApiRequest = async (route, input, path) => {
+    const response = structuredClone(await api.request(route, input, path))
+    if (route === "GET /threads/:id/runs" && path?.id === "thread-onb") {
+      reads++
+      if (storedRuns) return { runs: structuredClone(storedRuns) } as never
+      waiting = true
+      await barrier.promise
+    }
+    return response
+  }
+  const client = { ...api, request }
+  const hook = renderHook(() => useWorkspace(client))
+  await waitFor(() => expect(hook.result.current.data.loading).toBe(false))
+  const active = hook.result.current.data.runs.find((run) => run.threadId === "thread-onb" && run.status === "running")
+  if (!active) throw new Error("Missing active run fixture")
+  act(() => hook.result.current.actions.selectThread("thread-onb"))
+  await waitFor(() => expect(waiting).toBe(true))
+  act(() => hook.result.current.actions.selectThread("thread-mark"))
+  const completed: Run = { ...active, status: "succeeded", finishedAt: Date.now() }
+  const newer: Run = { ...completed, id: "newer-completed-run", queuedAt: active.queuedAt + 1 }
+  storedRuns = [completed, newer]
+  act(() => {
+    Object.assign(message, {
+      text: "Histórico atual",
+      parts: [{ type: "text", text: "Histórico atual" }],
+      updatedSeq: (message.updatedSeq ?? 0) + 100,
+    })
+    api.emit({ type: "message.updated", message })
+    api.emit({ type: "run.updated", run: completed })
+    api.emit({ type: "run.updated", run: newer })
+  })
+  expect(hook.result.current.data.runs.some((run) => run.id === active.id)).toBe(false)
+  act(() => hook.result.current.actions.selectThread("thread-onb"))
+  await waitFor(() => expect(reads).toBe(2))
+  await waitFor(() =>
+    expect(hook.result.current.data.messages.find((row) => row.id === message.id)?.text).toBe("Histórico atual"),
+  )
+  await act(async () => barrier.resolve())
+  expect(hook.result.current.data.messages.find((row) => row.id === message.id)?.text).toBe("Histórico atual")
+  expect(hook.result.current.data.runs.find((run) => run.id === active.id)?.status).toBe("succeeded")
 })
 
 test("a group transcript loads only after opening the group", async () => {

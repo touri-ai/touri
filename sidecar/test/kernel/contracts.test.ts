@@ -3,7 +3,7 @@ import { toolCatalog, validateToolArgs } from "@touri/contracts"
 import { target } from "../../src/browser"
 
 test("compiled tool validators accept valid args and report the schema path", () => {
-  expect(toolCatalog.tools).toHaveLength(60)
+  expect(toolCatalog.tools).toHaveLength(62)
   expect(validateToolArgs({ name: "history_search", args: { query: "accentuação" } })).toEqual({
     success: true,
     args: { query: "accentuação", limit: 10 },
@@ -45,4 +45,27 @@ test("browser timeoutMs sent as a string or out of range is normalized instead o
   })
   expect(validateToolArgs({ name: "browser_list_tabs", args: { timeoutMs: 1500 } }).success).toBe(true)
   expect(validateToolArgs({ name: "browser_snapshot", args: { tabId, timeoutMs: "soon" } }).success).toBe(false)
+})
+
+test("goal checkpoints accept progress but cannot carry budget or caller changes", () => {
+  const progress = { step: "Tabela verificada.", completed: true }
+
+  const accepted = validateToolArgs({ name: "goal_checkpoint", args: progress })
+  const budgetChange = validateToolArgs({ name: "goal_checkpoint", args: { ...progress, maxTurns: 20 } })
+  const callerChange = validateToolArgs({ name: "goal_checkpoint", args: { ...progress, runId: "another-turn" } })
+
+  expect(accepted.success).toBe(true)
+  expect(budgetChange.success).toBe(false)
+  expect(callerChange.success).toBe(false)
+})
+
+test("ask_all validates a bounded task without accepting extra recipients", () => {
+  const message = "Revise o plano"
+  const invalidArgs = [{}, { message: "" }, { message: "x".repeat(8001) }, { message, bot: "outsider" }]
+
+  const valid = validateToolArgs({ name: "ask_all", args: { message } })
+  const invalid = invalidArgs.map((args) => validateToolArgs({ name: "ask_all", args }))
+
+  expect(valid).toEqual({ success: true, args: { message } })
+  expect(invalid.every((result) => !result.success && result.errorCode === "INVALID_ARGS")).toBe(true)
 })

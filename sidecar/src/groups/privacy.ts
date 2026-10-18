@@ -10,6 +10,7 @@ export const groupHistoryThread = (thread: Thread): string | null =>
  * group sessions can neither read nor rewrite them.
  */
 export const PRIVATE_BOT_TOOLS: ReadonlySet<string> = new Set([
+  "goal_checkpoint",
   "routine_list",
   "routine_create",
   "routine_update",

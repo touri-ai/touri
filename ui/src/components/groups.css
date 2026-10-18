@@ -314,3 +314,60 @@
   font-size: 12px;
   line-height: 1.6;
 }
+
+.group-actions {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.group-actions .button {
+  padding: 6px 9px;
+  font-size: 12px;
+}
+.group-status-members li {
+  align-items: flex-start;
+}
+.group-status-members li > div {
+  min-width: 0;
+  flex: 1;
+}
+.group-member-state {
+  display: inline-block;
+  margin-top: 5px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.group-member-state-waiting {
+  color: var(--text-warning);
+}
+.group-member-state-failed {
+  color: var(--text-danger);
+}
+.group-member-result {
+  margin: 5px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 6em;
+  overflow-y: auto;
+}
+.group-board {
+  margin-top: 20px;
+  border-top: 1px solid var(--border-subtle);
+}
+.group-board article {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 12px;
+}
+.group-board article p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.5;
+}

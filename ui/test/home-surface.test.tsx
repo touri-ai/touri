@@ -3,7 +3,7 @@ import { afterEach, expect, it } from "vitest"
 import App from "../src/App"
 import type { ApiRequest } from "../src/api/client"
 import { createMockApi } from "../src/api/mock"
-import { dictionaries } from "../src/i18n"
+import { dictionaries, getHostLabel, t } from "../src/i18n"
 import { openRoutines, showBotSettings } from "./workspaceNavigation"
 
 afterEach(cleanup)
@@ -51,7 +51,7 @@ it("limits primary navigation to the bot list and Advanced, with chat and compos
   ])
   expect(within(sidebar).queryAllByRole("tab")).toHaveLength(0)
   expect(document.querySelector(".bot-panel")).toBeNull()
-  for (const name of ["Cron", "MCP", "Integrações", "Projetos", "Importar", "Verificar servidor", "Rotinas"])
+  for (const name of ["Cron", "MCP", "Integrações", "Projetos", "Importar", "Verificar este servidor", "Rotinas"])
     expect(within(sidebar).queryByRole("button", { name, exact: true })).toBeNull()
   expect(sidebar.querySelectorAll("[data-bot-entry]")).toHaveLength(3)
   const advanced = within(sidebar).getByRole("button", { name: "Avançado", exact: true })
@@ -78,15 +78,17 @@ it("shows one primary hire action and quiet secondary actions, even when checks 
     within(landing)
       .getAllByRole("button")
       .map((button) => button.textContent),
-  ).toEqual(["Criar meu primeiro bot→", "Importar", "Verificar servidor"])
+  ).toEqual(["Criar meu primeiro bot→", "Importar", "Verificar este servidor"])
   expect(landing).toHaveTextContent(
     "O histórico fica neste servidor. Sua IA recebe o conteúdo necessário para responder. O touri não coleta telemetria.",
   )
   expect(landing).toHaveTextContent("Já usa outra ferramenta?")
   expect(landing).not.toHaveTextContent(/Prontas|Avisos|Falhas|\d/)
   expect(dictionaries.en["Create my first bot"]).toBe("Create my first bot")
-  expect(dictionaries.en["onboarding.privacy"]).toBe(
-    "History stays on this {host}. Your AI receives the content needed to respond. touri collects no telemetry.",
+  const privacy = t("onboarding.privacy", { host: getHostLabel("server", "en") }, "en")
+
+  expect(privacy).toBe(
+    "History stays on this server. Your AI receives the content needed to respond. touri collects no telemetry.",
   )
 })
 
@@ -140,7 +142,7 @@ it("names the server diagnostics consistently after onboarding and opens it", as
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
   fireEvent.click(screen.getByRole("button", { name: "Avançado", exact: true }))
   const menu = screen.getByRole("navigation", { name: "Opções avançadas" })
-  const action = within(menu).getByRole("button", { name: "Verificar servidor", exact: true })
+  const action = within(menu).getByRole("button", { name: "Verificar este servidor", exact: true })
   expect(within(menu).queryByRole("button", { name: "Verificar este Mac" })).toBeNull()
   fireEvent.click(action)
   expect(await screen.findByRole("dialog", { name: "Diagnóstico" })).toBeVisible()

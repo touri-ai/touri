@@ -1,11 +1,20 @@
 import { lstatSync, realpathSync, statSync } from "node:fs"
 import { homedir } from "node:os"
 import { basename, dirname, isAbsolute, join, parse, relative } from "node:path"
-import type { Bot, Kernel, ToolContext, ToolRegistration, ToolResult } from "@touri/contracts"
+import {
+  type Bot,
+  getHostNoun,
+  type HostKind,
+  type Kernel,
+  type ToolContext,
+  type ToolRegistration,
+  type ToolResult,
+} from "@touri/contracts"
 import { getDelegation } from "../groups/security"
 import { canonicalPath, excludedBotFolders, parseBotFolders, withinFolder } from "../kernel/bot-folders"
 import { createWorkspaceDirectory } from "../kernel/files"
 import { folderAccessUnavailable, refreshHostFolderAccess } from "../kernel/folder-capability"
+import { getHost } from "../platform/host"
 import { createCapabilityTools } from "./capability-tools"
 import { discoverProjects } from "./discovery"
 import { inspectGitMetadata } from "./git"
@@ -30,7 +39,8 @@ const snapshot = (bot: Bot) =>
 
 const absolutePath = (value: string): string => {
   const path = value === "~" ? homedir() : value.startsWith("~/") ? join(homedir(), value.slice(2)) : value
-  if (!isAbsolute(path) || /[\0\n\r*]/.test(path)) throw new Error("Informe o caminho absoluto de uma pasta deste Mac.")
+  if (!isAbsolute(path) || /[\0\n\r*]/.test(path))
+    throw new Error(`Informe o caminho absoluto de uma pasta deste ${getHostNoun(getHost())}.`)
   return path
 }
 
@@ -39,7 +49,7 @@ const hostPath = (value: string, allowRoot = false): string => {
   const canonical = realpathSync(path)
   if (!statSync(canonical).isDirectory()) throw new Error("O caminho precisa ser uma pasta.")
   if (!allowRoot && canonical === parse(canonical).root)
-    throw new Error("O acesso a qualquer pasta deste Mac é exclusivo dos ajustes.")
+    throw new Error(`O acesso a qualquer pasta deste ${getHostNoun(getHost())} é exclusivo dos ajustes.`)
   return canonical
 }
 
@@ -72,9 +82,11 @@ const folderTarget = (value: string) => {
 export const createSetupTools = ({
   kernel,
   store,
+  host = getHost(),
 }: {
   kernel: Kernel
   store: ProjectStore
+  host?: HostKind
 }): Array<ToolRegistration & { group: "project" }> => {
   const api = () => kernel.services.use("store.api")
   const self = (ctx: ToolContext): Bot | null => {
@@ -154,7 +166,7 @@ export const createSetupTools = ({
       bot.machine === "vm"
         ? `${text} Vale a partir da próxima mensagem na VM.`
         : bot.machine === "local"
-          ? `${text} A configuração foi salva neste Mac. Vale a partir da próxima mensagem.`
+          ? `${text} A configuração foi salva neste ${getHostNoun(host)}. Vale a partir da próxima mensagem.`
           : text
     const message = automatic
       ? `${timing} Encerre sua resposta agora, sem falar em turnos nem em retomada: o touri retoma a tarefa sozinho com a configuração aprovada e avisa o usuário.`
@@ -358,7 +370,7 @@ export const createSetupTools = ({
       handler: async ({ ctx, args }) => {
         const bot = self(ctx)
         if (!bot) return denied("Somente o próprio bot, sem delegação, pode alterar sua configuração.")
-        if (bot.machine === "cloud") return denied("Pastas deste Mac não estão disponíveis na nuvem.")
+        if (bot.machine === "cloud") return denied(`Pastas deste ${getHostNoun(host)} não estão disponíveis na nuvem.`)
         const input = args as { path: string; mode: "read" | "read-write" }
         try {
           const source = folderRequestPath(input.path)

@@ -43,9 +43,11 @@ export default class MockDesktop extends EventTarget {
     this.connectTimer = setTimeout(() => this.dispatchEvent(new Event("connect")), 40)
   }
   getImageData() {
+    // The connecting scenario has not received its first guest frame yet.
+    if (new URLSearchParams(location.search).has("connecting")) return new ImageData(1200, 800)
+
     const image = this.canvas.getContext("2d").getImageData(0, 0, 1200, 800)
-    if (!new URLSearchParams(location.search).has("connecting"))
-      image.data.set([++this.sequence % 255, 0x30, 0x40, 255], ((800 - 4) * 1200 + 1200 - 4) * 4)
+    image.data.set([++this.sequence % 255, 0x30, 0x40, 255], ((800 - 4) * 1200 + 1200 - 4) * 4)
     return image
   }
   disconnect() {

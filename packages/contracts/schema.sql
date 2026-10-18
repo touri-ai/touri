@@ -334,3 +334,7 @@ CREATE TABLE bot_mcp_servers (
   PRIMARY KEY (bot_id, name)
 );
 UPDATE schema_meta SET value = '6' WHERE key = 'schema_version';
+
+-- Group actions use notice parts (group_ask_all / group_summary) in messages.parts_json.
+-- Run.groupTurnId is a read projection of group_run_links.turn_id; no extra persisted state.
+-- ApprovalPart.groupMemberId is optional metadata in messages.parts_json for delegation waiting states.

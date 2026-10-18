@@ -1,4 +1,4 @@
-import type { Bot, Id, Project, Run } from "@touri/contracts"
+import type { Bot, GroupAction, Id, Project, Run } from "@touri/contracts"
 import { getApiModelProviderId } from "@touri/contracts"
 import { type ComponentProps, type RefObject, useEffect, useId, useLayoutEffect, useRef, useState } from "react"
 import type { UiApi } from "../api/client"
@@ -42,7 +42,7 @@ type ComposerProps = {
   onSelectProject?: ((projectId: Id | null) => Promise<void>) | undefined
   onAddProject?: (() => void) | undefined
   queuedCount: number
-  onSend: (text: string, parentId?: Id | null, attachmentIds?: Array<Id>) => Promise<void>
+  onSend: (text: string, parentId?: Id | null, attachmentIds?: Array<Id>, groupAction?: GroupAction) => Promise<void>
   onCancel: (runId: Id) => Promise<void>
   onOpenPermissions?: (() => void) | undefined
   onOpenProviderLogin?: (() => void) | undefined
@@ -152,6 +152,7 @@ export const Composer = ({
     parentId: Id | null
     text: string
     files: Array<AttachedFile>
+    groupAction: GroupAction | undefined
   } | null>(null)
   const stoppingRef = useRef<string | null>(null)
   const stopping = Boolean(activeRun && activeRun.id === stoppingRunId)
@@ -269,10 +270,20 @@ export const Composer = ({
     uploading ||
     files.some((file) => file.status === "failed") ||
     (!draft.trim() && files.length === 0)
-  const submit = async () => {
-    if (blocked || sendingRef.current) return
+  const submit = async (groupAction?: GroupAction) => {
+    const summary = groupAction === "summarize"
+    if (sendingRef.current || (summary ? sending || Boolean(activeRun) || Boolean(threadCreation) : blocked)) return
     if (login.blocked) {
-      pendingSend.current = { api, botId: bot?.id, provider: bot?.provider, threadId, parentId, text: draft, files }
+      pendingSend.current = {
+        api,
+        botId: bot?.id,
+        provider: bot?.provider,
+        threadId,
+        parentId,
+        text: draft,
+        files,
+        groupAction,
+      }
       if (login.flow?.state !== "waiting" && !login.busy) void login.recheck()
       return
     }
@@ -281,15 +292,17 @@ export const Composer = ({
     setSending(true)
     setError(null)
     const text = draft
-    const sentFiles = files
+    const sentFiles = summary ? [] : files
+    const prompt = summary
+      ? t("Resuma os resultados confirmados do último turno, com a autoria de cada membro.")
+      : text.trim() || t("Review attached files")
+    const attachmentIds = sentFiles.flatMap((file) => (file.id ? [file.id] : []))
     try {
-      await onSend(
-        text.trim() ? text : t("Review attached files"),
-        parentId,
-        sentFiles.flatMap((file) => (file.id ? [file.id] : [])),
-      )
+      await (groupAction
+        ? onSend(prompt, parentId, attachmentIds, groupAction)
+        : onSend(prompt, parentId, attachmentIds))
       if (!alive.current) return
-      if (draftRef.current === text) onDraft("")
+      if (!summary && draftRef.current === text) onDraft("")
       setFiles((current) => current.filter((file) => !sentFiles.some((sent) => sent.key === file.key)))
       inputRef.current?.focus()
     } catch (failure) {
@@ -319,7 +332,7 @@ export const Composer = ({
     }
     if (!login.blocked) {
       pendingSend.current = null
-      void submitRef.current()
+      void submitRef.current(pending.groupAction)
     }
   }, [api, bot?.id, bot?.provider, threadId, parentId, draft, files, login.blocked])
   const stop = async () => {
@@ -408,6 +421,26 @@ export const Composer = ({
           <p>{t("Sua mensagem fica como rascunho até o login estar pronto.")}</p>
           <ProviderLoginFlow login={login} resumeMessage />
         </aside>
+      )}
+      {groupName && (
+        <fieldset className="group-actions" aria-label={t("Ações do grupo")}>
+          <button
+            type="button"
+            className="button button-quiet"
+            disabled={blocked}
+            onClick={() => void submit("ask_all")}
+          >
+            {t("Perguntar a todos")}
+          </button>
+          <button
+            type="button"
+            className="button button-quiet"
+            disabled={sending || Boolean(activeRun) || Boolean(threadCreation)}
+            onClick={() => void submit("summarize")}
+          >
+            {t("Pedir resumo do time")}
+          </button>
+        </fieldset>
       )}
       <textarea
         disabled={cloudUnavailable}

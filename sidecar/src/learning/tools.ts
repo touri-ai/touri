@@ -1,4 +1,6 @@
 import type { Bot, Kernel, ToolContext, ToolHandler, ToolResult } from "@touri/contracts"
+import { hiddenInGroupSession } from "../groups/privacy"
+import { getDelegation } from "../groups/security"
 import {
   applyMemoryOperations,
   MEMORY_LIMITS,
@@ -8,8 +10,16 @@ import {
   readEntries,
   writeEntries,
 } from "./memory"
-import { isReviewThread, readLearningState, writeLearningState } from "./settings"
-import { archiveSkill, createSkill, patchSkill, planSkillPatch, type SkillPatch, validateNewSkill } from "./skills"
+import { isReviewThread, learningToolHidden, readLearningState, writeLearningState } from "./settings"
+import {
+  archiveSkill,
+  createSkill,
+  patchSkill,
+  planSkillArchive,
+  planSkillPatch,
+  type SkillPatch,
+  validateNewSkill,
+} from "./skills"
 
 const fail = (errorCode: string, error: string): ToolResult => ({
   success: false,
@@ -23,39 +33,84 @@ const ok = (text: string, structured?: unknown): ToolResult => ({
   ...(structured === undefined ? {} : { structured }),
 })
 
-/** Memory and skills live in the host bot home; guest and cloud homes are written by their own file tools. */
-const writableBot = (kernel: Kernel, ctx: ToolContext): { bot: Bot } | { error: ToolResult } => {
+const fileGuard =
+  (handler: ToolHandler): ToolHandler =>
+  async (input) => {
+    try {
+      return await handler(input)
+    } catch (error) {
+      return error instanceof Error && error.message === "INVALID_PATH"
+        ? fail("INVALID_PATH", "O caminho da memória não é permitido.")
+        : fail(
+            "WRITE_FAILED",
+            "Não foi possível acessar os arquivos de aprendizado. Verifique as permissões e tente novamente.",
+          )
+    }
+  }
+
+/** Local, enabled, private and writable at the moment the change is applied. */
+const writableBot = (kernel: Kernel, ctx: ToolContext, toolName: string): { bot: Bot } | { error: ToolResult } => {
   const bot = kernel.services.use("store.api")?.getBot({ botId: ctx.botId })
   if (!bot) return { error: fail("NOT_FOUND", "Bot não encontrado.") }
-  if (bot.access === "read-only") return { error: fail("DENIED", "O bot está em modo somente leitura.") }
   if (bot.machine !== "local")
     return { error: fail("UNSUPPORTED", "O aprendizado contínuo grava a memória só de bots locais nesta versão.") }
+  if (
+    ctx.signal.aborted ||
+    bot.access === "read-only" ||
+    bot.paused ||
+    bot.archivedAt ||
+    learningToolHidden(kernel, bot.id, toolName) ||
+    hiddenInGroupSession(kernel, ctx.threadId, toolName) ||
+    getDelegation(kernel, ctx.threadId)
+  )
+    return {
+      error: fail("DENIED", "O aprendizado está desativado ou a autorização mudou. Verifique as configurações do bot."),
+    }
   return { bot }
 }
 
-/** Changes proposed by an automatic review wait for the user, except new memory facts. */
+const authorizationCurrent = (kernel: Kernel, ctx: ToolContext, bot: Bot, toolName: string): boolean => {
+  const latest = writableBot(kernel, ctx, toolName)
+  return (
+    "bot" in latest &&
+    latest.bot.access === bot.access &&
+    latest.bot.approvals === bot.approvals &&
+    latest.bot.homeDir === bot.homeDir
+  )
+}
+
+/** Automatic edits require consent bound to the current permissions. */
 const approveReview = async ({
   kernel,
   ctx,
   title,
   input,
+  isCurrent,
 }: {
   kernel: Kernel
   ctx: ToolContext
   title: string
   input: unknown
+  isCurrent: () => boolean
 }): Promise<boolean> => {
+  const canApply = (): boolean => {
+    try {
+      return isCurrent()
+    } catch {
+      return false
+    }
+  }
   const present = kernel.services.use("approvals.present")
-  if (!present || ctx.signal.aborted) return false
+  if (!present || !canApply()) return false
   const result = await present({
     ctx,
     scope: { source: "mcp", server: "touri", tool: "learning_review" },
     toolName: title,
     input,
     allowStanding: false,
-    isCurrent: () => !ctx.signal.aborted,
+    isCurrent: canApply,
   })
-  return result.success && result.behavior === "allow" && !ctx.signal.aborted
+  return result.success && result.behavior === "allow" && canApply()
 }
 
 const resetToolCalls = (kernel: Kernel, botId: string): void => {
@@ -63,15 +118,13 @@ const resetToolCalls = (kernel: Kernel, botId: string): void => {
   if (state.toolCalls) writeLearningState(kernel, botId, { ...state, toolCalls: 0 })
 }
 
-export const createMemoryWriteHandler =
-  ({ kernel }: { kernel: Kernel }): ToolHandler =>
-  async ({ ctx, args }) => {
-    const allowed = writableBot(kernel, ctx)
+export const createMemoryWriteHandler = ({ kernel }: { kernel: Kernel }): ToolHandler =>
+  fileGuard(async ({ ctx, args }) => {
+    const allowed = writableBot(kernel, ctx, "memory_write")
     if ("error" in allowed) return allowed.error
     const { target, operations } = args as { target: MemoryTarget; operations: MemoryOperation[] }
-    const limit = MEMORY_LIMITS[target]
-    const apply = () => applyMemoryOperations({ entries: readEntries(allowed.bot.homeDir, target), operations, limit })
-    const planned = apply()
+    const entries = readEntries(allowed.bot.homeDir, target)
+    const planned = applyMemoryOperations({ entries, operations, limit: MEMORY_LIMITS[target] })
     if (!planned.success)
       return {
         ...fail(planned.errorCode, planned.error),
@@ -79,54 +132,61 @@ export const createMemoryWriteHandler =
       }
     if (!planned.changed) return ok("Nada mudou: o fato já está salvo. Não repita.")
     const review = isReviewThread(kernel, ctx.botId, ctx.threadId)
+    const current = () =>
+      authorizationCurrent(kernel, ctx, allowed.bot, "memory_write") &&
+      JSON.stringify(readEntries(allowed.bot.homeDir, target)) === JSON.stringify(entries)
     if (review && operations.some((operation) => operation.action !== "add")) {
       const approved = await approveReview({
         kernel,
         ctx,
+        isCurrent: current,
         title: target === "user" ? "Aprendizado: alterar USER.md" : "Aprendizado: alterar MEMORY.md",
-        input: { arquivo: target === "user" ? "USER.md" : "MEMORY.md", operacoes: operations },
+        input: {
+          arquivo: target === "user" ? "USER.md" : "MEMORY.md",
+          operacoes: operations,
+          antes: entries,
+          depois: planned.entries,
+        },
       })
-      if (!approved) return fail("DENIED", "A alteração da memória não foi aprovada.")
+      if (!approved) return fail("DENIED", "A alteração da memória não foi aprovada ou a autorização mudou.")
     }
-    // The file may have changed while the card waited; apply to what is there now.
-    const result = review ? apply() : planned
-    if (!result.success) return fail(result.errorCode, result.error)
-    writeEntries(allowed.bot.homeDir, target, result.entries)
+    if (!current()) return fail("DENIED", "A memória ou a autorização mudou. Solicite a alteração novamente.")
+    writeEntries(allowed.bot.homeDir, target, planned.entries)
     return ok(
-      `Memória salva (${memoryUsage(result.entries, target)} caracteres). Esta atualização está concluída; não repita.`,
-      { usage: memoryUsage(result.entries, target) },
+      `Memória salva (${memoryUsage(planned.entries, target)} caracteres). Esta atualização está concluída; não repita.`,
+      { usage: memoryUsage(planned.entries, target) },
     )
-  }
+  })
 
 type SkillAction =
   | { kind: "create"; name: string; description: string; body: string }
   | { kind: "patch"; patch: SkillPatch }
   | { kind: "archive"; name: string }
 
-const skillHandler =
-  (kernel: Kernel, action: (args: unknown) => SkillAction): ToolHandler =>
-  async ({ ctx, args }) => {
-    const allowed = writableBot(kernel, ctx)
+const skillHandler = (kernel: Kernel, action: (args: unknown) => SkillAction): ToolHandler =>
+  fileGuard(async ({ ctx, args }) => {
+    const allowed = writableBot(kernel, ctx, "skill_create")
     if ("error" in allowed) return allowed.error
     const homeDir = allowed.bot.homeDir
     const request = action(args)
     const review = isReviewThread(kernel, ctx.botId, ctx.threadId)
     const origin = review ? "review" : "chat"
-    // Validate first, so the card only ever shows a change that can be applied.
-    const invalid =
+    const plan = () =>
       request.kind === "create"
         ? validateNewSkill({ homeDir, ...request })
         : request.kind === "patch"
-          ? (() => {
-              const plan = planSkillPatch({ homeDir, patch: request.patch })
-              return plan.success ? null : plan
-            })()
-          : null
-    if (invalid && !invalid.success) return fail(invalid.errorCode, invalid.error)
+          ? planSkillPatch({ homeDir, patch: request.patch })
+          : planSkillArchive({ homeDir, name: request.name })
+    const planned = plan()
+    if (planned && !planned.success) return fail(planned.errorCode, planned.error)
+    const current = () =>
+      authorizationCurrent(kernel, ctx, allowed.bot, "skill_create") &&
+      JSON.stringify(plan()) === JSON.stringify(planned)
     if (review) {
       const approved = await approveReview({
         kernel,
         ctx,
+        isCurrent: current,
         title:
           request.kind === "create"
             ? `Aprendizado: criar a skill ${request.name}`
@@ -135,8 +195,9 @@ const skillHandler =
               : `Aprendizado: arquivar a skill ${request.name}`,
         input: request.kind === "patch" ? request.patch : request,
       })
-      if (!approved) return fail("DENIED", "A alteração da skill não foi aprovada.")
+      if (!approved) return fail("DENIED", "A alteração da skill não foi aprovada ou a autorização mudou.")
     }
+    if (!current()) return fail("DENIED", "A skill ou a autorização mudou. Solicite a alteração novamente.")
     const result =
       request.kind === "create"
         ? createSkill({ homeDir, ...request, origin, threadId: ctx.threadId })
@@ -146,16 +207,14 @@ const skillHandler =
     if (!result.success) return fail(result.errorCode, result.error)
     resetToolCalls(kernel, ctx.botId)
     return ok(result.message)
-  }
+  })
 
 export const createSkillCreateHandler = ({ kernel }: { kernel: Kernel }): ToolHandler =>
   skillHandler(kernel, (args) => {
     const { name, description, body } = args as { name: string; description: string; body: string }
     return { kind: "create", name, description, body }
   })
-
 export const createSkillPatchHandler = ({ kernel }: { kernel: Kernel }): ToolHandler =>
   skillHandler(kernel, (args) => ({ kind: "patch", patch: args as SkillPatch }))
-
 export const createSkillArchiveHandler = ({ kernel }: { kernel: Kernel }): ToolHandler =>
   skillHandler(kernel, (args) => ({ kind: "archive", name: (args as { name: string }).name }))
