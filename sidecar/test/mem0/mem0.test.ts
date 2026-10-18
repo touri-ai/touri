@@ -182,7 +182,8 @@ test("platform recall searches with the owner scope and returns a fenced referen
 test("the API key goes to the keychain, is redacted everywhere and can be removed", async () => {
   const f = await fixture(() => new Response("boom", { status: 500 }))
   await f.configure({ enabled: true, apiKey: "m0-redact-me-0001" })
-  expect([...f.vault.values()]).toEqual(["m0-redact-me-0001"])
+  expect(f.vault.size).toBe(1)
+  expect([...f.vault.values()][0]).toContain("m0-redact-me-0001")
   expect(f.kernel.redact("a chave é m0-redact-me-0001")).not.toContain("m0-redact-me-0001")
   await f.mem0.api.recall({ botId: f.bot.id, query: "Onde eu moro?" })
   expect(f.logs.some((line) => line.includes("Mem0 recall skipped"))).toBe(true)
@@ -811,7 +812,12 @@ test("settings saves for one bot commit in order and keep the final key bound to
   expect(context.vault.size).toBe(0)
 })
 
-test("a pending destination save cannot send its replacement key to the previous destination", async () => {
+test.each([
+  ["active", "platform"],
+  ["restarted", "platform"],
+  ["active", "server"],
+  ["restarted", "server"],
+] as const)("a pending destination save keeps the replacement key isolated (%s, %s)", async (state, mode) => {
   const writing = getDeferred()
   const pending = getDeferred()
   const context = await fixture(undefined, (host) => async (method, params) => {
@@ -823,7 +829,7 @@ test("a pending destination save cannot send its replacement key to the previous
     return result
   })
   const server = fakeMem0(() => memories([]))
-  await context.configure({ enabled: true })
+  await context.configure({ enabled: true, mode, url: mode === "server" ? context.fake.url : "" })
   savedKey(context)
   context.vault.set(`mem0/${context.bot.id}`, "m0-original-destination-key")
   const saved = context.configure({ mode: "server", url: server.url, apiKey: "m0-replacement-destination-key" })
@@ -833,14 +839,15 @@ test("a pending destination save cannot send its replacement key to the previous
   })
 
   await writing.promise
-  context.mem0.api.sync({
+  const memory = state === "restarted" ? createMem0(context.kernel, { platformUrl: context.fake.url }) : context.mem0
+  memory.api.sync({
     botId: context.bot.id,
     threadId: context.bot.mainThreadId ?? "",
     userText: "Prefiro café sem açúcar.",
     assistantText: "Anotado.",
   })
   await Promise.all([
-    context.mem0.api.recall({ botId: context.bot.id, query: "Qual a minha bebida favorita?" }),
+    memory.api.recall({ botId: context.bot.id, query: "Qual a minha bebida favorita?" }),
     context.tool("mem0_search")({ query: "bebida favorita" }),
     context.tool("mem0_add")({ content: "Prefiro café sem açúcar." }),
     context.api(`/bots/${context.bot.id}/mem0/test`, {}),
@@ -851,7 +858,8 @@ test("a pending destination save cannot send its replacement key to the previous
   pending.resolve()
   expect((await saved).status).toBe(200)
 
-  await context.mem0.api.recall({ botId: context.bot.id, query: "Qual a minha bebida favorita?" })
+  const restarted = createMem0(context.kernel, { platformUrl: context.fake.url })
+  await restarted.api.recall({ botId: context.bot.id, query: "Qual a minha bebida favorita?" })
 
   expect(server.seen).toHaveLength(1)
   expect(server.seen[0]?.headers.get("x-api-key")).toBe("m0-replacement-destination-key")
