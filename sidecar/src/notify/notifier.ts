@@ -1,6 +1,7 @@
 import type { Database } from "bun:sqlite"
 import {
   canDeliverNotification,
+  getNotificationBody,
   type Kernel,
   type NotificationRecord,
   type NotifyInput,
@@ -47,11 +48,7 @@ export const createNotifier = ({ kernel, store, hub }: { kernel: Kernel; store: 
       threadId,
       title: clip({ value: kernel.redact(input.title), max: MAX_TITLE }),
       body: clip({
-        value: kernel.redact(
-          input.kind === "done" && /\bNO_NOTIFICATION\b/.test(input.body)
-            ? "Rotina concluída sem novidades."
-            : input.body,
-        ),
+        value: kernel.redact(getNotificationBody(input)),
         max: MAX_BODY,
       }),
     })

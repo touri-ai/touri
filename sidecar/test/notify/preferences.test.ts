@@ -14,6 +14,7 @@ import { createKernel } from "../../src/kernel"
 import { createNotifyUserHandler } from "../../src/mcp/tools/notify-user"
 import { init as initNotify } from "../../src/notify"
 import { createNotificationStore } from "../../src/notify/store"
+import { createRuntimeNotices } from "../../src/runtime/notices"
 import { init as initStore } from "../../src/store"
 
 const cleanups = new Set<() => void>()
@@ -158,6 +159,27 @@ test("no-news notifications contain a plain result instead of the model commenta
 
   expect(saved.body).toBe("Rotina concluída sem novidades.")
   expect(fixture.store.recent(10)[0]?.body).toBe(saved.body)
+})
+
+test.each(["O código NO_NOTIFICATION indica uma execução sem novidades.", "Exemplo:\n```text\nNO_NOTIFICATION\n```"])(
+  "ordinary completion text can explain the marker: %s",
+  async (body) => {
+    const fixture = await getFixture()
+
+    const saved = fixture.emit({ kind: "done", botId: null, threadId: null, title: "Done", body })
+
+    expect(saved.body).toBe(body)
+  },
+)
+
+test("routine markers are handled before a long result is shortened", async () => {
+  const fixture = await getFixture()
+  const notices = createRuntimeNotices({ kernel: fixture.kernel })
+  const summary = `${"Análise detalhada. ".repeat(60)}NO_NOTIFICATION`
+
+  notices.done({ botId: "bot-demo", threadId: "thread-demo", summary, routine: true })
+
+  expect(fixture.store.recent(10)[0]?.body).toBe("Rotina concluída sem novidades.")
 })
 
 test("notify_user stores muted notifications, reports its rate limit and accepts another bot", async () => {

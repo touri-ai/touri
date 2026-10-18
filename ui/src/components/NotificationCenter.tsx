@@ -1,4 +1,10 @@
-import type { Message, NotificationRecord, RespondBehavior, Run } from "@touri/contracts"
+import {
+  getNotificationBody,
+  type Message,
+  type NotificationRecord,
+  type RespondBehavior,
+  type Run,
+} from "@touri/contracts"
 import { useEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import { type ApprovalTarget, pendingApprovalTargets } from "../approvalNavigation"
@@ -101,13 +107,7 @@ const NotificationRow = ({
                 : "denied",
           )
       : (approval?.title ?? markdownSummary(localizeNotice(item.title)))
-  const body =
-    approval?.body ??
-    markdownSummary(
-      localizeNotice(
-        item.kind === "done" && /\bNO_NOTIFICATION\b/.test(item.body) ? "Rotina concluída sem novidades." : item.body,
-      ),
-    )
+  const body = approval?.body ?? markdownSummary(localizeNotice(getNotificationBody(item)))
   const failed = item.kind === "turn-failed" || item.kind === "routine-failed" || item.kind === "incident"
   const failedRun = runs
     .filter(

@@ -1,8 +1,15 @@
 import type { NotifyInput } from "./types"
 
-/** A standalone final marker is a protocol result; prose and code examples remain readable. */
-export const getNotificationBody = ({ kind, body }: Pick<NotifyInput, "kind" | "body">): string => {
-  if (kind !== "done" || !/(?:^|\r?\n)\s*NO_NOTIFICATION\s*$/.test(body)) return body
+/** Routine runs can append the marker to commentary; ordinary prose and code examples stay readable. */
+export const getNotificationBody = ({
+  kind,
+  body,
+  routine = false,
+}: Pick<NotifyInput, "kind" | "body"> & { routine?: boolean }): string => {
+  if (kind !== "done") return body
+
+  const hasNoNewsMarker = routine ? /\bNO_NOTIFICATION\s*$/.test(body) : /(?:^|\r?\n)\s*NO_NOTIFICATION\s*$/.test(body)
+  if (!hasNoNewsMarker) return body
 
   return "Rotina concluída sem novidades."
 }

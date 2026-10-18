@@ -105,6 +105,19 @@ it("shows a plain no-news result for historical notification bodies", async () =
   expect(screen.queryByText(/Texto bruto do modelo|NO_NOTIFICATION/)).toBeNull()
 })
 
+it("preserves ordinary explanations of the marker in historical notifications", async () => {
+  const api = createMockApi()
+  const body = "O código NO_NOTIFICATION indica uma execução sem novidades."
+  api.notify({ kind: "done", botId: "bot-mark", title: "Done", body })
+  render(<App kernel={{ services: { api } }} />)
+  await screen.findByRole("textbox", { name: "Mensagem para mark" })
+
+  fireEvent.click(screen.getByRole("button", { name: "Notificações", exact: true }))
+
+  expect(screen.getByText(body)).toBeVisible()
+  expect(screen.queryByText("Rotina concluída sem novidades.")).toBeNull()
+})
+
 it("provides English preferences and rate-limit guidance", () => {
   expect(t("Somente o que precisa de mim", {}, "en")).toBe("Only what needs me")
   expect(t("Também resultados concluídos", {}, "en")).toBe("Also completed results")
