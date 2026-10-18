@@ -52,11 +52,14 @@ test("sending with large history and two streams bounds historical message reads
   const getSendTimings = async () => {
     const started = performance.now()
     const response = await fixture.send("thread", "initial-large")
+    const routeMs = performance.now() - started
+    // Returning from the route is insufficient if queued work prevents the response from reaching I/O.
+    await new Promise<void>((resolve) => setImmediate(resolve))
     const sendMs = performance.now() - started
     await getReady(() => turns.has("thread"))
-    return { response, sendMs, readyMs: performance.now() - started }
+    return { response, routeMs, sendMs, readyMs: performance.now() - started }
   }
-  const { response, sendMs, readyMs } = await traceSend(getSendTimings)
+  const { response, routeMs, sendMs, readyMs } = await traceSend(getSendTimings)
   await Bun.sleep(10)
   const sendReads = metrics.getMessageReads()
   const recoveryReads = metrics.getRecoveryReads()
@@ -87,6 +90,7 @@ test("sending with large history and two streams bounds historical message reads
     if (batch === 8) {
       const started = performance.now()
       expect((await fixture.send("thread", "while-streaming")).status).toBe(201)
+      await new Promise<void>((resolve) => setImmediate(resolve))
       busySends.push(performance.now() - started)
     }
     fixture.store.flushWrites?.()
@@ -97,6 +101,7 @@ test("sending with large history and two streams bounds historical message reads
     messages: 2_000,
     toolCalls: 5_000,
     streams: turns.size,
+    routeMs: Math.round(routeMs * 10) / 10,
     sendMs: Math.round(sendMs * 10) / 10,
     busySendMs: Math.round((busySends[0] ?? 0) * 10) / 10,
     readyMs: Math.round(readyMs * 10) / 10,
