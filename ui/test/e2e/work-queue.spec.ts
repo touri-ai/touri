@@ -7,11 +7,14 @@ for (const viewport of [
   { width: 390, height: 844 },
 ]) {
   test(`work queue and performance at ${viewport.width}px`, async ({ page }) => {
-    // The first workspace visit includes cold module loading in CI.
     test.setTimeout(45_000)
     await page.setViewportSize(viewport)
+    // Development optimization can reload the page; start with a fresh mock after it settles.
     await page.goto("/test/e2e/work-harness.html")
+    await page.waitForLoadState("networkidle")
+    await page.reload({ waitUntil: "networkidle" })
     await expect(page.getByRole("textbox", { name: "Mensagem para Planejamento" })).toBeVisible()
+    const startedDocument = await page.evaluate(() => performance.timeOrigin)
     const openAdvanced = async () => {
       if (viewport.width === 390) await page.getByRole("button", { name: "Abrir menu" }).click()
       await page.getByRole("button", { name: "Avançado", exact: true }).click()
@@ -46,14 +49,13 @@ for (const viewport of [
     await page.getByRole("spinbutton", { name: "Tarefas ao mesmo tempo" }).fill("4")
     await page.getByRole("button", { name: "Salvar limite" }).click()
     await expect(page.getByText("Limite salvo.")).toBeVisible()
-    const savedDocument = await page.evaluate(() => performance.timeOrigin)
     if (process.env.TOURI_SCREENSHOT_DIR)
       await page.screenshot({ path: `${process.env.TOURI_SCREENSHOT_DIR}/work-performance-${viewport.width}.png` })
     await openAdvanced()
     await page.getByRole("button", { name: "Trabalho", exact: true }).click()
     await openAdvanced()
     await page.getByRole("button", { name: "Desempenho", exact: true }).click()
-    expect(await page.evaluate(() => performance.timeOrigin)).toBe(savedDocument)
+    expect(await page.evaluate(() => performance.timeOrigin)).toBe(startedDocument)
     await expect(page.getByRole("spinbutton", { name: "Tarefas ao mesmo tempo" })).toHaveValue("4")
   })
 }
