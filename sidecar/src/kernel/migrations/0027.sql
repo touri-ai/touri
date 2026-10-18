@@ -26,32 +26,50 @@ CREATE TABLE IF NOT EXISTS tool_recovery_pending (
 CREATE INDEX IF NOT EXISTS tool_recovery_thread ON tool_recovery_pending(thread_id, run_id);
 INSERT OR IGNORE INTO tool_recovery_pending(run_id, thread_id)
   SELECT id, thread_id FROM runs WHERE status IN ('succeeded','failed','canceled','interrupted');
-CREATE TRIGGER IF NOT EXISTS tool_recovery_run_insert AFTER INSERT ON runs
+DROP TRIGGER IF EXISTS tool_recovery_run_insert;
+CREATE TRIGGER tool_recovery_run_insert AFTER INSERT ON runs
 WHEN NEW.status IN ('succeeded','failed','canceled','interrupted') BEGIN
-  INSERT OR REPLACE INTO tool_recovery_pending VALUES (NEW.id, NEW.thread_id);
+  INSERT INTO tool_recovery_pending(run_id, thread_id) VALUES (NEW.id, NEW.thread_id)
+    ON CONFLICT(run_id) DO UPDATE SET thread_id = excluded.thread_id
+    WHERE tool_recovery_pending.thread_id IS NOT excluded.thread_id;
 END;
-CREATE TRIGGER IF NOT EXISTS tool_recovery_run_update AFTER UPDATE OF status, reply_message_id ON runs
+DROP TRIGGER IF EXISTS tool_recovery_run_update;
+CREATE TRIGGER tool_recovery_run_update AFTER UPDATE OF status, reply_message_id ON runs
 WHEN NEW.status IN ('succeeded','failed','canceled','interrupted')
   AND (NEW.status IS NOT OLD.status OR NEW.reply_message_id IS NOT OLD.reply_message_id) BEGIN
-  INSERT OR REPLACE INTO tool_recovery_pending VALUES (NEW.id, NEW.thread_id);
+  INSERT INTO tool_recovery_pending(run_id, thread_id) VALUES (NEW.id, NEW.thread_id)
+    ON CONFLICT(run_id) DO UPDATE SET thread_id = excluded.thread_id
+    WHERE tool_recovery_pending.thread_id IS NOT excluded.thread_id;
 END;
-CREATE TRIGGER IF NOT EXISTS tool_recovery_message_insert AFTER INSERT ON messages
+DROP TRIGGER IF EXISTS tool_recovery_message_insert;
+CREATE TRIGGER tool_recovery_message_insert AFTER INSERT ON messages
 WHEN EXISTS (SELECT 1 FROM runs WHERE id = NEW.run_id AND status IN ('succeeded','failed','canceled','interrupted')) BEGIN
-  INSERT OR REPLACE INTO tool_recovery_pending VALUES (NEW.run_id, NEW.thread_id);
+  INSERT INTO tool_recovery_pending(run_id, thread_id) VALUES (NEW.run_id, NEW.thread_id)
+    ON CONFLICT(run_id) DO UPDATE SET thread_id = excluded.thread_id
+    WHERE tool_recovery_pending.thread_id IS NOT excluded.thread_id;
 END;
-CREATE TRIGGER IF NOT EXISTS tool_recovery_message_update AFTER UPDATE OF parts_json, status, run_id ON messages
+DROP TRIGGER IF EXISTS tool_recovery_message_update;
+CREATE TRIGGER tool_recovery_message_update AFTER UPDATE OF parts_json, status, run_id ON messages
 WHEN (NEW.parts_json IS NOT OLD.parts_json OR NEW.status IS NOT OLD.status OR NEW.run_id IS NOT OLD.run_id)
   AND EXISTS (SELECT 1 FROM runs WHERE id = NEW.run_id AND status IN ('succeeded','failed','canceled','interrupted')) BEGIN
-  INSERT OR REPLACE INTO tool_recovery_pending VALUES (NEW.run_id, NEW.thread_id);
+  INSERT INTO tool_recovery_pending(run_id, thread_id) VALUES (NEW.run_id, NEW.thread_id)
+    ON CONFLICT(run_id) DO UPDATE SET thread_id = excluded.thread_id
+    WHERE tool_recovery_pending.thread_id IS NOT excluded.thread_id;
 END;
-CREATE TRIGGER IF NOT EXISTS tool_recovery_result_insert AFTER INSERT ON tool_resolutions
+DROP TRIGGER IF EXISTS tool_recovery_result_insert;
+CREATE TRIGGER tool_recovery_result_insert AFTER INSERT ON tool_resolutions
 WHEN EXISTS (SELECT 1 FROM runs WHERE id = NEW.run_id AND status IN ('succeeded','failed','canceled','interrupted')) BEGIN
-  INSERT OR REPLACE INTO tool_recovery_pending VALUES (NEW.run_id, NEW.thread_id);
+  INSERT INTO tool_recovery_pending(run_id, thread_id) VALUES (NEW.run_id, NEW.thread_id)
+    ON CONFLICT(run_id) DO UPDATE SET thread_id = excluded.thread_id
+    WHERE tool_recovery_pending.thread_id IS NOT excluded.thread_id;
 END;
-CREATE TRIGGER IF NOT EXISTS tool_recovery_result_update AFTER UPDATE OF part_json, resolution, resolved_at ON tool_resolutions
+DROP TRIGGER IF EXISTS tool_recovery_result_update;
+CREATE TRIGGER tool_recovery_result_update AFTER UPDATE OF part_json, resolution, resolved_at ON tool_resolutions
 WHEN (NEW.part_json IS NOT OLD.part_json OR NEW.resolution IS NOT OLD.resolution OR NEW.resolved_at IS NOT OLD.resolved_at)
   AND EXISTS (SELECT 1 FROM runs WHERE id = NEW.run_id AND status IN ('succeeded','failed','canceled','interrupted')) BEGIN
-  INSERT OR REPLACE INTO tool_recovery_pending VALUES (NEW.run_id, NEW.thread_id);
+  INSERT INTO tool_recovery_pending(run_id, thread_id) VALUES (NEW.run_id, NEW.thread_id)
+    ON CONFLICT(run_id) DO UPDATE SET thread_id = excluded.thread_id
+    WHERE tool_recovery_pending.thread_id IS NOT excluded.thread_id;
 END;
-INSERT OR REPLACE INTO schema_meta(key, value) VALUES ('message_search_rows_version', '2');
+INSERT OR REPLACE INTO schema_meta(key, value) VALUES ('message_search_rows_version', '3');
 UPDATE schema_meta SET value = '27' WHERE key = 'schema_version';
