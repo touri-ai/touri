@@ -82,6 +82,26 @@ test("projection validation scales with journal batches rather than provider del
   expect(message?.text).toBe("x".repeat(1_000))
 })
 
+test("a shared transcript checkpoint does not reload covered live projections", async () => {
+  const f = await fixture()
+  cleanups.add(f.close)
+  f.store.appendDelta({ threadId: "t", messageId: "a", partIndex: 0, delta: "a" })
+  f.store.appendDelta({ threadId: "t", messageId: "b", partIndex: 0, delta: "b" })
+  f.store.flushWrites?.()
+  materializeTranscript(f.database)
+  const query = spyOn(f.database, "query")
+  cleanups.add(() => query.mockRestore())
+
+  f.store.appendDelta({ threadId: "t", messageId: "a", partIndex: 0, delta: " depois" })
+  f.store.appendDelta({ threadId: "t", messageId: "b", partIndex: 0, delta: " depois" })
+  f.store.flushWrites?.()
+  const reads = query.mock.calls.filter(([sql]) => sql.includes("SELECT * FROM messages WHERE"))
+
+  expect(reads).toHaveLength(0)
+  expect(f.store.activePath({ threadId: "t", leafId: "a" })[0]?.text).toBe("a depois")
+  expect(f.store.activePath({ threadId: "t", leafId: "b" })[0]?.text).toBe("b depois")
+})
+
 test("coalesces active messages in one timed flush and publishes only durable references", async () => {
   const f = await fixture()
   try {

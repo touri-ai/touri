@@ -17,6 +17,9 @@ type Projection = {
   textDeltas: Map<number, Array<string>>
   textLengths: Map<number, number>
 }
+const isSnapshotCovered = (projection: Projection, seq: number | undefined): boolean =>
+  seq !== undefined && seq >= projection.baseSeq && seq <= (projection.message.updatedSeq ?? 0)
+
 const resolutionOf = (part: Extract<MessagePart, { callId: string }>) => {
   if (part.resolution) return part.resolution
   if (part.type === "tool_call" && part.ok !== null) return part.ok ? "succeeded" : "failed"
@@ -171,7 +174,7 @@ export const createStreamWriter = ({
           const headSeq = getSnapshotSeq(event.threadId, event.messageId)
           if (
             !cached ||
-            headSeq !== cached.baseSeq ||
+            !isSnapshotCovered(cached, headSeq) ||
             tailSeq(event.threadId, event.messageId) > (cached.message.updatedSeq ?? 0)
           ) {
             materializeTranscript(database)
@@ -349,7 +352,8 @@ export const createStreamWriter = ({
             .get(threadId, cached.message.updatedSeq ?? 0) as { event_json: string } | null)
         : null
       if (
-        head?.updated_seq === cached.baseSeq &&
+        head &&
+        isSnapshotCovered(cached, head.updated_seq) &&
         head.generation === cached.message.generation &&
         head.status === "streaming" &&
         (!cached.lastEvent || last?.event_json === cached.lastEvent) &&

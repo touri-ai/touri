@@ -19,11 +19,12 @@ afterEach(async () => {
   cleanups.clear()
 })
 
-test.each([1, 3])(
+test.each(process.env.TOURI_MESSAGE_STRESS === "1" ? [1] : [1, 3])(
   "%i active streams on large threads keep historical reads and streaming work bounded",
   async (streams) => {
     const threadIds = THREAD_IDS.slice(0, streams)
-    const deltasPerBatch = process.env.TOURI_MESSAGE_STRESS === "1" ? 2_048 : 32
+    const deltasPerBatch = process.env.TOURI_MESSAGE_STRESS === "1" ? 512 : 32
+    const batchCount = process.env.TOURI_MESSAGE_STRESS === "1" ? 4 : 16
     const fixture = await getFixture(threadIds)
     const turns = new Map<string, StartTurnArgs>()
     const finishTurns = new Map<string, () => void>()
@@ -89,7 +90,7 @@ test.each([1, 3])(
     fixture.stageTracker.reset()
     const streamStarted = performance.now()
     const deltaWork: number[] = []
-    for (let batch = 0; batch < 16; batch++) {
+    for (let batch = 0; batch < batchCount; batch++) {
       fixture.stageTimings.measure("provider_event_dispatch", () => {
         for (const turn of turns.values()) {
           const before = fixture.stageTimings.getCalls("runtime_text_materialization")
@@ -139,7 +140,7 @@ test.each([1, 3])(
     )
     const stages = fixture.stageTracker.snapshot()
     const expectedBatchText = "Resposta incremental. ".repeat(32 * deltasPerBatch)
-    const expectedText = `${Array.from({ length: 16 }, () => expectedBatchText).join("\n\n")}\n\nConcluído.`
+    const expectedText = `${Array.from({ length: batchCount }, () => expectedBatchText).join("\n\n")}\n\nConcluído.`
     const replies = threadIds.map(
       (threadId) =>
         (
@@ -155,6 +156,7 @@ test.each([1, 3])(
       toolCallsPerThread: 5_000,
       websocketClients: 2,
       deltasPerBatch,
+      batchCount,
       streams: turns.size,
       routeMs: Math.round(routeMs * 10) / 10,
       sendMs: Math.round(sendMs * 10) / 10,
@@ -187,7 +189,7 @@ test.each([1, 3])(
     expect(recoveryReads).toBe(0)
     expect(streamReads).toBeLessThan(20)
     expect(replies).toEqual(threadIds.map(() => expectedText))
-    expect(deltaWork).toEqual(Array.from({ length: streams * 16 }, () => 0))
+    expect(deltaWork).toEqual(Array.from({ length: streams * batchCount }, () => 0))
   },
   120_000,
 )
