@@ -28,7 +28,9 @@ for (const [name, width, height] of [
     await expect(history.getByRole("button", { name: "Abrir conversa" })).toHaveCount(28)
     await history.getByRole("button", { name: "Abrir conversa" }).last().click()
     await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
-    await expect(page.getByText("Resumo pronto para conferir.", { exact: true })).toBeVisible()
+    await expect(
+      page.locator(".message-assistant").getByText("Resumo pronto para conferir.", { exact: true }),
+    ).toBeVisible()
     if (name === "phone") await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
 
     await expect(conversations.locator(".thread-row")).toHaveCount(2)

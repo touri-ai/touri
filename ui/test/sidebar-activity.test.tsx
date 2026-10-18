@@ -149,9 +149,19 @@ const entry = (botId: string): HTMLElement => {
 }
 
 it.each([
-  { kind: "routine" as const, title: "Novas mensagens · 10/12/20, 7:04 PM" },
-  { kind: "chat" as const, title: "Novas mensagens · 12 de out., 19:00" },
-])("shows the date once in a $kind row with a generated title", ({ kind, title }) => {
+  {
+    kind: "routine" as const,
+    title: "Novas mensagens · 10/12/20, 7:04 PM",
+    tooltip: "Novas mensagens · 12/10/2020, 19:04",
+    dateLabel: /12\/10\/2020, 19:04/,
+  },
+  {
+    kind: "chat" as const,
+    title: "Novas mensagens · 12 de out., 19:00",
+    tooltip: "Novas mensagens",
+    dateLabel: /12 de out\./,
+  },
+])("keeps the generated $kind title concise and localizes its date label", ({ kind, title, tooltip, dateLabel }) => {
   const { bots, threads } = fixture()
   const bot = bots[0]
   const baseThread = threads[0]
@@ -168,8 +178,8 @@ it.each([
 
   const row = screen.getByRole("button", { name: /Novas mensagens/ })
   expect(row.querySelector("strong")).toHaveTextContent(/^Novas mensagens$/)
-  expect(row.querySelector("strong")).toHaveAttribute("title", "Novas mensagens")
-  expect(row.querySelector("small")).toHaveTextContent(/12 de out\./)
+  expect(row.querySelector("strong")).toHaveAttribute("title", tooltip)
+  expect(row.querySelector("small")).toHaveTextContent(dateLabel)
   expect(thread.title).toBe(title)
 })
 

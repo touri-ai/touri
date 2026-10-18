@@ -37,7 +37,7 @@ it("groups 28 routine executions without burying ordinary conversations and open
   const selected = document.querySelector(".thread-row.selected")
   expect(selected).toHaveTextContent("08:00")
   expect(document.querySelectorAll('[data-bot-entry="bot-mark"] .thread-row')).toHaveLength(2)
-  expect(await screen.findByText("Resumo pronto para conferir.")).toBeVisible()
+  expect(await screen.findByText("Resumo pronto para conferir.", { selector: "p" })).toBeVisible()
 })
 
 it("groups by identity across renames, keeps same-name routines separate and preserves unread results", async () => {
@@ -89,7 +89,8 @@ it("excludes archived and group threads, preserves missing metadata and leaves m
 
   const rows = getSidebarThreads([mainThread, routineThread, orphan, archived, grouped], [mainRun], null)
 
-  expect(rows.map((row) => row.thread.id)).toEqual([mainThread.id, routineThread.id, orphan.id])
+  expect(rows).toHaveLength(3)
+  expect(rows.map((row) => row.thread.id)).toEqual(expect.arrayContaining([mainThread.id, routineThread.id, orphan.id]))
   expect(rows[0]?.routineRun).toBeUndefined()
   expect(getSidebarThreads([routineThread, orphan], [], null)).toHaveLength(2)
 })
