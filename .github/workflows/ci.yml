@@ -216,8 +216,8 @@ jobs:
           tar -xzf "$executor_dir/opencode.tar.gz" -C "$executor_dir"
           "$executor_dir/opencode" --version
           echo "TOURI_OPENCODE_BIN=$executor_dir/opencode" >> "$GITHUB_ENV"
-      - name: Check API turns and credential isolation
-        run: bun test sidecar/test/api-models/opencode-live.test.ts
+      - name: Check API configuration, turns and credential isolation
+        run: bun test sidecar/test/api-models sidecar/test/runtime/opencode.test.ts
 
   license-check:
     runs-on: macos-14
