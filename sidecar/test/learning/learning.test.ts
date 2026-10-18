@@ -756,3 +756,52 @@ test.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
     expect(readFileSync(file, "utf8")).toBe("Original notes")
   },
 )
+
+test.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
+  "approval guards deny unreadable snapshots without throwing or changing their files",
+  async () => {
+    for (const kind of ["memory", "skill"] as const) {
+      const context = await fixture()
+      writeLearning(context.kernel, context.bot.id, { memory: true, skills: true })
+      writeLearningState(context.kernel, context.bot.id, {
+        turns: 0,
+        toolCalls: 0,
+        reviewThreadId: context.bot.mainThreadId,
+      })
+      createSkill({
+        homeDir: context.bot.homeDir,
+        origin: "chat",
+        threadId: context.bot.mainThreadId ?? "",
+        name: "report",
+        description: "Use when reporting",
+        body: "Original notes",
+      })
+      writeFileSync(join(context.bot.homeDir, "USER.md"), "Original notes")
+      const file =
+        kind === "memory"
+          ? join(context.bot.homeDir, "USER.md")
+          : join(context.bot.homeDir, "skills", "report", "SKILL.md")
+      const before = readFileSync(file, "utf8")
+      context.kernel.services.provide("approvals.present", async (input) => {
+        chmodSync(file, 0o000)
+        expect(input.isCurrent?.()).toBe(false)
+        return { success: true, behavior: "allow" }
+      })
+
+      const result =
+        kind === "memory"
+          ? await createMemoryWriteHandler({ kernel: context.kernel })({
+              ctx: context.ctx(),
+              args: { target: "user", operations: [{ action: "patch", old_text: "notes", content: "facts" }] },
+            })
+          : await createSkillPatchHandler({ kernel: context.kernel })({
+              ctx: context.ctx(),
+              args: { name: "report", old_string: "Original notes", new_string: "Updated notes" },
+            })
+
+      chmodSync(file, 0o600)
+      expect(result).toMatchObject({ success: false, errorCode: "DENIED" })
+      expect(readFileSync(file, "utf8")).toBe(before)
+    }
+  },
+)

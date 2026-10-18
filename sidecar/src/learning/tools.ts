@@ -93,17 +93,24 @@ const approveReview = async ({
   input: unknown
   isCurrent: () => boolean
 }): Promise<boolean> => {
+  const canApply = (): boolean => {
+    try {
+      return isCurrent()
+    } catch {
+      return false
+    }
+  }
   const present = kernel.services.use("approvals.present")
-  if (!present || !isCurrent()) return false
+  if (!present || !canApply()) return false
   const result = await present({
     ctx,
     scope: { source: "mcp", server: "touri", tool: "learning_review" },
     toolName: title,
     input,
     allowStanding: false,
-    isCurrent,
+    isCurrent: canApply,
   })
-  return result.success && result.behavior === "allow" && isCurrent()
+  return result.success && result.behavior === "allow" && canApply()
 }
 
 const resetToolCalls = (kernel: Kernel, botId: string): void => {
