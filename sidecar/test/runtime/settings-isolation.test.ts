@@ -266,15 +266,15 @@ for (const vm of [false, true]) {
       for (const resumed of [false, true]) {
         test(`Codex explicitly sets ${vm ? "VM" : "host"} ${access}/${approvals} ${resumed ? "resume" : "new"} policy`, async () => {
           const f = fixture(vm, "codex")
-          const outer =
-            !vm &&
-            (process.platform === "darwin" || (process.platform === "linux" && (await refreshHostFolderAccess())))
+          // This fixture has no folder grants. Linux keeps the provider's own boundary.
+          const outer = !vm && process.platform === "darwin"
           f.args.bot.access = access
           f.args.bot.approvals = approvals
           if (resumed) f.args.session = { externalSessionId: "old-session", rolloutPath: null } as ProviderSession
           const requestLogPath = join(f.root, "requests.jsonl")
           writeFileSync(f.scenario, JSON.stringify({ events: [{ type: "complete" }], requestLogPath }))
           expect((await f.adapter.startTurn(f.args)).success).toBe(true)
+          if (!vm && process.platform === "linux") expect(f.calls[0]?.cmd).toBe(process.execPath)
           expect(f.calls[0]?.args).toContain('approvals_reviewer="user"')
           if (access === "full") {
             expect(f.calls[0]?.args).toContain('sandbox_mode="danger-full-access"')

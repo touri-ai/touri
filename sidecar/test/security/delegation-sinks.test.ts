@@ -132,7 +132,7 @@ const runEscape = async (f: Awaited<ReturnType<typeof fixture>>, file: string): 
 test("R13-B02: a delegated provider cannot start an unconfined process on a full-access local target", async () => {
   if (!sandboxAvailable) return
   const control = await fixture("local")
-  expect(await runEscape(control, "control")).toBe(process.platform !== "linux")
+  expect(await runEscape(control, "control")).toBe(true)
   if (process.platform === "linux") {
     control.db
       .query("UPDATE bots SET folders_json = ? WHERE id = 'target'")
