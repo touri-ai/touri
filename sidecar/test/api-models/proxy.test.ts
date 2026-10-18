@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test"
 import { getApiError } from "../../src/api-models/client"
-import { forwardApiRequest } from "../../src/api-models/proxy"
+import { type ApiProxyFetch, forwardApiRequest } from "../../src/api-models/proxy"
 
 const key = "fixture-private-api-key"
 const getRequest = (token = "temporary-token") =>
@@ -17,11 +17,11 @@ for (const [status, reason] of [
   [429, "rate_limit"],
 ] as const)
   test(`the private API transport discards credential echoes in HTTP ${status} errors`, async () => {
-    const fetchImpl = (async (_url, input) => {
+    const fetchImpl: ApiProxyFetch = async (_url, input) => {
       expect(new Headers(input?.headers).get("Authorization")).toBe(`Bearer ${key}`)
       expect(input?.redirect).toBe("error")
       return Response.json({ error: { message: `Rejected credential ${key}` } }, { status })
-    }) as typeof fetch
+    }
 
     const result = await forwardApiRequest(getRequest(), {
       baseUrl: "https://api.example.com/v1",
@@ -38,16 +38,18 @@ for (const [status, reason] of [
 test("the private API transport removes credentials across response chunks and drops upstream headers", async () => {
   const encoder = new TextEncoder()
   const chunks = ["data: ", key.slice(0, 7), key.slice(7), "\n\ndata: [DONE]\n\n"]
-  const fetchImpl = (async () =>
+  const fetchImpl: ApiProxyFetch = async () =>
     new Response(
       new ReadableStream({
         start(controller) {
-          chunks.forEach((chunk) => controller.enqueue(encoder.encode(chunk)))
+          chunks.forEach((chunk) => {
+            controller.enqueue(encoder.encode(chunk))
+          })
           controller.close()
         },
       }),
       { headers: { "Content-Type": "text/event-stream", "X-Echo": key } },
-    )) as typeof fetch
+    )
 
   const result = await forwardApiRequest(getRequest(), {
     baseUrl: "https://api.example.com/v1",
@@ -63,9 +65,9 @@ test("the private API transport removes credentials across response chunks and d
 })
 
 test("a private transport token cannot be used as the provider credential", async () => {
-  const fetchImpl = (async () => {
+  const fetchImpl: ApiProxyFetch = async () => {
     throw new Error("The upstream must not be called")
-  }) as typeof fetch
+  }
 
   const result = await forwardApiRequest(getRequest("wrong-token"), {
     baseUrl: "https://api.example.com/v1",

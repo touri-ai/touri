@@ -3,12 +3,13 @@ import type { ApiModel, StartTurnArgs } from "@touri/contracts"
 import { startLineReader } from "../runtime/provider-io"
 import { getApiError } from "./client"
 
+export type ApiProxyFetch = (url: string, input?: RequestInit) => Promise<Response>
 type ProxyOptions = {
   baseUrl: string
   key: string
   token: string
   mapError: (status: number, detail: string) => string
-  fetchImpl?: typeof fetch
+  fetchImpl?: ApiProxyFetch
 }
 
 /** Keep provider credentials and raw error bodies outside the executor's persistent session. */
@@ -24,7 +25,7 @@ export const startApiModelProxy = async ({
   key: string
   args: StartTurnArgs
   root: string
-  write: (file: { path: string; content: string }) => Promise<void>
+  write: (file: { path: string; content: string }) => Promise<void> | void
   signal: AbortSignal
 }): Promise<{ url: string; token: string; close: () => Promise<void> }> => {
   const token = randomUUID()
