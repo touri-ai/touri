@@ -507,15 +507,6 @@ export const createKernel = ({ appData, web }: { appData?: string; web?: WebMode
   const stopHistoryBackfill = startHistoryBackfill(database, () => {
     log({ level: "error", module: "store", msg: "Atualização do histórico adiada; será retomada automaticamente" })
   })
-  const storageMaintenance = createStorageMaintenance({
-    database,
-    appData: paths.appData,
-    publishResync: () => bus.publish({ type: "transcript.resync" }),
-    retryDeletedBrowserSessionKeys: () =>
-      retryDeletedBrowserSessionKeys({ db: database, callHost: host.callHost, log, redact: redactor.redact }),
-    onError: () => log({ level: "error", module: "store", msg: "Compactação adiada; será retomada automaticamente" }),
-  })
-  services.provide("storage.maintenance", storageMaintenance)
 
   const kernel: Kernel = {
     paths,
@@ -537,6 +528,22 @@ export const createKernel = ({ appData, web }: { appData?: string; web?: WebMode
     newId,
     log,
   }
+
+  const storageMaintenance = createStorageMaintenance({
+    database,
+    appData: paths.appData,
+    publishResync: () => kernel.publish({ type: "transcript.resync" }),
+    retryDeletedBrowserSessionKeys: () =>
+      retryDeletedBrowserSessionKeys({
+        db: database,
+        callHost: kernel.callHost,
+        log: kernel.log,
+        redact: kernel.redact,
+      }),
+    onError: () =>
+      kernel.log({ level: "error", module: "store", msg: "Compactação adiada; será retomada automaticamente" }),
+  })
+  services.provide("storage.maintenance", storageMaintenance)
 
   const handshakePath = join(paths.runDir, "handshake.json")
   atomicWriteFile({
