@@ -22,6 +22,8 @@ import "./Composer.css"
 
 type AttachedFile = { key: string; name: string; id: Id | null; status: "loading" | "ready" | "failed" }
 type ComposerProps = {
+  threadCreation?: "pending" | "failed" | undefined
+  onRetryCreateThread?: (() => void) | undefined
   mentionBots?: Bot[]
   groupName?: string | undefined
   bot: Bot | null
@@ -77,6 +79,8 @@ const Icon = ({ kind }: { kind: "attach" | "send" | "stop" | "queue" | "file" })
 )
 
 export const Composer = ({
+  threadCreation,
+  onRetryCreateThread,
   mentionBots = [],
   groupName,
   bot,
@@ -251,6 +255,7 @@ export const Composer = ({
   const chooseFiles = () => fileInput.current?.click()
   const uploading = files.some((file) => file.status === "loading")
   const blocked =
+    Boolean(threadCreation) ||
     cloudUnavailable ||
     sending ||
     uploading ||
@@ -379,6 +384,15 @@ export const Composer = ({
             </li>
           ))}
         </ul>
+      )}
+      {threadCreation === "pending" && <p role="status">{t("Criando conversa…")}</p>}
+      {threadCreation === "failed" && (
+        <div role="alert">
+          <p>{t("Não foi possível criar a conversa. Seu rascunho foi mantido.")}</p>
+          <button type="button" onClick={onRetryCreateThread}>
+            {t("Tentar criar conversa novamente")}
+          </button>
+        </div>
       )}
       {cloudUnavailable && <p role="status">{t("Cloud execution coming soon")}</p>}
       {login.blocked && (

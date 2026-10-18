@@ -66,7 +66,7 @@ export const DeleteBotDialog = ({
             disabled={busy || bot.machine === "cloud"}
             onChange={(event) => setDeleteVolumes(event.target.checked)}
           />
-          apagar também os arquivos do computador
+          <span>apagar também os arquivos do computador</span>
         </label>
       )}
       {bot.machine !== "local" && (

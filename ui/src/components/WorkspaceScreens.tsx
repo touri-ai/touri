@@ -297,6 +297,8 @@ export const McpScreen = ({
 }
 
 type PreviewScreenProps = {
+  threadCreation?: "pending" | "failed" | undefined
+  onRetryCreateThread?: (() => void) | undefined
   project: Project | null
   processes: Array<ProcessEntry>
   preview: PreviewTarget | null
@@ -318,6 +320,8 @@ type PreviewScreenProps = {
 }
 
 export const PreviewScreen = ({
+  threadCreation,
+  onRetryCreateThread,
   project,
   processes,
   preview,
@@ -406,7 +410,7 @@ export const PreviewScreen = ({
     if (tab === "logs" && only && logsProcess !== only.spec.id) void loadLogs(only.spec.id)
   }, [tab, processes, logsProcess, loadLogs])
   const submit = async (): Promise<void> => {
-    if (!draft.trim() || !selectedThread) return
+    if (threadCreation || !draft.trim() || !selectedThread) return
     await onSend(draft, selectedThread.activeLeafId)
     setDraft("")
   }
@@ -719,6 +723,15 @@ export const PreviewScreen = ({
             ))}
             {selectedMessages.length === 0 && <p className="muted-copy">{t("Nenhuma mensagem nesta conversa.")}</p>}
           </div>
+          {threadCreation === "pending" && <p role="status">{t("Criando conversa…")}</p>}
+          {threadCreation === "failed" && (
+            <div role="alert">
+              <p>{t("Não foi possível criar a conversa. Seu rascunho foi mantido.")}</p>
+              <button type="button" onClick={onRetryCreateThread}>
+                {t("Tentar criar conversa novamente")}
+              </button>
+            </div>
+          )}
           <form
             className="preview-composer"
             onSubmit={(event) => {
@@ -732,7 +745,11 @@ export const PreviewScreen = ({
               placeholder={t("Mensagem para o bot…")}
               aria-label={t("Mensagem para o bot")}
             />
-            <button type="submit" aria-label={t("Enviar")} disabled={!selectedThread || !draft.trim()}>
+            <button
+              type="submit"
+              aria-label={t("Enviar")}
+              disabled={Boolean(threadCreation) || !selectedThread || !draft.trim()}
+            >
               ↑
             </button>
           </form>

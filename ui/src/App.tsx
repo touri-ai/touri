@@ -383,13 +383,13 @@ const AppContent = ({ kernel }: AppProps) => {
     })
   }, [invokeCommand, requestedComputer])
   useEffect(() => {
-    if (!pendingLink || data.bots.length === 0) return
+    if (!pendingLink || !data.loaded || data.bots.length === 0) return
     actions.selectLocation(pendingLink)
     setRoute({ section: "bots", screen: "chat" })
     setPendingLink(null)
     if (pendingLink.requestId !== undefined)
       void invokeCommand("deep_link_ack", { requestId: pendingLink.requestId }).catch(() => undefined)
-  }, [pendingLink, data.bots.length, actions, setRoute, invokeCommand])
+  }, [pendingLink, data.loaded, data.bots.length, actions, setRoute, invokeCommand])
 
   const restoreWebLocation = useCallback(
     (location: DeepLink, restoredRoute?: AppRoute): void => {
@@ -407,7 +407,7 @@ const AppContent = ({ kernel }: AppProps) => {
   )
   useWebNavigation({
     enabled: !isTauriRuntime() && !requestedComputer,
-    ready: api !== null && data.loaded,
+    ready: api !== null && data.loaded && !data.threadCreation,
     bot: data.selectedBotId,
     thread: data.selectedThreadId,
     route,
@@ -465,7 +465,8 @@ const AppContent = ({ kernel }: AppProps) => {
 
   const selectedBot =
     data.bots.find((bot) => bot.id === (requestedComputer ?? data.selectedBotId)) ?? data.bots[0] ?? null
-  const selectedThread = data.threads.find((thread) => thread.id === data.selectedThreadId) ?? null
+  const selectedThread =
+    data.threadCreation?.thread ?? data.threads.find((thread) => thread.id === data.selectedThreadId) ?? null
   const selectedGroup = data.groups.find((g) => g.id === selectedThread?.groupId) ?? null
   const groupMembers =
     selectedGroup?.memberIds.flatMap((id) => {
@@ -677,7 +678,7 @@ const AppContent = ({ kernel }: AppProps) => {
     return recovery(connectionError ?? t("Unknown connection error"))
   if (!api && connectionState === "loading") return loading()
   if (!api) return recovery(t("The sidecar connection is not available."))
-  if (data.loading && data.bots.length === 0) return loading()
+  if (data.loading && !data.botsLoaded) return loading()
   if (!api.isMock && data.bots.length === 0 && data.notice) return recovery(data.notice)
   // Doctor and import are reachable from onboarding, before any bot exists, so they render outside the main layout too.
   const setupModal =
@@ -936,6 +937,8 @@ const AppContent = ({ kernel }: AppProps) => {
           <PageTransition route={route}>
             {screen === "preview" ? (
               <PreviewScreen
+                threadCreation={data.threadCreation ? (data.threadCreation.pending ? "pending" : "failed") : undefined}
+                onRetryCreateThread={() => void actions.createThread()}
                 project={selectedProject}
                 processes={data.processes.filter((entry) => entry.spec.projectId === selectedProject?.id)}
                 preview={selectedPreview}
@@ -994,7 +997,11 @@ const AppContent = ({ kernel }: AppProps) => {
                     className={`bot-workspace motion-workspace ${panelOpen ? "has-bot-panel" : ""} ${!selectedGroup && expandedBot === selectedBot?.id ? "computer-expanded" : ""}`}
                     data-motion-panel-open={panelOpen}
                   >
-                    <ErrorBoundary key={selectedThread?.id ?? selectedBot?.id ?? "chat"} area="a conversa" api={api}>
+                    <ErrorBoundary
+                      key={data.composerKey ?? selectedThread?.id ?? selectedBot?.id ?? "chat"}
+                      area="a conversa"
+                      api={api}
+                    >
                       <ChatPanel
                         onRepeatTask={setRoutineDraft}
                         group={selectedGroup}
@@ -1010,6 +1017,11 @@ const AppContent = ({ kernel }: AppProps) => {
                         onTogglePanel={() => setPanelOpen(!panelOpen)}
                         machine={data.machines.find((state) => state.botId === selectedBot?.id)}
                         thread={selectedThread}
+                        composerKey={data.composerKey ?? undefined}
+                        threadCreation={
+                          data.threadCreation ? (data.threadCreation.pending ? "pending" : "failed") : undefined
+                        }
+                        onRetryCreateThread={() => void actions.createThread()}
                         bot={selectedBot}
                         messages={selectedMessages}
                         runs={data.runs}
