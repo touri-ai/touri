@@ -1,8 +1,9 @@
-import type { Bot, BotFolder } from "@touri/contracts"
+import type { Bot, BotFolder, HostKind } from "@touri/contracts"
 import { useEffect, useState } from "react"
 import type { TauriInvoke, UiApi } from "../api/client"
 import { useIsServerMode } from "../features/server/serverMode"
-import { t } from "../i18n"
+import { getHostLabel, t } from "../i18n"
+import { useHost } from "../useHost"
 import { FolderPicker } from "./FolderPicker"
 import { Modal } from "./Modal"
 import { SettingsSwitch } from "./SettingsLayout"
@@ -33,7 +34,8 @@ export const BotFolderSettings = ({
   onFolders: (folders: BotFolder[]) => void
   onAnyFolderAccess: (enabled: boolean) => void
 }) => {
-  const serverMode = useIsServerMode()
+  const host = useHost(api)
+  const serverMode = useIsServerMode() || host === "server"
   const [confirming, setConfirming] = useState(false)
   const [picking, setPicking] = useState(false)
   const unrestricted = machine === "local" && fullAccess
@@ -60,7 +62,7 @@ export const BotFolderSettings = ({
       </strong>
       {serverMode && (
         <p className="field-help">
-          {t("As pastas abaixo pertencem ao servidor. Pastas deste Mac não são compartilhadas.")}
+          {t("As pastas abaixo pertencem ao servidor. Pastas deste aparelho não são compartilhadas.")}
         </p>
       )}
       {unrestricted && (
@@ -157,7 +159,7 @@ export const BotFolderSettings = ({
               <strong>
                 {unrestricted
                   ? t("Acesso a qualquer pasta no modo restrito")
-                  : t(serverMode ? "Acesso a qualquer pasta do servidor" : "Acesso a qualquer pasta deste Mac")}
+                  : t("Access to any folder on this {host}", { host: getHostLabel(host) })}
               </strong>
               <small>
                 {unrestricted
@@ -181,17 +183,7 @@ export const BotFolderSettings = ({
                   "Keychains, ~/.ssh, perfis de navegadores e dados do touri ficam bloqueados, salvo pastas adicionadas explicitamente. Os arquivos necessários ao funcionamento deste bot continuam disponíveis.",
                 )}
               </p>
-              <p className="field-help">
-                {serverMode
-                  ? t("As permissões e o isolamento são aplicados pelo servidor. Revise o acesso antes de salvar.")
-                  : machine === "vm"
-                    ? t(
-                        "Na VM, sua pasta pessoal aparece em /host/home; as demais, em /host/<nome>. As exclusões são ocultadas por montagens somente leitura.",
-                      )
-                    : t(
-                        "No Mac, o sandbox do macOS bloqueia as exclusões e a escrita nas pastas somente leitura, inclusive em comandos de terminal. As alterações valem a partir da próxima mensagem.",
-                      )}
-              </p>
+              <p className="field-help">{getFolderIsolationHelp(machine, host, serverMode)}</p>
             </>
           )}
           {machine === "vm" && (
@@ -213,7 +205,7 @@ export const BotFolderSettings = ({
                     "Este bot poderá ler arquivos de todo o servidor e, conforme o nível de acesso, alterá-los ou apagá-los. Conceda este acesso apenas a bots em que confia.",
                   )
                 : t(
-                    "Este bot poderá ler arquivos pessoais de todo o Mac e, conforme o nível de acesso, alterá-los ou apagá-los. Na VM, sua pasta pessoal será montada em /host/home. Conceda este acesso apenas a bots em que confia.",
+                    "Este bot poderá ler arquivos pessoais de todo o computador e, conforme o nível de acesso, alterá-los ou apagá-los. Na VM, sua pasta pessoal será montada em /host/home. Conceda este acesso apenas a bots em que confia.",
                   )}
           </p>
           {!unrestricted && (
@@ -238,4 +230,18 @@ export const BotFolderSettings = ({
       )}
     </div>
   )
+}
+
+const getFolderIsolationHelp = (machine: Bot["machine"], host: HostKind, serverMode: boolean) => {
+  if (machine === "vm")
+    return t(
+      "Na VM, sua pasta pessoal aparece em /host/home; as demais, em /host/<nome>. As exclusões são ocultadas por montagens somente leitura.",
+    )
+  if (serverMode) return t("As permissões e o isolamento são aplicados pelo servidor. Revise o acesso antes de salvar.")
+  if (host === "mac")
+    return t(
+      "No Mac, o sandbox do macOS bloqueia as exclusões e a escrita nas pastas somente leitura, inclusive em comandos de terminal. As alterações valem a partir da próxima mensagem.",
+    )
+
+  return t("As permissões da conta do sistema continuam valendo.")
 }

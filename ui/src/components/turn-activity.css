@@ -10,8 +10,8 @@
 }
 .turn-activity-toggle {
   display: flex;
-  align-items: baseline;
-  gap: var(--space-8);
+  align-items: center;
+  gap: var(--space-6);
   max-width: 100%;
   padding: var(--space-6) 0;
   border: 0;
@@ -33,10 +33,17 @@
 .turn-activity-chevron {
   display: inline-block;
   flex: none;
+  stroke-width: 2;
   transform: rotate(0deg);
+  transition: transform 120ms ease;
 }
 [aria-expanded="true"] > .turn-activity-chevron {
   transform: rotate(90deg);
+}
+@media (prefers-reduced-motion: reduce) {
+  .turn-activity-chevron {
+    transition: none;
+  }
 }
 .turn-activity-details {
   padding-inline-start: var(--space-16);

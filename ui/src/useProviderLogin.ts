@@ -138,11 +138,13 @@ export const useProviderLogin = (
     }
   }, [enabled, recheck])
   useEffect(() => {
+    const host = flow?.hostKind ?? flow?.host
     if (
       !matches ||
       !enabled ||
       provider === "claude" ||
-      flow?.host === "server" ||
+      host === "server" ||
+      host === "computer" ||
       flow?.state !== "waiting" ||
       !flow.verificationUrl
     )

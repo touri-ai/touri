@@ -72,7 +72,7 @@ export const APP_SETTINGS_SECTIONS: ReadonlyArray<SectionDefinition<AppSettingsS
 export const SERVER_SETTINGS_SECTION: SectionDefinition<AppSettingsSectionId> = {
   id: "advanced",
   label: t("Avançado"),
-  description: t("Escolha se os bots trabalham neste Mac ou em um servidor touri."),
+  description: t("Escolha se os bots trabalham neste computador ou em um servidor touri."),
   icon: "computer",
   keywords: ["servidor", "pareamento", "conexão", "modo local"],
 }

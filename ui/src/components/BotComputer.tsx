@@ -193,7 +193,9 @@ const LocalBotComputer = ({
                           ? "Não foi possível iniciar o computador."
                           : "Ligue para acessar a área de trabalho do bot."),
               )
-            : "Este bot trabalha no computador local. O controle depende das permissões do macOS e de uma autorização temporária."}
+            : t(
+                "Este bot trabalha no computador local. O controle depende das permissões do sistema e de uma autorização temporária.",
+              )}
         </p>
         {status === "error" && machine?.error && (
           <div role="alert">

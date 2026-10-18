@@ -58,7 +58,7 @@ it("creation persists folder permissions, broad access and a discovered project 
   const folder = await screen.findByRole("combobox", { name: "Acesso à pasta /workspace/reference" })
   expect(folder).toHaveValue("read-only")
   fireEvent.change(folder, { target: { value: "read-write" } })
-  fireEvent.click(screen.getByRole("switch", { name: /Acesso a qualquer pasta deste Mac/ }))
+  fireEvent.click(screen.getByRole("switch", { name: /Acesso a qualquer pasta deste servidor/ }))
   fireEvent.click(
     within(screen.getByRole("dialog", { name: "Permitir acesso a qualquer pasta?" })).getByRole("button", {
       name: "Permitir acesso",
@@ -82,7 +82,7 @@ it("creation persists folder permissions, broad access and a discovered project 
   expect(screen.getByRole("option", { name: "Hodler" })).toBeInTheDocument()
   fireEvent.click(screen.getByRole("button", { name: "Avançado" }))
   fireEvent.click(screen.getByRole("button", { name: "Avançado" }))
-  expect(screen.getByRole("switch", { name: /Acesso a qualquer pasta deste Mac/ })).toBeChecked()
+  expect(screen.getByRole("switch", { name: /Acesso a qualquer pasta deste servidor/ })).toBeChecked()
   expect(screen.getByLabelText("Acesso à pasta /workspace/reference")).toHaveValue("read-write")
   fireEvent.click(screen.getByRole("button", { name: "Criar bot" }))
   await waitFor(() =>
@@ -149,7 +149,7 @@ it.each([
     "workspace-write",
     "Pede permissão antes de mudar arquivos; alterações ficam na pasta do bot, no projeto e nas pastas liberadas.",
   ],
-  ["local", "read-only", "Somente leitura; pode ler arquivos no Mac, sem alterá-los."],
+  ["local", "read-only", "Somente leitura; pode ler arquivos no servidor, sem alterá-los."],
   ["vm", "full", "Acesso total; só no computador isolado."],
 ] as const)("creation keeps the %s/%s summary visible with Advanced closed", async (machine, access, summary) => {
   await creation()
@@ -301,7 +301,9 @@ it.each([
   ],
   [{ machine: "cloud", access: "full", approvals: "never" }, "Acesso total; só na máquina na nuvem."],
 ] as const)("access summary reflects %o", (input, expected) => {
-  render(<BotAccessSummary {...(input as Pick<Bot, "machine" | "access" | "approvals" | "anyFolderAccess">)} />)
+  render(
+    <BotAccessSummary host="mac" {...(input as Pick<Bot, "machine" | "access" | "approvals" | "anyFolderAccess">)} />,
+  )
   expect(screen.getByText(expected)).toBeVisible()
 })
 
