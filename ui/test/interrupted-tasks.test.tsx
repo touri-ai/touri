@@ -91,16 +91,17 @@ it("shows a short local date or a minute-only label for interrupted tasks", asyn
   }
   const view = render(<InterruptedTasks {...props} tasks={[{ ...task, occurredAt }]} />)
 
-  expect(screen.getByText("hoje às 11:28", { selector: "time" })).toHaveAttribute(
-    "dateTime",
-    new Date(occurredAt).toISOString(),
-  )
+  const today = screen.getByText("hoje às 11:28", { selector: "time" })
+  expect(today).toHaveAttribute("dateTime", new Date(occurredAt).toISOString())
+  expect(today).toHaveAttribute("title", "18/10/2026, 11:28")
   expect(getInterruptedTaskDateLabel(occurredAt, "en", Date.now())).toBe("today at 11:28 AM")
 
   const yesterday = new Date(2026, 9, 17, 11, 28, 27).getTime()
   view.rerender(<InterruptedTasks {...props} tasks={[{ ...task, occurredAt: yesterday }]} />)
 
-  expect(screen.getByText("17/10/2026", { selector: "time" })).toBeVisible()
+  const earlier = screen.getByText("17/10/2026", { selector: "time" })
+  expect(earlier).toBeVisible()
+  expect(earlier).toHaveAttribute("title", "17/10/2026, 11:28")
 })
 
 it("bell dismissal reconciles the center immediately and retains resolved history", async () => {
