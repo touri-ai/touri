@@ -45,7 +45,7 @@ export const DraftComposer = ({ draftRef, draftIdentity, onSend, ...props }: Dra
         onSend={async (...args) => {
           await onSend(...args)
           // A send can finish after navigation; clear only this conversation's unchanged draft.
-          setDraft((current) => (current === draft ? "" : current))
+          if (args[3] !== "summarize") setDraft((current) => (current === draft ? "" : current))
         }}
       />
     </>

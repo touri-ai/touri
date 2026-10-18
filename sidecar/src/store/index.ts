@@ -43,6 +43,7 @@ import { externalizeMessageParts, OUTPUT_BLOB_ORIGIN, readOutputAttachment } fro
 import { isProfileProvider, validProviderProfileName } from "../kernel/provider-profiles"
 import { materializeTranscript } from "../kernel/transcript-storage"
 import { hostComputerSupported } from "../platform"
+import { getHostIdentity } from "../platform/host"
 import { touriVersion } from "../version"
 import { DEFAULT_BOT_VM_MEMORY_MB, DEFAULT_MACHINE_IDLE_MINUTES, validBotVmMemory } from "../vm/resources"
 import { redeemFileGrant } from "./redeemFileGrant"
@@ -739,7 +740,8 @@ export const init = async (kernel: Kernel): Promise<void> => {
       return {
         input: null,
         errorCode: "LOCAL_BROWSER_REQUIRES_HOST",
-        error: "Meu Chrome só funciona em bots neste Mac. A máquina remota não pode acessar o Chrome do Mac.",
+        error:
+          "Meu Chrome só funciona em bots no computador onde o touri está rodando. Uma máquina remota não pode acessar esse navegador.",
       }
     // Changing the execution destination keeps the old routing unless a browser was explicitly chosen.
     if (body.browser === undefined) {
@@ -756,7 +758,7 @@ export const init = async (kernel: Kernel): Promise<void> => {
           input: null,
           errorCode: "TOURI-E9009",
           error:
-            "OpenCode está disponível no Mac e na máquina Linux. O runtime da nuvem ainda não oferece este provedor.",
+            "OpenCode está disponível no computador local e na máquina Linux. O runtime da nuvem ainda não oferece este provedor.",
         }
       if (!readSettings({ database }).cloud) return { input: null, errorCode: "TOURI-E9013", error: "Nuvem desativada" }
       if (!kernel.services.use("cloud.account"))
@@ -868,7 +870,7 @@ export const init = async (kernel: Kernel): Promise<void> => {
       }
     }
     if (input.machine === "cloud" && (input.anyFolderAccess || input.folders.length))
-      return { input: null, error: "Pastas deste Mac não estão disponíveis na nuvem." }
+      return { input: null, error: "Pastas deste computador não estão disponíveis na nuvem." }
     // Narrowing/removing old grants and unrelated settings must remain possible
     // even when this host has lost its confinement capability.
     const expandsFolders =
@@ -1155,6 +1157,8 @@ export const init = async (kernel: Kernel): Promise<void> => {
     body: Record<string, unknown>
   }): { input: SendMessageInput | null; error: string | null } => {
     if (!isString(body.text) || !body.text.trim()) return { input: null, error: "text is required" }
+    if (body.groupAction !== undefined && body.groupAction !== "ask_all" && body.groupAction !== "summarize")
+      return { input: null, error: "Ação do grupo inválida." }
     const parentId =
       body.parentId === null || body.parentId === undefined ? null : isString(body.parentId) ? body.parentId : null
     if (body.parentId !== undefined && body.parentId !== null && parentId === null)
@@ -1167,6 +1171,9 @@ export const init = async (kernel: Kernel): Promise<void> => {
         threadId,
         parentId,
         text: body.text,
+        ...(body.groupAction === "ask_all" || body.groupAction === "summarize"
+          ? { groupAction: body.groupAction }
+          : {}),
         attachmentIds: attachmentIds as Array<string>,
         ...(body.clientNonce === undefined ? {} : { clientNonce: body.clientNonce as string }),
         ...(body.deadline === undefined ? {} : { deadline: body.deadline as number }),
@@ -1236,7 +1243,7 @@ export const init = async (kernel: Kernel): Promise<void> => {
             ok: true,
             version: touriVersion,
             schemaVersion: SCHEMA_VERSION,
-            host: process.platform === "darwin" && process.env.TOURI_HEADLESS !== "1" ? "mac" : "server",
+            ...getHostIdentity(),
           }),
       },
       {

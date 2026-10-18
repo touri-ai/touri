@@ -75,7 +75,7 @@ const visibleTo = ({
   kernel: Kernel
 }): boolean => {
   if (
-    ["coordinate_bots", "ask_bot"].includes(tool.name) &&
+    ["coordinate_bots", "ask_bot", "ask_all"].includes(tool.name) &&
     !kernel.services.use("groups.runtime")?.canCoordinate(caller.threadId)
   )
     return false

@@ -1,4 +1,5 @@
 import type { ApiModel, ApiModelConnection, ApiModelError, ApiModelInput, ApiModelTest } from "./api-models"
+import type { HostKind } from "./host"
 
 /**
  * touri desktop shared contracts, v0.
@@ -104,6 +105,9 @@ export type BotLearning = BotLearningSettings & {
   reviewThreadId: Id | null
   memoryChars: number
   userChars: number
+  /** Counts are unavailable when the corresponding local reference cannot be safely read. */
+  memoryError?: 'INVALID_PATH' | 'READ_ERROR'
+  userError?: 'INVALID_PATH' | 'READ_ERROR'
   skillCount: number
 }
 
@@ -121,7 +125,7 @@ export type StandingGrant = { id: Id; botId: Id; scope: ApprovalScope; grantedAt
 export type BotCapability = 'browser' | 'computer_use'
 export type CapabilityRequestInput = { capability: BotCapability; reason: string }
 
-export type ApprovalInput = { ctx: Pick<ToolContext, 'botId' | 'threadId' | 'runId' | 'signal'>; scope: ApprovalScope; toolName: string; input: unknown; toolUseId?: string; allowStanding?: boolean; isCurrent?: () => boolean }
+export type ApprovalInput = { groupMemberId?: Id; ctx: Pick<ToolContext, 'botId' | 'threadId' | 'runId' | 'signal'>; scope: ApprovalScope; toolName: string; input: unknown; toolUseId?: string; allowStanding?: boolean; isCurrent?: () => boolean }
 export type ApprovalResult = Result<{ behavior: 'allow' | 'deny'; updatedInput?: unknown; message?: string }, 'NOT_FOUND' | 'TIMEOUT' | 'DENIED'>
 
 export type BotFolder = { path: AbsolutePath; access: 'read-only' | 'read-write' }
@@ -281,6 +285,8 @@ export type RunUsage = {
 }
 
 export type Run = {
+  /** Group projection only: persisted association lives in group_run_links. */
+  groupTurnId?: Id
   id: Id
   threadId: Id
   botId: Id
@@ -300,6 +306,27 @@ export type Run = {
   providerStartedAt?: EpochMs | null
   finishedAt: EpochMs | null
 }
+
+/** Explicit, bounded work across provider turns in one local conversation. */
+export type Goal = {
+  id: Id
+  threadId: Id
+  botId: Id
+  requestMessageId: Id
+  text: string
+  completionCriterion: string
+  status: 'active' | 'paused' | 'budget_exhausted' | 'completed'
+  maxTurns: number
+  turnsUsed: number
+  deadlineAt: EpochMs
+  runId: Id | null
+  steps: Array<{ runId: Id; text: string; at: EpochMs }>
+  createdAt: EpochMs
+  updatedAt: EpochMs
+}
+
+export type GoalStart = { requestMessageId: Id; completionCriterion: string; maxTurns: number; maxMinutes: number }
+export type GoalControl = { action: 'pause' | 'resume' | 'complete' | 'budget'; maxTurns?: number; maxMinutes?: number }
 
 export type MessageRole = 'user' | 'assistant' | 'system' | 'tool'
 export type MessageKind = 'text' | 'tool' | 'notice' | 'approval'
@@ -362,6 +389,8 @@ export type NoticePart = {
   type: 'notice'
   level: 'info' | 'warning' | 'error'
   code:
+    | 'group_ask_all'
+    | 'group_summary'
     | 'run_failed'
     | 'run_canceled'
     | 'session_replaced'
@@ -375,6 +404,8 @@ export type NoticePart = {
   text: string
 }
 export type ApprovalPart = {
+  /** A delegation approval belongs to the caller but waits on this group member. */
+  groupMemberId?: Id
   type: 'approval'
   createdAt?: EpochMs
   approvalId: Id
@@ -739,6 +770,8 @@ export type ProviderLoginFlow = {
   state: 'idle' | 'host-available' | 'waiting' | 'ready' | 'cancelled' | 'error' | 'vault-locked'
   /** Sidecar host, independent of the browser and login state. */
   host?: 'mac' | 'server'
+  /** Platform-aware host identity; legacy host values remain compatible. */
+  hostKind?: HostKind
   /** File/executable check only; never starts a model request. Independent of login state. */
   executable?: 'available' | 'missing'
   /** An expired or failed CLI attempt can be started again; vault errors require repair. */
@@ -775,7 +808,11 @@ export type TelegramIntegration = {
   lastRejected: { userId: string; name: string; at: EpochMs } | null
 }
 
+export type GroupAction = 'ask_all' | 'summarize'
+
 export type SendMessageInput = {
+  /** Stored as a notice part so queued delivery and retries preserve routing. */
+  groupAction?: GroupAction
   clientNonce?: string
   deadline?: EpochMs
   threadId: Id
@@ -798,7 +835,7 @@ export type ApiRoutes = {
   'POST /cloud/bots/:id/wake': { req: {}; res: { machine: MachineState } }
   'PUT /cloud/bots/:id/key': { req: { apiKey: string }; res: {} }
 
-  'GET /health': { req: {}; res: { ok: true; version: string; schemaVersion: number; host?: 'mac' | 'server'; historyMigration?: { running: boolean; done: number; total: number } } }
+  'GET /health': { req: {}; res: { ok: true; version: string; schemaVersion: number; host?: 'mac' | 'server'; hostKind?: HostKind; historyMigration?: { running: boolean; done: number; total: number } } }
   'POST /ui/errors': { req: { area: string; message: string; stack: string; componentStack: string }; res: { ok: true } }
   'POST /reports/:id/saved': { req: { destination: 'zip' | 'github' }; res: {} }
   'POST /reports/history': { req: { history: import('./reports').ReportHistory[] }; res: {} }
@@ -868,6 +905,9 @@ export type ApiRoutes = {
   'GET /threads/:id/transcript': { req: { since?: number; limit?: number }; res: { entries: Array<{ seq: number; generation: number; event: UiEvent }>; rejections: Array<TranscriptRejection>; lastSeq: number; generation: number; hasMore: boolean; resync: boolean } }
   'GET /threads/:id/messages': { req: { all?: boolean }; res: { messages: Array<Message>; activeLeafId: Id | null } }
   'POST /threads/:id/messages': { req: SendMessageInput; res: { message: Message; run: Run } }
+  'GET /threads/:id/goal': { req: {}; res: { goal: Goal | null } }
+  'POST /threads/:id/goal': { req: GoalStart; res: { goal: Goal } }
+  'PATCH /threads/:id/goal': { req: GoalControl; res: { goal: Goal } }
   'GET /threads/:id/runs': { req: { all?: boolean }; res: { runs: Array<Run> } }
   /** Compact sidebar messages and latest/active runs; never a transcript snapshot. */
   'GET /workspace/activity': { req: Record<string, never>; res: { messages: Array<Message>; runs: Array<Run> } }
@@ -878,7 +918,7 @@ export type ApiRoutes = {
   'POST /attachments': { req: { grantId: string } | { path: AbsolutePath }; res: { attachment: Attachment } }
   'GET /attachments/:id': { req: {}; res: Blob }
   'GET /attachments/:id/content': { req: { offset?: number; limit?: number }; res: { text: string; offset: number; nextOffset: number | null; bytes: number } }
-  'GET /routines': { req: { botId?: Id }; res: { routines: Array<Routine>; host?: 'mac' | 'server' } }
+  'GET /routines': { req: { botId?: Id }; res: { routines: Array<Routine>; host?: 'mac' | 'server'; hostKind?: HostKind } }
   'POST /routines': { req: Omit<Routine, 'id' | 'nextRunAt' | 'source' | 'createdAt' | 'updatedAt'>; res: { routine: Routine } }
   'PATCH /routines/:id': { req: Partial<Omit<Routine, 'id' | 'source'>>; res: { routine: Routine } }
   'DELETE /routines/:id': { req: {}; res: {} }
@@ -1223,9 +1263,9 @@ export type ServiceMap = {
   'bots.configureAccess': (input: { botId: Id; patch: Partial<Pick<Bot, 'projectId' | 'folders' | 'browserEnabled' | 'browser' | 'computerUse'>> }) => Result<{ bot: Bot }, 'NOT_FOUND' | 'INVALID_ARGS' | 'MACHINE_PROJECT_CHANGE'>
   'diagnostics.errors': () => Array<{ code: string; at: number }>
   'groups.runtime': {
-    enqueue: (args: { threadId: Id; requestMessageId: Id; trigger: RunTrigger; routineRunId?: Id }) => Result<{ run: Run }, 'THREAD_NOT_FOUND' | 'BOT_PAUSED'>
+    enqueue: (args: { threadId: Id; requestMessageId: Id; trigger: RunTrigger; routineRunId?: Id }) => Result<{ run: Run }, 'THREAD_NOT_FOUND' | 'BOT_PAUSED' | 'DELEGATION_LIMIT'>
     cancel: (id: Id) => boolean
-    retry: (id: Id) => Result<{ run: Run }, 'THREAD_NOT_FOUND' | 'BOT_PAUSED' | 'CONFLICT'> | null
+    retry: (id: Id) => Result<{ run: Run }, 'THREAD_NOT_FOUND' | 'BOT_PAUSED' | 'DELEGATION_LIMIT' | 'CONFLICT'> | null
     listRuns: (threadId: Id) => Array<Run>
     shutdown: () => void
     canCoordinate: (threadId: Id) => boolean
@@ -1254,7 +1294,7 @@ export type ServiceMap = {
   'vm.shutdown': () => Promise<void>
   'vm.desktop': VmDesktop
   'store.api': StoreApi
-  'runtime.enqueue': (args: { threadId: Id; requestMessageId: Id; trigger: RunTrigger }) => Result<{ run: Run }, 'THREAD_NOT_FOUND' | 'BOT_PAUSED'>
+  'runtime.enqueue': (args: { threadId: Id; requestMessageId: Id; trigger: RunTrigger }) => Result<{ run: Run }, 'THREAD_NOT_FOUND' | 'BOT_PAUSED' | 'DELEGATION_LIMIT'>
   'runtime.activeRun': (args: { threadId: Id }) => Run | null
   'runtime.continueAfterApproval': (ctx: Pick<ToolContext, 'botId' | 'threadId' | 'runId' | 'signal'>) => boolean
   'runtime.cancelBotTurns': (args: { botId: Id }) => Promise<void>

@@ -142,7 +142,7 @@ it("keeps machine switch drafts until saving and sends the existing computer-use
   const login = screen.getByRole("switch", { name: /Usar meu login/ })
   login.focus()
   await user.keyboard(" ")
-  await user.click(screen.getByRole("switch", { name: /Permitir controle do computador na tela/ }))
+  await user.click(screen.getByRole("switch", { name: /Permitir controle da tela deste computador/ }))
   expect(updateBot).not.toHaveBeenCalled()
   const computer = screen.getByRole("switch", { name: /Controle do computador/ })
   computer.focus()
@@ -150,7 +150,7 @@ it("keeps machine switch drafts until saving and sends the existing computer-use
   expect(updateBot).toHaveBeenCalledExactlyOnceWith(bot.id, { computerUse: true })
   await user.click(screen.getByRole("tab", { name: "Computador" }))
   expect(screen.getByRole("switch", { name: /Usar meu login/ })).toBeChecked()
-  expect(screen.getByRole("switch", { name: /Permitir controle do computador na tela/ })).toBeChecked()
+  expect(screen.getByRole("switch", { name: /Permitir controle da tela deste computador/ })).toBeChecked()
   await user.click(screen.getByRole("button", { name: "Salvar configurações" }))
   expect(updateBot).toHaveBeenLastCalledWith(
     bot.id,
