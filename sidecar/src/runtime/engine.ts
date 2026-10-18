@@ -59,6 +59,8 @@ import {
   MAX_CRASH_CONTINUATIONS,
 } from "./continuations"
 import { csvInput } from "./csv-input"
+import { type GoalDeadlineClock, startGoalDeadline } from "./goal-deadline"
+import { createGoalRuntime, getGoalPrompt } from "./goals"
 import { buildHandoffPacket } from "./handoff"
 import { composeDeveloperInstructions } from "./instructions"
 import { isMcpStartupError } from "./mcp-startup"
@@ -127,6 +129,7 @@ type RoutineUpdate = {
 
 type RuntimeEngine = {
   ready: Promise<void>
+  goals: ReturnType<typeof createGoalRuntime>
   enqueue: (args: {
     threadId: Id
     requestMessageId: Id
@@ -230,6 +233,7 @@ export const createRuntimeEngine = ({
   resumeBackoffMs = CRASH_RESUME_BACKOFF_MS,
   providerAdapters,
   getNow = Date.now,
+  goalDeadlineClock,
 }: {
   kernel: Kernel
   codexCommand?: string
@@ -242,6 +246,7 @@ export const createRuntimeEngine = ({
   resumeBackoffMs?: number
   providerAdapters?: Partial<Record<Bot["provider"], ProviderAdapter>>
   getNow?: () => number
+  goalDeadlineClock?: GoalDeadlineClock
 }): RuntimeEngine => {
   const runtimeStartedAt = getNow()
   const persistence: RuntimePersistence = createRuntimePersistence({ database: kernel.db })
@@ -295,6 +300,26 @@ export const createRuntimeEngine = ({
   const work: WorkState = createWorkState({ database: kernel.db as Database })
   const continuations = createRunContinuations({ database: kernel.db })
   const pendingContinuations = new Map<Id, { timer: ReturnType<typeof setTimeout>; run: Run }>()
+  const goalDeadlines = new Map<Id, ReturnType<typeof startGoalDeadline>>()
+  const getGoalNow = goalDeadlineClock?.now ?? Date.now
+  const goals = createGoalRuntime(
+    kernel,
+    {
+      enqueue: (threadId, requestMessageId) => {
+        const result = enqueue({ threadId, requestMessageId, trigger: "retry" })
+        return result.success ? result.run : null
+      },
+      cancel: (runId) => {
+        cancel(runId)
+      },
+      getRuns: persistence.listRuns,
+      isStopping: () => shuttingDown,
+      onSaved: (goal) => {
+        if (goal.runId) goalDeadlines.get(goal.runId)?.setDeadline(goal.deadlineAt)
+      },
+    },
+    getGoalNow,
+  )
 
   const publishRun = (run: Run): void => kernel.publish({ type: "run.updated", run: cloneRun(run) })
 
@@ -951,10 +976,16 @@ export const createRuntimeEngine = ({
         controllers.delete(run.id)
       }
     }
-    const inputText = [recalled, carryover, toolSummary, requestText].filter(Boolean).join("\n\n")
+    const goal = goals.getForRun(run.id)
+    const inputText = [recalled, carryover, toolSummary, requestText, goal ? getGoalPrompt(goal) : null]
+      .filter(Boolean)
+      .join("\n\n")
+    const goalRequest = goal
+      ? store.activePath({ threadId: thread.id }).find((message) => message.id === goal.requestMessageId)
+      : null
     const requestParts = unacceptedRequest
       ? [...unacceptedRequest.parts, ...(request?.parts ?? [])]
-      : ((originalRequest ?? request)?.parts ?? [])
+      : ((goalRequest ?? originalRequest ?? request)?.parts ?? [])
     const input: Array<TextPart | Extract<MessagePart, { type: "image" }>> = request
       ? [
           { type: "text", text: inputText },
@@ -1315,12 +1346,13 @@ export const createRuntimeEngine = ({
             if (remembers && request)
               mem0?.sync({ botId: bot.id, threadId: thread.id, userText: request.text, assistantText: state.text })
             finishRoutineRun({ run, state, status: "succeeded" })
-            notices.done({
-              botId: run.botId,
-              threadId: run.threadId,
-              summary: state.text,
-              routine: run.trigger === "routine" || run.routineRunId !== null,
-            })
+            if (goals.getForRun(run.id)?.status !== "active")
+              notices.done({
+                botId: run.botId,
+                threadId: run.threadId,
+                summary: state.text,
+                routine: run.trigger === "routine" || run.routineRunId !== null,
+              })
           }
         })
       } else {
@@ -1541,6 +1573,8 @@ export const createRuntimeEngine = ({
 
   const startContinuation = ({ run, plan }: { run: Run; plan: ContinuationPlan }): boolean => {
     if (!routineAllowsContinuation(run)) return false
+    const goal = goals.getForRun(run.id)
+    if (goal && !goals.prepareContinuation(goal)) return false
     const store = kernel.services.use("store.api")
     const thread = store?.getThread({ threadId: run.threadId })
     if (!store || !thread) return false
@@ -1574,6 +1608,10 @@ export const createRuntimeEngine = ({
       ...(run.routineRunId ? { routineRunId: run.routineRunId } : {}),
     })
     if (!next.success) return false
+    if (!goals.attachRun(run.id, next.run.id)) {
+      cancel(next.run.id)
+      return false
+    }
     continuations.record({
       runId: next.run.id,
       originalRunId: plan.originalRunId,
@@ -1610,8 +1648,11 @@ export const createRuntimeEngine = ({
   }
 
   // A routine run kept open for a continuation that did not start still needs its final state.
-  const abandonContinuation = ({ run, status }: { run: Run; status: RoutineRun["status"] }): void =>
+  const abandonContinuation = ({ run, status }: { run: Run; status: RoutineRun["status"] }): void => {
+    const goal = goals.getForRun(run.id)
+    if (!shuttingDown && goal?.status === "active") goals.saveGoal({ ...goal, status: "paused" })
     finishRoutineRun({ run, state: getState(run.id), status, summary: getState(run.id).text || "Turno interrompido" })
+  }
 
   const scheduleContinuation = ({ run, plan }: { run: Run; plan: ContinuationPlan }): void => {
     const timer = setTimeout(
@@ -1651,6 +1692,32 @@ export const createRuntimeEngine = ({
     if (plan) scheduleContinuation({ run, plan })
   }
 
+  const executeGoalTurn = async (run: Run): Promise<void> => {
+    const goal = goals.getForRun(run.id)
+    if (!goal) return execute(run)
+    if (goal.status !== "active" || getGoalNow() >= goal.deadlineAt) {
+      goals.expireRun(run.id)
+      cancel(run.id)
+      active.delete(run.threadId)
+      void drain()
+      return
+    }
+    const budgetTimer = startGoalDeadline(goal.deadlineAt, () => goals.expireRun(run.id), goalDeadlineClock)
+    goalDeadlines.set(run.id, budgetTimer)
+    try {
+      await execute(run)
+      const finished = persistence.getRun(run.id)
+      if (!finished) return
+      const state = getState(run.id)
+      const needsReview =
+        hasUncertainWork(run.id) || state.parts.some((part) => part.type === "approval" && part.decision !== "approved")
+      goals.finishTurn(finished, state.text, pendingContinuations.has(run.id), needsReview)
+    } finally {
+      goalDeadlines.delete(run.id)
+      budgetTimer.stop()
+    }
+  }
+
   const drain = async (): Promise<void> => {
     // A recovered turn must not run alongside the previous provider process.
     await startupCleanup
@@ -1665,7 +1732,7 @@ export const createRuntimeEngine = ({
       const run = persistence.getRun(runId)
       if (run?.status !== "queued") continue
       active.set(run.threadId, run)
-      const execution = execute(run)
+      const execution = executeGoalTurn(run)
       executions.set(run.id, execution)
       void execution.finally(() => executions.delete(run.id)).catch(() => {})
     }
@@ -1694,6 +1761,7 @@ export const createRuntimeEngine = ({
         errorCode: "BOT_PAUSED",
         error: bot.machine === "cloud" ? "Este bot usa o runtime remoto." : "Bot is paused",
       }
+    if (trigger === "user") goals.pauseForUser(threadId)
     const run: Run = {
       id: kernel.newId(),
       threadId,
@@ -1723,7 +1791,7 @@ export const createRuntimeEngine = ({
           return
         }
         active.set(threadId, run)
-        const execution = execute(run)
+        const execution = executeGoalTurn(run)
         executions.set(run.id, execution)
         void execution.finally(() => executions.delete(run.id)).catch(() => {})
       })
@@ -2388,12 +2456,27 @@ export const createRuntimeEngine = ({
     if (plan) startContinuation({ run, plan })
   }
 
+  goals.getActive().forEach((goal) => {
+    const run = goal.runId ? persistence.getRun(goal.runId) : null
+    if (run && ["queued", "starting", "running"].includes(run.status)) return
+    if (!goals.prepareContinuation(goal)) return
+    const isLatest = run && persistence.listRuns(goal.threadId)[0]?.id === run.id
+    const plan = isLatest
+      ? planContinuation({ run, reason: "app_restart", lastActivityAt: run.finishedAt ?? run.queuedAt })
+      : null
+    if (run && plan && startContinuation({ run, plan })) return
+
+    const current = goals.getGoal(goal.threadId)
+    if (current?.status === "active") goals.saveGoal({ ...current, status: "paused" })
+  })
+
   const recoveryStore = kernel.services.use("store.api")
   if (recoveryStore) tools.reconcile(recoveryStore)
   queueMicrotask(() => void drain())
 
   return {
     ready: startupCleanup,
+    goals,
     enqueue,
     activeRun,
     continueAfterApproval,

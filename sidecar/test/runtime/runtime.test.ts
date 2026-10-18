@@ -2420,7 +2420,7 @@ test.serial("transcript: cancellation during environment loading never launches 
   }
 })
 
-test.serial("a local bot uses its selected provider profile for authentication and isolated bookkeeping", async () => {
+test.serial("local Claude profiles follow grant-free and full-access bookkeeping policy", async () => {
   const value = await fixture({ provider: "claude" })
   try {
     const envLog = join(value.assets, "claude-home.log")
@@ -2443,15 +2443,16 @@ test.serial("a local bot uses its selected provider profile for authentication a
     await run("default home")
     const bot = value.store.bots.get(value.bot.id)
     if (!bot) throw new Error("Fixture bot missing")
-    const profile = join(value.runtime.kernel.paths.appData, "provider-profiles", "clav", "claude")
+    const profile = join(value.runtime.kernel.paths.appData, "provider-profiles", "selected", "claude")
     mkdirSync(profile, { recursive: true })
     writeFileSync(join(profile, "settings.json"), JSON.stringify({ forceLoginOrgUUID: "selected-profile" }))
-    bot.providerProfile = "clav"
+    value.store.bots.set(bot.id, Object.assign({}, bot, { providerProfile: "selected" }))
     await run("profile home")
+    value.store.bots.set(bot.id, Object.assign({}, bot, { providerProfile: "selected", access: "full" as const }))
+    await run("full-access profile home")
     const homes = readFileSync(envLog, "utf8").trim().split("\n")
     expect(homes[0]).not.toContain("provider-profiles")
-    // No folder grants: the provider uses the selected profile directly on every host.
-    expect(homes.at(-1)).toBe(profile)
+    expect(homes.slice(1)).toEqual([profile, profile])
     expect(
       JSON.parse(
         readFileSync(join(value.runtime.kernel.paths.runDir, "claude", `${value.thread.id}.settings.json`), "utf8"),

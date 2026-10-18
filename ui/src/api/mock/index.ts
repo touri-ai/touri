@@ -6,6 +6,7 @@ import type {
   BotLearning,
   BrowserTabInfo,
   DoctorReport,
+  Goal,
   GroupInput,
   Id,
   ImportReport,
@@ -458,6 +459,7 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
     ...(routineFixture?.messages ?? []),
   ]
   const mem0Settings = new Map<string, import("@touri/contracts").Mem0Settings>()
+  const goals = new Map<string, Goal>()
   const learning = new Map<string, BotLearning>()
   const machines = new Map<string, import("@touri/contracts").MachineState>()
   const networkPolicies = new Map<string, Record<string, unknown>>()
@@ -1043,6 +1045,47 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
         messages: threadMessages,
         activeLeafId: findThread(pathValues.id ?? "")?.activeLeafId ?? null,
       } as ApiRoutes[typeof route]["res"]
+    }
+    if (key === "GET /threads/:id/goal")
+      return { goal: goals.get(pathValues.id ?? "") ?? null } as ApiRoutes[typeof route]["res"]
+    if (key === "POST /threads/:id/goal") {
+      const values = input as ApiRoutes["POST /threads/:id/goal"]["req"]
+      const thread = findThread(pathValues.id ?? "")
+      const request = messages.find((message) => message.id === values.requestMessageId)
+      if (!thread || !request) throw new Error("NOT_FOUND")
+      const goal: Goal = {
+        id: `goal-${now()}`,
+        threadId: thread.id,
+        botId: thread.botId,
+        requestMessageId: request.id,
+        text: request.text,
+        completionCriterion: values.completionCriterion,
+        status: "active",
+        maxTurns: values.maxTurns,
+        turnsUsed: 1,
+        deadlineAt: now() + values.maxMinutes * 60_000,
+        runId: null,
+        steps: [],
+        createdAt: now(),
+        updatedAt: now(),
+      }
+      goals.set(thread.id, goal)
+      return { goal } as ApiRoutes[typeof route]["res"]
+    }
+    if (key === "PATCH /threads/:id/goal") {
+      const values = input as ApiRoutes["PATCH /threads/:id/goal"]["req"]
+      const goal = goals.get(pathValues.id ?? "")
+      if (!goal) throw new Error("NOT_FOUND")
+      const statuses = { pause: "paused", resume: "active", complete: "completed", budget: goal.status } as const
+      const next: Goal = {
+        ...goal,
+        status: statuses[values.action],
+        maxTurns: values.maxTurns ?? goal.maxTurns,
+        deadlineAt: values.maxMinutes ? now() + values.maxMinutes * 60_000 : goal.deadlineAt,
+        updatedAt: now(),
+      }
+      goals.set(goal.threadId, next)
+      return { goal: next } as ApiRoutes[typeof route]["res"]
     }
     if (key === "GET /threads/:id/runs")
       return {

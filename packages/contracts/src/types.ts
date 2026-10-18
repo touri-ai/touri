@@ -307,6 +307,27 @@ export type Run = {
   finishedAt: EpochMs | null
 }
 
+/** Explicit, bounded work across provider turns in one local conversation. */
+export type Goal = {
+  id: Id
+  threadId: Id
+  botId: Id
+  requestMessageId: Id
+  text: string
+  completionCriterion: string
+  status: 'active' | 'paused' | 'budget_exhausted' | 'completed'
+  maxTurns: number
+  turnsUsed: number
+  deadlineAt: EpochMs
+  runId: Id | null
+  steps: Array<{ runId: Id; text: string; at: EpochMs }>
+  createdAt: EpochMs
+  updatedAt: EpochMs
+}
+
+export type GoalStart = { requestMessageId: Id; completionCriterion: string; maxTurns: number; maxMinutes: number }
+export type GoalControl = { action: 'pause' | 'resume' | 'complete' | 'budget'; maxTurns?: number; maxMinutes?: number }
+
 export type MessageRole = 'user' | 'assistant' | 'system' | 'tool'
 export type MessageKind = 'text' | 'tool' | 'notice' | 'approval'
 export type MessageStatus = 'streaming' | 'complete' | 'failed' | 'canceled'
@@ -884,6 +905,9 @@ export type ApiRoutes = {
   'GET /threads/:id/transcript': { req: { since?: number; limit?: number }; res: { entries: Array<{ seq: number; generation: number; event: UiEvent }>; rejections: Array<TranscriptRejection>; lastSeq: number; generation: number; hasMore: boolean; resync: boolean } }
   'GET /threads/:id/messages': { req: { all?: boolean }; res: { messages: Array<Message>; activeLeafId: Id | null } }
   'POST /threads/:id/messages': { req: SendMessageInput; res: { message: Message; run: Run } }
+  'GET /threads/:id/goal': { req: {}; res: { goal: Goal | null } }
+  'POST /threads/:id/goal': { req: GoalStart; res: { goal: Goal } }
+  'PATCH /threads/:id/goal': { req: GoalControl; res: { goal: Goal } }
   'GET /threads/:id/runs': { req: { all?: boolean }; res: { runs: Array<Run> } }
   /** Compact sidebar messages and latest/active runs; never a transcript snapshot. */
   'GET /workspace/activity': { req: Record<string, never>; res: { messages: Array<Message>; runs: Array<Run> } }
