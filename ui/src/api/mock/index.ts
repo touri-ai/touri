@@ -637,7 +637,12 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
         const { token, ...config } = input as ApiRoutes["PUT /bots/:id/integrations/telegram"]["req"]
         const nextConfig = { ...current.config, ...config }
         const tokenSaved = token === undefined ? current.tokenSaved : token !== null
-        const next = { ...current, config: nextConfig, tokenSaved, status: getMockTelegramStatus(nextConfig.enabled, tokenSaved) }
+        const next = {
+          ...current,
+          config: nextConfig,
+          tokenSaved,
+          status: getMockTelegramStatus(nextConfig.enabled, tokenSaved),
+        }
         telegram.set(botId, next)
         return { telegram: next } as ApiRoutes[typeof route]["res"]
       }
