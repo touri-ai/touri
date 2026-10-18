@@ -2,6 +2,10 @@ import { expect, test } from "@playwright/test"
 
 test.use({ channel: "chromium", locale: "pt-BR", timezoneId: "America/Sao_Paulo" })
 
+test.beforeEach(async ({ page }) => {
+  await page.clock.setFixedTime(new Date("2026-10-18T18:00:00-03:00"))
+})
+
 for (const [name, width, height] of [
   ["desktop", 1440, 900],
   ["phone", 390, 844],
