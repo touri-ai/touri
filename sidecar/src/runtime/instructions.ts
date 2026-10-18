@@ -8,7 +8,7 @@ import { getDelegation } from "../groups/security"
 import { excludedBotFolders, folderGuestPath } from "../kernel/bot-folders"
 import { MEMORY_LIMITS, memoryFile, parseEntries, renderEntries } from "../learning/memory"
 import { readLearning } from "../learning/settings"
-import { skillDescription } from "../learning/skills"
+import { getSkillDescription } from "../learning/skills"
 import { mem0SessionAllowed } from "../mem0/session"
 import { bounded, sha256 } from "./utils"
 
@@ -115,7 +115,7 @@ const skillsIndex = (homeDir: string): string => {
       .filter((entry) => entry.isDirectory() && !entry.name.startsWith("."))
       .map((entry) => {
         const source = readOptional(join(skillsDir, entry.name, "SKILL.md"))
-        const description = skillDescription(source.match(/^description:\s*(.+)$/m)?.[1]?.trim() ?? "")
+        const description = getSkillDescription(source.match(/^description:\s*(.+)$/m)?.[1]?.trim() ?? "")
         return `- ${entry.name}: ${description} (${join(skillsDir, entry.name, "SKILL.md")})`
       })
       .join("\n")

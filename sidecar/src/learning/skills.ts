@@ -71,14 +71,14 @@ const record = ({
   )
 }
 
-/** Quoted descriptions are JSON strings, also valid YAML; older plain scalars remain readable. */
-export const skillDescription = (value: string): string => {
+/** Decode generated JSON quotes while preserving the text of legacy YAML scalars. */
+export const getSkillDescription = (value: string): string => {
   if (!value.startsWith('"')) return value
   try {
     const decoded: unknown = JSON.parse(value)
-    return typeof decoded === "string" ? decoded : ""
+    return typeof decoded === "string" ? decoded : value
   } catch {
-    return ""
+    return value
   }
 }
 
@@ -187,11 +187,11 @@ export const planSkillPatch = ({
     const header = after.match(/^---\nname: [a-z0-9_-]+\ndescription: ([^\r\n]+)\n---\n/)
     if (
       !header ||
-      !SKILL_TRIGGER.test(skillDescription(header[1]?.trim() ?? "")) ||
-      skillDescription(header[1]?.trim() ?? "").length > SKILL_LIMITS.description
+      !SKILL_TRIGGER.test(getSkillDescription(header[1]?.trim() ?? "")) ||
+      getSkillDescription(header[1]?.trim() ?? "").length > SKILL_LIMITS.description
     )
       return fail("INVALID_ARGS", "Mantenha o cabeçalho e uma descrição começando com 'Use when'.")
-    const description = skillDescription(header[1]?.trim() ?? "")
+    const description = getSkillDescription(header[1]?.trim() ?? "")
     if (/[\r\n]/.test(description)) return fail("INVALID_ARGS", "A descrição deve ter uma linha.")
     const body = after.slice(header[0].length).trim()
     inspected = `${description}\n${body}`

@@ -852,3 +852,25 @@ test.skipIf(process.platform === "win32")("archiving rejects a pipe in place of 
   expect(result).toMatchObject({ success: false, errorCode: "INVALID_PATH" })
   expect(existsSync(join(base.homeDir, "skills", base.name))).toBe(true)
 })
+
+test("legacy quoted descriptions stay discoverable while learning is off", async () => {
+  const context = await fixture()
+  const directory = join(context.bot.homeDir, "skills", "legacy")
+  mkdirSync(directory, { recursive: true })
+  writeFileSync(
+    join(directory, "SKILL.md"),
+    '---\nname: legacy\ndescription: "Use quando resumir relat\\xF3rios"\n---\n\nGuia.\n'.replaceAll("\\n", "\n"),
+  )
+  const thread = context.store.getThread({ threadId: context.bot.mainThreadId ?? "" })
+  if (!thread) throw new Error("Missing thread fixture")
+
+  const instructions = await composeDeveloperInstructions({
+    kernel: context.kernel,
+    bot: context.bot,
+    thread,
+    cwd: context.bot.homeDir,
+  })
+
+  expect(readLearning(context.kernel, context.bot.id).skills).toBe(false)
+  expect(instructions).toContain("Use quando resumir")
+})
