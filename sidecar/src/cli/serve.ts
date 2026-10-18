@@ -9,6 +9,7 @@ import { createRateLimiter } from "./auth/rateLimit"
 import { openAuthStore } from "./auth/store"
 import { createHeadlessHost } from "./host/headlessHost"
 import { createSecretStore } from "./host/secretStore"
+import { startHeadlessStderr } from "./nativeStderr"
 import { remoteAccessWarning } from "./remoteAccessWarning"
 import { clearServeInfo, writeServeInfo } from "./serveInfo"
 import { exposeOnTailscale } from "./tailscale"
@@ -26,6 +27,16 @@ const out = (line: string): void => {
 
 /** Boots the sidecar kernel without Tauri and serves the UI and API from one port. */
 export const runServeCommand = async (options: ServeOptions): Promise<void> => {
+  const stopStderr = await startHeadlessStderr()
+  try {
+    await startServer(options, stopStderr)
+  } catch (error) {
+    await stopStderr()
+    throw error
+  }
+}
+
+const startServer = async (options: ServeOptions, stopStderr: () => Promise<void>): Promise<void> => {
   if ((options.trustedProxy || options.tailscale) && !["127.0.0.1", "::1", "localhost"].includes(options.host))
     throw new Error("O proxy HTTPS confiável exige --host 127.0.0.1. O acesso remoto por HTTP não é permitido.")
   process.env.TOURI_APP_DATA = options.dataDir
@@ -91,6 +102,7 @@ export const runServeCommand = async (options: ServeOptions): Promise<void> => {
       runtime.stop()
       store.close()
       lease.release()
+      await stopStderr()
       process.exit(0)
     })().catch(() => process.exit(1))
   }
