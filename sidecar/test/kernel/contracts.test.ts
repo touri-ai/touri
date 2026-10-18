@@ -3,7 +3,7 @@ import { toolCatalog, validateToolArgs } from "@touri/contracts"
 import { target } from "../../src/browser"
 
 test("compiled tool validators accept valid args and report the schema path", () => {
-  expect(toolCatalog.tools).toHaveLength(52)
+  expect(toolCatalog.tools).toHaveLength(56)
   expect(validateToolArgs({ name: "history_search", args: { query: "accentuação" } })).toEqual({
     success: true,
     args: { query: "accentuação", limit: 10 },

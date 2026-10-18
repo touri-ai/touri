@@ -763,3 +763,23 @@
   }
 }
 /* End r8 screens. */
+
+.learning-grid {
+  margin-top: 16px;
+}
+
+.learning-switches {
+  display: grid;
+  gap: 12px;
+}
+
+.learning-switches label {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.learning-switches label span {
+  display: grid;
+  gap: 2px;
+}

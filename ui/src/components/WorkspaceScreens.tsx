@@ -15,6 +15,7 @@ import { type ApprovalTarget, pendingApprovalTargets } from "../approvalNavigati
 import { localizeNotice, mcpGroupLabel, statusLabel, t } from "../i18n"
 import { messageMarkdown } from "../messageMarkdown"
 import { BotAvatar } from "./BotAvatar"
+import { LearningCard } from "./LearningCard"
 import { MarkdownContent } from "./MarkdownContent"
 import { mcpPresets } from "./McpCatalog"
 import { ScreenServerPolicies, useScreenConnections } from "./ScreenConnections"
@@ -135,6 +136,11 @@ export const IntegrationsScreen = ({ api, botId, botName, onConfigure, modalOpen
           </>
         )}
         <p className="screen-help">Prepare o login na máquina do bot. Em uma VM, arquivos e credenciais ficam na VM.</p>
+        {botId && (
+          <div className="screen-provider-grid learning-grid">
+            <LearningCard api={api} botId={botId} />
+          </div>
+        )}
       </div>
     </section>
   )

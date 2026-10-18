@@ -91,6 +91,37 @@
       "x-touri": { "group": "core", "mvp": true, "mutates": true }
     },
     {
+      "name": "memory_write",
+      "description": "Save, correct or remove durable facts in your memory. target 'user' (USER.md) is who the user is: name, role, preferences, style. target 'memory' (MEMORY.md) is facts about the environment, conventions and tool quirks. Save only declarative facts that hold in every conversation; task details and procedures belong in skills. Each operation: add {content}, patch {old_text, content} (old_text must match one entry), remove {old_text}. Operations apply together; the size limit is checked on the result, so remove or shorten and add in one call when the memory is full.",
+      "inputSchema": { "type": "object", "required": ["target", "operations"], "additionalProperties": false,
+        "properties": {
+          "target": { "enum": ["memory", "user"] },
+          "operations": { "type": "array", "minItems": 1, "maxItems": 20, "items": { "type": "object", "required": ["action"], "additionalProperties": false,
+            "properties": { "action": { "enum": ["add", "patch", "remove"] }, "content": { "type": "string", "maxLength": 3000 }, "old_text": { "type": "string", "maxLength": 3000 } } } } } },
+      "x-touri": { "group": "core", "mvp": true, "mutates": true }
+    },
+    {
+      "name": "skill_create",
+      "description": "Record a reusable procedure as a new skill in your skills folder. Use for a class of task that will repeat, not for one case. name: lowercase letters, digits, '-' or '_'. description: one line starting with 'Use when' that says when to load it. body: Markdown steps written as rules with their reason. Fails if the skill exists; then use skill_patch.",
+      "inputSchema": { "type": "object", "required": ["name", "description", "body"], "additionalProperties": false,
+        "properties": { "name": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$" }, "description": { "type": "string", "minLength": 1, "maxLength": 1024 }, "body": { "type": "string", "minLength": 1, "maxLength": 100000 } } },
+      "x-touri": { "group": "core", "mvp": true, "mutates": true }
+    },
+    {
+      "name": "skill_patch",
+      "description": "Correct one of your skills by replacing old_string with new_string. old_string must appear exactly once. file_path defaults to SKILL.md; supporting files live under references/, templates/, scripts/ or assets/, and an empty old_string creates a missing supporting file.",
+      "inputSchema": { "type": "object", "required": ["name", "old_string", "new_string"], "additionalProperties": false,
+        "properties": { "name": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$" }, "old_string": { "type": "string" }, "new_string": { "type": "string" }, "file_path": { "type": "string", "maxLength": 200 } } },
+      "x-touri": { "group": "core", "mvp": true, "mutates": true }
+    },
+    {
+      "name": "skill_archive",
+      "description": "Archive one of your skills that is wrong or replaced. It moves to skills/.archive and stops being listed.",
+      "inputSchema": { "type": "object", "required": ["name"], "additionalProperties": false,
+        "properties": { "name": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$" } } },
+      "x-touri": { "group": "core", "mvp": true, "mutates": true }
+    },
+    {
       "name": "bot_rename",
       "description": "Rename this calling bot only when the user asks. Low-risk identity change; posts a visible notice in chat without an approval card. Never available for delegated requests. Use 1 to 80 characters without line breaks or control characters.",
       "inputSchema": { "type": "object", "required": ["name"], "additionalProperties": false,

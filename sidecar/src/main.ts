@@ -25,6 +25,7 @@ const moduleLoaders: Array<ModuleLoader> = [
   { path: "./browser/index.ts", load: () => import("./browser/index.js") },
   { path: "./computer/index.ts", load: () => import("./computer/index.js") },
   { path: "./runtime/index.ts", load: () => import("./runtime/index.js") },
+  { path: "./learning/index.ts", load: () => import("./learning/index.js") },
   { path: "./importer/index.ts", load: () => import("./importer/index.js") },
 ]
 
