@@ -7,8 +7,8 @@ import { resolveTouriVersion } from "../../src/version"
 const sourceRoot = join(import.meta.dir, "..", "..", "src")
 const repoRoot = join(import.meta.dir, "..", "..", "..")
 
-test("the 0.2.0 release keeps workspace and desktop versions in sync", () => {
-  expect(rootPackage.version).toBe("0.2.0")
+test("the 0.3.0 release keeps workspace and desktop versions in sync", () => {
+  expect(rootPackage.version).toBe("0.3.0")
   for (const file of [
     "sidecar/package.json",
     "ui/package.json",

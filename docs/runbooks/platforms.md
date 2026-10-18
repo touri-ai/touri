@@ -1,13 +1,13 @@
 # Desktop platforms
 
-macOS and Linux have desktop builds. Windows x64 now has native runtime adapters and a CI build workflow, but remains in progress until its native fixtures, installers and desktop onboarding are executed on Windows.
+macOS, Linux and Windows x64 have desktop builds. Windows CI executes native checks and generates MSI/NSIS installers on main; manual installation and desktop onboarding verification remain pending.
 
 | Platform | Runtime implementation | Evidence and remaining verification |
 | --- | --- | --- |
 | macOS / Apple Silicon | Existing Keychain, host computer use and Apple container provider | Existing macOS CI/release commands retained; no macOS execution on the Linux host |
 | Linux / x86_64 | Secret Service, local bots/browser, Podman or Docker OCI bots | Native checks and compiled bot/API smoke; earlier port sessions built AppImage/.deb packages. The current integration still needs packaged GUI revalidation and the release dependency audit in [#154](https://github.com/touri-ai/touri/issues/154); live OCI was blocked by host user-namespace policy |
 | Linux / arm64 | Same Linux runtime; native GTK/WebKit packaging required | Sidecar cross-build only; native packages/runtime still need ARM64 hardware |
-| Windows / x86_64 | Credential Manager, ConPTY, authenticated loopback RPC/MCP, private file/lock/job helpers, Docker Desktop WSL2 provider | Windows GNU Rust check including native fixtures, sidecar .exe cross-builds, portable transport/provider tests on Linux; Windows execution/installer results pending |
+| Windows / x86_64 | Credential Manager, ConPTY, authenticated loopback RPC/MCP, private file/lock/job helpers, Docker Desktop WSL2 provider | Native Rust, portable and compiled smoke checks pass in [main CI](https://github.com/touri-ai/touri/actions/runs/39135288527); `touri-windows-x64` contains MSI/NSIS installers. Manual installation/onboarding verification remains pending |
 
 ## Linux
 
@@ -51,7 +51,9 @@ bun run test:sidecar:smoke
 bun run tauri build --bundles "msi,nsis"
 ```
 
-The sidecar is `src-tauri/binaries/touri-sidecar-x86_64-pc-windows-msvc.exe`. MSI/NSIS output is under `src-tauri/target/release/bundle/{msi,nsis}`. `build:sidecar:windows:gnu` creates the equivalent GNU-named sidecar; `cargo check --target x86_64-pc-windows-gnu --tests` checks Windows Rust code from Linux with MinGW installed. These cross-builds do not execute Windows code or create a validated installer.
+The sidecar is `src-tauri/binaries/touri-sidecar-x86_64-pc-windows-msvc.exe`. MSI/NSIS output is under `src-tauri/target/release/bundle/{msi,nsis}`. For v0.3.0, the installers are `touri_0.3.0_x64_en-US.msi` and `touri_0.3.0_x64-setup.exe`. CI runs `bun run tauri build --bundles "msi,nsis"` on pushes to main and uploads both installers and the sidecar as `touri-windows-x64`. Installers are unsigned; SmartScreen may show **More info → Run anyway** (**Mais informações → Executar assim mesmo**).
+
+`build:sidecar:windows:gnu` creates the equivalent GNU-named sidecar; `cargo check --target x86_64-pc-windows-gnu --tests` checks Windows Rust code from Linux with MinGW installed. These cross-builds do not execute Windows code or create a validated installer.
 
 Desktop data uses `%APPDATA%\touri`, with `TOURI_APP_DATA` as an override. The shell passes its own executable as `TOURI_DESKTOP_HELPER`. When running sidecar source independently on Windows, set that variable to a built `touri.exe`. The portable test/smoke scripts locate `src-tauri/target/debug/touri.exe`, built by `cargo test`.
 
@@ -73,9 +75,10 @@ These features still need implementation:
 - Local Chromium's extra pipe descriptors. Use the container browser; host computer control is hidden.
 - Remote snapshot download publication and the legacy SQLite snapshot importer, which retain POSIX-specific operations. Local OCI export uses the engine CLI and still needs native validation.
 
-These implemented paths still need Windows execution:
+Native Rust fixtures, portable transport/provider checks and the compiled sidecar smoke pass in
+[main CI](https://github.com/touri-ai/touri/actions/runs/39135288527). This establishes automated
+runtime coverage and installer generation, with the following manual validation still pending:
 
-- Native ConPTY console/input/exit fixtures, helper lock/EOF and job cancellation, native file/pinning fixtures, DACL/junction checks, Credential Manager round trips and the compiled local-bot API smoke. Windows CI is configured to run them; it has not been triggered by this worktree.
 - MSI and NSIS installation, WebView2 cold launch, tray, notifications, startup registration and uninstall under a standard user.
 - Docker Desktop WSL2 image boot, persistent volumes, guest browser/display, cancellation and fail-closed network/DNS isolation, including access from a second Windows user.
 - Provider executable discovery, browser/device-code authentication and credential persistence across app restarts. Only inert provider/console fixtures were run here; native accountful onboarding remains untested.
