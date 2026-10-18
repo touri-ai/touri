@@ -57,7 +57,7 @@ test("streaming eight long replies keeps allocation work bounded", async ({ page
   }
   await writeFile(testInfo.outputPath("streaming-memory.json"), JSON.stringify(result, null, 2))
   const screenshot = testInfo.outputPath("streaming.png")
-  await page.screenshot({ path: screenshot })
+  await page.screenshot({ path: screenshot, clip: { x: 0, y: 0, width: 1440, height: 760 } })
   await testInfo.attach("synthetic streaming", { path: screenshot, contentType: "image/png" })
   console.log(JSON.stringify({ ...result, samples: undefined }))
 
