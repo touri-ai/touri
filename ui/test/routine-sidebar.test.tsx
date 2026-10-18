@@ -28,27 +28,49 @@ it("clears every unread run when opening its routine group and leaves another ro
   expect(document.querySelector(".thread-row.selected")).toHaveTextContent("09:45")
 })
 
-it("keeps every deleted routine conversation reachable after its run metadata is removed", async () => {
-  const { api } = await getRoutineSidebarFixture(28, { withoutRoutineMetadata: true, unreadRuns: 8 })
+it("groups 128 deleted routine conversations and keeps every result reachable in bounded pages", async () => {
+  const { api, threads } = await getRoutineSidebarFixture(128, { withoutRoutineMetadata: true, unreadRuns: 8 })
+  const oldestThread = threads[1]
+  if (!oldestThread) throw new Error("Missing oldest deleted result")
 
   render(<App kernel={{ services: { api } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
   const conversations = screen.getByRole("region", { name: "Conversas de mark" })
-  const routineRows = within(conversations).getAllByRole("button", { name: /Rotina excluída/ })
-  const oldest = routineRows.at(-1)
-  const nextOldest = routineRows.at(-2)
-  if (!oldest || !nextOldest) throw new Error("Missing deleted routine results")
+  const routine = within(conversations).getByRole("button", { name: /Rotina excluída/ })
 
-  expect(conversations.querySelectorAll(".thread-row")).toHaveLength(29)
-  expect(routineRows).toHaveLength(28)
+  expect(conversations.querySelectorAll(".thread-row")).toHaveLength(2)
   expect(within(conversations).queryByRole("button", { name: "Histórico de rotinas" })).toBeNull()
-  expect(oldest.querySelector(".sidebar-unread")).toHaveTextContent("1")
+  expect(routine.querySelector(".sidebar-unread")).toHaveTextContent("8")
+  fireEvent.click(routine)
+  await screen.findByText("Resumo pronto para conferir.", { selector: "p" })
+
+  await waitFor(() => expect(routine.querySelector(".sidebar-unread")).toBeNull())
+  const toggle = within(conversations).getByRole("button", { name: "Conversas de rotinas excluídas" })
+  fireEvent.click(toggle)
+  const history = screen.getByRole("region", { name: "Conversas de rotinas excluídas" })
+
+  expect(history.querySelectorAll(".thread-row")).toHaveLength(50)
+  expect(within(history).getByRole("status")).toHaveTextContent("Execuções 1–50 de 128")
+  fireEvent.click(within(history).getByRole("button", { name: "Carregar mais" }))
+
+  expect(history.querySelectorAll(".thread-row")).toHaveLength(50)
+  expect(within(history).getByRole("status")).toHaveTextContent("Execuções 51–100 de 128")
+  expect(within(history).getByRole("status")).toHaveFocus()
+  fireEvent.click(within(history).getByRole("button", { name: "Carregar mais" }))
+
+  expect(history.querySelectorAll(".thread-row")).toHaveLength(28)
+  expect(within(history).getByRole("status")).toHaveTextContent("Execuções 101–128 de 128")
+  fireEvent.click(within(history).getByRole("button", { name: "Página anterior" }))
+  fireEvent.click(within(history).getByRole("button", { name: "Página anterior" }))
+  const oldest = within(history).getByText(getRoutineRunDateLabel(oldestThread.createdAt)).closest("button")
+  if (!oldest) throw new Error("Missing oldest deleted result button")
 
   fireEvent.click(oldest)
   await screen.findByText("Resumo pronto para conferir.", { selector: "p" })
+  fireEvent.click(toggle)
 
-  await waitFor(() => expect(oldest.querySelector(".sidebar-unread")).toBeNull())
-  expect(nextOldest.querySelector(".sidebar-unread")).toHaveTextContent("1")
+  expect(toggle).toHaveAttribute("aria-expanded", "false")
+  expect(conversations.querySelectorAll(".thread-row")).toHaveLength(2)
   expect(document.querySelector(".thread-row.selected")).toHaveTextContent("08:00")
 })
 
@@ -265,12 +287,12 @@ it("marks only visible runs of the opened group, including a selected older resu
   expect([...ordinaryReadIds]).toEqual(["thread-mark"])
 })
 
-it("keeps every result reachable immediately after deletion while old run metadata is still loaded", async () => {
+it("keeps results grouped immediately after deletion while old run metadata is still loaded", async () => {
   const { threads, routineRuns } = await getRoutineSidebarFixture(8)
 
   const rows = getSidebarThreads(threads, routineRuns, null, new Set(), new Set())
 
-  expect(rows).toHaveLength(9)
+  expect(rows).toHaveLength(2)
   expect(rows[1]?.deletedRoutine).toBe(true)
   expect(rows[1]?.thread.id).toBe("sidebar-thread-7")
 })
@@ -291,7 +313,7 @@ it("excludes archived and group threads, preserves missing metadata and leaves m
   expect(rows).toHaveLength(3)
   expect(rows.map((row) => row.thread.id)).toEqual(expect.arrayContaining([mainThread.id, routineThread.id, orphan.id]))
   expect(rows[0]?.routineRun).toBeUndefined()
-  expect(getSidebarThreads([routineThread, orphan], [], null)).toHaveLength(2)
+  expect(getSidebarThreads([routineThread, orphan], [], null)).toHaveLength(1)
 })
 
 it("labels routine times and navigation in Portuguese and English", () => {
@@ -309,5 +331,7 @@ it("labels routine times and navigation in Portuguese and English", () => {
   expect(t("All routines", {}, "en")).toBe("All routines")
   expect(t("Deleted routine", {}, "pt-BR")).toBe("Rotina excluída")
   expect(t("Deleted routine", {}, "en")).toBe("Deleted routine")
+  expect(t("Deleted routine conversations", {}, "pt-BR")).toBe("Conversas de rotinas excluídas")
+  expect(t("Deleted routine conversations", {}, "en")).toBe("Deleted routine conversations")
   expect(t("Routine history range", { from: 51, to: 60, total: 60 }, "en")).toBe("Runs 51–60 of 60")
 })

@@ -262,6 +262,15 @@
 .r8-sidebar .new-thread-row:hover {
   background: var(--surface-control);
 }
+.deleted-routine-history {
+  padding-left: var(--space-8);
+  border-left: 1px solid var(--border-subtle);
+}
+.deleted-routine-history > p {
+  padding: var(--space-4) var(--space-8);
+  color: var(--text-tertiary);
+  font-size: var(--type-10);
+}
 .r8-sidebar .sidebar-footer {
   display: flex;
   flex-direction: column;

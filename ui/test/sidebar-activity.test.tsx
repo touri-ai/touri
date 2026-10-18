@@ -174,7 +174,28 @@ it.each([
     updatedAt: timestamp,
   })
 
-  renderSidebar({ bots: [bot], threads: [thread], selectedBotId: bot.id })
+  renderSidebar({
+    bots: [bot],
+    threads: [thread],
+    selectedBotId: bot.id,
+    routineRuns:
+      kind === "routine"
+        ? [
+            {
+              id: "sidebar-routine-run",
+              routineId: "sidebar-routine",
+              threadId: thread.id,
+              scheduledFor: timestamp,
+              status: "succeeded",
+              runId: null,
+              triggerSource: "cron",
+              summary: null,
+              startedAt: timestamp,
+              finishedAt: timestamp,
+            },
+          ]
+        : [],
+  })
 
   const row = screen.getByRole("button", { name: /Novas mensagens/ })
   expect(row.querySelector("strong")).toHaveTextContent(/^Novas mensagens$/)

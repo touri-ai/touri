@@ -29,6 +29,7 @@ import { useMascotSnapshot } from "./AvatarRuntime"
 import { BotActionsMenu } from "./BotActionsMenu"
 import { BotAvatar } from "./BotAvatar"
 import { DeleteBotDialog } from "./DeleteBotDialog"
+import { DeletedRoutineHistory } from "./DeletedRoutineHistory"
 import { GlobalAdvancedMenu } from "./GlobalAdvancedMenu"
 import { GroupSidebar } from "./Groups"
 import { useInsertedIds } from "./Motion"
@@ -461,6 +462,7 @@ const BotEntry = ({
   )
   const selectedRoutineId = sidebarThreads.find(({ thread }) => thread.id === selectedThreadId)?.routineRun?.routineId
   const historyRoutineId = selectedRoutineId ?? (visibleRoutineIds.length === 1 ? visibleRoutineIds[0] : undefined)
+  const deletedRoutine = sidebarThreads.find((entry) => entry.deletedRoutine)
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: hover and focus only pause reordering; they trigger no action
     <div
@@ -582,6 +584,16 @@ const BotEntry = ({
             <button type="button" className="new-thread-row" onClick={() => onRoutineHistory(historyRoutineId)}>
               {t("Routine run history")}
             </button>
+          )}
+          {deletedRoutine && (
+            <DeletedRoutineHistory
+              threads={threads}
+              routineRuns={routineRuns}
+              routineIds={routineIds}
+              groupThreadId={deletedRoutine.thread.id}
+              selectedThreadId={selectedThreadId}
+              onSelectThread={onSelectThread}
+            />
           )}
           <button type="button" className="new-thread-row" onClick={onNewThread}>
             <SidebarIcon>
