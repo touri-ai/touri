@@ -21,9 +21,18 @@ const STAGES = [
   "workspace_event_serialization",
   "workspace_websocket_broadcast",
   "routine_scheduler_dispatch",
+  "store_transcript_startup_recovery",
   "database_page_maintenance",
   "storage_message_compaction_batch",
   "storage_vacuum",
+  "storage_attachment_candidate_scan",
+  "storage_attachment_reference_scan",
+  "storage_attachment_orphan_scan",
+  "notification_run_recovery_scan",
+  "notification_journal_recovery_scan",
+  "notification_routine_recovery_scan",
+  "notification_recovery_reconcile",
+  "notification_history_reconcile",
   "history_backfill_batch",
 ] as const
 

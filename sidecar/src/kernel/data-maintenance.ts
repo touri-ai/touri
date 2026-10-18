@@ -1,5 +1,6 @@
 import type { Database } from "bun:sqlite"
 import { existsSync, lstatSync, readdirSync, statSync } from "node:fs"
+import { opendir } from "node:fs/promises"
 import { join } from "node:path"
 import type { Kernel, MessagePart, StorageMaintenanceStatus, StorageStats } from "@touri/contracts"
 import { removePrivateFile } from "./files"
@@ -155,25 +156,31 @@ export const collectUnusedOutputBlobs = async (
   now = Date.now(),
   yieldBatch: (() => Promise<void>) | null = () => Bun.sleep(0),
   deletedBotAttachments = new Set<string>(),
+  runStage?: PerformanceStageRunner,
 ): Promise<number> => {
+  const measure = <Value>(stage: Parameters<PerformanceStageRunner>[0], action: () => Value): Value =>
+    runStage ? runStage(stage, action) : action()
+
   // Bot deletion can request collection while the backup worker is reading.
   // Keep its referenced files intact until their backup pins are committed.
   if (database.query("SELECT 1 FROM schema_meta WHERE key = 'storage_upgrade_22' AND value <> 'done'").get()) return 0
   // Include replay/recovery references, so retention never deletes a file still
   // needed by an unpublished entry or a reconnecting client. User uploads stay.
-  const pending = database
-    .query("SELECT key,value_json FROM settings WHERE key LIKE 'storage.deleted-attachments:%'")
-    .all() as { key: string; value_json: string }[]
+  const pending = measure("storage_attachment_candidate_scan", () =>
+    database.query("SELECT key,value_json FROM settings WHERE key LIKE 'storage.deleted-attachments:%'").all(),
+  ) as { key: string; value_json: string }[]
   const eligible = new Set(deletedBotAttachments)
   for (const row of pending) {
     const ids: unknown = JSON.parse(row.value_json)
     if (Array.isArray(ids)) for (const id of ids) if (typeof id === "string") eligible.add(id)
   }
-  const candidates = database
-    .query(`SELECT id,path FROM attachments
-      WHERE (origin_path=? OR id IN (SELECT value FROM json_each(?)))
-        AND NOT EXISTS (SELECT 1 FROM storage_backup_attachments b WHERE b.attachment_id = attachments.id)`)
-    .all(OUTPUT_BLOB_ORIGIN, JSON.stringify([...eligible])) as Array<{ id: string; path: string }>
+  const candidates = measure("storage_attachment_candidate_scan", () =>
+    database
+      .query(`SELECT id,path FROM attachments
+        WHERE (origin_path=? OR id IN (SELECT value FROM json_each(?)))
+          AND NOT EXISTS (SELECT 1 FROM storage_backup_attachments b WHERE b.attachment_id = attachments.id)`)
+      .all(OUTPUT_BLOB_ORIGIN, JSON.stringify([...eligible])),
+  ) as Array<{ id: string; path: string }>
   const changes = () => Number((database.query("SELECT total_changes() AS n").get() as { n: number }).n)
   let observed = changes()
   const referenced = new Set<string>()
@@ -187,13 +194,17 @@ export const collectUnusedOutputBlobs = async (
     ]) {
       let cursor = 0
       while (true) {
-        const rows = database
-          .query(`SELECT ${key} AS cursor, ${column} AS json FROM ${table} WHERE ${key} > ? ORDER BY ${key} LIMIT 50`)
-          .all(cursor) as Array<{ cursor: number; json: string }>
-        for (const row of rows) {
-          attachmentReferences(JSON.parse(row.json), referenced)
-          cursor = row.cursor
-        }
+        const rows = measure("storage_attachment_reference_scan", () =>
+          database
+            .query(`SELECT ${key} AS cursor, ${column} AS json FROM ${table} WHERE ${key} > ? ORDER BY ${key} LIMIT 50`)
+            .all(cursor),
+        ) as Array<{ cursor: number; json: string }>
+        measure("storage_attachment_reference_scan", () =>
+          rows.forEach((row) => {
+            attachmentReferences(JSON.parse(row.json), referenced)
+            cursor = row.cursor
+          }),
+        )
         if (rows.length < 50) break
         if (yieldBatch) await yieldBatch()
         // A writer can introduce a new reference while we yield. Defer collection
@@ -215,24 +226,29 @@ export const collectUnusedOutputBlobs = async (
   }
   // A crash/rollback can lose attachment metadata after the file was committed.
   // Only our dedicated suffix is eligible; uploads and recent writes stay intact.
-  const known = new Set(
-    (database.query("SELECT id FROM attachments").all() as Array<{ id: string }>).map((row) => row.id),
-  )
   const attachmentsDir = join(appData, "attachments")
+  const attachmentExists = database.query("SELECT 1 FROM attachments WHERE id = ?")
+  let scanned = 0
   if (existsSync(attachmentsDir))
     for (const directory of readdirSync(attachmentsDir, { withFileTypes: true })) {
       if (!directory.isDirectory() || !/^[a-f0-9]{2}$/.test(directory.name)) continue
-      for (const file of readdirSync(join(attachmentsDir, directory.name), { withFileTypes: true })) {
-        const match = /^([a-f0-9]{64})\.tool-output\.txt$/.exec(file.name)
-        if (!file.isFile() || !match?.[1] || known.has(match[1])) continue
-        const path = join(attachmentsDir, directory.name, file.name)
-        if (lstatSync(path).mtimeMs > now - DAY) continue
-        removePrivateFile({ root: appData, path })
-        removed += 1
-        if (removed % 25 === 0) {
-          if (yieldBatch) await yieldBatch()
-          if (changes() !== observed) return removed
-        }
+      const directoryPath = join(attachmentsDir, directory.name)
+      const files = await opendir(directoryPath)
+      for await (const file of files) {
+        scanned += 1
+        measure("storage_attachment_orphan_scan", () => {
+          const match = /^([a-f0-9]{64})\.tool-output\.txt$/.exec(file.name)
+          const id = match?.[1]
+          if (!file.isFile() || !id || attachmentExists.get(id)) return
+          const path = join(directoryPath, file.name)
+          if (lstatSync(path).mtimeMs > now - DAY) return
+          removePrivateFile({ root: appData, path })
+          removed += 1
+        })
+        // Directory entries are streamed so even a partition with many files yields regularly.
+        if (scanned % 50 !== 0) continue
+        if (yieldBatch) await yieldBatch()
+        if (changes() !== observed) return removed
       }
     }
   for (const row of pending) database.query("DELETE FROM settings WHERE key=?").run(row.key)
@@ -402,10 +418,17 @@ export const createStorageMaintenance = ({
         timer = setTimeout(step, 10)
         return
       }
-      await collectUnusedOutputBlobs(database, appData, Date.now(), async () => {
-        await Bun.sleep(0)
-        if (stopped) throw new Error("Manutenção encerrada")
-      })
+      await collectUnusedOutputBlobs(
+        database,
+        appData,
+        Date.now(),
+        async () => {
+          await Bun.sleep(0)
+          if (stopped) throw new Error("Manutenção encerrada")
+        },
+        undefined,
+        runStage,
+      )
       if (stopped) return
       if (vacuum) {
         const vacuumDatabase = (): void => {

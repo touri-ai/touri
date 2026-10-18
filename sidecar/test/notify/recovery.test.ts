@@ -5,6 +5,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { MessagePart, RecoveryTask, Run } from "@touri/contracts"
 import { createKernel } from "../../src/kernel"
+import { createPerformanceStageTracker } from "../../src/kernel/performance"
 import { init as initNotify } from "../../src/notify"
 import { createNotifier } from "../../src/notify/notifier"
 import { createRecoverySync } from "../../src/notify/recovery"
@@ -40,7 +41,8 @@ const getFixture = async (options: { beforeNotify?: (database: Database) => void
   options.beforeNotify?.(database)
   if (options.native) database.query("DELETE FROM settings WHERE key = 'nativeNotifications'").run()
   const hostCalls = mock(runtime.kernel.callHost)
-  await initNotify({ ...runtime.kernel, callHost: hostCalls })
+  const stages = createPerformanceStageTracker(() => 0)
+  await initNotify({ ...runtime.kernel, callHost: hostCalls }, stages.run)
 
   const { token } = JSON.parse(readFileSync(join(root, "run", "handshake.json"), "utf8")) as { token: string }
   const request = (path: string, body?: object) =>
@@ -56,7 +58,15 @@ const getFixture = async (options: { beforeNotify?: (database: Database) => void
     const snapshot: { tasks: RecoveryTask[] } = await response.json()
     return snapshot.tasks
   }
-  return { runtime, database, request, getTasks, hostCalls, work: createWorkState({ database, now: () => 100 }) }
+  return {
+    runtime,
+    database,
+    request,
+    getTasks,
+    hostCalls,
+    stageCalls: () => stages.snapshot().map((timing) => timing.stage),
+    work: createWorkState({ database, now: () => 100 }),
+  }
 }
 
 const saveRun = (database: Database, id: string, status = "interrupted", parts: MessagePart[] = []) => {
@@ -104,6 +114,18 @@ test("aggregates interrupted turns, failed turns with effects, orphan journal wo
   expect(tasks.find((task) => task.id === "journal:orphan-turn")?.notification.title).toBe("Tarefas interrompidas")
   expect(tasks.find((task) => task.id === "journal:orphan-turn")?.notification.body).not.toContain("app_restart")
   expect(repeated.map((task) => task.notification.id)).toEqual(tasks.map((task) => task.notification.id))
+})
+
+test("restart recovery attributes synthetic journal scans and reconciliation stages", async () => {
+  const h = await getFixture({
+    beforeNotify: (database) => {
+      const work = createWorkState({ database, now: () => 100 })
+      for (let index = 0; index < 120; index++) saveUncertainEffect(work, `orphan-${index}`)
+    },
+  })
+
+  expect(h.stageCalls()).toContain("notification_journal_recovery_scan")
+  expect(h.stageCalls()).toContain("notification_recovery_reconcile")
 })
 
 test("uncertain effects require their existing journal key on every dismissal surface and preserve history", async () => {

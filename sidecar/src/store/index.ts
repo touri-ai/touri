@@ -447,7 +447,8 @@ export const init = async (kernel: Kernel, runStage?: PerformanceStageRunner): P
   await refreshHostFolderAccess()
   installDoctor(kernel)
   const database = kernel.db as Database
-  materializeTranscript(database)
+  if (runStage) runStage("store_transcript_startup_recovery", () => materializeTranscript(database))
+  else materializeTranscript(database)
 
   const getBot = ({ botId }: { botId: string }): Bot | null => {
     const row = database.query("SELECT * FROM bots WHERE id = ? AND archived_at IS NULL").get(botId) as RawBot | null

@@ -1,6 +1,7 @@
 import type { Database } from "bun:sqlite"
 import type { Kernel, MessagePart, RecoveryTask, RunErrorClass } from "@touri/contracts"
 import { hasRecordedActions, safeRunFailure, sanitizeDiagnostic } from "@touri/contracts/run-failure"
+import type { PerformanceStageRunner } from "../kernel/performance"
 import { createWorkState } from "../runtime/work-state"
 import type { Notifier } from "./notifier"
 import type { NotificationStore } from "./store"
@@ -25,7 +26,12 @@ type RunRow = {
 
 const RECENT_TASK_LIMIT = 100
 
-export const createRecoverySync = (kernel: Kernel, store: NotificationStore, notifier: Notifier) => {
+export const createRecoverySync = (
+  kernel: Kernel,
+  store: NotificationStore,
+  notifier: Notifier,
+  runStage?: PerformanceStageRunner,
+) => {
   const database = kernel.db as Database
   // This connection owns writes; the counter also catches journal changes without a runtime event.
   let snapshot: { changes: number; tasks: RecoveryTask[]; runRowid: number; routineRowid: number } | null = null
@@ -49,12 +55,19 @@ export const createRecoverySync = (kernel: Kernel, store: NotificationStore, not
     const pending = (snapshot?.tasks ?? []).filter((task) => task.notification.resolvedAt === null)
     const pendingRunIds = pending.flatMap((task) => (task.runId ? [task.runId] : []))
     const pendingRoutineIds = pending.filter((task) => task.id.startsWith("routine:")).map((task) => task.id.slice(8))
-    const current = syncRecoveryTasks(kernel, store, notifier, options.silent ?? false, {
-      runIds: [...new Set([...changedRunIds, ...pendingRunIds])],
-      routineIds: [...new Set([...changedRoutineIds, ...pendingRoutineIds])],
-      runRowid: snapshot?.runRowid ?? Math.max(0, runRowid - RECENT_TASK_LIMIT),
-      routineRowid: snapshot?.routineRowid ?? Math.max(0, routineRowid - RECENT_TASK_LIMIT),
-    })
+    const current = syncRecoveryTasks(
+      kernel,
+      store,
+      notifier,
+      options.silent ?? false,
+      {
+        runIds: [...new Set([...changedRunIds, ...pendingRunIds])],
+        routineIds: [...new Set([...changedRoutineIds, ...pendingRoutineIds])],
+        runRowid: snapshot?.runRowid ?? Math.max(0, runRowid - RECENT_TASK_LIMIT),
+        routineRowid: snapshot?.routineRowid ?? Math.max(0, routineRowid - RECENT_TASK_LIMIT),
+      },
+      runStage,
+    )
     const currentIds = new Set(current.map((task) => task.id))
     const history = (snapshot?.tasks ?? [])
       .filter((task) => task.notification.resolvedAt !== null && !currentIds.has(task.id))
@@ -79,45 +92,53 @@ const syncRecoveryTasks = (
   notifier: Notifier,
   silent: boolean,
   cursor: { runRowid: number; routineRowid: number; runIds: string[]; routineIds: string[] },
+  runStage?: PerformanceStageRunner,
 ): RecoveryTask[] => {
   const database = kernel.db as Database
   const work = createWorkState({ database })
-  const runs = getRunCandidates(database, cursor.runIds, cursor.runRowid)
-  const journal = getJournalCandidates(kernel, runs)
-  const candidates = [
-    ...runs,
-    ...journal,
-    ...getRoutineCandidates(database, runs, cursor.routineRowid, cursor.routineIds),
-  ]
+  const measure = <Value>(stage: Parameters<PerformanceStageRunner>[0], action: () => Value): Value =>
+    runStage ? runStage(stage, action) : action()
+  const runs = measure("notification_run_recovery_scan", () =>
+    getRunCandidates(database, cursor.runIds, cursor.runRowid),
+  )
+  const journal = measure("notification_journal_recovery_scan", () => getJournalCandidates(kernel, runs))
+  const routines = measure("notification_routine_recovery_scan", () =>
+    getRoutineCandidates(database, runs, cursor.routineRowid, cursor.routineIds),
+  )
+  const candidates = [...runs, ...journal, ...routines]
 
-  const visible = candidates.filter((candidate) => {
-    const isRecorded = database.query("SELECT 1 FROM recovery_tasks WHERE id = ?").get(candidate.id) !== null
-    if (isRecorded) return true
-    const effects = candidate.turnId ? work.rebuild({ turnId: candidate.turnId }) : []
-    if (effects.some((effect) => effect.state === "uncertain" && !effect.acknowledged)) return true
-    if (candidate.journalOnly) return false
-    return !hasLaterRun(database, candidate)
-  })
+  const visible = measure("notification_recovery_reconcile", () =>
+    candidates.filter((candidate) => {
+      const isRecorded = database.query("SELECT 1 FROM recovery_tasks WHERE id = ?").get(candidate.id) !== null
+      if (isRecorded) return true
+      const effects = candidate.turnId ? work.rebuild({ turnId: candidate.turnId }) : []
+      if (effects.some((effect) => effect.state === "uncertain" && !effect.acknowledged)) return true
+      if (candidate.journalOnly) return false
+      return !hasLaterRun(database, candidate)
+    }),
+  )
 
-  return visible.map((candidate) => {
-    const notification = saveTaskNotification(kernel, store, notifier, candidate, silent)
-    const effects = candidate.turnId ? work.rebuild({ turnId: candidate.turnId }) : []
-    const hasUncertain = getRecoveryAcknowledgementKeys(database, notification.id).length > 0
-    const hasLater = hasLaterRun(database, candidate)
-    const isAcknowledgedJournal = candidate.journalOnly && effects.some((effect) => effect.acknowledged)
-    if (!hasUncertain && (hasLater || isAcknowledgedJournal) && notification.resolvedAt === null)
-      notifier.finish({ id: notification.id, resolution: "expired" })
+  return measure("notification_recovery_reconcile", () =>
+    visible.map((candidate) => {
+      const notification = saveTaskNotification(kernel, store, notifier, candidate, silent)
+      const effects = candidate.turnId ? work.rebuild({ turnId: candidate.turnId }) : []
+      const hasUncertain = getRecoveryAcknowledgementKeys(database, notification.id).length > 0
+      const hasLater = hasLaterRun(database, candidate)
+      const isAcknowledgedJournal = candidate.journalOnly && effects.some((effect) => effect.acknowledged)
+      if (!hasUncertain && (hasLater || isAcknowledgedJournal) && notification.resolvedAt === null)
+        notifier.finish({ id: notification.id, resolution: "expired" })
 
-    return {
-      id: candidate.id,
-      notification: store.get(notification.id) ?? notification,
-      runId: candidate.runId,
-      routineId: candidate.routineId,
-      cause: candidate.cause,
-      occurredAt: candidate.occurredAt,
-      effects: [...candidate.effects, ...getJournalEffects(effects)],
-    }
-  })
+      return {
+        id: candidate.id,
+        notification: store.get(notification.id) ?? notification,
+        runId: candidate.runId,
+        routineId: candidate.routineId,
+        cause: candidate.cause,
+        occurredAt: candidate.occurredAt,
+        effects: [...candidate.effects, ...getJournalEffects(effects)],
+      }
+    }),
+  )
 }
 
 export const getRecoveryAcknowledgementKeys = (database: Database, notificationId: number): string[] => {

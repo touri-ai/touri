@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite"
 import { expect, test } from "bun:test"
-import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs"
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { MessagePart, Run, StorageMaintenanceStatus, ToolCallPart } from "@touri/contracts"
@@ -22,6 +22,7 @@ import {
   OUTPUT_BLOB_THRESHOLD,
   OUTPUT_INLINE_BUDGET_BYTES,
 } from "../../src/kernel/output-blobs"
+import { createPerformanceStageTracker } from "../../src/kernel/performance"
 import { compactTranscript } from "../../src/kernel/transcript-storage"
 import { createToolResolutions } from "../../src/runtime/tool-resolutions"
 import { init as initStore } from "../../src/store"
@@ -38,7 +39,8 @@ const seed = (database: Database) =>
 const fixture = async (automatic = false) => {
   const root = mkdtempSync(join(tmpdir(), "touri-storage-"))
   const runtime = createKernel({ appData: root })
-  await initStore(runtime.kernel)
+  const stages = createPerformanceStageTracker(() => 0)
+  await initStore(runtime.kernel, stages.run)
   if (!automatic) runtime.kernel.services.use("storage.maintenance")?.dispose()
   const database = runtime.kernel.db as Database
   seed(database)
@@ -48,6 +50,7 @@ const fixture = async (automatic = false) => {
     root,
     runtime,
     database,
+    stages,
     store,
     close: () => {
       runtime.stop()
@@ -86,6 +89,15 @@ const insert = (
       source: "local",
     },
   })
+
+test("startup transcript recovery is included in performance diagnostics", async () => {
+  const f = await fixture()
+  try {
+    expect(f.stages.snapshot().map((timing) => timing.stage)).toContain("store_transcript_startup_recovery")
+  } finally {
+    f.close()
+  }
+})
 
 for (const kind of ["text", "tool", "screenshot"] as const) {
   test(`bytes per turn: ${kind} attributes snapshot/event/blob growth and bounds DB duplication`, async () => {
@@ -611,6 +623,38 @@ test("garbage collection yields and defers deletion if a live writer introduces 
     expect(yields).toBe(1)
     expect(removed).toBe(0)
     expect(f.database.query("SELECT COUNT(*) AS n FROM attachments").get()).toEqual({ n: 100 })
+  } finally {
+    f.close()
+  }
+})
+
+test("orphan attachment scanning yields after bounded directory batches and reports its stage", async () => {
+  const f = await fixture()
+  try {
+    const directory = join(f.root, "attachments", "aa")
+    mkdirSync(directory, { recursive: true })
+    Array.from({ length: 150 }, (_, index) => index).forEach((index) => {
+      const id = `aa${index.toString(16).padStart(62, "0")}`
+      writeFileSync(join(directory, `${id}.tool-output.txt`), "synthetic")
+    })
+    let yields = 0
+    const stages = createPerformanceStageTracker(() => 0)
+
+    const removed = await collectUnusedOutputBlobs(
+      f.database,
+      f.root,
+      Date.now(),
+      async () => {
+        yields += 1
+      },
+      new Set(),
+      stages.run,
+    )
+
+    expect(removed).toBe(0)
+    expect(yields).toBe(3)
+    expect(stages.snapshot().map((timing) => timing.stage)).toContain("storage_attachment_orphan_scan")
+    expect(f.database.query("SELECT COUNT(*) AS n FROM attachments").get()).toEqual({ n: 0 })
   } finally {
     f.close()
   }
