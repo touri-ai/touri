@@ -665,8 +665,8 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
           messages: (api.pendingMessages?.() ?? []).reduce(updateMessage, current.messages),
           activityMessages: activityResponse.messages,
           workRuns: mergeRunRows(
-            workResponse.runs,
-            current.runs.filter((run) => run.origin && (liveRuns.current.get(run.id) ?? 0) > runsAtStart),
+            workResponse.runs.filter((run) => !completedRuns.has(run.id)),
+            current.workRuns.filter((run) => (liveRuns.current.get(run.id) ?? 0) > runsAtStart),
           ).filter((run) => ["queued", "starting", "running"].includes(run.status)),
           runs,
           projects: projectResponse.projects,

@@ -88,6 +88,7 @@ it("keeps completion events newer than an in-flight global snapshot", async () =
   fireEvent.click(screen.getByRole("button", { name: "Trabalho", exact: true }))
 
   await waitFor(() => expect(screen.getAllByRole("article")).toHaveLength(4))
+  expect(document.querySelector('[data-run-id="work-run-0"]')).toBeNull()
   expect(screen.getByText("Na fila · 1º de 1")).toBeVisible()
 })
 
