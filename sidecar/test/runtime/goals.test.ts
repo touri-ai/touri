@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite"
-import { afterEach, expect, mock, setDefaultTimeout, test } from "bun:test"
+import { afterEach, expect, mock, setDefaultTimeout, spyOn, test } from "bun:test"
 import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -7,6 +7,7 @@ import type { GoalStart, ProviderAdapter, StartTurnArgs } from "@touri/contracts
 import { createKernel } from "../../src/kernel"
 import { createGoalCheckpointHandler } from "../../src/runtime"
 import { createRuntimeEngine } from "../../src/runtime/engine"
+import type { GoalDeadlineClock } from "../../src/runtime/goal-deadline"
 import { init as initStore } from "../../src/store"
 
 setDefaultTimeout(15_000)
@@ -17,7 +18,10 @@ afterEach(async () => {
   cleanups.clear()
 })
 
-const makeFixture = async (onTurn?: (args: StartTurnArgs, index: number) => Promise<void>) => {
+const makeFixture = async (
+  onTurn?: (args: StartTurnArgs, index: number) => Promise<void>,
+  goalDeadlineClock?: GoalDeadlineClock,
+) => {
   const root = mkdtempSync(join(tmpdir(), "touri-goals-"))
   const runtime = createKernel({ appData: root })
   await initStore(runtime.kernel)
@@ -75,6 +79,7 @@ const makeFixture = async (onTurn?: (args: StartTurnArgs, index: number) => Prom
       providerAdapters: { codex: adapter },
       environment: { PATH: "/usr/bin" },
       resumeBackoffMs: 1,
+      ...(goalDeadlineClock ? { goalDeadlineClock } : {}),
     })
   const engine = getEngine()
   const engines = new Set([engine])
@@ -113,6 +118,110 @@ const waitForAbort = (signal: AbortSignal): Promise<void> =>
     if (signal.aborted) return resolve()
     signal.addEventListener("abort", () => resolve(), { once: true })
   })
+
+const makeDeadlineClock = () => {
+  // Timer handles and the clock advance locally, without patching other runtime timers.
+  let timestamp = Date.now()
+  let timers: Array<{ callback: () => void; deadlineAt: number }> = []
+  const schedule = mock((callback: () => void, delay: number) => {
+    const timer = { callback, deadlineAt: timestamp + delay }
+    timers = [...timers, timer]
+    return () => {
+      timers = timers.filter((pending) => pending !== timer)
+    }
+  })
+
+  return {
+    now: () => timestamp,
+    schedule,
+    getPendingCount: () => timers.length,
+    advanceBy: (duration: number) => {
+      timestamp += duration
+      const due = timers.filter((timer) => timer.deadlineAt <= timestamp)
+      timers = timers.filter((timer) => timer.deadlineAt > timestamp)
+      due.forEach((timer) => {
+        timer.callback()
+      })
+    },
+  }
+}
+
+test("a live goal waits for one deadline timeout without polling its checkpoint", async () => {
+  const clock = makeDeadlineClock()
+  const fixture = await makeFixture(async (args) => waitForAbort(args.signal), clock)
+  const expireRun = spyOn(fixture.engine.goals, "expireRun")
+  cleanups.add(async () => expireRun.mockRestore())
+  fixture.engine.goals.startGoal("t", fixture.input)
+  await waitFor(() => fixture.startTurn.mock.calls.length === 1)
+
+  clock.advanceBy(9 * 60_000)
+
+  expect(clock.schedule).toHaveBeenCalledTimes(1)
+  expect(clock.schedule.mock.calls[0]?.[1]).toBe(10 * 60_000)
+  expect(clock.getPendingCount()).toBe(1)
+  expect(expireRun).not.toHaveBeenCalled()
+
+  clock.advanceBy(60_000)
+  await waitFor(() => fixture.engine.activeRun({ threadId: "t" }) === null)
+
+  expect(expireRun).toHaveBeenCalledTimes(1)
+  expect(fixture.engine.goals.getGoal("t")?.status).toBe("budget_exhausted")
+  expect(clock.getPendingCount()).toBe(0)
+})
+
+test("budget extensions and reductions replace the live timeout but progress leaves it alone", async () => {
+  const clock = makeDeadlineClock()
+  const fixture = await makeFixture(async (args) => waitForAbort(args.signal), clock)
+  fixture.engine.goals.startGoal("t", fixture.input)
+  await waitFor(() => fixture.startTurn.mock.calls.length === 1)
+  const run = fixture.engine.activeRun({ threadId: "t" })
+  if (!run) throw new Error("Missing goal turn")
+
+  fixture.engine.goals.recordCheckpoint({
+    runId: run.id,
+    botId: "b",
+    threadId: "t",
+    step: "Fonte verificada.",
+    completed: false,
+  })
+
+  expect(clock.schedule).toHaveBeenCalledTimes(1)
+
+  clock.advanceBy(60_000)
+  fixture.engine.goals.controlGoal("t", { action: "budget", maxTurns: 3, maxMinutes: 20 })
+  clock.advanceBy(9 * 60_000)
+
+  expect(clock.schedule).toHaveBeenCalledTimes(2)
+  expect(clock.schedule.mock.calls[1]?.[1]).toBe(20 * 60_000)
+  expect(clock.getPendingCount()).toBe(1)
+  expect(fixture.startTurn.mock.calls[0]?.[0].signal.aborted).toBe(false)
+
+  fixture.engine.goals.controlGoal("t", { action: "budget", maxTurns: 3, maxMinutes: 1 })
+
+  expect(clock.schedule).toHaveBeenCalledTimes(3)
+  expect(clock.schedule.mock.calls[2]?.[1]).toBe(60_000)
+  expect(clock.getPendingCount()).toBe(1)
+
+  clock.advanceBy(60_000)
+  await waitFor(() => fixture.engine.activeRun({ threadId: "t" }) === null)
+
+  expect(fixture.engine.goals.getGoal("t")?.status).toBe("budget_exhausted")
+  expect(clock.getPendingCount()).toBe(0)
+})
+
+test("ending a goal turn clears its deadline timeout", async () => {
+  const clock = makeDeadlineClock()
+  const fixture = await makeFixture(async (args) => waitForAbort(args.signal), clock)
+  fixture.engine.goals.startGoal("t", fixture.input)
+  await waitFor(() => fixture.startTurn.mock.calls.length === 1)
+
+  fixture.engine.goals.controlGoal("t", { action: "pause" })
+  await waitFor(() => fixture.engine.activeRun({ threadId: "t" }) === null)
+
+  expect(clock.getPendingCount()).toBe(0)
+  clock.advanceBy(10 * 60_000)
+  expect(fixture.engine.goals.getGoal("t")?.status).toBe("paused")
+})
 
 test("normal turn endings continue the goal and stop at the turn budget", async () => {
   const fixture = await makeFixture()

@@ -1,18 +1,22 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import type { Message } from "@touri/contracts"
-import { expect, test, vi } from "vitest"
+import { afterEach, expect, test, vi } from "vitest"
 import { createMockApi } from "../src/api/mock"
 import { ChatPanel } from "../src/components/ChatPanel"
 import { GoalPanel } from "../src/components/GoalPanel"
 import { localizeToolText, t } from "../src/i18n"
 
-const makeFixture = (hasProject = true) => {
-  const api = createMockApi()
+afterEach(() => {
+  vi.useRealTimers()
+  vi.restoreAllMocks()
+})
+
+const makeFixture = (hasProject = true, api = createMockApi()) => {
   const bot = api.getState().bots[0]
   const request = api.getState().messages.find((message) => message.role === "user")
   if (!bot || !request) throw new Error("Missing mock conversation")
 
-  render(
+  const view = render(
     <GoalPanel
       api={api}
       threadId={request.threadId}
@@ -22,7 +26,7 @@ const makeFixture = (hasProject = true) => {
     />,
   )
 
-  return { api, request }
+  return { api, request, ...view }
 }
 
 const startGoal = async () => {
@@ -144,13 +148,98 @@ test("a temporary checkpoint loading error clears after reconnecting", async () 
   const bot = base.getState().bots[0]
   const request = base.getState().messages.find((message) => message.role === "user")
   if (!bot || !request) throw new Error("Missing mock conversation")
-  const api = { ...base, request: vi.fn(base.request).mockRejectedValueOnce(new Error("offline")) }
+  const subscribeConnection = vi.fn((_listener: (connected: boolean) => void) => vi.fn())
+  const api = { ...base, request: vi.fn(base.request).mockRejectedValueOnce(new Error("offline")), subscribeConnection }
 
   render(<GoalPanel api={api} threadId={request.threadId} bot={bot} request={request} busy={false} />)
   await screen.findByRole("alert")
-  await waitFor(() => expect(screen.queryByRole("alert")).toBeNull(), { timeout: 4000 })
+  const onConnection = subscribeConnection.mock.calls[0]?.[0]
+  if (!onConnection) throw new Error("Missing connection listener")
 
+  await act(async () => onConnection(true))
+
+  expect(screen.queryByRole("alert")).toBeNull()
   expect(api.request).toHaveBeenCalledTimes(2)
+})
+
+test("a conversation without a goal fetches once and stays idle", async () => {
+  vi.useFakeTimers()
+  const { api, unmount } = makeFixture()
+  await act(async () => {})
+
+  await act(async () => vi.advanceTimersByTimeAsync(10_000))
+
+  expect(api.calls.filter((call) => call.route === "GET /threads/:id/goal")).toHaveLength(1)
+  expect(vi.getTimerCount()).toBe(0)
+  unmount()
+})
+
+test.each(["paused", "completed", "budget_exhausted"] as const)("a %s goal does not poll", async (status) => {
+  const api = createMockApi()
+  const request = api.getState().messages.find((message) => message.role === "user")
+  if (!request) throw new Error("Missing mock request")
+  const { goal } = await api.request(
+    "POST /threads/:id/goal",
+    { requestMessageId: request.id, completionCriterion: "Entrega revisada", maxTurns: 4, maxMinutes: 15 },
+    { id: request.threadId },
+  )
+  vi.spyOn(api, "request").mockResolvedValue({ goal: { ...goal, status } })
+  vi.useFakeTimers()
+  const { unmount } = makeFixture(true, api)
+  await act(async () => {})
+
+  await act(async () => vi.advanceTimersByTimeAsync(10_000))
+
+  expect(api.request).toHaveBeenCalledTimes(1)
+  expect(vi.getTimerCount()).toBe(0)
+  unmount()
+})
+
+test("only an active goal polls and pausing stops further requests", async () => {
+  vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] })
+  const { api } = makeFixture()
+  await startGoal()
+  const initialReads = api.calls.filter((call) => call.route === "GET /threads/:id/goal").length
+
+  await act(async () => vi.advanceTimersByTimeAsync(2000))
+
+  expect(api.calls.filter((call) => call.route === "GET /threads/:id/goal")).toHaveLength(initialReads + 1)
+
+  await act(async () => fireEvent.click(screen.getByRole("button", { name: "Pausar" })))
+  const pausedReads = api.calls.filter((call) => call.route === "GET /threads/:id/goal").length
+
+  await act(async () => vi.advanceTimersByTimeAsync(10_000))
+
+  expect(api.calls.filter((call) => call.route === "GET /threads/:id/goal")).toHaveLength(pausedReads)
+  expect(vi.getTimerCount()).toBe(0)
+})
+
+test("only events for the visible conversation refresh its goal and unmount unsubscribes", async () => {
+  const { api, request, unmount } = makeFixture()
+  const thread = api.getState().threads.find((candidate) => candidate.id === request.threadId)
+  const otherThread = api.getState().threads.find((candidate) => candidate.id !== request.threadId)
+  if (!otherThread) throw new Error("Missing other mock conversation")
+  const { runs } = await api.request("GET /threads/:id/runs", {}, { id: otherThread.id })
+  const run = runs[0]
+  if (!thread || !run) throw new Error("Missing mock turn")
+  await act(async () => {})
+
+  await act(async () => {
+    api.emit({ type: "thread.updated", thread: { ...thread, id: "other-thread" } })
+    api.emit({ type: "run.updated", run: { ...run, threadId: "other-thread" } })
+  })
+
+  expect(api.calls.filter((call) => call.route === "GET /threads/:id/goal")).toHaveLength(1)
+
+  await act(async () => api.emit({ type: "thread.updated", thread }))
+  await act(async () => api.emit({ type: "run.updated", run: { ...run, threadId: request.threadId } }))
+
+  expect(api.calls.filter((call) => call.route === "GET /threads/:id/goal")).toHaveLength(3)
+
+  unmount()
+  await act(async () => api.emit({ type: "thread.updated", thread }))
+
+  expect(api.calls.filter((call) => call.route === "GET /threads/:id/goal")).toHaveLength(3)
 })
 
 test("starting a goal uses the request on the visible branch", async () => {

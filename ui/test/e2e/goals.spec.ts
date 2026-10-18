@@ -2,10 +2,12 @@ import { expect, test } from "@playwright/test"
 
 test.use({ channel: "chromium" })
 
-for (const viewport of [
+const viewports = [
   { width: 1440, height: 900 },
   { width: 390, height: 844 },
-]) {
+]
+
+viewports.forEach((viewport) => {
   test(`bounded goal controls at ${viewport.width}px`, async ({ page }) => {
     await page.setViewportSize(viewport)
     await page.emulateMedia({ reducedMotion: "reduce" })
@@ -31,4 +33,4 @@ for (const viewport of [
     await panel.getByRole("button", { name: "Concluir agora", exact: true }).click()
     await expect(panel.getByRole("status")).toHaveText("Concluído")
   })
-}
+})

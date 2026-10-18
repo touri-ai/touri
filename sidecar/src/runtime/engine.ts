@@ -59,6 +59,7 @@ import {
   MAX_CRASH_CONTINUATIONS,
 } from "./continuations"
 import { csvInput } from "./csv-input"
+import { type GoalDeadlineClock, startGoalDeadline } from "./goal-deadline"
 import { createGoalRuntime, getGoalPrompt } from "./goals"
 import { buildHandoffPacket } from "./handoff"
 import { composeDeveloperInstructions } from "./instructions"
@@ -232,6 +233,7 @@ export const createRuntimeEngine = ({
   resumeBackoffMs = CRASH_RESUME_BACKOFF_MS,
   providerAdapters,
   getNow = Date.now,
+  goalDeadlineClock,
 }: {
   kernel: Kernel
   codexCommand?: string
@@ -244,6 +246,7 @@ export const createRuntimeEngine = ({
   resumeBackoffMs?: number
   providerAdapters?: Partial<Record<Bot["provider"], ProviderAdapter>>
   getNow?: () => number
+  goalDeadlineClock?: GoalDeadlineClock
 }): RuntimeEngine => {
   const runtimeStartedAt = getNow()
   const persistence: RuntimePersistence = createRuntimePersistence({ database: kernel.db })
@@ -297,17 +300,26 @@ export const createRuntimeEngine = ({
   const work: WorkState = createWorkState({ database: kernel.db as Database })
   const continuations = createRunContinuations({ database: kernel.db })
   const pendingContinuations = new Map<Id, { timer: ReturnType<typeof setTimeout>; run: Run }>()
-  const goals = createGoalRuntime(kernel, {
-    enqueue: (threadId, requestMessageId) => {
-      const result = enqueue({ threadId, requestMessageId, trigger: "retry" })
-      return result.success ? result.run : null
+  const goalDeadlines = new Map<Id, ReturnType<typeof startGoalDeadline>>()
+  const getGoalNow = goalDeadlineClock?.now ?? Date.now
+  const goals = createGoalRuntime(
+    kernel,
+    {
+      enqueue: (threadId, requestMessageId) => {
+        const result = enqueue({ threadId, requestMessageId, trigger: "retry" })
+        return result.success ? result.run : null
+      },
+      cancel: (runId) => {
+        cancel(runId)
+      },
+      getRuns: persistence.listRuns,
+      isStopping: () => shuttingDown,
+      onSaved: (goal) => {
+        if (goal.runId) goalDeadlines.get(goal.runId)?.setDeadline(goal.deadlineAt)
+      },
     },
-    cancel: (runId) => {
-      cancel(runId)
-    },
-    getRuns: persistence.listRuns,
-    isStopping: () => shuttingDown,
-  })
+    getGoalNow,
+  )
 
   const publishRun = (run: Run): void => kernel.publish({ type: "run.updated", run: cloneRun(run) })
 
@@ -1678,15 +1690,15 @@ export const createRuntimeEngine = ({
   const executeGoalTurn = async (run: Run): Promise<void> => {
     const goal = goals.getForRun(run.id)
     if (!goal) return execute(run)
-    if (goal.status !== "active" || Date.now() >= goal.deadlineAt) {
+    if (goal.status !== "active" || getGoalNow() >= goal.deadlineAt) {
       goals.expireRun(run.id)
       cancel(run.id)
       active.delete(run.threadId)
       void drain()
       return
     }
-    // Re-read the deadline so a user budget edit takes effect during the current turn.
-    const budgetTimer = setInterval(() => goals.expireRun(run.id), 100)
+    const budgetTimer = startGoalDeadline(goal.deadlineAt, () => goals.expireRun(run.id), goalDeadlineClock)
+    goalDeadlines.set(run.id, budgetTimer)
     try {
       await execute(run)
       const finished = persistence.getRun(run.id)
@@ -1696,7 +1708,8 @@ export const createRuntimeEngine = ({
         hasUncertainWork(run.id) || state.parts.some((part) => part.type === "approval" && part.decision !== "approved")
       goals.finishTurn(finished, state.text, pendingContinuations.has(run.id), needsReview)
     } finally {
-      clearInterval(budgetTimer)
+      goalDeadlines.delete(run.id)
+      budgetTimer.stop()
     }
   }
 

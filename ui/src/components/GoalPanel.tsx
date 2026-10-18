@@ -1,5 +1,5 @@
 import type { Bot, Goal, GoalControl, Id, Message } from "@touri/contracts"
-import { type FormEvent, useEffect, useId, useState } from "react"
+import { type FormEvent, useEffect, useId, useRef, useState } from "react"
 import type { UiApi } from "../api/client"
 import { type TranslationKey, t } from "../i18n"
 import { ChatDisclosure } from "./ChatDisclosure"
@@ -29,6 +29,7 @@ export const GoalPanel = ({
   const [turns, setTurns] = useState(4)
   const [minutes, setMinutes] = useState(15)
   const [now, setNow] = useState(Date.now)
+  const refreshGoal = useRef<() => void>(() => {})
   const id = useId()
   const hasScope = bot.machine === "local" && !!(bot.projectId || bot.folders?.length || bot.anyFolderAccess)
 
@@ -48,14 +49,31 @@ export const GoalPanel = ({
         if (alive) setLoadFailed(true)
       }
     }
+    refreshGoal.current = () => void refresh()
+    const unsubscribe = api.subscribe(({ event }) => {
+      const isThreadUpdate = event.type === "thread.updated" && event.thread.id === threadId
+      const isRunUpdate = event.type === "run.updated" && event.run.threadId === threadId
+      if (isThreadUpdate || isRunUpdate) void refresh()
+    })
+    const unsubscribeConnection = api.subscribeConnection?.((connected) => {
+      if (connected) void refresh()
+    })
     void refresh()
-    const timer = setInterval(() => void refresh(), 2000)
 
     return () => {
       alive = false
-      clearInterval(timer)
+      unsubscribe()
+      unsubscribeConnection?.()
+      refreshGoal.current = () => {}
     }
   }, [api, threadId])
+
+  useEffect(() => {
+    if (goal?.status !== "active") return
+
+    const timer = setInterval(() => refreshGoal.current(), 2000)
+    return () => clearInterval(timer)
+  }, [goal?.status])
 
   const control = async (input: GoalControl) => {
     setPending(true)

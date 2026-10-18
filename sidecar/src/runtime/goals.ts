@@ -9,6 +9,7 @@ type GoalHooks = {
   cancel: (runId: Id) => void
   getRuns: (threadId: Id) => Array<Run>
   isStopping: () => boolean
+  onSaved?: (goal: Goal) => void
 }
 
 /** Goals add bounded scheduling only; provider access and approvals still belong to each ordinary turn. */
@@ -32,6 +33,7 @@ export const createGoalRuntime = (kernel: Kernel, hooks: GoalHooks, now = Date.n
          ON CONFLICT(thread_id) DO UPDATE SET run_id = excluded.run_id, checkpoint_json = excluded.checkpoint_json`,
       )
       .run(next.threadId, next.runId, JSON.stringify(next))
+    hooks.onSaved?.(next)
     return next
   }
 
