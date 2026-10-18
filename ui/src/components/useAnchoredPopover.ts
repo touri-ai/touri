@@ -17,9 +17,10 @@ export const useAnchoredPopover = (
       const rect = trigger.getBoundingClientRect()
       const viewport = window.visualViewport
       const leftEdge = (viewport?.offsetLeft ?? 0) + 8
-      const topEdge = (viewport?.offsetTop ?? 0) + 8
+      const titlebarBottom = document.querySelector(".window-titlebar")?.getBoundingClientRect().bottom ?? 0
+      const topEdge = Math.max(viewport?.offsetTop ?? 0, titlebarBottom) + 8
       const rightEdge = leftEdge + (viewport?.width ?? window.innerWidth) - 16
-      const bottomEdge = topEdge + (viewport?.height ?? window.innerHeight) - 16
+      const bottomEdge = (viewport?.offsetTop ?? 0) + (viewport?.height ?? window.innerHeight) - 8
       // Layout dimensions exclude the surface's entrance animation scale/translation.
       const width = popover.offsetWidth
       const height = popover.offsetHeight
@@ -54,7 +55,7 @@ export const useAnchoredPopover = (
     right: "auto",
     bottom: "auto",
     maxWidth: "calc(100vw - 16px)",
-    maxHeight: "calc(100dvh - 16px)",
+    maxHeight: "calc(100dvh - 16px - var(--window-inset-top, 0px))",
     overflowY: "auto",
   }
   // Body portals are inert behind native modal drawers. Stay in their top layer, outside the list.

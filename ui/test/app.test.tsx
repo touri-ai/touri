@@ -428,7 +428,7 @@ describe("WP9 frontend acceptance", () => {
         "O histórico fica neste servidor. Sua IA recebe o conteúdo necessário para responder. O touri não coleta telemetria.",
       ),
     ).toBeVisible()
-    fireEvent.click(await screen.findByRole("button", { name: /Verificar servidor/ }))
+    fireEvent.click(await screen.findByRole("button", { name: /Verificar este servidor/ }))
     expect(await screen.findByRole("dialog", { name: "Diagnóstico" })).toBeVisible()
     fireEvent.keyDown(document, { key: "Escape" })
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Diagnóstico" })).toBeNull())
@@ -457,13 +457,13 @@ describe("WP9 frontend acceptance", () => {
       }) as typeof mock.request,
     }
     const view = render(<App kernel={{ services: { api } }} />)
-    fireEvent.click(await screen.findByRole("button", { name: "Verificar servidor" }))
+    fireEvent.click(await screen.findByRole("button", { name: "Verificar este servidor" }))
     await screen.findByRole("dialog", { name: "Diagnóstico" })
     fireEvent.keyDown(document, { key: "Escape" })
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Diagnóstico" })).toBeNull())
     expect(view.container.querySelector(".onboarding-screen")).not.toHaveTextContent(/Falhas|Avisos|verificações/)
     expect(view.container.querySelector(".onboarding-screen .status-dot")).toBeNull()
-    expect(screen.getByRole("button", { name: "Verificar servidor" })).toBeVisible()
+    expect(screen.getByRole("button", { name: "Verificar este servidor" })).toBeVisible()
   })
 
   it("opens the bot creation dialog from the empty-state landing by button and by Cmd+N", async () => {
