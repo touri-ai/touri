@@ -9,7 +9,7 @@ Eviction changes only client memory. Messages, branches, failed and canceled tur
 results remain durable on the server. Opening a conversation requests its full history again,
 including pending sends from the durable client journal. Leaving a conversation discards its
 pending replay buffer. A selected history request buffers at most 256 KiB of serialized stream
-events, estimated as UTF-16; overflow triggers a fresh snapshot.
+events, estimated as UTF-16, with a 512-event limit; overflow triggers a fresh snapshot.
 
 Retention is checked when conversations switch or background collections change. Streaming
 updates in the open conversation reuse unchanged background summaries and run collections.

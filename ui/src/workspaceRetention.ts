@@ -15,7 +15,7 @@ export const retainWorkspace = (data: WorkspaceData, previous?: WorkspaceData): 
     return data
 
   const offscreen =
-    data.messages === previous?.messages
+    !switched && data.messages === previous?.messages
       ? []
       : data.messages.filter((message) => message.threadId !== data.selectedThreadId)
   const summaries = offscreen.length ? getActivityRows(data.activityMessages, offscreen) : data.activityMessages
@@ -24,8 +24,8 @@ export const retainWorkspace = (data: WorkspaceData, previous?: WorkspaceData): 
       ? summaries
       : reconcileApprovalMessages(summaries, data.notifications)
   const activityMessages =
-    hasActivityRetentionChanged(reconciled, previous?.activityMessages) || switched
-      ? getRetainedActivity(reconciled)
+    hasActivityRetentionChanged(reconciled, previous?.activityMessages) || switched || data.runs !== previous?.runs
+      ? getRetainedActivity(reconciled, data.runs)
       : reconciled
   const runs = switched || data.runs !== previous?.runs ? getRetainedRuns(data.runs, data.selectedThreadId) : data.runs
   const messages = offscreen.length
@@ -71,7 +71,7 @@ const hasActivityRetentionChanged = (messages: Message[], previous?: Message[]):
   })
 
 /** Five sidebar slots per thread, plus outstanding requests and streams. */
-const getRetainedActivity = (messages: Message[]): Message[] => {
+const getRetainedActivity = (messages: Message[], runs: Run[]): Message[] => {
   // Local buckets avoid repeatedly copying the bounded activity collection during pruning.
   const threads = new Map<string, Message[]>()
   messages.forEach((message) => {
@@ -81,12 +81,13 @@ const getRetainedActivity = (messages: Message[]): Message[] => {
   })
   if ([...threads.values()].every((rows) => rows.length <= 5)) return messages
 
-  const kept = new Set([...threads.values()].flatMap(getThreadActivity))
+  const liveRuns = new Set(runs.filter(activeRun).map((run) => run.id))
+  const kept = new Set([...threads.values()].flatMap((rows) => getThreadActivity(rows, liveRuns)))
   const retained = messages.filter((message) => kept.has(message))
   return retained.length === messages.length ? messages : retained
 }
 
-const getThreadActivity = (messages: Message[]): Message[] => {
+const getThreadActivity = (messages: Message[], liveRuns: Set<string>): Message[] => {
   if (messages.length <= 5) return messages
 
   const assistants = messages.filter((message) => message.role === "assistant")
@@ -107,7 +108,11 @@ const getThreadActivity = (messages: Message[]): Message[] => {
       assistants.filter((message) => message.status === "complete"),
       true,
     ),
-    ...messages.filter((message) => isPendingActivity(message) || message.status === "streaming"),
+    ...messages.filter(
+      (message) =>
+        isPendingActivity(message) ||
+        (message.status === "streaming" && !!message.runId && liveRuns.has(message.runId)),
+    ),
   ].filter((message): message is Message => !!message)
 }
 

@@ -24,8 +24,11 @@ test("open conversation tokens preserve unchanged background messages and runs",
   const hook = renderHook(() => useWorkspace(workload.api))
   await waitFor(() => expect(hook.result.current.data.messages).toHaveLength(1))
   await act(async () => workload.round())
-  const message = { ...workload.message(0, 0), status: "streaming" as const, updatedSeq: 100 }
-  act(() => workload.api.emit({ type: "message.updated", message }))
+  const message = { ...workload.message(0, 1), status: "streaming" as const, updatedSeq: 100 }
+  act(() => {
+    workload.api.emit({ type: "run.updated", run: { ...workload.run(0, 1), status: "running", finishedAt: null } })
+    workload.api.emit({ type: "message.created", message })
+  })
   const before = hook.result.current.data
   const background = before.activityMessages.filter((row) => row.threadId !== message.threadId)
 
@@ -49,7 +52,9 @@ test("open conversation tokens preserve unchanged background messages and runs",
     })
     expect(after.runs).toBe(before.runs)
   })
-  expect(hook.result.current.data.messages[0]?.text).toBe(message.text + ".".repeat(20))
+  expect(hook.result.current.data.messages.find((row) => row.id === message.id)?.text).toBe(
+    message.text + ".".repeat(20),
+  )
 })
 
 test("retaining an already bounded workspace preserves collection identity", async () => {

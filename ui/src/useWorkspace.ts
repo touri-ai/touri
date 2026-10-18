@@ -347,7 +347,7 @@ const bufferStreamEvent = (load: ThreadLoad | undefined, event: MessageStreamEve
   if (!load || load.overflow) return
   // The pending loader shares this bounded replay buffer; reset it in place on overflow.
   load.bytes += JSON.stringify(event).length * 2
-  if (load.bytes > MAX_STREAM_BUFFER_BYTES) {
+  if (load.deltas.length >= 512 || load.bytes > MAX_STREAM_BUFFER_BYTES) {
     load.overflow = true
     load.deltas.length = 0
   } else load.deltas.push(event)
