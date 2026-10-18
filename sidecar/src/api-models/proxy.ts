@@ -126,8 +126,9 @@ export const forwardApiRequest = async (request: Request, options: ProxyOptions)
     const redact = (text: string) => secrets.reduce((result, secret) => result.replaceAll(secret, "[REDACTED]"), text)
     const stream = new TransformStream<Uint8Array, Uint8Array>({
       async transform(chunk, controller) {
-        // Bound each scan even when the provider supplies one large buffered chunk.
-        for (let offset = 0; offset < chunk.byteLength; offset += 16_384) {
+        // Empty chunks must also reach the time budget check to avoid a ready-source spin.
+        const inputBytes = Math.max(1, chunk.byteLength)
+        for (let offset = 0; offset < inputBytes; offset += 16_384) {
           const part = chunk.subarray(offset, offset + 16_384)
           const text = redact(pending + decoder.decode(part, { stream: true }))
           const end = Math.max(0, text.length - keep)

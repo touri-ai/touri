@@ -114,7 +114,9 @@ test.each([
     const totalBytes = streamMiB * 1024 * 1024
     const chunk = new TextEncoder().encode(`data: ${"x".repeat(chunkBytes - 8)}\n\n`)
     const fetchImpl: ApiProxyFetch = async () =>
-      new Response(getSyntheticStream(chunk, totalBytes), { headers: { "Content-Type": "text/event-stream" } })
+      new Response(getSyntheticStream(chunk, totalBytes / chunkBytes), {
+        headers: { "Content-Type": "text/event-stream" },
+      })
     const response = await forwardApiRequest(getRequest(), {
       baseUrl: "https://api.example.com/v1",
       key,
@@ -132,6 +134,24 @@ test.each([
     expect(measurement.longestPauseMs).toBeLessThan(100)
   },
 )
+
+test("empty upstream chunks still let timers run during private transport streaming", async () => {
+  const fetchImpl: ApiProxyFetch = async () => new Response(getSyntheticStream(new Uint8Array(), 65_536))
+  const response = await forwardApiRequest(getRequest(), {
+    baseUrl: "https://api.example.com/v1",
+    key,
+    token: "temporary-token",
+    mapError: getApiError,
+    fetchImpl,
+  })
+  if (!response.body) throw new Error("The synthetic stream is missing")
+
+  const measurement = await getStreamMeasurement(response.body)
+
+  expect(measurement.bytes).toBe(0)
+  expect(measurement.ticks).toBeGreaterThan(0)
+  expect(measurement.longestPauseMs).toBeLessThan(100)
+})
 
 test.each([
   ["raw", (value: string) => value],
@@ -187,15 +207,15 @@ test.each([16_383, 16_374])(
   },
 )
 
-const getSyntheticStream = (chunk: Uint8Array, totalBytes: number) => {
+const getSyntheticStream = (chunk: Uint8Array, chunks: number) => {
   // The source counter is local to this stream and never buffers the whole reply.
-  let remaining = totalBytes
+  let remaining = chunks
   return new ReadableStream<Uint8Array>({
     pull(controller) {
       if (remaining === 0) return controller.close()
 
       controller.enqueue(chunk)
-      remaining -= chunk.byteLength
+      remaining -= 1
     },
   })
 }
