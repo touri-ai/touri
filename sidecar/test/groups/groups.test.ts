@@ -1,9 +1,9 @@
 import { Database } from "bun:sqlite"
 import { afterEach, expect, test } from "bun:test"
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import type { Bot, GroupInput, Kernel, Run, ToolContext } from "@touri/contracts"
+import type { Bot, GroupInput, Kernel, ProviderAdapter, Run, ToolContext } from "@touri/contracts"
 import { init as initGroups } from "../../src/groups"
 import { createGroupRuntime } from "../../src/groups/runtime"
 import { delegatedBot, delegationCeiling, delegationSecrets, setDelegation } from "../../src/groups/security"
@@ -19,12 +19,12 @@ import { createRuntimePersistence } from "../../src/runtime/persistence"
 import { init as initStore } from "../../src/store"
 import { fakeProviderSpawn } from "../fakes/provider-spawn"
 
-const cleanups: (() => void)[] = []
-afterEach(() => {
-  for (const cleanup of cleanups.splice(0)) cleanup()
+const cleanups: (() => void | Promise<void>)[] = []
+afterEach(async () => {
+  for (const cleanup of cleanups.splice(0)) await cleanup()
 })
-const until = async (check: () => boolean) => {
-  for (let i = 0; i < 300; i++) {
+const until = async (check: () => boolean, attempts = 300) => {
+  for (let i = 0; i < attempts; i++) {
     if (check()) return
     await Bun.sleep(5)
   }
@@ -33,6 +33,7 @@ const until = async (check: () => boolean) => {
 const fixture = async (
   hook?: (ctx: ToolContext, complete: (text: string) => void) => Promise<void>,
   timeout = 1000,
+  getStartDelay: (botId: string) => number = () => 0,
 ) => {
   const root = mkdtempSync(join(tmpdir(), "touri-groups-"))
   const host = createKernel({ appData: root })
@@ -69,7 +70,9 @@ const fixture = async (
   const thread = data.createThread(group)
   const persistence = createRuntimePersistence({ database: db })
   const running = new Map<string, { run: Run; ctx: ToolContext }>()
+  const controllers = new Map<string, AbortController>()
   const order: string[] = []
+  const canceledBots = new Set<string>()
   const engine = {
     enqueue: ({ threadId, requestMessageId }: { threadId: string; requestMessageId: string }) => {
       const botId = store.getThread({ threadId })?.botId ?? ""
@@ -82,28 +85,36 @@ const fixture = async (
         requestMessageId,
         replyMessageId: null,
         externalTurnId: null,
-        status: "running",
+        status: "queued",
         errorClass: null,
         errorMessage: null,
         usage: null,
         routineRunId: null,
         queuedAt: Date.now(),
-        startedAt: Date.now(),
+        startedAt: null,
         finishedAt: null,
       }
       persistence.saveRun(run)
+      const controller = new AbortController()
+      controllers.set(run.id, controller)
       const ctx: ToolContext = {
         botId,
         threadId,
         runId: run.id,
         projectId: null,
         cwd: root,
-        signal: new AbortController().signal,
+        signal: controller.signal,
       }
-      running.set(run.id, { run, ctx })
-      order.push(botId)
       queueMicrotask(async () => {
+        await Bun.sleep(getStartDelay(botId))
+        if (persistence.getRun(run.id)?.status !== "queued") return
+        Object.assign(run, { status: "running", startedAt: Date.now() })
+        persistence.saveRun(run)
+        host.kernel.publish({ type: "run.updated", run: { ...run } })
+        running.set(run.id, { run, ctx })
+        order.push(botId)
         const complete = (text: string) => {
+          if (ctx.signal.aborted) return
           if (persistence.getRun(run.id)?.status !== "running") return
           const message = store.insertMessage({
             message: {
@@ -139,9 +150,13 @@ const fixture = async (
       if (["running", "queued"].includes(run.status)) {
         Object.assign(run, { status: "canceled", finishedAt: Date.now() })
         persistence.saveRun(run)
+        controllers.get(id)?.abort()
         host.kernel.publish({ type: "run.updated", run })
       }
       return { success: true as const, run }
+    },
+    cancelBotTurns: async ({ botId }: { botId: string }) => {
+      canceledBots.add(botId)
     },
   }
   host.kernel.services.provide(
@@ -175,8 +190,17 @@ const fixture = async (
     if (!r.success) throw new Error(r.error)
     return r.run
   }
-  cleanups.push(() => {
+  cleanups.push(async () => {
     runtime.shutdown()
+    await until(
+      () =>
+        !db
+          .query(
+            "SELECT 1 FROM runs r JOIN group_turns t ON t.run_id=r.id WHERE r.status IN ('queued','starting','running') LIMIT 1",
+          )
+          .get(),
+    )
+    await Bun.sleep(0)
     host.stop()
     rmSync(root, { recursive: true, force: true })
   })
@@ -195,6 +219,7 @@ const fixture = async (
     send,
     order,
     running,
+    canceledBots,
     engine,
     request,
   }
@@ -935,28 +960,35 @@ test("B05: the real engine starts a delegated provider turn under the ceiling, a
       await Bun.sleep(20)
     setDelegation(f.host.kernel, participant.id, null)
     await engine.shutdown()
+    expect(f.persistence.getRun(id)?.status).toBe("succeeded")
     return { argv: readFileSync(argvLog, "utf8"), launch }
   }
   const equal = await runDelegated(f.store.getBot({ botId: pm.id }) as Bot)
-  expect(equal.argv).toContain("danger-full-access")
+  expect(equal.launch?.cmd).toBe(command)
+  expect(equal.argv).toContain('sandbox_mode="danger-full-access"')
   const reduced = await runDelegated({ ...(f.store.getBot({ botId: pm.id }) as Bot), access: "read-only" })
-  if (/\/bwrap$/.test(reduced.launch?.cmd ?? "")) {
+  expect(reduced.argv).toContain('approval_policy="never"')
+  if (process.platform === "darwin") {
+    expect(reduced.launch?.cmd).toBe("/usr/bin/sandbox-exec")
+    expect(reduced.launch?.args[0]).toBe("-p")
+    expect(reduced.launch?.args[2]).toBe(command)
+    const profile = reduced.launch?.args[1] ?? ""
+    expect(profile).toContain("(deny file-write*)")
+    const writes = profile.split("\n").find((line) => line.startsWith("(allow file-write* "))
+    expect(writes).toBeDefined()
+    expect(writes).not.toContain(`(subpath ${JSON.stringify(realpathSync(reduced.launch?.cwd ?? ""))})`)
+    expect(reduced.argv).toContain('sandbox_mode="danger-full-access"')
+  } else if (/\/bwrap$/.test(reduced.launch?.cmd ?? "")) {
     expect(
       reduced.launch?.args.some(
         (arg, index, args) =>
           arg === "--ro-bind" && args[index + 1] === reduced.launch?.cwd && args[index + 2] === reduced.launch?.cwd,
       ),
     ).toBe(true)
-    expect(reduced.argv).toContain('approval_policy="never"')
-  } else if (reduced.launch?.cmd === "/usr/bin/sandbox-exec") {
-    expect(reduced.launch.args[0]).toBe("-p")
-    expect(reduced.launch.args[1]).toContain("(deny file-write*)")
-    // The inherited policy enforces read-only access without a nested provider sandbox.
     expect(reduced.argv).toContain('sandbox_mode="danger-full-access"')
-    expect(reduced.argv).toContain('approval_policy="never"')
   } else {
-    expect(reduced.argv).not.toContain("danger-full-access")
-    expect(reduced.argv).toContain("read-only")
+    expect(reduced.launch?.cmd).toBe(command)
+    expect(reduced.argv).toContain('sandbox_mode="read-only"')
   }
   const guest = await runDelegated({ ...(f.store.getBot({ botId: pm.id }) as Bot), machine: "vm" })
   expect(guest.argv).not.toContain("danger-full-access")
@@ -1365,4 +1397,524 @@ test("restart cancels a group routine run instead of leaving it running", async 
     status: "canceled",
     summary: "Interrupted because touri restarted",
   })
+})
+
+test("ask_all starts every peer before either finishes and preserves final authorship on reload", async () => {
+  const peers = Promise.withResolvers<void>()
+  const answer = Promise.withResolvers<unknown>()
+  const scenario = await fixture(async (ctx, complete) => {
+    if (ctx.botId === scenario.bots[0]?.id) {
+      answer.resolve(await scenario.runtime.askAll(ctx, { message: "Revise o plano" }))
+      complete("Resumo pronto")
+      return
+    }
+    await peers.promise
+    complete(`${scenario.store.getBot({ botId: ctx.botId })?.name}: revisão concluída`)
+  })
+  scenario.data.save({ ...scenario.input, coordinatorBotId: scenario.bots[0]?.id ?? null }, scenario.group)
+
+  const turn = scenario.send("Revise em equipe")
+  await until(() => scenario.order.length === 3)
+
+  expect(scenario.persistence.getRun(turn.id)?.status).toBe("running")
+  peers.resolve()
+  expect(await answer.promise).toMatchObject({
+    success: true,
+    structured: {
+      results: [
+        { bot: scenario.bots[1]?.id, name: "dev", success: true, structured: { answer: "dev: revisão concluída" } },
+        { bot: scenario.bots[2]?.id, name: "qa", success: true, structured: { answer: "qa: revisão concluída" } },
+      ],
+    },
+  })
+  await until(() => scenario.persistence.getRun(turn.id)?.status === "succeeded")
+  const members = scenario.runtime.listRuns(scenario.thread.id).filter((run) => run.groupTurnId === turn.id)
+  expect(members).toHaveLength(3)
+  expect(
+    members.every((run) =>
+      scenario.store
+        .activePath({ threadId: scenario.thread.id })
+        .some((message) => message.id === run.replyMessageId && message.sender?.id === run.botId),
+    ),
+  ).toBe(true)
+})
+
+test("ask_all reserves batches atomically within the six-call budget", async () => {
+  const done = Promise.withResolvers<void>()
+  const scenario = await fixture(async (ctx, complete) => {
+    if (ctx.botId !== scenario.bots[0]?.id) {
+      complete("feito")
+      return
+    }
+    expect(await scenario.runtime.askAll(ctx, { message: "" })).toMatchObject({ errorCode: "INVALID_ARGS" })
+    expect(await scenario.runtime.askBot(ctx, { bot: "dev", message: "primeira" })).toMatchObject({ success: true })
+    expect(await scenario.runtime.askAll(ctx, { message: "segunda" })).toMatchObject({ success: true })
+    expect(await scenario.runtime.askAll(ctx, { message: "terceira" })).toMatchObject({ success: true })
+    expect(await scenario.runtime.askAll(ctx, { message: "excede" })).toMatchObject({ errorCode: "DELEGATION_LIMIT" })
+    expect(await scenario.runtime.askBot(ctx, { bot: "dev", message: "sexta" })).toMatchObject({ success: true })
+    done.resolve()
+    complete("feito")
+  })
+  scenario.data.save({ ...scenario.input, coordinatorBotId: scenario.bots[0]?.id ?? null }, scenario.group)
+
+  const turn = scenario.send("Coordene")
+  await done.promise
+  await until(() => scenario.persistence.getRun(turn.id)?.status === "succeeded")
+
+  expect(
+    scenario.db.query("SELECT COUNT(*) AS count FROM group_run_links WHERE turn_id=? AND depth>0").get(turn.id),
+  ).toEqual({
+    count: 6,
+  })
+  expect(scenario.order).not.toContain(scenario.bots[3]?.id)
+})
+
+test("ask_all keeps a boundary approval pending without holding up another member and denial never starts its target", async () => {
+  const consent = Promise.withResolvers<{ success: true; behavior: "deny" }>()
+  const answer = Promise.withResolvers<unknown>()
+  const scenario = await fixture(async (ctx, complete) => {
+    if (ctx.botId === scenario.bots[0]?.id) {
+      answer.resolve(await scenario.runtime.askAll(ctx, { message: "leia o plano" }))
+      complete("Concluído")
+      return
+    }
+    const target = scenario.store.getBot({ botId: ctx.botId })
+    expect(target && delegatedBot(scenario.host.kernel, ctx.threadId, target).access).toBe("read-only")
+    complete("Revisão confirmada")
+  })
+  scenario.db
+    .query("UPDATE bots SET access='read-only' WHERE id IN (?,?)")
+    .run(scenario.bots[0]?.id ?? "", scenario.bots[2]?.id ?? "")
+  scenario.db.query("UPDATE bots SET access='full' WHERE id=?").run(scenario.bots[1]?.id ?? "")
+  scenario.data.save({ ...scenario.input, coordinatorBotId: scenario.bots[0]?.id ?? null }, scenario.group)
+  scenario.host.kernel.services.provide("approvals.present", (input) => {
+    expect(input.groupMemberId).toBe(scenario.bots[1]?.id)
+    return consent.promise
+  })
+
+  const turn = scenario.send("Coordene")
+  await until(() => scenario.order.includes(scenario.bots[2]?.id ?? ""))
+
+  expect(scenario.order).not.toContain(scenario.bots[1]?.id)
+  expect(scenario.persistence.getRun(turn.id)?.status).toBe("running")
+  consent.resolve({ success: true, behavior: "deny" })
+  expect(await answer.promise).toMatchObject({
+    structured: {
+      results: [
+        { bot: scenario.bots[1]?.id, success: false, errorCode: "DELEGATION_DENIED" },
+        { bot: scenario.bots[2]?.id, success: true },
+      ],
+    },
+  })
+  await until(() => scenario.persistence.getRun(turn.id)?.status === "succeeded")
+  expect(scenario.order).not.toContain(scenario.bots[1]?.id)
+})
+
+test("group conversation actions persist routing, broadcast past the coordinator and summarize confirmed results only", async () => {
+  const scenario = await fixture()
+  scenario.data.save({ ...scenario.input, coordinatorBotId: scenario.bots[0]?.id ?? null }, scenario.group)
+  const post = async (groupAction: "ask_all" | "summarize", clientNonce: string) => {
+    const response = await scenario.request(`/threads/${scenario.thread.id}/messages`, {
+      text: "Revise",
+      parentId: null,
+      attachmentIds: [],
+      groupAction,
+      clientNonce,
+    })
+    expect(response.status).toBe(201)
+    return (await response.json()) as { run: Run }
+  }
+
+  const broadcast = await post("ask_all", "broadcast")
+  await until(() => scenario.persistence.getRun(broadcast.run.id)?.status === "succeeded")
+  const summary = await post("summarize", "summary")
+  await until(() => scenario.persistence.getRun(summary.run.id)?.status === "succeeded")
+
+  expect(scenario.order).toEqual([...scenario.group.memberIds, scenario.bots[0]?.id ?? ""])
+  const participant = scenario.data.participant(scenario.group, scenario.thread.id, scenario.bots[0]?.id ?? "")
+  const summaryRequest = scenario.store
+    .activePath({ threadId: participant.id })
+    .filter((message) => message.role === "user")
+    .at(-1)?.text
+  expect(summaryRequest).toContain("dev respondeu")
+  expect(summaryRequest).toContain("qa respondeu")
+  const conflict = await scenario.request(`/threads/${scenario.thread.id}/messages`, {
+    text: "Revise",
+    parentId: null,
+    attachmentIds: [],
+    groupAction: "summarize",
+    clientNonce: "broadcast",
+  })
+  expect(conflict.status).toBe(409)
+  const invalid = await scenario.request(`/threads/${scenario.thread.id}/messages`, {
+    text: "Revise",
+    parentId: null,
+    attachmentIds: [],
+    groupAction: ["ask_all"],
+  })
+  expect(invalid.status).toBe(400)
+})
+
+test("ask_all cancellation stops every running peer and rejects late replies", async () => {
+  const blocked = Promise.withResolvers<void>()
+  const scenario = await fixture(async (ctx, complete) => {
+    if (ctx.botId === scenario.bots[0]?.id) {
+      await scenario.runtime.askAll(ctx, { message: "Revise" })
+      complete("Resumo")
+      return
+    }
+    await blocked.promise
+    complete("Resposta tardia")
+  })
+  scenario.data.save({ ...scenario.input, coordinatorBotId: scenario.bots[0]?.id ?? null }, scenario.group)
+
+  const turn = scenario.send("Coordene")
+  await until(() => scenario.order.length === 3)
+  scenario.runtime.cancel(turn.id)
+  await until(() => scenario.persistence.getRun(turn.id)?.status === "canceled")
+  blocked.resolve()
+
+  expect(
+    scenario.runtime
+      .listRuns(scenario.thread.id)
+      .filter((run) => run.groupTurnId === turn.id)
+      .every((run) => run.status === "canceled"),
+  ).toBe(true)
+  expect(
+    scenario.store.activePath({ threadId: scenario.thread.id }).some((message) => message.text === "Resposta tardia"),
+  ).toBe(false)
+})
+
+test("ask_all gives every peer the remaining turn deadline and cancels the entire stalled set", async () => {
+  const finish = Promise.withResolvers<void>()
+  const scenario = await fixture(async (ctx, complete) => {
+    if (ctx.botId === scenario.bots[0]?.id) {
+      await Bun.sleep(70)
+      await scenario.runtime.askAll(ctx, { message: "Revise" })
+      complete("Resumo")
+      return
+    }
+    await finish.promise
+    complete("Tarde demais")
+  }, 140)
+  scenario.data.save({ ...scenario.input, coordinatorBotId: scenario.bots[0]?.id ?? null }, scenario.group)
+
+  const turn = scenario.send("Coordene")
+  await until(() => ["failed", "canceled"].includes(scenario.persistence.getRun(turn.id)?.status ?? ""))
+
+  const children = scenario.runtime.listRuns(scenario.thread.id).filter((run) => run.groupTurnId === turn.id)
+  expect(children).toHaveLength(3)
+  expect(children.every((run) => run.status === "canceled")).toBe(true)
+  finish.resolve()
+})
+
+test("ask_all remains hidden outside groups and asks for explicit consent even for a read-only coordinator", async () => {
+  const answer = Promise.withResolvers<unknown>()
+  const cards = new Set<string>()
+  const scenario = await fixture(async (ctx, complete) => {
+    if (ctx.botId !== scenario.bots[0]?.id) {
+      complete("Revisado")
+      return
+    }
+    const caller = {
+      botId: ctx.botId,
+      threadId: ctx.threadId,
+      projectId: null,
+      cwd: scenario.root,
+      provider: scenario.bots[0]?.provider ?? "codex",
+      browserEnabled: false,
+      computerUse: false,
+    }
+    const router = createToolRouter({
+      kernel: scenario.host.kernel,
+      registrations: new Map([
+        ["ask_all", { name: "ask_all", group: "core", handler: ({ ctx, args }) => scenario.runtime.askAll(ctx, args) }],
+      ]),
+    })
+    expect(router.list({ caller }).some((tool) => tool.name === "ask_all")).toBe(true)
+    const outside = { ...caller, threadId: scenario.bots[0]?.mainThreadId ?? "private" }
+    expect(router.list({ caller: outside }).some((tool) => tool.name === "ask_all")).toBe(false)
+    answer.resolve(await router.call({ id: 1, name: "ask_all", args: { message: "leia" }, caller, signal: ctx.signal }))
+    complete("Resumo")
+  })
+  scenario.db.query("UPDATE bots SET access='read-only', approvals='never'").run()
+  scenario.data.save({ ...scenario.input, coordinatorBotId: scenario.bots[0]?.id ?? null }, scenario.group)
+  scenario.host.kernel.services.provide("approvals.present", async (input) => {
+    cards.add(input.scope.tool)
+    return { success: true, behavior: "allow" }
+  })
+
+  const turn = scenario.send("Coordene")
+  expect(await answer.promise).toMatchObject({ success: true })
+  await until(() => scenario.persistence.getRun(turn.id)?.status === "succeeded")
+
+  expect(cards.has("ask_all")).toBe(true)
+  expect(scenario.order).toEqual(scenario.group.memberIds)
+})
+
+test("a failed coordinator cancels parallel peers instead of leaving them without a stoppable turn", async () => {
+  const finish = Promise.withResolvers<void>()
+  const scenario = await fixture(async (ctx, complete) => {
+    if (ctx.botId === scenario.bots[0]?.id) {
+      await scenario.runtime.askAll(ctx, { message: "Revise" })
+      complete("Resumo")
+      return
+    }
+    await finish.promise
+    complete("Resposta tardia")
+  })
+  scenario.data.save({ ...scenario.input, coordinatorBotId: scenario.bots[0]?.id ?? null }, scenario.group)
+  const turn = scenario.send("Coordene")
+  await until(() => scenario.order.length === 3)
+  const coordinator = [...scenario.running.values()].find(({ run }) => run.botId === scenario.bots[0]?.id)?.run
+  if (!coordinator) throw new Error("Missing coordinator")
+  const failed: Run = {
+    ...coordinator,
+    status: "failed",
+    errorClass: "unknown",
+    errorMessage: "Falha simulada",
+    finishedAt: Date.now(),
+  }
+
+  scenario.persistence.saveRun(failed)
+  scenario.host.kernel.publish({ type: "run.updated", run: failed })
+  await until(() => scenario.persistence.getRun(turn.id)?.status === "failed")
+
+  const peers = scenario.runtime
+    .listRuns(scenario.thread.id)
+    .filter((run) => run.groupTurnId === turn.id && run.botId !== failed.botId)
+  expect(peers).toHaveLength(2)
+  expect(peers.every((run) => run.status === "canceled")).toBe(true)
+  finish.resolve()
+})
+
+test("ordinary mentions keep a fresh per-bot budget across a long group turn", async () => {
+  const scenario = await fixture(async (_ctx, complete) => {
+    await Bun.sleep(100)
+    complete("Revisado")
+  }, 160)
+
+  const turn = scenario.send("@pm @dev revisem")
+  await until(() => scenario.persistence.getRun(turn.id)?.status === "succeeded")
+
+  expect(scenario.order).toEqual(scenario.group.memberIds.slice(0, 2))
+  expect(scenario.runtime.listRuns(scenario.thread.id).filter((run) => run.groupTurnId === turn.id)).toHaveLength(2)
+})
+
+test("ask_bot keeps its own budget after an earlier member used most of the turn's first budget", async () => {
+  const answer = Promise.withResolvers<unknown>()
+  const scenario = await fixture(async (ctx, complete) => {
+    if (ctx.botId === scenario.bots[1]?.id) {
+      answer.resolve(await scenario.runtime.askBot(ctx, { bot: "qa", message: "Confira" }))
+      complete("Conferido")
+      return
+    }
+    await Bun.sleep(100)
+    complete("Revisado")
+  }, 160)
+
+  const turn = scenario.send("@pm @dev revisem")
+  expect(await answer.promise).toMatchObject({ success: true })
+  await until(() => scenario.persistence.getRun(turn.id)?.status === "succeeded")
+
+  expect(scenario.order).toEqual(scenario.group.memberIds)
+})
+
+const sendAskAll = async (scenario: Awaited<ReturnType<typeof fixture>>) => {
+  const response = await scenario.request(`/threads/${scenario.thread.id}/messages`, {
+    text: "Revisem o plano",
+    parentId: null,
+    attachmentIds: [],
+    groupAction: "ask_all",
+  })
+  expect(response.status).toBe(201)
+
+  return ((await response.json()) as { run: Run }).run
+}
+
+test("ask-all starts a queued member's clock only when it starts running", async () => {
+  const scenario = await fixture(
+    async (_ctx, complete) => {
+      await Bun.sleep(100)
+      complete("Revisado")
+    },
+    160,
+    () => 220,
+  )
+
+  const turn = await sendAskAll(scenario)
+  await until(() => scenario.persistence.getRun(turn.id)?.status === "succeeded")
+
+  const members = scenario.runtime.listRuns(scenario.thread.id).filter((run) => run.groupTurnId === turn.id)
+  expect(members).toHaveLength(3)
+  expect(members.every((run) => run.status === "succeeded")).toBe(true)
+  expect(members.every((run) => (run.startedAt ?? 0) - run.queuedAt >= 200)).toBe(true)
+})
+
+test("ask-all returns partial success after a member fails and lets the remaining members finish", async () => {
+  const scenario = await fixture(async (ctx, complete) => {
+    if (ctx.botId === scenario.bots[1]?.id) {
+      if (!ctx.runId) throw new Error("Missing member run")
+      const run = scenario.persistence.getRun(ctx.runId)
+      if (!run) throw new Error("Missing member")
+      const failed: Run = { ...run, status: "failed", errorClass: "unknown", finishedAt: Date.now() }
+      scenario.persistence.saveRun(failed)
+      scenario.host.kernel.publish({ type: "run.updated", run: failed })
+      return
+    }
+    await Bun.sleep(60)
+    complete("Resultado confirmado")
+  })
+
+  const turn = await sendAskAll(scenario)
+  await until(() => scenario.persistence.getRun(turn.id)?.status === "succeeded")
+
+  const members = scenario.runtime.listRuns(scenario.thread.id).filter((run) => run.groupTurnId === turn.id)
+  expect(members.filter((run) => run.status === "failed").map((run) => run.botId)).toEqual([scenario.bots[1]?.id ?? ""])
+  expect(members.filter((run) => run.status === "succeeded")).toHaveLength(2)
+  expect(
+    scenario.store.activePath({ threadId: scenario.thread.id }).filter((message) => message.role === "assistant"),
+  ).toHaveLength(2)
+})
+
+test("deleting a shared conversation cancels its ask-all members and never recreates deleted runs or messages", async () => {
+  const finish = Promise.withResolvers<void>()
+  const settled = new Set<string>()
+  const scenario = await fixture(async (ctx, complete) => {
+    await finish.promise
+    complete("Resposta tardia")
+    settled.add(ctx.botId)
+  })
+  const turn = await sendAskAll(scenario)
+  await until(() => scenario.order.length === 3)
+  const members = scenario.runtime.listRuns(scenario.thread.id).filter((run) => run.groupTurnId === turn.id)
+  // This is the shared-thread removal performed when its owning bot is deleted.
+  scenario.db.query("DELETE FROM group_run_links WHERE turn_id=?").run(turn.id)
+  scenario.db.query("DELETE FROM group_turns WHERE run_id=?").run(turn.id)
+  scenario.db
+    .query("DELETE FROM group_message_links WHERE visible_message_id IN (SELECT id FROM messages WHERE thread_id=?)")
+    .run(scenario.thread.id)
+  scenario.db.query("UPDATE threads SET group_thread_id=NULL WHERE group_thread_id=?").run(scenario.thread.id)
+  scenario.db.query("DELETE FROM send_journal WHERE thread_id=?").run(scenario.thread.id)
+  scenario.db.query("DELETE FROM threads WHERE id=?").run(scenario.thread.id)
+
+  scenario.host.kernel.publish({ type: "transcript.resync" })
+  expect(members.every((run) => scenario.persistence.getRun(run.id)?.status === "canceled")).toBe(true)
+  finish.resolve()
+  await until(() => settled.size === 3)
+
+  expect(scenario.persistence.getRun(turn.id)).toBeNull()
+  expect(scenario.store.getThread({ threadId: scenario.thread.id })).toBeNull()
+  expect(scenario.db.query("SELECT id FROM messages WHERE thread_id=?").all(scenario.thread.id)).toEqual([])
+})
+
+test("canceling a member for deletion stops ask-all in every group conversation, including queued turns", async () => {
+  const finish = Promise.withResolvers<void>()
+  const scenario = await fixture(async (_ctx, complete) => {
+    await finish.promise
+    complete("Resposta tardia")
+  })
+  const turn = await sendAskAll(scenario)
+  await until(() => scenario.order.length === 3)
+  const otherThread = scenario.data.createThread(scenario.group)
+  const queued = scenario.send("Próximo pedido", otherThread.id)
+
+  await scenario.runtime.cancelBotTurns({ botId: scenario.bots[1]?.id ?? "" })
+  await until(() => scenario.persistence.getRun(turn.id)?.status === "canceled")
+  finish.resolve()
+
+  expect(scenario.persistence.getRun(queued.id)?.status).toBe("canceled")
+  expect(
+    scenario.runtime
+      .listRuns(scenario.thread.id)
+      .filter((run) => run.groupTurnId === turn.id)
+      .every((run) => run.status === "canceled"),
+  ).toBe(true)
+  expect(scenario.order).toHaveLength(3)
+  expect([...scenario.canceledBots]).toEqual([scenario.bots[1]?.id ?? ""])
+})
+
+test("six ask-all members respect the engine concurrency cap and each gets its active execution budget", async () => {
+  const scenario = await fixture()
+  scenario.runtime.shutdown()
+  const provider = scenario.bots[0]?.provider
+  if (!provider) throw new Error("Missing fixture provider")
+  const extraBots = await Promise.all(
+    ["docs", "design"].map(async (name) => {
+      const response = await scenario.request("/bots", { name, provider })
+      return ((await response.json()) as { bot: Bot }).bot
+    }),
+  )
+  const group = scenario.data.save(
+    { ...scenario.input, memberIds: scenario.bots.concat(extraBots).map((bot) => bot.id) },
+    scenario.group,
+  )
+  // The fake adapter records provider lifetimes at the execution boundary.
+  const active = new Set<string>()
+  const concurrency: number[] = []
+  const adapter: ProviderAdapter = {
+    provider,
+    detect: async () => ({ success: true, path: "/fixtures/provider", version: "1", loggedIn: true }),
+    startTurn: async ({ thread, onEvent, signal }) => {
+      const runId = thread.id
+      active.add(runId)
+      concurrency.push(active.size)
+      onEvent({ type: "turn_started", externalTurnId: runId })
+      await Bun.sleep(300)
+      active.delete(runId)
+      if (signal.aborted) return { success: false, errorCode: "canceled", error: "Turno cancelado" }
+      onEvent({ type: "text_delta", itemId: runId, delta: "Plano revisado" })
+      return { success: true, externalSessionId: runId, rolloutPath: null, status: "succeeded" }
+    },
+    answerApproval: async () => ({ success: true }),
+    shutdown: async () => {},
+  }
+  const engine = createRuntimeEngine({
+    kernel: scenario.host.kernel,
+    providerAdapters: { [provider]: adapter },
+    maxConcurrentRuns: 2,
+    environment: { PATH: process.env.PATH ?? "" },
+  })
+  await engine.ready
+  const groups = createGroupRuntime(scenario.host.kernel, engine, 500)
+  scenario.host.kernel.services.provide("groups.runtime", groups)
+  scenario.host.kernel.services.provide("runtime.enqueue", groups.enqueue)
+  cleanups.unshift(async () => {
+    groups.shutdown()
+    await engine.shutdown()
+  })
+
+  const turn = await sendAskAll(scenario)
+  await until(() => scenario.persistence.getRun(turn.id)?.status === "succeeded", 3000)
+
+  const members = groups.listRuns(scenario.thread.id).filter((run) => run.groupTurnId === turn.id)
+  expect(members).toHaveLength(group.memberIds.length)
+  expect(members.every((run) => run.status === "succeeded")).toBe(true)
+  expect(Math.max(...concurrency)).toBe(2)
+  expect(members.some((run) => (run.startedAt ?? 0) - run.queuedAt > 500)).toBe(true)
+})
+
+test("ask-all records a rejected enqueue as one failed member and keeps the other results", async () => {
+  const scenario = await fixture()
+  scenario.runtime.shutdown()
+  const groups = createGroupRuntime(scenario.host.kernel, {
+    ...scenario.engine,
+    enqueue: (args) => {
+      if (scenario.store.getThread({ threadId: args.threadId })?.botId === scenario.bots[1]?.id)
+        return { success: false, errorCode: "BOT_PAUSED", error: "Falha simulada" }
+
+      return scenario.engine.enqueue(args)
+    },
+  })
+  scenario.host.kernel.services.provide("groups.runtime", groups)
+  scenario.host.kernel.services.provide("runtime.enqueue", groups.enqueue)
+  cleanups.unshift(() => groups.shutdown())
+
+  const turn = await sendAskAll(scenario)
+  await until(() => scenario.persistence.getRun(turn.id)?.status === "succeeded")
+
+  const members = groups.listRuns(scenario.thread.id).filter((run) => run.groupTurnId === turn.id)
+  expect(members).toHaveLength(3)
+  expect(members.filter((run) => run.status === "succeeded")).toHaveLength(2)
+  expect(members.find((run) => run.botId === scenario.bots[1]?.id)).toMatchObject({ status: "failed" })
 })

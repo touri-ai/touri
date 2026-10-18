@@ -23,7 +23,7 @@ import { BOT_SETTINGS_SECTIONS, type BotSettingsSectionId, SETTINGS } from "../f
 import { useSettingFocus } from "../features/commandPalette/useSettingFocus"
 import { ComputerGrantCard } from "../features/computer"
 import { DoctorChecks } from "../features/doctor/DoctorChecks"
-import { NOT_SURE_JOB_ID } from "../features/jobs/catalog"
+import { getBotJobId, type JobTemplate, NOT_SURE_JOB_ID } from "../features/jobs/catalog"
 import { JobPicker } from "../features/jobs/JobPicker"
 import { useIsServerMode } from "../features/server/serverMode"
 import { accessLabel, fullAccessDescription, getHostLabel, plural, statusLabel, t } from "../i18n"
@@ -418,6 +418,8 @@ const projectFolderPatch = (
     : { folders: [...folders.filter((item) => item.path !== folder.path), folder] }
 
 type BotCreateModalProps = {
+  bots?: Bot[]
+  initialJob?: JobTemplate | null
   api?: UiApi
   invokeCommand?: TauriInvoke
   cloudEnabled?: boolean
@@ -429,6 +431,8 @@ type BotCreateModalProps = {
 }
 
 export const BotCreateModal = ({
+  bots = [],
+  initialJob,
   capability,
   projects = [],
   onClose,
@@ -446,7 +450,7 @@ export const BotCreateModal = ({
     return { avatarShape: profile.shape, color: profile.color }
   })
   const [name, setName] = useState("")
-  const [roleLine, setRoleLine] = useState("")
+  const [roleLine, setRoleLine] = useState(initialJob?.roleLine ?? "")
   const [title, setTitle] = useState("")
   const [loginDraftId] = useState(() => `draft-${crypto.randomUUID()}`)
   const fallbackHost = useHost(api)
@@ -454,9 +458,9 @@ export const BotCreateModal = ({
   const host = login.flow?.hostKind ?? login.flow?.host ?? fallbackHost
   const [apiModel, setApiModel] = useState("")
   const provider = apiModel ? "opencode" : login.provider
-  const [jobId, setJobId] = useState(NOT_SURE_JOB_ID)
+  const [jobId, setJobId] = useState(initialJob?.id ?? NOT_SURE_JOB_ID)
   const [advanced, setAdvanced] = useState(false)
-  const [instructions, setInstructions] = useState("")
+  const [instructions, setInstructions] = useState(initialJob?.instructions ?? "")
   const [model, setModel] = useState("")
   const [effort, setEffort] = useState<Bot["reasoningEffort"]>(null)
   const [projectId, setProjectId] = useState("")
@@ -602,6 +606,13 @@ export const BotCreateModal = ({
                 />
                 <JobPicker
                   value={jobId}
+                  coveredJobIds={bots
+                    .filter((bot) => !bot.archivedAt)
+                    .flatMap((bot) => {
+                      const jobId = getBotJobId(bot)
+
+                      return jobId ? [jobId] : []
+                    })}
                   onChange={(job) => {
                     setJobId(job?.id ?? NOT_SURE_JOB_ID)
                     setRoleLine(job?.roleLine ?? "")

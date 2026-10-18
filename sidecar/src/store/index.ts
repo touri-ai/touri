@@ -1157,6 +1157,8 @@ export const init = async (kernel: Kernel): Promise<void> => {
     body: Record<string, unknown>
   }): { input: SendMessageInput | null; error: string | null } => {
     if (!isString(body.text) || !body.text.trim()) return { input: null, error: "text is required" }
+    if (body.groupAction !== undefined && body.groupAction !== "ask_all" && body.groupAction !== "summarize")
+      return { input: null, error: "Ação do grupo inválida." }
     const parentId =
       body.parentId === null || body.parentId === undefined ? null : isString(body.parentId) ? body.parentId : null
     if (body.parentId !== undefined && body.parentId !== null && parentId === null)
@@ -1169,6 +1171,9 @@ export const init = async (kernel: Kernel): Promise<void> => {
         threadId,
         parentId,
         text: body.text,
+        ...(body.groupAction === "ask_all" || body.groupAction === "summarize"
+          ? { groupAction: body.groupAction }
+          : {}),
         attachmentIds: attachmentIds as Array<string>,
         ...(body.clientNonce === undefined ? {} : { clientNonce: body.clientNonce as string }),
         ...(body.deadline === undefined ? {} : { deadline: body.deadline as number }),

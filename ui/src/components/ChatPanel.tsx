@@ -1,6 +1,7 @@
 import type {
   Bot,
   BotGroup,
+  GroupAction,
   Id,
   MachineState,
   Message,
@@ -40,6 +41,7 @@ import { ErrorDetails, ErrorText } from "./ErrorDetails"
 import { ErrorNotice } from "./ErrorNotice"
 import { EvidenceContext } from "./EvidenceGallery"
 import { FailureActionContext } from "./FailureActionContext"
+import { GoalPanel } from "./GoalPanel"
 import { GroupConversationStart, GroupHeader } from "./Groups"
 import { MachineServiceButton } from "./MachineServiceButton"
 import { MachineStatus } from "./MachineStatus"
@@ -81,7 +83,7 @@ type ChatPanelProps = {
   machine?: MachineState | undefined
   messages: Array<Message>
   runs: Array<Run>
-  onSend: (text: string, parentId?: Id | null, attachmentIds?: Array<Id>) => Promise<void>
+  onSend: (text: string, parentId?: Id | null, attachmentIds?: Array<Id>, groupAction?: GroupAction) => Promise<void>
   onRetry: (runId: Id) => Promise<void>
   onCancel: (runId: Id) => Promise<void>
   onSwitchBranch: (threadId: Id, leafId: Id) => Promise<void>
@@ -1066,6 +1068,20 @@ export const ChatPanel = ({
             )}
           </div>
         </header>
+      )}
+      {!group && bot && !routineConversation && (
+        <GoalPanel
+          key={thread.id}
+          api={api}
+          threadId={thread.id}
+          bot={bot}
+          request={activeMessagePath(messages, thread.activeLeafId)
+            .filter((message) => message.role === "user")
+            .at(-1)}
+          busy={runs.some(
+            (run) => run.threadId === thread.id && ["queued", "starting", "running"].includes(run.status),
+          )}
+        />
       )}
       {!group && bot?.machine === "vm" && machine && (activeRun || machine.status === "starting") && (
         <MachineStatus

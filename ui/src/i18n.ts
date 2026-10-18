@@ -3,6 +3,71 @@ import { userFacingError } from "./errors"
 /** All UI copy lives here. pt-BR is the default; English is available for a future locale picker. */
 export type Locale = "pt-BR" | "en"
 export const ptBR = {
+  "Confira os dados e os limites do objetivo.": "Confira os dados e os limites do objetivo.",
+  "ERROR INVALID_ARGS: Confira os dados e os limites do objetivo.": "Confira os dados e os limites do objetivo.",
+  "Aguarde o turno atual terminar ou conclua o objetivo anterior.":
+    "Aguarde o turno atual terminar ou conclua o objetivo anterior.",
+  "ERROR CONFLICT: Aguarde o turno atual terminar ou conclua o objetivo anterior.":
+    "Aguarde o turno atual terminar ou conclua o objetivo anterior.",
+  "Não há um objetivo ativo para este turno.": "Não há um objetivo ativo para este turno.",
+  "ERROR NOT_FOUND: Não há um objetivo ativo para este turno.": "Não há um objetivo ativo para este turno.",
+  "Não foi possível registrar a conclusão do objetivo.": "Não foi possível registrar a conclusão do objetivo.",
+  "ERROR INVALID_ARGS: Não foi possível registrar a conclusão do objetivo.":
+    "Não foi possível registrar a conclusão do objetivo.",
+  "Record an observed step for the user-authorized goal in this turn. Set completed=true only after verifying its agreed completion criterion. Never treats the end of a turn as completion. Cannot create goals, change budgets or grant access.":
+    "Registra um passo observado do objetivo autorizado neste turno. Só marca a conclusão depois de verificar o critério combinado. Encerrar um turno não conclui o objetivo. Não cria objetivos, altera orçamentos nem concede acesso.",
+  "Goal local only": "A continuação automática está disponível para bots locais. Este bot continua um turno por vez.",
+  "Goal pause": "Pausar",
+  "Goal resume": "Retomar",
+  "Continue until done": "Continuar até concluir",
+  "Goal advanced": "Avançado · Continuar até concluir",
+  "Goal mode help":
+    "Continua a última solicitação entre turnos, dentro dos limites abaixo. As aprovações continuam obrigatórias. Disponível para bots locais.",
+  "Goal folder required":
+    "Vincule um projeto ou autorize uma pasta para continuar automaticamente. Por enquanto, a conversa segue um turno por vez.",
+  "Goal completion criterion": "O que precisa estar pronto para concluir?",
+  "Goal turn limit": "Limite de turnos",
+  "Goal minutes": "Tempo disponível (min)",
+  "Goal remaining": "{turns} turnos seguintes · {minutes} min restantes",
+  "Goal waiting for checkpoint": "Aguardando o primeiro passo registrado.",
+  "Goal budget exhausted help":
+    "O limite foi atingido e o bot parou. Altere o orçamento e escolha Retomar para continuar.",
+  "Complete goal now": "Concluir agora",
+  "Change goal budget": "Alterar orçamento",
+  "Save goal budget": "Salvar orçamento",
+  "Goal budget edit help":
+    "O limite de turnos é o total, incluindo os já usados. O tempo conta a partir de agora. Salvar não retoma o trabalho.",
+  "Goal wait for turn": "Aguarde o turno atual terminar para ativar.",
+  "Goal request failed":
+    "Não foi possível carregar ou alterar o objetivo. Confira a conexão, as pastas autorizadas e os limites e tente novamente.",
+  "Goal active": "Em andamento",
+  "Goal paused": "Pausado",
+  "Goal budget exhausted": "Limite atingido",
+  "Goal completed": "Concluído",
+  "Continuação do objetivo": "Continuação do objetivo",
+  "Send the same task to all other members of this touri group in parallel and gather final answers with authorship. Each recipient counts toward the shared six-call budget. Same depth 2, cycle, access, secrecy and approval fences as ask_bot. The whole set shares the group turn deadline (120s for chat); pending approval on one member does not hold up others. Only available in group participant sessions.":
+    "Envia a mesma tarefa aos outros membros do grupo em paralelo e reúne as respostas finais com autoria. Cada membro conta no limite compartilhado de seis chamadas. Mantém os limites de profundidade 2, ciclos, acesso, segredos e aprovações da delegação individual. Todos compartilham o prazo do turno (120 segundos no chat); uma aprovação pendente não impede os outros de trabalhar. Disponível apenas nas sessões de membros do grupo.",
+  "Escreva uma tarefa de até 8.000 caracteres.": "Escreva uma tarefa de até 8.000 caracteres.",
+  "Enviar esta tarefa aos outros membros do grupo: {message}":
+    "Enviar esta tarefa aos outros membros do grupo: {message}",
+  "Ação do grupo inválida.": "Ação do grupo inválida.",
+  "Esta ação exige uma conversa de grupo.": "Esta ação exige uma conversa de grupo.",
+  "A conversa foi removida.": "A conversa foi removida.",
+  "Pergunte a no máximo 6 membros por turno.": "Pergunte a no máximo 6 membros por turno.",
+  "Perguntar a todos": "Perguntar a todos",
+  "Pedir resumo do time": "Pedir resumo do time",
+  "Ações do grupo": "Ações do grupo",
+  "Resuma os resultados confirmados do último turno, com a autoria de cada membro.":
+    "Resuma os resultados confirmados do último turno, com a autoria de cada membro.",
+  Membro: "Membro",
+  Disponível: "Disponível",
+  Trabalhando: "Trabalhando",
+  "Aguardando você": "Aguardando você",
+  "Sem resultado confirmado.": "Sem resultado confirmado.",
+  "Resultados do turno": "Resultados do turno",
+  "Somente respostas finais confirmadas. Este quadro é apenas para leitura.":
+    "Somente respostas finais confirmadas. Este quadro é apenas para leitura.",
+  "Sem resultados confirmados neste turno.": "Sem resultados confirmados neste turno.",
   "Meu Chrome só funciona em bots no computador onde o touri está rodando. Uma máquina remota não pode acessar esse navegador.":
     "Meu Chrome só funciona em bots no computador onde o touri está rodando. Uma máquina remota não pode acessar esse navegador.",
   "OpenCode está disponível no computador local e na máquina Linux. O runtime da nuvem ainda não oferece este provedor.":
@@ -700,6 +765,15 @@ export const ptBR = {
   "Não foi possível parar. Tente novamente.": "Não foi possível parar. Tente novamente.",
 
   // First conversation and host transparency.
+  "Put another bot to work with you": "Coloque outro bot para trabalhar com você",
+  "Bots can collaborate in a group and follow routines.": "Os bots podem colaborar em um grupo e seguir rotinas.",
+  "You already have a bot taking care of this.": "Você já tem um bot cuidando disso.",
+  "Work in a group with {name}?": "Trabalhar em grupo com {name}?",
+  "Create a routine?": "Criar uma rotina?",
+  "Routine with {name}": "Rotina com {name}",
+  "Review today's tasks and suggest next steps.": "Revise as tarefas de hoje e sugira os próximos passos.",
+  "Dismiss next step": "Dispensar próximo passo",
+  "Team with {name}": "Equipe com {name}",
   "onboarding.server": "servidor",
   "onboarding.privacy":
     "O histórico fica neste {host}. Sua IA recebe o conteúdo necessário para responder. O touri não coleta telemetria.",
@@ -2035,7 +2109,9 @@ export const ptBR = {
   "Computer permission waiting": "{name} está aguardando permissão para controlar seu computador.",
   Minutes: "{count} minutos",
   "Notifications need attention": "Notificações, {count} precisam de atenção",
-  "Service request failed": "Falha no serviço local: {error}",
+  "Service request failed": "Falha na conexão com o touri: {error}",
+  "O serviço do touri está indisponível. Verifique a conexão e tente novamente.":
+    "O serviço do touri está indisponível. Verifique a conexão e tente novamente.",
   "Dry run complete. Nothing was written.": "Simulação concluída. Dados preservados.",
   "Import complete. Imported routines stay disabled.":
     "Importação concluída. As rotinas importadas continuam pausadas.",
@@ -2202,6 +2278,7 @@ export const ptBR = {
   "Converse com este bot pelo Telegram. Só as pessoas permitidas abaixo conseguem falar com ele.":
     "Converse com este bot pelo Telegram. Só as pessoas permitidas abaixo conseguem falar com ele.",
   "Ativar Telegram": "Ativar Telegram",
+  "Salve o token do bot para ativar o Telegram.": "Salve o token do bot para ativar o Telegram.",
   Desligado: "Desligado",
   "Conectado como @{username}": "Conectado como @{username}",
   Conectado: "Conectado",
@@ -2227,6 +2304,47 @@ export const ptBR = {
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  "Confira os dados e os limites do objetivo.": "Check the goal details and limits.",
+  "ERROR INVALID_ARGS: Confira os dados e os limites do objetivo.": "Check the goal details and limits.",
+  "Aguarde o turno atual terminar ou conclua o objetivo anterior.":
+    "Wait for the current turn to finish or complete the previous goal.",
+  "ERROR CONFLICT: Aguarde o turno atual terminar ou conclua o objetivo anterior.":
+    "Wait for the current turn to finish or complete the previous goal.",
+  "Não há um objetivo ativo para este turno.": "There is no active goal for this turn.",
+  "ERROR NOT_FOUND: Não há um objetivo ativo para este turno.": "There is no active goal for this turn.",
+  "Não foi possível registrar a conclusão do objetivo.": "Could not record the goal completion.",
+  "ERROR INVALID_ARGS: Não foi possível registrar a conclusão do objetivo.": "Could not record the goal completion.",
+  "Record an observed step for the user-authorized goal in this turn. Set completed=true only after verifying its agreed completion criterion. Never treats the end of a turn as completion. Cannot create goals, change budgets or grant access.":
+    "Record an observed step for the user-authorized goal in this turn. Set completed=true only after verifying its agreed completion criterion. Never treats the end of a turn as completion. Cannot create goals, change budgets or grant access.",
+  "Goal local only": "Automatic continuation is available for local bots. This bot continues one turn at a time.",
+  "Goal pause": "Pause",
+  "Goal resume": "Resume",
+  "Continue until done": "Continue until done",
+  "Goal advanced": "Advanced · Continue until done",
+  "Goal mode help":
+    "Continue the latest request across turns within these limits. Approvals remain mandatory. Available for local bots.",
+  "Goal folder required":
+    "Link a project or authorize a folder to continue automatically. For now, the conversation continues one turn at a time.",
+  "Goal completion criterion": "What must be ready to finish?",
+  "Goal turn limit": "Turn limit",
+  "Goal minutes": "Time available (min)",
+  "Goal remaining": "{turns} further turns · {minutes} min remaining",
+  "Goal waiting for checkpoint": "Waiting for the first recorded step.",
+  "Goal budget exhausted help":
+    "The limit was reached and the bot stopped. Change the budget and choose Resume to continue.",
+  "Complete goal now": "Complete now",
+  "Change goal budget": "Change budget",
+  "Save goal budget": "Save budget",
+  "Goal budget edit help":
+    "The turn limit includes turns already used. Time starts from now. Saving does not resume work.",
+  "Goal wait for turn": "Wait for the current turn to finish before enabling.",
+  "Goal request failed":
+    "Could not load or change the goal. Check the connection, authorized folders and limits, then try again.",
+  "Goal active": "In progress",
+  "Goal paused": "Paused",
+  "Goal budget exhausted": "Limit reached",
+  "Goal completed": "Completed",
+  "Continuação do objetivo": "Goal continuation",
   "Sign in to {provider} for this {host}: open this link on this device":
     "Sign in to {provider} for {host}: open this link on this device",
   "Preparing {provider} sign-in for this {host}…": "Preparing {provider} sign-in for {host}…",
@@ -2282,6 +2400,26 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Rotina “{name}” não executada: o atraso ultrapassou a janela de recuperação.":
     "Routine “{name}” did not run: the delay exceeded the catch-up window.",
   "Execução de recuperação": "Catch-up run",
+  "Escreva uma tarefa de até 8.000 caracteres.": "Write a task of up to 8,000 characters.",
+  "Enviar esta tarefa aos outros membros do grupo: {message}": "Send this task to the other group members: {message}",
+  "Ação do grupo inválida.": "Invalid group action.",
+  "Esta ação exige uma conversa de grupo.": "This action requires a group conversation.",
+  "A conversa foi removida.": "The conversation was removed.",
+  "Pergunte a no máximo 6 membros por turno.": "Ask at most 6 members per turn.",
+  "Perguntar a todos": "Ask everyone",
+  "Pedir resumo do time": "Request team summary",
+  "Ações do grupo": "Group actions",
+  "Resuma os resultados confirmados do último turno, com a autoria de cada membro.":
+    "Summarize the confirmed results of the last turn, with authorship for each member.",
+  Membro: "Member",
+  Disponível: "Idle",
+  Trabalhando: "Working",
+  "Aguardando você": "Waiting for you",
+  "Sem resultado confirmado.": "No confirmed result yet.",
+  "Resultados do turno": "Turn results",
+  "Somente respostas finais confirmadas. Este quadro é apenas para leitura.":
+    "Only confirmed final answers. This board is read-only.",
+  "Sem resultados confirmados neste turno.": "No confirmed results in this turn yet.",
   "Salve o token do bot do Telegram.": "Save the Telegram bot token.",
   "Token inválido ou revogado.": "Invalid or revoked token.",
   "Não foi possível conectar ao Telegram. Confira sua conexão e tente novamente.":
@@ -2289,6 +2427,7 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Converse com este bot pelo Telegram. Só as pessoas permitidas abaixo conseguem falar com ele.":
     "Talk to this bot on Telegram. Only the people allowed below can reach it.",
   "Ativar Telegram": "Enable Telegram",
+  "Salve o token do bot para ativar o Telegram.": "Save the bot token to enable Telegram.",
   "Conectado como @{username}": "Connected as @{username}",
   Conectado: "Connected",
   "Token do bot": "Bot token",
@@ -3669,7 +3808,9 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Computer permission waiting": "{name} is waiting for permission to control your computer.",
   Minutes: "{count} minutes",
   "Notifications need attention": "Notifications, {count} need attention",
-  "Service request failed": "Local service request failed: {error}",
+  "Service request failed": "touri connection failed: {error}",
+  "O serviço do touri está indisponível. Verifique a conexão e tente novamente.":
+    "The touri service is unavailable. Check the connection and try again.",
   "Output code": "Exit code: {code}",
   "No project for bot": "No project for {name}",
   "Open agent URL": "Open in agent browser: {url}",

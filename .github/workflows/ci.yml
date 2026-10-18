@@ -38,6 +38,8 @@ jobs:
         with:
           bun-version: 1.4.3
       - run: bun run typecheck --incremental --tsBuildInfoFile node_modules/.cache/ci.tsbuildinfo
+      - name: Verify confinement test compatibility with the minimum runtime
+        run: bun test sidecar/test/platform/linux-ci-sandbox.test.ts sidecar/test/runtime/linux-folder-sandbox.test.ts
       - run: bun packages/contracts/src/validate-catalog.ts
       - run: bun test sidecar/test/kernel/catalog-validation.test.ts
       - run: bun test sidecar/test/kernel/schema-contract.test.ts
@@ -213,6 +215,17 @@ jobs:
       - name: Check API model setup and bot selection
         working-directory: ui
         run: bunx playwright test test/e2e/api-models.spec.ts --workers=1
+      - name: Check group coordination on desktop and phone
+        working-directory: ui
+        run: bunx playwright test test/e2e/group-coordination.spec.ts --workers=1
+      - name: Keep synthetic group evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: group-coordination
+          path: ui/test-results/**/group-partial-success-*.png
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Install pinned API executor
         shell: bash
         run: |
@@ -288,7 +301,7 @@ jobs:
       - name: Verify Linux folder confinement
         run: |
           # Permit test namespaces on this disposable runner; production policy is unchanged.
-          if [ -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
+          if sysctl kernel.apparmor_restrict_unprivileged_userns >/dev/null 2>&1; then
             sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           fi
           bun -e '
