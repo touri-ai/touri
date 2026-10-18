@@ -248,7 +248,10 @@ jobs:
         run: bunx playwright test test/e2e/api-models.spec.ts --workers=1
       - name: Check group coordination on desktop and phone
         working-directory: ui
-        run: bunx playwright test test/e2e/group-coordination.spec.ts test/e2e/group-delete.spec.ts --workers=1
+        run: bunx playwright test test/e2e/group-coordination.spec.ts --workers=1
+      - name: Check routine history on desktop and phone
+        working-directory: ui
+        run: bunx playwright test test/e2e/routine-sidebar.spec.ts --workers=1
       - name: Check notification preferences on desktop and phone
         working-directory: ui
         run: bunx playwright test test/e2e/notification-preferences.spec.ts --workers=1 --output test-results/notification-preferences
@@ -265,9 +268,18 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: group-coordination
-          path: |
-            ui/test-results/**/group-partial-success-*.png
-            ui/test-results/**/group-delete-*.png
+          path: ui/test-results/**/group-partial-success-*.png
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Check confirmed group deletion
+        working-directory: ui
+        run: bunx playwright test test/e2e/group-delete.spec.ts --workers=1
+      - name: Keep synthetic group deletion evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: group-deletion
+          path: ui/test-results/**/group-delete-*.png
           if-no-files-found: ignore
           retention-days: 7
       - name: Install pinned API executor

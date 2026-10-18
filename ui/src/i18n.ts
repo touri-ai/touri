@@ -55,7 +55,15 @@ export const ptBR = {
     "Aviso guardado. Os alertas seguem suas preferências de notificação.",
   "Invalid notification preferences": "Preferências de notificação inválidas",
   "Há um novo aviso na central de notificações.": "Há um novo aviso na central de notificações.",
-
+  "Routine run history": "Histórico de rotinas",
+  "Deleted routine": "Rotina excluída",
+  "Deleted routine conversations": "Conversas de rotinas excluídas",
+  "Open routine conversation": "Abrir conversa",
+  "Next routine runs page": "Próxima página",
+  "Previous routine runs page": "Página anterior",
+  "Routine history filter": "Filtrar histórico por rotina",
+  "All routines": "Todas as rotinas",
+  "Routine history range": "Execuções {from}–{to} de {total}",
   "Confira os dados e os limites do objetivo.": "Confira os dados e os limites do objetivo.",
   "ERROR INVALID_ARGS: Confira os dados e os limites do objetivo.": "Confira os dados e os limites do objetivo.",
   "Aguarde o turno atual terminar ou conclua o objetivo anterior.":
@@ -2480,7 +2488,15 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
     "Notification saved. Alerts follow your notification preferences.",
   "Invalid notification preferences": "Invalid notification preferences",
   "Há um novo aviso na central de notificações.": "There is a new notification in the notification center.",
-
+  "Routine run history": "Routine run history",
+  "Deleted routine": "Deleted routine",
+  "Deleted routine conversations": "Deleted routine conversations",
+  "Open routine conversation": "Open conversation",
+  "Next routine runs page": "Next page",
+  "Previous routine runs page": "Previous page",
+  "Routine history filter": "Filter history by routine",
+  "All routines": "All routines",
+  "Routine history range": "Runs {from}–{to} of {total}",
   "Confira os dados e os limites do objetivo.": "Check the goal details and limits.",
   "ERROR INVALID_ARGS: Confira os dados e os limites do objetivo.": "Check the goal details and limits.",
   "Aguarde o turno atual terminar ou conclua o objetivo anterior.":
@@ -4277,6 +4293,9 @@ export const getHostLabel = (host: HostKind, locale: Locale = "pt-BR"): string =
 
   return locale === "en" ? `this ${noun}` : noun
 }
+
+export const getRoutineRunDateLabel = (timestamp: number, locale: Locale = "pt-BR"): string =>
+  new Intl.DateTimeFormat(locale, { dateStyle: "short", timeStyle: "short" }).format(timestamp)
 
 /** Localize auto-generated imported date titles; preserve arbitrary user titles. */
 export const threadTitle = (title: string, createdAt: number): string => {
