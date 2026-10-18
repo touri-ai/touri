@@ -86,7 +86,7 @@ test("pause, budget editing, resume and complete require explicit clicks", async
   expect(screen.queryByRole("button", { name: "Retomar" })).toBeNull()
 })
 
-test("completing a goal keeps the next goal collapsed when the conversation is reopened", async () => {
+test("completing a goal keeps the next goal form closed when the conversation is reopened", async () => {
   const { api, unmount } = makeFixture()
   await startGoal()
   fireEvent.click(screen.getByRole("button", { name: "Alterar orçamento" }))
@@ -96,7 +96,7 @@ test("completing a goal keeps the next goal collapsed when the conversation is r
 
   const panel = screen.getByRole("region", { name: "Continuar até concluir" })
   expect(panel).toHaveTextContent(/^Objetivo concluídoNovo objetivo$/)
-  expect(screen.getByRole("button", { name: "Novo objetivo" })).toHaveAttribute("aria-expanded", "false")
+  expect(screen.getByRole("button", { name: "Novo objetivo" })).toBeVisible()
   expect(screen.queryByRole("spinbutton")).toBeNull()
   expect(screen.queryByRole("textbox")).toBeNull()
 
@@ -104,21 +104,31 @@ test("completing a goal keeps the next goal collapsed when the conversation is r
   makeFixture(true, api)
 
   await screen.findByText("Objetivo concluído")
-  expect(screen.getByRole("button", { name: "Novo objetivo" })).toHaveAttribute("aria-expanded", "false")
+  expect(screen.getByRole("button", { name: "Novo objetivo" })).toBeVisible()
   expect(screen.queryByRole("textbox")).toBeNull()
   expect(screen.queryByText("Avançado · Continuar até concluir")).toBeNull()
 })
 
-test("the collapsed new goal action opens the form and creates a second goal", async () => {
+test("a new goal draft replaces completion, survives updates and starts the next goal", async () => {
   const { api, request } = makeFixture()
+  const thread = api.getState().threads.find((candidate) => candidate.id === request.threadId)
+  if (!thread) throw new Error("Missing mock conversation")
   await startGoal()
   fireEvent.click(screen.getByRole("button", { name: "Concluir agora" }))
   await screen.findByText("Objetivo concluído")
 
   fireEvent.click(screen.getByRole("button", { name: "Novo objetivo" }))
-  fireEvent.change(screen.getByRole("textbox", { name: "O que precisa estar pronto para concluir?" }), {
+  const criterion = screen.getByRole("textbox", { name: "O que precisa estar pronto para concluir?" })
+  fireEvent.change(criterion, {
     target: { value: "Resumo revisado com fontes." },
   })
+  await act(async () => api.emit({ type: "thread.updated", thread }))
+
+  expect(screen.queryByText("Objetivo concluído")).toBeNull()
+  expect(criterion).toHaveFocus()
+  expect(criterion).toBeVisible()
+  expect(criterion).toHaveValue("Resumo revisado com fontes.")
+
   fireEvent.click(screen.getByRole("button", { name: "Continuar até concluir" }))
   await screen.findByRole("button", { name: "Pausar" })
 

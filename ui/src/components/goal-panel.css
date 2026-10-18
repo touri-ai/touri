@@ -12,6 +12,7 @@
   overflow-wrap: anywhere;
 }
 .goal-heading,
+.goal-summary,
 .goal-actions,
 .goal-budget-fields {
   display: flex;
@@ -19,7 +20,8 @@
   flex-wrap: wrap;
   gap: 8px;
 }
-.goal-heading {
+.goal-heading,
+.goal-summary {
   justify-content: space-between;
 }
 .goal-heading strong,

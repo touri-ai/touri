@@ -33,11 +33,11 @@ viewports.forEach((viewport) => {
     await panel.getByRole("button", { name: "Concluir agora", exact: true }).click()
     await expect(panel.getByRole("status")).toHaveText("Objetivo concluído")
     const newGoal = panel.getByRole("button", { name: "Novo objetivo", exact: true })
-    await expect(newGoal).toHaveAttribute("aria-expanded", "false")
+    await expect(newGoal).toBeVisible()
     await expect(panel.getByRole("button")).toHaveCount(1)
     await expect(panel.getByRole("textbox")).toHaveCount(0)
     const bounds = await panel.boundingBox()
-    expect(bounds?.height).toBeLessThan(90)
+    expect(bounds?.height).toBeLessThan(60)
 
     const directory = process.env.TOURI_GOAL_SHOTS_DIR
     if (directory) {
@@ -49,8 +49,11 @@ viewports.forEach((viewport) => {
     }
 
     await newGoal.click()
-    await expect(newGoal).toHaveAttribute("aria-expanded", "true")
-    await panel.getByRole("textbox", { name: "O que precisa estar pronto para concluir?" }).fill("Resumo revisado.")
+    await expect(newGoal).toHaveCount(0)
+    await expect(panel.getByRole("status")).toHaveCount(0)
+    const criterion = panel.getByRole("textbox", { name: "O que precisa estar pronto para concluir?" })
+    await expect(criterion).toBeFocused()
+    await criterion.fill("Resumo revisado.")
     if (directory) {
       await page.screenshot({
         path: `${directory}/new-goal-${viewport.width}.png`,

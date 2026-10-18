@@ -30,6 +30,7 @@ export const GoalPanel = ({
   const [minutes, setMinutes] = useState(15)
   const [now, setNow] = useState(Date.now)
   const refreshGoal = useRef<() => void>(() => {})
+  const criterionInput = useRef<HTMLTextAreaElement>(null)
   const id = useId()
   const hasScope = bot.machine === "local" && !!(bot.projectId || bot.folders?.length || bot.anyFolderAccess)
 
@@ -39,9 +40,7 @@ export const GoalPanel = ({
       try {
         const response = await api.request("GET /threads/:id/goal", {}, { id: threadId })
         if (!alive) return
-        setGoal((current) =>
-          current && response.goal && current.updatedAt > response.goal.updatedAt ? current : response.goal,
-        )
+        setGoal((current) => getRefreshedGoal(current, response.goal, advanced))
         setLoaded(true)
         setLoadFailed(false)
         setNow(Date.now())
@@ -66,7 +65,7 @@ export const GoalPanel = ({
       unsubscribeConnection?.()
       refreshGoal.current = () => {}
     }
-  }, [api, threadId])
+  }, [api, threadId, advanced])
 
   useEffect(() => {
     if (goal?.status !== "active") return
@@ -74,6 +73,12 @@ export const GoalPanel = ({
     const timer = setInterval(() => refreshGoal.current(), 2000)
     return () => clearInterval(timer)
   }, [goal?.status])
+
+  useEffect(() => {
+    if (goal || !advanced) return
+
+    criterionInput.current?.focus()
+  }, [goal, advanced])
 
   const control = async (input: GoalControl) => {
     setPending(true)
@@ -141,13 +146,19 @@ export const GoalPanel = ({
     </div>
   )
 
+  const openNewGoal = () => {
+    setGoal(null)
+    setEditing(false)
+    setAdvanced(true)
+  }
+
   const isBudgetExhausted = goal?.status === "budget_exhausted"
   const lastStep = goal?.steps.at(-1)?.text ?? (isBudgetExhausted ? null : t("Goal waiting for checkpoint"))
 
   return (
     <section className="goal-panel" aria-label={t("Continue until done")}>
       {goal && (
-        <GoalCheckpoint status={goal.status}>
+        <GoalCheckpoint status={goal.status} onNewGoal={openNewGoal}>
           <div className="goal-heading">
             <strong>{t("Continue until done")}</strong>
             <span role="status">{t(getStatusKey(goal.status))}</span>
@@ -212,12 +223,8 @@ export const GoalPanel = ({
           )}
         </GoalCheckpoint>
       )}
-      {(!goal || goal.status === "completed") && (
-        <ChatDisclosure
-          label={t(goal ? "Goal new" : "Goal advanced")}
-          expanded={advanced}
-          onExpandedChange={setAdvanced}
-        >
+      {!goal && (
+        <ChatDisclosure label={t("Goal advanced")} expanded={advanced} onExpandedChange={setAdvanced}>
           {advanced && (
             <>
               <p>{t("Goal mode help")}</p>
@@ -226,6 +233,7 @@ export const GoalPanel = ({
                 <label htmlFor={`${id}-criterion`}>{t("Goal completion criterion")}</label>
                 <textarea
                   id={`${id}-criterion`}
+                  ref={criterionInput}
                   required
                   maxLength={2000}
                   value={criterion}
@@ -250,8 +258,25 @@ export const GoalPanel = ({
   )
 }
 
-const GoalCheckpoint = ({ status, children }: { status: Goal["status"]; children: ReactNode }) => {
-  if (status === "completed") return <span role="status">{t("Goal completed summary")}</span>
+const GoalCheckpoint = ({
+  status,
+  onNewGoal,
+  children,
+}: {
+  status: Goal["status"]
+  onNewGoal: () => void
+  children: ReactNode
+}) => {
+  if (status === "completed") {
+    return (
+      <div className="goal-summary">
+        <span role="status">{t("Goal completed summary")}</span>
+        <button className="button button-quiet" type="button" onClick={onNewGoal}>
+          {t("Goal new")}
+        </button>
+      </div>
+    )
+  }
 
   const checkpoint = <div className="goal-checkpoint">{children}</div>
   if (status === "budget_exhausted") {
@@ -269,4 +294,11 @@ const getStatusKey = (status: Goal["status"]): TranslationKey => {
     completed: "Goal completed",
   }
   return labels[status]
+}
+
+const getRefreshedGoal = (current: Goal | null, received: Goal | null, isFormOpen: boolean): Goal | null => {
+  if (!current && isFormOpen && received?.status === "completed") return null
+  if (current && received && current.updatedAt > received.updatedAt) return current
+
+  return received
 }
