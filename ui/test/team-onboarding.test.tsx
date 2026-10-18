@@ -5,9 +5,68 @@ import App from "../src/App"
 import { createMockApi } from "../src/api/mock"
 import { getJobTemplates, NOT_SURE_JOB_ID } from "../src/features/jobs/catalog"
 import { JobPicker } from "../src/features/jobs/JobPicker"
+import { TeamNextStep } from "../src/features/jobs/TeamNextStep"
 import { dictionaries, t } from "../src/i18n"
+import { getTeamRoutineDraft } from "../src/routineDraft"
 
 afterEach(cleanup)
+
+it.each(["pt-BR", "en"] as const)("offers an accessible routine draft and dismiss button in %s", (locale) => {
+  const api = createMockApi()
+  const bots = api.getState().bots.slice(0, 2)
+  const [partner, bot] = bots
+  if (!bot || !partner) throw new Error("Missing bot fixtures")
+  const openRoutine = vi.fn()
+  render(
+    <TeamNextStep
+      bots={bots}
+      selectedBotId={bot.id}
+      followup={{ botId: bot.id, partnerId: partner.id }}
+      onChooseJob={vi.fn()}
+      onGroup={vi.fn()}
+      onRoutine={openRoutine}
+      onDismissFollowup={vi.fn()}
+      locale={locale}
+    />,
+  )
+
+  fireEvent.click(screen.getByRole("button", { name: t("Create a routine?", {}, locale) }))
+
+  expect(openRoutine).toHaveBeenCalledWith(bot)
+  expect(screen.getByRole("button", { name: t("Dismiss next step", {}, locale) })).toHaveAccessibleName(
+    t("Dismiss next step", {}, locale),
+  )
+  expect(dictionaries[locale]["Create a routine?"]).toBe(locale === "pt-BR" ? "Criar uma rotina?" : "Create a routine?")
+})
+
+it.each(["pt-BR", "en"] as const)("prefills a paused routine and translated starter in %s", (locale) => {
+  const api = createMockApi()
+  const bot = api.getState().bots[0]
+  const job = getJobTemplates(locale).find((job) => job.id === "focused-week")
+  if (!bot || !job) throw new Error("Missing job fixtures")
+
+  const recurring = getTeamRoutineDraft({ ...bot, roleLine: job.roleLine, instructions: job.instructions }, locale)
+  const custom = getTeamRoutineDraft({ ...bot, instructions: "Organizar as notas da equipe." }, locale)
+  const starter = getTeamRoutineDraft({ ...bot, name: "Bia", roleLine: "", instructions: "" }, locale)
+
+  expect(recurring).toMatchObject({
+    botId: bot.id,
+    name: job.name,
+    prompt: job.instructions,
+    cron: job.suggestedCron,
+    enabled: false,
+  })
+  expect(custom).toMatchObject({ botId: bot.id, prompt: "Organizar as notas da equipe.", enabled: false })
+  expect(starter).toMatchObject({
+    name: locale === "pt-BR" ? "Rotina com Bia" : "Routine with Bia",
+    prompt:
+      locale === "pt-BR"
+        ? "Revise as tarefas de hoje e sugira os próximos passos."
+        : "Review today's tasks and suggest next steps.",
+    enabled: false,
+  })
+  expect(api.calls).toHaveLength(0)
+})
 
 it("waits for the first bot and persists dismissal of the single optional next step", async () => {
   const api = await makeEmptyApi()
@@ -64,7 +123,7 @@ it("prefills a complementary job and offers a group draft with an explicit save"
   offer.focus()
   await user.keyboard("{Enter}")
   const dialog = screen.getByRole("dialog", { name: "Criar grupo" })
-  expect(within(dialog).getByRole("textbox", { name: "Nome do grupo" })).toHaveValue("Equipe com Bia")
+  expect(within(dialog).getByRole("textbox", { name: "Nome do grupo" })).toHaveValue("Equipe com Clara")
   expect(within(dialog).getByRole("checkbox", { name: "Clara" })).toBeChecked()
   expect(within(dialog).getByRole("checkbox", { name: "Bia" })).toBeChecked()
   await user.keyboard("{Enter}")
@@ -78,23 +137,82 @@ it("prefills a complementary job and offers a group draft with an explicit save"
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
   expect(api.calls.filter((call) => call.route === "POST /groups")).toHaveLength(1)
   expect(api.calls.find((call) => call.route === "POST /groups")?.input).toMatchObject({
-    name: "Equipe com Bia",
+    name: "Equipe com Clara",
     memberIds: api.getState().bots.map((bot) => bot.id),
   })
 })
 
 it("keeps a suggested group name within the editor limit when the bot has a long name", async () => {
-  const api = await makeFirstBotApi()
-  const name = "B".repeat(80)
+  const name = "C".repeat(80)
+  const api = await makeFirstBotApi(name)
   render(<App kernel={{ services: { api } }} />)
-  await screen.findByRole("textbox", { name: "Mensagem para Clara" })
+  await screen.findByRole("textbox", { name: `Mensagem para ${name}` })
 
-  await createBot(name)
-  fireEvent.click(screen.getByRole("button", { name: "Trabalhar em grupo com Clara?" }))
+  await createBot("Bia")
+  fireEvent.click(screen.getByRole("button", { name: `Trabalhar em grupo com ${name}?` }))
 
   const groupName = within(screen.getByRole("dialog")).getByRole("textbox", { name: "Nome do grupo" })
   expect(groupName).toHaveAttribute("maxlength", "80")
   expect(groupName).toHaveValue(`Equipe com ${name}`.slice(0, 80))
+})
+
+it("keeps job suggestions independent and remembers followup dismissal after reload and another bot", async () => {
+  const api = await makeFirstBotApi()
+  render(<App kernel={{ services: { api } }} />)
+  await screen.findByRole("textbox", { name: "Mensagem para Clara" })
+  await createBot("Bia")
+
+  fireEvent.click(screen.getByRole("button", { name: "Dispensar próximo passo" }))
+  cleanup()
+  render(<App kernel={{ services: { api } }} />)
+
+  const suggestion = await screen.findByRole("region", { name: "Coloque outro bot para trabalhar com você" })
+  expect(within(suggestion).getAllByRole("listitem")).toHaveLength(3)
+  await createBot("Davi")
+
+  expect(document.querySelector(".team-next-step")).toBeNull()
+  expect(screen.queryByRole("button", { name: /Trabalhar em grupo com/ })).toBeNull()
+})
+
+it("opens a prefilled routine draft for the new bot and requires review and an activation click", async () => {
+  const user = userEvent.setup()
+  const api = await makeFirstBotApi()
+  const job = getJobTemplates().find((job) => job.id === "focused-week")
+  if (!job) throw new Error("Missing job fixture")
+  render(<App kernel={{ services: { api } }} />)
+  const suggestion = await screen.findByRole("region", { name: "Coloque outro bot para trabalhar com você" })
+  fireEvent.click(within(suggestion).getByRole("button", { name: job.name }))
+  await submitBot("Bia")
+  const bot = api.getState().bots.find((bot) => bot.name === "Bia")
+  if (!bot) throw new Error("Missing bot fixture")
+
+  screen.getByRole("button", { name: "Criar uma rotina?" }).focus()
+  await user.keyboard("{Enter}")
+
+  const dialog = screen.getByRole("dialog", { name: "Quando?" })
+  expect(within(dialog).getByRole("combobox", { name: "Bot", exact: true })).toHaveValue(bot.id)
+  expect(within(dialog).getByRole("textbox", { name: "Nome", exact: true })).toHaveValue(job.name)
+  expect(within(dialog).getByRole("textbox", { name: "Tarefa" })).toHaveValue(job.instructions)
+  expect(within(dialog).getByLabelText("segunda-feira")).toBeChecked()
+  expect(within(dialog).getByLabelText("Às")).toHaveValue("09:00")
+  await user.keyboard("{Enter}")
+  expect(api.calls.filter((call) => call.route === "POST /routines")).toHaveLength(0)
+  fireEvent.click(within(dialog).getByRole("button", { name: "Revisar rotina" }))
+  const activate = screen.getByRole("button", { name: "Ativar rotina" })
+  activate.focus()
+  await user.keyboard("{Enter}")
+  expect(api.calls.filter((call) => call.route === "POST /routines")).toHaveLength(0)
+  fireEvent.click(activate)
+
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
+  expect(api.calls.filter((call) => call.route === "POST /routines")).toHaveLength(1)
+  expect(api.calls.find((call) => call.route === "POST /routines")?.input).toMatchObject({
+    botId: bot.id,
+    name: job.name,
+    prompt: job.instructions,
+    cron: job.suggestedCron,
+    enabled: true,
+  })
 })
 
 it("replaces the followup for the third bot and dismisses it without revealing another banner", async () => {
@@ -159,12 +277,12 @@ const makeEmptyApi = async () => {
   return api
 }
 
-const makeFirstBotApi = async () => {
+const makeFirstBotApi = async (name = "Clara") => {
   const api = await makeEmptyApi()
   const job = getJobTemplates()[0]
   if (!job) throw new Error("Missing job fixture")
   await api.request("POST /bots", {
-    name: "Clara",
+    name,
     provider: "codex",
     roleLine: job.roleLine,
     instructions: job.instructions,

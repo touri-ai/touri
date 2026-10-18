@@ -92,10 +92,13 @@
   color: var(--text-secondary);
   font-size: var(--type-12);
 }
-.team-job-suggestions {
+.team-job-suggestions,
+.team-followup-actions {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-8) var(--space-16);
+}
+.team-job-suggestions {
   margin: var(--space-8) 0 0;
   padding: 0;
   list-style: none;
@@ -103,7 +106,7 @@
 @media (max-width: 620px) {
   .team-next-step {
     /* The mobile menu stays at the leading edge of the workspace. */
-    padding-inline-start: 64px;
+    padding-inline-start: calc(var(--space-32) * 2);
   }
 }
 @media (max-width: 600px) {

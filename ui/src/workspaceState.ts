@@ -5,6 +5,7 @@ export type AppRoute =
   | { section: "advanced"; page: "cron" | "integracoes" | "mcp"; botId?: string }
 type SavedWorkspace = {
   teamSuggestionDismissed?: boolean
+  teamFollowupDismissed?: boolean
   botId?: string | null
   threadId?: string | null
   threadsByBot?: Record<string, string>
@@ -42,6 +43,9 @@ export const readWorkspaceState = (): SavedWorkspace => {
     return {
       ...(typeof value.teamSuggestionDismissed === "boolean"
         ? { teamSuggestionDismissed: value.teamSuggestionDismissed }
+        : {}),
+      ...(typeof value.teamFollowupDismissed === "boolean"
+        ? { teamFollowupDismissed: value.teamFollowupDismissed }
         : {}),
       ...(value.panelsByBot && typeof value.panelsByBot === "object" && !Array.isArray(value.panelsByBot)
         ? {

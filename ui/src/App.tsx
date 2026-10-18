@@ -69,7 +69,7 @@ import {
 import { localizeNotice, t } from "./i18n"
 import { type DeepLinkRequest, installNativeDeepLinks } from "./nativeDeepLinks"
 import { requestTaskResume, requestTaskReview } from "./recoveryEvents"
-import type { RoutineDraft } from "./routineDraft"
+import { getTeamRoutineDraft, type RoutineDraft } from "./routineDraft"
 import { isFailureNotice } from "./sidebarAttention"
 import { useHost } from "./useHost"
 import { useWebNavigation } from "./useWebNavigation"
@@ -970,10 +970,11 @@ const AppContent = ({ kernel }: AppProps) => {
                   setEditingGroup(null)
                   openModal("group")
                   setGroupDraft({
-                    name: t("Team with {name}", { name: bot.name }).slice(0, 80),
+                    name: t("Team with {name}", { name: partner.name }).slice(0, 80),
                     memberIds: [partner.id, bot.id],
                   })
                 }}
+                onRoutine={(bot) => setRoutineDraft(getTeamRoutineDraft(bot))}
                 onDismissFollowup={() => setTeamFollowup(null)}
               />
             )}
