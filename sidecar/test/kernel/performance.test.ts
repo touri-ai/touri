@@ -137,6 +137,34 @@ test("lag warnings include only the five oldest in-flight templates", async () =
   expect(JSON.stringify(probe.log.mock.calls)).not.toContain("private-")
 })
 
+test("diagnostic failures preserve HTTP responses and keep timer callbacks safe", async () => {
+  const probe = makeProbe()
+  probe.log.mockImplementation(() => {
+    throw new Error("Fixture log unavailable")
+  })
+  const response = new Response()
+  const handler = probe.diagnostics.observeFetch<undefined>(
+    async () => {
+      probe.advance(2_001)
+      return response
+    },
+    () => "/health",
+  )
+  const server = Bun.serve({ port: 0, fetch: () => response })
+  cleanups.add(() => server.stop(true))
+
+  const result = await handler(new Request("http://localhost/health"), server)
+
+  expect(result).toBe(response)
+  expect(() => probe.tick(1_600)).not.toThrow()
+  probe.getContext.mockImplementation(() => {
+    throw new Error("Fixture context unavailable")
+  })
+
+  expect(() => probe.tick(60_000)).not.toThrow()
+  expect(probe.getContext).toHaveBeenCalledTimes(2)
+})
+
 test("request instrumentation has a small measured cost", async () => {
   const log = mock<Kernel["log"]>()
   const diagnostics = createPerformanceDiagnostics({

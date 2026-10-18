@@ -33,6 +33,14 @@ export const createPerformanceDiagnostics = ({
   let lastRequestWarningAt = Number.NEGATIVE_INFINITY
   let stopped = false
 
+  const logWarning = (getEntry: () => Parameters<Kernel["log"]>[0]): void => {
+    try {
+      log(getEntry())
+    } catch {
+      // Diagnostics must not fail requests or interrupt the server when logging is unavailable.
+    }
+  }
+
   const getSnapshot = (): EventLoopStats => getEventLoopStats(samples, now())
   const sample = (): void => {
     if (stopped) return
@@ -44,7 +52,7 @@ export const createPerformanceDiagnostics = ({
     if (lagMs < lagThresholdMs || at - lastLagWarningAt < cooldownMs) return
 
     lastLagWarningAt = at
-    log({
+    logWarning(() => ({
       level: "warn",
       module: "performance",
       msg: "Event loop delayed",
@@ -53,7 +61,7 @@ export const createPerformanceDiagnostics = ({
         ...getContext(),
         inFlight: getSlowestRequests(inFlight, at),
       },
-    })
+    }))
   }
   const stopSampling = startSampling(sample, sampleMs)
 
@@ -64,12 +72,12 @@ export const createPerformanceDiagnostics = ({
     if (stopped || durationMs <= slowRequestMs || at - lastRequestWarningAt < cooldownMs) return
 
     lastRequestWarningAt = at
-    log({
+    logWarning(() => ({
       level: "warn",
       module: "performance",
       msg: "Slow HTTP request",
       data: { method: timing.method, route: timing.route, durationMs: getMilliseconds(durationMs) },
-    })
+    }))
   }
 
   const observeFetch = <SocketData>(
