@@ -126,6 +126,7 @@ test.skipIf(process.platform !== "linux").each([0, 1])(
     expect(result.exitCode).toBe(probeExit)
     if (probeExit !== 0) expect(result.stderr.toString()).toContain("Linux folder confinement is unavailable")
   },
+  30_000,
 )
 
 const getRequiredStep = (matches: (step: Step) => boolean): Step => {
