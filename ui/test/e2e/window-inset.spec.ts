@@ -1,0 +1,95 @@
+import { expect, type Locator, type Page, test } from "@playwright/test"
+
+const sizes = [
+  { width: 1440, height: 900 },
+  { width: 1024, height: 700 },
+  { width: 390, height: 844 },
+]
+const userAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15"
+
+for (const theme of ["light", "dark"]) {
+  for (const viewport of sizes) {
+    test.describe(`window inset · ${theme} · ${viewport.width}`, () => {
+      test.use({ viewport, userAgent, reducedMotion: "reduce" })
+
+      test.beforeEach(async ({ page }) => {
+        await page.addInitScript((value) => localStorage.setItem("touri.appearance.v1", value), theme)
+      })
+
+      test("notices, dialogs and recovery leave the native controls clear", async ({ page }) => {
+        await page.goto("/test/e2e/window-inset-harness.html?scene=notice")
+        const banner = page.locator(".notice-bar")
+        await expect(banner).toBeVisible()
+
+        await checkTitlebar(page)
+        await checkBelowTitlebar(banner)
+        await banner.getByRole("button", { name: "Dispensar aviso" }).click()
+        await expect(banner).toHaveCount(0)
+        await checkTitlebar(page)
+        await page.getByRole("button", { name: "Escolher modelo", exact: true }).click()
+        await checkBelowTitlebar(page.getByRole("dialog"))
+        await page.getByRole("button", { name: "Fechar diálogo", exact: true }).click()
+
+        await page.goto("/test/e2e/window-inset-harness.html?scene=error")
+        await expect(page.locator(".error-card")).toBeVisible()
+        await checkTitlebar(page)
+        await checkBelowTitlebar(page.locator(".error-card"))
+        const report = page.getByRole("button", { name: "Reportar este problema", exact: true })
+        await report.scrollIntoViewIfNeeded()
+        await expect(report).toBeInViewport({ ratio: 1 })
+        await expect(page.locator("html")).toHaveAttribute("data-theme", theme)
+      })
+
+      test("scrolling option menus stay between the titlebar and viewport bottom", async ({ page }) => {
+        await page.goto("/test/e2e/window-inset-harness.html?scene=menu")
+        await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
+
+        await page.getByRole("button", { name: "Projeto do bot", exact: true }).click()
+        const picker = page.locator(".composer-project-picker")
+        await checkBelowTitlebar(picker)
+        await expect(picker).toBeInViewport({ ratio: 1 })
+        const lastProject = picker.getByRole("menuitemradio").last()
+        await lastProject.scrollIntoViewIfNeeded()
+
+        await expect(lastProject).toBeInViewport({ ratio: 1 })
+        await lastProject.click({ trial: true })
+      })
+
+      test("loading and onboarding retain a drag region", async ({ page }) => {
+        await page.goto("/test/e2e/window-inset-harness.html?scene=loading")
+        await expect(page.locator(".loading-screen")).toBeVisible()
+        await checkTitlebar(page)
+        await checkBelowTitlebar(page.locator(".loading-screen"))
+
+        await page.goto("/test/e2e/window-inset-harness.html?scene=onboarding")
+        await expect(page.getByRole("button", { name: "Criar meu primeiro bot" })).toBeVisible()
+        await checkTitlebar(page)
+        await checkBelowTitlebar(page.locator(".onboarding-card"))
+      })
+    })
+  }
+}
+
+test("window inset does not reserve native chrome in the browser", async ({ page }) => {
+  await page.goto("/")
+  await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
+
+  await expect(page.locator(".window-titlebar")).toHaveCount(0)
+  expect((await page.locator(".app-shell").boundingBox())?.y).toBe(0)
+})
+
+const checkTitlebar = async (page: Page) => {
+  const titlebar = page.locator(".window-titlebar")
+
+  await expect(titlebar).toBeVisible()
+  await expect(titlebar).toHaveAttribute("data-tauri-drag-region", "deep")
+  await expect(titlebar).toHaveCSS("height", "44px")
+  expect((await titlebar.boundingBox())?.y).toBe(0)
+}
+
+const checkBelowTitlebar = async (surface: Locator) => {
+  await expect(surface).toBeVisible()
+  const box = await surface.boundingBox()
+
+  expect(box?.y).toBeGreaterThanOrEqual(44)
+}
