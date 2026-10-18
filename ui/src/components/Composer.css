@@ -297,17 +297,15 @@
     grid-template-columns: 34px minmax(0, 1fr);
     align-items: start;
   }
-  .composer-island .composer-tools-left > .composer-model,
+  .composer-island .composer-model,
   .composer-island .composer-project {
     grid-column: 2;
     width: 100%;
     max-width: none;
   }
   .composer-island .composer-model {
-    width: 100%;
     height: auto;
     min-height: 34px;
-    max-width: none;
     text-align: left;
   }
   .composer-island .composer-model-name {
