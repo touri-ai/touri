@@ -3,6 +3,22 @@ import { userFacingError } from "./errors"
 /** All UI copy lives here. pt-BR is the default; English is available for a future locale picker. */
 export type Locale = "pt-BR" | "en"
 export const ptBR = {
+  "Dictate message": "Ditar mensagem",
+  "Start dictation": "Iniciar ditado",
+  "Stop dictation": "Gravando… Parar ditado",
+  "Dictation stop short": "Parar",
+  "Dictation recording": "Gravando. A transcrição ficará no rascunho para revisão.",
+  "Dictation stopping": "Encerrando o ditado…",
+  "Dictation privacy":
+    "Seu navegador pedirá acesso ao microfone e pode enviar áudio ao serviço de reconhecimento dele. O touri não grava nem armazena áudio. A transcrição entra apenas no rascunho: revise e clique em Enviar quando quiser.",
+  "Dictation unavailable": "Ditado indisponível",
+  "Dictation permission denied":
+    "O acesso ao microfone foi negado. Permita o microfone nas configurações deste site ou aplicativo e tente novamente. Você pode continuar digitando.",
+  "Dictation no speech": "Nenhuma fala foi reconhecida. Tente novamente e fale perto do microfone.",
+  "Dictation no microphone":
+    "Não foi possível acessar um microfone. Confira se ele está conectado e disponível e tente novamente.",
+  "Dictation failed":
+    "Não foi possível concluir o ditado. Confira a conexão e o suporte do navegador ao idioma e tente novamente. Seu rascunho foi preservado.",
   "Aguarde as respostas terminarem ou cancele os turnos antes de apagar o grupo.":
     "Aguarde as respostas terminarem ou cancele os turnos antes de apagar o grupo.",
   "Criar grupo": "Criar grupo",
@@ -2443,6 +2459,21 @@ export const ptBR = {
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  "Dictate message": "Dictate message",
+  "Start dictation": "Start dictation",
+  "Stop dictation": "Recording… Stop dictation",
+  "Dictation stop short": "Stop",
+  "Dictation recording": "Recording. The transcript will stay in the draft for review.",
+  "Dictation stopping": "Stopping dictation…",
+  "Dictation privacy":
+    "Your browser will request microphone access and may send audio to its speech recognition service. touri does not record or store audio. The transcript goes only into your draft: review it and click Send when ready.",
+  "Dictation unavailable": "Dictation unavailable",
+  "Dictation permission denied":
+    "Microphone access was denied. Allow the microphone in this site or app settings and try again. You can keep typing.",
+  "Dictation no speech": "No speech was recognized. Try again and speak close to the microphone.",
+  "Dictation no microphone": "Could not access a microphone. Check that it is connected and available, then try again.",
+  "Dictation failed":
+    "Could not finish dictation. Check your connection and browser support for this language, then try again. Your draft was preserved.",
   "Aguarde as respostas terminarem ou cancele os turnos antes de apagar o grupo.":
     "Wait for replies to finish or cancel the turns before deleting the group.",
   "Criar grupo": "Create group",

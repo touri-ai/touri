@@ -1,0 +1,82 @@
+[
+  {
+    "width": 1440,
+    "theme": "light",
+    "overflow": 0,
+    "labels": [
+      {
+        "text": "Codex · Padrão do provedor",
+        "width": 151,
+        "scroll": 151,
+        "whiteSpace": "nowrap"
+      },
+      {
+        "text": "touri demo workspace",
+        "width": 117,
+        "scroll": 117,
+        "whiteSpace": "nowrap"
+      }
+    ],
+    "header": "Bots / mark\nmark\n◧"
+  },
+  {
+    "width": 1440,
+    "theme": "dark",
+    "overflow": 0,
+    "labels": [
+      {
+        "text": "Codex · Padrão do provedor",
+        "width": 151,
+        "scroll": 151,
+        "whiteSpace": "nowrap"
+      },
+      {
+        "text": "touri demo workspace",
+        "width": 117,
+        "scroll": 117,
+        "whiteSpace": "nowrap"
+      }
+    ],
+    "header": "Bots / mark\nmark\n◧"
+  },
+  {
+    "width": 390,
+    "theme": "light",
+    "overflow": 0,
+    "labels": [
+      {
+        "text": "Codex · Padrão do provedor",
+        "width": 98,
+        "scroll": 151,
+        "whiteSpace": "nowrap"
+      },
+      {
+        "text": "touri demo workspace",
+        "width": 60,
+        "scroll": 117,
+        "whiteSpace": "nowrap"
+      }
+    ],
+    "header": "mark\n◧"
+  },
+  {
+    "width": 390,
+    "theme": "dark",
+    "overflow": 0,
+    "labels": [
+      {
+        "text": "Codex · Padrão do provedor",
+        "width": 98,
+        "scroll": 151,
+        "whiteSpace": "nowrap"
+      },
+      {
+        "text": "touri demo workspace",
+        "width": 60,
+        "scroll": 117,
+        "whiteSpace": "nowrap"
+      }
+    ],
+    "header": "mark\n◧"
+  }
+]
