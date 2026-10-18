@@ -104,6 +104,9 @@ export type BotLearning = BotLearningSettings & {
   reviewThreadId: Id | null
   memoryChars: number
   userChars: number
+  /** Counts are unavailable when the corresponding local reference cannot be safely read. */
+  memoryError?: 'INVALID_PATH' | 'READ_ERROR'
+  userError?: 'INVALID_PATH' | 'READ_ERROR'
   skillCount: number
 }
 
