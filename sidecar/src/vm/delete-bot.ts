@@ -4,6 +4,7 @@ import { closeSync, constants, fsyncSync } from "node:fs"
 import { join, relative } from "node:path"
 import type { Kernel, RouteModule, VmRuntime } from "@touri/contracts"
 import { removeBotSession } from "../browser/sessionVault"
+import { createGroupStore } from "../groups/store"
 import { collectUnusedOutputBlobs } from "../kernel/data-maintenance"
 import { openWorkspaceDirectory, removePrivateFile } from "../kernel/files"
 import { attachmentReferences } from "../kernel/output-blobs"
@@ -150,7 +151,8 @@ export const deleteBotRoute = (kernel: Kernel, runtime: VmRuntime): RouteModule[
           removePrivateFile({ root: kernel.paths.appData, path: session.rollout_path })
         }
         removeBotHome(kernel, botId)
-        db.transaction(() => {
+        const groups = db.transaction(() => {
+          const groups = createGroupStore(kernel).removeBot(botId)
           db.query(
             "INSERT INTO settings(key,value_json,updated_at) VALUES (?,?,?) ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json,updated_at=excluded.updated_at",
           ).run(`storage.deleted-attachments:${botId}`, JSON.stringify([...attachments]), Date.now())
@@ -183,10 +185,14 @@ export const deleteBotRoute = (kernel: Kernel, runtime: VmRuntime): RouteModule[
           db.query("DELETE FROM settings WHERE key = ?").run(`approval-grants:${botId}`)
           // Cascades remove only this bot's threads, messages, routines and routine runs.
           db.query("DELETE FROM bots WHERE id = ?").run(botId)
+          return groups
         })()
         await removeBotSession(kernel, botId)
         kernel.publish({ type: "transcript.resync" })
         kernel.publish({ type: "bot.deleted", botId })
+        groups.forEach((group) => {
+          kernel.publish({ type: "group.updated", group })
+        })
         await collectUnusedOutputBlobs(db, kernel.paths.appData, Date.now(), null, attachments)
         return { status: 200, json: {} }
       } catch (error) {

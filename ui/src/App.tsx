@@ -899,6 +899,7 @@ const AppContent = ({ kernel }: AppProps) => {
             showFakeTrafficLights={api.isMock}
             bots={data.bots}
             onDeleteBot={actions.deleteBot}
+            onDeleteGroup={actions.deleteGroup}
             threads={data.threads}
             messages={data.activityMessages}
             runs={data.runs}

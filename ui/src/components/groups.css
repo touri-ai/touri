@@ -41,6 +41,9 @@
   display: flex;
   align-items: center;
 }
+.group-sidebar .bot-settings {
+  opacity: 1;
+}
 .group-select {
   display: flex;
   flex: 1;

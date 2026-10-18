@@ -124,7 +124,26 @@ export const createGroupStore = (kernel: Kernel) => {
     if (!created.success) throw new Error(created.error)
     return created.thread
   }
-  return { get, list, validate, save, threads, createThread, participant }
+  const removeBot = (botId: string): BotGroup[] => {
+    const affected = db
+      .query(
+        "SELECT id FROM bot_groups WHERE id IN (SELECT group_id FROM group_members WHERE bot_id = ?) OR coordinator_bot_id = ?",
+      )
+      .all(botId, botId) as Array<{ id: string }>
+
+    db.query("DELETE FROM group_members WHERE bot_id = ?").run(botId)
+    affected.forEach((group) => {
+      db.query(
+        "UPDATE bot_groups SET coordinator_bot_id = CASE WHEN coordinator_bot_id = ? THEN NULL ELSE coordinator_bot_id END, updated_at = ? WHERE id = ?",
+      ).run(botId, Date.now(), group.id)
+    })
+
+    return affected.flatMap(({ id }) => {
+      const group = get(id)
+      return group ? [group] : []
+    })
+  }
+  return { get, list, validate, save, threads, createThread, participant, removeBot }
 }
 
 /** Coordinator takes precedence; explicit mentions use member order, never text order. */
