@@ -217,6 +217,7 @@ const AppContent = ({ kernel }: AppProps) => {
       clearTimeout(retryTimer)
       retryTimer = setTimeout(() => {
         if (!active) return
+
         // A new effect gives every server attempt its own startup deadline.
         if (serverMode) setConnectionAttempt((attempt) => attempt + 1)
         else void connect()

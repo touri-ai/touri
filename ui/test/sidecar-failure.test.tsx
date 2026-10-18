@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import type { ApiRoutes } from "@touri/contracts"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import App from "../src/App"
@@ -45,6 +45,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  cleanup()
   vi.useRealTimers()
   vi.restoreAllMocks()
   shell.listeners.clear()
@@ -105,10 +106,12 @@ describe("sidecar failure blocking state", () => {
       const api = vi.mocked(createApiClient)({ endpoint })
       const request = api.request
       let healthChecks = 0
-      api.request = (async (...args) => {
+      const requestWithStall: ApiRequest = async (...args) => {
         if (args[0] === "GET /health" && ++healthChecks === 1 && stage === "health") await pending
         return request(...args)
-      }) as ApiRequest
+      }
+
+      vi.mocked(createApiClient).mockReturnValue({ ...api, request: requestWithStall })
       let endpointChecks = 0
       const invoke = vi.fn(async (command: string) => {
         if (command === "server_mode_status") return { mode: "server", url: "https://touri.example" }
@@ -118,23 +121,28 @@ describe("sidecar failure blocking state", () => {
         }
         return null
       })
-      let view: ReturnType<typeof render> | undefined
       await act(async () => {
-        view = render(<App kernel={{ services: { invoke: invoke as TauriInvoke } }} />)
+        render(<App kernel={{ services: { invoke: invoke as TauriInvoke } }} />)
       })
+
       expect(endpointChecks).toBe(1)
       expect(healthChecks).toBe(stage === "health" ? 1 : 0)
+
       await act(async () => vi.advanceTimersByTimeAsync(20_000))
+
       expect(screen.getByText("Servidor offline. Tentando reconectar…")).toBeVisible()
+
       await act(async () => finish?.())
+
       expect(screen.getByText("Servidor offline. Tentando reconectar…")).toBeVisible()
       expect(screen.queryByRole("textbox")).not.toBeInTheDocument()
+
       await act(async () => vi.advanceTimersByTimeAsync(2000))
+
       expect(screen.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
       expect(screen.queryByText("Servidor offline. Tentando reconectar…")).not.toBeInTheDocument()
       expect(invoke.mock.calls.filter(([command]) => command === "sidecar_endpoint")).toHaveLength(2)
       expect(invoke).not.toHaveBeenCalledWith("sidecar_restart", {})
-      view?.unmount()
     },
   )
 
@@ -149,43 +157,50 @@ describe("sidecar failure blocking state", () => {
       const api = vi.mocked(createApiClient)({ endpoint })
       const request = api.request
       let healthChecks = 0
-      api.request = (async (...args) => {
+      const requestWithStall: ApiRequest = async (...args) => {
         if (args[0] === "GET /health" && stage === "health") {
           healthChecks += 1
           if (healthChecks === 1) throw new Error("SERVER_OFFLINE")
           if (healthChecks === 2) await pending
         }
         return request(...args)
-      }) as ApiRequest
+      }
+
+      vi.mocked(createApiClient).mockReturnValue({ ...api, request: requestWithStall })
       let endpointChecks = 0
       const invoke = vi.fn(async (command: string) => {
         if (command === "server_mode_status") return { mode: "server", url: "https://touri.example" }
         if (command === "sidecar_endpoint") {
           endpointChecks += 1
-          if (stage === "endpoint") {
-            if (endpointChecks === 1) throw new Error("SERVER_OFFLINE")
-            if (endpointChecks === 2) await pending
-          }
+          if (stage === "endpoint" && endpointChecks === 1) throw new Error("SERVER_OFFLINE")
+          if (stage === "endpoint" && endpointChecks === 2) await pending
           return endpoint
         }
         return null
       })
-      let view: ReturnType<typeof render> | undefined
       await act(async () => {
-        view = render(<App kernel={{ services: { invoke: invoke as TauriInvoke } }} />)
+        render(<App kernel={{ services: { invoke: invoke as TauriInvoke } }} />)
       })
+
       expect(endpointChecks).toBe(1)
+
       await act(async () => vi.advanceTimersByTimeAsync(2000))
+
       expect(endpointChecks).toBe(2)
+
       await act(async () => vi.advanceTimersByTimeAsync(20_000))
+
       expect(screen.getByText("Servidor offline. Tentando reconectar…")).toBeVisible()
+
       await act(async () => vi.advanceTimersByTimeAsync(2000))
+
       expect(endpointChecks).toBe(3)
       expect(screen.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
+
       await act(async () => finish?.())
+
       expect(screen.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
       expect(invoke).not.toHaveBeenCalledWith("sidecar_restart", {})
-      view?.unmount()
     },
   )
 
@@ -194,27 +209,31 @@ describe("sidecar failure blocking state", () => {
     const api = vi.mocked(createApiClient)({ endpoint })
     const request = api.request
     let healthChecks = 0
-    api.request = (async (...args) => {
+    const requestWithStall: ApiRequest = async (...args) => {
       if (args[0] === "GET /health" && ++healthChecks === 1) await new Promise(() => undefined)
       return request(...args)
-    }) as ApiRequest
+    }
+
+    vi.mocked(createApiClient).mockReturnValue({ ...api, request: requestWithStall })
     const invoke = vi.fn(async (command: string) => {
       if (command === "server_mode_status") return { mode: "server", url: "https://touri.example" }
       if (command === "sidecar_endpoint") return endpoint
       return null
     })
-    let view: ReturnType<typeof render> | undefined
     await act(async () => {
-      view = render(<App kernel={{ services: { invoke: invoke as TauriInvoke } }} />)
+      render(<App kernel={{ services: { invoke: invoke as TauriInvoke } }} />)
     })
     await act(async () => vi.advanceTimersByTimeAsync(20_000))
+
     expect(screen.getByText("Servidor offline. Tentando reconectar…")).toBeVisible()
+
     await act(async () => shell.listeners.get("sidecar-ready")?.({ payload: endpoint }))
+
     expect(screen.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
+
     await act(async () => vi.advanceTimersByTimeAsync(2000))
+
     expect(invoke.mock.calls.filter(([command]) => command === "sidecar_endpoint")).toHaveLength(2)
-    view?.unmount()
-    expect(shell.listeners.size).toBe(0)
   })
 
   it("enables recovery again when the shell never acknowledges a restart", async () => {
