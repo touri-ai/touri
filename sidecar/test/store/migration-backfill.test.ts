@@ -32,7 +32,9 @@ import workspaceSql from "../../src/kernel/migrations/0021.sql" with { type: "te
 import boundedHistorySql from "../../src/kernel/migrations/0022.sql" with { type: "text" }
 import streamWriterSql from "../../src/kernel/migrations/0023.sql" with { type: "text" }
 import groupRoutinesSql from "../../src/kernel/migrations/0024.sql" with { type: "text" }
-import groupDeletionSql from "../../src/kernel/migrations/0025.sql" with { type: "text" }
+import goalsSql from "../../src/kernel/migrations/0025.sql" with { type: "text" }
+import recoveryCenterSql from "../../src/kernel/migrations/0026.sql" with { type: "text" }
+import groupDeletionSql from "../../src/kernel/migrations/0027.sql" with { type: "text" }
 import { TRANSCRIPT_RETENTION } from "../../src/kernel/transcript-storage"
 import { init as initStore } from "../../src/store"
 
@@ -213,6 +215,8 @@ test("interrupted batches resume idempotently and match the shipped synchronous 
     synchronous.exec(boundedHistorySql)
     synchronous.exec(streamWriterSql)
     synchronous.exec(groupRoutinesSql)
+    synchronous.exec(goalsSql)
+    synchronous.exec(recoveryCenterSql)
     synchronous.exec(groupDeletionSql)
     database = openDatabase({ filename })
     expect(database.query("SELECT type, name, sql FROM sqlite_master ORDER BY name").all()).toEqual(

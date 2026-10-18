@@ -17,6 +17,8 @@ export const deleteGroupRoute = (kernel: Kernel): RouteModule["routes"][number] 
     const groupId = params.id ?? ""
     if (!createGroupStore(kernel).get(groupId))
       return { status: 404, json: { errorCode: "NOT_FOUND", error: "Grupo não encontrado" } }
+
+    await kernel.services.use("groups.runtime")?.cancelGroupTurns({ groupId })
     const database = kernel.db as Database
     const busy = database
       .query(`SELECT 1 FROM runs WHERE thread_id IN (${groupThreads}) AND status IN ('queued','starting','running')`)

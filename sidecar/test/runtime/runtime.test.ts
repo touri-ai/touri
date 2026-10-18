@@ -2420,7 +2420,7 @@ test.serial("transcript: cancellation during environment loading never launches 
   }
 })
 
-test.serial("a local bot uses its selected provider profile for authentication and isolated bookkeeping", async () => {
+test.serial("local Claude profiles follow grant-free and full-access bookkeeping policy", async () => {
   const value = await fixture({ provider: "claude" })
   try {
     const envLog = join(value.assets, "claude-home.log")
@@ -2443,15 +2443,16 @@ test.serial("a local bot uses its selected provider profile for authentication a
     await run("default home")
     const bot = value.store.bots.get(value.bot.id)
     if (!bot) throw new Error("Fixture bot missing")
-    const profile = join(value.runtime.kernel.paths.appData, "provider-profiles", "clav", "claude")
+    const profile = join(value.runtime.kernel.paths.appData, "provider-profiles", "selected", "claude")
     mkdirSync(profile, { recursive: true })
     writeFileSync(join(profile, "settings.json"), JSON.stringify({ forceLoginOrgUUID: "selected-profile" }))
-    bot.providerProfile = "clav"
+    value.store.bots.set(bot.id, Object.assign({}, bot, { providerProfile: "selected" }))
     await run("profile home")
+    value.store.bots.set(bot.id, Object.assign({}, bot, { providerProfile: "selected", access: "full" as const }))
+    await run("full-access profile home")
     const homes = readFileSync(envLog, "utf8").trim().split("\n")
     expect(homes[0]).not.toContain("provider-profiles")
-    // No folder grants: the provider uses the selected profile directly on every host.
-    expect(homes.at(-1)).toBe(profile)
+    expect(homes.slice(1)).toEqual([profile, profile])
     expect(
       JSON.parse(
         readFileSync(join(value.runtime.kernel.paths.runDir, "claude", `${value.thread.id}.settings.json`), "utf8"),
@@ -2512,7 +2513,7 @@ test("a crash after a recorded write waits for review and never repeats the writ
   }
 })
 
-test.serial("server routines run without browser clients and persist downtime and catch-up history", async () => {
+test.serial("server routines run without browser clients and persist late-slot and catch-up history", async () => {
   const value = await fixture({
     scenario: { events: [{ type: "delta", delta: "Notas organizadas" }, { type: "complete" }] },
   })
@@ -2535,7 +2536,7 @@ test.serial("server routines run without browser clients and persist downtime an
       forceDisabled: false,
     })
     if (!created.success) throw new Error(created.error)
-    const due = Date.parse("2026-10-19T12:00:00Z")
+    const due = Date.now() + 24 * 60 * 60_000
     value.engine.updateRoutine({ routineId: created.routine.id, patch: { nextRunAt: due }, fromTool: false })
     // No browser or UI is connected to this host. Its scheduler still executes.
     const scheduler = createRoutineScheduler({ kernel: value.runtime.kernel, engine: value.engine, intervalMs: 10 })
@@ -2563,7 +2564,7 @@ test.serial("server routines run without browser clients and persist downtime an
           status: "skipped",
           triggerSource: "catch-up",
           scheduledFor: missed,
-          summary: expect.stringContaining("touri estava fechado"),
+          summary: expect.stringContaining("o atraso ultrapassou a janela de recuperação"),
         }),
       ]),
     )
@@ -2706,7 +2707,7 @@ test.serial("deletion drops queued catch-up work and a cached due schedule stays
   let replacement: ReturnType<typeof createRuntimeEngine> | undefined
   try {
     const routine = routineForDeletion(value)
-    const due = Date.now() - 120_000
+    const due = Date.now() - 180_000
     value.engine.updateRoutine({ routineId: routine.id, patch: { nextRunAt: due }, fromTool: false })
     await value.engine.tick()
     const queuedRun = value.engine.listRuns(value.thread.id)[0]

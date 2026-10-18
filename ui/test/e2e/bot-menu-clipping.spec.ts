@@ -2,6 +2,11 @@ import { expect, type Locator, type Page, test } from "@playwright/test"
 
 test.use({ channel: "chromium" })
 const phase = process.env.MENU_EVIDENCE_PHASE ?? "after"
+// Share the geometry reference while allowing native font rasterization on desktop.
+const screenshotOptions = {
+  animations: "disabled" as const,
+  maxDiffPixelRatio: process.platform === "darwin" ? 0.02 : 0,
+}
 
 const exposed = async (page: Page, surface: Locator) => {
   await expect(surface).toBeInViewport({ ratio: 1 })
@@ -64,7 +69,7 @@ for (const theme of ["light", "dark"]) {
       await info.attach(`bot menu ${theme}`, { path: botScreenshot, contentType: "image/png" })
       expect(await menu.evaluate((element) => element.parentElement === document.body)).toBe(true)
       await borderlessRows(menu)
-      await expect.soft(menu).toHaveScreenshot(`bot-menu-${theme}.png`, { animations: "disabled" })
+      await expect.soft(menu).toHaveScreenshot(`bot-menu-${theme}.png`, screenshotOptions)
       const advanced = menu.getByRole("menuitem", { name: "Avançado", exact: true })
       const routines = menu.getByRole("menuitem", { name: "Rotinas", exact: true })
       const remove = menu.getByRole("menuitem", { name: "Excluir bot", exact: true })
@@ -105,7 +110,7 @@ for (const theme of ["light", "dark"]) {
         ),
       ).toBe(true)
       await borderlessRows(projects)
-      await expect.soft(projects).toHaveScreenshot(`project-menu-${theme}.png`, { animations: "disabled" })
+      await expect.soft(projects).toHaveScreenshot(`project-menu-${theme}.png`, screenshotOptions)
       for (const row of await projects.locator("button").all()) {
         await expect(row).toHaveCSS("color", primary)
         await expect(row).toHaveCSS(

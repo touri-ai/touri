@@ -53,7 +53,9 @@ export const McpSetupChecklist = ({
   return (
     <section className="mcp-setup" aria-label={t("Preparar {name}", { name: preset.title })}>
       <h4>{t("Preparar {name}", { name: preset.title })}</h4>
-      <p>{t("Faça a preparação na máquina em que o bot trabalha. Na VM, o login do Mac não é copiado.")}</p>
+      <p>
+        {t("Faça a preparação na máquina em que o bot trabalha. Na VM, o login do computador local não é copiado.")}
+      </p>
       {!prerequisites && !error && <p role="status">{t("Verificando a preparação…")}</p>}
       {error && <p role="alert">{t("Não foi possível verificar a preparação. Tente novamente.")}</p>}
       {prerequisites?.status === "unavailable" && (

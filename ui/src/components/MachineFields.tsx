@@ -74,15 +74,21 @@ export const MachineFields = ({
           <label htmlFor="bot-machine">{t("Machine")}</label>
           <p className="field-help">
             {values.machine === "cloud"
-              ? "O runtime inteiro roda na nuvem, com sua chave API e sem depender do Mac."
+              ? t("O runtime inteiro roda na nuvem, com sua chave API e sem depender deste computador.")
               : values.machine === "local"
-                ? t(serverMode ? "O bot trabalha no servidor escolhido, sem acessar este Mac." : "Local machine help")
+                ? t(
+                    serverMode
+                      ? "O bot trabalha no servidor escolhido, sem acessar este aparelho."
+                      : "Local machine help",
+                  )
                 : t("VM machine help")}
           </p>
         </div>
         <div className="machine-environment-control">
           {values.machine === "cloud" && (
-            <p className="field-help">Runtime inteiro na nuvem · chave API própria · sem acesso ao Mac.</p>
+            <p className="field-help">
+              {t("Runtime inteiro na nuvem · chave API própria · sem acesso ao computador local.")}
+            </p>
           )}
           {values.machine === "vm" && (
             <span className={`machine-chip machine-${state?.status ?? "stopped"}`} role="status">

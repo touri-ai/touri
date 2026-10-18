@@ -1,5 +1,4 @@
-import type { Bot, NotificationRecord } from "@touri/contracts"
-import { ATTENTION_KINDS, BLOCKING_KINDS } from "./kinds"
+import { type Bot, canDeliverNotification, type NotificationRecord } from "@touri/contracts"
 
 /** Whether a notification should raise an OS notification, given the bot's `notifications` preference. */
 export const shouldNotifyNative = ({
@@ -8,11 +7,7 @@ export const shouldNotifyNative = ({
 }: {
   notification: NotificationRecord
   preference: Bot["notifications"] | null
-}): boolean => {
-  if (preference === "none") return BLOCKING_KINDS.has(notification.kind)
-  if (ATTENTION_KINDS.has(notification.kind)) return true
-  return preference === "all"
-}
+}): boolean => canDeliverNotification({ notification, botPreference: preference })
 
 export const buildDeepLink = ({ botId, threadId }: { botId: string | null; threadId: string | null }): string => {
   const params = new URLSearchParams()
@@ -26,4 +21,15 @@ export const nativeNotificationTitle = (notification: NotificationRecord): strin
     return notification.botName ? `${notification.botName}: ${notification.title}` : notification.title
   const action = (notification.body.trim() || notification.title).replace(/\.$/, "")
   return `${notification.botName ?? "touri"} precisa de você: autorizar ${action.charAt(0).toLocaleLowerCase()}${action.slice(1)}.`
+}
+
+/** Only application-authored keys are translated; bot content keeps its original language. */
+export const getNativeNotificationBody = (
+  notification: NotificationRecord,
+  locale = Intl.DateTimeFormat().resolvedOptions().locale,
+): string => {
+  if (notification.body !== "Routine finished with no news.") return notification.body
+  if (locale.startsWith("pt")) return "Rotina concluída sem novidades."
+
+  return "Routine finished with no news."
 }

@@ -10,7 +10,7 @@ import { EvidenceContext, type EvidenceContextValue, EvidenceGallery, readImage 
 import { decodedEvidencePath, type EvidenceNode, evidenceImages, evidencePath } from "./evidenceMarkdown"
 import { LocalFileLink } from "./LocalFileLink"
 import { MermaidDiagram } from "./MermaidDiagram"
-import { syntaxTheme } from "./syntaxTheme"
+import { getMarkdownCodeHtml } from "./markdownHighlight"
 
 type MarkdownRendererProps = {
   content: string
@@ -182,12 +182,8 @@ const ShikiCode = ({ language, source, copyable = true }: { language: string; so
 
   useEffect(() => {
     let active = true
-    void import("shiki")
-      .then(async ({ codeToHtml }) => {
-        const rendered = await codeToHtml(source, {
-          lang: language || "text",
-          theme: syntaxTheme,
-        })
+    void getMarkdownCodeHtml(source, language)
+      .then((rendered) => {
         if (active) setHtml(rendered)
       })
       .catch(() => undefined)
