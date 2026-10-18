@@ -41,6 +41,20 @@ export const createRouteRegistry = (onError?: (code: string) => void) => {
     }
   }
 
+  const getTemplate = (method: string, pathname: string): string | undefined => {
+    const actual = split(pathname)
+
+    return routes.find((route) => {
+      if (route.method !== method) return false
+
+      const expected = split(route.path)
+      return (
+        expected.length === actual.length &&
+        expected.every((part, index) => part.startsWith(":") || part === actual[index])
+      )
+    })?.path
+  }
+
   const handle = async ({
     method,
     pathname,
@@ -78,5 +92,5 @@ export const createRouteRegistry = (onError?: (code: string) => void) => {
     return { status: 404, json: normalizeErrorBody({ errorCode: "NOT_FOUND" }, 404) }
   }
 
-  return { registerRoutes, handle }
+  return { registerRoutes, getTemplate, handle }
 }

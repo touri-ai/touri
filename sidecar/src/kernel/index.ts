@@ -22,6 +22,7 @@ import { createHostClient } from "./host-client"
 import { newId } from "./ids"
 import { createLogger } from "./log"
 import { createAppPaths } from "./paths"
+import { createPerformanceDiagnostics } from "./performance"
 import { createRedactor } from "./redact"
 import { createRouteRegistry } from "./routes"
 import { createServices } from "./services"
@@ -221,6 +222,7 @@ export const createKernel = ({ appData, web }: { appData?: string; web?: WebMode
             schemaVersion: SCHEMA_VERSION,
             host: process.platform === "darwin" && process.env.TOURI_HEADLESS !== "1" ? "mac" : "server",
             historyMigration: historyMigrationStatus(database),
+            eventLoop: diagnostics.getSnapshot(),
           },
         }),
       },
@@ -231,6 +233,32 @@ export const createKernel = ({ appData, web }: { appData?: string; web?: WebMode
   const liveSockets = new Set<ServerWebSocket<KernelSocketData>>()
   const eventSockets = new WeakMap<ServerWebSocket<KernelSocketData>, Parameters<typeof bus.add>[0]>()
   const pendingRequests = new Set<AbortController>()
+  const sseRequests = new Set<AbortController>()
+  const diagnostics = createPerformanceDiagnostics({
+    log,
+    getContext: () => ({
+      activeRuns: (
+        database.query("SELECT count(*) AS count FROM runs WHERE status IN ('starting', 'running')").get() as {
+          count: number
+        }
+      ).count,
+      sseClients: sseRequests.size,
+      websocketClients: liveSockets.size,
+    }),
+  })
+  const getRequestTemplate = (request: Request): string => {
+    const pathname = new URL(request.url).pathname
+    const prefix = apiPrefixOf(pathname)
+    if (prefix === null) return "unmatched"
+    if (request.method === "POST" && pathname === `${prefix}/ws-ticket`) return "/ws-ticket"
+    if (socketEndpoint(pathname)) {
+      if (pathname.endsWith("/presence/socket")) return "/bots/:id/machine/presence/socket"
+      if (pathname.endsWith("/socket")) return "/desktop/:id/socket"
+      return "/events"
+    }
+
+    return routes.getTemplate(request.method, pathname.slice(prefix.length)) ?? "unmatched"
+  }
   const revocationTimer = setInterval(() => {
     for (const socket of liveSockets)
       if (socket.data.session && !socket.data.session.active()) {
@@ -257,7 +285,7 @@ export const createKernel = ({ appData, web }: { appData?: string; web?: WebMode
       log({ level: "error", module: "kernel", msg: "Falha na solicitação HTTP", data: { code: failure.json.code } })
       return jsonResponse(failure.status, failure.json)
     },
-    fetch: async (request, bunServer) => {
+    fetch: diagnostics.observeFetch<KernelSocketData>(async (request, bunServer) => {
       const url = new URL(request.url)
       const desktopId = /^\/api\/v1\/desktop\/([a-f0-9]{48})\/socket$/.exec(url.pathname)?.[1]
       const presenceBotId = /^\/api\/v1\/bots\/([a-zA-Z0-9-]+)\/machine\/presence\/socket$/.exec(url.pathname)?.[1]
@@ -356,6 +384,8 @@ export const createKernel = ({ appData, web }: { appData?: string; web?: WebMode
       pendingRequests.add(controller)
       const finish = () => {
         pendingRequests.delete(controller)
+        sseRequests.delete(controller)
+        controller.signal.removeEventListener("abort", finish)
         request.signal.removeEventListener("abort", abortRequest)
       }
       const response = await routes.handle({
@@ -366,6 +396,8 @@ export const createKernel = ({ appData, web }: { appData?: string; web?: WebMode
         signal: controller.signal,
       })
       if ("stream" in response) {
+        if (response.mime === "text/event-stream" && !controller.signal.aborted) sseRequests.add(controller)
+        controller.signal.addEventListener("abort", finish, { once: true })
         const reader = response.stream.getReader()
         const stream = new ReadableStream<Uint8Array>({
           async pull(out) {
@@ -418,7 +450,7 @@ export const createKernel = ({ appData, web }: { appData?: string; web?: WebMode
       }
       const json = jsonResponse(response.status, response.json, request.headers.get("origin"))
       return web ? compressBufferedResponse(request, json) : json
-    },
+    }, getRequestTemplate),
     websocket: {
       // Presence follows connection lifetime even when hidden WebViews suspend timers.
       idleTimeout: 0,
@@ -510,6 +542,7 @@ export const createKernel = ({ appData, web }: { appData?: string; web?: WebMode
   })
 
   const stop = (): void => {
+    diagnostics.stop()
     services.use("store.api")?.flushWrites?.()
     clearInterval(revocationTimer)
     for (const controller of pendingRequests) controller.abort()
