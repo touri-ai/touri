@@ -1,3 +1,4 @@
+import type { Database } from "bun:sqlite"
 import { afterEach, expect, test } from "bun:test"
 import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -502,35 +503,38 @@ test("recall also redacts a saved key first loaded during the lookup", async () 
 })
 
 test("a delayed settings save cannot recreate credentials after bot deletion", async () => {
-  const f = await fixture()
-  const host = f.kernel.callHost
-  let saving = false
+  const context = await fixture()
+  const db = context.kernel.db as Database
+  const host = context.kernel.callHost
+  let isSaving = false
   let release = () => {}
   const pending = new Promise<void>((resolve) => {
     release = resolve
   })
-  f.kernel.callHost = (async (method, params) => {
+  context.kernel.callHost = (async (method, params) => {
     if (method === "keychain.set") {
-      saving = true
+      isSaving = true
       await pending
     }
     return host(method, params)
   }) as Kernel["callHost"]
-  const saved = f.configure({ enabled: true, apiKey: "m0-deleted-bot" })
-  try {
-    await until(() => saving)
-    const deleted = await f.api(`/bots/${f.bot.id}`, { name: f.bot.name }, "DELETE")
-    expect(deleted.ok).toBe(true)
-    await f.mem0.forget(f.bot.id)
-  } finally {
+  const saved = context.configure({ enabled: true, apiKey: "m0-deleted-bot" })
+  cleanups.push(async () => {
     release()
     await saved
-  }
+  })
+
+  await until(() => isSaving)
+  db.query("DELETE FROM bots WHERE id = ?").run(context.bot.id)
+  expect(context.store.getBot({ botId: context.bot.id })).toBeNull()
+  await context.mem0.forget(context.bot.id)
+  release()
+
   expect((await saved).status).toBe(404)
-  expect(f.vault.size).toBe(0)
-  const rows = (f.kernel.db as import("bun:sqlite").Database)
+  expect(context.vault.size).toBe(0)
+  const rows = db
     .query("SELECT key FROM settings WHERE key IN (?, ?)")
-    .all(`mem0:${f.bot.id}`, `mem0-key:${f.bot.id}`)
+    .all(`mem0:${context.bot.id}`, `mem0-key:${context.bot.id}`)
   expect(rows).toEqual([])
 })
 
@@ -711,4 +715,115 @@ test("routine and delegated sessions cannot list, invoke or advertise personal m
   writeLearningState(f.kernel, f.bot.id, { turns: 0, toolCalls: 0, reviewThreadId: review.thread.id })
   await check(review.thread.id)
   expect(f.fake.seen).toEqual([])
+})
+
+test("changing mode or server removes the previous destination's key", async () => {
+  const context = await fixture()
+  const server = fakeMem0(() => memories([]))
+  await context.configure({ enabled: true, apiKey: "m0-cloud-destination-key" })
+  expect((await context.configure({ mode: "server", url: server.url })).body.settings.hasApiKey).toBe(false)
+  expect(context.vault.size).toBe(0)
+  await context.mem0.api.recall({ botId: context.bot.id, query: "Qual a minha cidade?" })
+  expect(server.seen[0]?.headers.get("x-api-key")).toBeNull()
+  await context.configure({ apiKey: "m0-server-destination-key" })
+  // Normalizing a trailing slash leaves the same destination and credential.
+  expect((await context.configure({ url: `${server.url}/` })).body.settings.hasApiKey).toBe(true)
+  expect((await context.configure({ url: context.fake.url })).body.settings.hasApiKey).toBe(false)
+  await context.mem0.api.recall({ botId: context.bot.id, query: "Qual a minha cidade?" })
+  expect(context.fake.seen[0]?.headers.get("x-api-key")).toBeNull()
+  await context.configure({ apiKey: "m0-other-server-key" })
+  expect((await context.configure({ mode: "platform" })).body.settings.hasApiKey).toBe(false)
+  expect(await context.mem0.api.recall({ botId: context.bot.id, query: "Qual a minha cidade?" })).toBeNull()
+  expect(context.fake.seen).toHaveLength(1)
+  expect(context.vault.size).toBe(0)
+})
+
+test("a failed key removal cannot move credentials to a new destination", async () => {
+  const context = await fixture()
+  await context.configure({ apiKey: "m0-bound-cloud-key" })
+  context.kernel.callHost = (async () => ({
+    success: false,
+    errorCode: "HOST_ERROR",
+    error: "cofre indisponível",
+  })) as Kernel["callHost"]
+  const changed = await context.configure({ mode: "server", url: context.fake.url })
+
+  expect(changed.status).toBe(503)
+  const { settings } = (await (await context.api(`/bots/${context.bot.id}/mem0`)).json()) as { settings: Mem0Settings }
+  expect(settings).toMatchObject({ mode: "platform", url: "", hasApiKey: true })
+})
+
+test("settings saves for one bot commit in order and keep the final key bound to its destination", async () => {
+  const context = await fixture()
+  const other = fakeMem0(() => memories([]))
+  const host = context.kernel.callHost
+  let isWriting = false
+  let release = () => {}
+  const pending = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  context.kernel.callHost = (async (method, params) => {
+    if (method === "keychain.set") {
+      isWriting = true
+      await pending
+    }
+    return host(method, params)
+  }) as Kernel["callHost"]
+  const first = context.configure({ mode: "server", url: context.fake.url, apiKey: "m0-first-server-key" })
+  cleanups.push(async () => {
+    release()
+    await first
+  })
+
+  await until(() => isWriting)
+  const second = context.configure({ mode: "server", url: other.url })
+  cleanups.push(async () => {
+    release()
+    await second
+  })
+  await Bun.sleep(20)
+  release()
+
+  expect((await first).status).toBe(200)
+  expect((await second).body.settings).toMatchObject({ url: other.url, hasApiKey: false })
+  const { settings } = (await (await context.api(`/bots/${context.bot.id}/mem0`)).json()) as { settings: Mem0Settings }
+  expect(settings).toMatchObject({ url: other.url, hasApiKey: false })
+  expect(context.vault.size).toBe(0)
+})
+
+test("canceling five lookups does not pause a healthy connection", async () => {
+  let isBlocked = true
+  let release = () => {}
+  const pending = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const context = await fixture(async () => {
+    if (isBlocked) await pending
+    return memories([{ id: "saved", memory: "Prefere café sem açúcar." }])
+  })
+  cleanups.push(() => {
+    isBlocked = false
+    release()
+  })
+  await context.configure({ enabled: true, apiKey: "m0-cancel-breaker" })
+
+  for (const index of [0, 1, 2, 3, 4]) {
+    const controller = new AbortController()
+    const lookup = context.mem0.api.recall({
+      botId: context.bot.id,
+      query: "Qual a minha bebida favorita?",
+      signal: controller.signal,
+    })
+    await until(() => context.fake.seen.length === index + 1)
+    controller.abort()
+    expect(await lookup).toBeNull()
+  }
+  await until(() => context.logs.filter((line) => line.includes("Mem0 recall skipped")).length === 5)
+  isBlocked = false
+  release()
+
+  expect(await context.mem0.api.recall({ botId: context.bot.id, query: "Qual a minha bebida favorita?" })).toContain(
+    "café",
+  )
+  expect(context.fake.seen).toHaveLength(6)
 })

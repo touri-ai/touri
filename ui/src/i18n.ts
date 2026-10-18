@@ -326,6 +326,8 @@ export const ptBR = {
   "URL do servidor": "URL do servidor",
   "Chave da API": "Chave da API",
   "Chave salva. Digite outra para trocar.": "Chave salva. Digite outra para trocar.",
+  "Ao mudar o destino, a chave anterior é removida. Digite a nova chave antes de salvar.":
+    "Ao mudar o destino, a chave anterior é removida. Digite a nova chave antes de salvar.",
   "Remover chave": "Remover chave",
   Alcance: "Alcance",
   "Memórias sobre você, compartilhadas entre bots": "Memórias sobre você, compartilhadas entre bots",
@@ -2482,6 +2484,8 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "URL do servidor": "Server URL",
   "Chave da API": "API key",
   "Chave salva. Digite outra para trocar.": "Key saved. Type another one to replace it.",
+  "Ao mudar o destino, a chave anterior é removida. Digite a nova chave antes de salvar.":
+    "Changing the destination removes the previous key. Enter the new key before saving.",
   "Remover chave": "Remove key",
   Alcance: "Scope",
   "Memórias sobre você, compartilhadas entre bots": "Memories about you, shared across bots",
