@@ -213,7 +213,10 @@ const saveTaskNotification = (kernel: Kernel, store: NotificationStore, notifier
     notification_id: number
   } | null
   const existing = linked ? store.get(linked.notification_id) : null
-  if (existing) return existing
+  const effects = candidate.turnId ? createWorkState({ database }).rebuild({ turnId: candidate.turnId }) : []
+  const pendingEffects = effects.filter((effect) => effect.state === "uncertain" && !effect.acknowledged)
+  const hasUncertain = pendingEffects.length > 0
+  if (existing && (existing.resolvedAt === null || !hasUncertain)) return existing
 
   const matched = database
     .query(`SELECT id FROM notifications WHERE bot_id = ? AND thread_id IS ?
@@ -221,21 +224,23 @@ const saveTaskNotification = (kernel: Kernel, store: NotificationStore, notifier
     AND id NOT IN (SELECT notification_id FROM recovery_tasks) ORDER BY ABS(created_at - ?) LIMIT 1`)
     .get(candidate.botId, candidate.threadId, candidate.occurredAt, candidate.occurredAt) as { id: number } | null
   const previous = matched ? store.get(matched.id) : null
-  const effects = candidate.turnId ? createWorkState({ database }).rebuild({ turnId: candidate.turnId }) : []
-  const hasUncertain = effects.some((effect) => effect.state === "uncertain" && !effect.acknowledged)
-  const reusable = previous && (!hasUncertain || previous.resolvedAt === null) ? previous : null
+  const reusable = !existing && previous && (!hasUncertain || previous.resolvedAt === null) ? previous : null
+  const requestId = existing
+    ? `recovery:${candidate.id}:${pendingEffects.map((effect) => effect.effectId).join(":")}`
+    : `recovery:${candidate.id}`
   const notification =
     reusable ??
     notifier.emit({
       kind: candidate.routineId ? "routine-failed" : "turn-failed",
       botId: candidate.botId,
       threadId: candidate.threadId,
-      requestId: `recovery:${candidate.id}`,
+      requestId,
       title: "Tarefas interrompidas",
       body: safeRunFailure(candidate.cause, candidate.reason).detail,
     })
   database
-    .query("INSERT INTO recovery_tasks (id, notification_id, turn_id) VALUES (?, ?, ?)")
+    .query(`INSERT INTO recovery_tasks (id, notification_id, turn_id) VALUES (?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET notification_id = excluded.notification_id, turn_id = excluded.turn_id`)
     .run(candidate.id, notification.id, candidate.turnId)
   database
     .query("UPDATE notifications SET request_id = ? WHERE id = ? AND request_id IS NULL")

@@ -190,3 +190,30 @@ test("a later routine execution resolves a failure that never created a conversa
   expect(after[0]?.notification.id).toBe(before[0]?.notification.id)
   expect(after[0]?.notification.resolution).toBe("expired")
 })
+
+test("newly discovered uncertainty requires another review without erasing an earlier acknowledgement", async () => {
+  const h = await getFixture()
+  saveRun(h.database, "recovering")
+  h.work.beginEffect({
+    turnId: "recovering",
+    threadId: "thread-a",
+    key: "preview-key",
+    description: "Prévia",
+    effectId: "effect-preview",
+  })
+  const previous = (await h.getTasks())[0]
+  if (!previous) throw new Error("Expected interruption")
+  const dismissal = await h.request(`/notifications/${previous.notification.id}/dismiss`, {})
+
+  h.work.recover({ observe: () => ({ kind: "unobservable", reason: "Outcome unavailable" }) })
+  const current = (await h.getTasks())[0]
+
+  expect(dismissal.status).toBe(200)
+  expect(current?.notification.id).not.toBe(previous.notification.id)
+  expect(current?.notification.resolvedAt).toBeNull()
+  expect(current?.effects[0]?.acknowledgeKey).toBe("preview-key")
+  expect(h.database.query("SELECT resolution FROM notifications WHERE id = ?").get(previous.notification.id)).toEqual({
+    resolution: "dismissed",
+  })
+  expect(h.work.isBlocked({ key: "preview-key" })).toBe(true)
+})
