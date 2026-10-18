@@ -249,6 +249,17 @@ jobs:
       - name: Check group coordination on desktop and phone
         working-directory: ui
         run: bunx playwright test test/e2e/group-coordination.spec.ts --workers=1
+      - name: Check background transcript retention
+        working-directory: ui
+        run: bunx playwright test test/e2e/workspace-retention.spec.ts --workers=1
+      - name: Keep synthetic retention evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: workspace-retention
+          path: ui/test-results/**/workspace-retention-*
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Check routine history on desktop and phone
         working-directory: ui
         run: bunx playwright test test/e2e/routine-sidebar.spec.ts --workers=1

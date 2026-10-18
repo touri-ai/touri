@@ -314,6 +314,7 @@ test("group history reloads with sender identity while private member transcript
     role: "assistant" as const,
     sender: { id: "bot-onb", name: "onb" },
   }
+  // The mock API exposes its own mutable server fixture to seed history for this test.
   api.getState().messages.push(reply)
   const hook = renderHook(() => useWorkspace(api))
   await waitFor(() => expect(hook.result.current.data.loading).toBe(false))
@@ -365,6 +366,7 @@ test("a history request overflowing its stream buffer reloads instead of retaini
   const api = createMockApi()
   const stored = api.getState().messages.find((message) => message.role === "assistant")
   if (!stored) throw new Error("Missing streaming template")
+  // Seed the fresh mock's server-owned message before delivering the overlapping stream.
   Object.assign(stored, { status: "streaming", text: "", parts: [{ type: "text", text: "" }], updatedSeq: 1 })
   const barrier = deferred()
   let reads = 0

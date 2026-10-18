@@ -13,6 +13,7 @@ export const createRetentionWorkload = () => {
   const bot = state.bots[0]
   const thread = state.threads[0]
   if (!bot || !thread) throw new Error("Missing workload templates")
+  // Each fresh mock exposes mutable server fixtures; replace only this workload's generated rows.
   state.bots.splice(
     0,
     state.bots.length,
@@ -96,6 +97,7 @@ export const createRetentionWorkload = () => {
   const request: ApiRequest = async (route, input, path) => {
     const index = Number(path?.id?.replace("retention-thread-", ""))
     if (route === "GET /threads/:id/messages") {
+      // This fixture-owned counter observes requests without retaining their reconstructed history.
       historyRequests[index] = (historyRequests[index] ?? 0) + 1
       return { messages: Array.from({ length: turns[index] ?? 0 }, (_, turn) => message(index, turn)) } as never
     }
@@ -112,6 +114,7 @@ export const createRetentionWorkload = () => {
     run,
     /** Leave bot 0's completed conversation on screen while all 29 other bots work. */
     round: () => {
+      // Mutate only the fixture-owned counters and mock threads while emitting each bounded wave.
       for (let bot = 1; bot < retentionBotCount; bot++) {
         const turn = turns[bot] ?? 1
         turns[bot] = turn + 1

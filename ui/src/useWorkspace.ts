@@ -311,7 +311,8 @@ export const applyDelta = (
 
 const hasPartGap = (length: number, patches: Extract<UiEvent, { type: "message.parts" }>["parts"]): boolean => {
   let nextLength = length
-  for (const { partIndex } of patches.toSorted((a, b) => a.partIndex - b.partIndex)) {
+  // Sort a fresh local copy because patch positions must be validated in order.
+  for (const { partIndex } of [...patches].sort((a, b) => a.partIndex - b.partIndex)) {
     if (!Number.isInteger(partIndex) || partIndex < 0 || partIndex > nextLength) return true
     nextLength = Math.max(nextLength, partIndex + 1)
   }
@@ -329,7 +330,8 @@ export const applyParts = (
     if (event.generation !== undefined && event.generation < (message.generation ?? 0)) return message
     if (hasPartGap(message.parts.length, event.parts)) return message
     const parts = [...message.parts]
-    for (const { partIndex, part } of event.parts.toSorted((a, b) => a.partIndex - b.partIndex)) {
+    // Sort a fresh batch copy while the local parts array avoids a copy for every streaming patch.
+    for (const { partIndex, part } of [...event.parts].sort((a, b) => a.partIndex - b.partIndex)) {
       const previous = parts[partIndex]
       parts[partIndex] =
         part.type === "approval" &&
@@ -419,7 +421,8 @@ const upsertNotification = (list: Array<NotificationRecord>, next: NotificationR
       )
     : [next, ...list]
   // Snapshot merge order is not age: retain the newest server IDs at the history limit.
-  return merged.toSorted((a, b) => b.id - a.id).slice(0, MAX_NOTIFICATIONS)
+  // The merged list is newly allocated; order it once before applying the fixed history limit.
+  return merged.sort((a, b) => b.id - a.id).slice(0, MAX_NOTIFICATIONS)
 }
 
 const getServiceErrorMessage = (error: unknown): string => {
@@ -432,16 +435,17 @@ const getServiceErrorMessage = (error: unknown): string => {
 
 const lastActiveThread = (threads: Thread[], runs: Run[], botId: Id, rememberedId?: Id): Thread | undefined => {
   const candidates = threads.filter((thread) => thread.botId === botId && !thread.groupId)
+  // Both filtered arrays are local; sort them once to choose the conversation without another copy.
   const activeRuns = runs
     .filter((run) => ["queued", "starting", "running"].includes(run.status))
-    .toSorted((a, b) => (b.startedAt ?? b.queuedAt) - (a.startedAt ?? a.queuedAt))
+    .sort((a, b) => (b.startedAt ?? b.queuedAt) - (a.startedAt ?? a.queuedAt))
   for (const run of activeRuns) {
     const thread = candidates.find((candidate) => candidate.id === run.threadId)
     if (thread) return thread
   }
   return (
     candidates.find((thread) => thread.id === rememberedId) ??
-    candidates.toSorted((a, b) => b.updatedAt - a.updatedAt || b.createdAt - a.createdAt)[0]
+    candidates.sort((a, b) => b.updatedAt - a.updatedAt || b.createdAt - a.createdAt)[0]
   )
 }
 
@@ -472,6 +476,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
   const projectGeneration = useRef(0)
   const [projectRevision, setProjectRevision] = useState(0)
   useEffect(() => {
+    // React refs own the revision index; terminal IDs must not accumulate with durable history.
     const activeIds = new Set(data.runs.filter(activeRun).map((run) => run.id))
     for (const id of liveRuns.current.keys()) if (!activeIds.has(id)) liveRuns.current.delete(id)
   }, [data.runs])
@@ -977,7 +982,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
       active = false
       generation.current += 1
       // Pending callbacks share these request-owned arrays, so clear them before abandoning the loads.
-    for (const load of threadLoads.current.values()) load.deltas.length = 0
+      for (const load of threadLoads.current.values()) load.deltas.length = 0
       threadLoads.current.clear()
       loadedThreads.current.clear()
       liveRuns.current.clear()
@@ -1004,7 +1009,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
     for (const [id, load] of threadLoads.current) {
       if (id === data.selectedThreadId) continue
       // Clearing the request-owned buffer in place releases payloads still captured by its callback.
-    load.deltas.length = 0
+      load.deltas.length = 0
       threadLoads.current.delete(id)
     }
     if (enabled && !data.loading && data.selectedThreadId && !data.threadCreation)
@@ -1014,7 +1019,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
   // A bot update may precede its project event (or come from an older sidecar).
   const missingProjectIds = [...new Set(data.bots.map((bot) => bot.projectId))]
     .filter((id) => id && !data.projects.some((project) => project.id === id))
-    .toSorted()
+    .sort()
     .join(",")
   useEffect(() => {
     if (!enabled || !missingProjectIds) return
@@ -1043,51 +1048,45 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
     })
   }, [selectedBot?.projectId])
 
-  const selectBot = useCallback(
-    (botId: Id): void => {
-      setData((current) => {
-        if (current.selectedBotId && current.selectedThreadId && !current.threadCreation)
-          threadsByBot.current[current.selectedBotId] = current.selectedThreadId
-        const thread = lastActiveThread(current.threads, current.runs, botId, threadsByBot.current[botId])
-        const bot = current.bots.find((candidate) => candidate.id === botId)
-        return {
-          ...current,
-          selectedBotId: botId,
-          threadCreation: null,
-          composerKey: null,
-          selectedThreadId: thread?.id ?? null,
-          activeProjectId: bot?.projectId ?? null,
-          processes: [],
-        }
-      })
-    },
-    [setData],
-  )
+  const selectBot = useCallback((botId: Id): void => {
+    setData((current) => {
+      if (current.selectedBotId && current.selectedThreadId && !current.threadCreation)
+        threadsByBot.current[current.selectedBotId] = current.selectedThreadId
+      const thread = lastActiveThread(current.threads, current.runs, botId, threadsByBot.current[botId])
+      const bot = current.bots.find((candidate) => candidate.id === botId)
+      return {
+        ...current,
+        selectedBotId: botId,
+        threadCreation: null,
+        composerKey: null,
+        selectedThreadId: thread?.id ?? null,
+        activeProjectId: bot?.projectId ?? null,
+        processes: [],
+      }
+    })
+  }, [])
 
-  const selectThread = useCallback(
-    (threadId: Id, options?: { readRoutineGroup: boolean }): void => {
-      setData((current) => {
-        const readIds = options?.readRoutineGroup
-          ? getSidebarReadThreadIds(
-              current.threads,
-              current.routineRuns,
-              threadId,
-              new Set(current.routines.map((routine) => routine.id)),
-            )
-          : new Set([threadId])
+  const selectThread = useCallback((threadId: Id, options?: { readRoutineGroup: boolean }): void => {
+    setData((current) => {
+      const readIds = options?.readRoutineGroup
+        ? getSidebarReadThreadIds(
+            current.threads,
+            current.routineRuns,
+            threadId,
+            new Set(current.routines.map((routine) => routine.id)),
+          )
+        : new Set([threadId])
 
-        return {
-          ...current,
-          selectedBotId: current.threads.find((thread) => thread.id === threadId)?.botId ?? current.selectedBotId,
-          selectedThreadId: threadId,
-          threadCreation: null,
-          composerKey: null,
-          threads: current.threads.map((thread) => (readIds.has(thread.id) ? { ...thread, unread: 0 } : thread)),
-        }
-      })
-    },
-    [setData],
-  )
+      return {
+        ...current,
+        selectedBotId: current.threads.find((thread) => thread.id === threadId)?.botId ?? current.selectedBotId,
+        selectedThreadId: threadId,
+        threadCreation: null,
+        composerKey: null,
+        threads: current.threads.map((thread) => (readIds.has(thread.id) ? { ...thread, unread: 0 } : thread)),
+      }
+    })
+  }, [])
 
   const createGroup = useCallback(
     async (input: GroupInput, id?: string) => {
@@ -1471,7 +1470,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
     const response = await api.request("GET /notifications", {})
     setData((current) => ({ ...current, notifications: response.notifications }))
     return result
-  }, [api, setData])
+  }, [api])
 
   const respondNotification = useCallback(
     async ({

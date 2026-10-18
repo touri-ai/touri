@@ -1,6 +1,11 @@
+import { writeFile } from "node:fs/promises"
 import { expect, test } from "@playwright/test"
 
-type RetentionWindow = { retentionWorkload: { round: () => void; historyRequests: number[] } }
+declare global {
+  interface Window {
+    retentionWorkload: { round: () => void; historyRequests: number[] }
+  }
+}
 
 test("workspace retention: 30 bots bound browser heap and reload evicted history", async ({ page }, testInfo) => {
   test.setTimeout(60_000)
@@ -13,10 +18,11 @@ test("workspace retention: 30 bots bound browser heap and reload evicted history
     return (await cdp.send("Runtime.getHeapUsage")).usedSize as number
   }
   const baselineBytes = await heap()
+  // A fixed two-sample series stays local to this browser measurement.
   const samples: number[] = []
   for (let wave = 0; wave < 2; wave++) {
     await page.evaluate(async () => {
-      const fixture = (window as unknown as RetentionWindow).retentionWorkload
+      const fixture = window.retentionWorkload
       for (let round = 0; round < 20; round++) {
         fixture.round()
         await new Promise<void>((done) => setTimeout(done, 0))
@@ -33,10 +39,11 @@ test("workspace retention: 30 bots bound browser heap and reload evicted history
     body: JSON.stringify(measurements),
     contentType: "application/json",
   })
+  await writeFile(testInfo.outputPath("workspace-retention-budget.json"), JSON.stringify(measurements))
   for (const bytes of samples) expect(bytes - baselineBytes).toBeLessThan(budgetBytes)
-  expect(
-    await page.evaluate(() => (window as unknown as RetentionWindow).retentionWorkload.historyRequests.slice(1)),
-  ).toEqual(Array.from({ length: 29 }, () => 0))
+  expect(await page.evaluate(() => window.retentionWorkload.historyRequests.slice(1))).toEqual(
+    Array.from({ length: 29 }, () => 0),
+  )
 
   await page.locator('[data-bot-entry="retention-bot-1"] .bot-row-main').click()
   await expect(page.locator('[data-message-id="retention-message-1-40"]')).toContainText("Generated reply 1.40.")
@@ -44,5 +51,9 @@ test("workspace retention: 30 bots bound browser heap and reload evicted history
   await expect(page.locator('[data-message-id="retention-message-0-0"]')).toBeVisible()
   await page.locator('[data-bot-entry="retention-bot-1"] .bot-row-main').click()
   await expect(page.locator('[data-message-id="retention-message-1-40"]')).toContainText("Generated reply 1.40.")
-  expect(await page.evaluate(() => (window as unknown as RetentionWindow).retentionWorkload.historyRequests[1])).toBe(2)
+  expect(await page.evaluate(() => window.retentionWorkload.historyRequests[1])).toBe(2)
+
+  await page.screenshot({ path: testInfo.outputPath("workspace-retention-after-desktop.png") })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.screenshot({ path: testInfo.outputPath("workspace-retention-after-phone.png") })
 })
