@@ -114,7 +114,7 @@ const startServer = async (options: ServeOptions, stopStderr: () => Promise<void
       )
       const drainResult = await Promise.race([drainPromise, drainDeadline])
       if (deadlineTimer) clearTimeout(deadlineTimer)
-      await runtime.kernel.services.use("runtime.shutdown")?.({ appRestart: drainResult !== "drained" })
+      await runtime.kernel.services.use("runtime.shutdown")?.({ appRestart: true })
       runtime.emitHostNotification({ method: "app.willQuit", params: {} })
       await runtime.kernel.services.use("vm.shutdown")?.()
       clearServeInfo(options.dataDir)
