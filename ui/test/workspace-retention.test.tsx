@@ -122,6 +122,7 @@ test("30 bots stay within a 1 MiB retained-state budget across background waves 
     const data = hook.result.current.data
     expect(data.messages.every((message) => message.threadId === "retention-thread-0")).toBe(true)
     expect(data.activityMessages.length).toBeLessThanOrEqual(retentionBotCount * 5)
+    expect(data.runs.every((run) => data.bots.some((bot) => bot.id === run.botId))).toBe(true)
     expect(data.runs).toHaveLength(retentionBotCount)
     expect(new TextEncoder().encode(JSON.stringify(data)).byteLength).toBeLessThan(retainedStateBudget)
     expect(workload.historyRequests.slice(1).every((count) => count === 0)).toBe(true)

@@ -105,6 +105,7 @@ export const createRetentionWorkload = () => {
       return { runs: Array.from({ length: turns[index] ?? 0 }, (_, turn) => run(index, turn)) } as never
     if (route === "GET /workspace/activity")
       return { messages: [], runs: turns.map((count, bot) => run(bot, count - 1)) } as never
+    if (route === "GET /runs") return { runs: [] } as never
     return mock.request(route, input, path)
   }
   return {

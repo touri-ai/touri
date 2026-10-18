@@ -10,6 +10,7 @@ declare global {
 test("workspace retention: 30 bots bound browser heap and reload evicted history", async ({ page }, testInfo) => {
   test.setTimeout(60_000)
   await page.setViewportSize({ width: 1440, height: 900 })
+  await page.emulateMedia({ reducedMotion: "reduce" })
   await page.goto("/test/e2e/workspace-retention-harness.html")
   await expect(page.locator('[data-message-id="retention-message-0-0"]')).toBeVisible()
   const cdp = await page.context().newCDPSession(page)
@@ -53,7 +54,7 @@ test("workspace retention: 30 bots bound browser heap and reload evicted history
   await expect(page.locator('[data-message-id="retention-message-1-40"]')).toContainText("Generated reply 1.40.")
   expect(await page.evaluate(() => window.retentionWorkload.historyRequests[1])).toBe(2)
 
-  await page.screenshot({ path: testInfo.outputPath("workspace-retention-after-desktop.png") })
+  await page.screenshot({ path: testInfo.outputPath("workspace-retention-after-desktop.png"), animations: "disabled" })
   await page.setViewportSize({ width: 390, height: 844 })
-  await page.screenshot({ path: testInfo.outputPath("workspace-retention-after-phone.png") })
+  await page.screenshot({ path: testInfo.outputPath("workspace-retention-after-phone.png"), animations: "disabled" })
 })
