@@ -615,10 +615,15 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
         threshold: 0.3,
         hasApiKey: false,
       }
+      const mode = patch.mode ?? current.mode
+      const url = (patch.url ?? current.url).replace(/\/+$/, "")
+      const hasDestinationChanged = mode !== current.mode || (mode === "server" && url !== current.url)
+      const hasApiKey = apiKey === undefined ? current.hasApiKey && !hasDestinationChanged : apiKey !== null
       const next = {
         ...current,
         ...patch,
-        hasApiKey: apiKey === undefined ? current.hasApiKey : apiKey !== null,
+        url,
+        hasApiKey,
       }
       mem0Settings.set(botId, next)
       return { settings: next } as ApiRoutes[typeof route]["res"]

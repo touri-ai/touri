@@ -1,7 +1,7 @@
-import type { Bot, BotGroup, Routine } from "@touri/contracts"
+import type { Bot, BotGroup, HostKind, Routine } from "@touri/contracts"
 import { nextCronSlot, parseCron, validTimezone } from "@touri/contracts/routine-cron"
 import { useEffect, useMemo, useRef, useState } from "react"
-import { t } from "../i18n"
+import { getHostLabel, t } from "../i18n"
 import type { RoutineDraft } from "../routineDraft"
 import { routineSchedule, simpleCron, simpleSchedule } from "../routineSchedule"
 import type { WorkspaceActions } from "../useWorkspace"
@@ -19,10 +19,10 @@ const weekdays = [
   "sábado",
 ] as const
 
-export const routineHostNotice = (host: "mac" | "server") =>
-  host === "mac"
-    ? t("Funciona enquanto o touri estiver em execução neste Mac.")
-    : t("Funciona enquanto o touri estiver em execução no servidor. Você pode fechar esta página.")
+export const routineHostNotice = (host: HostKind) =>
+  host === "server"
+    ? t("Funciona enquanto o touri estiver em execução no servidor. Você pode fechar esta página.")
+    : t("Runs while touri is running on this {host}.", { host: getHostLabel(host) })
 
 export const nextRoutineDates = (cron: string, timezone: string, now: number): number[] => {
   const parsed = parseCron(cron)
@@ -51,7 +51,7 @@ export const RoutineEditor = ({
   routineId?: string | undefined
   bots: Bot[]
   groups?: BotGroup[]
-  host: "mac" | "server"
+  host: HostKind
   actions: Pick<WorkspaceActions, "createRoutine" | "updateRoutine" | "runRoutine" | "deleteRoutine">
   onClose: () => void
 }) => {

@@ -124,7 +124,7 @@ export const collectNetworkChecks = async (
               stage === "dns"
                 ? `Não foi possível resolver ${target.host}. Verifique sua conexão e a configuração de DNS.`
                 : stage === "tls"
-                  ? `Falha ao validar TLS de ${target.host}. Verifique a data do Mac, certificados e proxy da rede.`
+                  ? `Falha ao validar TLS de ${target.host}. Verifique a data do sistema, certificados e proxy da rede.`
                   : `Sem resposta da API em até ${timeoutMs / 1000}s. Verifique conexão, VPN, firewall e proxy.`,
               stage === "dns"
                 ? hostPlatform.systemSettingsCommand

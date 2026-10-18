@@ -4,6 +4,7 @@ import type { UiApi } from "../api/client"
 import { userFacingError } from "../errors"
 import { t } from "../i18n"
 import { machineStateForDisplay } from "../machineState"
+import { useHost } from "../useHost"
 import { BotAvatar } from "./BotAvatar"
 import { BotComputer } from "./BotComputer"
 import { BotDetails } from "./BotDetails"
@@ -58,6 +59,7 @@ export const BotPanel = ({
   libraryRequest?: { path: string; request: number } | undefined
   computerTabRequest?: number
 }) => {
+  const host = useHost(api)
   const [tab, setTab] = useState<(typeof tabs)[number]>("details")
   useEffect(() => {
     if (computerTabRequest) setTab("computer")
@@ -187,7 +189,7 @@ export const BotPanel = ({
       >
         {tab === "details" && (
           <div className="bot-details">
-            <BotDetails bot={bot} onSettings={onSettings} onModel={onModel} onPermissions={onPermissions}>
+            <BotDetails bot={bot} host={host} onSettings={onSettings} onModel={onModel} onPermissions={onPermissions}>
               {onPreview && (
                 <button className="button button-quiet" type="button" onClick={onPreview}>
                   {t("Project preview")}

@@ -12,14 +12,6 @@ import {
 
 export const name = "learning"
 
-const snapshot = (kernel: Kernel, botId: string, homeDir: string): BotLearning => ({
-  ...readLearning(kernel, botId),
-  ...readLearningState(kernel, botId),
-  memoryChars: renderEntries(readEntries(homeDir, "memory")).length,
-  userChars: renderEntries(readEntries(homeDir, "user")).length,
-  skillCount: countSkills(homeDir),
-})
-
 export const init = async (kernel: Kernel): Promise<void> => {
   const registration = kernel.registerTools({
     tools: [
@@ -49,7 +41,7 @@ export const init = async (kernel: Kernel): Promise<void> => {
         handler: async ({ params }) => {
           const bot = kernel.services.use("store.api")?.getBot({ botId: params.id ?? "" })
           if (!bot) return { status: 404, json: { errorCode: "NOT_FOUND", error: "Bot não encontrado" } }
-          return { status: 200, json: { learning: snapshot(kernel, bot.id, bot.homeDir) } }
+          return { status: 200, json: { learning: getSnapshot(kernel, bot.id, bot.homeDir) } }
         },
       },
       {
@@ -60,10 +52,38 @@ export const init = async (kernel: Kernel): Promise<void> => {
           if (!bot) return { status: 404, json: { errorCode: "NOT_FOUND", error: "Bot não encontrado" } }
           const saved = writeLearning(kernel, bot.id, body)
           if (!saved.success) return { status: 400, json: { errorCode: "INVALID_ARGS", error: saved.error } }
-          return { status: 200, json: { learning: snapshot(kernel, bot.id, bot.homeDir) } }
+          return { status: 200, json: { learning: getSnapshot(kernel, bot.id, bot.homeDir) } }
         },
       },
     ],
   })
   kernel.log({ level: "debug", module: name, msg: "initialized ./learning/index.ts" })
+}
+
+const getSnapshot = (kernel: Kernel, botId: string, homeDir: string): BotLearning => {
+  const memory = getEntryUsage(homeDir, "memory")
+  const user = getEntryUsage(homeDir, "user")
+
+  return {
+    ...readLearning(kernel, botId),
+    ...readLearningState(kernel, botId),
+    memoryChars: memory.chars,
+    userChars: user.chars,
+    ...(memory.error ? { memoryError: memory.error } : {}),
+    ...(user.error ? { userError: user.error } : {}),
+    skillCount: countSkills(homeDir),
+  }
+}
+
+const getEntryUsage = (
+  homeDir: string,
+  target: "memory" | "user",
+): { chars: number; error?: BotLearning["memoryError"] } => {
+  try {
+    return { chars: renderEntries(readEntries(homeDir, target)).length }
+  } catch (error) {
+    const reason = error instanceof Error && error.message === "INVALID_PATH" ? "INVALID_PATH" : "READ_ERROR"
+
+    return { chars: 0, error: reason }
+  }
 }

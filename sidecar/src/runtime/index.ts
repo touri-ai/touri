@@ -10,6 +10,7 @@ import {
 } from "@touri/contracts"
 import { createGroupRuntime } from "../groups/runtime"
 import { buildChildEnv } from "../kernel/shell-env"
+import { getHostIdentity } from "../platform/host"
 import { createRuntimeEngine } from "./engine"
 import { listOpenCodeModels } from "./opencode/models"
 import { listProviderProfiles } from "./provider-profiles"
@@ -198,7 +199,7 @@ export const init = async (kernel: Kernel): Promise<void> => {
         path: "/routines",
         handler: async ({ query }) => ({
           status: 200,
-          json: { routines: engine.listRoutines(query.botId), host: process.platform === "darwin" ? "mac" : "server" },
+          json: { routines: engine.listRoutines(query.botId), ...getHostIdentity() },
         }),
       },
       {
