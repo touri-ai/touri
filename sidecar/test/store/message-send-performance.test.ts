@@ -61,6 +61,8 @@ test("sending with large history and two streams bounds historical message reads
   const sendReads = metrics.getMessageReads()
   const recoveryReads = metrics.getRecoveryReads()
   const sendMaxDelayMs = drift.getMax()
+  const sendP99DelayMs = drift.getP99()
+  const sendSamples = drift.getSamples()
   metrics.reset()
   drift.reset()
   const streamStarted = performance.now()
@@ -99,6 +101,10 @@ test("sending with large history and two streams bounds historical message reads
     busySendMs: Math.round((busySends[0] ?? 0) * 10) / 10,
     readyMs: Math.round(readyMs * 10) / 10,
     streamMs: Math.round(performance.now() - streamStarted),
+    sendP99DelayMs: Math.round(sendP99DelayMs * 10) / 10,
+    streamP99DelayMs: Math.round(drift.getP99() * 10) / 10,
+    sendSamples,
+    streamSamples: drift.getSamples(),
     sendMaxDelayMs: Math.round(sendMaxDelayMs * 10) / 10,
     streamMaxDelayMs: Math.round(drift.getMax() * 10) / 10,
     maxDelayMs: Math.round(Math.max(sendMaxDelayMs, drift.getMax()) * 10) / 10,
@@ -300,17 +306,27 @@ const getQueryMetrics = (database: Database) => {
 const getTimerDrift = () => {
   let previous = performance.now()
   let maximum = 0
+  // Keep diagnostic mutation local and cap samples even if a failing fixture runs slowly.
+  const samples: number[] = []
   const timer = setInterval(() => {
     const now = performance.now()
-    maximum = Math.max(maximum, now - previous - 2)
+    const delay = Math.max(0, now - previous - 2)
+    maximum = Math.max(maximum, delay)
+    if (samples.length < 4_096) samples.push(delay)
     previous = now
   }, 2)
 
   return {
     getMax: () => maximum,
+    getP99: () => {
+      const ordered = samples.slice().sort((left, right) => left - right)
+      return ordered[Math.max(0, Math.ceil(ordered.length * 0.99) - 1)] ?? 0
+    },
+    getSamples: () => samples.length,
     reset: () => {
       previous = performance.now()
       maximum = 0
+      samples.length = 0
     },
     stop: () => clearInterval(timer),
   }
