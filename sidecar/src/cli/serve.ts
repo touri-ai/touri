@@ -94,6 +94,7 @@ export const runServeCommand = async (options: ServeOptions): Promise<void> => {
       process.exit(0)
     })().catch(() => process.exit(1))
   }
-  process.once("SIGTERM", shutdown)
-  process.once("SIGINT", shutdown)
+  // The stderr relay can forward a signal already delivered to this process.
+  process.on("SIGTERM", shutdown)
+  process.on("SIGINT", shutdown)
 }
