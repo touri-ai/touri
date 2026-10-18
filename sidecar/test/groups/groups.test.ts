@@ -1817,7 +1817,7 @@ test("canceling a member for deletion preserves ask-all peers and unrelated queu
   const turn = await sendAskAll(scenario)
   await until(() => scenario.order.length === 3)
   const otherThread = scenario.data.createThread(scenario.group)
-  const queued = scenario.send("Próximo pedido", otherThread.id)
+  const queued = scenario.send("@pm próximo pedido", otherThread.id)
 
   await scenario.runtime.cancelBotTurns({ botId: scenario.bots[1]?.id ?? "" })
   expect(scenario.persistence.getRun(turn.id)?.status).toBe("running")
@@ -1826,13 +1826,10 @@ test("canceling a member for deletion preserves ask-all peers and unrelated queu
   await until(() => scenario.persistence.getRun(queued.id)?.status === "succeeded")
 
   expect(scenario.persistence.getRun(turn.id)?.status).toBe("succeeded")
-  expect(
-    scenario.runtime
-      .listRuns(scenario.thread.id)
-      .filter((run) => run.groupTurnId === turn.id)
-      .every((run) => run.status === "succeeded"),
-  ).toBe(true)
-  expect(scenario.order).toHaveLength(6)
+  const members = scenario.runtime.listRuns(scenario.thread.id).filter((run) => run.groupTurnId === turn.id)
+  expect(members.find((run) => run.botId === scenario.bots[1]?.id)?.status).toBe("canceled")
+  expect(members.filter((run) => run.status === "succeeded")).toHaveLength(2)
+  expect(scenario.order).toHaveLength(4)
   expect([...scenario.canceledBots]).toEqual([scenario.bots[1]?.id ?? ""])
 })
 

@@ -194,6 +194,7 @@ const makeLiveGroup = async (
 ) => {
   const kernel = workspace.runtime.kernel
   const signals = new Map<string, AbortSignal>()
+  const threadSignals = new Map<string, AbortSignal>()
   const completions = new Map<string, () => void>()
   const provider = history.owner.provider
   const adapter: ProviderAdapter = {
@@ -202,6 +203,7 @@ const makeLiveGroup = async (
     startTurn: async ({ bot, thread, signal, onEvent }) => {
       const finish = Promise.withResolvers<void>()
       signals.set(bot.id, signal)
+      threadSignals.set(thread.id, signal)
       completions.set(bot.id, finish.resolve)
       signal.addEventListener("abort", () => finish.resolve(), { once: true })
       onEvent({ type: "turn_started", externalTurnId: thread.id })
@@ -234,8 +236,8 @@ const makeLiveGroup = async (
     { ...(history.groups.get(history.group.id) ?? history.group), coordinatorBotId: null },
     history.group,
   )
-  const send = async (text: string, groupAction?: "ask_all") => {
-    const response = await workspace.request(`/threads/${history.thread.id}/messages`, {
+  const send = async (text: string, groupAction?: "ask_all", threadId = history.thread.id) => {
+    const response = await workspace.request(`/threads/${threadId}/messages`, {
       text,
       attachmentIds: [],
       ...(groupAction ? { groupAction } : {}),
@@ -247,6 +249,7 @@ const makeLiveGroup = async (
   return {
     groups,
     signals,
+    threadSignals,
     persistence: createRuntimePersistence({ database: workspace.db }),
     send,
     complete: (botId: string) => completions.get(botId)?.(),
@@ -308,6 +311,7 @@ test("deleting an idle group member waits for another member's child and the agg
   const engine = makeDeferredGroupEngine(f.runtime.kernel, history.participant.id)
   const groups = createGroupRuntime(f.runtime.kernel, engine)
   f.runtime.kernel.services.provide("groups.runtime", groups)
+  f.runtime.kernel.services.provide("runtime.cancelBotTurns", groups.cancelBotTurns)
   const turn = groups.enqueue({ threadId: history.thread.id, requestMessageId: "group-message", trigger: "user" })
   if (!turn.success) throw new Error("Could not enqueue test group turn")
   const child = await engine.started
@@ -363,7 +367,7 @@ test("deleting an idle member preserves another member's live turn and queued tu
   expect(live.persistence.getRun(removed.id)).toBeNull()
   live.complete(history.participant.id)
   await until(() => live.persistence.getRun(turn.id)?.status === "succeeded")
-  await until(() => live.persistence.getRun(queued.id)?.status === "running")
+  await until(() => live.signals.get(history.participant.id) !== signal)
   live.complete(history.participant.id)
   await until(() => live.persistence.getRun(queued.id)?.status === "succeeded")
 
@@ -414,7 +418,9 @@ test.each(groupMembers)(
     expect(remaining.every((run) => !live.signals.get(run.botId)?.aborted)).toBe(true)
     expect(live.persistence.getRun(turn.id)?.status).toBe("running")
     expect(live.persistence.getRun(turn.id)?.botId).not.toBe(bot.id)
-    remaining.forEach((run) => live.complete(run.botId))
+    remaining.forEach((run) => {
+      live.complete(run.botId)
+    })
     await until(() => live.persistence.getRun(turn.id)?.status === "succeeded")
 
     const results = live.groups.listRuns(history.thread.id).filter((run) => run.groupTurnId === turn.id)
@@ -431,6 +437,73 @@ test.each(groupMembers)(
     expect(workspace.db.query("PRAGMA foreign_key_check").all()).toEqual([])
   },
 )
+
+test("deleting the shared thread's last member stops its live child while preserving the child's private turn", async () => {
+  const workspace = await fixture()
+  const history = await makeGroupHistory(workspace)
+  const live = await makeLiveGroup(workspace, history)
+  const turn = await live.send(`@"${history.participant.name}" revise`)
+  await until(() => live.signals.has(history.participant.id))
+  const groupSignal = live.signals.get(history.participant.id)
+  history.groups.save({ ...history.group, memberIds: [history.owner.id] }, history.group)
+  const privateTurn = await live.send("Conversa privada", undefined, history.participant.mainThreadId ?? "")
+  await until(() => live.threadSignals.has(history.participant.mainThreadId ?? ""))
+  const privateSignal = live.threadSignals.get(history.participant.mainThreadId ?? "")
+
+  const response = await workspace.request(`/bots/${history.owner.id}`, { name: history.owner.name }, "DELETE")
+
+  expect(response.status).toBe(200)
+  expect(groupSignal?.aborted).toBe(true)
+  expect(privateSignal?.aborted).toBe(false)
+  expect(live.persistence.getRun(turn.id)).toBeNull()
+  expect(live.persistence.getRun(privateTurn.id)?.status).toBe("running")
+  live.complete(history.participant.id)
+  await until(() => live.persistence.getRun(privateTurn.id)?.status === "succeeded")
+  expect(workspace.db.query("PRAGMA foreign_key_check").all()).toEqual([])
+})
+
+test("deleting a queued ask-all recipient records removal before the surviving member starts", async () => {
+  const workspace = await fixture()
+  const history = await makeGroupHistory(workspace)
+  const live = await makeLiveGroup(workspace, history)
+  const active = await live.send(`@"${history.participant.name}" revise`)
+  await until(() => live.signals.has(history.participant.id))
+  const activeSignal = live.signals.get(history.participant.id)
+  const queued = await live.send("Revisem o plano", "ask_all")
+
+  const response = await workspace.request(`/bots/${history.owner.id}`, { name: history.owner.name }, "DELETE")
+
+  expect(response.status).toBe(200)
+  expect(live.persistence.getRun(queued.id)?.status).toBe("queued")
+  expect(activeSignal?.aborted).toBe(false)
+  live.complete(history.participant.id)
+  await until(() => live.persistence.getRun(active.id)?.status === "succeeded")
+  await until(() => live.signals.get(history.participant.id) !== activeSignal)
+  live.complete(history.participant.id)
+  await until(() => live.persistence.getRun(queued.id)?.status === "succeeded")
+  const messages = workspace.runtime.kernel.services.use("store.api")?.activePath({ threadId: history.thread.id }) ?? []
+  expect(messages.some((message) => message.runId === queued.id && message.sender?.id === history.owner.id)).toBe(true)
+})
+
+test("deleting a completed ask-all owner preserves the other member's confirmed result links", async () => {
+  const workspace = await fixture()
+  const history = await makeGroupHistory(workspace)
+  const live = await makeLiveGroup(workspace, history)
+  const turn = await live.send("Revisem o plano", "ask_all")
+  await until(() => live.signals.size === 2)
+  live.complete(history.owner.id)
+  live.complete(history.participant.id)
+  await until(() => live.persistence.getRun(turn.id)?.status === "succeeded")
+
+  const response = await workspace.request(`/bots/${history.owner.id}`, { name: history.owner.name }, "DELETE")
+
+  expect(response.status).toBe(200)
+  expect(live.persistence.getRun(turn.id)).toMatchObject({ status: "succeeded", botId: history.participant.id })
+  expect(live.groups.listRuns(history.thread.id).filter((run) => run.groupTurnId === turn.id)).toEqual([
+    expect.objectContaining({ botId: history.participant.id, status: "succeeded" }),
+  ])
+  expect(workspace.db.query("PRAGMA foreign_key_check").all()).toEqual([])
+})
 
 test("saved browser session cleanup runs after commit while a peer's live turn continues", async () => {
   const workspace = await fixture()

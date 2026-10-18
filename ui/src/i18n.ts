@@ -110,6 +110,7 @@ export const ptBR = {
   "Somente respostas finais confirmadas. Este quadro é apenas para leitura.":
     "Somente respostas finais confirmadas. Este quadro é apenas para leitura.",
   "Sem resultados confirmados neste turno.": "Sem resultados confirmados neste turno.",
+  "O membro foi removido do grupo.": "O membro foi removido do grupo.",
   "Meu Chrome só funciona em bots no computador onde o touri está rodando. Uma máquina remota não pode acessar esse navegador.":
     "Meu Chrome só funciona em bots no computador onde o touri está rodando. Uma máquina remota não pode acessar esse navegador.",
   "OpenCode está disponível no computador local e na máquina Linux. O runtime da nuvem ainda não oferece este provedor.":
@@ -2540,6 +2541,7 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Somente respostas finais confirmadas. Este quadro é apenas para leitura.":
     "Only confirmed final answers. This board is read-only.",
   "Sem resultados confirmados neste turno.": "No confirmed results in this turn yet.",
+  "O membro foi removido do grupo.": "This member was removed from the group.",
   "Salve o token do bot do Telegram.": "Save the Telegram bot token.",
   "Token inválido ou revogado.": "Invalid or revoked token.",
   "Não foi possível conectar ao Telegram. Confira sua conexão e tente novamente.":

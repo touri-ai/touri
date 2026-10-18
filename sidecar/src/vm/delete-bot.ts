@@ -71,54 +71,8 @@ const stopBotTasks = async (kernel: Kernel, botId: string) => {
   // Pause before waiting for turns so the scheduler cannot start more work.
   const db = kernel.db as Database
   db.query("UPDATE bots SET paused = 1 WHERE id = ?").run(botId)
-  const turns = getBotGroupTurns(db, botId)
-  const runIds = turns.flatMap(({ run_id }) => {
-    const children = db.query("SELECT run_id FROM group_run_links WHERE turn_id = ?").all(run_id) as {
-      run_id: string
-    }[]
-    return [run_id, ...children.map((child) => child.run_id)]
-  })
-  turns.forEach((turn) => {
-    kernel.services.use("groups.runtime")?.cancel(turn.run_id)
-  })
   await kernel.services.use("runtime.cancelBotTurns")?.({ botId })
-  await waitForStoppedRuns(kernel, runIds)
   await kernel.services.use("vm.desktop")?.closeBot(botId)
-}
-
-// Only turns this bot answers, or whose shared thread is deleted with it; other members keep running.
-const getBotGroupTurns = (db: Database, botId: string) =>
-  db
-    .query(`SELECT g.run_id FROM group_turns g JOIN runs r ON r.id = g.run_id
-    WHERE r.status IN ('queued','starting','running') AND (
-      r.bot_id = ? OR EXISTS (SELECT 1 FROM json_each(g.recipients_json) WHERE value = ?)
-      OR r.thread_id IN (SELECT t.id FROM threads t WHERE t.bot_id = ? AND NOT EXISTS (
-        SELECT 1 FROM group_members m WHERE m.group_id = t.group_id AND m.bot_id != ?)))`)
-    .all(botId, botId, botId, botId) as { run_id: string }[]
-
-const waitForStoppedRuns = async (kernel: Kernel, runIds: string[]) => {
-  const db = kernel.db as Database
-  const getPendingRun = () =>
-    db
-      .query(
-        "SELECT 1 FROM runs WHERE id IN (SELECT value FROM json_each(?)) AND status IN ('queued','starting','running') LIMIT 1",
-      )
-      .get(JSON.stringify(runIds))
-  if (!getPendingRun()) return
-
-  await new Promise<void>((resolve, reject) => {
-    const finish = (error?: TouriError) => {
-      clearTimeout(timer)
-      unsubscribe()
-      if (error) return reject(error)
-      resolve()
-    }
-    const unsubscribe = kernel.subscribe(({ event }) => {
-      if (event.type === "run.updated" && !getPendingRun()) finish()
-    })
-    const timer = setTimeout(() => finish(new TouriError("TOURI-E1015")), 10_000)
-    if (!getPendingRun()) finish()
-  })
 }
 
 const publishBotDeletion = (
@@ -158,6 +112,7 @@ const deleteBotData = (kernel: Kernel, botId: string) => {
   const db = kernel.db as Database
   return db.transaction(() => {
     detachBotGroupThreads(db, botId)
+    saveRemovedGroupMembers(kernel, botId)
     const attachments = getBotAttachments(db, botId)
     const files = getBotFilePaths(kernel, botId)
     db.query(
@@ -200,6 +155,41 @@ const deleteBotData = (kernel: Kernel, botId: string) => {
   })()
 }
 
+const saveRemovedGroupMembers = (kernel: Kernel, botId: string) => {
+  const db = kernel.db as Database
+  const store = kernel.services.use("store.api")
+  const bot = store?.getBot({ botId })
+  if (!store || !bot) return
+  const turns = db
+    .query(`SELECT root.id, root.thread_id FROM group_turns turn JOIN runs root ON root.id = turn.run_id
+      WHERE root.bot_id != ? AND root.status IN ('queued','starting','running') AND (
+        EXISTS (SELECT 1 FROM json_each(turn.recipients_json) WHERE value = ?)
+        OR EXISTS (SELECT 1 FROM group_run_links link JOIN runs member ON member.id = link.run_id
+          WHERE link.turn_id = root.id AND member.bot_id = ?))`)
+    .all(botId, botId, botId) as { id: string; thread_id: string }[]
+  turns.forEach((turn) => {
+    const thread = store.getThread({ threadId: turn.thread_id })
+    if (!thread || thread.botId === botId) return
+    const text = "O membro foi removido do grupo."
+    const result = store.insertMessage({
+      message: {
+        id: kernel.newId(),
+        threadId: thread.id,
+        parentId: thread.activeLeafId,
+        role: "system",
+        kind: "notice",
+        status: "complete",
+        runId: turn.id,
+        text,
+        parts: [{ type: "notice", code: "group_member_removed", level: "warning", text }],
+        sender: { id: bot.id, name: bot.name },
+        source: "local",
+      },
+    })
+    if (!result.success) throw new TouriError("TOURI-E2014")
+  })
+}
+
 const detachBotGroupThreads = (db: Database, botId: string) => {
   // Shared conversations belong to the remaining group, just as when members are edited.
   const nextMember = `SELECT m.bot_id FROM group_members m
@@ -207,6 +197,16 @@ const detachBotGroupThreads = (db: Database, botId: string) => {
   db.query(`UPDATE threads SET bot_id = (${nextMember})
     WHERE bot_id = ? AND group_id IS NOT NULL AND group_thread_id IS NULL
       AND EXISTS (${nextMember})`).run(botId, botId, botId)
+  // Completed ask-all turns also keep their surviving members' result links.
+  db.query(`UPDATE runs SET bot_id = (SELECT bot_id FROM threads WHERE id = runs.thread_id)
+    WHERE bot_id = ? AND thread_id IN (SELECT id FROM threads WHERE bot_id != ?)
+      AND id IN (SELECT turn.run_id FROM group_turns turn JOIN runs root ON root.id = turn.run_id
+        JOIN messages request ON request.id = root.request_message_id
+        WHERE EXISTS (SELECT 1 FROM json_each(request.parts_json)
+          WHERE json_extract(value, '$.type') = 'notice' AND json_extract(value, '$.code') = 'group_ask_all'))`).run(
+    botId,
+    botId,
+  )
 }
 
 const deleteBotRunReferences = (db: Database, botId: string) => {

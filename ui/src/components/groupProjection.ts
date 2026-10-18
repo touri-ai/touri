@@ -40,8 +40,17 @@ export const getGroupProjection = (threadId: string | undefined, messages: Messa
     ]),
   )
   const board = turn ? confirmed.filter((message) => runsById.get(message.runId ?? "")?.groupTurnId === turn.id) : []
+  const removed = turn
+    ? messages.filter(
+        (message) =>
+          message.threadId === threadId &&
+          message.runId === turn.id &&
+          message.role === "system" &&
+          message.parts.some((part) => part.type === "notice" && part.code === "group_member_removed"),
+      )
+    : []
 
-  return { board, members }
+  return { board, members, removed }
 }
 
 export const getGroupBoard = (threadId: string | undefined, messages: Message[], runs: Run[]) =>

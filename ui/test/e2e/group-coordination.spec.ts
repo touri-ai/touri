@@ -1,6 +1,25 @@
 import AxeBuilder from "@axe-core/playwright"
 import { expect, test } from "@playwright/test"
 
+test("the board retains a removed member beside the surviving result on desktop and phone", async ({
+  page,
+}, testInfo) => {
+  await page.emulateMedia({ reducedMotion: "reduce" })
+  await page.goto("/test/e2e/group-member-removal-harness.html")
+  const board = page.getByRole("region", { name: "Resultados do turno", exact: true })
+
+  await expect(board.getByText("Plano revisado. A equipe pode continuar.")).toBeVisible()
+  await expect(board.getByText("Revisor", { exact: true })).toBeVisible()
+  await expect(board.getByText("O membro foi removido do grupo.")).toBeVisible()
+
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.screenshot({ path: testInfo.outputPath("group-partial-success-removed-desktop.png") })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expect(board.getByText("O membro foi removido do grupo.")).toBeVisible()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+  await page.screenshot({ path: testInfo.outputPath("group-partial-success-removed-phone.png") })
+})
+
 test("group actions send a parallel request and show a confirmed board on desktop and phone", async ({
   page,
 }, testInfo) => {
