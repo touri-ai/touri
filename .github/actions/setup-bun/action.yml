@@ -12,7 +12,7 @@ runs:
         bun-version: ${{ inputs.bun-version }}
     - name: Cache Bun packages and workspace dependencies
       id: dependencies
-      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
       with:
         path: |
           ~/.bun/install/cache
@@ -24,6 +24,17 @@ runs:
     # Always install: a cache hit must not conceal an invalid lockfile or workspace link.
     - run: bun install --frozen-lockfile
       shell: bash
+    - name: Save verified workspace dependencies
+      if: steps.dependencies.outputs.cache-hit != 'true'
+      uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      with:
+        path: |
+          ~/.bun/install/cache
+          node_modules
+          ui/node_modules
+          sidecar/node_modules
+          packages/contracts/node_modules
+        key: ${{ steps.dependencies.outputs.cache-primary-key }}
     - name: Cache Vite and incremental TypeScript state
       id: compiler
       uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0

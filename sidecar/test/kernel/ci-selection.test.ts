@@ -54,6 +54,23 @@ test("installers and artifact uploads run on main/manual runs, with full Linux c
   expect(workflow).toMatch(/cancel-in-progress: \$\{\{ github.event_name == 'pull_request' \}\}/)
 })
 
+test("verified downloads are saved before later checks can fail", () => {
+  const composer = jobs.get("composer-performance") ?? ""
+  const workspace = readFileSync(new URL("../../../.github/actions/setup-bun/action.yml", import.meta.url), "utf8")
+
+  const browserSave = composer.indexOf("name: Save verified browser downloads")
+  const browserCheck = composer.indexOf("name: Check long-conversation typing")
+  const workspaceInstall = workspace.indexOf("run: bun install --frozen-lockfile")
+  const workspaceSave = workspace.indexOf("name: Save verified workspace dependencies")
+
+  expect(browserSave).toBeGreaterThan(0)
+  expect(browserCheck).toBeGreaterThan(browserSave)
+  expect(workspaceInstall).toBeGreaterThan(0)
+  expect(workspaceSave).toBeGreaterThan(workspaceInstall)
+  expect(composer).toContain("uses: actions/cache/save@")
+  expect(workspace).toContain("uses: actions/cache/save@")
+})
+
 test("UI and documentation PRs skip native work; native, policy and workflow PRs run it", () => {
   expect(needsNative("pull_request", ["ui/src/App.tsx", "README.md"])).toBe(false)
   for (const path of [
