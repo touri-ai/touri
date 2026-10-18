@@ -527,6 +527,11 @@ const AppContent = ({ kernel }: AppProps) => {
   const notice = localNotice ?? data.notice
   // This completion notice already points to the inline account recovery control.
   const noticeHasInlineRecovery = notice === t("Bot created. Could not connect your account. Sign in below to chat.")
+  const isErrorNotice =
+    !noticeHasInlineRecovery &&
+    (typeof notice !== "string" ||
+      errorRecovery(notice).classified ||
+      /erro|falh|failed|Error|TOURI-E\d{4}|[{}]/i.test(notice))
   const noticeRecord = data.notifications.find(
     (item) => typeof notice === "string" && notice.endsWith(localizeNotice(item.body)),
   )
@@ -836,12 +841,9 @@ const AppContent = ({ kernel }: AppProps) => {
         {/* r8 motion: transient notice presence */}
         <MotionPresence show={Boolean(notice)} kind="toast">
           {Boolean(notice) && (
-            <div className="notice-bar" role="status">
+            <div className={`notice-bar ${isErrorNotice ? "notice-error" : "notice-info"}`} role="status">
               <span>◈</span>
-              {!noticeHasInlineRecovery &&
-              (typeof notice !== "string" ||
-                errorRecovery(notice).classified ||
-                /erro|falh|failed|Error|[{}]/i.test(notice)) ? (
+              {isErrorNotice ? (
                 <ErrorNotice
                   error={notice}
                   context={noticeContext}
