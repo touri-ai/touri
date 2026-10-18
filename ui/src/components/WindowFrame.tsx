@@ -16,7 +16,11 @@ export const getWindowChrome = ({
   native,
   userAgent,
   search,
-}: { native: boolean; userAgent: string; search: string }): "overlay" | "system" => {
+}: {
+  native: boolean
+  userAgent: string
+  search: string
+}): "overlay" | "system" => {
   if (!native || !/Macintosh|Mac OS X/i.test(userAgent)) return "system"
   if (new URLSearchParams(search).has("computer")) return "system"
 
