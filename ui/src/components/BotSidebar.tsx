@@ -575,7 +575,7 @@ const BotEntry = ({
               role="img"
               aria-label={status ?? t("Em execução")}
             />
-          ) : unread > 0 ? (
+          ) : unread > 0 && !expanded ? (
             <span className="sidebar-unread" role="img" aria-label={t("Unread messages", { count: unread })}>
               {unread > 99 ? "99+" : unread}
             </span>

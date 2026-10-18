@@ -8,6 +8,13 @@ import { openRoutines } from "./workspaceNavigation"
 
 const localDate = (day: number, hour = 12): number => new Date(2026, 9, day, hour).getTime()
 
+const getBotEntry = (botId: string): HTMLElement => {
+  const entry = document.querySelector<HTMLElement>(`[data-bot-entry="${botId}"]`)
+  if (!entry) throw new Error(`Missing bot sidebar entry: ${botId}`)
+
+  return entry
+}
+
 const notice = (patch: Partial<NotificationRecord>): NotificationRecord => ({
   id: 1,
   kind: "turn-failed",
@@ -59,6 +66,39 @@ describe("r8 sidebar: attention history", () => {
     expect(relativeThreadDate(localDate(11), localDate(13))).toBe("11 de out.")
     expect(relativeThreadDate(new Date(2025, 9, 13).getTime(), localDate(13))).toContain("2025")
   })
+})
+
+it("shows one unread count for an expanded conversation and its aggregate when collapsed", async () => {
+  const api = createMockApi()
+  render(<App kernel={{ services: { api } }} />)
+  await screen.findByRole("textbox", { name: "Mensagem para mark" })
+
+  const mark = getBotEntry("bot-mark")
+  expect(mark.querySelector(".bot-row .sidebar-unread")).toBeNull()
+  expect(mark.querySelectorAll(".thread-row .sidebar-unread")).toHaveLength(1)
+  expect(mark.querySelector(".thread-row .sidebar-unread")).toHaveTextContent("2")
+
+  const onbButton = getBotEntry("bot-onb").querySelector(".bot-row-main")
+  if (!(onbButton instanceof HTMLButtonElement)) throw new Error("Missing bot row button")
+  fireEvent.click(onbButton)
+
+  await screen.findByRole("textbox", { name: "Mensagem para onb" })
+  expect(mark.querySelector(".bot-row .sidebar-unread")).toHaveTextContent("2")
+  expect(mark.querySelector(".bot-thread-tree")).toBeNull()
+})
+
+it("keeps each unread count on its conversation when several are visible", async () => {
+  const api = createMockApi()
+  await api.request("POST /threads", { botId: "bot-mark", title: "Campaign follow-up" })
+  render(<App kernel={{ services: { api } }} />)
+  await screen.findByRole("textbox", { name: "Mensagem para mark" })
+
+  const mark = getBotEntry("bot-mark")
+  expect(mark.querySelector(".bot-row .sidebar-unread")).toBeNull()
+  expect(Array.from(mark.querySelectorAll(".thread-row .sidebar-unread"), (badge) => badge.textContent)).toEqual([
+    "2",
+    "2",
+  ])
 })
 
 it("keeps bots reachable beside global screens, footer integrations and creation", async () => {
