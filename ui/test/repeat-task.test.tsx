@@ -172,7 +172,7 @@ describe("repeating work", () => {
     )
     fireEvent.click(screen.getByText("Histórico de execuções"))
     expect(screen.getByText(/Disparo não executado/)).toBeVisible()
-    expect(screen.getByText("Recuperação após indisponibilidade")).toBeVisible()
+    expect(screen.getByText("Execução de recuperação")).toBeVisible()
     expect(screen.queryByText(/skipped|catch-up/)).toBeNull()
   })
 })

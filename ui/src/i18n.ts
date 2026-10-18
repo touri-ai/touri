@@ -3,20 +3,6 @@ import { userFacingError } from "./errors"
 /** All UI copy lives here. pt-BR is the default; English is available for a future locale picker. */
 export type Locale = "pt-BR" | "en"
 export const ptBR = {
-  "A exclusão deste bot já está em andamento. Aguarde a conclusão.":
-    "A exclusão deste bot já está em andamento. Aguarde a conclusão.",
-  "Não foi possível encerrar as tarefas ou fechar a tela do bot. Pare as tarefas e tente excluir novamente.":
-    "Não foi possível encerrar as tarefas ou fechar a tela do bot. Pare as tarefas e tente excluir novamente.",
-  "Não foi possível apagar os logins do bot. Desbloqueie o cofre do sistema e tente excluir novamente.":
-    "Não foi possível apagar os logins do bot. Desbloqueie o cofre do sistema e tente excluir novamente.",
-  "Não foi possível remover o computador ou os volumes do bot. Confira o serviço de máquinas e tente excluir novamente.":
-    "Não foi possível remover o computador ou os volumes do bot. Confira o serviço de máquinas e tente excluir novamente.",
-  "O computador do bot ainda está em uso. Pare as tarefas e tente excluir novamente.":
-    "O computador do bot ainda está em uso. Pare as tarefas e tente excluir novamente.",
-  "Não foi possível apagar os arquivos do bot. Confira as permissões da pasta de dados e tente excluir novamente.":
-    "Não foi possível apagar os arquivos do bot. Confira as permissões da pasta de dados e tente excluir novamente.",
-  "Não foi possível remover o histórico e os vínculos do bot. Tente excluir novamente; se persistir, envie um relato do problema.":
-    "Não foi possível remover o histórico e os vínculos do bot. Tente excluir novamente; se persistir, envie um relato do problema.",
   "Salve o token do bot do Telegram.": "Salve o token do bot do Telegram.",
   "Token inválido ou revogado.": "Token inválido ou revogado.",
   "Não foi possível conectar ao Telegram. Confira sua conexão e tente novamente.":
@@ -322,6 +308,20 @@ export const ptBR = {
   "Excluir a rotina {name}?": "Excluir a rotina {name}?",
   "Ela não vai mais rodar. O histórico de execuções continua nas conversas.":
     "Ela não vai mais rodar. O histórico de execuções continua nas conversas.",
+  "A exclusão deste bot já está em andamento. Aguarde a conclusão.":
+    "A exclusão deste bot já está em andamento. Aguarde a conclusão.",
+  "Não foi possível encerrar as tarefas ou fechar a tela do bot. Pare as tarefas e tente excluir novamente.":
+    "Não foi possível encerrar as tarefas ou fechar a tela do bot. Pare as tarefas e tente excluir novamente.",
+  "Não foi possível apagar os logins do bot. Desbloqueie o cofre do sistema e tente excluir novamente.":
+    "Não foi possível apagar os logins do bot. Desbloqueie o cofre do sistema e tente excluir novamente.",
+  "Não foi possível remover o computador ou os volumes do bot. Confira o serviço de máquinas e tente excluir novamente.":
+    "Não foi possível remover o computador ou os volumes do bot. Confira o serviço de máquinas e tente excluir novamente.",
+  "O computador do bot ainda está em uso. Pare as tarefas e tente excluir novamente.":
+    "O computador do bot ainda está em uso. Pare as tarefas e tente excluir novamente.",
+  "Não foi possível apagar os arquivos do bot. Confira as permissões da pasta de dados e tente excluir novamente.":
+    "Não foi possível apagar os arquivos do bot. Confira as permissões da pasta de dados e tente excluir novamente.",
+  "Não foi possível remover o histórico e os vínculos do bot. Tente excluir novamente; se persistir, envie um relato do problema.":
+    "Não foi possível remover o histórico e os vínculos do bot. Tente excluir novamente; se persistir, envie um relato do problema.",
   "Não foi possível excluir a rotina. Tente novamente.": "Não foi possível excluir a rotina. Tente novamente.",
   "Excluindo…": "Excluindo…",
   Excluir: "Excluir",
@@ -1658,6 +1658,11 @@ export const ptBR = {
   "Search shortcut": "⌘K buscar",
   "Message bot": "Mensagem para {name}",
   "Routine skipped named": "Rotina adiada: {name}",
+  "Rotina “{name}” não executada: o touri não estava em execução no horário agendado.":
+    "Rotina “{name}” não executada: o touri não estava em execução no horário agendado.",
+  "Rotina “{name}” não executada: o atraso ultrapassou a janela de recuperação.":
+    "Rotina “{name}” não executada: o atraso ultrapassou a janela de recuperação.",
+  "Execução de recuperação": "Execução de recuperação",
   atribuído: "atribuído",
   "não atribuído": "não atribuído",
   "Caminho absoluto da pasta": "Caminho absoluto da pasta",
@@ -2182,20 +2187,11 @@ export const ptBR = {
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
-  "A exclusão deste bot já está em andamento. Aguarde a conclusão.":
-    "This bot is already being deleted. Wait for deletion to finish.",
-  "Não foi possível encerrar as tarefas ou fechar a tela do bot. Pare as tarefas e tente excluir novamente.":
-    "Could not stop the bot's tasks or close its screen. Stop the tasks and try deleting again.",
-  "Não foi possível apagar os logins do bot. Desbloqueie o cofre do sistema e tente excluir novamente.":
-    "Could not delete the bot's sign-ins. Unlock the system keychain and try deleting again.",
-  "Não foi possível remover o computador ou os volumes do bot. Confira o serviço de máquinas e tente excluir novamente.":
-    "Could not remove the bot's computer or volumes. Check the machine service and try deleting again.",
-  "O computador do bot ainda está em uso. Pare as tarefas e tente excluir novamente.":
-    "The bot's computer is still in use. Stop the tasks and try deleting again.",
-  "Não foi possível apagar os arquivos do bot. Confira as permissões da pasta de dados e tente excluir novamente.":
-    "Could not delete the bot's files. Check the data folder permissions and try deleting again.",
-  "Não foi possível remover o histórico e os vínculos do bot. Tente excluir novamente; se persistir, envie um relato do problema.":
-    "Could not remove the bot's history and links. Try deleting again; if the problem persists, send a problem report.",
+  "Rotina “{name}” não executada: o touri não estava em execução no horário agendado.":
+    "Routine “{name}” did not run: touri was not running at the scheduled time.",
+  "Rotina “{name}” não executada: o atraso ultrapassou a janela de recuperação.":
+    "Routine “{name}” did not run: the delay exceeded the catch-up window.",
+  "Execução de recuperação": "Catch-up run",
   "Salve o token do bot do Telegram.": "Save the Telegram bot token.",
   "Token inválido ou revogado.": "Invalid or revoked token.",
   "Não foi possível conectar ao Telegram. Confira sua conexão e tente novamente.":
@@ -2494,6 +2490,20 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Excluir a rotina {name}?": "Delete routine {name}?",
   "Ela não vai mais rodar. O histórico de execuções continua nas conversas.":
     "It will no longer run. Execution history remains in conversations.",
+  "A exclusão deste bot já está em andamento. Aguarde a conclusão.":
+    "This bot is already being deleted. Wait for deletion to finish.",
+  "Não foi possível encerrar as tarefas ou fechar a tela do bot. Pare as tarefas e tente excluir novamente.":
+    "Could not stop the bot's tasks or close its screen. Stop the tasks and try deleting again.",
+  "Não foi possível apagar os logins do bot. Desbloqueie o cofre do sistema e tente excluir novamente.":
+    "Could not delete the bot's sign-ins. Unlock the system keychain and try deleting again.",
+  "Não foi possível remover o computador ou os volumes do bot. Confira o serviço de máquinas e tente excluir novamente.":
+    "Could not remove the bot's computer or volumes. Check the machine service and try deleting again.",
+  "O computador do bot ainda está em uso. Pare as tarefas e tente excluir novamente.":
+    "The bot's computer is still in use. Stop the tasks and try deleting again.",
+  "Não foi possível apagar os arquivos do bot. Confira as permissões da pasta de dados e tente excluir novamente.":
+    "Could not delete the bot's files. Check the data folder permissions and try deleting again.",
+  "Não foi possível remover o histórico e os vínculos do bot. Tente excluir novamente; se persistir, envie um relato do problema.":
+    "Could not remove the bot's history and links. Try deleting again; if the problem persists, send a problem report.",
   "Não foi possível excluir a rotina. Tente novamente.": "Could not delete the routine. Try again.",
   "Excluindo…": "Deleting…",
   Excluir: "Delete",
@@ -3816,6 +3826,8 @@ export const statusLabel = (status: string): string => {
 
 /** Translate only application-authored notices, leaving bot/user content intact. */
 export const localizeNotice = (value: string): string => {
+  const routineSkip = getRoutineSkipSummary(value)
+  if (routineSkip) return routineSkip
   const toolCheck = /^Ferramentas do touri · (.+)$/.exec(value)
   if (toolCheck) return t("Ferramentas do touri · {name}", { name: toolCheck[1] ?? "" })
   const browserSession = /^Navegador · (.+) · sessão salva$/.exec(value)
@@ -3853,6 +3865,26 @@ export const localizeNotice = (value: string): string => {
   }
   const skipped = value.match(/^Routine skipped: (.+)$/)
   return skipped ? t("Routine skipped named", { name: skipped[1] ?? "" }) : value
+}
+
+export const getRoutineSkipSummary = (value: string, locale: Locale = "pt-BR"): string | undefined => {
+  const offline = /^Rotina “(.+)” não executada: o touri não estava em execução no horário agendado\.$/s.exec(value)
+  if (offline)
+    return t(
+      "Rotina “{name}” não executada: o touri não estava em execução no horário agendado.",
+      { name: offline[1] ?? "" },
+      locale,
+    )
+
+  const late = /^Rotina “(.+)” não executada: o atraso ultrapassou a janela de recuperação\.$/s.exec(value)
+  if (late)
+    return t(
+      "Rotina “{name}” não executada: o atraso ultrapassou a janela de recuperação.",
+      { name: late[1] ?? "" },
+      locale,
+    )
+
+  return undefined
 }
 
 export const machineStatusLabel = (status: string, pauseReason?: string | null): string =>
