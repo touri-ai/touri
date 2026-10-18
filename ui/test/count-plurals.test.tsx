@@ -107,6 +107,7 @@ it.each(counts)("renders routine agreement for %i routines", async (count) => {
   if (!routine) throw new Error("Missing routine")
   render(
     <CronScreen
+      host="server"
       selectedBotId={null}
       bots={api.getState().bots}
       routines={Array.from({ length: count }, (_, index) => ({ ...routine, id: `routine-${index}` }))}

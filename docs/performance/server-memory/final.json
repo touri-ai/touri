@@ -1,0 +1,25 @@
+{
+  "scenario": "large replies",
+  "duration": 15000,
+  "interval": 500,
+  "replies": 62,
+  "events": 186,
+  "samples": [
+    {
+      "elapsedMs": 14,
+      "usedBytes": 6569612,
+      "nodes": 919
+    },
+    {
+      "elapsedMs": 15113,
+      "usedBytes": 7473320,
+      "nodes": 948
+    }
+  ],
+  "backgroundHistoryMessages": 3,
+  "sourceBase": "73cc491",
+  "loginReads": 1,
+  "historyReads": {
+    "/api/v1/threads/memory-thread-0/messages": 1
+  }
+}

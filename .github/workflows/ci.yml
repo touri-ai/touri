@@ -36,7 +36,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-bun
         with:
-          bun-version: 1.2.21
+          bun-version: 1.4.3
       - run: bun run typecheck --incremental --tsBuildInfoFile node_modules/.cache/ci.tsbuildinfo
       - run: bun packages/contracts/src/validate-catalog.ts
       - run: bun test sidecar/test/kernel/catalog-validation.test.ts
@@ -131,7 +131,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-bun
         with:
-          bun-version: 1.2.21
+          bun-version: 1.4.3
       - run: bunx tsc --noEmit -p tsconfig.base.json --incremental --tsBuildInfoFile node_modules/.cache/ci.tsbuildinfo
       - run: bun --cwd ui build
 
@@ -157,7 +157,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-bun
         with:
-          bun-version: 1.2.21
+          bun-version: 1.4.3
       - name: Resolve browser cache version
         id: playwright
         working-directory: ui
@@ -165,7 +165,7 @@ jobs:
         run: echo "version=$(bun -e 'console.log(require("@playwright/test/package.json").version)')" >> "$GITHUB_OUTPUT"
       - name: Cache Playwright browsers
         id: browsers
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.cache/ms-playwright
           key: playwright-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright.outputs.version }}
@@ -173,6 +173,13 @@ jobs:
         if: steps.browsers.outputs.cache-hit != 'true'
         working-directory: ui
         run: bunx playwright install --with-deps chromium
+      # These verified downloads remain useful even if the performance assertion fails.
+      - name: Save verified browser downloads
+        if: steps.browsers.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ steps.browsers.outputs.cache-primary-key }}
       - name: Report browser cache
         env:
           BROWSER_HIT: ${{ steps.browsers.outputs.cache-hit == 'true' }}
@@ -225,7 +232,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-bun
         with:
-          bun-version: 1.2.21
+          bun-version: 1.4.3
       - run: bunx license-checker --production --summary
 
   linux:

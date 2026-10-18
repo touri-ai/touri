@@ -76,6 +76,8 @@ const Mem0CardForm = ({ api, botId }: { api: UiApi; botId: string }) => {
   if (!draft || !saved) return null
   const busy = status.kind === "busy"
   const dirty = apiKey !== "" || JSON.stringify(draft) !== JSON.stringify(saved)
+  const hasDestinationChanged =
+    draft.mode !== saved.mode || (draft.mode === "server" && draft.url.replace(/\/+$/, "") !== saved.url)
   const update = (patch: Partial<Mem0Settings>) => {
     setDraft({ ...draft, ...patch })
     setStatus({ kind: "idle" })
@@ -144,6 +146,11 @@ const Mem0CardForm = ({ api, botId }: { api: UiApi; botId: string }) => {
               onChange={(event) => setApiKey(event.target.value)}
             />
           </label>
+          {saved.hasApiKey && hasDestinationChanged && !apiKey.trim() && (
+            <p className="field-help">
+              {t("Ao mudar o destino, a chave anterior é removida. Digite a nova chave antes de salvar.")}
+            </p>
+          )}
           {saved.hasApiKey && (
             <p className="field-help">
               {t("Chave salva. Digite outra para trocar.")}{" "}
