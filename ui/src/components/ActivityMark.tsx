@@ -2,6 +2,7 @@ import type { MessagePart, Run } from "@touri/contracts"
 import type { AvatarIdentity } from "@touri/contracts/avatar"
 import { useEffect, useLayoutEffect, useRef, useState } from "react"
 import type { UiApi } from "../api/client"
+import { getQueueLabel } from "../features/work/presentation"
 import { type Locale, t } from "../i18n"
 import { activeToolFor, activityKindFor, activityLabelFor } from "./activityStatus"
 import { BotAvatar } from "./BotAvatar"
@@ -78,18 +79,8 @@ export const ActivityMark = ({
   const approvalId = pending?.type === "approval" ? pending.approvalId : undefined
   const quietMs = Math.max(0, now - since)
   const preparingComputer = preparingEnvironment && !providerAt
-  const slow = !waiting && !preparingComputer && quietMs >= 30_000
-  const label = waiting
-    ? activityLabelFor(state, parts, locale)
-    : slow
-      ? t("A resposta está demorando. Você pode continuar esperando ou verificar a conexão.", {}, locale)
-      : preparingComputer
-        ? t("Ligando o computador do bot…", {}, locale)
-        : quietMs >= 10_000 && activeToolFor(parts)
-          ? t("A tarefa continua em execução.", {}, locale)
-          : quietMs >= 10_000 && providerAt
-            ? t("Ainda aguardando a IA responder.", {}, locale)
-            : activityLabelFor(state, parts, locale)
+  const slow = run?.status !== "queued" && !waiting && !preparingComputer && quietMs >= 30_000
+  const label = getActivityLabel({ run, state, parts, locale, slow, preparingComputer, quietMs, providerAt })
   return (
     <div
       className="activity-mark"
@@ -228,4 +219,33 @@ export const ActivityMark = ({
       )}
     </div>
   )
+}
+
+const getActivityLabel = ({
+  run,
+  state,
+  parts,
+  locale,
+  slow,
+  preparingComputer,
+  quietMs,
+  providerAt,
+}: {
+  run: Run | undefined
+  state: MascotState
+  parts: readonly MessagePart[]
+  locale: Locale
+  slow: boolean
+  preparingComputer: boolean
+  quietMs: number
+  providerAt: number | null | undefined
+}): string => {
+  if (run?.status === "queued") return getQueueLabel(run, locale)
+  if (state === "waiting-approval") return activityLabelFor(state, parts, locale)
+  if (slow) return t("A resposta está demorando. Você pode continuar esperando ou verificar a conexão.", {}, locale)
+  if (preparingComputer) return t("Ligando o computador do bot…", {}, locale)
+  if (quietMs >= 10_000 && activeToolFor(parts)) return t("A tarefa continua em execução.", {}, locale)
+  if (quietMs >= 10_000 && providerAt) return t("Ainda aguardando a IA responder.", {}, locale)
+
+  return activityLabelFor(state, parts, locale)
 }

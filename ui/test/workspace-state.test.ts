@@ -1,19 +1,22 @@
 import { expect, it } from "vitest"
 import { readWorkspaceState, saveWorkspaceState } from "../src/workspaceState"
 
-it.each(["cron", "integracoes", "mcp"])("migrates the saved %s destination into Advanced", (page) => {
-  localStorage.setItem(
-    "touri.workspace.v1",
-    JSON.stringify({ botId: "bot-a", threadId: "thread-a", route: { section: "touri", page } }),
-  )
-  expect(readWorkspaceState()).toEqual({
-    botId: "bot-a",
-    threadId: "thread-a",
-    route: { section: "advanced", page },
-  })
-  saveWorkspaceState({ panelsByBot: { "bot-a": false } })
-  expect(JSON.parse(localStorage.getItem("touri.workspace.v1") ?? "{}").route).toEqual({ section: "advanced", page })
-})
+it.each(["cron", "integracoes", "mcp", "work", "performance"])(
+  "migrates the saved %s destination into Advanced",
+  (page) => {
+    localStorage.setItem(
+      "touri.workspace.v1",
+      JSON.stringify({ botId: "bot-a", threadId: "thread-a", route: { section: "touri", page } }),
+    )
+    expect(readWorkspaceState()).toEqual({
+      botId: "bot-a",
+      threadId: "thread-a",
+      route: { section: "advanced", page },
+    })
+    saveWorkspaceState({ panelsByBot: { "bot-a": false } })
+    expect(JSON.parse(localStorage.getItem("touri.workspace.v1") ?? "{}").route).toEqual({ section: "advanced", page })
+  },
+)
 
 it.each(["chat", "preview"])("preserves the saved bot %s route and panel choice", (screen) => {
   const saved = { route: { section: "bots", screen }, panelsByBot: { "bot-a": true } }
@@ -24,6 +27,14 @@ it.each(["chat", "preview"])("preserves the saved bot %s route and panel choice"
 it("restores a bot-scoped routines route", () => {
   const route = { section: "advanced", page: "cron", botId: "bot-a" } as const
   saveWorkspaceState({ route })
+  expect(readWorkspaceState().route).toEqual(route)
+})
+
+it("restores an expanded history route with its bot and routine filters", () => {
+  const route = { section: "advanced", page: "cron", botId: "bot-a", history: { routineId: "routine-a" } } as const
+
+  saveWorkspaceState({ route })
+
   expect(readWorkspaceState().route).toEqual(route)
 })
 

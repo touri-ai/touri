@@ -81,9 +81,102 @@ test("pause, budget editing, resume and complete require explicit clicks", async
   fireEvent.click(screen.getByRole("button", { name: "Retomar" }))
   await screen.findByRole("button", { name: "Pausar" })
   fireEvent.click(screen.getByRole("button", { name: "Concluir agora" }))
-  await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Concluído"))
+  await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Objetivo concluído"))
 
   expect(screen.queryByRole("button", { name: "Retomar" })).toBeNull()
+})
+
+test("completing a goal keeps the next goal form closed when the conversation is reopened", async () => {
+  const { api, unmount } = makeFixture()
+  await startGoal()
+  fireEvent.click(screen.getByRole("button", { name: "Alterar orçamento" }))
+
+  fireEvent.click(screen.getByRole("button", { name: "Concluir agora" }))
+  await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Objetivo concluído"))
+
+  const panel = screen.getByRole("region", { name: "Continuar até concluir" })
+  expect(panel).toHaveTextContent(/^Objetivo concluídoNovo objetivo$/)
+  expect(screen.getByRole("button", { name: "Novo objetivo" })).toHaveAttribute("aria-expanded", "false")
+  expect(screen.queryByRole("spinbutton")).toBeNull()
+  expect(screen.queryByRole("textbox")).toBeNull()
+
+  unmount()
+  makeFixture(true, api)
+
+  await screen.findByText("Objetivo concluído")
+  expect(screen.getByRole("button", { name: "Novo objetivo" })).toHaveAttribute("aria-expanded", "false")
+  expect(screen.queryByRole("textbox")).toBeNull()
+  expect(screen.queryByText("Avançado · Continuar até concluir")).toBeNull()
+})
+
+test("a new goal draft stays below completion, survives updates and starts the next goal", async () => {
+  const { api, request } = makeFixture()
+  const thread = api.getState().threads.find((candidate) => candidate.id === request.threadId)
+  if (!thread) throw new Error("Missing mock conversation")
+  await startGoal()
+  fireEvent.click(screen.getByRole("button", { name: "Concluir agora" }))
+  await screen.findByText("Objetivo concluído")
+
+  fireEvent.click(screen.getByRole("button", { name: "Novo objetivo" }))
+  const criterion = screen.getByRole("textbox", { name: "O que precisa estar pronto para concluir?" })
+  fireEvent.change(criterion, {
+    target: { value: "Resumo revisado com fontes." },
+  })
+  await act(async () => api.emit({ type: "thread.updated", thread }))
+
+  expect(screen.getByText("Objetivo concluído")).toBeVisible()
+  expect(screen.getByRole("button", { name: "Novo objetivo" })).toHaveAttribute("aria-expanded", "true")
+  expect(criterion).toHaveFocus()
+  expect(criterion).toBeVisible()
+  expect(criterion).toHaveValue("Resumo revisado com fontes.")
+
+  fireEvent.click(screen.getByRole("button", { name: "Continuar até concluir" }))
+  await screen.findByRole("button", { name: "Pausar" })
+
+  const starts = api.calls.filter((call) => call.route === "POST /threads/:id/goal")
+  expect(starts).toHaveLength(2)
+  expect(starts.at(-1)?.input).toEqual({
+    requestMessageId: request.id,
+    completionCriterion: "Resumo revisado com fontes.",
+    maxTurns: 4,
+    maxMinutes: 15,
+  })
+  expect(screen.getByRole("status")).toHaveTextContent("Em andamento")
+  expect(screen.queryByRole("button", { name: "Novo objetivo" })).toBeNull()
+})
+
+test.each(["turns", "time"] as const)("exhausting the %s budget collapses the checkpoint", async (limit) => {
+  const { api, request } = makeFixture()
+  await startGoal()
+  const { goal } = await api.request("GET /threads/:id/goal", {}, { id: request.threadId })
+  const thread = api.getState().threads.find((candidate) => candidate.id === request.threadId)
+  if (!goal || !thread) throw new Error("Missing mock goal")
+  const exhausted = {
+    ...goal,
+    status: "budget_exhausted" as const,
+    turnsUsed: limit === "turns" ? goal.maxTurns : goal.turnsUsed,
+    deadlineAt: limit === "time" ? Date.now() - 1 : goal.deadlineAt,
+    updatedAt: goal.updatedAt + 1,
+  }
+  vi.spyOn(api, "request").mockResolvedValue({ goal: exhausted })
+
+  await act(async () => api.emit({ type: "thread.updated", thread }))
+
+  const summary = screen.getByRole("button", { name: "Objetivo parado · limite atingido" })
+  expect(summary).toHaveAttribute("aria-expanded", "false")
+  expect(screen.queryByText(/turnos seguintes/)).toBeNull()
+  expect(screen.queryByText("Aguardando o primeiro passo registrado.")).toBeNull()
+  expect(screen.queryByText("Avançado · Continuar até concluir")).toBeNull()
+  expect(screen.queryByRole("button", { name: "Retomar" })).toBeNull()
+
+  fireEvent.click(summary)
+
+  expect(summary).toHaveAttribute("aria-expanded", "true")
+  expect(screen.getByRole("button", { name: "Retomar" })).toBeVisible()
+  expect(screen.getByRole("button", { name: "Alterar orçamento" })).toBeVisible()
+  expect(screen.getByText(/O limite foi atingido e o bot parou/)).toBeVisible()
+  expect(screen.queryByText(/min restantes/)).toBeNull()
+  expect(screen.queryByText("Aguardando o primeiro passo registrado.")).toBeNull()
 })
 
 test("without an authorized folder the ordinary conversation limit is explained", async () => {
@@ -125,6 +218,9 @@ test("goal state and controls have English copy", () => {
     "Goal folder required",
     "Goal budget exhausted help",
     "Change goal budget",
+    "Goal completed summary",
+    "Goal new",
+    "Goal budget exhausted summary",
   ] as const
 
   expect(labels.map((key) => t(key, {}, "en"))).toEqual([
@@ -133,6 +229,9 @@ test("goal state and controls have English copy", () => {
     "Link a project or authorize a folder to continue automatically. For now, the conversation continues one turn at a time.",
     "The limit was reached and the bot stopped. Change the budget and choose Resume to continue.",
     "Change budget",
+    "Goal completed",
+    "New goal",
+    "Goal stopped · limit reached",
   ])
 })
 

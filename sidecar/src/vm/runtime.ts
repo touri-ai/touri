@@ -15,6 +15,7 @@ import type {
 } from "@touri/contracts"
 import { getApiRequiredHosts } from "../api-models/runtime"
 import { botFolderFingerprint } from "../kernel/bot-folders"
+import { TouriError } from "../kernel/errors"
 import { atomicWriteFile, ensurePrivateDirectory, removePrivateFile } from "../kernel/files"
 import { isIdle } from "../kernel/policy"
 import { safeThreadId } from "../mcp/auth"
@@ -1119,11 +1120,12 @@ export const createVmRuntime = ({
     })
   const destroy: VmRuntime["destroy"] = ({ botId, deleteVolumes = true }) =>
     serial(botId, async () => {
-      if (users.get(botId)) throw new Error("Máquina ocupada; pare os turnos antes de excluir")
+      if (users.get(botId)) throw new TouriError("TOURI-E8004")
       await stopResources(botId)
       const meta = metadata(botId)
       if (meta) {
         const status = unwrap(await provider.status({ id: meta.vm_id })).status
+        if (status === "running") unwrap(await provider.stop({ id: meta.vm_id }))
         if (status !== "missing") unwrap(await provider.destroy({ id: meta.vm_id }))
         const volumes = persistentMounts(meta)
           .filter((mount) => mount.type === "volume")

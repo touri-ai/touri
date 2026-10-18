@@ -1,5 +1,5 @@
 import { listen } from "@tauri-apps/api/event"
-import type { BotGroup, GroupInput, HostKind, Id, NotificationRecord } from "@touri/contracts"
+import type { BotGroup, GroupInput, HostKind, Id, NotificationRecord, RecoveryTask } from "@touri/contracts"
 import type { FailureAction } from "@touri/contracts/run-failure"
 import { type SetStateAction, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
@@ -23,6 +23,7 @@ import { ErrorNotice } from "./components/ErrorNotice"
 import { EvidenceContext } from "./components/EvidenceGallery"
 import { FailureActionContext } from "./components/FailureActionContext"
 import { GroupModal, GroupPanel } from "./components/Groups"
+import { InterruptedTasks } from "./components/InterruptedTasks"
 import {
   BotCreateModal,
   BotModelModal,
@@ -67,15 +68,17 @@ import {
   serverModeErrorCode,
   useServerMode,
 } from "./features/server/serverMode"
+import { PerformanceScreen, WorkScreen } from "./features/work/WorkScreen"
 import { getHostLabel, localizeNotice, t } from "./i18n"
 import { type DeepLinkRequest, installNativeDeepLinks } from "./nativeDeepLinks"
 import { requestTaskResume, requestTaskReview } from "./recoveryEvents"
 import { getTeamRoutineDraft, type RoutineDraft } from "./routineDraft"
 import { isFailureNotice } from "./sidebarAttention"
 import { useHost } from "./useHost"
+import { RecoveryTasksContext, useRecoveryTasks } from "./useRecoveryTasks"
 import { useWebNavigation } from "./useWebNavigation"
 import { useWorkspace } from "./useWorkspace"
-import { type AppRoute, readWorkspaceState, saveWorkspaceState } from "./workspaceState"
+import { type AppRoute, type RoutineHistoryTarget, readWorkspaceState, saveWorkspaceState } from "./workspaceState"
 
 export type UiKernel = { services?: { api?: UiApi | null; invoke?: TauriInvoke | null } }
 
@@ -191,6 +194,21 @@ const AppContent = ({ kernel }: AppProps) => {
   useEffect(() => installComputerKillSwitch(activeApi, invokeCommand, setLocalNotice), [activeApi, invokeCommand])
   const workspace = useWorkspace(activeApi, api !== null)
   const { data, actions } = workspace
+  const interruptedWork = useRecoveryTasks(api)
+  const [recoveryOpen, setRecoveryOpen] = useState(false)
+  const openRecovery = () => setRecoveryOpen(true)
+  const reviewRecoveryTask = (task: RecoveryTask, resume = false) => {
+    if (!task.notification.threadId && task.routineId && task.notification.botId) {
+      openBotRoutines(task.notification.botId)
+      setRecoveryOpen(false)
+      return
+    }
+    actions.selectLocation({ bot: task.notification.botId, thread: task.notification.threadId })
+    setRoute({ section: "bots", screen: "chat" })
+    if (task.runId) requestTaskReview(task.runId)
+    if (resume && task.notification.threadId) requestTaskResume(task.notification.threadId)
+    setRecoveryOpen(false)
+  }
   useServerAttention({ api, invoke: invokeCommand, enabled: isNativeDesktop() && serverMode, data })
   const section = route.section
   const advancedPage = route.section === "advanced" ? route.page : null
@@ -238,7 +256,10 @@ const AppContent = ({ kernel }: AppProps) => {
           const scenario = new URLSearchParams(window.location.search).get("mockScenario")
           setApi(
             createMockApi({
-              scenario: scenario === "resumed-turn" || scenario === "routine-conversation" ? scenario : null,
+              scenario:
+                scenario === "resumed-turn" || scenario === "routine-conversation" || scenario === "interrupted-tasks"
+                  ? scenario
+                  : null,
             }),
           )
           clearTimeout(startupTimer)
@@ -469,6 +490,7 @@ const AppContent = ({ kernel }: AppProps) => {
       actions.selectLocation({ bot: item.botId, thread: item.threadId })
       setRoute({ section: "bots", screen: "chat" })
     },
+    openRecovery,
     dismiss: actions.dismissNotification,
     dismissAll: actions.dismissAllNotifications,
     respond: actions.respondNotification,
@@ -602,10 +624,10 @@ const AppContent = ({ kernel }: AppProps) => {
     }
     openDestination(command.destination)
   }
-  const openBotRoutines = (botId: Id): void => {
+  const openBotRoutines = (botId: Id, history?: RoutineHistoryTarget): void => {
     closeModal()
     if (botId !== data.selectedBotId) actions.selectBot(botId)
-    setRoute({ section: "advanced", page: "cron", botId })
+    setRoute({ section: "advanced", page: "cron", botId, ...(history ? { history } : {}) })
   }
   const openDestination = (destination: PaletteDestination): void => {
     if (destination.kind === "page") {
@@ -838,6 +860,15 @@ const AppContent = ({ kernel }: AppProps) => {
   return (
     <AvatarRuntimeProvider value={{ ...data, messages: data.activityMessages }}>
       {botModal}
+      {recoveryOpen && (
+        <InterruptedTasks
+          {...interruptedWork}
+          onClose={() => setRecoveryOpen(false)}
+          onReview={reviewRecoveryTask}
+          onResume={(task) => reviewRecoveryTask(task, true)}
+          onDismiss={interruptedWork.dismiss}
+        />
+      )}
       <main className="app-shell">
         <HistoryMigrationStatus api={api} />
         {connectionState === "error" && (
@@ -931,6 +962,9 @@ const AppContent = ({ kernel }: AppProps) => {
             threads={data.threads}
             messages={data.activityMessages}
             runs={data.runs}
+            routineRuns={data.routineRuns}
+            routines={data.routines}
+            workRuns={data.workRuns}
             floatUpdates={data.settings?.sidebarFloatUpdates ?? true}
             selectedBotId={selectedBot?.id ?? null}
             selectedThreadId={selectedThread?.id ?? null}
@@ -939,10 +973,11 @@ const AppContent = ({ kernel }: AppProps) => {
             onChat={() => setRoute({ section: "bots", screen: "chat" })}
             onAdvancedPage={(page) => setRoute({ section: "advanced", page })}
             onRoutines={openBotRoutines}
+            onRoutineHistory={(botId, routineId) => openBotRoutines(botId, routineId ? { routineId } : {})}
             onProject={() => openModal("project")}
             onImport={() => openModal("import")}
             onSelect={actions.selectBot}
-            onSelectThread={actions.selectThread}
+            onSelectThread={(threadId) => actions.selectThread(threadId, { readRoutineGroup: true })}
             onReviewApproval={reviewApproval}
             onNewThread={() => void actions.createThread()}
             onNewBot={() => openModal("bot")}
@@ -953,6 +988,8 @@ const AppContent = ({ kernel }: AppProps) => {
             }}
             onDoctor={() => openModal("doctor")}
             onSearch={() => setSearchOpen(true)}
+            onRecovery={openRecovery}
+            recoveryCount={interruptedWork.tasks.filter((task) => task.notification.resolvedAt === null).length}
             notifications={data.notifications}
             notificationActions={notificationActions}
             onNotificationsOpen={setNotificationsOpen}
@@ -986,7 +1023,7 @@ const AppContent = ({ kernel }: AppProps) => {
                 project={selectedProject}
                 processes={data.processes.filter((entry) => entry.spec.projectId === selectedProject?.id)}
                 preview={selectedPreview}
-                modalOpen={modal !== null || searchOpen || notificationsOpen}
+                modalOpen={modal !== null || searchOpen || notificationsOpen || recoveryOpen}
                 browserTabs={data.browserTabs}
                 selectedBot={selectedBot}
                 selectedThread={selectedThread}
@@ -1002,11 +1039,25 @@ const AppContent = ({ kernel }: AppProps) => {
                 onConnectProject={() => openModal("project")}
                 onNotice={showNotice}
               />
+            ) : section === "advanced" && advancedPage === "work" ? (
+              <WorkScreen
+                runs={data.workRuns}
+                bots={data.bots}
+                threads={data.threads}
+                loading={data.loading}
+                onThread={(id) => {
+                  actions.selectThread(id)
+                  setRoute({ section: "bots", screen: "chat" })
+                }}
+              />
+            ) : section === "advanced" && advancedPage === "performance" ? (
+              <PerformanceScreen settings={data.settings} onSave={actions.updateSettings} />
             ) : section === "advanced" && advancedPage === "cron" ? (
               <CronScreen
                 host={data.routineHost}
                 key={route.section === "advanced" ? (route.botId ?? "all") : "all"}
                 initialBotFilter={route.section === "advanced" ? route.botId : undefined}
+                history={route.section === "advanced" ? route.history : undefined}
                 loading={data.loading}
                 loadError={data.bots.length === 0 ? data.notice : null}
                 bots={data.bots}
@@ -1017,13 +1068,17 @@ const AppContent = ({ kernel }: AppProps) => {
                 actions={actions}
                 onReviewApprovals={reviewApproval}
                 onNotice={showNotice}
+                onOpenThread={(threadId) => {
+                  actions.selectThread(threadId)
+                  setRoute({ section: "bots", screen: "chat" })
+                }}
               />
             ) : section === "advanced" && advancedPage === "integracoes" ? (
               <IntegrationsScreen
                 api={api}
                 botId={selectedBot?.id ?? null}
                 botName={selectedBot?.name ?? null}
-                modalOpen={modal !== null}
+                modalOpen={modal !== null || recoveryOpen}
                 onConfigure={() => openModal("bot-mcp")}
               />
             ) : section === "advanced" && advancedPage === "mcp" ? (
@@ -1031,7 +1086,7 @@ const AppContent = ({ kernel }: AppProps) => {
                 api={api}
                 botId={selectedBot?.id ?? null}
                 botName={selectedBot?.name ?? null}
-                modalOpen={modal !== null}
+                modalOpen={modal !== null || recoveryOpen}
                 onConfigure={() => openModal("bot-mcp")}
               />
             ) : (
@@ -1046,69 +1101,71 @@ const AppContent = ({ kernel }: AppProps) => {
                       area="a conversa"
                       api={api}
                     >
-                      <ChatPanel
-                        onRepeatTask={setRoutineDraft}
-                        group={selectedGroup}
-                        groupMembers={groupMembers}
-                        onEditGroup={() => {
-                          setEditingGroup(selectedGroup)
-                          openModal("group")
-                        }}
-                        focusApproval={
-                          approvalFocus?.threadId === selectedThread?.id ? (approvalFocus ?? undefined) : undefined
-                        }
-                        panelOpen={panelOpen}
-                        onTogglePanel={() => setPanelOpen(!panelOpen)}
-                        machine={data.machines.find((state) => state.botId === selectedBot?.id)}
-                        thread={selectedThread}
-                        composerKey={data.composerKey ?? undefined}
-                        threadCreation={
-                          data.threadCreation ? (data.threadCreation.pending ? "pending" : "failed") : undefined
-                        }
-                        onRetryCreateThread={() => void actions.createThread()}
-                        bot={selectedBot}
-                        messages={selectedMessages}
-                        runs={data.runs}
-                        projects={data.projects}
-                        onOpenModel={() => openModal("bot-model")}
-                        onSelectProject={async (projectId) => {
-                          if (selectedBot) await actions.updateBot(selectedBot.id, { projectId })
-                        }}
-                        onAddProject={() => {
-                          openModal("project")
-                          setProjectLinkBotId(selectedBot?.id ?? null)
-                        }}
-                        routines={data.routines}
-                        routineRuns={data.routineRuns}
-                        onSend={actions.sendMessage}
-                        onRetry={actions.retryRun}
-                        onCancel={actions.cancelRun}
-                        onSwitchBranch={actions.switchBranch}
-                        api={api}
-                        computerGrant={
-                          data.computerGrantRequest?.threadId === selectedThread?.id && selectedBot && selectedThread
-                            ? { botId: selectedBot.id, threadId: selectedThread.id, botName: selectedBot.name }
-                            : null
-                        }
-                        onComputerGrant={actions.dismissComputerGrant}
-                        onOpenTools={() => setScreen("preview")}
-                        onOpenComputer={() => {
-                          setPanelOpen(true)
-                          if (selectedBot)
-                            setComputerTabRequest((value) => ({
-                              botId: selectedBot.id,
-                              request: (value?.request ?? 0) + 1,
-                            }))
-                        }}
-                        attachmentButtonRef={attachmentButtonRef}
-                        onOpenPermissions={() => openModal("bot-permissions")}
-                        onOpenToolCatalog={() => openModal("bot-mcp")}
-                        onOpenProviderLogin={() => {
-                          setSettingFocus(SETTINGS.providerLogin.id)
-                          setBotSettingsSection(SETTINGS.providerLogin.section)
-                          setModal("bot-settings")
-                        }}
-                      />
+                      <RecoveryTasksContext.Provider value={interruptedWork.tasks}>
+                        <ChatPanel
+                          onRepeatTask={setRoutineDraft}
+                          group={selectedGroup}
+                          groupMembers={groupMembers}
+                          onEditGroup={() => {
+                            setEditingGroup(selectedGroup)
+                            openModal("group")
+                          }}
+                          focusApproval={
+                            approvalFocus?.threadId === selectedThread?.id ? (approvalFocus ?? undefined) : undefined
+                          }
+                          panelOpen={panelOpen}
+                          onTogglePanel={() => setPanelOpen(!panelOpen)}
+                          machine={data.machines.find((state) => state.botId === selectedBot?.id)}
+                          thread={selectedThread}
+                          composerKey={data.composerKey ?? undefined}
+                          threadCreation={
+                            data.threadCreation ? (data.threadCreation.pending ? "pending" : "failed") : undefined
+                          }
+                          onRetryCreateThread={() => void actions.createThread()}
+                          bot={selectedBot}
+                          messages={selectedMessages}
+                          runs={data.runs}
+                          projects={data.projects}
+                          onOpenModel={() => openModal("bot-model")}
+                          onSelectProject={async (projectId) => {
+                            if (selectedBot) await actions.updateBot(selectedBot.id, { projectId })
+                          }}
+                          onAddProject={() => {
+                            openModal("project")
+                            setProjectLinkBotId(selectedBot?.id ?? null)
+                          }}
+                          routines={data.routines}
+                          routineRuns={data.routineRuns}
+                          onSend={actions.sendMessage}
+                          onRetry={actions.retryRun}
+                          onCancel={actions.cancelRun}
+                          onSwitchBranch={actions.switchBranch}
+                          api={api}
+                          computerGrant={
+                            data.computerGrantRequest?.threadId === selectedThread?.id && selectedBot && selectedThread
+                              ? { botId: selectedBot.id, threadId: selectedThread.id, botName: selectedBot.name }
+                              : null
+                          }
+                          onComputerGrant={actions.dismissComputerGrant}
+                          onOpenTools={() => setScreen("preview")}
+                          onOpenComputer={() => {
+                            setPanelOpen(true)
+                            if (selectedBot)
+                              setComputerTabRequest((value) => ({
+                                botId: selectedBot.id,
+                                request: (value?.request ?? 0) + 1,
+                              }))
+                          }}
+                          attachmentButtonRef={attachmentButtonRef}
+                          onOpenPermissions={() => openModal("bot-permissions")}
+                          onOpenToolCatalog={() => openModal("bot-mcp")}
+                          onOpenProviderLogin={() => {
+                            setSettingFocus(SETTINGS.providerLogin.id)
+                            setBotSettingsSection(SETTINGS.providerLogin.section)
+                            setModal("bot-settings")
+                          }}
+                        />
+                      </RecoveryTasksContext.Provider>
                     </ErrorBoundary>
                     {/* r8 motion: preserve the panel during its inert exit */}
                     <MotionPresence show={panelOpen && Boolean(selectedGroup || selectedBot)} kind="panel">
@@ -1156,7 +1213,7 @@ const AppContent = ({ kernel }: AppProps) => {
                                   run.botId === selectedBot.id &&
                                   ["queued", "starting", "running"].includes(run.status),
                               )}
-                              paused={modal !== null || searchOpen || notificationsOpen}
+                              paused={modal !== null || searchOpen || notificationsOpen || recoveryOpen}
                               expanded={expandedBot === selectedBot.id}
                               onExpand={() => setExpandedBot((id) => (id === selectedBot.id ? null : selectedBot.id))}
                               onWindow={() => openComputerWindow(selectedBot.id)}

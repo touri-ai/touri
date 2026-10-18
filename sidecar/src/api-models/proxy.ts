@@ -122,15 +122,26 @@ export const forwardApiRequest = async (request: Request, options: ProxyOptions)
     const encoder = new TextEncoder()
     // Retain a suffix between chunks so split credentials cannot reach session storage.
     let pending = ""
+    let yieldAt = performance.now() + 4
     const redact = (text: string) => secrets.reduce((result, secret) => result.replaceAll(secret, "[REDACTED]"), text)
     const stream = new TransformStream<Uint8Array, Uint8Array>({
-      transform(chunk, controller) {
-        const text = redact(pending + decoder.decode(chunk, { stream: true }))
-        const end = Math.max(0, text.length - keep)
-        const previous = text.charCodeAt(end - 1)
-        const boundary = previous >= 0xd800 && previous <= 0xdbff ? end - 1 : end
-        controller.enqueue(encoder.encode(text.slice(0, boundary)))
-        pending = text.slice(boundary)
+      async transform(chunk, controller) {
+        // Empty chunks must also reach the time budget check to avoid a ready-source spin.
+        const inputBytes = Math.max(1, chunk.byteLength)
+        for (let offset = 0; offset < inputBytes; offset += 16_384) {
+          const part = chunk.subarray(offset, offset + 16_384)
+          const text = redact(pending + decoder.decode(part, { stream: true }))
+          const end = Math.max(0, text.length - keep)
+          const previous = text.charCodeAt(end - 1)
+          const boundary = previous >= 0xd800 && previous <= 0xdbff ? end - 1 : end
+          if (boundary > 0) controller.enqueue(encoder.encode(text.slice(0, boundary)))
+          pending = text.slice(boundary)
+
+          // Resolved stream promises only yield to microtasks; timers and HTTP need an event-loop turn.
+          if (performance.now() < yieldAt) continue
+          await new Promise<void>((resolve) => setTimeout(resolve, 0))
+          yieldAt = performance.now() + 4
+        }
       },
       flush(controller) {
         controller.enqueue(encoder.encode(redact(pending + decoder.decode())))

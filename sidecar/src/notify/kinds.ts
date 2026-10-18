@@ -10,7 +10,7 @@ export const ATTENTION_KINDS: ReadonlySet<NotifyKind> = new Set<NotifyKind>([
   "incident",
 ])
 
-export const MESSAGE_KINDS: ReadonlySet<NotifyKind> = new Set<NotifyKind>(["done", "delegation-settled"])
+export const MESSAGE_KINDS: ReadonlySet<NotifyKind> = new Set<NotifyKind>(["done", "delegation-settled", "notice"])
 
 export const BLOCKING_KINDS: ReadonlySet<NotifyKind> = new Set<NotifyKind>(["approval", "question", "takeover"])
 

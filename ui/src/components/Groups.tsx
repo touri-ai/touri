@@ -163,7 +163,10 @@ export const GroupPanel = ({
   onClose: () => void
   onEdit: () => void
 }) => {
-  const { board, members } = useMemo(() => getGroupProjection(threadId, messages, runs), [threadId, messages, runs])
+  const { board, members, removed } = useMemo(
+    () => getGroupProjection(threadId, messages, runs),
+    [threadId, messages, runs],
+  )
 
   return (
     <aside
@@ -212,7 +215,15 @@ export const GroupPanel = ({
               <p>{result.text}</p>
             </article>
           ))}
-          {board.length === 0 && <p className="muted-copy">{t("Sem resultados confirmados neste turno.")}</p>}
+          {removed.map((message) => (
+            <article key={message.id}>
+              <strong>{message.sender?.name}</strong>
+              <p>{t("O membro foi removido do grupo.")}</p>
+            </article>
+          ))}
+          {board.length === 0 && removed.length === 0 && (
+            <p className="muted-copy">{t("Sem resultados confirmados neste turno.")}</p>
+          )}
         </section>
         <GroupRoutingNote group={group} bots={bots} />
         <p className="muted-copy">{t("Cada bot mantém seu computador e suas permissões.")}</p>

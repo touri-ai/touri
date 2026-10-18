@@ -1,5 +1,5 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
-import type { ApprovalPart, Message, Run } from "@touri/contracts"
+import type { ApprovalPart, Message, RoutineRun, Run, Thread } from "@touri/contracts"
 import { afterEach, expect, it, vi } from "vitest"
 import App from "../src/App"
 import { createMockApi } from "../src/api/mock"
@@ -25,16 +25,23 @@ const approval: ApprovalPart = {
 }
 const fixture = async () => {
   const api = createMockApi()
-  const thread = {
-    ...api.getState().threads[0],
+  const baseThread = api.getState().threads[0]
+  const baseMessage = api.getState().messages[0]
+  const { routines } = await api.request("GET /routines", {})
+  const baseRoutine = routines[0]
+  if (!baseThread || !baseMessage || !baseRoutine) throw new Error("Missing approval navigation fixture")
+
+  const thread: Thread = {
+    ...baseThread,
     id: "clock-thread",
     botId: "bot-onb",
     kind: "routine" as const,
     title: "teste-relogio",
     activeLeafId: "clock-reply",
-  } as import("@touri/contracts").Thread
+    routineRunId: "clock-routine-run",
+  }
   const reply: Message = {
-    ...api.getState().messages[0],
+    ...baseMessage,
     id: "clock-reply",
     threadId: thread.id,
     parentId: null,
@@ -45,7 +52,20 @@ const fixture = async () => {
     parts: [approval],
     createdAt: 1,
     updatedAt: 1,
-  } as Message
+  }
+  const routine = { ...baseRoutine, id: "clock-routine", botId: thread.botId, name: thread.title }
+  const routineRun: RoutineRun = {
+    id: "clock-routine-run",
+    routineId: routine.id,
+    scheduledFor: 1,
+    status: "running",
+    threadId: thread.id,
+    runId: "clock-run",
+    triggerSource: "cron",
+    summary: null,
+    startedAt: 1,
+    finishedAt: null,
+  }
   const run: Run = {
     id: "clock-run",
     botId: thread.botId,
@@ -72,6 +92,7 @@ const fixture = async () => {
   api.getState().threads.push(thread)
   api.getState().messages.push(reply)
   act(() => {
+    api.emit({ type: "routine.updated", routine, lastRun: routineRun })
     api.emit({ type: "thread.updated", thread })
     api.emit({ type: "message.created", message: reply })
     api.emit({ type: "run.updated", run })

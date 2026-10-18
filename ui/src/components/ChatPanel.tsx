@@ -19,6 +19,7 @@ import { userFacingRunError } from "../errors"
 import { ComputerGrantCard } from "../features/computer"
 import { InlineLivePreview, InlinePreviewContext, screenTool } from "../features/desktop/InlineLivePreview"
 import { useIsServerMode } from "../features/server/serverMode"
+import { getQueueLabel } from "../features/work/presentation"
 import { getHostLabel, localizeNotice, t } from "../i18n"
 import { machineStateForDisplay } from "../machineState"
 import { messageMarkdown } from "../messageMarkdown"
@@ -28,6 +29,7 @@ import { type RoutineDraft, repeatTaskDraft, suggestedRoutineDraft } from "../ro
 import { failureTimeLabel, runErrorFor } from "../runError"
 import { getSidebarThreadTitle } from "../sidebarThreadTitle"
 import { useHost } from "../useHost"
+import { RecoveryTasksContext } from "../useRecoveryTasks"
 import { ActivityMark } from "./ActivityMark"
 import { ApprovalCard } from "./ApprovalCard"
 import { useAvatarBot, useMascotSnapshot, useMessageMascotState, useThreadBot } from "./AvatarRuntime"
@@ -578,6 +580,10 @@ const MessageBubble = ({
     (failure?.code === "TOURI-E8001" || failure?.code === "TOURI-E8002")
       ? null
       : failure
+  const recoveryTasks = useContext(RecoveryTasksContext)
+  const resolvedInterruption = recoveryTasks.some(
+    (task) => message.runId !== null && task.runId === message.runId && task.notification.resolvedAt !== null,
+  )
   const [failureExpanded, setFailureExpanded] = useState(false)
   const [reviewingActions, setReviewingActions] = useState(false)
   useEffect(() => {
@@ -845,7 +851,12 @@ const MessageBubble = ({
           </button>
         </fieldset>
       )}
-      {runError && recovered ? (
+      {resolvedInterruption && (
+        <p className="run-resumed-marker" role="note">
+          {t("Interrupção anterior · resolvida")}
+        </p>
+      )}
+      {runError && (recovered || resolvedInterruption) ? (
         <div className="message-error-history">
           <button
             type="button"
@@ -853,9 +864,18 @@ const MessageBubble = ({
             aria-expanded={failureExpanded}
             onClick={() => setFailureExpanded((expanded) => !expanded)}
           >
-            {runError.title} · {failureTime} · {t("A reply followed this error")} ·{" "}
-            {failureExpanded ? t("Hide error") : t("View error")}
+            {!resolvedInterruption && (
+              <>
+                {runError.title} · {failureTime} · {recovered && `${t("A reply followed this error")} · `}
+              </>
+            )}
+            {failureExpanded ? t("Hide error") : t(resolvedInterruption ? "Ver erro" : "View error")}
           </button>
+          {failureExpanded && resolvedInterruption && (
+            <p className="message-error-meta">
+              {runError.title} · {failureTime}
+            </p>
+          )}
           {failureExpanded && failureContent}
         </div>
       ) : (
@@ -1321,6 +1341,7 @@ const getRoutineRunPresentation = (run: Run, waitingApproval: boolean) => {
       className: "status-waiting-approval",
       summary: t("Review the approval card to continue the routine."),
     }
+  if (run.status === "queued") return { label: getQueueLabel(run), className: "status-queued" }
   if (running) return { label: t("Em execução"), className: "status-running" }
   if (run.status === "canceled") return { label: t("Cancelado por você"), className: "status-canceled" }
   if (["failed", "interrupted"].includes(run.status))

@@ -1,4 +1,10 @@
-import type { Message, NotificationRecord, RespondBehavior, Run } from "@touri/contracts"
+import {
+  getNotificationBody,
+  type Message,
+  type NotificationRecord,
+  type RespondBehavior,
+  type Run,
+} from "@touri/contracts"
 import { useEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import { type ApprovalTarget, pendingApprovalTargets } from "../approvalNavigation"
@@ -45,6 +51,7 @@ const KIND_KEY: Record<NotificationRecord["kind"], TranslationKey> = {
   "turn-failed": "Turn failed",
   incident: "Incident",
   done: "Done",
+  notice: "Aviso do bot",
   "delegation-settled": "Delegation",
 }
 
@@ -61,8 +68,9 @@ const age = (createdAt: number, now: number): string => {
 
 export type NotificationActions = {
   open: (item: NotificationRecord) => void
+  openRecovery?: () => void
   dismiss: (id: number) => Promise<void>
-  dismissAll: () => Promise<void>
+  dismissAll: () => Promise<{ skipped: number; skippedIds?: Array<number> } | undefined>
   respond: (args: { notification: NotificationRecord; behavior: RespondBehavior; message?: string }) => Promise<void>
   reply: (args: { notification: NotificationRecord; text: string }) => Promise<void>
   recover?: (item: NotificationRecord, action: RecoveryAction) => Promise<void>
@@ -101,7 +109,7 @@ const NotificationRow = ({
                 : "denied",
           )
       : (approval?.title ?? markdownSummary(localizeNotice(item.title)))
-  const body = approval?.body ?? markdownSummary(localizeNotice(item.body))
+  const body = approval?.body ?? markdownSummary(localizeNotice(getNotificationBody(item)))
   const failed = item.kind === "turn-failed" || item.kind === "routine-failed" || item.kind === "incident"
   const failedRun = runs
     .filter(
@@ -151,7 +159,7 @@ const NotificationRow = ({
         <div className="notification-head">
           <strong>{item.botName ?? "touri"}</strong>
           <span className={`notification-kind kind-${item.level}`}>{t(KIND_KEY[item.kind])}</span>
-          {resolved && isFailureNotice(item) && <span>{t("Resolvido")}</span>}
+          {resolved && isFailureNotice(item) && <span>{t("Interrupção anterior · resolvida")}</span>}
           <time
             dateTime={new Date(item.createdAt).toISOString()}
             title={new Date(item.createdAt).toLocaleString("pt-BR")}
@@ -171,6 +179,7 @@ const NotificationRow = ({
         {failed ? (
           <ErrorNotice
             error={failedRun?.errorMessage ?? item.body}
+            showActions={!resolved}
             context={{
               provider: failedRun?.provider,
               errorClass: failedRun?.errorClass,
@@ -283,6 +292,7 @@ export const NotificationBell = ({
   const [clearedIds, setClearedIds] = useState(() => readCleared(clearedStorageKey))
   const [clearing, setClearing] = useState(false)
   const [clearError, setClearError] = useState(false)
+  const [skippedCount, setSkippedCount] = useState(0)
   useEffect(() => {
     onOpenChange?.(open)
     return () => onOpenChange?.(false)
@@ -325,12 +335,17 @@ export const NotificationBell = ({
   ]
   const clear = async () => {
     if (clearing) return
-    const ids = visible.map(notificationKey)
     setClearing(true)
     setClearError(false)
     try {
-      await actions.dismissAll()
-      const next = new Set([...clearedIds, ...ids].slice(-1000))
+      const result = await actions.dismissAll()
+      setSkippedCount(result?.skipped ?? 0)
+      if (result?.skipped && !result.skippedIds) return
+
+      const protectedIds = new Set(result?.skippedIds ?? [])
+      const ids = visible.filter((item) => !protectedIds.has(item.id)).map(notificationKey)
+      const protectedKeys = new Set(notifications.filter((item) => protectedIds.has(item.id)).map(notificationKey))
+      const next = new Set([...clearedIds, ...ids].filter((key) => !protectedKeys.has(key)).slice(-1000))
       setClearedIds(next)
       try {
         localStorage.setItem(clearedStorageKey, JSON.stringify([...next]))
@@ -421,6 +436,25 @@ export const NotificationBell = ({
                 </button>
               </div>
             </header>
+            {actions.openRecovery && (
+              <button
+                type="button"
+                className="text-button"
+                onClick={() => {
+                  setOpen(false)
+                  actions.openRecovery?.()
+                }}
+              >
+                {t("Interrupted tasks")}
+              </button>
+            )}
+            {skippedCount > 0 && (
+              <p role="status">
+                {t("Notificações que precisam de revisão em Tarefas interrompidas: {count}.", {
+                  count: skippedCount,
+                })}
+              </p>
+            )}
             {clearError && (
               <p className="screen-inline-error" role="alert">
                 Não foi possível limpar as notificações. Tente novamente.

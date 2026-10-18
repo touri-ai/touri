@@ -1276,6 +1276,23 @@ test("a group routine posts its prompt into the group conversation and finishes 
   expect(shared[0]).toMatchObject({ role: "user", text: "Verifiquem os e-mails de hoje", sender: { name: "routine" } })
   expect(shared.filter((m) => m.role === "assistant").map((m) => m.sender?.name)).toEqual(["pm", "dev", "qa"])
   const finished = engine.listRoutineRuns(created.routine.id)[0]
+  const aggregate = f.persistence.getRun(finished?.runId ?? "")
+  if (!aggregate) throw new Error("Missing group routine run")
+  const linked = f.db.query("SELECT run_id FROM group_run_links WHERE turn_id = ?").all(aggregate.id) as Array<{
+    run_id: string
+  }>
+  const children = linked.flatMap(({ run_id }) => {
+    const run = f.persistence.getRun(run_id)
+    return run ? [{ stored: run, snapshot: engine.getRunSnapshot(run) }] : []
+  })
+
+  expect(engine.getRunSnapshot(aggregate)).toMatchObject({ threadId: f.thread.id, groupThreadId: null })
+  expect(children).toHaveLength(3)
+  expect(
+    children.every(
+      ({ stored, snapshot }) => snapshot.threadId === stored.threadId && snapshot.groupThreadId === f.thread.id,
+    ),
+  ).toBe(true)
   expect(finished?.summary).toContain("pm: pm respondeu")
   expect(finished?.summary).toContain("qa: qa respondeu")
   expect(f.persistence.getRun(finished?.runId ?? "")?.routineRunId).toBe(finished?.id ?? "")
@@ -1808,7 +1825,7 @@ test("deleting a shared conversation cancels its ask-all members and never recre
   expect(scenario.db.query("SELECT id FROM messages WHERE thread_id=?").all(scenario.thread.id)).toEqual([])
 })
 
-test("canceling a member for deletion stops ask-all in every group conversation, including queued turns", async () => {
+test("canceling a member for deletion preserves ask-all peers and unrelated queued turns", async () => {
   const finish = Promise.withResolvers<void>()
   const scenario = await fixture(async (_ctx, complete) => {
     await finish.promise
@@ -1817,20 +1834,19 @@ test("canceling a member for deletion stops ask-all in every group conversation,
   const turn = await sendAskAll(scenario)
   await until(() => scenario.order.length === 3)
   const otherThread = scenario.data.createThread(scenario.group)
-  const queued = scenario.send("Próximo pedido", otherThread.id)
+  const queued = scenario.send("@pm próximo pedido", otherThread.id)
 
   await scenario.runtime.cancelBotTurns({ botId: scenario.bots[1]?.id ?? "" })
-  await until(() => scenario.persistence.getRun(turn.id)?.status === "canceled")
+  expect(scenario.persistence.getRun(turn.id)?.status).toBe("running")
+  expect(scenario.persistence.getRun(queued.id)?.status).toBe("queued")
   finish.resolve()
+  await until(() => scenario.persistence.getRun(queued.id)?.status === "succeeded")
 
-  expect(scenario.persistence.getRun(queued.id)?.status).toBe("canceled")
-  expect(
-    scenario.runtime
-      .listRuns(scenario.thread.id)
-      .filter((run) => run.groupTurnId === turn.id)
-      .every((run) => run.status === "canceled"),
-  ).toBe(true)
-  expect(scenario.order).toHaveLength(3)
+  expect(scenario.persistence.getRun(turn.id)?.status).toBe("succeeded")
+  const members = scenario.runtime.listRuns(scenario.thread.id).filter((run) => run.groupTurnId === turn.id)
+  expect(members.find((run) => run.botId === scenario.bots[1]?.id)?.status).toBe("canceled")
+  expect(members.filter((run) => run.status === "succeeded")).toHaveLength(2)
+  expect(scenario.order).toHaveLength(4)
   expect([...scenario.canceledBots]).toEqual([scenario.bots[1]?.id ?? ""])
 })
 

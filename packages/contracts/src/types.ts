@@ -289,6 +289,8 @@ export type Run = {
   groupTurnId?: Id
   id: Id
   threadId: Id
+  /** Visible group conversation; threadId always identifies the actual execution thread. */
+  groupThreadId?: Id | null
   botId: Id
   provider: Provider
   trigger: RunTrigger
@@ -296,6 +298,11 @@ export type Run = {
   replyMessageId: Id | null
   externalTurnId: string | null
   status: RunStatus
+  /** Engine snapshot, 1-based within the waiting queue; null outside that queue. */
+  queuePosition?: number | null
+  queueTotal?: number | null
+  /** Origin derived from the request and continuation records. */
+  origin?: 'message' | 'routine' | 'delegation' | 'resume'
   errorClass: RunErrorClass | null
   errorMessage: string | null
   usage: RunUsage | null
@@ -305,6 +312,17 @@ export type Run = {
   /** Provider invocation, after environment preparation. Absent on older runs. */
   providerStartedAt?: EpochMs | null
   finishedAt: EpochMs | null
+}
+
+/** A persisted interruption, shared by chat, notifications and the recovery center. */
+export type RecoveryTask = {
+  id: string
+  notification: NotificationRecord
+  runId: Id | null
+  routineId: Id | null
+  cause: RunErrorClass | null
+  occurredAt: EpochMs
+  effects: Array<{ description: string; uncertain: boolean; acknowledgeKey: string | null }>
 }
 
 /** Explicit, bounded work across provider turns in one local conversation. */
@@ -391,6 +409,7 @@ export type NoticePart = {
   code:
     | 'group_ask_all'
     | 'group_summary'
+    | 'group_member_removed'
     | 'run_failed'
     | 'run_canceled'
     | 'session_replaced'
@@ -905,6 +924,7 @@ export type ApiRoutes = {
   'GET /threads/:id/transcript': { req: { since?: number; limit?: number }; res: { entries: Array<{ seq: number; generation: number; event: UiEvent }>; rejections: Array<TranscriptRejection>; lastSeq: number; generation: number; hasMore: boolean; resync: boolean } }
   'GET /threads/:id/messages': { req: { all?: boolean }; res: { messages: Array<Message>; activeLeafId: Id | null } }
   'POST /threads/:id/messages': { req: SendMessageInput; res: { message: Message; run: Run } }
+  'GET /runs': { req: Record<string, never>; res: { runs: Array<Run> } }
   'GET /threads/:id/goal': { req: {}; res: { goal: Goal | null } }
   'POST /threads/:id/goal': { req: GoalStart; res: { goal: Goal } }
   'PATCH /threads/:id/goal': { req: GoalControl; res: { goal: Goal } }
@@ -961,10 +981,12 @@ export type ApiRoutes = {
   'POST /computer/kill': { req: {}; res: { revoked: number } }
   'POST /imports/legacy': { req: LegacyImportOptions; res: { importId: Id } }
   'GET /imports/:id': { req: {}; res: { status: 'running' | 'succeeded' | 'failed'; report: ImportReport | null } }
+  'GET /recovery': { req: {}; res: { tasks: Array<RecoveryTask> } }
+  'POST /recovery/:id/dismiss': { req: { acknowledgeKeys: Array<string> }; res: { tasks: Array<RecoveryTask> } }
   'GET /notifications': { req: { limit?: number }; res: { notifications: Array<NotificationRecord> } }
   'GET /notifications/pending': { req: {}; res: { notifications: Array<NotificationRecord>; lastSeq: number } }
   'POST /notifications/:id/dismiss': { req: {}; res: { notification: NotificationRecord } }
-  'POST /notifications/dismiss-all': { req: {}; res: { dismissed: number } }
+  'POST /notifications/dismiss-all': { req: {}; res: { dismissed: number; skipped: number; skippedIds: Array<number> } }
   'POST /threads/:id/respond': { req: { requestId: string; behavior: RespondBehavior; message?: string }; res: {} }
   'POST /bots/:id/messages': { req: { text: string; threadId?: Id; sendId?: string }; res: { message: Message; run: Run } }
   'GET /bots/:id/mem0': { req: {}; res: { settings: Mem0Settings } }
@@ -992,6 +1014,8 @@ export type AppSettings = {
   computerUseHotkey: string
   browserExecutable: 'system-chrome' | 'chrome-for-testing'
   nativeNotifications: boolean
+  /** Optional JSON setting; absent on existing installations, retaining legacy bot preferences. */
+  notificationPreferences?: NotificationPreferences
   /** Float bots that need the user, are working or have unread results to the top of the sidebar. Default: true. */
   sidebarFloatUpdates?: boolean
   /** Continue a turn cut off by a restart, a provider crash or a stopped bot computer. Default: true. */
@@ -1059,7 +1083,7 @@ export type UiEvent =
   | { type: 'notification.resolved'; notification: NotificationRecord }
   | { type: 'notify'; level: 'info' | 'warning' | 'error'; title: string; body: string; threadId: Id | null; requestId?: Id | null; notificationId?: number; kind?: NotifyKind }
 
-/** Attention kinds need the user; message kinds (`done`, `delegation-settled`) are informational and expire. */
+/** Attention kinds need the user; message kinds (`done`, `delegation-settled`, `notice`) are informational and expire. */
 export type NotifyKind =
   | 'approval'
   | 'question'
@@ -1070,6 +1094,19 @@ export type NotifyKind =
   | 'incident'
   | 'done'
   | 'delegation-settled'
+  | 'notice'
+
+export type NotificationScopePreferences = {
+  enabled?: boolean
+  digest?: 'attention' | 'all'
+  types?: Partial<Record<NotifyKind, boolean>>
+}
+
+export type NotificationPreferences = NotificationScopePreferences & {
+  bots?: Record<Id, NotificationScopePreferences>
+  /** Times use the local clock; an equal start and end silences the entire day. */
+  quietHours?: { enabled: boolean; start: string; end: string; timeZone?: string }
+}
 
 export type NotifyResolution = 'allow' | 'deny' | 'answer' | 'replied' | 'dismissed' | 'expired' | 'canceled'
 export type AvatarShape = import('@norbert_bodziony/bloub').ShapeId
@@ -1295,6 +1332,7 @@ export type ServiceMap = {
   'vm.desktop': VmDesktop
   'store.api': StoreApi
   'runtime.enqueue': (args: { threadId: Id; requestMessageId: Id; trigger: RunTrigger }) => Result<{ run: Run }, 'THREAD_NOT_FOUND' | 'BOT_PAUSED' | 'DELEGATION_LIMIT'>
+  'runtime.settingsChanged': () => void
   'runtime.activeRun': (args: { threadId: Id }) => Run | null
   'runtime.continueAfterApproval': (ctx: Pick<ToolContext, 'botId' | 'threadId' | 'runId' | 'signal'>) => boolean
   'runtime.cancelBotTurns': (args: { botId: Id }) => Promise<void>

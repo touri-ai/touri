@@ -15,6 +15,7 @@ Retention is checked when conversations switch or background collections change.
 updates in the open conversation reuse unchanged background summaries and run collections.
 Pruning runs only when a collection exceeds its retention slots or outstanding work changes.
 Messages and arrays retain their identity whenever their contents already meet the limits.
+Updates to the open run do not inspect background ordering or rebuild background retention buckets.
 
 ## Reproducible workload
 

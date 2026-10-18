@@ -30,6 +30,7 @@ const authHeaders = (token: string): Record<string, string> => (token ? { Author
 
 export const apiRouteKeys = [
   "GET /workspace/activity",
+  "GET /runs",
   "GET /groups",
   "POST /groups",
   "PATCH /groups/:id",
@@ -132,6 +133,8 @@ export const apiRouteKeys = [
   "POST /computer/kill",
   "POST /imports/legacy",
   "GET /imports/:id",
+  "GET /recovery",
+  "POST /recovery/:id/dismiss",
   "GET /notifications",
   "GET /notifications/pending",
   "POST /notifications/:id/dismiss",

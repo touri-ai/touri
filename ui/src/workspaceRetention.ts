@@ -24,11 +24,12 @@ export const retainWorkspace = (data: WorkspaceData, previous?: WorkspaceData): 
     summaries === previous?.activityMessages && data.notifications === previous?.notifications
       ? summaries
       : reconcileApprovalMessages(summaries, data.notifications)
+  const runRetentionChanged = hasRunRetentionChanged(data.runs, previous?.runs, data.selectedThreadId)
   const activityMessages =
-    hasActivityRetentionChanged(reconciled, previous?.activityMessages) || switched || data.runs !== previous?.runs
+    hasActivityRetentionChanged(reconciled, previous?.activityMessages) || switched || runRetentionChanged
       ? getRetainedActivity(reconciled, data.runs)
       : reconciled
-  const runs = switched || data.runs !== previous?.runs ? getRetainedRuns(data.runs, data.selectedThreadId) : data.runs
+  const runs = switched || runRetentionChanged ? getRetainedRuns(data.runs, data.selectedThreadId) : data.runs
   const messages = offscreen.length
     ? data.messages.filter((message) => message.threadId === data.selectedThreadId)
     : data.messages
@@ -58,18 +59,32 @@ const isPendingActivity = (message: Message): boolean =>
   (message.delivery != null && message.delivery.status !== "acked")
 
 const hasActivityRetentionChanged = (messages: Message[], previous?: Message[]): boolean =>
-  !previous ||
-  messages.length !== previous.length ||
-  messages.some((message, index) => {
+  messages !== previous &&
+  (!previous ||
+    messages.length !== previous.length ||
+    messages.some((message, index) => {
+      const before = previous[index]
+      return (
+        !before ||
+        message.id !== before.id ||
+        message.threadId !== before.threadId ||
+        isPendingActivity(message) !== isPendingActivity(before) ||
+        (message.status === "streaming") !== (before.status === "streaming")
+      )
+    }))
+
+const hasRunRetentionChanged = (runs: Run[], previous: Run[] | undefined, selectedThreadId: string | null): boolean => {
+  if (runs === previous) return false
+  if (!previous || runs.length !== previous.length) return true
+
+  return runs.some((run, index) => {
     const before = previous[index]
-    return (
-      !before ||
-      message.id !== before.id ||
-      message.threadId !== before.threadId ||
-      isPendingActivity(message) !== isPendingActivity(before) ||
-      (message.status === "streaming") !== (before.status === "streaming")
-    )
+    if (!before || run.id !== before.id || run.threadId !== before.threadId) return true
+    if (run.threadId === selectedThreadId) return false
+
+    return activeRun(run) !== activeRun(before)
   })
+}
 
 /** Five sidebar slots per thread, plus outstanding requests and streams. */
 const getRetainedActivity = (messages: Message[], runs: Run[]): Message[] => {

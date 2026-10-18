@@ -1,6 +1,6 @@
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react"
 import type { Message } from "@touri/contracts"
-import { afterEach, expect, test } from "vitest"
+import { afterEach, expect, test, vi } from "vitest"
 import type { ApiRequest } from "../src/api/client"
 import { createMockApi } from "../src/api/mock"
 import { pendingApprovalTargets } from "../src/approvalNavigation"
@@ -72,6 +72,30 @@ test("a late acknowledgement cannot restore a closed conversation when only mess
   expect(retained.activityMessages.find((row) => row.id === late.id)?.parts).toEqual([])
   expect(retained.runs).toBe(before.runs)
   expect(late.parts).toHaveLength(3)
+})
+
+test("open run updates do not read background ordering or rebuild retained collections", async () => {
+  const workload = createRetentionWorkload()
+  const hook = renderHook(() => useWorkspace(workload.api))
+  await waitFor(() => expect(hook.result.current.data.messages).toHaveLength(1))
+  const getQueuedAt = vi.fn(() => 1)
+  const background = [1, 2].map((turn) => ({
+    ...workload.run(1, turn),
+    status: "running" as const,
+    get queuedAt() {
+      return getQueuedAt()
+    },
+  }))
+  const openRun = { ...workload.run(0, 1), status: "running" as const }
+  const before = { ...hook.result.current.data, runs: [openRun, ...background] }
+  const arrived = { ...before, runs: [{ ...openRun, externalTurnId: "stream-progress" }, ...background] }
+
+  const retained = retainWorkspace(arrived, before)
+
+  expect(getQueuedAt).not.toHaveBeenCalled()
+  expect(retained).toBe(arrived)
+  expect(retained.activityMessages).toBe(before.activityMessages)
+  expect(retained.runs).toBe(arrived.runs)
 })
 
 test("retaining an already bounded workspace preserves collection identity", async () => {

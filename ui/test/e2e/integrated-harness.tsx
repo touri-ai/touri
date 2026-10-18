@@ -14,9 +14,16 @@ const scenario = new URLSearchParams(location.search).get("scenario")
 const now = new Date("2026-10-13T18:30:00Z").getTime()
 const bot = state.bots.find((item) => item.id === "bot-mark")
 if (bot) {
-  bot.machine = "vm"
-  bot.roleLine = "Pesquisa e planejamento"
-  bot.instructions = "Revise o contexto e apresente as fontes em português."
+  await api.request(
+    "PATCH /bots/:id",
+    {
+      machine: "vm",
+      computerUse: true,
+      roleLine: "Pesquisa e planejamento",
+      instructions: "Revise o contexto e apresente as fontes em português.",
+    },
+    { id: bot.id },
+  )
 }
 const machine: MachineState = {
   botId: "bot-mark",
@@ -27,10 +34,11 @@ const machine: MachineState = {
   createdMs: now,
   startMs: now,
 }
-for (const bot of state.bots) {
-  bot.roleLine = bot.name === "mark" ? "Planejamento e conteúdo" : "Operações"
-  bot.title = null
-}
+await Promise.all(
+  state.bots.map((bot) =>
+    api.request("PATCH /bots/:id", { roleLine: bot.roleLine ?? "Operações", title: null }, { id: bot.id }),
+  ),
+)
 for (const thread of state.threads)
   thread.title = thread.botId === "bot-mark" ? "Revisão do projeto" : "Conversa principal"
 const thread = state.threads.find((item) => item.id === "thread-mark")

@@ -1,22 +1,35 @@
-import type { Bot, BotGroup, HostKind, Id, Message, NotificationRecord, Run, Thread } from "@touri/contracts"
+import type {
+  Bot,
+  BotGroup,
+  HostKind,
+  Id,
+  Message,
+  NotificationRecord,
+  Routine,
+  RoutineRun,
+  Run,
+  Thread,
+} from "@touri/contracts"
 import { Fragment, type ReactNode, useEffect, useMemo, useState } from "react"
 import { type ApprovalTarget, pendingApprovalTargets } from "../approvalNavigation"
 import { reconcileApprovalMessages } from "../approvalState"
 import { BOT_ACTIVITY_LABELS, type BotActivity } from "../botActivity"
 import { latestPreview } from "../botPreview"
 import { paletteShortcutLabel } from "../features/commandPalette/shortcut"
-import { t } from "../i18n"
+import { getRoutineRunDateLabel, t } from "../i18n"
 import {
   isFailureNotice,
   pendingNotifications,
   reconcileFailureNotifications,
   relativeThreadDate,
 } from "../sidebarAttention"
+import { getSidebarDataByBot, getSidebarThreads } from "../sidebarThreads"
 import { getSidebarThreadTitle } from "../sidebarThreadTitle"
 import { useMascotSnapshot } from "./AvatarRuntime"
 import { BotActionsMenu } from "./BotActionsMenu"
 import { BotAvatar } from "./BotAvatar"
 import { DeleteBotDialog } from "./DeleteBotDialog"
+import { DeletedRoutineHistory } from "./DeletedRoutineHistory"
 import { GlobalAdvancedMenu } from "./GlobalAdvancedMenu"
 import { GroupSidebar } from "./Groups"
 import { useInsertedIds } from "./Motion"
@@ -38,16 +51,20 @@ type SidebarProps = {
   bots: Array<Bot>
   threads: Array<Thread>
   messages: Array<Message>
+  workRuns?: Array<Run>
   runs?: Array<Run>
+  routineRuns?: Array<RoutineRun>
+  routines?: Array<Routine>
   /** Float bots with updates to the top (settings: "Mover bots com novidades para o topo"). Default on. */
   floatUpdates?: boolean
   selectedBotId: Id | null
   selectedThreadId: Id | null
   section: "advanced" | "bots"
-  advancedPage: "cron" | "integracoes" | "mcp" | null
+  advancedPage: "cron" | "integracoes" | "mcp" | "work" | "performance" | null
   onChat: () => void
-  onAdvancedPage: (page: "integracoes" | "mcp") => void
+  onAdvancedPage: (page: "integracoes" | "mcp" | "work" | "performance") => void
   onRoutines: (botId: Id) => void
+  onRoutineHistory?: (botId: Id, routineId?: Id) => void
   onProject: () => void
   onImport: () => void
   onSelect: (id: Id) => void
@@ -59,6 +76,8 @@ type SidebarProps = {
   onDeleteBot?: (botId: string, name: string, deleteVolumes: boolean) => Promise<void>
   onSettings: () => void
   onDoctor: () => void
+  onRecovery?: () => void
+  recoveryCount?: number
   onSearch: () => void
   notifications: Array<NotificationRecord>
   onNotificationsOpen: (open: boolean) => void
@@ -82,6 +101,19 @@ const SidebarIcon = ({ children }: { children: ReactNode }) => (
 )
 
 export const Sidebar = (props: SidebarProps) => {
+  const sidebarDataByBot = useMemo(
+    () => getSidebarDataByBot(props.threads, props.routineRuns ?? []),
+    [props.threads, props.routineRuns],
+  )
+  const routineIds = useMemo(
+    () => props.routines && new Set(props.routines.map((routine) => routine.id)),
+    [props.routines],
+  )
+  const openRoutineHistory = props.onRoutineHistory ?? props.onRoutines
+  const selectedRoutineThreadId = props.threads.find(
+    (thread) => thread.id === props.selectedThreadId && thread.kind === "routine",
+  )?.id
+  const selectedRoutineId = props.routineRuns?.find((run) => run.threadId === selectedRoutineThreadId)?.routineId
   const navigate = (action: () => void): void => {
     props.onNavigate?.()
     action()
@@ -168,6 +200,14 @@ export const Sidebar = (props: SidebarProps) => {
           {t("Bots")} <span>{props.bots.length}</span>
         </button>
       </div>
+      <button type="button" className="sidebar-work-badge" onClick={() => navigate(() => props.onAdvancedPage("work"))}>
+        <span>
+          {t("Working")} <strong>{(props.workRuns ?? []).filter((run) => run.status !== "queued").length}</strong>
+        </span>
+        <span>
+          {t("Work queued count", { count: (props.workRuns ?? []).filter((run) => run.status === "queued").length })}
+        </span>
+      </button>
       <div className="bot-groups">
         <div className="bot-list" ref={ordered.listRef}>
           {ordered.bots.map((bot, index) => {
@@ -190,7 +230,9 @@ export const Sidebar = (props: SidebarProps) => {
                   activity={ordered.activity.get(bot.id) ?? null}
                   onHold={ordered.hold}
                   insertedThreads={insertedThreads}
-                  threads={props.threads.filter((thread) => thread.botId === bot.id)}
+                  threads={sidebarDataByBot.get(bot.id)?.threads ?? []}
+                  routineRuns={sidebarDataByBot.get(bot.id)?.routineRuns ?? []}
+                  routineIds={routineIds}
                   messages={messages}
                   attention={attention.filter((item) => item.botId === bot.id)}
                   notifications={notifications}
@@ -216,6 +258,9 @@ export const Sidebar = (props: SidebarProps) => {
                     props.onBotSettings()
                   }}
                   onRoutines={() => navigate(() => props.onRoutines(bot.id))}
+                  onRoutineHistory={(routineId) =>
+                    navigate(() => openRoutineHistory(bot.id, routineId ?? selectedRoutineId))
+                  }
                   onReviewApproval={(target) => navigate(() => props.onReviewApproval(target))}
                   onNotification={(item) => navigate(() => props.notificationActions.open(item))}
                   onDelete={props.onDeleteBot}
@@ -236,6 +281,15 @@ export const Sidebar = (props: SidebarProps) => {
           onEdit={(g) => navigate(() => props.onEditGroup?.(g))}
           onNewThread={(g) => navigate(() => props.onNewGroupThread?.(g))}
         />
+      )}
+      {props.onRecovery && (
+        <button
+          type="button"
+          className="text-button sidebar-recovery"
+          onClick={() => navigate(() => props.onRecovery?.())}
+        >
+          {t("Interrupted tasks")} {props.recoveryCount ? `(${props.recoveryCount})` : ""}
+        </button>
       )}
       <div className="sidebar-footer">
         <div className="sidebar-user-row">
@@ -282,6 +336,8 @@ const BotEntry = ({
   activity,
   onHold,
   threads,
+  routineRuns,
+  routineIds,
   messages,
   attention,
   notifications,
@@ -293,6 +349,7 @@ const BotEntry = ({
   onNewThread,
   onSettings,
   onRoutines,
+  onRoutineHistory,
   onReviewApproval,
   onNotification,
   onDelete,
@@ -303,6 +360,8 @@ const BotEntry = ({
   onHold: (botId: Id, reason: HoldReason, active: boolean) => void
   insertedThreads: ReadonlySet<string>
   threads: Array<Thread>
+  routineRuns: Array<RoutineRun>
+  routineIds: ReadonlySet<string> | undefined
   messages: Array<Message>
   attention: Array<NotificationRecord>
   notifications: Array<NotificationRecord>
@@ -314,6 +373,7 @@ const BotEntry = ({
   onNewThread: () => void
   onSettings: () => void
   onRoutines: () => void
+  onRoutineHistory: (routineId?: Id) => void
   onReviewApproval: (target: ApprovalTarget) => void
   onNotification: (item: NotificationRecord) => void
   onDelete?: ((botId: string, name: string, deleteVolumes: boolean) => Promise<void>) | undefined
@@ -398,6 +458,20 @@ const BotEntry = ({
   // A dismissed or superseded failure must not keep the sidebar mascot in an error pose.
   const avatarState = snapshot.state === "error" && !failed ? "idle" : undefined
   const activityKind = activity?.kind ?? null
+  const runningThreadIds = useMemo(
+    () => new Set(messages.filter((message) => message.status === "streaming").map((message) => message.threadId)),
+    [messages],
+  )
+  const sidebarThreads = useMemo(
+    () => (expanded ? getSidebarThreads(threads, routineRuns, selectedThreadId, runningThreadIds, routineIds) : []),
+    [expanded, threads, routineRuns, selectedThreadId, runningThreadIds, routineIds],
+  )
+  const visibleRoutineIds = sidebarThreads.flatMap(({ routineRun, deletedRoutine }) =>
+    routineRun && !deletedRoutine ? [routineRun.routineId] : [],
+  )
+  const selectedRoutineId = sidebarThreads.find(({ thread }) => thread.id === selectedThreadId)?.routineRun?.routineId
+  const historyRoutineId = selectedRoutineId ?? (visibleRoutineIds.length === 1 ? visibleRoutineIds[0] : undefined)
+  const deletedRoutine = sidebarThreads.find((entry) => entry.deletedRoutine)
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: hover and focus only pause reordering; they trigger no action
     <div
@@ -498,19 +572,38 @@ const BotEntry = ({
       {deleting && onDelete && <DeleteBotDialog bot={bot} onDelete={onDelete} onClose={() => setDeleting(false)} />}
       {expanded && (
         <section className="bot-thread-tree" aria-label={t("Conversations for {name}", { name: bot.name })}>
-          {threads
-            .filter((thread) => !thread.groupId)
-            .sort((a, b) => b.updatedAt - a.updatedAt)
-            .map((thread) => (
-              <ThreadRow
-                key={thread.id}
-                inserted={insertedThreads.has(thread.id)}
-                thread={thread}
-                selected={thread.id === selectedThreadId}
-                running={messages.some((message) => message.threadId === thread.id && message.status === "streaming")}
-                onClick={() => onSelectThread(thread.id)}
-              />
-            ))}
+          {sidebarThreads.map(({ thread, routineRun, running, unread, deletedRoutine }) => (
+            <ThreadRow
+              key={thread.id}
+              inserted={insertedThreads.has(thread.id)}
+              thread={thread}
+              deletedRoutine={deletedRoutine}
+              dateLabel={
+                thread.kind === "routine"
+                  ? getRoutineRunDateLabel(routineRun?.scheduledFor ?? thread.createdAt)
+                  : relativeThreadDate(thread.updatedAt)
+              }
+              unread={unread}
+              selected={thread.id === selectedThreadId}
+              running={running}
+              onClick={() => onSelectThread(thread.id)}
+            />
+          ))}
+          {visibleRoutineIds.length > 0 && (
+            <button type="button" className="new-thread-row" onClick={() => onRoutineHistory(historyRoutineId)}>
+              {t("Routine run history")}
+            </button>
+          )}
+          {deletedRoutine && (
+            <DeletedRoutineHistory
+              threads={threads}
+              routineRuns={routineRuns}
+              routineIds={routineIds}
+              groupThreadId={deletedRoutine.thread.id}
+              selectedThreadId={selectedThreadId}
+              onSelectThread={onSelectThread}
+            />
+          )}
           <button type="button" className="new-thread-row" onClick={onNewThread}>
             <SidebarIcon>
               <path d="M12 5v14M5 12h14" />
@@ -526,17 +619,23 @@ const BotEntry = ({
 const ThreadRow = ({
   inserted,
   thread,
+  deletedRoutine,
+  dateLabel,
+  unread,
   selected,
   running,
   onClick,
 }: {
   thread: Thread
+  deletedRoutine: boolean
+  dateLabel: string
+  unread: number
   inserted: boolean
   selected: boolean
   running: boolean
   onClick: () => void
 }) => {
-  const title = getSidebarThreadTitle(thread)
+  const title = deletedRoutine ? t("Deleted routine") : getSidebarThreadTitle(thread)
 
   return (
     <button
@@ -559,13 +658,13 @@ const ThreadRow = ({
         )}
       </span>
       <span className="thread-copy">
-        <strong title={title}>{title}</strong>
-        <small>{relativeThreadDate(thread.updatedAt)}</small>
+        <strong title={thread.kind === "routine" ? `${title} · ${dateLabel}` : title}>{title}</strong>
+        <small>{dateLabel}</small>
       </span>
       {running ? (
         <span className="sidebar-status-dot state-running" role="img" aria-label={t("Em execução")} />
-      ) : thread.unread > 0 ? (
-        <span className="sidebar-unread">{thread.unread > 99 ? "99+" : thread.unread}</span>
+      ) : unread > 0 ? (
+        <span className="sidebar-unread">{unread > 99 ? "99+" : unread}</span>
       ) : null}
     </button>
   )
