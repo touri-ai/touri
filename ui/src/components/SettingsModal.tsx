@@ -21,6 +21,7 @@ import { isNativeDesktop, useIsServerMode } from "../features/server/serverMode"
 import { t } from "../i18n"
 import { hostComputerSupported } from "../platform"
 import { useHost } from "../useHost"
+import { ApiModelsSettings } from "./ApiModelsSettings"
 import { Modal } from "./Modal"
 import { NotificationDeliverySettings } from "./NotificationDeliverySettings"
 import {
@@ -133,6 +134,14 @@ export const SettingsModal = ({
   return (
     <Modal onClose={onClose} title={t("Settings")} eyebrow={t("Local preferences")} className="settings-modal">
       <SettingsLayout sections={sections} active={section} onChange={setSection} label={t("Seções das preferências")}>
+        <SettingsPane
+          active={section}
+          id="api-models"
+          title={t("API models")}
+          description={t("Choose a provider and use your own API key.")}
+        >
+          <ApiModelsSettings api={api} />
+        </SettingsPane>
         <SettingsPane {...pane("appearance")}>
           <SettingsGroup>
             <SettingsRow
