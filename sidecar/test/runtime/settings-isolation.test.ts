@@ -277,7 +277,8 @@ for (const vm of [false, true]) {
           // These bots have no extra grants. Linux keeps the provider's boundary;
           // bounded macOS turns inherit Seatbelt, and full access launches directly.
           const inherited = !vm && access !== "full" && process.platform === "darwin"
-          expect(call.cmd).toBe(inherited ? "/usr/bin/sandbox-exec" : vm ? "codex" : process.execPath)
+          const directCommand = vm ? "codex" : process.execPath
+          expect(call.cmd).toBe(inherited ? "/usr/bin/sandbox-exec" : directCommand)
           const outer = call.cmd === "/usr/bin/sandbox-exec" || /\/bwrap$/.test(call.cmd)
           expect(call.args).toContain('approvals_reviewer="user"')
           if (access === "full") {

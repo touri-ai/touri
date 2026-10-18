@@ -53,17 +53,23 @@ test("Linux CI verifies confinement before both suite selections and preserves n
     readFileSync(new URL("../../../.github/actions/setup-bun/action.yml", import.meta.url), "utf8"),
   ) as { runs: { steps: Step[] } }
 
-  expect(indices).toEqual(indices.toSorted((left, right) => left - right))
-  ordered.forEach((step) => expect(step["continue-on-error"]).not.toBe(true))
+  expect(indices.every((index, position) => index > (indices[position - 1] ?? -1))).toBe(true)
+  ordered.forEach((step) => {
+    expect(step["continue-on-error"]).not.toBe(true)
+  })
   const unconditional = [setup, dependencies, confinement, smoke]
-  unconditional.forEach((step) => expect(step.if).toBeUndefined())
+  unconditional.forEach((step) => {
+    expect(step.if).toBeUndefined()
+  })
   expect(dependencies.run).toContain("packages=(bubblewrap)")
   expect(dependencies.run).toMatch(/apt-get[^\n]*install -y "\$\{packages\[@\]\}"/)
   expect(setupAction.runs.steps.some((step) => step.run === "bun install --frozen-lockfile" && !step.if)).toBe(true)
   expect(fullSuite.if).toBe("github.event_name != 'pull_request'")
   expect(platformSuite.if).toBe("github.event_name == 'pull_request'")
   expect(build.if).toBe("steps.sidecar-binary.outputs.cache-hit != 'true'")
-  native.forEach((step) => expect(step.if).toBe("needs.changes.outputs.native == 'true'"))
+  native.forEach((step) => {
+    expect(step.if).toBe("needs.changes.outputs.native == 'true'")
+  })
   expect(packaging.if).toBe("github.event_name != 'pull_request'")
   expect(artifact.if).toBe(packaging.if)
   expect(artifact.with).toMatchObject({ name: "touri-linux-x64" })

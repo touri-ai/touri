@@ -65,24 +65,32 @@ const fixture = ({
   writeFileSync(join(appData, "provider/other/auth.json"), "other-bot-login")
   symlinkSync(join(home, ".codex/auth.json"), join(providerHome, "auth.json"))
   const kernel = { paths: { appData, runDir }, spawnTree: spawn } as Kernel
-  const args = {
-    bot: {
-      provider: "codex",
-      machine: "local",
-      homeDir: workspace,
-      access,
-      approvals,
-      folders: grantFree
-        ? []
-        : [
-            { path: ro, access: "read-only" },
-            { path: rw, access: "read-write" },
-          ],
-    },
-    thread: { id: "current-thread" },
-    fingerprint: { cwd: workspace },
+  const bot: Partial<StartTurnArgs["bot"]> = {
+    provider: "codex",
+    machine: "local",
+    homeDir: workspace,
+    access,
+    approvals,
+    folders: grantFree
+      ? []
+      : [
+          { path: ro, access: "read-only" },
+          { path: rw, access: "read-write" },
+        ],
+  }
+  const args: StartTurnArgs = {
+    bot: bot as StartTurnArgs["bot"],
+    thread: { id: "current-thread" } as StartTurnArgs["thread"],
+    fingerprint: { cwd: workspace } as StartTurnArgs["fingerprint"],
+    session: null,
+    input: [],
+    developerInstructions: "",
+    handoffPacket: null,
+    mcp: { command: "/bin/true", args: [], env: {} },
     env: { HOME: home, CODEX_HOME: providerHome, TMPDIR: join(runDir, "turn-temp") },
-  } as StartTurnArgs
+    onEvent: () => {},
+    signal: new AbortController().signal,
+  }
   const shell = (script: string, ...values: string[]) =>
     Bun.spawnSync({
       cmd: [
