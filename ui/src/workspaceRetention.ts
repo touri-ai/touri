@@ -8,6 +8,7 @@ export const retainWorkspace = (data: WorkspaceData, previous?: WorkspaceData): 
   if (
     previous &&
     !switched &&
+    data.messages.length === previous.messages.length &&
     data.activityMessages === previous.activityMessages &&
     data.runs === previous.runs &&
     data.notifications === previous.notifications

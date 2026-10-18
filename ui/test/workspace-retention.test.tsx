@@ -57,6 +57,23 @@ test("open conversation tokens preserve unchanged background messages and runs",
   )
 })
 
+test("a late acknowledgement cannot restore a closed conversation when only messages change", async () => {
+  const workload = createRetentionWorkload()
+  const hook = renderHook(() => useWorkspace(workload.api))
+  await waitFor(() => expect(hook.result.current.data.messages).toHaveLength(1))
+  const before = hook.result.current.data
+  const late = workload.message(1, 1)
+  const arrived = { ...before, messages: [...before.messages, late] }
+
+  const retained = retainWorkspace(arrived, before)
+
+  expect(retained.messages).toEqual(before.messages)
+  expect(retained.activityMessages.find((row) => row.id === late.id)?.text).toBe(late.text.slice(0, 512))
+  expect(retained.activityMessages.find((row) => row.id === late.id)?.parts).toEqual([])
+  expect(retained.runs).toBe(before.runs)
+  expect(late.parts).toHaveLength(3)
+})
+
 test("retaining an already bounded workspace preserves collection identity", async () => {
   const workload = createRetentionWorkload()
   const hook = renderHook(() => useWorkspace(workload.api))
