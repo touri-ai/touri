@@ -116,7 +116,9 @@ describe("test file discovery", () => {
       ),
     )
     const fixtures = [...expected, "helper.ts", "example.test.json"]
-    fixtures.forEach((file) => writeFileSync(join(root, file), ""))
+    fixtures.forEach((file) => {
+      writeFileSync(join(root, file), "")
+    })
 
     const found = testFiles(root)
 
