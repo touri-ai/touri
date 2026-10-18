@@ -6,6 +6,8 @@ const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? `http://127.0.0.1:${port}`
 export default defineConfig({
   testDir: "./test/e2e",
   timeout: 20_000,
+  // Production builds and CPU/heap budgets share the host; simultaneous specs distort their measurements.
+  projects: [{ workers: 1 }],
   // Keep repeatable before/after transcript evidence in the serialized test gate.
   ...(process.env.TOURI_E2E_GREP || process.env.CHAT_TRANSCRIPT_PHASE
     ? { grep: new RegExp(process.env.TOURI_E2E_GREP ?? "chat activity:|mermaid", "i") }
