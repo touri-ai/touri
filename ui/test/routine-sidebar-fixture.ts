@@ -1,7 +1,7 @@
 import type { Message, RoutineRun, Thread } from "@touri/contracts"
 import { createMockApi } from "../src/api/mock"
 
-export const getRoutineSidebarFixture = async () => {
+export const getRoutineSidebarFixture = async (runCount = 28) => {
   const api = createMockApi()
   const state = api.getState()
   const baseThread = state.threads.find((thread) => thread.id === "thread-mark")
@@ -11,7 +11,7 @@ export const getRoutineSidebarFixture = async () => {
   if (!baseThread || !baseMessage || !baseRoutine) throw new Error("Missing routine fixture")
 
   const routine = { ...baseRoutine, name: "Resumo diário", cron: "*/15 * * * *", continuity: "new-thread" as const }
-  const routineRuns: RoutineRun[] = Array.from({ length: 28 }, (_, index) => {
+  const routineRuns: RoutineRun[] = Array.from({ length: runCount }, (_, index) => {
     const scheduledFor = new Date(2026, 9, 18, 8, index * 15).getTime()
 
     return {

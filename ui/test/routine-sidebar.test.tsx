@@ -40,6 +40,32 @@ it("groups 28 routine executions without burying ordinary conversations and open
   expect(await screen.findByText("Resumo pronto para conferir.", { selector: "p" })).toBeVisible()
 })
 
+it("keeps routine conversations older than the first history page reachable", async () => {
+  const { api } = await getRoutineSidebarFixture(60)
+
+  render(<App kernel={{ services: { api } }} />)
+  await screen.findByRole("textbox", { name: "Mensagem para mark" })
+  fireEvent.click(screen.getByRole("button", { name: "Histórico de rotinas" }))
+  await screen.findByRole("heading", { name: "Rotinas", exact: true })
+  fireEvent.click(screen.getByText("Histórico de execuções", { selector: "summary" }))
+  const history = document.querySelector(".routine-run-history")
+  if (!(history instanceof HTMLElement)) throw new Error("Missing run history")
+
+  expect(within(history).getAllByRole("button", { name: "Abrir conversa" })).toHaveLength(50)
+  fireEvent.click(within(history).getByRole("button", { name: "Mostrar mais execuções" }))
+  const openButtons = within(history).getAllByRole("button", { name: "Abrir conversa" })
+  const oldest = openButtons.at(-1)
+  if (!oldest) throw new Error("Missing oldest run")
+
+  expect(openButtons).toHaveLength(60)
+  expect(within(history).queryByRole("button", { name: "Mostrar mais execuções" })).toBeNull()
+  fireEvent.click(oldest)
+  await screen.findByRole("textbox", { name: "Mensagem para mark" })
+
+  expect(document.querySelector(".thread-row.selected")).toHaveTextContent("08:00")
+  expect(await screen.findByText("Resumo pronto para conferir.", { selector: "p" })).toBeVisible()
+})
+
 it("groups by identity across renames, keeps same-name routines separate and preserves unread results", async () => {
   const { threads, routineRuns } = await getRoutineSidebarFixture()
   const firstRun = routineRuns[0]
@@ -103,4 +129,6 @@ it("labels routine times and navigation in Portuguese and English", () => {
   expect(t("Routine run history", {}, "pt-BR")).toBe("Histórico de rotinas")
   expect(t("Routine run history", {}, "en")).toBe("Routine run history")
   expect(t("Open routine conversation", {}, "en")).toBe("Open conversation")
+  expect(t("Show more routine runs", {}, "pt-BR")).toBe("Mostrar mais execuções")
+  expect(t("Show more routine runs", {}, "en")).toBe("Show more runs")
 })

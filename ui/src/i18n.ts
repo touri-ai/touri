@@ -46,6 +46,7 @@ export const ptBR = {
   "Há um novo aviso na central de notificações.": "Há um novo aviso na central de notificações.",
   "Routine run history": "Histórico de rotinas",
   "Open routine conversation": "Abrir conversa",
+  "Show more routine runs": "Mostrar mais execuções",
   "Confira os dados e os limites do objetivo.": "Confira os dados e os limites do objetivo.",
   "ERROR INVALID_ARGS: Confira os dados e os limites do objetivo.": "Confira os dados e os limites do objetivo.",
   "Aguarde o turno atual terminar ou conclua o objetivo anterior.":
@@ -2389,6 +2390,7 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Há um novo aviso na central de notificações.": "There is a new notification in the notification center.",
   "Routine run history": "Routine run history",
   "Open routine conversation": "Open conversation",
+  "Show more routine runs": "Show more runs",
   "Confira os dados e os limites do objetivo.": "Check the goal details and limits.",
   "ERROR INVALID_ARGS: Confira os dados e os limites do objetivo.": "Check the goal details and limits.",
   "Aguarde o turno atual terminar ou conclua o objetivo anterior.":

@@ -94,6 +94,7 @@ const CronScreen = ({
     bots.some((bot) => bot.id === initialBotFilter) ? (initialBotFilter ?? "all") : "all",
   )
   const [stateFilter, setStateFilter] = useState<"all" | "active" | "paused">("all")
+  const [historyLimit, setHistoryLimit] = useState(50)
   const [month, setMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1))
   const [deleting, setDeleting] = useState<Routine | null>(null)
   const [editor, setEditor] = useState<RoutineEditorState>(null)
@@ -103,6 +104,9 @@ const CronScreen = ({
       (botFilter === "all" || routine.botId === botFilter) &&
       (stateFilter === "all" || (stateFilter === "active" ? routine.enabled : !routine.enabled)),
   )
+  const historyRuns = routineRuns
+    .filter((run) => visibleRoutines.some((routine) => routine.id === run.routineId))
+    .sort((left, right) => right.scheduledFor - left.scheduledFor)
   const calendar = useMemo(() => buildCalendar(month), [month])
   const calendarRuns = routineRuns.filter((routineRun) => {
     if (!visibleRoutines.some((routine) => routine.id === routineRun.routineId)) return false
@@ -324,34 +328,36 @@ const CronScreen = ({
             <details className="routine-run-history">
               <summary>{t("Histórico de execuções")}</summary>
               <ul>
-                {[...routineRuns]
-                  .filter((run) => visibleRoutines.some((routine) => routine.id === run.routineId))
-                  .sort((a, b) => b.scheduledFor - a.scheduledFor)
-                  .slice(0, 50)
-                  .map((run) => {
-                    const routine = routines.find((routine) => routine.id === run.routineId)
-                    const threadId = run.threadId
-                    return (
-                      <li key={run.id}>
-                        <strong>{routine?.name}</strong> ·{" "}
-                        {new Date(run.scheduledFor).toLocaleString("pt-BR", { timeZone: routine?.timezone ?? "UTC" })} ·{" "}
-                        {routine?.timezone} · {t(run.status)}
-                        {run.status === "skipped" && (
-                          <p>
-                            {getRoutineSkipSummary(run.summary ?? "") ??
-                              t("Disparo não executado: touri indisponível ou execução anterior em andamento.")}
-                          </p>
-                        )}
-                        {run.triggerSource === "catch-up" && <p>{t("Execução de recuperação")}</p>}
-                        {threadId && onOpenThread && (
-                          <button type="button" onClick={() => onOpenThread(threadId)}>
-                            {t("Open routine conversation")}
-                          </button>
-                        )}
-                      </li>
-                    )
-                  })}
+                {historyRuns.slice(0, historyLimit).map((run) => {
+                  const routine = routines.find((routine) => routine.id === run.routineId)
+                  const threadId = run.threadId
+
+                  return (
+                    <li key={run.id}>
+                      <strong>{routine?.name}</strong> ·{" "}
+                      {new Date(run.scheduledFor).toLocaleString("pt-BR", { timeZone: routine?.timezone ?? "UTC" })} ·{" "}
+                      {routine?.timezone} · {t(run.status)}
+                      {run.status === "skipped" && (
+                        <p>
+                          {getRoutineSkipSummary(run.summary ?? "") ??
+                            t("Disparo não executado: touri indisponível ou execução anterior em andamento.")}
+                        </p>
+                      )}
+                      {run.triggerSource === "catch-up" && <p>{t("Execução de recuperação")}</p>}
+                      {threadId && onOpenThread && (
+                        <button type="button" onClick={() => onOpenThread(threadId)}>
+                          {t("Open routine conversation")}
+                        </button>
+                      )}
+                    </li>
+                  )
+                })}
               </ul>
+              {historyRuns.length > historyLimit && (
+                <button type="button" onClick={() => setHistoryLimit((limit) => limit + 50)}>
+                  {t("Show more routine runs")}
+                </button>
+              )}
             </details>
           </section>
         </div>

@@ -5,6 +5,7 @@ import { getRoutineSidebarFixture } from "../routine-sidebar-fixture"
 import "../../src/styles.css"
 
 initializeTheme()
-const { api } = await getRoutineSidebarFixture()
+const runCount = new URLSearchParams(window.location.search).get("runs") === "60" ? 60 : 28
+const { api } = await getRoutineSidebarFixture(runCount)
 const root = document.getElementById("root")
 if (root) createRoot(root).render(<App kernel={{ services: { api } }} />)
