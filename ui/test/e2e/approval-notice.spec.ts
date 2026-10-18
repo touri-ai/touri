@@ -8,7 +8,7 @@ for (const width of [1000, 760]) {
     await page.goto(process.env.APPROVAL_NOTICE_URL ?? "/test/e2e/approval-notice-harness.html")
     const notice = page.locator(".approval-notice")
     await expect(notice).toContainText("Café Ideias")
-    await expect(notice).toContainText("permitir Leitura e escrita em …/phase-a para este bot.")
+    await expect(notice).toContainText("Permitir Leitura e escrita em …/phase-a para este bot.")
     await expect(notice).not.toContainText(/folder_access_request|requestedPath|previousMode|nextTurn|[{}]/)
     const panel = page.getByRole("button", { name: "Painel do bot", exact: true })
     const noticeBox = await notice.boundingBox()

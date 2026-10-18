@@ -14,7 +14,15 @@ import {
 import * as os from "node:os"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import type { ApprovalPart, Bot, ToolRegistration, UiEvent } from "@touri/contracts"
+import {
+  type ApprovalPart,
+  type Bot,
+  getHostKind,
+  getHostNoun,
+  type HostKind,
+  type ToolRegistration,
+  type UiEvent,
+} from "@touri/contracts"
 import { createApprovalBridge } from "../../src/approvals/bridge"
 import { createStandingGrantStore } from "../../src/approvals/grants"
 import { setDelegation } from "../../src/groups/security"
@@ -23,6 +31,7 @@ import * as folderCapability from "../../src/kernel/folder-capability"
 import type { McpCallerContext } from "../../src/mcp/auth"
 import { createToolRouter } from "../../src/mcp/router"
 import { init as initNotify } from "../../src/notify"
+import { getHost } from "../../src/platform/host"
 import { inspectGit } from "../../src/projects/git"
 import { createProjectStore } from "../../src/projects/repository"
 import { createSetupTools } from "../../src/projects/setup-tools"
@@ -33,7 +42,7 @@ afterEach(() => {
   for (const close of cleanups.splice(0)) close()
 })
 
-const fixture = async (patch: Partial<Bot> = {}, projectName = "Hodler") => {
+const fixture = async (patch: Partial<Bot> = {}, projectName = "Hodler", host: HostKind = getHost()) => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "touri-setup-")))
   const home = join(root, "home")
   const path = join(home, projectName)
@@ -90,7 +99,7 @@ const fixture = async (patch: Partial<Bot> = {}, projectName = "Hodler") => {
   runtime.kernel.services.provide("runtime.answerApproval", bridge.approve)
   const store = createProjectStore({ kernel: runtime.kernel })
   const registrations = new Map<string, ToolRegistration>(
-    createSetupTools({ kernel: runtime.kernel, store }).map((tool) => [tool.name, tool]),
+    createSetupTools({ kernel: runtime.kernel, store, host }).map((tool) => [tool.name, tool]),
   )
   const router = createToolRouter({ kernel: runtime.kernel, registrations })
   const caller: McpCallerContext = {
@@ -699,7 +708,7 @@ test("projectId and registered paths reuse a project and unlink is visible witho
       type: "message.created",
       message: expect.objectContaining({
         kind: "notice",
-        text: "Projeto Hodler desvinculado deste bot. A configuração foi salva neste Mac. Vale a partir da próxima mensagem.",
+        text: `Projeto Hodler desvinculado deste bot. A configuração foi salva neste ${getHostNoun(getHost())}. Vale a partir da próxima mensagem.`,
       }),
     }),
   )
@@ -799,7 +808,7 @@ for (const [mode, access] of [
       expect.objectContaining({
         type: "message.created",
         message: expect.objectContaining({
-          text: `Acesso à pasta ${f.path} removido deste bot. A configuração foi salva neste Mac. Vale a partir da próxima mensagem.`,
+          text: `Acesso à pasta ${f.path} removido deste bot. A configuração foi salva neste ${getHostNoun(getHost())}. Vale a partir da próxima mensagem.`,
         }),
       }),
     )
@@ -1084,7 +1093,7 @@ for (const projectName of ["Hodler", "VM-tools"])
       })
       if (!result.success) throw new Error(result.error)
       expect(result.structured).toHaveProperty("message", expect.not.stringContaining("próxima mensagem na VM"))
-      expect(JSON.stringify(result)).toContain("neste Mac")
+      expect(JSON.stringify(result)).toContain(`neste ${getHostNoun(getHost())}`)
       const removed = await f.call(remove, "path" in removeArgs ? { path: f.path } : {})
       expect(removed.success).toBe(true)
       expect(JSON.stringify(removed)).toContain("próxima mensagem")
@@ -1230,3 +1239,20 @@ test("read-only grants override the implicit writable cwd for restricted bots", 
   expect(await call).toMatchObject({ success: false, errorCode: "DENIED" })
   expect(f.currentBot()?.folders).toEqual([{ path: f.path, access: "read-only" }])
 })
+
+test.each([
+  ["linux", false, "computador"],
+  ["linux", true, "servidor"],
+  ["darwin", false, "Mac"],
+] as const)(
+  "%s headless=%s setup notices name the host where configuration is saved",
+  async (platform, headless, noun) => {
+    const host = getHostKind(platform, headless)
+    const f = await fixture({}, "Demo", host)
+
+    const result = await f.call("project_unlink")
+
+    expect(result.success).toBe(true)
+    expect(JSON.stringify(result)).toContain(`A configuração foi salva neste ${noun}.`)
+  },
+)

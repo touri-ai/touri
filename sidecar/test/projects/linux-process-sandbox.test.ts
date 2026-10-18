@@ -111,6 +111,7 @@ for (const mode of ["remove", "read-only"] as const)
           body: JSON.stringify({ path: h.projectPath }),
         })
         const { project } = (await response.json()) as { project: { id: string } }
+        const db = h.runtime.kernel.db as Database
         const patch = (folders: unknown[]) =>
           h.request("/bots/bot-test", {
             method: "PATCH",
@@ -121,7 +122,7 @@ for (const mode of ["remove", "read-only"] as const)
         const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`
         const trigger = join(h.projectPath, "continue")
         const output = join(root, "after-revocation")
-        const command = `echo READY; while [ ! -f ${quote(trigger)} ]; do sleep 0.05; done; cat ${quote(join(root, "reference"))}; printf stale > ${quote(output)}; sleep 60`
+        const command = `echo READY; while [ ! -f ${quote(trigger)} ]; do sleep 0.05; done; cat ${quote(join(root, "reference"))}; printf stale > ${quote(output)}; echo ATTEMPTED; sleep 60`
         expect(
           (
             await h.tool(
@@ -132,7 +133,6 @@ for (const mode of ["remove", "read-only"] as const)
           ).success,
         ).toBe(true)
         expect((await h.tool("process_start", { name: "waiting", waitMs: 5000 }, project.id)).success).toBe(true)
-        const db = h.runtime.kernel.db as Database
         const run = db.query("SELECT id FROM process_runs ORDER BY started_at DESC LIMIT 1").get() as { id: string }
         expect((await patch(mode === "remove" ? [] : [{ path: root, access: "read-only" }])).status).toBe(200)
         const deadline = Date.now() + 5000
@@ -145,10 +145,17 @@ for (const mode of ["remove", "read-only"] as const)
         expect(db.query("SELECT status FROM process_runs WHERE id = ?").get(run.id)).toEqual({ status: "stopped" })
         writeFileSync(trigger, "continue")
         expect((await h.tool("process_start", { name: "waiting", waitMs: 5000 }, project.id)).success).toBe(true)
-        await Bun.sleep(100)
+        let logs = await h.tool("process_logs", { name: "waiting" }, project.id)
+        const attemptedDeadline = Date.now() + 5000
+        while (!JSON.stringify(logs).includes("ATTEMPTED") && Date.now() < attemptedDeadline) {
+          await Bun.sleep(10)
+          logs = await h.tool("process_logs", { name: "waiting" }, project.id)
+        }
+        expect(logs).toMatchObject({ success: true })
+        expect(JSON.stringify(logs)).toContain("ATTEMPTED")
         expect(existsSync(output)).toBe(false)
-        const logs = await h.tool("process_logs", { name: "waiting" }, project.id)
         if (mode === "remove") expect(JSON.stringify(logs)).not.toContain("revocation-proof")
+        else expect(JSON.stringify(logs)).toContain("revocation-proof")
         await h.tool("process_stop", { name: "waiting" }, project.id)
       } finally {
         await h.close()

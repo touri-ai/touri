@@ -26,7 +26,7 @@ import { DoctorChecks } from "../features/doctor/DoctorChecks"
 import { NOT_SURE_JOB_ID } from "../features/jobs/catalog"
 import { JobPicker } from "../features/jobs/JobPicker"
 import { useIsServerMode } from "../features/server/serverMode"
-import { accessLabel, fullAccessDescription, plural, statusLabel, t } from "../i18n"
+import { accessLabel, fullAccessDescription, getHostLabel, plural, statusLabel, t } from "../i18n"
 import { hostComputerSupported } from "../platform"
 import { useHost } from "../useHost"
 import type { WorkspaceActions } from "../useWorkspace"
@@ -451,7 +451,7 @@ export const BotCreateModal = ({
   const [loginDraftId] = useState(() => `draft-${crypto.randomUUID()}`)
   const fallbackHost = useHost(api)
   const login = useCreateProvider(api, loginDraftId)
-  const host = login.flow?.host ?? fallbackHost
+  const host = login.flow?.hostKind ?? login.flow?.host ?? fallbackHost
   const [apiModel, setApiModel] = useState("")
   const provider = apiModel ? "opencode" : login.provider
   const [jobId, setJobId] = useState(NOT_SURE_JOB_ID)
@@ -619,14 +619,14 @@ export const BotCreateModal = ({
               {!apiModel &&
                 machine.machine !== "cloud" &&
                 (login.checking ? (
-                  <p>{t("onboarding.checking", { host: host === "mac" ? "Mac" : t("onboarding.server") })}</p>
+                  <p>{t("onboarding.checking", { host: getHostLabel(host) })}</p>
                 ) : (
                   login.ready && (
                     <>
                       <p>
                         {t("onboarding.uses", {
                           provider: providerName(provider),
-                          host: host === "mac" ? "Mac" : t("onboarding.server"),
+                          host: getHostLabel(host),
                         })}
                       </p>
                       {!choosingAccount && (
@@ -638,6 +638,7 @@ export const BotCreateModal = ({
                   )
                 ))}
               <BotAccessSummary
+                host={host}
                 machine={machine.machine}
                 access={access === "full-approved" ? "full" : (access as Bot["access"])}
                 approvals={
@@ -1023,6 +1024,7 @@ export const BotSettingsModal = ({
   initialSection,
   focusSetting,
 }: BotSettingsModalProps) => {
+  const host = useHost(api)
   const serverMode = useIsServerMode()
   const routinesFocusRef = useRef<HTMLElement | null>(null)
   const [deletingRoutine, setDeletingRoutine] = useState<Routine | null>(null)
@@ -1210,6 +1212,7 @@ export const BotSettingsModal = ({
           />
         </div>
         <BotAccessSummary
+          host={host}
           {...draftAccess}
           machine={machine.machine}
           folders={folders}
@@ -1557,6 +1560,7 @@ export const BotSettingsModal = ({
                     </select>
                   </label>
                   <BotAccessSummary
+                    host={host}
                     {...draftAccess}
                     machine={machine.machine}
                     folders={folders}

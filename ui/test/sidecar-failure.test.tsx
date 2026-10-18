@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import App from "../src/App"
 import { type ApiRequest, createApiClient, type TauriInvoke, type UiApi } from "../src/api/client"
 import { createMockApi } from "../src/api/mock"
+import { makeConnectionEvents } from "./connection-events"
 
 const shell = vi.hoisted(() => ({
   listeners: new Map<string, (event: { payload: unknown }) => void>(),
@@ -347,26 +348,21 @@ describe("sidecar failure blocking state", () => {
   })
 
   it("blocks on a dropped backend connection even when conversations are already loaded", async () => {
-    let connection: ((connected: boolean) => void) | undefined
+    const connection = makeConnectionEvents()
     const api: UiApi = {
       ...createMockApi(),
+      ...connection,
       isMock: false,
-      subscribeConnection: (listener) => {
-        connection = listener
-        return () => {
-          connection = undefined
-        }
-      },
     }
     const invoke = localInvoke(async () => {
       throw reason
     })
     render(<App kernel={{ services: { api, invoke: invoke as TauriInvoke } }} />)
     await screen.findByRole("textbox", { name: "Mensagem para mark" })
-    act(() => connection?.(false))
+    act(() => connection.emitConnection(false))
     expect(await screen.findByText(reason)).not.toBeVisible()
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument()
-    act(() => connection?.(true))
+    act(() => connection.emitConnection(true))
     await screen.findByRole("textbox", { name: "Mensagem para mark" })
     expect(screen.queryByRole("alert")).not.toBeInTheDocument()
   })

@@ -1,6 +1,7 @@
+import type { Database } from "bun:sqlite"
 import type { Bot, Kernel, Run, Thread } from "@touri/contracts"
 import { getDelegation } from "../groups/security"
-import { readLearning, readLearningState, writeLearningState } from "./settings"
+import { isReviewThread, markReviewThread, readLearning, readLearningState, writeLearningState } from "./settings"
 
 export const REVIEW_THREAD_TITLE = "Aprendizado contínuo"
 const EXCERPT_LIMIT = 16_000
@@ -52,6 +53,11 @@ const transcriptExcerpt = (kernel: Kernel, thread: Thread, bot: Bot): string => 
  */
 export const createLearningReviewer = (kernel: Kernel) => {
   const counted = new Set<string>()
+  const pendingReview = (threadId: string): boolean =>
+    !!kernel.services.use("runtime.activeRun")?.({ threadId }) ||
+    !!(kernel.db as Database)
+      .query("SELECT id FROM runs WHERE thread_id = ? AND status IN ('queued', 'starting', 'running') LIMIT 1")
+      .get(threadId)
 
   const reviewThread = (bot: Bot, current: string | null): Thread | null => {
     const store = kernel.services.use("store.api")
@@ -77,10 +83,11 @@ export const createLearningReviewer = (kernel: Kernel) => {
   }): string | null => {
     const store = kernel.services.use("store.api")
     const enqueue = kernel.services.use("runtime.enqueue")
+    if (reviewThreadId && pendingReview(reviewThreadId)) return null
     const target = reviewThread(bot, reviewThreadId)
     if (!store || !enqueue || !target) return null
     // One review at a time; the counters keep growing until the current one ends.
-    if (kernel.services.use("runtime.activeRun")?.({ threadId: target.id })) return null
+    if (pendingReview(target.id)) return null
     const text = reviewPrompt({ thread, excerpt: transcriptExcerpt(kernel, thread, bot), memory, skills })
     const message = store.insertMessage({
       message: {
@@ -98,6 +105,7 @@ export const createLearningReviewer = (kernel: Kernel) => {
       },
     })
     if (!message.success) return null
+    markReviewThread(kernel, bot.id, target.id)
     // The review thread id is saved before the run starts so its tool calls are recognized as review calls.
     writeLearningState(kernel, bot.id, { ...readLearningState(kernel, bot.id), reviewThreadId: target.id })
     const run = enqueue({ threadId: target.id, requestMessageId: message.message.id, trigger: "user" })
@@ -116,7 +124,7 @@ export const createLearningReviewer = (kernel: Kernel) => {
     if (!thread || !bot || thread.groupId || thread.kind === "routine" || thread.routineRunId) return
     if (getDelegation(kernel, thread.id)) return
     const state = readLearningState(kernel, bot.id)
-    if (thread.id === state.reviewThreadId) return
+    if (isReviewThread(kernel, bot.id, thread.id)) return
     const next = { ...state, turns: state.turns + 1, toolCalls: state.toolCalls + (run.usage?.toolCalls ?? 0) }
     const memory = settings.memory && next.turns >= settings.memoryEveryTurns
     const skills = settings.skills && next.toolCalls >= settings.skillsAfterToolCalls

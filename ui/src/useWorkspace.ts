@@ -4,7 +4,9 @@ import type {
   BotGroup,
   BrowserTabInfo,
   DoctorReport,
+  GroupAction,
   GroupInput,
+  HostKind,
   Id,
   MachineCapability,
   MachineState,
@@ -57,7 +59,7 @@ export type WorkspaceData = {
   processes: Array<ProcessEntry>
   previews: Array<PreviewTarget>
   browserTabs: Array<BrowserTabInfo & { ownerBotId: Id | null }>
-  routineHost: "mac" | "server"
+  routineHost: HostKind
   routines: Array<Routine>
   routineRuns: Array<RoutineRun>
   doctor: DoctorReport | null
@@ -87,7 +89,12 @@ export type WorkspaceActions = {
   createGroup: (input: GroupInput, id?: string) => Promise<void>
   createGroupThread: (id: string) => Promise<void>
   createThread: () => Promise<void>
-  sendMessage: (text: string, parentId?: Id | null, attachmentIds?: Array<Id>) => Promise<void>
+  sendMessage: (
+    text: string,
+    parentId?: Id | null,
+    attachmentIds?: Array<Id>,
+    groupAction?: GroupAction,
+  ) => Promise<void>
   retryRun: (runId: Id) => Promise<void>
   cancelRun: (runId: Id) => Promise<void>
   switchBranch: (threadId: Id, leafId: Id) => Promise<void>
@@ -139,7 +146,7 @@ const emptyState = (): WorkspaceData => ({
   processes: [],
   previews: [],
   browserTabs: [],
-  routineHost: "server",
+  routineHost: "computer",
   routines: [],
   routineRuns: [],
   doctor: null,
@@ -621,7 +628,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
           projects: projectResponse.projects,
           previews: previewResponse.previews,
           browserTabs: browserResponse.tabs,
-          routineHost: routinesResponse.host ?? "server",
+          routineHost: routinesResponse.hostKind ?? routinesResponse.host ?? "computer",
           routines: uniqueById(routinesResponse.routines),
           routineRuns: uniqueById(routineRunsResponse.routineRuns),
           settings: settingsResponse.settings,
@@ -1071,7 +1078,12 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
   )
 
   const sendMessage = useCallback(
-    async (text: string, parentId?: Id | null, attachmentIds: Array<Id> = []): Promise<void> => {
+    async (
+      text: string,
+      parentId?: Id | null,
+      attachmentIds: Array<Id> = [],
+      groupAction?: GroupAction,
+    ): Promise<void> => {
       if (creatingThread.current || data.threadCreation || selectedThread?.id !== currentData.current.selectedThreadId)
         throw new Error(t("Criando conversa…"))
       if (!selectedThread || !text.trim()) return
@@ -1083,6 +1095,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
         parentId: parentId === undefined ? selectedThread.activeLeafId : parentId,
         text: text.trim(),
         attachmentIds,
+        ...(groupAction ? { groupAction } : {}),
       }
       const response = api.sendMessage
         ? await api.sendMessage(input)
