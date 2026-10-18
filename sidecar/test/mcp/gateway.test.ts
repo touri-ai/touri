@@ -167,7 +167,7 @@ const waitForClose = async (socket: Socket): Promise<void> => {
   })
 }
 
-const createFakeHost = async (path: string): Promise<Server> => {
+const createFakeHost = async (path: string, onNotify: (params: unknown) => void): Promise<Server> => {
   const server = createServer((socket) => {
     let buffer = ""
     socket.setEncoding("utf8")
@@ -182,6 +182,9 @@ const createFakeHost = async (path: string): Promise<Server> => {
           if (isObject(message) && typeof message.id === "number") {
             socket.write(
               `${JSON.stringify({ jsonrpc: "2.0", id: message.id, result: message.method === "auth" ? { ok: true } : {} })}\n`,
+              () => {
+                if (message.method === "notify") onNotify(message.params)
+              },
             )
           }
         } catch {
@@ -400,7 +403,8 @@ test("notify_user saves notifications and rate-limits per bot", async () => {
   const root = rootPath()
   const hostPath = join(root, "run", "host.sock")
   mkdirSync(join(root, "run"), { recursive: true })
-  const host = await createFakeHost(hostPath)
+  const delivered = Promise.withResolvers<unknown>()
+  const host = await createFakeHost(hostPath, delivered.resolve)
   const previousSocket = process.env.TOURI_HOST_SOCK
   const previousToken = process.env.TOURI_HOST_TOKEN
   process.env.TOURI_HOST_SOCK = hostPath
@@ -427,6 +431,9 @@ test("notify_user saves notifications and rate-limits per bot", async () => {
         name: "notify_user",
         arguments: { title: "Fixture", body: "Again" },
       })
+      const notification = await delivered.promise
+
+      expect(notification).toMatchObject({ kind: "notice", title: "mark: Fixture", body: "Done" })
       expect((first.result as { isError: boolean }).isError).toBe(false)
       expect((second.result as { content: Array<{ text: string }> }).content[0]?.text).toContain("RATE_LIMITED")
     } finally {
