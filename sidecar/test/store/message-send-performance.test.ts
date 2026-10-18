@@ -118,6 +118,7 @@ test.each([1, 3])(
     const streamP99DelayMs = drift.getP99()
     const streamSamples = drift.getSamples()
     const streamReads = metrics.getMessageReads()
+    const streamReaders = metrics.getMessageReaders()
     const streamMs = Math.round(performance.now() - streamStarted)
     // Measure send responsiveness separately so the streaming window above has no request in flight.
     const busyStarted = performance.now()
@@ -172,6 +173,7 @@ test.each([1, 3])(
       sendReads,
       recoveryReads,
       streamReads,
+      streamReaders,
       queries: metrics.getSlowest(),
       stages,
     }
@@ -351,9 +353,22 @@ const getQueryMetrics = (database: Database) => {
   let messageReads = 0
   let recoveryReads = 0
   const durations = new Map<string, number>()
+  const messageReaders = new Map<string, number>()
   const getStatement = database.query.bind(database)
   const query = spyOn(database, "query").mockImplementation((sql: string) => {
-    if (/SELECT \* FROM messages WHERE/.test(sql)) messageReads++
+    if (/SELECT \* FROM messages WHERE/.test(sql)) {
+      messageReads++
+      // Keep only function names: stack locations can contain private checkout paths.
+      const reader = (new Error().stack ?? "")
+        .split("\n")
+        .flatMap((line) => {
+          const name = line.match(/at ([A-Za-z][A-Za-z0-9_.]+) /)?.[1]
+          return name ? [name] : []
+        })
+        .slice(0, 4)
+        .join(" > ")
+      messageReaders.set(reader, (messageReaders.get(reader) ?? 0) + 1)
+    }
     if (/SELECT resolution, resolved_at, part_json FROM tool_resolutions/.test(sql)) recoveryReads++
     return new Proxy(getStatement(sql), {
       get: (statement, property) => {
@@ -372,6 +387,7 @@ const getQueryMetrics = (database: Database) => {
   return {
     getMessageReads: () => messageReads,
     getRecoveryReads: () => recoveryReads,
+    getMessageReaders: () => Object.fromEntries(messageReaders),
     getSlowest: () =>
       [...durations]
         .sort((left, right) => right[1] - left[1])
@@ -379,6 +395,7 @@ const getQueryMetrics = (database: Database) => {
         .map(([sql, ms]) => ({ sql, ms: Math.round(ms) })),
     reset: () => {
       messageReads = 0
+      messageReaders.clear()
       durations.clear()
     },
     restore: () => query.mockRestore(),
