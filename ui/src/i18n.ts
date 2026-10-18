@@ -2374,6 +2374,29 @@ export const ptBR = {
   "Work saving": "Salvando…",
   "Work settings saved": "Limite salvo.",
   "Work settings error": "Não foi possível salvar. Confira a conexão e tente novamente.",
+  "Ver erro": "Ver erro",
+  "Notificações que precisam de revisão em Tarefas interrompidas: {count}.":
+    "Notificações que precisam de revisão em Tarefas interrompidas: {count}.",
+  "Tarefas interrompidas": "Tarefas interrompidas",
+  "Tarefa interrompida não encontrada.": "Tarefa interrompida não encontrada.",
+  "Não foi possível salvar a confirmação. Tente novamente.": "Não foi possível salvar a confirmação. Tente novamente.",
+  "O touri foi reiniciado.": "O touri foi reiniciado.",
+  "Interrupted tasks": "Tarefas interrompidas",
+  "Interrupted task": "Tarefa interrompida",
+  Loading: "Carregando…",
+  "Open conversation": "Abrir conversa",
+  "Revise o que ficou pendente antes de continuar. O histórico será preservado.":
+    "Revise o que ficou pendente antes de continuar. O histórico será preservado.",
+  "Nenhuma tarefa interrompida pendente.": "Nenhuma tarefa interrompida pendente.",
+  "Interrupções resolvidas": "Interrupções resolvidas",
+  "Interrupção anterior · resolvida": "Interrupção anterior · resolvida",
+  "Resultado incerto": "Resultado incerto",
+  "Ação registrada": "Ação registrada",
+  Descartar: "Descartar",
+  "Revisei os efeitos incertos e entendo que descartar não desfaz as ações.":
+    "Revisei os efeitos incertos e entendo que descartar não desfaz as ações.",
+  "Revise os efeitos incertos no centro de tarefas interrompidas.":
+    "Revise os efeitos incertos no centro de tarefas interrompidas.",
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
@@ -4098,6 +4121,25 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Work saving": "Saving…",
   "Work settings saved": "Limit saved.",
   "Work settings error": "Could not save. Check your connection and try again.",
+  "Ver erro": "View error",
+  "Notificações que precisam de revisão em Tarefas interrompidas: {count}.":
+    "Notifications awaiting review in Interrupted tasks: {count}.",
+  "Tarefas interrompidas": "Interrupted tasks",
+  "Tarefa interrompida não encontrada.": "Interrupted task not found.",
+  "Não foi possível salvar a confirmação. Tente novamente.": "Could not save the acknowledgement. Try again.",
+  "O touri foi reiniciado.": "touri restarted.",
+  "Revise o que ficou pendente antes de continuar. O histórico será preservado.":
+    "Review unfinished work before continuing. History will be preserved.",
+  "Nenhuma tarefa interrompida pendente.": "No interrupted tasks need review.",
+  "Interrupções resolvidas": "Resolved interruptions",
+  "Interrupção anterior · resolvida": "Previous interruption · resolved",
+  "Resultado incerto": "Uncertain outcome",
+  "Ação registrada": "Recorded action",
+  Descartar: "Dismiss",
+  "Revisei os efeitos incertos e entendo que descartar não desfaz as ações.":
+    "I reviewed the uncertain effects and understand that dismissing does not undo actions.",
+  "Revise os efeitos incertos no centro de tarefas interrompidas.":
+    "Review uncertain effects in the interrupted tasks center.",
 }
 export const dictionaries = {
   "pt-BR": ptBR,
