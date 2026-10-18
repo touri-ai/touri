@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto"
 import type { Kernel, ProviderAdapter, StartTurnArgs, StartTurnResult } from "@touri/contracts"
 import { getApiModel } from "../../api-models/config"
+import { startApiModelProxy } from "../../api-models/proxy"
 import { getApiModelEnv, getApiOpenCodeConfig, getApiRunError } from "../../api-models/runtime"
 import { getDelegation } from "../../groups/security"
 import { buildChildEnv } from "../../kernel"
@@ -64,6 +65,7 @@ export const createOpenCodeAdapter = ({
     const signal = AbortSignal.any([args.signal, shutdown.signal])
     let abortNative: (() => Promise<void>) | undefined
     let cleanupAuth: (() => Promise<void>) | undefined
+    let cleanupApi: (() => Promise<void>) | undefined
     let request: ((path: string, body?: unknown) => Promise<unknown>) | undefined
     let diagnostics = ""
     let protocolError: Error | undefined
@@ -82,7 +84,6 @@ export const createOpenCodeAdapter = ({
               args.signal,
               getDelegation(kernel, args.thread.id)?.secrets !== false,
             ),
-        apiEnv,
       )
       for (const [key, value] of Object.entries(base))
         if (/API_KEY|TOKEN|SECRET|PASSWORD/.test(key)) kernel.addRedactionValue(value)
@@ -95,10 +96,22 @@ export const createOpenCodeAdapter = ({
       const root = `${base.TOURI_RUN_DIR ?? kernel.paths.runDir}/opencode/${randomUUID()}`
       const dataDir = `${args.bot.homeDir}/.touri-opencode/${args.thread.id}/data`
       const configPath = `${root}/opencode.json`
-      const config = Object.assign({}, openCodeConfig(args), getApiOpenCodeConfig(apiModel))
       const write =
         args.execution?.writeFile ??
         ((file: { path: string; content: string }) => writePrivateFile({ root: kernel.paths.appData, ...file }))
+      const apiProxy = apiModel
+        ? await startApiModelProxy({
+            model: apiModel,
+            key: apiEnv.TOURI_MODEL_API_KEY ?? "",
+            args,
+            root,
+            write,
+            signal,
+          })
+        : null
+      cleanupApi = apiProxy?.close
+      const executionBase = Object.assign({}, base, apiProxy ? { TOURI_MODEL_API_KEY: apiProxy.token } : {})
+      const config = Object.assign({}, openCodeConfig(args), getApiOpenCodeConfig(apiModel, apiProxy?.url))
       await write({ path: configPath, content: JSON.stringify(config) })
       // These sentinel files create the directories privately, including in the guest.
       for (const dir of ["home", "config", "managed", "xdg-config"])
@@ -124,7 +137,10 @@ export const createOpenCodeAdapter = ({
       cleanupAuth = async () => {
         await write({ path: `${dataDir}/opencode/auth.json`, content: "{}" })
       }
-      const env = applyProviderPrivacy(isolatedOpenCodeEnv(base, root, dataDir, configPath), cliTelemetryOff(kernel))
+      const env = applyProviderPrivacy(
+        isolatedOpenCodeEnv(executionBase, root, dataDir, configPath),
+        cliTelemetryOff(kernel),
+      )
       env.OPENCODE_SERVER_PASSWORD = randomUUID()
       kernel.addRedactionValue(env.OPENCODE_SERVER_PASSWORD)
       const spawned = spawnFolderProvider(kernel, args, {
@@ -399,6 +415,7 @@ export const createOpenCodeAdapter = ({
         stop(child)
         children.delete(child)
       }
+      await cleanupApi?.().catch(() => {})
     }
   }
   return {
