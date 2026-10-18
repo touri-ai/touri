@@ -70,9 +70,9 @@ export const TurnActivity = ({
         >
           <svg
             className="turn-activity-chevron"
-            width="14"
+            width="6"
             height="14"
-            viewBox="0 0 24 24"
+            viewBox="8 0 10 24"
             fill="none"
             stroke="currentColor"
             aria-hidden="true"

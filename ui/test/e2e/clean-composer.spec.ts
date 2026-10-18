@@ -27,7 +27,7 @@ test("chat exposes quick model and project controls and remembers the panel choi
     ),
   ).toBeVisible()
   await expect(panel.getByRole("button", { name: "Modelo: Codex · gpt-6.1-sol" })).toBeVisible()
-  await expect(panel.getByText("Trabalha neste Mac.")).toBeVisible()
+  await expect(panel.getByText("Trabalha neste servidor.")).toBeVisible()
   const results = await new AxeBuilder({ page }).include(".bot-workspace").analyze()
   expect(results.violations.filter((item) => ["serious", "critical"].includes(item.impact ?? ""))).toEqual([])
   await page.reload()

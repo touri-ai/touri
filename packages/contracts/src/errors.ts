@@ -187,7 +187,7 @@ export const errorRegistry = {
     "browser",
     "configuration",
     false,
-    "Meu Chrome só funciona em bots neste Mac. A máquina remota não pode acessar o Chrome do Mac. Escolha Chrome da máquina para um bot na máquina Linux.",
+    "Meu Chrome só funciona em bots no computador onde o touri está rodando. Uma máquina remota não pode acessar esse navegador. Escolha Chrome da máquina para um bot na máquina Linux.",
     400,
   ),
   "TOURI-E5000": entry("computer", "permission", false, "Autorize o acesso ao computador para continuar.", 403),

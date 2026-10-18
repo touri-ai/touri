@@ -1,9 +1,10 @@
-import type { Bot, BotGroup, GroupInput, Thread } from "@touri/contracts"
-import { useEffect, useRef, useState } from "react"
+import type { Bot, BotGroup, GroupInput, Message, Run, Thread } from "@touri/contracts"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { userFacingError } from "../errors"
 import { type Locale, t } from "../i18n"
 import { AvatarPicker } from "./AvatarPicker"
 import { BotAvatar } from "./BotAvatar"
+import { getGroupProjection, getIdleMemberState } from "./groupProjection"
 import "./groups.css"
 
 export const MemberMascots = ({ bots, locale = "pt-BR" }: { bots: Bot[]; locale?: Locale }) => (
@@ -148,43 +149,80 @@ export const GroupConversationStart = ({ group, bots }: { group: BotGroup; bots:
 export const GroupPanel = ({
   group,
   bots,
+  threadId,
+  messages = [],
+  runs = [],
   onClose,
   onEdit,
 }: {
   group: BotGroup
   bots: Bot[]
+  threadId?: string | undefined
+  messages?: Message[]
+  runs?: Run[]
   onClose: () => void
   onEdit: () => void
-}) => (
-  <aside
-    className="bot-panel group-panel"
-    id="bot-panel"
-    aria-label={t("Painel do grupo {name}", { name: group.name })}
-  >
-    <div className="bot-panel-top">
-      <span>{t("Seu grupo")}</span>
-      <button type="button" className="toolbar-icon" aria-label={t("Fechar painel do grupo")} onClick={onClose}>
-        ×
-      </button>
-    </div>
-    <header className="bot-panel-identity">
-      <BotAvatar
-        bot={{ id: group.id, color: group.color, avatarShape: group.avatarShape, avatarSeed: group.avatarSeed }}
-        size={72}
-      />
-      <h2>{group.name}</h2>
-    </header>
-    <div className="bot-panel-body">
-      <h3>{t("Membros do grupo")}</h3>
-      <GroupMembers group={group} bots={bots} />
-      <GroupRoutingNote group={group} bots={bots} />
-      <p className="muted-copy">{t("Cada bot mantém seu computador e suas permissões.")}</p>
-      <button type="button" className="button button-quiet" onClick={onEdit}>
-        {t("Editar membros")}
-      </button>
-    </div>
-  </aside>
-)
+}) => {
+  const { board, members } = useMemo(() => getGroupProjection(threadId, messages, runs), [threadId, messages, runs])
+
+  return (
+    <aside
+      className="bot-panel group-panel"
+      id="bot-panel"
+      aria-label={t("Painel do grupo {name}", { name: group.name })}
+    >
+      <div className="bot-panel-top">
+        <span>{t("Seu grupo")}</span>
+        <button type="button" className="toolbar-icon" aria-label={t("Fechar painel do grupo")} onClick={onClose}>
+          ×
+        </button>
+      </div>
+      <header className="bot-panel-identity">
+        <BotAvatar
+          bot={{ id: group.id, color: group.color, avatarShape: group.avatarShape, avatarSeed: group.avatarSeed }}
+          size={72}
+        />
+        <h2>{group.name}</h2>
+      </header>
+      <div className="bot-panel-body">
+        <h3>{t("Membros do grupo")}</h3>
+        <ol className="group-context-members group-status-members" aria-label={t("Membros do grupo")}>
+          {bots.map((bot) => {
+            const member = members.get(bot.id) ?? getIdleMemberState()
+            return (
+              <li key={bot.id}>
+                <BotAvatar bot={bot} size={28} />
+                <div>
+                  <strong>{bot.name}</strong>
+                  <small>{t(bot.id === group.coordinatorBotId ? "Coordenador" : "Membro")}</small>
+                  {bot.roleLine && <small>{bot.roleLine}</small>}
+                  <span className={`group-member-state group-member-state-${member.state}`}>{t(member.label)}</span>
+                  <p className="group-member-result">{member.result || t("Sem resultado confirmado.")}</p>
+                </div>
+              </li>
+            )
+          })}
+        </ol>
+        <section className="group-board" aria-label={t("Resultados do turno")}>
+          <h3>{t("Resultados do turno")}</h3>
+          <p className="muted-copy">{t("Somente respostas finais confirmadas. Este quadro é apenas para leitura.")}</p>
+          {board.map((result) => (
+            <article key={result.id}>
+              <strong>{result.sender?.name}</strong>
+              <p>{result.text}</p>
+            </article>
+          ))}
+          {board.length === 0 && <p className="muted-copy">{t("Sem resultados confirmados neste turno.")}</p>}
+        </section>
+        <GroupRoutingNote group={group} bots={bots} />
+        <p className="muted-copy">{t("Cada bot mantém seu computador e suas permissões.")}</p>
+        <button type="button" className="button button-quiet" onClick={onEdit}>
+          {t("Editar membros")}
+        </button>
+      </div>
+    </aside>
+  )
+}
 
 export const GroupHeader = ({
   group,
@@ -241,17 +279,19 @@ export const GroupHeader = ({
 
 export const GroupModal = ({
   group,
+  initial,
   bots,
   onClose,
   onSave,
 }: {
   group: BotGroup | null
+  initial?: Pick<GroupInput, "name" | "memberIds"> | null
   bots: Bot[]
   onClose: () => void
   onSave: (input: GroupInput) => Promise<void>
 }) => {
-  const [name, setName] = useState(group?.name ?? "")
-  const [memberIds, setMembers] = useState(group?.memberIds ?? [])
+  const [name, setName] = useState(group?.name ?? initial?.name ?? "")
+  const [memberIds, setMembers] = useState(group?.memberIds ?? initial?.memberIds ?? [])
   const [coordinatorBotId, setCoordinator] = useState<string | null>(group?.coordinatorBotId ?? null)
   const [color, setColor] = useState(group?.color ?? "#dc2626")
   const [shape, setShape] = useState(group?.avatarShape ?? "cercle")
@@ -288,6 +328,10 @@ export const GroupModal = ({
         }}
       >
         <form
+          onKeyDown={(event) => {
+            // A suggested group needs an explicit save after its prefilled fields are reviewed.
+            if (initial && event.key === "Enter" && !(event.target instanceof HTMLButtonElement)) event.preventDefault()
+          }}
           onSubmit={async (event) => {
             event.preventDefault()
             setSaving(true)

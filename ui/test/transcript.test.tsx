@@ -8,6 +8,7 @@ import { createSendJournal } from "../src/api/sendJournal"
 import { VirtualMessageList } from "../src/components/ChatPanel"
 import { ApiError } from "../src/errors"
 import { applyDelta, applyParts, updateMessage, useWorkspace } from "../src/useWorkspace"
+import { makeConnectionEvents } from "./connection-events"
 
 const input = {
   threadId: "thread",
@@ -840,7 +841,7 @@ test("a restored live run exposes Parar and continues streaming until completion
 
 test("a loaded workspace keeps the composer available to queue messages while offline", async () => {
   const mock = createMockApi()
-  let connection: ((connected: boolean) => void) | undefined
+  const connection = makeConnectionEvents()
   const sendMessage = vi.fn(
     async (input: Parameters<NonNullable<import("../src/api/client").UiApi["sendMessage"]>>[0]) => ({
       message: { ...message("queued"), threadId: input.threadId, parentId: input.parentId, text: input.text },
@@ -849,16 +850,13 @@ test("a loaded workspace keeps the composer available to queue messages while of
   )
   const api = {
     ...mock,
+    ...connection,
     isMock: false,
     sendMessage,
-    subscribeConnection: (listener: (connected: boolean) => void) => {
-      connection = listener
-      return () => undefined
-    },
   }
   render(<App kernel={{ services: { api } }} />)
   const composer = await screen.findByRole("textbox", { name: /Mensagem para/ })
-  act(() => connection?.(false))
+  act(() => connection.emitConnection(false))
   expect(screen.getByText("Sem conexão. Suas mensagens ficam na fila e serão enviadas ao reconectar.")).toBeVisible()
   fireEvent.change(composer, { target: { value: "Enviar quando voltar" } })
   fireEvent.click(screen.getByRole("button", { name: "Enviar" }))

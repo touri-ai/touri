@@ -182,7 +182,8 @@ test("platform recall searches with the owner scope and returns a fenced referen
 test("the API key goes to the keychain, is redacted everywhere and can be removed", async () => {
   const f = await fixture(() => new Response("boom", { status: 500 }))
   await f.configure({ enabled: true, apiKey: "m0-redact-me-0001" })
-  expect([...f.vault.values()]).toEqual(["m0-redact-me-0001"])
+  expect(f.vault.size).toBe(1)
+  expect([...f.vault.values()][0]).toContain("m0-redact-me-0001")
   expect(f.kernel.redact("a chave é m0-redact-me-0001")).not.toContain("m0-redact-me-0001")
   await f.mem0.api.recall({ botId: f.bot.id, query: "Onde eu moro?" })
   expect(f.logs.some((line) => line.includes("Mem0 recall skipped"))).toBe(true)
@@ -734,4 +735,222 @@ test("routine and delegated sessions cannot list, invoke or advertise personal m
   writeLearningState(f.kernel, f.bot.id, { turns: 0, toolCalls: 0, reviewThreadId: review.thread.id })
   await check(review.thread.id)
   expect(f.fake.seen).toEqual([])
+})
+
+test("changing mode or server removes the previous destination's key", async () => {
+  const context = await fixture()
+  const server = fakeMem0(() => memories([]))
+  await context.configure({ enabled: true, apiKey: "m0-cloud-destination-key" })
+  expect((await context.configure({ mode: "server", url: server.url })).body.settings.hasApiKey).toBe(false)
+  expect(context.vault.size).toBe(0)
+  await context.mem0.api.recall({ botId: context.bot.id, query: "Qual a minha cidade?" })
+  expect(server.seen[0]?.headers.get("x-api-key")).toBeNull()
+  await context.configure({ apiKey: "m0-server-destination-key" })
+  // Normalizing a trailing slash leaves the same destination and credential.
+  expect((await context.configure({ url: `${server.url}/` })).body.settings.hasApiKey).toBe(true)
+  expect((await context.configure({ url: context.fake.url })).body.settings.hasApiKey).toBe(false)
+  await context.mem0.api.recall({ botId: context.bot.id, query: "Qual a minha cidade?" })
+  expect(context.fake.seen[0]?.headers.get("x-api-key")).toBeNull()
+  await context.configure({ apiKey: "m0-other-server-key" })
+  expect((await context.configure({ mode: "platform" })).body.settings.hasApiKey).toBe(false)
+  expect(await context.mem0.api.recall({ botId: context.bot.id, query: "Qual a minha cidade?" })).toBeNull()
+  expect(context.fake.seen).toHaveLength(1)
+  expect(context.vault.size).toBe(0)
+})
+
+test("a failed key removal cannot move credentials to a new destination", async () => {
+  const context = await fixture(undefined, (host) => async (method, params) => {
+    if (method === "keychain.delete") return { success: false, errorCode: "HOST_ERROR", error: "cofre indisponível" }
+
+    return host(method, params)
+  })
+  await context.configure({ apiKey: "m0-bound-cloud-key" })
+
+  const changed = await context.configure({ mode: "server", url: context.fake.url })
+  const { settings } = (await (await context.api(`/bots/${context.bot.id}/mem0`)).json()) as { settings: Mem0Settings }
+
+  expect(changed.status).toBe(503)
+  expect(settings).toMatchObject({ mode: "platform", url: "", hasApiKey: true })
+})
+
+test("settings saves for one bot commit in order and keep the final key bound to its destination", async () => {
+  const writing = getDeferred()
+  const pending = getDeferred()
+  const context = await fixture(undefined, (host) => async (method, params) => {
+    if (method !== "keychain.set") return host(method, params)
+
+    writing.resolve()
+    await pending.promise
+    return host(method, params)
+  })
+  const other = fakeMem0(() => memories([]))
+  const route = context.mem0.routes.routes.find(({ method }) => method === "PUT")
+  if (!route) throw new Error("Missing memory settings route")
+  const params = { id: context.bot.id }
+  const first = route.handler({
+    params,
+    body: { mode: "server", url: context.fake.url, apiKey: "m0-first-server-key" },
+  })
+  cleanups.push(async () => {
+    pending.resolve()
+    await first
+  })
+
+  await writing.promise
+  const second = route.handler({ params, body: { mode: "server", url: other.url } })
+  cleanups.push(async () => {
+    pending.resolve()
+    await second
+  })
+  pending.resolve()
+  const [firstResult, secondResult] = await Promise.all([first, second])
+  const { settings } = (await (await context.api(`/bots/${context.bot.id}/mem0`)).json()) as { settings: Mem0Settings }
+
+  expect(firstResult.status).toBe(200)
+  expect(secondResult).toMatchObject({ status: 200, json: { settings: { url: other.url, hasApiKey: false } } })
+  expect(settings).toMatchObject({ url: other.url, hasApiKey: false })
+  expect(context.vault.size).toBe(0)
+})
+
+test.each([
+  ["active", "platform"],
+  ["restarted", "platform"],
+  ["active", "server"],
+  ["restarted", "server"],
+] as const)("a pending destination save keeps the replacement key isolated (%s, %s)", async (state, mode) => {
+  const writing = getDeferred()
+  const pending = getDeferred()
+  const context = await fixture(undefined, (host) => async (method, params) => {
+    const result = await host(method, params)
+    if (method !== "keychain.set") return result
+
+    writing.resolve()
+    await pending.promise
+    return result
+  })
+  const server = fakeMem0(() => memories([]))
+  await context.configure({ enabled: true, mode, url: mode === "server" ? context.fake.url : "" })
+  savedKey(context)
+  context.vault.set(`mem0/${context.bot.id}`, "m0-original-destination-key")
+  const saved = context.configure({ mode: "server", url: server.url, apiKey: "m0-replacement-destination-key" })
+  cleanups.push(async () => {
+    pending.resolve()
+    await saved
+  })
+
+  await writing.promise
+  const memory = state === "restarted" ? createMem0(context.kernel, { platformUrl: context.fake.url }) : context.mem0
+  memory.api.sync({
+    botId: context.bot.id,
+    threadId: context.bot.mainThreadId ?? "",
+    userText: "Prefiro café sem açúcar.",
+    assistantText: "Anotado.",
+  })
+  await Promise.all([
+    memory.api.recall({ botId: context.bot.id, query: "Qual a minha bebida favorita?" }),
+    context.tool("mem0_search")({ query: "bebida favorita" }),
+    context.tool("mem0_add")({ content: "Prefiro café sem açúcar." }),
+    context.api(`/bots/${context.bot.id}/mem0/test`, {}),
+  ])
+
+  expect(context.fake.seen).toEqual([])
+  expect(server.seen).toEqual([])
+  pending.resolve()
+  expect((await saved).status).toBe(200)
+
+  const restarted = createMem0(context.kernel, { platformUrl: context.fake.url })
+  await restarted.api.recall({ botId: context.bot.id, query: "Qual a minha bebida favorita?" })
+
+  expect(server.seen).toHaveLength(1)
+  expect(server.seen[0]?.headers.get("x-api-key")).toBe("m0-replacement-destination-key")
+})
+
+test("canceling five lookups does not pause a healthy connection", async () => {
+  const pending = getDeferred()
+  const context = await fixture(async () => {
+    await pending.promise
+    return memories([{ id: "saved", memory: "Prefere café sem açúcar." }])
+  })
+  cleanups.push(pending.resolve)
+  await context.configure({ enabled: true, apiKey: "m0-cancel-breaker" })
+
+  for (const index of [0, 1, 2, 3, 4]) {
+    const controller = new AbortController()
+    const lookup = context.mem0.api.recall({
+      botId: context.bot.id,
+      query: "Qual a minha bebida favorita?",
+      signal: controller.signal,
+    })
+    await until(() => context.fake.seen.length === index + 1)
+    controller.abort()
+    expect(await lookup).toBeNull()
+  }
+  await until(() => context.logs.filter((line) => line.includes("Mem0 recall skipped")).length === 5)
+  pending.resolve()
+
+  expect(await context.mem0.api.recall({ botId: context.bot.id, query: "Qual a minha bebida favorita?" })).toContain(
+    "café",
+  )
+  expect(context.fake.seen).toHaveLength(6)
+})
+
+test.each(["active", "restarted"] as const)("legacy keys never reach a custom server (%s)", async (state) => {
+  const context = await fixture()
+  const server = fakeMem0(() => memories([]))
+  await context.configure({ enabled: true, mode: "server", url: server.url })
+  savedKey(context)
+  const legacyKey = "m0-legacy-platform-key"
+  context.vault.set(`mem0/${context.bot.id}`, legacyKey)
+  const memory = state === "restarted" ? createMem0(context.kernel, { platformUrl: context.fake.url }) : context.mem0
+  const testConnection = memory.routes.routes.find(({ method }) => method === "POST")
+  if (!testConnection) throw new Error("Missing connection test route")
+  const message =
+    "A chave salva não tem um destino confirmado. Digite e salve a chave deste servidor antes de conectar."
+
+  const recall = await memory.api.recall({ botId: context.bot.id, query: "Qual a minha cidade?" })
+  const tools = await Promise.all(
+    memory.tools.map(({ handler }) =>
+      handler({
+        ctx: context.ctx(),
+        args: { query: "cidade", content: "Moro no sul.", memory_id: "m1", text: "Moro no sul." },
+      }),
+    ),
+  )
+  const tested = await testConnection.handler({ params: { id: context.bot.id }, body: {} })
+  memory.api.sync({
+    botId: context.bot.id,
+    threadId: context.bot.mainThreadId ?? "",
+    userText: "Moro no sul.",
+    assistantText: "Anotado.",
+  })
+  await until(() => context.logs.some((line) => line.includes("Mem0 sync failed")))
+
+  expect(recall).toBeNull()
+  expect(tools).toEqual(memory.tools.map(() => ({ success: false, errorCode: "MEM0_UNAVAILABLE", error: message })))
+  expect(tested).toMatchObject({ status: 200, json: { ok: false, error: message } })
+  expect(server.seen).toEqual([])
+  expect(context.fake.seen).toEqual([])
+  expect(JSON.stringify({ tools, tested, logs: context.logs })).not.toContain(legacyKey)
+
+  const saved = await context.configure({ apiKey: "m0-confirmed-server-key" })
+  await memory.api.recall({ botId: context.bot.id, query: "Qual a minha cidade?" })
+
+  expect(saved.status).toBe(200)
+  expect(server.seen).toHaveLength(1)
+  expect(server.seen[0]?.headers.get("x-api-key")).toBe("m0-confirmed-server-key")
+})
+
+test("legacy keys remain usable only at the platform default", async () => {
+  const context = await fixture(() => memories([{ id: "home", memory: "Moro no sul." }]))
+  const server = fakeMem0(() => memories([]))
+  await context.configure({ enabled: true, mode: "platform", url: server.url })
+  savedKey(context)
+  context.vault.set(`mem0/${context.bot.id}`, "m0-legacy-platform-key")
+
+  const recall = await context.mem0.api.recall({ botId: context.bot.id, query: "Qual a minha cidade?" })
+
+  expect(recall).toContain("Moro no sul.")
+  expect(context.fake.seen).toHaveLength(1)
+  expect(context.fake.seen[0]?.headers.get("authorization")).toBe("Token m0-legacy-platform-key")
+  expect(server.seen).toEqual([])
 })

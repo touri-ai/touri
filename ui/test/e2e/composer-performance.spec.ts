@@ -6,6 +6,7 @@ import { promisify } from "node:util"
 import { expect, test } from "@playwright/test"
 import { build } from "vite"
 import { composerPerformanceMessageCount, composerPerformanceToolCount } from "./composer-performance-fixture"
+import "./syntax-memory-checks"
 
 const run = promisify(execFile)
 const repository = resolve(import.meta.dirname, "../../..")

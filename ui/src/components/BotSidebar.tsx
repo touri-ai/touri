@@ -1,4 +1,4 @@
-import type { Bot, BotGroup, Id, Message, NotificationRecord, Run, Thread } from "@touri/contracts"
+import type { Bot, BotGroup, HostKind, Id, Message, NotificationRecord, Run, Thread } from "@touri/contracts"
 import { Fragment, type ReactNode, useEffect, useMemo, useState } from "react"
 import { type ApprovalTarget, pendingApprovalTargets } from "../approvalNavigation"
 import { reconcileApprovalMessages } from "../approvalState"
@@ -28,7 +28,7 @@ import "./bot-sidebar.css"
 type SidebarProps = {
   serverMode?: boolean
   serverUrl?: string | null
-  host?: "mac" | "server"
+  host?: HostKind
   onNavigate?: () => void
   groups?: BotGroup[]
   onNewGroup?: () => void
@@ -59,6 +59,8 @@ type SidebarProps = {
   onDeleteBot?: (botId: string, name: string, deleteVolumes: boolean) => Promise<void>
   onSettings: () => void
   onDoctor: () => void
+  onRecovery?: () => void
+  recoveryCount?: number
   onSearch: () => void
   notifications: Array<NotificationRecord>
   onNotificationsOpen: (open: boolean) => void
@@ -236,6 +238,15 @@ export const Sidebar = (props: SidebarProps) => {
           onEdit={(g) => navigate(() => props.onEditGroup?.(g))}
           onNewThread={(g) => navigate(() => props.onNewGroupThread?.(g))}
         />
+      )}
+      {props.onRecovery && (
+        <button
+          type="button"
+          className="text-button sidebar-recovery"
+          onClick={() => navigate(() => props.onRecovery?.())}
+        >
+          {t("Interrupted tasks")} {props.recoveryCount ? `(${props.recoveryCount})` : ""}
+        </button>
       )}
       <div className="sidebar-footer">
         <div className="sidebar-user-row">

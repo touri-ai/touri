@@ -99,4 +99,37 @@ describe("Mem0 card", () => {
       "The server returned an invalid response. Check the Mem0 URL.",
     )
   })
+
+  it("explains that changing the destination requires a new key", async () => {
+    const api = createMockApi()
+    await api.request("PUT /bots/:id/mem0", { apiKey: "m0-original-destination" }, { id: "bot-mark" })
+    render(<Mem0Card api={api} botId="bot-mark" />)
+    fireEvent.change(await screen.findByLabelText("Onde ficam as memórias"), { target: { value: "server" } })
+    fireEvent.change(screen.getByLabelText("URL do servidor"), { target: { value: "http://localhost:8888" } })
+    const warning = "Ao mudar o destino, a chave anterior é removida. Digite a nova chave antes de salvar."
+    expect(screen.getByText(warning)).toBeVisible()
+    fireEvent.click(screen.getByRole("button", { name: "Salvar Mem0" }))
+    await screen.findByText("Salvo.")
+    expect(screen.queryByRole("button", { name: "Remover chave" })).not.toBeInTheDocument()
+    expect(t(warning, {}, "en")).toBe(
+      "Changing the destination removes the previous key. Enter the new key before saving.",
+    )
+  })
+
+  it("explains how to replace a legacy key with an unconfirmed destination", async () => {
+    const api = createMockApi()
+    const message =
+      "A chave salva não tem um destino confirmado. Digite e salve a chave deste servidor antes de conectar."
+    render(<Mem0Card api={api} botId="bot-mark" />)
+    const test = await screen.findByRole("button", { name: "Testar conexão" })
+    vi.spyOn(api, "request").mockResolvedValueOnce({ ok: false, error: message })
+
+    fireEvent.click(test)
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(message)
+    expect(screen.getByLabelText("Chave da API")).toBeEnabled()
+    expect(t(message, {}, "en")).toBe(
+      "The saved key has no confirmed destination. Enter and save the key for this server before connecting.",
+    )
+  })
 })

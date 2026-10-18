@@ -1,4 +1,4 @@
-import type { Bot, Id, Message, Routine, RoutineRun } from "@touri/contracts"
+import type { Bot, HostKind, Id, Message, Routine, RoutineRun } from "@touri/contracts"
 import { AVATAR_COLOR_CHOICES, avatarColorFor } from "@touri/contracts/avatar"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { type ApprovalTarget, pendingApprovalTargets } from "../approvalNavigation"
@@ -14,7 +14,7 @@ import { ScreenHeader, ScreenState } from "./ScreenPrimitives"
 import "./screens.css"
 
 type CronScreenProps = {
-  host?: "mac" | "server"
+  host?: HostKind
   initialBotFilter?: Id | undefined
   loading?: boolean
   loadError?: string | null
@@ -46,7 +46,7 @@ export const calendarBotColors = (bots: Array<Bot>): Map<Id, string> => {
 
 const CronScreen = ({
   bots,
-  host = "server",
+  host = "computer",
   initialBotFilter,
   loading = false,
   loadError = null,

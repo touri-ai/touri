@@ -160,7 +160,7 @@ it("offers the native desktop chooser while still requiring an explicit folder g
   const invoke = vi.fn(async () => ({ path: "/workspace/Projects" })) as ReturnType<typeof vi.fn> & TauriInvoke
   render(<FolderPicker api={f.api} invokeCommand={invoke} onSelect={f.select} onClose={f.close} />)
   await screen.findByRole("button", { name: "Projects" })
-  fireEvent.click(screen.getByRole("button", { name: "Escolher no Mac…" }))
+  fireEvent.click(screen.getByRole("button", { name: "Escolher no computador…" }))
   await screen.findByText("Nenhuma subpasta aqui.")
   expect(invoke).toHaveBeenCalledWith("pick_folder", { title: "Escolher pasta" })
   expect(f.select).not.toHaveBeenCalled()
