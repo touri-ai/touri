@@ -476,6 +476,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
       if (pending?.attempt === attempt) return pending.promise
       if (!force && loadedThreads.current.get(threadId) === attempt) return Promise.resolve()
       const deltas: Array<MessageStreamEvent> = []
+      const runsAtStart = runRevision.current
       const promise = Promise.all([
         api.request("GET /threads/:id/messages", { all: true }, { id: threadId }),
         api.request("GET /threads/:id/runs", { all: true }, { id: threadId }),
@@ -486,7 +487,10 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
           setData((current) => ({
             ...current,
             messages: deltas.reduce(applyStreamEvent, messages.messages).reduce(updateMessage, current.messages),
-            runs: mergeRunRows(current.runs, runs.runs),
+            runs: mergeRunRows(
+              current.runs,
+              runs.runs.filter((run) => (liveRuns.current.get(run.id) ?? 0) <= runsAtStart),
+            ),
           }))
         })
         .catch((error: unknown) => {

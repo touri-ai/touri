@@ -98,6 +98,43 @@ it("keeps an admitted turn out of the queue when its acceptance arrives after a 
   })
 })
 
+it("keeps the latest queue position when an opened conversation loads an older snapshot", async () => {
+  const api = createWorkApi()
+  let requested = false
+  let release = () => {}
+  const waiting = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const request: UiApi["request"] = async (route, input, path) => {
+    const response = await api.request(route, input, path)
+    if (route === "GET /threads/:id/runs" && path?.id === "work-thread-4") {
+      requested = true
+      await waiting
+    }
+    return response
+  }
+  const hook = renderHook(() => useWorkspace({ ...api, request }))
+  await waitFor(() => expect(hook.result.current.data.loading).toBe(false))
+  act(() => {
+    hook.result.current.actions.selectThread("work-thread-4")
+  })
+  await waitFor(() => expect(requested).toBe(true))
+
+  await act(async () => {
+    api.finishFirst()
+    release()
+    await waiting
+  })
+
+  await waitFor(() =>
+    expect(hook.result.current.data.runs.find((run) => run.id === "work-run-4")).toMatchObject({
+      status: "queued",
+      queuePosition: 1,
+      queueTotal: 1,
+    }),
+  )
+})
+
 it("shows queue positions in Portuguese and English and uses the slot fallback without engine metadata", () => {
   const api = createWorkApi()
   const queued = api.getRuns()[3]
