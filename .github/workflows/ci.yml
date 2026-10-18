@@ -36,7 +36,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-bun
         with:
-          bun-version: 1.2.21
+          bun-version: 1.4.3
       - run: bun run typecheck --incremental --tsBuildInfoFile node_modules/.cache/ci.tsbuildinfo
       - name: Verify confinement test compatibility with the minimum runtime
         run: bun test sidecar/test/platform/linux-ci-sandbox.test.ts sidecar/test/runtime/linux-folder-sandbox.test.ts
@@ -133,7 +133,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-bun
         with:
-          bun-version: 1.2.21
+          bun-version: 1.4.3
       - run: bunx tsc --noEmit -p tsconfig.base.json --incremental --tsBuildInfoFile node_modules/.cache/ci.tsbuildinfo
       - run: bun --cwd ui build
 
@@ -159,7 +159,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-bun
         with:
-          bun-version: 1.2.21
+          bun-version: 1.4.3
       - name: Resolve browser cache version
         id: playwright
         working-directory: ui
@@ -227,7 +227,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-bun
         with:
-          bun-version: 1.2.21
+          bun-version: 1.4.3
       - run: bunx license-checker --production --summary
 
   linux:
