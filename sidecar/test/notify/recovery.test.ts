@@ -10,6 +10,7 @@ import { createNotifier } from "../../src/notify/notifier"
 import { createRecoverySync } from "../../src/notify/recovery"
 import { createSseHub } from "../../src/notify/sse"
 import { createNotificationStore } from "../../src/notify/store"
+import { createRuntimePersistence } from "../../src/runtime/persistence"
 import { createWorkState } from "../../src/runtime/work-state"
 import { init as initStore } from "../../src/store"
 
@@ -317,4 +318,26 @@ test("a terminal event discovers a run queued before the recent history window",
   const tasks = await h.getTasks()
 
   expect(tasks.map((task) => task.id)).toEqual(["run:long-running"])
+})
+
+test("a late routine failure remains discoverable outside the recent window", async () => {
+  const h = await getFixture()
+  h.database.exec(`INSERT INTO routines(id,bot_id,name,prompt,cron,timezone,created_at,updated_at)
+    VALUES ('routine','bot-b','Resumo','Organize as notas','0 9 * * *','UTC',1,1);
+    INSERT INTO routine_runs(id,routine_id,scheduled_for,status,trigger_source)
+    VALUES ('old-routine-run','routine',0,'running','cron');`)
+  const insert = h.database.query(`INSERT INTO routine_runs
+    (id,routine_id,scheduled_for,status,trigger_source,finished_at) VALUES (?,'routine',?,'succeeded','cron',200)`)
+  Array.from({ length: 150 }, (_, index) => insert.run(`later-${index}`, index + 1))
+  expect(await h.getTasks()).toHaveLength(0)
+  h.database.query("UPDATE routine_runs SET status = 'failed', finished_at = 1000 WHERE id = 'old-routine-run'").run()
+  const persistence = createRuntimePersistence({ database: h.database })
+  const routine = persistence.getRoutine("routine")
+  const lastRun = persistence.getRoutineRun("old-routine-run")
+  if (!routine || !lastRun) throw new Error("Expected stored routine failure")
+
+  h.runtime.kernel.publish({ type: "routine.updated", routine, lastRun })
+  const tasks = await h.getTasks()
+
+  expect(tasks.map((task) => task.id)).toEqual(["routine:old-routine-run"])
 })
