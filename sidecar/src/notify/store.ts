@@ -140,6 +140,14 @@ export const createNotificationStore = ({ db, now = Date.now }: { db: Database; 
     return (db.query(PENDING_NOTIFICATIONS_SQL).all(since) as Array<Row>).map(asRecord)
   }
 
+  const getUnresolved = (): Array<NotificationRecord> =>
+    (
+      db
+        .query(`${SELECT} WHERE n.resolved_at IS NULL
+          AND n.kind IN (${[...ATTENTION_KINDS].map((kind) => `'${kind}'`).join(", ")}) ORDER BY n.id ASC`)
+        .all() as Array<Row>
+    ).map(asRecord)
+
   const recent = (limit: number): Array<NotificationRecord> =>
     (db.query(`${SELECT} ORDER BY n.id DESC LIMIT ?`).all(limit) as Array<Row>).map(asRecord)
 
@@ -163,7 +171,7 @@ export const createNotificationStore = ({ db, now = Date.now }: { db: Database; 
       .filter((entry) => !(MESSAGE_KINDS.has(entry.notification.kind) && entry.notification.createdAt < cutoff))
   }
 
-  return { get, byRequestId, insert, resolve, unresolvedForThread, pending, recent, lastSeq, logSince }
+  return { get, byRequestId, insert, resolve, unresolvedForThread, pending, getUnresolved, recent, lastSeq, logSince }
 }
 
 export type NotificationStore = ReturnType<typeof createNotificationStore>

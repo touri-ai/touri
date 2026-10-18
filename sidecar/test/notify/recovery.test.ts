@@ -235,12 +235,13 @@ test("newly discovered uncertainty requires another review without erasing an ea
   expect(h.work.isBlocked({ key: "preview-key" })).toBe(true)
 })
 
-test("clearing the bell dismisses ordinary items and keeps uncertain work available for review", async () => {
+test("clearing the bell includes old pending items and keeps uncertain work available for review", async () => {
   const h = await getFixture()
   saveRun(h.database, "ordinary")
   saveRun(h.database, "uncertain")
   saveUncertainEffect(h.work, "uncertain")
   await h.getTasks()
+  h.database.query("UPDATE notifications SET created_at = 0").run()
 
   const response = await h.request("/notifications/dismiss-all", {})
   const tasks = await h.getTasks()

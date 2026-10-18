@@ -169,7 +169,7 @@ export const createNotifyRoutes = ({
         path: "/notifications/dismiss-all",
         handler: async () => {
           syncRecoveryTasks()
-          const open = store.pending()
+          const open = store.getUnresolved()
           const dismissible = open.filter(
             (item) => getRecoveryAcknowledgementKeys(kernel.db as Database, item.id).length === 0,
           )
