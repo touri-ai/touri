@@ -2425,12 +2425,12 @@ test.serial("transcript: Stop resolves pending provider tools before the interru
       ok: null,
     })
     expect(reply?.parts.find((part) => part.type === "file_change")).toMatchObject({ resolution: "cancelled_by_user" })
+    await waitFor(() => terminal(queued.run.status), 2000)
     expect(
       (value.runtime.kernel.db as Database)
         .query("SELECT resolution FROM tool_resolutions WHERE run_id = ? AND call_id = 'open-call'")
         .get(queued.run.id),
     ).toEqual({ resolution: "cancelled_by_user" })
-    await waitFor(() => terminal(queued.run.status), 2000)
     expect(queued.run.status).toBe("canceled")
   } finally {
     await closeFixture(value)

@@ -45,6 +45,7 @@ export const createToolResolutions = (kernel: Kernel) => {
         OR tool_resolutions.resolution IS NOT excluded.resolution
         OR tool_resolutions.resolved_at IS NOT excluded.resolved_at`)
   const getRunParts = database?.query("SELECT part_json FROM tool_resolutions WHERE run_id = ? ORDER BY rowid")
+  const getPendingToolCall = database?.query("SELECT 1 FROM tool_calls WHERE run_id = ? AND ok IS NULL LIMIT 1")
   const record = (run: Run, part: ToolPart, recovering = false, persist = true): ToolPart => {
     const stored = getResolution?.get(run.id, part.callId) as {
       resolution: ToolResolution
@@ -135,7 +136,7 @@ export const createToolResolutions = (kernel: Kernel) => {
         ),
       )
     }
-    if (persist)
+    if (persist && getPendingToolCall?.get(run.id))
       database
         ?.query(
           "UPDATE tool_calls SET ok = 0, error_code = ?, duration_ms = COALESCE(duration_ms, ? - created_at) WHERE run_id = ? AND ok IS NULL",

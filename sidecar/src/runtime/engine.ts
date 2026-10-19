@@ -658,13 +658,15 @@ export const createRuntimeEngine = ({
     run,
     state,
     reason,
+    persist = true,
   }: {
     run: Run
     state: RunState
     reason: "cancelled_by_user" | "failed" | "interrupted_by_restart" | "unknown"
+    persist?: boolean
   }): void => {
     measureStage("runtime_part_finalization", () => {
-      const parts = tools.finish(run, state.parts, reason)
+      const parts = tools.finish(run, state.parts, reason, persist)
       parts.forEach((part, index) => {
         const previous = state.parts[index]
         const entries = Object.entries(part)
@@ -2156,7 +2158,7 @@ export const createRuntimeEngine = ({
     const state = getState(id)
     state.cancelRequested = true
     controllers.get(id)?.abort()
-    finishParts({ run, state, reason: "cancelled_by_user" })
+    finishParts({ run, state, reason: "cancelled_by_user", persist: false })
     state.parts.forEach((part, index) => {
       if (part.type === "text" || part.type === "reasoning") state.dirtyParts.add(index)
     })
