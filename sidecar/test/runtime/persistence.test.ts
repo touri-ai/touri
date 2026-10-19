@@ -68,6 +68,8 @@ test.each([
   ["unknown", '{"code":"TOURI-E8001","message":123}'],
   ["unknown", '{"code":"TOURI-E3002","message":"provider detail"}'],
   ["unknown", '{"code":"TOURI-E1002","message":"legacy invalid request"}'],
+  ["unknown", '{"code":"constructor","message":"legacy detail"}'],
+  ["unknown", '{"code":"__proto__","message":"legacy detail"}'],
   ["unknown", '{"code":"TOURI-E1002","errorClass":"group_context_missing","message":123}'],
   ["unknown", '{"code":"TOURI-E3002","errorClass":"group_context_missing","message":"legacy detail"}'],
 ] as const)("legacy %s error retains its detail: %s", (errorClass, errorMessage) => {

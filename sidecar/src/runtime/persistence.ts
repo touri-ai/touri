@@ -36,10 +36,10 @@ const parseJson = <T>(value: unknown, fallback: T): T => {
   }
 }
 
-const MACHINE_ERROR_CLASSES: Readonly<Record<string, RunErrorClass>> = {
-  "TOURI-E8001": "machine_service_unavailable",
-  "TOURI-E8002": "machine_service_start_failed",
-}
+const MACHINE_ERROR_CLASSES: ReadonlyMap<string, RunErrorClass> = new Map([
+  ["TOURI-E8001", "machine_service_unavailable"],
+  ["TOURI-E8002", "machine_service_start_failed"],
+])
 
 // Keep newer errors in the existing envelope so shipped CHECK constraints stay
 // valid without rebuilding run history or changing deletion cascades.
@@ -73,7 +73,7 @@ const getRunError = (row: DbRow): Pick<Run, "errorClass" | "errorMessage"> => {
   if (error.errorClass === "group_context_missing" && error.code === publicError("group_context_missing").code)
     return { errorClass: "group_context_missing", errorMessage: error.message }
 
-  const machineClass = MACHINE_ERROR_CLASSES[text(error, "code")]
+  const machineClass = MACHINE_ERROR_CLASSES.get(text(error, "code"))
   if (!machineClass) return stored
 
   return { errorClass: machineClass, errorMessage: error.message }
