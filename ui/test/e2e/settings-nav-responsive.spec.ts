@@ -4,6 +4,7 @@ test.use({ viewport: { width: 390, height: 844 }, reducedMotion: "reduce" })
 
 test("phone settings navigation shows every tab and supports touch and keyboard", async ({ page }) => {
   await page.goto("/test/e2e/r8-settings-harness.html")
+  await page.getByRole("button", { name: "Abrir menu" }).click()
   await page.getByRole("button", { name: /Você Local/ }).click()
 
   const dialog = page.getByRole("dialog")
