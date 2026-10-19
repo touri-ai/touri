@@ -43,9 +43,10 @@ test("phone settings navigation shows every tab and supports touch and keyboard"
   await expect(diagnosis).toHaveAttribute("aria-selected", "true")
 
   await tabs.first().click()
-  for (let index = 0; index < (await tabs.count()); index += 1) {
+  const tabElements = await tabs.all()
+  for (const [index, tab] of tabElements.entries()) {
     if (index > 0) await page.keyboard.press("ArrowRight")
-    await expect(tabs.nth(index)).toBeFocused()
-    await expect(tabs.nth(index)).toHaveAttribute("aria-selected", "true")
+    await expect(tab).toBeFocused()
+    await expect(tab).toHaveAttribute("aria-selected", "true")
   }
 })
