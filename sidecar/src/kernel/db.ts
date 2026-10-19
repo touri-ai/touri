@@ -71,7 +71,7 @@ export const openDatabase = ({
   // default every query re-read its pages from the disk on the main thread once the OS evicted
   // them, which froze the server for seconds while the disk was busy (#470).
   database.exec(
-    "PRAGMA busy_timeout = 5000; PRAGMA auto_vacuum = INCREMENTAL; PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA journal_size_limit = 8388608; PRAGMA synchronous = NORMAL; PRAGMA cache_size = -65536;",
+    "PRAGMA busy_timeout = 5000; PRAGMA auto_vacuum = INCREMENTAL; PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA ignore_check_constraints = OFF; PRAGMA journal_size_limit = 8388608; PRAGMA synchronous = NORMAL; PRAGMA cache_size = -65536;",
   )
   database.exec(migrationSql)
   database.exec(notificationsSql)
@@ -241,5 +241,6 @@ export const openDatabase = ({
       database.exec("PRAGMA foreign_keys = ON")
     }
   }
+  database.exec("UPDATE schema_meta SET value = '31' WHERE key = 'schema_version'")
   return database
 }
