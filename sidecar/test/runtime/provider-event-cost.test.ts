@@ -343,7 +343,7 @@ const runReplay = async (count: number, historyMessages = 0, switchBranch = fals
   let streamingReplyId: string | null = null
   const runStage: PerformanceStageRunner = (stage, action, input) => {
     const result = stages.runStage(stage, action, input)
-    if (stage === "runtime_provider_event" && queued.success && queued.run.status === "running")
+    if (stage === "runtime_provider_event" && queued.success && queued.run.replyMessageId)
       streamingReplyId = queued.run.replyMessageId
     return result
   }
@@ -429,7 +429,7 @@ const runReplay = async (count: number, historyMessages = 0, switchBranch = fals
     duplicateActiveRuns,
     ...performanceResult,
     ...dispatch,
-    streamingReply: streamingReplyId === reply.id,
+    streamingReply: streamingReplyId !== null && streamingReplyId === queued.run.replyMessageId,
     providerDispatchCalls: performanceResult.stages.find(({ name }) => name === "provider_frame_dispatch")?.calls ?? 0,
     runtimeEventCalls:
       performanceResult.stages.find(({ name }) => name === "runtime_provider_event")?.dispatchCalls ?? 0,
