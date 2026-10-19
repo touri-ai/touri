@@ -49,6 +49,22 @@
   height: 28px;
   font-size: 20px;
 }
+.group-empty-create {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 6px;
+  text-align: left;
+  font-size: 12px;
+}
+.group-empty-create > span {
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  font-size: 18px;
+}
 .group-sidebar-row {
   display: flex;
   align-items: center;
@@ -88,11 +104,6 @@
 .group-thread-list button[aria-current] {
   color: var(--accent-brand);
   font-weight: 600;
-}
-.group-empty {
-  color: var(--text-secondary);
-  font-size: 12px;
-  padding: 0 6px;
 }
 .group-header {
   gap: 18px;
