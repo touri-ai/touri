@@ -48,6 +48,14 @@ const waitFor = async (predicate: () => boolean, timeout = 10_000): Promise<void
   }
 }
 
+const seedThread = ({ database, thread }: { database: Database; thread: Thread }): void => {
+  database
+    .query(
+      `INSERT INTO threads (id, bot_id, kind, title, active_leaf_id, unread, usage_json, source, created_at, updated_at) VALUES (?, ?, ?, ?, NULL, 0, '{}', 'local', ?, ?)`,
+    )
+    .run(thread.id, thread.botId, thread.kind, thread.title, thread.createdAt, thread.updatedAt)
+}
+
 const seedDatabase = ({ database, bot, thread }: { database: Database; bot: Bot; thread: Thread }): void => {
   database
     .query(
@@ -67,11 +75,7 @@ const seedDatabase = ({ database, bot, thread }: { database: Database; bot: Bot;
       bot.createdAt,
       bot.updatedAt,
     )
-  database
-    .query(
-      `INSERT INTO threads (id, bot_id, kind, title, active_leaf_id, unread, usage_json, source, created_at, updated_at) VALUES (?, ?, ?, ?, NULL, 0, '{}', 'local', ?, ?)`,
-    )
-    .run(thread.id, thread.botId, thread.kind, thread.title, thread.createdAt, thread.updatedAt)
+  seedThread({ database, thread })
 }
 
 const fixture = async ({
@@ -180,7 +184,13 @@ const fixture = async ({
   mkdirSync(bot.homeDir, { recursive: true })
   writeFileSync(join(bot.homeDir, "MEMORY.md"), "Memory fixture\n")
   seedDatabase({ database: runtime.kernel.db as Database, bot, thread })
-  const store = createTestStore({ bot, thread, publish: runtime.kernel.publish })
+  const database = runtime.kernel.db as Database
+  const store = createTestStore({
+    bot,
+    thread,
+    publish: runtime.kernel.publish,
+    onCreateThread: (created) => seedThread({ database, thread: created }),
+  })
   runtime.kernel.services.provide("store.api", store)
   const engine = createRuntimeEngine({
     kernel: runtime.kernel,
@@ -1842,7 +1852,7 @@ test.serial("scheduled results-thread routines keep the same thread across slots
   }
 })
 
-test.serial("default automatic routine runs reuse the main conversation and send only the new request", async () => {
+test.serial("default automatic routine runs resume the main conversation without resending its history", async () => {
   const value = await fixture({ scenario: { events: [{ type: "delta", delta: "result" }, { type: "complete" }] } })
   const requestLogPath = join(value.assets, "requests.log")
   try {
@@ -1854,7 +1864,7 @@ test.serial("default automatic routine runs reuse the main conversation and send
         events: [{ type: "delta", delta: "result" }, { type: "complete" }],
       }),
     )
-    addUser(value.store, value.thread, "Earlier conversation that must not be resent")
+    addUser(value.store, value.thread, "Earlier conversation from the main thread")
     const created = value.engine.createRoutine({
       input: {
         botId: value.bot.id,
@@ -1900,8 +1910,10 @@ test.serial("default automatic routine runs reuse the main conversation and send
         .join("\n"),
     )
 
-    expect(requestTexts).toEqual(["Review only the new items.", "Review only the new items."])
-    expect(requestTexts.join("\n")).not.toContain("Earlier conversation that must not be resent")
+    expect(requestTexts).toHaveLength(2)
+    expect(requestTexts[0]).toContain("Earlier conversation from the main thread")
+    expect(requestTexts[1]).toBe("Review only the new items.")
+    expect(requestTexts[1]).not.toContain("Earlier conversation from the main thread")
     expect(readFileSync(value.logPath, "utf8")).toContain("thread/resume")
   } finally {
     await closeFixture(value)
