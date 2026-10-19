@@ -4,9 +4,10 @@ import { mkdir, mkdtemp, readdir, readFile, rename, rm, symlink, writeFile } fro
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
-import type { RouteModule } from "@touri/contracts"
+import type { Kernel, RouteModule } from "@touri/contracts"
 import { createKernel } from "../../src/kernel"
 import { atomicWriteFile, removePrivateTree } from "../../src/kernel/files"
+import { createPerformanceStageTracker } from "../../src/kernel/performance"
 import { init as initStore } from "../../src/store"
 import {
   type BotHomeCommand,
@@ -507,18 +508,60 @@ test("startup leaves instructions on disk untouched when there is no edit backup
 })
 
 for (const target of ["SOUL.md", ".SOUL.edit-backup"] as const) {
-  test(`startup reconciliation refuses a symlink at ${target}`, async () => {
-    const { runtime, home, root } = await makeStartupStore("Stored instructions")
+  test(`startup refuses a symlink at ${target} and still recovers the next bot`, async () => {
+    const { runtime, database, home, botId, root } = await makeStartupStore("Stored instructions")
+    const nextBotId = "zz-startup-recovery"
+    const nextHome = join(root, "bots", nextBotId)
+    const nextInstructions = "Stored instructions for the next bot"
+    database
+      .query(
+        "INSERT INTO bots (id, name, provider, instructions, home_dir, created_at, updated_at) SELECT ?, 'Second fixture', provider, ?, ?, 1, 1 FROM bots WHERE id = ?",
+      )
+      .run(nextBotId, nextInstructions, nextHome, botId)
+    await mkdir(nextHome, { recursive: true })
+    await writeFile(join(nextHome, ".SOUL.edit-backup"), "Before the next bot's interrupted edit")
     const outside = join(root, "outside.txt")
     await writeFile(outside, "Keep this file")
     if (target === "SOUL.md") await writeFile(join(home, ".SOUL.edit-backup"), "Previous instructions")
     await symlink(outside, join(home, target))
+    const { kernel, getLogs } = getRecordingKernel(runtime.kernel)
+    cleanups.add(() => stopBotHomeWriter(kernel))
+    const stages = createPerformanceStageTracker()
 
-    await expect(initStore(runtime.kernel)).rejects.toThrow("Bot home operation failed")
+    await initStore(kernel, stages.run)
 
+    expect(kernel.services.use("store.api")).toBeDefined()
     expect(await readFile(outside, "utf8")).toBe("Keep this file")
+    expect(await readFile(join(nextHome, "SOUL.md"), "utf8")).toBe(nextInstructions)
+    expect(await readdir(nextHome)).toEqual(["SOUL.md"])
+    expect(getLogs()).toEqual([
+      {
+        level: "warn",
+        module: "store",
+        msg: "Could not reconcile bot home at startup",
+        data: { botId, errorClass: "Error" },
+      },
+    ])
+    expect(stages.snapshot()).toContainEqual(
+      expect.objectContaining({ stage: "store_bot_home_startup_recovery", calls: 1, asyncCalls: 1 }),
+    )
   })
 }
+
+test("startup still registers the store when recovery and its diagnostic both fail", async () => {
+  const { runtime, home, root } = await makeStartupStore("Stored instructions")
+  const outside = join(root, "outside.txt")
+  await writeFile(outside, "Keep this file")
+  await symlink(outside, join(home, ".SOUL.edit-backup"))
+  const { kernel, getLogs } = getRecordingKernel(runtime.kernel, true)
+  cleanups.add(() => stopBotHomeWriter(kernel))
+
+  await initStore(kernel)
+
+  expect(kernel.services.use("store.api")).toBeDefined()
+  expect(getLogs()).toHaveLength(1)
+  expect(await readFile(outside, "utf8")).toBe("Keep this file")
+})
 
 test("a failed write preserves its error when cleanup fails", async () => {
   const root = await makeRoot()
@@ -894,6 +937,17 @@ const makeRoot = async () => {
   const root = await mkdtemp(join(tmpdir(), "touri-home-store-"))
   roots.push(root)
   return root
+}
+
+const getRecordingKernel = (kernel: Kernel, failLog = false) => {
+  // Recording this injected boundary keeps diagnostics assertions independent of log files.
+  const logs: Array<Parameters<Kernel["log"]>[0]> = []
+  const log: Kernel["log"] = (entry) => {
+    logs.push(entry)
+    if (failLog) throw new Error("Synthetic log storage failure")
+  }
+
+  return { kernel: { ...kernel, log }, getLogs: () => logs }
 }
 
 const makeStartupStore = async (instructions: string) => {

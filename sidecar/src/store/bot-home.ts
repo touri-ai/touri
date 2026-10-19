@@ -73,8 +73,29 @@ export const reconcileBotHomes = async (kernel: Kernel): Promise<void> => {
     const bot = nextBot.get(cursor) as { id: string; instructions: string } | null
     if (!bot) return
 
-    await getWriter(kernel).run({ operation: "reconcile", botId: bot.id, instructions: bot.instructions })
+    await reconcileBotHome(kernel, bot)
     cursor = bot.id
+  }
+}
+
+const reconcileBotHome = async (kernel: Kernel, bot: { id: string; instructions: string }): Promise<void> => {
+  try {
+    await getWriter(kernel).run({ operation: "reconcile", botId: bot.id, instructions: bot.instructions })
+  } catch (error) {
+    logBotHomeRecoveryFailure(kernel, bot.id, error)
+  }
+}
+
+const logBotHomeRecoveryFailure = (kernel: Kernel, botId: string, error: unknown): void => {
+  try {
+    kernel.log({
+      level: "warn",
+      module: "store",
+      msg: "Could not reconcile bot home at startup",
+      data: { botId, errorClass: error instanceof Error ? "Error" : "UnknownError" },
+    })
+  } catch {
+    // A storage failure may also make the diagnostic unwritable.
   }
 }
 

@@ -483,7 +483,9 @@ export const init = async (
   writeEditedHome = updateBotHome,
 ): Promise<void> => {
   await refreshHostFolderAccess()
-  await reconcileBotHomes(kernel)
+  const reconcileHomes = () => reconcileBotHomes(kernel)
+  if (runStage) await runStage("store_bot_home_startup_recovery", reconcileHomes)
+  else await reconcileHomes()
   installDoctor(kernel)
   const database = kernel.db as Database
   const recoverTranscript = () => materializeTranscriptBatch(database)

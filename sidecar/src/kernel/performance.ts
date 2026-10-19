@@ -37,6 +37,7 @@ const STAGES = [
   "workspace_event_serialization",
   "workspace_websocket_broadcast",
   "routine_scheduler_dispatch",
+  "store_bot_home_startup_recovery",
   "store_transcript_startup_recovery",
   "database_page_maintenance",
   "storage_message_compaction_batch",
