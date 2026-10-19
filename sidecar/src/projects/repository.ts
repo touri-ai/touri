@@ -1,5 +1,6 @@
 import type { Database } from "bun:sqlite"
 import { readFileSync } from "node:fs"
+import { join } from "node:path"
 import type {
   EnvValue,
   Kernel,
@@ -126,7 +127,8 @@ const resultError = <C extends ProjectResult<never>["errorCode"]>(
 
 const ensureProjectDataDir = async (dataDir: string): Promise<void> => {
   await ensurePrivateDirectoryAsync({ root: dataDir })
-  for (const name of ["mongo", "redis", "logs", "tmp"]) await ensurePrivateDirectoryAsync({ root: dataDir, path: name })
+  for (const name of ["mongo", "redis", "logs", "tmp"])
+    await ensurePrivateDirectoryAsync({ root: dataDir, path: join(dataDir, name) })
 }
 
 export const createProjectStore = ({ kernel }: { kernel: Kernel }): ProjectStore => {
