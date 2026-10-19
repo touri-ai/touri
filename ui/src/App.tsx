@@ -290,7 +290,8 @@ const AppContent = ({ kernel }: AppProps) => {
                 scenario === "resumed-turn" ||
                 scenario === "routine-conversation" ||
                 scenario === "interrupted-tasks" ||
-                scenario === "group-context-missing"
+                scenario === "group-context-missing" ||
+                scenario === "message-edit-target"
                   ? scenario
                   : null,
             }),
