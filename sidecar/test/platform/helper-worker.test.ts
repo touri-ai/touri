@@ -4,6 +4,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { buildChildEnv } from "../../src/kernel/shell-env"
 import { runHelperBlocking, stopHelperWorker } from "../../src/platform/helper-worker"
+import { removeDir } from "../fakes/remove-dir"
 
 afterAll(stopHelperWorker)
 const env = buildChildEnv()
@@ -106,6 +107,6 @@ stopHelperWorker();if(result.exitCode!==0||result.stdout!=="compiled-worker-ok")
     ])
     expect({ code, errors, output: output.trim() }).toEqual({ code: 0, errors: "", output: "compiled-worker-ok" })
   } finally {
-    rmSync(root, { recursive: true, force: true })
+    removeDir(root)
   }
 }, 60_000)
