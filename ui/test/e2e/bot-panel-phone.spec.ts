@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test"
 
+test.use({ channel: "chromium", locale: "pt-BR", reducedMotion: "reduce" })
+
 test("phone bot panel hides the menu and removes covered chat controls from access", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" })
 
@@ -36,3 +38,24 @@ test("phone bot panel hides the menu and removes covered chat controls from acce
     expect(focusIsInChat).toBe(false)
   }
 })
+
+for (const [width, height, size] of [
+  [1440, 900, "desktop"],
+  [390, 844, "mobile"],
+] as const) {
+  for (const theme of ["light", "dark"] as const) {
+    test(`bot panel after screenshot at ${width}px in ${theme} theme`, async ({ page }, testInfo) => {
+      await page.setViewportSize({ width, height })
+      await page.addInitScript((value) => localStorage.setItem("touri.appearance.v1", value), theme)
+      await page.goto("/")
+      await expect(page.getByRole("textbox", { name: /Mensagem para/ })).toBeVisible()
+      await page.addStyleTag({ content: ".composer-model, .bot-model-line { visibility: hidden !important; }" })
+      await page.getByRole("button", { name: "Painel do bot", exact: true }).click()
+      await expect(page.locator("#bot-panel")).toBeVisible()
+      await page.screenshot({
+        path: testInfo.outputPath(`after-${size}-${theme}.png`),
+        animations: "disabled",
+      })
+    })
+  }
+}
