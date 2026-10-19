@@ -12,7 +12,7 @@ import {
 
 export type BotHomeCommand =
   | { operation: "write" | "edit"; botId: string; instructions: string }
-  | { operation: "remove" | "snapshot" | "commit" | "rollback"; botId: string }
+  | { operation: "remove" | "snapshot" | "commit" | "rollback" | "reconcile"; botId: string }
 
 type Helper = { execute: (command: BotHomeCommand) => Promise<void>; stop: () => Promise<void> }
 const INPUT_LIMIT = 128 * 1024
@@ -100,9 +100,81 @@ export const createBotHomeWriter = ({
   // Admission and the promise tail are local mutable state required to serialize helper I/O.
   let pending = 0
   let pendingBytes = 0
+  type BudgetWaiter = {
+    bytes: number
+    signal: AbortSignal
+    resolve: () => void
+    reject: (reason: unknown) => void
+    cancel: () => void
+  }
+  let budgetWaiters: Array<BudgetWaiter> = []
   let tail: Promise<void> = Promise.resolve()
   let helper: Helper | undefined
   const shutdown = new AbortController()
+
+  const canReserve = (bytes: number): boolean =>
+    pendingBytes === 0 || (bytes <= PENDING_BYTE_LIMIT && pendingBytes + bytes <= PENDING_BYTE_LIMIT)
+
+  const admitBudgetWaiters = (): void => {
+    const waiter = budgetWaiters[0]
+    if (!waiter || !canReserve(waiter.bytes)) return
+
+    budgetWaiters = budgetWaiters.slice(1)
+    waiter.signal.removeEventListener("abort", waiter.cancel)
+    pendingBytes += waiter.bytes
+    waiter.resolve()
+    admitBudgetWaiters()
+  }
+
+  const reserveBudget = (bytes: number, signal: AbortSignal): Promise<void> => {
+    if (budgetWaiters.length === 0 && canReserve(bytes)) {
+      pendingBytes += bytes
+      return Promise.resolve()
+    }
+
+    return new Promise<void>((resolve, reject) => {
+      const waiter: BudgetWaiter = {
+        bytes,
+        signal,
+        resolve,
+        reject,
+        cancel: () => {
+          budgetWaiters = budgetWaiters.filter((next) => next !== waiter)
+          signal.removeEventListener("abort", waiter.cancel)
+          reject(signal.reason)
+          admitBudgetWaiters()
+        },
+      }
+      budgetWaiters = [...budgetWaiters, waiter]
+      signal.addEventListener("abort", waiter.cancel, { once: true })
+    })
+  }
+
+  const executeQueuedOperation = async (
+    command: BotHomeCommand,
+    signal: AbortSignal,
+    options?: {
+      prepare?: () => { commit?: () => void }
+      commit?: () => void
+      onRollbackFailure?: () => void
+    },
+  ): Promise<void> => {
+    const commit = options?.prepare?.().commit ?? options?.commit
+    const isEdit = command.operation === "edit"
+    try {
+      if (isEdit) {
+        await executeWithHelper({ operation: "reconcile", botId: command.botId }, signal)
+        await executeWithHelper({ operation: "snapshot", botId: command.botId }, signal)
+      }
+      await executeWithHelper(command, signal)
+      signal.throwIfAborted()
+      commit?.()
+    } catch (error) {
+      if (isEdit) await finishEdit("rollback", command.botId, options?.onRollbackFailure)
+      throw signal.aborted ? signal.reason : error
+    }
+    if (isEdit) await finishEdit("commit", command.botId, options?.onRollbackFailure)
+  }
 
   const run = async (
     command: BotHomeCommand,
@@ -118,41 +190,31 @@ export const createBotHomeWriter = ({
     validateBotHomeCommand(command)
     // Count retained UTF-16 storage without scanning or JSON-escaping the instruction text.
     const operationBytes = 256 + ("instructions" in command ? command.instructions.length * 2 : 0)
-    if (pending >= maxPending || (pending > 0 && pendingBytes + operationBytes > PENDING_BYTE_LIMIT))
-      throw new Error("Bot home writer is busy")
+    if (pending >= maxPending) throw new Error("Bot home writer is busy")
 
     pending += 1
-    pendingBytes += operationBytes
     const deadline = new AbortController()
     const timer = setTimeout(() => deadline.abort(new Error("Bot home operation timed out")), timeoutMs)
     const combined = AbortSignal.any([shutdown.signal, deadline.signal, ...(signal ? [signal] : [])])
     let started = false
-    const execute = tail.then(async () => {
+    try {
+      await reserveBudget(operationBytes, combined)
+    } catch (error) {
+      pending -= 1
+      clearTimeout(timer)
+      throw error
+    }
+    const execute = tail.then(() => {
       combined.throwIfAborted()
       started = true
-      const isEdit = command.operation === "edit"
-      let snapshotStarted = false
-      try {
-        const commit = options?.prepare?.().commit ?? options?.commit
-        if (isEdit) {
-          snapshotStarted = true
-          await executeWithHelper({ operation: "snapshot", botId: command.botId }, combined)
-        }
-        await executeWithHelper(command, combined)
-        combined.throwIfAborted()
-        commit?.()
-      } catch (error) {
-        if (snapshotStarted) await finishEdit("rollback", command.botId, options?.onRollbackFailure)
-        throw combined.aborted ? combined.reason : error
-      }
-      // The database is committed: cancellation or cleanup failure must never restore the old file.
-      if (isEdit) await finishEdit("commit", command.botId, options?.onRollbackFailure)
+      return executeQueuedOperation(command, combined, options)
     })
     tail = execute
       .catch(() => undefined)
       .finally(() => {
         pending -= 1
         pendingBytes -= operationBytes
+        admitBudgetWaiters()
       })
 
     // Queued cancellation returns promptly; its slot stays reserved until the FIFO reaches it.
@@ -278,7 +340,8 @@ export const getBotHomeCommand = (text: string): BotHomeCommand => {
     (input.operation === "remove" ||
       input.operation === "snapshot" ||
       input.operation === "commit" ||
-      input.operation === "rollback") &&
+      input.operation === "rollback" ||
+      input.operation === "reconcile") &&
     Object.keys(input).every((key) => ["operation", "botId"].includes(key))
   )
     return { operation: input.operation, botId: input.botId }
@@ -303,6 +366,10 @@ const executeBotHomeCommand = (root: string, command: BotHomeCommand, content?: 
     return
   }
   ensurePrivateDirectory({ root, path: home })
+  if (command.operation === "reconcile") {
+    reconcileBotHomeBackup(root, soul, backup)
+    return
+  }
   if (command.operation === "snapshot") {
     if (readPrivateFile({ root, path: soul, maxBytes: 1 }) === null) {
       atomicWriteFile({ root, path: backup, content: "" })
@@ -319,7 +386,17 @@ const executeBotHomeCommand = (root: string, command: BotHomeCommand, content?: 
     removePrivateFile({ root, path: backup })
     return
   }
+  if (command.operation === "write") reconcileBotHomeBackup(root, soul, backup)
   if ("instructions" in command) atomicWriteFile({ root, path: soul, content: content ?? command.instructions })
+}
+
+const reconcileBotHomeBackup = (root: string, soul: string, backup: string): void => {
+  if (readPrivateFile({ root, path: backup, maxBytes: 1 }) === null) return
+  if (readPrivateFile({ root, path: soul, maxBytes: 1 }) === null) {
+    movePrivateFile({ root, from: backup, to: soul })
+    return
+  }
+  removePrivateFile({ root, path: backup })
 }
 
 /** Each frame is bounded independently; old instructions never cross the process boundary. */

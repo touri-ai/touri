@@ -215,7 +215,7 @@ test("cancelling an active operation terminates the helper and a queued cancella
   expect(calls).toHaveLength(1)
 })
 
-test("cancelling an edit still waiting to start rejects before the preceding operation finishes", async () => {
+test("cancelling a large edit waiting for budget rejects before the preceding operation finishes", async () => {
   const blocked = Promise.withResolvers<void>()
   const started = Promise.withResolvers<void>()
   const calls: BotHomeCommand[] = []
@@ -234,12 +234,16 @@ test("cancelling an edit still waiting to start rejects before the preceding ope
   cleanups.add(writer.close)
   const first = writer.run({ operation: "remove", botId: "blocked" })
   const controller = new AbortController()
-  const edit = writer.run({ operation: "write", botId: "fixture", instructions: "Replacement" }, controller.signal, {
-    prepare: () => {
-      prepared.push("prepared")
-      return { commit: () => {} }
+  const edit = writer.run(
+    { operation: "edit", botId: "fixture", instructions: "x".repeat(3 * 1024 * 1024) },
+    controller.signal,
+    {
+      prepare: () => {
+        prepared.push("prepared")
+        return { commit: () => {} }
+      },
     },
-  })
+  )
   const results = Promise.allSettled([first, edit])
   await started.promise
 
@@ -255,20 +259,26 @@ test("cancelling an edit still waiting to start rejects before the preceding ope
   expect(rejectedPromptly).toBe(true)
   expect(calls).toHaveLength(1)
   expect(prepared).toEqual([])
+  const following = writer.run({ operation: "remove", botId: "following" })
   blocked.resolve()
-  await results
-  expect(calls).toHaveLength(1)
+  await Promise.all([results, following])
+  expect(calls.map((command) => command.botId)).toEqual(["blocked", "following"])
 })
 
-test("large edits reserve the FIFO until their retained content is released", async () => {
+test("large edits wait in FIFO order until their retained content budget is free", async () => {
   const started = Promise.withResolvers<void>()
   const blocked = Promise.withResolvers<void>()
+  const calls: BotHomeCommand[] = []
+  let released = false
   const writer = createBotHomeWriter({
     root: "/fixture",
     createHelper: () => ({
-      execute: async () => {
-        started.resolve()
-        await blocked.promise
+      execute: async (command) => {
+        calls.push(command)
+        if (!released) {
+          started.resolve()
+          await blocked.promise
+        }
       },
       stop: async () => blocked.resolve(),
     }),
@@ -277,12 +287,24 @@ test("large edits reserve the FIFO until their retained content is released", as
   const instructions = "x".repeat(3 * 1024 * 1024)
   const edit = writer.run({ operation: "edit", botId: "fixture", instructions })
   await started.promise
+  const secondEdit = writer.run({ operation: "edit", botId: "second", instructions })
+  await Bun.sleep(10)
 
-  await expect(writer.run({ operation: "edit", botId: "overflow", instructions: "Short" })).rejects.toThrow("busy")
+  expect(calls).toEqual([{ operation: "reconcile", botId: "fixture" }])
+  released = true
   blocked.resolve()
-  await edit
+  await Promise.all([edit, secondEdit])
 
-  await expect(writer.run({ operation: "edit", botId: "fixture", instructions })).resolves.toBeUndefined()
+  expect(calls.map((command) => command.botId)).toEqual([
+    "fixture",
+    "fixture",
+    "fixture",
+    "fixture",
+    "second",
+    "second",
+    "second",
+    "second",
+  ])
 })
 
 for (const failure of ["write failure", "cancellation", "snapshot cancellation", "commit failure"] as const) {
@@ -345,6 +367,35 @@ for (const target of ["SOUL.md", ".SOUL.edit-backup"] as const) {
     if (target !== "SOUL.md") expect(await readFile(join(home, "SOUL.md"), "utf8")).toBe("Previous")
   })
 }
+
+test("reconciliation restores a leftover backup when SOUL.md is missing", async () => {
+  const root = await makeRoot()
+  const home = join(root, "bots", "fixture")
+  await mkdir(home, { recursive: true })
+  await writeFile(join(home, ".SOUL.edit-backup"), "Previous instructions")
+  const writer = createBotHomeWriter({ root })
+  cleanups.add(writer.close)
+
+  await writer.run({ operation: "reconcile", botId: "fixture" })
+
+  expect(await readFile(join(home, "SOUL.md"), "utf8")).toBe("Previous instructions")
+  expect(await readdir(home)).toEqual(["SOUL.md"])
+})
+
+test("reconciliation removes a leftover backup when SOUL.md already exists", async () => {
+  const root = await makeRoot()
+  const home = join(root, "bots", "fixture")
+  await mkdir(home, { recursive: true })
+  await writeFile(join(home, "SOUL.md"), "Current instructions")
+  await writeFile(join(home, ".SOUL.edit-backup"), "Previous instructions")
+  const writer = createBotHomeWriter({ root })
+  cleanups.add(writer.close)
+
+  await writer.run({ operation: "reconcile", botId: "fixture" })
+
+  expect(await readFile(join(home, "SOUL.md"), "utf8")).toBe("Current instructions")
+  expect(await readdir(home)).toEqual(["SOUL.md"])
+})
 
 test("a failed write preserves its error when cleanup fails", async () => {
   const root = await makeRoot()
@@ -471,6 +522,38 @@ for (const [label, original] of [
     expect(await readdir(home)).toEqual(["SOUL.md"])
   })
 }
+
+test("concurrent large instruction edits and bot creation wait for the shared write budget", async () => {
+  const f = await makeStore()
+  const created = await f.create()
+  if (!("json" in created)) throw new Error("Expected bot response")
+  const { bot } = created.json as { bot: { id: string } }
+  const firstInstructions = "a".repeat(3 * 1024 * 1024)
+  const secondInstructions = "b".repeat(3 * 1024 * 1024)
+
+  const firstEdit = f.routes.handler({
+    params: { id: bot.id },
+    query: {},
+    body: { instructions: firstInstructions },
+    signal: new AbortController().signal,
+  })
+  const secondEdit = f.routes.handler({
+    params: { id: bot.id },
+    query: {},
+    body: { instructions: secondInstructions },
+    signal: new AbortController().signal,
+  })
+  const newBot = f.create()
+  const [firstResponse, secondResponse, createResponse] = await Promise.all([firstEdit, secondEdit, newBot])
+
+  expect(firstResponse.status).toBe(200)
+  expect(secondResponse.status).toBe(200)
+  expect(createResponse.status).toBe(201)
+  expect(f.database.query("SELECT instructions FROM bots WHERE id = ?").get(bot.id)).toEqual({
+    instructions: secondInstructions,
+  })
+  expect(await readFile(join(f.root, "bots", bot.id, "SOUL.md"), "utf8")).toBe(secondInstructions)
+})
 
 test("PATCH awaits a slow asynchronous filesystem shim without blocking the event loop", async () => {
   const started = Promise.withResolvers<void>()

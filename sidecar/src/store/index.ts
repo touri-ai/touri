@@ -1221,6 +1221,53 @@ export const init = async (
     return updated
   }
 
+  const commitBotInstructionEdit = ({
+    botId,
+    record,
+    mustStopVm,
+  }: {
+    botId: string
+    record: Record<string, unknown>
+    mustStopVm: boolean
+  }): Bot => {
+    const latestBot = getBot({ botId })
+    if (!latestBot) throw new Error("Bot could not be updated")
+    const latest = botFromBody({
+      body: { ...record, provider: record.provider ?? latestBot.provider },
+      existing: latestBot,
+    })
+    if (!latest.input || latest.error) throw new Error(latest.error ?? "Invalid bot")
+    const machineChanged =
+      latest.input.machine !== latestBot.machine ||
+      latest.input.provider !== latestBot.provider ||
+      latest.input.projectId !== latestBot.projectId
+    if (machineChanged && !mustStopVm) throw new Error("Bot configuration changed during the instruction edit")
+
+    const updated = saveBot({
+      bot: latestBot,
+      input: latest.input,
+      paused: record.paused as boolean | undefined,
+      updateInstructions: true,
+    })
+    if (!updated) throw new Error("Bot could not be updated")
+    return updated
+  }
+
+  const prepareBotInstructionEdit = ({
+    botId,
+    record,
+    mustStopVm,
+    onCommit,
+  }: {
+    botId: string
+    record: Record<string, unknown>
+    mustStopVm: boolean
+    onCommit: (bot: Bot) => void
+  }): { commit: () => void } => {
+    if (!getBot({ botId })) throw new Error("Bot could not be updated")
+    return { commit: () => onCommit(commitBotInstructionEdit({ botId, record, mustStopVm })) }
+  }
+
   kernel.services.provide("bots.rename", ({ botId, name: value }) => {
     const bot = getBot({ botId })
     if (!bot) return { success: false, errorCode: "NOT_FOUND", error: "Bot não encontrado." }
@@ -1469,34 +1516,12 @@ export const init = async (
           if (Object.hasOwn(record, "instructions")) {
             let committedBot: Bot | null = null
             const instructions = input.instructions ?? bot.instructions
-            const editError = await writeEditedHome(kernel, bot.id, instructions, signal, () => {
-              const currentBot = getBot({ botId: bot.id })
-              if (!currentBot) throw new Error("Bot could not be updated")
-              return {
-                commit: () => {
-                  const latestBot = getBot({ botId: bot.id })
-                  if (!latestBot) throw new Error("Bot could not be updated")
-                  const latest = botFromBody({
-                    body: { ...record, provider: record.provider ?? latestBot.provider },
-                    existing: latestBot,
-                  })
-                  if (!latest.input || latest.error) throw new Error(latest.error ?? "Invalid bot")
-                  const machineChanged =
-                    latest.input.machine !== latestBot.machine ||
-                    latest.input.provider !== latestBot.provider ||
-                    latest.input.projectId !== latestBot.projectId
-                  if (machineChanged && !mustStopVm)
-                    throw new Error("Bot configuration changed during the instruction edit")
-                  committedBot = saveBot({
-                    bot: latestBot,
-                    input: latest.input,
-                    paused: record.paused as boolean | undefined,
-                    updateInstructions: true,
-                  })
-                  if (!committedBot) throw new Error("Bot could not be updated")
-                },
-              }
-            }).then(
+            const setCommittedBot = (updatedBot: Bot): void => {
+              committedBot = updatedBot
+            }
+            const editError = await writeEditedHome(kernel, bot.id, instructions, signal, () =>
+              prepareBotInstructionEdit({ botId: bot.id, record, mustStopVm, onCommit: setCommittedBot }),
+            ).then(
               () => null,
               () => errorResponse(409, "BOT_EDIT_FAILED", "Não foi possível salvar as instruções. Tente novamente."),
             )
