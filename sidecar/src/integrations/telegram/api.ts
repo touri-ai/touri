@@ -34,7 +34,16 @@ export const createTelegramApi = ({
   signal?: AbortSignal
   timeoutMs?: number
 }) => {
-  const call = async <T>(method: string, params: Record<string, unknown>, signal?: AbortSignal): Promise<T> => {
+  const call = async <T>(
+    method: string,
+    params: Record<string, unknown> & { reply_markup?: InlineKeyboard },
+    signal?: AbortSignal,
+  ): Promise<T> => {
+    const hasUnsupportedUrl = params.reply_markup?.inline_keyboard.some((row) =>
+      row.some((button) => "url" in button && !isTelegramButtonUrl(button.url)),
+    )
+    if (hasUnsupportedUrl) throw new TelegramApiError(400, "unsupported inline keyboard URL")
+
     const requestSignal = AbortSignal.any([
       AbortSignal.timeout(timeoutMs),
       ...(lifetime ? [lifetime] : []),
@@ -86,3 +95,9 @@ export const createTelegramApi = ({
 }
 
 export type TelegramApi = ReturnType<typeof createTelegramApi>
+
+const isTelegramButtonUrl = (url: string): boolean => {
+  if (!URL.canParse(url)) return false
+
+  return ["http:", "https:", "tg:"].includes(new URL(url).protocol)
+}

@@ -254,6 +254,10 @@ export const ptBR = {
   "Access to any folder on this {host}": "Acesso a qualquer pasta deste {host}",
   "Salve o token do bot do Telegram.": "Salve o token do bot do Telegram.",
   "Token inválido ou revogado.": "Token inválido ou revogado.",
+  "Há uma proposta de time aguardando. Abra o app touri para revisar e aprovar.":
+    "Há uma proposta de time aguardando. Abra o app touri para revisar e aprovar.",
+  "Não foi possível enviar o aviso de proposta ao Telegram. Abra o touri para revisar a proposta.":
+    "Não foi possível enviar o aviso de proposta ao Telegram. Abra o touri para revisar a proposta.",
   "Não foi possível conectar ao Telegram. Confira sua conexão e tente novamente.":
     "Não foi possível conectar ao Telegram. Confira sua conexão e tente novamente.",
   "API models": "Modelos por API",
@@ -2856,6 +2860,10 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "O membro foi removido do grupo.": "This member was removed from the group.",
   "Salve o token do bot do Telegram.": "Save the Telegram bot token.",
   "Token inválido ou revogado.": "Invalid or revoked token.",
+  "Há uma proposta de time aguardando. Abra o app touri para revisar e aprovar.":
+    "A team proposal is waiting. Open the touri app to review and approve it.",
+  "Não foi possível enviar o aviso de proposta ao Telegram. Abra o touri para revisar a proposta.":
+    "Could not send the proposal notice to Telegram. Open touri to review the proposal.",
   "Não foi possível conectar ao Telegram. Confira sua conexão e tente novamente.":
     "Could not connect to Telegram. Check your connection and try again.",
   "Converse com este bot pelo Telegram. Só as pessoas permitidas abaixo conseguem falar com ele.":

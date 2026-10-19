@@ -300,36 +300,109 @@ test("approval buttons answer once, only for allowed users, and expire afterward
   expect(f.answers).toHaveLength(1)
 })
 
-test("team proposal notifications link to the conversation without response buttons", async () => {
+test.each([
+  ["Criar time", "Há uma proposta de time aguardando. Abra o app touri para revisar e aprovar."],
+  ["Create team", "A team proposal is waiting. Open the touri app to review and approve it."],
+])("team proposal notices for %s are plain text without URL or response buttons", async (title, text) => {
   const f = await fixture()
   await f.configure({ token: TOKEN, enabled: true, allowedUserIds: ["42"] })
   f.fake.message({ text: "Prepare uma proposta" })
   await until(() => f.runs.length === 1, "run")
   const run = f.runs[0]
   if (!run) throw new Error("Missing run fixture")
+
   f.kernel.publish({
     type: "notification.created",
     notification: notification({
       botId: f.bot.id,
       threadId: run.threadId,
-      title: "Criar time",
+      title,
       body: "Revise cada bot, provedor e acesso seguro antes de criar o time.",
     }),
   })
   await until(() => f.fake.sent().length === 1, "proposal notification")
   const sent = f.fake.sent()[0]
-  const keyboard = sent?.params.reply_markup as {
-    inline_keyboard: Array<Array<{ text: string; callback_data?: string; url?: string }>>
-  }
-  const button = keyboard.inline_keyboard[0]?.[0]
 
-  expect(button).toEqual({
-    text: "Abrir conversa",
-    url: `touri://open?bot=${f.bot.id}&thread=${run.threadId}`,
-  })
-  expect(sent?.params.text).not.toMatch(/Aprovar|Negar/)
+  expect(sent?.params).toEqual({ chat_id: "42", text })
+  expect(sent?.params).not.toHaveProperty("reply_markup")
   expect(f.answers).toEqual([])
 })
+
+test("failed team proposal delivery surfaces an actionable warning in integration status", async () => {
+  const f = await fixture()
+  await f.configure({ token: TOKEN, enabled: true, allowedUserIds: ["42"] })
+  f.fake.message({ text: "Prepare uma proposta" })
+  await until(() => f.runs.length === 1, "run")
+  const run = f.runs[0]
+  if (!run) throw new Error("Missing run fixture")
+  f.fake.respond((call) =>
+    call.method === "sendMessage"
+      ? Response.json({ ok: false, error_code: 400, description: `Bad Request ${TOKEN}` }, { status: 400 })
+      : null,
+  )
+
+  f.kernel.publish({
+    type: "notification.created",
+    notification: notification({ botId: f.bot.id, threadId: run.threadId, title: "Criar time" }),
+  })
+  await until(() => f.integrations.status(f.bot.id).state === "error", "delivery warning")
+  const telegram = await f.telegram()
+
+  expect(telegram.status).toEqual({
+    state: "error",
+    username: null,
+    error: "Não foi possível enviar o aviso de proposta ao Telegram. Abra o touri para revisar a proposta.",
+  })
+  expect(JSON.stringify(telegram)).not.toContain(TOKEN)
+  expect(f.fake.sent()).toHaveLength(1)
+  expect(f.answers).toEqual([])
+})
+
+test.each(["touri://open?bot=example", "javascript:alert(1)", "file:///example", "/relative", "https://"])(
+  "Telegram rejects unsupported inline keyboard URL %s before sending or editing a message",
+  async (url) => {
+    const f = await fixture()
+    const api = createTelegramApi({ token: TOKEN, base: f.fake.url })
+    const params = {
+      chat_id: "42",
+      text: "Aviso",
+      reply_markup: {
+        inline_keyboard: [
+          [
+            { text: "Opção", callback_data: "choice" },
+            { text: "Ajuda", url: "https://example.com/help" },
+          ],
+          [{ text: "Abrir", url }],
+        ],
+      },
+    }
+
+    await expect(api.sendMessage(params)).rejects.toThrow("unsupported inline keyboard URL")
+    await expect(api.editMessageText({ ...params, message_id: 1 })).rejects.toThrow("unsupported inline keyboard URL")
+
+    expect(f.fake.sent()).toEqual([])
+    expect(f.fake.sent("editMessageText")).toEqual([])
+  },
+)
+
+test.each(["http://example.com/help", "https://example.com/help", "tg://resolve?domain=touri_test_bot"])(
+  "Telegram permits supported inline keyboard URL %s",
+  async (url) => {
+    const f = await fixture()
+    const api = createTelegramApi({ token: TOKEN, base: f.fake.url })
+    const params = {
+      chat_id: "42",
+      text: "Aviso",
+      reply_markup: { inline_keyboard: [[{ text: "Abrir", url }]] },
+    }
+
+    await api.sendMessage(params)
+    await api.editMessageText({ ...params, message_id: 1 })
+
+    expect(f.fake.sent()[0]?.params).toEqual(params)
+    expect(f.fake.sent("editMessageText")[0]?.params).toEqual({ ...params, message_id: 1 })
+  },
+)
 
 test("routine results reach the home chat only when forwarding is on", async () => {
   const f = await fixture()
