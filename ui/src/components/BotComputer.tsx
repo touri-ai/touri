@@ -348,8 +348,9 @@ const LocalBotComputer = ({
           ) : (
             <div className="computer-terminal">
               <p>
-                Shell na VM em /workspace. Um comando por vez, até 25 s e 64 KiB de saída por fluxo. Sem sessão
-                interativa; cd e variáveis não persistem.
+                {t(
+                  "Um comando de cada vez no computador do bot. Limite: 25 s e 64 KB de saída. Pastas e variáveis não ficam salvas.",
+                )}
               </p>
               {!terminalAllowed && (
                 <p role="status">

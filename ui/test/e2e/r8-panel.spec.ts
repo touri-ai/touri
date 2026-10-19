@@ -38,9 +38,9 @@ for (const theme of ["light", "dark"] as const) {
       }
       await shot("details")
       await page.getByRole("tab", { name: "Biblioteca" }).click()
-      await expect(panel.getByRole("button", { name: /notas.md.*KiB/ })).toBeVisible()
+      await expect(panel.getByRole("button", { name: /notas.md.*KB/ })).toBeVisible()
       await shot("library")
-      await panel.getByRole("button", { name: /notas.md.*KiB/ }).click()
+      await panel.getByRole("button", { name: /notas.md.*KB/ }).click()
       await expect(
         panel.getByRole("heading", { name: phase === "before" ? "Workspace do bot" : "Notas da campanha" }),
       ).toBeVisible()
@@ -114,7 +114,7 @@ if (phase === "after") {
         await page.getByRole("tab", { name: "Biblioteca" }).click()
         await panel.getByRole("button", { name: /restrita.*Pasta/ }).click()
         await expect(panel.getByRole("alert")).toContainText("restrita")
-        await expect(panel.getByRole("button", { name: /notas.md.*KiB/ })).toHaveCount(0)
+        await expect(panel.getByRole("button", { name: /notas.md.*KB/ })).toHaveCount(0)
         await shot("library-error")
         await page.evaluate(() => (window as unknown as { botPanelQa: PanelQa }).botPanelQa.folderFailure(false))
         await panel.getByRole("button", { name: "Tentar novamente" }).click()
@@ -128,7 +128,7 @@ if (phase === "after") {
         await expect(panel.getByText("Esta pasta está vazia.")).toBeVisible()
         await page.evaluate(() => (window as unknown as { botPanelQa: PanelQa }).botPanelQa.manyFiles())
         await panel.getByRole("button", { name: /Pasta anterior/ }).click()
-        const notes = panel.getByRole("button", { name: /notas.md.*KiB/ })
+        const notes = panel.getByRole("button", { name: /notas.md.*KB/ })
         await notes.scrollIntoViewIfNeeded()
         expect(await panel.locator(".bot-panel-body").evaluate((element) => element.scrollTop)).toBeGreaterThan(300)
         await notes.click()

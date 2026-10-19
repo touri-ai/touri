@@ -638,6 +638,11 @@ export const ptBR = {
   "Dias da semana": "Dias da semana",
   "Fuso horário": "Fuso horário",
   "Horário de Brasília": "Horário de Brasília",
+  "Horário do Amazonas": "Horário do Amazonas",
+  "Horário do Acre": "Horário do Acre",
+  "Horário de Fernando de Noronha": "Horário de Fernando de Noronha",
+  UTC: "UTC",
+  "Fuso horário inválido": "Fuso horário inválido",
   "Destino dos resultados": "Destino dos resultados",
   "Nesta conversa": "Nesta conversa",
   "Memória Mem0": "Memória Mem0",
@@ -770,6 +775,8 @@ export const ptBR = {
   "Você está no controle": "Você está no controle",
   "Assumir controle": "Assumir controle",
   "Acompanhar a tela": "Acompanhar a tela",
+  "Um comando de cada vez no computador do bot. Limite: 25 s e 64 KB de saída. Pastas e variáveis não ficam salvas.":
+    "Um comando de cada vez no computador do bot. Limite: 25 s e 64 KB de saída. Pastas e variáveis não ficam salvas.",
 
   "{bot} precisa de você: autorizar {action}.": "{bot} precisa de você: autorizar {action}.",
   "Autorizado. Retomando a tarefa.": "Autorizado. Retomando a tarefa.",
@@ -968,8 +975,12 @@ export const ptBR = {
   "Abra este arquivo na conversa do bot que o salvou.": "Abra este arquivo na conversa do bot que o salvou.",
   "Este arquivo está fora das pastas permitidas para este bot.":
     "Este arquivo está fora das pastas permitidas para este bot.",
-  "Não foi possível abrir este arquivo. Ele pode ter sido removido, ser um atalho ou ter mais de 512 KiB.":
-    "Não foi possível abrir este arquivo. Ele pode ter sido removido, ser um atalho ou ter mais de 512 KiB.",
+  "Não foi possível abrir este arquivo. Ele pode ter sido removido, ser um atalho ou ter mais de 512 KB.":
+    "Não foi possível abrir este arquivo. Ele pode ter sido removido, ser um atalho ou ter mais de 512 KB.",
+  "Imagens de até 15 MB; demais arquivos de até 512 KB. Pastas ocultas e links não são exibidos.":
+    "Imagens de até 15 MB; demais arquivos de até 512 KB. Pastas ocultas e links não são exibidos.",
+  "{count} KB": "{count} KB",
+  "{count} MB": "{count} MB",
   "Prévia indisponível para este formato. Baixe para abrir no seu computador.":
     "Prévia indisponível para este formato. Baixe para abrir no seu computador.",
   Revisar: "Revisar",
@@ -1572,6 +1583,10 @@ export const ptBR = {
   "Sign in to an account to create your bot.": "Entre em uma conta para criar seu bot.",
   "Choose an account": "Escolha uma conta",
   "Use another account": "Usar outra conta",
+  "Choose a Claude Code model. Each option uses the latest version of that model.":
+    "Escolha um modelo do Claude Code. Cada opção usa a versão mais recente desse modelo.",
+  "Other model…": "Outro modelo…",
+  "Model name": "Nome do modelo",
   "Choose the account this bot will use.": "Escolha a conta que este bot vai usar.",
   "Sign in above before creating your bot.": "Entre em uma conta acima antes de criar seu bot.",
   "Could not check accounts. Choose an account and try again.":
@@ -3189,6 +3204,11 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Dias da semana": "Days of the week",
   "Fuso horário": "Time zone",
   "Horário de Brasília": "Brasília time",
+  "Horário do Amazonas": "Amazonas time",
+  "Horário do Acre": "Acre time",
+  "Horário de Fernando de Noronha": "Fernando de Noronha time",
+  UTC: "UTC",
+  "Fuso horário inválido": "Invalid time zone",
   "Destino dos resultados": "Results destination",
   "Nesta conversa": "This conversation",
   "Memória Mem0": "Mem0 memory",
@@ -3320,6 +3340,8 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Você está no controle": "You are in control",
   "Assumir controle": "Take control",
   "Acompanhar a tela": "Watch the screen",
+  "Um comando de cada vez no computador do bot. Limite: 25 s e 64 KB de saída. Pastas e variáveis não ficam salvas.":
+    "One command at a time on the bot computer. Limit: 25 s and 64 KB of output. Folders and variables are not saved.",
 
   "{bot} precisa de você: autorizar {action}.": "{bot} needs you: authorize {action}.",
   "Autorizado. Retomando a tarefa.": "Authorized. Resuming the task.",
@@ -3494,8 +3516,12 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
     "Open this file in the conversation with the bot that saved it.",
   "Este arquivo está fora das pastas permitidas para este bot.":
     "This file is outside the folders allowed for this bot.",
-  "Não foi possível abrir este arquivo. Ele pode ter sido removido, ser um atalho ou ter mais de 512 KiB.":
-    "Could not open this file. It may have been removed, be a shortcut or exceed 512 KiB.",
+  "Não foi possível abrir este arquivo. Ele pode ter sido removido, ser um atalho ou ter mais de 512 KB.":
+    "Could not open this file. It may have been removed, be a shortcut or exceed 512 KB.",
+  "Imagens de até 15 MB; demais arquivos de até 512 KB. Pastas ocultas e links não são exibidos.":
+    "Images up to 15 MB; other files up to 512 KB. Hidden folders and links are not shown.",
+  "{count} KB": "{count} KB",
+  "{count} MB": "{count} MB",
   "Prévia indisponível para este formato. Baixe para abrir no seu computador.":
     "Preview unavailable for this format. Download it to open on your computer.",
   Revisar: "Review",
@@ -4129,6 +4155,10 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Sign in to an account to create your bot.": "Sign in to an account to create your bot.",
   "Choose an account": "Choose an account",
   "Use another account": "Use another account",
+  "Choose a Claude Code model. Each option uses the latest version of that model.":
+    "Choose a Claude Code model. Each option uses the latest version of that model.",
+  "Other model…": "Other model…",
+  "Model name": "Model name",
   "Choose the account this bot will use.": "Choose the account this bot will use.",
   "Sign in above before creating your bot.": "Sign in above before creating your bot.",
   "Could not check accounts. Choose an account and try again.":

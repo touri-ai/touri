@@ -2,6 +2,7 @@ import type { Bot, WorkspaceFile, WorkspaceFileContent } from "@touri/contracts"
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import type { UiApi } from "../api/client"
 import { userFacingError } from "../errors"
+import { DEFAULT_LOCALE, type Locale, t } from "../i18n"
 import { useSaveNotice } from "../useSaveNotice"
 import { EvidenceContext, type EvidenceContextValue, EvidenceGallery } from "./EvidenceGallery"
 import { loadImage } from "./imageLoads"
@@ -13,7 +14,19 @@ const fileText = (file: WorkspaceFileContent) =>
 const textFile = (file: WorkspaceFileContent) =>
   file.mime.startsWith("text/") || /\.(md|json|ts|tsx|js|jsx|py|rs|toml|yaml|yml|log|sh|css|csv)$/i.test(file.name)
 const imageName = /\.(png|jpe?g|gif|webp)$/i
-const fileSize = (bytes: number) => (bytes === 0 ? "0 B" : `${Math.ceil(bytes / 1024).toLocaleString("pt-BR")} KiB`)
+export const getFileSize = (bytes: number, locale: Locale = DEFAULT_LOCALE) => {
+  if (bytes === 0) return "0 B"
+
+  if (bytes >= 1024 ** 2) {
+    const count = new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }).format(bytes / 1024 ** 2)
+
+    return t("{count} MB", { count }, locale)
+  }
+
+  const count = new Intl.NumberFormat(locale).format(Math.ceil(bytes / 1024))
+
+  return t("{count} KB", { count }, locale)
+}
 
 export const BotLibrary = ({
   api,
@@ -38,6 +51,7 @@ export const BotLibrary = ({
   const [readError, setReadError] = useState<{ message: string; entry: WorkspaceFile; download: boolean } | null>(null)
   const [projectPath, setProjectPath] = useState<string | null>(null)
   const [rootError, setRootError] = useState(false)
+  const locale: Locale = document.documentElement.lang === "en" ? "en" : DEFAULT_LOCALE
   const section = useRef<HTMLElement>(null)
   const title = useRef<HTMLHeadingElement>(null)
   const generation = useRef(0)
@@ -292,7 +306,7 @@ export const BotLibrary = ({
               </button>
             )}
             <p className="library-limit">
-              Imagens de até 15 MB; demais arquivos de até 512 KiB. Pastas ocultas e links não são exibidos.
+              {t("Imagens de até 15 MB; demais arquivos de até 512 KB. Pastas ocultas e links não são exibidos.")}
             </p>
           </header>
           {!!bot.folders?.length && (
@@ -379,7 +393,7 @@ export const BotLibrary = ({
                     >
                       <PanelIcon name={entry.directory ? "folder" : "file"} />
                       <span>{entry.name}</span>
-                      <small>{entry.directory ? "Pasta" : fileSize(entry.bytes)}</small>
+                      <small>{entry.directory ? "Pasta" : getFileSize(entry.bytes, locale)}</small>
                     </button>
                     {!entry.directory && (
                       <button

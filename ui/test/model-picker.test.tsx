@@ -66,31 +66,77 @@ it("opens the provider model list from the bot panel, saves a choice and can res
   expect(screen.getByRole("button", { name: "Modelo: OpenCode · Padrão do provedor" })).toBeVisible()
 })
 
-it.each([
-  { provider: "codex" as const, name: "Codex" },
-  { provider: "claude" as const, name: "Claude Code" },
-])("explains the missing $name catalog and saves a manual model ID", async ({ provider, name }) => {
-  const { bot, dialog, list } = await openPicker(provider)
-  expect(within(dialog).getByText(new RegExp(`O ${name} não disponibiliza uma lista de modelos`))).toBeVisible()
-  const field = within(dialog).getByRole("textbox", { name: "Modelo" })
+it.each([{ provider: "codex" as const, name: "Codex" }])(
+  "explains the missing $name catalog and saves a manual model ID",
+  async ({ provider, name }) => {
+    const { bot, dialog, list } = await openPicker(provider)
+    expect(within(dialog).getByText(new RegExp(`O ${name} não disponibiliza uma lista de modelos`))).toBeVisible()
+    const field = within(dialog).getByRole("textbox", { name: "Modelo" })
+    expect(field).toHaveAccessibleDescription(
+      `O ${name} não disponibiliza uma lista de modelos no touri. Use o padrão do provedor ou informe o nome de um modelo que o ${name} aceite.`,
+    )
+    expect(
+      t(
+        "{provider} does not expose a model list in touri. Use the provider default or enter a model name that {provider} accepts.",
+        { provider: name },
+        "en",
+      ),
+    ).toBe(
+      `${name} does not expose a model list in touri. Use the provider default or enter a model name that ${name} accepts.`,
+    )
+    expect(within(dialog).getByText("Escolha o modelo para as próximas mensagens deste bot.")).toBeVisible()
+    expect(list).not.toHaveBeenCalled()
+    fireEvent.change(field, { target: { value: " custom-model " } })
+    fireEvent.click(within(dialog).getByRole("button", { name: "Salvar modelo" }))
+    await waitFor(() => expect(bot.model).toBe("custom-model"))
+    expect(await screen.findByRole("button", { name: `Modelo: ${name} · custom-model` })).toBeVisible()
+  },
+)
+
+it("offers the Claude Code model aliases and saves one", async () => {
+  const { bot, dialog, list } = await openPicker("claude")
+  const field = within(dialog).getByRole("combobox", { name: "Modelo" })
+  const options = within(field)
+    .getAllByRole("option")
+    .map((option) => option.textContent)
+
+  expect(options).toEqual(["Padrão do provedor", "Opus", "Sonnet", "Haiku", "Outro modelo…"])
   expect(field).toHaveAccessibleDescription(
-    `O ${name} não disponibiliza uma lista de modelos no touri. Use o padrão do provedor ou informe o nome de um modelo que o ${name} aceite.`,
+    "Escolha um modelo do Claude Code. Cada opção usa a versão mais recente desse modelo.",
   )
-  expect(
-    t(
-      "{provider} does not expose a model list in touri. Use the provider default or enter a model name that {provider} accepts.",
-      { provider: name },
-      "en",
-    ),
-  ).toBe(
-    `${name} does not expose a model list in touri. Use the provider default or enter a model name that ${name} accepts.`,
-  )
-  expect(within(dialog).getByText("Escolha o modelo para as próximas mensagens deste bot.")).toBeVisible()
   expect(list).not.toHaveBeenCalled()
-  fireEvent.change(field, { target: { value: " custom-model " } })
+  fireEvent.change(field, { target: { value: "sonnet" } })
   fireEvent.click(within(dialog).getByRole("button", { name: "Salvar modelo" }))
+
+  await waitFor(() => expect(bot.model).toBe("sonnet"))
+  expect(await screen.findByRole("button", { name: "Modelo: Claude Code · Sonnet" })).toBeVisible()
+})
+
+it("starts a custom Claude Code model name empty instead of copying the saved alias", async () => {
+  const { dialog } = await openPicker("claude", undefined, "sonnet")
+
+  fireEvent.change(within(dialog).getByRole("combobox", { name: "Modelo" }), { target: { value: "__custom-model__" } })
+
+  expect(within(dialog).getByRole("textbox", { name: "Nome do modelo" })).toHaveValue("")
+})
+
+it("lets the user type another Claude Code model name", async () => {
+  const { bot, dialog } = await openPicker("claude")
+  fireEvent.change(within(dialog).getByRole("combobox", { name: "Modelo" }), { target: { value: "__custom-model__" } })
+  const name = within(dialog).getByRole("textbox", { name: "Nome do modelo" })
+
+  expect(name).toHaveFocus()
+  fireEvent.change(name, { target: { value: " custom-model " } })
+  fireEvent.click(within(dialog).getByRole("button", { name: "Salvar modelo" }))
+
   await waitFor(() => expect(bot.model).toBe("custom-model"))
-  expect(await screen.findByRole("button", { name: `Modelo: ${name} · custom-model` })).toBeVisible()
+  expect(await screen.findByRole("button", { name: "Modelo: Claude Code · custom-model" })).toBeVisible()
+})
+
+it("keeps a saved Claude Code model that is not an alias selected", async () => {
+  const { dialog } = await openPicker("claude", undefined, "claude-custom-model")
+
+  expect(within(dialog).getByRole("combobox", { name: "Modelo" })).toHaveValue("claude-custom-model")
 })
 
 it.each([

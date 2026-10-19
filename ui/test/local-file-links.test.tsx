@@ -118,6 +118,19 @@ describe("local files in chat Markdown", () => {
     expect(screen.queryByRole("dialog")).toBeNull()
   })
 
+  it("uses a familiar size in the error for files that are too large to preview", async () => {
+    const { evidence } = fixture(async () => {
+      throw new ApiError(413, '{"error":"ATTACHMENT_TOO_LARGE"}')
+    })
+    render(<MarkdownContent evidence={evidence} content="[notas.md](/workspace/notas.md)" />)
+
+    fireEvent.click(await screen.findByRole("button", { name: "notas.md" }))
+
+    const error = await screen.findByRole("alert")
+    expect(error).toHaveTextContent("512 KB")
+    expect(error).not.toHaveTextContent(/KiB|MiB/)
+  })
+
   it("keeps local paths inside touri even without a bot context", async () => {
     render(<MarkdownContent content="[notas.md](/workspace/notas.md)" />)
     fireEvent.click(await screen.findByRole("button", { name: "notas.md" }))

@@ -237,7 +237,7 @@ describe("safe markdown evidence", () => {
     }
     render(<BotLibrary api={api} bot={context.bot} />)
     fireEvent.click(await screen.findByRole("button", { name: /reports.*Pasta/ }))
-    fireEvent.click(await screen.findByRole("button", { name: /report.md.*KiB/ }))
+    fireEvent.click(await screen.findByRole("button", { name: /report.md.*KB/ }))
     expect(await screen.findByRole("region", { name: "Imagens de evidência" })).toBeVisible()
     await waitFor(() =>
       expect(request).toHaveBeenCalledWith(

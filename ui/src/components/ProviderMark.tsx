@@ -6,9 +6,20 @@ export const getBotProviderName = (bot: Pick<Bot, "provider" | "model">): string
   return providerName(bot.provider)
 }
 
-export const getBotModelName = (bot: Pick<Bot, "model">): string => {
+/** Claude Code model aliases; each one always resolves to the latest model of that family. */
+export const CLAUDE_MODELS = [
+  { id: "opus", label: "Opus" },
+  { id: "sonnet", label: "Sonnet" },
+  { id: "haiku", label: "Haiku" },
+] as const
+
+export const getClaudeModelLabel = (id: string): string | undefined =>
+  CLAUDE_MODELS.find((model) => model.id === id)?.label
+
+export const getBotModelName = (bot: Pick<Bot, "model"> & Partial<Pick<Bot, "provider">>): string => {
   if (!bot.model) return t("Padrão do provedor")
   if (getApiModelProviderId(bot.model)) return bot.model.slice(bot.model.indexOf("/") + 1)
+  if (bot.provider === "claude") return getClaudeModelLabel(bot.model) ?? bot.model
   return bot.model
 }
 

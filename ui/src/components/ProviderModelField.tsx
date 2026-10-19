@@ -3,7 +3,9 @@ import { useEffect, useId, useState } from "react"
 import type { UiApi } from "../api/client"
 import { useApiModels } from "../features/bots/apiModels"
 import { t } from "../i18n"
-import { getBotModelName, providerName } from "./ProviderMark"
+import { CLAUDE_MODELS, getBotModelName, getClaudeModelLabel, providerName } from "./ProviderMark"
+
+const CUSTOM_MODEL = "__custom-model__"
 
 export const ProviderModelField = ({
   id,
@@ -28,19 +30,28 @@ export const ProviderModelField = ({
   const [models, setModels] = useState<string[]>([])
   const [defaultModel, setDefaultModel] = useState<string | null>(null)
   const [status, setStatus] = useState("")
+  const [typing, setTyping] = useState(false)
   const apiSelection = value.startsWith("touri-api-")
   const [apiLabels, setApiLabels] = useState<Record<string, string>>({})
   const saved = useApiModels(provider === "opencode" ? api : undefined)
   const options = models.concat(saved.models.map(getApiModelReference).filter((model) => !models.includes(model)))
   const getLabel = (reference: string) => {
     const model = saved.models.find((candidate) => getApiModelReference(candidate) === reference)
-    return model ? `${model.name} · ${model.modelId}` : (apiLabels[reference] ?? reference)
+    return model
+      ? `${model.name} · ${model.modelId}`
+      : (apiLabels[reference] ?? getClaudeModelLabel(reference) ?? reference)
   }
   useEffect(() => {
     const controller = new AbortController()
     setModels([])
     setDefaultModel(null)
     setStatus("")
+    setTyping(false)
+    if (provider === "claude") {
+      setModels(CLAUDE_MODELS.map((model) => model.id))
+      setStatus(t("Choose a Claude Code model. Each option uses the latest version of that model."))
+      return
+    }
     if (provider !== "opencode") {
       setStatus(
         t(
@@ -101,14 +112,20 @@ export const ProviderModelField = ({
       controller.abort()
     }
   }, [api, provider, botId, picker, apiSelection])
-  const showSelect = apiSelection || (picker && options.length > 0)
+  const showSelect = apiSelection || ((picker || provider === "claude") && options.length > 0)
   return (
     <>
       {showSelect ? (
         <select
           id={id}
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
+          value={typing ? CUSTOM_MODEL : value}
+          onChange={(event) => {
+            const next = event.target.value
+            setTyping(next === CUSTOM_MODEL)
+            // A custom name starts empty, or keeps the last custom name, never the selected alias.
+            if (next === CUSTOM_MODEL && getClaudeModelLabel(value)) onChange("")
+            if (next !== CUSTOM_MODEL) onChange(next)
+          }}
           disabled={disabled}
           aria-describedby={`${listId}-status`}
         >
@@ -122,6 +139,7 @@ export const ProviderModelField = ({
               {getLabel(model)}
             </option>
           ))}
+          {provider === "claude" && <option value={CUSTOM_MODEL}>{t("Other model…")}</option>}
         </select>
       ) : (
         <input
@@ -132,6 +150,17 @@ export const ProviderModelField = ({
           placeholder={defaultModel ?? t("Padrão do provedor")}
           aria-describedby={`${listId}-status`}
           disabled={disabled}
+        />
+      )}
+      {showSelect && typing && (
+        <input
+          aria-label={t("Model name")}
+          placeholder={t("Model name")}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          disabled={disabled}
+          // biome-ignore lint/a11y/noAutofocus: the user just asked to type a model name
+          autoFocus
         />
       )}
       {provider === "opencode" && !showSelect && (
