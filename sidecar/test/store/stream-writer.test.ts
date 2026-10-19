@@ -182,7 +182,14 @@ test("coalesces active messages in one timed flush and publishes only durable re
       for (const messageId of ["a", "b"]) f.store.appendDelta({ threadId: "t", messageId, partIndex: 0, delta: "olá" })
     expect(f.events).toEqual([])
     expect(f.database.query("SELECT COUNT(*) AS n FROM transcript_entries").get()).toEqual({ n: 2 })
-    await Bun.sleep(STREAM_WRITE_LIMITS.delayMs + 30)
+    await Promise.race([
+      (async () => {
+        while (f.events.filter(({ event }) => event.type === "message.delta").length < 2) await Bun.sleep(10)
+      })(),
+      Bun.sleep(2_000).then(() => {
+        throw new Error("Timed stream batch was not published")
+      }),
+    ])
     const deltas = f.events.filter(({ event }) => event.type === "message.delta")
     expect(deltas).toHaveLength(2)
     expect(deltas.map(({ event }) => (event.type === "message.delta" ? event.delta : ""))).toEqual([
@@ -278,8 +285,10 @@ test("one stream patch can append many contiguous parts and replay them", async 
     f.store.appendParts?.({ threadId: "t", messageId: "a", parts })
     await f.store.flushWritesAsync?.()
 
+    f.database.exec("UPDATE transcript_maintenance SET projection_write = 1 WHERE id = 1")
     f.database.exec(`UPDATE messages SET updated_seq = 0, parts_json = '[{"type":"text","text":""}]', text = ''
       WHERE thread_id = 't' AND id = 'a'`)
+    f.database.exec("UPDATE transcript_maintenance SET projection_write = 0 WHERE id = 1")
     f.database.query("INSERT OR IGNORE INTO transcript_pending_deltas(thread_id, message_id) VALUES ('t', 'a')").run()
     materializeTranscript(f.database, { threadId: "t", messageId: "a" })
 
@@ -798,6 +807,52 @@ test("large WAL stream batches preserve ordered journal entries", async () => {
     .all() as Array<{ message_id: string; seq: number }>
   expect(rows).toHaveLength(100)
   expect(rows.map(({ message_id }) => message_id)).toEqual(Array.from({ length: 100 }, (_, index) => `stream-${index}`))
+})
+
+test("a cached projection stays available while its worker batch is in flight", async () => {
+  const url = URL.createObjectURL(
+    new Blob(
+      [
+        streamPersistenceWorkerSource.replace(
+          "const result = database.transaction(() => writeBatch(data.batch)).immediate();",
+          `const result = database.transaction(() => {
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100);
+      return writeBatch(data.batch);
+    }).immediate();`,
+        ),
+      ],
+      { type: "application/javascript" },
+    ),
+  )
+  cleanups.add(() => URL.revokeObjectURL(url))
+  const f = await fixture(undefined, () => new Worker(url, { smol: true, ref: false }))
+  cleanups.add(f.close)
+  f.store.appendParts?.({
+    threadId: "t",
+    messageId: "a",
+    parts: [{ partIndex: 1, part: { type: "reasoning", text: "Primeiro" } }],
+  })
+  const drain = f.store.flushWritesAsync?.()
+  if (!drain) throw new Error("Missing asynchronous durability boundary")
+  const query = spyOn(f.database, "query")
+  cleanups.add(() => query.mockRestore())
+
+  f.store.appendParts?.({
+    threadId: "t",
+    messageId: "a",
+    parts: [{ partIndex: 2, part: { type: "reasoning", text: "Segundo" } }],
+  })
+
+  expect(
+    query.mock.calls.filter(([sql]) => sql.includes("SELECT updated_seq, generation, status FROM messages")),
+  ).toEqual([])
+  await drain
+  await f.store.flushWritesAsync?.()
+  const message = f.store.activePath({ threadId: "t", leafId: "a" })[0]
+  expect(message?.parts.slice(1)).toEqual([
+    { type: "reasoning", text: "Primeiro" },
+    { type: "reasoning", text: "Segundo" },
+  ])
 })
 
 test("drain waits for its watermark while another stream keeps accepting events", async () => {

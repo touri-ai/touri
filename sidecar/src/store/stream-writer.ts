@@ -87,6 +87,7 @@ export const createStreamWriter = ({
   let inFlightBytes = 0
   const projections = new Map<string, Projection>()
   const runBytes = new Map<string, number>()
+  const inFlightMessages = new Set<string>()
   const lastByMessage = new Map<string, PendingStreamEvent>()
   let timer: ReturnType<typeof setTimeout> | null = null
   let flushing = false
@@ -219,6 +220,7 @@ export const createStreamWriter = ({
     }
     const startedAt = performance.now()
     inFlight = eligible
+    for (const event of eligible) inFlightMessages.add(keyOf(event.threadId, event.messageId))
     inFlightBytes = eligible.reduce((total, event) => total + getEventBytes(event), 0)
     void persistence
       .submit(eligible)
@@ -264,6 +266,7 @@ export const createStreamWriter = ({
         }
       })
       .finally(() => {
+        inFlightMessages.clear()
         flushing = false
         if (!pending.length) capacityReported = false
         if (!stopped && pending.length && !timer) timer = setTimeout(flushLater, STREAM_WRITE_LIMITS.delayMs)
@@ -293,7 +296,7 @@ export const createStreamWriter = ({
     const cached = projections.get(key)
     if (cached) {
       // Validate once per byte-bounded batch; flush rechecks durable state and rebases all offsets atomically.
-      if (runBytes.has(key) && !database.inTransaction) return cached
+      if ((runBytes.has(key) || inFlightMessages.has(key)) && !database.inTransaction) return cached
       const head = database
         .query("SELECT updated_seq, generation, status FROM messages WHERE thread_id = ? AND id = ?")
         .get(threadId, messageId) as { updated_seq: number; generation: number; status: string } | null
