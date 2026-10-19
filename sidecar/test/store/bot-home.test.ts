@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite"
 import { afterEach, expect, test } from "bun:test"
-import { mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises"
+import { mkdir, mkdtemp, readdir, readFile, rename, rm, symlink, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -221,6 +221,24 @@ test("a failed database insert removes the written home and preserves the databa
   await expect(f.create()).rejects.toThrow("fixture insert rejected")
 
   expect(await readdir(join(f.root, "bots"))).toEqual([])
+})
+
+test("a cleanup failure cannot replace the original database insert error", async () => {
+  const f = await makeStore(async (...args) => {
+    const home = await writeBotHome(...args)
+    const root = args[0].paths.appData
+    await rename(join(root, "bots"), join(root, "saved-bots"))
+    await mkdir(join(root, "outside", args[1]), { recursive: true })
+    await symlink(join(root, "outside"), join(root, "bots"))
+    return home
+  })
+  f.database.exec(
+    "CREATE TRIGGER reject_fixture BEFORE INSERT ON bots BEGIN SELECT RAISE(FAIL, 'original database failure'); END",
+  )
+
+  await expect(f.create()).rejects.toThrow("original database failure")
+
+  expect(f.database.query("SELECT count(*) AS count FROM bots").get()).toEqual({ count: 0 })
 })
 
 test("the creation limit does not change existing large instruction edits", async () => {
