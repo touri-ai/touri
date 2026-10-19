@@ -1254,7 +1254,7 @@ export const ptBR = {
   "Na conversa principal": "Na conversa principal",
   "Uma conversa nova por tarefa": "Uma conversa nova por tarefa",
   "Automatic conversation mode help":
-    "No modo principal, respostas automáticas e rotinas ficam na conversa do bot. Cada execução de rotina mostra o gatilho e o horário; no outro modo, cada tarefa ganha uma conversa própria.",
+    "No modo principal, as rotinas ficam na conversa do bot. Cada execução mostra o gatilho e o horário; no outro modo, cada execução ganha uma conversa própria.",
   "Routine row title": "Rotina {name}",
   "Task row title": "Tarefas {name}",
   "Today count suffix": " · {count} hoje",
@@ -3875,7 +3875,7 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Na conversa principal": "In the main conversation",
   "Uma conversa nova por tarefa": "A new conversation for each task",
   "Automatic conversation mode help":
-    "In main mode, automatic replies and routines stay in the bot's conversation. Each routine run shows its trigger and time; task mode gives every task its own conversation.",
+    "In main mode, routines stay in the bot's conversation. Each run shows its trigger and time; task mode gives every run its own conversation.",
   "Routine row title": "Routine {name}",
   "Task row title": "Tasks {name}",
   "Today count suffix": " · {count} today",
