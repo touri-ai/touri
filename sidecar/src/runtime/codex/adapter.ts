@@ -14,7 +14,7 @@ import { codexApprovalPayload } from "../../approvals/payload"
 import { buildChildEnv } from "../../kernel"
 import type { PerformanceStageRunner } from "../../kernel/performance"
 import { redactStructured } from "../../kernel/redact"
-import { getBotModel, INVALID_SAVED_MODEL_ERROR } from "../../store/model"
+import { getSavedBotModel } from "../../store/model"
 import { touriVersion } from "../../version"
 import { createCommandOutput } from "../command-output"
 import { spawnFolderProvider } from "../folder-access"
@@ -732,10 +732,10 @@ export const createCodexAdapter = ({
   }
 
   const startTurn: ProviderAdapter["startTurn"] = async (args) => {
-    const model = getBotModel(args.bot.model ?? null)
-    if (model === undefined) return { success: false, errorCode: "unknown", error: INVALID_SAVED_MODEL_ERROR }
+    const model = getSavedBotModel(args.bot.model)
+    if (!model.success) return model
 
-    const turnArgs = { ...args, bot: { ...args.bot, model } }
+    const turnArgs = Object.assign({}, args, { bot: Object.assign({}, args.bot, { model: model.model }) })
     let canRetry = !args.execution
     let canRetryTools = true
     const invoke = () =>

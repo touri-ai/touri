@@ -1,3 +1,12 @@
+import type { Result } from "@touri/contracts"
+
+export const getSavedBotModel = (value: unknown): Result<{ model: string | null }, "unknown"> => {
+  const model = getBotModel(value ?? null)
+  if (model === undefined) return { success: false, errorCode: "unknown", error: INVALID_SAVED_MODEL_ERROR }
+
+  return { success: true, model }
+}
+
 export const getBotModel = (value: unknown): string | null | undefined => {
   if (value === null) return null
   if (typeof value !== "string" || value.length > 256) return undefined
