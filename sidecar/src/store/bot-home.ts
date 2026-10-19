@@ -126,10 +126,10 @@ export const createBotHomeWriter = ({
     admitBudgetWaiters()
   }
 
-  const reserveBudget = (bytes: number, signal: AbortSignal): Promise<void> => {
+  const reserveBudget = (bytes: number, signal: AbortSignal): Promise<void> | undefined => {
     if (budgetWaiters.length === 0 && canReserve(bytes)) {
       pendingBytes += bytes
-      return Promise.resolve()
+      return undefined
     }
 
     return new Promise<void>((resolve, reject) => {
@@ -198,7 +198,8 @@ export const createBotHomeWriter = ({
     const combined = AbortSignal.any([shutdown.signal, deadline.signal, ...(signal ? [signal] : [])])
     let started = false
     try {
-      await reserveBudget(operationBytes, combined)
+      const waitingForBudget = reserveBudget(operationBytes, combined)
+      if (waitingForBudget) await waitingForBudget
     } catch (error) {
       pending -= 1
       clearTimeout(timer)
