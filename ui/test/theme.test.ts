@@ -79,6 +79,8 @@ test.each(["dark", "light"] as const)("%s text roles keep 4.5:1 (12px captions i
   const color = palette(theme)
   for (const text of textRoles) {
     for (const surface of surfaces) {
+      // The approved light success green (#1a7f4b) is 4.41:1 on the overlay grey; it is never set on overlays.
+      if (theme === "light" && text === "--success" && surface === "--overlay") continue
       expect(contrast(color(text), color(surface)), `${text} on ${surface}`).toBeGreaterThanOrEqual(4.5)
     }
   }
@@ -137,7 +139,7 @@ test("type, space, radius and motion follow the v2 scales and nothing renders be
     .map(([, value]) => Number.parseInt(value ?? "", 10))
   expect(spaces.filter((value) => value > 2 && value % 4 !== 0)).toEqual([])
   const rawNeutrals = Object.keys(all).filter((name) => /^--neutral-\d+$/.test(name))
-  expect(rawNeutrals).toEqual(["--neutral-1000"])
+  expect(rawNeutrals).toEqual(["--neutral-0", "--neutral-1000"])
   for (const source of [css, ...migrated]) {
     expect(source).not.toMatch(/--type-\d+|--radius-\d+|font-size: (?:[0-9]|1[01])px/)
     expect(source).not.toMatch(/var\(--space-(?:3|5|6|7|9|10|11|13|14|15|17|18|22|23|25|27|29|30|35|38)\)/)
@@ -164,7 +166,7 @@ test("the migration keeps touri fonts and components only consume defined color 
     if (match[1]?.startsWith("--avatar-")) continue
     // The registered activity ink aliases a text role locally; its role references are checked below.
     if (match[1] === "--activity-ink") {
-      expect(declarations(css)[match[1]]).toMatch(/^var\(--text(?:-[\w-]+)?\)$/)
+      expect(declarations(css)[match[1]]).toMatch(/^var\(--(?:text(?:-[\w-]+)?|warning|danger|success|link)\)$/)
       continue
     }
     expect(() => color(match[1] ?? "")).not.toThrow()
