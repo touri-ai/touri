@@ -822,10 +822,7 @@ export const createRuntimeEngine = ({
       const delta = separator + event.delta
       const existing = last?.type === "text" ? last : undefined
       const partIndex = existing ? state.parts.length - 1 : state.parts.length
-      if (!existing) {
-        state.parts.push({ type: "text", text: "" })
-        state.dirtyParts.add(partIndex)
-      }
+      if (!existing) state.parts.push({ type: "text", text: "" })
       appendPendingText(state, partIndex, "text", delta)
       if (state.replyMessageId)
         store.appendDelta({
