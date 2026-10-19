@@ -489,9 +489,7 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
     return { ...saved, activeLeafId: interruptedFixture.messages.at(-1)?.id ?? saved.activeLeafId }
   })
   let messages = [
-    ...seed.messages
-      .filter((message) => message.threadId !== routineFixture?.thread.id)
-      .map(getSeedMessage),
+    ...seed.messages.filter((message) => message.threadId !== routineFixture?.thread.id).map(getSeedMessage),
     ...(routineFixture?.messages ?? []),
     ...(interruptedFixture?.messages ?? []),
   ]
