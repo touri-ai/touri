@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react"
+import { fireEvent, render, screen, within } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { createMockApi } from "../src/api/mock"
 import { MarkdownContent } from "../src/components/MarkdownContent"
@@ -96,7 +96,8 @@ describe("local files in chat Markdown", () => {
     for (const name of ["codificado", "arquivo", "/workspace/notas.md", "/workspace/nota final.txt"])
       expect(await screen.findByRole("button", { name })).toBeVisible()
     fireEvent.click(screen.getByRole("button", { name: "arquivo" }))
-    expect(await screen.findByText("Pronto")).toBeVisible()
+    const preview = await screen.findByRole("dialog", { name: "nota final.txt" })
+    expect(within(preview).getByText("Pronto")).toBeVisible()
     expect(request).toHaveBeenCalledWith(
       "GET /bots/:id/files/content",
       { path: "/workspace/nota final.txt" },
