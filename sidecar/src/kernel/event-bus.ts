@@ -108,12 +108,16 @@ export const createEventBus = (
   // Also recovers a committed tail whose publisher stopped before delivery.
   const captureTranscript = (): void => {
     if (!database || stopped) return
+    const busyTimeout = (database.query("PRAGMA busy_timeout").get() as { timeout: number }).timeout
+    database.exec("PRAGMA busy_timeout = 0")
     try {
       measureStage("transcript_journal_capture", captureEntries, database)
       captureRetryAttempt = 0
     } catch (error) {
       if (!isSqliteBusy(error)) throw error
       scheduleCaptureRetry()
+    } finally {
+      database.exec(`PRAGMA busy_timeout = ${busyTimeout}`)
     }
   }
 
