@@ -14,7 +14,7 @@ const note = (id: number, patch: Partial<NotificationRecord> = {}): Notification
   botId: "bot-remote",
   botName: "Clara",
   botColor: "#ee3344",
-  avatarShape: "cercle",
+  avatarShape: "classic-none",
   threadId: "thread-remote",
   title: "Preciso de aprovação",
   body: "Ação pendente",

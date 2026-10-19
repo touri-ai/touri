@@ -9,7 +9,13 @@ import { BotAvatar } from "./BotAvatar"
 import { type MascotState, mascotIsBusy, mascotPhaseFor } from "./mascotState"
 import { useReducedMotion } from "./useReducedMotion"
 
-const defaultBot = { id: "touri", name: "touri", color: null, avatarSeed: "touri-mascot" }
+const defaultBot = {
+  id: "touri",
+  name: "touri",
+  color: "#e8483f",
+  avatarShape: "classic-none" as const,
+  avatarSeed: "touri-mascot",
+}
 
 export const ActivityMark = ({
   state,

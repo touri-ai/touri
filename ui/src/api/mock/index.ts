@@ -570,7 +570,7 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
       botId: bot?.id ?? null,
       botName: bot?.name ?? null,
       botColor: bot ? avatarColorFor(bot) : "#e5322d",
-      avatarShape: bot ? avatarShapeFor(bot) : "cercle",
+      avatarShape: bot ? avatarShapeFor(bot) : "classic-none",
       avatarSeed: bot?.avatarSeed ?? null,
       threadId: threads.find((thread) => thread.botId === bot?.id)?.id ?? null,
       requestId: null,

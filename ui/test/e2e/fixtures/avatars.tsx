@@ -68,9 +68,9 @@ const Fixture = () => {
               </div>
             ))}
           </div>
-          <div style={{ display: "flex", gap: 10 }}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
             {AVATAR_SHAPES.map((shape) => (
-              <BotAvatar key={shape.id} bot={{ ...bot, avatarShape: shape.id }} size={64} mood={mood} />
+              <BotAvatar key={shape} bot={{ ...bot, avatarShape: shape }} size={64} mood={mood} />
             ))}
           </div>
         </article>

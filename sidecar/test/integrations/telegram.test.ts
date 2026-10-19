@@ -172,7 +172,7 @@ const notification = (patch: Partial<NotificationRecord>): NotificationRecord =>
   botId: null,
   botName: "Email",
   botColor: "#000",
-  avatarShape: "cercle",
+  avatarShape: "classic-none",
   threadId: null,
   title: "Aprovar comando",
   body: "rm -rf /tmp/x",

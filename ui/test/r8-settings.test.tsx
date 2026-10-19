@@ -55,7 +55,8 @@ it("preserves advanced drafts while keeping creation on one screen", async () =>
   expect(screen.getByRole("button", { name: "Criar bot" })).toBeDisabled()
   expect(screen.getByLabelText("Nome")).toHaveFocus()
   fireEvent.change(screen.getByLabelText("Nome"), { target: { value: " Clara " } })
-  fireEvent.click(screen.getByRole("button", { name: "Forma Nuvem" }))
+  fireEvent.click(screen.getByRole("radio", { name: "Chifres Curtos" }))
+  fireEvent.click(screen.getByRole("radio", { name: "Acessório Flor" }))
   fireEvent.click(screen.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
   expect(screen.getByLabelText("Função")).toHaveAccessibleDescription(
     "Resumo do trabalho do bot na equipe, por exemplo: pesquisar e comparar fontes.",
@@ -87,7 +88,7 @@ it("preserves advanced drafts while keeping creation on one screen", async () =>
         roleLine: "Pesquisa",
         instructions: "Responda em português.",
         model: "gpt-6.1-sol",
-        avatarShape: "nuage",
+        avatarShape: "short-flower",
         browserEnabled: false,
         machine: "local",
       }),

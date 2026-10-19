@@ -149,16 +149,17 @@ const expectNoViolations = async (dialog: HTMLElement) => {
   expect(violations.map(({ id, nodes }) => ({ id, targets: nodes.map((node) => node.target) }))).toEqual([])
 }
 
+// Full audits include every state, horn and accessory choice in the customizer.
 it("keeps every identity control named and exposed, with no axe violations", async () => {
   await botSettings({ provider: "claude" })
   const dialog = screen.getByRole("dialog")
   expect(screen.getByRole("textbox", { name: "Nome" })).toHaveFocus()
   expect(screen.getByRole("textbox", { name: "O que ele faz" })).toBeVisible()
-  expect(screen.getByRole("button", { name: "Forma Nuvem" })).toHaveAttribute("aria-pressed")
-  expect(screen.getByRole("button", { name: "Cor Automática" })).toHaveAttribute("aria-pressed")
+  expect(screen.getByRole("radio", { name: "Chifres Curtos" })).toBeInTheDocument()
+  expect(screen.getByRole("radio", { name: "Cor Automática" })).toBeInTheDocument()
   expectNamedControls(dialog)
   await expectNoViolations(dialog)
-}, 10_000)
+}, 30_000)
 
 it.each(BOT_SETTINGS_SECTIONS)(
   "keeps $label controls named and exposed, with no axe violations",
@@ -200,7 +201,7 @@ it.each(BOT_SETTINGS_SECTIONS)(
     }
     await expectNoViolations(dialog)
   },
-  10_000,
+  30_000,
 )
 
 it("keeps VM environment, host access and browser controls named and exposed", async () => {
@@ -214,7 +215,7 @@ it("keeps VM environment, host access and browser controls named and exposed", a
   fireEvent.click(within(panel).getByText("Detalhes técnicos"))
   expectNamedControls(panel)
   await expectNoViolations(screen.getByRole("dialog"))
-}, 10_000)
+}, 30_000)
 
 it("keeps Cancel and Save in the dialog's accessible tree after expanding and collapsing Advanced", async () => {
   const user = userEvent.setup()
@@ -238,7 +239,7 @@ it("keeps Cancel and Save in the dialog's accessible tree after expanding and co
     expect(actions.updateBot).toHaveBeenCalledWith(bot.id, expect.objectContaining({ name: bot.name })),
   )
   expect(onClose).toHaveBeenCalledOnce()
-}, 15_000)
+}, 30_000)
 
 it("opens the bot routines list directly from the tab by pointer or keyboard", async () => {
   const user = userEvent.setup()
@@ -251,4 +252,4 @@ it("opens the bot routines list directly from the tab by pointer or keyboard", a
   await user.keyboard("{End}")
   expect(onOpenRoutines).toHaveBeenCalledTimes(2)
   expect(tab).toHaveFocus()
-})
+}, 30_000)

@@ -236,7 +236,7 @@ describe("group coordination", () => {
     await api.request("POST /groups", {
       name: "Equipe",
       color: "#dc2626",
-      avatarShape: "cercle",
+      avatarShape: "classic-none",
       memberIds: ["bot-mark", "bot-onb"],
       coordinatorBotId: "bot-mark",
     })
@@ -296,7 +296,7 @@ const getGroup = (memberIds: string[]): BotGroup => ({
   memberIds,
   coordinatorBotId: memberIds[0] ?? null,
   color: "#dc2626",
-  avatarShape: "cercle",
+  avatarShape: "classic-none",
   avatarSeed: "team",
   createdAt: 1,
   updatedAt: 1,

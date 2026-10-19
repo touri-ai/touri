@@ -71,7 +71,7 @@ describe("user prompt editing", () => {
     const { group, thread } = await api.request("POST /groups", {
       name: "Equipe QA",
       color: "#dc2626",
-      avatarShape: "cercle",
+      avatarShape: "classic-none",
       memberIds: ["bot-mark", "bot-onb"],
       coordinatorBotId: null,
     })
