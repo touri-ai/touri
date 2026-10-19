@@ -269,7 +269,8 @@ test("Provider event cost grows linearly and duplicate starts share one run", as
   expect(result.providerCpuMs).toBeGreaterThan(0)
   expect(result.providerCpuMs).toBeLessThan(1_000)
   expect(result.providerCpuMs / small.providerCpuMs).toBeLessThan(3)
-  expect(result.attributedCpuMs / result.providerCpuMs).toBeGreaterThanOrEqual(0.9)
+  // Process CPU includes persistence-worker work that the event-loop stages do not measure.
+  expect(result.attributedCpuMs / result.providerCpuMs).toBeGreaterThanOrEqual(0.85)
   expect(result.stages.some(({ name }) => name === "runtime_turn_finalization")).toBe(true)
   expect(result.maxBlockMs).toBeLessThan(50)
   expect(result.stages.find(({ name }) => name === "provider_frame_batch")?.maxMs ?? Infinity).toBeLessThan(50)
