@@ -290,21 +290,95 @@ test("large edits wait in FIFO order until their retained content budget is free
   const secondEdit = writer.run({ operation: "edit", botId: "second", instructions })
   await Bun.sleep(10)
 
-  expect(calls).toEqual([{ operation: "reconcile", botId: "fixture" }])
+  expect(calls).toEqual([{ operation: "snapshot", botId: "fixture" }])
   released = true
   blocked.resolve()
   await Promise.all([edit, secondEdit])
 
-  expect(calls.map((command) => command.botId)).toEqual([
-    "fixture",
-    "fixture",
-    "fixture",
-    "fixture",
-    "second",
-    "second",
-    "second",
-    "second",
+  expect(calls.map((command) => command.botId)).toEqual(["fixture", "fixture", "fixture", "second", "second", "second"])
+})
+
+test("admitted and waiting edits share a 64 MiB retained-text cap and release it after completion", async () => {
+  const blocked = Promise.withResolvers<void>()
+  const started = Promise.withResolvers<void>()
+  const writer = createBotHomeWriter({
+    root: "/fixture",
+    createHelper: () => ({
+      execute: async () => {
+        started.resolve()
+        await blocked.promise
+      },
+      stop: async () => blocked.resolve(),
+    }),
+  })
+  cleanups.add(writer.close)
+  const writeEditedHome: typeof updateBotHome = (kernel, botId, instructions, signal, prepare) =>
+    updateBotHome(kernel, botId, instructions, signal, prepare, writer)
+  const fixture = await makeStore(undefined, writeEditedHome)
+  const created = await fixture.create()
+  if (!("json" in created)) throw new Error("Expected bot response")
+  const { bot } = created.json as { bot: { id: string } }
+  const instructions = "x".repeat(16 * 1024 * 1024)
+  const first = writer.run({ operation: "edit", botId: "first", instructions })
+  await started.promise
+  const second = writer.run({ operation: "edit", botId: "second", instructions })
+
+  const overflow = writer.run({ operation: "edit", botId: "overflow", instructions: "x".repeat(3 * 1024 * 1024) })
+  const result = await Promise.race([
+    overflow.then(
+      () => "accepted",
+      (error: Error) => error.message,
+    ),
+    Bun.sleep(100).then(() => "still waiting"),
   ])
+  const response = await Promise.race([
+    fixture.routes.handler({
+      params: { id: bot.id },
+      query: {},
+      body: { instructions: "x".repeat(3 * 1024 * 1024) },
+      signal: new AbortController().signal,
+    }),
+    Bun.sleep(100).then(() => ({ status: 0 })),
+  ])
+
+  expect(result).toBe("Bot home writer is busy")
+  expect(response.status).toBe(409)
+  blocked.resolve()
+  await Promise.all([first, second])
+  const normalInstructions = "x".repeat(3 * 1024 * 1024)
+  await Promise.all([
+    writer.run({ operation: "edit", botId: "third", instructions: normalInstructions }),
+    writer.run({ operation: "edit", botId: "fourth", instructions: normalInstructions }),
+  ])
+})
+
+test("cancelling a waiting edit releases its retained bytes before the active edit finishes", async () => {
+  const blocked = Promise.withResolvers<void>()
+  const started = Promise.withResolvers<void>()
+  const writer = createBotHomeWriter({
+    root: "/fixture",
+    createHelper: () => ({
+      execute: async () => {
+        started.resolve()
+        await blocked.promise
+      },
+      stop: async () => blocked.resolve(),
+    }),
+  })
+  cleanups.add(writer.close)
+  const instructions = "x".repeat(16 * 1024 * 1024)
+  const first = writer.run({ operation: "edit", botId: "first", instructions })
+  await started.promise
+  const controller = new AbortController()
+  const second = writer.run({ operation: "edit", botId: "second", instructions }, controller.signal)
+  const cancelled = expect(second).rejects.toThrow("synthetic cancellation")
+
+  controller.abort(new Error("synthetic cancellation"))
+  await cancelled
+  const replacement = writer.run({ operation: "edit", botId: "replacement", instructions })
+  blocked.resolve()
+
+  await Promise.all([first, replacement])
 })
 
 for (const failure of ["write failure", "cancellation", "snapshot cancellation", "commit failure"] as const) {
@@ -368,7 +442,7 @@ for (const target of ["SOUL.md", ".SOUL.edit-backup"] as const) {
   })
 }
 
-test("reconciliation restores a leftover backup when SOUL.md is missing", async () => {
+test("reconciliation replaces a leftover backup with the stored instructions when SOUL.md is missing", async () => {
   const root = await makeRoot()
   const home = join(root, "bots", "fixture")
   await mkdir(home, { recursive: true })
@@ -376,13 +450,13 @@ test("reconciliation restores a leftover backup when SOUL.md is missing", async 
   const writer = createBotHomeWriter({ root })
   cleanups.add(writer.close)
 
-  await writer.run({ operation: "reconcile", botId: "fixture" })
+  await writer.run({ operation: "reconcile", botId: "fixture", instructions: "Stored instructions" })
 
-  expect(await readFile(join(home, "SOUL.md"), "utf8")).toBe("Previous instructions")
+  expect(await readFile(join(home, "SOUL.md"), "utf8")).toBe("Stored instructions")
   expect(await readdir(home)).toEqual(["SOUL.md"])
 })
 
-test("reconciliation removes a leftover backup when SOUL.md already exists", async () => {
+test("reconciliation uses the stored instructions even when SOUL.md already exists", async () => {
   const root = await makeRoot()
   const home = join(root, "bots", "fixture")
   await mkdir(home, { recursive: true })
@@ -391,11 +465,56 @@ test("reconciliation removes a leftover backup when SOUL.md already exists", asy
   const writer = createBotHomeWriter({ root })
   cleanups.add(writer.close)
 
-  await writer.run({ operation: "reconcile", botId: "fixture" })
+  await writer.run({ operation: "reconcile", botId: "fixture", instructions: "Stored instructions" })
 
-  expect(await readFile(join(home, "SOUL.md"), "utf8")).toBe("Current instructions")
+  expect(await readFile(join(home, "SOUL.md"), "utf8")).toBe("Stored instructions")
   expect(await readdir(home)).toEqual(["SOUL.md"])
 })
+
+for (const hasSoul of [false, true]) {
+  test(`store startup reconciles a leftover backup from the database with SOUL.md ${hasSoul ? "present" : "missing"}`, async () => {
+    const instructions = "Stored instructions.\n".repeat(16 * 1024)
+    const { runtime, database, home, botId, root } = await makeStartupStore(instructions)
+    const orphan = join(root, "bots", "orphan")
+    await mkdir(orphan, { recursive: true })
+    await writeFile(join(home, ".SOUL.edit-backup"), "Before the interrupted edit")
+    await writeFile(join(orphan, ".SOUL.edit-backup"), "Keep the orphan backup")
+    if (hasSoul) await writeFile(join(home, "SOUL.md"), "Uncommitted instructions")
+    if (hasSoul) database.query("UPDATE bots SET archived_at = 1 WHERE id = ?").run(botId)
+
+    await initStore(runtime.kernel)
+
+    expect(await readFile(join(home, "SOUL.md"), "utf8")).toBe(instructions)
+    expect(await readdir(home)).toEqual(["SOUL.md"])
+    expect(await readdir(orphan)).toEqual([".SOUL.edit-backup"])
+    expect(await readFile(join(orphan, ".SOUL.edit-backup"), "utf8")).toBe("Keep the orphan backup")
+    expect(database.query("SELECT instructions FROM bots WHERE id = ?").get(botId)).toEqual({ instructions })
+  })
+}
+
+test("startup leaves instructions on disk untouched when there is no edit backup", async () => {
+  const { runtime, home } = await makeStartupStore("Stored instructions")
+  await writeFile(join(home, "SOUL.md"), "Instructions edited outside the app")
+
+  await initStore(runtime.kernel)
+
+  expect(await readFile(join(home, "SOUL.md"), "utf8")).toBe("Instructions edited outside the app")
+  expect(await readdir(home)).toEqual(["SOUL.md"])
+})
+
+for (const target of ["SOUL.md", ".SOUL.edit-backup"] as const) {
+  test(`startup reconciliation refuses a symlink at ${target}`, async () => {
+    const { runtime, home, root } = await makeStartupStore("Stored instructions")
+    const outside = join(root, "outside.txt")
+    await writeFile(outside, "Keep this file")
+    if (target === "SOUL.md") await writeFile(join(home, ".SOUL.edit-backup"), "Previous instructions")
+    await symlink(outside, join(home, target))
+
+    await expect(initStore(runtime.kernel)).rejects.toThrow("Bot home operation failed")
+
+    expect(await readFile(outside, "utf8")).toBe("Keep this file")
+  })
+}
 
 test("a failed write preserves its error when cleanup fails", async () => {
   const root = await makeRoot()
@@ -773,6 +892,21 @@ const makeRoot = async () => {
   return root
 }
 
+const makeStartupStore = async (instructions: string) => {
+  const fixture = await makeStore()
+  const created = await fixture.create()
+  if (!("json" in created)) throw new Error("Expected bot response")
+  const { bot } = created.json as { bot: { id: string } }
+  fixture.database.query("UPDATE bots SET instructions = ? WHERE id = ?").run(instructions, bot.id)
+  await fixture.stop()
+  const home = join(fixture.root, "bots", bot.id)
+  await rm(join(home, "SOUL.md"))
+  const runtime = createKernel({ appData: fixture.root })
+  cleanups.add(runtime.stop)
+
+  return { runtime, database: runtime.kernel.db as Database, home, botId: bot.id, root: fixture.root }
+}
+
 const makeStore = async (writeHome?: typeof writeBotHome, writeEditedHome?: typeof updateBotHome) => {
   const root = await makeRoot()
   const runtime = createKernel({ appData: root })
@@ -795,5 +929,9 @@ const makeStore = async (writeHome?: typeof writeBotHome, writeEditedHome?: type
   }
   const create = (signal = new AbortController().signal) =>
     getRoute("POST", "/bots").handler({ params: {}, query: {}, body: { name: "Fixture", provider: "claude" }, signal })
-  return { root, database: kernel.db as Database, create, routes: getRoute("PATCH", "/bots/:id") }
+  const stop = async () => {
+    await stopBotHomeWriter(kernel)
+    await runtime.stop()
+  }
+  return { root, database: kernel.db as Database, create, routes: getRoute("PATCH", "/bots/:id"), stop }
 }

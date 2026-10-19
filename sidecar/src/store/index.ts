@@ -51,7 +51,7 @@ import { getHostIdentity } from "../platform/host"
 import { getDefaultMaxConcurrentRuns } from "../runtime/concurrency"
 import { touriVersion } from "../version"
 import { DEFAULT_BOT_VM_MEMORY_MB, DEFAULT_MACHINE_IDLE_MINUTES, validBotVmMemory } from "../vm/resources"
-import { cleanupBotHome, updateBotHome, writeBotHome } from "./bot-home"
+import { cleanupBotHome, reconcileBotHomes, updateBotHome, writeBotHome } from "./bot-home"
 import { redeemFileGrant } from "./redeemFileGrant"
 import { createSendJournal } from "./send-journal"
 import { createStreamWriter } from "./stream-writer"
@@ -483,6 +483,7 @@ export const init = async (
   writeEditedHome = updateBotHome,
 ): Promise<void> => {
   await refreshHostFolderAccess()
+  await reconcileBotHomes(kernel)
   installDoctor(kernel)
   const database = kernel.db as Database
   const recoverTranscript = () => materializeTranscriptBatch(database)
