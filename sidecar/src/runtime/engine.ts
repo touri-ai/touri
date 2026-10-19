@@ -1013,6 +1013,8 @@ export const createRuntimeEngine = ({
         state.parts[changedPartIndex] = tools.record(
           run,
           pending ? { ...changedPart, resolution: "cancelled_by_user", resolvedAt: Date.now() } : changedPart,
+          false,
+          false,
         )
       }
       if (!state.replyMessageId) {

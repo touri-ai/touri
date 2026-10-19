@@ -346,7 +346,7 @@ test("retention releases completed recovery outputs when only snapshot locators 
       "INSERT INTO runs(id,thread_id,bot_id,provider,trigger,status,queued_at) SELECT 'r','t','b',provider,'user','succeeded',1 FROM bots WHERE id='b'",
     )
     const tools = createToolResolutions(f.runtime.kernel)
-    const part = tools.record({ id: "r", threadId: "t" } as Run, tool("Resultado antigo. ".repeat(1000)))
+    const part = await tools.recordAsync({ id: "r", threadId: "t" } as Run, tool("Resultado antigo. ".repeat(1000)))
     insert(f, "old-recovery", [part])
     f.database.query("UPDATE messages SET run_id = 'r', updated_at = 1 WHERE id = 'old-recovery'").run()
     await compactMessageBatch({ database: f.database, appData: f.root, cursor: 0, total: 100 })
@@ -704,7 +704,7 @@ test("interrupted tool reconciliation preserves file-backed results even without
     const run = { id: "r", threadId: "t" } as Run
     const tools = createToolResolutions(f.runtime.kernel)
     const output = "Resultado preservado. ".repeat(10_000)
-    const recorded = tools.record(run, tool(output))
+    const recorded = await tools.recordAsync(run, tool(output))
     expect(recorded.outputAttachmentId).toBeString()
     expect(recorded).toMatchObject({ outputJson: null, resolution: "succeeded" })
     const row = f.database.query("SELECT part_json FROM tool_resolutions WHERE run_id = 'r'").get() as {

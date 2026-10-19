@@ -8,6 +8,7 @@ import { t } from "../../../ui/src/i18n"
 import { createStandingGrantStore } from "../../src/approvals/grants"
 import { mcpStartupChecks } from "../../src/doctor/mcp"
 import { createKernel } from "../../src/kernel"
+import { flushFileIoAsync } from "../../src/kernel/async-files"
 import { openDatabase } from "../../src/kernel/db"
 import { init as initNotify } from "../../src/notify"
 import { createCodexAdapter } from "../../src/runtime/codex/adapter"
@@ -678,6 +679,7 @@ test("Codex process failures show coded chat errors with the sanitized provider 
     const reply = value.store.messages.get(result.run.replyMessageId ?? "")
     expect(JSON.stringify(reply?.parts)).toContain("TOURI-E3002")
     expect(JSON.stringify(reply?.parts)).toContain(`Detalhe do provedor: Codex exited (17): ${detail}`)
+    await flushFileIoAsync()
     expect(readFileSync(join(value.root, "logs", "sidecar.log"), "utf8")).toContain(detail)
   } finally {
     await closeFixture(value)

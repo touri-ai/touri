@@ -1,6 +1,5 @@
-import { stat } from "node:fs/promises"
+import { mkdir, stat } from "node:fs/promises"
 import type { Bot, Kernel, SessionFingerprint, Thread } from "@touri/contracts"
-import { ensurePrivateDirectoryAsync } from "../kernel/async-files"
 import { botFolderFingerprint } from "../kernel/bot-folders"
 import { canonicalJson, sha256 } from "./utils"
 
@@ -36,7 +35,7 @@ export const sessionFingerprint = ({
 
 const usableDirectory = async (path: string): Promise<boolean> => {
   try {
-    await ensurePrivateDirectoryAsync({ root: path })
+    await mkdir(path, { recursive: true, mode: 0o700 })
     return (await stat(path)).isDirectory()
   } catch {
     return false

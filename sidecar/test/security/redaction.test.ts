@@ -3,10 +3,11 @@ import { chmodSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, s
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { createKernel } from "../../src/kernel"
+import { flushFileIoAsync } from "../../src/kernel/async-files"
 
 const rootPath = (): string => mkdtempSync(join(tmpdir(), "touri-security-redaction-"))
 
-test("redaction masks required token shapes in logger output while preserving ordinary URLs", () => {
+test("redaction masks required token shapes in logger output while preserving ordinary URLs", async () => {
   const root = rootPath()
   const runtime = createKernel({ appData: root })
   const values = [
@@ -25,6 +26,7 @@ test("redaction masks required token shapes in logger output while preserving or
       msg: values.join(" "),
       data: { nested: values },
     })
+    await flushFileIoAsync()
     const log = readFileSync(join(root, "logs", "sidecar.log"), "utf8")
     for (const value of values) expect(log).not.toContain(value)
   } finally {
@@ -33,13 +35,14 @@ test("redaction masks required token shapes in logger output while preserving or
   }
 })
 
-test("sidecar application logs rotate at 10 MB and retain five generations", () => {
+test("sidecar application logs rotate at 10 MB and retain five generations", async () => {
   const root = rootPath()
   const runtime = createKernel({ appData: root })
   try {
     const payload = "x".repeat(2 * 1024 * 1024)
     for (let index = 0; index < 31; index += 1)
       runtime.kernel.log({ level: "info", module: "rotation-test", msg: `${index}:${payload}` })
+    await flushFileIoAsync()
     const files = readdirSync(join(root, "logs"))
       .filter((name) => name === "sidecar.log" || /^sidecar\.log\.\d+$/.test(name))
       .sort()

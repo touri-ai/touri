@@ -456,7 +456,7 @@ test("local credential loading redacts individual tokens after a fresh sidecar s
   const prepared = await prepareLocalProviderLogin(f.kernel, f.bot, new AbortController().signal)
   expect(f.redactions).toContain("synthetic-access")
   expect(f.redactions).toContain("synthetic-refresh")
-  prepared.release()
+  await prepared.release()
 })
 
 test("Claude token capture joins a token wrapped by the official CLI terminal renderer", async () => {
@@ -601,7 +601,7 @@ for (const provider of ["claude", "codex", "opencode"] as const)
       const directory = provider === "codex" ? prepared.env.CODEX_HOME : prepared.env.XDG_DATA_HOME
       const path = join(directory ?? "", provider === "codex" ? "auth.json" : "opencode/auth.json")
       expect(readFileSync(path, "utf8")).toBe(value)
-      prepared.release()
+      await prepared.release()
       expect(existsSync(path)).toBe(false)
     }
   })

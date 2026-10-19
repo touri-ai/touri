@@ -79,6 +79,9 @@ const toError = ({ name, message, code }: FileIoError): Error =>
 
 const runFileIoTask = createFileIo()
 
+/** Wait until earlier file tasks have completed on the worker. */
+export const flushFileIoAsync = (): Promise<void> => runFileIoTask({ operation: "flush" }).then(() => undefined)
+
 export const writePrivateFileAsync = (args: FileWrite): Promise<void> =>
   runFileIoTask({ operation: "write", args }).then(() => undefined)
 

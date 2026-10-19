@@ -33,6 +33,7 @@ const rotateLog = ({
 }
 
 const execute = (task: FileIoTask): unknown => {
+  if (task.operation === "flush") return undefined
   if (task.operation === "write") {
     atomicWriteFile(task.args)
     return undefined

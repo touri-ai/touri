@@ -1,6 +1,7 @@
 import type { FileWrite } from "./files"
 
 export type FileIoTask =
+  | { operation: "flush" }
   | { operation: "write"; args: FileWrite }
   | { operation: "append"; args: FileWrite & { maxBytes?: number } }
   | { operation: "ensure-directory"; args: { root: string; path?: string; mode?: number } }

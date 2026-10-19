@@ -6,6 +6,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { Bot, UiEvent } from "@touri/contracts"
 import { createKernel } from "../../src/kernel"
+import { flushFileIoAsync } from "../../src/kernel/async-files"
 import { init as initStore } from "../../src/store"
 import { createAppleContainerProvider } from "../../src/vm/apple-container"
 import { createVmCommandRunner } from "../../src/vm/command"
@@ -131,6 +132,7 @@ for (const { storage, source } of cases) {
               event.machine.progress === "Atualizando a máquina para a versão nova…",
           ),
         ).toBe(true)
+        await flushFileIoAsync()
         expect(readFileSync(join(runtime.kernel.paths.logsDir, "sidecar.log"), "utf8")).toContain('"stage":"upgrade"')
         await release()
         release = null

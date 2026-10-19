@@ -1,5 +1,6 @@
 import { Database } from "bun:sqlite"
 import type { Kernel, Message, MessagePart, Run, StoreApi, ToolResolution } from "@touri/contracts"
+import { externalizeMessagePartsAsync } from "../kernel/output-blobs"
 import { summarizeToolResolutions } from "./tool-resolution-summary"
 
 type ToolPart = Extract<MessagePart, { callId: string }>
@@ -95,6 +96,26 @@ export const createToolResolutions = (kernel: Kernel) => {
     }
     return next
   }
+  const recordAsync = async (run: Run, part: ToolPart, recovering = false, persist = true): Promise<ToolPart> => {
+    const resolved = record(run, part, recovering, false)
+    const next = database
+      ? ((
+          await externalizeMessagePartsAsync({ database, appData: kernel.paths.appData, parts: [resolved] })
+        )[0] as ToolPart)
+      : resolved
+    const resolution = outcome(next)
+    if (persist) {
+      saveResolution?.run(run.id, part.callId, run.threadId, JSON.stringify(next), resolution, next.resolvedAt ?? null)
+      const parts = pendingInterruptions.get(run.id)
+      parts?.delete(part.callId)
+      if (!parts?.size) pendingInterruptions.delete(run.id)
+    } else if (pendingInterruptions.get(run.id)?.has(part.callId) || interrupted(resolution)) {
+      const parts = pendingInterruptions.get(run.id) ?? new Map<string, ToolPart>()
+      parts.set(part.callId, next)
+      pendingInterruptions.set(run.id, parts)
+    }
+    return next
+  }
   const finish = (
     run: Run,
     parts: MessagePart[],
@@ -153,6 +174,58 @@ export const createToolResolutions = (kernel: Kernel) => {
       ?.query(`${PENDING_TOOL_RECOVERY_SQL} ${threadId ? "AND p.thread_id = ?" : ""} ORDER BY r.queued_at, r.id`)
       .all(...(threadId ? [threadId] : [])) ?? []) as RecoveryRun[]
 
+  const finishAsync = async (
+    run: Run,
+    parts: MessagePart[],
+    reason: Exclude<ToolResolution, "running">,
+    persist = true,
+  ): Promise<MessagePart[]> => {
+    const result: MessagePart[] = []
+    for (const part of parts) {
+      if (!isTool(part)) {
+        result.push(part)
+        continue
+      }
+      const current = await recordAsync(run, part, true, persist)
+      result.push(
+        outcome(current) === "running"
+          ? await recordAsync(run, { ...current, resolution: reason, resolvedAt: Date.now() }, false, persist)
+          : current,
+      )
+    }
+    const stored = [
+      ...((getRunParts?.all(run.id) as Array<{ part_json: string }> | undefined) ?? []),
+      ...Array.from(pendingInterruptions.get(run.id)?.values() ?? [], (part) => ({ part_json: JSON.stringify(part) })),
+    ]
+    const included = new Set(result.filter(isTool).map((part) => part.callId))
+    for (const row of stored) {
+      const part = JSON.parse(row.part_json) as ToolPart
+      if (included.has(part.callId)) continue
+      const resolution = outcome(part)
+      result.push(
+        await recordAsync(
+          run,
+          {
+            ...part,
+            resolution: resolution === "running" ? reason : hasResult(resolution) ? "completed_unobserved" : resolution,
+            ...(part.type === "file_change" && (resolution === "succeeded" || resolution === "failed")
+              ? { completedOutcome: resolution }
+              : {}),
+            resolvedAt: part.resolvedAt ?? Date.now(),
+          },
+          false,
+          persist,
+        ),
+      )
+    }
+    if (persist && getPendingToolCall?.get(run.id))
+      database
+        ?.query(
+          "UPDATE tool_calls SET ok = 0, error_code = ?, duration_ms = COALESCE(duration_ms, ? - created_at) WHERE run_id = ? AND ok IS NULL",
+        )
+        .run(reason.toUpperCase(), Date.now(), run.id)
+    return result
+  }
   const reconcileRun = async (store: StoreApi, runId: string): Promise<void> => {
     if (!database) return
     const recovery = database.transaction(() => {
@@ -171,12 +244,12 @@ export const createToolResolutions = (kernel: Kernel) => {
       const parts = message ? (JSON.parse(message.parts_json) as MessagePart[]) : []
       const reason = terminalReason(row.status)
       const run = { id: row.id, threadId: row.thread_id } as Run
-      const next = finish(run, parts, reason)
-      const shouldUpdate = message && (JSON.stringify(parts) !== JSON.stringify(next) || message.status === "streaming")
-      return { row, message, next, shouldUpdate }
+      return { row, message, parts, reason, run }
     })()
     if (!recovery) return
-    const { row, message, next, shouldUpdate } = recovery
+    const { row, message, parts, reason, run } = recovery
+    const next = await finishAsync(run, parts, reason)
+    const shouldUpdate = message && (JSON.stringify(parts) !== JSON.stringify(next) || message.status === "streaming")
     if (message && shouldUpdate) {
       const status: Message["status"] =
         row.status === "succeeded" ? "complete" : row.status === "canceled" ? "canceled" : "failed"
@@ -207,6 +280,7 @@ export const createToolResolutions = (kernel: Kernel) => {
   }
   return {
     record,
+    recordAsync,
     finish,
     reconcile,
     reconcilePending,

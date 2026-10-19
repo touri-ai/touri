@@ -36,6 +36,7 @@ type Session = {
   host?: boolean
   timer?: ReturnType<typeof setTimeout>
   directory?: string
+  cleanup?: Promise<void>
   pastePrompt?: number
   codeReady?: boolean
   retryCode?: boolean
@@ -186,12 +187,16 @@ export const createProviderLoginFlow = ({
       timeoutMs,
     })
   }
-  const clean = (session: Session) => {
+  const clean = (session: Session): Promise<void> => {
     clearTimeout(session.timer)
     session.onCodePrompt?.()
-    if (session.directory) void rm(session.directory, { recursive: true, force: true }).catch(() => {})
+    const cleanup = session.directory
+      ? rm(session.directory, { recursive: true, force: true }).catch(() => {})
+      : Promise.resolve()
+    session.cleanup = cleanup
     delete session.directory
     delete session.child
+    return cleanup
   }
   /** The login home is removed again once the CLI tree is dead, so a late write cannot leave a credential behind. */
   const stopLoginChild = (session: Session): void => {
@@ -245,6 +250,7 @@ export const createProviderLoginFlow = ({
     const profile = await profileLogin(target)
     if (profile) return profile
     const current = sessions.get(key(target))
+    if (current?.cleanup) await current.cleanup
     // A cancelled browser attempt must not mask an existing or repaired saved login.
     if (current && (current.view.state === "waiting" || isDraft(target.id))) return { ...current.view }
     const source = isDraft(target.id) ? null : storedProviderLoginSource(kernel, target)
@@ -441,7 +447,7 @@ export const createProviderLoginFlow = ({
         }
       } finally {
         output = ""
-        clean(session)
+        await clean(session)
         if (isDraft(session.target.id) && session.secret) {
           session.timer = setTimeout(() => {
             delete session.secret
@@ -461,7 +467,11 @@ export const createProviderLoginFlow = ({
       const profile = await profileLogin(target)
       if (profile) return profile
     }
-    if (input.action === "cancel") return cancel(target)
+    if (input.action === "cancel") {
+      const view = cancel(target)
+      await sessions.get(key(target))?.cleanup
+      return view
+    }
     if (input.action === "code") {
       const value = typeof input.value === "string" ? input.value.trim() : ""
       if (!value || value.length > 2000 || /[\r\n\u2028\u2029]/.test(input.value ?? ""))
