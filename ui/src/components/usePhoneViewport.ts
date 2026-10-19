@@ -2,7 +2,7 @@ import { useSyncExternalStore } from "react"
 
 export const usePhoneViewport = () => useSyncExternalStore(subscribeToPhoneViewport, isPhoneViewport, () => false)
 
-const query = "(max-width: 420px)"
+const query = "(max-width: 620px)"
 
 const subscribeToPhoneViewport = (changed: () => void) => {
   const media = window.matchMedia(query)
