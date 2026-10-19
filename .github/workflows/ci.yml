@@ -257,7 +257,7 @@ jobs:
         run: bunx playwright test test/e2e/message-edit-target.spec.ts --workers=1 --output test-results/message-edit-target
       - name: Keep message edit target screenshots
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: message-edit-target
           path: ui/test-results/message-edit-target/**/*.png

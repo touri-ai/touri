@@ -10,7 +10,9 @@ for (const [width, height, size] of [
     test(`message edit touch target at ${width}px in ${theme} theme`, async ({ page }, testInfo) => {
       await page.setViewportSize({ width, height })
       await page.addInitScript((value) => localStorage.setItem("touri.appearance.v1", value), theme)
+
       await page.goto("/?mockScenario=message-edit-target")
+
       await expect(
         page
           .getByTestId("virtual-message-list")
