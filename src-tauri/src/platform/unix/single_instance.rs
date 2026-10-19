@@ -73,7 +73,7 @@ pub fn private_runtime_dir() -> Option<PathBuf> {
     is_private_directory(&dir).then_some(dir)
 }
 
-fn fnv1a(bytes: &[u8]) -> u64 {
+pub fn fnv1a(bytes: &[u8]) -> u64 {
     bytes.iter().fold(FNV_OFFSET, |hash, byte| {
         (hash ^ u64::from(*byte)).wrapping_mul(FNV_PRIME)
     })

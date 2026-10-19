@@ -2,6 +2,7 @@ import { type Bot, getHostNoun, type HostKind } from "@touri/contracts"
 import { userFacingError } from "./errors"
 /** All UI copy lives here. pt-BR is the default; English is available for a future locale picker. */
 export type Locale = "pt-BR" | "en"
+export const DEFAULT_LOCALE: Locale = "pt-BR"
 export const ptBR = {
   "Optional scheduling adjustment was denied; continuing with the existing thread policy.":
     "O ajuste opcional de prioridade foi negado; o servidor continua com a prioridade atual.",

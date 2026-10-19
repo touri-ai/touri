@@ -1022,10 +1022,12 @@ const makeScheduledMaintenance = (
   scan: Awaited<ReturnType<typeof makeScanFixture>>,
   yieldBatch: () => Promise<void>,
   runStage: PerformanceStageRunner,
+  attachmentReferenceTimeoutMs = 10 * 60_000,
 ) => {
   // Only this fixture owns the next callback; tests advance it without waiting a day.
   let scheduled: { action: () => Promise<void>; delay: number; timer: ReturnType<typeof setTimeout> } | undefined
   let errors = 0
+  const logs: string[] = []
   const maintenance = createStorageMaintenance({
     database: scan.database,
     appData: scan.root,
@@ -1036,6 +1038,8 @@ const makeScheduledMaintenance = (
     },
     yieldBatch,
     runStage,
+    attachmentReferenceTimeoutMs,
+    log: ({ msg }) => logs.push(msg),
     schedule: (action, delay) => {
       const timer = setTimeout(() => {}, 86400_000)
       timer.unref()
@@ -1049,6 +1053,7 @@ const makeScheduledMaintenance = (
   return {
     maintenance,
     getErrors: () => errors,
+    getLogs: () => logs,
     getNextDelay,
     runNext: async () => {
       // Compaction and retention can require several short preparation ticks.
@@ -1064,6 +1069,45 @@ const makeScheduledMaintenance = (
     },
   }
 }
+
+test("a slow cold reference scan resumes after a deadline and logs each deferred pass", async () => {
+  const scan = await makeScanFixture()
+  const [orphan] = makeOutputCandidates(scan, 1)
+  if (!orphan) throw new Error("Missing synthetic candidate")
+  const insert = scan.database.query(`INSERT INTO send_journal(
+    thread_id,client_nonce,request_json,message_id,deadline,status,created_at,updated_at
+  ) VALUES ('t',?,'{}',?,0,'acked',1,1)`)
+  scan.database.transaction(() => {
+    Array.from({ length: 150 }, (_, index) => index).forEach((index) => {
+      insert.run(`nonce-${index}`, `message-${index}`)
+    })
+  })()
+  let scanning = false
+  let delayMs = 60
+  const scheduled = makeScheduledMaintenance(
+    scan,
+    async () => {
+      if (scanning) await Bun.sleep(delayMs)
+    },
+    (stage, action, input) => {
+      if (stage === "storage_attachment_reference_scan") scanning = true
+      return scan.stages.run(stage, action, input)
+    },
+    50,
+  )
+
+  await scheduled.runNext()
+
+  expect(scheduled.getNextDelay()).toBe(1000)
+  expect(scheduled.getLogs()).toContain("Limpeza de anexos adiada após o prazo da leitura de referências")
+  expect(existsSync(orphan.path)).toBe(true)
+
+  delayMs = 30
+  await scheduled.runNext()
+
+  expect(scheduled.maintenance.snapshot().running).toBe(false)
+  expect(existsSync(orphan.path)).toBe(false)
+})
 
 test("a commit after the reference worker reads a batch defers without an error and rescans safely", async () => {
   const scan = await makeScanFixture()

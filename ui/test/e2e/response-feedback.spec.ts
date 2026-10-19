@@ -3,6 +3,8 @@ import { fileURLToPath } from "node:url"
 import { expect, test } from "@playwright/test"
 
 test.setTimeout(90_000)
+// Trace DOM snapshots add work to the same event loop whose latency this suite measures.
+test.use({ trace: { mode: "retain-on-failure", screenshots: false, snapshots: false, sources: false } })
 const phase = process.env.FEEDBACK_PHASE ?? "after"
 const directory = fileURLToPath(new URL("../../../docs/qa/response-feedback/", import.meta.url))
 const url = "/test/e2e/response-feedback-harness.html"

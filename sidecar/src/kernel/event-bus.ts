@@ -66,7 +66,7 @@ export const createEventBus = (
     })
   }
 
-  const deliver = (envelope: UiEventEnvelope): void => {
+  const deliverNow = (envelope: UiEventEnvelope): void => {
     listeners.forEach((listener) => {
       try {
         listener(envelope)
@@ -79,6 +79,7 @@ export const createEventBus = (
     const payload = payloadFor(envelope)
     measureStage("workspace_websocket_broadcast", broadcast, { payload, seq: envelope.seq })
   }
+  const deliver = (envelope: UiEventEnvelope): void => measureStage("workspace_event_delivery", deliverNow, envelope)
 
   // Also recovers a committed tail whose publisher stopped before delivery.
   const captureTranscript = (): void => {
