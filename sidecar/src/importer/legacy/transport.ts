@@ -1,10 +1,11 @@
 import { Database } from "bun:sqlite"
+import { rm } from "node:fs/promises"
 import { homedir } from "node:os"
 import { basename, dirname, join, relative, resolve, sep } from "node:path"
 import type { Kernel, LegacySource } from "@touri/contracts"
 import { buildChildEnv } from "../../kernel"
-import { atomicWriteFile, ensurePrivateDirectory } from "../../kernel/files"
-import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, rmSync } from "./fs"
+import { ensurePrivateDirectoryAsync, writePrivateFileAsync } from "../../kernel/async-files"
+import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync } from "./fs"
 import { sourceOrigin } from "./identity"
 import { MAX_SNAPSHOT_BYTES } from "./snapshot"
 
@@ -207,7 +208,7 @@ const runSpawn = async ({
   }
 }
 
-const copyLocal = ({
+const copyLocal = async ({
   kernel,
   root,
   relativePath,
@@ -217,11 +218,11 @@ const copyLocal = ({
   root: string
   relativePath: string
   destination: string
-}): boolean => {
+}): Promise<boolean> => {
   const sourcePath = validatedLocalFile({ root, relativePath })
   if (!sourcePath) return false
-  ensurePrivateDirectory({ root: kernel.paths.appData, path: dirname(destination) })
-  atomicWriteFile({ root: kernel.paths.appData, path: destination, content: readFileSync(sourcePath) })
+  await ensurePrivateDirectoryAsync({ root: kernel.paths.appData, path: dirname(destination) })
+  await writePrivateFileAsync({ root: kernel.paths.appData, path: destination, content: readFileSync(sourcePath) })
   return true
 }
 
@@ -243,8 +244,8 @@ const copyRemote = async ({
     args: commandArgs({ source, command: `cat -- ${doubleQuote(remotePath)}` }),
   })
   if (result.code !== 0) return false
-  ensurePrivateDirectory({ root: kernel.paths.appData, path: dirname(destination) })
-  atomicWriteFile({ root: kernel.paths.appData, path: destination, content: result.stdout })
+  await ensurePrivateDirectoryAsync({ root: kernel.paths.appData, path: dirname(destination) })
+  await writePrivateFileAsync({ root: kernel.paths.appData, path: destination, content: result.stdout })
   return true
 }
 
@@ -265,12 +266,20 @@ const copyRemoteAbsolute = async ({
     args: commandArgs({ source, command: `cat -- ${doubleQuote(remotePath)}` }),
   })
   if (result.code !== 0) return false
-  ensurePrivateDirectory({ root: kernel.paths.appData, path: dirname(destination) })
-  atomicWriteFile({ root: kernel.paths.appData, path: destination, content: result.stdout })
+  await ensurePrivateDirectoryAsync({ root: kernel.paths.appData, path: dirname(destination) })
+  await writePrivateFileAsync({ root: kernel.paths.appData, path: destination, content: result.stdout })
   return true
 }
 
-const dumpLocal = ({ kernel, root, destination }: { kernel: Kernel; root: string; destination: string }): void => {
+const dumpLocal = async ({
+  kernel,
+  root,
+  destination,
+}: {
+  kernel: Kernel
+  root: string
+  destination: string
+}): Promise<void> => {
   const sourceDb = validatedLocalFile({ root, relativePath: "messages.db" })
   if (!sourceDb) throw new Error("Source messages.db must be a regular file inside the source root")
   if (lstatSync(sourceDb).size > MAX_SNAPSHOT_BYTES) throw new Error("Source snapshot exceeds import limit")
@@ -278,7 +287,7 @@ const dumpLocal = ({ kernel, root, destination }: { kernel: Kernel; root: string
   try {
     const bytes = database.serialize()
     if (bytes.length > MAX_SNAPSHOT_BYTES) throw new Error("Source snapshot exceeds import limit")
-    atomicWriteFile({ root: kernel.paths.appData, path: destination, content: rollbackSnapshot(bytes) })
+    await writePrivateFileAsync({ root: kernel.paths.appData, path: destination, content: rollbackSnapshot(bytes) })
   } finally {
     database.close()
   }
@@ -330,7 +339,7 @@ const snapshotViaPython = async ({
     return { success: false, error: "Invalid or oversized SQLite snapshot" }
   if (bytes.subarray(0, SQLITE_HEADER.length).toString("latin1") !== SQLITE_HEADER)
     return { success: false, error: "python snapshot did not return a SQLite database" }
-  atomicWriteFile({ root: kernel.paths.appData, path: destination, content: rollbackSnapshot(bytes) })
+  await writePrivateFileAsync({ root: kernel.paths.appData, path: destination, content: rollbackSnapshot(bytes) })
   return { success: true }
 }
 
@@ -346,7 +355,7 @@ const dumpRemote = async ({
   const uri = `file:${remotePathExpression({ root: source.root, path: "messages.db" })}?mode=ro`
   const viaPython = await snapshotViaPython({ kernel, source, uri, destination })
   if (viaPython.success) return
-  rmSync(destination, { force: true })
+  await rm(destination, { force: true })
   throw new Error(
     `Unable to snapshot remote messages.db: ${viaPython.error}. Python with SQLite serialize support is required.`,
   )
@@ -456,7 +465,7 @@ const findRemoteRollout = async ({
   return path.length > 0 ? path : null
 }
 
-const copyLocalAbsolute = ({
+const copyLocalAbsolute = async ({
   kernel,
   sourcePath,
   allowedRoot,
@@ -466,33 +475,33 @@ const copyLocalAbsolute = ({
   sourcePath: string
   allowedRoot: string
   destination: string
-}): boolean => {
+}): Promise<boolean> => {
   const validatedPath = validatedLocalAbsoluteFile({ root: allowedRoot, candidate: sourcePath })
   if (!validatedPath) return false
-  ensurePrivateDirectory({ root: kernel.paths.appData, path: dirname(destination) })
-  atomicWriteFile({ root: kernel.paths.appData, path: destination, content: readFileSync(validatedPath) })
+  await ensurePrivateDirectoryAsync({ root: kernel.paths.appData, path: dirname(destination) })
+  await writePrivateFileAsync({ root: kernel.paths.appData, path: destination, content: readFileSync(validatedPath) })
   return true
 }
 
 export const stageLegacySource = async (args: StageArgs): Promise<StagedSource> => {
   const { kernel, importId, source, botNames, attachmentBasenames, importCodexSessions, resumeCursors } = args
   const dir = join(kernel.paths.importsDir, "legacy", importId)
-  ensurePrivateDirectory({ root: kernel.paths.appData, path: dir })
+  await ensurePrivateDirectoryAsync({ root: kernel.paths.appData, path: dir })
   const warnings: Array<string> = []
   const snapshotPath = join(dir, "messages.db")
   const root = source.kind === "local" ? sourceRoot(source) : null
 
   if (source.kind === "local") {
-    if (!existsSync(snapshotPath)) dumpLocal({ kernel, root: root ?? "", destination: snapshotPath })
+    if (!existsSync(snapshotPath)) await dumpLocal({ kernel, root: root ?? "", destination: snapshotPath })
     for (const relativePath of ["bots.json", "routines.json"]) {
-      if (!copyLocal({ kernel, root: root ?? "", relativePath, destination: join(dir, relativePath) }))
+      if (!(await copyLocal({ kernel, root: root ?? "", relativePath, destination: join(dir, relativePath) })))
         throw new Error(`Missing required source file ${relativePath}`)
     }
   } else {
     if (!existsSync(snapshotPath)) await dumpRemote({ kernel, source, destination: snapshotPath })
     for (const relativePath of ["bots.json", "routines.json"]) {
       const destination = join(dir, relativePath)
-      ensurePrivateDirectory({ root: kernel.paths.appData, path: dirname(destination) })
+      await ensurePrivateDirectoryAsync({ root: kernel.paths.appData, path: dirname(destination) })
       const copied = await copyRemote({ kernel, source, relativePath, destination })
       if (!copied) throw new Error(`Missing required source file ${relativePath}`)
     }
@@ -502,7 +511,7 @@ export const stageLegacySource = async (args: StageArgs): Promise<StagedSource> 
     const destination = join(dir, destinationRelativePath)
     const copied =
       source.kind === "local"
-        ? copyLocal({ kernel, root: root ?? "", relativePath, destination })
+        ? await copyLocal({ kernel, root: root ?? "", relativePath, destination })
         : await copyRemote({ kernel, source, relativePath, destination })
     return copied
   }
@@ -549,7 +558,7 @@ export const stageLegacySource = async (args: StageArgs): Promise<StagedSource> 
       const destination = join(dir, targetRelative)
       const copied =
         source.kind === "local"
-          ? copyLocalAbsolute({ kernel, sourcePath, allowedRoot: localRollout?.root ?? root ?? "", destination })
+          ? await copyLocalAbsolute({ kernel, sourcePath, allowedRoot: localRollout?.root ?? root ?? "", destination })
           : await copyRemoteAbsolute({ kernel, source, remotePath: sourcePath, destination })
       if (copied) sessionPaths.set(threadId, destination)
       else warnings.push(`Unable to copy Codex rollout for ${threadId}`)
