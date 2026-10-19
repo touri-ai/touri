@@ -279,6 +279,64 @@ test("a later routine execution resolves a failure that never created a conversa
   expect(after[0]?.notification.resolution).toBe("expired")
 })
 
+test("a task that no scan finds anymore stops asking for attention", async () => {
+  const h = await getFixture()
+  saveRun(h.database, "resumed-run")
+  const before = await h.getTasks()
+
+  h.database.query("UPDATE runs SET status = 'succeeded' WHERE id = 'resumed-run'").run()
+  const after = await h.getTasks()
+  const pending = await h.request("/notifications/pending")
+  const { notifications }: { notifications: Array<{ id: number }> } = await pending.json()
+
+  expect(before[0]?.notification.resolvedAt).toBeNull()
+  expect(after.filter((task) => task.notification.resolvedAt === null)).toHaveLength(0)
+  expect(notifications.map((item) => item.id)).not.toContain(before[0]?.notification.id)
+})
+
+test("a task whose thread disappeared stays listed for review while its effects are uncertain", async () => {
+  const h = await getFixture()
+  saveRun(h.database, "archived-uncertain")
+  saveUncertainEffect(h.work, "archived-uncertain")
+  const before = await h.getTasks()
+
+  h.database.exec("PRAGMA foreign_keys = OFF; DELETE FROM threads WHERE id = 'thread-a'")
+  const after = await h.getTasks()
+  const pending = await h.request("/notifications/pending")
+  const { notifications }: { notifications: Array<{ id: number }> } = await pending.json()
+
+  expect(before[0]?.notification.resolvedAt).toBeNull()
+  expect(after.map((task) => task.id)).toEqual(["run:archived-uncertain"])
+  expect(after[0]?.notification.resolvedAt).toBeNull()
+  expect(after[0]?.effects[0]?.acknowledgeKey).toBe("preview-key")
+  expect(notifications).toHaveLength(1)
+  expect(notifications[0]?.id).toBe(before[0]?.notification.id)
+})
+
+test("a restart clears an interrupted routine run once a later run of the routine succeeded in its thread", async () => {
+  const h = await getFixture()
+  h.database.exec(`INSERT INTO routines(id,bot_id,name,prompt,cron,timezone,created_at,updated_at)
+    VALUES ('routine','bot-a','Resumo','Organize as notas','0 9 * * *','UTC',1,1);
+    INSERT INTO routine_runs(id,routine_id,thread_id,scheduled_for,status,trigger_source,finished_at)
+    VALUES ('routine-interrupted','routine','thread-a',100,'failed','cron',200);`)
+  saveRun(h.database, "routine-turn")
+  h.database.exec(`UPDATE runs SET routine_run_id = 'routine-interrupted' WHERE id = 'routine-turn';
+    UPDATE routine_runs SET run_id = 'routine-turn' WHERE id = 'routine-interrupted';`)
+  const before = await h.getTasks()
+
+  h.database.exec(`INSERT INTO routine_runs(id,routine_id,thread_id,scheduled_for,status,trigger_source,started_at,finished_at)
+    VALUES ('routine-next','routine','thread-a',300,'succeeded','cron',300,400);`)
+  const store = createNotificationStore({ db: h.database })
+  const notifier = createNotifier({ kernel: h.runtime.kernel, store, hub: createSseHub({ store }) })
+  const restarted = createRecoverySync(h.runtime.kernel, store, notifier)({ silent: true })
+  const pending = await h.request("/notifications/pending")
+  const { notifications }: { notifications: Array<{ id: number }> } = await pending.json()
+
+  expect(before.filter((task) => task.notification.resolvedAt === null)).toHaveLength(1)
+  expect(restarted.filter((task) => task.notification.resolvedAt === null)).toHaveLength(0)
+  expect(notifications.map((item) => item.id)).not.toContain(before[0]?.notification.id)
+})
+
 test("newly discovered uncertainty requires another review without erasing an earlier acknowledgement", async () => {
   const h = await getFixture()
   saveRun(h.database, "recovering")
