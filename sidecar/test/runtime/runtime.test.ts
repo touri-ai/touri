@@ -901,10 +901,22 @@ test.serial("tool publications persist only changed parts and preserve completed
       await waitFor(() => terminal(queued.run.status))
       expect(queued.run.status).toBe("succeeded")
       const published = patches.flatMap(({ parts }) => parts)
-      expect(published.map(({ part }) => ("callId" in part ? part.callId : part.type))).toEqual(["first", "second"])
+      const first = published.filter(({ part }) => "callId" in part && part.callId === "first")
+      const second = published.filter(({ part }) => "callId" in part && part.callId === "second")
+
+      // A slice boundary can publish both completed frames separately; unchanged parts must stay absent.
+      expect(first).toHaveLength(1)
+      expect(second.length).toBeGreaterThanOrEqual(1)
+      expect(second.length).toBeLessThanOrEqual(2)
+      expect(published).toHaveLength(first.length + second.length)
+      expect(
+        second.every(
+          (patch, index) => index === 0 || JSON.stringify(patch.part) !== JSON.stringify(second[index - 1]?.part),
+        ),
+      ).toBe(true)
       expect(JSON.stringify(patches)).not.toContain(prose)
       expect(JSON.stringify(patches)).not.toContain(output)
-      const completed = published.find(({ part }) => "callId" in part && part.callId === "second")?.part
+      const completed = second.at(-1)?.part
       expect(completed).toMatchObject({ outputBytes: Buffer.byteLength(output), outputTail: "" })
       expect(updates).toHaveLength(1)
       expect(updates[0]?.patch.status).toBe("complete")
