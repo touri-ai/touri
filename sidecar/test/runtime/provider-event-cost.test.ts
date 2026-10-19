@@ -53,6 +53,7 @@ type BenchmarkResult = {
   maxBlockMs: number
   maxBlockCpuMs: number
   p95BlockCpuMs: number
+  blockCpuSamples: number
   duplicateSharesRun: boolean
   duplicateActiveRuns: number
   busEvents: number
@@ -116,7 +117,7 @@ const getReplayEvents = (count: number): Array<Record<string, unknown>> => {
 }
 
 const getPercentile = (samples: Array<number>, fraction: number): number => {
-  const sorted = [...samples].sort((a, b) => a - b)
+  const sorted = Array.from(samples).sort((a, b) => a - b)
   return sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * fraction))] ?? 0
 }
 
@@ -191,6 +192,7 @@ const getTrackedRunner = (now = performance.now.bind(performance)) => {
         maxBlockMs,
         maxBlockCpuMs,
         p95BlockCpuMs: getPercentile(blockCpuSamples, 0.95),
+        blockCpuSamples: blockCpuSamples.length,
         stages,
       }
     },
@@ -482,13 +484,15 @@ test("Provider event cost grows linearly and duplicate starts share one run", as
   // Streaming blocks are budgeted on CPU time (wall time on shared CI runners includes preemption).
   // A single block can spike by a few ms from GC or noisy neighbours, so the tight budget is on the
   // p95 block and a looser guard stays on the max: a per-event O(history) regression moves every block.
+  // An empty sample list would pass the p95 check, so require that blocks were recorded.
+  expect(result.blockCpuSamples).toBeGreaterThan(20)
   expect(result.p95BlockCpuMs).toBeLessThan(30)
-  expect(result.maxBlockCpuMs).toBeLessThan(120)
+  expect(result.maxBlockCpuMs).toBeLessThan(75)
   expect(result.maxBlockMs).toBeLessThan(150)
   // Turn finalization runs once per turn and grows with the number of parts (836 here).
   expect(result.stages.find(({ name }) => name === "runtime_turn_finalization")?.maxMs ?? Infinity).toBeLessThan(250)
-  expect(result.stages.find(({ name }) => name === "provider_frame_batch")?.maxMs ?? Infinity).toBeLessThan(150)
-  expect(result.stages.find(({ name }) => name === "runtime_provider_event")?.maxMs ?? Infinity).toBeLessThan(150)
+  expect(result.stages.find(({ name }) => name === "provider_frame_batch")?.maxMs ?? Infinity).toBeLessThan(50)
+  expect(result.stages.find(({ name }) => name === "runtime_provider_event")?.maxMs ?? Infinity).toBeLessThan(50)
 })
 
 test("Provider event cost stays independent of conversation history", async () => {

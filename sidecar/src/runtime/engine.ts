@@ -1465,7 +1465,11 @@ export const createRuntimeEngine = ({
             })
           : await prepareInstructions()
         const turnEnv = prepared?.env ?? env
-        const dispatchEvent = (event: ProviderEvent) => handleEvent({ run, event, store, state })
+        const dispatchEvent = (event: ProviderEvent) => {
+          // INJECTED REGRESSION: O(history) work per event
+          for (let i = 0; i < 40; i++) JSON.stringify(state.parts)
+          return handleEvent({ run, event, store, state })
+        }
         const emit = (event: ProviderEvent) =>
           runStage ? runStage("runtime_provider_event", dispatchEvent, event) : dispatchEvent(event)
         const safeEvents = redactVmEvents({ secrets: [], redact: kernel.redact, emit })
