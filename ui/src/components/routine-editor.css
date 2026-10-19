@@ -36,32 +36,32 @@
 .routine-editor label {
   display: grid;
   gap: 6px;
-  font-size: var(--type-13);
+  font-size: var(--fs-meta);
 }
 .routine-editor h3 {
-  font-size: var(--type-13);
+  font-size: var(--fs-meta);
   margin: 0 0 6px;
 }
 .routine-editor p {
   margin: 0;
-  font-size: var(--type-13);
+  font-size: var(--fs-meta);
   line-height: 1.5;
   overflow-wrap: anywhere;
 }
 .routine-editor ul {
   margin: 6px 0;
   padding-left: 18px;
-  font-size: var(--type-12);
+  font-size: var(--fs-caption);
   overflow-wrap: anywhere;
 }
 .routine-editor summary {
   cursor: pointer;
-  font-size: var(--type-13);
+  font-size: var(--fs-meta);
   margin-bottom: 8px;
 }
 .routine-editor .routine-days {
   border: 1px solid var(--surface-control-raised);
-  border-radius: var(--radius-8);
+  border-radius: var(--radius-sm);
   display: flex;
   flex-wrap: wrap;
   gap: 10px 16px;
@@ -76,11 +76,11 @@
 .routine-context {
   background: var(--surface-code);
   border: 1px solid var(--surface-control-raised);
-  border-radius: var(--radius-8);
+  border-radius: var(--radius-sm);
   padding: 12px;
 }
 .routine-editor .routine-summary {
-  font-size: var(--type-16);
+  font-size: var(--fs-body);
   margin-bottom: 16px;
 }
 .routine-instruction {
@@ -90,16 +90,16 @@
 .routine-dates {
   padding-left: 20px;
   margin: 8px 0;
-  font-size: var(--type-13);
+  font-size: var(--fs-meta);
   line-height: 1.8;
 }
 .routine-editor .routine-modal-actions {
   flex-wrap: wrap;
-  background: var(--surface-panel);
+  background: var(--surface);
   padding: 10px 24px;
 }
 .routine-editor :is(input:is([type="checkbox"], [type="radio"]), button):focus-visible {
-  outline: 2px solid var(--text-primary);
+  outline: 2px solid var(--text);
   outline-offset: 2px;
 }
 .routine-editor :is(input:not([type="checkbox"], [type="radio"]), select, textarea):focus-visible {
@@ -110,7 +110,7 @@
 .routine-run-history {
   padding: 12px;
   border-top: 1px solid var(--surface-control-raised);
-  font-size: var(--type-12);
+  font-size: var(--fs-caption);
 }
 .routine-run-history li {
   margin: 8px 0;

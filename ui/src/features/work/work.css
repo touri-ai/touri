@@ -7,12 +7,12 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  font-size: 16px;
+  font-size: var(--fs-body);
   margin: 0 0 16px;
 }
 .work-column h2 span {
   font: 12px var(--font-mono);
-  color: var(--text-secondary);
+  color: var(--text-2);
 }
 .work-card {
   margin-bottom: 12px;
@@ -29,7 +29,7 @@
   padding: 0;
   border: 0;
   background: transparent;
-  color: var(--text-link);
+  color: var(--link);
   text-align: left;
   text-decoration: underline;
   text-underline-offset: 3px;
@@ -39,7 +39,7 @@
   display: grid;
   gap: 8px;
   margin: 0;
-  font-size: 13px;
+  font-size: var(--fs-meta);
 }
 .work-card dl div {
   display: flex;
@@ -47,7 +47,7 @@
   gap: 12px;
 }
 .work-card dt {
-  color: var(--text-secondary);
+  color: var(--text-2);
 }
 .work-card dd {
   margin: 0;
@@ -58,8 +58,8 @@
   padding: var(--screen-card-padding);
 }
 .performance-form p {
-  color: var(--text-secondary);
-  font-size: 14px;
+  color: var(--text-2);
+  font-size: var(--fs-body);
   line-height: 1.5;
 }
 .performance-form label {
@@ -69,8 +69,8 @@
 .performance-form input {
   width: 90px;
   padding: 10px;
-  border: 1px solid var(--border-default);
-  border-radius: 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
 }
 @media (max-width: 700px) {
   .work-columns {

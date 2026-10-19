@@ -3,9 +3,9 @@
   max-height: 45vh;
   overflow-y: auto;
   padding: 10px 24px;
-  border-bottom: 1px solid var(--border-default);
-  font-size: var(--type-12);
-  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border-strong);
+  font-size: var(--fs-caption);
+  color: var(--text-2);
 }
 .goal-panel p {
   margin: 6px 0;
@@ -24,7 +24,7 @@
 }
 .goal-heading strong,
 .goal-criterion {
-  color: var(--text-primary);
+  color: var(--text);
 }
 .goal-last-step {
   display: -webkit-box;
@@ -45,10 +45,10 @@
   width: 100%;
   min-height: 54px;
   padding: 8px;
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-8);
-  background: var(--surface-panel);
-  color: var(--text-primary);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
   font: inherit;
 }
 .goal-panel button {

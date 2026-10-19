@@ -23,9 +23,9 @@
   gap: 8px;
 }
 .report-problem p {
-  font-size: 13px;
+  font-size: var(--fs-meta);
   line-height: 1.6;
-  color: var(--text-secondary);
+  color: var(--text-2);
 }
 .report-problem input:not([type="checkbox"]),
 .report-problem textarea,
@@ -40,15 +40,15 @@
   gap: 16px;
 }
 .report-problem .report-checks {
-  border: 1px solid var(--border-divider);
+  border: 1px solid var(--border);
   padding: 16px;
-  border-radius: 12px;
+  border-radius: var(--radius-md);
 }
 .report-problem .report-checks label {
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  font-size: 13px;
+  font-size: var(--fs-meta);
 }
 .report-problem .report-checks input[type="checkbox"] {
   flex: 0 0 auto;
@@ -63,17 +63,17 @@
 }
 .report-problem .report-check-description {
   margin: 4px 0 0 26px;
-  font-size: 12px;
+  font-size: var(--fs-caption);
 }
 .report-problem pre {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  font-size: 12px;
+  font-size: var(--fs-caption);
   max-height: 420px;
   overflow: auto;
-  background: var(--surface-panel);
+  background: var(--surface);
   padding: 12px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
 }
 .report-images,
 .report-actions {
@@ -90,7 +90,7 @@
   display: block;
   max-width: 100%;
   height: auto;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
 }
 .report-problem canvas {
   cursor: crosshair;
@@ -98,7 +98,7 @@
 }
 .report-preview {
   padding-top: 20px;
-  border-top: 1px solid var(--border-divider);
+  border-top: 1px solid var(--border);
 }
 .report-preview details {
   margin-bottom: 16px;
@@ -114,7 +114,7 @@
 }
 .report-history table {
   width: 100%;
-  font-size: 12px;
+  font-size: var(--fs-caption);
   border-collapse: collapse;
   table-layout: fixed;
 }
@@ -122,7 +122,7 @@
 .report-history td {
   text-align: left;
   padding: 10px;
-  border-bottom: 1px solid var(--border-divider);
+  border-bottom: 1px solid var(--border);
 }
 @media (max-width: 620px) {
   .report-related {
@@ -138,7 +138,7 @@
   }
   .report-history tr {
     padding-block: 8px;
-    border-bottom: 1px solid var(--border-divider);
+    border-bottom: 1px solid var(--border);
   }
   .report-history td {
     display: grid;
@@ -149,7 +149,7 @@
   }
   .report-history td::before {
     content: attr(data-label);
-    color: var(--text-secondary);
+    color: var(--text-2);
   }
 }
 

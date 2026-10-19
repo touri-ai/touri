@@ -3,10 +3,10 @@
   max-width: 100%;
   margin: 10px 0;
   padding: 8px;
-  border: 1px solid var(--border-default);
-  border-radius: 12px;
-  background: var(--surface-panel);
-  font-size: 11px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  font-size: var(--fs-caption);
 }
 .inline-live-preview[hidden] {
   display: none;
@@ -32,8 +32,8 @@
   aspect-ratio: 16 / 10;
   padding: 0;
   overflow: hidden;
-  border: 1px solid var(--border-default);
-  border-radius: 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
   background: #101014;
   color: #aaa;
   cursor: zoom-in;
