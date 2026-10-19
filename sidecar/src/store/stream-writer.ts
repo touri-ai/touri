@@ -99,6 +99,17 @@ export const createStreamWriter = ({
     database,
     ...(createWorker ? { createWorker } : {}),
     publish: (event) => kernel.publish(event),
+    onReadyWaitExceeded: () => {
+      try {
+        kernel.log({
+          level: "warn",
+          module: "store",
+          msg: "Stream persistence startup is taking longer than expected; store readiness is continuing while writes remain buffered",
+        })
+      } catch {
+        // A storage failure can also prevent writing the diagnostic.
+      }
+    },
     onError: () => {
       try {
         kernel.log({

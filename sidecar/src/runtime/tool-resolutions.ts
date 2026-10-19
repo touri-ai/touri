@@ -144,8 +144,11 @@ export const createToolResolutions = (kernel: Kernel) => {
         .run(reason.toUpperCase(), Date.now(), run.id)
     return result
   }
-  const clearPending = (runId: string): void => {
+  const clearPendingMemory = (runId: string): void => {
     pendingInterruptions.delete(runId)
+  }
+  const clearPending = (runId: string): void => {
+    clearPendingMemory(runId)
     database?.query("DELETE FROM tool_recovery_pending WHERE run_id = ?").run(runId)
   }
   const getPendingRuns = (threadId?: string): RecoveryRun[] =>
@@ -205,6 +208,7 @@ export const createToolResolutions = (kernel: Kernel) => {
     finish,
     reconcile,
     reconcilePending,
+    clearPendingMemory,
     clearPending,
     summary: (store: StoreApi, threadId: string, leafId?: string) => {
       const summary = database ? summarizeToolResolutions(database, store, threadId, leafId) : null

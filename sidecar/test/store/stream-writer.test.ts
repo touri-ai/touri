@@ -1050,3 +1050,87 @@ test("a scoped drain ignores a rejected message from another thread", async () =
   })
   expect(f.database.query("SELECT COUNT(*) AS n FROM rejections WHERE thread_id = 'other'").get()).toEqual({ n: 1 })
 }, 20_000)
+
+test("rejected writes in another thread do not fail its message or search routes", async () => {
+  const started = Promise.withResolvers<void>()
+  const rejected = Promise.withResolvers<void>()
+  const source = streamPersistenceWorkerSource.replace(
+    "const result = database.transaction(() => writeBatch(data.batch)).immediate();",
+    `const result = database.transaction(() => {
+      self.postMessage({ type: "test-batch-started" });
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 250);
+      return writeBatch(data.batch);
+    }).immediate();`,
+  )
+  const url = URL.createObjectURL(new Blob([source], { type: "application/javascript" }))
+  cleanups.add(() => URL.revokeObjectURL(url))
+  const f = await fixture(undefined, () => {
+    const worker = new Worker(url, { smol: true, ref: false })
+    worker.addEventListener("message", ({ data }) => {
+      if (data.type === "test-batch-started") started.resolve()
+      if (data.type === "committed" && data.rejected.length) rejected.resolve()
+    })
+    return worker
+  })
+  cleanups.add(f.close)
+  f.database.exec("INSERT INTO threads(id,bot_id,title,created_at,updated_at) VALUES ('other','b','Outra',1,1)")
+  const updated = f.store.updateMessage({
+    threadId: "t",
+    messageId: "a",
+    patch: { status: "complete", text: "needle B", parts: [{ type: "text", text: "needle B" }] },
+  })
+  if (!updated.success) throw new Error(updated.error)
+  const match = f.store.insertMessage({
+    message: {
+      id: "other-match",
+      threadId: "other",
+      parentId: null,
+      role: "assistant",
+      kind: "text",
+      status: "complete",
+      runId: null,
+      text: "needle A",
+      parts: [{ type: "text", text: "needle A" }],
+      sender: null,
+      source: "local",
+    },
+  })
+  if (!match.success) throw new Error(match.error)
+  const streamed = f.store.insertMessage({
+    message: {
+      id: "other-reply",
+      threadId: "other",
+      parentId: null,
+      role: "assistant",
+      kind: "text",
+      status: "streaming",
+      runId: null,
+      text: "",
+      parts: [{ type: "text", text: "" }],
+      sender: null,
+      source: "local",
+    },
+  })
+  if (!streamed.success) throw new Error(streamed.error)
+  f.database.exec(`CREATE TRIGGER fail_other_stream BEFORE INSERT ON transcript_entries
+    WHEN NEW.thread_id = 'other' AND json_extract(NEW.event_json,'$.type') = 'message.delta'
+    BEGIN SELECT RAISE(ABORT, 'Synthetic permanent failure'); END`)
+  f.store.appendDelta({ threadId: "other", messageId: "other-reply", partIndex: 0, delta: "rejected" })
+  f.store.flushWrites?.()
+  await started.promise
+
+  const base = `http://127.0.0.1:${f.runtime.handshake.port}/api/v1`
+  const headers = { Authorization: "Bearer dev-ui-token", Origin: "tauri://localhost" }
+  const [messagesResponse, searchResponse] = await Promise.all([
+    fetch(`${base}/threads/t/messages`, { headers }),
+    fetch(`${base}/search?q=needle&threadId=t`, { headers }),
+  ])
+  const searchPayload = (await searchResponse.json()) as { hits: Array<{ threadId: string; messageId: string }> }
+
+  expect(messagesResponse.status).toBe(200)
+  expect(searchResponse.status).toBe(200)
+  expect(searchPayload.hits.map(({ threadId, messageId }) => [threadId, messageId])).toContainEqual(["t", "a"])
+  expect(searchPayload.hits.map(({ threadId }) => threadId)).not.toContain("other")
+  await rejected.promise
+  expect(f.database.query("SELECT COUNT(*) AS n FROM rejections WHERE thread_id = 'other'").get()).toEqual({ n: 1 })
+}, 20_000)

@@ -46,16 +46,21 @@ const RETRY_DELAY_MS = 100
 const MAX_RETRY_DELAY_MS = 1_000
 const MAX_ATTEMPTS = 4
 const STARTUP_TIMEOUT_MS = 15_000
+const READY_WAIT_LIMIT_MS = 10_000
 
 export const createStreamPersistence = ({
   database,
   publish,
   onError,
+  onReadyWaitExceeded,
+  readyWaitLimitMs = READY_WAIT_LIMIT_MS,
   createWorker = (url) => new Worker(url, { smol: true, ref: false }),
 }: {
   database: Database
   publish: (event: UiEvent) => void
   onError: () => void
+  onReadyWaitExceeded?: () => void
+  readyWaitLimitMs?: number
   createWorker?: (url: string) => Worker
 }) => {
   // The worker owns transactions; this bounded FIFO owns admission, retries and acknowledgements.
@@ -65,6 +70,7 @@ export const createStreamPersistence = ({
   const workerUrl = URL.createObjectURL(new Blob([streamPersistenceWorkerSource], { type: "application/javascript" }))
   let worker: Worker | undefined
   let startupTimer: ReturnType<typeof setTimeout> | undefined
+  let readyWaitTimer: ReturnType<typeof setTimeout> | undefined
   let retryTimer: ReturnType<typeof setTimeout> | undefined
   let workerNumber = 0
   let startupAttempts = 0
@@ -79,6 +85,11 @@ export const createStreamPersistence = ({
   const readyPromise = new Promise<void>((resolve) => {
     resolveReady = resolve
   })
+  const settleReady = (): void => {
+    clearTimeout(readyWaitTimer)
+    readyWaitTimer = undefined
+    resolveReady()
+  }
 
   const reportError = (): void => {
     if (reportedError) return
@@ -144,7 +155,7 @@ export const createStreamPersistence = ({
     abandoned.forEach(({ reject }) => {
       reject(unavailable ?? new Error("Stream persistence unavailable"))
     })
-    resolveReady()
+    settleReady()
     sendResync()
   }
   const retryHead = (busy = false): void => {
@@ -207,7 +218,7 @@ export const createStreamPersistence = ({
           startupAttempts = 0
           busyStartupAttempts = 0
           ready = true
-          resolveReady()
+          settleReady()
           commitHead()
           return
         }
@@ -300,7 +311,7 @@ export const createStreamPersistence = ({
     disposed = true
     clearTimeout(retryTimer)
     stopWorker()
-    resolveReady()
+    settleReady()
     URL.revokeObjectURL(workerUrl)
   }
   const close = async (): Promise<void> => {
@@ -325,6 +336,17 @@ export const createStreamPersistence = ({
     return true
   }
 
+  readyWaitTimer = setTimeout(() => {
+    readyWaitTimer = undefined
+    if (ready || unavailable || disposed) return
+    try {
+      onReadyWaitExceeded?.()
+    } catch {
+      reportError()
+    }
+    resolveReady()
+  }, readyWaitLimitMs)
+  readyWaitTimer.unref()
   startWorker()
 
   return { submit, drain, close, closeIfIdle, ready: readyPromise }

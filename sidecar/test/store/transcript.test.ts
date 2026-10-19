@@ -878,6 +878,35 @@ test("cancel records every open call immediately", async () => {
   }
 })
 
+test("clearing transient cancellation state keeps the durable recovery marker", async () => {
+  const f = await fixture()
+  try {
+    const run = { ...newRun("cancelled"), status: "canceled" as const }
+    f.persistence.saveRun(run)
+    const tools = createToolResolutions(f.runtime.kernel)
+    const part = {
+      type: "tool_call" as const,
+      callId: "call",
+      tool: "read",
+      summary: "",
+      inputJson: "{}",
+      outputJson: null,
+      ok: null,
+    }
+
+    tools.finish(run, [part], "cancelled_by_user", false)
+    tools.clearPendingMemory(run.id)
+    const lateResult = tools.record(run, { ...part, outputJson: "Synthetic result", ok: true })
+
+    expect(lateResult.resolution).toBe("succeeded")
+    expect(f.db.query("SELECT run_id FROM tool_recovery_pending WHERE run_id = ?").get(run.id)).toEqual({
+      run_id: run.id,
+    })
+  } finally {
+    await f.close()
+  }
+})
+
 test("reconciliation closes calls persisted before an assistant message", async () => {
   const f = await fixture()
   try {

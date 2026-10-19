@@ -18,6 +18,8 @@ afterEach(async () => {
 const getFixture = async (
   createWorker?: (url: string) => Worker,
   prepare?: (database: ReturnType<typeof openDatabase>) => void,
+  readyWaitLimitMs?: number,
+  onReadyWaitExceeded?: () => void,
 ) => {
   const root = await mkdtemp(join(tmpdir(), "touri-stream-persistence-"))
   cleanups.add(() => rm(root, { recursive: true, force: true }))
@@ -42,6 +44,8 @@ const getFixture = async (
     publish: (event) => published.push(event),
     onError: () => errors.push(Date.now()),
     ...(createWorker ? { createWorker } : {}),
+    ...(readyWaitLimitMs === undefined ? {} : { readyWaitLimitMs }),
+    ...(onReadyWaitExceeded ? { onReadyWaitExceeded } : {}),
   })
   cleanups.add(() => persistence.close())
   return { database, persistence, published, errors }
@@ -238,6 +242,42 @@ test("busy startup retries past the permanent startup failure limit", async () =
 
   expect(busyErrors).toBe(5)
   expect(starts).toBe(6)
+  expect(committed.events).toHaveLength(1)
+})
+
+test("busy worker startup releases readiness after a bound and keeps retrying", async () => {
+  let blocker: SqliteDatabase | undefined
+  let starts = 0
+  let busyErrors = 0
+  let delayedReadiness = 0
+  const f = await getFixture(
+    () => {
+      starts += 1
+      const worker = createSourceWorker(streamPersistenceWorkerSource)
+      worker.addEventListener("message", ({ data }) => {
+        if (data.type === "startup-error" && data.busy) busyErrors += 1
+      })
+      return worker
+    },
+    (database) => {
+      blocker = new SqliteDatabase(database.filename)
+      blocker.exec("BEGIN IMMEDIATE")
+      cleanups.add(() => blocker?.close())
+    },
+    100,
+    () => {
+      delayedReadiness += 1
+    },
+  )
+
+  await f.persistence.ready
+
+  expect(delayedReadiness).toBe(1)
+  expect(busyErrors).toBeGreaterThan(0)
+  expect(starts).toBeGreaterThan(0)
+  blocker?.exec("ROLLBACK")
+  const committed = await f.persistence.submit([getDelta()])
+
   expect(committed.events).toHaveLength(1)
 })
 

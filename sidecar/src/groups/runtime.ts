@@ -305,7 +305,7 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
     try {
       const run = await waitRun(result.run.id, turn.controller.signal, turn.deadline)
       await pendingSharedUpdates
-      await store.flushWritesAsync?.()
+      await store.flushWritesAsync?.({ threadId: thread.id })
       if (run.status !== "succeeded") throw new Error(run.errorMessage ?? "O bot não concluiu o pedido")
       return store.activePath({ threadId: thread.id }).find((m) => m.id === run.replyMessageId)?.text ?? ""
     } finally {

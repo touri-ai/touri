@@ -506,7 +506,10 @@ export const createRuntimeEngine = ({
       // A failed stream drain must not leave its run active or prevent terminal state.
     }
     const write = (): void => {
-      if (!isLive(run)) return
+      if (!isLive(run)) {
+        tools.clearPendingMemory(run.id)
+        return
+      }
 
       finish()
       tools.clearPending(run.id)

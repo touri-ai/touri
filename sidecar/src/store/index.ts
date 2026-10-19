@@ -523,6 +523,21 @@ export const init = async (
   })
   await streamWriter.ready
   const flushDeltas = streamWriter.checkpoint
+  const drainForGlobalRead = async (): Promise<void> => {
+    try {
+      await streamWriter.drainAsync()
+    } catch {
+      try {
+        kernel.log({
+          level: "warn",
+          module: "store",
+          msg: "Read continued with persisted data after stream writes were rejected",
+        })
+      } catch {
+        // A storage failure can also prevent writing the diagnostic.
+      }
+    }
+  }
 
   const updateThreadRow = ({
     threadId,
@@ -649,7 +664,7 @@ export const init = async (
   }
 
   const updateMessageAsync: NonNullable<StoreApi["updateMessageAsync"]> = async (input) => {
-    await streamWriter.drainAsync()
+    await streamWriter.drainAsync({ threadId: input.threadId, messageId: input.messageId })
     return writeDatabaseAsync(database, () => updateMessage(input))
   }
 
@@ -1315,7 +1330,7 @@ export const init = async (
         method: "GET",
         path: "/workspace/activity",
         handler: async () => {
-          await streamWriter.drainAsync()
+          await drainForGlobalRead()
           const { messages, runs } = readWorkspaceActivity(database)
           return jsonResponse(200, { messages: messages.map(asMessage), runs })
         },
@@ -1471,7 +1486,7 @@ export const init = async (
               await cloud.request("GET", `/v1/threads/${encodeURIComponent(cloudThread.id)}/transcript${suffix}`),
             )
           }
-          await streamWriter.drainAsync()
+          await streamWriter.drainAsync({ threadId: params.id ?? "" })
           const thread = getThread({ threadId: params.id ?? "" })
           if (!thread) return errorResponse(404, "NOT_FOUND", "Conversa não encontrada")
           const since = Number(query.since ?? 0)
@@ -1531,7 +1546,7 @@ export const init = async (
               await cloud.request("GET", `/v1/threads/${encodeURIComponent(cloudThread.id)}/messages${suffix}`),
             )
           }
-          await streamWriter.drainAsync()
+          await streamWriter.drainAsync({ threadId: params.id ?? "" })
           const thread = getThread({ threadId: params.id ?? "" })
           if (!thread) return errorResponse(404, "NOT_FOUND", "Thread not found")
           const messages =
@@ -1570,11 +1585,14 @@ export const init = async (
         method: "GET",
         path: "/search",
         handler: async ({ query }) => {
-          await streamWriter.drainAsync()
-          const hits =
-            query.botId === undefined
-              ? search({ q: query.q ?? "", limit: 50 })
-              : search({ q: query.q ?? "", botId: query.botId, limit: 50 })
+          if (query.threadId === undefined) await drainForGlobalRead()
+          else await streamWriter.drainAsync({ threadId: query.threadId })
+          const hits = search({
+            q: query.q ?? "",
+            ...(query.botId === undefined ? {} : { botId: query.botId }),
+            ...(query.threadId === undefined ? {} : { threadId: query.threadId }),
+            limit: 50,
+          })
           return jsonResponse(200, { hits })
         },
       },
