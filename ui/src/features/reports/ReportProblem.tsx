@@ -14,31 +14,32 @@ import {
 import { useEffect, useId, useRef, useState } from "react"
 import { createTauriInvoke, type TauriInvoke, type UiApi } from "../../api/client"
 import { browserSave } from "../../browserSave"
+import { getDocumentLocale } from "../../documentLanguage"
 import { userFacingError } from "../../errors"
-import { type TranslationKey, t } from "../../i18n"
+import { type Locale, type TranslationKey, t } from "../../i18n"
 import { Capture, sanitizeImage } from "./Capture"
 import { buildOfflineReport, offlineHistory, rememberOfflineReport } from "./offline"
 import "./reports.css"
 
 const labels: Record<ReportPart, TranslationKey> = {
-  versions: "Informações do aplicativo",
+  versions: "Informações do aplicativo e do computador",
   doctor: "Funcionamento do aplicativo",
   logs: "Atividade recente do aplicativo",
   errors: "Erros recentes",
   states: "Atividade dos bots",
   database: "Resumo dos dados guardados",
-  memory: "Uso de memória",
+  memory: "Uso de memória do computador pelo touri",
   runs: "Tarefas recentes",
   transcript: "Incluir a conversa selecionada",
 }
 const descriptions: Record<ReportPart, TranslationKey> = {
-  versions: "Ajuda a entender incompatibilidades entre versões e informações do dispositivo.",
+  versions: "Ajuda a identificar incompatibilidades entre a versão do touri e o computador.",
   doctor: "Mostra o resultado das verificações do funcionamento e da conexão.",
-  logs: "Inclui até 500 linhas recentes, com dados sensíveis ocultados automaticamente.",
+  logs: "Inclui as 500 linhas mais recentes, com dados sensíveis ocultados automaticamente.",
   errors: "Ajuda a identificar erros que se repetem.",
   states: "Mostra quais bots estão em execução e o estado dos computadores usados por eles.",
   database: "Inclui o tamanho e a quantidade de registros, sem o conteúdo.",
-  memory: "Ajuda a investigar o uso de memória e travamentos.",
+  memory: "Ajuda a investigar uso elevado de memória e travamentos.",
   runs: "Inclui o estado, a duração e o tipo de erro das últimas 20 tarefas.",
   transcript: "Selecione um bot e uma conversa acima para incluir esta parte.",
 }
@@ -68,15 +69,17 @@ export const ReportProblem = ({
   errorCode,
   errorMessage,
   offline = false,
+  locale: requestedLocale,
 }: {
   api?: UiApi | undefined
   invokeCommand?: TauriInvoke | undefined
   errorCode?: string | undefined
   errorMessage?: string | undefined
   offline?: boolean
+  locale?: Locale | undefined
 }) => {
   const formId = useId()
-  const locale = document.documentElement.lang === "en" ? "en" : "pt-BR"
+  const locale = requestedLocale ?? getDocumentLocale(document.documentElement)
   const [invoke] = useState(() => invokeCommand ?? createTauriInvoke())
   const [input, setInput] = useState(() => initialInput(errorCode, errorMessage))
   const [bots, setBots] = useState<Bot[]>([])
@@ -352,7 +355,7 @@ export const ReportProblem = ({
             </p>
           )}
           <fieldset className="report-checks">
-            <legend>Diagnóstico incluído</legend>
+            <legend>{t("Diagnóstico incluído", {}, locale)}</legend>
             {reportParts.map((part) => (
               <div className="report-check-item" key={part}>
                 <label>

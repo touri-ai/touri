@@ -1,6 +1,7 @@
 import type { Bot, WorkspaceFile, WorkspaceFileContent } from "@touri/contracts"
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import type { UiApi } from "../api/client"
+import { getDocumentLocale } from "../documentLanguage"
 import { userFacingError } from "../errors"
 import { DEFAULT_LOCALE, type Locale, t } from "../i18n"
 import { useSaveNotice } from "../useSaveNotice"
@@ -51,7 +52,7 @@ export const BotLibrary = ({
   const [readError, setReadError] = useState<{ message: string; entry: WorkspaceFile; download: boolean } | null>(null)
   const [projectPath, setProjectPath] = useState<string | null>(null)
   const [rootError, setRootError] = useState(false)
-  const locale: Locale = document.documentElement.lang === "en" ? "en" : DEFAULT_LOCALE
+  const locale = getDocumentLocale(document.documentElement)
   const section = useRef<HTMLElement>(null)
   const title = useRef<HTMLHeadingElement>(null)
   const generation = useRef(0)

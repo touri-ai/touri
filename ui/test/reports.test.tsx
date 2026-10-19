@@ -167,8 +167,8 @@ it("keeps diagnostic checkboxes compact in a modal, with separate accessible des
       expect(checkbox.closest("label")).not.toContainElement(description)
       expect(checkbox).toHaveAccessibleDescription(description?.textContent ?? "")
     }
-    const versions = screen.getByRole("checkbox", { name: "Informações do aplicativo" })
-    fireEvent.click(screen.getByText("Informações do aplicativo"))
+    const versions = screen.getByRole("checkbox", { name: "Informações do aplicativo e do computador" })
+    fireEvent.click(screen.getByText("Informações do aplicativo e do computador"))
     expect(versions).not.toBeChecked()
     await act(async () => {
       await Promise.resolve()
@@ -178,52 +178,57 @@ it("keeps diagnostic checkboxes compact in a modal, with separate accessible des
   }
 })
 
-it("uses plain-language diagnostic labels and descriptions in pt-BR and English", () => {
-  const previousLanguage = document.documentElement.lang
-  const { api, invoke } = fixture()
-  const view = render(<ReportProblem api={api} invokeCommand={invoke} />)
-  const portuguese = [
-    ["Informações do aplicativo", "Ajuda a entender incompatibilidades entre versões e informações do dispositivo."],
-    ["Funcionamento do aplicativo", "Mostra o resultado das verificações do funcionamento e da conexão."],
-    [
-      "Atividade recente do aplicativo",
-      "Inclui até 500 linhas recentes, com dados sensíveis ocultados automaticamente.",
-    ],
-    ["Erros recentes", "Ajuda a identificar erros que se repetem."],
-    ["Atividade dos bots", "Mostra quais bots estão em execução e o estado dos computadores usados por eles."],
-    ["Resumo dos dados guardados", "Inclui o tamanho e a quantidade de registros, sem o conteúdo."],
-    ["Uso de memória", "Ajuda a investigar o uso de memória e travamentos."],
-    ["Tarefas recentes", "Inclui o estado, a duração e o tipo de erro das últimas 20 tarefas."],
-    ["Incluir a conversa selecionada", "Selecione um bot e uma conversa acima para incluir esta parte."],
-  ]
-  const english = [
-    ["App and device details", "Helps identify version incompatibilities and learn about the device."],
-    ["App operation checks", "Shows results of checks for app operation and connection."],
-    ["Recent app activity", "Includes up to 500 recent entries, with sensitive information hidden automatically."],
-    ["Recent errors", "Helps identify recurring errors."],
-    ["Bot activity", "Shows which bots are running and the status of their computers."],
-    ["Stored data summary", "Includes storage size and record counts, without their contents."],
-    ["Memory use", "Helps investigate memory use and crashes."],
-    ["Recent tasks", "Includes the status, duration and error type of the last 20 tasks."],
-    ["Include selected conversation", "Choose a bot and conversation above to include this information."],
-  ]
-  const expectCopy = (pairs: string[][]) => {
-    const group = screen.getByRole("group", { name: "Diagnóstico incluído" })
-    for (const [label, description] of pairs) {
-      const checkbox = within(group).getByRole("checkbox", { name: label })
-      expect(checkbox).toHaveAccessibleDescription(description)
-    }
-    expect(group).not.toHaveTextContent(/\b(?:doctor|vms?|container|sidecar|shell|stderr)\b/i)
+const expectDiagnosticCopy = (name: string, pairs: readonly (readonly [string, string])[]) => {
+  const group = screen.getByRole("group", { name })
+  for (const [label, description] of pairs) {
+    const checkbox = within(group).getByRole("checkbox", { name: label })
+    expect(checkbox).toHaveAccessibleDescription(description)
   }
+  expect(group).not.toHaveTextContent(/\b(?:doctor|vms?|container|sidecar|shell|stderr)\b/i)
+}
 
-  try {
-    expectCopy(portuguese)
-    document.documentElement.lang = "en"
-    view.rerender(<ReportProblem api={api} invokeCommand={invoke} />)
-    expectCopy(english)
-  } finally {
-    document.documentElement.lang = previousLanguage
-  }
+const portugueseDiagnosticCopy = [
+  [
+    "Informações do aplicativo e do computador",
+    "Ajuda a identificar incompatibilidades entre a versão do touri e o computador.",
+  ],
+  ["Funcionamento do aplicativo", "Mostra o resultado das verificações do funcionamento e da conexão."],
+  [
+    "Atividade recente do aplicativo",
+    "Inclui as 500 linhas mais recentes, com dados sensíveis ocultados automaticamente.",
+  ],
+  ["Erros recentes", "Ajuda a identificar erros que se repetem."],
+  ["Atividade dos bots", "Mostra quais bots estão em execução e o estado dos computadores usados por eles."],
+  ["Resumo dos dados guardados", "Inclui o tamanho e a quantidade de registros, sem o conteúdo."],
+  ["Uso de memória do computador pelo touri", "Ajuda a investigar uso elevado de memória e travamentos."],
+  ["Tarefas recentes", "Inclui o estado, a duração e o tipo de erro das últimas 20 tarefas."],
+  ["Incluir a conversa selecionada", "Selecione um bot e uma conversa acima para incluir esta parte."],
+] as const
+
+const englishDiagnosticCopy = [
+  ["App and computer details", "Helps spot incompatibilities between the touri version and this computer."],
+  ["App operation checks", "Shows results of checks for app operation and connection."],
+  ["Recent app activity", "Includes the 500 most recent lines, with sensitive information hidden automatically."],
+  ["Recent errors", "Helps identify recurring errors."],
+  ["Bot activity", "Shows which bots are running and the status of their computers."],
+  ["Stored data summary", "Includes storage size and record counts, without their contents."],
+  ["touri memory use on this computer", "Helps investigate high memory use and freezes."],
+  ["Recent tasks", "Includes the status, duration and error type of the last 20 tasks."],
+  ["Include selected conversation", "Choose a bot and conversation above to include this information."],
+] as const
+
+it("uses plain-language diagnostic labels and descriptions in pt-BR", () => {
+  const { api, invoke } = fixture()
+  render(<ReportProblem api={api} invokeCommand={invoke} />)
+
+  expectDiagnosticCopy("Diagnóstico incluído", portugueseDiagnosticCopy)
+})
+
+it("uses plain-language diagnostic labels and descriptions in English", () => {
+  const { api, invoke } = fixture()
+  render(<ReportProblem api={api} invokeCommand={invoke} locale="en" />)
+
+  expectDiagnosticCopy("Included diagnostics", englishDiagnosticCopy)
 })
 
 it("defaults all diagnostics on except transcript, requires preview and saves/copies the exact redacted snapshot", async () => {
