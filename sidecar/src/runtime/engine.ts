@@ -601,7 +601,8 @@ export const createRuntimeEngine = ({
     const partIndices = [...state.dirtyParts].sort((left, right) => left - right)
     const messageId = state.replyMessageId
     if (status === "streaming" && !messageId) return
-    if (store.appendParts) {
+    if (store.appendParts && status === "streaming") {
+      if (!messageId) return
       const parts = measureStage("runtime_part_preparation", () =>
         partIndices.flatMap((partIndex) => {
           const part = state.parts[partIndex]
@@ -609,41 +610,27 @@ export const createRuntimeEngine = ({
           return [{ partIndex, part: "callId" in part ? tools.record(run, part, false, false) : part }]
         }),
       )
-      if (messageId) {
-        if (parts.length) {
-          measureStage("runtime_part_append", () =>
-            store.appendParts?.({
-              threadId: run.threadId,
-              messageId,
-              parts,
-              ...(state.generation === null ? {} : { generation: state.generation }),
-            }),
-          )
-          // The store can replace completed output with a durable attachment reference.
-          for (const patch of parts) state.parts[patch.partIndex] = patch.part
-          // Consent and terminal outcomes must be durable before the corresponding state advances.
-          if (status !== "streaming" || parts.some(({ part }) => part.type === "approval"))
-            measureStage("runtime_stream_flush", () => store.flushWrites?.())
-        }
-        partIndices.forEach((partIndex) => {
-          state.dirtyParts.delete(partIndex)
-        })
+      if (parts.length) {
+        measureStage("runtime_part_append", () =>
+          store.appendParts?.({
+            threadId: run.threadId,
+            messageId,
+            parts,
+            ...(state.generation === null ? {} : { generation: state.generation }),
+          }),
+        )
+        // The store can replace completed output with a durable attachment reference.
+        for (const patch of parts) state.parts[patch.partIndex] = patch.part
+        // Consent must be durable and visible before the approved action can proceed.
+        if (parts.some(({ part }) => part.type === "approval"))
+          measureStage("runtime_stream_flush", () => store.flushWrites?.())
       }
-      if (status === "streaming") return
-    }
-    if (!messageId) return
-    if (store.appendParts) {
-      measureStage("runtime_stream_flush", () => store.flushWrites?.())
-      const updated = measureStage("runtime_terminal_message_update", () =>
-        store.updateMessage({
-          threadId: run.threadId,
-          messageId,
-          patch: { status, text: state.text, runId: run.id },
-        }),
-      )
-      if (updated.success) state.dirtyParts.clear()
+      partIndices.forEach((partIndex) => {
+        state.dirtyParts.delete(partIndex)
+      })
       return
     }
+    if (!messageId) return
     state.parts = state.parts.map((part) => ("callId" in part ? tools.record(run, part) : part))
     const updated = measureStage("runtime_terminal_message_update", () =>
       store.updateMessage({
@@ -835,7 +822,10 @@ export const createRuntimeEngine = ({
       const delta = separator + event.delta
       const existing = last?.type === "text" ? last : undefined
       const partIndex = existing ? state.parts.length - 1 : state.parts.length
-      if (!existing) state.parts.push({ type: "text", text: "" })
+      if (!existing) {
+        state.parts.push({ type: "text", text: "" })
+        state.dirtyParts.add(partIndex)
+      }
       appendPendingText(state, partIndex, "text", delta)
       if (state.replyMessageId)
         store.appendDelta({
@@ -922,7 +912,18 @@ export const createRuntimeEngine = ({
         if (key) state.partIndices.set(key, state.parts.length - 1)
         if (part.type === "tool_call") state.usage.toolCalls += 1
       }
-      state.dirtyParts.add(index >= 0 ? index : state.parts.length - 1)
+      const changedPartIndex = index >= 0 ? index : state.parts.length - 1
+      state.dirtyParts.add(changedPartIndex)
+      const changedPart = state.parts[changedPartIndex]
+      if (state.cancelRequested && changedPart && "callId" in changedPart) {
+        const pending =
+          (changedPart.type === "tool_call" && changedPart.ok === null) ||
+          (changedPart.type === "command" && changedPart.exitCode === null)
+        state.parts[changedPartIndex] = tools.record(
+          run,
+          pending ? { ...changedPart, resolution: "cancelled_by_user", resolvedAt: Date.now() } : changedPart,
+        )
+      }
       if (!state.replyMessageId) {
         const thread = store.getThread({ threadId: run.threadId })
         const request = run.requestMessageId && thread ? getActivePathMessage({ store, run }) : null
