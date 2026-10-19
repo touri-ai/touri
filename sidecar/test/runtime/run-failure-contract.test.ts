@@ -83,6 +83,11 @@ test("adapter-side classification already yields the specific class for the hist
   expect(classifyProviderError("something nobody has seen")).toBe("unknown")
 })
 
+test("a model capacity response is classified as a provider limit", () => {
+  expect(classifyProviderError("Selected model is at capacity. Please try a different model.")).toBe("rate_limit")
+  expect(classifyProviderError("The buffer capacity was exceeded")).toBe("unknown")
+})
+
 test("every actionable cause carries a precise CTA", () => {
   expect(
     safeRunFailure("cli_auth", "Error: claude: arquivo de login ausente. Keychain do macOS não é exportado").action,

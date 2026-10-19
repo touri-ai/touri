@@ -78,8 +78,11 @@ export const resolveExecutable = ({
 
 export const classifyProviderError = (value: string): RunErrorClass => {
   const text = value.toLowerCase()
+  const modelIsAtCapacity = text.includes("model") && text.includes("at capacity")
+
   if (text.includes("401") || text.includes("not logged in") || text.includes("login required")) return "cli_auth"
-  if (text.includes("429") || text.includes("rate limit") || text.includes("usage limit")) return "rate_limit"
+  if (text.includes("429") || text.includes("rate limit") || text.includes("usage limit") || modelIsAtCapacity)
+    return "rate_limit"
   if (text.includes("context length") || text.includes("too long") || text.includes("context window"))
     return "context_overflow"
   if (text.includes("timeout") || text.includes("timed out")) return "timeout"
