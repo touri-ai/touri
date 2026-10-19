@@ -49,7 +49,7 @@ if (process.env.TOURI_STREAMING_BENCH === "1") {
           )
           args.onEvent({ type: "item", part: getTool(batch) })
         })
-        fixture.store.flushWrites?.()
+        await fixture.store.flushWritesAsync?.()
         await Bun.sleep(50)
       }
       await getReady(
@@ -136,7 +136,7 @@ const getFixture = async (concurrency: number) => {
   const runtime = createKernel({ appData: root, stageTracker: metrics.tracker })
   runtime.kernel.services.use("storage.maintenance")?.dispose()
   cleanups.add(async () => {
-    runtime.stop()
+    await runtime.stop()
     await rm(root, { recursive: true, force: true })
   })
   const database = runtime.kernel.db as Database

@@ -3,7 +3,7 @@ import { afterEach, expect, test } from "bun:test"
 import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import type { ApprovalPart, ToolContext } from "@touri/contracts"
+import type { ApprovalPart, NotificationRecord, ToolContext } from "@touri/contracts"
 import { createApprovalBridge } from "../../src/approvals/bridge"
 import { approvalOutcome, withApprovalOutcome } from "../../src/approvals/outcome"
 import { createKernel } from "../../src/kernel"
@@ -46,7 +46,7 @@ const fixture = async () => {
     runtime.stop()
     rmSync(root, { recursive: true, force: true })
   })
-  return { bridge, ctx, cards }
+  return { bridge, ctx, cards, runtime }
 }
 
 for (const toolUseId of [undefined, "private-tool-use-id"]) {
@@ -130,6 +130,58 @@ test("deny is visible in the permission response and completed runs discard unco
   expect(await pending).toEqual({ success: true, behavior: "deny", message: approvalOutcome.denied })
   f.bridge.cancelRun(f.ctx.runId ?? "")
   expect(f.bridge.context(input)).toBeNull()
+})
+
+test("approval prompts and permission responses wait for the approval card write", async () => {
+  const f = await fixture()
+  const cards: ApprovalPart[] = []
+  const releases: Array<() => void> = []
+  let notified = false
+  let resolveNotification: () => void = () => {}
+  const notification = new Promise<void>((resolve) => {
+    resolveNotification = resolve
+  })
+  const bridge = createApprovalBridge({
+    kernel: f.runtime.kernel,
+    onCard: async (_, part) => {
+      cards.push(structuredClone(part))
+      await new Promise<void>((resolve) => releases.push(resolve))
+      return true
+    },
+  })
+  f.runtime.kernel.services.provide("notify.emit", (input) => {
+    if (input.kind === "approval") {
+      notified = true
+      resolveNotification()
+    }
+    return {} as NotificationRecord
+  })
+  try {
+    const pending = bridge.present({
+      ctx: f.ctx,
+      toolName: "Write",
+      scope: { source: "claude", tool: "Write" },
+      input: { file_path: "draft.txt" },
+    })
+    expect(releases).toHaveLength(1)
+    expect(notified).toBe(false)
+    releases.shift()?.()
+    await notification
+    expect(notified).toBe(true)
+
+    let completed = false
+    const approved = bridge.approve({ approvalId: cards[0]?.approvalId ?? "", decision: "approved" }).then(() => {
+      completed = true
+    })
+    expect(releases).toHaveLength(1)
+    expect(completed).toBe(false)
+    releases.shift()?.()
+    await approved
+    expect(await pending).toMatchObject({ success: true, behavior: "allow" })
+    expect(cards.at(-1)).toMatchObject({ decision: "approved" })
+  } finally {
+    bridge.dispose()
+  }
 })
 
 test("approval notes preserve images, structured payloads and failed tool results", () => {

@@ -245,7 +245,7 @@ test("pausing a cached routine prevents cron attempts and survives runtime repla
     expect(replacement.listRoutines()[0]).toMatchObject({ enabled: false, nextRunAt: null })
   } finally {
     await replacement?.shutdown()
-    reopened?.stop()
+    await reopened?.stop()
     writerDb.close()
     await closeFixture(f)
   }
@@ -602,8 +602,7 @@ test("interleaved text and reasoning keep transcript snapshots and delta offsets
       [0, 0, "Vou "],
       [0, 4, "conferir."],
       [1, 11, "a fila."],
-      [2, 0, "\n\nPronto"],
-      [2, 8, "."],
+      [2, 0, "\n\nPronto."],
     ])
   } finally {
     await closeFixture(f)
@@ -1875,6 +1874,7 @@ test.serial("restart interrupts an in-flight routine run and does not block the 
         TOURI_FAKE_SCENARIO: value.scenario,
       },
     })
+    await restarted.ready
     expect(database.query("SELECT status, error_class FROM runs WHERE id = ?").get(oldRunId)).toEqual({
       status: "interrupted",
       error_class: "app_restart",
@@ -2425,12 +2425,12 @@ test.serial("transcript: Stop resolves pending provider tools before the interru
       ok: null,
     })
     expect(reply?.parts.find((part) => part.type === "file_change")).toMatchObject({ resolution: "cancelled_by_user" })
+    await waitFor(() => terminal(queued.run.status), 2000)
     expect(
       (value.runtime.kernel.db as Database)
         .query("SELECT resolution FROM tool_resolutions WHERE run_id = ? AND call_id = 'open-call'")
         .get(queued.run.id),
     ).toEqual({ resolution: "cancelled_by_user" })
-    await waitFor(() => terminal(queued.run.status), 2000)
     expect(queued.run.status).toBe("canceled")
   } finally {
     await closeFixture(value)
@@ -2799,7 +2799,7 @@ test.serial("deletion drops queued catch-up work and a cached due schedule stays
     value.engine.listRoutines()
     value.engine.listRoutineRuns(routine.id)
     expect(value.engine.deleteRoutine(routine.id).success).toBe(true)
-    expect(value.engine.listRuns(value.thread.id)[0]?.status).toBe("canceled")
+    await waitFor(() => value.engine.listRuns(value.thread.id)[0]?.status === "canceled")
     await value.engine.tick(Date.now() + 600_000)
     expect(value.engine.listRuns(value.thread.id)).toHaveLength(1)
     expect(value.engine.listRoutineRuns(routine.id)).toEqual([])
@@ -2815,7 +2815,7 @@ test.serial("deletion drops queued catch-up work and a cached due schedule stays
     expect(replacement.listRuns(value.thread.id)[0]?.status).toBe("canceled")
   } finally {
     await replacement?.shutdown()
-    reopened?.stop()
+    await reopened?.stop()
     await closeFixture(value)
   }
 })

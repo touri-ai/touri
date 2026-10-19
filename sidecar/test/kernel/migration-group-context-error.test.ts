@@ -29,10 +29,10 @@ const closeDatabase = (database: Database): void => {
   database.close()
 }
 
-const createSchema30 = async (filename: string): Promise<Database> => {
+const createSchema31 = async (filename: string): Promise<Database> => {
   const database = new Database(filename)
   database.exec("PRAGMA foreign_keys = ON")
-  for (let version = 1; version <= 30; version++) {
+  for (let version = 1; version <= 31; version++) {
     const migration = await Bun.file(
       join(import.meta.dir, `../../src/kernel/migrations/${String(version).padStart(4, "0")}.sql`),
     ).text()
@@ -42,11 +42,11 @@ const createSchema30 = async (filename: string): Promise<Database> => {
   return database
 }
 
-test("schema 30 preserves run references and adds the group-context error class", async () => {
+test("schema 31 preserves run references and adds the group-context error class", async () => {
   const root = mkdtempSync(join(tmpdir(), "touri-group-context-error-migration-"))
   roots.add(root)
   const filename = join(root, "touri.db")
-  let database = trackDatabase(await createSchema30(filename))
+  let database = trackDatabase(await createSchema31(filename))
   database.exec(`
     INSERT INTO bots(id,name,provider,home_dir,created_at,updated_at)
       VALUES ('bot','Revisor','codex','/bot',1,1);
@@ -64,8 +64,8 @@ test("schema 30 preserves run references and adds the group-context error class"
 
   database = trackDatabase(openDatabase({ filename }))
 
-  expect(SCHEMA_VERSION).toBe(31)
-  expect(database.query("SELECT value FROM schema_meta WHERE key = 'schema_version'").get()).toEqual({ value: "31" })
+  expect(SCHEMA_VERSION).toBe(32)
+  expect(database.query("SELECT value FROM schema_meta WHERE key = 'schema_version'").get()).toEqual({ value: "32" })
   expect(database.query("PRAGMA ignore_check_constraints").get()).toEqual({ ignore_check_constraints: 0 })
   const runsSchema = database.query("SELECT sql FROM sqlite_schema WHERE type = 'table' AND name = 'runs'").get() as {
     sql: string
@@ -105,7 +105,9 @@ test("schema 30 preserves run references and adds the group-context error class"
   expect(database.query("PRAGMA foreign_key_check").all()).toEqual([])
   expect(
     database
-      .query("SELECT name,sql FROM sqlite_schema WHERE type = 'index' AND tbl_name = 'runs' AND sql IS NOT NULL ORDER BY name")
+      .query(
+        "SELECT name,sql FROM sqlite_schema WHERE type = 'index' AND tbl_name = 'runs' AND sql IS NOT NULL ORDER BY name",
+      )
       .all(),
   ).toEqual([
     {

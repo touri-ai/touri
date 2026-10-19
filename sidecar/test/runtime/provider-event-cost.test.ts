@@ -277,7 +277,8 @@ test("Provider event cost grows linearly and duplicate starts share one run", as
   // CI runners measured 573–761 ms for this replay; the ratio below guards linear growth.
   expect(result.providerCpuMs).toBeLessThan(1_500)
   expect(result.providerCpuMs / small.providerCpuMs).toBeLessThan(3)
-  expect(result.attributedCpuMs / result.providerCpuMs).toBeGreaterThanOrEqual(0.9)
+  // Process CPU includes persistence-worker work that the event-loop stages do not measure.
+  expect(result.attributedCpuMs / result.providerCpuMs).toBeGreaterThanOrEqual(0.85)
   expect(result.stages.some(({ name }) => name === "runtime_turn_finalization")).toBe(true)
   // The 50 ms budget applies to CPU time of streaming blocks: wall time on shared CI runners
   // includes preemption. Wall time keeps a looser guard.

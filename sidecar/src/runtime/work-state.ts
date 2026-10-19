@@ -247,22 +247,24 @@ export const createWorkState = ({
     payload: Payload
   }): AppendResult => {
     try {
-      database.transaction(() => {
-        const last = validRows(turnId).at(-1)
-        const base = {
-          turn_id: turnId,
-          effect_id: effectId,
-          kind,
-          payload: JSON.stringify(payload),
-          prev_checksum: last?.checksum ?? GENESIS,
-          at: clock(),
-        }
-        database
-          .query(
-            "INSERT INTO work_journal (turn_id, effect_id, kind, payload, prev_checksum, checksum, at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-          )
-          .run(base.turn_id, base.effect_id, base.kind, base.payload, base.prev_checksum, rowChecksum(base), base.at)
-      })()
+      database
+        .transaction(() => {
+          const last = validRows(turnId).at(-1)
+          const base = {
+            turn_id: turnId,
+            effect_id: effectId,
+            kind,
+            payload: JSON.stringify(payload),
+            prev_checksum: last?.checksum ?? GENESIS,
+            at: clock(),
+          }
+          database
+            .query(
+              "INSERT INTO work_journal (turn_id, effect_id, kind, payload, prev_checksum, checksum, at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            )
+            .run(base.turn_id, base.effect_id, base.kind, base.payload, base.prev_checksum, rowChecksum(base), base.at)
+        })
+        .immediate()
       hooks?.afterAppend?.({ turnId, effectId, kind })
       return { success: true }
     } catch (error) {
@@ -388,19 +390,25 @@ export const createWorkState = ({
   const publishRoot: WorkState["publishRoot"] = ({ turnId }) => {
     try {
       hooks?.beforePublishRoot?.(turnId)
-      return database.transaction((): PublishRootResult => {
-        const manifest = rebuild({ turnId })
-        const root = manifestRoot(manifest)
-        const prior = authoritativeRoot({ turnId })
-        if (prior?.root === root) return { success: true, root: prior, changed: false }
-        const version = (prior?.version ?? 0) + 1
-        database
-          .query(
-            "INSERT INTO work_roots (turn_id, version, root, effect_count, manifest, published_at) VALUES (?, ?, ?, ?, ?, ?)",
-          )
-          .run(turnId, version, root, manifest.length, JSON.stringify(manifest), clock())
-        return { success: true, changed: true, root: { turnId, version, root, effectCount: manifest.length, manifest } }
-      })()
+      return database
+        .transaction((): PublishRootResult => {
+          const manifest = rebuild({ turnId })
+          const root = manifestRoot(manifest)
+          const prior = authoritativeRoot({ turnId })
+          if (prior?.root === root) return { success: true, root: prior, changed: false }
+          const version = (prior?.version ?? 0) + 1
+          database
+            .query(
+              "INSERT INTO work_roots (turn_id, version, root, effect_count, manifest, published_at) VALUES (?, ?, ?, ?, ?, ?)",
+            )
+            .run(turnId, version, root, manifest.length, JSON.stringify(manifest), clock())
+          return {
+            success: true,
+            changed: true,
+            root: { turnId, version, root, effectCount: manifest.length, manifest },
+          }
+        })
+        .immediate()
     } catch (error) {
       return failure(error)
     }

@@ -1294,7 +1294,14 @@ export type StoreApi = {
   appendDelta: (args: TranscriptAppend) => void
   appendParts?: (args: { threadId: Id; messageId: Id; parts: Array<{ partIndex: number; part: MessagePart }>; generation?: number }) => void
   flushWrites?: (options?: { stopping?: boolean }) => void
+  flushWritesAsync?: (options?: { stopping?: boolean; threadId?: Id; messageId?: Id }) => Promise<void>
+  closeStreamWriterIfIdle?: () => boolean
   updateMessage: (args: { threadId: Id; messageId: Id; patch: Partial<Pick<Message, 'status' | 'parts' | 'text' | 'runId'>> }) => Result<{ message: Message }, 'NOT_FOUND'>
+  updateMessageAsync?: (args: {
+    threadId: Id
+    messageId: Id
+    patch: Partial<Pick<Message, 'status' | 'parts' | 'text' | 'runId'>>
+  }) => Promise<Result<{ message: Message }, 'NOT_FOUND'>>
   /** Select before hydrating bodies; fromRoot selects the oldest prefix instead of the recent tail. */
   activePath: (args: { threadId: Id; leafId?: Id; limit?: number; fromRoot?: boolean }) => Array<Message>
   getPathMessage?: (args: { threadId: Id; messageId: Id; leafId?: Id }) => Message | null

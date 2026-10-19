@@ -16,93 +16,108 @@ type Projection = {
 
 type ProjectionTarget = { threadId: string; messageId: string }
 
+const hasPartGap = (length: number, patches: Array<{ partIndex: number }>): boolean => {
+  const appended = new Set<number>()
+  let maximum = length - 1
+  for (const { partIndex } of patches) {
+    if (!Number.isSafeInteger(partIndex) || partIndex < 0) return true
+    if (partIndex < length) continue
+    appended.add(partIndex)
+    maximum = Math.max(maximum, partIndex)
+  }
+  return maximum - length + 1 !== appended.size
+}
+
 // Snapshots are mutable projections. The small, durable entries remain the source of
 // uncheckpointed text, including after a crash. Publishing a projection adds no event.
 export const materializeTranscriptBatch = (database: Database, threadId?: string): boolean =>
-  database.transaction(() => {
-    const filter = threadId ? "WHERE thread_id=?" : ""
-    const statement = database.query(`SELECT thread_id,message_id FROM transcript_pending_deltas
+  database
+    .transaction(() => {
+      const filter = threadId ? "WHERE thread_id=?" : ""
+      const statement = database.query(`SELECT thread_id,message_id FROM transcript_pending_deltas
       ${filter} ORDER BY thread_id,message_id LIMIT 1`)
-    const pending = (threadId ? statement.get(threadId) : statement.get()) as {
-      thread_id: string
-      message_id: string
-    } | null
-    if (!pending) return false
+      const pending = (threadId ? statement.get(threadId) : statement.get()) as {
+        thread_id: string
+        message_id: string
+      } | null
+      if (!pending) return false
 
-    const target = { threadId: pending.thread_id, messageId: pending.message_id }
-    const snapshot = database
-      .query("SELECT updated_seq FROM messages WHERE thread_id=? AND id=?")
-      .get(target.threadId, target.messageId) as { updated_seq: number } | null
-    if (!snapshot) {
-      clearPendingProjection(database, target)
-      return true
-    }
-    const delta = database
-      .query(`SELECT seq FROM transcript_entries INDEXED BY transcript_delta_message
+      const target = { threadId: pending.thread_id, messageId: pending.message_id }
+      const snapshot = database
+        .query("SELECT updated_seq FROM messages WHERE thread_id=? AND id=?")
+        .get(target.threadId, target.messageId) as { updated_seq: number } | null
+      if (!snapshot) {
+        clearPendingProjection(database, target)
+        return true
+      }
+      const delta = database
+        .query(`SELECT seq FROM transcript_entries INDEXED BY transcript_delta_message
       WHERE thread_id=? AND json_extract(event_json,'$.messageId')=?
         AND json_extract(event_json,'$.type')='message.delta' ORDER BY seq DESC LIMIT 1`)
-      .get(target.threadId, target.messageId) as { seq: number } | null
-    const part = database
-      .query(`SELECT e.seq FROM transcript_part_entries part INDEXED BY transcript_part_message
+        .get(target.threadId, target.messageId) as { seq: number } | null
+      const part = database
+        .query(`SELECT e.seq FROM transcript_part_entries part INDEXED BY transcript_part_message
       CROSS JOIN transcript_entries e WHERE part.thread_id=? AND part.message_id=?
         AND e.id=part.entry_id ORDER BY part.entry_id DESC LIMIT 1`)
-      .get(target.threadId, target.messageId) as { seq: number } | null
-    const head = Math.max(delta?.seq ?? 0, part?.seq ?? 0)
-    if (head <= snapshot.updated_seq) {
-      clearPendingProjection(database, target)
-      return true
-    }
-    database.exec(`CREATE TEMP TABLE IF NOT EXISTS transcript_recovery_scan (
+        .get(target.threadId, target.messageId) as { seq: number } | null
+      const head = Math.max(delta?.seq ?? 0, part?.seq ?? 0)
+      if (head <= snapshot.updated_seq) {
+        clearPendingProjection(database, target)
+        return true
+      }
+      database.exec(`CREATE TEMP TABLE IF NOT EXISTS transcript_recovery_scan (
       thread_id TEXT NOT NULL,message_id TEXT NOT NULL,cursor INTEGER NOT NULL,
       PRIMARY KEY(thread_id,message_id)
     )`)
-    const saved = database
-      .query("SELECT cursor FROM transcript_recovery_scan WHERE thread_id=? AND message_id=?")
-      .get(target.threadId, target.messageId) as { cursor: number } | null
-    const cursor = Math.max(saved?.cursor ?? 0, snapshot.updated_seq)
-    // Bound rows BEFORE JSON extraction/filtering or ordering. A LIMIT after
-    // sorting both entire per-message streams would still read their full history.
-    const rows = database
-      .query(`SELECT id AS entry_id,seq AS delta_seq,at,? AS id,thread_id
+      const saved = database
+        .query("SELECT cursor FROM transcript_recovery_scan WHERE thread_id=? AND message_id=?")
+        .get(target.threadId, target.messageId) as { cursor: number } | null
+      const cursor = Math.max(saved?.cursor ?? 0, snapshot.updated_seq)
+      // Bound rows BEFORE JSON extraction/filtering or ordering. A LIMIT after
+      // sorting both entire per-message streams would still read their full history.
+      const rows = database
+        .query(`SELECT id AS entry_id,seq AS delta_seq,at,? AS id,thread_id
       FROM transcript_entries WHERE thread_id=? AND seq>? AND seq<=? ORDER BY seq LIMIT 128`)
-      .all(target.messageId, target.threadId, cursor, head) as Array<Omit<ProjectionEntry, "event_json">>
-    // Local replay/cursor accumulators avoid materializing a window of legacy
-    // full snapshots; one large historical body is fetched and released at a time.
-    const relevant: ProjectionEntry[] = []
-    const started = performance.now()
-    let next = rows.length ? cursor : head
-    for (const row of rows) {
-      if (next !== cursor && performance.now() - started >= 8) break
+        .all(target.messageId, target.threadId, cursor, head) as Array<Omit<ProjectionEntry, "event_json">>
+      // Local replay/cursor accumulators avoid materializing a window of legacy
+      // full snapshots; one large historical body is fetched and released at a time.
+      const relevant: ProjectionEntry[] = []
+      const started = performance.now()
+      let next = rows.length ? cursor : head
+      for (const row of rows) {
+        if (next !== cursor && performance.now() - started >= 8) break
 
-      const body = database.query("SELECT event_json FROM transcript_entries WHERE id=?").get(row.entry_id) as {
-        event_json: string
+        const body = database.query("SELECT event_json FROM transcript_entries WHERE id=?").get(row.entry_id) as {
+          event_json: string
+        }
+        const event = JSON.parse(body.event_json) as { type: string; messageId?: string }
+        next = row.delta_seq
+        if (event.messageId !== target.messageId || (event.type !== "message.delta" && event.type !== "message.parts"))
+          continue
+
+        relevant.push({ ...row, event_json: body.event_json })
       }
-      const event = JSON.parse(body.event_json) as { type: string; messageId?: string }
-      next = row.delta_seq
-      if (event.messageId !== target.messageId || (event.type !== "message.delta" && event.type !== "message.parts"))
-        continue
-
-      relevant.push({ ...row, event_json: body.event_json })
-    }
-    applyTranscriptEntries(database, relevant, target, next >= head)
-    database
-      .query(`INSERT INTO transcript_recovery_scan(thread_id,message_id,cursor) VALUES (?,?,?)
-      ON CONFLICT(thread_id,message_id) DO UPDATE SET cursor=excluded.cursor`)
-      .run(target.threadId, target.messageId, next)
-    if (next >= head)
+      applyTranscriptEntries(database, relevant, target, next >= head)
       database
-        .query("DELETE FROM transcript_recovery_scan WHERE thread_id=? AND message_id=?")
-        .run(target.threadId, target.messageId)
-    return true
-  })()
+        .query(`INSERT INTO transcript_recovery_scan(thread_id,message_id,cursor) VALUES (?,?,?)
+      ON CONFLICT(thread_id,message_id) DO UPDATE SET cursor=excluded.cursor`)
+        .run(target.threadId, target.messageId, next)
+      if (next >= head)
+        database
+          .query("DELETE FROM transcript_recovery_scan WHERE thread_id=? AND message_id=?")
+          .run(target.threadId, target.messageId)
+      return true
+    })
+    .immediate()
 
 export const materializeTranscript = (database: Database, target?: ProjectionTarget): void => {
   if (!database.query("SELECT 1 FROM transcript_pending_deltas LIMIT 1").get()) return
-  database.transaction(() => {
-    const targetFilter = target ? "AND p.thread_id = ? AND p.message_id = ?" : ""
-    const statement = database.query(
-      // Drive both indexed stream lookups from the small dirty-message queue.
-      `SELECT e.id AS entry_id, e.seq AS delta_seq, e.at, e.event_json, m.id, m.thread_id
+  database
+    .transaction(() => {
+      const targetFilter = target ? "AND p.thread_id = ? AND p.message_id = ?" : ""
+      const statement = database.query(
+        // Drive both indexed stream lookups from the small dirty-message queue.
+        `SELECT e.id AS entry_id, e.seq AS delta_seq, e.at, e.event_json, m.id, m.thread_id
          FROM transcript_pending_deltas p
          CROSS JOIN messages m
          CROSS JOIN transcript_entries e INDEXED BY transcript_delta_message
@@ -121,12 +136,13 @@ export const materializeTranscript = (database: Database, target?: ProjectionTar
            AND part.thread_id = p.thread_id AND part.message_id = p.message_id
            AND e.id = part.entry_id AND e.seq > m.updated_seq
          ORDER BY entry_id`,
-    )
-    const rows = (
-      target ? statement.all(target.threadId, target.messageId, target.threadId, target.messageId) : statement.all()
-    ) as ProjectionEntry[]
-    applyTranscriptEntries(database, rows, target)
-  })()
+      )
+      const rows = (
+        target ? statement.all(target.threadId, target.messageId, target.threadId, target.messageId) : statement.all()
+      ) as ProjectionEntry[]
+      applyTranscriptEntries(database, rows, target)
+    })
+    .immediate()
 }
 
 type ProjectionEntry = {
@@ -158,8 +174,8 @@ const applyTranscriptEntries = (
     }
     const event = JSON.parse(row.event_json) as StreamEvent
     if (event.type === "message.parts") {
+      if (hasPartGap(projection.parts.length, event.parts)) throw new Error("Transcript part has a gap")
       for (const patch of event.parts) {
-        if (patch.partIndex > projection.parts.length) throw new Error("Transcript part has a gap")
         projection.parts[patch.partIndex] = patch.part
       }
       projection.text = projection.parts.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("")
@@ -296,130 +312,134 @@ export const compactTranscript = ({
   // Both journals receive the same writes, so each needs its own bounded budget.
   // Callers doing manual maintenance yield before draining another batch.
   const limit = 256
-  return database.transaction(() => {
-    const checkpoint = Number(
-      (
-        database.query("SELECT value FROM schema_meta WHERE key = 'transcript_event_checkpoint'").get() as {
-          value: string
-        }
-      ).value,
-    )
-    // Read only a small window from the age index. Grouping every expired entry
-    // before applying a LIMIT would still scan the entire historical backlog.
-    const aged = database
-      .query(`SELECT thread_id, seq, id FROM transcript_entries INDEXED BY transcript_entries_age
+  return database
+    .transaction(() => {
+      const checkpoint = Number(
+        (
+          database.query("SELECT value FROM schema_meta WHERE key = 'transcript_event_checkpoint'").get() as {
+            value: string
+          }
+        ).value,
+      )
+      // Read only a small window from the age index. Grouping every expired entry
+      // before applying a LIMIT would still scan the entire historical backlog.
+      const aged = database
+        .query(`SELECT thread_id, seq, id FROM transcript_entries INDEXED BY transcript_entries_age
         WHERE at < ? ORDER BY at, id LIMIT ?`)
-      .all(now - maxAgeMs, limit) as Array<{ thread_id: string; seq: number; id: number }>
-    const cutoffs = new Map<string, number>()
-    for (const row of aged)
-      if (row.id <= checkpoint) cutoffs.set(row.thread_id, Math.max(cutoffs.get(row.thread_id) ?? 0, row.seq))
-    database.exec(`CREATE TEMP TABLE IF NOT EXISTS transcript_retention_cursor (
+        .all(now - maxAgeMs, limit) as Array<{ thread_id: string; seq: number; id: number }>
+      const cutoffs = new Map<string, number>()
+      for (const row of aged)
+        if (row.id <= checkpoint) cutoffs.set(row.thread_id, Math.max(cutoffs.get(row.thread_id) ?? 0, row.seq))
+      database.exec(`CREATE TEMP TABLE IF NOT EXISTS transcript_retention_cursor (
       id INTEGER PRIMARY KEY, cursor INTEGER NOT NULL
     ); INSERT OR IGNORE INTO transcript_retention_cursor VALUES (1,0)`)
-    const cursor = (
-      database.query("SELECT cursor FROM transcript_retention_cursor WHERE id=1").get() as { cursor: number }
-    ).cursor
-    // One reverse-history seek per pass: gathering cutoffs for hundreds of
-    // threads before the deletion budget would still monopolize a cold store.
-    const threadLimit = 1
-    const threads = database
-      .query(`SELECT rowid AS cursor,id,updated_seq FROM threads
+      const cursor = (
+        database.query("SELECT cursor FROM transcript_retention_cursor WHERE id=1").get() as { cursor: number }
+      ).cursor
+      // One reverse-history seek per pass: gathering cutoffs for hundreds of
+      // threads before the deletion budget would still monopolize a cold store.
+      const threadLimit = 1
+      const threads = database
+        .query(`SELECT rowid AS cursor,id,updated_seq FROM threads
       WHERE rowid > ? ORDER BY rowid LIMIT ?`)
-      .all(cursor, threadLimit) as Array<{
-      cursor: number
-      id: string
-      updated_seq: number
-    }>
-    for (const thread of threads.filter((thread) => thread.updated_seq > entriesPerThread)) {
-      // A bounded reverse seek replaces ranking every retained historical row.
-      const excess = database
-        .query(`SELECT seq, id FROM transcript_entries
+        .all(cursor, threadLimit) as Array<{
+        cursor: number
+        id: string
+        updated_seq: number
+      }>
+      for (const thread of threads.filter((thread) => thread.updated_seq > entriesPerThread)) {
+        // A bounded reverse seek replaces ranking every retained historical row.
+        const excess = database
+          .query(`SELECT seq, id FROM transcript_entries
           WHERE thread_id = ? ORDER BY seq DESC LIMIT 1 OFFSET ?`)
-        .get(thread.id, entriesPerThread) as { seq: number; id: number } | null
-      if (excess && excess.id <= checkpoint) cutoffs.set(thread.id, Math.max(cutoffs.get(thread.id) ?? 0, excess.seq))
-    }
-    // Old history must not checkpoint unrelated growing replies on every retention batch.
-    const pendingThread = Array.from(cutoffs).find(([threadId, cutoff]) =>
-      hasPendingRetentionProjection(database, threadId, cutoff),
-    )
-    if (pendingThread) {
-      materializeTranscriptBatch(database, pendingThread[0])
-      const needsAnotherCheckpoint = Array.from(cutoffs).some(([threadId, cutoff]) =>
+          .get(thread.id, entriesPerThread) as { seq: number; id: number } | null
+        if (excess && excess.id <= checkpoint) cutoffs.set(thread.id, Math.max(cutoffs.get(thread.id) ?? 0, excess.seq))
+      }
+      // Old history must not checkpoint unrelated growing replies on every retention batch.
+      const pendingThread = Array.from(cutoffs).find(([threadId, cutoff]) =>
         hasPendingRetentionProjection(database, threadId, cutoff),
       )
-      if (needsAnotherCheckpoint) return true
-    }
-    let removed = 0
-    let more = false
-    const started = performance.now()
-    for (const [threadId, cutoff] of cutoffs) {
-      if (removed >= limit || (removed > 0 && performance.now() - started >= 8)) {
-        more = true
-        break
+      if (pendingThread) {
+        materializeTranscriptBatch(database, pendingThread[0])
+        const needsAnotherCheckpoint = Array.from(cutoffs).some(([threadId, cutoff]) =>
+          hasPendingRetentionProjection(database, threadId, cutoff),
+        )
+        if (needsAnotherCheckpoint) return true
       }
-      // Bound the actual deletion prefix too: one old timestamp may identify a
-      // cutoff far beyond the oldest 256 rows in this thread.
-      const rows = database
-        .query(`SELECT id, seq FROM transcript_entries
+      let removed = 0
+      let more = false
+      const started = performance.now()
+      for (const [threadId, cutoff] of cutoffs) {
+        if (removed >= limit || (removed > 0 && performance.now() - started >= 8)) {
+          more = true
+          break
+        }
+        // Bound the actual deletion prefix too: one old timestamp may identify a
+        // cutoff far beyond the oldest 256 rows in this thread.
+        const rows = database
+          .query(`SELECT id, seq FROM transcript_entries
           WHERE thread_id = ? AND seq <= ? ORDER BY seq LIMIT ?`)
-        .all(threadId, cutoff, limit - removed) as Array<{ id: number; seq: number }>
-      let through = 0
-      for (const row of rows) {
-        if (removed > 0 && performance.now() - started >= 8) {
-          more = true
-          break
+          .all(threadId, cutoff, limit - removed) as Array<{ id: number; seq: number }>
+        let through = 0
+        for (const row of rows) {
+          if (removed > 0 && performance.now() - started >= 8) {
+            more = true
+            break
+          }
+          // An unpublished entry can share an older reserved thread sequence.
+          // Deleting exact ids preserves that tail even when sequence/id differ.
+          if (row.id > checkpoint) continue
+          database.query("UPDATE transcript_maintenance SET delete_before_id = ? WHERE id = 1").run(row.id)
+          database.query("DELETE FROM transcript_entries WHERE id = ?").run(row.id)
+          database.query("DELETE FROM rejections WHERE thread_id = ? AND seq = ?").run(threadId, row.seq)
+          through = row.seq
+          removed++
         }
-        // An unpublished entry can share an older reserved thread sequence.
-        // Deleting exact ids preserves that tail even when sequence/id differ.
-        if (row.id > checkpoint) continue
-        database.query("UPDATE transcript_maintenance SET delete_before_id = ? WHERE id = 1").run(row.id)
-        database.query("DELETE FROM transcript_entries WHERE id = ?").run(row.id)
-        database.query("DELETE FROM rejections WHERE thread_id = ? AND seq = ?").run(threadId, row.seq)
-        through = row.seq
-        removed++
-      }
-      if (through)
-        database
-          .query(`INSERT INTO transcript_retention(thread_id, through_seq) VALUES (?, ?)
+        if (through)
+          database
+            .query(`INSERT INTO transcript_retention(thread_id, through_seq) VALUES (?, ?)
             ON CONFLICT(thread_id) DO UPDATE SET through_seq = MAX(through_seq, excluded.through_seq)`)
-          .run(threadId, through)
-    }
-    if (removed >= limit) more = true
-
-    const retained = database.query("SELECT seq FROM ui_event_log ORDER BY seq DESC LIMIT 1 OFFSET ?").get(events) as {
-      seq: number
-    } | null
-    const agedEvents = database
-      .query(`SELECT seq FROM ui_event_log INDEXED BY ui_event_log_age
-        WHERE at < ? ORDER BY at, seq LIMIT ?`)
-      .all(now - maxAgeMs, limit) as { seq: number }[]
-    const eventCutoff = agedEvents.reduce((maximum, row) => Math.max(maximum, row.seq), retained?.seq ?? 0)
-    if (eventCutoff) {
-      const rows = database
-        .query("SELECT seq FROM ui_event_log WHERE seq <= ? ORDER BY seq LIMIT ?")
-        .all(eventCutoff, limit) as { seq: number }[]
-      let through = 0
-      const eventStarted = performance.now()
-      database.query("UPDATE transcript_maintenance SET ui_delete_before_seq = ? WHERE id = 1").run(eventCutoff)
-      for (const row of rows) {
-        if (through && performance.now() - eventStarted >= 8) {
-          more = true
-          break
-        }
-        database.query("DELETE FROM ui_event_log WHERE seq = ?").run(row.seq)
-        through = row.seq
+            .run(threadId, through)
       }
-      if (through)
+      if (removed >= limit) more = true
+
+      const retained = database
+        .query("SELECT seq FROM ui_event_log ORDER BY seq DESC LIMIT 1 OFFSET ?")
+        .get(events) as {
+        seq: number
+      } | null
+      const agedEvents = database
+        .query(`SELECT seq FROM ui_event_log INDEXED BY ui_event_log_age
+        WHERE at < ? ORDER BY at, seq LIMIT ?`)
+        .all(now - maxAgeMs, limit) as { seq: number }[]
+      const eventCutoff = agedEvents.reduce((maximum, row) => Math.max(maximum, row.seq), retained?.seq ?? 0)
+      if (eventCutoff) {
+        const rows = database
+          .query("SELECT seq FROM ui_event_log WHERE seq <= ? ORDER BY seq LIMIT ?")
+          .all(eventCutoff, limit) as { seq: number }[]
+        let through = 0
+        const eventStarted = performance.now()
+        database.query("UPDATE transcript_maintenance SET ui_delete_before_seq = ? WHERE id = 1").run(eventCutoff)
+        for (const row of rows) {
+          if (through && performance.now() - eventStarted >= 8) {
+            more = true
+            break
+          }
+          database.query("DELETE FROM ui_event_log WHERE seq = ?").run(row.seq)
+          through = row.seq
+        }
+        if (through)
+          database
+            .query("UPDATE schema_meta SET value = MAX(CAST(value AS INTEGER), ?) WHERE key = 'ui_event_floor_seq'")
+            .run(through)
+        if (rows.length >= limit) more = true
+      }
+      database.exec("UPDATE transcript_maintenance SET delete_before_id = 0, ui_delete_before_seq = 0 WHERE id = 1")
+      if (!more)
         database
-          .query("UPDATE schema_meta SET value = MAX(CAST(value AS INTEGER), ?) WHERE key = 'ui_event_floor_seq'")
-          .run(through)
-      if (rows.length >= limit) more = true
-    }
-    database.exec("UPDATE transcript_maintenance SET delete_before_id = 0, ui_delete_before_seq = 0 WHERE id = 1")
-    if (!more)
-      database
-        .query("UPDATE transcript_retention_cursor SET cursor=? WHERE id=1")
-        .run(threads.length === threadLimit ? (threads.at(-1)?.cursor ?? cursor) : 0)
-    return more || threads.length === threadLimit
-  })()
+          .query("UPDATE transcript_retention_cursor SET cursor=? WHERE id=1")
+          .run(threads.length === threadLimit ? (threads.at(-1)?.cursor ?? cursor) : 0)
+      return more || threads.length === threadLimit
+    })
+    .immediate()
 }

@@ -28,6 +28,7 @@ import { getApiModel } from "../api-models/config"
 import { installDoctor } from "../doctor"
 import { parseBotFolders, protectedFolder } from "../kernel/bot-folders"
 import { DEFAULT_DATA_RETENTION_DAYS, validDataRetentionDays } from "../kernel/data-maintenance"
+import { writeDatabaseAsync } from "../kernel/database-write"
 import { SCHEMA_VERSION } from "../kernel/db"
 import {
   assertPrivateFile,
@@ -190,6 +191,35 @@ const parseSender = (value: string | null): Message["sender"] => {
 const sha256 = (value: string | Uint8Array): string => createHash("sha256").update(value).digest("hex")
 
 const now = (): EpochMs => Date.now()
+
+const getTranscriptRetentionResync = ({
+  database,
+  threadId,
+  since,
+  floor,
+  lastSeq,
+}: {
+  database: Database
+  threadId: string
+  since: number
+  floor: number
+  lastSeq: number
+}): boolean => {
+  if (since >= floor) return false
+
+  const throughSeq = Math.min(floor, lastSeq)
+  const retained = database
+    .query("SELECT COUNT(*) AS count FROM transcript_entries WHERE thread_id = ? AND seq > ? AND seq <= ?")
+    .get(threadId, since, throughSeq) as { count: number }
+  if (retained.count < throughSeq - since) return true
+
+  return Boolean(
+    database
+      .query(`SELECT 1 FROM transcript_entries
+        WHERE thread_id = ? AND seq > ? AND seq <= ? AND json_extract(event_json, '$.ref') = 1 LIMIT 1`)
+      .get(threadId, since, throughSeq),
+  )
+}
 
 const asBot = (row: RawBot): Bot => ({
   id: row.id,
@@ -443,7 +473,11 @@ const writeSettings = ({ database, settings }: { database: Database; settings: A
   }
 }
 
-export const init = async (kernel: Kernel, runStage?: PerformanceStageRunner): Promise<void> => {
+export const init = async (
+  kernel: Kernel,
+  runStage?: PerformanceStageRunner,
+  createWorker?: (url: string) => Worker,
+): Promise<void> => {
   await refreshHostFolderAccess()
   installDoctor(kernel)
   const database = kernel.db as Database
@@ -484,9 +518,26 @@ export const init = async (kernel: Kernel, runStage?: PerformanceStageRunner): P
     database,
     getMessage,
     getThread,
+    ...(createWorker ? { createWorker } : {}),
     ...(runStage ? { runStage } : {}),
   })
+  await streamWriter.ready
   const flushDeltas = streamWriter.checkpoint
+  const drainForGlobalRead = async (): Promise<void> => {
+    try {
+      await streamWriter.drainAsync()
+    } catch {
+      try {
+        kernel.log({
+          level: "warn",
+          module: "store",
+          msg: "Read continued with persisted data after stream writes were rejected",
+        })
+      } catch {
+        // A storage failure can also prevent writing the diagnostic.
+      }
+    }
+  }
 
   const updateThreadRow = ({
     threadId,
@@ -567,9 +618,10 @@ export const init = async (kernel: Kernel, runStage?: PerformanceStageRunner): P
   }
 
   const updateMessage: StoreApi["updateMessage"] = ({ threadId, messageId, patch }) => {
-    if (patch.parts !== undefined && patch.text !== undefined) streamWriter.drain()
-    else flushDeltas()
-    const current = getMessage({ threadId, messageId })
+    const storedCurrent = getMessage({ threadId, messageId })
+    const projected =
+      storedCurrent?.status === "streaming" ? streamWriter.getProjectedMessage(threadId, messageId) : null
+    const current = projected ?? storedCurrent
     if (!current) return { success: false, errorCode: "NOT_FOUND", error: `Message ${messageId} was not found` }
     // A terminal run reply can still settle its tools, but its text and outcome are final.
     if (current.role === "assistant" && current.runId && current.status !== "streaming") {
@@ -593,10 +645,10 @@ export const init = async (kernel: Kernel, runStage?: PerformanceStageRunner): P
     next.parts = externalizeMessageParts({ database, appData: kernel.paths.appData, parts: next.parts })
     const partsJson = JSON.stringify(next.parts)
     if (
-      next.status === current.status &&
-      next.text === current.text &&
-      next.runId === current.runId &&
-      partsJson === JSON.stringify(current.parts)
+      next.status === storedCurrent?.status &&
+      next.text === storedCurrent.text &&
+      next.runId === storedCurrent.runId &&
+      partsJson === JSON.stringify(storedCurrent.parts)
     )
       return { success: true, message: current }
     database
@@ -609,6 +661,11 @@ export const init = async (kernel: Kernel, runStage?: PerformanceStageRunner): P
     streamWriter.invalidate(threadId, messageId)
     kernel.publish({ type: "message.updated", message: stored })
     return { success: true, message: stored }
+  }
+
+  const updateMessageAsync: NonNullable<StoreApi["updateMessageAsync"]> = async (input) => {
+    await streamWriter.drainAsync({ threadId: input.threadId, messageId: input.messageId })
+    return writeDatabaseAsync(database, () => updateMessage(input))
   }
 
   const activePath: StoreApi["activePath"] = ({ threadId, leafId, limit, fromRoot = false }) => {
@@ -626,7 +683,7 @@ export const init = async (kernel: Kernel, runStage?: PerformanceStageRunner): P
       .slice()
       .reverse()
       .flatMap((messageId) => {
-        const message = getMessage({ threadId, messageId })
+        const message = streamWriter.getProjectedMessage(threadId, messageId) ?? getMessage({ threadId, messageId })
         return message ? [message] : []
       })
   }
@@ -638,7 +695,7 @@ export const init = async (kernel: Kernel, runStage?: PerformanceStageRunner): P
     const ids = getPathIds(database, threadId, targetId, -1, messageId)
     if (ids.at(-1) !== messageId) return null
 
-    return getMessage({ threadId, messageId })
+    return streamWriter.getProjectedMessage(threadId, messageId) ?? getMessage({ threadId, messageId })
   }
 
   const setActiveLeaf: StoreApi["setActiveLeaf"] = ({ threadId, leafId }) => {
@@ -1226,7 +1283,10 @@ export const init = async (kernel: Kernel, runStage?: PerformanceStageRunner): P
     appendDelta: streamWriter.appendDelta,
     appendParts: streamWriter.appendParts,
     flushWrites: streamWriter.drain,
+    flushWritesAsync: streamWriter.drainAsync,
+    closeStreamWriterIfIdle: streamWriter.closeIfIdle,
     updateMessage,
+    updateMessageAsync,
     activePath,
     setActiveLeaf,
     getBot,
@@ -1270,7 +1330,7 @@ export const init = async (kernel: Kernel, runStage?: PerformanceStageRunner): P
         method: "GET",
         path: "/workspace/activity",
         handler: async () => {
-          flushDeltas()
+          await drainForGlobalRead()
           const { messages, runs } = readWorkspaceActivity(database)
           return jsonResponse(200, { messages: messages.map(asMessage), runs })
         },
@@ -1426,7 +1486,7 @@ export const init = async (kernel: Kernel, runStage?: PerformanceStageRunner): P
               await cloud.request("GET", `/v1/threads/${encodeURIComponent(cloudThread.id)}/transcript${suffix}`),
             )
           }
-          flushDeltas()
+          await streamWriter.drainAsync({ threadId: params.id ?? "" })
           const thread = getThread({ threadId: params.id ?? "" })
           if (!thread) return errorResponse(404, "NOT_FOUND", "Conversa não encontrada")
           const since = Number(query.since ?? 0)
@@ -1440,7 +1500,13 @@ export const init = async (kernel: Kernel, runStage?: PerformanceStageRunner): P
           // revisions must not look like an empty, up-to-date transcript.
           const resync =
             historyThreadPending(database, thread.id) ||
-            since < (floor?.through_seq ?? 0) ||
+            getTranscriptRetentionResync({
+              database,
+              threadId: thread.id,
+              since,
+              floor: floor?.through_seq ?? 0,
+              lastSeq: thread.updatedSeq ?? 0,
+            }) ||
             since > (thread.updatedSeq ?? 0)
           const rows = database
             .query(
@@ -1480,7 +1546,7 @@ export const init = async (kernel: Kernel, runStage?: PerformanceStageRunner): P
               await cloud.request("GET", `/v1/threads/${encodeURIComponent(cloudThread.id)}/messages${suffix}`),
             )
           }
-          flushDeltas()
+          await streamWriter.drainAsync({ threadId: params.id ?? "" })
           const thread = getThread({ threadId: params.id ?? "" })
           if (!thread) return errorResponse(404, "NOT_FOUND", "Thread not found")
           const messages =
@@ -1519,10 +1585,14 @@ export const init = async (kernel: Kernel, runStage?: PerformanceStageRunner): P
         method: "GET",
         path: "/search",
         handler: async ({ query }) => {
-          const hits =
-            query.botId === undefined
-              ? search({ q: query.q ?? "", limit: 50 })
-              : search({ q: query.q ?? "", botId: query.botId, limit: 50 })
+          if (query.threadId === undefined) await drainForGlobalRead()
+          else await streamWriter.drainAsync({ threadId: query.threadId })
+          const hits = search({
+            q: query.q ?? "",
+            ...(query.botId === undefined ? {} : { botId: query.botId }),
+            ...(query.threadId === undefined ? {} : { threadId: query.threadId }),
+            limit: 50,
+          })
           return jsonResponse(200, { hits })
         },
       },

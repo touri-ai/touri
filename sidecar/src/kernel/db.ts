@@ -33,12 +33,13 @@ import messageSearchSql from "./migrations/0027.sql" with { type: "text" }
 import groupDeletionSql from "./migrations/0028.sql" with { type: "text" }
 import computerGrantExpirySql from "./migrations/0029.sql" with { type: "text" }
 import groupCoordinationHistorySql from "./migrations/0030.sql" with { type: "text" }
-import groupContextErrorSql from "./migrations/0031.sql" with { type: "text" }
+import streamWorkerSql from "./migrations/0031.sql" with { type: "text" }
+import groupContextErrorSql from "./migrations/0032.sql" with { type: "text" }
 import { withSuspendedSchemaObjects } from "./schema-rebuild"
 import { instrumentMainConnection, type SlowStatementTracker } from "./sqlite-performance"
 import { applyUpgradeBaselines } from "./upgradeBaselines"
 
-export const SCHEMA_VERSION = 31
+export const SCHEMA_VERSION = 32
 
 const FREE_PAGE_RATIO_LIMIT = 0.2
 
@@ -71,7 +72,7 @@ export const openDatabase = ({
   // default every query re-read its pages from the disk on the main thread once the OS evicted
   // them, which froze the server for seconds while the disk was busy (#470).
   database.exec(
-    "PRAGMA busy_timeout = 5000; PRAGMA auto_vacuum = INCREMENTAL; PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA ignore_check_constraints = OFF; PRAGMA journal_size_limit = 8388608; PRAGMA synchronous = NORMAL; PRAGMA cache_size = -65536;",
+    "PRAGMA busy_timeout = 5000; PRAGMA auto_vacuum = INCREMENTAL; PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA journal_size_limit = 8388608; PRAGMA synchronous = NORMAL; PRAGMA cache_size = -65536;",
   )
   database.exec(migrationSql)
   database.exec(notificationsSql)
@@ -222,8 +223,8 @@ export const openDatabase = ({
     const migrated = database.query("SELECT 1 FROM schema_meta WHERE key = 'group_coordination_history_version'").get()
     // Earlier migrations replay on startup, so a dedicated marker prevents rescanning history every time.
     if (!migrated) database.exec(groupCoordinationHistorySql)
-    database.exec("UPDATE schema_meta SET value = '30' WHERE key = 'schema_version'")
   })()
+  database.transaction(() => database.exec(streamWorkerSql))()
   // SQLite cannot extend the CHECK in place. Copy the run table once before
   // live work starts; the SQL copy preserves rowids without loading history into JS.
   const groupContextErrorMigrated = database
@@ -241,6 +242,6 @@ export const openDatabase = ({
       database.exec("PRAGMA foreign_keys = ON")
     }
   }
-  database.exec("UPDATE schema_meta SET value = '31' WHERE key = 'schema_version'")
+  database.exec("UPDATE schema_meta SET value = '32' WHERE key = 'schema_version'")
   return database
 }

@@ -729,9 +729,9 @@ test("shared replies mirror compact tool parts and subsequent delta offsets", as
         },
       ],
     })
-    f.store.flushWrites?.()
+    await f.store.flushWritesAsync?.()
     f.store.appendDelta({ threadId: ctx.threadId, messageId: inserted.message.id, partIndex: 2, delta: "\n\nPronto." })
-    f.store.flushWrites?.()
+    await f.store.flushWritesAsync?.()
     const shared = f.store.activePath({ threadId: f.thread.id }).find((message) => message.runId === ctx.runId)
     expect(shared?.parts.map((part) => part.type)).toEqual(["text", "command", "text"])
     expect(shared?.parts[1]).toMatchObject({ callId: "shared-command", outputTail: "etapa 1" })

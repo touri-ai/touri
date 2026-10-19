@@ -26,7 +26,7 @@ test.each([128, 8_192])("patching one part never serializes or traverses %i hist
     messageId: "reply",
     parts: [{ partIndex: count, part: getTool("updated") }],
   })
-  fixture.store.flushWrites?.()
+  await fixture.store.flushWritesAsync?.()
   const serializedParts = stringify.mock.calls.filter(
     ([value]) => typeof value === "object" && value !== null && "type" in value && value.type === "tool_call",
   )
@@ -51,7 +51,7 @@ test("a legacy prefix of tiny inline results does not become a bulk file rewrite
     messageId: "reply",
     parts: [{ partIndex: count, part: getTool("updated") }],
   })
-  fixture.store.flushWrites?.()
+  await fixture.store.flushWritesAsync?.()
   const serializedParts = stringify.mock.calls.filter(
     ([value]) => typeof value === "object" && value !== null && "type" in value && value.type === "tool_call",
   )
@@ -68,7 +68,7 @@ const getFixture = async (count: number, historicalOutput: string | null = null,
   const root = await mkdtemp(join(tmpdir(), "touri-bounded-stream-"))
   const runtime = createKernel({ appData: root })
   cleanups.add(async () => {
-    runtime.stop()
+    await runtime.stop()
     await rm(root, { recursive: true, force: true })
   })
   runtime.kernel.services.use("storage.maintenance")?.dispose()
@@ -114,12 +114,16 @@ const getFixture = async (count: number, historicalOutput: string | null = null,
   const writer = createStreamWriter({ kernel: runtime.kernel, database, getMessage, getThread: store.getThread })
   if (warm) {
     writer.appendParts({ threadId: "thread", messageId: "reply", parts: [{ partIndex: count, part: getTool("warm") }] })
-    writer.drain()
+    await writer.drainAsync()
   }
   historicalReads = 0
-  const writerStore = Object.assign({}, store, { appendParts: writer.appendParts, flushWrites: writer.drain })
-  cleanups.add(() => {
-    writer.drain()
+  const writerStore = Object.assign({}, store, {
+    appendParts: writer.appendParts,
+    flushWrites: writer.drain,
+    flushWritesAsync: writer.drainAsync,
+  })
+  cleanups.add(async () => {
+    await writer.drainAsync({ stopping: true })
   })
 
   return {

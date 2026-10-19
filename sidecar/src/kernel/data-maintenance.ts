@@ -96,70 +96,72 @@ export const compactMessageBatch = ({
   limit?: number
   now?: number
 }): { cursor: number; changed: boolean } =>
-  database.transaction(() => {
-    const rows = database
-      .query(`SELECT m.rowid AS row_id, m.thread_id, m.id, m.run_id, m.updated_at,
+  database
+    .transaction(() => {
+      const rows = database
+        .query(`SELECT m.rowid AS row_id, m.thread_id, m.id, m.run_id, m.updated_at,
       m.status, EXISTS(SELECT 1 FROM runs r WHERE r.thread_id = m.thread_id
         AND r.status IN ('queued','starting','running')) AS active
     FROM messages m WHERE m.rowid > ? AND m.rowid <= ? ORDER BY m.rowid LIMIT ?`)
-      .all(cursor, total, limit) as Array<{
-      row_id: number
-      thread_id: string
-      id: string
-      run_id: string | null
-      updated_at: number
-      status: string
-      active: number
-    }>
-    const days = dataRetentionDays(database)
-    const started = performance.now()
-    let nextCursor = cursor
-    let changed = false
-    database.exec("UPDATE transcript_maintenance SET projection_write = 1 WHERE id = 1")
-    for (const row of rows) {
-      if (nextCursor !== cursor && performance.now() - started >= 8) break
-      nextCursor = row.row_id
-      if (row.status === "streaming" || row.active) continue
-      // Fetch one body at a time: a legacy message can contain megabytes of tool
-      // output, so loading a whole batch before yielding defeats the time budget.
-      const body = database
-        .query("SELECT parts_json FROM messages WHERE thread_id = ? AND id = ?")
-        .get(row.thread_id, row.id) as { parts_json: string }
-      const parts = JSON.parse(body.parts_json) as MessagePart[]
-      const expired = days > 0 && row.updated_at < now - days * DAY
-      const next = expired ? summarizeParts(parts) : parts
-      const json = JSON.stringify(externalizeMessageParts({ database, appData, parts: next }))
-      if (json !== body.parts_json) {
-        database
-          .query("UPDATE messages SET parts_json = ? WHERE thread_id = ? AND id = ?")
-          .run(json, row.thread_id, row.id)
-        changed = true
+        .all(cursor, total, limit) as Array<{
+        row_id: number
+        thread_id: string
+        id: string
+        run_id: string | null
+        updated_at: number
+        status: string
+        active: number
+      }>
+      const days = dataRetentionDays(database)
+      const started = performance.now()
+      let nextCursor = cursor
+      let changed = false
+      database.exec("UPDATE transcript_maintenance SET projection_write = 1 WHERE id = 1")
+      for (const row of rows) {
+        if (nextCursor !== cursor && performance.now() - started >= 8) break
+        nextCursor = row.row_id
+        if (row.status === "streaming" || row.active) continue
+        // Fetch one body at a time: a legacy message can contain megabytes of tool
+        // output, so loading a whole batch before yielding defeats the time budget.
+        const body = database
+          .query("SELECT parts_json FROM messages WHERE thread_id = ? AND id = ?")
+          .get(row.thread_id, row.id) as { parts_json: string }
+        const parts = JSON.parse(body.parts_json) as MessagePart[]
+        const expired = days > 0 && row.updated_at < now - days * DAY
+        const next = expired ? summarizeParts(parts) : parts
+        const json = JSON.stringify(externalizeMessageParts({ database, appData, parts: next }))
+        if (json !== body.parts_json) {
+          database
+            .query("UPDATE messages SET parts_json = ? WHERE thread_id = ? AND id = ?")
+            .run(json, row.thread_id, row.id)
+          changed = true
+        }
+        // Recovery state follows the same retention policy after its run settles.
+        // Retained message/journal references still protect the shared body file.
+        if (expired && row.run_id) {
+          const terminal = database
+            .query("SELECT 1 FROM runs WHERE id = ? AND status IN ('succeeded','failed','canceled','interrupted')")
+            .get(row.run_id)
+          if (terminal)
+            for (const part of parts) {
+              if (!("callId" in part)) continue
+              const tool = database
+                .query("SELECT part_json FROM tool_resolutions WHERE run_id = ? AND call_id = ?")
+                .get(row.run_id, part.callId) as { part_json: string } | null
+              if (!tool) continue
+              const summary = JSON.stringify(summarizeParts([JSON.parse(tool.part_json) as MessagePart])[0])
+              if (summary === tool.part_json) continue
+              database
+                .query("UPDATE tool_resolutions SET part_json = ? WHERE run_id = ? AND call_id = ?")
+                .run(summary, row.run_id, part.callId)
+              changed = true
+            }
+        }
       }
-      // Recovery state follows the same retention policy after its run settles.
-      // Retained message/journal references still protect the shared body file.
-      if (expired && row.run_id) {
-        const terminal = database
-          .query("SELECT 1 FROM runs WHERE id = ? AND status IN ('succeeded','failed','canceled','interrupted')")
-          .get(row.run_id)
-        if (terminal)
-          for (const part of parts) {
-            if (!("callId" in part)) continue
-            const tool = database
-              .query("SELECT part_json FROM tool_resolutions WHERE run_id = ? AND call_id = ?")
-              .get(row.run_id, part.callId) as { part_json: string } | null
-            if (!tool) continue
-            const summary = JSON.stringify(summarizeParts([JSON.parse(tool.part_json) as MessagePart])[0])
-            if (summary === tool.part_json) continue
-            database
-              .query("UPDATE tool_resolutions SET part_json = ? WHERE run_id = ? AND call_id = ?")
-              .run(summary, row.run_id, part.callId)
-            changed = true
-          }
-      }
-    }
-    database.exec("UPDATE transcript_maintenance SET projection_write = 0 WHERE id = 1")
-    return { cursor: rows.length === 0 ? total : nextCursor, changed }
-  })()
+      database.exec("UPDATE transcript_maintenance SET projection_write = 0 WHERE id = 1")
+      return { cursor: rows.length === 0 ? total : nextCursor, changed }
+    })
+    .immediate()
 
 export const collectUnusedOutputBlobs = async (
   database: Database,
@@ -462,16 +464,18 @@ export const createStorageMaintenance = ({
           completedAt: 0,
         }
       }
-      progress = database.transaction(() => {
-        const next = runStage
-          ? runStage("storage_message_compaction_batch", () =>
-              compactMessageBatch({ database, appData, cursor: progress.cursor, total: progress.total }),
-            )
-          : compactMessageBatch({ database, appData, cursor: progress.cursor, total: progress.total })
-        const committed = { ...progress, cursor: next.cursor, changed: progress.changed || next.changed }
-        save(committed)
-        return committed
-      })()
+      progress = database
+        .transaction(() => {
+          const next = runStage
+            ? runStage("storage_message_compaction_batch", () =>
+                compactMessageBatch({ database, appData, cursor: progress.cursor, total: progress.total }),
+              )
+            : compactMessageBatch({ database, appData, cursor: progress.cursor, total: progress.total })
+          const committed = { ...progress, cursor: next.cursor, changed: progress.changed || next.changed }
+          save(committed)
+          return committed
+        })
+        .immediate()
       status = { running: true, processed: progress.cursor, total: progress.total }
       if (progress.cursor < progress.total) {
         timer = schedule(step, 10)

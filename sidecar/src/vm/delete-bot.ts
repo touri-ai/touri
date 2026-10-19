@@ -120,50 +120,52 @@ const deleteBotLogins = async (kernel: Kernel, botId: string) => {
 
 const deleteBotData = (kernel: Kernel, botId: string) => {
   const db = kernel.db as Database
-  return db.transaction(() => {
-    detachBotGroupThreads(db, botId)
-    saveRemovedGroupMembers(kernel, botId)
-    createGroupStore(kernel).removeBot(botId)
-    const attachments = getBotAttachments(db, botId)
-    const files = getBotFilePaths(kernel, botId)
-    db.query(
-      "INSERT INTO settings(key,value_json,updated_at) VALUES (?,?,?) ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json,updated_at=excluded.updated_at",
-    ).run(`storage.deleted-attachments:${botId}`, JSON.stringify([...attachments]), Date.now())
-    purgeBotReplay(db, botId)
-    deleteBotRunReferences(db, botId)
-    const threads = "SELECT id FROM threads WHERE bot_id = ?"
-    db.query(`DELETE FROM group_message_links WHERE source_thread_id IN (${threads})`).run(botId)
-    db.query(`UPDATE threads SET group_thread_id = NULL WHERE group_thread_id IN (${threads}) AND bot_id != ?`).run(
-      botId,
-      botId,
-    )
-    const threadTables = ["send_journal", "messages_fts", "transcript_retention"]
-    threadTables.forEach((table) => {
-      db.query(`DELETE FROM ${table} WHERE thread_id IN (${threads})`).run(botId)
+  return db
+    .transaction(() => {
+      detachBotGroupThreads(db, botId)
+      saveRemovedGroupMembers(kernel, botId)
+      createGroupStore(kernel).removeBot(botId)
+      const attachments = getBotAttachments(db, botId)
+      const files = getBotFilePaths(kernel, botId)
+      db.query(
+        "INSERT INTO settings(key,value_json,updated_at) VALUES (?,?,?) ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json,updated_at=excluded.updated_at",
+      ).run(`storage.deleted-attachments:${botId}`, JSON.stringify([...attachments]), Date.now())
+      purgeBotReplay(db, botId)
+      deleteBotRunReferences(db, botId)
+      const threads = "SELECT id FROM threads WHERE bot_id = ?"
+      db.query(`DELETE FROM group_message_links WHERE source_thread_id IN (${threads})`).run(botId)
+      db.query(`UPDATE threads SET group_thread_id = NULL WHERE group_thread_id IN (${threads}) AND bot_id != ?`).run(
+        botId,
+        botId,
+      )
+      const threadTables = ["send_journal", "messages_fts", "transcript_retention"]
+      threadTables.forEach((table) => {
+        db.query(`DELETE FROM ${table} WHERE thread_id IN (${threads})`).run(botId)
+      })
+      // Open the existing retention guard only inside this scoped transaction.
+      db.query(
+        "UPDATE transcript_maintenance SET delete_before_id = (SELECT COALESCE(MAX(id), 0) FROM transcript_entries) WHERE id = 1",
+      ).run()
+      db.query(`DELETE FROM transcript_entries WHERE thread_id IN (${threads})`).run(botId)
+      db.query("UPDATE transcript_maintenance SET delete_before_id = 0 WHERE id = 1").run()
+      db.query(
+        "DELETE FROM notification_log WHERE notification_id IN (SELECT id FROM notifications WHERE bot_id = ?)",
+      ).run(botId)
+      db.query("DELETE FROM notifications WHERE bot_id = ?").run(botId)
+      db.query("DELETE FROM tool_calls WHERE bot_id = ?").run(botId)
+      const botTables = ["bot_mcp_servers", "cloud_runs", "cloud_machines"]
+      botTables.forEach((table) => {
+        db.query(`DELETE FROM ${table} WHERE bot_id = ?`).run(botId)
+      })
+      db.query("DELETE FROM processes WHERE vm_bot_id = ?").run(botId)
+      db.query("DELETE FROM browser_tabs WHERE owner_bot_id = ?").run(botId)
+      db.query("DELETE FROM settings WHERE key = ?").run(`approval-grants:${botId}`)
+      // Cascades remove only this bot's private threads, routines and group membership.
+      db.query("DELETE FROM bots WHERE id = ?").run(botId)
+      deleteBotFiles(kernel, botId, files)
+      return attachments
     })
-    // Open the existing retention guard only inside this scoped transaction.
-    db.query(
-      "UPDATE transcript_maintenance SET delete_before_id = (SELECT COALESCE(MAX(id), 0) FROM transcript_entries) WHERE id = 1",
-    ).run()
-    db.query(`DELETE FROM transcript_entries WHERE thread_id IN (${threads})`).run(botId)
-    db.query("UPDATE transcript_maintenance SET delete_before_id = 0 WHERE id = 1").run()
-    db.query(
-      "DELETE FROM notification_log WHERE notification_id IN (SELECT id FROM notifications WHERE bot_id = ?)",
-    ).run(botId)
-    db.query("DELETE FROM notifications WHERE bot_id = ?").run(botId)
-    db.query("DELETE FROM tool_calls WHERE bot_id = ?").run(botId)
-    const botTables = ["bot_mcp_servers", "cloud_runs", "cloud_machines"]
-    botTables.forEach((table) => {
-      db.query(`DELETE FROM ${table} WHERE bot_id = ?`).run(botId)
-    })
-    db.query("DELETE FROM processes WHERE vm_bot_id = ?").run(botId)
-    db.query("DELETE FROM browser_tabs WHERE owner_bot_id = ?").run(botId)
-    db.query("DELETE FROM settings WHERE key = ?").run(`approval-grants:${botId}`)
-    // Cascades remove only this bot's private threads, routines and group membership.
-    db.query("DELETE FROM bots WHERE id = ?").run(botId)
-    deleteBotFiles(kernel, botId, files)
-    return attachments
-  })()
+    .immediate()
 }
 
 const saveRemovedGroupMembers = (kernel: Kernel, botId: string) => {

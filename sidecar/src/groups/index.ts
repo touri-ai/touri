@@ -22,10 +22,12 @@ export const init = async (kernel: Kernel): Promise<void> => {
         path: "/groups",
         handler: async ({ body }) => {
           if (!groups.validate(body)) return invalid
-          const result = (kernel.db as import("bun:sqlite").Database).transaction(() => {
-            const group = groups.save(body)
-            return { group, thread: groups.createThread(group) }
-          })()
+          const result = (kernel.db as import("bun:sqlite").Database)
+            .transaction(() => {
+              const group = groups.save(body)
+              return { group, thread: groups.createThread(group) }
+            })
+            .immediate()
           kernel.publish({ type: "group.updated", group: result.group })
           return { status: 201, json: result }
         },

@@ -98,6 +98,34 @@ test.each([
   expect(safeRunFailure(errorClass, failure.detail)).toEqual(failure)
 })
 
+test.each([
+  '529 {"error":{"type":"overloaded_error","message":"Overloaded"}}',
+  "HTTP 529 Overloaded",
+  "503 Service Unavailable: The model is overloaded",
+  "503: server is overloaded",
+])("a provider overload response is model capacity, not an account limit: %s", (diagnostic) => {
+  const errorClass = classifyProviderError(diagnostic)
+  const failure = safeRunFailure(errorClass, diagnostic)
+
+  expect(errorClass).toBe("rate_limit")
+  expect(failure.detail).toBe("O modelo selecionado está sem capacidade no momento.")
+  expect(failure.hint).toBe("Escolha outro modelo nas configurações do bot ou tente de novo em alguns minutos.")
+})
+
+test.each([
+  "The overloaded function signature is ambiguous",
+  "disk is overloaded with downloads",
+  "file.ts:529: overloaded operator",
+  "server is overloaded",
+  "The model is overloaded",
+])("unrelated overloaded diagnostics remain unknown: %s", (diagnostic) => {
+  expect(classifyProviderError(diagnostic)).toBe("unknown")
+})
+
+test("authentication still takes precedence over provider overload", () => {
+  expect(classifyProviderError("401 Unauthorized: the model is overloaded")).toBe("cli_auth")
+})
+
 test.each(["The buffer capacity was exceeded", "model download failed: disk at capacity"])(
   "unrelated capacity diagnostics remain unknown: %s",
   (diagnostic) => {

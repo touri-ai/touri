@@ -55,6 +55,7 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
   let idleCompletion: ReturnType<typeof Promise.withResolvers<void>> | null = null
   let draining = false
   let stopped = false
+  let pendingSharedUpdates = Promise.resolve()
   const isCurrentTurn = (turn: Turn) =>
     !!groups.get(turn.group.id) &&
     store.getThread({ threadId: turn.run.threadId })?.groupId === turn.group.id &&
@@ -303,6 +304,8 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
     }
     try {
       const run = await waitRun(result.run.id, turn.controller.signal, turn.deadline)
+      await pendingSharedUpdates
+      await store.flushWritesAsync?.({ threadId: thread.id })
       if (run.status !== "succeeded") throw new Error(run.errorMessage ?? "O bot não concluiu o pedido")
       return store.activePath({ threadId: thread.id }).find((m) => m.id === run.replyMessageId)?.text ?? ""
     } finally {
@@ -417,11 +420,24 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
       .query("SELECT visible_message_id FROM group_message_links WHERE source_thread_id=? AND message_id=?")
       .get(sourceThread, message.id) as { visible_message_id: string } | null
     if (link) {
-      store.updateMessage({
+      const input = {
         threadId: frame.turn.run.threadId,
         messageId: link.visible_message_id,
         patch: { parts: message.parts, text: message.text, status: message.status, runId: message.runId },
-      })
+      }
+      if (store.updateMessageAsync)
+        pendingSharedUpdates = pendingSharedUpdates
+          .then(() => store.updateMessageAsync?.(input))
+          .then(() => undefined)
+          .catch((error: unknown) => {
+            kernel.log({
+              level: "error",
+              module: "groups",
+              msg: "Não foi possível atualizar a resposta compartilhada",
+              data: { error: error instanceof Error ? error.message : String(error) },
+            })
+          })
+      else store.updateMessage(input)
     } else {
       const botId = frame.stack.at(-1) ?? ""
       const bot = store.getBot({ botId })

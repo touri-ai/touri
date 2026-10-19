@@ -53,7 +53,7 @@ export type KernelRuntime = {
   kernel: Kernel
   runStage: PerformanceStageRunner
   handshake: SidecarHandshake
-  stop: () => void
+  stop: () => Promise<void>
   emitHostNotification: (notification: HostNotification) => void
 }
 
@@ -190,7 +190,7 @@ export const createKernel = ({
     recentErrors.push({ code, at: Date.now() })
     if (recentErrors.length > 500) recentErrors.shift()
   })
-  const bus = createEventBus(database, stageTracker.run)
+  const bus = createEventBus(database, stageTracker.run, { deferRecovery: true })
   const notifications = new Set<(notification: HostNotification) => void>()
   const socketHost = createHostClient({
     socketPath: process.env.TOURI_HOST_SOCK ?? join(paths.runDir, "host.sock"),
@@ -604,24 +604,30 @@ export const createKernel = ({
     content: JSON.stringify({ port: server.port ?? 0, token: uiToken, pid: process.pid, version }),
   })
 
-  const stop = (): void => {
-    diagnostics.stop()
-    services.use("store.api")?.flushWrites?.({ stopping: true })
-    clearInterval(revocationTimer)
-    revocationTask.dispose()
-    for (const controller of pendingRequests) controller.abort()
-    for (const socket of liveSockets) socket.close(1001, "Servidor encerrado")
-    liveSockets.clear()
-    stopHistoryBackfill()
-    storageMaintenance.dispose({ closing: true })
-    services.use("vm.desktop")?.dispose()
-    services.use("doctor")?.dispose()
-    removePrivateFile({ root: paths.appData, path: handshakePath })
-    shell.dispose()
-    host.close()
-    server.stop(true)
-    bus.stop()
-    database.close()
+  let stopPromise: Promise<void> | undefined
+  const stop = (): Promise<void> => {
+    if (stopPromise) return stopPromise
+    stopPromise = (async () => {
+      diagnostics.stop()
+      clearInterval(revocationTimer)
+      revocationTask.dispose()
+      for (const controller of pendingRequests) controller.abort()
+      for (const socket of liveSockets) socket.close(1001, "Servidor encerrado")
+      liveSockets.clear()
+      server.stop(true)
+      const store = services.use("store.api")
+      if (store && !store.closeStreamWriterIfIdle?.()) await store.flushWritesAsync?.({ stopping: true })
+      stopHistoryBackfill()
+      storageMaintenance.dispose({ closing: true })
+      services.use("vm.desktop")?.dispose()
+      services.use("doctor")?.dispose()
+      removePrivateFile({ root: paths.appData, path: handshakePath })
+      shell.dispose()
+      host.close()
+      bus.stop()
+      database.close()
+    })()
+    return stopPromise
   }
 
   return {
