@@ -39,7 +39,7 @@ it("F012 offers explicit routine activation in the chat approval card", async ()
   const card = screen.getByRole("article", { name: "Aprovação de ferramenta" })
   expect(card).toHaveTextContent("Resumo diário QA")
   expect(card).toHaveTextContent("Todo dia às 09:00 · horário de São Paulo")
-  expect(within(card).queryByRole("button", { name: "Sempre neste bot" })).toBeNull()
+  expect(within(card).queryByRole("button", { name: "Permitir sempre nesta ferramenta" })).toBeNull()
   fireEvent.click(within(card).getByRole("button", { name: "Ativar rotina “Resumo diário QA”" }))
   await waitFor(() =>
     expect(api.calls).toContainEqual({

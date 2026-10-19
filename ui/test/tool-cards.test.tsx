@@ -291,22 +291,17 @@ it("does not invent a decision timestamp for restored approvals", () => {
   expect(screen.getByText("Aprovado por você")).toBeVisible()
 })
 
-for (const [key, decision] of [["{Escape}", "denied"]] as const) {
-  it(`answers ${decision} with ${key} only when the approval card is focused`, async () => {
-    const user = userEvent.setup()
-    const api = createMockApi()
-    render(<ApprovalCard part={approval} api={api} />)
-    await user.keyboard(key)
-    expect(api.calls).toHaveLength(0)
-    screen.getByRole("article", { name: "Aprovação de ferramenta" }).focus()
-    await user.keyboard(key)
-    expect(api.calls).toContainEqual({
-      route: "POST /approvals/:id",
-      input: { decision, standing: false },
-      pathValues: { id: approval.approvalId },
-    })
-  })
-}
+it("does not deny an approval when Escape is pressed on the card", async () => {
+  const user = userEvent.setup()
+  const api = createMockApi()
+  render(<ApprovalCard part={approval} api={api} />)
+  await user.keyboard("{Escape}")
+  expect(api.calls).toHaveLength(0)
+  screen.getByRole("article", { name: "Aprovação de ferramenta" }).focus()
+  await user.keyboard("{Escape}")
+  expect(api.calls).toHaveLength(0)
+  expect(screen.getByRole("button", { name: "Aprovar" })).toBeVisible()
+})
 
 it("preserves Enter on action buttons and disclosure summaries instead of approving accidentally", async () => {
   const user = userEvent.setup()
@@ -332,8 +327,9 @@ it("disables all decisions while sending, prevents duplicate answers, and recove
   api.request = request as ApiRequest
   render(<ApprovalCard part={approval} api={api} />)
   const card = screen.getByRole("article", { name: "Aprovação de ferramenta" })
-  fireEvent.keyDown(card, { key: "Escape" })
-  fireEvent.keyDown(card, { key: "Escape" })
+  const approve = within(card).getByRole("button", { name: "Aprovar" })
+  fireEvent.click(approve)
+  fireEvent.click(approve)
   expect(request).toHaveBeenCalledTimes(1)
   for (const button of screen.getAllByRole("button")) expect(button).toBeDisabled()
   await act(async () => reject(new Error("Falha de conexão")))
@@ -342,18 +338,18 @@ it("disables all decisions while sending, prevents duplicate answers, and recove
   expect(screen.getByRole("button", { name: "Negar" })).toBeEnabled()
 })
 
-it("describes the standing grant's tool and bot scope, and hides it when unsupported", () => {
+it("shows the standing grant scope after a separate confirmation step", () => {
   const view = render(
     <ApprovalCard
       part={{ ...approval, scope: { source: "mcp", server: "docs", tool: "save" } }}
       api={createMockApi()}
     />,
   )
-  expect(screen.getByRole("button", { name: "Sempre neste bot" })).toHaveAccessibleDescription(
-    /novas chamadas de docs · save neste bot sem pedir aprovação/,
-  )
+  fireEvent.click(screen.getByRole("button", { name: "Permitir sempre nesta ferramenta" }))
+  expect(screen.getByText(/A ferramenta docs · save poderá agir neste bot/)).toBeVisible()
+  expect(screen.getByRole("button", { name: /Sim, permitir .* neste bot sem perguntar de novo/ })).toBeVisible()
   view.rerender(<ApprovalCard part={{ ...approval, allowStanding: false }} api={createMockApi()} />)
-  expect(screen.queryByRole("button", { name: "Sempre neste bot" })).toBeNull()
+  expect(screen.queryByRole("button", { name: "Permitir sempre nesta ferramenta" })).toBeNull()
 })
 
 it("groups two completed calls inside one disclosure and keeps matched pending approvals outside it", async () => {
@@ -591,7 +587,7 @@ it("never approves on Enter on the card or either approval button", async () => 
   card.focus()
   fireEvent.keyDown(card, { key: "Enter" })
   fireEvent.keyDown(card, { key: "Enter", repeat: true })
-  for (const name of ["Aprovar", "Sempre neste bot"]) {
+  for (const name of ["Aprovar", "Permitir sempre nesta ferramenta"]) {
     screen.getByRole("button", { name }).focus()
     await user.keyboard("{Enter}")
   }

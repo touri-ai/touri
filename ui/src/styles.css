@@ -4011,12 +4011,27 @@ a {
 .tool-shortcuts kbd {
   font: var(--type-10) / var(--leading-body) var(--font-mono-brand);
 }
+.tool-standing-section {
+  margin-top: var(--space-12);
+  padding-top: var(--space-12);
+  border-top: 1px solid var(--border-subtle);
+}
 .tool-standing-action {
   position: relative;
+  color: var(--text-link);
+  font-size: var(--type-12);
 }
-.tool-standing-help,
+.tool-standing-confirmation {
+  min-width: 0;
+  margin: 0;
+  padding: var(--space-12);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-8);
+  background: var(--surface-tool);
+}
+.tool-standing-confirmation p,
 .tool-standing-resolution p {
-  margin: var(--space-8) 0;
+  margin: 0 0 var(--space-10);
   color: var(--text-secondary);
   font-size: var(--type-12);
 }
@@ -4085,26 +4100,6 @@ a {
 .delete-bot-files span {
   min-width: 0;
   overflow-wrap: anywhere;
-}
-.tool-standing-tooltip {
-  position: absolute;
-  inset-inline-start: 0;
-  bottom: calc(100% + var(--space-8));
-  z-index: 10;
-  width: min(270px, 60vw);
-  padding: var(--space-10) var(--space-12);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-8);
-  background: var(--surface-panel);
-  box-shadow: var(--elevation-popover);
-  color: var(--text-body);
-  font-size: var(--type-11);
-  visibility: hidden;
-  pointer-events: none;
-}
-.tool-standing-action:hover .tool-standing-tooltip,
-.tool-standing-action:focus-within .tool-standing-tooltip {
-  visibility: visible;
 }
 .tool-call-card .tool-action-error {
   color: var(--text-danger);
@@ -4190,10 +4185,6 @@ a {
   }
   .tool-standing-action {
     position: static;
-  }
-  .tool-standing-tooltip {
-    inset-inline: 0;
-    width: 100%;
   }
   .tool-card-header .tool-status-chip {
     margin-inline-start: calc(var(--space-28) + var(--space-8));

@@ -41,7 +41,7 @@ it("merges the enriched approval with the tool and requires an explicit activati
   render(<ToolCallList parts={[tool, approval()]} api={api} finished={false} createdAt={1} />)
   expect(screen.getAllByText("Ativar navegador")).toHaveLength(1)
   expect(screen.getByText(/Lia quer ativar o navegador dele para abrir a página solicitada/)).toBeVisible()
-  expect(screen.queryByRole("button", { name: "Sempre neste bot" })).not.toBeInTheDocument()
+  expect(screen.queryByRole("button", { name: "Permitir sempre nesta ferramenta" })).not.toBeInTheDocument()
   const enable = screen.getByRole("button", { name: "Ativar", exact: true })
   fireEvent.keyDown(enable, { key: "Enter" })
   expect(api.calls).toHaveLength(0)
@@ -76,7 +76,7 @@ it("computer control describes its screen boundary and never offers standing con
   expect(screen.getByText("Ativar controle do computador")).toBeVisible()
   expect(screen.getByText(/Controla somente a tela do computador isolado do bot/)).toBeVisible()
   expect(screen.getByText(/Pode ver a tela e clicar ou digitar, somente onde o touri permite/)).toBeVisible()
-  expect(screen.queryByRole("button", { name: "Sempre neste bot" })).not.toBeInTheDocument()
+  expect(screen.queryByRole("button", { name: "Permitir sempre nesta ferramenta" })).not.toBeInTheDocument()
 })
 
 it.each([

@@ -807,6 +807,15 @@ export const ptBR = {
   "Aprovado por você": "Aprovado por você",
   "Aprovação expirada": "Aprovação expirada",
   "Negado por você": "Negado por você",
+  Approve: "Aprovar",
+  Revoke: "Revogar",
+  "Permitir sempre nesta ferramenta": "Permitir sempre nesta ferramenta",
+  "Permissão permanente para {name}": "Permissão permanente para {name}",
+  "A ferramenta {name} poderá agir neste bot sem pedir aprovação novamente, inclusive em novas chamadas com outros parâmetros. Você pode remover essa permissão em Avançado → Permissões.":
+    "A ferramenta {name} poderá agir neste bot sem pedir aprovação novamente, inclusive em novas chamadas com outros parâmetros. Você pode remover essa permissão em Avançado → Permissões.",
+  "Sim, permitir {name} neste bot sem perguntar de novo": "Sim, permitir {name} neste bot sem perguntar de novo",
+  "Permissão permanente neste bot": "Permissão permanente neste bot",
+  "Permissão permanente revogada.": "Permissão permanente revogada.",
 
   "As pastas estão no computador onde o touri está rodando.":
     "As pastas estão no computador onde o touri está rodando.",
@@ -3413,6 +3422,15 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Aprovado por você": "Approved by you",
   "Aprovação expirada": "Approval expired",
   "Negado por você": "Denied by you",
+  Approve: "Approve",
+  Revoke: "Revoke",
+  "Permitir sempre nesta ferramenta": "Always allow this tool",
+  "Permissão permanente para {name}": "Standing permission for {name}",
+  "A ferramenta {name} poderá agir neste bot sem pedir aprovação novamente, inclusive em novas chamadas com outros parâmetros. Você pode remover essa permissão em Avançado → Permissões.":
+    "The {name} tool can act on this bot without asking again, including new calls with different inputs. You can remove this permission in Advanced → Permissions.",
+  "Sim, permitir {name} neste bot sem perguntar de novo": "Yes, allow {name} on this bot without asking again",
+  "Permissão permanente neste bot": "Standing permission for this bot",
+  "Permissão permanente revogada.": "Standing permission revoked.",
 
   "As pastas estão no computador onde o touri está rodando.": "Folders are on the computer running touri.",
   "Caminho da pasta": "Folder path",

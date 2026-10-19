@@ -192,10 +192,10 @@ it("never approves: approval cards are not palette results and Enter in the pale
   await start(api)
   const approve = await screen.findByRole("button", { name: "Aprovar" })
   act(() => approve.focus())
-  for (const query of ["aprovar", "Executar comando", "sempre neste bot"]) {
+  for (const query of ["aprovar", "Executar comando", "permitir sempre nesta ferramenta"]) {
     await search(query)
     const labels = screen.queryAllByRole("option").map((option) => option.textContent ?? "")
-    expect(labels.some((label) => /^Aprovar|Executar comando|Sempre neste bot/.test(label))).toBe(false)
+    expect(labels.some((label) => /^Aprovar|Executar comando|Permitir sempre nesta ferramenta/.test(label))).toBe(false)
     fireEvent.keyDown(window, { key: "Escape" })
     await closed()
     expect(approve).toHaveFocus()
