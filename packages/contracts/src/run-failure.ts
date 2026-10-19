@@ -39,11 +39,15 @@ const MAX_PUBLIC_DIAGNOSTIC = 240
 const REFINABLE: ReadonlyArray<string> = ["unknown", "cli_crash", "cli_protocol", "tool_error"]
 const MESSAGE_CLASSES: ReadonlyArray<string> = ["unknown", "cli_crash", "cli_protocol", "tool_error", ""]
 const PROVIDERS = ["codex", "claude", "opencode"] as const
+const MODEL_AT_CAPACITY =
+  /\bmodel is (?:currently )?at capacity\b|O modelo selecionado está sem capacidade no momento\./i
 
 const PROVIDER_LOGIN: FailureAction = { kind: "setting", settingId: "providerLogin", label: "Abrir login do provedor" }
 const VM_MEMORY: FailureAction = { kind: "setting", settingId: "vmMemory", label: "Abrir memória da máquina" }
 const DOCTOR: FailureAction = { kind: "doctor", label: "Abrir o Doctor" }
 const MACHINE_SERVICE: FailureAction = { kind: "machine_service", label: "Iniciar serviço de máquinas" }
+
+export const isModelAtCapacity = (text: string): boolean => MODEL_AT_CAPACITY.test(text)
 
 /** Redact paths, credentials and long opaque strings from a provider diagnostic and bound its size. */
 export const sanitizeDiagnostic = (value: string | null | undefined): string => {
@@ -184,6 +188,15 @@ const RULES: ReadonlyArray<Rule> = [
       detail: "O provedor foi encerrado por falta de memória (código 137).",
       hint: "Aumente a memória da máquina virtual nas configurações e tente de novo.",
       action: VM_MEMORY,
+    }),
+  },
+  {
+    test: MODEL_AT_CAPACITY,
+    errorClass: "rate_limit",
+    build: () => ({
+      stage: "turn",
+      detail: "O modelo selecionado está sem capacidade no momento.",
+      hint: "Escolha outro modelo nas configurações do bot ou tente de novo em alguns minutos.",
     }),
   },
   {
