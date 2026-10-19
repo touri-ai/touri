@@ -10,6 +10,7 @@ type FetchHandler<SocketData> = (request: Request, server: Server<SocketData>) =
 const STAGES = [
   "provider_frame_batch",
   "provider_frame_dispatch",
+  "runtime_request_path_lookup",
   "runtime_provider_event",
   "runtime_turn_finalization",
   "runtime_message_publish",

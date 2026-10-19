@@ -83,6 +83,7 @@ import { createWorkState, type WorkState } from "./work-state"
 
 type RunState = {
   replyParentId?: Id | undefined
+  requestMessage?: Message | null
   text: string
   pendingText: Array<string>
   pendingPartText: Map<number, { type: "text" | "reasoning"; chunks: Array<string> }>
@@ -821,7 +822,7 @@ export const createRuntimeEngine = ({
       if (!event.delta) return
       if (!state.replyMessageId) {
         const thread = store.getThread({ threadId: run.threadId })
-        const request = run.requestMessageId && thread ? getActivePathMessage({ store, run }) : null
+        const request = run.requestMessageId && thread ? getActivePathMessage({ store, run, state }) : null
         if (request) ensureReply({ run, state, store, parentId: request.id })
       }
       // Provider items are separate Markdown documents; chunks within an item are not.
@@ -877,7 +878,7 @@ export const createRuntimeEngine = ({
       }
       if (state.replyMessageId) publishMessage({ store, state, run, status: "streaming" })
       else {
-        const request = getActivePathMessage({ store, run })
+        const request = getActivePathMessage({ store, run, state })
         if (request) ensureReply({ run, state, store, parentId: request.id })
       }
       return
@@ -939,7 +940,7 @@ export const createRuntimeEngine = ({
       }
       if (!state.replyMessageId) {
         const thread = store.getThread({ threadId: run.threadId })
-        const request = run.requestMessageId && thread ? getActivePathMessage({ store, run }) : null
+        const request = run.requestMessageId && thread ? getActivePathMessage({ store, run, state }) : null
         if (request) ensureReply({ run, state, store, parentId: request.id })
       }
       const liveOutput =
@@ -1008,7 +1009,7 @@ export const createRuntimeEngine = ({
       })
       if (!state.replyMessageId) {
         const thread = store.getThread({ threadId: run.threadId })
-        const request = run.requestMessageId && thread ? getActivePathMessage({ store, run }) : null
+        const request = run.requestMessageId && thread ? getActivePathMessage({ store, run, state }) : null
         if (request) ensureReply({ run, state, store, parentId: request.id })
       }
       pendingApprovals.set(approvalId, {
@@ -1028,11 +1029,31 @@ export const createRuntimeEngine = ({
     state.completionError = event.errorClass ? { errorClass: event.errorClass, errorMessage: event.errorMessage } : null
   }
 
-  const getActivePathMessage = ({ store, run }: { store: StoreApi; run: Run }): Message | null => {
-    if (!run.requestMessageId) return null
-    if (store.getPathMessage) return store.getPathMessage({ threadId: run.threadId, messageId: run.requestMessageId })
+  const getActivePathMessage = ({
+    store,
+    run,
+    state,
+  }: {
+    store: StoreApi
+    run: Run
+    state?: RunState
+  }): Message | null => {
+    if (state?.requestMessage !== undefined) return state.requestMessage
+    const requestMessageId = run.requestMessageId
+    if (!requestMessageId) {
+      if (state) state.requestMessage = null
+      return null
+    }
+    const getRequestFromActivePath = () =>
+      store.getPathMessage
+        ? store.getPathMessage({ threadId: run.threadId, messageId: requestMessageId })
+        : (store.activePath({ threadId: run.threadId }).find((message) => message.id === requestMessageId) ?? null)
+    const request = runStage
+      ? runStage("runtime_request_path_lookup", getRequestFromActivePath)
+      : getRequestFromActivePath()
+    if (state) state.requestMessage = request
 
-    return store.activePath({ threadId: run.threadId }).find((message) => message.id === run.requestMessageId) ?? null
+    return request
   }
 
   // Group coordination envelopes use the system role; failed member attempts alone leave no conversation to restore.
@@ -1179,7 +1200,8 @@ export const createRuntimeEngine = ({
           },
         }) ?? undefined
     }
-    const request = getActivePathMessage({ store, run })
+    // Keep the run attached to the request path validated before provider startup.
+    const request = getActivePathMessage({ store, run, state })
     const resumedFrom = request?.role === "system" ? continuationReasonOf(request.text) : null
     const link = continuations.link(run.id)
     const originalRun = link ? persistence.getRun(link.originalRunId) : null

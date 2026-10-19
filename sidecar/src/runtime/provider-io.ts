@@ -2,7 +2,7 @@ import type { Kernel } from "@touri/contracts"
 import type { PerformanceStageRunner } from "../kernel/performance"
 
 export type ChildProcess = Extract<ReturnType<Kernel["spawnTree"]>, { success: true }>
-const PROVIDER_FRAME_BATCH_SIZE = 64
+const PROVIDER_FRAME_BATCH_SIZE = 16
 
 const yieldToEventLoop = (): Promise<void> => new Promise((resolve) => setImmediate(resolve))
 

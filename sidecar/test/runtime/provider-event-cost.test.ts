@@ -28,8 +28,15 @@ afterEach(async () => {
 
 type BenchmarkResult = {
   events: number
+  historyMessages: number
+  historyPartBytes: number
   parts: number
   providerCpuMs: number
+  providerDispatchCpuMs: number
+  providerAdapterCpuMs: number
+  runtimeEventCpuMs: number
+  providerDispatchCalls: number
+  runtimeEventCalls: number
   attributedMs: number
   attributedCpuMs: number
   maxBlockMs: number
@@ -38,7 +45,14 @@ type BenchmarkResult = {
   duplicateActiveRuns: number
   busEvents: number
   busPartsEvents: number
-  stages: Array<{ name: string; calls: number; totalMs: number; maxMs: number }>
+  stages: Array<{
+    name: string
+    calls: number
+    totalMs: number
+    maxMs: number
+    totalCpuMs: number
+    maxCpuMs: number
+  }>
 }
 
 const getReplayEvents = (count: number): Array<Record<string, unknown>> => {
@@ -104,23 +118,37 @@ const getTrackedRunner = () => {
   let maxBlockMs = 0
   let maxBlockCpuMs = 0
   let firstFrameCpu: NodeJS.CpuUsage | null = null
-  const stageTimes = new Map<PerformanceStage, { calls: number; totalMs: number; maxMs: number }>()
+  const stageTimes = new Map<
+    PerformanceStage,
+    { calls: number; totalMs: number; maxMs: number; totalCpuMs: number; maxCpuMs: number }
+  >()
   const runStage: PerformanceStageRunner = (stage, action, input) => {
     if (stage === "provider_frame_batch" && firstFrameCpu === null) firstFrameCpu = process.cpuUsage()
     const parentDepth = depth
     const cpuStartedAt = parentDepth === 0 && firstFrameCpu !== null ? process.cpuUsage() : null
+    const stageCpuStartedAt =
+      stage === "provider_frame_batch" ||
+      stage === "provider_frame_dispatch" ||
+      stage === "runtime_request_path_lookup" ||
+      stage === "runtime_provider_event"
+        ? process.cpuUsage()
+        : null
     depth += 1
     const startedAt = performance.now()
     try {
       return tracker.run(stage, action, input)
     } finally {
       const elapsed = performance.now() - startedAt
+      const cpu = stageCpuStartedAt ? process.cpuUsage(stageCpuStartedAt) : null
+      const elapsedCpuMs = cpu ? (cpu.user + cpu.system) / 1_000 : 0
       depth -= 1
-      const previous = stageTimes.get(stage) ?? { calls: 0, totalMs: 0, maxMs: 0 }
+      const previous = stageTimes.get(stage) ?? { calls: 0, totalMs: 0, maxMs: 0, totalCpuMs: 0, maxCpuMs: 0 }
       stageTimes.set(stage, {
         calls: previous.calls + 1,
         totalMs: previous.totalMs + elapsed,
         maxMs: Math.max(previous.maxMs, elapsed),
+        totalCpuMs: previous.totalCpuMs + elapsedCpuMs,
+        maxCpuMs: Math.max(previous.maxCpuMs, elapsedCpuMs),
       })
       if (parentDepth === 0 && firstFrameCpu !== null) {
         // One-time end-of-turn work is budgeted separately; the block budget covers streaming.
@@ -161,18 +189,103 @@ const getTrackedRunner = () => {
   }
 }
 
-const runReplay = async (count: number): Promise<BenchmarkResult> => {
+const seedHistory = ({
+  database,
+  threadId,
+  messageCount,
+}: {
+  database: Database
+  threadId: string
+  messageCount: number
+}): { leafId: string | null; partBytes: number } => {
+  const toolOutput = JSON.stringify({
+    results: Array.from({ length: 20 }, (_, index) => ({
+      title: `Resultado ${index}`,
+      snippet: "s".repeat(1_500),
+    })),
+  })
+  const messages = Array.from({ length: messageCount }, (_, index) => {
+    const id = `benchmark-history-${index}`
+    const parentId = index === 0 ? null : `benchmark-history-${index - 1}`
+    const timestamp = index + 1
+    const role = index % 2 === 0 ? "user" : "assistant"
+    const text =
+      role === "user" ? `Solicitação anterior ${"contexto ".repeat(60)}` : `Resumo ${"resultado ".repeat(30)}`
+    const parts =
+      role === "user"
+        ? [{ type: "text", text }]
+        : [
+            { type: "text", text },
+            {
+              type: "tool_call",
+              callId: `benchmark-history-tool-${index}`,
+              tool: "search",
+              summary: "Resultados anteriores",
+              inputJson: JSON.stringify({ query: `consulta ${index}` }),
+              outputJson: toolOutput,
+              ok: true,
+              resolution: "succeeded",
+            },
+          ]
+
+    return { id, parentId, role, text, parts, timestamp }
+  })
+  const insert = database.query(
+    "INSERT INTO messages (id, thread_id, parent_id, role, kind, status, run_id, text, parts_json, sender_json, source, created_at, updated_at, client_nonce, delivery_status, delivery_deadline) VALUES (?, ?, ?, ?, 'text', 'complete', NULL, ?, ?, NULL, 'local', ?, ?, NULL, NULL, NULL)",
+  )
+  const setLeaf = database.query("UPDATE threads SET active_leaf_id = ? WHERE id = ?")
+
+  database.transaction(() => {
+    messages.forEach((message) => {
+      insert.run(
+        message.id,
+        threadId,
+        message.parentId,
+        message.role,
+        message.text,
+        JSON.stringify(message.parts),
+        message.timestamp,
+        message.timestamp,
+      )
+    })
+    const leaf = messages.at(-1)
+    if (leaf) setLeaf.run(leaf.id, threadId)
+  })()
+
+  const partBytes = messages.reduce((total, message) => total + Buffer.byteLength(JSON.stringify(message.parts)), 0)
+  return { leafId: messages.at(-1)?.id ?? null, partBytes }
+}
+
+const waitForTurnStart = async (requestLogPath: string): Promise<void> => {
+  const deadline = Date.now() + 30_000
+  while (Date.now() < deadline) {
+    const requestLog = Bun.file(requestLogPath)
+    if ((await requestLog.exists()) && (await requestLog.text()).includes('"method":"turn/start"')) return
+    await Bun.sleep(5)
+  }
+  throw new Error("Synthetic provider did not reach turn/start")
+}
+
+const runReplay = async (count: number, historyMessages = 0): Promise<BenchmarkResult> => {
   const root = mkdtempSync(join(tmpdir(), "touri-provider-event-benchmark-"))
   replayCleanups.push(() => rmSync(root, { recursive: true, force: true }))
   const assets = mkdtempSync(join(tmpdir(), "touri-provider-event-fixture-"))
   replayCleanups.push(() => rmSync(assets, { recursive: true, force: true }))
   const fakePath = join(assets, "fake-codex")
   const scenarioPath = join(assets, "scenario.json")
+  const requestLogPath = join(assets, "requests.jsonl")
+  const pauseBeforeTurnStart = historyMessages ? join(assets, "resume-turn-start") : null
   const fakeCodex = join(import.meta.dir, "../fakes/fake-codex.ts")
   const wrapper = `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} run ${JSON.stringify(fakeCodex)} "$@"\n`
   writeFileSync(fakePath, wrapper, { mode: 0o700 })
   chmodSync(fakePath, 0o700)
-  writeFileSync(scenarioPath, JSON.stringify({ events: getReplayEvents(count) }))
+  writeFileSync(
+    scenarioPath,
+    JSON.stringify({
+      events: getReplayEvents(count),
+      ...(pauseBeforeTurnStart ? { pauseBeforeTurnStart, requestLogPath } : {}),
+    }),
+  )
 
   const stages = getTrackedRunner()
   const runtime = createKernel({ appData: root, stageTracker: stages.stageTracker })
@@ -190,11 +303,12 @@ const runReplay = async (count: number): Promise<BenchmarkResult> => {
   const createdThread = store.createThread({ botId: "benchmark-bot", kind: "main", title: "Benchmark" })
   if (!createdThread.success) throw new Error(createdThread.error)
   const threadId = createdThread.thread.id
+  const history = seedHistory({ database, threadId, messageCount: historyMessages })
   const request = store.insertMessage({
     message: {
       id: "benchmark-request",
       threadId,
-      parentId: null,
+      parentId: history.leafId,
       role: "user",
       kind: "text",
       status: "complete",
@@ -238,6 +352,12 @@ const runReplay = async (count: number): Promise<BenchmarkResult> => {
       )
       .get(threadId, request.message.id) as { count: number }
   ).count
+  if (pauseBeforeTurnStart && history.leafId) {
+    await waitForTurnStart(requestLogPath)
+    // The request stays durable while a user switches the visible branch during provider startup.
+    database.query("UPDATE threads SET active_leaf_id = ? WHERE id = ?").run(history.leafId, threadId)
+    writeFileSync(pauseBeforeTurnStart, "resume")
+  }
   const deadline = Date.now() + 30_000
   while (["queued", "starting", "running"].includes(queued.run.status)) {
     if (Date.now() > deadline) throw new Error("Synthetic provider replay timed out")
@@ -245,19 +365,48 @@ const runReplay = async (count: number): Promise<BenchmarkResult> => {
   }
   expect(queued.run.status).toBe("succeeded")
   const performanceResult = stages.getResult()
+  const providerDispatch = performanceResult.stages.find(({ name }) => name === "provider_frame_dispatch")
+  const runtimeEvent = performanceResult.stages.find(({ name }) => name === "runtime_provider_event")
+  const providerDispatchCpuMs = providerDispatch?.totalCpuMs ?? 0
+  const runtimeEventCpuMs = runtimeEvent?.totalCpuMs ?? 0
+  const providerAdapterCpuMs = Math.max(0, providerDispatchCpuMs - runtimeEventCpuMs)
+  console.log(
+    `provider-event-profile ${JSON.stringify({
+      historyMessages,
+      historyPartBytes: history.partBytes,
+      providerCpuMs: performanceResult.providerCpuMs,
+      providerAdapterCpuMs,
+      stages: performanceResult.stages.filter(({ name }) =>
+        [
+          "provider_frame_batch",
+          "provider_frame_dispatch",
+          "runtime_request_path_lookup",
+          "runtime_provider_event",
+        ].some((stage) => stage === name),
+      ),
+    })}`,
+  )
   store.flushWrites?.()
   await Bun.sleep(5)
-  const reply = store.activePath({ threadId }).find((message) => message.role === "assistant")
+  const reply = store.activePath({ threadId }).find((message) => message.runId === queued.run.id)
   if (!reply) throw new Error("Synthetic provider reply missing")
+  expect(reply.parentId).toBe(request.message.id)
   expect(events.length).toBeGreaterThan(0)
   const result: BenchmarkResult = {
     events: count + 2,
+    historyMessages,
+    historyPartBytes: history.partBytes,
     parts: reply.parts.length,
     busEvents: events.length,
     busPartsEvents: events.filter((type) => type === "message.parts").length,
     duplicateSharesRun: duplicate.run.id === queued.run.id && duplicate.run === queued.run,
     duplicateActiveRuns,
     ...performanceResult,
+    providerDispatchCpuMs,
+    providerAdapterCpuMs,
+    runtimeEventCpuMs,
+    providerDispatchCalls: performanceResult.stages.find(({ name }) => name === "provider_frame_dispatch")?.calls ?? 0,
+    runtimeEventCalls: performanceResult.stages.find(({ name }) => name === "runtime_provider_event")?.calls ?? 0,
   }
   console.log(`provider-event-benchmark ${JSON.stringify(result)}`)
   return result
@@ -288,4 +437,32 @@ test("Provider event cost grows linearly and duplicate starts share one run", as
   expect(result.stages.find(({ name }) => name === "runtime_turn_finalization")?.maxMs ?? Infinity).toBeLessThan(250)
   expect(result.stages.find(({ name }) => name === "provider_frame_batch")?.maxMs ?? Infinity).toBeLessThan(50)
   expect(result.stages.find(({ name }) => name === "runtime_provider_event")?.maxMs ?? Infinity).toBeLessThan(50)
+})
+
+test("Provider event cost stays independent of conversation history", async () => {
+  const recent = await runReplay(60, 100)
+  const result = await runReplay(60, 1_000)
+  const recentPerEventCpuMs = recent.runtimeEventCpuMs / recent.runtimeEventCalls
+  const resultPerEventCpuMs = result.runtimeEventCpuMs / result.runtimeEventCalls
+  const recentPerFrameCpuMs = recent.providerDispatchCpuMs / recent.providerDispatchCalls
+  const resultPerFrameCpuMs = result.providerDispatchCpuMs / result.providerDispatchCalls
+  const maxFrameCpuMs = result.stages.find(({ name }) => name === "provider_frame_dispatch")?.maxCpuMs ?? Infinity
+  const recentPathLookups = recent.stages.find(({ name }) => name === "runtime_request_path_lookup")?.calls ?? 0
+  const resultPathLookups = result.stages.find(({ name }) => name === "runtime_request_path_lookup")?.calls ?? 0
+
+  expect(result.providerDispatchCpuMs).toBeGreaterThan(0)
+  expect(result.providerAdapterCpuMs).toBeGreaterThan(0)
+  expect(result.runtimeEventCpuMs).toBeLessThanOrEqual(result.providerDispatchCpuMs)
+  expect(result.historyMessages).toBe(1_000)
+  expect(result.historyPartBytes).toBeGreaterThan(15_000_000)
+  expect(recent.historyMessages).toBe(100)
+  expect(recent.historyPartBytes).toBeGreaterThan(1_500_000)
+  expect(recentPathLookups).toBe(1)
+  expect(resultPathLookups).toBe(1)
+  expect(resultPerEventCpuMs).toBeLessThan(5)
+  expect(resultPerFrameCpuMs).toBeLessThan(10)
+  expect(resultPerEventCpuMs).toBeLessThan(recentPerEventCpuMs * 3 + 0.5)
+  expect(resultPerFrameCpuMs).toBeLessThan(recentPerFrameCpuMs * 3 + 0.5)
+  expect(result.maxBlockCpuMs).toBeLessThan(50)
+  expect(maxFrameCpuMs).toBeLessThan(50)
 })
