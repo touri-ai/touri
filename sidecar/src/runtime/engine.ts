@@ -631,7 +631,6 @@ export const createRuntimeEngine = ({
       return
     }
     if (!messageId) return
-    state.parts = state.parts.map((part) => ("callId" in part ? tools.record(run, part) : part))
     const updated = measureStage("runtime_terminal_message_update", () =>
       store.updateMessage({
         threadId: run.threadId,
