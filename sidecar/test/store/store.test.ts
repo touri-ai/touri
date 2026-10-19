@@ -411,29 +411,29 @@ test("avatar identity survives create, patch, database reopen and notification s
       body: JSON.stringify({
         name: "Morpheus",
         provider: "codex",
-        avatarShape: "nuage",
+        avatarShape: "short-flower",
         avatarSeed: "stable-seed",
         color: "#2468ac",
       }),
     })
     expect(response.status).toBe(201)
     const { bot } = (await response.json()) as { bot: Bot }
-    expect(bot).toMatchObject({ avatarShape: "nuage", avatarSeed: "stable-seed", color: "#2468ac" })
+    expect(bot).toMatchObject({ avatarShape: "short-flower", avatarSeed: "stable-seed", color: "#2468ac" })
     const patch = await fetch(`${endpoint}/bots/${bot.id}`, {
       method: "PATCH",
       headers,
-      body: JSON.stringify({ avatarShape: "hexagone", name: "Renamed" }),
+      body: JSON.stringify({ avatarShape: "long-crown", name: "Renamed" }),
     })
     expect(patch.status).toBe(200)
     expect(((await patch.json()) as { bot: Bot }).bot).toMatchObject({
-      avatarShape: "hexagone",
+      avatarShape: "long-crown",
       avatarSeed: "stable-seed",
       color: "#2468ac",
     })
     const reopened = openDatabase({ filename: fixture.runtime.kernel.paths.db })
     try {
       expect(reopened.query("SELECT avatar_shape, avatar_seed, color FROM bots WHERE id = ?").get(bot.id)).toEqual({
-        avatar_shape: "hexagone",
+        avatar_shape: "long-crown",
         avatar_seed: "stable-seed",
         color: "#2468ac",
       })
@@ -444,10 +444,17 @@ test("avatar identity survives create, patch, database reopen and notification s
         title: "Done",
         body: "Reply",
       }).notification
-      expect(record).toMatchObject({ avatarShape: "hexagone", avatarSeed: "stable-seed", botColor: "#2468ac" })
+      expect(record).toMatchObject({ avatarShape: "long-crown", avatarSeed: "stable-seed", botColor: "#2468ac" })
     } finally {
       reopened.close()
     }
+    const legacy = await fetch(`${endpoint}/bots/${bot.id}`, {
+      method: "PATCH",
+      headers,
+      body: JSON.stringify({ avatarShape: "cercle", name: "Renamed again" }),
+    })
+    expect(legacy.status).toBe(200)
+    expect(((await legacy.json()) as { bot: Bot }).bot.avatarShape).toBe("cercle")
     for (const input of [
       { avatarShape: "bull" },
       { avatarShape: "goutte" },

@@ -28,7 +28,7 @@ describe.each(locales)("count labels in %s", (locale) => {
       id: "group",
       name: "Equipe",
       color: "#dc2626",
-      avatarShape: "cercle",
+      avatarShape: "classic-none",
       avatarSeed: "group",
       memberIds: bots.map((bot) => bot.id),
       coordinatorBotId: null,

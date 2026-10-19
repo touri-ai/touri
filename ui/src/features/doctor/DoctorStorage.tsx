@@ -22,7 +22,7 @@ export const DoctorStorage = ({ api }: { api: UiApi }) => {
         setReport(next)
         if (next.maintenance.running) timer = setTimeout(() => void read(), 1000)
       } catch {
-        if (active) setError("Não foi possível consultar o armazenamento.")
+        if (active) setError(t("Não foi possível consultar o armazenamento."))
       }
     }
     if (polling) timer = setTimeout(() => void read(), 1000)
@@ -40,7 +40,7 @@ export const DoctorStorage = ({ api }: { api: UiApi }) => {
       setReport((current) => (current ? { ...current, maintenance: next.maintenance } : null))
     } catch {
       setError(
-        "Não foi possível iniciar a compactação. Aguarde a migração ou compactação em andamento e tente novamente.",
+        t("Não foi possível iniciar a compactação. Aguarde a migração ou compactação em andamento e tente novamente."),
       )
     } finally {
       setBusy(false)
@@ -48,24 +48,26 @@ export const DoctorStorage = ({ api }: { api: UiApi }) => {
   }
   const running = busy || report?.maintenance.running
   return (
-    <section className="doctor-group" aria-label="Armazenamento">
-      <h3>Armazenamento</h3>
+    <section className="doctor-group" aria-label={t("Armazenamento")}>
+      <h3>{t("Armazenamento")}</h3>
       {report && (
         <div>
           <p>
-            Banco: {size(report.storage.databaseBytes)} · Diário: {size(report.storage.walBytes)} · Espaço reutilizável:{" "}
-            {size(report.storage.reusableBytes)}
+            {t("Banco")}: {size(report.storage.databaseBytes)} · {t("Registro temporário do banco")}:{" "}
+            {size(report.storage.walBytes)} · {t("Espaço reutilizável")}: {size(report.storage.reusableBytes)}
           </p>
           <p>
-            Texto: {size(report.storage.messageTextBytes)} · Detalhes: {size(report.storage.messagePartsBytes)} ·
-            Histórico de eventos: {size(report.storage.transcriptBytes + report.storage.eventBytes)} · Anexos:{" "}
+            {t("Texto")}: {size(report.storage.messageTextBytes)} · {t("Detalhes")}:{" "}
+            {size(report.storage.messagePartsBytes)} · {t("Histórico de eventos")}:{" "}
+            {size(report.storage.transcriptBytes + report.storage.eventBytes)} · {t("Anexos")}:{" "}
             {size(report.storage.attachmentBytes)}
           </p>
         </div>
       )}
       <p>
-        Resume detalhes antigos conforme a preferência de retenção e preserva o texto das conversas. Resultados grandes
-        e capturas ficam em anexos.
+        {t(
+          "Resume detalhes antigos conforme a preferência de retenção e preserva o texto das conversas. Resultados grandes e capturas ficam em anexos.",
+        )}
       </p>
       <label>
         <input
@@ -74,10 +76,10 @@ export const DoctorStorage = ({ api }: { api: UiApi }) => {
           disabled={Boolean(running)}
           onChange={(event) => setVacuum(event.target.checked)}
         />
-        Recuperar espaço do banco (VACUUM)
+        {t("Recuperar espaço do banco (VACUUM)")}
       </label>
       <p className="muted-copy">
-        Recuperar espaço pode levar alguns segundos. Esta etapa só roda quando você a seleciona.
+        {t("Recuperar espaço pode levar alguns segundos. Esta etapa só roda quando você a seleciona.")}
       </p>
       <button
         type="button"
@@ -85,7 +87,7 @@ export const DoctorStorage = ({ api }: { api: UiApi }) => {
         disabled={!report || Boolean(running)}
         onClick={() => void compact()}
       >
-        {running ? "Compactando dados…" : "Compactar dados"}
+        {running ? t("Compactando dados…") : t("Compactar dados")}
       </button>
       <p role="status" aria-live="polite">
         {report?.maintenance.running

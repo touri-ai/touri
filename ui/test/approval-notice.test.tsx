@@ -35,7 +35,7 @@ const notification: NotificationRecord = {
   botId: "bot-a",
   botName: "Café Ideias",
   botColor: "#cc3355",
-  avatarShape: "cercle",
+  avatarShape: "classic-none",
   threadId: "thread-a",
   requestId: folder.approvalId,
   title: "Approve action",

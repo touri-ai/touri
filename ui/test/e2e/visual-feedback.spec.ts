@@ -35,29 +35,20 @@ for (const theme of ["light", "dark"]) {
         if (phase === "after" && view === "working") {
           for (const selector of [".bot-row.selected", ".chat-bot-chip", ".bot-panel-identity", ".activity-mascot"]) {
             const avatar = page.locator(`${selector} .tb-avatar`).first()
-            await expect(avatar.locator(".tb-avatar-contour")).toBeVisible()
-            await expect(avatar.locator(".tb-avatar-contour")).toHaveCSS("animation-name", "none")
+            await expect(avatar).toHaveAttribute("data-avatar-phase", /^(thinking|working)$/)
+            await expect(avatar.locator(".tb-avatar-head")).toHaveCSS("animation-name", "none")
           }
           await expect(page.locator(".tb-avatar-rings, linearGradient")).toHaveCount(0)
         }
       } else if (phase === "after") {
-        const centers = await page.locator(".tb-avatar").evaluateAll((nodes) =>
+        const offsets = await page.locator(".tb-avatar").evaluateAll((nodes) =>
           nodes.map((node) => {
             const tile = node.getBoundingClientRect()
-            const body = node.querySelector(".tb-avatar-body g path")?.getBoundingClientRect()
-            return body
-              ? {
-                  dx: body.x + body.width / 2 - tile.x - tile.width / 2,
-                  dy: body.y + body.height / 2 - tile.y - tile.height / 2,
-                }
-              : null
+            const body = node.querySelector(".tb-avatar-body")?.getBoundingClientRect()
+            return body ? Math.abs(body.x - tile.x) + Math.abs(body.width - tile.width) : Infinity
           }),
         )
-        for (const center of centers) {
-          expect(center).not.toBeNull()
-          expect(Math.abs(center?.dx ?? Infinity)).toBeLessThan(0.5)
-          expect(Math.abs(center?.dy ?? Infinity)).toBeLessThan(0.5)
-        }
+        for (const offset of offsets) expect(offset).toBeLessThan(0.5)
       }
       await page.evaluate(() => document.fonts.ready)
       await page.screenshot({ path: `${evidence}/${phase}-${view}-${theme}.png`, fullPage: true })
@@ -66,50 +57,24 @@ for (const theme of ["light", "dark"]) {
 }
 
 if (phase === "after") {
-  test("working contour pulses in all four surfaces and becomes static under reduced motion", async ({ page }) => {
+  test("working bull animates in every live surface and becomes still under reduced motion", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 960 })
     await page.goto("/test/e2e/fixtures/visual-feedback.html?view=working&theme=dark")
     await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
     await expect(page.locator(".bot-panel")).toHaveCount(0)
     await showBotPanel(page)
-    for (const selector of [".bot-row.selected", ".chat-bot-chip", ".bot-panel-identity", ".activity-mascot"]) {
-      const avatar = page.locator(`${selector} .tb-avatar`).first()
-      const contour = avatar.locator(".tb-avatar-contour")
-      await expect(contour).toHaveCSS("animation-name", "avatar-contour-pulse")
-      await expect(contour).toHaveCSS("animation-duration", "1.2s")
-      await expect(contour).toHaveCSS("stroke", "rgb(59, 147, 240)")
-      expect(
-        await avatar.evaluate(
-          (element) =>
-            element.querySelector(".tb-avatar-contour")?.getAttribute("d") ===
-            element.querySelector(".tb-avatar-body g path")?.getAttribute("d"),
-        ),
-      ).toBe(true)
+    for (const selector of [".bot-row.selected", ".chat-bot-chip", ".bot-panel-identity"]) {
+      const head = page.locator(`${selector} .tb-avatar .tb-avatar-head`).first()
+      await expect(head).toHaveCSS("animation-name", /^tb-avatar-(bob|tilt)$/)
     }
+    await expect(page.locator(".activity-mascot .tb-avatar")).toHaveAttribute("data-avatar-animated", "false")
     await expect(page.locator(".tb-avatar-rings, linearGradient")).toHaveCount(0)
-    await expect(page.locator(".bot-panel-identity .tb-avatar")).toHaveAttribute("data-avatar-state", "idle")
-    await page.evaluate(async () => {
-      const finite = document
-        .getAnimations()
-        .filter((animation) => animation.effect?.getTiming().iterations !== Infinity)
-      const settle = (animation: Animation): Promise<unknown> =>
-        Promise.race([animation.finished.catch(() => undefined), new Promise((resolve) => setTimeout(resolve, 1000))])
-      await Promise.all(finite.map(settle))
-      for (const animation of document.getAnimations()) {
-        if (animation instanceof CSSAnimation && animation.animationName === "avatar-contour-pulse") {
-          animation.currentTime = 600
-          animation.pause()
-        }
-      }
-    })
-    await page.screenshot({ path: `${evidence}/after-working-motion-dark.png` })
+    await page.screenshot({ path: `${evidence}/after-working-motion-dark.png`, animations: "disabled" })
     await page.emulateMedia({ reducedMotion: "reduce" })
     await expect(page.locator(".bot-panel-identity .tb-avatar")).toHaveAttribute("data-avatar-animated", "false")
-    const body = await page.locator(".bot-panel-identity .tb-avatar-body").innerHTML()
-    for (const contour of await page.locator(".tb-avatar-contour").all())
-      await expect(contour).toHaveCSS("animation-name", "none")
+    const still = await page.locator(".bot-panel-identity .tb-avatar-body").innerHTML()
     await page.clock.install()
     await page.clock.runFor(2400)
-    expect(await page.locator(".bot-panel-identity .tb-avatar-body").innerHTML()).toBe(body)
+    expect(await page.locator(".bot-panel-identity .tb-avatar-body").innerHTML()).toBe(still)
   })
 }

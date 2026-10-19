@@ -24,7 +24,7 @@ const notice = (patch: Partial<NotificationRecord>): NotificationRecord => ({
   botId: "bot-mark",
   botName: "mark",
   botColor: "var(--accent-brand)",
-  avatarShape: "cercle",
+  avatarShape: "classic-none",
   avatarSeed: null,
   threadId: "thread-mark",
   requestId: null,

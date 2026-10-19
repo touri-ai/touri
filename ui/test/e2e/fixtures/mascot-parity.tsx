@@ -33,9 +33,6 @@ const Fixture = () => {
       <button id="hover-probe" type="button" style={{ margin: 32 }}>
         <BotAvatar bot={{ id: "mark", color: null }} size={40} />
       </button>
-      <div id="gaze-probe" style={{ margin: 32 }}>
-        <BotAvatar bot={{ id: "mark", color: null }} size={40} followPointer />
-      </div>
     </>
   )
 }

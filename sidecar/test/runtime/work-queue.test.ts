@@ -216,7 +216,7 @@ test("group work preserves execution thread IDs in every event and keeps learnin
   const group = groups.save({
     name: "Equipe de demonstração",
     color: "#dc2626",
-    avatarShape: "cercle",
+    avatarShape: "classic-none",
     memberIds: ["bot-0", "bot-1"],
     coordinatorBotId: null,
   })

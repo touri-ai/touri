@@ -24,7 +24,6 @@ for (const scenario of ["regular", "large replies"] as const) {
     const temporary = await mkdtemp(join(repository, "node_modules/.cache/touri-server-memory-"))
     let server: ChildProcess | undefined
     try {
-      await run("bun", ["--cwd", "ui", "build"], { cwd: repository })
       const listener = createServer()
       await new Promise<void>((ready) => listener.listen(0, "127.0.0.1", ready))
       const address = listener.address()
