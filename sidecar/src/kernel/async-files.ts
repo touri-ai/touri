@@ -23,7 +23,7 @@ const createFileIo = () => {
     if (starting) return starting
     starting = new Promise<void>((resolve, reject) => {
       readyReject = reject
-      worker = new Worker(new URL("./file-io-worker.ts", import.meta.url).href, {
+      worker = new Worker(new URL("./file-io-worker.ts", import.meta.url), {
         smol: true,
         ref: false,
       }) as RefableWorker
