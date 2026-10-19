@@ -535,6 +535,10 @@ export const ptBR = {
     "Não consegui conectar à sua IA. Verifique a conexão e tente novamente.",
   "Entre novamente no {provedor} para continuar.": "Entre novamente no {provedor} para continuar.",
   "Entrar na conta": "Entrar na conta",
+  "Modelo temporariamente sem capacidade": "Modelo temporariamente sem capacidade",
+  "O modelo selecionado está sem capacidade no momento.": "O modelo selecionado está sem capacidade no momento.",
+  "Escolha outro modelo nas configurações do bot ou tente de novo em alguns minutos.":
+    "Escolha outro modelo nas configurações do bot ou tente de novo em alguns minutos.",
   "O {provedor} atingiu o limite de uso. Tente após {horario}.":
     "O {provedor} atingiu o limite de uso. Tente após {horario}.",
   "O {provedor} atingiu o limite de uso. Tente mais tarde.": "O {provedor} atingiu o limite de uso. Tente mais tarde.",
@@ -2987,6 +2991,10 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
     "I could not connect to your AI. Check your connection and try again.",
   "Entre novamente no {provedor} para continuar.": "Sign in to {provedor} again to continue.",
   "Entrar na conta": "Sign in",
+  "Modelo temporariamente sem capacidade": "Model temporarily at capacity",
+  "O modelo selecionado está sem capacidade no momento.": "The selected model is at capacity right now.",
+  "Escolha outro modelo nas configurações do bot ou tente de novo em alguns minutos.":
+    "Choose another model in the bot settings or try again in a few minutes.",
   "O {provedor} atingiu o limite de uso. Tente após {horario}.":
     "{provedor} has reached its usage limit. Try after {horario}.",
   "O {provedor} atingiu o limite de uso. Tente mais tarde.": "{provedor} has reached its usage limit. Try again later.",

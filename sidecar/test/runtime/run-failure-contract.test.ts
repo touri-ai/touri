@@ -83,9 +83,34 @@ test("adapter-side classification already yields the specific class for the hist
   expect(classifyProviderError("something nobody has seen")).toBe("unknown")
 })
 
-test("a model capacity response is classified as a provider limit", () => {
-  expect(classifyProviderError("Selected model is at capacity. Please try a different model.")).toBe("rate_limit")
-  expect(classifyProviderError("The buffer capacity was exceeded")).toBe("unknown")
+test.each([
+  "Selected model is at capacity. Please try a different model.",
+  "The model is currently at capacity. Please try again later.",
+  "Selected MODEL IS AT CAPACITY. Please try a different model.",
+])("a model capacity response preserves the recovery advice: %s", (diagnostic) => {
+  const errorClass = classifyProviderError(diagnostic)
+  const failure = safeRunFailure(errorClass, diagnostic)
+
+  expect(errorClass).toBe("rate_limit")
+  expect(refineErrorClass("unknown", diagnostic)).toBe("rate_limit")
+  expect(failure.detail).toBe("O modelo selecionado está sem capacidade no momento.")
+  expect(failure.hint).toBe("Escolha outro modelo nas configurações do bot ou tente de novo em alguns minutos.")
+  expect(safeRunFailure(errorClass, failure.detail)).toEqual(failure)
+})
+
+test.each(["The buffer capacity was exceeded", "model download failed: disk at capacity"])(
+  "unrelated capacity diagnostics remain unknown: %s",
+  (diagnostic) => {
+    const errorClass = classifyProviderError(diagnostic)
+
+    expect(errorClass).toBe("unknown")
+  },
+)
+
+test("authentication still takes precedence over model capacity", () => {
+  const errorClass = classifyProviderError("401 Unauthorized: selected model is at capacity")
+
+  expect(errorClass).toBe("cli_auth")
 })
 
 test("every actionable cause carries a precise CTA", () => {
