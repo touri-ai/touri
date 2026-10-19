@@ -185,7 +185,7 @@ test("a failed write preserves its error when cleanup fails", async () => {
     },
   }
   cleanups.add(() => stopBotHomeWriter(kernel))
-  await mkdir(join(root, "outside"))
+  await mkdir(join(root, "outside", "fixture"), { recursive: true })
   await rm(join(root, "bots"), { recursive: true })
   await symlink(join(root, "outside"), join(root, "bots"))
 
@@ -194,7 +194,7 @@ test("a failed write preserves its error when cleanup fails", async () => {
   )
 
   expect(logs).toEqual(["Could not remove uncommitted bot home"])
-  expect(await readdir(join(root, "outside"))).toEqual([])
+  expect(await readdir(join(root, "outside"))).toEqual(["fixture"])
 })
 
 test("cancellation immediately after the write removes the uncommitted home", async () => {
