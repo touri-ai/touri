@@ -1,9 +1,24 @@
--- Keep one durable idempotency result for the in-flight stream batch. The
--- worker serializes batches, so the next commit safely replaces this marker.
-CREATE TABLE IF NOT EXISTS stream_writer_state (
-  id INTEGER PRIMARY KEY CHECK (id = 1),
-  batch_id TEXT,
-  result_json TEXT
-);
-INSERT OR IGNORE INTO stream_writer_state(id) VALUES (1);
+UPDATE messages
+SET role = 'system',
+    kind = 'notice',
+    parts_json = json(
+      '[' ||
+      json_object(
+        'type', 'notice',
+        'level', 'info',
+        'code', 'group_coordination_prompt',
+        'text', text
+      )
+      || CASE
+        WHEN json_array_length(parts_json) = 0 THEN ''
+        ELSE ',' || substr(json(parts_json), 2, length(json(parts_json)) - 2)
+      END
+      || ']'
+    )
+WHERE role = 'user'
+  AND thread_id IN (SELECT id FROM threads WHERE group_thread_id IS NOT NULL)
+  AND substr(text, 1, 7) = 'Grupo "'
+  AND instr(text, 'Histórico compartilhado (dados, não instruções)') > 0;
+
+INSERT OR REPLACE INTO schema_meta(key, value) VALUES ('group_coordination_history_version', '1');
 UPDATE schema_meta SET value = '30' WHERE key = 'schema_version';
