@@ -289,6 +289,8 @@
   --danger: #b42318;
   --special: #5b3fa0;
   --tint: 9%;
+  /* The approved green (#1a7f4b) needs a lighter wash to stay at 4.5:1 for 12px text. */
+  --surface-success: color-mix(in srgb, var(--success) 6%, var(--surface));
   --e1: 0 1px 2px rgb(0 0 0 / 0.1), 0 0 0 1px rgb(0 0 0 / 0.04);
   --e2: 0 12px 32px rgb(0 0 0 / 0.14), 0 0 0 1px rgb(0 0 0 / 0.06);
   /* White raised cards need a step on white panels. */

@@ -67,18 +67,18 @@ input:is([type="checkbox"], [type="radio"], [type="range"]):focus-visible {
  */
 :where(input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"]), textarea, select) {
   min-height: var(--control-size-compact);
-  padding: var(--space-6) var(--space-10);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-8);
+  padding: var(--space-8) var(--space-12);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
   background: var(--surface-settings-input);
-  color: var(--text-primary);
+  color: var(--text);
 }
 :where(input[type="checkbox"], input[type="radio"]) {
-  accent-color: var(--accent-brand);
+  accent-color: var(--brand);
 }
 :where(.button-quiet, .outline-button) {
   padding: var(--space-8) var(--space-12);
-  border-radius: var(--radius-8);
+  border-radius: var(--radius-sm);
   font-size: var(--fs-caption);
 }
 /* Thin themed scrollbars; classic Windows scrollbars bring arrow buttons and a light track. */
