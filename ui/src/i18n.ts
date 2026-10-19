@@ -1163,7 +1163,7 @@ export const ptBR = {
   "Resumo dos dados guardados": "Resumo dos dados guardados",
   "Uso de memória": "Uso de memória",
   "Tarefas recentes": "Tarefas recentes",
-  "Conversa selecionada": "Conversa selecionada",
+  "Incluir a conversa selecionada": "Incluir a conversa selecionada",
   "Ajuda a entender incompatibilidades entre versões e informações do dispositivo.":
     "Ajuda a entender incompatibilidades entre versões e informações do dispositivo.",
   "Mostra o resultado das verificações do funcionamento e da conexão.":
@@ -3884,7 +3884,7 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Resumo dos dados guardados": "Stored data summary",
   "Uso de memória": "Memory use",
   "Tarefas recentes": "Recent tasks",
-  "Conversa selecionada": "Selected conversation",
+  "Incluir a conversa selecionada": "Include selected conversation",
   "Ajuda a entender incompatibilidades entre versões e informações do dispositivo.":
     "Helps identify version incompatibilities and learn about the device.",
   "Mostra o resultado das verificações do funcionamento e da conexão.":

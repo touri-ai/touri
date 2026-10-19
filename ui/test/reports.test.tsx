@@ -194,7 +194,7 @@ it("uses plain-language diagnostic labels and descriptions in pt-BR and English"
     ["Resumo dos dados guardados", "Inclui o tamanho e a quantidade de registros, sem o conteúdo."],
     ["Uso de memória", "Ajuda a investigar o uso de memória e travamentos."],
     ["Tarefas recentes", "Inclui o estado, a duração e o tipo de erro das últimas 20 tarefas."],
-    ["Conversa selecionada", "Selecione um bot e uma conversa acima para incluir esta parte."],
+    ["Incluir a conversa selecionada", "Selecione um bot e uma conversa acima para incluir esta parte."],
   ]
   const english = [
     ["App and device details", "Helps identify version incompatibilities and learn about the device."],
@@ -205,7 +205,7 @@ it("uses plain-language diagnostic labels and descriptions in pt-BR and English"
     ["Stored data summary", "Includes storage size and record counts, without their contents."],
     ["Memory use", "Helps investigate memory use and crashes."],
     ["Recent tasks", "Includes the status, duration and error type of the last 20 tasks."],
-    ["Selected conversation", "Choose a bot and conversation above to include this information."],
+    ["Include selected conversation", "Choose a bot and conversation above to include this information."],
   ]
   const expectCopy = (pairs: string[][]) => {
     const group = screen.getByRole("group", { name: "Diagnóstico incluído" })

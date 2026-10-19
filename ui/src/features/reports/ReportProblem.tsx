@@ -29,7 +29,7 @@ const labels: Record<ReportPart, TranslationKey> = {
   database: "Resumo dos dados guardados",
   memory: "Uso de memória",
   runs: "Tarefas recentes",
-  transcript: "Conversa selecionada",
+  transcript: "Incluir a conversa selecionada",
 }
 const descriptions: Record<ReportPart, TranslationKey> = {
   versions: "Ajuda a entender incompatibilidades entre versões e informações do dispositivo.",
