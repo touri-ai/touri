@@ -5,6 +5,7 @@ import type { ServerWebSocket } from "bun"
 import { retryDeletedBrowserSessionKeys } from "../browser/sessionVault"
 import { compressBufferedResponse } from "../cli/web/compression"
 import { getHostIdentity } from "../platform/host"
+import { stopBotHomeWriter } from "../store/bot-home"
 import { touriVersion } from "../version"
 import { createBackgroundTask, getMeasuredStage, yieldBackground } from "./background-task"
 import { createStorageMaintenance } from "./data-maintenance"
@@ -615,6 +616,7 @@ export const createKernel = ({
       for (const socket of liveSockets) socket.close(1001, "Servidor encerrado")
       liveSockets.clear()
       server.stop(true)
+      await stopBotHomeWriter(kernel)
       const store = services.use("store.api")
       if (store && !store.closeStreamWriterIfIdle?.()) await store.flushWritesAsync?.({ stopping: true })
       stopHistoryBackfill()

@@ -52,7 +52,7 @@ import { getHostIdentity } from "../platform/host"
 import { getDefaultMaxConcurrentRuns } from "../runtime/concurrency"
 import { touriVersion } from "../version"
 import { DEFAULT_BOT_VM_MEMORY_MB, DEFAULT_MACHINE_IDLE_MINUTES, validBotVmMemory } from "../vm/resources"
-import { removeBotHome, writeBotHome } from "./bot-home"
+import { cleanupBotHome, writeBotHome } from "./bot-home"
 import { redeemFileGrant } from "./redeemFileGrant"
 import { createSendJournal } from "./send-journal"
 import { createStreamWriter } from "./stream-writer"
@@ -478,6 +478,7 @@ export const init = async (
   kernel: Kernel,
   runStage?: PerformanceStageRunner,
   createWorker?: (url: string) => Worker,
+  writeHome = writeBotHome,
 ): Promise<void> => {
   await refreshHostFolderAccess()
   installDoctor(kernel)
@@ -916,6 +917,7 @@ export const init = async (
     )
       return { input: null, error: "color must be a six-digit hex color" }
     if (
+      !existing &&
       typeof body.instructions === "string" &&
       (body.instructions.length > 120 * 1024 || Buffer.byteLength(JSON.stringify(body.instructions)) > 120 * 1024)
     )
@@ -1018,9 +1020,9 @@ export const init = async (
     const id = kernel.newId()
     const instructions = input.instructions ?? ""
     const instructionsHash = sha256(instructions)
-    const homeDir = await writeBotHome(kernel, id, instructions, signal)
+    const homeDir = await writeHome(kernel, id, instructions, signal)
     if (signal.aborted) {
-      await removeBotHome(kernel, id)
+      await cleanupBotHome(kernel, id)
       return null
     }
     const mainThreadId = kernel.newId()
@@ -1082,7 +1084,7 @@ export const init = async (
           .run(mainThreadId, id, input.name, JSON.stringify(asUsage({})), timestamp, timestamp)
       })()
     } catch (error) {
-      await removeBotHome(kernel, id)
+      await cleanupBotHome(kernel, id)
       throw error
     }
     const bot = getBot({ botId: id })
