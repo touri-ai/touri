@@ -1,5 +1,5 @@
 import { expect, test } from "vitest"
-import { t } from "./i18n"
+import { t } from "../src/i18n"
 
 test("orphaned group run details are available in pt-BR and English", () => {
   const message = "O grupo ou a conversa não existe mais. Este turno não foi executado."
