@@ -76,7 +76,7 @@ test("the compiled CLI starts serve, pairs a device and durably revokes it", asy
   expect(pairing.status).toBe(200)
   const getDevices = () =>
     fetch(`${origin}/api/v1/devices`, {
-      headers: { Authorization: `Bearer ${paired.token}` },
+      headers: { Authorization: `Bearer ${paired.token}`, "X-Touri-Client": "compiled-fixture" },
       signal: AbortSignal.timeout(5000),
     })
   expect((await getDevices()).status).toBe(200)
