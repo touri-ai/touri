@@ -49,7 +49,9 @@ for (const appearance of appearances) {
 
     await expect(instructions).toHaveAttribute("aria-expanded", "false")
     await expect(page.locator(".message-routine-prompt .disclosure-reveal")).toHaveAttribute("aria-hidden", "true")
-    await expect(page.getByText("Sem novidades nesta execução", { exact: true })).toBeVisible()
+    await expect(
+      page.getByTestId("virtual-message-list").getByText("Sem novidades nesta execução", { exact: true }),
+    ).toBeVisible()
     await expect(page.getByText("NO_NOTIFICATION", { exact: true })).toHaveCount(0)
     await expect(schedule).toHaveCount(0)
     await expect(page.locator(".routine-run-marker")).toContainText("Resumo da caixa de entrada")
