@@ -818,6 +818,47 @@ test.serial("the store/runtime integration publishes coalesced deltas once in or
   }
 })
 
+test.serial("publishes pending parts before deltas for later parts", async () => {
+  const value = await fixture({
+    scenario: {
+      events: [
+        { type: "command", callId: "first-part", command: "echo ready", output: "ready" },
+        { type: "delta", delta: "Next part." },
+        { type: "complete" },
+      ],
+    },
+  })
+  let unsubscribe: (() => void) | null = null
+  try {
+    await initStore(value.runtime.kernel)
+    const store = value.runtime.kernel.services.use("store.api")
+    if (!store) throw new Error("store service was not initialized")
+    const updates: Array<"part" | "delta"> = []
+    unsubscribe = value.runtime.kernel.subscribe(({ event }) => {
+      if (
+        event.type === "message.parts" &&
+        event.parts.some(({ part }) => "callId" in part && part.callId === "first-part")
+      )
+        updates.push("part")
+      if (event.type === "message.delta") updates.push("delta")
+    })
+
+    const request = addUser(store, value.thread, "Confira a ordem das partes.")
+    const queued = value.engine.enqueue({ threadId: value.thread.id, requestMessageId: request.id, trigger: "user" })
+    if (!queued.success) throw new Error(queued.error)
+    await waitFor(() => terminal(queued.run.status))
+
+    expect(queued.run.status).toBe("succeeded")
+    const partIndex = updates.indexOf("part")
+    const deltaIndex = updates.indexOf("delta")
+    expect(partIndex).toBeGreaterThanOrEqual(0)
+    expect(deltaIndex).toBeGreaterThan(partIndex)
+  } finally {
+    unsubscribe?.()
+    await closeFixture(value)
+  }
+})
+
 test.serial("tool publications persist only changed parts and preserve completed output references", async () => {
   const output = "resultado ".repeat(2000)
   const prose = "prosa ".repeat(4000)

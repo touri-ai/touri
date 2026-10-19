@@ -654,15 +654,7 @@ export const createRuntimeEngine = ({
     state: RunState
     reason: "cancelled_by_user" | "failed" | "interrupted_by_restart" | "unknown"
   }): void => {
-    const finish = ({
-      run,
-      state,
-      reason,
-    }: {
-      run: Run
-      state: RunState
-      reason: "cancelled_by_user" | "failed" | "interrupted_by_restart" | "unknown"
-    }): void => {
+    measureStage("runtime_part_finalization", () => {
       const parts = tools.finish(run, state.parts, reason)
       parts.forEach((part, index) => {
         const previous = state.parts[index]
@@ -674,15 +666,20 @@ export const createRuntimeEngine = ({
         if (changed) state.dirtyParts.add(index)
       })
       state.parts = parts
-    }
-    const args = { run, state, reason }
-    if (runStage) runStage("runtime_part_finalization", finish, args)
-    else finish(args)
+    })
   }
 
   const publishMessage = (args: { store: StoreApi; state: RunState; run: Run; status: Message["status"] }): void => {
     if (runStage) runStage("runtime_message_publish", publishMessageNow, args)
     else publishMessageNow(args)
+  }
+
+  const flushPendingPartPublish = ({ store, state, run }: { store: StoreApi; state: RunState; run: Run }): void => {
+    if (state.partPublishImmediate === null) return
+    clearImmediate(state.partPublishImmediate)
+    state.partPublishImmediate = null
+    if (shuttingDown || !isLiveForEvent(run, state)) return
+    publishMessage({ store, state, run, status: "streaming" })
   }
 
   const schedulePartPublish = ({ store, state, run }: { store: StoreApi; state: RunState; run: Run }): void => {
@@ -822,10 +819,11 @@ export const createRuntimeEngine = ({
       const delta = separator + event.delta
       const existing = last?.type === "text" ? last : undefined
       const partIndex = existing ? state.parts.length - 1 : state.parts.length
+      if (state.replyMessageId) flushPendingPartPublish({ store, state, run })
       if (!existing) state.parts.push({ type: "text", text: "" })
       if (state.cancelRequested) state.dirtyParts.add(partIndex)
       appendPendingText(state, partIndex, "text", delta)
-      if (state.replyMessageId)
+      if (state.replyMessageId) {
         store.appendDelta({
           threadId: run.threadId,
           messageId: state.replyMessageId,
@@ -833,6 +831,7 @@ export const createRuntimeEngine = ({
           delta,
           ...(state.generation === null ? {} : { generation: state.generation }),
         })
+      }
       return
     }
     if (event.type === "reasoning_delta" || event.type === "reasoning_progress") {
@@ -846,9 +845,9 @@ export const createRuntimeEngine = ({
         else state.parts.push(part)
         state.dirtyParts.add(partIndex)
       } else {
-        if (last?.type !== "reasoning") state.parts.push({ type: "reasoning", text: "" })
-        appendPendingText(state, partIndex, "reasoning", event.delta)
         if (last?.type === "reasoning" && state.replyMessageId) {
+          flushPendingPartPublish({ store, state, run })
+          appendPendingText(state, partIndex, "reasoning", event.delta)
           store.appendDelta({
             threadId: run.threadId,
             messageId: state.replyMessageId,
@@ -858,6 +857,8 @@ export const createRuntimeEngine = ({
           })
           return
         }
+        if (last?.type !== "reasoning") state.parts.push({ type: "reasoning", text: "" })
+        appendPendingText(state, partIndex, "reasoning", event.delta)
         state.dirtyParts.add(partIndex)
       }
       if (state.replyMessageId) publishMessage({ store, state, run, status: "streaming" })

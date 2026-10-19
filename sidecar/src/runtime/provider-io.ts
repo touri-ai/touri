@@ -52,6 +52,17 @@ export const startLineReader = ({
   runStage?: PerformanceStageRunner
 }): (() => void) => {
   let stopped = false
+  const processLines = ({ values }: { values: Array<string> }): void => {
+    for (const value of values) {
+      if (stopped) break
+      onLine(value)
+    }
+  }
+  const processBatch = (values: Array<string>): void => {
+    const input = { values }
+    if (runStage) runStage("provider_frame_batch", processLines, input)
+    else processLines(input)
+  }
   void (async () => {
     const reader = stream.getReader()
     const decoder = new TextDecoder()
@@ -71,30 +82,14 @@ export const startLineReader = ({
           if (line) lines.push(line)
           processed += 1
           if (processed === PROVIDER_FRAME_BATCH_SIZE) {
-            const processLines = ({ values }: { values: Array<string> }): void => {
-              for (const value of values) {
-                if (stopped) break
-                onLine(value)
-              }
-            }
-            if (runStage) runStage("provider_frame_batch", processLines, { values: lines })
-            else processLines({ values: lines })
+            processBatch(lines)
             lines = []
             processed = 0
             await yieldToEventLoop()
           }
           newline = buffer.indexOf("\n", offset)
         }
-        if (lines.length) {
-          const processLines = ({ values }: { values: Array<string> }): void => {
-            for (const value of values) {
-              if (stopped) break
-              onLine(value)
-            }
-          }
-          if (runStage) runStage("provider_frame_batch", processLines, { values: lines })
-          else processLines({ values: lines })
-        }
+        if (lines.length) processBatch(lines)
         buffer = buffer.slice(offset)
       }
       const tail = buffer.trim()
