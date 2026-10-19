@@ -18,7 +18,7 @@ Uma configuração inválida, um cofre bloqueado ou um servidor indisponível n�
 
 ## Encerramento gradual de `touri serve`
 
-Ao receber SIGTERM ou SIGINT, `touri serve` para de iniciar turnos, mantém os turnos ativos em execução até o prazo configurado e deixa novas mensagens na fila durável para o próximo início. O prazo padrão é 60 segundos; configure outro valor entre 1 e 600 com `--drain-timeout <segundos>`. Após o prazo, os turnos ainda ativos são persistidos como interrompidos e seguem as regras existentes de recuperação segura.
+Ao receber SIGTERM ou SIGINT, `touri serve` para de iniciar turnos, mantém os turnos ativos em execução até o prazo configurado e deixa novas mensagens na fila durável para o próximo início. O prazo padrão é 60 segundos; configure outro valor entre 1 e 600 com `--drain-timeout <segundos>`. Após o prazo, os turnos ainda ativos são persistidos como interrompidos e seguem as regras existentes de recuperação segura. Um segundo SIGTERM ou SIGINT pula a espera e inicia imediatamente essa interrupção, com registro no log. O limite absoluto continua sendo o prazo original mais 20 segundos, inclusive se um provedor não responder. Turnos de grupo ainda na fila permanecem duráveis e são executados em ordem ao reiniciar.
 
 Para systemd, `TimeoutStopSec` deve superar o prazo de encerramento em pelo menos 30 segundos. Use `KillMode=mixed`: o systemd sinaliza primeiro apenas o processo principal, permitindo que touri finalize seus provedores; se o limite do systemd expirar, ele encerra o grupo de processos.
 
@@ -30,7 +30,7 @@ TimeoutStopSec=90
 
 ## Graceful shutdown for `touri serve`
 
-On SIGTERM or SIGINT, `touri serve` stops starting turns, lets active turns run until the configured deadline, and leaves new messages in the durable queue for the next start. The default deadline is 60 seconds; set a value from 1 to 600 with `--drain-timeout <seconds>`. At the deadline, remaining active turns are persisted as interrupted and use the existing safe recovery rules.
+On SIGTERM or SIGINT, `touri serve` stops starting turns, lets active turns run until the configured deadline, and leaves new messages in the durable queue for the next start. The default deadline is 60 seconds; set a value from 1 to 600 with `--drain-timeout <seconds>`. At the deadline, remaining active turns are persisted as interrupted and use the existing safe recovery rules. A second SIGTERM or SIGINT skips the wait and starts that interruption immediately, with a log entry. The absolute backstop remains the original deadline plus 20 seconds, including when a provider does not respond. Group turns still waiting remain durable and run in order after restart.
 
 For systemd, set `TimeoutStopSec` to at least 30 seconds beyond the drain deadline. Use `KillMode=mixed`: systemd first signals only the main process so touri can finish its providers; if the systemd timeout expires, it terminates the process group.
 

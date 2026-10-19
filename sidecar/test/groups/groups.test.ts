@@ -330,29 +330,105 @@ test("queue serializes turns across group conversations; Parar cancels active an
   expect(f.order).toHaveLength(1)
 })
 
-test("draining a group finishes its active member and interrupts queued turns for restart", async () => {
-  let release: (() => void) | undefined
+test("draining finishes the active group turn and replays waiting turns in order after restart", async () => {
+  const release = Promise.withResolvers<void>()
   const f = await fixture(async (_ctx, complete) => {
-    await new Promise<void>((resolve) => {
-      release = () => {
-        complete("resposta concluída")
-        resolve()
-      }
-    })
+    await release.promise
+    complete("resposta concluída")
   })
-  const active = f.send("turno ativo")
-  const queued = f.send("turno na fila")
+  const active = f.send("@pm turno ativo")
+  const other = f.data.createThread(f.group, "Outra conversa")
+  const waiting = [f.send("@dev segundo", other.id), f.send("@qa terceiro")]
   await until(() => f.order.length === 1)
 
   f.runtime.beginDrain()
-  f.runtime.shutdown({ appRestart: true })
-  expect(f.persistence.getRun(queued.id)).toMatchObject({ status: "interrupted", errorClass: "app_restart" })
-
-  release?.()
+  release.resolve()
   await f.runtime.waitForDrain()
-  expect(f.persistence.getRun(active.id)).toMatchObject({ status: "interrupted", errorClass: "app_restart" })
-  expect(f.persistence.getRun(queued.id)).toMatchObject({ status: "interrupted", errorClass: "app_restart" })
+  f.runtime.shutdown({ appRestart: true })
+
+  expect(f.persistence.getRun(active.id)?.status).toBe("succeeded")
+  waiting.forEach((run) => {
+    expect(f.persistence.getRun(run.id)).toMatchObject({ status: "queued", errorClass: null, startedAt: null })
+  })
   expect(f.order).toHaveLength(1)
+
+  const restarted = createGroupRuntime(f.host.kernel, f.engine)
+  cleanups.unshift(() => restarted.shutdown())
+  await until(() => waiting.every((run) => f.persistence.getRun(run.id)?.status === "succeeded"))
+
+  expect(f.order).toEqual(f.group.memberIds)
+  expect(restarted.listRuns(other.id).some((run) => run.id === waiting[0]?.id)).toBe(true)
+})
+
+test("an active group finishes sequential members and delegated work during engine drain", async () => {
+  const f = await fixture()
+  f.runtime.shutdown()
+  const release = Promise.withResolvers<void>()
+  const started: string[] = []
+  const answers: boolean[] = []
+  const adapter: ProviderAdapter = {
+    provider: "codex",
+    detect: async () => ({ success: true, path: "/fixtures/provider", version: "1", loggedIn: true }),
+    startTurn: async ({ bot, thread, onEvent, signal }) => {
+      started.push(bot.id)
+      onEvent({ type: "turn_started", externalTurnId: thread.id })
+      if (bot.id === f.bots[0]?.id) {
+        await release.promise
+        const answer = await groups.askBot(
+          {
+            botId: bot.id,
+            threadId: thread.id,
+            runId: engine.activeRun({ threadId: thread.id })?.id ?? null,
+            projectId: null,
+            cwd: f.root,
+            signal,
+          },
+          { bot: "qa", message: "revise" },
+        )
+        answers.push(answer.success)
+      }
+      onEvent({ type: "text_delta", itemId: thread.id, delta: "Concluído" })
+      return { success: true, externalSessionId: thread.id, rolloutPath: null, status: "succeeded" }
+    },
+    answerApproval: async () => ({ success: true }),
+    shutdown: async () => {},
+  }
+  const engine = createRuntimeEngine({
+    kernel: f.host.kernel,
+    providerAdapters: { codex: adapter },
+    maxConcurrentRuns: 1,
+    environment: { PATH: process.env.PATH ?? "" },
+  })
+  await engine.ready
+  const groups = createGroupRuntime(f.host.kernel, engine)
+  f.host.kernel.services.provide("groups.runtime", groups)
+  f.host.kernel.services.provide("runtime.activeRun", engine.activeRun)
+  f.host.kernel.services.provide("runtime.enqueue", groups.enqueue)
+  cleanups.unshift(async () => {
+    release.resolve()
+    groups.shutdown()
+    await engine.shutdown()
+  })
+  const response = await f.request(`/threads/${f.thread.id}/messages`, {
+    text: "@pm @dev revisem",
+    parentId: null,
+    attachmentIds: [],
+  })
+  const { run } = (await response.json()) as { run: Run }
+  await until(() => started.length === 1)
+
+  groups.beginDrain()
+  engine.beginDrain()
+  release.resolve()
+  await groups.waitForDrain()
+  await engine.waitForDrain()
+
+  expect(f.persistence.getRun(run.id)?.status).toBe("succeeded")
+  expect(started).toEqual([f.bots[0]?.id ?? "", f.bots[2]?.id ?? "", f.bots[1]?.id ?? ""])
+  expect(answers).toEqual([true])
+  const members = groups.listRuns(f.thread.id).filter((member) => member.groupTurnId === run.id)
+  expect(members).toHaveLength(3)
+  expect(members.every((member) => member.status === "succeeded")).toBe(true)
 })
 
 test("coordinator receives requests; real MCP router returns peer answer and group capabilities", async () => {

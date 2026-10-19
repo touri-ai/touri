@@ -989,7 +989,7 @@ test.serial("draining finishes active turns, keeps queued turns for restart and 
 
     expect(active.run.status).toBe("succeeded")
     expect(queued.run.status).toBe("queued")
-    expect(rejected).toMatchObject({ success: false, errorCode: "BOT_PAUSED" })
+    expect(rejected).toMatchObject({ success: false, errorCode: "RUNTIME_DRAINING" })
   } finally {
     await closeFixture(value)
   }

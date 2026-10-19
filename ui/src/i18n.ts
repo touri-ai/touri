@@ -623,6 +623,9 @@ export const ptBR = {
   "O servidor retornou uma resposta inválida. Confira a URL do Mem0.":
     "O servidor retornou uma resposta inválida. Confira a URL do Mem0.",
   "O servidor está encerrando.": "O servidor está encerrando.",
+  "Segundo sinal recebido; interrompendo o encerramento gradual.":
+    "Segundo sinal recebido; interrompendo o encerramento gradual.",
+  "O encerramento gradual falhou; interrompendo o runtime.": "O encerramento gradual falhou; interrompendo o runtime.",
   "Não foi possível conectar ao Mem0. Confira a conexão e a URL e tente de novo.":
     "Não foi possível conectar ao Mem0. Confira a conexão e a URL e tente de novo.",
   "Não foi possível carregar o Mem0.": "Não foi possível carregar o Mem0.",
@@ -3076,6 +3079,9 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "O servidor retornou uma resposta inválida. Confira a URL do Mem0.":
     "The server returned an invalid response. Check the Mem0 URL.",
   "O servidor está encerrando.": "The server is shutting down.",
+  "Segundo sinal recebido; interrompendo o encerramento gradual.":
+    "Second signal received; interrupting graceful shutdown.",
+  "O encerramento gradual falhou; interrompendo o runtime.": "Graceful shutdown failed; interrupting the runtime.",
   "Não foi possível conectar ao Mem0. Confira a conexão e a URL e tente de novo.":
     "Could not connect to Mem0. Check your connection and the URL, then try again.",
   "Não foi possível carregar o Mem0.": "Could not load Mem0.",

@@ -66,11 +66,9 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
     persistence.saveRun(turn.run)
     kernel.publish({ type: "run.updated", run: { ...turn.run } })
   }
-  // Aggregate runs never enter the provider queue. Restart never redelivers a partial group turn.
+  // Aggregate runs never enter the provider queue. Only turns that started are interrupted on restart.
   const interrupted = db
-    .query(
-      "SELECT r.* FROM runs r JOIN group_turns g ON g.run_id=r.id WHERE r.status IN ('queued','starting','running')",
-    )
+    .query("SELECT r.* FROM runs r JOIN group_turns g ON g.run_id=r.id WHERE r.status IN ('starting','running')")
     .all()
   for (const raw of interrupted) {
     const run = toRun(raw)
@@ -272,6 +270,7 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
       requestMessageId: request.message.id,
       trigger: "user",
       delegated,
+      continuing: true,
     })
     const memberRun: Run = result.success
       ? result.run
@@ -530,6 +529,29 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
       if (stopped && busy.size === 0) unsubscribe()
     }
   }
+  const getTurn = (run: Run, group: BotGroup, recipients: string[], action?: string): Turn => {
+    const budget = run.routineRunId
+      ? (db
+          .query(
+            "SELECT r.timeout_minutes FROM routine_runs rr JOIN routines r ON r.id = rr.routine_id WHERE rr.id = ?",
+          )
+          .get(run.routineRunId) as { timeout_minutes: number } | null)
+      : null
+    return {
+      run,
+      group,
+      recipients,
+      controller: new AbortController(),
+      calls: action === "group_ask_all" ? recipients.length : 0,
+      reservations: new Set(),
+      ...(action === "group_ask_all" ? { action: "ask_all" as const } : {}),
+      ...(action === "group_summary" ? { action: "summarize" as const } : {}),
+      children: new Set(),
+      completion: Promise.withResolvers<void>(),
+      tail: run.requestMessageId,
+      deadline: budget ? Date.now() + budget.timeout_minutes * 60_000 : null,
+    }
+  }
   const enqueue: ServiceMap["groups.runtime"]["enqueue"] = (args) => {
     if (draining) return { success: false, errorCode: "RUNTIME_DRAINING", error: "O servidor está encerrando." }
 
@@ -576,27 +598,7 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
     }
     persistence.saveRun(run)
     db.query("INSERT INTO group_turns VALUES(?,?,?)").run(run.id, group.id, JSON.stringify(recipients))
-    const budget = args.routineRunId
-      ? (db
-          .query(
-            "SELECT r.timeout_minutes FROM routine_runs rr JOIN routines r ON r.id = rr.routine_id WHERE rr.id = ?",
-          )
-          .get(args.routineRunId) as { timeout_minutes: number } | null)
-      : null
-    const turn: Turn = {
-      run,
-      group,
-      recipients,
-      controller: new AbortController(),
-      calls: action === "group_ask_all" ? recipients.length : 0,
-      reservations: new Set(),
-      ...(action === "group_ask_all" ? { action: "ask_all" as const } : {}),
-      ...(action === "group_summary" ? { action: "summarize" as const } : {}),
-      children: new Set(),
-      completion: Promise.withResolvers<void>(),
-      tail: args.requestMessageId,
-      deadline: budget ? Date.now() + budget.timeout_minutes * 60_000 : null,
-    }
+    const turn = getTurn(run, group, recipients, action)
     turns.set(run.id, turn)
     queues.set(group.id, [...(queues.get(group.id) ?? []), turn])
     kernel.publish({ type: "run.updated", run })
@@ -826,8 +828,9 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
     stopped = true
     for (const turn of turns.values()) {
       if (appRestart) {
+        if (turn.run.status === "queued") continue
+
         turn.controller.abort(RESTART_ABORT_REASON)
-        if (turn.run.status === "queued") cancelTurn(turn)
         continue
       }
       cancel(turn.run.id)
@@ -842,6 +845,35 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
     idleCompletion ??= Promise.withResolvers<void>()
     await idleCompletion.promise
   }
+  const waiting = db
+    .query(
+      `SELECT r.*, g.group_id, g.recipients_json FROM runs r JOIN group_turns g ON g.run_id = r.id
+       WHERE r.status = 'queued' ORDER BY r.queued_at, r.rowid`,
+    )
+    .all() as Array<Record<string, unknown> & { group_id: string; recipients_json: string }>
+  waiting.forEach((row) => {
+    const run = toRun(row)
+    const group = groups.get(row.group_id)
+    if (!run || !group) return
+
+    const request = store
+      .activePath({ threadId: run.threadId, ...(run.requestMessageId ? { leafId: run.requestMessageId } : {}) })
+      .find((message) => message.id === run.requestMessageId)
+    const action = request?.parts.find(
+      (part) => part.type === "notice" && ["group_ask_all", "group_summary"].includes(part.code),
+    )
+    const turn = getTurn(
+      run,
+      group,
+      JSON.parse(row.recipients_json),
+      action?.type === "notice" ? action.code : undefined,
+    )
+    turns.set(run.id, turn)
+    queues.set(group.id, [...(queues.get(group.id) ?? []), turn])
+  })
+  queues.forEach((_, groupId) => {
+    queueMicrotask(() => void drain(groupId))
+  })
   return {
     enqueue,
     cancel,

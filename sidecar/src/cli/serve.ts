@@ -12,6 +12,7 @@ import { createSecretStore } from "./host/secretStore"
 import { startHeadlessStderr } from "./nativeStderr"
 import { remoteAccessWarning } from "./remoteAccessWarning"
 import { clearServeInfo, writeServeInfo } from "./serveInfo"
+import { registerServeShutdown } from "./serveShutdown"
 import { exposeOnTailscale } from "./tailscale"
 import { cliVersion } from "./version"
 import { createWebGate } from "./web/gate"
@@ -88,33 +89,14 @@ const startServer = async (options: ServeOptions, stopStderr: () => Promise<void
       : "pairing: run `touri pair` for a one-time code",
   )
 
-  let stopping = false
-  const shutdown = (): void => {
-    if (stopping) return
-    stopping = true
-    let deadlineTimer: ReturnType<typeof setTimeout> | undefined
-    const drainDeadline = new Promise<"deadline">((resolve) => {
-      deadlineTimer = setTimeout(() => resolve("deadline"), options.drainTimeoutMs)
-    })
-    const hardDeadline = setTimeout(() => process.exit(1), options.drainTimeoutMs + 20_000)
-    hardDeadline.unref()
-    void (async () => {
-      const beginDrain = runtime.kernel.services.use("runtime.beginDrain")
-      const drainPromise = Promise.resolve(beginDrain?.()).then(
-        () => "drained" as const,
-        (error: unknown) => {
-          runtime.kernel.log({
-            level: "error",
-            module: "cli",
-            msg: "O encerramento gradual falhou; interrompendo o runtime.",
-            data: { error: runtime.kernel.redact(error instanceof Error ? error.message : String(error)) },
-          })
-          return "failed" as const
-        },
-      )
-      const drainResult = await Promise.race([drainPromise, drainDeadline])
-      if (deadlineTimer) clearTimeout(deadlineTimer)
+  registerServeShutdown({
+    drainTimeoutMs: options.drainTimeoutMs,
+    beginDrain: () => runtime.kernel.services.use("runtime.beginDrain")?.(),
+    shutdown: async () => {
       await runtime.kernel.services.use("runtime.shutdown")?.({ appRestart: true })
+    },
+    log: runtime.kernel.log,
+    finish: async () => {
       runtime.emitHostNotification({ method: "app.willQuit", params: {} })
       await runtime.kernel.services.use("vm.shutdown")?.()
       clearServeInfo(options.dataDir)
@@ -122,10 +104,6 @@ const startServer = async (options: ServeOptions, stopStderr: () => Promise<void
       store.close()
       lease.release()
       await stopStderr()
-      clearTimeout(hardDeadline)
-      process.exit(drainResult === "failed" ? 1 : 0)
-    })().catch(() => process.exit(1))
-  }
-  process.once("SIGTERM", shutdown)
-  process.once("SIGINT", shutdown)
+    },
+  })
 }

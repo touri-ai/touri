@@ -1,5 +1,6 @@
 import type { Database } from "bun:sqlite"
-import { expect, mock, test } from "bun:test"
+import { afterEach, expect, mock, test } from "bun:test"
+import { EventEmitter } from "node:events"
 import {
   chmodSync,
   existsSync,
@@ -13,6 +14,7 @@ import {
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { ApprovalPart, Message, Run } from "@touri/contracts"
+import { registerServeShutdown } from "../../src/cli/serveShutdown"
 import { createKernel } from "../../src/kernel"
 import { init as initNotify } from "../../src/notify"
 import { createProjectStore } from "../../src/projects/repository"
@@ -263,6 +265,128 @@ test("an approved folder write grant automatically continues with updated Codex 
     mock.module("../../src/runtime/folder-access", () => original)
   }
 }, 30_000)
+
+const drainCleanups: Array<() => Promise<void>> = []
+afterEach(async () => {
+  for (const cleanup of drainCleanups.splice(0)) await cleanup()
+})
+
+test.each(["active", "completion"] as const)("approval continuation survives drain during %s", async (at) => {
+  const f = await fixture()
+  drainCleanups.push(f.close)
+  f.disableResume()
+  const run = f.send(f.first.engine)
+  await waitFor(f.streamed("INÍCIO"))
+  expect(
+    f.first.engine.continueAfterApproval({
+      botId: "b",
+      threadId: "t",
+      runId: run.id,
+      signal: new AbortController().signal,
+    }),
+  ).toBe(true)
+  const unsubscribe = f.first.runtime.kernel.subscribe(({ event }) => {
+    if (
+      at === "completion" &&
+      event.type === "run.updated" &&
+      event.run.id === run.id &&
+      event.run.status === "succeeded"
+    )
+      f.first.engine.beginDrain()
+  })
+  drainCleanups.push(async () => unsubscribe())
+
+  if (at === "active") f.first.engine.beginDrain()
+  f.writeScenario({ deltas: ["Tarefa aprovada concluída."] })
+  f.release()
+  await f.first.engine.waitForDrain()
+
+  expect(f.runs()).toHaveLength(2)
+  expect(f.runs().every((attempt) => attempt.status === "succeeded")).toBe(true)
+  expect(f.links()).toMatchObject([{ previous_run_id: run.id, reason: "permission_granted" }])
+})
+
+test("shutdown preserves a pending permission continuation even with automatic recovery disabled", async () => {
+  const f = await fixture()
+  drainCleanups.push(f.close)
+  f.disableResume()
+  const run = f.send(f.first.engine)
+  await waitFor(f.streamed("INÍCIO"))
+  expect(
+    f.first.engine.continueAfterApproval({
+      botId: "b",
+      threadId: "t",
+      runId: run.id,
+      signal: new AbortController().signal,
+    }),
+  ).toBe(true)
+  const stopped = Promise.withResolvers<void>()
+  const unsubscribe = f.first.runtime.kernel.subscribe(({ event }) => {
+    if (event.type !== "run.updated" || event.run.id !== run.id || event.run.status !== "succeeded") return
+
+    queueMicrotask(() => {
+      void f.first.engine.shutdown().then(stopped.resolve, stopped.reject)
+    })
+  })
+  drainCleanups.push(async () => unsubscribe())
+
+  f.writeScenario({ deltas: ["Tarefa autorizada concluída."] })
+  f.release()
+  await stopped.promise
+
+  expect(f.runs()).toMatchObject([{ id: run.id, status: "succeeded" }, { status: "queued" }])
+  await f.open()
+  await waitFor(() => f.runs()[1]?.status === "succeeded")
+  expect(f.links()).toMatchObject([{ previous_run_id: run.id, reason: "permission_granted" }])
+})
+
+test("shutdown persists a pending continuation and restart executes it", async () => {
+  const f = await fixture({ resumeBackoffMs: 60_000 })
+  drainCleanups.push(f.close)
+  f.writeScenario({ deltas: ["Tarefa retomada."] })
+  f.crashOnce()
+  const run = f.send(f.first.engine)
+  await waitFor(() => f.runs()[0]?.status === "failed")
+
+  f.first.engine.beginDrain()
+  await f.first.engine.shutdown()
+
+  expect(f.runs()).toMatchObject([{ id: run.id, status: "failed" }, { status: "queued" }])
+  await f.open()
+  await waitFor(() => f.runs()[1]?.status === "succeeded")
+  expect(f.links()).toMatchObject([{ previous_run_id: run.id, reason: "provider_crash" }])
+})
+
+test("serve deadline interrupts an active turn and restart safely resumes its session", async () => {
+  const f = await fixture()
+  drainCleanups.push(f.close)
+  const run = f.send(f.first.engine)
+  await waitFor(f.streamed("INÍCIO"))
+  const signals = new EventEmitter()
+  const exited = Promise.withResolvers<number>()
+  registerServeShutdown({
+    drainTimeoutMs: 20,
+    beginDrain: () => {
+      f.first.engine.beginDrain()
+      return f.first.engine.waitForDrain()
+    },
+    shutdown: f.first.engine.shutdown,
+    finish: async () => {},
+    log: f.first.runtime.kernel.log,
+    signals,
+    exit: exited.resolve,
+  })
+
+  signals.emit("SIGTERM")
+  expect(await exited.promise).toBe(0)
+
+  expect(f.runs()[0]).toMatchObject({ id: run.id, status: "interrupted", error_class: "app_restart" })
+  f.writeScenario({ deltas: ["Retomada segura concluída."] })
+  await f.open()
+  await waitFor(() => f.runs()[1]?.status === "succeeded")
+  expect(f.links()).toMatchObject([{ previous_run_id: run.id, reason: "app_restart" }])
+  expect(f.frames().filter((frame) => frame.method === "thread/resume")).toHaveLength(1)
+})
 
 test("app restart continues an interrupted turn in the same provider session", async () => {
   const f = await fixture()
