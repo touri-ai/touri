@@ -12,7 +12,17 @@ import type {
   Thread,
 } from "@touri/contracts"
 import { failureRetryHint, sanitizeDiagnostic } from "@touri/contracts/run-failure"
-import { Fragment, type ReactNode, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
+import {
+  Fragment,
+  type ReactNode,
+  useCallback,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react"
 import type { UiApi } from "../api/client"
 import type { ApprovalFocus } from "../approvalNavigation"
 import { userFacingRunError } from "../errors"
@@ -115,6 +125,7 @@ type VirtualMessageListProps = {
   allMessages?: Array<Message>
   timelineCards?: Array<{ id: string; createdAt: number; content: ReactNode }>
 }
+const emptyTimelineCards: NonNullable<VirtualMessageListProps["timelineCards"]> = []
 
 export const activeMessagePath = (messages: Array<Message>, leafId: Id | null): Array<Message> => {
   if (!leafId) return messages
@@ -138,7 +149,29 @@ const deliveryLabels = {
   acked: "Entregue",
   failed: "Falha na entrega",
 }
-const rowHeight = 158
+const estimatedRowHeight = 158
+
+const getTimelineOffsets = (timeline: Array<{ id: string }>, heights: Record<string, number>): number[] => {
+  const offsets = [0]
+  let offset = 0
+  // Prefix sums keep variable-height virtualization linear in the history length.
+  for (const entry of timeline) {
+    offset += heights[entry.id] ?? estimatedRowHeight
+    offsets.push(offset)
+  }
+  return offsets
+}
+
+const getTimelineIndex = (offsets: number[], position: number): number => {
+  let low = 0
+  let high = offsets.length - 1
+  while (low < high) {
+    const middle = Math.floor((low + high) / 2)
+    if ((offsets[middle + 1] ?? Number.POSITIVE_INFINITY) <= position) low = middle + 1
+    else high = middle
+  }
+  return low
+}
 
 /** Jump to the end and remember the position so its own scroll event is not mistaken for the user leaving the bottom. */
 const scrollToEnd = (list: HTMLElement, programmaticTop: { current: number | null }): void => {
@@ -160,7 +193,7 @@ export const VirtualMessageList = ({
   onCancel,
   editDisabled = false,
   header,
-  timelineCards = [],
+  timelineCards = emptyTimelineCards,
 }: VirtualMessageListProps) => {
   // r8 motion: immutable IDs drive text entry, never streaming tokens or status/cards.
   const insertedMessages = useInsertedIds(
@@ -168,8 +201,12 @@ export const VirtualMessageList = ({
     messages[0]?.threadId ?? "",
   )
   const [scrollTop, setScrollTop] = useState(0)
+  const [rowHeights, setRowHeights] = useState<Record<string, number>>({})
   const scrollRef = useRef<HTMLDivElement>(null)
+  const spacerRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
+  const pendingRowMeasurements = useRef(new Set<string>())
+  const measurementFrame = useRef<number | null>(null)
   const followBottom = useRef(true)
   const programmaticTop = useRef<number | null>(null)
   const readingAnchor = useRef<{ element: HTMLElement; top: number; scrollTop: number } | null>(null)
@@ -179,6 +216,51 @@ export const VirtualMessageList = ({
   const lastUser = useRef<Id | undefined>(undefined)
   const focusedRequest = useRef<number | undefined>(undefined)
   const latestUserId = [...messages].reverse().find((message) => message.role === "user")?.id
+  const timeline = useMemo(() => {
+    // This disposable list is sorted because the TypeScript target does not include toSorted.
+    const entries = [
+      ...messages.map((message) => ({
+        id: message.id,
+        createdAt: message.createdAt,
+        message,
+        content: null as ReactNode,
+      })),
+      ...timelineCards.map((card) => ({ ...card, message: null })),
+    ]
+    return Array.from(entries).sort((a, b) => a.createdAt - b.createdAt)
+  }, [messages, timelineCards])
+  const rowOffsets = useMemo(
+    () => (timeline.length > 100 ? getTimelineOffsets(timeline, rowHeights) : [0]),
+    [timeline, rowHeights],
+  )
+  const measureRowOnNextFrame = useCallback((id: string) => {
+    // Coalesce image loads and mounted rows so one frame reads each visible row at most once.
+    pendingRowMeasurements.current.add(id)
+    if (measurementFrame.current !== null) return
+    measurementFrame.current = requestAnimationFrame(() => {
+      measurementFrame.current = null
+      const content = contentRef.current
+      const elements = Array.from(content?.querySelectorAll<HTMLElement>("[data-message-row]") ?? [])
+      const rowsById = new Map(elements.map((element) => [element.dataset.messageRow ?? "", element]))
+      const rows = [...pendingRowMeasurements.current].flatMap((rowId) => {
+        const element = rowsById.get(rowId)
+        return element ? [[rowId, Math.ceil(element.getBoundingClientRect().height)] as [string, number]] : []
+      })
+      pendingRowMeasurements.current.clear()
+      if (rows.length === 0) return
+      setRowHeights((heights) => {
+        const changed = rows.filter(
+          ([rowId, height]) => Math.abs((heights[rowId] ?? estimatedRowHeight) - height) > 0.5,
+        )
+        return changed.length > 0 ? { ...heights, ...Object.fromEntries(changed) } : heights
+      })
+    })
+  }, [])
+  useEffect(() => {
+    return () => {
+      if (measurementFrame.current !== null) cancelAnimationFrame(measurementFrame.current)
+    }
+  }, [])
   // biome-ignore lint/correctness/useExhaustiveDependencies: messages and cards change the rendered scroll height during a turn
   useLayoutEffect(() => {
     const list = scrollRef.current
@@ -211,8 +293,9 @@ export const VirtualMessageList = ({
   }, [messages])
   useLayoutEffect(() => {
     const list = scrollRef.current
+    const spacer = spacerRef.current
     const content = contentRef.current
-    if (!list || !content || typeof ResizeObserver === "undefined") return
+    if (!list || !spacer || !content || typeof ResizeObserver === "undefined") return
     // Markdown and the virtual window can grow after the first layout of a new turn.
     const observer = new ResizeObserver(() => {
       const anchor = readingAnchor.current
@@ -235,30 +318,35 @@ export const VirtualMessageList = ({
       setAwayFromBottom(!atBottom)
       setScrollTop(list.scrollTop)
     })
+    observer.observe(spacer)
     observer.observe(content)
-    return () => observer.disconnect()
-  }, [])
-  const timeline = [
-    ...messages.map((message) => ({
-      id: message.id,
-      createdAt: message.createdAt,
-      message,
-      content: null as ReactNode,
-    })),
-    ...timelineCards.map((card) => ({ ...card, message: null })),
-  ].sort((a, b) => a.createdAt - b.createdAt)
+    const measureMountedRows = () =>
+      content.querySelectorAll<HTMLElement>("[data-message-row]").forEach((row) => {
+        const id = row.dataset.messageRow
+        if (id) measureRowOnNextFrame(id)
+      })
+    const mutations = new MutationObserver(measureMountedRows)
+    mutations.observe(content, { childList: true })
+    measureMountedRows()
+    return () => {
+      mutations.disconnect()
+      observer.disconnect()
+    }
+  }, [measureRowOnNextFrame])
   const visibleCount = 34
+  const totalHeight = rowOffsets.at(-1) ?? 0
   const targetIndex = focusApproval
     ? timeline.findIndex((entry) =>
         entry.message?.parts.some((part) => part.type === "approval" && part.approvalId === focusApproval.approvalId),
       )
     : -1
   const revealTarget = targetIndex >= 0 && focusApproval?.request !== focusedRequest.current
+  const firstVisibleIndex = getTimelineIndex(rowOffsets, Math.max(0, scrollTop - estimatedRowHeight * 4))
   const start =
     timeline.length > 100
       ? Math.min(
           Math.max(0, timeline.length - visibleCount),
-          Math.max(0, (revealTarget ? targetIndex : Math.floor(scrollTop / rowHeight)) - 4),
+          Math.max(0, (revealTarget ? targetIndex : firstVisibleIndex) - 4),
         )
       : 0
   const end = timeline.length > 100 ? Math.min(timeline.length, start + visibleCount) : timeline.length
@@ -275,11 +363,11 @@ export const VirtualMessageList = ({
     followBottom.current = false
     readingAnchor.current = null
     setAwayFromBottom(true)
-    if (timeline.length > 100) list.scrollTop = targetIndex * rowHeight
+    if (timeline.length > 100) list.scrollTop = rowOffsets[targetIndex] ?? 0
     card.scrollIntoView?.({ block: "center", behavior: "instant" })
     card.focus({ preventScroll: true })
     setScrollTop(list.scrollTop)
-  }, [focusApproval, targetIndex, timeline.length])
+  }, [focusApproval, targetIndex, timeline.length, rowOffsets])
 
   return (
     <div className="chat-message-list">
@@ -319,23 +407,40 @@ export const VirtualMessageList = ({
         }}
       >
         {header}
-        <div style={{ height: timeline.length > 100 ? timeline.length * rowHeight : undefined }}>
+        <div ref={spacerRef} style={timeline.length > 100 ? { height: totalHeight, position: "relative" } : undefined}>
           <div
             ref={contentRef}
-            style={{ transform: timeline.length > 100 ? `translateY(${start * rowHeight}px)` : undefined }}
+            style={
+              timeline.length > 100
+                ? {
+                    position: "absolute",
+                    top: 0,
+                    right: 0,
+                    left: 0,
+                    transform: `translateY(${rowOffsets[start] ?? 0}px)`,
+                  }
+                : undefined
+            }
           >
             {visible.map((entry, index) => {
-              if (!entry.message) return <Fragment key={entry.id}>{entry.content}</Fragment>
+              if (!entry.message)
+                return (
+                  <div key={entry.id} className="message-row" data-message-row={entry.id}>
+                    {entry.content}
+                  </div>
+                )
               const saved = entry.message
               if (isResumeMarker(saved))
                 return (
-                  <p key={saved.id} className="run-resumed-marker" role="note" data-message-id={saved.id}>
-                    <span>
-                      {saved.text === "Retomado após aprovação de acesso"
-                        ? t("Retomado após aprovação de acesso")
-                        : saved.text}
-                    </span>
-                  </p>
+                  <div key={saved.id} className="message-row" data-message-row={saved.id}>
+                    <p className="run-resumed-marker" role="note" data-message-id={saved.id}>
+                      <span>
+                        {saved.text === "Retomado após aprovação de acesso"
+                          ? t("Retomado após aprovação de acesso")
+                          : saved.text}
+                      </span>
+                    </p>
+                  </div>
                 )
               const run = runs.find((run) => run.id === saved.runId)
               const finished = run && ["succeeded", "failed", "canceled", "interrupted"].includes(run.status)
@@ -369,7 +474,7 @@ export const VirtualMessageList = ({
               )
               const branchIndex = siblings.findIndex((candidate) => candidate.id === message.id)
               return (
-                <Fragment key={message.id}>
+                <div key={message.id} className="message-row" data-message-row={message.id}>
                   {(index === 0 || !sameCalendarDay(visible[index - 1]?.createdAt ?? 0, message.createdAt)) && (
                     <div className="day-divider">
                       <span>{formatDaySeparator(message.createdAt)}</span>
@@ -410,8 +515,9 @@ export const VirtualMessageList = ({
                     onEdit={onEdit}
                     onCancel={onCancel}
                     editDisabled={editDisabled}
+                    onImageLoad={measureRowOnNextFrame}
                   />
-                </Fragment>
+                </div>
               )
             })}
           </div>
@@ -504,6 +610,7 @@ const MessageBubble = ({
   onEdit,
   onCancel,
   editDisabled,
+  onImageLoad,
 }: {
   inserted: boolean
   vmBotId?: string | undefined
@@ -521,6 +628,7 @@ const MessageBubble = ({
   onEdit?: EditMessage | undefined
   onCancel?: ((runId: Id) => Promise<void>) | undefined
   editDisabled: boolean
+  onImageLoad: (messageId: string) => void
 }) => {
   const runtimeState = useMessageMascotState(message, run)
   const threadBot = useThreadBot(message.threadId)
@@ -533,11 +641,12 @@ const MessageBubble = ({
         ? {
             ...parentEvidence,
             bot: bot ?? parentEvidence.bot,
+            onLayoutChange: () => onImageLoad(message.id),
             onLibrary: (path: string) => parentEvidence.onLibrary?.(path, bot?.id ?? parentEvidence.bot.id),
             onComputer: () => parentEvidence.onComputer?.(bot?.id ?? parentEvidence.bot.id),
           }
         : undefined,
-    [parentEvidence, bot],
+    [parentEvidence, bot, message.id, onImageLoad],
   )
   const root = useRef<HTMLElement>(null)
   const [answers, setAnswers] = useState<Record<string, "approved" | "denied">>({})

@@ -4400,6 +4400,9 @@ a {
   padding-block: var(--space-16) var(--space-24);
   overflow-anchor: none;
 }
+.chat-message-list .message-row {
+  display: flow-root;
+}
 .chat-message-list :is(.message-bubble, .day-divider) {
   width: min(var(--chat-column-width), 100%);
 }
