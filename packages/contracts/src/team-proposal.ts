@@ -2,6 +2,9 @@ import { validAvatarColor, validAvatarShape } from "./avatar"
 import { normalizeBotName } from "./bot-name"
 import type { TeamProposalReview } from "./types"
 
+/** Approval text must not hide format controls, including invisible tags and bidi overrides. */
+export const hasTeamFormatCharacters = (value: unknown): boolean => typeof value === "string" && /\p{Cf}/u.test(value)
+
 const getRecord = (value: unknown): Record<string, unknown> | null =>
   value !== null && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null
 const isText = (value: unknown, max: number): value is string =>
@@ -37,10 +40,12 @@ export const getTeamProposalReview = (value: unknown): TeamProposalReview | null
           "avatarSeed",
         ]) ||
         !normalizeBotName(bot.name) ||
+        hasTeamFormatCharacters(bot.name) ||
         !["codex", "claude", "opencode"].includes(String(bot.provider)) ||
         !isText(bot.roleLine, 160) ||
-        /[\p{Cc}\p{Zl}\p{Zp}]/u.test(bot.roleLine) ||
+        /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u.test(bot.roleLine) ||
         !isText(bot.instructions, 12000) ||
+        hasTeamFormatCharacters(bot.instructions) ||
         (bot.model != null && (typeof bot.model !== "string" || bot.model.length > 200)) ||
         (bot.color != null && !validAvatarColor(bot.color)) ||
         (bot.avatarShape != null && !validAvatarShape(bot.avatarShape)) ||
@@ -57,6 +62,7 @@ export const getTeamProposalReview = (value: unknown): TeamProposalReview | null
       !group ||
       !hasOnly(group, ["name", "members", "coordinator"]) ||
       !normalizeBotName(group.name) ||
+      hasTeamFormatCharacters(group.name) ||
       !Array.isArray(group.members) ||
       !group.members.length ||
       group.members.length > 8 ||

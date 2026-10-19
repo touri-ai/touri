@@ -3,6 +3,7 @@ import { mkdir, readdir, readFile, symlink } from "node:fs/promises"
 import { join } from "node:path"
 import type { ApprovalPart, Bot, Run, TeamCreateInput, ToolContext, ToolRegistration } from "@touri/contracts"
 import { getTeamProposalReview } from "@touri/contracts"
+import { AVATAR_SHAPES } from "@touri/contracts/avatar"
 import { createApprovalBridge } from "../../src/approvals/bridge"
 import { createStandingGrantStore } from "../../src/approvals/grants"
 import { setDelegation } from "../../src/groups/security"
@@ -11,18 +12,15 @@ import { openDatabase } from "../../src/kernel/db"
 import { createRedactor } from "../../src/kernel/redact"
 import { createToolRouter } from "../../src/mcp/router"
 import { init as initStore } from "../../src/store"
+import { stopBotHomeWriter } from "../../src/store/bot-home"
 import { createTeamTools } from "../../src/teams/tools"
 import { testKernel } from "../kernel/test-kernel"
 
-const cleanups: Array<() => void> = []
-afterEach(() =>
-  cleanups
-    .splice(0)
-    .reverse()
-    .forEach((close) => {
-      close()
-    }),
-)
+// Async fixture resources must close their helper before their disposable database and folders.
+const cleanups: Array<() => void | Promise<void>> = []
+afterEach(async () => {
+  for (const close of cleanups.splice(0).reverse()) await close()
+})
 const getProposal = (): TeamCreateInput => ({
   bots: [
     {
@@ -137,9 +135,10 @@ const fixture = async (teamBuilder = true, timeoutMs = 5000) => {
     return bridge.approve({ approvalId: card.approvalId, decision, standing })
   }
   const botCount = () => (f.db.query("SELECT count(*) AS n FROM bots").get() as { n: number }).n
-  cleanups.push(() => {
+  cleanups.push(async () => {
     controller.abort()
     bridge.dispose()
+    await stopBotHomeWriter(f.kernel)
     f.close()
   })
   return {
@@ -207,6 +206,7 @@ test("mandatory card ignores approvals=never and standing grants, then creates s
   })
   const group = createGroupStore(f.kernel).list()[0]
   expect(group?.memberIds).toHaveLength(2)
+  expect(AVATAR_SHAPES.some((shape) => shape === group?.avatarShape)).toBe(true)
   for (const id of group?.memberIds ?? []) {
     const bot = f.store.getBot({ botId: id })
     if (!bot) throw new Error("Missing created bot")
@@ -705,4 +705,49 @@ test("group creation failure reports every committed bot and rolls back the grou
     status: "partial",
     bots: [{ name: "Pesquisa" }, { name: "Escrita" }],
   })
+})
+
+for (const character of ["\u200B", "\u200D", "\u200F", "\u2060", "\u202E", "\u2066", "\u2069", "\uFEFF", "\u{E0061}"]) {
+  test(`rejects invisible format U+${character.codePointAt(0)?.toString(16)} before approval in every trusted field`, async () => {
+    const f = await fixture()
+    const original = getProposal()
+    const proposals = ["name", "roleLine", "instructions"].map((field) => ({
+      bots: original.bots.map((bot, index) =>
+        index ? bot : { ...bot, [field]: `${bot[field as keyof typeof bot]}${character}hidden` },
+      ),
+    }))
+    const groupProposal = { ...original, group: { ...original.group, name: `Team${character}hidden` } }
+
+    for (const proposal of [...proposals, groupProposal]) {
+      const review = {
+        proposal,
+        providers: [
+          { provider: "codex", status: "ready" },
+          { provider: "claude", status: "ready" },
+        ],
+      }
+      expect(getTeamProposalReview(review)).toBeNull()
+      expect(await f.call(proposal)).toMatchObject({ success: false, errorCode: "INVALID_ARGS" })
+    }
+
+    expect(f.cards).toHaveLength(0)
+    expect(f.botCount()).toBe(1)
+  })
+}
+
+test("visible multiline instructions and ordinary emoji remain reviewable", async () => {
+  const f = await fixture()
+  const proposal = {
+    bots: getProposal().bots.map((bot) => ({
+      ...bot,
+      name: `${bot.name} 🐂`,
+      instructions: `${bot.instructions}\n\tReview with the user. 🐂`,
+    })),
+  }
+  const pending = f.call(proposal)
+  await f.answer("denied")
+
+  await pending
+
+  expect(f.cards[0]?.teamProposal?.proposal).toEqual(proposal)
 })

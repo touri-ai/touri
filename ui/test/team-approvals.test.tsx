@@ -7,6 +7,7 @@ import { BotCreateModal } from "../src/components/Modals"
 import { TeamApprovalCard } from "../src/components/TeamApprovalCard"
 import { ToolCallList } from "../src/components/ToolCallList"
 import { approvalMatchesTool } from "../src/components/toolPresentation"
+import { ApiError } from "../src/errors"
 import { getJobTemplates } from "../src/features/jobs/catalog"
 import { getTeamReview } from "./fixtures/team-proposal"
 
@@ -199,4 +200,63 @@ it("accepts the same empty default model and nonempty avatar seed as bot creatio
 
   expect(screen.getByRole("button", { name: "Criar time" })).toBeEnabled()
   expect(screen.getByText(/Modelo padrão/)).toBeVisible()
+})
+
+it.each(["name", "roleLine", "instructions", "group"])(
+  "hidden format characters in %s disable team approval",
+  (field) => {
+    const original = getTeamReview()
+    const proposal =
+      field === "group"
+        ? { ...original.proposal, group: { ...original.proposal.group, name: "Team\u{E0061}hidden" } }
+        : {
+            bots: original.proposal.bots.map((bot, index) =>
+              index ? bot : { ...bot, [field]: "Visible\u202Ehidden" },
+            ),
+          }
+    const teamProposal = { ...original, proposal } as ApprovalPart["teamProposal"]
+
+    render(<TeamApprovalCard part={{ ...getApproval(), teamProposal }} api={createMockApi()} />)
+
+    expect(screen.getByRole("button", { name: "Criar time" })).toBeDisabled()
+    expect(screen.getByRole("button", { name: "Cancelar" })).toBeEnabled()
+  },
+)
+
+it("a reloaded partial card treats already deleted bots as cleaned up", async () => {
+  const api = createMockApi()
+  const part: ApprovalPart = {
+    ...getApproval(),
+    decision: "approved",
+    teamResult: { status: "partial", bots: [{ id: "bot-mark", name: "mark", threadId: "thread-mark" }] },
+  }
+  render(<TeamApprovalCard part={part} api={api} />)
+  fireEvent.click(screen.getByRole("button", { name: "Apagar bots criados" }))
+  await screen.findByText("Bots criados apagados.")
+  cleanup()
+
+  render(<TeamApprovalCard part={part} api={api} />)
+  fireEvent.click(screen.getByRole("button", { name: "Apagar bots criados" }))
+  await screen.findByText("Bots criados apagados.")
+
+  expect(screen.queryByRole("button", { name: "Apagar bots criados" })).toBeNull()
+  expect(screen.queryByRole("link", { name: "mark" })).toBeNull()
+})
+
+it("cleanup retains permission failures for retry", async () => {
+  const api = createMockApi()
+  const request = api.request
+  const denied = { ...api, request: vi.fn(request).mockRejectedValue(new ApiError(403, "Denied", "DENIED")) }
+  const part: ApprovalPart = {
+    ...getApproval(),
+    decision: "approved",
+    teamResult: { status: "partial", bots: [{ id: "bot-mark", name: "mark", threadId: "thread-mark" }] },
+  }
+
+  render(<TeamApprovalCard part={part} api={denied} />)
+  fireEvent.click(screen.getByRole("button", { name: "Apagar bots criados" }))
+  await screen.findByText("Não foi possível apagar todos os bots. Tente novamente.")
+
+  expect(screen.getByRole("button", { name: "Apagar bots criados" })).toBeEnabled()
+  expect(screen.getByRole("link", { name: "mark" })).toBeVisible()
 })

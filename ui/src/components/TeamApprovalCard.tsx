@@ -3,7 +3,7 @@ import { getTeamProposalReview } from "@touri/contracts"
 import { useRef, useState } from "react"
 import type { UiApi } from "../api/client"
 import { buildDeepLink } from "../deepLink"
-import { userFacingError } from "../errors"
+import { ApiError, userFacingError } from "../errors"
 import { type Locale, type TranslationKey, t } from "../i18n"
 import { BotAvatar } from "./BotAvatar"
 import "./team-approval.css"
@@ -59,7 +59,11 @@ export const TeamApprovalCard = ({
     setError(null)
     const outcomes = await Promise.allSettled(
       remainingBots.map(async (bot) => {
-        await api.request("DELETE /bots/:id", { name: bot.name }, { id: bot.id })
+        try {
+          await api.request("DELETE /bots/:id", { name: bot.name }, { id: bot.id })
+        } catch (error) {
+          if (!(error instanceof ApiError) || error.errorCode !== "NOT_FOUND") throw error
+        }
         return bot.id
       }),
     )

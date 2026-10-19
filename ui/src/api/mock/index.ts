@@ -713,7 +713,8 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
     const key = String(route)
     if (key === "DELETE /bots/:id") {
       const bot = bots.find((bot) => bot.id === pathValues.id)
-      if (!bot || (input as ApiRoutes["DELETE /bots/:id"]["req"]).name !== bot.name)
+      if (!bot) throw new ApiError(404, "Bot não encontrado", "NOT_FOUND")
+      if ((input as ApiRoutes["DELETE /bots/:id"]["req"]).name !== bot.name)
         throw new Error("Digite o nome do bot para excluir.")
       const ownedThreads = new Set(threads.filter((thread) => thread.botId === bot.id).map((thread) => thread.id))
       messages = messages.filter((message) => !ownedThreads.has(message.threadId))

@@ -20,6 +20,7 @@ export const createApprovalBridge = ({
   const grants = createStandingGrantStore(kernel)
   const notices = createRuntimeNotices({ kernel })
   let disposed = false
+  // These local registries hold approval ownership and the result card across asynchronous creation.
   const pendingTeamThreads = new Set<string>()
   const approvedTeams = new Map<string, { input: ApprovalInput; part: ApprovalPart }>()
   const outcomes: Array<{ input: ApprovalInput; message: string }> = []

@@ -12,13 +12,15 @@ import type {
   ToolRegistration,
   ToolResult,
 } from "@touri/contracts"
-import { normalizeBotName, validateToolArgs } from "@touri/contracts"
+import { hasTeamFormatCharacters, normalizeBotName, validateToolArgs } from "@touri/contracts"
+import { avatarShapeFor } from "@touri/contracts/avatar"
 import { createGroupStore } from "../groups/store"
 import { getTeamBuilder } from "./eligibility"
 
 const denied = (error: string): ToolResult => ({ success: false, errorCode: "DENIED", error })
 
 export const createTeamTools = (kernel: Kernel): ToolRegistration[] => {
+  // This local set prevents overlapping approval waits from creating two teams in one conversation.
   const pending = new Set<string>()
   return [
     {
@@ -132,7 +134,12 @@ const getValidatedProposal = (
     return { success: false, errorCode: "INVALID_ARGS", error: "Use nomes diferentes para os bots do time." }
   if (
     proposal.bots.some(
-      (bot) => !bot.roleLine.trim() || /[\p{Cc}\p{Zl}\p{Zp}]/u.test(bot.roleLine) || !bot.instructions.trim(),
+      (bot) =>
+        hasTeamFormatCharacters(bot.name) ||
+        !bot.roleLine.trim() ||
+        /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u.test(bot.roleLine) ||
+        !bot.instructions.trim() ||
+        hasTeamFormatCharacters(bot.instructions),
     )
   )
     return {
@@ -144,6 +151,7 @@ const getValidatedProposal = (
   if (
     group &&
     (!normalizeBotName(group.name) ||
+      hasTeamFormatCharacters(group.name) ||
       group.members.some((name) => !names.includes(name)) ||
       (group.coordinator !== undefined && !group.members.includes(group.coordinator)))
   )
@@ -196,12 +204,13 @@ const createApprovedTeam = async (
     if (!proposal.group) return { status: "created", bots: created }
     if (!isCurrent()) throw new Error("Run changed")
     const groupStore = createGroupStore(kernel)
+    const avatarSeed = kernel.newId()
     const input = {
       name: proposal.group.name,
       memberIds: proposal.group.members.map((name) => created.find((bot) => bot.name === name)?.id ?? ""),
       coordinatorBotId: created.find((bot) => bot.name === proposal.group?.coordinator)?.id ?? null,
       color: "#5C7CFA",
-      avatarShape: "cercle" as const,
+      avatarShape: avatarShapeFor(avatarSeed),
     }
     if (!groupStore.validate(input)) throw new Error("Invalid group")
     const result = (kernel.db as Database).transaction(() => {
