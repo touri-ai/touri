@@ -51,6 +51,7 @@ views.forEach(({ name, width, height, theme }) => {
 
     await expect(dialog).toBeHidden()
     expect(await getStoredChoice()).toEqual({ provider: "codex", model: "gpt-6.1-sol" })
+    await page.getByRole("button", { name: "Fechar painel do bot", exact: true }).click()
     await expect(page.getByRole("button", { name: "Escolher modelo: Codex · gpt-6.1-sol" })).toBeVisible()
     if (shots) await page.screenshot({ path: join(shots, `model-settings-saved-${name}.png`) })
   })
