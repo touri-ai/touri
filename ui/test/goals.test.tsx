@@ -1,9 +1,8 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import type { Message } from "@touri/contracts"
 import { afterEach, expect, test, vi } from "vitest"
-import App from "../src/App"
+import App, { getGoalSelection } from "../src/App"
 import { createMockApi } from "../src/api/mock"
-import { activeMessagePath, ChatPanel } from "../src/components/ChatPanel"
 import { GoalPanel } from "../src/components/GoalPanel"
 import { localizeToolText, t } from "../src/i18n"
 
@@ -31,7 +30,7 @@ const makeFixture = (hasProject = true, api = createMockApi()) => {
 }
 
 const startGoal = async () => {
-  fireEvent.click(screen.getByText("Objetivo"))
+  fireEvent.click(screen.getByRole("button", { name: "Definir objetivo" }))
   fireEvent.change(screen.getByRole("textbox", { name: "O que precisa estar pronto para concluir?" }), {
     target: { value: "Tabela com três opções e fontes verificadas." },
   })
@@ -69,11 +68,11 @@ test("keeps empty goal setup in the bot panel instead of above the conversation"
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
 
   expect(screen.queryByRole("region", { name: "Continuar até concluir" })).toBeNull()
-  expect(screen.queryByRole("button", { name: "Objetivo" })).toBeNull()
+  expect(screen.queryByRole("button", { name: "Definir objetivo" })).toBeNull()
 
   fireEvent.click(screen.getByRole("button", { name: "Painel do bot" }))
   const botPanel = await screen.findByRole("complementary", { name: "Painel de mark" })
-  const goalEntry = await within(botPanel).findByRole("button", { name: "Objetivo" })
+  const goalEntry = await within(botPanel).findByRole("button", { name: "Definir objetivo" })
   expect(goalEntry).toHaveAttribute("aria-expanded", "false")
 
   fireEvent.click(goalEntry)
@@ -82,6 +81,12 @@ test("keeps empty goal setup in the bot panel instead of above the conversation"
   const start = within(botPanel).getByRole("button", { name: "Continuar até concluir" })
   await waitFor(() => expect(start).toBeEnabled())
   fireEvent.click(start)
+
+  const confirmation = await within(botPanel).findByRole("status")
+  expect(confirmation).toHaveTextContent("Objetivo iniciado nesta conversa")
+  expect(confirmation).toBeVisible()
+  expect(confirmation).toHaveFocus()
+  expect(within(botPanel).queryByRole("button", { name: "Continuar até concluir" })).toBeNull()
 
   await screen.findByText("Em andamento")
   const goal = screen.getByRole("region", { name: "Continuar até concluir" })
@@ -209,7 +214,7 @@ test.each(["turns", "time"] as const)("exhausting the %s budget collapses the ch
 test("without an authorized folder the ordinary conversation limit is explained", async () => {
   makeFixture(false)
 
-  fireEvent.click(screen.getByText("Objetivo"))
+  fireEvent.click(screen.getByRole("button", { name: "Definir objetivo" }))
 
   expect(screen.getByText(/Vincule um projeto ou autorize uma pasta/)).toBeVisible()
   expect(screen.getByRole("button", { name: "Continuar até concluir" })).toBeDisabled()
@@ -241,7 +246,9 @@ test("saved checkpoints reappear when the conversation is reopened", async () =>
 test("goal state and controls have English copy", () => {
   const labels = [
     "Continue until done",
-    "Goal advanced",
+    "Goal title",
+    "Goal setup",
+    "Goal started in conversation",
     "Goal folder required",
     "Goal budget exhausted help",
     "Change goal budget",
@@ -253,6 +260,8 @@ test("goal state and controls have English copy", () => {
   expect(labels.map((key) => t(key, {}, "en"))).toEqual([
     "Continue until done",
     "Goal",
+    "Set up goal",
+    "Goal started in this conversation",
     "Link a project or authorize a folder to continue automatically. For now, the conversation continues one turn at a time.",
     "The limit was reached and the bot stopped. Change the budget and choose Resume to continue.",
     "Change budget",
@@ -407,29 +416,19 @@ test("starting a goal uses the request on the visible branch", async () => {
     parts: [{ type: "text", text: "Outro pedido em outra ramificação." }],
   }
   const messages = [request, { ...reply, parentId: request.id }, sibling]
-  const activeRequest = activeMessagePath(messages, reply.id)
-    .filter((message) => message.role === "user")
-    .at(-1)
+  const selection = getGoalSelection({
+    bot,
+    thread: { ...thread, activeLeafId: reply.id },
+    group: null,
+    messages,
+    runs: [],
+    routineRuns: [],
+    routines: [],
+  })
 
-  const chat = render(
-    <ChatPanel
-      api={api}
-      bot={bot}
-      thread={{ ...thread, activeLeafId: reply.id }}
-      messages={messages}
-      runs={[]}
-      onSend={vi.fn(async () => {})}
-      onRetry={vi.fn(async () => {})}
-      onCancel={vi.fn(async () => {})}
-      onSwitchBranch={vi.fn(async () => {})}
-      computerGrant={null}
-      onComputerGrant={vi.fn()}
-      onOpenTools={vi.fn()}
-    />,
+  render(
+    <GoalPanel api={api} threadId={thread.id} bot={bot} request={selection.goalRequest} busy={selection.goalBusy} />,
   )
-  expect(screen.queryByRole("region", { name: "Continuar até concluir" })).toBeNull()
-  chat.unmount()
-  render(<GoalPanel api={api} threadId={thread.id} bot={bot} request={activeRequest} busy={false} />)
   await startGoal()
 
   expect(api.calls).toContainEqual(
@@ -438,4 +437,57 @@ test("starting a goal uses the request on the visible branch", async () => {
       input: expect.objectContaining({ requestMessageId: request.id }),
     }),
   )
+})
+
+test("reopening the entry reads once even after earlier goal changes", async () => {
+  const api = createMockApi()
+  const bot = api.getState().bots[0]
+  const request = api.getState().messages.find((message) => message.role === "user")
+  if (!bot || !request) throw new Error("Missing mock conversation")
+  const getEntry = (refreshRequest: number) => (
+    <GoalPanel
+      api={api}
+      threadId={request.threadId}
+      bot={bot}
+      request={request}
+      busy={false}
+      surface="entry"
+      refreshRequest={refreshRequest}
+    />
+  )
+  const view = render(getEntry(2))
+  await screen.findByRole("button", { name: "Definir objetivo" })
+
+  expect(api.calls.filter((call) => call.route === "GET /threads/:id/goal")).toHaveLength(1)
+
+  view.rerender(getEntry(3))
+  await waitFor(() => expect(api.calls.filter((call) => call.route === "GET /threads/:id/goal")).toHaveLength(2))
+})
+
+test.each(["other bot", "group", "routine"])("goal setup excludes a conversation for %s", async (kind) => {
+  const api = createMockApi()
+  const bot = api.getState().bots[0]
+  const thread = api.getState().threads.find((candidate) => candidate.botId === bot?.id)
+  if (!bot || !thread) throw new Error("Missing mock conversation")
+  const { group } = await api.request("POST /groups", {
+    name: "Equipe de exemplo",
+    color: "#dc2626",
+    avatarShape: "cercle",
+    memberIds: [bot.id],
+    coordinatorBotId: bot.id,
+  })
+
+  const selection = getGoalSelection({
+    bot: kind === "other bot" ? (api.getState().bots[1] ?? null) : bot,
+    thread: kind === "routine" ? { ...thread, kind: "routine" } : thread,
+    group: kind === "group" ? group : null,
+    messages: api.getState().messages.filter((message) => message.threadId === thread.id),
+    runs: [],
+    routineRuns: [],
+    routines: [],
+  })
+
+  expect(selection.goalThread).toBeNull()
+  expect(selection.goalRequest).toBeUndefined()
+  expect(selection.goalBusy).toBe(false)
 })

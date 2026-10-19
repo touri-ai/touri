@@ -100,7 +100,9 @@ export const ptBR = {
   "Goal pause": "Pausar",
   "Goal resume": "Retomar",
   "Continue until done": "Continuar até concluir",
-  "Goal advanced": "Objetivo",
+  "Goal title": "Objetivo",
+  "Goal setup": "Definir objetivo",
+  "Goal started in conversation": "Objetivo iniciado nesta conversa",
   "Goal mode help":
     "Continua a última solicitação entre turnos, dentro dos limites abaixo. As aprovações continuam obrigatórias. Disponível para bots locais.",
   "Goal folder required":
@@ -2556,7 +2558,9 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Goal pause": "Pause",
   "Goal resume": "Resume",
   "Continue until done": "Continue until done",
-  "Goal advanced": "Goal",
+  "Goal title": "Goal",
+  "Goal setup": "Set up goal",
+  "Goal started in conversation": "Goal started in this conversation",
   "Goal mode help":
     "Continue the latest request across turns within these limits. Approvals remain mandatory. Available for local bots.",
   "Goal folder required":

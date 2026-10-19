@@ -1098,7 +1098,6 @@ export const ChatPanel = ({
           threadId={thread.id}
           bot={bot}
           surface="chat"
-          request={activePath?.filter((message) => message.role === "user").at(-1)}
           refreshRequest={goalRefreshRequest}
           onChange={onGoalChange}
           busy={runs.some(

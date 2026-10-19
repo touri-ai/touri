@@ -1,5 +1,18 @@
 import { listen } from "@tauri-apps/api/event"
-import type { BotGroup, GroupInput, HostKind, Id, NotificationRecord, RecoveryTask } from "@touri/contracts"
+import type {
+  Bot,
+  BotGroup,
+  GroupInput,
+  HostKind,
+  Id,
+  Message,
+  NotificationRecord,
+  RecoveryTask,
+  Routine,
+  RoutineRun,
+  Run,
+  Thread,
+} from "@touri/contracts"
 import type { FailureAction } from "@touri/contracts/run-failure"
 import { lazy, type SetStateAction, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
@@ -531,26 +544,15 @@ const AppContent = ({ kernel }: AppProps) => {
     }) ?? []
   const selectedProject = data.projects.find((project) => project.id === selectedBot?.projectId) ?? null
   const selectedMessages = data.messages.filter((message) => message.threadId === selectedThread?.id)
-  const activePath =
-    selectedThread && !selectedGroup
-      ? activeMessagePath(selectedMessages, selectedThread.activeLeafId)
-      : selectedMessages
-  const goalCandidate =
-    selectedBot && selectedThread?.botId === selectedBot.id && !selectedGroup ? selectedThread : null
-  const goalThread =
-    goalCandidate &&
-    !isRoutineConversation({
-      thread: goalCandidate,
-      runs: data.runs,
-      routineRuns: data.routineRuns,
-      routines: data.routines,
-    })
-      ? goalCandidate
-      : null
-  const goalRequest = goalThread ? activePath.filter((message) => message.role === "user").at(-1) : undefined
-  const goalBusy =
-    goalThread !== null &&
-    data.runs.some((run) => run.threadId === goalThread.id && ["queued", "starting", "running"].includes(run.status))
+  const { activePath, goalThread, goalRequest, goalBusy } = getGoalSelection({
+    bot: selectedBot,
+    thread: selectedThread,
+    group: selectedGroup,
+    messages: selectedMessages,
+    runs: data.runs,
+    routineRuns: data.routineRuns,
+    routines: data.routines,
+  })
   const selectedPreview =
     data.previews.find(
       (preview) =>
@@ -1523,3 +1525,33 @@ const App = (props: AppProps) => {
 }
 
 export default App
+
+export const getGoalSelection = ({
+  bot,
+  thread,
+  group,
+  messages,
+  runs,
+  routineRuns,
+  routines,
+}: {
+  bot: Bot | null
+  thread: Thread | null
+  group: BotGroup | null
+  messages: Message[]
+  runs: Run[]
+  routineRuns: RoutineRun[]
+  routines: Routine[]
+}) => {
+  const activePath = thread && !group ? activeMessagePath(messages, thread.activeLeafId) : messages
+  const hasGoalThread =
+    bot && thread?.botId === bot.id && !group && !isRoutineConversation({ thread, runs, routineRuns, routines })
+  if (!hasGoalThread) return { activePath, goalThread: null, goalRequest: undefined, goalBusy: false }
+
+  return {
+    activePath,
+    goalThread: thread,
+    goalRequest: activePath.filter((message) => message.role === "user").at(-1),
+    goalBusy: runs.some((run) => run.threadId === thread.id && ["queued", "starting", "running"].includes(run.status)),
+  }
+}

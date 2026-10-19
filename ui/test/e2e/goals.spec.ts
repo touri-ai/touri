@@ -17,13 +17,16 @@ viewports.forEach((viewport) => {
 
     await page.getByRole("button", { name: "Painel do bot" }).click()
     const botPanel = page.getByRole("complementary", { name: "Painel de mark" })
-    const goalEntry = botPanel.getByRole("button", { name: "Objetivo", exact: true })
+    const goalEntry = botPanel.getByRole("button", { name: "Definir objetivo", exact: true })
     await expect(goalEntry).toBeVisible()
     await goalEntry.click()
     await botPanel
       .getByRole("textbox", { name: "O que precisa estar pronto para concluir?" })
       .fill("Tabela com três opções, preços e fontes verificadas.")
     await botPanel.getByRole("button", { name: "Continuar até concluir", exact: true }).click()
+    const confirmation = botPanel.getByRole("status")
+    await expect(confirmation).toHaveText("Objetivo iniciado nesta conversa")
+    await expect(confirmation).toBeFocused()
     await botPanel.getByRole("button", { name: "Fechar painel do bot" }).click()
 
     const panel = page.getByRole("region", { name: "Continuar até concluir" })
@@ -66,6 +69,9 @@ viewports.forEach((viewport) => {
     }
     await reopenedBotPanel.getByRole("button", { name: "Continuar até concluir", exact: true }).click()
 
+    const nextConfirmation = reopenedBotPanel.getByRole("status")
+    await expect(nextConfirmation).toHaveText("Objetivo iniciado nesta conversa")
+    await expect(nextConfirmation).toBeFocused()
     const nextGoal = page.getByRole("region", { name: "Continuar até concluir" })
     await expect(nextGoal.getByRole("status")).toHaveText("Em andamento")
     await expect(nextGoal).toContainText("Resumo revisado.")
