@@ -290,10 +290,14 @@ export const McpScreen = ({
                   ),
               )
             )}
-            <details className="screen-card screen-gateway-tools">
-              <summary>
-                {t("Ferramentas do touri")} <span>{tools.length}</span>
-              </summary>
+            <Disclosure
+              className="screen-card screen-gateway-tools"
+              summary={
+                <>
+                  {t("Ferramentas do touri")} <span>{tools.length}</span>
+                </>
+              }
+            >
               {tools.length === 0 ? (
                 <ScreenState kind="empty" title="Nenhuma ferramenta registrada" />
               ) : (
@@ -309,7 +313,7 @@ export const McpScreen = ({
                   ))}
                 </div>
               )}
-            </details>
+            </Disclosure>
           </>
         )}
       </div>

@@ -1095,39 +1095,27 @@
   border-radius: var(--radius-12);
   background: var(--surface-settings-card);
 }
-.settings-disclosure > summary {
-  display: flex;
-  align-items: center;
+.settings-disclosure > .ds-disclosure-trigger {
+  align-items: flex-start;
   gap: var(--space-12);
-  padding: var(--space-20);
-  list-style: none;
-  cursor: pointer;
+  padding: var(--space-16) var(--space-20);
+  border-radius: var(--radius-12);
+  color: var(--text-primary);
+  font-weight: inherit;
 }
-.settings-disclosure > summary::-webkit-details-marker {
-  display: none;
+.settings-disclosure > .ds-disclosure-trigger:hover {
+  background: var(--surface-settings-hover);
 }
-.settings-disclosure > summary::after {
-  content: "›";
-  margin-left: auto;
-  color: var(--text-secondary);
-}
-.settings-disclosure[open] > summary::after {
-  transform: rotate(90deg);
-}
-.settings-disclosure > summary strong {
+.settings-disclosure > .ds-disclosure-trigger strong {
   font-size: var(--type-13);
   font-weight: var(--weight-medium);
 }
-.settings-disclosure > summary small {
+.settings-disclosure > .ds-disclosure-trigger small {
   display: block;
   margin-top: var(--space-6);
   color: var(--text-secondary);
   font-size: var(--type-12);
   line-height: var(--leading-body);
-}
-.settings-disclosure > summary:hover {
-  background: var(--surface-settings-hover);
-  border-radius: var(--radius-12);
 }
 .settings-disclosure-content {
   padding: var(--space-16);

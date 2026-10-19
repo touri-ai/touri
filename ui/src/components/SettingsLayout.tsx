@@ -7,6 +7,7 @@ import {
   useId,
   useState,
 } from "react"
+import { Disclosure } from "./Disclosure"
 import { useReveal } from "./Reveal"
 
 const SettingsIdContext = createContext("")
@@ -215,21 +216,21 @@ export const SettingsDisclosure = ({
     if (defaultOpen) setOpen(true)
   }, [defaultOpen])
   return (
-    <details
+    <Disclosure
       className="settings-disclosure"
       open={open}
-      onToggle={(event) => {
-        setOpen(event.currentTarget.open)
-        onOpenChange?.(event.currentTarget.open)
+      onOpenChange={(next) => {
+        setOpen(next)
+        onOpenChange?.(next)
       }}
-    >
-      <summary>
+      summary={
         <span>
           <strong>{title}</strong>
           <small>{description}</small>
         </span>
-      </summary>
+      }
+    >
       <div className="settings-disclosure-content">{typeof children === "function" ? children(open) : children}</div>
-    </details>
+    </Disclosure>
   )
 }

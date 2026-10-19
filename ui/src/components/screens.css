@@ -293,15 +293,12 @@
 .screen-gateway-tools {
   padding: var(--screen-card-padding);
 }
-.screen-gateway-tools > summary {
-  display: flex;
-  gap: var(--space-12);
-  cursor: pointer;
+.screen-gateway-tools > .ds-disclosure-trigger {
   font-size: var(--type-14);
   font-weight: var(--weight-medium);
 }
-.screen-gateway-tools > summary > span {
-  margin-left: auto;
+.screen-gateway-tools > .ds-disclosure-trigger > span:last-child > span {
+  margin-left: var(--space-8);
   color: var(--text-secondary);
 }
 .screen-gateway-list {

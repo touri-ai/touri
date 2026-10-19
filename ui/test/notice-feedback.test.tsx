@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { expect, test } from "vitest"
 import App from "../src/App"
 import { createMockApi } from "../src/api/mock"
@@ -20,7 +20,10 @@ test.each(notices)("$title uses the right feedback tone and remains dismissible"
   expect(screen.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
   if (tone === "notice-error") {
     expect(screen.getByRole("status").querySelector("p")).not.toHaveTextContent(/TOURI-E\d{4}/)
-    expect(screen.getByRole("status").querySelector("details")).not.toHaveAttribute("open")
+    expect(within(screen.getByRole("status")).getByRole("button", { name: /Detalhes/ })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    )
   }
 
   fireEvent.click(screen.getByRole("button", { name: "Dispensar aviso" }))
