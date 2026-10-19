@@ -253,7 +253,7 @@ const runReplay = async (count: number, historyMessages = 0): Promise<BenchmarkR
   const repoRoot = resolve(import.meta.dir, "../../..")
   const root = mkdtempSync(join(repoRoot, ".touri-provider-event-benchmark-"))
   replayCleanups.push(() => rmSync(root, { recursive: true, force: true }))
-  const assets = mkdtempSync(join(repoRoot, ".touri-provider-event-fixture-"))
+  const assets = mkdtempSync(join(root, "fixture-"))
   replayCleanups.push(() => rmSync(assets, { recursive: true, force: true }))
   const fakePath = join(assets, "fake-codex")
   const scenarioPath = join(assets, "scenario.json")
