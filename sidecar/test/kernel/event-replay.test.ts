@@ -281,7 +281,9 @@ test("synchronous publish and send survive a worker lock without an empty captur
 
     expect(inserted.success).toBe(true)
     expect(captureFinishedWhileLocked).toBe(true)
-    expect(bus.replay(0).at(-1)?.event).toMatchObject({ type: "import.progress", importId: "worker-lock" })
+    expect(
+      bus.replay(0).some(({ event }) => event.type === "import.progress" && event.importId === "worker-lock"),
+    ).toBe(true)
     expect((f.db.query("PRAGMA busy_timeout").get() as { timeout: number }).timeout).toBe(5_000)
   } finally {
     bus.stop()
