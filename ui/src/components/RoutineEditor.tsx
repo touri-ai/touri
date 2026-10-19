@@ -19,6 +19,30 @@ const weekdays = [
   "sábado",
 ] as const
 
+const routineTimeZoneLabels = [
+  ["America/Sao_Paulo", "Horário de Brasília"],
+  ["America/Manaus", "Horário do Amazonas"],
+  ["America/Rio_Branco", "Horário do Acre"],
+  ["America/Noronha", "Horário de Fernando de Noronha"],
+  ["UTC", "UTC"],
+] as const
+
+const getRoutineTimeZoneLabel = (timeZone: string) => {
+  const knownLabel = routineTimeZoneLabels.find(([zone]) => zone === timeZone)
+  if (knownLabel) return t(knownLabel[1])
+
+  try {
+    const localizedLabel = new Intl.DateTimeFormat("pt-BR", { timeZone, timeZoneName: "long" })
+      .formatToParts(Date.now())
+      .find((part) => part.type === "timeZoneName")
+    if (localizedLabel) return localizedLabel.value
+  } catch {
+    return t("Fuso horário inválido")
+  }
+
+  return t("Fuso horário inválido")
+}
+
 export const routineHostNotice = (host: HostKind) =>
   host === "server"
     ? t("Funciona enquanto o touri estiver em execução no servidor. Você pode fechar esta página.")
@@ -279,7 +303,7 @@ export const RoutineEditor = ({
                       ]),
                     ].map((zone) => (
                       <option key={zone} value={zone}>
-                        {zone === "America/Sao_Paulo" ? t("Horário de Brasília") : zone}
+                        {getRoutineTimeZoneLabel(zone)}
                       </option>
                     ))}
                   </select>
@@ -438,7 +462,7 @@ export const RoutineEditor = ({
               ) : (
                 <p role="alert">{t("Escolha dias, hora e fuso válidos para ver as próximas execuções.")}</p>
               )}
-              <small>{draft.timezone === "America/Sao_Paulo" ? t("Horário de Brasília") : draft.timezone}</small>
+              <small>{getRoutineTimeZoneLabel(draft.timezone)}</small>
             </section>
             <p className="routine-form-note">{routineHostNotice(host)}</p>
             {error && <p role="alert">{error}</p>}

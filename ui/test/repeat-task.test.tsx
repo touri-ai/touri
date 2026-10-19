@@ -44,6 +44,47 @@ const fixture = () => {
 }
 
 describe("repeating work", () => {
+  it("shows readable Portuguese labels for every routine timezone option", () => {
+    const f = fixture()
+    const draft = { ...f.draft, timezone: "America/Manaus" }
+    render(<RoutineEditor initial={draft} bots={[f.bot]} actions={f.actions} host="server" onClose={vi.fn()} />)
+
+    const timezone = screen.getByRole("combobox", { name: "Fuso horário" })
+    const labels = within(timezone)
+      .getAllByRole("option")
+      .map((option) => option.textContent)
+
+    expect(timezone).toHaveValue("America/Manaus")
+    expect(labels).toEqual([
+      "Horário de Brasília",
+      "Horário do Amazonas",
+      "Horário do Acre",
+      "Horário de Fernando de Noronha",
+      "UTC",
+    ])
+    expect(labels.some((label) => label?.includes("America/"))).toBe(false)
+    expect(t("Horário do Amazonas", {}, "en")).toBe("Amazonas time")
+    expect(t("Horário de Fernando de Noronha", {}, "en")).toBe("Fernando de Noronha time")
+
+    fireEvent.click(screen.getByRole("button", { name: "Revisar rotina" }))
+    expect(
+      within(screen.getByRole("region", { name: "Próximas três execuções" })).getByText("Horário do Amazonas"),
+    ).toBeVisible()
+  })
+
+  it("localizes a saved timezone outside the Brazil preset list", () => {
+    const f = fixture()
+    const draft = { ...f.draft, timezone: "America/New_York" }
+    render(<RoutineEditor initial={draft} bots={[f.bot]} actions={f.actions} host="server" onClose={vi.fn()} />)
+
+    const timezone = screen.getByRole("combobox", { name: "Fuso horário" })
+    const savedZone = timezone.querySelector('option[value="America/New_York"]')
+
+    expect(savedZone).not.toBeNull()
+    expect(savedZone?.textContent).not.toBe("America/New_York")
+    expect(savedZone?.textContent).not.toContain("America/")
+  })
+
   it("opens a filled draft from a useful result in one click without creating or activating", async () => {
     const f = fixture()
     render(<App kernel={{ services: { api: f.api } }} />)
