@@ -823,6 +823,7 @@ export const createRuntimeEngine = ({
       const existing = last?.type === "text" ? last : undefined
       const partIndex = existing ? state.parts.length - 1 : state.parts.length
       if (!existing) state.parts.push({ type: "text", text: "" })
+      if (state.cancelRequested) state.dirtyParts.add(partIndex)
       appendPendingText(state, partIndex, "text", delta)
       if (state.replyMessageId)
         store.appendDelta({
@@ -2125,6 +2126,9 @@ export const createRuntimeEngine = ({
     state.cancelRequested = true
     controllers.get(id)?.abort()
     finishParts({ run, state, reason: "cancelled_by_user" })
+    state.parts.forEach((part, index) => {
+      if (part.type === "text" || part.type === "reasoning") state.dirtyParts.add(index)
+    })
     const store = kernel.services.use("store.api")
     if (store) publishMessage({ store, state, run, status: "streaming" })
     approvalBridge.cancelRun(id)
