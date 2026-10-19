@@ -922,8 +922,11 @@ export const ptBR = {
   "Abra este arquivo na conversa do bot que o salvou.": "Abra este arquivo na conversa do bot que o salvou.",
   "Este arquivo está fora das pastas permitidas para este bot.":
     "Este arquivo está fora das pastas permitidas para este bot.",
-  "Não foi possível abrir este arquivo. Ele pode ter sido removido, ser um atalho ou ter mais de 512 KiB.":
-    "Não foi possível abrir este arquivo. Ele pode ter sido removido, ser um atalho ou ter mais de 512 KiB.",
+  "Não foi possível abrir este arquivo. Ele pode ter sido removido, ser um atalho ou ter mais de 512 KB.":
+    "Não foi possível abrir este arquivo. Ele pode ter sido removido, ser um atalho ou ter mais de 512 KB.",
+  "Imagens de até 15 MB; demais arquivos de até 512 KB. Pastas ocultas e links não são exibidos.":
+    "Imagens de até 15 MB; demais arquivos de até 512 KB. Pastas ocultas e links não são exibidos.",
+  "{count} KB": "{count} KB",
   "Prévia indisponível para este formato. Baixe para abrir no seu computador.":
     "Prévia indisponível para este formato. Baixe para abrir no seu computador.",
   Revisar: "Revisar",
@@ -3401,8 +3404,11 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
     "Open this file in the conversation with the bot that saved it.",
   "Este arquivo está fora das pastas permitidas para este bot.":
     "This file is outside the folders allowed for this bot.",
-  "Não foi possível abrir este arquivo. Ele pode ter sido removido, ser um atalho ou ter mais de 512 KiB.":
-    "Could not open this file. It may have been removed, be a shortcut or exceed 512 KiB.",
+  "Não foi possível abrir este arquivo. Ele pode ter sido removido, ser um atalho ou ter mais de 512 KB.":
+    "Could not open this file. It may have been removed, be a shortcut or exceed 512 KB.",
+  "Imagens de até 15 MB; demais arquivos de até 512 KB. Pastas ocultas e links não são exibidos.":
+    "Images up to 15 MB; other files up to 512 KB. Hidden folders and links are not shown.",
+  "{count} KB": "{count} KB",
   "Prévia indisponível para este formato. Baixe para abrir no seu computador.":
     "Preview unavailable for this format. Download it to open on your computer.",
   Revisar: "Review",

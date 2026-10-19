@@ -2,6 +2,7 @@ import type { Bot, WorkspaceFile, WorkspaceFileContent } from "@touri/contracts"
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import type { UiApi } from "../api/client"
 import { userFacingError } from "../errors"
+import { t } from "../i18n"
 import { useSaveNotice } from "../useSaveNotice"
 import { EvidenceContext, type EvidenceContextValue, EvidenceGallery } from "./EvidenceGallery"
 import { loadImage } from "./imageLoads"
@@ -13,7 +14,7 @@ const fileText = (file: WorkspaceFileContent) =>
 const textFile = (file: WorkspaceFileContent) =>
   file.mime.startsWith("text/") || /\.(md|json|ts|tsx|js|jsx|py|rs|toml|yaml|yml|log|sh|css|csv)$/i.test(file.name)
 const imageName = /\.(png|jpe?g|gif|webp)$/i
-const fileSize = (bytes: number) => (bytes === 0 ? "0 B" : `${Math.ceil(bytes / 1024).toLocaleString("pt-BR")} KiB`)
+const getFileSize = (bytes: number) => (bytes === 0 ? "0 B" : t("{count} KB", { count: Math.ceil(bytes / 1024) }))
 
 export const BotLibrary = ({
   api,
@@ -292,7 +293,7 @@ export const BotLibrary = ({
               </button>
             )}
             <p className="library-limit">
-              Imagens de até 15 MB; demais arquivos de até 512 KiB. Pastas ocultas e links não são exibidos.
+              {t("Imagens de até 15 MB; demais arquivos de até 512 KB. Pastas ocultas e links não são exibidos.")}
             </p>
           </header>
           {!!bot.folders?.length && (
@@ -379,7 +380,7 @@ export const BotLibrary = ({
                     >
                       <PanelIcon name={entry.directory ? "folder" : "file"} />
                       <span>{entry.name}</span>
-                      <small>{entry.directory ? "Pasta" : fileSize(entry.bytes)}</small>
+                      <small>{entry.directory ? "Pasta" : getFileSize(entry.bytes)}</small>
                     </button>
                     {!entry.directory && (
                       <button

@@ -11,6 +11,19 @@ const fixture = () => {
   return { api, bot: { ...bot, machine: "local" as const, projectId: null, cwd: null } }
 }
 
+test("shows familiar file sizes and limits in the library", async () => {
+  const { api, bot } = fixture()
+  render(<BotLibrary api={api} bot={bot} />)
+
+  const notes = await screen.findByRole("button", { name: /notas.md.*1 KB/ })
+  const limits = await screen.findByText(/512 KB/)
+
+  expect(notes).toHaveTextContent("1 KB")
+  expect(limits).toHaveTextContent("512 KB")
+  expect(notes).not.toHaveTextContent(/KiB|MiB/)
+  expect(limits).not.toHaveTextContent(/KiB|MiB/)
+})
+
 test("folder errors clear the old listing and retry that exact folder", async () => {
   const { api, bot } = fixture()
   const request = api.request
@@ -25,14 +38,14 @@ test("folder errors clear the old listing and retry that exact folder", async ()
   render(<BotLibrary api={api} bot={bot} />)
   fireEvent.click(await screen.findByRole("button", { name: /documentos.*Pasta/ }))
   expect(await screen.findByRole("alert")).toHaveTextContent("Não foi possível abrir “documentos”")
-  expect(screen.queryByRole("button", { name: /notas.md.*KiB/ })).toBeNull()
+  expect(screen.queryByRole("button", { name: /notas.md.*KB/ })).toBeNull()
   expect(screen.queryByText("Nenhum arquivo por aqui")).toBeNull()
   failed = false
   fireEvent.click(screen.getByRole("button", { name: "Tentar novamente" }))
   expect(await screen.findByText("Esta pasta está vazia.")).toBeVisible()
-  expect(screen.queryByRole("button", { name: /notas.md.*KiB/ })).toBeNull()
+  expect(screen.queryByRole("button", { name: /notas.md.*KB/ })).toBeNull()
   fireEvent.click(screen.getByRole("button", { name: /Pasta anterior/ }))
-  expect(await screen.findByRole("button", { name: /notas.md.*KiB/ })).toBeVisible()
+  expect(await screen.findByRole("button", { name: /notas.md.*KB/ })).toBeVisible()
 })
 
 test("an empty folder replaces the root contents without stale files", async () => {
@@ -40,7 +53,7 @@ test("an empty folder replaces the root contents without stale files", async () 
   render(<BotLibrary api={api} bot={bot} />)
   fireEvent.click(await screen.findByRole("button", { name: /documentos.*Pasta/ }))
   expect(await screen.findByText("Nenhum arquivo por aqui")).toBeVisible()
-  expect(screen.queryByRole("button", { name: /notas.md.*KiB/ })).toBeNull()
+  expect(screen.queryByRole("button", { name: /notas.md.*KB/ })).toBeNull()
 })
 
 test("file opening resets the panel scroll and focuses the title; retry reads the file", async () => {
@@ -62,7 +75,7 @@ test("file opening resets the panel scroll and focuses the title; retry reads th
   )
   const scroller = view.container.firstElementChild as HTMLElement
   scroller.scrollTop = 500
-  fireEvent.click(await screen.findByRole("button", { name: /notas.md.*KiB/ }))
+  fireEvent.click(await screen.findByRole("button", { name: /notas.md.*KB/ }))
   expect(await screen.findByRole("alert")).toHaveTextContent("Não foi possível abrir “notas.md”")
   failed = false
   fireEvent.click(screen.getByRole("button", { name: "Tentar novamente" }))
@@ -109,7 +122,7 @@ test("authorized folders can be browsed, previewed and downloaded without duplic
     />,
   )
   fireEvent.click(screen.getByRole("button", { name: grant }))
-  fireEvent.click(await screen.findByRole("button", { name: /post-01.png.*KiB/ }))
+  fireEvent.click(await screen.findByRole("button", { name: /post-01.png.*KB/ }))
   await waitFor(() =>
     expect(request).toHaveBeenCalledWith(
       "GET /bots/:id/images",
@@ -149,7 +162,7 @@ test("changing the workspace discards an earlier pending file read", async () =>
     return request(route, input, params)
   }
   const view = render(<BotLibrary api={api} bot={bot} />)
-  fireEvent.click(await screen.findByRole("button", { name: /notas.md.*KiB/ }))
+  fireEvent.click(await screen.findByRole("button", { name: /notas.md.*KB/ }))
   view.rerender(<BotLibrary api={api} bot={{ ...bot, cwd: "/new-workspace" }} />)
   await act(async () => finish?.({ name: "stale.md", mime: "text/markdown", base64: btoa("Conteúdo antigo") }))
   await waitFor(() => expect(screen.queryByRole("article")).toBeNull())

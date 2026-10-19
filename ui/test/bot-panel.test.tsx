@@ -94,7 +94,7 @@ test("panel tabs are accessible from arrows and save the label", async () => {
   expect(details).toHaveAttribute("aria-selected", "true")
   fireEvent.keyDown(details, { key: "ArrowRight" })
   expect(screen.getByRole("tab", { name: "Biblioteca" })).toHaveFocus()
-  expect(await screen.findByRole("button", { name: /notas.md.*KiB/ })).toBeVisible()
+  expect(await screen.findByRole("button", { name: /notas.md.*KB/ })).toBeVisible()
   fireEvent.keyDown(screen.getByRole("tab", { name: "Biblioteca" }), { key: "End" })
   expect(screen.getByRole("tab", { name: "Computador" })).toHaveFocus()
   expect(screen.getByRole("button", { name: "Ligar computador" })).toBeVisible()
@@ -205,7 +205,7 @@ test("library opens markdown through the existing renderer, navigates folders an
     />,
   )
   fireEvent.click(screen.getByRole("tab", { name: "Biblioteca" }))
-  fireEvent.click(await screen.findByRole("button", { name: /notas.md.*KiB/ }))
+  fireEvent.click(await screen.findByRole("button", { name: /notas.md.*KB/ }))
   expect(await screen.findByRole("heading", { name: "Workspace do bot" })).toBeVisible()
   fireEvent.click(screen.getByRole("button", { name: "Voltar aos arquivos" }))
   fireEvent.click(screen.getByRole("button", { name: /documentos.*Pasta/ }))

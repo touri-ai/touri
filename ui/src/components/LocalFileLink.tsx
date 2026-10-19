@@ -84,7 +84,7 @@ export const LocalFileLink = ({ path, children }: { path: string; children: Reac
             : reason instanceof ApiError && reason.status === 403
               ? t("Este arquivo está fora das pastas permitidas para este bot.")
               : t(
-                  "Não foi possível abrir este arquivo. Ele pode ter sido removido, ser um atalho ou ter mais de 512 KiB.",
+                  "Não foi possível abrir este arquivo. Ele pode ter sido removido, ser um atalho ou ter mais de 512 KB.",
                 ),
         )
     } finally {
