@@ -340,11 +340,16 @@ fn replace_symlink(pins: &Pinned, path: &Path, target: &Path) -> io::Result<()> 
     }
     let metadata = match fs::symlink_metadata(path) {
         Ok(metadata) => metadata,
-        Err(error) if error.kind() == io::ErrorKind::NotFound => return create_symlink(pins, path, target),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {
+            return create_symlink(pins, path, target)
+        }
         Err(error) => return Err(error),
     };
     let is_reparse_point = metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0;
-    if metadata.is_dir() || metadata.number_of_links() != 1 || (!metadata.is_file() && !is_reparse_point) {
+    if metadata.is_dir()
+        || metadata.number_of_links() != 1
+        || (!metadata.is_file() && !is_reparse_point)
+    {
         return Err(denied());
     }
     create_symlink(pins, path, target)
