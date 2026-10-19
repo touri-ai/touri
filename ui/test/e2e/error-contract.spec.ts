@@ -11,7 +11,10 @@ for (const width of [1440, 390]) {
     const card = page.locator(".message-error").first()
     await expect(card).toBeVisible()
     await expect(page.locator(".notice-bar.notice-error")).toHaveCount(0)
-    await expect(page.locator(".composer-notice")).toHaveCount(0)
+    const computerNotice = page.getByRole("complementary", { name: "Aviso do computador" })
+    await expect(computerNotice).toBeVisible()
+    await expect(computerNotice.getByRole("button", { name: "Tentar novamente", exact: true })).toHaveCount(1)
+    await expect(computerNotice.locator("code")).not.toBeVisible()
     if (!baseline) {
       await expect(card).toContainText("Não consegui conectar à sua IA. Sua mensagem está salva.")
       await expect(card.getByRole("button", { name: "Tentar novamente" })).toBeVisible()

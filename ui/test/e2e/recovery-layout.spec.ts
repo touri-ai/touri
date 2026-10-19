@@ -14,7 +14,7 @@ themes.forEach((theme) => {
     test(`one failure surface · ${theme} · ${viewport.width}`, async ({ page }) => {
       await page.setViewportSize(viewport)
       await page.emulateMedia({ reducedMotion: "reduce" })
-      await page.goto("/test/e2e/error-contract-harness.html")
+      await page.goto("/test/e2e/error-contract-harness.html?computer=healthy")
       await page.evaluate((value) => {
         document.documentElement.dataset.theme = value
       }, theme)

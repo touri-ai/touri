@@ -12,7 +12,9 @@ if (!bot || !thread) throw new Error("Missing error fixture")
 bot.machine = "vm"
 bot.name = "Planejamento"
 thread.title = "Organizar as notas"
-const modelIsAtCapacity = new URLSearchParams(window.location.search).get("scenario") === "capacity"
+const params = new URLSearchParams(window.location.search)
+const modelIsAtCapacity = params.get("scenario") === "capacity"
+const computerIsHealthy = params.get("computer") === "healthy"
 const diagnostic = modelIsAtCapacity
   ? "Selected model is at capacity. Please try a different model."
   : 'network error: ECONNRESET {"status":503} at provider.connect (transport.ts:42)'
@@ -62,9 +64,9 @@ api.request = ((route, input, path) => {
       machines: [
         {
           botId: bot.id,
-          status: "error",
+          status: computerIsHealthy ? "running" : "error",
           progress: null,
-          error: diagnostic,
+          error: computerIsHealthy ? null : diagnostic,
           memoryMb: 2048,
           createdMs: null,
           startMs: null,
