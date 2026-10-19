@@ -72,9 +72,11 @@ viewports.forEach((viewport) => {
     const nextConfirmation = reopenedBotPanel.getByRole("status")
     await expect(nextConfirmation).toHaveText("Objetivo iniciado nesta conversa")
     await expect(nextConfirmation).toBeFocused()
+    await expect(newGoal).toHaveCount(0)
+    await reopenedBotPanel.getByRole("button", { name: "Fechar painel do bot" }).click()
+
     const nextGoal = page.getByRole("region", { name: "Continuar até concluir" })
     await expect(nextGoal.getByRole("status")).toHaveText("Em andamento")
     await expect(nextGoal).toContainText("Resumo revisado.")
-    await expect(newGoal).toHaveCount(0)
   })
 })
