@@ -24,7 +24,6 @@ export type FileIoTask =
 
 export type FileIoMessage =
   | { type: "ready" }
-  | { type: "started"; requestId: number }
   | { type?: undefined; requestId: number; result?: unknown; error?: FileIoError }
 export type FileIoError = { name: string; message: string; code?: string }
 export type FileIoRequest = { type: "start" } | ({ requestId: number } & FileIoTask)

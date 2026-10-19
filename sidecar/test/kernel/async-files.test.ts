@@ -138,19 +138,6 @@ test("a worker failure between scheduling and dispatch cannot strand subsequent 
   expect(await readFile(join(root, "recovered"), "utf8")).toBe("durable")
 })
 
-test("an unresponsive operation fails within its own deadline and releases capacity", async () => {
-  const root = await getRoot()
-  const source = `self.onmessage = ({ data }) => self.postMessage(data.type === "start" ? { type: "ready" } : { type: "started", requestId: data.requestId })`
-  const url = URL.createObjectURL(new Blob([source], { type: "application/javascript" }))
-  cleanups.add(async () => URL.revokeObjectURL(url))
-  const lane = getLane({ createWorker: () => new Worker(url), operationTimeoutMs: 1000 })
-
-  const write = lane.run({ operation: "write", args: { root, path: join(root, "stalled"), content: "synthetic" } })
-
-  await expect(write).rejects.toThrow("write timed out (running)")
-  expect(lane.getStats()).toEqual({ pending: 0, bytes: 0, dropped: 0 })
-})
-
 test("worker-backed failure assertions remain responsive after a completed write", async () => {
   const root = await getRoot()
   const lane = getLane()

@@ -17,7 +17,6 @@ export const createFileIoLane = ({
   maxBytes = fileIoByteLimit,
   batch = false,
   createWorker = startFileIoWorker,
-  operationTimeoutMs = 15_000,
 } = {}) => {
   // Mutable lifecycle state belongs to this one worker and its bounded mailbox.
   let worker: RefableWorker | undefined
@@ -26,9 +25,6 @@ export const createFileIoLane = ({
   let requestId = 0
   let entries: Entry[] = []
   let active: Entry | undefined
-  let activeAt = 0
-  let acknowledged = false
-  let operationTimer: ReturnType<typeof setTimeout> | undefined
   let bytes = 0
   let dropped = 0
   let startupTimer: ReturnType<typeof setTimeout> | undefined
@@ -36,7 +32,6 @@ export const createFileIoLane = ({
 
   const stop = (error?: Error): void => {
     clearTimeout(startupTimer)
-    clearTimeout(operationTimer)
     clearImmediate(scheduled)
     scheduled = undefined
     const stoppedWorker = worker
@@ -63,11 +58,6 @@ export const createFileIoLane = ({
       return
     }
     if (data.requestId !== requestId || !active) return
-    if (data.type === "started") {
-      acknowledged = true
-      return
-    }
-    clearTimeout(operationTimer)
     const finished = active
     active = undefined
     bytes -= finished.bytes
@@ -113,13 +103,8 @@ export const createFileIoLane = ({
     const [next, ...remaining] = entries
     if (!next) return
     active = next
-    activeAt = performance.now()
-    acknowledged = false
     entries = remaining
     requestId += 1
-    operationTimer = setTimeout(() => {
-      stop(new Error(`File I/O ${next.task.operation} timed out (${acknowledged ? "running" : "dispatch"})`))
-    }, operationTimeoutMs)
     worker.ref()
     worker.postMessage({ ...next.task, requestId } satisfies FileIoRequest)
   }
@@ -180,13 +165,6 @@ export const createFileIoLane = ({
         stop()
       }
     },
-    getActivity: () => ({
-      operation: active?.task.operation ?? null,
-      acknowledged,
-      elapsedMs: active ? Math.round(performance.now() - activeAt) : 0,
-      scheduled: scheduled !== undefined,
-      ready,
-    }),
     getStats: () => ({
       pending: entries.reduce((total, entry) => total + entry.count, active?.count ?? 0),
       bytes,
