@@ -1368,6 +1368,41 @@ const groupRoutine = (
   ...patch,
 })
 
+test("a waiting group routine keeps its original timeout after restart", async () => {
+  const release = Promise.withResolvers<void>()
+  const f = await fixture(async (ctx, complete) => {
+    if (ctx.botId === f.bots[0]?.id) await release.promise
+    else await Bun.sleep(100)
+    complete("Concluído")
+  })
+  const active = f.send("@pm tarefa ativa")
+  await until(() => f.order.length === 1)
+  const engine = routineEngine(f)
+  const created = engine.createRoutine({
+    input: groupRoutine(f, { prompt: "@dev confira o relatório", timeoutMinutes: 1 }),
+    forceDisabled: false,
+  })
+  if (!created.success) throw new Error(created.error)
+  const started = engine.runRoutine({ routineId: created.routine.id, triggerSource: "manual" })
+  if (!started.success) throw new Error(started.error)
+  const runId = started.routineRun.runId ?? ""
+  f.runtime.beginDrain()
+  release.resolve()
+  await f.runtime.waitForDrain()
+  f.runtime.shutdown({ appRestart: true })
+  f.db.query("UPDATE routine_runs SET started_at = ? WHERE id = ?").run(Date.now() - 60_001, started.routineRun.id)
+
+  const restarted = createGroupRuntime(f.host.kernel, f.engine)
+  cleanups.unshift(() => restarted.shutdown())
+  await until(() => f.persistence.getRun(runId)?.status === "failed")
+
+  expect(f.persistence.getRun(active.id)?.status).toBe("succeeded")
+  expect(f.persistence.getRun(runId)?.errorClass).not.toBe("app_restart")
+  const members = restarted.listRuns(f.thread.id).filter((run) => run.groupTurnId === runId)
+  expect(members).toHaveLength(1)
+  expect(members[0]?.status).toBe("canceled")
+})
+
 test("a group routine posts its prompt into the group conversation and finishes with every member's reply", async () => {
   const f = await fixture()
   const engine = routineEngine(f)
