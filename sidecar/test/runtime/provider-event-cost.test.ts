@@ -32,9 +32,9 @@ type BenchmarkResult = {
   historyPartBytes: number
   parts: number
   providerCpuMs: number
-  providerDispatchCpuMs: number
-  providerAdapterCpuMs: number
-  runtimeEventCpuMs: number
+  providerDispatchMs: number
+  providerAdapterMs: number
+  runtimeEventMs: number
   providerDispatchCalls: number
   runtimeEventCalls: number
   attributedMs: number
@@ -50,8 +50,6 @@ type BenchmarkResult = {
     calls: number
     totalMs: number
     maxMs: number
-    totalCpuMs: number
-    maxCpuMs: number
   }>
 }
 
@@ -118,37 +116,23 @@ const getTrackedRunner = () => {
   let maxBlockMs = 0
   let maxBlockCpuMs = 0
   let firstFrameCpu: NodeJS.CpuUsage | null = null
-  const stageTimes = new Map<
-    PerformanceStage,
-    { calls: number; totalMs: number; maxMs: number; totalCpuMs: number; maxCpuMs: number }
-  >()
+  const stageTimes = new Map<PerformanceStage, { calls: number; totalMs: number; maxMs: number }>()
   const runStage: PerformanceStageRunner = (stage, action, input) => {
     if (stage === "provider_frame_batch" && firstFrameCpu === null) firstFrameCpu = process.cpuUsage()
     const parentDepth = depth
     const cpuStartedAt = parentDepth === 0 && firstFrameCpu !== null ? process.cpuUsage() : null
-    const stageCpuStartedAt =
-      stage === "provider_frame_batch" ||
-      stage === "provider_frame_dispatch" ||
-      stage === "runtime_request_path_lookup" ||
-      stage === "runtime_provider_event"
-        ? process.cpuUsage()
-        : null
     depth += 1
     const startedAt = performance.now()
     try {
       return tracker.run(stage, action, input)
     } finally {
       const elapsed = performance.now() - startedAt
-      const cpu = stageCpuStartedAt ? process.cpuUsage(stageCpuStartedAt) : null
-      const elapsedCpuMs = cpu ? (cpu.user + cpu.system) / 1_000 : 0
       depth -= 1
-      const previous = stageTimes.get(stage) ?? { calls: 0, totalMs: 0, maxMs: 0, totalCpuMs: 0, maxCpuMs: 0 }
+      const previous = stageTimes.get(stage) ?? { calls: 0, totalMs: 0, maxMs: 0 }
       stageTimes.set(stage, {
         calls: previous.calls + 1,
         totalMs: previous.totalMs + elapsed,
         maxMs: Math.max(previous.maxMs, elapsed),
-        totalCpuMs: previous.totalCpuMs + elapsedCpuMs,
-        maxCpuMs: Math.max(previous.maxCpuMs, elapsedCpuMs),
       })
       if (parentDepth === 0 && firstFrameCpu !== null) {
         // One-time end-of-turn work is budgeted separately; the block budget covers streaming.
@@ -367,15 +351,15 @@ const runReplay = async (count: number, historyMessages = 0): Promise<BenchmarkR
   const performanceResult = stages.getResult()
   const providerDispatch = performanceResult.stages.find(({ name }) => name === "provider_frame_dispatch")
   const runtimeEvent = performanceResult.stages.find(({ name }) => name === "runtime_provider_event")
-  const providerDispatchCpuMs = providerDispatch?.totalCpuMs ?? 0
-  const runtimeEventCpuMs = runtimeEvent?.totalCpuMs ?? 0
-  const providerAdapterCpuMs = Math.max(0, providerDispatchCpuMs - runtimeEventCpuMs)
+  const providerDispatchMs = providerDispatch?.totalMs ?? 0
+  const runtimeEventMs = runtimeEvent?.totalMs ?? 0
+  const providerAdapterMs = Math.max(0, providerDispatchMs - runtimeEventMs)
   console.log(
     `provider-event-profile ${JSON.stringify({
       historyMessages,
       historyPartBytes: history.partBytes,
       providerCpuMs: performanceResult.providerCpuMs,
-      providerAdapterCpuMs,
+      providerAdapterMs,
       stages: performanceResult.stages.filter(({ name }) =>
         [
           "provider_frame_batch",
@@ -402,9 +386,9 @@ const runReplay = async (count: number, historyMessages = 0): Promise<BenchmarkR
     duplicateSharesRun: duplicate.run.id === queued.run.id && duplicate.run === queued.run,
     duplicateActiveRuns,
     ...performanceResult,
-    providerDispatchCpuMs,
-    providerAdapterCpuMs,
-    runtimeEventCpuMs,
+    providerDispatchMs,
+    providerAdapterMs,
+    runtimeEventMs,
     providerDispatchCalls: performanceResult.stages.find(({ name }) => name === "provider_frame_dispatch")?.calls ?? 0,
     runtimeEventCalls: performanceResult.stages.find(({ name }) => name === "runtime_provider_event")?.calls ?? 0,
   }
@@ -442,27 +426,27 @@ test("Provider event cost grows linearly and duplicate starts share one run", as
 test("Provider event cost stays independent of conversation history", async () => {
   const recent = await runReplay(60, 100)
   const result = await runReplay(60, 1_000)
-  const recentPerEventCpuMs = recent.runtimeEventCpuMs / recent.runtimeEventCalls
-  const resultPerEventCpuMs = result.runtimeEventCpuMs / result.runtimeEventCalls
-  const recentPerFrameCpuMs = recent.providerDispatchCpuMs / recent.providerDispatchCalls
-  const resultPerFrameCpuMs = result.providerDispatchCpuMs / result.providerDispatchCalls
-  const maxFrameCpuMs = result.stages.find(({ name }) => name === "provider_frame_dispatch")?.maxCpuMs ?? Infinity
+  const recentPerEventMs = recent.runtimeEventMs / recent.runtimeEventCalls
+  const resultPerEventMs = result.runtimeEventMs / result.runtimeEventCalls
+  const recentPerFrameMs = recent.providerDispatchMs / recent.providerDispatchCalls
+  const resultPerFrameMs = result.providerDispatchMs / result.providerDispatchCalls
+  const maxFrameMs = result.stages.find(({ name }) => name === "provider_frame_dispatch")?.maxMs ?? Infinity
   const recentPathLookups = recent.stages.find(({ name }) => name === "runtime_request_path_lookup")?.calls ?? 0
   const resultPathLookups = result.stages.find(({ name }) => name === "runtime_request_path_lookup")?.calls ?? 0
 
-  expect(result.providerDispatchCpuMs).toBeGreaterThan(0)
-  expect(result.providerAdapterCpuMs).toBeGreaterThan(0)
-  expect(result.runtimeEventCpuMs).toBeLessThanOrEqual(result.providerDispatchCpuMs)
+  expect(result.providerDispatchMs).toBeGreaterThan(0)
+  expect(result.providerAdapterMs).toBeGreaterThan(0)
+  expect(result.runtimeEventMs).toBeLessThanOrEqual(result.providerDispatchMs)
   expect(result.historyMessages).toBe(1_000)
   expect(result.historyPartBytes).toBeGreaterThan(15_000_000)
   expect(recent.historyMessages).toBe(100)
   expect(recent.historyPartBytes).toBeGreaterThan(1_500_000)
   expect(recentPathLookups).toBe(1)
   expect(resultPathLookups).toBe(1)
-  expect(resultPerEventCpuMs).toBeLessThan(5)
-  expect(resultPerFrameCpuMs).toBeLessThan(10)
-  expect(resultPerEventCpuMs).toBeLessThan(recentPerEventCpuMs * 3 + 0.5)
-  expect(resultPerFrameCpuMs).toBeLessThan(recentPerFrameCpuMs * 3 + 0.5)
+  expect(resultPerEventMs).toBeLessThan(5)
+  expect(resultPerFrameMs).toBeLessThan(10)
+  expect(resultPerEventMs).toBeLessThan(recentPerEventMs * 3 + 0.5)
+  expect(resultPerFrameMs).toBeLessThan(recentPerFrameMs * 3 + 0.5)
   expect(result.maxBlockCpuMs).toBeLessThan(50)
-  expect(maxFrameCpuMs).toBeLessThan(50)
+  expect(maxFrameMs).toBeLessThan(50)
 })
