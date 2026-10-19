@@ -244,9 +244,9 @@ it.each([
 
   const row = screen.getByRole("button", { name: /Novas mensagens/ })
   const routineTitle = kind === "routine" ? "Rotina " : ""
-  const title = row.querySelector("strong")
-  expect(title).toHaveTextContent(`${routineTitle}Novas mensagens`)
-  expect(title).toHaveAttribute("title", `${routineTitle}${tooltip}`)
+  const titleElement = row.querySelector("strong")
+  expect(titleElement).toHaveTextContent(`${routineTitle}Novas mensagens`)
+  expect(titleElement).toHaveAttribute("title", `${routineTitle}${tooltip}`)
   expect(row.querySelector("small")).toHaveTextContent(dateLabel)
   expect(thread.title).toBe(title)
 })
