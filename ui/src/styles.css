@@ -3341,13 +3341,13 @@ a {
   border-bottom: 1px solid var(--border-default);
   font-size: var(--type-13);
 }
-.notification-popover button:not(.ds-button) {
+.notification-popover button:not(.ds-button, .ds-disclosure-trigger) {
   border: 0;
   background: transparent;
   color: var(--text-tertiary);
   font-size: var(--type-12);
 }
-.notification-popover button:not(.ds-button):hover {
+.notification-popover button:not(.ds-button, .ds-disclosure-trigger):hover {
   color: var(--text-primary);
 }
 .notification-popover ul {
