@@ -11,8 +11,10 @@ const state = api.getState()
 const scenario = new URLSearchParams(location.search).get("scenario")
 if (scenario === "thread-noise-before" || scenario === "thread-noise-main" || scenario === "thread-noise-grouped") {
   const bot = state.bots.find((item) => item.id === "bot-mark")
-  const mainThread = state.threads.find((thread) => thread.id === bot?.mainThreadId)
-  if (!bot || !mainThread) throw new Error("Missing synthetic conversation fixture")
+  if (!bot) throw new Error("Missing synthetic bot fixture")
+  const mainThread = state.threads.find((thread) => thread.botId === bot.id)
+  if (!mainThread) throw new Error("Missing synthetic main conversation fixture")
+  bot.mainThreadId = mainThread.id
   bot.automaticConversationMode = scenario === "thread-noise-main" ? "main" : "task"
   const taskThreads =
     scenario === "thread-noise-main"
