@@ -410,6 +410,7 @@ export type NoticePart = {
     | 'group_ask_all'
     | 'group_summary'
     | 'group_member_removed'
+    | 'group_coordination_prompt'
     | 'run_failed'
     | 'run_canceled'
     | 'session_replaced'
@@ -1111,7 +1112,13 @@ export type NotificationPreferences = NotificationScopePreferences & {
 }
 
 export type NotifyResolution = 'allow' | 'deny' | 'answer' | 'replied' | 'dismissed' | 'expired' | 'canceled'
-export type AvatarShape = import('@norbert_bodziony/bloub').ShapeId
+export type AvatarHorns = 'classic' | 'short' | 'long' | 'none'
+export type AvatarAccessory = 'none' | 'ring' | 'glasses' | 'headphones' | 'cap' | 'flower' | 'crown'
+/** Bull look, horns then accessory (`short-flower`). */
+export type AvatarBullShape = `${AvatarHorns}-${AvatarAccessory}`
+/** Silhouette ids saved before the bulls; still accepted, rendered as the seeded automatic look. */
+export type AvatarLegacyShape = 'cercle' | 'galet' | 'squircle' | 'capsule' | 'triangle' | 'hexagone' | 'nuage'
+export type AvatarShape = AvatarBullShape | AvatarLegacyShape
 
 /** Persisted notification. `id` is stable; `requestId` is set for approval/question and is what `respond` takes. */
 export type NotificationRecord = {

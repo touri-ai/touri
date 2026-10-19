@@ -94,7 +94,7 @@ const makeGroupHistory = async (f: Awaited<ReturnType<typeof fixture>>) => {
   const group = groups.save({
     name: "Test group",
     color: "#dc2626",
-    avatarShape: "cercle",
+    avatarShape: "classic-none",
     memberIds: [owner.id, participant.id],
     coordinatorBotId: owner.id,
   })

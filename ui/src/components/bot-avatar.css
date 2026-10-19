@@ -1,0 +1,226 @@
+/* Vector bull: the head bobs, the eyes blink and follow the pointer, the aura pulses, effects drift. CSS only. */
+.tb-avatar-body {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+.tb-avatar-aura {
+  opacity: 0.38;
+}
+.tb-avatar[data-avatar-animated="true"] .tb-avatar-aura {
+  animation: tb-avatar-aura 1.2s ease-in-out infinite;
+}
+.tb-avatar-head,
+.tb-avatar-eyes,
+.tb-avatar-fx {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.tb-avatar-gaze {
+  transform: translate(var(--avatar-gaze-x, 0px), var(--avatar-gaze-y, 0px));
+  transition: transform 0.18s ease-out;
+}
+.tb-avatar[data-avatar-phase="failed"] .tb-avatar-head {
+  transform: translateY(2px);
+}
+
+.tb-avatar[data-avatar-animated="true"] .tb-avatar-body[data-blink] .tb-avatar-eyes {
+  animation: tb-avatar-blink 4.2s ease-in-out infinite var(--avatar-delay);
+}
+.tb-avatar[data-avatar-animated="true"][data-avatar-phase="idle"] .tb-avatar-head {
+  animation: tb-avatar-breathe 2.8s ease-in-out infinite var(--avatar-delay);
+}
+.tb-avatar[data-avatar-animated="true"][data-avatar-phase="thinking"] .tb-avatar-head {
+  animation: tb-avatar-tilt 2.4s ease-in-out infinite var(--avatar-delay);
+}
+.tb-avatar[data-avatar-animated="true"][data-avatar-phase="working"] .tb-avatar-head {
+  animation: tb-avatar-bob 0.6s ease-in-out infinite;
+}
+.tb-avatar[data-avatar-animated="true"][data-avatar-phase="waiting"] .tb-avatar-head {
+  animation: tb-avatar-bob 1.6s ease-in-out infinite;
+}
+.tb-avatar[data-avatar-animated="true"][data-avatar-phase="done"] .tb-avatar-head {
+  animation: tb-avatar-hop 1.4s ease-out infinite;
+}
+.tb-avatar[data-avatar-animated="true"][data-avatar-phase="failed"] .tb-avatar-head {
+  animation: tb-avatar-shake 2.6s ease-in-out infinite;
+}
+.tb-avatar[data-avatar-animated="true"][data-avatar-phase="asleep"] .tb-avatar-head {
+  animation: tb-avatar-breathe 3.6s ease-in-out infinite;
+}
+
+.tb-avatar[data-avatar-animated="true"] .tb-avatar-fx-dot-1 {
+  animation: tb-avatar-dot 1.5s ease-in-out infinite;
+}
+.tb-avatar[data-avatar-animated="true"] .tb-avatar-fx-dot-2 {
+  animation: tb-avatar-dot 1.5s ease-in-out infinite 0.25s;
+}
+.tb-avatar[data-avatar-animated="true"] .tb-avatar-fx-dot-3 {
+  animation: tb-avatar-dot 1.5s ease-in-out infinite 0.5s;
+}
+.tb-avatar[data-avatar-animated="true"] .tb-avatar-fx-steam-left {
+  --avatar-drift: -6px;
+  animation: tb-avatar-puff 0.9s ease-out infinite;
+}
+.tb-avatar[data-avatar-animated="true"] .tb-avatar-fx-steam-right {
+  --avatar-drift: 6px;
+  animation: tb-avatar-puff 0.9s ease-out infinite 0.45s;
+}
+.tb-avatar[data-avatar-animated="true"] .tb-avatar-fx-alert {
+  animation: tb-avatar-bob 0.8s ease-in-out infinite;
+}
+.tb-avatar[data-avatar-animated="true"] .tb-avatar-fx-sparkle-1 {
+  animation: tb-avatar-twinkle 1.4s ease-in-out infinite;
+}
+.tb-avatar[data-avatar-animated="true"] .tb-avatar-fx-sparkle-2 {
+  animation: tb-avatar-twinkle 1.4s ease-in-out infinite 0.7s;
+}
+.tb-avatar[data-avatar-animated="true"] .tb-avatar-fx-smoke {
+  animation: tb-avatar-rise 2.6s ease-out infinite;
+}
+.tb-avatar[data-avatar-animated="true"] .tb-avatar-fx-tear {
+  animation: tb-avatar-tear 2.6s ease-in infinite;
+}
+.tb-avatar[data-avatar-animated="true"] .tb-avatar-fx-snore-1 {
+  animation: tb-avatar-rise 2.8s ease-out infinite;
+}
+.tb-avatar[data-avatar-animated="true"] .tb-avatar-fx-snore-2 {
+  animation: tb-avatar-rise 2.8s ease-out infinite 1.4s;
+}
+
+@keyframes tb-avatar-aura {
+  0%,
+  100% {
+    opacity: 0.26;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+@keyframes tb-avatar-blink {
+  0%,
+  92%,
+  100% {
+    transform: scaleY(1);
+  }
+  95% {
+    transform: scaleY(0.1);
+  }
+}
+@keyframes tb-avatar-breathe {
+  50% {
+    transform: translateY(1.5px);
+  }
+}
+@keyframes tb-avatar-bob {
+  50% {
+    transform: translateY(-2.5px);
+  }
+}
+@keyframes tb-avatar-tilt {
+  25% {
+    transform: rotate(-4deg);
+  }
+  75% {
+    transform: rotate(4deg);
+  }
+}
+@keyframes tb-avatar-hop {
+  0%,
+  40%,
+  100% {
+    transform: translateY(0);
+  }
+  15% {
+    transform: translateY(-8px);
+  }
+  28% {
+    transform: translateY(-2px);
+  }
+}
+@keyframes tb-avatar-shake {
+  0%,
+  20%,
+  100% {
+    transform: translate(0, 2px);
+  }
+  5%,
+  15% {
+    transform: translate(-2.5px, 2px);
+  }
+  10% {
+    transform: translate(2.5px, 2px);
+  }
+}
+@keyframes tb-avatar-dot {
+  0%,
+  100% {
+    opacity: 0.25;
+  }
+  40% {
+    opacity: 1;
+    transform: translateY(-2px);
+  }
+}
+@keyframes tb-avatar-puff {
+  from {
+    opacity: 1;
+    transform: translate(0, 0) scale(0.6);
+  }
+  to {
+    opacity: 0;
+    transform: translate(var(--avatar-drift), 3px) scale(1.3);
+  }
+}
+@keyframes tb-avatar-twinkle {
+  0%,
+  100% {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  30% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  60% {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+}
+@keyframes tb-avatar-tear {
+  0%,
+  30% {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+  45% {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+}
+@keyframes tb-avatar-rise {
+  from {
+    opacity: 0;
+    transform: translate(0, 3px);
+  }
+  20% {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+    transform: translate(3px, -9px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tb-avatar-body * {
+    animation: none !important;
+    transition: none !important;
+  }
+}

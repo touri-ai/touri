@@ -302,7 +302,7 @@ test("group history reloads with sender identity while private member transcript
   const { thread } = await api.request("POST /groups", {
     name: "Generated team",
     color: "#888888",
-    avatarShape: "cercle",
+    avatarShape: "classic-none",
     memberIds: ["bot-mark", "bot-onb"],
     coordinatorBotId: null,
   })

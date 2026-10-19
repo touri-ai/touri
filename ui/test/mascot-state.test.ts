@@ -1,6 +1,5 @@
 import type { Message, MessagePart, NotificationRecord, Run } from "@touri/contracts"
 import { describe, expect, it } from "vitest"
-import { mascotPoseAt } from "../src/components/mascotMotion"
 import {
   MASCOT_DONE_MS,
   MascotMachine,
@@ -193,32 +192,5 @@ describe("state machine and deterministic harness", () => {
       machine.send({ type: "runtime", signal: { state: "idle", completion: "r:1", holdDone: false } }, 60001).state,
     ).toBe("idle")
     expect(machine.send({ type: "park", parked: true }, 1).since).toBe(60001)
-  })
-  it("produces identical motion when the same event trace is replayed", () => {
-    const replay = () => {
-      const harness = new MascotHarness()
-      harness.send({ type: "runtime", signal: { state: "thinking", completion: null } })
-      const frames = []
-      for (let now = 0; now < 6000; now += 40) {
-        if (now === 2000) harness.send({ type: "runtime", signal: { state: "working-tool", completion: null } }, now)
-        frames.push(harness.frame(now))
-      }
-      return frames
-    }
-    expect(replay()).toEqual(replay())
-    expect(new Set(replay().map((frame) => JSON.stringify(frame.pose))).size).toBeGreaterThan(100)
-  })
-})
-
-describe("gesture timing", () => {
-  it("blinks periodically, nods on completion, and suppresses gestures at rest or reduced motion", () => {
-    const poses = Array.from({ length: 200 }, (_, i) => mascotPoseAt("thinking", i / 20, "touri"))
-    expect(poses.some((pose) => pose.blink)).toBe(true)
-    expect(poses.some((pose) => !pose.blink)).toBe(true)
-    expect(mascotPoseAt("done", 0.15, "touri").look.pitch).toBeLessThan(10)
-    expect(mascotPoseAt("done", 1, "touri").look.pitch).toBe(10)
-    for (const state of ["sleeping", "parked"] as const)
-      expect(mascotPoseAt(state, 50, "touri")).toEqual(mascotPoseAt(state, 0, "touri"))
-    expect(mascotPoseAt("working-tool", 50, "touri", true)).toEqual(mascotPoseAt("done", 0, "touri", true))
   })
 })

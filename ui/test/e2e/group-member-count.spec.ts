@@ -24,7 +24,7 @@ test("group header updates its visible and accessible member count", async ({ pa
     await api.request("POST /groups", {
       name: "Equipe",
       color: "#dc2626",
-      avatarShape: "cercle",
+      avatarShape: "classic-none",
       memberIds: [first.id, second.id],
       coordinatorBotId: null,
     })

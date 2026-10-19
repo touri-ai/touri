@@ -16,7 +16,7 @@ const note: NotificationRecord = {
   botId: "bot-mark",
   botName: "Café Ideias",
   botColor: "#a33",
-  avatarShape: "cercle",
+  avatarShape: "classic-none",
   threadId: "thread-mark",
   requestId: "review-901",
   title: "Ação personalizada",

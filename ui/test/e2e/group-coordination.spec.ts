@@ -33,7 +33,7 @@ test("group actions send a parallel request and show a confirmed board on deskto
     await qa.groupsQa.api.request("POST /groups", {
       name: "Equipe",
       color: "#dc2626",
-      avatarShape: "cercle",
+      avatarShape: "classic-none",
       memberIds: ["bot-mark", "bot-onb"],
       coordinatorBotId: "bot-mark",
     })

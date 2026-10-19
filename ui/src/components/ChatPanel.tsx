@@ -57,6 +57,7 @@ import { TurnActivity } from "./TurnActivity"
 import { toolStatus } from "./toolPresentation"
 import { approvalTools, assistantSegments } from "./turnActivityModel"
 import { type EditMessage, UserMessageEdit } from "./UserMessageEdit"
+import { usePhoneViewport } from "./usePhoneViewport"
 
 type ChatPanelProps = {
   composerKey?: string | undefined
@@ -457,6 +458,11 @@ export const VirtualMessageList = ({
 const isResumeMarker = (message: Message): boolean =>
   message.role === "system" && message.parts.some((part) => part.type === "notice" && part.code === "run_resumed")
 
+const isGroupCoordinationPrompt = (message: Message): boolean => {
+  const marker = message.parts[0]
+  return message.role === "system" && marker?.type === "notice" && marker.code === "group_coordination_prompt"
+}
+
 const sameCalendarDay = (left: number, right: number): boolean => {
   const first = new Date(left)
   const second = new Date(right)
@@ -721,7 +727,7 @@ const MessageBubble = ({
             ) : (
               <span role="img" aria-label={t("Membro excluído: {name}", { name: message.sender.name })}>
                 <BotAvatar
-                  bot={{ id: message.sender.id, color: "#6b7280", avatarShape: "cercle" }}
+                  bot={{ id: message.sender.id, color: "#6b7280", avatarShape: "none-none" }}
                   size={22}
                   state="idle"
                   still
@@ -927,6 +933,8 @@ export const ChatPanel = ({
   routines = [],
   routineRuns = [],
 }: ChatPanelProps) => {
+  const phone = usePhoneViewport()
+  const chatIsCovered = panelOpen && phone
   const host = useHost(api)
   const serverMode = useIsServerMode() || host === "server"
   const machine = machineStateForDisplay(rawMachine)
@@ -935,6 +943,13 @@ export const ChatPanel = ({
   const draftComposerRef = useRef<DraftComposerHandle>(null)
   const localAttachmentButtonRef = useRef<HTMLButtonElement>(null)
   const attachmentButtonRef = sharedAttachmentButtonRef ?? localAttachmentButtonRef
+  useEffect(() => {
+    if (!chatIsCovered) return
+    const frame = window.requestAnimationFrame(() => {
+      document.querySelector<HTMLButtonElement>("#bot-panel .bot-panel-top button")?.focus({ preventScroll: true })
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [chatIsCovered])
   const activeRun = useMemo(
     () =>
       runs.find(
@@ -956,7 +971,7 @@ export const ChatPanel = ({
 
   if (!thread)
     return (
-      <section className="chat-panel">
+      <section className="chat-panel" inert={chatIsCovered || undefined} aria-hidden={chatIsCovered || undefined}>
         <header className="chat-header" data-tauri-drag-region="deep">
           <span className="chat-header-crumb">{t("Bots")}</span>
           <div className="chat-bot-chip">
@@ -991,7 +1006,7 @@ export const ChatPanel = ({
     )
 
   const messagePath = group
-    ? messages.filter((message) => message.threadId === thread.id)
+    ? messages.filter((message) => message.threadId === thread.id && !isGroupCoordinationPrompt(message))
     : (activePath ??
       activeMessagePath(
         messages.filter((message) => message.threadId === thread.id),
@@ -1051,7 +1066,7 @@ export const ChatPanel = ({
     .find((part) => screenTool(part) && part.type === "tool_call" && toolStatus(part) === "running")
 
   return (
-    <section className="chat-panel">
+    <section className="chat-panel" inert={chatIsCovered || undefined} aria-hidden={chatIsCovered || undefined}>
       {group ? (
         <GroupHeader
           group={group}
