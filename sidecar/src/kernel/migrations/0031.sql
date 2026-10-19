@@ -19,10 +19,11 @@ CREATE TABLE runs_next (
   routine_run_id     TEXT,
   queued_at          INTEGER NOT NULL,
   started_at         INTEGER,
-  finished_at        INTEGER
+  finished_at        INTEGER,
+  provider_started_at INTEGER
 );
-INSERT INTO runs_next(rowid,id,thread_id,bot_id,provider,trigger,request_message_id,reply_message_id,external_turn_id,status,error_class,error_message,usage_json,routine_run_id,queued_at,started_at,finished_at)
-  SELECT rowid,id,thread_id,bot_id,provider,trigger,request_message_id,reply_message_id,external_turn_id,status,error_class,error_message,usage_json,routine_run_id,queued_at,started_at,finished_at
+INSERT INTO runs_next(rowid,id,thread_id,bot_id,provider,trigger,request_message_id,reply_message_id,external_turn_id,status,error_class,error_message,usage_json,routine_run_id,queued_at,started_at,finished_at,provider_started_at)
+  SELECT rowid,id,thread_id,bot_id,provider,trigger,request_message_id,reply_message_id,external_turn_id,status,error_class,error_message,usage_json,routine_run_id,queued_at,started_at,finished_at,provider_started_at
   FROM runs;
 DROP TABLE runs;
 ALTER TABLE runs_next RENAME TO runs;

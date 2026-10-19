@@ -52,8 +52,8 @@ test("schema 30 preserves run references and adds the group-context error class"
       VALUES ('bot','Revisor','codex','/bot',1,1);
     INSERT INTO threads(id,bot_id,title,created_at,updated_at)
       VALUES ('thread','bot','Conversa',1,1);
-    INSERT INTO runs(id,thread_id,bot_id,provider,trigger,status,error_class,error_message,queued_at)
-      VALUES ('old-run','thread','bot','codex','user','failed','unknown','Falha anterior',1);
+    INSERT INTO runs(id,thread_id,bot_id,provider,trigger,status,error_class,error_message,queued_at,provider_started_at)
+      VALUES ('old-run','thread','bot','codex','user','failed','unknown','Falha anterior',1,2);
     INSERT INTO messages(id,thread_id,role,kind,status,run_id,text,created_at,updated_at)
       VALUES ('reply','thread','assistant','text','failed','old-run','Resposta anterior',1,1);
     INSERT INTO run_continuations(run_id,original_run_id,previous_run_id,reason,created_at)
@@ -67,10 +67,11 @@ test("schema 30 preserves run references and adds the group-context error class"
   expect(SCHEMA_VERSION).toBe(31)
   expect(database.query("SELECT value FROM schema_meta WHERE key = 'schema_version'").get()).toEqual({ value: "31" })
   expect(database.query("SELECT rowid FROM runs WHERE id = 'old-run'").get()).toEqual(oldRowid)
-  expect(database.query("SELECT id,error_class,error_message FROM runs WHERE id = 'old-run'").get()).toEqual({
+  expect(database.query("SELECT id,error_class,error_message,provider_started_at FROM runs WHERE id = 'old-run'").get()).toEqual({
     id: "old-run",
     error_class: "unknown",
     error_message: "Falha anterior",
+    provider_started_at: 2,
   })
   expect(database.query("SELECT run_id FROM run_continuations WHERE run_id = 'old-run'").get()).toEqual({
     run_id: "old-run",

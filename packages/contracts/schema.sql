@@ -133,7 +133,8 @@ CREATE TABLE runs (
   routine_run_id     TEXT,
   queued_at          INTEGER NOT NULL,
   started_at         INTEGER,
-  finished_at        INTEGER
+  finished_at        INTEGER,
+  provider_started_at INTEGER
 );
 CREATE INDEX runs_thread ON runs(thread_id, queued_at);
 CREATE INDEX runs_status ON runs(status);
