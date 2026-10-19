@@ -791,6 +791,36 @@ test("orphan sweep protects persisted workspace volumes even before a replacemen
   expect(protectedVolumes).toEqual([volume])
 })
 
+test("orphan sweep includes machine rows inserted after its first batch", async () => {
+  const f = await fixture()
+  const db = f.runtime.kernel.db as Database
+  const saveBot = db.query(`INSERT INTO bots(id,name,provider,home_dir,created_at,updated_at)
+    VALUES (?,?,'codex',?,1,1)`)
+  const saveMachine = db.query("INSERT INTO bot_machines(bot_id,vm_id,volume) VALUES (?,?,?)")
+  Array.from({ length: 51 }, (_, index) => index).forEach((index) => {
+    const botId = `sweep-${index}`
+    saveBot.run(botId, `Synthetic ${index}`, join(f.root, botId))
+    saveMachine.run(botId, `machine-${index}`, `volume-${index}`)
+  })
+  let protectedVolumes: string[] = []
+  f.fake.provider.sweepOrphans = async (input) => {
+    protectedVolumes = input.protectedVolumes
+  }
+  const sweep = f.vm.sweepOrphans()
+  const inserted = new Promise<void>((resolve) => {
+    setImmediate(() => {
+      saveBot.run("sweep-late", "Synthetic late", join(f.root, "sweep-late"))
+      saveMachine.run("sweep-late", "machine-late", "volume-late")
+      resolve()
+    })
+  })
+
+  await inserted
+  await sweep
+
+  expect(protectedVolumes).toContain("volume-late")
+})
+
 test("provider credentials require opt-in, stage privately, redact and revoke after run", async () => {
   const f = await fixture()
   const bot = await f.bot()
