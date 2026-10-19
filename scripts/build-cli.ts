@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync, statSync, writeFileSync } from "node:fs"
 import { join, relative } from "node:path"
 import { resolveTouriVersion } from "../sidecar/src/version"
+import { assertBunToolchain } from "./bun-toolchain"
 
 const root = join(import.meta.dir, "..")
 const uiDist = join(root, "ui", "dist")
@@ -37,6 +38,7 @@ const parseTargets = (args: Array<string>): Array<Target> => {
 }
 
 const main = (): void => {
+  assertBunToolchain()
   const selected = parseTargets(process.argv.slice(2))
   const version = resolveTouriVersion(process.env)
   run(["bun", "run", "build"], join(root, "ui"))
@@ -47,7 +49,7 @@ const main = (): void => {
       const name = target.replace("bun-", "")
       run(
         [
-          "bun",
+          process.execPath,
           "build",
           "--compile",
           `--target=${target}`,

@@ -1,3 +1,5 @@
+import { assertBunToolchain } from "./bun-toolchain"
+
 /** Bun target -> Tauri externalBin target triple. Never infer a target from the build host when cross-compiling. */
 const targets: Record<string, { bun: string; triple: string }> = {
   "darwin-arm64": { bun: "bun-darwin-arm64", triple: "aarch64-apple-darwin" },
@@ -10,6 +12,7 @@ const targets: Record<string, { bun: string; triple: string }> = {
 const name = process.argv[2] ?? `${process.platform === "win32" ? "windows-msvc" : process.platform}-${process.arch}`
 const target = targets[name]
 if (!target) throw new Error(`Unsupported sidecar target: ${name}`)
+assertBunToolchain()
 const child = Bun.spawnSync(
   [
     process.execPath,
