@@ -45,3 +45,22 @@ test("deletes a group from its sidebar menu after explicit confirmation", async 
   await expect(page.locator('[data-bot-entry="bot-onb"]')).toBeVisible()
   await page.screenshot({ path: `${evidence}/group-delete-complete.png` })
 })
+
+test("failed group turn explains that its conversation was removed", async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.emulateMedia({ reducedMotion: "reduce", colorScheme: "light" })
+  await page.addInitScript(() => localStorage.setItem("touri.appearance.v1", "light"))
+  await page.goto("/?mockScenario=group-context-missing")
+
+  await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
+  const notice = page.getByRole("alert")
+  const collapsedNotice = page.getByRole("button", { name: /houve uma resposta depois/ })
+  await expect(notice.or(collapsedNotice).first()).toBeVisible()
+  if (await collapsedNotice.isVisible()) await collapsedNotice.click()
+  await expect(notice).toContainText("O grupo ou a conversa não existe mais. Este turno não foi executado.")
+  await expect(notice.getByRole("button", { name: "Tentar de novo" })).toHaveCount(0)
+  await notice.screenshot({
+    path: testInfo.outputPath("group-delete-context-missing.png"),
+    animations: "disabled",
+  })
+})
