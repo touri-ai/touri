@@ -33,11 +33,12 @@ import messageSearchSql from "./migrations/0027.sql" with { type: "text" }
 import groupDeletionSql from "./migrations/0028.sql" with { type: "text" }
 import computerGrantExpirySql from "./migrations/0029.sql" with { type: "text" }
 import groupCoordinationHistorySql from "./migrations/0030.sql" with { type: "text" }
+import groupContextErrorSql from "./migrations/0031.sql" with { type: "text" }
 import { withSuspendedSchemaObjects } from "./schema-rebuild"
 import { instrumentMainConnection, type SlowStatementTracker } from "./sqlite-performance"
 import { applyUpgradeBaselines } from "./upgradeBaselines"
 
-export const SCHEMA_VERSION = 30
+export const SCHEMA_VERSION = 31
 
 const FREE_PAGE_RATIO_LIMIT = 0.2
 
@@ -223,5 +224,22 @@ export const openDatabase = ({
     if (!migrated) database.exec(groupCoordinationHistorySql)
     database.exec("UPDATE schema_meta SET value = '30' WHERE key = 'schema_version'")
   })()
+  // SQLite cannot extend the CHECK in place. Copy the run table once before
+  // live work starts; the SQL copy preserves rowids without loading history into JS.
+  const groupContextErrorMigrated = database
+    .query("SELECT 1 FROM schema_meta WHERE key = 'group_context_error_version'")
+    .get()
+  if (!groupContextErrorMigrated) {
+    database.exec("PRAGMA foreign_keys = OFF")
+    try {
+      database.transaction(() => {
+        withSuspendedSchemaObjects(database, () => database.exec(groupContextErrorSql))
+        if (database.query("PRAGMA foreign_key_check").all().length)
+          throw new Error("Run error migration: invalid foreign keys")
+      })()
+    } finally {
+      database.exec("PRAGMA foreign_keys = ON")
+    }
+  }
   return database
 }
