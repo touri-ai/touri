@@ -119,9 +119,9 @@ const syncRecoveryTasks = (
   )
 
   return measure("notification_recovery_reconcile", () => {
-    expireOrphanTasks(database, notifier, visible)
+    const retained = expireOrphanTasks(database, store, notifier, work, visible)
 
-    return visible.map((candidate) => {
+    const found = visible.map((candidate) => {
       const notification = saveTaskNotification(kernel, store, notifier, candidate, silent)
       const effects = candidate.turnId ? work.rebuild({ turnId: candidate.turnId }) : []
       const hasUncertain = getRecoveryAcknowledgementKeys(database, notification.id).length > 0
@@ -140,23 +140,46 @@ const syncRecoveryTasks = (
         effects: [...candidate.effects, ...getJournalEffects(effects)],
       }
     })
+
+    return [...found, ...retained]
   })
 }
 
 // A task that no scan finds anymore (its run was resumed, archived or rewritten) can never be reviewed,
-// so its notification must not keep asking the person for attention.
-const expireOrphanTasks = (database: Database, notifier: Notifier, found: Candidate[]): void => {
+// so its notification must not keep asking the person for attention. The exception is a task with
+// unacknowledged uncertain effects: the notifier refuses to resolve it, so it is returned for the panel instead,
+// where the person can acknowledge it. The flag and the panel then always give the same answer.
+const expireOrphanTasks = (
+  database: Database,
+  store: NotificationStore,
+  notifier: Notifier,
+  work: ReturnType<typeof createWorkState>,
+  found: Candidate[],
+): RecoveryTask[] => {
   const foundIds = new Set(found.map((candidate) => candidate.id))
   const rows = database
-    .query(`SELECT rt.id, rt.notification_id FROM recovery_tasks rt JOIN notifications n ON n.id = rt.notification_id
+    .query(`SELECT rt.id, rt.notification_id, rt.turn_id FROM recovery_tasks rt JOIN notifications n ON n.id = rt.notification_id
       WHERE n.resolved_at IS NULL`)
-    .all() as Array<{ id: string; notification_id: number }>
+    .all() as Array<{ id: string; notification_id: number; turn_id: string | null }>
 
-  rows
+  return rows
     .filter((row) => !foundIds.has(row.id))
-    .filter((row) => getRecoveryAcknowledgementKeys(database, row.notification_id).length === 0)
-    .forEach((row) => {
-      notifier.finish({ id: row.notification_id, resolution: "expired" })
+    .flatMap((row) => {
+      const notification = store.get(row.notification_id)
+      const resolved = notifier.finish({ id: row.notification_id, resolution: "expired" })
+      if (resolved || !notification) return []
+
+      return [
+        {
+          id: row.id,
+          notification,
+          runId: row.id.startsWith("run:") ? row.turn_id : null,
+          routineId: null,
+          cause: "app_restart" as const,
+          occurredAt: notification.createdAt,
+          effects: row.turn_id ? getJournalEffects(work.rebuild({ turnId: row.turn_id })) : [],
+        },
+      ]
     })
 }
 
