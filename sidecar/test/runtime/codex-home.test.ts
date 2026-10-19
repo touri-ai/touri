@@ -166,6 +166,7 @@ const getFixture = (resumeError?: string, failures: ReadonlyArray<TurnFailure> =
     log: () => {},
     redact: (value: string) => value,
     publish: (event: UiEvent) => events.push(event),
+    subscribe: () => () => {},
     spawnTree: (input: Parameters<Kernel["spawnTree"]>[0]) => {
       calls.push(input)
       return getProviderProcess(requests, resumeError, failures[calls.length - 1])

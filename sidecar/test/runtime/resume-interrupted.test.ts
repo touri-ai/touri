@@ -334,7 +334,7 @@ test("drain waits for continuation events and returns promptly after the last ru
   timeoutWatch.restore()
 
   expect(f.runs()).toHaveLength(2)
-  expect(f.runs().every((run) => run.status === "succeeded")).toBe(true)
+  expect(f.runs()).toMatchObject([{ status: "failed" }, { status: "succeeded" }])
   expect(timeoutWatch.calls()).toBe(0)
   expect(lastRunFinishedAt).toBeGreaterThan(0)
   expect(performance.now() - lastRunFinishedAt).toBeLessThan(100)
