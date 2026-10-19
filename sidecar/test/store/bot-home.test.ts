@@ -7,7 +7,7 @@ import { monitorEventLoopDelay } from "node:perf_hooks"
 import { fileURLToPath } from "node:url"
 import type { RouteModule } from "@touri/contracts"
 import { createKernel } from "../../src/kernel"
-import { removePrivateTree } from "../../src/kernel/files"
+import { atomicWriteFile, removePrivateTree } from "../../src/kernel/files"
 import { init as initStore } from "../../src/store"
 import {
   createBotHomeWriter,
@@ -325,14 +325,15 @@ test("the creation limit does not change existing large instruction edits", asyn
   expect(await readFile(join(f.root, "bots", bot.id, "SOUL.md"), "utf8")).toBe(instructions)
 })
 
-test("instruction edits use the async writer and leave the event loop responsive", async () => {
+test("PATCH awaits a slow asynchronous filesystem shim without blocking the event loop", async () => {
   const started = Promise.withResolvers<void>()
-  const writeEditedHome: typeof updateBotHome = async (_kernel, _botId, _instructions, signal, prepare) => {
+  const writeEditedHome: typeof updateBotHome = async (kernel, botId, instructions, signal, prepare) => {
     signal.throwIfAborted()
     const edit = prepare()
     started.resolve()
     await new Promise<void>((resolve) => setTimeout(resolve, 40))
     signal.throwIfAborted()
+    await writeBotHome(kernel, botId, instructions, signal)
     edit.commit()
   }
   const f = await makeStore(undefined, writeEditedHome)
@@ -364,6 +365,7 @@ test("instruction edits use the async writer and leave the event loop responsive
   expect(f.database.query("SELECT instructions FROM bots WHERE id = ?").get(bot.id)).toEqual({
     instructions: "Updated without blocking",
   })
+  expect(await readFile(join(f.root, "bots", bot.id, "SOUL.md"), "utf8")).toBe("Updated without blocking")
 })
 
 test("a failed async instruction edit leaves the file and database unchanged", async () => {
@@ -440,14 +442,20 @@ test("instruction edit event-loop p99 and max improve with the async writer", as
       maxMs: histogram.max / 1_000_000,
     }
   }
-  const synchronousShim: typeof updateBotHome = async (_kernel, _botId, _instructions, _signal, prepare) => {
+  const synchronousShim: typeof updateBotHome = async (kernel, botId, instructions, _signal, prepare) => {
     const edit = prepare()
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 35)
+    atomicWriteFile({
+      root: kernel.paths.appData,
+      path: join(kernel.paths.botsDir, botId, "SOUL.md"),
+      content: instructions,
+    })
     edit.commit()
   }
-  const asynchronousShim: typeof updateBotHome = async (_kernel, _botId, _instructions, _signal, prepare) => {
+  const asynchronousShim: typeof updateBotHome = async (kernel, botId, instructions, signal, prepare) => {
     const edit = prepare()
     await new Promise<void>((resolve) => setTimeout(resolve, 35))
+    await writeBotHome(kernel, botId, instructions, signal)
     edit.commit()
   }
 
