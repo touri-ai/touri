@@ -113,6 +113,24 @@ type RunState = {
 
 type ContinuationPlan = { reason: ContinuationReason; originalRunId: Id }
 
+const getReplySnapshotPart = (part: MessagePart): MessagePart => {
+  if ("outputAttachmentId" in part && typeof part.outputAttachmentId === "string") return part
+  if (part.type === "tool_call" && isCompletedReplyTool(part) && (part.outputJson || part.outputTail))
+    return { ...part, outputJson: null, outputTail: "" }
+  if (part.type === "command" && isCompletedReplyTool(part) && part.outputTail) return { ...part, outputTail: "" }
+  if (part.type === "file_change" && isCompletedReplyTool(part) && part.diff) return { ...part, diff: null }
+
+  return part
+}
+
+const isCompletedReplyTool = (part: Extract<MessagePart, { callId: string }>): boolean => {
+  if (part.resolution) return part.resolution !== "running"
+  if (part.type === "tool_call") return part.ok !== null
+  if (part.type === "command") return part.exitCode !== null
+
+  return part.diff !== null
+}
+
 const appendPendingText = (state: RunState, partIndex: number, type: "text" | "reasoning", delta: string): void => {
   const pending = state.pendingPartText.get(partIndex) ?? { type, chunks: [] }
   // Provider chunks append in-place so each token does constant work as the reply grows.
@@ -617,7 +635,7 @@ export const createRuntimeEngine = ({
       status: "streaming",
       runId: run.id,
       text: state.text,
-      parts: [],
+      parts: state.parts.map(getReplySnapshotPart),
       sender: null,
       source: "local",
     }
