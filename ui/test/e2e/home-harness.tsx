@@ -14,8 +14,16 @@ if (scenario === "long-composer") {
   const { projects } = await api.request("GET /projects", {})
   const project = projects.find((item) => item.id === bot?.projectId)
   if (!bot || !project) throw new Error("Missing synthetic composer fixture")
-  bot.model = "atlas-planning-experimental-2026-10"
+  bot.provider = "opencode"
+  bot.model = "touri-api-fake-481/modelo-ficticio-de-planejamento-com-contexto-extenso-2026-10"
+  bot.roleLine = "Liderança de campanha"
   project.name = "Projeto fictício de planejamento e acessibilidade"
+  const thread = state.threads.find((item) => item.id === "thread-mark")
+  const userMessage = state.messages.find((message) => message.role === "user")
+  const assistantMessage = state.messages.find((message) => message.role === "assistant")
+  if (thread) thread.title = "Revisão da campanha"
+  if (userMessage) userMessage.text = "Revisar a campanha"
+  if (assistantMessage) assistantMessage.text = "Estou cuidando disso."
 }
 if (scenario === "empty") state.bots.splice(0)
 else if (scenario === "failed") {
