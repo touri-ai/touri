@@ -1,4 +1,5 @@
 import { workerEntrypoint } from "../kernel/worker-entrypoint"
+import { deferWorkerReply } from "../kernel/worker-reply"
 
 type DownloadMessage =
   | { type: "ready" }
@@ -24,26 +25,31 @@ export const atomicDownload = async (response: Response, path: string): Promise<
     readyReject = reject
   })
   const rejectPending = (error: Error): void => {
-    pending.forEach(({ reject }) => {
-      reject(error)
-    })
+    const rejected = Array.from(pending.values())
+    deferWorkerReply(() =>
+      rejected.forEach(({ reject }) => {
+        reject(error)
+      }),
+    )
     pending.clear()
   }
   worker.onmessage = ({ data }: MessageEvent<DownloadMessage>): void => {
     if (data.type === "ready") {
-      readyResolve()
+      deferWorkerReply(readyResolve)
       return
     }
     const request = pending.get(data.requestId)
     if (!request) return
     pending.delete(data.requestId)
-    if (data.error) request.reject(workerError(data.error))
-    else request.resolve()
+    deferWorkerReply(() => {
+      if (data.error) request.reject(workerError(data.error))
+      else request.resolve()
+    })
   }
   worker.onerror = (event): void => {
     event.preventDefault()
     const error = new Error("Snapshot writer stopped unexpectedly")
-    readyReject(error)
+    deferWorkerReply(() => readyReject(error))
     rejectPending(error)
   }
   const request = (type: DownloadCommand, content?: Uint8Array): Promise<void> => {

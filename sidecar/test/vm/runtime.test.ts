@@ -12,7 +12,7 @@ import { createBrowserStore } from "../../src/browser/store"
 import { createRoutedBrowserEngine } from "../../src/browser/vm-router"
 import { init as initComputer } from "../../src/computer"
 import { createKernel } from "../../src/kernel"
-import { flushFileIoAsync, getFileIoStats } from "../../src/kernel/async-files"
+import { flushFileIoAsync } from "../../src/kernel/async-files"
 import { authenticateMcp } from "../../src/mcp/auth"
 import { createProjectStore } from "../../src/projects/repository"
 import { createSupervisor } from "../../src/projects/supervisor"
@@ -53,11 +53,6 @@ const fixture = async (
   writeFileSync(join(hostHome, ".codex/auth.json"), JSON.stringify({ access_token: "only-provider-secret" }))
   writeFileSync(join(hostHome, "decoy-secret"), "never-copy-this")
   const runtime = createKernel({ appData: join(root, "data") })
-  const storageWatchdog = setInterval(() => {
-    const stats = getFileIoStats()
-    if (stats.requestActivity.elapsedMs > 1000) console.error("synthetic-storage-wait", JSON.stringify(stats))
-  }, 1000)
-  cleanups.push(async () => clearInterval(storageWatchdog))
   await initStore(runtime.kernel)
   const fake = fakeVmProvider()
   const connectionKeys = new Map<string, Buffer>()

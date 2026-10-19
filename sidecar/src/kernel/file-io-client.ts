@@ -1,5 +1,6 @@
 import type { FileIoError, FileIoMessage, FileIoRequest, FileIoTask } from "./file-io-protocol"
 import { workerEntrypoint } from "./worker-entrypoint"
+import { deferWorkerReply } from "./worker-reply"
 
 type RefableWorker = Worker & { ref: () => void; unref: () => void }
 type Completion = ReturnType<typeof Promise.withResolvers<unknown>>
@@ -47,9 +48,11 @@ export const createFileIoLane = ({
     active = undefined
     bytes = 0
     if (!error) return
-    unfinished.forEach(({ completion }) => {
-      completion.reject(error)
-    })
+    deferWorkerReply(() =>
+      unfinished.forEach(({ completion }) => {
+        completion.reject(error)
+      }),
+    )
   }
 
   const handleMessage = ({ data }: MessageEvent<FileIoMessage>): void => {
@@ -68,8 +71,10 @@ export const createFileIoLane = ({
     const finished = active
     active = undefined
     bytes -= finished.bytes
-    if (data.error) finished.completion.reject(getError(data.error))
-    else finished.completion.resolve(data.result)
+    deferWorkerReply(() => {
+      if (data.error) finished.completion.reject(getError(data.error))
+      else finished.completion.resolve(data.result)
+    })
     if (entries.length === 0) worker?.unref()
     dispatch()
   }

@@ -2,6 +2,7 @@ import { afterEach, expect, test } from "bun:test"
 import { mkdtemp, readFile, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { TouriError } from "../../src/kernel/errors"
 import { createFileIoLane, fileIoQueueLimit } from "../../src/kernel/file-io-client"
 
 const cleanups = new Set<() => Promise<unknown>>()
@@ -148,4 +149,20 @@ test("an unresponsive operation fails within its own deadline and releases capac
 
   await expect(write).rejects.toThrow("write timed out (running)")
   expect(lane.getStats()).toEqual({ pending: 0, bytes: 0, dropped: 0 })
+})
+
+test("worker-backed failure assertions remain responsive after a completed write", async () => {
+  const root = await getRoot()
+  const lane = getLane()
+  await lane.run({ operation: "write", args: { root, path: join(root, "warmup"), content: "ready" } })
+
+  await expect(
+    lane.run({
+      operation: "write",
+      args: { root: join(root, "private"), path: join(root, "escape"), content: "denied" },
+    }),
+  ).rejects.toThrow(new TouriError("TOURI-E2000").message)
+  await lane.run({ operation: "write", args: { root, path: join(root, "next"), content: "durable" } })
+
+  expect(await readFile(join(root, "next"), "utf8")).toBe("durable")
 })

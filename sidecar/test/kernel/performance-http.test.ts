@@ -6,15 +6,17 @@ import { join } from "node:path"
 import { type ApiRoutes, type RouteResponse, toolCatalog } from "@touri/contracts"
 import type { WebSocketOptions } from "bun"
 import { createKernel } from "../../src/kernel"
+import { flushFileIoAsync } from "../../src/kernel/async-files"
 import { socketTicket } from "../fakes/ws-ticket"
 
 type Entry = { at: number; level: string; module: string; msg: string; data: Record<string, unknown> }
 const FixtureSocket = WebSocket as { new (url: string, options?: string | string[] | WebSocketOptions): WebSocket }
-const cleanups = new Set<() => void>()
-afterEach(() => {
-  cleanups.forEach((cleanup) => {
-    cleanup()
-  })
+const cleanups = new Set<() => void | Promise<void>>()
+afterEach(async () => {
+  await Array.from(cleanups).reduceRight(async (previous, cleanup) => {
+    await previous
+    await cleanup()
+  }, Promise.resolve())
   cleanups.clear()
 })
 
@@ -26,7 +28,7 @@ test("health includes bounded numeric lag stats without extra logs in normal ope
 
   expect(response.status).toBe(200)
   expect(health.eventLoop).toEqual({ lagMs: 0, p99Ms: 0, maxMs: 0, samples: 0 })
-  expect(fixture.getLogs()).toEqual([])
+  expect(await fixture.getLogs()).toEqual([])
 })
 
 test("lag logs count active runs and live clients and keep only route templates", async () => {
@@ -69,7 +71,7 @@ test("lag logs count active runs and live clients and keep only route templates"
 
   blockLoop(1_700)
   await Bun.sleep(25)
-  const warnings = fixture.getLogs()
+  const warnings = await fixture.getLogs()
   pending.resolve({ status: 200, json: {} })
   await request
   await stream.body?.cancel()
@@ -119,7 +121,7 @@ test("HTTP requests over two seconds log once and long-lived streams stay quiet"
   await fixture.request("/threads/another-id/messages", { method: "POST" })
   await stream.body?.cancel()
 
-  expect(fixture.getLogs()).toEqual([
+  expect(await fixture.getLogs()).toEqual([
     {
       module: "performance",
       msg: "Solicitação HTTP lenta",
@@ -128,14 +130,15 @@ test("HTTP requests over two seconds log once and long-lived streams stay quiet"
       data: { method: "POST", route: "/threads/:id/messages", durationMs: expect.any(Number) },
     },
   ])
-  expect(JSON.stringify(fixture.getLogs())).not.toMatch(/private-|another-id/)
+  expect(JSON.stringify(await fixture.getLogs())).not.toMatch(/private-|another-id/)
 }, 10_000)
 
 const makeServer = () => {
   const root = mkdtempSync(join(tmpdir(), "touri-performance-"))
   const runtime = createKernel({ appData: root })
-  cleanups.add(() => {
-    runtime.stop()
+  cleanups.add(async () => {
+    await runtime.stop()
+    await flushFileIoAsync()
     rmSync(root, { recursive: true, force: true })
   })
   const filename = join(runtime.kernel.paths.logsDir, "sidecar.log")
@@ -150,7 +153,8 @@ const makeServer = () => {
           Origin: "tauri://localhost",
         },
       }),
-    getLogs: (): Array<Entry> => {
+    getLogs: async (): Promise<Array<Entry>> => {
+      await flushFileIoAsync()
       if (!existsSync(filename)) return []
 
       return readFileSync(filename, "utf8")

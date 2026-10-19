@@ -1,4 +1,5 @@
 import { workerEntrypoint } from "../../kernel/worker-entrypoint"
+import { deferWorkerReply } from "../../kernel/worker-reply"
 import type { WorkerError, WriteCommand, WriterMessage, WriterRequest } from "./store-protocol"
 
 const writerStartupTimeoutMs = 15_000
@@ -61,29 +62,34 @@ const startAuthWriter = async (filename: string, createWorker: () => Worker): Pr
     stoppedResolve = resolve
   })
   const rejectPending = (error: Error): void => {
-    pending.forEach(({ reject }) => {
-      reject(error)
-    })
+    const rejected = Array.from(pending.values())
+    deferWorkerReply(() =>
+      rejected.forEach(({ reject }) => {
+        reject(error)
+      }),
+    )
     pending.clear()
   }
   worker.onmessage = ({ data }: MessageEvent<WriterMessage>): void => {
     if (data.type === "ready") {
-      readyResolve()
+      deferWorkerReply(readyResolve)
       return
     }
     if (data.type === "startup-error") {
-      readyReject(getWorkerError(data.error))
+      deferWorkerReply(() => readyReject(getWorkerError(data.error)))
       return
     }
     if (data.type === "stopped") {
-      stoppedResolve()
+      deferWorkerReply(stoppedResolve)
       return
     }
     const result = pending.get(data.requestId)
     if (!result) return
     pending.delete(data.requestId)
-    if (data.error) result.reject(getWorkerError(data.error))
-    else result.resolve(data.result)
+    deferWorkerReply(() => {
+      if (data.error) result.reject(getWorkerError(data.error))
+      else result.resolve(data.result)
+    })
     if (pending.size === 0 && !closing) worker.unref()
   }
   const fail = (): void => {
@@ -91,9 +97,9 @@ const startAuthWriter = async (filename: string, createWorker: () => Worker): Pr
     const error = new Error("Authentication writer stopped unexpectedly")
     stoppedByError = true
     worker.terminate()
-    readyReject(error)
+    deferWorkerReply(() => readyReject(error))
     rejectPending(error)
-    stoppedResolve()
+    deferWorkerReply(stoppedResolve)
   }
   worker.onerror = (event): void => {
     event.preventDefault()
@@ -101,7 +107,7 @@ const startAuthWriter = async (filename: string, createWorker: () => Worker): Pr
   }
   worker.addEventListener("close", () => {
     if (!closing) fail()
-    stoppedResolve()
+    deferWorkerReply(stoppedResolve)
   })
   worker.postMessage({ type: "start", filename } satisfies WriterRequest)
   const startupTimeout = setTimeout(
