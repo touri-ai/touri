@@ -3,6 +3,7 @@ import type { PerformanceStageRunner } from "../kernel/performance"
 
 export type ChildProcess = Extract<ReturnType<Kernel["spawnTree"]>, { success: true }>
 const PROVIDER_FRAME_BATCH_SIZE = 16
+const PROVIDER_FRAME_BATCH_MS = 8
 
 const yieldToEventLoop = (): Promise<void> => new Promise((resolve) => setImmediate(resolve))
 
@@ -45,23 +46,34 @@ export const startLineReader = ({
   onLine,
   onError,
   runStage,
+  now = performance.now.bind(performance),
 }: {
   stream: ReadableStream<Uint8Array>
   onLine: (line: string) => void
   onError: (error: Error) => void
   runStage?: PerformanceStageRunner
+  now?: () => number
 }): (() => void) => {
   let stopped = false
-  const processLines = ({ values }: { values: Array<string> }): void => {
-    for (const value of values) {
-      if (stopped) break
-      onLine(value)
+  const processLines = ({ buffer, offset }: { buffer: string; offset: number }): number => {
+    const startedAt = now()
+    // Parser cursors stay local so each slice bounds extraction and dispatch together.
+    let cursor = offset
+    let processed = 0
+    while (!stopped && processed < PROVIDER_FRAME_BATCH_SIZE) {
+      const newline = buffer.indexOf("\n", cursor)
+      if (newline < 0) break
+
+      const line = buffer.slice(cursor, newline).trim()
+      cursor = newline + 1
+      processed += 1
+      if (line) onLine(line)
+      if (now() - startedAt >= PROVIDER_FRAME_BATCH_MS) break
     }
+    return cursor
   }
-  const processBatch = (values: Array<string>): void => {
-    const input = { values }
-    if (runStage) runStage("provider_frame_batch", processLines, input)
-    else processLines(input)
+  const processBatch = (input: { buffer: string; offset: number }): number => {
+    return runStage ? runStage("provider_frame_batch", processLines, input) : processLines(input)
   }
   void (async () => {
     const reader = stream.getReader()
@@ -73,23 +85,13 @@ export const startLineReader = ({
         if (result.done) break
         buffer += decoder.decode(result.value, { stream: true })
         let offset = 0
-        let processed = 0
-        let lines: Array<string> = []
-        let newline = buffer.indexOf("\n", offset)
-        while (newline >= 0 && !stopped) {
-          const line = buffer.slice(offset, newline).trim()
-          offset = newline + 1
-          if (line) lines.push(line)
-          processed += 1
-          if (processed === PROVIDER_FRAME_BATCH_SIZE) {
-            processBatch(lines)
-            lines = []
-            processed = 0
-            await yieldToEventLoop()
-          }
-          newline = buffer.indexOf("\n", offset)
+        while (!stopped) {
+          const next = processBatch({ buffer, offset })
+          if (next === offset) break
+
+          offset = next
+          await yieldToEventLoop()
         }
-        if (lines.length) processBatch(lines)
         buffer = buffer.slice(offset)
       }
       const tail = buffer.trim()

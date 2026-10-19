@@ -18,3 +18,5 @@ docs/qa/
 .env.*
 *.pem
 *.key
+
+.touri-provider-event-benchmark-*/

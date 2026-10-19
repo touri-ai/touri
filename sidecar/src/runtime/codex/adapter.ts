@@ -380,15 +380,20 @@ export const createCodexAdapter = ({
       complete({ success: false, errorCode: "cli_crash", error: message })
       return true
     }
+    const parseFrame = (line: string): unknown => JSON.parse(line)
     const onLine = (line: string): void => {
       if (completed) return
       let parsed: unknown
       try {
-        parsed = JSON.parse(line) as unknown
+        parsed = runStage ? runStage("provider_frame_json_parse", parseFrame, line) : parseFrame(line)
       } catch {
         complete({ success: false, errorCode: "cli_protocol", error: "Malformed Codex JSON frame" })
         return
       }
+      if (runStage) runStage("provider_frame_route", routeFrame, parsed)
+      else routeFrame(parsed)
+    }
+    const routeFrame = (parsed: unknown): void => {
       const response = responseRecord(parsed)
       if (response) {
         const waiter = responseWaiters.get(response.id)

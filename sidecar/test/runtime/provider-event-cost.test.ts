@@ -25,6 +25,16 @@ afterEach(async () => {
   await runReplayCleanups(cleanups)
 })
 
+type BenchmarkStage = {
+  name: PerformanceStage
+  calls: number
+  totalMs: number
+  maxMs: number
+  dispatchCalls: number
+  dispatchMs: number
+  dispatchSelfMs: number
+}
+
 type BenchmarkResult = {
   events: number
   historyMessages: number
@@ -33,6 +43,8 @@ type BenchmarkResult = {
   providerCpuMs: number
   providerDispatchMs: number
   providerAdapterMs: number
+  providerDispatchAttribution: number
+  streamingReply: boolean
   runtimeEventMs: number
   providerDispatchCalls: number
   runtimeEventCalls: number
@@ -44,12 +56,7 @@ type BenchmarkResult = {
   duplicateActiveRuns: number
   busEvents: number
   busPartsEvents: number
-  stages: Array<{
-    name: string
-    calls: number
-    totalMs: number
-    maxMs: number
-  }>
+  stages: Array<BenchmarkStage>
 }
 
 const getReplayEvents = (count: number): Array<Record<string, unknown>> => {
@@ -107,33 +114,40 @@ const getReplayEvents = (count: number): Array<Record<string, unknown>> => {
   ]
 }
 
-const getTrackedRunner = () => {
-  const tracker = createPerformanceStageTracker()
-  let depth = 0
+const getTrackedRunner = (now = performance.now.bind(performance)) => {
+  const tracker = createPerformanceStageTracker(now)
+  // Synchronous span bookkeeping is local to this recorder; children charge only their direct parent.
+  let activeSpan: { childMs: number; inDispatch: boolean } | null = null
   let attributedMs = 0
   let attributedCpuMs = 0
   let maxBlockMs = 0
   let maxBlockCpuMs = 0
   let firstFrameCpu: NodeJS.CpuUsage | null = null
-  const stageTimes = new Map<PerformanceStage, { calls: number; totalMs: number; maxMs: number }>()
+  const stageTimes = new Map<PerformanceStage, BenchmarkStage>()
   const runStage: PerformanceStageRunner = (stage, action, input) => {
     if (stage === "provider_frame_batch" && firstFrameCpu === null) firstFrameCpu = process.cpuUsage()
-    const parentDepth = depth
-    const cpuStartedAt = parentDepth === 0 && firstFrameCpu !== null ? process.cpuUsage() : null
-    depth += 1
-    const startedAt = performance.now()
+    const parent = activeSpan
+    const span = { childMs: 0, inDispatch: stage === "provider_frame_dispatch" || (parent?.inDispatch ?? false) }
+    const cpuStartedAt = parent === null && firstFrameCpu !== null ? process.cpuUsage() : null
+    activeSpan = span
+    const startedAt = now()
     try {
       return tracker.run(stage, action, input)
     } finally {
-      const elapsed = performance.now() - startedAt
-      depth -= 1
-      const previous = stageTimes.get(stage) ?? { calls: 0, totalMs: 0, maxMs: 0 }
+      const elapsed = now() - startedAt
+      activeSpan = parent
+      if (parent) parent.childMs += elapsed
+      const previous = stageTimes.get(stage)
       stageTimes.set(stage, {
-        calls: previous.calls + 1,
-        totalMs: previous.totalMs + elapsed,
-        maxMs: Math.max(previous.maxMs, elapsed),
+        name: stage,
+        calls: (previous?.calls ?? 0) + 1,
+        totalMs: (previous?.totalMs ?? 0) + elapsed,
+        maxMs: Math.max(previous?.maxMs ?? 0, elapsed),
+        dispatchCalls: (previous?.dispatchCalls ?? 0) + (span.inDispatch ? 1 : 0),
+        dispatchMs: (previous?.dispatchMs ?? 0) + (span.inDispatch ? elapsed : 0),
+        dispatchSelfMs: (previous?.dispatchSelfMs ?? 0) + (span.inDispatch ? elapsed - span.childMs : 0),
       })
-      if (parentDepth === 0 && firstFrameCpu !== null) {
+      if (parent === null && firstFrameCpu !== null) {
         // One-time end-of-turn work is budgeted separately; the block budget covers streaming.
         const streaming = stage !== "runtime_turn_finalization"
         attributedMs += elapsed
@@ -158,7 +172,7 @@ const getTrackedRunner = () => {
     runStage,
     stageTracker,
     getResult: () => {
-      const stages = [...stageTimes].map(([name, timing]) => ({ name, ...timing }))
+      const stages = [...stageTimes.values()]
       const cpu = firstFrameCpu ? process.cpuUsage(firstFrameCpu) : { user: 0, system: 0 }
       return {
         providerCpuMs: (cpu.user + cpu.system) / 1_000,
@@ -169,6 +183,26 @@ const getTrackedRunner = () => {
         stages,
       }
     },
+  }
+}
+
+const getDispatchAttribution = (stages: Array<BenchmarkStage>) => {
+  const adapterStages: Array<PerformanceStage> = [
+    "provider_frame_json_parse",
+    "provider_frame_route",
+    "provider_event_redaction",
+  ]
+  const providerAdapterMs = stages
+    .filter(({ name }) => adapterStages.includes(name))
+    .reduce((total, stage) => total + stage.dispatchSelfMs, 0)
+  const runtimeEventMs = stages.find(({ name }) => name === "runtime_provider_event")?.dispatchMs ?? 0
+  const providerDispatchMs = stages.find(({ name }) => name === "provider_frame_dispatch")?.totalMs ?? 0
+
+  return {
+    providerAdapterMs,
+    runtimeEventMs,
+    providerDispatchMs,
+    providerDispatchAttribution: providerDispatchMs > 0 ? (providerAdapterMs + runtimeEventMs) / providerDispatchMs : 0,
   }
 }
 
@@ -249,7 +283,7 @@ const waitForTurnStart = async (requestLogPath: string): Promise<void> => {
   throw new Error("Synthetic provider did not reach turn/start")
 }
 
-const runReplay = async (count: number, historyMessages = 0): Promise<BenchmarkResult> => {
+const runReplay = async (count: number, historyMessages = 0, switchBranch = false): Promise<BenchmarkResult> => {
   const repoRoot = resolve(import.meta.dir, "../../..")
   const root = mkdtempSync(join(repoRoot, ".touri-provider-event-benchmark-"))
   replayCleanups.push(() => rmSync(root, { recursive: true, force: true }))
@@ -258,7 +292,7 @@ const runReplay = async (count: number, historyMessages = 0): Promise<BenchmarkR
   const fakePath = join(assets, "fake-codex")
   const scenarioPath = join(assets, "scenario.json")
   const requestLogPath = join(assets, "requests.jsonl")
-  const pauseBeforeTurnStart = historyMessages ? join(assets, "resume-turn-start") : null
+  const pauseBeforeTurnStart = switchBranch ? join(assets, "resume-turn-start") : null
   const fakeCodex = join(import.meta.dir, "../fakes/fake-codex.ts")
   const wrapper = `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} run ${JSON.stringify(fakeCodex)} "$@"\n`
   writeFileSync(fakePath, wrapper, { mode: 0o700 })
@@ -312,8 +346,11 @@ const runReplay = async (count: number, historyMessages = 0): Promise<BenchmarkR
   })
   replayCleanups.push(() => engine.shutdown())
   const events: Array<string> = []
+  let streamingReply = false
   const unsubscribe = runtime.kernel.subscribe(({ event }) => {
     events.push(event.type)
+    if (event.type === "message.created" && event.message.runId && event.message.status === "streaming")
+      streamingReply = true
   })
   replayCleanups.push(unsubscribe)
 
@@ -349,24 +386,20 @@ const runReplay = async (count: number, historyMessages = 0): Promise<BenchmarkR
   }
   expect(queued.run.status).toBe("succeeded")
   const performanceResult = stages.getResult()
-  const providerDispatch = performanceResult.stages.find(({ name }) => name === "provider_frame_dispatch")
-  const runtimeEvent = performanceResult.stages.find(({ name }) => name === "runtime_provider_event")
-  const providerDispatchMs = providerDispatch?.totalMs ?? 0
-  const runtimeEventMs = runtimeEvent?.totalMs ?? 0
-  const providerAdapterMs = Math.max(0, providerDispatchMs - runtimeEventMs)
-  const providerDispatchAttribution =
-    providerDispatchMs > 0 ? (runtimeEventMs + providerAdapterMs) / providerDispatchMs : 0
+  const dispatch = getDispatchAttribution(performanceResult.stages)
   console.log(
     `provider-event-profile ${JSON.stringify({
       historyMessages,
       historyPartBytes: history.partBytes,
       providerCpuMs: performanceResult.providerCpuMs,
-      providerDispatchAttribution,
-      providerAdapterMs,
+      ...dispatch,
       stages: performanceResult.stages.filter(({ name }) =>
         [
           "provider_frame_batch",
           "provider_frame_dispatch",
+          "provider_frame_json_parse",
+          "provider_frame_route",
+          "provider_event_redaction",
           "runtime_request_path_lookup",
           "runtime_provider_event",
         ].some((stage) => stage === name),
@@ -389,11 +422,11 @@ const runReplay = async (count: number, historyMessages = 0): Promise<BenchmarkR
     duplicateSharesRun: duplicate.run.id === queued.run.id && duplicate.run === queued.run,
     duplicateActiveRuns,
     ...performanceResult,
-    providerDispatchMs,
-    providerAdapterMs,
-    runtimeEventMs,
+    ...dispatch,
+    streamingReply,
     providerDispatchCalls: performanceResult.stages.find(({ name }) => name === "provider_frame_dispatch")?.calls ?? 0,
-    runtimeEventCalls: performanceResult.stages.find(({ name }) => name === "runtime_provider_event")?.calls ?? 0,
+    runtimeEventCalls:
+      performanceResult.stages.find(({ name }) => name === "runtime_provider_event")?.dispatchCalls ?? 0,
   }
   console.log(`provider-event-benchmark ${JSON.stringify(result)}`)
   return result
@@ -439,8 +472,9 @@ test("Provider event cost stays independent of conversation history", async () =
 
   expect(result.providerDispatchMs).toBeGreaterThan(0)
   expect(result.providerAdapterMs).toBeGreaterThan(0)
+  expect(result.providerDispatchAttribution).toBeGreaterThanOrEqual(0.9)
+  expect(result.providerDispatchAttribution).toBeLessThanOrEqual(1)
   expect(result.runtimeEventMs).toBeLessThanOrEqual(result.providerDispatchMs)
-  expect((result.runtimeEventMs + result.providerAdapterMs) / result.providerDispatchMs).toBeGreaterThanOrEqual(0.9)
   expect(result.historyMessages).toBe(1_000)
   expect(result.historyPartBytes).toBeGreaterThan(15_000_000)
   expect(recent.historyMessages).toBe(100)
@@ -453,4 +487,39 @@ test("Provider event cost stays independent of conversation history", async () =
   expect(resultPerFrameMs).toBeLessThan(recentPerFrameMs * 3 + 0.5)
   expect(result.maxBlockCpuMs).toBeLessThan(50)
   expect(maxFrameMs).toBeLessThan(50)
+})
+
+test("A startup branch switch still publishes a streaming reply attached to the validated request", async () => {
+  const result = await runReplay(60, 100, true)
+
+  expect(result.streamingReply).toBe(true)
+  expect(result.stages.find(({ name }) => name === "runtime_request_path_lookup")?.calls).toBe(1)
+})
+
+test("Dispatch attribution exposes time outside the named stages and avoids counting nested spans twice", () => {
+  let elapsed = 0
+  const stages = getTrackedRunner(() => elapsed)
+
+  stages.runStage("provider_frame_dispatch", () => {
+    elapsed += 30
+    stages.runStage("provider_frame_json_parse", () => {
+      elapsed += 2
+    })
+    stages.runStage("provider_frame_route", () => {
+      elapsed += 2
+      stages.runStage("provider_event_redaction", () => {
+        elapsed += 2
+        stages.runStage("runtime_provider_event", () => {
+          elapsed += 4
+        })
+      })
+    })
+  })
+  const attribution = getDispatchAttribution(stages.getResult().stages)
+
+  expect(attribution.providerAdapterMs).toBe(6)
+  expect(attribution.runtimeEventMs).toBe(4)
+  expect(attribution.providerDispatchMs).toBe(40)
+  expect(attribution.providerDispatchAttribution).toBe(0.25)
+  expect(attribution.providerDispatchAttribution).toBeLessThan(0.9)
 })
