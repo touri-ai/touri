@@ -118,7 +118,7 @@ if (new URLSearchParams(location.search).has("menus")) {
     await api.request("POST /groups", {
       name,
       color: "#d64bad",
-      avatarShape: "cercle",
+      avatarShape: "classic-none",
       memberIds: ["sidebar-bot-2", "sidebar-bot-3"],
       coordinatorBotId: null,
     })

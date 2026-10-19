@@ -2,7 +2,7 @@ import AxeBuilder from "@axe-core/playwright"
 import { expect, test } from "@playwright/test"
 
 const fixture = "/test/e2e/fixtures/mascot-states.html"
-test("state poses preserve bloub identity and readable activity responds to the same state", async ({ page }, info) => {
+test("state poses preserve bull identity and readable activity responds to the same state", async ({ page }, info) => {
   test.setTimeout(60000)
   await page.clock.install()
   await page.goto(fixture)
@@ -63,7 +63,7 @@ test("reduced motion freezes eyes, body, breathing and dots but retains status t
   expect(await avatar.evaluate((node) => getComputedStyle(node).animationName)).toBe("none")
   await page.getByLabel("Estado").selectOption("waiting-approval")
   await expect(page.locator("#probe .activity-mark")).toHaveText("Preciso da sua autorização.")
-  await expect(avatar).toHaveAttribute("data-avatar-expression", "curieux")
+  await expect(avatar).toHaveAttribute("data-avatar-phase", "waiting")
   await page.screenshot({ path: info.outputPath("mascot-reduced-motion.png") })
 })
 

@@ -54,9 +54,9 @@ if (view === "terminal") {
   createRoot(root).render(
     <main style={{ padding: 32 }}>
       <h1>Mascotes em repouso</h1>
-      <div style={{ display: "flex", gap: 32 }}>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 32 }}>
         {AVATAR_SHAPES.map((shape) => (
-          <div key={shape.id} data-shape={shape.id} style={{ display: "grid", justifyItems: "center", gap: 12 }}>
+          <div key={shape} data-shape={shape} style={{ display: "grid", justifyItems: "center", gap: 12 }}>
             <div
               style={{
                 width: 88,
@@ -67,9 +67,9 @@ if (view === "terminal") {
                 borderRadius: 12,
               }}
             >
-              <BotAvatar bot={{ id: shape.id, color: "#3b93f0", avatarShape: shape.id }} state="idle" size={64} />
+              <BotAvatar bot={{ id: shape, color: "#3b93f0", avatarShape: shape }} state="idle" size={64} />
             </div>
-            <small>{shape.id}</small>
+            <small>{shape}</small>
           </div>
         ))}
       </div>

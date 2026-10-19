@@ -394,7 +394,7 @@ a {
   border-radius: var(--radius-999);
   overflow: visible;
 }
-.tb-avatar > :is(.tb-avatar-body, .tb-avatar-outline) {
+.tb-avatar > .tb-avatar-outline {
   position: absolute;
   inset: -14%;
   pointer-events: none;
@@ -416,7 +416,7 @@ a {
   object-fit: cover;
   border-radius: inherit;
 }
-.tb-avatar-photo:is([data-avatar-mood="working"], [data-avatar-mood="connecting"]) {
+.tb-avatar-photo:is([data-avatar-phase="thinking"], [data-avatar-phase="working"]) {
   overflow: visible;
 }
 .tb-avatar-contour {
@@ -454,13 +454,6 @@ a {
   .tb-avatar-contour {
     animation: none;
   }
-}
-.avatar-colors .avatar-color-auto {
-  border: 1px dashed var(--text-secondary);
-  background: transparent;
-  color: var(--text-primary);
-  font-size: var(--type-12);
-  font-weight: var(--weight-emphasis);
 }
 .bot-row-copy {
   min-width: 0;
@@ -3400,55 +3393,276 @@ a {
   font-size: var(--type-12);
 }
 
+/* Avatar customizer: preview and app-surface samples beside colour, horn and accessory choices. */
 .avatar-picker {
   min-width: 0;
   padding: var(--space-14);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-12);
+  container-type: inline-size;
 }
 .avatar-picker legend {
   padding: 0 var(--space-6);
   font-weight: var(--weight-semibold);
 }
+.avatar-picker fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.avatar-picker fieldset legend {
+  margin-bottom: var(--space-8);
+  padding: 0;
+  font-size: var(--type-13);
+}
+.avatar-picker :is(button, label) {
+  font-family: inherit;
+  cursor: pointer;
+}
+.avatar-picker label {
+  position: relative;
+}
+/* Each choice is a native radio stretched invisibly over its tile, so the whole tile is the control. */
+.avatar-choice {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.avatar-picker :is(button:focus-visible, label:has(input:focus-visible)) {
+  outline: 2px solid var(--accent-info);
+  outline-offset: 2px;
+}
+/* Wraps the preview above the choices when the host modal is narrow. */
+.avatar-picker-layout {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-20);
+}
 .avatar-picker-preview {
+  min-width: 0;
+  display: flex;
+  flex: 1 1 180px;
+  flex-direction: column;
+  gap: var(--space-12);
+}
+.avatar-picker-stage {
+  height: 136px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-12);
+  background: var(--surface-inset);
+}
+.avatar-picker-stage > span {
+  display: grid;
+}
+/* A short hop each time the look changes. */
+.avatar-picker-hop {
+  animation: avatar-picker-hop 0.32s ease-out;
+}
+@keyframes avatar-picker-hop {
+  40% {
+    transform: translateY(-8px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .avatar-picker-hop {
+    animation: none;
+  }
+}
+.avatar-picker-moods {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+  gap: var(--space-6);
+}
+.avatar-picker-moods label {
+  height: 30px;
+  display: grid;
+  place-items: center;
+  padding: 0 var(--space-4);
+  overflow: hidden;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-8);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--type-12);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.avatar-picker-in-app {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  color: var(--text-secondary);
+  font-size: var(--type-12);
+}
+.avatar-picker-row {
   display: flex;
   align-items: center;
   gap: var(--space-12);
-  margin-bottom: var(--space-10);
-  color: var(--text-secondary);
+  padding: var(--space-9) var(--space-10);
+  border-radius: var(--radius-8);
+  background: var(--surface-selected);
 }
-.avatar-shapes,
-.avatar-colors {
+.avatar-picker-row > span {
   min-width: 0;
-  padding: 0;
-  border: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.avatar-picker-row strong {
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: var(--type-14);
+  font-weight: var(--weight-semibold);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.avatar-picker-pill {
+  height: 32px;
+  max-width: 100%;
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-8);
+  padding: 0 var(--space-14) 0 var(--space-10);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-999);
+  color: var(--text-primary);
+  font-size: var(--type-13);
+}
+.avatar-picker-controls {
+  min-width: 0;
+  display: flex;
+  flex: 999 1 280px;
+  flex-direction: column;
+  gap: var(--space-18);
+}
+.avatar-picker-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-12);
+  color: var(--text-secondary);
+  font-size: var(--type-13);
+}
+.avatar-picker-shuffle,
+.avatar-picker-reset {
+  height: 32px;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-8);
+  padding: 0 var(--space-12);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-8);
+  background: transparent;
+  color: var(--text-primary);
+  font-size: var(--type-13);
+}
+.avatar-picker-reset {
+  align-self: flex-end;
+}
+.avatar-colors > div {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-6);
+  align-items: center;
+  gap: var(--space-8);
 }
-.avatar-shapes {
-  margin-bottom: var(--space-12);
-}
-.avatar-shapes button {
-  padding: var(--space-3);
-  border: 2px solid transparent;
-  border-radius: var(--radius-8);
-  background: var(--surface-panel);
-}
-.avatar-colors button {
-  width: 24px;
-  height: 24px;
+.avatar-colors label {
+  width: 32px;
+  height: 32px;
   padding: 0;
-  border: 2px solid var(--border-default);
+  border: 0;
   border-radius: var(--radius-round);
 }
-.avatar-picker button[aria-pressed="true"] {
-  outline: 2px solid var(--text-primary);
-  outline-offset: 2px;
+.avatar-colors .avatar-color-auto {
+  display: grid;
+  place-items: center;
+  border: 1px dashed var(--text-secondary);
+  background: var(--surface-control);
+  color: var(--text-primary);
+  font-size: var(--type-12);
+  font-weight: var(--weight-emphasis);
 }
-.avatar-picker button:focus-visible {
-  outline: 2px solid var(--accent-info);
-  outline-offset: 2px;
+.avatar-colors label:has(input:checked) {
+  box-shadow:
+    0 0 0 2px var(--surface-panel),
+    0 0 0 4px var(--accent-info);
+}
+.avatar-options > div {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
+  gap: var(--space-8);
+}
+.avatar-horns > div {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.avatar-options label {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-6);
+  padding: var(--space-12) var(--space-4) var(--space-10);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-10);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--type-12);
+}
+.avatar-options label > span:last-child {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.avatar-options label:hover {
+  background: var(--surface-control);
+}
+:is(.avatar-options, .avatar-picker-moods) label:has(input:checked) {
+  border-color: var(--accent-info);
+  background: color-mix(in srgb, var(--accent-info) 14%, transparent);
+  color: var(--text-primary);
+}
+/* Narrow hosts (the create-bot side column) keep every choice on screen: smaller tiles, names in tooltips. */
+@container (max-width: 400px) {
+  .avatar-picker-stage {
+    height: 112px;
+  }
+  .avatar-picker-moods {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .avatar-colors > div {
+    gap: var(--space-6);
+  }
+  .avatar-colors label {
+    width: 24px;
+    height: 24px;
+  }
+  .avatar-options > div {
+    grid-template-columns: repeat(auto-fill, minmax(44px, 1fr));
+    gap: var(--space-4);
+  }
+  .avatar-horns > div {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .avatar-options label {
+    padding: var(--space-6) var(--space-2);
+  }
+  .avatar-options label > span:last-child {
+    display: none;
+  }
+  /* BotAvatar sizes itself inline; the compact tile wins over that size. */
+  .avatar-options .tb-avatar {
+    width: 32px !important;
+    height: 32px !important;
+  }
 }
 
 /* Machine controls use the existing settings typography and a quiet, visible state chip. */

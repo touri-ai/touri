@@ -14,7 +14,7 @@ const record = (kind: NotificationRecord["kind"]): NotificationRecord => ({
   botId: "b",
   botName: "Bot",
   botColor: "#fff",
-  avatarShape: "nuage",
+  avatarShape: "short-flower",
   threadId: "t",
   title: "t",
   body: "b",

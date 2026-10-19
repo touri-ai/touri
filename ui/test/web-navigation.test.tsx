@@ -148,7 +148,7 @@ it("restores group conversations from their thread URL and through browser histo
   const { group } = await api.request("POST /groups", {
     name: "Equipe QA",
     color: "#dc2626",
-    avatarShape: "cercle",
+    avatarShape: "classic-none",
     memberIds: ["bot-mark", "bot-onb"],
     coordinatorBotId: null,
   })
