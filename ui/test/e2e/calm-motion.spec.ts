@@ -89,9 +89,12 @@ test("webviews without registered properties keep color and surface fallbacks", 
   await expect(page.locator(".composer")).toHaveCSS("opacity", "1")
 })
 
-test("menus, popovers and inserted attachment chips use the generated springs", async ({ page }) => {
+test("menus use the generated springs", async ({ page }) => {
   await page.goto(fixture)
   await expect(page.locator(".bot-context-menu")).toHaveCSS("animation-timing-function", /^linear\(/)
+})
+
+test("popovers and inserted attachment chips use the generated springs", async ({ page }) => {
   await page.goto("/")
   await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
   await page.locator('input[type="file"]').setInputFiles({

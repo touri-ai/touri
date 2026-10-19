@@ -8,7 +8,7 @@ afterEach(() => vi.restoreAllMocks())
 const phoneViewport = () => {
   const media = window.matchMedia("(max-width: 620px)")
   let narrow = true
-  let changed: (() => void) | undefined
+  let changed = () => {}
   vi.spyOn(window, "matchMedia").mockImplementation((query) =>
     query === media.media
       ? {
@@ -17,7 +17,12 @@ const phoneViewport = () => {
             return narrow
           },
           addEventListener: vi.fn((_event, listener) => {
-            changed = listener as () => void
+            const previous = changed
+            const next = listener as () => void
+            changed = () => {
+              previous()
+              next()
+            }
           }),
           removeEventListener: vi.fn(),
         }
@@ -40,7 +45,7 @@ const phoneViewport = () => {
   })
   return () => {
     narrow = false
-    changed?.()
+    changed()
   }
 }
 

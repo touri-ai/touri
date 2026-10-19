@@ -3,7 +3,11 @@ import { existsSync, statSync } from "node:fs"
 import { lstat, opendir } from "node:fs/promises"
 import { join } from "node:path"
 import type { Kernel, MessagePart, StorageMaintenanceStatus, StorageStats } from "@touri/contracts"
-import { AttachmentReferenceScanDeferred, createAttachmentReferenceScan } from "./attachment-reference-scan"
+import {
+  AttachmentReferenceScanDeferred,
+  type AttachmentReferenceScanDeferredReason,
+  createAttachmentReferenceScan,
+} from "./attachment-reference-scan"
 import { removePrivateFile } from "./files"
 import { historyMigrationStatus } from "./history-backfill"
 import { externalizeMessageParts, OUTPUT_BLOB_ORIGIN } from "./output-blobs"
@@ -164,8 +168,9 @@ export const collectUnusedOutputBlobs = async (
   yieldBatch: (() => Promise<void>) | null = () => Bun.sleep(0),
   deletedBotAttachments = new Set<string>(),
   runStage?: PerformanceStageRunner,
-  onDeferred: () => void = () => {},
+  onDeferred: (reason: AttachmentReferenceScanDeferredReason) => void = () => {},
   signal?: AbortSignal,
+  attachmentReferenceTimeoutMs = 10 * 60_000,
 ): Promise<number> => {
   const measure = <Value>(stage: Parameters<PerformanceStageRunner>[0], action: () => Value): Value =>
     runStage ? runStage(stage, action) : action()
@@ -175,8 +180,8 @@ export const collectUnusedOutputBlobs = async (
   if (database.query("SELECT 1 FROM schema_meta WHERE key = 'storage_upgrade_22' AND value <> 'done'").get()) return 0
   // Include replay/recovery references, so retention never deletes a file still
   // needed by an unpublished entry or a reconnecting client. User uploads stay.
-  const defer = (removed: number) => {
-    onDeferred()
+  const defer = (removed: number, reason: AttachmentReferenceScanDeferredReason = "changed") => {
+    onDeferred(reason)
     return removed
   }
   const changes = () => {
@@ -213,7 +218,13 @@ export const collectUnusedOutputBlobs = async (
   }
   let removed = 0
   let cursor = 0
-  const references = createAttachmentReferenceScan(database, runStage, signal, yieldBatch ?? undefined)
+  const references = createAttachmentReferenceScan(
+    database,
+    runStage,
+    signal,
+    yieldBatch ?? undefined,
+    attachmentReferenceTimeoutMs,
+  )
   try {
     // Start the expensive read only if a bounded candidate window needs it.
     let started = false
@@ -259,7 +270,7 @@ export const collectUnusedOutputBlobs = async (
       if (changes() !== observed) return defer(removed)
     }
   } catch (error) {
-    if (error instanceof AttachmentReferenceScanDeferred) return defer(removed)
+    if (error instanceof AttachmentReferenceScanDeferred) return defer(removed, error.reason)
     throw error
   } finally {
     references.dispose()
@@ -330,6 +341,7 @@ export const createStorageMaintenance = ({
   runStage,
   yieldBatch = () => Bun.sleep(0),
   schedule = setTimeout,
+  attachmentReferenceTimeoutMs = 10 * 60_000,
 }: {
   database: Database
   appData: string
@@ -340,6 +352,7 @@ export const createStorageMaintenance = ({
   runStage?: PerformanceStageRunner
   yieldBatch?: () => Promise<void>
   schedule?: (action: () => Promise<void>, delay: number) => ReturnType<typeof setTimeout>
+  attachmentReferenceTimeoutMs?: number
 }) => {
   const stored = database.query("SELECT value_json FROM settings WHERE key = ?").get(progressKey) as {
     value_json: string
@@ -484,10 +497,19 @@ export const createStorageMaintenance = ({
         },
         undefined,
         runStage,
-        () => {
+        (reason) => {
           deferred = true
+          if (reason !== "deadline") return
+
+          log?.({
+            level: "warn",
+            module: "store",
+            msg: "Limpeza de anexos adiada após o prazo da leitura de referências",
+            data: { stage: "storage_attachment_reference_scan" },
+          })
         },
         retryController.signal,
+        attachmentReferenceTimeoutMs,
       )
       if (stopped) return
       if (deferred) {

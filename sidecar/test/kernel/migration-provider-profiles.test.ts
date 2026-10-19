@@ -21,7 +21,7 @@ test("schema 16 upgrades bots to the host login with connectors off and preserve
     )
     database.close()
     database = openDatabase({ filename })
-    expect(SCHEMA_VERSION).toBe(29)
+    expect(SCHEMA_VERSION).toBe(30)
     expect(database.query("SELECT name,provider_profile,claude_ai_connectors FROM bots").get()).toEqual({
       name: "Keep",
       provider_profile: null,
