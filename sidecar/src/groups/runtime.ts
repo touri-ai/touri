@@ -245,13 +245,13 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
         id: kernel.newId(),
         threadId: thread.id,
         parentId: store.getThread({ threadId: thread.id })?.activeLeafId ?? null,
-        role: "user",
-        kind: "text",
+        role: "system",
+        kind: "notice",
         status: "complete",
         runId: null,
         text: prompt,
         parts: [
-          { type: "text", text: prompt },
+          { type: "notice", level: "info", code: "group_coordination_prompt", text: prompt },
           ...(store
             .activePath({
               threadId: turn.run.threadId,
@@ -410,6 +410,8 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
       return
     }
     const message = event.message
+    const marker = message.parts[0]
+    if (marker?.type === "notice" && marker.code === "group_coordination_prompt") return
     if (message.role === "user") return
     const link = db
       .query("SELECT visible_message_id FROM group_message_links WHERE source_thread_id=? AND message_id=?")

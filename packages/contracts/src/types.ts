@@ -410,6 +410,7 @@ export type NoticePart = {
     | 'group_ask_all'
     | 'group_summary'
     | 'group_member_removed'
+    | 'group_coordination_prompt'
     | 'run_failed'
     | 'run_canceled'
     | 'session_replaced'

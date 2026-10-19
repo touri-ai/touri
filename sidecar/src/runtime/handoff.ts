@@ -14,11 +14,18 @@ const partSummary = (part: MessagePart): string => {
 
 const messageText = (message: Message): string => {
   const parts = message.parts
-    .filter((part) => !message.text || part.type !== "text")
+    .filter(
+      (part) => !message.text || (part.type !== "text" && !(part.type === "notice" && part.text === message.text)),
+    )
     .map(partSummary)
     .filter((part) => part.length > 0)
   return [message.text, ...parts].filter(Boolean).join("; ")
 }
+
+const messageLabel = (message: Message): string =>
+  message.parts.some((part) => part.type === "notice" && part.code === "group_coordination_prompt")
+    ? "group request"
+    : message.role
 
 export const buildHandoffPacket = ({
   kernel,
@@ -38,7 +45,7 @@ export const buildHandoffPacket = ({
   for (let index = messages.length - 1; index >= 0 && recentCharacters < 24_000; index -= 1) {
     const message = messages[index]
     if (!message) continue
-    const line = `${message.role}: ${bounded({ value: messageText(message), max: 6_000 })}`
+    const line = `${messageLabel(message)}: ${bounded({ value: messageText(message), max: 6_000 })}`
     recent.unshift(line)
     recentCharacters += line.length
   }
@@ -47,7 +54,7 @@ export const buildHandoffPacket = ({
   const older = store
     .activePath({ threadId: thread.id, limit: 24, fromRoot: true })
     .filter((message) => !recentIds.has(message.id))
-    .map((message) => `${message.role}: ${messageText(message).slice(0, 200)}`)
+    .map((message) => `${messageLabel(message)}: ${messageText(message).slice(0, 200)}`)
     .join("\n")
   const projectInfo = thread.botId ? kernel.services.use("projects.info") : null
   const environment = projectInfo

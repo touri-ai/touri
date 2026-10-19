@@ -11,7 +11,9 @@ const subscribe = (changed: () => void) => {
 }
 const isNarrow = () => window.matchMedia(query).matches
 
-export const SidebarDrawer = (props: ComponentProps<typeof Sidebar>) => {
+type SidebarDrawerProps = ComponentProps<typeof Sidebar> & { panelOpen?: boolean }
+
+export const SidebarDrawer = ({ panelOpen = false, ...props }: SidebarDrawerProps) => {
   const narrow = useSyncExternalStore(subscribe, isNarrow)
   const [open, setOpen] = useState(false)
   const dialog = useRef<HTMLDialogElement>(null)
@@ -40,6 +42,7 @@ export const SidebarDrawer = (props: ComponentProps<typeof Sidebar>) => {
         ref={trigger}
         type="button"
         className="toolbar-icon mobile-menu-button"
+        hidden={panelOpen && narrow}
         aria-label={t("Open menu")}
         aria-expanded={open}
         aria-controls="workspace-sidebar-drawer"
