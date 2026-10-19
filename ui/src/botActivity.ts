@@ -1,7 +1,7 @@
 import type { Bot, Id, Message, NotificationRecord, Run, Thread } from "@touri/contracts"
 import { pendingApprovalTargets } from "./approvalNavigation"
 import { t } from "./i18n"
-import { isFailureNotice } from "./sidebarAttention"
+import { isFailureNotice, isInformationalNotice } from "./sidebarAttention"
 
 /** Sidebar priority: 1) needs you, 2) working now, 3) unread results, then the user's own order. */
 export type BotActivityKind = "needs-you" | "working" | "new"
@@ -57,6 +57,7 @@ export const computeBotActivity = (input: ActivityInput): Map<Id, BotActivity> =
       const messages = messagesByBot.get(bot.id) ?? []
       const threads = input.threads.filter((thread) => thread.botId === bot.id && !thread.groupId)
       const attention = input.attention.filter((item) => item.botId === bot.id)
+      const actionable = attention.filter((item) => !isInformationalNotice(item))
       const runs = input.runs.filter((run) => run.botId === bot.id)
       const results = [
         ...messages
@@ -74,7 +75,7 @@ export const computeBotActivity = (input: ActivityInput): Map<Id, BotActivity> =
         ...attention.map((item) => item.createdAt),
         ...runs.map((run) => run.startedAt ?? run.queuedAt),
       ])
-      const needsYou = pendingApprovalTargets(messages).length > 0 || attention.length > 0
+      const needsYou = pendingApprovalTargets(messages).length > 0 || actionable.length > 0
       const working =
         runs.some((run) => ACTIVE_RUNS.includes(run.status)) ||
         messages.some((message) => message.status === "streaming")
@@ -83,7 +84,7 @@ export const computeBotActivity = (input: ActivityInput): Map<Id, BotActivity> =
         bot.id !== input.viewingBotId &&
         (threads.some((thread) => thread.unread > 0) ||
           lastResultAt > viewed ||
-          attention.some((item) => isFailureNotice(item)))
+          actionable.some((item) => isFailureNotice(item)))
       const kind: BotActivityKind | null = needsYou ? "needs-you" : working ? "working" : unread ? "new" : null
       return [bot.id, { kind, lastActivityAt, lastResultAt }]
     }),

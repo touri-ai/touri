@@ -1205,6 +1205,7 @@ export const ptBR = {
   "your decision": "sua decisão",
   "review the interrupted task": "revise a tarefa interrompida",
   "Reply interrupted": "Resposta interrompida",
+  "Routine postponed": "Rotina adiada",
   "Actions for {name}": "Ações de {name}",
   "Search bots, conversations and settings": "Buscar bots, conversas e configurações",
   Projects: "Projetos",

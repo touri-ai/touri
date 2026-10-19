@@ -2510,6 +2510,7 @@ export const createRuntimeEngine = ({
     notices.deferred({
       botId: routine.botId,
       threadId: null,
+      routineId: routine.id,
       routineName: routine.name,
       reason: summary,
     })
@@ -2568,6 +2569,7 @@ export const createRuntimeEngine = ({
         notices.deferred({
           botId: routine.botId,
           threadId: null,
+          routineId: routine.id,
           routineName: routine.name,
           reason: `A rotina “${routine.name}” foi adiada porque a execução anterior ainda está em andamento.`,
         })
