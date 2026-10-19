@@ -1467,7 +1467,7 @@ export const createRuntimeEngine = ({
         const turnEnv = prepared?.env ?? env
         const dispatchEvent = (event: ProviderEvent) => {
           // INJECTED REGRESSION: O(history) work per event
-          for (let i = 0; i < 4; i++) JSON.stringify(state.parts)
+          for (let i = 0; i < 16; i++) JSON.stringify(state.parts)
           return handleEvent({ run, event, store, state })
         }
         const emit = (event: ProviderEvent) =>

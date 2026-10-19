@@ -474,6 +474,9 @@ test("Provider event cost grows linearly and duplicate starts share one run", as
   expect(result.busEvents).toBeGreaterThan(0)
   expect(result.duplicateSharesRun).toBe(true)
   expect(result.duplicateActiveRuns).toBe(1)
+  expect(result.blockCpuSamples).toBeGreaterThan(20)
+  expect(result.p95BlockCpuMs).toBeLessThan(30)
+  expect(result.maxBlockCpuMs).toBeLessThan(75)
   expect(result.providerCpuMs).toBeGreaterThan(0)
   // CI runners measured 573–761 ms for this replay; the ratio below guards linear growth.
   expect(result.providerCpuMs).toBeLessThan(1_500)
@@ -485,9 +488,6 @@ test("Provider event cost grows linearly and duplicate starts share one run", as
   // A single block can spike by a few ms from GC or noisy neighbours, so the tight budget is on the
   // p95 block and a looser guard stays on the max: a per-event O(history) regression moves every block.
   // An empty sample list would pass the p95 check, so require that blocks were recorded.
-  expect(result.blockCpuSamples).toBeGreaterThan(20)
-  expect(result.p95BlockCpuMs).toBeLessThan(30)
-  expect(result.maxBlockCpuMs).toBeLessThan(75)
   expect(result.maxBlockMs).toBeLessThan(150)
   // Turn finalization runs once per turn and grows with the number of parts (836 here).
   expect(result.stages.find(({ name }) => name === "runtime_turn_finalization")?.maxMs ?? Infinity).toBeLessThan(250)
