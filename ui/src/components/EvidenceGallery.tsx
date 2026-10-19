@@ -1,5 +1,14 @@
 import type { Bot } from "@touri/contracts"
-import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
+import {
+  type CSSProperties,
+  createContext,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react"
 import type { UiApi } from "../api/client"
 import { ApiError } from "../errors"
 import { t } from "../i18n"
@@ -34,6 +43,10 @@ export const readImage = async (image: EvidenceImage, context: EvidenceContextVa
     { id: context.bot.id },
   )
 }
+/** Thumbnail box follows the picture (portrait stays tall, not letterboxed), within sane bounds. */
+export const getThumbnailRatio = (width: number, height: number): string | undefined =>
+  width > 0 && height > 0 ? String(Math.min(2, Math.max(0.5, width / height))) : undefined
+
 const stoppedError = (error: unknown) => error instanceof ApiError && error.errorCode === "IMAGE_MACHINE_STOPPED"
 
 const Thumbnail = ({
@@ -54,6 +67,7 @@ const Thumbnail = ({
   const [src, setSrc] = useState<string | null>(null)
   const [error, setError] = useState("")
   const [revision, setRevision] = useState(0)
+  const [ratio, setRatio] = useState<string | undefined>()
   const { notice, saveImage } = useSaveNotice()
   useEffect(() => {
     if (!root.current) return
@@ -126,6 +140,7 @@ const Thumbnail = ({
       <button
         type="button"
         className="evidence-thumbnail"
+        style={ratio ? ({ aspectRatio: ratio, "--thumb-ratio": ratio } as CSSProperties) : undefined}
         aria-label={`Abrir captura ${index + 1} em tamanho original`}
         onClick={open}
       >
@@ -134,6 +149,9 @@ const Thumbnail = ({
             src={src}
             alt={image.caption}
             loading="lazy"
+            onLoad={(event) =>
+              setRatio(getThumbnailRatio(event.currentTarget.naturalWidth, event.currentTarget.naturalHeight))
+            }
             onError={() => {
               setSrc(null)
               setError("Prévia indisponível. Clique para abrir a imagem.")

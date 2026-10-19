@@ -5,7 +5,12 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { createMockApi } from "../src/api/mock"
 import { BotLibrary } from "../src/components/BotLibrary"
-import { EvidenceContext, type EvidenceContextValue, EvidenceGallery } from "../src/components/EvidenceGallery"
+import {
+  EvidenceContext,
+  type EvidenceContextValue,
+  EvidenceGallery,
+  getThumbnailRatio,
+} from "../src/components/EvidenceGallery"
 import { evidencePath } from "../src/components/evidenceMarkdown"
 import { imageDimensions, loadImage, thumbnailBlob } from "../src/components/imageLoads"
 import { MarkdownContent } from "../src/components/MarkdownContent"
@@ -516,4 +521,22 @@ it("defers image reads until a thumbnail enters the viewport", async () => {
   expect(createUrl).not.toHaveBeenCalled()
   expect(request).toHaveBeenCalledOnce()
   expect(disconnect).toHaveBeenCalled()
+})
+
+it("sizes the thumbnail to a portrait picture instead of a fixed landscape box", async () => {
+  const { context } = fixture()
+  render(<MarkdownContent evidence={context} content="![Tela](/workspace/a.png)" />)
+  const image = await screen.findByRole("img", { name: "Tela" })
+  Object.defineProperty(image, "naturalWidth", { configurable: true, value: 600 })
+  Object.defineProperty(image, "naturalHeight", { configurable: true, value: 1200 })
+  fireEvent.load(image)
+  expect(image.closest("button")?.style.aspectRatio).toBe("0.5")
+  expect(image.closest("button")?.style.getPropertyValue("--thumb-ratio")).toBe("0.5")
+})
+
+it("keeps the thumbnail ratio within sane bounds", () => {
+  expect(getThumbnailRatio(1000, 1000)).toBe("1")
+  expect(getThumbnailRatio(300, 1800)).toBe("0.5")
+  expect(getThumbnailRatio(4000, 500)).toBe("2")
+  expect(getThumbnailRatio(0, 0)).toBeUndefined()
 })
