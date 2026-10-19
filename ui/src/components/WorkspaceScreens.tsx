@@ -232,7 +232,10 @@ export const McpScreen = ({
             </span>
             <div>
               <h2>{server?.name ?? "touri"}</h2>
-              <p>{t("Ferramentas do touri neste computador")}{server ? ` · ${server.version}` : ""}</p>
+              <p>
+                {t("Ferramentas do touri neste computador")}
+                {server ? ` · ${server.version}` : ""}
+              </p>
             </div>
             <span
               className={`screen-status ${status === "ready" ? "is-success" : status === "error" ? "is-error" : ""}`}
