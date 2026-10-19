@@ -672,7 +672,8 @@ test("retention of a referenced patch requests resync rather than silently dropp
     if (latestEntry === null) throw new Error("Missing transcript entries")
     const checkpointDeadline = Date.now() + 2_000
     let checkpoint = 0
-    while (checkpoint < latestEntry && Date.now() < checkpointDeadline) {
+    let storageUpgrade: string | null = null
+    while (Date.now() < checkpointDeadline) {
       checkpoint = Number(
         (
           f.database.query("SELECT value FROM schema_meta WHERE key = 'transcript_event_checkpoint'").get() as {
@@ -680,9 +681,17 @@ test("retention of a referenced patch requests resync rather than silently dropp
           }
         ).value,
       )
-      if (checkpoint < latestEntry) await Bun.sleep(10)
+      storageUpgrade =
+        (
+          f.database.query("SELECT value FROM schema_meta WHERE key = 'storage_upgrade_22'").get() as {
+            value: string
+          } | null
+        )?.value ?? null
+      if (checkpoint >= latestEntry && storageUpgrade === "done") break
+      await Bun.sleep(10)
     }
     expect(checkpoint).toBe(latestEntry)
+    expect(storageUpgrade).toBe("done")
     compactTranscript({ database: f.database, entriesPerThread: 2, events: 100, maxAgeMs: Number.MAX_SAFE_INTEGER })
     expect(bus.catchUp(cursor)).toMatchObject([{ event: { type: "transcript.resync" } }])
     expect(f.store.activePath({ threadId: "t", leafId: "a" })[0]?.parts[1]).toMatchObject({ text: "4" })
