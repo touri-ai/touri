@@ -825,6 +825,8 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
       : null
   }
   const shutdown: ServiceMap["groups.runtime"]["shutdown"] = ({ appRestart = false } = {}) => {
+    if (stopped) return
+
     stopped = true
     for (const turn of turns.values()) {
       if (appRestart) {

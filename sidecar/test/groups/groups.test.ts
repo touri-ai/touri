@@ -345,6 +345,8 @@ test("draining finishes the active group turn and replays waiting turns in order
   release.resolve()
   await f.runtime.waitForDrain()
   f.runtime.shutdown({ appRestart: true })
+  // The final host quit notification repeats shutdown after restart state has been saved.
+  f.runtime.shutdown()
 
   expect(f.persistence.getRun(active.id)?.status).toBe("succeeded")
   waiting.forEach((run) => {
