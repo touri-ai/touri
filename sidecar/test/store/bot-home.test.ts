@@ -11,7 +11,7 @@ import { init as initStore } from "../../src/store"
 import { createBotHomeWriter, getBotHomeCommand, stopBotHomeWriter, writeBotHome } from "../../src/store/bot-home"
 
 // Test resources are recorded locally so afterEach can release every helper before removing files.
-const cleanups = new Set<() => Promise<void>>()
+const cleanups = new Set<() => void | Promise<void>>()
 const roots: string[] = []
 afterEach(async () => {
   for (const cleanup of Array.from(cleanups).reverse()) await cleanup()

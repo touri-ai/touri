@@ -43,9 +43,11 @@ export const cleanupBotHome = async (kernel: Kernel, botId: string): Promise<voi
   }
 }
 
-export const stopBotHomeWriter = async (kernel: Kernel): Promise<void> => {
-  await writers.get(kernel)?.close()
-  writers.delete(kernel)
+export const stopBotHomeWriter = (kernel: Kernel): Promise<void> | undefined => {
+  const writer = writers.get(kernel)
+  if (!writer) return undefined
+
+  return writer.close().finally(() => writers.delete(kernel))
 }
 
 const getWriter = (kernel: Kernel) => {
