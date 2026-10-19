@@ -2,7 +2,6 @@ import { type ComponentProps, useEffect, useRef, useState, useSyncExternalStore 
 import { isNewBotShortcut, isPaletteShortcut } from "../features/commandPalette/shortcut"
 import { t } from "../i18n"
 import { Sidebar } from "./BotSidebar"
-import { usePhoneViewport } from "./usePhoneViewport"
 
 const query = "(max-width: 620px)"
 const subscribe = (changed: () => void) => {
@@ -16,7 +15,6 @@ type SidebarDrawerProps = ComponentProps<typeof Sidebar> & { panelOpen?: boolean
 
 export const SidebarDrawer = ({ panelOpen = false, ...props }: SidebarDrawerProps) => {
   const narrow = useSyncExternalStore(subscribe, isNarrow)
-  const phone = usePhoneViewport()
   const [open, setOpen] = useState(false)
   const dialog = useRef<HTMLDialogElement>(null)
   const trigger = useRef<HTMLButtonElement>(null)
@@ -44,7 +42,7 @@ export const SidebarDrawer = ({ panelOpen = false, ...props }: SidebarDrawerProp
         ref={trigger}
         type="button"
         className="toolbar-icon mobile-menu-button"
-        hidden={panelOpen && phone}
+        hidden={panelOpen && narrow}
         aria-label={t("Open menu")}
         aria-expanded={open}
         aria-controls="workspace-sidebar-drawer"
