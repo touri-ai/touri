@@ -566,6 +566,7 @@ export const Composer = ({
             <>
               {onSaveModel && onNotice && (
                 <ModelPicker
+                  key={bot.id}
                   api={api}
                   botId={bot.id}
                   provider={bot.provider}

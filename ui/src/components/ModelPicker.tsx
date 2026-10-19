@@ -9,12 +9,13 @@ import "./ModelPicker.css"
 type ModelOption = { value: string | null; label: string }
 type ListItem = { kind: "model"; value: string | null; label: string } | { kind: "other"; label: string }
 
-const HIDDEN_CHARACTERS = /[\p{Cc}\p{Cf}\p{Cs}\p{Zl}\p{Zp}]/u
+const HIDDEN_CHARACTERS = /[\p{Cc}\p{Cf}\p{Cs}\p{Zl}\p{Zp}\p{Default_Ignorable_Code_Point}]/u
 const MODEL_OPTION_HEIGHT = 40
 const MODEL_WINDOW_SIZE = 20
 const MODEL_OVERSCAN = 4
 
-const isVisibleModelName = (value: string): boolean => value.length > 0 && !HIDDEN_CHARACTERS.test(value)
+const isVisibleModelName = (value: string): boolean =>
+  value.length > 0 && value.length <= 256 && !value.startsWith("-") && !HIDDEN_CHARACTERS.test(value)
 
 export const ModelPicker = ({
   api,
@@ -114,6 +115,7 @@ export const ModelPicker = ({
   useEffect(() => {
     if (!open || provider !== "opencode") return
 
+    const lifecycle = new AbortController()
     const load = async (): Promise<void> => {
       setLoading(true)
       setLoadError("")
@@ -129,6 +131,8 @@ export const ModelPicker = ({
         api.request("GET /providers/opencode/models", botId ? { botId } : {}),
         api.request("GET /api-models", {}),
       ])
+      if (lifecycle.signal.aborted) return
+
       const providerModels =
         providerResult.status === "fulfilled"
           ? providerResult.value.models.map((model) => ({ value: model, label: model }))
@@ -157,6 +161,7 @@ export const ModelPicker = ({
     }
 
     void load()
+    return () => lifecycle.abort()
   }, [api, botId, open, provider])
 
   useEffect(() => {
@@ -260,7 +265,7 @@ export const ModelPicker = ({
 
   const commitCustom = (): void => {
     const model = customValue.trim()
-    if (!isVisibleModelName(model)) {
+    if (!isVisibleModelName(model) || customValue.length > 256 || HIDDEN_CHARACTERS.test(customValue)) {
       setCustomError(true)
       return
     }
@@ -449,7 +454,9 @@ export const ModelPicker = ({
               />
               {customError && (
                 <small id={`${menuId}-custom-error`} role="alert">
-                  {t("Model names cannot contain hidden or control characters.")}
+                  {t(
+                    "Use a model name of up to 256 characters, without hidden or control characters or a leading dash.",
+                  )}
                 </small>
               )}
               {loadError && <small role="status">{loadError}</small>}

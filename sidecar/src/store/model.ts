@@ -1,0 +1,15 @@
+export const getBotModel = (value: unknown): string | null | undefined => {
+  if (value === null) return null
+  if (typeof value !== "string" || value.length > 256) return undefined
+  if (HIDDEN_CHARACTERS.test(value)) return undefined
+
+  const model = value.trim()
+  if (model.startsWith("-")) return undefined
+
+  return model || null
+}
+
+export const MODEL_VALIDATION_ERROR =
+  "Use a model name of up to 256 characters, without hidden or control characters or a leading dash."
+
+const HIDDEN_CHARACTERS = /[\p{Cc}\p{Cf}\p{Cs}\p{Zl}\p{Zp}\p{Default_Ignorable_Code_Point}]/u

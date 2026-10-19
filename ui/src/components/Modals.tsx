@@ -1012,7 +1012,8 @@ export const BotSettingsModal = ({
   }
   const [browser, setBrowser] = useState(bot.browser ?? "touri")
   const [provider, setProvider] = useState(bot.provider)
-  const [model, setModel] = useState(bot.model ?? "")
+  const [modelDraft, setModel] = useState<string | null>(null)
+  const model = modelDraft ?? bot.model ?? ""
   const [access, setAccess] = useState<string>(
     bot.provider !== "codex" && bot.access === "full" && bot.approvals === "on-request" ? "full-approved" : bot.access,
   )
@@ -1101,7 +1102,7 @@ export const BotSettingsModal = ({
         title: title.trim() || null,
         instructions,
         provider,
-        ...(provider !== bot.provider ? { model: model || null } : {}),
+        ...(provider !== bot.provider || (model || null) !== bot.model ? { model: model || null } : {}),
         access: access === "full-approved" ? "full" : (access as Bot["access"]),
         approvals:
           provider === bot.provider && access === initialAccess.current
@@ -1191,7 +1192,7 @@ export const BotSettingsModal = ({
           api={api}
           id="settings-api-model"
           value={provider === "opencode" && model.startsWith("touri-api-") ? model : ""}
-          disabled={saving || updating}
+          disabled={saving || updating || modelSaving}
           onChange={(value) => {
             setModel(value)
             setEffort(null)
@@ -1234,6 +1235,7 @@ export const BotSettingsModal = ({
                   <select
                     id="settings-provider"
                     value={provider}
+                    disabled={saving || updating || modelSaving}
                     onChange={(event) => {
                       if (api)
                         void api
@@ -1257,14 +1259,22 @@ export const BotSettingsModal = ({
                 >
                   <div className="settings-model-control">
                     <ModelPicker
+                      key={`${bot.id}:${provider}`}
                       id="settings-model"
                       api={api}
                       botId={bot.id}
                       provider={provider}
                       value={model || null}
-                      onChange={setModel}
+                      onChange={(value) =>
+                        setModel(provider === bot.provider && value === (bot.model ?? "") ? null : value)
+                      }
                       onBusyChange={setModelSaving}
-                      onSave={(nextModel) => actions.updateBotModel(bot.id, nextModel)}
+                      onSave={async (nextModel) => {
+                        if (provider !== bot.provider) return
+
+                        await actions.updateBotModel(bot.id, nextModel)
+                        setModel(null)
+                      }}
                       onNotice={onNotice}
                       descriptionId="settings-model-description"
                       align="end"
