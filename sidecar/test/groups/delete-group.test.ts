@@ -243,6 +243,8 @@ type Fixture = Awaited<ReturnType<typeof getFixture>>
 const getFixture = async () => {
   const root = mkdtempSync(join(tmpdir(), "touri-group-delete-"))
   const host = createKernel({ appData: root })
+  // Keep automatic maintenance from invalidating the deletion route's attachment scan.
+  host.kernel.services.use("storage.maintenance")?.dispose()
   await initStore(host.kernel)
   await initGroups(host.kernel)
   // The host bridge is an external API; inject a successful vault edge for local bot deletion.

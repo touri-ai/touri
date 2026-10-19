@@ -57,8 +57,11 @@ export const openDatabase = ({ filename }: { filename: string }): Database => {
   // safe from application crashes without an fsync on every commit; only the newest transactions
   // can be lost on an OS crash or power loss. FULL made each commit wait on the disk on the main
   // thread, freezing the server for seconds whenever the disk was busy (#454).
+  // A 64 MB page cache keeps the hot part of large stores in process memory; with SQLite's 2 MB
+  // default every query re-read its pages from the disk on the main thread once the OS evicted
+  // them, which froze the server for seconds while the disk was busy (#470).
   database.exec(
-    "PRAGMA busy_timeout = 5000; PRAGMA auto_vacuum = INCREMENTAL; PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA journal_size_limit = 8388608; PRAGMA synchronous = NORMAL;",
+    "PRAGMA busy_timeout = 5000; PRAGMA auto_vacuum = INCREMENTAL; PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA journal_size_limit = 8388608; PRAGMA synchronous = NORMAL; PRAGMA cache_size = -65536;",
   )
   database.exec(migrationSql)
   database.exec(notificationsSql)
