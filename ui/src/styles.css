@@ -1028,6 +1028,12 @@ a {
 .text-button:hover {
   color: var(--text-strong);
 }
+@media (max-width: 600px) {
+  .text-button {
+    min-width: 24px;
+    min-height: 24px;
+  }
+}
 .retry-button {
   color: var(--text-danger);
 }

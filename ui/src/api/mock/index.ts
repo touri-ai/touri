@@ -270,7 +270,7 @@ const defaultDoctor: DoctorReport = {
 }
 
 /** Optional demo states for screenshots and manual review, selected with `?mockScenario=` in the mock UI. */
-export type MockScenario = "resumed-turn" | "routine-conversation" | "interrupted-tasks"
+export type MockScenario = "resumed-turn" | "routine-conversation" | "interrupted-tasks" | "message-edit-target"
 
 export const getRoutineConversationFixture = (): {
   thread: Thread
@@ -470,6 +470,12 @@ const importReport: ImportReport = {
 }
 
 export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } = {}): MockApi => {
+  const getSeedMessage = (message: Seed["messages"][number]): Message => {
+    if (scenario !== "message-edit-target" || message.role !== "user") return createMessage(message)
+
+    return createMessage({ ...message, text: "Revise a campanha antes da reunião de planejamento." })
+  }
+
   const routineFixture = scenario === "routine-conversation" ? getRoutineConversationFixture() : null
   const interruptedFixture = scenario === "interrupted-tasks" ? getInterruptedTaskFixture() : null
   const project = createProject()
@@ -483,9 +489,7 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
     return { ...saved, activeLeafId: interruptedFixture.messages.at(-1)?.id ?? saved.activeLeafId }
   })
   let messages = [
-    ...seed.messages
-      .filter((message) => message.threadId !== routineFixture?.thread.id)
-      .map((message) => createMessage(message)),
+    ...seed.messages.filter((message) => message.threadId !== routineFixture?.thread.id).map(getSeedMessage),
     ...(routineFixture?.messages ?? []),
     ...(interruptedFixture?.messages ?? []),
   ]
