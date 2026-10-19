@@ -51,7 +51,15 @@ const PAUSED = { pauseAfterFirstDelta: "release", ignoreInterrupt: true, deltas:
  * A fake Codex on a real store. `crash-once` makes the next provider process exit mid-turn;
  * every other turn follows scenario.json.
  */
-const fixture = async ({ resumeBackoffMs = 50 }: { resumeBackoffMs?: number } = {}) => {
+const fixture = async ({
+  resumeBackoffMs = 50,
+  maxConcurrentRuns,
+  disconnectEvents = false,
+}: {
+  resumeBackoffMs?: number
+  maxConcurrentRuns?: number
+  disconnectEvents?: boolean
+} = {}) => {
   const root = mkdtempSync(join(tmpdir(), "touri-resume-"))
   // Recovery fixtures must not depend on a provider reading touri's private data.
   const assets = mkdtempSync(join(tmpdir(), "touri-resume-provider-"))
@@ -85,18 +93,27 @@ exec '${process.execPath}' '${fake}' "$@"
   )
   const kernels: Array<Runtime> = []
   const engines: Array<Engine> = []
-  const open = async (options: { resumeBackoffMs?: number; routineTimeoutMs?: number } = {}) => {
+  const open = async (
+    options: {
+      resumeBackoffMs?: number
+      routineTimeoutMs?: number
+      maxConcurrentRuns?: number
+      disconnectEvents?: boolean
+    } = {},
+  ) => {
     const runtime = createKernel({ appData: root })
     runtime.kernel.spawnTree = fakeProviderSpawn(runtime.kernel.spawnTree, command, scenario)
     await initStore(runtime.kernel)
     await initNotify(runtime.kernel)
     kernels.push(runtime)
+    const engineKernel = options.disconnectEvents ? { ...runtime.kernel, subscribe: () => () => {} } : runtime.kernel
     const engine = createRuntimeEngine({
-      kernel: runtime.kernel,
+      kernel: engineKernel,
       codexCommand: command,
       environment: { PATH: process.env.PATH ?? "/usr/bin", TOURI_FAKE_SCENARIO: scenario },
       interruptGraceMs: 30,
       ...(options.resumeBackoffMs === undefined ? {} : { resumeBackoffMs: options.resumeBackoffMs }),
+      ...(options.maxConcurrentRuns === undefined ? {} : { maxConcurrentRuns: options.maxConcurrentRuns }),
       ...(options.routineTimeoutMs === undefined ? {} : { routineTimeoutMs: () => options.routineTimeoutMs ?? 0 }),
     })
     engines.push(engine)
@@ -104,7 +121,11 @@ exec '${process.execPath}' '${fake}' "$@"
     if (!store) throw new Error("Store missing")
     return { runtime, engine, store, db: runtime.kernel.db as Database }
   }
-  const first = await open({ resumeBackoffMs })
+  const first = await open({
+    resumeBackoffMs,
+    ...(maxConcurrentRuns === undefined ? {} : { maxConcurrentRuns }),
+    disconnectEvents,
+  })
   first.db.exec(`INSERT INTO bots(id,name,provider,home_dir,created_at,updated_at) VALUES ('b','Teste','codex','/tmp',1,1);
     INSERT INTO threads(id,bot_id,title,created_at,updated_at) VALUES ('t','b','Conversa',1,1);`)
   const send = (engine: Engine, text = "Tarefa longa", store = first.store): Run => {
@@ -338,6 +359,49 @@ test("drain waits for continuation events and returns promptly after the last ru
   expect(timeoutWatch.calls()).toBe(0)
   expect(lastRunFinishedAt).toBeGreaterThan(0)
   expect(performance.now() - lastRunFinishedAt).toBeLessThan(100)
+})
+
+test("drain reacts to engine run saves without a kernel event subscription", async () => {
+  const f = await fixture({ maxConcurrentRuns: 1, disconnectEvents: true })
+  drainCleanups.push(f.close)
+  const first = f.send(f.first.engine)
+  await waitFor(f.streamed("INÍCIO"))
+  const continuation = f.send(f.first.engine, "Continue a tarefa")
+  f.first.db
+    .query(
+      "INSERT INTO run_continuations (run_id, original_run_id, previous_run_id, reason, created_at) VALUES (?, ?, ?, ?, ?)",
+    )
+    .run(continuation.id, first.id, first.id, "provider_crash", Date.now())
+  f.first.engine.beginDrain()
+  f.writeScenario({ deltas: ["As duas tarefas terminaram."] })
+  f.release()
+  const drain = await Promise.race([f.first.engine.waitForDrain().then(() => true), Bun.sleep(1_500).then(() => false)])
+
+  expect(drain).toBe(true)
+  expect(f.runs()).toMatchObject([{ status: "succeeded" }, { status: "succeeded" }])
+})
+
+test("drain returns after a bounded wait when a drainable queued run is missing", async () => {
+  const f = await fixture({ maxConcurrentRuns: 1 })
+  drainCleanups.push(f.close)
+  const first = f.send(f.first.engine)
+  await waitFor(f.streamed("INÍCIO"))
+  const queued = f.send(f.first.engine, "Tarefa na fila")
+  f.first.db
+    .query(
+      "INSERT INTO run_continuations (run_id, original_run_id, previous_run_id, reason, created_at) VALUES (?, ?, ?, ?, ?)",
+    )
+    .run(queued.id, first.id, first.id, "provider_crash", Date.now())
+  f.first.db.exec("PRAGMA foreign_keys = OFF")
+  f.first.db.query("DELETE FROM runs WHERE id = ?").run(queued.id)
+  f.first.db.exec("PRAGMA foreign_keys = ON")
+  f.first.engine.beginDrain()
+  f.writeScenario({ deltas: ["A tarefa ativa terminou."] })
+  f.release()
+  const drain = await Promise.race([f.first.engine.waitForDrain().then(() => true), Bun.sleep(1_500).then(() => false)])
+
+  expect(drain).toBe(true)
+  expect(f.runs()).toMatchObject([{ id: first.id, status: "succeeded" }])
 })
 
 test("shutdown preserves a pending permission continuation even with automatic recovery disabled", async () => {

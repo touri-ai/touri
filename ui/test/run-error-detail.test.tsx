@@ -207,6 +207,19 @@ it.each([
   expect(runErrorFor(failed, { ...run, errorMessage })).toMatchObject({ stage, hint: expect.stringContaining(hint) })
 })
 
+it("shows a clear notice when a queued group turn loses its conversation", () => {
+  expect(
+    runErrorFor(failed, {
+      ...run,
+      errorClass: "group_context_missing",
+      errorMessage: "O grupo ou a conversa não existe mais. Este turno não foi executado.",
+    }),
+  ).toMatchObject({
+    title: "O grupo ou a conversa não existe mais",
+    detail: "O grupo ou a conversa não existe mais. Este turno não foi executado.",
+  })
+})
+
 it("sanitizes legacy diagnostics and untrusted notice payloads before rendering", () => {
   const privateText =
     "O login na máquina não ficou pronto em 15 s. stderr: /home/alice/.config/token /Users/alice/key $HOME/private ~/key token=secret sk-private Bearer abc123"

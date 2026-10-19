@@ -287,7 +287,10 @@ const AppContent = ({ kernel }: AppProps) => {
           setApi(
             createMockApi({
               scenario:
-                scenario === "resumed-turn" || scenario === "routine-conversation" || scenario === "interrupted-tasks"
+                scenario === "resumed-turn" ||
+                scenario === "routine-conversation" ||
+                scenario === "interrupted-tasks" ||
+                scenario === "group-context-missing"
                   ? scenario
                   : null,
             }),

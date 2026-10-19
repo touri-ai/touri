@@ -133,6 +133,20 @@ it.each(cases)("projects %s in chat, bell, global notice and computer", async (d
   expectClosedDiagnostics(global)
   app.unmount()
 })
+
+it("shows the stored group and conversation failure reason in the failed-turn notice", () => {
+  const errorMessage = "O grupo ou a conversa não existe mais. Este turno não foi executado."
+  const failedMessage = failed(errorMessage)
+  const run = { ...runFor(errorMessage), errorClass: "group_context_missing" as const }
+  render(<VirtualMessageList messages={[failedMessage]} runs={[run]} onRetry={vi.fn()} onSwitchBranch={vi.fn()} />)
+
+  expect(screen.getByRole("alert")).toHaveTextContent(errorMessage)
+  expect(screen.queryByRole("button", { name: "Tentar de novo" })).toBeNull()
+  expect(errorRecovery(errorMessage, { errorClass: run.errorClass, locale: "en" }).message).toBe(
+    "The group or conversation no longer exists. This turn was not run.",
+  )
+})
+
 it("uses English copy and only promises saved messages when there is evidence", () => {
   expect(errorRecovery("network error").message).not.toContain("está salva")
   expect(errorRecovery("network error", { savedMessage: true }).message).toBe(

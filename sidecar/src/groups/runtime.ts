@@ -865,7 +865,7 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
       const failed: Run = {
         ...run,
         status: "failed",
-        errorClass: "unknown",
+        errorClass: "group_context_missing",
         errorMessage: "O grupo ou a conversa não existe mais. Este turno não foi executado.",
         finishedAt: Date.now(),
       }

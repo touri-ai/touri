@@ -471,7 +471,7 @@ test("startup fails queued group turns whose group or conversation was removed",
 
     expect(f.persistence.getRun(run.id)).toMatchObject({
       status: "failed",
-      errorClass: "unknown",
+      errorClass: "group_context_missing",
       errorMessage: "O grupo ou a conversa não existe mais. Este turno não foi executado.",
       finishedAt: expect.any(Number),
     })

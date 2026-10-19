@@ -284,6 +284,7 @@ const aliases: Record<string, RegisteredErrorCode> = {
   TOOL_NOT_FOUND: "TOURI-E1002",
   THREAD_NOT_FOUND: "TOURI-E1002",
   BOT_NOT_FOUND: "TOURI-E1002",
+  group_context_missing: "TOURI-E1002",
   UNAUTHORIZED: "TOURI-E1003",
   FORBIDDEN: "TOURI-E1004",
   MISDIRECTED_REQUEST: "TOURI-E1004",

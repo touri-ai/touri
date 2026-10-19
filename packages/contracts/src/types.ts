@@ -273,6 +273,7 @@ export type RunErrorClass =
   | 'oom'
   | 'tool_error'
   | 'app_restart'
+  | 'group_context_missing'
   | 'unknown'
 
 export type RunUsage = {

@@ -615,6 +615,7 @@ const MessageBubble = ({
       ...runError.recovery.actions,
       ...(message.runId &&
       message.status === "failed" &&
+      run?.errorClass !== "group_context_missing" &&
       !runError.recovery.actions.some((action) => ["retry", "review", "resume", "storage"].includes(action.kind))
         ? [{ kind: "retry" as const, label: t("Tentar de novo") }]
         : []),
