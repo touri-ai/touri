@@ -39,8 +39,16 @@ const MAX_PUBLIC_DIAGNOSTIC = 240
 const REFINABLE: ReadonlyArray<string> = ["unknown", "cli_crash", "cli_protocol", "tool_error"]
 const MESSAGE_CLASSES: ReadonlyArray<string> = ["unknown", "cli_crash", "cli_protocol", "tool_error", ""]
 const PROVIDERS = ["codex", "claude", "opencode"] as const
-const MODEL_AT_CAPACITY =
-  /\bmodel is (?:currently )?at capacity\b|\boverloaded_error\b|\b(?:model|server) is overloaded\b|\b529\b[^\n]{0,80}\boverloaded\b|O modelo selecionado está sem capacidade no momento\./i
+const MODEL_AT_CAPACITY = new RegExp(
+  [
+    String.raw`\bmodel is (?:currently )?at capacity\b`,
+    String.raw`\boverloaded_error\b`,
+    String.raw`(?:\bHTTP(?:\/\d+(?:\.\d+)?)?\s+529\b|\b529\s*\{|^529\b)[^\n]{0,80}\boverloaded\b`,
+    String.raw`(?:\b503\b[^\n]{0,80}\b(?:model|server) is overloaded\b|\b(?:model|server) is overloaded\b[^\n]{0,80}\b503\b)`,
+    String.raw`O modelo selecionado está sem capacidade no momento\.`,
+  ].join("|"),
+  "i",
+)
 
 const PROVIDER_LOGIN: FailureAction = { kind: "setting", settingId: "providerLogin", label: "Abrir login do provedor" }
 const VM_MEMORY: FailureAction = { kind: "setting", settingId: "vmMemory", label: "Abrir memória da máquina" }

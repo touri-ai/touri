@@ -112,12 +112,15 @@ test.each([
   expect(failure.hint).toBe("Escolha outro modelo nas configurações do bot ou tente de novo em alguns minutos.")
 })
 
-test.each(["The overloaded function signature is ambiguous", "disk is overloaded with downloads"])(
-  "unrelated overloaded diagnostics remain unknown: %s",
-  (diagnostic) => {
-    expect(classifyProviderError(diagnostic)).toBe("unknown")
-  },
-)
+test.each([
+  "The overloaded function signature is ambiguous",
+  "disk is overloaded with downloads",
+  "file.ts:529: overloaded operator",
+  "server is overloaded",
+  "The model is overloaded",
+])("unrelated overloaded diagnostics remain unknown: %s", (diagnostic) => {
+  expect(classifyProviderError(diagnostic)).toBe("unknown")
+})
 
 test("authentication still takes precedence over provider overload", () => {
   expect(classifyProviderError("401 Unauthorized: the model is overloaded")).toBe("cli_auth")
