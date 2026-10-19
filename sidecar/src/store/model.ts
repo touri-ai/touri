@@ -12,4 +12,6 @@ export const getBotModel = (value: unknown): string | null | undefined => {
 export const MODEL_VALIDATION_ERROR =
   "Use a model name of up to 256 characters, without hidden or control characters or a leading dash."
 
+export const INVALID_SAVED_MODEL_ERROR = "The saved model name is invalid. Choose another model in the bot settings."
+
 const HIDDEN_CHARACTERS = /[\p{Cc}\p{Cf}\p{Cs}\p{Zl}\p{Zp}\p{Default_Ignorable_Code_Point}]/u

@@ -2044,6 +2044,8 @@ export const ptBR = {
     "O nome do modelo não pode conter caracteres invisíveis ou de controle.",
   "Use a model name of up to 256 characters, without hidden or control characters or a leading dash.":
     "Use um nome de modelo com até 256 caracteres, sem caracteres invisíveis ou de controle e sem hífen no início.",
+  "The saved model name is invalid. Choose another model in the bot settings.":
+    "O nome do modelo salvo é inválido. Escolha outro modelo nas configurações do bot.",
   "Use model": "Usar modelo",
   "Choose the model for this bot’s next messages.": "Escolha o modelo para as próximas mensagens deste bot.",
   "{provider} does not expose a model list in touri. Use the provider default or enter a model name that {provider} accepts.":
@@ -4277,6 +4279,8 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
     "Model names cannot contain hidden or control characters.",
   "Use a model name of up to 256 characters, without hidden or control characters or a leading dash.":
     "Use a model name of up to 256 characters, without hidden or control characters or a leading dash.",
+  "The saved model name is invalid. Choose another model in the bot settings.":
+    "The saved model name is invalid. Choose another model in the bot settings.",
   "Use model": "Use model",
   "Choose the account this bot will use.": "Choose the account this bot will use.",
   "Sign in above before creating your bot.": "Sign in above before creating your bot.",
