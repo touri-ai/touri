@@ -4,6 +4,7 @@ import {
   type FailureAction,
   failureRetryHint,
   failureStageLabel,
+  isModelAtCapacity,
   type RunFailureDetail,
   safeRunFailure,
   sanitizeDiagnostic,
@@ -51,7 +52,7 @@ const trustedAction = (action: FailureAction | undefined): FailureAction | undef
 /** A stored failure is data from storage: re-project it onto known phrases or sanitize it before display. */
 const trustedFailure = (errorClass: string, stored: RunFailureDetail): RunFailureDetail => {
   const projected = safeRunFailure(errorClass, stored.detail)
-  if (projected.stage !== "turn") return projected
+  if (projected.stage !== "turn" || isModelAtCapacity(projected.detail)) return projected
   const action = trustedAction(stored.action)
   return {
     stage: stored.stage,
@@ -76,18 +77,23 @@ export const runErrorFor = (message: Message, candidate?: Run, machineReady = fa
   const failure =
     (stored && trustedFailure(errorClass, stored)) ?? fromRun ?? safeRunFailure(errorClass, legacyDiagnostic(raw))
   const { hint, ...rest } = failure
+  const modelIsAtCapacity = isModelAtCapacity(failure.detail)
+  const detail = modelIsAtCapacity ? t("O modelo selecionado está sem capacidade no momento.") : rest.detail
+  const recoveryHint = modelIsAtCapacity
+    ? t("Escolha outro modelo nas configurações do bot ou tente de novo em alguns minutos.")
+    : hint
   const apiMessage = Object.values(apiModelErrors).find((text) => (run?.errorMessage ?? raw).includes(text))
   return {
-    title: TITLES[errorClass] ?? FALLBACK_TITLE,
+    title: modelIsAtCapacity ? t("Modelo temporariamente sem capacidade") : (TITLES[errorClass] ?? FALLBACK_TITLE),
     ...rest,
-    detail: apiMessage ? t(apiMessage) : rest.detail,
+    detail: apiMessage ? t(apiMessage) : detail,
     code: publicError(errorClass).code,
     stageLabel: failureStageLabel(failure.stage),
     hint:
       machineReady && /^(?:machine_boot|sealed_connection)$/.test(failure.stage)
         ? failureRetryHint(failure.stage, true)
-        : (hint ?? failureRetryHint(failure.stage, machineReady)),
-    specificHint: hint !== undefined,
+        : (recoveryHint ?? failureRetryHint(failure.stage, machineReady)),
+    specificHint: recoveryHint !== undefined,
     recovery: errorRecovery(run?.errorMessage ?? raw, {
       errorClass,
       provider: run?.provider,

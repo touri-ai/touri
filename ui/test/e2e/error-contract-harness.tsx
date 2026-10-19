@@ -12,7 +12,10 @@ if (!bot || !thread) throw new Error("Missing error fixture")
 bot.machine = "vm"
 bot.name = "Planejamento"
 thread.title = "Organizar as notas"
-const diagnostic = 'network error: ECONNRESET {"status":503} at provider.connect (transport.ts:42)'
+const modelIsAtCapacity = new URLSearchParams(window.location.search).get("scenario") === "capacity"
+const diagnostic = modelIsAtCapacity
+  ? "Selected model is at capacity. Please try a different model."
+  : 'network error: ECONNRESET {"status":503} at provider.connect (transport.ts:42)'
 const run: Run = {
   id: "interrupted",
   threadId: thread.id,
@@ -23,7 +26,7 @@ const run: Run = {
   replyMessageId: "failure",
   externalTurnId: null,
   status: "failed",
-  errorClass: "cli_crash",
+  errorClass: modelIsAtCapacity ? "rate_limit" : "cli_crash",
   errorMessage: diagnostic,
   usage: null,
   routineRunId: null,
