@@ -52,6 +52,8 @@ type BenchmarkResult = {
   attributedCpuMs: number
   maxBlockMs: number
   maxBlockCpuMs: number
+  p95BlockCpuMs: number
+  blockCpuSamples: number
   duplicateSharesRun: boolean
   duplicateActiveRuns: number
   busEvents: number
@@ -114,6 +116,11 @@ const getReplayEvents = (count: number): Array<Record<string, unknown>> => {
   ]
 }
 
+const getPercentile = (samples: Array<number>, fraction: number): number => {
+  const sorted = Array.from(samples).sort((a, b) => a - b)
+  return sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * fraction))] ?? 0
+}
+
 const getTrackedRunner = (now = performance.now.bind(performance)) => {
   const tracker = createPerformanceStageTracker(now)
   // Synchronous span bookkeeping is local to this recorder; children charge only their direct parent.
@@ -122,6 +129,7 @@ const getTrackedRunner = (now = performance.now.bind(performance)) => {
   let attributedCpuMs = 0
   let maxBlockMs = 0
   let maxBlockCpuMs = 0
+  const blockCpuSamples: Array<number> = []
   let firstFrameCpu: NodeJS.CpuUsage | null = null
   const stageTimes = new Map<PerformanceStage, BenchmarkStage>()
   const runStage: PerformanceStageRunner = (stage, action, input) => {
@@ -156,7 +164,10 @@ const getTrackedRunner = (now = performance.now.bind(performance)) => {
           const cpu = process.cpuUsage(cpuStartedAt)
           const blockCpuMs = (cpu.user + cpu.system) / 1_000
           attributedCpuMs += blockCpuMs
-          if (streaming) maxBlockCpuMs = Math.max(maxBlockCpuMs, blockCpuMs)
+          if (streaming) {
+            maxBlockCpuMs = Math.max(maxBlockCpuMs, blockCpuMs)
+            blockCpuSamples.push(blockCpuMs)
+          }
         }
       }
     }
@@ -180,6 +191,8 @@ const getTrackedRunner = (now = performance.now.bind(performance)) => {
         attributedCpuMs,
         maxBlockMs,
         maxBlockCpuMs,
+        p95BlockCpuMs: getPercentile(blockCpuSamples, 0.95),
+        blockCpuSamples: blockCpuSamples.length,
         stages,
       }
     },
@@ -468,9 +481,13 @@ test("Provider event cost grows linearly and duplicate starts share one run", as
   // Process CPU includes persistence-worker work that the event-loop stages do not measure.
   expect(result.attributedCpuMs / result.providerCpuMs).toBeGreaterThanOrEqual(0.85)
   expect(result.stages.some(({ name }) => name === "runtime_turn_finalization")).toBe(true)
-  // The 50 ms budget applies to CPU time of streaming blocks: wall time on shared CI runners
-  // includes preemption. Wall time keeps a looser guard.
-  expect(result.maxBlockCpuMs).toBeLessThan(50)
+  // Streaming blocks are budgeted on CPU time (wall time on shared CI runners includes preemption).
+  // A single block can spike by a few ms from GC or noisy neighbours, so the tight budget is on the
+  // p95 block and a looser guard stays on the max: a per-event O(history) regression moves every block.
+  // An empty sample list would pass the p95 check, so require that blocks were recorded.
+  expect(result.blockCpuSamples).toBeGreaterThan(20)
+  expect(result.p95BlockCpuMs).toBeLessThan(30)
+  expect(result.maxBlockCpuMs).toBeLessThan(75)
   expect(result.maxBlockMs).toBeLessThan(150)
   // Turn finalization runs once per turn and grows with the number of parts (836 here).
   expect(result.stages.find(({ name }) => name === "runtime_turn_finalization")?.maxMs ?? Infinity).toBeLessThan(250)
