@@ -11,7 +11,11 @@ for (const [width, height, size] of [
       await page.setViewportSize({ width, height })
       await page.addInitScript((value) => localStorage.setItem("touri.appearance.v1", value), theme)
       await page.goto("/?mockScenario=message-edit-target")
-      await expect(page.getByText("Revise a campanha antes da reunião de planejamento.", { exact: true })).toBeVisible()
+      await expect(
+        page
+          .getByTestId("virtual-message-list")
+          .getByText("Revise a campanha antes da reunião de planejamento.", { exact: true }),
+      ).toBeVisible()
       const edit = page.getByRole("button", { name: "Editar", exact: true })
       await expect(edit).toBeVisible()
       await page.addStyleTag({
