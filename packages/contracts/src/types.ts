@@ -130,6 +130,7 @@ export type ApprovalResult = Result<{ behavior: 'allow' | 'deny'; approvalId?: I
 
 export type BotFolder = { path: AbsolutePath; access: 'read-only' | 'read-write' }
 export type BotBrowser = 'touri' | 'local' | 'machine'
+export type BotAutomaticConversationMode = 'main' | 'task'
 
 export type Bot = {
   /** Defaults for bots created before schema 16: [] and false. */
@@ -139,6 +140,8 @@ export type Bot = {
   /** Defaults for bots created before schema 17: null and false. */
   providerProfile?: string | null
   claudeAiConnectors?: boolean
+  /** Defaults for bots created before schema 33: main. */
+  automaticConversationMode?: BotAutomaticConversationMode
 
   /** Set only by explicit creation from the team-builder job; immutable afterward. */
   teamBuilder: boolean
@@ -810,7 +813,7 @@ export type TeamCreationResult = {
 }
 
 export type CreateBotInput = { cloudApiKey?: string; jobId?: string } & Pick<Bot, 'name' | 'provider'> &
-  Partial<Pick<Bot, 'title' | 'roleLine' | 'description' | 'color' | 'avatarShape' | 'avatarSeed' | 'instructions' | 'model' | 'reasoningEffort' | 'access' | 'approvals' | 'projectId' | 'cwd' | 'browserEnabled' | 'browser' | 'computerUse' | 'machine' | 'machineIdleMinutes' | 'vmProviderLogin' | 'hostComputerUse' | 'folders' | 'anyFolderAccess' | 'providerProfile' | 'claudeAiConnectors'>>
+  Partial<Pick<Bot, 'title' | 'roleLine' | 'description' | 'color' | 'avatarShape' | 'avatarSeed' | 'instructions' | 'model' | 'reasoningEffort' | 'access' | 'approvals' | 'projectId' | 'cwd' | 'browserEnabled' | 'automaticConversationMode' | 'browser' | 'computerUse' | 'machine' | 'machineIdleMinutes' | 'vmProviderLogin' | 'hostComputerUse' | 'folders' | 'anyFolderAccess' | 'providerProfile' | 'claudeAiConnectors'>>
 
 /** A named login under `<appData>/provider-profiles/<name>`, created with `touri profile login`. */
 export type ProviderProfile = { name: string; provider: Provider; loggedIn: boolean; account: string | null }

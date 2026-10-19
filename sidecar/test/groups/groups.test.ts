@@ -1571,7 +1571,7 @@ test("a group routine posts its prompt into the group conversation and finishes 
   expect(f.persistence.getRun(finished?.runId ?? "")?.routineRunId).toBe(finished?.id ?? "")
 })
 
-test("a group routine follows the coordinator and creates its own group conversation on the first run", async () => {
+test("a group routine follows the coordinator and reuses its conversation in main mode", async () => {
   const f = await fixture()
   const group = f.data.save({ ...f.input, coordinatorBotId: f.bots[2]?.id ?? null }, f.group)
   const engine = routineEngine(f)
@@ -1585,6 +1585,19 @@ test("a group routine follows the coordinator and creates its own group conversa
   expect(thread).toMatchObject({ groupId: group.id, groupThreadId: null })
   expect(thread?.id).not.toBe(f.thread.id)
   expect(engine.listRoutines().find((r) => r.id === created.routine.id)?.resultsThreadId).toBe(thread?.id ?? "")
+
+  const next = engine.runRoutine({
+    routineId: created.routine.id,
+    triggerSource: "manual",
+    scheduledFor: Date.now() + 60_000,
+  })
+  if (!next.success) throw new Error(next.error)
+  await until(
+    () =>
+      engine.listRoutineRuns(created.routine.id).find((run) => run.id === next.routineRun.id)?.status === "succeeded",
+  )
+
+  expect(next.routineRun.threadId).toBe(thread?.id ?? null)
 })
 
 test("a group routine turn uses the routine timeout instead of the per-bot chat limit", async () => {

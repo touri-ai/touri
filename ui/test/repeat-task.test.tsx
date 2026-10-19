@@ -44,6 +44,12 @@ const fixture = () => {
 }
 
 describe("repeating work", () => {
+  it("keeps new routine drafts connected to the bot's conversation setting", () => {
+    const f = fixture()
+
+    expect(newRoutineDraft(f.bot.id).continuity).toBe("new-thread")
+  })
+
   it("shows readable Portuguese labels for every routine timezone option", () => {
     const f = fixture()
     const draft = { ...f.draft, timezone: "America/Manaus" }

@@ -421,6 +421,8 @@ export const BotCreateModal = ({
   const [folders, setFolders] = useState<BotFolder[]>([])
   const [anyFolderAccess, setAnyFolderAccess] = useState(false)
   const [browserEnabled, setBrowserEnabled] = useState(true)
+  const [automaticConversationMode, setAutomaticConversationMode] =
+    useState<NonNullable<Bot["automaticConversationMode"]>>("main")
   const [browser, setBrowser] = useState<Bot["browser"]>("touri")
   const [error, setError] = useState<string | null>(null)
   const [access, setAccess] = useState("workspace-write")
@@ -484,6 +486,7 @@ export const BotCreateModal = ({
         folders: machine.machine === "cloud" ? [] : folders,
         anyFolderAccess: machine.machine !== "cloud" && anyFolderAccess,
         browserEnabled,
+        automaticConversationMode,
         browser,
         access: access === "full-approved" ? ("full" as const) : (access as Bot["access"]),
         approvals:
@@ -776,6 +779,18 @@ export const BotCreateModal = ({
                 <small id="bot-title-help" className="field-help">
                   {t("A short label for the bot, e.g. Researcher. Detailed tasks go in the instructions.")}
                 </small>
+                <label htmlFor="create-automatic-conversation-mode">{t("Onde o bot responde")}</label>
+                <select
+                  id="create-automatic-conversation-mode"
+                  value={automaticConversationMode}
+                  onChange={(event) =>
+                    setAutomaticConversationMode(event.target.value as NonNullable<Bot["automaticConversationMode"]>)
+                  }
+                >
+                  <option value="main">{t("Na conversa principal")}</option>
+                  <option value="task">{t("Uma conversa nova por tarefa")}</option>
+                </select>
+                <small className="field-help">{t("Automatic conversation mode help")}</small>
                 <label htmlFor="create-instructions">{t("Bot instructions")}</label>
                 <textarea
                   id="create-instructions"
@@ -1011,6 +1026,7 @@ export const BotSettingsModal = ({
     ...machineChanges,
   }
   const [browser, setBrowser] = useState(bot.browser ?? "touri")
+  const automaticConversationMode = bot.automaticConversationMode ?? "main"
   const [provider, setProvider] = useState(bot.provider)
   const [modelDraft, setModel] = useState<string | null>(null)
   const model = modelDraft ?? bot.model ?? ""
@@ -1169,6 +1185,38 @@ export const BotSettingsModal = ({
             htmlFor="settings-role"
           >
             <input id="settings-role" value={roleLine} onChange={(event) => setRoleLine(event.target.value)} />
+          </SettingsRow>
+        </SettingsGroup>
+        <SettingsGroup>
+          <SettingsRow
+            title={t("Onde o bot responde")}
+            description={t("Automatic conversation mode help")}
+          >
+            <div
+              className="bot-conversation-mode-options"
+              role="radiogroup"
+              aria-label={t("Onde o bot responde")}
+              data-setting-id="automaticConversationMode"
+            >
+              {([
+                ["main", t("Na conversa principal")],
+                ["task", t("Uma conversa nova por tarefa")],
+              ] as const).map(([mode, label]) => (
+                <label key={mode}>
+                  <input
+                    type="radio"
+                    name={`automatic-conversation-${bot.id}`}
+                    value={mode}
+                    checked={automaticConversationMode === mode}
+                    disabled={updating || saving}
+                    onChange={() =>
+                      void immediateAction(() => actions.updateBot(bot.id, { automaticConversationMode: mode }))
+                    }
+                  />
+                  {label}
+                </label>
+              ))}
+            </div>
           </SettingsRow>
         </SettingsGroup>
         <div className="settings-avatar-field">

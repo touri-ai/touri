@@ -4462,6 +4462,13 @@ a {
   border-radius: 0;
   background: transparent;
 }
+.chat-message-list .routine-run-header {
+  display: block;
+  margin-bottom: var(--space-4);
+  color: var(--text-secondary);
+  font-size: var(--type-12);
+  font-weight: var(--weight-medium);
+}
 .message-routine-prompt .chat-disclosure {
   margin: 0;
 }

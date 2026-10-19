@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react"
-import type { Message, Run } from "@touri/contracts"
+import type { Message, Routine, RoutineRun, Run } from "@touri/contracts"
 import { afterEach, expect, it, vi } from "vitest"
 import { createMockApi } from "../src/api/mock"
 import { ChatPanel, VirtualMessageList } from "../src/components/ChatPanel"
@@ -321,7 +321,57 @@ it("does not collapse a later human follow-up in a routine thread", () => {
   expect(screen.queryByRole("button", { name: "Instruções da rotina" })).toBeNull()
 })
 
+it("labels routine turns shared into the main conversation and keeps the main conversation ordinary", () => {
+  const { props, run } = getFixture()
+  const routine: Routine = {
+    id: "routine-slot",
+    botId: props.bot.id,
+    name: "Daily check",
+    prompt: "Leia as mensagens novas.",
+    cron: "0 9 * * *",
+    timezone: "America/Sao_Paulo",
+    enabled: true,
+    continuity: "main-thread",
+    resultsThreadId: null,
+    groupId: null,
+    timeoutMinutes: 30,
+    overlap: "skip",
+    catchUpMinutes: 30,
+    nextRunAt: null,
+    source: "local",
+    createdAt: 1000,
+    updatedAt: 1000,
+  }
+  const routineRun: RoutineRun = {
+    id: routine.id,
+    routineId: routine.id,
+    scheduledFor: Date.UTC(2026, 8, 22, 12),
+    status: "succeeded",
+    threadId: props.thread.id,
+    runId: run.id,
+    triggerSource: "manual",
+    summary: "Resumo pronto.",
+    startedAt: 1000,
+    finishedAt: 2000,
+  }
+
+  render(
+    <ChatPanel
+      {...props}
+      thread={{ ...props.thread, kind: "main" }}
+      runs={[{ ...run, routineRunId: routineRun.id }]}
+      routines={[routine]}
+      routineRuns={[routineRun]}
+    />,
+  )
+
+  expect(screen.getByText(/Daily check · Manual ·/)).toBeVisible()
+  expect(screen.queryByRole("button", { name: "Instruções da rotina" })).toBeNull()
+  expect(screen.getByText("Leia as mensagens novas.")).toBeVisible()
+})
+
 it("provides Portuguese and English routine copy", () => {
   expect(t("Instruções da rotina", {}, "en")).toBe("Routine instructions")
   expect(t("Sem novidades nesta execução", {}, "en")).toBe("Nothing new this run")
+  expect(t("Uma conversa nova por tarefa", {}, "en")).toBe("A new conversation for each task")
 })

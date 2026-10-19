@@ -35,11 +35,12 @@ import computerGrantExpirySql from "./migrations/0029.sql" with { type: "text" }
 import groupCoordinationHistorySql from "./migrations/0030.sql" with { type: "text" }
 import streamWorkerSql from "./migrations/0031.sql" with { type: "text" }
 import teamBuilderSql from "./migrations/0032.sql" with { type: "text" }
+import automaticConversationSql from "./migrations/0033.sql" with { type: "text" }
 import { withSuspendedSchemaObjects } from "./schema-rebuild"
 import { instrumentMainConnection, type SlowStatementTracker } from "./sqlite-performance"
 import { applyUpgradeBaselines } from "./upgradeBaselines"
 
-export const SCHEMA_VERSION = 32
+export const SCHEMA_VERSION = 33
 
 const FREE_PAGE_RATIO_LIMIT = 0.2
 
@@ -229,6 +230,12 @@ export const openDatabase = ({
     const columns = database.query("PRAGMA table_info(bots)").all() as Array<{ name: string }>
     if (!columns.some((column) => column.name === "team_builder")) database.exec(teamBuilderSql)
     database.exec("UPDATE schema_meta SET value = '32' WHERE key = 'schema_version'")
+  })()
+  database.transaction(() => {
+    const columns = database.query("PRAGMA table_info(bots)").all() as Array<{ name: string }>
+    if (!columns.some((column) => column.name === "automatic_conversation_mode"))
+      database.exec(automaticConversationSql)
+    database.exec("UPDATE schema_meta SET value = '33' WHERE key = 'schema_version'")
   })()
   return database
 }

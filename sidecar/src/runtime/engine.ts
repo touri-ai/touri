@@ -2657,6 +2657,8 @@ export const createRuntimeEngine = ({
     let threadId: Id | null = null
     if (routine.continuity === "main-thread") threadId = bot.mainThreadId
     else if (routine.continuity === "results-thread") threadId = routine.resultsThreadId
+    else if ((bot.automaticConversationMode ?? "main") === "main" && !group) threadId = bot.mainThreadId
+    else if ((bot.automaticConversationMode ?? "main") === "main" && group) threadId = routine.resultsThreadId
     if (!threadId && group) {
       const created = store.createThread({
         botId: group.memberIds[0] ?? bot.id,
@@ -2667,7 +2669,7 @@ export const createRuntimeEngine = ({
       if (!created.success)
         return { success: false, errorCode: "THREAD_NOT_FOUND", error: "Unable to create routine thread" }
       threadId = created.thread.id
-      if (routine.continuity === "results-thread")
+      if (routine.continuity === "results-thread" || (bot.automaticConversationMode ?? "main") === "main")
         persistence.updateRoutine({ ...routine, resultsThreadId: threadId, updatedAt: Date.now() })
     }
     if (!threadId) {

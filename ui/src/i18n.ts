@@ -1,4 +1,4 @@
-import { type Bot, getHostNoun, type HostKind } from "@touri/contracts"
+import { type Bot, getHostNoun, type HostKind, type Routine, type RoutineRun } from "@touri/contracts"
 import { userFacingError } from "./errors"
 /** All UI copy lives here. pt-BR is the default; English is available for a future locale picker. */
 export type Locale = "pt-BR" | "en"
@@ -1250,6 +1250,19 @@ export const ptBR = {
   "Bot access settings": "Ajustar permissões",
   "Project preview": "Preview do projeto",
   "Bot groups": "Grupos",
+  "Onde o bot responde": "Onde o bot responde",
+  "Na conversa principal": "Na conversa principal",
+  "Uma conversa nova por tarefa": "Uma conversa nova por tarefa",
+  "Automatic conversation mode help":
+    "No modo principal, respostas automáticas e rotinas ficam na conversa do bot. Cada execução de rotina mostra o gatilho e o horário; no outro modo, cada tarefa ganha uma conversa própria.",
+  "Routine row title": "Rotina {name}",
+  "Task row title": "Tarefas {name}",
+  "Today count suffix": " · {count} hoje",
+  "Routine run header": "{name} · {trigger} · {time}",
+  "Routine trigger scheduled": "Programada",
+  "Routine trigger manual": "Manual",
+  "Routine trigger catch-up": "Recuperada",
+  "Routine trigger imported": "Importada",
   "Group coordinator suffix": " · coordenador",
   "This bot has no groups yet.": "Este bot ainda não pertence a um grupo.",
   "Bot routines": "Rotinas deste bot",
@@ -3858,6 +3871,19 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Bot access settings": "Adjust permissions",
   "Project preview": "Project preview",
   "Bot groups": "Groups",
+  "Onde o bot responde": "Where the bot replies",
+  "Na conversa principal": "In the main conversation",
+  "Uma conversa nova por tarefa": "A new conversation for each task",
+  "Automatic conversation mode help":
+    "In main mode, automatic replies and routines stay in the bot's conversation. Each routine run shows its trigger and time; task mode gives every task its own conversation.",
+  "Routine row title": "Routine {name}",
+  "Task row title": "Tasks {name}",
+  "Today count suffix": " · {count} today",
+  "Routine run header": "{name} · {trigger} · {time}",
+  "Routine trigger scheduled": "Scheduled",
+  "Routine trigger manual": "Manual",
+  "Routine trigger catch-up": "Catch-up",
+  "Routine trigger imported": "Imported",
   "Group coordinator suffix": " · coordinator",
   "This bot has no groups yet.": "This bot has no groups yet.",
   "Bot routines": "This bot’s routines",
@@ -4715,6 +4741,46 @@ export const getRoutineRunDateLabel = (timestamp: number, locale: Locale = "pt-B
 
 export const getRoutineRunTimeLabel = (timestamp: number, locale: Locale = "pt-BR", timeZone?: string): string =>
   new Intl.DateTimeFormat(locale, { timeStyle: "short", ...(timeZone ? { timeZone } : {}) }).format(timestamp)
+
+export const getRoutineRunCountsToday = (
+  routineRuns: readonly RoutineRun[],
+  routines: ReadonlyMap<string, Routine>,
+  now = Date.now(),
+): ReadonlyMap<string, number> => {
+  const formatters = new Map<string, Intl.DateTimeFormat>()
+  const todayByTimeZone = new Map<string, string>()
+  const getDayKey = (timestamp: number, timeZone: string): string => {
+    const formatter =
+      formatters.get(timeZone) ??
+      new Intl.DateTimeFormat("en-US", {
+        timeZone,
+        year: "numeric",
+        month: "numeric",
+        day: "numeric",
+      })
+    formatters.set(timeZone, formatter)
+
+    return formatter
+      .formatToParts(timestamp)
+      .filter((part) => ["year", "month", "day"].includes(part.type))
+      .map((part) => part.value)
+      .join("-")
+  }
+  const counts = new Map<string, number>()
+  routineRuns.forEach((run) => {
+    const routine = routines.get(run.routineId)
+    if (!routine) return
+
+    const timeZone = routine.timezone
+    const today = todayByTimeZone.get(timeZone) ?? getDayKey(now, timeZone)
+    todayByTimeZone.set(timeZone, today)
+    if (getDayKey(run.scheduledFor, timeZone) !== today) return
+
+    counts.set(run.routineId, (counts.get(run.routineId) ?? 0) + 1)
+  })
+
+  return counts
+}
 
 export const getRoutineRunSidebarDateLabel = (
   timestamp: number,

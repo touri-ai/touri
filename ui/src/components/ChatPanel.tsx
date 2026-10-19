@@ -20,7 +20,14 @@ import { ComputerGrantCard } from "../features/computer"
 import { InlineLivePreview, InlinePreviewContext, screenTool } from "../features/desktop/InlineLivePreview"
 import { useIsServerMode } from "../features/server/serverMode"
 import { getQueueLabel } from "../features/work/presentation"
-import { getHostLabel, getRoutineRunDateLabel, getRoutineRunTimeLabel, localizeNotice, t } from "../i18n"
+import {
+  getHostLabel,
+  getRoutineRunDateLabel,
+  getRoutineRunTimeLabel,
+  localizeNotice,
+  type TranslationKey,
+  t,
+} from "../i18n"
 import { machineStateForDisplay } from "../machineState"
 import { messageMarkdown } from "../messageMarkdown"
 import { consumeTaskReview, requestTaskResume, reviewTaskEvent } from "../recoveryEvents"
@@ -107,6 +114,9 @@ type VirtualMessageListProps = {
   messages: Array<Message>
   api?: UiApi
   runs?: Array<Run>
+  mainThread?: boolean
+  routines?: Array<Routine>
+  routineRuns?: Array<RoutineRun>
   onSwitchBranch: (message: Message, siblings: Array<Message>, index: number) => void
   onRetry: (runId: Id) => Promise<void>
   onEdit?: EditMessage | undefined
@@ -140,6 +150,12 @@ const deliveryLabels = {
   failed: "Falha na entrega",
 }
 const rowHeight = 158
+const routineTriggerKeys: Record<RoutineRun["triggerSource"], TranslationKey> = {
+  cron: "Routine trigger scheduled",
+  manual: "Routine trigger manual",
+  "catch-up": "Routine trigger catch-up",
+  import: "Routine trigger imported",
+}
 
 /** Jump to the end and remember the position so its own scroll event is not mistaken for the user leaving the bottom. */
 const scrollToEnd = (list: HTMLElement, programmaticTop: { current: number | null }): void => {
@@ -154,6 +170,9 @@ export const VirtualMessageList = ({
   messages,
   api,
   runs = [],
+  mainThread = false,
+  routines = [],
+  routineRuns = [],
   allMessages = messages,
   onSwitchBranch,
   onRetry,
@@ -168,6 +187,27 @@ export const VirtualMessageList = ({
     messages.map((message) => message.id),
     messages[0]?.threadId ?? "",
   )
+  const routineRunHeaderByMessage = useMemo(() => {
+    const routineRunsById = new Map(routineRuns.map((routineRun) => [routineRun.id, routineRun]))
+    const routinesById = new Map(routines.map((routine) => [routine.id, routine]))
+
+    return runs.reduce((headers, run) => {
+      if (!run.requestMessageId || !run.routineRunId) return headers
+      const routineRun = routineRunsById.get(run.routineRunId)
+      const routine = routineRun ? routinesById.get(routineRun.routineId) : undefined
+      if (!routineRun || !routine) return headers
+
+      headers.set(
+        run.requestMessageId,
+        t("Routine run header", {
+          name: routine.name,
+          trigger: t(routineTriggerKeys[routineRun.triggerSource]),
+          time: getRoutineRunTimeLabel(routineRun.scheduledFor, "pt-BR", routine.timezone),
+        }),
+      )
+      return headers
+    }, new Map<string, string>())
+  }, [runs, routineRuns, routines])
   const [scrollTop, setScrollTop] = useState(0)
   const scrollRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
@@ -384,9 +424,11 @@ export const VirtualMessageList = ({
                     run={run}
                     routineReply={getRoutineReplyRun(message, runs, allMessages) !== undefined}
                     routinePrompt={
+                      !mainThread &&
                       message.role === "user" &&
                       runs.some((candidate) => isRoutineRun(candidate) && candidate.requestMessageId === message.id)
                     }
+                    routineHeader={routineRunHeaderByMessage.get(message.id)}
                     recovered={
                       runs.some(
                         (later) =>
@@ -497,6 +539,7 @@ const MessageBubble = ({
   run,
   routineReply,
   routinePrompt,
+  routineHeader,
   api,
   siblings,
   branchIndex,
@@ -514,6 +557,7 @@ const MessageBubble = ({
   run?: Run | undefined
   routineReply: boolean
   routinePrompt: boolean
+  routineHeader?: string | undefined
   api?: UiApi
   siblings: Array<Message>
   branchIndex: number
@@ -720,6 +764,7 @@ const MessageBubble = ({
       data-message-id={message.id}
       data-motion-insert={inserted}
     >
+      {routineHeader && <small className="routine-run-header">{routineHeader}</small>}
       {!routinePrompt && (
         <div className="message-meta">
           {message.role === "assistant" &&
@@ -1160,6 +1205,9 @@ export const ChatPanel = ({
           messages={visibleMessages}
           api={api}
           runs={runs}
+          mainThread={thread.kind === "main"}
+          routines={routines}
+          routineRuns={routineRuns}
           allMessages={messages}
           onSwitchBranch={(_message, siblings, index) => {
             const next = siblings[index]
