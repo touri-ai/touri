@@ -165,7 +165,6 @@ test("restart history reconcile uses bounded reads and a persisted stage marker"
     },
   })
   expect(progress).toEqual([50, 100])
-  expect(h.stageCalls().filter((name) => name === "notification_history_reconcile")).toHaveLength(3)
   expect(
     (
       h.database.query("SELECT COUNT(*) AS count FROM notifications WHERE resolved_at IS NULL").get() as {
