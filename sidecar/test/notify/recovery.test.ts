@@ -24,7 +24,13 @@ afterEach(() => {
   cleanups.clear()
 })
 
-const getFixture = async (options: { beforeNotify?: (database: Database) => void; native?: boolean } = {}) => {
+const getFixture = async (
+  options: {
+    beforeNotify?: (database: Database) => void
+    native?: boolean
+    yieldHistoryBatch?: () => Promise<void>
+  } = {},
+) => {
   const root = mkdtempSync(join(tmpdir(), "touri-recovery-center-"))
   const runtime = createKernel({ appData: root })
   const database = runtime.kernel.db as Database
@@ -42,7 +48,7 @@ const getFixture = async (options: { beforeNotify?: (database: Database) => void
   if (options.native) database.query("DELETE FROM settings WHERE key = 'nativeNotifications'").run()
   const hostCalls = mock(runtime.kernel.callHost)
   const stages = createPerformanceStageTracker(() => 0)
-  await initNotify({ ...runtime.kernel, callHost: hostCalls }, stages.run)
+  await initNotify({ ...runtime.kernel, callHost: hostCalls }, stages.run, options.yieldHistoryBatch)
 
   const { token } = JSON.parse(readFileSync(join(root, "run", "handshake.json"), "utf8")) as { token: string }
   const request = (path: string, body?: object) =>
@@ -126,6 +132,49 @@ test("restart recovery attributes synthetic journal scans and reconciliation sta
 
   expect(h.stageCalls()).toContain("notification_journal_recovery_scan")
   expect(h.stageCalls()).toContain("notification_recovery_reconcile")
+})
+
+test("restart history reconcile uses bounded reads and a persisted stage marker", async () => {
+  const progress: number[] = []
+  const databaseRef: { database: Database | null } = { database: null }
+  const h = await getFixture({
+    beforeNotify: (database) => {
+      databaseRef.database = database
+      const saveRun = database.query(`INSERT INTO runs(
+        id,thread_id,bot_id,provider,trigger,status,queued_at,finished_at
+      ) VALUES (?,'thread-a','bot-a','codex','user','succeeded',1,2)`)
+      const saveNotification = database.query(`INSERT INTO notifications(
+        kind,level,bot_id,thread_id,title,body,created_at
+      ) VALUES ('turn-failed','error','bot-a','thread-a',?,'synthetic',1)`)
+      Array.from({ length: 120 }, (_, index) => index).forEach((index) => {
+        saveRun.run(`completed-${index}`)
+        saveNotification.run(`failed-${index}`)
+      })
+    },
+    yieldHistoryBatch: async () => {
+      const database = databaseRef.database
+      if (!database) throw new Error("Missing synthetic database")
+      const row = database
+        .query("SELECT value_json FROM settings WHERE key = 'notification.history-reconcile'")
+        .get() as { value_json: string } | null
+      if (!row) throw new Error("History reconcile marker was not saved")
+      const state = JSON.parse(row.value_json) as { stage: string; cursor: number; upper: number }
+      expect(state).toMatchObject({ stage: "notification_history_reconcile", upper: 120 })
+      progress.push(state.cursor)
+      await Bun.sleep(0)
+    },
+  })
+  expect(progress).toEqual([50, 100])
+  expect(
+    (
+      h.database.query("SELECT COUNT(*) AS count FROM notifications WHERE resolved_at IS NULL").get() as {
+        count: number
+      }
+    ).count,
+  ).toBe(0)
+  expect(h.database.query("SELECT value_json FROM settings WHERE key = 'notification.history-reconcile'").get()).toBe(
+    null,
+  )
 })
 
 test("uncertain effects require their existing journal key on every dismissal surface and preserve history", async () => {
