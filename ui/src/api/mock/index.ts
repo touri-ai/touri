@@ -55,6 +55,7 @@ const seed = seedJson as Seed
 const now = (): number => Date.now()
 
 const createBot = (input: Seed["bots"][number], index: number, projectId: Id | null): Bot => ({
+  teamBuilder: false,
   id: input.id,
   name: input.name,
   title: input.name === "mark" ? "Campaign lead" : input.name === "onb" ? "Operations" : "Research",
@@ -1163,7 +1164,10 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
         bots.length,
         botInput.projectId ?? null,
       )
-      const storedBot: Bot = Object.assign(bot, botInput, { updatedAt: now() })
+      const storedBot: Bot = Object.assign(bot, botInput, {
+        teamBuilder: botInput.jobId === "team-builder",
+        updatedAt: now(),
+      })
       bots.push(storedBot)
       const thread = createThread({
         id: `thread-${bot.id}`,

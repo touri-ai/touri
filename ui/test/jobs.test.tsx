@@ -10,16 +10,16 @@ import { dictionaries, type Locale, t } from "../src/i18n"
 
 afterEach(cleanup)
 
-it("offers 30 original jobs with stable unique ids and complete copy in both languages", () => {
+it("offers 31 original jobs with stable unique ids and complete copy in both languages", () => {
   const portuguese = getJobTemplates()
-  expect(portuguese).toHaveLength(30)
-  expect(new Set(portuguese.map((job) => job.id)).size).toBe(30)
+  expect(portuguese).toHaveLength(31)
+  expect(new Set(portuguese.map((job) => job.id)).size).toBe(31)
   expect(portuguese.some((job) => job.id === NOT_SURE_JOB_ID)).toBe(false)
   expect(getJobTemplates("en").map((job) => job.id)).toEqual(portuguese.map((job) => job.id))
   for (const locale of ["pt-BR", "en"] as const) {
     const dictionary = dictionaries[locale]
     for (const group of JOB_GROUP_IDS) {
-      expect(getJobTemplates(locale).filter((job) => job.group === group)).toHaveLength(5)
+      expect(getJobTemplates(locale).filter((job) => job.group === group)).toHaveLength(group === "daily" ? 6 : 5)
       expect(jobGroupName(group, locale)).not.toContain("jobs.")
       expect(Object.hasOwn(dictionary, `jobs.group.${group}`)).toBe(true)
     }
@@ -83,7 +83,7 @@ const Picker = ({ locale = "pt-BR" }: { locale?: Locale }) => {
 
 it("searches names, descriptions and groups without requiring accents", () => {
   render(<Picker />)
-  expect(screen.getAllByRole("radio")).toHaveLength(31)
+  expect(screen.getAllByRole("radio")).toHaveLength(32)
   expect(screen.getByRole("radio", { name: "Ainda não sei" })).toBeChecked()
   fireEvent.change(screen.getByRole("searchbox"), { target: { value: "codigo" } })
   expect(screen.getAllByRole("radio")).toHaveLength(6)

@@ -114,6 +114,7 @@ const fixture = async ({
   runtime.kernel.spawnTree = fakeProviderSpawn(runtime.kernel.spawnTree, fakePath, scenario)
   const timestamp = Date.now()
   const bot: Bot = {
+    teamBuilder: false,
     id: "bot-runtime",
     name: "runtime",
     title: null,

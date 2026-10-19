@@ -1,0 +1,88 @@
+.team-approval-card {
+  display: grid;
+  gap: 16px;
+  padding: 18px;
+  color: var(--text-primary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.team-approval-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.team-approval-header > strong {
+  font-size: 16px;
+}
+.team-approval-header > span,
+.team-provider,
+.team-access p,
+.team-approval-footer small {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.team-drafts {
+  display: grid;
+  gap: 12px;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+.team-drafts > li {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.team-draft-body {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.team-approval-card p {
+  margin: 3px 0;
+}
+.team-draft-body summary {
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.team-draft-body pre {
+  max-height: 240px;
+  overflow: auto;
+  white-space: pre-wrap;
+  font: inherit;
+}
+.team-access {
+  padding: 12px;
+  border-radius: 10px;
+  background: var(--surface-control);
+}
+.team-access ul {
+  margin: 6px 0;
+  padding-left: 18px;
+}
+.team-group {
+  padding: 0 2px;
+}
+.team-created-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+.team-created-links a {
+  color: var(--accent-info);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.team-approval-footer {
+  display: grid;
+  gap: 10px;
+}
+.team-approval-card :focus-visible {
+  outline: 2px solid var(--accent-info);
+  outline-offset: 3px;
+}

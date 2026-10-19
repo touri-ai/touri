@@ -62,6 +62,7 @@ export const name = "store"
 export const BOTS_SQL = "SELECT * FROM bots WHERE archived_at IS NULL ORDER BY sort_order ASC, created_at ASC"
 
 type RawBot = {
+  team_builder: number
   id: string
   name: string
   title: string | null
@@ -223,6 +224,7 @@ const getTranscriptRetentionResync = ({
 }
 
 const asBot = (row: RawBot): Bot => ({
+  teamBuilder: row.team_builder === 1,
   id: row.id,
   name: row.name,
   title: row.title,
@@ -814,13 +816,21 @@ export const init = async (
     body: Record<string, unknown>
     existing?: Bot
   }): { input: CreateBotInput | null; error: string | null; errorCode?: string } => {
+    if (Object.hasOwn(body, "teamBuilder") || (existing && Object.hasOwn(body, "jobId")))
+      return { input: null, error: "The team-builder job can only be selected when creating a bot." }
+    if (body.jobId !== undefined && typeof body.jobId !== "string")
+      return { input: null, error: "jobId must be a string" }
     const name = normalizeBotName(body.name === undefined ? existing?.name : body.name)
     const provider = body.provider ?? existing?.provider
     if (!name)
       return { input: null, error: "Use de 1 a 80 caracteres, sem quebras de linha ou caracteres de controle." }
     if (provider !== "codex" && provider !== "claude" && provider !== "opencode")
       return { input: null, error: "provider deve ser Codex, Claude ou OpenCode" }
-    const input: CreateBotInput = { name, provider }
+    const input: CreateBotInput = {
+      name,
+      provider,
+      ...(body.jobId === "team-builder" ? { jobId: "team-builder" } : {}),
+    }
     if (body.machine !== undefined && body.machine !== "local" && body.machine !== "vm" && body.machine !== "cloud")
       return { input: null, error: "machine must be local, vm or cloud" }
     input.machine = (body.machine as Bot["machine"] | undefined) ?? existing?.machine ?? "local"
@@ -1016,12 +1026,21 @@ export const init = async (
     return { input, error: null }
   }
 
-  const createBot = async ({ input, signal }: { input: CreateBotInput; signal: AbortSignal }): Promise<Bot | null> => {
+  const createBot = async ({
+    input,
+    signal = new AbortController().signal,
+    isCurrent,
+  }: {
+    input: CreateBotInput
+    signal?: AbortSignal
+    isCurrent?: () => boolean
+  }): Promise<Bot | null> => {
     const id = kernel.newId()
     const instructions = input.instructions ?? ""
     const instructionsHash = sha256(instructions)
     const homeDir = await writeHome(kernel, id, instructions, signal)
-    if (signal.aborted) {
+    const current = isCurrent?.() !== false
+    if (signal.aborted || !current) {
       await cleanupBotHome(kernel, id)
       return null
     }
@@ -1071,6 +1090,7 @@ export const init = async (
             input.browser ?? "touri",
             id,
           )
+        database.query("UPDATE bots SET team_builder = ? WHERE id = ?").run(input.jobId === "team-builder" ? 1 : 0, id)
         database
           .query("UPDATE bots SET folders_json = ?, any_folder_access = ? WHERE id = ?")
           .run(JSON.stringify(input.folders ?? []), input.anyFolderAccess ? 1 : 0, id)
@@ -1088,10 +1108,14 @@ export const init = async (
       throw error
     }
     const bot = getBot({ botId: id })
-    if (bot) {
+    if (!bot) return null
+    try {
       kernel.publish({ type: "bot.updated", bot })
       const thread = getThread({ threadId: mainThreadId })
       if (thread) kernel.publish({ type: "thread.updated", thread })
+    } catch {
+      // Committed bots must stay in the team's result even if live delivery fails.
+      kernel.log({ level: "warn", module: "store", msg: "Bot criado; atualize a lista para vê-lo." })
     }
     return bot
   }
@@ -1319,6 +1343,25 @@ export const init = async (
   kernel.services.provide("store.api", storeApi)
   kernel.services.provide("store.settings", () => readSettings({ database }))
 
+  kernel.services.provide("bots.validateCreation", (body) => {
+    const record = requestRecord(body)
+    if (!record) return { success: false, errorCode: "INVALID_ARGS", error: "Request body must be an object" }
+    const parsed = botFromBody({ body: record })
+    if (!parsed.input || parsed.error)
+      return { success: false, errorCode: parsed.errorCode ?? "INVALID_ARGS", error: parsed.error ?? "Invalid bot" }
+    return { success: true, input: parsed.input }
+  })
+  kernel.services.provide("bots.create", async ({ body, signal, isCurrent }) => {
+    const parsed = kernel.services.use("bots.validateCreation")?.(body)
+    if (!parsed?.success) return parsed ?? { success: false, errorCode: "STORE_ERROR", error: "Store unavailable" }
+    // This internal service is only for safe local drafts; POST /bots handles other user-selected destinations.
+    if (parsed.input.machine !== "local" || parsed.input.jobId)
+      return { success: false, errorCode: "INVALID_ARGS", error: "Invalid team bot destination or job" }
+    const bot = await createBot({ input: parsed.input, signal, ...(isCurrent ? { isCurrent } : {}) })
+    return bot
+      ? { success: true, bot }
+      : { success: false, errorCode: "STORE_ERROR", error: "Bot could not be created" }
+  })
   const handleCreateBot = async ({ body, signal }: { body: unknown; signal: AbortSignal }): Promise<RouteResponse> => {
     const record = requestRecord(body)
     if (!record) return errorResponse(400, "INVALID_ARGS", "Request body must be an object")

@@ -21,6 +21,7 @@ const makeBot = ({
   projectId: string | null
   root: string
 }): Bot => ({
+  teamBuilder: false,
   id: item.id,
   name: item.name,
   title: null,

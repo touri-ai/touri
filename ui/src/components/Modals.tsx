@@ -534,6 +534,7 @@ export const BotCreateModal = ({
     try {
       const input = {
         name: validName,
+        ...(jobId === "team-builder" ? { jobId: "team-builder" } : {}),
         roleLine: roleLine.trim() || null,
         title: title.trim() || null,
         provider,

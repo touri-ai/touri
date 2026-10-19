@@ -52,6 +52,7 @@ const withEnvironment = async <T>(values: Record<string, string>, run: () => Pro
 const bot = (root: string): Bot => {
   const timestamp = Date.now()
   return {
+    teamBuilder: false,
     id: "bot-env",
     name: "env",
     title: null,

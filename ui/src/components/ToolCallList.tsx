@@ -118,8 +118,12 @@ export const ToolCallList = ({
   return (
     <div className="tool-call-list" ref={root}>
       {groupTools(parts).map((entries) => {
-        const pending = entries.filter((entry) => entry.approval?.decision === "pending")
-        const grouped = entries.filter((entry) => entry.approval?.decision !== "pending")
+        const pending = entries.filter(
+          (entry) => entry.approval?.decision === "pending" || !!entry.approval?.teamProposal,
+        )
+        const grouped = entries.filter(
+          (entry) => entry.approval?.decision !== "pending" && !entry.approval?.teamProposal,
+        )
         return (
           <div className="tool-turn" key={entries[0]?.id}>
             {grouped.length > 0 && (

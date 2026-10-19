@@ -359,5 +359,7 @@ export const approvalMatchesTool = (approval: ApprovalPart, part: ToolPart): boo
     if (toolLeaf(name) === "folder_access_request")
       return typeof original?.path === "string" && original.path === target && original.mode === args?.mode
   }
+  if (approval.scope?.source === "mcp" && approval.scope.server === "touri" && toolLeaf(name) === "team_create")
+    return canonicalValue(approval.teamProposal?.proposal) === canonicalValue(parseToolValue(part.inputJson))
   return canonicalValue(input) === canonicalValue(parseToolValue(part.inputJson))
 }

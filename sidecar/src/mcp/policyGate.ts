@@ -14,6 +14,7 @@ const DELEGATED_MUTATING_TOOLS: ReadonlySet<string> = new Set(["browser_evaluate
 // and access reductions need only a notice, including for read-only bots.
 const SELF_CONFIGURATION_TOOLS: ReadonlySet<string> = new Set([
   "bot_rename",
+  "team_create",
   "capability_request",
   "project_link",
   "project_unlink",
