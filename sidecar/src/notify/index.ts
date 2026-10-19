@@ -37,7 +37,9 @@ export const init = async (
     if (!storedProgress) saveHistoryReconcileProgress(database, progress)
     await reconcileHistoryBatch({
       database,
-      finishNotification: (id) => notifier.finish({ id, resolution: "expired" }),
+      finishNotification: (id) => {
+        notifier.finish({ id, resolution: "expired" })
+      },
       progress,
       runStage,
       yieldHistoryBatch,
@@ -69,7 +71,7 @@ type HistoryReconcileBatchOptions = {
   database: Database
   finishNotification: (id: number) => void
   progress: HistoryReconcileProgress
-  runStage?: PerformanceStageRunner
+  runStage?: PerformanceStageRunner | undefined
   yieldHistoryBatch: () => Promise<void>
 }
 
@@ -144,7 +146,11 @@ const reconcileHistoryBatch = async ({
           AND n.kind IN ('turn-failed','routine-failed','routine-deferred')
         ORDER BY n.id LIMIT 50`)
       .all(progress.cursor, upper) as Array<{ id: number; expired: number }>
-    rows.filter((item) => item.expired === 1).forEach((item) => finishNotification(item.id))
+    rows
+      .filter((item) => item.expired === 1)
+      .forEach((item) => {
+        finishNotification(item.id)
+      })
   }
   if (runStage) runStage("notification_history_reconcile", batch)
   else batch()
