@@ -2,7 +2,7 @@ import { createHash, randomBytes } from "node:crypto"
 import { dirname } from "node:path"
 import { prepareDatabaseFile } from "../../kernel/files"
 import { expiryAt } from "../../kernel/policy"
-import { workerEntrypoint } from "../../kernel/worker-entrypoint"
+import { createAuthWriter } from "./auth-writer"
 import { openAuthReader } from "./database"
 
 export { isDatabaseBusy, openAuthDatabase } from "./database"
@@ -14,7 +14,6 @@ export const deviceTokenTtlMs = 30 * 24 * 60 * 60_000
 const codeAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 const codeGroups = 3
 const codeGroupLength = 4
-const writerStartupTimeoutMs = 15_000
 
 export type Device = {
   id: string
@@ -50,32 +49,6 @@ type DeviceRow = {
   revoked_at: number | null
 }
 
-type WriteCommand =
-  | { type: "create-pairing"; codeHash: string; at: number; expiresAt: number }
-  | {
-      type: "claim-pairing"
-      codeHash: string
-      at: number
-      device: { id: string; name: string; tokenHash: string }
-    }
-  | { type: "last-seen"; id: string; at: number }
-  | { type: "rotate-token"; id: string; previousHash: string; tokenHash: string }
-  | { type: "revoke-device"; id: string; at: number }
-
-type WriterMessage =
-  | { type: "ready" }
-  | { type: "stopped" }
-  | { type: "startup-error"; error: WorkerError }
-  | { type?: undefined; requestId: number; result?: unknown; error?: WorkerError }
-
-type WorkerError = { name: string; message: string; code?: string }
-
-type AuthWriter = {
-  write: (command: WriteCommand) => Promise<unknown>
-  close: () => Promise<void>
-}
-type RefableWorker = Worker & { ref: () => void; unref: () => void }
-
 const sha256 = (value: string): string => createHash("sha256").update(value).digest("hex")
 const newToken = (at: number): string => `${randomBytes(32).toString("base64url")}.${at}`
 
@@ -101,118 +74,18 @@ const toDevice = (row: DeviceRow): Device => ({
   revokedAt: row.revoked_at,
 })
 
-const workerError = ({ name, message, code }: WorkerError): Error =>
-  Object.assign(new Error(message), { name, ...(code ? { code } : {}) })
-
-const createAuthWriter = async (filename: string): Promise<AuthWriter> => {
-  const worker = new Worker(
-    workerEntrypoint(new URL("./store-writer.ts", import.meta.url), "./auth-writer-worker-entry.ts"),
-    { smol: true, ref: false },
-  ) as RefableWorker
-  worker.ref()
-  const pending = new Map<number, { resolve: (value: unknown) => void; reject: (error: Error) => void }>()
-  let requestId = 0
-  let readyResolve: () => void = () => {}
-  let readyReject: (error: Error) => void = () => {}
-  let stoppedResolve: () => void = () => {}
-  let stoppedByError = false
-  let closing = false
-  let closePromise: Promise<void> | undefined
-  const ready = new Promise<void>((resolve, reject) => {
-    readyResolve = resolve
-    readyReject = reject
-  })
-  const stopped = new Promise<void>((resolve) => {
-    stoppedResolve = resolve
-  })
-  const rejectPending = (error: Error): void => {
-    pending.forEach(({ reject }) => {
-      reject(error)
-    })
-    pending.clear()
-  }
-  worker.onmessage = ({ data }: MessageEvent<WriterMessage>): void => {
-    if (data.type === "ready") {
-      readyResolve()
-      return
-    }
-    if (data.type === "startup-error") {
-      readyReject(workerError(data.error))
-      return
-    }
-    if (data.type === "stopped") {
-      stoppedResolve()
-      return
-    }
-    const result = pending.get(data.requestId)
-    if (!result) return
-    pending.delete(data.requestId)
-    if (data.error) result.reject(workerError(data.error))
-    else result.resolve(data.result)
-    if (pending.size === 0 && !closing) worker.unref()
-  }
-  worker.onerror = (event): void => {
-    event.preventDefault()
-    const error = new Error("Authentication writer stopped unexpectedly")
-    stoppedByError = true
-    readyReject(error)
-    rejectPending(error)
-    stoppedResolve()
-  }
-  worker.postMessage({ type: "start", filename })
-  const startupTimeout = setTimeout(
-    () => readyReject(new Error("Authentication writer startup timed out")),
-    writerStartupTimeoutMs,
-  )
-  startupTimeout.unref()
-  try {
-    await ready
-    worker.unref()
-  } catch (error) {
-    worker.terminate()
-    throw error
-  } finally {
-    clearTimeout(startupTimeout)
-  }
-
-  const write = (command: WriteCommand): Promise<unknown> => {
-    if (stoppedByError || closing) return Promise.reject(new Error("Authentication writer is unavailable"))
-    worker.ref()
-    const id = ++requestId
-    const result = new Promise<unknown>((resolve, reject) => pending.set(id, { resolve, reject }))
-    worker.postMessage({ ...command, requestId: id })
-    return result
-  }
-
-  return {
-    write,
-    close: () => {
-      closePromise ??= (async () => {
-        closing = true
-        if (stoppedByError) {
-          worker.terminate()
-          return
-        }
-        worker.ref()
-        worker.postMessage({ type: "stop" })
-        await stopped
-        worker.terminate()
-      })()
-      return closePromise
-    },
-  }
-}
-
 /** Opens the auth database with durable writes isolated from the server event loop. */
 export const openAuthStore = async ({
   filename,
   now = Date.now,
+  createWriterWorker,
 }: {
   filename: string
   now?: () => number
+  createWriterWorker?: () => Worker
 }): Promise<AuthStore> => {
   const databasePath = prepareDatabaseFile({ root: dirname(filename), path: filename })
-  const writer = await createAuthWriter(databasePath)
+  const writer = await createAuthWriter(databasePath, createWriterWorker)
   let database: ReturnType<typeof openAuthReader>
   try {
     database = openAuthReader(databasePath)

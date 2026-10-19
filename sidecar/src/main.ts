@@ -3,6 +3,7 @@ import { createConnection, type Socket } from "node:net"
 import { isAbsolute, relative, resolve } from "node:path"
 import type { Kernel } from "@touri/contracts"
 import { createKernel, type KernelRuntime } from "./kernel"
+import { closeFileIoAsync } from "./kernel/async-files"
 import { acquireRuntimeLock, watchParent, watchShutdownRequest } from "./kernel/lifecycle"
 import { createAppPaths } from "./kernel/paths"
 import type { PerformanceStageRunner } from "./kernel/performance"
@@ -114,15 +115,17 @@ const runServe = async (): Promise<void> => {
       runtime.emitHostNotification({ method: "app.willQuit", params: {} })
       await runtime.kernel.services.use("vm.shutdown")?.()
       await runtime.stop()
+      await closeFileIoAsync()
       lease.release()
       process.exit(0)
-    })().catch((error) => {
+    })().catch(async (error) => {
       runtime.kernel.log({
         level: "error",
         module: "main",
         msg: "Falha ao encerrar o runtime",
         data: { error: String(error) },
       })
+      await closeFileIoAsync().catch(() => undefined)
       process.exit(1)
     })
   }

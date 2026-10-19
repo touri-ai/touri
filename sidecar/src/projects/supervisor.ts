@@ -16,7 +16,7 @@ import { approvalDestination } from "../approvals/grants"
 import { delegatedBot } from "../groups/security"
 import { buildChildEnv } from "../kernel"
 import {
-  appendPrivateFileAsync,
+  appendBackgroundFileAsync,
   ensurePrivateDirectoryAsync,
   rotatePrivateDirectoryAsync,
   writePrivateFileAsync,
@@ -361,7 +361,7 @@ export const createSupervisor = ({
     if (safe.length === 0) return
     process.logLines.push(safe)
     if (process.logLines.length > 2000) process.logLines.splice(0, process.logLines.length - 2000)
-    void appendPrivateFileAsync({
+    void appendBackgroundFileAsync({
       root: kernel.paths.appData,
       path: process.logPath,
       content: `${safe}\n`,

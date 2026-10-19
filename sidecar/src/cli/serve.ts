@@ -1,5 +1,6 @@
 import { dirname, join } from "node:path"
 import { createKernel } from "../kernel"
+import { closeFileIoAsync } from "../kernel/async-files"
 import { ensurePrivateDirectory } from "../kernel/files"
 import { acquireRuntimeLock } from "../kernel/lifecycle"
 import { createAppPaths } from "../kernel/paths"
@@ -97,13 +98,17 @@ const startServer = async (options: ServeOptions, stopStderr: () => Promise<void
     },
     log: runtime.kernel.log,
     finish: async () => {
-      runtime.emitHostNotification({ method: "app.willQuit", params: {} })
-      await runtime.kernel.services.use("vm.shutdown")?.()
-      await clearServeInfo(options.dataDir)
-      await runtime.stop()
-      await store.close()
-      lease.release()
-      await stopStderr()
+      try {
+        runtime.emitHostNotification({ method: "app.willQuit", params: {} })
+        await runtime.kernel.services.use("vm.shutdown")?.()
+        await clearServeInfo(options.dataDir)
+        await runtime.stop()
+        await store.close()
+        await stopStderr()
+      } finally {
+        await closeFileIoAsync()
+        lease.release()
+      }
     },
   })
 }

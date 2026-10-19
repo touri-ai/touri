@@ -1,86 +1,23 @@
-import type { FileIoError, FileIoMessage, FileIoRequest, FileIoTask } from "./file-io-protocol"
+import { createFileIoLane, logIoByteLimit } from "./file-io-client"
+import type { FileIoTask } from "./file-io-protocol"
 import type { FileWrite } from "./files"
-import { workerEntrypoint } from "./worker-entrypoint"
 
-type RefableWorker = Worker & { ref: () => void; unref: () => void }
+const requestIo = createFileIoLane()
+const backgroundIo = createFileIoLane({ maxBytes: logIoByteLimit, batch: true })
+const runFileIoTask = (task: FileIoTask): Promise<unknown> => requestIo.run(task)
 
-const createFileIo = () => {
-  let worker: RefableWorker | undefined
-  let starting: Promise<void> | undefined
-  let ready = false
-  let requestId = 0
-  let readyReject: (error: Error) => void = () => {}
-  const pending = new Map<number, { resolve: (value: unknown) => void; reject: (error: Error) => void }>()
+/** Await every accepted write before reading logs. */
+export const flushFileIoAsync = (): Promise<void> =>
+  Promise.all([requestIo.flush(), backgroundIo.flush()]).then(() => undefined)
 
-  const rejectPending = (error: Error): void => {
-    pending.forEach(({ reject }) => {
-      reject(error)
-    })
-    pending.clear()
-  }
+/** Stop producers first; terminate both workers if durable writes exceed the deadline. */
+export const closeFileIoAsync = (timeoutMs = 5000): Promise<void> =>
+  Promise.all([requestIo.close(timeoutMs), backgroundIo.close(timeoutMs)]).then(() => undefined)
 
-  const ensureStarted = (): Promise<void> => {
-    if (ready) return Promise.resolve()
-    if (starting) return starting
-    starting = new Promise<void>((resolve, reject) => {
-      readyReject = reject
-      worker = new Worker(
-        workerEntrypoint(new URL("./file-io-worker.ts", import.meta.url), "./file-io-worker-entry.ts"),
-        { smol: true, ref: false },
-      ) as RefableWorker
-      worker.onmessage = ({ data }: MessageEvent<FileIoMessage>): void => {
-        if ("type" in data && data.type === "ready") {
-          ready = true
-          worker?.unref()
-          resolve()
-          return
-        }
-        if (!("requestId" in data)) return
-        const result = pending.get(data.requestId)
-        if (!result) return
-        pending.delete(data.requestId)
-        if (data.error) result.reject(toError(data.error))
-        else result.resolve(data.result)
-        if (pending.size === 0) worker?.unref()
-      }
-      worker.onerror = (event): void => {
-        event.preventDefault()
-        const detail = event.message.replace(/(?:[A-Za-z]:)?[\\/](?:[^\s\\/]+[\\/])*[^\s\\/]+/g, "<path>").slice(0, 160)
-        const error = new Error(
-          detail ? `File I/O worker stopped unexpectedly: ${detail}` : "File I/O worker stopped unexpectedly",
-        )
-        ready = false
-        worker = undefined
-        readyReject(error)
-        rejectPending(error)
-      }
-      worker.postMessage({ type: "start" } satisfies FileIoRequest)
-    }).finally(() => {
-      starting = undefined
-    })
-    return starting
-  }
+export const getFileIoStats = () => ({ request: requestIo.getStats(), background: backgroundIo.getStats() })
 
-  return async (task: FileIoTask): Promise<unknown> => {
-    const started = ensureStarted()
-    worker?.ref()
-    await started
-    if (!worker) throw new Error("File I/O worker is not available")
-    worker.ref()
-    const id = ++requestId
-    const result = new Promise<unknown>((resolve, reject) => pending.set(id, { resolve, reject }))
-    worker.postMessage({ ...task, requestId: id } satisfies FileIoRequest)
-    return result
-  }
-}
-
-const toError = ({ name, message, code }: FileIoError): Error =>
-  Object.assign(new Error(message), { name, ...(code ? { code } : {}) })
-
-const runFileIoTask = createFileIo()
-
-/** Wait until earlier file tasks have completed on the worker. */
-export const flushFileIoAsync = (): Promise<void> => runFileIoTask({ operation: "flush" }).then(() => undefined)
+export const appendBackgroundFileAsync = (args: FileWrite & { maxBytes?: number }): Promise<void> =>
+  backgroundIo.run({ operation: "append", args }).then(() => undefined)
 
 export const writePrivateFileAsync = (args: FileWrite): Promise<void> =>
   runFileIoTask({ operation: "write", args }).then(() => undefined)
@@ -109,7 +46,7 @@ export const appendLogFileAsync = (args: {
   content: Uint8Array
   maxBytes: number
   retainedGenerations: number
-}): Promise<void> => runFileIoTask({ operation: "append-log", args }).then(() => undefined)
+}): Promise<void> => backgroundIo.run({ operation: "append-log", args }).then(() => undefined)
 
 export const createWorkspaceDirectoryAsync = (args: {
   root: string
@@ -121,7 +58,7 @@ export const rotatePrivateDirectoryAsync = (args: {
   root: string
   directory: string
   retainedFiles: number
-}): Promise<void> => runFileIoTask({ operation: "rotate-directory", args }).then(() => undefined)
+}): Promise<void> => backgroundIo.run({ operation: "rotate-directory", args }).then(() => undefined)
 
 export const removePrivateFileIfMatchesAsync = (args: { root: string; path: string; content: string }): Promise<void> =>
   runFileIoTask({ operation: "remove-if-matches", args }).then(() => undefined)
@@ -130,4 +67,4 @@ export const replacePrivateSymlinkAsync = (args: { root: string; path: string; t
   runFileIoTask({ operation: "replace-symlink", args }).then(() => undefined)
 
 export const removeBotHomeDirectoryAsync = (args: { root: string; path: string; botId: string }): Promise<void> =>
-  runFileIoTask({ operation: "remove-bot-home", args }).then(() => undefined)
+  backgroundIo.run({ operation: "remove-bot-home", args }).then(() => undefined)

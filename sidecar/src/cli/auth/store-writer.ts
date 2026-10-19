@@ -1,19 +1,6 @@
 import { openAuthDatabase } from "./database"
 
-type WriteCommand =
-  | { type: "create-pairing"; codeHash: string; at: number; expiresAt: number }
-  | {
-      type: "claim-pairing"
-      codeHash: string
-      at: number
-      device: { id: string; name: string; tokenHash: string }
-    }
-  | { type: "last-seen"; id: string; at: number }
-  | { type: "rotate-token"; id: string; previousHash: string; tokenHash: string }
-  | { type: "revoke-device"; id: string; at: number }
-
-type Request = WriteCommand & { requestId: number }
-type WorkerMessage = { type: "start"; filename: string } | { type: "stop" } | Request
+import type { WriteCommand, WriterMessage, WriterRequest } from "./store-protocol"
 
 let database: ReturnType<typeof openAuthDatabase> | undefined
 
@@ -62,28 +49,28 @@ const execute = (command: WriteCommand): unknown => {
   return result.changes === 1
 }
 
-self.onmessage = ({ data }: MessageEvent<WorkerMessage>): void => {
+self.onmessage = ({ data }: MessageEvent<WriterRequest>): void => {
   if (data.type === "start") {
     try {
       database = openAuthDatabase(data.filename)
-      self.postMessage({ type: "ready" })
+      self.postMessage({ type: "ready" } satisfies WriterMessage)
     } catch (error) {
-      self.postMessage({ type: "startup-error", error: toWorkerError(error) })
+      self.postMessage({ type: "startup-error", error: toWorkerError(error) } satisfies WriterMessage)
     }
     return
   }
   if (data.type === "stop") {
     database?.close()
     database = undefined
-    self.postMessage({ type: "stopped" })
+    self.postMessage({ type: "stopped" } satisfies WriterMessage)
     self.close()
     return
   }
 
   try {
-    self.postMessage({ requestId: data.requestId, result: execute(data) })
+    self.postMessage({ requestId: data.requestId, result: execute(data) } satisfies WriterMessage)
   } catch (error) {
-    self.postMessage({ requestId: data.requestId, error: toWorkerError(error) })
+    self.postMessage({ requestId: data.requestId, error: toWorkerError(error) } satisfies WriterMessage)
   }
 }
 
