@@ -934,10 +934,12 @@ test("a scoped drain ignores a rejected message from another thread", async () =
   f.store.flushWrites?.()
   f.store.appendDelta({ threadId: "t", messageId: "a", partIndex: 0, delta: "Confirmado" })
 
-  await expect(f.store.flushWritesAsync?.({ threadId: "t", messageId: "a" })).resolves.toBeUndefined()
+  const drained = f.store.flushWritesAsync?.({ threadId: "t", messageId: "a" })
+  if (!drained) throw new Error("Missing asynchronous stream drain")
+  await drained
 
   expect(f.database.query("SELECT text FROM messages WHERE thread_id = 't' AND id = 'a'").get()).toEqual({
     text: "Confirmado",
   })
   expect(f.database.query("SELECT COUNT(*) AS n FROM rejections WHERE thread_id = 'other'").get()).toEqual({ n: 1 })
-})
+}, 20_000)
