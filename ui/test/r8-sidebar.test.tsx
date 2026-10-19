@@ -77,6 +77,7 @@ it("shows one unread count for an expanded conversation and its aggregate when c
   expect(mark.querySelector(".bot-row .sidebar-unread")).toBeNull()
   expect(mark.querySelectorAll(".thread-row .sidebar-unread")).toHaveLength(1)
   expect(mark.querySelector(".thread-row .sidebar-unread")).toHaveTextContent("2")
+  expect(within(mark).getByRole("img", { name: "2 mensagens não lidas" })).toBeVisible()
 
   const onbButton = getBotEntry("bot-onb").querySelector(".bot-row-main")
   if (!(onbButton instanceof HTMLButtonElement)) throw new Error("Missing bot row button")

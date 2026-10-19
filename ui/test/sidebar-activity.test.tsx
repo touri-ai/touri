@@ -151,6 +151,27 @@ it("hides the work summary when no runs are active or queued", () => {
   expect(document.querySelector(".sidebar-work-badge")).toBeNull()
 })
 
+it("keeps only hidden unread messages on an expanded bot and restores its total when collapsed", () => {
+  const { bots, threads } = fixture()
+  const bot = bots[0]
+  const baseThread = threads[0]
+  if (!bot || !baseThread) throw new Error("Missing unread fixture")
+  const visible = makeThread(baseThread, "visible-thread", bot.id, { unread: 2 })
+  const archived = makeThread(baseThread, "archived-thread", bot.id, { unread: 3, archivedAt: T0 })
+  const grouped = makeThread(baseThread, "group-thread", bot.id, { unread: 4, groupId: "test-group" })
+
+  const view = renderSidebar({ bots: [bot], threads: [visible, archived, grouped], selectedBotId: bot.id })
+
+  expect(screen.getByRole("img", { name: "7 mensagens não lidas" })).toBeVisible()
+  expect(screen.getByRole("img", { name: "2 mensagens não lidas" })).toBeVisible()
+  expect(document.querySelectorAll(".thread-row")).toHaveLength(1)
+
+  view.update({ selectedBotId: null })
+
+  expect(screen.getByRole("img", { name: "9 mensagens não lidas" })).toBeVisible()
+  expect(document.querySelector(".bot-thread-tree")).toBeNull()
+})
+
 it("shows active work as a clear navigation action in both languages", () => {
   const { bots, threads } = fixture()
   const running = run("run-active", "bot-alfa", "thread-alfa")
