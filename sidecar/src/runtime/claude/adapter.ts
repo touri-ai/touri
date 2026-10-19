@@ -185,7 +185,7 @@ export const createClaudeAdapter = ({
     for (const folder of turnFolders(args)) commandArgs.push("--add-dir", folder.path)
     if (process.platform !== "darwin" && folderConfinementRequired(args))
       await ensurePrivateDirectoryAsync({
-        root: kernel.paths.appData,
+        root: args.bot.homeDir,
         path: join(args.bot.homeDir, ".touri-claude"),
       })
     const spawned = spawnFolderProvider(kernel, args, {
