@@ -112,7 +112,7 @@ const getGroupRoutineFixture = () => {
 
 it("collapses only routine instructions and keeps the complete original available for editing", async () => {
   const { props, prompt } = getFixture()
-  render(<ChatPanel {...props} />)
+  render(<ChatPanel {...props} thread={{ ...props.thread, kind: "routine" }} />)
 
   const toggle = screen.getByRole("button", { name: "Instruções da rotina" })
   expect(toggle).toHaveAttribute("aria-expanded", "false")
