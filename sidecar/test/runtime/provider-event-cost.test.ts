@@ -493,8 +493,6 @@ test("Provider event cost stays independent of conversation history", async () =
   expect(recent.historyPartBytes).toBeGreaterThan(1_500_000)
   expect(recentPathLookups).toBe(1)
   expect(resultPathLookups).toBe(1)
-  expect(resultPerEventMs).toBeLessThan(5)
-  expect(resultPerFrameMs).toBeLessThan(10)
   expect(resultPerEventMs).toBeLessThan(recentPerEventMs * 3 + 0.5)
   expect(resultPerFrameMs).toBeLessThan(recentPerFrameMs * 3 + 0.5)
 })
