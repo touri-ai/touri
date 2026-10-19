@@ -196,9 +196,15 @@ export const createApprovalBridge = ({
       })
     })
   }
-  const approve: ServiceMap["approvals.approve"] = async ({ approvalId, decision, standing, message }) => {
+  const approve: ServiceMap["approvals.approve"] = async ({ approvalId, decision, standing, message, source }) => {
     const request = pending.get(approvalId)
     if (!request) return { success: false, errorCode: "NOT_FOUND", error: "Aprovação não encontrada." }
+    if (request.part.teamProposal && decision === "approved" && source !== "card")
+      return {
+        success: false,
+        errorCode: "DENIED",
+        error: "Abra o cartão completo para aprovar esta proposta.",
+      }
     if (!isCurrent(request.input)) {
       await finish(approvalId, "denied", "A ação foi cancelada ou a autorização mudou.")
       return { success: false, errorCode: "NOT_FOUND", error: "A ação foi cancelada ou a autorização mudou." }

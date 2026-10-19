@@ -8,6 +8,7 @@ import { approvalBarSummary, approvalNotificationSummary } from "../src/approval
 import { ApprovalNotice } from "../src/components/ApprovalNotice"
 import { NotificationBell } from "../src/components/NotificationCenter"
 import { t } from "../src/i18n"
+import { getTeamReview } from "./fixtures/team-proposal"
 
 afterEach(cleanup)
 
@@ -158,6 +159,36 @@ it.each([true, false])("keeps technical details collapsed in the notification ce
   expect(technical?.querySelector("pre")).toHaveTextContent("folder_access_request")
   fireEvent.click(within(row).getByRole("button", { name: "Revisar" }))
   expect(open).toHaveBeenCalledWith(notification)
+})
+
+it("opens a team proposal card without notification approval actions", () => {
+  const teamApproval: ApprovalPart = {
+    ...folder,
+    approvalId: "team-approval",
+    detail: 'team_create: {"botCount":3}',
+    scope: { source: "mcp", server: "touri", tool: "team_create" },
+    teamProposal: getTeamReview(),
+  }
+  const teamNotification = { ...notification, requestId: teamApproval.approvalId, ...approvalSummary(teamApproval) }
+  const review = vi.fn()
+  const respond = vi.fn()
+  render(
+    <NotificationBell
+      notifications={[teamNotification]}
+      messages={[message(teamApproval)]}
+      actions={{ open: vi.fn(), dismiss: vi.fn(), dismissAll: vi.fn(), respond, reply: vi.fn() }}
+      onReviewApproval={review}
+    />,
+  )
+  fireEvent.click(screen.getByRole("button", { name: /Notificações/ }))
+  const row = screen.getByTestId("notification-row")
+
+  expect(within(row).queryByRole("button", { name: "Aprovar" })).toBeNull()
+  expect(within(row).queryByRole("button", { name: "Negar" })).toBeNull()
+  fireEvent.click(within(row).getByRole("button", { name: "Revisar aprovação pendente" }))
+
+  expect(respond).not.toHaveBeenCalled()
+  expect(review).toHaveBeenCalledWith({ threadId: "thread-a", approvalId: teamApproval.approvalId })
 })
 
 it("does not duplicate headless approval echoes as generic notices", async () => {

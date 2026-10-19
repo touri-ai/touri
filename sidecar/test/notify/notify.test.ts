@@ -221,6 +221,8 @@ test("respond requires the bearer token, the owning thread, a valid behavior and
     const calls: Array<Record<string, unknown>> = []
     h.runtime.kernel.services.provide("runtime.answerApproval", async (args) => {
       calls.push(args)
+      if (args.approvalId === "req-team" && args.source !== "card")
+        return { success: false, errorCode: "DENIED", error: "Open the full card." }
       return { success: true }
     })
     emitter(h)({
@@ -239,6 +241,14 @@ test("respond requires the bearer token, the owning thread, a valid behavior and
       body: "Ship it?",
       requestId: "req-q",
     })
+    const teamRequest = emitter(h)({
+      kind: "approval",
+      botId: null,
+      threadId: "thread-a",
+      title: "Create team",
+      body: "Review each proposed bot before creating the team.",
+      requestId: "req-team",
+    })
     const url = "/api/threads/thread-a/respond"
     expect((await h.call("POST", url, { requestId: "req-a", behavior: "allow" }, false)).status).toBe(401)
     expect((await h.call("POST", "/api/threads/other/respond", { requestId: "req-a", behavior: "allow" })).status).toBe(
@@ -247,16 +257,27 @@ test("respond requires the bearer token, the owning thread, a valid behavior and
     expect((await h.call("POST", url, { requestId: "req-a", behavior: "maybe" })).status).toBe(400)
     expect((await h.call("POST", url, { requestId: "req-a", behavior: "answer" })).status).toBe(400)
     expect((await h.call("POST", url, { requestId: "req-a", behavior: "allow" })).status).toBe(200)
-    expect(calls[0]).toEqual({ approvalId: "req-a", decision: "approved" })
+    expect(calls[0]).toEqual({ approvalId: "req-a", decision: "approved", source: "notification" })
     expect((await h.call("POST", url, { requestId: "req-a", behavior: "allow" })).status).toBe(409)
     expect((await h.call("POST", url, { requestId: "req-q", behavior: "answer", message: "yes, ship" })).status).toBe(
       200,
     )
-    expect(calls[1]).toEqual({ approvalId: "req-q", decision: "denied", message: "User answered: yes, ship" })
+    expect(calls[1]).toEqual({
+      approvalId: "req-q",
+      decision: "denied",
+      message: "User answered: yes, ship",
+      source: "notification",
+    })
+    const deniedTeam = await h.call("POST", url, { requestId: "req-team", behavior: "allow" })
+    expect(deniedTeam.status).toBe(403)
+    expect(calls[2]).toEqual({ approvalId: "req-team", decision: "approved", source: "notification" })
+    expect(
+      (h.runtime.kernel.db as Database).query("SELECT resolved_at FROM notifications WHERE id = ?").get(teamRequest.id),
+    ).toEqual({ resolved_at: null })
     const pending = (await (await h.call("GET", "/api/notifications/pending")).json()) as {
       notifications: Array<unknown>
     }
-    expect(pending.notifications).toEqual([])
+    expect(pending.notifications).toEqual([expect.objectContaining({ requestId: "req-team" })])
   } finally {
     h.close()
   }

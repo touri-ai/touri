@@ -140,7 +140,7 @@ const fixture = async (teamBuilder = true, timeoutMs = 5000) => {
     for (let attempt = 0; attempt < 100 && !cards.length; attempt++) await Bun.sleep(5)
     const card = cards[0]
     if (!card) throw new Error("No approval card")
-    return bridge.approve({ approvalId: card.approvalId, decision, standing })
+    return bridge.approve({ approvalId: card.approvalId, decision, standing, source: "card" })
   }
   const botCount = () => (f.db.query("SELECT count(*) AS n FROM bots").get() as { n: number }).n
   cleanups.push(async () => {
@@ -469,6 +469,43 @@ test("rejects zero, nine, duplicate bots and invalid group membership before a c
   ])
     expect(await f.call(args)).toMatchObject({ success: false, errorCode: "INVALID_ARGS" })
   expect(f.cards).toHaveLength(0)
+})
+
+test("rejects hidden characters in model identifiers before review", async () => {
+  const f = await fixture()
+  const proposal = getProposal()
+  const changed = {
+    ...proposal,
+    bots: proposal.bots.map((bot, index) => (index === 0 ? { ...bot, model: "modelo-demo\u200b" } : bot)),
+  }
+  const review: TeamProposalReview = {
+    proposal: changed,
+    providers: changed.bots.map(({ provider }) => ({ provider, status: "ready" as const })),
+  }
+
+  const result = await f.call(changed)
+
+  expect(result).toMatchObject({ success: false, errorCode: "INVALID_ARGS" })
+  expect(getTeamProposalReview(review)).toBeNull()
+  expect(f.cards).toHaveLength(0)
+})
+
+test("team proposal approval requires the full card flow", async () => {
+  const f = await fixture()
+  const pending = f.call()
+  await Bun.sleep(10)
+  const card = f.cards[0]
+  if (!card) throw new Error("Missing proposal card")
+
+  expect(await f.bridge.approve({ approvalId: card.approvalId, decision: "approved" })).toMatchObject({
+    success: false,
+    errorCode: "DENIED",
+  })
+  expect(f.botCount()).toBe(1)
+  expect(f.cards[0]?.decision).toBe("pending")
+  await f.answer("denied")
+
+  expect(await pending).toMatchObject({ success: false, errorCode: "DENIED" })
 })
 
 test("eight complete drafts fit on the typed review without truncation", async () => {

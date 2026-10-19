@@ -11,6 +11,7 @@ import type {
   Thread,
   UiEvent,
 } from "@touri/contracts"
+import { isTeamCreateApprovalNotice } from "@touri/contracts/approval-summary"
 import {
   createTelegramApi,
   type TelegramApi,
@@ -344,6 +345,28 @@ export const createTelegramBridge = ({
     const chatId = chatForThread(threadId)
     if (!chatId) return
     const fullText = [notification.title, notification.body].filter(Boolean).join("\n")
+    if (isTeamCreateApprovalNotice(notification)) {
+      const text =
+        notification.title === "Create team"
+          ? "A team proposal is waiting. Open the touri app to review and approve it."
+          : "Há uma proposta de time aguardando. Abra o app touri para revisar e aprovar."
+      try {
+        await sendTelegramMessage(
+          { chat_id: chatId, text },
+          () => !stopped && config().enabled && chatForThread(threadId) === chatId,
+        )
+      } catch (error) {
+        if (stopped) return
+
+        log("Falha ao enviar aprovação", { error: errorText(error) })
+        onStatus({
+          state: "error",
+          username: null,
+          error: "Não foi possível enviar o aviso de proposta ao Telegram. Abra o touri para revisar a proposta.",
+        })
+      }
+      return
+    }
     if (fullText.length > 3_500) {
       await safeSend(chatId, "Este pedido é longo. Abra o touri para conferir e responder.")
       return

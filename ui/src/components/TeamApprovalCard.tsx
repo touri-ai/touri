@@ -129,6 +129,12 @@ export const TeamApprovalCard = ({
                       {getProviderName(bot.provider)} · {bot.model || t("Modelo padrão", {}, locale)}
                       <br />
                       <span>{t(providerLabel, {}, locale)}</span>
+                      {bot.model?.startsWith("touri-api-") && (
+                        <>
+                          <br />
+                          <span className="team-api-key-note">{t("Usa a chave de API salva", {}, locale)}</span>
+                        </>
+                      )}
                     </p>
                     <details open>
                       <summary>{t("Instruções do bot", {}, locale)}</summary>

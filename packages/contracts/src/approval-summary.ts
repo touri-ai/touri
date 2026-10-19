@@ -1,7 +1,10 @@
-import type { ApprovalPart } from "./types"
+import type { ApprovalPart, NotificationRecord } from "./types"
 
 type Locale = "pt-BR" | "en"
 type Approval = Pick<ApprovalPart, "request" | "detail" | "scope">
+
+export const isTeamCreateApprovalNotice = (notification: Pick<NotificationRecord, "kind" | "title">): boolean =>
+  notification.kind === "approval" && ["Criar time", "Create team"].includes(notification.title)
 
 const copy = {
   "Ativar navegador": "Enable browser",

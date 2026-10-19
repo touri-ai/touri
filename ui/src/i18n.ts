@@ -31,6 +31,8 @@ export const ptBR = {
   "Confira instalação e login nas configurações": "Confira instalação e login nas configurações",
   "Instruções do bot": "Instruções do bot",
   "Modelo padrão": "Modelo padrão",
+  "Usa a chave de API salva": "Usa a chave de API salva",
+  "Abra o cartão completo para aprovar esta proposta.": "Abra o cartão completo para aprovar esta proposta.",
   "Grupo: {name}": "Grupo: {name}",
   "Coordenador: {name}": "Coordenador: {name}",
   "Sem coordenador": "Sem coordenador",
@@ -252,6 +254,10 @@ export const ptBR = {
   "Access to any folder on this {host}": "Acesso a qualquer pasta deste {host}",
   "Salve o token do bot do Telegram.": "Salve o token do bot do Telegram.",
   "Token inválido ou revogado.": "Token inválido ou revogado.",
+  "Há uma proposta de time aguardando. Abra o app touri para revisar e aprovar.":
+    "Há uma proposta de time aguardando. Abra o app touri para revisar e aprovar.",
+  "Não foi possível enviar o aviso de proposta ao Telegram. Abra o touri para revisar a proposta.":
+    "Não foi possível enviar o aviso de proposta ao Telegram. Abra o touri para revisar a proposta.",
   "Não foi possível conectar ao Telegram. Confira sua conexão e tente novamente.":
     "Não foi possível conectar ao Telegram. Confira sua conexão e tente novamente.",
   "API models": "Modelos por API",
@@ -2367,6 +2373,8 @@ export const ptBR = {
   Buscar: "Buscar",
   Seções: "Seções",
   "Rotinas agendadas dos bots": "Rotinas agendadas dos bots",
+  "O que os bots estão fazendo agora": "O que os bots estão fazendo agora",
+  "Como o touri está se saindo": "Como o touri está se saindo",
   "Servidores de ferramentas": "Servidores de ferramentas",
   "Logs indisponíveis para este processo.": "Logs indisponíveis para este processo.",
   "Nenhum preview disponível": "Nenhum preview disponível",
@@ -2631,6 +2639,8 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Confira instalação e login nas configurações": "Check installation and sign-in in settings",
   "Instruções do bot": "Bot instructions",
   "Modelo padrão": "Default model",
+  "Usa a chave de API salva": "Uses your saved API key",
+  "Abra o cartão completo para aprovar esta proposta.": "Open the full card to approve this proposal.",
   "Grupo: {name}": "Group: {name}",
   "Coordenador: {name}": "Coordinator: {name}",
   "Sem coordenador": "No coordinator",
@@ -2852,6 +2862,10 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "O membro foi removido do grupo.": "This member was removed from the group.",
   "Salve o token do bot do Telegram.": "Save the Telegram bot token.",
   "Token inválido ou revogado.": "Invalid or revoked token.",
+  "Há uma proposta de time aguardando. Abra o app touri para revisar e aprovar.":
+    "A team proposal is waiting. Open the touri app to review and approve it.",
+  "Não foi possível enviar o aviso de proposta ao Telegram. Abra o touri para revisar a proposta.":
+    "Could not send the proposal notice to Telegram. Open touri to review the proposal.",
   "Não foi possível conectar ao Telegram. Confira sua conexão e tente novamente.":
     "Could not connect to Telegram. Check your connection and try again.",
   "Converse com este bot pelo Telegram. Só as pessoas permitidas abaixo conseguem falar com ele.":
@@ -4360,6 +4374,8 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   Buscar: "Search",
   Seções: "Sections",
   "Rotinas agendadas dos bots": "Scheduled bot routines",
+  "O que os bots estão fazendo agora": "What your bots are working on now",
+  "Como o touri está se saindo": "How touri is performing",
   "Servidores de ferramentas": "Tool servers",
   "Logs indisponíveis para este processo.": "Logs unavailable for this process.",
   "Nenhum preview disponível": "No preview available",

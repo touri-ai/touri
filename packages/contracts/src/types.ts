@@ -1372,7 +1372,7 @@ export type ServiceMap = {
     sync: (args: { botId: Id; threadId: Id; userText: string; assistantText: string }) => void
   }
   'approvals.present': (input: ApprovalInput) => Promise<ApprovalResult>
-  'approvals.approve': (input: { approvalId: Id; decision: 'approved' | 'denied'; standing?: boolean; message?: string }) => Promise<Result<{}, 'NOT_FOUND'>>
+  'approvals.approve': (input: { approvalId: Id; decision: 'approved' | 'denied'; standing?: boolean; message?: string; source?: 'card' | 'notification' }) => Promise<Result<{}, 'NOT_FOUND' | 'DENIED'>>
   'approvals.settle': (input: { approvalId: Id; decision: 'denied' | 'expired' }) => void
   'doctor': { start: () => void; dispose: () => void; snapshot: (refresh?: boolean) => DoctorReport; settled: () => Promise<void> }
   'storage.maintenance': { scheduleSessionKeyRetry: () => void; start: (vacuum?: boolean) => boolean; snapshot: () => StorageMaintenanceStatus; dispose: (options?: { closing?: boolean }) => void }
@@ -1399,7 +1399,7 @@ export type ServiceMap = {
   'computer.input': ComputerInput
   'computer.isActive': () => { active: boolean; botId: Id | null }
   'notify.emit': (input: NotifyInput) => NotificationRecord
-  'runtime.answerApproval': (args: { approvalId: Id; decision: 'approved' | 'denied'; standing?: boolean; message?: string }) => Promise<Result<{}, 'NOT_FOUND'>>
+  'runtime.answerApproval': (args: { approvalId: Id; decision: 'approved' | 'denied'; standing?: boolean; message?: string; source?: 'card' | 'notification' }) => Promise<Result<{}, 'NOT_FOUND' | 'DENIED'>>
   'notify.resolve': (args: { requestId: string; resolution: NotifyResolution }) => void
 }
 
