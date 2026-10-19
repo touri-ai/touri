@@ -16,9 +16,10 @@ const openNative = () =>
     [errnoSymbol]: { args: [], returns: "ptr" },
   }).symbols
 
-const native = openNative()
+let cachedNative: ReturnType<typeof openNative> | undefined
+const native = () => (cachedNative ??= openNative())
 const errno = (): number => {
-  const pointer = native[errnoSymbol]?.()
+  const pointer = native()[errnoSymbol]?.()
   return pointer ? read.i32(pointer) : 0
 }
 const cstring = (value: string): Buffer => Buffer.from(`${value}\0`)
@@ -32,7 +33,7 @@ export const removeBotHomeDirectory = ({ root, path, botId }: { root: string; pa
   }
   const parent = openWorkspaceDirectory({ root, path })
   const remove = (directory: number, name: string): void => {
-    const child = native.openat(
+    const child = native().openat(
       directory,
       cstring(name),
       constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
@@ -41,32 +42,32 @@ export const removeBotHomeDirectory = ({ root, path, botId }: { root: string; pa
       const error = errno()
       if (error === 2) return
       if (error !== 20 && error !== 40 && error !== 62) throw new Error("Não foi possível remover a pasta do bot.")
-      if (native.unlinkat(directory, cstring(name), 0) !== 0 && errno() !== 2)
+      if (native().unlinkat(directory, cstring(name), 0) !== 0 && errno() !== 2)
         throw new Error("Não foi possível remover um arquivo do bot.")
       return
     }
     try {
-      const duplicate = native.dup(child)
-      const stream = native.fdopendir(duplicate)
+      const duplicate = native().dup(child)
+      const stream = native().fdopendir(duplicate)
       if (!stream) {
         closeSync(duplicate)
         throw new Error("Não foi possível ler a pasta do bot.")
       }
       try {
         while (true) {
-          const entry = native.readdir(stream)
+          const entry = native().readdir(stream)
           if (!entry) break
           const entryName = new CString(entry, direntNameOffset).toString()
           if (entryName !== "." && entryName !== "..") remove(child, entryName)
         }
       } finally {
-        native.closedir(stream)
+        native().closedir(stream)
       }
       fsyncSync(child)
     } finally {
       closeSync(child)
     }
-    if (native.unlinkat(directory, cstring(name), removeDirectoryFlag) !== 0 && errno() !== 2)
+    if (native().unlinkat(directory, cstring(name), removeDirectoryFlag) !== 0 && errno() !== 2)
       throw new Error("Não foi possível remover a pasta do bot.")
   }
   try {
