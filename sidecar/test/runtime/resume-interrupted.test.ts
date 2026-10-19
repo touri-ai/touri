@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite"
-import { afterEach, expect, mock, test } from "bun:test"
+import { afterEach, expect, mock, spyOn, test } from "bun:test"
 import { EventEmitter } from "node:events"
 import {
   chmodSync,
@@ -38,21 +38,10 @@ const waitFor = async (predicate: () => boolean, timeout = 10_000): Promise<void
 }
 
 const watchTimeout = (milliseconds: number) => {
-  const original = globalThis.setTimeout
-  let calls = 0
-  const replacement: typeof setTimeout = Object.assign(
-    (...args: Parameters<typeof setTimeout>): ReturnType<typeof setTimeout> => {
-      if (args[1] === milliseconds) calls += 1
-      return Reflect.apply(original, globalThis, args)
-    },
-    { __promisify__: original.__promisify__ },
-  )
-  globalThis.setTimeout = replacement
+  const timeout = spyOn(globalThis, "setTimeout")
   return {
-    calls: () => calls,
-    restore: () => {
-      globalThis.setTimeout = original
-    },
+    calls: () => timeout.mock.calls.filter((args) => args[1] === milliseconds).length,
+    restore: () => timeout.mockRestore(),
   }
 }
 
