@@ -8,7 +8,16 @@ type RequestTracker = { inFlight: Map<Request, number>; getRoute: (request: Requ
 type Context = { activeRuns: number; sseClients: number; websocketClients: number }
 type FetchHandler<SocketData> = (request: Request, server: Server<SocketData>) => Promise<Response | undefined>
 const STAGES = [
+  "provider_frame_batch",
+  "provider_frame_dispatch",
   "runtime_provider_event",
+  "runtime_turn_finalization",
+  "runtime_message_publish",
+  "runtime_part_preparation",
+  "runtime_part_append",
+  "runtime_stream_flush",
+  "runtime_terminal_message_update",
+  "runtime_part_finalization",
   "runtime_text_materialization",
   "stream_batch",
   "stream_journal_write",
@@ -20,6 +29,7 @@ const STAGES = [
   "transcript_event_log_write",
   "transcript_retention",
   "workspace_snapshot",
+  "workspace_event_delivery",
   "workspace_event_serialization",
   "workspace_websocket_broadcast",
   "routine_scheduler_dispatch",

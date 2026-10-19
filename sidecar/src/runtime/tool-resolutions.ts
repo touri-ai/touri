@@ -32,10 +32,24 @@ const terminalReason = (status: Run["status"]): Exclude<ToolResolution, "running
 
 export const createToolResolutions = (kernel: Kernel) => {
   const database = kernel.db instanceof Database ? kernel.db : null
+  const getResolution = database?.query(
+    "SELECT resolution, resolved_at, part_json FROM tool_resolutions WHERE run_id = ? AND call_id = ?",
+  )
+  const saveResolution =
+    database?.query(`INSERT INTO tool_resolutions(run_id, call_id, thread_id, part_json, resolution, resolved_at)
+      VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(run_id, call_id) DO UPDATE SET
+      part_json = excluded.part_json, resolution = excluded.resolution, resolved_at = excluded.resolved_at
+      WHERE tool_resolutions.part_json IS NOT excluded.part_json
+        OR tool_resolutions.resolution IS NOT excluded.resolution
+        OR tool_resolutions.resolved_at IS NOT excluded.resolved_at`)
+  const getRunParts = database?.query("SELECT part_json FROM tool_resolutions WHERE run_id = ? ORDER BY rowid")
   const record = (run: Run, part: ToolPart, recovering = false, persist = true): ToolPart => {
-    const previous = database
-      ?.query("SELECT resolution, resolved_at, part_json FROM tool_resolutions WHERE run_id = ? AND call_id = ?")
-      .get(run.id, part.callId) as { resolution: ToolResolution; resolved_at: number | null; part_json: string } | null
+    const previous =
+      (getResolution?.get(run.id, part.callId) as {
+        resolution: ToolResolution
+        resolved_at: number | null
+        part_json: string
+      } | null) ?? null
     let resolution = outcome(part)
     const keepResult = previous && hasResult(previous.resolution) && !hasResult(resolution)
     const unobserved =
@@ -66,14 +80,7 @@ export const createToolResolutions = (kernel: Kernel) => {
       ? (externalizeMessageParts({ database, appData: kernel.paths.appData, parts: [resolved] })[0] as ToolPart)
       : resolved
     if (persist)
-      database
-        ?.query(`INSERT INTO tool_resolutions(run_id, call_id, thread_id, part_json, resolution, resolved_at)
-      VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(run_id, call_id) DO UPDATE SET
-      part_json = excluded.part_json, resolution = excluded.resolution, resolved_at = excluded.resolved_at
-      WHERE tool_resolutions.part_json IS NOT excluded.part_json
-        OR tool_resolutions.resolution IS NOT excluded.resolution
-        OR tool_resolutions.resolved_at IS NOT excluded.resolved_at`)
-        .run(run.id, part.callId, run.threadId, JSON.stringify(next), resolution, next.resolvedAt ?? null)
+      saveResolution?.run(run.id, part.callId, run.threadId, JSON.stringify(next), resolution, next.resolvedAt ?? null)
     return next
   }
   const finish = (run: Run, parts: MessagePart[], reason: Exclude<ToolResolution, "running">): MessagePart[] => {
@@ -84,9 +91,7 @@ export const createToolResolutions = (kernel: Kernel) => {
         ? record(run, { ...current, resolution: reason, resolvedAt: Date.now() })
         : current
     })
-    const stored = database
-      ?.query("SELECT part_json FROM tool_resolutions WHERE run_id = ? ORDER BY rowid")
-      .all(run.id) as Array<{ part_json: string }> | undefined
+    const stored = getRunParts?.all(run.id) as Array<{ part_json: string }> | undefined
     const included = new Set(result.filter(isTool).map((part) => part.callId))
     for (const row of stored ?? []) {
       const part = JSON.parse(row.part_json) as ToolPart

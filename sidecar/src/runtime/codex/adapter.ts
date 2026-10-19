@@ -12,6 +12,7 @@ import type {
 import { redactToolText } from "@touri/contracts/redaction"
 import { codexApprovalPayload } from "../../approvals/payload"
 import { buildChildEnv } from "../../kernel"
+import type { PerformanceStageRunner } from "../../kernel/performance"
 import { redactStructured } from "../../kernel/redact"
 import { touriVersion } from "../../version"
 import { createCommandOutput } from "../command-output"
@@ -231,10 +232,12 @@ export const createCodexAdapter = ({
   kernel,
   command,
   interruptGraceMs = 2_000,
+  runStage,
 }: {
   kernel: Kernel
   command?: string
   interruptGraceMs?: number
+  runStage?: PerformanceStageRunner
 }): ProviderAdapter => {
   const commandName = command ?? process.env.TOURI_CODEX_BIN ?? "codex"
   const approvals = new Map<string, PendingApproval>()
@@ -573,8 +576,9 @@ export const createCodexAdapter = ({
     }
     const stopReader = startLineReader({
       stream: spawned.stdout,
-      onLine,
+      onLine: (line) => (runStage ? runStage("provider_frame_dispatch", onLine, line) : onLine(line)),
       onError: (error) => complete({ success: false, errorCode: "cli_protocol", error: error.message }),
+      ...(runStage ? { runStage } : {}),
     })
     const stderrOutput = readProviderStderr(spawned.stderr, (text) => {
       if (recoverSandbox(text)) return

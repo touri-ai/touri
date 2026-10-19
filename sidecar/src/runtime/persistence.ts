@@ -152,6 +152,7 @@ export type RuntimePersistence = {
   routines: Map<Id, Routine>
   routineRuns: Map<Id, RoutineRun>
   getRun: (id: Id) => Run | null
+  findActiveRunForRequest: (args: { threadId: Id; requestMessageId: Id }) => Run | null
   getRunSnapshots: (ids: ReadonlyArray<Id>) => Array<Run>
   listWorkRuns: () => Array<Run>
   listActiveRuns: () => Array<Run>
@@ -216,6 +217,41 @@ export const createRuntimePersistence = ({ database }: { database: unknown }): R
       const current = runs.get(id)
       const run = current ? Object.assign(current, found) : found
       runs.set(id, run)
+      return run
+    } catch {
+      return null
+    }
+  }
+
+  const findActiveRunForRequest = ({
+    threadId,
+    requestMessageId,
+  }: {
+    threadId: Id
+    requestMessageId: Id
+  }): Run | null => {
+    if (!db)
+      return (
+        [...runs.values()].find(
+          (run) =>
+            run.threadId === threadId &&
+            run.requestMessageId === requestMessageId &&
+            ["queued", "starting", "running"].includes(run.status),
+        ) ?? null
+      )
+
+    try {
+      const found = toRun(
+        db
+          .query(
+            "SELECT * FROM runs WHERE thread_id = ? AND request_message_id = ? AND status IN ('queued', 'starting', 'running') ORDER BY queued_at DESC, rowid DESC LIMIT 1",
+          )
+          .get(threadId, requestMessageId),
+      )
+      if (!found) return null
+      const current = runs.get(found.id)
+      const run = current ? Object.assign(current, found) : found
+      runs.set(run.id, run)
       return run
     } catch {
       return null
@@ -578,6 +614,7 @@ export const createRuntimePersistence = ({ database }: { database: unknown }): R
     routines,
     routineRuns,
     getRun,
+    findActiveRunForRequest,
     getRunSnapshots,
     listActiveRuns,
     listWorkRuns,

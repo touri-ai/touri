@@ -3,7 +3,13 @@ import { attachmentReferenceSource } from "./attachment-reference-worker"
 import { attachmentReferences } from "./output-blobs"
 import type { PerformanceStageRunner } from "./performance"
 
-export class AttachmentReferenceScanDeferred extends Error {}
+export type AttachmentReferenceScanDeferredReason = "deadline" | "changed"
+
+export class AttachmentReferenceScanDeferred extends Error {
+  constructor(readonly reason: AttachmentReferenceScanDeferredReason = "deadline") {
+    super("Attachment reference scan deferred")
+  }
+}
 
 export const createAttachmentReferenceScan = (
   database: Database,
@@ -18,6 +24,10 @@ export const createAttachmentReferenceScan = (
   let pending: { resolve: (ids: string[]) => void; reject: (error: Error) => void } | undefined
   let timer: ReturnType<typeof setTimeout> | undefined
   let referenced = new Set<string>()
+  const armDeadline = () => {
+    clearTimeout(timer)
+    timer = setTimeout(() => defer("deadline"), timeoutMs)
+  }
   const dispose = () => {
     clearTimeout(timer)
     signal?.removeEventListener("abort", fail)
@@ -30,12 +40,12 @@ export const createAttachmentReferenceScan = (
     dispose()
   }
   const fail = () => reject(new Error("Attachment reference scan interrupted"))
-  const defer = () => reject(new AttachmentReferenceScanDeferred("Attachment reference scan deferred"))
+  const defer = (reason: AttachmentReferenceScanDeferredReason) => reject(new AttachmentReferenceScanDeferred(reason))
   const request = (message: { type: string; filename?: string; ids?: string[] }): Promise<string[]> =>
     new Promise((resolve, reject) => {
       pending = { resolve, reject }
       // A cold large store may take minutes; a stalled worker must still be reclaimable.
-      timer = setTimeout(defer, timeoutMs)
+      armDeadline()
       worker?.postMessage(message)
     })
   const start = async () => {
@@ -57,8 +67,9 @@ export const createAttachmentReferenceScan = (
     }
     worker.onmessage = async ({ data }: MessageEvent<{ type: string; ids?: string[] }>) => {
       if (data.type === "error") return fail()
-      if (data.type === "changed") return defer()
+      if (data.type === "changed") return defer("changed")
       if (data.type === "batch") {
+        armDeadline()
         try {
           await yieldBatch()
           worker?.postMessage({ type: "continue" })
