@@ -114,10 +114,9 @@ test.each(["SIGTERM", "SIGINT"] as const)(
     expect(new TextDecoder().decode((await reader.read()).value)).toContain("ready")
     processUnderTest.kill("SIGTERM")
     expect(new TextDecoder().decode((await reader.read()).value)).toContain("draining")
-    reader.releaseLock()
 
     processUnderTest.kill(signal)
-    const [code, output] = await Promise.all([processUnderTest.exited, new Response(processUnderTest.stdout).text()])
+    const [code, output] = await Promise.all([processUnderTest.exited, getStreamText(reader)])
 
     expect(code).toBe(0)
     expect(output).toContain("interrupted")
@@ -210,5 +209,19 @@ const getFixture = ({ hang = false } = {}) => {
         timer.callback()
       })
     },
+  }
+}
+
+const getStreamText = async (reader: ReadableStreamDefaultReader<Uint8Array>): Promise<string> => {
+  const decoder = new TextDecoder()
+  // This recording belongs only to the fixture's fixed, short stdout stream.
+  let output = ""
+  while (true) {
+    const chunk = await reader.read()
+    if (chunk.done) {
+      reader.releaseLock()
+      return output + decoder.decode()
+    }
+    output += decoder.decode(chunk.value, { stream: true })
   }
 }

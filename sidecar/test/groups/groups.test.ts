@@ -1375,9 +1375,10 @@ test("a waiting group routine keeps its original timeout after restart", async (
     else await Bun.sleep(100)
     complete("Concluído")
   })
+  const engine = routineEngine(f)
+  await engine.ready
   const active = f.send("@pm tarefa ativa")
   await until(() => f.order.length === 1)
-  const engine = routineEngine(f)
   const created = engine.createRoutine({
     input: groupRoutine(f, { prompt: "@dev confira o relatório", timeoutMinutes: 1 }),
     forceDisabled: false,
