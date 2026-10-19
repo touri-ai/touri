@@ -162,6 +162,8 @@ test("computer warms with computer-open, starts view-only, gates shell/control a
   expect(screen.getByText("Acompanhar a tela")).toBeVisible()
   expect(screen.getByRole("button", { name: "Assumir controle" })).toBeEnabled()
   fireEvent.click(screen.getByRole("button", { name: "Terminal" }))
+  expect(screen.getByText(/64 KB de saída/)).toBeVisible()
+  expect(screen.queryByText(/KiB/)).toBeNull()
   expect(screen.getByLabelText("Comando na VM")).toBeDisabled()
   view.rerender(<BotComputer api={api} bot={{ ...bot, computerUse: true }} machine={machine("running")} />)
   fireEvent.change(screen.getByLabelText("Comando na VM"), { target: { value: "pwd" } })

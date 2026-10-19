@@ -1,7 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, expect, test, vi } from "vitest"
 import { createMockApi } from "../src/api/mock"
-import { BotLibrary } from "../src/components/BotLibrary"
+import { BotLibrary, getFileSize } from "../src/components/BotLibrary"
 
 afterEach(cleanup)
 const fixture = () => {
@@ -22,6 +22,23 @@ test("shows familiar file sizes and limits in the library", async () => {
   expect(limits).toHaveTextContent("512 KB")
   expect(notes).not.toHaveTextContent(/KiB|MiB/)
   expect(limits).not.toHaveTextContent(/KiB|MiB/)
+})
+
+test("formats large file sizes with a localized decimal", async () => {
+  const { api, bot } = fixture()
+  const request = api.request
+  api.request = async (route, input, params) => {
+    if (route === "GET /bots/:id/files")
+      return {
+        files: [{ name: "imagem.png", path: "/mock/imagem.png", directory: false, bytes: 1536 * 1024 }],
+      } as never
+    return request(route, input, params)
+  }
+
+  render(<BotLibrary api={api} bot={bot} />)
+
+  expect(await screen.findByRole("button", { name: /imagem.png.*1,5 MB/ })).toHaveTextContent("1,5 MB")
+  expect(getFileSize(1536 * 1024, "en")).toBe("1.5 MB")
 })
 
 test("folder errors clear the old listing and retry that exact folder", async () => {

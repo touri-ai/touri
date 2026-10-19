@@ -724,6 +724,8 @@ export const ptBR = {
   "Você está no controle": "Você está no controle",
   "Assumir controle": "Assumir controle",
   "Acompanhar a tela": "Acompanhar a tela",
+  "Um comando de cada vez no computador do bot. Limite: 25 s e 64 KB de saída. Pastas e variáveis não ficam salvas.":
+    "Um comando de cada vez no computador do bot. Limite: 25 s e 64 KB de saída. Pastas e variáveis não ficam salvas.",
 
   "{bot} precisa de você: autorizar {action}.": "{bot} precisa de você: autorizar {action}.",
   "Autorizado. Retomando a tarefa.": "Autorizado. Retomando a tarefa.",
@@ -927,6 +929,7 @@ export const ptBR = {
   "Imagens de até 15 MB; demais arquivos de até 512 KB. Pastas ocultas e links não são exibidos.":
     "Imagens de até 15 MB; demais arquivos de até 512 KB. Pastas ocultas e links não são exibidos.",
   "{count} KB": "{count} KB",
+  "{count} MB": "{count} MB",
   "Prévia indisponível para este formato. Baixe para abrir no seu computador.":
     "Prévia indisponível para este formato. Baixe para abrir no seu computador.",
   Revisar: "Revisar",
@@ -3230,6 +3233,8 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Você está no controle": "You are in control",
   "Assumir controle": "Take control",
   "Acompanhar a tela": "Watch the screen",
+  "Um comando de cada vez no computador do bot. Limite: 25 s e 64 KB de saída. Pastas e variáveis não ficam salvas.":
+    "One command at a time on the bot computer. Limit: 25 s and 64 KB of output. Folders and variables are not saved.",
 
   "{bot} precisa de você: autorizar {action}.": "{bot} needs you: authorize {action}.",
   "Autorizado. Retomando a tarefa.": "Authorized. Resuming the task.",
@@ -3409,6 +3414,7 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Imagens de até 15 MB; demais arquivos de até 512 KB. Pastas ocultas e links não são exibidos.":
     "Images up to 15 MB; other files up to 512 KB. Hidden folders and links are not shown.",
   "{count} KB": "{count} KB",
+  "{count} MB": "{count} MB",
   "Prévia indisponível para este formato. Baixe para abrir no seu computador.":
     "Preview unavailable for this format. Download it to open on your computer.",
   Revisar: "Review",
