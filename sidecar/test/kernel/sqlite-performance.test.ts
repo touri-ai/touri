@@ -104,8 +104,9 @@ test("slow iterators and transaction calls are reported", () => {
   expect(transaction.deferred).toBe(transaction.deferred)
   expect(transaction.immediate).toBe(transaction.immediate)
   expect(transaction.exclusive).toBe(transaction.exclusive)
-  expect(transaction.default).toBe(transaction.default)
-  expect(transaction.database).toBe(database)
+  // Bun's runtime exposes these, although its type declarations omit them.
+  expect(Reflect.get(transaction, "default")).toBe(Reflect.get(transaction, "default"))
+  expect(Reflect.get(transaction, "database")).toBe(database)
   transaction.toString()
   expect(log).not.toHaveBeenCalled()
 
