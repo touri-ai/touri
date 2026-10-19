@@ -42,7 +42,11 @@ test("the compiled CLI starts serve, pairs a device and durably revokes it", asy
     TOURI_VM_INTEGRATION: "0",
     TOURI_DOCTOR_SKIP_PROVIDER_PROBES: "1",
   }
-  const server = Bun.spawn([binary, "serve", ...args, "--port", "0"], { env, stdout: "pipe", stderr: "pipe" })
+  const server = Bun.spawn([binary, "serve", ...args, "--port", String(getFixturePort())], {
+    env,
+    stdout: "pipe",
+    stderr: "pipe",
+  })
   const output = new Response(server.stdout).text()
   const errors = new Response(server.stderr).text()
   cleanups.add(async () => {
@@ -102,4 +106,12 @@ const getServeInfo = async (path: string, server: ReturnType<typeof Bun.spawn>) 
     await Bun.sleep(50)
   }
   throw new Error("Compiled server did not become ready")
+}
+
+const getFixturePort = (): number => {
+  const reservation = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response() })
+  const port = reservation.port
+  reservation.stop(true)
+  if (!port) throw new Error("Synthetic server port missing")
+  return port
 }

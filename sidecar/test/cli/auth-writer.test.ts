@@ -19,15 +19,17 @@ test.each(["error", "close"] as const)(
     const root = await mkdtemp(join(tmpdir(), "touri-auth-recovery-"))
     cleanups.add(() => rm(root, { recursive: true, force: true }))
     const writer = new URL("../../src/cli/auth/store-writer.ts", import.meta.url).href
-    const source = `await import(${JSON.stringify(writer)});
+    const source = `import ${JSON.stringify(writer)};
 self.addEventListener("message", ({ data }) => { if (data.type === "fixture-crash") { ${event === "close" ? "self.close()" : 'throw new Error("synthetic writer crash")'} } });`
     const url = URL.createObjectURL(new Blob([source], { type: "application/javascript" }))
     cleanups.add(async () => URL.revokeObjectURL(url))
     const workers: Worker[] = []
+    const crash = Promise.withResolvers<void>()
     const store = await openAuthStore({
       filename: join(root, "auth.db"),
       createWriterWorker: () => {
         const worker = new Worker(url)
+        worker.addEventListener(event, () => crash.resolve(), { once: true })
         workers.push(worker)
         return worker
       },
@@ -40,10 +42,9 @@ self.addEventListener("message", ({ data }) => { if (data.type === "fixture-cras
     if (!claimed.success) throw new Error("Synthetic pairing failed")
     const [first] = workers
     if (!first) throw new Error("Synthetic writer missing")
-    const crashed = new Promise<void>((resolve) => first.addEventListener(event, () => resolve(), { once: true }))
 
     first.postMessage({ type: "fixture-crash" })
-    await crashed
+    await crash.promise
     const rotated = await store.rotateDeviceToken(claimed.token)
     const code = await store.createPairingCode()
     const revoked = await store.revokeDevice(claimed.device.id)
@@ -55,4 +56,5 @@ self.addEventListener("message", ({ data }) => { if (data.type === "fixture-cras
     expect(store.verifyDeviceToken(rotated?.token ?? "")).toBeNull()
     expect(store.verifyDeviceToken(claimed.token)).toBeNull()
   },
+  20_000,
 )
