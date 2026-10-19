@@ -1,5 +1,5 @@
 import { join } from "node:path"
-import { atomicWriteFile, ensurePrivateDirectory } from "../kernel/files"
+import { ensurePrivateDirectoryAsync, writePrivateFileAsync } from "../kernel/async-files"
 import containerfile from "./image/Containerfile" with { type: "text" }
 import computer from "./image/computer.py" with { type: "text" }
 import connection from "./image/connection.cjs" with { type: "text" }
@@ -15,9 +15,9 @@ export const BOT_IMAGE = "touri-bot:8"
 // The container gateway resolver (192.168.64.1) can die while the host network
 // still works (e.g. under a VPN), so bot machines get explicit resolvers.
 export const BOT_DNS = ["1.1.1.1", "8.8.8.8"]
-export const imageContext = (root: string): string => {
+export const imageContext = async (root: string): Promise<string> => {
   const directory = join(root, "vm-image-8")
-  ensurePrivateDirectory({ root, path: directory })
+  await ensurePrivateDirectoryAsync({ root, path: directory })
   for (const [name, content] of Object.entries({
     Containerfile: containerfile,
     "network-policy.py": network,
@@ -30,6 +30,6 @@ export const imageContext = (root: string): string => {
     "connection.cjs": connection,
     "vnc-password.cjs": password,
   }))
-    atomicWriteFile({ root, path: join(directory, name), content })
+    await writePrivateFileAsync({ root, path: join(directory, name), content })
   return directory
 }

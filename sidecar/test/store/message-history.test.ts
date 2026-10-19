@@ -101,7 +101,7 @@ test("mirroring a settled reply does not requeue its tools", async () => {
   fixtures.add(fixture)
   const { database, store, kernel } = fixture
   const tools = createToolResolutions(kernel)
-  tools.reconcile(store)
+  await tools.reconcile(store)
   database.exec(`INSERT INTO threads(id,bot_id,title,created_at,updated_at) VALUES ('shared','bot','Grupo',1,1);
     INSERT INTO messages(id,thread_id,role,kind,status,run_id,text,created_at,updated_at)
       VALUES ('mirror','shared','assistant','text','complete','run-a','Resposta A',1,1);
@@ -135,7 +135,7 @@ test("late imported results enter an indexed recovery queue and remain pending a
   fixtures.add(fixture)
   const { database, store, kernel } = fixture
   const tools = createToolResolutions(kernel)
-  tools.reconcile(store)
+  await tools.reconcile(store)
   const explain = database.prepare(`EXPLAIN QUERY PLAN ${PENDING_TOOL_RECOVERY_SQL} AND p.thread_id = ?`)
   const plan = (explain.all("thread") as Array<{ detail: string }>).map((row) => row.detail).join("\n")
   explain.finalize()

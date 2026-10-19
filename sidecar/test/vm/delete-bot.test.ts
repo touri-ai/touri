@@ -13,6 +13,7 @@ import {
 import { createGroupRuntime } from "../../src/groups/runtime"
 import { createGroupStore } from "../../src/groups/store"
 import { createKernel } from "../../src/kernel"
+import { collectUnusedOutputBlobs } from "../../src/kernel/data-maintenance"
 import { createEventBus } from "../../src/kernel/event-bus"
 import { createRuntimeEngine } from "../../src/runtime/engine"
 import { createRuntimePersistence } from "../../src/runtime/persistence"
@@ -25,7 +26,13 @@ const cleanups: Array<() => Promise<void>> = []
 afterEach(async () => {
   for (const cleanup of cleanups.splice(0)) await cleanup()
 })
-const fixture = async ({ callHost }: { callHost?: Kernel["callHost"] } = {}) => {
+const fixture = async ({
+  callHost,
+  collectBlobs,
+}: {
+  callHost?: Kernel["callHost"]
+  collectBlobs?: typeof collectUnusedOutputBlobs
+} = {}) => {
   const root = mkdtempSync(join(tmpdir(), "touri-delete-bot-"))
   mkdirSync(join(root, ".codex"))
   writeFileSync(join(root, ".codex/auth.json"), JSON.stringify({ access_token: "fake-test-only" }))
@@ -61,7 +68,10 @@ const fixture = async ({ callHost }: { callHost?: Kernel["callHost"] } = {}) => 
     connectionKeys: { rotate: async () => Buffer.alloc(32), remove: async () => {} },
   })
   runtime.kernel.services.provide("vm.runtime", vm.service)
-  runtime.kernel.registerRoutes({ name: "delete-test", routes: [deleteBotRoute(runtime.kernel, vm.service)] })
+  runtime.kernel.registerRoutes({
+    name: "delete-test",
+    routes: [deleteBotRoute(runtime.kernel, vm.service, collectBlobs)],
+  })
   const request = (path: string, body: unknown, method = "POST") =>
     fetch(`http://127.0.0.1:${runtime.handshake.port}/api/v1${path}`, {
       method,
@@ -85,6 +95,52 @@ const fixture = async ({ callHost }: { callHost?: Kernel["callHost"] } = {}) => 
     rmSync(root, { recursive: true, force: true })
   })
   return { root, runtime, db: runtime.kernel.db as Database, fake, vm, request, create, sessionDeletions }
+}
+
+const makeCleanupFixture = async (collectBlobs = collectUnusedOutputBlobs) => {
+  const workspace = await fixture({ collectBlobs })
+  workspace.runtime.kernel.services.use("storage.maintenance")?.dispose()
+  const start = mock(() => true)
+  workspace.runtime.kernel.services.provide("storage.maintenance", {
+    start,
+    scheduleSessionKeyRetry: () => {},
+    snapshot: () => ({ running: false, processed: 0, total: 0 }),
+    dispose: () => {},
+  })
+  const bot = await workspace.create("Private cleanup", "local")
+  const path = join(workspace.runtime.kernel.paths.attachmentsDir, "cleanup-private.png")
+  writeFileSync(path, "image")
+  workspace.db
+    .query("INSERT INTO attachments(id,path,mime,bytes,created_at) VALUES ('cleanup-private',?,'image/png',5,1)")
+    .run(path)
+  workspace.db
+    .query(
+      "INSERT INTO messages(id,thread_id,role,kind,text,parts_json,created_at,updated_at) VALUES ('cleanup-files',?,'user','text','',?,1,1)",
+    )
+    .run(
+      bot.mainThreadId ?? "",
+      JSON.stringify([{ type: "image", attachmentId: "cleanup-private", mime: "image/png" }]),
+    )
+  const published = mock(() => {})
+  workspace.runtime.kernel.subscribe(({ event }) => {
+    if (event.type === "bot.deleted" && event.botId === bot.id) published()
+  })
+
+  return { workspace, bot, path, start, published }
+}
+
+const expectPendingCleanup = async (cleanup: Awaited<ReturnType<typeof makeCleanupFixture>>, response: Response) => {
+  const { workspace, bot, path, start, published } = cleanup
+
+  expect(response.status).toBe(409)
+  expect(await response.json()).toMatchObject({ code: "TOURI-E2015", origin: "bot-cleanup", retryable: false })
+  expect(workspace.db.query("SELECT id FROM bots WHERE id = ?").get(bot.id)).toBeNull()
+  expect(published).toHaveBeenCalledTimes(1)
+  expect(existsSync(path)).toBe(true)
+  expect(
+    workspace.db.query("SELECT value_json FROM settings WHERE key = ?").get(`storage.deleted-attachments:${bot.id}`),
+  ).toEqual({ value_json: JSON.stringify(["cleanup-private"]) })
+  expect(start).toHaveBeenCalledTimes(1)
 }
 
 const makeGroupHistory = async (f: Awaited<ReturnType<typeof fixture>>) => {
@@ -604,7 +660,7 @@ test("a failed browser session key deletion keeps the bot deletion successful an
   expect(workspace.db.query("SELECT key FROM settings WHERE key = ?").get(deletedBrowserSessionKey(bot.id))).toBeNull()
 })
 
-test("a failed blob collection after the bot is deleted still reports success", async () => {
+test("a malformed unrelated blob marker does not block bot deletion or shared group turns", async () => {
   const f = await fixture()
   const history = await makeGroupHistory(f)
   const live = await makeLiveGroup(f, history)
@@ -620,14 +676,10 @@ test("a failed blob collection after the bot is deleted still reports success", 
   expect(f.db.query("SELECT id FROM bots WHERE id = ?").get(history.owner.id)).toBeNull()
   expect(
     f.db.query("SELECT key FROM settings WHERE key = ?").get(`storage.deleted-attachments:${history.owner.id}`),
-  ).toEqual({
-    key: `storage.deleted-attachments:${history.owner.id}`,
+  ).toBeNull()
+  expect(f.db.query("SELECT key FROM settings WHERE key = 'storage.deleted-attachments:broken'").get()).toEqual({
+    key: "storage.deleted-attachments:broken",
   })
-  const logs = readFileSync(join(f.runtime.kernel.paths.logsDir, "sidecar.log"), "utf8")
-    .trim()
-    .split("\n")
-    .map((line) => JSON.parse(line) as { level: string; module: string; msg: string })
-  expect(logs.some((entry) => entry.level === "warn" && entry.module === "vm" && entry.msg.includes("JSON"))).toBe(true)
   expect(live.signals.get(history.participant.id)?.aborted).toBe(false)
   live.complete(history.participant.id)
   await until(() => live.persistence.getRun(turn.id)?.status === "succeeded")
@@ -852,6 +904,172 @@ test("A11 deletion removes host artifacts and login vault entries but retains sh
     `bot/${bot.id}/codex-vm-login`,
     `browser-session-key:${bot.id}`,
   ])
+})
+
+test("bot deletion waits for a deferred attachment cleanup under slow IO", async () => {
+  const entered = Promise.withResolvers<void>()
+  const resume = Promise.withResolvers<void>()
+  let calls = 0
+  const collectBlobs: typeof collectUnusedOutputBlobs = async (
+    database,
+    appData,
+    now,
+    yieldBatch,
+    deletedBotAttachments,
+    runStage,
+    onDeferred,
+    signal,
+    attachmentReferenceTimeoutMs,
+  ) => {
+    calls += 1
+    if (calls === 1) {
+      entered.resolve()
+      await resume.promise
+      onDeferred?.("changed")
+      return 0
+    }
+
+    return collectUnusedOutputBlobs(
+      database,
+      appData,
+      now,
+      yieldBatch,
+      deletedBotAttachments,
+      runStage,
+      onDeferred,
+      signal,
+      attachmentReferenceTimeoutMs,
+    )
+  }
+  const f = await fixture({ collectBlobs })
+  const bot = await f.create("Slow cleanup", "local")
+  const other = await f.create("Shared cleanup", "local")
+  const privateAttachment = join(f.runtime.kernel.paths.attachmentsDir, "slow-private.png")
+  const sharedAttachment = join(f.runtime.kernel.paths.attachmentsDir, "slow-shared.png")
+  writeFileSync(privateAttachment, "image")
+  writeFileSync(sharedAttachment, "image")
+  for (const [id, path] of [
+    ["slow-private", privateAttachment],
+    ["slow-shared", sharedAttachment],
+  ] as const) {
+    f.db.query("INSERT INTO attachments(id,path,mime,bytes,created_at) VALUES (?,?,'image/png',5,1)").run(id, path)
+  }
+  for (const [current, ids] of [
+    [bot, ["slow-private", "slow-shared"]],
+    [other, ["slow-shared"]],
+  ] as const) {
+    f.db
+      .query(
+        "INSERT INTO messages(id,thread_id,role,kind,text,parts_json,created_at,updated_at) VALUES (?,?, 'user','text','',?,1,1)",
+      )
+      .run(
+        `slow-files-${current.id}`,
+        current.mainThreadId ?? "",
+        JSON.stringify(ids.map((attachmentId) => ({ type: "image", attachmentId, mime: "image/png" }))),
+      )
+  }
+
+  let responseReceived = false
+  const deletion = f.request(`/bots/${bot.id}`, { name: bot.name }, "DELETE").then((response) => {
+    responseReceived = true
+    return response
+  })
+  await entered.promise
+  const responseArrivedDuringSlowIo = responseReceived
+  resume.resolve()
+  const response = await deletion
+
+  expect(responseArrivedDuringSlowIo).toBe(false)
+  expect(response.status).toBe(200)
+  expect(calls).toBe(2)
+  expect(existsSync(privateAttachment)).toBe(false)
+  expect(f.db.query("SELECT id FROM attachments WHERE id='slow-private'").get()).toBeNull()
+  expect(existsSync(sharedAttachment)).toBe(true)
+  expect(f.db.query("SELECT id FROM attachments WHERE id='slow-shared'").get()).toEqual({ id: "slow-shared" })
+})
+
+test("sustained attachment deferrals stop after three passes with exponential backoff", async () => {
+  const recordAttempt = mock((time: number) => time)
+  const collectBlobs: typeof collectUnusedOutputBlobs = async (
+    _database,
+    _appData,
+    _now,
+    _yieldBatch,
+    _attachments,
+    _runStage,
+    onDeferred,
+  ) => {
+    recordAttempt(performance.now())
+    onDeferred?.("changed")
+    return 0
+  }
+  const cleanup = await makeCleanupFixture(collectBlobs)
+  const { workspace, bot } = cleanup
+
+  const response = await workspace.request(`/bots/${bot.id}`, { name: bot.name }, "DELETE")
+
+  await expectPendingCleanup(cleanup, response)
+  expect(recordAttempt).toHaveBeenCalledTimes(3)
+  const [first = 0, second = 0, third = 0] = recordAttempt.mock.calls.map(([time]) => time)
+  expect(second - first).toBeGreaterThanOrEqual(950)
+  expect(third - second).toBeGreaterThanOrEqual(1950)
+}, 10_000)
+
+test("an attachment collection exception reports deletion with cleanup pending and restarts maintenance", async () => {
+  const collectBlobs = mock(async () => {
+    throw new Error("private cleanup diagnostic")
+  })
+  const cleanup = await makeCleanupFixture(collectBlobs)
+  const { workspace, bot } = cleanup
+
+  const response = await workspace.request(`/bots/${bot.id}`, { name: bot.name }, "DELETE")
+
+  await expectPendingCleanup(cleanup, response)
+  expect(collectBlobs).toHaveBeenCalledTimes(1)
+})
+
+test("a pending storage upgrade reports deferred cleanup without starting a collection pass", async () => {
+  const collectBlobs = mock(collectUnusedOutputBlobs)
+  const cleanup = await makeCleanupFixture(collectBlobs)
+  const { workspace, bot } = cleanup
+  workspace.db
+    .query("INSERT OR REPLACE INTO schema_meta(key,value) VALUES ('storage_upgrade_22',?)")
+    .run(JSON.stringify({ cursor: 0, total: 1, backup: false }))
+
+  const response = await workspace.request(`/bots/${bot.id}`, { name: bot.name }, "DELETE")
+
+  await expectPendingCleanup(cleanup, response)
+  expect(collectBlobs).not.toHaveBeenCalled()
+  const deferred = mock(() => {})
+  expect(
+    await collectUnusedOutputBlobs(
+      workspace.db,
+      workspace.runtime.kernel.paths.appData,
+      Date.now(),
+      undefined,
+      undefined,
+      undefined,
+      deferred,
+    ),
+  ).toBe(0)
+  expect(deferred).toHaveBeenCalledWith("changed")
+})
+
+test("a completed deletion intentionally retains private attachments pinned by a backup", async () => {
+  const cleanup = await makeCleanupFixture()
+  const { workspace, bot, path, start } = cleanup
+  workspace.db.query("INSERT INTO storage_backup_attachments(attachment_id) VALUES ('cleanup-private')").run()
+
+  const response = await workspace.request(`/bots/${bot.id}`, { name: bot.name }, "DELETE")
+
+  expect(response.status).toBe(200)
+  expect(workspace.db.query("SELECT id FROM bots WHERE id = ?").get(bot.id)).toBeNull()
+  expect(existsSync(path)).toBe(true)
+  expect(workspace.db.query("SELECT id FROM attachments WHERE id = 'cleanup-private'").get()).not.toBeNull()
+  expect(
+    workspace.db.query("SELECT key FROM settings WHERE key = ?").get(`storage.deleted-attachments:${bot.id}`),
+  ).toBeNull()
+  expect(start).not.toHaveBeenCalled()
 })
 
 test("A11 deleting a symlinked bot home preserves the shared project target", async () => {

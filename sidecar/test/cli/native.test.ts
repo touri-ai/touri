@@ -15,15 +15,15 @@ import { init as initNotify } from "../../src/notify"
 import { createRuntimePersistence } from "../../src/runtime/persistence"
 import { init as initStore } from "../../src/store"
 
-const cleanups: Array<() => void> = []
-afterEach(() => {
-  for (const cleanup of cleanups.splice(0).reverse()) cleanup()
+const cleanups: Array<() => void | Promise<void>> = []
+afterEach(async () => {
+  for (const cleanup of cleanups.splice(0).reverse()) await cleanup()
 })
 
 const harness = async () => {
   const root = mkdtempSync(join(tmpdir(), "touri-native-"))
   cleanups.push(() => rmSync(root, { recursive: true, force: true }))
-  const auth = openAuthStore({ filename: join(root, "auth.db") })
+  const auth = await openAuthStore({ filename: join(root, "auth.db") })
   cleanups.push(() => auth.close())
   const secrets = createSecretStore({ dir: root, env: { TOURI_SECRETS_KEY: "test" } })
   const runtime = createKernel({
@@ -44,7 +44,7 @@ const harness = async () => {
   await initStore(runtime.kernel)
   await initNotify(runtime.kernel)
   const base = `http://127.0.0.1:${runtime.handshake.port}`
-  const { code } = auth.createPairingCode()
+  const { code } = await auth.createPairingCode()
   const response = await fetch(`${base}/pair`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -161,7 +161,7 @@ test("a paired native device streams events, responds, dismisses notifications a
     [`/api/bots/${bot.id}/messages`, { text: "hello" }],
   ]
   for (const [path, body] of endpoints) expect((await h.call(path, body, "dev-ui-token")).status).toBe(401)
-  h.auth.revokeDevice(h.deviceId)
+  await h.auth.revokeDevice(h.deviceId)
   for (const [path, body] of endpoints) expect((await h.call(path, body)).status).toBe(401)
 })
 
@@ -203,7 +203,7 @@ for (const failure of ["missing-run", "exception"] as const) {
 test("pair --client --print-token emits only a usable device token and saves a private client config", async () => {
   const h = await harness()
   const dataDir = join(h.root, "client")
-  const { code } = h.auth.createPairingCode()
+  const { code } = await h.auth.createPairingCode()
   const child = Bun.spawn({
     cmd: [
       process.execPath,

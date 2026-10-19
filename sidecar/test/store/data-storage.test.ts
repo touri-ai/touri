@@ -243,7 +243,7 @@ test("live output stays inline and completion writes one content-addressed body 
     expect(f.database.query("SELECT COUNT(*) AS n FROM attachments").get()).toEqual({ n: 1 })
     insert(f, "completed", parts)
     f.database.query("UPDATE messages SET updated_at = 1 WHERE id = 'completed'").run()
-    compactMessageBatch({ database: f.database, appData: f.root, cursor: 0, total: 100 })
+    await compactMessageBatch({ database: f.database, appData: f.root, cursor: 0, total: 100 })
     const summary = JSON.parse(
       (f.database.query("SELECT parts_json FROM messages WHERE id = 'completed'").get() as { parts_json: string })
         .parts_json,
@@ -346,10 +346,10 @@ test("retention releases completed recovery outputs when only snapshot locators 
       "INSERT INTO runs(id,thread_id,bot_id,provider,trigger,status,queued_at) SELECT 'r','t','b',provider,'user','succeeded',1 FROM bots WHERE id='b'",
     )
     const tools = createToolResolutions(f.runtime.kernel)
-    const part = tools.record({ id: "r", threadId: "t" } as Run, tool("Resultado antigo. ".repeat(1000)))
+    const part = await tools.recordAsync({ id: "r", threadId: "t" } as Run, tool("Resultado antigo. ".repeat(1000)))
     insert(f, "old-recovery", [part])
     f.database.query("UPDATE messages SET run_id = 'r', updated_at = 1 WHERE id = 'old-recovery'").run()
-    compactMessageBatch({ database: f.database, appData: f.root, cursor: 0, total: 100 })
+    await compactMessageBatch({ database: f.database, appData: f.root, cursor: 0, total: 100 })
     const record = f.database.query("SELECT part_json FROM tool_resolutions WHERE run_id = 'r'").get() as {
       part_json: string
     }
@@ -380,7 +380,7 @@ test("30-day retention preserves conversation text, tool summaries, status and F
     insert(f, "recent", [tool("y".repeat(80_000))])
     f.database.query("UPDATE messages SET updated_at = ? WHERE id = 'old'").run(Date.now() - 31 * 86400_000)
     const before = f.database.query("SELECT COUNT(*) AS n FROM transcript_entries").get()
-    compactMessageBatch({ database: f.database, appData: f.root, cursor: 0, total: 100 })
+    await compactMessageBatch({ database: f.database, appData: f.root, cursor: 0, total: 100 })
     const old = JSON.parse(
       (f.database.query("SELECT parts_json FROM messages WHERE id = 'old'").get() as { parts_json: string }).parts_json,
     ) as MessagePart[]
@@ -406,7 +406,7 @@ test("30-day retention preserves conversation text, tool summaries, status and F
     })
     expect(f.store.search({ q: "preservado", limit: 10 })).toHaveLength(2)
     expect((f.store.activePath({ threadId: "t" })[0]?.parts[0] as ToolCallPart)?.outputAttachmentId).toBeDefined()
-    compactMessageBatch({ database: f.database, appData: f.root, cursor: 0, total: 100 })
+    await compactMessageBatch({ database: f.database, appData: f.root, cursor: 0, total: 100 })
     expect(f.database.query("SELECT COUNT(*) AS n FROM transcript_entries").get()).toEqual(before)
     expect(
       JSON.parse(
@@ -440,7 +440,7 @@ test("retention preference persists, rejects invalid values and 0 keeps old deta
     expect(f.runtime.kernel.services.use("store.settings")?.().dataRetentionDays).toBe(0)
     insert(f, "old", [tool("Detalhes originais")])
     f.database.query("UPDATE messages SET updated_at = 1").run()
-    compactMessageBatch({ database: f.database, appData: f.root, cursor: 0, total: 100 })
+    await compactMessageBatch({ database: f.database, appData: f.root, cursor: 0, total: 100 })
     expect((f.store.activePath({ threadId: "t" })[0]?.parts[0] as ToolCallPart)?.outputJson).toBe("Detalhes originais")
     f.runtime.stop()
     const database = openDatabase({ filename: join(f.root, "touri.db") })
@@ -470,7 +470,7 @@ test("maintenance skips streaming messages and threads with active runs, and off
       },
     ])
     insert(f, "diff", [{ type: "file_change", callId: "diff", paths: ["a.txt"], diff: "d".repeat(80_000) }])
-    const next = compactMessageBatch({ database: f.database, appData: f.root, cursor: 0, total: 100, limit: 2 })
+    const next = await compactMessageBatch({ database: f.database, appData: f.root, cursor: 0, total: 100, limit: 2 })
     expect(next.cursor).toBe(2)
     expect(
       JSON.parse(
@@ -483,7 +483,7 @@ test("maintenance skips streaming messages and threads with active runs, and off
     )
     f.database.query("UPDATE messages SET updated_at = 1").run()
     const before = f.database.query("SELECT parts_json FROM messages ORDER BY rowid").all()
-    compactMessageBatch({ database: f.database, appData: f.root, cursor: 0, total: 100 })
+    await compactMessageBatch({ database: f.database, appData: f.root, cursor: 0, total: 100 })
     expect(f.database.query("SELECT parts_json FROM messages ORDER BY rowid").all()).toEqual(before)
   } finally {
     f.close()
@@ -704,7 +704,7 @@ test("interrupted tool reconciliation preserves file-backed results even without
     const run = { id: "r", threadId: "t" } as Run
     const tools = createToolResolutions(f.runtime.kernel)
     const output = "Resultado preservado. ".repeat(10_000)
-    const recorded = tools.record(run, tool(output))
+    const recorded = await tools.recordAsync(run, tool(output))
     expect(recorded.outputAttachmentId).toBeString()
     expect(recorded).toMatchObject({ outputJson: null, resolution: "succeeded" })
     const row = f.database.query("SELECT part_json FROM tool_resolutions WHERE run_id = 'r'").get() as {

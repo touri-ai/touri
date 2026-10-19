@@ -98,6 +98,7 @@ test("the lock rejects a second live runtime and takes over a suspended orphan b
     contender = spawn(root)
     expect(await contender.exited).not.toBe(0)
     expect(await new Response(contender.stderr).text()).toContain("Já existe um runtime ativo")
+    await waitFor(() => readFileSync(join(root, "logs/sidecar.log"), "utf8").includes("./runtime/index.ts"))
     expect(
       readFileSync(join(root, "logs/sidecar.log"), "utf8").match(/initialized module \.\/runtime\/index.ts/g),
     ).toHaveLength(1)

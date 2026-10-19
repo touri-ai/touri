@@ -34,7 +34,8 @@ import {
   uniqueApprovalNotifications,
 } from "./approvalState"
 import { moveComposerDraft } from "./composerDraft"
-import { isServiceUnavailable, userFacingError } from "./errors"
+import { getDocumentLocale } from "./documentLanguage"
+import { ApiError, isServiceUnavailable, userFacingError } from "./errors"
 import { adoptProviderLogin } from "./features/bots/providerLogin"
 import { useDoctorReport } from "./features/doctor/useDoctorReport"
 import { localizeNotice, t } from "./i18n"
@@ -1670,7 +1671,23 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
       updateBot,
       updateBotModel,
       deleteBot: async (botId, name, deleteVolumes) => {
-        await api.request("DELETE /bots/:id", { name, deleteVolumes }, { id: botId })
+        try {
+          await api.request("DELETE /bots/:id", { name, deleteVolumes }, { id: botId })
+        } catch (error) {
+          if (!(error instanceof ApiError) || error.code !== "TOURI-E2015") throw error
+
+          const notice = t(
+            "O bot foi excluído, mas a limpeza dos anexos privados está pendente. O touri tentará concluir a limpeza automaticamente.",
+            {},
+            getDocumentLocale(document.documentElement),
+          )
+          setData((current) => ({
+            ...withoutBot(current, botId),
+            notice,
+          }))
+          return
+        }
+
         setData((current) => withoutBot(current, botId))
       },
       createBot,

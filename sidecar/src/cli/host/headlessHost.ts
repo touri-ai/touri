@@ -23,11 +23,11 @@ const handlers: Record<string, (args: { deps: Deps; params: unknown }) => Promis
   "keychain.get": async ({ deps, params }) => done({ value: deps.secrets.get(account(params)) }),
   "keychain.set": async ({ deps, params }) => {
     const input = params as HostMethods["keychain.set"]["params"]
-    deps.secrets.set({ account: input.account, value: input.value })
+    await deps.secrets.set({ account: input.account, value: input.value })
     return done({})
   },
   "keychain.delete": async ({ deps, params }) => {
-    deps.secrets.delete(account(params))
+    await deps.secrets.delete(account(params))
     return done({})
   },
   notify: async ({ deps, params }) => {

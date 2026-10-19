@@ -43,7 +43,9 @@ export const createNotifier = ({ kernel, store, hub }: { kernel: Kernel; store: 
       ? (kernel.services.use("store.api")?.getThread({ threadId: input.threadId })?.groupThreadId ?? input.threadId)
       : null
     const existing = input.requestId ? store.byRequestId(input.requestId) : null
-    if (existing && existing.kind === input.kind && existing.threadId === threadId) return existing
+    // A finished deferral may be announced again later; only an open one absorbs the repeat.
+    const reusable = existing && (input.kind !== "routine-deferred" || existing.resolvedAt === null)
+    if (reusable && existing.kind === input.kind && existing.threadId === threadId) return existing
     const { notification, seq } = store.insert({
       ...input,
       threadId,

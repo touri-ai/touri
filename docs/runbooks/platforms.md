@@ -57,6 +57,8 @@ The sidecar is `src-tauri/binaries/touri-sidecar-x86_64-pc-windows-msvc.exe`. MS
 
 Desktop data uses `%APPDATA%\touri`, with `TOURI_APP_DATA` as an override. The shell passes its own executable as `TOURI_DESKTOP_HELPER`. When running sidecar source independently on Windows, set that variable to a built `touri.exe`. The portable test/smoke scripts locate `src-tauri/target/debug/touri.exe`, built by `cargo test`.
 
+Single-instance handoff uses a named pipe whose name carries the user's SID (and, with `TOURI_APP_DATA`, a hash of that path). Its DACL admits only SYSTEM and that user, and it refuses remote clients. A second launch exits after checking that the pipe's server process runs as the same user; it lets that process take the foreground, and the running instance shows its window. A pipe held by another account never makes a launch exit: touri starts without the handoff.
+
 The helper runs before GUI initialization. Private file operations use current-user/SYSTEM DACLs and hold directory handles against ancestor replacement. Reparse points and device/alternate-stream names are rejected; private file reads and replacements also reject hard links. Database preparation, atomic writes and bot-home removal use this boundary. Runtime ownership uses a native byte-range lock, released when the sidecar's helper input closes. Parent monitoring uses a process handle; ordinary child protocols use Windows jobs so cancellation cleans their process trees. POSIX libraries are loaded only by operations that use them.
 
 The provider-login PTY interface selects ConPTY and streams browser-code input through stdin, flushes terminal prompts and preserves the child exit status. It accepts native provider executables; an npm batch wrapper may need its underlying `node.exe` entrypoint instead. The current settings UI still imports host login files or pasted credentials; no terminal/login UI was added. Host credential-file reads use the native bounded-file interface on Windows. No real provider login was used in development or tests.
@@ -69,7 +71,6 @@ Docker Desktop reuses the OCI image, lifecycle, named volumes, nft/DNS policy an
 
 These features still need implementation:
 
-- Single-instance activation/handoff. The runtime lock prevents concurrent data writers, but the Windows shell handoff remains a stub.
 - Native identity for drag-and-drop attachment grants. Grants explicitly fail closed on Windows.
 - Local workspace directory-descriptor browsing and streamed local evidence-image reads. These paths fail closed rather than emulate POSIX descriptors.
 - Local Chromium's extra pipe descriptors. Use the container browser; host computer control is hidden.

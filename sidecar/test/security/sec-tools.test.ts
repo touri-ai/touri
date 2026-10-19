@@ -17,6 +17,7 @@ import { createStandingGrantStore } from "../../src/approvals/grants"
 import { createBrowserEngine } from "../../src/browser/engine"
 import type { CdpClient } from "../../src/browser/types"
 import { createKernel } from "../../src/kernel"
+import { flushFileIoAsync } from "../../src/kernel/async-files"
 import { createRedactor } from "../../src/kernel/redact"
 import { createToolRouter } from "../../src/mcp/router"
 import { createProjectStore } from "../../src/projects/repository"
@@ -802,6 +803,7 @@ test("A13 structured logs redact labels and registered JSON-escaped credentials"
       detail: "Authorization: Bearer unknown-synthetic-token",
     },
   })
+  await flushFileIoAsync()
   const log = readFileSync(join(f.root, "logs/sidecar.log"), "utf8")
   expect(log.includes(JSON.stringify(value).slice(1, -1))).toBe(false)
   expect(log.includes("unknown-synthetic-credential")).toBe(false)

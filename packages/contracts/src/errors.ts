@@ -153,6 +153,13 @@ export const errorRegistry = {
     "Não foi possível remover o histórico e os vínculos do bot. Tente excluir novamente; se persistir, envie um relato do problema.",
     409,
   ),
+  "TOURI-E2015": entry(
+    "storage",
+    "bot-cleanup",
+    false,
+    "O bot foi excluído, mas a limpeza dos anexos privados está pendente. O touri tentará concluir a limpeza automaticamente.",
+    409,
+  ),
   "TOURI-E3000": entry(
     "provider",
     "cli",

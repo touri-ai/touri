@@ -1,6 +1,11 @@
-import { existsSync, readlinkSync, realpathSync, symlinkSync, unlinkSync } from "node:fs"
+import { existsSync, realpathSync } from "node:fs"
 import { dirname, join } from "node:path"
-import { atomicWriteFile, ensurePrivateDirectory, readBoundedFile } from "../../kernel/files"
+import {
+  ensurePrivateDirectoryAsync,
+  replacePrivateSymlinkAsync,
+  writePrivateFileAsync,
+} from "../../kernel/async-files"
+import { readBoundedFile } from "../../kernel/files"
 import { asRecord } from "../utils"
 
 const providerKeys = [
@@ -85,26 +90,12 @@ const hostConfig = (hostHome: string): string => {
 }
 
 /** Keep host login refreshes shared without importing the host's sessions or executable configuration. */
-export const prepareHostCodexHome = (appData: string, botId: string, hostHome: string): string => {
+export const prepareHostCodexHome = async (appData: string, botId: string, hostHome: string): Promise<string> => {
   const home = join(appData, "provider-homes/codex", botId)
-  ensurePrivateDirectory({ root: appData, path: home })
-  atomicWriteFile({ root: appData, path: join(home, "config.toml"), content: hostConfig(hostHome) })
+  await ensurePrivateDirectoryAsync({ root: appData, path: home })
+  await writePrivateFileAsync({ root: appData, path: join(home, "config.toml"), content: hostConfig(hostHome) })
   const auth = join(home, "auth.json")
   const source = join(hostHome, ".codex/auth.json")
-  let linked = false
-  try {
-    linked = readlinkSync(auth) === source
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT" && (error as NodeJS.ErrnoException).code !== "EINVAL")
-      throw error
-  }
-  if (!linked) {
-    try {
-      unlinkSync(auth)
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error
-    }
-    symlinkSync(source, auth)
-  }
+  await replacePrivateSymlinkAsync({ root: appData, path: auth, target: source })
   return home
 }

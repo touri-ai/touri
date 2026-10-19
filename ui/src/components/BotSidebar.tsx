@@ -19,6 +19,7 @@ import { paletteShortcutLabel } from "../features/commandPalette/shortcut"
 import { getRoutineRunDateLabel, getRoutineRunSidebarDateLabel, t } from "../i18n"
 import {
   isFailureNotice,
+  isInformationalNotice,
   pendingNotifications,
   reconcileFailureNotifications,
   relativeThreadDate,
@@ -438,7 +439,9 @@ const BotEntry = ({
       .map((message) => message.updatedAt),
     ...notifications.filter((item) => item.botId === bot.id && item.kind === "done").map((item) => item.createdAt),
   )
-  const failure = attention.find(isFailureNotice)
+  const actionable = attention.filter((item) => !isInformationalNotice(item))
+  const postponed = attention.some(isInformationalNotice)
+  const failure = actionable.find(isFailureNotice)
   const failed = Boolean(
     failure ||
       (latestAssistant?.status === "failed" &&
@@ -459,16 +462,18 @@ const BotEntry = ({
           : waiting.kind === "takeover"
             ? t("your help")
             : t("your decision")
-        : attention.length
+        : actionable.length
           ? t("review the interrupted task")
           : null
   const status = reason
     ? t("Waiting for you: {reason}", { reason })
     : failed
       ? t("Reply interrupted")
-      : bot.paused
-        ? t("Paused")
-        : null
+      : postponed
+        ? t("Routine postponed")
+        : bot.paused
+          ? t("Paused")
+          : null
   const badgeState =
     approvals.length || waiting
       ? "waiting"

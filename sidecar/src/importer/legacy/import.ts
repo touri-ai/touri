@@ -1,7 +1,6 @@
 import { Database } from "bun:sqlite"
 import { createHash } from "node:crypto"
-import { mkdtempSync } from "node:fs"
-import { rm } from "node:fs/promises"
+import { mkdtemp, rm } from "node:fs/promises"
 import { homedir, tmpdir } from "node:os"
 import { basename, isAbsolute, join, relative, resolve } from "node:path"
 import type {
@@ -18,12 +17,13 @@ import type {
   Provider,
   ThreadUsage,
 } from "@touri/contracts"
+import { writePrivateFileAsync } from "../../kernel/async-files"
 import { getMeasuredStage } from "../../kernel/background-task"
-import { atomicWriteFile, attachmentMime } from "../../kernel/files"
+import { attachmentMime } from "../../kernel/files"
 import { refreshMessageSearch } from "../../kernel/message-search"
 import type { PerformanceStageRunner } from "../../kernel/performance"
 import { DEPRECATED_IMPORT_ALIAS } from "../deprecatedAliases"
-import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, rmSync, statSync } from "./fs"
+import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, statSync } from "./fs"
 import { assertImportOwner, importIdentity, legacySourceOrigin, sourceOrigin } from "./identity"
 import { type LegacySnapshot, openLegacySnapshot } from "./snapshot"
 import { readStagedJson, type StagedSource, stageLegacySource } from "./transport"
@@ -745,7 +745,7 @@ const validatedAttachmentSourcePath = (staged: StagedSource, filename: string): 
   }
 }
 
-const prepareAttachments = ({
+const prepareAttachments = async ({
   kernel,
   staged,
   messages,
@@ -761,7 +761,9 @@ const prepareAttachments = ({
   counts: ImportCounts
   warnings: Array<string>
   dryRun: boolean
-}): Map<string, { id: string; path: string; mime: string; bytes: number; originPath: string; sourceHash: string }> => {
+}): Promise<
+  Map<string, { id: string; path: string; mime: string; bytes: number; originPath: string; sourceHash: string }>
+> => {
   const result = new Map<
     string,
     { id: string; path: string; mime: string; bytes: number; originPath: string; sourceHash: string }
@@ -793,7 +795,7 @@ const prepareAttachments = ({
         throw new Error("Import attachment collision")
       const target = existing?.path ?? attachmentTarget({ kernel, hash: id, mime })
       if (!dryRun && !existsSync(target)) {
-        atomicWriteFile({ root: kernel.paths.appData, path: target, content: content })
+        await writePrivateFileAsync({ root: kernel.paths.appData, path: target, content })
       }
       const sourceHash = sha256(canonical({ path: filename, mime: attachment.mime, contentHash: id }))
       result.set(`${message.id}:${attachment.path}`, {
@@ -953,18 +955,48 @@ const prepareMessages = ({
   return result
 }
 
-const upsertBots = ({
+type BotInstructions = { text: string; hash: string; edited: boolean }
+
+const prepareBotInstructions = async ({
   kernel,
   database,
   selected,
-  importId,
-  counts,
-  warnings,
   dryRun,
 }: {
   kernel: Kernel
   database: Database
   selected: Array<SelectedBot>
+  dryRun: boolean
+}): Promise<Map<string, BotInstructions>> => {
+  const instructionsById = new Map<string, BotInstructions>()
+  for (const bot of selected) {
+    const previous = readImportRecord(database, "bot", bot.source.id)
+    const localSoulPath = join(bot.homeDir, "SOUL.md")
+    const localSoulHash = existsSync(localSoulPath) ? sha256(readFileSync(localSoulPath)) : null
+    const localSoulEdited =
+      localSoulHash !== null &&
+      (previous === null ? localSoulHash !== bot.soulHash : localSoulHash !== previous.content_hash)
+    const text = localSoulEdited ? readFileSync(localSoulPath, "utf8") : bot.soul
+    const hash = localSoulEdited ? sha256(text) : bot.soulHash
+    if (!dryRun && !localSoulEdited)
+      await writePrivateFileAsync({ root: kernel.paths.appData, path: localSoulPath, content: bot.soul })
+    instructionsById.set(bot.source.id, { text, hash, edited: localSoulEdited })
+  }
+  return instructionsById
+}
+
+const upsertBots = ({
+  database,
+  selected,
+  instructionsById,
+  importId,
+  counts,
+  warnings,
+  dryRun,
+}: {
+  database: Database
+  selected: Array<SelectedBot>
+  instructionsById: Map<string, BotInstructions>
   importId: string
   counts: ImportCounts
   warnings: Array<string>
@@ -973,17 +1005,8 @@ const upsertBots = ({
   for (const bot of selected) {
     const key = countFromRecord({ database, kind: "bot", sourceId: bot.source.id, sourceHash: bot.soulHash })
     increment(counts, key)
-    const previous = readImportRecord(database, "bot", bot.source.id)
-    const localSoulPath = join(bot.homeDir, "SOUL.md")
-    const localSoulHash = existsSync(localSoulPath) ? sha256(readFileSync(localSoulPath)) : null
-    const localSoulEdited =
-      localSoulHash !== null &&
-      (previous === null ? localSoulHash !== bot.soulHash : localSoulHash !== previous.content_hash)
-    const instructions = localSoulEdited ? readFileSync(localSoulPath, "utf8") : bot.soul
-    const instructionsHash = localSoulEdited ? sha256(instructions) : bot.soulHash
-    if (!dryRun && !localSoulEdited) {
-      atomicWriteFile({ root: kernel.paths.appData, path: localSoulPath, content: bot.soul })
-    }
+    const instructions = instructionsById.get(bot.source.id)
+    if (!instructions) throw new Error(`Missing prepared bot instructions for ${bot.source.id}`)
     database
       .query(
         "INSERT INTO bots (id, name, title, description, color, instructions, instructions_hash, provider, model, reasoning_effort, access, approvals, project_id, cwd, home_dir, main_thread_id, browser_enabled, computer_use, notifications, section, sort_order, paused, source, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 'failures', ?, ?, 0, 'legacy', ?, ?) ON CONFLICT(id) DO UPDATE SET name=excluded.name, title=excluded.title, description=excluded.description, color=excluded.color, instructions=excluded.instructions, instructions_hash=excluded.instructions_hash, provider=excluded.provider, model=excluded.model, access=excluded.access, approvals=excluded.approvals, project_id=excluded.project_id, cwd=excluded.cwd, home_dir=excluded.home_dir, main_thread_id=excluded.main_thread_id, browser_enabled=excluded.browser_enabled, computer_use=0, section=excluded.section, sort_order=excluded.sort_order, source='legacy', updated_at=excluded.updated_at",
@@ -994,8 +1017,8 @@ const upsertBots = ({
         bot.source.title ?? null,
         bot.source.description ?? null,
         bot.source.color ?? null,
-        instructions,
-        instructionsHash,
+        instructions.text,
+        instructions.hash,
         bot.provider,
         bot.source.modelSelection?.model ?? null,
         null,
@@ -1019,7 +1042,7 @@ const upsertBots = ({
       hash: bot.soulHash,
       importId,
     })
-    if (!dryRun && localSoulEdited)
+    if (!dryRun && instructions.edited)
       warnings.push(`${bot.source.name}: local SOUL.md edit kept; source SOUL was not written`)
   }
 }
@@ -1263,23 +1286,48 @@ const upsertMessages = ({
   }
 }
 
-const importSessions = ({
+const prepareCodexSessionFiles = async ({
   kernel,
+  selected,
+  staged,
+  dryRun,
+}: {
+  kernel: Kernel
+  selected: Array<SelectedBot>
+  staged: StagedSource
+  dryRun: boolean
+}): Promise<void> => {
+  if (dryRun) return
+  for (const bot of selected) {
+    const cursors = [
+      { cursor: bot.source.resumeCursors?.codex, threadId: bot.source.threadId },
+      ...(bot.source.tasks ?? []).map((task) => ({ cursor: task.resumeCursors?.codex, threadId: task.threadId })),
+    ]
+    for (const cursor of cursors) {
+      if (!cursor.cursor) continue
+      const rollout = staged.sessionPaths.get(cursor.threadId)
+      if (!rollout || !existsSync(rollout)) continue
+      const target = join(staged.dir, "..", "..", "..", "sessions", "codex", `${cursor.threadId}-${basename(rollout)}`)
+      const finalTarget = resolve(target)
+      if (!existsSync(finalTarget))
+        await writePrivateFileAsync({ root: kernel.paths.appData, path: finalTarget, content: readFileSync(rollout) })
+    }
+  }
+}
+
+const importSessions = ({
   database,
   selected,
   staged,
   importId,
   counts,
-  dryRun,
   identity,
 }: {
-  kernel: Kernel
   database: Database
   selected: Array<SelectedBot>
   staged: StagedSource
   importId: string
   counts: ImportCounts
-  dryRun: boolean
   identity: ReturnType<typeof importIdentity>
 }): void => {
   for (const bot of selected) {
@@ -1300,9 +1348,6 @@ const importSessions = ({
       increment(counts, countFromRecord({ database, kind: "codex_session", sourceId, sourceHash }))
       const target = join(staged.dir, "..", "..", "..", "sessions", "codex", `${cursor.threadId}-${basename(rollout)}`)
       const finalTarget = resolve(target)
-      if (!dryRun && !existsSync(finalTarget)) {
-        atomicWriteFile({ root: kernel.paths.appData, path: finalTarget, content: content })
-      }
       const sessionId = identity.id("codex_session", JSON.stringify([cursor.threadId, cursor.cursor]))
       assertImportOwner(database, "provider_sessions", sessionId, "thread_id", cursor.threadId)
       database
@@ -1323,14 +1368,20 @@ const importSessions = ({
   }
 }
 
-const writeMemoryFiles = ({
+type MemoryFilePlan = {
+  bot: SelectedBot
+  relativePath: string
+  sourceHash: string
+  target: string
+  localEdited: boolean
+}
+
+const prepareMemoryFiles = async ({
   kernel,
   staged,
   selected,
   database,
   importId,
-  counts,
-  warnings,
   dryRun,
 }: {
   kernel: Kernel
@@ -1338,10 +1389,9 @@ const writeMemoryFiles = ({
   selected: Array<SelectedBot>
   database: Database
   importId: string
-  counts: ImportCounts
-  warnings: Array<string>
   dryRun: boolean
-}): void => {
+}): Promise<Array<MemoryFilePlan>> => {
+  const plans: Array<MemoryFilePlan> = []
   for (const bot of selected) {
     const workspace = join(staged.dir, "workspaces", bot.sourceBotId)
     if (!existsSync(workspace)) continue
@@ -1360,36 +1410,45 @@ const writeMemoryFiles = ({
       const sourcePath = join(workspace, relativePath)
       const content = readFileSync(sourcePath)
       const sourceHash = sha256(content)
-      const targetRelative = relativePath
-      const target = join(bot.homeDir, targetRelative)
-      const previous = readImportRecord(database, "memory_file", `${bot.source.id}:${targetRelative}`)
+      const target = join(bot.homeDir, relativePath)
+      const previous = readImportRecord(database, "memory_file", `${bot.source.id}:${relativePath}`)
       const localEdited =
         previous !== null && existsSync(target) && sha256(readFileSync(target)) !== previous.content_hash
-      increment(
-        counts,
-        countFromRecord({
-          database,
-          kind: "memory_file",
-          sourceId: `${bot.source.id}:${targetRelative}`,
-          sourceHash,
-        }),
-      )
-      if (localEdited) {
-        warnings.push(`${bot.source.name}: local memory edit kept for ${targetRelative}`)
-        if (!dryRun)
-          atomicWriteFile({ root: kernel.paths.appData, path: `${target}.legacy-${importId}`, content: content })
-      } else if (!dryRun) {
-        atomicWriteFile({ root: kernel.paths.appData, path: target, content: content })
+      if (!dryRun) {
+        const path = localEdited ? `${target}.legacy-${importId}` : target
+        await writePrivateFileAsync({ root: kernel.paths.appData, path, content })
       }
-      recordImport({
-        database,
-        kind: "memory_file",
-        sourceId: `${bot.source.id}:${targetRelative}`,
-        localId: target,
-        hash: sourceHash,
-        importId,
-      })
+      plans.push({ bot, relativePath, sourceHash, target, localEdited })
     }
+  }
+  return plans
+}
+
+const writeMemoryFiles = ({
+  files,
+  database,
+  importId,
+  counts,
+  warnings,
+}: {
+  files: Array<MemoryFilePlan>
+  database: Database
+  importId: string
+  counts: ImportCounts
+  warnings: Array<string>
+}): void => {
+  for (const file of files) {
+    const sourceId = `${file.bot.source.id}:${file.relativePath}`
+    increment(counts, countFromRecord({ database, kind: "memory_file", sourceId, sourceHash: file.sourceHash }))
+    if (file.localEdited) warnings.push(`${file.bot.source.name}: local memory edit kept for ${file.relativePath}`)
+    recordImport({
+      database,
+      kind: "memory_file",
+      sourceId,
+      localId: file.target,
+      hash: file.sourceHash,
+      importId,
+    })
   }
 }
 
@@ -1630,7 +1689,7 @@ const persistFailedImport = ({
 export const runLegacyImport = async (args: ImportArgs): Promise<ImportResult> => {
   if (!args.options.dryRun) return executeLegacyImport(args)
   // Even failed previews must leave the live DB, expiry queue and bot files alone.
-  const root = mkdtempSync(join(tmpdir(), "touri-import-preview-"))
+  const root = await mkdtemp(join(tmpdir(), "touri-import-preview-"))
   const bytes = (args.kernel.db as Database).serialize()
   bytes[18] = 1
   bytes[19] = 1
@@ -1647,7 +1706,7 @@ export const runLegacyImport = async (args: ImportArgs): Promise<ImportResult> =
     })
   } finally {
     database.close()
-    rmSync(root, { recursive: true, force: true })
+    await rm(root, { recursive: true, force: true })
   }
 }
 
@@ -1657,8 +1716,8 @@ const executeLegacyImport = async ({ kernel, importId, options }: ImportArgs): P
   const stagingPath = join(stagingRoot, importId)
   const database = kernel.db as Database
   const origin = sourceOrigin(options.source)
-  const cleanupStaging = (): void => {
-    for (const path of stagingPaths({ stagingRoot, importId })) rmSync(path, { recursive: true, force: true })
+  const cleanupStaging = async (): Promise<void> => {
+    for (const path of stagingPaths({ stagingRoot, importId })) await rm(path, { recursive: true, force: true })
   }
   let staged!: StagedSource
   let succeeded = false
@@ -1810,10 +1869,10 @@ const executeLegacyImport = async ({ kernel, importId, options }: ImportArgs): P
         const sourcePath = validatedAttachmentSourcePath(extra, filename)
         const target = join(staged.dir, "attachments", filename)
         if (sourcePath) {
-          atomicWriteFile({ root: kernel.paths.appData, path: target, content: readFileSync(sourcePath) })
+          await writePrivateFileAsync({ root: kernel.paths.appData, path: target, content: readFileSync(sourcePath) })
         }
       }
-      rmSync(extra.dir, { recursive: true, force: true })
+      await rm(extra.dir, { recursive: true, force: true })
     }
     const resumeCursors = buildCursorList(selected)
     if (options.importCodexSessions && resumeCursors.length > 0 && staged.sessionPaths.size === 0) {
@@ -1828,7 +1887,7 @@ const executeLegacyImport = async ({ kernel, importId, options }: ImportArgs): P
       })
       for (const [threadId, path] of restaged.sessionPaths) staged.sessionPaths.set(threadId, path)
       staged.warnings.push(...restaged.warnings)
-      rmSync(restaged.dir, { recursive: true, force: true })
+      await rm(restaged.dir, { recursive: true, force: true })
     }
     const dropped: Record<string, number> = {}
     const counts = {
@@ -1843,12 +1902,39 @@ const executeLegacyImport = async ({ kernel, importId, options }: ImportArgs): P
     const perBot: Record<string, PerBotReport> = {}
     const runMessages = messages.filter((message) => message.kind === "digest")
     const warnings = [...initialWarnings]
+    const instructionsById = await prepareBotInstructions({ kernel, database, selected, dryRun: options.dryRun })
+    const attachments = await prepareAttachments({
+      kernel,
+      staged,
+      messages: importableMessages,
+      options,
+      counts: counts.attachments,
+      warnings,
+      dryRun: options.dryRun,
+    })
+    const memoryFiles = await prepareMemoryFiles({
+      kernel,
+      staged,
+      selected,
+      database,
+      importId,
+      dryRun: options.dryRun,
+    })
+    await prepareCodexSessionFiles({ kernel, selected, staged, dryRun: options.dryRun })
     const execute = (): void => {
       database.exec("BEGIN IMMEDIATE")
       database.exec("PRAGMA defer_foreign_keys = ON")
       try {
         identity.persist()
-        upsertBots({ kernel, database, selected, importId, counts: counts.bots, warnings, dryRun: options.dryRun })
+        upsertBots({
+          database,
+          selected,
+          instructionsById,
+          importId,
+          counts: counts.bots,
+          warnings,
+          dryRun: options.dryRun,
+        })
         upsertRoutines({
           database,
           routines: routinesFile.routines,
@@ -1865,15 +1951,6 @@ const executeLegacyImport = async ({ kernel, importId, options }: ImportArgs): P
           selectedIds: new Set(selected.map((bot) => bot.source.id)),
           plans,
           importId,
-        })
-        const attachments = prepareAttachments({
-          kernel,
-          staged,
-          messages: importableMessages,
-          options,
-          counts: counts.attachments,
-          warnings,
-          dryRun: options.dryRun,
         })
         const seenAttachments = new Set<string>()
         for (const attachment of attachments.values()) {
@@ -1926,23 +2003,18 @@ const executeLegacyImport = async ({ kernel, importId, options }: ImportArgs): P
         for (const plan of plans)
           database.query("UPDATE threads SET active_leaf_id = ? WHERE id = ?").run(plan.activeLeafId, plan.id)
         writeMemoryFiles({
-          kernel,
-          staged,
-          selected,
+          files: memoryFiles,
           database,
           importId,
           counts: counts.memoryFiles,
           warnings,
-          dryRun: options.dryRun,
         })
         importSessions({
-          kernel,
           database,
           selected,
           staged,
           importId,
           counts: counts.codexSessions,
-          dryRun: options.dryRun,
           identity,
         })
         identity.persist()
@@ -2006,6 +2078,6 @@ const executeLegacyImport = async ({ kernel, importId, options }: ImportArgs): P
     }
     throw error
   } finally {
-    if (succeeded) cleanupStaging()
+    if (succeeded) await cleanupStaging()
   }
 }

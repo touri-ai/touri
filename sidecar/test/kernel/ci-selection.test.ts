@@ -130,9 +130,10 @@ describe("test file discovery", () => {
   })
 })
 
-test("Linux PRs include platform, Linux and confinement tests without the full Unix suite", () => {
+test("Linux PRs include platform, worker I/O and confinement tests without the full Unix suite", () => {
   const expected = [
     "kernel/sqlite-sync-benchmark.test.ts",
+    "kernel/async-files.test.ts",
     "platform/transport.test.ts",
     "runtime/linux-folder-live.test.ts",
     "projects/linux-process-sandbox.test.ts",

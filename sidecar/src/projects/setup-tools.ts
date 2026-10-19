@@ -11,8 +11,8 @@ import {
   type ToolResult,
 } from "@touri/contracts"
 import { getDelegation } from "../groups/security"
+import { createWorkspaceDirectoryAsync } from "../kernel/async-files"
 import { canonicalPath, excludedBotFolders, parseBotFolders, withinFolder } from "../kernel/bot-folders"
-import { createWorkspaceDirectory } from "../kernel/files"
 import { folderAccessUnavailable, refreshHostFolderAccess } from "../kernel/folder-capability"
 import { getHost } from "../platform/host"
 import { createCapabilityTools } from "./capability-tools"
@@ -148,7 +148,7 @@ export const createSetupTools = ({
       },
     }
   }
-  const changed = (
+  const changed = async (
     bot: Bot,
     patch: Partial<Pick<Bot, "projectId" | "folders">>,
     text: string,
@@ -156,7 +156,7 @@ export const createSetupTools = ({
   ) => {
     const configure = kernel.services.use("bots.configureAccess")
     if (!configure) return denied("A configuração do bot está indisponível.")
-    const result = configure({ botId: bot.id, patch })
+    const result = await configure({ botId: bot.id, patch })
     if (!result.success) return result
     const automatic =
       approvedContext && snapshot(bot) !== snapshot(result.bot)
@@ -342,7 +342,7 @@ export const createSetupTools = ({
           let linked = project
           if (!linked) {
             const id = kernel.newId()
-            const created = store.createProject({
+            const created = await store.createProject({
               id,
               name,
               path,
@@ -462,14 +462,14 @@ export const createSetupTools = ({
             { path, access },
           ])
           if (!authorized()) return denied("O acesso não foi aprovado ou a configuração mudou.")
-          const result = changed(
+          const result = await changed(
             bot,
             { folders },
             `Acesso ${input.mode === "read" ? "de leitura" : "de leitura e escrita"} à pasta ${path} concedido a este bot.${target.missing ? ` Pasta ${target.path} criada.` : ""}`,
             previousAccess !== access && (access === "read-write" || !previousAccess) ? ctx : undefined,
           )
           if (result.success && target.missing)
-            createWorkspaceDirectory({
+            await createWorkspaceDirectoryAsync({
               root: target.ancestor,
               path: relative(target.ancestor, target.path),
               identity: target,
@@ -496,7 +496,11 @@ export const createSetupTools = ({
         const bot = self(ctx)
         if (!bot) return denied("Somente o próprio bot pode alterar sua configuração.")
         const project = bot.projectId ? store.getProject(bot.projectId) : null
-        const result = changed(bot, { projectId: null }, `Projeto ${project?.name ?? "atual"} desvinculado deste bot.`)
+        const result = await changed(
+          bot,
+          { projectId: null },
+          `Projeto ${project?.name ?? "atual"} desvinculado deste bot.`,
+        )
         if (result.success) notice(ctx, result.content?.find((part) => part.type === "text")?.text ?? "")
         return result
       },
@@ -519,7 +523,7 @@ export const createSetupTools = ({
         }
         if (!(bot.folders ?? []).some((folder) => folder.path === path))
           return { success: false, errorCode: "NOT_FOUND", error: "Pasta não encontrada nas permissões deste bot." }
-        const result = changed(
+        const result = await changed(
           bot,
           { folders: (bot.folders ?? []).filter((folder) => folder.path !== path) },
           `Acesso à pasta ${path} removido deste bot.`,

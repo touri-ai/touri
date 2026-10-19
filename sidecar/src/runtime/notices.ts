@@ -4,6 +4,9 @@ import { approvalSummary } from "@touri/contracts/approval-summary"
 const DETAIL_MAX = 600
 const QUESTION_TOOL = "AskUserQuestion"
 
+/** One open deferral per routine: repeats collapse into it and a later run of the routine closes it. */
+export const getDeferredRequestId = (routineId: Id): string => `routine-deferred:${routineId}`
+
 const clip = ({ value, max }: { value: string; max: number }): string =>
   value.length <= max ? value : `${value.slice(0, max - 1)}…`
 
@@ -126,11 +129,13 @@ export const createRuntimeNotices = ({ kernel }: { kernel: Kernel }) => {
   const deferred = ({
     botId,
     threadId,
+    routineId,
     routineName,
     reason,
   }: {
     botId: Id
     threadId: Id | null
+    routineId: Id
     routineName: string
     reason: string
   }): void => {
@@ -138,6 +143,7 @@ export const createRuntimeNotices = ({ kernel }: { kernel: Kernel }) => {
       kind: "routine-deferred",
       botId,
       threadId,
+      requestId: getDeferredRequestId(routineId),
       title: `Rotina adiada: ${routineName}`,
       body: reason,
     })

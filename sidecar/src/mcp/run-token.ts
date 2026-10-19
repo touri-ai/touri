@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto"
 import { join } from "node:path"
 import type { Kernel } from "@touri/contracts"
-import { atomicWriteFile, removePrivateFile } from "../kernel/files"
+import { removePrivateFileAsync, writePrivateFileAsync } from "../kernel/async-files"
 
 const watchers = new WeakMap<Kernel, Map<string, Set<() => void>>>()
 const active = new WeakMap<Kernel, Set<string>>()
@@ -21,10 +21,10 @@ export const watchMcpToken = (kernel: Kernel, path: string, revoked: () => void)
 }
 
 /** Each preparation owns a credential, including retries of the same run/thread. */
-export const createRunMcpToken = (kernel: Kernel, threadId: string, token: string) => {
+export const createRunMcpToken = async (kernel: Kernel, threadId: string, token: string) => {
   const tokenId = randomBytes(16).toString("hex")
   const path = join(kernel.paths.runDir, "mcp-tokens", `${threadId}.${tokenId}`)
-  atomicWriteFile({ root: kernel.paths.appData, path, content: token })
+  await writePrivateFileAsync({ root: kernel.paths.appData, path, content: token })
   const tokens = active.get(kernel) ?? new Set<string>()
   active.set(kernel, tokens)
   tokens.add(path)
@@ -38,16 +38,14 @@ export const createRunMcpToken = (kernel: Kernel, threadId: string, token: strin
       for (const listener of watchers.get(kernel)?.get(path) ?? []) listener()
       watchers.get(kernel)?.delete(path)
       // Authorization and active calls are already revoked, even if disk cleanup fails.
-      try {
-        removePrivateFile({ root: kernel.paths.appData, path })
-      } catch {
+      void removePrivateFileAsync({ root: kernel.paths.appData, path }).catch(() => {
         kernel.log({
           level: "warn",
           module: "mcp",
           msg: "Não foi possível remover um token MCP revogado",
           data: { threadId },
         })
-      }
+      })
     },
   }
 }

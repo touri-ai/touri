@@ -11,29 +11,22 @@ const sizes = [
 
 themes.forEach((theme) => {
   sizes.forEach((viewport) => {
-    test(`recovery layout · ${theme} · ${viewport.width}`, async ({ page }) => {
+    test(`one failure surface · ${theme} · ${viewport.width}`, async ({ page }) => {
       await page.setViewportSize(viewport)
       await page.emulateMedia({ reducedMotion: "reduce" })
       await page.goto("/test/e2e/error-contract-harness.html")
       await page.evaluate((value) => {
         document.documentElement.dataset.theme = value
       }, theme)
-      const notice = page.getByRole("complementary", { name: "Aviso do computador" })
-      const details = notice.getByText("Detalhes do erro")
-      const retry = notice.getByRole("button", { name: "Tentar novamente", exact: true })
-      await expect(notice).toBeVisible()
+      const card = page.locator(".message-error").first()
+      await expect(card).toBeVisible()
+      await page.waitForTimeout(1200)
 
-      await expect(details).toHaveCount(1)
-      await expect(notice.locator("code")).not.toBeVisible()
-      await retry.click({ trial: true })
-      if (viewport.width > 620) return
-      const copyBox = await notice.locator(".composer-notice-copy").boundingBox()
-      const actionBox = await retry.boundingBox()
-      if (!copyBox || !actionBox) throw new Error("Recovery geometry unavailable")
-
-      expect(copyBox.width).toBeGreaterThan(300)
-      expect(actionBox.y).toBeGreaterThanOrEqual(copyBox.y + copyBox.height)
-      await expect(retry).toBeInViewport({ ratio: 1 })
+      await expect(page.getByRole("button", { name: /^Tentar (novamente|de novo)$/ })).toHaveCount(1)
+      await expect(page.getByText("Detalhes do erro")).toHaveCount(1)
+      await expect(page.locator(".notice-bar.notice-error")).toHaveCount(0)
+      await expect(page.locator(".composer-notice")).toHaveCount(0)
+      await expect(card.getByRole("button", { name: "Tentar novamente", exact: true })).toBeInViewport({ ratio: 1 })
     })
   })
 })

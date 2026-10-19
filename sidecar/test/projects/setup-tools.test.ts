@@ -158,15 +158,17 @@ for (const approvals of ["never", "on-request"] as const) {
     const parent = join(f.home, "projects")
     mkdirSync(parent)
     expect(
-      f.store.createProject({
-        id: "missing-project",
-        name: "Missing project",
-        path: join(f.home, "missing-parent/project"),
-        gitRemote: null,
-        defaultBranch: null,
-        dataDir: join(f.root, "project-data"),
-        now: 1,
-      }).success,
+      (
+        await f.store.createProject({
+          id: "missing-project",
+          name: "Missing project",
+          path: join(f.home, "missing-parent/project"),
+          gitRemote: null,
+          defaultBranch: null,
+          dataDir: join(f.root, "project-data"),
+          now: 1,
+        })
+      ).success,
     ).toBe(true)
     const projects = f.store.listProjects()
     f.events.length = 0
@@ -283,15 +285,17 @@ for (const root of ["home", "cwd", "thread", "project", "project-data", "fallbac
       const dataDir = join(f.runtime.kernel.paths.projectsDir, "project")
       mkdirSync(dataDir, { recursive: true })
       expect(
-        f.store.createProject({
-          id: "project",
-          name: "Workspace",
-          path: target,
-          gitRemote: null,
-          defaultBranch: null,
-          dataDir,
-          now: 1,
-        }).success,
+        (
+          await f.store.createProject({
+            id: "project",
+            name: "Workspace",
+            path: target,
+            gitRemote: null,
+            defaultBranch: null,
+            dataDir,
+            now: 1,
+          })
+        ).success,
       ).toBe(true)
       expect((await f.request("PATCH", `/bots/${f.bot.id}`, { projectId: "project" })).status).toBe(200)
       if (root === "project-data") target = dataDir
@@ -358,7 +362,7 @@ test("discovery lists only projects and repositories in this bot's granted folde
     success: true,
     structured: { projects: [], repositories: [{ path: f.path, name: "Hodler" }] },
   })
-  const project = f.store.createProject({
+  const project = await f.store.createProject({
     id: "project",
     name: "Hodler",
     path: f.path,
@@ -371,15 +375,17 @@ test("discovery lists only projects and repositories in this bot's granted folde
   const outside = join(f.root, "outside")
   mkdirSync(join(outside, ".git"), { recursive: true })
   expect(
-    f.store.createProject({
-      id: "ungranted",
-      name: "ungranted",
-      path: outside,
-      gitRemote: null,
-      defaultBranch: null,
-      dataDir: join(f.root, "outside-data"),
-      now: 1,
-    }).success,
+    (
+      await f.store.createProject({
+        id: "ungranted",
+        name: "ungranted",
+        path: outside,
+        gitRemote: null,
+        defaultBranch: null,
+        dataDir: join(f.root, "outside-data"),
+        now: 1,
+      })
+    ).success,
   ).toBe(true)
   expect(await f.call("project_discover")).toMatchObject({
     success: true,
@@ -428,15 +434,17 @@ test("discovery preserves sensitive subtree exclusions until that folder is expl
   const registeredPath = join(f.runtime.kernel.paths.appData, "registered-repository")
   mkdirSync(registeredPath)
   expect(
-    f.store.createProject({
-      id: "protected",
-      name: "protected",
-      path: registeredPath,
-      gitRemote: null,
-      defaultBranch: null,
-      dataDir: join(f.root, "protected-data"),
-      now: 1,
-    }).success,
+    (
+      await f.store.createProject({
+        id: "protected",
+        name: "protected",
+        path: registeredPath,
+        gitRemote: null,
+        defaultBranch: null,
+        dataDir: join(f.root, "protected-data"),
+        now: 1,
+      })
+    ).success,
   ).toBe(true)
   expect(
     (await f.request("PATCH", `/bots/${f.bot.id}`, { folders: [{ path: f.root, access: "read-only" }] })).status,
@@ -653,7 +661,7 @@ test("denying a project link registers nothing and changes no configuration", as
 
 test("projectId and registered paths reuse a project and unlink is visible without approval", async () => {
   const f = await fixture({ access: "read-only", approvals: "on-request" })
-  const created = f.store.createProject({
+  const created = await f.store.createProject({
     id: "project",
     name: "Hodler",
     path: f.path,
@@ -717,15 +725,17 @@ test("projectId and registered paths reuse a project and unlink is visible witho
 const linkedReadOnlyFixture = async () => {
   const f = await fixture({ access: "read-only", approvals: "on-request" }, "linked-project")
   expect(
-    f.store.createProject({
-      id: "linked",
-      name: "Linked project",
-      path: f.path,
-      gitRemote: null,
-      defaultBranch: null,
-      dataDir: join(f.root, "linked-data"),
-      now: 1,
-    }).success,
+    (
+      await f.store.createProject({
+        id: "linked",
+        name: "Linked project",
+        path: f.path,
+        gitRemote: null,
+        defaultBranch: null,
+        dataDir: join(f.root, "linked-data"),
+        now: 1,
+      })
+    ).success,
   ).toBe(true)
   f.db.query("UPDATE bots SET project_id = ? WHERE id = ?").run("linked", f.bot.id)
   return f
@@ -761,15 +771,17 @@ for (const target of ["different project", "retargeted path"] as const) {
     mkdirSync(otherPath)
     if (target === "different project") {
       expect(
-        f.store.createProject({
-          id: "other",
-          name: "Other project",
-          path: otherPath,
-          gitRemote: null,
-          defaultBranch: null,
-          dataDir: join(f.root, "other-data"),
-          now: 1,
-        }).success,
+        (
+          await f.store.createProject({
+            id: "other",
+            name: "Other project",
+            path: otherPath,
+            gitRemote: null,
+            defaultBranch: null,
+            dataDir: join(f.root, "other-data"),
+            now: 1,
+          })
+        ).success,
       ).toBe(true)
     } else {
       rmSync(f.path, { recursive: true })

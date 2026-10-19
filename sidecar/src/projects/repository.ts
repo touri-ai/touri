@@ -1,5 +1,6 @@
 import type { Database } from "bun:sqlite"
-import { mkdirSync, readFileSync } from "node:fs"
+import { readFileSync } from "node:fs"
+import { join } from "node:path"
 import type {
   EnvValue,
   Kernel,
@@ -11,6 +12,7 @@ import type {
 } from "@touri/contracts"
 import { createStandingGrantStore } from "../approvals/grants"
 import { withSecretMutation } from "../approvals/secrets"
+import { ensurePrivateDirectoryAsync } from "../kernel/async-files"
 import type { ProjectResult, ProjectStore } from "./types"
 
 type Row = Record<string, unknown>
@@ -123,10 +125,10 @@ const resultError = <C extends ProjectResult<never>["errorCode"]>(
   error,
 })
 
-const ensureProjectDataDir = (dataDir: string): void => {
-  for (const directory of [dataDir, `${dataDir}/mongo`, `${dataDir}/redis`, `${dataDir}/logs`, `${dataDir}/tmp`]) {
-    mkdirSync(directory, { recursive: true, mode: 0o700 })
-  }
+const ensureProjectDataDir = async (dataDir: string): Promise<void> => {
+  await ensurePrivateDirectoryAsync({ root: dataDir })
+  for (const name of ["mongo", "redis", "logs", "tmp"])
+    await ensurePrivateDirectoryAsync({ root: dataDir, path: join(dataDir, name) })
 }
 
 export const createProjectStore = ({ kernel }: { kernel: Kernel }): ProjectStore => {
@@ -152,7 +154,7 @@ export const createProjectStore = ({ kernel }: { kernel: Kernel }): ProjectStore
     return row === null ? null : projectFromRow(row)
   }
 
-  const createProject = ({
+  const createProject = async ({
     id,
     name,
     path,
@@ -160,10 +162,10 @@ export const createProjectStore = ({ kernel }: { kernel: Kernel }): ProjectStore
     defaultBranch,
     dataDir,
     now,
-  }: Parameters<ProjectStore["createProject"]>[0]): ProjectResult<{ project: Project }> => {
+  }: Parameters<ProjectStore["createProject"]>[0]): Promise<ProjectResult<{ project: Project }>> => {
     if (getProjectByPath(path) !== null) return resultError("PROJECT_EXISTS", `Project already connected: ${path}`)
     try {
-      ensureProjectDataDir(dataDir)
+      await ensureProjectDataDir(dataDir)
       database
         .query(
           "INSERT INTO projects (id, name, path, git_remote, default_branch, data_dir, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",

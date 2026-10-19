@@ -127,7 +127,7 @@ test("unavailable confinement rejects API and setup grants without persisting an
     expect((await f.request(`/bots/${f.bot.id}`, { anyFolderAccess: true })).status).toBe(400)
     expect((await f.request("/bots", { name: "New", provider: "codex", folders: [folder] }, "POST")).status).toBe(400)
     const configure = f.runtime.kernel.services.use("bots.configureAccess")
-    expect(configure?.({ botId: f.bot.id, patch: { folders: [folder] } })).toMatchObject({ success: false })
+    expect(await configure?.({ botId: f.bot.id, patch: { folders: [folder] } })).toMatchObject({ success: false })
     const store = f.runtime.kernel.services.use("store.api")
     expect(store?.getBot({ botId: f.bot.id })?.folders).toEqual([])
     expect((await f.request(`/bots/${f.bot.id}`, { folders: [], anyFolderAccess: false })).status).toBe(200)
@@ -231,7 +231,7 @@ test("mount plan preserves RO across home aliases, masks sensitive paths and per
   const f = await fixture()
   f.bot.anyFolderAccess = true
   f.bot.folders = [{ path: f.ro, access: "read-only" }]
-  const mounts = botFolderMounts(f.runtime.kernel, f.bot, f.home)
+  const mounts = await botFolderMounts(f.runtime.kernel, f.bot, f.home)
   expect(mounts).toContainEqual({ type: "bind", source: f.home, target: "/host/home", readOnly: false })
   expect(mounts).toContainEqual({ type: "bind", source: f.ro, target: folderGuestPath(f.ro), readOnly: true })
   expect(mounts).toContainEqual({ type: "bind", source: f.ro, target: "/host/home/reference", readOnly: true })
@@ -245,7 +245,7 @@ test("mount plan preserves RO across home aliases, masks sensitive paths and per
       true,
     )
   f.bot.folders.push({ path: join(f.home, ".ssh"), access: "read-only" })
-  const exception = botFolderMounts(f.runtime.kernel, f.bot, f.home)
+  const exception = await botFolderMounts(f.runtime.kernel, f.bot, f.home)
   expect(exception.some((mount) => mount.target === "/host/home/.ssh" && mount.source.endsWith("/empty"))).toBe(false)
   expect(exception).toContainEqual({
     type: "bind",
@@ -254,7 +254,7 @@ test("mount plan preserves RO across home aliases, masks sensitive paths and per
     readOnly: true,
   })
   f.bot.access = "read-only"
-  expect(botFolderMounts(f.runtime.kernel, f.bot, f.home).every((mount) => mount.readOnly)).toBe(true)
+  expect((await botFolderMounts(f.runtime.kernel, f.bot, f.home)).every((mount) => mount.readOnly)).toBe(true)
 })
 
 test("provider permissions and session identity follow grants and guest paths without widening access", async () => {

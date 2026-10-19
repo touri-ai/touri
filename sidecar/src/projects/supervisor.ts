@@ -1,6 +1,5 @@
 import type { Database } from "bun:sqlite"
 import { createHash } from "node:crypto"
-import { existsSync, readdirSync, statSync } from "node:fs"
 import { join, posix } from "node:path"
 import { platform } from "node:process"
 import type {
@@ -16,8 +15,13 @@ import type {
 import { approvalDestination } from "../approvals/grants"
 import { delegatedBot } from "../groups/security"
 import { buildChildEnv } from "../kernel"
+import {
+  appendBackgroundFileAsync,
+  ensurePrivateDirectoryAsync,
+  rotatePrivateDirectoryAsync,
+  writePrivateFileAsync,
+} from "../kernel/async-files"
 import { createBackgroundTask, getMeasuredStage, yieldBackground } from "../kernel/background-task"
-import { atomicAppendFile, atomicWriteFile, ensurePrivateDirectory, removePrivateFile } from "../kernel/files"
 import type { PerformanceStageRunner } from "../kernel/performance"
 import { backoffDelay, debounce, sleep } from "../kernel/policy"
 import { linuxRuntimeEnvironment } from "../platform/linux-environment"
@@ -138,27 +142,6 @@ const pidStart = async ({ kernel, pid, cwd }: { kernel: Kernel; pid: number; cwd
   const result = await runCommand({ kernel, cmd: "ps", args: ["-o", "lstart=", "-p", String(pid)], cwd })
   if (!result.success || result.output.code !== 0) return null
   return result.output.stdout.trim() || null
-}
-
-const streamExists = (path: string): boolean => {
-  try {
-    return statSync(path).isFile()
-  } catch {
-    return false
-  }
-}
-
-const rotateLogs = (root: string, directory: string): void => {
-  if (!existsSync(directory)) return
-  const files = readdirSync(directory)
-    .map((name) => join(directory, name))
-    .filter(streamExists)
-    .sort((left, right) => statSync(right).mtimeMs - statSync(left).mtimeMs)
-  for (const file of files.slice(5)) {
-    try {
-      removePrivateFile({ root, path: file })
-    } catch {}
-  }
 }
 
 const wait = async (milliseconds: number, signal?: AbortSignal): Promise<boolean> => {
@@ -378,12 +361,12 @@ export const createSupervisor = ({
     if (safe.length === 0) return
     process.logLines.push(safe)
     if (process.logLines.length > 2000) process.logLines.splice(0, process.logLines.length - 2000)
-    atomicAppendFile({
+    void appendBackgroundFileAsync({
       root: kernel.paths.appData,
       path: process.logPath,
       content: `${safe}\n`,
       maxBytes: 10 * 1024 * 1024,
-    })
+    }).catch(() => undefined)
     const batch = pendingLogs.get(process.spec.id) ?? []
     batch.push(safe)
     pendingLogs.set(process.spec.id, batch)
@@ -779,7 +762,7 @@ export const createSupervisor = ({
       platform === "linux" && bot?.access !== "full" && !!(bot?.folders?.length || bot?.anyFolderAccess)
     if (!vm && bot && (bot.access === "workspace-write" || linuxGrants)) {
       const temporary = join(project.dataDir, "tmp", spec.id)
-      ensurePrivateDirectory({ root: kernel.paths.appData, path: temporary })
+      await ensurePrivateDirectoryAsync({ root: kernel.paths.appData, path: temporary })
       // The launcher runs before confinement. Loader hooks and project PATH
       // must not replace it or inject code into that initial host process.
       localSpawn.env = Object.fromEntries(
@@ -843,11 +826,11 @@ export const createSupervisor = ({
     }
     work.recordIdentity({ effectId, turnId, pid: child.pid, pgid: child.pgid })
     const logDirectory = join(project.dataDir, "logs", spec.name)
-    ensurePrivateDirectory({ root: kernel.paths.appData, path: logDirectory })
+    await ensurePrivateDirectoryAsync({ root: kernel.paths.appData, path: logDirectory })
     const runId = kernel.newId()
     const logPath = join(logDirectory, `${runId}.log`)
-    atomicWriteFile({ root: kernel.paths.appData, path: logPath, content: "" })
-    rotateLogs(kernel.paths.appData, logDirectory)
+    await writePrivateFileAsync({ root: kernel.paths.appData, path: logPath, content: "" })
+    await rotatePrivateDirectoryAsync({ root: kernel.paths.appData, directory: logDirectory, retainedFiles: 5 })
     const startedAt = now()
     const startPid = await pidStart({ kernel, pid: child.pid, cwd: project.path })
     const run: ProcessRunState = store.insertProcessRun({

@@ -1,14 +1,14 @@
-import { chmodSync, unlinkSync } from "node:fs"
+import { chmod, unlink } from "node:fs/promises"
 import { createServer, type Server, type Socket } from "node:net"
 import { dirname } from "node:path"
 import type { Kernel, ToolRegistration } from "@touri/contracts"
-import { atomicWriteFile, ensurePrivateDirectory, removePrivateFile } from "../kernel/files"
+import { ensurePrivateDirectoryAsync, removePrivateFileAsync, writePrivateFileAsync } from "../kernel/async-files"
 import { mcpEndpoint, mcpEndpointFile, resolveMcpEndpoint } from "../platform/transport"
 import { MCP_LIMITS, serveMcpConnection } from "./connection"
 
-const unlinkIfPresent = (path: string): void => {
+const unlinkIfPresent = async (path: string): Promise<void> => {
   try {
-    unlinkSync(path)
+    await unlink(path)
   } catch (error) {
     if (!(error instanceof Error) || !("code" in error) || error.code !== "ENOENT") throw error
   }
@@ -29,10 +29,10 @@ export const createMcpSocket = ({
   let server: Server | null = null
 
   const listen = async (): Promise<void> => {
-    ensurePrivateDirectory({ root: kernel.paths.appData, path: tokenDir })
+    await ensurePrivateDirectoryAsync({ root: kernel.paths.appData, path: tokenDir })
     if (transport === "local") {
-      ensurePrivateDirectory({ root: dirname(socketPath) })
-      unlinkIfPresent(socketPath)
+      await ensurePrivateDirectoryAsync({ root: dirname(socketPath) })
+      await unlinkIfPresent(socketPath)
     }
     const candidate = createServer((socket) => {
       if (connections.size >= MCP_LIMITS.connections) {
@@ -49,19 +49,19 @@ export const createMcpSocket = ({
         candidate.off("listening", onListening)
         reject(error)
       }
-      const onListening = (): void => {
+      const onListening = async (): Promise<void> => {
         candidate.off("error", onError)
         try {
           if (transport === "tcp") {
             const address = candidate.address()
             if (!address || typeof address === "string") throw new Error("MCP loopback bind failed")
             socketPath = `tcp://127.0.0.1:${address.port}`
-            atomicWriteFile({
+            await writePrivateFileAsync({
               root: kernel.paths.appData,
               path: mcpEndpointFile(kernel.paths.runDir),
               content: JSON.stringify(socketPath),
             })
-          } else chmodSync(socketPath, 0o600)
+          } else await chmod(socketPath, 0o600)
           resolve()
         } catch (error) {
           candidate.close()
@@ -89,11 +89,11 @@ export const createMcpSocket = ({
         }
       })
     }
-    if (transport === "local") unlinkIfPresent(socketPath)
+    if (transport === "local") await unlinkIfPresent(socketPath)
     else {
       try {
         if (mcpEndpoint(kernel.paths.runDir, "win32") === socketPath)
-          removePrivateFile({ root: kernel.paths.appData, path: mcpEndpointFile(kernel.paths.runDir) })
+          await removePrivateFileAsync({ root: kernel.paths.appData, path: mcpEndpointFile(kernel.paths.runDir) })
       } catch (error) {
         if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error
       }

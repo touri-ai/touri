@@ -1,7 +1,12 @@
 import { readdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 import type { Kernel } from "@touri/contracts"
-import { atomicWriteFile, ensurePrivateDirectory, readPrivateFile, removePrivateFile } from "../kernel/files"
+import {
+  ensurePrivateDirectoryAsync,
+  removePrivateFileIfMatchesAsync,
+  writePrivateFileAsync,
+} from "../kernel/async-files"
+import { readPrivateFile } from "../kernel/files"
 import { runPs } from "../kernel/ps"
 import { terminateWindowsProvider, windowsProviderIdentity } from "../platform/windows-native"
 import type { ChildProcess } from "./provider-io"
@@ -78,30 +83,46 @@ export const trackProviderProcess = async (kernel: Kernel, child: ChildProcess):
   const birth = processIdentity.birth
   const path = join(directory(kernel), `${child.pid}.json`)
   try {
-    atomicWriteFile({ root: kernel.paths.appData, path, content: JSON.stringify({ pid: child.pid, birth }) })
+    await writePrivateFileAsync({
+      root: kernel.paths.appData,
+      path,
+      content: JSON.stringify({ pid: child.pid, birth }),
+    })
   } catch (error) {
     child.kill("SIGKILL")
     throw error
   }
   void child.exited
-    .then(() => {
-      // A newer sidecar may already have reaped and removed this record.
-      const record = readPrivateFile({ root: kernel.paths.appData, path })
-      if (record && record.toString() === JSON.stringify({ pid: child.pid, birth }))
-        removePrivateFile({ root: kernel.paths.appData, path })
+    .then(async () => {
+      await removePrivateFileIfMatchesAsync({
+        root: kernel.paths.appData,
+        path,
+        content: JSON.stringify({ pid: child.pid, birth }),
+      })
     })
     .catch(() => undefined)
 }
 
+const getRecordNames = (dir: string): string[] => {
+  try {
+    return readdirSync(dir).filter((name) => /^\d+\.json$/.test(name))
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") return []
+    throw error
+  }
+}
+
 export const reapProviderProcesses = async (kernel: Kernel): Promise<void> => {
   const dir = directory(kernel)
-  ensurePrivateDirectory({ root: kernel.paths.appData, path: dir })
-  for (const name of readdirSync(dir)) {
-    if (!/^\d+\.json$/.test(name)) continue
+  // Read the records before the first await: a provider this sidecar tracks after startup is never an orphan.
+  const names = getRecordNames(dir)
+  await ensurePrivateDirectoryAsync({ root: kernel.paths.appData, path: dir })
+  for (const name of names) {
     const path = join(dir, name)
     const bytes = readPrivateFile({ root: kernel.paths.appData, path, maxBytes: 8_192 })
     if (!bytes) continue
-    const record = JSON.parse(bytes.toString()) as { pid: number; birth: string }
+    const content = bytes.toString()
+    const record = JSON.parse(content) as { pid: number; birth: string }
     if (!Number.isSafeInteger(record.pid) || record.pid <= 1 || record.pid !== Number(name.slice(0, -5))) continue
     const current = await identity(record.pid)
     if (current?.alive && current.birth === record.birth && Number(current.birth.split(/\s+/)[0]) === record.pid) {
@@ -114,7 +135,7 @@ export const reapProviderProcesses = async (kernel: Kernel): Promise<void> => {
           if (!(error instanceof Error && "code" in error && error.code === "ESRCH")) throw error
         }
     }
-    removePrivateFile({ root: kernel.paths.appData, path })
+    await removePrivateFileIfMatchesAsync({ root: kernel.paths.appData, path, content })
   }
 }
 

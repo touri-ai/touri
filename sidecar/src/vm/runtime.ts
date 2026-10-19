@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite"
 import { createHash, randomBytes } from "node:crypto"
-import { rmSync } from "node:fs"
+import { rm } from "node:fs/promises"
 import { homedir } from "node:os"
 import { join } from "node:path"
 import type {
@@ -14,10 +14,10 @@ import type {
   VmRuntime,
 } from "@touri/contracts"
 import { getApiRequiredHosts } from "../api-models/runtime"
+import { ensurePrivateDirectoryAsync, removePrivateFileAsync, writePrivateFileAsync } from "../kernel/async-files"
 import { createBackgroundTask, getMeasuredStage, yieldBackground } from "../kernel/background-task"
 import { botFolderFingerprint } from "../kernel/bot-folders"
 import { TouriError } from "../kernel/errors"
-import { atomicWriteFile, ensurePrivateDirectory, removePrivateFile } from "../kernel/files"
 import type { PerformanceStageRunner } from "../kernel/performance"
 import { isIdle } from "../kernel/policy"
 import { safeThreadId } from "../mcp/auth"
@@ -299,7 +299,7 @@ export const createVmRuntime = ({
     liveStaging.delete(botId)
     void clearStagedCredentials(botId).catch(() => {})
     for (const name of ["codex.json", "claude.json", "opencode.json"])
-      removePrivateFile({ root: kernel.paths.appData, path: join(authDir(botId), name) })
+      void removePrivateFileAsync({ root: kernel.paths.appData, path: join(authDir(botId), name) }).catch(() => {})
   }
   // Revoke any interrupted run's staging copy at sidecar boot.
   const rows = db.query("SELECT * FROM bot_machines").all() as Array<Metadata>
@@ -500,7 +500,7 @@ export const createVmRuntime = ({
         (!!meta.folder_fingerprint || !!bot.anyFolderAccess || !!bot.folders?.length)
       // Resolve and validate before touching the existing machine. A failed grant
       // never destroys a working VM. Viewer warmup does not apply pending changes.
-      const validatedMounts = status === "missing" || applyFolders ? botFolderMounts(kernel, bot, hostHome) : null
+      const validatedMounts = status === "missing" || applyFolders ? await botFolderMounts(kernel, bot, hostHome) : null
       const hostMounts = status === "missing" || (applyFolders && foldersChanged) ? validatedMounts : null
       let memoryMb = memoryPreference()
       signal?.throwIfAborted()
@@ -566,7 +566,7 @@ export const createVmRuntime = ({
           if (mount.type === "volume")
             unwrap(await provider.createVolume({ name: mount.source, ...(signal ? { signal } : {}) }))
         signal?.throwIfAborted()
-        ensurePrivateDirectory({ root: kernel.paths.appData, path: authDir(botId) })
+        await ensurePrivateDirectoryAsync({ root: kernel.paths.appData, path: authDir(botId) })
         unwrap(
           await provider.create({
             ...(signal ? { signal } : {}),
@@ -864,14 +864,14 @@ export const createVmRuntime = ({
     }
     redactValues(JSON.parse(login.value))
     const path = join(authDir(bot.id), `${bot.provider}.json`)
-    atomicWriteFile({ root: kernel.paths.appData, path, content: login.value })
+    await writePrivateFileAsync({ root: kernel.paths.appData, path, content: login.value })
     return { secrets, env: {} as Record<string, string>, file: login.value, selection: login.selection }
   }
   const prepareTurn: VmRuntime["prepareTurn"] = async ({ botId, threadId, token, signal }) => {
     if (!safeThreadId(threadId)) throw new Error("Thread inválida")
     kernel.addRedactionValue(token)
     const release = await acquire({ botId, ...(signal ? { signal } : {}) }, true)
-    let credential: ReturnType<typeof createRunMcpToken> | undefined
+    let credential: Awaited<ReturnType<typeof createRunMcpToken>> | undefined
     let tokenPath: string | undefined
     let released = false
     const releaseTurn = async () => {
@@ -973,7 +973,7 @@ export const createVmRuntime = ({
         timeoutMessage: `A preparação do CLI na máquina excedeu ${limits.exec / 1000} s`,
         ...(signal ? { signal } : {}),
         action: async (signal) => {
-          credential = createRunMcpToken(kernel, threadId, token)
+          credential = await createRunMcpToken(kernel, threadId, token)
           const tokens = turnTokens.get(botId) ?? new Set<() => void>()
           tokens.add(credential.revoke)
           turnTokens.set(botId, tokens)
@@ -1150,7 +1150,7 @@ export const createVmRuntime = ({
         db.query("DELETE FROM bot_machines WHERE bot_id = ?").run(botId)
         await connectionKeys.remove(meta.vm_id)
       }
-      rmSync(authDir(botId), { recursive: true, force: true })
+      await rm(authDir(botId), { recursive: true, force: true })
       states.delete(botId)
     })
   const park = async (botId: string) => {

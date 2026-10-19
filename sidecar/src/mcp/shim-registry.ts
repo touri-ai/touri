@@ -1,5 +1,11 @@
-import { mkdirSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs"
+import { readdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
+import {
+  ensurePrivateDirectoryAsync,
+  removePrivateFileAsync,
+  removePrivateFileIfMatchesAsync,
+  writePrivateFileAsync,
+} from "../kernel/async-files"
 import { runPs } from "../kernel/ps"
 
 export type ShimRecord = { pid: number; birth: string; thread: string }
@@ -28,15 +34,17 @@ export const registerShim = async ({ runDir, thread }: { runDir: string; thread:
   if (!current) return () => undefined
   const path = join(shimDir(runDir), `${process.pid}.json`)
   try {
-    mkdirSync(shimDir(runDir), { recursive: true, mode: 0o700 })
-    writeFileSync(path, JSON.stringify({ pid: process.pid, birth: current.birth, thread }), { mode: 0o600 })
+    await ensurePrivateDirectoryAsync({ root: runDir, path: shimDir(runDir) })
+    await writePrivateFileAsync({
+      root: runDir,
+      path,
+      content: JSON.stringify({ pid: process.pid, birth: current.birth, thread }),
+    })
   } catch {
     return () => undefined
   }
   return () => {
-    try {
-      unlinkSync(path)
-    } catch {}
+    void removePrivateFileAsync({ root: runDir, path }).catch(() => {})
   }
 }
 
@@ -66,10 +74,8 @@ const verified = async (record: ShimRecord): Promise<{ ppid: number } | null> =>
   return { ppid: current.ppid }
 }
 
-const forget = (path: string): void => {
-  try {
-    unlinkSync(path)
-  } catch {}
+const forget = async (runDir: string, path: string, record: ShimRecord): Promise<void> => {
+  await removePrivateFileIfMatchesAsync({ root: runDir, path, content: JSON.stringify(record) }).catch(() => {})
 }
 
 /** Lists shims recorded by this install that are still alive; stale records are dropped. */
@@ -78,7 +84,7 @@ export const listLiveShims = async (runDir: string): Promise<Array<ShimStatus>> 
   for (const { path, record } of readRecords(runDir)) {
     const current = await verified(record)
     if (current) live.push({ record, ppid: current.ppid })
-    else forget(path)
+    else await forget(runDir, path, record)
   }
   return live
 }

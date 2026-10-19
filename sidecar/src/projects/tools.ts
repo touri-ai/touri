@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs"
 import { relative } from "node:path"
 import type { Kernel, ProcessSpec, ProjectInfo, ToolContext, ToolHandler, ToolResult } from "@touri/contracts"
 import { withSecretMutation } from "../approvals/secrets"
-import { atomicWriteFile } from "../kernel/files"
+import { writePrivateFileAsync } from "../kernel/async-files"
 import { runCommand } from "./git"
 import { processOwner, saveProcessOwner } from "./ownership"
 import { ensureProjectPath } from "./paths"
@@ -410,7 +410,11 @@ export const createProjectTools = ({
       await vm.writeFile({ botId: ctx.botId, path: target.path, content: `${lines.join("\n").replace(/\n+$/, "")}\n` })
       return ok({ path: target.path, names: Object.keys(resolved) }, "Environment file written inside VM")
     }
-    atomicWriteFile({ root: project.path, path: target.path, content: `${lines.join("\n").replace(/\n+$/, "")}\n` })
+    await writePrivateFileAsync({
+      root: project.path,
+      path: target.path,
+      content: `${lines.join("\n").replace(/\n+$/, "")}\n`,
+    })
     return ok({ path: relativePath, names: Object.keys(resolved) }, "Environment file written")
   }
 

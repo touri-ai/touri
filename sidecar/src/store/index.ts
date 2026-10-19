@@ -26,22 +26,22 @@ import { apiModelErrors, isNotificationPreferences, normalizeBotName } from "@to
 import { validAvatarColor, validAvatarShape } from "@touri/contracts/avatar"
 import { getApiModel } from "../api-models/config"
 import { installDoctor } from "../doctor"
+import { writePrivateFileAsync } from "../kernel/async-files"
 import { parseBotFolders, protectedFolder } from "../kernel/bot-folders"
 import { DEFAULT_DATA_RETENTION_DAYS, validDataRetentionDays } from "../kernel/data-maintenance"
 import { writeDatabaseAsync } from "../kernel/database-write"
 import { SCHEMA_VERSION } from "../kernel/db"
-import {
-  assertPrivateFile,
-  atomicWriteFile,
-  attachmentMime,
-  MAX_ATTACHMENT_BYTES,
-  readBoundedFile,
-} from "../kernel/files"
+import { attachmentMime, MAX_ATTACHMENT_BYTES, readBoundedFile } from "../kernel/files"
 import { folderGrantProblem, refreshHostFolderAccess, specificFoldersRequired } from "../kernel/folder-capability"
 import { historyThreadPending, hydrateHistoryEvent } from "../kernel/history-backfill"
 import { getPathIds } from "../kernel/message-path"
 import { refreshMessageSearch } from "../kernel/message-search"
-import { externalizeMessageParts, OUTPUT_BLOB_ORIGIN, readOutputAttachment } from "../kernel/output-blobs"
+import {
+  externalizeMessageParts,
+  externalizeMessagePartsAsync,
+  OUTPUT_BLOB_ORIGIN,
+  readOutputAttachment,
+} from "../kernel/output-blobs"
 import type { PerformanceStageRunner } from "../kernel/performance"
 import { isProfileProvider, validProviderProfileName } from "../kernel/provider-profiles"
 import { materializeTranscriptBatch } from "../kernel/transcript-storage"
@@ -672,7 +672,11 @@ export const init = async (
 
   const updateMessageAsync: NonNullable<StoreApi["updateMessageAsync"]> = async (input) => {
     await streamWriter.drainAsync({ threadId: input.threadId, messageId: input.messageId })
-    return writeDatabaseAsync(database, () => updateMessage(input))
+    const parts = input.patch.parts
+      ? await externalizeMessagePartsAsync({ database, appData: kernel.paths.appData, parts: input.patch.parts })
+      : undefined
+    const prepared = parts ? { ...input, patch: { ...input.patch, parts } } : input
+    return writeDatabaseAsync(database, () => updateMessage(prepared))
   }
 
   const activePath: StoreApi["activePath"] = ({ threadId, leafId, limit, fromRoot = false }) => {
@@ -1312,7 +1316,7 @@ export const init = async (
       : { success: false, errorCode: "NOT_FOUND", error: "Bot não encontrado." }
   })
 
-  const insertAttachment = ({
+  const insertAttachment = async ({
     path,
     originPath,
     content,
@@ -1320,7 +1324,7 @@ export const init = async (
     path: string
     originPath: string | null
     content?: Buffer
-  }): Attachment | null => {
+  }): Promise<Attachment | null> => {
     const bytes =
       content ?? readBoundedFile({ root: kernel.paths.attachmentsDir, path, maxBytes: MAX_ATTACHMENT_BYTES })
     const id = sha256(bytes)
@@ -1340,8 +1344,7 @@ export const init = async (
         .replace(/[^a-z0-9.]/gu, "") || ".bin"
     const destinationDir = join(kernel.paths.attachmentsDir, id.slice(0, 2))
     const destination = join(destinationDir, `${id}${extension}`)
-    assertPrivateFile({ root: kernel.paths.appData, path: destination })
-    if (!existsSync(destination)) atomicWriteFile({ root: kernel.paths.appData, path: destination, content: bytes })
+    await writePrivateFileAsync({ root: kernel.paths.appData, path: destination, content: bytes })
     const timestamp = now()
     database
       .query("INSERT INTO attachments (id, path, mime, bytes, origin_path, created_at) VALUES (?, ?, ?, ?, ?, ?)")
@@ -1747,7 +1750,7 @@ export const init = async (
           if (record && "grantId" in record) {
             const granted = await redeemFileGrant({ kernel, grantId: record.grantId, signal })
             if (!granted.success) return errorResponse(granted.status, granted.errorCode, granted.error)
-            const attachment = insertAttachment({
+            const attachment = await insertAttachment({
               path: granted.name,
               originPath: granted.name,
               content: granted.content,
@@ -1774,7 +1777,7 @@ export const init = async (
             const content = Buffer.from(record.dataBase64, "base64")
             if (content.length > MAX_ATTACHMENT_BYTES)
               return errorResponse(413, "ATTACHMENT_TOO_LARGE", "Arquivo acima de 15 MB")
-            const attachment = insertAttachment({ path: record.name, originPath: record.name, content })
+            const attachment = await insertAttachment({ path: record.name, originPath: record.name, content })
             return attachment
               ? jsonResponse(201, { attachment })
               : errorResponse(404, "NOT_FOUND", "Attachment source file not found")

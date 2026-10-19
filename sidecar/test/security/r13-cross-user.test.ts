@@ -169,11 +169,11 @@ test("app data, database, logs, run dir and MCP socket are owner-only", async ()
     } finally {
       await mcp.close()
     }
-    const channel = privateSocket()
+    const channel = await privateSocket()
     try {
       expect(mode(join(channel.path, ".."))).toBe(0o700)
     } finally {
-      channel.remove()
+      await channel.remove()
     }
   } finally {
     process.umask(previousUmask)

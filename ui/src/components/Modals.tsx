@@ -984,6 +984,8 @@ export const BotSettingsModal = ({
   initialSection,
   focusSetting,
 }: BotSettingsModalProps) => {
+  const [openedBotId] = useState(bot.id)
+  const isBotDeleted = bots !== undefined && !bots.some((candidate) => candidate.id === openedBotId)
   const host = useHost(api)
   const serverMode = useIsServerMode()
   const routinesFocusRef = useRef<HTMLElement | null>(null)
@@ -1047,6 +1049,9 @@ export const BotSettingsModal = ({
   )
   const [advanced, setAdvanced] = useState(Boolean(initialSection || focusMcp || permissionsOnly || focusSetting))
   useSettingFocus(focusSetting)
+  useEffect(() => {
+    if (isBotDeleted) onClose()
+  }, [isBotDeleted, onClose])
   useEffect(() => {
     if (!permissionsOnly) return
     permissionsRef.current?.closest("label")?.scrollIntoView?.({ block: "start" })
@@ -1138,6 +1143,8 @@ export const BotSettingsModal = ({
           : ("on-request" as const),
   }
   const [secretNotice, setSecretNotice] = useState("")
+  if (isBotDeleted) return null
+
   return (
     <Modal
       onClose={onClose}

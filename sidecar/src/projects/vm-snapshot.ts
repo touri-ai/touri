@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs"
+import { mkdtemp, rm } from "node:fs/promises"
 import { join } from "node:path"
 import type { Kernel, VmRuntime } from "@touri/contracts"
 import type { VmProvider } from "../vm/types"
@@ -27,7 +27,7 @@ export const copyProjectSnapshot = async ({
   signal.throwIfAborted()
   if (!git?.commit)
     throw new Error("O projeto precisa de um commit Git. Crie um commit na pasta de origem e tente novamente.")
-  const scratch = mkdtempSync(join(kernel.paths.runDir, "project-snapshot-"))
+  const scratch = await mkdtemp(join(kernel.paths.runDir, "project-snapshot-"))
   const bundle = join(scratch, "source.bundle")
   const guestBundle = `/tmp/touri-project-${kernel.newId()}.bundle`
   const guestGit = async (args: string[]) => {
@@ -76,7 +76,7 @@ export const copyProjectSnapshot = async ({
     if (git.remote) await guestGit(["config", "remote.origin.url", git.remote])
     return { commit: git.commit, remote: git.remote, branch: git.branch, path: projectPath }
   } finally {
-    rmSync(scratch, { recursive: true, force: true })
+    await rm(scratch, { recursive: true, force: true })
     // The path belongs to this transfer; cleanup cannot touch other guest files.
     await exec({ botId, command: "rm", args: ["-f", guestBundle], signal: AbortSignal.timeout(2000) }).catch(() => {})
   }

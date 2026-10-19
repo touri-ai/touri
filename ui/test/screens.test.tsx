@@ -319,6 +319,17 @@ describe("r8 screens", () => {
     expect(screen.getByText("Nenhum servidor externo conectado")).toBeVisible()
   })
 
+  it("describes the built-in tools in plain language without the word gateway", async () => {
+    const api = createMockApi()
+
+    const { container } = render(<McpScreen api={api} />)
+    await screen.findByText("Conectado", { exact: true })
+
+    expect(screen.getByText(/Ferramentas do touri neste computador/)).toBeVisible()
+    expect(screen.getByText("Ferramentas do touri")).toBeVisible()
+    expect(container.textContent?.toLowerCase()).not.toContain("gateway")
+  })
+
   it("updates only the selected tool's policy and preserves its access classification", async () => {
     const api = createMockApi()
     const request = vi.fn(async (route: string, input: unknown) => {

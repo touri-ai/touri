@@ -12,6 +12,7 @@ import { createBrowserStore } from "../../src/browser/store"
 import { createRoutedBrowserEngine } from "../../src/browser/vm-router"
 import { init as initComputer } from "../../src/computer"
 import { createKernel } from "../../src/kernel"
+import { flushFileIoAsync } from "../../src/kernel/async-files"
 import { authenticateMcp } from "../../src/mcp/auth"
 import { createProjectStore } from "../../src/projects/repository"
 import { createSupervisor } from "../../src/projects/supervisor"
@@ -92,7 +93,7 @@ const fixture = async (
   cleanups.push(async () => {
     await vm.dispose()
     runtime.emitHostNotification({ method: "app.willQuit", params: {} })
-    runtime.stop()
+    await runtime.stop()
     rmSync(root, { recursive: true, force: true })
   })
   const bot = async (input: Partial<Bot> = {}) => {
@@ -630,6 +631,7 @@ test("VNC passwords are private, redacted, sealed and rotated on restart and ext
     msg: first.password,
     data: { passwordFile: vncPasswordFile(first.password).toString("base64") },
   })
+  await flushFileIoAsync()
   const log = readFileSync(join(f.runtime.kernel.paths.logsDir, "sidecar.log"), "utf8")
   expect(log).not.toContain(first.password)
   expect(log).not.toContain(vncPasswordFile(first.password).toString("base64"))
@@ -684,6 +686,7 @@ test.each([
         event.type === "machine.updated" && event.machine.progress === "Atualizando a máquina para a versão nova…",
     ),
   ).toBe(true)
+  await flushFileIoAsync()
   expect(readFileSync(join(f.runtime.kernel.paths.logsDir, "sidecar.log"), "utf8")).toContain('"stage":"upgrade"')
 })
 
@@ -858,6 +861,7 @@ test("provider credentials require opt-in, stage privately, redact and revoke af
   expect(f.fake.files.has("/workspace/.home/.codex/auth.json")).toBe(false)
   const db = f.runtime.kernel.db as Database
   expect(JSON.stringify(db.query("SELECT * FROM bot_machines").all())).not.toContain("only-provider-secret")
+  await flushFileIoAsync()
   const log = readFileSync(join(f.runtime.kernel.paths.logsDir, "sidecar.log"), "utf8")
   expect(log).toContain('"stage":"auth"')
   expect(log).not.toContain("only-provider-secret")
@@ -1460,6 +1464,7 @@ test.each(["timeout", "stop", "output"] as const)(
         await expect(result).rejects.toThrow(mode === "stop" ? "Turno cancelado" : "não produziu saída")
         expect(kills).toBeGreaterThan(0)
       }
+      await flushFileIoAsync()
       expect(readFileSync(join(f.runtime.kernel.paths.logsDir, "sidecar.log"), "utf8")).toContain(
         '"stage":"first-output"',
       )
@@ -1680,7 +1685,7 @@ test("VM process detection forwards the guest port and publishes the localhost P
   const store = createProjectStore({ kernel: f.runtime.kernel })
   const projectPath = join(f.root, "project")
   mkdirSync(projectPath)
-  const created = store.createProject({
+  const created = await store.createProject({
     id: "project",
     name: "Guest app",
     path: projectPath,
@@ -2122,6 +2127,7 @@ test("open computer tabs and terminals lease through idle and app background, in
   f.advance(1)
   await f.vm.sweep()
   expect(f.vm.service.states()[0]).toMatchObject({ status: "stopped", pauseReason: "inactivity" })
+  await flushFileIoAsync()
   expect(readFileSync(join(f.runtime.kernel.paths.logsDir, "sidecar.log"), "utf8")).toContain(
     "Máquina pausada por inatividade",
   )
@@ -2197,6 +2203,7 @@ test("UI render errors are authenticated, bounded and redacted in the sidecar lo
   expect(unauthenticated.status).toBe(401)
   expect((await f.request("/ui/errors", { ...body, stack: "x".repeat(16_001) })).status).toBe(400)
   expect((await f.request("/ui/errors", body)).status).toBe(200)
+  await flushFileIoAsync()
   const log = readFileSync(join(f.runtime.kernel.paths.logsDir, "sidecar.log"), "utf8")
   expect(log).toContain("Falha de renderização")
   expect(log).toContain("[REDACTED]")

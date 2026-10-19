@@ -1,16 +1,16 @@
 import { randomBytes } from "node:crypto"
-import { chmodSync, mkdtempSync, rmSync } from "node:fs"
+import { chmod, mkdtemp, rm } from "node:fs/promises"
 import { createServer, type Socket } from "node:net"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { authorizeGatewayRequest, withoutCapabilityCookies } from "./gateway-session"
 
-export const privateSocket = (platform = process.platform) => {
-  const directory = mkdtempSync(join(tmpdir(), "touri-channel-"))
-  if (platform !== "win32") chmodSync(directory, 0o700)
+export const privateSocket = async (platform = process.platform) => {
+  const directory = await mkdtemp(join(tmpdir(), "touri-channel-"))
+  if (platform !== "win32") await chmod(directory, 0o700)
   return {
     path: platform === "win32" ? `\\\\.\\pipe\\touri-channel-${randomBytes(32).toString("hex")}` : join(directory, "s"),
-    remove: () => rmSync(directory, { recursive: true, force: true }),
+    remove: () => rm(directory, { recursive: true, force: true }),
   }
 }
 

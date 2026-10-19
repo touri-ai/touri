@@ -1,11 +1,12 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto"
 import { join } from "node:path"
+import { writePrivateFileAsync } from "../../kernel/async-files"
 import { atomicWriteFile, readPrivateFile } from "../../kernel/files"
 
 export type SecretStore = {
   get: (account: string) => string | null
-  set: (args: { account: string; value: string }) => void
-  delete: (account: string) => void
+  set: (args: { account: string; value: string }) => Promise<void>
+  delete: (account: string) => Promise<void>
   keyOrigin: "env" | "file"
 }
 
@@ -64,20 +65,26 @@ export const createSecretStore = ({
     if (!isEnvelope(parsed)) throw new Error("secrets.enc is not a valid envelope")
     return JSON.parse(decrypt({ key, envelope: parsed })) as Record<string, string>
   }
-  const write = (entries: Record<string, string>): void => {
-    atomicWriteFile({
+  const write = (entries: Record<string, string>): Promise<void> =>
+    writePrivateFileAsync({
       root: dir,
       path: file,
       content: JSON.stringify(encrypt({ key, plain: JSON.stringify(entries) })),
     })
+  let writeQueue = Promise.resolve()
+  const update = (transform: (entries: Record<string, string>) => Record<string, string>): Promise<void> => {
+    const next = writeQueue.then(() => write(transform(read())))
+    writeQueue = next.catch(() => undefined)
+    return next
   }
   return {
     keyOrigin: env.TOURI_SECRETS_KEY ? "env" : "file",
     get: (account) => read()[account] ?? null,
-    set: ({ account, value }) => write({ ...read(), [account]: value }),
-    delete: (account) => {
-      const { [account]: _removed, ...rest } = read()
-      write(rest)
-    },
+    set: ({ account, value }) => update((entries) => ({ ...entries, [account]: value })),
+    delete: (account) =>
+      update((entries) => {
+        const { [account]: _removed, ...rest } = entries
+        return rest
+      }),
   }
 }

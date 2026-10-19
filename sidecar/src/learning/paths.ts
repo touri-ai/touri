@@ -1,6 +1,6 @@
-import { randomUUID } from "node:crypto"
-import { lstatSync, mkdirSync, renameSync, rmSync, writeFileSync } from "node:fs"
+import { lstatSync } from "node:fs"
 import { dirname, isAbsolute, join, relative, sep } from "node:path"
+import { writePrivateFileAsync } from "../kernel/async-files"
 
 /** Check links with lstat: existsSync follows them and misses dangling links. */
 export const linkFree = (root: string, target: string, kind?: "file" | "directory"): boolean => {
@@ -22,13 +22,5 @@ export const linkFree = (root: string, target: string, kind?: "file" | "director
   return true
 }
 
-export const writeAtomically = (path: string, content: string): void => {
-  mkdirSync(dirname(path), { recursive: true })
-  const temporary = `${path}.${randomUUID()}.tmp`
-  try {
-    writeFileSync(temporary, content, { mode: 0o600, flag: "wx" })
-    renameSync(temporary, path)
-  } finally {
-    rmSync(temporary, { force: true })
-  }
-}
+export const writeAtomically = (path: string, content: string): Promise<void> =>
+  writePrivateFileAsync({ root: dirname(path), path, content })

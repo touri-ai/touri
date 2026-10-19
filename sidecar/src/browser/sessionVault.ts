@@ -2,9 +2,10 @@ import type { Database } from "bun:sqlite"
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto"
 import { join } from "node:path"
 import type { Kernel } from "@touri/contracts"
+import { ensurePrivateDirectoryAsync, removePrivateFileAsync, writePrivateFileAsync } from "../kernel/async-files"
 import { getMeasuredStage } from "../kernel/background-task"
 import { TouriError } from "../kernel/errors"
-import { atomicWriteFile, ensurePrivateDirectory, readPrivateFile, removePrivateFile } from "../kernel/files"
+import { readPrivateFile } from "../kernel/files"
 import type { PerformanceStageRunner } from "../kernel/performance"
 import { withDeadline } from "../kernel/policy"
 
@@ -176,9 +177,9 @@ export const saveBotSession = async ({
   } catch {
     return false
   }
-  ensurePrivateDirectory({ root: kernel.paths.appData, path: sessionsDir(kernel) })
-  measure(() =>
-    atomicWriteFile({
+  await ensurePrivateDirectoryAsync({ root: kernel.paths.appData, path: sessionsDir(kernel) })
+  await measure(() =>
+    writePrivateFileAsync({
       root: kernel.paths.appData,
       path: sessionPath(kernel, botId),
       content: JSON.stringify(seal(plain, key)),
@@ -188,9 +189,9 @@ export const saveBotSession = async ({
   return true
 }
 
-export const removeBotSessionFile = (kernel: Kernel, botId: string): void => {
+export const removeBotSessionFile = async (kernel: Kernel, botId: string): Promise<void> => {
   if (!SAFE_BOT_ID.test(botId)) return
-  removePrivateFile({ root: kernel.paths.appData, path: sessionPath(kernel, botId) })
+  await removePrivateFileAsync({ root: kernel.paths.appData, path: sessionPath(kernel, botId) })
 }
 
 export const removeBotSessionKey = async (kernel: Kernel, botId: string): Promise<void> => {
@@ -200,7 +201,7 @@ export const removeBotSessionKey = async (kernel: Kernel, botId: string): Promis
 }
 
 export const removeBotSession = async (kernel: Kernel, botId: string): Promise<void> => {
-  removeBotSessionFile(kernel, botId)
+  await removeBotSessionFile(kernel, botId)
   await removeBotSessionKey(kernel, botId)
 }
 

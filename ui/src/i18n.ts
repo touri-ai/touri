@@ -4,6 +4,8 @@ import { userFacingError } from "./errors"
 export type Locale = "pt-BR" | "en"
 export const DEFAULT_LOCALE: Locale = "pt-BR"
 export const ptBR = {
+  "O bot foi excluído, mas a limpeza dos anexos privados está pendente. O touri tentará concluir a limpeza automaticamente.":
+    "O bot foi excluído, mas a limpeza dos anexos privados está pendente. O touri tentará concluir a limpeza automaticamente.",
   "Propose 1 to 8 bots and an optional group for explicit user approval. Only the Team builder job in a direct user turn can use this tool. Never creates anything without the Create team click, even with approvals disabled. Bot drafts cannot request access: all start local, ask before file changes, with no project or extra folders, browser or computer control. Group members and optional coordinator are names from this proposal. Missing provider installation/login does not prevent creation; setup follows in each bot's settings.":
     "Propor de um a oito bots e um grupo opcional para aprovação explícita. Disponível só no Criador de times em conversa direta. Cada bot começa local, pedindo permissão para mudar arquivos, sem projeto, pastas extras, navegador ou controle do computador. Instalação e login pendentes podem ser resolvidos depois nas configurações.",
   "jobs.team-builder.name": "Criador de times",
@@ -356,13 +358,18 @@ export const ptBR = {
     "O bot guarda fatos que valem em toda conversa e registra procedimentos que se repetem como skills. As revisões automáticas rodam como turnos extras e usam a conta e as permissões atuais do bot.",
   "Não foi possível carregar ou salvar o aprendizado. Tente novamente.":
     "Não foi possível carregar ou salvar o aprendizado. Tente novamente.",
-  "{file} está indisponível porque não é um arquivo local seguro. Substitua os links por um arquivo comum. Você ainda pode desligar o aprendizado.":
-    "{file} está indisponível porque não é um arquivo local seguro. Substitua os links por um arquivo comum. Você ainda pode desligar o aprendizado.",
-  "Não foi possível ler {file}. Verifique as permissões do arquivo. Você ainda pode desligar o aprendizado.":
-    "Não foi possível ler {file}. Verifique as permissões do arquivo. Você ainda pode desligar o aprendizado.",
+  "A memória {what} ({file}) está indisponível porque não é um arquivo local seguro. Substitua os links por um arquivo comum. Você ainda pode desligar o aprendizado.":
+    "A memória {what} ({file}) está indisponível porque não é um arquivo local seguro. Substitua os links por um arquivo comum. Você ainda pode desligar o aprendizado.",
+  "Não foi possível ler a memória {what} ({file}). Verifique as permissões do arquivo. Você ainda pode desligar o aprendizado.":
+    "Não foi possível ler a memória {what} ({file}). Verifique as permissões do arquivo. Você ainda pode desligar o aprendizado.",
+  "sobre você": "sobre você",
+  "sobre o ambiente": "sobre o ambiente",
+  "Ferramentas do touri": "Ferramentas do touri",
+  "Ferramentas do touri neste computador": "Ferramentas do touri neste computador",
+  "As ferramentas do touri estão indisponíveis.": "As ferramentas do touri estão indisponíveis.",
   "Memória automática": "Memória automática",
-  "A cada {count} respostas concluídas, revisa o que aprendeu sobre você e o ambiente. MEMORY.md: {memory} · USER.md: {user} caracteres.":
-    "A cada {count} respostas concluídas, revisa o que aprendeu sobre você e o ambiente. MEMORY.md: {memory} · USER.md: {user} caracteres.",
+  "A cada {count} respostas concluídas, revisa o que aprendeu sobre você e o ambiente. Memória sobre você: {user} · sobre o ambiente: {memory} caracteres.":
+    "A cada {count} respostas concluídas, revisa o que aprendeu sobre você e o ambiente. Memória sobre você: {user} · sobre o ambiente: {memory} caracteres.",
   "Skills automáticas": "Skills automáticas",
   "Depois de {count} chamadas de ferramenta, propõe skills novas ou correções. {skills} skills salvas.":
     "Depois de {count} chamadas de ferramenta, propõe skills novas ou correções. {skills} skills salvas.",
@@ -1203,6 +1210,7 @@ export const ptBR = {
   "your decision": "sua decisão",
   "review the interrupted task": "revise a tarefa interrompida",
   "Reply interrupted": "Resposta interrompida",
+  "Routine postponed": "Rotina adiada",
   "Actions for {name}": "Ações de {name}",
   "Search bots, conversations and settings": "Buscar bots, conversas e configurações",
   Projects: "Projetos",
@@ -1952,7 +1960,6 @@ export const ptBR = {
   "Nenhuma integração externa foi conectada ainda. Quando houver uma API disponível, ela aparecerá aqui com seu estado local.":
     "Nenhuma integração externa conectada. As integrações disponíveis aparecerão aqui.",
   "Somente dados conhecidos pelo sidecar são exibidos.": "Os dados das integrações aparecerão após conectar.",
-  "Servidores e ferramentas registrados no gateway local.": "Servidores e ferramentas registrados no gateway local.",
   conectado: "conectado",
   "Carregando ferramentas…": "Carregando ferramentas…",
   "As ferramentas abaixo são as que o sidecar conhece e pode anunciar às sessões dos bots.":
@@ -2619,9 +2626,16 @@ export const ptBR = {
   "Não foi possível consultar o armazenamento.": "Não foi possível consultar o armazenamento.",
   "Não foi possível iniciar a compactação. Aguarde a migração ou compactação em andamento e tente novamente.":
     "Não foi possível iniciar a compactação. Aguarde a migração ou compactação em andamento e tente novamente.",
+  "O provedor não detalhou o pedido": "O provedor não detalhou o pedido",
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  "O provedor não detalhou o pedido": "The provider gave no details for this request",
+  "sobre você": "about you",
+  "sobre o ambiente": "about the environment",
+  "Ferramentas do touri": "touri tools",
+  "Ferramentas do touri neste computador": "touri tools on this computer",
+  "As ferramentas do touri estão indisponíveis.": "touri's tools are unavailable.",
   "jobs.team-builder.name": "Team builder",
   "jobs.team-builder.description": "Discusses your work and proposes bots and a group for you to approve.",
   "jobs.team-builder.roleLine": "Turn my work into a team of bots with my approval.",
@@ -2938,13 +2952,13 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "O bot guarda fatos que valem em toda conversa e registra procedimentos que se repetem como skills. As revisões automáticas rodam como turnos extras e usam a conta e as permissões atuais do bot.":
     "The bot keeps facts that hold in every conversation and records repeating procedures as skills. Automatic reviews run as extra turns and use the bot's provider account and current permissions.",
   "Não foi possível carregar ou salvar o aprendizado. Tente novamente.": "Couldn't load or save learning. Try again.",
-  "{file} está indisponível porque não é um arquivo local seguro. Substitua os links por um arquivo comum. Você ainda pode desligar o aprendizado.":
-    "{file} is unavailable because it is not a safe local file. Replace links with a regular file. You can still turn learning off.",
-  "Não foi possível ler {file}. Verifique as permissões do arquivo. Você ainda pode desligar o aprendizado.":
-    "Could not read {file}. Check the file permissions. You can still turn learning off.",
+  "A memória {what} ({file}) está indisponível porque não é um arquivo local seguro. Substitua os links por um arquivo comum. Você ainda pode desligar o aprendizado.":
+    "The memory {what} ({file}) is unavailable because it is not a safe local file. Replace links with a regular file. You can still turn learning off.",
+  "Não foi possível ler a memória {what} ({file}). Verifique as permissões do arquivo. Você ainda pode desligar o aprendizado.":
+    "Could not read the memory {what} ({file}). Check the file permissions. You can still turn learning off.",
   "Memória automática": "Automatic memory",
-  "A cada {count} respostas concluídas, revisa o que aprendeu sobre você e o ambiente. MEMORY.md: {memory} · USER.md: {user} caracteres.":
-    "Every {count} completed replies, reviews what it learned about you and the environment. MEMORY.md: {memory} · USER.md: {user} characters.",
+  "A cada {count} respostas concluídas, revisa o que aprendeu sobre você e o ambiente. Memória sobre você: {user} · sobre o ambiente: {memory} caracteres.":
+    "Every {count} completed replies, reviews what it learned about you and the environment. Memory about you: {user} · about the environment: {memory} characters.",
   "Skills automáticas": "Automatic skills",
   "Depois de {count} chamadas de ferramenta, propõe skills novas ou correções. {skills} skills salvas.":
     "After {count} tool calls, proposes new skills or fixes. {skills} skills saved.",
@@ -3188,6 +3202,8 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
     "Could not delete the bot's files. Check the data folder permissions and try deleting again.",
   "Não foi possível remover o histórico e os vínculos do bot. Tente excluir novamente; se persistir, envie um relato do problema.":
     "Could not remove the bot's history and links. Try deleting again; if the problem persists, send a problem report.",
+  "O bot foi excluído, mas a limpeza dos anexos privados está pendente. O touri tentará concluir a limpeza automaticamente.":
+    "The bot was deleted, but private attachment cleanup is pending. touri will automatically try to finish the cleanup.",
   "Não foi possível excluir a rotina. Tente novamente.": "Could not delete the routine. Try again.",
   "Excluindo…": "Deleting…",
   Excluir: "Delete",
@@ -4292,7 +4308,6 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Nenhuma integração externa foi conectada ainda. Quando houver uma API disponível, ela aparecerá aqui com seu estado local.":
     "No external integrations connected. Available integrations will appear here.",
   "Somente dados conhecidos pelo sidecar são exibidos.": "Integration data appears after connecting.",
-  "Servidores e ferramentas registrados no gateway local.": "Servers and tools registered in the local gateway.",
   conectado: "connected",
   "Carregando ferramentas…": "Loading tools…",
   "As ferramentas abaixo são as que o sidecar conhece e pode anunciar às sessões dos bots.":

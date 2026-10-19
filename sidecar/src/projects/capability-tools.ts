@@ -99,7 +99,7 @@ export const createCapabilityTools = (
           )
         const configure = kernel.services.use("bots.configureAccess")
         if (!configure) return denied("A configuração do bot está indisponível.")
-        const result = configure({
+        const result = await configure({
           botId: bot.id,
           patch:
             capability === "browser"

@@ -12,6 +12,8 @@ const ATTENTION_KINDS: ReadonlyArray<NotificationRecord["kind"]> = [
 ]
 const FAILURE_KINDS: ReadonlyArray<NotificationRecord["kind"]> = ["routine-deferred", "routine-failed", "turn-failed"]
 
+/** Notices that inform without asking for anything: they never put a bot under "needs you". */
+export const isInformationalNotice = (item: NotificationRecord): boolean => item.kind === "routine-deferred"
 export const isAttention = (item: NotificationRecord): boolean => ATTENTION_KINDS.includes(item.kind)
 export const isFailureNotice = (item: NotificationRecord): boolean => FAILURE_KINDS.includes(item.kind)
 

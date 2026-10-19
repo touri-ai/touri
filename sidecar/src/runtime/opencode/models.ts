@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto"
 import type { Bot, Kernel } from "@touri/contracts"
 import { buildChildEnv } from "../../kernel"
-import { writePrivateFile } from "../utils"
+import { writePrivateFileAsync } from "../../kernel/async-files"
 import { deepSeekDefault } from "./adapter"
 import { isolatedOpenCodeEnv, openCodeBinary, providerSecretEnv, readOpenCodeAuth } from "./config"
 
@@ -14,13 +14,13 @@ export const listOpenCodeModels = async (kernel: Kernel, bot?: Bot) => {
   if (!binary.success) return { models: [], defaultModel: null, available: false }
   const root = `${kernel.paths.runDir}/opencode-models/${randomUUID()}`
   const configPath = `${root}/opencode.json`
-  writePrivateFile({
+  await writePrivateFileAsync({
     root: kernel.paths.appData,
     path: configPath,
     content: JSON.stringify({ autoupdate: false, plugin: [], permission: "deny" }),
   })
   const authPath = `${root}/data/opencode/auth.json`
-  writePrivateFile({ root: kernel.paths.appData, path: authPath, content: readOpenCodeAuth(kernel, base) })
+  await writePrivateFileAsync({ root: kernel.paths.appData, path: authPath, content: readOpenCodeAuth(kernel, base) })
   const env = isolatedOpenCodeEnv(base, root, `${root}/data`, configPath)
   const child = kernel.spawnTree({ cmd: binary.path, args: ["models", "--pure"], cwd: root, env })
   if (!child.success) return { models: [], defaultModel: null, available: false }
@@ -45,6 +45,6 @@ export const listOpenCodeModels = async (kernel: Kernel, bot?: Bot) => {
     return { models, defaultModel: deepSeekDefault(models), available: exit.code === 0 }
   } finally {
     clearTimeout(timer)
-    writePrivateFile({ root: kernel.paths.appData, path: authPath, content: "{}" })
+    await writePrivateFileAsync({ root: kernel.paths.appData, path: authPath, content: "{}" })
   }
 }
