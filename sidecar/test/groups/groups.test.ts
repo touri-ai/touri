@@ -1713,10 +1713,13 @@ test("group conversation actions persist routing, broadcast past the coordinator
 
   expect(scenario.order).toEqual([...scenario.group.memberIds, scenario.bots[0]?.id ?? ""])
   const participant = scenario.data.participant(scenario.group, scenario.thread.id, scenario.bots[0]?.id ?? "")
-  const summaryRequest = scenario.store.activePath({ threadId: participant.id }).find((message) => {
-    const marker = message.parts[0]
-    return marker?.type === "notice" && marker.code === "group_coordination_prompt"
-  })?.text
+  const summaryRequest = scenario.store
+    .activePath({ threadId: participant.id })
+    .filter((message) => {
+      const marker = message.parts[0]
+      return marker?.type === "notice" && marker.code === "group_coordination_prompt"
+    })
+    .at(-1)?.text
   expect(summaryRequest).toContain("dev respondeu")
   expect(summaryRequest).toContain("qa respondeu")
   const conflict = await scenario.request(`/threads/${scenario.thread.id}/messages`, {
