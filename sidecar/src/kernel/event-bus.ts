@@ -11,6 +11,12 @@ export type EventSocketData = { channel: "events"; since?: number }
 /** A reconnect replays at most this much; a larger gap is cheaper to reload over REST. */
 export const REPLAY_LIMITS = { events: 2_000, bytes: 2 * 1024 * 1024 }
 export const LIVE_DELIVERY_LIMITS = { events: 32, budgetMs: 8 }
+const isSqliteBusy = (error: unknown): boolean =>
+  typeof error === "object" &&
+  error !== null &&
+  "code" in error &&
+  typeof error.code === "string" &&
+  (error.code.startsWith("SQLITE_BUSY") || error.code.startsWith("SQLITE_LOCKED"))
 
 type MessageRef = TranscriptRef
 const isMessageRef = (value: unknown): value is MessageRef =>
@@ -25,7 +31,11 @@ type EventSocket = Pick<ServerWebSocket<unknown>, "readyState" | "sendText"> &
 export const createEventBus = (
   database?: Database,
   runStage?: PerformanceStageRunner,
-  { now = performance.now.bind(performance), schedule = scheduleDelivery }: DeliveryScheduling = {},
+  {
+    now = performance.now.bind(performance),
+    schedule = scheduleDelivery,
+    deferRecovery = false,
+  }: DeliveryScheduling = {},
 ) => {
   const measureStage = <Value, Input>(stage: PerformanceStage, action: (input: Input) => Value, input: Input): Value =>
     runStage ? runStage(stage, action, input) : action(input)
@@ -41,6 +51,9 @@ export const createEventBus = (
   let stopped = false
   let flushing = false
   let compactedAt = delivered
+  let retentionTimer: ReturnType<typeof setTimeout> | undefined
+  let captureRetryTimer: ReturnType<typeof setTimeout> | undefined
+  let captureRetryAttempt = 0
   const serialize = (envelope: UiEventEnvelope): string =>
     JSON.stringify(envelope.event.type === "transcript.resync" ? { type: "resync", lastSeq: envelope.seq } : envelope)
   const payloadFor = (envelope: UiEventEnvelope): string =>
@@ -81,10 +94,66 @@ export const createEventBus = (
   }
   const deliver = (envelope: UiEventEnvelope): void => measureStage("workspace_event_delivery", deliverNow, envelope)
 
+  const scheduleCaptureRetry = (): void => {
+    if (stopped || captureRetryTimer) return
+    const delayMs = Math.min(1_000, 50 * 2 ** Math.min(captureRetryAttempt, 4))
+    captureRetryAttempt += 1
+    captureRetryTimer = setTimeout(() => {
+      captureRetryTimer = undefined
+      captureTranscript()
+    }, delayMs)
+    captureRetryTimer.unref()
+  }
+
   // Also recovers a committed tail whose publisher stopped before delivery.
   const captureTranscript = (): void => {
     if (!database || stopped) return
-    measureStage("transcript_journal_capture", captureEntries, database)
+    const busyTimeout = (database.query("PRAGMA busy_timeout").get() as { timeout: number }).timeout
+    database.exec("PRAGMA busy_timeout = 0")
+    try {
+      measureStage("transcript_journal_capture", captureEntries, database)
+      captureRetryAttempt = 0
+    } catch (error) {
+      if (!isSqliteBusy(error)) throw error
+      scheduleCaptureRetry()
+    } finally {
+      database.exec(`PRAGMA busy_timeout = ${busyTimeout}`)
+    }
+  }
+
+  const scheduleRetention = (): void => {
+    if (stopped || retentionTimer) return
+    retentionTimer = setTimeout(() => {
+      retentionTimer = undefined
+      runRetentionMaintenance(true)
+    }, 100)
+    retentionTimer.unref()
+  }
+
+  const runRetentionMaintenance = (force = false): void => {
+    const currentDatabase = database
+    if (!currentDatabase || stopped || (!force && delivered - compactedAt < 256)) return
+
+    const timeout = (currentDatabase.query("PRAGMA busy_timeout").get() as { timeout: number }).timeout
+    currentDatabase.exec("PRAGMA busy_timeout = 0")
+    const getMore = (): boolean | undefined => {
+      try {
+        return measureStage("transcript_retention", compactTranscript, { database: currentDatabase })
+      } catch (error) {
+        if (!isSqliteBusy(error)) throw error
+        return undefined
+      } finally {
+        currentDatabase.exec(`PRAGMA busy_timeout = ${timeout}`)
+      }
+    }
+    const more = getMore()
+    if (more === undefined) {
+      scheduleRetention()
+      return
+    }
+
+    compactedAt = delivered
+    if (more) scheduleRetention()
   }
 
   const getRefEvent = (event: MessageRef): UiEvent => {
@@ -256,8 +325,7 @@ export const createEventBus = (
     }
     if (stopped || delivered < head() || delivered - compactedAt < 256) return
 
-    measureStage("transcript_retention", compactTranscript, { database })
-    compactedAt = delivered
+    runRetentionMaintenance()
   }
   const writeEvent = (event: UiEvent): void => {
     database
@@ -286,9 +354,9 @@ export const createEventBus = (
     }
     if (!scheduled) flush()
   }
-  captureTranscript()
-  if (database) {
-    materializeTranscript(database)
+  if (!deferRecovery) {
+    captureTranscript()
+    if (database) materializeTranscript(database)
   }
 
   return {
@@ -301,7 +369,7 @@ export const createEventBus = (
       captureTranscript()
       if (!scheduled) flush()
       if (database) {
-        measureStage("transcript_retention", compactTranscript, { database })
+        runRetentionMaintenance(true)
         for (const envelope of catchUp(since)) {
           if (socket.sendText(payloadFor(envelope)) === 0) {
             socket.close?.(1013, "Tente reconectar")
@@ -320,6 +388,8 @@ export const createEventBus = (
     stop: (): void => {
       stopped = true
       cancelContinuation?.()
+      clearTimeout(retentionTimer)
+      clearTimeout(captureRetryTimer)
       sockets = []
     },
   }
@@ -328,6 +398,7 @@ export const createEventBus = (
 type DeliveryScheduling = {
   now?: () => number
   schedule?: (action: () => void) => () => void
+  deferRecovery?: boolean
 }
 
 const scheduleDelivery = (action: () => void): (() => void) => {

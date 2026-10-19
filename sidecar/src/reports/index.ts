@@ -141,7 +141,7 @@ export const init = async (kernel: Kernel) => {
             db.exec(
               "DELETE FROM problem_reports WHERE rowid NOT IN (SELECT rowid FROM problem_reports ORDER BY date DESC LIMIT 100)",
             )
-          })()
+          }).immediate()
           return { status: 200, json: {} }
         },
       },

@@ -13,7 +13,7 @@ export const createApprovalBridge = ({
   timeoutMs = 30 * 60_000,
 }: {
   kernel: Kernel
-  onCard: (ctx: ApprovalInput["ctx"], part: ApprovalPart) => boolean
+  onCard: (ctx: ApprovalInput["ctx"], part: ApprovalPart) => boolean | Promise<boolean>
   timeoutMs?: number
 }) => {
   const grants = createStandingGrantStore(kernel)
@@ -28,9 +28,9 @@ export const createApprovalBridge = ({
     { input: ApprovalInput; part: ApprovalPart; resolve: (result: ApprovalResult) => void; cleanup: () => void }
   >()
 
-  const publishCard = (input: ApprovalInput, part: ApprovalPart): boolean => {
+  const publishCard = async (input: ApprovalInput, part: ApprovalPart): Promise<boolean> => {
     try {
-      return onCard(input.ctx, structuredClone(part))
+      return await onCard(input.ctx, structuredClone(part))
     } catch {
       kernel.log({ level: "warn", module: "approvals", msg: "Não foi possível atualizar o cartão de aprovação." })
       return false
@@ -47,13 +47,13 @@ export const createApprovalBridge = ({
       input.isCurrent?.() !== false
     )
   }
-  const finish = (
+  const finish = async (
     id: string,
     decision: ApprovalPart["decision"],
     message?: string,
     answered = false,
     standing = false,
-  ): void => {
+  ): Promise<void> => {
     const request = pending.get(id)
     if (!request) return
     pending.delete(id)
@@ -61,22 +61,32 @@ export const createApprovalBridge = ({
     request.part.decision = decision
     request.part.resolvedAt = Date.now()
     request.part.standing = decision === "approved" && standing
-    publishCard(request.input, request.part)
+    const saved = await publishCard(request.input, request.part)
+    const resolvedDecision = saved ? decision : "denied"
     notices.resolve({
       requestId: id,
-      resolution: decision === "approved" ? "allow" : decision === "expired" ? "expired" : answered ? "answer" : "deny",
+      resolution:
+        resolvedDecision === "approved"
+          ? "allow"
+          : resolvedDecision === "expired"
+            ? "expired"
+            : answered
+              ? "answer"
+              : "deny",
     })
     const outcome =
-      decision === "approved"
+      resolvedDecision === "approved"
         ? standing
           ? approvalOutcome.standing
           : approvalOutcome.once
-        : (message ?? approvalOutcome.denied)
-    if (decision !== "expired") remember(request.input, outcome)
+        : saved
+          ? (message ?? approvalOutcome.denied)
+          : "A aprovação não pôde ser salva."
+    if (resolvedDecision !== "expired" && saved) remember(request.input, outcome)
     request.resolve(
-      decision === "expired"
+      resolvedDecision === "expired"
         ? { success: false, errorCode: "TIMEOUT", error: "A aprovação expirou." }
-        : decision === "approved"
+        : resolvedDecision === "approved"
           ? { success: true, behavior: "allow", updatedInput: request.input.input, message: outcome }
           : { success: true, behavior: "deny", message: outcome },
     )
@@ -133,8 +143,8 @@ export const createApprovalBridge = ({
       decision: "pending",
     }
     return new Promise((resolve) => {
-      const onAbort = () => finish(approvalId, "denied", "A ação foi cancelada.")
-      const timer = setTimeout(() => finish(approvalId, "expired"), timeoutMs)
+      const onAbort = () => void finish(approvalId, "denied", "A ação foi cancelada.")
+      const timer = setTimeout(() => void finish(approvalId, "expired"), timeoutMs)
       pending.set(approvalId, {
         input,
         part,
@@ -146,16 +156,21 @@ export const createApprovalBridge = ({
       })
       input.ctx.signal.addEventListener("abort", onAbort, { once: true })
       if (input.ctx.signal.aborted) return onAbort()
-      if (!publishCard(input, part)) return finish(approvalId, "denied", "Execução indisponível.")
-      if (!pending.has(approvalId)) return
-      notices.prompt({
-        botId: input.ctx.botId,
-        threadId: input.ctx.threadId,
-        requestId: approvalId,
-        toolName: input.toolName,
-        input: input.input,
-        detail: part.detail,
-        scope: part.scope,
+      void publishCard(input, part).then((saved) => {
+        if (!saved) {
+          void finish(approvalId, "denied", "Execução indisponível.")
+          return
+        }
+        if (!pending.has(approvalId)) return
+        notices.prompt({
+          botId: input.ctx.botId,
+          threadId: input.ctx.threadId,
+          requestId: approvalId,
+          toolName: input.toolName,
+          input: input.input,
+          detail: part.detail,
+          scope: part.scope,
+        })
       })
     })
   }
@@ -168,18 +183,20 @@ export const createApprovalBridge = ({
     }
     if (decision === "approved" && standing && request.part.allowStanding)
       grants.add(request.input.ctx.botId, request.input.scope)
-    finish(approvalId, decision, message, !!message, !!standing && !!request.part.allowStanding)
+    await finish(approvalId, decision, message, !!message, !!standing && !!request.part.allowStanding)
     return { success: true }
   }
-  const settle: ServiceMap["approvals.settle"] = ({ approvalId, decision }) => finish(approvalId, decision)
+  const settle: ServiceMap["approvals.settle"] = ({ approvalId, decision }) => {
+    void finish(approvalId, decision)
+  }
   const dispose = () => {
     disposed = true
-    for (const id of pending.keys()) finish(id, "denied", "A execução terminou.")
+    for (const id of pending.keys()) void finish(id, "denied", "A execução terminou.")
     outcomes.length = 0
   }
   const cancelRun = (runId: string) => {
     for (const [id, request] of pending)
-      if (request.input.ctx.runId === runId) finish(id, "denied", "A execução terminou.")
+      if (request.input.ctx.runId === runId) void finish(id, "denied", "A execução terminou.")
     for (let index = outcomes.length - 1; index >= 0; index--)
       if (outcomes[index]?.input.ctx.runId === runId) outcomes.splice(index, 1)
   }

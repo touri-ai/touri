@@ -33,11 +33,12 @@ import messageSearchSql from "./migrations/0027.sql" with { type: "text" }
 import groupDeletionSql from "./migrations/0028.sql" with { type: "text" }
 import computerGrantExpirySql from "./migrations/0029.sql" with { type: "text" }
 import groupCoordinationHistorySql from "./migrations/0030.sql" with { type: "text" }
+import streamWorkerSql from "./migrations/0031.sql" with { type: "text" }
 import { withSuspendedSchemaObjects } from "./schema-rebuild"
 import { instrumentMainConnection, type SlowStatementTracker } from "./sqlite-performance"
 import { applyUpgradeBaselines } from "./upgradeBaselines"
 
-export const SCHEMA_VERSION = 30
+export const SCHEMA_VERSION = 31
 
 const FREE_PAGE_RATIO_LIMIT = 0.2
 
@@ -221,7 +222,7 @@ export const openDatabase = ({
     const migrated = database.query("SELECT 1 FROM schema_meta WHERE key = 'group_coordination_history_version'").get()
     // Earlier migrations replay on startup, so a dedicated marker prevents rescanning history every time.
     if (!migrated) database.exec(groupCoordinationHistorySql)
-    database.exec("UPDATE schema_meta SET value = '30' WHERE key = 'schema_version'")
   })()
+  database.transaction(() => database.exec(streamWorkerSql))()
   return database
 }

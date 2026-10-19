@@ -6,6 +6,7 @@ import { join } from "node:path"
 import type { MessagePart, UiEventEnvelope } from "@touri/contracts"
 import { createKernel } from "../../src/kernel"
 import { createEventBus, REPLAY_LIMITS } from "../../src/kernel/event-bus"
+import type { PerformanceStageRunner } from "../../src/kernel/performance"
 import { init as initStore } from "../../src/store"
 import { socketTicket } from "../fakes/ws-ticket"
 
@@ -24,8 +25,8 @@ const fixture = async () => {
     runtime,
     db,
     store,
-    close: () => {
-      runtime.stop()
+    close: async () => {
+      await runtime.stop()
       rmSync(root, { recursive: true, force: true })
     },
   }
@@ -98,7 +99,7 @@ test("streaming rewrites keep both journals bounded and hydrate the complete cur
     expect(latest.entries[0].event.message.parts).toHaveLength(60)
     bus.stop()
   } finally {
-    f.close()
+    await f.close()
   }
 })
 
@@ -109,7 +110,7 @@ test("a reconnect gets each message once, in its latest revision, with contiguou
     insertReply(f)
     streamCommands(f, 20, 200)
     f.store.appendDelta({ threadId: "t", messageId: "reply", partIndex: 20, delta: "Pronto" })
-    f.store.flushWrites?.()
+    await f.store.flushWritesAsync?.()
     const bus = createEventBus(f.db)
     const caughtUp = bus.catchUp(1)
     expect(caughtUp.map(({ seq }) => seq)).toEqual(bus.replay(1).map(({ seq }) => seq))
@@ -125,7 +126,7 @@ test("a reconnect gets each message once, in its latest revision, with contiguou
     expect(caughtUp.at(-1)?.event).toMatchObject({ type: "message.delta", delta: "Pronto" })
     bus.stop()
   } finally {
-    f.close()
+    await f.close()
   }
 })
 
@@ -145,7 +146,7 @@ test("cold clients and oversized gaps get one resync frame instead of the whole 
     expect(bus.catchUp(1)).toEqual([{ seq: head(), at: expect.any(Number), event: { type: "transcript.resync" } }])
     bus.stop()
   } finally {
-    f.close()
+    await f.close()
   }
 })
 
@@ -169,7 +170,7 @@ test("a gap with more events than the cap resyncs without reading the stored bod
     f.db.query = query
     bus.stop()
   } finally {
-    f.close()
+    await f.close()
   }
 })
 
@@ -194,7 +195,7 @@ test("a reference whose sequence now holds another entry falls back to the curre
     expect(event).toMatchObject({ type: "message.created", message: { id: "reply", parts: [{}, {}] } })
     bus.stop()
   } finally {
-    f.close()
+    await f.close()
   }
 })
 
@@ -211,7 +212,84 @@ test("capturing an unpublished transcript releases its reader before checkpointi
     expect(f.db.query("PRAGMA wal_checkpoint(TRUNCATE)").get()).toMatchObject({ busy: 0 })
     bus.stop()
   } finally {
-    f.close()
+    await f.close()
+  }
+})
+
+test("synchronous publish and send survive a worker lock without an empty capture lock", async () => {
+  const f = await fixture()
+  const url = URL.createObjectURL(
+    new Blob(
+      [
+        `import { Database } from "bun:sqlite";
+        self.onmessage = ({ data }) => {
+          const database = new Database(data.filename);
+          database.exec("BEGIN IMMEDIATE");
+          Atomics.store(new Int32Array(data.signal), 0, 1);
+          self.postMessage("locked");
+          setTimeout(() => {
+            database.exec("ROLLBACK");
+            Atomics.store(new Int32Array(data.signal), 0, 0);
+            database.close();
+            self.postMessage("released");
+          }, 200);
+        };`,
+      ],
+      { type: "application/javascript" },
+    ),
+  )
+  const worker = new Worker(url, { smol: true, ref: false })
+  const signal = new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT)
+  const locked = Promise.withResolvers<void>()
+  const released = Promise.withResolvers<void>()
+  worker.onmessage = ({ data }: MessageEvent<string>) => {
+    if (data === "locked") locked.resolve()
+    if (data === "released") released.resolve()
+  }
+  worker.onerror = (event) => locked.reject(new Error(event.message))
+  worker.postMessage({ filename: f.db.filename, signal })
+  let captureFinishedWhileLocked = false
+  const runStage: PerformanceStageRunner = (stage, action, input) => {
+    const result = action(input as Parameters<typeof action>[0])
+    if (stage === "transcript_journal_capture")
+      captureFinishedWhileLocked = Atomics.load(new Int32Array(signal), 0) === 1
+    return result
+  }
+  const bus = createEventBus(f.db, runStage)
+  try {
+    await locked.promise
+
+    expect(() =>
+      bus.publish({ type: "import.progress", importId: "worker-lock", phase: "done", done: 1, total: 1 }),
+    ).not.toThrow()
+    const inserted = f.store.insertMessage({
+      message: {
+        id: "sent-while-locked",
+        threadId: "t",
+        parentId: null,
+        role: "user",
+        kind: "text",
+        status: "complete",
+        runId: null,
+        text: "Mensagem sintética",
+        parts: [{ type: "text", text: "Mensagem sintética" }],
+        sender: null,
+        source: "local",
+      },
+    })
+    await released.promise
+
+    expect(inserted.success).toBe(true)
+    expect(captureFinishedWhileLocked).toBe(true)
+    expect(
+      bus.replay(0).some(({ event }) => event.type === "import.progress" && event.importId === "worker-lock"),
+    ).toBe(true)
+    expect((f.db.query("PRAGMA busy_timeout").get() as { timeout: number }).timeout).toBe(5_000)
+  } finally {
+    bus.stop()
+    worker.terminate()
+    URL.revokeObjectURL(url)
+    await f.close()
   }
 })
 
@@ -252,6 +330,6 @@ test("a socket reconnecting behind a large backlog stays open and receives live 
     ])
   } finally {
     socket?.close()
-    f.close()
+    await f.close()
   }
 })

@@ -879,8 +879,9 @@
   }
   .settings-nav {
     display: flex;
+    flex-wrap: wrap;
     flex: none;
-    overflow-x: auto;
+    overflow-x: visible;
     padding: var(--space-8);
     border-right: 0;
     border-bottom: 1px solid var(--border-divider);

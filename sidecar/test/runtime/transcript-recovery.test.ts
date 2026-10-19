@@ -113,7 +113,7 @@ const fixture = async (ignoreTerm = false, interruptGraceMs = 30) => {
     pid: () => pid,
     close: async () => {
       await engine.shutdown()
-      runtime.stop()
+      await runtime.stop()
       rmSync(root, { recursive: true, force: true })
       rmSync(assets, { recursive: true, force: true })
     },
@@ -220,6 +220,7 @@ test.each(["cancel", "restart"])(
         })
         engine = recoveredEngine
       }
+      await engine.ready
       const disposition = reason === "cancel" ? "cancelled_by_user" : "interrupted_by_restart"
       const reply = store.activePath({ threadId: "t" }).find((message) => message.runId === run.id)
       expect(reply?.parts.find((part) => "callId" in part)).toMatchObject({ resolution: disposition, ok: null })
@@ -254,7 +255,7 @@ test.each(["cancel", "restart"])(
     } finally {
       await recoveredEngine?.shutdown()
       await f.engine.shutdown()
-      restored?.stop()
+      await restored?.stop()
       await f.close()
     }
   },
@@ -279,6 +280,7 @@ test("restart fences a still-streaming writer and kills its surviving local prov
     const events: UiEventEnvelope[] = []
     restored.kernel.subscribe((event) => events.push(event))
     engine = createRuntimeEngine({ kernel: restored.kernel })
+    await engine.ready
     const recovered = store.activePath({ threadId: "t" }).find((message) => message.runId === run.id)
     expect(recovered).toMatchObject({ status: "failed", text: "INÍCIO" })
     expect(recovered?.parts).toContainEqual(expect.objectContaining({ type: "notice", code: "app_restart" }))
@@ -326,7 +328,7 @@ test("restart fences a still-streaming writer and kills its surviving local prov
   } finally {
     await engine?.shutdown()
     await f.engine.shutdown()
-    restored?.stop()
+    await restored?.stop()
     await f.close()
   }
 }, 30_000)
@@ -382,6 +384,7 @@ for (const nativeSession of [false, true]) {
         codexCommand: f.command,
         environment: { PATH: process.env.PATH ?? "/usr/bin", TOURI_FAKE_SCENARIO: f.scenario },
       })
+      await engine.ready
       expect(engine.listRuns("t")[0]).toMatchObject({ status: "interrupted", errorClass: "app_restart" })
       const retried = engine.retry(run.id)
       expect(retried).toMatchObject({ success: false, errorCode: "CONFLICT" })
@@ -396,7 +399,7 @@ for (const nativeSession of [false, true]) {
       ).toContainEqual(expect.objectContaining({ callId: "completed-step", exitCode: 0 }))
     } finally {
       await engine?.shutdown()
-      restored?.stop()
+      await restored?.stop()
       await f.close()
     }
   }, 30_000)
@@ -613,6 +616,7 @@ test("restart with a dead provider produces a terminal reply even before the fir
       .query("UPDATE runs SET status = 'starting', reply_message_id = NULL, finished_at = NULL WHERE id = ?")
       .run(run.id)
     recovered = createRuntimeEngine({ kernel: f.runtime.kernel })
+    await recovered.ready
     const reply = f.store.activePath({ threadId: "t" }).find((message) => message.runId === run.id)
     expect(reply).toMatchObject({ status: "failed", text: "", parentId: "request" })
     expect(reply?.parts).toContainEqual(expect.objectContaining({ type: "notice", code: "app_restart" }))

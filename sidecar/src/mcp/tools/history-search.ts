@@ -31,6 +31,21 @@ export const createHistorySearchHandler =
           error: "O histórico privado exige aprovação humana para uso no grupo.",
         }
     }
+    if (threadId === undefined) {
+      try {
+        await store.flushWritesAsync?.()
+      } catch {
+        try {
+          kernel.log({
+            level: "warn",
+            module: "mcp",
+            msg: "History search continued with persisted data after stream writes were rejected",
+          })
+        } catch {
+          // A storage failure can also prevent writing the diagnostic.
+        }
+      }
+    } else await store.flushWritesAsync?.({ threadId })
     const results =
       threadId === undefined
         ? store.search({ q: input.query, botId: ctx.botId, limit: input.limit ?? 10 })

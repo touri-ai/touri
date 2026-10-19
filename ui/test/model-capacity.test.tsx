@@ -6,6 +6,18 @@ import { errorRecovery } from "../src/errorRecovery"
 import { ApiError } from "../src/errors"
 import { runErrorFor } from "../src/runError"
 
+const OVERLOADS = [
+  { status: 529, diagnostic: '529 {"error":{"type":"overloaded_error","message":"Overloaded"}}' },
+  { status: 529, diagnostic: "HTTP 529 Overloaded" },
+  { status: 503, diagnostic: "503 Service Unavailable: The model is overloaded" },
+  { status: 503, diagnostic: "503: server is overloaded" },
+] as const
+
+const RECOVERY_LOCALES = [
+  { locale: "pt-BR", cause: "sem capacidade", recovery: "Escolha outro modelo nas configurações do bot" },
+  { locale: "en", cause: "at capacity", recovery: "Choose another model in the bot settings" },
+] as const
+
 const getCapacityFixture = (diagnostic: string, errorClass: RunErrorClass = "rate_limit") => {
   const message: Message = {
     id: "capacity-reply",
@@ -59,6 +71,7 @@ it.each([
   "Selected model is at capacity. Please try a different model.",
   "The model is currently at capacity. Please try again later.",
   "O modelo selecionado está sem capacidade no momento.",
+  ...OVERLOADS.map(({ diagnostic }) => diagnostic),
 ])("shows model capacity recovery for live and stored failures: %s", (diagnostic) => {
   const { message, run } = getCapacityFixture(diagnostic)
 
@@ -82,19 +95,30 @@ it("recovers legacy unknown failures without requiring a loaded run", () => {
   expect(failure?.recovery.message).toContain("Escolha outro modelo")
 })
 
-it.each([
-  ["pt-BR", "sem capacidade", "Escolha outro modelo nas configurações do bot"],
-  ["en", "at capacity", "Choose another model in the bot settings"],
-] as const)("uses capacity recovery in %s even with a rate limit status", (locale, cause, recovery) => {
-  const diagnostic = "Selected model is at capacity. Please try a different model."
+it.each(OVERLOADS.flatMap((overload) => RECOVERY_LOCALES.map((recovery) => ({ ...overload, ...recovery }))))(
+  "uses capacity recovery in $locale for $diagnostic",
+  ({ locale, cause, recovery, status, diagnostic }) => {
+    const failure = errorRecovery(new ApiError(status, diagnostic), { errorClass: "rate_limit", locale })
 
-  const failure = errorRecovery(new ApiError(429, diagnostic), { errorClass: "rate_limit", locale })
+    expect(failure.classified).toBe(true)
+    expect(failure.message).toContain(cause)
+    expect(failure.message).toContain(recovery)
+    expect(failure.message).not.toMatch(/limite de uso|Muitas solicitações|usage limit/)
+  },
+)
 
-  expect(failure.classified).toBe(true)
-  expect(failure.message).toContain(cause)
-  expect(failure.message).toContain(recovery)
-  expect(failure.message).not.toMatch(/limite de uso|Muitas solicitações|usage limit/)
-})
+it.each(["file.ts:529: overloaded operator", "server is overloaded"])(
+  "does not show model capacity recovery for unrelated diagnostics: %s",
+  (diagnostic) => {
+    const { message, run } = getCapacityFixture(diagnostic, "unknown")
+
+    const failure = runErrorFor(message, run)
+    render(<VirtualMessageList messages={[message]} runs={[run]} onRetry={vi.fn()} onSwitchBranch={vi.fn()} />)
+
+    expect(failure?.title).not.toBe("Modelo temporariamente sem capacidade")
+    expect(screen.getByRole("alert")).not.toHaveTextContent(/sem capacidade|at capacity/i)
+  },
+)
 
 it("preserves usage limit recovery for genuine rate limits", () => {
   const { message, run } = getCapacityFixture("429 usage limit reached")
