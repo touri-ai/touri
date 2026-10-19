@@ -1,5 +1,3 @@
-import { workerEntrypoint } from "../kernel/worker-entrypoint"
-
 type DownloadMessage =
   | { type: "ready" }
   | { type?: undefined; requestId: number; error?: { name: string; message: string; code?: string } }
@@ -11,13 +9,7 @@ const workerError = (error: { name: string; message: string; code?: string }): E
 /** Stream a downloaded snapshot through a worker so disk writes and fsync never block the server loop. */
 export const atomicDownload = async (response: Response, path: string): Promise<void> => {
   if (!response.ok || !response.body || path.includes("\0")) throw new Error("Snapshot inválido")
-  const worker = new Worker(
-    workerEntrypoint(
-      new URL("./atomic-download-worker.ts", import.meta.url),
-      new URL("../../../sidecar-atomic-download-worker.ts", import.meta.url),
-    ),
-    { smol: true },
-  )
+  const worker = new Worker(new URL("./atomic-download-worker-entry.ts", import.meta.url), { smol: true })
   const pending = new Map<number, { resolve: () => void; reject: (error: Error) => void }>()
   let requestId = 0
   let readyResolve: () => void = () => {}
