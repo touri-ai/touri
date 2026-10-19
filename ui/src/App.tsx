@@ -988,6 +988,7 @@ const AppContent = ({ kernel }: AppProps) => {
         <ApprovalNotice notifications={data.notifications} messages={data.activityMessages} onReview={reviewApproval} />
         <div className="app-grid">
           <SidebarDrawer
+            panelOpen={section === "bots" && screen === "chat" && panelOpen}
             serverMode={serverMode}
             serverUrl={serverState.status?.url ?? null}
             host={data.routineHost}
