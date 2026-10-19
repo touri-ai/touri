@@ -7,7 +7,7 @@ import { publicError } from "@touri/contracts"
 import { openDatabase } from "../../src/kernel/db"
 import { createRuntimePersistence, toRun } from "../../src/runtime/persistence"
 
-test.each(["machine_service_unavailable", "machine_service_start_failed"] as const)(
+test.each(["machine_service_unavailable", "machine_service_start_failed", "group_context_missing"] as const)(
   "%s persists on the shipped schema and remains terminal after reopening",
   (errorClass) => {
     const root = mkdtempSync(join(tmpdir(), "touri-machine-persistence-"))
@@ -67,6 +67,9 @@ test.each([
   ["unknown", "private failure mentioning TOURI-E8001"],
   ["unknown", '{"code":"TOURI-E8001","message":123}'],
   ["unknown", '{"code":"TOURI-E3002","message":"provider detail"}'],
+  ["unknown", '{"code":"TOURI-E1002","message":"legacy invalid request"}'],
+  ["unknown", '{"code":"TOURI-E1002","errorClass":"group_context_missing","message":123}'],
+  ["unknown", '{"code":"TOURI-E3002","errorClass":"group_context_missing","message":"legacy detail"}'],
 ] as const)("legacy %s error retains its detail: %s", (errorClass, errorMessage) => {
   expect(toRun({ error_class: errorClass, error_message: errorMessage })).toMatchObject({ errorClass, errorMessage })
 })

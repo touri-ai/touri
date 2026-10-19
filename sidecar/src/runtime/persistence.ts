@@ -36,31 +36,47 @@ const parseJson = <T>(value: unknown, fallback: T): T => {
   }
 }
 
-// The shipped runs.error_class CHECK predates machine errors. Keep their public
-// code and original detail in the existing text column without changing schema.
-const persistedRunError = (run: Pick<Run, "errorClass" | "errorMessage">) =>
-  run.errorClass === "machine_service_unavailable" || run.errorClass === "machine_service_start_failed"
-    ? {
-        errorClass: "unknown",
-        errorMessage: jsonText({ code: publicError(run.errorClass).code, message: run.errorMessage }),
-      }
-    : { errorClass: run.errorClass, errorMessage: run.errorMessage }
+const MACHINE_ERROR_CLASSES: Readonly<Record<string, RunErrorClass>> = {
+  "TOURI-E8001": "machine_service_unavailable",
+  "TOURI-E8002": "machine_service_start_failed",
+}
 
-const readRunError = (row: DbRow): Pick<Run, "errorClass" | "errorMessage"> => {
+// Keep newer errors in the existing envelope so shipped CHECK constraints stay
+// valid without rebuilding run history or changing deletion cascades.
+const getPersistedRunError = (run: Pick<Run, "errorClass" | "errorMessage">) => {
+  const errorClass = run.errorClass
+  if (
+    errorClass !== "group_context_missing" &&
+    errorClass !== "machine_service_unavailable" &&
+    errorClass !== "machine_service_start_failed"
+  )
+    return { errorClass, errorMessage: run.errorMessage }
+
+  return {
+    errorClass: "unknown",
+    errorMessage: jsonText({
+      code: publicError(errorClass).code,
+      ...(errorClass === "group_context_missing" ? { errorClass } : {}),
+      message: run.errorMessage,
+    }),
+  }
+}
+
+const getRunError = (row: DbRow): Pick<Run, "errorClass" | "errorMessage"> => {
   const errorClass = nullableText(row, "error_class") as RunErrorClass | null
   const errorMessage = nullableText(row, "error_message")
-  if (errorClass === "unknown") {
-    const error = asRow(parseJson<unknown>(errorMessage, null))
-    const machineClass =
-      error?.code === "TOURI-E8001"
-        ? "machine_service_unavailable"
-        : error?.code === "TOURI-E8002"
-          ? "machine_service_start_failed"
-          : null
-    if (machineClass && error && (error.message === null || typeof error.message === "string"))
-      return { errorClass: machineClass, errorMessage: error.message }
-  }
-  return { errorClass, errorMessage }
+  const stored = { errorClass, errorMessage }
+  if (errorClass !== "unknown") return stored
+
+  const error = asRow(parseJson<unknown>(errorMessage, null))
+  if (!error || (error.message !== null && typeof error.message !== "string")) return stored
+  if (error.errorClass === "group_context_missing" && error.code === publicError("group_context_missing").code)
+    return { errorClass: "group_context_missing", errorMessage: error.message }
+
+  const machineClass = MACHINE_ERROR_CLASSES[text(error, "code")]
+  if (!machineClass) return stored
+
+  return { errorClass: machineClass, errorMessage: error.message }
 }
 
 export const toRun = (value: unknown): Run | null => {
@@ -76,7 +92,7 @@ export const toRun = (value: unknown): Run | null => {
     replyMessageId: nullableText(row, "reply_message_id"),
     externalTurnId: nullableText(row, "external_turn_id"),
     status: text(row, "status") as RunStatus,
-    ...readRunError(row),
+    ...getRunError(row),
     usage: parseJson<RunUsage | null>(row.usage_json, null),
     routineRunId: nullableText(row, "routine_run_id"),
     queuedAt: integer(row, "queued_at"),
@@ -341,7 +357,7 @@ export const createRuntimePersistence = ({ database }: { database: unknown }): R
       else runs.set(run.id, run)
       return true
     }
-    const error = persistedRunError(run)
+    const error = getPersistedRunError(run)
     const result = db
       .query(
         `INSERT INTO runs (id, thread_id, bot_id, provider, trigger, request_message_id, reply_message_id, external_turn_id, status, error_class, error_message, usage_json, routine_run_id, queued_at, started_at, finished_at, provider_started_at)

@@ -127,7 +127,7 @@ CREATE TABLE runs (
                        ('queued','starting','running','succeeded','failed','canceled','interrupted')),
   error_class        TEXT CHECK (error_class IN
                        ('cli_missing','cli_auth','cli_crash','cli_protocol','rate_limit','context_overflow',
-                        'timeout','canceled','oom','tool_error','app_restart','group_context_missing','unknown')),
+                        'timeout','canceled','oom','tool_error','app_restart','unknown')),
   error_message      TEXT,                         -- redacted, <= 2000 chars
   usage_json         TEXT,                         -- RunUsage
   routine_run_id     TEXT,
