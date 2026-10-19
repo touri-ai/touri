@@ -6,16 +6,21 @@ type DownloadMessage =
   | { type?: undefined; requestId: number; error?: { name: string; message: string; code?: string } }
 type DownloadCommand = "start" | "chunk" | "finish" | "abort"
 
-const workerError = (error: { name: string; message: string; code?: string }): Error =>
+const getWorkerError = (error: { name: string; message: string; code?: string }): Error =>
   Object.assign(new Error(error.message), { name: error.name, ...(error.code ? { code: error.code } : {}) })
 
 /** Stream a downloaded snapshot through a worker so disk writes and fsync never block the server loop. */
-export const atomicDownload = async (response: Response, path: string): Promise<void> => {
+export const atomicDownload = async (
+  response: Response,
+  path: string,
+  { createWorker = startDownloadWorker, startupTimeoutMs = 15_000 } = {},
+): Promise<void> => {
   if (!response.ok || !response.body || path.includes("\0")) throw new Error("Snapshot inválido")
-  const worker = new Worker(
-    workerEntrypoint(new URL("./atomic-download-worker.ts", import.meta.url), "./atomic-download-worker-entry.ts"),
-    { smol: true },
-  )
+  const worker = createWorker()
+  const reader = response.body.getReader()
+  // Failure state belongs to this one download and prevents sends to a terminated worker.
+  let failure: Error | undefined
+  let closed = false
   const pending = new Map<number, { resolve: () => void; reject: (error: Error) => void }>()
   let requestId = 0
   let readyResolve: () => void = () => {}
@@ -33,8 +38,20 @@ export const atomicDownload = async (response: Response, path: string): Promise<
     )
     pending.clear()
   }
+  const stop = (error: Error): void => {
+    if (closed || failure) return
+    failure = error
+    clearTimeout(startupTimer)
+    deferWorkerReply(() => readyReject(error))
+    rejectPending(error)
+    void reader.cancel().catch(() => {})
+    worker.terminate()
+  }
+  const startupTimer = setTimeout(() => stop(new Error("Snapshot writer startup timed out")), startupTimeoutMs)
+  worker.addEventListener("close", () => stop(new Error("Snapshot writer stopped unexpectedly")))
   worker.onmessage = ({ data }: MessageEvent<DownloadMessage>): void => {
     if (data.type === "ready") {
+      clearTimeout(startupTimer)
       deferWorkerReply(readyResolve)
       return
     }
@@ -42,17 +59,16 @@ export const atomicDownload = async (response: Response, path: string): Promise<
     if (!request) return
     pending.delete(data.requestId)
     deferWorkerReply(() => {
-      if (data.error) request.reject(workerError(data.error))
+      if (data.error) request.reject(getWorkerError(data.error))
       else request.resolve()
     })
   }
   worker.onerror = (event): void => {
     event.preventDefault()
-    const error = new Error("Snapshot writer stopped unexpectedly")
-    deferWorkerReply(() => readyReject(error))
-    rejectPending(error)
+    stop(new Error("Snapshot writer stopped unexpectedly"))
   }
   const request = (type: DownloadCommand, content?: Uint8Array): Promise<void> => {
+    if (failure) return Promise.reject(failure)
     const id = ++requestId
     const result = new Promise<void>((resolve, reject) => pending.set(id, { resolve, reject }))
     if (type === "start") worker.postMessage({ type, requestId: id, path })
@@ -60,7 +76,6 @@ export const atomicDownload = async (response: Response, path: string): Promise<
     else worker.postMessage({ type, requestId: id })
     return result
   }
-  const reader = response.body.getReader()
   let started = false
   let finished = false
   try {
@@ -80,8 +95,16 @@ export const atomicDownload = async (response: Response, path: string): Promise<
     if (started && !finished) await request("abort").catch(() => {})
     throw error
   } finally {
+    closed = true
+    clearTimeout(startupTimer)
     if (!finished) await reader.cancel().catch(() => {})
     reader.releaseLock()
     worker.terminate()
   }
 }
+
+const startDownloadWorker = (): Worker =>
+  new Worker(
+    workerEntrypoint(new URL("./atomic-download-worker.ts", import.meta.url), "./atomic-download-worker-entry.ts"),
+    { smol: true },
+  )

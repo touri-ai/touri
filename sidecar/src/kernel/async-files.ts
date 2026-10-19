@@ -2,7 +2,7 @@ import { createFileIoLane, logIoByteLimit } from "./file-io-client"
 import type { FileIoTask } from "./file-io-protocol"
 import type { FileWrite } from "./files"
 
-const requestIo = createFileIoLane()
+const requestIo = createFileIoLane({ waitForCapacity: true })
 const backgroundIo = createFileIoLane({ maxBytes: logIoByteLimit, batch: true })
 const runFileIoTask = (task: FileIoTask): Promise<unknown> => requestIo.run(task)
 

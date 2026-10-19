@@ -5,6 +5,7 @@ import { deferWorkerReply } from "./worker-reply"
 type RefableWorker = Worker & { ref: () => void; unref: () => void }
 type Completion = ReturnType<typeof Promise.withResolvers<unknown>>
 type Entry = { task: FileIoTask; bytes: number; count: number; completion: Completion }
+type WaitingEntry = Entry & { deadline: ReturnType<typeof setTimeout> }
 type AppendTask = Extract<FileIoTask, { operation: "append" | "append-log" }>
 
 export const fileIoQueueLimit = 256
@@ -16,6 +17,8 @@ const batchByteLimit = 64 * 1024
 export const createFileIoLane = ({
   maxBytes = fileIoByteLimit,
   batch = false,
+  waitForCapacity = false,
+  capacityTimeoutMs = 15_000,
   createWorker = startFileIoWorker,
 } = {}) => {
   // Mutable lifecycle state belongs to this one worker and its bounded mailbox.
@@ -25,6 +28,8 @@ export const createFileIoLane = ({
   let requestId = 0
   let entries: Entry[] = []
   let active: Entry | undefined
+  let waiting: WaitingEntry[] = []
+  let waitingBytes = 0
   let bytes = 0
   let dropped = 0
   let startupTimer: ReturnType<typeof setTimeout> | undefined
@@ -38,7 +43,12 @@ export const createFileIoLane = ({
     worker = undefined
     ready = false
     stoppedWorker?.terminate()
-    const unfinished = active ? [active, ...entries] : entries
+    const unfinished = getPendingEntries()
+    waiting.forEach(({ deadline }) => {
+      clearTimeout(deadline)
+    })
+    waiting = []
+    waitingBytes = 0
     entries = []
     active = undefined
     bytes = 0
@@ -65,6 +75,7 @@ export const createFileIoLane = ({
       if (data.error) finished.completion.reject(getError(data.error))
       else finished.completion.resolve(data.result)
     })
+    admitWaiting()
     if (entries.length === 0) worker?.unref()
     dispatch()
   }
@@ -109,13 +120,59 @@ export const createFileIoLane = ({
     worker.postMessage({ ...next.task, requestId } satisfies FileIoRequest)
   }
 
+  const getPendingEntries = (): Entry[] => [...(active ? [active] : []), ...entries, ...waiting]
+
+  const hasCapacity = (size: number): boolean => {
+    if (bytes + size <= maxBytes) return true
+    // Caller limits own individual payloads; a large import runs alone instead of gaining a transport limit.
+    return waitForCapacity && !active && entries.length === 0
+  }
+
+  const admitWaiting = (): void => {
+    // This loop only moves the bounded mailbox's records, without copying their payloads.
+    while (waiting.length > 0) {
+      const [next, ...remaining] = waiting
+      if (!next || !hasCapacity(next.bytes)) return
+      clearTimeout(next.deadline)
+      waiting = remaining
+      waitingBytes -= next.bytes
+      bytes += next.bytes
+      entries = [...entries, next]
+    }
+  }
+
+  const rejectCapacity = (): Promise<never> => {
+    dropped += 1
+    return Promise.reject(new Error("File I/O capacity exceeded"))
+  }
+
+  const waitForSpace = (task: FileIoTask, size: number): Promise<unknown> => {
+    // Retain at most one extra byte budget, or one oversized caller payload beside ordinary work.
+    const canWait = waitingBytes + size <= maxBytes || (waiting.length === 0 && bytes <= maxBytes)
+    if (!canWait) return rejectCapacity()
+
+    const completion = Promise.withResolvers<unknown>()
+    const deadline = setTimeout(() => {
+      waiting = waiting.filter((entry) => entry.completion !== completion)
+      waitingBytes -= size
+      dropped += 1
+      deferWorkerReply(() => completion.reject(new Error("File I/O capacity wait timed out")))
+      admitWaiting()
+      scheduled ??= setImmediate(dispatch)
+    }, capacityTimeoutMs)
+    waiting = [...waiting, { task, bytes: size, count: 1, completion, deadline }]
+    waitingBytes += size
+    return completion.promise
+  }
+
   const run = (task: FileIoTask): Promise<unknown> => {
     if (closed) return Promise.reject(new Error("File I/O is closed"))
     const size = getTaskBytes(task)
-    const count = entries.reduce((total, entry) => total + entry.count, active?.count ?? 0)
-    if (bytes + size > maxBytes || count >= fileIoQueueLimit) {
-      dropped += 1
-      return Promise.reject(new Error("File I/O capacity exceeded"))
+    const count = getPendingEntries().reduce((total, entry) => total + entry.count, 0)
+    if (count >= fileIoQueueLimit) return rejectCapacity()
+    if (waiting.length > 0 || !hasCapacity(size)) {
+      if (!waitForCapacity) return rejectCapacity()
+      return waitForSpace(task, size)
     }
     const batchIndex = batch ? getBatchIndex(entries, task) : -1
     const previous = entries[batchIndex]
@@ -138,7 +195,7 @@ export const createFileIoLane = ({
   }
 
   const flush = async (timeoutMs = 5000): Promise<void> => {
-    const accepted = active ? [active, ...entries] : entries
+    const accepted = getPendingEntries()
     const expired = Promise.withResolvers<void>()
     const deadline = setTimeout(() => {
       const error = new Error("File I/O shutdown timed out")
@@ -166,8 +223,8 @@ export const createFileIoLane = ({
       }
     },
     getStats: () => ({
-      pending: entries.reduce((total, entry) => total + entry.count, active?.count ?? 0),
-      bytes,
+      pending: getPendingEntries().reduce((total, entry) => total + entry.count, 0),
+      bytes: bytes + waitingBytes,
       dropped,
     }),
   }

@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { TouriError } from "../../src/kernel/errors"
-import { createFileIoLane, fileIoQueueLimit } from "../../src/kernel/file-io-client"
+import { createFileIoLane, fileIoByteLimit, fileIoQueueLimit } from "../../src/kernel/file-io-client"
 
 const cleanups = new Set<() => Promise<unknown>>()
 afterEach(async () => {
@@ -51,6 +51,84 @@ test("the payload limit rejects excess bytes and frees capacity after a durable 
   await lane.run({ operation: "write", args: { root, path: join(root, "next"), content: "ok" } })
 
   expect(lane.getStats()).toEqual({ pending: 0, bytes: 0, dropped: 1 })
+})
+
+const largePayloadCases = [
+  { bytes: fileIoByteLimit + 1024 * 1024, supportsWindows: true },
+  { bytes: fileIoByteLimit * 2 + 1, supportsWindows: false },
+]
+largePayloadCases.forEach(({ bytes, supportsWindows }) => {
+  // The existing Windows JSON envelope limit is separate from lane admission; see #591.
+  test.skipIf(process.platform === "win32" && !supportsWindows)(
+    `a ${bytes}-byte request payload is durably written without a transport size limit`,
+    async () => {
+      const root = await getRoot()
+      const lane = getLane({ waitForCapacity: true })
+      const path = join(root, "snapshot")
+      const content = Buffer.alloc(bytes, 97)
+
+      await lane.run({ operation: "write", args: { root, path, content } })
+
+      expect(Buffer.compare(await readFile(path), content)).toBe(0)
+      expect(lane.getStats()).toEqual({ pending: 0, bytes: 0, dropped: 0 })
+    },
+  )
+})
+
+test("five concurrent 15 MiB attachments wait for capacity and all drain on close", async () => {
+  const root = await getRoot()
+  const lane = getLane({ waitForCapacity: true })
+  const content = Buffer.alloc(15 * 1024 * 1024, 98)
+  const paths = Array.from({ length: 5 }, (_, index) => join(root, `attachment-${index}`))
+  const writes = paths.map((path) => lane.run({ operation: "write", args: { root, path, content } }))
+  const queued = lane.getStats()
+
+  await lane.close()
+  await Promise.all(writes)
+
+  expect(queued).toEqual({ pending: 5, bytes: content.byteLength * 5, dropped: 0 })
+  for (const path of paths) expect(Buffer.compare(await readFile(path), content)).toBe(0)
+  expect(lane.getStats()).toEqual({ pending: 0, bytes: 0, dropped: 0 })
+})
+
+test("an oversized request waits for ordinary writes before running alone", async () => {
+  const root = await getRoot()
+  const lane = getLane({ maxBytes: 4, waitForCapacity: true })
+  const path = join(root, "snapshot")
+  const first = lane.run({ operation: "write", args: { root, path, content: "1234" } })
+  const next = lane.run({ operation: "write", args: { root, path, content: "oversized" } })
+
+  await lane.flush()
+  await Promise.all([first, next])
+
+  expect(await readFile(path, "utf8")).toBe("oversized")
+  expect(lane.getStats()).toEqual({ pending: 0, bytes: 0, dropped: 0 })
+})
+
+test("capacity wait has a deadline and bounds retained request payloads", async () => {
+  const root = await getRoot()
+  const source = "self.onmessage = () => {}; setInterval(() => {}, 1000)"
+  const url = URL.createObjectURL(new Blob([source], { type: "application/javascript" }))
+  cleanups.add(async () => URL.revokeObjectURL(url))
+  const lane = getLane({
+    maxBytes: 4,
+    waitForCapacity: true,
+    capacityTimeoutMs: 25,
+    createWorker: () => new Worker(url),
+  })
+  const task = { operation: "write" as const, args: { root, path: join(root, "stalled"), content: "1234" } }
+  const first = lane.run(task).catch((error: Error) => error.message)
+  const waiting = lane.run(task).catch((error: Error) => error.message)
+  const excess = lane.run(task).catch((error: Error) => error.message)
+  const queued = lane.getStats()
+
+  expect(await waiting).toBe("File I/O capacity wait timed out")
+  await lane.close(1).catch(() => {})
+
+  expect(queued).toEqual({ pending: 2, bytes: 8, dropped: 1 })
+  expect(await excess).toBe("File I/O capacity exceeded")
+  expect(await first).toBe("File I/O shutdown timed out")
+  expect(lane.getStats()).toEqual({ pending: 0, bytes: 0, dropped: 2 })
 })
 
 test("close drains the final log batch before terminating and refuses later writes", async () => {

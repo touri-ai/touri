@@ -753,8 +753,8 @@ test.each([
     const reply = [...value.store.messages.values()].find((message) => message.id === result.run.replyMessageId)
     expect(JSON.stringify(reply?.parts)).toContain("TOURI-E3001")
     expect(JSON.stringify(reply?.parts)).not.toContain("expired Codex login")
-    const logPath = join(value.root, "logs", "sidecar.log")
-    await waitFor(() => existsSync(logPath) && readFileSync(logPath, "utf8").includes("expired Codex login"))
+    await flushFileIoAsync()
+    expect(readFileSync(join(value.root, "logs", "sidecar.log"), "utf8")).toContain("Refresh the session")
   } finally {
     await closeFixture(value)
   }

@@ -13,7 +13,7 @@ import { createSecretStore } from "./host/secretStore"
 import { startHeadlessStderr } from "./nativeStderr"
 import { remoteAccessWarning } from "./remoteAccessWarning"
 import { clearServeInfo, writeServeInfo } from "./serveInfo"
-import { registerServeShutdown } from "./serveShutdown"
+import { closeServeFiles, registerServeShutdown } from "./serveShutdown"
 import { exposeOnTailscale } from "./tailscale"
 import { cliVersion } from "./version"
 import { createWebGate } from "./web/gate"
@@ -106,8 +106,7 @@ const startServer = async (options: ServeOptions, stopStderr: () => Promise<void
         await store.close()
         await stopStderr()
       } finally {
-        await closeFileIoAsync()
-        lease.release()
+        await closeServeFiles({ closeFiles: closeFileIoAsync, releaseLease: () => lease.release() })
       }
     },
   })

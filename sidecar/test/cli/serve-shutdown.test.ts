@@ -1,7 +1,7 @@
-import { afterEach, expect, test } from "bun:test"
+import { afterEach, expect, mock, test } from "bun:test"
 import { EventEmitter } from "node:events"
 import type { Subprocess } from "bun"
-import { registerServeShutdown } from "../../src/cli/serveShutdown"
+import { closeServeFiles, registerServeShutdown } from "../../src/cli/serveShutdown"
 
 let child: Subprocess<"ignore", "pipe", "pipe"> | undefined
 afterEach(() => {
@@ -158,6 +158,20 @@ test("a provider ignoring termination cannot keep the server alive beyond deadli
   expect(stderr).toBe("")
   expect(performance.now() - started).toBeLessThan(21_000)
 }, 30_000)
+
+test("storage shutdown failure still releases the runtime lease and reports failure", async () => {
+  const releaseLease = mock(() => {})
+  const failure = new Error("File I/O shutdown timed out")
+
+  await expect(
+    closeServeFiles({
+      closeFiles: () => Promise.reject(failure),
+      releaseLease,
+    }),
+  ).rejects.toBe(failure)
+
+  expect(releaseLease).toHaveBeenCalledTimes(1)
+})
 
 const getFixture = ({ hang = false } = {}) => {
   const signals = new EventEmitter()

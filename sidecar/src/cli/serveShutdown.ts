@@ -63,6 +63,21 @@ export const registerServeShutdown = ({
   signals.on("SIGINT", stop)
 }
 
+/** Release ownership even when the final durable-write drain fails. */
+export const closeServeFiles = async ({
+  closeFiles,
+  releaseLease,
+}: {
+  closeFiles: () => Promise<void>
+  releaseLease: () => void
+}): Promise<void> => {
+  try {
+    await closeFiles()
+  } finally {
+    releaseLease()
+  }
+}
+
 const scheduleTimeout: Schedule = (callback, delayMs) => {
   const timer = setTimeout(callback, delayMs)
   return () => clearTimeout(timer)
