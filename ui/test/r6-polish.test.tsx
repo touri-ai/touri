@@ -437,8 +437,10 @@ describe("R6: integrações e Preview/Logs", () => {
 
     await act(async () => fireEvent.click(configureMcp))
     const mcp = await screen.findByRole("region", { name: "Servidores MCP deste bot" })
-    expect(reveal.mock.contexts).toContain(mcp)
-    expect(mcp).toHaveFocus()
+    await waitFor(() => {
+      expect(reveal.mock.contexts).toContain(mcp)
+      expect(mcp).toHaveFocus()
+    })
     expect(api.calls.some((call) => call.route === "GET /bots/:id/mcp" && call.pathValues.id === botId)).toBe(true)
   })
 
@@ -448,13 +450,13 @@ describe("R6: integrações e Preview/Logs", () => {
     await screen.findByRole("textbox", { name: "Mensagem para mark" })
     if (!screen.queryByRole("button", { name: "Preview do projeto" }))
       fireEvent.click(screen.getByRole("button", { name: "Painel do bot" }))
-    fireEvent.click(screen.getByRole("button", { name: "Preview do projeto" }))
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Preview do projeto" })))
     await screen.findByRole("heading", { name: "Preview", exact: true })
 
     const preview = document.querySelector(".preview-main-pane")
     expect(preview).not.toBeNull()
     expect(screen.getAllByText(/Inicie um processo.*HTTP/i)).toHaveLength(1)
-    fireEvent.click(screen.getByRole("tab", { name: "Logs" }))
+    await act(async () => fireEvent.click(screen.getByRole("tab", { name: "Logs" })))
     const heading = document.querySelector(".preview-log-toolbar")
     expect(screen.getByRole("combobox", { name: "Processo dos logs" })).toBeVisible()
     expect(heading).not.toHaveTextContent(/renderizado ao vivo|porta HTTP/)
