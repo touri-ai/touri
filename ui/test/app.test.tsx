@@ -121,6 +121,7 @@ describe("WP9 frontend acceptance", () => {
     if (!screen.queryByRole("button", { name: "Preview do projeto" }))
       fireEvent.click(screen.getByRole("button", { name: "Painel do bot" }))
     fireEvent.click(screen.getByRole("button", { name: "Preview do projeto" }))
+    await screen.findByText("touri demo workspace", { selector: ".project-sidebar-heading strong" })
     fireEvent.click(await screen.findByRole("button", { name: "Menu do projeto" }))
     fireEvent.click(screen.getByRole("menuitem", { name: "Conectar projeto" }))
     expect(await screen.findByRole("dialog", { name: "Conectar projeto" })).toBeVisible()
