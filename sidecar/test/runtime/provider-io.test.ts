@@ -11,10 +11,12 @@ afterEach(() => {
   stopReaders = []
 })
 
-const getStream = (text: string) =>
+const getStream = (...chunks: Array<string>) =>
   new ReadableStream<Uint8Array>({
     start(controller) {
-      controller.enqueue(new TextEncoder().encode(text))
+      chunks.forEach((chunk) => {
+        controller.enqueue(new TextEncoder().encode(chunk))
+      })
       controller.close()
     },
   })
@@ -77,3 +79,35 @@ test("Fast lines still yield after sixteen lines and retain their order and fina
   expect(received).toEqual(lines)
   expect(batches.filter((size) => size > 0)).toEqual([16, 16, 2])
 })
+
+test.each([
+  { elapsedPerLine: 0, sliceSize: 16 },
+  { elapsedPerLine: 1, sliceSize: 8 },
+])(
+  "Short chunks yield after $sliceSize lines when each line takes $elapsedPerLine ms",
+  async ({ elapsedPerLine, sliceSize }) => {
+    let elapsed = 0
+    let received: Array<string> = []
+    const lines = Array.from({ length: 20 }, (_, index) => String(index))
+    const stop = startLineReader({
+      stream: getStream(...lines.map((line) => `${line}\n`)),
+      onLine: (line) => {
+        received = [...received, line]
+        elapsed += elapsedPerLine
+      },
+      onError: (error) => {
+        throw error
+      },
+      now: () => elapsed,
+    })
+    stopReaders = [...stopReaders, stop]
+
+    await yieldToEventLoop()
+    expect(received).toEqual(lines.slice(0, sliceSize))
+    await yieldToEventLoop()
+    expect(received).toEqual(lines.slice(0, sliceSize * 2))
+    await yieldToEventLoop()
+
+    expect(received).toEqual(lines)
+  },
+)

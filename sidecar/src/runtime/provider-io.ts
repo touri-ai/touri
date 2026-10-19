@@ -55,42 +55,49 @@ export const startLineReader = ({
   now?: () => number
 }): (() => void) => {
   let stopped = false
-  const processLines = ({ buffer, offset }: { buffer: string; offset: number }): number => {
+  type Slice = { offset: number; processed: number; elapsedMs: number }
+  const processLines = ({ buffer, offset, processed, elapsedMs }: Slice & { buffer: string }): Slice => {
     const startedAt = now()
     // Parser cursors stay local so each slice bounds extraction and dispatch together.
     let cursor = offset
-    let processed = 0
-    while (!stopped && processed < PROVIDER_FRAME_BATCH_SIZE) {
+    let lines = processed
+    while (!stopped && lines < PROVIDER_FRAME_BATCH_SIZE) {
       const newline = buffer.indexOf("\n", cursor)
       if (newline < 0) break
 
       const line = buffer.slice(cursor, newline).trim()
       cursor = newline + 1
-      processed += 1
+      lines += 1
       if (line) onLine(line)
-      if (now() - startedAt >= PROVIDER_FRAME_BATCH_MS) break
+      if (elapsedMs + now() - startedAt >= PROVIDER_FRAME_BATCH_MS) break
     }
-    return cursor
+    return { offset: cursor, processed: lines, elapsedMs: elapsedMs + now() - startedAt }
   }
-  const processBatch = (input: { buffer: string; offset: number }): number => {
+  const processBatch = (input: Slice & { buffer: string }): Slice => {
     return runStage ? runStage("provider_frame_batch", processLines, input) : processLines(input)
   }
   void (async () => {
     const reader = stream.getReader()
     const decoder = new TextDecoder()
     let buffer = ""
+    let processed = 0
+    let elapsedMs = 0
     try {
       while (!stopped) {
         const result = await reader.read()
         if (result.done) break
         buffer += decoder.decode(result.value, { stream: true })
         let offset = 0
-        while (!stopped) {
-          const next = processBatch({ buffer, offset })
-          if (next === offset) break
-
-          offset = next
-          await yieldToEventLoop()
+        while (!stopped && buffer.indexOf("\n", offset) >= 0) {
+          const slice = processBatch({ buffer, offset, processed, elapsedMs })
+          offset = slice.offset
+          processed = slice.processed
+          elapsedMs = slice.elapsedMs
+          if (processed >= PROVIDER_FRAME_BATCH_SIZE || elapsedMs >= PROVIDER_FRAME_BATCH_MS) {
+            await yieldToEventLoop()
+            processed = 0
+            elapsedMs = 0
+          }
         }
         buffer = buffer.slice(offset)
       }
