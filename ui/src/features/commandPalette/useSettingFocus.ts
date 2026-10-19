@@ -17,9 +17,9 @@ const getClosedDisclosures = (row: HTMLElement): HTMLElement[] => {
 
 // The click runs React's handler synchronously, so the content is visible before focus moves.
 const openDisclosures = (row: HTMLElement): void =>
-  getClosedDisclosures(row).forEach((disclosure) =>
-    disclosure.querySelector<HTMLElement>(":scope > .ds-disclosure-trigger")?.click(),
-  )
+  getClosedDisclosures(row).forEach((disclosure) => {
+    disclosure.querySelector<HTMLElement>(":scope > .ds-disclosure-trigger")?.click()
+  })
 
 /** Focus and briefly highlight the registry row a palette result points at. */
 export const focusSetting = (settingId: string): (() => void) => {
