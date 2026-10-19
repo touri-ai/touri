@@ -2611,9 +2611,11 @@ export const ptBR = {
   "Não foi possível consultar o armazenamento.": "Não foi possível consultar o armazenamento.",
   "Não foi possível iniciar a compactação. Aguarde a migração ou compactação em andamento e tente novamente.":
     "Não foi possível iniciar a compactação. Aguarde a migração ou compactação em andamento e tente novamente.",
+  "O provedor não detalhou o pedido": "O provedor não detalhou o pedido",
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  "O provedor não detalhou o pedido": "The provider gave no details for this request",
   "jobs.team-builder.name": "Team builder",
   "jobs.team-builder.description": "Discusses your work and proposes bots and a group for you to approve.",
   "jobs.team-builder.roleLine": "Turn my work into a team of bots with my approval.",

@@ -1,6 +1,7 @@
 import type { ApprovalPart } from "@touri/contracts"
 import { type KeyboardEventHandler, type ReactNode, useEffect, useId, useState } from "react"
 import type { UiApi } from "../api/client"
+import { t } from "../i18n"
 import { compactApprovalDiff } from "./approvalContent"
 import { browserToolPresentation, browserToolResult } from "./browserToolPresentation"
 import { DiffOutput } from "./DiffOutput"
@@ -61,6 +62,22 @@ const CommandElapsed = ({ startedAt }: { startedAt: number }) => {
       {" "}
       · {Math.max(0, Math.floor((now - startedAt) / 1_000))} s
     </span>
+  )
+}
+
+const ApprovalContext = ({ review }: { review: { reason: string; scope: { label: string; value: string }[] } }) => {
+  const rows = [{ label: "Motivo", value: review.reason }, ...review.scope].filter((row) => row.value)
+  if (!rows.length) return <p className="tool-approval-unknown">{t("O provedor não detalhou o pedido")}</p>
+
+  return (
+    <dl className="tool-approval-context">
+      {rows.map(({ label, value }) => (
+        <div key={label}>
+          <dt>{label}</dt>
+          <dd>{value}</dd>
+        </div>
+      ))}
+    </dl>
   )
 }
 
@@ -177,7 +194,9 @@ export const ToolCallCard = ({
           ))}
         </ul>
       )}
-      {presentation.review?.missingFiles && <p className="tool-summary">{presentation.review.missingFiles}</p>}
+      {pending && presentation.review?.missingFiles && (
+        <p className="tool-summary">{presentation.review.missingFiles}</p>
+      )}
       {presentation.review?.diff && (
         <figure className="tool-approval-diff" aria-label="Prévia das alterações">
           <pre>
@@ -221,18 +240,7 @@ export const ToolCallCard = ({
           )}
         </div>
       )}
-      {presentation.review && (
-        <dl className="tool-approval-context">
-          {[{ label: "Motivo", value: presentation.review.reason }, ...presentation.review.scope].map(
-            ({ label, value }) => (
-              <div key={label}>
-                <dt>{label}</dt>
-                <dd>{value}</dd>
-              </div>
-            ),
-          )}
-        </dl>
-      )}
+      {pending && presentation.review && <ApprovalContext review={presentation.review} />}
       {approval?.standing && <strong className="tool-standing-label">Permissão permanente neste bot</strong>}
       {actions}
       {error && (
