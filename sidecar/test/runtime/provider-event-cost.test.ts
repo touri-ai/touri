@@ -171,6 +171,7 @@ const getTrackedRunner = (now = performance.now.bind(performance)) => {
   return {
     runStage,
     stageTracker,
+    isDispatching: () => activeSpan?.inDispatch ?? false,
     getResult: () => {
       const stages = [...stageTimes.values()]
       const cpu = firstFrameCpu ? process.cpuUsage(firstFrameCpu) : { user: 0, system: 0 }
@@ -349,7 +350,12 @@ const runReplay = async (count: number, historyMessages = 0, switchBranch = fals
   let streamingReply = false
   const unsubscribe = runtime.kernel.subscribe(({ event }) => {
     events.push(event.type)
-    if (event.type === "message.created" && event.message.runId && event.message.status === "streaming")
+    if (
+      event.type === "message.created" &&
+      event.message.runId &&
+      event.message.status === "streaming" &&
+      stages.isDispatching()
+    )
       streamingReply = true
   })
   replayCleanups.push(unsubscribe)
@@ -474,6 +480,13 @@ test("Provider event cost stays independent of conversation history", async () =
   expect(result.providerAdapterMs).toBeGreaterThan(0)
   expect(result.providerDispatchAttribution).toBeGreaterThanOrEqual(0.9)
   expect(result.providerDispatchAttribution).toBeLessThanOrEqual(1)
+  expect(result.stages.find(({ name }) => name === "provider_frame_json_parse")?.dispatchCalls).toBe(
+    result.providerDispatchCalls,
+  )
+  expect(result.stages.find(({ name }) => name === "provider_frame_route")?.dispatchCalls).toBe(
+    result.providerDispatchCalls,
+  )
+  expect(result.stages.find(({ name }) => name === "provider_event_redaction")?.dispatchCalls ?? 0).toBeGreaterThan(0)
   expect(result.runtimeEventMs).toBeLessThanOrEqual(result.providerDispatchMs)
   expect(result.historyMessages).toBe(1_000)
   expect(result.historyPartBytes).toBeGreaterThan(15_000_000)
