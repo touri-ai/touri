@@ -7,7 +7,7 @@ import { compressBufferedResponse } from "../cli/web/compression"
 import { getHostIdentity } from "../platform/host"
 import { stopBotHomeWriter } from "../store/bot-home"
 import { touriVersion } from "../version"
-import { flushFileIoAsync } from "./async-files"
+import { flushFileIoAsync, getFileIoStats } from "./async-files"
 import { createBackgroundTask, getMeasuredStage, yieldBackground } from "./background-task"
 import { createStorageMaintenance } from "./data-maintenance"
 import { openDatabase, SCHEMA_VERSION } from "./db"
@@ -269,6 +269,7 @@ export const createKernel = ({
           count: number
         }
       ).count,
+      fileIo: getFileIoStats(),
       sseClients: sseRequests.size,
       websocketClients: liveSockets.size,
     }),

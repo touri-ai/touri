@@ -18,7 +18,12 @@ test("log batches preserve every accepted line and count overload without growin
   const lane = getLane({ batch: true })
   const path = join(root, "log")
   const writes = Array.from({ length: fileIoQueueLimit + 20 }, (_, index) =>
-    lane.run({ operation: "append", args: { root, path, content: `${index}\n` } }).catch(() => undefined),
+    lane
+      .run({
+        operation: "append",
+        args: { root, path: index % 2 === 0 ? path : `${path}.other`, content: `${index}\n` },
+      })
+      .catch(() => undefined),
   )
 
   const queued = lane.getStats()
@@ -28,7 +33,7 @@ test("log batches preserve every accepted line and count overload without growin
   expect(queued.pending).toBe(fileIoQueueLimit)
   expect(queued.dropped).toBe(20)
   expect(await readFile(path, "utf8")).toBe(
-    Array.from({ length: fileIoQueueLimit }, (_, index) => `${index}\n`).join(""),
+    Array.from({ length: fileIoQueueLimit / 2 }, (_, index) => `${index * 2}\n`).join(""),
   )
   expect(lane.getStats()).toEqual({ pending: 0, bytes: 0, dropped: 20 })
 })

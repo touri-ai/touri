@@ -69,6 +69,10 @@ export const createFileIoLane = ({
       stop(new Error("File I/O worker could not start"))
       return
     }
+    const startedWorker = worker
+    startedWorker.addEventListener("close", () => {
+      if (worker === startedWorker) stop(new Error("File I/O worker stopped unexpectedly"))
+    })
     worker.ref()
     worker.onmessage = handleMessage
     worker.onerror = (event): void => {
@@ -99,13 +103,14 @@ export const createFileIoLane = ({
   const run = (task: FileIoTask): Promise<unknown> => {
     if (closed) return Promise.reject(new Error("File I/O is closed"))
     const size = getTaskBytes(task)
-    const previous = entries.at(-1)
-    const combined = batch && previous ? getAppendBatch(previous.task, task) : undefined
     const count = entries.reduce((total, entry) => total + entry.count, active?.count ?? 0)
     if (bytes + size > maxBytes || count >= fileIoQueueLimit) {
       dropped += 1
       return Promise.reject(new Error("File I/O capacity exceeded"))
     }
+    const batchIndex = batch ? getBatchIndex(entries, task) : -1
+    const previous = entries[batchIndex]
+    const combined = previous ? getAppendBatch(previous.task, task) : undefined
     bytes += size
     if (previous && combined) {
       const next = {
@@ -114,7 +119,7 @@ export const createFileIoLane = ({
         count: previous.count + 1,
         completion: previous.completion,
       }
-      entries = [...entries.slice(0, -1), next]
+      entries = entries.map((entry, index) => (index === batchIndex ? next : entry))
       return previous.completion.promise
     }
     const completion = Promise.withResolvers<unknown>()
@@ -161,6 +166,15 @@ const getTaskBytes = (task: FileIoTask): number => {
 
 const isAppend = (task: FileIoTask): task is AppendTask =>
   task.operation === "append" || task.operation === "append-log"
+
+const getBatchIndex = (entries: Entry[], next: FileIoTask): number => {
+  if (!isAppend(next)) return -1
+  return entries.reduce((found, entry, index) => {
+    if (!isAppend(entry.task)) return -1
+    if (entry.task.args.root !== next.args.root || entry.task.args.path !== next.args.path) return found
+    return index
+  }, -1)
+}
 
 const getAppendBatch = (previous: FileIoTask, next: FileIoTask): AppendTask | undefined => {
   if (!isAppend(previous) || !isAppend(next) || previous.operation !== next.operation) return

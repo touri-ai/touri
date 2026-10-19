@@ -92,15 +92,23 @@ const startAuthWriter = async (filename: string, createWorker: () => Worker): Pr
     else result.resolve(data.result)
     if (pending.size === 0 && !closing) worker.unref()
   }
-  worker.onerror = (event): void => {
-    event.preventDefault()
+  const fail = (): void => {
+    if (stoppedByError) return
     const error = new Error("Authentication writer stopped unexpectedly")
-    worker.terminate()
     stoppedByError = true
+    worker.terminate()
     readyReject(error)
     rejectPending(error)
     stoppedResolve()
   }
+  worker.onerror = (event): void => {
+    event.preventDefault()
+    fail()
+  }
+  worker.addEventListener("close", () => {
+    if (!closing) fail()
+    stoppedResolve()
+  })
   worker.postMessage({ type: "start", filename })
   const startupTimeout = setTimeout(
     () => readyReject(new Error("Authentication writer startup timed out")),

@@ -1,5 +1,6 @@
 import { Database } from "bun:sqlite"
 import type { Kernel, Message, MessagePart, Run, StoreApi, ToolResolution } from "@touri/contracts"
+import { writeDatabaseAsync } from "../kernel/database-write"
 import { externalizeMessagePartsAsync } from "../kernel/output-blobs"
 import { summarizeToolResolutions } from "./tool-resolution-summary"
 
@@ -248,23 +249,54 @@ export const createToolResolutions = (kernel: Kernel) => {
     })()
     if (!recovery) return
     const { row, message, parts, reason, run } = recovery
-    const next = await finishAsync(run, parts, reason)
-    const shouldUpdate = message && (JSON.stringify(parts) !== JSON.stringify(next) || message.status === "streaming")
-    if (message && shouldUpdate) {
-      const status: Message["status"] =
-        row.status === "succeeded" ? "complete" : row.status === "canceled" ? "canceled" : "failed"
-      const input = {
-        threadId: row.thread_id,
-        messageId: message.id,
-        patch: {
-          parts: next,
-          status,
-        },
-      }
-      const updated = store.updateMessageAsync ? await store.updateMessageAsync(input) : store.updateMessage(input)
-      if (!updated.success) throw new Error(updated.error)
-    }
-    database.transaction(() => clearPending(row.id))()
+    // Finish durable file creation before the short, atomic projection repair.
+    const next = await externalizeMessagePartsAsync({
+      database,
+      appData: kernel.paths.appData,
+      parts: await finishAsync(run, parts, reason, false),
+    })
+    await writeDatabaseAsync(database, () =>
+      database.transaction(() => {
+        const current = message
+          ? (database
+              .query("SELECT parts_json, status FROM messages WHERE id = ? AND thread_id = ?")
+              .get(message.id, row.thread_id) as { parts_json: string; status: string } | null)
+          : null
+        if (message && (!current || current.parts_json !== message.parts_json || current.status !== message.status))
+          return
+
+        const shouldUpdate =
+          message && (JSON.stringify(parts) !== JSON.stringify(next) || message.status === "streaming")
+        if (message && shouldUpdate) {
+          const status: Message["status"] =
+            row.status === "succeeded" ? "complete" : row.status === "canceled" ? "canceled" : "failed"
+          // These parts already passed the complete file externalization plan above.
+          const updated = store.updateMessage({
+            threadId: row.thread_id,
+            messageId: message.id,
+            patch: { parts: next, status },
+          })
+          if (!updated.success) throw new Error(updated.error)
+        }
+        next.filter(isTool).forEach((part) => {
+          saveResolution?.run(
+            run.id,
+            part.callId,
+            run.threadId,
+            JSON.stringify(part),
+            outcome(part),
+            part.resolvedAt ?? null,
+          )
+        })
+        if (getPendingToolCall?.get(run.id))
+          database
+            .query(
+              "UPDATE tool_calls SET ok = 0, error_code = ?, duration_ms = COALESCE(duration_ms, ? - created_at) WHERE run_id = ? AND ok IS NULL",
+            )
+            .run(reason.toUpperCase(), Date.now(), run.id)
+        clearPending(row.id)
+      })(),
+    )
   }
   const reconcile = async (store: StoreApi, threadId?: string): Promise<void> => {
     for (const row of getPendingRuns(threadId)) {

@@ -93,7 +93,7 @@ const fixture = async (
   cleanups.push(async () => {
     await vm.dispose()
     runtime.emitHostNotification({ method: "app.willQuit", params: {} })
-    runtime.stop()
+    await runtime.stop()
     rmSync(root, { recursive: true, force: true })
   })
   const bot = async (input: Partial<Bot> = {}) => {

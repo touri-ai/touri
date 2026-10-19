@@ -346,11 +346,12 @@ export const collectUnusedOutputBlobs = async (
         const stat = file.isFile() && id ? await lstat(path) : null
         // lstat can yield to a writer; recheck metadata and the generation before deletion.
         if (changes() !== observed) return defer(removed)
-        if (stat?.isFile() && id && stat.mtimeMs <= now - DAY && !attachmentExists.get(id))
-          await measure("storage_attachment_orphan_scan", async () => {
-            await removePrivateFileAsync({ root: appData, path })
-            removed += 1
-          })
+        await measure("storage_attachment_orphan_scan", async () => {
+          if (!stat?.isFile() || !id || stat.mtimeMs > now - DAY || attachmentExists.get(id)) return
+
+          await removePrivateFileAsync({ root: appData, path })
+          removed += 1
+        })
         if (scanned % 50 === 0) {
           if (yieldBatch) await yieldBatch()
           if (changes() !== observed) return defer(removed)
