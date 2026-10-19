@@ -3,7 +3,6 @@ import { afterEach, expect, test } from "bun:test"
 import { mkdir, mkdtemp, readdir, readFile, rename, rm, symlink, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { monitorEventLoopDelay } from "node:perf_hooks"
 import { fileURLToPath } from "node:url"
 import type { RouteModule } from "@touri/contracts"
 import { createKernel } from "../../src/kernel"
@@ -424,8 +423,18 @@ test("instruction edit event-loop p99 and max improve with the async writer", as
     const created = await f.create()
     if (!("json" in created)) throw new Error("Expected bot response")
     const { bot } = created.json as { bot: { id: string } }
-    const histogram = monitorEventLoopDelay({ resolution: 1 })
-    histogram.enable()
+    const samples: Array<number> = []
+    const intervalMs = 1
+    let expectedAt = performance.now() + intervalMs
+    let timer: ReturnType<typeof setTimeout> | undefined
+    // This bounded timer probe mutates local state so each callback can record its drift sample.
+    const sample = () => {
+      const actualAt = performance.now()
+      samples.push(Math.max(0, actualAt - expectedAt))
+      expectedAt = actualAt + intervalMs
+      timer = setTimeout(sample, intervalMs)
+    }
+    timer = setTimeout(sample, intervalMs)
 
     const response = await f.routes.handler({
       params: { id: bot.id },
@@ -434,12 +443,13 @@ test("instruction edit event-loop p99 and max improve with the async writer", as
       signal: new AbortController().signal,
     })
     await new Promise<void>((resolve) => setTimeout(resolve, 5))
-    histogram.disable()
+    if (timer) clearTimeout(timer)
     expect(response.status).toBe(200)
+    const sorted = Array.from(samples).sort((left, right) => left - right)
 
     return {
-      p99Ms: histogram.percentile(99) / 1_000_000,
-      maxMs: histogram.max / 1_000_000,
+      p99Ms: sorted[Math.ceil(sorted.length * 0.99) - 1] ?? 0,
+      maxMs: Math.max(...samples),
     }
   }
   const synchronousShim: typeof updateBotHome = async (kernel, botId, instructions, _signal, prepare) => {
