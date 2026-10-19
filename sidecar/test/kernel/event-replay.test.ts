@@ -216,7 +216,7 @@ test("capturing an unpublished transcript releases its reader before checkpointi
   }
 })
 
-test("a synchronous publish waits out a worker lock without taking an empty capture lock", async () => {
+test("synchronous publish and send survive a worker lock without an empty capture lock", async () => {
   const f = await fixture()
   const url = URL.createObjectURL(
     new Blob(
@@ -262,8 +262,24 @@ test("a synchronous publish waits out a worker lock without taking an empty capt
     expect(() =>
       bus.publish({ type: "import.progress", importId: "worker-lock", phase: "done", done: 1, total: 1 }),
     ).not.toThrow()
+    const inserted = f.store.insertMessage({
+      message: {
+        id: "sent-while-locked",
+        threadId: "t",
+        parentId: null,
+        role: "user",
+        kind: "text",
+        status: "complete",
+        runId: null,
+        text: "Mensagem sintética",
+        parts: [{ type: "text", text: "Mensagem sintética" }],
+        sender: null,
+        source: "local",
+      },
+    })
     await released.promise
 
+    expect(inserted.success).toBe(true)
     expect(captureFinishedWhileLocked).toBe(true)
     expect(bus.replay(0).at(-1)?.event).toMatchObject({ type: "import.progress", importId: "worker-lock" })
     expect((f.db.query("PRAGMA busy_timeout").get() as { timeout: number }).timeout).toBe(5_000)
