@@ -462,3 +462,42 @@
 .sidebar-work-badge:focus-visible .sidebar-work-action {
   color: var(--text-primary);
 }
+
+/* Pointer targets: 40px on desktop, 44px on phones and touch screens, grown with min sizes (not visual size). */
+.r8-sidebar {
+  --sidebar-target-size: 40px;
+}
+@media (max-width: 800px), (pointer: coarse) {
+  .r8-sidebar {
+    --sidebar-target-size: var(--touch-target-size);
+  }
+}
+.r8-sidebar
+  :is(
+    .sidebar-icon-button,
+    .notification-bell,
+    .bot-settings,
+    .sidebar-attention-button,
+    .sidebar-bots-link,
+    .sidebar-nav-item,
+    .bot-row-main,
+    .new-thread-row,
+    .thread-row,
+    .sidebar-connect,
+    .sidebar-recovery,
+    .sidebar-work-badge,
+    .sidebar-advanced-pages button,
+    .user-chip,
+    .group-select,
+    .group-empty-create,
+    .group-sidebar-heading button
+  ) {
+  min-width: var(--sidebar-target-size);
+  min-height: var(--sidebar-target-size);
+}
+.r8-sidebar .sidebar-advanced > button {
+  min-height: var(--sidebar-target-size);
+}
+.r8-sidebar .bot-row {
+  min-height: calc(var(--sidebar-target-size) + var(--space-14, 14px));
+}
