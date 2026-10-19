@@ -14,7 +14,12 @@ export const flushFileIoAsync = (): Promise<void> =>
 export const closeFileIoAsync = (timeoutMs = 5000): Promise<void> =>
   Promise.all([requestIo.close(timeoutMs), backgroundIo.close(timeoutMs)]).then(() => undefined)
 
-export const getFileIoStats = () => ({ request: requestIo.getStats(), background: backgroundIo.getStats() })
+export const getFileIoStats = () => ({
+  request: requestIo.getStats(),
+  background: backgroundIo.getStats(),
+  requestActivity: requestIo.getActivity(),
+  backgroundActivity: backgroundIo.getActivity(),
+})
 
 export const appendBackgroundFileAsync = (args: FileWrite & { maxBytes?: number }): Promise<void> =>
   backgroundIo.run({ operation: "append", args }).then(() => undefined)

@@ -1,21 +1,15 @@
 import { workerEntrypoint } from "../../kernel/worker-entrypoint"
-import type { WorkerError, WriteCommand, WriterMessage } from "./store-protocol"
+import type { WorkerError, WriteCommand, WriterMessage, WriterRequest } from "./store-protocol"
 
 const writerStartupTimeoutMs = 15_000
 
-export const getAuthWriterWorker = (): Worker =>
-  new Worker(workerEntrypoint(new URL("./store-writer.ts", import.meta.url), "./auth-writer-worker-entry.ts"), {
-    smol: true,
-    ref: false,
-  })
-
 /** Reject uncertain in-flight writes; later commands reopen the durable database. */
-export const createAuthWriter = async (filename: string, createWorker = getAuthWriterWorker) => {
+export const createAuthWriter = async (filename: string, createWorker = startAuthWriterWorker) => {
   // Each store owns one writer generation; concurrent recovery shares its startup.
   let current = await startAuthWriter(filename, createWorker)
   let restarting: Promise<AuthWriter> | undefined
   let closed = false
-  const getWriter = async (): Promise<AuthWriter> => {
+  const ensureWriter = async (): Promise<AuthWriter> => {
     if (closed) throw new Error("Authentication writer is closed")
     if (!current.isStopped()) return current
     restarting ??= startAuthWriter(filename, createWorker)
@@ -29,7 +23,7 @@ export const createAuthWriter = async (filename: string, createWorker = getAuthW
     return restarting
   }
   return {
-    write: async (command: WriteCommand): Promise<unknown> => (await getWriter()).write(command),
+    write: async (command: WriteCommand): Promise<unknown> => (await ensureWriter()).write(command),
     close: async (): Promise<void> => {
       closed = true
       await restarting?.catch(() => undefined)
@@ -45,7 +39,7 @@ type AuthWriter = {
 }
 type RefableWorker = Worker & { ref: () => void; unref: () => void }
 
-const workerError = ({ name, message, code }: WorkerError): Error =>
+const getWorkerError = ({ name, message, code }: WorkerError): Error =>
   Object.assign(new Error(message), { name, ...(code ? { code } : {}) })
 
 const startAuthWriter = async (filename: string, createWorker: () => Worker): Promise<AuthWriter> => {
@@ -78,7 +72,7 @@ const startAuthWriter = async (filename: string, createWorker: () => Worker): Pr
       return
     }
     if (data.type === "startup-error") {
-      readyReject(workerError(data.error))
+      readyReject(getWorkerError(data.error))
       return
     }
     if (data.type === "stopped") {
@@ -88,7 +82,7 @@ const startAuthWriter = async (filename: string, createWorker: () => Worker): Pr
     const result = pending.get(data.requestId)
     if (!result) return
     pending.delete(data.requestId)
-    if (data.error) result.reject(workerError(data.error))
+    if (data.error) result.reject(getWorkerError(data.error))
     else result.resolve(data.result)
     if (pending.size === 0 && !closing) worker.unref()
   }
@@ -109,7 +103,7 @@ const startAuthWriter = async (filename: string, createWorker: () => Worker): Pr
     if (!closing) fail()
     stoppedResolve()
   })
-  worker.postMessage({ type: "start", filename })
+  worker.postMessage({ type: "start", filename } satisfies WriterRequest)
   const startupTimeout = setTimeout(
     () => readyReject(new Error("Authentication writer startup timed out")),
     writerStartupTimeoutMs,
@@ -130,7 +124,7 @@ const startAuthWriter = async (filename: string, createWorker: () => Worker): Pr
     worker.ref()
     const id = ++requestId
     const result = new Promise<unknown>((resolve, reject) => pending.set(id, { resolve, reject }))
-    worker.postMessage({ ...command, requestId: id })
+    worker.postMessage({ ...command, requestId: id } satisfies WriterRequest)
     return result
   }
 
@@ -145,7 +139,7 @@ const startAuthWriter = async (filename: string, createWorker: () => Worker): Pr
           return
         }
         worker.ref()
-        worker.postMessage({ type: "stop" })
+        worker.postMessage({ type: "stop" } satisfies WriterRequest)
         const deadline = setTimeout(() => {
           stoppedResolve()
           worker.terminate()
@@ -158,3 +152,9 @@ const startAuthWriter = async (filename: string, createWorker: () => Worker): Pr
     },
   }
 }
+
+const startAuthWriterWorker = (): Worker =>
+  new Worker(workerEntrypoint(new URL("./store-writer.ts", import.meta.url), "./auth-writer-worker-entry.ts"), {
+    smol: true,
+    ref: false,
+  })

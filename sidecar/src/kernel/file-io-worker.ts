@@ -110,6 +110,7 @@ self.onmessage = ({ data }: MessageEvent<FileIoRequest>): void => {
     return
   }
   if (!("requestId" in data)) return
+  self.postMessage({ type: "started", requestId: data.requestId } satisfies FileIoMessage)
   try {
     const result = execute(data)
     self.postMessage({ requestId: data.requestId, result } satisfies FileIoMessage)
