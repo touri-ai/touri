@@ -345,6 +345,24 @@ store.insertMessage({ message: {
   id: "request", threadId: "thread", parentId: null, role: "user", kind: "text", status: "complete", runId: null,
   text: "Synthetic request", parts: [], sender: null, source: "local",
 } });
+const outputMessage = store.insertMessage({ message: {
+  id: "output", threadId: "thread", parentId: "request", role: "assistant", kind: "text", status: "complete", runId: null,
+  text: "Synthetic output", parts: [], sender: null, source: "local",
+} });
+if (!outputMessage.success) throw new Error("Could not create the synthetic output message");
+library.symbols.touri_set_sqlite_only(0);
+library.symbols.touri_start_sync_recording();
+const output = await measure(async () => {
+  const result = await store.updateMessageAsync({
+    threadId: "thread", messageId: "output", patch: {
+      parts: [{ type: "tool_call", callId: "blob", tool: "read", summary: "", inputJson: "{}", outputJson: "x".repeat(16 * 1024), ok: true }],
+    },
+  });
+  if (!result?.success) throw new Error("Could not save the synthetic output message");
+});
+output.syncCalls = library.symbols.touri_stop_sync_recording();
+output.outputAttachmentId = JSON.parse(database.query("SELECT parts_json FROM messages WHERE id = 'output'").get().parts_json)[0].outputAttachmentId;
+library.symbols.touri_set_sqlite_only(1);
 const turn = Promise.withResolvers();
 let abortObserved = false;
 const engine = createRuntimeEngine({ kernel: runtime.kernel, environment: { HOME: directory, PATH: "/usr/bin" }, providerAdapters: {
@@ -397,7 +415,7 @@ after.journalRows = database.query("SELECT COUNT(*) AS count FROM transcript_ent
 await engine.shutdown();
 await runtime.stop();
 workerUrls.forEach((url) => URL.revokeObjectURL(url));
-console.log(JSON.stringify({ delayMs: 200, before, after }));
+console.log(JSON.stringify({ delayMs: 200, before, after, output }));
 `
 
 test.skipIf(!canRunSyncBenchmark)(
@@ -461,6 +479,7 @@ test.skipIf(!canRunSyncBenchmark)(
         journalRows: number
         text: string
       }
+      output: { latencyMs: number; maxLagMs: number; samples: number; syncCalls: number; outputAttachmentId: string }
     }
     console.info(`stream-sync-benchmark ${JSON.stringify(measured)}`)
 
@@ -475,6 +494,11 @@ test.skipIf(!canRunSyncBenchmark)(
     expect(measured.after.abortObserved).toBe(true)
     expect(measured.after.journalRows).toBe(2)
     expect(measured.after.text).toBe(`warm${"x".repeat(32)}`)
+    expect(measured.output.syncCalls).toBeGreaterThanOrEqual(1)
+    expect(measured.output.latencyMs).toBeGreaterThanOrEqual(150)
+    expect(measured.output.maxLagMs).toBeLessThan(50)
+    expect(measured.output.samples).toBeGreaterThan(10)
+    expect(measured.output.outputAttachmentId).toMatch(/^[a-f0-9]{64}$/)
   },
   15_000,
 )

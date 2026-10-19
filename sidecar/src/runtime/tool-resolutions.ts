@@ -1,6 +1,5 @@
 import { Database } from "bun:sqlite"
-import type { Kernel, MessagePart, Run, StoreApi, ToolResolution } from "@touri/contracts"
-import { externalizeMessageParts } from "../kernel/output-blobs"
+import type { Kernel, Message, MessagePart, Run, StoreApi, ToolResolution } from "@touri/contracts"
 import { summarizeToolResolutions } from "./tool-resolution-summary"
 
 type ToolPart = Extract<MessagePart, { callId: string }>
@@ -72,7 +71,7 @@ export const createToolResolutions = (kernel: Kernel) => {
         : undefined
     const resolved = {
       ...part,
-      ...(keepResult ? resultPart : {}),
+      ...(keepResult && !("outputAttachmentId" in part) ? resultPart : {}),
       resolution,
       ...(resolution === "completed_unobserved" && resultPart.type === "file_change" && completedOutcome !== undefined
         ? { completedOutcome }
@@ -82,9 +81,7 @@ export const createToolResolutions = (kernel: Kernel) => {
           ? null
           : (part.resolvedAt ?? (previous?.resolution === resolution ? previous.resolved_at : null) ?? Date.now()),
     }
-    const next = database
-      ? (externalizeMessageParts({ database, appData: kernel.paths.appData, parts: [resolved] })[0] as ToolPart)
-      : resolved
+    const next = resolved
     if (persist) {
       saveResolution?.run(run.id, part.callId, run.threadId, JSON.stringify(next), resolution, next.resolvedAt ?? null)
       const parts = pendingInterruptions.get(run.id)
@@ -156,11 +153,11 @@ export const createToolResolutions = (kernel: Kernel) => {
       ?.query(`${PENDING_TOOL_RECOVERY_SQL} ${threadId ? "AND p.thread_id = ?" : ""} ORDER BY r.queued_at, r.id`)
       .all(...(threadId ? [threadId] : [])) ?? []) as RecoveryRun[]
 
-  const reconcileRun = (store: StoreApi, runId: string): void => {
+  const reconcileRun = async (store: StoreApi, runId: string): Promise<void> => {
     if (!database) return
-    database.transaction(() => {
+    const recovery = database.transaction(() => {
       const row = database.query(`${PENDING_TOOL_RECOVERY_SQL} AND p.run_id = ?`).get(runId) as RecoveryRun | null
-      if (!row) return
+      if (!row) return null
       // Calls can be persisted before the first assistant message is written.
       const message = database
         .query(`SELECT id, parts_json, status FROM messages
@@ -175,30 +172,35 @@ export const createToolResolutions = (kernel: Kernel) => {
       const reason = terminalReason(row.status)
       const run = { id: row.id, threadId: row.thread_id } as Run
       const next = finish(run, parts, reason)
-      if (message && (JSON.stringify(parts) !== JSON.stringify(next) || message.status === "streaming")) {
-        const updated = store.updateMessage({
-          threadId: run.threadId,
-          messageId: message.id,
-          patch: {
-            parts: next,
-            status: row.status === "succeeded" ? "complete" : row.status === "canceled" ? "canceled" : "failed",
-          },
-        })
-        if (!updated.success) throw new Error(updated.error)
-      }
-      clearPending(row.id)
+      const shouldUpdate = message && (JSON.stringify(parts) !== JSON.stringify(next) || message.status === "streaming")
+      return { row, message, next, shouldUpdate }
     })()
+    if (!recovery) return
+    const { row, message, next, shouldUpdate } = recovery
+    if (message && shouldUpdate) {
+      const status: Message["status"] =
+        row.status === "succeeded" ? "complete" : row.status === "canceled" ? "canceled" : "failed"
+      const input = {
+        threadId: row.thread_id,
+        messageId: message.id,
+        patch: {
+          parts: next,
+          status,
+        },
+      }
+      const updated = store.updateMessageAsync ? await store.updateMessageAsync(input) : store.updateMessage(input)
+      if (!updated.success) throw new Error(updated.error)
+    }
+    database.transaction(() => clearPending(row.id))()
   }
-  const reconcile = (store: StoreApi, threadId?: string): void => {
-    database?.transaction(() =>
-      getPendingRuns(threadId).forEach((row) => {
-        reconcileRun(store, row.id)
-      }),
-    )()
+  const reconcile = async (store: StoreApi, threadId?: string): Promise<void> => {
+    for (const row of getPendingRuns(threadId)) {
+      await reconcileRun(store, row.id)
+    }
   }
   const reconcilePending = async (store: StoreApi, threadId: string): Promise<void> => {
     for (const row of getPendingRuns(threadId)) {
-      reconcileRun(store, row.id)
+      await reconcileRun(store, row.id)
       // Live imports may introduce many completed turns; let other clients run between them.
       await new Promise<void>((resolve) => setImmediate(resolve))
     }

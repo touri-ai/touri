@@ -258,7 +258,7 @@ test("reconciliation restores completed results missing from the message and sum
       },
     })
     expect(reply.success).toBe(true)
-    tools.reconcile(f.store, "t")
+    await tools.reconcile(f.store, "t")
     const parts = f.store.activePath({ threadId: "t" }).at(-1)?.parts
     expect(parts).toMatchObject([
       { callId: "pending", resolution: "interrupted_by_restart" },
@@ -276,7 +276,7 @@ test("reconciliation restores completed results missing from the message and sum
     expect(summary).toContain("Resultado preservado")
     expect(summary).toContain("podem existir efeitos parciais")
     const seq = f.store.getThread({ threadId: "t" })?.updatedSeq
-    tools.reconcile(f.store, "t")
+    await tools.reconcile(f.store, "t")
     expect(f.store.getThread({ threadId: "t" })?.updatedSeq).toBe(seq)
     insertReply(f, "another-branch")
     expect(tools.summary(f.store, "t")).toBeNull()
@@ -828,7 +828,7 @@ test("restart resolves open tools and commands without changing already complete
     ])
     const tools = createToolResolutions(f.runtime.kernel)
     const versions = (f.db.query("SELECT MAX(seq) AS seq FROM transcript_entries").get() as { seq: number }).seq
-    tools.reconcile(f.store, "t")
+    await tools.reconcile(f.store, "t")
     expect(f.db.query("SELECT MAX(seq) AS seq FROM transcript_entries").get()).toEqual({ seq: versions })
     const completed = tools.record(run, {
       ...parts[0],
@@ -920,7 +920,7 @@ test("reconciliation closes calls persisted before an assistant message", async 
       )
       .run(run.id)
     f.persistence.saveRun({ ...run, status: "interrupted" })
-    tools.reconcile(f.store)
+    await tools.reconcile(f.store)
     expect(f.db.query("SELECT resolution FROM tool_resolutions").get()).toEqual({
       resolution: "interrupted_by_restart",
     })

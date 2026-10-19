@@ -40,7 +40,12 @@ import { folderGrantProblem, refreshHostFolderAccess, specificFoldersRequired } 
 import { historyThreadPending, hydrateHistoryEvent } from "../kernel/history-backfill"
 import { getPathIds } from "../kernel/message-path"
 import { refreshMessageSearch } from "../kernel/message-search"
-import { externalizeMessageParts, OUTPUT_BLOB_ORIGIN, readOutputAttachment } from "../kernel/output-blobs"
+import {
+  externalizeMessageParts,
+  externalizeMessagePartsAsync,
+  OUTPUT_BLOB_ORIGIN,
+  readOutputAttachment,
+} from "../kernel/output-blobs"
 import type { PerformanceStageRunner } from "../kernel/performance"
 import { isProfileProvider, validProviderProfileName } from "../kernel/provider-profiles"
 import { materializeTranscriptBatch } from "../kernel/transcript-storage"
@@ -671,7 +676,11 @@ export const init = async (
 
   const updateMessageAsync: NonNullable<StoreApi["updateMessageAsync"]> = async (input) => {
     await streamWriter.drainAsync({ threadId: input.threadId, messageId: input.messageId })
-    return writeDatabaseAsync(database, () => updateMessage(input))
+    const parts = input.patch.parts
+      ? await externalizeMessagePartsAsync({ database, appData: kernel.paths.appData, parts: input.patch.parts })
+      : undefined
+    const prepared = parts ? { ...input, patch: { ...input.patch, parts } } : input
+    return writeDatabaseAsync(database, () => updateMessage(prepared))
   }
 
   const activePath: StoreApi["activePath"] = ({ threadId, leafId, limit, fromRoot = false }) => {

@@ -44,7 +44,10 @@ const createFileIo = () => {
       }
       worker.onerror = (event): void => {
         event.preventDefault()
-        const error = new Error("File I/O worker stopped unexpectedly")
+        const detail = event.message.replace(/(?:[A-Za-z]:)?[\\/](?:[^\s\\/]+[\\/])*[^\s\\/]+/g, "<path>").slice(0, 160)
+        const error = new Error(
+          detail ? `File I/O worker stopped unexpectedly: ${detail}` : "File I/O worker stopped unexpectedly",
+        )
         ready = false
         worker = undefined
         readyReject(error)

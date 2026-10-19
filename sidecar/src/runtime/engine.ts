@@ -35,6 +35,7 @@ import { writePrivateFileAsync } from "../kernel/async-files"
 import { writeDatabaseAsync } from "../kernel/database-write"
 import { folderAccessUnavailable, folderGrantProblem, refreshHostFolderAccess } from "../kernel/folder-capability"
 import { hasPathHistory } from "../kernel/message-path"
+import { externalizeMessagePartsAsync } from "../kernel/output-blobs"
 import type { PerformanceStage, PerformanceStageRunner } from "../kernel/performance"
 import { providerProfileEnv } from "../kernel/provider-profiles"
 import { redactStructured } from "../kernel/redact"
@@ -529,7 +530,12 @@ export const createRuntimeEngine = ({
     return isLive(run)
   }
 
-  const finishLiveRun = async (run: Run, finish: () => void, messageId?: Id): Promise<void> => {
+  const finishLiveRun = async (
+    run: Run,
+    prepare: () => Promise<void>,
+    finish: () => void,
+    messageId?: Id,
+  ): Promise<void> => {
     // Accepted streaming work survives even if the final transaction rolls back.
     try {
       await measureStage("runtime_stream_flush", () =>
@@ -541,6 +547,7 @@ export const createRuntimeEngine = ({
     } catch {
       // A failed stream drain must not leave its run active or prevent terminal state.
     }
+    await prepare()
     const write = (): void => {
       if (!isLive(run)) {
         tools.clearPendingMemory(run.id)
@@ -610,17 +617,13 @@ export const createRuntimeEngine = ({
       status: "streaming",
       runId: run.id,
       text: state.text,
-      parts: structuredClone(state.parts),
+      parts: [],
       sender: null,
       source: "local",
     }
     const result = store.insertMessage({ message })
     if (!result.success) return
     state.replyMessageId = result.message.id
-    for (const index of state.dirtyParts) {
-      const part = state.parts[index]
-      if (part && !("callId" in part)) state.dirtyParts.delete(index)
-    }
     run.replyMessageId = result.message.id
     persistence.saveRun(run)
   }
@@ -712,6 +715,27 @@ export const createRuntimeEngine = ({
         if (!previous || !isSamePart(previous, part)) state.dirtyParts.add(index)
       })
       state.parts = parts
+    })
+  }
+
+  const prepareFinalParts = async ({
+    run,
+    state,
+    store,
+    reason,
+  }: {
+    run: Run
+    state: RunState
+    store: StoreApi
+    reason: "cancelled_by_user" | "failed" | "interrupted_by_restart" | "unknown"
+  }): Promise<void> => {
+    finishParts({ run, state, reason, persist: false })
+    if (!(kernel.db instanceof Database) || !store.updateMessageAsync) return
+
+    state.parts = await externalizeMessagePartsAsync({
+      database: kernel.db,
+      appData: kernel.paths.appData,
+      parts: state.parts,
     })
   }
 
@@ -1625,6 +1649,7 @@ export const createRuntimeEngine = ({
             state.continueAfterApproval = false
             await finishLiveRun(
               run,
+              () => prepareFinalParts({ run, state, store, reason: "unknown" }),
               () => {
                 ensureReply({ run, state, store, parentId: run.requestMessageId ?? thread.activeLeafId ?? run.id })
                 finishParts({ run, state, reason: "unknown" })
@@ -1721,19 +1746,17 @@ export const createRuntimeEngine = ({
     continuing?: boolean
   }): Promise<void> => {
     const errorClass = refineErrorClass(reportedErrorClass, errorMessage)
+    const reason =
+      errorClass === "canceled"
+        ? "cancelled_by_user"
+        : errorClass === "app_restart"
+          ? "interrupted_by_restart"
+          : "failed"
     return finishLiveRun(
       run,
+      () => prepareFinalParts({ run, state, store, reason }),
       () => {
-        finishParts({
-          run,
-          state,
-          reason:
-            errorClass === "canceled"
-              ? "cancelled_by_user"
-              : errorClass === "app_restart"
-                ? "interrupted_by_restart"
-                : "failed",
-        })
+        finishParts({ run, state, reason })
         state.parts = state.parts.map((part, index) => {
           if (part.type !== "approval" || part.decision !== "pending") return part
           pendingApprovals.delete(part.approvalId)
@@ -2882,8 +2905,8 @@ export const createRuntimeEngine = ({
   const recoveryStore = kernel.services.use("store.api")
   // Recovery repairs persisted history once. Terminal transitions already settle
   // their own tools; repeating recovery per turn rescans every previous result.
-  if (recoveryStore) tools.reconcile(recoveryStore)
-  const ready = Promise.allSettled([startupCleanup, ...startupRecoveries]).then((results) => {
+  const toolReconciliation = recoveryStore ? tools.reconcile(recoveryStore) : Promise.resolve()
+  const ready = Promise.allSettled([startupCleanup, ...startupRecoveries, toolReconciliation]).then((results) => {
     if (results.every((result) => result.status === "fulfilled")) return
     try {
       kernel.log({
