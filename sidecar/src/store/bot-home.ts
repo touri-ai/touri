@@ -1,16 +1,24 @@
 import { basename, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import type { Kernel } from "@touri/contracts"
-import { atomicWriteFile, ensurePrivateDirectory, removePrivateTree } from "../kernel/files"
+import {
+  atomicWriteFile,
+  ensurePrivateDirectory,
+  movePrivateFile,
+  readPrivateFile,
+  removePrivateFile,
+  removePrivateTree,
+} from "../kernel/files"
 
 export type BotHomeCommand =
   | { operation: "write" | "edit"; botId: string; instructions: string }
-  | { operation: "remove"; botId: string }
+  | { operation: "remove" | "snapshot" | "commit" | "rollback"; botId: string }
 
-type Helper = { execute: (command: string) => Promise<void>; stop: () => Promise<void> }
+type Helper = { execute: (command: BotHomeCommand) => Promise<void>; stop: () => Promise<void> }
 const INPUT_LIMIT = 128 * 1024
-// Edits and rollback need larger frames; together they still share the bounded FIFO budget.
-const EDIT_INPUT_LIMIT = 2 * 1024 * 1024
+// Content frames stay small; decoded edits can fill the existing HTTP body allowance.
+const EDIT_INPUT_LIMIT = 32 * 1024 * 1024
+const CONTENT_CHUNK_LENGTH = 16 * 1024
 const PENDING_BYTE_LIMIT = 4 * 1024 * 1024
 
 // Each kernel owns one helper; shutdown explicitly releases it before closing the database.
@@ -38,17 +46,11 @@ export const updateBotHome = async (
   botId: string,
   instructions: string,
   signal: AbortSignal,
-  prepare: () => { previousInstructions: string; commit: () => void },
+  prepare: () => { commit: () => void },
   writer = getWriter(kernel),
 ): Promise<void> => {
   await writer.run({ operation: "edit", botId, instructions }, signal, {
-    prepare: () => {
-      const edit = prepare()
-      return {
-        rollback: { operation: "edit", botId, instructions: edit.previousInstructions },
-        commit: edit.commit,
-      }
-    },
+    prepare,
     onRollbackFailure: () =>
       kernel.log({ level: "error", module: "store", msg: "Could not restore bot home after an instruction edit" }),
   })
@@ -83,7 +85,7 @@ const getWriter = (kernel: Kernel) => {
   return writer
 }
 
-/** A bounded FIFO admits at most 32 commands (4 MiB including rollback snapshots). */
+/** At most 32 commands; an idle FIFO also admits one edit up to the HTTP body allowance. */
 export const createBotHomeWriter = ({
   root,
   createHelper = () => startBotHomeHelper(root),
@@ -106,18 +108,17 @@ export const createBotHomeWriter = ({
     command: BotHomeCommand,
     signal?: AbortSignal,
     options?: {
-      rollback?: BotHomeCommand
-      prepare?: () => { rollback: BotHomeCommand; commit?: () => void }
+      prepare?: () => { commit?: () => void }
       commit?: () => void
       onRollbackFailure?: () => void
     },
   ): Promise<void> => {
     shutdown.signal.throwIfAborted()
     signal?.throwIfAborted()
-    const input = getBotHomeInput(command)
-    const staticRollbackInput = options?.rollback ? getBotHomeInput(options.rollback) : undefined
-    const operationBytes = Buffer.byteLength(input) + (staticRollbackInput ? Buffer.byteLength(staticRollbackInput) : 0)
-    if (pending >= maxPending || pendingBytes + operationBytes > PENDING_BYTE_LIMIT)
+    validateBotHomeCommand(command)
+    // Count retained UTF-16 storage without scanning or JSON-escaping the instruction text.
+    const operationBytes = 256 + ("instructions" in command ? command.instructions.length * 2 : 0)
+    if (pending >= maxPending || (pending > 0 && pendingBytes + operationBytes > PENDING_BYTE_LIMIT))
       throw new Error("Bot home writer is busy")
 
     pending += 1
@@ -126,49 +127,37 @@ export const createBotHomeWriter = ({
     const timer = setTimeout(() => deadline.abort(new Error("Bot home operation timed out")), timeoutMs)
     const combined = AbortSignal.any([shutdown.signal, deadline.signal, ...(signal ? [signal] : [])])
     let started = false
-    let preparedBytes = 0
     const execute = tail.then(async () => {
       combined.throwIfAborted()
       started = true
-      let rollbackInput = staticRollbackInput
-      let commit = options?.commit
+      const isEdit = command.operation === "edit"
+      let snapshotStarted = false
       try {
-        const prepared = options?.prepare?.()
-        if (prepared) {
-          const serializedRollback = getBotHomeInput(prepared.rollback)
-          const snapshotBytes = Buffer.byteLength(serializedRollback)
-          if (pendingBytes + snapshotBytes > PENDING_BYTE_LIMIT) throw new Error("Bot home writer is busy")
-          pendingBytes += snapshotBytes
-          preparedBytes = snapshotBytes
-          rollbackInput = serializedRollback
-          commit = prepared.commit
+        const commit = options?.prepare?.().commit ?? options?.commit
+        if (isEdit) {
+          snapshotStarted = true
+          await executeWithHelper({ operation: "snapshot", botId: command.botId }, combined)
         }
-        await executeWithHelper(input, combined)
+        await executeWithHelper(command, combined)
         combined.throwIfAborted()
         commit?.()
       } catch (error) {
-        if (rollbackInput) {
-          try {
-            await executeWithHelper(rollbackInput, AbortSignal.timeout(timeoutMs))
-          } catch {
-            try {
-              options?.onRollbackFailure?.()
-            } catch {}
-          }
-        }
+        if (snapshotStarted) await finishEdit("rollback", command.botId, options?.onRollbackFailure)
         throw combined.aborted ? combined.reason : error
       }
+      // The database is committed: cancellation or cleanup failure must never restore the old file.
+      if (isEdit) await finishEdit("commit", command.botId, options?.onRollbackFailure)
     })
     tail = execute
       .catch(() => undefined)
       .finally(() => {
         pending -= 1
-        pendingBytes -= operationBytes + preparedBytes
+        pendingBytes -= operationBytes
       })
 
     // Queued cancellation returns promptly; its slot stays reserved until the FIFO reaches it.
     const cancelled = Promise.withResolvers<never>()
-    const restoresOnFailure = Boolean(staticRollbackInput || options?.prepare)
+    const restoresOnFailure = command.operation === "edit"
     const cancel = () => {
       if (!started || !restoresOnFailure) cancelled.reject(combined.reason)
     }
@@ -185,16 +174,17 @@ export const createBotHomeWriter = ({
     shutdown.abort(new Error("Bot home writer is closed"))
     await helper?.stop()
     await tail
+    await helper?.stop()
   }
 
-  const executeWithHelper = async (input: string, signal: AbortSignal): Promise<void> => {
+  const executeWithHelper = async (command: BotHomeCommand, signal: AbortSignal): Promise<void> => {
     signal.throwIfAborted()
     helper ??= createHelper()
     const active = helper
     const cancel = () => void active.stop()
     signal.addEventListener("abort", cancel, { once: true })
     try {
-      await active.execute(input)
+      await active.execute(command)
       signal.throwIfAborted()
     } catch (error) {
       await active.stop()
@@ -202,6 +192,16 @@ export const createBotHomeWriter = ({
       throw signal.aborted ? signal.reason : error
     } finally {
       signal.removeEventListener("abort", cancel)
+    }
+  }
+
+  const finishEdit = async (operation: "commit" | "rollback", botId: string, onFailure?: () => void) => {
+    try {
+      await executeWithHelper({ operation, botId }, AbortSignal.timeout(timeoutMs))
+    } catch {
+      try {
+        onFailure?.()
+      } catch {}
     }
   }
 
@@ -225,11 +225,31 @@ export const startBotHomeHelper = (root: string): Helper => {
   const ready = getReply(82)
   // A caller can cancel while startup is still in progress.
   void ready.catch(() => undefined)
+  const sendFrame = async (bytes: Buffer) => {
+    const prefix = Buffer.alloc(4)
+    prefix.writeUInt32BE(bytes.length)
+    child.stdin.write(prefix)
+    child.stdin.write(bytes)
+    await child.stdin.flush()
+  }
+  const sendInstructions = async (instructions: string) => {
+    // Local offsets keep UTF-8 chunks bounded and never split a surrogate pair.
+    for (let offset = 0; offset < instructions.length; ) {
+      let end = Math.min(offset + CONTENT_CHUNK_LENGTH, instructions.length)
+      const last = instructions.charCodeAt(end - 1)
+      if (end < instructions.length && last >= 0xd800 && last <= 0xdbff) end -= 1
+      await sendFrame(Buffer.from(instructions.slice(offset, end)))
+      offset = end
+      await new Promise<void>((resolve) => setImmediate(resolve))
+    }
+    await sendFrame(Buffer.alloc(0))
+  }
   return {
     execute: async (command) => {
       await ready
-      child.stdin.write(`${command}\n`)
-      await child.stdin.flush()
+      const header = command.operation === "edit" ? { ...command, instructions: "" } : command
+      await sendFrame(Buffer.from(JSON.stringify(header)))
+      if (command.operation === "edit") await sendInstructions(command.instructions)
       await getReply(49)
     },
     stop: async () => {
@@ -239,25 +259,29 @@ export const startBotHomeHelper = (root: string): Helper => {
   }
 }
 
-const getBotHomeInput = (command: BotHomeCommand): string => {
-  const limit = command.operation === "edit" ? EDIT_INPUT_LIMIT : INPUT_LIMIT
-  if (command.operation !== "remove" && command.instructions.length > limit)
-    throw new Error("Bot home input exceeds limit")
-  const input = JSON.stringify(command)
-  getBotHomeCommand(input)
-  return input
+const validateBotHomeCommand = (command: BotHomeCommand): void => {
+  if (command.operation === "edit") {
+    if (command.instructions.length > EDIT_INPUT_LIMIT) throw new Error("Bot home input exceeds limit")
+    getBotHomeCommand(JSON.stringify({ ...command, instructions: "" }))
+    return
+  }
+  getBotHomeCommand(JSON.stringify(command))
 }
 
 export const getBotHomeCommand = (text: string): BotHomeCommand => {
-  const bytes = Buffer.byteLength(text)
-  if (bytes > EDIT_INPUT_LIMIT) throw new Error("Bot home input exceeds limit")
+  if (Buffer.byteLength(text) > INPUT_LIMIT) throw new Error("Bot home input exceeds limit")
   const input: unknown = JSON.parse(text)
   if (!input || typeof input !== "object" || !("operation" in input) || !("botId" in input))
     throw new Error("Invalid bot home command")
-  if (input.operation !== "edit" && bytes > INPUT_LIMIT) throw new Error("Bot home input exceeds limit")
   if (typeof input.botId !== "string" || !/^[a-zA-Z0-9-]{1,80}$/.test(input.botId)) throw new Error("Invalid bot id")
-  if (input.operation === "remove" && Object.keys(input).every((key) => ["operation", "botId"].includes(key)))
-    return { operation: "remove", botId: input.botId }
+  if (
+    (input.operation === "remove" ||
+      input.operation === "snapshot" ||
+      input.operation === "commit" ||
+      input.operation === "rollback") &&
+    Object.keys(input).every((key) => ["operation", "botId"].includes(key))
+  )
+    return { operation: input.operation, botId: input.botId }
   if (
     (input.operation !== "write" && input.operation !== "edit") ||
     !("instructions" in input) ||
@@ -269,39 +293,101 @@ export const getBotHomeCommand = (text: string): BotHomeCommand => {
   return { operation: input.operation, botId: input.botId, instructions: input.instructions }
 }
 
-const executeBotHomeCommand = (root: string, command: BotHomeCommand): void => {
+const executeBotHomeCommand = (root: string, command: BotHomeCommand, content?: Buffer): void => {
   // Synchronous descriptor-relative operations are isolated in this helper, never on the request loop.
   const home = join(root, "bots", command.botId)
+  const soul = join(home, "SOUL.md")
+  const backup = join(home, ".SOUL.edit-backup")
   if (command.operation === "remove") {
     removePrivateTree({ root, path: home })
     return
   }
   ensurePrivateDirectory({ root, path: home })
-  atomicWriteFile({ root, path: join(home, "SOUL.md"), content: command.instructions })
+  if (command.operation === "snapshot") {
+    if (readPrivateFile({ root, path: soul, maxBytes: 1 }) === null) {
+      atomicWriteFile({ root, path: backup, content: "" })
+      return
+    }
+    movePrivateFile({ root, from: soul, to: backup })
+    return
+  }
+  if (command.operation === "rollback") {
+    if (readPrivateFile({ root, path: backup, maxBytes: 1 }) !== null) movePrivateFile({ root, from: backup, to: soul })
+    return
+  }
+  if (command.operation === "commit") {
+    removePrivateFile({ root, path: backup })
+    return
+  }
+  if ("instructions" in command) atomicWriteFile({ root, path: soul, content: content ?? command.instructions })
 }
 
-/** Only the admitted head is sent; input is bounded independently at the helper boundary. */
+/** Each frame is bounded independently; old instructions never cross the process boundary. */
 export const runBotHomeWriter = async (root: string): Promise<void> => {
+  const getFrame = getFrameReader(Bun.stdin.stream())
   process.stdout.write("R")
-  // A streaming frame can cross chunks; keep its bounded remainder local to this reader.
-  let buffer = Buffer.alloc(0)
-  const reader = Bun.stdin.stream().getReader()
   for (;;) {
-    const chunk = await reader.read()
-    if (chunk.done) break
-    buffer = Buffer.concat([buffer, chunk.value])
-    if (buffer.length > EDIT_INPUT_LIMIT + 1) throw new Error("Bot home input exceeds limit")
-    if (buffer[buffer.length - 1] !== 10) continue
-
+    const frame = await getFrame()
+    if (frame === null) return
+    const command = getBotHomeCommand(frame.toString("utf8"))
+    const content = command.operation === "edit" ? await getInstructionContent(getFrame) : undefined
     try {
-      executeBotHomeCommand(root, getBotHomeCommand(buffer.subarray(0, -1).toString("utf8")))
+      executeBotHomeCommand(root, command, content)
       process.stdout.write("1")
     } catch {
       process.stdout.write("0")
     }
-    buffer = Buffer.alloc(0)
   }
-  if (buffer.length) throw new Error("Incomplete bot home command")
+}
+
+const getInstructionContent = async (getFrame: () => Promise<Buffer | null>): Promise<Buffer> => {
+  // The helper owns this bounded accumulation; no instruction-size copy runs on the request loop.
+  const chunks: Buffer[] = []
+  let size = 0
+  for (;;) {
+    const chunk = await getFrame()
+    if (chunk === null) throw new Error("Incomplete bot home command")
+    if (!chunk.length) return Buffer.concat(chunks, size)
+    size += chunk.length
+    if (size > EDIT_INPUT_LIMIT) throw new Error("Bot home input exceeds limit")
+    chunks.push(chunk)
+  }
+}
+
+const getFrameReader = (stream: ReadableStream<Uint8Array>) => {
+  const reader = stream.getReader()
+  // Parsing state is local to this stream; each allocated frame is at most 128 KiB.
+  let buffer: Uint8Array = new Uint8Array(0)
+  let offset = 0
+  const getBytes = async (length: number): Promise<Buffer | null> => {
+    const bytes = Buffer.alloc(length)
+    let written = 0
+    while (written < length) {
+      if (offset === buffer.length) {
+        const next = await reader.read()
+        if (next.done) {
+          if (written === 0) return null
+          throw new Error("Incomplete bot home command")
+        }
+        buffer = next.value
+        offset = 0
+      }
+      const count = Math.min(length - written, buffer.length - offset)
+      bytes.set(buffer.subarray(offset, offset + count), written)
+      written += count
+      offset += count
+    }
+    return bytes
+  }
+  return async (): Promise<Buffer | null> => {
+    const prefix = await getBytes(4)
+    if (prefix === null) return null
+    const length = prefix.readUInt32BE()
+    if (length > INPUT_LIMIT) throw new Error("Bot home input exceeds limit")
+    const bytes = await getBytes(length)
+    if (bytes === null) throw new Error("Incomplete bot home command")
+    return bytes
+  }
 }
 
 // Development invokes this small entry directly; compiled entries dispatch the same protocol.

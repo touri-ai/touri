@@ -893,6 +893,7 @@ export const ptBR = {
     "Ao concluir, a autorização será salva em credentials.json na pasta .gmail-mcp.",
   "Etapas já detectadas foram puladas. Depois de concluir, verifique novamente.":
     "Etapas já detectadas foram puladas. Depois de concluir, verifique novamente.",
+  "Não foi possível salvar as instruções. Tente novamente.": "Não foi possível salvar as instruções. Tente novamente.",
   "Ver instruções completas de {name}": "Ver instruções completas de {name}",
   "Verificar preparação novamente": "Verificar preparação novamente",
   "Instale Node.js na máquina deste bot, verifique a preparação e tente novamente.":
@@ -3443,6 +3444,7 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
     "When complete, authorization will be saved as credentials.json in .gmail-mcp.",
   "Etapas já detectadas foram puladas. Depois de concluir, verifique novamente.":
     "Steps already detected were skipped. Check again when you finish.",
+  "Não foi possível salvar as instruções. Tente novamente.": "Could not save the instructions. Please try again.",
   "Ver instruções completas de {name}": "View full instructions for {name}",
   "Verificar preparação novamente": "Check preparation again",
   "Instale Node.js na máquina deste bot, verifique a preparação e tente novamente.":

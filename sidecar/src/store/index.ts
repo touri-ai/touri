@@ -1469,11 +1469,10 @@ export const init = async (
           if (Object.hasOwn(record, "instructions")) {
             let committedBot: Bot | null = null
             const instructions = input.instructions ?? bot.instructions
-            await writeEditedHome(kernel, bot.id, instructions, signal, () => {
+            const editError = await writeEditedHome(kernel, bot.id, instructions, signal, () => {
               const currentBot = getBot({ botId: bot.id })
               if (!currentBot) throw new Error("Bot could not be updated")
               return {
-                previousInstructions: currentBot.instructions,
                 commit: () => {
                   const latestBot = getBot({ botId: bot.id })
                   if (!latestBot) throw new Error("Bot could not be updated")
@@ -1497,7 +1496,11 @@ export const init = async (
                   if (!committedBot) throw new Error("Bot could not be updated")
                 },
               }
-            })
+            }).then(
+              () => null,
+              () => errorResponse(409, "BOT_EDIT_FAILED", "Não foi possível salvar as instruções. Tente novamente."),
+            )
+            if (editError) return editError
             updated = committedBot
             if (updated) kernel.publish({ type: "bot.updated", bot: updated })
           } else {
