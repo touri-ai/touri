@@ -31,11 +31,7 @@ import { parseBotFolders, protectedFolder } from "../kernel/bot-folders"
 import { DEFAULT_DATA_RETENTION_DAYS, validDataRetentionDays } from "../kernel/data-maintenance"
 import { writeDatabaseAsync } from "../kernel/database-write"
 import { SCHEMA_VERSION } from "../kernel/db"
-import {
-  attachmentMime,
-  MAX_ATTACHMENT_BYTES,
-  readBoundedFile,
-} from "../kernel/files"
+import { attachmentMime, MAX_ATTACHMENT_BYTES, readBoundedFile } from "../kernel/files"
 import { folderGrantProblem, refreshHostFolderAccess, specificFoldersRequired } from "../kernel/folder-capability"
 import { historyThreadPending, hydrateHistoryEvent } from "../kernel/history-backfill"
 import { getPathIds } from "../kernel/message-path"
