@@ -25,7 +25,7 @@ export type SlowStatementTracker = {
 const DEFAULT_THRESHOLD_MS = 250
 const MAX_NORMALIZED_SQL_LENGTH = 512
 const TIMED_STATEMENT_METHODS = new Set<PropertyKey>(["run", "get", "all", "values", "raw"])
-const TRANSACTION_MODES = ["deferred", "immediate", "exclusive"] as const
+const TRANSACTION_MODES = ["default", "deferred", "immediate", "exclusive"] as const
 const SQL_REDACTION_TOKENS =
   /--[^\n]*|\/\*[\s\S]*?(?:\*\/|$)|'(?:''|[^'])*'|'(?:''|[^'])*$|"(?:""|[^"])*"|"(?:""|[^"])*$|`(?:``|[^`])*`|`(?:``|[^`])*$|\[(?:\]\]|[^\]])*\]|\[(?:\]\]|[^\]])*$/g
 
@@ -84,7 +84,7 @@ export const instrumentMainConnection = <Connection extends Database>(
         configurable: true,
         enumerable: descriptor.enumerable ?? false,
         writable: true,
-        value: instrumentDatabaseMethod({ database, property, value, tracker, statementProxies }),
+        value: instrumentDatabaseMethod({ database, connection, property, value, tracker, statementProxies }),
       })
       return
     }
@@ -127,12 +127,14 @@ const getPrototypeMembers = (
 
 const instrumentDatabaseMethod = ({
   database,
+  connection,
   property,
   value,
   tracker,
   statementProxies,
 }: {
   database: Database
+  connection: Database
   property: PropertyKey
   value: unknown
   tracker: SlowStatementTracker
@@ -163,7 +165,7 @@ const instrumentDatabaseMethod = ({
   if (property === "transaction")
     return (action: (...args: Array<unknown>) => unknown) => {
       const transaction = Reflect.apply(method, database, [action])
-      return instrumentTransaction(transaction, tracker)
+      return instrumentTransaction(transaction, connection, tracker)
     }
 
   return method.bind(database)
@@ -256,7 +258,7 @@ const createAsMethod = (
     instrumentStatement(Reflect.apply(method, statement, args) as Statement, sql, tracker, statementProxies)
 }
 
-const instrumentTransaction = (transaction: unknown, tracker: SlowStatementTracker): unknown => {
+const instrumentTransaction = (transaction: unknown, connection: Database, tracker: SlowStatementTracker): unknown => {
   if (typeof transaction !== "function") return transaction
 
   const wrappedModes = TRANSACTION_MODES.flatMap((property) => {
@@ -291,7 +293,11 @@ const instrumentTransaction = (transaction: unknown, tracker: SlowStatementTrack
     }
   }
 
-  Object.defineProperties(wrappedTransaction, Object.fromEntries(wrappedModes))
+  // Bun's transaction functions also expose the connection they run on.
+  Object.defineProperties(wrappedTransaction, {
+    ...Object.fromEntries(wrappedModes),
+    database: { configurable: true, enumerable: true, writable: false, value: connection },
+  })
 
   return wrappedTransaction
 }
