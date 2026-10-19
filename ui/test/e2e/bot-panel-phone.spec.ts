@@ -49,7 +49,9 @@ for (const [width, height, size] of [
       await page.addInitScript((value) => localStorage.setItem("touri.appearance.v1", value), theme)
       await page.goto("/")
       await expect(page.getByRole("textbox", { name: /Mensagem para/ })).toBeVisible()
-      await page.addStyleTag({ content: ".composer-model, .bot-model-line { visibility: hidden !important; }" })
+      await page.addStyleTag({
+        content: ".composer-model, .bot-model-line, .model-pill { visibility: hidden !important; }",
+      })
       await page.getByRole("button", { name: "Painel do bot", exact: true }).click()
       await expect(page.locator("#bot-panel")).toBeVisible()
       await page.screenshot({
