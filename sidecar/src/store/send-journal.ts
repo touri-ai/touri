@@ -115,6 +115,7 @@ export const createSendJournal = ({
       parentId: input.parentId,
       text: input.text,
       attachmentIds: input.attachmentIds,
+      ...(input.sender ? { sender: input.sender } : {}),
     })
     const previous = find(input.threadId, nonce)
     if (previous) {
@@ -171,7 +172,7 @@ export const createSendJournal = ({
             runId: null,
             text: input.text,
             parts,
-            sender: null,
+            sender: input.sender ?? null,
             source: "local",
             delivery: { clientNonce: nonce, deadline, status: "queued" },
           },

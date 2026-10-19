@@ -40,6 +40,11 @@ export const movePrivateFileAsync = (args: { root: string; from: string; to: str
 export const privateFileExistsAsync = (args: { root: string; path: string }): Promise<boolean> =>
   runFileIoTask({ operation: "exists", args }).then(Boolean)
 
+export const readPrivateFileAsync = (args: { root: string; path: string; maxBytes: number }): Promise<Buffer | null> =>
+  runFileIoTask({ operation: "read-private", args }).then((value) =>
+    typeof value === "string" ? Buffer.from(value, "base64") : null,
+  )
+
 export const prepareDatabaseFileAsync = (args: { root: string; path: string }): Promise<string> =>
   runFileIoTask({ operation: "prepare-database", args }).then((filename) => String(filename))
 

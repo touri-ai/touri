@@ -154,6 +154,46 @@ test("a pairing code cannot be replayed and repeated failures are rate limited",
   expect(limited?.headers.get("retry-after")).not.toBeNull()
 })
 
+test("invite redemption checks Origin and invited email, returns a cookie without exposing the device token, and is single-use", async () => {
+  const { call, store } = await makeGate()
+  const invite = await store.createInvite({
+    actorPersonId: "owner",
+    name: "Ana",
+    email: "ana@example.test",
+    role: "member",
+    channelIds: [],
+  })
+  if (!invite.success) throw new Error("Invite setup failed")
+  const endpoint = { path: "/api/v1/invites/redeem", method: "POST" }
+  expect((await call({ ...endpoint, body: { token: invite.token, email: "ana@example.test" } }))?.status).toBe(403)
+  const mismatch = await call({
+    ...endpoint,
+    headers: { origin: "https://box.example:8445" },
+    body: { token: invite.token, email: "other@example.test" },
+  })
+  expect(mismatch?.status).toBe(401)
+  expect(await mismatch?.text()).not.toContain(invite.token)
+  const redeemed = await call({
+    ...endpoint,
+    headers: { origin: "https://box.example:8445" },
+    body: { token: invite.token, email: "ANA@example.test", deviceName: "Join browser" },
+  })
+  expect(redeemed?.status).toBe(200)
+  expect(redeemed?.headers.get("set-cookie")).toContain("HttpOnly")
+  const payload = JSON.stringify(await redeemed?.json())
+  expect(payload).not.toContain(invite.token)
+  expect(
+    (
+      await call({
+        ...endpoint,
+        headers: { origin: "https://box.example:8445" },
+        body: { token: invite.token, email: "ana@example.test" },
+      })
+    )?.status,
+  ).toBe(401)
+  expect((await call({ path: `/api/v1/invites/redeem?invite=${invite.token}` }))?.status).toBe(401)
+})
+
 test("cookie-authenticated writes from another origin are refused", async () => {
   const { call, pair } = await makeGate()
   const { cookie } = await pair()

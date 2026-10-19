@@ -521,7 +521,8 @@ test("v6 migration preserves a 2.5 MB history, branches, FTS and is repeatable",
 test("send journal is durable and one nonce produces exactly one message and run", async () => {
   const f = await fixture()
   try {
-    const request = input()
+    const sender = { id: "person-a", name: "Ana", avatarSeed: "seed-a" }
+    const request = { ...input(), sender }
     const first = f.store.sendMessage?.(request)
     expect(first?.status).toBe(201)
     const second = f.store.sendMessage?.(request)
@@ -529,6 +530,10 @@ test("send journal is durable and one nonce produces exactly one message and run
     expect(f.calls).toHaveLength(1)
     expect(f.db.query("SELECT status FROM send_journal").get()).toEqual({ status: "acked" })
     expect(f.db.query("SELECT COUNT(*) AS n FROM messages").get()).toEqual({ n: 1 })
+    const storedSender = f.db.query("SELECT sender_json FROM messages WHERE thread_id = 't'").get() as {
+      sender_json: string
+    }
+    expect(JSON.parse(storedSender.sender_json)).toEqual(sender)
     expect(f.store.sendMessage?.({ ...request, text: "Diferente" }).status).toBe(409)
     const reopened = openDatabase({ filename: f.runtime.kernel.paths.db })
     expect(reopened.query("SELECT status, client_nonce FROM send_journal").get()).toEqual({

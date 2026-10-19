@@ -132,6 +132,7 @@ export type BotFolder = { path: AbsolutePath; access: 'read-only' | 'read-write'
 export type BotBrowser = 'touri' | 'local' | 'machine'
 
 export type Bot = {
+  responsiblePersonId?: Id | null
   /** Defaults for bots created before schema 16: [] and false. */
   folders?: Array<BotFolder>
   anyFolderAccess?: boolean
@@ -205,6 +206,7 @@ export type BotGroup = {
 export type GroupInput = Pick<BotGroup, 'name' | 'color' | 'avatarShape' | 'memberIds' | 'coordinatorBotId'>
 
 export type Thread = {
+  ownerPersonId?: Id | null
   groupId?: Id | null
   groupThreadId?: Id | null
   generation?: number
@@ -469,7 +471,7 @@ export type Message = {
   runId: Id | null
   text: string
   parts: Array<MessagePart>
-  sender: { name: string; id: string } | null
+  sender: { name: string; id: string; avatarSeed?: string } | null
   source: RowSource
   createdAt: EpochMs
   updatedAt: EpochMs
@@ -869,6 +871,7 @@ export type SendMessageInput = {
   parentId: Id | null
   text: string
   attachmentIds: Array<Id>
+  sender?: { name: string; id: string; avatarSeed?: string }
 }
 
 export type ApiRoutes = {
@@ -1337,18 +1340,52 @@ export type StoreApi = {
   setActiveLeaf: (args: { threadId: Id; leafId: Id }) => Result<{ thread: Thread }, 'NOT_FOUND'>
   getBot: (args: { botId: Id }) => Bot | null
   getThread: (args: { threadId: Id }) => Thread | null
-  createThread: (args: { botId: Id; kind: ThreadKind; title: string; parentThreadId?: Id; routineRunId?: Id; groupId?: Id; groupThreadId?: Id }) => Result<{ thread: Thread }, 'BOT_NOT_FOUND'>
+  createThread: (args: { botId: Id; kind: ThreadKind; title: string; parentThreadId?: Id; routineRunId?: Id; groupId?: Id; groupThreadId?: Id; ownerPersonId?: Id }) => Result<{ thread: Thread }, 'BOT_NOT_FOUND'>
   updateThread: (args: { threadId: Id; patch: Partial<Pick<Thread, 'title' | 'carryoverNote' | 'usage' | 'unread' | 'activeLeafId'>> }) => Result<{ thread: Thread }, 'NOT_FOUND'>
-  search: (args: { q: string; botId?: Id; threadId?: Id; limit: number }) => Array<{ threadId: Id; messageId: Id; snippet: string }>
+  search: (args: {
+    q: string
+    botId?: Id
+    threadId?: Id
+    limit: number
+    personScope?: { personId: Id; channelIds: Array<Id> }
+  }) => Array<{ threadId: Id; messageId: Id; snippet: string }>
 }
 
 /** Cross-module services. Providers call `provide` in their init; consumers must tolerate `null` from `use`. */
 export type ServiceMap = {
+  'work.authorizeHttp': (input: { personId: Id; role: 'member' | 'admin'; method: string; pathname: string; body: unknown }) => { status: number; json: unknown } | null
+  'work.authorizeSocket': (input: { personId: Id; role: 'member' | 'admin'; path: string }) => boolean
+  'work.personForRun': (runId: Id) => Id | null
+  'work.isAdminRun': (runId: Id) => boolean
+  'work.visibleEvent': (input: { personId: Id; role: 'member' | 'admin'; event: UiEvent }) => boolean
+  'work.canAccessThread': (input: { personId: Id; role: 'member' | 'admin'; threadId: Id }) => boolean
+  'work.canAccessGroup': (input: { personId: Id; role: 'member' | 'admin'; groupId: Id }) => boolean
+  'work.canAccessBot': (input: { personId: Id; role: 'member' | 'admin'; botId: Id }) => boolean
+  'work.accessibleBotIds': (input: { personId: Id; channelIds: Array<Id> }) => Array<Id>
+  'work.canAccessAttachments': (input: { personId: Id; role: 'member' | 'admin'; attachmentIds: Array<Id> }) => boolean
+  'work.canAccessRun': (input: { personId: Id; role: 'member' | 'admin'; runId: Id }) => boolean
+  'work.accessibleRunIds': (input: { personId: Id; channelIds: Array<Id>; runIds: Array<Id> }) => Array<Id>
+  'work.canAccessNotification': (input: {
+    personId: Id
+    role: 'member' | 'admin'
+    threadId: Id | null
+    kind: string
+    requestId: Id | null
+  }) => boolean
+  'work.personChannelIds': (personId: Id) => Array<Id>
+  'work.canApprove': (input: { personId: Id; approvalId: Id }) => boolean
+  'work.defaultPersonId': () => Id
   'bots.validateCreation': (body: unknown) => Result<{ input: CreateBotInput }>
-  'bots.create': (input: { body: unknown; signal: AbortSignal; isCurrent?: () => boolean }) => Promise<Result<{ bot: Bot }>>
+  'bots.create': (input: {
+    body: unknown
+    signal: AbortSignal
+    isCurrent?: () => boolean
+    runId?: Id
+    responsiblePersonId?: Id
+  }) => Promise<Result<{ bot: Bot }>>
   'approvals.completeTeam': (input: { approvalId: Id; ctx: Pick<ToolContext, 'botId' | 'threadId' | 'runId'>; result: TeamCreationResult }) => Promise<void>
   'bots.rename': (input: { botId: Id; name: string }) => Result<{ bot: Bot }, 'NOT_FOUND' | 'INVALID_ARGS'>
-  'bots.configureAccess': (input: { botId: Id; patch: Partial<Pick<Bot, 'projectId' | 'folders' | 'browserEnabled' | 'browser' | 'computerUse'>> }) => Result<{ bot: Bot }, 'NOT_FOUND' | 'INVALID_ARGS' | 'MACHINE_PROJECT_CHANGE'> | Promise<Result<{ bot: Bot }, 'NOT_FOUND' | 'INVALID_ARGS' | 'MACHINE_PROJECT_CHANGE'>>
+  'bots.configureAccess': (input: { botId: Id; patch: Partial<Pick<Bot, 'projectId' | 'folders' | 'browserEnabled' | 'browser' | 'computerUse'>>; runId?: Id }) => Result<{ bot: Bot }, 'NOT_FOUND' | 'INVALID_ARGS' | 'MACHINE_PROJECT_CHANGE' | 'DENIED'> | Promise<Result<{ bot: Bot }, 'NOT_FOUND' | 'INVALID_ARGS' | 'MACHINE_PROJECT_CHANGE' | 'DENIED'>>
   'diagnostics.errors': () => Array<{ code: string; at: number }>
   'groups.runtime': {
     enqueue: (args: { threadId: Id; requestMessageId: Id; trigger: RunTrigger; routineRunId?: Id }) => Result<{ run: Run }, 'THREAD_NOT_FOUND' | 'BOT_PAUSED' | 'DELEGATION_LIMIT' | 'RUNTIME_DRAINING'>

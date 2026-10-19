@@ -1,5 +1,6 @@
 import type { Database } from "bun:sqlite"
 import type { Kernel, RouteModule, RouteResponse } from "@touri/contracts"
+import { deviceSession } from "../kernel/device-session"
 import { createWorkState } from "../runtime/work-state"
 import type { Notifier } from "./notifier"
 import { createRecoverySync, getRecoveryAcknowledgementKeys } from "./recovery"
@@ -50,11 +51,35 @@ export const createNotifyRoutes = ({
   hub: SseHub
   syncRecoveryTasks?: ReturnType<typeof createRecoverySync>
 }): RouteModule => {
-  const respond = async ({ threadId, body }: { threadId: string; body: unknown }): Promise<RouteResponse> => {
+  const respond = async ({
+    threadId,
+    body,
+    signal,
+  }: {
+    threadId: string
+    body: unknown
+    signal: AbortSignal
+  }): Promise<RouteResponse> => {
     const parsed = parseRespond(body)
     if (typeof parsed === "string") return fail(400, "INVALID_ARGS", parsed)
     const target = store.byRequestId(parsed.requestId)
     if (!target || target.threadId !== threadId) return fail(404, "NOT_FOUND", "Request not found for this thread")
+    const person = deviceSession(signal)?.person
+    if (person?.role === "member") {
+      const canAccessThread = kernel.services.use("work.canAccessThread")?.({
+        personId: person.id,
+        role: person.role,
+        threadId,
+      })
+      const canApprove =
+        target.kind !== "approval" ||
+        kernel.services.use("work.canApprove")?.({
+          personId: person.id,
+          approvalId: parsed.requestId,
+        })
+      if (!canAccessThread || !canApprove)
+        return fail(403, "DENIED", "Only the responsible person can answer this request")
+    }
     if (target.resolvedAt !== null) return fail(409, "ALREADY_RESOLVED", "Request was already answered")
     const answer = kernel.services.use("runtime.answerApproval")
     if (!answer) return fail(503, "RUNTIME_UNAVAILABLE", "The runtime module is not installed")
@@ -110,7 +135,21 @@ export const createNotifyRoutes = ({
       {
         method: "GET",
         path: "/recovery",
-        handler: async () => ({ status: 200, json: { tasks: syncRecoveryTasks() } }),
+        handler: async ({ signal }) => {
+          const person = deviceSession(signal)?.person
+          const tasks = syncRecoveryTasks()
+          if (!person || person.role === "admin") return { status: 200, json: { tasks } }
+          const visible = tasks.filter((task) =>
+            kernel.services.use("work.canAccessNotification")?.({
+              personId: person.id,
+              role: person.role,
+              threadId: task.notification.threadId,
+              kind: task.notification.kind,
+              requestId: task.notification.requestId,
+            }),
+          )
+          return { status: 200, json: { tasks: visible } }
+        },
       },
       {
         method: "POST",
@@ -149,21 +188,48 @@ export const createNotifyRoutes = ({
       {
         method: "GET",
         path: "/notifications/pending",
-        handler: async () => ({
-          status: 200,
-          json: { notifications: store.pending(), lastSeq: store.lastSeq() },
-        }),
+        handler: async ({ signal }) => {
+          const person = deviceSession(signal)?.person
+          const notifications = store.pending()
+          const visible =
+            !person || person.role === "admin"
+              ? notifications
+              : notifications.filter((notification) =>
+                  kernel.services.use("work.canAccessNotification")?.({
+                    personId: person.id,
+                    role: person.role,
+                    threadId: notification.threadId,
+                    kind: notification.kind,
+                    requestId: notification.requestId,
+                  }),
+                )
+          return { status: 200, json: { notifications: visible, lastSeq: store.lastSeq() } }
+        },
       },
       {
         method: "GET",
         path: "/notifications",
-        handler: async ({ query }) => {
+        handler: async ({ query, signal }) => {
           const requested = Number(query.limit ?? DEFAULT_LIST_LIMIT)
           const limit = Math.min(
             MAX_LIST_LIMIT,
             Number.isInteger(requested) && requested > 0 ? requested : DEFAULT_LIST_LIMIT,
           )
-          return { status: 200, json: { notifications: store.recent(limit) } }
+          const notifications = store.recent(limit)
+          const person = deviceSession(signal)?.person
+          const visible =
+            !person || person.role === "admin"
+              ? notifications
+              : notifications.filter((notification) =>
+                  kernel.services.use("work.canAccessNotification")?.({
+                    personId: person.id,
+                    role: person.role,
+                    threadId: notification.threadId,
+                    kind: notification.kind,
+                    requestId: notification.requestId,
+                  }),
+                )
+          return { status: 200, json: { notifications: visible } }
         },
       },
       {
@@ -204,7 +270,7 @@ export const createNotifyRoutes = ({
       {
         method: "POST",
         path: "/threads/:id/respond",
-        handler: async ({ params, body }) => respond({ threadId: params.id ?? "", body }),
+        handler: async ({ params, body, signal }) => respond({ threadId: params.id ?? "", body, signal }),
       },
       {
         method: "POST",

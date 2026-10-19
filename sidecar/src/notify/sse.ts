@@ -47,9 +47,11 @@ type Listener = (entry: LogEntry) => void
 export const createSseHub = ({
   store,
   heartbeatMs = HEARTBEAT_MS,
+  canRead,
 }: {
   store: NotificationStore
   heartbeatMs?: number
+  canRead?: (notification: NotificationRecord, signal: AbortSignal) => boolean
 }) => {
   const listeners = new Set<Listener>()
 
@@ -57,14 +59,18 @@ export const createSseHub = ({
     for (const listener of listeners) listener(entry)
   }
 
-  const backlog = (since: number | null): { frames: Array<string>; lastSeq: number } => {
+  const backlog = (since: number | null, signal: AbortSignal): { frames: Array<string>; lastSeq: number } => {
     const lastSeq = store.lastSeq()
     if (since !== null && since <= lastSeq) {
       const entries = store.logSince({ since })
-      return { frames: entries.map(frameFor), lastSeq }
+      return {
+        frames: entries.filter(({ notification }) => canRead?.(notification, signal) ?? true).map(frameFor),
+        lastSeq,
+      }
     }
     const frames = store
       .pending()
+      .filter((notification) => canRead?.(notification, signal) ?? true)
       .map((notification) => formatFrame({ seq: null, event: "notify", data: notifyPayload(notification) }))
     return { frames, lastSeq }
   }
@@ -112,10 +118,12 @@ export const createSseHub = ({
           }
         }
         write("retry: 3000\n\n")
-        const initial = backlog(since)
+        const initial = backlog(since, signal)
         for (const frame of initial.frames) write(frame)
         write(`id: ${initial.lastSeq}\nevent: ready\ndata: ${JSON.stringify({ lastSeq: initial.lastSeq })}\n\n`)
-        state.listener = (entry) => write(frameFor(entry))
+        state.listener = (entry) => {
+          if (canRead?.(entry.notification, signal) ?? true) write(frameFor(entry))
+        }
         listeners.add(state.listener)
         state.timer = setInterval(() => write(": ping\n\n"), heartbeatMs)
         signal.addEventListener("abort", close, { once: true })
