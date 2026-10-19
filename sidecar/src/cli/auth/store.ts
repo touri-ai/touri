@@ -104,7 +104,10 @@ const workerError = ({ name, message, code }: WorkerError): Error =>
   Object.assign(new Error(message), { name, ...(code ? { code } : {}) })
 
 const createAuthWriter = async (filename: string): Promise<AuthWriter> => {
-  const worker = new Worker(new URL("./store-writer.ts", import.meta.url), { smol: true, ref: false }) as RefableWorker
+  const worker = new Worker(new URL("./store-writer.ts", import.meta.url).href, {
+    smol: true,
+    ref: false,
+  }) as RefableWorker
   worker.ref()
   const pending = new Map<number, { resolve: (value: unknown) => void; reject: (error: Error) => void }>()
   let requestId = 0

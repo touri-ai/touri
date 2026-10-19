@@ -58,7 +58,7 @@ const record = async ({
 }): Promise<void> => {
   await appendPrivateFileAsync({
     root: skillsRoot(homeDir),
-    path: ".ledger.jsonl",
+    path: join(skillsRoot(homeDir), ".ledger.jsonl"),
     content: `${JSON.stringify({
       at: new Date().toISOString(),
       action: entry.action,

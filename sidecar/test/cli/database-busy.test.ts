@@ -140,7 +140,8 @@ for (const [code, errno] of [
     })
     try {
       const filename = join(root, "auth.db")
-      const database = openAuthDatabase(filename)
+      const databasePath = prepareDatabaseFile({ root, path: filename })
+      const database = openAuthDatabase(databasePath)
       cleanups.push(() => database.close())
       expect(failures).toBe(3)
       const store = await openAuthStore({ filename })

@@ -34,10 +34,10 @@ export const registerShim = async ({ runDir, thread }: { runDir: string; thread:
   if (!current) return () => undefined
   const path = join(shimDir(runDir), `${process.pid}.json`)
   try {
-    await ensurePrivateDirectoryAsync({ root: runDir, path: "mcp-shims" })
+    await ensurePrivateDirectoryAsync({ root: runDir, path: shimDir(runDir) })
     await writePrivateFileAsync({
       root: runDir,
-      path: join("mcp-shims", `${process.pid}.json`),
+      path,
       content: JSON.stringify({ pid: process.pid, birth: current.birth, thread }),
     })
   } catch {

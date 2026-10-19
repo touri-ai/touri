@@ -23,7 +23,10 @@ const createFileIo = () => {
     if (starting) return starting
     starting = new Promise<void>((resolve, reject) => {
       readyReject = reject
-      worker = new Worker(new URL("./file-io-worker.ts", import.meta.url), { smol: true, ref: false }) as RefableWorker
+      worker = new Worker(new URL("./file-io-worker.ts", import.meta.url).href, {
+        smol: true,
+        ref: false,
+      }) as RefableWorker
       worker.onmessage = ({ data }: MessageEvent<FileIoMessage>): void => {
         if ("type" in data && data.type === "ready") {
           ready = true
