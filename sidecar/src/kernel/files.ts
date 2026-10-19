@@ -14,7 +14,7 @@ import {
   realpathSync,
   writeSync,
 } from "node:fs"
-import { basename, dirname, relative, resolve, sep } from "node:path"
+import { basename, dirname, join, relative, resolve, sep } from "node:path"
 import {
   closeOnExec,
   direntNameOffset,

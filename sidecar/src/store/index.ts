@@ -1037,6 +1037,13 @@ export const init = async (kernel: Kernel, runStage?: PerformanceStageRunner): P
     return bot
   }
 
+  const ensureBotHome = ({ botId, instructions }: { botId: string; instructions: string }): string => {
+    const homeDir = join(kernel.paths.botsDir, botId)
+    ensurePrivateDirectory({ root: kernel.paths.appData, path: homeDir })
+    atomicWriteFile({ root: kernel.paths.appData, path: join(homeDir, "SOUL.md"), content: instructions })
+    return homeDir
+  }
+
   const patchBot = ({
     bot,
     input,
