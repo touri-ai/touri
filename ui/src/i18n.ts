@@ -1155,6 +1155,31 @@ export const ptBR = {
   Paused: "Pausado",
   Integrations: "Integrações",
   "Report a problem": "Reportar problema",
+  "Informações do aplicativo": "Informações do aplicativo",
+  "Funcionamento do aplicativo": "Funcionamento do aplicativo",
+  "Atividade recente do aplicativo": "Atividade recente do aplicativo",
+  "Erros recentes": "Erros recentes",
+  "Atividade dos bots": "Atividade dos bots",
+  "Resumo dos dados guardados": "Resumo dos dados guardados",
+  "Uso de memória": "Uso de memória",
+  "Tarefas recentes": "Tarefas recentes",
+  "Conversa selecionada": "Conversa selecionada",
+  "Ajuda a entender incompatibilidades entre versões e informações do dispositivo.":
+    "Ajuda a entender incompatibilidades entre versões e informações do dispositivo.",
+  "Mostra o resultado das verificações do funcionamento e da conexão.":
+    "Mostra o resultado das verificações do funcionamento e da conexão.",
+  "Inclui até 500 linhas recentes, com dados sensíveis ocultados automaticamente.":
+    "Inclui até 500 linhas recentes, com dados sensíveis ocultados automaticamente.",
+  "Ajuda a identificar erros que se repetem.": "Ajuda a identificar erros que se repetem.",
+  "Mostra quais bots estão em execução e o estado dos computadores usados por eles.":
+    "Mostra quais bots estão em execução e o estado dos computadores usados por eles.",
+  "Inclui o tamanho e a quantidade de registros, sem o conteúdo.":
+    "Inclui o tamanho e a quantidade de registros, sem o conteúdo.",
+  "Ajuda a investigar o uso de memória e travamentos.": "Ajuda a investigar o uso de memória e travamentos.",
+  "Inclui o estado, a duração e o tipo de erro das últimas 20 tarefas.":
+    "Inclui o estado, a duração e o tipo de erro das últimas 20 tarefas.",
+  "Selecione um bot e uma conversa acima para incluir esta parte.":
+    "Selecione um bot e uma conversa acima para incluir esta parte.",
 
   "Create my first bot": "Criar meu primeiro bot",
   "Already use another tool?": "Já usa outra ferramenta?",
@@ -3851,6 +3876,31 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Verificar e cuidar deste computador": "Check and maintain this computer",
   "Verificações, armazenamento e funcionamento em segundo plano.": "Checks, storage and background operation.",
   "Reportar problema": "Report a problem",
+  "Informações do aplicativo": "App and device details",
+  "Funcionamento do aplicativo": "App operation checks",
+  "Atividade recente do aplicativo": "Recent app activity",
+  "Erros recentes": "Recent errors",
+  "Atividade dos bots": "Bot activity",
+  "Resumo dos dados guardados": "Stored data summary",
+  "Uso de memória": "Memory use",
+  "Tarefas recentes": "Recent tasks",
+  "Conversa selecionada": "Selected conversation",
+  "Ajuda a entender incompatibilidades entre versões e informações do dispositivo.":
+    "Helps identify version incompatibilities and learn about the device.",
+  "Mostra o resultado das verificações do funcionamento e da conexão.":
+    "Shows results of checks for app operation and connection.",
+  "Inclui até 500 linhas recentes, com dados sensíveis ocultados automaticamente.":
+    "Includes up to 500 recent entries, with sensitive information hidden automatically.",
+  "Ajuda a identificar erros que se repetem.": "Helps identify recurring errors.",
+  "Mostra quais bots estão em execução e o estado dos computadores usados por eles.":
+    "Shows which bots are running and the status of their computers.",
+  "Inclui o tamanho e a quantidade de registros, sem o conteúdo.":
+    "Includes storage size and record counts, without their contents.",
+  "Ajuda a investigar o uso de memória e travamentos.": "Helps investigate memory use and crashes.",
+  "Inclui o estado, a duração e o tipo de erro das últimas 20 tarefas.":
+    "Includes the status, duration and error type of the last 20 tasks.",
+  "Selecione um bot e uma conversa acima para incluir esta parte.":
+    "Choose a bot and conversation above to include this information.",
   "Prepare um relatório, revise o conteúdo e escolha como compartilhar.":
     "Prepare a report, review its contents and choose how to share it.",
   "Escolha de 1 a 1.440 minutos sem atividade.": "Choose between 1 and 1,440 idle minutes.",

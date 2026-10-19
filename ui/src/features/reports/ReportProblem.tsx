@@ -15,31 +15,32 @@ import { useEffect, useId, useRef, useState } from "react"
 import { createTauriInvoke, type TauriInvoke, type UiApi } from "../../api/client"
 import { browserSave } from "../../browserSave"
 import { userFacingError } from "../../errors"
+import { type TranslationKey, t } from "../../i18n"
 import { Capture, sanitizeImage } from "./Capture"
 import { buildOfflineReport, offlineHistory, rememberOfflineReport } from "./offline"
 import "./reports.css"
 
-const labels: Record<ReportPart, string> = {
-  versions: "Versões, sistema, CPU e RAM",
-  doctor: "Doctor: VMs, serviço container e rede",
-  logs: "Logs do sidecar, shell e stderr (500 linhas)",
-  errors: "Códigos TOURI-E recentes e contagens",
-  states: "Bots em execução e estados das VMs",
-  database: "Tamanho do banco e contagem por tabela (sem conteúdo)",
-  memory: "Amostras de memória dos processos do touri",
-  runs: "Últimos 20 turnos (estado, duração e classe de erro)",
-  transcript: "Incluir a conversa selecionada",
+const labels: Record<ReportPart, TranslationKey> = {
+  versions: "Informações do aplicativo",
+  doctor: "Funcionamento do aplicativo",
+  logs: "Atividade recente do aplicativo",
+  errors: "Erros recentes",
+  states: "Atividade dos bots",
+  database: "Resumo dos dados guardados",
+  memory: "Uso de memória",
+  runs: "Tarefas recentes",
+  transcript: "Conversa selecionada",
 }
-const descriptions: Record<ReportPart, string> = {
-  versions: "Ajuda a identificar incompatibilidades com o ambiente.",
-  doctor: "Inclui o resultado das verificações do ambiente.",
-  logs: "Inclui as últimas linhas dos registros, com dados sensíveis ocultados.",
-  errors: "Ajuda a identificar erros recorrentes.",
-  states: "Mostra o estado dos bots e das máquinas no momento da coleta.",
-  database: "Inclui apenas medidas e contagens, sem os dados das tabelas.",
-  memory: "Ajuda a investigar consumo de memória e travamentos.",
-  runs: "Inclui metadados dos turnos recentes, sem o texto das conversas.",
-  transcript: "Selecione um bot e uma conversa acima para habilitar esta opção.",
+const descriptions: Record<ReportPart, TranslationKey> = {
+  versions: "Ajuda a entender incompatibilidades entre versões e informações do dispositivo.",
+  doctor: "Mostra o resultado das verificações do funcionamento e da conexão.",
+  logs: "Inclui até 500 linhas recentes, com dados sensíveis ocultados automaticamente.",
+  errors: "Ajuda a identificar erros que se repetem.",
+  states: "Mostra quais bots estão em execução e o estado dos computadores usados por eles.",
+  database: "Inclui o tamanho e a quantidade de registros, sem o conteúdo.",
+  memory: "Ajuda a investigar o uso de memória e travamentos.",
+  runs: "Inclui o estado, a duração e o tipo de erro das últimas 20 tarefas.",
+  transcript: "Selecione um bot e uma conversa acima para incluir esta parte.",
 }
 const initialInput = (errorCode?: string, errorMessage?: string): ReportInput => ({
   title: errorCode ? `Problema ${errorCode}` : "",
@@ -75,6 +76,7 @@ export const ReportProblem = ({
   offline?: boolean
 }) => {
   const formId = useId()
+  const locale = document.documentElement.lang === "en" ? "en" : "pt-BR"
   const [invoke] = useState(() => invokeCommand ?? createTauriInvoke())
   const [input, setInput] = useState(() => initialInput(errorCode, errorMessage))
   const [bots, setBots] = useState<Bot[]>([])
@@ -367,10 +369,10 @@ export const ReportProblem = ({
                       })
                     }
                   />
-                  <span>{labels[part]}</span>
+                  <span>{t(labels[part], {}, locale)}</span>
                 </label>
                 <p id={`${formId}-${part}-description`} className="report-check-description">
-                  {descriptions[part]}
+                  {t(descriptions[part], {}, locale)}
                 </p>
               </div>
             ))}
