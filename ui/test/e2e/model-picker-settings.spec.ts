@@ -9,6 +9,29 @@ const views = [
 ]
 
 views.forEach(({ name, width, height, theme }) => {
+  test(`invalid stored model explains recovery: ${name}`, async ({ page }) => {
+    await page.setViewportSize({ width, height })
+    await page.emulateMedia({ reducedMotion: "reduce" })
+
+    await page.goto("/test/e2e/error-contract-harness.html?scenario=invalid-model")
+    await page.evaluate((theme) => {
+      document.documentElement.dataset.theme = theme
+    }, theme)
+
+    const card = page.locator(".message-error").first()
+    await expect(card).toBeVisible()
+    await expect(card).toContainText(
+      "O nome do modelo salvo é inválido. Escolha outro modelo nas configurações do bot.",
+    )
+    await expect(card.getByRole("button", { name: "Tentar novamente" })).toHaveCount(0)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+    const shots = process.env.TOURI_MODEL_SETTINGS_SHOTS
+    if (shots) {
+      await mkdir(shots, { recursive: true })
+      await page.screenshot({ path: join(shots, `invalid-model-${name}.png`) })
+    }
+  })
+
   test(`settings keeps provider and model together on cancel and save: ${name}`, async ({ page }) => {
     await page.setViewportSize({ width, height })
     await page.emulateMedia({ reducedMotion: "reduce" })

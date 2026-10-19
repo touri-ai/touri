@@ -48,22 +48,3 @@ for (const width of [1440, 390]) {
     }
   })
 }
-
-for (const width of [1440, 390]) {
-  test(`invalid stored model explains recovery at ${width}px`, async ({ page }) => {
-    await page.setViewportSize({ width, height: width === 390 ? 844 : 900 })
-    await page.emulateMedia({ reducedMotion: "reduce" })
-
-    await page.goto("/test/e2e/error-contract-harness.html?scenario=invalid-model")
-
-    const card = page.locator(".message-error").first()
-    await expect(card).toBeVisible()
-    await expect(card).toContainText(
-      "O nome do modelo salvo é inválido. Escolha outro modelo nas configurações do bot.",
-    )
-    await expect(card.getByRole("button", { name: "Tentar novamente" })).toHaveCount(0)
-    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
-    const capture = process.env.MODEL_VALIDATION_CAPTURE
-    if (capture) await page.screenshot({ path: `${capture}/invalid-model-${width}.png` })
-  })
-}
