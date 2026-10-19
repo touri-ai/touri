@@ -104,7 +104,7 @@ const workerError = ({ name, message, code }: WorkerError): Error =>
   Object.assign(new Error(message), { name, ...(code ? { code } : {}) })
 
 const createAuthWriter = async (filename: string): Promise<AuthWriter> => {
-  const worker = new Worker(new URL("./store-writer.ts", import.meta.url), {
+  const worker = new Worker("./sidecar/src/cli/auth/store-writer.ts", {
     smol: true,
     ref: false,
   }) as RefableWorker

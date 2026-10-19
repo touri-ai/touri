@@ -751,9 +751,8 @@ test.each([
     const reply = [...value.store.messages.values()].find((message) => message.id === result.run.replyMessageId)
     expect(JSON.stringify(reply?.parts)).toContain("TOURI-E3001")
     expect(JSON.stringify(reply?.parts)).not.toContain("expired Codex login")
-    await waitFor(
-      () => existsSync(value.logPath) && readFileSync(value.logPath, "utf8").includes("expired Codex login"),
-    )
+    const logPath = join(value.root, "logs", "sidecar.log")
+    await waitFor(() => existsSync(logPath) && readFileSync(logPath, "utf8").includes("expired Codex login"))
   } finally {
     await closeFixture(value)
   }
