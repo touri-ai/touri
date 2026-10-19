@@ -118,8 +118,10 @@ const syncRecoveryTasks = (
     }),
   )
 
-  return measure("notification_recovery_reconcile", () =>
-    visible.map((candidate) => {
+  return measure("notification_recovery_reconcile", () => {
+    expireOrphanTasks(database, notifier, visible)
+
+    return visible.map((candidate) => {
       const notification = saveTaskNotification(kernel, store, notifier, candidate, silent)
       const effects = candidate.turnId ? work.rebuild({ turnId: candidate.turnId }) : []
       const hasUncertain = getRecoveryAcknowledgementKeys(database, notification.id).length > 0
@@ -137,8 +139,25 @@ const syncRecoveryTasks = (
         occurredAt: candidate.occurredAt,
         effects: [...candidate.effects, ...getJournalEffects(effects)],
       }
-    }),
-  )
+    })
+  })
+}
+
+// A task that no scan finds anymore (its run was resumed, archived or rewritten) can never be reviewed,
+// so its notification must not keep asking the person for attention.
+const expireOrphanTasks = (database: Database, notifier: Notifier, found: Candidate[]): void => {
+  const foundIds = new Set(found.map((candidate) => candidate.id))
+  const rows = database
+    .query(`SELECT rt.id, rt.notification_id FROM recovery_tasks rt JOIN notifications n ON n.id = rt.notification_id
+      WHERE n.resolved_at IS NULL`)
+    .all() as Array<{ id: string; notification_id: number }>
+
+  rows
+    .filter((row) => !foundIds.has(row.id))
+    .filter((row) => getRecoveryAcknowledgementKeys(database, row.notification_id).length === 0)
+    .forEach((row) => {
+      notifier.finish({ id: row.notification_id, resolution: "expired" })
+    })
 }
 
 export const getRecoveryAcknowledgementKeys = (database: Database, notificationId: number): string[] => {

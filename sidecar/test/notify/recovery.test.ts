@@ -279,6 +279,21 @@ test("a later routine execution resolves a failure that never created a conversa
   expect(after[0]?.notification.resolution).toBe("expired")
 })
 
+test("a task that no scan finds anymore stops asking for attention", async () => {
+  const h = await getFixture()
+  saveRun(h.database, "resumed-run")
+  const before = await h.getTasks()
+
+  h.database.query("UPDATE runs SET status = 'succeeded' WHERE id = 'resumed-run'").run()
+  const after = await h.getTasks()
+  const pending = await h.request("/notifications/pending")
+  const { notifications }: { notifications: Array<{ id: number }> } = await pending.json()
+
+  expect(before[0]?.notification.resolvedAt).toBeNull()
+  expect(after.filter((task) => task.notification.resolvedAt === null)).toHaveLength(0)
+  expect(notifications.map((item) => item.id)).not.toContain(before[0]?.notification.id)
+})
+
 test("newly discovered uncertainty requires another review without erasing an earlier acknowledgement", async () => {
   const h = await getFixture()
   saveRun(h.database, "recovering")
