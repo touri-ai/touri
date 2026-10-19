@@ -14,6 +14,18 @@ const resolutionOf = (part) => {
   return part.type === "file_change" ? "succeeded" : "running";
 };
 
+const hasPartGap = (length, patches) => {
+  const appended = new Set();
+  let maximum = length - 1;
+  for (const { partIndex } of patches) {
+    if (!Number.isSafeInteger(partIndex) || partIndex < 0) return true;
+    if (partIndex < length) continue;
+    appended.add(partIndex);
+    maximum = Math.max(maximum, partIndex);
+  }
+  return maximum - length + 1 !== appended.size;
+};
+
 const clearPendingProjection = (target) => {
   if (!target) {
     database.exec("DELETE FROM transcript_pending_deltas");
@@ -72,8 +84,8 @@ const materialize = (target) => {
     }
     const event = JSON.parse(row.event_json);
     if (event.type === "message.parts") {
+      if (hasPartGap(projection.parts.length, event.parts)) throw new Error("Transcript part has a gap");
       for (const patch of event.parts) {
-        if (patch.partIndex > projection.parts.length) throw new Error("Transcript part has a gap");
         projection.parts[patch.partIndex] = patch.part;
       }
       projection.text = projection.parts.flatMap((part) => part.type === "text" ? [part.text] : []).join("");
@@ -312,9 +324,7 @@ const writeBatch = (batch) => {
       projection.parts[event.partIndex] = { ...(part?.type === type ? part : {}), type, text: text + event.delta };
       if (type === "text") projection.text += event.delta;
     } else {
-      const invalid = event.parts.some(({ partIndex }) =>
-        !Number.isSafeInteger(partIndex) || partIndex < 0 || partIndex > projection.parts.length,
-      );
+      const invalid = hasPartGap(projection.parts.length, event.parts);
       if (invalid) {
         rejected.push(recordRejection(event, "validation"));
         continue;

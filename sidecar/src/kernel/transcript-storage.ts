@@ -16,6 +16,18 @@ type Projection = {
 
 type ProjectionTarget = { threadId: string; messageId: string }
 
+const hasPartGap = (length: number, patches: Array<{ partIndex: number }>): boolean => {
+  const appended = new Set<number>()
+  let maximum = length - 1
+  for (const { partIndex } of patches) {
+    if (!Number.isSafeInteger(partIndex) || partIndex < 0) return true
+    if (partIndex < length) continue
+    appended.add(partIndex)
+    maximum = Math.max(maximum, partIndex)
+  }
+  return maximum - length + 1 !== appended.size
+}
+
 // Snapshots are mutable projections. The small, durable entries remain the source of
 // uncheckpointed text, including after a crash. Publishing a projection adds no event.
 export const materializeTranscriptBatch = (database: Database, threadId?: string): boolean =>
@@ -162,8 +174,8 @@ const applyTranscriptEntries = (
     }
     const event = JSON.parse(row.event_json) as StreamEvent
     if (event.type === "message.parts") {
+      if (hasPartGap(projection.parts.length, event.parts)) throw new Error("Transcript part has a gap")
       for (const patch of event.parts) {
-        if (patch.partIndex > projection.parts.length) throw new Error("Transcript part has a gap")
         projection.parts[patch.partIndex] = patch.part
       }
       projection.text = projection.parts.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("")

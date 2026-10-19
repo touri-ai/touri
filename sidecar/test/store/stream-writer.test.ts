@@ -268,6 +268,32 @@ test("part-only commits keep workspace approvals current and recover after resta
   }
 })
 
+test("one stream patch can append many contiguous parts and replay them", async () => {
+  const f = await fixture()
+  try {
+    const parts = Array.from({ length: 64 }, (_, index) => ({
+      partIndex: index + 1,
+      part: { type: "reasoning" as const, text: `passo-${index}` },
+    }))
+    f.store.appendParts?.({ threadId: "t", messageId: "a", parts })
+    await f.store.flushWritesAsync?.()
+
+    f.database.exec(`UPDATE messages SET updated_seq = 0, parts_json = '[{"type":"text","text":""}]', text = ''
+      WHERE thread_id = 't' AND id = 'a'`)
+    f.database.query("INSERT OR IGNORE INTO transcript_pending_deltas(thread_id, message_id) VALUES ('t', 'a')").run()
+    materializeTranscript(f.database, { threadId: "t", messageId: "a" })
+
+    const snapshot = f.database.query("SELECT parts_json FROM messages WHERE thread_id = 't' AND id = 'a'").get() as {
+      parts_json: string
+    }
+    const expected = [{ type: "text", text: "" }].concat(parts.map(({ part }) => part))
+    expect(JSON.parse(snapshot.parts_json)).toEqual(expected)
+    expect(f.database.query("SELECT * FROM transcript_pending_deltas").all()).toEqual([])
+  } finally {
+    await f.close()
+  }
+})
+
 test("streamed completed outputs share the inline budget and reserve space for new live progress", async () => {
   const f = await fixture()
   try {
