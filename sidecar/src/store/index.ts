@@ -34,7 +34,6 @@ import {
   assertPrivateFile,
   atomicWriteFile,
   attachmentMime,
-  ensurePrivateDirectory,
   MAX_ATTACHMENT_BYTES,
   readBoundedFile,
 } from "../kernel/files"
@@ -52,7 +51,7 @@ import { getHostIdentity } from "../platform/host"
 import { getDefaultMaxConcurrentRuns } from "../runtime/concurrency"
 import { touriVersion } from "../version"
 import { DEFAULT_BOT_VM_MEMORY_MB, DEFAULT_MACHINE_IDLE_MINUTES, validBotVmMemory } from "../vm/resources"
-import { cleanupBotHome, writeBotHome } from "./bot-home"
+import { cleanupBotHome, updateBotHome, writeBotHome } from "./bot-home"
 import { redeemFileGrant } from "./redeemFileGrant"
 import { createSendJournal } from "./send-journal"
 import { createStreamWriter } from "./stream-writer"
@@ -479,6 +478,7 @@ export const init = async (
   runStage?: PerformanceStageRunner,
   createWorker?: (url: string) => Worker,
   writeHome = writeBotHome,
+  writeEditedHome = updateBotHome,
 ): Promise<void> => {
   await refreshHostFolderAccess()
   installDoctor(kernel)
@@ -1096,23 +1096,22 @@ export const init = async (
     return bot
   }
 
-  const ensureBotHome = ({ botId, instructions }: { botId: string; instructions: string }): string => {
-    const homeDir = join(kernel.paths.botsDir, botId)
-    ensurePrivateDirectory({ root: kernel.paths.appData, path: homeDir })
-    atomicWriteFile({ root: kernel.paths.appData, path: join(homeDir, "SOUL.md"), content: instructions })
-    return homeDir
-  }
-
-  const patchBot = ({
+  const saveBot = ({
     bot,
     input,
     paused,
+    updateInstructions,
   }: {
     bot: Bot
     input: CreateBotInput
     paused: boolean | undefined
+    updateInstructions?: boolean
   }): Bot | null => {
-    const instructions = input.instructions ?? bot.instructions
+    const stored = database.query("SELECT instructions FROM bots WHERE id = ? AND archived_at IS NULL").get(bot.id) as {
+      instructions: string
+    } | null
+    if (!stored) return null
+    const instructions = updateInstructions ? (input.instructions ?? bot.instructions) : stored.instructions
     const fields: Array<string> = [
       "name = ?",
       "provider = ?",
@@ -1133,6 +1132,7 @@ export const init = async (
       "browser_enabled = ?",
       "computer_use = ?",
       "updated_at = ?",
+      ...(paused === undefined ? [] : ["paused = ?"]),
     ]
     const values: Array<string | number | null> = [
       input.name,
@@ -1154,33 +1154,45 @@ export const init = async (
       input.browserEnabled === true ? 1 : 0,
       input.computerUse === true ? 1 : 0,
       now(),
+      ...(paused === undefined ? [] : [paused ? 1 : 0]),
     ]
-    if (paused !== undefined) {
-      fields.push("paused = ?")
-      values.push(paused ? 1 : 0)
-    }
-    database.query(`UPDATE bots SET ${fields.join(", ")} WHERE id = ?`).run(...values, bot.id)
-    database
-      .query(
-        "UPDATE bots SET machine = ?, machine_idle_minutes = ?, vm_provider_login = ?, host_computer_use = ?, cloud_target = ?, browser = ? WHERE id = ?",
-      )
-      .run(
-        input.machine === "cloud" ? "local" : (input.machine ?? bot.machine),
-        input.machineIdleMinutes ?? bot.machineIdleMinutes,
-        input.vmProviderLogin ? 1 : 0,
-        input.hostComputerUse ? 1 : 0,
-        input.machine === "cloud" ? 1 : 0,
-        input.browser ?? bot.browser,
-        bot.id,
-      )
-    database
-      .query("UPDATE bots SET folders_json = ?, any_folder_access = ? WHERE id = ?")
-      .run(JSON.stringify(input.folders ?? []), input.anyFolderAccess ? 1 : 0, bot.id)
-    database
-      .query("UPDATE bots SET provider_profile = ?, claude_ai_connectors = ? WHERE id = ?")
-      .run(input.providerProfile ?? null, input.claudeAiConnectors ? 1 : 0, bot.id)
-    ensureBotHome({ botId: bot.id, instructions })
-    const updated = getBot({ botId: bot.id })
+    const updated = database.transaction(() => {
+      const result = database.query(`UPDATE bots SET ${fields.join(", ")} WHERE id = ?`).run(...values, bot.id)
+      if (!result.changes) return null
+      database
+        .query(
+          "UPDATE bots SET machine = ?, machine_idle_minutes = ?, vm_provider_login = ?, host_computer_use = ?, cloud_target = ?, browser = ? WHERE id = ?",
+        )
+        .run(
+          input.machine === "cloud" ? "local" : (input.machine ?? bot.machine),
+          input.machineIdleMinutes ?? bot.machineIdleMinutes,
+          input.vmProviderLogin ? 1 : 0,
+          input.hostComputerUse ? 1 : 0,
+          input.machine === "cloud" ? 1 : 0,
+          input.browser ?? bot.browser,
+          bot.id,
+        )
+      database
+        .query("UPDATE bots SET folders_json = ?, any_folder_access = ? WHERE id = ?")
+        .run(JSON.stringify(input.folders ?? []), input.anyFolderAccess ? 1 : 0, bot.id)
+      database
+        .query("UPDATE bots SET provider_profile = ?, claude_ai_connectors = ? WHERE id = ?")
+        .run(input.providerProfile ?? null, input.claudeAiConnectors ? 1 : 0, bot.id)
+      return getBot({ botId: bot.id })
+    })()
+    return updated
+  }
+
+  const patchBot = ({
+    bot,
+    input,
+    paused,
+  }: {
+    bot: Bot
+    input: CreateBotInput
+    paused: boolean | undefined
+  }): Bot | null => {
+    const updated = saveBot({ bot, input, paused })
     if (updated) kernel.publish({ type: "bot.updated", bot: updated })
     return updated
   }
@@ -1377,7 +1389,7 @@ export const init = async (
       {
         method: "PATCH",
         path: "/bots/:id",
-        handler: async ({ params, body }) => {
+        handler: async ({ params, body, signal }) => {
           await refreshHostFolderAccess()
           const bot = getBot({ botId: params.id ?? "" })
           if (!bot) return errorResponse(404, "NOT_FOUND", "Bot not found")
@@ -1389,29 +1401,65 @@ export const init = async (
           })
           if (!parsed.input || parsed.error)
             return errorResponse(400, parsed.errorCode ?? "INVALID_ARGS", parsed.error ?? "Invalid bot")
+          const input = parsed.input
           if (record.paused !== undefined && typeof record.paused !== "boolean")
             return errorResponse(400, "INVALID_ARGS", "paused must be a boolean")
           const machineRow = database.query("SELECT project_id FROM bot_machines WHERE bot_id = ?").get(bot.id) as {
             project_id: string | null
           } | null
-          if (machineRow?.project_id && parsed.input.projectId !== bot.projectId)
+          if (machineRow?.project_id && input.projectId !== bot.projectId)
             return errorResponse(
               409,
               "MACHINE_PROJECT_CHANGE",
               "Recrie a máquina do zero antes de trocar o projeto; o volume atual foi preservado",
             )
-          if (
-            parsed.input.machine !== bot.machine ||
-            parsed.input.provider !== bot.provider ||
-            parsed.input.projectId !== bot.projectId
-          ) {
+          const mustStopVm =
+            input.machine !== bot.machine || input.provider !== bot.provider || input.projectId !== bot.projectId
+          if (mustStopVm) {
             try {
               await kernel.services.use("vm.runtime")?.stop({ botId: bot.id })
             } catch (error) {
               return errorResponse(409, "MACHINE_BUSY", String(error))
             }
           }
-          const updated = patchBot({ bot, input: parsed.input, paused: record.paused as boolean | undefined })
+          let updated: Bot | null
+          if (Object.hasOwn(record, "instructions")) {
+            let committedBot: Bot | null = null
+            const instructions = input.instructions ?? bot.instructions
+            await writeEditedHome(kernel, bot.id, instructions, signal, () => {
+              const currentBot = getBot({ botId: bot.id })
+              if (!currentBot) throw new Error("Bot could not be updated")
+              return {
+                previousInstructions: currentBot.instructions,
+                commit: () => {
+                  const latestBot = getBot({ botId: bot.id })
+                  if (!latestBot) throw new Error("Bot could not be updated")
+                  const latest = botFromBody({
+                    body: { ...record, provider: record.provider ?? latestBot.provider },
+                    existing: latestBot,
+                  })
+                  if (!latest.input || latest.error) throw new Error(latest.error ?? "Invalid bot")
+                  const machineChanged =
+                    latest.input.machine !== latestBot.machine ||
+                    latest.input.provider !== latestBot.provider ||
+                    latest.input.projectId !== latestBot.projectId
+                  if (machineChanged && !mustStopVm)
+                    throw new Error("Bot configuration changed during the instruction edit")
+                  committedBot = saveBot({
+                    bot: latestBot,
+                    input: latest.input,
+                    paused: record.paused as boolean | undefined,
+                    updateInstructions: true,
+                  })
+                  if (!committedBot) throw new Error("Bot could not be updated")
+                },
+              }
+            })
+            updated = committedBot
+            if (updated) kernel.publish({ type: "bot.updated", bot: updated })
+          } else {
+            updated = patchBot({ bot, input, paused: record.paused as boolean | undefined })
+          }
           return updated
             ? jsonResponse(200, { bot: updated })
             : errorResponse(500, "STORE_ERROR", "Bot could not be updated")

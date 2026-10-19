@@ -30,6 +30,26 @@ export const writeBotHome = async (
   return join(kernel.paths.botsDir, botId)
 }
 
+export const updateBotHome = async (
+  kernel: Kernel,
+  botId: string,
+  instructions: string,
+  signal: AbortSignal,
+  prepare: () => { previousInstructions: string; commit: () => void },
+): Promise<void> => {
+  await getWriter(kernel).run({ operation: "write", botId, instructions }, signal, {
+    prepare: () => {
+      const edit = prepare()
+      return {
+        rollback: { operation: "write", botId, instructions: edit.previousInstructions },
+        commit: edit.commit,
+      }
+    },
+    onRollbackFailure: () =>
+      kernel.log({ level: "error", module: "store", msg: "Could not restore bot home after an instruction edit" }),
+  })
+}
+
 export const removeBotHome = async (kernel: Kernel, botId: string): Promise<void> => {
   await getWriter(kernel).run({ operation: "remove", botId })
 }
@@ -59,7 +79,7 @@ const getWriter = (kernel: Kernel) => {
   return writer
 }
 
-/** A bounded FIFO admits at most 32 commands (4 MiB) and runs only one helper at a time. */
+/** A bounded FIFO admits at most 32 commands (4 MiB including rollback snapshots). */
 export const createBotHomeWriter = ({
   root,
   createHelper = () => startHelper(root),
@@ -73,53 +93,84 @@ export const createBotHomeWriter = ({
 }) => {
   // Admission and the promise tail are local mutable state required to serialize helper I/O.
   let pending = 0
+  let pendingBytes = 0
   let tail: Promise<void> = Promise.resolve()
   let helper: Helper | undefined
   const shutdown = new AbortController()
 
-  const run = async (command: BotHomeCommand, signal?: AbortSignal): Promise<void> => {
+  const run = async (
+    command: BotHomeCommand,
+    signal?: AbortSignal,
+    options?: {
+      rollback?: BotHomeCommand
+      prepare?: () => { rollback: BotHomeCommand; commit?: () => void }
+      commit?: () => void
+      onRollbackFailure?: () => void
+    },
+  ): Promise<void> => {
     shutdown.signal.throwIfAborted()
     signal?.throwIfAborted()
     const input = JSON.stringify(command)
     getBotHomeCommand(input)
-    if (pending >= maxPending) throw new Error("Bot home writer is busy")
+    const staticRollbackInput = options?.rollback ? JSON.stringify(options.rollback) : undefined
+    if (staticRollbackInput) getBotHomeCommand(staticRollbackInput)
+    const operationBytes =
+      Buffer.byteLength(input) +
+      (staticRollbackInput ? Buffer.byteLength(staticRollbackInput) : options?.prepare ? INPUT_LIMIT : 0)
+    if (pending >= maxPending || pendingBytes + operationBytes > 32 * INPUT_LIMIT)
+      throw new Error("Bot home writer is busy")
 
     pending += 1
+    pendingBytes += operationBytes
     const deadline = new AbortController()
     const timer = setTimeout(() => deadline.abort(new Error("Bot home operation timed out")), timeoutMs)
     const combined = AbortSignal.any([shutdown.signal, deadline.signal, ...(signal ? [signal] : [])])
     const execute = tail.then(async () => {
       combined.throwIfAborted()
-      helper ??= createHelper()
-      const active = helper
-      const cancel = () => void active.stop()
-      combined.addEventListener("abort", cancel, { once: true })
+      let rollbackInput = staticRollbackInput
+      let commit = options?.commit
       try {
-        await active.execute(input)
+        const prepared = options?.prepare?.()
+        if (prepared) {
+          const serializedRollback = JSON.stringify(prepared.rollback)
+          getBotHomeCommand(serializedRollback)
+          rollbackInput = serializedRollback
+          commit = prepared.commit
+        }
+        await executeWithHelper(input, combined)
         combined.throwIfAborted()
+        commit?.()
       } catch (error) {
-        await active.stop()
-        helper = undefined
+        if (rollbackInput) {
+          try {
+            await executeWithHelper(rollbackInput, AbortSignal.timeout(timeoutMs))
+          } catch {
+            try {
+              options?.onRollbackFailure?.()
+            } catch {}
+          }
+        }
         throw combined.aborted ? combined.reason : error
-      } finally {
-        combined.removeEventListener("abort", cancel)
       }
     })
     tail = execute
       .catch(() => undefined)
       .finally(() => {
         pending -= 1
+        pendingBytes -= operationBytes
       })
 
     // Queued cancellation returns promptly; its slot stays reserved until the FIFO reaches it.
     const cancelled = Promise.withResolvers<never>()
     const cancel = () => cancelled.reject(combined.reason)
-    combined.addEventListener("abort", cancel, { once: true })
+    const restoresOnFailure = Boolean(staticRollbackInput || options?.prepare)
+    if (!restoresOnFailure) combined.addEventListener("abort", cancel, { once: true })
     try {
+      if (restoresOnFailure) return await execute
       return await Promise.race([execute, cancelled.promise])
     } finally {
       clearTimeout(timer)
-      combined.removeEventListener("abort", cancel)
+      if (!restoresOnFailure) combined.removeEventListener("abort", cancel)
     }
   }
 
@@ -128,6 +179,25 @@ export const createBotHomeWriter = ({
     await helper?.stop()
     await tail
   }
+
+  const executeWithHelper = async (input: string, signal: AbortSignal): Promise<void> => {
+    signal.throwIfAborted()
+    helper ??= createHelper()
+    const active = helper
+    const cancel = () => void active.stop()
+    signal.addEventListener("abort", cancel, { once: true })
+    try {
+      await active.execute(input)
+      signal.throwIfAborted()
+    } catch (error) {
+      await active.stop()
+      helper = undefined
+      throw signal.aborted ? signal.reason : error
+    } finally {
+      signal.removeEventListener("abort", cancel)
+    }
+  }
+
   return { run, close }
 }
 

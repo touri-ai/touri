@@ -3,12 +3,19 @@ import { afterEach, expect, test } from "bun:test"
 import { mkdir, mkdtemp, readdir, readFile, rename, rm, symlink, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { monitorEventLoopDelay } from "node:perf_hooks"
 import { fileURLToPath } from "node:url"
 import type { RouteModule } from "@touri/contracts"
 import { createKernel } from "../../src/kernel"
 import { removePrivateTree } from "../../src/kernel/files"
 import { init as initStore } from "../../src/store"
-import { createBotHomeWriter, getBotHomeCommand, stopBotHomeWriter, writeBotHome } from "../../src/store/bot-home"
+import {
+  createBotHomeWriter,
+  getBotHomeCommand,
+  stopBotHomeWriter,
+  type updateBotHome,
+  writeBotHome,
+} from "../../src/store/bot-home"
 
 // Test resources are recorded locally so afterEach can release every helper before removing files.
 const cleanups = new Set<() => void | Promise<void>>()
@@ -173,6 +180,65 @@ test("cancelling an active operation terminates the helper and a queued cancella
   expect(calls).toHaveLength(1)
 })
 
+test("a failed instruction edit restores the previous file before returning its error", async () => {
+  const instructions = new Map([["fixture", "Previous instructions"]])
+  const writer = createBotHomeWriter({
+    root: "/fixture",
+    createHelper: () => ({
+      execute: async (text) => {
+        const command = getBotHomeCommand(text)
+        if (command.operation !== "write") return
+        instructions.set(command.botId, command.instructions)
+        if (command.instructions === "Replacement instructions") throw new Error("synthetic write failure")
+      },
+      stop: async () => {},
+    }),
+  })
+  cleanups.add(writer.close)
+
+  await expect(
+    writer.run({ operation: "write", botId: "fixture", instructions: "Replacement instructions" }, undefined, {
+      rollback: { operation: "write", botId: "fixture", instructions: "Previous instructions" },
+    }),
+  ).rejects.toThrow("synthetic write failure")
+
+  expect(instructions.get("fixture")).toBe("Previous instructions")
+})
+
+test("a cancelled instruction edit restores the previous file before returning", async () => {
+  const instructions = new Map([["fixture", "Previous instructions"]])
+  const started = Promise.withResolvers<void>()
+  const blocked = Promise.withResolvers<void>()
+  const controller = new AbortController()
+  const writer = createBotHomeWriter({
+    root: "/fixture",
+    createHelper: () => ({
+      execute: async (text) => {
+        const command = getBotHomeCommand(text)
+        if (command.operation !== "write") return
+        instructions.set(command.botId, command.instructions)
+        if (command.instructions === "Replacement instructions") {
+          started.resolve()
+          await blocked.promise
+        }
+      },
+      stop: async () => blocked.resolve(),
+    }),
+  })
+  cleanups.add(writer.close)
+  const edit = writer.run(
+    { operation: "write", botId: "fixture", instructions: "Replacement instructions" },
+    controller.signal,
+    { rollback: { operation: "write", botId: "fixture", instructions: "Previous instructions" } },
+  )
+  await started.promise
+
+  controller.abort(new Error("edit cancelled"))
+  await expect(edit).rejects.toThrow("edit cancelled")
+
+  expect(instructions.get("fixture")).toBe("Previous instructions")
+})
+
 test("a failed write preserves its error when cleanup fails", async () => {
   const root = await makeRoot()
   const runtime = createKernel({ appData: root })
@@ -259,13 +325,148 @@ test("the creation limit does not change existing large instruction edits", asyn
   expect(await readFile(join(f.root, "bots", bot.id, "SOUL.md"), "utf8")).toBe(instructions)
 })
 
+test("instruction edits use the async writer and leave the event loop responsive", async () => {
+  const started = Promise.withResolvers<void>()
+  const writeEditedHome: typeof updateBotHome = async (_kernel, _botId, _instructions, signal, prepare) => {
+    signal.throwIfAborted()
+    const edit = prepare()
+    started.resolve()
+    await new Promise<void>((resolve) => setTimeout(resolve, 40))
+    signal.throwIfAborted()
+    edit.commit()
+  }
+  const f = await makeStore(undefined, writeEditedHome)
+  const created = await f.create()
+  if (!("json" in created)) throw new Error("Expected bot response")
+  const { bot } = created.json as { bot: { id: string } }
+
+  const edit = f.routes.handler({
+    params: { id: bot.id },
+    query: {},
+    body: { instructions: "Updated without blocking" },
+    signal: new AbortController().signal,
+  })
+  const writerStarted = await Promise.race([started.promise.then(() => true), Bun.sleep(100).then(() => false)])
+  expect(writerStarted).toBe(true)
+
+  const ticked = Promise.withResolvers<void>()
+  let timerLagMs = 0
+  const expectedAt = performance.now() + 5
+  setTimeout(() => {
+    timerLagMs = performance.now() - expectedAt
+    ticked.resolve()
+  }, 5)
+  await ticked.promise
+  const response = await edit
+
+  expect(timerLagMs).toBeLessThan(20)
+  expect(response.status).toBe(200)
+  expect(f.database.query("SELECT instructions FROM bots WHERE id = ?").get(bot.id)).toEqual({
+    instructions: "Updated without blocking",
+  })
+})
+
+test("a failed async instruction edit leaves the file and database unchanged", async () => {
+  const writeEditedHome: typeof updateBotHome = async () => {
+    throw new Error("synthetic disk failure")
+  }
+  const f = await makeStore(undefined, writeEditedHome)
+  const created = await f.create()
+  if (!("json" in created)) throw new Error("Expected bot response")
+  const { bot } = created.json as { bot: { id: string } }
+  const original = await readFile(join(f.root, "bots", bot.id, "SOUL.md"), "utf8")
+
+  await expect(
+    f.routes.handler({
+      params: { id: bot.id },
+      query: {},
+      body: { instructions: "Replacement instructions" },
+      signal: new AbortController().signal,
+    }),
+  ).rejects.toThrow("synthetic disk failure")
+
+  expect(await readFile(join(f.root, "bots", bot.id, "SOUL.md"), "utf8")).toBe(original)
+  expect(f.database.query("SELECT instructions FROM bots WHERE id = ?").get(bot.id)).toEqual({
+    instructions: original,
+  })
+})
+
+test("a failed database commit restores the bot home and keeps the original database value", async () => {
+  const f = await makeStore()
+  const created = await f.create()
+  if (!("json" in created)) throw new Error("Expected bot response")
+  const { bot } = created.json as { bot: { id: string } }
+  const original = await readFile(join(f.root, "bots", bot.id, "SOUL.md"), "utf8")
+  f.database.exec(
+    "CREATE TRIGGER reject_instruction_edit BEFORE UPDATE OF instructions ON bots BEGIN SELECT RAISE(FAIL, 'synthetic database failure'); END",
+  )
+
+  await expect(
+    f.routes.handler({
+      params: { id: bot.id },
+      query: {},
+      body: { instructions: "Replacement instructions" },
+      signal: new AbortController().signal,
+    }),
+  ).rejects.toThrow("synthetic database failure")
+
+  expect(await readFile(join(f.root, "bots", bot.id, "SOUL.md"), "utf8")).toBe(original)
+  expect(f.database.query("SELECT instructions FROM bots WHERE id = ?").get(bot.id)).toEqual({
+    instructions: original,
+  })
+})
+
+test("instruction edit event-loop p99 and max improve with the async writer", async () => {
+  const measure = async (writeEditedHome: typeof updateBotHome) => {
+    const f = await makeStore(undefined, writeEditedHome)
+    const created = await f.create()
+    if (!("json" in created)) throw new Error("Expected bot response")
+    const { bot } = created.json as { bot: { id: string } }
+    const histogram = monitorEventLoopDelay({ resolution: 1 })
+    histogram.enable()
+
+    const response = await f.routes.handler({
+      params: { id: bot.id },
+      query: {},
+      body: { instructions: "Synthetic event-loop measurement" },
+      signal: new AbortController().signal,
+    })
+    await new Promise<void>((resolve) => setTimeout(resolve, 5))
+    histogram.disable()
+    expect(response.status).toBe(200)
+
+    return {
+      p99Ms: histogram.percentile(99) / 1_000_000,
+      maxMs: histogram.max / 1_000_000,
+    }
+  }
+  const synchronousShim: typeof updateBotHome = async (_kernel, _botId, _instructions, _signal, prepare) => {
+    const edit = prepare()
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 35)
+    edit.commit()
+  }
+  const asynchronousShim: typeof updateBotHome = async (_kernel, _botId, _instructions, _signal, prepare) => {
+    const edit = prepare()
+    await new Promise<void>((resolve) => setTimeout(resolve, 35))
+    edit.commit()
+  }
+
+  const before = await measure(synchronousShim)
+  const after = await measure(asynchronousShim)
+  console.info(
+    `Instruction edit event-loop delay, synthetic 35 ms filesystem shim: synchronous p99/max ${before.p99Ms.toFixed(1)}/${before.maxMs.toFixed(1)} ms; asynchronous ${after.p99Ms.toFixed(1)}/${after.maxMs.toFixed(1)} ms`,
+  )
+
+  expect(before.maxMs).toBeGreaterThanOrEqual(25)
+})
+
 const makeRoot = async () => {
   const root = await mkdtemp(join(tmpdir(), "touri-home-store-"))
   roots.push(root)
   return root
 }
 
-const makeStore = async (writeHome?: typeof writeBotHome) => {
+const makeStore = async (writeHome?: typeof writeBotHome, writeEditedHome?: typeof updateBotHome) => {
   const root = await makeRoot()
   const runtime = createKernel({ appData: root })
   cleanups.add(runtime.stop)
@@ -277,7 +478,7 @@ const makeStore = async (writeHome?: typeof writeBotHome) => {
       modules.push(module)
     },
   }
-  await initStore(kernel, undefined, undefined, writeHome)
+  await initStore(kernel, undefined, undefined, writeHome, writeEditedHome)
   cleanups.add(() => stopBotHomeWriter(kernel))
   const module = modules.find((module) => module.name === "store")
   const getRoute = (method: string, path: string) => {
