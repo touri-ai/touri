@@ -40,6 +40,8 @@ export const ComposerNotice = ({
     /^machine_service_(?:unavailable|start_failed):/.test(notice.text)
   const machineFailed = bot?.machine === "vm" && machine?.status === "error"
   if (!authNeeded && !serviceDown && !machineFailed) return null
+  // The failed reply in the conversation already explains and offers the retry; a second card would repeat it.
+  if (!authNeeded && !serviceDown && notice) return null
   const provider = bot?.provider === "opencode" ? "OpenCode" : bot?.provider === "claude" ? "Claude Code" : "Codex"
   const error = latestReply ? runErrorFor(latestReply) : null
   return (

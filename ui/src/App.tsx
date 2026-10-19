@@ -636,6 +636,10 @@ const AppContent = ({ kernel }: AppProps) => {
     savedMessage: !!noticeRun?.requestMessageId,
     occurredAt: noticeRun?.finishedAt ?? noticeRecord?.createdAt,
   }
+  const failureShownInChat =
+    !!noticeRun?.replyMessageId &&
+    noticeRun.threadId === selectedThread?.id &&
+    selectedMessages.some((message) => message.id === noticeRun.replyMessageId && message.status === "failed")
   const showNotice = (message: string): void => {
     setLocalNotice(userFacingError(message))
     window.setTimeout(() => setLocalNotice(null), 4200)
@@ -798,8 +802,8 @@ const AppContent = ({ kernel }: AppProps) => {
       <ImportWizard bots={data.bots} api={api} onClose={closeModal} onNotice={showNotice} />
     ) : null
   const workspaceNotice = (
-    <MotionPresence show={Boolean(notice)} kind="toast">
-      {Boolean(notice) && (
+    <MotionPresence show={Boolean(notice) && !failureShownInChat} kind="toast">
+      {Boolean(notice) && !failureShownInChat && (
         <div className={`notice-bar ${isErrorNotice ? "notice-error" : "notice-info"}`} role="status">
           <span>◈</span>
           {isErrorNotice ? (

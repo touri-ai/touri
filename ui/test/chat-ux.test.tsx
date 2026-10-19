@@ -196,7 +196,7 @@ describe("failed turns", () => {
       />,
     )
     expect(screen.getByRole("alert")).toHaveTextContent("Não encontrei o programa do provedor")
-    fireEvent.click(screen.getByRole("button", { name: "Tentar de novo" }))
+    fireEvent.click(screen.getByRole("button", { name: "Tentar novamente" }))
     expect(retried).toEqual(["run-1"])
   })
 })

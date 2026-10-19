@@ -127,11 +127,11 @@ it.each([false, true])(
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancelar" }))
     expect(api.calls.some((call) => call.route === "POST /runs/:id/retry")).toBe(false)
     if (recordedActions) {
-      expect(screen.queryByRole("button", { name: "Tentar de novo" })).toBeNull()
+      expect(screen.queryByRole("button", { name: "Tentar novamente" })).toBeNull()
       expect(screen.getByRole("button", { name: "Ver ações realizadas" })).toBeVisible()
       return
     }
-    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Tentar de novo" })))
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Tentar novamente" })))
     expect(
       api.calls.some((call) => call.route === "POST /runs/:id/retry" && call.pathValues?.id === failed.runId),
     ).toBe(true)

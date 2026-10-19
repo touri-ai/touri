@@ -617,9 +617,9 @@ const MessageBubble = ({
       message.status === "failed" &&
       run?.errorClass !== "group_context_missing" &&
       !runError.recovery.actions.some((action) => ["retry", "review", "resume", "storage"].includes(action.kind))
-        ? [{ kind: "retry" as const, label: t("Tentar de novo") }]
+        ? [{ kind: "retry" as const, label: t("Tentar novamente") }]
         : []),
-    ].map((action) => (action.kind === "retry" ? { ...action, label: t("Tentar de novo") } : action)),
+    ].map((action) => (action.kind === "retry" ? { ...action, label: t("Tentar novamente") } : action)),
   }
   const failureContent = runError && (
     <div className="message-error" role="alert">
@@ -705,7 +705,7 @@ const MessageBubble = ({
               className="text-button retry-button"
               onClick={() => void onRetry(message.runId ?? "")}
             >
-              {t("Tentar de novo")}
+              {t("Tentar novamente")}
             </button>
           )}
         </>
@@ -1342,7 +1342,7 @@ const RunCard = ({
         </time>
         {presentation.failed && (
           <button type="button" className="open-run-link" onClick={() => void onRetry(run.id)}>
-            {t("Tentar de novo")}
+            {t("Tentar novamente")}
           </button>
         )}
       </div>
