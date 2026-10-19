@@ -51,6 +51,7 @@ import { getHostIdentity } from "../platform/host"
 import { getDefaultMaxConcurrentRuns } from "../runtime/concurrency"
 import { touriVersion } from "../version"
 import { DEFAULT_BOT_VM_MEMORY_MB, DEFAULT_MACHINE_IDLE_MINUTES, validBotVmMemory } from "../vm/resources"
+import { removeBotHome, writeBotHome } from "./bot-home"
 import { redeemFileGrant } from "./redeemFileGrant"
 import { createSendJournal } from "./send-journal"
 import { createStreamWriter } from "./stream-writer"
@@ -748,13 +749,6 @@ export const init = async (kernel: Kernel, runStage?: PerformanceStageRunner): P
     }
   }
 
-  const ensureBotHome = ({ botId, instructions }: { botId: string; instructions: string }): string => {
-    const homeDir = join(kernel.paths.botsDir, botId)
-    ensurePrivateDirectory({ root: kernel.paths.appData, path: homeDir })
-    atomicWriteFile({ root: kernel.paths.appData, path: join(homeDir, "SOUL.md"), content: instructions })
-    return homeDir
-  }
-
   const botFromBody = ({
     body,
     existing,
@@ -864,6 +858,11 @@ export const init = async (kernel: Kernel, runStage?: PerformanceStageRunner): P
       !validAvatarColor(input.color)
     )
       return { input: null, error: "color must be a six-digit hex color" }
+    if (
+      typeof body.instructions === "string" &&
+      (body.instructions.length > 120 * 1024 || Buffer.byteLength(JSON.stringify(body.instructions)) > 120 * 1024)
+    )
+      return { input: null, error: "Bot instructions exceed the 120 KiB limit" }
     if (Object.hasOwn(body, "instructions")) input.instructions = asString(body.instructions, "")
     else if (existing) input.instructions = existing.instructions
     if (Object.hasOwn(body, "model")) input.model = body.model === null ? null : asString(body.model, "")
@@ -958,66 +957,77 @@ export const init = async (kernel: Kernel, runStage?: PerformanceStageRunner): P
     return { input, error: null }
   }
 
-  const createBot = ({ input }: { input: CreateBotInput }): Bot | null => {
+  const createBot = async ({ input, signal }: { input: CreateBotInput; signal: AbortSignal }): Promise<Bot | null> => {
     const id = kernel.newId()
     const instructions = input.instructions ?? ""
     const instructionsHash = sha256(instructions)
-    const homeDir = ensureBotHome({ botId: id, instructions })
+    const homeDir = await writeBotHome(kernel, id, instructions, signal)
+    if (signal.aborted) {
+      await removeBotHome(kernel, id)
+      return null
+    }
     const mainThreadId = kernel.newId()
     const timestamp = now()
-    database
-      .query(
-        "INSERT INTO bots (id, name, title, role_line, description, color, avatar_path, avatar_shape, avatar_seed, instructions, instructions_hash, provider, model, reasoning_effort, access, approvals, project_id, cwd, home_dir, main_thread_id, browser_enabled, computer_use, notifications, section, sort_order, paused, source, created_at, updated_at, archived_at) VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'failures', NULL, 0, 0, 'local', ?, ?, NULL)",
-      )
-      .run(
-        id,
-        input.name,
-        input.title ?? null,
-        input.roleLine ?? null,
-        input.description ?? null,
-        input.color ?? null,
-        input.avatarShape ?? null,
-        input.avatarSeed ?? null,
-        instructions,
-        instructionsHash,
-        input.provider,
-        input.model ?? null,
-        input.reasoningEffort ?? null,
-        input.access ?? "workspace-write",
-        input.approvals ?? "on-request",
-        input.projectId ?? null,
-        input.cwd ?? null,
-        homeDir,
-        mainThreadId,
-        input.browserEnabled === false ? 0 : 1,
-        input.computerUse === true ? 1 : 0,
-        timestamp,
-        timestamp,
-      )
-    database
-      .query(
-        "UPDATE bots SET machine = ?, machine_idle_minutes = ?, vm_provider_login = ?, host_computer_use = ?, cloud_target = ?, browser = ? WHERE id = ?",
-      )
-      .run(
-        input.machine === "cloud" ? "local" : (input.machine ?? "local"),
-        input.machineIdleMinutes ?? DEFAULT_MACHINE_IDLE_MINUTES,
-        input.vmProviderLogin ? 1 : 0,
-        input.hostComputerUse ? 1 : 0,
-        input.machine === "cloud" ? 1 : 0,
-        input.browser ?? "touri",
-        id,
-      )
-    database
-      .query("UPDATE bots SET folders_json = ?, any_folder_access = ? WHERE id = ?")
-      .run(JSON.stringify(input.folders ?? []), input.anyFolderAccess ? 1 : 0, id)
-    database
-      .query("UPDATE bots SET provider_profile = ?, claude_ai_connectors = ? WHERE id = ?")
-      .run(input.providerProfile ?? null, input.claudeAiConnectors ? 1 : 0, id)
-    database
-      .query(
-        "INSERT INTO threads (id, bot_id, parent_thread_id, kind, title, active_leaf_id, routine_run_id, cwd_override, unread, carryover_note, usage_json, source, created_at, updated_at, archived_at) VALUES (?, ?, NULL, 'main', ?, NULL, NULL, NULL, 0, NULL, ?, 'local', ?, ?, NULL)",
-      )
-      .run(mainThreadId, id, input.name, JSON.stringify(asUsage({})), timestamp, timestamp)
+    try {
+      database.transaction(() => {
+        database
+          .query(
+            "INSERT INTO bots (id, name, title, role_line, description, color, avatar_path, avatar_shape, avatar_seed, instructions, instructions_hash, provider, model, reasoning_effort, access, approvals, project_id, cwd, home_dir, main_thread_id, browser_enabled, computer_use, notifications, section, sort_order, paused, source, created_at, updated_at, archived_at) VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'failures', NULL, 0, 0, 'local', ?, ?, NULL)",
+          )
+          .run(
+            id,
+            input.name,
+            input.title ?? null,
+            input.roleLine ?? null,
+            input.description ?? null,
+            input.color ?? null,
+            input.avatarShape ?? null,
+            input.avatarSeed ?? null,
+            instructions,
+            instructionsHash,
+            input.provider,
+            input.model ?? null,
+            input.reasoningEffort ?? null,
+            input.access ?? "workspace-write",
+            input.approvals ?? "on-request",
+            input.projectId ?? null,
+            input.cwd ?? null,
+            homeDir,
+            mainThreadId,
+            input.browserEnabled === false ? 0 : 1,
+            input.computerUse === true ? 1 : 0,
+            timestamp,
+            timestamp,
+          )
+        database
+          .query(
+            "UPDATE bots SET machine = ?, machine_idle_minutes = ?, vm_provider_login = ?, host_computer_use = ?, cloud_target = ?, browser = ? WHERE id = ?",
+          )
+          .run(
+            input.machine === "cloud" ? "local" : (input.machine ?? "local"),
+            input.machineIdleMinutes ?? DEFAULT_MACHINE_IDLE_MINUTES,
+            input.vmProviderLogin ? 1 : 0,
+            input.hostComputerUse ? 1 : 0,
+            input.machine === "cloud" ? 1 : 0,
+            input.browser ?? "touri",
+            id,
+          )
+        database
+          .query("UPDATE bots SET folders_json = ?, any_folder_access = ? WHERE id = ?")
+          .run(JSON.stringify(input.folders ?? []), input.anyFolderAccess ? 1 : 0, id)
+        database
+          .query("UPDATE bots SET provider_profile = ?, claude_ai_connectors = ? WHERE id = ?")
+          .run(input.providerProfile ?? null, input.claudeAiConnectors ? 1 : 0, id)
+        database
+          .query(
+            "INSERT INTO threads (id, bot_id, parent_thread_id, kind, title, active_leaf_id, routine_run_id, cwd_override, unread, carryover_note, usage_json, source, created_at, updated_at, archived_at) VALUES (?, ?, NULL, 'main', ?, NULL, NULL, NULL, 0, NULL, ?, 'local', ?, ?, NULL)",
+          )
+          .run(mainThreadId, id, input.name, JSON.stringify(asUsage({})), timestamp, timestamp)
+      })()
+    } catch (error) {
+      await removeBotHome(kernel, id)
+      throw error
+    }
     const bot = getBot({ botId: id })
     if (bot) {
       kernel.publish({ type: "bot.updated", bot })
@@ -1240,7 +1250,7 @@ export const init = async (kernel: Kernel, runStage?: PerformanceStageRunner): P
   kernel.services.provide("store.api", storeApi)
   kernel.services.provide("store.settings", () => readSettings({ database }))
 
-  const handleCreateBot = async ({ body }: { body: unknown }): Promise<RouteResponse> => {
+  const handleCreateBot = async ({ body, signal }: { body: unknown; signal: AbortSignal }): Promise<RouteResponse> => {
     const record = requestRecord(body)
     if (!record) return errorResponse(400, "INVALID_ARGS", "Request body must be an object")
     await refreshHostFolderAccess()
@@ -1249,7 +1259,7 @@ export const init = async (kernel: Kernel, runStage?: PerformanceStageRunner): P
       return errorResponse(400, parsed.errorCode ?? "INVALID_ARGS", parsed.error ?? "Invalid bot")
     if (parsed.input.machine === "cloud" && !(await kernel.services.use("cloud.account")?.connected()))
       return errorResponse(401, "TOURI-E9001", "Conecte sua conta")
-    const bot = createBot({ input: parsed.input })
+    const bot = await createBot({ input: parsed.input, signal })
     if (bot?.machine === "cloud") {
       try {
         await kernel.services
@@ -1294,7 +1304,7 @@ export const init = async (kernel: Kernel, runStage?: PerformanceStageRunner): P
           return jsonResponse(200, { bots: rows.map(asBot) })
         },
       },
-      { method: "POST", path: "/bots", handler: async ({ body }) => handleCreateBot({ body }) },
+      { method: "POST", path: "/bots", handler: async ({ body, signal }) => handleCreateBot({ body, signal }) },
       {
         method: "PATCH",
         path: "/bots/:id",

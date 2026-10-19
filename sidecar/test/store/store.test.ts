@@ -361,6 +361,22 @@ test("bot homes mirror SOUL instructions and keep the instruction hash current",
   }
 })
 
+test("bot creation rejects instructions above the bounded home-writer input", async () => {
+  const context = await startStore()
+  try {
+    const response = await fetch(`http://127.0.0.1:${context.runtime.handshake.port}/api/v1/bots`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ name: "Large instructions", provider: "codex", instructions: "x".repeat(121 * 1024) }),
+    })
+
+    expect(response.status).toBe(400)
+    expect(await response.json()).toMatchObject({ errorCode: "INVALID_ARGS" })
+  } finally {
+    context.close()
+  }
+})
+
 test("all WP2 HTTP routes respond with contract-shaped payloads", async () => {
   const context = await startStore()
   try {
