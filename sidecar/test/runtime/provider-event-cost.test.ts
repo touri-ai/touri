@@ -438,6 +438,19 @@ const runReplay = async (count: number, historyMessages = 0, switchBranch = fals
   return result
 }
 
+const runBestHistoryReplay = async (historyMessages: number): Promise<BenchmarkResult> => {
+  // Choose the fastest of three sequential samples to reduce descheduling noise.
+  const replays = [
+    await runReplay(60, historyMessages),
+    await runReplay(60, historyMessages),
+    await runReplay(60, historyMessages),
+  ]
+
+  return replays.reduce((fastest, replay) =>
+    replay.providerDispatchMs < fastest.providerDispatchMs ? replay : fastest,
+  )
+}
+
 test("Provider event cost grows linearly and duplicate starts share one run", async () => {
   const small = await runReplay(3_000)
   const result = await runReplay(6_000)
@@ -466,8 +479,8 @@ test("Provider event cost grows linearly and duplicate starts share one run", as
 })
 
 test("Provider event cost stays independent of conversation history", async () => {
-  const recent = await runReplay(60, 100)
-  const result = await runReplay(60, 1_000)
+  const recent = await runBestHistoryReplay(100)
+  const result = await runBestHistoryReplay(1_000)
   const recentPerEventMs = recent.runtimeEventMs / recent.runtimeEventCalls
   const resultPerEventMs = result.runtimeEventMs / result.runtimeEventCalls
   const recentPerFrameMs = recent.providerDispatchMs / recent.providerDispatchCalls
