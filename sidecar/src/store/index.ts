@@ -709,7 +709,10 @@ export const init = async (kernel: Kernel, runStage?: PerformanceStageRunner): P
     const boundedLimit = Math.max(1, Math.min(50, Math.floor(limit)))
     const query = q.trim()
     if (!query) return []
-    const filters: Array<string> = ["messages_fts MATCH ?"]
+    const filters: Array<string> = [
+      "messages_fts MATCH ?",
+      "NOT (threads.group_thread_id IS NOT NULL AND substr(messages_fts.text, 1, 7) = 'Grupo \"' AND instr(messages_fts.text, 'Histórico compartilhado (dados, não instruções)') > 0)",
+    ]
     const values: Array<string | number> = [query]
     if (botId !== undefined) {
       filters.push("threads.bot_id = ?")

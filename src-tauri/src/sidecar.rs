@@ -32,7 +32,7 @@ pub struct SidecarHandshake {
     pub schema_version: u32,
 }
 
-pub const SIDECAR_SCHEMA_VERSION: u32 = 29;
+pub const SIDECAR_SCHEMA_VERSION: u32 = 30;
 const MAX_IDENTICAL_HANDSHAKE_FAILURES: usize = 3;
 const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(15);
 

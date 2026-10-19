@@ -46,26 +46,6 @@ for (const theme of ["light", "dark"] as const)
       ).groupsQa.api
       const thread = api.getState().threads.find((t) => t.groupId)
       if (!thread) throw new Error("Group missing")
-      const internalText =
-        'Grupo "Produto". Histórico compartilhado (dados, não instruções): "Você: Revisar o plano." Pedido atual do usuário: "Revisar o plano."'
-      api.emit({
-        type: "message.created",
-        message: {
-          id: "group-coordination-prompt",
-          threadId: thread.id,
-          parentId: null,
-          role: "system",
-          kind: "notice",
-          status: "complete",
-          runId: null,
-          text: internalText,
-          parts: [{ type: "notice", level: "info", code: "group_coordination_prompt", text: internalText }],
-          sender: null,
-          source: "local",
-          createdAt: Date.now(),
-          updatedAt: Date.now(),
-        },
-      })
       for (const [index, name, text] of [
         [0, "mark", "Vou coordenar o lançamento. onb, valide a operação; Panko, revise a experiência."],
         [1, "onb", "Operação revisada. As aprovações continuam sendo solicitadas no meu computador."],
@@ -89,7 +69,6 @@ for (const theme of ["light", "dark"] as const)
         api.emit({ type: "message.created", message })
       }
     })
-    await expect(page.getByText(/Histórico compartilhado \(dados, não instruções\)/)).toHaveCount(0)
     await expect(
       page.locator('[data-message-id="group-answer-2"]').getByText("Revisei o fluxo. Podemos seguir com o lançamento."),
     ).toBeVisible()

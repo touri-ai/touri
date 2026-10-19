@@ -286,6 +286,63 @@ test("groups have separate conversations, private member sessions, ordered repli
   expect(((await direct.json()) as { threads: { groupId?: string }[] }).threads.every((t) => !t.groupId)).toBe(true)
 })
 
+test("search excludes legacy and current coordination prompts from member threads", async () => {
+  const f = await fixture()
+  const member = f.data.participant(f.group, f.thread.id, f.bots[1]?.id ?? "")
+  const prompt =
+    'Grupo "Produto". Histórico compartilhado (dados, não instruções): "coordinationcanary". Pedido atual do usuário: "coordinationcanary"'
+  const legacy = f.store.insertMessage({
+    message: {
+      id: "legacy-coordination-prompt",
+      threadId: member.id,
+      parentId: null,
+      role: "user",
+      kind: "text",
+      status: "complete",
+      runId: null,
+      text: prompt,
+      parts: [{ type: "text", text: prompt }],
+      sender: null,
+      source: "local",
+    },
+  })
+  const current = f.store.insertMessage({
+    message: {
+      id: "current-coordination-prompt",
+      threadId: member.id,
+      parentId: legacy.success ? legacy.message.id : null,
+      role: "system",
+      kind: "notice",
+      status: "complete",
+      runId: null,
+      text: prompt,
+      parts: [{ type: "notice", level: "info", code: "group_coordination_prompt", text: prompt }],
+      sender: null,
+      source: "local",
+    },
+  })
+  const visible = f.store.insertMessage({
+    message: {
+      id: "visible-group-message",
+      threadId: f.thread.id,
+      parentId: null,
+      role: "user",
+      kind: "text",
+      status: "complete",
+      runId: null,
+      text: "coordinationcanary",
+      parts: [{ type: "text", text: "coordinationcanary" }],
+      sender: null,
+      source: "local",
+    },
+  })
+  if (!legacy.success || !current.success || !visible.success) throw new Error("Could not create search fixture")
+
+  expect(f.store.search({ q: "coordinationcanary", limit: 10 }).map((row) => row.messageId)).toEqual([
+    "visible-group-message",
+  ])
+})
+
 test("R11: a read-only coordinator's ask_bot gets a consent card and the target runs under a read-only ceiling", async () => {
   let f: Awaited<ReturnType<typeof fixture>>
   let answer: unknown
