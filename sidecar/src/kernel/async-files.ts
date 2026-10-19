@@ -25,7 +25,10 @@ const createFileIo = () => {
     starting = new Promise<void>((resolve, reject) => {
       readyReject = reject
       worker = new Worker(
-        workerEntrypoint(new URL("./file-io-worker.ts", import.meta.url), "./sidecar-file-io-worker.ts"),
+        workerEntrypoint(
+          new URL("./file-io-worker.ts", import.meta.url),
+          new URL("../../../sidecar-file-io-worker.ts", import.meta.url),
+        ),
         { smol: true, ref: false },
       ) as RefableWorker
       worker.onmessage = ({ data }: MessageEvent<FileIoMessage>): void => {

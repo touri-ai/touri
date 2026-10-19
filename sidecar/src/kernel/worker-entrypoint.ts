@@ -1,2 +1,1 @@
-export const workerEntrypoint = (source: URL, compiledPath: string): URL | string =>
-  Bun.isStandaloneExecutable ? compiledPath : source
+export const workerEntrypoint = (source: URL, compiled: URL): URL => (Bun.isStandaloneExecutable ? compiled : source)

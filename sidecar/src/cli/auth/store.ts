@@ -106,7 +106,10 @@ const workerError = ({ name, message, code }: WorkerError): Error =>
 
 const createAuthWriter = async (filename: string): Promise<AuthWriter> => {
   const worker = new Worker(
-    workerEntrypoint(new URL("./store-writer.ts", import.meta.url), "./sidecar-auth-writer-worker.ts"),
+    workerEntrypoint(
+      new URL("./store-writer.ts", import.meta.url),
+      new URL("../../../../sidecar-auth-writer-worker.ts", import.meta.url),
+    ),
     { smol: true, ref: false },
   ) as RefableWorker
   worker.ref()
