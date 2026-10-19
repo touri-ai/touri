@@ -4,10 +4,11 @@ test.use({ channel: "chromium", locale: "pt-BR", reducedMotion: "reduce" })
 
 test("phone bot panel hides the menu and removes covered chat controls from access", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto("/")
 
   for (const width of [390, 442]) {
     await page.setViewportSize({ width, height: 844 })
-    await page.goto("/")
 
     const closePanel = page.getByRole("button", { name: "Fechar painel do bot" })
     if (await closePanel.isVisible()) await closePanel.click()
@@ -36,6 +37,9 @@ test("phone bot panel hides the menu and removes covered chat controls from acce
     await page.keyboard.press("Tab")
     const focusIsInChat = await page.evaluate(() => Boolean(document.activeElement?.closest(".chat-panel")))
     expect(focusIsInChat).toBe(false)
+
+    await closePanel.click()
+    await expect(page.getByRole("textbox", { name: /Mensagem para/ })).toBeVisible()
   }
 })
 
