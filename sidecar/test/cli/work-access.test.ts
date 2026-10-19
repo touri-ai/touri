@@ -28,7 +28,7 @@ database.exec(`
     PRIMARY KEY(thread_id,message_id,attachment_id)
   );
   CREATE TABLE group_run_links (run_id TEXT NOT NULL, turn_id TEXT NOT NULL);
-  INSERT INTO bots VALUES ('legacy-bot', NULL, NULL), ('member-bot', NULL, 'member'),
+  INSERT INTO bots(id, archived_at, responsible_person_id) VALUES ('legacy-bot', NULL, NULL), ('member-bot', NULL, 'member'),
     ('other-bot', NULL, 'owner'), ('team-bot', NULL, 'owner'), ('deleted-channel-bot', NULL, 'owner');
   INSERT INTO bot_groups VALUES ('team-a'), ('team-b');
   INSERT INTO group_members VALUES ('team-bot', 'team-a'), ('other-bot', 'team-b'),
