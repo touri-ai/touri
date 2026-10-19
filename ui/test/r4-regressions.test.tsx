@@ -304,7 +304,7 @@ describe("r4 workflow polish", () => {
     await screen.findByText("Aguardando login no navegador…")
     fireEvent.click(screen.getByRole("tab", { name: "Modelo" }))
     fireEvent.change(screen.getByLabelText("Provedor"), { target: { value: "codex" } })
-    expect(screen.getByLabelText("Modelo", { selector: "input" })).toHaveValue("")
+    expect(screen.getByRole("button", { name: "Escolher modelo: Codex · Padrão do provedor" })).toBeVisible()
     expect(screen.getByLabelText("Raciocínio")).toHaveValue("")
     // The Access pane mounts on demand, so the new provider's login starts when it is shown.
     fireEvent.click(screen.getByRole("tab", { name: "Acesso" }))

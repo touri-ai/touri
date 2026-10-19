@@ -2020,7 +2020,15 @@ export const ptBR = {
   "CLI default": "Padrão do provedor",
   "Choose model": "Escolher modelo",
   "Choose model with selection": "Escolher modelo: {selection}",
+  "Models for {provider}": "Modelos de {provider}",
   "Save model": "Salvar modelo",
+  "Could not save model: {error}": "Não foi possível salvar o modelo: {error}",
+  "Could not load models. Use the default or enter a provider/model ID manually.":
+    "Não foi possível carregar os modelos. Use o padrão ou informe o identificador provedor/modelo manualmente.",
+  "Loading models…": "Carregando modelos…",
+  "Model names cannot contain hidden or control characters.":
+    "O nome do modelo não pode conter caracteres invisíveis ou de controle.",
+  "Use model": "Usar modelo",
   "Choose the model for this bot’s next messages.": "Escolha o modelo para as próximas mensagens deste bot.",
   "{provider} does not expose a model list in touri. Use the provider default or enter a model name that {provider} accepts.":
     "O {provider} não disponibiliza uma lista de modelos no touri. Use o padrão do provedor ou informe o nome de um modelo que o {provider} aceite.",
@@ -4228,6 +4236,14 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
     "Choose a Claude Code model. Each option uses the latest version of that model.",
   "Other model…": "Other model…",
   "Model name": "Model name",
+  "Models for {provider}": "Models for {provider}",
+  "Could not save model: {error}": "Could not save model: {error}",
+  "Could not load models. Use the default or enter a provider/model ID manually.":
+    "Could not load models. Use the default or enter a provider/model ID manually.",
+  "Loading models…": "Loading models…",
+  "Model names cannot contain hidden or control characters.":
+    "Model names cannot contain hidden or control characters.",
+  "Use model": "Use model",
   "Choose the account this bot will use.": "Choose the account this bot will use.",
   "Sign in above before creating your bot.": "Sign in above before creating your bot.",
   "Could not check accounts. Choose an account and try again.":

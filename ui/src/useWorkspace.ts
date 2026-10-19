@@ -103,6 +103,7 @@ export type WorkspaceActions = {
   cancelRun: (runId: Id) => Promise<void>
   switchBranch: (threadId: Id, leafId: Id) => Promise<void>
   updateBot: (botId: Id, patch: Partial<ApiRoutes["PATCH /bots/:id"]["req"]>) => Promise<void>
+  updateBotModel: (botId: Id, model: string | null) => Promise<void>
   deleteBot: (botId: Id, name: string, deleteVolumes: boolean) => Promise<void>
   machineAction: (botId: Id, reset: boolean, projectId?: Id | null, stopTurns?: boolean) => Promise<void>
   createBot: (
@@ -1296,6 +1297,31 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
     [api],
   )
 
+  const updateBotModel = useCallback(
+    async (botId: Id, model: string | null): Promise<void> => {
+      const previousModel = currentData.current.bots.find((bot) => bot.id === botId)?.model
+      if (previousModel === undefined) return
+
+      setData((current) => ({
+        ...current,
+        bots: current.bots.map((bot) => (bot.id === botId ? { ...bot, model } : bot)),
+      }))
+      try {
+        const response = await api.request("PATCH /bots/:id", { model }, { id: botId })
+        setData((current) => ({ ...current, bots: uniqueById([...current.bots, response.bot]) }))
+      } catch (error) {
+        setData((current) => ({
+          ...current,
+          bots: current.bots.map((bot) =>
+            bot.id === botId && bot.model === model ? { ...bot, model: previousModel } : bot,
+          ),
+        }))
+        throw error
+      }
+    },
+    [api],
+  )
+
   const machineAction = useCallback(
     async (botId: Id, reset: boolean, projectId?: Id | null, stopTurns = false): Promise<void> => {
       const response = reset
@@ -1642,6 +1668,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
       cancelRun,
       switchBranch,
       updateBot,
+      updateBotModel,
       deleteBot: async (botId, name, deleteVolumes) => {
         await api.request("DELETE /bots/:id", { name, deleteVolumes }, { id: botId })
         setData((current) => withoutBot(current, botId))

@@ -17,8 +17,8 @@ import { BotAvatar } from "./BotAvatar"
 import { ComposerNotice } from "./ComposerNotice"
 import { ComposerProjectChip } from "./ComposerProjectChip"
 import { ErrorText } from "./ErrorDetails"
+import { ModelPicker } from "./ModelPicker"
 import { ProviderLoginFlow } from "./ProviderLoginFlow"
-import { getBotModelName, getBotProviderName } from "./ProviderMark"
 import { useReveal } from "./Reveal"
 import { VoiceInput } from "./VoiceInput"
 import "./Composer.css"
@@ -41,7 +41,8 @@ type ComposerProps = {
   activeRun: Run | null
   botActive?: boolean
   projects?: Project[] | undefined
-  onOpenModel?: (() => void) | undefined
+  onSaveModel?: ((model: string | null) => Promise<void>) | undefined
+  onNotice?: ((message: string) => void) | undefined
   onSelectProject?: ((projectId: Id | null) => Promise<void>) | undefined
   onAddProject?: (() => void) | undefined
   queuedCount: number
@@ -99,7 +100,8 @@ export const Composer = ({
   activeRun,
   botActive = false,
   projects = [],
-  onOpenModel,
+  onSaveModel,
+  onNotice,
   onSelectProject,
   onAddProject,
   queuedCount,
@@ -562,24 +564,18 @@ export const Composer = ({
           </button>
           {bot && bot.machine !== "cloud" && (
             <>
-              {onOpenModel && (
-                <button
-                  type="button"
+              {onSaveModel && onNotice && (
+                <ModelPicker
+                  api={api}
+                  botId={bot.id}
+                  provider={bot.provider}
+                  value={bot.model}
+                  onSave={onSaveModel}
+                  onNotice={onNotice}
                   className="composer-model"
-                  aria-label={t("Choose model with selection", {
-                    selection: `${getBotProviderName(bot)} · ${getBotModelName(bot)}`,
-                  })}
-                  title={t("Bot model sentence", {
-                    provider: getBotProviderName(bot),
-                    model: getBotModelName(bot),
-                  })}
-                  onClick={onOpenModel}
-                >
-                  <span className="composer-model-name">
-                    {getBotProviderName(bot)} · {getBotModelName(bot)}
-                  </span>
-                  <span aria-hidden="true">⌄</span>
-                </button>
+                  showProvider
+                  direction="up"
+                />
               )}
               {onSelectProject && (
                 <ComposerProjectChip

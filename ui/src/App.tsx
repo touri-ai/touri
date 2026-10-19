@@ -39,7 +39,6 @@ import { GroupModal, GroupPanel } from "./components/Groups"
 import { InterruptedTasks } from "./components/InterruptedTasks"
 import {
   BotCreateModal,
-  BotModelModal,
   BotSettingsModal,
   DoctorModal,
   ImportWizard,
@@ -119,7 +118,6 @@ type ModalKind =
   | "project"
   | "settings"
   | "bot-settings"
-  | "bot-model"
   | "bot-permissions"
   | "bot-mcp"
   | null
@@ -640,11 +638,11 @@ const AppContent = ({ kernel }: AppProps) => {
     setLocalNotice(userFacingError(message))
     window.setTimeout(() => setLocalNotice(null), 4200)
   }
-  const openModal = (kind: ModalKind): void => {
+  const openModal = (kind: ModalKind, initialBotSection?: BotSettingsSectionId): void => {
     if (kind === "bot") setInitialJob(null)
     if (kind === "group") setGroupDraft(null)
     if (kind !== "settings" && kind !== "doctor" && kind !== "bot-settings") setSettingFocus(null)
-    if (kind === "bot-settings") setBotSettingsSection(undefined)
+    if (kind === "bot-settings") setBotSettingsSection(initialBotSection)
     if (kind === "project") setProjectLinkBotId(null)
     setModal(kind)
   }
@@ -863,6 +861,7 @@ const AppContent = ({ kernel }: AppProps) => {
         routines={botRoutines}
         actions={actions}
         onClose={closeModal}
+        onNotice={showNotice}
       />
     )
   if (data.bots.length === 0)
@@ -1191,7 +1190,10 @@ const AppContent = ({ kernel }: AppProps) => {
                             messages={selectedMessages}
                             runs={data.runs}
                             projects={data.projects}
-                            onOpenModel={() => openModal("bot-model")}
+                            onSaveModel={(model) =>
+                              selectedBot ? actions.updateBotModel(selectedBot.id, model) : Promise.resolve()
+                            }
+                            onNotice={showNotice}
                             onSelectProject={async (projectId) => {
                               if (selectedBot) await actions.updateBot(selectedBot.id, { projectId })
                             }}
@@ -1297,7 +1299,7 @@ const AppContent = ({ kernel }: AppProps) => {
                                 }}
                                 onSettings={() => openModal("bot-settings")}
                                 onRoutines={() => openBotRoutines(selectedBot.id)}
-                                onModel={() => openModal("bot-model")}
+                                onModel={() => openModal("bot-settings", "model")}
                                 onPermissions={() => openModal("bot-permissions")}
                                 onPreview={() => setScreen("preview")}
                                 onRole={(roleLine) => actions.updateBot(selectedBot.id, { roleLine })}
@@ -1362,15 +1364,6 @@ const AppContent = ({ kernel }: AppProps) => {
                   setRoute({ section: "bots", screen: "preview" })
                 }}
                 onNotice={showNotice}
-              />
-            )}
-            {modal === "bot-model" && selectedBot && (
-              <BotModelModal
-                key={`${selectedBot.id}:${selectedBot.provider}`}
-                api={api}
-                bot={selectedBot}
-                onSave={(model) => actions.updateBot(selectedBot.id, { model })}
-                onClose={closeModal}
               />
             )}
             {botSettingsModal}
