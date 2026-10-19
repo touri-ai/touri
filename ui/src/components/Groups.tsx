@@ -51,29 +51,37 @@ export const GroupSidebar = ({
   locale?: Locale
 }) => (
   <section className="group-sidebar" aria-label={t("Bot groups", {}, locale)}>
-    <div className="group-sidebar-heading">
-      <span>
-        {t("Bot groups", {}, locale)} <small>{groups.length}</small>
-      </span>
-      <button type="button" aria-label={t("Criar grupo", {}, locale)} onClick={onCreate}>
-        +
+    {groups.length === 0 ? (
+      <button type="button" className="group-empty-create" onClick={onCreate}>
+        <span aria-hidden="true">+</span>
+        {t("Criar grupo", {}, locale)}
       </button>
-    </div>
-    {groups.length === 0 && <p className="group-empty">{t("Reúna seus bots em uma conversa.", {}, locale)}</p>}
-    {groups.map((group) => (
-      <GroupSidebarEntry
-        key={group.id}
-        group={group}
-        bots={bots}
-        threads={threads.filter((thread) => thread.groupId === group.id && !thread.groupThreadId)}
-        selectedThreadId={selectedThreadId}
-        onSelect={onSelect}
-        onEdit={() => onEdit(group)}
-        onNewThread={() => onNewThread(group)}
-        onDelete={onDelete}
-        locale={locale}
-      />
-    ))}
+    ) : (
+      <>
+        <div className="group-sidebar-heading">
+          <span>
+            {t("Bot groups", {}, locale)} <small>{groups.length}</small>
+          </span>
+          <button type="button" aria-label={t("Criar grupo", {}, locale)} onClick={onCreate}>
+            +
+          </button>
+        </div>
+        {groups.map((group) => (
+          <GroupSidebarEntry
+            key={group.id}
+            group={group}
+            bots={bots}
+            threads={threads.filter((thread) => thread.groupId === group.id && !thread.groupThreadId)}
+            selectedThreadId={selectedThreadId}
+            onSelect={onSelect}
+            onEdit={() => onEdit(group)}
+            onNewThread={() => onNewThread(group)}
+            onDelete={onDelete}
+            locale={locale}
+          />
+        ))}
+      </>
+    )}
   </section>
 )
 
