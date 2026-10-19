@@ -949,7 +949,7 @@
   margin-top: var(--space-8);
 }
 .bot-folder-settings > strong {
-  font-size: var(--type-13);
+  font-size: var(--fs-meta);
   font-weight: var(--weight-medium);
 }
 .bot-folder-settings > .button,
@@ -1006,7 +1006,7 @@
   gap: 8px;
 }
 .discovered-projects > strong {
-  font-size: var(--type-13);
+  font-size: var(--fs-meta);
   font-weight: var(--weight-medium);
 }
 /* Repositories read as one list panel, the same as the folder picker. */

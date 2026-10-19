@@ -79,7 +79,7 @@ input:is([type="checkbox"], [type="radio"], [type="range"]):focus-visible {
 :where(.button-quiet, .outline-button) {
   padding: var(--space-8) var(--space-12);
   border-radius: var(--radius-8);
-  font-size: var(--type-12);
+  font-size: var(--fs-caption);
 }
 /* Thin themed scrollbars; classic Windows scrollbars bring arrow buttons and a light track. */
 * {
