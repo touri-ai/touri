@@ -533,9 +533,9 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
     const budget = run.routineRunId
       ? (db
           .query(
-            "SELECT r.timeout_minutes FROM routine_runs rr JOIN routines r ON r.id = rr.routine_id WHERE rr.id = ?",
+            "SELECT r.timeout_minutes, rr.started_at FROM routine_runs rr JOIN routines r ON r.id = rr.routine_id WHERE rr.id = ?",
           )
-          .get(run.routineRunId) as { timeout_minutes: number } | null)
+          .get(run.routineRunId) as { timeout_minutes: number; started_at: number | null } | null)
       : null
     return {
       run,
@@ -549,7 +549,7 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
       children: new Set(),
       completion: Promise.withResolvers<void>(),
       tail: run.requestMessageId,
-      deadline: budget ? Date.now() + budget.timeout_minutes * 60_000 : null,
+      deadline: budget ? (budget.started_at ?? Date.now()) + budget.timeout_minutes * 60_000 : null,
     }
   }
   const enqueue: ServiceMap["groups.runtime"]["enqueue"] = (args) => {
@@ -856,10 +856,11 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
     const group = groups.get(row.group_id)
     if (!run || !group) return
 
-    const request = store
-      .activePath({ threadId: run.threadId, ...(run.requestMessageId ? { leafId: run.requestMessageId } : {}) })
-      .find((message) => message.id === run.requestMessageId)
-    const action = request?.parts.find(
+    const request = db
+      .query("SELECT parts_json FROM messages WHERE thread_id = ? AND id = ?")
+      .get(run.threadId, run.requestMessageId) as { parts_json: string } | null
+    const parts: MessagePart[] = request ? JSON.parse(request.parts_json) : []
+    const action = parts.find(
       (part) => part.type === "notice" && ["group_ask_all", "group_summary"].includes(part.code),
     )
     const turn = getTurn(
