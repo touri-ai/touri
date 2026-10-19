@@ -6,6 +6,22 @@ import { TRANSCRIPT_RETENTION } from "./transcript-storage"
 type Progress = NonNullable<ApiRoutes["GET /health"]["res"]["historyMigration"]>
 type ThreadProgress = { threadId: string; done: number; total: number; retentionCursor?: number }
 const prefix = "transcript.backfill.7.thread."
+const isSqliteBusy = (error: unknown): boolean =>
+  typeof error === "object" &&
+  error !== null &&
+  "code" in error &&
+  typeof error.code === "string" &&
+  (error.code.startsWith("SQLITE_BUSY") || error.code.startsWith("SQLITE_LOCKED"))
+
+const withoutBusyWait = <Value>(database: Database, operation: () => Value): Value => {
+  const busyTimeout = (database.query("PRAGMA busy_timeout").get() as { timeout: number }).timeout
+  database.exec("PRAGMA busy_timeout = 0")
+  try {
+    return operation()
+  } finally {
+    database.exec(`PRAGMA busy_timeout = ${busyTimeout}`)
+  }
+}
 
 // Reserve each thread's historical sequence range before allowing live writers.
 // This scans only the existing message key index, not message bodies, and writes
@@ -219,15 +235,23 @@ export const startHistoryBackfill = (
 ): (() => void) => {
   let stopped = false
   let timer: ReturnType<typeof setTimeout> | undefined
+  let busyAttempts = 0
   const step = (): void => {
     if (stopped) return
     try {
       const before = historyMigrationStatus(database)
       const progress = runStage
-        ? runStage("history_backfill_batch", () => backfillHistoryBatch(database))
-        : backfillHistoryBatch(database)
+        ? runStage("history_backfill_batch", () => withoutBusyWait(database, () => backfillHistoryBatch(database)))
+        : withoutBusyWait(database, () => backfillHistoryBatch(database))
+      busyAttempts = 0
       if (progress.running) timer = setTimeout(step, progress.done === before.done ? 0 : 10)
     } catch (error) {
+      if (isSqliteBusy(error)) {
+        const delayMs = Math.min(1_000, 50 * 2 ** Math.min(busyAttempts, 4))
+        busyAttempts += 1
+        timer = setTimeout(step, delayMs)
+        return
+      }
       onError(error)
       // Keep the committed marker and retry without making startup fail.
       timer = setTimeout(step, 1000)

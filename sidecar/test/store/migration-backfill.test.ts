@@ -6,7 +6,12 @@ import { join } from "node:path"
 import { createKernel } from "../../src/kernel"
 import { openDatabase, SCHEMA_VERSION } from "../../src/kernel/db"
 import { createEventBus } from "../../src/kernel/event-bus"
-import { backfillHistoryBatch, historyMigrationStatus, hydrateHistoryEvent } from "../../src/kernel/history-backfill"
+import {
+  backfillHistoryBatch,
+  historyMigrationStatus,
+  hydrateHistoryEvent,
+  startHistoryBackfill,
+} from "../../src/kernel/history-backfill"
 import { legacySourceRebuild } from "../../src/kernel/legacySourceRebuild"
 import baseSql from "../../src/kernel/migrations/0001.sql" with { type: "text" }
 import notificationsSql from "../../src/kernel/migrations/0002.sql" with { type: "text" }
@@ -185,6 +190,44 @@ test("schema 11 answers health in under a second while a 2–5 MB history is bac
     rmSync(root, { recursive: true, force: true })
   }
 })
+
+test("history backfill yields and retries while another connection holds the write lock", async () => {
+  const root = mkdtempSync(join(tmpdir(), "touri-backfill-busy-"))
+  const filename = join(root, "touri.db")
+  let database: Database | undefined
+  let blocker: Database | undefined
+  let stop: (() => void) | undefined
+  let release: ReturnType<typeof setTimeout> | undefined
+  try {
+    legacyDatabase(root, 1, 1, 1)
+    database = openDatabase({ filename })
+    blocker = new Database(filename)
+    blocker.exec("BEGIN IMMEDIATE")
+    let timerFired = false
+    const startedAt = performance.now()
+    release = setTimeout(() => {
+      timerFired = true
+      blocker?.exec("ROLLBACK")
+    }, 200)
+    stop = startHistoryBackfill(database, () => {
+      throw new Error("Busy history backfill should retry without reporting an error")
+    })
+
+    const deadline = Date.now() + 2_000
+    while (historyMigrationStatus(database).running && Date.now() < deadline) await Bun.sleep(10)
+
+    expect(timerFired).toBe(true)
+    expect(performance.now() - startedAt).toBeLessThan(1_000)
+    expect(historyMigrationStatus(database)).toEqual({ running: false, done: 1, total: 1 })
+  } finally {
+    if (stop) stop()
+    if (release) clearTimeout(release)
+    if (blocker?.inTransaction) blocker.exec("ROLLBACK")
+    blocker?.close()
+    database?.close()
+    rmSync(root, { recursive: true, force: true })
+  }
+}, 10_000)
 
 test("interrupted batches resume idempotently and match the shipped synchronous message projection and transcript", () => {
   const root = mkdtempSync(join(tmpdir(), "touri-migration-resume-"))
