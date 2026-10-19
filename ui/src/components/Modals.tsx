@@ -1188,20 +1188,19 @@ export const BotSettingsModal = ({
           </SettingsRow>
         </SettingsGroup>
         <SettingsGroup>
-          <SettingsRow
-            title={t("Onde o bot responde")}
-            description={t("Automatic conversation mode help")}
-          >
+          <SettingsRow title={t("Onde o bot responde")} description={t("Automatic conversation mode help")}>
             <div
               className="bot-conversation-mode-options"
               role="radiogroup"
               aria-label={t("Onde o bot responde")}
               data-setting-id="automaticConversationMode"
             >
-              {([
-                ["main", t("Na conversa principal")],
-                ["task", t("Uma conversa nova por tarefa")],
-              ] as const).map(([mode, label]) => (
+              {(
+                [
+                  ["main", t("Na conversa principal")],
+                  ["task", t("Uma conversa nova por tarefa")],
+                ] as const
+              ).map(([mode, label]) => (
                 <label key={mode}>
                   <input
                     type="radio"

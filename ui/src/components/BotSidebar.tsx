@@ -632,9 +632,7 @@ const BotEntry = ({
                 : relativeThreadDate(thread.updatedAt)
             const dateTitle =
               thread.kind === "routine" ? getRoutineRunDateLabel(timestamp, "pt-BR", timeZone) : undefined
-            const secondaryLabel = routineRun
-              ? `${countLabel ?? ""} · ${dateLabel}`
-              : countLabel ?? dateLabel
+            const secondaryLabel = routineRun ? `${countLabel ?? ""} · ${dateLabel}` : (countLabel ?? dateLabel)
 
             return (
               <ThreadRow
