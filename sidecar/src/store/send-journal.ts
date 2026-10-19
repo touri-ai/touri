@@ -59,20 +59,22 @@ export const createSendJournal = ({
     }
     if (!enqueue) return
     try {
-      database.transaction(() => {
-        setStatus(entry, "sent")
-        const queued = enqueue({ threadId: entry.thread_id, requestMessageId: entry.message_id, trigger: "user" })
-        if (!queued.success) {
-          setStatus(entry, "failed", null, queued.errorCode)
-          return
-        }
-        // An acknowledgement requires a run persisted by enqueue in this same transaction.
-        const persisted = database
-          .query("SELECT id FROM runs WHERE id = ? AND thread_id = ?")
-          .get(queued.run.id, entry.thread_id)
-        if (!persisted) throw new TouriError("TOURI-E1010")
-        setStatus(entry, "acked", queued.run.id)
-      })()
+      database
+        .transaction(() => {
+          setStatus(entry, "sent")
+          const queued = enqueue({ threadId: entry.thread_id, requestMessageId: entry.message_id, trigger: "user" })
+          if (!queued.success) {
+            setStatus(entry, "failed", null, queued.errorCode)
+            return
+          }
+          // An acknowledgement requires a run persisted by enqueue in this same transaction.
+          const persisted = database
+            .query("SELECT id FROM runs WHERE id = ? AND thread_id = ?")
+            .get(queued.run.id, entry.thread_id)
+          if (!persisted) throw new TouriError("TOURI-E1010")
+          setStatus(entry, "acked", queued.run.id)
+        })
+        .immediate()
     } catch {
       // Roll back any partial run, then make this nonce terminal so retries cannot enqueue twice.
       database.transaction(() => setStatus(entry, "failed", null, "TOURI-E1010"))()
@@ -156,31 +158,33 @@ export const createSendJournal = ({
             },
       )
     }
-    const inserted = database.transaction(() => {
-      const result = store.insertMessage({
-        message: {
-          id: `send:${nonce}`,
-          threadId: input.threadId,
-          parentId: input.parentId,
-          role: "user",
-          kind: "text",
-          status: "complete",
-          runId: null,
-          text: input.text,
-          parts,
-          sender: null,
-          source: "local",
-          delivery: { clientNonce: nonce, deadline, status: "queued" },
-        },
+    const inserted = database
+      .transaction(() => {
+        const result = store.insertMessage({
+          message: {
+            id: `send:${nonce}`,
+            threadId: input.threadId,
+            parentId: input.parentId,
+            role: "user",
+            kind: "text",
+            status: "complete",
+            runId: null,
+            text: input.text,
+            parts,
+            sender: null,
+            source: "local",
+            delivery: { clientNonce: nonce, deadline, status: "queued" },
+          },
+        })
+        if (!result.success) return result
+        database
+          .query(
+            "INSERT INTO send_journal(thread_id, client_nonce, request_json, message_id, deadline, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'queued', ?, ?)",
+          )
+          .run(input.threadId, nonce, requestJson, result.message.id, deadline, Date.now(), Date.now())
+        return result
       })
-      if (!result.success) return result
-      database
-        .query(
-          "INSERT INTO send_journal(thread_id, client_nonce, request_json, message_id, deadline, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'queued', ?, ?)",
-        )
-        .run(input.threadId, nonce, requestJson, result.message.id, deadline, Date.now(), Date.now())
-      return result
-    })()
+      .immediate()
     if (!inserted.success) return { status: 400, json: { errorCode: inserted.errorCode, error: inserted.error } }
     const entry = find(input.threadId, nonce)
     if (!entry) throw new Error("Send journal entry missing after insert")

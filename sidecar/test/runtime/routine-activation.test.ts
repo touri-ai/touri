@@ -132,7 +132,7 @@ const fixture = async (approvals: Bot["approvals"] = "never") => {
   cleanups.push(async () => {
     unsubscribe()
     await runtime.kernel.services.use("runtime.shutdown")?.()
-    runtime.stop()
+    await runtime.stop()
     rmSync(root, { recursive: true, force: true })
   })
   return { runtime, request, bot, cards, publishedCards, controller, call, gatewayCall, routine, tools, ctx }

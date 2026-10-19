@@ -60,33 +60,35 @@ export const createGroupStore = (kernel: Kernel) => {
     )
   }
   const save = (input: GroupInput, existing?: BotGroup): BotGroup =>
-    db.transaction(() => {
-      const id = existing?.id ?? kernel.newId()
-      const at = Date.now()
-      db.query(`INSERT INTO bot_groups(id,name,color,avatar_shape,avatar_seed,coordinator_bot_id,created_at,updated_at)
+    db
+      .transaction(() => {
+        const id = existing?.id ?? kernel.newId()
+        const at = Date.now()
+        db.query(`INSERT INTO bot_groups(id,name,color,avatar_shape,avatar_seed,coordinator_bot_id,created_at,updated_at)
       VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,color=excluded.color,
       avatar_shape=excluded.avatar_shape,coordinator_bot_id=excluded.coordinator_bot_id,updated_at=excluded.updated_at`).run(
-        id,
-        input.name.trim(),
-        input.color,
-        input.avatarShape,
-        existing?.avatarSeed ?? id,
-        input.coordinatorBotId,
-        existing?.createdAt ?? at,
-        at,
-      )
-      db.query("DELETE FROM group_members WHERE group_id = ?").run(id)
-      input.memberIds.forEach((botId, position) => {
-        db.query("INSERT INTO group_members VALUES(?,?,?)").run(id, botId, position)
+          id,
+          input.name.trim(),
+          input.color,
+          input.avatarShape,
+          existing?.avatarSeed ?? id,
+          input.coordinatorBotId,
+          existing?.createdAt ?? at,
+          at,
+        )
+        db.query("DELETE FROM group_members WHERE group_id = ?").run(id)
+        input.memberIds.forEach((botId, position) => {
+          db.query("INSERT INTO group_members VALUES(?,?,?)").run(id, botId, position)
+        })
+        db.query("UPDATE threads SET bot_id=? WHERE group_id=? AND group_thread_id IS NULL").run(
+          input.memberIds[0] ?? "",
+          id,
+        )
+        const group = get(id)
+        if (!group) throw new Error("Group missing after save")
+        return group
       })
-      db.query("UPDATE threads SET bot_id=? WHERE group_id=? AND group_thread_id IS NULL").run(
-        input.memberIds[0] ?? "",
-        id,
-      )
-      const group = get(id)
-      if (!group) throw new Error("Group missing after save")
-      return group
-    })()
+      .immediate()
   const threads = (groupId: string): Thread[] =>
     (
       db

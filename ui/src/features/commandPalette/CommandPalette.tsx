@@ -225,7 +225,7 @@ export const CommandPalette = ({
               type="text"
               role="combobox"
               aria-label={PALETTE_INPUT_LABEL}
-              aria-expanded={open}
+              aria-expanded={open && flat.length > 0}
               aria-controls={`${baseId}-listbox`}
               aria-autocomplete="list"
               aria-activedescendant={activeIndex >= 0 ? optionId(activeIndex) : undefined}
@@ -245,49 +245,53 @@ export const CommandPalette = ({
             ref={listRef}
             id={`${baseId}-listbox`}
             className="command-palette-list"
-            role="listbox"
-            aria-label="Resultados"
+            {...(flat.length > 0 ? { role: "listbox" as const, "aria-label": "Resultados" } : {})}
           >
-            {groups.map((group) => (
-              // biome-ignore lint/a11y/useSemanticElements: ARIA listbox groups are role="group"; a fieldset is not valid inside a listbox
-              <div key={group.id} role="group" aria-labelledby={`${baseId}-group-${group.id}`}>
-                <div id={`${baseId}-group-${group.id}`} className="command-palette-group" role="presentation">
-                  {group.label}
+            {flat.length === 0 ? (
+              <p className="command-palette-empty" aria-hidden="true">
+                Nenhum resultado encontrado.
+              </p>
+            ) : (
+              groups.map((group) => (
+                // biome-ignore lint/a11y/useSemanticElements: ARIA listbox groups are role="group"; a fieldset is not valid inside a listbox
+                <div key={group.id} role="group" aria-labelledby={`${baseId}-group-${group.id}`}>
+                  <div id={`${baseId}-group-${group.id}`} className="command-palette-group" role="presentation">
+                    {group.label}
+                  </div>
+                  {group.items.map((item) => {
+                    position += 1
+                    const current = position
+                    const selected = current === activeIndex
+                    return (
+                      // biome-ignore lint/a11y/useKeyWithClickEvents: keyboard selection runs through the combobox and aria-activedescendant
+                      <div
+                        key={item.id}
+                        id={optionId(current)}
+                        role="option"
+                        tabIndex={-1}
+                        aria-selected={selected}
+                        data-active={selected || undefined}
+                        data-palette-item={item.id}
+                        className="command-palette-option"
+                        onMouseMove={() => {
+                          if (!selected) setActive(current)
+                        }}
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => run(item)}
+                      >
+                        <span className="command-palette-option-copy">
+                          <strong>{item.label}</strong>
+                          {item.detail && <small>{item.detail}</small>}
+                        </span>
+                        <span className="command-palette-option-hint" aria-hidden="true">
+                          ↵
+                        </span>
+                      </div>
+                    )
+                  })}
                 </div>
-                {group.items.map((item) => {
-                  position += 1
-                  const current = position
-                  const selected = current === activeIndex
-                  return (
-                    // biome-ignore lint/a11y/useKeyWithClickEvents: keyboard selection runs through the combobox and aria-activedescendant
-                    <div
-                      key={item.id}
-                      id={optionId(current)}
-                      role="option"
-                      tabIndex={-1}
-                      aria-selected={selected}
-                      data-active={selected || undefined}
-                      data-palette-item={item.id}
-                      className="command-palette-option"
-                      onMouseMove={() => {
-                        if (!selected) setActive(current)
-                      }}
-                      onMouseDown={(event) => event.preventDefault()}
-                      onClick={() => run(item)}
-                    >
-                      <span className="command-palette-option-copy">
-                        <strong>{item.label}</strong>
-                        {item.detail && <small>{item.detail}</small>}
-                      </span>
-                      <span className="command-palette-option-hint" aria-hidden="true">
-                        ↵
-                      </span>
-                    </div>
-                  )
-                })}
-              </div>
-            ))}
-            {flat.length === 0 && <p className="command-palette-empty">Nenhum resultado encontrado.</p>}
+              ))
+            )}
           </div>
           <div className="command-palette-footer" aria-hidden="true">
             <span>

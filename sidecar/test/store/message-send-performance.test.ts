@@ -111,7 +111,7 @@ test.each(process.env.TOURI_MESSAGE_STRESS === "1" ? [1] : [1, 2, 3])(
           })
         }
       })
-      fixture.stageTimings.measure("transcript_journal_flush", () => fixture.store.flushWrites?.())
+      await fixture.stageTimings.measureAsync("transcript_journal_flush", () => fixture.store.flushWritesAsync?.())
       await Bun.sleep(1)
     }
     await Bun.sleep(10)
@@ -197,8 +197,8 @@ test.each(process.env.TOURI_MESSAGE_STRESS === "1" ? [1] : [1, 2, 3])(
 const getFixture = async (threadIds: ReadonlyArray<string>) => {
   const root = mkdtempSync(join(tmpdir(), "touri-message-performance-"))
   const runtime = getOfflineRuntime(root)
-  cleanups.add(() => {
-    runtime.stop()
+  cleanups.add(async () => {
+    await runtime.stop()
     rmSync(root, { recursive: true, force: true })
   })
   runtime.kernel.services.use("storage.maintenance")?.dispose()
@@ -412,6 +412,20 @@ const getStageTimings = () => {
       const startedAt = performance.now()
       try {
         return action(input as Input)
+      } finally {
+        const durationMs = performance.now() - startedAt
+        const timing = stages.get(stage)
+        if (timing) {
+          timing.calls += 1
+          timing.totalMs += durationMs
+          timing.maxMs = Math.max(timing.maxMs, durationMs)
+        } else stages.set(stage, { calls: 1, totalMs: durationMs, maxMs: durationMs })
+      }
+    },
+    measureAsync: async <T>(stage: string, action: () => Promise<T> | undefined): Promise<T | undefined> => {
+      const startedAt = performance.now()
+      try {
+        return await action()
       } finally {
         const durationMs = performance.now() - startedAt
         const timing = stages.get(stage)

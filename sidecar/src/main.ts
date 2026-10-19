@@ -113,7 +113,7 @@ const runServe = async (): Promise<void> => {
       await runtime.kernel.services.use("runtime.shutdown")?.()
       runtime.emitHostNotification({ method: "app.willQuit", params: {} })
       await runtime.kernel.services.use("vm.shutdown")?.()
-      runtime.stop()
+      await runtime.stop()
       lease.release()
       process.exit(0)
     })().catch((error) => {

@@ -67,8 +67,8 @@ const fixture = async (runtimeAvailable = true) => {
     store,
     persistence,
     calls,
-    close: () => {
-      runtime.stop()
+    close: async () => {
+      await runtime.stop()
       rmSync(root, { recursive: true, force: true })
     },
   }
@@ -109,6 +109,7 @@ test("rejected appends persist safe metadata and replay once with contiguous rev
     f.store.appendDelta({ ...input, expectedSeq: 1 })
     f.store.appendDelta({ ...input, delta: "🚀".repeat(MAX_TRANSCRIPT_DELTA_BYTES / 4 + 1) })
     f.store.appendDelta({ ...input, partIndex: 2 })
+    await f.store.flushWritesAsync?.()
     const records = f.db.query("SELECT seq, record_json FROM rejections ORDER BY seq").all() as {
       seq: number
       record_json: string
@@ -150,7 +151,7 @@ test("rejected appends persist safe metadata and replay once with contiguous rev
       restarted.close()
     }
   } finally {
-    f.close()
+    await f.close()
   }
 })
 
@@ -165,6 +166,7 @@ test("terminal, missing and invalid appends are recorded; rolled-back rejections
     f.store.appendDelta({ ...input, partIndex: -1 })
     f.store.appendDelta({ ...input, delta: "" })
     f.store.appendDelta({ ...input, generation: Number.NaN })
+    await f.store.flushWritesAsync?.()
     const before = f.db.query("SELECT COUNT(*) AS n FROM rejections").get()
     const events: UiEventEnvelope[] = []
     f.runtime.kernel.subscribe((event) => events.push(event))
@@ -188,7 +190,7 @@ test("terminal, missing and invalid appends are recorded; rolled-back rejections
       { reason: "validation" },
     ])
   } finally {
-    f.close()
+    await f.close()
   }
 })
 
@@ -200,7 +202,7 @@ test("a stored sequence collision rejects the append and advances from the actua
       .query("INSERT INTO transcript_entries(thread_id,seq,generation,event_json,at) VALUES ('t',2,1,?,?)")
       .run(JSON.stringify({ type: "transcript.resync" }), Date.now())
     f.store.appendDelta({ threadId: "t", messageId: "reply", partIndex: 0, delta: "Conflito" })
-    f.store.flushWrites?.()
+    await f.store.flushWritesAsync?.()
     expect(f.db.query("SELECT seq, json_extract(record_json, '$.reason') AS reason FROM rejections").get()).toEqual({
       seq: 3,
       reason: "seq_conflict",
@@ -209,7 +211,7 @@ test("a stored sequence collision rejects the append and advances from the actua
     f.store.appendDelta({ threadId: "t", messageId: "reply", partIndex: 0, delta: "Retomado", expectedSeq: 3 })
     expect(f.store.activePath({ threadId: "t" })[0]?.text).toBe("Retomado")
   } finally {
-    f.close()
+    await f.close()
   }
 })
 
@@ -279,7 +281,7 @@ test("reconciliation restores completed results missing from the message and sum
     insertReply(f, "another-branch")
     expect(tools.summary(f.store, "t")).toBeNull()
   } finally {
-    f.close()
+    await f.close()
   }
 })
 
@@ -292,7 +294,7 @@ test("500 streaming deltas write small replay entries and growth stays linear in
       const delta = "Olá 🚀 ".repeat(3)
       for (let index = 0; index < chunks; index++)
         f.store.appendDelta({ threadId: "t", messageId: "reply", partIndex: 0, delta })
-      f.store.flushWrites?.()
+      await f.store.flushWritesAsync?.()
       const walBytes = statSync(`${f.runtime.kernel.paths.db}-wal`).size
       const entries = f.db.query("SELECT event_json FROM transcript_entries ORDER BY seq").all() as {
         event_json: string
@@ -317,7 +319,7 @@ test("500 streaming deltas write small replay entries and growth stays linear in
       expect(bytes).toBeLessThan(Buffer.byteLength(delta.repeat(chunks)) * 40)
       return { bytes, walBytes }
     } finally {
-      f.close()
+      await f.close()
     }
   }
   const small = await measure(500)
@@ -326,7 +328,7 @@ test("500 streaming deltas write small replay entries and growth stays linear in
   expect(large.walBytes).toBeLessThan(small.walBytes * 2.4)
 })
 
-test("a crash before a projection checkpoint recovers text and reasoning without duplicating replay", async () => {
+test("a worker commit materializes text and reasoning without duplicating replay", async () => {
   const f = await fixture()
   try {
     insertReply(f, "reply", [
@@ -335,11 +337,9 @@ test("a crash before a projection checkpoint recovers text and reasoning without
     ])
     f.store.appendDelta({ threadId: "t", messageId: "reply", partIndex: 0, delta: "Pensando 🚀" })
     f.store.appendDelta({ threadId: "t", messageId: "reply", partIndex: 1, delta: "Resposta" })
-    f.store.flushWrites?.()
-    expect(f.db.query("SELECT text FROM messages WHERE id = 'reply'").get()).toEqual({ text: "" })
-    expect(f.db.query("SELECT * FROM transcript_pending_deltas").all()).toEqual([
-      { thread_id: "t", message_id: "reply" },
-    ])
+    await f.store.flushWritesAsync?.()
+    expect(f.db.query("SELECT text FROM messages WHERE id = 'reply'").get()).toEqual({ text: "Resposta" })
+    expect(f.db.query("SELECT * FROM transcript_pending_deltas").all()).toEqual([])
     const db = openDatabase({ filename: f.runtime.kernel.paths.db })
     try {
       const bus = createEventBus(db)
@@ -362,7 +362,7 @@ test("a crash before a projection checkpoint recovers text and reasoning without
       db.close()
     }
   } finally {
-    f.close()
+    await f.close()
   }
 })
 
@@ -373,7 +373,7 @@ test("checkpointed transcript reads never revisit historical delta bodies", asyn
     for (let index = 0; index < 1000; index++)
       f.store.appendDelta({ threadId: "t", messageId: "reply", partIndex: 0, delta: "Texto 🚀 " })
     // The materializer consumes the durable journal, after the stream buffer is drained.
-    f.store.flushWrites?.()
+    await f.store.flushWritesAsync?.()
     materializeTranscript(f.db)
     const reads: string[] = []
     const query = f.db.query.bind(f.db)
@@ -389,14 +389,14 @@ test("checkpointed transcript reads never revisit historical delta bodies", asyn
     expect(reads).toHaveLength(100)
     expect(reads.every((sql) => sql === "SELECT 1 FROM transcript_pending_deltas LIMIT 1")).toBe(true)
     f.store.appendDelta({ threadId: "t", messageId: "reply", partIndex: 0, delta: "Fim" })
-    f.store.flushWrites?.()
+    await f.store.flushWritesAsync?.()
     materializeTranscript(f.db)
     expect(f.db.query("SELECT text FROM messages WHERE id = 'reply'").get()).toEqual({
       text: `${"Texto 🚀 ".repeat(1000)}Fim`,
     })
     expect(f.db.query("SELECT * FROM transcript_pending_deltas").all()).toEqual([])
   } finally {
-    f.close()
+    await f.close()
   }
 })
 
@@ -412,7 +412,7 @@ test("a rolled-back delta cannot poison the next stream even if another write re
     ).toThrow("rollback")
     insertReply(f, "other")
     f.store.appendDelta({ threadId: "t", messageId: "reply", partIndex: 0, delta: "Preservar" })
-    f.store.flushWrites?.()
+    await f.store.flushWritesAsync?.()
     materializeTranscript(f.db)
     expect(f.db.query("SELECT text FROM messages WHERE id = 'reply'").get()).toEqual({ text: "Preservar" })
     expect(f.db.query("SELECT seq FROM transcript_entries ORDER BY seq").all()).toEqual([
@@ -421,7 +421,7 @@ test("a rolled-back delta cannot poison the next stream even if another write re
       { seq: 3 },
     ])
   } finally {
-    f.close()
+    await f.close()
   }
 })
 
@@ -431,7 +431,7 @@ test("retention preserves snapshots, rejects expired cursors, and only compactio
     insertReply(f)
     for (let index = 0; index < 12; index++) {
       f.store.appendDelta({ threadId: "t", messageId: "reply", partIndex: 0, delta: `${index}|` })
-      f.store.flushWrites?.()
+      await f.store.flushWritesAsync?.()
     }
     compactTranscript({ database: f.db, entriesPerThread: 3, events: 4, maxAgeMs: Number.MAX_SAFE_INTEGER })
     const bus = createEventBus(f.db)
@@ -471,7 +471,7 @@ test("retention preserves snapshots, rejects expired cursors, and only compactio
     })
     bus.stop()
   } finally {
-    f.close()
+    await f.close()
   }
 })
 
@@ -541,7 +541,7 @@ test("send journal is durable and one nonce produces exactly one message and run
     expect(f.store.sendMessage?.({ ...request, deadline: 1 }).status).toBe(200)
     expect(f.calls).toHaveLength(1)
   } finally {
-    f.close()
+    await f.close()
   }
 })
 
@@ -596,7 +596,7 @@ test("expired and paused sends keep a failed delivery and create no run", async 
       { status: "failed" },
     ])
   } finally {
-    f.close()
+    await f.close()
   }
 })
 
@@ -626,7 +626,7 @@ test("an enqueue exception rolls back its partial run and persists a terminal fa
     })
     expect(f.db.query("PRAGMA foreign_key_check").all()).toEqual([])
   } finally {
-    f.close()
+    await f.close()
   }
 })
 
@@ -651,7 +651,7 @@ test("a send journal write failure returns a coded error and rolls back the mess
     expect(f.store.sendMessage?.(request).status).toBe(200)
     expect(f.calls).toHaveLength(1)
   } finally {
-    f.close()
+    await f.close()
   }
 })
 
@@ -684,7 +684,7 @@ test("transcript has contiguous per-thread revisions; restart replays an unpubli
     )
     expect(await response.json()).toMatchObject({ entries: [], hasMore: false, resync: true })
   } finally {
-    f.close()
+    await f.close()
   }
 })
 
@@ -705,7 +705,7 @@ test("transaction rollback broadcasts nothing and leaves no transcript or sequen
     f.runtime.kernel.publish({ type: "import.progress", importId: "test", phase: "done", done: 1, total: 1 })
     expect(events.map((event) => event.seq)).toEqual([1])
   } finally {
-    f.close()
+    await f.close()
   }
 })
 
@@ -726,7 +726,7 @@ test("reentrant and failing subscribers preserve ordered delivery for other clie
     await Bun.sleep(0)
     expect(sequences).toEqual([1, 2, 3])
   } finally {
-    f.close()
+    await f.close()
   }
 })
 
@@ -773,7 +773,7 @@ test("terminal messages reject late snapshots and deltas from a second writer", 
     })
     expect(f.store.activePath({ threadId: "t" })[0]).toEqual(terminal)
   } finally {
-    f.close()
+    await f.close()
   }
 })
 
@@ -812,6 +812,7 @@ test("restart resolves open tools and commands without changing already complete
       },
     })
     engine = createRuntimeEngine({ kernel: f.runtime.kernel })
+    await engine.ready
     const reply = f.store.activePath({ threadId: "t" })[0]
     expect(reply?.status).toBe("failed")
     expect(reply?.text).toBe("Parcial")
@@ -842,7 +843,7 @@ test("restart resolves open tools and commands without changing already complete
     expect(completed.resolution).toBe("completed_unobserved")
   } finally {
     await engine?.shutdown()
-    f.close()
+    await f.close()
   }
 })
 
@@ -873,7 +874,36 @@ test("cancel records every open call immediately", async () => {
     expect(tools.record(run, part)).toMatchObject({ resolution: "cancelled_by_user" })
     expect(tools.finish(run, [part], "interrupted")[0]).toMatchObject({ resolution: "cancelled_by_user" })
   } finally {
-    f.close()
+    await f.close()
+  }
+})
+
+test("clearing transient cancellation state keeps the durable recovery marker", async () => {
+  const f = await fixture()
+  try {
+    const run = { ...newRun("cancelled"), status: "canceled" as const }
+    f.persistence.saveRun(run)
+    const tools = createToolResolutions(f.runtime.kernel)
+    const part = {
+      type: "tool_call" as const,
+      callId: "call",
+      tool: "read",
+      summary: "",
+      inputJson: "{}",
+      outputJson: null,
+      ok: null,
+    }
+
+    tools.finish(run, [part], "cancelled_by_user", false)
+    tools.clearPendingMemory(run.id)
+    const lateResult = tools.record(run, { ...part, outputJson: "Synthetic result", ok: true })
+
+    expect(lateResult.resolution).toBe("succeeded")
+    expect(f.db.query("SELECT run_id FROM tool_recovery_pending WHERE run_id = ?").get(run.id)).toEqual({
+      run_id: run.id,
+    })
+  } finally {
+    await f.close()
   }
 })
 
@@ -899,7 +929,7 @@ test("reconciliation closes calls persisted before an assistant message", async 
       error_code: "INTERRUPTED_BY_RESTART",
     })
   } finally {
-    f.close()
+    await f.close()
   }
 })
 
@@ -916,7 +946,7 @@ test("runtime reads committed runs after a journal transaction rolls back", asyn
     expect(f.persistence.listActiveRuns()).toEqual([])
     expect(f.persistence.listQueuedRuns()).toEqual([])
   } finally {
-    f.close()
+    await f.close()
   }
 })
 
@@ -941,7 +971,7 @@ test("durable sends wait for the runtime and then drain once in FIFO order", asy
       { status: "acked" },
     ])
   } finally {
-    f.close()
+    await f.close()
   }
 })
 
@@ -962,6 +992,6 @@ test("an acknowledged queued run is recovered after restart without creating a s
     expect(f.db.query("SELECT status FROM send_journal").get()).toEqual({ status: "acked" })
   } finally {
     await engine?.shutdown()
-    f.close()
+    await f.close()
   }
 })

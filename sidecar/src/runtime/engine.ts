@@ -31,6 +31,7 @@ import { approvalOutcome } from "../approvals/outcome"
 import { delegatedBot } from "../groups/security"
 import { createGroupStore } from "../groups/store"
 import { buildChildEnv } from "../kernel"
+import { writeDatabaseAsync } from "../kernel/database-write"
 import { folderAccessUnavailable, folderGrantProblem, refreshHostFolderAccess } from "../kernel/folder-capability"
 import { hasPathHistory } from "../kernel/message-path"
 import type { PerformanceStage, PerformanceStageRunner } from "../kernel/performance"
@@ -492,17 +493,29 @@ export const createRuntimeEngine = ({
     return isLive(run)
   }
 
-  const finishLiveRun = (run: Run, finish: () => void): void => {
+  const finishLiveRun = async (run: Run, finish: () => void, messageId?: Id): Promise<void> => {
     // Accepted streaming work survives even if the final transaction rolls back.
-    measureStage("runtime_stream_flush", () => kernel.services.use("store.api")?.flushWrites?.())
+    try {
+      await measureStage("runtime_stream_flush", () =>
+        kernel.services.use("store.api")?.flushWritesAsync?.({
+          threadId: run.threadId,
+          ...(messageId ? { messageId } : {}),
+        }),
+      )
+    } catch {
+      // A failed stream drain must not leave its run active or prevent terminal state.
+    }
     const write = (): void => {
-      if (!isLive(run)) return
+      if (!isLive(run)) {
+        tools.clearPendingMemory(run.id)
+        return
+      }
 
       finish()
       tools.clearPending(run.id)
     }
     // The terminal reply, run and tool resolutions have one winning writer.
-    if (kernel.db instanceof Database) kernel.db.transaction(write)()
+    if (kernel.db instanceof Database) await writeDatabaseAsync(kernel.db, write)
     else write()
   }
 
@@ -648,13 +661,15 @@ export const createRuntimeEngine = ({
     run,
     state,
     reason,
+    persist = true,
   }: {
     run: Run
     state: RunState
     reason: "cancelled_by_user" | "failed" | "interrupted_by_restart" | "unknown"
+    persist?: boolean
   }): void => {
     measureStage("runtime_part_finalization", () => {
-      const parts = tools.finish(run, state.parts, reason)
+      const parts = tools.finish(run, state.parts, reason, persist)
       parts.forEach((part, index) => {
         const previous = state.parts[index]
         const entries = Object.entries(part)
@@ -1512,7 +1527,7 @@ export const createRuntimeEngine = ({
         if (deadline) clearTimeout(deadline)
       }
     })()
-    const finalizeProviderTurn = (): void => {
+    const finalizeProviderTurn = async (): Promise<void> => {
       approvalBridge.cancelRun(run.id)
       for (const [approvalId, approval] of pendingApprovals) {
         if (approval.runId !== run.id) continue
@@ -1528,116 +1543,122 @@ export const createRuntimeEngine = ({
           state.dirtyParts.add(approvalIndex)
         }
       }
-      if (!isLive(run)) {
-        active.delete(run.threadId)
-        controllers.delete(run.id)
-        providers.delete(run.id)
-        void drain()
-        return
-      }
-      const elapsed = Date.now() - (run.startedAt ?? Date.now())
-      state.usage.durationMs = elapsed
-      if (result.success) {
-        state.externalSessionId = state.externalSessionId ?? result.externalSessionId
-        state.rolloutPath = state.rolloutPath ?? result.rolloutPath
-        const sessionRow = persistence.getActiveSession({ threadId: thread.id, provider: bot.provider }) ??
-          session ?? {
-            id: kernel.newId(),
-            threadId: thread.id,
-            provider: bot.provider,
+      try {
+        if (!isLive(run)) return
+        const elapsed = Date.now() - (run.startedAt ?? Date.now())
+        state.usage.durationMs = elapsed
+        if (result.success) {
+          state.externalSessionId = state.externalSessionId ?? result.externalSessionId
+          state.rolloutPath = state.rolloutPath ?? result.rolloutPath
+          const sessionRow = persistence.getActiveSession({ threadId: thread.id, provider: bot.provider }) ??
+            session ?? {
+              id: kernel.newId(),
+              threadId: thread.id,
+              provider: bot.provider,
+              externalSessionId: state.externalSessionId,
+              rolloutPath: state.rolloutPath,
+              fingerprint: mcpFingerprint.hash,
+              state: "active",
+              model: bot.model,
+              createdAt: Date.now(),
+              lastUsedAt: Date.now(),
+            }
+          persistence.saveSession({
+            ...sessionRow,
             externalSessionId: state.externalSessionId,
             rolloutPath: state.rolloutPath,
             fingerprint: mcpFingerprint.hash,
             state: "active",
-            model: bot.model,
-            createdAt: Date.now(),
             lastUsedAt: Date.now(),
-          }
-        persistence.saveSession({
-          ...sessionRow,
-          externalSessionId: state.externalSessionId,
-          rolloutPath: state.rolloutPath,
-          fingerprint: mcpFingerprint.hash,
-          state: "active",
-          lastUsedAt: Date.now(),
-        })
-        const providerErrorClass = state.cancelRequested
-          ? "canceled"
-          : (state.completionError?.errorClass ?? (result.status === "succeeded" ? null : "cli_crash"))
-        const workRoot = providerErrorClass ? null : work.publishRoot({ turnId: run.id })
-        const errorClass = workRoot && !workRoot.success ? "tool_error" : providerErrorClass
-        if (!errorClass) {
-          const plan = state.continueAfterApproval
-            ? planContinuation({ run, reason: "permission_granted", lastActivityAt: Date.now() })
-            : null
-          state.continueAfterApproval = false
-          finishLiveRun(run, () => {
-            ensureReply({ run, state, store, parentId: run.requestMessageId ?? thread.activeLeafId ?? run.id })
-            finishParts({ run, state, reason: "unknown" })
-            const conclusion = turnConclusion({
-              parts: state.parts,
-              requestText: (originalRequest ?? request)?.text ?? "",
-              pendingPartText: state.pendingPartText,
-            })
-            if (conclusion)
-              handleEvent({
-                run,
-                store,
-                state,
-                event: { type: "text_delta", itemId: kernel.newId(), delta: conclusion },
-              })
-            publishMessage({ store, state, run, status: "complete" })
-            updateRun(run, {
-              status: "succeeded",
-              errorClass: null,
-              errorMessage: null,
-              usage: state.usage,
-              finishedAt: Date.now(),
-            })
-            if (plan) scheduleContinuation({ run, plan })
-            else {
-              if (remembers && request)
-                mem0?.sync({ botId: bot.id, threadId: thread.id, userText: request.text, assistantText: state.text })
-              finishRoutineRun({ run, state, status: "succeeded" })
-              if (goals.getForRun(run.id)?.status !== "active")
-                notices.done({
-                  botId: run.botId,
-                  threadId: run.threadId,
-                  summary: state.text,
-                  routine: run.trigger === "routine" || run.routineRunId !== null,
-                })
-            }
           })
+          const providerErrorClass = state.cancelRequested
+            ? "canceled"
+            : (state.completionError?.errorClass ?? (result.status === "succeeded" ? null : "cli_crash"))
+          const workRoot = providerErrorClass ? null : work.publishRoot({ turnId: run.id })
+          const errorClass = workRoot && !workRoot.success ? "tool_error" : providerErrorClass
+          if (!errorClass) {
+            const plan = state.continueAfterApproval
+              ? planContinuation({ run, reason: "permission_granted", lastActivityAt: Date.now() })
+              : null
+            state.continueAfterApproval = false
+            await finishLiveRun(
+              run,
+              () => {
+                ensureReply({ run, state, store, parentId: run.requestMessageId ?? thread.activeLeafId ?? run.id })
+                finishParts({ run, state, reason: "unknown" })
+                const conclusion = turnConclusion({
+                  parts: state.parts,
+                  requestText: (originalRequest ?? request)?.text ?? "",
+                  pendingPartText: state.pendingPartText,
+                })
+                if (conclusion)
+                  handleEvent({
+                    run,
+                    store,
+                    state,
+                    event: { type: "text_delta", itemId: kernel.newId(), delta: conclusion },
+                  })
+                publishMessage({ store, state, run, status: "complete" })
+                updateRun(run, {
+                  status: "succeeded",
+                  errorClass: null,
+                  errorMessage: null,
+                  usage: state.usage,
+                  finishedAt: Date.now(),
+                })
+                if (plan) scheduleContinuation({ run, plan })
+                else {
+                  if (remembers && request)
+                    mem0?.sync({
+                      botId: bot.id,
+                      threadId: thread.id,
+                      userText: request.text,
+                      assistantText: state.text,
+                    })
+                  finishRoutineRun({ run, state, status: "succeeded" })
+                  if (goals.getForRun(run.id)?.status !== "active")
+                    notices.done({
+                      botId: run.botId,
+                      threadId: run.threadId,
+                      summary: state.text,
+                      routine: run.trigger === "routine" || run.routineRunId !== null,
+                    })
+                }
+              },
+              state.replyMessageId ?? undefined,
+            )
+          } else {
+            await failTurn({
+              run,
+              state,
+              store,
+              thread,
+              errorClass,
+              errorMessage:
+                workRoot && !workRoot.success
+                  ? "Não foi possível publicar o registro de efeitos do turno"
+                  : (state.completionError?.errorMessage ?? "Provider turn failed"),
+            })
+          }
         } else {
-          failTurn({
+          await failTurn({
             run,
             state,
             store,
             thread,
-            errorClass,
-            errorMessage:
-              workRoot && !workRoot.success
-                ? "Não foi possível publicar o registro de efeitos do turno"
-                : (state.completionError?.errorMessage ?? "Provider turn failed"),
+            errorClass: state.cancelRequested ? "canceled" : (state.completionError?.errorClass ?? result.errorCode),
+            errorMessage: result.error,
           })
         }
-      } else {
-        failTurn({
-          run,
-          state,
-          store,
-          thread,
-          errorClass: state.cancelRequested ? "canceled" : (state.completionError?.errorClass ?? result.errorCode),
-          errorMessage: result.error,
-        })
+      } finally {
+        active.delete(run.threadId)
+        controllers.delete(run.id)
+        providers.delete(run.id)
+        void drain()
       }
-      active.delete(run.threadId)
-      controllers.delete(run.id)
-      providers.delete(run.id)
-      void drain()
     }
-    if (runStage) runStage("runtime_turn_finalization", finalizeProviderTurn)
-    else finalizeProviderTurn()
+    if (runStage) await runStage("runtime_turn_finalization", finalizeProviderTurn)
+    else await finalizeProviderTurn()
   }
 
   const finalizeFailure = ({
@@ -1656,77 +1677,81 @@ export const createRuntimeEngine = ({
     errorClass: RunErrorClass
     errorMessage: string
     continuing?: boolean
-  }): void => {
+  }): Promise<void> => {
     const errorClass = refineErrorClass(reportedErrorClass, errorMessage)
-    finishLiveRun(run, () => {
-      finishParts({
-        run,
-        state,
-        reason:
-          errorClass === "canceled"
-            ? "cancelled_by_user"
-            : errorClass === "app_restart"
-              ? "interrupted_by_restart"
-              : "failed",
-      })
-      state.parts = state.parts.map((part, index) => {
-        if (part.type !== "approval" || part.decision !== "pending") return part
-        pendingApprovals.delete(part.approvalId)
-        notices.resolve({ requestId: part.approvalId, resolution: "deny" })
-        state.dirtyParts.add(index)
-        return { ...part, decision: "expired", resolvedAt: Date.now() }
-      })
-      const safeError = bounded({ value: kernel.redact(errorMessage), max: 2_000 })
-      kernel.log({
-        level: errorClass === "canceled" ? "info" : "error",
-        module: run.provider,
-        msg: "Falha no turno",
-        data: { botId: run.botId, threadId: run.threadId, runId: run.id, errorClass, error: safeError },
-      })
-      ensureReply({ run, state, store, parentId: run.requestMessageId ?? thread.activeLeafId ?? run.id })
-      const noticeCode =
-        errorClass === "canceled" ? "run_canceled" : errorClass === "app_restart" ? "app_restart" : "run_failed"
-      const friendlyError = publicError(errorClass)
-      const failure = safeRunFailure(errorClass, safeError)
-      const friendlyMessage = isMcpStartupError(safeError)
-        ? failure.detail
-        : `${failure.detail} [${friendlyError.code}]`
-      const noticeIndex = state.parts.length
-      state.parts.push({
-        type: "notice",
-        level: errorClass === "canceled" ? "info" : "error",
-        code: noticeCode,
-        ...(noticeCode === "run_failed" ? { failure } : {}),
-        text: errorClass === "canceled" ? "Cancelado por você" : `${errorClass}: ${friendlyMessage}`,
-      })
-      state.dirtyParts.add(noticeIndex)
-      publishMessage({ store, state, run, status: statusForError(errorClass) === "canceled" ? "canceled" : "failed" })
-      const carryover = state.turnStarted
-        ? `[touri: your previous turn ended with ${errorClass}. Partial output: "${bounded({ value: state.text, max: 1_500 })}"]`
-        : `[touri: your previous turn did not run (${errorClass}: ${safeError}). The user's message was: "${bounded({ value: getActivePathMessage({ store, run })?.text ?? "", max: 1_500 })}"]`
-      store.updateThread({ threadId: thread.id, patch: { carryoverNote: carryover } })
-      updateRun(run, {
-        status: statusForError(errorClass),
-        errorClass,
-        errorMessage: safeError,
-        usage: state.usage,
-        finishedAt: Date.now(),
-      })
-      if (continuing) return
-      finishRoutineRun({
-        run,
-        state,
-        status: errorClass === "canceled" || errorClass === "app_restart" ? "canceled" : "failed",
-        summary: state.text || `${errorClass}: ${safeError}`,
-      })
-      if (errorClass === "canceled" || errorClass === "app_restart") return
-      notices.failure({
-        botId: run.botId,
-        threadId: run.threadId,
-        routine: run.routineRunId !== null,
-        reason: friendlyMessage,
-      })
-    })
+    return finishLiveRun(
+      run,
+      () => {
+        finishParts({
+          run,
+          state,
+          reason:
+            errorClass === "canceled"
+              ? "cancelled_by_user"
+              : errorClass === "app_restart"
+                ? "interrupted_by_restart"
+                : "failed",
+        })
+        state.parts = state.parts.map((part, index) => {
+          if (part.type !== "approval" || part.decision !== "pending") return part
+          pendingApprovals.delete(part.approvalId)
+          notices.resolve({ requestId: part.approvalId, resolution: "deny" })
+          state.dirtyParts.add(index)
+          return { ...part, decision: "expired", resolvedAt: Date.now() }
+        })
+        const safeError = bounded({ value: kernel.redact(errorMessage), max: 2_000 })
+        kernel.log({
+          level: errorClass === "canceled" ? "info" : "error",
+          module: run.provider,
+          msg: "Falha no turno",
+          data: { botId: run.botId, threadId: run.threadId, runId: run.id, errorClass, error: safeError },
+        })
+        ensureReply({ run, state, store, parentId: run.requestMessageId ?? thread.activeLeafId ?? run.id })
+        const noticeCode =
+          errorClass === "canceled" ? "run_canceled" : errorClass === "app_restart" ? "app_restart" : "run_failed"
+        const friendlyError = publicError(errorClass)
+        const failure = safeRunFailure(errorClass, safeError)
+        const friendlyMessage = isMcpStartupError(safeError)
+          ? failure.detail
+          : `${failure.detail} [${friendlyError.code}]`
+        const noticeIndex = state.parts.length
+        state.parts.push({
+          type: "notice",
+          level: errorClass === "canceled" ? "info" : "error",
+          code: noticeCode,
+          ...(noticeCode === "run_failed" ? { failure } : {}),
+          text: errorClass === "canceled" ? "Cancelado por você" : `${errorClass}: ${friendlyMessage}`,
+        })
+        state.dirtyParts.add(noticeIndex)
+        publishMessage({ store, state, run, status: statusForError(errorClass) === "canceled" ? "canceled" : "failed" })
+        const carryover = state.turnStarted
+          ? `[touri: your previous turn ended with ${errorClass}. Partial output: "${bounded({ value: state.text, max: 1_500 })}"]`
+          : `[touri: your previous turn did not run (${errorClass}: ${safeError}). The user's message was: "${bounded({ value: getActivePathMessage({ store, run })?.text ?? "", max: 1_500 })}"]`
+        store.updateThread({ threadId: thread.id, patch: { carryoverNote: carryover } })
+        updateRun(run, {
+          status: statusForError(errorClass),
+          errorClass,
+          errorMessage: safeError,
+          usage: state.usage,
+          finishedAt: Date.now(),
+        })
+        if (continuing) return
+        finishRoutineRun({
+          run,
+          state,
+          status: errorClass === "canceled" || errorClass === "app_restart" ? "canceled" : "failed",
+          summary: state.text || `${errorClass}: ${safeError}`,
+        })
+        if (errorClass === "canceled" || errorClass === "app_restart") return
+        notices.failure({
+          botId: run.botId,
+          threadId: run.threadId,
+          routine: run.routineRunId !== null,
+          reason: friendlyMessage,
+        })
+      },
+      state.replyMessageId ?? undefined,
+    )
   }
 
   const resumeEnabled = (): boolean => {
@@ -1933,7 +1958,7 @@ export const createRuntimeEngine = ({
     // A newer user turn supersedes a continuation, including during shutdown.
     persistence.listRuns(run.threadId)[0]?.id === run.id
 
-  const failTurn = ({
+  const failTurn = async ({
     run,
     state,
     store,
@@ -1947,12 +1972,12 @@ export const createRuntimeEngine = ({
     thread: Thread
     errorClass: RunErrorClass
     errorMessage: string
-  }): void => {
+  }): Promise<void> => {
     const errorClass = refineErrorClass(reportedErrorClass, errorMessage)
     const crashed =
       CRASH_ERROR_CLASSES.includes(errorClass) && state.turnStarted && !state.cancelRequested && isLive(run)
     const plan = crashed ? planContinuation({ run, reason: "provider_crash", lastActivityAt: Date.now() }) : null
-    finalizeFailure({ run, state, store, thread, errorClass, errorMessage, continuing: plan !== null })
+    await finalizeFailure({ run, state, store, thread, errorClass, errorMessage, continuing: plan !== null })
     if (plan) scheduleContinuation({ run, plan })
   }
 
@@ -1984,7 +2009,7 @@ export const createRuntimeEngine = ({
 
   const drain = async (): Promise<void> => {
     // A recovered turn must not run alongside the previous provider process.
-    await startupCleanup
+    await ready
     while (!shuttingDown && ownsRuntime() && active.size < getMaxConcurrentRuns()) {
       const nextIndex = queued.findIndex((runId) => {
         const run = persistence.getRun(runId)
@@ -2111,6 +2136,17 @@ export const createRuntimeEngine = ({
           thread,
           errorClass: "canceled",
           errorMessage: "Turno cancelado antes de iniciar",
+        }).catch(() => {
+          try {
+            kernel.log({
+              level: "error",
+              module: "runtime",
+              msg: "Could not finalize canceled run",
+              data: { threadId: run.threadId, runId: run.id },
+            })
+          } catch {
+            // A storage failure can also prevent writing its diagnostic.
+          }
         })
         return { success: true, run }
       }
@@ -2126,7 +2162,7 @@ export const createRuntimeEngine = ({
     const state = getState(id)
     state.cancelRequested = true
     controllers.get(id)?.abort()
-    finishParts({ run, state, reason: "cancelled_by_user" })
+    finishParts({ run, state, reason: "cancelled_by_user", persist: false })
     state.parts.forEach((part, index) => {
       if (part.type === "text" || part.type === "reasoning") state.dirtyParts.add(index)
     })
@@ -2677,7 +2713,7 @@ export const createRuntimeEngine = ({
     }
     approvalBridge.dispose()
     shutdownPromise = (async () => {
-      await startupCleanup
+      await ready
       await Promise.all(Object.values(adapters).map((adapter) => adapter.shutdown()))
       await Promise.all(executions.values())
     })()
@@ -2696,6 +2732,7 @@ export const createRuntimeEngine = ({
       }),
     )
   const recovered = new Set<Id>()
+  const startupRecoveries: Array<Promise<void>> = []
   for (const run of persistence.listActiveRuns()) {
     recovered.add(run.id)
     const store = kernel.services.use("store.api")
@@ -2720,7 +2757,7 @@ export const createRuntimeEngine = ({
         reason: "app_restart",
         lastActivityAt: Math.max(run.startedAt ?? run.queuedAt, reply?.updatedAt ?? 0),
       })
-      finalizeFailure({
+      const recovery = finalizeFailure({
         run,
         state,
         store,
@@ -2728,8 +2765,10 @@ export const createRuntimeEngine = ({
         errorClass: "app_restart",
         errorMessage: "touri restarted",
         continuing: plan !== null,
+      }).then(() => {
+        if (plan && !startContinuation({ run, plan })) abandonContinuation({ run, status: "canceled" })
       })
-      if (plan && !startContinuation({ run, plan })) abandonContinuation({ run, status: "canceled" })
+      startupRecoveries.push(recovery)
       continue
     }
     const finishedAt = Date.now()
@@ -2776,10 +2815,22 @@ export const createRuntimeEngine = ({
   // Recovery repairs persisted history once. Terminal transitions already settle
   // their own tools; repeating recovery per turn rescans every previous result.
   if (recoveryStore) tools.reconcile(recoveryStore)
-  queueMicrotask(() => void drain())
+  const ready = Promise.allSettled([startupCleanup, ...startupRecoveries]).then((results) => {
+    if (results.every((result) => result.status === "fulfilled")) return
+    try {
+      kernel.log({
+        level: "error",
+        module: "runtime",
+        msg: "Startup run recovery did not complete",
+      })
+    } catch {
+      // A startup recovery failure can also prevent writing its diagnostic.
+    }
+  })
+  queueMicrotask(() => void ready.then(() => drain()))
 
   return {
-    ready: startupCleanup,
+    ready,
     goals,
     enqueue,
     activeRun,

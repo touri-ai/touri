@@ -14,11 +14,9 @@ import { STREAM_WRITE_LIMITS } from "../../src/store/stream-writer"
 
 type Delta = Extract<UiEvent, { type: "message.delta" }>
 
-const cleanups = new Set<() => void>()
-afterEach(() => {
-  cleanups.forEach((cleanup) => {
-    cleanup()
-  })
+const cleanups = new Set<() => void | Promise<void>>()
+afterEach(async () => {
+  for (const cleanup of cleanups) await cleanup()
   cleanups.clear()
 })
 
@@ -29,7 +27,7 @@ test("batch validation rebases every buffered delta when another connection writ
   f.store.appendDelta({ threadId: "t", messageId: "reply", partIndex: 0, delta: "a" })
   f.appendFromSecondConnection("b", 0)
   f.store.appendDelta({ threadId: "t", messageId: "reply", partIndex: 0, delta: "c" })
-  f.store.flushWrites?.()
+  await f.store.flushWritesAsync?.()
   materializeTranscript(f.database)
 
   expect(f.database.query("SELECT text FROM messages WHERE id = 'reply'").get()).toEqual({ text: "bac" })
@@ -108,10 +106,10 @@ const fixture = async () => {
     events,
     appendFromSecondConnection,
     deltas,
-    close: () => {
+    close: async () => {
       unsubscribe()
       second.close()
-      runtime.stop()
+      await runtime.stop()
       rmSync(root, { recursive: true, force: true })
     },
   }
@@ -129,7 +127,7 @@ test("a rolled-back reader transaction preserves previously accepted text and di
       })(),
     ).toThrow("rollback")
     f.store.appendDelta({ threadId: "t", messageId: "reply", partIndex: 0, delta: " depois" })
-    f.store.flushWrites?.()
+    await f.store.flushWritesAsync?.()
     materializeTranscript(f.database)
     expect(f.database.query("SELECT text FROM messages WHERE id = 'reply'").get()).toEqual({ text: "fora depois" })
     expect(
@@ -141,7 +139,7 @@ test("a rolled-back reader transaction preserves previously accepted text and di
     await Bun.sleep(0)
     expect(JSON.stringify(f.events)).not.toContain("dentro")
   } finally {
-    f.close()
+    await f.close()
   }
 })
 
@@ -150,7 +148,7 @@ test("a buffered append rebases after a second SQLite connection commits first",
   try {
     f.store.appendDelta({ threadId: "t", messageId: "reply", partIndex: 0, delta: "a" })
     f.appendFromSecondConnection("b", 0)
-    f.store.flushWrites?.()
+    await f.store.flushWritesAsync?.()
     materializeTranscript(f.database)
     expect(f.database.query("SELECT text FROM messages WHERE id = 'reply'").get()).toEqual({ text: "ba" })
     expect(f.deltas().map(({ delta, offset }) => [delta, offset])).toEqual([
@@ -158,7 +156,7 @@ test("a buffered append rebases after a second SQLite connection commits first",
       ["a", 1],
     ])
   } finally {
-    f.close()
+    await f.close()
   }
 })
 
@@ -166,10 +164,10 @@ test("a cached stream observes a durable tail appended by another SQLite connect
   const f = await fixture()
   try {
     f.store.appendDelta({ threadId: "t", messageId: "reply", partIndex: 0, delta: "a" })
-    f.store.flushWrites?.()
+    await f.store.flushWritesAsync?.()
     f.appendFromSecondConnection("b", 1)
     f.store.appendDelta({ threadId: "t", messageId: "reply", partIndex: 0, delta: "c" })
-    f.store.flushWrites?.()
+    await f.store.flushWritesAsync?.()
     materializeTranscript(f.database)
     expect(f.database.query("SELECT text FROM messages WHERE id = 'reply'").get()).toEqual({ text: "abc" })
     expect(f.deltas().map(({ delta, offset }) => [delta, offset])).toEqual([
@@ -178,7 +176,7 @@ test("a cached stream observes a durable tail appended by another SQLite connect
       ["c", 2],
     ])
   } finally {
-    f.close()
+    await f.close()
   }
 })
 
@@ -194,13 +192,14 @@ test("a failed rebased batch retries all its text after a later part insertion a
     })
     f.store.appendDelta({ threadId: "t", messageId: "reply", partIndex: 0, delta: "d" })
     f.appendFromSecondConnection("b", 0)
-    f.database.exec(`CREATE TEMP TRIGGER reject_stream_part BEFORE INSERT ON transcript_entries
+    f.database.exec(`CREATE TRIGGER reject_stream_part BEFORE INSERT ON transcript_entries
       WHEN json_extract(NEW.event_json, '$.type') = 'message.parts'
       BEGIN SELECT RAISE(ABORT, 'retry part'); END`)
-    expect(() => f.store.flushWrites?.()).toThrow("retry part")
+    f.store.flushWrites?.()
+    await Bun.sleep(20)
     expect(f.deltas().map(({ delta }) => delta)).toEqual(["b"])
     f.database.exec("DROP TRIGGER reject_stream_part")
-    f.store.flushWrites?.()
+    await f.store.flushWritesAsync?.()
     materializeTranscript(f.database)
     expect(f.database.query("SELECT text FROM messages WHERE id = 'reply'").get()).toEqual({ text: "bcd" })
     expect(f.deltas().map(({ delta, offset }) => [delta, offset])).toEqual([
@@ -211,7 +210,7 @@ test("a failed rebased batch retries all its text after a later part insertion a
     expect(f.store.activePath({ threadId: "t", leafId: "reply" })[0]?.parts[1]).toMatchObject({ text: "Pensando" })
   } finally {
     f.database.exec("DROP TRIGGER IF EXISTS reject_stream_part")
-    f.close()
+    await f.close()
   }
 })
 
@@ -235,7 +234,7 @@ test("the timer recovers previously accepted text after a reader's outer transac
     materializeTranscript(f.database)
     expect(f.database.query("SELECT text FROM messages WHERE id = 'reply'").get()).toEqual({ text: "fora" })
   } finally {
-    f.close()
+    await f.close()
   }
 })
 
@@ -261,6 +260,6 @@ test("the timer retries accepted text rejected by a generation change that later
     materializeTranscript(f.database)
     expect(f.database.query("SELECT text FROM messages WHERE id = 'reply'").get()).toEqual({ text: "fora" })
   } finally {
-    f.close()
+    await f.close()
   }
 })

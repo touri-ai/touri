@@ -32,6 +32,8 @@ const terminalReason = (status: Run["status"]): Exclude<ToolResolution, "running
 
 export const createToolResolutions = (kernel: Kernel) => {
   const database = kernel.db instanceof Database ? kernel.db : null
+  // Cancellation must fence late tool results before the worker has committed its disposition.
+  const pendingInterruptions = new Map<string, Map<string, ToolPart>>()
   const getResolution = database?.query(
     "SELECT resolution, resolved_at, part_json FROM tool_resolutions WHERE run_id = ? AND call_id = ?",
   )
@@ -43,13 +45,17 @@ export const createToolResolutions = (kernel: Kernel) => {
         OR tool_resolutions.resolution IS NOT excluded.resolution
         OR tool_resolutions.resolved_at IS NOT excluded.resolved_at`)
   const getRunParts = database?.query("SELECT part_json FROM tool_resolutions WHERE run_id = ? ORDER BY rowid")
+  const getPendingToolCall = database?.query("SELECT 1 FROM tool_calls WHERE run_id = ? AND ok IS NULL LIMIT 1")
   const record = (run: Run, part: ToolPart, recovering = false, persist = true): ToolPart => {
-    const previous =
-      (getResolution?.get(run.id, part.callId) as {
-        resolution: ToolResolution
-        resolved_at: number | null
-        part_json: string
-      } | null) ?? null
+    const stored = getResolution?.get(run.id, part.callId) as {
+      resolution: ToolResolution
+      resolved_at: number | null
+      part_json: string
+    } | null
+    const pending = pendingInterruptions.get(run.id)?.get(part.callId)
+    const previous = pending
+      ? { resolution: outcome(pending), resolved_at: pending.resolvedAt ?? null, part_json: JSON.stringify(pending) }
+      : stored
     let resolution = outcome(part)
     const keepResult = previous && hasResult(previous.resolution) && !hasResult(resolution)
     const unobserved =
@@ -79,43 +85,70 @@ export const createToolResolutions = (kernel: Kernel) => {
     const next = database
       ? (externalizeMessageParts({ database, appData: kernel.paths.appData, parts: [resolved] })[0] as ToolPart)
       : resolved
-    if (persist)
+    if (persist) {
       saveResolution?.run(run.id, part.callId, run.threadId, JSON.stringify(next), resolution, next.resolvedAt ?? null)
+      const parts = pendingInterruptions.get(run.id)
+      parts?.delete(part.callId)
+      if (!parts?.size) pendingInterruptions.delete(run.id)
+    }
+    if (!persist && (pending || interrupted(resolution))) {
+      const parts = pendingInterruptions.get(run.id) ?? new Map<string, ToolPart>()
+      parts.set(part.callId, next)
+      pendingInterruptions.set(run.id, parts)
+    }
     return next
   }
-  const finish = (run: Run, parts: MessagePart[], reason: Exclude<ToolResolution, "running">): MessagePart[] => {
+  const finish = (
+    run: Run,
+    parts: MessagePart[],
+    reason: Exclude<ToolResolution, "running">,
+    persist = true,
+  ): MessagePart[] => {
     const result = parts.map((part) => {
       if (!isTool(part)) return part
-      const current = record(run, part, true)
+      const current = record(run, part, true, persist)
       return outcome(current) === "running"
-        ? record(run, { ...current, resolution: reason, resolvedAt: Date.now() })
+        ? record(run, { ...current, resolution: reason, resolvedAt: Date.now() }, false, persist)
         : current
     })
-    const stored = getRunParts?.all(run.id) as Array<{ part_json: string }> | undefined
+    const stored = [
+      ...((getRunParts?.all(run.id) as Array<{ part_json: string }> | undefined) ?? []),
+      ...Array.from(pendingInterruptions.get(run.id)?.values() ?? [], (part) => ({ part_json: JSON.stringify(part) })),
+    ]
     const included = new Set(result.filter(isTool).map((part) => part.callId))
     for (const row of stored ?? []) {
       const part = JSON.parse(row.part_json) as ToolPart
       if (included.has(part.callId)) continue
       const resolution = outcome(part)
       result.push(
-        record(run, {
-          ...part,
-          resolution: resolution === "running" ? reason : hasResult(resolution) ? "completed_unobserved" : resolution,
-          ...(part.type === "file_change" && (resolution === "succeeded" || resolution === "failed")
-            ? { completedOutcome: resolution }
-            : {}),
-          resolvedAt: part.resolvedAt ?? Date.now(),
-        }),
+        record(
+          run,
+          {
+            ...part,
+            resolution: resolution === "running" ? reason : hasResult(resolution) ? "completed_unobserved" : resolution,
+            ...(part.type === "file_change" && (resolution === "succeeded" || resolution === "failed")
+              ? { completedOutcome: resolution }
+              : {}),
+            resolvedAt: part.resolvedAt ?? Date.now(),
+          },
+          false,
+          persist,
+        ),
       )
     }
-    database
-      ?.query(
-        "UPDATE tool_calls SET ok = 0, error_code = ?, duration_ms = COALESCE(duration_ms, ? - created_at) WHERE run_id = ? AND ok IS NULL",
-      )
-      .run(reason.toUpperCase(), Date.now(), run.id)
+    if (persist && getPendingToolCall?.get(run.id))
+      database
+        ?.query(
+          "UPDATE tool_calls SET ok = 0, error_code = ?, duration_ms = COALESCE(duration_ms, ? - created_at) WHERE run_id = ? AND ok IS NULL",
+        )
+        .run(reason.toUpperCase(), Date.now(), run.id)
     return result
   }
+  const clearPendingMemory = (runId: string): void => {
+    pendingInterruptions.delete(runId)
+  }
   const clearPending = (runId: string): void => {
+    clearPendingMemory(runId)
     database?.query("DELETE FROM tool_recovery_pending WHERE run_id = ?").run(runId)
   }
   const getPendingRuns = (threadId?: string): RecoveryRun[] =>
@@ -175,6 +208,7 @@ export const createToolResolutions = (kernel: Kernel) => {
     finish,
     reconcile,
     reconcilePending,
+    clearPendingMemory,
     clearPending,
     summary: (store: StoreApi, threadId: string, leafId?: string) => {
       const summary = database ? summarizeToolResolutions(database, store, threadId, leafId) : null

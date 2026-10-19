@@ -249,6 +249,9 @@ jobs:
       - name: Check API model setup and bot selection
         working-directory: ui
         run: bunx playwright test test/e2e/api-models.spec.ts --workers=1
+      - name: Check settings navigation on phone
+        working-directory: ui
+        run: bunx playwright test test/e2e/settings-nav-responsive.spec.ts --workers=1
       - name: Check bot panel accessibility on phone
         working-directory: ui
         run: bunx playwright test test/e2e/bot-panel-phone.spec.ts --workers=1
