@@ -1,8 +1,11 @@
-import { Database, SQLiteError, constants as sqliteFlags } from "bun:sqlite"
 import { createHash, randomBytes } from "node:crypto"
 import { dirname } from "node:path"
 import { prepareDatabaseFile } from "../../kernel/files"
 import { expiryAt } from "../../kernel/policy"
+import { createAuthWriter } from "./auth-writer"
+import { openAuthReader } from "./database"
+
+export { isDatabaseBusy, openAuthDatabase } from "./database"
 
 export const pairingCodeTtlMs = 5 * 60 * 1000
 export const lastSeenGranularityMs = 60 * 1000
@@ -11,7 +14,6 @@ export const deviceTokenTtlMs = 30 * 24 * 60 * 60_000
 const codeAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 const codeGroups = 3
 const codeGroupLength = 4
-const busyTimeoutMs = 5000
 
 export type Device = {
   id: string
@@ -29,14 +31,14 @@ export type ClaimPairingCodeResult = ClaimPairingCodeSuccess | AuthError
 export type RevokeDeviceResult = { success: true; device: Device } | AuthError
 
 export type AuthStore = {
-  createPairingCode: () => CreatePairingCodeResult
-  claimPairingCode: (args: { code: string; deviceName: string }) => ClaimPairingCodeResult
+  createPairingCode: () => Promise<CreatePairingCodeResult>
+  claimPairingCode: (args: { code: string; deviceName: string }) => Promise<ClaimPairingCodeResult>
   verifyDeviceToken: (token: string) => Device | null
-  rotateDeviceToken: (token: string) => { token: string; device: Device } | null
+  rotateDeviceToken: (token: string) => Promise<{ token: string; device: Device } | null>
   listDevices: () => Array<Device>
-  revokeDevice: (idOrPrefix: string) => RevokeDeviceResult
+  revokeDevice: (idOrPrefix: string) => Promise<RevokeDeviceResult>
   pendingCodeCount: () => number
-  close: () => void
+  close: () => Promise<void>
 }
 
 type DeviceRow = {
@@ -72,83 +74,72 @@ const toDevice = (row: DeviceRow): Device => ({
   revokedAt: row.revoked_at,
 })
 
-const schema = `
-CREATE TABLE IF NOT EXISTS pairing_codes (
-  code_hash TEXT PRIMARY KEY,
-  created_at INTEGER NOT NULL,
-  expires_at INTEGER NOT NULL,
-  used_at INTEGER
-);
-CREATE TABLE IF NOT EXISTS devices (
-  id TEXT PRIMARY KEY,
-  name TEXT NOT NULL,
-  token_hash TEXT NOT NULL UNIQUE,
-  created_at INTEGER NOT NULL,
-  last_seen_at INTEGER,
-  revoked_at INTEGER
-);
-`
-
-export const isDatabaseBusy = (error: unknown): boolean =>
-  error instanceof SQLiteError && (error.code === "SQLITE_BUSY" || error.code?.startsWith("SQLITE_BUSY_") === true)
-
-export const openAuthDatabase = (filename: string): Database => {
-  const deadline = performance.now() + busyTimeoutMs
-  while (true) {
-    let database: Database | undefined
-    try {
-      database = new Database(
-        filename,
-        sqliteFlags.SQLITE_OPEN_READWRITE | sqliteFlags.SQLITE_OPEN_CREATE | sqliteFlags.SQLITE_OPEN_NOFOLLOW,
-      )
-      for (const statement of ["PRAGMA journal_mode = WAL", "PRAGMA synchronous = FULL", schema]) {
-        const remainingMs = Math.max(1, Math.ceil(deadline - performance.now()))
-        database.exec(`PRAGMA busy_timeout = ${remainingMs}`)
-        database.exec(statement)
-      }
-      database.exec(`PRAGMA busy_timeout = ${busyTimeoutMs}`)
-      return database
-    } catch (error) {
-      database?.close()
-      const remainingMs = deadline - performance.now()
-      if (!isDatabaseBusy(error) || remainingMs <= 0) throw error
-      // Recovery and lock upgrades can bypass SQLite's busy handler.
-      Bun.sleepSync(Math.min(50, remainingMs))
-    }
-  }
-}
-
-/** Opens (and creates) the auth database shared by the server and the CLI. */
-export const openAuthStore = ({ filename, now = Date.now }: { filename: string; now?: () => number }): AuthStore => {
+/** Opens the auth database with durable writes isolated from the server event loop. */
+export const openAuthStore = async ({
+  filename,
+  now = Date.now,
+  createWriterWorker,
+}: {
+  filename: string
+  now?: () => number
+  createWriterWorker?: () => Worker
+}): Promise<AuthStore> => {
   const databasePath = prepareDatabaseFile({ root: dirname(filename), path: filename })
-  const database = openAuthDatabase(databasePath)
+  const writer = await createAuthWriter(databasePath, createWriterWorker)
+  let database: ReturnType<typeof openAuthReader>
+  try {
+    database = openAuthReader(databasePath)
+  } catch (error) {
+    await writer.close()
+    throw error
+  }
+  const lastSeenScheduled = new Map<string, number>()
 
-  const createPairingCode = (): CreatePairingCodeResult => {
+  const createPairingCode = async (): Promise<CreatePairingCodeResult> => {
     const at = now()
-    database.query("DELETE FROM pairing_codes WHERE expires_at < ? OR used_at IS NOT NULL").run(at)
     const code = generateCode()
     const expiresAt = expiryAt({ now: at, ttlMs: pairingCodeTtlMs })
-    database
-      .query("INSERT INTO pairing_codes (code_hash, created_at, expires_at) VALUES (?, ?, ?)")
-      .run(sha256(normalizeCode(code)), at, expiresAt)
+    await writer.write({ type: "create-pairing", codeHash: sha256(normalizeCode(code)), at, expiresAt })
     return { success: true, code, expiresAt }
   }
 
-  const claimPairingCode = ({ code, deviceName }: { code: string; deviceName: string }): ClaimPairingCodeResult => {
+  const claimPairingCode = async ({
+    code,
+    deviceName,
+  }: {
+    code: string
+    deviceName: string
+  }): Promise<ClaimPairingCodeResult> => {
     const at = now()
     const normalized = normalizeCode(code)
-    const claimed = database
-      .query("UPDATE pairing_codes SET used_at = ? WHERE code_hash = ? AND used_at IS NULL AND expires_at > ?")
-      .run(at, sha256(normalized), at)
-    if (normalized.length !== codeGroups * codeGroupLength || claimed.changes !== 1)
+    if (normalized.length !== codeGroups * codeGroupLength)
       return { success: false, errorCode: "INVALID_CODE", error: "Invalid, expired or already used pairing code" }
     const token = newToken(at)
     const id = randomBytes(6).toString("hex")
     const name = deviceName.trim().slice(0, 80) || "Unnamed device"
-    database
-      .query("INSERT INTO devices (id, name, token_hash, created_at, last_seen_at) VALUES (?, ?, ?, ?, ?)")
-      .run(id, name, sha256(token), at, at)
+    const claimed = await writer.write({
+      type: "claim-pairing",
+      codeHash: sha256(normalized),
+      at,
+      device: { id, name, tokenHash: sha256(token) },
+    })
+    if (!claimed)
+      return { success: false, errorCode: "INVALID_CODE", error: "Invalid, expired or already used pairing code" }
     return { success: true, device: { id, name, createdAt: at, lastSeenAt: at, revokedAt: null }, token }
+  }
+
+  const scheduleLastSeen = (id: string, at: number): void => {
+    const lastScheduledAt = lastSeenScheduled.get(id)
+    if (lastScheduledAt !== undefined && at - lastScheduledAt <= lastSeenGranularityMs) return
+    lastSeenScheduled.delete(id)
+    lastSeenScheduled.set(id, at)
+    if (lastSeenScheduled.size > 8192) {
+      const [oldest] = lastSeenScheduled.keys()
+      if (oldest) lastSeenScheduled.delete(oldest)
+    }
+    void writer.write({ type: "last-seen", id, at }).catch(() => {
+      if (lastSeenScheduled.get(id) === at) lastSeenScheduled.delete(id)
+    })
   }
 
   const verifyDeviceToken = (token: string): Device | null => {
@@ -159,21 +150,23 @@ export const openAuthStore = ({ filename, now = Date.now }: { filename: string; 
     if (!row || row.revoked_at !== null) return null
     const at = now()
     const issuedAt = token.includes(".") ? Number(token.split(".")[1]) : row.created_at
-    const lastActiveAt = Math.max(issuedAt, row.last_seen_at ?? 0)
+    const lastActiveAt = Math.max(issuedAt, row.last_seen_at ?? 0, lastSeenScheduled.get(row.id) ?? 0)
     if (!Number.isSafeInteger(issuedAt) || issuedAt > at || at >= lastActiveAt + deviceTokenTtlMs) return null
-    if (row.last_seen_at === null || at - row.last_seen_at > lastSeenGranularityMs)
-      database.query("UPDATE devices SET last_seen_at = ? WHERE id = ?").run(at, row.id)
+    if (row.last_seen_at === null || at - row.last_seen_at > lastSeenGranularityMs) scheduleLastSeen(row.id, at)
     return toDevice(row)
   }
 
-  const rotateDeviceToken: AuthStore["rotateDeviceToken"] = (previous) => {
+  const rotateDeviceToken = async (previous: string): Promise<{ token: string; device: Device } | null> => {
     const device = verifyDeviceToken(previous)
     if (!device) return null
     const token = newToken(now())
-    const changed = database
-      .query("UPDATE devices SET token_hash = ? WHERE id = ? AND token_hash = ? AND revoked_at IS NULL")
-      .run(sha256(token), device.id, sha256(previous))
-    return changed.changes === 1 ? { token, device } : null
+    const changed = await writer.write({
+      type: "rotate-token",
+      id: device.id,
+      tokenHash: sha256(token),
+      previousHash: sha256(previous),
+    })
+    return changed ? { token, device } : null
   }
 
   const listDevices = (): Array<Device> =>
@@ -183,13 +176,15 @@ export const openAuthStore = ({ filename, now = Date.now }: { filename: string; 
         .all() as Array<DeviceRow>
     ).map(toDevice)
 
-  const revokeDevice = (idOrPrefix: string): RevokeDeviceResult => {
+  const revokeDevice = async (idOrPrefix: string): Promise<RevokeDeviceResult> => {
     const matches = listDevices().filter((device) => device.id.startsWith(idOrPrefix) && device.revokedAt === null)
     const [device] = matches
     if (!device || matches.length !== 1)
       return { success: false, errorCode: "NOT_FOUND", error: "No single active device matches that id" }
     const at = now()
-    database.query("UPDATE devices SET revoked_at = ? WHERE id = ?").run(at, device.id)
+    const changed = await writer.write({ type: "revoke-device", id: device.id, at })
+    if (!changed) return { success: false, errorCode: "NOT_FOUND", error: "No single active device matches that id" }
+    lastSeenScheduled.delete(device.id)
     return { success: true, device: { ...device, revokedAt: at } }
   }
 
@@ -208,6 +203,12 @@ export const openAuthStore = ({ filename, now = Date.now }: { filename: string; 
     listDevices,
     revokeDevice,
     pendingCodeCount,
-    close: () => database.close(),
+    close: async () => {
+      try {
+        await writer.close()
+      } finally {
+        database.close()
+      }
+    },
   }
 }

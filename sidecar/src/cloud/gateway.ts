@@ -15,7 +15,7 @@ const ready = (socket: WebSocket): Promise<void> =>
 /** Binary WS ↔ private loopback TCP, for RFB and explicitly granted PTY channels. */
 export const tcpGateway = async (client: CloudClient, path: string) => {
   let closed = false
-  const privateChannel = privateSocket()
+  const privateChannel = await privateSocket()
   const sockets = new Set<WebSocket>()
   const connections = new Set<import("node:net").Socket>()
   const server = createServer((local) => {
@@ -69,7 +69,7 @@ export const tcpGateway = async (client: CloudClient, path: string) => {
       for (const socket of sockets) socket.close()
       for (const local of connections) local.destroy()
       server.close()
-      privateChannel.remove()
+      void privateChannel.remove().catch(() => {})
     },
   }
 }

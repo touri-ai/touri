@@ -251,17 +251,17 @@ test("kernel and database initialization refuse linked directories and SQLite co
   expect(readdirSync(outside)).toEqual([])
 })
 
-test("secret persistence rejects linked keys and envelopes", () => {
+test("secret persistence rejects linked keys and envelopes", async () => {
   const { root, outside } = fixture()
   symlinkSync(join(outside, "key"), join(root, "secrets.key"))
   expect(() => createSecretStore({ dir: root, env: {} })).toThrow()
   rmSync(join(root, "secrets.key"))
   const store = createSecretStore({ dir: root, env: {} })
-  store.set({ account: "test", value: "secret" })
+  await store.set({ account: "test", value: "secret" })
   expect(store.get("test")).toBe("secret")
   rmSync(join(root, "secrets.enc"))
   symlinkSync(join(outside, "envelope"), join(root, "secrets.enc"))
-  expect(() => store.set({ account: "test", value: "other" })).toThrow()
+  await expect(store.set({ account: "test", value: "other" })).rejects.toThrow()
   expect(readdirSync(outside)).toEqual([])
 })
 

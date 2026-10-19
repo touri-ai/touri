@@ -93,7 +93,8 @@ it("states explicitly when Codex supplies no file list or network scope", () => 
   )
   expect(screen.getByText("O Codex não informou quais arquivos serão alterados.")).toBeVisible()
   expect(screen.getByText("O comando falhou. O Codex quer tentar novamente sem isolamento (sandbox).")).toBeVisible()
-  expect(definition("Rede")).toHaveTextContent("Não informada pelo Codex")
+  expect(screen.queryByText("Rede", { selector: "dt" })).toBeNull()
+  expect(screen.queryByText(/Não informada/)).toBeNull()
   expect(screen.queryByRole("list", { name: "Arquivos" })).toBeNull()
   expect(view.container.querySelector(".tool-input")).toBeNull()
   expect(view.container.textContent).not.toMatch(/grantRoot:|internal-thread|internal-item|reason:/)
@@ -105,10 +106,18 @@ it("previews a supplied diff even when the provider omits its file list", () => 
   expect(screen.getByRole("figure", { name: "Prévia das alterações" })).toHaveTextContent("-old +new")
 })
 
-it("states when no reason was provided instead of showing empty fields", () => {
-  render(<ApprovalCard part={approval("file_change", {})} api={createMockApi()} />)
-  expect(screen.getByText("O Codex não informou o motivo deste pedido.")).toBeVisible()
-  expect(screen.getByText("O Codex não informou quais arquivos serão alterados.")).toBeVisible()
+it("collapses missing details into one quiet line instead of five empty rows", () => {
+  const view = render(<ApprovalCard part={approval("file_change", {})} api={createMockApi()} />)
+  expect(screen.getByText("O provedor não detalhou o pedido")).toBeVisible()
+  expect(view.container.querySelector("dl")).toBeNull()
+  expect(view.container.textContent).not.toMatch(/Não informada|não informou o motivo/)
+})
+
+it("drops the detail rows once the request is decided", () => {
+  const part = { ...approval("file_change", { cwd: "/workspace/project" }), decision: "approved" as const }
+  const view = render(<ApprovalCard part={part} api={createMockApi()} />)
+  expect(view.container.querySelector("dl")).toBeNull()
+  expect(screen.queryByText("O provedor não detalhou o pedido")).toBeNull()
 })
 
 it("explains permission-only requests with read/write and network scope in plain words", () => {

@@ -151,7 +151,7 @@ export const createMemoryWriteHandler = ({ kernel }: { kernel: Kernel }): ToolHa
       if (!approved) return fail("DENIED", "A alteração da memória não foi aprovada ou a autorização mudou.")
     }
     if (!current()) return fail("DENIED", "A memória ou a autorização mudou. Solicite a alteração novamente.")
-    writeEntries(allowed.bot.homeDir, target, planned.entries)
+    await writeEntries(allowed.bot.homeDir, target, planned.entries)
     return ok(
       `Memória salva (${memoryUsage(planned.entries, target)} caracteres). Esta atualização está concluída; não repita.`,
       { usage: memoryUsage(planned.entries, target) },
@@ -200,10 +200,10 @@ const skillHandler = (kernel: Kernel, action: (args: unknown) => SkillAction): T
     if (!current()) return fail("DENIED", "A skill ou a autorização mudou. Solicite a alteração novamente.")
     const result =
       request.kind === "create"
-        ? createSkill({ homeDir, ...request, origin, threadId: ctx.threadId })
+        ? await createSkill({ homeDir, ...request, origin, threadId: ctx.threadId })
         : request.kind === "patch"
-          ? patchSkill({ homeDir, patch: request.patch, origin, threadId: ctx.threadId })
-          : archiveSkill({ homeDir, name: request.name, origin, threadId: ctx.threadId })
+          ? await patchSkill({ homeDir, patch: request.patch, origin, threadId: ctx.threadId })
+          : await archiveSkill({ homeDir, name: request.name, origin, threadId: ctx.threadId })
     if (!result.success) return fail(result.errorCode, result.error)
     resetToolCalls(kernel, ctx.botId)
     return ok(result.message)

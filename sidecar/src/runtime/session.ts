@@ -1,4 +1,4 @@
-import { mkdirSync, statSync } from "node:fs"
+import { mkdir, stat } from "node:fs/promises"
 import type { Bot, Kernel, SessionFingerprint, Thread } from "@touri/contracts"
 import { botFolderFingerprint } from "../kernel/bot-folders"
 import { canonicalJson, sha256 } from "./utils"
@@ -33,10 +33,10 @@ export const sessionFingerprint = ({
   return { fingerprint, hash: sha256(canonicalJson(fingerprint)) }
 }
 
-const usableDirectory = (path: string): boolean => {
+const usableDirectory = async (path: string): Promise<boolean> => {
   try {
-    mkdirSync(path, { recursive: true, mode: 0o700 })
-    return statSync(path).isDirectory()
+    await mkdir(path, { recursive: true, mode: 0o700 })
+    return (await stat(path)).isDirectory()
   } catch {
     return false
   }
@@ -56,7 +56,12 @@ export const workingDirectory = async ({
   const candidates = [thread.cwdOverride, bot.cwd, info?.project.path].filter(
     (value): value is string => typeof value === "string" && value.length > 0,
   )
-  const cwd = candidates.find(usableDirectory) ?? bot.homeDir
-  usableDirectory(cwd)
+  let cwd = bot.homeDir
+  for (const candidate of candidates) {
+    if (!(await usableDirectory(candidate))) continue
+    cwd = candidate
+    break
+  }
+  await usableDirectory(cwd)
   return { cwd, projectDataDir: info?.project.dataDir ?? null }
 }

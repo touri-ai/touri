@@ -26,22 +26,22 @@ import { apiModelErrors, isNotificationPreferences, normalizeBotName } from "@to
 import { validAvatarColor, validAvatarShape } from "@touri/contracts/avatar"
 import { getApiModel } from "../api-models/config"
 import { installDoctor } from "../doctor"
+import { writePrivateFileAsync } from "../kernel/async-files"
 import { parseBotFolders, protectedFolder } from "../kernel/bot-folders"
 import { DEFAULT_DATA_RETENTION_DAYS, validDataRetentionDays } from "../kernel/data-maintenance"
 import { writeDatabaseAsync } from "../kernel/database-write"
 import { SCHEMA_VERSION } from "../kernel/db"
-import {
-  assertPrivateFile,
-  atomicWriteFile,
-  attachmentMime,
-  MAX_ATTACHMENT_BYTES,
-  readBoundedFile,
-} from "../kernel/files"
+import { attachmentMime, MAX_ATTACHMENT_BYTES, readBoundedFile } from "../kernel/files"
 import { folderGrantProblem, refreshHostFolderAccess, specificFoldersRequired } from "../kernel/folder-capability"
 import { historyThreadPending, hydrateHistoryEvent } from "../kernel/history-backfill"
 import { getPathIds } from "../kernel/message-path"
 import { refreshMessageSearch } from "../kernel/message-search"
-import { externalizeMessageParts, OUTPUT_BLOB_ORIGIN, readOutputAttachment } from "../kernel/output-blobs"
+import {
+  externalizeMessageParts,
+  externalizeMessagePartsAsync,
+  OUTPUT_BLOB_ORIGIN,
+  readOutputAttachment,
+} from "../kernel/output-blobs"
 import type { PerformanceStageRunner } from "../kernel/performance"
 import { isProfileProvider, validProviderProfileName } from "../kernel/provider-profiles"
 import { materializeTranscriptBatch } from "../kernel/transcript-storage"
@@ -51,7 +51,7 @@ import { getHostIdentity } from "../platform/host"
 import { getDefaultMaxConcurrentRuns } from "../runtime/concurrency"
 import { touriVersion } from "../version"
 import { DEFAULT_BOT_VM_MEMORY_MB, DEFAULT_MACHINE_IDLE_MINUTES, validBotVmMemory } from "../vm/resources"
-import { cleanupBotHome, updateBotHome, writeBotHome } from "./bot-home"
+import { cleanupBotHome, reconcileBotHomes, updateBotHome, writeBotHome } from "./bot-home"
 import { redeemFileGrant } from "./redeemFileGrant"
 import { createSendJournal } from "./send-journal"
 import { createStreamWriter } from "./stream-writer"
@@ -483,6 +483,9 @@ export const init = async (
   writeEditedHome = updateBotHome,
 ): Promise<void> => {
   await refreshHostFolderAccess()
+  const reconcileHomes = () => reconcileBotHomes(kernel)
+  if (runStage) await runStage("store_bot_home_startup_recovery", reconcileHomes)
+  else await reconcileHomes()
   installDoctor(kernel)
   const database = kernel.db as Database
   const recoverTranscript = () => materializeTranscriptBatch(database)
@@ -669,7 +672,11 @@ export const init = async (
 
   const updateMessageAsync: NonNullable<StoreApi["updateMessageAsync"]> = async (input) => {
     await streamWriter.drainAsync({ threadId: input.threadId, messageId: input.messageId })
-    return writeDatabaseAsync(database, () => updateMessage(input))
+    const parts = input.patch.parts
+      ? await externalizeMessagePartsAsync({ database, appData: kernel.paths.appData, parts: input.patch.parts })
+      : undefined
+    const prepared = parts ? { ...input, patch: { ...input.patch, parts } } : input
+    return writeDatabaseAsync(database, () => updateMessage(prepared))
   }
 
   const activePath: StoreApi["activePath"] = ({ threadId, leafId, limit, fromRoot = false }) => {
@@ -1221,6 +1228,53 @@ export const init = async (
     return updated
   }
 
+  const commitBotInstructionEdit = ({
+    botId,
+    record,
+    mustStopVm,
+  }: {
+    botId: string
+    record: Record<string, unknown>
+    mustStopVm: boolean
+  }): Bot => {
+    const latestBot = getBot({ botId })
+    if (!latestBot) throw new Error("Bot could not be updated")
+    const latest = botFromBody({
+      body: { ...record, provider: record.provider ?? latestBot.provider },
+      existing: latestBot,
+    })
+    if (!latest.input || latest.error) throw new Error(latest.error ?? "Invalid bot")
+    const machineChanged =
+      latest.input.machine !== latestBot.machine ||
+      latest.input.provider !== latestBot.provider ||
+      latest.input.projectId !== latestBot.projectId
+    if (machineChanged && !mustStopVm) throw new Error("Bot configuration changed during the instruction edit")
+
+    const updated = saveBot({
+      bot: latestBot,
+      input: latest.input,
+      paused: record.paused as boolean | undefined,
+      updateInstructions: true,
+    })
+    if (!updated) throw new Error("Bot could not be updated")
+    return updated
+  }
+
+  const prepareBotInstructionEdit = ({
+    botId,
+    record,
+    mustStopVm,
+    onCommit,
+  }: {
+    botId: string
+    record: Record<string, unknown>
+    mustStopVm: boolean
+    onCommit: (bot: Bot) => void
+  }): { commit: () => void } => {
+    if (!getBot({ botId })) throw new Error("Bot could not be updated")
+    return { commit: () => onCommit(commitBotInstructionEdit({ botId, record, mustStopVm })) }
+  }
+
   kernel.services.provide("bots.rename", ({ botId, name: value }) => {
     const bot = getBot({ botId })
     if (!bot) return { success: false, errorCode: "NOT_FOUND", error: "Bot não encontrado." }
@@ -1262,7 +1316,7 @@ export const init = async (
       : { success: false, errorCode: "NOT_FOUND", error: "Bot não encontrado." }
   })
 
-  const insertAttachment = ({
+  const insertAttachment = async ({
     path,
     originPath,
     content,
@@ -1270,7 +1324,7 @@ export const init = async (
     path: string
     originPath: string | null
     content?: Buffer
-  }): Attachment | null => {
+  }): Promise<Attachment | null> => {
     const bytes =
       content ?? readBoundedFile({ root: kernel.paths.attachmentsDir, path, maxBytes: MAX_ATTACHMENT_BYTES })
     const id = sha256(bytes)
@@ -1290,8 +1344,7 @@ export const init = async (
         .replace(/[^a-z0-9.]/gu, "") || ".bin"
     const destinationDir = join(kernel.paths.attachmentsDir, id.slice(0, 2))
     const destination = join(destinationDir, `${id}${extension}`)
-    assertPrivateFile({ root: kernel.paths.appData, path: destination })
-    if (!existsSync(destination)) atomicWriteFile({ root: kernel.paths.appData, path: destination, content: bytes })
+    await writePrivateFileAsync({ root: kernel.paths.appData, path: destination, content: bytes })
     const timestamp = now()
     database
       .query("INSERT INTO attachments (id, path, mime, bytes, origin_path, created_at) VALUES (?, ?, ?, ?, ?, ?)")
@@ -1469,34 +1522,12 @@ export const init = async (
           if (Object.hasOwn(record, "instructions")) {
             let committedBot: Bot | null = null
             const instructions = input.instructions ?? bot.instructions
-            const editError = await writeEditedHome(kernel, bot.id, instructions, signal, () => {
-              const currentBot = getBot({ botId: bot.id })
-              if (!currentBot) throw new Error("Bot could not be updated")
-              return {
-                commit: () => {
-                  const latestBot = getBot({ botId: bot.id })
-                  if (!latestBot) throw new Error("Bot could not be updated")
-                  const latest = botFromBody({
-                    body: { ...record, provider: record.provider ?? latestBot.provider },
-                    existing: latestBot,
-                  })
-                  if (!latest.input || latest.error) throw new Error(latest.error ?? "Invalid bot")
-                  const machineChanged =
-                    latest.input.machine !== latestBot.machine ||
-                    latest.input.provider !== latestBot.provider ||
-                    latest.input.projectId !== latestBot.projectId
-                  if (machineChanged && !mustStopVm)
-                    throw new Error("Bot configuration changed during the instruction edit")
-                  committedBot = saveBot({
-                    bot: latestBot,
-                    input: latest.input,
-                    paused: record.paused as boolean | undefined,
-                    updateInstructions: true,
-                  })
-                  if (!committedBot) throw new Error("Bot could not be updated")
-                },
-              }
-            }).then(
+            const setCommittedBot = (updatedBot: Bot): void => {
+              committedBot = updatedBot
+            }
+            const editError = await writeEditedHome(kernel, bot.id, instructions, signal, () =>
+              prepareBotInstructionEdit({ botId: bot.id, record, mustStopVm, onCommit: setCommittedBot }),
+            ).then(
               () => null,
               () => errorResponse(409, "BOT_EDIT_FAILED", "Não foi possível salvar as instruções. Tente novamente."),
             )
@@ -1719,7 +1750,7 @@ export const init = async (
           if (record && "grantId" in record) {
             const granted = await redeemFileGrant({ kernel, grantId: record.grantId, signal })
             if (!granted.success) return errorResponse(granted.status, granted.errorCode, granted.error)
-            const attachment = insertAttachment({
+            const attachment = await insertAttachment({
               path: granted.name,
               originPath: granted.name,
               content: granted.content,
@@ -1746,7 +1777,7 @@ export const init = async (
             const content = Buffer.from(record.dataBase64, "base64")
             if (content.length > MAX_ATTACHMENT_BYTES)
               return errorResponse(413, "ATTACHMENT_TOO_LARGE", "Arquivo acima de 15 MB")
-            const attachment = insertAttachment({ path: record.name, originPath: record.name, content })
+            const attachment = await insertAttachment({ path: record.name, originPath: record.name, content })
             return attachment
               ? jsonResponse(201, { attachment })
               : errorResponse(404, "NOT_FOUND", "Attachment source file not found")

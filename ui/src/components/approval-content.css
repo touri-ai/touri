@@ -30,3 +30,8 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+.tool-approval-unknown {
+  margin: var(--space-8) 0;
+  font-size: var(--type-12);
+  color: var(--text-secondary);
+}

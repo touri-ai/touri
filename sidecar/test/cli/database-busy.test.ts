@@ -11,13 +11,13 @@ afterEach(async () => {
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup()
 })
 
-const fixture = (mode: "exclusive" | "reserved" | "wal" = "exclusive") => {
+const fixture = async (mode: "exclusive" | "reserved" | "wal" = "exclusive") => {
   const root = mkdtempSync(join(tmpdir(), "touri-busy-"))
   cleanups.push(() => rmSync(root, { recursive: true, force: true }))
   const filename = join(root, "auth.db")
-  const store = openAuthStore({ filename })
-  store.createPairingCode()
-  store.close()
+  const store = await openAuthStore({ filename })
+  await store.createPairingCode()
+  await store.close()
   const database = new Database(filename)
   cleanups.push(() => database.close())
   if (mode !== "wal") database.exec("PRAGMA journal_mode = DELETE")
@@ -72,7 +72,7 @@ test("the authentication database retains FULL commit durability", () => {
 
 for (const mode of ["exclusive", "reserved"] as const) {
   test(`status waits for the ${mode} startup lock and reads auth counts after it is released`, async () => {
-    const { root, database } = fixture(mode)
+    const { root, database } = await fixture(mode)
     const command = cli(root, "status")
     expect(await command.ready).toContain("touri ")
     await Bun.sleep(200)
@@ -87,7 +87,7 @@ for (const mode of ["exclusive", "reserved"] as const) {
 }
 
 test("status can read while the server holds an uncommitted WAL write transaction", async () => {
-  const { root } = fixture("wal")
+  const { root } = await fixture("wal")
   const result = await cli(root, "status").result
   expect(result.code).toBe(3)
   expect(result.stderr).toBe("")
@@ -102,7 +102,7 @@ for (const [name, mode] of [
   ["pair", "wal"],
 ] as const) {
   test(`${name} fails cleanly within a bounded time when the ${mode} lock persists`, async () => {
-    const { root } = fixture(mode)
+    const { root } = await fixture(mode)
     const startedAt = performance.now()
     const result = await cli(root, name).result
     const elapsed = performance.now() - startedAt
@@ -119,7 +119,7 @@ for (const [code, errno] of [
   ["SQLITE_BUSY", 5],
   ["SQLITE_BUSY_RECOVERY", 261],
 ] as const) {
-  test(`auth store retries ${code} when SQLite returns before its busy timeout`, () => {
+  test(`auth store retries ${code} when SQLite returns before its busy timeout`, async () => {
     const root = mkdtempSync(join(tmpdir(), "touri-recovery-"))
     cleanups.push(() => rmSync(root, { recursive: true, force: true }))
     const error = Object.assign(Object.create(SQLiteError.prototype), {
@@ -139,10 +139,14 @@ for (const [code, errno] of [
       return exec.call(this, sql, ...bindings)
     })
     try {
-      const store = openAuthStore({ filename: join(root, "auth.db") })
-      cleanups.push(() => store.close())
+      const filename = join(root, "auth.db")
+      const databasePath = prepareDatabaseFile({ root, path: filename })
+      const database = openAuthDatabase(databasePath)
+      cleanups.push(() => database.close())
       expect(failures).toBe(3)
-      expect(store.createPairingCode().success).toBe(true)
+      const store = await openAuthStore({ filename })
+      cleanups.push(() => store.close())
+      expect((await store.createPairingCode()).success).toBe(true)
       expect(store.pendingCodeCount()).toBe(1)
     } finally {
       intercepted.mockRestore()

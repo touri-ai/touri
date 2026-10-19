@@ -3,7 +3,8 @@ import { BOT_BOOT_COMMAND, CANCEL_VM_PROCESS_COMMAND, VM_PROCESS_COMMAND } from 
 export { BOT_BOOT_COMMAND, CANCEL_VM_PROCESS_COMMAND, VM_PROCESS_COMMAND } from "../../vm/guest-process"
 
 import { randomUUID } from "node:crypto"
-import { cpSync, existsSync, lstatSync, mkdirSync, statfsSync } from "node:fs"
+import { existsSync, lstatSync, statfsSync } from "node:fs"
+import { cp, mkdir } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { withToolPath } from "../../kernel/shell-env"
@@ -255,6 +256,7 @@ export const createAppleContainerProvider = ({
       if (!imageBuild)
         imageBuild = (async () => {
           progress("Construindo imagem: Node 22, CLIs, Chromium e Xvfb…")
+          const context = await imageContext(tmpdir())
           const child = spawnTree({
             cmd: binary,
             args: [
@@ -269,7 +271,7 @@ export const createAppleContainerProvider = ({
               "plain",
               "--tag",
               BOT_IMAGE,
-              imageContext(tmpdir()),
+              context,
             ],
             cwd: tmpdir(),
             env: withToolPath(),
@@ -507,7 +509,7 @@ export const createAppleContainerProvider = ({
       return maintenance.withMigration(async (): Promise<VmResult<VmVolumeSpec>> => {
         // Export works for stopped guests as well. Keep the complete backup even
         // if extraction or recreation fails; never delete the source on failure.
-        mkdirSync(path, { recursive: true, mode: 0o700 })
+        await mkdir(path, { recursive: true, mode: 0o700 })
         const archive = join(path, "rootfs.tar")
         const exported = await command({
           args: ["export", "--output", archive, id],
@@ -536,7 +538,7 @@ export const createAppleContainerProvider = ({
               errorCode: "INVALID_CONFIG",
               error: "Home inválido; container original preservado",
             }
-          cpSync(home, persistentHome, { recursive: true, force: false, dereference: false })
+          await cp(home, persistentHome, { recursive: true, force: false, dereference: false })
         }
         // A macOS bind cannot chown files to the guest uid. Copy into a named
         // volume in a disposable helper before deleting the original rootfs.

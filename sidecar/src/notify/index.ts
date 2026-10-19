@@ -10,6 +10,7 @@ import { createNotificationStore } from "./store"
 export const name = "notify"
 
 const RESOLVED_BY_USER_REPLY: ReadonlyArray<NotifyKind> = ["question", "turn-failed", "routine-failed"]
+const STARTED_STATUSES: ReadonlyArray<string> = ["queued", "starting", "running", "succeeded"]
 const RESOLVED_BY_NEW_RUN: ReadonlyArray<NotifyKind> = ["turn-failed", "routine-failed", "routine-deferred"]
 
 export const init = async (
@@ -49,6 +50,22 @@ export const init = async (
   await reconcileHistory()
 
   kernel.subscribe(({ event }) => {
+    if (event.type === "run.updated" && event.run.routineRunId && STARTED_STATUSES.includes(event.run.status)) {
+      const routineId = (
+        database.query("SELECT routine_id FROM routine_runs WHERE id = ?").get(event.run.routineRunId) as {
+          routine_id: string
+        } | null
+      )?.routine_id
+      const open = routineId ? store.byRequestId(`routine-deferred:${routineId}`) : null
+      if (open && open.resolvedAt === null) notifier.finish({ id: open.id, resolution: "expired" })
+      // Deferrals written before they carried a routine id belong to the bot's routines as a whole.
+      const legacy = database
+        .query(
+          "SELECT id FROM notifications WHERE kind = 'routine-deferred' AND request_id IS NULL AND resolved_at IS NULL AND bot_id = ?",
+        )
+        .all(event.run.botId) as Array<{ id: number }>
+      for (const item of legacy) notifier.finish({ id: item.id, resolution: "expired" })
+    }
     if (event.type === "run.updated" && ["queued", "starting", "running", "succeeded"].includes(event.run.status)) {
       const { run } = event
       const threadId =

@@ -1,11 +1,12 @@
-import { existsSync, rmSync } from "node:fs"
+import { existsSync } from "node:fs"
+import { rm } from "node:fs/promises"
 import { join } from "node:path"
-import { atomicWriteFile, ensurePrivateDirectory } from "../../kernel/files"
+import { ensurePrivateDirectoryAsync, writePrivateFileAsync } from "../../kernel/async-files"
 export type ChromeDownloadDeps = {
   fetchFn?: (input: string, init?: RequestInit) => Promise<Response>
   writeFile?: (path: string, data: Uint8Array) => Promise<void>
-  mkdir?: (path: string) => void
-  remove?: (path: string) => void
+  mkdir?: (path: string) => void | Promise<void>
+  remove?: (path: string) => void | Promise<void>
   extract?: (args: { zipPath: string; destination: string }) => Promise<boolean>
   verify?: (path: string) => Promise<boolean>
   version?: string
@@ -72,9 +73,9 @@ export const downloadChromeForTesting = async ({
   deps?: ChromeDownloadDeps
 }): Promise<{ success: true; path: string; version: string } | { success: false; error: string }> => {
   const fetchFn = deps.fetchFn ?? fetch
-  const writeFile = deps.writeFile ?? (async (path, data) => atomicWriteFile({ root, path, content: data }))
-  const makeDirectory = deps.mkdir ?? ((path) => ensurePrivateDirectory({ root, path }))
-  const remove = deps.remove ?? ((path) => rmSync(path, { recursive: true, force: true }))
+  const writeFile = deps.writeFile ?? ((path, data) => writePrivateFileAsync({ root, path, content: data }))
+  const makeDirectory = deps.mkdir ?? ((path) => ensurePrivateDirectoryAsync({ root, path }))
+  const remove = deps.remove ?? ((path) => rm(path, { recursive: true, force: true }))
   const extract = deps.extract ?? defaultExtract
   const verify = deps.verify ?? defaultVerify
   const version = deps.version ?? process.env.TOURI_CHROME_FOR_TESTING_VERSION ?? pinnedVersion
@@ -98,11 +99,11 @@ export const downloadChromeForTesting = async ({
     if (!archiveResponse.ok)
       return { success: false, error: `Chrome for Testing download failed (${archiveResponse.status})` }
     const archive = new Uint8Array(await archiveResponse.arrayBuffer())
-    makeDirectory(versionDirectory)
+    await makeDirectory(versionDirectory)
     const zipPath = join(versionDirectory, "chrome.zip")
     await writeFile(zipPath, archive)
     const extracted = await extract({ zipPath, destination: versionDirectory })
-    remove(zipPath)
+    await remove(zipPath)
     if (!extracted || !existsSync(executable))
       return { success: false, error: "Chrome for Testing archive extraction failed" }
     if (!(await verify(executable)))

@@ -3,6 +3,7 @@ import { createHash } from "node:crypto"
 import { closeSync, constants, existsSync, fstatSync, openSync, readSync } from "node:fs"
 import { basename, dirname, join, relative } from "node:path"
 import type { MessagePart, RouteResponse, ToolCallPart, UiEvent } from "@touri/contracts"
+import { privateFileExistsAsync, writePrivateFileAsync } from "./async-files"
 import { assertPrivateFile, atomicWriteFile, openWorkspaceDirectory, openWorkspaceEntry } from "./files"
 
 export const OUTPUT_BLOB_THRESHOLD = 8 * 1024
@@ -86,19 +87,24 @@ const inlineOutputBytes = (part: MessagePart, output: string): number =>
   Buffer.byteLength(output) +
   (part.type === "tool_call" && part.outputJson && part.outputTail ? Buffer.byteLength(part.outputTail) : 0)
 
-export const externalizeMessageParts = ({
-  database,
-  appData,
-  parts,
-  inlineBudgetBytes = OUTPUT_INLINE_BUDGET_BYTES,
-  reservedBytes = 0,
-}: {
+type ExternalizationOptions = {
   database: Database
   appData: string
   parts: MessagePart[]
   inlineBudgetBytes?: number
   reservedBytes?: number
-}): MessagePart[] => {
+}
+
+type OutputBlobWrite = { id: string; path: string; content: string; bytes: number }
+type ExternalizationPlan = { parts: MessagePart[]; writes: OutputBlobWrite[]; attachments: OutputBlobWrite[] }
+
+const planExternalizedParts = ({
+  database,
+  appData,
+  parts,
+  inlineBudgetBytes = OUTPUT_INLINE_BUDGET_BYTES,
+  reservedBytes = 0,
+}: ExternalizationOptions): ExternalizationPlan => {
   // Reserve the shared inline budget for live progress. An indivisible live
   // frame remains inline even above the budget; the writer flushes it immediately.
   const reservedLiveBytes = Math.min(
@@ -110,7 +116,9 @@ export const externalizeMessageParts = ({
     }, reservedBytes),
   )
   let inlineBytes = 0
-  return parts.map((part) => {
+  const writes = new Map<string, OutputBlobWrite>()
+  const attachments = new Map<string, OutputBlobWrite>()
+  const externalized = parts.map((part) => {
     if (part.type !== "tool_call" && part.type !== "command" && part.type !== "file_change") return part
     // A changing live tail must not create a new durable file on every publish.
     if (!completed(part)) return part
@@ -136,14 +144,9 @@ export const externalizeMessageParts = ({
     const id = createHash("sha256").update(fullOutput).digest("hex")
     const existing = database.query("SELECT path FROM attachments WHERE id = ?").get(id) as { path: string } | null
     const path = existing?.path ?? join(appData, "attachments", id.slice(0, 2), `${id}.tool-output.txt`)
-    // Commit the durable file before any row/event can refer to it. An interrupted
-    // transaction may leave an orphan, which the maintenance collector can remove.
-    if (!existsSync(path)) atomicWriteFile({ root: appData, path, content: fullOutput })
-    database
-      .query(
-        "INSERT OR IGNORE INTO attachments(id,path,mime,bytes,origin_path,created_at) VALUES (?,?,'text/plain',?,?,?)",
-      )
-      .run(id, path, fullBytes, OUTPUT_BLOB_ORIGIN, Date.now())
+    const blob = { id, path, content: fullOutput, bytes: fullBytes }
+    attachments.set(id, blob)
+    writes.set(id, blob)
     const reference = {
       outputAttachmentId: id,
       outputBytes: fullBytes,
@@ -160,6 +163,45 @@ export const externalizeMessageParts = ({
     if (part.type === "command") return { ...part, ...reference, outputTail: "" }
     return { ...part, ...reference, diff: null }
   })
+  return { parts: externalized, writes: [...writes.values()], attachments: [...attachments.values()] }
+}
+
+const insertAttachmentRows = (database: Database, attachments: OutputBlobWrite[]): void => {
+  const insert = database.query(
+    "INSERT OR IGNORE INTO attachments(id,path,mime,bytes,origin_path,created_at) VALUES (?,?,'text/plain',?,?,?)",
+  )
+  attachments.forEach(({ id, path, bytes }) => {
+    insert.run(id, path, bytes, OUTPUT_BLOB_ORIGIN, Date.now())
+  })
+}
+
+/** Stream persistence keeps this synchronous adapter until the writer migration completes. */
+export const externalizeMessageParts = (args: ExternalizationOptions): MessagePart[] => {
+  const plan = planExternalizedParts(args)
+  plan.writes
+    .filter(({ path }) => !existsSync(path))
+    .forEach(({ path, content }) => {
+      atomicWriteFile({ root: args.appData, path, content })
+    })
+  insertAttachmentRows(args.database, plan.attachments)
+  return plan.parts
+}
+
+/** File creation for timer and request handlers runs on the dedicated I/O worker. */
+export const externalizeMessagePartsAsync = async (args: ExternalizationOptions): Promise<MessagePart[]> => {
+  const plan = planExternalizedParts(args)
+  const missing = await Promise.all(
+    plan.writes.map(async (blob) =>
+      (await privateFileExistsAsync({ root: args.appData, path: blob.path })) ? null : blob,
+    ),
+  )
+  await Promise.all(
+    missing
+      .filter((blob): blob is OutputBlobWrite => blob !== null)
+      .map(({ path, content }) => writePrivateFileAsync({ root: args.appData, path, content })),
+  )
+  insertAttachmentRows(args.database, plan.attachments)
+  return plan.parts
 }
 
 /** Only an explicitly requested page is read, even for very large saved results. */

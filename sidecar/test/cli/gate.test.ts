@@ -16,15 +16,15 @@ const files: Record<string, UiAsset> = {
 const ui: UiAssets = { source: "embedded", get: (path) => files[path] ?? null }
 
 const cleanups: Array<() => void> = []
-afterEach(() => {
-  for (const cleanup of cleanups.splice(0)) cleanup()
+afterEach(async () => {
+  for (const cleanup of cleanups.splice(0)) await cleanup()
 })
 
-const makeGate = () => {
+const makeGate = async () => {
   const dir = mkdtempSync(join(tmpdir(), "touri-gate-"))
-  const store = openAuthStore({ filename: join(dir, "auth.db") })
-  cleanups.push(() => {
-    store.close()
+  const store = await openAuthStore({ filename: join(dir, "auth.db") })
+  cleanups.push(async () => {
+    await store.close()
     rmSync(dir, { recursive: true, force: true })
   })
   const secrets = createSecretStore({ dir, env: { TOURI_SECRETS_KEY: "k" } })
@@ -55,7 +55,7 @@ const makeGate = () => {
     const response = await call({
       path: "/pair",
       method: "POST",
-      body: { code: store.createPairingCode().code, client: true },
+      body: { code: (await store.createPairingCode()).code, client: true },
     })
     const payload = (await response?.json()) as { token: string }
     return { token: payload.token, cookie: `${deviceCookieName}=${payload.token}` }
@@ -64,7 +64,7 @@ const makeGate = () => {
 }
 
 test("unauthenticated root shows the pairing page and the API answers 401", async () => {
-  const { call } = makeGate()
+  const { call } = await makeGate()
   const page = await call({ path: "/" })
   expect(page?.status).toBe(200)
   expect(await page?.text()).toContain("Código de pareamento")
@@ -74,12 +74,12 @@ test("unauthenticated root shows the pairing page and the API answers 401", asyn
 })
 
 test("pairing sets an httpOnly SameSite=Strict Secure cookie and the device can then use the API and UI", async () => {
-  const { call, store } = makeGate()
+  const { call, store } = await makeGate()
   const response = await call({
     path: "/pair",
     method: "POST",
     headers: { "x-forwarded-proto": "https" },
-    body: { code: store.createPairingCode().code, name: "Chrome" },
+    body: { code: (await store.createPairingCode()).code, name: "Chrome" },
   })
   expect(response?.status).toBe(200)
   const cookie = response?.headers.get("set-cookie") ?? ""
@@ -95,17 +95,17 @@ test("pairing sets an httpOnly SameSite=Strict Secure cookie and the device can 
 })
 
 test("a bearer token works for the CLI and a revoked device is refused", async () => {
-  const { call, pair, store } = makeGate()
+  const { call, pair, store } = await makeGate()
   const { token } = await pair()
   const headers = { authorization: `Bearer ${token}`, "X-Touri-Client": "cli" }
   expect(await call({ path: "/api/v1/bots", headers })).toBeNull()
   const [device] = store.listDevices()
-  store.revokeDevice(device?.id ?? "")
+  await store.revokeDevice(device?.id ?? "")
   expect((await call({ path: "/api/v1/bots", headers }))?.status).toBe(401)
 })
 
 test("both API prefixes accept a paired native client and reject invalid, revoked and query tokens", async () => {
-  const { call, pair, store } = makeGate()
+  const { call, pair, store } = await makeGate()
   const { token } = await pair()
   const headers = { authorization: `Bearer ${token}`, "X-Touri-Client": "island" }
   const endpoints = [
@@ -129,12 +129,12 @@ test("both API prefixes accept a paired native client and reject invalid, revoke
     expect((await call({ ...endpoint, headers: { ...headers, origin: "https://evil.example" } }))?.status).toBe(403)
   }
   const [device] = store.listDevices()
-  store.revokeDevice(device?.id ?? "")
+  await store.revokeDevice(device?.id ?? "")
   for (const endpoint of endpoints) expect((await call({ ...endpoint, headers }))?.status).toBe(401)
 })
 
 test("notification aliases use device cookies with the same write-origin checks as v1", async () => {
-  const { call, pair } = makeGate()
+  const { call, pair } = await makeGate()
   const { cookie } = await pair()
   expect(await call({ path: "/api/notifications/pending", headers: { cookie } })).toBeNull()
   const endpoint = { path: "/api/notifications/1/dismiss", method: "POST" }
@@ -143,19 +143,19 @@ test("notification aliases use device cookies with the same write-origin checks 
 })
 
 test("a pairing code cannot be replayed and repeated failures are rate limited", async () => {
-  const { call, store } = makeGate()
-  const { code } = store.createPairingCode()
+  const { call, store } = await makeGate()
+  const { code } = await store.createPairingCode()
   expect((await call({ path: "/pair", method: "POST", body: { code } }))?.status).toBe(200)
   expect((await call({ path: "/pair", method: "POST", body: { code } }))?.status).toBe(401)
   await call({ path: "/pair", method: "POST", body: { code: "AAAA-AAAA-AAAA" } })
   await call({ path: "/pair", method: "POST", body: { code: "AAAA-AAAA-AAAB" } })
-  const limited = await call({ path: "/pair", method: "POST", body: { code: store.createPairingCode().code } })
+  const limited = await call({ path: "/pair", method: "POST", body: { code: (await store.createPairingCode()).code } })
   expect(limited?.status).toBe(429)
   expect(limited?.headers.get("retry-after")).not.toBeNull()
 })
 
 test("cookie-authenticated writes from another origin are refused", async () => {
-  const { call, pair } = makeGate()
+  const { call, pair } = await makeGate()
   const { cookie } = await pair()
   const evil = await call({
     path: "/api/v1/threads",
@@ -174,7 +174,7 @@ test("cookie-authenticated writes from another origin are refused", async () => 
 })
 
 test("devices can be listed and revoked over the API", async () => {
-  const { call, pair, store } = makeGate()
+  const { call, pair, store } = await makeGate()
   const first = await pair()
   const second = await pair()
   const list = await call({ path: "/api/v1/devices", headers: { cookie: first.cookie } })
@@ -192,7 +192,7 @@ test("devices can be listed and revoked over the API", async () => {
 })
 
 test("static serving falls back to index.html for app routes, never for missing files", async () => {
-  const { call, pair } = makeGate()
+  const { call, pair } = await makeGate()
   const { cookie } = await pair()
   expect(await (await call({ path: "/some/route", headers: { cookie } }))?.text()).toBe("<html>app</html>")
   expect((await call({ path: "/missing.js", headers: { cookie } }))?.status).toBe(404)
@@ -201,7 +201,7 @@ test("static serving falls back to index.html for app routes, never for missing 
 })
 
 test("chat file reads require authentication and reach API routing rather than static assets", async () => {
-  const { call, pair } = makeGate()
+  const { call, pair } = await makeGate()
   const path = "/api/v1/bots/bot/files/content?path=%2Fworkspace%2Fnotes.md"
   expect((await call({ path }))?.status).toBe(401)
   const { cookie } = await pair()
@@ -209,7 +209,7 @@ test("chat file reads require authentication and reach API routing rather than s
 })
 
 test("serves the linked app favicon from directory and embedded UI assets", async () => {
-  const { store, secrets, limiter, pair } = makeGate()
+  const { store, secrets, limiter, pair } = await makeGate()
   const { cookie } = await pair()
   const publicDir = new URL("../../../ui/public/", import.meta.url)
   const html = readFileSync(new URL("../../../ui/index.html", import.meta.url), "utf8")
@@ -229,7 +229,7 @@ test("serves the linked app favicon from directory and embedded UI assets", asyn
 })
 
 test("R13: --no-pair never admits an unpaired caller; another macOS account shares 127.0.0.1", async () => {
-  const { call } = makeGate()
+  const { call } = await makeGate()
   const direct = { host: "127.0.0.1:8795" }
   expect((await call({ path: "/api/v1/bots", clientIp: "127.0.0.1", headers: direct }))?.status).toBe(401)
   expect((await call({ path: "/api/v1/bots", clientIp: "::1", headers: { host: "localhost:8795" } }))?.status).toBe(401)
@@ -239,7 +239,7 @@ test("R13: --no-pair never admits an unpaired caller; another macOS account shar
 })
 
 test("without --no-pair even loopback must pair", async () => {
-  const { call } = makeGate()
+  const { call } = await makeGate()
   expect(
     (await call({ path: "/api/v1/bots", clientIp: "127.0.0.1", headers: { host: "127.0.0.1:8795" } }))?.status,
   ).toBe(401)
@@ -253,7 +253,7 @@ test("isDirectLoopback rejects forwarded and tailscale headers", () => {
 })
 
 test("A06/C-02: remote plain HTTP refuses pairing and spoofed proxy headers", async () => {
-  const { store } = makeGate()
+  const { store } = await makeGate()
   const gate = createWebGate({
     store,
     ui,
@@ -264,7 +264,7 @@ test("A06/C-02: remote plain HTTP refuses pairing and spoofed proxy headers", as
     const request = new Request("http://box.example/pair", {
       method: "POST",
       headers: { host: "box.example", ...extra },
-      body: JSON.stringify({ code: store.createPairingCode().code }),
+      body: JSON.stringify({ code: (await store.createPairingCode()).code }),
     })
     const response = await gate({ request, url: new URL(request.url), clientIp: "100.64.0.9" })
     expect(response?.status).toBe(426)
@@ -273,20 +273,20 @@ test("A06/C-02: remote plain HTTP refuses pairing and spoofed proxy headers", as
 })
 
 test("C-06: one pairing source cannot spend another browser's failure budget", async () => {
-  const { call, store } = makeGate()
+  const { call, store } = await makeGate()
   for (let i = 0; i < 4; i++)
     await call({ path: "/pair", method: "POST", clientIp: "100.64.0.1", body: { code: "wrong" } })
   const response = await call({
     path: "/pair",
     method: "POST",
     clientIp: "100.64.0.2",
-    body: { code: store.createPairingCode().code },
+    body: { code: (await store.createPairingCode()).code },
   })
   expect(response?.status).toBe(200)
 })
 
 test("C-07: pairing rejects oversized Content-Length without reading the body", async () => {
-  const { store } = makeGate()
+  const { store } = await makeGate()
   const gate = createWebGate({
     store,
     ui,
@@ -304,7 +304,7 @@ test("C-07: pairing rejects oversized Content-Length without reading the body", 
 })
 
 test("C-07: chunked pairing counts UTF-8 bytes and cancels at the limit", async () => {
-  const { intercept } = makeGate()
+  const { intercept } = await makeGate()
   let canceled = false
   const stream = new ReadableStream<Uint8Array>({
     pull(out) {
@@ -325,7 +325,7 @@ test("C-07: chunked pairing counts UTF-8 bytes and cancels at the limit", async 
 })
 
 test("C-07: slow pairing reads have a deadline and per-source concurrency cannot block another source", async () => {
-  const { store, secrets } = makeGate()
+  const { store, secrets } = await makeGate()
   const gate = createWebGate({
     store,
     secrets,
@@ -347,14 +347,14 @@ test("C-07: slow pairing reads have a deadline and per-source concurrency cannot
   const a = call("100.64.0.1", slow())
   const b = call("100.64.0.1", slow())
   expect((await call("100.64.0.1", "{}"))?.status).toBe(429)
-  expect((await call("100.64.0.2", JSON.stringify({ code: store.createPairingCode().code })))?.status).toBe(200)
+  expect((await call("100.64.0.2", JSON.stringify({ code: (await store.createPairingCode()).code })))?.status).toBe(200)
   expect((await a)?.status).toBe(408)
   expect((await b)?.status).toBe(408)
   expect(canceled).toBe(2)
 })
 
 test("A06: only an explicitly trusted loopback HTTPS proxy can pair and rotate Secure cookies", async () => {
-  const { store, secrets } = makeGate()
+  const { store, secrets } = await makeGate()
   const gate = createWebGate({
     store,
     secrets,
@@ -376,7 +376,7 @@ test("A06: only an explicitly trusted loopback HTTPS proxy can pair and rotate S
     })
     return gate({ request, url: new URL(request.url), clientIp: "127.0.0.1" })
   }
-  const paired = await call("/pair", { code: store.createPairingCode().code })
+  const paired = await call("/pair", { code: (await store.createPairingCode()).code })
   expect(paired?.status).toBe(200)
   const cookie = paired?.headers.get("set-cookie") ?? ""
   expect(cookie).toContain("Secure")
@@ -388,7 +388,7 @@ test("A06: only an explicitly trusted loopback HTTPS proxy can pair and rotate S
 })
 
 test("a trusted-proxy server still pairs a direct loopback client that sends no forwarding headers", async () => {
-  const { store, secrets } = makeGate()
+  const { store, secrets } = await makeGate()
   const gate = createWebGate({
     store,
     secrets,
@@ -396,11 +396,11 @@ test("a trusted-proxy server still pairs a direct loopback client that sends no 
     trustedProxy: true,
     limiter: createRateLimiter({ maxFailures: 3, windowMs: 60_000 }),
   })
-  const pair = (origin: string) => {
+  const pair = async (origin: string) => {
     const request = new Request("http://127.0.0.1:8795/pair", {
       method: "POST",
       headers: { host: "127.0.0.1:8795", origin },
-      body: JSON.stringify({ code: store.createPairingCode().code }),
+      body: JSON.stringify({ code: (await store.createPairingCode()).code }),
     })
     return gate({ request, url: new URL(request.url), clientIp: "127.0.0.1" })
   }

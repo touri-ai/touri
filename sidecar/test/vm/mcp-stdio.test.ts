@@ -91,7 +91,7 @@ const fixture = async () => {
 
 test.each([false, true])("guest shim retries a delayed per-run write and authenticates (env: %s)", async (viaEnv) => {
   const f = await fixture()
-  const credential = createRunMcpToken(f.runtime.kernel, "thread", "private-run-token")
+  const credential = await createRunMcpToken(f.runtime.kernel, "thread", "private-run-token")
   const path = join(f.root, `thread.${credential.tokenId}.token`)
   const child = f.launch(path, viaEnv)
   await Bun.sleep(200)
@@ -135,7 +135,7 @@ test("missing guest token exits within a bounded wait with a clear diagnostic an
 
 test("host rejects the wrong per-run token and the guest explains an initialize disconnect", async () => {
   const f = await fixture()
-  const credential = createRunMcpToken(f.runtime.kernel, "thread", "right-token")
+  const credential = await createRunMcpToken(f.runtime.kernel, "thread", "right-token")
   const path = join(f.root, `thread.${credential.tokenId}.token`)
   writeFileSync(path, "wrong-token")
   const child = f.launch(path)
@@ -160,7 +160,7 @@ test("guest shim refuses a shared thread token or a path outside its run directo
 
 test("a new host cannot authenticate a persisted credential from before app_restart", async () => {
   const f = await fixture()
-  const credential = createRunMcpToken(f.runtime.kernel, "thread", "old-run-token")
+  const credential = await createRunMcpToken(f.runtime.kernel, "thread", "old-run-token")
   const otherHost = { ...f.runtime.kernel }
   const line = JSON.stringify({ touriAuth: { thread: "thread", token: "old-run-token", tokenId: credential.tokenId } })
   const args = { line, database: f.db, tokenDir: join(f.root, "run/mcp-tokens") }

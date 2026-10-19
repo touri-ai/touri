@@ -1,33 +1,12 @@
-import { existsSync, readdirSync } from "node:fs"
+import { readdirSync } from "node:fs"
 import { join } from "node:path"
 import type { AppPaths, Kernel } from "@touri/contracts"
-import {
-  atomicAppendFile,
-  atomicWriteFile,
-  ensurePrivateDirectory,
-  movePrivateFile,
-  readPrivateFile,
-  removePrivateFile,
-} from "./files"
+import { appendLogFileAsync } from "./async-files"
+import { atomicWriteFile, ensurePrivateDirectory, readPrivateFile, removePrivateFile } from "./files"
 import { redactStructured } from "./redact"
 
 const maxLogBytes = 10 * 1024 * 1024
 const retainedGenerations = 5
-
-const rotate = (root: string, filename: string): void => {
-  for (let index = retainedGenerations; index >= 1; index -= 1) {
-    const current = `${filename}.${index}`
-    if (!existsSync(current)) continue
-    if (index === retainedGenerations) removePrivateFile({ root, path: current })
-    else movePrivateFile({ root, from: current, to: `${filename}.${index + 1}` })
-  }
-  if (existsSync(filename)) movePrivateFile({ root, from: filename, to: `${filename}.1` })
-}
-
-const prepareLogFile = ({ root, filename, bytes }: { root: string; filename: string; bytes: number }): void => {
-  const size = readPrivateFile({ root, path: filename })?.byteLength ?? 0
-  if (size + bytes > maxLogBytes) rotate(root, filename)
-}
 
 const encodedLogLine = (line: string): Uint8Array => {
   const encoded = Buffer.from(`${line}\n`, "utf8")
@@ -56,8 +35,13 @@ export const createLogger = ({
   return (entry) => {
     const line = JSON.stringify(redactStructured({ at: Date.now(), ...entry }, redact))
     const encoded = encodedLogLine(line)
-    prepareLogFile({ root: paths.appData, filename, bytes: encoded.byteLength })
-    atomicAppendFile({ root: paths.appData, path: filename, content: encoded })
+    void appendLogFileAsync({
+      root: paths.appData,
+      path: filename,
+      content: encoded,
+      maxBytes: maxLogBytes,
+      retainedGenerations,
+    }).catch(() => undefined)
     if (entry.level === "error" || entry.level === "warn") process.stderr.write(`${line}\n`)
   }
 }

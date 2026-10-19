@@ -88,18 +88,18 @@ const LearningSettings = ({ api, botId, onRetry }: { api: UiApi; botId: string; 
       )}
       {learning &&
         [
-          { file: "MEMORY.md", error: learning.memoryError },
-          { file: "USER.md", error: learning.userError },
-        ].map(({ file, error }) => {
+          { file: "MEMORY.md", what: t("sobre o ambiente"), error: learning.memoryError },
+          { file: "USER.md", what: t("sobre você"), error: learning.userError },
+        ].map(({ file, what, error }) => {
           if (!error) return null
 
           return (
             <p role="alert" key={file}>
               {t(
                 error === "INVALID_PATH"
-                  ? "{file} está indisponível porque não é um arquivo local seguro. Substitua os links por um arquivo comum. Você ainda pode desligar o aprendizado."
-                  : "Não foi possível ler {file}. Verifique as permissões do arquivo. Você ainda pode desligar o aprendizado.",
-                { file },
+                  ? "A memória {what} ({file}) está indisponível porque não é um arquivo local seguro. Substitua os links por um arquivo comum. Você ainda pode desligar o aprendizado."
+                  : "Não foi possível ler a memória {what} ({file}). Verifique as permissões do arquivo. Você ainda pode desligar o aprendizado.",
+                { file, what },
               )}
             </p>
           )
@@ -117,7 +117,7 @@ const LearningSettings = ({ api, botId, onRetry }: { api: UiApi; botId: string; 
               <strong>{t("Memória automática")}</strong>
               <small>
                 {t(
-                  "A cada {count} respostas concluídas, revisa o que aprendeu sobre você e o ambiente. MEMORY.md: {memory} · USER.md: {user} caracteres.",
+                  "A cada {count} respostas concluídas, revisa o que aprendeu sobre você e o ambiente. Memória sobre você: {user} · sobre o ambiente: {memory} caracteres.",
                   {
                     count: learning.memoryEveryTurns,
                     memory: learning.memoryError ? "—" : learning.memoryChars,

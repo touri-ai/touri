@@ -146,6 +146,11 @@ test("schema 11 answers health in under a second while a 2–5 MB history is bac
     const before = legacyDatabase(root)
     expect(before).toBeGreaterThan(2_000_000)
     expect(before).toBeLessThan(5_000_000)
+    // Hold the backfill: its progress writes abort (and are retried) until the test releases the trigger.
+    const hold = new Database(join(root, "touri.db"))
+    hold.exec(`CREATE TRIGGER hold_backfill BEFORE UPDATE ON settings WHEN OLD.key LIKE 'transcript.backfill.%'
+      BEGIN SELECT RAISE(ABORT, 'backfill held by test'); END`)
+    hold.close()
     const started = performance.now()
     runtime = createKernel({ appData: root })
     await initStore(runtime.kernel)
@@ -161,6 +166,8 @@ test("schema 11 answers health in under a second while a 2–5 MB history is bac
     const snapshot = await (await fetch(`${url}/threads/t3/messages`, { headers })).json()
     expect(snapshot.messages).toHaveLength(150)
     expect(snapshot.messages[0].text).toContain("3/0: Histórico preservado.")
+    expect(health.historyMigration.done).toBe(0)
+    ;(runtime.kernel.db as Database).exec("DROP TRIGGER hold_backfill")
     let done = health
     const deadline = Date.now() + 10_000
     while (done.historyMigration.running && Date.now() < deadline) {

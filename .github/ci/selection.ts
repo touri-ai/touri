@@ -36,6 +36,7 @@ export function linuxTests(paths: string[]): string[] {
   return paths.filter(
     (path) =>
       path === "kernel/sqlite-sync-benchmark.test.ts" ||
+      path === "kernel/async-files.test.ts" ||
       path.startsWith("platform/") ||
       /(?:^|\/)(?:linux-|[^/]*(?:sandbox|confinement))/.test(path),
   )

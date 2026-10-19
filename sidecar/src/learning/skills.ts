@@ -1,5 +1,7 @@
-import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync } from "node:fs"
+import { existsSync, readdirSync, readFileSync } from "node:fs"
+import { mkdir, rename } from "node:fs/promises"
 import { join } from "node:path"
+import { appendPrivateFileAsync } from "../kernel/async-files"
 import { sha256 } from "../runtime/utils"
 import { linkFree, writeAtomically } from "./paths"
 import { findThreat } from "./threats"
@@ -39,7 +41,7 @@ const getSkillText = (path: string): string | null => {
 }
 
 /** Append-only record of every change, so the user can see what was learned and from where. */
-const record = ({
+const record = async ({
   homeDir,
   entry,
 }: {
@@ -53,11 +55,11 @@ const record = ({
     before: string | null
     after: string | null
   }
-}): void => {
-  mkdirSync(skillsRoot(homeDir), { recursive: true })
-  appendFileSync(
-    join(skillsRoot(homeDir), ".ledger.jsonl"),
-    `${JSON.stringify({
+}): Promise<void> => {
+  await appendPrivateFileAsync({
+    root: skillsRoot(homeDir),
+    path: join(skillsRoot(homeDir), ".ledger.jsonl"),
+    content: `${JSON.stringify({
       at: new Date().toISOString(),
       action: entry.action,
       skill: entry.skill,
@@ -67,8 +69,8 @@ const record = ({
       before: entry.before === null ? null : sha256(entry.before),
       after: entry.after === null ? null : sha256(entry.after),
     })}\n`,
-    { mode: 0o600 },
-  )
+    mode: 0o600,
+  })
 }
 
 /** Decode generated JSON quotes while preserving the text of legacy YAML scalars. */
@@ -114,7 +116,7 @@ export const validateNewSkill = ({
   return null
 }
 
-export const createSkill = ({
+export const createSkill = async ({
   homeDir,
   name,
   description,
@@ -128,12 +130,12 @@ export const createSkill = ({
   body: string
   origin: SkillOrigin
   threadId: string
-}): SkillResult => {
+}): Promise<SkillResult> => {
   const invalid = validateNewSkill({ homeDir, name, description, body })
   if (invalid) return invalid
   const content = renderSkill({ name, description: description.trim(), body })
-  writeAtomically(join(skillsRoot(homeDir), name, "SKILL.md"), content)
-  record({
+  await writeAtomically(join(skillsRoot(homeDir), name, "SKILL.md"), content)
+  await record({
     homeDir,
     entry: { action: "create", skill: name, file: "SKILL.md", origin, threadId, before: null, after: content },
   })
@@ -203,7 +205,7 @@ export const planSkillPatch = ({
   return { success: true, path, file, before, after }
 }
 
-export const patchSkill = ({
+export const patchSkill = async ({
   homeDir,
   patch,
   origin,
@@ -213,11 +215,11 @@ export const patchSkill = ({
   patch: SkillPatch
   origin: SkillOrigin
   threadId: string
-}): SkillResult => {
+}): Promise<SkillResult> => {
   const plan = planSkillPatch({ homeDir, patch })
   if (!plan.success) return plan
-  writeAtomically(plan.path, plan.after)
-  record({
+  await writeAtomically(plan.path, plan.after)
+  await record({
     homeDir,
     entry: {
       action: "patch",
@@ -254,7 +256,7 @@ export const planSkillArchive = ({
   return { success: true, dir, archive, before: getSkillText(join(dir, "SKILL.md")) }
 }
 
-export const archiveSkill = ({
+export const archiveSkill = async ({
   homeDir,
   name,
   origin,
@@ -264,13 +266,13 @@ export const archiveSkill = ({
   name: string
   origin: SkillOrigin
   threadId: string
-}): SkillResult => {
+}): Promise<SkillResult> => {
   const plan = planSkillArchive({ homeDir, name })
   if (!plan.success) return plan
   const { dir, archive, before } = plan
-  mkdirSync(archive, { recursive: true })
-  renameSync(dir, join(archive, `${name}-${Date.now()}`))
-  record({
+  await mkdir(archive, { recursive: true })
+  await rename(dir, join(archive, `${name}-${Date.now()}`))
+  await record({
     homeDir,
     entry: { action: "archive", skill: name, file: "SKILL.md", origin, threadId, before, after: null },
   })

@@ -59,6 +59,7 @@ test.each(process.env.TOURI_MESSAGE_STRESS === "1" ? [1] : [1, 2, 3])(
     })
     cleanups.add(() => engine.shutdown())
     fixture.kernel.services.provide("runtime.enqueue", engine.enqueue)
+    await engine.ready
     for (const threadId of threadIds.slice(1)) await fixture.send(threadId, `initial-${threadId}`)
     await getReady(() => turns.size === streams - 1)
     const metrics = getQueryMetrics(fixture.database)

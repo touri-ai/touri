@@ -121,11 +121,11 @@ it("resolves a legacy generic notice from the existing runs API and retries when
   )
   expect(screen.getByText("Aguarde a máquina terminar de iniciar para tentar de novo.")).toBeVisible()
   expect(api.request).toHaveBeenCalledWith("GET /threads/:id/runs", { all: true }, { id: thread.id })
-  expect(screen.queryByRole("button", { name: "Tentar de novo" })).not.toBeInTheDocument()
+  expect(screen.queryByRole("button", { name: "Tentar novamente" })).not.toBeInTheDocument()
   act(() => api.emit({ type: "machine.updated", machine: { ...machine, status: "running" } }))
   expect(screen.getByText("A máquina está pronta para uma nova tentativa.")).toBeVisible()
   expect(screen.queryByText("Aguarde a máquina terminar de iniciar para tentar de novo.")).not.toBeInTheDocument()
-  fireEvent.click(screen.getByRole("button", { name: "Tentar de novo" }))
+  fireEvent.click(screen.getByRole("button", { name: "Tentar novamente" }))
   await waitFor(() => expect(api.request).toHaveBeenCalledWith("POST /runs/:id/retry", {}, { id: run.id }))
 })
 
@@ -170,7 +170,7 @@ it("clears sidebar and bell attention when the failure card retries before a not
   render(<App kernel={{ services: { api } }} />)
   const card = await screen.findByRole("alert")
   expect(screen.getByRole("button", { name: "Notificações, 1 precisa de atenção" })).toBeVisible()
-  fireEvent.click(within(card).getByRole("button", { name: "Tentar de novo" }))
+  fireEvent.click(within(card).getByRole("button", { name: "Tentar novamente" }))
   await waitFor(() => {
     expect(api.request).toHaveBeenCalledWith("POST /runs/:id/retry", {}, { id: run.id })
     expect(document.querySelector(`[data-bot-entry="${bot.id}"]`)).toHaveAttribute("data-activity", "working")

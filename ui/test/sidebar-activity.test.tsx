@@ -462,6 +462,21 @@ it("shows interrupted tasks only while pending and leaves the count on the notif
   expect(screen.getAllByText("1", { selector: ".notification-badge" })).toHaveLength(1)
 })
 
+it("labels a postponed routine as such and keeps the bot out of needs-you", () => {
+  const { bots, threads } = fixture()
+  const notice = createMockApi().notify({
+    kind: "routine-deferred",
+    botId: "bot-alfa",
+    threadId: null,
+    title: "Rotina adiada: Resumo",
+    body: "A rotina não foi executada.",
+  })
+  renderSidebar({ bots, threads, notifications: [notice] })
+  expect(entry("bot-alfa")).not.toHaveAttribute("data-activity", "needs-you")
+  expect(within(entry("bot-alfa")).getByText("Rotina adiada")).toBeVisible()
+  expect(within(entry("bot-alfa")).queryByText(/Aguardando você|tarefa interrompida/)).toBeNull()
+})
+
 it("lets the bell open an approval that arrived before its notification", () => {
   const { bots, threads, messageBase } = fixture()
   const onReviewApproval = vi.fn()

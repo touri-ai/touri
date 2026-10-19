@@ -1,6 +1,7 @@
 import { Database } from "bun:sqlite"
-import type { Kernel, MessagePart, Run, StoreApi, ToolResolution } from "@touri/contracts"
-import { externalizeMessageParts } from "../kernel/output-blobs"
+import type { Kernel, Message, MessagePart, Run, StoreApi, ToolResolution } from "@touri/contracts"
+import { writeDatabaseAsync } from "../kernel/database-write"
+import { externalizeMessagePartsAsync } from "../kernel/output-blobs"
 import { summarizeToolResolutions } from "./tool-resolution-summary"
 
 type ToolPart = Extract<MessagePart, { callId: string }>
@@ -72,7 +73,7 @@ export const createToolResolutions = (kernel: Kernel) => {
         : undefined
     const resolved = {
       ...part,
-      ...(keepResult ? resultPart : {}),
+      ...(keepResult && !("outputAttachmentId" in part) ? resultPart : {}),
       resolution,
       ...(resolution === "completed_unobserved" && resultPart.type === "file_change" && completedOutcome !== undefined
         ? { completedOutcome }
@@ -82,9 +83,7 @@ export const createToolResolutions = (kernel: Kernel) => {
           ? null
           : (part.resolvedAt ?? (previous?.resolution === resolution ? previous.resolved_at : null) ?? Date.now()),
     }
-    const next = database
-      ? (externalizeMessageParts({ database, appData: kernel.paths.appData, parts: [resolved] })[0] as ToolPart)
-      : resolved
+    const next = resolved
     if (persist) {
       saveResolution?.run(run.id, part.callId, run.threadId, JSON.stringify(next), resolution, next.resolvedAt ?? null)
       const parts = pendingInterruptions.get(run.id)
@@ -92,6 +91,26 @@ export const createToolResolutions = (kernel: Kernel) => {
       if (!parts?.size) pendingInterruptions.delete(run.id)
     }
     if (!persist && (pending || interrupted(resolution))) {
+      const parts = pendingInterruptions.get(run.id) ?? new Map<string, ToolPart>()
+      parts.set(part.callId, next)
+      pendingInterruptions.set(run.id, parts)
+    }
+    return next
+  }
+  const recordAsync = async (run: Run, part: ToolPart, recovering = false, persist = true): Promise<ToolPart> => {
+    const resolved = record(run, part, recovering, false)
+    const next = database
+      ? ((
+          await externalizeMessagePartsAsync({ database, appData: kernel.paths.appData, parts: [resolved] })
+        )[0] as ToolPart)
+      : resolved
+    const resolution = outcome(next)
+    if (persist) {
+      saveResolution?.run(run.id, part.callId, run.threadId, JSON.stringify(next), resolution, next.resolvedAt ?? null)
+      const parts = pendingInterruptions.get(run.id)
+      parts?.delete(part.callId)
+      if (!parts?.size) pendingInterruptions.delete(run.id)
+    } else if (pendingInterruptions.get(run.id)?.has(part.callId) || interrupted(resolution)) {
       const parts = pendingInterruptions.get(run.id) ?? new Map<string, ToolPart>()
       parts.set(part.callId, next)
       pendingInterruptions.set(run.id, parts)
@@ -156,11 +175,63 @@ export const createToolResolutions = (kernel: Kernel) => {
       ?.query(`${PENDING_TOOL_RECOVERY_SQL} ${threadId ? "AND p.thread_id = ?" : ""} ORDER BY r.queued_at, r.id`)
       .all(...(threadId ? [threadId] : [])) ?? []) as RecoveryRun[]
 
-  const reconcileRun = (store: StoreApi, runId: string): void => {
+  const finishAsync = async (
+    run: Run,
+    parts: MessagePart[],
+    reason: Exclude<ToolResolution, "running">,
+    persist = true,
+  ): Promise<MessagePart[]> => {
+    const result: MessagePart[] = []
+    for (const part of parts) {
+      if (!isTool(part)) {
+        result.push(part)
+        continue
+      }
+      const current = await recordAsync(run, part, true, persist)
+      result.push(
+        outcome(current) === "running"
+          ? await recordAsync(run, { ...current, resolution: reason, resolvedAt: Date.now() }, false, persist)
+          : current,
+      )
+    }
+    const stored = [
+      ...((getRunParts?.all(run.id) as Array<{ part_json: string }> | undefined) ?? []),
+      ...Array.from(pendingInterruptions.get(run.id)?.values() ?? [], (part) => ({ part_json: JSON.stringify(part) })),
+    ]
+    const included = new Set(result.filter(isTool).map((part) => part.callId))
+    for (const row of stored) {
+      const part = JSON.parse(row.part_json) as ToolPart
+      if (included.has(part.callId)) continue
+      const resolution = outcome(part)
+      result.push(
+        await recordAsync(
+          run,
+          {
+            ...part,
+            resolution: resolution === "running" ? reason : hasResult(resolution) ? "completed_unobserved" : resolution,
+            ...(part.type === "file_change" && (resolution === "succeeded" || resolution === "failed")
+              ? { completedOutcome: resolution }
+              : {}),
+            resolvedAt: part.resolvedAt ?? Date.now(),
+          },
+          false,
+          persist,
+        ),
+      )
+    }
+    if (persist && getPendingToolCall?.get(run.id))
+      database
+        ?.query(
+          "UPDATE tool_calls SET ok = 0, error_code = ?, duration_ms = COALESCE(duration_ms, ? - created_at) WHERE run_id = ? AND ok IS NULL",
+        )
+        .run(reason.toUpperCase(), Date.now(), run.id)
+    return result
+  }
+  const reconcileRun = async (store: StoreApi, runId: string): Promise<void> => {
     if (!database) return
-    database.transaction(() => {
+    const recovery = database.transaction(() => {
       const row = database.query(`${PENDING_TOOL_RECOVERY_SQL} AND p.run_id = ?`).get(runId) as RecoveryRun | null
-      if (!row) return
+      if (!row) return null
       // Calls can be persisted before the first assistant message is written.
       const message = database
         .query(`SELECT id, parts_json, status FROM messages
@@ -174,37 +245,74 @@ export const createToolResolutions = (kernel: Kernel) => {
       const parts = message ? (JSON.parse(message.parts_json) as MessagePart[]) : []
       const reason = terminalReason(row.status)
       const run = { id: row.id, threadId: row.thread_id } as Run
-      const next = finish(run, parts, reason)
-      if (message && (JSON.stringify(parts) !== JSON.stringify(next) || message.status === "streaming")) {
-        const updated = store.updateMessage({
-          threadId: run.threadId,
-          messageId: message.id,
-          patch: {
-            parts: next,
-            status: row.status === "succeeded" ? "complete" : row.status === "canceled" ? "canceled" : "failed",
-          },
-        })
-        if (!updated.success) throw new Error(updated.error)
-      }
-      clearPending(row.id)
+      return { row, message, parts, reason, run }
     })()
+    if (!recovery) return
+    const { row, message, parts, reason, run } = recovery
+    // Finish durable file creation before the short, atomic projection repair.
+    const next = await externalizeMessagePartsAsync({
+      database,
+      appData: kernel.paths.appData,
+      parts: await finishAsync(run, parts, reason, false),
+    })
+    await writeDatabaseAsync(database, () =>
+      database.transaction(() => {
+        const current = message
+          ? (database
+              .query("SELECT parts_json, status FROM messages WHERE id = ? AND thread_id = ?")
+              .get(message.id, row.thread_id) as { parts_json: string; status: string } | null)
+          : null
+        if (message && (!current || current.parts_json !== message.parts_json || current.status !== message.status))
+          return
+
+        const shouldUpdate =
+          message && (JSON.stringify(parts) !== JSON.stringify(next) || message.status === "streaming")
+        if (message && shouldUpdate) {
+          const status: Message["status"] =
+            row.status === "succeeded" ? "complete" : row.status === "canceled" ? "canceled" : "failed"
+          // These parts already passed the complete file externalization plan above.
+          const updated = store.updateMessage({
+            threadId: row.thread_id,
+            messageId: message.id,
+            patch: { parts: next, status },
+          })
+          if (!updated.success) throw new Error(updated.error)
+        }
+        next.filter(isTool).forEach((part) => {
+          saveResolution?.run(
+            run.id,
+            part.callId,
+            run.threadId,
+            JSON.stringify(part),
+            outcome(part),
+            part.resolvedAt ?? null,
+          )
+        })
+        if (getPendingToolCall?.get(run.id))
+          database
+            .query(
+              "UPDATE tool_calls SET ok = 0, error_code = ?, duration_ms = COALESCE(duration_ms, ? - created_at) WHERE run_id = ? AND ok IS NULL",
+            )
+            .run(reason.toUpperCase(), Date.now(), run.id)
+        clearPending(row.id)
+      })(),
+    )
   }
-  const reconcile = (store: StoreApi, threadId?: string): void => {
-    database?.transaction(() =>
-      getPendingRuns(threadId).forEach((row) => {
-        reconcileRun(store, row.id)
-      }),
-    )()
+  const reconcile = async (store: StoreApi, threadId?: string): Promise<void> => {
+    for (const row of getPendingRuns(threadId)) {
+      await reconcileRun(store, row.id)
+    }
   }
   const reconcilePending = async (store: StoreApi, threadId: string): Promise<void> => {
     for (const row of getPendingRuns(threadId)) {
-      reconcileRun(store, row.id)
+      await reconcileRun(store, row.id)
       // Live imports may introduce many completed turns; let other clients run between them.
       await new Promise<void>((resolve) => setImmediate(resolve))
     }
   }
   return {
     record,
+    recordAsync,
     finish,
     reconcile,
     reconcilePending,

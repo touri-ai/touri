@@ -14,11 +14,11 @@ import { createKernel } from "../../src/kernel"
 const script = 'console.log("synthetic asset");\n'.repeat(200)
 const payload = { messages: Array.from({ length: 200 }, (_, id) => ({ id, text: "synthetic message" })) }
 const cleanups: Array<() => void> = []
-afterEach(() => {
-  for (const close of cleanups.splice(0)) close()
+afterEach(async () => {
+  for (const close of cleanups.splice(0)) await close()
 })
 
-const fixture = ({ desktop = false, directory = false } = {}) => {
+const fixture = async ({ desktop = false, directory = false } = {}) => {
   const root = mkdtempSync(join(tmpdir(), "touri-compression-"))
   const files: Record<string, string> = {}
   for (const [name, body] of Object.entries({ "app.js": script, "small.css": "body {}", "image.png": script })) {
@@ -27,8 +27,11 @@ const fixture = ({ desktop = false, directory = false } = {}) => {
     files[`assets/${name}`] = path
   }
   const ui = directory ? directoryAssets(root) : embeddedAssets(files)
-  const store = openAuthStore({ filename: join(root, "auth.db") })
-  const paired = store.claimPairingCode({ code: store.createPairingCode().code, deviceName: "test browser" })
+  const store = await openAuthStore({ filename: join(root, "auth.db") })
+  const paired = await store.claimPairingCode({
+    code: (await store.createPairingCode()).code,
+    deviceName: "test browser",
+  })
   if (!paired.success) throw new Error("pair failed")
   const gate = createWebGate({
     store,
@@ -89,9 +92,9 @@ const fixture = ({ desktop = false, directory = false } = {}) => {
       },
     ],
   })
-  cleanups.push(() => {
+  cleanups.push(async () => {
     runtime.stop()
-    store.close()
+    await store.close()
     rmSync(root, { recursive: true, force: true })
   })
   const call = async (path: string, encoding = "", method = "GET"): Promise<Response> => {
@@ -114,7 +117,7 @@ const fixture = ({ desktop = false, directory = false } = {}) => {
 }
 
 test.each(["gzip", "br"])("served UI and JSON use %s with correct wire headers", async (encoding) => {
-  const { call } = fixture()
+  const { call } = await fixture()
   for (const [path, original] of [
     ["/assets/app.js", script],
     ["/api/v1/messages", JSON.stringify(payload)],
@@ -131,7 +134,7 @@ test.each(["gzip", "br"])("served UI and JSON use %s with correct wire headers",
 })
 
 test("served responses keep identity without an accepted encoding", async () => {
-  const { call } = fixture()
+  const { call } = await fixture()
   for (const encoding of ["", "identity", "gzip;q=0, br;q=0", "deflate"]) {
     const response = await call("/assets/app.js", encoding)
     expect(response.headers.get("content-encoding")).toBeNull()
@@ -141,7 +144,7 @@ test("served responses keep identity without an accepted encoding", async () => 
 })
 
 test("small assets, images and SSE keep their original bodies", async () => {
-  const { call } = fixture()
+  const { call } = await fixture()
   for (const [path, original] of [
     ["/assets/small.css", "body {}"],
     ["/assets/image.png", script],
@@ -156,7 +159,7 @@ test("small assets, images and SSE keep their original bodies", async () => {
 })
 
 test("HEAD has the same representation headers as GET and no body", async () => {
-  const { call } = fixture()
+  const { call } = await fixture()
   for (const encoding of ["", "gzip", "br"]) {
     const get = await call("/assets/app.js", encoding)
     const head = await call("/assets/app.js", encoding, "HEAD")
@@ -176,14 +179,14 @@ test.each([
   ["GZIP; q=1", "gzip"],
   ["br;q=0.2, identity;q=1", null],
 ])("encoding negotiation honours %s", async (accepted, expected) => {
-  const { call } = fixture()
+  const { call } = await fixture()
   const response = await call("/assets/app.js", accepted ?? "")
   expect(response.headers.get("content-encoding")).toBe(expected)
   await response.arrayBuffer()
 })
 
 test("embedded assets reuse both compressed variants across requests", async () => {
-  const { call, ui } = fixture()
+  const { call, ui } = await fixture()
   const asset = ui.get("assets/app.js")
   expect(asset).toBe(ui.get("assets/app.js"))
   if (!asset?.compressed) throw new Error("missing compression cache")
@@ -197,7 +200,7 @@ test("embedded assets reuse both compressed variants across requests", async () 
 })
 
 test("desktop JSON responses retain identity even when compression is accepted", async () => {
-  const { call } = fixture({ desktop: true })
+  const { call } = await fixture({ desktop: true })
   const response = await call("/api/v1/messages", "gzip, br")
   expect(response.status).toBe(200)
   expect(response.headers.get("content-encoding")).toBeNull()
@@ -206,7 +209,7 @@ test("desktop JSON responses retain identity even when compression is accepted",
 })
 
 test("directory UI assets are compressed using their current contents", async () => {
-  const { call } = fixture({ directory: true })
+  const { call } = await fixture({ directory: true })
   const response = await call("/app.js", "gzip")
   expect(response.status).toBe(200)
   expect(response.headers.get("content-encoding")).toBe("gzip")

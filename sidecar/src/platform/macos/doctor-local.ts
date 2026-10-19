@@ -90,7 +90,7 @@ export const appleContainerChecks = async (
     )
   else {
     try {
-      const context = probes.prepareImage(kernel.paths.appData)
+      const context = await probes.prepareImage(kernel.paths.appData)
       checks.push(
         check(
           "vm-image",

@@ -18,9 +18,9 @@ import type { Bot, Kernel } from "@touri/contracts"
 import { prepareLocalProviderLogin } from "../../src/vm/local-provider-login"
 import { providerLoginSourceKey } from "../../src/vm/provider-login"
 
-const cleanups: Array<() => void> = []
-afterEach(() => {
-  for (const close of cleanups.splice(0)) close()
+const cleanups: Array<() => Promise<void> | void> = []
+afterEach(async () => {
+  for (const close of cleanups.splice(0)) await close()
 })
 
 const fixture = () => {
@@ -67,7 +67,7 @@ test("local Codex vault login preserves its home and rollouts after releasing cr
   writeFileSync(rollout, "synthetic session")
   // Native session indexes belong to the durable home as well as the rollout files.
   writeFileSync(join(home, "session-index.sqlite"), "synthetic index")
-  prepared.release()
+  await prepared.release()
   expect(existsSync(auth)).toBe(false)
   expect(readFileSync(rollout, "utf8")).toBe("synthetic session")
 
@@ -77,7 +77,7 @@ test("local Codex vault login preserves its home and rollouts after releasing cr
   expect(readFileSync(rollout, "utf8")).toBe("synthetic session")
   expect(readFileSync(join(home, "session-index.sqlite"), "utf8")).toBe("synthetic index")
   expect(readFileSync(auth, "utf8")).toContain("synthetic-vault")
-  restarted.release()
+  await restarted.release()
   expect(existsSync(auth)).toBe(false)
 })
 
@@ -88,10 +88,10 @@ test("overlapping local Codex turns keep vault credentials until the final relea
   cleanups.unshift(first.release, second.release)
   const auth = join(first.env.CODEX_HOME ?? "", "auth.json")
   expect(second.env.CODEX_HOME).toBe(first.env.CODEX_HOME)
-  first.release()
-  first.release()
+  await first.release()
+  await first.release()
   expect(readFileSync(auth, "utf8")).toContain("synthetic-vault")
-  second.release()
+  await second.release()
   expect(existsSync(auth)).toBe(false)
 })
 
@@ -106,7 +106,7 @@ test("switching local Codex to vault login leaves the host authentication link u
   expect(readlinkSync(hostAuth)).toBe(f.auth)
   expect(readFileSync(f.auth, "utf8")).toContain("synthetic-access")
   expect(readFileSync(join(vault.env.CODEX_HOME ?? "", "auth.json"), "utf8")).toContain("synthetic-vault")
-  vault.release()
+  await vault.release()
   expect(readlinkSync(hostAuth)).toBe(f.auth)
   expect(readFileSync(hostAuth, "utf8")).toContain("synthetic-access")
 })
@@ -130,7 +130,7 @@ for (const selected of [false, true])
     expect(readFileSync(join(home, "auth.json"), "utf8")).toContain("host-refresh")
     mkdirSync(join(home, "sessions"))
     writeFileSync(join(home, "sessions/turn.jsonl"), "synthetic session")
-    prepared.release()
+    await prepared.release()
     expect(existsSync(home)).toBe(true)
     await f.prepare()
     expect(readFileSync(join(home, "sessions/turn.jsonl"), "utf8")).toBe("synthetic session")

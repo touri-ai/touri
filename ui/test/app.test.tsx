@@ -337,7 +337,7 @@ describe("WP9 frontend acceptance", () => {
         },
       })
     })
-    const retry = await screen.findByRole("button", { name: "Tentar de novo" })
+    const retry = await screen.findByRole("button", { name: "Tentar novamente" })
     fireEvent.click(retry)
     await waitFor(() => expect(api.calls.some((call) => call.route === "POST /runs/:id/retry")).toBe(true))
   })

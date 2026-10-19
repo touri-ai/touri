@@ -31,7 +31,7 @@ const approvalReason = (reason: string, provider: string): string => {
     return `O comando falhou. O ${provider} quer tentar novamente sem isolamento (sandbox).`
   if (/(?:retry|run|execute|rerun).*(?:outside|without).*(?:sandbox)/i.test(reason))
     return `O ${provider} pede para executar esta ação sem isolamento (sandbox).`
-  return reason || `O ${provider} não informou o motivo deste pedido.`
+  return reason
 }
 
 const editPreview = (input: Record<string, unknown>): string => {
@@ -101,7 +101,7 @@ export const approvalContent = (value: unknown, kind: ToolKind, name: string, pr
   const network = permissions.network ?? input.networkAccess ?? input.network_access
   const networkContext = record(input.networkApprovalContext)
   const networkEnabled = typeof network === "boolean" ? network : record(network).enabled
-  const unknown = `Não informada pelo ${provider}`
+  const unknown = ""
   const access = (value: unknown): string =>
     Array.isArray(value) ? paths(value).join(", ") || "Nenhuma pasta solicitada" : unknown
   const files = kind === "files" ? fileChanges(input, name) : []

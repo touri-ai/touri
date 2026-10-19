@@ -53,7 +53,7 @@ for (const theme of ["light", "dark"] as const) {
       await expect(page.getByRole("heading", { name: "Integrações", exact: true })).toBeVisible()
       await shot("integrations")
       await openGlobalPage(page, "MCP")
-      await expect(page.getByText("gateway local", { exact: false }).first()).toBeVisible()
+      await expect(page.getByText("Ferramentas do touri neste computador", { exact: false }).first()).toBeVisible()
       await shot("mcp")
       if (phase === "after") {
         await expect(page.getByRole("table", { name: "Políticas de ferramentas de arquivos" })).toBeVisible()

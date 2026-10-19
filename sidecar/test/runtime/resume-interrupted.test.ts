@@ -117,6 +117,7 @@ exec '${process.execPath}' '${fake}' "$@"
       ...(options.routineTimeoutMs === undefined ? {} : { routineTimeoutMs: () => options.routineTimeoutMs ?? 0 }),
     })
     engines.push(engine)
+    await engine.ready
     const store = runtime.kernel.services.use("store.api")
     if (!store) throw new Error("Store missing")
     return { runtime, engine, store, db: runtime.kernel.db as Database }

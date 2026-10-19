@@ -1,7 +1,8 @@
-import { chmodSync } from "node:fs"
+import { chmod } from "node:fs/promises"
 import { homedir } from "node:os"
 import { join, posix, relative, sep } from "node:path"
 import type { Bot, Kernel } from "@touri/contracts"
+import { ensurePrivateDirectoryAsync } from "../kernel/async-files"
 import {
   canonicalPath,
   excludedBotFolders,
@@ -9,11 +10,10 @@ import {
   resolveBotFolder,
   withinFolder,
 } from "../kernel/bot-folders"
-import { ensurePrivateDirectory } from "../kernel/files"
 import type { VmVolumeSpec } from "./types"
 
 /** Mask denied subtrees in every alias, including the broad /host/home mount. */
-export const botFolderMounts = (kernel: Kernel, bot: Bot, hostHome = homedir()): VmVolumeSpec[] => {
+export const botFolderMounts = async (kernel: Kernel, bot: Bot, hostHome = homedir()): Promise<VmVolumeSpec[]> => {
   const explicit = (bot.folders ?? []).map((folder) => {
     const path = resolveBotFolder(folder.path)
     if (path !== folder.path) throw new Error("A pasta mudou de destino. Adicione-a novamente nas configurações.")
@@ -27,9 +27,9 @@ export const botFolderMounts = (kernel: Kernel, bot: Bot, hostHome = homedir()):
   ]
   if (!roots.length) return []
   const emptyPath = join(kernel.paths.appData, "vm-folder-masks", "empty")
-  ensurePrivateDirectory({ root: kernel.paths.appData, path: emptyPath })
+  await ensurePrivateDirectoryAsync({ root: kernel.paths.appData, path: emptyPath })
   const empty = canonicalPath(emptyPath)
-  chmodSync(empty, 0o555)
+  await chmod(empty, 0o555)
   const mounts: VmVolumeSpec[] = []
   const exclusions = excludedBotFolders(kernel.paths.appData, hostHome)
   for (const root of roots) {

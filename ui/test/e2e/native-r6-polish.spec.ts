@@ -115,7 +115,7 @@ test("computer settings explain the choice before showing implementation details
 
 test("failed task offers scheduling and retry as distinct actions", async ({ page }, testInfo) => {
   await page.goto("/test/e2e/home-harness.html?scenario=failed")
-  await expect(page.getByRole("button", { name: "Tentar de novo", exact: true })).toBeVisible()
+  await expect(page.getByRole("button", { name: "Tentar novamente", exact: true })).toBeVisible()
   await page
     .getByRole("button", { name: "Agendar esta tarefa", exact: true })
     .screenshot({ path: testInfo.outputPath("schedule-action.png") })
@@ -125,6 +125,6 @@ test("failed task offers scheduling and retry as distinct actions", async ({ pag
   await dialog.screenshot({ path: testInfo.outputPath("schedule-task.png") })
   await dialog.getByRole("button", { name: "Cancelar" }).click()
   await page
-    .getByRole("button", { name: "Tentar de novo", exact: true })
+    .getByRole("button", { name: "Tentar novamente", exact: true })
     .screenshot({ path: testInfo.outputPath("retry-task.png") })
 })

@@ -49,7 +49,7 @@ export const terminateWindowsProvider = async (pid: number, birth: string): Prom
 
 export const nativeFileOperation = <T>(
   op: string,
-  input: { root: string; path: string; content?: string; to?: string; max_bytes?: number },
+  input: { root: string; path: string; content?: string; to?: string; target?: string; max_bytes?: number },
 ): T => {
   const child = runHelperBlocking({
     command: [desktopHelper(), "--native-fs"],

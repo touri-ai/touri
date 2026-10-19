@@ -204,3 +204,55 @@ test("startup resolves persisted failures after a later success, including a gro
     h.close()
   }
 })
+
+test("repeated routine deferrals collapse into one and a later run of that routine resolves it", async () => {
+  const h = await fixture()
+  try {
+    const store = createNotificationStore({ db: h.kernel.db as Database })
+    const database = h.kernel.db as Database
+    database.exec("PRAGMA foreign_keys = OFF")
+    database
+      .query(
+        "INSERT INTO routine_runs (id, routine_id, scheduled_for, status, trigger_source) VALUES ('routine-run-1', 'routine-1', 1, 'running', 'cron')",
+      )
+      .run()
+    const deferral = {
+      kind: "routine-deferred",
+      botId: "bot-routine",
+      threadId: null,
+      requestId: "routine-deferred:routine-1",
+      title: "Rotina adiada: Resumo",
+      body: "A rotina não foi executada.",
+    } as const
+    const first = h.send(deferral)
+    const second = h.send(deferral)
+    h.send({ ...deferral, requestId: "routine-deferred:routine-2" })
+    expect(second.id).toBe(first.id)
+    expect(store.pending().filter((item) => item.kind === "routine-deferred")).toHaveLength(2)
+    const run: Run = {
+      id: "routine-run-turn",
+      botId: "bot-routine",
+      threadId: "routine-thread",
+      provider: "codex",
+      trigger: "routine",
+      status: "running",
+      routineRunId: "routine-run-1",
+      requestMessageId: null,
+      replyMessageId: null,
+      externalTurnId: null,
+      errorClass: null,
+      errorMessage: null,
+      usage: null,
+      queuedAt: 10,
+      startedAt: 11,
+      finishedAt: null,
+    }
+    h.kernel.publish({ type: "run.updated", run })
+    expect(store.get(first.id)?.resolvedAt).not.toBeNull()
+    expect(store.pending().map((item) => item.requestId)).toEqual(["routine-deferred:routine-2"])
+    expect(h.send(deferral).id).not.toBe(first.id)
+    expect(store.pending()).toHaveLength(2)
+  } finally {
+    h.close()
+  }
+})

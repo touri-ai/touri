@@ -72,9 +72,10 @@ describe("continuous learning card", () => {
     const memory = await screen.findByRole("switch", { name: /Memória automática/ })
     const warning = await screen.findByRole("alert")
 
-    expect(warning).toHaveTextContent("MEMORY.md")
+    expect(warning).toHaveTextContent(/a memória sobre o ambiente \(MEMORY\.md\)/i)
     expect(warning).toHaveTextContent("Você ainda pode desligar o aprendizado.")
-    expect(screen.getByText(/MEMORY.md: —/)).toBeVisible()
+    expect(screen.getByText(/sobre o ambiente: — caracteres/)).toBeVisible()
+    expect(screen.queryByText(/USER\.md:/)).toBeNull()
     expect(memory).toBeEnabled()
     expect(memory).toBeChecked()
 

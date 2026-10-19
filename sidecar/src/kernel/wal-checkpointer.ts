@@ -2,6 +2,7 @@ import type { Database } from "bun:sqlite"
 import { walCheckpointSource } from "./wal-checkpoint-worker"
 
 const DEFAULT_INTERVAL_MS = 5_000
+const PAGE_INTERVAL_MS = 60_000
 const STARTUP_TIMEOUT_MS = 15_000
 
 export const createWalCheckpointer = ({
@@ -9,14 +10,16 @@ export const createWalCheckpointer = ({
   onError,
   onReady,
   intervalMs = DEFAULT_INTERVAL_MS,
+  pageIntervalMs = PAGE_INTERVAL_MS,
   createWorker = (url) => new Worker(url, { smol: true, ref: false }),
 }: {
   database: Database
   onError: () => void
   onReady?: () => void
   intervalMs?: number
+  pageIntervalMs?: number
   createWorker?: (url: string) => Worker
-}): { dispose: (options?: { closing?: boolean }) => void } => {
+}): { dispose: (options?: { closing?: boolean }) => void; vacuum: () => Promise<void> } => {
   const previousPages = (database.query("PRAGMA wal_autocheckpoint").get() as { wal_autocheckpoint: number })
     .wal_autocheckpoint
   const fallbackPages = previousPages > 0 ? previousPages : 1_000
@@ -27,12 +30,18 @@ export const createWalCheckpointer = ({
   let reportedError = false
   let startupTimer: ReturnType<typeof setTimeout> | undefined
   let stopTimer: ReturnType<typeof setTimeout> | undefined
+  let requestId = 0
+  const pendingVacuum = new Map<number, { resolve: () => void; reject: (error: Error) => void }>()
 
   const finish = (): void => {
     clearTimeout(startupTimer)
     clearTimeout(stopTimer)
     worker?.terminate()
     worker = undefined
+    pendingVacuum.forEach(({ reject }) => {
+      reject(new Error("WAL worker stopped before maintenance completed"))
+    })
+    pendingVacuum.clear()
     if (workerUrl) URL.revokeObjectURL(workerUrl)
     workerUrl = undefined
   }
@@ -52,7 +61,7 @@ export const createWalCheckpointer = ({
     database.exec("PRAGMA wal_autocheckpoint = 0")
     workerUrl = URL.createObjectURL(new Blob([walCheckpointSource], { type: "application/javascript" }))
     worker = createWorker(workerUrl)
-    worker.onmessage = ({ data }: MessageEvent<{ type?: string }>): void => {
+    worker.onmessage = ({ data }: MessageEvent<{ type?: string; requestId?: number; error?: string }>): void => {
       if (data?.type === "stopped") {
         finish()
         return
@@ -60,6 +69,14 @@ export const createWalCheckpointer = ({
       if (stopped || reportedError) return
       if (data?.type === "error") {
         reportError()
+        return
+      }
+      if (data?.type === "vacuum-complete" && typeof data.requestId === "number") {
+        const pending = pendingVacuum.get(data.requestId)
+        if (!pending) return
+        pendingVacuum.delete(data.requestId)
+        if (data.error) pending.reject(new Error(data.error))
+        else pending.resolve()
         return
       }
       if (data?.type !== "ready") return
@@ -74,12 +91,19 @@ export const createWalCheckpointer = ({
     worker.addEventListener("close", reportError)
     startupTimer = setTimeout(reportError, STARTUP_TIMEOUT_MS)
     startupTimer.unref()
-    worker.postMessage({ type: "start", filename: database.filename, intervalMs })
+    worker.postMessage({ type: "start", filename: database.filename, intervalMs, pageIntervalMs })
   } catch {
     reportError()
   }
 
   return {
+    vacuum: (): Promise<void> => {
+      if (!worker) return Promise.reject(new Error("WAL worker is unavailable"))
+      const id = ++requestId
+      const result = new Promise<void>((resolve, reject) => pendingVacuum.set(id, { resolve, reject }))
+      worker.postMessage({ type: "vacuum", requestId: id })
+      return result
+    },
     dispose: ({ closing = false }: { closing?: boolean } = {}): void => {
       if (stopped) return
       stopped = true

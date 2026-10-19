@@ -92,7 +92,7 @@ test("authenticated discovery route scans a temp home and excludes projects regi
   const response = await request()
   expect(response.status).toBe(200)
   expect(await response.json()).toEqual({ repositories: [repository] })
-  store.createProject({
+  await store.createProject({
     id: "registered",
     name: repository.name,
     path: repository.path,

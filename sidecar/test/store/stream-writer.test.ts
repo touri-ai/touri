@@ -643,6 +643,7 @@ test("stream writes retry a busy database without waiting on the main loop", asy
   expect(f.store.activePath({ threadId: "t", leafId: "a" })[0]?.text).toBe("x".repeat(STREAM_WRITE_LIMITS.bytes))
 })
 
+// Two drain deadlines and SQLite's existing busy timeout exceed the runner's five-second default.
 test("shutdown warns about busy buffered writes and cancels retries before closing the database", async () => {
   const f = await fixture()
   cleanups.add(f.close)
@@ -663,7 +664,7 @@ test("shutdown warns about busy buffered writes and cancels retries before closi
     data: { events: 1, bytes: Buffer.byteLength("Preservar") },
   })
   expect(f.events.filter(({ event }) => event.type === "message.delta")).toHaveLength(0)
-})
+}, 10_000)
 
 test("a subsequent flush drains parts mirrored after the first flush watermark", async () => {
   const f = await fixture()

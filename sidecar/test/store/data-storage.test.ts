@@ -37,12 +37,13 @@ const seed = (database: Database) =>
   database.exec(`
   INSERT INTO bots(id,name,provider,home_dir,created_at,updated_at) VALUES ('b','Teste','codex','/tmp',1,1);
   INSERT INTO threads(id,bot_id,title,created_at,updated_at) VALUES ('t','b','Histórico',1,1);`)
-const fixture = async (automatic = false) => {
+const fixture = async () => {
   const root = mkdtempSync(join(tmpdir(), "touri-storage-"))
   const runtime = createKernel({ appData: root })
   const stages = createPerformanceStageTracker(() => 0)
+  // Async store setup must not let maintenance finish before the fixture is seeded.
+  runtime.kernel.services.use("storage.maintenance")?.dispose()
   await initStore(runtime.kernel, stages.run)
-  if (!automatic) runtime.kernel.services.use("storage.maintenance")?.dispose()
   const database = runtime.kernel.db as Database
   seed(database)
   const store = runtime.kernel.services.use("store.api")
@@ -242,7 +243,7 @@ test("live output stays inline and completion writes one content-addressed body 
     expect(f.database.query("SELECT COUNT(*) AS n FROM attachments").get()).toEqual({ n: 1 })
     insert(f, "completed", parts)
     f.database.query("UPDATE messages SET updated_at = 1 WHERE id = 'completed'").run()
-    compactMessageBatch({ database: f.database, appData: f.root, cursor: 0, total: 100 })
+    await compactMessageBatch({ database: f.database, appData: f.root, cursor: 0, total: 100 })
     const summary = JSON.parse(
       (f.database.query("SELECT parts_json FROM messages WHERE id = 'completed'").get() as { parts_json: string })
         .parts_json,
@@ -345,10 +346,10 @@ test("retention releases completed recovery outputs when only snapshot locators 
       "INSERT INTO runs(id,thread_id,bot_id,provider,trigger,status,queued_at) SELECT 'r','t','b',provider,'user','succeeded',1 FROM bots WHERE id='b'",
     )
     const tools = createToolResolutions(f.runtime.kernel)
-    const part = tools.record({ id: "r", threadId: "t" } as Run, tool("Resultado antigo. ".repeat(1000)))
+    const part = await tools.recordAsync({ id: "r", threadId: "t" } as Run, tool("Resultado antigo. ".repeat(1000)))
     insert(f, "old-recovery", [part])
     f.database.query("UPDATE messages SET run_id = 'r', updated_at = 1 WHERE id = 'old-recovery'").run()
-    compactMessageBatch({ database: f.database, appData: f.root, cursor: 0, total: 100 })
+    await compactMessageBatch({ database: f.database, appData: f.root, cursor: 0, total: 100 })
     const record = f.database.query("SELECT part_json FROM tool_resolutions WHERE run_id = 'r'").get() as {
       part_json: string
     }
@@ -379,7 +380,7 @@ test("30-day retention preserves conversation text, tool summaries, status and F
     insert(f, "recent", [tool("y".repeat(80_000))])
     f.database.query("UPDATE messages SET updated_at = ? WHERE id = 'old'").run(Date.now() - 31 * 86400_000)
     const before = f.database.query("SELECT COUNT(*) AS n FROM transcript_entries").get()
-    compactMessageBatch({ database: f.database, appData: f.root, cursor: 0, total: 100 })
+    await compactMessageBatch({ database: f.database, appData: f.root, cursor: 0, total: 100 })
     const old = JSON.parse(
       (f.database.query("SELECT parts_json FROM messages WHERE id = 'old'").get() as { parts_json: string }).parts_json,
     ) as MessagePart[]
@@ -405,7 +406,7 @@ test("30-day retention preserves conversation text, tool summaries, status and F
     })
     expect(f.store.search({ q: "preservado", limit: 10 })).toHaveLength(2)
     expect((f.store.activePath({ threadId: "t" })[0]?.parts[0] as ToolCallPart)?.outputAttachmentId).toBeDefined()
-    compactMessageBatch({ database: f.database, appData: f.root, cursor: 0, total: 100 })
+    await compactMessageBatch({ database: f.database, appData: f.root, cursor: 0, total: 100 })
     expect(f.database.query("SELECT COUNT(*) AS n FROM transcript_entries").get()).toEqual(before)
     expect(
       JSON.parse(
@@ -439,7 +440,7 @@ test("retention preference persists, rejects invalid values and 0 keeps old deta
     expect(f.runtime.kernel.services.use("store.settings")?.().dataRetentionDays).toBe(0)
     insert(f, "old", [tool("Detalhes originais")])
     f.database.query("UPDATE messages SET updated_at = 1").run()
-    compactMessageBatch({ database: f.database, appData: f.root, cursor: 0, total: 100 })
+    await compactMessageBatch({ database: f.database, appData: f.root, cursor: 0, total: 100 })
     expect((f.store.activePath({ threadId: "t" })[0]?.parts[0] as ToolCallPart)?.outputJson).toBe("Detalhes originais")
     f.runtime.stop()
     const database = openDatabase({ filename: join(f.root, "touri.db") })
@@ -469,7 +470,7 @@ test("maintenance skips streaming messages and threads with active runs, and off
       },
     ])
     insert(f, "diff", [{ type: "file_change", callId: "diff", paths: ["a.txt"], diff: "d".repeat(80_000) }])
-    const next = compactMessageBatch({ database: f.database, appData: f.root, cursor: 0, total: 100, limit: 2 })
+    const next = await compactMessageBatch({ database: f.database, appData: f.root, cursor: 0, total: 100, limit: 2 })
     expect(next.cursor).toBe(2)
     expect(
       JSON.parse(
@@ -482,7 +483,7 @@ test("maintenance skips streaming messages and threads with active runs, and off
     )
     f.database.query("UPDATE messages SET updated_at = 1").run()
     const before = f.database.query("SELECT parts_json FROM messages ORDER BY rowid").all()
-    compactMessageBatch({ database: f.database, appData: f.root, cursor: 0, total: 100 })
+    await compactMessageBatch({ database: f.database, appData: f.root, cursor: 0, total: 100 })
     expect(f.database.query("SELECT parts_json FROM messages ORDER BY rowid").all()).toEqual(before)
   } finally {
     f.close()
@@ -490,7 +491,9 @@ test("maintenance skips streaming messages and threads with active runs, and off
 })
 
 test("Doctor starts background compaction once; only explicit VACUUM shrinks allocated pages", async () => {
-  const f = await fixture(true)
+  const f = await fixture()
+  const scheduled = makeScheduledMaintenance(f, () => Bun.sleep(0), f.stages.run)
+  f.runtime.kernel.services.provide("storage.maintenance", scheduled.maintenance)
   try {
     insert(f, "old", [tool("x".repeat(500_000))])
     // Represent an existing schema-7 snapshot/event payload, before offloading.
@@ -514,6 +517,7 @@ test("Doctor starts background compaction once; only explicit VACUUM shrinks all
     const request = () => fetch(`${url}/compact`, { method: "POST", headers, body: JSON.stringify({}) })
     const [first, second] = await Promise.all([request(), request()])
     expect([first.status, second.status].sort()).toEqual([202, 409])
+    await scheduled.runNext()
     await wait()
     f.database.exec("PRAGMA wal_checkpoint(TRUNCATE)")
     expect(statSync(join(f.root, "touri.db")).size).toBeGreaterThanOrEqual(sizeBefore)
@@ -522,18 +526,21 @@ test("Doctor starts background compaction once; only explicit VACUUM shrinks all
     expect(
       (await fetch(`${url}/compact`, { method: "POST", headers, body: JSON.stringify({ vacuum: true }) })).status,
     ).toBe(202)
+    await scheduled.runNext()
     await wait()
     expect(statSync(join(f.root, "touri.db")).size).toBeLessThan(sizeBefore / 2)
     expect(f.database.query("PRAGMA integrity_check").get()).toEqual({ integrity_check: "ok" })
     expect(f.store.search({ q: "preservado", limit: 10 })).toHaveLength(1)
   } finally {
+    scheduled.maintenance.dispose()
     f.close()
   }
 })
 
 test("background maintenance resumes a committed cursor after restart without re-writing summaries", async () => {
-  const f = await fixture(true)
+  const f = await fixture()
   let resumed: ReturnType<typeof createKernel> | undefined
+  let scheduled: ReturnType<typeof makeScheduledMaintenance> | undefined
   try {
     const rawInsert = f.database.query(
       "INSERT INTO messages(id,thread_id,role,kind,text,parts_json,created_at,updated_at) VALUES (?,'t','assistant','text','Preservado',?,1,1)",
@@ -545,22 +552,25 @@ test("background maintenance resumes a committed cursor after restart without re
           JSON.stringify([tool("Detalhes antigos"), { type: "reasoning", text: "Raciocínio" }]),
         )
     })()
-    f.runtime.kernel.publish({ type: "transcript.resync" })
-    const maintenance = f.runtime.kernel.services.use("storage.maintenance")
-    const deadline = Date.now() + 5000
-    while (!maintenance?.snapshot().processed && Date.now() < deadline) await Bun.sleep(10)
-    const committed = maintenance?.snapshot()
-    expect(committed?.running).toBe(true)
-    expect(committed?.processed).toBeGreaterThan(0)
-    expect(committed?.processed).toBeLessThan(1200)
-    f.runtime.stop()
+    const initial = makeScheduledMaintenance(f, () => Bun.sleep(0), f.stages.run)
+    scheduled = initial
+    await initial.runNext(() => initial.maintenance.snapshot().processed > 0)
+    const committed = initial.maintenance.snapshot()
+    expect(committed.running).toBe(true)
+    expect(committed.processed).toBeGreaterThan(0)
+    expect(committed.processed).toBeLessThan(1200)
+    initial.maintenance.dispose()
+    await f.runtime.stop()
+
     resumed = createKernel({ appData: f.root })
     const next = resumed.kernel.services.use("storage.maintenance")
-    expect(next?.snapshot().processed).toBe(committed?.processed)
-    while (((next?.snapshot().processed ?? 0) < 1200 || next?.snapshot().running) && Date.now() < deadline)
-      await Bun.sleep(10)
-    expect(next?.snapshot()).toEqual({ running: false, processed: 1200, total: 1200 })
+    expect(next?.snapshot().processed).toBe(committed.processed)
+    next?.dispose()
     const database = resumed.kernel.db as Database
+    scheduled = makeScheduledMaintenance({ database, root: f.root }, () => Bun.sleep(0), f.stages.run)
+    await scheduled.runNext()
+
+    expect(scheduled.maintenance.snapshot()).toEqual({ running: false, processed: 1200, total: 1200 })
     expect(
       database
         .query("SELECT COUNT(*) AS n FROM messages WHERE json_extract(parts_json,'$[0].outputJson') IS NULL")
@@ -579,7 +589,8 @@ test("background maintenance resumes a committed cursor after restart without re
     })
     expect(database.query("PRAGMA integrity_check").get()).toEqual({ integrity_check: "ok" })
   } finally {
-    resumed?.stop()
+    scheduled?.maintenance.dispose()
+    await resumed?.stop()
     f.close()
   }
 })
@@ -693,7 +704,7 @@ test("interrupted tool reconciliation preserves file-backed results even without
     const run = { id: "r", threadId: "t" } as Run
     const tools = createToolResolutions(f.runtime.kernel)
     const output = "Resultado preservado. ".repeat(10_000)
-    const recorded = tools.record(run, tool(output))
+    const recorded = await tools.recordAsync(run, tool(output))
     expect(recorded.outputAttachmentId).toBeString()
     expect(recorded).toMatchObject({ outputJson: null, resolution: "succeeded" })
     const row = f.database.query("SELECT part_json FROM tool_resolutions WHERE run_id = 'r'").get() as {
@@ -1019,7 +1030,7 @@ test("commits on a second SQLite connection also invalidate a collection pass", 
 })
 
 const makeScheduledMaintenance = (
-  scan: Awaited<ReturnType<typeof makeScanFixture>>,
+  scan: Pick<Awaited<ReturnType<typeof makeScanFixture>>, "database" | "root">,
   yieldBatch: () => Promise<void>,
   runStage: PerformanceStageRunner,
   attachmentReferenceTimeoutMs = 10 * 60_000,
@@ -1055,7 +1066,7 @@ const makeScheduledMaintenance = (
     getErrors: () => errors,
     getLogs: () => logs,
     getNextDelay,
-    runNext: async () => {
+    runNext: async (isReady = () => (getNextDelay() ?? 0) >= 1000) => {
       // Compaction and retention can require several short preparation ticks.
       for (let pass = 0; pass < 100; pass++) {
         const next = scheduled
@@ -1063,7 +1074,7 @@ const makeScheduledMaintenance = (
         clearTimeout(next.timer)
         scheduled = undefined
         await next.action()
-        if ((getNextDelay() ?? 0) >= 1000) return
+        if (isReady()) return
       }
       throw new Error("Maintenance did not finish its bounded preparation")
     },
@@ -1083,11 +1094,13 @@ test("a slow cold reference scan resumes after a deadline and logs each deferred
     })
   })()
   let scanning = false
-  let delayMs = 60
+  const release = Promise.withResolvers<void>()
+  scanCleanups.add(release.resolve)
   const scheduled = makeScheduledMaintenance(
     scan,
     async () => {
-      if (scanning) await Bun.sleep(delayMs)
+      // Hold the batch until the deadline fires, even when both timers would be overdue.
+      if (scanning) await release.promise
     },
     (stage, action, input) => {
       if (stage === "storage_attachment_reference_scan") scanning = true
@@ -1102,7 +1115,7 @@ test("a slow cold reference scan resumes after a deadline and logs each deferred
   expect(scheduled.getLogs()).toContain("Limpeza de anexos adiada após o prazo da leitura de referências")
   expect(existsSync(orphan.path)).toBe(true)
 
-  delayMs = 30
+  release.resolve()
   await scheduled.runNext()
 
   expect(scheduled.maintenance.snapshot().running).toBe(false)

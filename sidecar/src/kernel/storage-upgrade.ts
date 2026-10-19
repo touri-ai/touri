@@ -1,8 +1,13 @@
 import type { Database } from "bun:sqlite"
 import { randomBytes } from "node:crypto"
-import { existsSync } from "node:fs"
 import { join } from "node:path"
-import { atomicWriteFile, movePrivateFile, prepareDatabaseFile, removePrivateFile } from "./files"
+import {
+  movePrivateFileAsync,
+  prepareDatabaseFileAsync,
+  privateFileExistsAsync,
+  removePrivateFileAsync,
+  writePrivateFileAsync,
+} from "./async-files"
 import { materializeTranscriptBatch } from "./transcript-storage"
 
 const progressKey = "storage.upgrade.22"
@@ -163,12 +168,12 @@ export const createStorageUpgrade = ({
     const temporary = join(appData, "backups", "history-before-22.pending")
     const original = join(appData, "backups", "history-before-22.db")
     // A damaged cursor must never replace the original pre-upgrade backup.
-    const destination = existsSync(original)
+    const destination = (await privateFileExistsAsync({ root: appData, path: original }))
       ? join(appData, "backups", `history-before-22-recovery-${randomBytes(6).toString("hex")}.db`)
       : original
-    removePrivateFile({ root: appData, path: temporary })
-    atomicWriteFile({ root: appData, path: temporary, content: "" })
-    const workerDestination = prepareDatabaseFile({ root: appData, path: temporary })
+    await removePrivateFileAsync({ root: appData, path: temporary })
+    await writePrivateFileAsync({ root: appData, path: temporary, content: "" })
+    const workerDestination = await prepareDatabaseFileAsync({ root: appData, path: temporary })
     const url = URL.createObjectURL(new Blob([backupSource], { type: "application/javascript" }))
     try {
       await new Promise<void>((resolve, reject) => {
@@ -189,7 +194,7 @@ export const createStorageUpgrade = ({
         })
       })
       if (stopped) return
-      movePrivateFile({ root: appData, from: temporary, to: destination })
+      await movePrivateFileAsync({ root: appData, from: temporary, to: destination })
     } finally {
       worker?.terminate()
       worker = undefined

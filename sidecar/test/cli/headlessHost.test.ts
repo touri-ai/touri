@@ -33,16 +33,25 @@ test("secrets round-trip through an encrypted 0600 file", async () => {
   expect(await callHost("keychain.get", { account: "p1/DB_URL" })).toEqual({ success: true, value: { value: null } })
 })
 
-test("a second store on the same directory reads what the first wrote", () => {
+test("a second store on the same directory reads what the first wrote", async () => {
   const dir = mkdtempSync(join(tmpdir(), "touri-host-"))
-  createSecretStore({ dir, env: {} }).set({ account: "a", value: "1" })
+  await createSecretStore({ dir, env: {} }).set({ account: "a", value: "1" })
   expect(createSecretStore({ dir, env: {} }).get("a")).toBe("1")
 })
 
-test("TOURI_SECRETS_KEY replaces the key file and a wrong key cannot decrypt", () => {
+test("concurrent secret writes preserve both accounts", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "touri-host-"))
+  const store = createSecretStore({ dir, env: {} })
+  await Promise.all([store.set({ account: "first", value: "one" }), store.set({ account: "second", value: "two" })])
+  const reopened = createSecretStore({ dir, env: {} })
+  expect(reopened.get("first")).toBe("one")
+  expect(reopened.get("second")).toBe("two")
+})
+
+test("TOURI_SECRETS_KEY replaces the key file and a wrong key cannot decrypt", async () => {
   const dir = mkdtempSync(join(tmpdir(), "touri-host-"))
   const store = createSecretStore({ dir, env: { TOURI_SECRETS_KEY: "one" } })
-  store.set({ account: "a", value: "1" })
+  await store.set({ account: "a", value: "1" })
   expect(store.keyOrigin).toBe("env")
   expect(() => createSecretStore({ dir, env: { TOURI_SECRETS_KEY: "two" } }).get("a")).toThrow()
 })
