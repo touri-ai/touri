@@ -2493,6 +2493,24 @@ export const ptBR = {
     "Revisei os efeitos incertos e entendo que descartar não desfaz as ações.",
   "Revise os efeitos incertos no centro de tarefas interrompidas.":
     "Revise os efeitos incertos no centro de tarefas interrompidas.",
+  Armazenamento: "Armazenamento",
+  Banco: "Banco",
+  "Registro temporário do banco": "Registro temporário do banco",
+  "Espaço reutilizável": "Espaço reutilizável",
+  Texto: "Texto",
+  Detalhes: "Detalhes",
+  "Histórico de eventos": "Histórico de eventos",
+  Anexos: "Anexos",
+  "Resume detalhes antigos conforme a preferência de retenção e preserva o texto das conversas. Resultados grandes e capturas ficam em anexos.":
+    "Resume detalhes antigos conforme a preferência de retenção e preserva o texto das conversas. Resultados grandes e capturas ficam em anexos.",
+  "Recuperar espaço do banco (VACUUM)": "Recuperar espaço do banco (VACUUM)",
+  "Recuperar espaço pode levar alguns segundos. Esta etapa só roda quando você a seleciona.":
+    "Recuperar espaço pode levar alguns segundos. Esta etapa só roda quando você a seleciona.",
+  "Compactando dados…": "Compactando dados…",
+  "Compactar dados": "Compactar dados",
+  "Não foi possível consultar o armazenamento.": "Não foi possível consultar o armazenamento.",
+  "Não foi possível iniciar a compactação. Aguarde a migração ou compactação em andamento e tente novamente.":
+    "Não foi possível iniciar a compactação. Aguarde a migração ou compactação em andamento e tente novamente.",
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
@@ -4340,6 +4358,24 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
     "I reviewed the uncertain effects and understand that dismissing does not undo actions.",
   "Revise os efeitos incertos no centro de tarefas interrompidas.":
     "Review uncertain effects in the interrupted tasks center.",
+  Armazenamento: "Storage",
+  Banco: "Database",
+  "Registro temporário do banco": "Temporary database log",
+  "Espaço reutilizável": "Reusable space",
+  Texto: "Text",
+  Detalhes: "Details",
+  "Histórico de eventos": "Event history",
+  Anexos: "Attachments",
+  "Resume detalhes antigos conforme a preferência de retenção e preserva o texto das conversas. Resultados grandes e capturas ficam em anexos.":
+    "Summarizes older details according to your retention preference and preserves conversation text. Large outputs and screenshots stay in attachments.",
+  "Recuperar espaço do banco (VACUUM)": "Reclaim database space (VACUUM)",
+  "Recuperar espaço pode levar alguns segundos. Esta etapa só roda quando você a seleciona.":
+    "Reclaiming space can take a few seconds. This step only runs when you select it.",
+  "Compactando dados…": "Compacting data…",
+  "Compactar dados": "Compact data",
+  "Não foi possível consultar o armazenamento.": "Could not check storage.",
+  "Não foi possível iniciar a compactação. Aguarde a migração ou compactação em andamento e tente novamente.":
+    "Could not start compaction. Wait for the ongoing migration or compaction to finish and try again.",
 }
 export const dictionaries = {
   "pt-BR": ptBR,

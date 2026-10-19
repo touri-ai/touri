@@ -170,6 +170,16 @@ it("Doctor lets the user retry a rejected compaction", async () => {
   expect(screen.getByRole("button", { name: "Compactar dados" })).toBeEnabled()
 })
 
+it("Doctor labels the write-ahead log in plain language without Diário in pt-BR and translates in English", async () => {
+  const { t } = await import("../src/i18n")
+  const base = createMockApi()
+  render(<DoctorStorage api={base} />)
+  expect(await screen.findByText(/Banco:.*· Registro temporário do banco:.*· Espaço reutilizável:/)).toBeVisible()
+  expect(screen.queryByText(/Diário/)).toBeNull()
+  expect(t("Registro temporário do banco", {}, "pt-BR")).toBe("Registro temporário do banco")
+  expect(t("Registro temporário do banco", {}, "en")).toBe("Temporary database log")
+})
+
 it("renders a file-backed diff literally after loading its attachment", async () => {
   const base = createMockApi()
   const diff = "diff --git a/README.md b/README.md\n@@ -1 +1 @@\n+```js\n+<b>literal</b>\n+``````"
