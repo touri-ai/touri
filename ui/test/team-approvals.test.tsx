@@ -202,24 +202,109 @@ it("accepts the same empty default model and nonempty avatar seed as bot creatio
   expect(screen.getByText(/Modelo padrão/)).toBeVisible()
 })
 
-it.each(["name", "roleLine", "instructions", "group"])(
-  "hidden format characters in %s disable team approval",
-  (field) => {
+it.each(
+  [
+    "\u200B",
+    "\u200D",
+    "\u200F",
+    "\u2060",
+    "\u202E",
+    "\u2066",
+    "\u2069",
+    "\uFEFF",
+    "\u{E0061}",
+    "\uFE00",
+    "\uFE0E",
+    "\uFE0F",
+    "\u{E0100}",
+    "\u{E01EF}",
+    "\u034F",
+    "\u115F",
+    "\u1160",
+    "\u3164",
+    "\uFFA0",
+    "\u0600",
+    "\u0000",
+    "\u0008",
+    "\u001B",
+    "\u007F",
+    "\u0085",
+    "\u009F",
+  ]
+    .map((character): readonly [string, string] => [
+      `U+${character.codePointAt(0)?.toString(16)}`,
+      `Visible${character}hidden`,
+    ])
+    .concat([
+      ["repeated selector", "❤️\uFE0F"],
+      ["text selector on emoji", "🐂\uFE0E"],
+      ["supplementary selector on emoji", "🐂\u{E0100}"],
+      ["trailing joiner", "👩\u200Dhidden"],
+      ["leading joiner", "hidden\u200D👩"],
+      ["repeated joiner", "👩\u200D\u200D🔬"],
+      ["misplaced selector", "👩\u200D\uFE0F🔬"],
+      ["whitespace inside emoji", "👩\t\u200D🔬"],
+    ])
+    .flatMap(([label, text]) =>
+      ["name", "roleLine", "instructions", "group"].map((field) => [label, field, text] as const),
+    ),
+)("%s in %s disables team approval", (_, field, text) => {
+  const original = getTeamReview()
+  const proposal =
+    field === "group"
+      ? { ...original.proposal, group: { ...original.proposal.group, name: text } }
+      : {
+          bots: original.proposal.bots.map((bot, index) => (index ? bot : { ...bot, [field]: text })),
+        }
+  const teamProposal = { ...original, proposal } as ApprovalPart["teamProposal"]
+
+  render(<TeamApprovalCard part={{ ...getApproval(), teamProposal }} api={createMockApi()} />)
+
+  expect(screen.getByRole("button", { name: "Criar time" })).toBeDisabled()
+  expect(screen.getByRole("button", { name: "Cancelar" })).toBeEnabled()
+})
+
+it.each(
+  ["\t", "\n", "\r"].flatMap((character) =>
+    ["name", "roleLine", "group"].map((field) => [character.codePointAt(0)?.toString(16), field, character] as const),
+  ),
+)("multiline U+%s in %s disables team approval", (_, field, character) => {
+  const original = getTeamReview()
+  const text = `Visible${character}text`
+  const proposal =
+    field === "group"
+      ? { ...original.proposal, group: { ...original.proposal.group, name: text } }
+      : { bots: original.proposal.bots.map((bot) => ({ ...bot, [field]: text })) }
+  const teamProposal = { ...original, proposal } as ApprovalPart["teamProposal"]
+
+  render(<TeamApprovalCard part={{ ...getApproval(), teamProposal }} api={createMockApi()} />)
+
+  expect(screen.getByRole("button", { name: "Criar time" })).toBeDisabled()
+})
+
+it.each(["🐂", "❤️", "👩‍🔬", "👩🏽‍💻", "🏳️‍🌈", "👨‍👩‍👧‍👦"])(
+  "emoji %s and multiline instructions remain approvable",
+  (emoji) => {
     const original = getTeamReview()
-    const proposal =
-      field === "group"
-        ? { ...original.proposal, group: { ...original.proposal.group, name: "Team\u{E0061}hidden" } }
-        : {
-            bots: original.proposal.bots.map((bot, index) =>
-              index ? bot : { ...bot, [field]: "Visible\u202Ehidden" },
-            ),
-          }
-    const teamProposal = { ...original, proposal } as ApprovalPart["teamProposal"]
+    const teamProposal = {
+      ...original,
+      proposal: {
+        bots: original.proposal.bots.map((bot) => ({
+          ...bot,
+          name: `${bot.name} ${emoji}`,
+          roleLine: `${bot.roleLine} ${emoji}`,
+          instructions: `${bot.instructions}\r\n\tReview with the user. ${emoji}`,
+        })),
+        group: { name: `Team ${emoji}`, members: original.proposal.bots.map((bot) => `${bot.name} ${emoji}`) },
+      },
+    }
 
     render(<TeamApprovalCard part={{ ...getApproval(), teamProposal }} api={createMockApi()} />)
 
-    expect(screen.getByRole("button", { name: "Criar time" })).toBeDisabled()
-    expect(screen.getByRole("button", { name: "Cancelar" })).toBeEnabled()
+    expect(screen.getByRole("button", { name: "Criar time" })).toBeEnabled()
+    expect(
+      screen.getByText(teamProposal.proposal.bots[0]?.instructions ?? "", { normalizer: (text) => text }),
+    ).toBeVisible()
   },
 )
 

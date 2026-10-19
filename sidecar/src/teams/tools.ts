@@ -12,7 +12,7 @@ import type {
   ToolRegistration,
   ToolResult,
 } from "@touri/contracts"
-import { hasTeamFormatCharacters, normalizeBotName, validateToolArgs } from "@touri/contracts"
+import { hasTeamHiddenCharacters, normalizeBotName, validateToolArgs } from "@touri/contracts"
 import { avatarShapeFor } from "@touri/contracts/avatar"
 import { createGroupStore } from "../groups/store"
 import { getTeamBuilder } from "./eligibility"
@@ -135,11 +135,12 @@ const getValidatedProposal = (
   if (
     proposal.bots.some(
       (bot) =>
-        hasTeamFormatCharacters(bot.name) ||
+        hasTeamHiddenCharacters(bot.name) ||
         !bot.roleLine.trim() ||
-        /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u.test(bot.roleLine) ||
+        hasTeamHiddenCharacters(bot.roleLine) ||
+        /[\p{Zl}\p{Zp}]/u.test(bot.roleLine) ||
         !bot.instructions.trim() ||
-        hasTeamFormatCharacters(bot.instructions),
+        hasTeamHiddenCharacters(bot.instructions, true),
     )
   )
     return {
@@ -151,7 +152,7 @@ const getValidatedProposal = (
   if (
     group &&
     (!normalizeBotName(group.name) ||
-      hasTeamFormatCharacters(group.name) ||
+      hasTeamHiddenCharacters(group.name) ||
       group.members.some((name) => !names.includes(name)) ||
       (group.coordinator !== undefined && !group.members.includes(group.coordinator)))
   )

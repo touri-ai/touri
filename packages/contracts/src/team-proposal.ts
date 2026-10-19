@@ -2,16 +2,6 @@ import { validAvatarColor, validAvatarShape } from "./avatar"
 import { normalizeBotName } from "./bot-name"
 import type { TeamProposalReview } from "./types"
 
-/** Approval text must not hide format controls, including invisible tags and bidi overrides. */
-export const hasTeamFormatCharacters = (value: unknown): boolean => typeof value === "string" && /\p{Cf}/u.test(value)
-
-const getRecord = (value: unknown): Record<string, unknown> | null =>
-  value !== null && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null
-const isText = (value: unknown, max: number): value is string =>
-  typeof value === "string" && !!value.trim() && value.length <= max
-const hasOnly = (value: Record<string, unknown>, keys: string[]) =>
-  Object.keys(value).every((key) => keys.includes(key))
-
 /** UI guard uses no generated validators, so it also works under the desktop CSP. */
 export const getTeamProposalReview = (value: unknown): TeamProposalReview | null => {
   const review = getRecord(value)
@@ -40,12 +30,13 @@ export const getTeamProposalReview = (value: unknown): TeamProposalReview | null
           "avatarSeed",
         ]) ||
         !normalizeBotName(bot.name) ||
-        hasTeamFormatCharacters(bot.name) ||
+        hasTeamHiddenCharacters(bot.name) ||
         !["codex", "claude", "opencode"].includes(String(bot.provider)) ||
         !isText(bot.roleLine, 160) ||
-        /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u.test(bot.roleLine) ||
+        hasTeamHiddenCharacters(bot.roleLine) ||
+        /[\p{Zl}\p{Zp}]/u.test(bot.roleLine) ||
         !isText(bot.instructions, 12000) ||
-        hasTeamFormatCharacters(bot.instructions) ||
+        hasTeamHiddenCharacters(bot.instructions, true) ||
         (bot.model != null && (typeof bot.model !== "string" || bot.model.length > 200)) ||
         (bot.color != null && !validAvatarColor(bot.color)) ||
         (bot.avatarShape != null && !validAvatarShape(bot.avatarShape)) ||
@@ -62,7 +53,7 @@ export const getTeamProposalReview = (value: unknown): TeamProposalReview | null
       !group ||
       !hasOnly(group, ["name", "members", "coordinator"]) ||
       !normalizeBotName(group.name) ||
-      hasTeamFormatCharacters(group.name) ||
+      hasTeamHiddenCharacters(group.name) ||
       !Array.isArray(group.members) ||
       !group.members.length ||
       group.members.length > 8 ||
@@ -90,3 +81,23 @@ export const getTeamProposalReview = (value: unknown): TeamProposalReview | null
     return null
   return value as TeamProposalReview
 }
+
+export const hasTeamHiddenCharacters = (value: unknown, multiline = false): boolean => {
+  if (typeof value !== "string") return false
+
+  // Only pictographic emoji sequences may carry a single VS16 or a joiner between their elements.
+  const visible = value.replace(
+    /\p{Extended_Pictographic}\uFE0F?\p{Emoji_Modifier}?(?:\u200D\p{Extended_Pictographic}\uFE0F?\p{Emoji_Modifier}?)*/gu,
+    "",
+  )
+  const text = multiline ? visible.replace(/[\t\n\r]/g, "") : visible
+
+  return /[\p{Default_Ignorable_Code_Point}\p{Cf}\p{Cc}]/u.test(text)
+}
+
+const getRecord = (value: unknown): Record<string, unknown> | null =>
+  value !== null && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null
+const isText = (value: unknown, max: number): value is string =>
+  typeof value === "string" && !!value.trim() && value.length <= max
+const hasOnly = (value: Record<string, unknown>, keys: string[]) =>
+  Object.keys(value).every((key) => keys.includes(key))

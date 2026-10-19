@@ -1,7 +1,15 @@
 import { afterEach, expect, test } from "bun:test"
 import { mkdir, readdir, readFile, symlink } from "node:fs/promises"
 import { join } from "node:path"
-import type { ApprovalPart, Bot, Run, TeamCreateInput, ToolContext, ToolRegistration } from "@touri/contracts"
+import type {
+  ApprovalPart,
+  Bot,
+  Run,
+  TeamCreateInput,
+  TeamProposalReview,
+  ToolContext,
+  ToolRegistration,
+} from "@touri/contracts"
 import { getTeamProposalReview } from "@touri/contracts"
 import { AVATAR_SHAPES } from "@touri/contracts/avatar"
 import { createApprovalBridge } from "../../src/approvals/bridge"
@@ -707,47 +715,125 @@ test("group creation failure reports every committed bot and rolls back the grou
   })
 })
 
-for (const character of ["\u200B", "\u200D", "\u200F", "\u2060", "\u202E", "\u2066", "\u2069", "\uFEFF", "\u{E0061}"]) {
-  test(`rejects invisible format U+${character.codePointAt(0)?.toString(16)} before approval in every trusted field`, async () => {
-    const f = await fixture()
-    const original = getProposal()
-    const proposals = ["name", "roleLine", "instructions"].map((field) => ({
-      bots: original.bots.map((bot, index) =>
-        index ? bot : { ...bot, [field]: `${bot[field as keyof typeof bot]}${character}hidden` },
-      ),
-    }))
-    const groupProposal = { ...original, group: { ...original.group, name: `Team${character}hidden` } }
+test.each(
+  [
+    "\u200B",
+    "\u200D",
+    "\u200F",
+    "\u2060",
+    "\u202E",
+    "\u2066",
+    "\u2069",
+    "\uFEFF",
+    "\u{E0061}",
+    "\uFE00",
+    "\uFE0E",
+    "\uFE0F",
+    "\u{E0100}",
+    "\u{E01EF}",
+    "\u034F",
+    "\u115F",
+    "\u1160",
+    "\u3164",
+    "\uFFA0",
+    "\u0600",
+    "\u0000",
+    "\u0008",
+    "\u001B",
+    "\u007F",
+    "\u0085",
+    "\u009F",
+  ]
+    .map((character): readonly [string, string] => [
+      `U+${character.codePointAt(0)?.toString(16)}`,
+      `Visible${character}hidden`,
+    ])
+    .concat([
+      ["repeated selector", "❤️\uFE0F"],
+      ["text selector on emoji", "🐂\uFE0E"],
+      ["supplementary selector on emoji", "🐂\u{E0100}"],
+      ["trailing joiner", "👩\u200Dhidden"],
+      ["leading joiner", "hidden\u200D👩"],
+      ["repeated joiner", "👩\u200D\u200D🔬"],
+      ["misplaced selector", "👩\u200D\uFE0F🔬"],
+      ["whitespace inside emoji", "👩\t\u200D🔬"],
+    ]),
+)("rejects %s before approval in every trusted field", async (_, text) => {
+  const f = await fixture()
+  const original = getProposal()
+  const proposals = ["name", "roleLine", "instructions"].map((field) => ({
+    bots: original.bots.map((bot, index) => (index ? bot : { ...bot, [field]: text })),
+  }))
+  const groupProposal = { ...original, group: { ...original.group, name: text } }
 
-    for (const proposal of [...proposals, groupProposal]) {
-      const review = {
+  const results = await Promise.all(
+    [...proposals, groupProposal].map(async (proposal) => ({
+      review: getTeamProposalReview({
         proposal,
         providers: [
           { provider: "codex", status: "ready" },
           { provider: "claude", status: "ready" },
         ],
-      }
-      expect(getTeamProposalReview(review)).toBeNull()
-      expect(await f.call(proposal)).toMatchObject({ success: false, errorCode: "INVALID_ARGS" })
+      }),
+      result: await f.call(proposal),
+    })),
+  )
+
+  expect(results).toEqual(
+    Array.from({ length: 4 }, () => ({
+      review: null,
+      result: expect.objectContaining({ success: false, errorCode: "INVALID_ARGS" }),
+    })),
+  )
+  expect(f.cards).toHaveLength(0)
+  expect(f.botCount()).toBe(1)
+})
+
+test.each(
+  ["\t", "\n", "\r"].flatMap((character) =>
+    ["name", "roleLine", "group"].map((field) => [character.codePointAt(0)?.toString(16), field, character] as const),
+  ),
+)("rejects multiline U+%s in %s before approval", async (_, field, character) => {
+  const f = await fixture()
+  const original = getProposal()
+  const text = `Visible${character}text`
+  const proposal =
+    field === "group"
+      ? { ...original, group: { ...original.group, name: text } }
+      : { bots: original.bots.map((bot) => ({ ...bot, [field]: text })) }
+
+  const result = await f.call(proposal)
+
+  expect(result).toMatchObject({ success: false, errorCode: "INVALID_ARGS" })
+  expect(f.cards).toHaveLength(0)
+})
+
+test.each(["🐂", "❤️", "👩‍🔬", "👩🏽‍💻", "🏳️‍🌈", "👨‍👩‍👧‍👦"])(
+  "visible instructions and emoji %s remain reviewable",
+  async (emoji) => {
+    const f = await fixture()
+    const proposal = {
+      bots: getProposal().bots.map((bot) => ({
+        ...bot,
+        name: `${bot.name} ${emoji}`,
+        roleLine: `${bot.roleLine} ${emoji}`,
+        instructions: `${bot.instructions}\r\n\tReview with the user. ${emoji}`,
+      })),
+      group: { name: `Team ${emoji}`, members: [`Pesquisa ${emoji}`, `Escrita ${emoji}`] },
+    }
+    const review: TeamProposalReview = {
+      proposal,
+      providers: [
+        { provider: "codex", status: "ready" },
+        { provider: "claude", status: "ready" },
+      ],
     }
 
-    expect(f.cards).toHaveLength(0)
-    expect(f.botCount()).toBe(1)
-  })
-}
+    const pending = f.call(proposal)
+    await f.answer("denied")
+    await pending
 
-test("visible multiline instructions and ordinary emoji remain reviewable", async () => {
-  const f = await fixture()
-  const proposal = {
-    bots: getProposal().bots.map((bot) => ({
-      ...bot,
-      name: `${bot.name} 🐂`,
-      instructions: `${bot.instructions}\n\tReview with the user. 🐂`,
-    })),
-  }
-  const pending = f.call(proposal)
-  await f.answer("denied")
-
-  await pending
-
-  expect(f.cards[0]?.teamProposal?.proposal).toEqual(proposal)
-})
+    expect(getTeamProposalReview(review)).toEqual(review)
+    expect(f.cards[0]?.teamProposal?.proposal).toEqual(proposal)
+  },
+)
