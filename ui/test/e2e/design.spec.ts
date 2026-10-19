@@ -196,11 +196,12 @@ test("design: native page snapshots animate both sides with the generated easing
   })
   await page.getByRole("button", { name: "Abrir preview", exact: true }).click()
   await expect(page.getByRole("heading", { name: "Preview", exact: true })).toBeVisible()
-  const names = await page.evaluate(() =>
-    document.getAnimations().map((animation) => (animation as CSSAnimation).animationName),
-  )
-  expect(names).toContain("page-push-pop-in")
-  expect(names).toContain("page-push-pop-out")
+  // The heading commits before the native snapshots and their animations are ready.
+  await expect
+    .poll(() =>
+      page.evaluate(() => document.getAnimations().map((animation) => (animation as CSSAnimation).animationName)),
+    )
+    .toEqual(expect.arrayContaining(["page-push-pop-in", "page-push-pop-out"]))
   await page.emulateMedia({ reducedMotion: "reduce" })
   await expect.poll(() => page.evaluate(() => document.getAnimations().length)).toBe(0)
 })

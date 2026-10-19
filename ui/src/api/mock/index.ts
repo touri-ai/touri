@@ -55,6 +55,7 @@ const seed = seedJson as Seed
 const now = (): number => Date.now()
 
 const createBot = (input: Seed["bots"][number], index: number, projectId: Id | null): Bot => ({
+  teamBuilder: false,
   id: input.id,
   name: input.name,
   title: input.name === "mark" ? "Campaign lead" : input.name === "onb" ? "Operations" : "Research",
@@ -712,7 +713,8 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
     const key = String(route)
     if (key === "DELETE /bots/:id") {
       const bot = bots.find((bot) => bot.id === pathValues.id)
-      if (!bot || (input as ApiRoutes["DELETE /bots/:id"]["req"]).name !== bot.name)
+      if (!bot) throw new ApiError(404, "Bot não encontrado", "NOT_FOUND")
+      if ((input as ApiRoutes["DELETE /bots/:id"]["req"]).name !== bot.name)
         throw new Error("Digite o nome do bot para excluir.")
       const ownedThreads = new Set(threads.filter((thread) => thread.botId === bot.id).map((thread) => thread.id))
       messages = messages.filter((message) => !ownedThreads.has(message.threadId))
@@ -1163,7 +1165,10 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
         bots.length,
         botInput.projectId ?? null,
       )
-      const storedBot: Bot = Object.assign(bot, botInput, { updatedAt: now() })
+      const storedBot: Bot = Object.assign(bot, botInput, {
+        teamBuilder: botInput.jobId === "team-builder",
+        updatedAt: now(),
+      })
       bots.push(storedBot)
       const thread = createThread({
         id: `thread-${bot.id}`,

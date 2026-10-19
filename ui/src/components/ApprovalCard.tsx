@@ -3,10 +3,20 @@ import { useId, useRef, useState } from "react"
 import type { UiApi } from "../api/client"
 import { userFacingError } from "../errors"
 import { t } from "../i18n"
+import { TeamApprovalCard } from "./TeamApprovalCard"
 import { ToolCallCard } from "./ToolCallCard"
 import { type ToolPart, toolPresentation } from "./toolPresentation"
 
-export const ApprovalCard = ({
+export const ApprovalCard = (props: Parameters<typeof GenericApprovalCard>[0]) =>
+  props.part.scope?.source === "mcp" &&
+  props.part.scope.server === "touri" &&
+  props.part.scope.tool === "team_create" ? (
+    <TeamApprovalCard {...props} />
+  ) : (
+    <GenericApprovalCard {...props} />
+  )
+
+const GenericApprovalCard = ({
   part,
   api,
   tool,

@@ -125,8 +125,8 @@ export type StandingGrant = { id: Id; botId: Id; scope: ApprovalScope; grantedAt
 export type BotCapability = 'browser' | 'computer_use'
 export type CapabilityRequestInput = { capability: BotCapability; reason: string }
 
-export type ApprovalInput = { groupMemberId?: Id; ctx: Pick<ToolContext, 'botId' | 'threadId' | 'runId' | 'signal'>; scope: ApprovalScope; toolName: string; input: unknown; toolUseId?: string; allowStanding?: boolean; isCurrent?: () => boolean }
-export type ApprovalResult = Result<{ behavior: 'allow' | 'deny'; updatedInput?: unknown; message?: string }, 'NOT_FOUND' | 'TIMEOUT' | 'DENIED'>
+export type ApprovalInput = { groupMemberId?: Id; ctx: Pick<ToolContext, 'botId' | 'threadId' | 'runId' | 'signal'>; scope: ApprovalScope; toolName: string; input: unknown; toolUseId?: string; allowStanding?: boolean; teamProposal?: TeamProposalReview; isCurrent?: () => boolean }
+export type ApprovalResult = Result<{ behavior: 'allow' | 'deny'; approvalId?: Id; updatedInput?: unknown; message?: string }, 'NOT_FOUND' | 'TIMEOUT' | 'DENIED'>
 
 export type BotFolder = { path: AbsolutePath; access: 'read-only' | 'read-write' }
 export type BotBrowser = 'touri' | 'local' | 'machine'
@@ -140,6 +140,8 @@ export type Bot = {
   providerProfile?: string | null
   claudeAiConnectors?: boolean
 
+  /** Set only by explicit creation from the team-builder job; immutable afterward. */
+  teamBuilder: boolean
   id: Id
   name: string
   title: string | null
@@ -427,6 +429,8 @@ export type NoticePart = {
 export type ApprovalPart = {
   /** A delegation approval belongs to the caller but waits on this group member. */
   groupMemberId?: Id
+  teamProposal?: TeamProposalReview
+  teamResult?: TeamCreationResult
   type: 'approval'
   createdAt?: EpochMs
   approvalId: Id
@@ -780,7 +784,32 @@ export type ProviderAdapter = {
 /* origin. WebSocket: /api/v1/events?token=<token> (token also accepted as subprotocol).       */
 /* ------------------------------------------------------------------------------------------ */
 
-export type CreateBotInput = { cloudApiKey?: string } & Pick<Bot, 'name' | 'provider'> &
+export type TeamBotDraft = Pick<Bot, 'name' | 'provider' | 'instructions'> & {
+  roleLine: string
+  model?: string | null
+  color?: string | null
+  avatarShape?: AvatarShape | null
+  avatarSeed?: string | null
+}
+/** Group members refer only to names of bots in this proposal. */
+export type TeamCreateInput = {
+  bots: Array<TeamBotDraft>
+  group?: { name: string; members: Array<string>; coordinator?: string }
+}
+export type TeamProviderStatus = 'ready' | 'needs-setup' | 'unknown'
+export type TeamProposalReview = {
+  proposal: TeamCreateInput
+  providers: Array<{ provider: Provider; status: TeamProviderStatus }>
+}
+export type TeamCreationResult = {
+  status: 'created' | 'partial' | 'failed'
+  bots: Array<{ id: Id; name: string; threadId: Id | null }>
+  group?: { id: Id; name: string; threadId: Id }
+  /** Fixed public failure code; never raw filesystem/provider errors. */
+  error?: 'creation-failed'
+}
+
+export type CreateBotInput = { cloudApiKey?: string; jobId?: string } & Pick<Bot, 'name' | 'provider'> &
   Partial<Pick<Bot, 'title' | 'roleLine' | 'description' | 'color' | 'avatarShape' | 'avatarSeed' | 'instructions' | 'model' | 'reasoningEffort' | 'access' | 'approvals' | 'projectId' | 'cwd' | 'browserEnabled' | 'browser' | 'computerUse' | 'machine' | 'machineIdleMinutes' | 'vmProviderLogin' | 'hostComputerUse' | 'folders' | 'anyFolderAccess' | 'providerProfile' | 'claudeAiConnectors'>>
 
 /** A named login under `<appData>/provider-profiles/<name>`, created with `touri profile login`. */
@@ -869,7 +898,7 @@ export type ApiRoutes = {
   'POST /doctor/storage/compact': { req: { vacuum?: boolean }; res: { maintenance: StorageMaintenanceStatus } }
   'GET /bots': { req: {}; res: { bots: Array<Bot> } }
   'POST /bots': { req: CreateBotInput; res: { bot: Bot } }
-  'PATCH /bots/:id': { req: Partial<CreateBotInput & { paused: boolean }>; res: { bot: Bot } }
+  'PATCH /bots/:id': { req: Partial<Omit<CreateBotInput, 'jobId'> & { paused: boolean }>; res: { bot: Bot } }
   'DELETE /bots/:id': { req: { name: string; deleteVolumes?: boolean }; res: {} }
   'GET /bots/:id/mcp': { req: {}; res: { servers: Array<McpServer> } }
   'GET /bots/:id/integrations/telegram': { req: {}; res: { telegram: TelegramIntegration } }
@@ -1315,6 +1344,9 @@ export type StoreApi = {
 
 /** Cross-module services. Providers call `provide` in their init; consumers must tolerate `null` from `use`. */
 export type ServiceMap = {
+  'bots.validateCreation': (body: unknown) => Result<{ input: CreateBotInput }>
+  'bots.create': (input: { body: unknown; signal: AbortSignal; isCurrent?: () => boolean }) => Promise<Result<{ bot: Bot }>>
+  'approvals.completeTeam': (input: { approvalId: Id; ctx: Pick<ToolContext, 'botId' | 'threadId' | 'runId'>; result: TeamCreationResult }) => Promise<void>
   'bots.rename': (input: { botId: Id; name: string }) => Result<{ bot: Bot }, 'NOT_FOUND' | 'INVALID_ARGS'>
   'bots.configureAccess': (input: { botId: Id; patch: Partial<Pick<Bot, 'projectId' | 'folders' | 'browserEnabled' | 'browser' | 'computerUse'>> }) => Result<{ bot: Bot }, 'NOT_FOUND' | 'INVALID_ARGS' | 'MACHINE_PROJECT_CHANGE'>
   'diagnostics.errors': () => Array<{ code: string; at: number }>

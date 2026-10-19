@@ -34,11 +34,12 @@ import groupDeletionSql from "./migrations/0028.sql" with { type: "text" }
 import computerGrantExpirySql from "./migrations/0029.sql" with { type: "text" }
 import groupCoordinationHistorySql from "./migrations/0030.sql" with { type: "text" }
 import streamWorkerSql from "./migrations/0031.sql" with { type: "text" }
+import teamBuilderSql from "./migrations/0032.sql" with { type: "text" }
 import { withSuspendedSchemaObjects } from "./schema-rebuild"
 import { instrumentMainConnection, type SlowStatementTracker } from "./sqlite-performance"
 import { applyUpgradeBaselines } from "./upgradeBaselines"
 
-export const SCHEMA_VERSION = 31
+export const SCHEMA_VERSION = 32
 
 const FREE_PAGE_RATIO_LIMIT = 0.2
 
@@ -224,5 +225,10 @@ export const openDatabase = ({
     if (!migrated) database.exec(groupCoordinationHistorySql)
   })()
   database.transaction(() => database.exec(streamWorkerSql))()
+  database.transaction(() => {
+    const columns = database.query("PRAGMA table_info(bots)").all() as Array<{ name: string }>
+    if (!columns.some((column) => column.name === "team_builder")) database.exec(teamBuilderSql)
+    database.exec("UPDATE schema_meta SET value = '32' WHERE key = 'schema_version'")
+  })()
   return database
 }

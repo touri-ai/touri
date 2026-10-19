@@ -14,6 +14,7 @@ import { createGroupRuntime } from "../groups/runtime"
 import type { PerformanceStageRunner } from "../kernel/performance"
 import { buildChildEnv } from "../kernel/shell-env"
 import { getHostIdentity } from "../platform/host"
+import { createTeamTools } from "../teams/tools"
 import { createRuntimeEngine } from "./engine"
 import { listOpenCodeModels } from "./opencode/models"
 import { listProviderProfiles } from "./provider-profiles"
@@ -121,6 +122,7 @@ export const init = async (kernel: Kernel, runStage?: PerformanceStageRunner): P
   kernel.services.provide("approvals.present", engine.approvalBridge.present)
   kernel.services.provide("approvals.approve", engine.approvalBridge.approve)
   kernel.services.provide("approvals.settle", engine.approvalBridge.settle)
+  kernel.services.provide("approvals.completeTeam", engine.approvalBridge.completeTeam)
   kernel.services.provide("runtime.activeRun", ({ threadId }) => engine.activeRun({ threadId }))
   kernel.services.provide("runtime.continueAfterApproval", engine.continueAfterApproval)
   kernel.services.provide("runtime.cancelBotTurns", groups.cancelBotTurns)
@@ -411,6 +413,7 @@ export const init = async (kernel: Kernel, runStage?: PerformanceStageRunner): P
   const approvalPrompt = createApprovalPromptHandler(engine)
   const registration = kernel.registerTools({
     tools: [
+      ...createTeamTools(kernel),
       { name: "coordinate_bots", group: "core", handler: ({ ctx, args }) => groups.askBot(ctx, args) },
       { name: "ask_all", group: "core", handler: ({ ctx, args }) => groups.askAll(ctx, args) },
       { name: "ask_bot", group: "core", handler: ({ ctx, args }) => groups.askBot(ctx, args) },

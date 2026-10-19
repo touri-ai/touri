@@ -447,6 +447,11 @@ const AppContent = ({ kernel }: AppProps) => {
     isTauriRuntime() ? parseDeepLink(window.location.search) : null,
   )
   useEffect(() => {
+    const open = (event: Event) => setPendingLink((event as CustomEvent<DeepLink>).detail)
+    window.addEventListener("touri:open-conversation", open)
+    return () => window.removeEventListener("touri:open-conversation", open)
+  }, [])
+  useEffect(() => {
     if (!isTauriRuntime() || requestedComputer) return
     return installNativeDeepLinks({
       listen: (receive) => listen("deep-link", (event) => receive(event.payload)),

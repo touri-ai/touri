@@ -21,6 +21,7 @@ const definitions = [
   { id: "packing-checklist", group: "daily" },
   { id: "study-blocks", group: "daily" },
   { id: "weekly-menu", group: "daily" },
+  { id: "team-builder", group: "daily" },
   { id: "clearer-writing", group: "communication" },
   { id: "team-update", group: "communication" },
   { id: "thoughtful-reply", group: "communication" },
@@ -59,7 +60,7 @@ export const getJobTemplates = (locale: Locale = "pt-BR"): JobTemplate[] =>
     description: t(`jobs.${id}.description`, {}, locale),
     roleLine: t(`jobs.${id}.roleLine`, {}, locale),
     instructions: t(
-      "job.starter",
+      id === "team-builder" ? "job.teamBuilder" : "job.starter",
       {
         name: t(`jobs.${id}.name`, {}, locale),
         role: t(`jobs.${id}.roleLine`, {}, locale),

@@ -8,6 +8,7 @@ import { learningToolHidden } from "../learning/settings"
 import { mem0SessionAllowed } from "../mem0/session"
 import { capabilitySupport } from "../projects/capability-support"
 import { createProjectStore } from "../projects/repository"
+import { getTeamBuilder } from "../teams/eligibility"
 import { auditToolCall } from "./audit"
 import type { McpCallerContext } from "./auth"
 import { attachedTools, forwardTool } from "./forward"
@@ -74,6 +75,7 @@ const visibleTo = ({
   experimental: boolean
   kernel: Kernel
 }): boolean => {
+  if (tool.name === "team_create" && !getTeamBuilder(kernel, caller)) return false
   if (
     ["coordinate_bots", "ask_bot", "ask_all"].includes(tool.name) &&
     !kernel.services.use("groups.runtime")?.canCoordinate(caller.threadId)

@@ -12,6 +12,7 @@ export * from "./notification-body"
 export * from "./notification-preferences"
 export * from "./reports"
 export * from "./routine-schedule"
+export * from "./team-proposal"
 export * from "./types"
 export { catalog as toolCatalog }
 
