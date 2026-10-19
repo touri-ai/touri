@@ -7,7 +7,7 @@ import { compressBufferedResponse } from "../cli/web/compression"
 import { getHostIdentity } from "../platform/host"
 import { stopBotHomeWriter } from "../store/bot-home"
 import { touriVersion } from "../version"
-import { flushFileIoAsync, getFileIoStats } from "./async-files"
+import { getFileIoStats } from "./async-files"
 import { createBackgroundTask, getMeasuredStage, yieldBackground } from "./background-task"
 import { createStorageMaintenance } from "./data-maintenance"
 import { openDatabase, SCHEMA_VERSION } from "./db"
@@ -631,7 +631,6 @@ export const createKernel = ({
       host.close()
       bus.stop()
       database.close()
-      await flushFileIoAsync()
     })()
     return stopPromise
   }

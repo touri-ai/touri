@@ -93,3 +93,46 @@ const getLane = (options: Parameters<typeof createFileIoLane>[0] = {}) => {
   cleanups.add(() => lane.close())
   return lane
 }
+
+test("a handled file failure does not reject an unrelated flush or shutdown", async () => {
+  const root = await getRoot()
+  const lane = getLane()
+  const rejected = lane.run({
+    operation: "write",
+    args: { root: join(root, "private"), path: join(root, "escape"), content: "denied" },
+  })
+  const failure = rejected.catch((error: Error) => error.message)
+
+  await lane.flush()
+  await lane.close()
+
+  expect(await failure).toBeString()
+  await expect(readFile(join(root, "escape"))).rejects.toMatchObject({ code: "ENOENT" })
+})
+
+test("a worker failure between scheduling and dispatch cannot strand subsequent writes", async () => {
+  const root = await getRoot()
+  const workers: Worker[] = []
+  const lane = getLane({
+    createWorker: () => {
+      const worker = new Worker(new URL("../../src/kernel/file-io-worker.ts", import.meta.url))
+      workers.push(worker)
+      return worker
+    },
+  })
+  await lane.run({ operation: "write", args: { root, path: join(root, "warmup"), content: "ready" } })
+  const [first] = workers
+  if (!first) throw new Error("Synthetic worker missing")
+  const interrupted = lane.run({
+    operation: "write",
+    args: { root, path: join(root, "interrupted"), content: "uncertain" },
+  })
+  const failed = interrupted.catch((error: Error) => error.message)
+
+  first.onerror?.(new ErrorEvent("error", { message: "Synthetic worker failure" }))
+  await lane.run({ operation: "write", args: { root, path: join(root, "recovered"), content: "durable" } })
+
+  expect(await failed).toContain("stopped unexpectedly")
+  expect(workers).toHaveLength(2)
+  expect(await readFile(join(root, "recovered"), "utf8")).toBe("durable")
+})

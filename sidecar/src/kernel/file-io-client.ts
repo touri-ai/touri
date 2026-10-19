@@ -32,9 +32,11 @@ export const createFileIoLane = ({
   const stop = (error?: Error): void => {
     clearTimeout(startupTimer)
     clearImmediate(scheduled)
-    worker?.terminate()
+    scheduled = undefined
+    const stoppedWorker = worker
     worker = undefined
     ready = false
+    stoppedWorker?.terminate()
     const unfinished = active ? [active, ...entries] : entries
     entries = []
     active = undefined
@@ -74,10 +76,12 @@ export const createFileIoLane = ({
       if (worker === startedWorker) stop(new Error("File I/O worker stopped unexpectedly"))
     })
     worker.ref()
-    worker.onmessage = handleMessage
+    worker.onmessage = (event): void => {
+      if (worker === startedWorker) handleMessage(event)
+    }
     worker.onerror = (event): void => {
       event.preventDefault()
-      stop(new Error("File I/O worker stopped unexpectedly"))
+      if (worker === startedWorker) stop(new Error("File I/O worker stopped unexpectedly"))
     }
     startupTimer = setTimeout(() => stop(new Error("File I/O worker startup timed out")), 15_000)
     worker.postMessage({ type: "start" } satisfies FileIoRequest)
@@ -130,11 +134,16 @@ export const createFileIoLane = ({
 
   const flush = async (timeoutMs = 5000): Promise<void> => {
     const accepted = active ? [active, ...entries] : entries
-    const deadline = setTimeout(() => stop(new Error("File I/O shutdown timed out")), timeoutMs)
+    const expired = Promise.withResolvers<void>()
+    const deadline = setTimeout(() => {
+      const error = new Error("File I/O shutdown timed out")
+      expired.reject(error)
+      stop(error)
+    }, timeoutMs)
     try {
-      const results = await Promise.allSettled(accepted.map(({ completion }) => completion.promise))
-      const failed = results.find((result) => result.status === "rejected")
-      if (failed?.status === "rejected") throw failed.reason
+      // Each operation reports its own failure. A barrier only waits for settlement.
+      const settled = Promise.allSettled(accepted.map(({ completion }) => completion.promise)).then(() => undefined)
+      await Promise.race([settled, expired.promise])
     } finally {
       clearTimeout(deadline)
     }
