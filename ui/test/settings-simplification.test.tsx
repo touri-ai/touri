@@ -180,7 +180,7 @@ it("keeps app sections short and technical settings within their disclosure", as
     }
     expect(
       [...within(panel).queryAllByRole("switch"), ...within(panel).queryAllByRole("combobox")].filter(
-        (control) => !control.closest("details:not([open])"),
+        (control) => !control.closest("details:not([open]), .ds-disclosure[data-open='false']"),
       ).length,
     ).toBeLessThanOrEqual(2)
     for (const control of [...within(panel).queryAllByRole("spinbutton"), ...within(panel).queryAllByRole("textbox")])

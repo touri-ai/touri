@@ -32,11 +32,11 @@ it("explains machine choices without jargon and keeps diagnostics in closed deta
   )
   expect(screen.getByRole("option", { name: "Neste computador" })).toBeInTheDocument()
   expect(screen.getByRole("option", { name: /Separado só para o bot/ })).toBeDisabled()
-  const details = screen.getByText("Detalhes técnicos").closest("details")
-  expect(details).not.toHaveAttribute("open")
+  const details = screen.getByText("Detalhes técnicos").closest(".ds-disclosure")
+  expect(details).toHaveAttribute("data-open", "false")
   expect(screen.getByText("Xvfb ready")).not.toBeVisible()
   const defaultContent = screen.getByRole("region", { name: "Computador" }).cloneNode(true) as HTMLElement
-  defaultContent.querySelectorAll("details").forEach((node) => {
+  defaultContent.querySelectorAll(".ds-disclosure").forEach((node) => {
     node.remove()
   })
   expect(defaultContent.textContent).not.toMatch(jargon)
@@ -70,14 +70,14 @@ it("keeps creation choices and bot computer settings free of jargon until techni
   expect(memory).not.toBeVisible()
   const pane = screen.getByRole("tabpanel", { name: "Computador" })
   const defaultContent = pane.cloneNode(true) as HTMLElement
-  defaultContent.querySelectorAll("details").forEach((node) => {
+  defaultContent.querySelectorAll(".ds-disclosure").forEach((node) => {
     node.remove()
   })
   expect(defaultContent.textContent).not.toMatch(jargon)
   fireEvent.click(
     screen
       .getAllByText("Detalhes técnicos")
-      .find((summary) => summary.closest("details")?.contains(memory)) as HTMLElement,
+      .find((summary) => summary.closest(".ds-disclosure")?.contains(memory)) as HTMLElement,
   )
   expect(memory).toBeVisible()
   fireEvent.change(memory, { target: { value: "256" } })

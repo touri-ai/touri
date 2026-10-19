@@ -81,7 +81,8 @@ it("summarizes requests without review context and lists them in the notificatio
 
   expect(summary).toBeVisible()
   expect(screen.getByRole("region", { name: "Central de notificações" })).toHaveTextContent("Qual pasta usar?")
-  expect(screen.getByRole("button", { name: "Aprovar", exact: true })).toBeVisible()
+  expect(screen.getByRole("button", { name: "Abrir e revisar", exact: true })).toBeVisible()
+  expect(screen.queryByRole("button", { name: "Aprovar", exact: true })).toBeNull()
 })
 
 it("keeps the return summary hidden when the page opened without pending requests", async () => {

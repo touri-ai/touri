@@ -38,6 +38,7 @@ import { BotAvatar } from "./BotAvatar"
 import { ChatDisclosure } from "./ChatDisclosure"
 import { ConnectDataCard, connectDataMarker } from "./ConnectDataCard"
 import { ConversationStart } from "./ConversationStart"
+import { Disclosure } from "./Disclosure"
 import { DraftComposer, type DraftComposerHandle } from "./DraftComposer"
 import { ErrorDetails, ErrorText } from "./ErrorDetails"
 import { ErrorNotice } from "./ErrorNotice"
@@ -660,12 +661,9 @@ const MessageBubble = ({
                   return summary
                     ? [
                         <li key={"callId" in part ? part.callId : part.type}>
-                          <details>
-                            <summary>
-                              {t("Ações registradas")} {index + 1}
-                            </summary>
+                          <Disclosure summary={`${t("Ações registradas")} ${index + 1}`}>
                             <pre>{sanitizeDiagnostic(summary)}</pre>
-                          </details>
+                          </Disclosure>
                         </li>,
                       ]
                     : []

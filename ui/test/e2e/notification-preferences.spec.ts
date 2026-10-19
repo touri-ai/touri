@@ -58,7 +58,8 @@ test("a reopened page shows one actionable reminder and a plain no-news result",
 
   const center = page.getByRole("region", { name: "Central de notificações" })
   await expect(center).toContainText("Qual projeto reviso primeiro?")
-  await expect(center.getByRole("button", { name: "Aprovar", exact: true })).toBeVisible()
+  await expect(center.getByRole("button", { name: "Abrir e revisar", exact: true })).toBeVisible()
+  await expect(center.getByRole("button", { name: "Aprovar", exact: true })).toHaveCount(0)
   await expect(center).toContainText("Rotina concluída sem novidades.")
   await expect(center).not.toContainText("NO_NOTIFICATION")
   await expect(center).not.toContainText("Texto bruto do modelo")

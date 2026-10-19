@@ -3318,14 +3318,7 @@ a {
   right: 1px;
   min-width: 15px;
   height: 15px;
-  padding: 0 var(--space-4);
-  border-radius: var(--radius-8);
-  background: var(--accent-brand);
-  color: var(--text-on-accent);
   font-size: var(--type-10);
-  font-weight: var(--weight-bold);
-  line-height: 15px;
-  text-align: center;
 }
 .notification-popover {
   position: fixed;
@@ -3348,13 +3341,13 @@ a {
   border-bottom: 1px solid var(--border-default);
   font-size: var(--type-13);
 }
-.notification-popover button {
+.notification-popover button:not(.ds-button) {
   border: 0;
   background: transparent;
   color: var(--text-tertiary);
   font-size: var(--type-12);
 }
-.notification-popover button:hover {
+.notification-popover button:not(.ds-button):hover {
   color: var(--text-primary);
 }
 .notification-popover ul {
@@ -3391,19 +3384,6 @@ a {
   margin-left: auto;
   color: var(--text-tertiary);
 }
-.notification-kind {
-  padding: var(--space-1) var(--space-6);
-  border-radius: var(--radius-6);
-  background: var(--surface-control);
-  color: var(--accent-warning);
-  font-size: var(--type-11);
-}
-.notification-kind.kind-error {
-  color: var(--accent-brand);
-}
-.notification-kind.kind-info {
-  color: var(--accent-success);
-}
 .notification-title,
 .notification-body {
   margin: var(--space-3) 0 0;
@@ -3416,7 +3396,7 @@ a {
   color: var(--text-secondary);
 }
 .notification-buttons,
-.notification-links,
+.notification-actions,
 .notification-reply {
   display: flex;
   gap: var(--space-8);

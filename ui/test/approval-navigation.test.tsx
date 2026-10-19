@@ -130,7 +130,7 @@ it.each(["Cron", "notification", "sidebar", "banner"])(
       } else {
         fireEvent.click(screen.getByRole("button", { name: /Notificações/ }))
         const row = await screen.findByTestId("notification-row")
-        fireEvent.click(within(row).getByRole("button", { name: "Revisar" }))
+        fireEvent.click(within(row).getByRole("button", { name: "Abrir e revisar" }))
       }
     }
     await screen.findByRole("textbox", { name: "Mensagem para onb" })

@@ -2619,6 +2619,13 @@ export const ptBR = {
   "Não foi possível iniciar a compactação. Aguarde a migração ou compactação em andamento e tente novamente.":
     "Não foi possível iniciar a compactação. Aguarde a migração ou compactação em andamento e tente novamente.",
   "O provedor não detalhou o pedido": "O provedor não detalhou o pedido",
+  "Abrir e revisar": "Abrir e revisar",
+  "Ver conversa": "Ver conversa",
+  "Marcar como lida": "Marcar como lida",
+  Limpar: "Limpar",
+  "Limpando…": "Limpando…",
+  Anteriores: "Anteriores",
+  "Fechar notificações": "Fechar notificações",
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
@@ -4588,6 +4595,13 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Não foi possível consultar o armazenamento.": "Could not check storage.",
   "Não foi possível iniciar a compactação. Aguarde a migração ou compactação em andamento e tente novamente.":
     "Could not start compaction. Wait for the ongoing migration or compaction to finish and try again.",
+  "Abrir e revisar": "Open and review",
+  "Ver conversa": "View conversation",
+  "Marcar como lida": "Mark as read",
+  Limpar: "Clear",
+  "Limpando…": "Clearing…",
+  Anteriores: "Earlier",
+  "Fechar notificações": "Close notifications",
 }
 export const dictionaries = {
   "pt-BR": ptBR,

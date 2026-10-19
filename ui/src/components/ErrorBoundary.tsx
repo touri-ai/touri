@@ -1,7 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode } from "react"
 import { createApiClient, createTauriInvoke, resolveSidecarEndpoint, type UiApi, webEndpoint } from "../api/client"
-
 import { ReportErrorButton } from "../features/reports/ReportErrorButton"
+import { Disclosure } from "./Disclosure"
 
 const reportError = async (api: UiApi | undefined, area: string, error: Error, info: ErrorInfo) => {
   const client =
@@ -73,10 +73,9 @@ export class ErrorBoundary extends Component<Props, { error: Error | null }> {
             Fechar
           </button>
         )}
-        <details>
-          <summary>Detalhes do erro</summary>
+        <Disclosure summary="Detalhes do erro">
           <pre>{error.stack ?? String(error)}</pre>
-        </details>
+        </Disclosure>
       </section>
     )
     return this.props.dialog ? (

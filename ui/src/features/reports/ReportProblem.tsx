@@ -14,6 +14,7 @@ import {
 import { useEffect, useId, useRef, useState } from "react"
 import { createTauriInvoke, type TauriInvoke, type UiApi } from "../../api/client"
 import { browserSave } from "../../browserSave"
+import { Disclosure } from "../../components/Disclosure"
 import { getDocumentLocale } from "../../documentLanguage"
 import { userFacingError } from "../../errors"
 import { type Locale, type TranslationKey, t } from "../../i18n"
@@ -490,8 +491,7 @@ export const ReportProblem = ({
             Este é o conteúdo exato do .zip e do envio para o touri. O GitHub e a área de transferência recebem somente
             o resumo.
           </p>
-          <details open={previewOpen} onToggle={(event) => setPreviewOpen(event.currentTarget.open)}>
-            <summary>Prévia completa</summary>
+          <Disclosure open={previewOpen} onOpenChange={setPreviewOpen} summary="Prévia completa">
             <h5>report.json</h5>
             <pre>{JSON.stringify(snapshot.report, null, 2)}</pre>
             <label>
@@ -538,7 +538,7 @@ export const ReportProblem = ({
             {previewDirty && (
               <p>Há alterações ainda não aplicadas. Aplique a edição para gerar e revisar a nova prévia.</p>
             )}
-          </details>
+          </Disclosure>
           <div className="report-actions">
             <button
               className="button button-brand"

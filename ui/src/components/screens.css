@@ -630,7 +630,8 @@
   z-index: 1;
   background: var(--surface-panel);
   padding: var(--space-14) var(--space-16);
-  font-size: var(--type-14);
+  font-size: var(--type-17);
+  font-weight: var(--weight-semibold);
 }
 .notification-header-actions {
   display: flex;
@@ -654,6 +655,9 @@
   gap: var(--space-12);
   border-color: var(--border-subtle);
 }
+.r8-notifications .notification-row[data-unread="true"] {
+  background: color-mix(in srgb, var(--accent-info) 6%, transparent);
+}
 .r8-notifications .notification-row:last-child {
   border-bottom: 0;
 }
@@ -663,38 +667,43 @@
 }
 .r8-notifications .notification-head {
   flex-wrap: wrap;
-  gap: var(--space-6);
+  gap: var(--space-8);
+  font-size: var(--type-13);
 }
 .r8-notifications .notification-head strong {
   color: var(--text-primary);
+  font-weight: var(--weight-semibold);
+}
+.r8-notifications .notification-head time {
+  font-size: var(--type-12);
 }
 .r8-notifications .notification-title {
-  font-weight: var(--weight-medium);
   margin-top: var(--space-8);
+  color: var(--text-primary);
+  font-size: var(--type-15);
+  font-weight: var(--weight-semibold);
 }
 .r8-notifications .notification-body {
-  margin-top: var(--space-6);
+  margin-top: var(--space-4);
+  color: var(--text-secondary);
+  font-size: var(--type-13);
   line-height: var(--leading-body);
   -webkit-line-clamp: 3;
   overflow-wrap: anywhere;
 }
-.r8-notifications .notification-links {
+.r8-notifications .notification-technical {
+  margin-top: var(--space-6);
+  font-size: var(--type-13);
+}
+.r8-notifications .notification-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-8);
   margin-top: var(--space-10);
-  gap: var(--space-12);
 }
-.r8-notifications .notification-links button {
-  padding: 0;
-  color: var(--text-link);
-}
-.r8-notifications .notification-buttons {
-  margin-top: var(--space-10);
-}
-.r8-notifications .notification-buttons button {
-  min-height: 30px;
-  color: var(--text-primary);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-8);
-  padding: var(--space-4) var(--space-10);
+.r8-notifications .notification-reply {
+  align-items: center;
 }
 .r8-notifications .notification-empty {
   padding: var(--space-28) var(--space-20);

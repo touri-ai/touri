@@ -2,6 +2,7 @@ import type { RecoveryTask } from "@touri/contracts"
 import { useState } from "react"
 import { errorRecovery } from "../errorRecovery"
 import { getInterruptedTaskDateLabel, getRoutineRunDateLabel, t } from "../i18n"
+import { Disclosure } from "./Disclosure"
 import { ErrorNotice } from "./ErrorNotice"
 import { Modal } from "./Modal"
 import "./InterruptedTasks.css"
@@ -54,16 +55,13 @@ export const InterruptedTasks = (props: Props) => {
           </section>
         ))}
         {history.length > 0 && (
-          <details className="interrupted-history">
-            <summary>
-              {t("Interrupções resolvidas")} ({history.length})
-            </summary>
+          <Disclosure className="interrupted-history" summary={`${t("Interrupções resolvidas")} (${history.length})`}>
             <ul className="interrupted-task-list">
               {history.map((task) => (
                 <TaskRow key={task.id} task={task} {...props} />
               ))}
             </ul>
-          </details>
+          </Disclosure>
         )}
       </div>
     </Modal>

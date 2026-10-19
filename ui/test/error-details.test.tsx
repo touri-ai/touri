@@ -11,18 +11,18 @@ const cases = [
 
 test.each(cases)("one closed disclosure preserves diagnostics for $text", ({ text, code, diagnostic }) => {
   const { container } = render(<ErrorText text={text} code={code} />)
-  const summary = screen.getByText("Detalhes do erro")
-  const details = summary.closest("details")
+  const summary = screen.getByRole("button", { name: "Detalhes do erro" })
+  const details = summary.closest(".ds-disclosure")
 
-  expect(container.querySelectorAll("details")).toHaveLength(1)
-  expect(details).not.toHaveAttribute("open")
+  expect(container.querySelectorAll(".ds-disclosure")).toHaveLength(1)
+  expect(details).toHaveAttribute("data-open", "false")
   expect(details?.querySelector("code")).toHaveTextContent(diagnostic)
   expect(details?.querySelector("code")).toHaveTextContent(code)
   expect(details?.querySelector("code")?.textContent?.match(/TOURI-E1009/g)).toHaveLength(1)
 
   fireEvent.click(summary)
 
-  expect(details).toHaveAttribute("open")
+  expect(details).toHaveAttribute("data-open", "true")
   expect(details?.querySelector("code")).toBeVisible()
 })
 
@@ -30,7 +30,7 @@ test("a plain explanation needs no diagnostic disclosure", () => {
   const { container } = render(<ErrorText text="Confira o computador e tente novamente." />)
 
   expect(screen.getByText("Confira o computador e tente novamente.")).toBeVisible()
-  expect(container.querySelector("details")).toBeNull()
+  expect(container.querySelector(".ds-disclosure")).toBeNull()
 })
 
 test("long diagnostics preserve every reference code within the size limit", () => {
@@ -44,5 +44,5 @@ test("long diagnostics preserve every reference code within the size limit", () 
   expect(diagnostic).toContain("ECONNRESET")
   expect(diagnostic.match(/TOURI-E1009/g)).toHaveLength(1)
   expect(diagnostic.length).toBeLessThanOrEqual(240)
-  expect(container.querySelectorAll("details")).toHaveLength(1)
+  expect(container.querySelectorAll(".ds-disclosure")).toHaveLength(1)
 })

@@ -45,7 +45,7 @@ it("keeps the capped notification badge in the bell's accessible name", async ()
   expect(t("Notifications over nine need attention", {}, "en")).toBe("Notifications, 9+ need attention")
 })
 
-it("shows a badge for attention items and answers an approval from the bell", async () => {
+it("shows a badge for attention items and never decides an approval from the bell", async () => {
   const api = createMockApi()
   render(<App kernel={{ services: { api } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
@@ -62,17 +62,10 @@ it("shows a badge for attention items and answers an approval from the bell", as
   const bell = await screen.findByRole("button", { name: "Notificações, 1 precisa de atenção" })
   fireEvent.click(bell)
   expect(await screen.findByText("rm -rf build")).toBeVisible()
-  fireEvent.click(screen.getByRole("button", { name: "Aprovar" }))
-  await waitFor(() =>
-    expect(
-      api.calls.some(
-        (call) =>
-          call.route === "POST /threads/:id/respond" &&
-          JSON.stringify(call.input) === JSON.stringify({ requestId: "req-1", behavior: "allow" }),
-      ),
-    ).toBe(true),
-  )
-  await waitFor(() => expect(screen.getByRole("button", { name: "Notificações" })).toBeVisible())
+  expect(screen.queryByRole("button", { name: "Aprovar" })).toBeNull()
+  expect(screen.queryByRole("button", { name: "Negar" })).toBeNull()
+  expect(screen.getByRole("button", { name: "Abrir e revisar" })).toBeVisible()
+  expect(api.calls.some((call) => call.route === "POST /threads/:id/respond")).toBe(false)
 })
 
 it("replies to a question through the respond endpoint and dismisses a failure", async () => {
@@ -140,7 +133,7 @@ it("opens a notification's bot and thread from the touri tab", async () => {
     })
   })
   fireEvent.click(await screen.findByRole("button", { name: "Notificações, 1 precisa de atenção" }))
-  fireEvent.click(screen.getByRole("button", { name: "Abrir" }))
+  fireEvent.click(screen.getByRole("button", { name: "Ver conversa" }))
   await screen.findByRole("textbox", { name: "Mensagem para onb" })
   expect(screen.getByRole("button", { name: /^Bots/ })).toHaveAttribute("aria-current", "page")
   expect(screen.getByRole("button", { name: /Notification target/ })).toHaveClass("selected")

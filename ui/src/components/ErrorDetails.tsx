@@ -1,12 +1,12 @@
 import { sanitizeDiagnostic } from "@touri/contracts/run-failure"
 import { errorRecovery } from "../errorRecovery"
 import { t } from "../i18n"
+import { Disclosure } from "./Disclosure"
 
 export const ErrorDetails = ({ code }: { code: string }) => (
-  <details className="error-details">
-    <summary>{t("Error details")}</summary>
+  <Disclosure className="error-details" summary={t("Error details")}>
     <code>{sanitizeDiagnostic(code)}</code>
-  </details>
+  </Disclosure>
 )
 
 /** Keep diagnostic codes selectable, behind a disclosure, without losing the explanation. */

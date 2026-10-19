@@ -154,10 +154,10 @@ it.each([true, false])("keeps technical details collapsed in the notification ce
   expect(row.querySelector(".notification-body")).toHaveTextContent(
     "Permitir Leitura e escrita em /workspace/phase-a para este bot",
   )
-  const technical = within(row).getByText("Detalhes técnicos").closest("details")
-  expect(technical).not.toHaveAttribute("open")
+  const technical = within(row).getByText("Detalhes técnicos").closest(".ds-disclosure")
+  expect(technical).toHaveAttribute("data-open", "false")
   expect(technical?.querySelector("pre")).toHaveTextContent("folder_access_request")
-  fireEvent.click(within(row).getByRole("button", { name: "Revisar" }))
+  fireEvent.click(within(row).getByRole("button", { name: "Abrir e revisar" }))
   expect(open).toHaveBeenCalledWith(notification)
 })
 
@@ -185,7 +185,7 @@ it("opens a team proposal card without notification approval actions", () => {
 
   expect(within(row).queryByRole("button", { name: "Aprovar" })).toBeNull()
   expect(within(row).queryByRole("button", { name: "Negar" })).toBeNull()
-  fireEvent.click(within(row).getByRole("button", { name: "Revisar aprovação pendente" }))
+  fireEvent.click(within(row).getByRole("button", { name: "Abrir e revisar" }))
 
   expect(respond).not.toHaveBeenCalled()
   expect(review).toHaveBeenCalledWith({ threadId: "thread-a", approvalId: teamApproval.approvalId })

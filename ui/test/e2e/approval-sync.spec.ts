@@ -30,15 +30,12 @@ test("web notification preferences explain closed-page storage", async ({ page }
   await expect(page.getByText("Com esta página fechada, os avisos ficam guardados no servidor.")).toBeVisible()
 })
 
-for (const source of ["chat", "bell"]) {
+for (const source of ["chat"]) {
   test(`approval from the ${source} immediately clears the other surfaces`, async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 })
     await page.goto("/test/e2e/approval-notice-harness.html")
     await expect(page.locator(".approval-notice")).toBeVisible()
-    if (source === "bell") {
-      await page.getByRole("button", { name: /Notificações/ }).click()
-      await page.getByTestId("notification-row").getByRole("button", { name: "Aprovar", exact: true }).click()
-    } else await page.getByRole("button", { name: "Aprovar", exact: true }).click()
+    await page.getByRole("button", { name: "Aprovar", exact: true }).click()
     await expect(page.locator(".approval-notice")).toHaveText("Autorizado. Retomando a tarefa.", { timeout: 500 })
     await expect(page.getByRole("button", { name: "Aprovar", exact: true })).toHaveCount(0)
     await expect(page.getByRole("button", { name: "Notificações, 1 precisa de atenção" })).toHaveCount(0)

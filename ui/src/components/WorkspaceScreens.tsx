@@ -15,6 +15,7 @@ import { type ApprovalTarget, pendingApprovalTargets } from "../approvalNavigati
 import { localizeNotice, mcpGroupLabel, statusLabel, t } from "../i18n"
 import { messageMarkdown } from "../messageMarkdown"
 import { BotAvatar } from "./BotAvatar"
+import { Disclosure } from "./Disclosure"
 import { LearningCard } from "./LearningCard"
 import { MarkdownContent } from "./MarkdownContent"
 import { mcpPresets } from "./McpCatalog"
@@ -83,13 +84,12 @@ export const IntegrationsScreen = ({ api, botId, botName, onConfigure, modalOpen
                       </span>
                     </div>
                     <p>{preset.description}</p>
-                    <details>
-                      <summary>Como conectar</summary>
+                    <Disclosure summary="Como conectar">
                       <p>{preset.guidance}</p>
                       <a href={preset.docs} target="_blank" rel="noreferrer">
                         Instruções do servidor {preset.title} ↗
                       </a>
-                    </details>
+                    </Disclosure>
                     <div className="screen-card-footer">
                       <span>
                         {server

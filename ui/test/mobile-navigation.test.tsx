@@ -114,7 +114,7 @@ it("keeps notifications inside the modal and restores focus after navigation, ca
   fireEvent.click(within(drawer).getByRole("button", { name: /^Notificações/ }))
   const notifications = within(drawer).getByRole("region", { name: "Central de notificações" })
   expect(notifications).toBeVisible()
-  fireEvent.click(within(notifications).getByRole("button", { name: "Abrir", exact: true }))
+  fireEvent.click(within(notifications).getByRole("button", { name: "Ver conversa", exact: true }))
   expect(screen.queryByRole("dialog", { name: "Barra lateral" })).toBeNull()
   expect(menu).toHaveFocus()
   fireEvent.click(menu)
