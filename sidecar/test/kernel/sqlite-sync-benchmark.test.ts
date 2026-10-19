@@ -346,7 +346,7 @@ store.insertMessage({ message: {
   text: "Synthetic request", parts: [], sender: null, source: "local",
 } });
 const outputMessage = store.insertMessage({ message: {
-  id: "output", threadId: "thread", parentId: "request", role: "assistant", kind: "text", status: "complete", runId: null,
+  id: "output", threadId: "thread", parentId: "request", role: "user", kind: "text", status: "complete", runId: null,
   text: "Synthetic output", parts: [], sender: null, source: "local",
 } });
 if (!outputMessage.success) throw new Error("Could not create the synthetic output message");
