@@ -371,13 +371,17 @@ test("cancelling a waiting edit releases its retained bytes before the active ed
   await started.promise
   const controller = new AbortController()
   const second = writer.run({ operation: "edit", botId: "second", instructions }, controller.signal)
-  const cancelled = expect(second).rejects.toThrow("synthetic cancellation")
+  const cancelled = second.then(
+    () => null,
+    (error: Error) => error.message,
+  )
 
   controller.abort(new Error("synthetic cancellation"))
-  await cancelled
+  const reason = await cancelled
   const replacement = writer.run({ operation: "edit", botId: "replacement", instructions })
   blocked.resolve()
 
+  expect(reason).toBe("synthetic cancellation")
   await Promise.all([first, replacement])
 })
 

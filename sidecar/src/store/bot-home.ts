@@ -432,7 +432,7 @@ const reconcileBotHomeBackup = (root: string, soul: string, backup: string): voi
   removePrivateFile({ root, path: backup })
 }
 
-/** Each frame is bounded independently; old instructions never cross the process boundary. */
+/** Each frame is bounded independently; snapshots stay inside the helper. */
 export const runBotHomeWriter = async (root: string): Promise<void> => {
   const getFrame = getFrameReader(Bun.stdin.stream())
   process.stdout.write("R")
