@@ -456,7 +456,7 @@ export const createStreamWriter = ({
       let length = initialLength
       for (const patch of input.parts) {
         if (!Number.isSafeInteger(patch.partIndex) || patch.partIndex < 0 || patch.partIndex > length)
-          throw new Error("Invalid stream part index")
+          throw new Error(`Invalid stream part index ${patch.partIndex} at length ${length}`)
         if (patch.partIndex === length) length++
       }
     }
