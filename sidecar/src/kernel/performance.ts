@@ -1,5 +1,7 @@
+import { AsyncLocalStorage } from "node:async_hooks"
 import type { ApiRoutes, Kernel } from "@touri/contracts"
 import type { Server } from "bun"
+import type { SlowStatement, SqliteStatementTotals } from "./sqlite-performance"
 
 type EventLoopStats = NonNullable<ApiRoutes["GET /health"]["res"]["eventLoop"]>
 type RequestTracker = { inFlight: Map<Request, number>; getRoute: (request: Request) => string }
@@ -62,6 +64,7 @@ type StageTiming = {
 
 export type PerformanceStageTracker = {
   run: PerformanceStageRunner
+  getCurrentStage: () => PerformanceStage | undefined
   snapshot: () => Array<StageTiming>
   reset: () => void
 }
@@ -74,6 +77,7 @@ export type PerformanceStageRunner = <Value, Input = undefined>(
 
 export const createPerformanceStageTracker = (now = performance.now.bind(performance)): PerformanceStageTracker => {
   const counters = Object.fromEntries(STAGES.map((stage) => [stage, createStageCounter(stage, now)] as const))
+  const currentStage = new AsyncLocalStorage<PerformanceStage>()
   const run = <Value, Input = undefined>(
     stage: PerformanceStage,
     action: (input: Input) => Value,
@@ -85,11 +89,12 @@ export const createPerformanceStageTracker = (now = performance.now.bind(perform
     const counter = counters[stage]
     if (!counter) return action(input as Input)
 
-    return counter.run(action, input)
+    return currentStage.run(stage, () => counter.run(action, input))
   }
 
   return {
     run,
+    getCurrentStage: () => currentStage.getStore(),
     snapshot: () =>
       Object.values(counters)
         .map((counter) => counter.getTiming())
@@ -180,6 +185,7 @@ export const createPerformanceDiagnostics = ({
   getContext,
   now = performance.now.bind(performance),
   stageTracker,
+  slowStatements,
   sampleMs = 1_000,
   lagThresholdMs = 500,
   slowRequestMs = 2_000,
@@ -190,6 +196,11 @@ export const createPerformanceDiagnostics = ({
   getContext: () => Context
   now?: () => number
   stageTracker?: PerformanceStageTracker
+  slowStatements?: {
+    snapshot: () => Array<SlowStatement>
+    snapshotTotals: () => SqliteStatementTotals
+    reset: () => void
+  }
   sampleMs?: number
   lagThresholdMs?: number
   slowRequestMs?: number
@@ -223,7 +234,12 @@ export const createPerformanceDiagnostics = ({
     samples = [...samples.filter((item) => at - item.at < 60_000).slice(-59), { at, lagMs }]
     const shouldWarn = lagMs >= lagThresholdMs && at - lastLagWarningAt >= cooldownMs
     const stageTimings = shouldWarn ? stages.snapshot() : []
+    const slowStatementTimings = shouldWarn ? (slowStatements?.snapshot() ?? []) : []
+    const sqliteStatementTotals = shouldWarn
+      ? (slowStatements?.snapshotTotals() ?? { calls: 0, totalMs: 0 })
+      : undefined
     stages.reset()
+    slowStatements?.reset()
     if (!shouldWarn) return
 
     lastLagWarningAt = at
@@ -235,6 +251,8 @@ export const createPerformanceDiagnostics = ({
         eventLoop: getSnapshot(),
         ...getContext(),
         stages: stageTimings,
+        slowStatements: slowStatementTimings,
+        ...(sqliteStatementTotals ? { sqliteStatementTotals } : {}),
         inFlight: getSlowestRequests(trackers, at),
       },
     }))
