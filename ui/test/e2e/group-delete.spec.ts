@@ -57,8 +57,10 @@ test("failed group turn explains that its conversation was removed", async ({ pa
   const collapsedNotice = page.getByRole("button", { name: /houve uma resposta depois/ })
   await expect(notice.or(collapsedNotice).first()).toBeVisible()
   if (await collapsedNotice.isVisible()) await collapsedNotice.click()
+
   await expect(notice).toContainText("O grupo ou a conversa não existe mais. Este turno não foi executado.")
   await expect(notice.getByRole("button", { name: "Tentar de novo" })).toHaveCount(0)
+
   await notice.screenshot({
     path: testInfo.outputPath("group-delete-context-missing.png"),
     animations: "disabled",
