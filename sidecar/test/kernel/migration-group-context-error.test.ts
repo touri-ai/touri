@@ -67,6 +67,10 @@ test("schema 30 preserves run references and adds the group-context error class"
   expect(SCHEMA_VERSION).toBe(31)
   expect(database.query("SELECT value FROM schema_meta WHERE key = 'schema_version'").get()).toEqual({ value: "31" })
   expect(database.query("PRAGMA ignore_check_constraints").get()).toEqual({ ignore_check_constraints: 0 })
+  const runsSchema = database.query("SELECT sql FROM sqlite_schema WHERE type = 'table' AND name = 'runs'").get() as {
+    sql: string
+  } | null
+  expect(runsSchema?.sql).toContain("'group_context_missing'")
   expect(database.query("SELECT rowid FROM runs WHERE id = 'old-run'").get()).toEqual(oldRowid)
   const oldRun = database
     .query("SELECT id,error_class,error_message,provider_started_at FROM runs WHERE id = 'old-run'")
@@ -101,11 +105,16 @@ test("schema 30 preserves run references and adds the group-context error class"
   expect(database.query("PRAGMA foreign_key_check").all()).toEqual([])
   expect(
     database
-      .query(
-        "SELECT name FROM sqlite_schema WHERE type = 'index' AND tbl_name = 'runs' AND sql IS NOT NULL ORDER BY name",
-      )
+      .query("SELECT name,sql FROM sqlite_schema WHERE type = 'index' AND tbl_name = 'runs' AND sql IS NOT NULL ORDER BY name")
       .all(),
-  ).toEqual([{ name: "runs_active_workspace" }, { name: "runs_status" }, { name: "runs_thread" }])
+  ).toEqual([
+    {
+      name: "runs_active_workspace",
+      sql: "CREATE INDEX runs_active_workspace ON runs(status, thread_id) WHERE status IN ('queued', 'starting', 'running')",
+    },
+    { name: "runs_status", sql: "CREATE INDEX runs_status ON runs(status)" },
+    { name: "runs_thread", sql: "CREATE INDEX runs_thread ON runs(thread_id, queued_at)" },
+  ])
   closeDatabase(database)
 
   database = trackDatabase(openDatabase({ filename }))

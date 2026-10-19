@@ -29,6 +29,6 @@ DROP TABLE runs;
 ALTER TABLE runs_next RENAME TO runs;
 CREATE INDEX runs_thread ON runs(thread_id, queued_at);
 CREATE INDEX runs_status ON runs(status);
-CREATE INDEX runs_active_workspace ON runs(status, thread_id);
+CREATE INDEX runs_active_workspace ON runs(status, thread_id) WHERE status IN ('queued', 'starting', 'running');
 INSERT OR REPLACE INTO schema_meta(key, value) VALUES ('group_context_error_version', '1');
 UPDATE schema_meta SET value = '31' WHERE key = 'schema_version';
