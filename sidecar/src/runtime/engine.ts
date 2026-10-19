@@ -121,6 +121,15 @@ const appendPendingText = (state: RunState, partIndex: number, type: "text" | "r
 
 const getPartKey = (part: MessagePart): string | null => ("callId" in part ? `${part.type}\u0000${part.callId}` : null)
 
+// Shallow field identity: nested values compare by reference, so an unsure match still publishes.
+const isSamePart = (previous: MessagePart, next: MessagePart): boolean => {
+  const entries = Object.entries(next)
+  return (
+    entries.length === Object.keys(previous).length &&
+    entries.every(([key, value]) => Reflect.get(previous, key) === value)
+  )
+}
+
 const materializePartText = (state: RunState, partIndex: number, runStage?: PerformanceStageRunner): void => {
   const pending = state.pendingPartText.get(partIndex)
   if (!pending) return
@@ -686,12 +695,7 @@ export const createRuntimeEngine = ({
       const parts = tools.finish(run, state.parts, reason, persist)
       parts.forEach((part, index) => {
         const previous = state.parts[index]
-        const entries = Object.entries(part)
-        const changed =
-          !previous ||
-          entries.length !== Object.keys(previous).length ||
-          entries.some(([key, value]) => Reflect.get(previous, key) !== value)
-        if (changed) state.dirtyParts.add(index)
+        if (!previous || !isSamePart(previous, part)) state.dirtyParts.add(index)
       })
       state.parts = parts
     })
@@ -939,8 +943,11 @@ export const createRuntimeEngine = ({
         if (part.type === "tool_call") state.usage.toolCalls += 1
       }
       const changedPartIndex = index >= 0 ? index : state.parts.length - 1
-      state.dirtyParts.add(changedPartIndex)
       const changedPart = state.parts[changedPartIndex]
+      // A repeated frame can arrive after the first one was published, e.g. in a later provider slice;
+      // it changes nothing, so it must not write or broadcast the same part again.
+      if (previous && changedPart && !state.cancelRequested && isSamePart(previous, changedPart)) return
+      state.dirtyParts.add(changedPartIndex)
       if (state.cancelRequested && changedPart && "callId" in changedPart) {
         const pending =
           (changedPart.type === "tool_call" && changedPart.ok === null) ||

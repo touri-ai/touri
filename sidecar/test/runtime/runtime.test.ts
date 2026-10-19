@@ -868,6 +868,8 @@ test.serial("tool publications persist only changed parts and preserve completed
         { type: "delta", delta: prose },
         { type: "command", callId: "first", command: "echo ok", output: "ok" },
         { type: "command", callId: "second", command: "cat result.txt", output },
+        // Force the repeated completed frame into a later provider slice, after the first one is published.
+        { type: "sleep" },
         { type: "command", callId: "second", command: "cat result.txt", output: "" },
         { type: "delta", delta: "Pronto." },
         { type: "complete" },
@@ -905,16 +907,10 @@ test.serial("tool publications persist only changed parts and preserve completed
       const first = published.filter(({ part }) => "callId" in part && part.callId === "first")
       const second = published.filter(({ part }) => "callId" in part && part.callId === "second")
 
-      // A slice boundary can publish both completed frames separately; unchanged parts must stay absent.
+      // A repeated completed frame in a later slice changes nothing; unchanged parts must stay absent.
       expect(first).toHaveLength(1)
-      expect(second.length).toBeGreaterThanOrEqual(1)
-      expect(second.length).toBeLessThanOrEqual(2)
+      expect(second).toHaveLength(1)
       expect(published).toHaveLength(first.length + second.length)
-      expect(
-        second.every(
-          (patch, index) => index === 0 || JSON.stringify(patch.part) !== JSON.stringify(second[index - 1]?.part),
-        ),
-      ).toBe(true)
       expect(JSON.stringify(patches)).not.toContain(prose)
       expect(JSON.stringify(patches)).not.toContain(output)
       const completed = second.at(-1)?.part
