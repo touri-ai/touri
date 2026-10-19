@@ -14,7 +14,7 @@ export type AppSettingsSectionId =
   | "advanced"
   | "api-models"
 export type BotSettingsSectionId = "model" | "access" | "computer" | "project" | "tools" | "permissions" | "routines"
-export type TouriPage = "cron" | "integracoes" | "mcp"
+export type TouriPage = "cron" | "integracoes" | "mcp" | "work" | "performance"
 
 export type SectionDefinition<Id extends string> = {
   id: Id
@@ -327,6 +327,18 @@ const PAGES: ReadonlyArray<{ page: TouriPage; label: string; detail: string; key
     label: t("MCP"),
     detail: t("Servidores MCP do bot selecionado"),
     keywords: ["servidores", "ferramentas"],
+  },
+  {
+    page: "work",
+    label: t("Work"),
+    detail: t("O que os bots estão fazendo agora"),
+    keywords: ["trabalho", "tarefas", "fila", "avançado"],
+  },
+  {
+    page: "performance",
+    label: t("Performance"),
+    detail: t("Como o touri está se saindo"),
+    keywords: ["desempenho", "velocidade", "lento", "avançado"],
   },
 ]
 

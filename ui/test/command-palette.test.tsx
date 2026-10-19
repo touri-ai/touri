@@ -310,3 +310,44 @@ it("drops the listbox role when a query has no matches, announces empty results 
   const emptyAxe = await axe.run(dialog, { rules: { "color-contrast": { enabled: false } } })
   expect(emptyAxe.violations.map((v) => v.id)).toEqual([])
 })
+
+it("finds the Trabalho and Desempenho pages by their visible names", async () => {
+  const index = buildPaletteIndex({ bots: [], threads: [], settings: settingsIndex({ hasBot: true }), hasBot: true })
+  const getTop = (query: string) => searchPalette({ index, query, messages: [], recentIds: [] })[0]?.items[0]
+
+  expect(getTop("trabalho")?.label).toBe("Trabalho")
+  expect(getTop("desempenho")?.label).toBe("Desempenho")
+})
+
+it("returns a single result for the project dialog", async () => {
+  const index = buildPaletteIndex({ bots: [], threads: [], settings: settingsIndex({ hasBot: true }), hasBot: true })
+  const getLabels = (query: string) =>
+    searchPalette({ index, query, messages: [], recentIds: [] }).flatMap((group) =>
+      group.items.map((item) => item.label),
+    )
+
+  expect(getLabels("projeto").filter((label) => /^(Conectar projeto|Projetos)$/.test(label))).toEqual([
+    "Conectar projeto",
+  ])
+  expect(getLabels("projetos")).toContain("Conectar projeto")
+  expect(getLabels("projetos")).not.toContain("Projetos")
+})
+
+it("opens the Trabalho page, the Desempenho page and the projects dialog from the palette", async () => {
+  await start()
+
+  fireEvent.keyDown(await search("trabalho"), { key: "Enter" })
+  await closed()
+
+  expect(await screen.findByRole("heading", { name: /Trabalho/ })).toBeVisible()
+
+  fireEvent.keyDown(await search("desempenho"), { key: "Enter" })
+  await closed()
+
+  expect(await screen.findByRole("heading", { name: /Desempenho/ })).toBeVisible()
+
+  fireEvent.keyDown(await search("projetos"), { key: "Enter" })
+  await closed()
+
+  expect(await screen.findByRole("dialog", { name: /Conectar projeto/ })).toBeVisible()
+})

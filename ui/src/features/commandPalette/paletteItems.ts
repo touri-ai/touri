@@ -52,7 +52,7 @@ const ACTIONS: ReadonlyArray<{ action: PaletteActionId; label: string; detail: s
     action: "connect-project",
     label: "Conectar projeto",
     detail: "Pasta ou repositório para o bot",
-    keywords: "pasta repositorio git",
+    keywords: "projetos projeto pasta repositorio git",
   },
   { action: "open-doctor", label: "Abrir Doctor", detail: "Diagnóstico do ambiente", keywords: "diagnostico" },
 ]
