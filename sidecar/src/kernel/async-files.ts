@@ -1,6 +1,5 @@
 import type { FileIoError, FileIoMessage, FileIoRequest, FileIoTask } from "./file-io-protocol"
 import type { FileWrite } from "./files"
-import { workerEntrypoint } from "./worker-entrypoint"
 
 type RefableWorker = Worker & { ref: () => void; unref: () => void }
 
@@ -24,10 +23,7 @@ const createFileIo = () => {
     if (starting) return starting
     starting = new Promise<void>((resolve, reject) => {
       readyReject = reject
-      worker = new Worker(
-        workerEntrypoint(new URL("./file-io-worker.ts", import.meta.url), "./sidecar/src/kernel/file-io-worker.ts"),
-        { smol: true, ref: false },
-      ) as RefableWorker
+      worker = new Worker(new URL("./file-io-worker.ts", import.meta.url), { smol: true, ref: false }) as RefableWorker
       worker.onmessage = ({ data }: MessageEvent<FileIoMessage>): void => {
         if ("type" in data && data.type === "ready") {
           ready = true
