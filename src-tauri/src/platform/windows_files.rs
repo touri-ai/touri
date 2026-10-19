@@ -338,20 +338,29 @@ fn replace_symlink(pins: &Pinned, path: &Path, target: &Path) -> io::Result<()> 
     if !target.is_absolute() {
         return Err(denied());
     }
-    let metadata = match fs::symlink_metadata(path) {
-        Ok(metadata) => metadata,
+    let file = match OpenOptions::new()
+        .read(true)
+        .access_mode(FILE_GENERIC_READ | if pins.private { WRITE_DAC } else { 0 })
+        .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE)
+        .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT)
+        .open(path)
+    {
+        Ok(file) => file,
         Err(error) if error.kind() == io::ErrorKind::NotFound => {
             return create_symlink(pins, path, target)
         }
         Err(error) => return Err(error),
     };
+    let metadata = file.metadata()?;
     let is_reparse_point = metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0;
-    if metadata.is_dir()
-        || metadata.number_of_links() != 1
-        || (!metadata.is_file() && !is_reparse_point)
-    {
+    let mut info: BY_HANDLE_FILE_INFORMATION = unsafe { std::mem::zeroed() };
+    if unsafe { GetFileInformationByHandle(file.as_raw_handle(), &mut info) } == 0 {
+        return Err(io::Error::last_os_error());
+    }
+    if metadata.is_dir() || info.nNumberOfLinks != 1 || (!metadata.is_file() && !is_reparse_point) {
         return Err(denied());
     }
+    drop(file);
     create_symlink(pins, path, target)
 }
 
@@ -697,6 +706,7 @@ mod tests {
             path,
             content: content.into(),
             to: PathBuf::new(),
+            target: PathBuf::new(),
             max_bytes: None,
         };
         let path = root.join("nested/file.txt");
