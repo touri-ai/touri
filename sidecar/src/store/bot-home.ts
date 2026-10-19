@@ -4,11 +4,14 @@ import type { Kernel } from "@touri/contracts"
 import { atomicWriteFile, ensurePrivateDirectory, removePrivateTree } from "../kernel/files"
 
 export type BotHomeCommand =
-  | { operation: "write"; botId: string; instructions: string }
+  | { operation: "write" | "edit"; botId: string; instructions: string }
   | { operation: "remove"; botId: string }
 
 type Helper = { execute: (command: string) => Promise<void>; stop: () => Promise<void> }
 const INPUT_LIMIT = 128 * 1024
+// Edits and rollback need larger frames; together they still share the bounded FIFO budget.
+const EDIT_INPUT_LIMIT = 2 * 1024 * 1024
+const PENDING_BYTE_LIMIT = 4 * 1024 * 1024
 
 // Each kernel owns one helper; shutdown explicitly releases it before closing the database.
 const writers = new WeakMap<Kernel, ReturnType<typeof createBotHomeWriter>>()
@@ -36,12 +39,13 @@ export const updateBotHome = async (
   instructions: string,
   signal: AbortSignal,
   prepare: () => { previousInstructions: string; commit: () => void },
+  writer = getWriter(kernel),
 ): Promise<void> => {
-  await getWriter(kernel).run({ operation: "write", botId, instructions }, signal, {
+  await writer.run({ operation: "edit", botId, instructions }, signal, {
     prepare: () => {
       const edit = prepare()
       return {
-        rollback: { operation: "write", botId, instructions: edit.previousInstructions },
+        rollback: { operation: "edit", botId, instructions: edit.previousInstructions },
         commit: edit.commit,
       }
     },
@@ -82,7 +86,7 @@ const getWriter = (kernel: Kernel) => {
 /** A bounded FIFO admits at most 32 commands (4 MiB including rollback snapshots). */
 export const createBotHomeWriter = ({
   root,
-  createHelper = () => startHelper(root),
+  createHelper = () => startBotHomeHelper(root),
   timeoutMs = 10_000,
   maxPending = 32,
 }: {
@@ -110,14 +114,10 @@ export const createBotHomeWriter = ({
   ): Promise<void> => {
     shutdown.signal.throwIfAborted()
     signal?.throwIfAborted()
-    const input = JSON.stringify(command)
-    getBotHomeCommand(input)
-    const staticRollbackInput = options?.rollback ? JSON.stringify(options.rollback) : undefined
-    if (staticRollbackInput) getBotHomeCommand(staticRollbackInput)
-    const operationBytes =
-      Buffer.byteLength(input) +
-      (staticRollbackInput ? Buffer.byteLength(staticRollbackInput) : options?.prepare ? INPUT_LIMIT : 0)
-    if (pending >= maxPending || pendingBytes + operationBytes > 32 * INPUT_LIMIT)
+    const input = getBotHomeInput(command)
+    const staticRollbackInput = options?.rollback ? getBotHomeInput(options.rollback) : undefined
+    const operationBytes = Buffer.byteLength(input) + (staticRollbackInput ? Buffer.byteLength(staticRollbackInput) : 0)
+    if (pending >= maxPending || pendingBytes + operationBytes > PENDING_BYTE_LIMIT)
       throw new Error("Bot home writer is busy")
 
     pending += 1
@@ -125,15 +125,21 @@ export const createBotHomeWriter = ({
     const deadline = new AbortController()
     const timer = setTimeout(() => deadline.abort(new Error("Bot home operation timed out")), timeoutMs)
     const combined = AbortSignal.any([shutdown.signal, deadline.signal, ...(signal ? [signal] : [])])
+    let started = false
+    let preparedBytes = 0
     const execute = tail.then(async () => {
       combined.throwIfAborted()
+      started = true
       let rollbackInput = staticRollbackInput
       let commit = options?.commit
       try {
         const prepared = options?.prepare?.()
         if (prepared) {
-          const serializedRollback = JSON.stringify(prepared.rollback)
-          getBotHomeCommand(serializedRollback)
+          const serializedRollback = getBotHomeInput(prepared.rollback)
+          const snapshotBytes = Buffer.byteLength(serializedRollback)
+          if (pendingBytes + snapshotBytes > PENDING_BYTE_LIMIT) throw new Error("Bot home writer is busy")
+          pendingBytes += snapshotBytes
+          preparedBytes = snapshotBytes
           rollbackInput = serializedRollback
           commit = prepared.commit
         }
@@ -157,20 +163,21 @@ export const createBotHomeWriter = ({
       .catch(() => undefined)
       .finally(() => {
         pending -= 1
-        pendingBytes -= operationBytes
+        pendingBytes -= operationBytes + preparedBytes
       })
 
     // Queued cancellation returns promptly; its slot stays reserved until the FIFO reaches it.
     const cancelled = Promise.withResolvers<never>()
-    const cancel = () => cancelled.reject(combined.reason)
     const restoresOnFailure = Boolean(staticRollbackInput || options?.prepare)
-    if (!restoresOnFailure) combined.addEventListener("abort", cancel, { once: true })
+    const cancel = () => {
+      if (!started || !restoresOnFailure) cancelled.reject(combined.reason)
+    }
+    combined.addEventListener("abort", cancel, { once: true })
     try {
-      if (restoresOnFailure) return await execute
       return await Promise.race([execute, cancelled.promise])
     } finally {
       clearTimeout(timer)
-      if (!restoresOnFailure) combined.removeEventListener("abort", cancel)
+      combined.removeEventListener("abort", cancel)
     }
   }
 
@@ -201,7 +208,7 @@ export const createBotHomeWriter = ({
   return { run, close }
 }
 
-const startHelper = (root: string): Helper => {
+export const startBotHomeHelper = (root: string): Helper => {
   const devArgs = /^bun(?:\.exe)?$/.test(basename(process.execPath)) ? [fileURLToPath(import.meta.url)] : []
   const child = Bun.spawn([process.execPath, ...devArgs, "write-bot-home"], {
     stdin: "pipe",
@@ -232,19 +239,34 @@ const startHelper = (root: string): Helper => {
   }
 }
 
+const getBotHomeInput = (command: BotHomeCommand): string => {
+  const limit = command.operation === "edit" ? EDIT_INPUT_LIMIT : INPUT_LIMIT
+  if (command.operation !== "remove" && command.instructions.length > limit)
+    throw new Error("Bot home input exceeds limit")
+  const input = JSON.stringify(command)
+  getBotHomeCommand(input)
+  return input
+}
+
 export const getBotHomeCommand = (text: string): BotHomeCommand => {
-  if (Buffer.byteLength(text) > INPUT_LIMIT) throw new Error("Bot home input exceeds limit")
+  const bytes = Buffer.byteLength(text)
+  if (bytes > EDIT_INPUT_LIMIT) throw new Error("Bot home input exceeds limit")
   const input: unknown = JSON.parse(text)
   if (!input || typeof input !== "object" || !("operation" in input) || !("botId" in input))
     throw new Error("Invalid bot home command")
+  if (input.operation !== "edit" && bytes > INPUT_LIMIT) throw new Error("Bot home input exceeds limit")
   if (typeof input.botId !== "string" || !/^[a-zA-Z0-9-]{1,80}$/.test(input.botId)) throw new Error("Invalid bot id")
   if (input.operation === "remove" && Object.keys(input).every((key) => ["operation", "botId"].includes(key)))
     return { operation: "remove", botId: input.botId }
-  if (input.operation !== "write" || !("instructions" in input) || typeof input.instructions !== "string")
+  if (
+    (input.operation !== "write" && input.operation !== "edit") ||
+    !("instructions" in input) ||
+    typeof input.instructions !== "string"
+  )
     throw new Error("Invalid bot home command")
   if (Object.keys(input).some((key) => !["operation", "botId", "instructions"].includes(key)))
     throw new Error("Invalid bot home command")
-  return { operation: "write", botId: input.botId, instructions: input.instructions }
+  return { operation: input.operation, botId: input.botId, instructions: input.instructions }
 }
 
 const executeBotHomeCommand = (root: string, command: BotHomeCommand): void => {
@@ -268,7 +290,7 @@ export const runBotHomeWriter = async (root: string): Promise<void> => {
     const chunk = await reader.read()
     if (chunk.done) break
     buffer = Buffer.concat([buffer, chunk.value])
-    if (buffer.length > INPUT_LIMIT + 1) throw new Error("Bot home input exceeds limit")
+    if (buffer.length > EDIT_INPUT_LIMIT + 1) throw new Error("Bot home input exceeds limit")
     if (buffer[buffer.length - 1] !== 10) continue
 
     try {

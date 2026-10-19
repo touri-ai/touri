@@ -11,8 +11,9 @@ import { init as initStore } from "../../src/store"
 import {
   createBotHomeWriter,
   getBotHomeCommand,
+  startBotHomeHelper,
   stopBotHomeWriter,
-  type updateBotHome,
+  updateBotHome,
   writeBotHome,
 } from "../../src/store/bot-home"
 
@@ -73,6 +74,7 @@ for (const command of [
   { operation: "remove", botId: "fixture", unexpected: true },
   { operation: "unknown", botId: "fixture" },
   { operation: "write", botId: "fixture", instructions: "x".repeat(128 * 1024) },
+  { operation: "edit", botId: "fixture", instructions: "x".repeat(2 * 1024 * 1024) },
 ]) {
   test(`rejects invalid writer input: ${command.operation}, ${command.botId}, ${Object.hasOwn(command, "unexpected")}`, () => {
     expect(() => getBotHomeCommand(JSON.stringify(command))).toThrow()
@@ -177,6 +179,78 @@ test("cancelling an active operation terminates the helper and a queued cancella
 
   expect(stopped.length).toBeGreaterThan(0)
   expect(calls).toHaveLength(1)
+})
+
+test("cancelling an edit still waiting to start rejects before the preceding operation finishes", async () => {
+  const blocked = Promise.withResolvers<void>()
+  const started = Promise.withResolvers<void>()
+  const calls: string[] = []
+  const prepared: string[] = []
+  const writer = createBotHomeWriter({
+    root: "/fixture",
+    createHelper: () => ({
+      execute: async (text) => {
+        calls.push(text)
+        started.resolve()
+        await blocked.promise
+      },
+      stop: async () => blocked.resolve(),
+    }),
+  })
+  cleanups.add(writer.close)
+  const first = writer.run({ operation: "remove", botId: "blocked" })
+  const controller = new AbortController()
+  const edit = writer.run({ operation: "write", botId: "fixture", instructions: "Replacement" }, controller.signal, {
+    prepare: () => {
+      prepared.push("prepared")
+      return { rollback: { operation: "write", botId: "fixture", instructions: "Previous" } }
+    },
+  })
+  const results = Promise.allSettled([first, edit])
+  await started.promise
+
+  controller.abort(new Error("edit cancelled"))
+  const rejectedPromptly = await Promise.race([
+    edit.then(
+      () => false,
+      (error) => error.message === "edit cancelled",
+    ),
+    Bun.sleep(100).then(() => false),
+  ])
+
+  expect(rejectedPromptly).toBe(true)
+  expect(calls).toHaveLength(1)
+  expect(prepared).toEqual([])
+  blocked.resolve()
+  await results
+  expect(calls).toHaveLength(1)
+})
+
+test("large edit frames and their prepared rollback snapshots count against the byte budget", async () => {
+  const started = Promise.withResolvers<void>()
+  const blocked = Promise.withResolvers<void>()
+  const writer = createBotHomeWriter({
+    root: "/fixture",
+    createHelper: () => ({
+      execute: async () => {
+        started.resolve()
+        await blocked.promise
+      },
+      stop: async () => blocked.resolve(),
+    }),
+  })
+  cleanups.add(writer.close)
+  const instructions = "x".repeat(1500 * 1024)
+  const edit = writer.run({ operation: "edit", botId: "fixture", instructions }, undefined, {
+    prepare: () => ({ rollback: { operation: "edit", botId: "fixture", instructions } }),
+  })
+  await started.promise
+
+  await expect(writer.run({ operation: "edit", botId: "overflow", instructions })).rejects.toThrow("busy")
+  blocked.resolve()
+  await edit
+
+  await expect(writer.run({ operation: "edit", botId: "fixture", instructions })).resolves.toBeUndefined()
 })
 
 test("a failed instruction edit restores the previous file before returning its error", async () => {
@@ -306,35 +380,56 @@ test("a cleanup failure cannot replace the original database insert error", asyn
   expect(f.database.query("SELECT count(*) AS count FROM bots").get()).toEqual({ count: 0 })
 })
 
-test("the creation limit does not change existing large instruction edits", async () => {
+for (const [label, instructions] of [
+  ["121 KiB", "x".repeat(121 * 1024)],
+  ["200 KiB", "x".repeat(200 * 1024)],
+  ["80 KiB of escaped newlines", "\n".repeat(80 * 1024)],
+] as const) {
+  test(`the creation limit does not change instruction edits with ${label}`, async () => {
+    const f = await makeStore()
+    const created = await f.create()
+    if (!("json" in created)) throw new Error("Expected bot response")
+    const { bot } = created.json as { bot: { id: string } }
+
+    const updated = await f.routes.handler({
+      params: { id: bot.id },
+      query: {},
+      body: { instructions },
+      signal: new AbortController().signal,
+    })
+
+    expect(updated.status).toBe(200)
+    expect(await readFile(join(f.root, "bots", bot.id, "SOUL.md"), "utf8")).toBe(instructions)
+    expect(f.database.query("SELECT instructions FROM bots WHERE id = ?").get(bot.id)).toEqual({ instructions })
+  })
+}
+
+test("an edit can shrink instructions already larger than the creation frame", async () => {
   const f = await makeStore()
   const created = await f.create()
   if (!("json" in created)) throw new Error("Expected bot response")
   const { bot } = created.json as { bot: { id: string } }
-  const instructions = "x".repeat(121 * 1024)
+  const original = "x".repeat(200 * 1024)
+  f.database.query("UPDATE bots SET instructions = ? WHERE id = ?").run(original, bot.id)
+  await writeFile(join(f.root, "bots", bot.id, "SOUL.md"), original)
 
   const updated = await f.routes.handler({
     params: { id: bot.id },
     query: {},
-    body: { instructions },
+    body: { instructions: "Shorter instructions" },
     signal: new AbortController().signal,
   })
 
   expect(updated.status).toBe(200)
-  expect(await readFile(join(f.root, "bots", bot.id, "SOUL.md"), "utf8")).toBe(instructions)
+  expect(await readFile(join(f.root, "bots", bot.id, "SOUL.md"), "utf8")).toBe("Shorter instructions")
+  expect(f.database.query("SELECT instructions FROM bots WHERE id = ?").get(bot.id)).toEqual({
+    instructions: "Shorter instructions",
+  })
 })
 
 test("PATCH awaits a slow asynchronous filesystem shim without blocking the event loop", async () => {
   const started = Promise.withResolvers<void>()
-  const writeEditedHome: typeof updateBotHome = async (kernel, botId, instructions, signal, prepare) => {
-    signal.throwIfAborted()
-    const edit = prepare()
-    started.resolve()
-    await new Promise<void>((resolve) => setTimeout(resolve, 40))
-    signal.throwIfAborted()
-    await writeBotHome(kernel, botId, instructions, signal)
-    edit.commit()
-  }
+  const writeEditedHome = getSlowInstructionEditor(40, () => started.resolve())
   const f = await makeStore(undefined, writeEditedHome)
   const created = await f.create()
   if (!("json" in created)) throw new Error("Expected bot response")
@@ -417,6 +512,35 @@ test("a failed database commit restores the bot home and keeps the original data
   })
 })
 
+test("a late commit failure restores large instructions and every changed bot field", async () => {
+  const f = await makeStore()
+  const created = await f.create()
+  if (!("json" in created)) throw new Error("Expected bot response")
+  const { bot } = created.json as { bot: { id: string } }
+  const original = "\n".repeat(200 * 1024)
+  f.database.query("UPDATE bots SET instructions = ? WHERE id = ?").run(original, bot.id)
+  await writeFile(join(f.root, "bots", bot.id, "SOUL.md"), original)
+  f.database.exec(
+    "CREATE TRIGGER reject_instruction_edit BEFORE UPDATE OF folders_json ON bots BEGIN SELECT RAISE(FAIL, 'synthetic late commit failure'); END",
+  )
+
+  await expect(
+    f.routes.handler({
+      params: { id: bot.id },
+      query: {},
+      body: { instructions: "Replacement instructions", name: "Changed name", paused: true },
+      signal: new AbortController().signal,
+    }),
+  ).rejects.toThrow("synthetic late commit failure")
+
+  expect(await readFile(join(f.root, "bots", bot.id, "SOUL.md"), "utf8")).toBe(original)
+  expect(f.database.query("SELECT instructions, name, paused FROM bots WHERE id = ?").get(bot.id)).toEqual({
+    instructions: original,
+    name: "Fixture",
+    paused: 0,
+  })
+})
+
 test("instruction edit event-loop p99 and max improve with the async writer", async () => {
   const measure = async (writeEditedHome: typeof updateBotHome) => {
     const f = await makeStore(undefined, writeEditedHome)
@@ -425,21 +549,26 @@ test("instruction edit event-loop p99 and max improve with the async writer", as
     const { bot } = created.json as { bot: { id: string } }
     const samples: Array<number> = []
     const intervalMs = 1
-    let expectedAt = performance.now() + intervalMs
+    const startedAt = performance.now()
+    let expectedAt = startedAt + intervalMs
     let timer: ReturnType<typeof setTimeout> | undefined
     // This bounded timer probe mutates local state so each callback can record its drift sample.
     const sample = () => {
       const actualAt = performance.now()
       samples.push(Math.max(0, actualAt - expectedAt))
+      if (samples.length >= 10_000) return
       expectedAt = actualAt + intervalMs
       timer = setTimeout(sample, intervalMs)
     }
     timer = setTimeout(sample, intervalMs)
+    cleanups.add(() => {
+      if (timer) clearTimeout(timer)
+    })
 
     const response = await f.routes.handler({
       params: { id: bot.id },
       query: {},
-      body: { instructions: "Synthetic event-loop measurement" },
+      body: { instructions: "x".repeat(200 * 1024) },
       signal: new AbortController().signal,
     })
     await new Promise<void>((resolve) => setTimeout(resolve, 5))
@@ -450,6 +579,8 @@ test("instruction edit event-loop p99 and max improve with the async writer", as
     return {
       p99Ms: sorted[Math.ceil(sorted.length * 0.99) - 1] ?? 0,
       maxMs: Math.max(...samples),
+      durationMs: performance.now() - startedAt,
+      samples: samples.length,
     }
   }
   const synchronousShim: typeof updateBotHome = async (kernel, botId, instructions, _signal, prepare) => {
@@ -462,12 +593,7 @@ test("instruction edit event-loop p99 and max improve with the async writer", as
     })
     edit.commit()
   }
-  const asynchronousShim: typeof updateBotHome = async (kernel, botId, instructions, signal, prepare) => {
-    const edit = prepare()
-    await new Promise<void>((resolve) => setTimeout(resolve, 35))
-    await writeBotHome(kernel, botId, instructions, signal)
-    edit.commit()
-  }
+  const asynchronousShim = getSlowInstructionEditor(35)
 
   const before = await measure(synchronousShim)
   const after = await measure(asynchronousShim)
@@ -475,8 +601,35 @@ test("instruction edit event-loop p99 and max improve with the async writer", as
     `Instruction edit event-loop delay, synthetic 35 ms filesystem shim: synchronous p99/max ${before.p99Ms.toFixed(1)}/${before.maxMs.toFixed(1)} ms; asynchronous ${after.p99Ms.toFixed(1)}/${after.maxMs.toFixed(1)} ms`,
   )
 
+  console.info(
+    `Instruction edit probe: Bun ${Bun.version}; 200 KiB; concurrency 1; 1 ms timers; synchronous ${before.samples} samples in ${before.durationMs.toFixed(1)} ms; asynchronous ${after.samples} samples in ${after.durationMs.toFixed(1)} ms`,
+  )
+
   expect(before.maxMs).toBeGreaterThanOrEqual(25)
+  expect(after.p99Ms).toBeLessThan(50)
+  expect(after.maxMs).toBeLessThan(50)
 })
+
+const getSlowInstructionEditor = (delayMs: number, onStarted = () => {}): typeof updateBotHome => {
+  return async (kernel, botId, instructions, signal, prepare) => {
+    const writer = createBotHomeWriter({
+      root: kernel.paths.appData,
+      createHelper: () => {
+        const helper = startBotHomeHelper(kernel.paths.appData)
+        return {
+          execute: async (command) => {
+            onStarted()
+            await Bun.sleep(delayMs)
+            await helper.execute(command)
+          },
+          stop: helper.stop,
+        }
+      },
+    })
+    cleanups.add(writer.close)
+    await updateBotHome(kernel, botId, instructions, signal, prepare, writer)
+  }
+}
 
 const makeRoot = async () => {
   const root = await mkdtemp(join(tmpdir(), "touri-home-store-"))
