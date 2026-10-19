@@ -797,6 +797,53 @@ const AppContent = ({ kernel }: AppProps) => {
     ) : modal === "import" ? (
       <ImportWizard bots={data.bots} api={api} onClose={closeModal} onNotice={showNotice} />
     ) : null
+  const workspaceNotice = (
+    <MotionPresence show={Boolean(notice)} kind="toast">
+      {Boolean(notice) && (
+        <div className={`notice-bar ${isErrorNotice ? "notice-error" : "notice-info"}`} role="status">
+          <span>◈</span>
+          {isErrorNotice ? (
+            <ErrorNotice
+              error={notice}
+              context={noticeContext}
+              onAction={async (action) => {
+                if (action === "retry") {
+                  if (noticeRecord) {
+                    await notificationActions.recover(noticeRecord, action)
+                    return
+                  }
+                  // A provider notice must not restart the local service or replay a mutation.
+                  await api.request("GET /health", {})
+                  setLocalNotice(null)
+                  actions.dismissNotice()
+                } else if (action === "login")
+                  runFailureAction({ kind: "setting", settingId: "providerLogin", label: "" })
+                else if (action === "storage" || action === "doctor") openModal("doctor")
+                else if (noticeRecord) await notificationActions.recover(noticeRecord, action)
+                else {
+                  // Without a task identity, refresh recorded state rather than guessing a target.
+                  await api.request("GET /workspace/activity", {})
+                  openModal("doctor")
+                }
+              }}
+            />
+          ) : typeof notice === "string" ? (
+            notice
+          ) : null}
+          <button
+            type="button"
+            onClick={() => {
+              setLocalNotice(null)
+              actions.dismissNotice()
+            }}
+            aria-label={t("Dismiss notice")}
+          >
+            ×
+          </button>
+        </div>
+      )}
+    </MotionPresence>
+  )
   // Keep creation mounted when the first bot's live event replaces onboarding with the workspace.
   const botModal = (
     <MotionPresence show={modal === "bot"} kind="modal">
@@ -869,6 +916,7 @@ const AppContent = ({ kernel }: AppProps) => {
     return (
       <AvatarRuntimeProvider value={{ ...data, messages: data.activityMessages }}>
         {botModal}
+        {workspaceNotice}
         <OnboardingLanding
           host={host}
           onCreateBot={() => openModal("bot")}
@@ -889,6 +937,7 @@ const AppContent = ({ kernel }: AppProps) => {
       <AvatarRuntimeProvider value={{ ...data, messages: data.activityMessages }}>
         <FailureActionContext.Provider value={runFailureAction}>
           <main className="computer-window">
+            {workspaceNotice}
             <header>
               <h1>Computador de {selectedBot?.name ?? "bot"}</h1>
             </header>
@@ -940,52 +989,7 @@ const AppContent = ({ kernel }: AppProps) => {
             )}
           </div>
         )}
-        {/* r8 motion: transient notice presence */}
-        <MotionPresence show={Boolean(notice)} kind="toast">
-          {Boolean(notice) && (
-            <div className={`notice-bar ${isErrorNotice ? "notice-error" : "notice-info"}`} role="status">
-              <span>◈</span>
-              {isErrorNotice ? (
-                <ErrorNotice
-                  error={notice}
-                  context={noticeContext}
-                  onAction={async (action) => {
-                    if (action === "retry") {
-                      if (noticeRecord) {
-                        await notificationActions.recover(noticeRecord, action)
-                        return
-                      }
-                      // A provider notice must not restart the local service or replay a mutation.
-                      await api.request("GET /health", {})
-                      setLocalNotice(null)
-                      actions.dismissNotice()
-                    } else if (action === "login")
-                      runFailureAction({ kind: "setting", settingId: "providerLogin", label: "" })
-                    else if (action === "storage" || action === "doctor") openModal("doctor")
-                    else if (noticeRecord) await notificationActions.recover(noticeRecord, action)
-                    else {
-                      // Without a task identity, refresh recorded state rather than guessing a target.
-                      await api.request("GET /workspace/activity", {})
-                      openModal("doctor")
-                    }
-                  }}
-                />
-              ) : typeof notice === "string" ? (
-                notice
-              ) : null}
-              <button
-                type="button"
-                onClick={() => {
-                  setLocalNotice(null)
-                  actions.dismissNotice()
-                }}
-                aria-label={t("Dismiss notice")}
-              >
-                ×
-              </button>
-            </div>
-          )}
-        </MotionPresence>
+        {workspaceNotice}
         {pendingReturnCount > 0 && !hasApprovalReminder && (
           <div className="notice-bar approval-notice" role="status">
             {t("Você tem {n} solicitações pendentes.", { n: pendingReturnCount })}

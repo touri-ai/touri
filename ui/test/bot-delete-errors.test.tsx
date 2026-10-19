@@ -1,11 +1,17 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, expect, test } from "vitest"
+import App from "../src/App"
 import { createMockApi } from "../src/api/mock"
 import { DeleteBotDialog } from "../src/components/DeleteBotDialog"
 import { ApiError } from "../src/errors"
 import { t } from "../src/i18n"
+import { getBotDeletionFixture } from "./fixtures/botDeletion"
+import { showBotSettings } from "./workspaceNavigation"
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  document.documentElement.lang = "pt-BR"
+})
 
 test("deletion failures explain the blocked step and keep the dialog available for retry", async () => {
   const bot = createMockApi().getState().bots[0]
@@ -34,31 +40,110 @@ test("deletion failures explain the blocked step and keep the dialog available f
   )
 })
 
-test("pending cleanup explains that the bot is already deleted in Portuguese and English", async () => {
-  const bot = createMockApi().getState().bots[0]
-  if (!bot) throw new Error("Missing fixture bot")
-  const error = new ApiError(409, "private cleanup diagnostic", "TOURI-E2015")
-  render(
-    <DeleteBotDialog
-      bot={bot}
-      onDelete={async () => {
-        throw error
-      }}
-      onClose={() => {}}
-    />,
-  )
+test.each([
+  { entry: "settings", locale: "pt-BR" },
+  { entry: "sidebar", locale: "pt-BR" },
+  { entry: "settings", locale: "en" },
+  { entry: "sidebar", locale: "en" },
+] as const)("$entry deletion keeps the $locale notice after bot.deleted precedes 409", async ({ entry, locale }) => {
+  const fixture = getBotDeletionFixture()
+  const originalIds = fixture.api.getState().bots.map((bot) => bot.id)
+  document.documentElement.lang = locale
+  render(<App kernel={{ services: { api: fixture.api } }} />)
+  await screen.findByRole("textbox", { name: "Mensagem para mark" })
+  openDeletion(entry)
 
-  fireEvent.change(screen.getByLabelText(`Digite o nome do bot: ${bot.name}`), { target: { value: bot.name } })
-  fireEvent.click(screen.getByRole("button", { name: "Excluir bot" }))
+  const dialog = screen.getByRole("dialog", { name: "Excluir bot" })
+  fireEvent.change(within(dialog).getByLabelText("Digite o nome do bot: mark"), { target: { value: "mark" } })
+  fireEvent.click(within(dialog).getByRole("button", { name: "Excluir bot" }))
+
+  // The HTTP response is still suspended while the event removes the bot and its UI.
+  await waitFor(() => expect(document.querySelector('[data-bot-entry="bot-mark"]')).toBeNull())
+  expect(screen.queryByRole("dialog")).toBeNull()
+  expect(document.querySelector('[data-bot-entry="bot-onb"]')).not.toBeNull()
+
+  await act(async () => fixture.finishCleanup())
 
   const message =
-    "O bot foi excluído, mas a limpeza dos anexos privados está pendente. O touri tentará concluir a limpeza automaticamente."
-  expect(await screen.findByRole("alert")).toHaveTextContent(`${message} [TOURI-E2015]`)
-  expect(screen.getByRole("alert")).not.toHaveTextContent("private cleanup diagnostic")
-  expect(screen.getByRole("button", { name: "Excluir bot" })).toBeDisabled()
-  expect(screen.getByRole("button", { name: "Fechar", exact: true })).toBeEnabled()
-  expect(error.retryable).toBe(false)
-  expect(t(message, {}, "en")).toBe(
-    "The bot was deleted, but private attachment cleanup is pending. touri will automatically try to finish the cleanup.",
-  )
+    locale === "en"
+      ? "The bot was deleted, but private attachment cleanup is pending. touri will automatically try to finish the cleanup."
+      : "O bot foi excluído, mas a limpeza dos anexos privados está pendente. O touri tentará concluir a limpeza automaticamente."
+  expect(await screen.findByText(message)).toBeVisible()
+  expect(screen.getByText(message).closest('[role="status"]')).toHaveClass("notice-info")
+  expect(screen.queryByRole("dialog")).toBeNull()
+  expect(document.body).not.toHaveTextContent("private cleanup diagnostic")
+  expect(fixture.api.getState().bots.map((bot) => bot.id)).toEqual(originalIds.filter((id) => id !== "bot-mark"))
+  expect(fixture.api.calls.filter((call) => call.route === "DELETE /bots/:id")).toHaveLength(1)
+
+  fireEvent.click(screen.getByRole("button", { name: "Dispensar aviso" }))
+
+  expect(screen.queryByText(message)).toBeNull()
 })
+
+test.each(["pt-BR", "en"] as const)("the last bot's %s cleanup notice survives onboarding", async (locale) => {
+  const mock = createMockApi()
+  await Promise.all(
+    mock
+      .getState()
+      .bots.filter((bot) => bot.id !== "bot-mark")
+      .map((bot) => mock.request("DELETE /bots/:id", { name: bot.name }, { id: bot.id })),
+  )
+  const fixture = getBotDeletionFixture("pending", mock)
+  document.documentElement.lang = locale
+  render(<App kernel={{ services: { api: fixture.api } }} />)
+  await screen.findByRole("textbox", { name: "Mensagem para mark" })
+  openDeletion("settings")
+  const dialog = screen.getByRole("dialog", { name: "Excluir bot" })
+
+  fireEvent.change(within(dialog).getByLabelText("Digite o nome do bot: mark"), { target: { value: "mark" } })
+  fireEvent.click(within(dialog).getByRole("button", { name: "Excluir bot" }))
+  await waitFor(() => expect(document.querySelector(".onboarding-screen")).not.toBeNull())
+  await act(async () => fixture.finishCleanup())
+
+  expect(
+    await screen.findByText(
+      t(
+        "O bot foi excluído, mas a limpeza dos anexos privados está pendente. O touri tentará concluir a limpeza automaticamente.",
+        {},
+        locale,
+      ),
+    ),
+  ).toBeVisible()
+  expect(screen.queryByRole("dialog")).toBeNull()
+  expect(fixture.api.getState().bots).toEqual([])
+})
+
+test("pending cleanup completes deletion even when the live event has not arrived", async () => {
+  const fixture = getBotDeletionFixture()
+  const api = {
+    ...fixture.api,
+    subscribe: (listener: Parameters<typeof fixture.api.subscribe>[0]) =>
+      fixture.api.subscribe((envelope) => {
+        if (envelope.event.type !== "bot.deleted") listener(envelope)
+      }),
+  }
+  render(<App kernel={{ services: { api } }} />)
+  await screen.findByRole("textbox", { name: "Mensagem para mark" })
+  openDeletion("settings")
+  const dialog = screen.getByRole("dialog", { name: "Excluir bot" })
+
+  fireEvent.change(within(dialog).getByLabelText("Digite o nome do bot: mark"), { target: { value: "mark" } })
+  fireEvent.click(within(dialog).getByRole("button", { name: "Excluir bot" }))
+  await act(async () => fixture.finishCleanup())
+
+  await waitFor(() => expect(document.querySelector('[data-bot-entry="bot-mark"]')).toBeNull())
+  expect(screen.queryByRole("dialog")).toBeNull()
+  expect(screen.getByText(/^O bot foi excluído, mas a limpeza/)).toBeVisible()
+})
+
+const openDeletion = (entry: "settings" | "sidebar"): void => {
+  if (entry === "sidebar") {
+    fireEvent.click(screen.getByRole("button", { name: "Ações de mark" }))
+    fireEvent.click(screen.getByRole("menuitem", { name: "Excluir bot" }))
+    return
+  }
+
+  showBotSettings()
+  fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: /^Avançado/ }))
+  fireEvent.click(screen.getByRole("button", { name: "Excluir bot" }))
+}

@@ -1,6 +1,6 @@
 import type { Bot } from "@touri/contracts"
 import { useState } from "react"
-import { ApiError, userFacingError } from "../errors"
+import { userFacingError } from "../errors"
 import { Modal } from "./Modals"
 
 export const DeleteBotDialog = ({
@@ -15,10 +15,9 @@ export const DeleteBotDialog = ({
   const [name, setName] = useState("")
   const [deleteVolumes, setDeleteVolumes] = useState(bot.machine === "cloud")
   const [busy, setBusy] = useState(false)
-  const [cleanupPending, setCleanupPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const remove = async () => {
-    if (busy || cleanupPending || name !== bot.name) return
+    if (busy || name !== bot.name) return
     setBusy(true)
     setError(null)
     try {
@@ -26,7 +25,6 @@ export const DeleteBotDialog = ({
       onClose()
     } catch (error) {
       setError(userFacingError(error))
-      setCleanupPending(error instanceof ApiError && error.code === "TOURI-E2015")
       setBusy(false)
     }
   }
@@ -56,7 +54,7 @@ export const DeleteBotDialog = ({
         id="delete-bot-name"
         data-initial-focus
         value={name}
-        disabled={busy || cleanupPending}
+        disabled={busy}
         autoComplete="off"
         onChange={(event) => setName(event.target.value)}
       />
@@ -65,7 +63,7 @@ export const DeleteBotDialog = ({
           <input
             type="checkbox"
             checked={deleteVolumes}
-            disabled={busy || cleanupPending || bot.machine === "cloud"}
+            disabled={busy || bot.machine === "cloud"}
             onChange={(event) => setDeleteVolumes(event.target.checked)}
           />
           <span>apagar também os arquivos do computador</span>
@@ -81,12 +79,12 @@ export const DeleteBotDialog = ({
       {error && <p role="alert">{error}</p>}
       <div className="modal-actions">
         <button type="button" className="button-quiet" disabled={busy} onClick={onClose}>
-          {cleanupPending ? "Fechar" : "Cancelar"}
+          Cancelar
         </button>
         <button
           type="button"
           className="tool-action tool-action-deny"
-          disabled={busy || cleanupPending || name !== bot.name}
+          disabled={busy || name !== bot.name}
           onClick={() => void remove()}
         >
           {busy ? "Excluindo…" : "Excluir bot"}
