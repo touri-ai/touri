@@ -1,8 +1,7 @@
 import type { Database } from "bun:sqlite"
 import { afterEach, expect, setDefaultTimeout, test } from "bun:test"
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
-import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { join, resolve } from "node:path"
 import { createKernel } from "../../src/kernel"
 import type { PerformanceStage, PerformanceStageRunner, PerformanceStageTracker } from "../../src/kernel/performance"
 import { createPerformanceStageTracker } from "../../src/kernel/performance"
@@ -251,9 +250,10 @@ const waitForTurnStart = async (requestLogPath: string): Promise<void> => {
 }
 
 const runReplay = async (count: number, historyMessages = 0): Promise<BenchmarkResult> => {
-  const root = mkdtempSync(join(tmpdir(), "touri-provider-event-benchmark-"))
+  const repoRoot = resolve(import.meta.dir, "../../..")
+  const root = mkdtempSync(join(repoRoot, ".touri-provider-event-benchmark-"))
   replayCleanups.push(() => rmSync(root, { recursive: true, force: true }))
-  const assets = mkdtempSync(join(tmpdir(), "touri-provider-event-fixture-"))
+  const assets = mkdtempSync(join(repoRoot, ".touri-provider-event-fixture-"))
   replayCleanups.push(() => rmSync(assets, { recursive: true, force: true }))
   const fakePath = join(assets, "fake-codex")
   const scenarioPath = join(assets, "scenario.json")
@@ -354,11 +354,14 @@ const runReplay = async (count: number, historyMessages = 0): Promise<BenchmarkR
   const providerDispatchMs = providerDispatch?.totalMs ?? 0
   const runtimeEventMs = runtimeEvent?.totalMs ?? 0
   const providerAdapterMs = Math.max(0, providerDispatchMs - runtimeEventMs)
+  const providerDispatchAttribution =
+    providerDispatchMs > 0 ? (runtimeEventMs + providerAdapterMs) / providerDispatchMs : 0
   console.log(
     `provider-event-profile ${JSON.stringify({
       historyMessages,
       historyPartBytes: history.partBytes,
       providerCpuMs: performanceResult.providerCpuMs,
+      providerDispatchAttribution,
       providerAdapterMs,
       stages: performanceResult.stages.filter(({ name }) =>
         [
@@ -437,6 +440,7 @@ test("Provider event cost stays independent of conversation history", async () =
   expect(result.providerDispatchMs).toBeGreaterThan(0)
   expect(result.providerAdapterMs).toBeGreaterThan(0)
   expect(result.runtimeEventMs).toBeLessThanOrEqual(result.providerDispatchMs)
+  expect((result.runtimeEventMs + result.providerAdapterMs) / result.providerDispatchMs).toBeGreaterThanOrEqual(0.9)
   expect(result.historyMessages).toBe(1_000)
   expect(result.historyPartBytes).toBeGreaterThan(15_000_000)
   expect(recent.historyMessages).toBe(100)
