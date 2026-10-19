@@ -1020,6 +1020,7 @@ export const createRuntimeEngine = ({
     return store.activePath({ threadId: run.threadId }).find((message) => message.id === run.requestMessageId) ?? null
   }
 
+  // Group coordination envelopes use the system role; failed member attempts alone leave no conversation to restore.
   const hasPreviousMessages = (store: StoreApi, thread: Thread, requestId: string | null): boolean => {
     if (store.getPathMessage && kernel.db instanceof Database && thread.activeLeafId)
       return hasPathHistory(kernel.db, thread.id, thread.activeLeafId, requestId)

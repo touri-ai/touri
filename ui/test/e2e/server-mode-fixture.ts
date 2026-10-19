@@ -27,9 +27,7 @@ const close = (server: Server) => new Promise<void>((done) => server.close(() =>
 
 /** Browser substitute for native IPC/relay only. Pairing, REST, tickets and events use a real server. */
 export const createServerModeFixture = async ({ initialMode = "local" }: { initialMode?: "local" | "server" } = {}) => {
-  // This fixture is run by the serial evidence gate; building here keeps it inside that same lock.
-  const built = spawnSync("bun", ["--cwd", "ui", "build"], { cwd: root, encoding: "utf8", timeout: 120_000 })
-  if (built.status !== 0) throw new Error("The desktop UI build failed before the server-mode test")
+  // Playwright's global setup builds this worktree's UI before any server fixture starts.
   const dataDir = await mkdtemp(join(tmpdir(), "touri-server-mode-"))
   const reservation = createServer()
   await listen(reservation)

@@ -22,7 +22,7 @@ test("schema 18 keeps existing host bots on touri and VM bots on the machine bro
     )
     database.close()
     database = openDatabase({ filename })
-    expect(SCHEMA_VERSION).toBe(29)
+    expect(SCHEMA_VERSION).toBe(30)
     expect(database.query("SELECT id,browser FROM bots ORDER BY id").all()).toEqual([
       { id: "guest", browser: "machine" },
       { id: "host", browser: "touri" },
