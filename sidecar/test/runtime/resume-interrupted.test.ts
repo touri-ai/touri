@@ -40,11 +40,14 @@ const waitFor = async (predicate: () => boolean, timeout = 10_000): Promise<void
 const watchTimeout = (milliseconds: number) => {
   const original = globalThis.setTimeout
   let calls = 0
-  const replacement = (...args: Parameters<typeof setTimeout>): ReturnType<typeof setTimeout> => {
-    if (args[1] === milliseconds) calls += 1
-    return Reflect.apply(original, globalThis, args)
-  }
-  globalThis.setTimeout = replacement as unknown as typeof setTimeout
+  const replacement: typeof setTimeout = Object.assign(
+    (...args: Parameters<typeof setTimeout>): ReturnType<typeof setTimeout> => {
+      if (args[1] === milliseconds) calls += 1
+      return Reflect.apply(original, globalThis, args)
+    },
+    { __promisify__: original.__promisify__ },
+  )
+  globalThis.setTimeout = replacement
   return {
     calls: () => calls,
     restore: () => {
