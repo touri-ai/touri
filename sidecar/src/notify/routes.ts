@@ -64,8 +64,10 @@ export const createNotifyRoutes = ({
       approvalId: parsed.requestId,
       decision: !isAnswer && parsed.behavior === "allow" ? "approved" : "denied",
       ...(message === undefined ? {} : { message }),
+      source: "notification",
     })
     if (!result.success) {
+      if (result.errorCode === "DENIED") return fail(403, result.errorCode, result.error)
       notifier.finish({ id: target.id, resolution: "expired" })
       return fail(410, "NOT_PENDING", "The request is no longer pending")
     }

@@ -23,6 +23,15 @@
   color: var(--text-secondary);
   font-size: 12px;
 }
+.team-api-key-note {
+  display: inline-block;
+  margin-top: 4px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--surface-control);
+  color: var(--text-primary);
+  font-weight: 600;
+}
 .team-drafts {
   display: grid;
   gap: 12px;

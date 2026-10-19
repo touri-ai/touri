@@ -67,6 +67,41 @@ it("shows the complete reviewed team, providers, access and group with explicit 
   ])
 })
 
+it.each([
+  ["pt-BR", "Usa a chave de API salva"],
+  ["en", "Uses your saved API key"],
+] as const)("flags API models using the saved key in %s", (locale, label) => {
+  const review = getTeamReview()
+  const teamProposal = {
+    ...review,
+    proposal: {
+      ...review.proposal,
+      bots: review.proposal.bots.map((bot, index) => (index === 2 ? { ...bot, model: "touri-api-modelo-demo" } : bot)),
+    },
+  }
+
+  render(<TeamApprovalCard part={{ ...getApproval(), teamProposal }} api={createMockApi()} locale={locale} />)
+
+  expect(screen.getByText(label)).toBeVisible()
+})
+
+it("does not approve a proposal with hidden characters in a model identifier", () => {
+  const review = getTeamReview()
+  const teamProposal = {
+    ...review,
+    proposal: {
+      ...review.proposal,
+      bots: review.proposal.bots.map((bot, index) =>
+        index === 2 ? { ...bot, model: "touri-api-modelo-demo\u200b" } : bot,
+      ),
+    },
+  }
+
+  render(<TeamApprovalCard part={{ ...getApproval(), teamProposal }} api={createMockApi()} />)
+
+  expect(screen.getByRole("button", { name: "Criar time" })).toBeDisabled()
+})
+
 it.each(["click", "escape"])("cancels with %s and says nothing was created", async (action) => {
   const api = createMockApi()
   render(<ApprovalCard part={getApproval()} api={api} />)

@@ -37,7 +37,8 @@ export const getTeamProposalReview = (value: unknown): TeamProposalReview | null
         /[\p{Zl}\p{Zp}]/u.test(bot.roleLine) ||
         !isText(bot.instructions, 12000) ||
         hasTeamHiddenCharacters(bot.instructions, true) ||
-        (bot.model != null && (typeof bot.model !== "string" || bot.model.length > 200)) ||
+        (bot.model != null &&
+          (typeof bot.model !== "string" || bot.model.length > 200 || hasTeamHiddenCharacters(bot.model))) ||
         (bot.color != null && !validAvatarColor(bot.color)) ||
         (bot.avatarShape != null && !validAvatarShape(bot.avatarShape)) ||
         (bot.avatarSeed != null &&

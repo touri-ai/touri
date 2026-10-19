@@ -300,6 +300,37 @@ test("approval buttons answer once, only for allowed users, and expire afterward
   expect(f.answers).toHaveLength(1)
 })
 
+test("team proposal notifications link to the conversation without response buttons", async () => {
+  const f = await fixture()
+  await f.configure({ token: TOKEN, enabled: true, allowedUserIds: ["42"] })
+  f.fake.message({ text: "Prepare uma proposta" })
+  await until(() => f.runs.length === 1, "run")
+  const run = f.runs[0]
+  if (!run) throw new Error("Missing run fixture")
+  f.kernel.publish({
+    type: "notification.created",
+    notification: notification({
+      botId: f.bot.id,
+      threadId: run.threadId,
+      title: "Criar time",
+      body: "Revise cada bot, provedor e acesso seguro antes de criar o time.",
+    }),
+  })
+  await until(() => f.fake.sent().length === 1, "proposal notification")
+  const sent = f.fake.sent()[0]
+  const keyboard = sent?.params.reply_markup as {
+    inline_keyboard: Array<Array<{ text: string; callback_data?: string; url?: string }>>
+  }
+  const button = keyboard.inline_keyboard[0]?.[0]
+
+  expect(button).toEqual({
+    text: "Abrir conversa",
+    url: `touri://open?bot=${f.bot.id}&thread=${run.threadId}`,
+  })
+  expect(sent?.params.text).not.toMatch(/Aprovar|Negar/)
+  expect(f.answers).toEqual([])
+})
+
 test("routine results reach the home chat only when forwarding is on", async () => {
   const f = await fixture()
   await f.configure({ token: TOKEN, enabled: true, allowedUserIds: ["42"] })

@@ -11,6 +11,8 @@ import type {
   Thread,
   UiEvent,
 } from "@touri/contracts"
+import { isTeamCreateApprovalNotice } from "@touri/contracts/approval-summary"
+import { buildDeepLink } from "../../notify/native"
 import {
   createTelegramApi,
   type TelegramApi,
@@ -344,6 +346,23 @@ export const createTelegramBridge = ({
     const chatId = chatForThread(threadId)
     if (!chatId) return
     const fullText = [notification.title, notification.body].filter(Boolean).join("\n")
+    if (isTeamCreateApprovalNotice(notification)) {
+      const link = buildDeepLink({ botId: notification.botId, threadId })
+      const button = notification.title === "Create team" ? "Open conversation" : "Abrir conversa"
+      try {
+        await sendTelegramMessage(
+          {
+            chat_id: chatId,
+            text: fullText,
+            reply_markup: { inline_keyboard: [[{ text: button, url: link }]] },
+          },
+          () => !stopped && config().enabled && chatForThread(threadId) === chatId,
+        )
+      } catch (error) {
+        if (!stopped) log("Falha ao enviar aprovação", { error: errorText(error) })
+      }
+      return
+    }
     if (fullText.length > 3_500) {
       await safeSend(chatId, "Este pedido é longo. Abra o touri para conferir e responder.")
       return

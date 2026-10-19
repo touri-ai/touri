@@ -18,7 +18,8 @@ export type TelegramChat = { id: number; type: string; first_name?: string; last
 export type TelegramMessage = { message_id: number; from?: TelegramUser; chat: TelegramChat; text?: string }
 export type TelegramCallbackQuery = { id: string; from: TelegramUser; data?: string; message?: TelegramMessage }
 export type TelegramUpdate = { update_id: number; message?: TelegramMessage; callback_query?: TelegramCallbackQuery }
-export type InlineKeyboard = { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> }
+type InlineKeyboardButton = { text: string; callback_data: string } | { text: string; url: string }
+export type InlineKeyboard = { inline_keyboard: Array<Array<InlineKeyboardButton>> }
 
 export const TELEGRAM_API_BASE = "https://api.telegram.org"
 

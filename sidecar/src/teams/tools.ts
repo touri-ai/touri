@@ -148,6 +148,8 @@ const getValidatedProposal = (
       errorCode: "INVALID_ARGS",
       error: "Informe uma função em uma linha e instruções para cada bot.",
     }
+  if (proposal.bots.some((bot) => bot.model != null && hasTeamHiddenCharacters(bot.model)))
+    return { success: false, errorCode: "INVALID_ARGS", error: "O modelo contém caracteres ocultos." }
   const group = proposal.group
   if (
     group &&

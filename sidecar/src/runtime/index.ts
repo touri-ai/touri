@@ -37,6 +37,7 @@ const overlapField = (value: unknown): Routine["overlap"] => (value === "queue" 
 const getRouteErrorStatus = (errorCode: string): number => {
   if (errorCode === "NOT_FOUND" || errorCode === "THREAD_NOT_FOUND") return 404
   if (errorCode === "BOT_PAUSED") return 409
+  if (errorCode === "DENIED") return 403
   if (errorCode === "RUNTIME_DRAINING") return 503
 
   return 400
@@ -262,6 +263,7 @@ export const init = async (kernel: Kernel, runStage?: PerformanceStageRunner): P
             approvalId: params.id ?? "",
             decision,
             standing: bodyRecord(body).standing === true,
+            source: "card",
           })
           return result.success ? { status: 200, json: {} } : routeError(result.errorCode, result.error)
         },
