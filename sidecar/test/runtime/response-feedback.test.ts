@@ -86,7 +86,7 @@ test.each(["codex", "claude", "opencode"] as Provider[])(
       expect(engine.listRuns("t")[0]?.status).toBe("canceled")
     } finally {
       await engine.shutdown()
-      runtime.stop()
+      await runtime.stop()
       rmSync(root, { recursive: true, force: true })
     }
   },
