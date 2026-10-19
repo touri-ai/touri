@@ -923,7 +923,11 @@ test("B05: delegated requests preserve bot provenance rather than claiming a hum
   let request: ReturnType<typeof f.store.activePath>[number] | undefined
   f = await fixture(async (ctx, complete) => {
     if (ctx.botId === f.bots[0]?.id) await f.runtime.askBot(ctx, { bot: "dev", message: "peer task" })
-    else request = f.store.activePath({ threadId: ctx.threadId }).find((m) => m.role === "user")
+    else
+      request = f.store.activePath({ threadId: ctx.threadId }).find((message) => {
+        const marker = message.parts[0]
+        return marker?.type === "notice" && marker.code === "group_coordination_prompt"
+      })
     complete("done")
   })
   const run = f.send("@pm delegate")
@@ -1711,8 +1715,10 @@ test("group conversation actions persist routing, broadcast past the coordinator
   const participant = scenario.data.participant(scenario.group, scenario.thread.id, scenario.bots[0]?.id ?? "")
   const summaryRequest = scenario.store
     .activePath({ threadId: participant.id })
-    .filter((message) => message.role === "user")
-    .at(-1)?.text
+    .find((message) => {
+      const marker = message.parts[0]
+      return marker?.type === "notice" && marker.code === "group_coordination_prompt"
+    })?.text
   expect(summaryRequest).toContain("dev respondeu")
   expect(summaryRequest).toContain("qa respondeu")
   const conflict = await scenario.request(`/threads/${scenario.thread.id}/messages`, {
