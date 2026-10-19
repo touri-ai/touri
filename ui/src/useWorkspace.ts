@@ -44,7 +44,7 @@ import { reconcileFailureNotifications } from "./sidebarAttention"
 import { getSidebarReadThreadIds } from "./sidebarThreads"
 import { updateActivityStream } from "./workspaceMemory"
 import { activeRun, activityMessage, retainWorkspace } from "./workspaceRetention"
-import { readWorkspaceState, saveWorkspaceState } from "./workspaceState"
+import { readWorkspaceState, saveWorkspaceState, type ThreadCreationStatus } from "./workspaceState"
 
 type ProcessEntry = { spec: ProcessSpec; run: ProcessRunState | null }
 
@@ -70,7 +70,7 @@ export type WorkspaceData = {
   settings: ApiRoutes["GET /settings"]["res"]["settings"] | null
   selectedBotId: Id | null
   selectedThreadId: Id | null
-  threadCreation: { thread: Thread; pending: boolean } | null
+  threadCreation: { thread: Thread; status: ThreadCreationStatus } | null
   composerKey: Id | null
   activeProjectId: Id | null
   loading: boolean
@@ -479,6 +479,36 @@ const lastActiveThread = (threads: Thread[], runs: Run[], botId: Id, rememberedI
     candidates.find((thread) => thread.id === rememberedId) ??
     candidates.sort((a, b) => b.updatedAt - a.updatedAt || b.createdAt - a.createdAt)[0]
   )
+}
+
+const getDraftThread = (botId: Id, groupId?: Id): Thread => {
+  const now = Date.now()
+  return {
+    id: groupId ? `draft:group:${groupId}` : `draft:bot:${botId}`,
+    botId,
+    groupId: groupId ?? null,
+    parentThreadId: null,
+    kind: "chat",
+    title: t("New conversation"),
+    activeLeafId: null,
+    routineRunId: null,
+    cwdOverride: null,
+    unread: 0,
+    carryoverNote: null,
+    usage: {
+      inputTokens: 0,
+      outputTokens: 0,
+      cachedInputTokens: 0,
+      costUsd: null,
+      turns: 0,
+      contextTokens: null,
+      contextWindow: null,
+    },
+    source: "local",
+    createdAt: now,
+    updatedAt: now,
+    archivedAt: null,
+  }
 }
 
 export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
@@ -1106,12 +1136,25 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
         threadsByBot.current[current.selectedBotId] = current.selectedThreadId
       const thread = lastActiveThread(current.threads, current.runs, botId, threadsByBot.current[botId])
       const bot = current.bots.find((candidate) => candidate.id === botId)
+      if (!thread) {
+        const draftThread = getDraftThread(botId)
+        const composerKey = crypto.randomUUID()
+        return {
+          ...current,
+          selectedBotId: botId,
+          threadCreation: { thread: draftThread, status: "draft" },
+          composerKey,
+          selectedThreadId: draftThread.id,
+          activeProjectId: bot?.projectId ?? null,
+          processes: [],
+        }
+      }
       return {
         ...current,
         selectedBotId: botId,
         threadCreation: null,
         composerKey: null,
-        selectedThreadId: thread?.id ?? null,
+        selectedThreadId: thread.id,
         activeProjectId: bot?.projectId ?? null,
         processes: [],
       }
@@ -1164,37 +1207,12 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
     async (groupId?: Id): Promise<void> => {
       if (creatingThread.current || !selectedBot) return
       creatingThread.current = true
-      const draftThread: Thread = data.threadCreation?.thread ?? {
-        id: groupId ? `draft:group:${groupId}` : `draft:bot:${selectedBot.id}`,
-        botId: selectedBot.id,
-        groupId: groupId ?? null,
-        parentThreadId: null,
-        kind: "chat",
-        title: t("New conversation"),
-        activeLeafId: null,
-        routineRunId: null,
-        cwdOverride: null,
-        unread: 0,
-        carryoverNote: null,
-        usage: {
-          inputTokens: 0,
-          outputTokens: 0,
-          cachedInputTokens: 0,
-          costUsd: null,
-          turns: 0,
-          contextTokens: null,
-          contextWindow: null,
-        },
-        source: "local",
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-        archivedAt: null,
-      }
+      const draftThread = data.threadCreation?.thread ?? getDraftThread(selectedBot.id, groupId)
       const composerKey = data.threadCreation ? data.composerKey : crypto.randomUUID()
       setData((current) => ({
         ...current,
         selectedThreadId: draftThread.id,
-        threadCreation: { thread: draftThread, pending: true },
+        threadCreation: { thread: draftThread, status: "pending" },
         composerKey,
       }))
       try {
@@ -1212,7 +1230,7 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
       } catch {
         setData((current) =>
           current.selectedThreadId === draftThread.id
-            ? { ...current, threadCreation: { thread: draftThread, pending: false } }
+            ? { ...current, threadCreation: { thread: draftThread, status: "failed" } }
             : current,
         )
       } finally {
@@ -1221,6 +1239,10 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
     },
     [api, selectedBot, data.threadCreation, data.composerKey],
   )
+  useEffect(() => {
+    if (data.threadCreation?.status === "draft" && selectedBot?.id === data.threadCreation.thread.botId)
+      void startThread(data.threadCreation.thread.groupId ?? undefined)
+  }, [data.threadCreation, selectedBot?.id, startThread])
   const createGroupThread = useCallback((id: string) => startThread(id), [startThread])
   const createThread = useCallback(
     () => startThread(selectedThread?.groupId ?? undefined),

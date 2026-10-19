@@ -14,6 +14,7 @@ import type { TauriInvoke, UiApi } from "../api/client"
 import { type ApprovalTarget, pendingApprovalTargets } from "../approvalNavigation"
 import { localizeNotice, mcpGroupLabel, statusLabel, t } from "../i18n"
 import { messageMarkdown } from "../messageMarkdown"
+import type { ThreadCreationStatus } from "../workspaceState"
 import { BotAvatar } from "./BotAvatar"
 import { LearningCard } from "./LearningCard"
 import { MarkdownContent } from "./MarkdownContent"
@@ -315,7 +316,7 @@ export const McpScreen = ({
 }
 
 type PreviewScreenProps = {
-  threadCreation?: "pending" | "failed" | undefined
+  threadCreation?: Exclude<ThreadCreationStatus, "draft"> | undefined
   onRetryCreateThread?: (() => void) | undefined
   project: Project | null
   processes: Array<ProcessEntry>

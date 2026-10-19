@@ -12,6 +12,7 @@ import { type Locale, t } from "../i18n"
 import { useComposerMachineIntent } from "../machineIntents"
 import { getDraftWithTranscript } from "../speechRecognition"
 import { useProviderLogin } from "../useProviderLogin"
+import type { ThreadCreationStatus } from "../workspaceState"
 import { useMascotComposer } from "./AvatarRuntime"
 import { BotAvatar } from "./BotAvatar"
 import { ComposerNotice } from "./ComposerNotice"
@@ -26,7 +27,7 @@ import "./Composer.css"
 type AttachedFile = { key: string; name: string; id: Id | null; status: "loading" | "ready" | "failed" }
 type ComposerProps = {
   locale?: Locale
-  threadCreation?: "pending" | "failed" | undefined
+  threadCreation?: Exclude<ThreadCreationStatus, "draft"> | undefined
   onRetryCreateThread?: (() => void) | undefined
   mentionBots?: Bot[]
   groupName?: string | undefined

@@ -1078,9 +1078,7 @@ const AppContent = ({ kernel }: AppProps) => {
               )}
               {screen === "preview" ? (
                 <PreviewScreen
-                  threadCreation={
-                    data.threadCreation ? (data.threadCreation.pending ? "pending" : "failed") : undefined
-                  }
+                  threadCreation={data.threadCreation?.status === "draft" ? undefined : data.threadCreation?.status}
                   onRetryCreateThread={() => void actions.createThread()}
                   project={selectedProject}
                   processes={data.processes.filter((entry) => entry.spec.projectId === selectedProject?.id)}
@@ -1184,7 +1182,7 @@ const AppContent = ({ kernel }: AppProps) => {
                             onGoalChange={notifyGoalChange}
                             composerKey={data.composerKey ?? undefined}
                             threadCreation={
-                              data.threadCreation ? (data.threadCreation.pending ? "pending" : "failed") : undefined
+                              data.threadCreation?.status === "draft" ? undefined : data.threadCreation?.status
                             }
                             onRetryCreateThread={() => void actions.createThread()}
                             bot={selectedBot}
