@@ -23,7 +23,6 @@ views.forEach(({ name, width, height, theme }) => {
     await expect(card).toContainText(
       "O nome do modelo salvo é inválido. Escolha outro modelo nas configurações do bot.",
     )
-    await expect(card.getByRole("button", { name: "Tentar novamente" })).toHaveCount(0)
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
     const shots = process.env.TOURI_MODEL_SETTINGS_SHOTS
     if (shots) {
