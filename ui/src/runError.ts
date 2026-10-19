@@ -62,6 +62,8 @@ const trustedFailure = (errorClass: string, stored: RunFailureDetail): RunFailur
 }
 
 const FALLBACK_TITLE = t("Não foi possível concluir a resposta")
+const ORPHANED_GROUP_TURN_PT = "O grupo ou a conversa não existe mais. Este turno não foi executado."
+const ORPHANED_GROUP_TURN_EN = "The group or conversation no longer exists. This turn was not run."
 
 /** Resolve old generic notices from the run already loaded with the thread; sanitize both sources. */
 export const runErrorFor = (message: Message, candidate?: Run, machineReady = false): RunErrorView | null => {
@@ -77,10 +79,12 @@ export const runErrorFor = (message: Message, candidate?: Run, machineReady = fa
     (stored && trustedFailure(errorClass, stored)) ?? fromRun ?? safeRunFailure(errorClass, legacyDiagnostic(raw))
   const { hint, ...rest } = failure
   const apiMessage = Object.values(apiModelErrors).find((text) => (run?.errorMessage ?? raw).includes(text))
+  const localizedDetail =
+    run?.errorMessage === ORPHANED_GROUP_TURN_PT ? t(ORPHANED_GROUP_TURN_EN) : apiMessage ? t(apiMessage) : rest.detail
   return {
     title: TITLES[errorClass] ?? FALLBACK_TITLE,
     ...rest,
-    detail: apiMessage ? t(apiMessage) : rest.detail,
+    detail: localizedDetail,
     code: publicError(errorClass).code,
     stageLabel: failureStageLabel(failure.stage),
     hint:

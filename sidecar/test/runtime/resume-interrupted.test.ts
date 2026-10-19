@@ -37,6 +37,22 @@ const waitFor = async (predicate: () => boolean, timeout = 10_000): Promise<void
   }
 }
 
+const watchTimeout = (milliseconds: number) => {
+  const original = globalThis.setTimeout
+  let calls = 0
+  const replacement = (...args: Parameters<typeof setTimeout>): ReturnType<typeof setTimeout> => {
+    if (args[1] === milliseconds) calls += 1
+    return Reflect.apply(original, globalThis, args)
+  }
+  globalThis.setTimeout = replacement as unknown as typeof setTimeout
+  return {
+    calls: () => calls,
+    restore: () => {
+      globalThis.setTimeout = original
+    },
+  }
+}
+
 const PAUSED = { pauseAfterFirstDelta: "release", ignoreInterrupt: true, deltas: ["INÍCIO", " meio", " FIM"] }
 
 /**
@@ -304,6 +320,32 @@ test.each(["active", "completion"] as const)("approval continuation survives dra
   expect(f.runs()).toHaveLength(2)
   expect(f.runs().every((attempt) => attempt.status === "succeeded")).toBe(true)
   expect(f.links()).toMatchObject([{ previous_run_id: run.id, reason: "permission_granted" }])
+})
+
+test("drain waits for continuation events and returns promptly after the last run finishes", async () => {
+  const f = await fixture({ resumeBackoffMs: 250 })
+  drainCleanups.push(f.close)
+  f.writeScenario({ deltas: ["Retomada concluída."] })
+  f.crashOnce()
+  f.send(f.first.engine)
+  await waitFor(() => f.runs()[0]?.status === "failed")
+  f.first.engine.beginDrain()
+  let lastRunFinishedAt = 0
+  const unsubscribe = f.first.runtime.kernel.subscribe(({ event }) => {
+    if (event.type === "run.updated" && event.run.status === "succeeded") lastRunFinishedAt = performance.now()
+  })
+  drainCleanups.push(async () => unsubscribe())
+  const timeoutWatch = watchTimeout(10)
+  drainCleanups.push(async () => timeoutWatch.restore())
+
+  await f.first.engine.waitForDrain()
+  timeoutWatch.restore()
+
+  expect(f.runs()).toHaveLength(2)
+  expect(f.runs().every((run) => run.status === "succeeded")).toBe(true)
+  expect(timeoutWatch.calls()).toBe(0)
+  expect(lastRunFinishedAt).toBeGreaterThan(0)
+  expect(performance.now() - lastRunFinishedAt).toBeLessThan(100)
 })
 
 test("shutdown preserves a pending permission continuation even with automatic recovery disabled", async () => {

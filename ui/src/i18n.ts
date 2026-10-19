@@ -1866,6 +1866,8 @@ export const ptBR = {
   "Limite de uso do provedor atingido": "Limite de uso do provedor atingido",
   "A conversa ficou grande demais": "A conversa ficou grande demais",
   "A execução demorou demais": "A execução demorou demais",
+  "The group or conversation no longer exists. This turn was not run.":
+    "O grupo ou a conversa não existe mais. Este turno não foi executado.",
   "Não foi possível concluir a resposta": "Não foi possível concluir a resposta",
   live: "ativo",
   paused: "pausado",
@@ -4048,6 +4050,8 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Limite de uso do provedor atingido": "Provider rate limit reached",
   "A conversa ficou grande demais": "Conversation context is too large",
   "A execução demorou demais": "Run timed out",
+  "The group or conversation no longer exists. This turn was not run.":
+    "The group or conversation no longer exists. This turn was not run.",
   "Não foi possível concluir a resposta": "Could not complete the reply",
   live: "live",
   paused: "paused",

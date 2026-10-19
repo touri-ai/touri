@@ -1810,6 +1810,7 @@ export const createRuntimeEngine = ({
     const timer = setTimeout(
       () => {
         pendingContinuations.delete(run.id)
+        signalDrainChange()
         const ready = !shuttingDown && canStartContinuation(run, plan)
         if (!ready || !startContinuation({ run, plan })) abandonContinuation({ run, status: "failed" })
       },
@@ -2530,13 +2531,24 @@ export const createRuntimeEngine = ({
 
   const canDrainRun = (runId: Id): boolean => continuations.link(runId) !== null || continuations.isGroupRun(runId)
 
+  let drainChange = Promise.withResolvers<void>()
+  const signalDrainChange = (): void => {
+    const previous = drainChange
+    drainChange = Promise.withResolvers<void>()
+    previous.resolve()
+  }
+  const unsubscribeDrainChange = kernel.subscribe(({ event }) => {
+    if (event.type === "run.updated") signalDrainChange()
+  })
+  const hasDrainWork = (): boolean => executions.size > 0 || pendingContinuations.size > 0 || queued.some(canDrainRun)
+
   const waitForDrain = async (): Promise<void> => {
     await startupCleanup
-    while (!shuttingDown && (executions.size > 0 || pendingContinuations.size > 0 || queued.some(canDrainRun))) {
+    while (!shuttingDown && hasDrainWork()) {
+      const changed = drainChange.promise
       await drain()
-      await Promise.all(executions.values())
-      // Continuations can be scheduled after their provider execution finishes.
-      await new Promise<void>((resolve) => setTimeout(resolve, 10))
+      await Promise.all([...executions.values()])
+      if (hasDrainWork()) await changed
     }
   }
 
@@ -2556,6 +2568,8 @@ export const createRuntimeEngine = ({
         abandonContinuation({ run: pending.run, status: "failed" })
     }
     shuttingDown = true
+    signalDrainChange()
+    unsubscribeDrainChange()
     for (const [id, controller] of controllers) {
       const state = getState(id)
       state.completionError ??= { errorClass: "app_restart", errorMessage: "touri restarted" }

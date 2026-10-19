@@ -362,6 +362,47 @@ test("draining finishes the active group turn and replays waiting turns in order
   expect(restarted.listRuns(other.id).some((run) => run.id === waiting[0]?.id)).toBe(true)
 })
 
+test("startup fails queued group turns whose group or conversation was removed", async () => {
+  for (const missing of ["group", "conversation"] as const) {
+    const f = await fixture()
+    const run: Run = {
+      id: f.host.kernel.newId(),
+      threadId: f.thread.id,
+      botId: f.bots[0]?.id ?? "",
+      provider: "codex",
+      trigger: "user",
+      requestMessageId: null,
+      replyMessageId: null,
+      externalTurnId: null,
+      status: "queued",
+      errorClass: null,
+      errorMessage: null,
+      usage: null,
+      routineRunId: null,
+      queuedAt: Date.now(),
+      startedAt: null,
+      finishedAt: null,
+    }
+    f.persistence.saveRun(run)
+    f.db.query("INSERT INTO group_turns VALUES(?,?,?)").run(run.id, f.group.id, JSON.stringify([]))
+    f.runtime.shutdown({ appRestart: true })
+    f.db.exec("PRAGMA foreign_keys = OFF")
+    if (missing === "group") f.db.query("DELETE FROM bot_groups WHERE id = ?").run(f.group.id)
+    else f.db.query("DELETE FROM threads WHERE id = ?").run(f.thread.id)
+    f.db.exec("PRAGMA foreign_keys = ON")
+
+    const restarted = createGroupRuntime(f.host.kernel, f.engine)
+    cleanups.unshift(() => restarted.shutdown())
+
+    expect(f.persistence.getRun(run.id)).toMatchObject({
+      status: "failed",
+      errorClass: "unknown",
+      errorMessage: "O grupo ou a conversa não existe mais. Este turno não foi executado.",
+      finishedAt: expect.any(Number),
+    })
+  }
+})
+
 test("an active group finishes sequential members and delegated work during engine drain", async () => {
   const f = await fixture()
   f.runtime.shutdown()

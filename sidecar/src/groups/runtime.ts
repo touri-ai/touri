@@ -856,7 +856,21 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
   waiting.forEach((row) => {
     const run = toRun(row)
     const group = groups.get(row.group_id)
-    if (!run || !group) return
+    if (!run) return
+
+    const thread = store.getThread({ threadId: run.threadId })
+    if (!group || !thread || thread.groupId !== group.id) {
+      const failed: Run = {
+        ...run,
+        status: "failed",
+        errorClass: "unknown",
+        errorMessage: "O grupo ou a conversa não existe mais. Este turno não foi executado.",
+        finishedAt: Date.now(),
+      }
+      persistence.saveRun(failed)
+      kernel.publish({ type: "run.updated", run: failed })
+      return
+    }
 
     const request = db
       .query("SELECT parts_json FROM messages WHERE thread_id = ? AND id = ?")
