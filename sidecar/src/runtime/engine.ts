@@ -34,7 +34,7 @@ import { buildChildEnv } from "../kernel"
 import { writeDatabaseAsync } from "../kernel/database-write"
 import { folderAccessUnavailable, folderGrantProblem, refreshHostFolderAccess } from "../kernel/folder-capability"
 import { hasPathHistory } from "../kernel/message-path"
-import type { PerformanceStageRunner } from "../kernel/performance"
+import type { PerformanceStage, PerformanceStageRunner } from "../kernel/performance"
 import { providerProfileEnv } from "../kernel/provider-profiles"
 import { redactStructured } from "../kernel/redact"
 import { attachedServers, resolveAttachedMcp } from "../mcp/attached"
@@ -88,6 +88,7 @@ type RunState = {
   pendingPartText: Map<number, { type: "text" | "reasoning"; chunks: Array<string> }>
   textItemIds: Set<string>
   parts: Array<MessagePart>
+  partIndices: Map<string, number>
   dirtyParts: Set<number>
   replyMessageId: Id | null
   turnStarted: boolean
@@ -102,6 +103,8 @@ type RunState = {
   fingerprint: string | null
   continueAfterApproval: boolean
   outputTimer: ReturnType<typeof setTimeout> | null
+  partPublishImmediate: ReturnType<typeof setImmediate> | null
+  lastEventLivenessCheckAt: number
   lastOutputPublishedAt: number
 }
 
@@ -114,6 +117,8 @@ const appendPendingText = (state: RunState, partIndex: number, type: "text" | "r
   state.pendingPartText.set(partIndex, pending)
   if (type === "text") state.pendingText.push(delta)
 }
+
+const getPartKey = (part: MessagePart): string | null => ("callId" in part ? `${part.type}\u0000${part.callId}` : null)
 
 const materializePartText = (state: RunState, partIndex: number, runStage?: PerformanceStageRunner): void => {
   const pending = state.pendingPartText.get(partIndex)
@@ -149,6 +154,7 @@ const materializePendingText = (state: RunState, runStage?: PerformanceStageRunn
 type PendingApproval = { runId: Id; provider: ProviderAdapter; providerApprovalId: Id }
 
 const ROUTINE_TICK_GRACE_MS = 2 * 60_000
+const EVENT_LIVENESS_CHECK_INTERVAL_MS = 50
 
 type RoutineCreate = {
   botId: Id
@@ -326,8 +332,11 @@ export const createRuntimeEngine = ({
   const providers = new Map<Id, ProviderAdapter>()
   const states = new Map<Id, RunState>()
   const pendingApprovals = new Map<Id, PendingApproval>()
+  const measureStage = <Value>(stage: PerformanceStage, action: () => Value): Value =>
+    runStage ? runStage(stage, action) : action()
   const codexOptions = {
     kernel,
+    ...(runStage ? { runStage } : {}),
     ...(codexCommand ? { command: codexCommand } : {}),
     ...(interruptGraceMs === undefined ? {} : { interruptGraceMs }),
   }
@@ -475,13 +484,24 @@ export const createRuntimeEngine = ({
     return stored !== null && ["queued", "starting", "running"].includes(stored.status)
   }
 
+  const isLiveForEvent = (run: Run, state: RunState): boolean => {
+    const now = performance.now()
+    if (now - state.lastEventLivenessCheckAt < EVENT_LIVENESS_CHECK_INTERVAL_MS) return true
+
+    // Provider frames arrive in bursts; a short lease avoids synchronous disk and SQLite reads per frame.
+    state.lastEventLivenessCheckAt = now
+    return isLive(run)
+  }
+
   const finishLiveRun = async (run: Run, finish: () => void, messageId?: Id): Promise<void> => {
     // Accepted streaming work survives even if the final transaction rolls back.
     try {
-      await kernel.services.use("store.api")?.flushWritesAsync?.({
-        threadId: run.threadId,
-        ...(messageId ? { messageId } : {}),
-      })
+      await measureStage("runtime_stream_flush", () =>
+        kernel.services.use("store.api")?.flushWritesAsync?.({
+          threadId: run.threadId,
+          ...(messageId ? { messageId } : {}),
+        }),
+      )
     } catch {
       // A failed stream drain must not leave its run active or prevent terminal state.
     }
@@ -505,6 +525,7 @@ export const createRuntimeEngine = ({
       pendingPartText: new Map(),
       textItemIds: new Set(),
       parts: [],
+      partIndices: new Map(),
       dirtyParts: new Set(),
       replyMessageId: null,
       turnStarted: false,
@@ -519,6 +540,8 @@ export const createRuntimeEngine = ({
       fingerprint: null,
       continueAfterApproval: false,
       outputTimer: null,
+      partPublishImmediate: null,
+      lastEventLivenessCheckAt: Number.NEGATIVE_INFINITY,
       lastOutputPublishedAt: 0,
     }
     states.set(runId, created)
@@ -562,7 +585,7 @@ export const createRuntimeEngine = ({
     persistence.saveRun(run)
   }
 
-  const publishMessage = ({
+  const publishMessageNow = ({
     store,
     state,
     run,
@@ -575,47 +598,106 @@ export const createRuntimeEngine = ({
   }): void => {
     if (state.outputTimer) clearTimeout(state.outputTimer)
     state.outputTimer = null
+    if (state.partPublishImmediate) clearImmediate(state.partPublishImmediate)
+    state.partPublishImmediate = null
     state.lastOutputPublishedAt = Date.now()
     if (status === "streaming" && !state.cancelRequested)
-      state.dirtyParts.forEach((partIndex) => {
-        materializePartText(state, partIndex, runStage)
-      })
+      [...state.dirtyParts]
+        .sort((left, right) => left - right)
+        .forEach((partIndex) => {
+          materializePartText(state, partIndex, runStage)
+        })
     else materializePendingText(state, runStage)
-    if (state.cancelRequested) {
-      state.parts = tools.finish(run, state.parts, "cancelled_by_user", false)
-      for (let index = 0; index < state.parts.length; index++) state.dirtyParts.add(index)
-    }
-    if (status === "streaming" && store.appendParts) {
-      const parts = [...state.dirtyParts]
-        .sort((a, b) => a - b)
-        .flatMap((partIndex) => {
+    const partIndices = [...state.dirtyParts].sort((left, right) => left - right)
+    const messageId = state.replyMessageId
+    if (status === "streaming" && !messageId) return
+    if (store.appendParts && status === "streaming") {
+      if (!messageId) return
+      const parts = measureStage("runtime_part_preparation", () =>
+        partIndices.flatMap((partIndex) => {
           const part = state.parts[partIndex]
           if (!part) return []
           return [{ partIndex, part: "callId" in part ? tools.record(run, part, false, false) : part }]
-        })
-      if (!state.replyMessageId || !parts.length) return
-      store.appendParts({
-        threadId: run.threadId,
-        messageId: state.replyMessageId,
-        parts,
-        ...(state.generation === null ? {} : { generation: state.generation }),
+        }),
+      )
+      if (parts.length) {
+        measureStage("runtime_part_append", () =>
+          store.appendParts?.({
+            threadId: run.threadId,
+            messageId,
+            parts,
+            ...(state.generation === null ? {} : { generation: state.generation }),
+          }),
+        )
+        // The store can replace completed output with a durable attachment reference.
+        for (const patch of parts) state.parts[patch.partIndex] = patch.part
+        // Consent must be durable and visible before the approved action can proceed.
+        if (parts.some(({ part }) => part.type === "approval"))
+          measureStage("runtime_stream_flush", () => store.flushWrites?.())
+      }
+      partIndices.forEach((partIndex) => {
+        state.dirtyParts.delete(partIndex)
       })
-      // The store can replace completed output with a durable attachment reference.
-      for (const patch of parts) state.parts[patch.partIndex] = patch.part
-      state.dirtyParts.clear()
       return
     }
-    state.parts = state.parts.map((part) => ("callId" in part ? tools.record(run, part) : part))
-    if (!state.replyMessageId) return
-    const updated = store.updateMessage({
-      threadId: run.threadId,
-      messageId: state.replyMessageId,
-      patch: { status, parts: state.parts, text: state.text, runId: run.id },
-    })
+    if (!messageId) return
+    const updated = measureStage("runtime_terminal_message_update", () =>
+      store.updateMessage({
+        threadId: run.threadId,
+        messageId,
+        patch: { status, parts: state.parts, text: state.text, runId: run.id },
+      }),
+    )
     if (updated.success) {
       state.parts = structuredClone(updated.message.parts)
       state.dirtyParts.clear()
     }
+  }
+
+  const finishParts = ({
+    run,
+    state,
+    reason,
+  }: {
+    run: Run
+    state: RunState
+    reason: "cancelled_by_user" | "failed" | "interrupted_by_restart" | "unknown"
+  }): void => {
+    measureStage("runtime_part_finalization", () => {
+      const parts = tools.finish(run, state.parts, reason)
+      parts.forEach((part, index) => {
+        const previous = state.parts[index]
+        const entries = Object.entries(part)
+        const changed =
+          !previous ||
+          entries.length !== Object.keys(previous).length ||
+          entries.some(([key, value]) => Reflect.get(previous, key) !== value)
+        if (changed) state.dirtyParts.add(index)
+      })
+      state.parts = parts
+    })
+  }
+
+  const publishMessage = (args: { store: StoreApi; state: RunState; run: Run; status: Message["status"] }): void => {
+    if (runStage) runStage("runtime_message_publish", publishMessageNow, args)
+    else publishMessageNow(args)
+  }
+
+  const flushPendingPartPublish = ({ store, state, run }: { store: StoreApi; state: RunState; run: Run }): void => {
+    if (state.partPublishImmediate === null) return
+    clearImmediate(state.partPublishImmediate)
+    state.partPublishImmediate = null
+    if (shuttingDown || !isLiveForEvent(run, state)) return
+    publishMessage({ store, state, run, status: "streaming" })
+  }
+
+  const schedulePartPublish = ({ store, state, run }: { store: StoreApi; state: RunState; run: Run }): void => {
+    if (state.partPublishImmediate !== null) return
+    state.partPublishImmediate = setImmediate(() => {
+      state.partPublishImmediate = null
+      if (shuttingDown || !isLiveForEvent(run, state)) return
+      publishMessage({ store, state, run, status: "streaming" })
+    })
   }
 
   const notice = ({
@@ -684,7 +766,7 @@ export const createRuntimeEngine = ({
   }): void => {
     if (shuttingDown) return
     // A newer runtime may have fenced this writer during restart recovery.
-    if (!isLive(run)) {
+    if (!isLiveForEvent(run, state)) {
       controllers.get(run.id)?.abort()
       return
     }
@@ -746,9 +828,11 @@ export const createRuntimeEngine = ({
       const delta = separator + event.delta
       const existing = last?.type === "text" ? last : undefined
       const partIndex = existing ? state.parts.length - 1 : state.parts.length
+      if (state.replyMessageId) flushPendingPartPublish({ store, state, run })
       if (!existing) state.parts.push({ type: "text", text: "" })
+      if (state.cancelRequested) state.dirtyParts.add(partIndex)
       appendPendingText(state, partIndex, "text", delta)
-      if (state.replyMessageId)
+      if (state.replyMessageId) {
         store.appendDelta({
           threadId: run.threadId,
           messageId: state.replyMessageId,
@@ -756,6 +840,7 @@ export const createRuntimeEngine = ({
           delta,
           ...(state.generation === null ? {} : { generation: state.generation }),
         })
+      }
       return
     }
     if (event.type === "reasoning_delta" || event.type === "reasoning_progress") {
@@ -769,9 +854,9 @@ export const createRuntimeEngine = ({
         else state.parts.push(part)
         state.dirtyParts.add(partIndex)
       } else {
-        if (last?.type !== "reasoning") state.parts.push({ type: "reasoning", text: "" })
-        appendPendingText(state, partIndex, "reasoning", event.delta)
         if (last?.type === "reasoning" && state.replyMessageId) {
+          flushPendingPartPublish({ store, state, run })
+          appendPendingText(state, partIndex, "reasoning", event.delta)
           store.appendDelta({
             threadId: run.threadId,
             messageId: state.replyMessageId,
@@ -781,6 +866,8 @@ export const createRuntimeEngine = ({
           })
           return
         }
+        if (last?.type !== "reasoning") state.parts.push({ type: "reasoning", text: "" })
+        appendPendingText(state, partIndex, "reasoning", event.delta)
         state.dirtyParts.add(partIndex)
       }
       if (state.replyMessageId) publishMessage({ store, state, run, status: "streaming" })
@@ -803,12 +890,8 @@ export const createRuntimeEngine = ({
         (part.type === "tool_call" && part.ok === null && part.outputTail !== undefined)
       )
         part.outputTail = commandOutputTail(part.outputTail ?? "")
-      const index =
-        "callId" in part
-          ? state.parts.findIndex(
-              (candidate) => "callId" in candidate && candidate.callId === part.callId && candidate.type === part.type,
-            )
-          : -1
+      const key = getPartKey(part)
+      const index = key ? (state.partIndices.get(key) ?? -1) : -1
       const previous = state.parts[index]
       if (previous?.type === "tool_call" && part.type === "tool_call") {
         state.parts[index] = {
@@ -834,9 +917,21 @@ export const createRuntimeEngine = ({
       } else if (index >= 0) state.parts[index] = part
       else {
         state.parts.push(part)
+        if (key) state.partIndices.set(key, state.parts.length - 1)
         if (part.type === "tool_call") state.usage.toolCalls += 1
       }
-      state.dirtyParts.add(index >= 0 ? index : state.parts.length - 1)
+      const changedPartIndex = index >= 0 ? index : state.parts.length - 1
+      state.dirtyParts.add(changedPartIndex)
+      const changedPart = state.parts[changedPartIndex]
+      if (state.cancelRequested && changedPart && "callId" in changedPart) {
+        const pending =
+          (changedPart.type === "tool_call" && changedPart.ok === null) ||
+          (changedPart.type === "command" && changedPart.exitCode === null)
+        state.parts[changedPartIndex] = tools.record(
+          run,
+          pending ? { ...changedPart, resolution: "cancelled_by_user", resolvedAt: Date.now() } : changedPart,
+        )
+      }
       if (!state.replyMessageId) {
         const thread = store.getThread({ threadId: run.threadId })
         const request = run.requestMessageId && thread ? getActivePathMessage({ store, run }) : null
@@ -854,7 +949,7 @@ export const createRuntimeEngine = ({
         }, remaining)
         return
       }
-      publishMessage({ store, state, run, status: "streaming" })
+      schedulePartPublish({ store, state, run })
       return
     }
     if (event.type === "approval_request") {
@@ -898,14 +993,14 @@ export const createRuntimeEngine = ({
       const approvalId = kernel.newId()
       state.parts.push({ ...event.part, approvalId, botId: run.botId, createdAt: event.part.createdAt ?? Date.now() })
       state.dirtyParts.add(state.parts.length - 1)
-      const approvalNotice = {
+      notices.approval({
         botId: run.botId,
         threadId: run.threadId,
         requestId: approvalId,
         request: event.part.request,
         detail: event.part.detail,
         scope: event.part.scope,
-      }
+      })
       if (!state.replyMessageId) {
         const thread = store.getThread({ threadId: run.threadId })
         const request = run.requestMessageId && thread ? getActivePathMessage({ store, run }) : null
@@ -917,16 +1012,6 @@ export const createRuntimeEngine = ({
         provider: providers.get(run.id) ?? adapters[run.provider],
       })
       if (state.replyMessageId) publishMessage({ store, state, run, status: "streaming" })
-      void (async () => {
-        try {
-          await store.flushWritesAsync?.()
-        } catch {
-          pendingApprovals.delete(approvalId)
-          return
-        }
-        if (!pendingApprovals.has(approvalId) || controllers.get(run.id)?.signal.aborted) return
-        notices.approval(approvalNotice)
-      })()
       return
     }
     if (event.type === "usage") {
@@ -1436,131 +1521,141 @@ export const createRuntimeEngine = ({
         if (deadline) clearTimeout(deadline)
       }
     })()
-    approvalBridge.cancelRun(run.id)
-    for (const [approvalId, approval] of pendingApprovals) {
-      if (approval.runId !== run.id) continue
-      pendingApprovals.delete(approvalId)
-      notices.resolve({ requestId: approvalId, resolution: "expired" })
-      const part = state.parts.find((part) => part.type === "approval" && part.approvalId === approvalId)
-      if (part?.type === "approval") {
-        part.decision = "expired"
-        part.resolvedAt = Date.now()
-      }
-    }
-    if (!isLive(run)) {
-      active.delete(run.threadId)
-      controllers.delete(run.id)
-      providers.delete(run.id)
-      void drain()
-      return
-    }
-    const elapsed = Date.now() - (run.startedAt ?? Date.now())
-    state.usage.durationMs = elapsed
-    if (result.success) {
-      state.externalSessionId = state.externalSessionId ?? result.externalSessionId
-      state.rolloutPath = state.rolloutPath ?? result.rolloutPath
-      const sessionRow = persistence.getActiveSession({ threadId: thread.id, provider: bot.provider }) ??
-        session ?? {
-          id: kernel.newId(),
-          threadId: thread.id,
-          provider: bot.provider,
-          externalSessionId: state.externalSessionId,
-          rolloutPath: state.rolloutPath,
-          fingerprint: mcpFingerprint.hash,
-          state: "active",
-          model: bot.model,
-          createdAt: Date.now(),
-          lastUsedAt: Date.now(),
-        }
-      persistence.saveSession({
-        ...sessionRow,
-        externalSessionId: state.externalSessionId,
-        rolloutPath: state.rolloutPath,
-        fingerprint: mcpFingerprint.hash,
-        state: "active",
-        lastUsedAt: Date.now(),
-      })
-      const providerErrorClass = state.cancelRequested
-        ? "canceled"
-        : (state.completionError?.errorClass ?? (result.status === "succeeded" ? null : "cli_crash"))
-      const workRoot = providerErrorClass ? null : work.publishRoot({ turnId: run.id })
-      const errorClass = workRoot && !workRoot.success ? "tool_error" : providerErrorClass
-      if (!errorClass) {
-        const plan = state.continueAfterApproval
-          ? planContinuation({ run, reason: "permission_granted", lastActivityAt: Date.now() })
-          : null
-        state.continueAfterApproval = false
-        await finishLiveRun(
-          run,
-          () => {
-            ensureReply({ run, state, store, parentId: run.requestMessageId ?? thread.activeLeafId ?? run.id })
-            state.parts = tools.finish(run, state.parts, "unknown")
-            const conclusion = turnConclusion({
-              parts: state.parts,
-              requestText: (originalRequest ?? request)?.text ?? "",
-              pendingPartText: state.pendingPartText,
-            })
-            if (conclusion)
-              handleEvent({
-                run,
-                store,
-                state,
-                event: { type: "text_delta", itemId: kernel.newId(), delta: conclusion },
-              })
-            publishMessage({ store, state, run, status: "complete" })
-            updateRun(run, {
-              status: "succeeded",
-              errorClass: null,
-              errorMessage: null,
-              usage: state.usage,
-              finishedAt: Date.now(),
-            })
-            if (plan) scheduleContinuation({ run, plan })
-            else {
-              if (remembers && request)
-                mem0?.sync({ botId: bot.id, threadId: thread.id, userText: request.text, assistantText: state.text })
-              finishRoutineRun({ run, state, status: "succeeded" })
-              if (goals.getForRun(run.id)?.status !== "active")
-                notices.done({
-                  botId: run.botId,
-                  threadId: run.threadId,
-                  summary: state.text,
-                  routine: run.trigger === "routine" || run.routineRunId !== null,
-                })
-            }
-          },
-          state.replyMessageId ?? undefined,
+    const finalizeProviderTurn = async (): Promise<void> => {
+      approvalBridge.cancelRun(run.id)
+      for (const [approvalId, approval] of pendingApprovals) {
+        if (approval.runId !== run.id) continue
+        pendingApprovals.delete(approvalId)
+        notices.resolve({ requestId: approvalId, resolution: "expired" })
+        const approvalIndex = state.parts.findIndex(
+          (part) => part.type === "approval" && part.approvalId === approvalId,
         )
-      } else {
-        await failTurn({
-          run,
-          state,
-          store,
-          thread,
-          errorClass,
-          errorMessage:
-            workRoot && !workRoot.success
-              ? "Não foi possível publicar o registro de efeitos do turno"
-              : (state.completionError?.errorMessage ?? "Provider turn failed"),
-        })
+        const part = state.parts[approvalIndex]
+        if (part?.type === "approval") {
+          part.decision = "expired"
+          part.resolvedAt = Date.now()
+          state.dirtyParts.add(approvalIndex)
+        }
       }
-    } else {
-      await failTurn({
-        run,
-        state,
-        store,
-        thread,
-        errorClass: state.cancelRequested ? "canceled" : (state.completionError?.errorClass ?? result.errorCode),
-        errorMessage: result.error,
-      })
+      try {
+        if (!isLive(run)) return
+        const elapsed = Date.now() - (run.startedAt ?? Date.now())
+        state.usage.durationMs = elapsed
+        if (result.success) {
+          state.externalSessionId = state.externalSessionId ?? result.externalSessionId
+          state.rolloutPath = state.rolloutPath ?? result.rolloutPath
+          const sessionRow = persistence.getActiveSession({ threadId: thread.id, provider: bot.provider }) ??
+            session ?? {
+              id: kernel.newId(),
+              threadId: thread.id,
+              provider: bot.provider,
+              externalSessionId: state.externalSessionId,
+              rolloutPath: state.rolloutPath,
+              fingerprint: mcpFingerprint.hash,
+              state: "active",
+              model: bot.model,
+              createdAt: Date.now(),
+              lastUsedAt: Date.now(),
+            }
+          persistence.saveSession({
+            ...sessionRow,
+            externalSessionId: state.externalSessionId,
+            rolloutPath: state.rolloutPath,
+            fingerprint: mcpFingerprint.hash,
+            state: "active",
+            lastUsedAt: Date.now(),
+          })
+          const providerErrorClass = state.cancelRequested
+            ? "canceled"
+            : (state.completionError?.errorClass ?? (result.status === "succeeded" ? null : "cli_crash"))
+          const workRoot = providerErrorClass ? null : work.publishRoot({ turnId: run.id })
+          const errorClass = workRoot && !workRoot.success ? "tool_error" : providerErrorClass
+          if (!errorClass) {
+            const plan = state.continueAfterApproval
+              ? planContinuation({ run, reason: "permission_granted", lastActivityAt: Date.now() })
+              : null
+            state.continueAfterApproval = false
+            await finishLiveRun(
+              run,
+              () => {
+                ensureReply({ run, state, store, parentId: run.requestMessageId ?? thread.activeLeafId ?? run.id })
+                finishParts({ run, state, reason: "unknown" })
+                const conclusion = turnConclusion({
+                  parts: state.parts,
+                  requestText: (originalRequest ?? request)?.text ?? "",
+                  pendingPartText: state.pendingPartText,
+                })
+                if (conclusion)
+                  handleEvent({
+                    run,
+                    store,
+                    state,
+                    event: { type: "text_delta", itemId: kernel.newId(), delta: conclusion },
+                  })
+                publishMessage({ store, state, run, status: "complete" })
+                updateRun(run, {
+                  status: "succeeded",
+                  errorClass: null,
+                  errorMessage: null,
+                  usage: state.usage,
+                  finishedAt: Date.now(),
+                })
+                if (plan) scheduleContinuation({ run, plan })
+                else {
+                  if (remembers && request)
+                    mem0?.sync({
+                      botId: bot.id,
+                      threadId: thread.id,
+                      userText: request.text,
+                      assistantText: state.text,
+                    })
+                  finishRoutineRun({ run, state, status: "succeeded" })
+                  if (goals.getForRun(run.id)?.status !== "active")
+                    notices.done({
+                      botId: run.botId,
+                      threadId: run.threadId,
+                      summary: state.text,
+                      routine: run.trigger === "routine" || run.routineRunId !== null,
+                    })
+                }
+              },
+              state.replyMessageId ?? undefined,
+            )
+          } else {
+            await failTurn({
+              run,
+              state,
+              store,
+              thread,
+              errorClass,
+              errorMessage:
+                workRoot && !workRoot.success
+                  ? "Não foi possível publicar o registro de efeitos do turno"
+                  : (state.completionError?.errorMessage ?? "Provider turn failed"),
+            })
+          }
+        } else {
+          await failTurn({
+            run,
+            state,
+            store,
+            thread,
+            errorClass: state.cancelRequested ? "canceled" : (state.completionError?.errorClass ?? result.errorCode),
+            errorMessage: result.error,
+          })
+        }
+      } finally {
+        active.delete(run.threadId)
+        controllers.delete(run.id)
+        providers.delete(run.id)
+        void drain()
+      }
     }
-    active.delete(run.threadId)
-    controllers.delete(run.id)
-    providers.delete(run.id)
-    void drain()
+    if (runStage) await runStage("runtime_turn_finalization", finalizeProviderTurn)
+    else await finalizeProviderTurn()
   }
 
-  const finalizeFailure = async ({
+  const finalizeFailure = ({
     run,
     state,
     store,
@@ -1578,22 +1673,24 @@ export const createRuntimeEngine = ({
     continuing?: boolean
   }): Promise<void> => {
     const errorClass = refineErrorClass(reportedErrorClass, errorMessage)
-    await finishLiveRun(
+    return finishLiveRun(
       run,
       () => {
-        state.parts = tools.finish(
+        finishParts({
           run,
-          state.parts,
-          errorClass === "canceled"
-            ? "cancelled_by_user"
-            : errorClass === "app_restart"
-              ? "interrupted_by_restart"
-              : "failed",
-        )
-        state.parts = state.parts.map((part) => {
+          state,
+          reason:
+            errorClass === "canceled"
+              ? "cancelled_by_user"
+              : errorClass === "app_restart"
+                ? "interrupted_by_restart"
+                : "failed",
+        })
+        state.parts = state.parts.map((part, index) => {
           if (part.type !== "approval" || part.decision !== "pending") return part
           pendingApprovals.delete(part.approvalId)
           notices.resolve({ requestId: part.approvalId, resolution: "deny" })
+          state.dirtyParts.add(index)
           return { ...part, decision: "expired", resolvedAt: Date.now() }
         })
         const safeError = bounded({ value: kernel.redact(errorMessage), max: 2_000 })
@@ -1611,6 +1708,7 @@ export const createRuntimeEngine = ({
         const friendlyMessage = isMcpStartupError(safeError)
           ? failure.detail
           : `${failure.detail} [${friendlyError.code}]`
+        const noticeIndex = state.parts.length
         state.parts.push({
           type: "notice",
           level: errorClass === "canceled" ? "info" : "error",
@@ -1618,6 +1716,7 @@ export const createRuntimeEngine = ({
           ...(noticeCode === "run_failed" ? { failure } : {}),
           text: errorClass === "canceled" ? "Cancelado por você" : `${errorClass}: ${friendlyMessage}`,
         })
+        state.dirtyParts.add(noticeIndex)
         publishMessage({ store, state, run, status: statusForError(errorClass) === "canceled" ? "canceled" : "failed" })
         const carryover = state.turnStarted
           ? `[touri: your previous turn ended with ${errorClass}. Partial output: "${bounded({ value: state.text, max: 1_500 })}"]`
@@ -1904,7 +2003,7 @@ export const createRuntimeEngine = ({
 
   const drain = async (): Promise<void> => {
     // A recovered turn must not run alongside the previous provider process.
-    await startupCleanup
+    await ready
     while (!shuttingDown && ownsRuntime() && active.size < getMaxConcurrentRuns()) {
       const nextIndex = queued.findIndex((runId) => {
         const run = persistence.getRun(runId)
@@ -1946,6 +2045,8 @@ export const createRuntimeEngine = ({
     const thread = store?.getThread({ threadId })
     const bot = thread ? store?.getBot({ botId: thread.botId }) : null
     if (!thread || !bot) return { success: false, errorCode: "THREAD_NOT_FOUND", error: "Thread not found" }
+    const activeRequest = persistence.findActiveRunForRequest({ threadId, requestMessageId })
+    if (activeRequest) return { success: true, run: activeRequest }
     if (bot.paused || bot.machine === "cloud")
       return {
         success: false,
@@ -2055,7 +2156,10 @@ export const createRuntimeEngine = ({
     const state = getState(id)
     state.cancelRequested = true
     controllers.get(id)?.abort()
-    state.parts = tools.finish(run, state.parts, "cancelled_by_user", false)
+    finishParts({ run, state, reason: "cancelled_by_user" })
+    state.parts.forEach((part, index) => {
+      if (part.type === "text" || part.type === "reasoning") state.dirtyParts.add(index)
+    })
     const store = kernel.services.use("store.api")
     if (store) publishMessage({ store, state, run, status: "streaming" })
     approvalBridge.cancelRun(id)
@@ -2147,6 +2251,7 @@ export const createRuntimeEngine = ({
     pendingApprovals.delete(approvalId)
     const result = await pending.provider.answerApproval({ approvalId: pending.providerApprovalId, decision })
     if (!result.success) return result
+    notices.resolve({ requestId: approvalId, resolution })
     const state = getState(pending.runId)
     const approval = state.parts.find(
       (part): part is ApprovalPart => part.type === "approval" && part.approvalId === approvalId,
@@ -2158,17 +2263,13 @@ export const createRuntimeEngine = ({
     }
     const run = persistence.getRun(pending.runId)
     const store = run ? kernel.services.use("store.api") : null
-    if (run && store) {
-      publishMessage({ store, state, run, status: "streaming" })
-      await store.flushWritesAsync?.()
-    }
-    notices.resolve({ requestId: approvalId, resolution })
+    if (run && store) publishMessage({ store, state, run, status: "streaming" })
     return { success: true }
   }
 
   const approvalBridge = createApprovalBridge({
     kernel,
-    onCard: async (ctx, part) => {
+    onCard: (ctx, part) => {
       const store = kernel.services.use("store.api")
       const run = ctx.runId ? persistence.getRun(ctx.runId) : null
       if (!store || !run || run.botId !== ctx.botId || run.threadId !== ctx.threadId) return false
@@ -2184,7 +2285,6 @@ export const createRuntimeEngine = ({
       if (!thread) return false
       ensureReply({ run, state, store, parentId: run.requestMessageId ?? thread.activeLeafId ?? run.id })
       publishMessage({ store, state, run, status: "streaming" })
-      await store.flushWritesAsync?.()
       return true
     },
   })
@@ -2607,7 +2707,7 @@ export const createRuntimeEngine = ({
     }
     approvalBridge.dispose()
     shutdownPromise = (async () => {
-      await startupCleanup
+      await ready
       await Promise.all(Object.values(adapters).map((adapter) => adapter.shutdown()))
       await Promise.all(executions.values())
     })()
