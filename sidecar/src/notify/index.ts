@@ -33,51 +33,15 @@ export const init = async (
   const database = kernel.db as Database
   const reconcileHistory = async (): Promise<void> => {
     const storedProgress = getHistoryReconcileProgress(database)
-    const progress =
-      storedProgress ??
-      (() => {
-        const upper = (database.query("SELECT COALESCE(MAX(id),0) AS id FROM notifications").get() as { id: number }).id
-        return { stage: "notification_history_reconcile", cursor: 0, upper }
-      })()
+    const progress = storedProgress ?? getNewHistoryReconcileProgress(database)
     if (!storedProgress) saveHistoryReconcileProgress(database, progress)
-
-    const reconcileBatch = async (current: HistoryReconcileProgress): Promise<void> => {
-      if (current.cursor >= current.upper) return
-      const upper = Math.min(current.cursor + 50, current.upper)
-      const batch = () => {
-        const rows = database
-          .query(`SELECT n.id,
-            (EXISTS(SELECT 1 FROM threads t JOIN runs r ON r.thread_id=t.id
-              WHERE t.id=n.thread_id AND t.group_thread_id IS NULL AND t.bot_id=n.bot_id
-                AND r.status='succeeded' AND r.finished_at>n.created_at)
-             OR EXISTS(SELECT 1 FROM threads t JOIN runs r ON r.thread_id=t.id
-              WHERE t.group_thread_id=n.thread_id AND t.bot_id=n.bot_id
-                AND r.status='succeeded' AND r.finished_at>n.created_at)) AS expired
-            FROM notifications n
-            WHERE n.id>? AND n.id<=? AND n.resolved_at IS NULL
-              AND n.kind IN ('turn-failed','routine-failed','routine-deferred')
-            ORDER BY n.id LIMIT 50`)
-          .all(current.cursor, upper) as Array<{ id: number; expired: number }>
-        rows
-          .filter((item) => item.expired === 1)
-          .forEach((item) => {
-            notifier.finish({ id: item.id, resolution: "expired" })
-          })
-      }
-      if (runStage) runStage("notification_history_reconcile", batch)
-      else batch()
-      const next = {
-        stage: current.stage,
-        cursor: upper,
-        upper: current.upper,
-      }
-      saveHistoryReconcileProgress(database, next)
-      if (next.cursor < next.upper) {
-        await yieldHistoryBatch()
-        return reconcileBatch(next)
-      }
-    }
-    await reconcileBatch(progress)
+    await reconcileHistoryBatch({
+      database,
+      finishNotification: (id) => notifier.finish({ id, resolution: "expired" }),
+      progress,
+      runStage,
+      yieldHistoryBatch,
+    })
     deleteHistoryReconcileProgress(database)
   }
   await reconcileHistory()
@@ -101,8 +65,20 @@ export const init = async (
 }
 
 type HistoryReconcileProgress = { stage: "notification_history_reconcile"; cursor: number; upper: number }
+type HistoryReconcileBatchOptions = {
+  database: Database
+  finishNotification: (id: number) => void
+  progress: HistoryReconcileProgress
+  runStage?: PerformanceStageRunner
+  yieldHistoryBatch: () => Promise<void>
+}
 
 const HISTORY_RECONCILE_KEY = "notification.history-reconcile"
+
+const getNewHistoryReconcileProgress = (database: Database): HistoryReconcileProgress => {
+  const upper = (database.query("SELECT COALESCE(MAX(id),0) AS id FROM notifications").get() as { id: number }).id
+  return { stage: "notification_history_reconcile", cursor: 0, upper }
+}
 
 const getHistoryReconcileProgress = (database: Database): HistoryReconcileProgress | null => {
   const row = database.query("SELECT value_json FROM settings WHERE key = ?").get(HISTORY_RECONCILE_KEY) as {
@@ -142,4 +118,41 @@ const saveHistoryReconcileProgress = (database: Database, progress: HistoryRecon
 
 const deleteHistoryReconcileProgress = (database: Database): void => {
   database.query("DELETE FROM settings WHERE key = ?").run(HISTORY_RECONCILE_KEY)
+}
+
+const reconcileHistoryBatch = async ({
+  database,
+  finishNotification,
+  progress,
+  runStage,
+  yieldHistoryBatch,
+}: HistoryReconcileBatchOptions): Promise<void> => {
+  if (progress.cursor >= progress.upper) return
+
+  const upper = Math.min(progress.cursor + 50, progress.upper)
+  const batch = () => {
+    const rows = database
+      .query(`SELECT n.id,
+        (EXISTS(SELECT 1 FROM threads t JOIN runs r ON r.thread_id=t.id
+          WHERE t.id=n.thread_id AND t.group_thread_id IS NULL AND t.bot_id=n.bot_id
+            AND r.status='succeeded' AND r.finished_at>n.created_at)
+         OR EXISTS(SELECT 1 FROM threads t JOIN runs r ON r.thread_id=t.id
+          WHERE t.group_thread_id=n.thread_id AND t.bot_id=n.bot_id
+            AND r.status='succeeded' AND r.finished_at>n.created_at)) AS expired
+        FROM notifications n
+        WHERE n.id>? AND n.id<=? AND n.resolved_at IS NULL
+          AND n.kind IN ('turn-failed','routine-failed','routine-deferred')
+        ORDER BY n.id LIMIT 50`)
+      .all(progress.cursor, upper) as Array<{ id: number; expired: number }>
+    rows.filter((item) => item.expired === 1).forEach((item) => finishNotification(item.id))
+  }
+  if (runStage) runStage("notification_history_reconcile", batch)
+  else batch()
+
+  const next = { stage: progress.stage, cursor: upper, upper: progress.upper }
+  saveHistoryReconcileProgress(database, next)
+  if (next.cursor >= next.upper) return
+
+  await yieldHistoryBatch()
+  return reconcileHistoryBatch({ database, finishNotification, progress: next, runStage, yieldHistoryBatch })
 }
