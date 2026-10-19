@@ -130,7 +130,12 @@ const getTrackedRunner = () => {
       }
     }
   }
-  const stageTracker: PerformanceStageTracker = { run: runStage, snapshot: tracker.snapshot, reset: tracker.reset }
+  const stageTracker: PerformanceStageTracker = {
+    run: runStage,
+    snapshot: tracker.snapshot,
+    reset: tracker.reset,
+    getCurrentStage: tracker.getCurrentStage,
+  }
 
   return {
     runStage,
