@@ -67,7 +67,10 @@ test("schema 30 preserves run references and adds the group-context error class"
   expect(SCHEMA_VERSION).toBe(31)
   expect(database.query("SELECT value FROM schema_meta WHERE key = 'schema_version'").get()).toEqual({ value: "31" })
   expect(database.query("SELECT rowid FROM runs WHERE id = 'old-run'").get()).toEqual(oldRowid)
-  expect(database.query("SELECT id,error_class,error_message,provider_started_at FROM runs WHERE id = 'old-run'").get()).toEqual({
+  const oldRun = database
+    .query("SELECT id,error_class,error_message,provider_started_at FROM runs WHERE id = 'old-run'")
+    .get()
+  expect(oldRun).toEqual({
     id: "old-run",
     error_class: "unknown",
     error_message: "Falha anterior",
