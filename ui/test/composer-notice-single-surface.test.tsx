@@ -3,6 +3,7 @@ import type { Bot, MachineState, Message } from "@touri/contracts"
 import { afterEach, expect, it } from "vitest"
 import { createMockApi } from "../src/api/mock"
 import { ComposerNotice } from "../src/components/ComposerNotice"
+import { localizeNotice, t } from "../src/i18n"
 
 afterEach(cleanup)
 
@@ -41,13 +42,13 @@ const getFailedReply = (): Message => ({
   updatedAt: 1,
 })
 
-const renderNotice = (latestReply: Message | undefined) => {
+const renderNotice = (latestReply: Message | undefined, status: MachineState["status"] = "error") => {
   const bot = getBot()
   render(
     <ComposerNotice
       bot={bot}
       latestReply={latestReply}
-      machine={getMachine(bot)}
+      machine={{ ...getMachine(bot), status }}
       active={false}
       api={api}
       onRetry={async () => undefined}
@@ -55,11 +56,23 @@ const renderNotice = (latestReply: Message | undefined) => {
   )
 }
 
-it("does not repeat a failed run above the composer when the conversation already shows it", () => {
-  renderNotice(getFailedReply())
+it("does not add a computer card for a failed run while the computer is healthy", () => {
+  renderNotice(getFailedReply(), "running")
 
   expect(screen.queryByRole("complementary")).toBeNull()
-  expect(screen.queryByRole("button", { name: "Tentar novamente" })).toBeNull()
+})
+
+it("keeps one recovery action and the computer status when the computer is in error after a boot failure", () => {
+  const reply = getFailedReply()
+  renderNotice({
+    ...reply,
+    parts: [{ type: "notice", level: "error", code: "machine_boot", text: "A máquina não ficou pronta" }],
+  })
+
+  expect(screen.getAllByRole("button")).toHaveLength(1)
+  expect(screen.getByRole("button", { name: "Tentar novamente" })).toBeVisible()
+  expect(screen.getByRole("complementary")).toHaveTextContent(t("The computer needs attention"))
+  expect(screen.getByRole("complementary")).toHaveTextContent(localizeNotice("network error: ECONNRESET"))
 })
 
 it("still reports a computer problem when no run failed", () => {
