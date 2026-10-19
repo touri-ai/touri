@@ -7,6 +7,7 @@ const capture = process.env.DS_COMPONENTS_CAPTURE
 const openCenter = async (page: Page, width: number) => {
   await page.setViewportSize({ width, height: width < 500 ? 844 : 900 })
   await page.goto("/test/e2e/notification-center-harness.html")
+  if (width < 500) await page.getByRole("button", { name: "Abrir menu" }).click()
   await page.getByRole("button", { name: /^Notificações,/ }).click()
 
   return page.getByRole("region", { name: "Central de notificações" })

@@ -32,7 +32,7 @@ test("r4 approval center is above the chat and sends the decision to the full ca
     }),
   ).toBe(true)
   await page.screenshot({ path: `${evidence}/notifications.png` })
-  await center.getByRole("button", { name: "Negar" }).click()
+  await center.getByRole("button", { name: "Abrir e revisar" }).click()
   await expect(page.getByRole("button", { name: "Notificações", exact: true })).toBeVisible()
 })
 

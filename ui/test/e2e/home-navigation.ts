@@ -6,7 +6,7 @@ export const showBotPanel = async (page: Page): Promise<void> => {
 }
 
 export const openGlobalPage = async (page: Page, name: string): Promise<void> => {
-  await page.getByRole("button", { name: "Avançado", exact: true }).click()
+  await page.locator("button.sidebar-connect[aria-controls='sidebar-advanced-pages']").click()
   await page.getByRole("navigation", { name: "Opções avançadas" }).getByRole("button", { name, exact: true }).click()
 }
 

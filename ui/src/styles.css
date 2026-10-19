@@ -3374,11 +3374,22 @@ a {
   min-width: 0;
   flex: 1;
 }
+.notification-popover > header strong {
+  font-size: var(--type-17);
+  font-weight: var(--weight-semibold);
+}
+.notification-row[data-unread="true"] {
+  background: color-mix(in srgb, var(--accent-brand) 6%, transparent);
+}
 .notification-head {
   display: flex;
   align-items: center;
   gap: var(--space-8);
   font-size: var(--type-12);
+}
+.notification-head strong {
+  font-size: var(--type-13);
+  font-weight: var(--weight-semibold);
 }
 .notification-head time {
   margin-left: auto;
@@ -3389,6 +3400,10 @@ a {
   margin: var(--space-3) 0 0;
   overflow-wrap: anywhere;
   font-size: var(--type-13);
+}
+.notification-title {
+  font-size: var(--type-15);
+  font-weight: var(--weight-semibold);
 }
 .notification-body {
   max-height: 72px;

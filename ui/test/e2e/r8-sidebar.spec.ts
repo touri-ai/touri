@@ -50,7 +50,7 @@ for (const width of [1440, 1100]) {
         await center
           .locator(".notification-row")
           .filter({ hasText: "mobile-qa" })
-          .getByRole("button", { name: "Abrir", exact: true })
+          .getByRole("button", { name: /^(Ver conversa|Abrir e revisar)$/ })
           .click()
         await expect(page.getByRole("textbox", { name: "Mensagem para mobile-qa" })).toBeVisible()
         await expect(page.getByRole("button", { name: "Notificações, 1 precisa de atenção" })).toBeVisible()
