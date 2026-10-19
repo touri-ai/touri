@@ -1,11 +1,26 @@
 import { expect, test } from "@playwright/test"
 
+const modelLabel = "Escolher modelo: Modelos por API · modelo-ficticio-de-planejamento-com-contexto-extenso-2026-10"
+
+test("desktop composer shows the complete long model name", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto("/test/e2e/home-harness.html?scenario=long-composer")
+
+  const model = page.getByRole("button", { name: modelLabel })
+  const text = model.locator(".composer-model-name")
+
+  await expect(model).toBeVisible()
+  await expect(text).toHaveText("Modelos por API · modelo-ficticio-de-planejamento-com-contexto-extenso-2026-10")
+  expect(await text.evaluate((element) => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1)
+  expect((await model.boundingBox())?.width).toBeGreaterThan(200)
+})
+
 for (const theme of ["light", "dark"]) {
   test(`phone composer shows complete selected values in ${theme}`, async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 })
     await page.addInitScript((theme) => localStorage.setItem("touri.appearance.v1", theme), theme)
     await page.goto("/test/e2e/home-harness.html?scenario=long-composer")
-    const model = page.getByRole("button", { name: "Escolher modelo: Codex · atlas-planning-experimental-2026-10" })
+    const model = page.getByRole("button", { name: modelLabel })
     const project = page.getByRole("button", {
       name: "Projeto do bot: Projeto fictício de planejamento e acessibilidade",
     })
