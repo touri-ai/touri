@@ -13,7 +13,6 @@
     "./errors": "./src/errors.ts"
   },
   "dependencies": {
-    "@norbert_bodziony/bloub": "0.4.1",
     "ajv": "^8.17.1"
   }
 }

@@ -12,7 +12,7 @@ const notification: NotificationRecord = {
   botId: "bot-same",
   botName: "Clara",
   botColor: "#ee3344",
-  avatarShape: "cercle",
+  avatarShape: "classic-none",
   threadId: "thread-same",
   title: "Uma pergunta",
   body: "Posso continuar?",

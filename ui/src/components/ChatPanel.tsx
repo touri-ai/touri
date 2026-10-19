@@ -727,7 +727,7 @@ const MessageBubble = ({
             ) : (
               <span role="img" aria-label={t("Membro excluído: {name}", { name: message.sender.name })}>
                 <BotAvatar
-                  bot={{ id: message.sender.id, color: "#6b7280", avatarShape: "cercle" }}
+                  bot={{ id: message.sender.id, color: "#6b7280", avatarShape: "none-none" }}
                   size={22}
                   state="idle"
                   still

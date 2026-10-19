@@ -13,7 +13,7 @@ const getGroup = (): BotGroup => ({
   id: "group-qa",
   name: "Equipe QA",
   color: "#dc2626",
-  avatarShape: "cercle",
+  avatarShape: "classic-none",
   avatarSeed: "group-qa",
   memberIds: [],
   coordinatorBotId: null,
@@ -52,7 +52,7 @@ const createGroup = (api: ReturnType<typeof createMockApi>) =>
   api.request("POST /groups", {
     name: "Equipe QA",
     color: "#dc2626",
-    avatarShape: "cercle",
+    avatarShape: "classic-none",
     memberIds: ["bot-mark", "bot-onb"],
     coordinatorBotId: "bot-mark",
   })

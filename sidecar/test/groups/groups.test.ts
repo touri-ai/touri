@@ -62,7 +62,7 @@ const fixture = async (
   const input: GroupInput = {
     name: "Produto",
     color: "#dc2626",
-    avatarShape: "cercle",
+    avatarShape: "classic-none",
     memberIds: bots.slice(0, 3).map((b) => b.id),
     coordinatorBotId: null,
   }
@@ -230,7 +230,7 @@ test("routing uses coordinator, mentions (including quoted multiword names), the
     id: "g",
     name: "g",
     color: "#dc2626",
-    avatarShape: "cercle" as const,
+    avatarShape: "classic-none" as const,
     avatarSeed: "g",
     memberIds: ["a", "b"],
     coordinatorBotId: null,
@@ -245,6 +245,17 @@ test("routing uses coordinator, mentions (including quoted multiword names), the
   expect(routeGroupMessage(group, bots, "@PMx olá")).toEqual(["a", "b"])
   expect(routeGroupMessage(group, bots, '@"Dev Bot", revise')).toEqual(["b"])
   expect(routeGroupMessage({ ...group, coordinatorBotId: "a" }, bots, '@"Dev Bot"')).toEqual(["a"])
+})
+
+test("groups saved with a pre-bull silhouette keep it through validation and updates", async () => {
+  const f = await fixture()
+  const legacy = { ...f.input, avatarShape: "cercle" as const }
+
+  const saved = f.data.save(legacy, f.group)
+
+  expect(f.data.validate(legacy)).toBe(true)
+  expect(f.data.validate({ ...legacy, avatarShape: "goutte" })).toBe(false)
+  expect(saved.avatarShape).toBe("cercle")
 })
 
 test("groups have separate conversations, private member sessions, ordered replies and durable attribution", async () => {

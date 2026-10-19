@@ -23,7 +23,7 @@ test("all title bars drag through decorative children while navigation and heade
   await api.request("POST /groups", {
     name: "Equipe",
     color: "#dc2626",
-    avatarShape: "cercle",
+    avatarShape: "classic-none",
     memberIds: ["bot-mark", "bot-onb"],
     coordinatorBotId: null,
   })

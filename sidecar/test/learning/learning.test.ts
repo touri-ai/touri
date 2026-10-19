@@ -89,7 +89,7 @@ const groupThread = (f: Awaited<ReturnType<typeof fixture>>) => {
   const group = groups.save({
     name: "Grupo",
     color: "#dc2626",
-    avatarShape: "cercle",
+    avatarShape: "classic-none",
     memberIds: [f.bot.id],
     coordinatorBotId: null,
   })
