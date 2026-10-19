@@ -1,7 +1,7 @@
-import { mkdtempSync, realpathSync, rmSync } from "node:fs"
+import { chmod, mkdtemp, rm } from "node:fs/promises"
 import { join } from "node:path"
 import type { Kernel, StartTurnArgs } from "@touri/contracts"
-import { ensurePrivateDirectory } from "../kernel/files"
+import { ensurePrivateDirectoryAsync } from "../kernel/async-files"
 import { refreshHostFolderAccess } from "../kernel/folder-capability"
 
 export const withLocalTurnTemp = async <T>(
@@ -13,14 +13,15 @@ export const withLocalTurnTemp = async <T>(
   if (process.platform === "linux" || args.bot.anyFolderAccess || args.bot.folders?.length)
     await refreshHostFolderAccess()
   const directory = join(kernel.paths.runDir, "provider-tmp")
-  ensurePrivateDirectory({ root: kernel.paths.appData, path: directory })
-  const temporary = realpathSync(mkdtempSync(join(directory, "turn-")))
+  await ensurePrivateDirectoryAsync({ root: kernel.paths.appData, path: directory })
+  const temporary = await mkdtemp(join(directory, "turn-"))
+  await chmod(temporary, 0o700)
   try {
     return await run({
       ...args,
       env: { ...args.env, TMPDIR: temporary, TMP: temporary, TEMP: temporary, TMPPREFIX: join(temporary, "zsh") },
     })
   } finally {
-    rmSync(temporary, { recursive: true, force: true })
+    await rm(temporary, { recursive: true, force: true })
   }
 }

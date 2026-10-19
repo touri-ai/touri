@@ -15,9 +15,12 @@ import { init } from "../../src/notify"
 test("A03: CLI revocation closes event sockets and notification SSE", async () => {
   const root = mkdtempSync(join(tmpdir(), "touri-revoke-"))
   const filename = join(root, "auth.db")
-  const store = openAuthStore({ filename })
-  const cli = openAuthStore({ filename })
-  const claimed = store.claimPairingCode({ code: store.createPairingCode().code, deviceName: "browser" })
+  const store = await openAuthStore({ filename })
+  const cli = await openAuthStore({ filename })
+  const claimed = await store.claimPairingCode({
+    code: (await store.createPairingCode()).code,
+    deviceName: "browser",
+  })
   if (!claimed.success) throw new Error("pair failed")
   const gate = createWebGate({
     store,
@@ -102,7 +105,7 @@ test("A03: CLI revocation closes event sockets and notification SSE", async () =
     })
     for (let i = 0; i < 100 && !pending; i++) await Bun.sleep(5)
     expect(pending).toBe(true)
-    cli.revokeDevice(claimed.device.id)
+    await cli.revokeDevice(claimed.device.id)
     runtime.kernel.publish({ type: "import.progress", importId: "after-revoke", phase: "done", done: 1, total: 1 })
     await Bun.sleep(600)
     expect(socket.readyState).toBe(WebSocket.CLOSED)
@@ -118,8 +121,8 @@ test("A03: CLI revocation closes event sockets and notification SSE", async () =
     socket.close()
     presence.close()
     runtime.stop()
-    store.close()
-    cli.close()
+    await store.close()
+    await cli.close()
     rmSync(root, { recursive: true, force: true })
   }
 })

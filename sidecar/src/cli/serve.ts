@@ -45,7 +45,7 @@ const startServer = async (options: ServeOptions, stopStderr: () => Promise<void
   const paths = createAppPaths({ appData: options.dataDir })
   const lease = await acquireRuntimeLock(paths, { parentPid: null })
   ensurePrivateDirectory({ root: paths.appData, path: paths.runDir })
-  const store = openAuthStore({ filename: join(options.dataDir, authDbName) })
+  const store = await openAuthStore({ filename: join(options.dataDir, authDbName) })
   const secrets = createSecretStore({ dir: options.dataDir })
   const ui = resolveUiAssets({ uiDir: options.uiDir, fallbackDir: join(dirname(process.execPath), "ui") })
   const intercept = createWebGate({
@@ -63,7 +63,7 @@ const startServer = async (options: ServeOptions, stopStderr: () => Promise<void
   const port = runtime.handshake.port
   const exposed = options.tailscale ? await exposeOnTailscale({ localPort: port }) : null
   const url = exposed?.success ? exposed.url : null
-  writeServeInfo({
+  await writeServeInfo({
     dataDir: options.dataDir,
     info: {
       pid: process.pid,
@@ -99,9 +99,9 @@ const startServer = async (options: ServeOptions, stopStderr: () => Promise<void
     finish: async () => {
       runtime.emitHostNotification({ method: "app.willQuit", params: {} })
       await runtime.kernel.services.use("vm.shutdown")?.()
-      clearServeInfo(options.dataDir)
+      await clearServeInfo(options.dataDir)
       await runtime.stop()
-      store.close()
+      await store.close()
       lease.release()
       await stopStderr()
     },

@@ -89,14 +89,14 @@ test("unavailable Desktop is diagnosed without launching a daemon and preserves 
   ).toBe(0)
 })
 
-test("Windows private control pipes have unpredictable names and no filesystem socket path", () => {
-  const first = privateSocket("win32")
-  const second = privateSocket("win32")
+test("Windows private control pipes have unpredictable names and no filesystem socket path", async () => {
+  const first = await privateSocket("win32")
+  const second = await privateSocket("win32")
   try {
     expect(first.path).toMatch(/^\\\\\.\\pipe\\touri-channel-[a-f0-9]{64}$/)
     expect(first.path).not.toBe(second.path)
   } finally {
-    first.remove()
-    second.remove()
+    await first.remove()
+    await second.remove()
   }
 })

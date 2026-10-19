@@ -1680,7 +1680,7 @@ test("VM process detection forwards the guest port and publishes the localhost P
   const store = createProjectStore({ kernel: f.runtime.kernel })
   const projectPath = join(f.root, "project")
   mkdirSync(projectPath)
-  const created = store.createProject({
+  const created = await store.createProject({
     id: "project",
     name: "Guest app",
     path: projectPath,

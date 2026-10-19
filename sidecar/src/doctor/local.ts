@@ -29,7 +29,7 @@ export type LocalProbes = {
   freeBytes: (path: string) => number
   kernelPresent: () => boolean
   memory: () => { total: number; free: number }
-  prepareImage: (root: string) => string
+  prepareImage: (root: string) => string | Promise<string>
 }
 
 export const localProbes: LocalProbes = {

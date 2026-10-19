@@ -96,7 +96,7 @@ export const createPrivateForwarding = (provider: Pick<VmProvider, "spawn">) => 
         let mapping: VmPortForward
         if ([9876, 5900].includes(guestPort)) {
           if (hostPort !== undefined) throw new Error("Private control channel")
-          const socket = privateSocket()
+          const socket = await privateSocket()
           const server = createServer(relay)
           await new Promise<void>((resolve, reject) => {
             server.once("error", reject)
@@ -105,7 +105,7 @@ export const createPrivateForwarding = (provider: Pick<VmProvider, "spawn">) => 
           servers.set(guestPort, {
             close: () => {
               server.close()
-              socket.remove()
+              void socket.remove().catch(() => {})
             },
           })
           mapping = { guestPort, hostPort: 0, hostIp: "127.0.0.1", protocol: "tcp", url: `unix:${socket.path}` }

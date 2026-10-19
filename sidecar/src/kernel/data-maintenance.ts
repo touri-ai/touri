@@ -3,16 +3,16 @@ import { existsSync, statSync } from "node:fs"
 import { lstat, opendir } from "node:fs/promises"
 import { join } from "node:path"
 import type { Kernel, MessagePart, StorageMaintenanceStatus, StorageStats } from "@touri/contracts"
+import { removePrivateFileAsync } from "./async-files"
 import {
   AttachmentReferenceScanDeferred,
   type AttachmentReferenceScanDeferredReason,
   createAttachmentReferenceScan,
 } from "./attachment-reference-scan"
-import { removePrivateFile } from "./files"
 import { historyMigrationStatus } from "./history-backfill"
-import { externalizeMessageParts, OUTPUT_BLOB_ORIGIN } from "./output-blobs"
+import { externalizeMessagePartsAsync, OUTPUT_BLOB_ORIGIN } from "./output-blobs"
 import type { PerformanceStageRunner } from "./performance"
-import { createStorageUpgrade, maintainDatabasePages } from "./storage-upgrade"
+import { createStorageUpgrade } from "./storage-upgrade"
 import { compactTranscript } from "./transcript-storage"
 import { createWalCheckpointer } from "./wal-checkpointer"
 
@@ -84,7 +84,7 @@ const summarizeParts = (parts: MessagePart[]): MessagePart[] => {
 
 // Keyset pagination bounds both reads and writes. Only the committed cursor is
 // persisted, and projection writes do not create another copy in the event logs.
-export const compactMessageBatch = ({
+export const compactMessageBatch = async ({
   database,
   appData,
   cursor,
@@ -98,73 +98,101 @@ export const compactMessageBatch = ({
   total: number
   limit?: number
   now?: number
-}): { cursor: number; changed: boolean } =>
-  database
-    .transaction(() => {
-      const rows = database
-        .query(`SELECT m.rowid AS row_id, m.thread_id, m.id, m.run_id, m.updated_at,
-      m.status, EXISTS(SELECT 1 FROM runs r WHERE r.thread_id = m.thread_id
-        AND r.status IN ('queued','starting','running')) AS active
-    FROM messages m WHERE m.rowid > ? AND m.rowid <= ? ORDER BY m.rowid LIMIT ?`)
-        .all(cursor, total, limit) as Array<{
-        row_id: number
-        thread_id: string
-        id: string
-        run_id: string | null
-        updated_at: number
-        status: string
-        active: number
-      }>
-      const days = dataRetentionDays(database)
-      const started = performance.now()
-      let nextCursor = cursor
-      let changed = false
+}): Promise<{ cursor: number; changed: boolean }> => {
+  const rows = database
+    .query(`SELECT m.rowid AS row_id, m.thread_id, m.id, m.run_id, m.updated_at,
+    m.status, EXISTS(SELECT 1 FROM runs r WHERE r.thread_id = m.thread_id
+      AND r.status IN ('queued','starting','running')) AS active
+  FROM messages m WHERE m.rowid > ? AND m.rowid <= ? ORDER BY m.rowid LIMIT ?`)
+    .all(cursor, total, limit) as Array<{
+    row_id: number
+    thread_id: string
+    id: string
+    run_id: string | null
+    updated_at: number
+    status: string
+    active: number
+  }>
+  const days = dataRetentionDays(database)
+  const started = performance.now()
+  let nextCursor = cursor
+  let changed = false
+  const commitProjection = database.transaction(
+    (args: {
+      row: (typeof rows)[number]
+      original: { parts_json: string }
+      parts: MessagePart[]
+      json: string
+      expired: boolean
+    }) => {
+      const { row, original, parts, json, expired } = args
+      const current = database
+        .query(`SELECT m.parts_json, m.updated_at, m.status,
+          EXISTS(SELECT 1 FROM runs r WHERE r.thread_id = m.thread_id
+            AND r.status IN ('queued','starting','running')) AS active
+          FROM messages m WHERE m.thread_id = ? AND m.id = ?`)
+        .get(row.thread_id, row.id) as { parts_json: string; updated_at: number; status: string; active: number } | null
+      if (
+        !current ||
+        current.parts_json !== original.parts_json ||
+        current.updated_at !== row.updated_at ||
+        current.status !== row.status ||
+        current.status === "streaming" ||
+        current.active
+      )
+        return false
+      const shouldCompactTools = expired && row.run_id !== null
+      if (json === original.parts_json && !shouldCompactTools) return false
       database.exec("UPDATE transcript_maintenance SET projection_write = 1 WHERE id = 1")
-      for (const row of rows) {
-        if (nextCursor !== cursor && performance.now() - started >= 8) break
-        nextCursor = row.row_id
-        if (row.status === "streaming" || row.active) continue
-        // Fetch one body at a time: a legacy message can contain megabytes of tool
-        // output, so loading a whole batch before yielding defeats the time budget.
-        const body = database
-          .query("SELECT parts_json FROM messages WHERE thread_id = ? AND id = ?")
-          .get(row.thread_id, row.id) as { parts_json: string }
-        const parts = JSON.parse(body.parts_json) as MessagePart[]
-        const expired = days > 0 && row.updated_at < now - days * DAY
-        const next = expired ? summarizeParts(parts) : parts
-        const json = JSON.stringify(externalizeMessageParts({ database, appData, parts: next }))
-        if (json !== body.parts_json) {
-          database
-            .query("UPDATE messages SET parts_json = ? WHERE thread_id = ? AND id = ?")
-            .run(json, row.thread_id, row.id)
-          changed = true
-        }
-        // Recovery state follows the same retention policy after its run settles.
-        // Retained message/journal references still protect the shared body file.
-        if (expired && row.run_id) {
-          const terminal = database
-            .query("SELECT 1 FROM runs WHERE id = ? AND status IN ('succeeded','failed','canceled','interrupted')")
-            .get(row.run_id)
-          if (terminal)
-            for (const part of parts) {
-              if (!("callId" in part)) continue
-              const tool = database
-                .query("SELECT part_json FROM tool_resolutions WHERE run_id = ? AND call_id = ?")
-                .get(row.run_id, part.callId) as { part_json: string } | null
-              if (!tool) continue
-              const summary = JSON.stringify(summarizeParts([JSON.parse(tool.part_json) as MessagePart])[0])
-              if (summary === tool.part_json) continue
-              database
-                .query("UPDATE tool_resolutions SET part_json = ? WHERE run_id = ? AND call_id = ?")
-                .run(summary, row.run_id, part.callId)
-              changed = true
-            }
-        }
+      let wrote = false
+      if (json !== original.parts_json) {
+        database
+          .query("UPDATE messages SET parts_json = ? WHERE thread_id = ? AND id = ?")
+          .run(json, row.thread_id, row.id)
+        wrote = true
+      }
+      // Recovery state follows the same retention policy after its run settles.
+      // Retained message/journal references still protect the shared body file.
+      if (shouldCompactTools && row.run_id) {
+        const terminal = database
+          .query("SELECT 1 FROM runs WHERE id = ? AND status IN ('succeeded','failed','canceled','interrupted')")
+          .get(row.run_id)
+        if (terminal)
+          for (const part of parts) {
+            if (!("callId" in part)) continue
+            const tool = database
+              .query("SELECT part_json FROM tool_resolutions WHERE run_id = ? AND call_id = ?")
+              .get(row.run_id, part.callId) as { part_json: string } | null
+            if (!tool) continue
+            const summary = JSON.stringify(summarizeParts([JSON.parse(tool.part_json) as MessagePart])[0])
+            if (summary === tool.part_json) continue
+            database
+              .query("UPDATE tool_resolutions SET part_json = ? WHERE run_id = ? AND call_id = ?")
+              .run(summary, row.run_id, part.callId)
+            wrote = true
+          }
       }
       database.exec("UPDATE transcript_maintenance SET projection_write = 0 WHERE id = 1")
-      return { cursor: rows.length === 0 ? total : nextCursor, changed }
-    })
-    .immediate()
+      return wrote
+    },
+  )
+  for (const row of rows) {
+    if (nextCursor !== cursor && performance.now() - started >= 8) break
+    nextCursor = row.row_id
+    if (row.status === "streaming" || row.active) continue
+    const original = database
+      .query("SELECT parts_json FROM messages WHERE thread_id = ? AND id = ?")
+      .get(row.thread_id, row.id) as { parts_json: string } | null
+    if (!original) continue
+    const parts = JSON.parse(original.parts_json) as MessagePart[]
+    const expired = days > 0 && row.updated_at < now - days * DAY
+    const next = expired ? summarizeParts(parts) : parts
+    const externalized = await externalizeMessagePartsAsync({ database, appData, parts: next })
+    const json = JSON.stringify(externalized)
+    if (commitProjection({ row, original, parts, json, expired })) changed = true
+  }
+  return { cursor: rows.length === 0 ? total : nextCursor, changed }
+}
 
 const getDeletedAttachmentIds = (value: string): string[] | null => {
   try {
@@ -276,8 +304,8 @@ export const collectUnusedOutputBlobs = async (
       if (changes() !== observed) return defer(removed)
 
       for (const blob of candidates.filter((blob) => unreferenced.has(blob.id))) {
-        measure("storage_attachment_orphan_scan", () => {
-          removePrivateFile({ root: appData, path: blob.path })
+        await measure("storage_attachment_orphan_scan", async () => {
+          await removePrivateFileAsync({ root: appData, path: blob.path })
           database.query("DELETE FROM attachments WHERE id=?").run(blob.id)
         })
         removed += 1
@@ -318,10 +346,9 @@ export const collectUnusedOutputBlobs = async (
         const stat = file.isFile() && id ? await lstat(path) : null
         // lstat can yield to a writer; recheck metadata and the generation before deletion.
         if (changes() !== observed) return defer(removed)
-        measure("storage_attachment_orphan_scan", () => {
-          if (!stat?.isFile() || !id || stat.mtimeMs > now - DAY || attachmentExists.get(id)) return
-
-          removePrivateFile({ root: appData, path })
+        if (!stat?.isFile() || !id || stat.mtimeMs > now - DAY || attachmentExists.get(id)) continue
+        await measure("storage_attachment_orphan_scan", async () => {
+          await removePrivateFileAsync({ root: appData, path })
           removed += 1
         })
         if (scanned % 50 !== 0) continue
@@ -408,16 +435,6 @@ export const createStorageMaintenance = ({
       log({ level: "warn", module: "store", msg: "WAL checkpoint worker failed; SQLite auto-checkpointing restored" })
     },
   })
-  // WAL checkpoints run off-thread; keep page reclamation to a small batch here.
-  const pageTimer = setInterval(() => {
-    if (stopped || upgrade.snapshot()) return
-    try {
-      if (runStage) runStage("database_page_maintenance", () => maintainDatabasePages(database))
-      else maintainDatabasePages(database)
-    } catch {
-      onError()
-    }
-  }, 60_000)
   let manual = false
   let vacuum = false
   let collectionDeferrals = 0
@@ -482,18 +499,17 @@ export const createStorageMaintenance = ({
           completedAt: 0,
         }
       }
-      progress = database
-        .transaction(() => {
-          const next = runStage
-            ? runStage("storage_message_compaction_batch", () =>
-                compactMessageBatch({ database, appData, cursor: progress.cursor, total: progress.total }),
-              )
-            : compactMessageBatch({ database, appData, cursor: progress.cursor, total: progress.total })
-          const committed = { ...progress, cursor: next.cursor, changed: progress.changed || next.changed }
-          save(committed)
-          return committed
-        })
-        .immediate()
+      const next = runStage
+        ? await runStage("storage_message_compaction_batch", () =>
+            compactMessageBatch({ database, appData, cursor: progress.cursor, total: progress.total }),
+          )
+        : await compactMessageBatch({ database, appData, cursor: progress.cursor, total: progress.total })
+      if (stopped) return
+      progress = database.transaction(() => {
+        const committed = { ...progress, cursor: next.cursor, changed: progress.changed || next.changed }
+        save(committed)
+        return committed
+      })()
       status = { running: true, processed: progress.cursor, total: progress.total }
       if (progress.cursor < progress.total) {
         timer = schedule(step, 10)
@@ -546,14 +562,8 @@ export const createStorageMaintenance = ({
       }
       collectionDeferrals = 0
       if (vacuum) {
-        const vacuumDatabase = (): void => {
-          database.exec("PRAGMA wal_checkpoint(TRUNCATE)")
-          database.exec("PRAGMA auto_vacuum=INCREMENTAL")
-          database.exec("VACUUM")
-          database.exec("PRAGMA wal_checkpoint(TRUNCATE)")
-        }
-        if (runStage) runStage("storage_vacuum", vacuumDatabase)
-        else vacuumDatabase()
+        if (runStage) await runStage("storage_vacuum", () => walCheckpointer.vacuum())
+        else await walCheckpointer.vacuum()
       }
       if (progress.changed || manual) publishResync()
       manual = false
@@ -593,7 +603,6 @@ export const createStorageMaintenance = ({
       clearTimeout(retryTimer)
       clearInterval(dailyRetryTimer)
       upgrade.dispose()
-      clearInterval(pageTimer)
       clearTimeout(timer)
     },
   }

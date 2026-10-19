@@ -23,7 +23,10 @@ test("unrelated VM PATCH and capability approval preserve login while allowing e
       expect(response.status).toBe(200)
       expect(response.json).toMatchObject({ bot: { ...patch, vmProviderLogin: true, providerProfile: null } })
     }
-    const approval = f.kernel.services.use("bots.configureAccess")?.({ botId: bot.id, patch: { browserEnabled: true } })
+    const approval = await f.kernel.services.use("bots.configureAccess")?.({
+      botId: bot.id,
+      patch: { browserEnabled: true },
+    })
     expect(approval).toMatchObject({ success: true, bot: { browserEnabled: true, vmProviderLogin: true } })
     expect(stop).not.toHaveBeenCalled()
     expect((await f.request("PATCH /bots/:id", { vmProviderLogin: false }, { id: bot.id })).json).toMatchObject({

@@ -3,6 +3,7 @@ import { fsyncSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync,
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { atomicDownload } from "../../src/vm/atomic-download"
+import { createAtomicDownloadWriter } from "../../src/vm/atomic-download-core"
 
 for (const failure of [0, 1, 2, 3])
   test(`B05 atomic download publishes only complete synced data; sync failure ${failure}`, async () => {
@@ -11,15 +12,16 @@ for (const failure of [0, 1, 2, 3])
       const path = join(root, "snapshot")
       writeFileSync(path, "original")
       let calls = 0
-      const operation = atomicDownload(new Response("complete"), path, {
+      const writer = createAtomicDownloadWriter(path, {
         sync: (fd) => {
           calls++
           if (calls === failure) throw new Error("injected")
           fsyncSync(fd)
         },
       })
-      if (failure) await expect(operation).rejects.toThrow()
-      else await operation
+      writer.write(Buffer.from("complete"))
+      if (failure) expect(() => writer.finish()).toThrow()
+      else writer.finish()
       expect(readFileSync(path, "utf8")).toBe(failure ? "original" : "complete")
       expect(readdirSync(root)).toEqual(["snapshot"])
     } finally {
@@ -33,6 +35,18 @@ test("B05 snapshot download rejects linked destination and leaves its target int
     symlinkSync(join(root, "original"), join(root, "snapshot"))
     await expect(atomicDownload(new Response("new"), join(root, "snapshot"))).rejects.toThrow()
     expect(readFileSync(join(root, "original"), "utf8")).toBe("original")
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test("B05 snapshot bytes are streamed through the worker before publication", async () => {
+  const root = mkdtempSync(join(tmpdir(), "touri-snapshot-worker-"))
+  try {
+    const path = join(root, "snapshot")
+    await atomicDownload(new Response("complete"), path)
+    expect(readFileSync(path, "utf8")).toBe("complete")
+    expect(readdirSync(root)).toEqual(["snapshot"])
   } finally {
     rmSync(root, { recursive: true, force: true })
   }

@@ -1,4 +1,5 @@
-import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs"
+import { existsSync, readFileSync } from "node:fs"
+import { mkdir, rm } from "node:fs/promises"
 import { basename, dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import type { Kernel, Project } from "@touri/contracts"
@@ -278,7 +279,7 @@ export const cloneProject = async ({
   // git honors the process umask; pre-creating the folder keeps a private
   // repository unreadable by other macOS accounts even under a shared parent.
   try {
-    mkdirSync(destination, { mode: 0o700 })
+    await mkdir(destination, { mode: 0o700 })
   } catch {
     return { success: false, errorCode: "GIT_FAILED", error: "Não foi possível criar a pasta de destino." }
   }
@@ -290,11 +291,11 @@ export const cloneProject = async ({
     ...(signal ? { signal } : {}),
   })
   if (!result.success) {
-    rmSync(destination, { recursive: true, force: true })
+    await rm(destination, { recursive: true, force: true })
     return result
   }
   if (result.output.code !== 0) {
-    rmSync(destination, { recursive: true, force: true })
+    await rm(destination, { recursive: true, force: true })
     return {
       success: false,
       errorCode: "GIT_FAILED",

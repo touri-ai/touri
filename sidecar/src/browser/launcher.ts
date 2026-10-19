@@ -4,7 +4,7 @@ import { join } from "node:path"
 import type { Kernel } from "@touri/contracts"
 import { errorRegistry } from "@touri/contracts/errors"
 import { buildChildEnv } from "../kernel"
-import { ensurePrivateDirectory } from "../kernel/files"
+import { ensurePrivateDirectoryAsync } from "../kernel/async-files"
 import { poll } from "../kernel/policy"
 import { discardStream } from "../kernel/streams"
 import { connectCdpWebSocket, createCdpClient } from "./cdp"
@@ -327,7 +327,7 @@ export const createChromeLauncher = ({
     if (!executable) return null
     const env = await environment()
     const profile = join(kernel.paths.browserDir, "profiles", "default")
-    ensurePrivateDirectory({ root: kernel.paths.appData, path: profile })
+    await ensurePrivateDirectoryAsync({ root: kernel.paths.appData, path: profile })
     const args = deriveChromeLaunchArgs({ profile, env })
     const spawnedResult = kernel.spawnTree({ cmd: executable, args, cwd: kernel.paths.browserDir, env, extraFds: 2 })
     if (!spawnedResult.success) {

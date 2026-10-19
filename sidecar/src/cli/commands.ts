@@ -29,11 +29,11 @@ const fail = (message: string): number => {
 
 const withStore = async <T>(dataDir: string, use: (store: AuthStore) => Promise<T> | T): Promise<T> => {
   ensurePrivateDirectory({ root: dataDir })
-  const store = openAuthStore({ filename: join(dataDir, authDbName) })
+  const store = await openAuthStore({ filename: join(dataDir, authDbName) })
   try {
     return await use(store)
   } finally {
-    store.close()
+    await store.close()
   }
 }
 
@@ -73,8 +73,8 @@ const pairClient = async (command: Extract<CliCommand, { name: "pair" }>): Promi
   const url = command.url ?? info?.url ?? `http://127.0.0.1:${info?.port ?? command.port}`
   const code =
     command.code ??
-    (await withStore(command.dataDir, (store) => {
-      const created = store.createPairingCode()
+    (await withStore(command.dataDir, async (store) => {
+      const created = await store.createPairingCode()
       return created.code
     }))
   const claimed = await claimRemote({ url, code }).catch((error: unknown) =>
@@ -88,16 +88,16 @@ const pairClient = async (command: Extract<CliCommand, { name: "pair" }>): Promi
 
 const runPair = async (command: Extract<CliCommand, { name: "pair" }>): Promise<number> => {
   if (command.client) return pairClient(command)
-  return withStore(command.dataDir, (store) => {
-    printCode(store.createPairingCode())
+  return withStore(command.dataDir, async (store) => {
+    printCode(await store.createPairingCode())
     return 0
   })
 }
 
 const runDevices = async (command: Extract<CliCommand, { name: "devices" }>): Promise<number> =>
-  withStore(command.dataDir, (store) => {
+  withStore(command.dataDir, async (store) => {
     if (command.revokeId !== null) {
-      const revoked = store.revokeDevice(command.revokeId)
+      const revoked = await store.revokeDevice(command.revokeId)
       if (!revoked.success) return fail(revoked.error)
       out(`Revoked ${revoked.device.id} (${revoked.device.name})`)
       return 0

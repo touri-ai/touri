@@ -31,6 +31,7 @@ import { approvalOutcome } from "../approvals/outcome"
 import { delegatedBot } from "../groups/security"
 import { createGroupStore } from "../groups/store"
 import { buildChildEnv } from "../kernel"
+import { writePrivateFileAsync } from "../kernel/async-files"
 import { writeDatabaseAsync } from "../kernel/database-write"
 import { folderAccessUnavailable, folderGrantProblem, refreshHostFolderAccess } from "../kernel/folder-capability"
 import { hasPathHistory } from "../kernel/message-path"
@@ -77,7 +78,7 @@ import { sessionFingerprint, workingDirectory } from "./session"
 import { createToolResolutions } from "./tool-resolutions"
 import { retryTransient } from "./transient-retry"
 import { turnConclusion } from "./turn-conclusion"
-import { bounded, randomHexToken, writePrivateFile } from "./utils"
+import { bounded, randomHexToken } from "./utils"
 import { startVmTurn } from "./vm-turn"
 import { createWorkState, type WorkState } from "./work-state"
 
@@ -326,8 +327,20 @@ export const createRuntimeEngine = ({
   const persistence: RuntimePersistence = createRuntimePersistence({ database: kernel.db })
   const ownerPath = `${kernel.paths.runDir}/runtime-owner`
   const owner = randomHexToken()
-  writePrivateFile({ root: kernel.paths.appData, path: ownerPath, content: owner })
+  let ownerWriteState: "pending" | "ready" | "failed" = "pending"
+  const ownerWrite = writePrivateFileAsync({ root: kernel.paths.appData, path: ownerPath, content: owner }).then(
+    () => {
+      ownerWriteState = "ready"
+    },
+    (error) => {
+      ownerWriteState = "failed"
+      throw error
+    },
+  )
   const ownsRuntime = (): boolean => {
+    // The runtime lock is already held; allow startup requests while this durable marker is written off-thread.
+    if (ownerWriteState === "pending") return true
+    if (ownerWriteState === "failed") return false
     try {
       return readFileSync(ownerPath, "utf8") === owner
     } catch {
@@ -753,9 +766,11 @@ export const createRuntimeEngine = ({
     return result.success ? result.message.id : null
   }
 
-  const makeMcpToken = (threadId: Id): { command: string; args: Array<string>; env: Record<string, string> } => {
+  const makeMcpToken = async (
+    threadId: Id,
+  ): Promise<{ command: string; args: Array<string>; env: Record<string, string> }> => {
     const tokenPath = `${kernel.paths.runDir}/mcp-tokens/${threadId}`
-    writePrivateFile({ root: kernel.paths.appData, path: tokenPath, content: `${randomHexToken()}\n` })
+    await writePrivateFileAsync({ root: kernel.paths.appData, path: tokenPath, content: `${randomHexToken()}\n` })
     return {
       command: kernel.paths.sidecarBinary,
       args: ["mcp-stdio", "--thread", threadId],
@@ -1294,7 +1309,7 @@ export const createRuntimeEngine = ({
     const mcp =
       bot.machine === "vm"
         ? { command: "/usr/local/bin/node", args: ["/usr/local/lib/touri/mcp-stdio.cjs", thread.id], env: {} }
-        : makeMcpToken(thread.id)
+        : await makeMcpToken(thread.id)
     const mcpFingerprint = sessionFingerprint({
       bot: {
         ...bot,
@@ -1413,7 +1428,7 @@ export const createRuntimeEngine = ({
     const result = await (async (): Promise<Awaited<ReturnType<ProviderAdapter["startTurn"]>>> => {
       let prepared: Awaited<ReturnType<import("@touri/contracts").VmRuntime["prepareTurn"]>> | undefined
       let flushEvents: (() => void) | undefined
-      let releaseLogin: (() => void) | undefined
+      let releaseLogin: (() => Promise<void> | void) | undefined
       try {
         if (bot.machine !== "vm" && bot.machine !== "cloud") {
           const login = await prepareLocalProviderLogin(kernel, bot, controller.signal, env.HOME)
@@ -1550,7 +1565,7 @@ export const createRuntimeEngine = ({
         // A completion frame is advisory; drain trailing text before publishing a terminal reply.
         flushEvents?.()
         await prepared?.release()
-        releaseLogin?.()
+        await releaseLogin?.()
         if (deadline) clearTimeout(deadline)
       }
     })()
@@ -2773,7 +2788,7 @@ export const createRuntimeEngine = ({
   }
 
   // Both scans run `ps` asynchronously (#121); the record list is read before the first await.
-  const startupCleanup = Promise.all([reapProviderProcesses(kernel), reapOrphanShims(kernel.paths.runDir)])
+  const processCleanup = Promise.all([reapProviderProcesses(kernel), reapOrphanShims(kernel.paths.runDir)])
     .then(() => undefined)
     .catch((error) =>
       kernel.log({
@@ -2783,6 +2798,7 @@ export const createRuntimeEngine = ({
         data: { error: error instanceof Error ? error.message : String(error) },
       }),
     )
+  const startupCleanup = Promise.all([ownerWrite, processCleanup]).then(() => undefined)
   const recovered = new Set<Id>()
   const startupRecoveries: Array<Promise<void>> = []
   for (const run of persistence.listActiveRuns()) {

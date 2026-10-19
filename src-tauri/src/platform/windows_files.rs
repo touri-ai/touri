@@ -7,7 +7,7 @@ use std::fs::{self, File, OpenOptions};
 use std::io::{self, BufRead, Read, Seek, SeekFrom, Write};
 use std::os::windows::{
     ffi::OsStrExt,
-    fs::{MetadataExt, OpenOptionsExt},
+    fs::{symlink_file, MetadataExt, OpenOptionsExt},
     io::{AsRawHandle, FromRawHandle, OwnedHandle},
 };
 use std::path::{Component, Path, PathBuf};
@@ -296,6 +296,8 @@ struct Request {
     #[serde(default)]
     to: PathBuf,
     #[serde(default)]
+    target: PathBuf,
+    #[serde(default)]
     max_bytes: Option<usize>,
 }
 fn atomic(pins: &Pinned, target: &Path, bytes: &[u8]) -> io::Result<()> {
@@ -332,6 +334,48 @@ fn atomic(pins: &Pinned, target: &Path, bytes: &[u8]) -> io::Result<()> {
     }
     result
 }
+fn replace_symlink(pins: &Pinned, path: &Path, target: &Path) -> io::Result<()> {
+    if !target.is_absolute() {
+        return Err(denied());
+    }
+    let metadata = match fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return create_symlink(pins, path, target),
+        Err(error) => return Err(error),
+    };
+    let is_reparse_point = metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0;
+    if metadata.is_dir() || metadata.number_of_links() != 1 || (!metadata.is_file() && !is_reparse_point) {
+        return Err(denied());
+    }
+    create_symlink(pins, path, target)
+}
+
+fn create_symlink(pins: &Pinned, path: &Path, target: &Path) -> io::Result<()> {
+    let mut random = [0u8; 16];
+    getrandom::fill(&mut random).map_err(io::Error::other)?;
+    let temporary = pins.path.join(format!(
+        ".touri-{}.link",
+        STANDARD.encode(random).replace(['/', '+', '='], "x")
+    ));
+    let result = (|| {
+        symlink_file(target, &temporary)?;
+        if unsafe {
+            MoveFileExW(
+                wide(&temporary).as_ptr(),
+                wide(path).as_ptr(),
+                MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
+            )
+        } == 0
+        {
+            return Err(io::Error::last_os_error());
+        }
+        Ok(())
+    })();
+    if result.is_err() {
+        let _ = fs::remove_file(temporary);
+    }
+    result
+}
 fn operation(request: Request) -> io::Result<Value> {
     let mut pins = Pinned::root(&request.root, request.op != "read_bounded")?;
     if request.op == "ensure_dir" {
@@ -346,6 +390,7 @@ fn operation(request: Request) -> io::Result<Value> {
             let bytes = STANDARD.decode(request.content).map_err(|_| denied())?;
             atomic(&pins, &target, &bytes)?;
         }
+        "replace_symlink" => replace_symlink(&pins, &target, &request.target)?,
         "read" | "read_bounded" => {
             let Some(mut file) = pins.file(&target)? else {
                 return Ok(Value::Null);

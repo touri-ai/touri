@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto"
-import { mkdirSync } from "node:fs"
+import { mkdir } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { buildChildEnv } from "../kernel/shell-env"
@@ -94,10 +94,11 @@ export const createOciProvider = ({
       imageBuild ??= (async () => {
         progress(`Building ${BOT_IMAGE} with ${engine}…`)
         // The same source image, CLIs, display services and fail-closed nft policy as macOS.
-        const output = await run(
-          ["build", "--file", join(imageContext(dataDir), "Containerfile"), "--tag", BOT_IMAGE, imageContext(dataDir)],
-          { ...(signal ? { signal } : {}), timeoutMs: 1_800_000 },
-        )
+        const context = await imageContext(dataDir)
+        const output = await run(["build", "--file", join(context, "Containerfile"), "--tag", BOT_IMAGE, context], {
+          ...(signal ? { signal } : {}),
+          timeoutMs: 1_800_000,
+        })
         if (output.code !== 0) throw new Error(`Bot image build failed: ${output.stderr.slice(-1000)}`)
         progress("Bot image ready")
       })().finally(() => {
@@ -324,7 +325,7 @@ export const createOciProvider = ({
       if (!inspection.success) return inspection
       const workspace = inspection.volumes.find((v) => v.target === "/workspace")
       if (workspace) return { success: true, ...workspace }
-      mkdirSync(path, { recursive: true, mode: 0o700 })
+      await mkdir(path, { recursive: true, mode: 0o700 })
       return {
         success: false,
         errorCode: "INVALID_CONFIG",

@@ -127,7 +127,7 @@ const handlePair = async ({ args, options }: { args: WebInterceptArgs; options: 
   if (!body) return json(400, { errorCode: "INVALID_ARGS", error: "Envie um código de pareamento válido" })
   const code = typeof body?.code === "string" ? body.code : ""
   const name = typeof body?.name === "string" ? body.name : "Browser"
-  const claimed = options.store.claimPairingCode({ code, deviceName: name })
+  const claimed = await options.store.claimPairingCode({ code, deviceName: name })
   if (!claimed.success) {
     options.limiter.recordFailure(source)
     return json(401, { errorCode: claimed.errorCode, error: claimed.error })
@@ -148,11 +148,11 @@ const handleSecret = async (request: Request, secrets: SecretStore): Promise<Res
   const value = typeof body?.value === "string" ? body.value : ""
   if (account.length === 0 || account.length > 256 || value.length === 0)
     return json(400, { errorCode: "INVALID_ARGS", error: "account and value are required" })
-  secrets.set({ account, value })
+  await secrets.set({ account, value })
   return json(200, {})
 }
 
-const handleDevices = ({
+const handleDevices = async ({
   args,
   principal,
   store,
@@ -160,7 +160,7 @@ const handleDevices = ({
   args: WebInterceptArgs
   principal: Principal
   store: AuthStore
-}): Response => {
+}): Promise<Response> => {
   const { request, url } = args
   const rest = url.pathname.slice("/api/v1/devices".length).replace(/^\//, "")
   if (request.method === "GET" && rest === "")
@@ -169,7 +169,7 @@ const handleDevices = ({
       devices: store.listDevices().filter((device) => device.revokedAt === null),
     })
   if (request.method === "DELETE" && rest !== "") {
-    const revoked = store.revokeDevice(rest)
+    const revoked = await store.revokeDevice(rest)
     return revoked.success ? json(200, { ok: true }) : json(404, { errorCode: revoked.errorCode, error: revoked.error })
   }
   return json(405, { errorCode: "METHOD_NOT_ALLOWED", error: "Unsupported devices request" })
@@ -236,7 +236,7 @@ const apiGate = async ({
   if (args.url.pathname === "/api/v1/host/secret" && args.request.method === "POST")
     return handleSecret(args.request, options.secrets)
   if (args.url.pathname === "/api/v1/session/rotate" && args.request.method === "POST" && principal.kind === "device") {
-    const rotated = options.store.rotateDeviceToken(principal.token)
+    const rotated = await options.store.rotateDeviceToken(principal.token)
     if (!rotated) return json(401, { errorCode: "UNAUTHORIZED" })
     return json(
       200,

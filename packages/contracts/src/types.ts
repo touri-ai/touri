@@ -1348,7 +1348,7 @@ export type ServiceMap = {
   'bots.create': (input: { body: unknown; signal: AbortSignal; isCurrent?: () => boolean }) => Promise<Result<{ bot: Bot }>>
   'approvals.completeTeam': (input: { approvalId: Id; ctx: Pick<ToolContext, 'botId' | 'threadId' | 'runId'>; result: TeamCreationResult }) => Promise<void>
   'bots.rename': (input: { botId: Id; name: string }) => Result<{ bot: Bot }, 'NOT_FOUND' | 'INVALID_ARGS'>
-  'bots.configureAccess': (input: { botId: Id; patch: Partial<Pick<Bot, 'projectId' | 'folders' | 'browserEnabled' | 'browser' | 'computerUse'>> }) => Result<{ bot: Bot }, 'NOT_FOUND' | 'INVALID_ARGS' | 'MACHINE_PROJECT_CHANGE'>
+  'bots.configureAccess': (input: { botId: Id; patch: Partial<Pick<Bot, 'projectId' | 'folders' | 'browserEnabled' | 'browser' | 'computerUse'>> }) => Result<{ bot: Bot }, 'NOT_FOUND' | 'INVALID_ARGS' | 'MACHINE_PROJECT_CHANGE'> | Promise<Result<{ bot: Bot }, 'NOT_FOUND' | 'INVALID_ARGS' | 'MACHINE_PROJECT_CHANGE'>>
   'diagnostics.errors': () => Array<{ code: string; at: number }>
   'groups.runtime': {
     enqueue: (args: { threadId: Id; requestMessageId: Id; trigger: RunTrigger; routineRunId?: Id }) => Result<{ run: Run }, 'THREAD_NOT_FOUND' | 'BOT_PAUSED' | 'DELEGATION_LIMIT' | 'RUNTIME_DRAINING'>

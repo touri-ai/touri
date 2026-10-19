@@ -55,7 +55,7 @@ export type ProjectStore = {
     defaultBranch: string | null
     dataDir: AbsolutePath
     now: number
-  }) => ProjectResult<{ project: Project }>
+  }) => Promise<ProjectResult<{ project: Project }>>
   listSecrets: (args: { projectId: string | null }) => Array<SecretMeta>
   getSecret: (args: { projectId: string | null; name: string }) => SecretMeta | null
   upsertSecret: (args: {

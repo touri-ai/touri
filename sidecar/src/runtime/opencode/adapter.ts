@@ -5,6 +5,7 @@ import { startApiModelProxy } from "../../api-models/proxy"
 import { getApiModelEnv, getApiOpenCodeConfig, getApiRunError } from "../../api-models/runtime"
 import { getDelegation } from "../../groups/security"
 import { buildChildEnv } from "../../kernel"
+import { writePrivateFileAsync } from "../../kernel/async-files"
 import { spawnFolderProvider } from "../folder-access"
 import { loadTurnImages } from "../loadTurnImages"
 import { withLocalTurnTemp } from "../local-turn-temp"
@@ -12,7 +13,7 @@ import { mcpStartupError } from "../mcp-startup"
 import { applyProviderPrivacy, cliTelemetryOff } from "../privacy"
 import { type ChildProcess, readProviderStderr, startLineReader } from "../provider-io"
 import { stopProviderChildren, trackProviderProcess } from "../provider-processes"
-import { asRecord, canonicalJson, classifyProviderError, writePrivateFile } from "../utils"
+import { asRecord, canonicalJson, classifyProviderError } from "../utils"
 import {
   credentialAuth,
   fullAccess,
@@ -98,7 +99,7 @@ export const createOpenCodeAdapter = ({
       const configPath = `${root}/opencode.json`
       const write =
         args.execution?.writeFile ??
-        ((file: { path: string; content: string }) => writePrivateFile({ root: kernel.paths.appData, ...file }))
+        ((file: { path: string; content: string }) => writePrivateFileAsync({ root: kernel.paths.appData, ...file }))
       const apiProxy = apiModel
         ? await startApiModelProxy({
             model: apiModel,

@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite"
-import { chmodSync, mkdirSync, mkdtempSync, rmSync } from "node:fs"
+import { chmod, mkdir, mkdtemp, rm } from "node:fs/promises"
 import { homedir } from "node:os"
 import { delimiter, join } from "node:path"
 import { stripVTControlCharacters } from "node:util"
@@ -189,7 +189,7 @@ export const createProviderLoginFlow = ({
   const clean = (session: Session) => {
     clearTimeout(session.timer)
     session.onCodePrompt?.()
-    if (session.directory) rmSync(session.directory, { recursive: true, force: true })
+    if (session.directory) void rm(session.directory, { recursive: true, force: true }).catch(() => {})
     delete session.directory
     delete session.child
   }
@@ -198,7 +198,7 @@ export const createProviderLoginFlow = ({
     const { child, directory } = session
     if (!child) return
     void killProviderLoginPty(child).finally(() => {
-      if (directory) rmSync(directory, { recursive: true, force: true })
+      if (directory) void rm(directory, { recursive: true, force: true }).catch(() => {})
     })
   }
   const cancel = (target: Target, state: "cancelled" | "error" = "cancelled") => {
@@ -298,11 +298,11 @@ export const createProviderLoginFlow = ({
       try {
         const base = buildChildEnv({ base: await kernel.shellEnv() })
         if (session.view.state !== "waiting") return
-        const directory = mkdtempSync(join(kernel.paths.runDir, "provider-login-"))
-        chmodSync(directory, 0o700)
+        const directory = await mkdtemp(join(kernel.paths.runDir, "provider-login-"))
+        await chmod(directory, 0o700)
         session.directory = directory
         for (const name of [".codex", ".claude", ".local/share/opencode"])
-          mkdirSync(join(directory, name), { recursive: true, mode: 0o700 })
+          await mkdir(join(directory, name), { recursive: true, mode: 0o700 })
         const env: Record<string, string> = {
           ...base,
           HOME: directory,

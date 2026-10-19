@@ -81,6 +81,10 @@ int touri_stop_sync_recording(void) {
   atomic_store(&recording, 0);
   return atomic_load(&sync_count);
 }
+
+int touri_get_sync_count(void) {
+  return atomic_load(&sync_count);
+}
 `
 
 const benchmark = `import { Database } from "bun:sqlite";
@@ -94,6 +98,9 @@ if (!directory || !shimPath) throw new Error("Benchmark paths are missing");
 const library = dlopen(shimPath, {
   touri_start_sync_recording: { args: [], returns: "i32" },
   touri_stop_sync_recording: { args: [], returns: "i32" },
+  touri_set_sync_delay_ms: { args: ["i32"], returns: "i32" },
+  touri_set_sqlite_only: { args: ["i32"], returns: "i32" },
+  touri_get_sync_count: { args: [], returns: "i32" },
 });
 
 const run = (mode, synchronous) => {
@@ -112,7 +119,89 @@ const run = (mode, synchronous) => {
   return { mode, transactions: 32, syncCalls, elapsedMs: Math.round(elapsedMs) };
 };
 
-console.log(JSON.stringify({ full: run("full", 2), normal: run("normal", 1) }));
+const runAuthentication = async () => {
+  const { openAuthStore, lastSeenGranularityMs } = await import(process.env.TOURI_AUTH_STORE_MODULE);
+  const { createWebGate } = await import(process.env.TOURI_WEB_GATE_MODULE);
+  const { createRateLimiter } = await import(process.env.TOURI_RATE_LIMITER_MODULE);
+  const baseline = new Database(join(directory, "auth-main-thread.db"), { create: true });
+  baseline.exec(
+    "PRAGMA journal_mode = WAL; PRAGMA synchronous = FULL; PRAGMA wal_autocheckpoint = 0; CREATE TABLE devices (last_seen_at INTEGER NOT NULL)",
+  );
+  baseline.query("INSERT INTO devices (last_seen_at) VALUES (0)").run();
+  library.symbols.touri_set_sqlite_only(1);
+  library.symbols.touri_set_sync_delay_ms(200);
+  library.symbols.touri_start_sync_recording();
+  const baselineStartedAt = performance.now();
+  baseline.query("UPDATE devices SET last_seen_at = ?").run(1);
+  const baselineRequestElapsedMs = Math.round(performance.now() - baselineStartedAt);
+  const baselineSyncCalls = library.symbols.touri_stop_sync_recording();
+  baseline.close();
+  if (baselineSyncCalls === 0) throw new Error("The main-thread FULL write did not hit the delayed fsync");
+
+  const clock = { now: Date.now() };
+  const store = await openAuthStore({ filename: join(directory, "auth-worker.db"), now: () => clock.now });
+  const firstCode = await store.createPairingCode();
+  const firstDevice = await store.claimPairingCode({ code: firstCode.code, deviceName: "Synthetic browser" });
+  if (!firstDevice.success) throw new Error("Could not create the synthetic device");
+  const gate = createWebGate({
+    store,
+    limiter: createRateLimiter({ maxFailures: 3, windowMs: 60_000 }),
+    ui: { source: "embedded", get: () => null },
+    secrets: { keyOrigin: "env", get: () => null, set: () => {}, delete: () => {} },
+  });
+
+  library.symbols.touri_set_sqlite_only(1);
+  library.symbols.touri_set_sync_delay_ms(200);
+  library.symbols.touri_start_sync_recording();
+  clock.now += lastSeenGranularityMs + 1;
+  const requestStartedAt = performance.now();
+  const url = new URL("http://127.0.0.1/api/v1/session");
+  const request = new Request(url, {
+    headers: { host: url.host, authorization: "Bearer " + firstDevice.token, "x-touri-client": "benchmark" },
+  });
+  const response = await gate({ request, url, clientIp: "127.0.0.1" });
+  const requestElapsedMs = Math.round(performance.now() - requestStartedAt);
+  if (response?.status !== 200) throw new Error("The synthetic authenticated request was rejected");
+  const syncDeadline = performance.now() + 2_000;
+  while (library.symbols.touri_get_sync_count() === 0 && performance.now() < syncDeadline)
+    await new Promise((resolve) => setTimeout(resolve, 1));
+  if (library.symbols.touri_get_sync_count() === 0) throw new Error("The delayed last-seen fsync did not start");
+  const timerStartedAt = performance.now();
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  const eventLoopElapsedMs = Math.round(performance.now() - timerStartedAt);
+
+  const createBefore = library.symbols.touri_get_sync_count();
+  const secondCode = await store.createPairingCode();
+  const createSyncCalls = library.symbols.touri_get_sync_count() - createBefore;
+  const claimBefore = library.symbols.touri_get_sync_count();
+  const secondDevice = await store.claimPairingCode({ code: secondCode.code, deviceName: "Synthetic phone" });
+  const claimSyncCalls = library.symbols.touri_get_sync_count() - claimBefore;
+  if (!secondDevice.success) throw new Error("Could not durably claim the synthetic pairing code");
+  const revokeBefore = library.symbols.touri_get_sync_count();
+  const revoked = await store.revokeDevice(secondDevice.device.id);
+  const revokeSyncCalls = library.symbols.touri_get_sync_count() - revokeBefore;
+  if (!revoked.success) throw new Error("Could not durably revoke the synthetic device");
+  await store.close();
+  const reopened = await openAuthStore({ filename: join(directory, "auth-worker.db"), now: () => clock.now });
+  const revokedTokenRejected = reopened.verifyDeviceToken(secondDevice.token) === null;
+  const revokedDeviceListed = reopened.listDevices().some(
+    (device) => device.id === secondDevice.device.id && device.revokedAt !== null,
+  );
+  const spentCodesRejected =
+    !(await reopened.claimPairingCode({ code: secondCode.code, deviceName: "Replay" })).success &&
+    !(await reopened.claimPairingCode({ code: firstCode.code, deviceName: "Replay" })).success;
+  await reopened.close();
+
+  return {
+    baselineRequestElapsedMs,
+    requestElapsedMs,
+    eventLoopElapsedMs,
+    durableSyncCalls: { create: createSyncCalls, claim: claimSyncCalls, revoke: revokeSyncCalls },
+    durabilityVerified: revokedTokenRejected && revokedDeviceListed && spentCodesRejected,
+  };
+};
+
+console.log(JSON.stringify({ full: run("full", 2), normal: run("normal", 1), authentication: await runAuthentication() }));
 `
 
 test.skipIf(!canRunSyncBenchmark)(
@@ -133,6 +222,9 @@ test.skipIf(!canRunSyncBenchmark)(
     const [compilerExit, compilerError] = await Promise.all([compiler.exited, new Response(compiler.stderr).text()])
     if (compilerExit !== 0) throw new Error(`Could not compile the sync shim: ${compilerError}`)
 
+    const authStoreModule = new URL("../../src/cli/auth/store.ts", import.meta.url).href
+    const webGateModule = new URL("../../src/cli/web/gate.ts", import.meta.url).href
+    const rateLimiterModule = new URL("../../src/cli/auth/rateLimit.ts", import.meta.url).href
     const child = Bun.spawn({
       cmd: [process.execPath, "-e", benchmark],
       cwd: root,
@@ -143,6 +235,9 @@ test.skipIf(!canRunSyncBenchmark)(
         TMPDIR: root,
         TOURI_BENCH_DIR: root,
         TOURI_SYNC_SHIM: shimPath,
+        TOURI_AUTH_STORE_MODULE: authStoreModule,
+        TOURI_WEB_GATE_MODULE: webGateModule,
+        TOURI_RATE_LIMITER_MODULE: rateLimiterModule,
       },
       stdout: "pipe",
       stderr: "pipe",
@@ -157,13 +252,27 @@ test.skipIf(!canRunSyncBenchmark)(
     const measured = JSON.parse(output) as {
       full: { transactions: number; syncCalls: number; elapsedMs: number }
       normal: { transactions: number; syncCalls: number; elapsedMs: number }
+      authentication: {
+        baselineRequestElapsedMs: number
+        requestElapsedMs: number
+        eventLoopElapsedMs: number
+        durableSyncCalls: { create: number; claim: number; revoke: number }
+        durabilityVerified: boolean
+      }
     }
-    console.info(`sqlite-sync-benchmark ${JSON.stringify({ delayMsPerSync: 20, ...measured })}`)
+    console.info(`sqlite-sync-benchmark ${JSON.stringify({ delayMsPerSync: 200, ...measured })}`)
 
     expect(measured.full.syncCalls).toBeGreaterThanOrEqual(measured.full.transactions)
     expect(measured.normal.syncCalls).toBeLessThanOrEqual(1)
     expect(measured.normal.elapsedMs).toBeLessThan(250)
     expect(measured.normal.elapsedMs).toBeLessThan(measured.full.elapsedMs / 3)
+    expect(measured.authentication.baselineRequestElapsedMs).toBeGreaterThanOrEqual(150)
+    expect(measured.authentication.requestElapsedMs).toBeLessThan(50)
+    expect(measured.authentication.eventLoopElapsedMs).toBeLessThan(50)
+    expect(measured.authentication.durableSyncCalls.create).toBeGreaterThanOrEqual(1)
+    expect(measured.authentication.durableSyncCalls.claim).toBeGreaterThanOrEqual(1)
+    expect(measured.authentication.durableSyncCalls.revoke).toBeGreaterThanOrEqual(1)
+    expect(measured.authentication.durabilityVerified).toBe(true)
   },
   15_000,
 )

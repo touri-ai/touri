@@ -3,7 +3,6 @@ import { homedir } from "node:os"
 import { dirname, join, resolve } from "node:path"
 import type { Kernel, StartTurnArgs } from "@touri/contracts"
 import { canonicalPath, withinFolder } from "../kernel/bot-folders"
-import { ensurePrivateDirectory } from "../kernel/files"
 import { linuxProtectedFolders, linuxSandboxBase, specificFoldersRequired } from "../kernel/folder-capability"
 import { resolveMcpSocketPath } from "../kernel/paths"
 import { linuxRuntimeEnvironment } from "../platform/linux-environment"
@@ -134,7 +133,6 @@ export const linuxFolderSandbox = (
   // Re-resolve grants immediately before binding; a changed realpath fails closed.
   const folders = turnFolders(args)
   const claudeHome = join(args.bot.homeDir, ".touri-claude")
-  if (args.bot.provider === "claude") ensurePrivateDirectory({ root: args.bot.homeDir, path: claudeHome })
   const hostCodex = join(canonicalPath(home), ".codex")
   const hostCodexAuth = canonicalPath(join(hostCodex, "auth.json"))
   const codexAuth = args.bot.provider === "codex" && env.CODEX_HOME ? join(env.CODEX_HOME, "auth.json") : undefined

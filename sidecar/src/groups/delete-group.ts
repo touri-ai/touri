@@ -1,8 +1,8 @@
 import type { Database } from "bun:sqlite"
 import { join, relative } from "node:path"
 import type { Kernel, RouteModule } from "@touri/contracts"
+import { removePrivateFileAsync } from "../kernel/async-files"
 import { collectUnusedOutputBlobs } from "../kernel/data-maintenance"
-import { removePrivateFile } from "../kernel/files"
 import { attachmentReferences } from "../kernel/output-blobs"
 import { purgeReplayRows } from "../kernel/transcript-storage"
 import { createGroupStore } from "./store"
@@ -31,7 +31,7 @@ export const deleteGroupRoute = (kernel: Kernel): RouteModule["routes"][number] 
     await Promise.all(threads.map(({ id: threadId }) => store?.flushWritesAsync?.({ threadId })))
     const replay = getGroupReplayRows(database, groupId)
     const attachments = getGroupAttachments(database, groupId, replay)
-    removeGroupFiles(kernel, database, groupId)
+    await removeGroupFiles(kernel, database, groupId)
     database
       .transaction(() => {
         database
@@ -81,34 +81,32 @@ const getGroupAttachments = (
   return attachments
 }
 
-const removeGroupFiles = (kernel: Kernel, database: Database, groupId: string): void => {
+const removeGroupFiles = async (kernel: Kernel, database: Database, groupId: string): Promise<void> => {
   const threads = database.query(groupThreads).all(groupId) as Array<{ id: string }>
   const suffixes = ["mcp.json", "settings.json", "system.md"]
-  threads.forEach((thread) => {
-    suffixes.forEach((suffix) => {
-      removePrivateFile({
+  for (const thread of threads)
+    for (const suffix of suffixes)
+      await removePrivateFileAsync({
         root: kernel.paths.appData,
         path: join(kernel.paths.runDir, "claude", `${thread.id}.${suffix}`),
       })
-    })
-  })
   const sessions = database
     .query(
       `SELECT DISTINCT rollout_path FROM provider_sessions WHERE thread_id IN (${groupThreads}) AND rollout_path IS NOT NULL`,
     )
     .all(groupId) as Array<{ rollout_path: string }>
-  sessions.forEach((session) => {
+  for (const session of sessions) {
     const suffix = relative(kernel.paths.sessionsDir, session.rollout_path)
-    if (!suffix || suffix.startsWith("..") || suffix.startsWith("/")) return
+    if (!suffix || suffix.startsWith("..") || suffix.startsWith("/")) continue
     if (
       database
         .query(`SELECT 1 FROM provider_sessions WHERE rollout_path = ? AND thread_id NOT IN (${groupThreads})`)
         .get(session.rollout_path, groupId)
     )
-      return
+      continue
 
-    removePrivateFile({ root: kernel.paths.appData, path: session.rollout_path })
-  })
+    await removePrivateFileAsync({ root: kernel.paths.appData, path: session.rollout_path })
+  }
 }
 
 const deleteGroupHistory = (database: Database, groupId: string): void => {

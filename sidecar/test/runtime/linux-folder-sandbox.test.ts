@@ -50,6 +50,7 @@ const fixture = ({
     join(home, ".codex/sessions"),
     join(appData, "provider/other"),
     join(appData, "bots/other"),
+    join(workspace, ".touri-claude"),
     join(runDir, "turn-temp"),
   ])
     mkdirSync(path, { recursive: true })

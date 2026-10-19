@@ -34,9 +34,9 @@ export const readEntries = (homeDir: string, target: MemoryTarget): string[] => 
   }
 }
 
-export const writeEntries = (homeDir: string, target: MemoryTarget, entries: string[]): void => {
+export const writeEntries = async (homeDir: string, target: MemoryTarget, entries: string[]): Promise<void> => {
   const path = memoryFile(homeDir, target)
-  writeAtomically(path, entries.length ? `${renderEntries(entries)}\n` : "")
+  await writeAtomically(path, entries.length ? `${renderEntries(entries)}\n` : "")
 }
 
 export type MemoryResult =

@@ -1,107 +1,76 @@
-import { dlopen, read } from "bun:ffi"
-import { randomBytes } from "node:crypto"
-import { closeSync, constants, fchmodSync, fstatSync, fsyncSync, writeSync } from "node:fs"
-import { basename, dirname, resolve } from "node:path"
-import { openWorkspaceDirectory } from "../kernel/files"
-import { canonicalSystemPath, errnoSymbol, libcLibrary } from "../platform/posix"
+type DownloadMessage =
+  | { type: "ready" }
+  | { type?: undefined; requestId: number; error?: { name: string; message: string; code?: string } }
+type DownloadCommand = "start" | "chunk" | "finish" | "abort"
 
-const openNative = () =>
-  dlopen(libcLibrary, {
-    openat: { args: ["i32", "cstring", "i32", "u32"], returns: "i32" },
-    [errnoSymbol]: { args: [], returns: "ptr" },
-    linkat: { args: ["i32", "cstring", "i32", "cstring", "i32"], returns: "i32" },
-    renameat: { args: ["i32", "cstring", "i32", "cstring"], returns: "i32" },
-    unlinkat: { args: ["i32", "cstring", "i32"], returns: "i32" },
-  }).symbols
-let cachedNative: ReturnType<typeof openNative> | undefined
-const native = () => (cachedNative ??= openNative())
+const workerError = (error: { name: string; message: string; code?: string }): Error =>
+  Object.assign(new Error(error.message), { name: error.name, ...(error.code ? { code: error.code } : {}) })
 
-const errno = () => {
-  const pointer = native()[errnoSymbol]?.()
-  return pointer ? read.i32(pointer) : 0
-}
-const c = (value: string) => Buffer.from(`${value}\0`)
-
-/** Stream privately, then publish one fully downloaded and synced regular file. */
-export const atomicDownload = async (
-  response: Response,
-  path: string,
-  { sync = fsyncSync }: { sync?: typeof fsyncSync } = {},
-) => {
+/** Stream a downloaded snapshot through a worker so disk writes and fsync never block the server loop. */
+export const atomicDownload = async (response: Response, path: string): Promise<void> => {
   if (!response.ok || !response.body || path.includes("\0")) throw new Error("Snapshot inválido")
-  const target = canonicalSystemPath(resolve(path))
-  const directory = openWorkspaceDirectory({ root: "/", path: dirname(target).slice(1) })
-  const name = basename(target)
-  const temporary = `.touri-${randomBytes(16).toString("hex")}.download`
-  let fd: number | undefined
-  let published = false
-  let backup: string | undefined
-  const validate = () => {
-    const existing = native().openat(
-      directory,
-      c(name),
-      constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
-      0,
-    )
-    if (existing < 0) {
-      if (errno() === 2) return false
-      throw new Error("Destino de snapshot inválido")
+  const worker = new Worker(new URL("./atomic-download-worker.ts", import.meta.url), { smol: true })
+  const pending = new Map<number, { resolve: () => void; reject: (error: Error) => void }>()
+  let requestId = 0
+  let readyResolve: () => void = () => {}
+  let readyReject: (error: Error) => void = () => {}
+  const ready = new Promise<void>((resolve, reject) => {
+    readyResolve = resolve
+    readyReject = reject
+  })
+  const rejectPending = (error: Error): void => {
+    pending.forEach(({ reject }) => {
+      reject(error)
+    })
+    pending.clear()
+  }
+  worker.onmessage = ({ data }: MessageEvent<DownloadMessage>): void => {
+    if (data.type === "ready") {
+      readyResolve()
+      return
     }
-    try {
-      const stat = fstatSync(existing)
-      if (!stat.isFile() || stat.nlink !== 1) throw new Error("Destino de snapshot inválido")
-      return true
-    } finally {
-      closeSync(existing)
-    }
+    const request = pending.get(data.requestId)
+    if (!request) return
+    pending.delete(data.requestId)
+    if (data.error) request.reject(workerError(data.error))
+    else request.resolve()
+  }
+  worker.onerror = (event): void => {
+    event.preventDefault()
+    const error = new Error("Snapshot writer stopped unexpectedly")
+    readyReject(error)
+    rejectPending(error)
+  }
+  const request = (type: DownloadCommand, content?: Uint8Array): Promise<void> => {
+    const id = ++requestId
+    const result = new Promise<void>((resolve, reject) => pending.set(id, { resolve, reject }))
+    if (type === "start") worker.postMessage({ type, requestId: id, path })
+    else if (type === "chunk" && content) worker.postMessage({ type, requestId: id, content }, [content.buffer])
+    else worker.postMessage({ type, requestId: id })
+    return result
   }
   const reader = response.body.getReader()
+  let started = false
+  let finished = false
   try {
-    validate()
-    fd = native().openat(
-      directory,
-      c(temporary),
-      constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
-      0o600,
-    )
-    if (fd < 0) throw new Error("Não foi possível preparar o snapshot")
-    fchmodSync(fd, 0o600)
+    await ready
+    await request("start")
+    started = true
     while (true) {
       const next = await reader.read()
       if (next.done) break
-      for (let offset = 0; offset < next.value.length; ) {
-        const count = writeSync(fd, next.value, offset, next.value.length - offset)
-        if (count <= 0) throw new Error("Gravação incompleta do snapshot")
-        offset += count
-      }
+      const content = new Uint8Array(next.value.byteLength)
+      content.set(next.value)
+      await request("chunk", content)
     }
-    sync(fd)
-    const existed = validate()
-    sync(directory)
-    if (existed) {
-      backup = `.touri-${randomBytes(16).toString("hex")}.backup`
-      if (native().linkat(directory, c(name), directory, c(backup), 0) < 0)
-        throw new Error("Não foi possível preservar o snapshot anterior")
-    }
-    if (native().renameat(directory, c(temporary), directory, c(name)) < 0)
-      throw new Error("Não foi possível publicar o snapshot")
-    published = true
-    try {
-      sync(directory)
-    } catch (error) {
-      if (backup) {
-        if (native().renameat(directory, c(backup), directory, c(name)) < 0)
-          throw new Error("Falha ao restaurar snapshot anterior")
-        backup = undefined
-      } else native().unlinkat(directory, c(name), 0)
-      throw error
-    }
+    await request("finish")
+    finished = true
+  } catch (error) {
+    if (started && !finished) await request("abort").catch(() => {})
+    throw error
   } finally {
-    await reader.cancel().catch(() => {})
+    if (!finished) await reader.cancel().catch(() => {})
     reader.releaseLock()
-    if (fd !== undefined && fd >= 0) closeSync(fd)
-    if (!published) native().unlinkat(directory, c(temporary), 0)
-    if (backup) native().unlinkat(directory, c(backup), 0)
-    closeSync(directory)
+    worker.terminate()
   }
 }

@@ -199,7 +199,7 @@ export const createProjectRoutes = ({
           const git = await inspectGit({ kernel, projectPath, signal: deadline })
           if (deadline.aborted) return errorResponse("GIT_TIMEOUT", "O Git não respondeu no prazo.", 504)
           const projectId = kernel.newId()
-          const project = store.createProject({
+          const project = await store.createProject({
             id: projectId,
             name,
             path: projectPath,
