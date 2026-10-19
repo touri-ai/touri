@@ -36,6 +36,7 @@ import { createRouteRegistry } from "./routes"
 import { createServices } from "./services"
 import { buildChildEnv, createShellEnv } from "./shell-env"
 import { spawnTree } from "./spawn"
+import { createSlowStatementTracker } from "./sqlite-performance"
 import { createToolRegistry } from "./tool-registry"
 import { createSocketTickets, socketEndpoint } from "./ws-tickets"
 
@@ -174,7 +175,11 @@ export const createKernel = ({
 
   const redactor = createRedactor()
   const log = createLogger({ paths, redact: redactor.redact })
-  const database = openDatabase({ filename: paths.db })
+  const slowStatements = createSlowStatementTracker({
+    log,
+    getStage: () => stageTracker.getCurrentStage() ?? "unattributed",
+  })
+  const database = openDatabase({ filename: paths.db, slowStatements })
   const services = createServices()
   const tools = createToolRegistry()
   const recentErrors: Array<{ code: string; at: number }> = []
@@ -255,6 +260,7 @@ export const createKernel = ({
   const diagnostics = createPerformanceDiagnostics({
     log,
     stageTracker,
+    slowStatements,
     getContext: () => ({
       activeRuns: (
         database.query("SELECT count(*) AS count FROM runs WHERE status IN ('starting', 'running')").get() as {

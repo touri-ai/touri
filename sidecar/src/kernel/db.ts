@@ -33,6 +33,7 @@ import messageSearchSql from "./migrations/0027.sql" with { type: "text" }
 import groupDeletionSql from "./migrations/0028.sql" with { type: "text" }
 import computerGrantExpirySql from "./migrations/0029.sql" with { type: "text" }
 import { withSuspendedSchemaObjects } from "./schema-rebuild"
+import { instrumentMainConnection, type SlowStatementTracker } from "./sqlite-performance"
 import { applyUpgradeBaselines } from "./upgradeBaselines"
 
 export const SCHEMA_VERSION = 29
@@ -45,12 +46,19 @@ const reclaimRebuiltPages = (database: Database): void => {
   if (total > 0 && free / total > FREE_PAGE_RATIO_LIMIT) database.exec("VACUUM")
 }
 
-export const openDatabase = ({ filename }: { filename: string }): Database => {
+export const openDatabase = ({
+  filename,
+  slowStatements,
+}: {
+  filename: string
+  slowStatements?: SlowStatementTracker
+}): Database => {
   const databasePath = prepareDatabaseFile({ root: dirname(filename), path: filename })
-  const database = new Database(
+  const rawDatabase = new Database(
     databasePath,
     sqliteFlags.SQLITE_OPEN_READWRITE | sqliteFlags.SQLITE_OPEN_CREATE | sqliteFlags.SQLITE_OPEN_NOFOLLOW,
   )
+  const database = slowStatements ? instrumentMainConnection(rawDatabase, slowStatements) : rawDatabase
   // Before the first table is created, new stores can opt into bounded page
   // reclamation without a full rewrite. Existing stores reuse their free pages.
   // WAL with synchronous=NORMAL (SQLite's recommended pairing) keeps commits atomic and the store
