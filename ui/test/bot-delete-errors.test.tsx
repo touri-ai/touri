@@ -3,6 +3,7 @@ import { afterEach, expect, test } from "vitest"
 import App from "../src/App"
 import { createMockApi } from "../src/api/mock"
 import { DeleteBotDialog } from "../src/components/DeleteBotDialog"
+import { setDocumentLanguage } from "../src/documentLanguage"
 import { ApiError } from "../src/errors"
 import { t } from "../src/i18n"
 import { getBotDeletionFixture } from "./fixtures/botDeletion"
@@ -10,7 +11,7 @@ import { showBotSettings } from "./workspaceNavigation"
 
 afterEach(() => {
   cleanup()
-  document.documentElement.lang = "pt-BR"
+  setDocumentLanguage("pt-BR", document.documentElement)
 })
 
 test("deletion failures explain the blocked step and keep the dialog available for retry", async () => {
@@ -48,7 +49,7 @@ test.each([
 ] as const)("$entry deletion keeps the $locale notice after bot.deleted precedes 409", async ({ entry, locale }) => {
   const fixture = getBotDeletionFixture()
   const originalIds = fixture.api.getState().bots.map((bot) => bot.id)
-  document.documentElement.lang = locale
+  setDocumentLanguage(locale, document.documentElement)
   render(<App kernel={{ services: { api: fixture.api } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
   openDeletion(entry)
@@ -77,7 +78,7 @@ test.each([
 
   fireEvent.click(screen.getByRole("button", { name: "Dispensar aviso" }))
 
-  expect(screen.queryByText(message)).toBeNull()
+  await waitFor(() => expect(screen.queryByText(message)).toBeNull())
 })
 
 test.each(["pt-BR", "en"] as const)("the last bot's %s cleanup notice survives onboarding", async (locale) => {
@@ -89,7 +90,7 @@ test.each(["pt-BR", "en"] as const)("the last bot's %s cleanup notice survives o
       .map((bot) => mock.request("DELETE /bots/:id", { name: bot.name }, { id: bot.id })),
   )
   const fixture = getBotDeletionFixture("pending", mock)
-  document.documentElement.lang = locale
+  setDocumentLanguage(locale, document.documentElement)
   render(<App kernel={{ services: { api: fixture.api } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
   openDeletion("settings")
