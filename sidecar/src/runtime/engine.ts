@@ -2368,7 +2368,7 @@ export const createRuntimeEngine = ({
 
   const approvalBridge = createApprovalBridge({
     kernel,
-    onCard: (ctx, part) => {
+    onCard: async (ctx, part) => {
       const store = kernel.services.use("store.api")
       const run = ctx.runId ? persistence.getRun(ctx.runId) : null
       if (!store || !run || run.botId !== ctx.botId || run.threadId !== ctx.threadId) return false
@@ -2384,6 +2384,8 @@ export const createRuntimeEngine = ({
       if (!thread) return false
       ensureReply({ run, state, store, parentId: run.requestMessageId ?? thread.activeLeafId ?? run.id })
       publishMessage({ store, state, run, status: "streaming" })
+      if (state.replyMessageId)
+        await store.flushWritesAsync?.({ threadId: ctx.threadId, messageId: state.replyMessageId })
       return true
     },
   })
