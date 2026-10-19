@@ -126,6 +126,13 @@ export const createBotHomeWriter = ({
     admitBudgetWaiters()
   }
 
+  const cancelBudgetWaiter = (waiter: BudgetWaiter): void => {
+    budgetWaiters = budgetWaiters.filter((next) => next !== waiter)
+    waiter.signal.removeEventListener("abort", waiter.cancel)
+    waiter.reject(waiter.signal.reason)
+    admitBudgetWaiters()
+  }
+
   const reserveBudget = (bytes: number, signal: AbortSignal): Promise<void> | undefined => {
     if (budgetWaiters.length === 0 && canReserve(bytes)) {
       pendingBytes += bytes
@@ -138,12 +145,7 @@ export const createBotHomeWriter = ({
         signal,
         resolve,
         reject,
-        cancel: () => {
-          budgetWaiters = budgetWaiters.filter((next) => next !== waiter)
-          signal.removeEventListener("abort", waiter.cancel)
-          reject(signal.reason)
-          admitBudgetWaiters()
-        },
+        cancel: () => cancelBudgetWaiter(waiter),
       }
       budgetWaiters = [...budgetWaiters, waiter]
       signal.addEventListener("abort", waiter.cancel, { once: true })
@@ -162,10 +164,7 @@ export const createBotHomeWriter = ({
     const commit = options?.prepare?.().commit ?? options?.commit
     const isEdit = command.operation === "edit"
     try {
-      if (isEdit) {
-        await executeWithHelper({ operation: "reconcile", botId: command.botId }, signal)
-        await executeWithHelper({ operation: "snapshot", botId: command.botId }, signal)
-      }
+      if (isEdit) await reconcileAndSnapshot(command.botId, signal)
       await executeWithHelper(command, signal)
       signal.throwIfAborted()
       commit?.()
@@ -174,6 +173,11 @@ export const createBotHomeWriter = ({
       throw signal.aborted ? signal.reason : error
     }
     if (isEdit) await finishEdit("commit", command.botId, options?.onRollbackFailure)
+  }
+
+  const reconcileAndSnapshot = async (botId: string, signal: AbortSignal): Promise<void> => {
+    await executeWithHelper({ operation: "reconcile", botId }, signal)
+    await executeWithHelper({ operation: "snapshot", botId }, signal)
   }
 
   const run = async (
@@ -372,11 +376,7 @@ const executeBotHomeCommand = (root: string, command: BotHomeCommand, content?: 
     return
   }
   if (command.operation === "snapshot") {
-    if (readPrivateFile({ root, path: soul, maxBytes: 1 }) === null) {
-      atomicWriteFile({ root, path: backup, content: "" })
-      return
-    }
-    movePrivateFile({ root, from: soul, to: backup })
+    saveBotHomeSnapshot(root, soul, backup)
     return
   }
   if (command.operation === "rollback") {
@@ -387,8 +387,17 @@ const executeBotHomeCommand = (root: string, command: BotHomeCommand, content?: 
     removePrivateFile({ root, path: backup })
     return
   }
+  if (command.operation !== "write" && command.operation !== "edit") return
   if (command.operation === "write") reconcileBotHomeBackup(root, soul, backup)
-  if ("instructions" in command) atomicWriteFile({ root, path: soul, content: content ?? command.instructions })
+  atomicWriteFile({ root, path: soul, content: content ?? command.instructions })
+}
+
+const saveBotHomeSnapshot = (root: string, soul: string, backup: string): void => {
+  if (readPrivateFile({ root, path: soul, maxBytes: 1 }) !== null) {
+    movePrivateFile({ root, from: soul, to: backup })
+    return
+  }
+  atomicWriteFile({ root, path: backup, content: "" })
 }
 
 const reconcileBotHomeBackup = (root: string, soul: string, backup: string): void => {
