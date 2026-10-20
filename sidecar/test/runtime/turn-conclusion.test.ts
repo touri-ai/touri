@@ -5,7 +5,11 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { Message, MessagePart, ProviderAdapter, ProviderEvent, StartTurnArgs, UiEvent } from "@touri/contracts"
 import { createKernel } from "../../src/kernel"
-import { createPerformanceStageTracker, type PerformanceStageRunner } from "../../src/kernel/performance"
+import {
+  createPerformanceStageTracker,
+  type PerformanceStage,
+  type PerformanceStageRunner,
+} from "../../src/kernel/performance"
 import { createRedactor } from "../../src/kernel/redact"
 import { createRuntimeEngine } from "../../src/runtime/engine"
 import { turnConclusion } from "../../src/runtime/turn-conclusion"
@@ -24,7 +28,7 @@ afterEach(async () => {
 const fixture = async (
   script: (args: StartTurnArgs) => Promise<void>,
   requestText = "Crie notas.md com três ideias.",
-  cancelOnFinalization = false,
+  cancelAt?: PerformanceStage,
 ) => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "touri-conclusion-")))
   const serve = spyOn(Bun, "serve").mockReturnValue({
@@ -58,7 +62,7 @@ const fixture = async (
   const stages = createPerformanceStageTracker()
   const runStage: PerformanceStageRunner = (stage, action, input) => {
     const result = stages.run(stage, action, input)
-    if (stage === "runtime_part_finalization" && !didCancel) {
+    if (stage === cancelAt && !didCancel) {
       didCancel = true
       queueMicrotask(() => {
         if (queued.success) engine.cancel(queued.run.id)
@@ -69,7 +73,7 @@ const fixture = async (
   const engine = createRuntimeEngine({
     kernel: runtime.kernel,
     providerAdapters: { codex: adapter },
-    ...(cancelOnFinalization ? { runStage } : {}),
+    ...(cancelAt ? { runStage } : {}),
   })
   const store = runtime.kernel.services.use("store.api")
   if (!store) throw new Error("Store missing")
@@ -117,35 +121,38 @@ const fixture = async (
   }
 }
 
-test("cancellation during reply preparation wins over a successful provider completion", async () => {
-  const f = await fixture(
-    async ({ onEvent }) => {
-      onEvent({
-        type: "item",
-        part: {
-          type: "command",
-          callId: "shell",
-          command: "sample",
-          cwd: "/workspace",
-          exitCode: null,
-          outputTail: "partial",
-        },
-      })
-    },
-    "Conclua a tarefa.",
-    true,
-  )
-  cleanups.add(f.close)
+test.each(["runtime_part_finalization", "runtime_output_preparation"] as const)(
+  "cancellation during %s wins over a successful provider completion",
+  async (stage) => {
+    const f = await fixture(
+      async ({ onEvent }) => {
+        onEvent({
+          type: "item",
+          part: {
+            type: "command",
+            callId: "shell",
+            command: "sample",
+            cwd: "/workspace",
+            exitCode: null,
+            outputTail: "partial",
+          },
+        })
+      },
+      "Conclua a tarefa.",
+      stage,
+    )
+    cleanups.add(f.close)
 
-  const reply = await f.finish()
+    const reply = await f.finish()
 
-  expect(reply.status).toBe("canceled")
-  expect(reply.parts.find((part) => part.type === "command")).toMatchObject({
-    resolution: "cancelled_by_user",
-    outputTail: "partial",
-  })
-  expect(f.db.query("SELECT status FROM runs").all()).toEqual([{ status: "canceled" }])
-})
+    expect(reply.status).toBe("canceled")
+    expect(reply.parts.find((part) => part.type === "command")).toMatchObject({
+      resolution: "cancelled_by_user",
+      outputTail: "partial",
+    })
+    expect(f.db.query("SELECT status FROM runs").all()).toEqual([{ status: "canceled" }])
+  },
+)
 
 test.each([
   ["Crie notas.md com três ideias.", "Concluído. Arquivos alterados: notas.md."],

@@ -22,6 +22,7 @@ const STAGES = [
   "runtime_stream_flush",
   "runtime_terminal_message_update",
   "runtime_part_finalization",
+  "runtime_output_preparation",
   "runtime_text_materialization",
   "stream_batch",
   "stream_journal_write",

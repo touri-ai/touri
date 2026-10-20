@@ -771,7 +771,8 @@ export const createRuntimeEngine = ({
     store: StoreApi
     reason: "cancelled_by_user" | "failed" | "interrupted_by_restart" | "unknown"
   }): Promise<void> => {
-    if (!(kernel.db instanceof Database) || !store.updateMessageAsync) {
+    const database = kernel.db
+    if (!(database instanceof Database) || !store.updateMessageAsync) {
       finishParts({ run, state, reason, persist: false })
       return
     }
@@ -781,11 +782,12 @@ export const createRuntimeEngine = ({
       tools.finishAsync(run, initial, reason, false, runStage),
     )
     if (state.parts !== initial) return
-    state.parts = await externalizeMessagePartsAsync({
-      database: kernel.db,
-      appData: kernel.paths.appData,
-      parts,
-    })
+    const externalized = await measureStage("runtime_output_preparation", () =>
+      externalizeMessagePartsAsync({ database, appData: kernel.paths.appData, parts }),
+    )
+    if (state.parts !== initial) return
+
+    state.parts = externalized
     state.preparedFinish = measureStage("runtime_part_finalization", () =>
       tools.prepareFinish(run, state.parts, reason),
     )
