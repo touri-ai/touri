@@ -39,6 +39,21 @@ const read: ToolCallPart = {
   inputJson: '{"file_path":"/workspace/demo/README.md"}',
 }
 const unknownRead: ToolCallPart = { ...read, inputJson: "{}" }
+const getReadApproval = (tool: ToolCallPart): Message["parts"] => [
+  tool,
+  {
+    ...approval("pending", tool, "pending"),
+    detail: `Read: ${tool.inputJson}`,
+    scope: { source: "mcp", tool: "Read" },
+  },
+]
+const getMessageParts = (scene: string): Message["parts"] => {
+  if (scene === "thinking") return [{ type: "reasoning", text: "Vou conferir os arquivos do projeto." }]
+  if (scene === "unknown") return getReadApproval(unknownRead)
+  if (scene === "read") return getReadApproval(read)
+
+  return [approved, approval("approved", approved, "approved"), pending, approval("pending", pending, "pending")]
+}
 const scenario = new URLSearchParams(location.search).get("scene") ?? "bash"
 const conversation = new URLSearchParams(location.search).get("conversation") ?? "dm"
 const message: Message = {
@@ -50,28 +65,7 @@ const message: Message = {
   status: "streaming",
   runId: null,
   text: "",
-  parts:
-    scenario === "thinking"
-      ? [{ type: "reasoning", text: "Vou conferir os arquivos do projeto." }]
-      : scenario === "unknown"
-        ? [
-            unknownRead,
-            {
-              ...approval("pending", unknownRead, "pending"),
-              detail: `Read: ${unknownRead.inputJson}`,
-              scope: { source: "mcp", tool: "Read" },
-            },
-          ]
-        : scenario === "read"
-        ? [
-            read,
-            {
-              ...approval("pending", read, "pending"),
-              detail: `Read: ${read.inputJson}`,
-              scope: { source: "mcp", tool: "Read" },
-            },
-          ]
-        : [approved, approval("approved", approved, "approved"), pending, approval("pending", pending, "pending")],
+  parts: getMessageParts(scenario),
   sender: conversation === "channel" ? { name: t("QA channel bot"), id: "qa-channel-bot" } : null,
   source: "local",
   createdAt: timestamp,

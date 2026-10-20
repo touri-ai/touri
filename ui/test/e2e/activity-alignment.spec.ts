@@ -77,12 +77,11 @@ const checkPermissionActivity = async (
 for (const theme of ["dark", "light"])
   for (const conversation of conversations)
     for (const viewport of desktopViewports)
-      test(
-        `permission activity aligns in ${conversation}, ${theme}, ${viewport.width}px`,
-        async ({ page }, testInfo) => {
-          await checkPermissionActivity(page, conversation, theme, viewport, testInfo)
-        },
-      )
+      test(`permission activity aligns in ${conversation}, ${theme}, ${viewport.width}px`, async ({
+        page,
+      }, testInfo) => {
+        await checkPermissionActivity(page, conversation, theme, viewport, testInfo)
+      })
 
 test.describe("permission activity on a phone", () => {
   test.use({ viewport: { width: phoneViewport.width, height: phoneViewport.height }, isMobile: true, hasTouch: true })

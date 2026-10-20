@@ -1046,7 +1046,7 @@ const AppContent = ({ kernel }: AppProps) => {
           notifications={data.notifications}
           messages={data.activityMessages}
           onReview={reviewApproval}
-          activeThreadId={section === "bots" && screen === "chat" && !modal ? selectedThread?.id ?? null : null}
+          activeThreadId={section === "bots" && screen === "chat" && !modal ? (selectedThread?.id ?? null) : null}
         />
         <div className="app-grid">
           <SidebarDrawer
