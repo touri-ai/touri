@@ -502,17 +502,22 @@ export const Sidebar = (props: SidebarProps) => {
           <button
             type="button"
             className="sidebar-work-badge"
-            aria-label={t("View work summary", { running: runningWorkCount, queued: queuedWorkCount })}
             onClick={() => navigate(() => props.onAdvancedPage("work"))}
           >
             <span className="sidebar-status-dot state-running" aria-hidden="true" />
             <span className="sidebar-work-copy">
               {t("Working")} · {runningWorkCount}
-              {queuedWorkCount > 0 && <small>{t("Work queued count", { count: queuedWorkCount })}</small>}
+              {queuedWorkCount > 0 && (
+                <>
+                  {" "}
+                  <small>{t("Work queued count", { count: queuedWorkCount })}</small>
+                </>
+              )}
             </span>
             <span className="sidebar-work-action" aria-hidden="true">
               ›
             </span>
+            <span className="visually-hidden">{t("View work")}</span>
           </button>
         )
       )}
