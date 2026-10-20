@@ -101,6 +101,7 @@ export const createCapabilityTools = (
         if (!configure) return denied("A configuração do bot está indisponível.")
         const result = await configure({
           botId: bot.id,
+          ...(ctx.runId ? { runId: ctx.runId } : {}),
           patch:
             capability === "browser"
               ? { browserEnabled: true, browser: bot.machine === "vm" ? "machine" : "touri" }

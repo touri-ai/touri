@@ -142,3 +142,79 @@ test("oversized attachment content is rejected with the size limit", async () =>
     error: "Escolha um arquivo de até 15 MB.",
   })
 })
+
+test("indexing legacy attachment references yields while conversation history loads", async () => {
+  const f = await fixture()
+  const database = f.runtime.kernel.db as Database
+  const total = 2048
+  const insert =
+    database.query(`INSERT INTO messages(id,thread_id,role,kind,status,text,parts_json,created_at,updated_at)
+    VALUES (?,'t','user','text','complete','Synthetic history',?,1,1)`)
+  database.transaction(() => {
+    Array.from({ length: total }, (_, index) => index).forEach((index) => {
+      insert.run(
+        `legacy-${index}`,
+        JSON.stringify([{ type: "file", attachmentId: `file-${index}`, name: "test.txt", mime: "text/plain" }]),
+      )
+    })
+    database.exec("DELETE FROM attachment_message_refs")
+  })()
+  let interleaved = false
+  const startedAt = performance.now()
+  let previousSample = startedAt
+  let samples: Array<number> = []
+  const timer = setInterval(() => {
+    const sampledAt = performance.now()
+    samples = [...samples.slice(-511), Math.max(0, sampledAt - previousSample - 1)]
+    previousSample = sampledAt
+    const row = database.query("SELECT count(*) AS count FROM attachment_message_refs").get() as { count: number }
+    if (row.count > 0 && row.count < total) interleaved = true
+  }, 1)
+  cleanup.push(() => clearInterval(timer))
+
+  const response = await f.request("/threads/t/messages?all=true")
+  // The supported ES2022 target needs a fresh copy for this local probe's sort.
+  const sorted = samples.slice().sort((left, right) => left - right)
+  console.info(
+    JSON.stringify({
+      probe: "legacy-attachment-index",
+      messages: total,
+      intervalMs: 1,
+      windowMs: performance.now() - startedAt,
+      samples: sorted.length,
+      p99Ms: sorted[Math.max(0, Math.ceil(sorted.length * 0.99) - 1)] ?? 0,
+      maxMs: sorted.at(-1) ?? 0,
+    }),
+  )
+
+  expect(response.status).toBe(200)
+  expect(interleaved).toBe(true)
+  expect(database.query("SELECT count(*) AS count FROM attachment_message_refs").get()).toEqual({ count: total })
+})
+
+test("one message with many tool output files yields between reference batches", async () => {
+  const f = await fixture()
+  const database = f.runtime.kernel.db as Database
+  const total = 4096
+  const parts = Array.from({ length: total }, (_, index) => ({
+    type: "command",
+    outputAttachmentId: `output-${index}`,
+  }))
+  database
+    .query(`INSERT INTO messages(id,thread_id,role,kind,status,text,parts_json,created_at,updated_at)
+    VALUES ('large-output','t','assistant','text','complete','Synthetic output',?,1,1)`)
+    .run(JSON.stringify(parts))
+  database.exec("DELETE FROM attachment_message_refs")
+  let interleaved = false
+  const timer = setInterval(() => {
+    const row = database.query("SELECT count(*) AS count FROM attachment_message_refs").get() as { count: number }
+    if (row.count > 0 && row.count < total) interleaved = true
+  }, 1)
+  cleanup.push(() => clearInterval(timer))
+
+  const response = await f.request("/threads/t/messages?all=true")
+
+  expect(response.status).toBe(200)
+  expect(interleaved).toBe(true)
+  expect(database.query("SELECT count(*) AS count FROM attachment_message_refs").get()).toEqual({ count: total })
+})

@@ -45,7 +45,8 @@ import computerGrantExpirySql from "../../src/kernel/migrations/0029.sql" with {
 import groupCoordinationHistorySql from "../../src/kernel/migrations/0030.sql" with { type: "text" }
 import streamWorkerStateSql from "../../src/kernel/migrations/0031.sql" with { type: "text" }
 import teamBuilderSql from "../../src/kernel/migrations/0032.sql" with { type: "text" }
-import automaticConversationSql from "../../src/kernel/migrations/0033.sql" with { type: "text" }
+import workIdentitySql from "../../src/kernel/migrations/0033.sql" with { type: "text" }
+import automaticConversationSql from "../../src/kernel/migrations/0034.sql" with { type: "text" }
 import { TRANSCRIPT_RETENTION } from "../../src/kernel/transcript-storage"
 import { init as initStore } from "../../src/store"
 
@@ -282,6 +283,12 @@ test("interrupted batches resume idempotently and match the shipped synchronous 
     synchronous.exec(groupCoordinationHistorySql)
     synchronous.exec(streamWorkerStateSql)
     synchronous.exec(teamBuilderSql)
+    synchronous.exec(`
+      ALTER TABLE bots ADD COLUMN responsible_person_id TEXT;
+      ALTER TABLE threads ADD COLUMN owner_person_id TEXT;
+      ALTER TABLE attachments ADD COLUMN owner_person_id TEXT;
+    `)
+    synchronous.exec(workIdentitySql)
     synchronous.exec(automaticConversationSql)
     database = openDatabase({ filename })
     expect(database.query("SELECT type, name, sql FROM sqlite_master ORDER BY name").all()).toEqual(

@@ -26,7 +26,7 @@ test("schema 32 preserves per-run routine conversations and defaults other bots 
     database.close()
     database = openDatabase({ filename })
 
-    expect(SCHEMA_VERSION).toBe(33)
+    expect(SCHEMA_VERSION).toBe(34)
     expect(database.query("SELECT id,automatic_conversation_mode FROM bots ORDER BY id").all()).toEqual([
       { id: "main", automatic_conversation_mode: "main" },
       { id: "per-run", automatic_conversation_mode: "task" },
