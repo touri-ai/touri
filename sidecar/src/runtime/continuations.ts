@@ -6,7 +6,7 @@ import type { Id, RunErrorClass } from "@touri/contracts"
  * is linked to the turn it continues and uses a visible system marker as its request.
  */
 
-export type ContinuationReason = "app_restart" | "provider_crash" | "permission_granted"
+export type ContinuationReason = "app_restart" | "provider_crash" | "permission_granted" | "browser_takeover"
 
 /** At most this many interrupted-turn continuations per original turn. */
 export const MAX_AUTO_CONTINUATIONS = 2
@@ -23,12 +23,14 @@ export const continuationMarkers: Record<ContinuationReason, string> = {
   app_restart: "Retomado após reinício do touri",
   provider_crash: "Retomado após falha do provedor",
   permission_granted: "Retomado após aprovação de acesso",
+  browser_takeover: "Retomado após a devolução do navegador",
 }
 
 const reasonDetails: Record<ContinuationReason, string> = {
   app_restart: "touri restarted",
   provider_crash: "the provider process or the bot computer stopped unexpectedly",
   permission_granted: "approved access requires a new provider turn",
+  browser_takeover: "the person returned control of the browser",
 }
 
 /** Reads the continuation reason back from a marker's text; null for any other message. */
@@ -42,7 +44,9 @@ export const continuationPrompt = (reason: ContinuationReason): string =>
   [
     reason === "permission_granted"
       ? "[touri: the user approved access during the previous turn. The approved configuration is now applied."
-      : `[touri: your previous turn was cut off before it finished (${reasonDetails[reason]}).`,
+      : reason === "browser_takeover"
+        ? "[touri: the person returned control of the browser after a private handoff."
+        : `[touri: your previous turn was cut off before it finished (${reasonDetails[reason]}).`,
     "This is an automatic continuation of the same task, not a new request.",
     "Before repeating any action, check the current state (files, running processes, recorded work and tool results) and do not redo steps that already took effect.",
     "Then continue the user's original request from where it stopped.]",
@@ -50,6 +54,9 @@ export const continuationPrompt = (reason: ContinuationReason): string =>
       ? [
           "Use only the approved scope; do not request the same access again or ask the user to send a continuation message.",
         ]
+      : []),
+    ...(reason === "browser_takeover"
+      ? ["Check the current page and tool results, then continue the same request without repeating completed actions."]
       : []),
   ].join(" ")
 
@@ -77,7 +84,11 @@ type PointRow = { external_session_id: string; rollout_path: string | null; fing
 type LinkRow = { run_id: string; original_run_id: string; previous_run_id: string; reason: string; created_at: number }
 
 const toLink = (row: LinkRow | null): ContinuationLink | null =>
-  row && (row.reason === "app_restart" || row.reason === "provider_crash" || row.reason === "permission_granted")
+  row &&
+  (row.reason === "app_restart" ||
+    row.reason === "provider_crash" ||
+    row.reason === "permission_granted" ||
+    row.reason === "browser_takeover")
     ? {
         runId: row.run_id,
         originalRunId: row.original_run_id,

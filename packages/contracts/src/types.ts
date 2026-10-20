@@ -1448,6 +1448,7 @@ export type ServiceMap = {
   'runtime.settingsChanged': () => void
   'runtime.activeRun': (args: { threadId: Id }) => Run | null
   'runtime.continueAfterApproval': (ctx: Pick<ToolContext, 'botId' | 'threadId' | 'runId' | 'signal'>) => boolean
+  'runtime.resumeAfterBrowserTakeover': (args: { botId: Id; threadId: Id; runId: Id }) => boolean
   'runtime.cancelBotTurns': (args: { botId: Id }) => Promise<void>
   'runtime.cancelRun': (args: { runId: Id }) => boolean
   'runtime.shutdown': (options?: { appRestart?: boolean }) => Promise<void>

@@ -50,30 +50,23 @@ const result = (success: boolean): ToolResult =>
 
 const makeEngine = ({
   snapshot: page = snapshot,
-  waitForTakeover = false,
 }: {
   snapshot?: BrowserSnapshot
-  waitForTakeover?: boolean
 } = {}): {
   engine: BrowserEngine
   clicks: () => Array<BrowserTarget>
   takeovers: () => Array<{ tabId: string; botId: string; reason: string; reasonCode?: BrowserTakeoverReason }>
   presses: () => number
   secretSubmissions: () => number
+  types: () => number
   evaluations: () => Array<string>
-  waitForTakeoverRequest: () => Promise<void>
-  resumeTakeover: () => void
 } => {
   let clicks: Array<BrowserTarget> = []
   let takeovers: Array<{ tabId: string; botId: string; reason: string; reasonCode?: BrowserTakeoverReason }> = []
   let presses = 0
   let secretSubmissions = 0
+  let types = 0
   let evaluations: Array<string> = []
-  let notifyTakeoverRequest = () => {}
-  let finishTakeover: (() => void) | null = null
-  const takeoverRequested = new Promise<void>((resolve) => {
-    notifyTakeoverRequest = resolve
-  })
   const engine: BrowserEngine = {
     preview: async () => null,
     open: async () => result(true),
@@ -88,7 +81,10 @@ const makeEngine = ({
         ? { success: false, errorCode: "AMBIGUOUS_TARGET", error: "Two targets match." }
         : result(true)
     },
-    type: async () => result(true),
+    type: async () => {
+      types += 1
+      return result(true)
+    },
     press: async () => {
       presses += 1
       return result(true)
@@ -104,12 +100,11 @@ const makeEngine = ({
     },
     requestTakeover: async (input) => {
       takeovers = [...takeovers, input]
-      notifyTakeoverRequest()
-      if (waitForTakeover)
-        await new Promise<void>((resolve) => {
-          finishTakeover = resolve
-        })
-      return { success: true, content: [{ type: "text", text: "The person returned control." }] }
+      return {
+        success: true,
+        content: [{ type: "text", text: "Waiting for the person to return control of the browser." }],
+        structured: { status: "waiting_for_person" },
+      }
     },
     submitSecret: async () => {
       secretSubmissions += 1
@@ -140,9 +135,8 @@ const makeEngine = ({
     takeovers: () => takeovers,
     presses: () => presses,
     secretSubmissions: () => secretSubmissions,
+    types: () => types,
     evaluations: () => evaluations,
-    waitForTakeoverRequest: () => takeoverRequested,
-    resumeTakeover: () => finishTakeover?.(),
   }
 }
 
@@ -150,12 +144,10 @@ const makeFixture = async ({
   getApiKey,
   fetchDecision,
   pageSnapshot,
-  waitForTakeover,
 }: {
   getApiKey: (signal: AbortSignal) => Promise<string | null>
   fetchDecision: (input: string, init: RequestInit) => Promise<Response>
   pageSnapshot?: BrowserSnapshot
-  waitForTakeover?: boolean
 }) => {
   const root = mkdtempSync(join(tmpdir(), "touri-browser-decision-"))
   const runtime = createKernel({ appData: root })
@@ -167,7 +159,6 @@ const makeFixture = async ({
   }
   const fake = makeEngine({
     ...(pageSnapshot ? { snapshot: pageSnapshot } : {}),
-    ...(waitForTakeover === undefined ? {} : { waitForTakeover }),
   })
   await init(runtime.kernel, undefined, {
     engine: fake.engine,
@@ -193,18 +184,33 @@ const makeFixture = async ({
   return {
     context,
     handler: handlers.get("browser_click")?.handler,
+    typeHandler: handlers.get("browser_type")?.handler,
     pressHandler: handlers.get("browser_press")?.handler,
     secretHandler: handlers.get("browser_submit_secret")?.handler,
     evaluateHandler: handlers.get("browser_evaluate")?.handler,
     clicks: fake.clicks,
     presses: fake.presses,
     secretSubmissions: fake.secretSubmissions,
+    types: fake.types,
     evaluations: fake.evaluations,
     takeovers: fake.takeovers,
-    waitForTakeoverRequest: fake.waitForTakeoverRequest,
-    resumeTakeover: fake.resumeTakeover,
   }
 }
+
+test("typing into a stale plain search ref asks for a fresh snapshot without takeover", async () => {
+  const fixture = await makeFixture({
+    getApiKey: async () => null,
+    fetchDecision: async () => Response.json({}),
+  })
+  const response = await fixture.typeHandler?.({
+    ctx: fixture.context,
+    args: { tabId: snapshot.tabId, target: { kind: "ref", ref: "9.9" }, text: "Lisboa", submit: false },
+  })
+
+  expect(response).toMatchObject({ success: false, errorCode: "TARGET_CHANGED" })
+  expect(fixture.takeovers()).toEqual([])
+  expect(fixture.types()).toBe(0)
+})
 
 test("browser script tool limits reads and requests takeover for actions", async () => {
   expect(isSafeBrowserRead('document.querySelector("#results").textContent')).toBe(true)
@@ -346,24 +352,17 @@ test("missing keys keep the existing browser result and add a localized hint mar
   expect(JSON.stringify(response)).toContain("TOURI_BROWSER_DECISION_HINT|missing_key")
 })
 
-test("sensitive actions pause for the person before the browser action can run", async () => {
+test("sensitive actions return while waiting for the person and do not run", async () => {
   const fixture = await makeFixture({
     getApiKey: async () => null,
     fetchDecision: async () => Response.json({}),
-    waitForTakeover: true,
   })
-  const pending = fixture.handler?.({
+  const response = await fixture.handler?.({
     ctx: fixture.context,
     args: { tabId: snapshot.tabId, target: { kind: "role", role: "button", name: "Buy this ticket" } },
   })
 
-  await fixture.waitForTakeoverRequest()
-  let resolved = false
-  void pending?.then(() => {
-    resolved = true
-  })
-  await Bun.sleep(0)
-  expect(resolved).toBe(false)
+  expect(response).toMatchObject({ success: true, structured: { status: "waiting_for_person" } })
   expect(fixture.clicks()).toHaveLength(0)
   expect(fixture.takeovers()).toMatchObject([
     {
@@ -373,8 +372,6 @@ test("sensitive actions pause for the person before the browser action can run",
       reasonCode: "payment",
     },
   ])
-  fixture.resumeTakeover()
-  expect((await pending)?.success).toBe(true)
 })
 
 test("Enter on a form pauses the run until the person returns control", async () => {

@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test"
 import type { BrowserSnapshot } from "@touri/contracts"
 import {
+  canResumeAfterHumanTakeover,
   captureSafeBrowserPreview,
   sanitizeHumanTakeoverPreviewMetadata,
   sanitizeHumanTakeoverSnapshot,
@@ -114,6 +115,47 @@ test("takeover pages stay hidden after handback until the page is safe", async (
 
   expect(preview).toBeNull()
   expect(captures).toBe(0)
+})
+
+test("takeover privacy can lift only after bounded metadata identifies a safe page", () => {
+  expect(
+    canResumeAfterHumanTakeover({
+      url: "https://travel.example.test/results?query=fixture-secret",
+      title: "Results",
+      hasSensitiveEntry: false,
+    }),
+  ).toBe(true)
+  expect(
+    canResumeAfterHumanTakeover({
+      url: "https://travel.example.test/",
+      title: "Welcome",
+      hasSensitiveEntry: true,
+    }),
+  ).toBe(false)
+  expect(
+    canResumeAfterHumanTakeover({
+      url: "https://travel.example.test/login",
+      title: "Results",
+      hasSensitiveEntry: false,
+    }),
+  ).toBe(false)
+  expect(
+    canResumeAfterHumanTakeover({
+      url: "https://travel.example.test/results",
+      title: "Payment",
+      hasSensitiveEntry: false,
+    }),
+  ).toBe(false)
+  expect(
+    canResumeAfterHumanTakeover({ url: "data:text/html,private", title: "Results", hasSensitiveEntry: false }),
+  ).toBe(false)
+  expect(
+    canResumeAfterHumanTakeover({
+      url: `https://travel.example.test/${"x".repeat(9000)}`,
+      title: "Results",
+      hasSensitiveEntry: false,
+    }),
+  ).toBe(false)
 })
 
 test("safe pages can resume previews after handback", async () => {

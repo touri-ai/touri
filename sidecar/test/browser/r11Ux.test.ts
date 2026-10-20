@@ -298,7 +298,29 @@ realSuite("R11 browser UX against real Chrome", () => {
     expect(textOf(evaluated)).toMatch(/prazo|segundos|página/i)
   })
 
-  test("takeover request ends immediately when the run is cancelled and the tab is released", async () => {
+  test("private browser reads stay blocked on a login modal at a generic URL after handback", async () => {
+    const first = snapshotOf(await open("/"))
+    expect(first.title).toBe("touri fixture")
+    expect(await engine.holdTakeover({ tabId: first.tabId, reason: "fixture" })).toBe(true)
+    expect(await engine.releaseTakeover(first.tabId)).toBe(true)
+
+    const loginScreenshot = await engine.screenshot({ tabId: first.tabId, botId, fullPage: false, signal: signal() })
+    expect(loginScreenshot).toMatchObject({ success: false, errorCode: "SECRET_ENTRY_ACTIVE" })
+
+    const navigated = await engine.navigate({
+      tabId: first.tabId,
+      botId,
+      url: `${base}/basic`,
+      action: "goto",
+      timeoutMs: 15000,
+      signal: signal(),
+    })
+    expect(navigated.success).toBe(true)
+    const safeScreenshot = await engine.screenshot({ tabId: first.tabId, botId, fullPage: false, signal: signal() })
+    expect(safeScreenshot.success).toBe(true)
+  })
+
+  test("takeover returns a waiting result immediately and cancellation releases the tab", async () => {
     const first = snapshotOf(await open("/basic"))
     const abort = new AbortController()
     const pending = engine.requestTakeover({
@@ -308,12 +330,11 @@ realSuite("R11 browser UX against real Chrome", () => {
       timeoutMs: 600000,
       signal: abort.signal,
     })
-    await Bun.sleep(300)
-    const started = Date.now()
-    abort.abort()
-    const result = await Promise.race([pending, Bun.sleep(4000).then(() => "STILL_WAITING" as const)])
+    const result = await Promise.race([pending, Bun.sleep(1000).then(() => "STILL_WAITING" as const)])
     expect(result).not.toBe("STILL_WAITING")
-    expect(Date.now() - started).toBeLessThan(3000)
+    expect(result).toMatchObject({ success: true, structured: { status: "waiting_for_person" } })
+    await Bun.sleep(300)
+    abort.abort()
     const tab = engine.tabsForBot(botId).find((item) => item.tabId === first.tabId)
     expect(tab?.heldByUser).toBe(false)
   })
@@ -337,7 +358,8 @@ realSuite("R11 browser UX against real Chrome", () => {
       timeoutMs: 600,
       signal: signal(),
     })
-    expect(result.success).toBe(true)
+    expect(result).toMatchObject({ success: true, structured: { status: "waiting_for_person" } })
+    await Bun.sleep(700)
     expect(engine.tabsForBot(botId).find((item) => item.tabId === first.tabId)?.heldByUser).toBe(false)
   })
 })

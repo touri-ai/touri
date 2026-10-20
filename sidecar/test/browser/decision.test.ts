@@ -278,6 +278,22 @@ describe("browser decision candidate safety", () => {
     ).toBe(true)
     expect(
       requiresBrowserTakeover({
+        action: "type",
+        intent: "textbox Search",
+        pageUrl: "https://travel.example.test/search",
+        pointTarget: true,
+      }),
+    ).toBe(false)
+    expect(
+      requiresBrowserTakeover({
+        action: "type",
+        intent: "textbox Password",
+        pageUrl: "https://travel.example.test/search",
+        pointTarget: true,
+      }),
+    ).toBe(true)
+    expect(
+      requiresBrowserTakeover({
         action: "click",
         intent: "option Lisboa, Portugal",
         pageUrl: "https://travel.example.test/search",

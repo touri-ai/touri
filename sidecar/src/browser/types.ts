@@ -121,8 +121,13 @@ export type TabState = {
   failureCount: number
   queue: Promise<void>
   takeover: {
-    resolve: (() => void) | null
+    requestId: string | null
+    botId: Id | null
+    threadId: Id | null
+    runId: Id | null
     timer: ReturnType<typeof setTimeout> | null
+    signal?: AbortSignal
+    onAbort?: () => void
   } | null
   handbackNote: string | null
   lastSnapshot: BrowserSnapshot | null
@@ -234,6 +239,8 @@ export type BrowserEngine = {
     reasonCode?: BrowserTakeoverReason
     timeoutMs: number
     signal: AbortSignal
+    threadId?: Id
+    runId?: Id | null
   }) => Promise<ToolResult>
   submitSecret: (args: {
     tabId: Id

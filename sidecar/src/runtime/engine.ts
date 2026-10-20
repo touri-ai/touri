@@ -106,6 +106,7 @@ type RunState = {
   generation: number | null
   fingerprint: string | null
   continueAfterApproval: boolean
+  continueAfterBrowserTakeover: boolean
   outputTimer: ReturnType<typeof setTimeout> | null
   partPublishImmediate: ReturnType<typeof setImmediate> | null
   lastEventLivenessCheckAt: number
@@ -243,6 +244,7 @@ type RuntimeEngine = {
   listRuns: (threadId: Id, options?: { all?: boolean }) => Array<Run>
   activeRun: (args: { threadId: Id }) => Run | null
   continueAfterApproval: ServiceMap["runtime.continueAfterApproval"]
+  resumeAfterBrowserTakeover: ServiceMap["runtime.resumeAfterBrowserTakeover"]
   cancel: (id: Id) => Result<{ run: Run }, "NOT_FOUND">
   cancelRuns: (runIds: Id[]) => Promise<void>
   cancelBotTurns: (args: { botId: Id }) => Promise<void>
@@ -654,6 +656,7 @@ export const createRuntimeEngine = ({
       generation: null,
       fingerprint: null,
       continueAfterApproval: false,
+      continueAfterBrowserTakeover: false,
       outputTimer: null,
       partPublishImmediate: null,
       lastEventLivenessCheckAt: Number.NEGATIVE_INFINITY,
@@ -1359,6 +1362,7 @@ export const createRuntimeEngine = ({
     const originalRequest =
       originalRun &&
       (resumedFrom === "permission_granted" ||
+        resumedFrom === "browser_takeover" ||
         (resumedFrom === "app_restart" && originalRun.externalTurnId === null && previousRun?.externalTurnId === null))
         ? getActivePathMessage({ store, run: originalRun })
         : null
@@ -1750,8 +1754,11 @@ export const createRuntimeEngine = ({
           if (!errorClass) {
             const plan = state.continueAfterApproval
               ? planContinuation({ run, reason: "permission_granted", lastActivityAt: Date.now() })
-              : null
+              : state.continueAfterBrowserTakeover
+                ? planContinuation({ run, reason: "browser_takeover", lastActivityAt: Date.now() })
+                : null
             state.continueAfterApproval = false
+            if (plan?.reason === "browser_takeover") state.continueAfterBrowserTakeover = false
             const committed = await finishLiveRun(
               run,
               () => prepareFinalParts({ run, state, store, reason: "unknown" }),
@@ -1802,6 +1809,11 @@ export const createRuntimeEngine = ({
               },
               state.replyMessageId ?? undefined,
             )
+            if (committed && !plan && state.continueAfterBrowserTakeover) {
+              state.continueAfterBrowserTakeover = false
+              const browserPlan = planContinuation({ run, reason: "browser_takeover", lastActivityAt: Date.now() })
+              if (browserPlan) scheduleContinuation({ run, plan: browserPlan })
+            }
             if (!committed && state.cancelRequested && isLive(run))
               await failTurn({ run, state, store, thread, errorClass: "canceled", errorMessage: "Cancelado por você" })
           } else {
@@ -1986,18 +1998,23 @@ export const createRuntimeEngine = ({
     lastActivityAt: number
   }): ContinuationPlan | null => {
     if (shuttingDown || Date.now() - lastActivityAt > CONTINUATION_WINDOW_MS) return null
-    if (reason !== "permission_granted" && !resumeEnabled()) return null
+    if (reason !== "permission_granted" && reason !== "browser_takeover" && !resumeEnabled()) return null
     if (!run.requestMessageId || continuations.isGroupRun(run.id)) return null
     const originalRunId = continuations.link(run.id)?.originalRunId ?? run.id
     const interruptedContinuations =
       continuations.count({ originalRunId, reason: "app_restart" }) +
       continuations.count({ originalRunId, reason: "provider_crash" })
-    if (reason !== "permission_granted" && interruptedContinuations >= MAX_AUTO_CONTINUATIONS) return null
+    if (
+      reason !== "permission_granted" &&
+      reason !== "browser_takeover" &&
+      interruptedContinuations >= MAX_AUTO_CONTINUATIONS
+    )
+      return null
     if (reason === "provider_crash" && continuations.count({ originalRunId, reason }) >= MAX_CRASH_CONTINUATIONS)
       return null
     // Effects whose outcome is unknown wait for the user; the work notice already explains them.
     if (hasUncertainWork(run.id)) return null
-    if (reason !== "permission_granted") {
+    if (reason !== "permission_granted" && reason !== "browser_takeover") {
       const parts =
         kernel.services
           .use("store.api")
@@ -2010,7 +2027,13 @@ export const createRuntimeEngine = ({
       continuations.resumePoint(run.id) ??
       persistence.getActiveSession({ threadId: run.threadId, provider: run.provider })
     const bot = kernel.services.use("store.api")?.getBot({ botId: run.botId })
-    if ((!session && reason !== "permission_granted") || !bot || bot.paused || bot.machine === "cloud") return null
+    if (
+      (!session && reason !== "permission_granted" && reason !== "browser_takeover") ||
+      !bot ||
+      bot.paused ||
+      bot.machine === "cloud"
+    )
+      return null
     return routineAllowsContinuation(run) ? { reason, originalRunId } : null
   }
 
@@ -2137,14 +2160,14 @@ export const createRuntimeEngine = ({
         const ready = !shuttingDown && canStartContinuation(run, plan)
         if (!ready || !startContinuation({ run, plan })) abandonContinuation({ run, status: "failed", summary })
       },
-      plan.reason === "permission_granted" ? 0 : resumeBackoffMs,
+      plan.reason === "permission_granted" || plan.reason === "browser_takeover" ? 0 : resumeBackoffMs,
     )
     pendingContinuations.set(run.id, { timer, run, plan, summary })
   }
 
   const canStartContinuation = (run: Run, plan: ContinuationPlan): boolean =>
     ownsRuntime() &&
-    (plan.reason === "permission_granted" || resumeEnabled()) &&
+    (plan.reason === "permission_granted" || plan.reason === "browser_takeover" || resumeEnabled()) &&
     // A newer user turn supersedes a continuation, including during shutdown.
     persistence.listRuns(run.threadId)[0]?.id === run.id
 
@@ -2329,6 +2352,22 @@ export const createRuntimeEngine = ({
       return false
     getState(run.id).continueAfterApproval = true
     return true
+  }
+
+  const resumeAfterBrowserTakeover: RuntimeEngine["resumeAfterBrowserTakeover"] = ({ botId, threadId, runId }) => {
+    const run = persistence.getRun(runId)
+    if (!run || run.botId !== botId || run.threadId !== threadId || !run.requestMessageId) return false
+
+    if (active.get(threadId)?.id === runId && ["queued", "starting", "running"].includes(run.status)) {
+      const state = getState(runId)
+      if (state.cancelRequested || !isLive(run)) return false
+      state.continueAfterBrowserTakeover = true
+      return true
+    }
+    if (run.status !== "succeeded") return false
+
+    const plan = planContinuation({ run, reason: "browser_takeover", lastActivityAt: Date.now() })
+    return plan !== null && startContinuation({ run, plan })
   }
 
   const cancel = (id: Id): Result<{ run: Run }, "NOT_FOUND"> => {
@@ -3084,6 +3123,7 @@ export const createRuntimeEngine = ({
     getRetainedRunStateCount: () => states.size,
     activeRun,
     continueAfterApproval,
+    resumeAfterBrowserTakeover,
     getRunSnapshot,
     getWorkRuns,
     settingsChanged: () => {
