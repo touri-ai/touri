@@ -26,7 +26,7 @@ test("Home keeps advanced pages behind a single door and groups bots by their wo
   await page.goto("/test/e2e/home-harness.html")
   await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
   const sidebar = page.getByRole("navigation", { name: "Barra lateral" })
-  await expect(sidebar.locator(".bot-status-heading")).toHaveText(["Precisa de você", "Trabalhando", "Ociosos"])
+  await expect(sidebar.locator("#sidebar-mode-panel-bots .bot-status-heading")).toHaveCount(0)
   await expect(sidebar.locator('[data-bot-entry="bot-mark"] .bot-preview')).toHaveText("Aguardando você: sua resposta")
   await expect(sidebar.getByRole("button", { name: "Notificações, 1 precisa de atenção" })).toBeVisible()
   await expect(page.locator(".bot-panel")).toHaveCount(0)

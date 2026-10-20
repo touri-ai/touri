@@ -23,10 +23,10 @@ describe("Grupos", () => {
     const createGroup = within(groups).getByRole("button", { name: "Novo canal" })
     expect(createGroup).toBeVisible()
     expect(createGroup).toHaveTextContent("+")
-    expect(groups.querySelector(".group-sidebar-heading")).toHaveTextContent(/Canais\s*0/)
-    expect(
-      within(groups).getByText("Nenhum canal ainda. Crie um canal para trabalhar com bots e pessoas."),
-    ).toBeVisible()
+    expect(groups.querySelector(".group-sidebar-heading")).toHaveTextContent(/^Canais\s*\+$/)
+    expect(within(groups).getByText("Nenhum canal ainda")).toBeVisible()
+    expect(within(groups).getByText("Canais reúnem bots e pessoas em torno de um assunto.")).toBeVisible()
+    expect(within(groups).getByRole("button", { name: "Criar canal" })).toBeVisible()
     expect(within(groups).queryByText("Reúna seus bots em uma conversa.")).toBeNull()
 
     fireEvent.click(createGroup)
@@ -181,7 +181,8 @@ describe("Grupos", () => {
       memberIds: ["bot-onb"],
       coordinatorBotId: null,
     })
-    fireEvent.click(screen.getByRole("button", { name: "+ Nova conversa" }))
+    fireEvent.click(screen.getByRole("button", { name: "Ações do canal Produto" }))
+    fireEvent.click(screen.getByRole("menuitem", { name: "Nova conversa" }))
     await within(screen.getByRole("region", { name: "Canais" })).findByRole("button", {
       name: "Nova conversa",
     })

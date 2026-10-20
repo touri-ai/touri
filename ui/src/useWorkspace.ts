@@ -483,6 +483,10 @@ const lastActiveThread = (threads: Thread[], runs: Run[], botId: Id, rememberedI
   )
 }
 
+/** Re-selecting a bot of the same project keeps its loaded processes: no refetch follows an unchanged project id. */
+const getProcessesForProject = (current: WorkspaceData, projectId: Id | null): ProcessEntry[] =>
+  current.activeProjectId === projectId ? current.processes : []
+
 const getDraftThread = (botId: Id, groupId?: Id): Thread => {
   const now = Date.now()
   return {
@@ -1166,7 +1170,7 @@ export const useWorkspace = (api: UiApi, enabled = true, chatOpen = true): Works
           composerKey,
           selectedThreadId: draftThread?.id ?? null,
           activeProjectId: bot?.projectId ?? null,
-          processes: [],
+          processes: getProcessesForProject(current, bot?.projectId ?? null),
         }
       }
       return {
@@ -1176,7 +1180,7 @@ export const useWorkspace = (api: UiApi, enabled = true, chatOpen = true): Works
         composerKey: null,
         selectedThreadId: thread.id,
         activeProjectId: bot?.projectId ?? null,
-        processes: [],
+        processes: getProcessesForProject(current, bot?.projectId ?? null),
       }
     })
   }, [])

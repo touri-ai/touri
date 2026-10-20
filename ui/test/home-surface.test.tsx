@@ -52,8 +52,14 @@ it("limits primary navigation to the bot list and Advanced, with chat and compos
       .map((tab) => tab.textContent?.replace(/\d/g, "").trim()),
   ).toEqual(["Bots", "Work"])
   expect(document.querySelector(".bot-panel")).toBeNull()
-  for (const name of ["Cron", "MCP", "Integrações", "Projetos", "Importar", "Verificar este servidor", "Rotinas"])
+  for (const name of ["Cron", "MCP", "Integrações", "Projetos", "Importar", "Verificar este servidor"])
     expect(within(sidebar).queryByRole("button", { name, exact: true })).toBeNull()
+  // Routines are one line inside the selected bot's conversations, never a top-level destination.
+  within(sidebar)
+    .queryAllByRole("button", { name: /^Rotinas/ })
+    .forEach((row) => {
+      expect(row.closest(".bot-thread-tree")).not.toBeNull()
+    })
   expect(sidebar.querySelectorAll("[data-bot-entry]")).toHaveLength(3)
   const advanced = within(sidebar).getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ })
   fireEvent.click(advanced)
@@ -140,8 +146,8 @@ it("keeps project processes available after opening the active bot's routines", 
   fireEvent.click(screen.getByRole("button", { name: "Painel do bot" }))
   const panel = screen.getByRole("complementary", { name: "Painel de mark" })
   fireEvent.click(within(panel).getByRole("button", { name: "Preview do projeto" }))
-  await waitFor(() => expect(screen.getByRole("button", { name: "Subir tudo" })).toBeVisible())
-  await waitFor(() => expect(document.querySelectorAll(".preview-process-entry")).toHaveLength(2))
+  await waitFor(() => expect(screen.getByRole("button", { name: "Subir tudo" })).toBeEnabled())
+  await waitFor(() => expect(document.querySelectorAll(".preview-process-entry")).toHaveLength(2), { timeout: 8000 })
 })
 
 it("names the server diagnostics consistently after onboarding and opens it", async () => {

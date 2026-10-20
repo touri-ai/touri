@@ -40,7 +40,9 @@ themes.forEach((theme) => {
       await page.addInitScript((value) => localStorage.setItem("touri.appearance.v1", value), theme)
     })
 
-    test("desktop sidebar controls are at least 40px with no overlapping targets", async ({ page }) => {
+    test("desktop sidebar rows are 32px and every control at least 28px with no overlapping targets", async ({
+      page,
+    }) => {
       await page.setViewportSize({ width: 1440, height: 900 })
       await page.goto("/test/e2e/home-harness.html")
       await expect(page.locator(".bot-sidebar")).toBeVisible()
@@ -50,7 +52,7 @@ themes.forEach((theme) => {
 
       const preview = page.locator('[data-bot-entry="bot-mark"] .bot-preview')
       expect(await preview.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
-      expect(await getSmallTargets(page, 40)).toEqual([])
+      expect(await getSmallTargets(page, 28)).toEqual([])
       expect(await getTargetRules(page)).toEqual([])
     })
 
