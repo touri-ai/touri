@@ -173,7 +173,8 @@ test("indexing legacy attachment references yields while conversation history lo
   cleanup.push(() => clearInterval(timer))
 
   const response = await f.request("/threads/t/messages?all=true")
-  const sorted = samples.toSorted((left, right) => left - right)
+  // The supported ES2022 target needs a fresh copy for this local probe's sort.
+  const sorted = samples.slice().sort((left, right) => left - right)
   console.info(
     JSON.stringify({
       probe: "legacy-attachment-index",
