@@ -37,9 +37,11 @@ export const BrowserActivityCard = ({
   const previewEnabled = useInlinePreviewPreference()
   const browserTools = getBrowserActivityTools(parts)
   const tabId = getBrowserActivityTabId(browserTools)
-  const [resolvedTabId, setResolvedTabId] = useState<string>()
-  const activeTabId = tabId ?? resolvedTabId
-  const [preview, setPreview] = useState<PreviewFrame>()
+  const resolutionCallId = tabId ? "" : (browserTools.at(-1)?.callId ?? "")
+  const [resolvedTab, setResolvedTab] = useState<{ callId: string; tabId: string }>()
+  const activeTabId = tabId ?? (resolvedTab?.callId === resolutionCallId ? resolvedTab.tabId : undefined)
+  const [previewFrame, setPreviewFrame] = useState<{ tabId: string; frame: PreviewFrame }>()
+  const preview = previewFrame?.tabId === activeTabId ? previewFrame?.frame : undefined
   const [previewError, setPreviewError] = useState<string | null>(null)
   const [heldTab, setHeldTab] = useState<{ tabId: string; held: boolean }>()
   const held = heldTab?.tabId === activeTabId && heldTab?.held === true
@@ -93,7 +95,7 @@ export const BrowserActivityCard = ({
           undefined,
         )
       if (!candidate || !active) return
-      if (!tabId) setResolvedTabId(candidate.tabId)
+      if (!tabId) setResolvedTab({ callId: resolutionCallId, tabId: candidate.tabId })
       setHeldTab({ tabId: candidate.tabId, held: candidate.heldByUser })
     }
     const unsubscribe = api.subscribe(({ event }) => {
@@ -104,7 +106,7 @@ export const BrowserActivityCard = ({
         (!tabId || event.tab.tabId === tabId)
       ) {
         hasTabEvent = true
-        if (!tabId) setResolvedTabId(event.tab.tabId)
+        if (!tabId) setResolvedTab({ callId: resolutionCallId, tabId: event.tab.tabId })
         setHeldTab({ tabId: event.tab.tabId, held: event.tab.heldByUser })
       }
     })
@@ -119,18 +121,18 @@ export const BrowserActivityCard = ({
       active = false
       unsubscribe()
     }
-  }, [api, botId, finished, tabId])
+  }, [api, botId, finished, resolutionCallId, tabId])
 
   useEffect(() => {
+    setPreviewError(null)
     if (!api || !botId || !machine || !activeTabId || !canPreview || !previewEnabled || !visible || hidden || finished)
       return
 
-    setPreviewError(null)
     return startInlineFrameSource(
       api,
       { id: botId, machine },
       activeTabId,
-      (frame) => setPreview(frame),
+      (frame) => setPreviewFrame({ tabId: activeTabId, frame }),
       () => setPreviewError(t("Browser preview unavailable. Open the browser to reconnect.", {}, locale)),
       (reason) =>
         setPreviewError(reason ? t("Browser preview unavailable. Open the browser to reconnect.", {}, locale) : null),

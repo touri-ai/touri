@@ -305,3 +305,42 @@ test("disabling live chat previews prevents capture and leaves browser control a
   expect(screen.getByText("Atividade do navegador")).toBeVisible()
   expect(screen.getByRole("button", { name: "Assumir controle" })).toBeVisible()
 })
+
+test("an attached new page never borrows the previous tab while its metadata is loading", async () => {
+  let resolveTabs: (value: { tabs: (typeof tab)[] }) => void = () => {}
+  const nextTabs = new Promise<{ tabs: (typeof tab)[] }>((resolve) => {
+    resolveTabs = resolve
+  })
+  const getTabs = vi
+    .fn()
+    .mockResolvedValueOnce({ tabs: [tab] })
+    .mockReturnValueOnce(nextTabs)
+  const oldPage = getPart({ callId: "old-page", tool: "browser_open", inputJson: "{}" })
+  const { api, bot, onOpenComputer, request, view } = renderCard([oldPage], false, getTabs)
+  await screen.findByRole("button", { name: "Assumir controle" })
+  const newPage = getPart({
+    callId: "new-page",
+    tool: "browser_open",
+    inputJson: "{}",
+    outputAttachmentId: "new-page-result",
+  })
+
+  view.rerender(
+    <InlinePreviewContext.Provider value={{ api, bot, machine: undefined, activeCallId: undefined, onOpenComputer }}>
+      <BrowserActivityCard parts={[oldPage, newPage]} finished={false} createdAt={1} botName="Lia" />
+    </InlinePreviewContext.Provider>,
+  )
+
+  expect(screen.queryByRole("button", { name: "Assumir controle" })).toBeNull()
+  expect(screen.queryByRole("img", { name: "Página atual do navegador" })).toBeNull()
+
+  await act(async () => {
+    resolveTabs({ tabs: [{ ...tab, tabId: "new-tab" }] })
+    await nextTabs
+  })
+  fireEvent.click(screen.getByRole("button", { name: "Assumir controle" }))
+
+  await waitFor(() =>
+    expect(request).toHaveBeenCalledWith("POST /browser/tabs/:id/takeover", { hold: true }, { id: "new-tab" }),
+  )
+})

@@ -94,6 +94,7 @@
 }
 .browser-activity-placeholder {
   display: grid;
+  aspect-ratio: 16 / 10;
   min-height: 150px;
   place-items: center;
   margin: 0;
