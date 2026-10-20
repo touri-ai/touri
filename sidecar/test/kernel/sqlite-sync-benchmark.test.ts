@@ -33,6 +33,7 @@ const library = dlopen(shimPath, {
   touri_set_sqlite_only: { args: ["i32"], returns: "i32" },
   touri_get_sync_count: { args: [], returns: "i32" },
 });
+library.symbols.touri_set_sync_delay_ms(200);
 
 const run = (mode, synchronous) => {
   const database = new Database(join(directory, mode + ".db"), { create: true });
@@ -48,6 +49,84 @@ const run = (mode, synchronous) => {
   const syncCalls = library.symbols.touri_stop_sync_recording();
   database.close();
   return { mode, transactions: 32, syncCalls, elapsedMs: Math.round(elapsedMs) };
+};
+
+const runMainWrites = async (mode) => {
+  const [
+    { openDatabase }, { createPerformanceStageTracker }, { createSlowStatementTracker },
+    { createRuntimePersistence }, { createNotificationStore }, { createWorkState },
+  ] = await Promise.all([
+    import(process.env.TOURI_DATABASE_MODULE), import(process.env.TOURI_PERFORMANCE_MODULE),
+    import(process.env.TOURI_SQLITE_PERFORMANCE_MODULE), import(process.env.TOURI_PERSISTENCE_MODULE),
+    import(process.env.TOURI_NOTIFICATION_MODULE), import(process.env.TOURI_WORK_STATE_MODULE),
+  ]);
+  const stages = createPerformanceStageTracker();
+  const slowStatements = createSlowStatementTracker({
+    log: () => {}, getStage: stages.getCurrentStage, runStage: stages.run,
+  });
+  const filename = join(directory, mode + "-main.db");
+  const database = openDatabase({ filename, slowStatements });
+  database.exec("PRAGMA wal_autocheckpoint = 0");
+  database.exec("INSERT INTO bots(id,name,provider,home_dir,created_at,updated_at) VALUES ('bot','Synthetic','codex','.',1,1)");
+  database.exec("INSERT INTO threads(id,bot_id,title,created_at,updated_at) VALUES ('thread','bot','Synthetic',1,1)");
+  database.exec("INSERT INTO messages(id,thread_id,role,kind,status,text,parts_json,created_at,updated_at) VALUES ('message','thread','user','text','complete','warm','[]',1,1)");
+  const persistence = createRuntimePersistence({ database });
+  const notifications = createNotificationStore({ db: database, now: () => 2 });
+  const work = createWorkState({ database, now: () => 2 });
+  const run = {
+    id: "run", botId: "bot", threadId: "thread", provider: "codex", trigger: "user", status: "running",
+    requestMessageId: "message", replyMessageId: null, externalTurnId: null, routineRunId: null,
+    errorClass: null, errorMessage: null, usage: null, queuedAt: 1, startedAt: 1, finishedAt: null,
+  };
+  if (!persistence.saveRun(run)) throw new Error("Could not warm the synthetic run");
+  const settings = database.query("INSERT INTO settings(key,value_json,updated_at) VALUES ('synthetic.setting',?,2) ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json");
+  settings.run(JSON.stringify("warm"));
+  const message = database.query("UPDATE messages SET text = ?, updated_at = 2 WHERE thread_id = 'thread' AND id = 'message'");
+  // FULL is only the counterfactual. The after case must use openDatabase's production default.
+  if (mode === "full") database.exec("PRAGMA synchronous = FULL");
+  const operations = {
+    settings: () => settings.run(JSON.stringify("Synthetic setting")),
+    runs: () => {
+      const saved = persistence.saveRun({ ...run, status: "failed", errorClass: "app_restart", finishedAt: 2 });
+      if (!saved) throw new Error("Run write failed");
+    },
+    messages: () => message.run("Synthetic message"),
+    notifications: () => {
+      const inserted = notifications.insert({ kind: "turn-failed", botId: "bot", threadId: "thread", title: "Synthetic failure", body: "Synthetic detail", requestId: "run" });
+      if (!notifications.resolve({ id: inserted.notification.id, resolution: "dismissed" })) throw new Error("Notification write failed");
+    },
+    recovery: () => {
+      const begun = work.beginEffect({ turnId: "run", threadId: "thread", effectId: "effect", key: "synthetic-effect", description: "Synthetic effect" });
+      if (!begun.success) throw new Error("Work intent failed");
+      const recovered = work.recover({ observe: () => ({ kind: "unobservable", reason: "Synthetic restart" }) });
+      if (!recovered.success || recovered.uncertain.length !== 1) throw new Error("Work recovery failed");
+      if (!work.publishRoot({ turnId: "run" }).success) throw new Error("Work root failed");
+    },
+  };
+  library.symbols.touri_set_sqlite_only(1);
+  const measurements = Object.entries(operations).map(([family, operation]) => {
+    stages.reset();
+    library.symbols.touri_start_sync_recording();
+    const startedAt = performance.now();
+    operation();
+    const elapsedMs = performance.now() - startedAt;
+    const syncCalls = library.symbols.touri_stop_sync_recording();
+    return { family, syncCalls, elapsedMs: Math.round(elapsedMs), stages: stages.snapshot().map(({ stage }) => stage) };
+  });
+  const getSaved = (db) => ({
+    setting: db.query("SELECT value_json FROM settings WHERE key = 'synthetic.setting'").get().value_json,
+    run: db.query("SELECT status FROM runs WHERE id = 'run'").get().status,
+    message: db.query("SELECT text FROM messages WHERE id = 'message'").get().text,
+    notification: db.query("SELECT resolution FROM notifications WHERE request_id = 'run'").get().resolution,
+    work: createWorkState({ database: db }).rebuild({ turnId: "run" }).map(({ state }) => state),
+    rootVerified: createWorkState({ database: db }).verifyRoot({ turnId: "run" }),
+  });
+  const saved = getSaved(database);
+  database.close();
+  const reopened = openDatabase({ filename });
+  const reopenedSaved = getSaved(reopened);
+  reopened.close();
+  return { measurements, saved, reopenedSaved };
 };
 
 const runAuthentication = async () => {
@@ -132,11 +211,15 @@ const runAuthentication = async () => {
   };
 };
 
-console.log(JSON.stringify({ full: run("full", 2), normal: run("normal", 1), authentication: await runAuthentication() }));
+console.log(JSON.stringify({
+  full: run("full", 2), normal: run("normal", 1),
+  mainWrites: { full: await runMainWrites("full"), normal: await runMainWrites("normal") },
+  authentication: await runAuthentication(),
+}));
 `
 
 test.skipIf(!canRunSyncBenchmark)(
-  "WAL NORMAL batches avoid per-commit fsync latency under a slow sync shim",
+  "WAL NORMAL main writes and batches avoid per-commit fsync latency under a slow sync shim",
   async () => {
     const root = await mkdtemp(join(tmpdir(), "touri-sqlite-sync-"))
     cleanups.add(() => rm(root, { recursive: true, force: true }))
@@ -169,6 +252,12 @@ test.skipIf(!canRunSyncBenchmark)(
         TOURI_AUTH_STORE_MODULE: authStoreModule,
         TOURI_WEB_GATE_MODULE: webGateModule,
         TOURI_RATE_LIMITER_MODULE: rateLimiterModule,
+        TOURI_DATABASE_MODULE: new URL("../../src/kernel/db.ts", import.meta.url).href,
+        TOURI_PERFORMANCE_MODULE: new URL("../../src/kernel/performance.ts", import.meta.url).href,
+        TOURI_SQLITE_PERFORMANCE_MODULE: new URL("../../src/kernel/sqlite-performance.ts", import.meta.url).href,
+        TOURI_PERSISTENCE_MODULE: new URL("../../src/runtime/persistence.ts", import.meta.url).href,
+        TOURI_NOTIFICATION_MODULE: new URL("../../src/notify/store.ts", import.meta.url).href,
+        TOURI_WORK_STATE_MODULE: new URL("../../src/runtime/work-state.ts", import.meta.url).href,
       },
       stdout: "pipe",
       stderr: "pipe",
@@ -183,6 +272,7 @@ test.skipIf(!canRunSyncBenchmark)(
     const measured = JSON.parse(output) as {
       full: { transactions: number; syncCalls: number; elapsedMs: number }
       normal: { transactions: number; syncCalls: number; elapsedMs: number }
+      mainWrites: { full: MainWriteMeasurement; normal: MainWriteMeasurement }
       authentication: {
         baselineRequestElapsedMs: number
         requestElapsedMs: number
@@ -197,6 +287,44 @@ test.skipIf(!canRunSyncBenchmark)(
     expect(measured.normal.syncCalls).toBeLessThanOrEqual(1)
     expect(measured.normal.elapsedMs).toBeLessThan(250)
     expect(measured.normal.elapsedMs).toBeLessThan(measured.full.elapsedMs / 3)
+    const expectedStages = {
+      settings: "sqlite_settings_write",
+      runs: "sqlite_run_write",
+      messages: "sqlite_message_write",
+      notifications: "sqlite_notification_write",
+      recovery: "sqlite_recovery_write",
+    }
+    const expectedFamilies: Array<MainWriteMeasurement["measurements"][number]["family"]> = [
+      "settings",
+      "runs",
+      "messages",
+      "notifications",
+      "recovery",
+    ]
+    expect(measured.mainWrites.full.measurements.map(({ family }) => family)).toEqual(expectedFamilies)
+    expect(measured.mainWrites.normal.measurements.map(({ family }) => family)).toEqual(expectedFamilies)
+    measured.mainWrites.full.measurements.forEach((before) => {
+      const after = measured.mainWrites.normal.measurements.find(({ family }) => family === before.family)
+      if (!after) throw new Error(`Missing main write measurement: ${before.family}`)
+
+      expect(before.syncCalls).toBeGreaterThanOrEqual(1)
+      expect(before.elapsedMs).toBeGreaterThanOrEqual(150)
+      expect(after.syncCalls).toBe(0)
+      expect(after.elapsedMs).toBeLessThan(50)
+      expect(after.stages).toContain(expectedStages[after.family])
+    })
+    const expectedSaved = {
+      setting: JSON.stringify("Synthetic setting"),
+      run: "failed",
+      message: "Synthetic message",
+      notification: "dismissed",
+      work: ["uncertain"],
+      rootVerified: true,
+    }
+    expect(measured.mainWrites.normal.saved).toEqual(expectedSaved)
+    expect(measured.mainWrites.normal.reopenedSaved).toEqual(expectedSaved)
+    expect(measured.mainWrites.full.saved).toEqual(expectedSaved)
+    expect(measured.mainWrites.full.reopenedSaved).toEqual(expectedSaved)
     expect(measured.authentication.baselineRequestElapsedMs).toBeGreaterThanOrEqual(150)
     expect(measured.authentication.requestElapsedMs).toBeLessThan(50)
     expect(measured.authentication.eventLoopElapsedMs).toBeLessThan(50)
@@ -205,8 +333,19 @@ test.skipIf(!canRunSyncBenchmark)(
     expect(measured.authentication.durableSyncCalls.revoke).toBeGreaterThanOrEqual(1)
     expect(measured.authentication.durabilityVerified).toBe(true)
   },
-  15_000,
+  25_000,
 )
+
+type MainWriteMeasurement = {
+  measurements: Array<{
+    family: "settings" | "runs" | "messages" | "notifications" | "recovery"
+    syncCalls: number
+    elapsedMs: number
+    stages: string[]
+  }>
+  saved: unknown
+  reopenedSaved: unknown
+}
 
 const workerBenchmark = `import { Database } from "bun:sqlite";
 import { dlopen } from "bun:ffi";

@@ -3,6 +3,7 @@ import { afterEach, expect, mock, test } from "bun:test"
 import { mkdtemp, realpath, rm, stat } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { walCheckpointSource } from "../../src/kernel/wal-checkpoint-worker"
 import { createWalCheckpointer } from "../../src/kernel/wal-checkpointer"
 
 // Resource handles are registered per test and released in reverse acquisition order.
@@ -47,6 +48,43 @@ test("the embedded worker checkpoints WAL frames so the next write resets its si
   expect(afterBytes).toBeLessThan(beforeBytes / 2)
   expect(getAutocheckpointPages(database)).toBe(0)
   expect(database.query("SELECT COUNT(*) AS count FROM fixture").get()).toEqual({ count: 129 })
+})
+
+test("the checkpoint connection uses WAL/NORMAL without automatic checkpoints or lock waits", async () => {
+  const { database } = await getFixture()
+  const measured = Promise.withResolvers<{
+    journal: string
+    synchronous: number
+    autocheckpoint: number
+    busyTimeout: number
+  }>()
+  const checkpointer = createWalCheckpointer({
+    database,
+    onError: () => measured.reject(new Error("Checkpoint worker failed")),
+    createWorker: () => {
+      const source = walCheckpointSource.replace(
+        'self.postMessage({ type: "ready" });',
+        `self.postMessage({ type: "test-pragmas",
+          journal: database.query("PRAGMA journal_mode").get().journal_mode,
+          synchronous: database.query("PRAGMA synchronous").get().synchronous,
+          autocheckpoint: database.query("PRAGMA wal_autocheckpoint").get().wal_autocheckpoint,
+          busyTimeout: database.query("PRAGMA busy_timeout").get().timeout });
+        self.postMessage({ type: "ready" });`,
+      )
+      const url = URL.createObjectURL(new Blob([source], { type: "application/javascript" }))
+      cleanups.add(() => URL.revokeObjectURL(url))
+      const worker = new Worker(url, { smol: true, ref: false })
+      worker.addEventListener("message", ({ data }) => {
+        if (data.type === "test-pragmas") measured.resolve(data)
+      })
+      return worker
+    },
+  })
+  cleanups.add(checkpointer.dispose)
+
+  const pragmas = await measured.promise
+
+  expect(pragmas).toMatchObject({ journal: "wal", synchronous: 1, autocheckpoint: 0, busyTimeout: 0 })
 })
 
 test("a constructor failure restores autocheckpointing and subsequent commits reset the WAL", async () => {
