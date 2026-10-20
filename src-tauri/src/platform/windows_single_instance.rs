@@ -10,6 +10,7 @@ use std::fs::File;
 use std::io::{self, ErrorKind, Write};
 use std::os::windows::ffi::OsStrExt;
 use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle};
+use std::time::{Duration, Instant};
 use tauri::{plugin::TauriPlugin, AppHandle, Runtime};
 use windows_sys::Win32::{
     Foundation::{
@@ -46,6 +47,7 @@ const FNV_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
 const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
 const SHOW_MESSAGE: &[u8] = b"show\n";
 const BUSY_WAIT_MS: u32 = 2_000;
+const BUSY_SLICE: Duration = Duration::from_millis(100);
 
 pub enum Claim {
     Primary(OwnedHandle),
@@ -215,13 +217,31 @@ fn open_client(name: &str) -> io::Result<OwnedHandle> {
             Ok(unsafe { OwnedHandle::from_raw_handle(pipe) })
         }
     };
-    match open() {
-        Err(error) if is_error(&error, ERROR_PIPE_BUSY) => {
-            // SAFETY: the path is NUL-terminated.
-            unsafe { WaitNamedPipeW(path.as_ptr(), BUSY_WAIT_MS) };
-            open()
+    retry_while_busy(open, |slice| {
+        // SAFETY: the path is NUL-terminated.
+        unsafe { WaitNamedPipeW(path.as_ptr(), slice.as_millis() as u32) };
+    })
+}
+
+/// Opens again while the server is busy: right after a handoff its single instance is connected
+/// or not yet listening again, and one wait can end just before another launch takes the slot.
+/// Bounded by `BUSY_WAIT_MS`, so a wedged server still ends in the busy error.
+fn retry_while_busy<T>(
+    mut open: impl FnMut() -> io::Result<T>,
+    wait: impl Fn(Duration),
+) -> io::Result<T> {
+    let deadline = Instant::now() + Duration::from_millis(u64::from(BUSY_WAIT_MS));
+    loop {
+        match open() {
+            Err(error) if is_error(&error, ERROR_PIPE_BUSY) => {
+                let left = deadline.saturating_duration_since(Instant::now());
+                if left.is_zero() {
+                    return Err(error);
+                }
+                wait(left.min(BUSY_SLICE));
+            }
+            result => return result,
         }
-        result => result,
     }
 }
 
@@ -324,13 +344,16 @@ pub fn init<R: Runtime>(on_show: fn(&AppHandle<R>)) -> TauriPlugin<R> {
 
 #[cfg(test)]
 mod tests {
-    use super::{claim, current_user_sid, pipe_name, private_descriptor, serve, Claim, PIPE_NAME};
+    use super::{
+        claim, current_user_sid, pipe_name, private_descriptor, retry_while_busy, serve, Claim,
+        PIPE_NAME,
+    };
     use std::ffi::OsStr;
     use std::os::windows::io::AsRawHandle;
     use std::sync::mpsc;
     use std::time::Duration;
     use windows_sys::Win32::{
-        Foundation::LocalFree,
+        Foundation::{LocalFree, ERROR_PIPE_BUSY},
         Security::{
             AclSizeInformation,
             Authorization::{GetSecurityInfo, SE_KERNEL_OBJECT},
@@ -382,6 +405,63 @@ mod tests {
                 .recv_timeout(Duration::from_secs(5))
                 .expect("the running instance was asked to show");
         }
+    }
+
+    #[test]
+    fn launches_right_after_each_other_all_hand_off() {
+        let name = test_pipe("burst");
+        let descriptor = private_descriptor(&current_user_sid().unwrap()).unwrap();
+        let Claim::Primary(pipe) = claim(&name, &descriptor).unwrap() else {
+            panic!("first launch must own the pipe");
+        };
+        let (shown, show_requests) = mpsc::channel();
+        serve(pipe, move || {
+            let _ = shown.send(());
+        });
+
+        for _ in 0..20 {
+            assert!(matches!(
+                claim(&name, &descriptor).unwrap(),
+                Claim::Secondary
+            ));
+        }
+
+        for _ in 0..20 {
+            show_requests
+                .recv_timeout(Duration::from_secs(5))
+                .expect("the running instance was asked to show");
+        }
+    }
+
+    #[test]
+    fn a_busy_pipe_is_retried_until_it_frees_up() {
+        let mut busy_left = 3;
+
+        let opened = retry_while_busy(
+            || match busy_left {
+                0 => Ok("open"),
+                _ => {
+                    busy_left -= 1;
+                    Err(std::io::Error::from_raw_os_error(ERROR_PIPE_BUSY as i32))
+                }
+            },
+            |_| {},
+        );
+
+        assert_eq!(opened.unwrap(), "open");
+    }
+
+    #[test]
+    fn a_pipe_that_stays_busy_gives_up_with_the_busy_error() {
+        let result: std::io::Result<()> = retry_while_busy(
+            || Err(std::io::Error::from_raw_os_error(ERROR_PIPE_BUSY as i32)),
+            |slice| std::thread::sleep(slice),
+        );
+
+        assert_eq!(
+            result.unwrap_err().raw_os_error(),
+            Some(ERROR_PIPE_BUSY as i32)
+        );
     }
 
     #[test]
