@@ -12,9 +12,16 @@ afterEach(() => {
 })
 const native = () => Object.defineProperty(window, "__TAURI_INTERNALS__", { value: {}, configurable: true })
 
-it("explains closed-page delivery on web without calling desktop APIs", () => {
-  render(<NotificationDeliverySettings enabled />)
-  expect(screen.getByText("Com esta página fechada, os avisos ficam guardados no servidor.")).toBeVisible()
+it("explains closed-app delivery on web in one hint without calling desktop APIs", () => {
+  const { container } = render(<NotificationDeliverySettings enabled />)
+
+  const hint = screen.getByText(
+    "Com o touri fechado, você não recebe avisos. Ao abrir, as solicitações pendentes aparecem.",
+  )
+
+  expect(hint).toBeVisible()
+  expect(hint).toHaveClass("field-help")
+  expect(container.querySelectorAll("p")).toHaveLength(1)
   expect(host.invoke).not.toHaveBeenCalled()
   expect(screen.queryByRole("button")).toBeNull()
 })
@@ -59,6 +66,9 @@ it("never claims delivery when OS authorization cannot be checked", async () => 
 it("provides matching English copy", () => {
   expect(t("Você tem {n} solicitações pendentes.", { n: 2 }, "en")).toBe("You have 2 pending requests.")
   expect(t("Os avisos do sistema estão desativados.", {}, "en")).toBe("System notifications are disabled.")
+  expect(
+    t("Com o touri fechado, você não recebe avisos. Ao abrir, as solicitações pendentes aparecem.", {}, "en"),
+  ).toBe("With touri closed, you get no notifications. When you open it, pending requests appear.")
   expect(t("{bot} pede sua aprovação: {summary}", { bot: "Team", summary: "Write files" }, "en")).toBe(
     "Team asks for your approval: Write files",
   )

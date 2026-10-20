@@ -95,7 +95,7 @@ describe("composer project picker", () => {
     const label = getStyle(".composer-island .composer-model-name")
 
     expect(tools).toContainElement(modelButton)
-    expect(modelButton.parentElement).toBe(tools)
+    expect(modelButton.closest(".model-picker-anchor")?.parentElement).toBe(tools)
     expect(projectButton.closest(".composer-project")?.parentElement).toBe(tools)
     expect(projectButton).toHaveClass("composer-model", "composer-project-chip")
     expect(modelButton.querySelector(".composer-model-name")).not.toBeNull()
@@ -126,13 +126,18 @@ describe("composer project picker", () => {
     expect(modelButton).toHaveAttribute("aria-label", `Escolher modelo: ${visibleSelection}`)
     expect(projectButton).toHaveTextContent(current.name)
     expect(projectButton).toHaveAttribute("aria-label", `Projeto do bot: ${current.name}`)
-    expect(modelButton.nextElementSibling).toContainElement(projectButton)
+    expect(modelButton.closest(".model-picker-anchor")?.nextElementSibling).toContainElement(projectButton)
     expect(screen.getByRole("button", { name: "Painel do bot" })).toHaveAttribute("aria-expanded", "false")
     await user.click(modelButton)
-    const dialog = await screen.findByRole("dialog", { name: "Escolher modelo" })
-    expect(within(dialog).getByRole("textbox", { name: "Modelo" })).toHaveValue(bot.model ?? "")
-    fireEvent.click(within(dialog).getByRole("button", { name: "Fechar diálogo" }))
-    await waitFor(() => expect(dialog).not.toBeInTheDocument())
+    const listbox = await screen.findByRole("listbox", { name: "Modelos de Codex" })
+    expect(within(listbox).getByRole("option", { name: bot.model ?? "Padrão do provedor" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    )
+    fireEvent.keyDown(within(listbox).getByRole("option", { name: bot.model ?? "Padrão do provedor" }), {
+      key: "Escape",
+    })
+    await waitFor(() => expect(screen.queryByRole("listbox")).toBeNull())
     await waitFor(() => expect(modelButton).toHaveFocus())
     fireEvent.click(screen.getByRole("button", { name: "Painel do bot" }))
     expect(screen.getAllByRole("button", { name: /^Projeto do bot:/ })).toHaveLength(1)

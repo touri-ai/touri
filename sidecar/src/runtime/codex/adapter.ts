@@ -14,6 +14,7 @@ import { codexApprovalPayload } from "../../approvals/payload"
 import { buildChildEnv } from "../../kernel"
 import type { PerformanceStageRunner } from "../../kernel/performance"
 import { redactStructured } from "../../kernel/redact"
+import { getSavedBotModel } from "../../store/model"
 import { touriVersion } from "../../version"
 import { createCommandOutput } from "../command-output"
 import { spawnFolderProvider } from "../folder-access"
@@ -224,8 +225,7 @@ const codexArgs = ({ args, mcp }: { args: StartTurnArgs; mcp: StartTurnArgs["mcp
       "-c",
       'approval_policy="never"',
     )
-  if (args.bot.model) result.push("-c", `model=${args.bot.model}`)
-  return result
+  return args.bot.model ? [...result, "-c", `model=${JSON.stringify(args.bot.model)}`] : result
 }
 
 export const createCodexAdapter = ({
@@ -732,10 +732,14 @@ export const createCodexAdapter = ({
   }
 
   const startTurn: ProviderAdapter["startTurn"] = async (args) => {
+    const model = getSavedBotModel(args.bot.model)
+    if (!model.success) return model
+
+    const turnArgs = Object.assign({}, args, { bot: Object.assign({}, args.bot, { model: model.model }) })
     let canRetry = !args.execution
     let canRetryTools = true
     const invoke = () =>
-      withLocalTurnTemp(kernel, args, (turn) =>
+      withLocalTurnTemp(kernel, turnArgs, (turn) =>
         startAttempt(
           {
             ...turn,

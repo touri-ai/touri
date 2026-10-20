@@ -88,7 +88,8 @@ type ChatPanelProps = {
   onOpenProviderLogin?: () => void
   onOpenComputer?: () => void
   projects?: Project[]
-  onOpenModel?: () => void
+  onSaveModel?: (model: string | null) => Promise<void>
+  onNotice?: (message: string) => void
   onSelectProject?: (projectId: Id | null) => Promise<void>
   onAddProject?: () => void
   activePath?: Array<Message> | undefined
@@ -1037,7 +1038,8 @@ export const ChatPanel = ({
   onOpenProviderLogin,
   onOpenComputer,
   projects,
-  onOpenModel,
+  onSaveModel,
+  onNotice,
   onSelectProject,
   onAddProject,
   routines = [],
@@ -1405,7 +1407,8 @@ export const ChatPanel = ({
         activeRun={activeRun}
         botActive={runs.some((run) => run.botId === bot?.id && ["queued", "starting", "running"].includes(run.status))}
         projects={projects}
-        onOpenModel={onOpenModel}
+        onSaveModel={onSaveModel}
+        onNotice={onNotice}
         onSelectProject={onSelectProject}
         onAddProject={onAddProject}
         queuedCount={visibleMessages.filter((message) => message.delivery?.status === "queued").length}

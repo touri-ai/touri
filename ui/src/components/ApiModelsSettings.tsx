@@ -67,7 +67,7 @@ export const ApiModelsSettings = ({ api }: { api: UiApi | undefined }) => {
 
   return (
     <div className="api-model-settings" aria-busy={busy}>
-      <p>
+      <p className="field-help">
         {t(
           "Requests go directly to the provider you choose, which bills API usage. Keys stay in this computer's secret store. On a touri server, they stay in the server's encrypted secret store.",
         )}

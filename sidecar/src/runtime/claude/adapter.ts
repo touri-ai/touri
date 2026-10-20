@@ -6,6 +6,7 @@ import { claudeApprovalKind, claudeApprovalPayload } from "../../approvals/paylo
 import { buildChildEnv } from "../../kernel"
 import { ensurePrivateDirectoryAsync, writePrivateFileAsync } from "../../kernel/async-files"
 import { redactStructured } from "../../kernel/redact"
+import { getSavedBotModel } from "../../store/model"
 import { commandOutputTail, createCommandOutput } from "../command-output"
 import { folderConfinementRequired, spawnFolderProvider, turnFolders } from "../folder-access"
 import { loadTurnImages } from "../loadTurnImages"
@@ -502,7 +503,13 @@ export const createClaudeAdapter = ({
     return output
   }
 
-  const startTurn: ProviderAdapter["startTurn"] = (args) => withLocalTurnTemp(kernel, args, startAttempt)
+  const startTurn: ProviderAdapter["startTurn"] = async (args) => {
+    const model = getSavedBotModel(args.bot.model)
+    if (!model.success) return model
+
+    const turnArgs = Object.assign({}, args, { bot: Object.assign({}, args.bot, { model: model.model }) })
+    return withLocalTurnTemp(kernel, turnArgs, startAttempt)
+  }
 
   const answerApproval = async ({
     approvalId,

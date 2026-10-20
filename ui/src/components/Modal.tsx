@@ -54,6 +54,7 @@ export const Modal = ({
         (element) => !element.closest("[hidden]"),
       )
       if (event.key === "Escape") {
+        if (event.target instanceof Element && event.target.closest("[data-escape-boundary]")) return
         event.preventDefault()
         event.stopPropagation()
         if (confirmation) confirmation.querySelector<HTMLButtonElement>(".button-quiet")?.click()

@@ -51,9 +51,7 @@ it("saves global, per-bot, per-type and quiet-hour preferences from web settings
     }),
   )
   expect(
-    screen.getByText(
-      "Com a página fechada, não há som nem avisos em segundo plano. Ao voltar, você vê as solicitações pendentes.",
-    ),
+    screen.getByText("Com o touri fechado, você não recebe avisos. Ao abrir, as solicitações pendentes aparecem."),
   ).toBeVisible()
 })
 
