@@ -4466,7 +4466,7 @@ a {
   display: block;
   margin-bottom: var(--space-4);
   color: var(--text-secondary);
-  font-size: var(--type-12);
+  font-size: var(--fs-caption);
   font-weight: var(--weight-medium);
 }
 .message-routine-prompt .chat-disclosure {
