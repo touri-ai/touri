@@ -16,7 +16,7 @@ vi.mock("../src/features/desktop/inlineFrameSource", () => ({
     frame({
       src: "data:image/jpeg;base64,ZmFrZQ==",
       title: "Resultados de Lisboa",
-      url: "https://travel.example.test/results?email=person@example.test",
+      url: "https://person@example.test:private-password@travel.example.test/results?email=person@example.test",
     })
 
     return () => {}
@@ -70,7 +70,7 @@ const renderCard = (parts: ToolCallPart[], finished: boolean) => {
   return { api, bot, onOpenComputer, request, view }
 }
 
-test("shows live browser steps and keeps typed values and URL queries out of the card", async () => {
+test("shows live browser steps and keeps typed values and URL credentials and queries out of the card", async () => {
   const parts = [
     getPart({
       callId: "open",
@@ -100,6 +100,7 @@ test("shows live browser steps and keeps typed values and URL queries out of the
   await waitFor(() => expect(screen.getByRole("img", { name: "Página atual do navegador" })).toBeVisible())
   expect(document.body.textContent).not.toContain("private search value")
   expect(document.body.textContent).not.toContain("person@example.test")
+  expect(document.body.textContent).not.toContain("private-password")
   expect(screen.getAllByText("https://travel.example.test/results")).toHaveLength(2)
 })
 

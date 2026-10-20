@@ -109,6 +109,8 @@ export const getBrowserActivityTime = (part: ToolCallPart, fallback: number, loc
 export const getBrowserActivityUrl = (value: string): string => {
   try {
     const url = new URL(value)
+    url.username = ""
+    url.password = ""
     url.search = ""
     url.hash = ""
 
