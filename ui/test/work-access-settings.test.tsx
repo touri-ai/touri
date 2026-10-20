@@ -66,7 +66,7 @@ describe("work access settings", () => {
     render(<WorkAccessSettings api={api} />)
 
     expect(await screen.findByText("E-mail")).toBeDefined()
-    expect(screen.getByLabelText("API key")).toHaveProperty("value", "")
+    expect(screen.getByLabelText("Chave de API")).toHaveProperty("value", "")
     expect(screen.getByText("Ana")).toBeDefined()
     expect(screen.getByText("Notebook")).toBeDefined()
     expect(screen.getByText("bia@example.test")).toBeDefined()
@@ -84,7 +84,7 @@ describe("work access settings", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Parear novo dispositivo" }))
 
-    expect(await screen.findByText("ABCD-EFGH-JKLM")).toBeDefined()
+    expect(await screen.findByText(/ABCD-EFGH-JKLM/u)).toBeDefined()
     expect(request).toHaveBeenCalledWith("POST /pairing-codes", {})
   })
 })
