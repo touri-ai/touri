@@ -33,30 +33,8 @@ themes.forEach((theme) => {
 
       await badge.evaluate((element) => element.removeAttribute("aria-label"))
       const fixed = await getLabelAudit(page)
-      const axeText = await page.evaluate(() => {
-        type AxeApi = {
-          commons: {
-            text: {
-              accessibleText: (element: HTMLElement) => string
-              visibleVirtual: (
-                element: HTMLElement,
-                screenReader: boolean,
-                noRecursing: boolean,
-                options: { ignoreIconLigature: boolean },
-              ) => string
-            }
-          }
-        }
-        const button = document.querySelector<HTMLElement>(".sidebar-work-badge")
-        const axe = Reflect.get(window, "axe") as AxeApi | undefined
-        if (!button || !axe) return null
-        return {
-          accessible: axe.commons.text.accessibleText(button),
-          visible: axe.commons.text.visibleVirtual(button, false, false, { ignoreIconLigature: true }),
-        }
-      })
 
-      expect(fixed.violations, JSON.stringify(axeText)).toEqual([])
+      expect(fixed.violations).toEqual([])
       expect(fixed.incomplete).toEqual([])
       expect(fixed.passes.map((rule) => rule.id)).toEqual(["label-content-name-mismatch"])
       await expect(page.locator("html")).toHaveAttribute("data-theme", theme)
