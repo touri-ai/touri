@@ -35,12 +35,14 @@ CREATE INDEX IF NOT EXISTS workspace_attention_pending ON workspace_message_atte
   WHERE type = 'approval' AND decision = 'pending';
 CREATE INDEX IF NOT EXISTS workspace_attention_request ON workspace_message_attention(approval_id, thread_id, message_id)
   WHERE type = 'approval';
-INSERT OR REPLACE INTO workspace_message_attention
-  SELECT m.thread_id, m.id, CAST(p.key AS INTEGER), json_extract(p.value, '$.type'),
-    json_extract(p.value, '$.approvalId'), json_extract(p.value, '$.decision'), p.value
-  FROM messages m, json_each(m.parts_json) p
-  WHERE (instr(m.parts_json, '"approval"') > 0 OR instr(m.parts_json, '"notice"') > 0)
-    AND json_extract(p.value, '$.type') IN ('approval', 'notice');
+CREATE TABLE IF NOT EXISTS workspace_attention_backfill (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  cursor INTEGER NOT NULL
+);
+INSERT OR IGNORE INTO workspace_attention_backfill(id, cursor)
+  SELECT 1, MAX(rowid) FROM messages
+  WHERE NOT EXISTS (SELECT 1 FROM schema_meta WHERE key = 'workspace_activity_version')
+  HAVING MAX(rowid) IS NOT NULL;
 CREATE TRIGGER IF NOT EXISTS workspace_attention_insert AFTER INSERT ON messages
 WHEN instr(NEW.parts_json, '"approval"') > 0 OR instr(NEW.parts_json, '"notice"') > 0 BEGIN
   INSERT OR REPLACE INTO workspace_message_attention
