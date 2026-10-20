@@ -62,9 +62,15 @@ const getAnswer = (value: unknown): Record<string, unknown> | null => {
   return answer
 }
 
-const getResponseText = async (response: Response): Promise<string | null> => {
+const getResponseText = async (response: Response, signal: AbortSignal): Promise<string | null> => {
   const reader = response.body?.getReader()
   if (!reader) return null
+
+  const cancel = () => {
+    void reader.cancel().catch(() => undefined)
+  }
+  signal.addEventListener("abort", cancel, { once: true })
+  if (signal.aborted) cancel()
 
   const decoder = new TextDecoder()
   let byteCount = 0
@@ -72,10 +78,11 @@ const getResponseText = async (response: Response): Promise<string | null> => {
   try {
     for (;;) {
       const { done, value } = await reader.read()
+      signal.throwIfAborted()
       if (done) return `${text}${decoder.decode()}`
       byteCount += value.byteLength
       if (byteCount > MAX_RESPONSE_BYTES) {
-        await reader.cancel().catch(() => undefined)
+        void reader.cancel().catch(() => undefined)
         return null
       }
 
@@ -83,6 +90,7 @@ const getResponseText = async (response: Response): Promise<string | null> => {
       text += decoder.decode(value, { stream: true })
     }
   } finally {
+    signal.removeEventListener("abort", cancel)
     reader.releaseLock()
   }
 }
@@ -162,9 +170,12 @@ export const createBrowserDecisionAdapter = ({ getApiKey, fetchImpl = fetch }: D
     if (signal.aborted) signal.throwIfAborted()
     if (!candidates.length) return { kind: "ask", candidates: [] }
 
+    const requestTimeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS)
+    const requestSignal = AbortSignal.any([signal, requestTimeout])
     let apiKey: string | null
     try {
-      apiKey = await getApiKey(signal)
+      apiKey = await getApiKey(requestSignal)
+      requestSignal.throwIfAborted()
     } catch {
       signal.throwIfAborted()
       return { kind: "fallback", reason: "unavailable" }
@@ -172,8 +183,6 @@ export const createBrowserDecisionAdapter = ({ getApiKey, fetchImpl = fetch }: D
     if (!apiKey) return { kind: "fallback", reason: "missing_key" }
 
     const request = makeRequest({ action, intent, candidates: candidates.slice(0, MAX_CANDIDATES) })
-    const requestTimeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS)
-    const requestSignal = AbortSignal.any([signal, requestTimeout])
     let response: Response
     try {
       response = await fetchImpl(DECISION_ENDPOINT, {
@@ -187,11 +196,14 @@ export const createBrowserDecisionAdapter = ({ getApiKey, fetchImpl = fetch }: D
       signal.throwIfAborted()
       return { kind: "fallback", reason: "unavailable" }
     }
-    if (!response.ok) return { kind: "fallback", reason: getFallbackReason(response.status) }
+    if (!response.ok) {
+      void response.body?.cancel().catch(() => undefined)
+      return { kind: "fallback", reason: getFallbackReason(response.status) }
+    }
 
     let text: string | null
     try {
-      text = await getResponseText(response)
+      text = await getResponseText(response, requestSignal)
     } catch {
       signal.throwIfAborted()
       return { kind: "fallback", reason: "unavailable" }
@@ -215,11 +227,11 @@ const SENSITIVE_ACTION =
   /password|senha|passcode|c[oó]digo|otp|login|log in|sign in|entrar|acessar conta|email|e-mail|user name|username|purchase|comprar|compra|buy|pay|pagamento|pagar|payment|checkout|order|pedido|book|booking|reservation|reservar|reserve|confirm|confirmar|submit|enviar|send|agree|accept|reject|deny|decline|delete|remove|unsubscribe|excluir|apagar|remover|cancelar (?:assinatura|pedido|reserva)|concordo|aceito|recusar|rejeitar|consent|privacy|privacidade|terms|termos|cart[aã]o/i
 
 const SENSITIVE_PATH =
-  /\/(?:login|signin|sign-in|auth|account|checkout|payment|pay|purchase|order|book|booking|reservation|reserve|cart|billing)(?:\/|$)/i
+  /\/(?:login|signin|sign-in|auth|account|checkout|payment|pay|purchase|order|book|booking|reservation|reserve|cart|billing|entrar|conta|pagamento|pedido|carrinho|reserva)(?:\/|$)/i
 const HIGH_IMPACT_TARGET =
-  /\b(?:pay|payment|purchase|buy|checkout|order|book|booking|reservation|reserve|confirm|submit|send|agree|accept(?: all| terms)?|reject|deny|decline|login|log in|sign in|consent|delete|remove|unsubscribe)\b|pagar|pagamento|compra|comprar|reservar|reserva|confirmar|enviar|excluir|apagar|remover|cancelar (?:assinatura|pedido|reserva)|concordo|aceito|aceitar tudo|aceitar termos|recusar|rejeitar|consentimento/i
+  /\b(?:pay|payment|purchase|buy|checkout|order|book|booking|reservation|reserve|confirm|submit|send|agree|accept(?: all| terms)?|reject|deny|decline|login|log in|sign in|consent|delete|remove|unsubscribe)\b|pagar|pagamento|compra|comprar|reservar|reserva|confirmar|enviar|excluir|apagar|remover|cancelar (?:assinatura|pedido|reserva)|concordo|aceito|aceitar|recusar|rejeitar|consentimento|\bentrar\b|acessar conta/i
 const SENSITIVE_FIELD =
-  /\b(?:username|user name|email|e-mail|password|passcode|otp|verification code|security code|card|credit card|cvv|cpf|login)\b|senha|c[oó]digo|cart[aã]o/i
+  /\b(?:username|user name|email|e-mail|password|passcode|otp|verification code|security code|card|credit card|cvv|cpf|login)\b|senha|c[oó]digo|cart[aã]o|usu[aá]rio/i
 
 const DATE_INTENT =
   /date|calendar|departure|return date|check.?in|check.?out|data|calend[aá]rio|partida|retorno|ida|volta/i

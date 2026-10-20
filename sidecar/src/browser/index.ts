@@ -11,7 +11,7 @@ import type {
   ToolResult,
 } from "@touri/contracts"
 import { getApiModelKey } from "../api-models"
-import { getApiModelForPreset } from "../api-models/config"
+import { getBrowserDecisionModel } from "../api-models/config"
 import type { PerformanceStageRunner } from "../kernel/performance"
 import {
   type BrowserDecisionAction,
@@ -329,9 +329,9 @@ export const init = async (
 ): Promise<void> => {
   const mode = process.env.TOURI_BROWSER_EXECUTABLE === "chrome-for-testing" ? "chrome-for-testing" : "system-chrome"
   const engine = dependencies.engine ?? createRoutedBrowserEngine(kernel, mode, runStage ? { runStage } : {})
-  let decisionModel: ApiModel | null = getApiModelForPreset(kernel, "openrouter")
+  let decisionModel: ApiModel | null = getBrowserDecisionModel(kernel)
   kernel.services.provide("browser.updateDecisionModel", (model) => {
-    decisionModel = model
+    decisionModel = model?.browserDecisions === true ? model : null
   })
   const decision = createBrowserDecisionAdapter({
     getApiKey:

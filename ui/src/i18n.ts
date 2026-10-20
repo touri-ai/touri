@@ -4,6 +4,11 @@ import { userFacingError } from "./errors"
 export type Locale = "pt-BR" | "en"
 export const DEFAULT_LOCALE: Locale = "pt-BR"
 export const ptBR = {
+  "Assisted browser choices are off or have no saved key. You can enable them in API model settings. The browser will keep working.":
+    "A ajuda nas escolhas está desativada ou sem chave salva. Você pode ativá-la em Modelos por API. O navegador continuará funcionando.",
+  "Use this key for assisted browser choices": "Usar esta chave para ajudar nas escolhas do navegador",
+  "Assisted choices are off by default. Enabling sends short page labels to the remote JEV model (typesafe/jev-1.13) using this key and may spend credit. Your bot model stays the same. Turn this off anytime; the browser keeps working without it.":
+    "A ajuda nas escolhas vem desativada. Ao ativar, pequenos rótulos da página são enviados ao modelo remoto JEV (typesafe/jev-1.13) com esta chave e podem consumir créditos. O modelo do bot continua o mesmo. Desative quando quiser; o navegador funciona sem essa ajuda.",
   "O bot foi excluído, mas a limpeza dos anexos privados está pendente. O touri tentará concluir a limpeza automaticamente.":
     "O bot foi excluído, mas a limpeza dos anexos privados está pendente. O touri tentará concluir a limpeza automaticamente.",
   "O bot foi removido. A limpeza do histórico e dos anexos continua em segundo plano.":

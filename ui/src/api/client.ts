@@ -149,6 +149,7 @@ export const apiRouteKeys = [
   "POST /api-models/models",
   "POST /api-models/test",
   "POST /api-models/:id/test",
+  "PATCH /api-models/:id/browser-decisions",
   "DELETE /api-models/:id",
   "PATCH /settings",
 ] as const satisfies ReadonlyArray<keyof ApiRoutes>

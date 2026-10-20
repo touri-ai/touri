@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test"
+import { afterEach, expect, test } from "bun:test"
 import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -7,6 +7,12 @@ import { init } from "../../src/browser"
 import { isSafeBrowserRead } from "../../src/browser/decision"
 import type { BrowserEngine } from "../../src/browser/types"
 import { createKernel } from "../../src/kernel"
+
+const cleanups = new Set<() => Promise<void>>()
+afterEach(async () => {
+  for (const cleanup of cleanups) await cleanup()
+  cleanups.clear()
+})
 
 const snapshot: BrowserSnapshot = {
   tabId: "t_00000000000000000000000000",
@@ -134,12 +140,13 @@ const makeFixture = async ({
     signal: new AbortController().signal,
   }
 
+  cleanups.add(async () => {
+    await fake.engine.shutdown()
+    runtime.stop()
+    rmSync(root, { recursive: true, force: true })
+  })
+
   return {
-    close: async () => {
-      await fake.engine.shutdown()
-      runtime.stop()
-      rmSync(root, { recursive: true, force: true })
-    },
     context,
     handler: handlers.get("browser_click")?.handler,
     pressHandler: handlers.get("browser_press")?.handler,
@@ -161,31 +168,27 @@ test("browser script tool permits only simple read-only page queries", async () 
     getApiKey: async () => null,
     fetchDecision: async () => Response.json({}),
   })
-  try {
-    const blocked = await fixture.evaluateHandler?.({
-      ctx: fixture.context,
-      args: { tabId: snapshot.tabId, expression: "document.querySelector('#search')['click']()" },
-    })
-    expect(blocked).toMatchObject({ success: false, errorCode: "USER_TAKEOVER_REQUIRED" })
-    expect(fixture.evaluations()).toEqual([])
+  const blocked = await fixture.evaluateHandler?.({
+    ctx: fixture.context,
+    args: { tabId: snapshot.tabId, expression: "document.querySelector('#search')['click']()" },
+  })
+  expect(blocked).toMatchObject({ success: false, errorCode: "USER_TAKEOVER_REQUIRED" })
+  expect(fixture.evaluations()).toEqual([])
 
-    const readOnly = await fixture.evaluateHandler?.({
-      ctx: fixture.context,
-      args: { tabId: snapshot.tabId, expression: "document.querySelector('#results').textContent" },
-    })
-    expect(readOnly?.success).toBe(true)
-    expect(fixture.evaluations()).toEqual(["document.querySelector('#results').textContent"])
-  } finally {
-    await fixture.close()
-  }
+  const readOnly = await fixture.evaluateHandler?.({
+    ctx: fixture.context,
+    args: { tabId: snapshot.tabId, expression: "document.querySelector('#results').textContent" },
+  })
+  expect(readOnly?.success).toBe(true)
+  expect(fixture.evaluations()).toEqual(["document.querySelector('#results').textContent"])
 })
 
 test("an ambiguous safe option is resolved and retried once with a provider-selected ref", async () => {
-  const requests: Array<{ url: string; body: string }> = []
+  let requests: Array<{ url: string; body: string }> = []
   const fixture = await makeFixture({
     getApiKey: async () => "synthetic-test-key",
     fetchDecision: async (input, init) => {
-      requests.push({ url: input, body: String(init.body) })
+      requests = [...requests, { url: input, body: String(init.body) }]
       return Response.json({
         answers: {
           target: {
@@ -198,29 +201,25 @@ test("an ambiguous safe option is resolved and retried once with a provider-sele
       })
     },
   })
-  try {
-    const response = await fixture.handler?.({
-      ctx: fixture.context,
-      args: {
-        tabId: snapshot.tabId,
-        target: { kind: "role", role: "option", name: "Lisboa, pessoa@example.com" },
-      },
-    })
+  const response = await fixture.handler?.({
+    ctx: fixture.context,
+    args: {
+      tabId: snapshot.tabId,
+      target: { kind: "role", role: "option", name: "Lisboa, pessoa@example.com" },
+    },
+  })
 
-    expect(response?.success).toBe(true)
-    expect(fixture.clicks()).toEqual([
-      { kind: "role", role: "option", name: "Lisboa, pessoa@example.com" },
-      { kind: "ref", ref: "2.2" },
-    ])
-    expect(requests).toHaveLength(1)
-    expect(requests[0]?.url).toBe("https://openrouter.ai/api/alpha/decisions")
-    expect(requests[0]?.body).toContain("Lisboa Airport")
-    expect(requests[0]?.body).not.toContain("pessoa@example.com")
-    expect(requests[0]?.body).not.toContain("example")
-    expect(requests[0]?.body).not.toContain("synthetic-test-key")
-  } finally {
-    await fixture.close()
-  }
+  expect(response?.success).toBe(true)
+  expect(fixture.clicks()).toEqual([
+    { kind: "role", role: "option", name: "Lisboa, pessoa@example.com" },
+    { kind: "ref", ref: "2.2" },
+  ])
+  expect(requests).toHaveLength(1)
+  expect(requests[0]?.url).toBe("https://openrouter.ai/api/alpha/decisions")
+  expect(requests[0]?.body).toContain("Lisboa Airport")
+  expect(requests[0]?.body).not.toContain("pessoa@example.com")
+  expect(requests[0]?.body).not.toContain("example")
+  expect(requests[0]?.body).not.toContain("synthetic-test-key")
 })
 
 test("low confidence stops before a retry and makes the user question explicit", async () => {
@@ -238,19 +237,15 @@ test("low confidence stops before a retry and makes the user question explicit",
         },
       }),
   })
-  try {
-    const response = await fixture.handler?.({
-      ctx: fixture.context,
-      args: { tabId: snapshot.tabId, target: { kind: "role", role: "option", name: "Lisboa" } },
-    })
+  const response = await fixture.handler?.({
+    ctx: fixture.context,
+    args: { tabId: snapshot.tabId, target: { kind: "role", role: "option", name: "Lisboa" } },
+  })
 
-    expect(fixture.clicks()).toHaveLength(1)
-    expect(response).toMatchObject({ success: false, errorCode: "AMBIGUOUS_TARGET" })
-    expect(JSON.stringify(response)).toContain("Ask the user which visible option to use")
-    expect(JSON.stringify(response)).toContain("Lisboa Airport")
-  } finally {
-    await fixture.close()
-  }
+  expect(fixture.clicks()).toHaveLength(1)
+  expect(response).toMatchObject({ success: false, errorCode: "AMBIGUOUS_TARGET" })
+  expect(JSON.stringify(response)).toContain("Ask the user which visible option to use")
+  expect(JSON.stringify(response)).toContain("Lisboa Airport")
 })
 
 test("low confidence questions redact personal text from the requested target", async () => {
@@ -268,21 +263,17 @@ test("low confidence questions redact personal text from the requested target", 
         },
       }),
   })
-  try {
-    const response = await fixture.handler?.({
-      ctx: fixture.context,
-      args: {
-        tabId: snapshot.tabId,
-        target: { kind: "role", role: "option", name: "Lisboa pessoa@example.com" },
-      },
-    })
+  const response = await fixture.handler?.({
+    ctx: fixture.context,
+    args: {
+      tabId: snapshot.tabId,
+      target: { kind: "role", role: "option", name: "Lisboa pessoa@example.com" },
+    },
+  })
 
-    expect(JSON.stringify(response)).toContain("TOURI_BROWSER_DECISION_QUESTION")
-    expect(JSON.stringify(response)).not.toContain("pessoa@example.com")
-    expect(JSON.stringify(response)).not.toContain("example")
-  } finally {
-    await fixture.close()
-  }
+  expect(JSON.stringify(response)).toContain("TOURI_BROWSER_DECISION_QUESTION")
+  expect(JSON.stringify(response)).not.toContain("pessoa@example.com")
+  expect(JSON.stringify(response)).not.toContain("example")
 })
 
 test("missing keys keep the existing browser result and add a localized hint marker", async () => {
@@ -294,19 +285,15 @@ test("missing keys keep the existing browser result and add a localized hint mar
       return Response.json({})
     },
   })
-  try {
-    const response = await fixture.handler?.({
-      ctx: fixture.context,
-      args: { tabId: snapshot.tabId, target: { kind: "role", role: "option", name: "Lisboa" } },
-    })
+  const response = await fixture.handler?.({
+    ctx: fixture.context,
+    args: { tabId: snapshot.tabId, target: { kind: "role", role: "option", name: "Lisboa" } },
+  })
 
-    expect(response).toMatchObject({ success: false, errorCode: "AMBIGUOUS_TARGET" })
-    expect(fixture.clicks()).toHaveLength(1)
-    expect(requests).toBe(0)
-    expect(JSON.stringify(response)).toContain("TOURI_BROWSER_DECISION_HINT|missing_key")
-  } finally {
-    await fixture.close()
-  }
+  expect(response).toMatchObject({ success: false, errorCode: "AMBIGUOUS_TARGET" })
+  expect(fixture.clicks()).toHaveLength(1)
+  expect(requests).toBe(0)
+  expect(JSON.stringify(response)).toContain("TOURI_BROWSER_DECISION_HINT|missing_key")
 })
 
 test("sensitive actions are stopped before execution and ask the user to take over", async () => {
@@ -318,19 +305,15 @@ test("sensitive actions are stopped before execution and ask the user to take ov
       return Response.json({})
     },
   })
-  try {
-    const response = await fixture.handler?.({
-      ctx: fixture.context,
-      args: { tabId: snapshot.tabId, target: { kind: "role", role: "button", name: "Buy this ticket" } },
-    })
+  const response = await fixture.handler?.({
+    ctx: fixture.context,
+    args: { tabId: snapshot.tabId, target: { kind: "role", role: "button", name: "Buy this ticket" } },
+  })
 
-    expect(response).toMatchObject({ success: false, errorCode: "USER_TAKEOVER_REQUIRED" })
-    expect(fixture.clicks()).toHaveLength(0)
-    expect(requests).toBe(0)
-    expect(JSON.stringify(response)).toContain("TOURI_BROWSER_TAKEOVER_REQUIRED|sensitive_action")
-  } finally {
-    await fixture.close()
-  }
+  expect(response).toMatchObject({ success: false, errorCode: "USER_TAKEOVER_REQUIRED" })
+  expect(fixture.clicks()).toHaveLength(0)
+  expect(requests).toBe(0)
+  expect(JSON.stringify(response)).toContain("TOURI_BROWSER_TAKEOVER_REQUIRED|sensitive_action")
 })
 
 test("Enter in a form asks for takeover before it can submit", async () => {
@@ -355,15 +338,11 @@ test("Enter in a form asks for takeover before it can submit", async () => {
     fetchDecision: async () => Response.json({}),
     pageSnapshot,
   })
-  try {
-    const response = await fixture.pressHandler?.({
-      ctx: fixture.context,
-      args: { tabId: snapshot.tabId, key: "NumpadEnter" },
-    })
+  const response = await fixture.pressHandler?.({
+    ctx: fixture.context,
+    args: { tabId: snapshot.tabId, key: "NumpadEnter" },
+  })
 
-    expect(response).toMatchObject({ success: false, errorCode: "USER_TAKEOVER_REQUIRED" })
-    expect(fixture.presses()).toBe(0)
-  } finally {
-    await fixture.close()
-  }
+  expect(response).toMatchObject({ success: false, errorCode: "USER_TAKEOVER_REQUIRED" })
+  expect(fixture.presses()).toBe(0)
 })

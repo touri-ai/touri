@@ -301,3 +301,69 @@ describe("browser decision candidate safety", () => {
     ).toBe(true)
   })
 })
+
+test("decision timeout cancels a stalled response stream", async () => {
+  let cancelled = false
+  const adapter = createBrowserDecisionAdapter({
+    getApiKey: async () => "synthetic-test-key",
+    fetchImpl: async () =>
+      new Response(
+        new ReadableStream({
+          cancel() {
+            cancelled = true
+          },
+        }),
+      ),
+  })
+
+  const result = await adapter.decide({
+    action: "click",
+    intent: "option Lisboa",
+    candidates: [{ ref: "1.1", role: "option", name: "Lisboa" }],
+    signal: makeSignal(),
+  })
+
+  expect(result).toEqual({ kind: "fallback", reason: "unavailable" })
+  expect(cancelled).toBe(true)
+})
+
+test("turn cancellation stops the response reader without exposing upstream text", async () => {
+  const controller = new AbortController()
+  let cancelled = false
+  const adapter = createBrowserDecisionAdapter({
+    getApiKey: async () => "synthetic-test-key",
+    fetchImpl: async () => {
+      queueMicrotask(() => controller.abort(new Error("synthetic cancellation")))
+      return new Response(
+        new ReadableStream({
+          cancel() {
+            cancelled = true
+          },
+        }),
+      )
+    },
+  })
+
+  const result = adapter.decide({
+    action: "click",
+    intent: "option Lisboa",
+    candidates: [{ ref: "1.1", role: "option", name: "Lisboa" }],
+    signal: controller.signal,
+  })
+
+  await expect(result).rejects.toThrow("synthetic cancellation")
+  expect(cancelled).toBe(true)
+})
+
+test.each(["Aceitar cookies", "Aceitar", "Entrar", "Acessar conta"])(
+  "Portuguese sensitive control %s requires takeover",
+  (name) => {
+    expect(
+      requiresBrowserTakeover({
+        action: "click",
+        intent: `button ${name}`,
+        pageUrl: "https://travel.example.test/search",
+      }),
+    ).toBe(true)
+  },
+)

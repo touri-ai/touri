@@ -18,6 +18,7 @@ import type { PerformanceStageRunner } from "../kernel/performance"
 import { hostPlatform } from "../platform"
 import * as macos from "../platform/macos"
 import { CHALLENGE_ELEMENT_IDS, classifyBlockedPage, describeBlockedPage } from "./blockedPage"
+import { requiresBrowserTakeover } from "./decision"
 import {
   type ChromeLauncher,
   createChromeLauncher,
@@ -3286,6 +3287,15 @@ export const createBrowserEngine = ({
             hit = resolved
           } else {
             clicked = resolved.node
+            if (
+              clicked &&
+              requiresBrowserTakeover({
+                action: "click",
+                intent: `${clicked.role} ${clicked.name}`,
+                pageUrl: tab.info.url,
+              })
+            )
+              return failure("USER_TAKEOVER_REQUIRED", "TOURI_BROWSER_TAKEOVER_REQUIRED|sensitive_action")
             if (button === "left" && clicked && ["button", "input"].includes(clicked.fingerprint.tag)) {
               const formSubmit =
                 clicked.fingerprint.formSubmit === true ||
@@ -3460,6 +3470,15 @@ export const createBrowserEngine = ({
         const resolved = await resolveWithRetry(tab, target)
         if (!resolved.success) return resolved
         if (!resolved.node) return failure("TARGET_NOT_INTERACTABLE", "Typing needs an element target, not a point.")
+        if (
+          requiresBrowserTakeover({
+            action: "type",
+            intent: `${resolved.node.role} ${resolved.node.name}`,
+            pageUrl: tab.info.url,
+            submit,
+          })
+        )
+          return failure("USER_TAKEOVER_REQUIRED", "TOURI_BROWSER_TAKEOVER_REQUIRED|sensitive_action")
         const descriptor = await describe(client as CdpClient, resolved.node.sessionId, resolved.node.backendNodeId)
         if (descriptor.password)
           return failure("INVALID_ARGS", "Never type passwords or codes directly; use browser_submit_secret.")
@@ -3675,6 +3694,15 @@ export const createBrowserEngine = ({
         const resolved = await resolveWithRetry(tab, target)
         if (!resolved.success) return resolved
         if (!resolved.node) return failure("TARGET_NOT_INTERACTABLE", "Option selection needs an element target.")
+        if (
+          requiresBrowserTakeover({
+            action: "select",
+            intent: `${resolved.node.role} ${resolved.node.name}`,
+            pageUrl: tab.info.url,
+          })
+        )
+          return failure("USER_TAKEOVER_REQUIRED", "TOURI_BROWSER_TAKEOVER_REQUIRED|sensitive_action")
+
         const objectId = await nodeObjectId(resolved.node)
         const result = cdpResult(
           await cdpCall<unknown>(
@@ -3738,6 +3766,15 @@ export const createBrowserEngine = ({
         const resolved = await resolveWithRetry(tab, target)
         if (!resolved.success) return resolved
         if (!resolved.node) return failure("TARGET_NOT_INTERACTABLE", "Setting checked needs an element target.")
+        if (
+          requiresBrowserTakeover({
+            action: "check",
+            intent: `${resolved.node.role} ${resolved.node.name}`,
+            pageUrl: tab.info.url,
+          })
+        )
+          return failure("USER_TAKEOVER_REQUIRED", "TOURI_BROWSER_TAKEOVER_REQUIRED|sensitive_action")
+
         const objectId = await nodeObjectId(resolved.node)
         await cdpCall(
           client as CdpClient,

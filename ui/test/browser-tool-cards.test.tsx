@@ -232,4 +232,5 @@ test("browser decision fallback explains when the saved model has no credit", ()
     "A decisão assistida do navegador está sem crédito. O touri continuou usando o comportamento atual do navegador. Confira a página antes de continuar.",
   )
   expect(view.container.textContent).not.toContain("TOURI_BROWSER_DECISION_HINT")
+  expect(view.container.textContent).not.toContain("Two targets match.")
 })

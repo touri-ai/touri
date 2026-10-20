@@ -265,6 +265,32 @@ realSuite("WP6 real Chrome browser acceptance", () => {
     return handler({ ctx: ctx(), args })
   }
 
+  test("selector targets cannot bypass sensitive-action takeover", async () => {
+    const page = await open("/travel-search")
+    await engine.evaluate({
+      tabId: page.tabId,
+      botId: botA,
+      expression: "document.querySelector('#calendar-open').textContent = 'Buy now'",
+      timeoutMs: 10000,
+      signal: ctx().signal,
+    })
+
+    const blocked = await callBrowserTool("browser_click", {
+      tabId: page.tabId,
+      target: { kind: "css", selector: "#calendar-open" },
+    })
+
+    expect(blocked).toMatchObject({ success: false, errorCode: "USER_TAKEOVER_REQUIRED" })
+    const state = await engine.evaluate({
+      tabId: page.tabId,
+      botId: botA,
+      expression: "document.querySelector('#calendar').hidden",
+      timeoutMs: 10000,
+      signal: ctx().signal,
+    })
+    expect(JSON.stringify(state)).toContain("true")
+  })
+
   test("typed decisions complete a local travel search with autocomplete and a date picker", async () => {
     const requestStart = decisionRequests.length
     const page = await open("/travel-search")

@@ -931,6 +931,7 @@ export type ApiRoutes = {
   'POST /api-models/models': { req: ApiModelConnection; res: { models: Array<string>; reason?: ApiModelError } }
   'POST /api-models/test': { req: ApiModelInput; res: ApiModelTest }
   'POST /api-models/:id/test': { req: {}; res: ApiModelTest }
+  'PATCH /api-models/:id/browser-decisions': { req: { enabled: boolean }; res: { model: ApiModel } }
   'DELETE /api-models/:id': { req: {}; res: {} }
   'GET /provider-profiles': { req: {}; res: { profiles: Array<ProviderProfile> } }
   'GET /bots/:id/provider-login': { req: {}; res: {

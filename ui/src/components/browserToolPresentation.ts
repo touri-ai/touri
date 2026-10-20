@@ -94,7 +94,7 @@ const ERROR_LINE = /ERROR\s+([A-Z_]+):\s*([^\n]+)/
 
 const decisionHintKeys = {
   missing_key:
-    "The browser decision service has no saved API key. Add one in API model settings. touri will keep using its current browser behavior.",
+    "Assisted browser choices are off or have no saved key. You can enable them in API model settings. The browser will keep working.",
   no_credit:
     "The browser decision service has no credit. touri kept using its current browser behavior. Check the page before continuing.",
   unavailable: "The browser decision service could not connect. touri kept using its current browser behavior.",
@@ -124,27 +124,25 @@ const getDecisionMessage = (raw: string): string | null => {
 }
 
 const getBrowserOutputText = (raw: string): string => {
-  const texts: string[] = []
-  const visit = (value: unknown, depth = 0): void => {
-    if (depth > 6 || value == null) return
-    if (Array.isArray(value)) {
-      for (const item of value) visit(item, depth + 1)
-      return
-    }
+  if (raw.length > 64 * 1024) return raw.slice(0, 64 * 1024)
+
+  // A local visit budget bounds malformed, deeply nested tool envelopes during rendering.
+  let remaining = 64
+  const getTexts = (value: unknown, depth = 0): string[] => {
+    if (remaining-- <= 0 || depth > 6 || value == null) return []
+    if (Array.isArray(value)) return value.slice(0, 64).flatMap((item) => getTexts(item, depth + 1))
     const record = asToolRecord(value)
-    if (!record) return
-    if (record.type === "text" && typeof record.text === "string") {
-      texts.push(record.text)
-      return
-    }
-    if (Array.isArray(record.content)) visit(record.content, depth + 1)
+    if (!record) return []
+    if (record.type === "text" && typeof record.text === "string") return [record.text]
+
+    return Array.isArray(record.content) ? getTexts(record.content, depth + 1) : []
   }
   try {
-    visit(JSON.parse(raw))
+    const texts = getTexts(JSON.parse(raw))
+    return texts.length ? texts.join("\n") : raw
   } catch {
     return raw
   }
-  return texts.length ? texts.join("\n") : raw
 }
 
 /** Failure cause from an MCP browser result, in the words the engine used. */
@@ -154,8 +152,6 @@ export const browserFailureCause = (raw: string | null): string | null => {
   const direct = ERROR_LINE.exec(text)
   const decisionMessage = getDecisionMessage(text)
   if (/TOURI_BROWSER_TAKEOVER_REQUIRED\|[a-z_]+/.test(text)) return decisionMessage
-  if (decisionMessage && direct?.[2] && !/TOURI_BROWSER_DECISION_QUESTION/.test(text))
-    return clip(`${direct[2].trim()} · ${decisionMessage}`, 200)
   if (decisionMessage) return clip(decisionMessage, 200)
   if (direct?.[2]) return clip(direct[2].replace(/\\"|"\}.*$/g, "").trim(), 160)
   const parsed = asToolRecord(parseToolValue(text))
@@ -225,7 +221,7 @@ export const browserToolResult = (raw: string | null): { title: string; url: str
       return
     }
     if (record.type === "text" && typeof record.text === "string") {
-      const decisionMessage = getDecisionMessage(record.text)
+      const decisionMessage = getDecisionMessage(redactToolText(record.text).replace(/\\n/g, "\n"))
       if (decisionMessage) {
         texts.push({ type: "text", text: decisionMessage })
         return
