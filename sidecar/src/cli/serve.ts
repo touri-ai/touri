@@ -16,8 +16,9 @@ import { clearServeInfo, writeServeInfo } from "./serveInfo"
 import { closeServeFiles, registerServeShutdown } from "./serveShutdown"
 import { exposeOnTailscale } from "./tailscale"
 import { cliVersion } from "./version"
-import { createWebGate } from "./web/gate"
+import { createWebGate, type MemberAuthorizer } from "./web/gate"
 import { resolveUiAssets } from "./web/uiAssets"
+import { initWorkMode } from "./work"
 
 const failedPairingsPerWindow = 8
 const pairingWindowMs = 60 * 1000
@@ -49,17 +50,20 @@ const startServer = async (options: ServeOptions, stopStderr: () => Promise<void
   const store = await openAuthStore({ filename: join(options.dataDir, authDbName) })
   const secrets = createSecretStore({ dir: options.dataDir })
   const ui = resolveUiAssets({ uiDir: options.uiDir, fallbackDir: join(dirname(process.execPath), "ui") })
+  const authorization: { authorize: MemberAuthorizer | null } = { authorize: null }
   const intercept = createWebGate({
     store,
     secrets,
     ui,
     trustedProxy: options.trustedProxy === true || options.tailscale,
     limiter: createRateLimiter({ maxFailures: failedPairingsPerWindow, windowMs: pairingWindowMs }),
+    authorizeMember: (input) => authorization.authorize?.(input) ?? null,
   })
   const runtime = createKernel({
     appData: options.dataDir,
     web: { hostname: options.host, port: options.port, intercept, host: createHeadlessHost({ secrets }) },
   })
+  initWorkMode({ kernel: runtime.kernel, authStore: store, secrets, authorization })
   await initModules(runtime)
   const port = runtime.handshake.port
   const exposed = options.tailscale ? await exposeOnTailscale({ localPort: port }) : null

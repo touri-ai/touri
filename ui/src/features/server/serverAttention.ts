@@ -87,10 +87,15 @@ export const installServerAttention = (
       )
         return
     } else return
+    const notificationId = event.type === "notification.created" ? event.notification.id : event.notificationId
     void invoke("server_attention", {
       title: localizeNotice(title).slice(0, 120),
       body: t(result ? "Há um novo aviso na central de notificações." : "Um bot precisa da sua atenção."),
-      ...(bot || thread ? { deepLink: buildDeepLink({ bot, thread }) } : {}),
+      ...(bot || thread || notificationId !== undefined
+        ? {
+            deepLink: buildDeepLink({ bot, thread, ...(notificationId === undefined ? {} : { notificationId }) }),
+          }
+        : {}),
     }).catch(() => undefined)
   })
 }

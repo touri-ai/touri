@@ -1,0 +1,216 @@
+.model-picker-anchor {
+  position: relative;
+  min-width: 0;
+}
+
+.model-picker-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-8);
+  width: 100%;
+  min-width: 0;
+  min-height: 38px;
+  padding: var(--space-8);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-control);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-meta);
+  text-align: left;
+  cursor: pointer;
+}
+
+.model-picker-trigger:focus-visible,
+.model-picker-option:focus-visible,
+.model-picker-custom input:focus-visible,
+.model-picker-custom button:focus-visible {
+  outline: 2px solid var(--info);
+  outline-offset: 2px;
+}
+
+.model-picker-trigger:disabled,
+.model-picker-option:disabled,
+.model-picker-custom button:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.model-picker-trigger-label {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.model-picker-popover {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 6px);
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  width: min(320px, calc(100vw - 24px));
+  max-height: min(440px, 48vh);
+  overflow: auto;
+  padding: var(--space-8);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 18%);
+}
+
+.model-picker-align-end .model-picker-popover {
+  right: 0;
+  left: auto;
+}
+
+.model-picker-direction-up .model-picker-popover {
+  top: auto;
+  bottom: calc(100% + 6px);
+}
+
+.model-picker-options {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  max-height: min(440px, 48vh);
+  overflow-y: auto;
+}
+
+.model-picker-spacer {
+  flex: 0 0 auto;
+}
+
+.model-picker-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-12);
+  width: 100%;
+  box-sizing: border-box;
+  flex: 0 0 40px;
+  height: 40px;
+  min-height: 40px;
+  padding: var(--space-8);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-meta);
+  line-height: var(--leading-body);
+  text-align: left;
+  cursor: pointer;
+}
+
+.model-picker-option > span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.model-picker-option:hover,
+.model-picker-option[aria-selected="true"] {
+  background: var(--surface-selected);
+}
+
+.model-picker-other {
+  margin-top: 0;
+  border-top: 1px solid var(--border);
+  border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+  color: var(--text-2);
+}
+
+.model-picker-current {
+  flex: 0 0 auto;
+  color: var(--text);
+}
+
+.model-picker-status {
+  padding: var(--space-8);
+  color: var(--text-2);
+  font-size: var(--fs-caption);
+  line-height: var(--leading-body);
+}
+
+.model-picker-custom {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-8);
+  padding: var(--space-8);
+  border-top: 1px solid var(--border);
+}
+
+.model-picker-custom input {
+  width: 100%;
+  min-width: 0;
+}
+
+.model-picker-custom small {
+  color: var(--danger);
+  font-size: var(--fs-caption);
+  line-height: var(--leading-body);
+}
+
+.model-picker-custom .button {
+  align-self: flex-end;
+  min-height: 34px;
+}
+
+.composer-island .model-picker-anchor {
+  flex: 0 1 auto;
+  max-width: min(560px, 100%);
+}
+
+.composer-island .model-picker-trigger.composer-model {
+  width: auto;
+  max-width: 100%;
+  min-height: 32px;
+  padding: var(--space-8);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text-2);
+  font-size: var(--fs-caption);
+}
+
+.composer-island .model-picker-trigger.composer-model:hover:not(:disabled) {
+  background: var(--surface-control);
+  color: var(--text);
+}
+
+.composer-island .model-picker-trigger.composer-model .model-picker-trigger-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-model-control .model-picker-anchor {
+  width: 100%;
+}
+
+@media (max-width: 620px) {
+  .composer-island .model-picker-anchor {
+    grid-column: 2;
+    width: 100%;
+    max-width: none;
+  }
+
+  .composer-island .model-picker-trigger.composer-model {
+    width: 100%;
+    min-height: 34px;
+    text-align: left;
+  }
+
+  .composer-island .model-picker-trigger.composer-model .model-picker-trigger-label {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .composer-island .model-picker-popover {
+    right: 0;
+    left: auto;
+    width: min(360px, calc(100vw - 24px), 100%);
+  }
+}

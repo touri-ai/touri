@@ -65,6 +65,27 @@ pub async fn notification_permission() -> Result<Permission, String> {
 }
 
 #[tauri::command]
+pub async fn notification_system_quiet() -> Result<bool, String> {
+    tauri::async_runtime::spawn_blocking(system_quiet)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[cfg(target_os = "windows")]
+fn system_quiet() -> bool {
+    use windows_sys::Win32::UI::Shell::{SHQueryUserNotificationState, QUNS_ACCEPTS_NOTIFICATIONS};
+
+    let mut state = 0;
+    let result = unsafe { SHQueryUserNotificationState(&mut state) };
+    result >= 0 && state != QUNS_ACCEPTS_NOTIFICATIONS
+}
+
+#[cfg(not(target_os = "windows"))]
+fn system_quiet() -> bool {
+    false
+}
+
+#[tauri::command]
 pub async fn notification_test(
     app: AppHandle,
     title: String,

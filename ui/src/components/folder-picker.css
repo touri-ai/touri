@@ -19,9 +19,9 @@
 }
 
 .folder-picker-breadcrumbs .button[aria-current="location"] {
-  border-color: var(--border-focus);
+  border-color: var(--border-strong);
   background: var(--surface-selected);
-  color: var(--text-strong);
+  color: var(--text);
 }
 
 /* Folders read as one list panel, not a stack of separate buttons. */
@@ -30,16 +30,16 @@
   max-height: 260px;
   overflow-y: auto;
   padding: var(--space-4);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-8);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
   background: var(--surface-settings-card);
 }
 
 .folder-picker-list > p {
   margin: 0;
-  padding: var(--space-8) var(--space-10);
-  color: var(--text-secondary);
-  font-size: var(--type-12);
+  padding: var(--space-8) var(--space-8);
+  color: var(--text-2);
+  font-size: var(--fs-caption);
 }
 
 .folder-picker-list ul {
@@ -51,12 +51,12 @@
 .folder-picker-entry {
   display: block;
   width: 100%;
-  padding: var(--space-8) var(--space-10);
+  padding: var(--space-8) var(--space-8);
   border: 0;
-  border-radius: var(--radius-6);
+  border-radius: var(--radius-xs);
   background: transparent;
-  color: var(--text-primary);
-  font-size: var(--type-12);
+  color: var(--text);
+  font-size: var(--fs-caption);
   text-align: left;
   overflow-wrap: anywhere;
 }
@@ -67,8 +67,8 @@
 
 .folder-picker details > summary {
   width: fit-content;
-  color: var(--text-secondary);
-  font-size: var(--type-12);
+  color: var(--text-2);
+  font-size: var(--fs-caption);
   cursor: pointer;
 }
 
@@ -93,7 +93,7 @@
 
 .folder-picker-create label,
 .folder-picker details label {
-  font-size: var(--type-13);
+  font-size: var(--fs-meta);
   font-weight: var(--weight-medium);
 }
 
@@ -110,7 +110,7 @@
 .folder-picker-access legend {
   margin-bottom: var(--space-8);
   padding: 0;
-  font-size: var(--type-13);
+  font-size: var(--fs-meta);
   font-weight: var(--weight-medium);
 }
 
@@ -120,20 +120,20 @@
   align-items: flex-start;
   gap: var(--space-8);
   padding: var(--space-12);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-8);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
   background: var(--surface-settings-card);
-  font-size: var(--type-12);
+  font-size: var(--fs-caption);
   cursor: pointer;
 }
 
 .folder-picker-option:has(:checked) {
-  border-color: var(--accent-brand);
+  border-color: var(--brand);
   background: var(--surface-selected);
 }
 
 .folder-picker-option:has(:focus-visible) {
-  outline: 2px solid var(--accent-brand);
+  outline: 2px solid var(--brand);
   outline-offset: 2px;
 }
 
@@ -142,7 +142,7 @@
   width: 14px;
   height: 14px;
   margin: 1px 0 0;
-  accent-color: var(--accent-brand);
+  accent-color: var(--brand);
 }
 
 @media (max-width: 600px) {
@@ -173,7 +173,7 @@
   .folder-picker .modal-actions {
     position: sticky;
     bottom: 0;
-    background: var(--surface-panel);
+    background: var(--surface);
     flex-wrap: wrap;
   }
 }

@@ -103,11 +103,21 @@ export const trackProviderProcess = async (kernel: Kernel, child: ChildProcess):
     .catch(() => undefined)
 }
 
+const getRecordNames = (dir: string): string[] => {
+  try {
+    return readdirSync(dir).filter((name) => /^\d+\.json$/.test(name))
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") return []
+    throw error
+  }
+}
+
 export const reapProviderProcesses = async (kernel: Kernel): Promise<void> => {
   const dir = directory(kernel)
+  // Read the records before the first await: a provider this sidecar tracks after startup is never an orphan.
+  const names = getRecordNames(dir)
   await ensurePrivateDirectoryAsync({ root: kernel.paths.appData, path: dir })
-  for (const name of readdirSync(dir)) {
-    if (!/^\d+\.json$/.test(name)) continue
+  for (const name of names) {
     const path = join(dir, name)
     const bytes = readPrivateFile({ root: kernel.paths.appData, path, maxBytes: 8_192 })
     if (!bytes) continue

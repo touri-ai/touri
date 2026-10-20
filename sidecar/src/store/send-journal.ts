@@ -110,15 +110,25 @@ export const createSendJournal = ({
       if (!["ask_all", "summarize"].includes(input.groupAction) || !thread?.groupId || thread.groupThreadId)
         return { status: 400, json: { errorCode: "INVALID_ARGS", error: "Esta ação exige uma conversa de grupo." } }
     }
-    const requestJson = JSON.stringify({
+    const request = {
       ...(input.groupAction ? { groupAction: input.groupAction } : {}),
       parentId: input.parentId,
       text: input.text,
       attachmentIds: input.attachmentIds,
+    }
+    const requestJson = JSON.stringify({
+      ...request,
+      ...(input.sender ? { sender: input.sender } : {}),
     })
     const previous = find(input.threadId, nonce)
     if (previous) {
-      if (previous.request_json !== requestJson || (previous.deadline !== deadline && input.deadline !== undefined))
+      const legacyOwnerReplay =
+        previous.request_json !== requestJson &&
+        input.sender?.kind === "person" &&
+        input.sender.id === "owner" &&
+        previous.request_json === JSON.stringify(request)
+      const sameRequest = previous.request_json === requestJson || legacyOwnerReplay
+      if (!sameRequest || (previous.deadline !== deadline && input.deadline !== undefined))
         return { status: 409, json: { errorCode: "NONCE_CONFLICT", error: "Este envio já contém outra mensagem." } }
       dispatch(previous)
       return reply(find(input.threadId, nonce) ?? previous)
@@ -146,7 +156,21 @@ export const createSendJournal = ({
       } | null
       if (!attachment)
         return { status: 400, json: { errorCode: "ATTACHMENT_NOT_FOUND", error: "Anexo não encontrado." } }
-      const name = (attachment.origin_path ?? attachment.path).split(/[\\/]/).at(-1) || attachmentId
+      const uploaded =
+        input.sender?.kind === "person"
+          ? (database
+              .query("SELECT name FROM attachment_people WHERE attachment_id = ? AND person_id = ?")
+              .get(attachmentId, input.sender.id) as { name: string } | null)
+          : null
+      const originalName = attachment.origin_path ?? attachment.path
+      const extension =
+        /\.(csv|tsv|txt|md|json|pdf|png|jpe?g|gif|webp|svg|log|xlsx?|docx?|pptx?|zip)$/iu
+          .exec(originalName)?.[0]
+          .toLowerCase() ?? ".bin"
+      // The migrated owner's files predate per-person names; other people must not inherit private metadata.
+      const canUseLegacyName = input.sender?.kind !== "person" || input.sender.id === "owner"
+      const fallbackName = canUseLegacyName ? originalName : `${attachmentId}${extension}`
+      const name = (uploaded?.name ?? fallbackName).split(/[\\/]/).at(-1) || attachmentId
       parts.push(
         attachment.mime.startsWith("image/")
           ? { type: "image", attachmentId, mime: attachment.mime, name }
@@ -171,7 +195,7 @@ export const createSendJournal = ({
             runId: null,
             text: input.text,
             parts,
-            sender: null,
+            sender: input.sender ?? null,
             source: "local",
             delivery: { clientNonce: nonce, deadline, status: "queued" },
           },

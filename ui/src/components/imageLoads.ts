@@ -60,14 +60,25 @@ export const imageDimensions = (bytes: Uint8Array): { width: number; height: num
   }
   return width > 0 && height > 0 ? { width, height } : null
 }
+export const getThumbnailSize = (
+  size: { width: number; height: number },
+  devicePixelRatio = 1,
+): { width: number; height: number } => {
+  const pixelRatio = Number.isFinite(devicePixelRatio) ? Math.min(3, Math.max(1, devicePixelRatio)) : 1
+  const scale = Math.min(1, (480 * pixelRatio) / size.width, (320 * pixelRatio) / size.height)
+  return {
+    width: Math.max(1, Math.round(size.width * scale)),
+    height: Math.max(1, Math.round(size.height * scale)),
+  }
+}
 export const thumbnailBlob = async (blob: Blob): Promise<Blob> => {
   if (typeof createImageBitmap !== "function") throw new Error("Prévia indisponível")
   const size = imageDimensions(new Uint8Array(await blob.slice(0, 131072).arrayBuffer()))
-  const scale = size ? Math.min(1, 480 / size.width, 320 / size.height) : 1
+  const thumbnail = getThumbnailSize(size ?? { width: 480, height: 320 }, window.devicePixelRatio)
   const bitmap = await createImageBitmap(blob, {
-    resizeWidth: size ? Math.max(1, Math.round(size.width * scale)) : 480,
-    resizeHeight: size ? Math.max(1, Math.round(size.height * scale)) : 320,
-    resizeQuality: "medium",
+    resizeWidth: thumbnail.width,
+    resizeHeight: thumbnail.height,
+    resizeQuality: "high",
   })
   try {
     const canvas = document.createElement("canvas")
@@ -78,7 +89,7 @@ export const thumbnailBlob = async (blob: Blob): Promise<Blob> => {
       canvas.toBlob(
         (result) => (result ? resolve(result) : reject(new Error("Prévia indisponível"))),
         "image/webp",
-        0.8,
+        0.9,
       ),
     )
   } finally {

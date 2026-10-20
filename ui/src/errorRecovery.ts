@@ -60,6 +60,9 @@ export const errorRecovery = (error: unknown, context: RecoveryContext = {}): Er
     ])
   const apiMessage = Object.values(apiModelErrors).find((message) => raw.includes(message))
   if (apiMessage) return view(tr(apiMessage), [action("retry", "Tentar novamente")])
+  const invalidModelMessage = "The saved model name is invalid. Choose another model in the bot settings."
+  if (raw.includes(invalidModelMessage)) return view(tr(invalidModelMessage), [])
+
   if (
     (error instanceof ApiError && error.status === 401) ||
     /\b401\b|unauthori[sz]ed|cli_auth|TOURI-E3001|sessão expir|entre na.*conta.*provedor/i.test(text)

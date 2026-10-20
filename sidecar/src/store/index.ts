@@ -31,6 +31,7 @@ import { parseBotFolders, protectedFolder } from "../kernel/bot-folders"
 import { DEFAULT_DATA_RETENTION_DAYS, validDataRetentionDays } from "../kernel/data-maintenance"
 import { writeDatabaseAsync } from "../kernel/database-write"
 import { SCHEMA_VERSION } from "../kernel/db"
+import { deviceSession, withAuthenticatedSender } from "../kernel/device-session"
 import { attachmentMime, MAX_ATTACHMENT_BYTES, readBoundedFile } from "../kernel/files"
 import { folderGrantProblem, refreshHostFolderAccess, specificFoldersRequired } from "../kernel/folder-capability"
 import { historyThreadPending, hydrateHistoryEvent } from "../kernel/history-backfill"
@@ -52,6 +53,7 @@ import { getDefaultMaxConcurrentRuns } from "../runtime/concurrency"
 import { touriVersion } from "../version"
 import { DEFAULT_BOT_VM_MEMORY_MB, DEFAULT_MACHINE_IDLE_MINUTES, validBotVmMemory } from "../vm/resources"
 import { cleanupBotHome, reconcileBotHomes, updateBotHome, writeBotHome } from "./bot-home"
+import { getBotModel, MODEL_VALIDATION_ERROR } from "./model"
 import { redeemFileGrant } from "./redeemFileGrant"
 import { createSendJournal } from "./send-journal"
 import { createStreamWriter } from "./stream-writer"
@@ -61,6 +63,7 @@ export const name = "store"
 export const BOTS_SQL = "SELECT * FROM bots WHERE archived_at IS NULL ORDER BY sort_order ASC, created_at ASC"
 
 type RawBot = {
+  responsible_person_id?: string | null
   team_builder: number
   id: string
   name: string
@@ -85,6 +88,7 @@ type RawBot = {
   home_dir: string
   main_thread_id: string | null
   browser_enabled: number
+  automatic_conversation_mode: Bot["automaticConversationMode"]
   browser: Bot["browser"]
   computer_use: number
   machine: Bot["machine"]
@@ -105,6 +109,7 @@ type RawBot = {
 }
 
 type RawThread = {
+  owner_person_id?: string | null
   group_id: string | null
   group_thread_id: string | null
   generation: number
@@ -127,6 +132,7 @@ type RawThread = {
 }
 
 type RawAttachment = {
+  owner_person_id?: string | null
   id: string
   path: string
   mime: string
@@ -186,7 +192,12 @@ const parseParts = (value: string): Array<MessagePart> => {
 const parseSender = (value: string | null): Message["sender"] => {
   const parsed = asRecord(parseJson<unknown>(value, null))
   if (!parsed || !isString(parsed.name) || !isString(parsed.id)) return null
-  return { name: parsed.name, id: parsed.id }
+  return {
+    name: parsed.name,
+    id: parsed.id,
+    ...(isString(parsed.avatarSeed) ? { avatarSeed: parsed.avatarSeed } : {}),
+    ...(parsed.kind === "person" ? { kind: "person" as const } : {}),
+  }
 }
 
 const sha256 = (value: string | Uint8Array): string => createHash("sha256").update(value).digest("hex")
@@ -223,6 +234,7 @@ const getTranscriptRetentionResync = ({
 }
 
 const asBot = (row: RawBot): Bot => ({
+  responsiblePersonId: row.responsible_person_id ?? "owner",
   teamBuilder: row.team_builder === 1,
   id: row.id,
   name: row.name,
@@ -250,6 +262,7 @@ const asBot = (row: RawBot): Bot => ({
   homeDir: row.home_dir,
   mainThreadId: row.main_thread_id,
   browserEnabled: row.browser_enabled === 1,
+  automaticConversationMode: row.automatic_conversation_mode === "task" ? "task" : "main",
   browser: row.browser,
   computerUse: row.computer_use === 1,
   machine: row.cloud_target === 1 ? "cloud" : row.machine,
@@ -269,6 +282,7 @@ const asBot = (row: RawBot): Bot => ({
 })
 
 const asThread = (row: RawThread): Thread => ({
+  ownerPersonId: row.group_id === null ? (row.owner_person_id ?? "owner") : null,
   groupId: row.group_id,
   groupThreadId: row.group_thread_id,
   generation: row.generation,
@@ -587,6 +601,39 @@ export const init = async (
     return thread
   }
 
+  const getMessageAttachmentIds = (message: Message): Array<string> =>
+    message.parts.flatMap((part) => {
+      if (part.type === "image" || part.type === "file") return [part.attachmentId]
+      if ("outputAttachmentId" in part && typeof part.outputAttachmentId === "string") return [part.outputAttachmentId]
+      return []
+    })
+
+  const indexMessageAttachments = async (message: Message, signal: AbortSignal): Promise<void> => {
+    const attachmentIds = Array.from(new Set(getMessageAttachmentIds(message)))
+    if (attachmentIds.length === 0) return
+    const insert = database.query(
+      "INSERT OR IGNORE INTO attachment_message_refs(thread_id, message_id, attachment_id) VALUES (?, ?, ?)",
+    )
+    for (let offset = 0; offset < attachmentIds.length; offset += 32) {
+      signal.throwIfAborted()
+      await writeDatabaseAsync(database, () =>
+        attachmentIds.slice(offset, offset + 32).forEach((attachmentId) => {
+          insert.run(message.threadId, message.id, attachmentId)
+        }),
+      )
+      if (offset + 32 < attachmentIds.length) await new Promise<void>((resolve) => setImmediate(resolve))
+    }
+  }
+
+  const indexHistoryAttachments = async (messages: Array<Message>, signal: AbortSignal): Promise<void> => {
+    for (let offset = 0; offset < messages.length; offset += 32) {
+      signal.throwIfAborted()
+      const batch = messages.slice(offset, offset + 32).filter((message) => getMessageAttachmentIds(message).length > 0)
+      for (const message of batch) await indexMessageAttachments(message, signal)
+      if (offset + 32 < messages.length) await new Promise<void>((resolve) => setImmediate(resolve))
+    }
+  }
+
   const insertMessage: StoreApi["insertMessage"] = ({ message }) => {
     if (!getThread({ threadId: message.threadId }))
       return { success: false, errorCode: "THREAD_NOT_FOUND", error: `Thread ${message.threadId} was not found` }
@@ -725,6 +772,7 @@ export const init = async (
     routineRunId,
     groupId,
     groupThreadId,
+    ownerPersonId,
   }) => {
     const bot = getBot({ botId })
     if (!bot) return { success: false, errorCode: "BOT_NOT_FOUND", error: `Bot ${botId} was not found` }
@@ -740,7 +788,7 @@ export const init = async (
     const timestamp = now()
     database
       .query(
-        "INSERT INTO threads (id, bot_id, parent_thread_id, kind, title, active_leaf_id, routine_run_id, cwd_override, unread, carryover_note, usage_json, source, created_at, updated_at, archived_at) VALUES (?, ?, ?, ?, ?, NULL, ?, NULL, 0, NULL, ?, 'local', ?, ?, NULL)",
+        "INSERT INTO threads (id, bot_id, parent_thread_id, kind, title, active_leaf_id, routine_run_id, cwd_override, unread, carryover_note, usage_json, source, created_at, updated_at, archived_at, owner_person_id) VALUES (?, ?, ?, ?, ?, NULL, ?, NULL, 0, NULL, ?, 'local', ?, ?, NULL, ?)",
       )
       .run(
         threadId,
@@ -752,6 +800,7 @@ export const init = async (
         JSON.stringify(asUsage({})),
         timestamp,
         timestamp,
+        ownerPersonId ?? null,
       )
     if (groupId)
       database
@@ -772,7 +821,7 @@ export const init = async (
     return { success: true, thread }
   }
 
-  const search: StoreApi["search"] = ({ q, botId, threadId, limit }) => {
+  const search: StoreApi["search"] = ({ q, botId, threadId, limit, personScope }) => {
     flushDeltas()
     const boundedLimit = Math.max(1, Math.min(50, Math.floor(limit)))
     const query = q.trim()
@@ -789,6 +838,15 @@ export const init = async (
     if (threadId !== undefined) {
       filters.push("messages_fts.thread_id = ?")
       values.push(threadId)
+    }
+    if (personScope) {
+      const channelFilter = personScope.channelIds.length
+        ? `threads.group_id IN (${personScope.channelIds.map(() => "?").join(",")}) OR `
+        : ""
+      filters.push(
+        `(${channelFilter}(threads.group_id IS NULL AND (threads.owner_person_id = ? OR (threads.owner_person_id IS NULL AND ? = 'owner'))))`,
+      )
+      values.push(...personScope.channelIds, personScope.personId, personScope.personId)
     }
     values.push(boundedLimit)
     try {
@@ -838,6 +896,16 @@ export const init = async (
       provider,
       ...(body.jobId === "team-builder" ? { jobId: "team-builder" } : {}),
     }
+    if (
+      body.automaticConversationMode !== undefined &&
+      body.automaticConversationMode !== "main" &&
+      body.automaticConversationMode !== "task"
+    )
+      return { input: null, error: "automaticConversationMode must be main or task" }
+    input.automaticConversationMode =
+      (body.automaticConversationMode as Bot["automaticConversationMode"] | undefined) ??
+      existing?.automaticConversationMode ??
+      "main"
     if (body.machine !== undefined && body.machine !== "local" && body.machine !== "vm" && body.machine !== "cloud")
       return { input: null, error: "machine must be local, vm or cloud" }
     input.machine = (body.machine as Bot["machine"] | undefined) ?? existing?.machine ?? "local"
@@ -941,8 +1009,12 @@ export const init = async (
       return { input: null, error: "Bot instructions exceed the 120 KiB limit" }
     if (Object.hasOwn(body, "instructions")) input.instructions = asString(body.instructions, "")
     else if (existing) input.instructions = existing.instructions
-    if (Object.hasOwn(body, "model")) input.model = body.model === null ? null : asString(body.model, "")
-    else if (existing) input.model = existing.model
+    if (Object.hasOwn(body, "model")) {
+      const model = getBotModel(body.model)
+      if (model === undefined) return { input: null, error: MODEL_VALIDATION_ERROR }
+
+      input.model = model
+    } else if (existing) input.model = existing.model
     if (input.model?.startsWith("touri-api-") && (provider !== "opencode" || !getApiModel(kernel, input.model)))
       return { input: null, errorCode: "api_model_removed", error: apiModelErrors.removed }
     if (Object.hasOwn(body, "reasoningEffort")) input.reasoningEffort = asReasoningEffort(body.reasoningEffort)
@@ -1105,6 +1177,9 @@ export const init = async (
           .query("UPDATE bots SET provider_profile = ?, claude_ai_connectors = ? WHERE id = ?")
           .run(input.providerProfile ?? null, input.claudeAiConnectors ? 1 : 0, id)
         database
+          .query("UPDATE bots SET automatic_conversation_mode = ? WHERE id = ?")
+          .run(input.automaticConversationMode ?? "main", id)
+        database
           .query(
             "INSERT INTO threads (id, bot_id, parent_thread_id, kind, title, active_leaf_id, routine_run_id, cwd_override, unread, carryover_note, usage_json, source, created_at, updated_at, archived_at) VALUES (?, ?, NULL, 'main', ?, NULL, NULL, NULL, 0, NULL, ?, 'local', ?, ?, NULL)",
           )
@@ -1162,6 +1237,7 @@ export const init = async (
       "cwd = ?",
       "browser_enabled = ?",
       "computer_use = ?",
+      "automatic_conversation_mode = ?",
       "updated_at = ?",
       ...(paused === undefined ? [] : ["paused = ?"]),
     ]
@@ -1184,6 +1260,7 @@ export const init = async (
       input.cwd ?? null,
       input.browserEnabled === true ? 1 : 0,
       input.computerUse === true ? 1 : 0,
+      input.automaticConversationMode ?? bot.automaticConversationMode ?? "main",
       now(),
       ...(paused === undefined ? [] : [paused ? 1 : 0]),
     ]
@@ -1295,7 +1372,14 @@ export const init = async (
 
   // MCP setup changes share PATCH's validation, storage and bot.updated event.
   // They must not stop a VM while its current turn is waiting for the tool.
-  kernel.services.provide("bots.configureAccess", ({ botId, patch }) => {
+  kernel.services.provide("bots.configureAccess", ({ botId, patch, runId }) => {
+    const isAdminRun = kernel.services.use("work.isAdminRun")
+    if (isAdminRun && (!runId || !isAdminRun(runId)))
+      return {
+        success: false,
+        errorCode: "DENIED",
+        error: "Somente administradores podem alterar permissões de bots.",
+      }
     const bot = getBot({ botId })
     if (!bot) return { success: false, errorCode: "NOT_FOUND", error: "Bot não encontrado." }
     const parsed = botFromBody({ body: { ...patch, name: bot.name, provider: bot.provider }, existing: bot })
@@ -1316,27 +1400,40 @@ export const init = async (
       : { success: false, errorCode: "NOT_FOUND", error: "Bot não encontrado." }
   })
 
+  const saveAttachmentPerson = (attachmentId: string, personId: string | undefined, name: string): void => {
+    if (!personId) return
+    database
+      .query(`INSERT INTO attachment_people(attachment_id,person_id,name) VALUES(?,?,?)
+      ON CONFLICT(attachment_id,person_id) DO UPDATE SET name=excluded.name`)
+      .run(attachmentId, personId, name)
+  }
+
   const insertAttachment = async ({
     path,
     originPath,
     content,
+    ownerPersonId,
   }: {
     path: string
     originPath: string | null
     content?: Buffer
+    ownerPersonId?: string
   }): Promise<Attachment | null> => {
     const bytes =
       content ?? readBoundedFile({ root: kernel.paths.attachmentsDir, path, maxBytes: MAX_ATTACHMENT_BYTES })
     const id = sha256(bytes)
     const existing = database.query("SELECT * FROM attachments WHERE id = ?").get(id) as RawAttachment | null
     if (existing) {
+      saveAttachmentPerson(id, ownerPersonId, path)
       // A user upload can share a hash with a managed tool result. Promote its
       // ownership so retention will keep the uploaded file after tools expire.
       if (existing.origin_path === OUTPUT_BLOB_ORIGIN && originPath !== null) {
         database.query("UPDATE attachments SET origin_path = ? WHERE id = ?").run(originPath, id)
-        existing.origin_path = originPath
       }
-      return asAttachment(existing)
+      return asAttachment({
+        ...existing,
+        ...(existing.origin_path === OUTPUT_BLOB_ORIGIN && originPath !== null ? { origin_path: originPath } : {}),
+      })
     }
     const extension =
       extname(path)
@@ -1347,8 +1444,11 @@ export const init = async (
     await writePrivateFileAsync({ root: kernel.paths.appData, path: destination, content: bytes })
     const timestamp = now()
     database
-      .query("INSERT INTO attachments (id, path, mime, bytes, origin_path, created_at) VALUES (?, ?, ?, ?, ?, ?)")
-      .run(id, destination, attachmentMime(bytes), bytes.byteLength, originPath, timestamp)
+      .query(
+        "INSERT INTO attachments (id, path, mime, bytes, origin_path, created_at, owner_person_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      )
+      .run(id, destination, attachmentMime(bytes), bytes.byteLength, originPath, timestamp, ownerPersonId ?? null)
+    saveAttachmentPerson(id, ownerPersonId, path)
     const attachment = database.query("SELECT * FROM attachments WHERE id = ?").get(id) as RawAttachment | null
     return attachment ? asAttachment(attachment) : null
   }
@@ -1368,7 +1468,7 @@ export const init = async (
     if (body.parentId !== undefined && body.parentId !== null && parentId === null)
       return { input: null, error: "parentId must be a string or null" }
     const attachmentIds = body.attachmentIds === undefined ? [] : body.attachmentIds
-    if (!Array.isArray(attachmentIds) || attachmentIds.some((value) => !isString(value)))
+    if (!Array.isArray(attachmentIds) || attachmentIds.length > 50 || attachmentIds.some((value) => !isString(value)))
       return { input: null, error: "attachmentIds must be an array of ids" }
     return {
       input: {
@@ -1416,16 +1516,28 @@ export const init = async (
       return { success: false, errorCode: parsed.errorCode ?? "INVALID_ARGS", error: parsed.error ?? "Invalid bot" }
     return { success: true, input: parsed.input }
   })
-  kernel.services.provide("bots.create", async ({ body, signal, isCurrent }) => {
+  kernel.services.provide("bots.create", async ({ body, signal, isCurrent, runId, responsiblePersonId }) => {
+    const isAdminRun = kernel.services.use("work.isAdminRun")
+    if (isAdminRun && (!runId || !isAdminRun(runId)))
+      return { success: false, errorCode: "DENIED", error: "Somente administradores podem criar bots." }
     const parsed = kernel.services.use("bots.validateCreation")?.(body)
     if (!parsed?.success) return parsed ?? { success: false, errorCode: "STORE_ERROR", error: "Store unavailable" }
     // This internal service is only for safe local drafts; POST /bots handles other user-selected destinations.
     if (parsed.input.machine !== "local" || parsed.input.jobId)
       return { success: false, errorCode: "INVALID_ARGS", error: "Invalid team bot destination or job" }
     const bot = await createBot({ input: parsed.input, signal, ...(isCurrent ? { isCurrent } : {}) })
-    return bot
-      ? { success: true, bot }
-      : { success: false, errorCode: "STORE_ERROR", error: "Bot could not be created" }
+    if (!bot) return { success: false, errorCode: "STORE_ERROR", error: "Bot could not be created" }
+    const botResponsiblePersonId =
+      responsiblePersonId ??
+      kernel.services.use("work.personForRun")?.(runId ?? "") ??
+      kernel.services.use("work.defaultPersonId")?.()
+    if (!botResponsiblePersonId) return { success: true, bot }
+    database.query("UPDATE bots SET responsible_person_id = ? WHERE id = ?").run(botResponsiblePersonId, bot.id)
+    if (bot.mainThreadId)
+      database
+        .query("UPDATE threads SET owner_person_id = ? WHERE id = ?")
+        .run(botResponsiblePersonId, bot.mainThreadId)
+    return { success: true, bot: getBot({ botId: bot.id }) ?? bot }
   })
   const handleCreateBot = async ({ body, signal }: { body: unknown; signal: AbortSignal }): Promise<RouteResponse> => {
     const record = requestRecord(body)
@@ -1456,9 +1568,17 @@ export const init = async (
       {
         method: "GET",
         path: "/workspace/activity",
-        handler: async () => {
+        handler: async ({ signal }) => {
           await drainForGlobalRead()
-          const { messages, runs } = readWorkspaceActivity(database)
+          const person = deviceSession(signal)?.person
+          const scope =
+            person && person.role === "member"
+              ? {
+                  personId: person.id,
+                  channelIds: kernel.services.use("work.personChannelIds")?.(person.id) ?? [],
+                }
+              : undefined
+          const { messages, runs } = readWorkspaceActivity(database, scope)
           return jsonResponse(200, { messages: messages.map(asMessage), runs })
         },
       },
@@ -1476,12 +1596,44 @@ export const init = async (
       {
         method: "GET",
         path: "/bots",
-        handler: async () => {
-          const rows = database.query(BOTS_SQL).all() as Array<RawBot>
+        handler: async ({ signal }) => {
+          const person = deviceSession(signal)?.person
+          if (!person || person.role === "admin") {
+            const rows = database.query(BOTS_SQL).all() as Array<RawBot>
+            return jsonResponse(200, { bots: rows.map(asBot) })
+          }
+          const visibleBotIds = kernel.services.use("work.accessibleBotIds")?.({
+            personId: person.id,
+            channelIds: kernel.services.use("work.personChannelIds")?.(person.id) ?? [],
+          })
+          if (!visibleBotIds) return errorResponse(503, "WORK_ACCESS_UNAVAILABLE", "Acesso ao espaço indisponível")
+          if (visibleBotIds.length === 0) return jsonResponse(200, { bots: [] })
+          const placeholders = visibleBotIds.map(() => "?").join(",")
+          const rows = database
+            .query(
+              `SELECT * FROM bots WHERE id IN (${placeholders}) AND archived_at IS NULL ORDER BY sort_order ASC, created_at ASC`,
+            )
+            .all(...visibleBotIds) as Array<RawBot>
           return jsonResponse(200, { bots: rows.map(asBot) })
         },
       },
-      { method: "POST", path: "/bots", handler: async ({ body, signal }) => handleCreateBot({ body, signal }) },
+      {
+        method: "POST",
+        path: "/bots",
+        handler: async ({ body, signal }) => {
+          const result = await handleCreateBot({ body, signal })
+          const person = deviceSession(signal)?.person
+          if (result.status !== 201 || !person || !("json" in result)) return result
+          const botId = (result.json as { bot?: Bot }).bot?.id
+          if (!botId) return result
+          database.query("UPDATE bots SET responsible_person_id = ? WHERE id = ?").run(person.id, botId)
+          const mainThreadId = getBot({ botId })?.mainThreadId
+          if (mainThreadId)
+            database.query("UPDATE threads SET owner_person_id = ? WHERE id = ?").run(person.id, mainThreadId)
+          const bot = getBot({ botId })
+          return bot ? jsonResponse(201, { bot }) : result
+        },
+      },
       {
         method: "PATCH",
         path: "/bots/:id",
@@ -1545,7 +1697,7 @@ export const init = async (
       {
         method: "GET",
         path: "/bots/:id/threads",
-        handler: async ({ params }) => {
+        handler: async ({ params, signal }) => {
           if (!getBot({ botId: params.id ?? "" })) return errorResponse(404, "NOT_FOUND", "Bot not found")
           const threadBotId = params.id ?? ""
           const rows = database
@@ -1553,17 +1705,43 @@ export const init = async (
               "SELECT * FROM threads WHERE bot_id = ? AND group_id IS NULL AND archived_at IS NULL ORDER BY updated_at DESC",
             )
             .all(threadBotId) as Array<RawThread>
-          return jsonResponse(200, { threads: rows.map(asThread) })
+          const person = deviceSession(signal)?.person
+          const threads = rows.map(asThread)
+          if (!person || person.role === "admin") return jsonResponse(200, { threads })
+          const canAccessThread = kernel.services.use("work.canAccessThread")
+          return jsonResponse(200, {
+            threads: threads.filter((thread) =>
+              canAccessThread?.({
+                personId: person.id,
+                role: person.role,
+                threadId: thread.id,
+              }),
+            ),
+          })
         },
       },
       {
         method: "POST",
         path: "/threads",
-        handler: async ({ body }) => {
+        handler: async ({ body, signal }) => {
           const record = requestRecord(body)
           if (!record || !isString(record.botId)) return errorResponse(400, "INVALID_ARGS", "botId is required")
           const title = isString(record.title) && record.title.trim() ? record.title.trim() : "New chat"
-          const result = createThread({ botId: record.botId, kind: "chat", title })
+          const person = deviceSession(signal)?.person
+          if (
+            person?.role === "member" &&
+            !kernel.services.use("work.ownsBot")?.({
+              personId: person.id,
+              botId: record.botId,
+            })
+          )
+            return errorResponse(404, "NOT_FOUND", "Bot not found")
+          const result = createThread({
+            botId: record.botId,
+            kind: "chat",
+            title,
+            ...(person ? { ownerPersonId: person.id } : {}),
+          })
           return result.success
             ? jsonResponse(201, { thread: result.thread })
             : errorResponse(404, result.errorCode, result.error)
@@ -1619,7 +1797,7 @@ export const init = async (
       {
         method: "GET",
         path: "/threads/:id/transcript",
-        handler: async ({ params, query }) => {
+        handler: async ({ params, query, signal }) => {
           const cloudThread = getThread({ threadId: params.id ?? "" })
           if (cloudThread && getBot({ botId: cloudThread.botId })?.machine === "cloud") {
             const cloud = kernel.services.use("cloud.account")
@@ -1666,6 +1844,12 @@ export const init = async (
             generation: row.generation,
             event: hydrateHistoryEvent(database, row.event_json),
           }))
+          await indexHistoryAttachments(
+            entries.flatMap(({ event }) =>
+              event.type === "message.created" || event.type === "message.updated" ? [event.message] : [],
+            ),
+            signal,
+          )
           return jsonResponse(200, {
             entries,
             rejections: entries.flatMap(({ event }) => (event.type === "transcript.rejected" ? [event.rejection] : [])),
@@ -1679,7 +1863,7 @@ export const init = async (
       {
         method: "GET",
         path: "/threads/:id/messages",
-        handler: async ({ params, query }) => {
+        handler: async ({ params, query, signal }) => {
           const cloudThread = getThread({ threadId: params.id ?? "" })
           if (cloudThread && getBot({ botId: cloudThread.botId })?.machine === "cloud") {
             const cloud = kernel.services.use("cloud.account")
@@ -1701,41 +1885,61 @@ export const init = async (
                     .all(thread.id) as Array<RawMessage>
                 ).map(asMessage)
               : activePath({ threadId: thread.id })
+          await indexHistoryAttachments(messages, signal)
           return jsonResponse(200, { messages, activeLeafId: thread.activeLeafId })
         },
       },
       {
         method: "POST",
         path: "/threads/:id/messages",
-        handler: async ({ params, body }) => {
+        handler: async ({ params, body, signal }) => {
           const record = requestRecord(body)
           if (!record) return errorResponse(400, "INVALID_ARGS", "Request body must be an object")
           const parsed = messageFromRequest({ threadId: params.id ?? "", body: record })
           if (!parsed.input || parsed.error)
             return errorResponse(400, "INVALID_ARGS", parsed.error ?? "Invalid message")
+          const person = deviceSession(signal)?.person
+          if (
+            person?.role === "member" &&
+            !kernel.services.use("work.canAccessAttachments")?.({
+              personId: person.id,
+              role: person.role,
+              attachmentIds: parsed.input.attachmentIds,
+            })
+          )
+            return errorResponse(404, "NOT_FOUND", "Attachment not found")
+          const input = withAuthenticatedSender(signal, parsed.input)
           const thread = getThread({ threadId: parsed.input.threadId })
           if (thread && getBot({ botId: thread.botId })?.machine === "cloud") {
             const cloud = kernel.services.use("cloud.account")
             if (!cloud) return errorResponse(503, "TOURI-E9013", "Nuvem desativada")
-            return jsonResponse(200, await cloud.send(parsed.input))
+            return jsonResponse(200, await cloud.send(input))
           }
           return (
-            storeApi.sendMessage?.(parsed.input) ??
-            errorResponse(503, "RUNTIME_UNAVAILABLE", "Serviço de envio indisponível")
+            storeApi.sendMessage?.(input) ?? errorResponse(503, "RUNTIME_UNAVAILABLE", "Serviço de envio indisponível")
           )
         },
       },
       {
         method: "GET",
         path: "/search",
-        handler: async ({ query }) => {
+        handler: async ({ query, signal }) => {
           if (query.threadId === undefined) await drainForGlobalRead()
           else await streamWriter.drainAsync({ threadId: query.threadId })
+          const person = deviceSession(signal)?.person
+          const personScope =
+            person?.role === "member"
+              ? {
+                  personId: person.id,
+                  channelIds: kernel.services.use("work.personChannelIds")?.(person.id) ?? [],
+                }
+              : undefined
           const hits = search({
             q: query.q ?? "",
             ...(query.botId === undefined ? {} : { botId: query.botId }),
             ...(query.threadId === undefined ? {} : { threadId: query.threadId }),
             limit: 50,
+            ...(personScope ? { personScope } : {}),
           })
           return jsonResponse(200, { hits })
         },
@@ -1747,6 +1951,9 @@ export const init = async (
           const record = requestRecord(body)
           if (record && "path" in record)
             return errorResponse(403, "FILE_GRANT_REQUIRED", "Selecione o arquivo e envie seu conteúdo")
+          const person = deviceSession(signal)?.person
+          if (person?.role === "member" && record && "grantId" in record)
+            return errorResponse(403, "DENIED", "Membros podem enviar apenas arquivos selecionados neste dispositivo")
           if (record && "grantId" in record) {
             const granted = await redeemFileGrant({ kernel, grantId: record.grantId, signal })
             if (!granted.success) return errorResponse(granted.status, granted.errorCode, granted.error)
@@ -1754,9 +1961,12 @@ export const init = async (
               path: granted.name,
               originPath: granted.name,
               content: granted.content,
+              ...(person ? { ownerPersonId: person.id } : {}),
             })
             return attachment
-              ? jsonResponse(201, { attachment })
+              ? jsonResponse(201, {
+                  attachment: person ? { ...attachment, path: granted.name, originPath: granted.name } : attachment,
+                })
               : errorResponse(404, "NOT_FOUND", "Attachment source file not found")
           }
           if (
@@ -1777,9 +1987,16 @@ export const init = async (
             const content = Buffer.from(record.dataBase64, "base64")
             if (content.length > MAX_ATTACHMENT_BYTES)
               return errorResponse(413, "ATTACHMENT_TOO_LARGE", "Arquivo acima de 15 MB")
-            const attachment = await insertAttachment({ path: record.name, originPath: record.name, content })
+            const attachment = await insertAttachment({
+              path: record.name,
+              originPath: record.name,
+              content,
+              ...(person ? { ownerPersonId: person.id } : {}),
+            })
             return attachment
-              ? jsonResponse(201, { attachment })
+              ? jsonResponse(201, {
+                  attachment: person ? { ...attachment, path: record.name, originPath: record.name } : attachment,
+                })
               : errorResponse(404, "NOT_FOUND", "Attachment source file not found")
           } catch (error) {
             return errorResponse(

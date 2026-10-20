@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite"
+import { opendir } from "node:fs/promises"
 import { join, relative } from "node:path"
 import { setTimeout as sleep } from "node:timers/promises"
 import type { Kernel, RegisteredErrorCode, RouteModule, VmRuntime } from "@touri/contracts"
@@ -14,6 +15,8 @@ import { errorResponse, TouriError } from "../kernel/errors"
 import { attachmentReferences } from "../kernel/output-blobs"
 import { botReplayRows, purgeBotReplay } from "../kernel/transcript-storage"
 import { providerLoginAccount } from "./provider-login"
+
+const BOT_FILE_BATCH_SIZE = 16
 
 export const deleteBotRoute = (
   kernel: Kernel,
@@ -164,14 +167,15 @@ const deleteBotLogins = async (kernel: Kernel, botId: string) => {
 const deleteBotData = async (kernel: Kernel, botId: string): Promise<Set<string>> => {
   const db = kernel.db as Database
   const attachments = getBotAttachments(db, botId)
-  const files = getBotFilePaths(kernel, botId)
   try {
-    await Promise.all(files.map((path) => removePrivateFileAsync({ root: kernel.paths.appData, path })))
-    await removeBotHomeDirectoryAsync({
-      root: kernel.paths.appData,
-      path: relative(kernel.paths.appData, kernel.paths.botsDir),
-      botId,
-    })
+    const files = await getBotFilePaths(kernel, botId)
+    await removeBotFilesInBatches(kernel.paths.appData, files)
+    const homes = [
+      relative(kernel.paths.appData, kernel.paths.botsDir),
+      "provider-homes/codex",
+      "provider-homes/codex-vault",
+    ]
+    for (const path of homes) await removeBotHomeDirectoryAsync({ root: kernel.paths.appData, path, botId })
   } catch (cause) {
     throw new TouriError("TOURI-E2013", { cause })
   }
@@ -305,14 +309,10 @@ const getBotAttachments = (db: Database, botId: string) => {
   return attachments
 }
 
-const getBotFilePaths = (kernel: Kernel, botId: string) => {
+const getBotFilePaths = async (kernel: Kernel, botId: string) => {
   const db = kernel.db as Database
   const threads = db.query("SELECT id FROM threads WHERE bot_id=?").all(botId) as { id: string }[]
-  const configurations = threads.flatMap((thread) =>
-    ["mcp.json", "settings.json", "system.md"].map((suffix) =>
-      join(kernel.paths.runDir, "claude", `${thread.id}.${suffix}`),
-    ),
-  )
+  const configurations = await getBotConfigurationPaths(kernel.paths.runDir, threads)
   const sessions = db
     .query(
       "SELECT rollout_path FROM provider_sessions WHERE thread_id IN (SELECT id FROM threads WHERE bot_id=?) AND rollout_path IS NOT NULL",
@@ -331,4 +331,29 @@ const getBotFilePaths = (kernel: Kernel, botId: string) => {
     })
     .map((session) => session.rollout_path)
   return [...configurations, ...privateSessions]
+}
+
+const getBotConfigurationPaths = async (runDir: string, threads: { id: string }[]): Promise<string[]> => {
+  const directory = await opendir(join(runDir, "claude")).catch((error: unknown) => {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") return null
+    throw error
+  })
+  if (!directory) return []
+
+  const names = new Set(
+    threads.flatMap((thread) => ["mcp.json", "settings.json", "system.md"].map((suffix) => `${thread.id}.${suffix}`)),
+  )
+  // Accumulate locally to avoid copying the matches on every directory entry.
+  const paths: string[] = []
+  for await (const entry of directory) {
+    if (names.has(entry.name)) paths.push(join(runDir, "claude", entry.name))
+  }
+  return paths
+}
+
+const removeBotFilesInBatches = async (root: string, files: string[]): Promise<void> => {
+  for (let offset = 0; offset < files.length; offset += BOT_FILE_BATCH_SIZE) {
+    const batch = files.slice(offset, offset + BOT_FILE_BATCH_SIZE)
+    await Promise.all(batch.map((path) => removePrivateFileAsync({ root, path })))
+  }
 }

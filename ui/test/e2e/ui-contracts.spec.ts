@@ -21,7 +21,7 @@ for (const theme of ["light", "dark"]) {
       await page
         .locator(".modal-card")
         .evaluate((node) => getComputedStyle(node).boxShadow.split(/, (?![^()]*\))/).length),
-    ).toBe(3)
+    ).toBe(2)
     await page.screenshot({ path: info.outputPath(`surfaces-${theme}.png`), fullPage: true })
   })
 }

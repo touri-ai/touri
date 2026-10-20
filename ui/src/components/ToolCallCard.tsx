@@ -146,7 +146,6 @@ export const ToolCallCard = ({
       data-approval-scope={approval?.decision === "approved" ? (approval.standing ? "standing" : "once") : undefined}
       id={approval ? `approval-${approval.approvalId}` : undefined}
       tabIndex={pending ? 0 : approval ? -1 : undefined}
-      aria-keyshortcuts={pending ? "Escape" : undefined}
       onKeyDown={onKeyDown}
     >
       <header className="tool-card-header">
@@ -241,7 +240,7 @@ export const ToolCallCard = ({
         </div>
       )}
       {pending && presentation.review && <ApprovalContext review={presentation.review} />}
-      {approval?.standing && <strong className="tool-standing-label">Permissão permanente neste bot</strong>}
+      {approval?.standing && <strong className="tool-standing-label">{t("Permissão permanente neste bot")}</strong>}
       {actions}
       {error && (
         <p className="tool-action-error" role="alert">

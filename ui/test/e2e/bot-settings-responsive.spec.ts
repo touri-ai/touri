@@ -53,7 +53,7 @@ viewports.forEach((viewport) => {
 const getRowLayout = (row: Element) => {
   const copy = row.querySelector(".settings-row-copy, .machine-environment-copy")
   const control = row.querySelector(".settings-row-control, .machine-environment-control")
-  const field = control?.querySelector("input, select")
+  const field = control?.querySelector("input, select, button.model-picker-trigger")
   if (!copy || !control || !field) throw new Error("Expected a settings description and its field")
 
   const style = getComputedStyle(row)

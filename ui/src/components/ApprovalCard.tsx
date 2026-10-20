@@ -1,5 +1,5 @@
 import type { ApprovalPart } from "@touri/contracts"
-import { useId, useRef, useState } from "react"
+import { useRef, useState } from "react"
 import type { UiApi } from "../api/client"
 import { userFacingError } from "../errors"
 import { t } from "../i18n"
@@ -33,12 +33,12 @@ const GenericApprovalCard = ({
   resolvedAt?: number | undefined
   onResolved?: (timestamp: number, decision: "approved" | "denied") => void
 }) => {
-  const tooltipId = useId()
   const answering = useRef(false)
   const [busy, setBusy] = useState(false)
   const [decision, setDecision] = useState<ApprovalPart["decision"] | null>(null)
   const [decidedAt, setDecidedAt] = useState<number>()
   const [standingGranted, setStandingGranted] = useState(false)
+  const [confirmStanding, setConfirmStanding] = useState(false)
   const [revoked, setRevoked] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const status = part.decision === "pending" ? (decision ?? part.decision) : part.decision
@@ -48,7 +48,10 @@ const GenericApprovalCard = ({
     part.scope?.server === "touri" && part.scope.tool.split("__").at(-1) === "capability_request"
   const allowStanding = part.allowStanding && !capabilityRequest
   const toolName = presentation.name
-  const scopeHelp = `Toda a ferramenta ${toolName} poderá agir neste bot sem pedir novamente. Permite novas chamadas de ${toolName} neste bot sem pedir aprovação, inclusive com outros parâmetros. Você pode revogar essa permissão.`
+  const scopeHelp = t(
+    "A ferramenta {name} poderá agir neste bot sem pedir aprovação novamente, inclusive em novas chamadas com outros parâmetros. Você pode remover essa permissão em Avançado → Permissões.",
+    { name: toolName },
+  )
   const revoke = async () => {
     if (!api || busy || !part.scope || !part.botId) return
     setBusy(true)
@@ -103,33 +106,15 @@ const GenericApprovalCard = ({
       busy={busy}
       error={error}
       onKeyDown={(event) => {
-        // Preserve native Enter behavior for denial and disclosures, but never let it
-        // activate an approval button (including the standing grant).
+        // Keep accidental Enter and Space presses from approving a focused card.
         if (
           status === "pending" &&
           (event.key === "Enter" || event.key === " ") &&
           (event.target === event.currentTarget ||
-            (event.target instanceof Element && event.target.closest(".tool-action-primary, .tool-standing-action")))
+            (event.target instanceof Element &&
+              event.target.closest(".tool-action-approve, .tool-standing-action, .tool-standing-confirm")))
         ) {
           event.preventDefault()
-          return
-        }
-        if (
-          status !== "pending" ||
-          event.repeat ||
-          event.nativeEvent.isComposing ||
-          event.altKey ||
-          event.ctrlKey ||
-          event.metaKey ||
-          event.shiftKey
-        )
-          return
-        // Only Escape (deny) is a card shortcut. Approving must be an explicit button press:
-        // the card can receive focus programmatically, and a stray Enter must never approve.
-        if (event.key === "Escape") {
-          event.preventDefault()
-          event.stopPropagation()
-          void answer(false)
         }
       }}
       actions={
@@ -137,46 +122,65 @@ const GenericApprovalCard = ({
           <div className="tool-approval-footer">
             <div className="tool-approval-actions">
               <button
-                className="tool-action tool-action-primary"
+                className="tool-action tool-action-primary tool-action-approve"
                 type="button"
                 disabled={busy || !api || !presentation.canApprove}
                 onClick={() => void answer(true)}
               >
-                {busy ? "Enviando…" : (presentation.approvalLabel ?? "Aprovar")}
+                {busy ? t("Enviando…") : (presentation.approvalLabel ?? t("Approve"))}
               </button>
-              {allowStanding && (
-                <span className="tool-standing-action">
-                  <button
-                    className="tool-action tool-action-secondary"
-                    type="button"
-                    aria-describedby={tooltipId}
-                    disabled={busy || !api || !presentation.canApprove}
-                    onClick={() => void answer(true, true)}
-                  >
-                    Sempre neste bot
-                  </button>
-                  <span className="tool-standing-tooltip" role="tooltip" id={tooltipId}>
-                    {scopeHelp}
-                  </span>
-                </span>
-              )}
               <button
                 className="tool-action tool-action-deny"
                 type="button"
                 disabled={busy || !api}
                 onClick={() => void answer(false)}
               >
-                {capabilityRequest ? t("Agora não") : "Negar"}
+                {capabilityRequest ? t("Agora não") : t("Deny")}
               </button>
             </div>
-            {allowStanding && <p className="tool-standing-help">{scopeHelp}</p>}
-            <span className="tool-shortcuts">
-              Com o cartão em foco: <kbd>Esc</kbd> nega
-            </span>
+            {allowStanding && (
+              <div className="tool-standing-section">
+                {!confirmStanding ? (
+                  <button
+                    className="tool-standing-action text-button"
+                    type="button"
+                    disabled={busy || !api || !presentation.canApprove}
+                    onClick={() => setConfirmStanding(true)}
+                  >
+                    {t("Permitir sempre nesta ferramenta")}
+                  </button>
+                ) : (
+                  <fieldset className="tool-standing-confirmation">
+                    <legend className="visually-hidden">
+                      {t("Permissão permanente para {name}", { name: toolName })}
+                    </legend>
+                    <p>{scopeHelp}</p>
+                    <div className="tool-approval-actions">
+                      <button
+                        className="tool-action tool-action-primary tool-standing-confirm"
+                        type="button"
+                        disabled={busy || !api || !presentation.canApprove}
+                        onClick={() => void answer(true, true)}
+                      >
+                        {t("Sim, permitir {name} neste bot sem perguntar de novo", { name: toolName })}
+                      </button>
+                      <button
+                        className="tool-action tool-action-secondary"
+                        type="button"
+                        disabled={busy}
+                        onClick={() => setConfirmStanding(false)}
+                      >
+                        {t("Back")}
+                      </button>
+                    </div>
+                  </fieldset>
+                )}
+              </div>
+            )}
           </div>
         ) : permanent ? (
           <div className="tool-standing-resolution">
-            <p>{revoked ? "Permissão permanente revogada." : scopeHelp}</p>
+            <p>{revoked ? t("Permissão permanente revogada.") : scopeHelp}</p>
             <div className="tool-revoke-action">
               <button
                 type="button"
@@ -184,7 +188,7 @@ const GenericApprovalCard = ({
                 disabled={busy || !api || revoked}
                 onClick={() => void revoke()}
               >
-                Revogar
+                {t("Revoke")}
               </button>
             </div>
           </div>

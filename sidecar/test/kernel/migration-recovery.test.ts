@@ -48,9 +48,9 @@ test("schema 9 upgrades 50k messages to the final schema without rewriting histo
   const root = mkdtempSync(join(tmpdir(), "touri-schema9-50k-"))
   const filename = join(root, "touri.db")
   let database = new Database(filename)
-  const fingerprint = (table: string, order: string) =>
+  const fingerprint = (table: string, order: string, columns: string) =>
     createHash("sha256")
-      .update(JSON.stringify(database.query(`SELECT * FROM ${table} ORDER BY ${order}`).all()))
+      .update(JSON.stringify(database.query(`SELECT ${columns} FROM ${table} ORDER BY ${order}`).all()))
       .digest("hex")
   try {
     database.exec("PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL")
@@ -87,10 +87,17 @@ test("schema 9 upgrades 50k messages to the final schema without rewriting histo
       }
     })()
     expect(database.query("SELECT value FROM schema_meta WHERE key = 'schema_version'").get()).toEqual({ value: "9" })
+    const columns = (table: string) =>
+      (database.query(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>)
+        .map(({ name }) => name)
+        .join(", ")
+    const messageColumns = columns("messages")
+    const transcriptColumns = columns("transcript_entries")
+    const threadColumns = columns("threads")
     const before = [
-      fingerprint("messages", "thread_id, seq"),
-      fingerprint("transcript_entries", "id"),
-      fingerprint("threads", "id"),
+      fingerprint("messages", "thread_id, seq", messageColumns),
+      fingerprint("transcript_entries", "id", transcriptColumns),
+      fingerprint("threads", "id", threadColumns),
     ]
     database.close()
     for (let reopen = 0; reopen < 2; reopen++) {
@@ -101,9 +108,9 @@ test("schema 9 upgrades 50k messages to the final schema without rewriting histo
       expect(database.query("SELECT COUNT(*) AS n FROM messages").get()).toEqual({ n: 50_000 })
       expect(database.query("SELECT COUNT(*) AS n FROM transcript_entries").get()).toEqual({ n: 50_000 })
       expect([
-        fingerprint("messages", "thread_id, seq"),
-        fingerprint("transcript_entries", "id"),
-        fingerprint("threads", "id"),
+        fingerprint("messages", "thread_id, seq", messageColumns),
+        fingerprint("transcript_entries", "id", transcriptColumns),
+        fingerprint("threads", "id", threadColumns),
       ]).toEqual(before)
       expect(historyMigrationStatus(database)).toEqual({ running: false, done: 0, total: 0 })
       expect(database.query("SELECT COUNT(*) AS n FROM rejections").get()).toEqual({ n: 0 })
@@ -141,7 +148,7 @@ for (const version of [9, 10]) {
       const resolutions = database.query("SELECT * FROM tool_resolutions").all()
       database.close()
       database = openDatabase({ filename })
-      expect(SCHEMA_VERSION).toBe(32)
+      expect(SCHEMA_VERSION).toBe(34)
       expect(database.query("SELECT value FROM schema_meta WHERE key = 'schema_version'").get()).toEqual({
         value: String(SCHEMA_VERSION),
       })

@@ -6,6 +6,7 @@ import { getApiModelEnv, getApiOpenCodeConfig, getApiRunError } from "../../api-
 import { getDelegation } from "../../groups/security"
 import { buildChildEnv } from "../../kernel"
 import { writePrivateFileAsync } from "../../kernel/async-files"
+import { getSavedBotModel } from "../../store/model"
 import { spawnFolderProvider } from "../folder-access"
 import { loadTurnImages } from "../loadTurnImages"
 import { withLocalTurnTemp } from "../local-turn-temp"
@@ -56,7 +57,7 @@ export const createOpenCodeAdapter = ({
     const timer = setTimeout(() => child.kill("SIGKILL"), interruptGraceMs)
     void child.exited.finally(() => clearTimeout(timer)).catch(() => {})
   }
-  const startTurn = async (args: StartTurnArgs): Promise<StartTurnResult> => {
+  const startAttempt = async (args: StartTurnArgs): Promise<StartTurnResult> => {
     let child: ChildProcess | undefined
     let stopReader: (() => void) | undefined
     let sessionID = args.session?.externalSessionId ?? ""
@@ -419,9 +420,17 @@ export const createOpenCodeAdapter = ({
       await cleanupApi?.().catch(() => {})
     }
   }
+  const startTurn: ProviderAdapter["startTurn"] = async (args) => {
+    const model = getSavedBotModel(args.bot.model)
+    if (!model.success) return model
+
+    const turnArgs = Object.assign({}, args, { bot: Object.assign({}, args.bot, { model: model.model }) })
+    return withLocalTurnTemp(kernel, turnArgs, startAttempt)
+  }
+
   return {
     provider: "opencode",
-    startTurn: (args) => withLocalTurnTemp(kernel, args, startTurn),
+    startTurn,
     detect: async () => {
       const env = buildChildEnv({ base: await kernel.shellEnv() })
       const binary = openCodeBinary(env, command)

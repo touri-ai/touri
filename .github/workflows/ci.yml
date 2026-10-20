@@ -206,7 +206,7 @@ jobs:
 
   api-models:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-bun
@@ -246,9 +246,32 @@ jobs:
             ui/test-results/**/error-context.md
           if-no-files-found: ignore
           retention-days: 7
+      - name: Check chat image layout on desktop and phone in both themes
+        working-directory: ui
+        env:
+          CHAT_IMAGE_CAPTURE: "1"
+        run: bunx playwright test test/e2e/chat-image-layout.spec.ts --workers=1
+      - name: Keep synthetic chat image evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: chat-image-layout
+          path: ui/test-results/**/after-*.png
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Check API model setup and bot selection
         working-directory: ui
-        run: bunx playwright test test/e2e/api-models.spec.ts --workers=1
+        env:
+          TOURI_MODEL_SETTINGS_SHOTS: ${{ runner.temp }}/touri-model-settings-evidence
+        run: bunx playwright test test/e2e/api-models.spec.ts test/e2e/model-picker-settings.spec.ts --workers=1
+      - name: Keep synthetic model picker evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: model-picker-settings
+          path: ${{ runner.temp }}/touri-model-settings-evidence/*.png
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Check keyboard focus in dialogs and borderless fields
         working-directory: ui
         run: bunx playwright test test/e2e/field-focus.spec.ts --workers=1
@@ -294,6 +317,21 @@ jobs:
       - name: Check routine history on desktop and phone
         working-directory: ui
         run: bunx playwright test test/e2e/routine-sidebar.spec.ts --workers=1
+      - name: Check automatic conversation mode and task grouping
+        working-directory: ui
+        env:
+          TOURI_SCREENSHOT_DIR: ${{ runner.temp }}/automatic-conversations-evidence
+        run: |
+          mkdir -p "$TOURI_SCREENSHOT_DIR"
+          bunx playwright test test/e2e/automatic-conversations.spec.ts --workers=1
+      - name: Keep synthetic automatic conversation evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: automatic-conversations
+          path: ${{ runner.temp }}/automatic-conversations-evidence/*.png
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Check notification preferences on desktop and phone
         working-directory: ui
         run: bunx playwright test test/e2e/notification-preferences.spec.ts --workers=1 --output test-results/notification-preferences

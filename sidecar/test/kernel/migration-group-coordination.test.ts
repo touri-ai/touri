@@ -40,8 +40,8 @@ test("schema 29 converts legacy member prompts to notices and preserves attachme
       .query("SELECT role,kind,text,parts_json FROM messages WHERE id='legacy-member'")
       .get() as { role: string; kind: string; text: string; parts_json: string }
     const parts = JSON.parse(migrated.parts_json) as Array<Record<string, unknown>>
-    expect(SCHEMA_VERSION).toBe(32)
-    expect(database.query("SELECT value FROM schema_meta WHERE key='schema_version'").get()).toEqual({ value: "32" })
+    expect(SCHEMA_VERSION).toBe(34)
+    expect(database.query("SELECT value FROM schema_meta WHERE key='schema_version'").get()).toEqual({ value: "34" })
     expect(
       database.query("SELECT value FROM schema_meta WHERE key='group_coordination_history_version'").get(),
     ).toEqual({
@@ -63,7 +63,7 @@ test("schema 29 converts legacy member prompts to notices and preserves attachme
 
     database = openDatabase({ filename })
 
-    expect(database.query("SELECT value FROM schema_meta WHERE key='schema_version'").get()).toEqual({ value: "32" })
+    expect(database.query("SELECT value FROM schema_meta WHERE key='schema_version'").get()).toEqual({ value: "34" })
     expect(database.query("SELECT role,kind,text,parts_json FROM messages WHERE id='legacy-member'").get()).toEqual(
       migrated,
     )

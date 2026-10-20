@@ -75,8 +75,11 @@ it("keeps common bot settings nearby and technical settings behind a disclosure"
   await botSettings({ machine: "vm", computerUse: true, mainThreadId: "thread-mark" })
   const checks: Record<string, () => void | Promise<void>> = {
     Modelo: () => {
-      for (const name of ["Provedor", "Modelo", "Raciocínio"])
-        expect(screen.getByLabelText(name, { selector: name === "Modelo" ? "input" : "select" })).toBeVisible()
+      expect(screen.getByLabelText("Provedor")).toBeVisible()
+      expect(screen.getByRole("button", { name: /^Escolher modelo:/ })).toHaveAccessibleDescription(
+        "Deixe em branco para usar o padrão do provedor.",
+      )
+      expect(screen.getByLabelText("Raciocínio")).toBeVisible()
       expect(screen.getByLabelText("Título (opcional)")).toBeVisible()
       expect(screen.getByLabelText("Instruções do bot")).toBeVisible()
       expect(screen.getByLabelText("Instruções do bot")).toHaveAccessibleDescription(

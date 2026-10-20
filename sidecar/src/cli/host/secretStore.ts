@@ -1,10 +1,11 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto"
 import { join } from "node:path"
-import { writePrivateFileAsync } from "../../kernel/async-files"
+import { readPrivateFileAsync, writePrivateFileAsync } from "../../kernel/async-files"
 import { atomicWriteFile, readPrivateFile } from "../../kernel/files"
 
 export type SecretStore = {
   get: (account: string) => string | null
+  getAsync: (account: string) => Promise<string | null>
   set: (args: { account: string; value: string }) => Promise<void>
   delete: (account: string) => Promise<void>
   keyOrigin: "env" | "file"
@@ -39,6 +40,13 @@ const decrypt = ({ key, envelope }: { key: Buffer; envelope: Envelope }): string
   return Buffer.concat([decipher.update(Buffer.from(envelope.data, "base64")), decipher.final()]).toString("utf8")
 }
 
+const getEntries = ({ saved, key }: { saved: Buffer | null; key: Buffer }): Record<string, string> => {
+  if (!saved) return {}
+  const parsed: unknown = JSON.parse(saved.toString("utf8"))
+  if (!isEnvelope(parsed)) throw new Error("secrets.enc is not a valid envelope")
+  return JSON.parse(decrypt({ key, envelope: parsed })) as Record<string, string>
+}
+
 const isEnvelope = (value: unknown): value is Envelope => {
   if (typeof value !== "object" || value === null) return false
   const row = value as Record<string, unknown>
@@ -60,11 +68,10 @@ export const createSecretStore = ({
   const key = loadKey({ dir, env })
   const read = (): Record<string, string> => {
     const saved = readPrivateFile({ root: dir, path: file })
-    if (!saved) return {}
-    const parsed: unknown = JSON.parse(saved.toString("utf8"))
-    if (!isEnvelope(parsed)) throw new Error("secrets.enc is not a valid envelope")
-    return JSON.parse(decrypt({ key, envelope: parsed })) as Record<string, string>
+    return getEntries({ saved, key })
   }
+  const readAsync = async (): Promise<Record<string, string>> =>
+    getEntries({ saved: await readPrivateFileAsync({ root: dir, path: file, maxBytes: 1_048_576 }), key })
   const write = (entries: Record<string, string>): Promise<void> =>
     writePrivateFileAsync({
       root: dir,
@@ -73,13 +80,14 @@ export const createSecretStore = ({
     })
   let writeQueue = Promise.resolve()
   const update = (transform: (entries: Record<string, string>) => Record<string, string>): Promise<void> => {
-    const next = writeQueue.then(() => write(transform(read())))
+    const next = writeQueue.then(async () => write(transform(await readAsync())))
     writeQueue = next.catch(() => undefined)
     return next
   }
   return {
     keyOrigin: env.TOURI_SECRETS_KEY ? "env" : "file",
     get: (account) => read()[account] ?? null,
+    getAsync: async (account) => (await readAsync())[account] ?? null,
     set: ({ account, value }) => update((entries) => ({ ...entries, [account]: value })),
     delete: (account) =>
       update((entries) => {

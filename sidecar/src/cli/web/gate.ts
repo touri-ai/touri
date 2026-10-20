@@ -1,6 +1,6 @@
 import { isIP } from "node:net"
 import type { WebInterceptArgs } from "../../kernel"
-import { bindDeviceSession, deviceSession } from "../../kernel/device-session"
+import { bindDeviceSession, type DevicePerson, deviceSession } from "../../kernel/device-session"
 import { normalizeErrorBody } from "../../kernel/errors"
 import type { RateLimiter } from "../auth/rateLimit"
 import type { AuthStore, Device } from "../auth/store"
@@ -22,9 +22,16 @@ export type GateOptions = {
   trustedProxy?: boolean
   pairReadDeadlineMs?: number
   maxPairingRequests?: number
+  authorizeMember?: (input: {
+    personId: string
+    method: string
+    pathname: string
+    body: unknown
+  }) => { status: number; json: unknown } | null
 }
+export type MemberAuthorizer = NonNullable<GateOptions["authorizeMember"]>
 
-type Principal = { kind: "device"; device: Device; viaCookie: boolean; token: string }
+type Principal = { kind: "device"; device: Device; person: DevicePerson; viaCookie: boolean; token: string }
 
 const baseHeaders: Record<string, string> = {
   "Cache-Control": "no-store",
@@ -66,7 +73,8 @@ const authenticate = ({ args, store }: { args: WebInterceptArgs; store: AuthStor
   const ticketSession = deviceSession(args.request.signal)
   if (ticketSession?.active()) {
     const device = store.listDevices().find((item) => item.id === ticketSession.deviceId && item.revokedAt === null)
-    if (device) return { kind: "device", device, viaCookie: true, token: "" }
+    const person = device ? store.getPersonForDevice(device.id) : null
+    if (device && person) return { kind: "device", device, person, viaCookie: true, token: "" }
   }
   const header = args.request.headers.get("authorization")
   const bearer = header?.startsWith("Bearer ") ? header.slice("Bearer ".length).trim() : null
@@ -74,11 +82,22 @@ const authenticate = ({ args, store }: { args: WebInterceptArgs; store: AuthStor
   const token = bearer ?? cookie
   const device = token === null ? null : store.verifyDeviceToken(token)
   if (device && token) {
+    const person = store.getPersonForDevice(device.id)
+    if (!person) return null
+    const origin = args.request.headers.get("origin")
     bindDeviceSession(args.request.signal, {
       deviceId: device.id,
+      person: {
+        id: person.id,
+        name: person.name,
+        email: person.email,
+        avatarSeed: person.avatarSeed,
+        role: person.role,
+      },
+      ...(origin ? { origin } : {}),
       active: () => store.verifyDeviceToken(token)?.id === device.id,
     })
-    return { kind: "device", device, viaCookie: bearer === null, token }
+    return { kind: "device", device, person, viaCookie: bearer === null, token }
   }
   return null
 }
@@ -142,6 +161,55 @@ const handlePair = async ({ args, options }: { args: WebInterceptArgs; options: 
   })
 }
 
+const handleInviteRedeem = async ({
+  args,
+  options,
+}: {
+  args: WebInterceptArgs
+  options: GateOptions
+}): Promise<Response> => {
+  const { request } = args
+  if (request.method !== "POST") return json(405, { errorCode: "METHOD_NOT_ALLOWED", error: "Use POST" })
+  if (!request.headers.get("origin") || !originAllowed(request, trustedProxy(args, options)))
+    return json(403, { errorCode: "FORBIDDEN", error: "Invalid Origin" })
+  const source = `invite:${sourceOf(args, options)}`
+  const limit = options.limiter.check(source)
+  if (!limit.allowed)
+    return json(
+      429,
+      { errorCode: "RATE_LIMITED", error: "Too many attempts; wait and try again" },
+      { "Retry-After": String(limit.retryAfterSeconds) },
+    )
+  const body = await readJsonBody(request, { maxBytes: 4096, deadlineMs: options.pairReadDeadlineMs ?? 5000 })
+  const token = typeof body?.token === "string" ? body.token : ""
+  const email = typeof body?.email === "string" ? body.email : ""
+  const deviceName = typeof body?.deviceName === "string" ? body.deviceName : "Browser"
+  const claimed = await options.store.claimInvite({ token, email, deviceName })
+  if (!claimed.success) {
+    options.limiter.recordFailure(source)
+    return json(401, { errorCode: "INVALID_INVITE", error: "Convite inválido, expirado, usado ou e-mail diferente" })
+  }
+  options.limiter.reset(source)
+  return json(
+    200,
+    { ok: true, deviceId: claimed.device.id },
+    {
+      "Set-Cookie": buildCookie({ token: claimed.token, secure: isSecureRequest(args, options) }),
+    },
+  )
+}
+
+const isJoinAssetRequest = ({ request, url }: { request: Request; url: URL }): boolean => {
+  const referrer = request.headers.get("referer")
+  if (!referrer) return false
+  try {
+    const parsed = new URL(referrer)
+    return parsed.host === url.host && parsed.pathname === "/join"
+  } catch {
+    return false
+  }
+}
+
 const handleSecret = async (request: Request, secrets: SecretStore): Promise<Response> => {
   const body = await readJsonBody(request)
   const account = typeof body?.account === "string" ? body.account : ""
@@ -166,9 +234,13 @@ const handleDevices = async ({
   if (request.method === "GET" && rest === "")
     return json(200, {
       current: principal.kind === "device" ? principal.device.id : null,
-      devices: store.listDevices().filter((device) => device.revokedAt === null),
+      devices: store
+        .listDevices()
+        .filter((device) => device.revokedAt === null)
+        .filter((device) => principal.person.role === "admin" || device.personId === principal.person.id),
     })
   if (request.method === "DELETE" && rest !== "") {
+    if (principal.person.role !== "admin") return json(403, { errorCode: "FORBIDDEN", error: "Admin role required" })
     const revoked = await store.revokeDevice(rest)
     return revoked.success ? json(200, { ok: true }) : json(404, { errorCode: revoked.errorCode, error: revoked.error })
   }
@@ -233,6 +305,8 @@ const apiGate = async ({
   if (viaCookie && needsOriginCheck(args.request) && !originAllowed(args.request, trustedProxy(args, options)))
     return json(403, { errorCode: "FORBIDDEN", error: "Invalid Origin" })
   if (args.url.pathname.startsWith("/api/v1/devices")) return handleDevices({ args, principal, store: options.store })
+  if (args.url.pathname === "/api/v1/host/secret" && principal.person.role !== "admin")
+    return json(403, { errorCode: "FORBIDDEN", error: "Admin role required" })
   if (args.url.pathname === "/api/v1/host/secret" && args.request.method === "POST")
     return handleSecret(args.request, options.secrets)
   if (args.url.pathname === "/api/v1/session/rotate" && args.request.method === "POST" && principal.kind === "device") {
@@ -246,7 +320,18 @@ const apiGate = async ({
       },
     )
   }
-  if (args.url.pathname === "/api/v1/session") return json(200, { ok: true, kind: principal.kind })
+  if (args.url.pathname === "/api/v1/session")
+    return json(200, { ok: true, kind: principal.kind, person: principal.person })
+  if (principal.person.role === "member" && options.authorizeMember) {
+    const prefix = args.url.pathname.startsWith("/api/v1/") ? "/api/v1" : "/api"
+    const decision = options.authorizeMember({
+      personId: principal.person.id,
+      method: args.request.method,
+      pathname: args.url.pathname.slice(prefix.length) || "/",
+      body: null,
+    })
+    if (decision) return json(decision.status, decision.json)
+  }
   return null
 }
 
@@ -262,7 +347,7 @@ export const createWebGate = (options: GateOptions): ((args: WebInterceptArgs) =
         error:
           "O acesso remoto exige HTTPS. Use um proxy HTTPS confiável, como Tailscale Serve, com o servidor em loopback.",
       })
-    if (url.searchParams.has("token"))
+    if (url.searchParams.has("token") || url.searchParams.has("invite"))
       return json(401, { errorCode: "UNAUTHORIZED", error: "Credenciais não são aceitas na URL" })
     if (url.pathname === "/pair") {
       if (request.method !== "POST") return handlePair({ args, options })
@@ -284,9 +369,21 @@ export const createWebGate = (options: GateOptions): ((args: WebInterceptArgs) =
         else bySource.delete(source)
       }
     }
+    if (url.pathname === "/api/v1/invites/redeem") {
+      try {
+        return await handleInviteRedeem({ args, options })
+      } catch (error) {
+        if (error instanceof BodyError) return json(error.status, { errorCode: "INVALID_BODY", error: error.message })
+        throw error
+      }
+    }
     const principal = authenticate({ args, store: options.store })
     if (url.pathname.startsWith("/api/")) return apiGate({ args, principal, options })
     if (principal === null) {
+      if (request.method === "GET" && url.pathname === "/join")
+        return serveStatic({ pathname: "/join", request, ui: options.ui })
+      if (["GET", "HEAD"].includes(request.method) && isJoinAssetRequest({ request, url }))
+        return serveStatic({ pathname: url.pathname, request, ui: options.ui })
       const wantsPage = request.method === "GET" && !/\.[A-Za-z0-9]+$/.test(url.pathname)
       return wantsPage
         ? pairingPage()

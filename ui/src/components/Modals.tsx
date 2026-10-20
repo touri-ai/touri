@@ -42,9 +42,10 @@ import { DiscoveredProjects } from "./DiscoveredProjects"
 import { FolderPicker } from "./FolderPicker"
 import { MachineFields } from "./MachineFields"
 import { Modal } from "./Modal"
+import { ModelPicker } from "./ModelPicker"
 import { ProviderInstallation } from "./ProviderInstallation"
 import { ProviderLogin } from "./ProviderLogin"
-import { getBotProviderName, ProviderMark, providerName } from "./ProviderMark"
+import { ProviderMark, providerName } from "./ProviderMark"
 import { ProviderModelField } from "./ProviderModelField"
 import { ProviderProfileFields } from "./ProviderProfileFields"
 import { SecretsPanel } from "./RightPanels"
@@ -352,68 +353,6 @@ const ImportReportView = ({ report }: { report: ApiRoutes["GET /imports/:id"]["r
     </div>
   ) : null
 
-export const BotModelModal = ({
-  api,
-  bot,
-  onSave,
-  onClose,
-}: {
-  api: UiApi
-  bot: Bot
-  onSave: (model: string | null) => Promise<void>
-  onClose: () => void
-}) => {
-  const [model, setModel] = useState(bot.model ?? "")
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const close = () => {
-    if (!saving) onClose()
-  }
-  return (
-    <Modal onClose={close} title={t("Choose model")} eyebrow={getBotProviderName(bot)}>
-      <form
-        className="modal-form"
-        onSubmit={async (event) => {
-          event.preventDefault()
-          if (saving) return
-          setSaving(true)
-          setError(null)
-          try {
-            await onSave(model.trim() || null)
-            onClose()
-          } catch (error) {
-            setError(userFacingError(error))
-          } finally {
-            setSaving(false)
-          }
-        }}
-      >
-        <p>{t("Choose the model for this bot’s next messages.")}</p>
-        <label htmlFor="composer-model">{t("Model")}</label>
-        <ProviderModelField
-          id="composer-model"
-          api={api}
-          botId={bot.id}
-          provider={bot.provider}
-          value={model}
-          onChange={setModel}
-          picker
-          disabled={saving}
-        />
-        {error && <p role="alert">{error}</p>}
-        <div className="modal-actions">
-          <button type="button" className="button-quiet" onClick={close} disabled={saving}>
-            {t("Cancel")}
-          </button>
-          <button type="submit" className="button button-brand" disabled={saving} aria-busy={saving}>
-            {t("Save model")}
-          </button>
-        </div>
-      </form>
-    </Modal>
-  )
-}
-
 // VM projects copy a Git commit; a selected host folder still needs its own grant.
 const projectFolderPatch = (
   folders: BotFolder[],
@@ -482,6 +421,8 @@ export const BotCreateModal = ({
   const [folders, setFolders] = useState<BotFolder[]>([])
   const [anyFolderAccess, setAnyFolderAccess] = useState(false)
   const [browserEnabled, setBrowserEnabled] = useState(true)
+  const [automaticConversationMode, setAutomaticConversationMode] =
+    useState<NonNullable<Bot["automaticConversationMode"]>>("main")
   const [browser, setBrowser] = useState<Bot["browser"]>("touri")
   const [error, setError] = useState<string | null>(null)
   const [access, setAccess] = useState("workspace-write")
@@ -545,6 +486,7 @@ export const BotCreateModal = ({
         folders: machine.machine === "cloud" ? [] : folders,
         anyFolderAccess: machine.machine !== "cloud" && anyFolderAccess,
         browserEnabled,
+        automaticConversationMode,
         browser,
         access: access === "full-approved" ? ("full" as const) : (access as Bot["access"]),
         approvals:
@@ -837,6 +779,18 @@ export const BotCreateModal = ({
                 <small id="bot-title-help" className="field-help">
                   {t("A short label for the bot, e.g. Researcher. Detailed tasks go in the instructions.")}
                 </small>
+                <label htmlFor="create-automatic-conversation-mode">{t("Onde o bot responde")}</label>
+                <select
+                  id="create-automatic-conversation-mode"
+                  value={automaticConversationMode}
+                  onChange={(event) =>
+                    setAutomaticConversationMode(event.target.value as NonNullable<Bot["automaticConversationMode"]>)
+                  }
+                >
+                  <option value="main">{t("Na conversa principal")}</option>
+                  <option value="task">{t("Uma conversa nova por tarefa")}</option>
+                </select>
+                <small className="field-help">{t("Automatic conversation mode help")}</small>
                 <label htmlFor="create-instructions">{t("Bot instructions")}</label>
                 <textarea
                   id="create-instructions"
@@ -1020,6 +974,7 @@ type BotSettingsModalProps = {
   actions: WorkspaceActions
   onAttachFile?: (() => void) | undefined
   onClose: () => void
+  onNotice?: (message: string) => void
 }
 
 export const BotSettingsModal = ({
@@ -1035,6 +990,7 @@ export const BotSettingsModal = ({
   actions,
   onClose,
   onAttachFile,
+  onNotice = () => {},
   capability,
   machineState,
   activeTurns = false,
@@ -1070,8 +1026,10 @@ export const BotSettingsModal = ({
     ...machineChanges,
   }
   const [browser, setBrowser] = useState(bot.browser ?? "touri")
+  const automaticConversationMode = bot.automaticConversationMode ?? "main"
   const [provider, setProvider] = useState(bot.provider)
-  const [model, setModel] = useState(bot.model ?? "")
+  const [modelDraft, setModel] = useState<string | null>(null)
+  const model = modelDraft ?? bot.model ?? ""
   const [access, setAccess] = useState<string>(
     bot.provider !== "codex" && bot.access === "full" && bot.approvals === "on-request" ? "full-approved" : bot.access,
   )
@@ -1088,6 +1046,7 @@ export const BotSettingsModal = ({
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [updating, setUpdating] = useState(false)
+  const [modelSaving, setModelSaving] = useState(false)
   const immediateAction = async (task: () => Promise<void>): Promise<void> => {
     if (updating || saving) return
     setUpdating(true)
@@ -1116,7 +1075,7 @@ export const BotSettingsModal = ({
     permissionsRef.current?.focus({ preventScroll: true })
   }, [permissionsOnly])
   const save = async (): Promise<void> => {
-    if (saving || updating) return
+    if (saving || updating || modelSaving) return
     if (
       machine.machine === "vm" &&
       (!Number.isInteger(machine.machineIdleMinutes) ||
@@ -1159,7 +1118,7 @@ export const BotSettingsModal = ({
         title: title.trim() || null,
         instructions,
         provider,
-        model: model || null,
+        ...(provider !== bot.provider || (model || null) !== bot.model ? { model: model || null } : {}),
         access: access === "full-approved" ? "full" : (access as Bot["access"]),
         approvals:
           provider === bot.provider && access === initialAccess.current
@@ -1228,6 +1187,37 @@ export const BotSettingsModal = ({
             <input id="settings-role" value={roleLine} onChange={(event) => setRoleLine(event.target.value)} />
           </SettingsRow>
         </SettingsGroup>
+        <SettingsGroup>
+          <SettingsRow title={t("Onde o bot responde")} description={t("Automatic conversation mode help")}>
+            <div
+              className="bot-conversation-mode-options"
+              role="radiogroup"
+              aria-label={t("Onde o bot responde")}
+              data-setting-id="automaticConversationMode"
+            >
+              {(
+                [
+                  ["main", t("Na conversa principal")],
+                  ["task", t("Uma conversa nova por tarefa")],
+                ] as const
+              ).map(([mode, label]) => (
+                <label key={mode}>
+                  <input
+                    type="radio"
+                    name={`automatic-conversation-${bot.id}`}
+                    value={mode}
+                    checked={automaticConversationMode === mode}
+                    disabled={updating || saving}
+                    onChange={() =>
+                      void immediateAction(() => actions.updateBot(bot.id, { automaticConversationMode: mode }))
+                    }
+                  />
+                  {label}
+                </label>
+              ))}
+            </div>
+          </SettingsRow>
+        </SettingsGroup>
         <div className="settings-avatar-field">
           <AvatarPicker
             label={t("Mascote")}
@@ -1249,7 +1239,7 @@ export const BotSettingsModal = ({
           api={api}
           id="settings-api-model"
           value={provider === "opencode" && model.startsWith("touri-api-") ? model : ""}
-          disabled={saving || updating}
+          disabled={saving || updating || modelSaving}
           onChange={(value) => {
             setModel(value)
             setEffort(null)
@@ -1292,6 +1282,7 @@ export const BotSettingsModal = ({
                   <select
                     id="settings-provider"
                     value={provider}
+                    disabled={saving || updating || modelSaving}
                     onChange={(event) => {
                       if (api)
                         void api
@@ -1311,16 +1302,29 @@ export const BotSettingsModal = ({
                 <SettingsRow
                   title={t("Model")}
                   description={t("Deixe em branco para usar o padrão do provedor.")}
-                  htmlFor="settings-model"
+                  descriptionId="settings-model-description"
                 >
                   <div className="settings-model-control">
-                    <ProviderModelField
+                    <ModelPicker
+                      key={`${bot.id}:${provider}`}
                       id="settings-model"
                       api={api}
                       botId={bot.id}
                       provider={provider}
-                      value={model}
-                      onChange={setModel}
+                      value={model || null}
+                      onChange={(value) =>
+                        setModel(provider === bot.provider && value === (bot.model ?? "") ? null : value)
+                      }
+                      onBusyChange={setModelSaving}
+                      onSave={async (nextModel) => {
+                        if (provider !== bot.provider) return
+
+                        await actions.updateBotModel(bot.id, nextModel)
+                        setModel(null)
+                      }}
+                      onNotice={onNotice}
+                      descriptionId="settings-model-description"
+                      align="end"
                     />
                   </div>
                 </SettingsRow>
@@ -1762,7 +1766,12 @@ export const BotSettingsModal = ({
         <button type="button" className="button button-quiet" onClick={onClose}>
           {t("Cancel")}
         </button>
-        <button type="button" className="button button-brand" onClick={() => void save()} disabled={saving || updating}>
+        <button
+          type="button"
+          className="button button-brand"
+          onClick={() => void save()}
+          disabled={saving || updating || modelSaving}
+        >
           {saving ? t("Saving…") : t("Save settings")}
         </button>
       </div>

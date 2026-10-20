@@ -30,9 +30,9 @@ export const springToLinear = ({ frequency, damping, duration, samples = 80 }: S
 }
 
 export const motionTiers = {
-  quick: { frequency: 12, damping: 1, duration: 140 },
-  surface: { frequency: 7, damping: 1, duration: 240 },
-  standard: { frequency: 4.5, damping: 1, duration: 350 },
+  quick: { frequency: 12, damping: 1, duration: 120 },
+  surface: { frequency: 7, damping: 1, duration: 200 },
+  standard: { frequency: 4.5, damping: 1, duration: 320 },
   slow: { frequency: 2.5, damping: 1, duration: 650 },
   bounce: { frequency: 4, damping: 0.55, duration: 650 },
 } satisfies Record<string, Spring>

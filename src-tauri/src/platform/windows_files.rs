@@ -430,11 +430,22 @@ fn operation(request: Request) -> io::Result<Value> {
         "assert" => {
             drop(pins.file(&target)?);
         }
-        "remove" => {
-            if pins.file(&target)?.is_some() {
-                fs::remove_file(&target)?;
+        "remove" => match fs::symlink_metadata(&target) {
+            Ok(metadata) if metadata.file_type().is_symlink() => {
+                if metadata.file_attributes() & FILE_ATTRIBUTE_DIRECTORY != 0 {
+                    fs::remove_dir(&target)?;
+                } else {
+                    fs::remove_file(&target)?;
+                }
             }
-        }
+            Ok(_) => {
+                if pins.file(&target)?.is_some() {
+                    fs::remove_file(&target)?;
+                }
+            }
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error),
+        },
         "move" => {
             if pins.file(&target)?.is_none() {
                 return Err(io::Error::from(io::ErrorKind::NotFound));
@@ -474,7 +485,13 @@ fn remove_tree(path: &Path) -> io::Result<()> {
         Err(error) => return Err(error),
     };
     if metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
-        return Err(denied());
+        if !metadata.file_type().is_symlink() {
+            return Err(denied());
+        }
+        if metadata.file_attributes() & FILE_ATTRIBUTE_DIRECTORY != 0 {
+            return fs::remove_dir(path);
+        }
+        return fs::remove_file(path);
     }
     if !metadata.is_dir() {
         return fs::remove_file(path);

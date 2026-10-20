@@ -86,6 +86,34 @@ export const openWorkspaceDirectory = ({ root, path }: { root: string; path: str
   }
 }
 
+/** Pins an existing workspace directory, or returns null when a path segment is absent. */
+export const openWorkspaceDirectoryIfPresent = ({ root, path }: { root: string; path: string }): number | null => {
+  if (process.platform === "win32")
+    throw new Error("Native directory-descriptor workspace access is not available on Windows")
+  if (path.includes("\0") || path.startsWith("/") || path.split("/").some((part) => part === ".."))
+    throw new TouriError("TOURI-E2000")
+  const absoluteRoot = resolve(root)
+  let fd = openSync(resolve(realpathSync(dirname(absoluteRoot)), basename(absoluteRoot)), directoryFlags)
+  try {
+    for (const part of path.split("/").filter(Boolean)) {
+      const next = openAt(fd, part, directoryFlags)
+      if (next < 0) {
+        if (errno() === 2) {
+          closeSync(fd)
+          return null
+        }
+        throw new TouriError("TOURI-E2000")
+      }
+      closeSync(fd)
+      fd = next
+    }
+    return fd
+  } catch (error) {
+    closeSync(fd)
+    throw error
+  }
+}
+
 /** Creates subdirectories under an existing root without following links or changing its permissions. */
 export const createWorkspaceDirectory = ({
   root,
@@ -430,7 +458,6 @@ export const removePrivateFile = ({ root, path }: { root: string; path: string }
   const name = parts.pop()
   if (!name) throw new TouriError("TOURI-E2000")
   withDirectory(root, parts, (fd) => {
-    validateTarget(fd, name)
     if (native().unlinkat(fd, cstring(name), 0) < 0 && errno() !== 2) throw failure()
     fsyncSync(fd)
   })

@@ -1,8 +1,8 @@
 .routine-delete-button {
-  color: var(--text-danger);
+  color: var(--danger);
   background: var(--surface-danger);
-  border: 1px solid var(--text-danger);
-  border-radius: var(--radius-8);
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-sm);
   padding: 8px 12px;
   cursor: pointer;
 }
@@ -10,7 +10,7 @@
   background: var(--surface-danger-selected);
 }
 .routine-delete-button:focus-visible {
-  outline: 2px solid var(--text-danger);
+  outline: 2px solid var(--danger);
   outline-offset: 2px;
 }
 .modal-card.delete-routine-dialog {
@@ -18,7 +18,7 @@
 }
 .delete-routine-dialog > p {
   padding: 0 24px;
-  font-size: var(--type-14);
+  font-size: var(--fs-body);
   line-height: 1.5;
   overflow-wrap: anywhere;
 }
@@ -32,12 +32,12 @@
   min-width: 0;
 }
 .r8-screen .routine-actions .routine-delete-button {
-  color: var(--text-danger);
+  color: var(--danger);
   background: var(--surface-danger);
-  border-color: var(--text-danger);
+  border-color: var(--danger);
 }
 .r8-screen .routine-actions .routine-delete-button:hover {
-  color: var(--text-danger);
+  color: var(--danger);
   background: var(--surface-danger-selected);
 }
 @media (max-width: 1000px) {

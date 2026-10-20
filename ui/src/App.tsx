@@ -39,7 +39,6 @@ import { GroupModal, GroupPanel } from "./components/Groups"
 import { InterruptedTasks } from "./components/InterruptedTasks"
 import {
   BotCreateModal,
-  BotModelModal,
   BotSettingsModal,
   DoctorModal,
   ImportWizard,
@@ -87,6 +86,7 @@ import { isRoutineConversation } from "./routineConversation"
 import { getTeamRoutineDraft, type RoutineDraft } from "./routineDraft"
 import { isFailureNotice } from "./sidebarAttention"
 import { useHost } from "./useHost"
+import { useNotificationSounds } from "./useNotificationSounds"
 import { RecoveryTasksContext, useRecoveryTasks } from "./useRecoveryTasks"
 import { useWebNavigation } from "./useWebNavigation"
 import { useWorkspace } from "./useWorkspace"
@@ -119,7 +119,6 @@ type ModalKind =
   | "project"
   | "settings"
   | "bot-settings"
-  | "bot-model"
   | "bot-permissions"
   | "bot-mcp"
   | null
@@ -459,15 +458,6 @@ const AppContent = ({ kernel }: AppProps) => {
       onLink: setPendingLink,
     })
   }, [invokeCommand, requestedComputer])
-  useEffect(() => {
-    if (!pendingLink || !data.loaded || data.bots.length === 0) return
-    actions.selectLocation(pendingLink)
-    setRoute({ section: "bots", screen: "chat" })
-    setPendingLink(null)
-    if (pendingLink.requestId !== undefined)
-      void invokeCommand("deep_link_ack", { requestId: pendingLink.requestId }).catch(() => undefined)
-  }, [pendingLink, data.loaded, data.bots.length, actions, setRoute, invokeCommand])
-
   const restoreWebLocation = useCallback(
     (location: DeepLink, restoredRoute?: AppRoute): void => {
       actions.selectLocation(location)
@@ -493,13 +483,49 @@ const AppContent = ({ kernel }: AppProps) => {
   })
 
   const [approvalFocus, setApprovalFocus] = useState<(ApprovalTarget & { request: number }) | null>(null)
-  const reviewApproval = (target: ApprovalTarget): void => {
-    const owner = data.threads.find((thread) => thread.id === target.threadId)
-    if (!owner) return
-    actions.selectLocation({ bot: owner.botId, thread: owner.id })
-    setApprovalFocus((current) => ({ ...target, request: (current?.request ?? 0) + 1 }))
-    setRoute({ section: "bots", screen: "chat" })
-  }
+  const [notificationFocus, setNotificationFocus] = useState<{ id: number; request: number } | null>(null)
+  const reviewApproval = useCallback(
+    (target: ApprovalTarget): void => {
+      const owner = data.threads.find((thread) => thread.id === target.threadId)
+      if (!owner) return
+      actions.selectLocation({ bot: owner.botId, thread: owner.id })
+      setApprovalFocus((current) => ({ ...target, request: (current?.request ?? 0) + 1 }))
+      setRoute({ section: "bots", screen: "chat" })
+    },
+    [data.threads, actions.selectLocation, setRoute],
+  )
+  const openNeedsYou = useCallback(
+    (item: NotificationRecord): void => {
+      if (item.kind === "approval" && item.threadId && item.requestId) {
+        reviewApproval({ threadId: item.threadId, approvalId: item.requestId })
+        return
+      }
+
+      actions.selectLocation({ bot: item.botId, thread: item.threadId })
+      setRoute({ section: "bots", screen: "chat" })
+      setNotificationFocus((current) => ({ id: item.id, request: (current?.request ?? 0) + 1 }))
+    },
+    [reviewApproval, actions.selectLocation, setRoute],
+  )
+  useEffect(() => {
+    if (!pendingLink || !data.loaded || data.bots.length === 0) return
+    const notification = pendingLink.notificationId
+      ? data.notifications.find(
+          (item) =>
+            item.id === pendingLink.notificationId &&
+            (!pendingLink.bot || item.botId === pendingLink.bot) &&
+            (!pendingLink.thread || item.threadId === pendingLink.thread),
+        )
+      : undefined
+    if (notification) openNeedsYou(notification)
+    else {
+      actions.selectLocation(pendingLink)
+      setRoute({ section: "bots", screen: "chat" })
+    }
+    setPendingLink(null)
+    if (pendingLink.requestId !== undefined)
+      void invokeCommand("deep_link_ack", { requestId: pendingLink.requestId }).catch(() => undefined)
+  }, [pendingLink, data.loaded, data.bots.length, data.notifications, actions, setRoute, invokeCommand, openNeedsYou])
   const notificationActions = {
     recover: async (item: NotificationRecord, action: RecoveryAction): Promise<void> => {
       actions.selectLocation({ bot: item.botId, thread: item.threadId })
@@ -553,6 +579,18 @@ const AppContent = ({ kernel }: AppProps) => {
     }) ?? []
   const selectedProject = data.projects.find((project) => project.id === selectedBot?.projectId) ?? null
   const selectedMessages = data.messages.filter((message) => message.threadId === selectedThread?.id)
+  useNotificationSounds(
+    {
+      ready: data.loaded,
+      notifications: data.notifications,
+      messages: data.activityMessages,
+      bots: data.bots,
+      threads: data.threads,
+      preferences: data.settings?.notificationPreferences,
+      activeThreadId: section === "bots" && screen === "chat" && !modal ? (selectedThread?.id ?? null) : null,
+    },
+    invokeCommand,
+  )
   const { activePath, goalThread, goalRequest, goalBusy } = getGoalSelection({
     bot: selectedBot,
     thread: selectedThread,
@@ -644,11 +682,11 @@ const AppContent = ({ kernel }: AppProps) => {
     setLocalNotice(userFacingError(message))
     window.setTimeout(() => setLocalNotice(null), 4200)
   }
-  const openModal = (kind: ModalKind): void => {
+  const openModal = (kind: ModalKind, initialBotSection?: BotSettingsSectionId): void => {
     if (kind === "bot") setInitialJob(null)
     if (kind === "group") setGroupDraft(null)
     if (kind !== "settings" && kind !== "doctor" && kind !== "bot-settings") setSettingFocus(null)
-    if (kind === "bot-settings") setBotSettingsSection(undefined)
+    if (kind === "bot-settings") setBotSettingsSection(initialBotSection)
     if (kind === "project") setProjectLinkBotId(null)
     setModal(kind)
   }
@@ -914,6 +952,7 @@ const AppContent = ({ kernel }: AppProps) => {
         routines={botRoutines}
         actions={actions}
         onClose={closeModal}
+        onNotice={showNotice}
       />
     )
   if (data.bots.length === 0)
@@ -1058,7 +1097,9 @@ const AppContent = ({ kernel }: AppProps) => {
             onRecovery={openRecovery}
             recoveryCount={interruptedWork.tasks.filter((task) => task.notification.resolvedAt === null).length}
             notifications={data.notifications}
+            notificationFocus={notificationFocus}
             notificationActions={notificationActions}
+            onNeedsYou={openNeedsYou}
             onNotificationsOpen={setNotificationsOpen}
           />
           <Suspense fallback={<PageLoading />}>
@@ -1199,7 +1240,10 @@ const AppContent = ({ kernel }: AppProps) => {
                             messages={selectedMessages}
                             runs={data.runs}
                             projects={data.projects}
-                            onOpenModel={() => openModal("bot-model")}
+                            onSaveModel={(model) =>
+                              selectedBot ? actions.updateBotModel(selectedBot.id, model) : Promise.resolve()
+                            }
+                            onNotice={showNotice}
                             onSelectProject={async (projectId) => {
                               if (selectedBot) await actions.updateBot(selectedBot.id, { projectId })
                             }}
@@ -1305,7 +1349,7 @@ const AppContent = ({ kernel }: AppProps) => {
                                 }}
                                 onSettings={() => openModal("bot-settings")}
                                 onRoutines={() => openBotRoutines(selectedBot.id)}
-                                onModel={() => openModal("bot-model")}
+                                onModel={() => openModal("bot-settings", "model")}
                                 onPermissions={() => openModal("bot-permissions")}
                                 onPreview={() => setScreen("preview")}
                                 onRole={(roleLine) => actions.updateBot(selectedBot.id, { roleLine })}
@@ -1370,15 +1414,6 @@ const AppContent = ({ kernel }: AppProps) => {
                   setRoute({ section: "bots", screen: "preview" })
                 }}
                 onNotice={showNotice}
-              />
-            )}
-            {modal === "bot-model" && selectedBot && (
-              <BotModelModal
-                key={`${selectedBot.id}:${selectedBot.provider}`}
-                api={api}
-                bot={selectedBot}
-                onSave={(model) => actions.updateBot(selectedBot.id, { model })}
-                onClose={closeModal}
               />
             )}
             {botSettingsModal}

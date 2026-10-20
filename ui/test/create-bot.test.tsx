@@ -250,6 +250,28 @@ it.each([true, false])("renders project and folder controls only inside Advanced
   expect(within(dialog).getByRole("switch", { name: /Acesso a qualquer pasta/ })).not.toBeChecked()
 })
 
+it("keeps the automatic conversation choice in Advanced and submits it", async () => {
+  const create = vi.fn(async () => undefined)
+  render(<BotCreateModal api={accounts({ codex: "ready" })} onClose={vi.fn()} onCreate={create} />)
+  await screen.findByText(/Usa o Codex/)
+  const dialog = screen.getByRole("dialog")
+  const advanced = within(dialog).getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ })
+
+  expect(within(dialog).queryByLabelText("Onde o bot responde")).toBeNull()
+
+  fireEvent.click(advanced)
+  fireEvent.change(within(dialog).getByLabelText("Onde o bot responde"), { target: { value: "task" } })
+  fireEvent.change(within(dialog).getByLabelText("Nome"), { target: { value: "Clara" } })
+  fireEvent.click(within(dialog).getByRole("button", { name: "Criar bot", exact: true }))
+
+  await waitFor(() =>
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({ automaticConversationMode: "task" }),
+      expect.any(String),
+    ),
+  )
+})
+
 it.each([
   [{ codex: "ready", claude: "ready", opencode: "ready" }, "codex", "Codex"],
   [{ codex: "cancelled", claude: "host-available", opencode: "ready" }, "claude", "Claude Code"],

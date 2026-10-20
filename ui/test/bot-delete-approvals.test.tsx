@@ -112,7 +112,7 @@ for (const entry of ["settings", "context"] as const)
     expect(api.getState().threads.some((thread) => thread.botId === "bot-mark")).toBe(false)
   })
 
-it("explains the whole tool inline and in a tooltip; permanent approval has a separate revoke action", async () => {
+it("confirms the tool scope before granting a permanent permission and offers revoke", async () => {
   const api = createMockApi()
   const grant: StandingGrant = {
     id: "grant",
@@ -123,15 +123,16 @@ it("explains the whole tool inline and in a tooltip; permanent approval has a se
   const request = vi.fn(async (route: string) => (route === "GET /bots/:id/grants" ? { grants: [grant] } : {}))
   api.request = request as ApiRequest
   render(<ApprovalCard api={api} part={approval} />)
-  expect(document.querySelector(".tool-standing-help")).toHaveTextContent(
-    "Toda a ferramenta Terminal poderá agir neste bot sem pedir novamente",
-  )
-  expect(screen.getByRole("tooltip", { hidden: true })).toHaveTextContent("inclusive com outros parâmetros")
   const user = userEvent.setup()
-  screen.getByRole("button", { name: "Sempre neste bot" }).focus()
+  screen.getByRole("button", { name: "Permitir sempre nesta ferramenta" }).focus()
   await user.keyboard("{Enter}")
   expect(request).not.toHaveBeenCalled()
-  fireEvent.click(screen.getByRole("button", { name: "Sempre neste bot" }))
+  fireEvent.click(screen.getByRole("button", { name: "Permitir sempre nesta ferramenta" }))
+  expect(screen.getByText(/A ferramenta Terminal poderá agir neste bot/)).toHaveTextContent(
+    "inclusive em novas chamadas com outros parâmetros",
+  )
+  expect(screen.getByText(/Avançado → Permissões/)).toBeVisible()
+  fireEvent.click(screen.getByRole("button", { name: /Sim, permitir .* neste bot sem perguntar de novo/ }))
   await screen.findByText("Permissão permanente neste bot")
   expect(document.querySelector('[data-approval-scope="standing"]')).toHaveClass("approval-standing")
   expect(screen.getByRole("button", { name: "Revogar" }).closest(".tool-revoke-action")).not.toBeNull()

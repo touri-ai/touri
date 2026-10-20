@@ -179,19 +179,21 @@ export const SettingsRow = ({
   description,
   children,
   htmlFor,
+  descriptionId,
   settingId,
 }: {
   title: string
   description: string
   children: ReactNode
   htmlFor?: string
+  descriptionId?: string
   /** Registry id so the command palette can focus and highlight this row. */
   settingId?: string
 }) => (
   <div className="settings-row" data-setting-id={settingId}>
     <div className="settings-row-copy">
       {htmlFor ? <label htmlFor={htmlFor}>{title}</label> : <strong>{title}</strong>}
-      <p>{description}</p>
+      <p id={descriptionId}>{description}</p>
     </div>
     <div className="settings-row-control">{children}</div>
   </div>

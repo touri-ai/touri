@@ -3,11 +3,11 @@
   z-index: 20;
   bottom: var(--space-12);
   left: var(--space-12);
-  padding: var(--space-7) var(--space-12);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-10);
-  background: var(--surface-panel);
-  color: var(--text-secondary);
-  font-size: var(--type-12);
+  padding: var(--space-8) var(--space-12);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-2);
+  font-size: var(--fs-caption);
   pointer-events: none;
 }

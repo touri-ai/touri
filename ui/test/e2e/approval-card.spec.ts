@@ -28,11 +28,11 @@ for (const theme of ["light", "dark"]) {
         const pending = page.locator('[data-approval-id="pending"]')
         if (scene === "read") {
           await expect(pending.getByText("Ler arquivo", { exact: true })).toBeVisible()
-          await expect(pending.locator(".tool-file-chip")).toHaveText("/Users/user/javascript/my-app/README.md")
+          await expect(pending.locator(".tool-file-chip")).toHaveText("/workspace/demo/README.md")
           await expect(pending.locator(".tool-input")).toHaveCount(0)
         } else await expect(pending.locator(".tool-input")).toHaveText("printf QA_R7_NEGADO")
         await expect(pending.getByRole("button", { name: "Aprovar", exact: true })).toHaveCSS("appearance", "none")
-        await expect(pending).toHaveCSS("border-radius", "12px")
+        await expect(pending).toHaveCSS("border-radius", "14px")
         await expect(activity.locator(".activity-dots")).toHaveCount(0)
         await activity.getByRole("link", { name: "Preciso da sua autorização." }).press("Enter")
         await expect(pending).toBeFocused()
@@ -81,11 +81,14 @@ for (const theme of ["light", "dark"]) {
     expect(await approved.evaluate((node) => node.closest(".turn-activity"))).toBeNull()
     await expect(page.locator(".turn-activity .tool-call-card")).toHaveCount(0)
     await page.screenshot({ path: `../docs/qa/approval-card/after-expanded-${theme}.png` })
-    await pending.getByRole("button", { name: "Sempre neste bot" }).focus()
-    await expect(pending.getByRole("tooltip")).toBeVisible()
-    await expect(pending.getByRole("button", { name: "Sempre neste bot" })).toHaveAccessibleDescription(
-      /Toda a ferramenta .* poderá agir neste bot sem pedir novamente/,
+    await pending.getByRole("button", { name: "Permitir sempre nesta ferramenta" }).click()
+    await expect(pending.getByRole("group", { name: /Permissão permanente para/ })).toContainText(
+      /sem pedir aprovação novamente/,
     )
+    await expect(
+      pending.getByRole("button", { name: /Sim, permitir .* neste bot sem perguntar de novo/ }),
+    ).toBeVisible()
+    await pending.getByRole("button", { name: "Voltar" }).click()
     await pending.focus()
     const results = await new AxeBuilder({ page }).analyze()
     expect(results.violations).toEqual([])
@@ -132,7 +135,7 @@ for (const theme of ["light", "dark"]) {
   })
 }
 
-test("approval cards: narrow viewport, keyboard denial and motion preference", async ({ page }) => {
+test("approval cards: narrow viewport, keyboard handling and motion preference", async ({ page }) => {
   test.skip(capture === "before")
   await page.clock.install({ time: new Date("2026-10-13T20:21:00Z") })
   await page.setViewportSize({ width: 390, height: 800 })
@@ -153,6 +156,8 @@ test("approval cards: narrow viewport, keyboard denial and motion preference", a
   await page.emulateMedia({ reducedMotion: "reduce" })
   expect(await page.evaluate(() => document.getAnimations().length)).toBe(0)
   await pending.press("Escape")
+  await expect(pending.locator(".tool-decision-chip")).toHaveCount(0)
+  await pending.getByRole("button", { name: "Negar", exact: true }).click()
   await expect(pending.locator(".tool-decision-chip")).toContainText("Negado por você")
   await page.screenshot({ path: "../docs/qa/approval-card/after-mobile-denied.png" })
 })

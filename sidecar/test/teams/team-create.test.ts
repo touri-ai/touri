@@ -727,7 +727,7 @@ test("pre-job databases migrate existing bots to ordinary bots without changing 
     name: "Criador",
     team_builder: 0,
   })
-  expect(migrated.query("SELECT value FROM schema_meta WHERE key='schema_version'").get()).toEqual({ value: "32" })
+  expect(migrated.query("SELECT value FROM schema_meta WHERE key='schema_version'").get()).toEqual({ value: "34" })
   migrated.close()
 })
 

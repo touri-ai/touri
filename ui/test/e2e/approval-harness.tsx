@@ -13,7 +13,7 @@ const call = (id: string, marker: string, description: string, ok: boolean | nul
   type: "tool_call",
   callId: id,
   tool: "Bash",
-  summary: "Claude tool Bash",
+  summary: "Ferramenta Bash",
   inputJson: JSON.stringify({ command: `printf ${marker}`, description }),
   outputJson: ok ? marker : null,
   ok,
@@ -24,7 +24,7 @@ const approval = (id: string, tool: ToolCallPart, decision: ApprovalPart["decisi
   approvalId: id,
   request: "permission",
   detail: `Bash: ${tool.inputJson}`,
-  scope: { source: "claude", tool: "Bash" },
+  scope: { source: "mcp", tool: "Bash" },
   allowStanding: true,
   decision,
 })
@@ -34,8 +34,8 @@ const read: ToolCallPart = {
   ...pending,
   callId: "read",
   tool: "Read",
-  summary: "Claude tool Read",
-  inputJson: '{"file_path":"/Users/user/javascript/my-app/README.md"}',
+  summary: "Ferramenta de leitura",
+  inputJson: '{"file_path":"/workspace/demo/README.md"}',
 }
 const scenario = new URLSearchParams(location.search).get("scene") ?? "bash"
 const message: Message = {
@@ -56,7 +56,7 @@ const message: Message = {
             {
               ...approval("pending", read, "pending"),
               detail: `Read: ${read.inputJson}`,
-              scope: { source: "claude", tool: "Read" },
+              scope: { source: "mcp", tool: "Read" },
             },
           ]
         : [approved, approval("approved", approved, "approved"), pending, approval("pending", pending, "pending")],

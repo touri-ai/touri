@@ -1,4 +1,4 @@
-import { type Bot, getHostNoun, type HostKind } from "@touri/contracts"
+import { type Bot, getHostNoun, type HostKind, type Routine, type RoutineRun } from "@touri/contracts"
 import { userFacingError } from "./errors"
 /** All UI copy lives here. pt-BR is the default; English is available for a future locale picker. */
 export type Locale = "pt-BR" | "en"
@@ -88,6 +88,12 @@ export const ptBR = {
   "Sempre avisar": "Sempre avisar",
   "Aprovações, perguntas e pedidos para você assumir continuam alertando durante o horário silencioso.":
     "Aprovações, perguntas e pedidos para você assumir continuam alertando durante o horário silencioso.",
+  Som: "Som",
+  "Som para o que precisa de você": "Som para o que precisa de você",
+  "Som para cada resposta": "Som para cada resposta",
+  "Volume do som": "Volume do som",
+  "O som respeita o horário silencioso e os períodos de silêncio do sistema detectáveis.":
+    "O som respeita o horário silencioso e os períodos de silêncio do sistema detectáveis.",
   "Routine finished with no news.": "Rotina concluída sem novidades.",
   "Escolher avisos e horário silencioso": "Escolher avisos e horário silencioso",
   "Filtre por bot e tipo, incluindo resultados concluídos.": "Filtre por bot e tipo, incluindo resultados concluídos.",
@@ -115,8 +121,8 @@ export const ptBR = {
     "Vale para todos os bots, no horário local do computador que executa o touri. Os outros avisos ficam guardados e contados, sem alertas nem som. Horários iguais silenciam esses avisos o dia todo.",
   "Os filtros controlam os alertas. Todos os avisos continuam na central de notificações.":
     "Os filtros controlam os alertas. Todos os avisos continuam na central de notificações.",
-  "Com a página fechada, não há som nem avisos em segundo plano. Ao voltar, você vê as solicitações pendentes.":
-    "Com a página fechada, não há som nem avisos em segundo plano. Ao voltar, você vê as solicitações pendentes.",
+  "Com o touri fechado, você não recebe avisos. Ao abrir, as solicitações pendentes aparecem.":
+    "Com o touri fechado, você não recebe avisos. Ao abrir, as solicitações pendentes aparecem.",
   "Rotina concluída sem novidades.": "Rotina concluída sem novidades.",
   "Notifications are limited to one every 30 seconds. Wait before trying again.":
     "Os avisos são limitados a um a cada 30 segundos. Aguarde antes de tentar novamente.",
@@ -796,8 +802,6 @@ export const ptBR = {
   "Os avisos do sistema estão desativados.": "Os avisos do sistema estão desativados.",
   "Abrir ajustes": "Abrir ajustes",
   "Testar aviso": "Testar aviso",
-  "Com esta página fechada, os avisos ficam guardados no servidor.":
-    "Com esta página fechada, os avisos ficam guardados no servidor.",
   "Você tem {n} solicitações pendentes.": "Você tem {n} solicitações pendentes.",
   "O sistema permite avisos. Teste a entrega.": "O sistema permite avisos. Teste a entrega.",
   "Os avisos estão desativados no touri.": "Os avisos estão desativados no touri.",
@@ -812,6 +816,15 @@ export const ptBR = {
   "Aprovado por você": "Aprovado por você",
   "Aprovação expirada": "Aprovação expirada",
   "Negado por você": "Negado por você",
+  Approve: "Aprovar",
+  Revoke: "Revogar",
+  "Permitir sempre nesta ferramenta": "Permitir sempre nesta ferramenta",
+  "Permissão permanente para {name}": "Permissão permanente para {name}",
+  "A ferramenta {name} poderá agir neste bot sem pedir aprovação novamente, inclusive em novas chamadas com outros parâmetros. Você pode remover essa permissão em Avançado → Permissões.":
+    "A ferramenta {name} poderá agir neste bot sem pedir aprovação novamente, inclusive em novas chamadas com outros parâmetros. Você pode remover essa permissão em Avançado → Permissões.",
+  "Sim, permitir {name} neste bot sem perguntar de novo": "Sim, permitir {name} neste bot sem perguntar de novo",
+  "Permissão permanente neste bot": "Permissão permanente neste bot",
+  "Permissão permanente revogada.": "Permissão permanente revogada.",
 
   "As pastas estão no computador onde o touri está rodando.":
     "As pastas estão no computador onde o touri está rodando.",
@@ -1243,6 +1256,23 @@ export const ptBR = {
   "Bot access settings": "Ajustar permissões",
   "Project preview": "Preview do projeto",
   "Bot groups": "Grupos",
+  "Onde o bot responde": "Onde o bot responde",
+  "Na conversa principal": "Na conversa principal",
+  "Uma conversa nova por tarefa": "Uma conversa nova por tarefa",
+  "Seguir configuração do bot": "Seguir configuração do bot",
+  "Segue o bot: conversa principal": "Segue o bot: conversa principal",
+  "Segue o bot: uma conversa nova por tarefa": "Segue o bot: uma conversa nova por tarefa",
+  "Automatic conversation mode help":
+    "No modo principal, as rotinas ficam na conversa do bot. Cada execução mostra o gatilho e o horário; no outro modo, cada execução ganha uma conversa própria.",
+  "Routine row title": "Rotina {name}",
+  "Task row title": "Tarefas {name}",
+  "Task conversation history for {name}": "Histórico de tarefas de {name}",
+  "Today count suffix": " · {count} hoje",
+  "Routine run header": "{name} · {trigger} · {time}",
+  "Routine trigger scheduled": "Programada",
+  "Routine trigger manual": "Manual",
+  "Routine trigger catch-up": "Recuperada",
+  "Routine trigger imported": "Importada",
   "Group coordinator suffix": " · coordenador",
   "This bot has no groups yet.": "Este bot ainda não pertence a um grupo.",
   "Bot routines": "Rotinas deste bot",
@@ -2027,7 +2057,19 @@ export const ptBR = {
   "CLI default": "Padrão do provedor",
   "Choose model": "Escolher modelo",
   "Choose model with selection": "Escolher modelo: {selection}",
+  "Models for {provider}": "Modelos de {provider}",
   "Save model": "Salvar modelo",
+  "Could not save model: {error}": "Não foi possível salvar o modelo: {error}",
+  "Could not load models. Use the default or enter a provider/model ID manually.":
+    "Não foi possível carregar os modelos. Use o padrão ou informe o identificador provedor/modelo manualmente.",
+  "Loading models…": "Carregando modelos…",
+  "Model names cannot contain hidden or control characters.":
+    "O nome do modelo não pode conter caracteres invisíveis ou de controle.",
+  "Use a model name of up to 256 characters, without hidden or control characters or a leading dash.":
+    "Use um nome de modelo com até 256 caracteres, sem caracteres invisíveis ou de controle e sem hífen no início.",
+  "The saved model name is invalid. Choose another model in the bot settings.":
+    "O nome do modelo salvo é inválido. Escolha outro modelo nas configurações do bot.",
+  "Use model": "Usar modelo",
   "Choose the model for this bot’s next messages.": "Escolha o modelo para as próximas mensagens deste bot.",
   "{provider} does not expose a model list in touri. Use the provider default or enter a model name that {provider} accepts.":
     "O {provider} não disponibiliza uma lista de modelos no touri. Use o padrão do provedor ou informe o nome de um modelo que o {provider} aceite.",
@@ -2248,6 +2290,13 @@ export const ptBR = {
   "Notification center": "Central de notificações",
   "Clear all": "Dispensar todas",
   "Nothing needs you right now.": "Nenhuma notificação no momento.",
+  "Precisa de você": "Precisa de você",
+  "Open pending item for {name}": "Abrir pendência de {name}",
+  "{name} wants your approval": "{name} quer sua aprovação",
+  "{name} needs your answer": "{name} precisa da sua resposta",
+  "{name} needs your help": "{name} precisa da sua ajuda",
+  "{name} has a task to review": "{name} tem uma tarefa para revisar",
+  "{name} is waiting for you": "{name} está esperando você",
   "Message branches": "Ramificações da mensagem",
   "Previous branch": "Ramificação anterior",
   "Next branch": "Próxima ramificação",
@@ -2705,6 +2754,19 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Digite o nome do grupo: {name}": "Type the group name: {name}",
   "Aviso do bot": "Bot notice",
   "Sempre avisar": "Always alert",
+  Som: "Sound",
+  "Som para o que precisa de você": "Sound for items that need you",
+  "Som para cada resposta": "Sound for every reply",
+  "Volume do som": "Sound volume",
+  "O som respeita o horário silencioso e os períodos de silêncio do sistema detectáveis.":
+    "Sound follows quiet hours and detectable system quiet modes.",
+  "Precisa de você": "Needs you",
+  "Open pending item for {name}": "Open pending item for {name}",
+  "{name} wants your approval": "{name} wants your approval",
+  "{name} needs your answer": "{name} needs your answer",
+  "{name} needs your help": "{name} needs your help",
+  "{name} has a task to review": "{name} has a task to review",
+  "{name} is waiting for you": "{name} is waiting for you",
   "Aprovações, perguntas e pedidos para você assumir continuam alertando durante o horário silencioso.":
     "Approvals, questions and requests for you to take over still alert during quiet hours.",
   "Routine finished with no news.": "Routine finished with no news.",
@@ -2733,8 +2795,8 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
     "Applies to all bots, using the local time of the computer running touri. Other notifications are saved and counted, without alerts or sound. Equal times silence those notifications all day.",
   "Os filtros controlam os alertas. Todos os avisos continuam na central de notificações.":
     "Filters control alerts. All notifications remain in the notification center.",
-  "Com a página fechada, não há som nem avisos em segundo plano. Ao voltar, você vê as solicitações pendentes.":
-    "A closed page makes no sound and sends no background alerts. When you return, you see pending requests.",
+  "Com o touri fechado, você não recebe avisos. Ao abrir, as solicitações pendentes aparecem.":
+    "With touri closed, you get no notifications. When you open it, pending requests appear.",
   "Rotina concluída sem novidades.": "Routine finished with no news.",
   "Notifications are limited to one every 30 seconds. Wait before trying again.":
     "Notifications are limited to one every 30 seconds. Wait before trying again.",
@@ -3406,8 +3468,6 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Os avisos do sistema estão desativados.": "System notifications are disabled.",
   "Abrir ajustes": "Open settings",
   "Testar aviso": "Test notification",
-  "Com esta página fechada, os avisos ficam guardados no servidor.":
-    "When this page is closed, notifications are kept on the server.",
   "Você tem {n} solicitações pendentes.": "You have {n} pending requests.",
   "O sistema permite avisos. Teste a entrega.": "The system allows notifications. Test delivery.",
   "Os avisos estão desativados no touri.": "Notifications are disabled in touri.",
@@ -3423,6 +3483,15 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Aprovado por você": "Approved by you",
   "Aprovação expirada": "Approval expired",
   "Negado por você": "Denied by you",
+  Approve: "Approve",
+  Revoke: "Revoke",
+  "Permitir sempre nesta ferramenta": "Always allow this tool",
+  "Permissão permanente para {name}": "Standing permission for {name}",
+  "A ferramenta {name} poderá agir neste bot sem pedir aprovação novamente, inclusive em novas chamadas com outros parâmetros. Você pode remover essa permissão em Avançado → Permissões.":
+    "The {name} tool can act on this bot without asking again, including new calls with different inputs. You can remove this permission in Advanced → Permissions.",
+  "Sim, permitir {name} neste bot sem perguntar de novo": "Yes, allow {name} on this bot without asking again",
+  "Permissão permanente neste bot": "Standing permission for this bot",
+  "Permissão permanente revogada.": "Standing permission revoked.",
 
   "As pastas estão no computador onde o touri está rodando.": "Folders are on the computer running touri.",
   "Caminho da pasta": "Folder path",
@@ -3832,6 +3901,23 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Bot access settings": "Adjust permissions",
   "Project preview": "Project preview",
   "Bot groups": "Groups",
+  "Onde o bot responde": "Where the bot replies",
+  "Na conversa principal": "In the main conversation",
+  "Uma conversa nova por tarefa": "A new conversation for each task",
+  "Seguir configuração do bot": "Follow bot setting",
+  "Segue o bot: conversa principal": "Follows bot: main conversation",
+  "Segue o bot: uma conversa nova por tarefa": "Follows bot: a new conversation per task",
+  "Automatic conversation mode help":
+    "In main mode, routines stay in the bot's conversation. Each run shows its trigger and time; task mode gives every run its own conversation.",
+  "Routine row title": "Routine {name}",
+  "Task row title": "Tasks {name}",
+  "Task conversation history for {name}": "Task history for {name}",
+  "Today count suffix": " · {count} today",
+  "Routine run header": "{name} · {trigger} · {time}",
+  "Routine trigger scheduled": "Scheduled",
+  "Routine trigger manual": "Manual",
+  "Routine trigger catch-up": "Catch-up",
+  "Routine trigger imported": "Imported",
   "Group coordinator suffix": " · coordinator",
   "This bot has no groups yet.": "This bot has no groups yet.",
   "Bot routines": "This bot’s routines",
@@ -4244,6 +4330,18 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
     "Choose a Claude Code model. Each option uses the latest version of that model.",
   "Other model…": "Other model…",
   "Model name": "Model name",
+  "Models for {provider}": "Models for {provider}",
+  "Could not save model: {error}": "Could not save model: {error}",
+  "Could not load models. Use the default or enter a provider/model ID manually.":
+    "Could not load models. Use the default or enter a provider/model ID manually.",
+  "Loading models…": "Loading models…",
+  "Model names cannot contain hidden or control characters.":
+    "Model names cannot contain hidden or control characters.",
+  "Use a model name of up to 256 characters, without hidden or control characters or a leading dash.":
+    "Use a model name of up to 256 characters, without hidden or control characters or a leading dash.",
+  "The saved model name is invalid. Choose another model in the bot settings.":
+    "The saved model name is invalid. Choose another model in the bot settings.",
+  "Use model": "Use model",
   "Choose the account this bot will use.": "Choose the account this bot will use.",
   "Sign in above before creating your bot.": "Sign in above before creating your bot.",
   "Could not check accounts. Choose an account and try again.":
@@ -4677,6 +4775,25 @@ export const getRoutineRunDateLabel = (timestamp: number, locale: Locale = "pt-B
 
 export const getRoutineRunTimeLabel = (timestamp: number, locale: Locale = "pt-BR", timeZone?: string): string =>
   new Intl.DateTimeFormat(locale, { timeStyle: "short", ...(timeZone ? { timeZone } : {}) }).format(timestamp)
+
+export const getRoutineRunCountsToday = (
+  routineRuns: readonly RoutineRun[],
+  routines: ReadonlyMap<string, Routine>,
+  now = Date.now(),
+): ReadonlyMap<string, number> => {
+  const today = new Date(now).toDateString()
+  const counts = new Map<string, number>()
+  routineRuns.forEach((run) => {
+    const routine = routines.get(run.routineId)
+    if (!routine) return
+
+    if (new Date(run.scheduledFor).toDateString() !== today) return
+
+    counts.set(run.routineId, (counts.get(run.routineId) ?? 0) + 1)
+  })
+
+  return counts
+}
 
 export const getRoutineRunSidebarDateLabel = (
   timestamp: number,
