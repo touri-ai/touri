@@ -508,7 +508,12 @@ export const Sidebar = (props: SidebarProps) => {
             <span className="sidebar-status-dot state-running" aria-hidden="true" />
             <span className="sidebar-work-copy">
               {t("Working")} · {runningWorkCount}
-              {queuedWorkCount > 0 && <small>{t("Work queued count", { count: queuedWorkCount })}</small>}
+              {queuedWorkCount > 0 && (
+                <>
+                  {" "}
+                  <small>{t("Work queued count", { count: queuedWorkCount })}</small>
+                </>
+              )}
             </span>
             <span className="sidebar-work-action" aria-hidden="true">
               ›
