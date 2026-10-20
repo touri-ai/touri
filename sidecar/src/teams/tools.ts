@@ -39,9 +39,15 @@ export const createTeamTools = (kernel: Kernel): ToolRegistration[] => {
         // Own a copy across the approval await; callers cannot change the reviewed draft.
         const proposal = structuredClone(validated.proposal)
         const reviewed = getBuilderSnapshot(builder.bot)
+        const isAdminRun = kernel.services.use("work.isAdminRun")
         const isCurrent = () => {
           const latest = getTeamBuilder(kernel, ctx)
-          return !ctx.signal.aborted && latest?.run.id === ctx.runId && getBuilderSnapshot(latest.bot) === reviewed
+          return (
+            !ctx.signal.aborted &&
+            latest?.run.id === ctx.runId &&
+            getBuilderSnapshot(latest.bot) === reviewed &&
+            (!isAdminRun || isAdminRun(ctx.runId ?? ""))
+          )
         }
         pending.add(ctx.threadId)
         try {
@@ -59,7 +65,11 @@ export const createTeamTools = (kernel: Kernel): ToolRegistration[] => {
             return denied(
               "O time não foi criado: a proposta foi cancelada, expirou ou a execução mudou. Nada foi criado.",
             )
-          const result = await createApprovedTeam(kernel, ctx, proposal, isCurrent)
+          const responsiblePersonId = kernel.services.use("work.personForRun")?.(builder.run.id)
+          const result = await createApprovedTeam(kernel, ctx, proposal, isCurrent, {
+            runId: builder.run.id,
+            ...(responsiblePersonId ? { responsiblePersonId } : {}),
+          })
           try {
             await kernel.services.use("approvals.completeTeam")?.({ approvalId: approval.approvalId, ctx, result })
           } catch {
@@ -187,6 +197,7 @@ const createApprovedTeam = async (
   ctx: ToolContext,
   proposal: TeamCreateInput,
   isCurrent: () => boolean,
+  identity: { runId: string; responsiblePersonId?: string },
 ): Promise<TeamCreationResult> => {
   const created: TeamCreationResult["bots"] = []
   try {
@@ -199,6 +210,8 @@ const createApprovedTeam = async (
         body: getSafeBotInput(draft),
         signal: ctx.signal,
         isCurrent,
+        runId: identity.runId,
+        ...(identity.responsiblePersonId ? { responsiblePersonId: identity.responsiblePersonId } : {}),
       })
       if (!result?.success) throw new Error("Bot creation failed")
       // This bounded local ledger reports committed bots even if a later creation fails.

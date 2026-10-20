@@ -204,7 +204,7 @@ const RUN_SNAPSHOT_SELECT = `SELECT r.*, COALESCE(root.thread_id, t.group_thread
     WHEN continuation.run_id IS NOT NULL THEN 'resume'
     WHEN EXISTS(SELECT 1 FROM json_each(request.parts_json)
       WHERE json_extract(value, '$.type') = 'notice' AND json_extract(value, '$.code') = 'run_resumed') THEN 'resume'
-    WHEN request.sender_json IS NOT NULL THEN 'delegation'
+    WHEN request.sender_json IS NOT NULL AND coalesce(json_extract(request.sender_json, '$.kind'), '') <> 'person' THEN 'delegation'
     WHEN r.trigger = 'routine' THEN 'routine'
     ELSE 'message'
   END AS origin

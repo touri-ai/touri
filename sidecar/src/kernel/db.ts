@@ -35,11 +35,12 @@ import computerGrantExpirySql from "./migrations/0029.sql" with { type: "text" }
 import groupCoordinationHistorySql from "./migrations/0030.sql" with { type: "text" }
 import streamWorkerSql from "./migrations/0031.sql" with { type: "text" }
 import teamBuilderSql from "./migrations/0032.sql" with { type: "text" }
+import workIdentitySql from "./migrations/0033.sql" with { type: "text" }
 import { withSuspendedSchemaObjects } from "./schema-rebuild"
 import { instrumentMainConnection, type SlowStatementTracker } from "./sqlite-performance"
 import { applyUpgradeBaselines } from "./upgradeBaselines"
 
-export const SCHEMA_VERSION = 32
+export const SCHEMA_VERSION = 33
 
 const FREE_PAGE_RATIO_LIMIT = 0.2
 
@@ -229,6 +230,19 @@ export const openDatabase = ({
     const columns = database.query("PRAGMA table_info(bots)").all() as Array<{ name: string }>
     if (!columns.some((column) => column.name === "team_builder")) database.exec(teamBuilderSql)
     database.exec("UPDATE schema_meta SET value = '32' WHERE key = 'schema_version'")
+  })()
+  database.transaction(() => {
+    const botColumns = database.query("PRAGMA table_info(bots)").all() as Array<{ name: string }>
+    const threadColumns = database.query("PRAGMA table_info(threads)").all() as Array<{ name: string }>
+    const attachmentColumns = database.query("PRAGMA table_info(attachments)").all() as Array<{ name: string }>
+    if (!botColumns.some((column) => column.name === "responsible_person_id"))
+      database.exec("ALTER TABLE bots ADD COLUMN responsible_person_id TEXT")
+    if (!threadColumns.some((column) => column.name === "owner_person_id"))
+      database.exec("ALTER TABLE threads ADD COLUMN owner_person_id TEXT")
+    if (!attachmentColumns.some((column) => column.name === "owner_person_id"))
+      database.exec("ALTER TABLE attachments ADD COLUMN owner_person_id TEXT")
+    database.exec(workIdentitySql)
+    database.exec("UPDATE schema_meta SET value = '33' WHERE key = 'schema_version'")
   })()
   return database
 }

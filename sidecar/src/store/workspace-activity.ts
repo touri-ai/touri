@@ -28,6 +28,7 @@ export const WORKSPACE_MESSAGES_SQL = `
   WITH visible AS MATERIALIZED (
     SELECT t.id FROM threads t JOIN bots b ON b.id = t.bot_id
     WHERE t.archived_at IS NULL AND b.archived_at IS NULL AND t.group_thread_id IS NULL
+      AND (/* scope */ 1 = 1)
   ), selected AS (
     SELECT (SELECT rowid FROM messages WHERE thread_id = t.id
       AND (trim(text) <> '' OR status IN ('failed', 'canceled') OR parts_json LIKE '%"type":"approval"%' OR parts_json LIKE '%"type":"notice"%')
@@ -74,15 +75,28 @@ export const WORKSPACE_RUNS_SQL = `
   JOIN bots b ON b.id = r.bot_id
   WHERE r.rowid IN (SELECT row_id FROM selected)
     AND t.archived_at IS NULL AND b.archived_at IS NULL AND t.group_thread_id IS NULL
+    AND (/* scope */ 1 = 1)
 `
 
-export const readWorkspaceActivity = (database: Database): { messages: RawMessage[]; runs: Run[] } => {
+export const readWorkspaceActivity = (
+  database: Database,
+  scope?: { personId: string; channelIds: Array<string> },
+): { messages: RawMessage[]; runs: Run[] } => {
   // At most five indexed message probes per visible thread, plus open approvals.
   // Never parse historical tool output or visit every completed run on a read.
-  const messages = database.query(WORKSPACE_MESSAGES_SQL).all() as RawMessage[]
+  const channelScope = scope?.channelIds.length
+    ? `t.group_id IN (${scope.channelIds.map(() => "?").join(",")}) OR `
+    : ""
+  const personScope = scope
+    ? `${channelScope}(t.group_id IS NULL AND (t.owner_person_id = ? OR (t.owner_person_id IS NULL AND ? = 'owner')))`
+    : "1 = 1"
+  const values = scope ? [...scope.channelIds, scope.personId, scope.personId] : []
+  const messages = database
+    .query(WORKSPACE_MESSAGES_SQL.replace("/* scope */ 1 = 1", personScope))
+    .all(...values) as RawMessage[]
   const runs = database
-    .query(WORKSPACE_RUNS_SQL)
-    .all()
+    .query(WORKSPACE_RUNS_SQL.replace("/* scope */ 1 = 1", personScope))
+    .all(...values)
     .flatMap((row) => {
       const run = toRun(row)
       return run ? [run] : []
