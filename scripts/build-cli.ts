@@ -58,6 +58,7 @@ const main = (): void => {
           "sidecar/src/cli/file-io-worker-entry.ts",
           "sidecar/src/cli/auth-writer-worker-entry.ts",
           "sidecar/src/cli/atomic-download-worker-entry.ts",
+          "sidecar/src/cli/workspace-attention-worker-entry.ts",
           "--outfile",
           `dist/touri-${name}`,
         ],

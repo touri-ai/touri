@@ -160,7 +160,17 @@ export const createWorkAccess = ({ database, authStore }: { database: Database; 
         JOIN threads t ON t.id = a.thread_id JOIN bots b ON b.id = t.bot_id
         WHERE a.approval_id = ? AND a.type = 'approval' AND a.decision = 'pending' LIMIT 1`)
       .get(approvalId) as { responsible_person_id: string | null } | null
-    return owner?.responsible_person_id === personId
+    if (owner) return owner.responsible_person_id === personId
+
+    const backfillPending = database.query("SELECT 1 FROM workspace_attention_backfill WHERE id = 1").get()
+    if (!backfillPending) return false
+
+    const notificationOwner = database
+      .query(`SELECT coalesce(b.responsible_person_id, 'owner') AS responsible_person_id FROM notifications n
+        JOIN threads t ON t.id = n.thread_id JOIN bots b ON b.id = t.bot_id
+        WHERE n.request_id = ? AND n.kind = 'approval' AND n.resolved_at IS NULL LIMIT 1`)
+      .get(approvalId) as { responsible_person_id: string | null } | null
+    return notificationOwner?.responsible_person_id === personId
   }
 
   const canAccessRun = ({ personId, role, runId }: { personId: string; role: PersonRole; runId: string }): boolean => {

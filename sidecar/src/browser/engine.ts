@@ -18,6 +18,7 @@ import type { PerformanceStageRunner } from "../kernel/performance"
 import { hostPlatform } from "../platform"
 import * as macos from "../platform/macos"
 import { CHALLENGE_ELEMENT_IDS, classifyBlockedPage, describeBlockedPage } from "./blockedPage"
+import { isBrowserSubmitKey, requiresBrowserKeyInspection, requiresBrowserTakeover } from "./decision"
 import {
   type ChromeLauncher,
   createChromeLauncher,
@@ -380,7 +381,9 @@ const fingerprintForNode = async ({
       if (!element.isConnected) return null;
       const role = element.getAttribute('role') || ({BUTTON:'button',A:'link',INPUT:(element.type === 'search' ? 'searchbox' : 'textbox'),SELECT:'combobox',TEXTAREA:'textbox',H1:'heading',H2:'heading',H3:'heading',H4:'heading',H5:'heading',H6:'heading'}[element.tagName] || 'generic');
       const name = element.getAttribute('aria-label') || element.getAttribute('name') || element.innerText || element.value || '';
-      return { role, name: String(name).trim(), tag: element.tagName.toLowerCase(), textPrefix: String(element.innerText || element.textContent || '').trim().slice(0, 40), href: element.getAttribute('href') || '' };
+      const formAssociated = Boolean(element.form);
+      const formSubmit = formAssociated && ((element.tagName === 'BUTTON' && (element.type || 'submit').toLowerCase() === 'submit') || (element.tagName === 'INPUT' && ['submit', 'image'].includes(element.type)));
+      return { role, name: String(name).trim(), tag: element.tagName.toLowerCase(), textPrefix: String(element.innerText || element.textContent || '').trim().slice(0, 40), href: element.getAttribute('href') || '', formAssociated, formSubmit };
     }`,
         returnByValue: true,
       },
@@ -395,6 +398,50 @@ const fingerprintForNode = async ({
     tag: asString(value.tag) ?? "div",
     textPrefix: asString(value.textPrefix) ?? "",
     href: asString(value.href) ?? "",
+    ...(asBoolean(value.formAssociated) === true ? { formAssociated: true } : {}),
+    ...(asBoolean(value.formSubmit) === true ? { formSubmit: true } : {}),
+  }
+}
+
+const getBrowserClickControl = async ({
+  client,
+  sessionId,
+  backendNodeId,
+}: {
+  client: CdpClient
+  sessionId: string
+  backendNodeId: number
+}): Promise<{ formSubmit: boolean; role: string; name: string } | null> => {
+  try {
+    const resolved = cdpResult(await cdpCall<unknown>(client, "DOM.resolveNode", { backendNodeId }, sessionId))
+    const objectId = asString(asRecord(resolved.object)?.objectId)
+    if (!objectId) return null
+
+    const result = cdpResult(
+      await cdpCall<unknown>(
+        client,
+        "Runtime.callFunctionOn",
+        {
+          objectId,
+          functionDeclaration: `function () {
+          const element = this.closest('button,input,select,a,[role="button"],[role="checkbox"],[role="radio"],[role="switch"]') || this;
+          const formSubmit = Boolean(element.form) && ((element.tagName === 'BUTTON' && element.type === 'submit') || (element.tagName === 'INPUT' && ['submit', 'image'].includes(element.type)));
+          const role = element.getAttribute('role') || ({ BUTTON: 'button', INPUT: 'textbox', SELECT: 'combobox', A: 'link' }[element.tagName] || 'generic');
+          const name = (element.getAttribute('aria-label') || element.labels?.[0]?.innerText || element.innerText || element.getAttribute('name') || '').slice(0, 500);
+          return { formSubmit, role, name };
+        }`,
+          returnByValue: true,
+        },
+        sessionId,
+      ),
+    )
+    const value = asRecord(asRecord(result.result)?.value)
+    if (typeof value?.formSubmit !== "boolean" || typeof value.role !== "string" || typeof value.name !== "string")
+      return null
+
+    return { formSubmit: value.formSubmit, role: value.role, name: value.name }
+  } catch {
+    return null
   }
 }
 
@@ -1053,6 +1100,8 @@ const elementFromNode = (node: NodeRef, page: PageState): BrowserElement => {
     states: node.states,
     frame: node.frame,
     inViewport,
+    ...(node.fingerprint.formAssociated === true ? { formAssociated: true } : {}),
+    ...(node.fingerprint.formSubmit === true ? { formSubmit: true } : {}),
   }
 }
 
@@ -3242,6 +3291,35 @@ export const createBrowserEngine = ({
             hit = resolved
           } else {
             clicked = resolved.node
+            if (
+              clicked &&
+              requiresBrowserTakeover({
+                action: "click",
+                intent: `${clicked.role} ${clicked.name}`,
+                pageUrl: tab.info.url,
+              })
+            )
+              return failure("USER_TAKEOVER_REQUIRED", "TOURI_BROWSER_TAKEOVER_REQUIRED|sensitive_action")
+            if (button === "left" && clicked) {
+              const control = await getBrowserClickControl({
+                client: client as CdpClient,
+                sessionId: clicked.sessionId,
+                backendNodeId: clicked.backendNodeId,
+              })
+              if (!control || control.formSubmit)
+                return failure(
+                  "USER_TAKEOVER_REQUIRED",
+                  "TOURI_BROWSER_TAKEOVER_REQUIRED|form_submit\nAsk the user to take over this browser tab and submit the form directly.",
+                )
+              if (
+                requiresBrowserTakeover({
+                  action: "click",
+                  intent: `${control.role} ${control.name}`,
+                  pageUrl: tab.info.url,
+                })
+              )
+                return failure("USER_TAKEOVER_REQUIRED", "TOURI_BROWSER_TAKEOVER_REQUIRED|sensitive_action")
+            }
             hit = await hitPoint(tab, resolved)
             if (!hit.success && hit.failure.errorCode === "TARGET_CHANGED" && resolved.node) {
               try {
@@ -3402,6 +3480,15 @@ export const createBrowserEngine = ({
         const resolved = await resolveWithRetry(tab, target)
         if (!resolved.success) return resolved
         if (!resolved.node) return failure("TARGET_NOT_INTERACTABLE", "Typing needs an element target, not a point.")
+        if (
+          requiresBrowserTakeover({
+            action: "type",
+            intent: `${resolved.node.role} ${resolved.node.name}`,
+            pageUrl: tab.info.url,
+            submit,
+          })
+        )
+          return failure("USER_TAKEOVER_REQUIRED", "TOURI_BROWSER_TAKEOVER_REQUIRED|sensitive_action")
         const descriptor = await describe(client as CdpClient, resolved.node.sessionId, resolved.node.backendNodeId)
         if (descriptor.password)
           return failure("INVALID_ARGS", "Never type passwords or codes directly; use browser_submit_secret.")
@@ -3440,6 +3527,8 @@ export const createBrowserEngine = ({
       signal,
       operation: async () => {
         if (!client || !tab.sessionId) return failure("ENGINE_UNAVAILABLE", "The tab is not attached to Chrome.")
+        if (tab.dialog && key === "Enter" && tab.dialog.type !== "alert")
+          return failure("USER_TAKEOVER_REQUIRED", "TOURI_BROWSER_TAKEOVER_REQUIRED|sensitive_action")
         if (tab.dialog && (key === "Escape" || key === "Enter")) {
           await cdpCall(client, "Page.handleJavaScriptDialog", { accept: key === "Enter" }, tab.sessionId)
           tab.dialog = null
@@ -3455,6 +3544,37 @@ export const createBrowserEngine = ({
           (parts.includes("Ctrl") || parts.includes("ctrl") ? 2 : 0) |
           (parts.includes("Meta") || parts.includes("meta") || parts.includes("Cmd") || parts.includes("cmd") ? 4 : 0) |
           (parts.includes("Shift") || parts.includes("shift") ? 8 : 0)
+        if (requiresBrowserKeyInspection(key)) {
+          const focused = asRecord(
+            await runtimeValue<unknown>(
+              client,
+              `(() => {
+            const active = document.activeElement;
+            if (!active) return null;
+            const element = active.closest('button,input,select,a,[role="button"],[role="checkbox"],[role="radio"],[role="switch"]') || active;
+            const role = element.getAttribute('role') || ({ BUTTON: 'button', INPUT: 'textbox', TEXTAREA: 'textbox', SELECT: 'combobox' }[element.tagName] || 'generic');
+            const name = ((element.type === 'password' ? 'password ' : '') + (element.getAttribute('aria-label') || element.labels?.[0]?.innerText || element.innerText || element.getAttribute('name') || '')).slice(0, 500);
+            const formAssociated = Boolean(element.form);
+            const formSubmit = formAssociated && ((element.tagName === 'BUTTON' && element.type === 'submit') || (element.tagName === 'INPUT' && ['submit', 'image'].includes(element.type)));
+            return { role, name, formAssociated, formSubmit };
+          })()`,
+              tab.sessionId,
+            ),
+          )
+          const role = asString(focused?.role) ?? ""
+          const action = ["textbox", "searchbox", "combobox"].includes(role) ? "type" : "click"
+          if (
+            !focused ||
+            requiresBrowserTakeover({
+              action,
+              intent: `${role} ${asString(focused.name) ?? ""}`,
+              pageUrl: tab.info.url,
+              submit: isBrowserSubmitKey(key) && focused.formAssociated === true,
+              formSubmit: focused.formSubmit === true,
+            })
+          )
+            return failure("USER_TAKEOVER_REQUIRED", "TOURI_BROWSER_TAKEOVER_REQUIRED|sensitive_action")
+        }
         await dispatchKey({
           tab,
           key: rawKey,
@@ -3605,6 +3725,15 @@ export const createBrowserEngine = ({
         const resolved = await resolveWithRetry(tab, target)
         if (!resolved.success) return resolved
         if (!resolved.node) return failure("TARGET_NOT_INTERACTABLE", "Option selection needs an element target.")
+        if (
+          requiresBrowserTakeover({
+            action: "select",
+            intent: `${resolved.node.role} ${resolved.node.name}`,
+            pageUrl: tab.info.url,
+          })
+        )
+          return failure("USER_TAKEOVER_REQUIRED", "TOURI_BROWSER_TAKEOVER_REQUIRED|sensitive_action")
+
         const objectId = await nodeObjectId(resolved.node)
         const result = cdpResult(
           await cdpCall<unknown>(
@@ -3668,6 +3797,15 @@ export const createBrowserEngine = ({
         const resolved = await resolveWithRetry(tab, target)
         if (!resolved.success) return resolved
         if (!resolved.node) return failure("TARGET_NOT_INTERACTABLE", "Setting checked needs an element target.")
+        if (
+          requiresBrowserTakeover({
+            action: "check",
+            intent: `${resolved.node.role} ${resolved.node.name}`,
+            pageUrl: tab.info.url,
+          })
+        )
+          return failure("USER_TAKEOVER_REQUIRED", "TOURI_BROWSER_TAKEOVER_REQUIRED|sensitive_action")
+
         const objectId = await nodeObjectId(resolved.node)
         await cdpCall(
           client as CdpClient,

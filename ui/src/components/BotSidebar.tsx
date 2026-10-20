@@ -231,8 +231,8 @@ export const Sidebar = (props: SidebarProps) => {
         >
           <span>
             {t("Working")} <strong>{runningWorkCount}</strong>
-          </span>
-          <span>{t("Work queued count", { count: queuedWorkCount })}</span>
+          </span>{" "}
+          <span>{t("Work queued count", { count: queuedWorkCount })}</span>{" "}
           <span className="sidebar-work-action">
             {t("View work")} <span aria-hidden="true">›</span>
           </span>

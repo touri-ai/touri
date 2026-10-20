@@ -221,6 +221,17 @@ jobs:
         env:
           VITE_ENABLE_MOCK: "true"
         run: bunx vite optimize --force
+      - name: Check work summary accessible labels
+        working-directory: ui
+        run: bunx playwright test test/e2e/work-summary-label.spec.ts --workers=1 --output test-results/work-summary-label
+      - name: Keep synthetic work summary evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: work-summary-label
+          path: ui/test-results/work-summary-label/**/*.png
+          if-no-files-found: error
+          retention-days: 7
       - name: Check work queue and concurrency settings on desktop and phone
         working-directory: ui
         env:

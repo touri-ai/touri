@@ -195,3 +195,24 @@ it("shows the model name while saved provider metadata is unavailable", async ()
   expect(await screen.findByRole("option", { name: "demo-model" })).toBeInTheDocument()
   expect(document.body.textContent).not.toContain("touri-api-missing-provider")
 })
+
+it("browser assistance requires a visible opt-in and can be disabled without deleting the key", async () => {
+  const api = createMockApi()
+  await api.request("POST /api-models", {
+    preset: "openrouter",
+    apiKey: "fixture-private-key",
+    modelId: "demo-model",
+    name: "Navegador",
+  })
+  render(<ApiModelsSettings api={api} />)
+  const consent = await screen.findByRole("switch", { name: "Usar esta chave para ajudar nas escolhas do navegador" })
+
+  expect(consent).not.toBeChecked()
+  expect(consent).toHaveAccessibleDescription(/modelo remoto JEV.*consumir créditos/)
+  fireEvent.click(consent)
+  await waitFor(() => expect(consent).toBeChecked())
+  fireEvent.click(consent)
+  await waitFor(() => expect(consent).not.toBeChecked())
+  expect((await api.request("GET /api-models", {})).models).toHaveLength(1)
+  expect(document.body.textContent).not.toContain("fixture-private-key")
+})

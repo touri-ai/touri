@@ -16,6 +16,7 @@ export type ApiModel = {
   name: string
   baseUrl: string
   modelId: string
+  browserDecisions?: boolean
 }
 
 export type ApiModelConnection = { preset: ApiModelPreset; baseUrl?: string; apiKey: string }

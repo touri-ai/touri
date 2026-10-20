@@ -1,5 +1,7 @@
 import type {
+  ApiModel,
   BrowserFailureInfo,
+  BrowserSnapshot,
   BrowserTarget,
   Kernel,
   RouteModule,
@@ -8,7 +10,20 @@ import type {
   ToolRegistration,
   ToolResult,
 } from "@touri/contracts"
+import { getApiModelKey } from "../api-models"
+import { getBrowserDecisionModel } from "../api-models/config"
 import type { PerformanceStageRunner } from "../kernel/performance"
+import {
+  type BrowserDecisionAction,
+  type BrowserDecisionFallbackReason,
+  createBrowserDecisionAdapter,
+  getBrowserDecisionCandidates,
+  isBrowserSubmitKey,
+  isSafeBrowserRead,
+  requiresBrowserKeyInspection,
+  requiresBrowserTakeover,
+} from "./decision"
+import type { BrowserEngine } from "./types"
 import { asArray, asBoolean, asNumber, asRecord, asString } from "./utils"
 import { createRoutedBrowserEngine } from "./vm-router"
 
@@ -81,9 +96,294 @@ const fields = (value: unknown): Array<{ kind: "username" | "password" | "otp"; 
     return { kind: asString(field.kind) as "username" | "password" | "otp", target: target(field.target) }
   })
 
-export const init = async (kernel: Kernel, runStage?: PerformanceStageRunner): Promise<void> => {
+const getBrowserDecisionMarker = (reason: BrowserDecisionFallbackReason): string =>
+  `TOURI_BROWSER_DECISION_HINT|${reason}`
+
+const getFallbackInstruction = (reason: BrowserDecisionFallbackReason): string => {
+  if (reason === "missing_key")
+    return "The optional browser decision model has no saved API key. Continue with the existing browser behavior and ask the user if the target is still unclear."
+  if (reason === "no_credit")
+    return "The optional browser decision model has no credit. Continue with the existing browser behavior and ask the user if the target is still unclear."
+  if (reason === "invalid_response")
+    return "The optional browser decision model returned an invalid answer. Continue with the existing browser behavior and ask the user if the target is still unclear."
+
+  return "The optional browser decision model could not be reached. Continue with the existing browser behavior and ask the user if the target is still unclear."
+}
+
+const withDecisionFallbackHint = (result: ToolResult, reason: BrowserDecisionFallbackReason): ToolResult => ({
+  ...result,
+  ...(result.success
+    ? {}
+    : { error: `${result.error}\n${getBrowserDecisionMarker(reason)}\n${getFallbackInstruction(reason)}` }),
+})
+
+const getSnapshot = (value: unknown): BrowserSnapshot | null => {
+  const snapshot = asRecord(value)
+  if (typeof snapshot?.tabId !== "string" || typeof snapshot.url !== "string" || !Array.isArray(snapshot.elements))
+    return null
+
+  return value as BrowserSnapshot
+}
+
+const isAmbiguousTarget = (result: ToolResult): boolean =>
+  !result.success && ["AMBIGUOUS_TARGET", "TARGET_NOT_FOUND"].includes(result.errorCode)
+
+const isBrowserTarget = (value: unknown): value is BrowserTarget => {
+  const target = asRecord(value)
+  if (!target) return false
+  if (target.exact !== undefined && typeof target.exact !== "boolean") return false
+
+  if (target.kind === "ref") return typeof target.ref === "string"
+  if (target.kind === "role")
+    return typeof target.role === "string" && (target.name === undefined || typeof target.name === "string")
+  if (target.kind === "text") return typeof target.text === "string"
+  if (target.kind === "css") return typeof target.selector === "string"
+  if (target.kind === "point")
+    return (
+      typeof target.x === "number" &&
+      Number.isFinite(target.x) &&
+      typeof target.y === "number" &&
+      Number.isFinite(target.y)
+    )
+
+  return false
+}
+
+const getTargetIntent = (target: BrowserTarget): string => {
+  if (target.kind === "role") return [target.role, target.name].filter(Boolean).join(" ")
+  if (target.kind === "text") return target.text
+
+  return ""
+}
+
+const getDecisionName = (value: string, redact: (value: string) => string): string =>
+  redact(value)
+    .replace(/\b[\w.+-]+@[\w.-]+\.[a-z]{2,}\b/gi, "[email]")
+    .replace(/\b(?:\+?\d[\d\s().-]{7,}\d)\b/g, "[number]")
+    .slice(0, 120)
+
+const getBrowserTakeoverRequiredResult = (): ToolResult => ({
+  success: false,
+  errorCode: "USER_TAKEOVER_REQUIRED",
+  error:
+    "TOURI_BROWSER_TAKEOVER_REQUIRED|sensitive_action\nAsk the user to take over this browser tab and complete the action directly, then resume only after they hand control back.",
+})
+
+type BrowserDecisionRun = (args: {
+  target: BrowserTarget
+  signal: AbortSignal
+  timeoutMs: number
+}) => Promise<ToolResult>
+
+const runWithBrowserDecision = async ({
+  ctx,
+  timeoutMs,
+  action,
+  target: requestedTarget,
+  tabId,
+  botId,
+  run,
+  submit = false,
+  button = "left",
+  clickCount = 1,
+  decide,
+  snapshotBrowser,
+  getPageUrl,
+  redact,
+}: {
+  ctx: Pick<ToolContext, "signal">
+  timeoutMs: number
+  action: BrowserDecisionAction
+  target: BrowserTarget
+  tabId: string
+  botId: string
+  run: BrowserDecisionRun
+  submit?: boolean | undefined
+  button?: string | undefined
+  clickCount?: number | undefined
+  decide: ReturnType<typeof createBrowserDecisionAdapter>["decide"]
+  snapshotBrowser: (args: {
+    tabId: string
+    botId: string
+    image: "never"
+    signal: AbortSignal
+    timeoutMs: number
+  }) => Promise<ToolResult>
+  getPageUrl: (args: { tabId: string; botId: string }) => string
+  redact: (value: string) => string
+}): Promise<ToolResult> =>
+  withToolDeadline({
+    ctx,
+    timeoutMs,
+    run: async ({ signal, budgetMs }) => {
+      if (!isBrowserTarget(requestedTarget))
+        return { success: false, errorCode: "INVALID_ARGS", error: "Informe um alvo válido para usar o navegador." }
+
+      const deadlineAt = Date.now() + budgetMs
+      const remaining = (): number => Math.max(0, deadlineAt - Date.now())
+      const runAction = (target: BrowserTarget): Promise<ToolResult> => {
+        const timeoutMs = remaining()
+        if (timeoutMs < MIN_ENGINE_BUDGET_MS)
+          return Promise.resolve({
+            success: false,
+            errorCode: "DEADLINE_EXCEEDED",
+            error: "O prazo para usar o navegador terminou. Tente novamente.",
+          })
+
+        return run({ target, signal, timeoutMs })
+      }
+      const pageUrl = getPageUrl({ tabId, botId })
+      let intent = getTargetIntent(requestedTarget)
+      let uninspectableTarget = false
+      let formSubmit = false
+      if (requestedTarget.kind === "ref") {
+        const inspect = await snapshotBrowser({
+          tabId,
+          botId,
+          image: "never",
+          signal,
+          timeoutMs: remaining(),
+        })
+        const snapshot = inspect.success ? getSnapshot(inspect.structured) : null
+        const element = snapshot?.elements.find((entry) => entry.ref === requestedTarget.ref)
+        if (element) {
+          intent = `${element.role} ${getDecisionName(element.name, redact)}`
+          formSubmit = element.formSubmit === true
+        } else uninspectableTarget = true
+      }
+      if (
+        requiresBrowserTakeover({
+          action,
+          intent,
+          pageUrl,
+          submit,
+          formSubmit,
+          pointTarget: requestedTarget.kind === "point" || uninspectableTarget,
+        })
+      )
+        return getBrowserTakeoverRequiredResult()
+
+      if (action === "click" && (button !== "left" || clickCount !== 1)) return runAction(requestedTarget)
+      const initial = await runAction(requestedTarget)
+      if (!isAmbiguousTarget(initial)) return initial
+      if (requestedTarget.kind !== "role" && requestedTarget.kind !== "text") return initial
+
+      const snapshotResult = await snapshotBrowser({
+        tabId,
+        botId,
+        image: "never",
+        signal,
+        timeoutMs: remaining(),
+      })
+      if (!snapshotResult.success) return withDecisionFallbackHint(initial, "unavailable")
+      const snapshot = getSnapshot(snapshotResult.structured)
+      if (!snapshot) return withDecisionFallbackHint(initial, "invalid_response")
+
+      const elements = snapshot.elements.map((element) => ({
+        ...element,
+        name: getDecisionName(element.name, redact),
+      }))
+      const prepared = getBrowserDecisionCandidates({
+        action,
+        target: requestedTarget,
+        pageUrl: snapshot.url,
+        elements,
+        submit,
+        button,
+        clickCount,
+      })
+      if (!prepared) return initial
+
+      const decision = await decide({
+        action,
+        intent: getDecisionName(prepared.intent, redact),
+        candidates: prepared.candidates,
+        signal,
+      })
+      if (decision.kind === "fallback") return withDecisionFallbackHint(initial, decision.reason)
+      if (decision.kind === "ask") {
+        const choices = decision.candidates.map((candidate) => candidate.name).join("; ")
+        const marker = `TOURI_BROWSER_DECISION_QUESTION|${JSON.stringify({
+          intent: getDecisionName(prepared.intent, redact),
+          choices,
+        })}`
+        return {
+          success: false,
+          errorCode: "AMBIGUOUS_TARGET",
+          error: `The browser did not choose a target safely. Ask the user which visible option to use, then retry only after they answer.\n${marker}`,
+        }
+      }
+
+      return runAction({ kind: "ref", ref: decision.candidate.ref })
+    },
+  })
+
+export type BrowserInitDependencies = {
+  engine?: BrowserEngine
+  fetchDecision?: (input: string, init: RequestInit) => Promise<Response>
+  getDecisionApiKey?: (signal: AbortSignal) => Promise<string | null>
+}
+
+export const init = async (
+  kernel: Kernel,
+  runStage?: PerformanceStageRunner,
+  dependencies: BrowserInitDependencies = {},
+): Promise<void> => {
   const mode = process.env.TOURI_BROWSER_EXECUTABLE === "chrome-for-testing" ? "chrome-for-testing" : "system-chrome"
-  const engine = createRoutedBrowserEngine(kernel, mode, runStage ? { runStage } : {})
+  const engine = dependencies.engine ?? createRoutedBrowserEngine(kernel, mode, runStage ? { runStage } : {})
+  let decisionModel: ApiModel | null = getBrowserDecisionModel(kernel)
+  kernel.services.provide("browser.updateDecisionModel", (model) => {
+    decisionModel = model?.browserDecisions === true ? model : null
+  })
+  const decision = createBrowserDecisionAdapter({
+    getApiKey:
+      dependencies.getDecisionApiKey ??
+      (async (signal) => {
+        if (!decisionModel) return null
+
+        return getApiModelKey(kernel, decisionModel.id, signal)
+      }),
+    ...(dependencies.fetchDecision ? { fetchImpl: dependencies.fetchDecision } : {}),
+  })
+  const runDecision = ({
+    ctx,
+    timeoutMs,
+    action,
+    target: requestedTarget,
+    tabId,
+    botId,
+    run,
+    submit,
+    button,
+    clickCount,
+  }: {
+    ctx: Pick<ToolContext, "signal">
+    timeoutMs: number
+    action: BrowserDecisionAction
+    target: BrowserTarget
+    tabId: string
+    botId: string
+    run: BrowserDecisionRun
+    submit?: boolean | undefined
+    button?: string | undefined
+    clickCount?: number | undefined
+  }): Promise<ToolResult> =>
+    runWithBrowserDecision({
+      ctx,
+      timeoutMs,
+      action,
+      target: requestedTarget,
+      tabId,
+      botId,
+      run,
+      decide: decision.decide,
+      snapshotBrowser: (args) => engine.snapshot(args),
+      getPageUrl: ({ tabId, botId }) => engine.tabsForBot(botId).find((tab) => tab.tabId === tabId)?.url ?? "",
+      redact: kernel.redact,
+      submit,
+      button,
+      clickCount,
+    })
   const failures = new Map<string, BrowserFailureInfo>()
   // The screen viewers show the real cause when a page never reached the display.
   const tool = (name: string, handler: ToolHandler): ToolRegistration => ({
@@ -198,52 +498,104 @@ export const init = async (kernel: Kernel, runStage?: PerformanceStageRunner): P
     }),
     tool("browser_click", async ({ ctx, args }) => {
       const input = argsRecord(args)
-      return withToolDeadline({
+      const tabId = asString(input.tabId) ?? ""
+      const button = (asString(input.button) ?? "left") as "left" | "right" | "middle"
+      const clickCount = asNumber(input.clickCount) ?? 1
+      const requestedTarget = target(input.target)
+      return runDecision({
         ctx,
         timeoutMs: timeout(input.timeoutMs),
-        run: ({ signal, budgetMs }) =>
+        action: "click",
+        target: requestedTarget,
+        tabId,
+        botId: ctx.botId,
+        button,
+        clickCount,
+        run: ({ target, signal, timeoutMs }) =>
           engine.click({
-            tabId: asString(input.tabId) ?? "",
+            tabId,
             botId: ctx.botId,
-            target: target(input.target),
-            button: (asString(input.button) ?? "left") as "left" | "right" | "middle",
-            clickCount: asNumber(input.clickCount) ?? 1,
-            timeoutMs: budgetMs,
+            target,
+            button,
+            clickCount,
+            timeoutMs,
             signal,
           }),
       })
     }),
     tool("browser_type", async ({ ctx, args }) => {
       const input = argsRecord(args)
-      return withToolDeadline({
+      const tabId = asString(input.tabId) ?? ""
+      const submit = asBoolean(input.submit) === true
+      const requestedTarget = target(input.target)
+      return runDecision({
         ctx,
         timeoutMs: timeout(input.timeoutMs),
-        run: ({ signal, budgetMs }) =>
+        action: "type",
+        target: requestedTarget,
+        tabId,
+        botId: ctx.botId,
+        submit,
+        run: ({ target, signal, timeoutMs }) =>
           engine.type({
-            tabId: asString(input.tabId) ?? "",
+            tabId,
             botId: ctx.botId,
-            target: target(input.target),
+            target,
             text: asString(input.text) ?? "",
             clear: asBoolean(input.clear) !== false,
-            submit: asBoolean(input.submit) === true,
-            timeoutMs: budgetMs,
+            submit,
+            timeoutMs,
             signal,
           }),
       })
     }),
     tool("browser_press", async ({ ctx, args }) => {
       const input = argsRecord(args)
+      const tabId = asString(input.tabId) ?? ""
+      const key = asString(input.key) ?? ""
+      const enterKey = isBrowserSubmitKey(key)
+      const inspectFocus = requiresBrowserKeyInspection(key)
+      const pageUrl = engine.tabsForBot(ctx.botId).find((tab) => tab.tabId === tabId)?.url ?? ""
+      if (inspectFocus && requiresBrowserTakeover({ action: "click", intent: "", pageUrl }))
+        return getBrowserTakeoverRequiredResult()
+
       return withToolDeadline({
         ctx,
         timeoutMs: timeout(input.timeoutMs),
-        run: ({ signal, budgetMs }) =>
-          engine.press({
-            tabId: asString(input.tabId) ?? "",
+        run: async ({ signal, budgetMs }) => {
+          if (inspectFocus) {
+            const inspected = await engine.snapshot({
+              tabId,
+              botId: ctx.botId,
+              image: "never",
+              signal,
+              timeoutMs: budgetMs,
+            })
+            const snapshot = inspected.success ? getSnapshot(inspected.structured) : null
+            if (!snapshot) return getBrowserTakeoverRequiredResult()
+            const focused = snapshot.elements.find((element) => element.ref === snapshot.focus.ref)
+            if (!focused) return getBrowserTakeoverRequiredResult()
+            const action = ["textbox", "searchbox", "combobox"].includes(focused.role) ? "type" : "click"
+            if (
+              requiresBrowserTakeover({
+                action,
+                intent: `${focused.role} ${focused.name}`,
+                pageUrl: snapshot.url,
+                submit: enterKey && focused.formAssociated === true,
+                formSubmit: focused.formSubmit === true,
+              })
+            )
+              return getBrowserTakeoverRequiredResult()
+          }
+
+          return engine.press({
+            tabId,
             botId: ctx.botId,
-            key: asString(input.key) ?? "",
+            key,
             timeoutMs: budgetMs,
             signal,
-          }),
+          })
+        },
       })
     }),
     tool("browser_hover", async ({ ctx, args }) => {
@@ -280,33 +632,46 @@ export const init = async (kernel: Kernel, runStage?: PerformanceStageRunner): P
     }),
     tool("browser_select_option", async ({ ctx, args }) => {
       const input = argsRecord(args)
-      return withToolDeadline({
+      const tabId = asString(input.tabId) ?? ""
+      const requestedTarget = target(input.target)
+      const values = asArray(input.values).map((value) => asString(value) ?? "")
+      return runDecision({
         ctx,
         timeoutMs: timeout(input.timeoutMs),
-        run: ({ signal, budgetMs }) =>
+        action: "select",
+        target: requestedTarget,
+        tabId,
+        botId: ctx.botId,
+        run: ({ target, signal, timeoutMs }) =>
           engine.selectOption({
-            tabId: asString(input.tabId) ?? "",
+            tabId,
             botId: ctx.botId,
-            target: target(input.target),
-            values: asArray(input.values).map((value) => asString(value) ?? ""),
+            target,
+            values,
             signal,
-            timeoutMs: budgetMs,
+            timeoutMs,
           }),
       })
     }),
     tool("browser_set_checked", async ({ ctx, args }) => {
       const input = argsRecord(args)
-      return withToolDeadline({
+      const tabId = asString(input.tabId) ?? ""
+      const requestedTarget = target(input.target)
+      return runDecision({
         ctx,
         timeoutMs: timeout(input.timeoutMs),
-        run: ({ signal, budgetMs }) =>
+        action: "check",
+        target: requestedTarget,
+        tabId,
+        botId: ctx.botId,
+        run: ({ target, signal, timeoutMs }) =>
           engine.setChecked({
-            tabId: asString(input.tabId) ?? "",
+            tabId,
             botId: ctx.botId,
-            target: target(input.target),
+            target,
             checked: asBoolean(input.checked) === true,
             signal,
-            timeoutMs: budgetMs,
+            timeoutMs,
           }),
       })
     }),
@@ -332,14 +697,20 @@ export const init = async (kernel: Kernel, runStage?: PerformanceStageRunner): P
     })),
     tool("browser_evaluate", async ({ ctx, args }) => {
       const input = argsRecord(args)
+      const tabId = asString(input.tabId) ?? ""
+      const expression = asString(input.expression) ?? ""
+      const pageUrl = engine.tabsForBot(ctx.botId).find((tab) => tab.tabId === tabId)?.url ?? ""
+      if (!isSafeBrowserRead(expression) || requiresBrowserTakeover({ action: "click", intent: expression, pageUrl }))
+        return getBrowserTakeoverRequiredResult()
+
       return withToolDeadline({
         ctx,
         timeoutMs: timeout(input.timeoutMs),
         run: ({ signal, budgetMs }) =>
           engine.evaluate({
-            tabId: asString(input.tabId) ?? "",
+            tabId,
             botId: ctx.botId,
-            expression: asString(input.expression) ?? "",
+            expression,
             signal,
             timeoutMs: budgetMs,
           }),

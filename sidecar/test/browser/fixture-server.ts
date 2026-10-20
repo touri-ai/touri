@@ -11,6 +11,11 @@ export const startBrowserFixtureServer = (): Server<undefined> =>
     port: 0,
     fetch: (request) => {
       const pathname = new URL(request.url).pathname
+      if (pathname === "/travel-search")
+        return page(
+          '<main><h1>Travel search</h1><form id="travel-search"><label>Destination<input id="destination-primary" aria-label="Destination primary"></label><label>Destination alternate<input id="destination-alternate" aria-label="Destination alternate"></label><div id="suggestions" role="listbox" aria-label="Destinations" hidden><button type="button" role="option" data-city="Lisboa, Portugal">Lisboa, Portugal</button><button type="button" role="option" data-city="Lisboa Airport">Lisboa Airport</button></div><label>Outbound cabin<select aria-label="Cabin outbound"><option value="economy">Economy</option><option value="business">Business</option></select></label><label>Return cabin<select aria-label="Cabin return"><option value="economy">Economy</option><option value="business">Business</option></select></label><button type="button" id="calendar-open"><span>Open departure calendar</span></button><div id="calendar" aria-label="Departure calendar" hidden><button type="button" aria-label="Departure date October 24">24</button><button type="button" aria-label="Departure date November 24">24</button></div><p id="selected-date">No date selected</p><button type="submit" id="search"><span>Search trips</span></button></form><ul id="results" aria-label="Trip results" hidden></ul></main>',
+          "const primary=document.querySelector('#destination-primary');const suggestions=document.querySelector('#suggestions');primary.addEventListener('input',()=>{suggestions.hidden=false});suggestions.addEventListener('click',event=>{const option=event.target.closest('[role=option]');if(!option)return;primary.value=option.dataset.city;suggestions.hidden=true});document.querySelector('#calendar-open').addEventListener('click',()=>{document.querySelector('#calendar').hidden=false});document.querySelector('#calendar').addEventListener('click',event=>{if(event.target.matches('button'))document.querySelector('#selected-date').textContent=event.target.getAttribute('aria-label')});document.querySelector('#travel-search').addEventListener('submit',event=>{event.preventDefault();const results=document.querySelector('#results');const direct=document.createElement('li');direct.textContent=primary.value+' · direto · viagem fictícia';const connection=document.createElement('li');connection.textContent='Lisboa Airport · conexão';results.replaceChildren(direct,connection);results.hidden=false})",
+        )
       if (pathname === "/basic") return page('<button id="save">Save</button><input aria-label="Name">')
       if (pathname === "/mutating-link" || pathname === "/click-destination")
         return page(
@@ -61,7 +66,7 @@ export const startBrowserFixtureServer = (): Server<undefined> =>
         )
       if (pathname === "/dialog")
         return page(
-          '<button id="confirm">Confirm</button>',
+          '<button id="confirm">Show dialog</button>',
           "document.querySelector('#confirm').addEventListener('click',()=>confirm('Discard post?'))",
         )
       if (pathname === "/popup")
@@ -73,7 +78,7 @@ export const startBrowserFixtureServer = (): Server<undefined> =>
       if (pathname === "/cookie") return page("<p>Cookie page</p>", "document.cookie='touri_fixture=present; path=/'")
       if (pathname === "/ordering")
         return page(
-          '<button id="ordered">Order</button>',
+          '<button id="ordered">Run sequence</button>',
           "window.order=[];document.querySelector('#ordered').addEventListener('click',()=>window.order.push({index:window.order.length,at:performance.now()}))",
         )
       if (pathname === "/navigate-timer")

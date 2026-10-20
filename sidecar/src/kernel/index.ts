@@ -40,6 +40,7 @@ import { buildChildEnv, createShellEnv } from "./shell-env"
 import { spawnTree } from "./spawn"
 import { createSlowStatementTracker } from "./sqlite-performance"
 import { createToolRegistry } from "./tool-registry"
+import { startWorkspaceAttentionBackfill } from "./workspace-attention-backfill"
 import { createSocketTickets, socketEndpoint } from "./ws-tickets"
 
 export type WebInterceptArgs = { request: Request; url: URL; clientIp: string | null }
@@ -182,7 +183,7 @@ export const createKernel = ({
     getStage: () => stageTracker.getCurrentStage(),
     runStage: stageTracker.run,
   })
-  const database = openDatabase({ filename: paths.db, slowStatements })
+  const database = openDatabase({ filename: paths.db, slowStatements, runStage: stageTracker.run })
   const services = createServices()
   const tools = createToolRegistry()
   const recentErrors: Array<{ code: string; at: number }> = []
@@ -575,6 +576,18 @@ export const createKernel = ({
     },
     stageTracker.run,
   )
+  const stopWorkspaceAttentionBackfill = startWorkspaceAttentionBackfill(
+    database,
+    () => {
+      log({
+        level: "error",
+        module: "store",
+        msg: "Atualização da área de trabalho adiada; será retomada automaticamente",
+      })
+    },
+    stageTracker.run,
+    () => bus.publish({ type: "transcript.resync" }),
+  )
 
   const kernel: Kernel = {
     paths,
@@ -640,11 +653,13 @@ export const createKernel = ({
       if (store && !store.closeStreamWriterIfIdle?.()) await store.flushWritesAsync?.({ stopping: true })
       services.use("storage.botDeletion")?.dispose()
       stopHistoryBackfill()
+      const attentionStopped = stopWorkspaceAttentionBackfill()
       storageMaintenance.dispose({ closing: true })
       services.use("vm.desktop")?.dispose()
       services.use("doctor")?.dispose()
       const homeWriterStopped = stopBotHomeWriter(kernel)
       if (homeWriterStopped) await homeWriterStopped
+      if (attentionStopped) await attentionStopped
       removePrivateFile({ root: paths.appData, path: handshakePath })
       shell.dispose()
       host.close()

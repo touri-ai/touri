@@ -5,7 +5,7 @@ import { getApiModelErrorText, getApiModelRequestError } from "../features/bots/
 import { t } from "../i18n"
 import { useHost } from "../useHost"
 import { ProviderInstallation } from "./ProviderInstallation"
-import { SettingsGroup } from "./SettingsLayout"
+import { SettingsGroup, SettingsSwitch } from "./SettingsLayout"
 
 export const ApiModelsSettings = ({ api }: { api: UiApi | undefined }) => {
   const id = useId()
@@ -80,6 +80,11 @@ export const ApiModelsSettings = ({ api }: { api: UiApi | undefined }) => {
           onRecheck={() => setRevision((current) => current + 1)}
         />
       )}
+      <p id={`${id}-decision-help`} className="field-help">
+        {t(
+          "Assisted choices are off by default. Enabling sends short page labels to the remote JEV model (typesafe/jev-1.13) using this key and may spend credit. Your bot model stays the same. Turn this off anytime; the browser keeps working without it.",
+        )}
+      </p>
       <SettingsGroup title={t("Saved API models")}>
         {models.length === 0 && (
           <p className="api-model-empty">{t("No API models yet. Add your first model below.")}</p>
@@ -92,6 +97,35 @@ export const ApiModelsSettings = ({ api }: { api: UiApi | undefined }) => {
                 <p>{model.modelId}</p>
                 <small>{t("Key saved in secret store")} · ••••••••</small>
               </div>
+              {model.preset === "openrouter" && (
+                <label className="toggle-row" htmlFor={`${id}-decision-${model.id}`}>
+                  <span>
+                    <strong>{t("Use this key for assisted browser choices")}</strong>
+                  </span>
+                  <SettingsSwitch
+                    id={`${id}-decision-${model.id}`}
+                    checked={model.browserDecisions === true}
+                    disabled={busy || !api}
+                    aria-describedby={`${id}-decision-help`}
+                    onChange={(event) => {
+                      const enabled = event.target.checked
+                      void run(async () => {
+                        if (!api) return
+                        const result = await api.request(
+                          "PATCH /api-models/:id/browser-decisions",
+                          { enabled },
+                          { id: model.id },
+                        )
+                        setModels((current) =>
+                          current.map((entry) =>
+                            entry.id === model.id ? result.model : { ...entry, browserDecisions: false },
+                          ),
+                        )
+                      })
+                    }}
+                  />
+                </label>
+              )}
               <div className="api-model-actions">
                 <button
                   className="button button-quiet"
