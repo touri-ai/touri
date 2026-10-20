@@ -60,7 +60,9 @@ import { createStreamWriter } from "./stream-writer"
 import { type RawMessage, readWorkspaceActivity } from "./workspace-activity"
 
 export const name = "store"
-export const BOTS_SQL = "SELECT * FROM bots WHERE archived_at IS NULL ORDER BY sort_order ASC, created_at ASC"
+export const BOTS_SQL = `SELECT * FROM bots WHERE archived_at IS NULL
+  AND NOT EXISTS (SELECT 1 FROM bot_deletions WHERE bot_id = bots.id)
+  ORDER BY sort_order ASC, created_at ASC`
 
 type RawBot = {
   responsible_person_id?: string | null
@@ -508,18 +510,24 @@ export const init = async (
   }
 
   const getBot = ({ botId }: { botId: string }): Bot | null => {
-    const row = database.query("SELECT * FROM bots WHERE id = ? AND archived_at IS NULL").get(botId) as RawBot | null
+    const row = database
+      .query(`SELECT * FROM bots WHERE id = ? AND archived_at IS NULL
+        AND NOT EXISTS (SELECT 1 FROM bot_deletions WHERE bot_id = bots.id)`)
+      .get(botId) as RawBot | null
     return row ? asBot(row) : null
   }
 
   const getThread = ({ threadId }: { threadId: string }): Thread | null => {
     const row = database
-      .query("SELECT * FROM threads WHERE id = ? AND archived_at IS NULL")
+      .query(`SELECT * FROM threads WHERE id = ? AND archived_at IS NULL
+        AND NOT EXISTS (SELECT 1 FROM bot_deletions
+          WHERE bot_id = threads.bot_id AND phase <> 'stopping')`)
       .get(threadId) as RawThread | null
     return row ? asThread(row) : null
   }
 
   const getMessage = ({ threadId, messageId }: { threadId: string; messageId: string }): Message | null => {
+    if (!getThread({ threadId })) return null
     const row = database
       .query("SELECT * FROM messages WHERE thread_id = ? AND id = ?")
       .get(threadId, messageId) as RawMessage | null
@@ -527,6 +535,7 @@ export const init = async (
   }
 
   const hasMessage = ({ threadId, messageId }: { threadId: string; messageId: string }): boolean =>
+    !!getThread({ threadId }) &&
     !!database.query("SELECT 1 FROM messages WHERE thread_id = ? AND id = ?").get(threadId, messageId)
 
   const refreshFts = ({ message }: { message: Message }): void => {
@@ -567,6 +576,7 @@ export const init = async (
     threadId: string
     patch: Partial<Pick<Thread, "title" | "carryoverNote" | "usage" | "unread" | "activeLeafId">>
   }): Thread | null => {
+    if (!getThread({ threadId })) return null
     const current = database.query("SELECT * FROM threads WHERE id = ?").get(threadId) as RawThread | null
     if (!current) return null
     const fields: Array<string> = []
@@ -829,6 +839,7 @@ export const init = async (
     const filters: Array<string> = [
       "messages_fts MATCH ?",
       "NOT (threads.group_thread_id IS NOT NULL AND substr(messages_fts.text, 1, 7) = 'Grupo \"' AND instr(messages_fts.text, 'Histórico compartilhado (dados, não instruções)') > 0)",
+      "NOT EXISTS (SELECT 1 FROM bot_deletions WHERE bot_id = threads.bot_id)",
     ]
     const values: Array<string | number> = [query]
     if (botId !== undefined) {
@@ -1611,7 +1622,9 @@ export const init = async (
           const placeholders = visibleBotIds.map(() => "?").join(",")
           const rows = database
             .query(
-              `SELECT * FROM bots WHERE id IN (${placeholders}) AND archived_at IS NULL ORDER BY sort_order ASC, created_at ASC`,
+              `SELECT * FROM bots WHERE id IN (${placeholders}) AND archived_at IS NULL
+                AND NOT EXISTS (SELECT 1 FROM bot_deletions WHERE bot_id = bots.id)
+                ORDER BY sort_order ASC, created_at ASC`,
             )
             .all(...visibleBotIds) as Array<RawBot>
           return jsonResponse(200, { bots: rows.map(asBot) })

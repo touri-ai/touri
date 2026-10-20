@@ -902,10 +902,11 @@ export type ApiRoutes = {
   'GET /doctor': { req: { refresh?: boolean }; res: DoctorReport }
   'GET /doctor/storage': { req: {}; res: { storage: StorageStats; maintenance: StorageMaintenanceStatus } }
   'POST /doctor/storage/compact': { req: { vacuum?: boolean }; res: { maintenance: StorageMaintenanceStatus } }
+  'GET /storage/bot-deletions': { req: {}; res: { deletions: Array<{ botId: Id; phase: string; processed: number; errorCode: string | null; createdAt: EpochMs; updatedAt: EpochMs }> } }
   'GET /bots': { req: {}; res: { bots: Array<Bot> } }
   'POST /bots': { req: CreateBotInput; res: { bot: Bot } }
   'PATCH /bots/:id': { req: Partial<Omit<CreateBotInput, 'jobId'> & { paused: boolean }>; res: { bot: Bot } }
-  'DELETE /bots/:id': { req: { name: string; deleteVolumes?: boolean }; res: {} }
+  'DELETE /bots/:id': { req: { name: string; deleteVolumes?: boolean }; res: { botId: Id; phase: string } }
   'GET /bots/:id/mcp': { req: {}; res: { servers: Array<McpServer> } }
   'GET /bots/:id/integrations/telegram': { req: {}; res: { telegram: TelegramIntegration } }
   'PUT /bots/:id/integrations/telegram': {
@@ -1424,6 +1425,7 @@ export type ServiceMap = {
   'approvals.settle': (input: { approvalId: Id; decision: 'denied' | 'expired' }) => void
   'doctor': { start: () => void; dispose: () => void; snapshot: (refresh?: boolean) => DoctorReport; settled: () => Promise<void> }
   'storage.maintenance': { scheduleSessionKeyRetry: () => void; start: (vacuum?: boolean) => boolean; snapshot: () => StorageMaintenanceStatus; dispose: (options?: { closing?: boolean }) => void }
+  'storage.botDeletion': { dispose: () => void }
   'mcp.botTools': (bot: Bot) => Array<string>
 
   'cloud.settingsChanged': () => void

@@ -19,6 +19,34 @@ test("bot deletion explains an active machine and allows retry", async ({ page }
 })
 
 for (const locale of ["pt-BR", "en"] as const) {
+  test(`sidebar deletion confirms background cleanup in ${locale}`, async ({ page }, testInfo) => {
+    await page.addInitScript(() => localStorage.setItem("touri.appearance.v1", "light"))
+    await page.goto(`/test/e2e/bot-delete-error-harness.html?cleanup=accepted&lang=${locale}`)
+    await openDeletion(page, "sidebar")
+    const dialog = page.getByRole("dialog", { name: "Excluir bot", exact: true })
+    await dialog.getByLabel("Digite o nome do bot: mark").fill("mark")
+
+    await dialog.getByRole("button", { name: "Excluir bot", exact: true }).click()
+
+    await expect(page.locator('[data-bot-entry="bot-mark"]')).toHaveCount(0)
+    await expect(page.locator('[data-bot-entry="bot-onb"]')).toBeVisible()
+    await expect(page.getByRole("dialog")).toHaveCount(0)
+    const message =
+      locale === "en"
+        ? "The bot was removed. History and attachment cleanup continues in the background."
+        : "O bot foi removido. A limpeza do histórico e dos anexos continua em segundo plano."
+    const notice = page.getByRole("status").filter({ hasText: message })
+    await expect(notice).toBeVisible()
+    await expect(notice).toHaveClass(/notice-info/)
+    if (locale === "pt-BR")
+      await notice.screenshot({
+        path: testInfo.outputPath("bot-delete-background-cleanup.png"),
+        animations: "disabled",
+      })
+  })
+}
+
+for (const locale of ["pt-BR", "en"] as const) {
   for (const entry of ["sidebar", "settings"] as const) {
     test(`${entry} deletion keeps the ${locale} cleanup notice after the bot is gone`, async ({ page }, testInfo) => {
       await page.addInitScript(() => localStorage.setItem("touri.appearance.v1", "light"))

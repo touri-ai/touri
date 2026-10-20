@@ -712,6 +712,7 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
         : input
     calls.push({ route: String(route), input: recordedInput, pathValues })
     const key = String(route)
+    if (key === "GET /storage/bot-deletions") return { deletions: [] } as ApiRoutes[typeof route]["res"]
     if (key === "DELETE /bots/:id") {
       const bot = bots.find((bot) => bot.id === pathValues.id)
       if (!bot) throw new ApiError(404, "Bot não encontrado", "NOT_FOUND")
@@ -738,7 +739,7 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
           emit({ type: "group.updated", group })
         })
       emit({ type: "bot.deleted", botId: bot.id })
-      return {} as ApiRoutes[typeof route]["res"]
+      return { botId: bot.id, phase: "stopping" } as ApiRoutes[typeof route]["res"]
     }
     if (key === "POST /approvals/:id") {
       const body = input as ApiRoutes["POST /approvals/:id"]["req"]

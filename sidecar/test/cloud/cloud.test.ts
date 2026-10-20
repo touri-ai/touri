@@ -1,3 +1,4 @@
+import type { Database } from "bun:sqlite"
 import { afterEach, expect, test } from "bun:test"
 import { createDecipheriv, randomBytes } from "node:crypto"
 import { mkdtempSync, readFileSync, rmSync } from "node:fs"
@@ -451,7 +452,12 @@ test("cloud bot deletion uses machine deletion once and never calls the unsuppor
   })
   expect(created.status).toBe(201)
   const botId = created.body.bot.id
-  expect((await request("DELETE", `/bots/${botId}`, { name: "Cloud delete", deleteVolumes: true })).status).toBe(200)
+  expect((await request("DELETE", `/bots/${botId}`, { name: "Cloud delete", deleteVolumes: true })).status).toBe(202)
+  const database = runtime.kernel.db as Database
+  const deadline = Date.now() + 5000
+  while (Date.now() < deadline && database.query("SELECT 1 FROM bots WHERE id = ?").get(botId)) await Bun.sleep(10)
+
+  expect(database.query("SELECT 1 FROM bots WHERE id = ?").get(botId)).toBeNull()
   expect(fake.calls.filter((call) => call.method === "DELETE" && /^\/v1\/machines\//.test(call.path))).toHaveLength(1)
   expect(fake.calls.some((call) => call.method === "DELETE" && call.path.startsWith("/v1/volumes/"))).toBe(false)
 })

@@ -1688,7 +1688,12 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
           return
         }
 
-        setData((current) => withoutBot(current, botId))
+        const notice = t(
+          "O bot foi removido. A limpeza do histórico e dos anexos continua em segundo plano.",
+          {},
+          getDocumentLocale(document.documentElement),
+        )
+        setData((current) => ({ ...withoutBot(current, botId), notice }))
       },
       createBot,
       machineAction,

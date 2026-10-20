@@ -216,7 +216,14 @@ test("deleting a bot refreshes every affected group and clears only that bot's m
 
   const response = await fixture.request(`/bots/${fixture.bot.id}`, { name: fixture.bot.name }, "DELETE")
 
-  expect(response.status).toBe(200)
+  expect(response.status).toBe(202)
+  for (
+    let attempt = 0;
+    attempt < 1000 && fixture.db.query("SELECT 1 FROM bots WHERE id = ?").get(fixture.bot.id);
+    attempt++
+  )
+    await Bun.sleep(5)
+  expect(fixture.db.query("SELECT 1 FROM bots WHERE id = ?").get(fixture.bot.id)).toBeNull()
   expect(fixture.groups.get(fixture.group.id)).toMatchObject({ memberIds: [fixture.peer.id], coordinatorBotId: null })
   expect(fixture.groups.get(secondGroup.id)).toMatchObject({
     memberIds: [fixture.peer.id],

@@ -637,6 +637,7 @@ export const createKernel = ({
       server.stop(true)
       const store = services.use("store.api")
       if (store && !store.closeStreamWriterIfIdle?.()) await store.flushWritesAsync?.({ stopping: true })
+      services.use("storage.botDeletion")?.dispose()
       stopHistoryBackfill()
       storageMaintenance.dispose({ closing: true })
       services.use("vm.desktop")?.dispose()

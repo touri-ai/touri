@@ -545,14 +545,18 @@ test("a delayed settings save cannot recreate credentials after bot deletion", a
 
   await saving.promise
   const deleted = await memory.api(`/bots/${botId}`, { name: memory.bot.name }, "DELETE")
-  expect(deleted.status).toBe(200)
+  expect(deleted.status).toBe(202)
   expect(memory.store.getBot({ botId })).toBeNull()
   await memory.mem0.forget(botId)
   pending.resolve()
   const result = await saved
   const db = memory.kernel.db as Database
+  const deadline = Date.now() + 5000
+  while (Date.now() < deadline && db.query("SELECT 1 FROM bot_deletions WHERE bot_id = ?").get(botId))
+    await Bun.sleep(10)
   const rows = db.query("SELECT key FROM settings WHERE key IN (?, ?)").all(`mem0:${botId}`, `mem0-key:${botId}`)
 
+  expect(db.query("SELECT 1 FROM bot_deletions WHERE bot_id = ?").get(botId)).toBeNull()
   expect(result.status).toBe(404)
   expect(memory.vault.size).toBe(0)
   expect(rows).toEqual([])

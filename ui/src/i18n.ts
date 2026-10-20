@@ -6,6 +6,12 @@ export const DEFAULT_LOCALE: Locale = "pt-BR"
 export const ptBR = {
   "O bot foi excluído, mas a limpeza dos anexos privados está pendente. O touri tentará concluir a limpeza automaticamente.":
     "O bot foi excluído, mas a limpeza dos anexos privados está pendente. O touri tentará concluir a limpeza automaticamente.",
+  "O bot foi removido. A limpeza do histórico e dos anexos continua em segundo plano.":
+    "O bot foi removido. A limpeza do histórico e dos anexos continua em segundo plano.",
+  "No modo servidor, somente administradores podem excluir bots.":
+    "No modo servidor, somente administradores podem excluir bots.",
+  "Se o touri estiver em modo servidor, apenas administradores podem excluir bots.":
+    "Se o touri estiver em modo servidor, apenas administradores podem excluir bots.",
   "Propose 1 to 8 bots and an optional group for explicit user approval. Only the Team builder job in a direct user turn can use this tool. Never creates anything without the Create team click, even with approvals disabled. Bot drafts cannot request access: all start local, ask before file changes, with no project or extra folders, browser or computer control. Group members and optional coordinator are names from this proposal. Missing provider installation/login does not prevent creation; setup follows in each bot's settings.":
     "Propor de um a oito bots e um grupo opcional para aprovação explícita. Disponível só no Criador de times em conversa direta. Cada bot começa local, pedindo permissão para mudar arquivos, sem projeto, pastas extras, navegador ou controle do computador. Instalação e login pendentes podem ser resolvidos depois nas configurações.",
   "jobs.team-builder.name": "Criador de times",
@@ -3258,6 +3264,12 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
     "Could not remove the bot's history and links. Try deleting again; if the problem persists, send a problem report.",
   "O bot foi excluído, mas a limpeza dos anexos privados está pendente. O touri tentará concluir a limpeza automaticamente.":
     "The bot was deleted, but private attachment cleanup is pending. touri will automatically try to finish the cleanup.",
+  "O bot foi removido. A limpeza do histórico e dos anexos continua em segundo plano.":
+    "The bot was removed. History and attachment cleanup continues in the background.",
+  "No modo servidor, somente administradores podem excluir bots.":
+    "Only administrators can delete bots in server mode.",
+  "Se o touri estiver em modo servidor, apenas administradores podem excluir bots.":
+    "If touri is running in server mode, only administrators can delete bots.",
   "Não foi possível excluir a rotina. Tente novamente.": "Could not delete the routine. Try again.",
   "Excluindo…": "Deleting…",
   Excluir: "Delete",

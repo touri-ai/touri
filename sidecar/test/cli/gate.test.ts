@@ -213,6 +213,29 @@ test("cookie-authenticated writes from another origin are refused", async () => 
   expect(same).toBeNull()
 })
 
+test("a paired browser may delete a bot from the same origin", async () => {
+  const { call, pair } = await makeGate()
+  const { cookie } = await pair()
+  const endpoint = { path: "/api/v1/bots/bot-a", method: "DELETE", headers: { cookie } }
+
+  expect(
+    await call({
+      ...endpoint,
+      headers: { ...endpoint.headers, origin: "https://box.example:8445" },
+      body: { name: "Bot A" },
+    }),
+  ).toBeNull()
+  expect(
+    (
+      await call({
+        ...endpoint,
+        headers: { ...endpoint.headers, origin: "https://other.example" },
+        body: { name: "Bot A" },
+      })
+    )?.status,
+  ).toBe(403)
+})
+
 test("devices can be listed and revoked over the API", async () => {
   const { call, pair, store } = await makeGate()
   const first = await pair()

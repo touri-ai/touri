@@ -37,11 +37,12 @@ import streamWorkerSql from "./migrations/0031.sql" with { type: "text" }
 import teamBuilderSql from "./migrations/0032.sql" with { type: "text" }
 import workIdentitySql from "./migrations/0033.sql" with { type: "text" }
 import automaticConversationSql from "./migrations/0034.sql" with { type: "text" }
+import botDeletionSql from "./migrations/0035.sql" with { type: "text" }
 import { withSuspendedSchemaObjects } from "./schema-rebuild"
 import { instrumentMainConnection, type SlowStatementTracker } from "./sqlite-performance"
 import { applyUpgradeBaselines } from "./upgradeBaselines"
 
-export const SCHEMA_VERSION = 34
+export const SCHEMA_VERSION = 35
 
 const FREE_PAGE_RATIO_LIMIT = 0.2
 
@@ -250,6 +251,11 @@ export const openDatabase = ({
     if (!columns.some((column) => column.name === "automatic_conversation_mode"))
       database.exec(automaticConversationSql)
     database.exec("UPDATE schema_meta SET value = '34' WHERE key = 'schema_version'")
+  })()
+  database.transaction(() => {
+    if (!database.query("SELECT 1 FROM schema_meta WHERE key = 'bot_deletion_version'").get())
+      database.exec(botDeletionSql)
+    database.exec("UPDATE schema_meta SET value = '35' WHERE key = 'schema_version'")
   })()
   return database
 }
