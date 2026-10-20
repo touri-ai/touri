@@ -206,7 +206,7 @@ jobs:
 
   api-models:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-bun
@@ -304,6 +304,21 @@ jobs:
       - name: Check routine history on desktop and phone
         working-directory: ui
         run: bunx playwright test test/e2e/routine-sidebar.spec.ts --workers=1
+      - name: Check automatic conversation mode and task grouping
+        working-directory: ui
+        env:
+          TOURI_SCREENSHOT_DIR: ${{ runner.temp }}/automatic-conversations-evidence
+        run: |
+          mkdir -p "$TOURI_SCREENSHOT_DIR"
+          bunx playwright test test/e2e/automatic-conversations.spec.ts --workers=1
+      - name: Keep synthetic automatic conversation evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: automatic-conversations
+          path: ${{ runner.temp }}/automatic-conversations-evidence/*.png
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Check notification preferences on desktop and phone
         working-directory: ui
         run: bunx playwright test test/e2e/notification-preferences.spec.ts --workers=1 --output test-results/notification-preferences

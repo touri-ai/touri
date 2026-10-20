@@ -20,7 +20,7 @@ if (scenario === "thread-noise-before" || scenario === "thread-noise-main" || sc
     scenario === "thread-noise-main"
       ? []
       : Array.from({ length: 12 }, (_, index) => {
-          const taskId = index.toString(16).padStart(12, "0")
+          const taskId = `abcdef${index.toString(16).padStart(6, "0")}`
           const createdAt = Date.now() - index * 60_000
           return {
             ...mainThread,

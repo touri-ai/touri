@@ -1961,6 +1961,62 @@ test.serial("task mode keeps one routine conversation per run", async () => {
   }
 })
 
+test.serial("routine continuity overrides the bot mode only when explicitly selected", async () => {
+  for (const automaticConversationMode of ["main", "task"] as const) {
+    for (const continuity of ["new-thread", "main-thread", "results-thread"] as const) {
+      const value = await fixture({ automaticConversationMode })
+      try {
+        const created = value.engine.createRoutine({
+          input: {
+            botId: value.bot.id,
+            name: `${automaticConversationMode} ${continuity}`,
+            prompt: "Run using the selected conversation rule.",
+            cron: "*/5 * * * *",
+            timezone: "America/Sao_Paulo",
+            enabled: true,
+            continuity,
+            resultsThreadId: null,
+            groupId: null,
+            timeoutMinutes: 30,
+            overlap: "skip",
+            catchUpMinutes: 30,
+          },
+          forceDisabled: false,
+        })
+        if (!created.success) throw new Error(created.error)
+
+        for (const scheduledFor of [Date.now(), Date.now() + 5_000]) {
+          const succeededRuns = value.engine.listRoutineRuns(created.routine.id)
+          const started = value.engine.runRoutine({
+            routineId: created.routine.id,
+            triggerSource: "cron",
+            scheduledFor,
+          })
+          if (!started.success) throw new Error(started.error)
+          await waitFor(
+            () =>
+              value.engine.listRoutineRuns(created.routine.id).filter((run) => run.status === "succeeded").length ===
+              succeededRuns.filter((run) => run.status === "succeeded").length + 1,
+          )
+        }
+
+        const threadIds = value.engine.listRoutineRuns(created.routine.id).map((run) => run.threadId)
+        expect(threadIds).toHaveLength(2)
+        if (continuity === "new-thread" && automaticConversationMode === "task") {
+          expect(threadIds[0]).not.toBe(threadIds[1])
+        } else {
+          expect(threadIds[0]).toBe(threadIds[1])
+        }
+        if (continuity === "main-thread" || (continuity === "new-thread" && automaticConversationMode === "main"))
+          expect(threadIds).toEqual([value.thread.id, value.thread.id])
+        if (continuity === "results-thread") expect(threadIds[0]).not.toBe(value.thread.id)
+      } finally {
+        await closeFixture(value)
+      }
+    }
+  }
+})
+
 test.serial("restart interrupts an in-flight routine run and does not block the next slot", async () => {
   const value = await fixture({
     scenario: { events: [{ type: "delta", delta: "after restart" }, { type: "complete" }] },

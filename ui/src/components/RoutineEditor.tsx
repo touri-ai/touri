@@ -153,7 +153,9 @@ export const RoutineEditor = ({
   const destination = group
     ? t("Conversa do grupo {group}", { group: group.name })
     : draft.continuity === "new-thread"
-      ? t("Nova conversa por execução")
+      ? bot?.automaticConversationMode === "task"
+        ? t("Segue o bot: uma conversa nova por tarefa")
+        : t("Segue o bot: conversa principal")
       : draft.continuity === "results-thread"
         ? draft.resultsThreadId
           ? t("Nesta conversa")
@@ -330,7 +332,7 @@ export const RoutineEditor = ({
                     }}
                   >
                     <option value="main-thread">{t("Conversa principal")}</option>
-                    <option value="new-thread">{t("Nova conversa por execução")}</option>
+                    <option value="new-thread">{t("Seguir configuração do bot")}</option>
                     <option value="results-thread">
                       {draft.resultsThreadId && !draft.groupId ? t("Nesta conversa") : t("Conversa de resultados")}
                     </option>

@@ -14,23 +14,24 @@ import { getRoutineSidebarFixture } from "./routine-sidebar-fixture"
 
 afterEach(cleanup)
 
-it("counts today's routine executions using the routine timezone", async () => {
+it("counts today's routine executions using the viewer's local calendar day", async () => {
   const { routineRuns, routines } = await getRoutineSidebarFixture(2)
   const routine = routines[0]
   const first = routineRuns[0]
   const second = routineRuns[1]
   if (!routine || !first || !second) throw new Error("Missing routine count fixture")
   const localRoutine = { ...routine, timezone: "America/Sao_Paulo" }
+  const now = new Date(2026, 8, 22, 12).getTime()
   const counts = getRoutineRunCountsToday(
     [
-      { ...first, scheduledFor: Date.UTC(2026, 8, 22, 10) },
-      { ...second, scheduledFor: Date.UTC(2026, 8, 22, 2) },
+      { ...first, scheduledFor: new Date(2026, 8, 22, 10).getTime() },
+      { ...second, scheduledFor: new Date(2026, 8, 22, 2).getTime() },
     ],
     new Map([[localRoutine.id, localRoutine]]),
-    Date.UTC(2026, 8, 22, 12),
+    now,
   )
 
-  expect(counts.get(routine.id)).toBe(1)
+  expect(counts.get(routine.id)).toBe(2)
 })
 
 it("clears every unread run when opening its routine group and leaves another routine unread", async () => {
@@ -298,12 +299,32 @@ it("collapses event task threads by trigger name and marks every reply read toge
       updatedAt: now + 2,
       unread: 0,
     },
+    {
+      ...mainThread,
+      id: "meeting-date",
+      kind: "chat" as const,
+      title: "Reunião · 2026-10-19",
+      createdAt: now,
+      updatedAt: now,
+      unread: 0,
+    },
+    {
+      ...mainThread,
+      id: "numeric-suffix",
+      kind: "chat" as const,
+      title: "Tarefas · 123456789012",
+      createdAt: now,
+      updatedAt: now,
+      unread: 0,
+    },
   ]
   const rows = getSidebarThreads([mainThread, ...taskThreads], [], null, new Set(), undefined, new Map(), now)
   const leads = rows.find((row) => row.taskGroupName === "lead.reply")
 
-  expect(rows).toHaveLength(3)
+  expect(rows).toHaveLength(5)
   expect(leads).toMatchObject({ countToday: 2, unread: 3 })
+  expect(rows.find((row) => row.thread.id === "meeting-date")?.taskGroupName).toBeUndefined()
+  expect(rows.find((row) => row.thread.id === "numeric-suffix")?.taskGroupName).toBeUndefined()
   expect(getSidebarReadThreadIds([mainThread, ...taskThreads], [], "lead-one")).toEqual(
     new Set(["lead-one", "lead-two"]),
   )

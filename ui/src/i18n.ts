@@ -1253,6 +1253,9 @@ export const ptBR = {
   "Onde o bot responde": "Onde o bot responde",
   "Na conversa principal": "Na conversa principal",
   "Uma conversa nova por tarefa": "Uma conversa nova por tarefa",
+  "Seguir configuração do bot": "Seguir configuração do bot",
+  "Segue o bot: conversa principal": "Segue o bot: conversa principal",
+  "Segue o bot: uma conversa nova por tarefa": "Segue o bot: uma conversa nova por tarefa",
   "Automatic conversation mode help":
     "No modo principal, as rotinas ficam na conversa do bot. Cada execução mostra o gatilho e o horário; no outro modo, cada execução ganha uma conversa própria.",
   "Routine row title": "Rotina {name}",
@@ -3874,6 +3877,9 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Onde o bot responde": "Where the bot replies",
   "Na conversa principal": "In the main conversation",
   "Uma conversa nova por tarefa": "A new conversation for each task",
+  "Seguir configuração do bot": "Follow bot setting",
+  "Segue o bot: conversa principal": "Follows bot: main conversation",
+  "Segue o bot: uma conversa nova por tarefa": "Follows bot: a new conversation per task",
   "Automatic conversation mode help":
     "In main mode, routines stay in the bot's conversation. Each run shows its trigger and time; task mode gives every run its own conversation.",
   "Routine row title": "Routine {name}",
@@ -4747,34 +4753,13 @@ export const getRoutineRunCountsToday = (
   routines: ReadonlyMap<string, Routine>,
   now = Date.now(),
 ): ReadonlyMap<string, number> => {
-  const formatters = new Map<string, Intl.DateTimeFormat>()
-  const todayByTimeZone = new Map<string, string>()
-  const getDayKey = (timestamp: number, timeZone: string): string => {
-    const formatter =
-      formatters.get(timeZone) ??
-      new Intl.DateTimeFormat("en-US", {
-        timeZone,
-        year: "numeric",
-        month: "numeric",
-        day: "numeric",
-      })
-    formatters.set(timeZone, formatter)
-
-    return formatter
-      .formatToParts(timestamp)
-      .filter((part) => ["year", "month", "day"].includes(part.type))
-      .map((part) => part.value)
-      .join("-")
-  }
+  const today = new Date(now).toDateString()
   const counts = new Map<string, number>()
   routineRuns.forEach((run) => {
     const routine = routines.get(run.routineId)
     if (!routine) return
 
-    const timeZone = routine.timezone
-    const today = todayByTimeZone.get(timeZone) ?? getDayKey(now, timeZone)
-    todayByTimeZone.set(timeZone, today)
-    if (getDayKey(run.scheduledFor, timeZone) !== today) return
+    if (new Date(run.scheduledFor).toDateString() !== today) return
 
     counts.set(run.routineId, (counts.get(run.routineId) ?? 0) + 1)
   })

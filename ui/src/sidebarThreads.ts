@@ -127,6 +127,7 @@ const getSidebarGroupKey = (thread: Thread, routineRun: RoutineRun | undefined, 
 const getTaskGroupName = (thread: Thread): string | undefined => {
   if (thread.kind !== "chat" || thread.groupId) return undefined
   const match = thread.title.match(/^(.+?) · ([a-f0-9-]{10,64})$/i)
+  if (!match?.[2]?.match(/[a-f]/i)) return undefined
   const name = match?.[1]?.trim()
 
   return name || undefined
