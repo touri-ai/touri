@@ -126,6 +126,27 @@ const getSnapshot = (value: unknown): BrowserSnapshot | null => {
 const isAmbiguousTarget = (result: ToolResult): boolean =>
   !result.success && ["AMBIGUOUS_TARGET", "TARGET_NOT_FOUND"].includes(result.errorCode)
 
+const isBrowserTarget = (value: unknown): value is BrowserTarget => {
+  const target = asRecord(value)
+  if (!target) return false
+  if (target.exact !== undefined && typeof target.exact !== "boolean") return false
+
+  if (target.kind === "ref") return typeof target.ref === "string"
+  if (target.kind === "role")
+    return typeof target.role === "string" && (target.name === undefined || typeof target.name === "string")
+  if (target.kind === "text") return typeof target.text === "string"
+  if (target.kind === "css") return typeof target.selector === "string"
+  if (target.kind === "point")
+    return (
+      typeof target.x === "number" &&
+      Number.isFinite(target.x) &&
+      typeof target.y === "number" &&
+      Number.isFinite(target.y)
+    )
+
+  return false
+}
+
 const getTargetIntent = (target: BrowserTarget): string => {
   if (target.kind === "role") return [target.role, target.name].filter(Boolean).join(" ")
   if (target.kind === "text") return target.text
@@ -193,6 +214,9 @@ const runWithBrowserDecision = async ({
     ctx,
     timeoutMs,
     run: async ({ signal, budgetMs }) => {
+      if (!isBrowserTarget(requestedTarget))
+        return { success: false, errorCode: "INVALID_ARGS", error: "Informe um alvo válido para usar o navegador." }
+
       const deadlineAt = Date.now() + budgetMs
       const remaining = (): number => Math.max(0, deadlineAt - Date.now())
       const runAction = (target: BrowserTarget): Promise<ToolResult> => {

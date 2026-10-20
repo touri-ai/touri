@@ -192,7 +192,7 @@ test("an ambiguous safe option is resolved and retried once with a provider-sele
             type: "choice",
             choice: "2.2",
             confidence: 0.95,
-            probabilities: { "2.1": 0.02, "2.2": 0.96, "2.3": 0.01, none: 0.01 },
+            probabilities: { "2.1": 0.02, "2.2": 0.97, none: 0.01 },
           },
         },
       })

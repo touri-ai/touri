@@ -402,6 +402,44 @@ const fingerprintForNode = async ({
   }
 }
 
+const isFormSubmitControl = async ({
+  client,
+  sessionId,
+  backendNodeId,
+}: {
+  client: CdpClient
+  sessionId: string
+  backendNodeId: number
+}): Promise<boolean | null> => {
+  try {
+    const resolved = cdpResult(await cdpCall<unknown>(client, "DOM.resolveNode", { backendNodeId }, sessionId))
+    const objectId = asString(asRecord(resolved.object)?.objectId)
+    if (!objectId) return null
+
+    const result = cdpResult(
+      await cdpCall<unknown>(
+        client,
+        "Runtime.callFunctionOn",
+        {
+          objectId,
+          functionDeclaration: `function () {
+          const element = this;
+          if (!element.form) return false;
+          if (element.tagName === 'BUTTON') return element.type === 'submit';
+          return element.tagName === 'INPUT' && ['submit', 'image'].includes(element.type);
+        }`,
+          returnByValue: true,
+        },
+        sessionId,
+      ),
+    )
+    const value = asRecord(result.result)?.value
+    return typeof value === "boolean" ? value : null
+  } catch {
+    return null
+  }
+}
+
 const treeNodes = (value: unknown): Array<JsonObject> => {
   const result: Array<JsonObject> = []
   const visit = (item: unknown): void => {
@@ -3248,11 +3286,20 @@ export const createBrowserEngine = ({
             hit = resolved
           } else {
             clicked = resolved.node
-            if (button === "left" && clicked?.fingerprint.formSubmit === true)
-              return failure(
-                "USER_TAKEOVER_REQUIRED",
-                "TOURI_BROWSER_TAKEOVER_REQUIRED|form_submit\nAsk the user to take over this browser tab and submit the form directly.",
-              )
+            if (button === "left" && clicked && ["button", "input"].includes(clicked.fingerprint.tag)) {
+              const formSubmit =
+                clicked.fingerprint.formSubmit === true ||
+                (await isFormSubmitControl({
+                  client: client as CdpClient,
+                  sessionId: clicked.sessionId,
+                  backendNodeId: clicked.backendNodeId,
+                }))
+              if (formSubmit !== false)
+                return failure(
+                  "USER_TAKEOVER_REQUIRED",
+                  "TOURI_BROWSER_TAKEOVER_REQUIRED|form_submit\nAsk the user to take over this browser tab and submit the form directly.",
+                )
+            }
             hit = await hitPoint(tab, resolved)
             if (!hit.success && hit.failure.errorCode === "TARGET_CHANGED" && resolved.node) {
               try {
