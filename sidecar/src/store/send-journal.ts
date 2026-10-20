@@ -110,16 +110,25 @@ export const createSendJournal = ({
       if (!["ask_all", "summarize"].includes(input.groupAction) || !thread?.groupId || thread.groupThreadId)
         return { status: 400, json: { errorCode: "INVALID_ARGS", error: "Esta ação exige uma conversa de grupo." } }
     }
-    const requestJson = JSON.stringify({
+    const request = {
       ...(input.groupAction ? { groupAction: input.groupAction } : {}),
       parentId: input.parentId,
       text: input.text,
       attachmentIds: input.attachmentIds,
+    }
+    const requestJson = JSON.stringify({
+      ...request,
       ...(input.sender ? { sender: input.sender } : {}),
     })
     const previous = find(input.threadId, nonce)
     if (previous) {
-      if (previous.request_json !== requestJson || (previous.deadline !== deadline && input.deadline !== undefined))
+      const legacyOwnerReplay =
+        previous.request_json !== requestJson &&
+        input.sender?.kind === "person" &&
+        input.sender.id === "owner" &&
+        previous.request_json === JSON.stringify(request)
+      const sameRequest = previous.request_json === requestJson || legacyOwnerReplay
+      if (!sameRequest || (previous.deadline !== deadline && input.deadline !== undefined))
         return { status: 409, json: { errorCode: "NONCE_CONFLICT", error: "Este envio já contém outra mensagem." } }
       dispatch(previous)
       return reply(find(input.threadId, nonce) ?? previous)

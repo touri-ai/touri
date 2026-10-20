@@ -1,5 +1,5 @@
 import { Database } from "bun:sqlite"
-import { expect, test } from "bun:test"
+import { afterEach, expect, test } from "bun:test"
 import { mkdtempSync, rmSync, statSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -20,6 +20,12 @@ import { createRuntimePersistence } from "../../src/runtime/persistence"
 import { createToolResolutions } from "../../src/runtime/tool-resolutions"
 import { init as initStore } from "../../src/store"
 import { MAX_TRANSCRIPT_DELTA_BYTES } from "../../src/store/transcript-rejections"
+
+const regressionCleanups = new Set<() => Promise<void>>()
+afterEach(async () => {
+  for (const close of regressionCleanups) await close()
+  regressionCleanups.clear()
+})
 
 const seed = (db: Database): void => {
   db.exec(`INSERT INTO bots(id,name,provider,home_dir,created_at,updated_at) VALUES ('b','Teste','codex','/tmp',1,1);
@@ -548,6 +554,25 @@ test("send journal is durable and one nonce produces exactly one message and run
   } finally {
     await f.close()
   }
+})
+
+test("the migrated owner can retry a legacy nonce without duplication or cross-person replay", async () => {
+  const f = await fixture()
+  regressionCleanups.add(f.close)
+  const request = input()
+  const first = f.store.sendMessage?.(request)
+  const owner = { id: "owner", name: "Owner", kind: "person" as const }
+  const member = { id: "member", name: "Member", kind: "person" as const }
+
+  const rejected = f.store.sendMessage?.({ ...request, sender: member })
+  const retried = f.store.sendMessage?.({ ...request, sender: owner })
+
+  expect(first?.status).toBe(201)
+  expect(rejected?.status).toBe(409)
+  expect(retried?.status).toBe(200)
+  expect(f.calls).toHaveLength(1)
+  expect(f.db.query("SELECT count(*) AS total FROM messages").get()).toEqual({ total: 1 })
+  expect(f.store.sendMessage?.({ ...request, text: "Changed", sender: owner }).status).toBe(409)
 })
 
 test("send journal preserves FIFO messages while the runtime drains", async () => {
