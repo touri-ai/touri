@@ -191,3 +191,30 @@ test("indexing legacy attachment references yields while conversation history lo
   expect(interleaved).toBe(true)
   expect(database.query("SELECT count(*) AS count FROM attachment_message_refs").get()).toEqual({ count: total })
 })
+
+test("one message with many tool output files yields between reference batches", async () => {
+  const f = await fixture()
+  const database = f.runtime.kernel.db as Database
+  const total = 4096
+  const parts = Array.from({ length: total }, (_, index) => ({
+    type: "command",
+    outputAttachmentId: `output-${index}`,
+  }))
+  database
+    .query(`INSERT INTO messages(id,thread_id,role,kind,status,text,parts_json,created_at,updated_at)
+    VALUES ('large-output','t','assistant','text','complete','Synthetic output',?,1,1)`)
+    .run(JSON.stringify(parts))
+  database.exec("DELETE FROM attachment_message_refs")
+  let interleaved = false
+  const timer = setInterval(() => {
+    const row = database.query("SELECT count(*) AS count FROM attachment_message_refs").get() as { count: number }
+    if (row.count > 0 && row.count < total) interleaved = true
+  }, 1)
+  cleanup.push(() => clearInterval(timer))
+
+  const response = await f.request("/threads/t/messages?all=true")
+
+  expect(response.status).toBe(200)
+  expect(interleaved).toBe(true)
+  expect(database.query("SELECT count(*) AS count FROM attachment_message_refs").get()).toEqual({ count: total })
+})

@@ -606,22 +606,28 @@ export const init = async (
       return []
     })
 
-  const indexMessageAttachments = (message: Message): void => {
-    const attachmentIds = new Set(getMessageAttachmentIds(message))
-    if (attachmentIds.size === 0) return
+  const indexMessageAttachments = async (message: Message, signal: AbortSignal): Promise<void> => {
+    const attachmentIds = Array.from(new Set(getMessageAttachmentIds(message)))
+    if (attachmentIds.length === 0) return
     const insert = database.query(
       "INSERT OR IGNORE INTO attachment_message_refs(thread_id, message_id, attachment_id) VALUES (?, ?, ?)",
     )
-    attachmentIds.forEach((attachmentId) => {
-      insert.run(message.threadId, message.id, attachmentId)
-    })
+    for (let offset = 0; offset < attachmentIds.length; offset += 32) {
+      signal.throwIfAborted()
+      await writeDatabaseAsync(database, () =>
+        attachmentIds
+          .slice(offset, offset + 32)
+          .forEach((attachmentId) => insert.run(message.threadId, message.id, attachmentId)),
+      )
+      if (offset + 32 < attachmentIds.length) await new Promise<void>((resolve) => setImmediate(resolve))
+    }
   }
 
   const indexHistoryAttachments = async (messages: Array<Message>, signal: AbortSignal): Promise<void> => {
     for (let offset = 0; offset < messages.length; offset += 32) {
       signal.throwIfAborted()
       const batch = messages.slice(offset, offset + 32).filter((message) => getMessageAttachmentIds(message).length > 0)
-      if (batch.length > 0) await writeDatabaseAsync(database, () => batch.forEach(indexMessageAttachments))
+      for (const message of batch) await indexMessageAttachments(message, signal)
       if (offset + 32 < messages.length) await new Promise<void>((resolve) => setImmediate(resolve))
     }
   }
