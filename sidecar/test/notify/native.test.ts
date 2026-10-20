@@ -35,6 +35,9 @@ test("native notifications follow the bot preference", () => {
 
 test("deep links carry the bot and thread", () => {
   expect(buildDeepLink({ botId: "bot-1", threadId: "th 2" })).toBe("touri://open?bot=bot-1&thread=th+2")
+  expect(buildDeepLink({ botId: "bot-1", threadId: "th 2", notificationId: 42 })).toBe(
+    "touri://open?bot=bot-1&thread=th+2&notification=42",
+  )
   expect(buildDeepLink({ botId: null, threadId: null })).toBe("touri://open?")
 })
 
