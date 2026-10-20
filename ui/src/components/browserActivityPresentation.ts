@@ -7,7 +7,7 @@ const MAX_INPUT_LENGTH = 12_000
 const MAX_OUTPUT_LENGTH = 16_000
 const MAX_LABEL_LENGTH = 72
 
-const browserAction = (part: ToolCallPart): string => toolLeaf(part.tool).replace(/^(browser|computer)_/, "")
+const getBrowserAction = (part: ToolCallPart): string => toolLeaf(part.tool).replace(/^(browser|computer)_/, "")
 
 const getArgs = (part: ToolCallPart): Record<string, unknown> | null => {
   if (part.inputJson.length > MAX_INPUT_LENGTH) return null
@@ -15,7 +15,7 @@ const getArgs = (part: ToolCallPart): Record<string, unknown> | null => {
   return asToolRecord(parseToolValue(redactToolText(part.inputJson)))
 }
 
-const safeLabel = (value: unknown): string | null => {
+const getSafeLabel = (value: unknown): string | null => {
   if (typeof value !== "string") return null
 
   const label = redactToolText(value)
@@ -31,7 +31,7 @@ const safeLabel = (value: unknown): string | null => {
 const getTargetName = (args: Record<string, unknown> | null): string | null => {
   const target = asToolRecord(args?.target)
 
-  return safeLabel(target?.name ?? target?.text)
+  return getSafeLabel(target?.name ?? target?.text)
 }
 
 const getOutputTabId = (part: ToolCallPart): string | undefined => {
@@ -39,11 +39,9 @@ const getOutputTabId = (part: ToolCallPart): string | undefined => {
   const output = asToolRecord(parseToolValue(redactToolText(part.outputJson)))
   const structured = asToolRecord(output?.structured ?? output?.structuredContent)
 
-  return typeof output?.tabId === "string"
-    ? output.tabId
-    : typeof structured?.tabId === "string"
-      ? structured.tabId
-      : undefined
+  if (typeof output?.tabId === "string") return output.tabId
+
+  return typeof structured?.tabId === "string" ? structured.tabId : undefined
 }
 
 export const getBrowserActivityTools = (parts: readonly MessagePart[]): ToolCallPart[] => [
@@ -54,25 +52,35 @@ export const getBrowserActivityTools = (parts: readonly MessagePart[]): ToolCall
   ).values(),
 ]
 
-export const getBrowserActivityTabId = (parts: readonly ToolCallPart[]): string | undefined =>
-  [...parts]
-    .reverse()
-    .map((part) => getArgs(part)?.tabId)
-    .find((value): value is string => typeof value === "string") ??
-  [...parts]
-    .reverse()
-    .map(getOutputTabId)
-    .find((value): value is string => typeof value === "string")
+export const getBrowserActivityTabId = (parts: readonly ToolCallPart[]): string | undefined => {
+  const latest = parts.reduceRight<ToolCallPart | undefined>((latest, part) => {
+    if (latest) return latest
+    if (getBrowserAction(part) === "open") return part
+
+    return typeof (getOutputTabId(part) ?? getArgs(part)?.tabId) === "string" ? part : undefined
+  }, undefined)
+  if (!latest) return undefined
+  const tabId = getOutputTabId(latest) ?? getArgs(latest)?.tabId
+
+  return typeof tabId === "string" ? tabId : undefined
+}
 
 export const getBrowserActivityScreenshot = (parts: readonly ToolCallPart[]): ToolCallPart | undefined =>
-  [...parts].reverse().find((part) => {
-    const action = browserAction(part)
+  parts.reduceRight<ToolCallPart | undefined>((screenshot, part) => {
+    if (screenshot) return screenshot
+    const action = getBrowserAction(part)
 
-    return (action === "screenshot" || action === "take_screenshot") && Boolean(part.outputAttachmentId)
-  })
+    const hasImage =
+      part.ok === true && (action === "screenshot" || action === "take_screenshot") && Boolean(part.outputAttachmentId)
+
+    return hasImage ? part : undefined
+  }, undefined)
 
 export const getBrowserActivityLabel = (part: ToolCallPart, locale: Locale): string => {
-  const action = browserAction(part)
+  if (part.ok === false) return t("Browser action failed. Take over to continue.", {}, locale)
+  if (part.ok == null) return t("Browser action in progress…", {}, locale)
+
+  const action = getBrowserAction(part)
   const target = getTargetName(getArgs(part))
   const targetArgs = target ? { target } : {}
   const labels: Record<string, keyof typeof ptBR> = {
@@ -99,6 +107,25 @@ export const getBrowserActivityLabel = (part: ToolCallPart, locale: Locale): str
   return t(label, targetArgs, locale)
 }
 
+export const getBrowserActivityNotice = (part: ToolCallPart, locale: Locale): string | null => {
+  const output = part.outputJson?.slice(0, MAX_OUTPUT_LENGTH) ?? ""
+  if (output.includes("TOURI_BROWSER_TAKEOVER_REQUIRED|"))
+    return t("This action needs you. Take over the tab to continue.", {}, locale)
+  if (output.includes("TOURI_BROWSER_DECISION_QUESTION|"))
+    return t("Could not choose safely. Take over the tab to choose.", {}, locale)
+
+  const notices = {
+    missing_key: "The browser helper has no key. Continuing with standard controls.",
+    no_credit: "The browser helper has no credit. Continuing with standard controls.",
+    unavailable: "The browser helper is unavailable. Continuing with standard controls.",
+    invalid_response: "The browser helper is unavailable. Continuing with standard controls.",
+  } as const
+  const reason = /TOURI_BROWSER_DECISION_HINT\|(missing_key|no_credit|unavailable|invalid_response)\b/.exec(output)?.[1]
+  if (!reason || !Object.hasOwn(notices, reason)) return null
+
+  return t(notices[reason as keyof typeof notices], {}, locale)
+}
+
 export const getBrowserActivityTime = (part: ToolCallPart, fallback: number, locale: Locale): string => {
   const timestamp = part.startedAt ?? part.resolvedAt ?? fallback
   const language = locale === "pt-BR" ? "pt-BR" : "en-US"
@@ -109,12 +136,9 @@ export const getBrowserActivityTime = (part: ToolCallPart, fallback: number, loc
 export const getBrowserActivityUrl = (value: string): string => {
   try {
     const url = new URL(value)
-    url.username = ""
-    url.password = ""
-    url.search = ""
-    url.hash = ""
+    if (!["https:", "http:"].includes(url.protocol)) return ""
 
-    return redactToolText(url.href).slice(0, 180)
+    return redactToolText(`${url.origin}${url.pathname}`).slice(0, 180)
   } catch {
     return ""
   }

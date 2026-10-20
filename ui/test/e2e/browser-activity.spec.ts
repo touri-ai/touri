@@ -1,3 +1,4 @@
+import AxeBuilder from "@axe-core/playwright"
 import { expect, test } from "@playwright/test"
 
 const variants = [
@@ -26,6 +27,18 @@ test.describe("browser activity experience", () => {
       await page.getByRole("button", { name: "Abrir calendário de partida" }).click()
       await page.getByRole("button", { name: "Data de partida 24 de outubro" }).click()
       await expect(page.getByRole("status").filter({ hasText: "Confiança do JEV: 96%" })).toBeVisible()
+
+      const preview = page.getByRole("img", { name: "Página atual do navegador" })
+      await expect(preview).toBeVisible()
+      const compactWidth = (await preview.boundingBox())?.width ?? 0
+      await page.getByRole("button", { name: "Expandir navegador" }).click()
+      if (variant.width > 600) expect((await preview.boundingBox())?.width ?? 0).toBeGreaterThan(compactWidth * 1.4)
+      await page.getByRole("button", { name: "Recolher navegador" }).click()
+      await page.getByRole("button", { name: "Abrir navegador" }).click()
+      await expect(page.getByText("Tela do navegador aberta")).toBeVisible()
+      const accessibility = await new AxeBuilder({ page }).include(".browser-activity-card").analyze()
+      expect(accessibility.violations).toEqual([])
+      await page.screenshot({ path: testInfo.outputPath(`browser-live-${variant.name}.png`), fullPage: true })
 
       const takeOver = page.getByRole("button", { name: "Assumir controle" })
       await expect(takeOver).toBeVisible()
@@ -70,3 +83,38 @@ test.describe("browser activity experience", () => {
     })
   }
 })
+
+for (const fallback of ["missing_key", "no_credit"] as const) {
+  for (const locale of ["pt-BR", "en"] as const) {
+    test(`browser fallback remains usable: ${fallback} ${locale}`, async ({ page }, testInfo) => {
+      const isEnglish = locale === "en"
+      await page.goto(`/test/e2e/browser-activity-harness.html?fallback=${fallback}&locale=${locale}`)
+      await page.getByRole("button", { name: isEnglish ? "Start travel search" : "Iniciar busca de viagem" }).click()
+      await page.getByRole("textbox", { name: isEnglish ? "Destination" : "Destino" }).fill("Lisboa")
+      await page.getByRole("option", { name: "Lisboa, Portugal" }).click()
+      const englishNotice = {
+        missing_key: "The browser helper has no key. Continuing with standard controls.",
+        no_credit: "The browser helper has no credit. Continuing with standard controls.",
+      }[fallback]
+      const portugueseNotice = {
+        missing_key: "O assistente do navegador está sem chave. Continuando com os controles padrão.",
+        no_credit: "O assistente do navegador está sem crédito. Continuando com os controles padrão.",
+      }[fallback]
+      const notice = isEnglish ? englishNotice : portugueseNotice
+      await expect(page.getByText(notice)).toBeVisible()
+      await expect(page.locator("body")).not.toContainText("TOURI_BROWSER_DECISION_HINT")
+      const takeOver = page.getByRole("button", { name: isEnglish ? "Take over" : "Assumir controle" })
+      await takeOver.focus()
+      await page.keyboard.press("Enter")
+      const handBack = page.getByRole("button", { name: /Hand back to|Devolver para/ })
+      await expect(handBack).toBeVisible()
+      await page.screenshot({ path: testInfo.outputPath(`browser-${fallback}-${locale}.png`), fullPage: true })
+      await handBack.click()
+      await page.getByRole("button", { name: isEnglish ? "Search trips" : "Buscar viagens" }).click()
+      await expect(page.getByRole("button", { name: /Used the browser|Usou o navegador/ })).toBeVisible()
+      const video = page.video()
+      await page.close()
+      if (video) await video.saveAs(testInfo.outputPath(`browser-${fallback}-${locale}.webm`))
+    })
+  }
+}

@@ -43,14 +43,19 @@
 .browser-activity-summary:hover {
   background: var(--surface-control);
 }
-.browser-activity-summary > img,
-.browser-activity-summary > .stored-tool-thumbnail {
+.browser-activity-thumbnail {
+  display: grid;
   width: 144px;
   height: 84px;
   flex: 0 0 auto;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
   background: #101014;
+  object-fit: contain;
+}
+.browser-activity-thumbnail > img {
+  width: 100%;
+  height: 100%;
   object-fit: contain;
 }
 .browser-activity-summary > span:last-child {
@@ -62,6 +67,14 @@
   grid-template-columns: minmax(0, 1.2fr) minmax(180px, 0.8fr);
   gap: 12px;
   padding: 0 12px 12px;
+}
+.browser-activity-content-full {
+  grid-template-columns: minmax(0, 1fr);
+}
+.browser-activity-preview-actions button:focus-visible,
+.browser-activity-summary:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: -2px;
 }
 .browser-activity-preview {
   min-width: 0;
@@ -79,7 +92,7 @@
   max-height: 70vh;
   aspect-ratio: auto;
 }
-.browser-activity-preview > p {
+.browser-activity-placeholder {
   display: grid;
   min-height: 150px;
   place-items: center;
@@ -106,7 +119,8 @@
   margin-top: 8px;
 }
 .browser-activity-preview-actions button {
-  padding: 2px 0;
+  min-height: 32px;
+  padding: 4px;
   border: 0;
   background: transparent;
   color: var(--text-2);
@@ -147,6 +161,10 @@
 .browser-activity-log li span {
   overflow-wrap: anywhere;
 }
+.browser-activity-log li small {
+  display: block;
+  margin-top: 4px;
+}
 .browser-activity-log > p,
 .browser-activity-log > small {
   display: block;
@@ -155,6 +173,9 @@
 }
 .browser-activity-final-shot {
   margin-top: 12px;
+}
+.browser-activity-card[data-finished="true"] .browser-activity-log {
+  max-height: none;
 }
 .browser-activity-final-shot > strong {
   display: block;
@@ -168,8 +189,7 @@
   .browser-activity-content {
     grid-template-columns: minmax(0, 1fr);
   }
-  .browser-activity-summary > img,
-  .browser-activity-summary > .stored-tool-thumbnail {
+  .browser-activity-thumbnail {
     width: 96px;
     height: 60px;
   }

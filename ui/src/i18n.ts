@@ -567,6 +567,21 @@ export const ptBR = {
   "O navegador não abriu a página": "O navegador não abriu a página",
   "Navegador ainda não aberto": "Navegador ainda não aberto",
   "Navegador desativado": "Navegador desativado",
+  "The browser helper has no key. Continuing with standard controls.":
+    "O assistente do navegador está sem chave. Continuando com os controles padrão.",
+  "The browser helper has no credit. Continuing with standard controls.":
+    "O assistente do navegador está sem crédito. Continuando com os controles padrão.",
+  "The browser helper is unavailable. Continuing with standard controls.":
+    "O assistente do navegador está indisponível. Continuando com os controles padrão.",
+  "This action needs you. Take over the tab to continue.":
+    "Esta ação precisa de você. Assuma o controle da aba para continuar.",
+  "Could not choose safely. Take over the tab to choose.":
+    "Não foi possível escolher com segurança. Assuma o controle da aba para escolher.",
+  "Browser action failed. Take over to continue.": "A ação no navegador falhou. Assuma o controle para continuar.",
+  "Browser action in progress…": "Ação no navegador em andamento…",
+  "Browser preview unavailable. Open the browser to reconnect.":
+    "Prévia do navegador indisponível. Abra o navegador para reconectar.",
+  "Open browser": "Abrir navegador",
   "Browser for {name}": "Navegador do {name}",
   "{name} is working · In the browser": "{name} está trabalhando · No navegador",
   "Used the browser · 1 action": "Usou o navegador · 1 ação",

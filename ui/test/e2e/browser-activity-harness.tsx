@@ -1,16 +1,17 @@
-import type { BrowserTabInfo, ToolCallPart } from "@touri/contracts"
+import type { BrowserTabInfo, Message, ToolCallPart } from "@touri/contracts"
 import { useEffect, useRef, useState } from "react"
 import { createRoot } from "react-dom/client"
 import type { ApiRequest } from "../../src/api/client"
 import { createMockApi } from "../../src/api/mock"
-import { BrowserActivityCard } from "../../src/components/BrowserActivityCard"
+import { TurnActivity } from "../../src/components/TurnActivity"
 import { InlinePreviewContext } from "../../src/features/desktop/InlineLivePreview"
 import { t } from "../../src/i18n"
 import "../../src/styles.css"
 
 const params = new URLSearchParams(location.search)
 document.documentElement.dataset.theme = params.get("theme") ?? "dark"
-const locale = "pt-BR" as const
+const locale = params.get("locale") === "en" ? "en" : "pt-BR"
+document.documentElement.lang = locale
 const attachmentImage = (() => {
   const canvas = document.createElement("canvas")
   canvas.width = 800
@@ -183,7 +184,17 @@ const Fixture = () => {
   const chooseSuggestion = () => {
     const options = ["Lisboa, Portugal", "Lisboa Airport"]
     const answer = { choice: "Lisboa, Portugal", confidence: 0.96, options }
-    setConfidence(answer.confidence)
+    const fallback = params.get("fallback")
+    if (fallback === "no_credit" || fallback === "missing_key") {
+      setParts((previous) => [
+        ...previous,
+        {
+          ...makePart(`action-${previous.length + 1}`, "browser_click", { tabId: tab.tabId }),
+          outputJson: JSON.stringify({ content: [{ type: "text", text: `TOURI_BROWSER_DECISION_HINT|${fallback}` }] }),
+        },
+      ])
+    }
+    setConfidence(fallback === "no_credit" || fallback === "missing_key" ? null : answer.confidence)
     setDestination(answer.choice)
     setSuggestions(false)
     add("browser_click", { tabId: tab.tabId, target: { kind: "role", role: "option", name: answer.choice } })
@@ -288,11 +299,26 @@ const Fixture = () => {
           </p>
         )}
         {started && (
-          <BrowserActivityCard
-            parts={parts}
-            finished={!running}
-            createdAt={Date.now() - 1_000}
-            botName={bot.name}
+          <TurnActivity
+            message={
+              {
+                id: "browser-reply",
+                threadId: "browser-thread",
+                parentId: null,
+                role: "assistant",
+                kind: "text",
+                status: running ? "streaming" : "complete",
+                runId: null,
+                text: "",
+                parts,
+                sender: { name: bot.name, id: bot.id },
+                source: "local",
+                createdAt: Date.now() - 1_000,
+                updatedAt: Date.now(),
+              } satisfies Message
+            }
+            api={api}
+            state={running ? "working-tool" : "done"}
             locale={locale}
           />
         )}

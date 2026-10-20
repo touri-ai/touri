@@ -1,11 +1,11 @@
 import type { BrowserTabInfo, Id, MessagePart } from "@touri/contracts"
 import { useContext, useEffect, useRef, useState } from "react"
-import { ApiError, userFacingError } from "../errors"
 import { InlinePreviewContext } from "../features/desktop/InlineLivePreview"
 import { type PreviewFrame, startInlineFrameSource } from "../features/desktop/inlineFrameSource"
 import { type Locale, t } from "../i18n"
 import {
   getBrowserActivityLabel,
+  getBrowserActivityNotice,
   getBrowserActivityScreenshot,
   getBrowserActivityTabId,
   getBrowserActivityTime,
@@ -46,9 +46,19 @@ export const BrowserActivityCard = ({
   const [fullView, setFullView] = useState(false)
   const section = useRef<HTMLElement>(null)
   const [visible, setVisible] = useState(false)
+  const [hidden, setHidden] = useState(document.hidden)
   const api = context?.api
   const bot = context?.bot
+  const botId = bot?.id
+  const machine = bot?.machine
   const canPreview = !!api && !!bot && (bot.machine === "local" || context?.machine?.status === "running")
+
+  useEffect(() => {
+    const updateVisibility = () => setHidden(document.hidden)
+    document.addEventListener("visibilitychange", updateVisibility)
+
+    return () => document.removeEventListener("visibilitychange", updateVisibility)
+  }, [])
 
   useEffect(() => {
     if (finished) setExpanded(false)
@@ -68,11 +78,11 @@ export const BrowserActivityCard = ({
   }, [])
 
   useEffect(() => {
-    if (!api || !bot) return
+    if (!api || !botId || finished) return
     let active = true
     const selectTab = (tabs: Array<BrowserTabInfo & { ownerBotId: Id | null }>) => {
       const candidate = tabs
-        .filter((tab) => tab.ownerBotId === bot.id && tab.state === "live" && (!tabId || tab.tabId === tabId))
+        .filter((tab) => tab.ownerBotId === botId && tab.state === "live" && (!tabId || tab.tabId === tabId))
         .reduce<(typeof tabs)[number] | undefined>(
           (latest, current) => (!latest || current.lastUsedAt > latest.lastUsedAt ? current : latest),
           undefined,
@@ -82,13 +92,18 @@ export const BrowserActivityCard = ({
       setHeld(candidate.heldByUser)
     }
     const unsubscribe = api.subscribe(({ event }) => {
-      if (event.type === "browser.tab" && event.tab.ownerBotId === bot.id && (!tabId || event.tab.tabId === tabId)) {
+      if (
+        event.type === "browser.tab" &&
+        event.tab.ownerBotId === botId &&
+        event.tab.state === "live" &&
+        (!tabId || event.tab.tabId === tabId)
+      ) {
         if (!tabId) setResolvedTabId(event.tab.tabId)
         setHeld(event.tab.heldByUser)
       }
     })
     void api
-      .request("GET /browser/tabs", { botId: bot.id })
+      .request("GET /browser/tabs", { botId })
       .then(({ tabs }) => selectTab(tabs))
       .catch(() => {})
 
@@ -96,22 +111,23 @@ export const BrowserActivityCard = ({
       active = false
       unsubscribe()
     }
-  }, [api, bot, tabId])
+  }, [api, botId, finished, tabId])
 
   useEffect(() => {
-    if (!api || !bot || !canPreview || !visible) return
+    if (!api || !botId || !machine || !activeTabId || !canPreview || !visible || hidden || finished) return
 
     setPreviewError(null)
     return startInlineFrameSource(
       api,
-      { id: bot.id, machine: bot.machine },
+      { id: botId, machine },
       activeTabId,
       (frame) => setPreview(frame),
-      (reason) => setPreviewError(reason ?? null),
-      setPreviewError,
-      { intervalMs: 3_000, once: finished },
+      () => setPreviewError(t("Browser preview unavailable. Open the browser to reconnect.", {}, locale)),
+      (reason) =>
+        setPreviewError(reason ? t("Browser preview unavailable. Open the browser to reconnect.", {}, locale) : null),
+      { intervalMs: 3_000 },
     )
-  }, [activeTabId, api, bot, canPreview, finished, visible])
+  }, [activeTabId, api, botId, machine, canPreview, finished, hidden, locale, visible])
 
   const toggleTakeover = async (): Promise<void> => {
     if (!api || !activeTabId || busy) return
@@ -121,8 +137,8 @@ export const BrowserActivityCard = ({
       await api.request("POST /browser/tabs/:id/takeover", { hold: !held }, { id: activeTabId })
       setHeld(!held)
       if (!held) context?.onOpenComputer()
-    } catch (reason) {
-      setError(reason instanceof ApiError ? userFacingError(reason) : t("The browser tab could not be updated."))
+    } catch {
+      setError(t("The browser tab could not be updated.", {}, locale))
     } finally {
       setBusy(false)
     }
@@ -138,7 +154,7 @@ export const BrowserActivityCard = ({
     { count: browserTools.length },
     locale,
   )
-  const url = getBrowserActivityUrl(preview?.url ?? "")
+  const url = finished ? "" : getBrowserActivityUrl(preview?.url ?? "")
 
   return (
     <article
@@ -160,20 +176,20 @@ export const BrowserActivityCard = ({
             {url && <small>{url}</small>}
           </span>
           {screenshot?.outputAttachmentId ? (
-            <StoredToolOutput
-              key={screenshot.outputAttachmentId}
-              api={api}
-              attachmentId={screenshot.outputAttachmentId}
-              preview={screenshot.outputPreview}
-              callId={screenshot.callId}
-              browser
-              autoOpen
-              thumbnail
-              thumbnailFallback={preview?.src}
-            />
-          ) : (
-            preview?.src && <img src={preview.src} alt={t("Final browser screenshot", {}, locale)} />
-          )}
+            <span className="browser-activity-thumbnail">
+              <StoredToolOutput
+                key={screenshot.outputAttachmentId}
+                api={api}
+                attachmentId={screenshot.outputAttachmentId}
+                preview={screenshot.outputPreview}
+                callId={screenshot.callId}
+                browser
+                locale={locale}
+                autoOpen
+                thumbnail
+              />
+            </span>
+          ) : null}
           <span aria-hidden="true">{expanded ? "−" : "+"}</span>
         </button>
       ) : (
@@ -194,29 +210,28 @@ export const BrowserActivityCard = ({
         </header>
       )}
       {expanded && (
-        <div className="browser-activity-content">
-          <div className={`browser-activity-preview${fullView ? " browser-activity-preview-full" : ""}`}>
-            {preview?.src ? (
-              <img src={preview.src} alt={t("Current browser page", {}, locale)} />
-            ) : (
-              <p>{previewError ?? t("Waiting for the browser page…", {}, locale)}</p>
-            )}
-            {url && <span title={url}>{url}</span>}
-            <div className="browser-activity-preview-actions">
-              <button type="button" disabled={!preview} onClick={() => setFullView((value) => !value)}>
-                {fullView ? t("Collapse browser view", {}, locale) : t("Expand browser view", {}, locale)}
-              </button>
-              {activeTabId && finished && (
-                <button type="button" disabled={busy} onClick={() => void toggleTakeover()}>
-                  {busy
-                    ? t("Updating browser control…", {}, locale)
-                    : held
-                      ? t("Hand back to {name}", { name: botName }, locale)
-                      : t("Take over", {}, locale)}
-                </button>
+        <div className={`browser-activity-content${fullView || finished ? " browser-activity-content-full" : ""}`}>
+          {!finished && (
+            <div className={`browser-activity-preview${fullView ? " browser-activity-preview-full" : ""}`}>
+              {preview?.src ? (
+                <img src={preview.src} alt={t("Current browser page", {}, locale)} />
+              ) : (
+                <p className="browser-activity-placeholder">
+                  {previewError ?? t("Waiting for the browser page…", {}, locale)}
+                </p>
               )}
+              {preview?.src && previewError && <small role="status">{previewError}</small>}
+              {url && <span title={url}>{url}</span>}
+              <div className="browser-activity-preview-actions">
+                <button type="button" disabled={!preview} onClick={() => setFullView((value) => !value)}>
+                  {fullView ? t("Collapse browser view", {}, locale) : t("Expand browser view", {}, locale)}
+                </button>
+                <button type="button" onClick={() => context?.onOpenComputer()} disabled={!context}>
+                  {t("Open browser", {}, locale)}
+                </button>
+              </div>
             </div>
-          </div>
+          )}
           <div className="browser-activity-log">
             <strong>{t("Browser activity", {}, locale)}</strong>
             <ol>
@@ -225,7 +240,10 @@ export const BrowserActivityCard = ({
                   <time dateTime={new Date(part.startedAt ?? part.resolvedAt ?? createdAt).toISOString()}>
                     {getBrowserActivityTime(part, createdAt, locale)}
                   </time>
-                  <span>{getBrowserActivityLabel(part, locale)}</span>
+                  <span>
+                    {getBrowserActivityLabel(part, locale)}
+                    {getBrowserActivityNotice(part, locale) && <small>{getBrowserActivityNotice(part, locale)}</small>}
+                  </span>
                 </li>
               ))}
             </ol>
@@ -234,7 +252,7 @@ export const BrowserActivityCard = ({
             )}
             {held && <p role="status">{t("You have control of this browser tab.", {}, locale)}</p>}
             {error && <p role="alert">{error}</p>}
-            {screenshot?.outputAttachmentId && (
+            {finished && screenshot?.outputAttachmentId && (
               <section className="browser-activity-final-shot" aria-label={t("Final browser screenshot", {}, locale)}>
                 <strong>{t("Final browser screenshot", {}, locale)}</strong>
                 <StoredToolOutput
@@ -244,6 +262,7 @@ export const BrowserActivityCard = ({
                   preview={screenshot.outputPreview}
                   callId={screenshot.callId}
                   browser
+                  locale={locale}
                   autoOpen
                 />
               </section>

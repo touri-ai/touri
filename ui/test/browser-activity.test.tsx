@@ -4,6 +4,11 @@ import { afterEach, expect, test, vi } from "vitest"
 import type { ApiRequest } from "../src/api/client"
 import { createMockApi } from "../src/api/mock"
 import { BrowserActivityCard } from "../src/components/BrowserActivityCard"
+import {
+  getBrowserActivityNotice,
+  getBrowserActivityTabId,
+  getBrowserActivityUrl,
+} from "../src/components/browserActivityPresentation"
 import { InlinePreviewContext } from "../src/features/desktop/InlineLivePreview"
 
 vi.mock("../src/features/desktop/inlineFrameSource", () => ({
@@ -50,7 +55,10 @@ const renderCard = (parts: ToolCallPart[], finished: boolean) => {
     if (route === "GET /browser/tabs") return { tabs: [tab] }
     if (route === "GET /attachments/:id/content")
       return {
-        text: JSON.stringify({ content: [{ type: "image", mimeType: "image/png", data: "ZmFrZQ==" }] }),
+        text: JSON.stringify({
+          url: "https://person:fixture-password@travel.example.test/results?token=fixture-token",
+          content: [{ type: "image", mimeType: "image/png", data: "ZmFrZQ==" }],
+        }),
         offset: 0,
         nextOffset: null,
         bytes: 64,
@@ -145,4 +153,115 @@ test("take-over holds the browser, opens its view, and the finished card collaps
   expect(screen.queryByText("Atividade do navegador")).toBeNull()
   fireEvent.click(screen.getByRole("button", { name: /Usou o navegador/ }))
   expect(await screen.findByText("Atividade do navegador")).toBeVisible()
+  await waitFor(() =>
+    expect(request).toHaveBeenCalledWith("GET /attachments/:id/content", expect.anything(), { id: "final-shot" }),
+  )
+  expect(document.body.textContent).not.toContain("fixture-password")
+  expect(document.body.textContent).not.toContain("fixture-token")
 })
+
+test("historical browser cards never sample or take over the current browser page", async () => {
+  const parts = [getPart({ callId: "old", tool: "browser_open", inputJson: "{}" })]
+  const { request } = renderCard(parts, true)
+
+  fireEvent.click(screen.getByRole("button", { name: /Usou o navegador/ }))
+
+  expect(screen.queryByRole("img", { name: "Captura final do navegador" })).toBeNull()
+  expect(screen.queryByRole("img", { name: "Página atual do navegador" })).toBeNull()
+  expect(screen.queryByRole("button", { name: "Assumir controle" })).toBeNull()
+  expect(request).not.toHaveBeenCalledWith("GET /browser/tabs", expect.anything())
+})
+
+test("a newly opened output tab takes precedence over an older input tab", () => {
+  const parts = [
+    getPart({ callId: "old", tool: "browser_snapshot", inputJson: '{"tabId":"old-tab"}' }),
+    getPart({ callId: "new", tool: "browser_open", inputJson: "{}", outputJson: '{"structured":{"tabId":"new-tab"}}' }),
+  ]
+
+  expect(getBrowserActivityTabId(parts)).toBe("new-tab")
+})
+
+test.each([
+  [
+    "TOURI_BROWSER_DECISION_HINT|missing_key",
+    "O assistente do navegador está sem chave. Continuando com os controles padrão.",
+  ],
+  [
+    "TOURI_BROWSER_DECISION_HINT|no_credit",
+    "O assistente do navegador está sem crédito. Continuando com os controles padrão.",
+  ],
+  [
+    "TOURI_BROWSER_DECISION_HINT|unavailable",
+    "O assistente do navegador está indisponível. Continuando com os controles padrão.",
+  ],
+  [
+    "TOURI_BROWSER_TAKEOVER_REQUIRED|form_submit",
+    "Esta ação precisa de você. Assuma o controle da aba para continuar.",
+  ],
+  [
+    "TOURI_BROWSER_DECISION_QUESTION|{}",
+    "Não foi possível escolher com segurança. Assuma o controle da aba para escolher.",
+  ],
+])("keeps the browser notice visible without echoing raw output: %s", (marker, notice) => {
+  const parts = [
+    getPart({
+      callId: "choice",
+      tool: "browser_click",
+      inputJson: '{"tabId":"browser-tab"}',
+      outputJson: JSON.stringify({ content: [{ type: "text", text: `${marker}\nprivate-provider-detail` }] }),
+    }),
+  ]
+
+  renderCard(parts, false)
+
+  expect(screen.getByText(notice)).toBeVisible()
+  expect(document.body.textContent).not.toContain("private-provider-detail")
+  expect(document.body.textContent).not.toContain("TOURI_BROWSER_")
+})
+
+test("failed actions never appear as successful clicks", () => {
+  const parts = [
+    getPart({
+      callId: "failed",
+      tool: "browser_click",
+      inputJson: "{}",
+      ok: false,
+      outputJson: "private-provider-detail",
+    }),
+  ]
+
+  renderCard(parts, false)
+
+  expect(screen.getByText("A ação no navegador falhou. Assuma o controle para continuar.")).toBeVisible()
+  expect(screen.queryByText("Clicou em um elemento")).toBeNull()
+  expect(document.body.textContent).not.toContain("private-provider-detail")
+})
+
+test("an attached open result resets the old tab until metadata resolves the new page", () => {
+  const parts = [
+    getPart({ callId: "old", tool: "browser_snapshot", inputJson: '{"tabId":"old-tab"}' }),
+    getPart({ callId: "new", tool: "browser_open", inputJson: "{}", outputAttachmentId: "open-result" }),
+  ]
+
+  expect(getBrowserActivityTabId(parts)).toBeUndefined()
+})
+
+test("browser notices are translated into English without provider details", () => {
+  const part = getPart({
+    callId: "notice",
+    tool: "browser_click",
+    inputJson: "{}",
+    outputJson: "TOURI_BROWSER_DECISION_HINT|no_credit",
+  })
+
+  expect(getBrowserActivityNotice(part, "en")).toBe(
+    "The browser helper has no credit. Continuing with standard controls.",
+  )
+})
+
+test.each(["file:///workspace/private.txt", "javascript:alert(1)", "data:text/plain,private"])(
+  "never displays non-web preview URLs: %s",
+  (url) => {
+    expect(getBrowserActivityUrl(url)).toBe("")
+  },
+)
