@@ -69,6 +69,7 @@ export const WorkAccessSettings = ({ api }: { api: UiApi | undefined }) => {
   const [testRecipient, setTestRecipient] = useState("")
   const [publicAddress, setPublicAddress] = useState("")
   const [reachability, setReachability] = useState<Reachability>("unset")
+  const [originReachability, setOriginReachability] = useState<Reachability>("unset")
   const [pairingCode, setPairingCode] = useState<string | null>(null)
   const [copyLink, setCopyLink] = useState<string | null>(null)
   const [copyLinkInviteId, setCopyLinkInviteId] = useState<string | null>(null)
@@ -109,6 +110,7 @@ export const WorkAccessSettings = ({ api }: { api: UiApi | undefined }) => {
         setTestRecipient(emailResult.configuration?.fromEmail ?? "")
         setPublicAddress(addressResult.address ?? "")
         setReachability(addressResult.reachability)
+        setOriginReachability(addressResult.requestOriginReachability)
       } catch (caught) {
         if (!active) return
         setError(userFacingError(caught) || t("People settings unavailable"))
@@ -489,7 +491,9 @@ export const WorkAccessSettings = ({ api }: { api: UiApi | undefined }) => {
               <p className="work-access-note" role="status">
                 {getReachabilityHint(reachability)} {t("Public address reachability help")}
               </p>
-              {reachability === "private" || reachability === "localhost" || reachability === "tailnet" ? (
+              {originReachability === "private" ||
+              originReachability === "localhost" ||
+              originReachability === "tailnet" ? (
                 <p className="work-access-warning" role="status">
                   {t("Private origin warning")}
                 </p>

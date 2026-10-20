@@ -953,7 +953,7 @@ export type ApiRoutes = {
   'PUT /email': { req: WorkEmailConfiguration & { user?: string; password?: string; apiKey?: string }; res: { configuration: WorkEmailConfiguration; configured: boolean } }
   'DELETE /email': { req: {}; res: {} }
   'POST /email/test': { req: { to: string }; res: { sent: true } }
-  'GET /public-address': { req: {}; res: { address: string | null; reachability: 'public' | 'private' | 'localhost' | 'tailnet' | 'invalid' | 'unset' } }
+  'GET /public-address': { req: {}; res: { address: string | null; reachability: 'public' | 'private' | 'localhost' | 'tailnet' | 'invalid' | 'unset'; requestOriginReachability: 'public' | 'private' | 'localhost' | 'tailnet' | 'invalid' | 'unset' } }
   'PUT /public-address': { req: { address: string | null }; res: { address: string | null; reachability: 'public' | 'private' | 'localhost' | 'tailnet' | 'invalid' | 'unset' } }
   'POST /auth/email': { req: { email: string }; res: { ok: true } }
   'POST /auth/email/redeem': { req: { token: string; deviceName?: string }; res: { ok: true; deviceId: Id } }

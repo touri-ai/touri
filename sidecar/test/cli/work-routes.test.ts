@@ -82,6 +82,13 @@ test("an admin can create an invite with a copy-link fallback when email is not 
     body: { address: "https://public.example.test" },
   })
   expect(address.status).toBe(200)
+  const addressStatusRoute = workRoutes.routes.find((item) => item.method === "GET" && item.path === "/public-address")
+  if (!addressStatusRoute) throw new Error("Public-address status route was not registered")
+  const addressStatus = await addressStatusRoute.handler({ params: {}, query: {}, signal, body: null })
+  expect(addressStatus).toMatchObject({
+    status: 200,
+    json: { reachability: "public", requestOriginReachability: "private" },
+  })
 
   const result = await route.handler({
     params: {},

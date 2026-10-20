@@ -210,7 +210,15 @@ export const initWorkMode = ({
         handler: async ({ signal }) => {
           if (!isAdmin(getActor({ authStore, signal }))) return fail(403, "FORBIDDEN", "Admin role required")
           const address = parsePublicAddress(authStore.getPublicAddress()) || null
-          return { status: 200, json: { address, reachability: getAddressReachability(address) } }
+          const requestOrigin = deviceSession(signal)?.origin ?? null
+          return {
+            status: 200,
+            json: {
+              address,
+              reachability: getAddressReachability(address),
+              requestOriginReachability: getAddressReachability(requestOrigin),
+            },
+          }
         },
       },
       {
