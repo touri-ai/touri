@@ -13,6 +13,11 @@ const HANDSHAKE_TIMEOUT_MESSAGE =
   "A VM não entregou a primeira imagem em 15 s. Use Abrir no Computador para reconectar."
 const FRAME_TYPE = "image/jpeg"
 const FRAME_QUALITY = 0.65
+type FrameRequest = { id: number; title: string; url: string } & (
+  | { image: string; pixels?: never; width?: never; height?: never }
+  | { image?: never; pixels: ArrayBuffer; width: number; height: number }
+)
+type FrameResponse = { id: number; title: string; url: string; src?: string; error?: true }
 
 /** Decodes a data: URL without fetch(), which the desktop CSP (connect-src) refuses for data: URLs. */
 export const dataUrlBlob = (value: string): Blob => {
@@ -41,7 +46,49 @@ export const startInlineFrameSource = (
   let viewer: import("@novnc/novnc").default | undefined
   let socket: WebSocket | undefined
   let sessionId: string | undefined
+  let frameId = 0
+  let processor: Worker | undefined
   let page: Pick<BrowserTabInfo, "title" | "url"> = { title: "Tela do computador", url: "" }
+  const pendingFrames = new Map<number, { resolve: (frame?: PreviewFrame) => void }>()
+  try {
+    processor = new Worker(new URL("./browser-preview.worker.ts", import.meta.url), { type: "module" })
+  } catch {
+    processor = undefined
+  }
+  processor?.addEventListener("message", (event) => {
+    const result = (event as MessageEvent<FrameResponse>).data
+    const pending = pendingFrames.get(result.id)
+    if (!pending) return
+    pendingFrames.delete(result.id)
+    if (!result.src || result.error) {
+      pending.resolve(undefined)
+      return
+    }
+    pending.resolve({ src: result.src, title: result.title, url: result.url })
+  })
+  processor?.addEventListener("error", () => {
+    pendingFrames.forEach(({ resolve }) => {
+      resolve(undefined)
+    })
+    pendingFrames.clear()
+    processor?.terminate()
+    processor = undefined
+  })
+  const processFrame = (input: Omit<FrameRequest, "id">): Promise<PreviewFrame | undefined> | undefined => {
+    if (!processor) return undefined
+    const id = frameId + 1
+    frameId = id
+    const result = new Promise<PreviewFrame | undefined>((resolve) => pendingFrames.set(id, { resolve }))
+    try {
+      if ("pixels" in input) processor.postMessage({ ...input, id }, [input.pixels])
+      else processor.postMessage({ ...input, id })
+    } catch {
+      pendingFrames.delete(id)
+      return Promise.resolve(undefined)
+    }
+
+    return result
+  }
   const release = () => {
     const id = sessionId
     sessionId = undefined
@@ -59,6 +106,12 @@ export const startInlineFrameSource = (
     viewer = undefined
     socket?.close()
     socket = undefined
+    processor?.terminate()
+    processor = undefined
+    pendingFrames.forEach(({ resolve }) => {
+      resolve(undefined)
+    })
+    pendingFrames.clear()
     release()
     buffer.width = buffer.height = source.width = source.height = 0
     slot.replaceChildren()
@@ -74,38 +127,56 @@ export const startInlineFrameSource = (
       if (bot.machine === "local") {
         const result = await api.request("GET /bots/:id/browser-preview", tabId ? { tabId } : {}, { id: bot.id })
         if (!active) return
-        const bitmap = await createImageBitmap(dataUrlBlob(result.image))
-        try {
-          if (!active) return
-          const ctx = buffer.getContext("2d")
-          if (!ctx) return fail("O navegador não conseguiu desenhar a prévia.")
+        const processed = await processFrame({ image: result.image, title: result.title, url: result.url })
+        if (!active) return
+        if (processed) {
           status?.(null)
-          ctx.clearRect(0, 0, 640, 400)
-          const ratio = Math.min(640 / bitmap.width, 400 / bitmap.height)
-          const width = bitmap.width * ratio
-          const height = bitmap.height * ratio
-          ctx.drawImage(bitmap, (640 - width) / 2, (400 - height) / 2, width, height)
-          frame({ src: buffer.toDataURL(FRAME_TYPE, FRAME_QUALITY), title: result.title, url: result.url })
-        } finally {
-          bitmap.close()
+          frame(processed)
+        } else {
+          const bitmap = await createImageBitmap(dataUrlBlob(result.image))
+          try {
+            if (!active) return
+            const ctx = buffer.getContext("2d")
+            if (!ctx) return fail("O navegador não conseguiu desenhar a prévia.")
+            status?.(null)
+            ctx.clearRect(0, 0, 640, 400)
+            const ratio = Math.min(640 / bitmap.width, 400 / bitmap.height)
+            const width = bitmap.width * ratio
+            const height = bitmap.height * ratio
+            ctx.drawImage(bitmap, (640 - width) / 2, (400 - height) / 2, width, height)
+            frame({ src: buffer.toDataURL(FRAME_TYPE, FRAME_QUALITY), title: result.title, url: result.url })
+          } finally {
+            bitmap.close()
+          }
         }
       } else if (viewer) {
         const image = viewer.getImageData()
-        if (!image.width || !image.height || !image.data.some((value, index) => index % 4 === 3 && value)) {
+        if (!image.width || !image.height) {
           timer = setTimeout(() => void sample(), intervalMs)
           return
         }
-        source.width = image.width
-        source.height = image.height
-        source.getContext("2d")?.putImageData(image, 0, 0)
-        const ctx = buffer.getContext("2d")
-        if (!ctx) return fail("O navegador não conseguiu desenhar a prévia.")
-        ctx.clearRect(0, 0, 640, 400)
-        const ratio = Math.min(640 / image.width, 400 / image.height)
-        const width = image.width * ratio
-        const height = image.height * ratio
-        ctx.drawImage(source, (640 - width) / 2, (400 - height) / 2, width, height)
-        frame({ src: buffer.toDataURL(FRAME_TYPE, FRAME_QUALITY), ...page })
+        const processed = await processFrame({
+          pixels: image.data.buffer,
+          width: image.width,
+          height: image.height,
+          ...page,
+        })
+        if (!active) return
+        if (processed) {
+          frame(processed)
+        } else {
+          source.width = image.width
+          source.height = image.height
+          source.getContext("2d")?.putImageData(image, 0, 0)
+          const ctx = buffer.getContext("2d")
+          if (!ctx) return fail("O navegador não conseguiu desenhar a prévia.")
+          ctx.clearRect(0, 0, 640, 400)
+          const ratio = Math.min(640 / image.width, 400 / image.height)
+          const width = image.width * ratio
+          const height = image.height * ratio
+          ctx.drawImage(source, (640 - width) / 2, (400 - height) / 2, width, height)
+          frame({ src: buffer.toDataURL(FRAME_TYPE, FRAME_QUALITY), ...page })
+        }
       }
       if (active) timer = setTimeout(() => void sample(), intervalMs)
     } catch (error) {

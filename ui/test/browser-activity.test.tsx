@@ -306,6 +306,32 @@ test("disabling live chat previews prevents capture and leaves browser control a
   expect(screen.getByRole("button", { name: "Assumir controle" })).toBeVisible()
 })
 
+test("live browser thumbnails sample every 700 ms and pause while the card is offscreen", async () => {
+  const visibilityUpdates: Array<(visible: boolean) => void> = []
+  const stop = vi.fn()
+  class PreviewObserver {
+    constructor(callback: IntersectionObserverCallback) {
+      visibilityUpdates.push((visible) =>
+        callback([{ isIntersecting: visible } as IntersectionObserverEntry], this as unknown as IntersectionObserver),
+      )
+    }
+    observe() {}
+    disconnect() {}
+  }
+  vi.stubGlobal("IntersectionObserver", PreviewObserver)
+  vi.mocked(startInlineFrameSource).mockReturnValueOnce(stop)
+  const parts = [getPart({ callId: "open", tool: "browser_open", inputJson: '{"tabId":"browser-tab"}' })]
+
+  renderCard(parts, false)
+  act(() => visibilityUpdates[0]?.(true))
+  await waitFor(() => expect(startInlineFrameSource).toHaveBeenCalledOnce())
+
+  expect(vi.mocked(startInlineFrameSource).mock.calls[0]?.[6]).toEqual({ intervalMs: 700 })
+
+  act(() => visibilityUpdates[0]?.(false))
+  await waitFor(() => expect(stop).toHaveBeenCalledOnce())
+})
+
 test("an attached new page never borrows the previous tab while its metadata is loading", async () => {
   let resolveTabs: (value: { tabs: (typeof tab)[] }) => void = () => {}
   const nextTabs = new Promise<{ tabs: (typeof tab)[] }>((resolve) => {

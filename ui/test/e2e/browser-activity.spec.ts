@@ -30,6 +30,44 @@ test.describe("browser activity experience", () => {
 
       const preview = page.getByRole("img", { name: "Página atual do navegador" })
       await expect(preview).toBeVisible()
+      const frame = await preview.evaluate((element) => {
+        const image = element as HTMLImageElement
+        return {
+          width: image.naturalWidth,
+          height: image.naturalHeight,
+          source: image.currentSrc,
+          sourceLength: image.currentSrc.length,
+        }
+      })
+      expect(frame.width).toBe(640)
+      expect(frame.height).toBe(400)
+      expect(frame.source.startsWith("data:image/jpeg;base64,")).toBe(true)
+      expect(frame.sourceLength).toBeLessThan(250_000)
+      if (variant.name === "desktop-dark") {
+        await page.evaluate(() => {
+          const fixture = (window as Window & { browserActivity?: { resetPreviewMetrics: () => void } }).browserActivity
+          fixture?.resetPreviewMetrics()
+        })
+        await page.waitForTimeout(2_200)
+        const metrics = await page.evaluate(() => {
+          const fixture = (
+            window as Window & {
+              browserActivity?: {
+                snapshot: () => {
+                  previewRequests: number
+                  maxUiLongTaskMs: number
+                  longTaskObserverAvailable: boolean
+                }
+              }
+            }
+          ).browserActivity
+          return fixture?.snapshot()
+        })
+        expect(metrics?.previewRequests).toBeGreaterThanOrEqual(2)
+        expect(metrics?.longTaskObserverAvailable).toBe(true)
+        expect(metrics?.maxUiLongTaskMs ?? Number.POSITIVE_INFINITY).toBeLessThan(50)
+        console.info("[browser-preview UI benchmark]", JSON.stringify(metrics))
+      }
       const compactWidth = (await preview.boundingBox())?.width ?? 0
       await page.getByRole("button", { name: "Expandir navegador" }).click()
       if (variant.width > 600) expect((await preview.boundingBox())?.width ?? 0).toBeGreaterThan(compactWidth * 1.4)
