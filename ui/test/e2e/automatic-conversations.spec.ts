@@ -49,7 +49,7 @@ for (const view of [
   { name: "phone-dark", width: 390, height: 844, theme: "dark" },
 ] as const) {
   test(`automatic conversations and settings are clear on ${view.name}`, async ({ page }) => {
-    test.setTimeout(120_000)
+    test.setTimeout(60_000)
     await page.setViewportSize({ width: view.width, height: view.height })
     await page.emulateMedia({ colorScheme: view.theme, reducedMotion: "reduce" })
     await page.addInitScript((theme) => localStorage.setItem("touri.appearance.v1", theme), view.theme)
@@ -84,7 +84,9 @@ for (const view of [
     const actions = sidebar.getByRole("button", { name: "Ações de mark", exact: true })
     await expect(actions).toBeVisible()
     await actions.click()
-    await sidebar.getByRole("menuitem", { name: "Avançado", exact: true }).click()
+    const advanced = page.getByRole("menuitem", { name: "Avançado", exact: true })
+    await expect(advanced).toBeVisible()
+    await advanced.click()
     const settings = page.getByRole("dialog", { name: "Configurações de mark" })
     const setting = settings.getByRole("radiogroup", { name: "Onde o bot responde" })
     await expect(setting.getByRole("radio")).toHaveCount(2)
