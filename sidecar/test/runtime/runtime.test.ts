@@ -1,7 +1,6 @@
 import type { Database } from "bun:sqlite"
 import { expect, setDefaultTimeout, test } from "bun:test"
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs"
-import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { Bot, Message, StoreApi, Thread } from "@touri/contracts"
 import { t } from "../../../ui/src/i18n"
@@ -93,9 +92,10 @@ const fixture = async ({
   routineTimeoutMs?: number
   automaticConversationMode?: Bot["automaticConversationMode"]
 } = {}): Promise<Fixture> => {
-  const root = mkdtempSync(join(tmpdir(), "touri-wp3-"))
-  // Keep provider fixtures and captured request logs inside the repository test tree.
-  const assets = mkdtempSync(join(repoRoot, "sidecar", "test", ".runtime-provider-"))
+  // Keep runtime data and provider logs under a disposable repository fixture.
+  const root = mkdtempSync(join(repoRoot, "sidecar", "test", ".runtime-fixture-"))
+  const assets = join(root, "bots", "bot-runtime", "provider-fixture")
+  mkdirSync(assets, { recursive: true })
   const fakePath = join(assets, "fake-codex")
   const scenario = join(assets, "scenario.json")
   const logPath = join(assets, "provider.log")
@@ -211,7 +211,6 @@ const closeFixture = async (value: Fixture): Promise<void> => {
   await value.engine.shutdown()
   await value.runtime.stop()
   rmSync(value.root, { recursive: true, force: true })
-  rmSync(value.assets, { recursive: true, force: true })
 }
 
 test("pausing a cached routine prevents cron attempts and survives runtime replacement", async () => {
