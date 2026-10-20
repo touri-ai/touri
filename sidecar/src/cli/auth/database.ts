@@ -54,12 +54,23 @@ CREATE TABLE IF NOT EXISTS email_config (
 
 export const ownerPersonId = "owner"
 
+const authTables = ["pairing_codes", "devices", "people", "person_channels", "invites", "email_config"]
+
+const hasAuthSchema = (database: Database): boolean =>
+  authTables.every((name) =>
+    Boolean(database.query("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(name)),
+  )
+
 const migrateAuthDatabase = (database: Database): void => {
+  const hasPersonColumn = (): boolean =>
+    (database.query("PRAGMA table_info(devices)").all() as Array<{ name: string }>).some(
+      ({ name }) => name === "person_id",
+    )
+  if (hasPersonColumn()) return
   database
     .transaction(() => {
-      const deviceColumns = database.query("PRAGMA table_info(devices)").all() as Array<{ name: string }>
-      if (!deviceColumns.some(({ name }) => name === "person_id"))
-        database.exec("ALTER TABLE devices ADD COLUMN person_id TEXT REFERENCES people(id)")
+      if (hasPersonColumn()) return
+      database.exec("ALTER TABLE devices ADD COLUMN person_id TEXT REFERENCES people(id)")
       database
         .query("INSERT OR IGNORE INTO people(id,name,email,avatar_seed,role,created_at) VALUES(?,?,?,?,?,?)")
         .run(ownerPersonId, "Owner", null, ownerPersonId, "admin", Date.now())
@@ -100,15 +111,14 @@ export const openAuthDatabase = (filename: string): Database => {
         filename,
         sqliteFlags.SQLITE_OPEN_READWRITE | sqliteFlags.SQLITE_OPEN_CREATE | sqliteFlags.SQLITE_OPEN_NOFOLLOW,
       )
-      for (const statement of [
-        "PRAGMA journal_mode = WAL",
-        "PRAGMA synchronous = FULL",
-        "PRAGMA foreign_keys = ON",
-        schema,
-      ]) {
+      for (const statement of ["PRAGMA journal_mode = WAL", "PRAGMA synchronous = FULL", "PRAGMA foreign_keys = ON"]) {
         const remainingMs = Math.max(1, Math.ceil(deadline - performance.now()))
         database.exec(`PRAGMA busy_timeout = ${remainingMs}`)
         database.exec(statement)
+      }
+      if (!hasAuthSchema(database)) {
+        database.exec(`PRAGMA busy_timeout = ${Math.max(1, Math.ceil(deadline - performance.now()))}`)
+        database.exec(schema)
       }
       migrateAuthDatabase(database)
       database.exec(`PRAGMA busy_timeout = ${busyTimeoutMs}`)

@@ -41,9 +41,9 @@ test("attachment references follow message insert, edit, and deletion", async ()
   const database = new Database(":memory:")
   try {
     database.exec(`
-      CREATE TABLE bots (id TEXT PRIMARY KEY, responsible_person_id TEXT);
+      CREATE TABLE bots (id TEXT PRIMARY KEY, archived_at INTEGER, responsible_person_id TEXT);
       CREATE TABLE threads (
-        id TEXT PRIMARY KEY, owner_person_id TEXT, group_id TEXT, archived_at INTEGER, updated_at INTEGER
+        id TEXT PRIMARY KEY, bot_id TEXT NOT NULL, owner_person_id TEXT, group_id TEXT, archived_at INTEGER, updated_at INTEGER
       );
       CREATE TABLE messages (thread_id TEXT NOT NULL, id TEXT NOT NULL, parts_json TEXT NOT NULL);
       CREATE TABLE attachments (id TEXT PRIMARY KEY, owner_person_id TEXT);
