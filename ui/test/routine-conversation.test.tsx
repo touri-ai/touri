@@ -370,6 +370,15 @@ it("labels routine turns shared into the main conversation and keeps the main co
   expect(screen.getByText("Leia as mensagens novas.")).toBeVisible()
 })
 
+it("keeps automatic run headers when deleted routine metadata is absent", () => {
+  const { props } = getFixture()
+
+  const { container } = render(<ChatPanel {...props} thread={{ ...props.thread, kind: "main" }} />)
+
+  expect(container.querySelector(".routine-run-header")).toHaveTextContent(/^Rotina · Automática ·/)
+  expect(screen.queryByRole("button", { name: "Instruções da rotina" })).toBeNull()
+})
+
 it("provides Portuguese and English routine copy", () => {
   expect(t("Instruções da rotina", {}, "en")).toBe("Routine instructions")
   expect(t("Sem novidades nesta execução", {}, "en")).toBe("Nothing new this run")

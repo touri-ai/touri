@@ -225,17 +225,16 @@ export const VirtualMessageList = ({
     const routinesById = new Map(routines.map((routine) => [routine.id, routine]))
 
     return runs.reduce((headers, run) => {
-      if (!run.requestMessageId || !run.routineRunId) return headers
-      const routineRun = routineRunsById.get(run.routineRunId)
+      if (!run.requestMessageId || !isRoutineRun(run)) return headers
+      const routineRun = routineRunsById.get(run.routineRunId ?? "")
       const routine = routineRun ? routinesById.get(routineRun.routineId) : undefined
-      if (!routineRun || !routine) return headers
 
       headers.set(
         run.requestMessageId,
         t("Routine run header", {
-          name: routine.name,
-          trigger: t(routineTriggerKeys[routineRun.triggerSource]),
-          time: getRoutineRunTimeLabel(routineRun.scheduledFor, "pt-BR", routine.timezone),
+          name: routine?.name ?? t("Work routine"),
+          trigger: routineRun ? t(routineTriggerKeys[routineRun.triggerSource]) : t("Automatic"),
+          time: getRoutineRunTimeLabel(routineRun?.scheduledFor ?? run.queuedAt, "pt-BR", routine?.timezone),
         }),
       )
       return headers
