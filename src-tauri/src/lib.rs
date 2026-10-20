@@ -484,6 +484,9 @@ fn start_local_runtime(app: &tauri::App<Wry>) -> Result<(), Box<dyn std::error::
 }
 
 pub fn run() {
+    #[cfg(target_os = "linux")]
+    platform::configure_webkit_dmabuf_renderer();
+
     let runtime = shell_runtime::start_runtime().expect("create shell async runtime");
     tauri::async_runtime::set(runtime.handle().clone());
 
