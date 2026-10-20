@@ -24,6 +24,7 @@ export const init = async (
     store,
     canRead: (notification, signal) => {
       const person = deviceSession(signal)?.person
+      if (notification.targetPersonId && person?.id !== notification.targetPersonId) return false
       if (!person || person.role === "admin") return true
       return Boolean(
         kernel.services.use("work.canAccessNotification")?.({
@@ -32,6 +33,7 @@ export const init = async (
           threadId: notification.threadId,
           kind: notification.kind,
           requestId: notification.requestId,
+          targetPersonId: notification.targetPersonId ?? null,
         }),
       )
     },

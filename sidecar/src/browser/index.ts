@@ -1,3 +1,4 @@
+import type { Database } from "bun:sqlite"
 import type {
   ApiModel,
   BrowserFailureInfo,
@@ -12,7 +13,9 @@ import type {
 } from "@touri/contracts"
 import { getApiModelKey } from "../api-models"
 import { getBrowserDecisionModel } from "../api-models/config"
+import { deviceSession } from "../kernel/device-session"
 import type { PerformanceStageRunner } from "../kernel/performance"
+import { createChannelBrowserRuns } from "./channel-runs"
 import {
   type BrowserDecisionAction,
   type BrowserDecisionFallbackReason,
@@ -331,6 +334,10 @@ export const init = async (
 ): Promise<void> => {
   const mode = process.env.TOURI_BROWSER_EXECUTABLE === "chrome-for-testing" ? "chrome-for-testing" : "system-chrome"
   const engine = dependencies.engine ?? createRoutedBrowserEngine(kernel, mode, runStage ? { runStage } : {})
+  const channelRuns = createChannelBrowserRuns({ kernel, database: kernel.db as Database })
+  kernel.onHostNotification((notification) => {
+    if (notification.method === "app.willQuit") channelRuns.dispose()
+  })
   let decisionModel: ApiModel | null = getBrowserDecisionModel(kernel)
   kernel.services.provide("browser.updateDecisionModel", (model) => {
     decisionModel = model?.browserDecisions === true ? model : null
@@ -385,11 +392,39 @@ export const init = async (
       clickCount,
     })
   const failures = new Map<string, BrowserFailureInfo>()
+  const visibleTabsFor = (
+    botId: string | null,
+    person: NonNullable<ReturnType<typeof deviceSession>>["person"] | undefined,
+  ) =>
+    engine.tabsForBot(botId).filter((tab) => {
+      if (!person) return true
+      const row = (kernel.db as Database)
+        .query("SELECT owner_thread_id FROM browser_tabs WHERE id = ?")
+        .get(tab.tabId) as { owner_thread_id: string | null } | null
+      if (!row?.owner_thread_id)
+        return Boolean(
+          kernel.services.use("work.canAccessBot")?.({
+            personId: person.id,
+            role: person.role,
+            botId: tab.ownerBotId ?? "",
+          }),
+        )
+      return Boolean(
+        kernel.services.use("work.canAccessThread")?.({
+          personId: person.id,
+          role: person.role,
+          threadId: row.owner_thread_id,
+        }),
+      )
+    })
   // The screen viewers show the real cause when a page never reached the display.
   const tool = (name: string, handler: ToolHandler): ToolRegistration => ({
     name,
     group: "browser",
     handler: async (input) => {
+      const channelAccess = await channelRuns.enter(input.ctx)
+      if (!channelAccess.success)
+        return { success: false, errorCode: channelAccess.errorCode, error: channelAccess.error }
       const bot = kernel.services.use("store.api")?.getBot({ botId: input.ctx.botId })
       const writes = ![
         "browser_list_tabs",
@@ -718,12 +753,15 @@ export const init = async (
     }),
     tool("browser_request_takeover", async ({ ctx, args }) => {
       const input = argsRecord(args)
+      const reason = asString(input.reason) ?? "User assistance requested"
+      const managedNeedsYou = channelRuns.needsYou(ctx.runId, reason)
       return engine.requestTakeover({
         tabId: asString(input.tabId) ?? "",
         botId: ctx.botId,
-        reason: asString(input.reason) ?? "User assistance requested",
+        reason,
         timeoutMs: timeout(input.timeoutMs, 600000, 1800000),
         signal: ctx.signal,
+        notify: !managedNeedsYou,
       })
     }),
     tool("browser_submit_secret", async ({ ctx, args }) => {
@@ -763,8 +801,26 @@ export const init = async (
           const botId = params.id ?? ""
           const bot = kernel.services.use("store.api")?.getBot({ botId })
           if (!bot) return { status: 404, json: { error: "Bot não encontrado" } }
+          const person = deviceSession(signal)?.person
+          if (person && !kernel.services.use("work.canAccessBot")?.({ personId: person.id, role: person.role, botId }))
+            return { status: 404, json: { error: "Bot não encontrado" } }
           if (bot.machine !== "local") return { status: 409, json: { error: "Use a tela da máquina virtual" } }
-          const frame = await engine.preview({ botId, ...(query.tabId ? { tabId: query.tabId } : {}), signal })
+          const visibleTabs = visibleTabsFor(botId, person)
+          if (person && query.tabId && !visibleTabs.some((tab) => tab.tabId === query.tabId))
+            return { status: 404, json: { error: "Página não encontrada" } }
+          const selectedTabId = query.tabId ?? visibleTabs[0]?.tabId
+          if (person && !selectedTabId) return { status: 404, json: { error: "Página não encontrada" } }
+          if (selectedTabId && channelRuns.isPreviewHidden(selectedTabId))
+            return {
+              status: 409,
+              json: {
+                errorCode: "BROWSER_PREVIEW_HIDDEN",
+                error: "A prévia fica oculta enquanto alguém está no controle.",
+              },
+            }
+          const frame = selectedTabId
+            ? await engine.preview({ botId, tabId: selectedTabId, signal })
+            : await engine.preview({ botId, ...(query.tabId ? { tabId: query.tabId } : {}), signal })
           return frame
             ? { status: 200, json: frame }
             : { status: 409, json: { error: "Nenhuma página disponível para prévia" } }
@@ -775,6 +831,7 @@ export const init = async (
         path: "/browser/tabs",
         handler: async (request) => {
           const botId = request.query.botId ?? null
+          const person = deviceSession(request.signal)?.person
           const running =
             kernel.services
               .use("vm.runtime")
@@ -783,6 +840,15 @@ export const init = async (
           await Promise.all(
             running
               .filter((machine) => !botId || machine.botId === botId)
+              .filter(
+                (machine) =>
+                  !person ||
+                  kernel.services.use("work.canAccessBot")?.({
+                    personId: person.id,
+                    role: person.role,
+                    botId: machine.botId,
+                  }) === true,
+              )
               .map(async (machine) => {
                 try {
                   // Same guest listing as browser_list_tabs; never starts a stopped machine.
@@ -792,9 +858,10 @@ export const init = async (
                 }
               }),
           )
+          const tabs = visibleTabsFor(botId, person)
           return {
             status: 200,
-            json: { tabs: engine.tabsForBot(botId), ...(botId ? { lastFailure: failures.get(botId) ?? null } : {}) },
+            json: { tabs, ...(botId && tabs.length ? { lastFailure: failures.get(botId) ?? null } : {}) },
           }
         },
       },
@@ -805,9 +872,22 @@ export const init = async (
           const body = argsRecord(request.body)
           const hold = asBoolean(body.hold) === true
           const tabId = request.params.id ?? ""
+          const person = deviceSession(request.signal)?.person
+          const channelRun = channelRuns.getForTab(tabId)
+          if (person && channelRun) {
+            const control = hold
+              ? channelRuns.takeControl({ runId: channelRun.runId, actorPersonId: person.id })
+              : channelRuns.returnControl({ runId: channelRun.runId, actorPersonId: person.id })
+            if (!control.success)
+              return { status: 403, json: { errorCode: "BROWSER_CONTROL_FORBIDDEN", error: control.error } }
+          }
           const ok = hold
             ? await engine.holdTakeover({ tabId, reason: "The user requested browser takeover" })
             : await engine.releaseTakeover(tabId)
+          if (!ok && person && channelRun) {
+            if (hold) channelRuns.returnControl({ runId: channelRun.runId, actorPersonId: person.id })
+            else channelRuns.takeControl({ runId: channelRun.runId, actorPersonId: person.id })
+          }
           return ok
             ? { status: 200, json: {} }
             : {

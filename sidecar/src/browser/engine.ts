@@ -4243,12 +4243,14 @@ export const createBrowserEngine = ({
     reason,
     timeoutMs,
     signal,
+    notify = true,
   }: {
     tabId: Id
     botId: Id
     reason: string
     timeoutMs: number
     signal: AbortSignal
+    notify?: boolean
   }): Promise<ToolResult> => {
     const owned = getTab({ tabId, botId })
     if (!owned.success) return toToolError(owned.failure)
@@ -4262,21 +4264,23 @@ export const createBrowserEngine = ({
         tab.info.lastUsedAt = Date.now()
         store.save(tab)
         kernel.publish({ type: "browser.tab", tab: safePublicTabInfo(tab) })
-        const emitNotice = kernel.services.use("notify.emit")
-        if (emitNotice)
-          emitNotice({
-            kind: "takeover",
-            botId,
-            threadId: tab.info.ownerThreadId,
-            title: "Browser takeover",
-            body: `needs you in the browser: ${reason.slice(0, 300)}`,
-          })
-        else
-          await notifyBestEffort({
-            title: "Browser takeover",
-            body: `${botId} needs you in the browser: ${kernel.redact(reason).slice(0, 300)}`,
-            threadId: tab.info.ownerThreadId,
-          })
+        if (notify) {
+          const emitNotice = kernel.services.use("notify.emit")
+          if (emitNotice)
+            emitNotice({
+              kind: "takeover",
+              botId,
+              threadId: tab.info.ownerThreadId,
+              title: "Browser takeover",
+              body: `needs you in the browser: ${reason.slice(0, 300)}`,
+            })
+          else
+            await notifyBestEffort({
+              title: "Browser takeover",
+              body: `${botId} needs you in the browser: ${kernel.redact(reason).slice(0, 300)}`,
+              threadId: tab.info.ownerThreadId,
+            })
+        }
         await raceBudget({ work: focusManagedChrome(), ms: SIDE_EFFECT_BUDGET_MS, signal }).catch(() => undefined)
         const released = await new Promise<"released" | "timeout" | "canceled">((resolve) => {
           const finish = (outcome: "released" | "timeout" | "canceled"): void => {

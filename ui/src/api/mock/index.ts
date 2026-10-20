@@ -1145,6 +1145,7 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
           parts: message.parts.filter((part) => part.type === "approval" || part.type === "notice"),
         })),
         runs: latestRuns,
+        browserRuns: [],
       } as ApiRoutes[typeof route]["res"]
     }
     if (key === "GET /search") {

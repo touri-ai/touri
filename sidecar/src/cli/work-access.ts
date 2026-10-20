@@ -1,5 +1,6 @@
 import type { Database } from "bun:sqlite"
 import type { UiEvent } from "@touri/contracts"
+import { canControlChannelBrowserRun, getBrowserRunControlError } from "../browser/channel-runs"
 import type { AuthStore } from "./auth/store"
 
 type PersonRole = "member" | "admin"
@@ -231,19 +232,42 @@ export const createWorkAccess = ({ database, authStore }: { database: Database; 
     threadId,
     kind,
     requestId,
+    targetPersonId,
   }: {
     personId: string
     role: PersonRole
     threadId: string | null
     kind: string
     requestId: string | null
+    targetPersonId?: string | null
   }): boolean => {
+    if (targetPersonId) return targetPersonId === personId
     if (role === "admin") return true
     if (kind === "approval") return Boolean(requestId && canApprove({ personId, approvalId: requestId }))
     return Boolean(threadId && canAccessThread({ personId, role, threadId }))
   }
 
   const visibleEvent = ({ personId, role, event }: { personId: string; role: PersonRole; event: UiEvent }): boolean => {
+    if (event.type === "notification.created" || event.type === "notification.resolved")
+      return canAccessNotification({
+        personId,
+        role,
+        threadId: event.notification.threadId,
+        kind: event.notification.kind,
+        requestId: event.notification.requestId,
+        ...(event.notification.targetPersonId === undefined
+          ? {}
+          : { targetPersonId: event.notification.targetPersonId }),
+      })
+    if (event.type === "notify")
+      return canAccessNotification({
+        personId,
+        role,
+        threadId: event.threadId,
+        kind: event.kind ?? "",
+        requestId: event.requestId ?? null,
+        ...(event.targetPersonId === undefined ? {} : { targetPersonId: event.targetPersonId }),
+      })
     if (role === "admin") return true
     if (event.type === "transcript.resync" || event.type === "transcript.superseded") return true
     if (event.type === "group.updated") return canAccessGroup({ personId, role, groupId: event.group.id })
@@ -258,22 +282,7 @@ export const createWorkAccess = ({ database, authStore }: { database: Database; 
         threadId: event.type === "transcript.rejected" ? event.rejection.threadId : event.threadId,
       })
     if (event.type === "run.updated") return canAccessThread({ personId, role, threadId: event.run.threadId })
-    if (event.type === "notification.created" || event.type === "notification.resolved")
-      return canAccessNotification({
-        personId,
-        role,
-        threadId: event.notification.threadId,
-        kind: event.notification.kind,
-        requestId: event.notification.requestId,
-      })
-    if (event.type === "notify")
-      return canAccessNotification({
-        personId,
-        role,
-        threadId: event.threadId,
-        kind: event.kind ?? "",
-        requestId: event.requestId ?? null,
-      })
+    if (event.type === "browser.channel_run") return canAccessGroup({ personId, role, groupId: event.run.groupId })
     return false
   }
 
@@ -296,8 +305,79 @@ export const createWorkAccess = ({ database, authStore }: { database: Database; 
     pathname: string
     body: unknown
   }): RouteDecision | null => {
-    if (role === "admin") return null
     const verb = method.toUpperCase()
+    const browserRunForRun = (runId: string) =>
+      database
+        .query(`SELECT requester_person_id, responsible_person_id, controller_person_id
+          FROM browser_channel_runs WHERE run_id = ? AND status IN ('queued','running','needs_you','taken_over')
+          UNION ALL
+          SELECT browser.requester_person_id, browser.responsible_person_id, browser.controller_person_id
+          FROM group_run_links link JOIN browser_channel_runs browser ON browser.run_id = link.run_id
+          WHERE link.turn_id = ? AND browser.status IN ('queued','running','needs_you','taken_over')
+          LIMIT 1`)
+        .get(runId, runId) as {
+        requester_person_id: string | null
+        responsible_person_id: string | null
+        controller_person_id: string | null
+      } | null
+    const browserRunForTab = (tabId: string) =>
+      database
+        .query(`SELECT run.requester_person_id, run.responsible_person_id, run.controller_person_id
+          FROM browser_tabs tab JOIN threads owner_thread ON owner_thread.id = tab.owner_thread_id
+          JOIN browser_channel_runs run ON run.group_id = owner_thread.group_id
+            AND run.thread_id = owner_thread.group_thread_id AND run.bot_id = tab.owner_bot_id
+          WHERE tab.id = ? AND run.status IN ('queued','running','needs_you','taken_over')
+          ORDER BY run.queued_at DESC LIMIT 1`)
+        .get(tabId) as {
+        requester_person_id: string | null
+        responsible_person_id: string | null
+        controller_person_id: string | null
+      } | null
+    const browserControlDecision = (
+      run: {
+        requester_person_id: string | null
+        responsible_person_id: string | null
+        controller_person_id: string | null
+      } | null,
+    ): RouteDecision | null => {
+      if (!run) return null
+      if (
+        canControlChannelBrowserRun({
+          actorPersonId: personId,
+          requesterPersonId: run.requester_person_id,
+          responsiblePersonId: run.responsible_person_id,
+        })
+      )
+        return null
+      const controllerName = run.controller_person_id ? authStore.getPerson(run.controller_person_id)?.name : null
+      return {
+        status: 403,
+        json: {
+          errorCode: "BROWSER_CONTROL_FORBIDDEN",
+          error: getBrowserRunControlError(controllerName ?? null),
+        },
+      }
+    }
+    const runAction = /^\/runs\/([^/]+)\/(cancel|retry)$/u.exec(pathname)
+    const takeover = /^\/browser\/tabs\/([^/]+)\/takeover$/u.exec(pathname)
+    if (verb === "POST" && runAction?.[2] === "cancel") {
+      const runId = runAction[1] ?? ""
+      const run = browserRunForRun(runId)
+      if (run && !canAccessRun({ personId, role, runId })) return notFound
+      const decision = browserControlDecision(run)
+      if (decision) return decision
+    }
+    if (verb === "POST" && takeover) {
+      const tabId = takeover[1] ?? ""
+      const tabThread = database.query("SELECT owner_thread_id FROM browser_tabs WHERE id = ?").get(tabId) as {
+        owner_thread_id: string | null
+      } | null
+      if (tabThread?.owner_thread_id && !canAccessThread({ personId, role, threadId: tabThread.owner_thread_id }))
+        return notFound
+      const decision = browserControlDecision(browserRunForTab(tabId))
+      if (decision) return decision
+    }
+    if (role === "admin") return null
     if (verb === "POST" && pathname === "/ws-ticket") return null
     if (
       verb === "GET" &&
@@ -356,9 +436,22 @@ export const createWorkAccess = ({ database, authStore }: { database: Database; 
     const approvalRoute = /^\/approvals\/([^/]+)$/u.exec(pathname)
     if (approvalRoute && verb === "POST")
       return canApprove({ personId, approvalId: approvalRoute[1] ?? "" }) ? null : denied
-    const runAction = /^\/runs\/([^/]+)\/(cancel|retry)$/u.exec(pathname)
     if (runAction && verb === "POST")
       return canAccessRun({ personId, role, runId: runAction[1] ?? "" }) ? null : notFound
+    if (takeover && verb === "POST") {
+      const tabId = takeover[1] ?? ""
+      const tab = database.query("SELECT owner_bot_id, owner_thread_id FROM browser_tabs WHERE id = ?").get(tabId) as {
+        owner_bot_id: string | null
+        owner_thread_id: string | null
+      } | null
+      if (tab?.owner_thread_id)
+        return canAccessThread({ personId, role, threadId: tab.owner_thread_id }) ? null : notFound
+      return tab?.owner_bot_id && canAccessBot({ personId, role, botId: tab.owner_bot_id }) ? null : notFound
+    }
+    if (verb === "GET" && pathname === "/browser/tabs") return null
+    const browserPreview = /^\/bots\/([^/]+)\/browser-preview$/u.exec(pathname)
+    if (browserPreview && verb === "GET")
+      return canAccessBot({ personId, role, botId: browserPreview[1] ?? "" }) ? null : notFound
     return denied
   }
 

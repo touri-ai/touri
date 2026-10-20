@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite"
-import type { Message, MessageStatus, Run } from "@touri/contracts"
+import type { BrowserChannelRun, BrowserChannelRunStatus, Message, MessageStatus, Run } from "@touri/contracts"
 import { toRun } from "../runtime/persistence"
 
 export type RawMessage = {
@@ -80,10 +80,69 @@ export const WORKSPACE_RUNS_SQL = `
     AND (/* scope */ 1 = 1)
 `
 
+type RawBrowserChannelRun = {
+  run_id: string
+  group_id: string
+  thread_id: string
+  bot_id: string
+  requester_person_id: string | null
+  responsible_person_id: string | null
+  controller_person_id: string | null
+  status: BrowserChannelRunStatus
+  queue_position: number | null
+  queued_at: number
+  started_at: number | null
+  needs_you_at: number | null
+  escalated_at: number | null
+  finished_at: number | null
+}
+
+export const WORKSPACE_BROWSER_RUNS_SQL = `
+  SELECT c.*,
+    CASE WHEN c.status = 'queued' THEN 1 + (
+      SELECT COUNT(*) FROM browser_channel_runs queued
+      WHERE queued.thread_id = c.thread_id AND queued.bot_id = c.bot_id AND queued.status = 'queued'
+        AND (queued.queued_at < c.queued_at OR (queued.queued_at = c.queued_at AND queued.run_id < c.run_id))
+    ) ELSE NULL END AS queue_position
+  FROM browser_channel_runs c
+  JOIN bot_groups g ON g.id = c.group_id
+  JOIN threads t ON t.id = c.thread_id
+  JOIN bots b ON b.id = c.bot_id
+  WHERE c.status IN ('queued','running','needs_you','taken_over')
+    AND t.archived_at IS NULL AND b.archived_at IS NULL
+    AND NOT EXISTS (SELECT 1 FROM bot_deletions d WHERE d.bot_id = b.id)
+    AND (/* scope */ 1 = 1)
+  ORDER BY c.group_id, c.thread_id, c.bot_id, c.queued_at, c.run_id
+  LIMIT 100
+`
+
+const asBrowserChannelRun = (
+  row: RawBrowserChannelRun,
+  personName: (personId: string) => string | null,
+): BrowserChannelRun => ({
+  runId: row.run_id,
+  groupId: row.group_id,
+  threadId: row.thread_id,
+  botId: row.bot_id,
+  requesterPersonId: row.requester_person_id,
+  requesterName: row.requester_person_id ? personName(row.requester_person_id) : null,
+  responsiblePersonId: row.responsible_person_id,
+  controllerPersonId: row.controller_person_id,
+  controllerName: row.controller_person_id ? personName(row.controller_person_id) : null,
+  status: row.status,
+  queuePosition: row.queue_position,
+  queuedAt: row.queued_at,
+  startedAt: row.started_at,
+  needsYouAt: row.needs_you_at,
+  escalatedAt: row.escalated_at,
+  finishedAt: row.finished_at,
+})
+
 export const readWorkspaceActivity = (
   database: Database,
   scope?: { personId: string; channelIds: Array<string> },
-): { messages: RawMessage[]; runs: Run[] } => {
+  personName: (personId: string) => string | null = () => null,
+): { messages: RawMessage[]; runs: Run[]; browserRuns: Array<BrowserChannelRun> } => {
   // At most five indexed message probes per visible thread, plus open approvals.
   // Never parse historical tool output or visit every completed run on a read.
   const channelScope = scope?.channelIds.length
@@ -103,5 +162,14 @@ export const readWorkspaceActivity = (
       const run = toRun(row)
       return run ? [run] : []
     })
-  return { messages, runs }
+  const browserScope = scope
+    ? scope.channelIds.length
+      ? `c.group_id IN (${scope.channelIds.map(() => "?").join(",")})`
+      : "0 = 1"
+    : "1 = 1"
+  const browserRuns = database
+    .query(WORKSPACE_BROWSER_RUNS_SQL.replace("/* scope */ 1 = 1", browserScope))
+    .all(...(scope?.channelIds ?? []))
+    .map((row) => asBrowserChannelRun(row as RawBrowserChannelRun, personName))
+  return { messages, runs, browserRuns }
 }

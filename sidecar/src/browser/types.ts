@@ -228,6 +228,7 @@ export type BrowserEngine = {
     reason: string
     timeoutMs: number
     signal: AbortSignal
+    notify?: boolean
   }) => Promise<ToolResult>
   submitSecret: (args: {
     tabId: Id
