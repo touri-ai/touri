@@ -36,7 +36,6 @@ const contractRouteKeys: Array<keyof ApiRoutes> = [
   "POST /cloud/bots/:id/wake",
   "PUT /cloud/bots/:id/key",
   "GET /health",
-  "GET /session",
   "POST /ui/errors",
   "POST /reports/history",
   "GET /reports",
