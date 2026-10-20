@@ -1,8 +1,11 @@
 import { createRoot } from "react-dom/client"
 import App from "../../src/App"
+import { initializeTheme } from "../../src/design/theme"
 import { setDocumentLanguage } from "../../src/documentLanguage"
 import { getBotDeletionFixture } from "../fixtures/botDeletion"
 import "../../src/styles.css"
+
+initializeTheme()
 
 const params = new URLSearchParams(location.search)
 const outcome = params.get("cleanup")

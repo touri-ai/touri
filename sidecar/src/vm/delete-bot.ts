@@ -260,12 +260,9 @@ export const createBotDeletionManager = (
       return false
     }
 
-    const configurations = await getBotConfigurationPaths(kernel.paths.runDir, rows)
-    const sessions = rows.flatMap((thread) => {
-      const sessions = db
-        .query("SELECT rollout_path FROM provider_sessions WHERE thread_id = ? AND rollout_path IS NOT NULL")
-        .all(thread.id) as Array<{ rollout_path: string }>
-      const privateSessions = sessions
+    const sessions = getBotSessionBatch(db, rows)
+    if (sessions.length) {
+      const paths = sessions
         .filter((session) => {
           const suffix = relative(kernel.paths.sessionsDir, session.rollout_path)
           if (!suffix || suffix.startsWith("..") || suffix.startsWith("/")) return false
@@ -275,9 +272,14 @@ export const createBotDeletionManager = (
             .get(session.rollout_path, botId)
         })
         .map((session) => session.rollout_path)
-      return privateSessions
-    })
-    const paths = [...configurations, ...sessions]
+      await Promise.all(paths.map((path) => removePrivateFileAsync({ root: kernel.paths.appData, path })))
+      db.transaction(() => {
+        sessions.forEach(({ id }) => db.query("UPDATE provider_sessions SET rollout_path = NULL WHERE id = ?").run(id))
+      })()
+      return true
+    }
+
+    const paths = await getBotConfigurationPaths(kernel.paths.runDir, rows)
     for (let offset = 0; offset < paths.length; offset += BOT_FILE_BATCH_SIZE) {
       const batch = paths.slice(offset, offset + BOT_FILE_BATCH_SIZE)
       await Promise.all(batch.map((path) => removePrivateFileAsync({ root: kernel.paths.appData, path })))
@@ -338,7 +340,10 @@ export const createBotDeletionManager = (
           if (more) await new Promise<void>((resolve) => setImmediate(resolve))
           continue
         }
-        if (["replay", "messages", "transcript", "attachments"].includes(job.phase)) {
+        if (
+          ["replay", "messages", "transcript", "attachments"].includes(job.phase) ||
+          job.phase.startsWith("records:")
+        ) {
           await processBatch(botId)
           await new Promise<void>((resolve) => setImmediate(resolve))
           continue
@@ -524,33 +529,11 @@ const deleteBotData = async (kernel: Kernel, botId: string): Promise<void> => {
     db.query(
       "INSERT INTO settings(key,value_json,updated_at) VALUES (?,?,?) ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json,updated_at=excluded.updated_at",
     ).run(`storage.deleted-attachments:${botId}`, "[]", Date.now())
-    deleteBotRunReferences(db, botId)
-    const threads = "SELECT id FROM threads WHERE bot_id = ?"
-    db.query(`DELETE FROM group_message_links WHERE source_thread_id IN (${threads})`).run(botId)
-    db.query(`UPDATE threads SET group_thread_id = NULL WHERE group_thread_id IN (${threads}) AND bot_id != ?`).run(
-      botId,
-      botId,
-    )
-    const threadTables = ["send_journal", "transcript_retention", "transcript_pending_deltas", "rejections"]
-    threadTables.forEach((table) => {
-      db.query(`DELETE FROM ${table} WHERE thread_id IN (${threads})`).run(botId)
-    })
-    db.query(
-      "DELETE FROM notification_log WHERE notification_id IN (SELECT id FROM notifications WHERE bot_id = ?)",
-    ).run(botId)
-    db.query("DELETE FROM notifications WHERE bot_id = ?").run(botId)
-    db.query("DELETE FROM tool_calls WHERE bot_id = ?").run(botId)
-    const botTables = ["bot_mcp_servers", "cloud_runs", "cloud_machines"]
-    botTables.forEach((table) => {
-      db.query(`DELETE FROM ${table} WHERE bot_id = ?`).run(botId)
-    })
-    db.query("DELETE FROM processes WHERE vm_bot_id = ?").run(botId)
-    db.query("DELETE FROM browser_tabs WHERE owner_bot_id = ?").run(botId)
     db.query("DELETE FROM settings WHERE key = ?").run(`approval-grants:${botId}`)
     db.query(
       "UPDATE bot_deletions SET phase = 'session', cursor = 0, error_code = NULL, updated_at = ? WHERE bot_id = ?",
     ).run(Date.now(), botId)
-    // Cascades remove only this bot's private threads, routines and group membership.
+    // Historical dependents have already been purged in committed worker batches.
     db.query("DELETE FROM bots WHERE id = ?").run(botId)
   })()
 }
@@ -609,23 +592,6 @@ const detachBotGroupThreads = (db: Database, botId: string) => {
   )
 }
 
-const deleteBotRunReferences = (db: Database, botId: string) => {
-  // A group run can belong to a different bot than its shared thread.
-  const runs = "SELECT id FROM runs WHERE bot_id = ? OR thread_id IN (SELECT id FROM threads WHERE bot_id = ?)"
-  db.query(`DELETE FROM group_run_links WHERE run_id IN (${runs}) OR turn_id IN (${runs})`).run(
-    botId,
-    botId,
-    botId,
-    botId,
-  )
-  db.query(`DELETE FROM group_turns WHERE run_id IN (${runs})`).run(botId, botId)
-  // Keep delivery acknowledgements on surviving shared conversations for reconnect/retry.
-  db.query(`UPDATE send_journal SET run_id = NULL WHERE run_id IN (${runs})`).run(botId, botId)
-  db.query(
-    `DELETE FROM tool_resolutions WHERE run_id IN (${runs}) OR thread_id IN (SELECT id FROM threads WHERE bot_id = ?)`,
-  ).run(botId, botId, botId)
-}
-
 const getBotConfigurationPaths = async (runDir: string, threads: { id: string }[]): Promise<string[]> => {
   const directory = await opendir(join(runDir, "claude")).catch((error: unknown) => {
     if (error instanceof Error && "code" in error && error.code === "ENOENT") return null
@@ -641,6 +607,17 @@ const getBotConfigurationPaths = async (runDir: string, threads: { id: string }[
     if (names.has(entry.name)) paths.push(join(runDir, "claude", entry.name))
   }
   return paths
+}
+
+const getBotSessionBatch = (db: Database, threads: { id: string }[]) => {
+  for (const thread of threads) {
+    const sessions = db
+      .query(`SELECT id, rollout_path FROM provider_sessions
+      WHERE thread_id = ? AND rollout_path IS NOT NULL ORDER BY id LIMIT ?`)
+      .all(thread.id, BOT_FILE_BATCH_SIZE) as Array<{ id: string; rollout_path: string }>
+    if (sessions.length) return sessions
+  }
+  return []
 }
 
 const getProviderHomePaths = async (appData: string): Promise<string[]> => {

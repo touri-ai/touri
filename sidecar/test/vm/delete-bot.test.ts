@@ -137,7 +137,7 @@ const fixture = async ({
     runtime.kernel.services.use("groups.runtime")?.shutdown()
     await runtime.kernel.services.use("runtime.shutdown")?.()
     await vm.dispose()
-    runtime.stop()
+    await runtime.stop()
     rmSync(root, { recursive: true, force: true })
   })
   return { root, runtime, db: runtime.kernel.db as Database, fake, vm, rawRequest, request, create, sessionDeletions }
@@ -1143,25 +1143,60 @@ test("50k message deletion returns quickly, keeps the event loop responsive and 
   seedSearchableMessages(f.db, threadId, 50_000)
 
   let previous = performance.now()
-  let maxStallMs = 0
+  let ticks: number[] = []
   const probe = setInterval(() => {
     const current = performance.now()
-    maxStallMs = Math.max(maxStallMs, current - previous - 10)
+    // Keep only this measurement window; each sample is one complete timer interval.
+    ticks = ticks.concat(current - previous)
     previous = current
   }, 10)
+  cleanups.push(async () => clearInterval(probe))
   const started = performance.now()
   const response = await f.rawRequest(`/bots/${bot.id}`, { name: bot.name }, "DELETE")
   const requestMs = performance.now() - started
   await waitForDeletionComplete(f.db, bot.id)
   clearInterval(probe)
+  const sortedTicks = ticks.toSorted((first, second) => first - second)
+  const maxTickMs = sortedTicks.at(-1) ?? 0
+  const p99TickMs = sortedTicks[Math.ceil(sortedTicks.length * 0.99) - 1] ?? 0
+  console.info(`bot-deletion-performance ${JSON.stringify({ messages: 50_000, requestMs, p99TickMs, maxTickMs })}`)
 
   expect(response.status).toBe(202)
   expect(requestMs).toBeLessThan(1000)
-  expect(maxStallMs).toBeLessThan(50)
+  expect(maxTickMs).toBeLessThan(50)
   expect(f.db.query("SELECT id FROM messages WHERE thread_id = ?").all(threadId)).toHaveLength(0)
   expect(f.db.query("SELECT rowid FROM messages_fts WHERE thread_id = ?").all(threadId)).toHaveLength(0)
   expect(f.db.query("SELECT fts_rowid FROM message_search_rows WHERE thread_id = ?").all(threadId)).toHaveLength(0)
   expect(f.db.query("SELECT id FROM transcript_entries WHERE thread_id = ?").all(threadId)).toHaveLength(0)
+}, 120_000)
+
+test("finalizing a bot with a large completed run history keeps timer ticks below 50 ms", async () => {
+  const f = await fixture()
+  const bot = await f.create("Large run history", "local")
+  const threadId = bot.mainThreadId ?? ""
+  f.db
+    .query(`WITH RECURSIVE entries(value) AS (
+    SELECT 1 UNION ALL SELECT value + 1 FROM entries WHERE value < 5000
+  ) INSERT INTO runs(id, thread_id, bot_id, provider, trigger, status, queued_at, finished_at)
+    SELECT 'synthetic-run-' || value, ?, ?, ?, 'user', 'succeeded', 1, 2 FROM entries`)
+    .run(threadId, bot.id, bot.provider)
+  let previous = performance.now()
+  let maxTickMs = 0
+  const probe = setInterval(() => {
+    const current = performance.now()
+    maxTickMs = Math.max(maxTickMs, current - previous)
+    previous = current
+  }, 10)
+  cleanups.push(async () => clearInterval(probe))
+
+  const response = await f.rawRequest(`/bots/${bot.id}`, { name: bot.name }, "DELETE")
+  await waitForDeletionComplete(f.db, bot.id)
+  clearInterval(probe)
+  console.info(`bot-deletion-run-performance ${JSON.stringify({ runs: 5000, maxTickMs })}`)
+
+  expect(response.status).toBe(202)
+  expect(maxTickMs).toBeLessThan(50)
+  expect(f.db.query("SELECT id FROM runs WHERE bot_id = ?").all(bot.id)).toEqual([])
 }, 120_000)
 
 test("concurrent bot deletions serialize their worker batches", async () => {

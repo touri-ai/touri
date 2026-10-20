@@ -133,11 +133,17 @@ const capture = () => {
   const checkpoint = Number(database.query(
     "SELECT value FROM schema_meta WHERE key = 'transcript_event_checkpoint'",
   ).get().value);
-  const statement = database.prepare("SELECT id, at, event_json FROM transcript_entries WHERE id > ? ORDER BY id");
+  const hasDeletions = database.query("SELECT 1 FROM schema_meta WHERE key = 'bot_deletion_version'").get();
+  const statement = database.prepare("SELECT id, thread_id, at, event_json FROM transcript_entries WHERE id > ? ORDER BY id LIMIT 32");
+  const started = performance.now();
   let last = checkpoint;
   try {
     for (const row of statement.iterate(checkpoint)) {
+      if (last > checkpoint && performance.now() - started >= 8) break;
       last = row.id;
+      if (hasDeletions && database.query(
+        "SELECT 1 FROM threads t JOIN bot_deletions d ON d.bot_id = t.bot_id WHERE t.id = ? LIMIT 1",
+      ).get(row.thread_id)) continue;
       const event = JSON.parse(row.event_json);
       if (event.legacy) continue;
       let stored = row.event_json;

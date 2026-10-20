@@ -96,13 +96,14 @@ export const createEventBus = (
   }
   const deliver = (envelope: UiEventEnvelope): void => measureStage("workspace_event_delivery", deliverNow, envelope)
 
-  const scheduleCaptureRetry = (): void => {
+  const scheduleCaptureRetry = (backlog = false): void => {
     if (stopped || captureRetryTimer) return
-    const delayMs = Math.min(1_000, 50 * 2 ** Math.min(captureRetryAttempt, 4))
-    captureRetryAttempt += 1
+    const delayMs = backlog ? 0 : Math.min(1_000, 50 * 2 ** Math.min(captureRetryAttempt, 4))
+    if (!backlog) captureRetryAttempt += 1
     captureRetryTimer = setTimeout(() => {
       captureRetryTimer = undefined
       captureTranscript()
+      if (!scheduled) flush()
     }, delayMs)
     captureRetryTimer.unref()
   }
@@ -113,8 +114,9 @@ export const createEventBus = (
     const busyTimeout = (database.query("PRAGMA busy_timeout").get() as { timeout: number }).timeout
     database.exec("PRAGMA busy_timeout = 0")
     try {
-      measureStage("transcript_journal_capture", captureEntries, database)
+      const more = measureStage("transcript_journal_capture", captureEntries, database)
       captureRetryAttempt = 0
+      if (more) scheduleCaptureRetry(true)
     } catch (error) {
       if (!isSqliteBusy(error)) throw error
       scheduleCaptureRetry()

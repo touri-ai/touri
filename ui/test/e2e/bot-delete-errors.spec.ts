@@ -22,9 +22,24 @@ for (const locale of ["pt-BR", "en"] as const) {
   test(`sidebar deletion confirms background cleanup in ${locale}`, async ({ page }, testInfo) => {
     await page.addInitScript(() => localStorage.setItem("touri.appearance.v1", "light"))
     await page.goto(`/test/e2e/bot-delete-error-harness.html?cleanup=accepted&lang=${locale}`)
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "light")
     await openDeletion(page, "sidebar")
     const dialog = page.getByRole("dialog", { name: "Excluir bot", exact: true })
     await dialog.getByLabel("Digite o nome do bot: mark").fill("mark")
+    const inputBounds = await dialog.getByLabel("Digite o nome do bot: mark").boundingBox()
+    const dialogBounds = await dialog.boundingBox()
+    if (!inputBounds || !dialogBounds) throw new Error("Deletion confirmation is not visible")
+    const confirmationTop = inputBounds.y - 24
+    await page.screenshot({
+      path: testInfo.outputPath(`bot-delete-before-${locale}.png`),
+      animations: "disabled",
+      clip: {
+        x: dialogBounds.x,
+        y: confirmationTop,
+        width: dialogBounds.width,
+        height: dialogBounds.y + dialogBounds.height - confirmationTop,
+      },
+    })
 
     await dialog.getByRole("button", { name: "Excluir bot", exact: true }).click()
 
@@ -38,6 +53,7 @@ for (const locale of ["pt-BR", "en"] as const) {
     const notice = page.getByRole("status").filter({ hasText: message })
     await expect(notice).toBeVisible()
     await expect(notice).toHaveClass(/notice-info/)
+    await notice.screenshot({ path: testInfo.outputPath(`bot-delete-after-${locale}.png`), animations: "disabled" })
     if (locale === "pt-BR")
       await notice.screenshot({
         path: testInfo.outputPath("bot-delete-background-cleanup.png"),

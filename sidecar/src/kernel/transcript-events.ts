@@ -9,15 +9,17 @@ export type TranscriptRef = {
   seq: number
 }
 
-/** Capture inside the writer transaction: the journal owns each body exactly once. */
-export const captureTranscript = (database: Database): void => {
+export const TRANSCRIPT_CAPTURE_LIMIT = 32
+
+/** Each checkpoint commits with its replay rows; a backlog continues on another task. */
+export const captureTranscript = (database: Database): boolean => {
   const checkpointRow = database
     .query("SELECT value FROM schema_meta WHERE key = 'transcript_event_checkpoint'")
     .get() as { value: string } | null
   const checkpoint = Number(checkpointRow?.value ?? 0)
-  if (!database.query("SELECT 1 FROM transcript_entries WHERE id > ? LIMIT 1").get(checkpoint)) return
+  if (!database.query("SELECT 1 FROM transcript_entries WHERE id > ? LIMIT 1").get(checkpoint)) return false
 
-  database
+  return database
     .transaction(() => {
       const checkpoint = Number(
         (
@@ -26,12 +28,32 @@ export const captureTranscript = (database: Database): void => {
           }
         ).value,
       )
-      const statement = database.prepare("SELECT id, at, event_json FROM transcript_entries WHERE id > ? ORDER BY id")
+      const hasDeletions = database.query("SELECT 1 FROM schema_meta WHERE key = 'bot_deletion_version'").get()
+      const statement = database.prepare(
+        "SELECT id, thread_id, at, event_json FROM transcript_entries WHERE id > ? ORDER BY id LIMIT ?",
+      )
+      const started = performance.now()
+      // The local cursor advances only after a row is processed in this transaction.
       let last = checkpoint
       try {
-        const rows = statement.iterate(checkpoint) as Iterable<{ id: number; at: number; event_json: string }>
+        const rows = statement.iterate(checkpoint, TRANSCRIPT_CAPTURE_LIMIT) as Iterable<{
+          id: number
+          thread_id: string
+          at: number
+          event_json: string
+        }>
         for (const row of rows) {
+          if (last > checkpoint && performance.now() - started >= 8) break
           last = row.id
+          // A resumed capture must not recreate replay copies after the purge's high-water mark.
+          if (
+            hasDeletions &&
+            database
+              .query(`SELECT 1 FROM threads t JOIN bot_deletions d ON d.bot_id = t.bot_id
+                WHERE t.id = ? LIMIT 1`)
+              .get(row.thread_id)
+          )
+            continue
           const event = JSON.parse(row.event_json) as (UiEvent & { legacy?: boolean }) | TranscriptRef
           if ("legacy" in event && event.legacy) continue
           if ("ref" in event) {
@@ -64,6 +86,7 @@ export const captureTranscript = (database: Database): void => {
       }
       if (last > checkpoint)
         database.query("UPDATE schema_meta SET value = ? WHERE key = 'transcript_event_checkpoint'").run(String(last))
+      return Boolean(database.query("SELECT 1 FROM transcript_entries WHERE id > ? LIMIT 1").get(last))
     })
     .immediate()
 }
