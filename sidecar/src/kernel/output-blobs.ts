@@ -95,7 +95,8 @@ type ExternalizationOptions = {
   reservedBytes?: number
 }
 
-type OutputBlobWrite = { id: string; path: string; content: string; bytes: number }
+export type OutputBlobWrite = { id: string; path: string; content: string; bytes: number }
+export type OutputBlobAttachment = { id: string; path: string; bytes: number; originPath: string }
 type ExternalizationPlan = { parts: MessagePart[]; writes: OutputBlobWrite[]; attachments: OutputBlobWrite[] }
 
 const planExternalizedParts = ({
@@ -175,7 +176,40 @@ const insertAttachmentRows = (database: Database, attachments: OutputBlobWrite[]
   })
 }
 
-/** Stream persistence keeps this synchronous adapter until the writer migration completes. */
+export const planStreamMessageParts = (
+  args: ExternalizationOptions,
+): {
+  parts: MessagePart[]
+  files: OutputBlobWrite[]
+  attachments: OutputBlobAttachment[]
+} => {
+  const plan = planExternalizedParts(args)
+
+  return {
+    parts: plan.parts,
+    files: plan.writes,
+    attachments: plan.attachments.map(({ id, path, bytes }) => ({ id, path, bytes, originPath: OUTPUT_BLOB_ORIGIN })),
+  }
+}
+
+export const writeOutputBlobFilesAsync = async ({
+  root,
+  files,
+}: {
+  root: string
+  files: OutputBlobWrite[]
+}): Promise<void> => {
+  const missing = await Promise.all(
+    files.map(async (file) => ((await privateFileExistsAsync({ root, path: file.path })) ? null : file)),
+  )
+  await Promise.all(
+    missing
+      .filter((file): file is OutputBlobWrite => file !== null)
+      .map(({ path, content }) => writePrivateFileAsync({ root, path, content })),
+  )
+}
+
+/** Synchronous compatibility path for callers that cannot await output externalization. */
 export const externalizeMessageParts = (args: ExternalizationOptions): MessagePart[] => {
   const plan = planExternalizedParts(args)
   plan.writes
@@ -190,16 +224,7 @@ export const externalizeMessageParts = (args: ExternalizationOptions): MessagePa
 /** File creation for timer and request handlers runs on the dedicated I/O worker. */
 export const externalizeMessagePartsAsync = async (args: ExternalizationOptions): Promise<MessagePart[]> => {
   const plan = planExternalizedParts(args)
-  const missing = await Promise.all(
-    plan.writes.map(async (blob) =>
-      (await privateFileExistsAsync({ root: args.appData, path: blob.path })) ? null : blob,
-    ),
-  )
-  await Promise.all(
-    missing
-      .filter((blob): blob is OutputBlobWrite => blob !== null)
-      .map(({ path, content }) => writePrivateFileAsync({ root: args.appData, path, content })),
-  )
+  await writeOutputBlobFilesAsync({ root: args.appData, files: plan.writes })
   insertAttachmentRows(args.database, plan.attachments)
   return plan.parts
 }

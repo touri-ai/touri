@@ -354,6 +354,7 @@ const { createKernel } = await import(process.env.TOURI_KERNEL);
 const { init } = await import(process.env.TOURI_STORE);
 const { createRuntimeEngine } = await import(process.env.TOURI_ENGINE);
 const { writeDatabaseAsync } = await import(process.env.TOURI_DATABASE_WRITE);
+const { externalizeMessageParts } = await import(process.env.TOURI_OUTPUT_BLOBS);
 const { streamPersistenceWorkerSource } = await import(process.env.TOURI_STREAM_WORKER);
 const library = dlopen(process.env.TOURI_SYNC_SHIM, {
   touri_start_sync_recording: { args: [], returns: "i32" },
@@ -420,6 +421,11 @@ const outputMessage = store.insertMessage({ message: {
   text: "Synthetic output", parts: [], sender: null, source: "local",
 } });
 if (!outputMessage.success) throw new Error("Could not create the synthetic output message");
+const streamOutputMessage = store.insertMessage({ message: {
+  id: "stream-output", threadId: "thread", parentId: "output", role: "assistant", kind: "text", status: "streaming", runId: null,
+  text: "", parts: [], sender: null, source: "local",
+} });
+if (!streamOutputMessage.success) throw new Error("Could not create the synthetic streaming message");
 library.symbols.touri_set_sqlite_only(0);
 library.symbols.touri_start_sync_recording();
 const output = await measure(async () => {
@@ -432,6 +438,39 @@ const output = await measure(async () => {
 });
 output.syncCalls = library.symbols.touri_stop_sync_recording();
 output.outputAttachmentId = JSON.parse(database.query("SELECT parts_json FROM messages WHERE id = 'output'").get().parts_json)[0].outputAttachmentId;
+library.symbols.touri_set_sqlite_only(0);
+library.symbols.touri_start_sync_recording();
+const legacy = await measure(() => externalizeMessageParts({
+  database,
+  appData: directory,
+  parts: [{
+    type: "tool_call", callId: "legacy-blob", tool: "read", summary: "Synthetic output",
+    inputJson: "{}", outputJson: "y".repeat(16 * 1024), ok: true, resolution: "succeeded",
+  }],
+}));
+legacy.syncCalls = library.symbols.touri_stop_sync_recording();
+library.symbols.touri_start_sync_recording();
+const streamOutput = await measure(async () => {
+  store.appendParts({
+    threadId: "thread",
+    messageId: "stream-output",
+    parts: [{
+      partIndex: 0,
+      part: {
+        type: "tool_call", callId: "stream-blob", tool: "read", summary: "Synthetic output",
+        inputJson: "{}", outputJson: "x".repeat(16 * 1024), ok: true, resolution: "succeeded",
+      },
+    }],
+  });
+  await store.flushWritesAsync();
+});
+streamOutput.syncCalls = library.symbols.touri_stop_sync_recording();
+const streamOutputParts = JSON.parse(database.query("SELECT parts_json FROM messages WHERE id = 'stream-output'").get().parts_json);
+const streamOutputAttachmentId = streamOutputParts[0].outputAttachmentId;
+const streamOutputBlob = database.query("SELECT path, bytes FROM attachments WHERE id = ?").get(streamOutputAttachmentId);
+streamOutput.durable = Boolean(
+  streamOutputBlob?.bytes === 16 * 1024 && (await Bun.file(streamOutputBlob.path).text()) === "x".repeat(16 * 1024),
+);
 library.symbols.touri_set_sqlite_only(1);
 const turn = Promise.withResolvers();
 let abortObserved = false;
@@ -460,7 +499,7 @@ const after = await measure(async () => {
   await locked.promise;
   const writeStartedAt = performance.now();
   const mainWrite = writeDatabaseAsync(database, () => {
-    const text = database.query("SELECT text FROM messages WHERE role = 'assistant'").get().text;
+    const text = database.query("SELECT text FROM messages WHERE role = 'assistant' AND id != 'stream-output'").get().text;
     database.query("INSERT INTO settings(key,value_json,updated_at) VALUES ('synthetic.concurrent',?,1)")
       .run(JSON.stringify(text));
   }).then(() => { mainWriteLatencyMs = Math.round(performance.now() - writeStartedAt); });
@@ -485,7 +524,7 @@ after.journalRows = database.query("SELECT COUNT(*) AS count FROM transcript_ent
 await engine.shutdown();
 await runtime.stop();
 workerUrls.forEach((url) => URL.revokeObjectURL(url));
-console.log(JSON.stringify({ delayMs: 200, before, after, output }));
+console.log(JSON.stringify({ delayMs: 200, before, after, output, legacy, streamOutput }));
 `
 
 test.skipIf(!canRunSyncBenchmark)(
@@ -522,6 +561,7 @@ test.skipIf(!canRunSyncBenchmark)(
         TOURI_STORE: fileURLToPath(new URL("../../src/store/index.ts", import.meta.url)),
         TOURI_ENGINE: fileURLToPath(new URL("../../src/runtime/engine.ts", import.meta.url)),
         TOURI_DATABASE_WRITE: fileURLToPath(new URL("../../src/kernel/database-write.ts", import.meta.url)),
+        TOURI_OUTPUT_BLOBS: fileURLToPath(new URL("../../src/kernel/output-blobs.ts", import.meta.url)),
         TOURI_BEFORE_DB: beforePath,
         TOURI_STREAM_WORKER: fileURLToPath(new URL("../../src/store/stream-persistence-worker.ts", import.meta.url)),
         TOURI_SYNC_SHIM: shimPath,
@@ -550,6 +590,8 @@ test.skipIf(!canRunSyncBenchmark)(
         text: string
       }
       output: { latencyMs: number; maxLagMs: number; samples: number; syncCalls: number; outputAttachmentId: string }
+      legacy: { latencyMs: number; maxLagMs: number; samples: number; syncCalls: number }
+      streamOutput: { latencyMs: number; maxLagMs: number; samples: number; syncCalls: number; durable: boolean }
     }
     console.info(`stream-sync-benchmark ${JSON.stringify(measured)}`)
 
@@ -568,6 +610,14 @@ test.skipIf(!canRunSyncBenchmark)(
     expect(measured.output.latencyMs).toBeGreaterThanOrEqual(150)
     expect(measured.output.maxLagMs).toBeLessThan(50)
     expect(measured.output.samples).toBeGreaterThan(10)
+    expect(measured.legacy.syncCalls).toBeGreaterThanOrEqual(1)
+    expect(measured.legacy.latencyMs).toBeGreaterThanOrEqual(150)
+    expect(measured.legacy.maxLagMs).toBeGreaterThan(100)
+    expect(measured.streamOutput.latencyMs).toBeGreaterThanOrEqual(150)
+    expect(measured.streamOutput.syncCalls).toBeGreaterThanOrEqual(1)
+    expect(measured.streamOutput.maxLagMs).toBeLessThan(50)
+    expect(measured.streamOutput.samples).toBeGreaterThan(10)
+    expect(measured.streamOutput.durable).toBe(true)
     expect(measured.output.outputAttachmentId).toMatch(/^[a-f0-9]{64}$/)
   },
   15_000,

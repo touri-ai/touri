@@ -41,6 +41,7 @@ const getFixture = async (
   const errors: number[] = []
   const persistence = createStreamPersistence({
     database,
+    appData: root,
     publish: (event) => published.push(event),
     onError: () => errors.push(Date.now()),
     ...(createWorker ? { createWorker } : {}),
