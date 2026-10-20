@@ -52,6 +52,7 @@ import { getDefaultMaxConcurrentRuns } from "../runtime/concurrency"
 import { touriVersion } from "../version"
 import { DEFAULT_BOT_VM_MEMORY_MB, DEFAULT_MACHINE_IDLE_MINUTES, validBotVmMemory } from "../vm/resources"
 import { cleanupBotHome, reconcileBotHomes, updateBotHome, writeBotHome } from "./bot-home"
+import { getBotModel, MODEL_VALIDATION_ERROR } from "./model"
 import { redeemFileGrant } from "./redeemFileGrant"
 import { createSendJournal } from "./send-journal"
 import { createStreamWriter } from "./stream-writer"
@@ -941,8 +942,12 @@ export const init = async (
       return { input: null, error: "Bot instructions exceed the 120 KiB limit" }
     if (Object.hasOwn(body, "instructions")) input.instructions = asString(body.instructions, "")
     else if (existing) input.instructions = existing.instructions
-    if (Object.hasOwn(body, "model")) input.model = body.model === null ? null : asString(body.model, "")
-    else if (existing) input.model = existing.model
+    if (Object.hasOwn(body, "model")) {
+      const model = getBotModel(body.model)
+      if (model === undefined) return { input: null, error: MODEL_VALIDATION_ERROR }
+
+      input.model = model
+    } else if (existing) input.model = existing.model
     if (input.model?.startsWith("touri-api-") && (provider !== "opencode" || !getApiModel(kernel, input.model)))
       return { input: null, errorCode: "api_model_removed", error: apiModelErrors.removed }
     if (Object.hasOwn(body, "reasoningEffort")) input.reasoningEffort = asReasoningEffort(body.reasoningEffort)

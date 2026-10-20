@@ -21,13 +21,15 @@ for (const width of [1440, 390]) {
   })
 }
 
-test("web notification preferences explain closed-page storage", async ({ page }) => {
+test("web notification preferences explain closed-app delivery", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto("/test/e2e/approval-notice-harness.html")
   await expect(page.locator(".approval-notice")).toBeVisible()
   await page.evaluate(() => window.dispatchEvent(new Event("touri-report-problem")))
   await page.getByRole("tab", { name: "Notificações", exact: true }).click()
-  await expect(page.getByText("Com esta página fechada, os avisos ficam guardados no servidor.")).toBeVisible()
+  await expect(
+    page.getByText("Com o touri fechado, você não recebe avisos. Ao abrir, as solicitações pendentes aparecem."),
+  ).toBeVisible()
 })
 
 for (const source of ["chat", "bell"]) {

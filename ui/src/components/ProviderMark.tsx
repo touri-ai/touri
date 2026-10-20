@@ -13,6 +13,16 @@ export const CLAUDE_MODELS = [
   { id: "haiku", label: "Haiku" },
 ] as const
 
+/** Curated models for providers without a discoverable catalog. Keep this list easy to update. */
+export const PROVIDER_MODELS: Record<Provider, ReadonlyArray<{ id: string; label: string }>> = {
+  codex: [
+    { id: "gpt-6.1-sol", label: "gpt-6.1-sol" },
+    { id: "gpt-6-luna", label: "gpt-6-luna" },
+  ],
+  claude: CLAUDE_MODELS,
+  opencode: [],
+}
+
 export const getClaudeModelLabel = (id: string): string | undefined =>
   CLAUDE_MODELS.find((model) => model.id === id)?.label
 

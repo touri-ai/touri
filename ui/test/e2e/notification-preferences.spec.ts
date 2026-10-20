@@ -15,7 +15,7 @@ for (const viewport of [
     await dialog.getByRole("tab", { name: "Notificações", exact: true }).click()
     await dialog.getByText("Escolher avisos e horário silencioso", { exact: true }).click()
 
-    await expect(dialog).toContainText("Com a página fechada, não há som nem avisos em segundo plano.")
+    await expect(dialog).toContainText("Com o touri fechado, você não recebe avisos.")
     await expect(dialog.getByRole("combobox", { name: "Aprovação", exact: true })).toHaveCount(0)
     await expect(dialog.getByRole("combobox", { name: "Pergunta", exact: true })).toHaveCount(0)
     await expect(dialog.getByRole("combobox", { name: "Precisa de você", exact: true })).toHaveCount(0)

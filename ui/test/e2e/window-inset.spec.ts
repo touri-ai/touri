@@ -33,8 +33,10 @@ themes.forEach((theme) => {
         await expect(banner).toHaveCount(0)
         await checkTitlebar(page)
         await page.getByRole("button", { name: /^Escolher modelo:/ }).click()
-        await checkBelowTitlebar(page.getByRole("dialog"))
-        await page.getByRole("button", { name: "Fechar diálogo", exact: true }).click()
+        const modelMenu = page.locator(".model-picker-popover")
+        await checkBelowTitlebar(modelMenu)
+        await page.keyboard.press("Escape")
+        await expect(modelMenu).toHaveCount(0)
 
         await page.goto("/test/e2e/window-inset-harness.html?scene=error")
         await expect(page.locator(".error-card")).toBeVisible()
