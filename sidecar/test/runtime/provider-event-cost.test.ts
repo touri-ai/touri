@@ -56,6 +56,7 @@ type BenchmarkResult = {
   blockCpuSamples: number
   duplicateSharesRun: boolean
   duplicateActiveRuns: number
+  retainedRunStates: number
   busEvents: number
   busPartsEvents: number
   stages: Array<BenchmarkStage>
@@ -440,6 +441,7 @@ const runReplay = async (count: number, historyMessages = 0, switchBranch = fals
     busPartsEvents: events.filter((type) => type === "message.parts").length,
     duplicateSharesRun: duplicate.run.id === queued.run.id && duplicate.run === queued.run,
     duplicateActiveRuns,
+    retainedRunStates: engine.getRetainedRunStateCount(),
     ...performanceResult,
     ...dispatch,
     streamingReply: streamingReplyId !== null && streamingReplyId === queued.run.replyMessageId,
@@ -523,6 +525,8 @@ test("Provider event cost stays independent of conversation history", async () =
   expect(recent.historyPartBytes).toBeGreaterThan(1_500_000)
   expect(recentPathLookups).toBe(1)
   expect(resultPathLookups).toBe(1)
+  expect(recent.retainedRunStates).toBe(0)
+  expect(result.retainedRunStates).toBe(0)
   expect(resultPerEventMs).toBeLessThan(recentPerEventMs * 3 + 0.5)
   expect(resultPerFrameMs).toBeLessThan(recentPerFrameMs * 3 + 0.5)
 })
