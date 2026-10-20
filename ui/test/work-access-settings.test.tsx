@@ -70,7 +70,7 @@ describe("work access settings", () => {
     expect(screen.getByText("Ana")).toBeDefined()
     expect(screen.getByText("Notebook")).toBeDefined()
     expect(screen.getByText("bia@example.test")).toBeDefined()
-    expect(screen.getByText(/esta sessão usa um endereço local ou privado/u)).toBeDefined()
+    expect(screen.getByText(/esta sessão usa um endereço local ou privado/iu)).toBeDefined()
 
     fireEvent.change(screen.getByLabelText("E-mail para teste"), { target: { value: "admin@example.test" } })
     fireEvent.click(screen.getByRole("button", { name: "Enviar e-mail de teste" }))

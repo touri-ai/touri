@@ -5,6 +5,7 @@ import { join } from "node:path"
 import { createRateLimiter } from "../../src/cli/auth/rateLimit"
 import { openAuthStore } from "../../src/cli/auth/store"
 import { createSecretStore } from "../../src/cli/host/secretStore"
+import { deviceSession } from "../../src/kernel/device-session"
 import { createWebGate, deviceCookieName } from "../../src/cli/web/gate"
 import { isDirectLoopback } from "../../src/cli/web/loopback"
 import { directoryAssets, embeddedAssets, type UiAsset, type UiAssets } from "../../src/cli/web/uiAssets"
@@ -20,7 +21,7 @@ afterEach(async () => {
   for (const cleanup of cleanups.splice(0)) await cleanup()
 })
 
-const makeGate = async () => {
+const makeGate = async ({ trustedProxy = false }: { trustedProxy?: boolean } = {}) => {
   const dir = mkdtempSync(join(tmpdir(), "touri-gate-"))
   const store = await openAuthStore({ filename: join(dir, "auth.db") })
   cleanups.push(async () => {
@@ -29,7 +30,7 @@ const makeGate = async () => {
   })
   const secrets = createSecretStore({ dir, env: { TOURI_SECRETS_KEY: "k" } })
   const limiter = createRateLimiter({ maxFailures: 3, windowMs: 60_000 })
-  const intercept = createWebGate({ store, secrets, ui, limiter })
+  const intercept = createWebGate({ store, secrets, ui, limiter, trustedProxy })
   const call = ({
     path,
     method = "GET",
@@ -102,6 +103,39 @@ test("a bearer token works for the CLI and a revoked device is refused", async (
   const [device] = store.listDevices()
   await store.revokeDevice(device?.id ?? "")
   expect((await call({ path: "/api/v1/bots", headers }))?.status).toBe(401)
+})
+
+test("same-origin API requests keep their URL origin when browsers omit Origin", async () => {
+  const { pair, intercept } = await makeGate()
+  const { token } = await pair()
+  const url = new URL("https://192.168.1.20:8795/api/v1/session")
+  const request = new Request(url, {
+    headers: { authorization: `Bearer ${token}`, "X-Touri-Client": "cli" },
+  })
+
+  const response = await intercept({ request, url, clientIp: "192.168.1.20" })
+
+  expect(response?.status).toBe(200)
+  expect(deviceSession(request.signal)?.origin).toBe(url.origin)
+})
+
+test("trusted proxy requests use forwarded host and protocol when Origin is absent", async () => {
+  const { pair, intercept } = await makeGate({ trustedProxy: true })
+  const { token } = await pair()
+  const url = new URL("http://127.0.0.1:8795/api/v1/session")
+  const request = new Request(url, {
+    headers: {
+      authorization: `Bearer ${token}`,
+      "X-Touri-Client": "cli",
+      "x-forwarded-host": "team-123.ts.net",
+      "x-forwarded-proto": "https",
+    },
+  })
+
+  const response = await intercept({ request, url, clientIp: "127.0.0.1" })
+
+  expect(response?.status).toBe(200)
+  expect(deviceSession(request.signal)?.origin).toBe("https://team-123.ts.net")
 })
 
 test("both API prefixes accept a paired native client and reject invalid, revoked and query tokens", async () => {
