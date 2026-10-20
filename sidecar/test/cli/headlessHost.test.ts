@@ -98,3 +98,20 @@ test("approval echoes preserve the request identity regardless of the displayed 
     rmSync(dir, { recursive: true, force: true })
   }
 })
+
+test("host key reads use the asynchronous secret-store boundary", async () => {
+  const secrets = {
+    keyOrigin: "env" as const,
+    get: () => {
+      throw new Error("Synchronous secret read must not run in a request")
+    },
+    getAsync: async (account: string) => (account === "browser-decision" ? "synthetic-key" : null),
+    set: async () => {},
+    delete: async () => {},
+  }
+  const callHost = createHeadlessHost({ secrets })({ publish: () => {}, log: () => {} })
+
+  const result = await callHost("keychain.get", { account: "browser-decision" })
+
+  expect(result).toEqual({ success: true, value: { value: "synthetic-key" } })
+})

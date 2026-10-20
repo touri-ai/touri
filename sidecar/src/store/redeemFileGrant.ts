@@ -2,7 +2,7 @@ import { basename } from "node:path"
 import type { Kernel } from "@touri/contracts"
 import { deviceSession } from "../kernel/device-session"
 import { MAX_ATTACHMENT_BYTES } from "../kernel/files"
-import { readGrantedFile } from "../kernel/readGrantedFile"
+import { readGrantedFileAsync } from "../kernel/readGrantedFile"
 
 export type RedeemFileGrantArgs = { kernel: Pick<Kernel, "callHost">; grantId: unknown; signal: AbortSignal }
 export type RedeemFileGrantSuccess = { success: true; name: string; content: Buffer }
@@ -31,7 +31,7 @@ export const redeemFileGrant = async ({
   if (!redeemed.success) return refused(403, "FILE_GRANT_REQUIRED", "Solte o arquivo novamente para anexar")
   try {
     const { path, dev, ino } = redeemed.value
-    const content = readGrantedFile({ path, dev, ino, maxBytes: MAX_ATTACHMENT_BYTES })
+    const content = await readGrantedFileAsync({ path, dev, ino, maxBytes: MAX_ATTACHMENT_BYTES }, signal)
     return { success: true, name: basename(path), content }
   } catch (error) {
     return refused(400, "ATTACHMENT_ERROR", error instanceof Error ? error.message : "Não foi possível ler o arquivo")

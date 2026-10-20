@@ -845,6 +845,17 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
       apiModels.set(model.id, model)
       return { model } as never
     }
+    if (key === "PATCH /api-models/:id/browser-decisions") {
+      const selected = apiModels.get(pathValues.id || "")
+      if (!selected) throw new Error("Missing API model")
+      const { enabled } = input as ApiRoutes["PATCH /api-models/:id/browser-decisions"]["req"]
+      const model = { ...selected, browserDecisions: enabled }
+      apiModels.forEach((entry) => {
+        apiModels.set(entry.id, { ...entry, browserDecisions: false })
+      })
+      apiModels.set(model.id, model)
+      return { model } as never
+    }
     if (key === "DELETE /api-models/:id") {
       apiModels.delete(pathValues.id || "")
       return {} as never

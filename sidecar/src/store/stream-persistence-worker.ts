@@ -247,6 +247,12 @@ const writeBatch = (batch) => {
     const saved = JSON.parse(previous.result_json);
     return getBatchResult(batch.id, saved.entryIds, batch.quarantine === true);
   }
+  const attachmentRows = new Map((batch.attachments ?? []).map((attachment) => [attachment.id, attachment]));
+  const insertAttachment = attachmentRows.size
+    ? database.query(
+        "INSERT OR IGNORE INTO attachments(id,path,mime,bytes,origin_path,created_at) VALUES (?,?,'text/plain',?,?,?)",
+      )
+    : null;
   const firstEntryId = database.query("SELECT COALESCE(MAX(id), 0) AS id FROM transcript_entries").get().id;
   // Batch projections stay local and mutable so one transaction can rebase provider chunks in order.
   const committed = [];
@@ -351,6 +357,14 @@ const writeBatch = (batch) => {
       event.updatedAt ?? Date.now(),
     );
     if (event.type === "message.parts") {
+      const attachmentIds = new Set(event.parts.flatMap(({ part }) =>
+        "outputAttachmentId" in part && part.outputAttachmentId ? [part.outputAttachmentId] : [],
+      ));
+      for (const attachment of attachmentRows.values()) {
+        if (!attachmentIds.has(attachment.id)) continue;
+
+        insertAttachment?.run(attachment.id, attachment.path, attachment.bytes, attachment.originPath, Date.now());
+      }
       database.query("INSERT INTO transcript_part_entries(entry_id, thread_id, message_id) VALUES (?, ?, ?)")
         .run(entry.lastInsertRowid, event.threadId, event.messageId);
       if (head.run_id && run?.thread_id === event.threadId) {

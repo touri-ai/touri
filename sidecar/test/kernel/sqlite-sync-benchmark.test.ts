@@ -354,19 +354,26 @@ const { createKernel } = await import(process.env.TOURI_KERNEL);
 const { init } = await import(process.env.TOURI_STORE);
 const { createRuntimeEngine } = await import(process.env.TOURI_ENGINE);
 const { writeDatabaseAsync } = await import(process.env.TOURI_DATABASE_WRITE);
+const { externalizeMessageParts } = await import(process.env.TOURI_OUTPUT_BLOBS);
 const { streamPersistenceWorkerSource } = await import(process.env.TOURI_STREAM_WORKER);
 const library = dlopen(process.env.TOURI_SYNC_SHIM, {
   touri_start_sync_recording: { args: [], returns: "i32" },
   touri_stop_sync_recording: { args: [], returns: "i32" },
   touri_set_sync_delay_ms: { args: ["i32"], returns: "i32" },
   touri_set_sqlite_only: { args: ["i32"], returns: "i32" },
+  touri_fail_next_directory_sync: { args: [], returns: "i32" },
+  touri_get_directory_sync_successes: { args: [], returns: "i32" },
 });
 const measure = async (operation) => {
   let maxLagMs = 0;
   let samples = 0;
+  const lags = [];
   let expectedAt = performance.now() + 5;
   const probe = setInterval(() => {
-    maxLagMs = Math.max(maxLagMs, performance.now() - expectedAt);
+    const lag = Math.max(0, performance.now() - expectedAt);
+    maxLagMs = Math.max(maxLagMs, lag);
+    // The probe owns this bounded sample window and stops with the operation.
+    if (lags.length < 10000) lags.push(lag);
     expectedAt = performance.now() + 5;
     samples += 1;
   }, 5);
@@ -374,7 +381,9 @@ const measure = async (operation) => {
   await operation();
   await Bun.sleep(10);
   clearInterval(probe);
-  return { latencyMs: Math.round(performance.now() - startedAt), maxLagMs: Math.round(maxLagMs), samples };
+  const ordered = lags.toSorted((left, right) => left - right);
+  return { latencyMs: Math.round(performance.now() - startedAt), maxLagMs: Math.round(maxLagMs),
+    p99Ms: Math.round(ordered[Math.floor(ordered.length * 0.99)] ?? 0), intervalMs: 5, samples };
 };
 const beforeDatabase = new Database(process.env.TOURI_BEFORE_DB);
 beforeDatabase.exec("PRAGMA synchronous = FULL; PRAGMA wal_autocheckpoint = 0");
@@ -420,6 +429,11 @@ const outputMessage = store.insertMessage({ message: {
   text: "Synthetic output", parts: [], sender: null, source: "local",
 } });
 if (!outputMessage.success) throw new Error("Could not create the synthetic output message");
+const streamOutputMessage = store.insertMessage({ message: {
+  id: "stream-output", threadId: "thread", parentId: "output", role: "assistant", kind: "text", status: "streaming", runId: null,
+  text: "", parts: [], sender: null, source: "local",
+} });
+if (!streamOutputMessage.success) throw new Error("Could not create the synthetic streaming message");
 library.symbols.touri_set_sqlite_only(0);
 library.symbols.touri_start_sync_recording();
 const output = await measure(async () => {
@@ -432,6 +446,85 @@ const output = await measure(async () => {
 });
 output.syncCalls = library.symbols.touri_stop_sync_recording();
 output.outputAttachmentId = JSON.parse(database.query("SELECT parts_json FROM messages WHERE id = 'output'").get().parts_json)[0].outputAttachmentId;
+library.symbols.touri_set_sqlite_only(0);
+library.symbols.touri_start_sync_recording();
+const legacy = await measure(() => externalizeMessageParts({
+  database,
+  appData: directory,
+  parts: [{
+    type: "tool_call", callId: "legacy-blob", tool: "read", summary: "Synthetic output",
+    inputJson: "{}", outputJson: "y".repeat(16 * 1024), ok: true, resolution: "succeeded",
+  }],
+}));
+legacy.syncCalls = library.symbols.touri_stop_sync_recording();
+library.symbols.touri_start_sync_recording();
+const streamOutput = await measure(async () => {
+  store.appendParts({
+    threadId: "thread",
+    messageId: "stream-output",
+    parts: [{
+      partIndex: 0,
+      part: {
+        type: "tool_call", callId: "stream-blob", tool: "read", summary: "Synthetic output",
+        inputJson: "{}", outputJson: "x".repeat(16 * 1024), ok: true, resolution: "succeeded",
+      },
+    }],
+  });
+  await store.flushWritesAsync();
+});
+streamOutput.syncCalls = library.symbols.touri_stop_sync_recording();
+const streamOutputParts = JSON.parse(database.query("SELECT parts_json FROM messages WHERE id = 'stream-output'").get().parts_json);
+const streamOutputAttachmentId = streamOutputParts[0].outputAttachmentId;
+const streamOutputBlob = database.query("SELECT path, bytes FROM attachments WHERE id = ?").get(streamOutputAttachmentId);
+streamOutput.durable = Boolean(
+  streamOutputBlob?.bytes === 16 * 1024 && (await Bun.file(streamOutputBlob.path).text()) === "x".repeat(16 * 1024),
+);
+library.symbols.touri_start_sync_recording();
+library.symbols.touri_fail_next_directory_sync();
+const retriedOutput = await measure(async () => {
+  store.appendParts({ threadId: "thread", messageId: "stream-output", parts: [{ partIndex: 1, part: {
+    type: "tool_call", callId: "retry-blob", tool: "read", summary: "Synthetic retry",
+    inputJson: "{}", outputJson: "retry".repeat(4096), ok: true, resolution: "succeeded",
+  } }] });
+  await store.flushWritesAsync();
+});
+retriedOutput.directorySyncs = library.symbols.touri_get_directory_sync_successes();
+retriedOutput.syncCalls = library.symbols.touri_stop_sync_recording();
+const heavyMessages = Array.from({ length: 3 }, (_, index) => "heavy-" + index);
+heavyMessages.forEach((id) => {
+  const inserted = store.insertMessage({ message: {
+    id, threadId: "thread", parentId: "output", role: "assistant", kind: "text", status: "streaming", runId: null,
+    text: "", parts: [], sender: null, source: "local",
+  } });
+  if (!inserted.success) throw new Error("Could not create synthetic heavy stream");
+});
+const outputBytes = 256 * 1024;
+const outputCount = 12;
+library.symbols.touri_start_sync_recording();
+const heavy = await measure(async () => {
+  for (let index = 0; index < outputCount; index++) {
+    store.appendParts({ threadId: "thread", messageId: heavyMessages[index % 3], parts: [{
+      partIndex: Math.floor(index / 3), part: {
+        type: "tool_call", callId: "heavy-" + index, tool: "read", summary: "Synthetic heavy output",
+        inputJson: "{}", outputJson: String(index).padStart(2, "0") + "x".repeat(outputBytes - 2),
+        ok: true, resolution: "succeeded",
+      },
+    }] });
+    await Bun.sleep(0);
+  }
+  await store.flushWritesAsync();
+});
+heavy.syncCalls = library.symbols.touri_stop_sync_recording();
+heavy.bytes = outputBytes * outputCount;
+heavy.streams = heavyMessages.length;
+heavy.durable = (await Promise.all(heavyMessages.map(async (id, streamIndex) => {
+  const parts = JSON.parse(database.query("SELECT parts_json FROM messages WHERE id = ?").get(id).parts_json);
+  return (await Promise.all(parts.map(async (part, partIndex) => {
+    const attachment = database.query("SELECT path, bytes FROM attachments WHERE id = ?").get(part.outputAttachmentId);
+    const expected = String(partIndex * 3 + streamIndex).padStart(2, "0") + "x".repeat(outputBytes - 2);
+    return attachment?.bytes === outputBytes && (await Bun.file(attachment.path).text()) === expected;
+  }))).every(Boolean) && parts.length === outputCount / heavyMessages.length;
+}))).every(Boolean);
 library.symbols.touri_set_sqlite_only(1);
 const turn = Promise.withResolvers();
 let abortObserved = false;
@@ -460,7 +553,7 @@ const after = await measure(async () => {
   await locked.promise;
   const writeStartedAt = performance.now();
   const mainWrite = writeDatabaseAsync(database, () => {
-    const text = database.query("SELECT text FROM messages WHERE role = 'assistant'").get().text;
+    const text = database.query("SELECT text FROM messages WHERE role = 'assistant' AND id != 'stream-output' AND id NOT LIKE 'heavy-%'").get().text;
     database.query("INSERT INTO settings(key,value_json,updated_at) VALUES ('synthetic.concurrent',?,1)")
       .run(JSON.stringify(text));
   }).then(() => { mainWriteLatencyMs = Math.round(performance.now() - writeStartedAt); });
@@ -485,7 +578,7 @@ after.journalRows = database.query("SELECT COUNT(*) AS count FROM transcript_ent
 await engine.shutdown();
 await runtime.stop();
 workerUrls.forEach((url) => URL.revokeObjectURL(url));
-console.log(JSON.stringify({ delayMs: 200, before, after, output }));
+console.log(JSON.stringify({ delayMs: 200, before, after, output, legacy, streamOutput, retriedOutput, heavy }));
 `
 
 test.skipIf(!canRunSyncBenchmark)(
@@ -522,6 +615,7 @@ test.skipIf(!canRunSyncBenchmark)(
         TOURI_STORE: fileURLToPath(new URL("../../src/store/index.ts", import.meta.url)),
         TOURI_ENGINE: fileURLToPath(new URL("../../src/runtime/engine.ts", import.meta.url)),
         TOURI_DATABASE_WRITE: fileURLToPath(new URL("../../src/kernel/database-write.ts", import.meta.url)),
+        TOURI_OUTPUT_BLOBS: fileURLToPath(new URL("../../src/kernel/output-blobs.ts", import.meta.url)),
         TOURI_BEFORE_DB: beforePath,
         TOURI_STREAM_WORKER: fileURLToPath(new URL("../../src/store/stream-persistence-worker.ts", import.meta.url)),
         TOURI_SYNC_SHIM: shimPath,
@@ -550,6 +644,10 @@ test.skipIf(!canRunSyncBenchmark)(
         text: string
       }
       output: { latencyMs: number; maxLagMs: number; samples: number; syncCalls: number; outputAttachmentId: string }
+      legacy: { latencyMs: number; maxLagMs: number; samples: number; syncCalls: number }
+      streamOutput: { latencyMs: number; maxLagMs: number; samples: number; syncCalls: number; durable: boolean }
+      retriedOutput: { directorySyncs: number; syncCalls: number }
+      heavy: { bytes: number; streams: number; syncCalls: number; maxLagMs: number; p99Ms: number; durable: boolean }
     }
     console.info(`stream-sync-benchmark ${JSON.stringify(measured)}`)
 
@@ -568,9 +666,25 @@ test.skipIf(!canRunSyncBenchmark)(
     expect(measured.output.latencyMs).toBeGreaterThanOrEqual(150)
     expect(measured.output.maxLagMs).toBeLessThan(50)
     expect(measured.output.samples).toBeGreaterThan(10)
+    expect(measured.legacy.syncCalls).toBeGreaterThanOrEqual(1)
+    expect(measured.legacy.latencyMs).toBeGreaterThanOrEqual(150)
+    expect(measured.legacy.maxLagMs).toBeGreaterThan(100)
+    expect(measured.streamOutput.latencyMs).toBeGreaterThanOrEqual(150)
+    expect(measured.streamOutput.syncCalls).toBeGreaterThanOrEqual(1)
+    expect(measured.streamOutput.maxLagMs).toBeLessThan(50)
+    expect(measured.streamOutput.samples).toBeGreaterThan(10)
+    expect(measured.streamOutput.durable).toBe(true)
+    expect(measured.retriedOutput.directorySyncs).toBeGreaterThanOrEqual(1)
+    expect(measured.retriedOutput.syncCalls).toBeGreaterThanOrEqual(4)
+    expect(measured.heavy.bytes).toBe(3 * 1024 * 1024)
+    expect(measured.heavy.streams).toBe(3)
+    expect(measured.heavy.syncCalls).toBeGreaterThanOrEqual(24)
+    expect(measured.heavy.maxLagMs).toBeLessThan(50)
+    expect(measured.heavy.p99Ms).toBeLessThan(50)
+    expect(measured.heavy.durable).toBe(true)
     expect(measured.output.outputAttachmentId).toMatch(/^[a-f0-9]{64}$/)
   },
-  15_000,
+  45_000,
 )
 
 const getStreamBenchmarkDatabase = (filename: string): void => {

@@ -862,15 +862,18 @@ const MessageBubble = ({
               message.parts.some(
                 (part) => part.type === "notice" && /^machine_service_(?:unavailable|start_failed):/.test(part.text),
               )) && <MachineServiceButton api={api} botId={vmBotId} />}
-          {message.runId && (!vmBotId || machine?.status === "running") && (
-            <button
-              type="button"
-              className="text-button retry-button"
-              onClick={() => void onRetry(message.runId ?? "")}
-            >
-              {t("Tentar novamente")}
-            </button>
-          )}
+          {message.runId &&
+            (!vmBotId ||
+              machine?.status === "running" ||
+              (machine?.status === "error" && !/^TOURI-E800[12]$/.test(runError.code))) && (
+              <button
+                type="button"
+                className="text-button retry-button"
+                onClick={() => void onRetry(message.runId ?? "")}
+              >
+                {t("Tentar novamente")}
+              </button>
+            )}
         </>
       )}
     </div>
@@ -1458,7 +1461,6 @@ export const ChatPanel = ({
           machine,
           onOpenPermissions,
           onOpenProviderLogin: group ? undefined : onOpenProviderLogin,
-          onRetry,
         }}
         bot={group ? null : bot}
         groupName={group?.name}

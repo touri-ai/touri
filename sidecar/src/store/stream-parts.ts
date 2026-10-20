@@ -1,8 +1,13 @@
 import type { Database } from "bun:sqlite"
 import type { MessagePart } from "@touri/contracts"
-import { externalizeMessageParts } from "../kernel/output-blobs"
+import { type OutputBlobAttachment, type OutputBlobWrite, planStreamMessageParts } from "../kernel/output-blobs"
 
 type PartPatch = { partIndex: number; part: MessagePart }
+export type PreparedStreamParts = {
+  parts: PartPatch[]
+  files: OutputBlobWrite[]
+  attachments: OutputBlobAttachment[]
+}
 
 // Completed inline output is capped in bytes and entries. Retired parts and text never enter this window.
 export const STREAM_INLINE_PARTS = 128
@@ -17,7 +22,7 @@ export const createStreamPartWriter = (database: Database, appData: string, init
     .reduce((total, { part }) => total + getOutputBytes(part), 0)
   let liveBytes = initial.reduce((total, part) => total + getLiveBytes(part), 0)
 
-  return (patches: PartPatch[]): PartPatch[] => {
+  return (patches: PartPatch[]): PreparedStreamParts => {
     const latest = new Map(patches.map((patch) => [patch.partIndex, patch]))
     const unique = Array.from(latest.values())
     const indices = new Set(latest.keys())
@@ -37,16 +42,19 @@ export const createStreamPartWriter = (database: Database, appData: string, init
       return total - getOutputBytes(part)
     }, reservedInlineBytes)
     const window = incoming.reduce(getOrderedWindow, previous)
-    const externalized = externalizeMessageParts({
+    const externalized = planStreamMessageParts({
       database,
       appData,
       parts: window.map(({ part }) => part),
       reservedBytes: nextLiveBytes + nextReservedInlineBytes,
     })
-    const next = window.map(({ partIndex, part }, index) => ({ partIndex, part: externalized[index] ?? part }))
+    const next = window.map(({ partIndex, part }, index) => ({
+      partIndex,
+      part: externalized.parts[index] ?? part,
+    }))
     const inline = next.filter(({ part }) => hasOutput(part) && isCompleted(part))
     const overflow = inline.slice(STREAM_INLINE_PARTS)
-    const overflowParts = externalizeMessageParts({
+    const overflowParts = planStreamMessageParts({
       database,
       appData,
       parts: overflow.map(({ part }) => part),
@@ -54,7 +62,7 @@ export const createStreamPartWriter = (database: Database, appData: string, init
     })
     const overflowPatches = overflow.map(({ partIndex, part }, index) => ({
       partIndex,
-      part: overflowParts[index] ?? part,
+      part: overflowParts.parts[index] ?? part,
     }))
     const replacements = new Map(next.concat(overflowPatches).map(({ partIndex, part }) => [partIndex, part]))
     const prepared = patches.map(({ partIndex, part }) => ({ partIndex, part: replacements.get(partIndex) ?? part }))
@@ -74,7 +82,11 @@ export const createStreamPartWriter = (database: Database, appData: string, init
     liveBytes = nextLiveBytes
     reservedInlineBytes = nextReservedInlineBytes
 
-    return prepared.concat(retired)
+    return {
+      parts: prepared.concat(retired),
+      files: externalized.files.concat(overflowParts.files),
+      attachments: externalized.attachments.concat(overflowParts.attachments),
+    }
   }
 }
 

@@ -18,6 +18,8 @@ database.exec(`
   CREATE TABLE workspace_message_attention (
     approval_id TEXT, thread_id TEXT NOT NULL, type TEXT NOT NULL, decision TEXT
   );
+  CREATE TABLE workspace_attention_backfill (id INTEGER PRIMARY KEY);
+  CREATE TABLE notifications (kind TEXT NOT NULL, thread_id TEXT, request_id TEXT, resolved_at INTEGER);
   CREATE TABLE runs (id TEXT PRIMARY KEY, thread_id TEXT NOT NULL, request_message_id TEXT);
   CREATE TABLE messages (
     thread_id TEXT NOT NULL, id TEXT NOT NULL, sender_json TEXT, parts_json TEXT NOT NULL DEFAULT '[]',
@@ -50,7 +52,9 @@ database.exec(`
     ('other-dm', 'owner-request', 'private-file'), ('team-chat', 'channel-message', 'channel-file');
 `)
 
-afterEach(() => database.exec("DELETE FROM group_run_links"))
+afterEach(() => {
+  database.exec("DELETE FROM group_run_links; DELETE FROM notifications; DELETE FROM workspace_attention_backfill")
+})
 
 const access = createWorkAccess({
   database,
@@ -226,6 +230,22 @@ test("only a bot's responsible person can approve its pending request", () => {
       event: { type: "notify", threadId: "team-chat", kind: "approval", requestId: "team-approval" } as UiEvent,
     }),
   ).toBe(false)
+})
+
+test("pending approval notifications remain available while the workspace projection catches up", () => {
+  database.exec("INSERT INTO workspace_attention_backfill(id) VALUES (1)")
+  database
+    .query(
+      "INSERT INTO notifications(kind, thread_id, request_id) VALUES ('approval', 'member-dm', 'catchup-approval')",
+    )
+    .run()
+
+  expect(access.canApprove({ personId: "member", approvalId: "catchup-approval" })).toBe(true)
+  expect(access.canApprove({ personId: "owner", approvalId: "catchup-approval" })).toBe(false)
+
+  database.query("UPDATE notifications SET resolved_at = 1 WHERE request_id = 'catchup-approval'").run()
+
+  expect(access.canApprove({ personId: "member", approvalId: "catchup-approval" })).toBe(false)
 })
 
 test("members cannot inspect or stop another person's runs", () => {

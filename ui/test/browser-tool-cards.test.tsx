@@ -135,3 +135,102 @@ test("browser card summaries say what the action targets and why it failed, in p
   )
   expect(view.container.textContent).toContain("Pedir controle ao usuário · Faça login no banco")
 })
+
+test("sensitive browser actions ask the user to take over the tab", () => {
+  const view = render(
+    <ToolCallCard
+      part={{
+        ...tool,
+        tool: "mcp__touri__browser_click",
+        ok: false,
+        inputJson: '{"tabId":"t_1","target":{"kind":"role","role":"button","name":"Buy now"}}',
+        outputJson: JSON.stringify({
+          content: [
+            {
+              type: "text",
+              text: "ERROR DENIED: TOURI_BROWSER_TAKEOVER_REQUIRED|sensitive_action\\nAsk the user to take over this browser tab.",
+            },
+          ],
+        }),
+      }}
+    />,
+  )
+  expect(view.container.textContent).toContain(
+    "Esta ação do navegador precisa da sua confirmação. Assuma a aba para concluí-la.",
+  )
+  expect(view.container.textContent).not.toContain("TOURI_BROWSER_TAKEOVER_REQUIRED")
+})
+
+test("form submissions ask the user to take over the tab", () => {
+  const view = render(
+    <ToolCallCard
+      part={{
+        ...tool,
+        tool: "mcp__touri__browser_click",
+        ok: false,
+        inputJson: '{"tabId":"t_1","target":{"kind":"role","role":"button","name":"Search trips"}}',
+        outputJson: JSON.stringify({
+          content: [
+            {
+              type: "text",
+              text: "ERROR DENIED: TOURI_BROWSER_TAKEOVER_REQUIRED|form_submit\\nAsk the user to take over this browser tab.",
+            },
+          ],
+        }),
+      }}
+    />,
+  )
+  expect(view.container.textContent).toContain(
+    "Esta ação do navegador precisa da sua confirmação. Assuma a aba para concluí-la.",
+  )
+  expect(view.container.textContent).not.toContain("TOURI_BROWSER_TAKEOVER_REQUIRED")
+})
+
+test("low-confidence browser decisions ask a direct question in chat", () => {
+  const view = render(
+    <ToolCallCard
+      part={{
+        ...tool,
+        tool: "mcp__touri__browser_click",
+        ok: false,
+        inputJson: '{"tabId":"t_1","target":{"kind":"role","role":"option","name":"Lisboa"}}',
+        outputJson: JSON.stringify({
+          content: [
+            {
+              type: "text",
+              text: 'ERROR AMBIGUOUS_TARGET: Decision unclear\\nTOURI_BROWSER_DECISION_QUESTION|{"intent":"option Lisboa","choices":"Lisboa, Portugal; Lisboa Airport"}',
+            },
+          ],
+        }),
+      }}
+    />,
+  )
+  expect(view.container.textContent).toContain("Não consegui escolher com segurança. Qual opção devo usar?")
+  expect(view.container.textContent).toContain("Lisboa Airport")
+})
+
+test("browser decision fallback explains when the saved model has no credit", () => {
+  const view = render(
+    <ToolCallCard
+      part={{
+        ...tool,
+        tool: "mcp__touri__browser_click",
+        ok: false,
+        inputJson: '{"tabId":"t_1","target":{"kind":"role","role":"option","name":"Lisboa"}}',
+        outputJson: JSON.stringify({
+          content: [
+            {
+              type: "text",
+              text: "ERROR AMBIGUOUS_TARGET: Two targets match.\\nTOURI_BROWSER_DECISION_HINT|no_credit",
+            },
+          ],
+        }),
+      }}
+    />,
+  )
+  expect(view.container.textContent).toContain(
+    "A decisão assistida do navegador está sem crédito. O touri continuou usando o comportamento atual do navegador. Confira a página antes de continuar.",
+  )
+  expect(view.container.textContent).not.toContain("TOURI_BROWSER_DECISION_HINT")
+  expect(view.container.textContent).not.toContain("Two targets match.")
+})

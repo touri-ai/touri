@@ -123,6 +123,7 @@ const contractRouteKeys: Array<keyof ApiRoutes> = [
   "POST /api-models/models",
   "POST /api-models/test",
   "POST /api-models/:id/test",
+  "PATCH /api-models/:id/browser-decisions",
   "DELETE /api-models/:id",
   "PATCH /settings",
 ]

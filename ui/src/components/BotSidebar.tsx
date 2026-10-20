@@ -190,7 +190,7 @@ export const Sidebar = (props: SidebarProps) => {
     const currentProps = propsRef.current
     currentProps.onNavigate?.()
     const currentSelection = selectionState.current
-    if (id !== currentSelection.botId || currentSelection.selectedThreadIsGroup) currentProps.onSelect(id)
+    currentProps.onSelect(id)
     if (currentSelection.section !== "bots") currentProps.onChat()
   }, [])
   const selectThread = useCallback((id: Id): void => {

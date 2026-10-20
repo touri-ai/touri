@@ -12,7 +12,15 @@ import { withDeadline } from "../kernel/policy"
 import { buildChildEnv } from "../kernel/shell-env"
 import { openCodeBinary } from "../runtime/opencode/config"
 import { getApiConnection, getDiscoveredModels, isApiCompletion, requestApi } from "./client"
-import { deleteApiModel, getApiModelAccount, getApiModels, isApiModelId, saveApiModel } from "./config"
+import {
+  deleteApiModel,
+  getApiModelAccount,
+  getApiModelById,
+  getApiModels,
+  isApiModelId,
+  saveApiModel,
+  saveBrowserDecisionModel,
+} from "./config"
 
 export const name = "api-models"
 type Context = { kernel: Kernel; fetchImpl: typeof fetch }
@@ -31,6 +39,11 @@ export const createApiModels = (kernel: Kernel, fetchImpl = fetch): RouteModule 
         method: "POST",
         path: "/api-models/:id/test",
         handler: ({ params }) => testSavedModel(context, params.id ?? ""),
+      },
+      {
+        method: "PATCH",
+        path: "/api-models/:id/browser-decisions",
+        handler: async ({ params, body }) => setBrowserDecisions(kernel, params.id ?? "", body),
       },
       { method: "DELETE", path: "/api-models/:id", handler: ({ params }) => removeModel(kernel, params.id ?? "") },
     ],
@@ -174,11 +187,27 @@ const testSavedModel = async (context: Context, id: string): Promise<RouteRespon
 }
 
 const removeModel = async (kernel: Kernel, id: string): Promise<RouteResponse> => {
-  const model = getApiModels(kernel).find((candidate) => candidate.id === id)
+  const model = getApiModelById(kernel, id)
   if (!model) return json(200, {})
   if (!(await removeKey(kernel, id))) return failure("secret_unavailable", 503)
 
   deleteApiModel(kernel, id)
+  if (model.browserDecisions === true) kernel.services.use("browser.updateDecisionModel")?.(null)
 
   return json(200, {})
+}
+
+const setBrowserDecisions = (kernel: Kernel, id: string, body: unknown): RouteResponse => {
+  if (!body || typeof body !== "object" || !("enabled" in body) || typeof body.enabled !== "boolean")
+    return failure("invalid_settings")
+
+  const selected = getApiModelById(kernel, id)
+  if (!selected) return failure("removed", 404)
+  if (selected.preset !== "openrouter") return failure("invalid_settings")
+
+  const model = { ...selected, browserDecisions: body.enabled }
+  saveBrowserDecisionModel(kernel, model)
+  kernel.services.use("browser.updateDecisionModel")?.(body.enabled ? model : null)
+
+  return json(200, { model })
 }

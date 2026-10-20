@@ -1,7 +1,8 @@
 import type { Database } from "bun:sqlite"
 import type { Kernel, Message, MessagePart, StoreApi, Thread, UiEvent } from "@touri/contracts"
+import type { OutputBlobAttachment, OutputBlobWrite } from "../kernel/output-blobs"
 import type { PerformanceStageRunner } from "../kernel/performance"
-import { createStreamPartWriter } from "./stream-parts"
+import { createStreamPartWriter, type PreparedStreamParts } from "./stream-parts"
 import { createStreamPersistence, type RejectionWrite } from "./stream-persistence"
 import { appendRejection } from "./transcript-rejections"
 
@@ -16,7 +17,12 @@ export const STREAM_WRITE_LIMITS = {
 type Delta = Extract<UiEvent, { type: "message.delta" }>
 type Parts = Extract<UiEvent, { type: "message.parts" }>
 type PendingDelta = Delta & { expectedSeq?: number; snapshotSeq?: number }
-type PendingStreamEvent = PendingDelta | (Parts & { snapshotSeq?: number })
+type PendingParts = Parts & {
+  snapshotSeq?: number
+  _outputBlobFiles?: OutputBlobWrite[]
+  _outputBlobAttachments?: OutputBlobAttachment[]
+}
+type PendingStreamEvent = PendingDelta | PendingParts
 type PendingEvent = PendingStreamEvent | RejectionWrite
 type Projection = {
   message: Message
@@ -29,8 +35,18 @@ type Projection = {
 const getEventBytes = (event: PendingEvent): number => Buffer.byteLength(JSON.stringify(event))
 const getPayloadBytes = (event: PendingEvent): number => {
   if (event.type === "message.delta") return Buffer.byteLength(event.delta)
-  if (event.type === "message.parts") return Buffer.byteLength(JSON.stringify(event.parts))
+  if (event.type === "message.parts")
+    return (
+      Buffer.byteLength(JSON.stringify(event.parts)) +
+      (event._outputBlobFiles ?? []).reduce((total, file) => total + file.bytes, 0)
+    )
   return getEventBytes(event)
+}
+const getCleanEvent = (event: PendingEvent): PendingEvent => {
+  if (event.type !== "message.parts") return event
+  const { _outputBlobFiles: _files, _outputBlobAttachments: _attachments, ...clean } = event
+
+  return clean
 }
 
 const isSnapshotCovered = (projection: Projection, seq: number | undefined): boolean =>
@@ -97,6 +113,7 @@ export const createStreamWriter = ({
   const outside = new WeakSet<PendingEvent>()
   const persistence = createStreamPersistence({
     database,
+    appData: kernel.paths.appData,
     ...(createWorker ? { createWorker } : {}),
     publish: (event) => kernel.publish(event),
     onReadyWaitExceeded: () => {
@@ -233,8 +250,12 @@ export const createStreamWriter = ({
     inFlight = eligible
     for (const event of eligible) inFlightMessages.add(keyOf(event.threadId, event.messageId))
     inFlightBytes = eligible.reduce((total, event) => total + getEventBytes(event), 0)
+    const files = eligible.flatMap((event) => (event.type === "message.parts" ? (event._outputBlobFiles ?? []) : []))
+    const attachments = eligible.flatMap((event) =>
+      event.type === "message.parts" ? (event._outputBlobAttachments ?? []) : [],
+    )
     void persistence
-      .submit(eligible)
+      .submit(eligible.map(getCleanEvent), { files, attachments })
       .then(({ events, rejected, quarantined }) => {
         if (quarantined)
           eligible.forEach((event) => {
@@ -489,12 +510,17 @@ export const createStreamWriter = ({
     if (changesText) materializeProjectionText(current)
 
     const preparedProjection = current
-    let parts = runStage
+    let result: PreparedStreamParts = runStage
       ? runStage("stream_part_preparation", current.writeParts, prepared)
       : current.writeParts(prepared)
+    let parts = result.parts
     if (!parts.length) return
 
-    const patchBytes = Buffer.byteLength(JSON.stringify(parts))
+    const fileBytes = Array.from(new Map(result.files.map((file) => [file.id, file])).values()).reduce(
+      (total, file) => total + file.bytes,
+      0,
+    )
+    const patchBytes = Buffer.byteLength(JSON.stringify(parts)) + fileBytes
     const buffered = runBytes.get(keyOf(input.threadId, input.messageId)) ?? 0
     // Small patches share the delta batch cap. An indivisible live progress
     // payload above 8 KiB flushes immediately and may include bounded deltas;
@@ -512,20 +538,29 @@ export const createStreamWriter = ({
       )
         return
       validateIndices(current.message.parts.length)
-      if (current !== preparedProjection) parts = current.writeParts(prepared)
+      if (current !== preparedProjection) {
+        result = current.writeParts(prepared)
+        parts = result.parts
+      }
     }
-    const bytes = current === preparedProjection ? patchBytes : Buffer.byteLength(JSON.stringify(parts))
-    ensureCapacity(
-      Buffer.byteLength(JSON.stringify({ threadId: input.threadId, messageId: input.messageId, parts })) + 256,
+    const currentFiles = Array.from(new Map(result.files.map((file) => [file.id, file])).values())
+    const currentAttachments = Array.from(
+      new Map(result.attachments.map((attachment) => [attachment.id, attachment])).values(),
     )
-    for (const [index, patch] of parts.entries()) {
+    const bytes = Buffer.byteLength(JSON.stringify(parts)) + currentFiles.reduce((total, file) => total + file.bytes, 0)
+    ensureCapacity(
+      Buffer.byteLength(JSON.stringify({ threadId: input.threadId, messageId: input.messageId, parts })) +
+        currentFiles.reduce((total, file) => total + file.bytes, 0) +
+        256,
+    )
+    parts.forEach((patch, index) => {
       current.message.parts[patch.partIndex] = structuredClone(patch.part)
       current.textDeltas.delete(patch.partIndex)
       if ("text" in patch.part) current.textLengths.set(patch.partIndex, patch.part.text.length)
       else current.textLengths.delete(patch.partIndex)
       const original = input.parts[index]
       if (original) original.part = structuredClone(patch.part)
-    }
+    })
     if (changesText && !current.textDeltas.size)
       current.message.text = current.message.parts.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("")
     queue(
@@ -537,6 +572,8 @@ export const createStreamWriter = ({
         snapshotSeq: current.baseSeq,
         generation: thread.generation ?? 1,
         updatedAt: getNow(),
+        ...(currentFiles.length ? { _outputBlobFiles: currentFiles } : {}),
+        ...(currentAttachments.length ? { _outputBlobAttachments: currentAttachments } : {}),
       },
       bytes,
     )

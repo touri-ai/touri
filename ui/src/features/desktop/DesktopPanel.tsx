@@ -1,6 +1,7 @@
 import type { Bot, BrowserFailureInfo } from "@touri/contracts"
 import { useEffect, useRef, useState } from "react"
 import type { UiApi } from "../../api/client"
+import { browserFailureCause } from "../../components/browserToolPresentation"
 import { PanelIcon } from "../../components/PanelIcon"
 import { computerKillSwitchEvent } from "../../computerKillSwitch"
 import { t } from "../../i18n"
@@ -456,7 +457,10 @@ export const DesktopPanel = ({
             {browserFailure && bot.browserEnabled !== false ? (
               <>
                 <strong>{t("O navegador não abriu a página")}</strong>
-                <p>{browserFailure.error}</p>
+                <p>
+                  {browserFailureCause(`ERROR ${browserFailure.errorCode}: ${browserFailure.error}`) ??
+                    browserFailure.error}
+                </p>
               </>
             ) : (
               <>

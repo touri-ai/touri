@@ -3,7 +3,8 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { createServer, type Server as NetServer } from "node:net"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import type { HostMethods } from "@touri/contracts"
+import type { HostMethods, ToolRegistration, ToolResult } from "@touri/contracts"
+import { init as initBrowserTools } from "../../src/browser"
 import { createBrowserEngine, withDeadline } from "../../src/browser/engine"
 import {
   createChromeLauncher,
@@ -125,6 +126,8 @@ realSuite("WP6 real Chrome browser acceptance", () => {
   let chromeLaunchArgs: Array<string> = []
   let failHitTest = false
   let nodeInspectionCalls = 0
+  const browserTools = new Map<string, ToolRegistration>()
+  const decisionRequests: Array<{ intent: string; candidates: Array<{ ref: string; role: string; name: string }> }> = []
   const botA = "bot-browser-a"
   const botB = "bot-browser-b"
   const threadA = "thread-browser-a"
@@ -175,6 +178,42 @@ realSuite("WP6 real Chrome browser acceptance", () => {
     })
     server = startBrowserFixtureServer()
     base = `http://127.0.0.1:${server.port}`
+    const registerTools = runtime.kernel.registerTools
+    runtime.kernel.registerTools = (input) => {
+      for (const tool of input.tools) browserTools.set(tool.name, tool)
+      return registerTools(input)
+    }
+    await initBrowserTools(runtime.kernel, undefined, {
+      engine,
+      getDecisionApiKey: async () => "synthetic-test-key",
+      fetchDecision: async (_url, init) => {
+        const body = JSON.parse(String(init.body)) as {
+          state: { intent: string; candidates: Array<{ ref: string; role: string; name: string }> }
+        }
+        decisionRequests.push(body.state)
+        const chosen = body.state.intent.startsWith("type:")
+          ? body.state.candidates.find((candidate) => candidate.name === "Destination primary")
+          : body.state.intent.startsWith("select:")
+            ? body.state.candidates.find((candidate) => candidate.name === "Cabin outbound")
+            : body.state.intent.startsWith("click:") && body.state.intent.includes("option")
+              ? body.state.candidates.find((candidate) => candidate.name === "Lisboa, Portugal")
+              : body.state.candidates.find((candidate) => candidate.name.includes("October 24"))
+        const probabilities = Object.fromEntries([
+          ...body.state.candidates.map((candidate) => [candidate.ref, candidate.ref === chosen?.ref ? 0.97 : 0.02]),
+          ["none", 0.01],
+        ])
+        return Response.json({
+          answers: {
+            target: {
+              type: "choice",
+              choice: chosen?.ref ?? "none",
+              confidence: chosen ? 0.96 : 0.4,
+              probabilities,
+            },
+          },
+        })
+      },
+    })
   })
 
   afterEach(async () => {
@@ -219,6 +258,103 @@ realSuite("WP6 real Chrome browser acceptance", () => {
     assertHeadlessLaunchArgs({ args: chromeLaunchArgs })
     return snapshotOf(result)
   }
+
+  const callBrowserTool = async (name: string, args: Record<string, unknown>): Promise<ToolResult> => {
+    const handler = browserTools.get(name)?.handler
+    if (!handler) throw new Error(`Missing browser tool ${name}`)
+    return handler({ ctx: ctx(), args })
+  }
+
+  test("selector targets cannot bypass sensitive-action takeover", async () => {
+    const page = await open("/travel-search")
+    await engine.evaluate({
+      tabId: page.tabId,
+      botId: botA,
+      expression: "document.querySelector('#calendar-open').textContent = 'Buy now'",
+      timeoutMs: 10000,
+      signal: ctx().signal,
+    })
+
+    const blocked = await callBrowserTool("browser_click", {
+      tabId: page.tabId,
+      target: { kind: "css", selector: "#calendar-open" },
+    })
+
+    expect(blocked).toMatchObject({ success: false, errorCode: "USER_TAKEOVER_REQUIRED" })
+    const state = await engine.evaluate({
+      tabId: page.tabId,
+      botId: botA,
+      expression: "document.querySelector('#calendar').hidden",
+      timeoutMs: 10000,
+      signal: ctx().signal,
+    })
+    expect(JSON.stringify(state)).toContain("true")
+  })
+
+  test("typed decisions complete a local travel search with autocomplete and a date picker", async () => {
+    const requestStart = decisionRequests.length
+    const page = await open("/travel-search")
+    const fill = await callBrowserTool("browser_type", {
+      tabId: page.tabId,
+      target: { kind: "role", role: "textbox", name: "Destination" },
+      text: "Lisboa",
+    })
+    expect(fill.success).toBe(true)
+
+    const cabin = await callBrowserTool("browser_select_option", {
+      tabId: page.tabId,
+      target: { kind: "role", role: "combobox", name: "Cabin" },
+      values: ["economy"],
+    })
+    expect(cabin.success).toBe(true)
+
+    const autocomplete = await callBrowserTool("browser_click", {
+      tabId: page.tabId,
+      target: { kind: "role", role: "option", name: "Lisboa" },
+    })
+    expect(autocomplete.success).toBe(true)
+
+    expect(
+      (
+        await callBrowserTool("browser_click", {
+          tabId: page.tabId,
+          target: { kind: "role", role: "button", name: "Open departure calendar" },
+        })
+      ).success,
+    ).toBe(true)
+    const date = await callBrowserTool("browser_click", {
+      tabId: page.tabId,
+      target: { kind: "role", role: "button", name: "Departure date" },
+    })
+    expect(date.success).toBe(true)
+    const submit = await callBrowserTool("browser_click", {
+      tabId: page.tabId,
+      target: { kind: "role", role: "button", name: "Search trips" },
+    })
+    expect(submit).toMatchObject({ success: false, errorCode: "USER_TAKEOVER_REQUIRED" })
+    expect(JSON.stringify(submit)).toContain("TOURI_BROWSER_TAKEOVER_REQUIRED|form_submit")
+    expect(
+      await engine.evaluate({
+        tabId: page.tabId,
+        botId: botA,
+        expression: "document.querySelector('#travel-search').requestSubmit()",
+        timeoutMs: 10000,
+        signal: ctx().signal,
+      }),
+    ).toMatchObject({ success: true })
+
+    const results = await callBrowserTool("browser_snapshot", { tabId: page.tabId, image: "never" })
+    expect(results.success).toBe(true)
+    if (!results.success) return
+    const summary = snapshotOf(results)
+    expect(summary.text).toContain("Lisboa, Portugal")
+    expect(summary.text).toContain("October 24")
+    expect(summary.text).toContain("viagem fictícia")
+    const requests = decisionRequests.slice(requestStart)
+    expect(requests.map((request) => request.intent.split(":")[0])).toEqual(["type", "select", "click", "click"])
+    expect(requests[2]?.candidates.map((candidate) => candidate.name)).toContain("Lisboa, Portugal")
+    expect(requests[3]?.candidates.map((candidate) => candidate.name)).toContain("Departure date October 24")
+  })
 
   test("R1 fresh snapshot, R2 stale refs and target changes", async () => {
     const before = await open("/basic")
@@ -507,7 +643,7 @@ realSuite("WP6 real Chrome browser acceptance", () => {
       engine.click({
         tabId: ordering.tabId,
         botId: botA,
-        target: { kind: "role", role: "button", name: "Order", exact: true },
+        target: { kind: "role", role: "button", name: "Run sequence", exact: true },
         button: "left",
         clickCount: 1,
         timeoutMs: 10000,
@@ -516,7 +652,7 @@ realSuite("WP6 real Chrome browser acceptance", () => {
       engine.click({
         tabId: ordering.tabId,
         botId: botA,
-        target: { kind: "role", role: "button", name: "Order", exact: true },
+        target: { kind: "role", role: "button", name: "Run sequence", exact: true },
         button: "left",
         clickCount: 1,
         timeoutMs: 10000,
@@ -731,7 +867,7 @@ realSuite("WP6 real Chrome browser acceptance", () => {
     const dialogClick = await engine.click({
       tabId: dialog.tabId,
       botId: botA,
-      target: { kind: "role", role: "button", name: "Confirm", exact: true },
+      target: { kind: "role", role: "button", name: "Show dialog", exact: true },
       button: "left",
       clickCount: 1,
       timeoutMs: 10000,

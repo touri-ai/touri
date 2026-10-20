@@ -1575,6 +1575,23 @@ const safeStagingPath = ({ stagingRoot, path }: { stagingRoot: string; path: str
   return suffix.length > 0 && !suffix.startsWith("..") && !suffix.startsWith("/")
 }
 
+const isSqliteBusy = (error: unknown): boolean =>
+  typeof error === "object" &&
+  error !== null &&
+  "code" in error &&
+  typeof error.code === "string" &&
+  (error.code.startsWith("SQLITE_BUSY") || error.code.startsWith("SQLITE_LOCKED"))
+
+const writeWithoutBusyWait = <Value>(database: Database, operation: () => Value): Value => {
+  const busyTimeout = (database.query("PRAGMA busy_timeout").get() as { timeout: number }).timeout
+  database.exec("PRAGMA busy_timeout = 0")
+  try {
+    return operation()
+  } finally {
+    database.exec(`PRAGMA busy_timeout = ${busyTimeout}`)
+  }
+}
+
 export const cleanupExpiredLegacyStaging = async ({
   kernel,
   now = Date.now(),
@@ -1608,6 +1625,7 @@ export const cleanupExpiredLegacyStaging = async ({
   let removed = 0
   for (const row of rows) {
     await Bun.sleep(0)
+    const previousCursor = cursor
     cursor = row.cursor
     if (row.status !== "failed") continue
 
@@ -1644,18 +1662,32 @@ export const cleanupExpiredLegacyStaging = async ({
     } // Retry next traversal; never claim removal on a filesystem failure.
     const { staging: _staging, ...retained } = report
     // A concurrent retry owns its fresh report and staging; do not overwrite it.
-    measure(() =>
-      database
-        .query("UPDATE imports SET report_json = ? WHERE id = ? AND status='failed' AND report_json=?")
-        .run(JSON.stringify(retained), row.id, storedReport.report_json),
-    )
+    try {
+      measure(() =>
+        writeWithoutBusyWait(database, () =>
+          database
+            .query("UPDATE imports SET report_json = ? WHERE id = ? AND status='failed' AND report_json=?")
+            .run(JSON.stringify(retained), row.id, storedReport.report_json),
+        ),
+      )
+    } catch (error) {
+      if (!isSqliteBusy(error)) throw error
+      cursor = previousCursor
+      break
+    }
     removed += 1
   }
-  database
-    .query(
-      "INSERT INTO settings(key,value_json,updated_at) VALUES (?,?,?) ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json,updated_at=excluded.updated_at",
+  try {
+    writeWithoutBusyWait(database, () =>
+      database
+        .query(
+          "INSERT INTO settings(key,value_json,updated_at) VALUES (?,?,?) ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json,updated_at=excluded.updated_at",
+        )
+        .run(cursorKey, JSON.stringify(rows.length < maxEntries ? 0 : cursor), now),
     )
-    .run(cursorKey, JSON.stringify(rows.length < maxEntries ? 0 : cursor), now)
+  } catch (error) {
+    if (!isSqliteBusy(error)) throw error
+  }
   return removed
 }
 

@@ -1,18 +1,9 @@
+#[cfg(windows)]
+use crate::platform::windows_files::get_file_identity_for_path;
 use std::collections::HashMap;
 use std::fs::{canonicalize, symlink_metadata, Metadata};
 #[cfg(unix)]
 use std::os::unix::fs::MetadataExt;
-#[cfg(windows)]
-trait UnsupportedFileIdentity {
-    fn dev(&self) -> u64 {
-        0
-    }
-    fn ino(&self) -> u64 {
-        0
-    }
-}
-#[cfg(windows)]
-impl UnsupportedFileIdentity for Metadata {}
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -57,7 +48,7 @@ pub struct DropOutcome {
 pub struct RedeemedFile {
     pub path: String,
     pub dev: u64,
-    pub ino: u64,
+    pub ino: u128,
     pub size: u64,
 }
 
@@ -81,7 +72,7 @@ impl RedeemError {
 struct Grant {
     path: PathBuf,
     dev: u64,
-    ino: u64,
+    ino: u128,
     expires: Instant,
 }
 
@@ -104,11 +95,33 @@ fn new_grant_id() -> Result<String, RejectReason> {
     Ok(bytes.iter().map(|byte| format!("{byte:02x}")).collect())
 }
 
+/// Volume and file identity used to pin a dropped file. POSIX reads it from `lstat`; Windows
+/// needs an open handle, because a path alone cannot prove which file it names.
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct FileIdentity {
+    dev: u64,
+    ino: u128,
+}
+
+#[cfg(unix)]
+fn get_identity(path: &Path) -> Result<FileIdentity, RejectReason> {
+    let metadata = symlink_metadata(path).map_err(|_| RejectReason::Unreadable)?;
+    Ok(FileIdentity {
+        dev: metadata.dev(),
+        ino: u128::from(metadata.ino()),
+    })
+}
+
+#[cfg(windows)]
+fn get_identity(path: &Path) -> Result<FileIdentity, RejectReason> {
+    let (dev, ino) = get_file_identity_for_path(path).map_err(|error| match error.kind() {
+        std::io::ErrorKind::PermissionDenied => RejectReason::Unsupported,
+        _ => RejectReason::Unreadable,
+    })?;
+    Ok(FileIdentity { dev, ino })
+}
+
 fn classify(metadata: &Metadata) -> Option<RejectReason> {
-    // Native Windows file identity is required before drop grants can be redeemed.
-    if cfg!(windows) {
-        return Some(RejectReason::Unsupported);
-    }
     let kind = metadata.file_type();
     if kind.is_symlink() {
         return Some(RejectReason::Symlink);
@@ -149,10 +162,11 @@ impl FileGrants {
         }
         let canonical = canonical_leaf(path)?;
         let pinned = symlink_metadata(&canonical).map_err(|_| RejectReason::Unreadable)?;
-        if classify(&pinned).is_some()
-            || pinned.ino() != metadata.ino()
-            || pinned.dev() != metadata.dev()
-        {
+        if classify(&pinned).is_some() {
+            return Err(RejectReason::Unsupported);
+        }
+        let identity = get_identity(&canonical)?;
+        if identity != get_identity(path)? {
             return Err(RejectReason::Unsupported);
         }
         let id = new_grant_id()?;
@@ -165,8 +179,8 @@ impl FileGrants {
             id.clone(),
             Grant {
                 path: canonical,
-                dev: pinned.dev(),
-                ino: pinned.ino(),
+                dev: identity.dev,
+                ino: identity.ino,
                 expires: now + GRANT_TTL,
             },
         );
@@ -212,10 +226,11 @@ impl FileGrants {
             return Err(RedeemError::Expired);
         }
         let metadata = symlink_metadata(&grant.path).map_err(|_| RedeemError::Changed)?;
-        if classify(&metadata).is_some()
-            || metadata.ino() != grant.ino
-            || metadata.dev() != grant.dev
-        {
+        if classify(&metadata).is_some() {
+            return Err(RedeemError::Changed);
+        }
+        let identity = get_identity(&grant.path).map_err(|_| RedeemError::Changed)?;
+        if identity.dev != grant.dev || identity.ino != grant.ino {
             return Err(RedeemError::Changed);
         }
         Ok(RedeemedFile {
@@ -344,6 +359,83 @@ mod tests {
             .rejected
             .iter()
             .any(|item| item.reason == RejectReason::TooMany));
+        let _ = remove_dir_all(root);
+    }
+}
+
+#[cfg(all(test, windows))]
+mod windows_tests {
+    use super::*;
+    use std::fs::{create_dir_all, hard_link, remove_dir_all, remove_file, rename, write, File};
+
+    fn scratch(label: &str) -> PathBuf {
+        let root =
+            std::env::temp_dir().join(format!("touri-grants-{label}-{}", std::process::id()));
+        let _ = remove_dir_all(&root);
+        create_dir_all(&root).expect("scratch dir");
+        root
+    }
+
+    #[test]
+    fn native_identity_pins_a_dropped_file() {
+        let root = scratch("win-single");
+        let file = root.join("a.txt");
+        write(&file, "hello").expect("write");
+        let grants = FileGrants::new();
+        let outcome = grants.issue(std::slice::from_ref(&file));
+        assert_eq!(outcome.granted.len(), 1);
+        assert_eq!(outcome.granted[0].name, "a.txt");
+        let id = outcome.granted[0].id.clone();
+        let redeemed = grants.redeem(&id).expect("first redeem");
+        assert_eq!(redeemed.size, 5);
+        assert!(redeemed.path.ends_with("a.txt"));
+        assert_eq!(grants.redeem(&id), Err(RedeemError::Unknown));
+        let _ = remove_dir_all(root);
+    }
+
+    #[test]
+    fn a_different_file_at_the_same_path_is_refused() {
+        let root = scratch("win-swap");
+        let file = root.join("a.txt");
+        let other = root.join("b.txt");
+        write(&file, "first").expect("write");
+        write(&other, "second").expect("write");
+        let grants = FileGrants::new();
+        let id = grants.issue(std::slice::from_ref(&file)).granted[0]
+            .id
+            .clone();
+        remove_file(&file).expect("remove");
+        rename(&other, &file).expect("rename");
+        assert_eq!(grants.redeem(&id), Err(RedeemError::Changed));
+        let _ = remove_dir_all(root);
+    }
+
+    #[test]
+    fn hard_links_streams_and_oversized_files_are_rejected() {
+        let root = scratch("win-reject");
+        let real = root.join("real.txt");
+        write(&real, "x").expect("write");
+        let linked = root.join("linked.txt");
+        hard_link(&real, &linked).expect("hard link");
+        let stream = root.join("real.txt:stream");
+        write(&stream, "hidden").expect("stream");
+        let big = root.join("big.bin");
+        File::create(&big)
+            .expect("big")
+            .set_len(MAX_ATTACHMENT_BYTES + 1)
+            .expect("len");
+        let grants = FileGrants::new();
+        let outcome = grants.issue(&[linked, stream, big]);
+        let reasons: Vec<RejectReason> = outcome.rejected.iter().map(|item| item.reason).collect();
+        assert!(outcome.granted.is_empty());
+        assert_eq!(
+            reasons,
+            vec![
+                RejectReason::Unsupported,
+                RejectReason::Unsupported,
+                RejectReason::TooLarge
+            ]
+        );
         let _ = remove_dir_all(root);
     }
 }

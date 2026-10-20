@@ -23,6 +23,7 @@ const child = Bun.spawnSync(
     "./sidecar/src/file-io-worker-entry.ts",
     "./sidecar/src/auth-writer-worker-entry.ts",
     "./sidecar/src/atomic-download-worker-entry.ts",
+    "./sidecar/src/workspace-attention-worker-entry.ts",
     "--outfile",
     `src-tauri/binaries/touri-sidecar-${target.triple}${name.startsWith("windows") ? ".exe" : ""}`,
   ],

@@ -54,6 +54,8 @@ export type Fingerprint = {
   name: string
   tag: string
   textPrefix: string
+  formAssociated?: boolean
+  formSubmit?: boolean
   href?: string
   source?: "ax"
 }
