@@ -34,6 +34,13 @@ for (let version = 1; version < SCHEMA_VERSION; version++) {
         ).text()
         if (version < 14) sql = sql.replaceAll("'legacy'", `'${source}'`)
         if (migration === 12) db.exec("PRAGMA foreign_keys = OFF")
+        // Schema 33 adds these columns in db.ts before applying its SQL dependencies.
+        if (migration === 33)
+          db.exec(`
+            ALTER TABLE bots ADD COLUMN responsible_person_id TEXT;
+            ALTER TABLE threads ADD COLUMN owner_person_id TEXT;
+            ALTER TABLE attachments ADD COLUMN owner_person_id TEXT;
+          `)
         db.exec(sql)
         if (migration === 12) db.exec("PRAGMA foreign_keys = ON")
       }

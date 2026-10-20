@@ -1,4 +1,4 @@
-import { type Bot, getHostNoun, type HostKind } from "@touri/contracts"
+import { type Bot, getHostNoun, type HostKind, type Routine, type RoutineRun } from "@touri/contracts"
 import { userFacingError } from "./errors"
 /** All UI copy lives here. pt-BR is the default; English is available for a future locale picker. */
 export type Locale = "pt-BR" | "en"
@@ -1250,6 +1250,23 @@ export const ptBR = {
   "Bot access settings": "Ajustar permissões",
   "Project preview": "Preview do projeto",
   "Bot groups": "Grupos",
+  "Onde o bot responde": "Onde o bot responde",
+  "Na conversa principal": "Na conversa principal",
+  "Uma conversa nova por tarefa": "Uma conversa nova por tarefa",
+  "Seguir configuração do bot": "Seguir configuração do bot",
+  "Segue o bot: conversa principal": "Segue o bot: conversa principal",
+  "Segue o bot: uma conversa nova por tarefa": "Segue o bot: uma conversa nova por tarefa",
+  "Automatic conversation mode help":
+    "No modo principal, as rotinas ficam na conversa do bot. Cada execução mostra o gatilho e o horário; no outro modo, cada execução ganha uma conversa própria.",
+  "Routine row title": "Rotina {name}",
+  "Task row title": "Tarefas {name}",
+  "Task conversation history for {name}": "Histórico de tarefas de {name}",
+  "Today count suffix": " · {count} hoje",
+  "Routine run header": "{name} · {trigger} · {time}",
+  "Routine trigger scheduled": "Programada",
+  "Routine trigger manual": "Manual",
+  "Routine trigger catch-up": "Recuperada",
+  "Routine trigger imported": "Importada",
   "Group coordinator suffix": " · coordenador",
   "This bot has no groups yet.": "Este bot ainda não pertence a um grupo.",
   "Bot routines": "Rotinas deste bot",
@@ -3868,6 +3885,23 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Bot access settings": "Adjust permissions",
   "Project preview": "Project preview",
   "Bot groups": "Groups",
+  "Onde o bot responde": "Where the bot replies",
+  "Na conversa principal": "In the main conversation",
+  "Uma conversa nova por tarefa": "A new conversation for each task",
+  "Seguir configuração do bot": "Follow bot setting",
+  "Segue o bot: conversa principal": "Follows bot: main conversation",
+  "Segue o bot: uma conversa nova por tarefa": "Follows bot: a new conversation per task",
+  "Automatic conversation mode help":
+    "In main mode, routines stay in the bot's conversation. Each run shows its trigger and time; task mode gives every run its own conversation.",
+  "Routine row title": "Routine {name}",
+  "Task row title": "Tasks {name}",
+  "Task conversation history for {name}": "Task history for {name}",
+  "Today count suffix": " · {count} today",
+  "Routine run header": "{name} · {trigger} · {time}",
+  "Routine trigger scheduled": "Scheduled",
+  "Routine trigger manual": "Manual",
+  "Routine trigger catch-up": "Catch-up",
+  "Routine trigger imported": "Imported",
   "Group coordinator suffix": " · coordinator",
   "This bot has no groups yet.": "This bot has no groups yet.",
   "Bot routines": "This bot’s routines",
@@ -4734,6 +4768,25 @@ export const getRoutineRunDateLabel = (timestamp: number, locale: Locale = "pt-B
 
 export const getRoutineRunTimeLabel = (timestamp: number, locale: Locale = "pt-BR", timeZone?: string): string =>
   new Intl.DateTimeFormat(locale, { timeStyle: "short", ...(timeZone ? { timeZone } : {}) }).format(timestamp)
+
+export const getRoutineRunCountsToday = (
+  routineRuns: readonly RoutineRun[],
+  routines: ReadonlyMap<string, Routine>,
+  now = Date.now(),
+): ReadonlyMap<string, number> => {
+  const today = new Date(now).toDateString()
+  const counts = new Map<string, number>()
+  routineRuns.forEach((run) => {
+    const routine = routines.get(run.routineId)
+    if (!routine) return
+
+    if (new Date(run.scheduledFor).toDateString() !== today) return
+
+    counts.set(run.routineId, (counts.get(run.routineId) ?? 0) + 1)
+  })
+
+  return counts
+}
 
 export const getRoutineRunSidebarDateLabel = (
   timestamp: number,

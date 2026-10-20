@@ -24,7 +24,7 @@ export const newRoutineDraft = (botId: string): RoutineDraft => ({
   cron: "0 9 * * 1-5",
   timezone: "America/Sao_Paulo",
   enabled: false,
-  continuity: "main-thread",
+  continuity: "new-thread",
   resultsThreadId: null,
   groupId: null,
   timeoutMinutes: 30,
@@ -73,6 +73,11 @@ export const suggestedRoutineDraft = (bot: Bot, locale: Locale = "pt-BR"): Routi
     (job) => job.suggestedCron && job.roleLine === bot.roleLine && job.instructions === bot.instructions,
   )
   return template?.suggestedCron
-    ? { ...newRoutineDraft(bot.id), name: template.name, prompt: template.instructions, cron: template.suggestedCron }
+    ? {
+        ...newRoutineDraft(bot.id),
+        name: template.name,
+        prompt: template.instructions,
+        cron: template.suggestedCron,
+      }
     : null
 }

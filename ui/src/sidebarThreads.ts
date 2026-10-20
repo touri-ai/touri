@@ -3,6 +3,8 @@ import type { RoutineRun, Thread } from "@touri/contracts"
 export type SidebarThread = {
   thread: Thread
   routineRun: RoutineRun | undefined
+  taskGroupName: string | undefined
+  countToday: number
   running: boolean
   unread: number
   deletedRoutine: boolean
@@ -14,15 +16,31 @@ export const getSidebarThreads = (
   selectedThreadId: string | null,
   runningThreadIds: ReadonlySet<string> = new Set(),
   routineIds?: ReadonlySet<string>,
+  routineRunCountsToday: ReadonlyMap<string, number> = new Map(),
+  now = Date.now(),
 ): SidebarThread[] => {
   const getRoutineRun = getRoutineRunLookup(routineRuns)
   const visibleThreads = threads.filter((thread) => !thread.groupId && thread.archivedAt === null)
   const entries = visibleThreads.map((thread): SidebarThread => {
     const routineRun = getRoutineRun(thread)
+    const taskGroupName = getTaskGroupName(thread)
     const deletedRoutine =
       thread.kind === "routine" && (!routineRun || (routineIds !== undefined && !routineIds.has(routineRun.routineId)))
+    const countToday = routineRun
+      ? (routineRunCountsToday.get(routineRun.routineId) ?? 0)
+      : taskGroupName && isSameLocalDay(thread.createdAt, now)
+        ? 1
+        : 0
 
-    return { thread, routineRun, deletedRoutine, running: runningThreadIds.has(thread.id), unread: thread.unread }
+    return {
+      thread,
+      routineRun,
+      taskGroupName,
+      countToday,
+      deletedRoutine,
+      running: runningThreadIds.has(thread.id),
+      unread: thread.unread,
+    }
   })
   // This local index keeps grouping linear as frequent routines accumulate history.
   const groups = entries.reduce((byRoutine, entry) => {
@@ -34,6 +52,7 @@ export const getSidebarThreads = (
 
     return byRoutine.set(key, {
       ...representative,
+      countToday: entry.taskGroupName ? previous.countToday + entry.countToday : entry.countToday,
       running: previous.running || entry.running,
       unread: previous.unread + entry.unread,
     })
@@ -58,7 +77,8 @@ export const getSidebarReadThreadIds = (
   routineIds?: ReadonlySet<string>,
 ): ReadonlySet<string> => {
   const selected = threads.find((thread) => thread.id === threadId)
-  if (selected?.kind !== "routine" || selected.groupId) return new Set([threadId])
+  if (!selected || selected.groupId || (selected.kind !== "routine" && !getTaskGroupName(selected)))
+    return new Set([threadId])
 
   const getRoutineRun = getRoutineRunLookup(routineRuns)
   const key = getSidebarGroupKey(selected, getRoutineRun(selected), routineIds)
@@ -94,12 +114,27 @@ export const getSidebarDataByBot = (threads: readonly Thread[], routineRuns: rea
 }
 
 const getSidebarGroupKey = (thread: Thread, routineRun: RoutineRun | undefined, routineIds?: ReadonlySet<string>) => {
-  if (thread.kind !== "routine") return `thread:${thread.id}`
+  if (thread.kind !== "routine") {
+    const taskGroupName = getTaskGroupName(thread)
+    return taskGroupName ? `task:${thread.botId}:${taskGroupName}` : `thread:${thread.id}`
+  }
   if (!routineRun || (routineIds !== undefined && !routineIds.has(routineRun.routineId)))
     return `deleted:${thread.botId}`
 
   return `routine:${routineRun.routineId}`
 }
+
+const getTaskGroupName = (thread: Thread): string | undefined => {
+  if (thread.kind !== "chat" || thread.groupId) return undefined
+  const match = thread.title.match(/^(.+?) · ([a-f0-9-]{10,64})$/i)
+  if (!match?.[2]?.match(/[a-f]/i)) return undefined
+  const name = match?.[1]?.trim()
+
+  return name || undefined
+}
+
+const isSameLocalDay = (left: number, right: number): boolean =>
+  new Date(left).toDateString() === new Date(right).toDateString()
 
 const getRoutineRunLookup = (routineRuns: readonly RoutineRun[]) => {
   const runsById = new Map(routineRuns.map((run) => [run.id, run]))
