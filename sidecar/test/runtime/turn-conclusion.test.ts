@@ -28,7 +28,11 @@ afterEach(async () => {
 const fixture = async (
   script: (args: StartTurnArgs) => Promise<void>,
   requestText = "Crie notas.md com três ideias.",
-  options: { cancelAt?: PerformanceStage; beforeFinalization?: (database: Database) => void } = {},
+  options: {
+    cancelAt?: PerformanceStage
+    beforeFinalization?: (database: Database) => void
+    afterStage?: (stage: PerformanceStage) => void
+  } = {},
 ) => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "touri-conclusion-")))
   const serve = spyOn(Bun, "serve").mockReturnValue({
@@ -63,6 +67,7 @@ const fixture = async (
   const runStage: PerformanceStageRunner = (stage, action, input) => {
     if (stage === "runtime_turn_finalization") options.beforeFinalization?.(db)
     const result = stages.run(stage, action, input)
+    options.afterStage?.(stage)
     if (stage === options.cancelAt && !didCancel) {
       didCancel = true
       queueMicrotask(() => {
@@ -74,7 +79,7 @@ const fixture = async (
   const engine = createRuntimeEngine({
     kernel: runtime.kernel,
     providerAdapters: { codex: adapter },
-    ...(options.cancelAt || options.beforeFinalization ? { runStage } : {}),
+    ...(options.cancelAt || options.beforeFinalization || options.afterStage ? { runStage } : {}),
   })
   const store = runtime.kernel.services.use("store.api")
   if (!store) throw new Error("Store missing")
@@ -205,6 +210,54 @@ test.each(["runtime_part_finalization", "runtime_output_preparation"] as const)(
       part_json: string
     } | null
     expect(stored ? JSON.parse(stored.part_json) : null).toEqual(command)
+  },
+)
+
+test.each(["runtime_part_finalization", "runtime_output_preparation"] as const)(
+  "a late part during %s survives preparation with its complete output",
+  async (stage) => {
+    const output = "late synthetic result\n".repeat(768)
+    let sendEvent: StartTurnArgs["onEvent"] | null = null
+    let didSend = false
+    const f = await fixture(
+      async ({ onEvent }) => {
+        sendEvent = onEvent
+        onEvent({ type: "text_delta", itemId: "reply", delta: "Resultado parcial." })
+      },
+      "Conclua a tarefa.",
+      {
+        afterStage: (current) => {
+          if (current !== stage || didSend) return
+          didSend = true
+          queueMicrotask(() => {
+            sendEvent?.({
+              type: "item",
+              part: {
+                type: "command",
+                callId: "late",
+                command: "sample",
+                cwd: "/workspace",
+                exitCode: 0,
+                outputTail: output,
+              },
+            })
+          })
+        },
+      },
+    )
+    cleanups.add(f.close)
+
+    const reply = await f.finish()
+
+    expect(reply.status).toBe("complete")
+    const part = reply.parts.find((part) => part.type === "command" && part.callId === "late")
+    expect(part).toMatchObject({ outputTail: "", outputBytes: Buffer.byteLength(output), resolution: "succeeded" })
+    if (part?.type !== "command" || !part.outputAttachmentId) throw new Error("Output reference missing")
+    const attachment = f.db.query("SELECT path FROM attachments WHERE id = ?").get(part.outputAttachmentId) as {
+      path: string
+    } | null
+    if (!attachment) throw new Error("Output attachment missing")
+    expect(await Bun.file(attachment.path).text()).toBe(output)
   },
 )
 

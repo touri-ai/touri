@@ -153,6 +153,20 @@ const isSamePart = (previous: MessagePart, next: MessagePart): boolean => {
   )
 }
 
+const getPartsSnapshotGuard = (state: RunState): (() => boolean) => {
+  const parts = state.parts
+  // Live callbacks mutate the array and part fields; snapshot shallow fields while sharing output strings.
+  const snapshot = parts.map((part) => ({ ...part }))
+
+  return () =>
+    state.parts === parts &&
+    parts.length === snapshot.length &&
+    snapshot.every((previous, index) => {
+      const next = parts[index]
+      return next !== undefined && isSamePart(previous, next)
+    })
+}
+
 const materializePartText = (state: RunState, partIndex: number, runStage?: PerformanceStageRunner): void => {
   const pending = state.pendingPartText.get(partIndex)
   if (!pending) return
@@ -561,18 +575,18 @@ export const createRuntimeEngine = ({
     finish: () => boolean,
     messageId?: Id,
   ): Promise<void> => {
-    // Accepted streaming work survives even if the final transaction rolls back.
-    try {
-      await measureStage("runtime_stream_flush", () =>
-        kernel.services.use("store.api")?.flushWritesAsync?.({
-          threadId: run.threadId,
-          ...(messageId ? { messageId } : {}),
-        }),
-      )
-    } catch {
-      // A failed stream drain must not leave its run active or prevent terminal state.
-    }
     for (;;) {
+      // Drain again on retries: a late accepted part may already reference its pending output file.
+      try {
+        await measureStage("runtime_stream_flush", () =>
+          kernel.services.use("store.api")?.flushWritesAsync?.({
+            threadId: run.threadId,
+            ...(messageId ? { messageId } : {}),
+          }),
+        )
+      } catch {
+        // A failed stream drain must not leave its run active or prevent terminal state.
+      }
       const isPrepared = await prepare()
       // Preparation can finish a large batch; give timers and cancellation a turn before the terminal transaction.
       await new Promise<void>((resolve) => setImmediate(resolve))
@@ -783,20 +797,21 @@ export const createRuntimeEngine = ({
     }
 
     const initial = state.parts
+    const isCurrent = measureStage("runtime_part_finalization", () => getPartsSnapshotGuard(state))
     const parts = await measureStage("runtime_part_finalization", () =>
       tools.finishAsync(run, initial, reason, false, runStage),
     )
-    if (state.parts !== initial) return () => false
+    if (!isCurrent()) return () => false
     const externalized = await measureStage("runtime_output_preparation", () =>
       externalizeMessagePartsAsync({ database, appData: kernel.paths.appData, parts }),
     )
-    if (state.parts !== initial) return () => false
+    if (!isCurrent()) return () => false
 
     state.parts = externalized
     state.preparedFinish = measureStage("runtime_part_finalization", () =>
       tools.prepareFinish(run, state.parts, reason),
     )
-    return () => state.parts === externalized
+    return measureStage("runtime_part_finalization", () => getPartsSnapshotGuard(state))
   }
 
   const publishMessage = (args: { store: StoreApi; state: RunState; run: Run; status: Message["status"] }): void => {
