@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite"
-import { expect, setDefaultTimeout, test } from "bun:test"
+import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from "bun:test"
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import type { Bot, Message, StoreApi, Thread } from "@touri/contracts"
@@ -1851,72 +1851,84 @@ test.serial("scheduled results-thread routines keep the same thread across slots
   }
 })
 
-test.serial("default automatic routine runs resume the main conversation without resending its history", async () => {
-  const value = await fixture({ scenario: { events: [{ type: "delta", delta: "result" }, { type: "complete" }] } })
-  const requestLogPath = join(value.assets, "requests.log")
-  try {
-    writeFileSync(
-      value.scenario,
-      JSON.stringify({
-        logPath: value.logPath,
-        requestLogPath,
-        events: [{ type: "delta", delta: "result" }, { type: "complete" }],
-      }),
-    )
-    addUser(value.store, value.thread, "Earlier conversation from the main thread")
-    const created = value.engine.createRoutine({
-      input: {
-        botId: value.bot.id,
-        name: "Daily check",
-        prompt: "Review only the new items.",
-        cron: "*/5 * * * *",
-        timezone: "America/Sao_Paulo",
-        enabled: true,
-        continuity: "new-thread",
-        resultsThreadId: null,
-        groupId: null,
-        timeoutMinutes: 30,
-        overlap: "skip",
-        catchUpMinutes: 30,
-      },
-      forceDisabled: false,
-    })
-    if (!created.success) throw new Error(created.error)
+describe("30 automatic routine runs", () => {
+  let value: Fixture
 
-    for (const scheduledFor of [Date.now(), Date.now() + 5_000]) {
-      const started = value.engine.runRoutine({ routineId: created.routine.id, triggerSource: "cron", scheduledFor })
-      if (!started.success) throw new Error(started.error)
-      const succeededRuns = value.engine.listRoutineRuns(created.routine.id)
-      await waitFor(
-        () =>
-          value.engine.listRoutineRuns(created.routine.id).filter((run) => run.status === "succeeded").length ===
-          succeededRuns.filter((run) => run.status === "succeeded").length + 1,
+  beforeEach(async () => {
+    value = await fixture({ scenario: { events: [{ type: "delta", delta: "result" }, { type: "complete" }] } })
+  })
+
+  afterEach(async () => closeFixture(value))
+
+  test.serial(
+    "default automatic runs resume the main conversation without resending its history",
+    async () => {
+      writeFileSync(
+        value.scenario,
+        JSON.stringify({
+          logPath: value.logPath,
+          requestLogPath: join(value.assets, "requests.log"),
+          events: [{ type: "delta", delta: "result" }, { type: "complete" }],
+        }),
       )
-    }
+      addUser(value.store, value.thread, "Earlier conversation from the main thread")
+      const created = value.engine.createRoutine({
+        input: {
+          botId: value.bot.id,
+          name: "Daily check",
+          prompt: "Review only the new items.",
+          cron: "*/5 * * * *",
+          timezone: "America/Sao_Paulo",
+          enabled: true,
+          continuity: "new-thread",
+          resultsThreadId: null,
+          groupId: null,
+          timeoutMinutes: 30,
+          overlap: "skip",
+          catchUpMinutes: 30,
+        },
+        forceDisabled: false,
+      })
+      if (!created.success) throw new Error(created.error)
 
-    const threadIds = value.engine.listRoutineRuns(created.routine.id).map((run) => run.threadId)
-    expect(threadIds).toEqual([value.thread.id, value.thread.id])
-    const requests = readFileSync(requestLogPath, "utf8")
-      .trim()
-      .split("\n")
-      .map(
-        (line) => JSON.parse(line) as { method: string; params?: { input?: Array<{ type: string; text?: string }> } },
-      )
-      .filter((request) => request.method === "turn/start")
-    const requestTexts = requests.map((request) =>
-      (request.params?.input ?? [])
-        .flatMap((part) => (part.type === "text" && part.text ? [part.text] : []))
-        .join("\n"),
-    )
+      const slots = Array.from({ length: 30 }, (_, index) => Date.now() + index * 5_000)
+      for (const scheduledFor of slots) {
+        const succeededRuns = value.engine.listRoutineRuns(created.routine.id)
+        const started = value.engine.runRoutine({ routineId: created.routine.id, triggerSource: "cron", scheduledFor })
+        if (!started.success) throw new Error(started.error)
+        await waitFor(
+          () =>
+            value.engine.listRoutineRuns(created.routine.id).filter((run) => run.status === "succeeded").length ===
+            succeededRuns.filter((run) => run.status === "succeeded").length + 1,
+        )
+      }
 
-    expect(requestTexts).toHaveLength(2)
-    expect(requestTexts[0]).toContain("Earlier conversation from the main thread")
-    expect(requestTexts[1]).toBe("Review only the new items.")
-    expect(requestTexts[1]).not.toContain("Earlier conversation from the main thread")
-    expect(readFileSync(value.logPath, "utf8")).toContain("thread/resume")
-  } finally {
-    await closeFixture(value)
-  }
+      const threadIds = value.engine.listRoutineRuns(created.routine.id).map((run) => run.threadId)
+      expect(threadIds).toEqual(slots.map(() => value.thread.id))
+      expect([...value.store.threads.keys()]).toEqual([value.thread.id])
+      const requests = readFileSync(join(value.assets, "requests.log"), "utf8")
+        .trim()
+        .split("\n")
+        .map(
+          (line) => JSON.parse(line) as { method: string; params?: { input?: Array<{ type: string; text?: string }> } },
+        )
+      const requestTexts = requests
+        .filter((request) => request.method === "turn/start")
+        .map((request) =>
+          (request.params?.input ?? [])
+            .flatMap((part) => (part.type === "text" && part.text ? [part.text] : []))
+            .join("\n"),
+        )
+
+      expect(requestTexts).toHaveLength(30)
+      expect(requests.filter((request) => request.method === "thread/start")).toHaveLength(1)
+      expect(requests.filter((request) => request.method === "thread/resume")).toHaveLength(29)
+      expect(requestTexts[0]).toContain("Earlier conversation from the main thread")
+      expect(requestTexts.slice(1)).toEqual(slots.slice(1).map(() => "Review only the new items."))
+      expect(readFileSync(value.logPath, "utf8")).toContain("thread/resume")
+    },
+    60_000,
+  )
 })
 
 test.serial("task mode keeps one routine conversation per run", async () => {
