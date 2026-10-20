@@ -688,6 +688,8 @@ export type BrowserErrorCode =
 /** The latest failed browser tool call of a bot, shown where the screen would otherwise stay empty. */
 export type BrowserFailureInfo = { tool: string; errorCode: string; error: string; at: EpochMs }
 
+export type BrowserTakeoverReason = "login" | "payment" | "form_submit" | "sensitive_action" | "requested"
+
 export type BrowserTabInfo = {
   tabId: Id
   url: string
@@ -695,6 +697,7 @@ export type BrowserTabInfo = {
   state: 'live' | 'unloaded' | 'closed'
   openerTabId: Id | null
   heldByUser: boolean
+  takeoverReason?: BrowserTakeoverReason | null
   lastUsedAt: EpochMs
 }
 

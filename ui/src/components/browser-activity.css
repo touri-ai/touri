@@ -71,6 +71,21 @@
 .browser-activity-content-full {
   grid-template-columns: minmax(0, 1fr);
 }
+.browser-takeover-reason {
+  display: grid;
+  gap: var(--space-8);
+  margin-bottom: var(--space-12);
+  padding: var(--space-12);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-control);
+}
+.browser-takeover-reason p,
+.browser-takeover-privacy {
+  margin: 0;
+  color: var(--text-2);
+  line-height: 1.5;
+}
 .browser-activity-preview-actions button:focus-visible,
 .browser-activity-summary:focus-visible {
   outline: 2px solid var(--text);

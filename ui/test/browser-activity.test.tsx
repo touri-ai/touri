@@ -168,6 +168,36 @@ test("take-over holds the browser, opens its view, and the finished card collaps
   expect(document.body.textContent).not.toContain("fixture-token")
 })
 
+test("a bot-requested takeover explains why it paused and keeps browser input out of chat", async () => {
+  const heldTab = { ...tab, heldByUser: true, takeoverReason: "login" }
+  const parts = [
+    getPart({ callId: "read", tool: "mcp__touri__browser_snapshot", inputJson: '{"tabId":"browser-tab"}' }),
+    getPart({
+      callId: "login",
+      tool: "mcp__touri__browser_click",
+      startedAt: 30,
+      inputJson: '{"tabId":"browser-tab","target":{"kind":"role","role":"button","name":"Sign in"}}',
+    }),
+  ]
+  const { request } = renderCard(parts, false, async () => ({ tabs: [heldTab] }))
+
+  expect(await screen.findByText("Por que Lia parou")).toBeVisible()
+  expect(screen.getByText("O site pediu login para continuar.")).toBeVisible()
+  expect(screen.getByText("Últimas ações")).toBeVisible()
+  expect(screen.getByText("Leu a página")).toBeVisible()
+  expect(
+    screen.getByText("O que você digitar no navegador não vai para o chat nem para o contexto do bot."),
+  ).toBeVisible()
+  expect(screen.getByRole("button", { name: "Devolver para Lia" })).toBeVisible()
+  expect(screen.queryByRole("textbox")).toBeNull()
+
+  fireEvent.click(screen.getByRole("button", { name: "Devolver para Lia" }))
+
+  await waitFor(() =>
+    expect(request).toHaveBeenCalledWith("POST /browser/tabs/:id/takeover", { hold: false }, { id: "browser-tab" }),
+  )
+})
+
 test("historical browser cards never sample or take over the current browser page", async () => {
   const parts = [getPart({ callId: "old", tool: "browser_open", inputJson: "{}" })]
   const { request } = renderCard(parts, true)

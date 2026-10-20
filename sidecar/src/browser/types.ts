@@ -6,6 +6,7 @@ import type {
   BrowserRef,
   BrowserSnapshot,
   BrowserTabInfo,
+  BrowserTakeoverReason,
   BrowserTarget,
   EpochMs,
   Id,
@@ -96,6 +97,8 @@ export type BrowserTabRow = {
   title: string
   state: "live" | "unloaded" | "closed"
   held_by_user: number
+  private_after_takeover: number
+  takeover_reason: BrowserTakeoverReason | null
   created_at: EpochMs
   last_used_at: EpochMs
 }
@@ -111,6 +114,8 @@ export type TabState = {
   diagnostics: Array<BrowserDiagnostic>
   navigationVersion: number
   secretMode: boolean
+  privateAfterTakeover: boolean
+  takeoverReason: BrowserTakeoverReason | null
   dialog: { type: "alert" | "confirm" | "prompt" | "beforeunload"; message: string } | null
   lastFailureKey: string | null
   failureCount: number
@@ -226,6 +231,7 @@ export type BrowserEngine = {
     tabId: Id
     botId: Id
     reason: string
+    reasonCode?: BrowserTakeoverReason
     timeoutMs: number
     signal: AbortSignal
   }) => Promise<ToolResult>
