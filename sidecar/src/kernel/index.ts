@@ -586,6 +586,7 @@ export const createKernel = ({
       })
     },
     stageTracker.run,
+    () => bus.publish({ type: "transcript.resync" }),
   )
 
   const kernel: Kernel = {
@@ -652,7 +653,7 @@ export const createKernel = ({
       if (store && !store.closeStreamWriterIfIdle?.()) await store.flushWritesAsync?.({ stopping: true })
       services.use("storage.botDeletion")?.dispose()
       stopHistoryBackfill()
-      stopWorkspaceAttentionBackfill()
+      await stopWorkspaceAttentionBackfill()
       storageMaintenance.dispose({ closing: true })
       services.use("vm.desktop")?.dispose()
       services.use("doctor")?.dispose()
