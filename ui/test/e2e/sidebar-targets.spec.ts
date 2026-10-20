@@ -28,7 +28,7 @@ const capture = async (page: Page, name: string) => {
   const dir = process.env.SIDEBAR_CAPTURE
   if (!dir) return
   await mkdir(dir, { recursive: true })
-  await page.screenshot({ path: `${dir}/${name}.png` })
+  await page.locator(".bot-sidebar").screenshot({ path: `${dir}/${name}.png` })
 }
 
 const themes = ["light", "dark"] as const
