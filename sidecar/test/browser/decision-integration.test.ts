@@ -209,7 +209,7 @@ test("an ambiguous safe option is resolved and retried once with a provider-sele
 
     expect(response?.success).toBe(true)
     expect(fixture.clicks()).toEqual([
-      { kind: "role", role: "option", name: "Lisboa" },
+      { kind: "role", role: "option", name: "Lisboa, pessoa@example.com" },
       { kind: "ref", ref: "2.2" },
     ])
     expect(requests).toHaveLength(1)
