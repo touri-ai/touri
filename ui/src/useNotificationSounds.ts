@@ -111,20 +111,20 @@ const getSoundEvent = (intent: SoundIntent, snapshot: SoundSnapshot, systemQuiet
   now: new Date(),
 })
 
+/** Retain every current record so a large snapshot cannot replay old sounds. */
 const getSeen = (
   notifications: ReadonlyArray<NotificationRecord>,
   messages: ReadonlyArray<Message>,
   previous?: { notificationIds: Set<number>; messageIds: Set<string> },
 ) => ({
-  notificationIds: new Set(
-    [...Array.from(previous?.notificationIds ?? []), ...notifications.map((item) => item.id)].slice(-2048),
-  ),
-  messageIds: new Set(
-    [
-      ...Array.from(previous?.messageIds ?? []),
-      ...messages
-        .filter((message) => message.role === "assistant" && message.status === "complete")
-        .map((message) => message.id),
-    ].slice(-2048),
-  ),
+  notificationIds: new Set([
+    ...Array.from(previous?.notificationIds ?? []).slice(-2048),
+    ...notifications.map((item) => item.id),
+  ]),
+  messageIds: new Set([
+    ...Array.from(previous?.messageIds ?? []).slice(-2048),
+    ...messages
+      .filter((message) => message.role === "assistant" && message.status === "complete")
+      .map((message) => message.id),
+  ]),
 })

@@ -130,3 +130,22 @@ it("sounds once when a streamed reply completes and reply sounds are enabled", a
 
   expect(audio.play).toHaveBeenCalledExactlyOnceWith(0.45)
 })
+
+it("does not replay replies when the activity snapshot exceeds the remembered history limit", async () => {
+  const { snapshot, baseMessage } = getFixture({ sound: { replies: true } })
+  const invoke = vi.fn(async () => false) as TauriInvoke
+  const messages = Array.from({ length: 2100 }, (_, index) => ({
+    ...baseMessage,
+    id: `history-${index}`,
+    threadId: "thread-onb",
+    role: "assistant" as const,
+    status: "complete" as const,
+  }))
+  const initial = { ...snapshot, messages }
+  const view = renderHook((current) => useNotificationSounds(current, invoke), { initialProps: initial })
+
+  await act(async () => view.rerender({ ...snapshot, messages: [...messages] }))
+
+  expect(invoke).not.toHaveBeenCalled()
+  expect(audio.play).not.toHaveBeenCalled()
+})
