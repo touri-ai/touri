@@ -22,7 +22,7 @@ const getMessage = (id: string, sender: NonNullable<Message["sender"]>): Message
 describe("message senders", () => {
   it("shows another person's name, avatar and incoming alignment beside the current person's own message", () => {
     const messages = [
-      getMessage("owner-message", { id: "owner", name: "Thiago", avatarSeed: "owner-avatar", kind: "person" }),
+      getMessage("owner-message", { id: "owner", name: "Pessoa A", avatarSeed: "owner-avatar", kind: "person" }),
       getMessage("ana-message", { id: "ana", name: "Ana", avatarSeed: "ana-avatar", kind: "person" }),
     ]
 

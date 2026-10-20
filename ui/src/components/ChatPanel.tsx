@@ -94,7 +94,7 @@ type ChatPanelProps = {
   onTogglePanel?: () => void
   routines?: Array<Routine>
   routineRuns?: Array<RoutineRun>
-  currentPersonId?: string
+  currentPersonId?: string | null
   attachmentButtonRef?: React.RefObject<HTMLButtonElement | null> | undefined
   onOpenPermissions?: () => void
   onOpenToolCatalog?: () => void
@@ -125,7 +125,7 @@ type ChatPanelProps = {
 
 type VirtualMessageListProps = {
   vmBotId?: string | undefined
-  currentPersonId?: string | undefined
+  currentPersonId?: string | null | undefined
   machine?: MachineState | undefined
   focusApproval?: ApprovalFocus | undefined
   messages: Array<Message>
@@ -674,7 +674,7 @@ const MessageBubble = ({
 }: {
   inserted: boolean
   vmBotId?: string | undefined
-  currentPersonId: string
+  currentPersonId: string | null
   machine?: MachineState | undefined
   recovered: boolean
   message: Message
@@ -697,6 +697,8 @@ const MessageBubble = ({
   const senderBot = useAvatarBot(message.sender?.id ?? null)
   const personSender = message.role === "user" && message.sender?.kind === "person" ? message.sender : null
   const messageFromOtherPerson = Boolean(personSender && personSender.id !== currentPersonId)
+  const personMessageClass = messageFromOtherPerson ? "message-user message-other-person" : "message-user"
+  const messageClass = message.role === "user" ? personMessageClass : "message-assistant"
   const parentEvidence = useContext(EvidenceContext)
   const bot = senderBot ?? threadBot
   const evidence = useMemo(
@@ -898,7 +900,7 @@ const MessageBubble = ({
   return (
     <article
       ref={root}
-      className={`message-bubble ${message.role === "user" ? `message-user${messageFromOtherPerson ? " message-other-person" : ""}` : "message-assistant"}${routinePrompt ? " message-routine-prompt" : ""}`}
+      className={`message-bubble ${messageClass}${routinePrompt ? " message-routine-prompt" : ""}`}
       data-message-id={message.id}
       data-motion-insert={inserted}
     >

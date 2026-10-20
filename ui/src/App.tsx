@@ -85,6 +85,7 @@ import { requestTaskResume, requestTaskReview } from "./recoveryEvents"
 import { isRoutineConversation } from "./routineConversation"
 import { getTeamRoutineDraft, type RoutineDraft } from "./routineDraft"
 import { isFailureNotice } from "./sidebarAttention"
+import { useCurrentPersonId } from "./useCurrentPersonId"
 import { useHost } from "./useHost"
 import { useNotificationSounds } from "./useNotificationSounds"
 import { RecoveryTasksContext, useRecoveryTasks } from "./useRecoveryTasks"
@@ -157,7 +158,7 @@ const AppContent = ({ kernel }: AppProps) => {
   const serverState = useServerMode()
   const serverMode = serverState.status?.mode === "server" || Boolean(serverState.error)
   const [api, setApi] = useState<UiApi | null>(() => kernel?.services?.api ?? null)
-  const [currentPersonId, setCurrentPersonId] = useState("owner")
+  const currentPersonId = useCurrentPersonId(api, isNativeDesktop() && !serverMode)
   const host = useHost(api)
   const attachmentButtonRef = useRef<HTMLButtonElement>(null)
   const apiRef = useRef(api)
@@ -221,22 +222,6 @@ const AppContent = ({ kernel }: AppProps) => {
     [],
   )
   const activeApi = api ?? unavailableApi
-  useEffect(() => {
-    if (!api || api.isMock) return
-
-    let active = true
-    setCurrentPersonId("owner")
-    void api
-      .request("GET /session", {})
-      .then(({ person }) => {
-        if (active) setCurrentPersonId(person.id)
-      })
-      .catch(() => undefined)
-
-    return () => {
-      active = false
-    }
-  }, [api])
   useEffect(() => installComputerKillSwitch(activeApi, invokeCommand, setLocalNotice), [activeApi, invokeCommand])
   const workspace = useWorkspace(activeApi, api !== null, route.section === "bots" && route.screen === "chat")
   const { data, actions } = workspace
