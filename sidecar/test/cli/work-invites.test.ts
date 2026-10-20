@@ -199,6 +199,52 @@ test("rotated person tokens remain rejected by device-only servers while owner p
   expect(store.verifyDeviceToken(member.token)).toBeNull()
 })
 
+test("removing an admin revokes the unused invitations they issued", async () => {
+  const directory = await makeDirectory()
+  const store = await openAuthStore({ filename: join(directory, "auth.db") })
+  stores.add(store)
+  const invitation = await store.createInvite({
+    actorPersonId: "owner",
+    name: "Admin",
+    email: "admin@example.test",
+    role: "admin",
+    channelIds: [],
+  })
+  if (!invitation.success) throw new Error("Admin invitation failed")
+  const admin = await store.claimInvite({
+    token: invitation.token,
+    email: invitation.invite.email,
+    deviceName: "Admin",
+  })
+  if (!admin.success) throw new Error("Admin setup failed")
+  const issued = await store.createInvite({
+    actorPersonId: admin.person.id,
+    name: "Replacement",
+    email: "replacement@example.test",
+    role: "admin",
+    channelIds: [],
+  })
+  if (!issued.success) throw new Error("Pending invitation failed")
+
+  const removed = await store.removePerson({ id: admin.person.id, actorPersonId: "owner" })
+  const claimed = await store.claimInvite({
+    token: issued.token,
+    email: issued.invite.email,
+    deviceName: "Replacement",
+  })
+
+  expect(removed.success).toBe(true)
+  expect(store.verifyDeviceToken(admin.token)).toBeNull()
+  expect(claimed.success).toBe(false)
+  expect(store.listInvites().find((invite) => invite.id === issued.invite.id)?.revokedAt).not.toBeNull()
+  expect(
+    store
+      .listPeople()
+      .filter((person) => person.role === "admin")
+      .map((person) => person.id),
+  ).toEqual(["owner"])
+})
+
 test("expired invites and admin-only writes are rejected", async () => {
   const directory = await makeDirectory()
   const filename = join(directory, "auth.db")

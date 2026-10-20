@@ -152,8 +152,10 @@ const execute = (command: WriteCommand): unknown => {
         command.id,
       )
       db.query("DELETE FROM person_channels WHERE person_id = ?").run(command.id)
-      db.query("UPDATE invites SET revoked_at = ? WHERE email = (SELECT email FROM people WHERE id = ?)").run(
+      db.query(`UPDATE invites SET revoked_at = ? WHERE email = (SELECT email FROM people WHERE id = ?)
+        OR (created_by_person_id = ? AND used_at IS NULL AND revoked_at IS NULL)`).run(
         command.at,
+        command.id,
         command.id,
       )
       return true
