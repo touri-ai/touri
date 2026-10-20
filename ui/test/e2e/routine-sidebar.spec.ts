@@ -3,6 +3,7 @@ import { expect, test } from "@playwright/test"
 test.use({ channel: "chromium", locale: "pt-BR", timezoneId: "America/Sao_Paulo" })
 
 test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("touri.sidebar.mode", "bots"))
   await page.clock.setFixedTime(new Date("2026-10-18T18:00:00-03:00"))
 })
 
