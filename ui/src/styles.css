@@ -3165,8 +3165,8 @@ a {
     z-index: 60;
     top: 6px;
     left: 12px;
-    width: 40px;
-    height: 40px;
+    width: var(--touch-target-size);
+    height: var(--touch-target-size);
   }
   .mobile-menu-button[hidden] {
     display: none;
