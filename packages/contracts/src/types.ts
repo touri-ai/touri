@@ -1158,9 +1158,11 @@ export type AvatarHorns = 'classic' | 'short' | 'long' | 'none'
 export type AvatarAccessory = 'none' | 'ring' | 'glasses' | 'headphones' | 'cap' | 'flower' | 'crown'
 /** Bull look, horns then accessory (`short-flower`). */
 export type AvatarBullShape = `${AvatarHorns}-${AvatarAccessory}`
-/** Silhouette ids saved before the bulls; still accepted, rendered as the seeded automatic look. */
+/** Silhouette ids saved before the bulls; each selects its matching bull head. */
 export type AvatarLegacyShape = 'cercle' | 'galet' | 'squircle' | 'capsule' | 'triangle' | 'hexagone' | 'nuage'
-export type AvatarShape = AvatarBullShape | AvatarLegacyShape
+/** Keeps an explicit legacy head when its horns or accessory are customized. */
+export type AvatarCustomShape = `${AvatarLegacyShape}:${AvatarBullShape}`
+export type AvatarShape = AvatarBullShape | AvatarLegacyShape | AvatarCustomShape
 
 /** Persisted notification. `id` is stable; `requestId` is set for approval/question and is what `respond` takes. */
 export type NotificationRecord = {
