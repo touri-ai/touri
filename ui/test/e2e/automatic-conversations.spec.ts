@@ -4,6 +4,10 @@ import { expect, type Page, test } from "@playwright/test"
 
 test.use({ viewport: { width: 1440, height: 900 }, reducedMotion: "reduce" })
 
+test.beforeEach(async ({ page }) => {
+  await page.clock.setFixedTime(new Date("2026-10-20T12:00:00Z"))
+})
+
 const openConversations = async (page: Page) => {
   const menu = page.getByRole("button", { name: "Abrir menu", exact: true })
   if (await menu.isVisible()) await menu.click()
