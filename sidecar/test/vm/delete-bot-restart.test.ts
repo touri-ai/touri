@@ -13,7 +13,8 @@ import { fakeVmProvider } from "./fake-provider"
 
 const cleanups = new Set<() => Promise<void>>()
 afterEach(async () => {
-  for (const cleanup of Array.from(cleanups).toReversed()) await cleanup()
+  // Reverse only a fresh copy so connections close before their temporary directory.
+  for (const cleanup of Array.from(cleanups).reverse()) await cleanup()
   cleanups.clear()
 })
 

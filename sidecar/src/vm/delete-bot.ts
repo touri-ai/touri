@@ -274,7 +274,9 @@ export const createBotDeletionManager = (
         .map((session) => session.rollout_path)
       await Promise.all(paths.map((path) => removePrivateFileAsync({ root: kernel.paths.appData, path })))
       db.transaction(() => {
-        sessions.forEach(({ id }) => db.query("UPDATE provider_sessions SET rollout_path = NULL WHERE id = ?").run(id))
+        sessions.forEach(({ id }) => {
+          db.query("UPDATE provider_sessions SET rollout_path = NULL WHERE id = ?").run(id)
+        })
       })()
       return true
     }

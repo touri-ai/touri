@@ -38,7 +38,7 @@ function getBotDeletionRecordTasks() {
     { table: "routine_runs", predicate: run("run_id"), update: "run_id = NULL" },
     { table: "routines", predicate: "bot_id = ?2" },
     { table: "routines", predicate: thread("results_thread_id"), update: "results_thread_id = NULL" },
-    { table: "runs", predicate: "bot_id = ?2 OR " + thread("runs.thread_id") },
+    { table: "runs", predicate: `bot_id = ?2 OR ${thread("runs.thread_id")}` },
     { table: "threads", predicate: thread("threads.parent_thread_id"), update: "parent_thread_id = NULL" },
     { table: "threads", predicate: thread("threads.group_thread_id"), update: "group_thread_id = NULL" },
     { table: "bot_mcp_servers", predicate: "bot_id = ?2" },

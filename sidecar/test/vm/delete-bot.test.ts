@@ -1156,7 +1156,8 @@ test("50k message deletion returns quickly, keeps the event loop responsive and 
   const requestMs = performance.now() - started
   await waitForDeletionComplete(f.db, bot.id)
   clearInterval(probe)
-  const sortedTicks = ticks.toSorted((first, second) => first - second)
+  // Sort only a fresh measurement copy; the project's type library predates toSorted.
+  const sortedTicks = Array.from(ticks).sort((first, second) => first - second)
   const maxTickMs = sortedTicks.at(-1) ?? 0
   const p99TickMs = sortedTicks[Math.ceil(sortedTicks.length * 0.99) - 1] ?? 0
   console.info(`bot-deletion-performance ${JSON.stringify({ messages: 50_000, requestMs, p99TickMs, maxTickMs })}`)
