@@ -1,4 +1,4 @@
-import type { Database } from "bun:sqlite"
+import { Database } from "bun:sqlite"
 import { afterEach, expect, mock, test } from "bun:test"
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -15,7 +15,6 @@ import { createGroupStore } from "../../src/groups/store"
 import { createKernel } from "../../src/kernel"
 import { collectUnusedOutputBlobs } from "../../src/kernel/data-maintenance"
 import { createEventBus } from "../../src/kernel/event-bus"
-import { createPerformanceStageTracker } from "../../src/kernel/performance"
 import { createRuntimeEngine } from "../../src/runtime/engine"
 import { createRuntimePersistence } from "../../src/runtime/persistence"
 import { init as initStore } from "../../src/store"
@@ -70,16 +69,14 @@ const seedSearchableMessages = (database: Database, threadId: string, count: num
 const fixture = async ({
   callHost,
   collectBlobs,
-  stageTracker = createPerformanceStageTracker(),
 }: {
   callHost?: Kernel["callHost"]
   collectBlobs?: typeof collectUnusedOutputBlobs
-  stageTracker?: ReturnType<typeof createPerformanceStageTracker>
 } = {}) => {
   const root = mkdtempSync(join(tmpdir(), "touri-delete-bot-"))
   mkdirSync(join(root, ".codex"))
   writeFileSync(join(root, ".codex/auth.json"), JSON.stringify({ access_token: "fake-test-only" }))
-  const runtime = createKernel({ appData: join(root, "data"), stageTracker })
+  const runtime = createKernel({ appData: join(root, "data") })
   await initStore(runtime.kernel)
   const vault = new Map<string, string>()
   const sessionDeletions = new Map<string, { botExists: boolean; inTransaction: boolean }>()
@@ -1139,9 +1136,32 @@ test("A11 deleting a symlinked bot home preserves the shared project target", as
   expect(existsSync(bot.homeDir)).toBe(false)
 })
 
+test("purge pauses behind a retained WAL reader and resumes after it releases its snapshot", async () => {
+  const f = await fixture()
+  const bot = await f.create("Retained reader", "local")
+  seedSearchableMessages(f.db, bot.mainThreadId ?? "", 2000)
+  const reader = new Database(f.db.filename)
+  cleanups.push(async () => reader.close())
+  reader.exec("BEGIN")
+  reader.query("SELECT count(*) FROM messages").get()
+
+  const response = await f.rawRequest(`/bots/${bot.id}`, { name: bot.name }, "DELETE")
+  const getProgress = () => f.db.query("SELECT processed, error_code FROM bot_deletions WHERE bot_id = ?").get(bot.id)
+  await Bun.sleep(150)
+  const retainedProgress = getProgress()
+  await Bun.sleep(100)
+  const laterProgress = getProgress()
+  reader.exec("COMMIT")
+  await waitForDeletionComplete(f.db, bot.id)
+
+  expect(response.status).toBe(202)
+  expect(retainedProgress).toEqual({ processed: 0, error_code: null })
+  expect(laterProgress).toEqual(retainedProgress)
+  expect(f.db.query("SELECT count(*) AS count FROM messages").get()).toEqual({ count: 0 })
+}, 30_000)
+
 test("50k message deletion returns quickly, keeps the event loop responsive and purges FTS", async () => {
-  const stageTracker = createPerformanceStageTracker()
-  const f = await fixture({ stageTracker })
+  const f = await fixture()
   const bot = await f.create("Large history", "local")
   const threadId = bot.mainThreadId ?? ""
   seedSearchableMessages(f.db, threadId, 50_000)
@@ -1165,9 +1185,6 @@ test("50k message deletion returns quickly, keeps the event loop responsive and 
   const maxTickMs = sortedTicks.at(-1) ?? 0
   const p99TickMs = sortedTicks[Math.ceil(sortedTicks.length * 0.99) - 1] ?? 0
   console.info(`bot-deletion-performance ${JSON.stringify({ messages: 50_000, requestMs, p99TickMs, maxTickMs })}`)
-  console.info(
-    `bot-deletion-stages ${JSON.stringify(stageTracker.snapshot().map(({ stage, maxMs }) => ({ stage, maxMs })))}`,
-  )
 
   expect(response.status).toBe(202)
   expect(requestMs).toBeLessThan(1000)

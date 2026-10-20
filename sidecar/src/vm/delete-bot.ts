@@ -115,6 +115,8 @@ export const createBotDeletionManager = (
   let pendingBatch:
     | { id: string; resolve: (result: DeletionBatchResult) => void; reject: (error: Error) => void }
     | undefined
+  // Correlation belongs to this manager's lifetime; it does not need cryptographic randomness.
+  let batchId = 0
   // One worker response can be correlated at a time, even when several bots are purging.
   let batchQueue: Promise<void> = Promise.resolve()
   const running = new Set<string>()
@@ -194,7 +196,7 @@ export const createBotDeletionManager = (
       if (disposed) throw new Error("Bot deletion worker stopped")
       await ensureWorker()
       if (!worker) throw new Error("Bot deletion worker is unavailable")
-      const id = crypto.randomUUID()
+      const id = String(++batchId)
       return new Promise<DeletionBatchResult>((resolve, reject) => {
         pendingBatch = { id, resolve, reject }
         worker?.postMessage({ type: "batch", id, botId })
@@ -384,8 +386,12 @@ export const createBotDeletionManager = (
       }
     } catch (error) {
       if (disposed) return
+      if (error instanceof Error && error.message === "SQLITE_BUSY") {
+        scheduleRetry(botId, 250)
+        return
+      }
       setJobError(botId, error)
-      scheduleRetry(botId, error instanceof Error && error.message === "SQLITE_BUSY" ? 250 : 1000)
+      scheduleRetry(botId, 1000)
     } finally {
       running.delete(botId)
       if (!disposed) schedulePending()
