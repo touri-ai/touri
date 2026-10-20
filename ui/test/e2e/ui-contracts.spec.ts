@@ -37,7 +37,7 @@ for (const coarse of [false, true]) {
     await page.goto(`${baseURL}${url}`)
     expect(await page.evaluate(() => matchMedia("(pointer: coarse)").matches)).toBe(coarse)
     const icon = page.locator(".sidebar-icon-button")
-    await expect(icon).toHaveCSS("height", coarse ? "44px" : "32px")
+    await expect(icon).toHaveCSS("height", coarse ? "44px" : "40px")
     const tab = page.locator(".bot-panel-tabs button")
     expect((await tab.boundingBox())?.height).toBeGreaterThanOrEqual(coarse ? 44 : 32)
     for (const selector of [".bot-context-menu button", ".tool-action", ".tool-details > summary"]) {
