@@ -10,25 +10,33 @@ import {
   getBrowserActivityUrl,
 } from "../src/components/browserActivityPresentation"
 import { InlinePreviewContext } from "../src/features/desktop/InlineLivePreview"
+import { startInlineFrameSource } from "../src/features/desktop/inlineFrameSource"
+import { setInlinePreviewPreference } from "../src/features/desktop/inlinePreviewPreference"
 
 vi.mock("../src/features/desktop/inlineFrameSource", () => ({
-  startInlineFrameSource: (
-    _api: unknown,
-    _bot: unknown,
-    _tabId: string | undefined,
-    frame: (value: { src: string; title: string; url: string }) => void,
-  ) => {
-    frame({
-      src: "data:image/jpeg;base64,ZmFrZQ==",
-      title: "Resultados de Lisboa",
-      url: "https://person@example.test:private-password@travel.example.test/results?email=person@example.test",
-    })
+  startInlineFrameSource: vi.fn(
+    (
+      _api: unknown,
+      _bot: unknown,
+      _tabId: string | undefined,
+      frame: (value: { src: string; title: string; url: string }) => void,
+    ) => {
+      frame({
+        src: "data:image/jpeg;base64,ZmFrZQ==",
+        title: "Resultados de Lisboa",
+        url: "https://person@example.test:private-password@travel.example.test/results?email=person@example.test",
+      })
 
-    return () => {}
-  },
+      return () => {}
+    },
+  ),
 }))
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  setInlinePreviewPreference(true)
+  vi.clearAllMocks()
+})
 
 const tab = {
   tabId: "browser-tab",
@@ -282,4 +290,17 @@ test("a delayed tab snapshot cannot undo a newer takeover event", async () => {
 
   expect(screen.getByRole("button", { name: "Devolver para Lia" })).toBeVisible()
   expect(screen.queryByRole("button", { name: "Assumir controle" })).toBeNull()
+})
+
+test("disabling live chat previews prevents capture and leaves browser control available", () => {
+  setInlinePreviewPreference(false)
+  const parts = [getPart({ callId: "open", tool: "browser_open", inputJson: '{"tabId":"browser-tab"}' })]
+
+  renderCard(parts, false)
+
+  expect(startInlineFrameSource).not.toHaveBeenCalled()
+  expect(screen.queryByRole("img", { name: "Página atual do navegador" })).toBeNull()
+  expect(screen.queryByRole("button", { name: "Expandir navegador" })).toBeNull()
+  expect(screen.getByText("Atividade do navegador")).toBeVisible()
+  expect(screen.getByRole("button", { name: "Assumir controle" })).toBeVisible()
 })

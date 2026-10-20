@@ -2,6 +2,7 @@ import type { BrowserTabInfo, Id, MessagePart } from "@touri/contracts"
 import { useContext, useEffect, useRef, useState } from "react"
 import { InlinePreviewContext } from "../features/desktop/InlineLivePreview"
 import { type PreviewFrame, startInlineFrameSource } from "../features/desktop/inlineFrameSource"
+import { useInlinePreviewPreference } from "../features/desktop/inlinePreviewPreference"
 import { type Locale, t } from "../i18n"
 import {
   getBrowserActivityLabel,
@@ -33,6 +34,7 @@ export const BrowserActivityCard = ({
   locale?: Locale
 }) => {
   const context = useContext(InlinePreviewContext)
+  const previewEnabled = useInlinePreviewPreference()
   const browserTools = getBrowserActivityTools(parts)
   const tabId = getBrowserActivityTabId(browserTools)
   const [resolvedTabId, setResolvedTabId] = useState<string>()
@@ -120,7 +122,8 @@ export const BrowserActivityCard = ({
   }, [api, botId, finished, tabId])
 
   useEffect(() => {
-    if (!api || !botId || !machine || !activeTabId || !canPreview || !visible || hidden || finished) return
+    if (!api || !botId || !machine || !activeTabId || !canPreview || !previewEnabled || !visible || hidden || finished)
+      return
 
     setPreviewError(null)
     return startInlineFrameSource(
@@ -133,7 +136,7 @@ export const BrowserActivityCard = ({
         setPreviewError(reason ? t("Browser preview unavailable. Open the browser to reconnect.", {}, locale) : null),
       { intervalMs: 3_000 },
     )
-  }, [activeTabId, api, botId, machine, canPreview, finished, hidden, locale, visible])
+  }, [activeTabId, api, botId, machine, canPreview, finished, hidden, locale, previewEnabled, visible])
 
   const toggleTakeover = async (): Promise<void> => {
     if (!api || !activeTabId || busy) return
@@ -216,8 +219,10 @@ export const BrowserActivityCard = ({
         </header>
       )}
       {expanded && (
-        <div className={`browser-activity-content${fullView || finished ? " browser-activity-content-full" : ""}`}>
-          {!finished && (
+        <div
+          className={`browser-activity-content${fullView || finished || !previewEnabled ? " browser-activity-content-full" : ""}`}
+        >
+          {!finished && previewEnabled && (
             <div className={`browser-activity-preview${fullView ? " browser-activity-preview-full" : ""}`}>
               {preview?.src ? (
                 <img src={preview.src} alt={t("Current browser page", {}, locale)} />
