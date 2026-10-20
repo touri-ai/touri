@@ -612,6 +612,17 @@ export const init = async (
     })
   }
 
+  const indexHistoryAttachments = async (messages: Array<Message>, signal: AbortSignal): Promise<void> => {
+    for (let offset = 0; offset < messages.length; offset += 32) {
+      signal.throwIfAborted()
+      const batch = messages
+        .slice(offset, offset + 32)
+        .filter((message) => message.parts.some((part) => part.type === "image" || part.type === "file"))
+      if (batch.length > 0) await writeDatabaseAsync(database, () => batch.forEach(indexMessageAttachments))
+      if (offset + 32 < messages.length) await new Promise<void>((resolve) => setImmediate(resolve))
+    }
+  }
+
   const insertMessage: StoreApi["insertMessage"] = ({ message }) => {
     if (!getThread({ threadId: message.threadId }))
       return { success: false, errorCode: "THREAD_NOT_FOUND", error: `Thread ${message.threadId} was not found` }
@@ -643,7 +654,6 @@ export const init = async (
     const stored = getMessage({ threadId: message.threadId, messageId: message.id })
     if (!stored)
       return { success: false, errorCode: "THREAD_NOT_FOUND", error: "Message could not be read after insert" }
-    indexMessageAttachments(stored)
     refreshFts({ message: stored })
     updateThreadRow({ threadId: message.threadId, patch: { activeLeafId: message.id } })
     kernel.publish({ type: "message.created", message: stored })
@@ -691,7 +701,6 @@ export const init = async (
       .run(next.status, partsJson, next.text, next.runId, next.updatedAt, threadId, messageId)
     if (next.text !== current.text) refreshFts({ message: next })
     const stored = getMessage({ threadId, messageId }) ?? next
-    indexMessageAttachments(stored)
     streamWriter.invalidate(threadId, messageId)
     kernel.publish({ type: "message.updated", message: stored })
     return { success: true, message: stored }
@@ -1754,7 +1763,7 @@ export const init = async (
       {
         method: "GET",
         path: "/threads/:id/transcript",
-        handler: async ({ params, query }) => {
+        handler: async ({ params, query, signal }) => {
           const cloudThread = getThread({ threadId: params.id ?? "" })
           if (cloudThread && getBot({ botId: cloudThread.botId })?.machine === "cloud") {
             const cloud = kernel.services.use("cloud.account")
@@ -1801,10 +1810,12 @@ export const init = async (
             generation: row.generation,
             event: hydrateHistoryEvent(database, row.event_json),
           }))
-          entries.forEach(({ event }) => {
-            if (event.type === "message.created" || event.type === "message.updated")
-              indexMessageAttachments(event.message)
-          })
+          await indexHistoryAttachments(
+            entries.flatMap(({ event }) =>
+              event.type === "message.created" || event.type === "message.updated" ? [event.message] : [],
+            ),
+            signal,
+          )
           return jsonResponse(200, {
             entries,
             rejections: entries.flatMap(({ event }) => (event.type === "transcript.rejected" ? [event.rejection] : [])),
@@ -1818,7 +1829,7 @@ export const init = async (
       {
         method: "GET",
         path: "/threads/:id/messages",
-        handler: async ({ params, query }) => {
+        handler: async ({ params, query, signal }) => {
           const cloudThread = getThread({ threadId: params.id ?? "" })
           if (cloudThread && getBot({ botId: cloudThread.botId })?.machine === "cloud") {
             const cloud = kernel.services.use("cloud.account")
@@ -1840,7 +1851,7 @@ export const init = async (
                     .all(thread.id) as Array<RawMessage>
                 ).map(asMessage)
               : activePath({ threadId: thread.id })
-          messages.forEach(indexMessageAttachments)
+          await indexHistoryAttachments(messages, signal)
           return jsonResponse(200, { messages, activeLeafId: thread.activeLeafId })
         },
       },

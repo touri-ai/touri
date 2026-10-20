@@ -142,3 +142,33 @@ test("oversized attachment content is rejected with the size limit", async () =>
     error: "Escolha um arquivo de até 15 MB.",
   })
 })
+
+test("indexing legacy attachment references yields while conversation history loads", async () => {
+  const f = await fixture()
+  const database = f.runtime.kernel.db as Database
+  const total = 2048
+  const insert =
+    database.query(`INSERT INTO messages(id,thread_id,role,kind,status,text,parts_json,created_at,updated_at)
+    VALUES (?,'t','user','text','complete','Synthetic history',?,1,1)`)
+  database.transaction(() => {
+    Array.from({ length: total }, (_, index) => index).forEach((index) => {
+      insert.run(
+        `legacy-${index}`,
+        JSON.stringify([{ type: "file", attachmentId: `file-${index}`, name: "test.txt", mime: "text/plain" }]),
+      )
+    })
+    database.exec("DELETE FROM attachment_message_refs")
+  })()
+  let interleaved = false
+  const timer = setInterval(() => {
+    const row = database.query("SELECT count(*) AS count FROM attachment_message_refs").get() as { count: number }
+    if (row.count > 0 && row.count < total) interleaved = true
+  }, 1)
+  cleanup.push(() => clearInterval(timer))
+
+  const response = await f.request("/threads/t/messages?all=true")
+
+  expect(response.status).toBe(200)
+  expect(interleaved).toBe(true)
+  expect(database.query("SELECT count(*) AS count FROM attachment_message_refs").get()).toEqual({ count: total })
+})
