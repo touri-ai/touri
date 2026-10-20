@@ -70,7 +70,7 @@ const seedSearchableMessages = (database: Database, threadId: string, count: num
 const fixture = async ({
   callHost,
   collectBlobs,
-  stageTracker,
+  stageTracker = createPerformanceStageTracker(),
 }: {
   callHost?: Kernel["callHost"]
   collectBlobs?: typeof collectUnusedOutputBlobs
