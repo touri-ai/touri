@@ -2381,8 +2381,12 @@ export const createRuntimeEngine = ({
     pendingApprovals.delete(approvalId)
     const result = await pending.provider.answerApproval({ approvalId: pending.providerApprovalId, decision })
     if (!result.success) return result
+
+    const run = persistence.getRun(pending.runId)
+    const state = states.get(pending.runId)
+    if (!run || !state || !["starting", "running"].includes(run.status)) return { success: true }
+
     notices.resolve({ requestId: approvalId, resolution })
-    const state = getState(pending.runId)
     const approval = state.parts.find(
       (part): part is ApprovalPart => part.type === "approval" && part.approvalId === approvalId,
     )
@@ -2391,9 +2395,8 @@ export const createRuntimeEngine = ({
       approval.resolvedAt = Date.now()
       state.dirtyParts.add(state.parts.indexOf(approval))
     }
-    const run = persistence.getRun(pending.runId)
-    const store = run ? kernel.services.use("store.api") : null
-    if (run && store) publishMessage({ store, state, run, status: "streaming" })
+    const store = kernel.services.use("store.api")
+    if (store) publishMessage({ store, state, run, status: "streaming" })
     return { success: true }
   }
 

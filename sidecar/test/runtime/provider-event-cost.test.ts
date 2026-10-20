@@ -51,6 +51,10 @@ type BenchmarkResult = {
   attributedMs: number
   attributedCpuMs: number
   maxBlockMs: number
+  maxTimerLagMs: number
+  p99TimerLagMs: number
+  timerWindowMs: number
+  timerSamples: number
   maxBlockCpuMs: number
   p95BlockCpuMs: number
   blockCpuSamples: number
@@ -131,10 +135,40 @@ const getTrackedRunner = (now = performance.now.bind(performance)) => {
   let maxBlockMs = 0
   let maxBlockCpuMs = 0
   const blockCpuSamples: Array<number> = []
+  // Each replay keeps bounded timer samples and cancels its probe during teardown.
+  let timer: ReturnType<typeof setTimeout> | null = null
+  let nextTimerAt = 0
+  let maxTimerLagMs = 0
+  let timerStartedAt: number | null = null
+  let timerSamples = 0
+  const timerLagSamples: Array<number> = []
+  const sampleTimer = (): void => {
+    const lagMs = Math.max(0, performance.now() - nextTimerAt)
+    maxTimerLagMs = Math.max(maxTimerLagMs, lagMs)
+    timerSamples += 1
+    if (timerLagSamples.length < 10_000) timerLagSamples.push(lagMs)
+  }
+  const scheduleTimer = (): void => {
+    nextTimerAt = performance.now() + 1
+    timer = setTimeout(() => {
+      sampleTimer()
+      scheduleTimer()
+    }, 1)
+  }
+  const stopProbe = (): void => {
+    if (timer === null) return
+    sampleTimer()
+    clearTimeout(timer)
+    timer = null
+  }
   let firstFrameCpu: NodeJS.CpuUsage | null = null
   const stageTimes = new Map<PerformanceStage, BenchmarkStage>()
   const runStage: PerformanceStageRunner = (stage, action, input) => {
-    if (stage === "provider_frame_batch" && firstFrameCpu === null) firstFrameCpu = process.cpuUsage()
+    if (stage === "provider_frame_batch" && firstFrameCpu === null) {
+      firstFrameCpu = process.cpuUsage()
+      timerStartedAt = performance.now()
+      scheduleTimer()
+    }
     const parent = activeSpan
     const span = { childMs: 0, inDispatch: stage === "provider_frame_dispatch" || (parent?.inDispatch ?? false) }
     const cpuStartedAt = parent === null && firstFrameCpu !== null ? process.cpuUsage() : null
@@ -183,11 +217,17 @@ const getTrackedRunner = (now = performance.now.bind(performance)) => {
   return {
     runStage,
     stageTracker,
+    stopProbe,
     getResult: () => {
+      stopProbe()
       const stages = [...stageTimes.values()]
       const cpu = firstFrameCpu ? process.cpuUsage(firstFrameCpu) : { user: 0, system: 0 }
       return {
         providerCpuMs: (cpu.user + cpu.system) / 1_000,
+        maxTimerLagMs,
+        p99TimerLagMs: getPercentile(timerLagSamples, 0.99),
+        timerWindowMs: timerStartedAt === null ? 0 : performance.now() - timerStartedAt,
+        timerSamples,
         attributedMs,
         attributedCpuMs,
         maxBlockMs,
@@ -373,6 +413,7 @@ const runReplay = async (count: number, historyMessages = 0, switchBranch = fals
     events.push(event.type)
   })
   replayCleanups.push(unsubscribe)
+  replayCleanups.push(stages.stopProbe)
 
   const queued = engine.enqueue({
     threadId,
@@ -460,6 +501,17 @@ const runBestHistoryReplay = async (historyMessages: number): Promise<BenchmarkR
     await runReplay(60, historyMessages),
     await runReplay(60, historyMessages),
   ]
+
+  replays.forEach((replay) => {
+    expect(replay.timerSamples).toBeGreaterThan(0)
+    expect(replay.maxTimerLagMs).toBeLessThan(50)
+    expect(replay.maxBlockMs).toBeLessThan(50)
+    expect(replay.maxBlockCpuMs).toBeLessThan(50)
+    expect(replay.runtimeEventMs / replay.runtimeEventCalls).toBeLessThan(1)
+    expect(replay.providerDispatchMs / replay.providerDispatchCalls).toBeLessThan(1)
+    expect(replay.providerDispatchAttribution).toBeGreaterThanOrEqual(0.9)
+    expect(replay.retainedRunStates).toBe(0)
+  })
 
   return replays.reduce((fastest, replay) =>
     replay.providerDispatchMs < fastest.providerDispatchMs ? replay : fastest,
