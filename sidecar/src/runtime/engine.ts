@@ -392,7 +392,7 @@ export const createRuntimeEngine = ({
   const active = new Map<Id, Run>()
   const controllers = new Map<Id, AbortController>()
   const executions = new Map<Id, Promise<void>>()
-  const finalizations = new Map<Id, Promise<void>>()
+  const finalizations = new Map<Id, Promise<boolean>>()
   const providers = new Map<Id, ProviderAdapter>()
   const states = new Map<Id, RunState>()
   const pendingApprovals = new Map<Id, PendingApproval>()
@@ -575,7 +575,7 @@ export const createRuntimeEngine = ({
     prepare: () => Promise<() => boolean>,
     finish: () => boolean,
     messageId?: Id,
-  ): Promise<void> => {
+  ): Promise<boolean> => {
     const pending = finalizations.get(run.id)
     if (pending) return pending
 
@@ -583,7 +583,7 @@ export const createRuntimeEngine = ({
     const operation = finishLiveRunNow(run, prepare, finish, messageId)
     finalizations.set(run.id, operation)
     try {
-      await operation
+      return await operation
     } finally {
       finalizations.delete(run.id)
     }
@@ -594,7 +594,7 @@ export const createRuntimeEngine = ({
     prepare: () => Promise<() => boolean>,
     finish: () => boolean,
     messageId?: Id,
-  ): Promise<void> => {
+  ): Promise<boolean> => {
     for (;;) {
       // Drain again on retries: a late accepted part may already reference its pending output file.
       try {
@@ -610,22 +610,22 @@ export const createRuntimeEngine = ({
       const isPrepared = await prepare()
       // Preparation can finish a large batch; give timers and cancellation a turn before the terminal transaction.
       await new Promise<void>((resolve) => setImmediate(resolve))
-      const write = (): boolean => {
+      const write = (): boolean | null => {
         if (!isLive(run)) {
           tools.clearPendingMemory(run.id)
-          return true
+          return false
         }
         // Cancellation or a writer-lock retry can invalidate the externalized snapshot.
-        if (!isPrepared()) return false
+        if (!isPrepared()) return null
 
         // A canceled success path keeps its pending disposition for the canceled transition.
-        if (!finish()) return true
+        if (!finish()) return false
         tools.clearPending(run.id)
         return true
       }
       // The terminal reply, run and tool resolutions have one winning writer.
-      const finished = kernel.db instanceof Database ? await writeDatabaseAsync(kernel.db, write) : write()
-      if (finished) return
+      const committed = kernel.db instanceof Database ? await writeDatabaseAsync(kernel.db, write) : write()
+      if (committed !== null) return committed
     }
   }
 
@@ -1752,7 +1752,7 @@ export const createRuntimeEngine = ({
               ? planContinuation({ run, reason: "permission_granted", lastActivityAt: Date.now() })
               : null
             state.continueAfterApproval = false
-            await finishLiveRun(
+            const committed = await finishLiveRun(
               run,
               () => prepareFinalParts({ run, state, store, reason: "unknown" }),
               () => {
@@ -1802,7 +1802,7 @@ export const createRuntimeEngine = ({
               },
               state.replyMessageId ?? undefined,
             )
-            if (state.cancelRequested && isLive(run))
+            if (!committed && state.cancelRequested && isLive(run))
               await failTurn({ run, state, store, thread, errorClass: "canceled", errorMessage: "Cancelado por você" })
           } else {
             await failTurn({
@@ -1838,7 +1838,7 @@ export const createRuntimeEngine = ({
     else await finalizeProviderTurn()
   }
 
-  const finalizeFailure = ({
+  const finalizeFailure = async ({
     run,
     state,
     store,
@@ -1862,10 +1862,12 @@ export const createRuntimeEngine = ({
         : errorClass === "app_restart"
           ? "interrupted_by_restart"
           : "failed"
-    return finishLiveRun(
+    const committed = await finishLiveRun(
       run,
       () => prepareFinalParts({ run, state, store, reason }),
       () => {
+        if (state.cancelRequested && errorClass !== "canceled") return false
+
         finishParts({ run, state, reason })
         state.parts = state.parts.map((part, index) => {
           if (part.type !== "approval" || part.decision !== "pending") return part
@@ -1927,6 +1929,8 @@ export const createRuntimeEngine = ({
       },
       state.replyMessageId ?? undefined,
     )
+    if (!committed && state.cancelRequested && errorClass !== "canceled" && isLive(run))
+      await finalizeFailure({ run, state, store, thread, errorClass: "canceled", errorMessage: "Cancelado por você" })
   }
 
   const resumeEnabled = (): boolean => {
