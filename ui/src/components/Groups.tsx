@@ -473,6 +473,17 @@ export const GroupHeader = ({
         ◧
       </button>
     )}
+    {channelMode && (
+      <button
+        type="button"
+        className="toolbar-icon channel-invite"
+        aria-label={t("Invite to channel", {}, locale)}
+        title={t("Invite to channel", {}, locale)}
+        onClick={onEdit}
+      >
+        <span aria-hidden="true">+</span>
+      </button>
+    )}
     <button type="button" className="button button-quiet" onClick={onEdit}>
       {t(channelMode ? "Edit channel" : "Editar grupo", {}, locale)}
     </button>
