@@ -11,6 +11,7 @@ import { createLearningReviewer } from "../../src/learning/review"
 import { readLearningState, writeLearning } from "../../src/learning/settings"
 import { init as initRuntime } from "../../src/runtime"
 import { createRuntimeEngine } from "../../src/runtime/engine"
+import { createRuntimePersistence } from "../../src/runtime/persistence"
 import { init as initStore } from "../../src/store"
 
 const cleanups = new Set<() => Promise<void>>()
@@ -239,10 +240,11 @@ test("authenticated people keep message origin in live and persisted work snapsh
 
   const result = fixture.engine.enqueue({ threadId: "thread-0", requestMessageId: request.message.id, trigger: "user" })
   if (!result.success) throw new Error(result.error)
+  const persisted = createRuntimePersistence({ database: fixture.runtime.kernel.db })
 
   expect(fixture.engine.getRunSnapshot(result.run).origin).toBe("message")
   expect(fixture.engine.getWorkRuns().find((run) => run.id === result.run.id)?.origin).toBe("message")
-  expect(fixture.engine.listRuns("thread-0")[0]?.origin).toBe("message")
+  expect(persisted.getRunSnapshots([result.run.id])[0]?.origin).toBe("message")
 })
 
 test("group work preserves execution thread IDs in every event and keeps learning scoped to private chats", async () => {

@@ -1247,6 +1247,8 @@ test("Work member tools cannot rename a shared bot or inspect its project config
   const rename = tools.find((tool) => tool.name === "bot_rename")
   const discover = tools.find((tool) => tool.name === "project_discover")
   if (!rename || !discover) throw new Error("Setup tools unavailable")
+  f.db.query(`INSERT INTO runs(id,thread_id,bot_id,provider,trigger,status,queued_at)
+    VALUES ('admin-run',?,?,?,'user','running',1)`).run(f.caller.threadId, f.bot.id, f.bot.provider)
   const memberContext = { ...f.caller, runId: "member-run", signal: new AbortController().signal }
 
   const renamed = await rename.handler({ ctx: memberContext, args: { name: "Changed by member" } })
