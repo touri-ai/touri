@@ -315,17 +315,17 @@
   border: 0;
   border-radius: var(--radius-sm);
   background: transparent;
-  color: var(--text-secondary);
+  color: var(--text-2);
   font-size: var(--fs-meta);
   font-weight: var(--weight-medium);
 }
 .sidebar-mode-tabs [role="tab"]:hover {
-  color: var(--text-primary);
+  color: var(--text);
 }
 .sidebar-mode-tabs [role="tab"][aria-selected="true"] {
   background: var(--surface-control-raised);
   box-shadow: var(--elevation-chip);
-  color: var(--text-primary);
+  color: var(--text);
   font-weight: var(--weight-semibold);
 }
 .sidebar-mode-tabs [role="tab"]:focus-visible {
@@ -355,7 +355,7 @@
   min-height: var(--control-size);
   margin: var(--space-8) 0 var(--space-2);
   padding: 0 var(--sidebar-gutter);
-  color: var(--text-secondary);
+  color: var(--text-2);
   font-size: var(--fs-caption);
   font-weight: var(--weight-semibold);
   line-height: 1.5;
@@ -392,7 +392,7 @@
   border: 0;
   border-radius: var(--radius-sm);
   background: transparent;
-  color: var(--text-primary);
+  color: var(--text);
   font-size: var(--fs-meta);
   text-align: left;
 }
@@ -404,7 +404,7 @@
   height: 22px;
 }
 .r8-sidebar .channel-hash {
-  color: var(--text-tertiary);
+  color: var(--text-2);
   font-size: var(--fs-body);
   font-weight: var(--weight-medium);
 }
@@ -418,7 +418,7 @@
 .r8-sidebar .sidebar-row-label strong,
 .r8-sidebar .channel-name {
   overflow: hidden;
-  color: var(--text-primary);
+  color: var(--text);
   font-size: var(--fs-meta);
   font-weight: var(--weight-medium);
   line-height: 1.2;
@@ -430,7 +430,7 @@
   font-weight: var(--weight-semibold);
 }
 .r8-sidebar .bot-preview.paused {
-  color: var(--text-tertiary);
+  color: var(--text-2);
   font-size: var(--fs-caption);
 }
 .r8-sidebar .bot-preview.visually-hidden {
@@ -447,7 +447,7 @@
   padding: 0 var(--space-4);
   border-radius: var(--radius-pill);
   background: var(--surface-control-raised);
-  color: var(--text-primary);
+  color: var(--text);
   font-size: var(--fs-caption);
   font-variant-numeric: tabular-nums;
   font-weight: var(--weight-semibold);
@@ -568,7 +568,7 @@
   display: grid;
   place-items: center;
   width: 16px;
-  color: var(--text-tertiary);
+  color: var(--text-2);
 }
 .r8-sidebar .thread-icon > svg {
   width: 14px;
@@ -586,7 +586,7 @@
 .r8-sidebar .thread-copy small,
 .r8-sidebar .thread-meta {
   flex: 0 0 auto;
-  color: var(--text-tertiary);
+  color: var(--text-2);
   font-size: var(--fs-caption);
 }
 .r8-sidebar .thread-row.selected .thread-copy strong {
@@ -598,7 +598,7 @@
   padding: 0 var(--space-8);
   gap: var(--space-8);
   border-radius: var(--radius-sm);
-  color: var(--text-secondary);
+  color: var(--text-2);
   font-size: var(--fs-meta);
 }
 .r8-sidebar .new-thread-row > svg {
@@ -607,7 +607,7 @@
 }
 .r8-sidebar .new-thread-row:hover {
   background: var(--surface-control);
-  color: var(--text-primary);
+  color: var(--text);
 }
 
 /* One status surface: needs you wins over working. */
@@ -622,7 +622,7 @@
   border: 0;
   border-radius: var(--radius-sm);
   background: var(--surface-control);
-  color: var(--text-primary);
+  color: var(--text);
   font-size: var(--fs-meta);
   text-align: left;
 }
@@ -637,11 +637,11 @@
   gap: var(--space-8);
 }
 .sidebar-work-copy small {
-  color: var(--text-secondary);
+  color: var(--text-2);
   font-size: var(--fs-caption);
 }
 .sidebar-work-action {
-  color: var(--text-secondary);
+  color: var(--text-2);
 }
 
 /* Footer: quiet rows, no boxes. */
@@ -654,12 +654,12 @@
   width: 100%;
   border: 0;
   background: transparent;
-  color: var(--text-secondary);
+  color: var(--text-2);
   font-size: var(--fs-meta);
 }
 .r8-sidebar .sidebar-advanced > button:hover {
   background: var(--surface-control);
-  color: var(--text-primary);
+  color: var(--text);
 }
 .r8-sidebar .sidebar-row.selected .sidebar-unread,
 .r8-sidebar .thread-row.selected .sidebar-unread {

@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test"
+import { openBotActions } from "./home-navigation"
 
 const viewports = [
   { width: 390, height: 844 },
@@ -77,7 +78,7 @@ test.describe("phone bot settings overview", () => {
     await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
 
     const sidebar = page.getByRole("dialog", { name: "Barra lateral", exact: true })
-    await sidebar.getByRole("button", { name: "Ações de mark", exact: true }).click()
+    await openBotActions(page)
     await sidebar.getByRole("menuitem", { name: "Avançado", exact: true }).click()
 
     const dialog = page.getByRole("dialog", { name: "Configurações de mark", exact: true })

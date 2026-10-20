@@ -397,7 +397,7 @@
 }
 .group-thread-list button[aria-current] {
   background: var(--surface-selected);
-  color: var(--text-primary);
+  color: var(--text);
   font-weight: var(--weight-semibold);
 }
 /* Empty state: say what channels are and offer the one next step. */
