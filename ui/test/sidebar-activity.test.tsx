@@ -5,7 +5,7 @@ import { createMockApi } from "../src/api/mock"
 import { computeBotActivity, holdBotPositions, orderBotsByActivity } from "../src/botActivity"
 import { Sidebar } from "../src/components/BotSidebar"
 import { SettingsModal } from "../src/components/Modals"
-import { t } from "../src/i18n"
+import { getRoutineRunDateLabel, t } from "../src/i18n"
 import { readWorkspaceState, saveWorkspaceState } from "../src/workspaceState"
 
 afterEach(() => {
@@ -299,12 +299,13 @@ it.each([
   const titleElement = row.querySelector("strong")
   if (kind === "routine") {
     expect(titleElement).toHaveTextContent("Rotina “Novas mensagens”")
+    expect(titleElement).toHaveTextContent(dateLabel)
     expect(titleElement).toHaveAttribute("title", `Rotina “Novas mensagens” · ${getRoutineRunDateLabel(timestamp)}`)
   } else {
     expect(titleElement).toHaveTextContent("Novas mensagens")
     expect(titleElement).toHaveAttribute("title", "Novas mensagens")
+    expect(row.querySelector("small")).toHaveTextContent(dateLabel)
   }
-  expect(row.querySelector("small")).toHaveTextContent(dateLabel)
   expect(thread.title).toBe(title)
 })
 
