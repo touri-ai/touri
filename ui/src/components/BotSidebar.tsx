@@ -175,12 +175,12 @@ export const Sidebar = (props: SidebarProps) => {
   const selectedRoutineRef = useRef(selectedRoutineId)
   // Switching bots inside Preview keeps that view; global pages return to the bot conversation.
   const selectedThreadIsGroup = props.threads.some((thread) => thread.id === props.selectedThreadId && thread.groupId)
-  const selectionState = useRef({ botId: props.selectedBotId, selectedThreadIsGroup, section: props.section })
+  const selectionState = useRef({ section: props.section })
   // Keep memoized row callbacks stable while updating their target after each committed render.
   useLayoutEffect(() => {
     propsRef.current = props
     selectedRoutineRef.current = selectedRoutineId
-    selectionState.current = { botId: props.selectedBotId, selectedThreadIsGroup, section: props.section }
+    selectionState.current = { section: props.section }
   })
   const navigate = useCallback((action: () => void): void => {
     propsRef.current.onNavigate?.()

@@ -25,6 +25,7 @@ const exposed = async (page: Page, surface: Locator) => {
 const openWorkspace = async (page: Page) => {
   await page.goto("/test/e2e/r8-sidebar-harness.html?menus")
   await expect(page.getByRole("textbox", { name: "Mensagem para touri-qa" })).toBeVisible()
+  await page.getByRole("tab", { name: /^Bots/ }).click()
   await page.evaluate(() => document.fonts.ready)
 }
 
@@ -148,7 +149,8 @@ for (const size of [
       await trigger.scrollIntoViewIfNeeded()
       await trigger.click()
       const menu = page.getByRole("menu", { name: "Ações de release", exact: true })
-      const split = await page.locator(".sidebar-mode-panel").boundingBox()
+      const botPanel = page.locator("#sidebar-mode-panel-bots")
+      const split = await botPanel.boundingBox()
       const anchor = await trigger.boundingBox()
       if (!split || !anchor) throw new Error("Missing sidebar geometry")
       expect(split.y + split.height - anchor.y - anchor.height).toBeLessThan(60)
@@ -255,8 +257,9 @@ test("bot menu flips and shifts after resizing, tracks scrolling, and stays in t
   expect(rect.y + rect.height).toBeLessThanOrEqual(anchor.y)
   await page.setViewportSize({ width: 700, height: 500 })
   // Leave room for the next scroll so viewport clamping cannot mask anchor tracking.
-  await page.addStyleTag({ content: ".sidebar-mode-panel { padding-bottom: 60px !important; }" })
-  await page.locator(".sidebar-mode-panel").evaluate((element) => {
+  const botPanel = page.locator("#sidebar-mode-panel-bots")
+  await page.addStyleTag({ content: "#sidebar-mode-panel-bots { padding-bottom: 60px !important; }" })
+  await botPanel.evaluate((element) => {
     element.scrollTop = element.scrollHeight
   })
   await page.evaluate(
@@ -266,7 +269,7 @@ test("bot menu flips and shifts after resizing, tracks scrolling, and stays in t
   const beforeScroll = await menu.boundingBox()
   if (!beforeScroll) throw new Error("Missing menu before scrolling")
 
-  await page.locator(".sidebar-mode-panel").evaluate((element) => {
+  await botPanel.evaluate((element) => {
     element.scrollTop -= 20
   })
   await exposed(page, menu)

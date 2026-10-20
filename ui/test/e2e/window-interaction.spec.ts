@@ -26,6 +26,7 @@ test("title bars leave bot rows, header actions and top-bar controls clickable",
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto("/test/e2e/r8-sidebar-harness.html?menus")
   await expect(page.getByRole("textbox", { name: "Mensagem para touri-qa" })).toBeVisible()
+  await page.getByRole("tab", { name: /^Bots/ }).click()
   await expect(page.locator(".traffic-light-row")).toHaveAttribute("data-tauri-drag-region", "deep")
   await expect(page.locator(".chat-header")).toHaveAttribute("data-tauri-drag-region", "deep")
   await pointerClick(page.locator('[data-bot-entry="sidebar-bot-3"] .bot-row-main strong'))
@@ -41,7 +42,11 @@ test("title bars leave bot rows, header actions and top-bar controls clickable",
   await pointerClick(page.getByRole("button", { name: /^Planejamento/ }))
   await expect(page.getByRole("textbox", { name: "Mensagem para Planejamento" })).toBeVisible()
   await expect(page.locator(".group-header")).toHaveAttribute("data-tauri-drag-region", "deep")
-  await pointerClick(page.getByRole("button", { name: "Editar canal", exact: true }))
+  await pointerClick(
+    page
+      .getByRole("complementary", { name: "Painel do canal Planejamento", exact: true })
+      .getByRole("button", { name: "Editar canal", exact: true }),
+  )
   const dialog = page.getByRole("dialog", { name: "Editar canal" })
   await expect(dialog).toBeVisible()
   await dialog.getByRole("button", { name: "Fechar grupo" }).click()
