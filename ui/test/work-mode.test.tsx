@@ -31,7 +31,7 @@ describe("sidebar work mode", () => {
     expect(workPanel).not.toHaveAttribute("hidden")
     expect(botsPanel).toHaveAttribute("hidden")
     expect(screen.getByRole("tab", { name: "Work, 3 mensagens não lidas" })).toBeVisible()
-    expect(screen.getByRole("tab", { name: "Bots, 0 aguardando" }).querySelector(".sidebar-mode-dot")).toBeNull()
+    expect(screen.getByRole("tab", { name: "Bots, 0 aguardando" }).querySelector(".sidebar-unread")).toBeNull()
 
     const channels = screen.getByRole("region", { name: "Canais" })
     expect(within(channels).getByRole("button", { name: "Equipe QA, 3 mensagens não lidas" })).toBeVisible()
@@ -139,23 +139,48 @@ describe("sidebar design", () => {
     )
   }
 
-  it("keeps counts out of the segmented control and flags the other mode with one dot", async () => {
+  it("shows a count for channel unread messages and direct messages that need you", async () => {
     const api = createMockApi()
-    await createChannels(api, [4, 0])
-    window.localStorage.setItem("touri.sidebar.mode", "bots")
+    const { thread } = await api.request("POST /groups", {
+      name: "Equipe QA",
+      color: "#dc2626",
+      avatarShape: "classic-none",
+      memberIds: ["bot-mark", "bot-onb"],
+      coordinatorBotId: "bot-mark",
+    })
+    await api.request("PATCH /threads/:id", { unread: 2 }, { id: thread.id })
+    const { thread: directMessage } = await api.request("POST /threads", {
+      botId: "bot-onb",
+      title: "Conversa da loja",
+    })
+    api.notify({
+      kind: "question",
+      botId: "bot-onb",
+      threadId: directMessage.id,
+      title: "Uma pergunta",
+      body: "Qual caminho devo seguir?",
+    })
+    window.localStorage.setItem("touri.sidebar.mode", "work")
     render(<App kernel={{ services: { api } }} />)
     await screen.findByRole("textbox", { name: "Mensagem para mark" })
 
-    const workTab = screen.getByRole("tab", { name: "Work, 4 mensagens não lidas" })
-    const botsTab = screen.getByRole("tab", { name: /^Bots,/ })
+    const workTab = screen.getByRole("tab", {
+      name: "Work, 1 item precisa da sua atenção, 2 mensagens não lidas",
+    })
+    const botsTab = screen.getByRole("tab", { name: "Bots, 1 item precisa da sua atenção" })
 
-    expect(workTab).toHaveTextContent(/^Work$/)
-    expect(workTab.querySelectorAll(".sidebar-mode-dot")).toHaveLength(1)
-    expect(botsTab.querySelector(".sidebar-mode-dot")).toBeNull()
+    expect(workTab.querySelector(".sidebar-unread")).toHaveTextContent("3")
+    expect(botsTab.querySelector(".sidebar-unread")).toHaveTextContent("1")
+    expect(workTab).toHaveAccessibleName("Work, 1 item precisa da sua atenção, 2 mensagens não lidas")
+  })
 
-    fireEvent.click(workTab)
+  it("hides both mode counts when there is nothing unread or waiting", async () => {
+    render(<App kernel={{ services: { api: createMockApi() } }} />)
+    await screen.findByRole("textbox", { name: "Mensagem para mark" })
 
-    expect(workTab.querySelector(".sidebar-mode-dot")).toBeNull()
+    for (const name of ["Bots, 0 aguardando", "Work, 0 aguardando"]) {
+      expect(screen.getByRole("tab", { name }).querySelector(".sidebar-unread")).toBeNull()
+    }
   })
 
   it("gives channels and direct messages the same row with at most one marker", async () => {

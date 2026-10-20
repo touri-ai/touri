@@ -158,6 +158,27 @@ it("shows the last run date instead of a zero-today count for an idle routine", 
   expect(routineRow).not.toHaveTextContent("0 hoje")
 })
 
+it("hides the zero-today suffix from an older task summary", async () => {
+  vi.useFakeTimers({ toFake: ["Date"] })
+  vi.setSystemTime(new Date(2026, 9, 20, 12))
+  const api = createMockApi()
+  const { thread } = await api.request("POST /threads", {
+    botId: "bot-mark",
+    title: "Resumo diário · abcdef123456",
+  })
+  await api.request("PATCH /threads/:id", { kind: "chat", unread: 0 }, { id: thread.id })
+  vi.setSystemTime(new Date(2026, 9, 21, 12))
+
+  render(<App kernel={{ services: { api } }} />)
+  await screen.findByRole("textbox", { name: "Mensagem para mark" })
+
+  const conversations = screen.getByRole("region", { name: "Conversas de mark" })
+  const taskRow = within(conversations).getByRole("button", { name: /^Tarefas Resumo diário/ })
+
+  expect(taskRow).not.toHaveTextContent("0 hoje")
+  expect(taskRow).toHaveTextContent("ontem")
+})
+
 it("keeps routine conversations older than the first history page reachable", async () => {
   const { api } = await getRoutineSidebarFixture(60)
 

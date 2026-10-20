@@ -464,7 +464,6 @@ export const Sidebar = (props: SidebarProps) => {
             ...(mode.unreadCount ? [t("Tab unread count", { count: mode.unreadCount })] : []),
           ]
           const label = `${mode.label}, ${activityLabels.join(", ") || t("Tab waiting count", { count: 0 })}`
-          const tone = mode.needsYouCount ? "attention" : mode.unreadCount ? "unread" : "empty"
 
           return (
             <button
@@ -481,9 +480,7 @@ export const Sidebar = (props: SidebarProps) => {
               onKeyDown={handleModeKeyDown}
             >
               <span>{mode.label}</span>
-              {mode.count > 0 && sidebarMode !== mode.id && (
-                <span className={`sidebar-mode-dot tone-${tone}`} aria-hidden="true" />
-              )}
+              {mode.count > 0 && <SidebarCount count={mode.count} label={label} />}
             </button>
           )
         })}
@@ -907,7 +904,8 @@ const BotEntry = memo(
                 : taskGroupName
                   ? t("Task row title", { name: taskGroupName })
                   : getSidebarThreadTitle(thread)
-              const countLabel = taskGroupName ? t("Today count suffix", { count: countToday }) : undefined
+              const countLabel =
+                taskGroupName && countToday > 0 ? t("Today count suffix", { count: countToday }) : undefined
 
               return (
                 <Fragment key={thread.id}>
