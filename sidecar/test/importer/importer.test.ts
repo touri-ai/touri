@@ -198,10 +198,12 @@ test("A05 attachment collisions never overwrite existing local metadata", async 
 })
 
 test("A04 failed dry-run does not write live import metadata or expiry settings", async () => {
-  await withImport(async ({ database, source, run }) => {
+  await withImport(async ({ database, source, run, kernel }) => {
     const db = new Database(join(source, "messages.db"))
     db.exec("DROP TABLE messages")
     db.close()
+    // Only import writes belong in the total_changes assertion.
+    kernel.services.use("storage.maintenance")?.dispose()
     const changes = database.query("SELECT total_changes() AS n").get()
     await expect(run({ dryRun: true })).rejects.toThrow()
     expect(database.query("SELECT total_changes() AS n").get()).toEqual(changes)

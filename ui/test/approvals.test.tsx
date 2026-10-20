@@ -8,6 +8,7 @@ import { BotMcpSettings } from "../src/components/BotMcpSettings"
 import { BotStandingGrants } from "../src/components/BotStandingGrants"
 import { VirtualMessageList } from "../src/components/ChatPanel"
 import { BotCreateModal, BotSettingsModal } from "../src/components/Modals"
+import { t } from "../src/i18n"
 import type { WorkspaceActions } from "../src/useWorkspace"
 
 afterEach(cleanup)
@@ -21,10 +22,9 @@ const part: ApprovalPart = {
   allowStanding: true,
 }
 
-for (const [label, decision, standing] of [
-  ["Aprovar", "approved", false],
-  ["Sempre neste bot", "approved", true],
-  ["Negar", "denied", false],
+for (const [label, decision] of [
+  ["Aprovar", "approved"],
+  ["Negar", "denied"],
 ] as const) {
   it(`approval card sends ${label} and settles visibly`, async () => {
     const api = createMockApi()
@@ -33,7 +33,7 @@ for (const [label, decision, standing] of [
     await waitFor(() =>
       expect(api.calls).toContainEqual({
         route: "POST /approvals/:id",
-        input: { decision, standing },
+        input: { decision, standing: false },
         pathValues: { id: "approval" },
       }),
     )
@@ -42,13 +42,63 @@ for (const [label, decision, standing] of [
   })
 }
 
+it("requires a scoped confirmation before granting standing permission", async () => {
+  const api = createMockApi()
+  render(<ApprovalCard api={api} part={part} />)
+
+  fireEvent.click(screen.getByRole("button", { name: "Permitir sempre nesta ferramenta" }))
+  expect(screen.getByRole("group", { name: /Permissão permanente para/ })).toBeVisible()
+  expect(screen.getByText(/novas chamadas com outros parâmetros/)).toBeVisible()
+  expect(screen.getByText(/Avançado → Permissões/)).toBeVisible()
+  expect(api.calls).toEqual([])
+
+  fireEvent.click(screen.getByRole("button", { name: "Voltar" }))
+  expect(screen.getByRole("button", { name: "Permitir sempre nesta ferramenta" })).toBeVisible()
+  expect(api.calls).toEqual([])
+
+  fireEvent.click(screen.getByRole("button", { name: "Permitir sempre nesta ferramenta" }))
+  fireEvent.click(screen.getByRole("button", { name: /Sim, permitir .* neste bot sem perguntar de novo/ }))
+  await waitFor(() =>
+    expect(api.calls).toContainEqual({
+      route: "POST /approvals/:id",
+      input: { decision: "approved", standing: true },
+      pathValues: { id: "approval" },
+    }),
+  )
+  await screen.findByText("Permissão permanente neste bot")
+})
+
+it("does not deny a pending approval when Escape is pressed on its card", () => {
+  const api = createMockApi()
+  render(<ApprovalCard api={api} part={part} />)
+
+  fireEvent.keyDown(document.querySelector('[data-approval-id="approval"]') as HTMLElement, { key: "Escape" })
+
+  expect(api.calls).toEqual([])
+  expect(screen.getByRole("button", { name: "Aprovar" })).toBeVisible()
+})
+
+it("shows the standing permission confirmation in English too", () => {
+  expect(t("Permitir sempre nesta ferramenta", {}, "en")).toBe("Always allow this tool")
+  expect(
+    t(
+      "A ferramenta {name} poderá agir neste bot sem pedir aprovação novamente, inclusive em novas chamadas com outros parâmetros. Você pode remover essa permissão em Avançado → Permissões.",
+      { name: "save" },
+      "en",
+    ),
+  ).toContain("Advanced → Permissions")
+  expect(t("Sim, permitir {name} neste bot sem perguntar de novo", { name: "save" }, "en")).toBe(
+    "Yes, allow save on this bot without asking again",
+  )
+})
+
 it("permission cards show failed responses and hide standing approval for questions", async () => {
   const api = createMockApi()
   api.request = vi.fn(async () => {
     throw new Error("Falha de conexão")
   }) as ApiRequest
   render(<ApprovalCard api={api} part={{ ...part, allowStanding: false }} />)
-  expect(screen.queryByRole("button", { name: "Sempre neste bot" })).toBeNull()
+  expect(screen.queryByRole("button", { name: "Permitir sempre nesta ferramenta" })).toBeNull()
   fireEvent.click(screen.getByRole("button", { name: "Aprovar" }))
   await screen.findByRole("alert")
   expect(screen.getByRole("button", { name: "Negar" })).toBeEnabled()
@@ -121,7 +171,7 @@ it("approval cards appear in chat messages and react to settled parts", async ()
   } as import("@touri/contracts").Message
   const props = { api, messages: [message], onSwitchBranch: vi.fn(), onRetry: vi.fn() }
   const view = render(<VirtualMessageList {...props} />)
-  expect(screen.getByRole("button", { name: "Sempre neste bot" })).toBeVisible()
+  expect(screen.getByRole("button", { name: "Permitir sempre nesta ferramenta" })).toBeVisible()
   view.rerender(
     <VirtualMessageList {...props} messages={[{ ...message, parts: [{ ...part, decision: "expired" }] }]} />,
   )

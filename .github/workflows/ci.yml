@@ -248,7 +248,17 @@ jobs:
           retention-days: 7
       - name: Check API model setup and bot selection
         working-directory: ui
-        run: bunx playwright test test/e2e/api-models.spec.ts --workers=1
+        env:
+          TOURI_MODEL_SETTINGS_SHOTS: ${{ runner.temp }}/touri-model-settings-evidence
+        run: bunx playwright test test/e2e/api-models.spec.ts test/e2e/model-picker-settings.spec.ts --workers=1
+      - name: Keep synthetic model picker evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: model-picker-settings
+          path: ${{ runner.temp }}/touri-model-settings-evidence/*.png
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Check keyboard focus in dialogs and borderless fields
         working-directory: ui
         run: bunx playwright test test/e2e/field-focus.spec.ts --workers=1

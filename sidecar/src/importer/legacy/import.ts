@@ -22,6 +22,7 @@ import { getMeasuredStage } from "../../kernel/background-task"
 import { attachmentMime } from "../../kernel/files"
 import { refreshMessageSearch } from "../../kernel/message-search"
 import type { PerformanceStageRunner } from "../../kernel/performance"
+import { getBotModel, MODEL_VALIDATION_ERROR } from "../../store/model"
 import { DEPRECATED_IMPORT_ALIAS } from "../deprecatedAliases"
 import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, statSync } from "./fs"
 import { assertImportOwner, importIdentity, legacySourceOrigin, sourceOrigin } from "./identity"
@@ -47,6 +48,7 @@ type SelectedBot = {
   soul: string
   soulHash: string
   provider: Provider
+  model: string | null
   access: "read-only" | "workspace-write" | "full"
   approvals: "never" | "on-request"
   cwd: string | null
@@ -406,15 +408,21 @@ const selectBots = ({
   const raw = readStagedJson({ dir: staged.dir, relativePath: "bots.json" })
   const sourceBots = (Array.isArray(raw) ? raw : []).flatMap((item) => {
     const bot = safeLegacyBot(item)
-    return bot ? [bot] : []
+    const model = asRecord(asRecord(item).modelSelection).model
+    return bot ? [{ bot, model }] : []
   })
   const requested = new Set(options.botIds)
-  const selected = sourceBots.filter((bot) => requested.size === 0 || requested.has(bot.id) || requested.has(bot.name))
-  const ids = new Set(selected.map((bot) => bot.id))
+  const selected = sourceBots.filter(
+    ({ bot }) => requested.size === 0 || requested.has(bot.id) || requested.has(bot.name),
+  )
+  const ids = new Set(selected.map(({ bot }) => bot.id))
   for (const botId of options.botIds)
-    if (!ids.has(botId) && !selected.some((bot) => bot.name === botId))
+    if (!ids.has(botId) && !selected.some(({ bot }) => bot.name === botId))
       warnings.push(`Selected bot not found: ${botId}`)
-  return selected.map((bot) => {
+  return selected.map(({ bot, model: sourceModel }) => {
+    const model = getBotModel(sourceModel ?? null)
+    if (model === undefined) throw new Error(MODEL_VALIDATION_ERROR)
+
     const soul = readSoul({ staged, bot })
     const soulHash = sha256(soul)
     const modelInstance = bot.modelSelection?.instanceId
@@ -433,6 +441,7 @@ const selectBots = ({
       soul,
       soulHash,
       provider,
+      model: bot.modelSelection ? model : null,
       access,
       approvals,
       cwd: mapping.cwd,
@@ -1020,7 +1029,7 @@ const upsertBots = ({
         instructions.text,
         instructions.hash,
         bot.provider,
-        bot.source.modelSelection?.model ?? null,
+        bot.model,
         null,
         bot.access,
         bot.approvals,
@@ -1354,15 +1363,7 @@ const importSessions = ({
         .query(
           "INSERT INTO provider_sessions (id, thread_id, provider, external_session_id, rollout_path, fingerprint, state, model, created_at, last_used_at) VALUES (?, ?, 'codex', ?, ?, 'imported', 'active', ?, ?, ?) ON CONFLICT(id) DO UPDATE SET external_session_id=excluded.external_session_id, rollout_path=excluded.rollout_path, fingerprint='imported', state='active', model=excluded.model, last_used_at=excluded.last_used_at",
         )
-        .run(
-          sessionId,
-          cursor.threadId,
-          cursor.cursor,
-          finalTarget,
-          bot.source.modelSelection?.model ?? null,
-          Date.now(),
-          Date.now(),
-        )
+        .run(sessionId, cursor.threadId, cursor.cursor, finalTarget, bot.model, Date.now(), Date.now())
       recordImport({ database, kind: "codex_session", sourceId, localId: sessionId, hash: sourceHash, importId })
     }
   }

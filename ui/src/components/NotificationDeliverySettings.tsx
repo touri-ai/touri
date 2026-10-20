@@ -35,11 +35,8 @@ export const NotificationDeliverySettings = ({ enabled }: { enabled: boolean }) 
   if (!native)
     return (
       <div className="settings-notification-delivery">
-        <p>{t("Com esta página fechada, os avisos ficam guardados no servidor.")}</p>
-        <p>
-          {t(
-            "Com a página fechada, não há som nem avisos em segundo plano. Ao voltar, você vê as solicitações pendentes.",
-          )}
+        <p className="field-help">
+          {t("Com o touri fechado, você não recebe avisos. Ao abrir, as solicitações pendentes aparecem.")}
         </p>
       </div>
     )

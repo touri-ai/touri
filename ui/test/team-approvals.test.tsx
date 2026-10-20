@@ -53,7 +53,7 @@ it("shows the complete reviewed team, providers, access and group with explicit 
   expect(screen.getByText(getTeamReview().proposal.bots[0]?.instructions ?? "")).toBeVisible()
   expect(screen.getByText("Grupo: Conteúdo semanal")).toBeVisible()
   expect(screen.getByText("Coordenador: Escrita")).toBeVisible()
-  expect(screen.queryByRole("button", { name: "Sempre neste bot" })).toBeNull()
+  expect(screen.queryByRole("button", { name: "Permitir sempre nesta ferramenta" })).toBeNull()
   const approve = screen.getByRole("button", { name: "Criar time" })
   fireEvent.keyDown(approve, { key: "Enter" })
   fireEvent.keyDown(approve, { key: " " })

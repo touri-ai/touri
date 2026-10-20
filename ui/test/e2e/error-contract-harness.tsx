@@ -12,10 +12,9 @@ if (!bot || !thread) throw new Error("Missing error fixture")
 bot.machine = "vm"
 bot.name = "Planejamento"
 thread.title = "Organizar as notas"
-const modelIsAtCapacity = new URLSearchParams(window.location.search).get("scenario") === "capacity"
-const diagnostic = modelIsAtCapacity
-  ? "Selected model is at capacity. Please try a different model."
-  : 'network error: ECONNRESET {"status":503} at provider.connect (transport.ts:42)'
+const scenario = new URLSearchParams(window.location.search).get("scenario")
+const modelIsAtCapacity = scenario === "capacity"
+const diagnostic = getDiagnostic(scenario)
 const run: Run = {
   id: "interrupted",
   threadId: thread.id,
@@ -76,3 +75,10 @@ api.request = ((route, input, path) => {
 setTimeout(() => api.emit({ type: "notify", title: "Turn failed", body: diagnostic, threadId: thread.id }), 700)
 const root = document.getElementById("root")
 if (root) createRoot(root).render(<App kernel={{ services: { api } }} />)
+
+function getDiagnostic(scenario: string | null): string {
+  if (scenario === "invalid-model") return "The saved model name is invalid. Choose another model in the bot settings."
+  if (scenario === "capacity") return "Selected model is at capacity. Please try a different model."
+
+  return 'network error: ECONNRESET {"status":503} at provider.connect (transport.ts:42)'
+}

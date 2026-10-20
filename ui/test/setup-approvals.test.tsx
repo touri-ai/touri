@@ -78,7 +78,7 @@ it("project approval shows the reviewed project and replaced project, even when 
       "Vincular Hodler (/workspace/javascript/Hodler) a este bot Substitui o projeto Anterior (/workspace/Anterior).",
     ),
   ).toBeInTheDocument()
-  expect(screen.queryByRole("button", { name: "Sempre neste bot" })).toBeNull()
+  expect(screen.queryByRole("button", { name: "Permitir sempre nesta ferramenta" })).toBeNull()
   const card = screen.getByRole("article", { name: "Aprovação de ferramenta" })
   fireEvent.keyDown(card, { key: "Enter" })
   const approve = screen.getByRole("button", { name: "Aprovar" })
@@ -98,7 +98,7 @@ for (const [mode, label] of [
   ["read", "Somente leitura"],
   ["read-write", "Leitura e escrita"],
 ] as const) {
-  it(`folder approval shows ${label}, the canonical path and VM timing; Escape denies`, async () => {
+  it(`folder approval shows ${label}, the canonical path and VM timing; Escape leaves it pending`, async () => {
     const api = createMockApi()
     render(
       <ApprovalCard
@@ -112,8 +112,11 @@ for (const [mode, label] of [
         `Permitir ${label} em /workspace/Documents para este bot. Vale a partir da próxima mensagem na VM.`,
       ),
     ).toBeInTheDocument()
-    expect(screen.queryByRole("button", { name: "Sempre neste bot" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "Permitir sempre nesta ferramenta" })).toBeNull()
     fireEvent.keyDown(screen.getByRole("article", { name: "Aprovação de ferramenta" }), { key: "Escape" })
+    expect(api.calls).toHaveLength(0)
+    expect(screen.getByRole("button", { name: "Aprovar" })).toBeVisible()
+    fireEvent.click(screen.getByRole("button", { name: "Negar" }))
     await screen.findByText("Negado por você")
     await waitFor(() =>
       expect(api.calls).toContainEqual({
@@ -389,7 +392,7 @@ it.each([
   expect(
     screen.getByText("Não foi possível mostrar os detalhes desta ação. Negue e peça ao bot para solicitar novamente."),
   ).toBeVisible()
-  for (const name of ["Aprovar", "Sempre neste bot"]) {
+  for (const name of ["Aprovar", "Permitir sempre nesta ferramenta"]) {
     const button = screen.getByRole("button", { name, exact: true })
     expect(button).toBeDisabled()
     fireEvent.click(button)
