@@ -144,7 +144,7 @@ test("browser decisions: consent is off until explicitly selected", async ({ pag
   await page.getByRole("button", { name: "Salvar modelo por API" }).click()
   await expect(page.getByLabel("Chave de API")).toHaveValue("")
   await page.getByText("Chave guardada no cofre · ••••••••").scrollIntoViewIfNeeded()
-  const consent = page.getByRole("checkbox", { name: "Usar esta chave para ajudar nas escolhas do navegador" })
+  const consent = page.getByRole("switch", { name: "Usar esta chave para ajudar nas escolhas do navegador" })
   const phase = process.env.TOURI_DECISION_PHASE ?? "after"
   if (process.env.TOURI_DECISION_SHOTS) {
     await mkdir(process.env.TOURI_DECISION_SHOTS, { recursive: true })

@@ -205,7 +205,7 @@ it("browser assistance requires a visible opt-in and can be disabled without del
     name: "Navegador",
   })
   render(<ApiModelsSettings api={api} />)
-  const consent = await screen.findByRole("checkbox", { name: "Usar esta chave para ajudar nas escolhas do navegador" })
+  const consent = await screen.findByRole("switch", { name: "Usar esta chave para ajudar nas escolhas do navegador" })
 
   expect(consent).not.toBeChecked()
   expect(consent).toHaveAccessibleDescription(/modelo remoto JEV.*consumir créditos/)

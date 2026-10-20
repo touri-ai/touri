@@ -5,7 +5,7 @@ import { getApiModelErrorText, getApiModelRequestError } from "../features/bots/
 import { t } from "../i18n"
 import { useHost } from "../useHost"
 import { ProviderInstallation } from "./ProviderInstallation"
-import { SettingsGroup } from "./SettingsLayout"
+import { SettingsGroup, SettingsSwitch } from "./SettingsLayout"
 
 export const ApiModelsSettings = ({ api }: { api: UiApi | undefined }) => {
   const id = useId()
@@ -98,9 +98,12 @@ export const ApiModelsSettings = ({ api }: { api: UiApi | undefined }) => {
                 <small>{t("Key saved in secret store")} · ••••••••</small>
               </div>
               {model.preset === "openrouter" && (
-                <label>
-                  <input
-                    type="checkbox"
+                <label className="toggle-row" htmlFor={`${id}-decision-${model.id}`}>
+                  <span>
+                    <strong>{t("Use this key for assisted browser choices")}</strong>
+                  </span>
+                  <SettingsSwitch
+                    id={`${id}-decision-${model.id}`}
                     checked={model.browserDecisions === true}
                     disabled={busy || !api}
                     aria-describedby={`${id}-decision-help`}
@@ -121,7 +124,6 @@ export const ApiModelsSettings = ({ api }: { api: UiApi | undefined }) => {
                       })
                     }}
                   />
-                  {t("Use this key for assisted browser choices")}
                 </label>
               )}
               <div className="api-model-actions">
