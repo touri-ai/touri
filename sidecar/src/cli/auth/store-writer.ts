@@ -70,9 +70,9 @@ const execute = (command: WriteCommand): unknown => {
     if (!isActiveAdmin(db, command.actorPersonId)) return false
     const result = db
       .query(
-        "UPDATE invites SET token_hash = ?, created_at = ?, expires_at = ?, revoked_at = NULL WHERE id = ? AND used_at IS NULL AND revoked_at IS NULL",
+        "UPDATE invites SET token_hash = ?, created_at = ?, expires_at = ?, created_by_person_id = ?, revoked_at = NULL WHERE id = ? AND used_at IS NULL AND revoked_at IS NULL",
       )
-      .run(command.tokenHash, command.at, command.expiresAt, command.id)
+      .run(command.tokenHash, command.at, command.expiresAt, command.actorPersonId, command.id)
     return result.changes === 1
   }
   if (command.type === "revoke-invite") {

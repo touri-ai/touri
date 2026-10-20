@@ -225,6 +225,16 @@ test("removing an admin revokes the unused invitations they issued", async () =>
     channelIds: [],
   })
   if (!issued.success) throw new Error("Pending invitation failed")
+  const delegated = await store.createInvite({
+    actorPersonId: admin.person.id,
+    name: "New member",
+    email: "retained@example.test",
+    role: "member",
+    channelIds: [],
+  })
+  if (!delegated.success) throw new Error("Second invitation failed")
+  const reissued = await store.resendInvite({ id: delegated.invite.id, actorPersonId: "owner" })
+  if (!reissued.success) throw new Error("Owner resend failed")
 
   const removed = await store.removePerson({ id: admin.person.id, actorPersonId: "owner" })
   const claimed = await store.claimInvite({
@@ -232,10 +242,17 @@ test("removing an admin revokes the unused invitations they issued", async () =>
     email: issued.invite.email,
     deviceName: "Replacement",
   })
+  const retained = await store.claimInvite({
+    token: reissued.token,
+    email: reissued.invite.email,
+    deviceName: "Member",
+  })
 
   expect(removed.success).toBe(true)
   expect(store.verifyDeviceToken(admin.token)).toBeNull()
   expect(claimed.success).toBe(false)
+  expect(reissued.invite.createdByPersonId).toBe("owner")
+  expect(retained.success).toBe(true)
   expect(store.listInvites().find((invite) => invite.id === issued.invite.id)?.revokedAt).not.toBeNull()
   expect(
     store
