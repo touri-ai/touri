@@ -53,6 +53,7 @@ import { ApprovalCard } from "./ApprovalCard"
 import { useAvatarBot, useMascotSnapshot, useMessageMascotState, useThreadBot } from "./AvatarRuntime"
 import { withApprovalAnswers } from "./activityStatus"
 import { BotAvatar } from "./BotAvatar"
+import { getBrowserActivityTools } from "./browserActivityPresentation"
 import { ChatDisclosure } from "./ChatDisclosure"
 import { ConnectDataCard, connectDataMarker } from "./ConnectDataCard"
 import { ConversationStart } from "./ConversationStart"
@@ -1233,6 +1234,12 @@ export const ChatPanel = ({
     )
     .flatMap((message) => [...message.parts].reverse())
     .find((part) => screenTool(part) && part.type === "tool_call" && toolStatus(part) === "running")
+  const browserWorking = Boolean(
+    activeRun &&
+      latestReply?.runId === activeRun.id &&
+      latestReply.status === "streaming" &&
+      getBrowserActivityTools(latestReply.parts).length > 0,
+  )
 
   return (
     <section className="chat-panel" inert={chatIsCovered || undefined} aria-hidden={chatIsCovered || undefined}>
@@ -1466,6 +1473,8 @@ export const ChatPanel = ({
         inputRef={composerRef}
         attachmentButtonRef={attachmentButtonRef}
         activeRun={activeRun}
+        browserWorking={browserWorking}
+        browserBotName={bot?.name ?? "touri"}
         botActive={runs.some((run) => run.botId === bot?.id && ["queued", "starting", "running"].includes(run.status))}
         projects={projects}
         onSaveModel={onSaveModel}

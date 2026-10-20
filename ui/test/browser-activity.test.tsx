@@ -1,0 +1,147 @@
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import type { BrowserTabInfo, ToolCallPart } from "@touri/contracts"
+import { afterEach, expect, test, vi } from "vitest"
+import type { ApiRequest } from "../src/api/client"
+import { createMockApi } from "../src/api/mock"
+import { BrowserActivityCard } from "../src/components/BrowserActivityCard"
+import { InlinePreviewContext } from "../src/features/desktop/InlineLivePreview"
+
+vi.mock("../src/features/desktop/inlineFrameSource", () => ({
+  startInlineFrameSource: (
+    _api: unknown,
+    _bot: unknown,
+    _tabId: string | undefined,
+    frame: (value: { src: string; title: string; url: string }) => void,
+  ) => {
+    frame({
+      src: "data:image/jpeg;base64,ZmFrZQ==",
+      title: "Resultados de Lisboa",
+      url: "https://travel.example.test/results?email=person@example.test",
+    })
+
+    return () => {}
+  },
+}))
+
+afterEach(cleanup)
+
+const tab = {
+  tabId: "browser-tab",
+  ownerBotId: "bot-mark",
+  url: "https://travel.example.test/results",
+  title: "Resultados de Lisboa",
+  state: "live",
+  openerTabId: null,
+  heldByUser: false,
+  lastUsedAt: 10,
+} satisfies BrowserTabInfo & { ownerBotId: string | null }
+
+const getPart = (input: Partial<ToolCallPart> & Pick<ToolCallPart, "callId" | "tool" | "inputJson">): ToolCallPart => ({
+  type: "tool_call",
+  summary: "browser action",
+  outputJson: null,
+  ok: true,
+  ...input,
+})
+
+const renderCard = (parts: ToolCallPart[], finished: boolean) => {
+  const api = createMockApi()
+  const request = vi.fn(async (route: string) => {
+    if (route === "GET /browser/tabs") return { tabs: [tab] }
+    if (route === "GET /attachments/:id/content")
+      return {
+        text: JSON.stringify({ content: [{ type: "image", mimeType: "image/png", data: "ZmFrZQ==" }] }),
+        offset: 0,
+        nextOffset: null,
+        bytes: 64,
+      }
+
+    return {}
+  }) as ApiRequest
+  api.request = request
+  const bot = api.getState().bots[0] ?? null
+  const onOpenComputer = vi.fn()
+  const view = render(
+    <InlinePreviewContext.Provider value={{ api, bot, machine: undefined, activeCallId: undefined, onOpenComputer }}>
+      <BrowserActivityCard parts={parts} finished={finished} createdAt={1} botName="Lia" />
+    </InlinePreviewContext.Provider>,
+  )
+
+  return { api, bot, onOpenComputer, request, view }
+}
+
+test("shows live browser steps and keeps typed values and URL queries out of the card", async () => {
+  const parts = [
+    getPart({
+      callId: "open",
+      tool: "mcp__touri__browser_open",
+      inputJson: '{"url":"https://travel.example.test/search"}',
+    }),
+    getPart({
+      callId: "type",
+      tool: "mcp__touri__browser_type",
+      startedAt: 20,
+      inputJson:
+        '{"tabId":"browser-tab","target":{"kind":"role","role":"textbox","name":"Destination"},"text":"private search value"}',
+    }),
+    getPart({
+      callId: "click",
+      tool: "mcp__touri__browser_click",
+      startedAt: 30,
+      inputJson: '{"tabId":"browser-tab","target":{"kind":"role","role":"option","name":"Lisboa, Portugal"}}',
+    }),
+  ]
+
+  renderCard(parts, false)
+
+  expect(screen.getByText("Navegador do Lia")).toBeVisible()
+  expect(screen.getByText("Preencheu Destination")).toBeVisible()
+  expect(screen.getByText("Clicou em Lisboa, Portugal")).toBeVisible()
+  await waitFor(() => expect(screen.getByRole("img", { name: "Página atual do navegador" })).toBeVisible())
+  expect(document.body.textContent).not.toContain("private search value")
+  expect(document.body.textContent).not.toContain("person@example.test")
+  expect(screen.getAllByText("https://travel.example.test/results")).toHaveLength(2)
+})
+
+test("take-over holds the browser, opens its view, and the finished card collapses with the final image", async () => {
+  const parts = [
+    getPart({ callId: "open", tool: "mcp__touri__browser_open", inputJson: '{"tabId":"browser-tab"}' }),
+    getPart({ callId: "read", tool: "mcp__touri__browser_snapshot", inputJson: '{"tabId":"browser-tab"}' }),
+    getPart({
+      callId: "screenshot",
+      tool: "mcp__touri__browser_screenshot",
+      inputJson: '{"tabId":"browser-tab"}',
+      outputAttachmentId: "final-shot",
+      outputBytes: 64,
+      outputPreview: "",
+    }),
+  ]
+  const { api, bot, onOpenComputer, request, view } = renderCard(parts, false)
+  const takeOver = await screen.findByRole("button", { name: "Assumir controle" })
+
+  fireEvent.click(takeOver)
+  await waitFor(() =>
+    expect(request).toHaveBeenCalledWith("POST /browser/tabs/:id/takeover", { hold: true }, { id: "browser-tab" }),
+  )
+  expect(onOpenComputer).toHaveBeenCalledOnce()
+
+  view.rerender(
+    <InlinePreviewContext.Provider
+      value={{
+        api,
+        bot,
+        machine: undefined,
+        activeCallId: undefined,
+        onOpenComputer,
+      }}
+    >
+      <BrowserActivityCard parts={parts} finished createdAt={1} botName="Lia" />
+    </InlinePreviewContext.Provider>,
+  )
+
+  expect(await screen.findByText("Usou o navegador · 3 ações")).toBeVisible()
+  expect(screen.getByRole("img", { name: "Captura final do navegador" })).toBeVisible()
+  expect(screen.queryByText("Atividade do navegador")).toBeNull()
+  fireEvent.click(screen.getByRole("button", { name: /Usou o navegador/ }))
+  expect(await screen.findByText("Atividade do navegador")).toBeVisible()
+})

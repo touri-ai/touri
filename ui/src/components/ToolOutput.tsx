@@ -243,6 +243,9 @@ export const StoredToolOutput = ({
   callId,
   diff = false,
   browser = false,
+  autoOpen = false,
+  thumbnail = false,
+  thumbnailFallback,
 }: {
   api?: UiApi | undefined
   attachmentId: string
@@ -250,12 +253,16 @@ export const StoredToolOutput = ({
   callId: string
   diff?: boolean
   browser?: boolean
+  autoOpen?: boolean
+  thumbnail?: boolean
+  thumbnailFallback?: string | undefined
 }) => {
   const [raw, setRaw] = useState<string | null>(null)
   const [nextOffset, setNextOffset] = useState<number | null>(0)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<"load" | "image_size" | null>(null)
   const generation = useRef(0)
+  const loadRef = useRef<() => Promise<void>>(async () => {})
   useEffect(() => {
     generation.current += 1
     return () => {
@@ -305,7 +312,18 @@ export const StoredToolOutput = ({
       if (generation.current === attempt) setLoading(false)
     }
   }
+  loadRef.current = load
+  useEffect(() => {
+    if (autoOpen) void loadRef.current()
+  }, [autoOpen])
   const result = browser && raw !== null ? browserToolResult(raw) : null
+  if (thumbnail) {
+    const image = result?.output ? readOutput(result.output).images[0] : undefined
+    const src = image?.src ?? thumbnailFallback
+
+    return src ? <img className="stored-tool-thumbnail" src={src} alt={t("Final browser screenshot")} /> : null
+  }
+
   return (
     <>
       {raw === null && preview && <ToolText text={preview} />}

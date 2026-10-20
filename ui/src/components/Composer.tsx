@@ -43,6 +43,8 @@ type ComposerProps = {
   attachmentButtonRef?: RefObject<HTMLButtonElement | null> | undefined
   activeRun: Run | null
   botActive?: boolean
+  browserWorking?: boolean
+  browserBotName?: string | undefined
   projects?: Project[] | undefined
   onSaveModel?: ((model: string | null) => Promise<void>) | undefined
   onNotice?: ((message: string) => void) | undefined
@@ -104,6 +106,8 @@ export const Composer = ({
   attachmentButtonRef,
   activeRun,
   botActive = false,
+  browserWorking = false,
+  browserBotName,
   projects = [],
   onSaveModel,
   onNotice,
@@ -696,6 +700,11 @@ export const Composer = ({
   return (
     <>
       {notice && <ComposerNotice {...notice} api={api} active={Boolean(activeRun)} loginFlowShown={login.blocked} />}
+      {browserWorking && (
+        <div className="composer-browser-status" role="status">
+          {t("{name} is working · In the browser", { name: browserBotName ?? bot?.name ?? "touri" }, locale)}
+        </div>
+      )}
       {composer}
     </>
   )
