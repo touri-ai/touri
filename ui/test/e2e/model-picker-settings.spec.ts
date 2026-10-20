@@ -9,6 +9,38 @@ const views = [
 ]
 
 views.forEach(({ name, width, height, theme }) => {
+  test(`model picker keeps its design scale and keyboard focus: ${name}`, async ({ page }) => {
+    await page.setViewportSize({ width, height })
+    await page.emulateMedia({ reducedMotion: "reduce" })
+    await page.goto("/test/e2e/r8-composer-harness.html")
+    await page.evaluate((theme) => {
+      document.documentElement.dataset.theme = theme
+    }, theme)
+    const trigger = page.locator(".composer .model-picker-trigger")
+
+    await trigger.focus()
+    await trigger.press("ArrowDown")
+
+    await expect(trigger).toHaveCSS("font-size", "12px")
+    await expect(trigger).toHaveCSS("padding-left", "8px")
+    const popover = page.locator(".model-picker-popover")
+    await expect(popover).toBeVisible()
+    await expect(popover).toHaveCSS("padding", "8px")
+    await expect(popover).toHaveCSS("border-radius", "14px")
+    const selected = popover.getByRole("option", { selected: true })
+    await expect(selected).toBeFocused()
+    await expect(selected).toHaveCSS("font-size", "13px")
+    await expect(selected).toHaveCSS("padding-left", "8px")
+    await expect(selected).toHaveCSS("border-radius", "10px")
+    expect(await popover.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+
+    await selected.press("Escape")
+
+    await expect(popover).toBeHidden()
+    await expect(trigger).toBeFocused()
+  })
+
   test(`invalid stored model explains recovery: ${name}`, async ({ page }) => {
     await page.setViewportSize({ width, height })
     await page.emulateMedia({ reducedMotion: "reduce" })

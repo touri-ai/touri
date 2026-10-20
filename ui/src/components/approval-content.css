@@ -32,6 +32,6 @@
 }
 .tool-approval-unknown {
   margin: var(--space-8) 0;
-  font-size: var(--type-12);
-  color: var(--text-secondary);
+  font-size: var(--fs-caption);
+  color: var(--text-2);
 }

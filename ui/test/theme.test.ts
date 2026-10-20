@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs"
+import { readdirSync, readFileSync } from "node:fs"
 import { afterEach, expect, test, vi } from "vitest"
 import { initializeTheme, readTheme, setTheme } from "../src/design/theme"
 
@@ -189,6 +189,22 @@ test("the migrated components consume the semantic roles", () => {
       /var\(--(?:text-primary|text-secondary|surface-panel|surface-canvas|border-default|accent-brand)\)/,
     )
   }
+})
+
+test("every shipped stylesheet uses defined design scale tokens", () => {
+  const stylesheets = readdirSync("src", { recursive: true })
+    .filter((name) => name.endsWith(".css"))
+    .map((name) => ({ name, source: readFileSync(`src/${name}`, "utf8") }))
+  const definedTokens = new Set(Object.keys(declarations(tokens)))
+
+  const missingTokens = stylesheets.flatMap(({ name, source }) =>
+    Array.from(source.matchAll(/var\((--(?:fs|type|space|radius)-[\w-]+)\)/g))
+      .map((match) => match[1] ?? "")
+      .filter((token) => !definedTokens.has(token))
+      .map((token) => `${name}: ${token}`),
+  )
+
+  expect(missingTokens).toEqual([])
 })
 
 test("the migration keeps touri fonts and components only consume defined color roles", () => {
