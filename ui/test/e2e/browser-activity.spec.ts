@@ -58,7 +58,7 @@ test.describe("browser activity experience", () => {
       await expect(summary).toBeVisible()
       await expect(summary.getByRole("img", { name: "Captura final do navegador" })).toBeVisible()
       await summary.click()
-      await expect(page.getByRole("heading", { name: "Atividade do navegador" })).toBeVisible()
+      await expect(page.getByText("Atividade do navegador", { exact: true })).toBeVisible()
       await expect(page.getByText("Abriu a página")).toBeVisible()
       await expect(page.getByText("Tirou um print")).toBeVisible()
       await page.evaluate(() => document.fonts.ready)
