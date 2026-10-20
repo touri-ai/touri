@@ -1241,7 +1241,7 @@ export type PendingDeepLink = {
   requestId: number
   bot: string | null
   thread: string | null
-  notificationId?: number
+  notificationId: number | null
 }
 
 export type TauriCommands = {
