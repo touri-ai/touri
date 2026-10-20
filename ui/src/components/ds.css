@@ -43,12 +43,12 @@
   background: var(--surface-control);
   color: var(--text-primary);
 }
-.ds-button-link {
+.ds-button-link-action {
   padding: 0 var(--space-4);
   color: var(--text-link);
   font-weight: var(--weight-medium);
 }
-.ds-button-link:hover:not(:disabled) {
+.ds-button-link-action:hover:not(:disabled) {
   text-decoration: underline;
 }
 .ds-button-destructive {

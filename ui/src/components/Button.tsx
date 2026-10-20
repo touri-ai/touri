@@ -1,7 +1,7 @@
 import type { ButtonHTMLAttributes, ReactNode } from "react"
 import "./ds.css"
 
-export type ButtonVariant = "primary" | "secondary" | "quiet" | "link" | "destructive"
+export type ButtonVariant = "primary" | "secondary" | "quiet" | "link-action" | "destructive"
 
 type ButtonProps = Omit<ButtonHTMLAttributes<HTMLButtonElement>, "type"> & {
   variant?: ButtonVariant

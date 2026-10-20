@@ -76,7 +76,10 @@ for (const field of ["file_path", "path", "filePath"]) {
     expect(files.querySelector("strong")).toHaveTextContent("README.md")
     expect(view.container.querySelector(".tool-input")).toBeNull()
     expect(view.container.querySelector(".tool-summary")).toHaveTextContent("Consultar o conteúdo do arquivo")
-    expect(view.container.querySelector(".tool-technical")).not.toHaveAttribute("open")
+    expect(view.container.querySelector(".tool-technical .ds-disclosure-trigger")).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    )
   })
 }
 
@@ -96,9 +99,10 @@ it("shows only the Bash command, a human description, one friendly title and opt
   expect(screen.getByText("Imprimir marcador aprovado")).toBeVisible()
   expect(screen.getByRole("figure", { name: "Comando" })).toHaveTextContent(/^printf QA_R7_APROVADO$/)
   const technical = view.container.querySelector(".tool-technical")
-  expect(technical).not.toHaveAttribute("open")
+  const technicalTrigger = technical?.querySelector(".ds-disclosure-trigger")
+  expect(technicalTrigger).toHaveAttribute("aria-expanded", "false")
   await user.click(screen.getByText("Detalhes técnicos"))
-  expect(technical).toHaveAttribute("open")
+  expect(technicalTrigger).toHaveAttribute("aria-expanded", "true")
   expect(technical).toHaveTextContent('"command": "printf QA_R7_APROVADO"')
   expect(view.container.querySelector(".tool-kind-icon svg")).toHaveAttribute("aria-hidden", "true")
 })
@@ -196,8 +200,8 @@ it.each(["before", "after"] as const)(
     if (order === "before") view.rerender(<ToolCallList {...props} parts={resolvedParts} />)
     await act(async () => resolve())
     if (order === "after") view.rerender(<ToolCallList {...props} parts={resolvedParts} />)
-    expect(view.container.querySelector(".tool-group > summary")).toHaveFocus()
-    expect(view.container.querySelector(".tool-group")).not.toHaveAttribute("open")
+    expect(view.container.querySelector(".tool-group > .ds-disclosure-trigger")).toHaveFocus()
+    expect(view.container.querySelector(".tool-group")).toHaveAttribute("data-open", "false")
     expect(view.container.querySelector(".tool-call-card")).toBeNull()
     await user.click(screen.getByText("1 ferramenta"))
     const card = await screen.findByRole("article", { name: "Aprovação de ferramenta" })
@@ -216,7 +220,7 @@ it.each(["approved", "denied"] as const)(
     const earlier = { ...tool, callId: "earlier", inputJson: '{"command":"pwd"}', ok: true }
     const props = { api: createMockApi(), createdAt: timestamp, finished: false }
     const view = render(<ToolCallList {...props} parts={[earlier, tool, approval]} />)
-    expect(view.container.querySelector(".tool-group")).not.toHaveAttribute("open")
+    expect(view.container.querySelector(".tool-group")).toHaveAttribute("data-open", "false")
     expect(
       within(screen.getByRole("article", { name: "Aprovação de ferramenta" })).getByRole("figure", { name: "Comando" }),
     ).toBeVisible()
@@ -224,7 +228,7 @@ it.each(["approved", "denied"] as const)(
     await screen.findByText(decision === "approved" ? "Aprovado por você" : "Negado por você")
     const resolved = { ...approval, decision }
     view.rerender(<ToolCallList {...props} parts={[earlier, tool, resolved]} />)
-    expect(view.container.querySelector(".tool-group")).not.toHaveAttribute("open")
+    expect(view.container.querySelector(".tool-group")).toHaveAttribute("data-open", "false")
     expect(screen.queryByText("printf QA_R7_APROVADO")).toBeNull()
     await user.click(screen.getByText("2 ferramentas"))
     const card = await screen.findByRole("article", { name: "Aprovação de ferramenta" })
@@ -238,7 +242,7 @@ it.each(["approved", "denied"] as const)(
         finished
       />,
     )
-    expect(view.container.querySelector(".tool-group")).toHaveAttribute("open")
+    expect(view.container.querySelector(".tool-group")).toHaveAttribute("data-open", "true")
     await user.click(screen.getByText("2 ferramentas"))
     expect(command).not.toBeVisible()
     await user.click(screen.getByText("2 ferramentas"))
@@ -265,14 +269,14 @@ it("mounts completed tool content on first expansion and preserves technical det
   const card = await screen.findByRole("article", { name: "Ferramenta · Terminal" })
   expect(within(card).getByRole("figure", { name: "Comando" })).toHaveTextContent("printf QA_R7_APROVADO")
   await user.click(within(card).getByText("Detalhes técnicos"))
-  expect(card.querySelector(".tool-technical")).toHaveAttribute("open")
+  expect(card.querySelector(".tool-technical .ds-disclosure-trigger")).toHaveAttribute("aria-expanded", "true")
   await user.click(screen.getByText("1 ferramenta"))
   expect(card).not.toBeVisible()
   await user.click(screen.getByText("1 ferramenta"))
   expect(screen.getByRole("article", { name: "Ferramenta · Terminal" })).toBe(card)
-  expect(card.querySelector(".tool-technical")).toHaveAttribute("open")
+  expect(card.querySelector(".tool-technical .ds-disclosure-trigger")).toHaveAttribute("aria-expanded", "true")
   await user.click(within(card).getByText("Resultado"))
-  expect(card.querySelector(".tool-output")).toHaveAttribute("open")
+  expect(card.querySelector(".tool-output .ds-disclosure-trigger")).toHaveAttribute("aria-expanded", "true")
   expect(card.querySelector(".tool-output")).toHaveTextContent("Generated result")
 })
 
@@ -331,7 +335,11 @@ it("disables all decisions while sending, prevents duplicate answers, and recove
   fireEvent.click(approve)
   fireEvent.click(approve)
   expect(request).toHaveBeenCalledTimes(1)
-  for (const button of screen.getAllByRole("button")) expect(button).toBeDisabled()
+  const decisionButtons = screen
+    .getAllByRole("button")
+    .filter((button) => !button.classList.contains("ds-disclosure-trigger"))
+  for (const button of decisionButtons) expect(button).toBeDisabled()
+  expect(screen.getByRole("button", { name: "Detalhes técnicos" })).toBeEnabled()
   await act(async () => reject(new Error("Falha de conexão")))
   expect(screen.getByRole("alert")).toHaveTextContent("Falha de conexão")
   expect(screen.getByRole("button", { name: "Aprovar" })).toBeEnabled()
@@ -415,9 +423,10 @@ it("collapses output separately and pretty prints structured JSON results", asyn
   const user = userEvent.setup()
   const view = render(<ToolCallCard part={{ ...tool, ok: true, outputJson: '{"count":2,"items":["um","dois"]}' }} />)
   const output = view.container.querySelector(".tool-output")
-  expect(output).not.toHaveAttribute("open")
+  const outputTrigger = output?.querySelector(".ds-disclosure-trigger")
+  expect(outputTrigger).toHaveAttribute("aria-expanded", "false")
   await user.click(screen.getByText("Resultado"))
-  expect(output).toHaveAttribute("open")
+  expect(outputTrigger).toHaveAttribute("aria-expanded", "true")
   expect(output?.querySelector("code")?.textContent).toBe(
     '{\n  "count": 2,\n  "items": [\n    "um",\n    "dois"\n  ]\n}',
   )

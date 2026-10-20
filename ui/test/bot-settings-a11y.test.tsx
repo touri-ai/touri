@@ -123,7 +123,7 @@ const expectNamedControls = (scope: HTMLElement) => {
     "link",
   ].flatMap((role) => queries.queryAllByRole(role, { name: /\S/ }))
   const controls = Array.from(scope.querySelectorAll<HTMLElement>("button, input, select, textarea, a[href]")).filter(
-    (control) => !control.closest("[hidden], details:not([open]), .ds-disclosure[data-open='false']"),
+    (control) => !control.closest("[hidden], [inert], .ds-disclosure[data-open='false']"),
   )
   expect(controls.length).toBeGreaterThan(0)
   const checkedAncestors = new Set<HTMLElement>()

@@ -1,3 +1,4 @@
+import AxeBuilder from "@axe-core/playwright"
 import { expect, type Page, test } from "@playwright/test"
 
 test.use({ channel: "chromium", locale: "pt-BR", reducedMotion: "reduce" })
@@ -17,14 +18,18 @@ const getStyle = (locator: ReturnType<Page["locator"]>) =>
   locator.evaluate((element) => {
     const style = getComputedStyle(element)
 
-    return { size: style.fontSize, weight: style.fontWeight, height: element.getBoundingClientRect().height }
+    const { height, width } = element.getBoundingClientRect()
+
+    return { size: style.fontSize, weight: style.fontWeight, height, width }
   })
 
 for (const width of [1440, 390]) {
   for (const theme of ["dark", "light"]) {
     test(`notification center follows the design system at ${width}px (${theme})`, async ({ page }) => {
       await page.emulateMedia({ colorScheme: theme as "dark" | "light" })
+      await page.addInitScript((preference) => localStorage.setItem("touri.appearance.v1", preference), theme)
       const center = await openCenter(page, width)
+      await expect(page.locator("html")).toHaveAttribute("data-theme", theme)
       const approval = center.locator('[data-kind="approval"]')
 
       expect(await getStyle(center.locator("header strong"))).toMatchObject({ size: "17px", weight: "600" })
@@ -34,10 +39,27 @@ for (const width of [1440, 390]) {
       })
       expect(await getStyle(approval.locator(".notification-title"))).toMatchObject({ size: "15px", weight: "600" })
       expect(await getStyle(approval.locator(".notification-body"))).toMatchObject({ size: "13px" })
+      const contrast = await new AxeBuilder({ page })
+        .include(".notification-popover .ds-badge")
+        .withRules(["color-contrast"])
+        .analyze()
+      expect(contrast.violations).toEqual([])
 
       const primary = approval.getByRole("button", { name: "Abrir e revisar" })
       const minimum = width < 500 ? 44 : 40
+      const bell = page.getByRole("button", { name: /^Notificações,/ })
+      expect((await getStyle(bell)).height).toBeGreaterThanOrEqual(minimum)
+      expect((await getStyle(bell)).width).toBeGreaterThanOrEqual(minimum)
       expect((await getStyle(primary)).height).toBeGreaterThanOrEqual(minimum)
+      expect(
+        (await getStyle(center.getByRole("button", { name: "Limpar", exact: true }))).height,
+      ).toBeGreaterThanOrEqual(minimum)
+      expect(
+        (await getStyle(center.getByRole("button", { name: "Fechar notificações" }))).height,
+      ).toBeGreaterThanOrEqual(minimum)
+      expect(
+        (await getStyle(center.getByRole("button", { name: "Fechar notificações" }))).width,
+      ).toBeGreaterThanOrEqual(minimum)
       await expect(approval.locator(".ds-button-primary")).toHaveCount(1)
       await expect(approval.getByRole("button", { name: "Aprovar" })).toHaveCount(0)
 

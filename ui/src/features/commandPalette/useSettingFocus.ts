@@ -26,11 +26,6 @@ export const focusSetting = (settingId: string): (() => void) => {
   const row = document.querySelector<HTMLElement>(`[data-setting-id="${settingId}"]`)
   if (!row) return () => undefined
   openDisclosures(row)
-  let disclosure = row.closest("details")
-  while (disclosure) {
-    disclosure.open = true
-    disclosure = disclosure.parentElement?.closest("details") ?? null
-  }
   const controlId = controlIdFor(settingId)
   const control = controlId ? document.getElementById(controlId) : null
   const target = control ?? row

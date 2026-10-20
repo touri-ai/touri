@@ -16,9 +16,9 @@ for (const theme of ["light", "dark"]) {
       await page.goto(`/test/e2e/fixtures/visual-feedback.html?view=${view}&theme=${theme}`)
       if (view === "terminal") {
         await expect(page.locator(".tool-card")).toHaveCount(2)
-        await page.locator("details").evaluateAll((details) => {
-          for (const detail of details) detail.setAttribute("open", "")
-        })
+        for (const trigger of await page.locator(".tool-details > .ds-disclosure-trigger").all()) {
+          await trigger.click()
+        }
         if (phase === "after") {
           await expect(page.locator('.tool-input code[data-highlighted="true"]')).toHaveCount(2)
           await expect(page.locator('.tool-technical code[data-highlighted="true"]')).toHaveCount(2)

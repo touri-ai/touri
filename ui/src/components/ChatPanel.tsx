@@ -227,9 +227,7 @@ export const VirtualMessageList = ({
       }
       const atBottom = list.scrollTop + list.clientHeight >= list.scrollHeight - 48
       // Once a disclosure has settled back at the end, resume following the next reply.
-      const collapsed = anchor?.element.matches("summary")
-        ? anchor.element.parentElement instanceof HTMLDetailsElement && !anchor.element.parentElement.open
-        : anchor?.element.getAttribute("aria-expanded") === "false"
+      const collapsed = anchor?.element.getAttribute("aria-expanded") === "false"
       if (atBottom && collapsed) {
         readingAnchor.current = null
         followBottom.current = true
@@ -292,7 +290,7 @@ export const VirtualMessageList = ({
         onClickCapture={(event) => {
           if (!(event.target instanceof Element)) return
           const control = event.target.closest<HTMLElement>(
-            "summary, .chat-disclosure-toggle, .turn-activity-toggle, .disclosure-summary, .message-error-history > button",
+            ".ds-disclosure-trigger, .chat-disclosure-toggle, .turn-activity-toggle, .message-error-history > button",
           )
           if (!control) return
           const list = event.currentTarget

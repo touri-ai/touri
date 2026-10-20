@@ -64,16 +64,10 @@ export const Modal = ({
       const scope = confirmation ?? card
       const controls = Array.from(
         scope.querySelectorAll<HTMLElement>(
-          'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), a[href], summary, [tabindex="0"]',
+          'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), a[href], [tabindex="0"]',
         ),
       ).filter((element) => {
-        if (element.closest("[hidden]") || element.tabIndex < 0) return false
-        let disclosure = element.closest("details")
-        while (disclosure) {
-          if (!disclosure.open && disclosure.querySelector("summary") !== element) return false
-          disclosure = disclosure.parentElement?.closest("details") ?? null
-        }
-        return true
+        return !element.closest("[hidden], [inert]") && element.tabIndex >= 0
       })
       const first = controls[0]
       const last = controls.at(-1)

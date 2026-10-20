@@ -76,7 +76,10 @@ it("shows create, change and delete targets with a compact literal diff before a
   expect(preview?.textContent?.length).toBeLessThan(diff.length)
   expect(view.container.querySelector("b")).toBeNull()
   expect(definition("Pasta autorizada para alterações")).toHaveTextContent("/workspace/project")
-  expect(view.container.querySelector(".tool-technical")).not.toHaveAttribute("open")
+  expect(view.container.querySelector(".tool-technical .ds-disclosure-trigger")).toHaveAttribute(
+    "aria-expanded",
+    "false",
+  )
 })
 
 it("states explicitly when Codex supplies no file list or network scope", () => {

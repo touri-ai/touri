@@ -1032,8 +1032,8 @@ a {
   color: var(--text-secondary);
   font-size: var(--type-12);
 }
-.reasoning-card summary,
-.tool-card summary {
+.reasoning-card .ds-disclosure-trigger,
+.tool-card .ds-disclosure-trigger {
   padding: var(--space-9) var(--space-11);
   cursor: pointer;
   color: var(--text-body);
@@ -3311,6 +3311,10 @@ a {
   position: relative;
   display: grid;
   place-items: center;
+  width: 40px;
+  min-width: 40px;
+  height: 40px;
+  padding: 0;
 }
 .notification-badge {
   position: absolute;
@@ -4105,14 +4109,13 @@ a {
   border-top: 1px solid var(--border-subtle);
   padding-top: var(--space-4);
 }
-.tool-call-card .tool-details > summary {
-  width: fit-content;
+.tool-call-card .tool-details > .ds-disclosure-trigger {
   padding: var(--space-6) 0;
   color: var(--text-secondary);
   font-size: var(--type-11);
 }
-.tool-details > summary:focus-visible,
-.tool-group > summary:focus-visible {
+.tool-details > .ds-disclosure-trigger:focus-visible,
+.tool-group > .ds-disclosure-trigger:focus-visible {
   outline: 2px solid var(--accent-brand);
   outline-offset: var(--space-3);
   border-radius: var(--radius-4);
@@ -4136,7 +4139,7 @@ a {
   border-radius: var(--radius-12);
   background: var(--surface-tool);
 }
-.tool-group > summary {
+.tool-group > .ds-disclosure-trigger {
   padding: var(--space-12) var(--space-16);
   cursor: pointer;
   color: var(--text-secondary);
@@ -4826,7 +4829,7 @@ a {
   max-height: 80vh;
   margin: 10vh auto;
 }
-.render-error details {
+.render-error .ds-disclosure {
   margin-top: 16px;
 }
 .render-error pre {

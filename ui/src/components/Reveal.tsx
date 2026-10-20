@@ -1,5 +1,6 @@
-import { type CSSProperties, type ReactNode, useId, useLayoutEffect, useRef, useState } from "react"
+import { type ReactNode, useLayoutEffect, useRef } from "react"
 import { isMotionReduced, observeMotionPreference } from "../design/motionPreference"
+import { Disclosure } from "./Disclosure"
 
 /** Every reveal property derives from one interpolated scalar. */
 export const useReveal = <T extends HTMLElement>(visible = true) => {
@@ -27,23 +28,7 @@ export const useReveal = <T extends HTMLElement>(visible = true) => {
   return ref
 }
 
-const useDisclosureSize = () => {
-  const ref = useRef<HTMLDivElement>(null)
-  useLayoutEffect(() => {
-    const content = ref.current
-    if (!content) return
-    const measure = (): void => {
-      content.parentElement?.style.setProperty("--disclosure-size", `${content.getBoundingClientRect().height}px`)
-    }
-    measure()
-    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure)
-    observer?.observe(content)
-    return () => observer?.disconnect()
-  }, [])
-  return ref
-}
-
-/** Native summary keeps Enter/Space activation and the transcript's reading anchor. */
+/** Tool output shares the system Disclosure while keeping its measured reveal animation. */
 export const RevealDetails = ({
   className,
   summary,
@@ -53,19 +38,10 @@ export const RevealDetails = ({
   summary: ReactNode
   children: ReactNode
 }) => {
-  const [expanded, setExpanded] = useState(false)
-  const revealRef = useReveal<HTMLDivElement>(expanded)
-  const contentRef = useDisclosureSize()
   return (
-    <details className={className} onToggle={(event) => setExpanded(event.currentTarget.open)}>
-      <summary>{summary}</summary>
-      {/* Native details owns accessibility; its toggle state only drives visual interpolation. */}
-      <div ref={revealRef} className="disclosure-reveal">
-        <div ref={contentRef} className="disclosure-content">
-          {children}
-        </div>
-      </div>
-    </details>
+    <Disclosure animateContent className={className} summary={summary}>
+      {children}
+    </Disclosure>
   )
 }
 
@@ -84,38 +60,16 @@ export const AnimatedDisclosure = ({
   expanded?: boolean
   onExpandedChange?: (expanded: boolean) => void
 }) => {
-  const [localExpanded, setExpanded] = useState(defaultExpanded)
-  const expanded = controlledExpanded ?? localExpanded
-  const contentId = useId()
-  const contentRef = useDisclosureSize()
   return (
-    <div className={`animated-disclosure ${className ?? ""}`} data-expanded={expanded}>
-      <button
-        type="button"
-        className="disclosure-summary"
-        aria-expanded={expanded}
-        aria-controls={contentId}
-        onClick={() => {
-          setExpanded(!expanded)
-          onExpandedChange?.(!expanded)
-        }}
-      >
-        <span aria-hidden="true" className="disclosure-chevron">
-          ▸
-        </span>
-        {summary}
-      </button>
-      <div
-        id={contentId}
-        className="disclosure-reveal"
-        style={{ "--reveal": expanded ? 1 : 0 } as CSSProperties}
-        inert={!expanded}
-        aria-hidden={!expanded}
-      >
-        <div ref={contentRef} className="disclosure-content">
-          {children}
-        </div>
-      </div>
-    </div>
+    <Disclosure
+      animateContent
+      className={`animated-disclosure ${className ?? ""}`}
+      summary={summary}
+      defaultOpen={defaultExpanded}
+      {...(controlledExpanded !== undefined ? { open: controlledExpanded } : {})}
+      {...(onExpandedChange ? { onOpenChange: onExpandedChange } : {})}
+    >
+      {children}
+    </Disclosure>
   )
 }

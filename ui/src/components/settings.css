@@ -1125,13 +1125,13 @@
   overflow-wrap: anywhere;
 }
 
-.settings-technical-details > summary {
+.settings-technical-details > .ds-disclosure-trigger {
   cursor: pointer;
   color: var(--text-secondary);
   font-size: var(--type-13);
   padding: var(--space-8) 0;
 }
-.settings-technical-details > .field-help {
+.settings-technical-details .ds-disclosure-content > .field-help {
   margin-top: var(--space-8);
   line-height: 1.6;
 }

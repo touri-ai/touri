@@ -81,7 +81,7 @@ it("uses a secondary action and a state-colored badge for a finished item", () =
   expect(row.querySelectorAll(".ds-button-primary")).toHaveLength(0)
 })
 
-it("tints unread items and keeps technical details collapsed", () => {
+it("tints unread items and shows the notification center header", () => {
   const { row } = renderCenter([getNotification()])
 
   expect(row).toHaveAttribute("data-unread", "true")

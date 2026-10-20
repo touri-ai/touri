@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs"
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import type { MachineState, ToolCallPart } from "@touri/contracts"
 import { useLayoutEffect, useRef } from "react"
@@ -116,7 +116,7 @@ test("A13b: activity ink follows state with a static reduced-motion equivalent",
   expect(screen.getByRole("status")).toHaveTextContent("Preciso da sua autorização.")
 })
 
-test("A14: tool insertion and native disclosure share reveal without restarting on deltas", async () => {
+test("A14: tool insertion and Disclosure share reveal without restarting on deltas", async () => {
   const frames: FrameRequestCallback[] = []
   const raf = vi.fn((callback: FrameRequestCallback) => {
     frames.push(callback)
@@ -132,24 +132,20 @@ test("A14: tool insertion and native disclosure share reveal without restarting 
     for (const frame of frames.splice(0)) frame(0)
   })
   expect(card.style.getPropertyValue("--reveal")).toBe("1")
-  const summary = screen.getByText("Resultado")
-  await user.click(summary)
-  expect(summary.closest("details")).toHaveAttribute("open")
-  const content = summary.nextElementSibling
+  const trigger = screen.getByRole("button", { name: "Resultado" })
+  await user.click(trigger)
+  expect(trigger).toHaveAttribute("aria-expanded", "true")
+  const content = trigger.nextElementSibling
   expect(content).toHaveClass("disclosure-reveal")
-  await waitFor(() => expect(frames).not.toHaveLength(0))
-  act(() => {
-    for (const frame of frames.splice(0)) frame(16)
-  })
   expect(content).not.toHaveAttribute("inert")
   const count = raf.mock.calls.length
   view.rerender(<ToolCallCard part={{ ...tool, outputJson: "Primeiro resultado e mais um delta" }} />)
   expect(screen.getByRole("article")).toBe(card)
   expect(raf).toHaveBeenCalledTimes(count)
   expect(content).toHaveTextContent("mais um delta")
-  await user.click(summary)
-  expect(summary.closest("details")).not.toHaveAttribute("open")
-  await waitFor(() => expect(content).toHaveStyle("--reveal: 0"))
+  await user.click(trigger)
+  expect(trigger).toHaveAttribute("aria-expanded", "false")
+  expect(content).toHaveStyle("--reveal: 0")
 })
 
 test.each([false, true])("A15: actual route changes focus destination, including reduced motion (%s)", (reduced) => {

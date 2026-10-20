@@ -65,14 +65,13 @@
   background: var(--surface-settings-hover);
 }
 
-.folder-picker details > summary {
-  width: fit-content;
+.folder-picker .ds-disclosure > .ds-disclosure-trigger {
   color: var(--text-secondary);
   font-size: var(--type-12);
   cursor: pointer;
 }
 
-.folder-picker details[open] > summary {
+.folder-picker .ds-disclosure[data-open="true"] > .ds-disclosure-trigger {
   margin-bottom: var(--space-8);
 }
 
@@ -92,7 +91,7 @@
 }
 
 .folder-picker-create label,
-.folder-picker details label {
+.folder-picker .ds-disclosure-content label {
   font-size: var(--type-13);
   font-weight: var(--weight-medium);
 }
@@ -157,7 +156,7 @@
   }
 
   .folder-picker button,
-  .folder-picker summary,
+  .folder-picker .ds-disclosure-trigger,
   .folder-picker-access label {
     min-height: 44px;
   }

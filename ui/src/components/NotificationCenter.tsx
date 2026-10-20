@@ -139,7 +139,7 @@ const NotificationRow = ({
   const title =
     resolved && item.kind === "approval"
       ? item.resolution === "dismissed"
-        ? "Solicitação dispensada"
+        ? t("Solicitação dispensada")
         : resolvedApprovalLabel(
             item.resolution === "allow"
               ? "approved"
@@ -411,9 +411,9 @@ export const NotificationBell = ({
   }, [open])
   return (
     <div className="notification-center" ref={container}>
-      <button
-        type="button"
-        className="settings-button notification-bell"
+      <Button
+        variant="quiet"
+        className="notification-bell"
         aria-label={getNotificationBellLabel(attentionCount)}
         aria-expanded={open}
         onClick={() => setOpen((current) => !current)}
@@ -433,7 +433,7 @@ export const NotificationBell = ({
           <path d="M10 20a2 2 0 0 0 4 0" />
         </svg>
         <UnreadCount count={attentionCount} className="notification-badge" />
-      </button>
+      </Button>
       {/* r8 motion: retain only the inert popover during its exit. */}
       {createPortal(
         <MotionPresence show={open} kind="popover">
@@ -447,26 +447,30 @@ export const NotificationBell = ({
               <strong>{t("Notifications")}</strong>
               <div className="notification-header-actions">
                 {ordered.length > 0 && (
-                  <button type="button" disabled={clearing} onClick={() => void clear()}>
+                  <Button variant="quiet" disabled={clearing} onClick={() => void clear()}>
                     {clearing ? t("Limpando…") : t("Limpar")}
-                  </button>
+                  </Button>
                 )}
-                <button type="button" aria-label={t("Fechar notificações")} onClick={() => setOpen(false)}>
+                <Button
+                  variant="quiet"
+                  className="notification-close"
+                  aria-label={t("Fechar notificações")}
+                  onClick={() => setOpen(false)}
+                >
                   ×
-                </button>
+                </Button>
               </div>
             </header>
             {actions.openRecovery && (
-              <button
-                type="button"
-                className="text-button"
+              <Button
+                variant="link-action"
                 onClick={() => {
                   setOpen(false)
                   actions.openRecovery?.()
                 }}
               >
                 {t("Interrupted tasks")}
-              </button>
+              </Button>
             )}
             {skippedCount > 0 && (
               <p role="status">
@@ -477,24 +481,23 @@ export const NotificationBell = ({
             )}
             {clearError && (
               <p className="screen-inline-error" role="alert">
-                Não foi possível limpar as notificações. Tente novamente.
+                {t("Não foi possível limpar as notificações. Tente novamente.")}
               </p>
             )}
             {ordered.length === 0 && missingApprovals.length === 0 && (
               <p className="notification-empty">{t("Nothing needs you right now.")}</p>
             )}
             {missingApprovals.map((target) => (
-              <button
+              <Button
                 key={target.approvalId}
-                type="button"
-                className="text-button"
+                variant="primary"
                 onClick={() => {
                   setOpen(false)
                   onReviewApproval?.(target)
                 }}
               >
-                {t("Review pending approval")}
-              </button>
+                {t("Abrir e revisar")}
+              </Button>
             ))}
             {groups
               .filter((group) => group.items.length > 0)
