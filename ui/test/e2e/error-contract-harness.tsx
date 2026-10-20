@@ -25,7 +25,7 @@ const run: Run = {
   replyMessageId: "failure",
   externalTurnId: null,
   status: "failed",
-  errorClass: modelIsAtCapacity ? "rate_limit" : "cli_crash",
+  errorClass: scenario === "boot" ? "timeout" : modelIsAtCapacity ? "rate_limit" : "cli_crash",
   errorMessage: diagnostic,
   usage: null,
   routineRunId: null,
@@ -77,6 +77,7 @@ const root = document.getElementById("root")
 if (root) createRoot(root).render(<App kernel={{ services: { api } }} />)
 
 function getDiagnostic(scenario: string | null): string {
+  if (scenario === "boot") return "A máquina não ficou pronta em 90 s: Xvfb não iniciou ou o guest não respondeu"
   if (scenario === "invalid-model") return "The saved model name is invalid. Choose another model in the bot settings."
   if (scenario === "capacity") return "Selected model is at capacity. Please try a different model."
 

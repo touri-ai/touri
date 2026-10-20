@@ -39,8 +39,7 @@ export const ComposerNotice = ({
   const machineFailed = bot?.machine === "vm" && machine?.status === "error"
   if (!authNeeded && !serviceDown && !machineFailed) return null
   const provider = bot?.provider === "opencode" ? "OpenCode" : bot?.provider === "claude" ? "Claude Code" : "Codex"
-  // The failed reply's own card in the conversation already offers the recovery action.
-  const failedInChat = latestReply?.status === "failed" && Boolean(latestReply.runId)
+  const hasFailedReply = latestReply?.status === "failed" && Boolean(latestReply.runId)
   const error = latestReply ? runErrorFor(latestReply) : null
   return (
     <aside className="composer-notice" aria-label={authNeeded ? t("Authentication required") : t("Computer notice")}>
@@ -72,7 +71,7 @@ export const ComposerNotice = ({
         </button>
       ) : serviceDown || /TOURI-E800[12]/.test(machine?.errorCode ?? "") ? (
         <MachineServiceButton api={api} {...(bot ? { botId: bot.id } : {})} />
-      ) : failedInChat ? null : (
+      ) : hasFailedReply ? null : (
         <button type="button" className="button button-quiet" onClick={onOpenPermissions}>
           {t("View bot settings")}
         </button>

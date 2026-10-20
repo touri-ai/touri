@@ -1,6 +1,8 @@
 import { cleanup, render, screen } from "@testing-library/react"
-import type { Bot, MachineState, Message } from "@touri/contracts"
-import { afterEach, expect, it } from "vitest"
+import userEvent from "@testing-library/user-event"
+import type { Bot, MachineState, Message, Run } from "@touri/contracts"
+import { afterEach, expect, it, vi } from "vitest"
+import App from "../src/App"
 import { createMockApi } from "../src/api/mock"
 import { ComposerNotice } from "../src/components/ComposerNotice"
 import { localizeNotice, t } from "../src/i18n"
@@ -78,3 +80,87 @@ it("still reports a computer problem when no run failed", () => {
 
   expect(screen.getByRole("complementary")).toBeVisible()
 })
+
+const getRecoveryFixture = (diagnostic: string, errorClass: string) => {
+  const api = createMockApi()
+  const bot = api.getState().bots[0]
+  const thread = api.getState().threads.find((item) => item.botId === bot?.id)
+  if (!bot || !thread) throw new Error("Missing recovery fixture")
+
+  const reply = { ...getFailedReply(), threadId: thread.id }
+  const message: Message = {
+    ...reply,
+    parts: [{ type: "notice", level: "error", code: "run_failed", text: diagnostic }],
+  }
+  const run: Run = {
+    id: "run",
+    threadId: thread.id,
+    botId: bot.id,
+    provider: bot.provider,
+    trigger: "user",
+    requestMessageId: "request",
+    replyMessageId: message.id,
+    externalTurnId: null,
+    status: "failed",
+    errorClass,
+    errorMessage: diagnostic,
+    usage: null,
+    routineRunId: null,
+    queuedAt: 1,
+    startedAt: 1,
+    finishedAt: 2,
+  }
+  const original = api.request.bind(api)
+  api.request = vi.fn((route, input, path) => {
+    if (route === "GET /bots") return Promise.resolve({ bots: [{ ...bot, machine: "vm" }] })
+    if (route === "GET /threads/:id/messages" && path?.id === thread.id)
+      return Promise.resolve({ messages: [message], activeLeafId: message.id })
+    if (route === "GET /threads/:id/runs" && path?.id === thread.id) return Promise.resolve({ runs: [run] })
+    if (route === "GET /machines")
+      return Promise.resolve({
+        capability: { available: true, reason: null, provider: "apple-container" },
+        machines: [{ ...getMachine(bot), error: diagnostic }],
+      })
+    if (route === "POST /runs/:id/retry") return Promise.resolve({ run: { ...run, id: "retry-run", status: "queued" } })
+
+    return original(route, input, path)
+  }) as typeof api.request
+
+  return { api, bot }
+}
+
+it.each([
+  ["network error: ECONNRESET", "cli_crash"],
+  ["A máquina não ficou pronta em 90 s: Xvfb não iniciou ou o guest não respondeu", "timeout"],
+])("offers one usable retry across the chat and computer notice: %s", async (diagnostic, errorClass) => {
+  const { api } = getRecoveryFixture(diagnostic, errorClass)
+  const user = userEvent.setup()
+
+  render(<App kernel={{ services: { api } }} />)
+  const retry = await screen.findByRole("button", { name: "Tentar novamente", exact: true })
+
+  expect(screen.getAllByRole("button", { name: "Tentar novamente", exact: true })).toHaveLength(1)
+  expect(screen.getByRole("complementary", { name: "Aviso do computador" })).toBeVisible()
+  await user.click(retry)
+  expect(api.request).toHaveBeenCalledWith("POST /runs/:id/retry", {}, { id: "run" })
+})
+
+it.each([
+  ["machine_service_unavailable: Serviço do computador indisponível. [TOURI-E8001]", "machine_service_unavailable"],
+  ["machine_service_start_failed: Não foi possível iniciar o serviço. [TOURI-E8002]", "machine_service_start_failed"],
+])(
+  "keeps the service-start recovery instead of retrying a disconnected service: %s",
+  async (diagnostic, errorClass) => {
+    const { api, bot } = getRecoveryFixture(diagnostic, errorClass)
+    const user = userEvent.setup()
+
+    render(<App kernel={{ services: { api } }} />)
+    const actions = await screen.findAllByRole("button", { name: t("Start computer service"), exact: true })
+
+    expect(screen.queryByRole("button", { name: "Tentar novamente", exact: true })).toBeNull()
+    const action = actions[0]
+    if (!action) throw new Error("Missing service recovery")
+    await user.click(action)
+    expect(api.request).toHaveBeenCalledWith("POST /machines/service/start", { botId: bot.id })
+  },
+)
