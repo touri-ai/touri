@@ -125,6 +125,13 @@ test("members cannot create channels or bots, invite people, or open another per
   ).toMatchObject({ status: 403 })
 })
 
+test("channel membership cannot open a private session with another person's bot", () => {
+  const request = { personId: "member", role: "member" as const, method: "POST", pathname: "/threads" }
+
+  expect(access.authorizeHttp({ ...request, body: { botId: "team-bot" } })).toMatchObject({ status: 403 })
+  expect(access.authorizeHttp({ ...request, body: { botId: "member-bot" } })).toBeNull()
+})
+
 test("members get event sockets and presence only for bots in their channels", () => {
   expect(access.authorizeSocket({ personId: "member", role: "member", path: "/api/v1/events" })).toBe(true)
   expect(

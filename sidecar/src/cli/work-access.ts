@@ -312,18 +312,11 @@ export const createWorkAccess = ({ database, authStore }: { database: Database; 
       return canAccessBot({ personId, role, botId: presenceRoute[1] ?? "" }) ? null : notFound
     if (verb === "POST" && pathname === "/threads") {
       const botId = stringValue(isRecord(body) ? body.botId : null)
-      if (botId) return canAccessBot({ personId, role, botId }) ? null : denied
-      const channelIds = channelIdsFor(personId)
-      const channelBots = channelIds.length
-        ? database
-            .query(`SELECT 1 FROM group_members gm JOIN bots b ON b.id = gm.bot_id
-            WHERE b.archived_at IS NULL AND gm.group_id IN (${channelIds.map(() => "?").join(",")}) LIMIT 1`)
-            .get(...channelIds)
-        : null
+      if (botId) return ownsBot({ personId, botId }) ? null : denied
       return database
         .query(`SELECT 1 FROM bots WHERE archived_at IS NULL
         AND (responsible_person_id = ? OR (responsible_person_id IS NULL AND ? = 'owner')) LIMIT 1`)
-        .get(personId, personId) || channelBots
+        .get(personId, personId)
         ? null
         : denied
     }

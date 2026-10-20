@@ -1,7 +1,8 @@
 import { Resolver } from "node:dns/promises"
 import { request as httpsRequest } from "node:https"
-import { isIP } from "node:net"
+import { connect, isIP, type Socket } from "node:net"
 import nodemailer from "nodemailer"
+import { withDeadline } from "../kernel/policy"
 import type { Invite, Person } from "./auth/store"
 import { isValidEmail } from "./auth/store"
 import type { SecretStore } from "./host/secretStore"
@@ -46,11 +47,13 @@ export type EmailDependencies = {
     config: EmailConfiguration
     credentials: EmailCredentials
     content: EmailContent
+    signal: AbortSignal
   }) => Promise<void>
   sendHttp?: (input: {
     config: EmailConfiguration
     credentials: EmailCredentials
     content: EmailContent
+    signal: AbortSignal
   }) => Promise<void>
 }
 
@@ -194,40 +197,42 @@ export const isPublicAddress = (address: string): boolean => {
   return true
 }
 
-const getPublicAddress = async (hostname: string): Promise<{ address: string; family: 4 }> => {
-  const resolver = new Resolver()
-  let timer: ReturnType<typeof setTimeout> | undefined
-  const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => {
-      resolver.cancel()
-      reject(new Error("Email endpoint lookup timed out"))
-    }, dnsTimeoutMs)
+const getPublicAddress = (hostname: string, signal: AbortSignal): Promise<{ address: string; family: 4 }> =>
+  withDeadline({
+    signal,
+    timeoutMs: dnsTimeoutMs,
+    operation: async (lookupSignal) => {
+      const resolver = new Resolver()
+      const cancel = () => resolver.cancel()
+      lookupSignal.addEventListener("abort", cancel, { once: true })
+      try {
+        const addresses = await resolver.resolve4(hostname)
+        if (!addresses.length || addresses.some((address) => !isPublicAddress(address)))
+          throw new Error("Email endpoint must resolve only to public addresses")
+        const [first] = addresses
+        if (!first) throw new Error("Email endpoint did not resolve")
+        return { address: first, family: 4 }
+      } finally {
+        lookupSignal.removeEventListener("abort", cancel)
+      }
+    },
   })
-  try {
-    const addresses = await Promise.race([resolver.resolve4(hostname), timeout])
-    if (!addresses.length || addresses.some((address) => !isPublicAddress(address)))
-      throw new Error("Email endpoint must resolve only to public addresses")
-    const [first] = addresses
-    if (!first) throw new Error("Email endpoint did not resolve")
-    return { address: first, family: 4 }
-  } finally {
-    if (timer) clearTimeout(timer)
-  }
-}
 
 const requestHttpEmail = async ({
   endpoint,
   apiKey,
   config,
   content,
+  signal,
 }: {
   endpoint: string
   apiKey: string
   config: EmailConfiguration
   content: EmailContent
+  signal: AbortSignal
 }): Promise<void> => {
   const url = new URL(endpoint)
-  const { address, family } = await getPublicAddress(url.hostname)
+  const { address, family } = await getPublicAddress(url.hostname, signal)
   const payload = JSON.stringify({
     from: { email: config.fromEmail, name: config.fromName },
     to: [{ email: content.to }],
@@ -240,7 +245,7 @@ const requestHttpEmail = async ({
       url,
       {
         method: "POST",
-        signal: AbortSignal.timeout(emailTimeoutMs),
+        signal,
         headers: {
           Authorization: `Bearer ${apiKey}`,
           "Content-Type": "application/json",
@@ -258,6 +263,7 @@ const requestHttpEmail = async ({
         maxHeaderSize: 8_192,
       },
       (response) => {
+        response.on("error", reject)
         let bytes = 0
         response.on("data", (chunk: Uint8Array) => {
           bytes += chunk.byteLength
@@ -276,15 +282,24 @@ const requestSmtpEmail = async ({
   config,
   credentials,
   content,
+  signal,
 }: {
   config: EmailConfiguration
   credentials: EmailCredentials
   content: EmailContent
+  signal: AbortSignal
 }): Promise<void> => {
   if (config.transport !== "smtp" || !credentials.user || !credentials.password)
     throw new Error("SMTP settings are incomplete")
-  const address = await getPublicAddress(config.host)
+  const address = await getPublicAddress(config.host, signal)
+  signal.throwIfAborted()
+  const socket = await new Promise<Socket>((resolve, reject) => {
+    const connection = connect({ host: address.address, port: config.port, signal })
+    connection.once("connect", () => resolve(connection))
+    connection.once("error", reject)
+  })
   const transporter = nodemailer.createTransport({
+    connection: socket,
     host: address.address,
     port: config.port,
     secure: config.port === 465,
@@ -306,6 +321,7 @@ const requestSmtpEmail = async ({
       html: content.html,
     })
   } finally {
+    socket.destroy()
     transporter.close()
   }
 }
@@ -313,9 +329,11 @@ const requestSmtpEmail = async ({
 export const createEmailService = ({
   secrets,
   dependencies = {},
+  timeoutMs = emailTimeoutMs,
 }: {
   secrets: SecretStore
   dependencies?: EmailDependencies
+  timeoutMs?: number
 }) => {
   const getCredentials = async (config: EmailConfiguration): Promise<EmailCredentials> => {
     if (config.transport === "smtp") {
@@ -329,30 +347,50 @@ export const createEmailService = ({
     return apiKey ? { apiKey } : {}
   }
 
-  const send = async ({ config, content }: { config: EmailConfiguration; content: EmailContent }): Promise<boolean> => {
+  const send = async ({
+    config,
+    content,
+    signal,
+  }: {
+    config: EmailConfiguration
+    content: EmailContent
+    signal?: AbortSignal
+  }): Promise<boolean> => {
     if (!isValidEmail(content.to)) return false
     try {
-      const credentials = await getCredentials(config)
-      if (config.transport === "smtp") {
-        if (!credentials.user || !credentials.password) return false
-        await (dependencies.sendSmtp ?? requestSmtpEmail)({ config, credentials, content })
-        return true
-      }
-      if (!credentials.apiKey) return false
-      const sender =
-        dependencies.sendHttp ??
-        ((input) =>
-          requestHttpEmail({
-            endpoint: input.config.transport === "http" ? input.config.endpoint : "",
-            apiKey: input.credentials.apiKey ?? "",
-            config: input.config,
-            content: input.content,
-          }))
-      await sender({ config, credentials, content })
-      return true
+      return await withDeadline({
+        ...(signal ? { signal } : {}),
+        timeoutMs,
+        operation: (deliverySignal) => sendWithSignal({ config, content, signal: deliverySignal }),
+      })
     } catch {
       return false
     }
+  }
+
+  const sendWithSignal = async ({
+    config,
+    content,
+    signal,
+  }: {
+    config: EmailConfiguration
+    content: EmailContent
+    signal: AbortSignal
+  }): Promise<boolean> => {
+    const credentials = await getCredentials(config)
+    signal.throwIfAborted()
+    if (config.transport === "smtp") {
+      if (!credentials.user || !credentials.password) return false
+      await (dependencies.sendSmtp ?? requestSmtpEmail)({ config, credentials, content, signal })
+      return true
+    }
+    if (!credentials.apiKey) return false
+    if (dependencies.sendHttp) {
+      await dependencies.sendHttp({ config, credentials, content, signal })
+      return true
+    }
+    await requestHttpEmail({ endpoint: config.endpoint, apiKey: credentials.apiKey, config, content, signal })
+    return true
   }
 
   const saveSecrets = async ({

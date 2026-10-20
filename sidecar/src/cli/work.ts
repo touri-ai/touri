@@ -119,6 +119,7 @@ export const initWorkMode = ({
   kernel.services.provide("work.canAccessThread", access.canAccessThread)
   kernel.services.provide("work.canAccessGroup", access.canAccessGroup)
   kernel.services.provide("work.canAccessBot", access.canAccessBot)
+  kernel.services.provide("work.ownsBot", access.ownsBot)
   kernel.services.provide("work.accessibleBotIds", access.accessibleBotIds)
   kernel.services.provide("work.canAccessAttachments", access.canAccessAttachments)
   kernel.services.provide("work.canAccessRun", access.canAccessRun)
@@ -135,17 +136,19 @@ export const initWorkMode = ({
     token,
     inviter,
     origin,
+    signal,
   }: {
     invite: Invite
     token: string
     inviter: Person
     origin: string
+    signal: AbortSignal
   }): Promise<{ emailConfigured: boolean; emailSent: boolean; link: string }> => {
     const link = inviteLink({ origin, token })
     const config = pendingEmailConfig(authStore)
     if (!config || !(await email.hasCredentials(config))) return { emailConfigured: false, emailSent: false, link }
     const content = buildInvitationContent({ invite, inviter, config, link })
-    const emailSent = await email.send({ config, content })
+    const emailSent = await email.send({ config, content, signal })
     return { emailConfigured: true, emailSent, link }
   }
 
@@ -209,7 +212,13 @@ export const initWorkMode = ({
             channelIds,
           })
           if (!created.success) return fail(409, created.errorCode, created.error)
-          const delivery = await issueInvite({ invite: created.invite, token: created.token, inviter: actor, origin })
+          const delivery = await issueInvite({
+            invite: created.invite,
+            token: created.token,
+            inviter: actor,
+            origin,
+            signal,
+          })
           return { status: 201, json: { invite: created.invite, ...delivery } }
         },
       },
@@ -227,7 +236,13 @@ export const initWorkMode = ({
           actionLimiter.record(actor.id)
           const resent = await authStore.resendInvite({ id: params.id ?? "", actorPersonId: actor.id })
           if (!resent.success) return fail(404, resent.errorCode, resent.error)
-          const delivery = await issueInvite({ invite: resent.invite, token: resent.token, inviter: actor, origin })
+          const delivery = await issueInvite({
+            invite: resent.invite,
+            token: resent.token,
+            inviter: actor,
+            origin,
+            signal,
+          })
           return { status: 200, json: { invite: resent.invite, ...delivery } }
         },
       },
@@ -306,7 +321,7 @@ export const initWorkMode = ({
           if (!config || !(await email.hasCredentials(config)))
             return fail(409, "EMAIL_NOT_CONFIGURED", "Configure o envio de e-mail primeiro")
           const testContent = getTestEmail({ teamName: config.teamName })
-          const sent = await email.send({ config, content: { ...testContent, to: recipient } })
+          const sent = await email.send({ config, content: { ...testContent, to: recipient }, signal })
           return sent
             ? { status: 200, json: { sent: true } }
             : fail(502, "EMAIL_SEND_FAILED", "Não foi possível enviar o e-mail de teste")

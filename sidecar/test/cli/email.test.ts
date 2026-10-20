@@ -180,3 +180,72 @@ test("missing credentials safely reports that delivery is unavailable", async ()
     }),
   ).toBe(false)
 })
+
+test.each(["smtp", "http"] as const)("%s delivery stops when its caller cancels", async (transport) => {
+  const secrets = makeSecrets()
+  const controller = new AbortController()
+  let deliverySignal: AbortSignal | undefined
+  let started: () => void = () => {}
+  const ready = new Promise<void>((resolve) => {
+    started = resolve
+  })
+  const send = async ({ signal }: { signal?: AbortSignal }) => {
+    deliverySignal = signal
+    started()
+    await new Promise<void>((_, reject) => {
+      signal?.addEventListener("abort", () => reject(new Error("Canceled")), { once: true })
+    })
+  }
+  const email = createEmailService({ secrets, dependencies: { sendSmtp: send, sendHttp: send } })
+  const config =
+    transport === "smtp"
+      ? smtp
+      : {
+          transport: "http" as const,
+          endpoint: "https://mail.example.test/send",
+          fromEmail: smtp.fromEmail,
+          fromName: smtp.fromName,
+          teamName: smtp.teamName,
+        }
+  await email.saveSecrets({
+    config,
+    input: { ...config, user: "mailer", password: "smtp-secret", apiKey: "api-secret" },
+  })
+  const delivery = email.send({
+    config,
+    content: { to: "ana@example.test", subject: "Invite", text: "text", html: "<p>text</p>" },
+    signal: controller.signal,
+  })
+  await ready
+
+  controller.abort()
+
+  expect(await delivery).toBe(false)
+  expect(deliverySignal?.aborted).toBe(true)
+})
+
+test("a stalled email delivery has a total deadline and aborts its transport", async () => {
+  const secrets = makeSecrets()
+  let deliverySignal: AbortSignal | undefined
+  const email = createEmailService({
+    secrets,
+    timeoutMs: 25,
+    dependencies: {
+      sendSmtp: async ({ signal }) => {
+        deliverySignal = signal
+        await new Promise<void>((_, reject) => {
+          signal.addEventListener("abort", () => reject(new Error("Timed out")), { once: true })
+        })
+      },
+    },
+  })
+  await email.saveSecrets({ config: smtp, input: { ...smtp, user: "mailer", password: "smtp-secret" } })
+
+  const sent = await email.send({
+    config: smtp,
+    content: { to: "ana@example.test", subject: "Invite", text: "text", html: "<p>text</p>" },
+  })
+
+  expect(sent).toBe(false)
+  expect(deliverySignal?.aborted).toBe(true)
+})

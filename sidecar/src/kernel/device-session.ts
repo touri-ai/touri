@@ -16,9 +16,11 @@ export const bindDeviceSession = (signal: AbortSignal, session: DeviceSession): 
   sessions.set(signal, session)
 }
 export const deviceSession = (signal: AbortSignal): DeviceSession | undefined => sessions.get(signal)
-export const authenticatedSender = (signal: AbortSignal): { id: string; name: string; avatarSeed: string } | null => {
+export const authenticatedSender = (
+  signal: AbortSignal,
+): { id: string; name: string; avatarSeed: string; kind: "person" } | null => {
   const person = deviceSession(signal)?.person
-  return person ? { id: person.id, name: person.name, avatarSeed: person.avatarSeed } : null
+  return person ? { id: person.id, name: person.name, avatarSeed: person.avatarSeed, kind: "person" } : null
 }
 export const withAuthenticatedSender = (signal: AbortSignal, input: SendMessageInput): SendMessageInput => {
   const { sender: _ignored, ...message } = input

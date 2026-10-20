@@ -195,6 +195,7 @@ const parseSender = (value: string | null): Message["sender"] => {
     name: parsed.name,
     id: parsed.id,
     ...(isString(parsed.avatarSeed) ? { avatarSeed: parsed.avatarSeed } : {}),
+    ...(parsed.kind === "person" ? { kind: "person" as const } : {}),
   }
 }
 
@@ -1686,9 +1687,8 @@ export const init = async (
           const person = deviceSession(signal)?.person
           if (
             person?.role === "member" &&
-            !kernel.services.use("work.canAccessBot")?.({
+            !kernel.services.use("work.ownsBot")?.({
               personId: person.id,
-              role: person.role,
               botId: record.botId,
             })
           )

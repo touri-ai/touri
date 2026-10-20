@@ -471,7 +471,7 @@ export type Message = {
   runId: Id | null
   text: string
   parts: Array<MessagePart>
-  sender: { name: string; id: string; avatarSeed?: string } | null
+  sender: { name: string; id: string; avatarSeed?: string; kind?: 'person' } | null
   source: RowSource
   createdAt: EpochMs
   updatedAt: EpochMs
@@ -871,7 +871,7 @@ export type SendMessageInput = {
   parentId: Id | null
   text: string
   attachmentIds: Array<Id>
-  sender?: { name: string; id: string; avatarSeed?: string }
+  sender?: { name: string; id: string; avatarSeed?: string; kind?: 'person' }
 }
 
 export type ApiRoutes = {
@@ -1361,6 +1361,7 @@ export type ServiceMap = {
   'work.canAccessThread': (input: { personId: Id; role: 'member' | 'admin'; threadId: Id }) => boolean
   'work.canAccessGroup': (input: { personId: Id; role: 'member' | 'admin'; groupId: Id }) => boolean
   'work.canAccessBot': (input: { personId: Id; role: 'member' | 'admin'; botId: Id }) => boolean
+  'work.ownsBot': (input: { personId: Id; botId: Id }) => boolean
   'work.accessibleBotIds': (input: { personId: Id; channelIds: Array<Id> }) => Array<Id>
   'work.canAccessAttachments': (input: { personId: Id; role: 'member' | 'admin'; attachmentIds: Array<Id> }) => boolean
   'work.canAccessRun': (input: { personId: Id; role: 'member' | 'admin'; runId: Id }) => boolean

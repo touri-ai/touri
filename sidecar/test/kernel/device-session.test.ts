@@ -14,7 +14,7 @@ test("channel sender metadata comes only from the authenticated person", () => {
     },
     active: () => true,
   })
-  expect(authenticatedSender(signal)).toEqual({ id: "person-a", name: "Ana", avatarSeed: "seed-a" })
+  expect(authenticatedSender(signal)).toEqual({ id: "person-a", name: "Ana", avatarSeed: "seed-a", kind: "person" })
   expect(
     withAuthenticatedSender(signal, {
       threadId: "thread-a",
@@ -23,7 +23,7 @@ test("channel sender metadata comes only from the authenticated person", () => {
       attachmentIds: [],
       sender: { id: "owner", name: "Owner", avatarSeed: "forged" },
     }).sender,
-  ).toEqual({ id: "person-a", name: "Ana", avatarSeed: "seed-a" })
+  ).toEqual({ id: "person-a", name: "Ana", avatarSeed: "seed-a", kind: "person" })
   expect(
     withAuthenticatedSender(new AbortController().signal, {
       threadId: "thread-a",
