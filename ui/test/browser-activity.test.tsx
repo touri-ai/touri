@@ -223,6 +223,7 @@ test.each([
   renderCard(parts, false)
 
   expect(screen.getByText(notice)).toBeVisible()
+  expect(screen.getByRole("log", { name: "Atividade do navegador" })).toHaveAttribute("aria-live", "polite")
   expect(document.body.textContent).not.toContain("private-provider-detail")
   expect(document.body.textContent).not.toContain("TOURI_BROWSER_")
 })

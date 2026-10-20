@@ -243,7 +243,12 @@ export const BrowserActivityCard = ({
               </div>
             </div>
           )}
-          <div className="browser-activity-log">
+          <div
+            className="browser-activity-log"
+            role="log"
+            aria-label={t("Browser activity", {}, locale)}
+            aria-live={finished ? "off" : "polite"}
+          >
             <strong>{t("Browser activity", {}, locale)}</strong>
             <ol>
               {actions.map((part) => (
