@@ -2617,7 +2617,11 @@ test.serial("transcript: Stop resolves pending provider tools before the interru
     await waitFor(() =>
       value.store
         .activePath({ threadId: value.thread.id })
-        .some((message) => message.parts.some((part) => part.type === "tool_call" && part.callId === "open-call")),
+        .some(
+          (message) =>
+            message.parts.some((part) => part.type === "tool_call" && part.callId === "open-call") &&
+            message.parts.some((part) => part.type === "file_change"),
+        ),
     )
     value.engine.cancel(queued.run.id)
     const reply = value.store.activePath({ threadId: value.thread.id }).find((message) => message.role === "assistant")

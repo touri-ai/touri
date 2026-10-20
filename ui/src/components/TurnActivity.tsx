@@ -4,6 +4,8 @@ import { useEffect, useId, useState } from "react"
 import type { UiApi } from "../api/client"
 import { type Locale, t } from "../i18n"
 import { ActivityMark } from "./ActivityMark"
+import { BrowserActivityCard } from "./BrowserActivityCard"
+import { getBrowserActivityTools } from "./browserActivityPresentation"
 import { MarkdownContent } from "./MarkdownContent"
 import type { MascotState } from "./mascotState"
 import { ToolCallCard } from "./ToolCallCard"
@@ -38,11 +40,22 @@ export const TurnActivity = ({
     if (!live) setExpanded(false)
   }, [live])
   const tools = activityTools(message.parts)
+  const browserTools = getBrowserActivityTools(message.parts)
+  const browserCallIds = new Set(browserTools.map((part) => part.callId))
   const approvals = new Set([...approvalTools(message.parts).values()].map((part) => part.callId))
-  const groups = activityGroups(tools.filter((part) => !approvals.has(part.callId)))
+  const groups = activityGroups(tools.filter((part) => !approvals.has(part.callId) && !browserCallIds.has(part.callId)))
   const reasoning = message.parts.flatMap((part) => (part.type === "reasoning" && part.text.trim() ? [part.text] : []))
   return (
     <div className="turn-activity" data-running={live}>
+      {browserTools.length > 0 && (
+        <BrowserActivityCard
+          parts={message.parts}
+          finished={!live}
+          createdAt={message.createdAt}
+          botName={message.sender?.name ?? "touri"}
+          locale={locale}
+        />
+      )}
       {live ? (
         <ActivityMark
           state={state}
