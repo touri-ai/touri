@@ -533,7 +533,7 @@ it("lets the bell open an approval that arrived before its notification", () => 
   const onReviewApproval = vi.fn()
   renderSidebar({ bots, threads, messages: [pendingApproval(messageBase, "thread-delta", T0)], onReviewApproval })
   fireEvent.click(screen.getByRole("button", { name: "Notificações, 1 precisa de atenção" }))
-  fireEvent.click(screen.getByRole("button", { name: "Revisar aprovação pendente" }))
+  fireEvent.click(screen.getByRole("button", { name: "Abrir e revisar" }))
   expect(onReviewApproval).toHaveBeenCalledWith({ threadId: "thread-delta", approvalId: "approval-thread-delta" })
 })
 
