@@ -13,6 +13,7 @@ export type EvidenceContextValue = {
   api: UiApi
   bot: Bot
   base?: string
+  onLayoutChange?: () => void
   onLibrary?: (path: string, botId?: string) => void
   onComputer?: (botId?: string) => void
 }
@@ -134,6 +135,7 @@ const Thumbnail = ({
             src={src}
             alt={image.caption}
             loading="lazy"
+            onLoad={() => context?.onLayoutChange?.()}
             onError={() => {
               setSrc(null)
               setError("Prévia indisponível. Clique para abrir a imagem.")

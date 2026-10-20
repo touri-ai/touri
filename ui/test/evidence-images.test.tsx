@@ -7,7 +7,7 @@ import { createMockApi } from "../src/api/mock"
 import { BotLibrary } from "../src/components/BotLibrary"
 import { EvidenceContext, type EvidenceContextValue, EvidenceGallery } from "../src/components/EvidenceGallery"
 import { evidencePath } from "../src/components/evidenceMarkdown"
-import { imageDimensions, loadImage, thumbnailBlob } from "../src/components/imageLoads"
+import { getThumbnailSize, imageDimensions, loadImage, thumbnailBlob } from "../src/components/imageLoads"
 import { MarkdownContent } from "../src/components/MarkdownContent"
 import { ToolOutput } from "../src/components/ToolOutput"
 import { ApiError } from "../src/errors"
@@ -112,6 +112,37 @@ describe("safe markdown evidence", () => {
       { id: context.bot.id },
     )
   })
+  it("uses the image caption when its download link appears first", async () => {
+    const { context } = fixture()
+    const view = render(
+      <MarkdownContent
+        evidence={context}
+        content={"[Baixar imagem](/workspace/mobile.png)\n\n![mobile](/workspace/mobile.png)"}
+      />,
+    )
+
+    const gallery = await screen.findByRole("region", { name: "Imagens de evidência" })
+    const card = gallery.querySelector("figure")
+
+    expect(card).toHaveTextContent("mobile")
+    expect(screen.getAllByRole("button", { name: "Baixar imagem" })).toHaveLength(1)
+    expect(screen.getAllByRole("button", { name: /Abrir captura/ })).toHaveLength(1)
+    expect(view.container.querySelectorAll(".markdown-content > p:not(:empty)")).toHaveLength(0)
+  })
+  it.each(["Salvei a captura em [tela.png](/workspace/tela.png).", "[tela.png](/workspace/tela.png)"])(
+    "preserves image link text in prose: %s",
+    async (prose) => {
+      const { context } = fixture()
+      const view = render(<MarkdownContent evidence={context} content={`${prose}\n\n![tela](/workspace/tela.png)`} />)
+
+      await screen.findByRole("region", { name: "Imagens de evidência" })
+
+      expect(screen.getByRole("button", { name: "tela.png" })).toBeVisible()
+      expect(view.container.querySelector(".markdown-content > p")).toHaveTextContent(
+        prose.startsWith("Salvei") ? "Salvei a captura em tela.png." : "tela.png",
+      )
+    },
+  )
   it("rechecks a missing image after the bot finishes producing it", async () => {
     const api = createMockApi()
     const { context, request } = fixture()
@@ -288,6 +319,53 @@ it("opens the same lightbox for tool screenshots with zoom, navigation, saving, 
   view.unmount()
   expect(bitmapClose).toHaveBeenCalled()
   expect(createUrl).not.toHaveBeenCalled()
+})
+it("keeps tool image labels and download actions with their matching cards", async () => {
+  render(
+    <ToolOutput
+      callId="screens"
+      raw={JSON.stringify({
+        content: [
+          { type: "text", text: "mobile" },
+          { type: "image", mimeType: "image/png", data: "iVBORw0KGgo=" },
+          { type: "text", text: "Baixar imagem" },
+          { type: "text", text: "desktop" },
+          { type: "image", mimeType: "image/png", data: "iVBORw0KGgo=" },
+          { type: "text", text: "Baixar imagem" },
+        ],
+      })}
+    />,
+  )
+
+  const gallery = await screen.findByRole("region", { name: "Imagens de evidência" })
+  const cards = Array.from(gallery.querySelectorAll("figure"))
+
+  expect(cards).toHaveLength(2)
+  expect(cards[0]).toHaveTextContent("mobile")
+  expect(cards[1]).toHaveTextContent("desktop")
+  expect(screen.getAllByRole("button", { name: "Baixar imagem" })).toHaveLength(2)
+  expect(screen.queryByText("desktop", { selector: "code" })).toBeNull()
+})
+it("redacts tool image captions before displaying labels and alternative text", async () => {
+  const secret = ["sk", "syntheticcaption123456"].join("-")
+  render(
+    <ToolOutput
+      callId="redacted-caption"
+      raw={JSON.stringify({
+        content: [
+          { type: "text", text: secret },
+          { type: "image", mimeType: "image/png", data: "iVBORw0KGgo=" },
+          { type: "text", text: "Baixar imagem" },
+        ],
+      })}
+    />,
+  )
+
+  const gallery = await screen.findByRole("region", { name: "Imagens de evidência" })
+
+  expect(gallery).not.toHaveTextContent(secret)
+  expect(gallery.querySelector("figcaption")).toHaveTextContent("[REDACTED]")
+  expect(await screen.findByRole("img", { name: "[REDACTED]" })).toBeVisible()
 })
 it("opens workspace evidence in the Library from the lightbox", async () => {
   const { context } = fixture()
@@ -471,9 +549,17 @@ it("downscales large portrait images without stretching or retaining the origina
   expect(createImageBitmap).toHaveBeenCalledWith(expect.any(Blob), {
     resizeWidth: 160,
     resizeHeight: 320,
-    resizeQuality: "medium",
+    resizeQuality: "high",
   })
   expect(bitmapClose).toHaveBeenCalledOnce()
+})
+
+it.each([
+  [{ width: 1170, height: 2532 }, 1, { width: 148, height: 320 }],
+  [{ width: 1170, height: 2532 }, 2, { width: 296, height: 640 }],
+  [{ width: 2880, height: 1800 }, 2, { width: 960, height: 600 }],
+])("sizes %j previews for device pixel ratio %d", (dimensions, pixelRatio, expected) => {
+  expect(getThumbnailSize(dimensions, pixelRatio)).toEqual(expected)
 })
 
 it("renders explicit images without extensions and resolves attachment route references", async () => {
