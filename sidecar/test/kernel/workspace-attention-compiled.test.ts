@@ -65,6 +65,10 @@ test("the compiled server embeds and completes historical attention backfill", a
   expect(database.query("SELECT approval_id FROM workspace_message_attention").all()).toEqual([
     { approval_id: "synthetic" },
   ])
+  const ready = Bun.file(join(appData, "run", "serve.json"))
+  while (!(await ready.exists()) && performance.now() < deadline && child.exitCode === null) await Bun.sleep(20)
+  expect(await ready.exists()).toBe(true)
+  await Bun.sleep(100)
   child.kill("SIGTERM")
   expect(await child.exited).toBe(0)
   expect(await stdout).toContain("listening on")
