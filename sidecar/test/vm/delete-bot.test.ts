@@ -1220,7 +1220,7 @@ test("finalizing a bot with a large completed run history keeps timer ticks belo
   clearInterval(probe)
   const maxTickMs = ticks.reduce((maximum, tick) => Math.max(maximum, tick), 0)
   const p99TickMs = getPercentile(ticks, 0.99)
-  console.info(`bot-deletion-run-performance ${JSON.stringify({ runs: 5000, maxTickMs })}`)
+  console.info(`bot-deletion-run-performance ${JSON.stringify({ runs: 5000, p99TickMs, maxTickMs })}`)
 
   expect(response.status).toBe(202)
   expect(ticks.length).toBeGreaterThan(10)

@@ -22,6 +22,7 @@ export const getMaximum = (samples: ReadonlyArray<number>): number =>
   samples.reduce((maximum, sample) => Math.max(maximum, sample), 0)
 
 export const measureCpuTime = <T>(operation: () => T): { value: T; cpuMs: number } => {
+  // Process CPU time includes worker and garbage-collector threads, not just this event loop.
   const started = process.cpuUsage()
   const value = operation()
   const usage = process.cpuUsage(started)

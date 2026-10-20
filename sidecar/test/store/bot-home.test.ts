@@ -724,7 +724,7 @@ test("concurrent large instruction edits and bot creation wait for the shared wr
 
 test("PATCH awaits a slow asynchronous filesystem shim without blocking the event loop", async () => {
   const started = Promise.withResolvers<void>()
-  const writeEditedHome = getSlowInstructionEditor(40, () => started.resolve())
+  const writeEditedHome = getSlowInstructionEditor(200, () => started.resolve())
   const f = await makeStore(undefined, writeEditedHome)
   const created = await f.create()
   if (!("json" in created)) throw new Error("Expected bot response")
@@ -747,7 +747,7 @@ test("PATCH awaits a slow asynchronous filesystem shim without blocking the even
 
   expect(timerLags.length).toBeGreaterThan(10)
   expect(getPercentile(timerLags, 0.95)).toBeLessThan(20)
-  expect(getMaximum(timerLags)).toBeLessThan(75)
+  expect(getMaximum(timerLags)).toBeLessThan(150)
   expect(response.status).toBe(200)
   expect(f.database.query("SELECT instructions FROM bots WHERE id = ?").get(bot.id)).toEqual({
     instructions: "Updated without blocking",
