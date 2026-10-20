@@ -66,7 +66,7 @@ export const startBrowserFixtureServer = (): Server<undefined> =>
         )
       if (pathname === "/dialog")
         return page(
-          '<button id="confirm">Confirm</button>',
+          '<button id="confirm">Show dialog</button>',
           "document.querySelector('#confirm').addEventListener('click',()=>confirm('Discard post?'))",
         )
       if (pathname === "/popup")

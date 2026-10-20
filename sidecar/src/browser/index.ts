@@ -18,7 +18,9 @@ import {
   type BrowserDecisionFallbackReason,
   createBrowserDecisionAdapter,
   getBrowserDecisionCandidates,
+  isBrowserSubmitKey,
   isSafeBrowserRead,
+  requiresBrowserKeyInspection,
   requiresBrowserTakeover,
 } from "./decision"
 import type { BrowserEngine } from "./types"
@@ -551,16 +553,17 @@ export const init = async (
       const input = argsRecord(args)
       const tabId = asString(input.tabId) ?? ""
       const key = asString(input.key) ?? ""
-      const enterKey = /enter|return/i.test(key)
+      const enterKey = isBrowserSubmitKey(key)
+      const inspectFocus = requiresBrowserKeyInspection(key)
       const pageUrl = engine.tabsForBot(ctx.botId).find((tab) => tab.tabId === tabId)?.url ?? ""
-      if (enterKey && requiresBrowserTakeover({ action: "click", intent: "", pageUrl }))
+      if (inspectFocus && requiresBrowserTakeover({ action: "click", intent: "", pageUrl }))
         return getBrowserTakeoverRequiredResult()
 
       return withToolDeadline({
         ctx,
         timeoutMs: timeout(input.timeoutMs),
         run: async ({ signal, budgetMs }) => {
-          if (enterKey) {
+          if (inspectFocus) {
             const inspected = await engine.snapshot({
               tabId,
               botId: ctx.botId,
@@ -571,7 +574,18 @@ export const init = async (
             const snapshot = inspected.success ? getSnapshot(inspected.structured) : null
             if (!snapshot) return getBrowserTakeoverRequiredResult()
             const focused = snapshot.elements.find((element) => element.ref === snapshot.focus.ref)
-            if (!focused || focused.formAssociated === true) return getBrowserTakeoverRequiredResult()
+            if (!focused) return getBrowserTakeoverRequiredResult()
+            const action = ["textbox", "searchbox", "combobox"].includes(focused.role) ? "type" : "click"
+            if (
+              requiresBrowserTakeover({
+                action,
+                intent: `${focused.role} ${focused.name}`,
+                pageUrl: snapshot.url,
+                submit: enterKey && focused.formAssociated === true,
+                formSubmit: focused.formSubmit === true,
+              })
+            )
+              return getBrowserTakeoverRequiredResult()
           }
 
           return engine.press({

@@ -123,6 +123,8 @@ const server = Bun.serve({
       calendar: { tool: "browser_click", args: { target: { kind: "css", selector: "#calendar-open" } } },
       date: { tool: "browser_click", args: { target: { kind: "role", role: "button", name: "Departure date" } } },
       submit: { tool: "browser_click", args: { target: { kind: "css", selector: "#search" } } },
+      "keyboard-enter": { tool: "browser_press", args: { key: "Enter" } },
+      "keyboard-space": { tool: "browser_press", args: { key: " " } },
       sensitive: { tool: "browser_click", args: { target: { kind: "css", selector: "#calendar-open" } } },
     }
     if (step === "sensitive")
@@ -130,6 +132,14 @@ const server = Bun.serve({
         tabId,
         botId: ctx.botId,
         expression: "document.querySelector('#calendar-open').textContent = 'Aceitar cookies'",
+        signal: ctx.signal,
+        timeoutMs: 5000,
+      })
+    if (step.startsWith("keyboard-"))
+      await engine.evaluate({
+        tabId,
+        botId: ctx.botId,
+        expression: "document.querySelector('#calendar-open').focus()",
         signal: ctx.signal,
         timeoutMs: 5000,
       })

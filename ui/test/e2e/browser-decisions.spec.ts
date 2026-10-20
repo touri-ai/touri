@@ -85,6 +85,11 @@ for (const theme of ["dark", "light"] as const) {
     const security = await post("sensitive")
     expect(security.result.errorCode).toBe("USER_TAKEOVER_REQUIRED")
     expect(security.requestCount).toBe(4)
+    for (const step of ["keyboard-enter", "keyboard-space"]) {
+      const keyboard = await post(step)
+      expect(keyboard.result.errorCode).toBe("USER_TAKEOVER_REQUIRED")
+      expect(keyboard.requestCount).toBe(4)
+    }
     const accessibility = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze()
     expect(accessibility.violations).toEqual([])
     const screenshot = await page.screenshot({ fullPage: true })

@@ -355,3 +355,7 @@ export const getBrowserDecisionCandidates = ({
 
   return { intent, candidates }
 }
+
+export const requiresBrowserKeyInspection = (key: string): boolean => !["Tab", "Shift+Tab", "Escape"].includes(key)
+
+export const isBrowserSubmitKey = (key: string): boolean => /(?:^|\+)(?:enter|numpadenter|return)$/i.test(key)

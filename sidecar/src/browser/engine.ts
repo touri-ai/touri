@@ -18,7 +18,7 @@ import type { PerformanceStageRunner } from "../kernel/performance"
 import { hostPlatform } from "../platform"
 import * as macos from "../platform/macos"
 import { CHALLENGE_ELEMENT_IDS, classifyBlockedPage, describeBlockedPage } from "./blockedPage"
-import { requiresBrowserTakeover } from "./decision"
+import { isBrowserSubmitKey, requiresBrowserKeyInspection, requiresBrowserTakeover } from "./decision"
 import {
   type ChromeLauncher,
   createChromeLauncher,
@@ -3517,6 +3517,8 @@ export const createBrowserEngine = ({
       signal,
       operation: async () => {
         if (!client || !tab.sessionId) return failure("ENGINE_UNAVAILABLE", "The tab is not attached to Chrome.")
+        if (tab.dialog && key === "Enter" && tab.dialog.type !== "alert")
+          return failure("USER_TAKEOVER_REQUIRED", "TOURI_BROWSER_TAKEOVER_REQUIRED|sensitive_action")
         if (tab.dialog && (key === "Escape" || key === "Enter")) {
           await cdpCall(client, "Page.handleJavaScriptDialog", { accept: key === "Enter" }, tab.sessionId)
           tab.dialog = null
@@ -3532,17 +3534,35 @@ export const createBrowserEngine = ({
           (parts.includes("Ctrl") || parts.includes("ctrl") ? 2 : 0) |
           (parts.includes("Meta") || parts.includes("meta") || parts.includes("Cmd") || parts.includes("cmd") ? 4 : 0) |
           (parts.includes("Shift") || parts.includes("shift") ? 8 : 0)
-        if (rawKey === "Enter") {
-          const formAssociated = await runtimeValue<boolean>(
-            client,
-            "Boolean(document.activeElement && document.activeElement.form)",
-            tab.sessionId,
+        if (requiresBrowserKeyInspection(key)) {
+          const focused = asRecord(
+            await runtimeValue<unknown>(
+              client,
+              `(() => {
+            const element = document.activeElement;
+            if (!element) return null;
+            const role = element.getAttribute('role') || ({ BUTTON: 'button', INPUT: 'textbox', TEXTAREA: 'textbox', SELECT: 'combobox' }[element.tagName] || 'generic');
+            const name = ((element.type === 'password' ? 'password ' : '') + (element.getAttribute('aria-label') || element.labels?.[0]?.innerText || element.innerText || element.getAttribute('name') || '')).slice(0, 500);
+            const formAssociated = Boolean(element.form);
+            const formSubmit = formAssociated && ((element.tagName === 'BUTTON' && element.type === 'submit') || (element.tagName === 'INPUT' && ['submit', 'image'].includes(element.type)));
+            return { role, name, formAssociated, formSubmit };
+          })()`,
+              tab.sessionId,
+            ),
           )
-          if (formAssociated)
-            return failure(
-              "USER_TAKEOVER_REQUIRED",
-              "TOURI_BROWSER_TAKEOVER_REQUIRED|form_submit\nAsk the user to take over this browser tab and submit the form directly.",
-            )
+          const role = asString(focused?.role) ?? ""
+          const action = ["textbox", "searchbox", "combobox"].includes(role) ? "type" : "click"
+          if (
+            !focused ||
+            requiresBrowserTakeover({
+              action,
+              intent: `${role} ${asString(focused.name) ?? ""}`,
+              pageUrl: tab.info.url,
+              submit: isBrowserSubmitKey(key) && focused.formAssociated === true,
+              formSubmit: focused.formSubmit === true,
+            })
+          )
+            return failure("USER_TAKEOVER_REQUIRED", "TOURI_BROWSER_TAKEOVER_REQUIRED|sensitive_action")
         }
         await dispatchKey({
           tab,

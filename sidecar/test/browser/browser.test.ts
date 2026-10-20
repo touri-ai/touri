@@ -867,7 +867,7 @@ realSuite("WP6 real Chrome browser acceptance", () => {
     const dialogClick = await engine.click({
       tabId: dialog.tabId,
       botId: botA,
-      target: { kind: "role", role: "button", name: "Confirm", exact: true },
+      target: { kind: "role", role: "button", name: "Show dialog", exact: true },
       button: "left",
       clickCount: 1,
       timeoutMs: 10000,

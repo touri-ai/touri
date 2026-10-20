@@ -346,3 +346,31 @@ test("Enter in a form asks for takeover before it can submit", async () => {
   expect(response).toMatchObject({ success: false, errorCode: "USER_TAKEOVER_REQUIRED" })
   expect(fixture.presses()).toBe(0)
 })
+
+test.each(["Enter", "NumpadEnter", " "])("keyboard %s cannot activate a focused consent control", async (key) => {
+  const pageSnapshot: BrowserSnapshot = {
+    ...snapshot,
+    focus: { ref: "2.4", role: "button", name: "Aceitar cookies" },
+    elements: [
+      {
+        ref: "2.4",
+        role: "button",
+        name: "Aceitar cookies",
+        states: ["focused"],
+        frame: "main",
+        inViewport: true,
+        formAssociated: false,
+      },
+    ],
+  }
+  const fixture = await makeFixture({
+    getApiKey: async () => null,
+    fetchDecision: async () => Response.json({}),
+    pageSnapshot,
+  })
+
+  const result = await fixture.pressHandler?.({ ctx: fixture.context, args: { tabId: snapshot.tabId, key } })
+
+  expect(result).toMatchObject({ success: false, errorCode: "USER_TAKEOVER_REQUIRED" })
+  expect(fixture.presses()).toBe(0)
+})
