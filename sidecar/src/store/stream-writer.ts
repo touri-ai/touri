@@ -553,11 +553,13 @@ export const createStreamWriter = ({
         currentFiles.reduce((total, file) => total + file.bytes, 0) +
         256,
     )
-    parts.forEach((patch) => {
+    parts.forEach((patch, index) => {
       current.message.parts[patch.partIndex] = structuredClone(patch.part)
       current.textDeltas.delete(patch.partIndex)
       if ("text" in patch.part) current.textLengths.set(patch.partIndex, patch.part.text.length)
       else current.textLengths.delete(patch.partIndex)
+      const original = input.parts[index]
+      if (original) original.part = structuredClone(patch.part)
     })
     if (changesText && !current.textDeltas.size)
       current.message.text = current.message.parts.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("")
