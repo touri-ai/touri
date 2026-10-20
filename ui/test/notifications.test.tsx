@@ -5,8 +5,9 @@ import type { TauriInvoke } from "../src/api/client"
 import { createMockApi } from "../src/api/mock"
 import { type DeepLink, parseDeepLink } from "../src/deepLink"
 import { t } from "../src/i18n"
+import type { DeepLinkRequest } from "../src/nativeDeepLinks"
 
-const nativeLinks = vi.hoisted(() => ({ handler: null as ((event: { payload: DeepLink }) => void) | null }))
+const nativeLinks = vi.hoisted(() => ({ handler: null as ((event: { payload: DeepLinkRequest }) => void) | null }))
 vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn((name: string, handler: (event: { payload: DeepLink }) => void) => {
     if (name !== "deep-link") return Promise.resolve(() => undefined)
@@ -146,6 +147,30 @@ it("opens a notification's bot and thread from the touri tab", async () => {
   expect(screen.getByRole("button", { name: /Notification target/ })).toHaveClass("selected")
 })
 
+it("shows the needs-you bar and focuses the selected pending card", async () => {
+  const api = createMockApi()
+  api.notify({
+    kind: "question",
+    title: "Escolher ambiente",
+    body: "Qual ambiente usar?",
+    botId: "bot-onb",
+    threadId: "thread-onb",
+    requestId: "question-focus",
+  })
+  render(<App kernel={{ services: { api } }} />)
+  await screen.findByRole("textbox", { name: "Mensagem para mark" })
+
+  const bar = screen.getAllByRole("button", { name: "Abrir pendência de onb" })[0]
+  expect(bar).toBeDefined()
+  expect(bar).toHaveTextContent("Precisa de você")
+  fireEvent.click(bar)
+
+  await screen.findByRole("textbox", { name: "Mensagem para onb" })
+  const row = await screen.findByTestId("notification-row")
+  expect(row).toHaveTextContent("Qual ambiente usar?")
+  expect(row).toHaveFocus()
+})
+
 it("opens a native touri:// deep link from the touri tab", async () => {
   Object.defineProperty(window, "__TAURI_INTERNALS__", { value: {}, configurable: true })
   const api = createMockApi()
@@ -166,6 +191,39 @@ it("opens a native touri:// deep link from the touri tab", async () => {
   await screen.findByRole("textbox", { name: "Mensagem para onb" })
   expect(screen.getByRole("button", { name: /^Bots/ })).toHaveAttribute("aria-current", "page")
   expect(screen.getByRole("button", { name: /Native link target/ })).toHaveClass("selected")
+})
+
+it("opens and focuses the exact card from a native notification click", async () => {
+  Object.defineProperty(window, "__TAURI_INTERNALS__", { value: {}, configurable: true })
+  const api = createMockApi()
+  const { thread } = await api.request("POST /threads", { botId: "bot-onb", title: "Native card target" })
+  const notification = api.notify({
+    kind: "question",
+    title: "Escolher ambiente",
+    body: "Qual ambiente usar?",
+    botId: "bot-onb",
+    threadId: thread.id,
+    requestId: "native-question",
+  })
+  const invoke = (async (command: string) => {
+    if (command === "server_mode_status") return { mode: "local", url: null }
+    if (command === "deep_link_pending") return null
+    return {}
+  }) as TauriInvoke
+  render(<App kernel={{ services: { api, invoke } }} />)
+  await screen.findByRole("textbox", { name: "Mensagem para mark" })
+  await waitFor(() => expect(nativeLinks.handler).not.toBeNull())
+
+  act(() => {
+    nativeLinks.handler?.({
+      payload: { bot: "bot-onb", thread: thread.id, notificationId: notification.id, requestId: 1 },
+    })
+  })
+
+  await screen.findByRole("textbox", { name: "Mensagem para onb" })
+  const row = await screen.findByTestId("notification-row")
+  expect(row).toHaveTextContent("Qual ambiente usar?")
+  expect(row).toHaveFocus()
 })
 
 it("clears ordinary notifications while guiding uncertain work to the recovery center", async () => {

@@ -15,6 +15,7 @@ pub struct PendingLinkPayload {
     request_id: u64,
     bot: Option<String>,
     thread: Option<String>,
+    notification_id: Option<u64>,
 }
 
 impl From<PendingDeepLink> for PendingLinkPayload {
@@ -23,6 +24,7 @@ impl From<PendingDeepLink> for PendingLinkPayload {
             request_id: pending.request_id,
             bot: pending.target.bot,
             thread: pending.target.thread,
+            notification_id: pending.target.notification_id,
         }
     }
 }

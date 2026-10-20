@@ -1139,6 +1139,7 @@ export type NotificationPreferences = NotificationScopePreferences & {
   bots?: Record<Id, NotificationScopePreferences>
   /** Times use the local clock; an equal start and end silences the entire day. */
   quietHours?: { enabled: boolean; start: string; end: string; timeZone?: string }
+  sound?: { attention?: boolean; replies?: boolean; volume?: number }
 }
 
 export type NotifyResolution = 'allow' | 'deny' | 'answer' | 'replied' | 'dismissed' | 'expired' | 'canceled'
@@ -1236,11 +1237,17 @@ export type HostNotification =
 
 export type PreviewBounds = { x: number; y: number; width: number; height: number }
 export type ServerModeStatus = { mode: 'local' | 'server'; url: string | null }
-export type PendingDeepLink = { requestId: number; bot: string | null; thread: string | null }
+export type PendingDeepLink = {
+  requestId: number
+  bot: string | null
+  thread: string | null
+  notificationId?: number
+}
 
 export type TauriCommands = {
   deep_link_pending: { args: {}; result: PendingDeepLink | null }
   deep_link_ack: { args: { requestId: number }; result: {} }
+  notification_system_quiet: { args: {}; result: boolean }
   server_mode_status: { args: {}; result: ServerModeStatus }
   server_mode_pair: { args: { url: string; code: string }; result: ServerModeStatus }
   server_mode_test: { args: {}; result: { ok: true } }

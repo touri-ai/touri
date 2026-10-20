@@ -23,6 +23,9 @@ test("rejects empty selections, foreign hosts and non-links", () => {
 test("buildDeepLink round-trips", () => {
   const link = { bot: "bot x", thread: "t/1" }
   expect(parseDeepLink(buildDeepLink(link))).toEqual(link)
+  const notification = { bot: "bot x", thread: "t/1", notificationId: 42 }
+  expect(parseDeepLink(buildDeepLink(notification))).toEqual(notification)
+  expect(parseDeepLink("touri://open?notification=9007199254740992")).toBeNull()
 })
 
 test("web links round-trip while retaining the path, other parameters and fragment", () => {

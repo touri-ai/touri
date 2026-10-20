@@ -35,6 +35,7 @@ import { GlobalAdvancedMenu } from "./GlobalAdvancedMenu"
 import { GroupSidebar } from "./Groups"
 import { useInsertedIds } from "./Motion"
 import { mascotIsBusy } from "./mascotState"
+import { NotificationAttentionBar } from "./NotificationAttentionBar"
 import { type NotificationActions, NotificationBell } from "./NotificationCenter"
 import { type HoldReason, useSidebarOrder } from "./useSidebarOrder"
 import "./bot-sidebar.css"
@@ -82,6 +83,8 @@ type SidebarProps = {
   recoveryCount?: number
   onSearch: () => void
   notifications: Array<NotificationRecord>
+  notificationFocus?: { id: number; request: number } | null
+  onNeedsYou?: (item: NotificationRecord) => void
   onNotificationsOpen: (open: boolean) => void
   notificationActions: NotificationActions
 }
@@ -149,6 +152,7 @@ export const Sidebar = (props: SidebarProps) => {
     [props.notifications, props.runs],
   )
   const attention = useMemo(() => pendingNotifications(notifications, messages), [notifications, messages])
+  const needsYou = attention.filter((item) => !isInformationalNotice(item))
   const ordered = useSidebarOrder({ ...props, messages, notifications, attention })
   return (
     <nav className="bot-sidebar r8-sidebar" aria-label={t("Workspace sidebar")}>
@@ -210,6 +214,10 @@ export const Sidebar = (props: SidebarProps) => {
           {t("Bots")} <span>{props.bots.length}</span>
         </button>
       </div>
+      <NotificationAttentionBar
+        notifications={needsYou}
+        onSelect={(item) => (props.onNeedsYou ?? props.notificationActions.open)(item)}
+      />
       {hasWork && (
         <button
           type="button"
@@ -329,6 +337,7 @@ export const Sidebar = (props: SidebarProps) => {
             notifications={notifications}
             messages={messages}
             runs={props.runs ?? []}
+            {...(props.notificationFocus ? { focusNotification: props.notificationFocus } : {})}
             actions={{
               ...props.notificationActions,
               open: (item) => navigate(() => props.notificationActions.open(item)),

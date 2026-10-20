@@ -8,10 +8,18 @@ const target = (value: unknown): DeepLinkRequest | null => {
   const record = value as Record<string, unknown>
   const bot = typeof record.bot === "string" ? record.bot : null
   const thread = typeof record.thread === "string" ? record.thread : null
-  if (!bot && !thread) return null
-  if (record.requestId === undefined) return { bot, thread }
+  const notificationId = record.notificationId
+  const hasNotificationId =
+    typeof notificationId === "number" && Number.isSafeInteger(notificationId) && notificationId > 0
+  if (!bot && !thread && !hasNotificationId) return null
+  if (record.requestId === undefined) return { bot, thread, ...(hasNotificationId ? { notificationId } : {}) }
   if (!Number.isSafeInteger(record.requestId) || Number(record.requestId) < 1) return null
-  return { bot, thread, requestId: Number(record.requestId) }
+  return {
+    bot,
+    thread,
+    ...(hasNotificationId ? { notificationId } : {}),
+    requestId: Number(record.requestId),
+  }
 }
 
 /** Register before reading the native inbox, so a newer click cannot be lost or overwritten. */
