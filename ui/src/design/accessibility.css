@@ -15,7 +15,18 @@
   .activity-mark {
     --activity-line: var(--touch-target-size);
   }
-  :is(.settings-nav, .cron-filters, .screen-header-actions, .modal-actions, .modal-header, .notice-bar, .message-row, .chat-message-list, .app-grid) button {
+  :is(
+      .settings-nav,
+      .cron-filters,
+      .screen-header-actions,
+      .modal-actions,
+      .modal-header,
+      .notice-bar,
+      .message-row,
+      .chat-message-list,
+      .app-grid
+    )
+    button {
     min-height: var(--touch-target-size) !important;
   }
   .notice-bar button,

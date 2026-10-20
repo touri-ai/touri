@@ -65,9 +65,15 @@ const CommandElapsed = ({ startedAt }: { startedAt: number }) => {
   )
 }
 
-const ApprovalContext = ({ review }: { review: { reason: string; scope: { label: string; value: string }[] } }) => {
+const ApprovalContext = ({
+  review,
+}: {
+  review: { reason: string; scope: { label: string; value: string }[]; missingFiles?: string }
+}) => {
   const rows = [{ label: "Motivo", value: review.reason }, ...review.scope].filter((row) => row.value)
-  if (!rows.length) return <p className="tool-approval-unknown">{t("Nenhum detalhe adicional foi informado")}</p>
+  if (!rows.length && !review.missingFiles)
+    return <p className="tool-approval-unknown">{t("Nenhum detalhe adicional foi informado")}</p>
+  if (!rows.length) return null
 
   return (
     <dl className="tool-approval-context">

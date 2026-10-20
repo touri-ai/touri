@@ -194,13 +194,13 @@
   .composer.composer-island .model-picker-anchor {
     grid-column: auto;
     width: auto;
-    max-width: 20vw;
-    flex: 0 1 20vw;
+    max-width: 34vw;
+    flex: 0 1 34vw;
   }
 
   .composer.composer-island .model-picker-trigger.composer-model {
     width: auto;
-    max-width: 20vw;
+    max-width: 34vw;
     min-height: var(--icon-button-size);
     text-align: left;
   }

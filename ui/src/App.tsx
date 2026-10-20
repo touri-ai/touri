@@ -47,8 +47,8 @@ import {
   SettingsModal,
 } from "./components/Modals"
 import { MotionPresence, MotionSkeleton } from "./components/Motion"
-import { PanelIcon } from "./components/PanelIcon"
 import { PageTransition } from "./components/PageTransition"
+import { PanelIcon } from "./components/PanelIcon"
 import { RoutineEditor } from "./components/RoutineEditor"
 import { SidebarDrawer } from "./components/SidebarDrawer"
 import { getWindowChrome, WindowFrame } from "./components/WindowFrame"
@@ -1046,7 +1046,7 @@ const AppContent = ({ kernel }: AppProps) => {
           notifications={data.notifications}
           messages={data.activityMessages}
           onReview={reviewApproval}
-          activeThreadId={section === "bots" && screen === "chat" && !modal ? selectedThread?.id : null}
+          activeThreadId={section === "bots" && screen === "chat" && !modal ? selectedThread?.id ?? null : null}
         />
         <div className="app-grid">
           <SidebarDrawer

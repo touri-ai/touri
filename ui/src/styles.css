@@ -3233,6 +3233,9 @@ a {
   color: var(--text);
   line-height: 1.55;
 }
+.onboarding-card > p:not(.eyebrow) {
+  font-size: var(--fs-body);
+}
 .onboarding-card .brand-lockup {
   display: flex;
   align-items: center;

@@ -38,6 +38,7 @@ const read: ToolCallPart = {
   summary: "Ferramenta de leitura",
   inputJson: '{"file_path":"/workspace/demo/README.md"}',
 }
+const unknownRead: ToolCallPart = { ...read, inputJson: "{}" }
 const scenario = new URLSearchParams(location.search).get("scene") ?? "bash"
 const conversation = new URLSearchParams(location.search).get("conversation") ?? "dm"
 const message: Message = {
@@ -52,7 +53,16 @@ const message: Message = {
   parts:
     scenario === "thinking"
       ? [{ type: "reasoning", text: "Vou conferir os arquivos do projeto." }]
-      : scenario === "read"
+      : scenario === "unknown"
+        ? [
+            unknownRead,
+            {
+              ...approval("pending", unknownRead, "pending"),
+              detail: `Read: ${unknownRead.inputJson}`,
+              scope: { source: "mcp", tool: "Read" },
+            },
+          ]
+        : scenario === "read"
         ? [
             read,
             {

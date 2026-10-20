@@ -36,6 +36,7 @@ export const SidebarDrawer = ({ panelOpen = false, workspaceHeaderKey = "", ...p
     element?.querySelector<HTMLButtonElement>(".sidebar-close")?.focus()
     return () => element?.close()
   }, [narrow, open])
+  // biome-ignore lint/correctness/useExhaustiveDependencies: Screen navigation can replace this header without changing the media query.
   useEffect(() => {
     if (!narrow) {
       setWorkspaceHeader(null)

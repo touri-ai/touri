@@ -55,4 +55,11 @@ test.describe("phone layout review", () => {
     if (!headerBounds || !statusBounds) throw new Error("Missing tool card status")
     expect(Math.abs(statusBounds.x - headerBounds.x)).toBeLessThanOrEqual(1)
   })
+
+  test("file approval shows one useful explanation when file details are missing", async ({ page }) => {
+    await page.goto("/test/e2e/approval-harness.html?scene=unknown")
+
+    await expect(page.locator(".tool-summary")).toContainText("não informou quais arquivos")
+    await expect(page.locator(".tool-approval-unknown")).toHaveCount(0)
+  })
 })

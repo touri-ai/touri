@@ -234,7 +234,8 @@ export const Sidebar = (props: SidebarProps) => {
           </span>{" "}
           <span>{t("Work queued count", { count: queuedWorkCount })}</span>{" "}
           <span className="sidebar-work-action">
-            {t("View work")} <SidebarIcon>
+            {t("View work")} {" "}
+            <SidebarIcon>
               <path d="m9 18 6-6-6-6" />
             </SidebarIcon>
           </span>
