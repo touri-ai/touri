@@ -59,7 +59,11 @@ test("a fresh kernel resumes a committed record-purge checkpoint from the databa
 const startFixture = async (root: string) => {
   const runtime = createKernel({ appData: join(root, "data") })
   await initStore(runtime.kernel)
-  const kernel: Kernel = { ...runtime.kernel, callHost: async () => ({ success: true, value: {} }) }
+  const callHost = (async (method: string) => {
+    if (method === "keychain.delete") return { success: true, value: {} }
+    return { success: false, errorCode: "HOST_UNAVAILABLE", error: "Synthetic host method unavailable" }
+  }) as Kernel["callHost"]
+  const kernel: Kernel = { ...runtime.kernel, callHost }
   const fake = fakeVmProvider()
   const vm = createVmRuntime({
     kernel,
