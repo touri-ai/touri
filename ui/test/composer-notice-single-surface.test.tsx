@@ -51,7 +51,6 @@ const renderNotice = (latestReply: Message | undefined, status: MachineState["st
       machine={{ ...getMachine(bot), status }}
       active={false}
       api={api}
-      onRetry={async () => undefined}
     />,
   )
 }
@@ -62,15 +61,14 @@ it("does not add a computer card for a failed run while the computer is healthy"
   expect(screen.queryByRole("complementary")).toBeNull()
 })
 
-it("keeps one recovery action and the computer status when the computer is in error after a boot failure", () => {
+it("keeps the computer status without a second retry when the failed run's card already offers one", () => {
   const reply = getFailedReply()
   renderNotice({
     ...reply,
     parts: [{ type: "notice", level: "error", code: "machine_boot", text: "A máquina não ficou pronta" }],
   })
 
-  expect(screen.getAllByRole("button")).toHaveLength(1)
-  expect(screen.getByRole("button", { name: "Tentar novamente" })).toBeVisible()
+  expect(screen.queryAllByRole("button")).toHaveLength(0)
   expect(screen.getByRole("complementary")).toHaveTextContent(t("The computer needs attention"))
   expect(screen.getByRole("complementary")).toHaveTextContent(localizeNotice("network error: ECONNRESET"))
 })

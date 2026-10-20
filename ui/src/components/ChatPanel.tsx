@@ -1285,7 +1285,6 @@ export const ChatPanel = ({
           machine,
           onOpenPermissions,
           onOpenProviderLogin: group ? undefined : onOpenProviderLogin,
-          onRetry,
         }}
         bot={group ? null : bot}
         groupName={group?.name}
