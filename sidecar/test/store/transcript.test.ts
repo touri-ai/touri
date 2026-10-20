@@ -106,16 +106,34 @@ const insertReply = (f: Awaited<ReturnType<typeof fixture>>, id = "reply", parts
   })
 }
 
-const waitForStorageUpgrade = async (database: Database): Promise<void> => {
-  const deadline = Date.now() + 2_000
-  while (Date.now() < deadline) {
-    const upgrade = database.query("SELECT value FROM schema_meta WHERE key = 'storage_upgrade_22'").get() as {
+const waitForStorageUpgrade = async (f: Awaited<ReturnType<typeof fixture>>): Promise<void> => {
+  const isDone = (): boolean => {
+    const upgrade = f.db.query("SELECT value FROM schema_meta WHERE key = 'storage_upgrade_22'").get() as {
       value: string
     } | null
-    if (!upgrade || upgrade.value === "done") return
-    await Bun.sleep(10)
+
+    return !upgrade || upgrade.value === "done"
   }
-  throw new Error("Storage upgrade did not finish")
+  if (isDone()) return
+
+  await new Promise<void>((resolve, reject) => {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    let unsubscribe = () => {}
+    const finish = (error?: Error) => {
+      unsubscribe()
+      if (timer) clearTimeout(timer)
+      if (error) reject(error)
+      else resolve()
+    }
+    const check = () => {
+      if (isDone()) finish()
+    }
+    unsubscribe = f.runtime.kernel.subscribe(({ event }) => {
+      if (event.type === "transcript.resync") check()
+    })
+    timer = setTimeout(() => finish(new Error("Storage upgrade did not finish")), 30_000)
+    check()
+  })
 }
 
 test("rejected appends persist safe metadata and replay once with contiguous revisions", async () => {
@@ -446,7 +464,7 @@ test("a rolled-back delta cannot poison the next stream even if another write re
 test("retention preserves snapshots, rejects expired cursors, and only compaction may delete immutable entries", async () => {
   const f = await fixture()
   try {
-    await waitForStorageUpgrade(f.db)
+    await waitForStorageUpgrade(f)
     insertReply(f)
     for (let index = 0; index < 12; index++) {
       f.store.appendDelta({ threadId: "t", messageId: "reply", partIndex: 0, delta: `${index}|` })

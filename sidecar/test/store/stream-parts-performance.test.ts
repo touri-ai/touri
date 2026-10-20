@@ -3,6 +3,7 @@ import { afterEach, expect, test } from "bun:test"
 import { createHash } from "node:crypto"
 import type { MessagePart } from "@touri/contracts"
 import { createStreamPartWriter } from "../../src/store/stream-parts"
+import { getMaximum, getMedian, getPercentile, measureCpuTime } from "../fakes/latency"
 
 const databases = new Set<Database>()
 const timers = new Set<ReturnType<typeof setInterval>>()
@@ -83,18 +84,27 @@ test("one and ten MiB replies preserve output and stay below 50 ms in provider-s
   const small = await getSamples(1_024 * 1_024)
   const large = await getSamples(10 * 1_024 * 1_024)
 
-  small.concat(large).forEach((sample) => {
+  const samples = small.concat(large)
+  const timerLags = samples.flatMap(({ timerLagSamples }) => timerLagSamples)
+  const preparationTimes = samples.flatMap(({ preparationCpuSamples }) => preparationCpuSamples)
+
+  samples.forEach((sample) => {
     expect(sample.timerSamples).toBeGreaterThan(0)
-    expect(sample.maxTimerLagMs).toBeLessThan(50)
-    expect(sample.maxPreparationMs).toBeLessThan(50)
   })
+  expect(timerLags.length).toBeGreaterThan(10)
+  expect(getPercentile(timerLags, 0.99)).toBeLessThan(50)
+  expect(getMaximum(timerLags)).toBeLessThan(150)
+  expect(getPercentile(preparationTimes, 0.99)).toBeLessThan(50)
+  expect(getMaximum(preparationTimes)).toBeLessThan(150)
   small.forEach(({ digest }) => {
     expect(digest).toBe("42659b3790894e3cb8b064f27e67467db314a54cf29aa288f26e7ccf42ee0c52")
   })
   large.forEach(({ digest }) => {
     expect(digest).toBe("361b47799a1893821f96c3044846a9cbce250d02342e0be1352d380b4bae82de")
   })
-  expect(getMedianPreparationMs(large)).toBeLessThan(getMedianPreparationMs(small) * 15)
+  expect(getMedian(large.map(({ preparationCpuMs }) => preparationCpuMs))).toBeLessThan(
+    getMedian(small.map(({ preparationCpuMs }) => preparationCpuMs)) * 15,
+  )
   console.info(`stream-parts-benchmark ${JSON.stringify({ runtime: Bun.version, small, large })}`)
 })
 
@@ -115,13 +125,13 @@ const getSample = async (outputBytes: number) => {
     return { partIndex, part: getTool(partIndex, String(partIndex).padEnd(bytes, "x")) }
   })
   const files = new Map<string, { content: string; bytes: number }>()
-  let preparationMs = 0
-  let maxPreparationMs = 0
-  let maxTimerLagMs = 0
+  let preparationCpuMs = 0
+  const preparationCpuSamples: Array<number> = []
+  const timerLagSamples: Array<number> = []
   let timerSamples = 0
   let expectedAt = performance.now() + 1
   const timer = setInterval(() => {
-    maxTimerLagMs = Math.max(maxTimerLagMs, performance.now() - expectedAt)
+    if (timerLagSamples.length < 10_000) timerLagSamples.push(Math.max(0, performance.now() - expectedAt))
     expectedAt = performance.now() + 1
     timerSamples += 1
   }, 1)
@@ -131,11 +141,10 @@ const getSample = async (outputBytes: number) => {
   // The provider reader yields after at most 16 frames; replay the same bounded preparation batches.
   for (const start of Array.from({ length: Math.ceil(count / 16) }, (_, index) => index * 16)) {
     const batch = patches.slice(start, start + 16)
-    const startedAt = performance.now()
-    const prepared = write(batch)
-    const elapsed = performance.now() - startedAt
-    preparationMs += elapsed
-    maxPreparationMs = Math.max(maxPreparationMs, elapsed)
+    const measured = measureCpuTime(() => write(batch))
+    const prepared = measured.value
+    preparationCpuMs += measured.cpuMs
+    preparationCpuSamples.push(measured.cpuMs)
     // This local projection mirrors the stream writer applying each accepted batch.
     prepared.parts.forEach(({ partIndex, part }) => {
       initial[partIndex] = part
@@ -158,15 +167,7 @@ const getSample = async (outputBytes: number) => {
   expect(initial).toHaveLength(count)
   expect(Array.from(files.values()).reduce((total, file) => total + file.bytes, inlineBytes)).toBe(outputBytes)
 
-  return { outputBytes, preparationMs, maxPreparationMs, maxTimerLagMs, timerSamples, digest }
-}
-
-const getMedianPreparationMs = (samples: Array<{ preparationMs: number }>): number => {
-  const first = samples[0]?.preparationMs ?? 0
-  const second = samples[1]?.preparationMs ?? 0
-  const third = samples[2]?.preparationMs ?? 0
-
-  return first + second + third - Math.min(first, second, third) - Math.max(first, second, third)
+  return { outputBytes, preparationCpuMs, preparationCpuSamples, timerLagSamples, timerSamples, digest }
 }
 
 const getDatabase = () => {

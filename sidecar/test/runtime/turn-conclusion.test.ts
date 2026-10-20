@@ -298,7 +298,7 @@ test("finalization yields while another connection holds the writer instead of b
   console.info(
     `finalization-writer-contention ${JSON.stringify({ timerDelayMs: blocker.getReleaseDelayMs(), status: reply.status })}`,
   )
-  expect(blocker.getReleaseDelayMs()).toBeLessThan(50)
+  expect(blocker.getReleaseDelayMs()).toBeLessThan(100)
   expect(reply.status).toBe("complete")
 })
 

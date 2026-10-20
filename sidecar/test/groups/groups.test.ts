@@ -1,5 +1,5 @@
 import { Database } from "bun:sqlite"
-import { afterEach, expect, test } from "bun:test"
+import { afterEach, expect, spyOn, test } from "bun:test"
 import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -2194,9 +2194,15 @@ test("six ask-all members respect the engine concurrency cap and each gets its a
     { ...scenario.input, memberIds: scenario.bots.concat(extraBots).map((bot) => bot.id) },
     scenario.group,
   )
-  // The fake adapter records provider lifetimes at the execution boundary.
+  let now = Date.now()
+  const clock = spyOn(Date, "now").mockImplementation(() => now)
+  cleanups.unshift(() => clock.mockRestore())
+
+  // Deferred holds let the test advance queued time without relying on provider sleeps.
   const active = new Set<string>()
   const concurrency: number[] = []
+  const startedIds: string[] = []
+  const releases: Array<() => void> = []
   const adapter: ProviderAdapter = {
     provider,
     detect: async () => ({ success: true, path: "/fixtures/provider", version: "1", loggedIn: true }),
@@ -2204,8 +2210,11 @@ test("six ask-all members respect the engine concurrency cap and each gets its a
       const runId = thread.id
       active.add(runId)
       concurrency.push(active.size)
+      startedIds.push(runId)
+      const hold = Promise.withResolvers<void>()
+      releases.push(() => hold.resolve())
       onEvent({ type: "turn_started", externalTurnId: runId })
-      await Bun.sleep(300)
+      await hold.promise
       active.delete(runId)
       if (signal.aborted) return { success: false, errorCode: "canceled", error: "Turno cancelado" }
       onEvent({ type: "text_delta", itemId: runId, delta: "Plano revisado" })
@@ -2230,13 +2239,29 @@ test("six ask-all members respect the engine concurrency cap and each gets its a
   })
 
   const turn = await sendAskAll(scenario)
+  await until(() => releases.length === 2)
+  expect(active.size).toBe(2)
+  now += 600
+  releases.slice(0, 2).forEach((release) => {
+    release()
+  })
+  await until(() => releases.length === 4)
+  releases.slice(2, 4).forEach((release) => {
+    release()
+  })
+  await until(() => releases.length === 6)
+  releases.slice(4, 6).forEach((release) => {
+    release()
+  })
   await until(() => scenario.persistence.getRun(turn.id)?.status === "succeeded", 3000)
 
   const members = groups.listRuns(scenario.thread.id).filter((run) => run.groupTurnId === turn.id)
   expect(members).toHaveLength(group.memberIds.length)
   expect(members.every((run) => run.status === "succeeded")).toBe(true)
   expect(Math.max(...concurrency)).toBe(2)
-  expect(members.some((run) => (run.startedAt ?? 0) - run.queuedAt > 500)).toBe(true)
+  const delayedMembers = members.filter((run) => (run.startedAt ?? 0) - run.queuedAt > 500)
+  expect(startedIds).toHaveLength(group.memberIds.length)
+  expect(delayedMembers).toHaveLength(4)
 })
 
 test("ask-all records a rejected enqueue as one failed member and keeps the other results", async () => {

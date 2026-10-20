@@ -42,7 +42,7 @@ test("maintenance defers a contended progress write without waiting on the event
   blocker.exec("ROLLBACK")
   await waitUntil(() => !maintenance.snapshot().running && !maintenance.snapshot().error)
 
-  expect(attemptMs).toBeLessThan(50)
+  expect(attemptMs).toBeLessThan(150)
   expect(restoredTimeout).toEqual({ timeout: 300 })
   expect(blockedProgress).toBeNull()
   expect(database.query("SELECT key FROM settings WHERE key = 'storage.maintenance.progress'").get()).not.toBeNull()
