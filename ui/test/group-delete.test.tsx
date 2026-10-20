@@ -26,7 +26,6 @@ const renderSidebar = (locale: Locale = "pt-BR", onDelete = vi.fn().mockResolved
   render(
     <GroupSidebar
       groups={[getGroup()]}
-      bots={[]}
       threads={[]}
       selectedThreadId={null}
       onSelect={vi.fn()}

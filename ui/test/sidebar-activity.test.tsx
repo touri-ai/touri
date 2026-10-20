@@ -5,7 +5,7 @@ import { createMockApi } from "../src/api/mock"
 import { computeBotActivity, holdBotPositions, orderBotsByActivity } from "../src/botActivity"
 import { Sidebar } from "../src/components/BotSidebar"
 import { SettingsModal } from "../src/components/Modals"
-import { getRoutineRunDateLabel, t } from "../src/i18n"
+import { getRoutineRunSidebarDateLabel, t } from "../src/i18n"
 import { readWorkspaceState, saveWorkspaceState } from "../src/workspaceState"
 
 afterEach(() => {
@@ -230,12 +230,13 @@ it("shows active work as a clear navigation action in both languages", () => {
   renderSidebar({ bots, threads, workRuns: [running, queued] })
 
   const badge = screen.getByRole("button", { name: "Trabalhando: 1, 1 na fila. Ver trabalho", exact: true })
-  expect(badge).toHaveTextContent("Trabalhando 1")
+  expect(badge).toHaveTextContent("Trabalhando · 1")
   expect(badge).toHaveTextContent("1 na fila")
-  expect(badge).toHaveTextContent("Ver trabalho")
   expect(t("View work", {}, "en")).toBe("View work")
   expect(t("View work summary", { running: 1, queued: 1 }, "en")).toBe("Working: 1, 1 queued. View work")
 })
+
+const entries = (): HTMLElement[] => Array.from(document.querySelectorAll<HTMLElement>("[data-bot-entry]"))
 
 const entry = (botId: string): HTMLElement => {
   const element = document.querySelector<HTMLElement>(`[data-bot-entry="${botId}"]`)
@@ -294,13 +295,12 @@ it.each([
 
   const row =
     kind === "routine"
-      ? screen.getByRole("button", { name: /Abrir histórico da rotina/ })
+      ? screen.getByRole("button", { name: /^Rotinas/ })
       : screen.getByRole("button", { name: /Novas mensagens/ })
   const titleElement = row.querySelector("strong")
   if (kind === "routine") {
-    expect(titleElement).toHaveTextContent("Rotina “Novas mensagens”")
-    expect(titleElement).toHaveTextContent(dateLabel)
-    expect(titleElement).toHaveAttribute("title", `Rotina “Novas mensagens” · ${getRoutineRunDateLabel(timestamp)}`)
+    expect(titleElement).toHaveTextContent("Rotinas")
+    expect(row.querySelector(".thread-meta")).toHaveTextContent(getRoutineRunSidebarDateLabel(timestamp, "pt-BR"))
   } else {
     expect(titleElement).toHaveTextContent("Novas mensagens")
     expect(titleElement).toHaveAttribute("title", "Novas mensagens")
@@ -373,15 +373,13 @@ it("floats bots with updates to the top by default and labels each indicator", (
     runs: [run("run-gama", "bot-gama", "thread-gama")],
   })
   expect(order()).toEqual(["bot-delta", "bot-gama", "bot-beta", "bot-alfa"])
-  expect(screen.getByRole("img", { name: "delta: precisa de você" })).toBeVisible()
-  expect(screen.getByRole("img", { name: "gama: trabalhando" })).toBeVisible()
-  expect(screen.getByRole("img", { name: "beta: novidades" })).toBeVisible()
-  expect(within(entry("bot-alfa")).queryByRole("img", { name: /alfa:/ })).toBeNull()
-  expect(screen.getAllByRole("heading", { level: 2 }).map((heading) => heading.textContent)).toEqual([
-    "Precisa de você",
-    "Trabalhando",
-    "Ociosos",
-  ])
+  expect(within(entry("bot-delta")).getByRole("button", { name: "Revisar aprovação de delta" })).toBeVisible()
+  expect(within(entry("bot-gama")).getByRole("img", { name: "Em execução" })).toBeVisible()
+  expect(within(entry("bot-beta")).getByRole("img", { name: "2 mensagens não lidas" })).toBeVisible()
+  expect(within(entry("bot-alfa")).queryByRole("img")).toBeNull()
+  expect(document.querySelectorAll(".bot-activity-dot")).toHaveLength(0)
+  expect(screen.queryAllByRole("heading", { level: 2 })).toHaveLength(0)
+  expect(entries().every((row) => row.querySelectorAll(".sidebar-unread, .sidebar-status-dot").length < 2)).toBe(true)
   expect(within(entry("bot-delta")).getByText("Aguardando você: sua aprovação")).toBeVisible()
   expect(screen.getByRole("button", { name: "Notificações, 1 precisa de atenção" })).toBeVisible()
 })
@@ -396,8 +394,8 @@ it("with the setting off, keeps manual order inside the required status groups",
     runs: [run("run-gama", "bot-gama", "thread-gama")],
   })
   expect(order()).toEqual(["bot-delta", "bot-gama", "bot-alfa", "bot-beta"])
-  expect(screen.getByRole("img", { name: "delta: precisa de você" })).toBeVisible()
-  expect(screen.getByRole("img", { name: "gama: trabalhando" })).toBeVisible()
+  expect(within(entry("bot-delta")).getByRole("button", { name: "Revisar aprovação de delta" })).toBeVisible()
+  expect(within(entry("bot-gama")).getByRole("img", { name: "Em execução" })).toBeVisible()
 })
 
 it("keeps the waiting line and bell in sync for questions, failures and resolved approvals", () => {

@@ -100,8 +100,9 @@ for (const theme of ["light", "dark"] as const)
     await page.screenshot({ path: `${evidence}/edit-${theme}.png` })
     await edit.getByRole("button", { name: "Salvar canal" }).click()
     await expect(page.getByRole("textbox", { name: "Mensagem para Produto e Operação" })).toBeVisible()
-    await page.getByRole("button", { name: "+ Nova conversa", exact: true }).click()
+    await page.getByRole("button", { name: "Ações do canal Produto e Operação" }).click()
+    await page.getByRole("menuitem", { name: "Nova conversa", exact: true }).click()
     await expect(
-      page.getByRole("region", { name: "Canais" }).getByRole("button", { name: "+ Nova conversa", exact: true }),
+      page.getByRole("region", { name: "Canais" }).getByRole("button", { name: "Nova conversa", exact: true }),
     ).toBeVisible()
   })

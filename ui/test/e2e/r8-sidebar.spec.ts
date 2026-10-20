@@ -20,7 +20,7 @@ for (const width of [1440, 1100]) {
       if (phase === "after") {
         const sidebar = page.locator(".bot-sidebar")
         expect(await sidebar.evaluate((element) => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(0)
-        await expect(sidebar.locator(".bot-status-heading")).toHaveText(["Precisa de você", "Ociosos"])
+        await expect(sidebar.locator("#sidebar-mode-panel-bots .bot-status-heading")).toHaveCount(0)
         const lastBot = sidebar.locator(".bot-row-main").last()
         await lastBot.scrollIntoViewIfNeeded()
         await expect(lastBot).toBeInViewport()

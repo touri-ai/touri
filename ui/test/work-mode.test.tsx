@@ -31,7 +31,7 @@ describe("sidebar work mode", () => {
     expect(workPanel).not.toHaveAttribute("hidden")
     expect(botsPanel).toHaveAttribute("hidden")
     expect(screen.getByRole("tab", { name: "Work, 3 mensagens não lidas" })).toBeVisible()
-    expect(screen.getByRole("tab", { name: "Bots, 0 aguardando" }).querySelector(".sidebar-mode-count")).toBeNull()
+    expect(screen.getByRole("tab", { name: "Bots, 0 aguardando" }).querySelector(".sidebar-mode-dot")).toBeNull()
 
     const channels = screen.getByRole("region", { name: "Canais" })
     expect(within(channels).getByRole("button", { name: "Equipe QA, 3 mensagens não lidas" })).toBeVisible()
@@ -104,10 +104,8 @@ describe("sidebar work mode", () => {
     await screen.findByRole("textbox", { name: "Mensagem para mark" })
 
     const conversations = screen.getByRole("region", { name: "Conversas de mark" })
-    const routineRow = within(conversations).getByRole("button", {
-      name: "Abrir histórico da rotina Resumo diário",
-    })
-    expect(routineRow).toHaveTextContent("Rotina “Resumo diário” · 30 hoje")
+    const routineRow = within(conversations).getByRole("button", { name: /^Rotinas/ })
+    expect(routineRow).toHaveTextContent(/Rotinas\s*30 hoje/)
     expect(conversations.querySelectorAll(".thread-row")).toHaveLength(2)
 
     fireEvent.click(routineRow)
@@ -118,5 +116,125 @@ describe("sidebar work mode", () => {
     expect(history).toHaveAttribute("data-open", "true")
     expect(within(history).getByRole("combobox", { name: "Filtrar histórico por rotina" })).toHaveValue(routine.id)
     expect(within(history).getAllByRole("button", { name: "Abrir conversa" })).toHaveLength(30)
+  })
+})
+
+describe("sidebar design", () => {
+  const createChannels = async (api: ReturnType<typeof createMockApi>, unread: number[]): Promise<void> => {
+    const created = await Promise.all(
+      unread.map((_, index) =>
+        api.request("POST /groups", {
+          name: `Canal ${index + 1}`,
+          color: "#dc2626",
+          avatarShape: "classic-none",
+          memberIds: ["bot-mark", "bot-onb"],
+          coordinatorBotId: "bot-mark",
+        }),
+      ),
+    )
+    await Promise.all(
+      created.map(({ thread }, index) =>
+        api.request("PATCH /threads/:id", { unread: unread[index] ?? 0 }, { id: thread.id }),
+      ),
+    )
+  }
+
+  it("keeps counts out of the segmented control and flags the other mode with one dot", async () => {
+    const api = createMockApi()
+    await createChannels(api, [4, 0])
+    window.localStorage.setItem("touri.sidebar.mode", "bots")
+    render(<App kernel={{ services: { api } }} />)
+    await screen.findByRole("textbox", { name: "Mensagem para mark" })
+
+    const workTab = screen.getByRole("tab", { name: "Work, 4 mensagens não lidas" })
+    const botsTab = screen.getByRole("tab", { name: /^Bots,/ })
+
+    expect(workTab).toHaveTextContent(/^Work$/)
+    expect(workTab.querySelectorAll(".sidebar-mode-dot")).toHaveLength(1)
+    expect(botsTab.querySelector(".sidebar-mode-dot")).toBeNull()
+
+    fireEvent.click(workTab)
+
+    expect(workTab.querySelector(".sidebar-mode-dot")).toBeNull()
+  })
+
+  it("gives channels and direct messages the same row with at most one marker", async () => {
+    const api = createMockApi()
+    await createChannels(api, [12, 0, 3])
+    window.localStorage.setItem("touri.sidebar.mode", "work")
+    render(<App kernel={{ services: { api } }} />)
+    await screen.findByRole("textbox", { name: "Mensagem para mark" })
+
+    const rows = Array.from(document.querySelectorAll("#sidebar-mode-panel-work .sidebar-row"))
+    const channelRows = rows.filter((row) => row.querySelector(".group-select"))
+    const botRows = rows.filter((row) => row.querySelector(".bot-row-main"))
+
+    expect(channelRows).toHaveLength(3)
+    expect(botRows.length).toBeGreaterThan(0)
+    expect(rows).toHaveLength(channelRows.length + botRows.length)
+    for (const row of rows) {
+      expect(row.querySelectorAll(".sidebar-row-main > :is(.sidebar-unread, .sidebar-status-dot)").length).toBeLessThan(
+        2,
+      )
+      expect(row.querySelector(".sidebar-row-leading")).not.toBeNull()
+    }
+    expect(channelRows[0]?.querySelector(".sidebar-unread")).toHaveTextContent("12")
+    expect(channelRows[0]?.querySelector(".group-mascots")).toBeNull()
+    expect(screen.queryByRole("textbox", { name: "Buscar canais e mensagens" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "Buscar canais e mensagens" })).toBeNull()
+  })
+
+  it("shows direct messages as one line and keeps the channel header free of counts", async () => {
+    const api = createMockApi()
+    await createChannels(api, [2])
+    window.localStorage.setItem("touri.sidebar.mode", "work")
+    render(<App kernel={{ services: { api } }} />)
+    await screen.findByRole("textbox", { name: "Mensagem para mark" })
+
+    const channels = screen.getByRole("region", { name: "Canais" })
+
+    expect(channels.querySelector(".group-sidebar-heading")).toHaveTextContent(/^Canais\s*\+$/)
+    expect(
+      document.querySelectorAll("#sidebar-mode-panel-work .bot-preview:not(.visually-hidden):not(.paused)"),
+    ).toHaveLength(0)
+  })
+
+  it("explains channels in the empty state and offers one way to create the first", async () => {
+    window.localStorage.setItem("touri.sidebar.mode", "work")
+    render(<App kernel={{ services: { api: createMockApi() } }} />)
+    await screen.findByRole("textbox", { name: "Mensagem para mark" })
+
+    const channels = screen.getByRole("region", { name: "Canais" })
+
+    expect(within(channels).getByText("Nenhum canal ainda")).toBeVisible()
+    expect(within(channels).getByText("Canais reúnem bots e pessoas em torno de um assunto.")).toBeVisible()
+    fireEvent.click(within(channels).getByRole("button", { name: "Criar canal" }))
+    expect(await screen.findByRole("dialog", { name: "Criar canal" })).toBeVisible()
+  })
+
+  it("collapses the selected bot's conversations when its row is clicked again", async () => {
+    const { api } = await getRoutineSidebarFixture(30, { todayRuns: true })
+    window.localStorage.setItem("touri.sidebar.mode", "bots")
+    render(<App kernel={{ services: { api } }} />)
+    await screen.findByRole("textbox", { name: "Mensagem para mark" })
+    const markRow = document.querySelector<HTMLButtonElement>('[data-bot-entry="bot-mark"] .bot-row-main')
+    if (!markRow) throw new Error("Missing mark row")
+
+    expect(markRow).toHaveAttribute("aria-expanded", "true")
+    expect(screen.getByRole("region", { name: "Conversas de mark" })).toBeVisible()
+
+    fireEvent.click(markRow)
+
+    expect(markRow).toHaveAttribute("aria-expanded", "false")
+    expect(screen.queryByRole("region", { name: "Conversas de mark" })).toBeNull()
+  })
+
+  it("shows the working summary only when nothing needs the user", async () => {
+    const api = createMockApi()
+    window.localStorage.setItem("touri.sidebar.mode", "bots")
+    render(<App kernel={{ services: { api } }} />)
+    await screen.findByRole("textbox", { name: "Mensagem para mark" })
+
+    expect(document.querySelectorAll(".sidebar-needs-you, .sidebar-work-badge").length).toBeLessThan(2)
   })
 })

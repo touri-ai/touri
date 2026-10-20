@@ -8,6 +8,7 @@ import { BotAvatar } from "./BotAvatar"
 import { DeleteGroupDialog } from "./DeleteGroupDialog"
 import { getGroupProjection, getIdleMemberState } from "./groupProjection"
 import { SidebarActionsMenu } from "./SidebarActionsMenu"
+import { SidebarCount, SidebarDot, SidebarRow } from "./SidebarRow"
 import "./groups.css"
 
 export const MemberMascots = ({ bots, locale = "pt-BR" }: { bots: Bot[]; locale?: Locale }) => (
@@ -39,7 +40,6 @@ export const MemberMascots = ({ bots, locale = "pt-BR" }: { bots: Bot[]; locale?
 export const GroupSidebar = memo(
   ({
     groups,
-    bots,
     threads,
     attentionThreadIds = new Set(),
     selectedThreadId,
@@ -51,7 +51,6 @@ export const GroupSidebar = memo(
     locale = "pt-BR",
   }: {
     groups: BotGroup[]
-    bots: Bot[]
     threads: Thread[]
     attentionThreadIds?: ReadonlySet<string>
     selectedThreadId: string | null
@@ -70,9 +69,7 @@ export const GroupSidebar = memo(
     return (
       <section className="group-sidebar" aria-label={t("Channels", {}, locale)}>
         <div className="group-sidebar-heading">
-          <span>
-            {t("Channels", {}, locale)} <small>{groups.length}</small>
-          </span>
+          <h2>{t("Channels", {}, locale)}</h2>
           <button
             type="button"
             className="channel-create"
@@ -84,9 +81,13 @@ export const GroupSidebar = memo(
           </button>
         </div>
         {groups.length === 0 && (
-          <p className="group-sidebar-empty">
-            {t("No channels yet, create one to work with bots and people.", {}, locale)}
-          </p>
+          <div className="group-sidebar-empty">
+            <strong>{t("No channels yet", {}, locale)}</strong>
+            <p>{t("Channels explainer", {}, locale)}</p>
+            <button type="button" className="group-empty-create" onClick={onCreate}>
+              {t("Create channel", {}, locale)}
+            </button>
+          </div>
         )}
         {groups.map((group) => {
           const summary = threadSummaries.get(group.id)
@@ -95,7 +96,6 @@ export const GroupSidebar = memo(
             <GroupSidebarEntry
               key={group.id}
               group={group}
-              bots={bots}
               threads={summary?.threads ?? []}
               unread={summary?.unread ?? 0}
               needsAttention={summary?.needsAttention ?? false}
@@ -139,7 +139,6 @@ const getGroupThreadSummaries = (threads: Thread[], attentionThreadIds: Readonly
 const GroupSidebarEntry = memo(
   ({
     group,
-    bots,
     threads,
     unread,
     needsAttention,
@@ -152,7 +151,6 @@ const GroupSidebarEntry = memo(
     locale,
   }: {
     group: BotGroup
-    bots: Bot[]
     threads: Thread[]
     unread: number
     needsAttention: boolean
@@ -170,67 +168,47 @@ const GroupSidebarEntry = memo(
     // biome-ignore lint/correctness/useExhaustiveDependencies: navigating away dismisses the group's actions
     useEffect(() => setMenuOpen(false), [navigationKey])
 
+    const attentionLabel = t("Channel attention count", { count: 1 }, locale)
+    const unreadLabel = t("Unread messages", { count: unread }, locale)
+    const stateLabel = needsAttention ? attentionLabel : unread > 0 ? unreadLabel : null
+
     return (
       <div className={`group-sidebar-item ${selected ? "selected" : ""}`}>
-        <div className="group-sidebar-row">
-          <button
-            type="button"
-            className="group-select"
-            aria-label={[
-              group.name,
-              needsAttention
-                ? t("Channel attention count", { count: 1 }, locale)
-                : unread > 0
-                  ? t("Unread messages", { count: unread }, locale)
-                  : null,
-            ]
-              .filter(Boolean)
-              .join(", ")}
-            onClick={() => {
-              const thread = threads[0]
-              if (!thread) return onNewThread(group)
-
-              onSelect(thread.id)
-            }}
-            aria-current={selected ? "page" : undefined}
-          >
-            <span className="channel-hash" aria-hidden="true">
-              #
-            </span>
-            <span className="channel-name">{group.name}</span>
-            <MemberMascots
-              bots={group.memberIds.flatMap((id) => {
-                const bot = bots.find((bot) => bot.id === id)
-                return bot ? [bot] : []
-              })}
-              locale={locale}
-            />
-            {needsAttention ? (
-              <span
-                className="channel-attention-badge"
-                role="img"
-                aria-label={t("Channel attention count", { count: 1 }, locale)}
-              >
-                !
-              </span>
+        <SidebarRow
+          selected={selected}
+          rowAttention={needsAttention ? "waiting" : undefined}
+          className="group-select"
+          ariaLabel={[group.name, stateLabel].filter(Boolean).join(", ")}
+          leading={<span className="channel-hash">#</span>}
+          label={<span className="channel-name">{group.name}</span>}
+          trailing={
+            needsAttention ? (
+              <SidebarDot tone="waiting" label={attentionLabel} />
             ) : unread > 0 ? (
-              <span className="sidebar-unread" role="img" aria-label={t("Unread messages", { count: unread }, locale)}>
-                {unread > 99 ? "99+" : unread}
-              </span>
-            ) : null}
-          </button>
-          <SidebarActionsMenu
-            label={t("Channel actions for {name}", { name: group.name }, locale)}
-            open={menuOpen}
-            onOpenChange={setMenuOpen}
-            actions={[
-              { label: t("Edit channel", {}, locale), onSelect: () => onEdit(group) },
-              ...(onDelete
-                ? [{ label: t("Delete channel", {}, locale), onSelect: () => setDeleting(true), destructive: true }]
-                : []),
-            ]}
-          />
-        </div>
+              <SidebarCount count={unread} label={unreadLabel} />
+            ) : null
+          }
+          actions={
+            <SidebarActionsMenu
+              label={t("Channel actions for {name}", { name: group.name }, locale)}
+              open={menuOpen}
+              onOpenChange={setMenuOpen}
+              actions={[
+                { label: t("Edit channel", {}, locale), onSelect: () => onEdit(group) },
+                { label: t("New conversation", {}, locale), onSelect: () => onNewThread(group) },
+                ...(onDelete
+                  ? [{ label: t("Delete channel", {}, locale), onSelect: () => setDeleting(true), destructive: true }]
+                  : []),
+              ]}
+            />
+          }
+          onClick={() => {
+            const thread = threads[0]
+            if (!thread) return onNewThread(group)
+
+            onSelect(thread.id)
+          }}
+        />
         {deleting && onDelete && (
           <DeleteGroupDialog
             group={group}
@@ -240,7 +218,7 @@ const GroupSidebarEntry = memo(
             channelMode
           />
         )}
-        {selected && (
+        {selected && threads.length > 1 && (
           <div className="group-thread-list">
             {threads.map((thread) => (
               <button
@@ -252,9 +230,6 @@ const GroupSidebarEntry = memo(
                 {thread.title}
               </button>
             ))}
-            <button type="button" onClick={() => onNewThread(group)}>
-              + {t("New conversation", {}, locale)}
-            </button>
           </div>
         )}
       </div>

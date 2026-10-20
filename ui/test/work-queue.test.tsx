@@ -19,7 +19,7 @@ it("lists every executing and queued turn, origins and engine positions, and ope
 
   const badge = screen.getByRole("button", { name: "Trabalhando: 3, 2 na fila. Ver trabalho", exact: true })
   expect(badge).toBeVisible()
-  expect(badge).toHaveTextContent("Trabalhando 3")
+  expect(badge).toHaveTextContent("Trabalhando · 3")
   expect(badge).toHaveTextContent("2 na fila")
 
   fireEvent.click(screen.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))

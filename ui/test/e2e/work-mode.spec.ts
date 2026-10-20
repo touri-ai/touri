@@ -33,8 +33,9 @@ test("switches and remembers Work mode, with channels and routine history", asyn
 
   await botsTab.click()
   const botsPanel = page.locator("#sidebar-mode-panel-bots")
-  const routineRow = botsPanel.getByRole("button", { name: "Abrir histórico da rotina Resumo diário" })
-  await expect(routineRow).toContainText("Rotina “Resumo diário” · 30 hoje")
+  const routineRow = botsPanel.getByRole("button", { name: /^Rotinas/ })
+  await expect(routineRow).toContainText("Rotinas")
+  await expect(routineRow).toContainText("30 hoje")
   await expect(botsPanel.locator('[data-bot-entry="bot-mark"] .thread-row')).toHaveCount(2)
   await routineRow.click()
   const routineHistory = page.locator(".routine-run-history")
@@ -96,9 +97,9 @@ test("switches and remembers Work mode, with channels and routine history", asyn
   await page.locator(".mobile-menu-button").click()
   await expect(page.getByRole("tab", { name: /^Work,/ })).toHaveAttribute("aria-selected", "true")
   const touchTargetHeights = await page
-    .locator(".sidebar-mode-tabs [role=tab], .group-select, .channel-create, .work-sidebar-search")
+    .locator(".sidebar-mode-tabs [role=tab], .group-select, .channel-create")
     .evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect().height))
-  expect(touchTargetHeights.length).toBeGreaterThanOrEqual(5)
+  expect(touchTargetHeights.length).toBeGreaterThanOrEqual(4)
   expect(touchTargetHeights.every((height) => height >= 44)).toBe(true)
 })
 
