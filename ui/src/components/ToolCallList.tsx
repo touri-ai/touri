@@ -3,6 +3,7 @@ import { type ReactNode, useLayoutEffect, useRef, useState } from "react"
 import type { UiApi } from "../api/client"
 import { t } from "../i18n"
 import { ApprovalCard } from "./ApprovalCard"
+import { Disclosure } from "./Disclosure"
 import { ToolCallCard } from "./ToolCallCard"
 import { approvalMatchesTool, type ToolPart } from "./toolPresentation"
 
@@ -49,23 +50,24 @@ const ToolGroup = ({
   focusId: string | undefined
   children: ReactNode
 }) => {
-  const group = useRef<HTMLDetailsElement>(null)
   const [mounted, setMounted] = useState(false)
-  const focusedApproval = entries.some((entry) => entry.approval?.approvalId === focusId) ? focusId : undefined
+  const trigger = useRef<HTMLButtonElement>(null)
+  const focusedApproval = entries.some((entry) => entry.approval?.approvalId === focusId)
   useLayoutEffect(() => {
-    if (focusedApproval && !group.current?.open) group.current?.querySelector("summary")?.focus({ preventScroll: true })
+    if (focusedApproval && trigger.current?.getAttribute("aria-expanded") !== "true")
+      trigger.current?.focus({ preventScroll: true })
   }, [focusedApproval])
   return (
-    <details
+    <Disclosure
       className="tool-group"
-      ref={group}
-      onToggle={(event) => {
-        if (event.target === event.currentTarget && event.currentTarget.open) setMounted(true)
+      triggerRef={trigger}
+      summary={t("Tool group count", { count: entries.length })}
+      onOpenChange={(open) => {
+        if (open) setMounted(true)
       }}
     >
-      <summary>{t("Tool group count", { count: entries.length })}</summary>
       {mounted && <div className="tool-group-cards">{children}</div>}
-    </details>
+    </Disclosure>
   )
 }
 
@@ -90,8 +92,9 @@ export const ToolCallList = ({
     const card = Array.from(root.current?.querySelectorAll<HTMLElement>("[data-approval-id]") ?? []).find(
       (node) => node.dataset.approvalId === focusId,
     )
-    const group = card?.closest<HTMLDetailsElement>(".tool-group")
-    const target = group && !group.open ? group.querySelector("summary") : card
+    const group = card?.closest<HTMLElement>(".tool-group")
+    const trigger = group?.querySelector<HTMLButtonElement>(".ds-disclosure-trigger")
+    const target = group && trigger?.getAttribute("aria-expanded") !== "true" ? trigger : card
     target?.focus({ preventScroll: true })
   }, [focusId])
   const card = (entry: ToolEntry) =>

@@ -30,12 +30,13 @@ import { useMascotSnapshot } from "./AvatarRuntime"
 import { BotActionsMenu } from "./BotActionsMenu"
 import { BotAvatar } from "./BotAvatar"
 import { DeleteBotDialog } from "./DeleteBotDialog"
-import { DeletedRoutineHistory } from "./DeletedRoutineHistory"
 import { GlobalAdvancedMenu } from "./GlobalAdvancedMenu"
 import { GroupSidebar } from "./Groups"
 import { useInsertedIds } from "./Motion"
 import { mascotIsBusy } from "./mascotState"
+import { NotificationAttentionBar } from "./NotificationAttentionBar"
 import { type NotificationActions, NotificationBell } from "./NotificationCenter"
+import { ThreadGroupHistory } from "./ThreadGroupHistory"
 import { type HoldReason, useSidebarOrder } from "./useSidebarOrder"
 import "./bot-sidebar.css"
 
@@ -82,6 +83,8 @@ type SidebarProps = {
   recoveryCount?: number
   onSearch: () => void
   notifications: Array<NotificationRecord>
+  notificationFocus?: { id: number; request: number } | null
+  onNeedsYou?: (item: NotificationRecord) => void
   onNotificationsOpen: (open: boolean) => void
   notificationActions: NotificationActions
 }
@@ -173,6 +176,7 @@ export const Sidebar = (props: SidebarProps) => {
     [props.notifications, props.runs],
   )
   const attention = useMemo(() => pendingNotifications(notifications, messages), [notifications, messages])
+  const needsYou = attention.filter((item) => !isInformationalNotice(item))
   const ordered = useSidebarOrder({ ...props, messages, notifications, attention })
   const botsWaitingCount = [...ordered.activity.values()].filter((activity) => activity.kind === "needs-you").length
   const attentionThreadIds = new Set(attention.flatMap((item) => (item.threadId ? [item.threadId] : [])))
@@ -274,6 +278,7 @@ export const Sidebar = (props: SidebarProps) => {
           </button>
         ))}
       </div>
+
       <div
         id="sidebar-mode-panel"
         className="sidebar-mode-panel"
@@ -374,6 +379,7 @@ export const Sidebar = (props: SidebarProps) => {
               )
             })}
           </div>
+
         </div>
         {props.onRecovery && (props.recoveryCount ?? 0) > 0 && (
           <button type="button" className="sidebar-recovery" onClick={() => navigate(() => props.onRecovery?.())}>
@@ -402,6 +408,7 @@ export const Sidebar = (props: SidebarProps) => {
             notifications={notifications}
             messages={messages}
             runs={props.runs ?? []}
+            {...(props.notificationFocus ? { focusNotification: props.notificationFocus } : {})}
             actions={{
               ...props.notificationActions,
               open: (item) => navigate(() => props.notificationActions.open(item)),
@@ -564,9 +571,16 @@ const BotEntry = ({
     () => new Set(messages.filter((message) => message.status === "streaming").map((message) => message.threadId)),
     [messages],
   )
+  const routineRunCountsToday = useMemo(
+    () => getRoutineRunCountsToday(routineRuns, routinesById),
+    [routineRuns, routinesById],
+  )
   const sidebarThreads = useMemo(
-    () => (expanded ? getSidebarThreads(threads, routineRuns, selectedThreadId, runningThreadIds, routineIds) : []),
-    [expanded, threads, routineRuns, selectedThreadId, runningThreadIds, routineIds],
+    () =>
+      expanded
+        ? getSidebarThreads(threads, routineRuns, selectedThreadId, runningThreadIds, routineIds, routineRunCountsToday)
+        : [],
+    [expanded, threads, routineRuns, selectedThreadId, runningThreadIds, routineIds, routineRunCountsToday],
   )
   const routineRunCountsToday = useMemo(
     () => (expanded ? getRoutineRunCountsToday(routineRuns, routinesById) : new Map()),
@@ -574,9 +588,13 @@ const BotEntry = ({
   )
   const visibleUnread = sidebarThreads.reduce((count, entry) => count + entry.unread, 0)
   const botUnread = unread - visibleUnread
-  const visibleRoutineIds = sidebarThreads.flatMap(({ routineRun, deletedRoutine }) =>
-    routineRun && !deletedRoutine ? [routineRun.routineId] : [],
-  )
+  const visibleRoutineIds = [
+    ...new Set(
+      routineRuns
+        .filter((routineRun) => !routineIds || routineIds.has(routineRun.routineId))
+        .map((routineRun) => routineRun.routineId),
+    ),
+  ]
   const selectedRoutineId = sidebarThreads.find(({ thread }) => thread.id === selectedThreadId)?.routineRun?.routineId
   const historyRoutineId = selectedRoutineId ?? (visibleRoutineIds.length === 1 ? visibleRoutineIds[0] : undefined)
   const deletedRoutine = sidebarThreads.find((entry) => entry.deletedRoutine)
@@ -680,44 +698,56 @@ const BotEntry = ({
       {deleting && onDelete && <DeleteBotDialog bot={bot} onDelete={onDelete} onClose={() => setDeleting(false)} />}
       {expanded && (
         <section className="bot-thread-tree" aria-label={t("Conversations for {name}", { name: bot.name })}>
-          {sidebarThreads.map(({ thread, routineRun, running, unread, deletedRoutine }) => {
+          {sidebarThreads.map(({ thread, routineRun, taskGroupName, countToday, running, unread, deletedRoutine }) => {
             const timestamp = routineRun?.scheduledFor ?? thread.createdAt
-            const timeZone = routineRun ? routinesById.get(routineRun.routineId)?.timezone : undefined
-            const routineName = routineRun ? routinesById.get(routineRun.routineId)?.name : undefined
-            const routineSummary =
-              thread.kind === "routine" && !deletedRoutine && routineRun && routineName
-                ? t("Routine summary row", {
-                    name: routineName,
-                    count: routineRunCountsToday.get(routineRun.routineId) ?? 0,
-                  })
-                : undefined
-            const rowTitle = deletedRoutine ? t("Deleted routine") : (routineSummary ?? getSidebarThreadTitle(thread))
-            const dateLabel = routineSummary
-              ? ""
-              : thread.kind === "routine"
+
+            const routine = routineRun ? routinesById.get(routineRun.routineId) : undefined
+            const timeZone = routine?.timezone
+            const title = deletedRoutine
+              ? t("Deleted routine")
+              : routineRun
+                ? t("Routine row title", { name: routine?.name ?? getSidebarThreadTitle(thread) })
+                : taskGroupName
+                  ? t("Task row title", { name: taskGroupName })
+                  : getSidebarThreadTitle(thread)
+            const countLabel = routineRun || taskGroupName ? t("Today count suffix", { count: countToday }) : undefined
+            const dateLabel =
+              thread.kind === "routine"
+
                 ? getRoutineRunSidebarDateLabel(timestamp, "pt-BR", timeZone)
                 : relativeThreadDate(thread.updatedAt)
             const dateTitle =
               thread.kind === "routine" ? getRoutineRunDateLabel(timestamp, "pt-BR", timeZone) : undefined
+            const secondaryLabel = routineRun ? `${countLabel ?? ""} · ${dateLabel}` : (countLabel ?? dateLabel)
 
             return (
-              <ThreadRow
-                key={thread.id}
-                inserted={insertedThreads.has(thread.id)}
-                thread={thread}
-                title={rowTitle}
-                routineHistoryName={routineSummary ? (routineName ?? undefined) : undefined}
-                dateLabel={dateLabel}
-                dateTitle={dateTitle}
-                unread={unread}
-                selected={thread.id === selectedThreadId}
-                running={running}
-                onClick={() => {
-                  if (routineSummary && routineRun) return onRoutineHistory(routineRun.routineId)
 
-                  onSelectThread(thread.id)
-                }}
-              />
+              <Fragment key={thread.id}>
+                <ThreadRow
+                  inserted={insertedThreads.has(thread.id)}
+                  thread={thread}
+                  title={title}
+                  countLabel={secondaryLabel}
+                  dateLabel={dateLabel}
+                  dateTitle={dateTitle}
+                  unread={unread}
+                  selected={thread.id === selectedThreadId}
+                  running={running}
+                  onClick={() => onSelectThread(thread.id)}
+                />
+                {taskGroupName && (
+                  <ThreadGroupHistory
+                    label={t("Task conversation history for {name}", { name: taskGroupName })}
+                    threads={threads}
+                    routineRuns={routineRuns}
+                    routineIds={routineIds}
+                    groupThreadId={thread.id}
+                    selectedThreadId={selectedThreadId}
+                    onSelectThread={onSelectThread}
+                  />
+                )}
+              </Fragment>
+
             )
           })}
           {visibleRoutineIds.length > 0 && (
@@ -726,7 +756,8 @@ const BotEntry = ({
             </button>
           )}
           {deletedRoutine && (
-            <DeletedRoutineHistory
+            <ThreadGroupHistory
+              label={t("Deleted routine conversations")}
               threads={threads}
               routineRuns={routineRuns}
               routineIds={routineIds}
@@ -751,7 +782,9 @@ const ThreadRow = ({
   inserted,
   thread,
   title,
-  routineHistoryName,
+
+  countLabel,
+
   dateLabel,
   dateTitle,
   unread,
@@ -761,7 +794,11 @@ const ThreadRow = ({
 }: {
   thread: Thread
   title: string
+
   routineHistoryName: string | undefined
+
+  countLabel: string | undefined
+
   dateLabel: string
   dateTitle: string | undefined
   unread: number
@@ -793,7 +830,9 @@ const ThreadRow = ({
       </span>
       <span className="thread-copy">
         <strong title={thread.kind === "routine" ? `${title} · ${dateTitle ?? dateLabel}` : title}>{title}</strong>
-        {dateLabel && <small>{dateLabel}</small>}
+
+        <small>{countLabel ?? dateLabel}</small>
+
       </span>
       {running ? (
         <span className="sidebar-status-dot state-running" role="img" aria-label={t("Em execução")} />

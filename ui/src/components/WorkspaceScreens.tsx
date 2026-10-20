@@ -14,7 +14,9 @@ import type { TauriInvoke, UiApi } from "../api/client"
 import { type ApprovalTarget, pendingApprovalTargets } from "../approvalNavigation"
 import { localizeNotice, mcpGroupLabel, statusLabel, t } from "../i18n"
 import { messageMarkdown } from "../messageMarkdown"
+import type { ThreadCreationStatus } from "../workspaceState"
 import { BotAvatar } from "./BotAvatar"
+import { Disclosure } from "./Disclosure"
 import { LearningCard } from "./LearningCard"
 import { MarkdownContent } from "./MarkdownContent"
 import { mcpPresets } from "./McpCatalog"
@@ -83,13 +85,12 @@ export const IntegrationsScreen = ({ api, botId, botName, onConfigure, modalOpen
                       </span>
                     </div>
                     <p>{preset.description}</p>
-                    <details>
-                      <summary>Como conectar</summary>
+                    <Disclosure summary="Como conectar">
                       <p>{preset.guidance}</p>
                       <a href={preset.docs} target="_blank" rel="noreferrer">
                         Instruções do servidor {preset.title} ↗
                       </a>
-                    </details>
+                    </Disclosure>
                     <div className="screen-card-footer">
                       <span>
                         {server
@@ -290,10 +291,14 @@ export const McpScreen = ({
                   ),
               )
             )}
-            <details className="screen-card screen-gateway-tools">
-              <summary>
-                {t("Ferramentas do touri")} <span>{tools.length}</span>
-              </summary>
+            <Disclosure
+              className="screen-card screen-gateway-tools"
+              summary={
+                <>
+                  {t("Ferramentas do touri")} <span>{tools.length}</span>
+                </>
+              }
+            >
               {tools.length === 0 ? (
                 <ScreenState kind="empty" title="Nenhuma ferramenta registrada" />
               ) : (
@@ -309,7 +314,7 @@ export const McpScreen = ({
                   ))}
                 </div>
               )}
-            </details>
+            </Disclosure>
           </>
         )}
       </div>
@@ -318,7 +323,7 @@ export const McpScreen = ({
 }
 
 type PreviewScreenProps = {
-  threadCreation?: "pending" | "failed" | undefined
+  threadCreation?: ThreadCreationStatus | undefined
   onRetryCreateThread?: (() => void) | undefined
   project: Project | null
   processes: Array<ProcessEntry>

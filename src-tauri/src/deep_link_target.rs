@@ -2,6 +2,7 @@
 pub struct DeepLink {
     pub bot: Option<String>,
     pub thread: Option<String>,
+    pub notification_id: Option<u64>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -74,7 +75,7 @@ fn decode(value: &str) -> String {
     String::from_utf8_lossy(&out).into_owned()
 }
 
-/// Parses `touri://open?bot=<id>&thread=<id>`. Any other scheme, host or empty selection is rejected.
+/// Parses a touri open link and rejects unrecognized hosts or links without a selected target.
 pub fn parse(url: &str) -> Option<DeepLink> {
     let rest = url.strip_prefix("touri://")?;
     let (host, query) = rest.split_once('?').unwrap_or((rest, ""));
@@ -92,8 +93,11 @@ pub fn parse(url: &str) -> Option<DeepLink> {
     let link = DeepLink {
         bot: find("bot"),
         thread: find("thread"),
+        notification_id: find("notification")
+            .and_then(|value| value.parse::<u64>().ok())
+            .filter(|id| *id > 0 && *id <= 9_007_199_254_740_991),
     };
-    (link.bot.is_some() || link.thread.is_some()).then_some(link)
+    (link.bot.is_some() || link.thread.is_some() || link.notification_id.is_some()).then_some(link)
 }
 
 #[cfg(test)]
@@ -121,7 +125,8 @@ mod tests {
             parse("touri://open?bot=bot-1&thread=th%202"),
             Some(DeepLink {
                 bot: Some("bot-1".into()),
-                thread: Some("th 2".into())
+                thread: Some("th 2".into()),
+                notification_id: None,
             })
         );
     }
@@ -132,7 +137,8 @@ mod tests {
             parse("touri://open?thread=abc"),
             Some(DeepLink {
                 bot: None,
-                thread: Some("abc".into())
+                thread: Some("abc".into()),
+                notification_id: None,
             })
         );
     }
@@ -166,5 +172,22 @@ mod tests {
         assert_eq!(notification_target("dismiss", Some(first)), None);
         assert_eq!(notification_target("focus", Some(second)), None);
         assert_eq!(notification_target("tap", None), None);
+    }
+
+    #[test]
+    fn notification_click_keeps_the_exact_card_id() {
+        let target =
+            notification_target("tap", Some("touri://open?bot=b&thread=t&notification=42"))
+                .expect("notification target");
+
+        assert_eq!(target.notification_id, Some(42));
+        assert_eq!(
+            notification_target("tap", Some("touri://open?notification=0")),
+            None
+        );
+        assert_eq!(
+            notification_target("tap", Some("touri://open?notification=bad")),
+            None
+        );
     }
 }

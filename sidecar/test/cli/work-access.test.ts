@@ -9,6 +9,7 @@ database.exec(`
   CREATE TABLE bots (
     id TEXT PRIMARY KEY, archived_at INTEGER, responsible_person_id TEXT, sort_order INTEGER DEFAULT 0, created_at INTEGER DEFAULT 0
   );
+  CREATE TABLE bot_deletions (bot_id TEXT PRIMARY KEY, phase TEXT NOT NULL);
   CREATE TABLE bot_groups (id TEXT PRIMARY KEY);
   CREATE TABLE group_members (bot_id TEXT NOT NULL, group_id TEXT NOT NULL);
   CREATE TABLE threads (
@@ -82,7 +83,13 @@ test("members can only see their channels, their own conversations, and bots ava
   expect(access.canAccessThread({ personId: "member", role: "member", threadId: "other-chat" })).toBe(false)
 })
 
-test("members cannot create channels or bots, invite people, or open another person's private chat", () => {
+test("members stop seeing bots as soon as deletion is marked", () => {
+  database.query("INSERT INTO bot_deletions(bot_id, phase) VALUES ('member-bot', 'stopping')").run()
+
+  expect(access.accessibleBotIds({ personId: "member", channelIds: ["team-a"] })).not.toContain("member-bot")
+})
+
+test("members cannot create channels or bots, delete bots, invite people, or open another person's private chat", () => {
   expect(
     access.authorizeHttp({ personId: "member", role: "member", method: "POST", pathname: "/groups", body: {} }),
   ).toMatchObject({
@@ -93,6 +100,15 @@ test("members cannot create channels or bots, invite people, or open another per
   ).toMatchObject({
     status: 403,
   })
+  expect(
+    access.authorizeHttp({
+      personId: "member",
+      role: "member",
+      method: "DELETE",
+      pathname: "/bots/member-bot",
+      body: { name: "Member bot" },
+    }),
+  ).toMatchObject({ status: 403 })
   expect(
     access.authorizeHttp({ personId: "member", role: "member", method: "POST", pathname: "/invites", body: {} }),
   ).toMatchObject({

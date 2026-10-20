@@ -7,7 +7,7 @@ import type { PerformanceStageRunner } from "../kernel/performance"
 import { machineCapability, ociEngine } from "../platform"
 import { createOciProvider } from "../platform/oci-provider"
 import { createAppleContainerProvider } from "./apple-container"
-import { deleteBotRoute } from "./delete-bot"
+import { deleteBotRoutes } from "./delete-bot"
 import { createDesktopGateway } from "./desktop"
 import { providerHosts, readEgressPolicy, saveEgressPolicy, validateEgressPolicy } from "./egress-policy"
 import { machineActionRoutes } from "./machine-actions"
@@ -206,7 +206,7 @@ export const init = async (kernel: Kernel, runStage?: PerformanceStageRunner): P
       },
       ...machineActionRoutes(kernel, service),
       ...botWorkspaceRoutes(kernel, service),
-      deleteBotRoute(kernel, service),
+      ...deleteBotRoutes(kernel, service),
     ],
   })
   kernel.onHostNotification((notification) => {

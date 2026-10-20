@@ -168,6 +168,18 @@
   width: 230px;
   max-width: 100%;
 }
+.bot-conversation-mode-options {
+  display: grid;
+  gap: var(--space-8);
+  width: 230px;
+  max-width: 100%;
+}
+.bot-conversation-mode-options label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  font-size: var(--fs-caption);
+}
 .settings-model-control {
   display: flex;
   flex-direction: column;
@@ -355,7 +367,7 @@
 .settings-avatar-field .avatar-picker-preview {
   margin-bottom: var(--space-8);
 }
-.settings-row-control input:not([type="checkbox"]) {
+.settings-row-control input:not([type="checkbox"], [type="radio"]) {
   width: 230px;
 }
 .settings-modal .settings-grid {
@@ -916,7 +928,7 @@
   .machine-environment-control,
   .settings-model-control,
   .settings-row-control select,
-  .settings-row-control input:not([type="checkbox"]),
+  .settings-row-control input:not([type="checkbox"], [type="radio"]),
   .machine-environment-control select {
     width: 100%;
   }
@@ -1095,39 +1107,27 @@
   border-radius: var(--radius-md);
   background: var(--surface-settings-card);
 }
-.settings-disclosure > summary {
-  display: flex;
-  align-items: center;
+.settings-disclosure > .ds-disclosure-trigger {
+  align-items: flex-start;
   gap: var(--space-12);
-  padding: var(--space-20);
-  list-style: none;
-  cursor: pointer;
+  padding: var(--space-16) var(--space-20);
+  border-radius: var(--radius-md);
+  color: var(--text);
+  font-weight: inherit;
 }
-.settings-disclosure > summary::-webkit-details-marker {
-  display: none;
+.settings-disclosure > .ds-disclosure-trigger:hover {
+  background: var(--surface-settings-hover);
 }
-.settings-disclosure > summary::after {
-  content: "›";
-  margin-left: auto;
-  color: var(--text-2);
-}
-.settings-disclosure[open] > summary::after {
-  transform: rotate(90deg);
-}
-.settings-disclosure > summary strong {
+.settings-disclosure > .ds-disclosure-trigger strong {
   font-size: var(--fs-meta);
   font-weight: var(--weight-medium);
 }
-.settings-disclosure > summary small {
+.settings-disclosure > .ds-disclosure-trigger small {
   display: block;
   margin-top: var(--space-8);
   color: var(--text-2);
   font-size: var(--fs-caption);
   line-height: var(--leading-body);
-}
-.settings-disclosure > summary:hover {
-  background: var(--surface-settings-hover);
-  border-radius: var(--radius-md);
 }
 .settings-disclosure-content {
   padding: var(--space-16);
@@ -1137,13 +1137,13 @@
   overflow-wrap: anywhere;
 }
 
-.settings-technical-details > summary {
+.settings-technical-details > .ds-disclosure-trigger {
   cursor: pointer;
   color: var(--text-2);
   font-size: var(--fs-meta);
   padding: var(--space-8) 0;
 }
-.settings-technical-details > .field-help {
+.settings-technical-details .ds-disclosure-content > .field-help {
   margin-top: var(--space-8);
   line-height: 1.6;
 }

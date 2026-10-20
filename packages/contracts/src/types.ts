@@ -130,6 +130,7 @@ export type ApprovalResult = Result<{ behavior: 'allow' | 'deny'; approvalId?: I
 
 export type BotFolder = { path: AbsolutePath; access: 'read-only' | 'read-write' }
 export type BotBrowser = 'touri' | 'local' | 'machine'
+export type BotAutomaticConversationMode = 'main' | 'task'
 
 export type Bot = {
   responsiblePersonId?: Id | null
@@ -140,6 +141,8 @@ export type Bot = {
   /** Defaults for bots created before schema 17: null and false. */
   providerProfile?: string | null
   claudeAiConnectors?: boolean
+  /** Defaults for bots created before schema 34: main. */
+  automaticConversationMode?: BotAutomaticConversationMode
 
   /** Set only by explicit creation from the team-builder job; immutable afterward. */
   teamBuilder: boolean
@@ -812,7 +815,7 @@ export type TeamCreationResult = {
 }
 
 export type CreateBotInput = { cloudApiKey?: string; jobId?: string } & Pick<Bot, 'name' | 'provider'> &
-  Partial<Pick<Bot, 'title' | 'roleLine' | 'description' | 'color' | 'avatarShape' | 'avatarSeed' | 'instructions' | 'model' | 'reasoningEffort' | 'access' | 'approvals' | 'projectId' | 'cwd' | 'browserEnabled' | 'browser' | 'computerUse' | 'machine' | 'machineIdleMinutes' | 'vmProviderLogin' | 'hostComputerUse' | 'folders' | 'anyFolderAccess' | 'providerProfile' | 'claudeAiConnectors'>>
+  Partial<Pick<Bot, 'title' | 'roleLine' | 'description' | 'color' | 'avatarShape' | 'avatarSeed' | 'instructions' | 'model' | 'reasoningEffort' | 'access' | 'approvals' | 'projectId' | 'cwd' | 'browserEnabled' | 'automaticConversationMode' | 'browser' | 'computerUse' | 'machine' | 'machineIdleMinutes' | 'vmProviderLogin' | 'hostComputerUse' | 'folders' | 'anyFolderAccess' | 'providerProfile' | 'claudeAiConnectors'>>
 
 /** A named login under `<appData>/provider-profiles/<name>`, created with `touri profile login`. */
 export type ProviderProfile = { name: string; provider: Provider; loggedIn: boolean; account: string | null }
@@ -899,10 +902,11 @@ export type ApiRoutes = {
   'GET /doctor': { req: { refresh?: boolean }; res: DoctorReport }
   'GET /doctor/storage': { req: {}; res: { storage: StorageStats; maintenance: StorageMaintenanceStatus } }
   'POST /doctor/storage/compact': { req: { vacuum?: boolean }; res: { maintenance: StorageMaintenanceStatus } }
+  'GET /storage/bot-deletions': { req: {}; res: { deletions: Array<{ botId: Id; phase: string; processed: number; errorCode: string | null; createdAt: EpochMs; updatedAt: EpochMs }> } }
   'GET /bots': { req: {}; res: { bots: Array<Bot> } }
   'POST /bots': { req: CreateBotInput; res: { bot: Bot } }
   'PATCH /bots/:id': { req: Partial<Omit<CreateBotInput, 'jobId'> & { paused: boolean }>; res: { bot: Bot } }
-  'DELETE /bots/:id': { req: { name: string; deleteVolumes?: boolean }; res: {} }
+  'DELETE /bots/:id': { req: { name: string; deleteVolumes?: boolean }; res: { botId: Id; phase: string } }
   'GET /bots/:id/mcp': { req: {}; res: { servers: Array<McpServer> } }
   'GET /bots/:id/integrations/telegram': { req: {}; res: { telegram: TelegramIntegration } }
   'PUT /bots/:id/integrations/telegram': {
@@ -1142,6 +1146,7 @@ export type NotificationPreferences = NotificationScopePreferences & {
   bots?: Record<Id, NotificationScopePreferences>
   /** Times use the local clock; an equal start and end silences the entire day. */
   quietHours?: { enabled: boolean; start: string; end: string; timeZone?: string }
+  sound?: { attention?: boolean; replies?: boolean; volume?: number }
 }
 
 export type NotifyResolution = 'allow' | 'deny' | 'answer' | 'replied' | 'dismissed' | 'expired' | 'canceled'
@@ -1239,11 +1244,17 @@ export type HostNotification =
 
 export type PreviewBounds = { x: number; y: number; width: number; height: number }
 export type ServerModeStatus = { mode: 'local' | 'server'; url: string | null }
-export type PendingDeepLink = { requestId: number; bot: string | null; thread: string | null }
+export type PendingDeepLink = {
+  requestId: number
+  bot: string | null
+  thread: string | null
+  notificationId: number | null
+}
 
 export type TauriCommands = {
   deep_link_pending: { args: {}; result: PendingDeepLink | null }
   deep_link_ack: { args: { requestId: number }; result: {} }
+  notification_system_quiet: { args: {}; result: boolean }
   server_mode_status: { args: {}; result: ServerModeStatus }
   server_mode_pair: { args: { url: string; code: string }; result: ServerModeStatus }
   server_mode_test: { args: {}; result: { ok: true } }
@@ -1414,6 +1425,7 @@ export type ServiceMap = {
   'approvals.settle': (input: { approvalId: Id; decision: 'denied' | 'expired' }) => void
   'doctor': { start: () => void; dispose: () => void; snapshot: (refresh?: boolean) => DoctorReport; settled: () => Promise<void> }
   'storage.maintenance': { scheduleSessionKeyRetry: () => void; start: (vacuum?: boolean) => boolean; snapshot: () => StorageMaintenanceStatus; dispose: (options?: { closing?: boolean }) => void }
+  'storage.botDeletion': { dispose: () => void }
   'mcp.botTools': (bot: Bot) => Array<string>
 
   'cloud.settingsChanged': () => void

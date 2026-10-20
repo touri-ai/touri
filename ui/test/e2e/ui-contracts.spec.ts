@@ -22,7 +22,11 @@ for (const theme of ["light", "dark"]) {
         .locator(".modal-card")
         .evaluate((node) => getComputedStyle(node).boxShadow.split(/, (?![^()]*\))/).length),
     ).toBe(2)
-    await page.screenshot({ path: info.outputPath(`surfaces-${theme}.png`), fullPage: true })
+    await page.screenshot({
+      path: info.outputPath(`surfaces-${theme}.png`),
+      fullPage: true,
+      mask: [page.locator("[data-approval-id] .tool-summary")],
+    })
   })
 }
 
@@ -37,10 +41,10 @@ for (const coarse of [false, true]) {
     await page.goto(`${baseURL}${url}`)
     expect(await page.evaluate(() => matchMedia("(pointer: coarse)").matches)).toBe(coarse)
     const icon = page.locator(".sidebar-icon-button")
-    await expect(icon).toHaveCSS("height", coarse ? "44px" : "32px")
+    await expect(icon).toHaveCSS("height", coarse ? "44px" : "40px")
     const tab = page.locator(".bot-panel-tabs button")
     expect((await tab.boundingBox())?.height).toBeGreaterThanOrEqual(coarse ? 44 : 32)
-    for (const selector of [".bot-context-menu button", ".tool-action", ".tool-details > summary"]) {
+    for (const selector of [".bot-context-menu button", ".tool-action", ".tool-details > .ds-disclosure-trigger"]) {
       for (const box of await page.locator(selector).evaluateAll((nodes) =>
         nodes.map((node) => ({
           width: node.getBoundingClientRect().width,
@@ -53,7 +57,11 @@ for (const coarse of [false, true]) {
         }
       }
     }
-    await page.screenshot({ path: info.outputPath(`pointer-${coarse ? "coarse" : "fine"}.png`), fullPage: true })
+    await page.screenshot({
+      path: info.outputPath(`pointer-${coarse ? "coarse" : "fine"}.png`),
+      fullPage: true,
+      mask: [page.locator("[data-approval-id] .tool-summary")],
+    })
     await context.close()
   })
 }
@@ -69,7 +77,11 @@ test("S08: forced colors preserve focus, status text and deliberate keyboard app
   await expect(card.locator(".tool-status-chip")).toContainText("Aguardando aprovação")
   await expect(card.locator(".tool-decision-chip")).toHaveCount(0)
   await expect(page.locator(".tool-status-chip").first()).toContainText("Concluído")
-  await page.screenshot({ path: info.outputPath("forced-colors-focus-status.png"), fullPage: true })
+  await page.screenshot({
+    path: info.outputPath("forced-colors-focus-status.png"),
+    fullPage: true,
+    mask: [page.locator("[data-approval-id] .tool-summary")],
+  })
 })
 
 test("A13b: state ink interpolates and reduced motion retains its static destination", async ({ page }) => {
@@ -125,7 +137,7 @@ test("A14: tool deltas keep insertion stable and disclosures preserve the readin
   expect(effects.reveal).toBeLessThan(1)
   expect(effects.opacity).toBeCloseTo(effects.reveal, 4)
   expect(effects.transform).not.toBe("none")
-  await card.locator(".tool-output > summary").press("Enter")
+  await card.locator(".tool-output > .ds-disclosure-trigger").press("Enter")
   await expect(card.locator(".disclosure-reveal").first()).toHaveCSS("opacity", "1")
   await expect(card.locator(".tool-output .tool-code-region")).toBeVisible()
   await expect
@@ -142,14 +154,14 @@ test("A14: tool deltas keep insertion stable and disclosures preserve the readin
   await page.emulateMedia({ reducedMotion: "reduce" })
   const list = page.getByTestId("virtual-message-list")
   await list.locator(".turn-activity-toggle").last().press("Enter")
-  const summary = list.locator(".tool-output > summary").last()
+  const summary = list.locator(".tool-output > .ds-disclosure-trigger").last()
   await summary.scrollIntoViewIfNeeded()
   const before = await summary.evaluate((node) => node.getBoundingClientRect().top)
   await summary.press("Enter")
-  await expect(summary.locator("..")).toHaveAttribute("open", "")
+  await expect(summary).toHaveAttribute("aria-expanded", "true")
   await expect.poll(() => summary.evaluate((node) => node.getBoundingClientRect().top)).toBeCloseTo(before, 0)
   await summary.press("Space")
-  await expect(summary.locator("..")).not.toHaveAttribute("open")
+  await expect(summary).toHaveAttribute("aria-expanded", "false")
 })
 
 test("A15: destination focus follows RTL push/pop with and without motion", async ({ page }) => {

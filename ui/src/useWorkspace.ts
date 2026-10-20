@@ -45,7 +45,7 @@ import { reconcileFailureNotifications } from "./sidebarAttention"
 import { getSidebarReadThreadIds } from "./sidebarThreads"
 import { updateActivityStream } from "./workspaceMemory"
 import { activeRun, activityMessage, retainWorkspace } from "./workspaceRetention"
-import { readWorkspaceState, saveWorkspaceState } from "./workspaceState"
+import { readWorkspaceState, saveWorkspaceState, type ThreadCreationStatus } from "./workspaceState"
 
 type ProcessEntry = { spec: ProcessSpec; run: ProcessRunState | null }
 
@@ -71,7 +71,7 @@ export type WorkspaceData = {
   settings: ApiRoutes["GET /settings"]["res"]["settings"] | null
   selectedBotId: Id | null
   selectedThreadId: Id | null
-  threadCreation: { thread: Thread; pending: boolean } | null
+  threadCreation: { thread: Thread; status: ThreadCreationStatus } | null
   composerKey: Id | null
   activeProjectId: Id | null
   loading: boolean
@@ -483,7 +483,38 @@ const lastActiveThread = (threads: Thread[], runs: Run[], botId: Id, rememberedI
   )
 }
 
-export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
+const getDraftThread = (botId: Id, groupId?: Id): Thread => {
+  const now = Date.now()
+  return {
+    id: groupId ? `draft:group:${groupId}` : `draft:bot:${botId}`,
+    botId,
+    groupId: groupId ?? null,
+    parentThreadId: null,
+    kind: "chat",
+    title: t("New conversation"),
+    activeLeafId: null,
+    routineRunId: null,
+    cwdOverride: null,
+    unread: 0,
+    carryoverNote: null,
+    usage: {
+      inputTokens: 0,
+      outputTokens: 0,
+      cachedInputTokens: 0,
+      costUsd: null,
+      turns: 0,
+      contextTokens: null,
+      contextWindow: null,
+    },
+    source: "local",
+    createdAt: now,
+    updatedAt: now,
+    archivedAt: null,
+  }
+}
+
+// chatOpen: a draft only becomes a real thread while the chat it belongs to is on screen.
+export const useWorkspace = (api: UiApi, enabled = true, chatOpen = true): Workspace => {
   const diagnosis = useDoctorReport(api, enabled)
   const [data, setData] = useReducer(
     (current: WorkspaceData, update: (current: WorkspaceData) => WorkspaceData) => {
@@ -494,6 +525,8 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
     emptyState,
   )
   const creatingThread = useRef(false)
+  // Bumped when a creation settles so a draft that waited on it is requested again.
+  const [threadCreationSettled, settleThreadCreation] = useReducer((count: number) => count + 1, 0)
   const currentData = useRef(data)
   currentData.current = data
   useMachineParking(api, data.bots, enabled && !data.loading)
@@ -516,14 +549,16 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
     for (const id of liveRuns.current.keys()) if (!activeIds.has(id)) liveRuns.current.delete(id)
   }, [data.runs])
   useEffect(() => {
-    if (!data.loading && data.selectedBotId && !data.threadCreation) {
-      if (data.selectedThreadId) threadsByBot.current[data.selectedBotId] = data.selectedThreadId
-      saveWorkspaceState({
-        botId: data.selectedBotId,
-        threadId: data.selectedThreadId,
-        threadsByBot: threadsByBot.current,
-      })
-    }
+    if (data.loading || !data.selectedBotId || data.threadCreation?.status === "pending") return
+
+    const threadId = data.threadCreation ? null : data.selectedThreadId
+    // The ref remembers visited conversations; local drafts never become history identifiers.
+    if (threadId) threadsByBot.current[data.selectedBotId] = threadId
+    saveWorkspaceState({
+      botId: data.selectedBotId,
+      threadId,
+      threadsByBot: threadsByBot.current,
+    })
   }, [data.loading, data.selectedBotId, data.selectedThreadId, data.threadCreation])
 
   const loadProject = useCallback(
@@ -709,8 +744,16 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
             selectedBot?.id ?? "",
             current.selectedThreadId ?? threadsByBot.current[selectedBot?.id ?? ""],
           )
-        const threadCreation = current.threadCreation?.thread.botId === selectedBot?.id ? current.threadCreation : null
-        const selectedThreadId = threadCreation ? current.selectedThreadId : (selectedThread?.id ?? null)
+        const keptCreation = current.threadCreation?.thread.botId === selectedBot?.id ? current.threadCreation : null
+        // A bot selected at startup without conversations opens the same draft a click would.
+        const selectionLost =
+          !current.selectedThreadId || !threads.some((thread) => thread.id === current.selectedThreadId)
+        const threadCreation: WorkspaceData["threadCreation"] =
+          keptCreation ??
+          (selectedBot && !selectedThread && selectionLost
+            ? { thread: getDraftThread(selectedBot.id), status: "draft" }
+            : null)
+        const selectedThreadId = threadCreation ? threadCreation.thread.id : (selectedThread?.id ?? null)
         const notifications = current.notifications.reduce(upsertNotification, notificationsResponse.notifications)
         const pendingRequests = countPendingRequests(notifications, activityResponse.messages)
         return {
@@ -741,7 +784,12 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
           selectedBotId: selectedBot?.id ?? null,
           selectedThreadId,
           threadCreation,
-          composerKey: selectedThreadId === current.selectedThreadId ? current.composerKey : null,
+          composerKey:
+            selectedThreadId === current.selectedThreadId
+              ? current.composerKey
+              : threadCreation
+                ? crypto.randomUUID()
+                : null,
           activeProjectId: selectedBot?.projectId ?? null,
           loading: false,
           loaded: true,
@@ -1108,12 +1156,25 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
         threadsByBot.current[current.selectedBotId] = current.selectedThreadId
       const thread = lastActiveThread(current.threads, current.runs, botId, threadsByBot.current[botId])
       const bot = current.bots.find((candidate) => candidate.id === botId)
+      if (!thread) {
+        const draftThread = current.loaded ? getDraftThread(botId) : null
+        const composerKey = draftThread ? crypto.randomUUID() : null
+        return {
+          ...current,
+          selectedBotId: botId,
+          threadCreation: draftThread ? { thread: draftThread, status: "draft" } : null,
+          composerKey,
+          selectedThreadId: draftThread?.id ?? null,
+          activeProjectId: bot?.projectId ?? null,
+          processes: [],
+        }
+      }
       return {
         ...current,
         selectedBotId: botId,
         threadCreation: null,
         composerKey: null,
-        selectedThreadId: thread?.id ?? null,
+        selectedThreadId: thread.id,
         activeProjectId: bot?.projectId ?? null,
         processes: [],
       }
@@ -1165,38 +1226,23 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
   const startThread = useCallback(
     async (groupId?: Id): Promise<void> => {
       if (creatingThread.current || !selectedBot) return
-      creatingThread.current = true
-      const draftThread: Thread = data.threadCreation?.thread ?? {
-        id: groupId ? `draft:group:${groupId}` : `draft:bot:${selectedBot.id}`,
-        botId: selectedBot.id,
-        groupId: groupId ?? null,
-        parentThreadId: null,
-        kind: "chat",
-        title: t("New conversation"),
-        activeLeafId: null,
-        routineRunId: null,
-        cwdOverride: null,
-        unread: 0,
-        carryoverNote: null,
-        usage: {
-          inputTokens: 0,
-          outputTokens: 0,
-          cachedInputTokens: 0,
-          costUsd: null,
-          turns: 0,
-          contextTokens: null,
-          contextWindow: null,
-        },
-        source: "local",
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-        archivedAt: null,
-      }
+      const draftThread = data.threadCreation?.thread ?? getDraftThread(selectedBot.id, groupId)
       const composerKey = data.threadCreation ? data.composerKey : crypto.randomUUID()
+      // A paused bot keeps the draft; the effect below requests the thread once it resumes.
+      if (selectedBot.paused && !draftThread.groupId) {
+        setData((current) => ({
+          ...current,
+          selectedThreadId: draftThread.id,
+          threadCreation: { thread: draftThread, status: "draft" },
+          composerKey,
+        }))
+        return
+      }
+      creatingThread.current = true
       setData((current) => ({
         ...current,
         selectedThreadId: draftThread.id,
-        threadCreation: { thread: draftThread, pending: true },
+        threadCreation: { thread: draftThread, status: "pending" },
         composerKey,
       }))
       try {
@@ -1214,15 +1260,33 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
       } catch {
         setData((current) =>
           current.selectedThreadId === draftThread.id
-            ? { ...current, threadCreation: { thread: draftThread, pending: false } }
+            ? { ...current, threadCreation: { thread: draftThread, status: "failed" } }
             : current,
         )
       } finally {
         creatingThread.current = false
+        settleThreadCreation()
       }
     },
     [api, selectedBot, data.threadCreation, data.composerKey],
   )
+  // A bot picked without threads opens a draft; request the real thread once the bot can answer.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a settled creation must retry a draft that waited on it
+  useEffect(() => {
+    const draft = data.threadCreation
+    if (!enabled || !data.loaded || !chatOpen) return
+    if (draft?.status !== "draft" || selectedBot?.id !== draft.thread.botId || selectedBot.paused) return
+    void startThread(draft.thread.groupId ?? undefined)
+  }, [
+    enabled,
+    data.loaded,
+    chatOpen,
+    data.threadCreation,
+    selectedBot?.id,
+    selectedBot?.paused,
+    startThread,
+    threadCreationSettled,
+  ])
   const createGroupThread = useCallback((id: string) => startThread(id), [startThread])
   const createThread = useCallback(
     () => startThread(selectedThread?.groupId ?? undefined),
@@ -1518,14 +1582,15 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
       if (current.selectedBotId && current.selectedThreadId && !current.threadCreation)
         threadsByBot.current[current.selectedBotId] = current.selectedThreadId
       const fallback = lastActiveThread(current.threads, current.runs, botId, threadsByBot.current[botId])
+      const draftThread = !target && !fallback && current.loaded ? getDraftThread(botId) : null
       return {
         ...current,
         selectedBotId: botId,
-        threadCreation: null,
-        composerKey: null,
+        threadCreation: draftThread ? { thread: draftThread, status: "draft" } : null,
+        composerKey: draftThread ? crypto.randomUUID() : null,
         activeProjectId: current.bots.find((candidate) => candidate.id === botId)?.projectId ?? null,
         processes: [],
-        selectedThreadId: target?.id ?? fallback?.id ?? null,
+        selectedThreadId: target?.id ?? fallback?.id ?? draftThread?.id ?? null,
         threads: current.threads.map((candidate) =>
           candidate.id === target?.id ? { ...candidate, unread: 0 } : candidate,
         ),
@@ -1688,7 +1753,12 @@ export const useWorkspace = (api: UiApi, enabled = true): Workspace => {
           return
         }
 
-        setData((current) => withoutBot(current, botId))
+        const notice = t(
+          "O bot foi removido. A limpeza do histórico e dos anexos continua em segundo plano.",
+          {},
+          getDocumentLocale(document.documentElement),
+        )
+        setData((current) => ({ ...withoutBot(current, botId), notice }))
       },
       createBot,
       machineAction,

@@ -189,7 +189,8 @@ export const compactMessageBatch = async ({
     const next = expired ? summarizeParts(parts) : parts
     const externalized = await externalizeMessagePartsAsync({ database, appData, parts: next })
     const json = JSON.stringify(externalized)
-    if (commitProjection({ row, original, parts, json, expired })) changed = true
+    const committed = withoutBusyWait(database, () => commitProjection({ row, original, parts, json, expired }))
+    if (committed) changed = true
   }
   return { cursor: rows.length === 0 ? total : nextCursor, changed }
 }
@@ -441,10 +442,12 @@ export const createStorageMaintenance = ({
   let collectionDeferrals = 0
   let timer: ReturnType<typeof setTimeout> | undefined
   const save = (value = progress) =>
-    database
-      .query(`INSERT INTO settings(key,value_json,updated_at) VALUES (?,?,?)
+    withoutBusyWait(database, () =>
+      database
+        .query(`INSERT INTO settings(key,value_json,updated_at) VALUES (?,?,?)
     ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at = excluded.updated_at`)
-      .run(progressKey, JSON.stringify(value), Date.now())
+        .run(progressKey, JSON.stringify(value), Date.now()),
+    )
   // This lifecycle owns the timer and in-flight flag; host latency never delays a compaction step.
   const retryController = new AbortController()
   let retryTimer: ReturnType<typeof setTimeout> | undefined
@@ -521,7 +524,8 @@ export const createStorageMaintenance = ({
       if (progress.changed || manual) publishResync()
       const compact = () =>
         compactTranscript(manual ? { database, events: 0, entriesPerThread: 0, maxAgeMs: 0 } : { database })
-      if (runStage ? runStage("transcript_retention", compact) : compact()) {
+      const compactWithoutWait = () => withoutBusyWait(database, compact)
+      if (runStage ? runStage("transcript_retention", compactWithoutWait) : compactWithoutWait()) {
         timer = schedule(step, 10)
         return
       }
@@ -606,5 +610,16 @@ export const createStorageMaintenance = ({
       upgrade.dispose()
       clearTimeout(timer)
     },
+  }
+}
+
+const withoutBusyWait = <Value>(database: Database, operation: () => Value): Value => {
+  const previous = (database.query("PRAGMA busy_timeout").get() as { timeout: number }).timeout
+  // Only synchronous maintenance runs inside this scope; live requests retain their connection policy.
+  database.exec("PRAGMA busy_timeout = 0")
+  try {
+    return operation()
+  } finally {
+    database.exec(`PRAGMA busy_timeout = ${previous}`)
   }
 }

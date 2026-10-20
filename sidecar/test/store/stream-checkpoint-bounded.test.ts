@@ -49,6 +49,27 @@ test("committed stream batches preserve offsets across concurrent replies", asyn
   expect(fixture.getOffsets()).toEqual([0, 0, 5, 6])
 })
 
+test("a peer's stream commit cannot republish transcript rows from a deletion already in progress", async () => {
+  const fixture = await getFixture()
+  fixture.database.exec(`INSERT INTO bots(id, name, provider, home_dir, created_at, updated_at)
+    SELECT 'deleted-bot', 'Synthetic', provider, '/synthetic/deleted-bot', 1, 1 FROM bots WHERE id = 'bot';
+    INSERT INTO threads(id, bot_id, title, created_at, updated_at)
+    VALUES ('deleted-thread', 'deleted-bot', 'Synthetic', 1, 1);
+    INSERT INTO bot_deletions(bot_id, delete_volumes, phase, created_at, updated_at)
+    VALUES ('deleted-bot', 0, 'messages', 1, 1);
+    INSERT INTO transcript_entries(thread_id, seq, generation, event_json, at)
+    VALUES ('deleted-thread', 1, 1, '{"type":"message.delta","threadId":"deleted-thread","delta":"private-synthetic"}', 1)`)
+
+  fixture.writer.appendDelta({ threadId: "thread", messageId: "first", partIndex: 0, delta: "still working" })
+  fixture.writer.flush()
+  await fixture.writer.drainAsync()
+
+  expect(fixture.getTexts()[0]).toBe("still working")
+  expect(
+    fixture.database.query("SELECT seq FROM ui_event_log WHERE event_json LIKE '%private-synthetic%'").all(),
+  ).toEqual([])
+})
+
 test("a busy stream batch retries without losing either reply", async () => {
   const fixture = await getFixture()
   await fixture.writer.ready

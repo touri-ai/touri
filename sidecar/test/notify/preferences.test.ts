@@ -126,8 +126,14 @@ test.each([
   { bots: [] },
   { quietHours: { enabled: true, start: "25:00", end: "08:00" } },
   { quietHours: { enabled: true, start: "22:00", end: "08:00", timeZone: "unknown-zone" } },
+  { sound: { attention: true, replies: false, volume: 101 } },
+  { sound: { attention: "yes" } },
 ])("invalid notification preferences are rejected: %j", (preferences) => {
   expect(isNotificationPreferences(preferences)).toBe(false)
+})
+
+test("sound preferences accept the attention, reply and volume controls", () => {
+  expect(isNotificationPreferences({ sound: { attention: true, replies: false, volume: 45 } })).toBe(true)
 })
 
 test("muted records remain stored, pending and published while native delivery is suppressed", async () => {

@@ -100,10 +100,10 @@
   padding-top: 20px;
   border-top: 1px solid var(--border);
 }
-.report-preview details {
+.report-preview .ds-disclosure {
   margin-bottom: 16px;
 }
-.report-preview summary {
+.report-preview .ds-disclosure-trigger {
   cursor: pointer;
 }
 .report-preview figure {

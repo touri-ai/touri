@@ -30,9 +30,9 @@ for (const theme of ["light", "dark"] as const) {
     await expect(card.getByRole("button", { name: "Criar time" })).toBeVisible()
     await expect(card).toContainText("Navegador e controle do computador desativados")
     await expect(card).toContainText("Instalação ou login pendente")
-    await expect(card.locator("details")).toHaveCount(3)
-    for (const instructions of await card.locator("details").all()) {
-      await expect(instructions).toHaveAttribute("open", "")
+    await expect(card.locator(".ds-disclosure")).toHaveCount(3)
+    for (const instructions of await card.locator(".ds-disclosure").all()) {
+      await expect(instructions).toHaveAttribute("data-open", "true")
       await expect(instructions.locator("pre")).toBeVisible()
     }
     expect((await getState(page)).bots).toHaveLength(1)

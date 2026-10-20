@@ -10,7 +10,7 @@ test.beforeEach(async ({ page }) => {
   await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
 })
 
-test("r4 approval center is above the chat and allows an explicit decision", async ({ page }) => {
+test("r4 approval center is above the chat and sends the decision to the full card", async ({ page }) => {
   await page.evaluate(() =>
     (window as unknown as VisualWindow).r4Api.notify({
       kind: "approval",
@@ -23,8 +23,8 @@ test("r4 approval center is above the chat and allows an explicit decision", asy
   await page.getByRole("button", { name: "Notificações, 1 precisa de atenção" }).click()
   const center = page.getByRole("region", { name: "Central de notificações" })
   await expect(center).toBeVisible()
-  await expect(center.getByRole("button", { name: "Aprovar" })).toBeVisible()
-  await expect(center.getByRole("button", { name: "Negar" })).toBeVisible()
+  await expect(center.getByRole("button", { name: "Abrir e revisar" })).toBeVisible()
+  await expect(center.getByRole("button", { name: "Aprovar" })).toHaveCount(0)
   expect(
     await center.evaluate((element) => {
       const box = element.getBoundingClientRect()
@@ -32,7 +32,7 @@ test("r4 approval center is above the chat and allows an explicit decision", asy
     }),
   ).toBe(true)
   await page.screenshot({ path: `${evidence}/notifications.png` })
-  await center.getByRole("button", { name: "Negar" }).click()
+  await center.getByRole("button", { name: "Abrir e revisar" }).click()
   await expect(page.getByRole("button", { name: "Notificações", exact: true })).toBeVisible()
 })
 

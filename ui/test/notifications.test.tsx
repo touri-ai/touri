@@ -5,8 +5,11 @@ import type { TauriInvoke } from "../src/api/client"
 import { createMockApi } from "../src/api/mock"
 import { type DeepLink, parseDeepLink } from "../src/deepLink"
 import { t } from "../src/i18n"
+import type { DeepLinkRequest } from "../src/nativeDeepLinks"
 
-const nativeLinks = vi.hoisted(() => ({ handler: null as ((event: { payload: DeepLink }) => void) | null }))
+const nativeLinks = vi.hoisted(() => ({ handler: null as ((event: { payload: DeepLinkRequest }) => void) | null }))
+const sound = vi.hoisted(() => ({ play: vi.fn(), unlock: vi.fn() }))
+vi.mock("../src/notificationAudio", () => ({ createBellAudioSink: () => sound }))
 vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn((name: string, handler: (event: { payload: DeepLink }) => void) => {
     if (name !== "deep-link") return Promise.resolve(() => undefined)
@@ -18,9 +21,35 @@ vi.mock("@tauri-apps/api/event", () => ({
 }))
 
 afterEach(() => {
+  sound.play.mockClear()
   vi.restoreAllMocks()
   window.history.replaceState(null, "", "/")
   Reflect.deleteProperty(window, "__TAURI_INTERNALS__")
+})
+
+const setFocusedWindow = () => vi.spyOn(document, "hasFocus").mockReturnValue(true)
+
+it("sounds for the selected conversation while the user is viewing another page", async () => {
+  setFocusedWindow()
+  const api = createMockApi()
+  render(<App kernel={{ services: { api } }} />)
+  await screen.findByRole("textbox", { name: "Mensagem para mark" })
+  fireEvent.click(screen.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
+  fireEvent.click(screen.getByRole("button", { name: "Integrações", exact: true }))
+  await waitFor(() => expect(screen.queryByRole("textbox", { name: "Mensagem para mark" })).not.toBeInTheDocument())
+
+  act(() => {
+    api.notify({
+      kind: "question",
+      title: "Escolher ambiente",
+      body: "Qual ambiente usar?",
+      botId: "bot-mark",
+      threadId: "thread-mark",
+      requestId: "question-another-page",
+    })
+  })
+
+  await waitFor(() => expect(sound.play).toHaveBeenCalledOnce())
 })
 
 it("keeps the capped notification badge in the bell's accessible name", async () => {
@@ -45,7 +74,7 @@ it("keeps the capped notification badge in the bell's accessible name", async ()
   expect(t("Notifications over nine need attention", {}, "en")).toBe("Notifications, 9+ need attention")
 })
 
-it("shows a badge for attention items and answers an approval from the bell", async () => {
+it("shows a badge for attention items and never decides an approval from the bell", async () => {
   const api = createMockApi()
   render(<App kernel={{ services: { api } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
@@ -62,17 +91,10 @@ it("shows a badge for attention items and answers an approval from the bell", as
   const bell = await screen.findByRole("button", { name: "Notificações, 1 precisa de atenção" })
   fireEvent.click(bell)
   expect(await screen.findByText("rm -rf build")).toBeVisible()
-  fireEvent.click(screen.getByRole("button", { name: "Aprovar" }))
-  await waitFor(() =>
-    expect(
-      api.calls.some(
-        (call) =>
-          call.route === "POST /threads/:id/respond" &&
-          JSON.stringify(call.input) === JSON.stringify({ requestId: "req-1", behavior: "allow" }),
-      ),
-    ).toBe(true),
-  )
-  await waitFor(() => expect(screen.getByRole("button", { name: "Notificações" })).toBeVisible())
+  expect(screen.queryByRole("button", { name: "Aprovar" })).toBeNull()
+  expect(screen.queryByRole("button", { name: "Negar" })).toBeNull()
+  expect(screen.getByRole("button", { name: "Abrir e revisar" })).toBeVisible()
+  expect(api.calls.some((call) => call.route === "POST /threads/:id/respond")).toBe(false)
 })
 
 it("replies to a question through the respond endpoint and dismisses a failure", async () => {
@@ -140,10 +162,34 @@ it("opens a notification's bot and thread from the touri tab", async () => {
     })
   })
   fireEvent.click(await screen.findByRole("button", { name: "Notificações, 1 precisa de atenção" }))
-  fireEvent.click(screen.getByRole("button", { name: "Abrir" }))
+  fireEvent.click(screen.getByRole("button", { name: "Ver conversa" }))
   await screen.findByRole("textbox", { name: "Mensagem para onb" })
   expect(screen.getByRole("tab", { name: /^Bots,/ })).toHaveAttribute("aria-selected", "true")
   expect(screen.getByRole("button", { name: /Notification target/ })).toHaveClass("selected")
+})
+
+it("shows the needs-you bar and focuses the selected pending card", async () => {
+  const api = createMockApi()
+  api.notify({
+    kind: "question",
+    title: "Escolher ambiente",
+    body: "Qual ambiente usar?",
+    botId: "bot-onb",
+    threadId: "thread-onb",
+    requestId: "question-focus",
+  })
+  render(<App kernel={{ services: { api } }} />)
+  await screen.findByRole("textbox", { name: "Mensagem para mark" })
+
+  const bar = screen.getAllByRole("button", { name: "Abrir pendência de onb" })[0]
+  expect(bar).toBeDefined()
+  expect(bar).toHaveTextContent("Precisa de você")
+  fireEvent.click(bar)
+
+  await screen.findByRole("textbox", { name: "Mensagem para onb" })
+  const row = await screen.findByTestId("notification-row")
+  expect(row).toHaveTextContent("Qual ambiente usar?")
+  expect(row).toHaveFocus()
 })
 
 it("opens a native touri:// deep link from the touri tab", async () => {
@@ -166,6 +212,69 @@ it("opens a native touri:// deep link from the touri tab", async () => {
   await screen.findByRole("textbox", { name: "Mensagem para onb" })
   expect(screen.getByRole("tab", { name: /^Bots,/ })).toHaveAttribute("aria-selected", "true")
   expect(screen.getByRole("button", { name: /Native link target/ })).toHaveClass("selected")
+})
+
+it("opens and focuses the exact card from a native notification click", async () => {
+  Object.defineProperty(window, "__TAURI_INTERNALS__", { value: {}, configurable: true })
+  const api = createMockApi()
+  const { thread } = await api.request("POST /threads", { botId: "bot-onb", title: "Native card target" })
+  const notification = api.notify({
+    kind: "question",
+    title: "Escolher ambiente",
+    body: "Qual ambiente usar?",
+    botId: "bot-onb",
+    threadId: thread.id,
+    requestId: "native-question",
+  })
+  const invoke = (async (command: string) => {
+    if (command === "server_mode_status") return { mode: "local", url: null }
+    if (command === "deep_link_pending") return null
+    return {}
+  }) as TauriInvoke
+  render(<App kernel={{ services: { api, invoke } }} />)
+  await screen.findByRole("textbox", { name: "Mensagem para mark" })
+  await waitFor(() => expect(nativeLinks.handler).not.toBeNull())
+
+  act(() => {
+    nativeLinks.handler?.({
+      payload: { bot: "bot-onb", thread: thread.id, notificationId: notification.id, requestId: 1 },
+    })
+  })
+
+  await screen.findByRole("textbox", { name: "Mensagem para onb" })
+  const row = await screen.findByTestId("notification-row")
+  expect(row).toHaveTextContent("Qual ambiente usar?")
+  expect(row).toHaveFocus()
+})
+
+it("keeps the clicked conversation when another workspace reuses the notification id", async () => {
+  Object.defineProperty(window, "__TAURI_INTERNALS__", { value: {}, configurable: true })
+  const api = createMockApi()
+  const notification = api.notify({
+    kind: "question",
+    title: "Outra pendência",
+    body: "Qual ambiente usar?",
+    botId: "bot-mark",
+    threadId: "thread-mark",
+    requestId: "other-workspace-question",
+  })
+  const invoke = (async (command: string) => {
+    if (command === "server_mode_status") return { mode: "local", url: null }
+    if (command === "deep_link_pending") return null
+    return {}
+  }) as TauriInvoke
+  render(<App kernel={{ services: { api, invoke } }} />)
+  await screen.findByRole("textbox", { name: "Mensagem para mark" })
+  await waitFor(() => expect(nativeLinks.handler).not.toBeNull())
+
+  act(() => {
+    nativeLinks.handler?.({
+      payload: { bot: "bot-onb", thread: "thread-onb", notificationId: notification.id, requestId: 1 },
+    })
+  })
+
+  await screen.findByRole("textbox", { name: "Mensagem para onb" })
+  expect(screen.queryByRole("region", { name: "Central de notificações" })).not.toBeInTheDocument()
 })
 
 it("clears ordinary notifications while guiding uncertain work to the recovery center", async () => {

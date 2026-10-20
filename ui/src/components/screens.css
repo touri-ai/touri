@@ -199,25 +199,25 @@
   font-size: var(--fs-meta);
   line-height: var(--leading-body);
 }
-.screen-provider-card details {
+.screen-provider-card .ds-disclosure {
   color: var(--text-2);
   font-size: var(--fs-caption);
   line-height: var(--leading-body);
 }
-.screen-provider-card summary {
+.screen-provider-card .ds-disclosure-trigger {
   cursor: pointer;
   color: var(--text);
 }
-.screen-provider-card details p {
+.screen-provider-card .ds-disclosure-content p {
   margin: var(--space-12) 0;
   overflow-wrap: anywhere;
 }
-.screen-provider-card details code {
+.screen-provider-card .ds-disclosure-content code {
   display: block;
   overflow-wrap: anywhere;
   font-family: var(--font-mono);
 }
-.screen-provider-card details a {
+.screen-provider-card .ds-disclosure-content a {
   display: block;
   margin-top: var(--space-12);
   color: var(--link);
@@ -293,15 +293,12 @@
 .screen-gateway-tools {
   padding: var(--screen-card-padding);
 }
-.screen-gateway-tools > summary {
-  display: flex;
-  gap: var(--space-12);
-  cursor: pointer;
-  font-size: var(--fs-body);
+.screen-gateway-tools > .ds-disclosure-trigger {
+  font-size: var(--fs-meta);
   font-weight: var(--weight-medium);
 }
-.screen-gateway-tools > summary > span {
-  margin-left: auto;
+.screen-gateway-tools > .ds-disclosure-trigger > span:last-child > span {
+  margin-left: var(--space-8);
   color: var(--text-2);
 }
 .screen-gateway-list {
@@ -630,17 +627,25 @@
   z-index: 1;
   background: var(--surface);
   padding: var(--space-12) var(--space-16);
-  font-size: var(--fs-body);
+  font-size: var(--fs-emphasis);
+  font-weight: var(--weight-semibold);
 }
 .notification-header-actions {
   display: flex;
   gap: var(--space-12);
   align-items: center;
 }
-.r8-notifications .notification-header-actions button:last-child {
-  width: 24px;
-  height: 24px;
+.r8-notifications .notification-header-actions .notification-close {
+  width: 40px;
+  min-width: 40px;
+  padding: 0;
   font-size: var(--fs-emphasis);
+}
+@media (max-width: 640px) {
+  .r8-notifications .notification-header-actions .notification-close {
+    width: 44px;
+    min-width: 44px;
+  }
 }
 .r8-notifications .notification-group h2 {
   margin: 0;
@@ -654,6 +659,9 @@
   gap: var(--space-12);
   border-color: var(--border);
 }
+.r8-notifications .notification-row[data-unread="true"] {
+  background: color-mix(in srgb, var(--accent-info) 6%, transparent);
+}
 .r8-notifications .notification-row:last-child {
   border-bottom: 0;
 }
@@ -664,37 +672,42 @@
 .r8-notifications .notification-head {
   flex-wrap: wrap;
   gap: var(--space-8);
+  font-size: var(--fs-meta);
 }
 .r8-notifications .notification-head strong {
   color: var(--text);
+  font-weight: var(--weight-semibold);
+}
+.r8-notifications .notification-head time {
+  font-size: var(--fs-caption);
 }
 .r8-notifications .notification-title {
-  font-weight: var(--weight-medium);
   margin-top: var(--space-8);
+  color: var(--text);
+  font-size: var(--fs-body);
+  font-weight: var(--weight-semibold);
 }
 .r8-notifications .notification-body {
-  margin-top: var(--space-8);
+  margin-top: var(--space-4);
+  color: var(--text-2);
+  font-size: var(--fs-meta);
   line-height: var(--leading-body);
   -webkit-line-clamp: 3;
   overflow-wrap: anywhere;
 }
-.r8-notifications .notification-links {
+.r8-notifications .notification-technical {
   margin-top: var(--space-8);
-  gap: var(--space-12);
+  font-size: var(--fs-meta);
 }
-.r8-notifications .notification-links button {
-  padding: 0;
-  color: var(--link);
-}
-.r8-notifications .notification-buttons {
+.r8-notifications .notification-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-8);
   margin-top: var(--space-8);
 }
-.r8-notifications .notification-buttons button {
-  min-height: 30px;
-  color: var(--text);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-sm);
-  padding: var(--space-4) var(--space-8);
+.r8-notifications .notification-reply {
+  align-items: center;
 }
 .r8-notifications .notification-empty {
   padding: var(--space-28) var(--space-20);
@@ -786,6 +799,17 @@
   }
   .r8-notifications .notification-body {
     -webkit-line-clamp: 4;
+  }
+}
+@media (max-width: 640px) {
+  .notification-center > .notification-bell {
+    width: 44px;
+    min-width: 44px;
+    height: 44px;
+  }
+  .r8-notifications .notification-header-actions .notification-close {
+    width: 44px;
+    min-width: 44px;
   }
 }
 /* End r8 screens. */

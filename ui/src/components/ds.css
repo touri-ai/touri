@@ -1,0 +1,152 @@
+/* Design system v2 components: buttons, badges, unread counter and Disclosure. Roles come from tokens.css. */
+.ds-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-8);
+  min-height: 40px;
+  padding: 0 var(--space-16);
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-meta);
+  font-weight: var(--weight-semibold);
+  line-height: 1.2;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.ds-button:disabled {
+  opacity: var(--opacity-disabled);
+  cursor: not-allowed;
+}
+.ds-button-primary {
+  background: var(--brand);
+  color: var(--text-on-accent);
+}
+.ds-button-primary:hover:not(:disabled) {
+  background: var(--surface-settings-primary-hover);
+}
+.ds-button-secondary {
+  background: var(--raised);
+  border-color: var(--border-strong);
+}
+.ds-button-secondary:hover:not(:disabled) {
+  background: var(--overlay);
+}
+.ds-button-quiet {
+  color: var(--text-2);
+  font-weight: var(--weight-medium);
+}
+.ds-button-quiet:hover:not(:disabled) {
+  background: var(--raised);
+  color: var(--text);
+}
+.ds-button-link-action {
+  padding: 0 var(--space-4);
+  color: var(--link);
+  font-weight: var(--weight-medium);
+}
+.ds-button-link-action:hover:not(:disabled) {
+  text-decoration: underline;
+}
+.ds-button-destructive {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+.ds-button-destructive:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
+}
+.ds-button:focus-visible,
+.ds-disclosure-trigger:focus-visible {
+  outline: 2px solid var(--info);
+  outline-offset: 2px;
+}
+@media (pointer: coarse), (max-width: 640px) {
+  .ds-button {
+    min-height: var(--touch-target-size);
+  }
+}
+
+.ds-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--space-2) var(--space-8);
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--badge-role) var(--tint), transparent);
+  color: var(--badge-role);
+  font-size: var(--fs-caption);
+  font-weight: var(--weight-semibold);
+  line-height: 1.4;
+  white-space: nowrap;
+}
+.ds-badge-neutral {
+  --badge-role: var(--text-2);
+}
+.ds-badge-info {
+  --badge-role: var(--link);
+}
+.ds-badge-success {
+  --badge-role: var(--success);
+}
+.ds-badge-warning {
+  --badge-role: var(--warning);
+}
+.ds-badge-danger {
+  --badge-role: var(--danger);
+}
+
+.ds-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-pill);
+  background: var(--brand);
+  color: var(--text-on-accent);
+  font-size: var(--fs-caption);
+  font-weight: var(--weight-bold);
+  line-height: 1;
+}
+
+.ds-disclosure-trigger {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  width: 100%;
+  min-height: 32px;
+  padding: var(--space-4) 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
+  font-weight: var(--weight-medium);
+  text-align: start;
+  cursor: pointer;
+}
+.ds-disclosure-trigger:hover {
+  color: var(--text);
+}
+.ds-disclosure-chevron {
+  flex: none;
+  transition: rotate var(--motion-base) ease;
+}
+.ds-disclosure[data-open="true"] > .ds-disclosure-trigger > .ds-disclosure-chevron {
+  rotate: 90deg;
+}
+.ds-disclosure-content[hidden] {
+  display: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ds-disclosure-chevron {
+    transition: none;
+  }
+}
+@media (pointer: coarse), (max-width: 640px) {
+  .ds-disclosure-trigger {
+    min-height: var(--touch-target-size);
+  }
+}

@@ -19,6 +19,7 @@ import { isNativeDesktop, useIsServerMode } from "../features/server/serverMode"
 import { getHostLabel, t } from "../i18n"
 import { hostComputerSupported } from "../platform"
 import { useHost } from "../useHost"
+import { Disclosure } from "./Disclosure"
 import { Modal } from "./Modal"
 import {
   SettingsDisclosure,
@@ -380,18 +381,14 @@ export const SettingsModal = ({
                   />
                 )}
                 <SettingsGroup>
-                  <details
+                  <Disclosure
                     className="settings-technical-details"
-                    ref={(details) => {
-                      if (
-                        details &&
-                        (focusSetting === "vmMemory" ||
-                          Boolean(error && (!Number.isInteger(vmMemory) || vmMemory < 512 || vmMemory > 16384)))
-                      )
-                        details.open = true
-                    }}
+                    openWhen={
+                      focusSetting === "vmMemory" ||
+                      Boolean(error && (!Number.isInteger(vmMemory) || vmMemory < 512 || vmMemory > 16384))
+                    }
+                    summary={t("Detalhes técnicos")}
                   >
-                    <summary>{t("Detalhes técnicos")}</summary>
                     <SettingsRow
                       title={SETTINGS.vmMemory.label}
                       description={SETTINGS.vmMemory.description}
@@ -407,7 +404,7 @@ export const SettingsModal = ({
                         onChange={(event) => setVmMemory(Number(event.target.value))}
                       />
                     </SettingsRow>
-                  </details>
+                  </Disclosure>
                   <label
                     className="toggle-row"
                     htmlFor={SETTINGS.resumeInterruptedTurns.controlId}

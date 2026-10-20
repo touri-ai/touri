@@ -1,7 +1,6 @@
 /* Alternate input and system palettes share the same controls and readable status copy. */
 @media (pointer: coarse) {
-  :is(.bot-sidebar, .chat-toolbar, .bot-panel, .bot-panel-tabs, .bot-context-menu, .tool-card, .composer)
-    :is(button, summary),
+  :is(.bot-sidebar, .chat-toolbar, .bot-panel, .bot-panel-tabs, .bot-context-menu, .tool-card, .composer) button,
   .activity-approval-link {
     min-width: var(--touch-target-size) !important;
     min-height: var(--touch-target-size) !important;
@@ -17,7 +16,7 @@
     display: inline-flex;
     align-items: center;
   }
-  .tool-details > summary {
+  .tool-details > .ds-disclosure-trigger {
     align-content: center;
   }
   .bot-sidebar .traffic-light-row {
@@ -68,7 +67,7 @@
     color: LinkText;
     text-decoration-color: currentColor;
   }
-  :root body :is(button, a, summary, input, textarea, select, [tabindex]):focus-visible {
+  :root body :is(button, a, input, textarea, select, [tabindex]):focus-visible {
     outline: 2px solid Highlight;
     outline-offset: 3px;
   }

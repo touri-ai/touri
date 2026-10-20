@@ -11,6 +11,7 @@ export const isRoutineConversation = ({
   routineRuns: readonly RoutineRun[]
   routines: readonly Routine[]
 }): boolean => {
+  if (thread.kind === "main") return false
   if (thread.kind === "routine") return true
   if (thread.routineRunId !== null && thread.routineRunId !== undefined) return true
   if (runs.some((run) => run.threadId === thread.id && isRoutineRun(run))) return true

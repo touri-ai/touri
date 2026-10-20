@@ -77,9 +77,9 @@ it("shows a new notice's stage and safe cause with a secondary code and relative
   expect(card).toHaveTextContent("Conexão selada · A conexão selada da máquina não ficou pronta a tempo.")
   const code = within(card).getByText("TOURI-E1008")
   expect(code.tagName).toBe("CODE")
-  expect(code.closest("details")).not.toHaveAttribute("open")
-  fireEvent.click(within(card).getByText("Detalhes do erro"))
-  expect(code.closest("details")).toHaveAttribute("open")
+  expect(code.closest(".ds-disclosure")).toHaveAttribute("data-open", "false")
+  fireEvent.click(within(card).getByRole("button", { name: "Detalhes do erro" }))
+  expect(code.closest(".ds-disclosure")).toHaveAttribute("data-open", "true")
   expect(within(card).getByText("falhou ontem às 20:58")).toHaveAttribute("datetime", new Date(failedAt).toISOString())
 })
 

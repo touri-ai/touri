@@ -12,7 +12,7 @@ afterEach(() => {
   })
 })
 
-test("the store uses WAL with synchronous=NORMAL so commits do not wait on the disk", () => {
+test("the store sets WAL/NORMAL on new and reopened connections without per-commit syncs", () => {
   const root = mkdtempSync(join(tmpdir(), "touri-db-pragmas-"))
   roots.push(root)
 
@@ -20,9 +20,15 @@ test("the store uses WAL with synchronous=NORMAL so commits do not wait on the d
   const journal = database.query("PRAGMA journal_mode").get() as { journal_mode: string }
   const synchronous = database.query("PRAGMA synchronous").get() as { synchronous: number }
   database.close()
+  const reopened = openDatabase({ filename: join(root, "touri.db") })
+  const reopenedJournal = reopened.query("PRAGMA journal_mode").get() as { journal_mode: string }
+  const reopenedSynchronous = reopened.query("PRAGMA synchronous").get() as { synchronous: number }
+  reopened.close()
 
   expect(journal.journal_mode).toBe("wal")
   expect(synchronous.synchronous).toBe(1)
+  expect(reopenedJournal.journal_mode).toBe("wal")
+  expect(reopenedSynchronous.synchronous).toBe(1)
 })
 
 test("the store keeps a 64 MB page cache so hot pages are not re-read from the disk", () => {

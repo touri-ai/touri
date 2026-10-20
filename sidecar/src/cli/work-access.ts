@@ -71,6 +71,7 @@ export const createWorkAccess = ({ database, authStore }: { database: Database; 
     return (
       database
         .query(`SELECT b.id FROM bots b WHERE b.archived_at IS NULL
+          AND NOT EXISTS (SELECT 1 FROM bot_deletions d WHERE d.bot_id = b.id)
           AND (b.responsible_person_id = ? OR (b.responsible_person_id IS NULL AND ? = 'owner') ${groupAccess})
           ORDER BY b.sort_order ASC, b.created_at ASC LIMIT 500`)
         .all(personId, personId, ...channelIds) as Array<{ id: string }>
@@ -318,6 +319,7 @@ export const createWorkAccess = ({ database, authStore }: { database: Database; 
       if (botId) return ownsBot({ personId, botId }) ? null : denied
       return database
         .query(`SELECT 1 FROM bots WHERE archived_at IS NULL
+        AND NOT EXISTS (SELECT 1 FROM bot_deletions WHERE bot_id = bots.id)
         AND (responsible_person_id = ? OR (responsible_person_id IS NULL AND ? = 'owner')) LIMIT 1`)
         .get(personId, personId)
         ? null

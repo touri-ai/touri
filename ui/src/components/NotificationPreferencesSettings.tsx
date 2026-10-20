@@ -74,6 +74,9 @@ export const NotificationPreferencesSettings = ({
   const quiet = value.quietHours ?? { enabled: false, start: "22:00", end: "08:00" }
   const saveQuiet = (patch: Partial<NonNullable<NotificationPreferences["quietHours"]>>) =>
     onChange({ ...value, quietHours: { ...quiet, ...patch } })
+  const sound = value.sound ?? {}
+  const saveSound = (patch: Partial<NonNullable<NotificationPreferences["sound"]>>) =>
+    onChange({ ...value, sound: { ...sound, ...patch } })
 
   return (
     <div className="notification-preferences">
@@ -143,6 +146,40 @@ export const NotificationPreferencesSettings = ({
             : "Usar padrão mantém a preferência atual de cada bot.",
         )}
       </p>
+      {!scopeId && (
+        <fieldset>
+          <legend>{t("Som")}</legend>
+          <label className="notification-preference-row" htmlFor={`${controlsId}-attention-sound`}>
+            <span>{t("Som para o que precisa de você")}</span>
+            <SettingsSwitch
+              id={`${controlsId}-attention-sound`}
+              checked={sound.attention !== false}
+              onChange={(event) => saveSound({ attention: event.target.checked })}
+            />
+          </label>
+          <label className="notification-preference-row" htmlFor={`${controlsId}-reply-sound`}>
+            <span>{t("Som para cada resposta")}</span>
+            <SettingsSwitch
+              id={`${controlsId}-reply-sound`}
+              checked={sound.replies === true}
+              onChange={(event) => saveSound({ replies: event.target.checked })}
+            />
+          </label>
+          <label className="notification-sound-volume" htmlFor={`${controlsId}-sound-volume`}>
+            <span>{t("Volume do som")}</span>
+            <input
+              id={`${controlsId}-sound-volume`}
+              type="range"
+              min="0"
+              max="100"
+              step="5"
+              value={sound.volume ?? 45}
+              onChange={(event) => saveSound({ volume: Number(event.target.value) })}
+            />
+          </label>
+          <p>{t("O som respeita o horário silencioso e os períodos de silêncio do sistema detectáveis.")}</p>
+        </fieldset>
+      )}
       <fieldset>
         <legend>{t("Horário silencioso")}</legend>
         <label className="notification-preference-row" htmlFor={`${controlsId}-quiet`}>

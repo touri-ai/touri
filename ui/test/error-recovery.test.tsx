@@ -61,9 +61,9 @@ afterEach(() => vi.useRealTimers())
 const expectClosedDiagnostics = (container: HTMLElement) => {
   const details = container.querySelectorAll(".error-details")
   expect(details.length).toBeGreaterThan(0)
-  for (const detail of details) expect(detail).not.toHaveAttribute("open")
+  for (const detail of details) expect(detail).toHaveAttribute("data-open", "false")
   const visible = container.cloneNode(true) as HTMLElement
-  for (const detail of visible.querySelectorAll("details")) detail.remove()
+  for (const detail of visible.querySelectorAll(".ds-disclosure")) detail.remove()
   expect(visible.textContent).not.toMatch(
     /ECONNRESET|ENOSPC|Unauthorized|rate_limit|retry_after|transport\.ts|storage\.ts|[{}]|TOURI-E\d/,
   )

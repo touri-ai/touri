@@ -69,7 +69,8 @@ it("keeps one recovery action and the computer status when the computer is in er
     parts: [{ type: "notice", level: "error", code: "machine_boot", text: "A máquina não ficou pronta" }],
   })
 
-  expect(screen.getAllByRole("button")).toHaveLength(1)
+  // The error details Disclosure trigger is a button too (aria-expanded); only recovery actions count here.
+  expect(screen.getAllByRole("button").filter((button) => !button.hasAttribute("aria-expanded"))).toHaveLength(1)
   expect(screen.getByRole("button", { name: "Tentar novamente" })).toBeVisible()
   expect(screen.getByRole("complementary")).toHaveTextContent(t("The computer needs attention"))
   expect(screen.getByRole("complementary")).toHaveTextContent(localizeNotice("network error: ECONNRESET"))

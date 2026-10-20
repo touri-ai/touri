@@ -390,7 +390,7 @@ export const settingsIndex = ({ hasBot }: { hasBot: boolean }): Array<SettingsIn
     })),
   {
     id: "doctor",
-    label: `${t("Doctor")} (Doctor)`,
+    label: t("Doctor"),
     detail: t("Verifique o ambiente local do touri"),
     keywords: ["doctor", "diagnóstico", "verificar", "saúde"],
     destination: { kind: "doctor" },

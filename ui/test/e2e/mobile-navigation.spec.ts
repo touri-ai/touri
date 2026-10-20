@@ -64,7 +64,7 @@ test("phone navigation traps focus and reaches conversations, search, creation a
   await drawer.getByRole("button", { name: /^Notificações/ }).click()
   const notifications = drawer.getByRole("region", { name: "Central de notificações" })
   await expect(notifications).toBeVisible()
-  await notifications.getByRole("button", { name: "Abrir", exact: true }).click()
+  await notifications.getByRole("button", { name: /^(Ver conversa|Abrir e revisar)$/ }).click()
   await expect(drawer).not.toBeVisible()
   await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
 

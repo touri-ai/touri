@@ -266,7 +266,7 @@ describe("sidecar failure blocking state", () => {
     ).toBeVisible()
     expect(within(alert).getByText(reason)).not.toBeVisible()
     expect(within(alert).getByText("O aplicativo e o serviço local usam versões incompatíveis.")).toBeVisible()
-    expect(within(alert).getAllByRole("button")).toHaveLength(3)
+    expect(within(alert).getAllByRole("button")).toHaveLength(4)
     expect(within(alert).getByRole("button", { name: /Tentar novamente/ })).toBeVisible()
     expect(within(alert).getByRole("button", { name: "Reportar este problema" })).toBeVisible()
     expect(within(alert).getByRole("button", { name: "Usar um servidor touri" })).toBeVisible()

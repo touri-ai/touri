@@ -304,14 +304,24 @@ test.each(["bytes", "events"] as const)(
   },
 )
 
-test("the worker uses NORMAL, a bounded cache and no automatic checkpoints", async () => {
-  const pragmas = Promise.withResolvers<{ synchronous: number; cache: number; autocheckpoint: number }>()
+test("the worker uses WAL/NORMAL, foreign keys, a bounded cache and nonblocking locks", async () => {
+  const pragmas = Promise.withResolvers<{
+    journal: string
+    synchronous: number
+    foreignKeys: number
+    busyTimeout: number
+    cache: number
+    autocheckpoint: number
+  }>()
   const f = await getFixture(() => {
     const source = streamPersistenceWorkerSource.replace(
       'self.postMessage({ type: "ready" });',
       `
       self.postMessage({ type: "test-pragmas",
+        journal: database.query("PRAGMA journal_mode").get().journal_mode,
         synchronous: database.query("PRAGMA synchronous").get().synchronous,
+        foreignKeys: database.query("PRAGMA foreign_keys").get().foreign_keys,
+        busyTimeout: database.query("PRAGMA busy_timeout").get().timeout,
         cache: database.query("PRAGMA cache_size").get().cache_size,
         autocheckpoint: database.query("PRAGMA wal_autocheckpoint").get().wal_autocheckpoint });
       self.postMessage({ type: "ready" });`,
@@ -326,5 +336,12 @@ test("the worker uses NORMAL, a bounded cache and no automatic checkpoints", asy
   await f.persistence.ready
   const measured = await pragmas.promise
 
-  expect(measured).toMatchObject({ synchronous: 1, cache: -65536, autocheckpoint: 0 })
+  expect(measured).toMatchObject({
+    journal: "wal",
+    synchronous: 1,
+    foreignKeys: 1,
+    busyTimeout: 0,
+    cache: -65536,
+    autocheckpoint: 0,
+  })
 })

@@ -46,6 +46,19 @@
   gap: 4px;
 }
 
+.notification-sound-volume {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0;
+  color: var(--text-secondary);
+  font-size: var(--fs-caption);
+}
+
+.notification-sound-volume input {
+  width: 100%;
+  accent-color: var(--accent-brand);
+}
+
 @media (max-width: 560px) {
   .notification-preference-row:has(select) {
     display: grid;

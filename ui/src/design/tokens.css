@@ -161,7 +161,7 @@
   --surface-settings-hover: var(--surface-control);
   --surface-settings-switch: var(--surface-control-raised);
   --surface-settings-switch-thumb: var(--text-on-accent);
-  --surface-settings-primary-hover: color-mix(in srgb, var(--brand) 92%, var(--text));
+  --surface-settings-primary-hover: color-mix(in srgb, var(--brand) 92%, var(--neutral-1000));
   --surface-settings-danger-hover: color-mix(in srgb, var(--surface-danger) 85%, var(--danger));
 }
 /* End r8 settings tokens. */

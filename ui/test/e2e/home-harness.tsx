@@ -9,6 +9,36 @@ const api = createMockApi()
 Object.assign(window, { workspaceQa: { api } })
 const state = api.getState()
 const scenario = new URLSearchParams(location.search).get("scenario")
+if (scenario === "thread-noise-before" || scenario === "thread-noise-main" || scenario === "thread-noise-grouped") {
+  const bot = state.bots.find((item) => item.id === "bot-mark")
+  if (!bot) throw new Error("Missing synthetic bot fixture")
+  const mainThread = state.threads.find((thread) => thread.botId === bot.id)
+  if (!mainThread) throw new Error("Missing synthetic main conversation fixture")
+  bot.mainThreadId = mainThread.id
+  bot.automaticConversationMode = scenario === "thread-noise-main" ? "main" : "task"
+  const taskThreads =
+    scenario === "thread-noise-main"
+      ? []
+      : Array.from({ length: 30 }, (_, index) => {
+          const taskId = `abcdef${index.toString(16).padStart(6, "0")}`
+          const createdAt = Date.now() - index * 60_000
+          return {
+            ...mainThread,
+            id: `lead-reply-${index}`,
+            kind: "chat" as const,
+            title: `lead.reply · ${scenario === "thread-noise-before" ? `task-${taskId}` : taskId}`,
+            activeLeafId: null,
+            createdAt,
+            updatedAt: createdAt,
+          }
+        })
+  state.threads.splice(
+    0,
+    state.threads.length,
+    ...state.threads.filter((thread) => thread.botId !== bot.id || thread.id === mainThread.id),
+    ...taskThreads,
+  )
+}
 if (scenario === "long-composer") {
   const bot = state.bots.find((item) => item.id === "bot-mark")
   const { projects } = await api.request("GET /projects", {})
@@ -46,7 +76,7 @@ else if (scenario === "failed") {
     state.messages.push(failed)
     thread.activeLeafId = failed.id
   }
-} else {
+} else if (!scenario?.startsWith("thread-noise-")) {
   api.notify({
     kind: "question",
     botId: "bot-mark",

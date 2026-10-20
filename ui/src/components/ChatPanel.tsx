@@ -30,7 +30,14 @@ import { ComputerGrantCard } from "../features/computer"
 import { InlineLivePreview, InlinePreviewContext, screenTool } from "../features/desktop/InlineLivePreview"
 import { useIsServerMode } from "../features/server/serverMode"
 import { getQueueLabel } from "../features/work/presentation"
-import { getHostLabel, getRoutineRunDateLabel, getRoutineRunTimeLabel, localizeNotice, t } from "../i18n"
+import {
+  getHostLabel,
+  getRoutineRunDateLabel,
+  getRoutineRunTimeLabel,
+  localizeNotice,
+  type TranslationKey,
+  t,
+} from "../i18n"
 import { machineStateForDisplay } from "../machineState"
 import { messageMarkdown } from "../messageMarkdown"
 import { consumeTaskReview, requestTaskResume, reviewTaskEvent } from "../recoveryEvents"
@@ -40,6 +47,7 @@ import { failureTimeLabel, runErrorFor } from "../runError"
 import { getSidebarThreadTitle } from "../sidebarThreadTitle"
 import { useHost } from "../useHost"
 import { RecoveryTasksContext } from "../useRecoveryTasks"
+import type { ThreadCreationStatus } from "../workspaceState"
 import { ActivityMark } from "./ActivityMark"
 import { ApprovalCard } from "./ApprovalCard"
 import { useAvatarBot, useMascotSnapshot, useMessageMascotState, useThreadBot } from "./AvatarRuntime"
@@ -48,6 +56,7 @@ import { BotAvatar } from "./BotAvatar"
 import { ChatDisclosure } from "./ChatDisclosure"
 import { ConnectDataCard, connectDataMarker } from "./ConnectDataCard"
 import { ConversationStart } from "./ConversationStart"
+import { Disclosure } from "./Disclosure"
 import { DraftComposer, type DraftComposerHandle } from "./DraftComposer"
 import { ErrorDetails, ErrorText } from "./ErrorDetails"
 import { ErrorNotice } from "./ErrorNotice"
@@ -71,8 +80,10 @@ import { usePhoneViewport } from "./usePhoneViewport"
 
 type ChatPanelProps = {
   composerKey?: string | undefined
-  threadCreation?: "pending" | "failed" | undefined
+  threadCreation?: ThreadCreationStatus | undefined
   onRetryCreateThread?: (() => void) | undefined
+  onResumeBot?: (() => Promise<void>) | undefined
+  autoFocusComposer?: boolean | undefined
   onRepeatTask?: ((draft: RoutineDraft) => void) | undefined
   group?: BotGroup | null
   groupMembers?: Bot[]
@@ -117,6 +128,9 @@ type VirtualMessageListProps = {
   messages: Array<Message>
   api?: UiApi
   runs?: Array<Run>
+  mainThread?: boolean
+  routines?: Array<Routine>
+  routineRuns?: Array<RoutineRun>
   onSwitchBranch: (message: Message, siblings: Array<Message>, index: number) => void
   onRetry: (runId: Id) => Promise<void>
   onEdit?: EditMessage | undefined
@@ -149,6 +163,12 @@ const deliveryLabels = {
   sent: t("Sending message…"),
   acked: "Entregue",
   failed: "Falha na entrega",
+}
+const routineTriggerKeys: Record<RoutineRun["triggerSource"], TranslationKey> = {
+  cron: "Routine trigger scheduled",
+  manual: "Routine trigger manual",
+  "catch-up": "Routine trigger catch-up",
+  import: "Routine trigger imported",
 }
 const estimatedRowHeight = 158
 
@@ -187,6 +207,9 @@ export const VirtualMessageList = ({
   messages,
   api,
   runs = [],
+  mainThread = false,
+  routines = [],
+  routineRuns = [],
   allMessages = messages,
   onSwitchBranch,
   onRetry,
@@ -201,6 +224,26 @@ export const VirtualMessageList = ({
     messages.map((message) => message.id),
     messages[0]?.threadId ?? "",
   )
+  const routineRunHeaderByMessage = useMemo(() => {
+    const routineRunsById = new Map(routineRuns.map((routineRun) => [routineRun.id, routineRun]))
+    const routinesById = new Map(routines.map((routine) => [routine.id, routine]))
+
+    return runs.reduce((headers, run) => {
+      if (!run.requestMessageId || !isRoutineRun(run)) return headers
+      const routineRun = routineRunsById.get(run.routineRunId ?? "")
+      const routine = routineRun ? routinesById.get(routineRun.routineId) : undefined
+
+      headers.set(
+        run.requestMessageId,
+        t("Routine run header", {
+          name: routine?.name ?? t("Work routine"),
+          trigger: routineRun ? t(routineTriggerKeys[routineRun.triggerSource]) : t("Automatic"),
+          time: getRoutineRunTimeLabel(routineRun?.scheduledFor ?? run.queuedAt, "pt-BR", routine?.timezone),
+        }),
+      )
+      return headers
+    }, new Map<string, string>())
+  }, [runs, routineRuns, routines])
   const [scrollTop, setScrollTop] = useState(0)
   const [rowHeights, setRowHeights] = useState<Record<string, number>>({})
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -323,9 +366,7 @@ export const VirtualMessageList = ({
       }
       const atBottom = list.scrollTop + list.clientHeight >= list.scrollHeight - 48
       // Once a disclosure has settled back at the end, resume following the next reply.
-      const collapsed = anchor?.element.matches("summary")
-        ? anchor.element.parentElement instanceof HTMLDetailsElement && !anchor.element.parentElement.open
-        : anchor?.element.getAttribute("aria-expanded") === "false"
+      const collapsed = anchor?.element.getAttribute("aria-expanded") === "false"
       if (atBottom && collapsed) {
         readingAnchor.current = null
         followBottom.current = true
@@ -388,7 +429,7 @@ export const VirtualMessageList = ({
         onClickCapture={(event) => {
           if (!(event.target instanceof Element)) return
           const control = event.target.closest<HTMLElement>(
-            "summary, .chat-disclosure-toggle, .turn-activity-toggle, .disclosure-summary, .message-error-history > button",
+            ".ds-disclosure-trigger, .chat-disclosure-toggle, .turn-activity-toggle, .message-error-history > button",
           )
           if (!control) return
           const list = event.currentTarget
@@ -498,9 +539,11 @@ export const VirtualMessageList = ({
                     run={run}
                     routineReply={getRoutineReplyRun(message, runs, allMessages) !== undefined}
                     routinePrompt={
+                      !mainThread &&
                       message.role === "user" &&
                       runs.some((candidate) => isRoutineRun(candidate) && candidate.requestMessageId === message.id)
                     }
+                    routineHeader={routineRunHeaderByMessage.get(message.id)}
                     recovered={
                       runs.some(
                         (later) =>
@@ -612,6 +655,7 @@ const MessageBubble = ({
   run,
   routineReply,
   routinePrompt,
+  routineHeader,
   api,
   siblings,
   branchIndex,
@@ -630,6 +674,7 @@ const MessageBubble = ({
   run?: Run | undefined
   routineReply: boolean
   routinePrompt: boolean
+  routineHeader?: string | undefined
   api?: UiApi
   siblings: Array<Message>
   branchIndex: number
@@ -779,12 +824,9 @@ const MessageBubble = ({
                   return summary
                     ? [
                         <li key={"callId" in part ? part.callId : part.type}>
-                          <details>
-                            <summary>
-                              {t("Ações registradas")} {index + 1}
-                            </summary>
+                          <Disclosure summary={`${t("Ações registradas")} ${index + 1}`}>
                             <pre>{sanitizeDiagnostic(summary)}</pre>
-                          </details>
+                          </Disclosure>
                         </li>,
                       ]
                     : []
@@ -838,6 +880,7 @@ const MessageBubble = ({
       data-message-id={message.id}
       data-motion-insert={inserted}
     >
+      {routineHeader && <small className="routine-run-header">{routineHeader}</small>}
       {!routinePrompt && (
         <div className="message-meta">
           {message.role === "assistant" &&
@@ -1018,6 +1061,8 @@ export const ChatPanel = ({
   composerKey,
   threadCreation,
   onRetryCreateThread,
+  onResumeBot,
+  autoFocusComposer = false,
   onRepeatTask,
   group = null,
   groupMembers = [],
@@ -1278,6 +1323,9 @@ export const ChatPanel = ({
           messages={visibleMessages}
           api={api}
           runs={runs}
+          mainThread={thread.kind === "main"}
+          routines={routines}
+          routineRuns={routineRuns}
           allMessages={messages}
           onSwitchBranch={(_message, siblings, index) => {
             const next = siblings[index]
@@ -1396,6 +1444,8 @@ export const ChatPanel = ({
         draftIdentity={composerKey ?? thread.id}
         threadCreation={threadCreation}
         onRetryCreateThread={onRetryCreateThread}
+        onResumeBot={onResumeBot}
+        autoFocus={autoFocusComposer}
         draftRef={draftComposerRef}
         notice={{
           bot,

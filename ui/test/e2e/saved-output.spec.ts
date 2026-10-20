@@ -45,7 +45,7 @@ for (const theme of ["light", "dark"]) {
     await card.screenshot({ path: preview, animations: "disabled" })
     await info.attach(`${phase}-preview-${theme}`, { path: preview, contentType: "image/png" })
     await card.getByRole("button", { name: "Abrir resultado completo" }).click()
-    await card.locator(".tool-output > summary").click()
+    await card.locator(".tool-output > .ds-disclosure-trigger").click()
     await expect(card.locator(".tool-output code")).toContainText("Resumo: 300 etapas concluídas.")
     if (phase === "after") {
       expect(fullReads).toBe(0)

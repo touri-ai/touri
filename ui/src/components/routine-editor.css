@@ -54,7 +54,7 @@
   font-size: var(--fs-caption);
   overflow-wrap: anywhere;
 }
-.routine-editor summary {
+.routine-editor .ds-disclosure-trigger {
   cursor: pointer;
   font-size: var(--fs-meta);
   margin-bottom: 8px;

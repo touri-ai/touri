@@ -46,6 +46,9 @@ import groupCoordinationHistorySql from "../../src/kernel/migrations/0030.sql" w
 import streamWorkerStateSql from "../../src/kernel/migrations/0031.sql" with { type: "text" }
 import teamBuilderSql from "../../src/kernel/migrations/0032.sql" with { type: "text" }
 import workIdentitySql from "../../src/kernel/migrations/0033.sql" with { type: "text" }
+import automaticConversationSql from "../../src/kernel/migrations/0034.sql" with { type: "text" }
+import botDeletionSql from "../../src/kernel/migrations/0035.sql" with { type: "text" }
+import { captureTranscript } from "../../src/kernel/transcript-events"
 import { TRANSCRIPT_RETENTION } from "../../src/kernel/transcript-storage"
 import { init as initStore } from "../../src/store"
 
@@ -239,7 +242,7 @@ test("history backfill yields and retries while another connection holds the wri
   }
 }, 10_000)
 
-test("interrupted batches resume idempotently and match the shipped synchronous message projection and transcript", () => {
+test("interrupted batches resume idempotently and match the shipped synchronous message projection and transcript", async () => {
   const root = mkdtempSync(join(tmpdir(), "touri-migration-resume-"))
   let database: Database | undefined
   let synchronous: Database | undefined
@@ -288,6 +291,8 @@ test("interrupted batches resume idempotently and match the shipped synchronous 
       ALTER TABLE attachments ADD COLUMN owner_person_id TEXT;
     `)
     synchronous.exec(workIdentitySql)
+    synchronous.exec(automaticConversationSql)
+    synchronous.exec(botDeletionSql)
     database = openDatabase({ filename })
     expect(database.query("SELECT type, name, sql FROM sqlite_master ORDER BY name").all()).toEqual(
       synchronous.query("SELECT type, name, sql FROM sqlite_master ORDER BY name").all(),
@@ -335,6 +340,7 @@ test("interrupted batches resume idempotently and match the shipped synchronous 
     bus.stop()
     expect(database.query("PRAGMA foreign_key_check").all()).toEqual([])
     const oldBus = createEventBus(synchronous)
+    while (captureTranscript(synchronous)) await Bun.sleep(0)
     oldBus.stop()
     expect(synchronous.query("SELECT COUNT(*) AS n FROM ui_event_log").get()).toEqual({ n: 600 })
     console.info(
@@ -450,7 +456,7 @@ test("backfill applies replay count and age retention without dropping legacy me
   }
 })
 
-test("final retention includes live revisions created between batches and preserves their unpublished entries", () => {
+test("final retention includes live revisions created between batches and preserves their unpublished entries", async () => {
   const root = mkdtempSync(join(tmpdir(), "touri-migration-live-retention-"))
   let database: Database | undefined
   try {
@@ -478,6 +484,7 @@ test("final retention includes live revisions created between batches and preser
       n: liveCount + 150,
     })
     const bus = createEventBus(database)
+    while (captureTranscript(database)) await Bun.sleep(0)
     expect(database.query("SELECT COUNT(*) AS n FROM ui_event_log").get()).toEqual({ n: liveCount })
     expect(
       database

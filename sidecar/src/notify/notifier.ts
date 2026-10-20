@@ -34,7 +34,11 @@ export const createNotifier = ({ kernel, store, hub }: { kernel: Kernel; store: 
       notificationId: notification.id,
       kind: notification.kind,
       onlyWhenUnfocused: true,
-      deepLink: buildDeepLink({ botId: notification.botId, threadId: notification.threadId }),
+      deepLink: buildDeepLink({
+        botId: notification.botId,
+        threadId: notification.threadId,
+        notificationId: notification.id,
+      }),
     })
   }
 

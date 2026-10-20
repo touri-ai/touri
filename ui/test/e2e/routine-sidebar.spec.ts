@@ -88,12 +88,12 @@ for (const [name, width, height] of [
     await expect(conversations.locator(".thread-row").last()).toContainText("hoje · 14:45")
     await expect(conversations.locator(".thread-row strong").last()).toHaveAttribute(
       "title",
-      "Resumo diário · 18/10/2026, 14:45",
+      "Rotina Resumo diário · 18/10/2026, 14:45",
     )
 
     await conversations.getByRole("button", { name: "Histórico de rotinas" }).click()
     const history = page.locator(".routine-run-history")
-    await expect(history).toHaveAttribute("open")
+    await expect(history).toHaveAttribute("data-open", "true")
     await expect(history.getByRole("button", { name: "Abrir conversa" })).toHaveCount(28)
     await history.getByRole("button", { name: "Abrir conversa" }).last().click()
     await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
@@ -115,7 +115,7 @@ for (const [name, width, height] of [
 
     await page.getByRole("button", { name: "Histórico de rotinas" }).click()
     const history = page.locator(".routine-run-history")
-    await expect(history).toHaveAttribute("open")
+    await expect(history).toHaveAttribute("data-open", "true")
     await expect(history.getByRole("button", { name: "Abrir conversa" })).toHaveCount(50)
     await history.getByRole("button", { name: "Próxima página" }).click()
     await expect(history.getByRole("button", { name: "Abrir conversa" })).toHaveCount(10)
@@ -139,14 +139,14 @@ for (const [name, width, height] of [
     await conversations.getByRole("button", { name: "Histórico de rotinas" }).click()
     const history = page.locator(".routine-run-history")
 
-    await expect(history).toHaveAttribute("open")
+    await expect(history).toHaveAttribute("data-open", "true")
     await expect(history.getByRole("combobox", { name: "Filtrar histórico por rotina" })).not.toHaveValue("all")
     await expect(history.getByRole("status")).toHaveText("Execuções 1–50 de 128")
     await expect(history.getByRole("listitem")).toHaveCount(50)
-    await history.locator("summary").click()
+    await history.getByRole("button", { name: "Histórico de execuções" }).click()
     if (name === "phone") await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
     await conversations.getByRole("button", { name: "Histórico de rotinas" }).click()
-    await expect(history).toHaveAttribute("open")
+    await expect(history).toHaveAttribute("data-open", "true")
     await expect(history.getByRole("status")).toHaveText("Execuções 1–50 de 128")
     const directory = process.env.TOURI_ROUTINE_SIDEBAR_SHOTS_DIR
     if (directory) {

@@ -9,6 +9,7 @@ import type { WorkspaceActions } from "../useWorkspace"
 import type { RoutineHistoryTarget } from "../workspaceState"
 import { BotAvatar } from "./BotAvatar"
 import { DeleteRoutineDialog } from "./DeleteRoutineDialog"
+import { Disclosure } from "./Disclosure"
 import { RoutineEditor, routineHostNotice } from "./RoutineEditor"
 import { RoutineSchedule } from "./RoutineSchedule"
 import { ScreenHeader, ScreenState } from "./ScreenPrimitives"
@@ -65,7 +66,8 @@ const CronScreen = ({
   onOpenThread,
 }: CronScreenProps) => {
   const listRef = useRef<HTMLElement>(null)
-  const historyDetails = useRef<HTMLDetailsElement>(null)
+  const [historyOpen, setHistoryOpen] = useState(Boolean(history))
+  const [historyFocusRequests, setHistoryFocusRequests] = useState(0)
   const historyStatus = useRef<HTMLParagraphElement>(null)
   useEffect(() => {
     const focusList = () => {
@@ -112,11 +114,15 @@ const CronScreen = ({
 
     setBotFilter(historyBotFilter)
     setRoutineFilter(historyRoutineFilter)
-    // Native toggles stay with the browser; a history destination explicitly opens the disclosure.
-    historyDetails.current?.setAttribute("open", "")
-    historyStatus.current?.focus()
+    // A history destination explicitly opens the disclosure, then focuses its status once it is visible.
+    setHistoryOpen(true)
+    if (historyStatus.current?.closest("[hidden]")) setHistoryFocusRequests((count) => count + 1)
+    else historyStatus.current?.focus()
     setHistoryPage(0)
   }, [history, historyBotFilter, historyRoutineFilter])
+  useEffect(() => {
+    if (historyFocusRequests > 0) historyStatus.current?.focus()
+  }, [historyFocusRequests])
 
   const selectBotFilter = (botId: Id | "all") => {
     setBotFilter(botId)
@@ -370,8 +376,12 @@ const CronScreen = ({
                 />
               )}
             </div>
-            <details className="routine-run-history" ref={historyDetails}>
-              <summary>{t("Histórico de execuções")}</summary>
+            <Disclosure
+              className="routine-run-history"
+              open={historyOpen}
+              onOpenChange={setHistoryOpen}
+              summary={t("Histórico de execuções")}
+            >
               <label className="routine-history-filter">
                 {t("Routine history filter")}
                 <select
@@ -442,7 +452,7 @@ const CronScreen = ({
                   </button>
                 )}
               </div>
-            </details>
+            </Disclosure>
           </section>
         </div>
         <section className="cron-card calendar-card" aria-label={t("Calendário mensal")}>

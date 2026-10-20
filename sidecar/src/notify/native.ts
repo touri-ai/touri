@@ -9,10 +9,20 @@ export const shouldNotifyNative = ({
   preference: Bot["notifications"] | null
 }): boolean => canDeliverNotification({ notification, botPreference: preference })
 
-export const buildDeepLink = ({ botId, threadId }: { botId: string | null; threadId: string | null }): string => {
+export const buildDeepLink = ({
+  botId,
+  threadId,
+  notificationId,
+}: {
+  botId: string | null
+  threadId: string | null
+  notificationId?: number
+}): string => {
   const params = new URLSearchParams()
   if (botId) params.set("bot", botId)
   if (threadId) params.set("thread", threadId)
+  if (notificationId !== undefined && Number.isSafeInteger(notificationId) && notificationId > 0)
+    params.set("notification", String(notificationId))
   return `touri://open?${params.toString()}`
 }
 

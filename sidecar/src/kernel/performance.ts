@@ -63,6 +63,13 @@ const STAGES = [
   "browser_session_key_retry",
   "message_search_index",
   "storage_upgrade_batch",
+  "sqlite_main",
+  "sqlite_settings_write",
+  "sqlite_run_write",
+  "sqlite_message_write",
+  "sqlite_notification_write",
+  "sqlite_recovery_write",
+  "sqlite_transaction",
 ] as const
 
 export type PerformanceStage = (typeof STAGES)[number]

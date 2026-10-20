@@ -124,8 +124,8 @@ it("Doctor offers one foreground action and hides terminal recovery under other 
     ],
   }
   render(<DoctorChecks doctor={doctor} error={null} onRefresh={refresh} />)
-  const options = screen.getByText("Outras opções").closest("details")
-  expect(options).not.toHaveAttribute("open")
+  const options = screen.getByText("Outras opções").closest(".ds-disclosure")
+  expect(options).toHaveAttribute("data-open", "false")
   expect(screen.getByText("claude setup-token")).not.toBeVisible()
   expect(screen.queryByRole("button", { name: /^Copiar comando/ })).toBeNull()
   fireEvent.click(screen.getByRole("button", { name: "Permitir acesso ao cofre" }))

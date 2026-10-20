@@ -86,6 +86,7 @@ import { isRoutineConversation } from "./routineConversation"
 import { getTeamRoutineDraft, type RoutineDraft } from "./routineDraft"
 import { isFailureNotice } from "./sidebarAttention"
 import { useHost } from "./useHost"
+import { useNotificationSounds } from "./useNotificationSounds"
 import { RecoveryTasksContext, useRecoveryTasks } from "./useRecoveryTasks"
 import { useWebNavigation } from "./useWebNavigation"
 import { useWorkspace } from "./useWorkspace"
@@ -220,7 +221,7 @@ const AppContent = ({ kernel }: AppProps) => {
   )
   const activeApi = api ?? unavailableApi
   useEffect(() => installComputerKillSwitch(activeApi, invokeCommand, setLocalNotice), [activeApi, invokeCommand])
-  const workspace = useWorkspace(activeApi, api !== null)
+  const workspace = useWorkspace(activeApi, api !== null, route.section === "bots" && route.screen === "chat")
   const { data, actions } = workspace
   const interruptedWork = useRecoveryTasks(api)
   const [recoveryOpen, setRecoveryOpen] = useState(false)
@@ -457,15 +458,6 @@ const AppContent = ({ kernel }: AppProps) => {
       onLink: setPendingLink,
     })
   }, [invokeCommand, requestedComputer])
-  useEffect(() => {
-    if (!pendingLink || !data.loaded || data.bots.length === 0) return
-    actions.selectLocation(pendingLink)
-    setRoute({ section: "bots", screen: "chat" })
-    setPendingLink(null)
-    if (pendingLink.requestId !== undefined)
-      void invokeCommand("deep_link_ack", { requestId: pendingLink.requestId }).catch(() => undefined)
-  }, [pendingLink, data.loaded, data.bots.length, actions, setRoute, invokeCommand])
-
   const restoreWebLocation = useCallback(
     (location: DeepLink, restoredRoute?: AppRoute): void => {
       actions.selectLocation(location)
@@ -482,22 +474,58 @@ const AppContent = ({ kernel }: AppProps) => {
   )
   useWebNavigation({
     enabled: !isTauriRuntime() && !requestedComputer,
-    ready: api !== null && data.loaded && !data.threadCreation,
+    ready: api !== null && data.loaded && data.threadCreation?.status !== "pending",
     bot: data.selectedBotId,
-    thread: data.selectedThreadId,
+    thread: data.threadCreation ? null : data.selectedThreadId,
     route,
     restore: restoreWebLocation,
     exists: webLocationExists,
   })
 
   const [approvalFocus, setApprovalFocus] = useState<(ApprovalTarget & { request: number }) | null>(null)
-  const reviewApproval = (target: ApprovalTarget): void => {
-    const owner = data.threads.find((thread) => thread.id === target.threadId)
-    if (!owner) return
-    actions.selectLocation({ bot: owner.botId, thread: owner.id })
-    setApprovalFocus((current) => ({ ...target, request: (current?.request ?? 0) + 1 }))
-    setRoute({ section: "bots", screen: "chat" })
-  }
+  const [notificationFocus, setNotificationFocus] = useState<{ id: number; request: number } | null>(null)
+  const reviewApproval = useCallback(
+    (target: ApprovalTarget): void => {
+      const owner = data.threads.find((thread) => thread.id === target.threadId)
+      if (!owner) return
+      actions.selectLocation({ bot: owner.botId, thread: owner.id })
+      setApprovalFocus((current) => ({ ...target, request: (current?.request ?? 0) + 1 }))
+      setRoute({ section: "bots", screen: "chat" })
+    },
+    [data.threads, actions.selectLocation, setRoute],
+  )
+  const openNeedsYou = useCallback(
+    (item: NotificationRecord): void => {
+      if (item.kind === "approval" && item.threadId && item.requestId) {
+        reviewApproval({ threadId: item.threadId, approvalId: item.requestId })
+        return
+      }
+
+      actions.selectLocation({ bot: item.botId, thread: item.threadId })
+      setRoute({ section: "bots", screen: "chat" })
+      setNotificationFocus((current) => ({ id: item.id, request: (current?.request ?? 0) + 1 }))
+    },
+    [reviewApproval, actions.selectLocation, setRoute],
+  )
+  useEffect(() => {
+    if (!pendingLink || !data.loaded || data.bots.length === 0) return
+    const notification = pendingLink.notificationId
+      ? data.notifications.find(
+          (item) =>
+            item.id === pendingLink.notificationId &&
+            (!pendingLink.bot || item.botId === pendingLink.bot) &&
+            (!pendingLink.thread || item.threadId === pendingLink.thread),
+        )
+      : undefined
+    if (notification) openNeedsYou(notification)
+    else {
+      actions.selectLocation(pendingLink)
+      setRoute({ section: "bots", screen: "chat" })
+    }
+    setPendingLink(null)
+    if (pendingLink.requestId !== undefined)
+      void invokeCommand("deep_link_ack", { requestId: pendingLink.requestId }).catch(() => undefined)
+  }, [pendingLink, data.loaded, data.bots.length, data.notifications, actions, setRoute, invokeCommand, openNeedsYou])
   const notificationActions = {
     recover: async (item: NotificationRecord, action: RecoveryAction): Promise<void> => {
       actions.selectLocation({ bot: item.botId, thread: item.threadId })
@@ -551,6 +579,18 @@ const AppContent = ({ kernel }: AppProps) => {
     }) ?? []
   const selectedProject = data.projects.find((project) => project.id === selectedBot?.projectId) ?? null
   const selectedMessages = data.messages.filter((message) => message.threadId === selectedThread?.id)
+  useNotificationSounds(
+    {
+      ready: data.loaded,
+      notifications: data.notifications,
+      messages: data.activityMessages,
+      bots: data.bots,
+      threads: data.threads,
+      preferences: data.settings?.notificationPreferences,
+      activeThreadId: section === "bots" && screen === "chat" && !modal ? (selectedThread?.id ?? null) : null,
+    },
+    invokeCommand,
+  )
   const { activePath, goalThread, goalRequest, goalBusy } = getGoalSelection({
     bot: selectedBot,
     thread: selectedThread,
@@ -676,7 +716,6 @@ const AppContent = ({ kernel }: AppProps) => {
         "new-bot": "bot",
         "new-group": "group",
         "connect-project": "project",
-        "open-doctor": "doctor",
       }
       openModal(kinds[command.action])
       return
@@ -1057,7 +1096,9 @@ const AppContent = ({ kernel }: AppProps) => {
             onRecovery={openRecovery}
             recoveryCount={interruptedWork.tasks.filter((task) => task.notification.resolvedAt === null).length}
             notifications={data.notifications}
+            notificationFocus={notificationFocus}
             notificationActions={notificationActions}
+            onNeedsYou={openNeedsYou}
             onNotificationsOpen={setNotificationsOpen}
           />
           <Suspense fallback={<PageLoading />}>
@@ -1085,9 +1126,7 @@ const AppContent = ({ kernel }: AppProps) => {
               )}
               {screen === "preview" ? (
                 <PreviewScreen
-                  threadCreation={
-                    data.threadCreation ? (data.threadCreation.pending ? "pending" : "failed") : undefined
-                  }
+                  threadCreation={data.threadCreation?.status}
                   onRetryCreateThread={() => void actions.createThread()}
                   project={selectedProject}
                   processes={data.processes.filter((entry) => entry.spec.projectId === selectedProject?.id)}
@@ -1190,10 +1229,12 @@ const AppContent = ({ kernel }: AppProps) => {
                             goalRefreshRequest={goalRefreshRequest}
                             onGoalChange={notifyGoalChange}
                             composerKey={data.composerKey ?? undefined}
-                            threadCreation={
-                              data.threadCreation ? (data.threadCreation.pending ? "pending" : "failed") : undefined
-                            }
+                            threadCreation={data.threadCreation?.status}
                             onRetryCreateThread={() => void actions.createThread()}
+                            autoFocusComposer={Boolean(data.threadCreation)}
+                            onResumeBot={
+                              selectedBot ? () => actions.updateBot(selectedBot.id, { paused: false }) : undefined
+                            }
                             bot={selectedBot}
                             messages={selectedMessages}
                             runs={data.runs}

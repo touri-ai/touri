@@ -38,10 +38,10 @@ for (const width of [1000, 760]) {
     await page.getByRole("button", { name: /Notificações/ }).click()
     const row = page.getByTestId("notification-row")
     await expect(row.locator(".notification-body")).not.toContainText(/[{}]|folder_access_request/)
-    const details = row.locator("details")
-    await expect(details).not.toHaveAttribute("open", "")
+    const details = row.locator(".ds-disclosure")
+    await expect(details).toHaveAttribute("data-open", "false")
     await expect(details.locator("pre")).not.toBeVisible()
-    await details.getByText("Detalhes técnicos", { exact: true }).click()
+    await details.getByRole("button", { name: "Detalhes técnicos", exact: true }).click()
     await expect(details.locator("pre")).toBeVisible()
   })
 }

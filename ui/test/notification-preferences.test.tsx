@@ -34,7 +34,11 @@ it("saves global, per-bot, per-type and quiet-hour preferences from web settings
 
   fireEvent.change(screen.getByLabelText("Avisar sobre"), { target: { value: "all" } })
   fireEvent.change(screen.getByLabelText("Aviso do bot"), { target: { value: "off" } })
+  fireEvent.click(screen.getByLabelText("Som para o que precisa de você"))
+  fireEvent.click(screen.getByLabelText("Som para cada resposta"))
+  fireEvent.change(screen.getByLabelText("Volume do som"), { target: { value: "80" } })
   fireEvent.change(screen.getByLabelText("Aplicar a"), { target: { value: "bot-mark" } })
+  expect(screen.queryByLabelText("Som para o que precisa de você")).toBeNull()
   fireEvent.change(screen.getByLabelText("Resposta falhou"), { target: { value: "off" } })
   fireEvent.click(screen.getByLabelText("Ativar horário silencioso"))
   fireEvent.change(screen.getByLabelText("Das"), { target: { value: "23:00" } })
@@ -47,6 +51,7 @@ it("saves global, per-bot, per-type and quiet-hour preferences from web settings
         types: { notice: false },
         bots: { "bot-mark": { types: { "turn-failed": false } } },
         quietHours: { enabled: true, start: "23:00", end: "08:00" },
+        sound: { attention: false, replies: true, volume: 80 },
       },
     }),
   )
@@ -79,7 +84,8 @@ it("summarizes requests without review context and lists them in the notificatio
 
   expect(summary).toBeVisible()
   expect(screen.getByRole("region", { name: "Central de notificações" })).toHaveTextContent("Qual pasta usar?")
-  expect(screen.getByRole("button", { name: "Aprovar", exact: true })).toBeVisible()
+  expect(screen.getByRole("button", { name: "Abrir e revisar", exact: true })).toBeVisible()
+  expect(screen.queryByRole("button", { name: "Aprovar", exact: true })).toBeNull()
 })
 
 it("keeps the return summary hidden when the page opened without pending requests", async () => {
@@ -163,6 +169,7 @@ it("provides English preferences and rate-limit guidance", () => {
   expect(t("Somente o que precisa de mim", {}, "en")).toBe("Only what needs me")
   expect(t("Também resultados concluídos", {}, "en")).toBe("Also completed results")
   expect(t("Horário silencioso", {}, "en")).toBe("Quiet hours")
+  expect(t("Som para cada resposta", {}, "en")).toBe("Sound for every reply")
   expect(t("Você tem {n} solicitações pendentes.", { n: 1 })).toBe("Você tem 1 solicitação pendente.")
   expect(t("Você tem {n} solicitações pendentes.", { n: 1 }, "en")).toBe("You have 1 pending request.")
   expect(t("Rotina concluída sem novidades.", {}, "en")).toBe("Routine finished with no news.")

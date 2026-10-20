@@ -6,6 +6,7 @@ import { buildDeepLink } from "../deepLink"
 import { ApiError, userFacingError } from "../errors"
 import { type Locale, type TranslationKey, t } from "../i18n"
 import { BotAvatar } from "./BotAvatar"
+import { Disclosure } from "./Disclosure"
 import "./team-approval.css"
 
 export const TeamApprovalCard = ({
@@ -136,10 +137,9 @@ export const TeamApprovalCard = ({
                         </>
                       )}
                     </p>
-                    <details open>
-                      <summary>{t("Instruções do bot", {}, locale)}</summary>
+                    <Disclosure defaultOpen summary={t("Instruções do bot", {}, locale)}>
                       <pre>{bot.instructions}</pre>
-                    </details>
+                    </Disclosure>
                   </div>
                 </li>
               )

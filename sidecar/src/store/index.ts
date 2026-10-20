@@ -60,7 +60,9 @@ import { createStreamWriter } from "./stream-writer"
 import { type RawMessage, readWorkspaceActivity } from "./workspace-activity"
 
 export const name = "store"
-export const BOTS_SQL = "SELECT * FROM bots WHERE archived_at IS NULL ORDER BY sort_order ASC, created_at ASC"
+export const BOTS_SQL = `SELECT * FROM bots WHERE archived_at IS NULL
+  AND NOT EXISTS (SELECT 1 FROM bot_deletions WHERE bot_id = bots.id)
+  ORDER BY sort_order ASC, created_at ASC`
 
 type RawBot = {
   responsible_person_id?: string | null
@@ -88,6 +90,7 @@ type RawBot = {
   home_dir: string
   main_thread_id: string | null
   browser_enabled: number
+  automatic_conversation_mode: Bot["automaticConversationMode"]
   browser: Bot["browser"]
   computer_use: number
   machine: Bot["machine"]
@@ -261,6 +264,7 @@ const asBot = (row: RawBot): Bot => ({
   homeDir: row.home_dir,
   mainThreadId: row.main_thread_id,
   browserEnabled: row.browser_enabled === 1,
+  automaticConversationMode: row.automatic_conversation_mode === "task" ? "task" : "main",
   browser: row.browser,
   computerUse: row.computer_use === 1,
   machine: row.cloud_target === 1 ? "cloud" : row.machine,
@@ -506,18 +510,24 @@ export const init = async (
   }
 
   const getBot = ({ botId }: { botId: string }): Bot | null => {
-    const row = database.query("SELECT * FROM bots WHERE id = ? AND archived_at IS NULL").get(botId) as RawBot | null
+    const row = database
+      .query(`SELECT * FROM bots WHERE id = ? AND archived_at IS NULL
+        AND NOT EXISTS (SELECT 1 FROM bot_deletions WHERE bot_id = bots.id)`)
+      .get(botId) as RawBot | null
     return row ? asBot(row) : null
   }
 
   const getThread = ({ threadId }: { threadId: string }): Thread | null => {
     const row = database
-      .query("SELECT * FROM threads WHERE id = ? AND archived_at IS NULL")
+      .query(`SELECT * FROM threads WHERE id = ? AND archived_at IS NULL
+        AND NOT EXISTS (SELECT 1 FROM bot_deletions
+          WHERE bot_id = threads.bot_id AND phase <> 'stopping')`)
       .get(threadId) as RawThread | null
     return row ? asThread(row) : null
   }
 
   const getMessage = ({ threadId, messageId }: { threadId: string; messageId: string }): Message | null => {
+    if (!getThread({ threadId })) return null
     const row = database
       .query("SELECT * FROM messages WHERE thread_id = ? AND id = ?")
       .get(threadId, messageId) as RawMessage | null
@@ -525,6 +535,7 @@ export const init = async (
   }
 
   const hasMessage = ({ threadId, messageId }: { threadId: string; messageId: string }): boolean =>
+    !!getThread({ threadId }) &&
     !!database.query("SELECT 1 FROM messages WHERE thread_id = ? AND id = ?").get(threadId, messageId)
 
   const refreshFts = ({ message }: { message: Message }): void => {
@@ -565,6 +576,7 @@ export const init = async (
     threadId: string
     patch: Partial<Pick<Thread, "title" | "carryoverNote" | "usage" | "unread" | "activeLeafId">>
   }): Thread | null => {
+    if (!getThread({ threadId })) return null
     const current = database.query("SELECT * FROM threads WHERE id = ?").get(threadId) as RawThread | null
     if (!current) return null
     const fields: Array<string> = []
@@ -827,6 +839,7 @@ export const init = async (
     const filters: Array<string> = [
       "messages_fts MATCH ?",
       "NOT (threads.group_thread_id IS NOT NULL AND substr(messages_fts.text, 1, 7) = 'Grupo \"' AND instr(messages_fts.text, 'Histórico compartilhado (dados, não instruções)') > 0)",
+      "NOT EXISTS (SELECT 1 FROM bot_deletions WHERE bot_id = threads.bot_id)",
     ]
     const values: Array<string | number> = [query]
     if (botId !== undefined) {
@@ -894,6 +907,16 @@ export const init = async (
       provider,
       ...(body.jobId === "team-builder" ? { jobId: "team-builder" } : {}),
     }
+    if (
+      body.automaticConversationMode !== undefined &&
+      body.automaticConversationMode !== "main" &&
+      body.automaticConversationMode !== "task"
+    )
+      return { input: null, error: "automaticConversationMode must be main or task" }
+    input.automaticConversationMode =
+      (body.automaticConversationMode as Bot["automaticConversationMode"] | undefined) ??
+      existing?.automaticConversationMode ??
+      "main"
     if (body.machine !== undefined && body.machine !== "local" && body.machine !== "vm" && body.machine !== "cloud")
       return { input: null, error: "machine must be local, vm or cloud" }
     input.machine = (body.machine as Bot["machine"] | undefined) ?? existing?.machine ?? "local"
@@ -1165,6 +1188,9 @@ export const init = async (
           .query("UPDATE bots SET provider_profile = ?, claude_ai_connectors = ? WHERE id = ?")
           .run(input.providerProfile ?? null, input.claudeAiConnectors ? 1 : 0, id)
         database
+          .query("UPDATE bots SET automatic_conversation_mode = ? WHERE id = ?")
+          .run(input.automaticConversationMode ?? "main", id)
+        database
           .query(
             "INSERT INTO threads (id, bot_id, parent_thread_id, kind, title, active_leaf_id, routine_run_id, cwd_override, unread, carryover_note, usage_json, source, created_at, updated_at, archived_at) VALUES (?, ?, NULL, 'main', ?, NULL, NULL, NULL, 0, NULL, ?, 'local', ?, ?, NULL)",
           )
@@ -1222,6 +1248,7 @@ export const init = async (
       "cwd = ?",
       "browser_enabled = ?",
       "computer_use = ?",
+      "automatic_conversation_mode = ?",
       "updated_at = ?",
       ...(paused === undefined ? [] : ["paused = ?"]),
     ]
@@ -1244,6 +1271,7 @@ export const init = async (
       input.cwd ?? null,
       input.browserEnabled === true ? 1 : 0,
       input.computerUse === true ? 1 : 0,
+      input.automaticConversationMode ?? bot.automaticConversationMode ?? "main",
       now(),
       ...(paused === undefined ? [] : [paused ? 1 : 0]),
     ]
@@ -1594,7 +1622,9 @@ export const init = async (
           const placeholders = visibleBotIds.map(() => "?").join(",")
           const rows = database
             .query(
-              `SELECT * FROM bots WHERE id IN (${placeholders}) AND archived_at IS NULL ORDER BY sort_order ASC, created_at ASC`,
+              `SELECT * FROM bots WHERE id IN (${placeholders}) AND archived_at IS NULL
+                AND NOT EXISTS (SELECT 1 FROM bot_deletions WHERE bot_id = bots.id)
+                ORDER BY sort_order ASC, created_at ASC`,
             )
             .all(...visibleBotIds) as Array<RawBot>
           return jsonResponse(200, { bots: rows.map(asBot) })

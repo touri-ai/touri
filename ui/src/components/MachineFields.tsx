@@ -5,6 +5,7 @@ import { useIsServerMode } from "../features/server/serverMode"
 import { machineStatusLabel, t } from "../i18n"
 import { machineStateForDisplay } from "../machineState"
 import { hostComputerSupported } from "../platform"
+import { Disclosure } from "./Disclosure"
 import { SettingsRow, SettingsSwitch } from "./SettingsLayout"
 
 type MachineValues = Pick<Bot, "machine" | "machineIdleMinutes" | "vmProviderLogin" | "hostComputerUse">
@@ -248,14 +249,11 @@ export const MachineFields = ({
       )}
       {capability?.available === false && <p className="field-help">{t("Conexão da máquina indisponível")}</p>}
       {(values.machine === "vm" || capability?.reason || technicalDetails) && (
-        <details
+        <Disclosure
           className="settings-technical-details"
-          ref={(details) => {
-            // Validation may open the field without closing it as the user corrects the value.
-            if (details && technicalDetailsOpen) details.open = true
-          }}
+          openWhen={technicalDetailsOpen}
+          summary={t("Detalhes técnicos")}
         >
-          <summary>{t("Detalhes técnicos")}</summary>
           {!capability?.available && capability?.reason && <p className="field-help">{capability.reason}</p>}
           {values.machine === "vm" && (
             <>
@@ -271,7 +269,7 @@ export const MachineFields = ({
             </>
           )}
           {technicalDetails}
-        </details>
+        </Disclosure>
       )}
     </section>
   )

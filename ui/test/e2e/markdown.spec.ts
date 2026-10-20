@@ -15,8 +15,8 @@ for (const theme of ["light", "dark"]) {
         expect(await page.locator(".markdown-content > p").count()).toBeGreaterThan(5)
       }
       await expect(page.locator(".tool-card")).toHaveCount(3)
-      for (const summary of await page.locator(".tool-details > summary").all()) {
-        await summary.click()
+      for (const trigger of await page.locator(".tool-details > .ds-disclosure-trigger").all()) {
+        await trigger.click()
       }
       if (phase === "after") {
         await expect(page.locator('[data-call-id="failure"] .tool-output code[data-highlighted="true"]')).toBeVisible()
