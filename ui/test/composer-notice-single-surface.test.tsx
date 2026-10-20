@@ -70,7 +70,7 @@ it("keeps the computer status without a second retry when the failed run's card 
     parts: [{ type: "notice", level: "error", code: "machine_boot", text: "A máquina não ficou pronta" }],
   })
 
-  expect(screen.queryAllByRole("button")).toHaveLength(0)
+  expect(screen.queryByRole("button", { name: "Tentar novamente", exact: true })).toBeNull()
   expect(screen.getByRole("complementary")).toHaveTextContent(t("The computer needs attention"))
   expect(screen.getByRole("complementary")).toHaveTextContent(localizeNotice("network error: ECONNRESET"))
 })

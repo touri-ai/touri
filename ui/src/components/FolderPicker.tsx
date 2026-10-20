@@ -5,6 +5,7 @@ import type { TauriInvoke, UiApi } from "../api/client"
 import { userFacingError } from "../errors"
 import { useIsServerMode } from "../features/server/serverMode"
 import { t } from "../i18n"
+import { Disclosure } from "./Disclosure"
 import { Modal } from "./Modal"
 import "./folder-picker.css"
 
@@ -176,8 +177,7 @@ export const FolderPicker = ({
         {listing?.truncated && (
           <p role="status">{t("Há mais pastas. Use Digitar caminho para abrir uma que não aparece.")}</p>
         )}
-        <details>
-          <summary>{t("Digitar caminho")}</summary>
+        <Disclosure summary={t("Digitar caminho")}>
           <label htmlFor="folder-picker-path">{t("Caminho absoluto da pasta")}</label>
           <div className="input-with-button">
             <input
@@ -202,7 +202,7 @@ export const FolderPicker = ({
               {t("Abrir pasta")}
             </button>
           </div>
-        </details>
+        </Disclosure>
         <div className="folder-picker-actions">
           {invokeCommand && desktop && (
             <button

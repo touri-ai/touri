@@ -167,7 +167,7 @@ describe("r3 P2 chat and navigation", () => {
       api.notify({ kind: "done", title: "Done", body: "resultado r3", botId: "bot-onb", threadId: "thread-onb" }),
     )
     fireEvent.click(screen.getByRole("button", { name: "Notificações" }))
-    fireEvent.click(screen.getByRole("button", { name: "Abrir" }))
+    fireEvent.click(screen.getByRole("button", { name: "Ver conversa" }))
     expect(screen.queryByRole("region", { name: "Central de notificações" })).toBeNull()
     expect(screen.getByRole("button", { name: "Notificações" })).toHaveAttribute("aria-expanded", "false")
     await waitFor(() => expect(screen.queryByText("resultado r3")).toBeNull())

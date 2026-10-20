@@ -2674,6 +2674,16 @@ export const ptBR = {
   "Não foi possível iniciar a compactação. Aguarde a migração ou compactação em andamento e tente novamente.":
     "Não foi possível iniciar a compactação. Aguarde a migração ou compactação em andamento e tente novamente.",
   "O provedor não detalhou o pedido": "O provedor não detalhou o pedido",
+  "Abrir e revisar": "Abrir e revisar",
+  "Solicitação dispensada": "Solicitação dispensada",
+  "Não foi possível limpar as notificações. Tente novamente.":
+    "Não foi possível limpar as notificações. Tente novamente.",
+  "Ver conversa": "Ver conversa",
+  "Marcar como lida": "Marcar como lida",
+  Limpar: "Limpar",
+  "Limpando…": "Limpando…",
+  Anteriores: "Anteriores",
+  "Fechar notificações": "Fechar notificações",
   "Aviso de bot pausado": "Aviso de bot pausado",
   "{name} está pausado": "{name} está pausado",
   "Bots pausados não respondem mensagens. Retome o bot para começar a conversa.":
@@ -4708,6 +4718,15 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Não foi possível consultar o armazenamento.": "Could not check storage.",
   "Não foi possível iniciar a compactação. Aguarde a migração ou compactação em andamento e tente novamente.":
     "Could not start compaction. Wait for the ongoing migration or compaction to finish and try again.",
+  "Abrir e revisar": "Open and review",
+  "Solicitação dispensada": "Request dismissed",
+  "Não foi possível limpar as notificações. Tente novamente.": "Could not clear notifications. Try again.",
+  "Ver conversa": "View conversation",
+  "Marcar como lida": "Mark as read",
+  Limpar: "Clear",
+  "Limpando…": "Clearing…",
+  Anteriores: "Earlier",
+  "Fechar notificações": "Close notifications",
 }
 export const dictionaries = {
   "pt-BR": ptBR,

@@ -25,6 +25,8 @@ import { isFailureNotice, pendingNotifications } from "../sidebarAttention"
 import { scopedStorageKey } from "../storageScope"
 import { useAvatarBot } from "./AvatarRuntime"
 import { BotAvatar } from "./BotAvatar"
+import { Badge, type BadgeTone, Button, UnreadCount } from "./Button"
+import { Disclosure } from "./Disclosure"
 import { ErrorNotice } from "./ErrorNotice"
 import { MotionPresence, useInsertedIds } from "./Motion"
 import "./screens.css"
@@ -56,6 +58,19 @@ const KIND_KEY: Record<NotificationRecord["kind"], TranslationKey> = {
   "delegation-settled": "Delegation",
 }
 
+const KIND_TONE: Record<NotificationRecord["kind"], BadgeTone> = {
+  approval: "warning",
+  question: "warning",
+  takeover: "warning",
+  "routine-deferred": "neutral",
+  "routine-failed": "danger",
+  "turn-failed": "danger",
+  incident: "danger",
+  done: "success",
+  notice: "neutral",
+  "delegation-settled": "info",
+}
+
 // Only a real question from the bot gets a reply box; a finished turn that ends in "?" is a reply.
 const hasReplyBox = (item: NotificationRecord): boolean => item.kind === "question"
 
@@ -84,6 +99,17 @@ export type NotificationActions = {
   recover?: (item: NotificationRecord, action: RecoveryAction) => Promise<void>
 }
 
+type OpenAction = { label: string; variant: "primary" | "secondary" | "quiet"; run: () => void }
+
+// One main action per item; approvals only open the full card and are never decided from the list.
+const getOpenAction = (item: NotificationRecord, resolved: boolean, run: () => void): OpenAction | null => {
+  if (item.kind === "approval" && !resolved) return { label: t("Abrir e revisar"), variant: "primary", run }
+  if (!item.threadId) return null
+  if (hasReplyBox(item)) return { label: t("Ver conversa"), variant: "quiet", run }
+
+  return { label: t("Ver conversa"), variant: "secondary", run }
+}
+
 const NotificationRow = ({
   item,
   now,
@@ -91,10 +117,12 @@ const NotificationRow = ({
   inserted,
   messages,
   runs,
+  unread,
   onReviewApproval,
 }: {
   item: NotificationRecord
   now: number
+  unread: boolean
   actions: NotificationActions
   inserted: boolean
   messages: Message[]
@@ -111,7 +139,7 @@ const NotificationRow = ({
   const title =
     resolved && item.kind === "approval"
       ? item.resolution === "dismissed"
-        ? "Solicitação dispensada"
+        ? t("Solicitação dispensada")
         : resolvedApprovalLabel(
             item.resolution === "allow"
               ? "approved"
@@ -147,11 +175,17 @@ const NotificationRow = ({
       return actions.respond({ notification: item, behavior: "answer", message: text })
     return actions.reply({ notification: item, text })
   }
+  const openAction = getOpenAction(item, resolved, () => {
+    if (teamProposal && item.requestId && item.threadId && onReviewApproval)
+      onReviewApproval({ threadId: item.threadId, approvalId: item.requestId })
+    else actions.open(item)
+  })
   return (
     <li
       className={`notification-row ${resolved ? "resolved" : ""} ${inserted ? "motion-insert" : ""}`}
       data-notification-id={item.id}
       data-kind={item.kind}
+      data-unread={unread}
       data-testid="notification-row"
       data-avatar-hover
       tabIndex={-1}
@@ -171,7 +205,7 @@ const NotificationRow = ({
       <div className="notification-main">
         <div className="notification-head">
           <strong>{item.botName ?? "touri"}</strong>
-          <span className={`notification-kind kind-${item.level}`}>{t(KIND_KEY[item.kind])}</span>
+          <Badge tone={KIND_TONE[item.kind]}>{t(KIND_KEY[item.kind])}</Badge>
           {resolved && isFailureNotice(item) && <span>{t("Interrupção anterior · resolvida")}</span>}
           <time
             dateTime={new Date(item.createdAt).toISOString()}
@@ -207,34 +241,9 @@ const NotificationRow = ({
         )}
         {approval?.command && <pre className="notification-command">{approval.command}</pre>}
         {approval?.technical && (
-          <details className="notification-technical">
-            <summary>{t("Detalhes técnicos")}</summary>
+          <Disclosure className="notification-technical" summary={t("Detalhes técnicos")}>
             <pre>{approval.technical}</pre>
-          </details>
-        )}
-        {!resolved && item.kind === "approval" && item.requestId && !teamProposal && (
-          <div className="notification-buttons">
-            <button
-              type="button"
-              disabled={busy}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") event.preventDefault()
-              }}
-              onClick={() => void run(() => actions.respond({ notification: item, behavior: "allow" }))}
-            >
-              Aprovar
-            </button>
-            <button
-              type="button"
-              disabled={busy}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") event.preventDefault()
-              }}
-              onClick={() => void run(() => actions.respond({ notification: item, behavior: "deny" }))}
-            >
-              Negar
-            </button>
-          </div>
+          </Disclosure>
         )}
         {!resolved && hasReplyBox(item) && (
           <form
@@ -254,30 +263,21 @@ const NotificationRow = ({
               placeholder={t("Reply")}
               aria-label={t("Reply")}
             />
-            <button type="submit" disabled={busy || !text.trim()}>
+            <Button type="submit" variant="primary" disabled={busy || !text.trim()}>
               {t("Send")}
-            </button>
+            </Button>
           </form>
         )}
-        <div className="notification-links">
-          {item.threadId && (
-            <button
-              type="button"
-              onClick={() => {
-                if (teamProposal && item.requestId && item.threadId && onReviewApproval) {
-                  onReviewApproval({ threadId: item.threadId, approvalId: item.requestId })
-                  return
-                }
-                actions.open(item)
-              }}
-            >
-              {t(teamProposal ? "Review pending approval" : item.kind === "approval" ? "Revisar" : "Open")}
-            </button>
+        <div className="notification-actions">
+          {openAction && (
+            <Button variant={openAction.variant} onClick={openAction.run}>
+              {openAction.label}
+            </Button>
           )}
           {!resolved && (
-            <button type="button" disabled={busy} onClick={() => void run(() => actions.dismiss(item.id))}>
-              Marcar como lida
-            </button>
+            <Button variant="quiet" disabled={busy} onClick={() => void run(() => actions.dismiss(item.id))}>
+              {t("Marcar como lida")}
+            </Button>
           )}
         </div>
         {error !== null && (
@@ -357,8 +357,8 @@ export const NotificationBell = ({
   const ordered = [...pending, ...recent].sort((a, b) => b.createdAt - a.createdAt || b.id - a.id)
   const today = new Date(now).toDateString()
   const groups = [
-    { title: "Hoje", items: ordered.filter((item) => new Date(item.createdAt).toDateString() === today) },
-    { title: "Anteriores", items: ordered.filter((item) => new Date(item.createdAt).toDateString() !== today) },
+    { title: t("Hoje"), items: ordered.filter((item) => new Date(item.createdAt).toDateString() === today) },
+    { title: t("Anteriores"), items: ordered.filter((item) => new Date(item.createdAt).toDateString() !== today) },
   ]
   const clear = async () => {
     if (clearing) return
@@ -424,9 +424,9 @@ export const NotificationBell = ({
   }, [focusNotification, open])
   return (
     <div className="notification-center" ref={container}>
-      <button
-        type="button"
-        className="settings-button notification-bell"
+      <Button
+        variant="quiet"
+        className="notification-bell"
         aria-label={getNotificationBellLabel(attentionCount)}
         aria-expanded={open}
         onClick={() => setOpen((current) => !current)}
@@ -445,8 +445,8 @@ export const NotificationBell = ({
           <path d="M6 9a6 6 0 1 1 12 0c0 6 2 7 2 7H4s2-1 2-7" />
           <path d="M10 20a2 2 0 0 0 4 0" />
         </svg>
-        {attentionCount > 0 && <span className="notification-badge">{attentionCount > 9 ? "9+" : attentionCount}</span>}
-      </button>
+        <UnreadCount count={attentionCount} className="notification-badge" />
+      </Button>
       {/* r8 motion: retain only the inert popover during its exit. */}
       {createPortal(
         <MotionPresence show={open} kind="popover">
@@ -460,26 +460,30 @@ export const NotificationBell = ({
               <strong>{t("Notifications")}</strong>
               <div className="notification-header-actions">
                 {ordered.length > 0 && (
-                  <button type="button" disabled={clearing} onClick={() => void clear()}>
-                    {clearing ? "Limpando…" : "Limpar"}
-                  </button>
+                  <Button variant="quiet" disabled={clearing} onClick={() => void clear()}>
+                    {clearing ? t("Limpando…") : t("Limpar")}
+                  </Button>
                 )}
-                <button type="button" aria-label="Fechar notificações" onClick={() => setOpen(false)}>
+                <Button
+                  variant="quiet"
+                  className="notification-close"
+                  aria-label={t("Fechar notificações")}
+                  onClick={() => setOpen(false)}
+                >
                   ×
-                </button>
+                </Button>
               </div>
             </header>
             {actions.openRecovery && (
-              <button
-                type="button"
-                className="text-button"
+              <Button
+                variant="link-action"
                 onClick={() => {
                   setOpen(false)
                   actions.openRecovery?.()
                 }}
               >
                 {t("Interrupted tasks")}
-              </button>
+              </Button>
             )}
             {skippedCount > 0 && (
               <p role="status">
@@ -490,24 +494,23 @@ export const NotificationBell = ({
             )}
             {clearError && (
               <p className="screen-inline-error" role="alert">
-                Não foi possível limpar as notificações. Tente novamente.
+                {t("Não foi possível limpar as notificações. Tente novamente.")}
               </p>
             )}
             {ordered.length === 0 && missingApprovals.length === 0 && (
               <p className="notification-empty">{t("Nothing needs you right now.")}</p>
             )}
             {missingApprovals.map((target) => (
-              <button
+              <Button
                 key={target.approvalId}
-                type="button"
-                className="text-button"
+                variant="primary"
                 onClick={() => {
                   setOpen(false)
                   onReviewApproval?.(target)
                 }}
               >
-                {t("Review pending approval")}
-              </button>
+                {t("Abrir e revisar")}
+              </Button>
             ))}
             {groups
               .filter((group) => group.items.length > 0)
@@ -522,6 +525,7 @@ export const NotificationBell = ({
                         now={now}
                         actions={navigationActions}
                         inserted={inserted.has(String(item.id))}
+                        unread={pending.includes(item)}
                         messages={messages}
                         runs={runs}
                         onReviewApproval={

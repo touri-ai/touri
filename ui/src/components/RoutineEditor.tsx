@@ -6,6 +6,7 @@ import type { RoutineDraft } from "../routineDraft"
 import { routineSchedule, simpleCron, simpleSchedule } from "../routineSchedule"
 import type { WorkspaceActions } from "../useWorkspace"
 import { DeleteRoutineDialog } from "./DeleteRoutineDialog"
+import { Disclosure } from "./Disclosure"
 import { Modal } from "./Modal"
 import "./routine-editor.css"
 
@@ -343,8 +344,7 @@ export const RoutineEditor = ({
                     ))}
                   </select>
                 </label>
-                <details open={!simple}>
-                  <summary>{t("Avançado")}</summary>
+                <Disclosure defaultOpen={!simple} openWhen={!simple} summary={t("Avançado")}>
                   <label>
                     {t("Expressão cron")}
                     <input
@@ -381,7 +381,7 @@ export const RoutineEditor = ({
                       />
                     </label>
                   </div>
-                </details>
+                </Disclosure>
               </>
             ) : (
               <section ref={reviewRef} tabIndex={-1} className="routine-review" aria-label={t("Revisar rotina")}>

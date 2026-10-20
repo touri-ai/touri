@@ -56,6 +56,7 @@ import { BotAvatar } from "./BotAvatar"
 import { ChatDisclosure } from "./ChatDisclosure"
 import { ConnectDataCard, connectDataMarker } from "./ConnectDataCard"
 import { ConversationStart } from "./ConversationStart"
+import { Disclosure } from "./Disclosure"
 import { DraftComposer, type DraftComposerHandle } from "./DraftComposer"
 import { ErrorDetails, ErrorText } from "./ErrorDetails"
 import { ErrorNotice } from "./ErrorNotice"
@@ -365,9 +366,7 @@ export const VirtualMessageList = ({
       }
       const atBottom = list.scrollTop + list.clientHeight >= list.scrollHeight - 48
       // Once a disclosure has settled back at the end, resume following the next reply.
-      const collapsed = anchor?.element.matches("summary")
-        ? anchor.element.parentElement instanceof HTMLDetailsElement && !anchor.element.parentElement.open
-        : anchor?.element.getAttribute("aria-expanded") === "false"
+      const collapsed = anchor?.element.getAttribute("aria-expanded") === "false"
       if (atBottom && collapsed) {
         readingAnchor.current = null
         followBottom.current = true
@@ -430,7 +429,7 @@ export const VirtualMessageList = ({
         onClickCapture={(event) => {
           if (!(event.target instanceof Element)) return
           const control = event.target.closest<HTMLElement>(
-            "summary, .chat-disclosure-toggle, .turn-activity-toggle, .disclosure-summary, .message-error-history > button",
+            ".ds-disclosure-trigger, .chat-disclosure-toggle, .turn-activity-toggle, .message-error-history > button",
           )
           if (!control) return
           const list = event.currentTarget
@@ -825,12 +824,9 @@ const MessageBubble = ({
                   return summary
                     ? [
                         <li key={"callId" in part ? part.callId : part.type}>
-                          <details>
-                            <summary>
-                              {t("Ações registradas")} {index + 1}
-                            </summary>
+                          <Disclosure summary={`${t("Ações registradas")} ${index + 1}`}>
                             <pre>{sanitizeDiagnostic(summary)}</pre>
-                          </details>
+                          </Disclosure>
                         </li>,
                       ]
                     : []

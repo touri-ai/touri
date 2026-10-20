@@ -97,7 +97,7 @@
 .composer-project-chip {
   animation: reveal-surface-in var(--duration-bounce) var(--ease-bounce);
 }
-.disclosure-summary {
+.animated-disclosure > .ds-disclosure-trigger {
   display: flex;
   align-items: center;
   gap: var(--space-4);
@@ -109,14 +109,6 @@
   color: var(--text);
   font-size: var(--fs-caption);
   text-align: start;
-}
-.disclosure-chevron {
-  display: inline-block;
-  width: 1ch;
-  transition: rotate var(--duration-surface) var(--ease-surface);
-}
-.animated-disclosure[data-expanded="true"] > .disclosure-summary > .disclosure-chevron {
-  rotate: 90deg;
 }
 .disclosure-reveal {
   height: calc(clamp(0, var(--reveal), 1) * var(--disclosure-size, 0px));

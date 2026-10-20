@@ -810,7 +810,7 @@
   color: var(--text-2);
   font-size: var(--fs-caption);
 }
-.error-details summary {
+.error-details > .ds-disclosure-trigger {
   cursor: pointer;
 }
 .error-details code {

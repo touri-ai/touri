@@ -1,6 +1,7 @@
 import type { DoctorCheck, DoctorReport, DoctorStatus } from "@touri/contracts"
 import { useEffect, useRef, useState } from "react"
 import type { UiApi } from "../../api/client"
+import { Disclosure } from "../../components/Disclosure"
 import { MachineServiceButton } from "../../components/MachineServiceButton"
 import { VaultAccessButton } from "../../components/VaultAccessButton"
 import { localizeNotice, plural, t } from "../../i18n"
@@ -67,10 +68,9 @@ const DoctorRow = ({
         {status !== "pass" &&
           check.fix &&
           (check.action === "authorize-vault" ? (
-            <details>
-              <summary>{t("Outras opções")}</summary>
+            <Disclosure summary={t("Outras opções")}>
               <code>{check.fix}</code>
-            </details>
+            </Disclosure>
           ) : (
             <div className="doctor-fix">
               <code>{check.fix}</code>

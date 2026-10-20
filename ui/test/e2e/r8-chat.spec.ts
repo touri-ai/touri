@@ -116,7 +116,7 @@ if (phase === "after") {
     await expect(tools).toBeVisible()
     const before = (await tools.boundingBox())?.y ?? 0
     await tools.click()
-    const result = page.locator(".tool-output > summary").first()
+    const result = page.locator(".tool-output > .ds-disclosure-trigger").first()
     await result.click()
     await expect.poll(async () => Math.abs(((await tools.boundingBox())?.y ?? 0) - before)).toBeLessThan(2)
     await page.evaluate(() => (window as unknown as { r8Chat: { append: () => void } }).r8Chat.append())

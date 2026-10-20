@@ -8,26 +8,40 @@ const controlIdFor = (settingId: string): string | undefined => {
   return definitions.find((definition) => definition.id === settingId)?.controlId
 }
 
+const getClosedDisclosures = (row: HTMLElement): HTMLElement[] => {
+  const parent = row.parentElement?.closest<HTMLElement>(".ds-disclosure")
+  if (!parent) return []
+
+  return [...getClosedDisclosures(parent), ...(parent.dataset.open === "true" ? [] : [parent])]
+}
+
 /** Focus and briefly highlight the registry row a palette result points at. */
 export const focusSetting = (settingId: string): (() => void) => {
   const row = document.querySelector<HTMLElement>(`[data-setting-id="${settingId}"]`)
   if (!row) return () => undefined
-  let disclosure = row.closest("details")
-  while (disclosure) {
-    disclosure.open = true
-    disclosure = disclosure.parentElement?.closest("details") ?? null
-  }
+  const disclosures = getClosedDisclosures(row)
+  disclosures.forEach((disclosure) => {
+    disclosure.querySelector<HTMLElement>(":scope > .ds-disclosure-trigger")?.click()
+  })
+
   const controlId = controlIdFor(settingId)
   const control = controlId ? document.getElementById(controlId) : null
   const target = control ?? row
   if (!control && !row.hasAttribute("tabindex")) row.tabIndex = -1
-  row.scrollIntoView?.({ block: "center" })
-  target.focus({ preventScroll: true })
+  const focus = () => {
+    row.scrollIntoView?.({ block: "center" })
+    target.focus({ preventScroll: true })
+  }
+  // React commits the disclosure's visibility after the click handler returns.
+  const frame = disclosures.length > 0 ? window.requestAnimationFrame(focus) : null
+  if (frame === null) focus()
+
   row.dataset.settingHighlight = "true"
   const timer = window.setTimeout(() => {
     delete row.dataset.settingHighlight
   }, SETTING_HIGHLIGHT_MS)
   return () => {
+    if (frame !== null) window.cancelAnimationFrame(frame)
     window.clearTimeout(timer)
     delete row.dataset.settingHighlight
   }

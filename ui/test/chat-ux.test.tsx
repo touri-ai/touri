@@ -72,7 +72,7 @@ describe("tool screenshots", () => {
     (data) => {
       renderResult(data)
       fireEvent.click(screen.getByRole("button", { name: /1 ação/ }))
-      fireEvent.click(screen.getByText("Resultado", { selector: "summary" }))
+      fireEvent.click(screen.getByRole("button", { name: "Resultado" }))
       const output = screen.getByText(/Display da VM/, { selector: "code" })
       expect(output).toHaveTextContent("Display da VM")
       expect(output).not.toHaveTextContent(png)

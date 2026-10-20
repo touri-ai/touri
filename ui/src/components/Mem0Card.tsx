@@ -2,6 +2,7 @@ import type { Mem0Settings, Mem0SettingsPatch } from "@touri/contracts"
 import { useEffect, useState } from "react"
 import type { UiApi } from "../api/client"
 import { t } from "../i18n"
+import { Disclosure } from "./Disclosure"
 import { SettingsSwitch } from "./SettingsLayout"
 
 type Status = { kind: "idle" } | { kind: "busy" } | { kind: "ok"; text: string } | { kind: "error"; text: string }
@@ -177,8 +178,7 @@ const Mem0CardForm = ({ api, botId }: { api: UiApi; botId: string }) => {
             />
             {t("Enviar cada conversa ao Mem0 automaticamente")}
           </label>
-          <details>
-            <summary>{t("Avançado")}</summary>
+          <Disclosure summary={t("Avançado")}>
             <label>
               {t("Memórias por busca")}
               <input
@@ -200,7 +200,7 @@ const Mem0CardForm = ({ api, botId }: { api: UiApi; botId: string }) => {
                 onChange={(event) => update({ threshold: Number(event.target.value) })}
               />
             </label>
-          </details>
+          </Disclosure>
           <p className="field-help">
             {draft.mode === "server"
               ? t(

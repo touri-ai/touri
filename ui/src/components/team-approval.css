@@ -54,7 +54,7 @@
 .team-approval-card p {
   margin: 3px 0;
 }
-.team-draft-body summary {
+.team-draft-body .ds-disclosure-trigger {
   cursor: pointer;
   color: var(--text-2);
   font-size: var(--fs-caption);

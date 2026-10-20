@@ -81,7 +81,7 @@ test("app preferences disclose technical controls and preserve edits between sec
   await expect(dialog.getByRole("switch")).toHaveCount(0)
   await dialog.getByRole("combobox", { name: "Tema", exact: true }).focus()
   await page.keyboard.press("Tab")
-  await expect(dialog.locator("summary").first()).toBeFocused()
+  await expect(dialog.locator(".ds-disclosure-trigger").first()).toBeFocused()
   await page.keyboard.press("Tab")
   await expect(dialog.getByRole("button", { name: "Cancelar", exact: true })).toBeFocused()
   const appearance = await new AxeBuilder({ page }).include(".modal-card").analyze()

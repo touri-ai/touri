@@ -1032,8 +1032,8 @@ a {
   color: var(--text-2);
   font-size: var(--fs-caption);
 }
-.reasoning-card summary,
-.tool-card summary {
+.reasoning-card .ds-disclosure-trigger,
+.tool-card .ds-disclosure-trigger {
   padding: var(--space-8) var(--space-12);
   cursor: pointer;
   color: var(--text);
@@ -3311,21 +3311,15 @@ a {
   position: relative;
   display: grid;
   place-items: center;
+  width: 40px;
+  min-width: 40px;
+  height: 40px;
+  padding: 0;
 }
 .notification-badge {
   position: absolute;
   top: 1px;
   right: 1px;
-  min-width: 15px;
-  height: 15px;
-  padding: 0 var(--space-4);
-  border-radius: var(--radius-sm);
-  background: var(--brand);
-  color: var(--text-on-accent);
-  font-size: var(--fs-caption);
-  font-weight: var(--weight-bold);
-  line-height: 15px;
-  text-align: center;
 }
 .notification-popover {
   position: fixed;
@@ -3348,13 +3342,13 @@ a {
   border-bottom: 1px solid var(--border-strong);
   font-size: var(--fs-meta);
 }
-.notification-popover button {
+.notification-popover button:not(.ds-button, .ds-disclosure-trigger) {
   border: 0;
   background: transparent;
   color: var(--text-2);
   font-size: var(--fs-caption);
 }
-.notification-popover button:hover {
+.notification-popover button:not(.ds-button, .ds-disclosure-trigger):hover {
   color: var(--text);
 }
 .notification-popover ul {
@@ -3381,28 +3375,26 @@ a {
   min-width: 0;
   flex: 1;
 }
+.notification-popover > header strong {
+  font-size: var(--fs-emphasis);
+  font-weight: var(--weight-semibold);
+}
+.notification-row[data-unread="true"] {
+  background: color-mix(in srgb, var(--brand) 6%, transparent);
+}
 .notification-head {
   display: flex;
   align-items: center;
   gap: var(--space-8);
   font-size: var(--fs-caption);
 }
+.notification-head strong {
+  font-size: var(--fs-meta);
+  font-weight: var(--weight-semibold);
+}
 .notification-head time {
   margin-left: auto;
   color: var(--text-2);
-}
-.notification-kind {
-  padding: var(--space-1) var(--space-8);
-  border-radius: var(--radius-xs);
-  background: var(--surface-control);
-  color: var(--accent-warning);
-  font-size: var(--fs-caption);
-}
-.notification-kind.kind-error {
-  color: var(--danger);
-}
-.notification-kind.kind-info {
-  color: var(--success);
 }
 .notification-title,
 .notification-body {
@@ -3410,13 +3402,17 @@ a {
   overflow-wrap: anywhere;
   font-size: var(--fs-meta);
 }
+.notification-title {
+  font-size: var(--fs-body);
+  font-weight: var(--weight-semibold);
+}
 .notification-body {
   max-height: 72px;
   overflow: hidden;
   color: var(--text-2);
 }
 .notification-buttons,
-.notification-links,
+.notification-actions,
 .notification-reply {
   display: flex;
   gap: var(--space-8);
@@ -4110,14 +4106,13 @@ a {
   border-top: 1px solid var(--border);
   padding-top: var(--space-4);
 }
-.tool-call-card .tool-details > summary {
-  width: fit-content;
-  padding: var(--space-8) 0;
+.tool-call-card .tool-details > .ds-disclosure-trigger {
+  padding: var(--space-4) 0;
   color: var(--text-2);
   font-size: var(--fs-caption);
 }
-.tool-details > summary:focus-visible,
-.tool-group > summary:focus-visible {
+.tool-details > .ds-disclosure-trigger:focus-visible,
+.tool-group > .ds-disclosure-trigger:focus-visible {
   outline: 2px solid var(--brand);
   outline-offset: var(--space-4);
   border-radius: var(--radius-xs);
@@ -4141,7 +4136,7 @@ a {
   border-radius: var(--radius-md);
   background: var(--surface-tool);
 }
-.tool-group > summary {
+.tool-group > .ds-disclosure-trigger {
   padding: var(--space-12) var(--space-16);
   cursor: pointer;
   color: var(--text-2);
@@ -4841,7 +4836,7 @@ a {
   max-height: 80vh;
   margin: 10vh auto;
 }
-.render-error details {
+.render-error .ds-disclosure {
   margin-top: 16px;
 }
 .render-error pre {

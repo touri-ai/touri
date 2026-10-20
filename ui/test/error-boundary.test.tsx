@@ -68,7 +68,7 @@ test("throwing child shows a local fallback with collapsible details, logs and c
     </ErrorBoundary>,
   )
   expect(screen.getByRole("alert")).toHaveTextContent("Não foi possível mostrar a conversa")
-  expect(screen.getByText("Detalhes do erro").closest("details")).not.toHaveAttribute("open")
+  expect(screen.getByText("Detalhes do erro").closest(".ds-disclosure")).toHaveAttribute("data-open", "false")
   await waitFor(() => expect(api.calls.some((call) => call.route === "POST /ui/errors")).toBe(true))
   expect(api.calls.find((call) => call.route === "POST /ui/errors")?.input).toMatchObject({
     area: "a conversa",

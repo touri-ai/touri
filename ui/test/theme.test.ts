@@ -7,6 +7,7 @@ const css = readFileSync("src/styles.css", "utf8")
 const motion = readFileSync("src/design/motion.css", "utf8")
 const groups = readFileSync("src/components/groups.css", "utf8")
 const sidebar = readFileSync("src/components/bot-sidebar.css", "utf8")
+const components = readFileSync("src/components/ds.css", "utf8")
 const declarations = (source: string): Record<string, string> =>
   Object.fromEntries([...source.matchAll(/(--[\w-]+):\s*([^;]+);/g)].map((match) => [match[1], match[2]]))
 const [base = "", light = ""] = tokens.split(':root[data-theme="light"]')
@@ -64,7 +65,7 @@ afterEach(() => {
 
 const surfaces = ["--bg", "--surface", "--raised", "--overlay"]
 const textRoles = ["--text", "--text-2", "--link", "--info", "--success", "--warning", "--danger"]
-const fills = ["--brand", "--info-fill", "--preview-avatar"]
+const fills = ["--brand", "--surface-settings-primary-hover", "--info-fill", "--preview-avatar"]
 const statusPairs = [
   ["--text-danger", "--surface-danger"],
   ["--text-danger", "--surface-notice"],
@@ -100,7 +101,7 @@ test.each(["dark", "light"] as const)("%s text roles keep 4.5:1 (12px captions i
   expect(css).toMatch(
     /\.button-brand,\s*\.brand-button \{[^}]*background: var\(--brand\);[^}]*color: var\(--text-on-accent\)/,
   )
-  expect(css).toMatch(/\.notification-badge \{[^}]*background: var\(--brand\);[^}]*color: var\(--text-on-accent\)/)
+  expect(components).toMatch(/\.ds-count \{[^}]*background: var\(--brand\);[^}]*color: var\(--text-on-accent\)/)
   expect(css).toMatch(
     /\.preview-chat-avatar \{[^}]*background: var\(--preview-avatar\);[^}]*color: var\(--text-on-accent\)/,
   )
@@ -122,7 +123,8 @@ test("light selected and raised surfaces keep visible borders", () => {
 })
 
 test("errors use the danger role and inline code stays at least 12px", () => {
-  expect(css).toMatch(/\.notification-kind\.kind-error \{[^}]*color: var\(--danger\)/)
+  expect(components).toMatch(/\.ds-badge-danger \{[^}]*--badge-role: var\(--danger\)/)
+  expect(components).toMatch(/\.ds-badge \{[^}]*color: var\(--badge-role\)/)
   expect(groups).toMatch(/\.group-thread-list button\[aria-current\] \{[^}]*color: var\(--danger\)/)
   expect(css).toMatch(/\.markdown-content :not\(pre\) > code \{[^}]*font-size: max\(0\.87em, var\(--fs-caption\)\)/)
 })

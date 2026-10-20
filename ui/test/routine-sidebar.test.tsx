@@ -123,7 +123,7 @@ it("groups 28 routine executions without burying ordinary conversations and open
   const history = document.querySelector(".routine-run-history")
   if (!(history instanceof HTMLElement)) throw new Error("Missing run history")
 
-  expect(history).toHaveAttribute("open")
+  expect(history).toHaveAttribute("data-open", "true")
   expect(within(history).getByRole("status")).toHaveFocus()
   expect(within(history).getByRole("combobox", { name: "Filtrar histórico por rotina" })).not.toHaveValue("all")
   const openButtons = within(history).getAllByRole("button", { name: "Abrir conversa" })
@@ -181,7 +181,7 @@ it("opens selected routine history across three bounded pages despite newer runs
   const history = document.querySelector(".routine-run-history")
   if (!(history instanceof HTMLElement)) throw new Error("Missing run history")
 
-  expect(history).toHaveAttribute("open")
+  expect(history).toHaveAttribute("data-open", "true")
   expect(screen.getByRole("button", { name: "mark", exact: true })).toHaveAttribute("aria-pressed", "true")
   expect(within(history).getByRole("combobox", { name: "Filtrar histórico por rotina" })).toHaveValue(targetRoutine.id)
   expect(within(history).queryByRole("option", { name: /Resumo de outro bot/ })).toBeNull()
@@ -189,10 +189,10 @@ it("opens selected routine history across three bounded pages despite newer runs
   expect(within(history).getAllByRole("listitem")).toHaveLength(50)
   expect(within(history).queryByText("Outras notícias", { selector: "strong" })).toBeNull()
 
-  fireEvent.click(within(history).getByText("Histórico de execuções", { selector: "summary" }))
+  fireEvent.click(within(history).getByRole("button", { name: "Histórico de execuções" }))
   fireEvent.click(within(conversations).getByRole("button", { name: "Histórico de rotinas" }))
 
-  expect(history).toHaveAttribute("open")
+  expect(history).toHaveAttribute("data-open", "true")
   expect(within(history).getByRole("combobox", { name: "Filtrar histórico por rotina" })).toHaveValue(targetRoutine.id)
 
   fireEvent.click(within(history).getByRole("button", { name: "Próxima página" }))
@@ -239,11 +239,11 @@ it("reopens history from the sidebar after it was manually collapsed", async () 
   render(<App kernel={{ services: { api } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
   fireEvent.click(screen.getByRole("button", { name: "Histórico de rotinas" }))
-  const summary = await screen.findByText("Histórico de execuções", { selector: "summary" })
+  const summary = await screen.findByRole("button", { name: "Histórico de execuções" })
   fireEvent.click(summary)
   fireEvent.click(screen.getByRole("button", { name: "Histórico de rotinas" }))
 
-  expect(summary.closest("details")).toHaveAttribute("open")
+  expect(summary.closest(".ds-disclosure")).toHaveAttribute("data-open", "true")
 })
 
 it("groups by identity across renames, keeps same-name routines separate and preserves unread results", async () => {

@@ -197,51 +197,29 @@ describe("r4 P0/P1 recovery", () => {
     },
   )
 
-  it("renders pending approvals in a body portal and sends explicit Aprovar/Negar decisions", async () => {
+  it("renders pending approvals in a body portal and sends the decision to the full card", async () => {
     const api = createMockApi()
     const view = render(<App kernel={{ services: { api } }} />)
     await screen.findByRole("textbox", { name: "Mensagem para mark" })
-    for (const [label, behavior] of [
-      ["Aprovar", "allow"],
-      ["Negar", "deny"],
-    ] as const) {
-      act(() => {
-        api.notify({
-          kind: "approval",
-          title: "Aprovar comando",
-          body: "gh pr list — revisar a execução pendente",
-          botId: "bot-mark",
-          requestId: `approval-${behavior}`,
-        })
+    act(() => {
+      api.notify({
+        kind: "approval",
+        title: "Aprovar comando",
+        body: "gh pr list — revisar a execução pendente",
+        botId: "bot-mark",
+        requestId: "approval-allow",
       })
-      fireEvent.click(screen.getByRole("button", { name: "Notificações, 1 precisa de atenção" }))
-      const center = screen.getByRole("region", { name: "Central de notificações" })
-      expect(center.closest(".motion-presence")?.parentElement).toBe(document.body)
-      expect(view.container.contains(center)).toBe(false)
-      expect(within(center).getByRole("button", { name: "Aprovar" })).toBeVisible()
-      expect(within(center).getByRole("button", { name: "Negar" })).toBeVisible()
-      expect(
-        api.calls.some(
-          (call) =>
-            call.route === "POST /threads/:id/respond" && JSON.stringify(call.input).includes(`approval-${behavior}`),
-        ),
-      ).toBe(false)
-      fireEvent.click(within(center).getByRole("button", { name: label }))
-      await waitFor(() =>
-        expect(
-          api.calls.some(
-            (call) =>
-              call.route === "POST /threads/:id/respond" &&
-              JSON.stringify(call.input).includes(`"behavior":"${behavior}"`),
-          ),
-        ).toBe(true),
-      )
-      fireEvent.click(screen.getByRole("button", { name: "Notificações" }))
-    }
-  })
-})
+    })
+    fireEvent.click(screen.getByRole("button", { name: "Notificações, 1 precisa de atenção" }))
+    const center = screen.getByRole("region", { name: "Central de notificações" })
 
-describe("r4 workflow polish", () => {
+    expect(center.closest(".motion-presence")?.parentElement).toBe(document.body)
+    expect(view.container.contains(center)).toBe(false)
+    expect(within(center).getByRole("button", { name: "Abrir e revisar" })).toBeVisible()
+    expect(within(center).queryByRole("button", { name: "Aprovar" })).toBeNull()
+    expect(within(center).queryByRole("button", { name: "Negar" })).toBeNull()
+    expect(api.calls.some((call) => call.route === "POST /threads/:id/respond")).toBe(false)
+  })
   it("offers a complete new-bot configuration in one dialog", async () => {
     const create = vi.fn(async (_input: ApiRoutes["POST /bots"]["req"]) => {})
     render(
