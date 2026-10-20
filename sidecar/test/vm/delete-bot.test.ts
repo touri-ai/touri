@@ -1127,14 +1127,20 @@ test("A11 deletion removes provider config files in bounded batches for 500 thre
   const f = await fixture()
   const bot = await f.create("Many conversations", "local", "claude")
   addThreads(f, bot.id, 499)
-  const config = join(f.runtime.kernel.paths.runDir, "claude", `${bot.mainThreadId}.settings.json`)
-  mkdirSync(join(f.runtime.kernel.paths.runDir, "claude"), { recursive: true })
-  writeFileSync(config, "private provider config")
+  const threads = f.db.query("SELECT id FROM threads WHERE bot_id = ?").all(bot.id) as { id: string }[]
+  const directory = join(f.runtime.kernel.paths.runDir, "claude")
+  const configs = threads.flatMap((thread) =>
+    ["mcp.json", "settings.json", "system.md"].map((suffix) => join(directory, `${thread.id}.${suffix}`)),
+  )
+  mkdirSync(directory, { recursive: true })
+  configs.forEach((path) => {
+    writeFileSync(path, "private provider config")
+  })
 
   expect(f.db.query("SELECT COUNT(*) AS count FROM threads WHERE bot_id = ?").get(bot.id)).toEqual({ count: 500 })
   expect((await f.request(`/bots/${bot.id}`, { name: bot.name }, "DELETE")).status).toBe(200)
   expect(f.db.query("SELECT id FROM bots WHERE id = ?").get(bot.id)).toBeNull()
-  expect(existsSync(config)).toBe(false)
+  expect(configs.some((path) => existsSync(path))).toBe(false)
 })
 
 test("A11 deletion removes previous provider files while preserving shared and unrelated files", async () => {
