@@ -41,7 +41,9 @@ export const createStreamPartWriter = (database: Database, appData: string, init
 
       return total - getOutputBytes(part)
     }, reservedInlineBytes)
-    const window = incoming.reduce(getOrderedWindow, previous)
+    const window = previous.concat(incoming)
+    // Sort the fresh window once instead of copying it for every incoming part.
+    window.sort((left, right) => left.partIndex - right.partIndex)
     const externalized = planStreamMessageParts({
       database,
       appData,
@@ -88,13 +90,6 @@ export const createStreamPartWriter = (database: Database, appData: string, init
       attachments: externalized.attachments.concat(overflowParts.attachments),
     }
   }
-}
-
-const getOrderedWindow = (window: PartPatch[], patch: PartPatch): PartPatch[] => {
-  const index = window.findIndex(({ partIndex }) => partIndex > patch.partIndex)
-  if (index < 0) return window.concat(patch)
-
-  return window.slice(0, index).concat(patch, window.slice(index))
 }
 
 const hasOutput = (part: MessagePart): boolean => {
