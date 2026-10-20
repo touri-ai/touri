@@ -133,6 +133,7 @@ const renderSidebar = (overrides: SidebarOverrides & { bots: Array<Bot>; threads
     },
     ...overrides,
   }
+  window.localStorage.setItem("touri.sidebar.mode", "bots")
   const view = render(<Sidebar {...props} />)
   return {
     ...view,
@@ -255,7 +256,7 @@ it.each([
     tooltip: "Novas mensagens",
     dateLabel: /12 de out\./,
   },
-])("keeps the generated $kind title concise and localizes its date label", ({ kind, title, tooltip, dateLabel }) => {
+])("keeps the generated $kind title concise and localizes its date label", ({ kind, title, dateLabel }) => {
   const { bots, threads } = fixture()
   const bot = bots[0]
   const baseThread = threads[0]
@@ -291,11 +292,18 @@ it.each([
         : [],
   })
 
-  const row = screen.getByRole("button", { name: /Novas mensagens/ })
-  const routineTitle = kind === "routine" ? "Rotina " : ""
+  const row =
+    kind === "routine"
+      ? screen.getByRole("button", { name: /Abrir histórico da rotina/ })
+      : screen.getByRole("button", { name: /Novas mensagens/ })
   const titleElement = row.querySelector("strong")
-  expect(titleElement).toHaveTextContent(`${routineTitle}Novas mensagens`)
-  expect(titleElement).toHaveAttribute("title", `${routineTitle}${tooltip}`)
+  if (kind === "routine") {
+    expect(titleElement).toHaveTextContent("Rotina “Novas mensagens”")
+    expect(titleElement).toHaveAttribute("title", `Rotina “Novas mensagens” · ${getRoutineRunDateLabel(timestamp)}`)
+  } else {
+    expect(titleElement).toHaveTextContent("Novas mensagens")
+    expect(titleElement).toHaveAttribute("title", "Novas mensagens")
+  }
   expect(row.querySelector("small")).toHaveTextContent(dateLabel)
   expect(thread.title).toBe(title)
 })

@@ -14,6 +14,16 @@ const start = async (): Promise<void> => {
     memberIds: ["bot-mark", "bot-onb"],
     coordinatorBotId: "bot-mark",
   })
+  if (new URLSearchParams(location.search).has("large")) {
+    const channels = Array.from({ length: 100 }, (_, index) => ({
+      name: `Canal QA ${index + 1}`,
+      color: "#dc2626",
+      avatarShape: "classic-none" as const,
+      memberIds: ["bot-mark", "bot-onb"],
+      coordinatorBotId: "bot-mark",
+    }))
+    await Promise.all(channels.map((channel) => api.request("POST /groups", channel)))
+  }
   Object.assign(window, { workModeQa: { api } })
   installMotionTokens(document.documentElement)
   initializeTheme()

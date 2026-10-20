@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
-import { afterEach, expect, it } from "vitest"
+import { afterEach, expect, it, vi } from "vitest"
 import App from "../src/App"
 import { createMockApi } from "../src/api/mock"
 import {
@@ -12,7 +12,10 @@ import {
 import { getSidebarDataByBot, getSidebarReadThreadIds, getSidebarThreads } from "../src/sidebarThreads"
 import { getRoutineSidebarFixture } from "./routine-sidebar-fixture"
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  vi.useRealTimers()
+})
 
 it("counts today's routine executions using the viewer's local calendar day", async () => {
   const { routineRuns, routines } = await getRoutineSidebarFixture(2)
@@ -45,7 +48,7 @@ it("clears every unread run when opening its routine group and leaves another ro
 
   expect(routine.querySelector(".sidebar-unread")).toHaveTextContent("8")
   fireEvent.click(routine)
-  await screen.findByText("Resumo pronto para conferir.", { selector: "p" })
+  await screen.findByRole("heading", { name: "Rotinas", exact: true })
 
   await waitFor(() => expect(routine.querySelector(".sidebar-unread")).toBeNull())
   expect(otherRoutine.querySelector(".sidebar-unread")).toHaveTextContent("1")
@@ -111,8 +114,8 @@ it("groups 28 routine executions without burying ordinary conversations and open
   const rows = conversations.querySelectorAll(".thread-row")
   expect(rows).toHaveLength(2)
   expect(rows[0]).toHaveTextContent("Planejamento da semana")
-  expect(rows[1]).toHaveTextContent("Rotina Resumo diário")
-  expect(rows[1]).toHaveTextContent(/\d+ hoje/)
+  expect(rows[1]).toHaveTextContent("Rotina “Resumo diário”")
+  expect(rows[1]).not.toHaveTextContent(/0 hoje/)
   expect(rows[1]).toHaveTextContent("11:45")
 
   fireEvent.click(screen.getByRole("button", { name: /^Ver trabalho: \d/ }))
@@ -138,6 +141,25 @@ it("groups 28 routine executions without burying ordinary conversations and open
   expect(selected).toHaveTextContent("05:00")
   expect(document.querySelectorAll('[data-bot-entry="bot-mark"] .thread-row')).toHaveLength(2)
   expect(await screen.findByText("Resumo pronto para conferir.", { selector: "p" })).toBeVisible()
+})
+
+it("shows the last run date instead of a zero-today count for an idle routine", async () => {
+  const fixture = await getRoutineSidebarFixture(2)
+  const routine = fixture.routines[0]
+  const latestRun = fixture.routineRuns.at(-1)
+  if (!routine || !latestRun) throw new Error("Missing routine date fixture")
+
+  vi.useFakeTimers({ toFake: ["Date"] })
+  vi.setSystemTime(new Date(2026, 9, 20, 12))
+  render(<App kernel={{ services: { api: fixture.api } }} />)
+  await screen.findByRole("textbox", { name: "Mensagem para mark" })
+
+  const conversations = screen.getByRole("region", { name: "Conversas de mark" })
+  const routineRow = within(conversations).getByRole("button", { name: "Abrir histórico da rotina Resumo diário" })
+  const lastRunLabel = getRoutineRunSidebarDateLabel(latestRun.scheduledFor, "pt-BR", routine.timezone)
+
+  expect(routineRow).toHaveTextContent(`Rotina “${routine.name}” · ${lastRunLabel}`)
+  expect(routineRow).not.toHaveTextContent("0 hoje")
 })
 
 it("keeps routine conversations older than the first history page reachable", async () => {
@@ -174,8 +196,8 @@ it("opens selected routine history across three bounded pages despite newer runs
   render(<App kernel={{ services: { api } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
   const conversations = screen.getByRole("region", { name: "Conversas de mark" })
-  fireEvent.click(within(conversations).getByText("Rotina Resumo diário", { selector: "strong" }))
-  await screen.findByText("Resumo pronto para conferir.", { selector: "p" })
+  fireEvent.click(within(conversations).getByRole("button", { name: "Abrir histórico da rotina Resumo diário" }))
+  await screen.findByRole("heading", { name: "Rotinas", exact: true })
   fireEvent.click(within(conversations).getByRole("button", { name: "Histórico de rotinas" }))
   await screen.findByRole("heading", { name: "Rotinas", exact: true })
   const history = document.querySelector(".routine-run-history")

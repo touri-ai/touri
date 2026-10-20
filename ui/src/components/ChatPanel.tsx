@@ -87,6 +87,8 @@ type ChatPanelProps = {
   onRepeatTask?: ((draft: RoutineDraft) => void) | undefined
   group?: BotGroup | null
   groupMembers?: Bot[]
+  channelMode?: boolean
+  workspaceMode?: "bots" | "work"
   onEditGroup?: () => void
   focusApproval?: ApprovalFocus | undefined
   panelOpen?: boolean
@@ -1066,6 +1068,8 @@ export const ChatPanel = ({
   onRepeatTask,
   group = null,
   groupMembers = [],
+  channelMode = false,
+  workspaceMode = "bots",
   onEditGroup = () => {},
   focusApproval,
   thread,
@@ -1237,13 +1241,14 @@ export const ChatPanel = ({
         <GroupHeader
           group={group}
           bots={groupMembers}
+          channelMode={channelMode}
           onEdit={onEditGroup}
           panelOpen={panelOpen}
           onTogglePanel={onTogglePanel}
         />
       ) : (
         <header className="chat-header" data-tauri-drag-region="deep">
-          <span className="chat-header-crumb">{t("Bots")}</span>
+          <span className="chat-header-crumb">{t(workspaceMode === "work" ? "Direct messages" : "Bots")}</span>
           <div className="chat-bot-chip">
             {bot ? (
               <BotAvatar bot={bot} size={18} threadId={thread.id} state={activityState} />
@@ -1339,7 +1344,7 @@ export const ChatPanel = ({
           header={
             visibleMessages.length === 0 && !activeRun && visibleRuns.length === 0 ? (
               group ? (
-                <GroupConversationStart group={group} bots={groupMembers} />
+                <GroupConversationStart group={group} bots={groupMembers} channelMode={channelMode} />
               ) : (
                 <ConversationStart
                   bot={bot}

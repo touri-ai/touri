@@ -50,10 +50,27 @@ const translations = [
   ["Conte o que o grupo deve fazer para começar.", "Tell the group what to do to get started."],
 ] satisfies [TranslationKey, string][]
 
+const channelTranslations = [
+  ["Channels", "Channels"],
+  ["New channel", "New channel"],
+  ["Channel members", "Channel members"],
+  ["Your channel", "Your channel"],
+  ["Channels / {name}", "Channels / {name}"],
+  ["Tell the channel what to do to get started.", "Tell the channel what to do to get started."],
+  ["Channel name", "Channel name"],
+  ["Create channel", "Create channel"],
+  ["Save channel", "Save channel"],
+] satisfies [TranslationKey, string][]
+
 describe("message actions, attachments and group translations", () => {
   it.each(translations)("translates %s in both languages", (key, english) => {
     expect(t(key)).toBe(key)
     expect(t(key, {}, "pt-BR")).toBe(key)
+    expect(t(key, {}, "en")).toBe(english)
+  })
+
+  it.each(channelTranslations)("translates channel UI %s in both languages", (key, english) => {
+    expect(t(key, {}, "pt-BR")).not.toBe(key)
     expect(t(key, {}, "en")).toBe(english)
   })
 

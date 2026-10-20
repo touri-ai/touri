@@ -9,9 +9,27 @@
   border-radius: 50%;
   box-shadow: 0 0 0 2px var(--surface);
 }
+.group-member-avatar {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  border: 1px solid var(--surface);
+  border-radius: var(--radius-round);
+  color: var(--text-primary);
+  font-size: var(--fs-caption);
+  font-weight: var(--weight-semibold);
+  line-height: 1;
+}
+.group-member-avatar-more {
+  background: var(--surface-control-raised);
+  color: var(--text-secondary);
+}
 .group-sidebar {
   border-top: 1px solid var(--border-subtle);
-  padding: var(--space-12) var(--space-10);
+  padding: var(--space-12) var(--space-8);
+  contain: layout style;
 }
 .modal-card.delete-group-dialog {
   width: min(520px, 100%);
@@ -30,8 +48,8 @@
   justify-content: space-between;
   align-items: center;
   font-weight: var(--weight-semibold);
-  padding: 0 var(--space-6) var(--space-8);
-  font-size: var(--type-12);
+  padding: 0 var(--space-4) var(--space-8);
+  font-size: var(--fs-meta);
 }
 .group-sidebar-heading small {
   color: var(--text-secondary);
@@ -47,18 +65,29 @@
 .group-sidebar-heading button {
   width: var(--control-size-compact);
   height: var(--control-size-compact);
-  font-size: var(--type-18);
+  font-size: var(--fs-emphasis);
 }
 .group-sidebar-heading .channel-create {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-4);
-  width: auto;
+  justify-content: center;
+  width: var(--control-size-compact);
+  min-width: var(--control-size-compact);
   min-height: var(--control-size-compact);
-  padding: 0 var(--space-6);
+  padding: 0;
   color: var(--text-secondary);
-  font-size: var(--type-11);
-  font-weight: var(--weight-medium);
+  font-size: var(--fs-emphasis);
+  font-weight: var(--weight-regular);
+}
+.group-sidebar-heading .channel-create > span {
+  line-height: 1;
+}
+.group-sidebar-empty {
+  margin: var(--space-4) 0 var(--space-8);
+  padding: var(--space-4);
+  color: var(--text-secondary);
+  font-size: var(--fs-caption);
+  line-height: 1.5;
 }
 .group-empty-create {
   display: flex;
@@ -89,9 +118,9 @@
   gap: var(--space-8);
   align-items: center;
   text-align: left;
-  padding: var(--space-8) var(--space-6);
+  padding: var(--space-8) var(--space-4);
   min-width: 0;
-  font-size: var(--type-13);
+  font-size: var(--fs-meta);
 }
 .group-select > .channel-name {
   flex: 1;
@@ -113,18 +142,22 @@
   place-items: center;
   min-width: 20px;
   height: 20px;
-  padding: 0 var(--space-5);
+  padding: 0 var(--space-4);
   border: 1px solid var(--border-warning);
   border-radius: var(--radius-pill);
   background: var(--surface-warning);
   color: var(--text-warning);
-  font-size: var(--type-10);
+  font-size: var(--fs-caption);
   line-height: 1;
   font-weight: var(--weight-semibold);
 }
 .group-sidebar-item.selected,
 .group-sidebar button:hover {
   background: var(--surface-control);
+}
+.group-sidebar-item {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 44px;
 }
 .group-thread-list {
   display: grid;
@@ -311,8 +344,8 @@
   display: none;
 }
 .group-sidebar {
-  max-height: 35vh;
-  overflow-y: auto;
+  max-height: none;
+  overflow: visible;
   flex-shrink: 0;
 }
 
