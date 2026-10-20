@@ -378,5 +378,5 @@ it("opens the localized diagnostics dialog from the palette", async () => {
 
   fireEvent.keyDown(input, { key: "Enter" })
 
-  expect(await screen.findByRole("dialog", { name: "Diagnóstico" })).toBeVisible()
+  expect(await screen.findByRole("dialog", { name: "Verificar suas ferramentas" })).toBeVisible()
 })

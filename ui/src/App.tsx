@@ -85,6 +85,7 @@ import { requestTaskResume, requestTaskReview } from "./recoveryEvents"
 import { isRoutineConversation } from "./routineConversation"
 import { getTeamRoutineDraft, type RoutineDraft } from "./routineDraft"
 import { isFailureNotice } from "./sidebarAttention"
+import { useCurrentPersonId } from "./useCurrentPersonId"
 import { useHost } from "./useHost"
 import { useNotificationSounds } from "./useNotificationSounds"
 import { RecoveryTasksContext, useRecoveryTasks } from "./useRecoveryTasks"
@@ -157,6 +158,7 @@ const AppContent = ({ kernel }: AppProps) => {
   const serverState = useServerMode()
   const serverMode = serverState.status?.mode === "server" || Boolean(serverState.error)
   const [api, setApi] = useState<UiApi | null>(() => kernel?.services?.api ?? null)
+  const currentPersonId = useCurrentPersonId(api, isNativeDesktop() && !serverMode)
   const host = useHost(api)
   const attachmentButtonRef = useRef<HTMLButtonElement>(null)
   const apiRef = useRef(api)
@@ -841,7 +843,6 @@ const AppContent = ({ kernel }: AppProps) => {
         doctorError={data.doctorError}
         onRefresh={actions.refreshDoctor}
         onClose={closeModal}
-        onImport={() => setModal("import")}
         focusSetting={settingFocus}
         launchAtLogin={data.settings?.launchAtLogin ?? false}
         onLaunchAtLogin={(value) => actions.updateSettings({ launchAtLogin: value })}
@@ -1229,6 +1230,7 @@ const AppContent = ({ kernel }: AppProps) => {
                             channelMode={Boolean(selectedGroup)}
                             workspaceMode={sidebarMode}
                             onRepeatTask={setRoutineDraft}
+                            currentPersonId={currentPersonId}
                             group={selectedGroup}
                             groupMembers={groupMembers}
                             onEditGroup={() => {

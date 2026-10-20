@@ -258,6 +258,26 @@ test("groups saved with a pre-bull silhouette keep it through validation and upd
   expect(saved.avatarShape).toBe("cercle")
 })
 
+test("customized legacy group heads keep their look and seed through validation and storage", async () => {
+  const groupFixture = await fixture()
+  const input: GroupInput = {
+    name: groupFixture.input.name,
+    color: groupFixture.input.color,
+    avatarShape: "nuage:short-glasses",
+    memberIds: groupFixture.input.memberIds,
+    coordinatorBotId: groupFixture.input.coordinatorBotId,
+  }
+
+  const isValid = groupFixture.data.validate(input)
+  const saved = groupFixture.data.save(input, groupFixture.group)
+  const reopened = groupFixture.data.get(saved.id)
+
+  expect(isValid).toBe(true)
+  expect(reopened?.avatarShape).toBe("nuage:short-glasses")
+  expect(reopened?.avatarSeed).toBe(groupFixture.group.avatarSeed)
+  expect(reopened?.color).toBe(groupFixture.group.color)
+})
+
 test("groups have separate conversations, private member sessions, ordered replies and durable attribution", async () => {
   const f = await fixture()
   const run = f.send("Bom dia")

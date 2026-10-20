@@ -430,9 +430,9 @@ describe("WP9 frontend acceptance", () => {
       ),
     ).toBeVisible()
     fireEvent.click(await screen.findByRole("button", { name: /Verificar este servidor/ }))
-    expect(await screen.findByRole("dialog", { name: "Diagnóstico" })).toBeVisible()
+    expect(await screen.findByRole("dialog", { name: "Verificar suas ferramentas" })).toBeVisible()
     fireEvent.keyDown(document, { key: "Escape" })
-    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Diagnóstico" })).toBeNull())
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Verificar suas ferramentas" })).toBeNull())
     fireEvent.click(screen.getByRole("button", { name: "Importar", exact: true }))
     expect(await screen.findByRole("dialog")).toBeVisible()
   })
@@ -459,9 +459,9 @@ describe("WP9 frontend acceptance", () => {
     }
     const view = render(<App kernel={{ services: { api } }} />)
     fireEvent.click(await screen.findByRole("button", { name: "Verificar este servidor" }))
-    await screen.findByRole("dialog", { name: "Diagnóstico" })
+    await screen.findByRole("dialog", { name: "Verificar suas ferramentas" })
     fireEvent.keyDown(document, { key: "Escape" })
-    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Diagnóstico" })).toBeNull())
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Verificar suas ferramentas" })).toBeNull())
     expect(view.container.querySelector(".onboarding-screen")).not.toHaveTextContent(/Falhas|Avisos|verificações/)
     expect(view.container.querySelector(".onboarding-screen .status-dot")).toBeNull()
     expect(screen.getByRole("button", { name: "Verificar este servidor" })).toBeVisible()

@@ -95,7 +95,7 @@ it("copies exact commands on one click and never executes a repair", async () =>
   render(<DoctorChecks doctor={report} error={null} onRefresh={vi.fn()} />)
   fireEvent.click(screen.getByRole("button", { name: "Copiar comando para Apple container · serviço" }))
   await waitFor(() => expect(writeText).toHaveBeenCalledWith("container system start"))
-  expect(screen.getByText("Copiado")).toBeVisible()
+  expect(await screen.findByText("Copiado")).toBeVisible()
 })
 
 it("announces the copied command for two seconds and restarts the timeout on another copy", async () => {

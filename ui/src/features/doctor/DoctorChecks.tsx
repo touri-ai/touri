@@ -6,6 +6,7 @@ import { MachineServiceButton } from "../../components/MachineServiceButton"
 import { VaultAccessButton } from "../../components/VaultAccessButton"
 import { localizeNotice, plural, t } from "../../i18n"
 import { DoctorStorage } from "./DoctorStorage"
+import { getDoctorCheckCopy } from "./getDoctorCheckCopy"
 
 const labels: Record<DoctorStatus, string> = { pass: "Pronto", warn: "Atenção", fail: "Falha" }
 const statusOf = (check: DoctorCheck): DoctorStatus => check.status ?? (check.ok ? "pass" : "fail")
@@ -33,6 +34,7 @@ const DoctorRow = ({
   useEffect(() => () => clearTimeout(copiedTimer.current), [])
   const status = statusOf(check)
   const label = check.label ?? check.id
+  const presentation = getDoctorCheckCopy(check)
   const copy = async (): Promise<void> => {
     try {
       await navigator.clipboard.writeText(check.fix ?? "")
@@ -52,7 +54,7 @@ const DoctorRow = ({
         {status === "pass" ? "✓" : "!"}
       </span>
       <div className="doctor-check-content">
-        <strong>{localizeNotice(label)}</strong>
+        <strong>{presentation?.label ?? localizeNotice(label)}</strong>
         <span>
           {check.action === "authorize-vault"
             ? t(
@@ -60,8 +62,14 @@ const DoctorRow = ({
                   ? "Permita o acesso ao cofre para restaurar a sessão salva do navegador."
                   : "Permita o acesso ao cofre para usar o login salvo.",
               )
-            : localizeNotice(check.detail)}
+            : (presentation?.nextStep ?? localizeNotice(check.detail))}
         </span>
+        {presentation && (
+          <Disclosure summary={t("Detalhes técnicos")}>
+            <strong>{localizeNotice(label)}</strong>
+            <p>{localizeNotice(check.detail)}</p>
+          </Disclosure>
+        )}
         {status !== "pass" && check.action === "authorize-vault" && check.vaultAccount && (
           <VaultAccessButton account={check.vaultAccount} onAuthorized={onRefresh} />
         )}
