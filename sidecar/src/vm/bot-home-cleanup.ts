@@ -1,7 +1,7 @@
 import { CString, dlopen, read } from "bun:ffi"
 import { closeSync, constants, fsyncSync } from "node:fs"
 import { join } from "node:path"
-import { openWorkspaceDirectory } from "../kernel/files"
+import { openWorkspaceDirectoryIfPresent } from "../kernel/files"
 import { direntNameOffset, errnoSymbol, libcLibrary, removeDirectoryFlag } from "../platform/posix"
 import { nativeFileOperation } from "../platform/windows-native"
 
@@ -31,7 +31,8 @@ export const removeBotHomeDirectory = ({ root, path, botId }: { root: string; pa
     nativeFileOperation("remove_tree", { root, path: join(path, botId) })
     return
   }
-  const parent = openWorkspaceDirectory({ root, path })
+  const parent = openWorkspaceDirectoryIfPresent({ root, path })
+  if (parent === null) return
   const remove = (directory: number, name: string): void => {
     const child = native().openat(
       directory,

@@ -82,8 +82,8 @@ const fixture = async ({
       },
       body: JSON.stringify(body),
     })
-  const create = async (name: string, machine = "vm") => {
-    const response = await request("/bots", { name, provider: "codex", machine, vmProviderLogin: machine === "vm" })
+  const create = async (name: string, machine = "vm", provider = "codex") => {
+    const response = await request("/bots", { name, provider, machine, vmProviderLogin: machine === "vm" })
     expect(response.status).toBe(201)
     return ((await response.json()) as { bot: Bot }).bot
   }
@@ -192,6 +192,16 @@ const makeGroupHistory = async (f: Awaited<ReturnType<typeof fixture>>) => {
   f.db.query("INSERT INTO group_message_links VALUES ('reply',?,'visible-reply')").run(child.id)
 
   return { owner, participant, group, thread, child, groups }
+}
+
+const addThreads = (f: Awaited<ReturnType<typeof fixture>>, botId: string, count: number) => {
+  f.db
+    .query(`WITH RECURSIVE thread_numbers(value) AS (
+      SELECT 1 UNION ALL SELECT value + 1 FROM thread_numbers WHERE value < ?
+    )
+    INSERT INTO threads (id, bot_id, title, created_at, updated_at)
+    SELECT 'bulk-thread-' || value, ?, 'Bulk thread ' || value, 1, 1 FROM thread_numbers`)
+    .run(count, botId)
 }
 
 const makeDeferredGroupEngine = (kernel: Kernel, runningBotId: string) => {
@@ -1083,6 +1093,48 @@ test("A11 deleting a symlinked bot home preserves the shared project target", as
   expect((await f.request(`/bots/${bot.id}`, { name: bot.name }, "DELETE")).status).toBe(200)
   expect(existsSync(join(shared, "keep.txt"))).toBe(true)
   expect(existsSync(bot.homeDir)).toBe(false)
+})
+
+test("A11 deletion unlinks a shared authentication link and preserves its target", async () => {
+  const f = await fixture()
+  const bot = await f.create("Shared login", "local")
+  const home = join(f.runtime.kernel.paths.appData, "provider-homes/codex", bot.id)
+  const target = join(f.root, ".codex/auth.json")
+  const auth = join(home, "auth.json")
+  const original = readFileSync(target)
+  mkdirSync(home, { recursive: true })
+  symlinkSync(target, auth)
+
+  const response = await f.request(`/bots/${bot.id}`, { name: bot.name }, "DELETE")
+
+  expect(response.status).toBe(200)
+  expect(f.db.query("SELECT id FROM bots WHERE id = ?").get(bot.id)).toBeNull()
+  expect(existsSync(auth)).toBe(false)
+  expect(readFileSync(target)).toEqual(original)
+})
+
+test("A11 deletion skips unrelated config cleanup for a bot with 500 threads", async () => {
+  const f = await fixture()
+  const bot = await f.create("Many conversations", "local")
+  addThreads(f, bot.id, 499)
+
+  expect(f.db.query("SELECT COUNT(*) AS count FROM threads WHERE bot_id = ?").get(bot.id)).toEqual({ count: 500 })
+  expect((await f.request(`/bots/${bot.id}`, { name: bot.name }, "DELETE")).status).toBe(200)
+  expect(f.db.query("SELECT id FROM bots WHERE id = ?").get(bot.id)).toBeNull()
+})
+
+test("A11 deletion removes provider config files in bounded batches for 500 threads", async () => {
+  const f = await fixture()
+  const bot = await f.create("Many conversations", "local", "claude")
+  addThreads(f, bot.id, 499)
+  const config = join(f.runtime.kernel.paths.runDir, "claude", `${bot.mainThreadId}.settings.json`)
+  mkdirSync(join(f.runtime.kernel.paths.runDir, "claude"), { recursive: true })
+  writeFileSync(config, "private provider config")
+
+  expect(f.db.query("SELECT COUNT(*) AS count FROM threads WHERE bot_id = ?").get(bot.id)).toEqual({ count: 500 })
+  expect((await f.request(`/bots/${bot.id}`, { name: bot.name }, "DELETE")).status).toBe(200)
+  expect(f.db.query("SELECT id FROM bots WHERE id = ?").get(bot.id)).toBeNull()
+  expect(existsSync(config)).toBe(false)
 })
 
 test("A11 vault failure keeps bot metadata and files available for a deletion retry", async () => {
