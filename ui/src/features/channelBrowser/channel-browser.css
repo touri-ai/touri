@@ -1,5 +1,6 @@
 .channel-chip {
   display: inline-flex;
+  flex: 0 1 auto;
   align-items: center;
   gap: var(--space-8);
   min-height: 30px;
@@ -10,6 +11,22 @@
   color: var(--text);
   font-size: var(--fs-meta);
   white-space: nowrap;
+}
+.channel-browser-card {
+  min-width: 0;
+  max-width: 100%;
+}
+.channel-browser-card .browser-activity-card {
+  max-width: 100%;
+}
+.channel-browser-card .browser-activity-header {
+  flex-wrap: wrap;
+}
+.channel-browser-card .browser-activity-header > div:first-child {
+  flex: 1 1 200px;
+}
+.channel-browser-card .channel-visibility {
+  white-space: normal;
 }
 .channel-chip-muted {
   color: var(--text-2);

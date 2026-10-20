@@ -1,3 +1,4 @@
+import type { Message, Thread } from "@touri/contracts"
 import { type Locale, t } from "../../i18n"
 
 export type ChannelBrowserQueueEntry = {
@@ -21,6 +22,38 @@ export type ChannelBrowserView = {
   canControl: boolean
   controlName: string
   previewHidden: boolean
+}
+
+export const getChannelWorking = (
+  threads: readonly Pick<Thread, "id" | "groupId">[],
+  messages: readonly Pick<Message, "threadId" | "status" | "sender" | "parts">[],
+): Record<string, string[]> => {
+  const groupByThread = new Map(threads.flatMap((thread) => (thread.groupId ? [[thread.id, thread.groupId]] : [])))
+  const active = messages.flatMap((message) => {
+    if (message.status !== "streaming" || !message.sender?.name) return []
+
+    const groupId = groupByThread.get(message.threadId)
+    if (!groupId) return []
+
+    const hasRunningBrowserAction = message.parts.some(
+      (part) =>
+        part.type === "tool_call" &&
+        part.ok == null &&
+        (part.tool.split("__").at(-1) ?? part.tool).startsWith("browser_"),
+    )
+    if (!hasRunningBrowserAction) return []
+
+    return [{ groupId, botName: message.sender.name }]
+  })
+
+  const groupIds = [...new Set(active.map(({ groupId }) => groupId))]
+
+  return Object.fromEntries(
+    groupIds.map((groupId) => [
+      groupId,
+      [...new Set(active.filter((item) => item.groupId === groupId).map((item) => item.botName))],
+    ]),
+  )
 }
 
 export const getChannelBrowserView = (state: ChannelBrowserState, viewerId: string): ChannelBrowserView => {

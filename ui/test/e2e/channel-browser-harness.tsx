@@ -136,9 +136,15 @@ const Fixture = () => {
           <InlinePreviewContext.Provider
             value={{ api, bot, machine: undefined, activeCallId: undefined, onOpenComputer: () => {} }}
           >
-            <TurnActivity message={message} api={api} state="working-tool" />
+            <div className="channel-demo-reply" data-message-id="reply">
+              <div className="message-meta">
+                <strong>Léo</strong> · respondendo à Ana · em andamento
+              </div>
+              <p>Abri a busca. Agora vou escolher as datas da viagem.</p>
+              <TurnActivity message={message} api={api} state="working-tool" />
+            </div>
           </InlinePreviewContext.Provider>
-          <ChannelComposerChip botName="Léo" />
+          <ChannelComposerChip botName="Léo" onStop={() => {}} />
         </main>
       </div>
     </ChannelBrowserContext.Provider>

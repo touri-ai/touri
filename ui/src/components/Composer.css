@@ -219,12 +219,37 @@
 }
 .composer-browser-status {
   width: min(900px, calc(100% - 48px));
+  min-height: 30px;
   margin: 0 auto var(--space-4);
   padding: var(--space-4) var(--space-8);
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-pill);
   background: var(--surface);
   color: var(--text-2);
+  font-size: var(--fs-caption);
+}
+.composer-browser-status-copy {
+  display: inline-flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  gap: var(--space-8);
+}
+.composer-browser-status-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.composer-browser-stop {
+  min-height: 24px;
+  flex: none;
+  padding: var(--space-4) var(--space-8);
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--surface-control);
+  color: var(--text);
   font-size: var(--fs-caption);
 }
 .composer-status:empty {

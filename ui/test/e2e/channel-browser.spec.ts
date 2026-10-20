@@ -23,11 +23,26 @@ test.describe("browser card in a channel", () => {
         await expect(page.getByRole("status", { name: "Léo no navegador · pedido de Ana" })).toBeVisible()
         await expect(page.getByTitle("Léo trabalhando aqui")).toBeVisible()
         await expect(page.locator(".composer-browser-status")).toContainText("para Ana")
+        await expect(
+          page.locator(".channel-demo-reply").getByRole("article", { name: "Navegador do Léo" }),
+        ).toBeVisible()
+        await expect(page.getByText("https://estadias.example.test/busca", { exact: true })).toHaveCount(1)
         const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
         expect(overflow).toBeLessThanOrEqual(0)
 
+        if (size.width <= 600) {
+          const preview = await page.locator(".browser-activity-preview").boundingBox()
+          const log = await page.locator(".browser-activity-log").boundingBox()
+          expect(preview).not.toBeNull()
+          expect(log).not.toBeNull()
+          expect(log?.y).toBeGreaterThanOrEqual((preview?.y ?? 0) + (preview?.height ?? 0))
+        }
+
         if (scenario.name === "requester") await expect(page.getByRole("button", { name: /Assumir/ })).toBeEnabled()
-        if (scenario.name !== "requester") await expect(page.getByRole("button", { name: /Assumir/ })).toBeDisabled()
+        if (scenario.name !== "requester") {
+          await expect(page.getByRole("button", { name: /Assumir/ })).toBeDisabled()
+          await expect(page.getByText("Ana está no controle")).toBeVisible()
+        }
         if (scenario.name === "takeover-hidden-preview")
           await expect(page.getByText("Prévia oculta para o canal enquanto Ana digita")).toBeVisible()
         if (scenario.name === "member-no-control") await expect(page.getByText("Na fila: pedido de Hugo")).toBeVisible()

@@ -392,7 +392,7 @@ export const Composer = ({
     }
   }
   const hasContent = Boolean(draft.trim() || files.length)
-  const showStop = Boolean(activeRun && !hasContent && !sending)
+  const showStop = Boolean(activeRun && !hasContent && !sending && !browserWorking)
   const composer = (
     <form
       ref={island}
@@ -642,7 +642,7 @@ export const Composer = ({
             onActiveChange={setDictating}
             onTranscript={(text) => onDraft(getDraftWithTranscript(draftRef.current, text))}
           />
-          {activeRun && !showStop && (
+          {activeRun && !showStop && !browserWorking && (
             <button
               type="button"
               className={stopping ? "composer-stop" : "composer-icon"}
@@ -701,7 +701,14 @@ export const Composer = ({
   return (
     <>
       {notice && <ComposerNotice {...notice} api={api} active={Boolean(activeRun)} loginFlowShown={login.blocked} />}
-      {browserWorking && <ChannelComposerChip botName={browserBotName ?? bot?.name ?? "touri"} locale={locale} />}
+      {browserWorking && (
+        <ChannelComposerChip
+          botName={browserBotName ?? bot?.name ?? "touri"}
+          onStop={() => void stop()}
+          stopping={stopping}
+          locale={locale}
+        />
+      )}
       {composer}
     </>
   )

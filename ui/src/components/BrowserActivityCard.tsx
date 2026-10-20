@@ -228,7 +228,9 @@ export const BrowserActivityCard = ({
             >
               {busy
                 ? t("Updating browser control…", {}, locale)
-                : held
+                : channel?.canControl === false
+                  ? t("Take over", {}, locale)
+                  : held
                   ? t("Hand back to {name}", { name: botName }, locale)
                   : t("Take over", {}, locale)}
             </button>
@@ -239,19 +241,19 @@ export const BrowserActivityCard = ({
         <div
           className={`browser-activity-content${fullView || finished || !previewEnabled ? " browser-activity-content-full" : ""}`}
         >
-          {!finished && previewEnabled && (
+          {!finished && (channel?.previewHidden || previewEnabled) && (
             <div className={`browser-activity-preview${fullView ? " browser-activity-preview-full" : ""}`}>
               {channel?.previewHidden ? (
                 <ChannelHiddenPreview locale={locale} />
               ) : preview?.src ? (
                 <img src={preview.src} alt={t("Current browser page", {}, locale)} />
-              ) : (
+              ) : previewEnabled ? (
                 <p className="browser-activity-placeholder">
                   {previewError ?? t("Waiting for the browser page…", {}, locale)}
                 </p>
-              )}
+              ) : null}
               {preview?.src && previewError && <small role="status">{previewError}</small>}
-              {url && <span title={url}>{url}</span>}
+              {url && !channel && <span title={url}>{url}</span>}
               <div className="browser-activity-preview-actions">
                 <button type="button" disabled={!preview} onClick={() => setFullView((value) => !value)}>
                   {fullView ? t("Collapse browser view", {}, locale) : t("Expand browser view", {}, locale)}

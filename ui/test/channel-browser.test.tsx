@@ -1,14 +1,16 @@
-import { cleanup, render, screen, within } from "@testing-library/react"
-import type { Bot, BotGroup, ToolCallPart } from "@touri/contracts"
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react"
+import type { Bot, BotGroup, Message, Run, ToolCallPart } from "@touri/contracts"
 import { afterEach, describe, expect, test, vi } from "vitest"
 import { createMockApi } from "../src/api/mock"
 import { BrowserActivityCard } from "../src/components/BrowserActivityCard"
+import { ChatPanel } from "../src/components/ChatPanel"
 import { GroupHeader, GroupSidebar } from "../src/components/Groups"
 import { ChannelBrowserContext, ChannelComposerChip } from "../src/features/channelBrowser/ChannelBrowser"
 import {
   type ChannelBrowserState,
   getChannelBrowserView,
   getChannelQueueLabel,
+  getChannelWorking,
 } from "../src/features/channelBrowser/channelBrowser"
 import { InlinePreviewContext } from "../src/features/desktop/InlineLivePreview"
 
@@ -56,6 +58,42 @@ const browserParts = [
   getPart("click", "mcp__touri__browser_click", '{"tabId":"tab-1","target":{"name":"Chicago"}}'),
 ]
 
+const getMessage = (overrides: Partial<Message> = {}): Message => ({
+  id: "prompt",
+  threadId: "thread-channel",
+  parentId: null,
+  role: "user",
+  kind: "text",
+  status: "complete",
+  runId: null,
+  text: "Pesquise estadias em Chicago.",
+  parts: [{ type: "text", text: "Pesquise estadias em Chicago." }],
+  sender: null,
+  source: "local",
+  createdAt: 1,
+  updatedAt: 1,
+  ...overrides,
+})
+
+const getRun = (threadId: string, bot: Bot): Run => ({
+  id: "run-channel",
+  botId: bot.id,
+  threadId,
+  provider: bot.provider,
+  trigger: "user",
+  requestMessageId: "prompt",
+  replyMessageId: "reply",
+  externalTurnId: null,
+  status: "running",
+  errorClass: null,
+  errorMessage: null,
+  usage: null,
+  routineRunId: null,
+  queuedAt: 1,
+  startedAt: 1,
+  finishedAt: null,
+})
+
 const renderCard = (state: ChannelBrowserState, viewerId: string) => {
   const api = createMockApi()
   const bot = api.getState().bots[0] ?? null
@@ -99,6 +137,47 @@ describe("getChannelBrowserView", () => {
     const state = getState({ controllerId: "user-owner", controllerName: "Bia" })
 
     expect(getChannelBrowserView(state, "user-hugo").controlName).toBe("Bia")
+  })
+})
+
+describe("getChannelWorking", () => {
+  test("marks only group rows with a live browser action", () => {
+    const messages = [
+      getMessage({
+        id: "reply",
+        threadId: "group-thread",
+        role: "assistant",
+        status: "streaming",
+        sender: { id: "bot-leo", name: "Léo" },
+        parts: [{ ...browserParts[0], ok: null, outputJson: null }],
+      }),
+      getMessage({
+        id: "idle",
+        threadId: "group-thread",
+        role: "assistant",
+        status: "complete",
+        sender: { id: "bot-ana", name: "AnaBot" },
+        parts: browserParts,
+      }),
+      getMessage({
+        id: "direct",
+        threadId: "direct-thread",
+        role: "assistant",
+        status: "streaming",
+        sender: { id: "bot-mark", name: "Mark" },
+        parts: [{ ...browserParts[0], ok: null, outputJson: null }],
+      }),
+    ]
+
+    const working = getChannelWorking(
+      [
+        { id: "group-thread", groupId: "group-viagens" },
+        { id: "direct-thread", groupId: null },
+      ],
+      messages,
+    )
+
+    expect(working).toEqual({ "group-viagens": ["Léo"] })
   })
 })
 
@@ -228,4 +307,66 @@ describe("channel chrome", () => {
 
     expect(screen.getByRole("status")).toHaveTextContent("Léo está trabalhando · No navegador · para Ana")
   })
+
+  test("composer chip stops the active browser run", () => {
+    const onStop = vi.fn()
+    render(<ChannelComposerChip botName="Léo" onStop={onStop} />)
+
+    fireEvent.click(screen.getByRole("button", { name: "Parar" }))
+
+    expect(onStop).toHaveBeenCalledOnce()
+  })
+})
+
+test("ChatPanel shares channel browser state with the group header, reply card, and composer", async () => {
+  const api = createMockApi()
+  const bot = api.getState().bots.find((item) => item.id === "bot-mark")
+  if (!bot) throw new Error("Missing fixture bot")
+  const { group, thread } = await api.request("POST /groups", {
+    name: "viagens",
+    color: "#dc2626",
+    avatarShape: "classic-none",
+    memberIds: [bot.id],
+    coordinatorBotId: null,
+  })
+  const prompt = getMessage({ threadId: thread.id })
+  const reply = getMessage({
+    id: "reply",
+    threadId: thread.id,
+    parentId: prompt.id,
+    role: "assistant",
+    status: "streaming",
+    runId: "run-channel",
+    text: "Estou na página de estadias.",
+    parts: [{ ...browserParts[0], ok: null, outputJson: null }],
+    sender: { id: bot.id, name: "Léo" },
+    createdAt: 2,
+  })
+
+  render(
+    <ChatPanel
+      group={group}
+      groupMembers={[bot]}
+      channelBrowser={{ state: getState({ botId: bot.id, botName: "Léo" }), viewerId: "user-ana" }}
+      thread={{ ...thread, activeLeafId: reply.id }}
+      bot={bot}
+      messages={[prompt, reply]}
+      runs={[getRun(thread.id, bot)]}
+      onSend={vi.fn(async () => {})}
+      onRetry={vi.fn(async () => {})}
+      onCancel={vi.fn(async () => {})}
+      onSwitchBranch={vi.fn(async () => {})}
+      computerGrant={null}
+      api={api}
+      onComputerGrant={vi.fn()}
+      onOpenTools={vi.fn()}
+    />,
+  )
+
+  expect(screen.getByRole("status", { name: "Léo no navegador · pedido de Ana" })).toBeVisible()
+  expect(screen.getByText("Todos no canal veem")).toBeVisible()
+  expect(screen.getByText("Léo está trabalhando · No navegador · para Ana")).toBeVisible()
+  expect(screen.getByText("Todos no canal veem").closest(".message-assistant")).toContainElement(
+    screen.getByText("Estou na página de estadias."),
+  )
 })

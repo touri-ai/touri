@@ -257,7 +257,7 @@
   padding: 7px 10px;
   cursor: pointer;
 }
-@media (max-width: 800px) {
+@media (max-width: 1100px) {
   .group-header {
     flex-wrap: wrap;
     gap: 8px;

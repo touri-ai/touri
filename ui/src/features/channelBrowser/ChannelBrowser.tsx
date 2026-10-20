@@ -108,14 +108,39 @@ export const ChannelCardFooter = ({ locale = "pt-BR" }: { locale?: Locale }) => 
   )
 }
 
-export const ChannelComposerChip = ({ botName, locale = "pt-BR" }: { botName: string; locale?: Locale }) => {
+export const ChannelComposerChip = ({
+  botName,
+  onStop,
+  stopping = false,
+  locale = "pt-BR",
+}: {
+  botName: string
+  onStop?: (() => void) | undefined
+  stopping?: boolean | undefined
+  locale?: Locale
+}) => {
   const channel = useChannelBrowserView()
   const base = t("{name} is working · In the browser", { name: botName }, locale)
   const text = channel ? `${base} · ${t("for {person}", { person: channel.state.requesterName }, locale)}` : base
 
   return (
-    <div className="composer-browser-status" role="status">
-      {text}
+    <div className="composer-browser-status">
+      <span className="composer-browser-status-copy" role="status">
+        <span className="channel-dot" aria-hidden="true" />
+        <span className="composer-browser-status-text">{text}</span>
+      </span>
+      {onStop && (
+        <button
+          type="button"
+          className="composer-browser-stop"
+          aria-label={stopping ? t("Stopping reply…", {}, locale) : t("Stop reply button", {}, locale)}
+          title={t("Stop reply", {}, locale)}
+          disabled={stopping}
+          onClick={onStop}
+        >
+          {stopping ? t("Stopping reply…", {}, locale) : t("Stop", {}, locale)}
+        </button>
+      )}
     </div>
   )
 }
