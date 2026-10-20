@@ -34,7 +34,7 @@ type DecideBrowserTargetArgs = {
   signal: AbortSignal
 }
 
-const DECISION_ENDPOINT = "https://openrouter.ai/api/v1/systemone"
+const DECISION_ENDPOINT = "https://openrouter.ai/api/alpha/decisions"
 const DECISION_MODEL = "typesafe/jev-1.13"
 const MAX_CANDIDATES = 8
 const MAX_LABEL_LENGTH = 120
@@ -225,6 +225,10 @@ const DATE_INTENT =
   /date|calendar|departure|return date|check.?in|check.?out|data|calend[aá]rio|partida|retorno|ida|volta/i
 const DATE_MONTH =
   /jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?|fev(?:ereiro)?|mar(?:ço)?|abr(?:il)?|mai|jun(?:ho)?|jul(?:ho)?|ago(?:sto)?|set(?:embro)?|out(?:ubro)?|dez(?:embro)?/i
+const SAFE_BROWSER_READ =
+  /^(?:document\.(?:title|body\.(?:innerText|textContent))|document\.querySelector\(\s*(?:"[^"\\\r\n]{1,200}"|'[^'\\\r\n]{1,200}')\s*\)\.(?:innerText|textContent|href|src|title|id|className|tagName)|document\.querySelectorAll\(\s*(?:"[^"\\\r\n]{1,200}"|'[^'\\\r\n]{1,200}')\s*\)\.length)$/
+
+export const isSafeBrowserRead = (expression: string): boolean => SAFE_BROWSER_READ.test(expression.trim())
 
 const isDateButton = (name: string): boolean =>
   /^\d{1,2}$/.test(name.trim()) || (DATE_MONTH.test(name) && /\d{1,2}/.test(name))

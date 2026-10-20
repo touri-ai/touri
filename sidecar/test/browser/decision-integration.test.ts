@@ -4,6 +4,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { BrowserSnapshot, BrowserTarget, ToolRegistration, ToolResult } from "@touri/contracts"
 import { init } from "../../src/browser"
+import { isSafeBrowserRead } from "../../src/browser/decision"
 import type { BrowserEngine } from "../../src/browser/types"
 import { createKernel } from "../../src/kernel"
 
@@ -35,13 +36,19 @@ const result = (success: boolean): ToolResult =>
     ? { success: true, content: [] }
     : { success: false, errorCode: "ENGINE_UNAVAILABLE", error: "Synthetic browser failure" }
 
-const makeEngine = ({ snapshot: page = snapshot }: { snapshot?: BrowserSnapshot } = {}): {
+const makeEngine = ({
+  snapshot: page = snapshot,
+}: {
+  snapshot?: BrowserSnapshot
+} = {}): {
   engine: BrowserEngine
   clicks: () => Array<BrowserTarget>
   presses: () => number
+  evaluations: () => Array<string>
 } => {
   let clicks: Array<BrowserTarget> = []
   let presses = 0
+  let evaluations: Array<string> = []
   const engine: BrowserEngine = {
     preview: async () => null,
     open: async () => result(true),
@@ -66,7 +73,10 @@ const makeEngine = ({ snapshot: page = snapshot }: { snapshot?: BrowserSnapshot 
     selectOption: async () => result(true),
     setChecked: async () => result(true),
     waitFor: async () => result(true),
-    evaluate: async () => result(true),
+    evaluate: async ({ expression }) => {
+      evaluations = [...evaluations, expression]
+      return result(true)
+    },
     requestTakeover: async () => result(true),
     submitSecret: async () => result(true),
     secretEntry: async () => false,
@@ -88,7 +98,7 @@ const makeEngine = ({ snapshot: page = snapshot }: { snapshot?: BrowserSnapshot 
     shutdown: async () => {},
   }
 
-  return { engine, clicks: () => clicks, presses: () => presses }
+  return { engine, clicks: () => clicks, presses: () => presses, evaluations: () => evaluations }
 }
 
 const makeFixture = async ({
@@ -108,7 +118,7 @@ const makeFixture = async ({
     for (const tool of input.tools) handlers.set(tool.name, tool)
     return registered(input)
   }
-  const fake = makeEngine({ snapshot: pageSnapshot })
+  const fake = makeEngine(pageSnapshot ? { snapshot: pageSnapshot } : {})
   await init(runtime.kernel, undefined, {
     engine: fake.engine,
     getDecisionApiKey: getApiKey,
@@ -133,10 +143,42 @@ const makeFixture = async ({
     context,
     handler: handlers.get("browser_click")?.handler,
     pressHandler: handlers.get("browser_press")?.handler,
+    evaluateHandler: handlers.get("browser_evaluate")?.handler,
     clicks: fake.clicks,
     presses: fake.presses,
+    evaluations: fake.evaluations,
   }
 }
+
+test("browser script tool permits only simple read-only page queries", async () => {
+  expect(isSafeBrowserRead('document.querySelector("#results").textContent')).toBe(true)
+  expect(isSafeBrowserRead("document.querySelector('#results').textContent")).toBe(true)
+  expect(isSafeBrowserRead("document.querySelector('#search').click()")).toBe(false)
+  expect(isSafeBrowserRead("document.querySelector('#search')['click']()")).toBe(false)
+  expect(isSafeBrowserRead("document.querySelector('#search').form.requestSubmit()")).toBe(false)
+
+  const fixture = await makeFixture({
+    getApiKey: async () => null,
+    fetchDecision: async () => Response.json({}),
+  })
+  try {
+    const blocked = await fixture.evaluateHandler?.({
+      ctx: fixture.context,
+      args: { tabId: snapshot.tabId, expression: "document.querySelector('#search')['click']()" },
+    })
+    expect(blocked).toMatchObject({ success: false, errorCode: "USER_TAKEOVER_REQUIRED" })
+    expect(fixture.evaluations()).toEqual([])
+
+    const readOnly = await fixture.evaluateHandler?.({
+      ctx: fixture.context,
+      args: { tabId: snapshot.tabId, expression: "document.querySelector('#results').textContent" },
+    })
+    expect(readOnly?.success).toBe(true)
+    expect(fixture.evaluations()).toEqual(["document.querySelector('#results').textContent"])
+  } finally {
+    await fixture.close()
+  }
+})
 
 test("an ambiguous safe option is resolved and retried once with a provider-selected ref", async () => {
   const requests: Array<{ url: string; body: string }> = []
@@ -171,7 +213,7 @@ test("an ambiguous safe option is resolved and retried once with a provider-sele
       { kind: "ref", ref: "2.2" },
     ])
     expect(requests).toHaveLength(1)
-    expect(requests[0]?.url).toBe("https://openrouter.ai/api/v1/systemone")
+    expect(requests[0]?.url).toBe("https://openrouter.ai/api/alpha/decisions")
     expect(requests[0]?.body).toContain("Lisboa Airport")
     expect(requests[0]?.body).not.toContain("pessoa@example.com")
     expect(requests[0]?.body).not.toContain("example")

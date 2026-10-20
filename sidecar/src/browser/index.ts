@@ -18,6 +18,7 @@ import {
   type BrowserDecisionFallbackReason,
   createBrowserDecisionAdapter,
   getBrowserDecisionCandidates,
+  isSafeBrowserRead,
   requiresBrowserTakeover,
 } from "./decision"
 import type { BrowserEngine } from "./types"
@@ -536,7 +537,13 @@ export const init = async (
         timeoutMs: timeout(input.timeoutMs),
         run: async ({ signal, budgetMs }) => {
           if (enterKey) {
-            const inspected = await engine.snapshot({ tabId, botId: ctx.botId, image: "never", signal, timeoutMs: budgetMs })
+            const inspected = await engine.snapshot({
+              tabId,
+              botId: ctx.botId,
+              image: "never",
+              signal,
+              timeoutMs: budgetMs,
+            })
             const snapshot = inspected.success ? getSnapshot(inspected.structured) : null
             if (!snapshot) return getBrowserTakeoverRequiredResult()
             const focused = snapshot.elements.find((element) => element.ref === snapshot.focus.ref)
@@ -655,7 +662,7 @@ export const init = async (
       const tabId = asString(input.tabId) ?? ""
       const expression = asString(input.expression) ?? ""
       const pageUrl = engine.tabsForBot(ctx.botId).find((tab) => tab.tabId === tabId)?.url ?? ""
-      if (requiresBrowserTakeover({ action: "click", intent: expression, pageUrl }))
+      if (!isSafeBrowserRead(expression) || requiresBrowserTakeover({ action: "click", intent: expression, pageUrl }))
         return getBrowserTakeoverRequiredResult()
 
       return withToolDeadline({

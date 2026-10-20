@@ -73,7 +73,7 @@ describe("browser decision adapter", () => {
       confidence: 0.93,
     })
     expect(requests).toHaveLength(1)
-    expect(requests[0]?.url).toBe("https://openrouter.ai/api/v1/systemone")
+    expect(requests[0]?.url).toBe("https://openrouter.ai/api/alpha/decisions")
     expect(requests[0]?.authorization).toBe("Bearer synthetic-test-key")
     expect(requests[0]?.redirect).toBe("error")
     expect(requests[0]?.body).toContain('"model":"typesafe/jev-1.13"')
