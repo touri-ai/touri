@@ -230,36 +230,44 @@ export const VirtualMessageList = ({
     ]
     return Array.from(entries).sort((a, b) => a.createdAt - b.createdAt)
   }, [messages, timelineCards])
+  const isVirtualized = timeline.length > 100
   const rowOffsets = useMemo(
-    () => (timeline.length > 100 ? getTimelineOffsets(timeline, rowHeights) : [0]),
-    [timeline, rowHeights],
+    () => (isVirtualized ? getTimelineOffsets(timeline, rowHeights) : [0]),
+    [timeline, rowHeights, isVirtualized],
   )
-  const measureRowOnNextFrame = useCallback((id: string) => {
-    // Coalesce image loads and mounted rows so one frame reads each visible row at most once.
-    pendingRowMeasurements.current.add(id)
-    if (measurementFrame.current !== null) return
-    measurementFrame.current = requestAnimationFrame(() => {
-      measurementFrame.current = null
-      const content = contentRef.current
-      const elements = Array.from(content?.querySelectorAll<HTMLElement>("[data-message-row]") ?? [])
-      const rowsById = new Map(elements.map((element) => [element.dataset.messageRow ?? "", element]))
-      const rows = [...pendingRowMeasurements.current].flatMap((rowId) => {
-        const element = rowsById.get(rowId)
-        return element ? [[rowId, Math.ceil(element.getBoundingClientRect().height)] as [string, number]] : []
+  const measureRowOnNextFrame = useCallback(
+    (id: string) => {
+      if (!isVirtualized) return
+
+      // Coalesce image loads and mounted rows so one frame reads each visible row at most once.
+      pendingRowMeasurements.current.add(id)
+      if (measurementFrame.current !== null) return
+      measurementFrame.current = requestAnimationFrame(() => {
+        measurementFrame.current = null
+        const content = contentRef.current
+        const elements = Array.from(content?.querySelectorAll<HTMLElement>("[data-message-row]") ?? [])
+        const rowsById = new Map(elements.map((element) => [element.dataset.messageRow ?? "", element]))
+        const rows = [...pendingRowMeasurements.current].flatMap((rowId) => {
+          const element = rowsById.get(rowId)
+          return element ? [[rowId, Math.ceil(element.getBoundingClientRect().height)] as [string, number]] : []
+        })
+        pendingRowMeasurements.current.clear()
+        if (rows.length === 0) return
+        setRowHeights((heights) => {
+          const changed = rows.filter(
+            ([rowId, height]) => Math.abs((heights[rowId] ?? estimatedRowHeight) - height) > 0.5,
+          )
+          return changed.length > 0 ? { ...heights, ...Object.fromEntries(changed) } : heights
+        })
       })
-      pendingRowMeasurements.current.clear()
-      if (rows.length === 0) return
-      setRowHeights((heights) => {
-        const changed = rows.filter(
-          ([rowId, height]) => Math.abs((heights[rowId] ?? estimatedRowHeight) - height) > 0.5,
-        )
-        return changed.length > 0 ? { ...heights, ...Object.fromEntries(changed) } : heights
-      })
-    })
-  }, [])
+    },
+    [isVirtualized],
+  )
   useEffect(() => {
     return () => {
       if (measurementFrame.current !== null) cancelAnimationFrame(measurementFrame.current)
+      measurementFrame.current = null
+      pendingRowMeasurements.current.clear()
     }
   }, [])
   // biome-ignore lint/correctness/useExhaustiveDependencies: messages and cards change the rendered scroll height during a turn
@@ -297,8 +305,14 @@ export const VirtualMessageList = ({
     const spacer = spacerRef.current
     const content = contentRef.current
     if (!list || !spacer || !content || typeof ResizeObserver === "undefined") return
+    const measureMountedRows = () =>
+      content.querySelectorAll<HTMLElement>("[data-message-row]").forEach((row) => {
+        const id = row.dataset.messageRow
+        if (id) measureRowOnNextFrame(id)
+      })
     // Markdown and the virtual window can grow after the first layout of a new turn.
     const observer = new ResizeObserver(() => {
+      measureMountedRows()
       const anchor = readingAnchor.current
       if (anchor?.element.isConnected) {
         const delta = anchor.element.getBoundingClientRect().top - list.getBoundingClientRect().top - anchor.top
@@ -321,11 +335,6 @@ export const VirtualMessageList = ({
     })
     observer.observe(spacer)
     observer.observe(content)
-    const measureMountedRows = () =>
-      content.querySelectorAll<HTMLElement>("[data-message-row]").forEach((row) => {
-        const id = row.dataset.messageRow
-        if (id) measureRowOnNextFrame(id)
-      })
     const mutations = new MutationObserver(measureMountedRows)
     mutations.observe(content, { childList: true })
     measureMountedRows()

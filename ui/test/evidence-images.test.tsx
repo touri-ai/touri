@@ -129,6 +129,20 @@ describe("safe markdown evidence", () => {
     expect(screen.getAllByRole("button", { name: /Abrir captura/ })).toHaveLength(1)
     expect(view.container.querySelectorAll(".markdown-content > p:not(:empty)")).toHaveLength(0)
   })
+  it.each(["Salvei a captura em [tela.png](/workspace/tela.png).", "[tela.png](/workspace/tela.png)"])(
+    "preserves image link text in prose: %s",
+    async (prose) => {
+      const { context } = fixture()
+      const view = render(<MarkdownContent evidence={context} content={`${prose}\n\n![tela](/workspace/tela.png)`} />)
+
+      await screen.findByRole("region", { name: "Imagens de evidência" })
+
+      expect(screen.getByRole("button", { name: "tela.png" })).toBeVisible()
+      expect(view.container.querySelector(".markdown-content > p")).toHaveTextContent(
+        prose.startsWith("Salvei") ? "Salvei a captura em tela.png." : "tela.png",
+      )
+    },
+  )
   it("rechecks a missing image after the bot finishes producing it", async () => {
     const api = createMockApi()
     const { context, request } = fixture()
@@ -331,6 +345,27 @@ it("keeps tool image labels and download actions with their matching cards", asy
   expect(cards[1]).toHaveTextContent("desktop")
   expect(screen.getAllByRole("button", { name: "Baixar imagem" })).toHaveLength(2)
   expect(screen.queryByText("desktop", { selector: "code" })).toBeNull()
+})
+it("redacts tool image captions before displaying labels and alternative text", async () => {
+  const secret = ["sk", "syntheticcaption123456"].join("-")
+  render(
+    <ToolOutput
+      callId="redacted-caption"
+      raw={JSON.stringify({
+        content: [
+          { type: "text", text: secret },
+          { type: "image", mimeType: "image/png", data: "iVBORw0KGgo=" },
+          { type: "text", text: "Baixar imagem" },
+        ],
+      })}
+    />,
+  )
+
+  const gallery = await screen.findByRole("region", { name: "Imagens de evidência" })
+
+  expect(gallery).not.toHaveTextContent(secret)
+  expect(gallery.querySelector("figcaption")).toHaveTextContent("[REDACTED]")
+  expect(await screen.findByRole("img", { name: "[REDACTED]" })).toBeVisible()
 })
 it("opens workspace evidence in the Library from the lightbox", async () => {
   const { context } = fixture()

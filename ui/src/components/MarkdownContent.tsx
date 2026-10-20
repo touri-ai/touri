@@ -155,10 +155,16 @@ const LazyMarkdown = lazy(async () => {
       if (path && images.some((image) => image.path === path)) return null
       return <span>{alt}</span>
     },
-    a: ({ href, children }) => {
-      const path = href ? decodedEvidencePath(localFilePath(href) ?? href) : null
-      if (path && images.some((image) => image.path === path && image.imageSyntax)) return null
-      return <MarkdownLink href={href}>{children}</MarkdownLink>
+    a: ({ href, children }) => <MarkdownLink href={href}>{children}</MarkdownLink>,
+    p: ({ node, children }) => {
+      const content = node?.children.filter((child) => child.type !== "text" || child.value.trim()) ?? []
+      const link = content.length === 1 ? content[0] : undefined
+      const href = link?.type === "element" && link.tagName === "a" ? link.properties.href : undefined
+      const path = typeof href === "string" ? decodedEvidencePath(localFilePath(href) ?? href, true) : null
+      const isDownload = /\b(baixar|download|save)\b/i.test(linkText(children))
+      if (isDownload && path && images.some((image) => image.path === path && image.imageSyntax)) return null
+
+      return <p>{children}</p>
     },
     pre: ({ children }) => <MarkdownCodeBlock preview={preview}>{children}</MarkdownCodeBlock>,
     table: ({ children }) => (

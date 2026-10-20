@@ -216,7 +216,7 @@ export const ToolOutput = ({
           images={images.map((image, index) => ({
             path: `${callId}-${index + 1}`,
             src: image.src,
-            caption: image.caption ?? "Captura de tela da ferramenta",
+            caption: redactToolText(image.caption ?? "Captura de tela da ferramenta"),
             filename: `${callId}-${index + 1}.${image.mime.split("/")[1]}`,
           }))}
         />
