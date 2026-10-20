@@ -45,7 +45,14 @@ test("the compiled server embeds and completes historical attention backfill", a
   })
 
   expect(compiled.success).toBe(true)
-  const child = Bun.spawn([binary, "serve", "--port", "0", "--data-dir", appData], { stdout: "pipe", stderr: "pipe" })
+  const listener = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response(null, { status: 404 }) })
+  const port = listener.port
+  listener.stop(true)
+  if (!port) throw new Error("Synthetic listener did not allocate a port")
+  const child = Bun.spawn([binary, "serve", "--port", String(port), "--data-dir", appData], {
+    stdout: "pipe",
+    stderr: "pipe",
+  })
   cleanups.add(async () => {
     child.kill()
     await child.exited

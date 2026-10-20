@@ -12,8 +12,8 @@ export const startWorkspaceAttentionBackfill = (
   onError: (error: unknown) => void,
   runStage?: PerformanceStageRunner,
   publishResync: () => void = () => {},
-): (() => Promise<void>) => {
-  if (!database.query("SELECT 1 FROM workspace_attention_backfill WHERE id = 1").get()) return async () => {}
+): (() => void | Promise<void>) => {
+  if (!database.query("SELECT 1 FROM workspace_attention_backfill WHERE id = 1").get()) return () => {}
 
   // One outstanding batch and its handles belong to this backfill lifecycle.
   let stopped = false
@@ -115,10 +115,12 @@ export const startWorkspaceAttentionBackfill = (
 
   // Give the listener and first requests a turn before scanning historical rows.
   timer = setTimeout(step, 25)
-  return async () => {
+  return () => {
     stopped = true
     clearTimeout(timer)
-    await closeWorker()
+    if (!worker && !pending) return
+
+    return closeWorker()
   }
 }
 

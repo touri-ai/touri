@@ -122,6 +122,20 @@ test("stopping attention backfill before its first batch preserves durable progr
   expect(errors.size).toBe(0)
 })
 
+test("an idle kernel releases its database synchronously during shutdown", async () => {
+  const { database, root } = await getFixture()
+  database.exec("DELETE FROM workspace_attention_backfill")
+  database.close()
+  const runtime = createKernel({ appData: root })
+  cleanups.add(() => runtime.stop())
+  const db = runtime.kernel.db as Database
+
+  const stopped = runtime.stop()
+
+  expect(() => db.query("SELECT 1").get()).toThrow()
+  await stopped
+})
+
 test("connected workspace clients receive a refresh after historical attention becomes available", async () => {
   const { database, root } = await getFixture()
   database.close()

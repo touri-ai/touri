@@ -107,14 +107,26 @@ export const createGrantStore = ({ kernel, now = Date.now }: { kernel: Kernel; n
   }
 
   const expire = ({ at = now() }: { at?: number } = {}): number => {
-    const result = database
-      .query(
-        `UPDATE computer_grants
-            SET revoked_at = ?, revoked_by = 'expiry'
-          WHERE revoked_at IS NULL AND expires_at <= ?`,
-      )
-      .run(at, at)
-    return result.changes
+    const pending = database
+      .query("SELECT 1 FROM computer_grants WHERE revoked_at IS NULL AND expires_at <= ? LIMIT 1")
+      .get(at)
+    if (!pending) return 0
+
+    const busyTimeout = (database.query("PRAGMA busy_timeout").get() as { timeout: number }).timeout
+    database.exec("PRAGMA busy_timeout = 0")
+    try {
+      return database
+        .query(`UPDATE computer_grants SET revoked_at = ?, revoked_by = 'expiry'
+        WHERE id IN (SELECT id FROM computer_grants WHERE revoked_at IS NULL AND expires_at <= ?
+          ORDER BY expires_at LIMIT 50)`)
+        .run(at, at).changes
+    } catch (error) {
+      // Timestamp checks in active() deny expired grants while bookkeeping retries.
+      if (isSqliteBusy(error)) return 0
+      throw error
+    } finally {
+      database.exec(`PRAGMA busy_timeout = ${busyTimeout}`)
+    }
   }
 
   const countActive = ({ at = now() }: { at?: number } = {}): number => {
@@ -126,3 +138,10 @@ export const createGrantStore = ({ kernel, now = Date.now }: { kernel: Kernel; n
 
   return { create, active, revokeAll, revoke, expire, countActive }
 }
+
+const isSqliteBusy = (error: unknown): boolean =>
+  typeof error === "object" &&
+  error !== null &&
+  "code" in error &&
+  typeof error.code === "string" &&
+  (error.code.startsWith("SQLITE_BUSY") || error.code.startsWith("SQLITE_LOCKED"))

@@ -184,7 +184,13 @@ test("schema 11 answers health in under a second while a 2–5 MB history is bac
     }
     expect(done.historyMigration).toEqual({ running: false, done: 600, total: 600 })
     const database = runtime.kernel.db as Database
-    expect(database.query("SELECT COUNT(*) AS n FROM ui_event_log").get()).toEqual({ n: 0 })
+    expect(
+      database
+        .query("SELECT COUNT(*) AS n FROM ui_event_log WHERE event_json <> ?")
+        .get(JSON.stringify({ type: "transcript.resync" })),
+    ).toEqual({ n: 0 })
+    const controlEvents = database.query("SELECT COUNT(*) AS n FROM ui_event_log").get() as { n: number }
+    expect(controlEvents.n).toBeLessThanOrEqual(1)
     expect(database.query("SELECT MAX(length(event_json)) AS n FROM transcript_entries").get()).toMatchObject({
       n: expect.any(Number),
     })

@@ -653,12 +653,13 @@ export const createKernel = ({
       if (store && !store.closeStreamWriterIfIdle?.()) await store.flushWritesAsync?.({ stopping: true })
       services.use("storage.botDeletion")?.dispose()
       stopHistoryBackfill()
-      await stopWorkspaceAttentionBackfill()
+      const attentionStopped = stopWorkspaceAttentionBackfill()
       storageMaintenance.dispose({ closing: true })
       services.use("vm.desktop")?.dispose()
       services.use("doctor")?.dispose()
       const homeWriterStopped = stopBotHomeWriter(kernel)
       if (homeWriterStopped) await homeWriterStopped
+      if (attentionStopped) await attentionStopped
       removePrivateFile({ root: paths.appData, path: handshakePath })
       shell.dispose()
       host.close()
