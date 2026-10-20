@@ -176,11 +176,18 @@ mod tests {
 
     #[test]
     fn notification_click_keeps_the_exact_card_id() {
-        let target = notification_target("tap", Some("touri://open?bot=b&thread=t&notification=42"))
-            .expect("notification target");
+        let target =
+            notification_target("tap", Some("touri://open?bot=b&thread=t&notification=42"))
+                .expect("notification target");
 
         assert_eq!(target.notification_id, Some(42));
-        assert_eq!(notification_target("tap", Some("touri://open?notification=0")), None);
-        assert_eq!(notification_target("tap", Some("touri://open?notification=bad")), None);
+        assert_eq!(
+            notification_target("tap", Some("touri://open?notification=0")),
+            None
+        );
+        assert_eq!(
+            notification_target("tap", Some("touri://open?notification=bad")),
+            None
+        );
     }
 }
