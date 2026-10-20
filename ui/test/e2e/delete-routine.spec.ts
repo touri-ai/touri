@@ -78,6 +78,8 @@ for (const width of [1440, 390]) {
     // The bot's routines tab opens the filtered list and its accessible confirmation.
     await page.reload()
     if (width === 390) await page.getByRole("button", { name: "Abrir menu" }).click()
+    await page.locator('[data-bot-entry="bot-mark"] .bot-row-main').click()
+    if (width === 390) await page.getByRole("button", { name: "Abrir menu" }).click()
     await showBotAdvanced(page)
     const settings = page.getByRole("dialog")
     await settings.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }).click()
@@ -98,7 +100,8 @@ for (const width of [1440, 390]) {
     await expect(routines.getByRole("heading", { name: "Rotinas", exact: true })).toBeFocused()
     await expect(trigger).toHaveCount(0)
     if (width === 390) await page.getByRole("button", { name: "Abrir menu" }).click()
-    await page.getByRole("button", { name: /^Bots/ }).click()
-    await expect(page.getByText("Review the campaign", { exact: true }).first()).toBeVisible()
+    await page.getByRole("tab", { name: /^Bots/ }).click()
+    await page.locator('[data-bot-entry="bot-mark"] .bot-row-main').click()
+    await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
   })
 }

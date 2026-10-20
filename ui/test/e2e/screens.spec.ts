@@ -1,7 +1,7 @@
 import { mkdir } from "node:fs/promises"
 import { resolve } from "node:path"
 import { expect, test } from "@playwright/test"
-import { openGlobalPage, showBotPanel, showBotRoutines } from "./home-navigation"
+import { openGlobalPage, showBotChat, showBotPanel, showBotRoutines } from "./home-navigation"
 
 const phase = process.env.R8_PHASE ?? "after"
 const qa = resolve(import.meta.dirname, "../../../docs/qa/r8/screens")
@@ -60,7 +60,7 @@ for (const theme of ["light", "dark"] as const) {
         await page.getByRole("combobox", { name: "Política · write_file" }).selectOption("blocked")
         await expect(page.getByRole("combobox", { name: "Política · write_file" })).toHaveValue("blocked")
       }
-      await page.getByRole("button", { name: /^Bots/ }).click()
+      await showBotChat(page)
       if (await page.getByRole("button", { name: "Fechar painel do bot" }).isVisible())
         await page.getByRole("button", { name: "Fechar painel do bot" }).click()
       await showBotPanel(page)
