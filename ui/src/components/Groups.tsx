@@ -52,41 +52,66 @@ export const GroupSidebar = ({
   onNewThread: (group: BotGroup) => void
   onDelete?: ((groupId: string) => Promise<void>) | undefined
   locale?: Locale
-}) => (
-  <section className="group-sidebar" aria-label={t("Channels", {}, locale)}>
-    <div className="group-sidebar-heading">
-      <span>
-        {t("Channels", {}, locale)} <small>{groups.length}</small>
-      </span>
-      <button type="button" className="channel-create" onClick={onCreate}>
-        <span aria-hidden="true">+</span>
-        {t("New channel", {}, locale)}
-      </button>
-    </div>
-    {groups.map((group) => {
-      const groupThreads = threads.filter((thread) => thread.groupId === group.id && !thread.groupThreadId)
-      const unread = groupThreads.reduce((count, thread) => count + thread.unread, 0)
-      const needsAttention = groupThreads.some((thread) => attentionThreadIds.has(thread.id))
+}) => {
+  const threadSummaries = useMemo(
+    () => getGroupThreadSummaries(threads, attentionThreadIds),
+    [threads, attentionThreadIds],
+  )
 
-      return (
-        <GroupSidebarEntry
-          key={group.id}
-          group={group}
-          bots={bots}
-          threads={groupThreads}
-          unread={unread}
-          needsAttention={needsAttention}
-          selectedThreadId={selectedThreadId}
-          onSelect={onSelect}
-          onEdit={() => onEdit(group)}
-          onNewThread={() => onNewThread(group)}
-          onDelete={onDelete}
-          locale={locale}
-        />
-      )
-    })}
-  </section>
-)
+  return (
+    <section className="group-sidebar" aria-label={t("Channels", {}, locale)}>
+      <div className="group-sidebar-heading">
+        <span>
+          {t("Channels", {}, locale)} <small>{groups.length}</small>
+        </span>
+        <button type="button" className="channel-create" onClick={onCreate}>
+          <span aria-hidden="true">+</span>
+          {t("New channel", {}, locale)}
+        </button>
+      </div>
+      {groups.map((group) => {
+        const summary = threadSummaries.get(group.id)
+
+        return (
+          <GroupSidebarEntry
+            key={group.id}
+            group={group}
+            bots={bots}
+            threads={summary?.threads ?? []}
+            unread={summary?.unread ?? 0}
+            needsAttention={summary?.needsAttention ?? false}
+            selectedThreadId={selectedThreadId}
+            onSelect={onSelect}
+            onEdit={() => onEdit(group)}
+            onNewThread={() => onNewThread(group)}
+            onDelete={onDelete}
+            locale={locale}
+          />
+        )
+      })}
+    </section>
+  )
+}
+
+type GroupThreadSummary = {
+  threads: Thread[]
+  unread: number
+  needsAttention: boolean
+}
+
+const getGroupThreadSummaries = (threads: Thread[], attentionThreadIds: ReadonlySet<string>) =>
+  threads.reduce((summaries, thread) => {
+    if (!thread.groupId || thread.groupThreadId) return summaries
+
+    const summary = summaries.get(thread.groupId) ?? { threads: [], unread: 0, needsAttention: false }
+    // A local accumulator keeps the channel index linear in the thread count.
+    summary.threads.push(thread)
+    summary.unread += thread.unread
+    summary.needsAttention ||= attentionThreadIds.has(thread.id)
+    summaries.set(thread.groupId, summary)
+
+    return summaries
+  }, new Map<string, GroupThreadSummary>())
 
 const GroupSidebarEntry = ({
   group,
