@@ -210,7 +210,8 @@ export const createStreamPersistence = ({
     void (async () => {
       if (!head.batch.quarantine && !head.filesWritten) {
         for (const file of head.files) {
-          if (await privateFileExistsAsync({ root: appData, path: file.path })) continue
+          // A failed directory fsync can leave the renamed file visible; retries must persist it again.
+          if (head.attempts === 0 && (await privateFileExistsAsync({ root: appData, path: file.path }))) continue
 
           await writePrivateFileAsync({ root: appData, path: file.path, content: file.content })
         }
@@ -224,7 +225,10 @@ export const createStreamPersistence = ({
         recoverWorker(number)
       }
     })().catch(() => {
-      if (number === workerNumber && !disposed) retryHead()
+      if (number !== workerNumber || disposed) return
+
+      reportError()
+      retryHead()
     })
   }
   const startWorker = (): void => {
